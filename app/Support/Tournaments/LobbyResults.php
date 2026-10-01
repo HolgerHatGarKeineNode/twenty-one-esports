@@ -305,9 +305,30 @@ final class LobbyResults
             'points' => [],
             'forfeit' => true,
             'decided' => 'withdrawn',
-            'label' => __('decided by the league'),
+            // Stored in English for the logs; every page words it in the viewer's language (describe()).
+            'label' => 'decided by the league',
+            'lobby_label' => 'league',
             'by' => 'league',
         ];
+    }
+
+    /**
+     * A lobby result in words, in the current language: "Shared place 1:
+     * A, B", "Place 1: A", "decided by the league". Results stored before
+     * the kind was kept fall back to their stored label.
+     *
+     * @param  array<string, mixed>  $result
+     */
+    public static function describe(array $result): string
+    {
+        $names = implode(', ', array_map(strval(...), (array) ($result['winner_names'] ?? [])));
+
+        return match ($result['lobby_label'] ?? null) {
+            'shared' => __('Shared place 1: :names', ['names' => $names]),
+            'single' => __('Place 1: :name', ['name' => $names]),
+            'league' => __('decided by the league'),
+            default => (string) ($result['label'] ?? ''),
+        };
     }
 
     /**
@@ -371,9 +392,10 @@ final class LobbyResults
             'games_won' => [],
             'points' => [],
             'forfeit' => false,
-            'label' => count($winners) > 1
-                ? __('Shared place 1: :names', ['names' => implode(', ', array_map(fn (int $id): string => $names[$id] ?? '', $winners))])
-                : __('Place 1: :name', ['name' => $names[$winners[0]] ?? '']),
+            // The kind and the names, worded at render time in the viewer's language (describe()); `label` stays English for the logs.
+            'lobby_label' => count($winners) > 1 ? 'shared' : 'single',
+            'winner_names' => array_map(fn (int $id): string => $names[$id] ?? '', $winners),
+            'label' => (count($winners) > 1 ? 'Shared place 1: ' : 'Place 1: ').implode(', ', array_map(fn (int $id): string => $names[$id] ?? '', $winners)),
             'by' => 'director',
             'user_id' => $director->id,
             'name' => mb_substr($director->displayName(), 0, 80),

@@ -16,6 +16,7 @@ use App\Support\Tournaments\FormatOptions;
 use App\Support\Tournaments\GameProfile;
 use App\Support\Tournaments\Lobbies;
 use App\Support\Tournaments\LobbyResults;
+use App\Support\Tournaments\LobbySwitch;
 use App\Support\Tournaments\TournamentBrackets;
 use App\Support\Tournaments\TournamentChampion;
 use App\Support\Tournaments\TournamentControl;
@@ -25,6 +26,7 @@ use App\Support\Tournaments\TournamentRunner;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Queue;
 use Illuminate\Support\Facades\Storage;
 use Livewire\Livewire;
@@ -307,4 +309,68 @@ test('the lobby card shows the settings to everyone, and the name and password o
 
     $this->actingAs($player)->get(route('tournaments.show', ['tournament' => $tournament, 'lang' => 'de']))->assertOk()
         ->assertSee('Kartengröße')->assertSee('Bündnissieg')->assertSee('Zeitlimit, 2 Stunden');
+});
+
+test('a lobby result is stored as its kind and names and worded in the reader\'s language: confirmed in English, read in German', function () {
+    $tournament = runningLobby(4);
+    $lobby = lobbiesOf($tournament)->sole();
+    app()->setLocale('en');
+    app(LobbyResults::class)->enter($lobby, $tournament->creator, lobbyPlaces($lobby, [1, 1, 3, 4]));
+
+    expect($lobby->refresh()->result)->toMatchArray(['lobby_label' => 'shared', 'winner_names' => ['Player 1', 'Player 2']]);
+
+    $this->get(route('tournaments.show', ['tournament' => $tournament, 'lang' => 'de']))->assertOk()
+        ->assertSee('Geteilter Platz 1: Player 1, Player 2')->assertDontSee('Shared place 1: Player 1');
+    $this->get(route('tournaments.show', ['tournament' => $tournament, 'lang' => 'en']))->assertOk()
+        ->assertSee('Shared place 1: Player 1, Player 2');
+});
+
+test('a finished lobby tournament names its shared 1st place across all lobbies once, on its page', function () {
+    $tournament = runningLobby(9);
+    [$first, $second] = lobbiesOf($tournament)->all();
+    app(LobbyResults::class)->enter($first, $tournament->creator, lobbyPlaces($first, [1, 1, 3, 4, 5]));
+    app(LobbyResults::class)->enter($second, $tournament->creator, lobbyPlaces($second, [1, 2, 3, 4]));
+    $names = collect([$first->slots[0], $first->slots[1], $second->slots[0]])->sortBy('tournament_participant_id')->map(fn ($slot): string => (string) $slot->participant->name)->implode(', ');
+
+    $this->get(route('tournaments.show', $tournament))->assertOk()
+        ->assertSee('data-test="tournament-shared-first"', false)
+        ->assertSeeInOrder(['Shared 1st place: '.$names])
+        ->assertSee('Finished. Shared 1st place: '.$names.'.')
+        ->assertDontSee('data-test="tournament-winner"', false);
+    // A single winner keeps the winner card.
+    $single = runningLobby(4);
+    app(LobbyResults::class)->enter(lobbiesOf($single)->sole(), $single->creator, lobbyPlaces(lobbiesOf($single)->sole(), [1, 2, 3, 4]));
+    $this->get(route('tournaments.show', $single))->assertOk()
+        ->assertSee('data-test="tournament-winner"', false)->assertDontSee('data-test="tournament-shared-first"', false);
+});
+
+test('the format chooser describes the lobby for Age of Empires II and shows no series deadlines; a series game keeps both', function () {
+    $organizer = organizer();
+    $draft = fn (string $game): Tournament => Tournament::factory()->create(['game' => $game, 'mode' => '1v1', 'status' => TournamentStatus::Draft, 'capacity' => 9, 'created_by_id' => $organizer->id,
+        'format' => $game === 'age-of-empires-2' ? TournamentFormat::FreeForAll : TournamentFormat::SingleElimination,
+        'options' => FormatOptions::defaults(GameProfile::for($game, '1v1'))->toArray()]);
+
+    // The chooser is an island: a Livewire test reads it on the first render (tests/Feature/Tournaments/TournamentCreateTest.php).
+    Livewire::actingAs($organizer)->test('pages::admin.tournament-edit', ['tournament' => $draft('age-of-empires-2')])
+        ->assertSee('One lobby match for everyone, all lobbies at the same time: up to 2 hours of play with its Time Limit, about 2 h 15 min with filling the lobby. No final, no opponent to find.')
+        ->assertSee('Every lobby plays at the same time, 2 h 15 min with filling the lobby and the Time Limit.')
+        ->assertDontSee('finding the opponent')->assertDontSee('Ends with a final')
+        ->assertSee('data-test="tournament-deadlines-lobby"', false)
+        ->assertDontSee('data-test="deadline-noshow_minutes"', false)->assertDontSee('data-test="deadline-response_minutes"', false);
+
+    Livewire::actingAs($organizer)->test('pages::admin.tournament-edit', ['tournament' => $draft('rocket-league')])
+        ->assertSee('data-test="deadline-noshow_minutes"', false)->assertSee('finding the opponent')
+        ->assertDontSee('One lobby match for everyone')->assertDontSee('data-test="tournament-deadlines-lobby"', false);
+});
+
+test('the switch warns about a team-mode tournament of a lobby game once, however often it runs', function () {
+    Log::spy();
+    openTournament(['game' => 'age-of-empires-2', 'mode' => '2v2', 'format' => TournamentFormat::SingleElimination,
+        'options' => FormatOptions::defaults(GameProfile::for('age-of-empires-2', '2v2'))->toArray(), 'capacity' => 8]);
+
+    foreach (range(1, 3) as $ignored) {
+        app(LobbySwitch::class)->run();
+    }
+
+    Log::shouldHaveReceived('warning')->with('Lobby switch: a team-mode tournament of a lobby game is left as it is', Mockery::any())->once();
 });

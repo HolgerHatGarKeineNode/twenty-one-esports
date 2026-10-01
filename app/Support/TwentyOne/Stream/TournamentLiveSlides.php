@@ -11,6 +11,7 @@ use App\Support\Payouts\TournamentPlacements;
 use App\Support\Prizes\PrizePool;
 use App\Support\Tournaments\CasualCups;
 use App\Support\Tournaments\Estimator;
+use App\Support\Tournaments\Lobbies;
 use App\Support\Tournaments\TournamentLanding;
 use App\Support\Tournaments\TournamentTv;
 use Carbon\CarbonInterface;
@@ -250,8 +251,9 @@ class TournamentLiveSlides
             },
             'name' => PublicName::clean($tournament->name),
             'game' => GameTitle::of($tournament->game),
-            'mode' => $this->games->mode($tournament->game, $tournament->mode)->name ?? $tournament->mode,
-            'format' => $tournament->format->label(),
+            // A lobby tournament (P10) has no mode to name (no "1v1"), and its format is the lobby match.
+            'mode' => Lobbies::isLobby($tournament) ? '' : ($this->games->mode($tournament->game, $tournament->mode)->name ?? $tournament->mode),
+            'format' => Lobbies::isLobby($tournament) ? 'One lobby match' : $tournament->format->label(),
             'teamSize' => $tournament->teamSize(),
             'rated' => $tournament->openLadder() !== null,
             'where' => $tournament->on_site ? 'On site' : 'Online',
@@ -278,6 +280,7 @@ class TournamentLiveSlides
             'path' => [],
             'finishedAt' => null,
             'finishedMs' => null,
+            'sharedFirst' => [],
         ];
 
         if ($phase === 'drawing') {
@@ -331,7 +334,7 @@ class TournamentLiveSlides
                 'of' => $entrants,
                 'faces' => array_values(array_filter(array_map($name, array_slice($alive, 0, self::STANDING)))),
             ];
-            $snapshot['live'] = array_map(fn (array $box): array => ['round' => $box['round'], 'sides' => array_values(array_filter(array_map(fn (array $side): ?array => $name($side['entry']), $box['sides'])))],
+            $snapshot['live'] = Lobbies::isLobby($tournament) ? [] : array_map(fn (array $box): array => ['round' => $box['round'], 'sides' => array_values(array_filter(array_map(fn (array $side): ?array => $name($side['entry']), $box['sides'])))],
                 TournamentTv::spotlight($stages, 2));
         }
 
@@ -353,6 +356,8 @@ class TournamentLiveSlides
             $snapshot['finishedMs'] = $finished?->getTimestampMs();
             $champion = $tv->champion();
             $snapshot['champion'] = $name($champion);
+            // A lobby tournament (P10): place 1 across all its lobbies, shared by the allies left standing.
+            $snapshot['sharedFirst'] = Lobbies::isLobby($tournament) ? self::firstPlace($this->placements->of($tournament) ?? [], $tv, $name) : [];
             $snapshot['path'] = $champion === null ? [] : $this->path($boxes, $champion['id'], $name);
 
             foreach ($this->placements->of($tournament) ?? [] as $row) {
@@ -502,6 +507,11 @@ class TournamentLiveSlides
             return null;
         }
 
+        // A lobby tournament (P10): one panel per lobby with its players; never a pairing.
+        if (Lobbies::isLobby($tournament)) {
+            return $this->lobbies($stage, $name);
+        }
+
         $tables = array_values(array_filter($stage['parts'], fn (array $part): bool => $part['kind'] === 'table'));
         $brackets = array_values(array_filter($stage['parts'], fn (array $part): bool => $part['kind'] === 'bracket'));
         $twoStage = $tournament->format === TournamentFormat::TwoStage;
@@ -559,6 +569,72 @@ class TournamentLiveSlides
         return ['kind' => 'table', 'title' => $part['title'] ?? $stage['title'], 'rows' => $this->rows($part['rows'], $advance, self::TABLE_ROWS, $name),
             'more' => max(0, count($part['rows']) - self::TABLE_ROWS), 'round' => $current['number'] ?? null, 'of' => $of, 'pairings' => $pairings,
             'now' => $current === null ? null : 'Round '.$current['number'].' of '.$of];
+    }
+
+    /**
+     * The lobbies of a lobby tournament (P10) as a groups-like board (kind
+     * 'lobbies'): a box per lobby titled "Lobby N" (live or not), its players
+     * in slot order while it runs, by place once decided (place 1 shared by
+     * the allies left standing, `through`). `now` counts the lobbies decided.
+     *
+     * @param  array<string, mixed>  $stage
+     * @param  callable(array<string, mixed>|null): (array{pic: string, seed: int|null, name: string}|null)  $name
+     * @return array<string, mixed>
+     */
+    private function lobbies(array $stage, callable $name): array
+    {
+        $groups = [];
+        $decided = 0;
+
+        foreach ($stage['parts'] as $part) {
+            foreach ($part['heats'] ?? [] as $box) {
+                $done = $box['status'] === 'done';
+                $decided += $done ? 1 : 0;
+                $rows = [];
+
+                foreach (array_values($box['sides']) as $index => $side) {
+                    $entry = $name($side['entry'] ?? null);
+                    $score = (string) ($side['score'] ?? '');
+                    $place = $done && str_starts_with($score, '#') ? (int) substr($score, 1) : null;
+                    $rows[] = ['pic' => $entry['pic'] ?? null, 'rank' => $place, 'live' => $place === null, 'index' => $index,
+                        'name' => $entry['name'] ?? PublicName::clean((string) ($side['name'] ?? '')), 'points' => '', 'through' => $place === 1];
+                }
+
+                usort($rows, fn (array $a, array $b): int => [$a['rank'] ?? 99, $a['index']] <=> [$b['rank'] ?? 99, $b['index']]);
+                $groups[] = ['title' => (string) $box['round'].($box['live'] ? ', live' : ''), 'rows' => array_map(fn (array $row): array => array_diff_key($row, ['index' => true]), $rows)];
+            }
+        }
+
+        return ['kind' => 'lobbies', 'title' => $stage['title'], 'groups' => $groups,
+            'now' => 'One lobby match, '.$decided.' of '.count($groups).' '.(count($groups) === 1 ? 'lobby' : 'lobbies').' decided'];
+    }
+
+    /**
+     * The names on place 1 of a finished lobby tournament, in placement order.
+     *
+     * @param  list<array{place: int, participants: list<int>}>  $placements
+     * @param  callable(array<string, mixed>|null): (array{pic: string, seed: int|null, name: string}|null)  $name
+     * @return list<string>
+     */
+    private static function firstPlace(array $placements, TournamentTv $tv, callable $name): array
+    {
+        $names = [];
+
+        foreach ($placements as $row) {
+            if ($row['place'] !== 1) {
+                continue;
+            }
+
+            foreach ($row['participants'] as $id) {
+                $entry = $name($tv->entry($id));
+
+                if ($entry !== null) {
+                    $names[] = $entry['name'];
+                }
+            }
+        }
+
+        return $names;
     }
 
     /**
@@ -930,7 +1006,7 @@ class TournamentLiveSlides
                         $board['columns'][$c]['matches'][$m]['sides'] = array_map($face, $match['sides']);
                     }
                 }
-            } elseif ($board['kind'] === 'groups') {
+            } elseif ($board['kind'] === 'groups' || $board['kind'] === 'lobbies') {
                 foreach ($board['groups'] as $g => $group) {
                     $board['groups'][$g]['rows'] = array_map($face, $group['rows']);
                 }

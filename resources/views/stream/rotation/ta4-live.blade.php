@@ -17,7 +17,9 @@
     $clanSeats = is_int($t['teamSize'] ?? null) && $t['teamSize'] > 1;
     $title = K::headline(K::text($t, 'name', 'Tournament'), [36, 30, 26], 880, 1);
     $kind = is_array($t['board'] ?? null) ? ($t['board']['kind'] ?? null) : null;
-    $sub = K::fit($finished ? ($kind === 'bracket' ? 'Final bracket' : 'Final standings') : K::text($t, 'now', K::text($t, 'format')), K::MONO, 20, 880);
+    $sub = K::fit($finished ? match ($kind) { 'bracket' => 'Final bracket', 'lobbies' => 'Final places', default => 'Final standings' } : K::text($t, 'now', K::text($t, 'format')), K::MONO, 20, 880);
+    // A lobby tournament (P10): place 1 across all lobbies, shared by the allies left standing.
+    $firsts = K::sharedFirst($t);
     // Who leads a table (nobody is knocked out there, so "still standing" says nothing).
     $leader = $kind === 'table' ? K::tableRows($t['board'], 0, 1, 1, 1, 1)[0]['name'] ?? '' : '';
     $groupCols = $kind === 'groups' && count((array) ($t['board']['groups'] ?? [])) <= 4 ? 2 : 4;
@@ -49,7 +51,7 @@
     'panel' => '#16161A', 'rule' => '#2A2A30', 'accent' => '#F7931A', 'nameFill' => '#FFFFFF', 'muted' => '#8B8B90', 'chipInk' => '#17120A', 'bShape' => 'round', 'bId' => 'ta4'])
 
 @if ($played !== null && $total !== null)
-<text data-unit="played-label" x="976" y="150" font-family="JetBrains Mono" font-weight="700" font-size="18" fill="#17120A">Matches decided</text>
+<text data-unit="played-label" x="976" y="150" font-family="JetBrains Mono" font-weight="700" font-size="18" fill="#17120A">{{ $kind === 'lobbies' ? 'Lobbies decided' : 'Matches decided' }}</text>
 <text data-unit="played" data-box="975 164 1249 204" x="976" y="196" font-family="Unbounded" font-weight="800" font-size="32" fill="#17120A">{{ K::fit($played.' of '.$total, K::DISPLAY, 32, 264) }}</text>
 <rect x="976" y="214" width="264" height="10" fill="none" stroke="#17120A" stroke-width="2"/>
 @if ($share > 0)<rect x="976" y="214" width="{{ round(264 * $share, 1) }}" height="10" fill="#17120A"/>@endif
@@ -60,6 +62,12 @@
 @foreach ($champName['lines'] as $i => $line)
 <text data-unit="champ-name-{{ $i }}" data-box="975 {{ 444 + $i * round($champName['size'] * 1.15) - $champName['size'] }} 1249 {{ 444 + $i * round($champName['size'] * 1.15) + 8 }}" x="976" y="{{ 444 + $i * round($champName['size'] * 1.15) }}" font-family="{{ $champName['font'] }}" font-weight="800" font-size="{{ $champName['size'] }}" fill="#17120A">{{ $line }}</text>
 @endforeach
+@elseif ($firsts !== [])
+<text data-unit="first-label" x="976" y="284" font-family="JetBrains Mono" font-weight="700" font-size="18" fill="#17120A">{{ count($firsts) > 1 ? 'Shared 1st place' : '1st place' }}</text>
+@foreach (array_slice($firsts, 0, 6) as $i => $first)
+<text data-unit="first-{{ $i }}" data-box="975 {{ 300 + $i * 36 }} 1249 {{ 330 + $i * 36 }}" x="976" y="{{ 324 + $i * 36 }}" font-family="{{ K::nameFont($first) }}" font-weight="800" font-size="24" fill="#17120A">{{ K::fit($first, K::nameFont($first), 24, 264) }}</text>
+@endforeach
+@if (count($firsts) > 6)<text data-unit="first-more" x="976" y="{{ 324 + 6 * 36 }}" font-family="JetBrains Mono" font-weight="700" font-size="18" fill="#17120A">+{{ count($firsts) - 6 }} more</text>@endif
 @elseif ($leader !== '')
 <text data-unit="leader-label" x="976" y="284" font-family="JetBrains Mono" font-weight="700" font-size="18" fill="#17120A">Top of the table</text>
 <text data-unit="leader" data-box="975 294 1249 334" x="976" y="326" font-family="{{ K::nameFont($leader) }}" font-weight="800" font-size="28" fill="#17120A">{{ K::fit($leader, K::nameFont($leader), 28, 264) }}</text>

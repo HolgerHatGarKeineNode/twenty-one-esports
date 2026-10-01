@@ -142,7 +142,9 @@ new #[Layout('layouts::app', ['section' => 'tournaments'])] class extends Compon
                 : __('Sign-up has closed. The draw follows.'),
             TournamentStatus::Drawing => __('Sign-up has closed. The draw follows.'),
             TournamentStatus::Running => $tournament->isPaused() ? __('The tournament is paused: no match starts and no deadline runs until it goes on.') : __('The tournament is running.'),
-            TournamentStatus::Finished => $champion === null ? __('The tournament has finished.') : __('Finished. Winner: :name.', ['name' => $champion->name]),
+            TournamentStatus::Finished => $champion === null
+                ? ($this->sharedFirst === [] ? __('The tournament has finished.') : __('Finished. Shared 1st place: :names.', ['names' => implode(', ', $this->sharedFirst)]))
+                : __('Finished. Winner: :name.', ['name' => $champion->name]),
             TournamentStatus::Cancelled => __('The tournament was called off.'),
             TournamentStatus::Draft => '',
         };
@@ -379,6 +381,30 @@ new #[Layout('layouts::app', ['section' => 'tournaments'])] class extends Compon
     public function champion(): ?TournamentParticipant
     {
         return $this->tournament->status === TournamentStatus::Finished ? app(TournamentChampion::class)->of($this->tournament) : null;
+    }
+
+    /**
+     * A finished lobby tournament (P10) whose place 1 is shared, across all
+     * its lobbies: the names on it (there is no single champion then).
+     *
+     * @return list<string>
+     */
+    #[Computed]
+    public function sharedFirst(): array
+    {
+        if ($this->tournament->status !== TournamentStatus::Finished || ! \App\Support\Tournaments\Lobbies::isLobby($this->tournament)) {
+            return [];
+        }
+
+        $first = app(\App\Support\Payouts\TournamentPlacements::class)->of($this->tournament)[0] ?? null;
+
+        if ($first === null || $first['place'] !== 1 || count($first['participants']) < 2) {
+            return [];
+        }
+
+        $names = TournamentParticipant::query()->whereKey($first['participants'])->pluck('name', 'id');
+
+        return array_values(array_map(fn (int $id): string => (string) ($names[$id] ?? ''), $first['participants']));
     }
 
     /**
@@ -677,7 +703,7 @@ new #[Layout('layouts::app', ['section' => 'tournaments'])] class extends Compon
                                         @case('full') {{ __('Every spot is taken. Places open up when someone pulls out.') }} @break
                                         @case('closed') {{ $status === TournamentStatus::Drawing ? __('Sign-up is closed. The draw waits for Bitcoin block :height; its hash seeds the mix teams and the bracket.', ['height' => $tournament->draw_height]) : __('Sign-up has closed. The draw follows.') }} @break
                                         @case('live') {{ $score ? __('The window is open. The leaderboard moves as values come in.') : __('The matches are on. Results land in the bracket as they come in.') }} @break
-                                        @case('finished') {{ $champion ? __('Finished. Winner: :name.', ['name' => $champion->name]) : __('The tournament has finished.') }} @break
+                                        @case('finished') {{ $champion ? __('Finished. Winner: :name.', ['name' => $champion->name]) : ($this->sharedFirst !== [] ? __('Finished. Shared 1st place: :names.', ['names' => implode(', ', $this->sharedFirst)]) : __('The tournament has finished.')) }} @break
                                         @case('cancelled') {{ __('The tournament was called off.') }} @break
                                     @endswitch
                                 </span>
@@ -761,6 +787,12 @@ new #[Layout('layouts::app', ['section' => 'tournaments'])] class extends Compon
 
         {{-- P47: a tip for the winners (NIP-57), each whose profile has a Lightning address; nothing otherwise --}}
         <div class="mx-4 has-[>.hidden]:hidden lg:mx-12"><livewire:zap-winner type="tournament" :subject="(string) $tournament->id" :wire:key="'zap-tournament-'.$tournament->id" /></div>
+    @elseif ($this->sharedFirst !== [])
+        {{-- A lobby tournament (P10): place 1 shared across all its lobbies, one line for the whole tournament. --}}
+        <section aria-labelledby="tw-h" class="mx-4 flex flex-col gap-2 rounded-card bg-card px-4 py-5 shadow-[inset_0_0_0_1px_#F7931A] lg:mx-12 lg:px-6" data-test="tournament-shared-first">
+            <span class="flex items-center gap-1.5 text-xs font-bold text-btc-hi"><x-icon name="trophy" :size="14" />{{ __('Winners') }}</span>
+            <h2 id="tw-h" class="m-0 font-display text-2xl font-bold [overflow-wrap:anywhere]">{{ __('Shared 1st place: :names', ['names' => implode(', ', $this->sharedFirst)]) }}</h2>
+        </section>
     @endif
 
     {{-- Who plays --}}

@@ -18,6 +18,7 @@ use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Storage;
 use Pest\Browser\Playwright\Page;
 use Pest\Browser\Support\ComputeUrl;
+use Tests\Support\BrowserConsole;
 use Tests\Support\BrowserWait;
 use Tests\Support\ParseMultipartBody;
 
@@ -68,23 +69,48 @@ const AOE_LOBBY_MEASURE = <<<'JS'
     }
     JS;
 
+/** A TV scene's lobbies against the stage: every panel and player inside it, nothing cut, no duel. */
+const AOE_LOBBY_TV = <<<'JS'
+    (scene) => {
+        const stage = document.querySelector('.tv-stage').getBoundingClientRect();
+        const box = document.querySelector(`[data-scene-id=${scene}]`);
+        const panels = [...box.querySelectorAll('[data-test=tv-lobby]')];
+        const players = [...box.querySelectorAll('[data-test=tv-lobby-player]')];
+        const rects = [...panels, ...players].map((el) => el.getBoundingClientRect());
+        return {
+            scene: document.querySelector('.tv-stage').dataset.scene,
+            panels: panels.map((panel) => Number(panel.dataset.players)),
+            players: players.length,
+            bottom: Math.round(Math.max(...rects.map((r) => r.bottom))), stageBottom: Math.round(stage.bottom),
+            right: Math.round(Math.max(...rects.map((r) => r.right))), stageRight: Math.round(stage.right),
+            viewport: [window.innerWidth, window.innerHeight],
+            overflowing: panels.filter((panel) => panel.scrollHeight > panel.clientHeight + 1).length,
+            cut: [...box.querySelectorAll('.tv-room-name')].filter((name) => name.scrollWidth > name.clientWidth + 1).map((name) => name.textContent),
+            nameSize: Math.round(Math.min(...[...box.querySelectorAll('.tv-room-name')].map((name) => parseFloat(getComputedStyle(name).fontSize)))),
+            duels: box.querySelectorAll('.tv-duel').length,
+            text: box.innerText,
+            game: document.querySelector('[data-test=tv]').innerText.includes('1v1'),
+        };
+    }
+    JS;
+
 /**
- * A running Age of Empires II lobby tournament of nine named players and its organizer.
+ * A running Age of Empires II lobby tournament of `$players` (up to nine) named players and its organizer.
  *
  * @return array{0: Tournament, 1: User}
  */
-function aoeLobbyTournament(): array
+function aoeLobbyTournament(int $players = 9): array
 {
     $organizer = User::factory()->create(['name' => 'Lobby Director']);
     TournamentOrganizer::query()->create(['pubkey' => $organizer->pubkey]);
     $tournament = Tournament::factory()->create([
         'name' => 'Diplomacy Night', 'game' => 'age-of-empires-2', 'mode' => '1v1', 'format' => TournamentFormat::FreeForAll,
         'options' => FormatOptions::fromArray([], GameProfile::for('age-of-empires-2', '1v1'))->toArray(),
-        'capacity' => 9, 'results_mode' => TournamentResultsMode::Players, 'status' => TournamentStatus::Running, 'starts_at' => now(),
+        'capacity' => $players, 'results_mode' => TournamentResultsMode::Players, 'status' => TournamentStatus::Running, 'starts_at' => now(),
         'published_at' => now(), 'slug' => 'diplomacy-night', 'created_by_id' => $organizer->id,
     ]);
 
-    foreach (['Saladin', 'Joan of Arc', 'Genghis Khan', 'Barbarossa', 'Tamerlane', 'El Cid', 'Attila', 'Bari', 'Gajah Mada'] as $index => $name) {
+    foreach (array_slice(['Saladin', 'Joan of Arc', 'Genghis Khan', 'Barbarossa', 'Tamerlane', 'El Cid', 'Attila', 'Bari', 'Gajah Mada'], 0, $players) as $index => $name) {
         $user = User::factory()->create(['name' => $name]);
         TournamentParticipant::query()->create(['tournament_id' => $tournament->id, 'user_id' => $user->id, 'name' => $name, 'rating' => 1500 - 10 * $index, 'members' => [$user->id]]);
     }
@@ -104,6 +130,22 @@ function aoeLobbyEndScreen(): string
     imagepng($image, $path);
 
     return $path;
+}
+
+/**
+ * A TV screenshot to SHELL_SHOTS: no settle (the scene's dwell bar animates the whole time it shows).
+ */
+function aoeLobbyTvShot(Page $page, string $name): void
+{
+    $dir = getenv('SHELL_SHOTS');
+
+    if (! is_string($dir) || $dir === '') {
+        return;
+    }
+
+    File::ensureDirectoryExists($dir);
+    $page->screenshot(false, $name);
+    File::move(base_path('tests/Browser/Screenshots/'.$name.'.png'), $dir.'/'.$name.'.png');
 }
 
 /** Scroll the first lobby card to the top of the viewport. */
@@ -211,3 +253,52 @@ test('a player reports a shared place 1 with the end screen, and a director conf
         ->and($tournament->refresh()->status)->toBe(TournamentStatus::Running)
         ->and($problems)->toBe([]);
 });
+
+test('the TV shows each lobby as a grid of its players inside the stage at 1920×1080 and 1280×720: one lobby of 8, and 5 + 4', function (int $players, array $lobbies) {
+    [$tournament] = aoeLobbyTournament($players);
+    $problems = [];
+    $measured = [];
+
+    foreach ([[1920, 1080], [1280, 720]] as [$width, $height]) {
+        // The TV is a bare page without the app shell (tests/Browser/TournamentTvTest.php opens it the same way).
+        $page = visit('/robots.txt')->page();
+        $page->context()->addInitScript(BrowserConsole::COLLECTOR);
+        $page->setViewportSize($width, $height);
+        $page->goto(ComputeUrl::from(route('tournaments.tv', $tournament)));
+        BrowserWait::until($page, '() => window.Alpine !== undefined && document.querySelector(".tv-stage") !== null && document.fonts.status === "loaded"', 10_000);
+
+        foreach (['spotlight', 'bracket'] as $scene) {
+            // The rotation holds a scene for seconds; show the one measured, then let its transition end.
+            $page->evaluate('() => { document.querySelector(".tv-stage").dataset.scene = "'.$scene.'"; return new Promise((resolve) => setTimeout(resolve, 700)); }');
+            $measured["{$width}-{$scene}"] = $page->evaluate('() => ('.AOE_LOBBY_TV.')("'.$scene.'")');
+            aoeLobbyTvShot($page, "aoe-lobby-tv-{$players}-{$scene}-{$width}");
+        }
+
+        foreach ([...$page->evaluate('() => window.__errors'), ...$page->evaluate(BrowserConsole::BAD_RESPONSES)] as $problem) {
+            $problems[] = "tv {$width}: {$problem}";
+        }
+    }
+
+    fwrite(STDERR, "\n[aoe lobby tv {$players}] ".json_encode(array_map(fn (array $m): array => array_diff_key($m, ['text' => true]), $measured)));
+
+    foreach ($measured as $key => $m) {
+        expect($m['scene'])->toBe(explode('-', $key)[1], $key)
+            ->and($m['panels'])->toBe($lobbies, $key)
+            ->and($m['players'])->toBe($players, $key)
+            ->and($m['bottom'])->toBeLessThanOrEqual($m['stageBottom'], $key)
+            ->and($m['stageBottom'])->toBeLessThanOrEqual($m['viewport'][1], $key)
+            ->and($m['right'])->toBeLessThanOrEqual($m['stageRight'], $key)
+            ->and($m['overflowing'])->toBe(0, $key)
+            ->and($m['cut'])->toBe([], $key)
+            ->and($m['duels'])->toBe(0, $key)
+            ->and($m['game'])->toBeFalse($key)
+            ->and(preg_match('/\bvs\b/i', $m['text']))->toBe(0, $key)
+            // Readable from the sofa: never under 20 px at 1280 (1.25 stage units).
+            ->and($m['nameSize'])->toBeGreaterThanOrEqual(20, $key);
+    }
+
+    expect($problems)->toBe([]);
+})->with([
+    'one lobby of 8' => [8, [8]],
+    'lobbies of 5 and 4' => [9, [5, 4]],
+]);

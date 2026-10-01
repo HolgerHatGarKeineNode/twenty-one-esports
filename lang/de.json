@@ -5869,5 +5869,14 @@
     "Games where many players fight in one match, like an Age of Empires II diplomacy game.": "Spiele, in denen viele Spieler in einem Match kämpfen, etwa eine Diplomatie-Partie in Age of Empires II.",
     "One evening, one match: everyone plays the whole time.": "Ein Abend, ein Match: Jeder spielt die ganze Zeit.",
     "An odd number of players is fine: everyone starts alone.": "Eine ungerade Spielerzahl ist kein Problem: Jeder startet allein.",
-    "One match decides: a bad start is hard to make up.": "Ein Match entscheidet: Ein schlechter Start ist schwer aufzuholen."
+    "One match decides: a bad start is hard to make up.": "Ein Match entscheidet: Ein schlechter Start ist schwer aufzuholen.",
+    ":game, one lobby match": ":game, ein Lobby-Match",
+    "shared place 1": "geteilter Platz 1",
+    "One lobby match for everyone, all lobbies at the same time: up to :limit of play with its Time Limit, about :duration with filling the lobby. No final, no opponent to find.": "Ein Lobby-Match für alle, alle Lobbys gleichzeitig: bis zu :limit Spielzeit mit dem Zeitlimit, etwa :duration mit dem Füllen der Lobby. Kein Finale, kein Gegner zu suchen.",
+    "Allow at least :duration.": "Plane mindestens :duration ein.",
+    "Every lobby plays at the same time, :planned with filling the lobby and the Time Limit. The end stays open for the players.": "Alle Lobbys spielen gleichzeitig, :planned mit dem Füllen der Lobby und dem Zeitlimit. Das Ende bleibt für die Spieler offen.",
+    "A lobby has no series deadlines: its players report the places within :time after the Time Limit, then a director decides.": "Eine Lobby hat keine Serien-Fristen: Ihre Spieler melden die Platzierungen bis :time nach dem Zeitlimit, dann entscheidet die Turnierleitung.",
+    "Finished. Shared 1st place: :names.": "Beendet. Geteilter 1. Platz: :names.",
+    "Winners": "Gewinner",
+    "Shared 1st place: :names": "Geteilter 1. Platz: :names"
 }

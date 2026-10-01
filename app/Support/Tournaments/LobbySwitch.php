@@ -5,6 +5,7 @@ namespace App\Support\Tournaments;
 use App\Enums\TournamentFormat;
 use App\Enums\TournamentStatus;
 use App\Models\Tournament;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Throwable;
@@ -55,7 +56,11 @@ final class LobbySwitch
 
         foreach ($tournaments as $tournament) {
             if ($tournament->profile()->teamSize > 1) {
-                Log::warning('Lobby switch: a team-mode tournament of a lobby game is left as it is', ['id' => $tournament->id, 'name' => $tournament->name, 'mode' => $tournament->mode]);
+                // Once per tournament, however often the switch runs (a cache marker that never expires).
+                if (Cache::add('lobby-switch:team-mode-logged:'.$tournament->id, true)) {
+                    Log::warning('Lobby switch: a team-mode tournament of a lobby game is left as it is', ['id' => $tournament->id, 'name' => $tournament->name, 'mode' => $tournament->mode]);
+                }
+
                 $done['skipped'][] = $tournament->id;
 
                 continue;

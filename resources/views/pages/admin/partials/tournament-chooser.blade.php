@@ -104,14 +104,18 @@
     $lever = $daily ? __('Allow more time or pick fewer rounds.')
         : ($series ? ($site ? __('Allow more time, add stations or play shorter series.') : __('Allow more time or play shorter series.'))
         : ($site ? __('Allow more time or add boards.') : __('Allow more time.')));
-    $recommendedWhy = $recommended === null ? '' : ($evaluation->nothingFits
+    $recommendedWhy = $recommended === null ? '' : ($lobbyGame
+        // A lobby game (P10): one match for everyone, no final, nobody to find; the time is the lobby's.
+        ? __('One lobby match for everyone, all lobbies at the same time: up to :limit of play with its Time Limit, about :duration with filling the lobby. No final, no opponent to find.', ['limit' => \App\Support\Pages\RulesPage::minutes(Lobbies::timeLimit($profile->game)), 'duration' => $duration($recommended->total())])
+            .($evaluation->nothingFits ? ' '.__('Allow at least :duration.', ['duration' => $duration($recommended->total())]) : '')
+        : ($evaluation->nothingFits
         ? __('Nothing fits into :window. This is the shortest: :duration.', ['window' => $duration($window), 'duration' => $duration($recommended->total())]).' '.$lever
         : ($profile->isSeries() && $recommended->format->hasFinal()
             // Series games recommend a format with a final first (user, 2026-09-26, for Rocket League), so the reason names it.
             ? ($teams
                 ? __('Ends with a final; every team plays at least :games, and it takes about :duration of your :window.', ['games' => $gamesCount($recommended->guaranteed()), 'duration' => $duration($recommended->total()), 'window' => $duration($window)])
                 : __('Ends with a final; every player plays at least :games, and it takes about :duration of your :window.', ['games' => $gamesCount($recommended->guaranteed()), 'duration' => $duration($recommended->total()), 'window' => $duration($window)]))
-            : __('Everyone gets at least :games, and it takes about :duration of your :window.', ['games' => $gamesCount($recommended->guaranteed()), 'duration' => $duration($recommended->total()), 'window' => $duration($window)])));
+            : __('Everyone gets at least :games, and it takes about :duration of your :window.', ['games' => $gamesCount($recommended->guaranteed()), 'duration' => $duration($recommended->total()), 'window' => $duration($window)]))));
 
     $chosen = $evaluation->row($format);
     $structure = $chosen->structure;

@@ -30,6 +30,13 @@
     ];
 @endphp
 
+@if (\App\Support\Tournaments\Lobbies::isLobbyGame($this->profile()->game))
+    {{-- A lobby game (P10): no first move, no no-show, no series report; its players report each lobby by its own deadline. --}}
+    <section class="flex flex-col gap-1 rounded-lg bg-card p-4 lg:px-6 lg:py-5" data-test="tournament-deadlines-lobby">
+        <h2 class="m-0 text-[15px] font-bold">{{ __('Deadlines') }}</h2>
+        <span class="max-w-[80ch] text-xs leading-normal text-ink-2">{{ __('A lobby has no series deadlines: its players report the places within :time after the Time Limit, then a director decides.', ['time' => \App\Support\Pages\RulesPage::minutes((int) (\App\Support\Tournaments\Lobbies::config($this->profile()->game)['report_minutes'] ?? 60))]) }}</span>
+    </section>
+@else
 <section aria-labelledby="deadlines-h" class="flex flex-col gap-3 rounded-lg bg-card p-4 lg:px-6 lg:py-5" data-test="tournament-deadlines">
     <span class="flex flex-col gap-1">
         <h2 id="deadlines-h" class="m-0 text-[15px] font-bold">{{ __('Deadlines') }}</h2>
@@ -55,3 +62,4 @@
         @endforeach
     </div>
 </section>
+@endif

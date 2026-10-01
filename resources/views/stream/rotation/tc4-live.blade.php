@@ -17,13 +17,16 @@
     $total = is_array($t['progress'] ?? null) && is_int($t['progress']['total'] ?? null) ? $t['progress']['total'] : null;
     $progress = $played !== null && $total !== null ? $played.'/'.$total.' decided' : '';
     $title = K::fit(K::text($t, 'name', 'Tournament'), K::MONO, 26, 1200 - K::width($progress, K::MONO, 18) - 32);
-    $line = K::fit(K::text($t, 'status', 'Live now').': '.($finished ? ($kind === 'bracket' ? 'final bracket' : 'final standings') : K::text($t, 'now', K::text($t, 'format'))), K::MONO, 18, 1200);
+    $firsts = K::sharedFirst($t);
+    // A finished lobby tournament (P10): the line names its place 1 across all lobbies.
+    $line = K::fit(K::text($t, 'status', 'Live now').': '.($firsts !== [] ? (count($firsts) > 1 ? 'shared 1st place: ' : '1st place: ').implode(', ', $firsts)
+        : ($finished ? match ($kind) { 'bracket' => 'final bracket', 'lobbies' => 'final places', default => 'final standings' } : K::text($t, 'now', K::text($t, 'format')))), K::MONO, 18, 1200);
 @endphp
 <svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="1280" height="720" viewBox="0 0 1280 720">
 @include('stream.rotation.partials.defs')
 <rect width="1280" height="720" fill="#0A0A0B"/>
 @include('stream.rotation.partials.backdrop', ['uri' => $backdrop ?? ($t['backdrop'] ?? null), 'bdDim' => 0.78])
-@include('stream.rotation.partials.c-chrome', ['stats' => $stats ?? [], 'section' => $finished ? 'final bracket' : 'live bracket'])
+@include('stream.rotation.partials.c-chrome', ['stats' => $stats ?? [], 'section' => $kind === 'lobbies' ? ($finished ? 'final places' : 'live lobbies') : ($finished ? 'final bracket' : 'live bracket')])
 
 <text data-unit="title" data-box="39 {{ 110 - 26 }} {{ 1240 - K::width($progress, K::MONO, 18) - 31 }} {{ 110 + 8 }}" x="40" y="110" font-family="JetBrains Mono" font-weight="700" font-size="26" fill="#FFFFFF">{{ $title }}</text>
 @if ($progress !== '')<text data-unit="progress" x="1240" y="108" font-family="JetBrains Mono" font-weight="700" font-size="18" fill="#ADADB0" text-anchor="end">{{ $progress }}</text>@endif

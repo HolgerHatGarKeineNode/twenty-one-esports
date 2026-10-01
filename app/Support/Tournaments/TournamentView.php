@@ -230,7 +230,8 @@ final class TournamentView
             'bracket' => $match->bracket,
             'status' => $match->status,
             'sides' => $sides,
-            'label' => $result['label'] ?? null,
+            // A lobby's result (P10) is worded in the viewer's language, not the one it was entered in.
+            'label' => $match->lobby !== null && is_array($result) ? LobbyResults::describe($result) : ($result['label'] ?? null),
             'number' => $match->seriesMatch !== null ? $match->seriesMatch->number : $match->chessGame?->number,
             'href' => $match->seriesMatch !== null
                 ? route('matches.show', $match->seriesMatch)

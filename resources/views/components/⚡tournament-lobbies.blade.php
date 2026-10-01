@@ -197,7 +197,7 @@ new class extends Component {
                     @endforeach
                 </ol>
                 @if ($done)
-                    <p class="m-0 text-xs text-ink-2" data-test="lobby-result">{{ $match->result['label'] ?? '' }}</p>
+                    <p class="m-0 text-xs text-ink-2" data-test="lobby-result">{{ LobbyResults::describe((array) $match->result) }}</p>
                 @endif
 
                 @if ($open)

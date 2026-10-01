@@ -73,7 +73,9 @@ new #[Layout('layouts::tv')] class extends Component {
     $tv = new TournamentTv($tournament);
     $stages = $tv->stages();
     $current = TournamentTv::currentStage($stages);
-    $spotlight = TournamentTv::spotlight($stages);
+    // A lobby tournament (P10): its lobbies are no duels; every live lobby is in the spotlight, on its own grid.
+    $lobbyTv = \App\Support\Tournaments\Lobbies::isLobby($tournament);
+    $spotlight = TournamentTv::spotlight($stages, $lobbyTv ? 6 : 2);
     $tables = $tv->tables($stages);
     $ticker = $tv->ticker();
     $progress = $tv->progress();
@@ -86,7 +88,7 @@ new #[Layout('layouts::tv')] class extends Component {
     $pageUrl = route('tournaments.show', $tournament);
     $shortUrl = preg_replace('#^https?://#', '', $pageUrl);
     $qr = QrCode::svg($pageUrl, label: __('QR code for :url', ['url' => $shortUrl]));
-    $gameLine = \App\Support\GameNames::full($tournament->game, $tournament->mode);
+    $gameLine = $lobbyTv ? __(':game, one lobby match', ['game' => \App\Support\GameNames::game($tournament->game)]) : \App\Support\GameNames::full($tournament->game, $tournament->mode);
     $sats = fn (int $amount): string => \App\Support\Cards\ShareCard::sats($amount);
     $placeLabel = fn (int $place): string => match ($place) { 1 => __('1st place'), 2 => __('2nd place'), 3 => __('3rd place'), default => __(':place. place', ['place' => $place]) };
 
@@ -281,6 +283,8 @@ new #[Layout('layouts::tv')] class extends Component {
                                             @endforeach
                                         </div>
                                     @endif
+                                @elseif ($lobbyTv)
+                                    @include('pages.tournaments.partials.tv-lobbies', ['boxes' => $part['heats']])
                                 @else
                                     <div class="tv-grid" style="--rows: {{ max(1, (int) ceil(count($part['heats']) / 2)) }}">
                                         @foreach ($part['heats'] as $box)
@@ -297,7 +301,10 @@ new #[Layout('layouts::tv')] class extends Component {
             @if (isset($scenes['spotlight']))
                 <section class="tv-scene tv-spotlight" data-scene-id="spotlight" data-dwell="{{ $scenes['spotlight'][1] }}" wire:key="scene-spotlight" aria-label="{{ $scenes['spotlight'][0] }}" data-test="tv-spotlight">
                     <x-game-cover :game="$tournament->game" size="hero" class="tv-spotlight-cover" />
-                    @foreach ($spotlight as $duel)
+                    @if ($lobbyTv)
+                        @include('pages.tournaments.partials.tv-lobbies', ['boxes' => $spotlight])
+                    @endif
+                    @foreach ($lobbyTv ? [] : $spotlight as $duel)
                         <article @class(['tv-duel', 'is-solo' => count($spotlight) === 1]) wire:key="duel-{{ $duel['key'] }}" data-key="{{ $duel['key'] }}">
                             <p class="tv-duel-round"><span class="tv-status is-live"><span class="tv-dot"></span>{{ __('Live') }}</span><span>{{ $duel['round'] }}</span></p>
                             <div class="tv-duel-sides">
