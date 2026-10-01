@@ -38,7 +38,8 @@ new #[Layout('layouts::app', ['scripts' => ['resources/js/stacker/page.js']])] c
     public function rendering(\Illuminate\View\View $view): void
     {
         $view->title('Blockfill');
-        app(PageMeta::class)->describe('Blockfill', __('Mine 40 blocks as fast as you can: the league\'s own stacking game, every run replayed by the league before it counts.'));
+        app(PageMeta::class)->describe('Blockfill', __('Mine 40 blocks as fast as you can: the league\'s own stacking game, every run replayed by the league before it counts.'))
+            ->card(fn () => \App\Support\Cards\PageCard::page('blockfill'));
     }
 
     /**

@@ -117,7 +117,8 @@ new #[Layout('layouts::app', ['realtime' => true, 'scripts' => ['resources/js/ga
     {
         $name = GameNames::game($this->slug);
         $view->title($name);
-        app(PageMeta::class)->describe($name, __('Play :game blitz 5+3 live against Bitcoiners: find an opponent, invite a player and climb the casual ladder. The server checks every move.', ['game' => $name]));
+        app(PageMeta::class)->describe($name, __('Play :game blitz 5+3 live against Bitcoiners: find an opponent, invite a player and climb the casual ladder. The server checks every move.', ['game' => $name]))
+            ->card(fn () => \App\Support\Cards\PageCard::page('board.'.$this->slug));
 
         $outgoing = $this->outgoing;
         $this->invitedUserId = $outgoing?->invitee_id;

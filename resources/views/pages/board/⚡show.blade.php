@@ -1,5 +1,6 @@
 <?php
 
+use App\Enums\BoardGameStatus;
 use App\Games\GameRegistry;
 use App\Models\BoardGame;
 use App\Models\User;
@@ -44,11 +45,22 @@ new #[Layout('layouts::app', ['realtime' => true, 'scripts' => ['resources/js/bo
 
     public function rendering(\Illuminate\View\View $view): void
     {
-        $view->title(__(':game: :white vs :black', [
-            'game' => GameNames::game($this->boardGame->game),
+        $game = $this->boardGame;
+        $title = __(':game: :white vs :black', [
+            'game' => GameNames::game($game->game),
             'white' => $this->name('w'),
             'black' => $this->name('b'),
-        ]));
+        ]);
+        $view->title($title);
+
+        // Search and link preview, as a chess game's page has them: the players, the state, the board as a card.
+        $kind = ($game->rated ? __('Rated') : __('Casual')).' · '.GameNames::full($game->game, $game->mode);
+        $description = __(':kind: :white (white) vs :black (black) in the TWENTY ONE esports league.', ['kind' => $kind, 'white' => $this->name('w'), 'black' => $this->name('b')]).' '.match ($game->status) {
+            BoardGameStatus::Active => __('Live now: watch the board move by move.'),
+            BoardGameStatus::Aborted => __('Aborted before both first moves'),
+            BoardGameStatus::Finished => __('Result: :result.', ['result' => $game->result ?? '?']),
+        };
+        app(\App\Support\PageMeta::class)->describe($title, $description)->card(fn () => \App\Support\Cards\PageCard::boardGame($game));
     }
 
     /**

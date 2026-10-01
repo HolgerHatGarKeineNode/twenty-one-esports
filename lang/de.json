@@ -5997,5 +5997,15 @@
     "unconfirmed": "unbestätigt",
     "confirmed": "bestätigt",
     "No runs yet": "Noch keine Läufe",
-    "The first run opens the list.": "Der erste Lauf eröffnet die Liste."
+    "The first run opens the list.": "Der erste Lauf eröffnet die Liste.",
+    ":count player placed|:count players placed": ":count Spieler platziert|:count Spieler platziert",
+    "No values yet. The first valid value takes first place.": "Noch keine Werte. Der erste gültige Wert nimmt Platz 1.",
+    "No times yet this week. Mine 40 blocks and take first place.": "Diese Woche noch keine Zeiten. Schürfe 40 Blöcke und hol dir Platz 1.",
+    "Running until :utc UTC": "Läuft bis :utc UTC",
+    ":game leaderboards": "Leaderboards in :game",
+    "Everyone plays alone for the best value, and a points ladder.": "Jeder spielt allein auf den besten Wert, dazu eine Punkte-Ladder.",
+    "One move a day, a reminder before your deadline. The server checks every move.": "Ein Zug pro Tag, eine Erinnerung vor deiner Frist. Der Server prüft jeden Zug.",
+    "Blitz 5+3 live against Bitcoiners. The server checks every move.": "Blitz 5+3 live gegen Bitcoiner. Der Server prüft jeden Zug.",
+    "With Google or Nostr, then play against Bitcoiners in every game of the league.": "Mit Google oder Nostr, dann gegen Bitcoiner in jedem Spiel der Liga spielen.",
+    "Every game of the league, every mode in one place.": "Jedes Spiel der Liga, alle Modi an einem Ort."
 }

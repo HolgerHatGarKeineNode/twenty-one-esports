@@ -34,8 +34,11 @@ new #[Layout('layouts::app', ['section' => 'tournaments'])] class extends Compon
     public function rendering(\Illuminate\View\View $view): void
     {
         $name = \App\Support\GameNames::game($this->game);
-        $view->title($name);
-        app(\App\Support\PageMeta::class)->describe($name, __(':game on TWENTY ONE Esports: leaderboards where everyone plays alone for the best value, and a points ladder.', ['game' => $name]));
+        // ":game leaderboards", not the game's name alone: Blockfill's own page (/blockfill) has that title.
+        $title = __(':game leaderboards', ['game' => $name]);
+        $view->title($title);
+        app(\App\Support\PageMeta::class)->describe($title, __(':game on TWENTY ONE Esports: leaderboards where everyone plays alone for the best value, and a points ladder.', ['game' => $name]))
+            ->card(fn () => \App\Support\Cards\PageCard::page('scores.'.$this->game));
     }
 
     #[Computed]
