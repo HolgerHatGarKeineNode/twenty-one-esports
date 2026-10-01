@@ -202,7 +202,7 @@ final class ConsensusRules
         $held = $candidate->solo['clans'][$player] ?? null;
 
         if (is_array($held)) {
-            return array_values(array_map(strval(...), $held));
+            return array_map(strval(...), $held);
         }
 
         $clan = $candidate->clans[$player] ?? null;
