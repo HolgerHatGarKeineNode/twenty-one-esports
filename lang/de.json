@@ -5990,5 +5990,7 @@
     "Top of the ladders and leaderboards": "Die Spitze der Ladders und Bestenlisten",
     "No leaderboard running": "Gerade läuft kein Leaderboard",
     "No verified run yet. Play the first one.": "Noch kein geprüfter Lauf. Spiel den ersten.",
-    "Full leaderboard": "Ganzes Leaderboard"
+    "Full leaderboard": "Ganzes Leaderboard",
+    "One lobby match: everyone plays at once, in lobbies of at most 8.": "Ein Lobby-Match: Alle spielen gleichzeitig, in Lobbys mit höchstens 8 Spielern.",
+    "The lobbies are on. A player reports the places after the time limit.": "Die Lobbys laufen. Nach dem Zeitlimit meldet ein Spieler die Platzierungen."
 }

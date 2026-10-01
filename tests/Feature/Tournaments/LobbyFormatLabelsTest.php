@@ -150,6 +150,10 @@ test('the cup board names an AoE2 lobby cup by its game, and a running one "One 
 
     expect(html_entity_decode($facts[1] ?? '', ENT_QUOTES | ENT_HTML5))->toStartWith('Age of Empires II: Definitive Edition tournament, ');
 
+    expect($this->get(route('tournaments.index'))->getContent())
+        ->toContain('One lobby match: everyone plays at once, in lobbies of at most 8.')
+        ->not->toContain('The format is set at the start, by how many play.');
+
     Tournament::query()->casualCup()->update(['status' => TournamentStatus::Running]);
 
     expect($this->get(route('tournaments.index'))->assertOk()->getContent())
@@ -163,4 +167,14 @@ test('the cup board names an AoE2 lobby cup by its game, and a running one "One 
 
     expect(preg_replace('/\s+/', ' ', strip_tags($row)))->toContain('One lobby match Age of Empires II: Definitive Edition Finished')
         ->not->toContain('1v1')->not->toContain('Free for All');
+});
+
+test('a running AoE2 lobby tournament says its lobbies are on, not that results land in a bracket', function () {
+    $tournament = labelLobby();
+    $tournament->forceFill(['status' => TournamentStatus::Running])->save();
+
+    $this->actingAs(User::query()->find($tournament->participants()->value('user_id')))
+        ->get(route('tournaments.show', $tournament))->assertOk()
+        ->assertSee('The lobbies are on. A player reports the places after the time limit.')
+        ->assertDontSee('Results land in the bracket');
 });

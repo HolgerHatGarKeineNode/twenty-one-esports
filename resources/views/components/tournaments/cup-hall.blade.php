@@ -88,7 +88,7 @@
                     </h3>
                     <p class="m-0 text-[13px] leading-normal text-ink-2" data-test="cup-next-facts">{{ __(':mode tournament, :places places', ['mode' => Lobbies::gameLine($nextCup), 'places' => $next['places']]) }}</p>
                     {{-- The format is not known before the close: CasualCups::formatFor() picks it by how many signed up. --}}
-                    <p class="m-0 text-xs leading-normal text-ink-3" data-test="cup-next-format">{{ __('The format is set at the start, by how many play.') }}</p>
+                    <p class="m-0 text-xs leading-normal text-ink-3" data-test="cup-next-format">{{ Lobbies::isLobby($nextCup) ? __('One lobby match: everyone plays at once, in lobbies of at most 8.') : __('The format is set at the start, by how many play.') }}</p>
                 </div>
 
                 {{-- As many columns as seats up to eight, each at most 48 px: four seats are four real faces, not half a row. --}}

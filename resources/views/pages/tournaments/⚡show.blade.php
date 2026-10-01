@@ -744,7 +744,7 @@ new #[Layout('layouts::app', ['section' => 'tournaments'])] class extends Compon
                                         } }} @break
                                         @case('full') {{ __('Every spot is taken. Places open up when someone pulls out.') }} @break
                                         @case('closed') {{ $status === TournamentStatus::Drawing ? __('Sign-up is closed. The draw waits for Bitcoin block :height; its hash seeds the mix teams and the bracket.', ['height' => $tournament->draw_height]) : __('Sign-up has closed. The draw follows.') }} @break
-                                        @case('live') {{ $score ? __('The window is open. The leaderboard moves as values come in.') : __('The matches are on. Results land in the bracket as they come in.') }} @break
+                                        @case('live') {{ $score ? __('The window is open. The leaderboard moves as values come in.') : ($lobbies ? __('The lobbies are on. A player reports the places after the time limit.') : __('The matches are on. Results land in the bracket as they come in.')) }} @break
                                         @case('finished') {{ $champion ? __('Finished. Winner: :name.', ['name' => $champion->name]) : ($this->sharedFirst !== [] ? __('Finished. Shared 1st place: :names.', ['names' => implode(', ', $this->sharedFirst)]) : __('The tournament has finished.')) }} @break
                                         @case('cancelled') {{ __('The tournament was called off.') }} @break
                                     @endswitch
