@@ -375,3 +375,16 @@ test('the share card and the pride slide name the week and the winning time and 
         }
     }
 });
+
+test('a hinted run an admin already approved on the review list counts as reviewed: the week mines without a second click', function () {
+    [$week, $users] = rankedWeek([2870, 2900, 2950, 3000, 3100]);
+    hintedRun($users[1]);
+    $run = StackerRun::query()->where('user_id', $users[1]->id)->sole();
+    $run->forceFill(['flags' => [...(array) $run->flags, 'review' => ['decision' => 'approved', 'by' => $this->admin->id, 'at' => now()->toIso8601ZuluString()]]])->save();
+    $end = ScoreWindow::of($week)->end;
+
+    tickAt($end->addHours(49));
+
+    expect(app(ScoreLeaderboards::class)->needsAdminReview($week->refresh()))->toBeFalse()
+        ->and(SeasonAttestation::query()->sole()->winners())->toBe([$users[0]->pubkey]);
+});

@@ -100,7 +100,10 @@ final class Blockfill extends ScoreGame
         $stacker = StackerRun::query()->find((int) $run->external_id);
         $flags = $stacker?->flags['hints']['flags'] ?? null;
 
-        return $stacker !== null && $stacker->status === StackerRunStatus::Verified && $flags === [];
+        // No hint, or an admin already looked at the hinted run on /admin/blockfill and approved it: one look is enough.
+        $approved = ($stacker?->flags['review']['decision'] ?? null) === 'approved';
+
+        return $stacker !== null && $stacker->status === StackerRunStatus::Verified && ($flags === [] || $approved);
     }
 
     /**

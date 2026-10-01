@@ -315,7 +315,7 @@ final class StackerRuns
         $released = 0;
 
         foreach (StackerRun::query()->where('status', StackerRunStatus::Review)->orderBy('ticks')->orderBy('id')->pluck('id') as $id) {
-            $run = StackerRun::query()->find($id);
+            $run = StackerRun::query()->whereKey($id)->first();
 
             if ($run === null || $run->status !== StackerRunStatus::Review) {
                 continue;
