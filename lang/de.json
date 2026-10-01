@@ -5986,5 +5986,9 @@
     "How is the lobby match played?": "Wie wird das Lobby-Match gespielt?",
     "Effects": "Effekte",
     "Music": "Musik",
-    "Volume: :channel": "Lautstärke: :channel"
+    "Volume: :channel": "Lautstärke: :channel",
+    "Top of the ladders and leaderboards": "Die Spitze der Ladders und Bestenlisten",
+    "No leaderboard running": "Gerade läuft kein Leaderboard",
+    "No verified run yet. Play the first one.": "Noch kein geprüfter Lauf. Spiel den ersten.",
+    "Full leaderboard": "Ganzes Leaderboard"
 }
