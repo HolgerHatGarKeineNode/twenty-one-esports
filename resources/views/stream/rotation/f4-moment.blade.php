@@ -1,6 +1,8 @@
 {{--
     F4 · Arena · Blockfill's new #1 (BlockfillSlides::MOMENT): the one loud slide of the set, the full orange frame of
-    a4. The player's avatar big and crowned, the name, the time in fixed digit cells as the hero, and what it beat
+    a4. Top left the game's mark (its cover edged in the frame's ink, partials/game-mark) where a4 has the league's,
+    beside it the title and "Blockfill Week N, YYYY". The player's avatar big and crowned, the name, the time in fixed
+    digit cells as the hero, and what it beat
     (another player's time, the player's own, or nobody: the week's first time). At the foot the deadline and the
     game page. Shown once per new #1, first in line (RotationPlanner). Without a moment (it ran out between the
     planner and the frame) the week's leader as the time to beat; without a leader, the call to be the first.
@@ -10,6 +12,7 @@
                     own: bool, by: ?string}|null, leader: array{name: string, time: string}|null, closes: string, url: string, …}|null
       $stats      array: unused (the orange frame has no stats bar)
       $backdrop   ?string, optional: Blockfill's blurred cover, faint through the orange
+      $cover      ?string, optional: Blockfill's cover as a data URI, the game's mark
 --}}
 @use('App\Support\TwentyOne\Stream\RotationKit', 'K')
 @php
@@ -17,7 +20,13 @@
     $m = is_array($b['moment'] ?? null) ? $b['moment'] : null;
     $leader = is_array($b['leader'] ?? null) ? $b['leader'] : null;
     $who = $m ?? $leader;
-    $title = $m ? 'New #1 on the Blockfill board' : 'Blockfill: the time to beat';
+    // The game's name stands in the week line right under it.
+    $title = match (true) {
+        $m !== null => 'New #1 on the board',
+        $who !== null => 'The time to beat',
+        default => 'An open board',
+    };
+    $week = K::fit('Blockfill '.(preg_replace('/^Blockfill\s*/', '', K::text($b ?? [], 'title')) ?: 'this week'), K::MONO, 22, 540);
     $name = $who ? K::name(K::text($who, 'name'), 'Player', 56, 930) : null;
     $time = $who ? K::text($who, 'time') : '';
     $cells = $time !== '' ? K::digitCells($time, 300, 140) : null;
@@ -40,8 +49,10 @@
 <rect width="1280" height="720" fill="#0A0A0B"/>
 @include('stream.rotation.partials.backdrop', ['uri' => $backdrop ?? null, 'bdDim' => 0.2])
 <rect width="1280" height="720" fill="#F7931A" fill-opacity="{{ K::backdropUri($backdrop ?? null) ? 0.94 : 1 }}"/>
-<use href="#mark-dark" xlink:href="#mark-dark" x="40" y="48" width="64" height="64"/>
-<text data-unit="title" data-box="123 62 1000 100" x="124" y="92" font-family="Unbounded" font-weight="800" font-size="32" fill="#17120A">{{ $title }}</text>
+@include('stream.rotation.partials.game-mark', ['gmCover' => $cover ?? null, 'gmX' => 40, 'gmY' => 40, 'gmW' => 160, 'gmEdge' => '#17120A'])
+{{-- Title and week end left of the viewer badge (x >= 773 at y 71..99 for a five-digit count). --}}
+<text data-unit="title" data-box="223 52 760 88" x="224" y="80" font-family="Unbounded" font-weight="800" font-size="28" fill="#17120A">{{ $title }}</text>
+<text data-unit="week" data-box="223 98 765 124" x="224" y="118" font-family="JetBrains Mono" font-weight="700" font-size="22" fill="#17120A">{{ $week }}</text>
 
 @if ($who)
 @include('stream.rotation.partials.face', ['face' => K::prideFace($who), 'x' => 40, 'y' => 224, 'd' => 220, 'id' => 'bf4', 'fUnit' => 'moment-face', 'fRing' => '#17120A', 'fCrown' => $m ? '#17120A' : null])

@@ -1,6 +1,7 @@
 {{--
-    F2 · Terminal ticker · Blockfill's week board (BlockfillSlides::BOARD): the C frame of f1. On top the week, the
-    headline and how many are on the board; right the countdown to the week's end (Monday 00:00 Berlin), ticking in
+    F2 · Terminal ticker · Blockfill's week board (BlockfillSlides::BOARD): the C frame of f1. Top left the game's mark
+    (its cover, partials/game-mark), beside it "Blockfill Week N, YYYY", the headline and how many are on the board;
+    right the countdown to the week's end (Monday 00:00 Berlin), ticking in
     fixed digit cells so it never jitters. Below the top ten in two columns of five (places 1-5 left, 6-10 right),
     each with avatar, name, best time and the gap to first; first carries the orange ring and "time to beat" in the
     gap's place. Places nobody holds yet stay open seats. Nothing at x >= 1040 above y 112 (the client's LIVE badge).
@@ -11,11 +12,13 @@
                   null while Blockfill is switched off: the slide invites to every game instead
       $stats      array: the stats bar counts (c-chrome)
       $backdrop   ?string, optional: Blockfill's blurred cover, else the brand's
+      $cover      ?string, optional: Blockfill's cover as a data URI, the game's mark
 --}}
 @use('App\Support\TwentyOne\Stream\RotationKit', 'K')
 @php
     $b = is_array($blockfill ?? null) ? $blockfill : null;
-    $title = K::fit(K::text($b ?? [], 'title', 'Blockfill'), K::MONO, 22, 600);
+    // Always "Blockfill …", whatever the week's own title says.
+    $title = K::fit('Blockfill '.(preg_replace('/^Blockfill\s*/', '', K::text($b ?? [], 'title')) ?: 'this week'), K::MONO, 22, 560);
     $players = is_int($b['players'] ?? null) ? $b['players'] : 0;
     $count = $players === 1 ? '1 player on the board' : $players.' players on the board';
     $closes = K::fit('Closes '.K::text($b ?? [], 'closes', 'Monday 00:00 Berlin'), K::MONO, 18, 400);
@@ -44,9 +47,10 @@
 @include('stream.rotation.partials.c-chrome', ['stats' => $stats ?? [], 'section' => 'blockfill'])
 
 @if ($b)
-<text data-unit="week" data-box="39 112 640 138" x="40" y="132" font-family="JetBrains Mono" font-weight="700" font-size="22" fill="#A1A1A7">{{ $title }}</text>
-<text data-unit="title" data-box="38 146 760 198" x="40" y="188" font-family="Unbounded" font-weight="800" font-size="44" fill="#FFFFFF">The week's fastest</text>
-<text data-unit="count" data-box="39 200 640 222" x="40" y="218" font-family="JetBrains Mono" font-weight="700" font-size="18" fill="#A1A1A7">{{ $count }}</text>
+@include('stream.rotation.partials.game-mark', ['gmCover' => $cover ?? null, 'gmX' => 40, 'gmY' => 104, 'gmW' => 192, 'gmEdge' => '#F7931A'])
+<text data-unit="week" data-box="255 112 817 138" x="256" y="132" font-family="JetBrains Mono" font-weight="700" font-size="22" fill="#A1A1A7">{{ $title }}</text>
+<text data-unit="title" data-box="254 146 830 198" x="256" y="188" font-family="Unbounded" font-weight="800" font-size="44" fill="#FFFFFF">The week's fastest</text>
+<text data-unit="count" data-box="255 200 817 222" x="256" y="218" font-family="JetBrains Mono" font-weight="700" font-size="18" fill="#A1A1A7">{{ $count }}</text>
 <text data-unit="closes" data-box="839 116 1241 138" x="1240" y="132" font-family="JetBrains Mono" font-weight="700" font-size="18" fill="#A1A1A7" text-anchor="end">{{ $closes }}</text>
 @if ($cells)@include('stream.rotation.partials.clock', ['c' => $cells, 'y' => 188, 'fill' => '#F7931A'])@endif
 

@@ -4,6 +4,7 @@ namespace App\Support\TwentyOne\Stream;
 
 use App\Enums\StackerRunStatus;
 use App\Games\Blockfill;
+use App\Games\GameRegistry;
 use App\Games\ScoreMetric;
 use App\Models\StackerRun;
 use App\Models\Tournament;
@@ -26,13 +27,18 @@ use Throwable;
  *   first, everyone counted, and the countdown to the end of the week
  *   (Monday 00:00 Europe/Berlin), ticking with the frame's clock.
  * - f3 the fresh blocks: the week's latest FRESH_RUNS runs, verified ones
- *   with their time and what they did (`top`: first place when they came in;
- *   `best`: the player's own best of the week improved), runs still waiting
+ *   with their time and what they did (`top`: took first place and holds it;
+ *   `was`: took first place, beaten since; `best`: the player's own best of
+ *   the week improved), runs still waiting
  *   for the replay marked unconfirmed and never with their claimed time.
  * - f4 the moment: a run that took first place in the last
  *   `twentyone.stream.rotation.blockfill_moment_minutes` minutes, with the
  *   time it beat. The planner shows it once, first in line (RotationPlanner).
  * - f5 the call to play: the game page, its QR code and the time to beat.
+ *
+ * Every slide carries the game's mark: its cover (`cover`, the image of the
+ * game tiles and cards) top left and "Blockfill" in its copy, so a viewer who
+ * joins mid-rotation sees which game this is.
  *
  * state() tells the planner which of them apply: OFF while Blockfill is not
  * registered, IDLE without a running week (the f1 teaser covers that), EMPTY
@@ -75,6 +81,9 @@ final class BlockfillSlides
 
     private const CACHE_SECONDS = 15;
 
+    /** @var array<string, string|null> the cover's data URI by game slug, null for a missing file */
+    private static array $covers = [];
+
     public function __construct(
         private BlockfillWeeks $weeks,
         private ScoreRuns $runs,
@@ -112,7 +121,29 @@ final class BlockfillSlides
             'stats' => $stats,
             'siteQrSvg' => app(SceneSource::class)->qr('blockfill'),
             'backdrop' => ($data === null ? null : $this->images->backdrop(Blockfill::SLUG)) ?? $this->images->backdrop(StreamImages::BRAND),
+            'cover' => $data === null ? null : $this->cover(),
         ];
+    }
+
+    /**
+     * Blockfill's cover, the image of its game tiles and cards, as the slides'
+     * game mark: the stream's prebuilt tile (288x162), else the smallest JPEG
+     * of the cover, read once per process.
+     */
+    private function cover(): ?string
+    {
+        $tile = $this->images->coverTile(Blockfill::SLUG);
+
+        if ($tile !== null) {
+            return $tile;
+        }
+
+        if (! array_key_exists(Blockfill::SLUG, self::$covers)) {
+            $cover = app(GameRegistry::class)->cover(Blockfill::SLUG);
+            self::$covers[Blockfill::SLUG] = $cover === null ? null : TournamentSlides::coverUri(public_path($cover->path($cover->smallest(), 'jpg')));
+        }
+
+        return self::$covers[Blockfill::SLUG];
     }
 
     /**
@@ -235,13 +266,17 @@ final class BlockfillSlides
     }
 
     /**
-     * `top` when the run was the fastest of its week when it came in, `best`
-     * when it beat the player's own earlier run of the week, else null.
+     * `top` when the run took first place when it came in and still holds it,
+     * `was` when it took first place and a faster run has beaten it since,
+     * `best` when it beat the player's own earlier run of the week, else null.
+     * Only one run of the week is `top` at a time: the stream never shows two
+     * "New #1" at once.
      */
     private function badge(StackerRun $run): ?string
     {
         if ($this->before($run)->where('ticks', '<=', (int) $run->ticks)->doesntExist()) {
-            return 'top';
+            return StackerRun::query()->where('week', $this->weekOfRun($run))->where('status', StackerRunStatus::Verified)
+                ->where('ticks', '<', (int) $run->ticks)->exists() ? 'was' : 'top';
         }
 
         return $this->before($run)->where('user_id', $run->user_id)->exists() ? 'best' : null;
@@ -259,10 +294,16 @@ final class BlockfillSlides
     {
         $at = $run->verified_at === null ? null : CarbonImmutable::instance($run->verified_at)->startOfSecond();
 
-        return StackerRun::query()->where('week', $run->week ?? StackerRuns::weekOf($run->created_at ?? now()))
+        return StackerRun::query()->where('week', $this->weekOfRun($run))
             ->where('status', StackerRunStatus::Verified)->whereKeyNot($run->id)
             ->when($at !== null, fn (Builder $query) => $query->where('verified_at', '<', $at->addSecond())
                 ->where(fn (Builder $query) => $query->where('verified_at', '<', $at)->orWhere('id', '<', $run->id)));
+    }
+
+    /** The week a run counts for. */
+    private function weekOfRun(StackerRun $run): string
+    {
+        return $run->week ?? StackerRuns::weekOf($run->created_at ?? now());
     }
 
     /**
