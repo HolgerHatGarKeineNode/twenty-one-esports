@@ -19,6 +19,10 @@
 #   - its own Reverb server, on its own OS-assigned port, with its own
 #     throwaway app credentials — a straight copy of the single-shard setup
 #     below, run once per shard instead of once per suite.
+#   - its own fake storage disks: TEST_TOKEN=browser-shard-<n> makes
+#     Storage::fake() use storage/framework/testing/disks/<disk>_test_<token>
+#     instead of one directory every shard would empty on its own beforeEach
+#     (see run_shard).
 #   - its own Playwright/Chromium launch and its own LaravelHttpServer port,
 #     both already OS-assigned per *process* by the plugin itself
 #     (Pest\Browser\Support\Port::find() asks the kernel for a free port);
@@ -262,6 +266,20 @@ run_shard() {
     export REVERB_HOST=127.0.0.1
     export REVERB_PORT="$port"
     export REVERB_SCHEME=http
+
+    # The one piece of state the shards DO share is the filesystem, and
+    # Storage::fake() is where it bit: it cleans a fixed directory,
+    # storage/framework/testing/disks/<disk>, so a shard's beforeEach
+    # (ShareTest, NostrCommentsTest) emptied the disk another shard (AoeLobbyTest)
+    # had just written its lobby end screen to, and the director's fetch of it
+    # came back 404 (measured: ShareTest + AoeLobbyTest side by side, 404 at
+    # tests/Browser/AoeLobbyTest.php:262). Laravel keys that directory by
+    # TEST_TOKEN (Storage::fake: "{$root}_test_{$token}") — the variable paratest
+    # sets per worker. Setting it per shard gives every shard its own fake disks
+    # and nothing else: the parallel-testing hooks for databases, caches and
+    # views only run when LARAVEL_PARALLEL_TESTING is set too, which it is not.
+    # Guarded by tests/Feature/BrowserShardIsolationTest.php.
+    export TEST_TOKEN="browser-shard-$idx"
 
     php artisan reverb:start --host=127.0.0.1 --port="$port" --no-interaction >/dev/null 2>&1 &
     # Not `local`: the EXIT trap below fires after this function returns (at

@@ -52,7 +52,31 @@ final class BrowserWait
             Execution::instance()->wait($intervalMs / 1000);
         } while (microtime(true) < $deadline);
 
-        throw new RuntimeException("Condition did not become true within {$timeoutMs}ms: {$jsCondition}".self::consoleErrors($page));
+        throw new RuntimeException("Condition did not become true within {$timeoutMs}ms: {$jsCondition}".self::pageState($page).self::consoleErrors($page));
+    }
+
+    /**
+     * Where the page stood when the wait ran out: URL, readyState, and the
+     * milliseconds since its document started. A timeout on "location is X
+     * and the document was kept" reads differently by these: still at the old
+     * URL with a large age is a navigation that never finished (a slow
+     * server or a stalled fetch); at the new URL with an age of a few
+     * seconds is a navigation that fell back to a full page load, which a
+     * larger budget would not have helped.
+     */
+    private static function pageState(Page $page): string
+    {
+        try {
+            $state = $page->evaluate('() => ({ href: location.href, ready: document.readyState, age: Math.round(performance.now()) })');
+        } catch (Throwable) {
+            return ' [page state unreadable]';
+        }
+
+        if (! is_array($state)) {
+            return '';
+        }
+
+        return sprintf(' [page at %s, %s, document %sms old]', $state['href'] ?? '?', $state['ready'] ?? '?', $state['age'] ?? '?');
     }
 
     /**
