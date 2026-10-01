@@ -177,9 +177,9 @@ test('a new #1 of the last minutes is the next slide, once, and the fresh blocks
         ->and($data['moment']['time'])->toBe('0:48.116')
         ->and($data['moment']['before'])->toBe(['name' => 'Ben', 'time' => '0:50.000'])
         ->and($data['moment']['by'])->toBe('1.884 s')
-        // Both took first place when they came in: Ben's the week's first time, Ada's beat it.
+        // Both took first place when they came in: Ben's the week's first time, Ada's beat it, so Ben's was #1.
         ->and($data['fresh'][0]['badge'])->toBe('top')
-        ->and($data['fresh'][1]['badge'])->toBe('top');
+        ->and($data['fresh'][1]['badge'])->toBe('was');
 
     // A personal best below the top: marked, but no moment.
     bfsRun($users['Ben'], 2950, 1);
@@ -272,4 +272,39 @@ test('runs verified in the same second keep their order: the slower one is no ne
 
     preg_match_all('/data-unit="place-name-(\d+)"[^>]*>([^<]*)</', bfsSvg(BlockfillSlides::BOARD), $m);
     expect(array_combine($m[1], $m[2]))->toBe(['1' => 'Ada', '2' => 'Player', '3' => 'Cy', '4' => 'Dee']);
+});
+
+test('every slide of the set shows it is Blockfill: the game\'s cover as its mark and the name in the copy', function () {
+    bfsWeek(['Ben' => 3000]);
+    bfsRun(User::factory()->create(['name' => 'Ada']), 2887, 3);
+
+    foreach (BlockfillSlides::SCENES as $scene) {
+        $svg = bfsSvg($scene);
+        preg_match_all('/<text[^>]*>([^<]*)<\/text>/', $svg, $m);
+        expect($svg)->toMatch('/<g data-unit="game-mark"[^>]*>\s*(<[^>]+>\s*)*<image [^>]*xlink:href="data:image\/jpeg;base64,/')
+            ->and(implode("\n", $m[1]))->toMatch('/\bBlockfill\b/');
+    }
+});
+
+test('the fresh blocks call only the current #1 "New #1": a #1 beaten since says "Was #1"', function () {
+    bfsWeek(['Ben' => 3000]);
+    bfsRun(User::factory()->create(['name' => 'Ada']), 2887, 3);
+
+    expect(array_column(app(BlockfillSlides::class)->data()['fresh'], 'badge'))->toBe(['top', 'was']);
+
+    preg_match_all('/data-unit="block-label-(\d+)"[^>]*>([^<]*)</', bfsSvg(BlockfillSlides::FRESH), $m);
+    expect(array_combine($m[1], $m[2]))->toBe(['0' => 'New #1', '1' => 'Was #1']);
+});
+
+test('with two runs, the fresh blocks show no empty placeholder: the rest of the row is the call to beat the time, with the QR code', function () {
+    bfsWeek(['Ben' => 3000]);
+    bfsRun(User::factory()->create(['name' => 'Ada']), 2887, 3);
+
+    $svg = bfsSvg(BlockfillSlides::FRESH);
+    // The open seats were dashed blocks (stroke-dasharray="6 4"); the defs' chess pieces carry "stroke-dasharray:none".
+    expect($svg)->not->toMatch('/stroke-dasharray="[^"n]/')
+        ->not->toContain('data-unit="block-2"')
+        ->toContain('data-unit="call"')
+        ->toMatch('/data-unit="call-time"[^>]*>Beat 0:48\.116</')
+        ->toContain('shape-rendering="crispEdges"');
 });
