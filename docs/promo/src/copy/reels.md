@@ -252,18 +252,21 @@ EU and US, each at its weekend slot, 0 of 4 spots). Rewritten 2026-10-01 by the 
 previous cut (four games on Saturday evening, "two losses and out", "no rating") went stale with
 `beabfc89` and was partly wrong (double elimination only from six players; a cup series moves the
 casual Elo). No date in the copy: the slots repeat, the cup numbers do not.
+Changed 2026-10-01 for P10: AoE2's cup is a lobby cup (Free for All, one round, 40 places, no
+growth, facts 61 and 77), so beat 1 names its format and beat 3 grows the chess cup instead.
+**Posting gate: post only once P10 is live on prod.**
 
 **DE**
-1. (3s) Sieben Spiele, sieben Casual Cups — *sieben Cover: Schach, Rocket League, FC 26, FC 27, AoE2, Mühle, Dame*
+1. (3s) Sieben Spiele, sieben Casual Cups — *sieben Cover mit Modus: Schach, Rocket League, FC 26, FC 27, AoE2 als Free for All, Mühle, Dame*
 2. (3s) Freitag bis Sonntag, in EU und US — *das Wochenende: Fr 18:00 FC 26, 20:00 FC 27; Sa 15:00 Mühle, 20:00 Schach und Rocket League; So 15:00 Dame, 20:00 AoE2; dieselbe Uhrzeit in Berlin und New York*
-3. (3s) Wird es voll, wächst der Cup — *vier Plätze füllen sich, bei einem freien Platz wächst der Cup auf acht*
+3. (3s) Wird es voll, wächst der Cup — *der Chess Casual Cup EU: vier Plätze füllen sich, bei einem freien Platz wächst der Cup auf acht*
 4. (3s) Platz nehmen, mit deinem Nostr-Schlüssel — *Anmelden, Bestätigung mit dem Nostr-Schlüssel, „zap_zoe ist dabei.“*
 5. (3s) esports.einundzwanzig.space — *Logo + URL*
 
 **EN**
-1. (3s) Seven games, seven casual cups — *seven covers: chess, Rocket League, FC 26, FC 27, AoE2, nine men's morris, checkers*
+1. (3s) Seven games, seven casual cups — *seven covers with their mode: chess, Rocket League, FC 26, FC 27, AoE2 as Free for All, nine men's morris, checkers*
 2. (3s) Friday to Sunday, in the EU and US — *the weekend: Fri 18:00 FC 26, 20:00 FC 27; Sat 15:00 morris, 20:00 chess and Rocket League; Sun 15:00 checkers, 20:00 AoE2; the same time in Berlin and New York*
-3. (3s) Fills up? The cup grows. — *four spots fill, with one left the cup grows to eight*
+3. (3s) Fills up? The cup grows. — *the Chess Casual Cup EU: four spots fill, with one left the cup grows to eight*
 4. (3s) Take a seat with your Nostr key — *sign up, confirm with the Nostr key, "zap_zoe is in."*
 5. (3s) esports.einundzwanzig.space — *logo + URL*
 

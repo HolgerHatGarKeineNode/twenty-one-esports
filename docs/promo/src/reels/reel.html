@@ -821,7 +821,8 @@ const UP = {
     { g: 'Chess', gde: 'Schach', m: 'Blitz 5+3', c: 'chess-480.jpg', d: 'saturday', t: '20:00' },
     { g: 'Rocket League', m: '1v1', c: 'rocket-league-382.jpg', d: 'saturday', t: '20:00' },
     { g: 'Checkers', gde: 'Dame', m: 'Blitz 5+3', c: 'checkers-480.jpg', d: 'sunday', t: '15:00' },
-    { g: 'AoE2', m: '1v1', c: 'age-of-empires-2-800.jpg', pos: '50% 100%', size: '142.86% auto', d: 'sunday', t: '20:00' },
+    // AoE2's cup runs the lobby format of plan step 10 (P10, facts 61, 64-67): Free for All, one round
+    { g: 'AoE2', m: 'Free for All', c: 'age-of-empires-2-800.jpg', pos: '50% 100%', size: '142.86% auto', d: 'sunday', t: '20:00' },
   ],
   cupSizes: [4, 8, 16],
 };
@@ -932,6 +933,8 @@ S.fifa = [
 
 const cupName = (x, l) => (l === 'de' && x.gde ? x.gde : x.g);
 const cupCover = (x, h) => `<div style="height:${h}px;background:#000 url('${COV}${x.c}') ${x.pos || 'center'}/${x.size || 'cover'} no-repeat"></div>`;
+/* Beat 3 grows a chess cup: the AoE2 cup is a lobby cup with 40 fixed places and no growth
+   (P10, fact 64), so it can no longer stand for "the cup grows". */
 S.cups = [
   { html: (l) => `<div class="center" style="position:absolute"><div style="width:920px;display:grid;grid-template-columns:1fr 1fr;gap:24px">${UP.cups.map((x, i) => `<div data-t="${i}" class="card" style="display:grid;overflow:hidden">${cupCover(x, 150)}<div style="padding:14px 22px 18px;display:grid;row-gap:6px"><b style="font:800 32px/1.1 var(--disp);white-space:nowrap">${E(cupName(x, l))}</b><span class="muted" style="font:700 22px/1.2 var(--mono)">${E(x.m)}</span></div></div>`).join('')}
       <div data-t="7" class="card" style="display:grid;place-items:center;align-content:center;row-gap:14px;border-color:var(--btc)"><b style="font:800 64px/1 var(--disp);color:var(--btc)">EU</b><b style="font:800 64px/1 var(--disp);color:var(--btc)">US</b></div></div></div>`,
@@ -955,7 +958,7 @@ S.cups = [
   { html: (l) => {
       const who = ['kai_blitz', 'hodlqueen', 'taproot_tim', 'lnurl_lena', 'orange_olga', 'sat_sepp'];
       return `<div class="center" style="position:absolute"><div data-card class="card cube" style="width:900px;padding:44px;display:grid;row-gap:30px;--d:28px">
-        <div class="row" style="justify-content:space-between"><b style="font:800 44px/1.1 var(--disp);white-space:nowrap">AoE2 Casual Cup EU</b><b data-n style="font:800 56px/1 var(--disp);color:var(--btc);white-space:nowrap">0 / 4</b></div>
+        <div class="row" style="justify-content:space-between"><b style="font:800 44px/1.1 var(--disp);white-space:nowrap">Chess Casual Cup EU</b><b data-n style="font:800 56px/1 var(--disp);color:var(--btc);white-space:nowrap">0 / 4</b></div>
         <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:16px">${Array.from({ length: 8 }, (_, i) => `<div data-sp="${i}" style="height:150px;border:3px dashed var(--dash);display:grid;place-items:center">${i < who.length ? `<span data-f style="opacity:0">${av(who[i], 88)}</span>` : ''}</div>`).join('')}</div>
         <span class="muted" style="font:700 28px/1.3 var(--mono)">${E(UI('formatAtStart', l))}</span>
       </div></div>`;

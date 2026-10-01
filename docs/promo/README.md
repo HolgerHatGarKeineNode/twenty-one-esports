@@ -58,7 +58,9 @@ update `UP` and the copy, and re-render before posting them later. The tournamen
 up come first, then the casual cups; the sats pot reel is the headline. **`cups` was rewritten on
 2026-10-01** to the weekend slots of `beabfc89` (seven games, Friday to Sunday, EU and US at the same
 local time, facts 61-66). It carries no date and no cup number, so it stays true while the slots do;
-re-check `casual_cups` in `config/esports.php` before posting. Its Mühle and Dame cups: prod lists
+re-check `casual_cups` in `config/esports.php` before posting. **Since 2026-10-01 the reel shows
+AoE2's cup as a lobby cup (P10: Free for All, 40 places, no growth; facts 61, 77-79) and beat 3
+grows the chess cup: post `cups` only once P10 is live on prod.** Its Mühle and Dame cups: prod lists
 them on 2026-10-01, which suggests the board game switches are on there; confirm that before
 lifting the `morris`/`checkers` gate below.
 
@@ -98,9 +100,9 @@ lobby-card strings tagged `plan: 'P10'` in `src/lib/ui-strings.js` must then be 
 pixel avatars and names, and the cover (`public/images/games/age-of-empires-2-800.jpg`, read from
 the app) shows only its logo band (the square poster only its tag strip). Nothing about mining
 (AoE2 has only a draft proposal) and no automatic result check (not built). Casual matchmaking and
-the weekend cup are no longer this motif's subject. **Check before posting `cups`:** reel 12 and
-fact 61 still list AoE2's weekend cup in its old head-to-head mode; whether that cup changes
-format with P10 was open on 2026-10-01.
+the weekend cup are no longer this motif's subject. The facts state P10's accepted assumptions
+too (77-79: lobby cups 40 places, no growth; all lobby winners share place 1; no Elo, no chain
+attestation).
 
 **Pseudonymous copy (user, 2026-10-01):** no "face" / "Gesicht" anywhere in the copy; players
 are their avatar and their name.

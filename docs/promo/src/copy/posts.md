@@ -207,23 +207,26 @@ https://esports.einundzwanzig.space/tournaments/1
 
 ## Casual cups
 
-Facts 61-66. Evergreen: the weekend slots repeat, so no date and no cup number. Post the
+Facts 61-66, 77-79. Evergreen: the weekend slots repeat, so no date and no cup number. Post the
 board game cups (Mühle, Dame) only while those games are on in prod (they have cups on prod
-since at least 2026-10-01).
+since at least 2026-10-01). AoE2's cup is a lobby cup from P10 on: **post only once P10 is live
+on prod.**
 
 **Nostr (DE):**
 Jedes Wochenende Casual Cups in sieben Spielen, jeweils einer für die EU und einer für die USA,
 zur selben Uhrzeit in Berlin und New York. Freitag 18 Uhr EA FC 26, 20 Uhr EA FC 27. Samstag
 15 Uhr Mühle, 20 Uhr Schach und Rocket League. Sonntag 15 Uhr Dame, 20 Uhr Age of Empires II.
 Ein Cup öffnet mit vier Plätzen und wächst, wenn er voll wird. Das Format steht zum Start fest,
-je nachdem, wie viele spielen. Anmelden mit deinem Nostr-Schlüssel, keine Preise, nur das Spiel.
+je nachdem, wie viele spielen. Age of Empires II spielt seinen Cup als ein einziges Match in
+Lobbys mit bis zu 8 Spielern, 40 Plätze. Anmelden mit deinem Nostr-Schlüssel, keine Preise, nur das Spiel.
 https://esports.einundzwanzig.space/tournaments
 
 **Nostr (EN):**
 Casual cups every weekend in seven games, one for the EU and one for the US, at the same time in
 Berlin and New York. Friday 18:00 EA FC 26, 20:00 EA FC 27. Saturday 15:00 nine men's morris,
 20:00 chess and Rocket League. Sunday 15:00 checkers, 20:00 Age of Empires II. A cup opens with
-four spots and grows when it fills up. The format is set at the start, by how many play. Sign up
+four spots and grows when it fills up. The format is set at the start, by how many play.
+Age of Empires II plays its cup as one single match in lobbies of up to 8 players, 40 places. Sign up
 with your Nostr key, no prizes, just the game.
 https://esports.einundzwanzig.space/tournaments
 

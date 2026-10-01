@@ -128,17 +128,17 @@ their pixel avatar and their name (user, 2026-10-01).
 | 70 | Victory condition Time Limit, 2 h; after that the in-game score decides | plan ("Siegbedingung „Time Limit“ 2 h (danach Punktestand im Spiel)") | plan (P10) |
 | 71 | The map size follows the lobby size: 2 Tiny, 3 Small, 4 Medium, 5-6 Normal, 7-8 Large; fixed per lobby at the draw. The hero's lobby of six shows Normal | plan ("Lobby-Daten dynamisch je Lobby-Größe, zur Auslosung festgeschrieben: Kartengröße nach Spielerzahl (2 Tiny, 3 Small, 4 Medium, 5–6 Normal, 7–8 Large)") | plan (P10) |
 | 72 | Map Arabia, free civilisations, population 200, spectator delay 2 min (a restart in the first 5 min is also in the plan, not shown) | plan (same line: "Karte Arabia, freie Völker, Bevölkerung 200, Zuschauer-Verzögerung 2 min, Neustart in den ersten 5 min.") | plan (P10) |
-| 73 | Several players can share 1st place (the allied survivors); the others rank by the order they went out; the place-1 pot is split equally among them. A pot exists only where the tournament has one (pots are per tournament, `app/Support/Prizes/PrizePool.php`); "its pot" names no amount | plan ("Platz 1 können mehrere teilen (die verbündeten Überlebenden), übrige nach Reihenfolge des Ausscheidens; Pot für Platz 1 zu gleichen Teilen."); today's payout already splits tied places (`lang/de.json` "Tied places share their percentages.") | plan (P10) |
+| 73 | Several players can share 1st place (the allied survivors; with several lobbies, every lobby's winners, fact 78); the others rank by the order they went out (across lobbies grouped by that place number, fact 78); the place-1 pot is split equally among them. A pot exists only where the tournament has one (pots are per tournament, `app/Support/Prizes/PrizePool.php`); "its pot" names no amount | plan ("Platz 1 können mehrere teilen (die verbündeten Überlebenden), übrige nach Reihenfolge des Ausscheidens; Pot für Platz 1 zu gleichen Teilen."); today's payout already splits tied places (`lang/de.json` "Tied places share their percentages.") | plan (P10) |
 | 74 | The result is reported with a screenshot of the end screen and confirmed by the tournament director | plan ("Meldung mit Endbildschirm-Screenshot, Bestätigung durch die Turnierleitung."); "Tournament directors" / "Turnierleitung" is the app's term (`lang/de.json`) | plan (P10) |
 | 75 | The hero's mock-up strings "Free for All", "1st place" / "Platz 1", "Map" / "Karte", "players" / "Spieler" are the app's own | `lang/de.json` (checked by `check-ui-strings.mjs`) | prod |
 | 76 | The lobby card's other strings ("Lobby settings", "Map size", "Lock Teams", "Allied Victory", the map sizes, …) follow the plan's wording; they are tagged `plan: 'P10'` in `src/lib/ui-strings.js` and listed as pending by `check-ui-strings.mjs` until `lang/de.json` carries them (`UI_STRICT=1` fails on them) | `src/lib/ui-strings.js`; plan lines of facts 69-72 | plan (P10) |
 
 Players in the kit (satsjaeger and hodlqueen allied, kai_blitz, zap_zoe, taproot_tim and
 orange_olga out) are the kit's factory names with their pixel avatars, not people. **Left
-out:** any automatic result check (53); mining or rewards (58); any Elo or ladder effect of a
-lobby tournament (not in the plan); the casual matchmaking and the weekend cup, which are not
-this motif's subject any more (the weekend cup's format after P10 is open, see the cups reel);
-players never pay to sign up (fact 44).
+out:** any automatic result check (53); mining or rewards (58); any Elo or ladder effect (a
+lobby result carries none, fact 79); the casual matchmaking and the weekend cup, which are not
+this motif's subject (the weekend cup becomes a lobby cup with P10, facts 61 and 77, shown in
+reel 12); players never pay to sign up (fact 44).
 
 ## Added 2026-10-01 — the casual cups on the weekend (reel 12, rewritten)
 
@@ -148,15 +148,27 @@ Saturday evening), stale since `beabfc89`.
 
 | # | Claim | Source | Live? |
 |---|---|---|---|
-| 61 | The league runs casual cups for seven games: chess (blitz), Rocket League 1v1, EA FC 26 1v1, EA FC 27 1v1, AoE2 1v1, nine men's morris (blitz), checkers (blitz); the board game cups only while their game is on | `config/esports.php` `casual_cups.enabled` default and `casual_cups.games` ("a cup runs only while the board game is switched on"); prod `/tournaments`: Chess, Rocket League, EA FC 26, EA FC 27, AoE2, Nine Men's Morris and Checkers Casual Cup, EU #1 and US #1 each | prod |
+| 61 | The league runs casual cups for seven games: chess (blitz), Rocket League 1v1, EA FC 26 1v1, EA FC 27 1v1, AoE2 as a lobby cup (Free for All, one round, fact 77), nine men's morris (blitz), checkers (blitz); the board game cups only while their game is on | `config/esports.php` `casual_cups.enabled` default and `casual_cups.games` ("a cup runs only while the board game is switched on"); prod `/tournaments`: Chess, Rocket League, EA FC 26, EA FC 27, AoE2, Nine Men's Morris and Checkers Casual Cup, EU #1 and US #1 each. AoE2's format: coordinator 2026-10-01, "the AoE2 weekend casual cup switches to the lobby format with P10, and the migration converts the open cups" | prod; AoE2's format plan (P10) |
 | 62 | Weekend slots: Friday 18:00 EA FC 26, 20:00 EA FC 27; Saturday 15:00 nine men's morris, 20:00 chess and Rocket League; Sunday 15:00 checkers, 20:00 AoE2 | `casual_cups.games.*.slot` (`friday 18:00`, `friday 20:00`, `saturday 15:00`, `saturday 20:00` ×2, `sunday 15:00`, `sunday 20:00`); commit `beabfc89`; prod start times (e.g. "8:00 PM Sat, Oct 3, Berlin" chess EU, "3:00 PM Sun, Oct 4, New York" checkers US) | prod |
 | 63 | One cup per game and region, EU and US, at the same local time (Europe/Berlin, America/New_York) | `casual_cups.regions`; config docblock ("an EU and a US cup of a game start at the same local time") | prod |
-| 64 | A cup opens with 4 places and grows to 8, then 16, whenever one place is left, until 60 minutes before sign-up closes | `casual_cups.sizes` `[4, 8, 16]`, `growth_freeze_minutes` 60; docblock ("whenever only one place is left (3/4, 7/8 ...) the league raises it to the next size") | prod |
-| 65 | The format is set at the start by how many play: 6 or more a double elimination, 2 to 5 one live evening (a match or a round robin) | docblock ("min_players or more a double elimination, 2 to min_players - 1 a small cup's live evening"), `min_players` 6; `lang/de.json` "The format is set at the start, by how many play." (shown on prod) | prod |
-| 66 | No prizes; a cup series moves the casual Elo (not "no rating", as the old cut said) | (`TournamentRunTest` "an RL 1v1 tournament series reported by its players moves the two players' casual Elo"); casual cups set no pot | prod |
+| 64 | A cup (except AoE2's, fact 77) opens with 4 places and grows to 8, then 16, whenever one place is left, until 60 minutes before sign-up closes | `casual_cups.sizes` `[4, 8, 16]`, `growth_freeze_minutes` 60; docblock ("whenever only one place is left (3/4, 7/8 ...) the league raises it to the next size") | prod |
+| 65 | Except AoE2's cup (fact 77), the format is set at the start by how many play: 6 or more a double elimination, 2 to 5 one live evening (a match or a round robin) | docblock ("min_players or more a double elimination, 2 to min_players - 1 a small cup's live evening"), `min_players` 6; `lang/de.json` "The format is set at the start, by how many play." (shown on prod) | prod |
+| 66 | No prizes; a cup series moves the casual Elo (not "no rating", as the old cut said); AoE2's lobby results move no Elo (fact 79) | (`TournamentRunTest` "an RL 1v1 tournament series reported by its players moves the two players' casual Elo"); casual cups set no pot | prod |
 
 **Corrected:** the 2026-09-28 cut said "Four players, two losses and out" and "No rating". A
 double elimination needs six players (fact 65), and cup results move the casual Elo (fact 66).
+
+**Changed 2026-10-01 (P10):** AoE2's weekend cup becomes a lobby cup. P10's assumptions, from its
+implementer, accepted by the coordinator on 2026-10-01 (not shipped when written, so marked plan):
+
+| # | Claim | Source | Live? |
+|---|---|---|---|
+| 77 | An AoE2 lobby cup has a fixed capacity of 40 places (5 lobbies of 8) and does not grow; it is one round, each lobby one match (fact 67) | P10 implementer's assumption, accepted by the coordinator 2026-10-01; plan step 10 (fact 67) | plan (P10) |
+| 78 | All lobby winners share tournament place 1; everyone else is grouped by their place number inside their lobby | P10 implementer's assumption, accepted by the coordinator 2026-10-01; plan step 10 ("Platz 1 können mehrere teilen …") | plan (P10) |
+| 79 | Lobby results carry no Elo and no chain attestation | P10 implementer's assumption, accepted by the coordinator 2026-10-01 | plan (P10) |
+
+**Posting gate for reel 12:** it now shows AoE2's cup as Free for All, so post it only once P10 is
+live on prod, like motif 14.
 
 ## Corrected in round 2 — clan "lineup" is Rocket League only, not a chess feature
 
