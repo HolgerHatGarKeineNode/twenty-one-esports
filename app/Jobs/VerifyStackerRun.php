@@ -39,11 +39,7 @@ class VerifyStackerRun implements ShouldQueue
     {
         $run = StackerRun::query()->find($this->runId);
 
-        // a run the sweep gave up as stale is decided too: the backlog turns into verdicts
-        $open = $run !== null && $run->replay !== null && ($run->status === StackerRunStatus::Verifying
-            || ($run->status === StackerRunStatus::Pending && $run->reason === 'verifier-stale'));
-
-        if (! $open) {
+        if (! self::open($run)) {
             return;
         }
 
@@ -61,8 +57,21 @@ class VerifyStackerRun implements ShouldQueue
     {
         $run = StackerRun::query()->find($this->runId);
 
-        if ($run !== null) {
+        // a run decided already says nothing about the verifier now: no "unavailable" for the sweep's redrive
+        if (self::open($run)) {
             app(StackerRuns::class)->finish($run, StackerVerdict::unavailable('verifier-failed'), now());
         }
+    }
+
+    /**
+     * Whether the run still waits for this job's verdict. A run the sweep
+     * gave up as stale is decided too: the backlog turns into verdicts.
+     *
+     * @phpstan-assert-if-true StackerRun $run
+     */
+    private static function open(?StackerRun $run): bool
+    {
+        return $run !== null && $run->replay !== null && ($run->status === StackerRunStatus::Verifying
+            || ($run->status === StackerRunStatus::Pending && $run->reason === 'verifier-stale'));
     }
 }

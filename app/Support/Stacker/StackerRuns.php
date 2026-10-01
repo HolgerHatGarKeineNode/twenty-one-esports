@@ -163,6 +163,7 @@ final class StackerRuns
         } elseif ($count > self::maxInputs($ticks)) {
             $fields += ['status' => StackerRunStatus::Rejected, 'reason' => 'oversize'];
         } else {
+            $network = $network === null ? null : self::networkKey($network);
             $fields += ['ticks' => $ticks, 'state_hash' => $hash];
             $fields += $this->outcome($run, $ticks, $now);
 
@@ -207,8 +208,9 @@ final class StackerRuns
                 'reason' => null,
                 'replay' => $verdict->replay,
                 'week' => self::weekOf($run->submitted_at ?? $now),
+                'network' => null,
             ],
-            StackerVerdict::REJECTED => ['status' => StackerRunStatus::Rejected, 'reason' => $verdict->reason, 'replay' => null],
+            StackerVerdict::REJECTED => ['status' => StackerRunStatus::Rejected, 'reason' => $verdict->reason, 'replay' => null, 'network' => null],
             default => ['status' => StackerRunStatus::Pending, 'reason' => $verdict->reason],
         };
 
@@ -412,8 +414,9 @@ final class StackerRuns
 
     /**
      * A run pending longer than `pending_replay_hours` after its submission
-     * drops its replay (reason `replay-dropped`): it is never verified, the
-     * player plays again. Keeps what an outage leaves behind small.
+     * drops its replay and its network key (reason `replay-dropped`): it is
+     * never verified, the player plays again. Keeps what an outage leaves
+     * behind small.
      */
     public function dropOldPendingReplays(CarbonInterface $now): int
     {
@@ -423,15 +426,15 @@ final class StackerRuns
             ->where('status', StackerRunStatus::Pending)
             ->whereNotNull('replay')
             ->where('submitted_at', '<', $before->format('Y-m-d H:i:s.v'))
-            ->update($this->stored(['replay' => null, 'reason' => 'replay-dropped', 'updated_at' => $now]));
+            ->update($this->stored(['replay' => null, 'network' => null, 'reason' => 'replay-dropped', 'updated_at' => $now]));
     }
 
     /**
      * Whether a run of this player from this network may not wait for the
      * verifier now: `replay_inflight_max` runs hold a replay already, or
      * this account holds `inflight_per_account` of them, or this network
-     * `inflight_per_network`. The shares keep one account or network from
-     * taking every slot.
+     * `inflight_per_network` (`$network` is a key from networkKey()). The
+     * shares keep one account or network from taking every slot.
      */
     public function inflightFull(?int $userId = null, ?string $network = null): bool
     {
@@ -489,6 +492,18 @@ final class StackerRuns
         }
 
         return strlen($packed) === 16 ? bin2hex(substr($packed, 0, 8)).'::/64' : (string) inet_ntop($packed);
+    }
+
+    /**
+     * What a waiting run stores of its network (StackerRuns::network()): a
+     * keyed hash, the same convention as InvoiceCaps::ipHash(), so the
+     * per-network share can count it without the table holding an address
+     * next to an account. The run drops it once it is decided, or with its
+     * replay after `pending_replay_hours`.
+     */
+    public static function networkKey(string $network): string
+    {
+        return hash_hmac('sha256', $network, (string) config('app.key'));
     }
 
     /**
