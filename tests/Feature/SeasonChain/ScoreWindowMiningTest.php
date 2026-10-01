@@ -9,8 +9,12 @@
  * board fills in and saves, never a silent change of the other shares.
  */
 
+use App\Enums\ClanRole;
 use App\Enums\TournamentStatus;
 use App\Livewire\Actions\DeleteAccount;
+use App\Models\Clan;
+use App\Models\ClanDeparture;
+use App\Models\ClanMember;
 use App\Models\NostrEvent;
 use App\Models\Season;
 use App\Models\SeasonAttestation;
@@ -192,6 +196,36 @@ describe('mining', function () {
             ->and(SeasonAttestation::query()->count())->toBe(0)
             ->and(app(SeasonChains::class)->attestScoreWindow($tournament))->toBeNull()
             ->and($tournament->opened_by_league)->toBeFalse();
+    });
+
+    test('a winner who leaves the field\'s clan after the window still counts its players as clan mates, and the clan he left is published (audit F2)', function () {
+        [$tournament, $users] = soloWindow(5);
+        // One clan for all five (its factory seats the owner, the second player).
+        $clan = Clan::factory()->create(['owner_id' => $users[1]->id]);
+
+        foreach ([$users[0], ...array_slice($users, 2)] as $member) {
+            ClanMember::query()->create(['clan_id' => $clan->id, 'user_id' => $member->id, 'role' => ClanRole::Member, 'joined_at' => now()]);
+        }
+        soloPlay($tournament, $users);
+        $end = ScoreWindow::of($tournament)->end;
+        $this->travelTo($end->addHours(30));
+        app(ScoreLeaderboards::class)->tick();
+
+        // As ClanService::leaveCurrentClan(): the membership goes, a departure stays.
+        ClanMember::query()->where('user_id', $users[0]->id)->delete();
+        ClanDeparture::query()->create(['clan_id' => $clan->id, 'clan_address' => $clan->address(), 'clan_name' => $clan->name,
+            'user_id' => $users[0]->id, 'pubkey' => $users[0]->pubkey, 'reason' => 'left', 'left_at' => now()]);
+
+        $this->travelTo($end->addHours(49));
+        app(ScoreLeaderboards::class)->tick();
+        app(ScoreLeaderboards::class)->tick();
+
+        $attestation = SeasonAttestation::query()->sole();
+        $event = SignedEvent::fromInput(NostrEvent::query()->findOrFail($attestation->nostr_event_id)->payload());
+
+        expect([$attestation->height, $attestation->rule, $attestation->reason, $attestation->reward])->toBe([null, 3, 'same-clan', 0])
+            ->and($event->tagsNamed('clan'))->toContain([$users[0]->pubkey, $clan->address()])
+            ->and($event->tagsNamed('clan'))->toHaveCount(5);
     });
 
     test('attesting the same window twice keeps one attestation', function () {

@@ -1655,7 +1655,7 @@ from confirmed results.
 | `resolution` | `admin`: the league read the values |
 | `window` | `<start>`, `<end>`: Unix seconds of the window, `start` included, `end` excluded |
 | `trust`, `gate` | the trust gate pinned when the league signs: one `gate` row for the winner and for every entrant of the field |
-| `clan` | one row for the winner and for every entrant of the field who is in a clan |
+| `clan` | one row per clan the winner or an entrant of the field held from the window's `start` to the attestation: the clan a player is in, and every clan they left since the window's `start`, so a player can have several rows |
 | `block` | as for every candidate |
 | `alt` | NIP-31 text |
 
@@ -2642,7 +2642,7 @@ A **solo candidate** is the first place of a score window the league opened itse
 one winning player and no opponent. Its **field** is every other entrant with a value inside the window that a source
 verified (an approved submission, an API record, the league's own server or replay; never a director's entry alone,
 never a disqualified entry). Trust ranks and anchors are the `gate` rows of its attestation, pinned when the league
-signs it; clans are its `clan` rows. With `solo` = `<entrants>`, `<window wins>`, `<review>` in force, rules 0 to 4, 7
+signs it; clans are its `clan` rows, every clan a player held from the window's `start` to the attestation. With `solo` = `<entrants>`, `<window wins>`, `<review>` in force, rules 0 to 4, 7
 and 8 read as follows; rules 5, 6 and 9 hold as above, and the reason is again the first rule it fails.
 
 0. **Season.** As above, and the window starts at or after `T0`: a window that began before Block 0 never mines.
@@ -2652,6 +2652,8 @@ and 8 read as follows; rules 5, 6 and 9 hold as above, and the reason is again t
    set inside the window (`start` included, `end` excluded); and the attestation's `created_at` is at least `review`
    seconds after the window's `end`, so a correction, a late approval or a dispute is in before the league signs.
 3. **Not the winner's clan.** Without the winner's clan mates, the trusted field of rule 1 still reaches `entrants`.
+   A clan mate shares at least one `clan` row with the winner: leaving the clan after the window's start, as the
+   winner or as one of the field, does not make a player count.
 4. **One block per window and game.** No earlier block names the same game and window. Rev. 9.18 needs no
    `pairlimit` here: whoever wins it, a window mines at most once.
 7. **Not the winner's anchor subtree.** Without the clan mates of rule 3 and the players who share the winner's

@@ -18,7 +18,11 @@ use Carbon\CarbonImmutable;
  * rules 1, 3 and 7 count); trust, clans and anchors cover them too, pinned
  * at the attestation.
  *
- * @phpstan-type Solo array{start: string, end: string, achieved_at: string, source: string, verified: bool, entrants: list<string>}
+ * `clans` are the clans each of them held from the window's start to the
+ * attestation (audit F2: leaving a clan after the window does not take a
+ * player out of it for solo rules 3 and 7).
+ *
+ * @phpstan-type Solo array{start: string, end: string, achieved_at: string, source: string, verified: bool, entrants: list<string>, clans?: array<string, list<string>>}
  */
 final class Candidate
 {

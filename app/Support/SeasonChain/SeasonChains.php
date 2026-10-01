@@ -12,6 +12,8 @@ use App\Enums\TournamentStatus;
 use App\Games\GameRegistry;
 use App\Models\BoardGame;
 use App\Models\ChessGame;
+use App\Models\Clan;
+use App\Models\ClanDeparture;
 use App\Models\ClanMember;
 use App\Models\RatingChange;
 use App\Models\ScoreRun;
@@ -693,6 +695,7 @@ final class SeasonChains
         $now = ClanMember::query()->with(['clan', 'user'])->whereIn('user_id', $users->keys()->all())->get()
             ->mapWithKeys(fn (ClanMember $member): array => [(string) $member->user->pubkey => $member->clan->address()])->all();
         $clans = $this->clans($all, $now);
+        $held = $this->clansHeldSince($all, $now, $window->start);
 
         return [new Candidate(
             mb_substr($tournament->name, 0, 32),
@@ -718,6 +721,7 @@ final class SeasonChains
                 'source' => (string) ($winningRun->source ?? ScoreRun::DIRECTOR),
                 'verified' => $verified($first),
                 'entrants' => $entrants,
+                'clans' => $held,
             ],
         ), $pin];
     }
@@ -750,9 +754,10 @@ final class SeasonChains
             $tags[] = $tag;
         }
 
-        foreach ($candidate->clans as $pubkey => $clan) {
-            if ($clan !== null) {
-                $tags[] = ['clan', (string) $pubkey, $clan];
+        // One row per clan a player held from the window's start to the attestation (audit F2), the clans rule 3 read.
+        foreach ((array) ($candidate->solo['clans'] ?? array_map(fn (?string $clan): array => $clan === null ? [] : [$clan], $candidate->clans)) as $pubkey => $held) {
+            foreach ((array) $held as $clan) {
+                $tags[] = ['clan', (string) $pubkey, (string) $clan];
             }
         }
 
@@ -1040,6 +1045,45 @@ final class SeasonChains
         }
 
         return $clans;
+    }
+
+    /**
+     * Every clan each player held from `$since` (a score window's start) to
+     * now (audit F2): the clan they are in, and every clan they left since,
+     * by account or pubkey, as TournamentInterest reads departures. Only
+     * players with at least one clan; each list without repeats. A
+     * departure without its address keeps the clan's id, so it still
+     * matches nobody else's address but its own.
+     *
+     * @param  list<string>  $pubkeys
+     * @param  array<string, string>  $now  pubkey => clan address now
+     * @return array<string, list<string>>
+     */
+    private function clansHeldSince(array $pubkeys, array $now, CarbonImmutable $since): array
+    {
+        $held = [];
+
+        foreach ($pubkeys as $pubkey) {
+            if (isset($now[$pubkey])) {
+                $held[$pubkey] = [$now[$pubkey]];
+            }
+        }
+
+        $ids = User::query()->whereIn('pubkey', $pubkeys)->pluck('pubkey', 'id');
+        $departures = ClanDeparture::query()->where('left_at', '>=', $since)
+            ->where(fn ($query) => $query->whereIn('user_id', $ids->keys()->all())->orWhereIn('pubkey', $pubkeys))
+            ->orderBy('id')->get();
+
+        foreach ($departures as $departure) {
+            $pubkey = (string) ($departure->pubkey ?? $ids->get((int) $departure->user_id) ?? '');
+            $address = $departure->clan_address ?? Clan::query()->whereKey($departure->clan_id)->first()?->address() ?? 'clan-id:'.$departure->clan_id;
+
+            if (in_array($pubkey, $pubkeys, true) && ! in_array($address, $held[$pubkey] ?? [], true)) {
+                $held[$pubkey][] = $address;
+            }
+        }
+
+        return $held;
     }
 
     /**

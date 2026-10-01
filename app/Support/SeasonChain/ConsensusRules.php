@@ -121,7 +121,7 @@ final class ConsensusRules
                 default => null,
             },
             ConsensusRule::RealGame => $this->soloRealGame($candidate, $solo, $parameters),
-            ConsensusRule::SameClan => count($this->field($candidate, 3, $parameters->subtree)) + 1 < $parameters->soloEntrants ? ['same-clan', $candidate->clans[$winner] ?? null] : null,
+            ConsensusRule::SameClan => count($this->field($candidate, 3, $parameters->subtree)) + 1 < $parameters->soloEntrants ? ['same-clan', $this->soloClans($candidate, $winner)[0] ?? null] : null,
             ConsensusRule::PairingPerDay => $chain->pairingBlocks($candidate) >= 1 ? ['window-block', null] : null,
             ConsensusRule::SameSubtree => count($this->field($candidate, 7, $parameters->subtree)) + 1 < $parameters->soloEntrants ? ['same-subtree', $candidate->anchors[$winner][0] ?? null] : null,
             ConsensusRule::PairingPerSeason => $chain->windowWins($winner, $parameters->shareKey($candidate->game)) >= $parameters->soloWins ? ['window-wins-limit', $winner] : null,
@@ -159,14 +159,16 @@ final class ConsensusRules
      * The entrants of a score window that count for a solo rule, the winner
      * not included: from rule 1 on those at or above the trust minimum, from
      * rule 3 on without the winner's clan mates, from rule 7 on also without
-     * the players of the winner's anchor subtree.
+     * the players of the winner's anchor subtree. A clan mate shares at least
+     * one clan with the winner (soloClans(): every clan held from the
+     * window's start to the attestation, audit F2).
      *
      * @return list<string>
      */
     private function field(Candidate $candidate, int $upTo, int $subtree): array
     {
         $winner = $candidate->winners[0] ?? '';
-        $clan = $candidate->clans[$winner] ?? null;
+        $clans = $this->soloClans($candidate, $winner);
         $anchor = $candidate->anchors[$winner] ?? null;
         $field = [];
 
@@ -176,7 +178,7 @@ final class ConsensusRules
 
             $out = $entrant === $winner
                 || ($candidate->trust[$entrant] ?? 0) < $this->minimumTrust
-                || ($upTo >= 3 && $clan !== null && ($candidate->clans[$entrant] ?? null) === $clan)
+                || ($upTo >= 3 && array_intersect($clans, $this->soloClans($candidate, $entrant)) !== [])
                 || ($upTo >= 7 && $anchor !== null && $theirs !== null && $anchor[0] === $theirs[0] && $anchor[1] >= $subtree && $theirs[1] >= $subtree);
 
             if (! $out) {
@@ -185,6 +187,27 @@ final class ConsensusRules
         }
 
         return $field;
+    }
+
+    /**
+     * The clans a player of a score window held from the window's start to
+     * the attestation (the solo fact `clans`, NIP rev. 9.18: one `clan` row
+     * each); a candidate without that fact has the one clan at the
+     * attestation.
+     *
+     * @return list<string>
+     */
+    private function soloClans(Candidate $candidate, string $player): array
+    {
+        $held = $candidate->solo['clans'][$player] ?? null;
+
+        if (is_array($held)) {
+            return array_values(array_map(strval(...), $held));
+        }
+
+        $clan = $candidate->clans[$player] ?? null;
+
+        return $clan === null ? [] : [$clan];
     }
 
     /**
