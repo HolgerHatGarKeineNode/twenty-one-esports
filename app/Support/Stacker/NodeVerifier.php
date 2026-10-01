@@ -30,6 +30,9 @@ final class NodeVerifier implements Verifier
     /** Reasons verify.mjs may give; an answer with any other is no answer. */
     private const REASONS = ['malformed', 'oversize', 'engine', 'seed', 'unfinished', 'trailing', 'mismatch', 'crash'];
 
+    /** Cheat hints verify.mjs may give (P5, resources/js/stacker/hints.js); any other is dropped. */
+    public const HINTS = ['pps', 'same-tick', 'timing', 'finesse'];
+
     public function verify(StackerRun $run): StackerVerdict
     {
         $config = (array) config('esports.blockfill');
@@ -37,7 +40,7 @@ final class NodeVerifier implements Verifier
         $script = (string) $verifier['script'];
         $script = str_starts_with($script, '/') ? $script : resource_path($script);
 
-        $input = json_encode([
+        $input = json_encode(array_filter([
             'replay' => (string) $run->replay,
             'seed' => $run->seed,
             'engine' => $run->engine,
@@ -49,7 +52,9 @@ final class NodeVerifier implements Verifier
                 'inputsPerTick' => (float) $config['limits']['inputs_per_tick'],
                 'inputSlack' => (int) $config['limits']['input_slack'],
             ],
-        ], JSON_THROW_ON_ERROR);
+            // P5: other bounds for the cheat hints than hints.js's own (e.g. {"pps": 7}); unset in config/esports.php
+            'hints' => is_array($config['hints'] ?? null) ? $config['hints'] : null,
+        ], fn (mixed $value): bool => $value !== null), JSON_THROW_ON_ERROR);
 
         try {
             $result = Process::timeout((int) $verifier['timeout_seconds'])
@@ -77,13 +82,20 @@ final class NodeVerifier implements Verifier
                 return StackerVerdict::unavailable('verifier-unavailable');
             }
 
+            // P5: the cheat hints belong to the answer too: without them a run could pass unlooked at
+            $hints = self::hints($answer['hints'] ?? null);
+
+            if ($hints === null) {
+                return StackerVerdict::unavailable('verifier-unavailable');
+            }
+
             $exact = ($answer['ticks'] ?? null) === $run->ticks && ($answer['hash'] ?? null) === $run->state_hash;
 
             return $exact && is_array($settings) ? StackerVerdict::verified([
                 'das' => (int) ($settings['das'] ?? 0),
                 'arr' => (int) ($settings['arr'] ?? 0),
                 'sdf' => (int) ($settings['sdf'] ?? 0),
-            ], $replay) : StackerVerdict::rejected('mismatch');
+            ], $replay, $hints) : StackerVerdict::rejected('mismatch');
         }
 
         $reason = $answer['reason'] ?? null;
@@ -91,5 +103,28 @@ final class NodeVerifier implements Verifier
         return in_array($reason, self::REASONS, true)
             ? StackerVerdict::rejected($reason)
             : StackerVerdict::unavailable('verifier-unavailable');
+    }
+
+    /**
+     * The hints of an answer, kept to known flags and plain numbers; null when
+     * the answer has none in the expected shape.
+     *
+     * @return array{flags: list<string>, pps: float, maxPressesPerTick: int, timingCv: float|null, finesse: array{perfect: int, of: int}}|null
+     */
+    private static function hints(mixed $hints): ?array
+    {
+        if (! is_array($hints) || ! is_array($hints['flags'] ?? null) || ! is_array($hints['finesse'] ?? null)) {
+            return null;
+        }
+
+        $timing = $hints['timingCv'] ?? null;
+
+        return [
+            'flags' => array_values(array_intersect(self::HINTS, $hints['flags'])),
+            'pps' => round((float) ($hints['pps'] ?? 0), 2),
+            'maxPressesPerTick' => (int) ($hints['maxPressesPerTick'] ?? 0),
+            'timingCv' => is_int($timing) || is_float($timing) ? round((float) $timing, 2) : null,
+            'finesse' => ['perfect' => (int) ($hints['finesse']['perfect'] ?? 0), 'of' => (int) ($hints['finesse']['of'] ?? 0)],
+        ];
     }
 }

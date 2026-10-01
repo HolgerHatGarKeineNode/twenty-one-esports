@@ -145,6 +145,8 @@ test('a player\'s ranked run is started, submitted after the played time and ver
     $this->freezeTime();
     $forty = stackerFixture('forty-lines');
     config(['esports.blockfill.testing_seed' => $forty['seed']]);
+    // P5: the reference run is a program at 6.45 pieces per second; under a bound of 7 it carries no cheat hint and counts at once
+    config(['esports.blockfill.hints' => ['pps' => 7]]);
     $user = User::factory()->create(['stacker_settings' => $forty['settings'] + ['keys' => StackerSettings::DEFAULT_KEYS]]);
 
     $page = stackerPage($user, 1440, 900);
@@ -350,6 +352,8 @@ test('a ranked run the league turns away as busy says it was not saved, never th
     $this->freezeTime();
     $forty = stackerFixture('forty-lines');
     config(['esports.blockfill.testing_seed' => $forty['seed']]);
+    // P5: the reference run is a program at 6.45 pieces per second; under a bound of 7 it carries no cheat hint and counts at once
+    config(['esports.blockfill.hints' => ['pps' => 7]]);
     $user = User::factory()->create(['stacker_settings' => $forty['settings'] + ['keys' => StackerSettings::DEFAULT_KEYS]]);
 
     $page = stackerPage($user, 1440, 900);

@@ -3,8 +3,10 @@
 namespace App\Support\Navigation;
 
 use App\Enums\PayoutStatus;
+use App\Enums\StackerRunStatus;
 use App\Models\ScoreRun;
 use App\Models\SeriesMatch;
+use App\Models\StackerRun;
 use App\Models\TournamentPayout;
 use App\Models\User;
 use App\Support\Scores\ScoreAccounts;
@@ -33,6 +35,7 @@ final class AdminNavigation
         'tournaments' => 'tournaments',
         'payouts' => 'tournaments',
         'scores' => 'tournaments',
+        'blockfill' => 'tournaments',
         'admins' => 'people',
         'organizers' => 'people',
         'trust' => 'people',
@@ -82,6 +85,8 @@ final class AdminNavigation
                 self::item('payouts', __('Payouts'), route('admin.payouts'), $payable),
                 // Score submissions waiting for a check (plan "AoE2 und Trackmania", P4), only while a score game is registered.
                 ...(Route::has('admin.scores') ? [self::item('scores', __('Score submissions'), route('admin.scores'), ScoreRun::query()->pendingReview()->count() + ScoreAccounts::pendingAccounts())] : []),
+                // Blockfill runs held for cheat hints (plan "Blockfill", P5), only while Blockfill is switched on.
+                ...(Route::has('admin.blockfill') ? [self::item('blockfill', __('Blockfill review'), route('admin.blockfill'), StackerRun::query()->where('status', StackerRunStatus::Review)->count())] : []),
             ]],
             ['key' => 'people', 'label' => self::groupLabel('people'), 'items' => [
                 self::item('admins', __('Admins'), route('admin.admins')),

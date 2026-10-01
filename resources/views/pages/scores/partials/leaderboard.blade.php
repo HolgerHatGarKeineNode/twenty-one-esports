@@ -4,11 +4,14 @@
     $standings: list<App\Support\Scores\ScoreStanding>; $metric: App\Games\ScoreMetric; $limit: rows shown (null: all);
     $viewerId: the logged-in player, marked "You"; $staff: directors and admins also see the source and the proof link
     (a player's link may name their game account, so it is never public).
+    Blockfill (plan "Blockfill", P5): a row whose replay the viewer may watch links to it
+    (App\Support\Stacker\StackerReplays::forStandings(): their own, an ended week's first ten, admins' flagged ones).
 --}}
 @php
     $limit ??= null;
     $staff ??= false;
     $rows = $limit === null ? $standings : array_slice($standings, 0, $limit);
+    $replays = app(\App\Support\Stacker\StackerReplays::class)->forStandings($rows, auth()->user() instanceof \App\Models\User ? auth()->user() : null);
     $grid = 'grid grid-cols-[32px_minmax(0,1fr)_minmax(88px,auto)] items-center gap-3 lg:grid-cols-[40px_minmax(0,1fr)_140px_180px]';
 @endphp
 <div class="flex flex-col" data-test="score-leaderboard">
@@ -38,6 +41,9 @@
                 <span class="flex flex-col items-end text-right">
                     @if ($row->value !== null)
                         <b class="font-mono tabular-nums" data-test="score-value">{{ $metric->format($row->value) }}</b>
+                        @isset($replays[$row->participant->id])
+                            <a href="{{ $replays[$row->participant->id] }}" class="inline-flex min-h-6 items-center text-xs font-bold text-ink-2 underline decoration-edge underline-offset-4 hover:text-ink hover:decoration-ink" data-test="score-replay">{{ __('Replay') }}</a>
+                        @endisset
                     @else
                         <span class="text-xs text-ink-3">{{ $row->participant->isDisqualified() ? __('disqualified') : __('no value yet') }}</span>
                     @endif

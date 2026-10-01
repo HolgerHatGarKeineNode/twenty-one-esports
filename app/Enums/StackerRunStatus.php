@@ -13,6 +13,10 @@ namespace App\Enums;
  * Practice: only runs from before 2026-10-01, when a valid submission
  * that did not beat the player's verified best of the week was kept but
  * not verified. Since then every valid submission is verified.
+ * Review (P5): the verifier replayed exactly the claimed time, but the run
+ * carries cheat hints (resources/js/stacker/hints.js): held, with its
+ * replay, until an admin approves it (then Verified) or rejects it. It
+ * counts nowhere while held.
  */
 enum StackerRunStatus: string
 {
@@ -23,4 +27,5 @@ enum StackerRunStatus: string
     case Abandoned = 'abandoned';
     case Pending = 'pending';
     case Practice = 'practice';
+    case Review = 'review';
 }

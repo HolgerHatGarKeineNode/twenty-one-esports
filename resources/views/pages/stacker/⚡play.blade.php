@@ -87,6 +87,8 @@ new #[Layout('layouts::app', ['scripts' => ['resources/js/stacker/page.js']])] c
                     'verifiedSlower' => __('Verified, not faster than your best :best'),
                     'pending' => __('Received, not checked yet: it counts once the league has replayed it'),
                     'rejected' => __('Not counted: the replay did not match'),
+                    // P5: verified, but with cheat hints: held until an admin approves it
+                    'review' => __('Replayed to the same time, held for an admin\'s check: it counts once approved'),
                     'toppedOut' => __('Topped out: the stack reached the top'),
                     'aborted' => __('Run stopped: you left the tab'),
                     'busy' => __('Not saved — the league is busy. Play the run again in a moment.'),
@@ -307,7 +309,7 @@ new #[Layout('layouts::app', ['scripts' => ['resources/js/stacker/page.js']])] c
                 <section x-ref="result" x-show="mode === 'result' && result" class="flex scroll-mt-4 flex-col gap-3 bg-card p-4 lg:p-5" aria-live="polite" data-test="result">
                     <span class="text-sm text-ink-2" x-text="result && result.status !== 'toppedOut' && result.status !== 'aborted' ? @js(__('40 blocks mined in')) : @js(__('Run over at'))"></span>
                     <span class="font-display text-[40px] leading-none font-extrabold tabular-nums lg:text-[48px]" x-text="result ? time(result.ticks) : ''" data-test="result-time"></span>
-                    <span class="text-[13px] font-bold" x-bind:class="{ 'text-win': result?.status === 'verified', 'text-loss': result?.status === 'rejected', 'text-btc': ['verifying', 'pending', 'submitting', 'busy', 'unsent'].includes(result?.status) }" x-text="statusText()" data-test="result-status"></span>
+                    <span class="text-[13px] font-bold" x-bind:class="{ 'text-win': result?.status === 'verified', 'text-loss': result?.status === 'rejected', 'text-btc': ['verifying', 'pending', 'review', 'submitting', 'busy', 'unsent'].includes(result?.status) }" x-text="statusText()" data-test="result-status"></span>
                     <span class="text-[13px] text-ink-2" x-text="bestLine()" data-test="result-best"></span>
                     <div class="flex flex-wrap gap-2 pt-1">
                         <x-button x-on:click="restart()" data-test="play-again">{{ __('Play again') }} <kbd class="rounded-sm border border-on-btc/40 px-1.5 text-[11px]" x-text="keyText('restart')"></kbd></x-button>
@@ -316,6 +318,8 @@ new #[Layout('layouts::app', ['scripts' => ['resources/js/stacker/page.js']])] c
                         @auth
                             <x-button variant="quiet" x-on:click="startRanked()" x-show="kind === 'practice'" class="pointer-coarse:hidden" data-test="result-ranked">{{ __('Ranked run') }}</x-button>
                         @endauth
+                        {{-- P5: the replay of this run, once the league keeps it --}}
+                        <x-button variant="quiet" x-show="result?.replay" x-bind:href="result?.replay" href="#" data-test="result-replay">{{ __('Watch replay') }}</x-button>
                     </div>
                     <p class="m-0 text-[12px] leading-normal text-ink-3" x-show="kind === 'ranked'">{{ __('A ranked run counts once the league has replayed its inputs and reached the same time.') }}</p>
                 </section>
@@ -392,6 +396,11 @@ new #[Layout('layouts::app', ['scripts' => ['resources/js/stacker/page.js']])] c
                             <b class="font-display text-[32px] leading-none font-extrabold tabular-nums" data-test="stacker-week-place">#{{ $mine->place }}</b>
                             <span class="font-mono text-[15px] tabular-nums">{{ $metric->format((int) $mine->value) }}</span>
                         </p>
+                        {{-- P5: the replay of the run that holds the place --}}
+                        @php($myReplay = app(\App\Support\Stacker\StackerReplays::class)->forStandings([$mine], auth()->user())[$mine->participant->id] ?? null)
+                        @if ($myReplay)
+                            <a href="{{ $myReplay }}" class="inline-flex min-h-11 items-center text-[13px] font-bold text-ink underline decoration-edge underline-offset-4 hover:decoration-ink" data-test="stacker-week-replay">{{ __('Watch your replay') }}</a>
+                        @endif
                     @else
                         <p class="m-0 text-[13px] text-ink-2">{{ __('Your first verified ranked run this week puts you on the board.') }}</p>
                     @endif

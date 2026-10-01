@@ -29,6 +29,8 @@ import { encodeReplay, REPLAY_VERSION } from './replay.js';
 import { createSession } from './session.js';
 import { createSound, cuesFor, normalizeSound } from './sound.js';
 import { createTicker, formatTicks } from './ticker.js';
+// P5: the replay viewer shares this entry (and its engine and renderer) instead of a bundle of its own
+import './replay-page.js';
 
 const COUNTDOWN_MS = 3000;
 /** Height of the touch panel above the tab bar (the spacer in the page matches it). */
@@ -537,7 +539,8 @@ document.addEventListener('alpine:init', () => {
                     }
                     const state = await request('GET', this.tokenUrl(config.urls.show));
                     if (state.status === 200 && state.data) {
-                        this.result = { ...this.result, status: state.data.status, reason: state.data.reason };
+                        // P5: `replay` is the run's replay page once the league keeps one
+                        this.result = { ...this.result, status: state.data.status, reason: state.data.reason, replay: state.data.replay ?? null };
                         if (state.data.best !== undefined) {
                             this.rankedBest = state.data.best;
                             this.allTimeBest = state.data.best_all_time ?? this.allTimeBest;

@@ -219,6 +219,8 @@ test('the week\'s pages and scores/blockfill offer Play and say the best run cou
 test('a real ranked run puts a new player on this week\'s board without a reload', function () {
     $forty = json_decode((string) file_get_contents(base_path('tests/Fixtures/stacker/forty-lines.json')), true, flags: JSON_THROW_ON_ERROR);
     config(['esports.blockfill.testing_seed' => $forty['seed']]);
+    // P5: the reference run is a program at 6.45 pieces per second; under a bound of 7 it carries no cheat hint and counts at once
+    config(['esports.blockfill.hints' => ['pps' => 7]]);
     $newcomer = User::factory()->create(['name' => 'Fresh Stacker', 'stacker_settings' => $forty['settings'] + ['keys' => StackerSettings::DEFAULT_KEYS]]);
 
     $page = blockfillWeekPage($newcomer, 'en', 1440, 900, route('stacker.play', [], false));

@@ -10,6 +10,7 @@ use App\Models\ScoreRun;
 use App\Models\Tournament;
 use App\Models\TournamentMatch;
 use App\Models\TournamentParticipant;
+use App\Support\Scores\Sources\ReplayScoreSource;
 use Carbon\CarbonImmutable;
 use Illuminate\Database\UniqueConstraintViolationException;
 use InvalidArgumentException;
@@ -89,6 +90,13 @@ final class ScoreRuns
 
         $existing = ScoreRun::query()->where($attributes)->first();
 
+        // Blockfill P5: a replayed run keeps the stacker run it came from, so the board links its replay; a row stored before learns it here
+        $origin = $record->source === ReplayScoreSource::KEY ? $record->externalId : null;
+
+        if ($existing !== null && $existing->external_id === null && $origin !== null) {
+            $existing->forceFill(['external_id' => $origin])->save();
+        }
+
         if ($existing !== null) {
             return $existing;
         }
@@ -100,6 +108,7 @@ final class ScoreRuns
                 'proof_url' => $record->proofUrl,
                 'raw' => $record->raw,
                 'account_id' => $accountId,
+                'external_id' => $origin,
             ]);
         } catch (UniqueConstraintViolationException) {
             return ScoreRun::query()->where($attributes)->first();

@@ -11,8 +11,10 @@ use App\Models\ClanMember;
 use App\Models\ScoreRun;
 use App\Models\StackerRun;
 use App\Models\Tournament;
+use App\Models\User;
 use App\Support\GameNames;
 use App\Support\Stacker\BlockfillWeeks;
+use App\Support\Stacker\StackerReplays;
 use Carbon\CarbonInterface;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Facades\Route;
@@ -45,8 +47,8 @@ use Illuminate\Support\Facades\Route;
  */
 final class ScoreAttempts
 {
-    /** Blockfill states that wait for the verifier. */
-    public const STACKER_WAITING = [StackerRunStatus::Verifying, StackerRunStatus::Pending];
+    /** Blockfill states that wait for the verifier, or (P5, review) for an admin's look at its cheat hints. */
+    public const STACKER_WAITING = [StackerRunStatus::Verifying, StackerRunStatus::Pending, StackerRunStatus::Review];
 
     /**
      * Whether Blockfill's runs may show: registered (its switch on) and its
@@ -172,9 +174,11 @@ final class ScoreAttempts
     }
 
     /**
-     * Where each attempt links, by its key(): a verified Blockfill run to its
-     * week's leaderboard (one query for all of them), a score run to its
-     * tournament's leaderboard, everything else to the game's leaderboards.
+     * Where each attempt links, by its key(): a Blockfill run whose replay the
+     * viewer may watch to that replay (P5, StackerReplays::forRuns()), else a
+     * verified Blockfill run to its week's leaderboard (one query for all of
+     * them), a score run to its tournament's leaderboard, everything else to
+     * the game's leaderboards.
      *
      * @param  iterable<StackerRun|ScoreRun>  $runs
      * @return array<string, string>
@@ -190,11 +194,14 @@ final class ScoreAttempts
         }
 
         $weeks = $slugs === [] ? collect() : Tournament::query()->where('game', Blockfill::SLUG)->whereIn('slug', array_unique($slugs))->pluck('id', 'slug');
+        $viewer = auth()->user();
+        $replays = app(StackerReplays::class)->forRuns(array_filter(is_array($runs) ? $runs : iterator_to_array($runs), fn ($run): bool => $run instanceof StackerRun), $viewer instanceof User ? $viewer : null);
         $links = [];
 
         foreach ($runs as $run) {
             $week = $weeks->get($slugs[self::key($run)] ?? '');
             $links[self::key($run)] = match (true) {
+                $run instanceof StackerRun && isset($replays[$run->id]) => $replays[$run->id],
                 $week !== null => route('tournaments.scores', $week),
                 $run instanceof ScoreRun && $run->tournament_id !== null => route('tournaments.scores', $run->tournament_id),
                 default => route('scores.show', self::game($run)),

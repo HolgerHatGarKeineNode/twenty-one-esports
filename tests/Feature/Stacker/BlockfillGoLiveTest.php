@@ -374,9 +374,13 @@ test('organizers are never offered Blockfill: not in the format chooser, not on 
         ->and(TournamentGames::find($key))->toBeNull()
         ->and(TournamentGames::keyOf(Blockfill::SLUG, Blockfill::MODE))->toBeNull();
 
-    Livewire::actingAs($admin)->test('pages::admin.tournament-create')
+    $create = Livewire::actingAs($admin)->test('pages::admin.tournament-create');
+    // P5: the admin map has its own "Blockfill review" page (held runs); the page below it offers no Blockfill
+    expect(preg_replace('#<nav aria-label="Admin".*?</nav>#s', '', $create->html()))->not->toContain('Blockfill')
+        ->and($create->html())->toContain('Blockfill review');
+
+    $create
         ->assertDontSeeHtml($key)
-        ->assertDontSee('Blockfill')
         // The chooser's own action ignores the key, and the property set directly is refused at create.
         ->call('pickGame', $key)->assertSet('game', 'blitz')
         ->set('game', $key)
