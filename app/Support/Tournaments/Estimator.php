@@ -259,6 +259,9 @@ final class Estimator
     public function disabledReason(TournamentFormat $format, GameProfile $profile, int $n): ?string
     {
         return match (true) {
+            // A score game (plan "AoE2 und Trackmania", P4) runs only as a leaderboard: nobody plays against anyone.
+            $profile->isScore() && $format !== TournamentFormat::Leaderboard => 'Needs players who meet in a match. In a score game everyone plays alone for the best value.',
+            $format === TournamentFormat::Leaderboard && $profile->isScore() => $n < 2 ? 'Needs at least 2 players.' : null,
             $format === TournamentFormat::FreeForAll => match (true) {
                 $profile->isChess() => 'Needs 3 or more players in one match. Chess is always one player against one.',
                 // Nine men's morris and checkers (plan "Mühle und Dame", P6).

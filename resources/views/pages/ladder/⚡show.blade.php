@@ -51,6 +51,8 @@ new #[Layout('layouts::app', ['section' => 'ladder'])] class extends Component
     public function mount(string $game, string $mode): void
     {
         abort_if(app(GameRegistry::class)->mode($game, $mode) === null, 404);
+        // A score game (plan "AoE2 und Trackmania", P4) has no Elo ladder: its points ladder is on its leaderboards' page.
+        abort_if(app(GameRegistry::class)->isScore($game), 404);
 
         $this->game = $game;
         $this->mode = $mode;

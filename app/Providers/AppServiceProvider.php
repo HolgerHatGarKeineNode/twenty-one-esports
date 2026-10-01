@@ -5,6 +5,8 @@ namespace App\Providers;
 use App\Games\BoardGame;
 use App\Games\Contracts\Game;
 use App\Games\GameRegistry;
+use App\Games\ScoreDemo;
+use App\Games\ScoreGame;
 use App\Models\Tournament;
 use App\Models\User;
 use App\Support\Board\LiveGameGuard;
@@ -44,6 +46,7 @@ class AppServiceProvider extends ServiceProvider
         $this->app->singleton(GameRegistry::class, fn (): GameRegistry => new GameRegistry([
             ...array_map(fn (string $class): Game => $this->app->make($class), config('esports.games', [])),
             ...$this->boardGames(),
+            ...$this->scoreGames(),
         ]));
 
         // The stream daemon keeps one bounded map of data URIs (StreamImages).
@@ -112,6 +115,8 @@ class AppServiceProvider extends ServiceProvider
         // Invite links (P6b): the codes are unguessable anyway; this keeps a
         // scanner from hammering the landing and the preview renderer.
         RateLimiter::for('invites', fn (Request $request): Limit => Limit::perMinute(60)->by($request->ip()));
+        // Score servers (plan "AoE2 und Trackmania", P4): a server posts its finishes in batches, never hundreds a minute.
+        RateLimiter::for('score-ingest', fn (Request $request): Limit => Limit::perMinute(120)->by($request->ip()));
 
         // The player picker (<x-player-picker>) asks once per typing pause.
         RateLimiter::for('player-search', fn (Request $request): Limit => Limit::perMinute(60)
@@ -178,6 +183,37 @@ class AppServiceProvider extends ServiceProvider
 
             if (! $game instanceof BoardGame || $game->slug() !== $slug) {
                 Log::warning('Board game entry left off: its class is no board game of this slug.', ['slug' => $slug, 'class' => $class]);
+
+                continue;
+            }
+
+            $games[] = $game;
+        }
+
+        return $games;
+    }
+
+    /**
+     * The score games of `esports.score_games` (plan "AoE2 und Trackmania",
+     * P4): the demo while its switch is on, then every listed class. None by
+     * default. A class that is no ScoreGame stays off and is logged, as a
+     * wrong board game entry does.
+     *
+     * @return list<ScoreGame>
+     */
+    private function scoreGames(): array
+    {
+        $classes = [
+            ...(config('esports.score_games.demo') ? [ScoreDemo::class] : []),
+            ...(array) config('esports.score_games.games', []),
+        ];
+        $games = [];
+
+        foreach ($classes as $class) {
+            $game = is_string($class) && is_a($class, ScoreGame::class, true) ? $this->app->make($class) : null;
+
+            if (! $game instanceof ScoreGame) {
+                Log::warning('Score game entry left off: its class is no score game.', ['class' => $class]);
 
                 continue;
             }

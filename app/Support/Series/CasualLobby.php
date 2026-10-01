@@ -5,6 +5,7 @@ namespace App\Support\Series;
 use App\Enums\ChessInviteStatus;
 use App\Enums\Platform;
 use App\Enums\SeriesResolution;
+use App\Games\GameRegistry;
 use App\Models\SeriesInvite;
 use App\Models\SeriesMatch;
 use App\Models\SeriesQueueEntry;
@@ -45,7 +46,10 @@ final class CasualLobby
      */
     public static function games(): array
     {
-        return array_values(array_map(strval(...), (array) config('esports.casual.games', [])));
+        $registry = app(GameRegistry::class);
+
+        // Never a score game (plan "AoE2 und Trackmania", P4), even listed by mistake: it has no lobby and no pairing.
+        return array_values(array_filter(array_map(strval(...), (array) config('esports.casual.games', [])), fn (string $game): bool => ! $registry->isScore($game)));
     }
 
     public static function offers(string $game): bool

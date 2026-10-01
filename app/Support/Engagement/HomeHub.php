@@ -181,7 +181,8 @@ final class HomeHub
         $registry = app(GameRegistry::class);
         $ladders = [];
 
-        foreach ($registry->all() as $game) {
+        // No score game (plan "AoE2 und Trackmania", P4): it has no Elo ladder.
+        foreach ($registry->versus() as $game) {
             $mode = array_key_first($game->modes());
 
             if ($mode !== null) {

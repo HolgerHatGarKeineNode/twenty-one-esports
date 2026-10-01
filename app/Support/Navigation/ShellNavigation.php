@@ -223,6 +223,7 @@ final class ShellNavigation
             // A board game's lobby and its games (plan "Mühle und Dame", P5): their own context bar, never chess's.
             $name === 'board.lobby', $name === 'board.correspondence' => $known($route->parameter('board')),
             $name === 'board.show' => $known($this->gameOfBoardGame($route->parameter('boardGame'))),
+            $name === 'scores.show' => $known($route->parameter('game')),
             // The match list files board games too (plan "Mempool-Streifen", P2), but a board game's filter keeps row 2
             // on the game opened last: a board game's context bar has no Matches link, its games are in its lobby.
             $name === 'matches.index' => $this->registry->isBoard((string) $request->query('game')) ? null : $known($request->query('game')),
@@ -449,6 +450,12 @@ final class ShellNavigation
                 self::link('rules', route('rules').'#'.$slug, __('Rules'), 'shield-check'),
                 self::strongest(),
             ]));
+        }
+
+        // A score game (plan "AoE2 und Trackmania", P4): its leaderboards and points ladder on one page; no matches,
+        // no challenge, no Elo ladder.
+        if ($game->kind() === GameKind::Score) {
+            return [self::link('play', GameNames::page($slug), __('Leaderboards'), 'trophy', null, null, __('Play'), 'play')];
         }
 
         if (in_array($slug, $series, true)) {

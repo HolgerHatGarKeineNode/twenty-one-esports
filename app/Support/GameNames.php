@@ -32,15 +32,21 @@ final class GameNames
     }
 
     /**
-     * The page of a game: the chess lobby, the overview of a series game, or
-     * the lobby of a board game (plan "Mühle und Dame", P5), never the chess
-     * lobby for it.
+     * The page of a game: the chess lobby, the overview of a series game, the
+     * lobby of a board game (plan "Mühle und Dame", P5) or the leaderboards of
+     * a score game (plan "AoE2 und Trackmania", P4), never the chess lobby for
+     * either.
      */
     public static function page(string $game): string
     {
         // A route table cached before the switch went on has no lobby yet: the list of all games then.
         if (app(GameRegistry::class)->isBoard($game)) {
             return Route::has('board.lobby') ? route('board.lobby', $game) : route('play');
+        }
+
+        // A score game (plan "AoE2 und Trackmania", P4): its leaderboards, never the chess lobby.
+        if (app(GameRegistry::class)->isScore($game)) {
+            return Route::has('scores.show') ? route('scores.show', $game) : route('play');
         }
 
         return app(GameRegistry::class)->isSeries($game) ? route('games.series', $game) : route('chess.lobby');

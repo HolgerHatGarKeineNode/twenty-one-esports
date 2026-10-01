@@ -235,6 +235,49 @@ return [
 
     /*
     |--------------------------------------------------------------------------
+    | Score games (plan "AoE2 und Trackmania", P4)
+    |--------------------------------------------------------------------------
+    |
+    | Highscore and time attack games (App\Games\ScoreGame): every player
+    | tries alone for a best value on a course inside a window; the league
+    | reads it from a source (App\Support\Scores). No real game yet: `demo`
+    | registers App\Games\ScoreDemo (ESPORTS_SCORE_GAME_DEMO, off by
+    | default) so the flow runs end to end; with it off and `games` empty,
+    | nothing of this exists on the site (no route, no link, no job).
+    |
+    | points: the ladder's points per place, best first (F1 style defaults,
+    | to be confirmed by the user); a place beyond the list scores 0.
+    | manual.grace_minutes: a manual submission is taken until this long
+    | after the window closed (its `achieved_at` must still lie inside).
+    | review_hours: the leaderboard is finalized this long after the window
+    | closed, unless submissions still wait for an admin (a director or
+    | admin can finalize earlier).
+    | poller: the polite defaults of every HTTP source (user agent with a
+    | contact, at most one request per `min_interval_ms`, `retries` with
+    | exponential backoff from `backoff_ms`, a `Retry-After` wins).
+    |
+    */
+
+    'score_games' => [
+        'demo' => (bool) env('ESPORTS_SCORE_GAME_DEMO', false),
+        'games' => [],
+        'points' => [25, 18, 15, 12, 10, 8, 6, 4, 2, 1],
+        'manual' => [
+            'grace_minutes' => 60,
+            'submissions_per_day' => 20,
+        ],
+        'review_hours' => 24,
+        'poller' => [
+            'user_agent' => env('ESPORTS_SCORE_POLLER_USER_AGENT', 'einundzwanzig-esports (+'.env('APP_URL', 'http://localhost').')'),
+            'min_interval_ms' => 1000,
+            'timeout_seconds' => 10,
+            'retries' => 3,
+            'backoff_ms' => 2000,
+        ],
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
     | Live chess (P5)
     |--------------------------------------------------------------------------
     |

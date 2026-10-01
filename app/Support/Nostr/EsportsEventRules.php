@@ -699,7 +699,8 @@ final class EsportsEventRules
         [$clan, $game, $mode] = $parts;
         $gameMode = $this->games->mode($game, $mode);
 
-        if ($gameMode === null || $event->tag('game') !== $game || $event->tag('mode') !== $mode) {
+        // A score game (plan "AoE2 und Trackmania", P4) has no lineups: everyone plays alone.
+        if ($gameMode === null || $this->games->isScore($game) || $event->tag('game') !== $game || $event->tag('mode') !== $mode) {
             return 'lineup_game_mode';
         }
 

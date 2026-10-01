@@ -187,8 +187,9 @@ final class ChainDraft
         $parameters = new ConsensusParameters([], groups: $chain['groups']);
         $rows = [];
 
-        // Every game of the registry, the board games that are switched on included (plan "Mühle und Dame", P6).
-        foreach (app(GameRegistry::class)->all() as $game) {
+        // Every game of the registry, the board games that are switched on included (plan "Mühle und Dame", P6); no score
+        // game: whether its places mine is a concept still (plan "AoE2 und Trackmania", P7).
+        foreach (app(GameRegistry::class)->versus() as $game) {
             foreach (array_keys($game->modes()) as $mode) {
                 $rows[$parameters->shareKey($game->slug())][] = $game->slug().'/'.$mode;
             }

@@ -33,9 +33,9 @@
     // Mobile: place | player (with the strip under the name) | rating. From lg: the strip and the results get their own columns.
     $grid = 'grid grid-cols-[28px_minmax(0,1fr)_64px] items-center gap-3 lg:grid-cols-[40px_minmax(0,1fr)_minmax(0,240px)_80px_96px]';
 
-    // The ladders behind the list: every game's first mode, as on the home page.
+    // The ladders behind the list: every game's first mode, as on the home page; a score game has no Elo ladder.
     $ladders = [];
-    foreach ($registry->all() as $game) {
+    foreach ($registry->versus() as $game) {
         $mode = array_key_first($game->modes());
         if ($mode !== null) {
             $ladders[] = ['game' => $game->slug(), 'name' => GameNames::full($game->slug(), (string) $mode), 'href' => route('ladder.show', [$game->slug(), $mode])];

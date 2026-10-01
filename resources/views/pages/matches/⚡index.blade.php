@@ -103,8 +103,8 @@ new #[Layout('layouts::app', ['section' => 'matches'])] class extends Component 
     }
 
     /**
-     * The games of the filter: every registered game, the board games only
-     * while their page is routed (App\Support\Matches\MempoolStrip::boardSlugs()).
+     * The games of the filter: every registered game that plays matches, the
+     * board games only while their page is routed (App\Support\Matches\MempoolStrip::boardSlugs()).
      *
      * @return list<string>
      */
@@ -113,7 +113,8 @@ new #[Layout('layouts::app', ['section' => 'matches'])] class extends Component 
         $registry = app(GameRegistry::class);
         $boards = MempoolStrip::boardSlugs();
 
-        return array_values(array_filter(array_keys($registry->all()), fn (string $slug): bool => ! $registry->isBoard($slug) || in_array($slug, $boards, true)));
+        // No score game (plan "AoE2 und Trackmania", P4): it plays no matches, its values are on its leaderboards.
+        return array_values(array_filter(array_keys($registry->versus()), fn (string $slug): bool => ! $registry->isBoard($slug) || in_array($slug, $boards, true)));
     }
 
     private function listable(string $game): bool

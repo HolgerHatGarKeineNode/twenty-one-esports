@@ -71,7 +71,8 @@ final class CasualMatches
      */
     public function assertGame(string $game): void
     {
-        if (! in_array($game, (array) config('esports.casual.games'), true) || $this->games->mode($game, self::mode()) === null) {
+        // Never a score game (plan "AoE2 und Trackmania", P4), even listed by mistake: it has no lobby and no pairing.
+        if (! in_array($game, (array) config('esports.casual.games'), true) || $this->games->isScore($game) || $this->games->mode($game, self::mode()) === null) {
             throw self::refuse('unknown_game');
         }
     }
