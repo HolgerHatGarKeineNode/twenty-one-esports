@@ -199,6 +199,8 @@ return [
             'loop_every_rounds' => 3,
             'loop_fallback_seconds' => 60,
             'tournament_seconds' => 15,
+            // A Blockfill run that took first place this many minutes ago still gets its moment slide (f4, BlockfillSlides).
+            'blockfill_moment_minutes' => 10,
             // A finished tournament keeps its champion and final bracket on the stream this long after its last result (TournamentLiveSlides).
             'finished_tournament_hours' => 48,
             // The series game on the spotlight teaser (d6, GameSpotlight); unknown or empty: the newest series game.
