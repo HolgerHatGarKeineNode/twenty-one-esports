@@ -2,9 +2,11 @@
 
 namespace App\Models;
 
+use App\Enums\TournamentStatus;
 use App\Games\GameRegistry;
 use App\Games\ScoreGame;
 use App\Games\ScoreMetric;
+use App\Support\Scores\ScoreWindow;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Attributes\Hidden;
 use Illuminate\Database\Eloquent\Builder;
@@ -68,17 +70,42 @@ class ScoreRun extends Model
     public const DIRECTOR = 'director';
 
     /**
-     * The runs of an id that belongs to nobody: pending, nobody stored it,
-     * nobody confirmed it, and older than `prune_days`.
+     * The runs of an id that belongs to nobody: pending, of a registered
+     * score game (an unregistered game's runs are kept, nothing is known
+     * about its ids), no player has the id in their gamer tags (with or
+     * without a stored-at row, as ScoreAccounts::blockingFor() reads it),
+     * nobody confirmed it, older than `prune_days`, and outside the window
+     * of every running or open leaderboard on its course (round-5 H: a
+     * window can be longer than `prune_days`).
      *
      * @return Builder<static>
      */
     public function prunable(): Builder
     {
-        return static::query()->whereNull('user_id')->whereNotNull('account_id')
+        $games = app(GameRegistry::class)->scores();
+        $query = static::query()->whereNull('user_id')->whereNotNull('account_id')->whereIn('game', array_keys($games))
             ->where('achieved_at', '<', now()->subDays(max(1, (int) config('esports.score_games.prune_days', 30))))
             ->whereNotExists(fn ($query) => $query->selectRaw('1')->from('score_account_tags as t')->whereColumn('t.game', 'score_runs.game')->whereColumn('t.account_id', 'score_runs.account_id'))
             ->whereNotExists(fn ($query) => $query->selectRaw('1')->from('score_account_claims as c')->whereColumn('c.game', 'score_runs.game')->whereColumn('c.account_id', 'score_runs.account_id'));
+
+        foreach ($games as $slug => $game) {
+            $service = $game->accountService();
+
+            if ($service !== null) {
+                $query->whereNot(fn ($query) => $query->where('game', $slug)
+                    ->whereExists(fn ($users) => $users->selectRaw('1')->from('users')->whereColumn("users.gamer_tags->{$service}", 'score_runs.account_id')));
+            }
+        }
+
+        $open = Tournament::query()->whereIn('game', array_keys($games))->whereIn('status', [TournamentStatus::Running, TournamentStatus::Signup, TournamentStatus::Drawing])->get();
+
+        foreach ($open as $tournament) {
+            $window = ScoreWindow::of($tournament);
+            $query->whereNot(fn ($query) => $query->where(['game' => $tournament->game, 'mode' => $tournament->mode, 'course' => (string) $tournament->score_course])
+                ->where('achieved_at', '>=', $window->start)->where('achieved_at', '<', $window->end));
+        }
+
+        return $query;
     }
 
     protected function casts(): array

@@ -31,10 +31,11 @@ use RuntimeException;
  *   wait doubling from `backoff_ms`; a `Retry-After` in seconds wins, up to
  *   `max_retry_after_seconds` (above it the source counts as down).
  * - No redirect is followed; the answer is uncompressed and refused once it
- *   passes `max_body_bytes`: cURL stops the transfer there itself
- *   (CURLOPT_MAXFILESIZE_LARGE, which since cURL 8.4 also ends an answer of
- *   unknown length once it grows past the cap), and the stored answer is read
- *   only up to the cap again.
+ *   passes `max_body_bytes`. With a Content-Length over the cap cURL refuses
+ *   it at once (CURLOPT_MAXFILESIZE_LARGE); an answer of unknown length is
+ *   cut off by cURL only from cURL 8.4 on. Before 8.4 such an answer is
+ *   received in full within `timeout_seconds`, spilling to the temp dir past
+ *   2 MB, and bounded() refuses it after reading no more than the cap.
  * - Time: the whole transfer, headers included, takes at most
  *   `timeout_seconds` (cURL's total timeout, round-4 F3: a header that drips
  *   one byte at a time is cut off too); reading the stored answer has its

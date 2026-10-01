@@ -17,7 +17,6 @@ use App\Games\GameRegistry;
 use App\Models\Admin;
 use App\Models\Clan;
 use App\Models\ClanMember;
-use App\Models\ScoreAccountChange;
 use App\Models\ScoreRun;
 use App\Models\Tournament;
 use App\Models\TournamentParticipant;
@@ -77,7 +76,7 @@ beforeEach(function () {
         'course' => 'demo-1', 'account' => $account, 'value' => $value, 'achieved_at' => now()->getTimestamp()]]], ['Authorization' => 'Bearer '.$this->token])->assertOk()->json();
 });
 
-test('n1b F1 path A: a confirm after a left-out end keeps the final standings and logs the kept finish', function () {
+test('n1b F1 path A: a confirm after a left-out end maps the finish and leaves the final standings', function () {
     [$tournament, [$owner, $other]] = runningScoreBoard(2);
     $names = [$owner->id => 'owner', $other->id => 'other'];
     $this->fake->record($other->id, 'demo-1', 58_000, now());
@@ -94,8 +93,7 @@ test('n1b F1 path A: a confirm after a left-out end keeps the final standings an
     ScoreAccounts::confirm($this->game, 'acct-legit', $owner, finishedAdmin(), 'Owner logged in with the game.');
 
     expect(finishedStandings($tournament, $names))->toBe($final)
-        ->and(ScoreRun::query()->where('account_id', 'acct-legit')->sole()->user_id)->toBeNull()
-        ->and(ScoreAccountChange::query()->where('action', 'kept')->sole()->reason)->toContain('kept: board finished');
+        ->and(ScoreRun::query()->where('account_id', 'acct-legit')->sole()->user_id)->toBe($owner->id);
 });
 
 test('n1c F1 path B: a playing admin cannot revoke the winner after the end, and another admin\'s revoke leaves the final standings', function () {
@@ -118,7 +116,7 @@ test('n1c F1 path B: a playing admin cannot revoke the winner after the end, and
     ScoreAccounts::revoke($this->game, 'acct-win', finishedAdmin(), 'Shared account after all.');
 
     expect(finishedStandings($tournament, $names))->toBe($final)
-        ->and(ScoreRun::query()->where('account_id', 'acct-win')->sole()->user_id)->toBe($winner->id);
+        ->and(ScoreRun::query()->where('account_id', 'acct-win')->sole()->user_id)->toBeNull();
 });
 
 test('n6b F2: five guest views of a switched-off tournament log the stand-in once, without a report', function () {
@@ -232,4 +230,77 @@ test('note: an admin cannot dismiss an id for a player who never stored it', fun
     finishedStore(User::factory()->create(), 'acct-x');
 
     expect(fn () => ScoreAccounts::dismiss($this->game, 'acct-x', User::factory()->create(), finishedAdmin(), 'Not his.'))->toThrow(TournamentRuleViolation::class, __('This player has not stored that account id.'));
+});
+
+test('g1 G: a late confirm maps the finish into a running board on the same course, while the finished sibling keeps its standings', function () {
+    [$monthly, [$p, $q]] = runningScoreBoard(2, 'time-trial', ['name' => 'B monthly', 'times' => ['game' => 30]]);
+    [$weekly, [$x, $y]] = runningScoreBoard(2, 'time-trial', ['name' => 'A weekly']);
+    $this->fake->record($x->id, 'demo-1', 50_000, now());
+    $this->fake->record($y->id, 'demo-1', 52_000, now());
+    $this->fake->record($q->id, 'demo-1', 58_000, now());
+    finishedStore($p, 'acct-p');
+    ($this->finish)('p1', 'acct-p', 41_000);
+    app(ScoreLeaderboards::class)->tick();
+    $this->travelTo(ManualSubmissions::closesAt($weekly)->addMinute());
+    app(ScoreLeaderboards::class)->finalize($weekly->refresh(), finishedAdmin());
+    $weeklyFinal = finishedStandings($weekly, [$x->id => 'X', $y->id => 'Y']);
+
+    expect(ScoreAccounts::confirm($this->game, 'acct-p', $p, finishedAdmin(), 'P showed his account page.'))->toBe(1)
+        ->and(finishedStandings($monthly, [$p->id => 'P', $q->id => 'Q']))->toBe([['P', 1, 41_000], ['Q', 2, 58_000]])
+        ->and(finishedStandings($weekly, [$x->id => 'X', $y->id => 'Y']))->toBe($weeklyFinal);
+});
+
+test('g2 G: a reassign from a thief to the owner moves the finish in a running board on the same course after a sibling finished', function () {
+    [$monthly, [$thief, $owner, $third]] = runningScoreBoard(3, 'time-trial', ['name' => 'B monthly', 'times' => ['game' => 30]]);
+    [$weekly, [$x]] = runningScoreBoard(2, 'time-trial', ['name' => 'A weekly']);
+    $this->fake->record($x->id, 'demo-1', 50_000, now());
+    $this->fake->record($third->id, 'demo-1', 45_000, now());
+    finishedStore($thief, 'acct-o');
+    ScoreAccounts::confirm($this->game, 'acct-o', $thief, finishedAdmin(), 'Looked right at the time.');
+    ($this->finish)('o1', 'acct-o', 39_000);
+    app(ScoreLeaderboards::class)->tick();
+    $this->travelTo(ManualSubmissions::closesAt($weekly)->addMinute());
+    app(ScoreLeaderboards::class)->finalize($weekly->refresh(), finishedAdmin());
+    finishedStore($owner, 'acct-o');
+
+    expect(ScoreAccounts::reassign($this->game, 'acct-o', $owner, finishedAdmin(), 'Owner proved it with a login.'))->toBe(1)
+        ->and(finishedStandings($monthly, [$thief->id => 'thief', $owner->id => 'owner', $third->id => 'third']))->toBe([['owner', 1, 39_000], ['third', 2, 45_000], ['thief', null, null]]);
+});
+
+test('h1 H: prune keeps a finish inside a running board whose window is longer than prune_days, and a later confirm maps it', function () {
+    [$long, [$p, $q]] = runningScoreBoard(2, 'time-trial', ['name' => 'Long', 'times' => ['game' => 45]]);
+    $this->fake->record($q->id, 'demo-1', 58_000, now());
+    app(ScoreLeaderboards::class)->tick();
+    ($this->finish)('h1', 'acct-h', 41_000);
+    $this->travelTo(CarbonImmutable::parse('2026-11-07 12:00:00'));
+    $this->artisan('model:prune', ['--model' => [ScoreRun::class]])->assertSuccessful();
+
+    expect(ScoreRun::query()->where('account_id', 'acct-h')->count())->toBe(1);
+
+    $this->travelTo(CarbonImmutable::parse('2026-11-10 12:00:00'));
+    finishedStore($p, 'acct-h');
+
+    expect(ScoreAccounts::confirm($this->game, 'acct-h', $p, finishedAdmin(), 'P showed his account page.'))->toBe(1)
+        ->and(finishedStandings($long, [$p->id => 'P', $q->id => 'Q']))->toBe([['P', 1, 41_000], ['Q', 2, 58_000]]);
+});
+
+test('h2 H: prune keeps the finish of an id a player has in their gamer tags without a stored-at row, and the board still waits for it', function () {
+    [$long, [$p]] = runningScoreBoard(2, 'time-trial', ['name' => 'Long F5', 'times' => ['game' => 45]]);
+    config(['esports.score_games.demo' => false]);
+    app()->forgetInstance(GameRegistry::class);
+    $p->forceFill(['gamer_tags' => ['score-demo' => 'acct-off']])->save();
+    $this->fake = ScoreDemoOn::play();
+    ($this->finish)('off1', 'acct-off', 41_000);
+    $this->travelTo(CarbonImmutable::parse('2026-11-07 12:00:00'));
+    $this->artisan('model:prune', ['--model' => [ScoreRun::class]])->assertSuccessful();
+
+    expect(DB::table('score_account_tags')->where('user_id', $p->id)->count())->toBe(0)
+        ->and(ScoreRun::query()->where('account_id', 'acct-off')->count())->toBe(1)
+        ->and(ScoreAccounts::blockingFor($long->refresh(), $this->game))->toBe([['account' => 'acct-off', 'user_id' => $p->id]]);
+
+    // Without any open board over the run, the gamer tag alone keeps it.
+    $long->forceFill(['status' => TournamentStatus::Cancelled])->save();
+    $this->artisan('model:prune', ['--model' => [ScoreRun::class]])->assertSuccessful();
+
+    expect(ScoreRun::query()->where('account_id', 'acct-off')->count())->toBe(1);
 });

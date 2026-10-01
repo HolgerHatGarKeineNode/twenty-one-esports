@@ -133,10 +133,8 @@ final class ScoreAccounts
             }
 
             ScoreAccountClaim::query()->create(['game' => $game->slug(), 'account_id' => $accountId, 'user_id' => $player->id, 'confirmed_by_id' => $admin->id]);
-            $kept = [];
-            $moved = self::move($game, $accountId, null, $player->id, $kept);
+            $moved = self::move($game, $accountId, null, $player->id);
             self::log($game, $accountId, 'confirm', null, $player->id, $admin, $reason, $moved);
-            self::logKept($game, $accountId, null, $player->id, $admin, $kept);
 
             return $moved;
         });
@@ -166,10 +164,8 @@ final class ScoreAccounts
         return DB::transaction(function () use ($game, $accountId, $player, $admin, $reason, $claim): int {
             $from = $claim->user_id;
             $claim->forceFill(['user_id' => $player->id, 'confirmed_by_id' => $admin->id])->save();
-            $kept = [];
-            $moved = self::move($game, $accountId, $from, $player->id, $kept) + self::move($game, $accountId, null, $player->id, $kept);
+            $moved = self::move($game, $accountId, $from, $player->id) + self::move($game, $accountId, null, $player->id);
             self::log($game, $accountId, 'reassign', $from, $player->id, $admin, $reason, $moved);
-            self::logKept($game, $accountId, $from, $player->id, $admin, $kept);
 
             return $moved;
         });
@@ -191,10 +187,8 @@ final class ScoreAccounts
         return DB::transaction(function () use ($game, $accountId, $admin, $reason, $claim): int {
             $from = $claim->user_id;
             $claim->delete();
-            $kept = [];
-            $moved = self::move($game, $accountId, $from, null, $kept);
+            $moved = self::move($game, $accountId, $from, null);
             self::log($game, $accountId, 'revoke', $from, null, $admin, $reason, $moved);
-            self::logKept($game, $accountId, $from, null, $admin, $kept);
 
             return $moved;
         });
@@ -460,7 +454,7 @@ final class ScoreAccounts
             }
         }
 
-        // Round-4 F1: a finished board the id's runs fall into counts too (its runs are kept, but nobody with a stake
+        // Round-4 F1: a finished board the id's runs fall into counts too (its final standings are frozen, but nobody with a stake
         // in it decides the account).
         $finished = self::finishedWindows($game);
         $touched = $finished === [] ? [] : array_values(array_unique(array_filter(ScoreRun::query()->where(['game' => $game->slug(), 'account_id' => $accountId])->get()
@@ -498,33 +492,19 @@ final class ScoreAccounts
 
     /**
      * Move the runs of an account id from one player (null: pending) to
-     * another; a run the target has already (same source, course, value and
-     * time) is a second copy and goes.
+     * another (null: back to pending); a run the target has already (same
+     * source, course, value and time) is a second copy and goes. Every run
+     * moves, also one inside a finished leaderboard's window: that board
+     * shows the standings its end froze (round-5 G: one run row counts for
+     * every board on the course, a running sibling too).
      */
-    /**
-     * Move the runs of an id from one player (null: pending) to another
-     * (null: back to pending). A run inside the window of a finished
-     * leaderboard stays where it is (round-4 F1): `$kept` gets how many,
-     * per leaderboard.
-     *
-     * @param  array<int, int>  $kept
-     */
-    private static function move(ScoreGame $game, string $accountId, ?int $from, ?int $to, array &$kept): int
+    private static function move(ScoreGame $game, string $accountId, ?int $from, ?int $to): int
     {
         $moved = 0;
         $runs = ScoreRun::query()->where(['game' => $game->slug(), 'account_id' => $accountId])
             ->when($from === null, fn ($query) => $query->whereNull('user_id'), fn ($query) => $query->where('user_id', $from))->orderBy('id')->get();
-        $finished = self::finishedWindows($game);
 
         foreach ($runs as $run) {
-            $board = self::finishedBoardOf($run, $finished);
-
-            if ($board !== null) {
-                $kept[$board] = ($kept[$board] ?? 0) + 1;
-
-                continue;
-            }
-
             try {
                 $run->forceFill(['user_id' => $to])->save();
                 $moved++;
@@ -566,17 +546,6 @@ final class ScoreAccounts
         }
 
         return null;
-    }
-
-    /**
-     * @param  array<int, int>  $kept  runs kept per finished leaderboard
-     */
-    private static function logKept(ScoreGame $game, string $accountId, ?int $from, ?int $to, User $admin, array $kept): void
-    {
-        if ($kept !== []) {
-            $boards = implode(', ', array_map(fn (int $board, int $count): string => "#{$board}: {$count}", array_keys($kept), $kept));
-            self::log($game, $accountId, 'kept', $from, $to, $admin, "kept: board finished ({$boards})", 0);
-        }
     }
 
     /**
