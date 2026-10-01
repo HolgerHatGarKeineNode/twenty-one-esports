@@ -10,8 +10,9 @@ namespace App\Enums;
  * time. Rejected: the submission or the replay failed a check (`reason`).
  * Abandoned: a newer run replaced it, or its token expired unstarted.
  * Pending: the verifier was not available; no score until it is checked.
- * Practice: a valid submission that does not beat the player's verified
- * best, kept but not verified (it could not change any standing).
+ * Practice: only runs from before 2026-10-01, when a valid submission
+ * that did not beat the player's verified best of the week was kept but
+ * not verified. Since then every valid submission is verified.
  */
 enum StackerRunStatus: string
 {

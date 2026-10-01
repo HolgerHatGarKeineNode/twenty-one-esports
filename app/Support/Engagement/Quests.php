@@ -19,8 +19,9 @@ use Carbon\CarbonInterface;
  * A score game has no rating (Blockfill live, 2026-10-01): each of its
  * verified runs set this week counts as one game for "play 3 games", read
  * from score_runs when progress is shown (ScoreRun rows are never
- * overwritten, so a run is counted once). A Blockfill practice run is never
- * verified and never becomes a score run; an unchecked, rejected or
+ * overwritten, so a run is counted once). Every verified Blockfill run
+ * counts, one slower than the player's best too; a practice run (played in
+ * the browser alone) never becomes a score run; an unchecked, rejected or
  * director-entered value does not count, nor a game no longer registered.
  *
  * Idempotent: every credit is keyed by (player, quest, week, result) with a

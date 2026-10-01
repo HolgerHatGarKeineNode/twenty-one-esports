@@ -186,6 +186,10 @@ test('a new #1 of the last minutes is the next slide, once, and the fresh blocks
     $data = app(BlockfillSlides::class)->data();
     expect($data['fresh'][0]['badge'])->toBe('best')->and($data['moment']['name'])->toBe('Ada');
 
+    // Every ranked run is verified: one slower than the player's own best of the week is a fresh block without a mark.
+    bfsRun($users['Ben'], 2990, 1);
+    expect(app(BlockfillSlides::class)->data()['fresh'][0]['badge'])->toBeNull();
+
     // In the planner: the moment comes at the next slot, before the round's own slots, and only once per key.
     $planner = RotationPlanner::fromConfig(60);
     $games = [['id' => 7, 'blitz' => true]];

@@ -29,10 +29,13 @@ use Illuminate\Support\Str;
  *   in this order: body size (before the replay is looked at), shape of
  *   replay/ticks/hash, the wall-clock bracket (time from start, or issue if
  *   never started, to submission at least the played time and at most
- *   `slack_seconds` more), and whether the claim beats the player's
- *   verified best of this week (P4). A claim that does not is stored as
- *   `practice` and never verified: it could not change any standing. The
- *   rest is `verifying` and goes to the verifier's own queue (VerifyStackerRun).
+ *   `slack_seconds` more). Every run that passes is `verifying` and goes
+ *   to the verifier's own queue (VerifyStackerRun), a run slower than the
+ *   player's best of the week too: a verified slower run is an attempt on
+ *   /matches and counts for the weekly quest, and the week's leaderboard
+ *   keeps each player's best (ScoreRuns::standings()). Runs stored as
+ *   `practice` come only from before 2026-10-01, when a run that did not
+ *   beat the week's best was kept unverified.
  * - finish(): the verifier's verdict; an unavailable verifier leaves the run
  *   `pending` (fail-closed: no score until it is checked).
  *
@@ -47,8 +50,8 @@ use Illuminate\Support\Str;
  * submitted replay only while a run is verifying or pending, and for a
  * verified run the replay the verifier answered with, but only while the
  * run is among the `replay_keep_top` fastest of its week (keepWeekTop()):
- * at most that many replays per week. Rejected and practice runs keep
- * none. Runs without a verified time are pruned after `prune_days`
+ * at most that many replays per week. Rejected runs keep none. Runs
+ * without a verified time are pruned after `prune_days`
  * (StackerRun::prunable()). sweepStale() gives up verifications that never
  * came back, reverifyPending() sends pending runs again (console only).
  */
@@ -535,13 +538,8 @@ final class StackerRuns
             return ['status' => StackerRunStatus::Rejected, 'reason' => 'clock'];
         }
 
-        // P4: the week's best, not the all-time one, so every week's first run is verified and joins its leaderboard
-        $best = $this->best($run->user_id, self::weekOf($now));
-
-        if ($best !== null && $ticks >= $best) {
-            return ['status' => StackerRunStatus::Practice];
-        }
-
+        // Every ranked run is verified, a slower one too: it is an attempt on /matches and counts for the quest,
+        // while the week's leaderboard keeps each player's best (ScoreRuns::standings()).
         return ['status' => StackerRunStatus::Verifying];
     }
 

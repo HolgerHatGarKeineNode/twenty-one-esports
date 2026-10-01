@@ -236,7 +236,9 @@ final class BlockfillSlides
 
     /**
      * `top` when the run was the fastest of its week when it came in, `best`
-     * when it beat the player's own earlier run of the week, else null.
+     * when it beat every earlier run of the player's week, else null: a
+     * player's first run of the week, and a slower one (every ranked run is
+     * verified, not only a new best).
      */
     private function badge(StackerRun $run): ?string
     {
@@ -244,7 +246,9 @@ final class BlockfillSlides
             return 'top';
         }
 
-        return $this->before($run)->where('user_id', $run->user_id)->exists() ? 'best' : null;
+        $own = fn (): Builder => $this->before($run)->where('user_id', $run->user_id);
+
+        return $own()->exists() && $own()->where('ticks', '<=', (int) $run->ticks)->doesntExist() ? 'best' : null;
     }
 
     /**

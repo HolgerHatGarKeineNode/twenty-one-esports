@@ -26,8 +26,11 @@ use Livewire\Component;
  * and the run endpoints, and never re-renders it.
  *
  * Practice for everyone, guests included (a local seed, nothing is sent);
- * ranked runs need a login and go through StackerRuns (issue, start, submit,
- * verdict). The route exists only while `esports.blockfill.enabled` is on
+ * ranked runs need a login and a keyboard and go through StackerRuns
+ * (issue, start, submit, verdict). For a logged-in player with a keyboard
+ * a ranked run is the main start button, its token issued at the click;
+ * practice is the quiet one. Every ranked run is verified, a slower one too:
+ * its result says it was verified but not faster than the week's best. The route exists only while `esports.blockfill.enabled` is on
  * (routes/stacker.php).
  *
  * Below the game, the casual weekly hunt (P4, BlockfillWeeks): this week's
@@ -80,7 +83,7 @@ new #[Layout('layouts::app', ['scripts' => ['resources/js/stacker/page.js']])] c
                     'submitting' => __('Sending your run…'),
                     'verifying' => __('The league is replaying your run…'),
                     'verified' => __('Verified: the league replayed your run to the same time'),
-                    'practice_rank' => __('Slower than your best: kept as practice'),
+                    'verifiedSlower' => __('Verified, not faster than your best :best'),
                     'pending' => __('Received, not checked yet: it counts once the league has replayed it'),
                     'rejected' => __('Not counted: the replay did not match'),
                     'toppedOut' => __('Topped out: the stack reached the top'),
@@ -308,6 +311,10 @@ new #[Layout('layouts::app', ['scripts' => ['resources/js/stacker/page.js']])] c
                     <div class="flex flex-wrap gap-2 pt-1">
                         <x-button x-on:click="restart()" data-test="play-again">{{ __('Play again') }} <kbd class="rounded-sm border border-on-btc/40 px-1.5 text-[11px]" x-text="keyText('restart')"></kbd></x-button>
                         <x-button variant="quiet" x-on:click="startPractice()" x-show="kind === 'ranked'">{{ __('Practice') }}</x-button>
+                        {{-- Ranked is the default for a player with a keyboard: after a practice run it is one click away again --}}
+                        @auth
+                            <x-button variant="quiet" x-on:click="startRanked()" x-show="kind === 'practice'" class="pointer-coarse:hidden" data-test="result-ranked">{{ __('Ranked run') }}</x-button>
+                        @endauth
                     </div>
                     <p class="m-0 text-[12px] leading-normal text-ink-3" x-show="kind === 'ranked'">{{ __('A ranked run counts once the league has replayed its inputs and reached the same time.') }}</p>
                 </section>

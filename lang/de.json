@@ -5798,7 +5798,7 @@
     "Sending your run…": "Dein Lauf wird gesendet …",
     "The league is replaying your run…": "Die Liga spielt deinen Lauf nach …",
     "Verified: the league replayed your run to the same time": "Bestätigt: Die Liga hat deinen Lauf zur selben Zeit nachgespielt",
-    "Slower than your best: kept as practice": "Langsamer als deine Bestzeit: als Übung behalten",
+    "Verified, not faster than your best :best": "Bestätigt, nicht schneller als deine Bestzeit :best",
     "Received, not checked yet: it counts once the league has replayed it": "Angekommen, noch nicht geprüft: Er zählt, sobald die Liga ihn nachgespielt hat",
     "Not counted: the replay did not match": "Zählt nicht: Das Nachspielen ergab etwas anderes",
     "Topped out: the stack reached the top": "Oben angestoßen: Der Stapel hat den Rand erreicht",

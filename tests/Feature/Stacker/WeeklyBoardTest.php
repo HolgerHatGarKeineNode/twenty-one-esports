@@ -26,6 +26,7 @@ use App\Models\Tournament;
 use App\Models\TournamentMatch;
 use App\Models\TournamentParticipant;
 use App\Models\User;
+use App\Support\Engagement\Quests;
 use App\Support\Scores\ScoreAccount;
 use App\Support\Scores\ScoreCourse;
 use App\Support\Scores\ScoreLeaderboards;
@@ -280,12 +281,48 @@ test('a player with a faster all-time best still gets the first run of a new wee
         ->and([$rows[0]->participant->user_id, $rows[0]->place, $rows[0]->value])->toBe([$user->id, 1, Blockfill::milliseconds($forty['expected']['ticks'])]);
     $this->getJson(route('stacker.runs.show', $issued['token']))->assertOk()->assertJson(['best' => $forty['expected']['ticks'], 'best_all_time' => 500]);
 
-    // Within the same week the gate stays: a run that does not beat this week's best is practice.
-    $again = $this->postJson(route('stacker.runs.issue'))->assertCreated()->json();
-    $this->postJson(route('stacker.runs.start', $again['token']))->assertNoContent();
-    $this->travel(intdiv($forty['expected']['ticks'] * 1000, 60) + 500)->milliseconds();
-    $this->postJson(route('stacker.runs.submit', $again['token']), ['replay' => $forty['replay'], 'ticks' => $forty['expected']['ticks'], 'hash' => $forty['expected']['stateHash']])
-        ->assertStatus(202)->assertJson(['status' => 'practice']);
+});
+
+test('a ranked run that is not faster than the week\'s best is verified too: it shows on /matches and counts for the quest, the board keeps the best', function () {
+    BlockfillOn::play();
+    $this->freezeTime();
+    $user = User::factory()->create();
+    $forty = BlockfillOn::fixture('forty-lines');
+    $play = function () use ($forty): string {
+        $issued = $this->postJson(route('stacker.runs.issue'))->assertCreated()->json();
+        $this->postJson(route('stacker.runs.start', $issued['token']))->assertNoContent();
+        $this->travel(intdiv($forty['expected']['ticks'] * 1000, 60) + 500)->milliseconds();
+        $this->postJson(route('stacker.runs.submit', $issued['token']), ['replay' => $forty['replay'], 'ticks' => $forty['expected']['ticks'], 'hash' => $forty['expected']['stateHash']])
+            ->assertStatus(202)->assertJson(['status' => 'verifying']);
+
+        return $issued['token'];
+    };
+
+    $this->actingAs($user);
+    $play();
+    $first = app(ScoreRuns::class)->standings(blockfillWeek());
+    $this->travel(1)->minutes();
+    // The same time again: not faster than this week's best, still replayed and verified.
+    $token = $play();
+
+    $runs = StackerRun::query()->where('user_id', $user->id)->orderBy('id')->get();
+    $rows = app(ScoreRuns::class)->standings(blockfillWeek());
+    expect($runs->pluck('status')->all())->toBe([StackerRunStatus::Verified, StackerRunStatus::Verified])
+        ->and($this->verifier->asked)->toHaveCount(2)
+        ->and(ScoreRun::query()->where(['user_id' => $user->id, 'source' => ReplayScoreSource::KEY])->count())->toBe(2)
+        // The board: one row for the player, the first run's time and moment, unchanged.
+        ->and($rows)->toHaveCount(1)
+        ->and([$rows[0]->place, $rows[0]->value, $rows[0]->runId])->toBe([1, $first[0]->value, $first[0]->runId])
+        // Both attempts count for "play 3 games".
+        ->and(app(Quests::class)->progress($user)[Quests::THREE_GAMES]['progress'])->toBe(2);
+    $this->getJson(route('stacker.runs.show', $token))->assertOk()->assertJson(['status' => 'verified', 'best' => $forty['expected']['ticks']]);
+
+    // /matches lists every verified attempt, the slower one too.
+    $html = $this->get(route('matches.index'))->assertOk()->getContent();
+    foreach ($runs as $run) {
+        expect($html)->toContain('wire:key="run-'.$run->id.'"');
+    }
+    Livewire::withQueryParams(['status' => 'done'])->test('pages::matches.index')->assertSee(__('done').' 2');
 });
 
 test('a run the hook missed joins on the hourly sweep', function () {

@@ -168,16 +168,17 @@ test('the wall clock from start to submission covers the played time and at most
     }
 });
 
-test('only a time that beats the player\'s verified best is verified, the rest is kept as practice', function () {
+test('a time slower than the player\'s verified best of the week is verified too, never kept as practice', function () {
     BlockfillOn::play();
     $user = User::factory()->create();
     StackerRun::factory()->for($user)->verified(900)->create();
 
     $issued = issueRun($user);
-    submitForty($issued['token'])->assertAccepted()->assertJson(['status' => 'practice']);
+    submitForty($issued['token'])->assertAccepted()->assertJson(['status' => 'verifying']);
 
-    expect($this->verifier->asked)->toBe([])
-        ->and(runOf($issued)->replay)->toBeNull();
+    expect($this->verifier->asked)->toHaveCount(1)
+        ->and(runOf($issued))->status->toBe(StackerRunStatus::Verified)->ticks->toBe(958)
+        ->and(app(StackerRuns::class)->best($user, StackerRuns::weekOf(now())))->toBe(900);
 });
 
 test('an oversized or malformed submission is rejected without the verifier', function () {
@@ -222,14 +223,8 @@ test('a rejection keeps the verifier\'s reason; a verifier that is unavailable o
     }
 });
 
-test('a practice run keeps no replay; a verified run keeps the replay the verifier answered with, never the submitted bytes', function () {
+test('a verified run keeps the replay the verifier answered with, never the submitted bytes', function () {
     BlockfillOn::play();
-    $user = User::factory()->create();
-    StackerRun::factory()->for($user)->verified(900)->create();
-
-    $practice = issueRun($user);
-    submitForty($practice['token'])->assertAccepted()->assertJson(['status' => 'practice']);
-    expect(runOf($practice)->replay)->toBeNull();
 
     $this->verifier->verdict = StackerVerdict::verified(['das' => 8, 'arr' => 1, 'sdf' => 20], 'CanonicalFromTheVerifier');
     $faster = issueRun(User::factory()->create());
