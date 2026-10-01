@@ -171,6 +171,23 @@ assumptions, then re-sourced against the built code on its branch (`210edd80`, n
 **Posting gate for reel 12:** it now shows AoE2's cup as Free for All, so post it only once P10 is
 live on prod, like motif 14.
 
+**Added 2026-10-01: Blockfill (motifs 15-16, reel 19).** Live on prod since 2026-10-01
+(esports.einundzwanzig.space/blockfill read that day, HTTP 200, the week board shown). Sources
+are master `8dfce13a`.
+
+| # | Claim | Source | Live? |
+|---|---|---|---|
+| 80 | Blockfill is the league's own game: mine 40 blocks (clear 40 rows) as fast as you can | `resources/views/pages/stacker/⚡play.blade.php` docblock ("Blockfill, the league's own stacking game … mine 40 blocks (clear 40 rows) as fast as you can"), string "Mine 40 blocks as fast as you can." / "Schürfe 40 Blöcke so schnell du kannst."; `resources/js/stacker/engine.js` `GOAL_LINES = 40` | LIVE |
+| 81 | A full row is a mined block: it flashes as one, "+N blocks mined" shows beside the well, and the chain under it has one cube per mined block out of 40 | `resources/js/stacker/renderer.js` `drawWell` ("lights the `mined` lowest rows as freshly mined blocks"); play blade ("The chain: one cube per mined block", "blocks mined") | LIVE |
+| 82 | Practice is open to everyone, guests included, no login; a ranked run needs a login and a keyboard | play blade docblock ("Practice for everyone, guests included … ranked runs need a login"); strings "Practice needs no login. Log in for ranked runs.", "Ranked runs need a keyboard. Here you can practise with touch." | LIVE |
+| 83 | The league replays every ranked run's inputs on the same engine; it counts once it reaches the same time | `resources/js/stacker/verify.mjs` docblock; string "A ranked run counts once the league has replayed its inputs and reached the same time."; "Verified: the league replayed your run to the same time" | LIVE |
+| 84 | The weekly hunt: your best verified ranked run of the week counts, the fastest time wins, a tie goes to the earlier run, a new week starts every Monday at 00:00 Berlin time | string on /blockfill ("Your best verified ranked run of the week counts. The fastest time wins, a tie goes to the earlier run. A new week starts every Monday at 00:00 Berlin time."); `app/Support/Stacker/BlockfillWeeks.php` docblock | LIVE |
+| 85 | The week's place 1 is "Last week's winner" on the page; a Blockfill week pays no zap and no prize: the copy says "wins the board", never sats | play blade (`lastWinner()`, "Last week's winner"); `app/Support/Lightning/WinnerZaps.php` ("A Blockfill week … is a game's weekly board, not a tournament won: no zap.") | LIVE |
+| 86 | Each piece is coloured on the page's own fee-rate scale. The posters and the reel show the colours, not the legend: no "fee" in promo text, the league never charges players | `resources/js/stacker/palette.js` docblock; user rule "no fees, ever" | LIVE (legend left out on purpose) |
+| 87 | The run on the posters and in reel 19: seed `b10cf111000000000000000021e5b007`, engine bf1, default handling (DAS 10, ARR 2, SDF 20), 875 inputs, 2109 ticks = 0:35.150, 111 pieces, 40 rows in ten clears of four. Played by the kit's placement bot at a human pace (3.16 pieces per second), not by a player; it is on no board. `verify.mjs` with the limits of `config/esports.php` answers ok (and refuses the same log with one move mirrored: `unfinished`) | `src/gen-blockfill-run.mjs`, `src/lib/blockfill.run.js` | generated 2026-10-01 |
+| 88 | The week board poster shows the public board as /blockfill shows it (place, name, best verified time), fetched right before rendering; on 2026-10-01: week 28 Sep - 5 Oct 2026, one row, "El Presidento Ben" 5:16.500 | `src/fetch-blockfill-week.mjs` → `data/blockfill-week.js` | changes with every verified run |
+| 89 | Blockfill is its own game in the mempool look: no other game's name, trademark or wording in the copy | user brief 2026-10-01 | rule |
+
 ## Corrected in round 2 — clan "lineup" is Rocket League only, not a chess feature
 
 Round 1's clan copy said clans have a "Kader"/"lineup" and play chess "team matches

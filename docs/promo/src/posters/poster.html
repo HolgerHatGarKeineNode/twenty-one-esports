@@ -35,6 +35,11 @@
 .poster[data-format="mobile-9x16"] .copy { row-gap: 32px; }
 .poster[data-format="mobile-9x16"] .bg .glow { right: -300px; top: 120px; }
 
+/* ---------- feed 4:5 1080x1350 (Blockfill motifs) ---------- */
+.poster[data-format="feed-4x5"] { width: 1080px; height: 1350px; padding: 56px; grid-template-rows: auto minmax(0, 1fr) auto; row-gap: 40px; --logo: 28px; --sub: 28px; --cta: 32px; }
+.poster[data-format="feed-4x5"] .copy { row-gap: 24px; }
+.poster[data-format="feed-4x5"] .bg .glow { right: -300px; top: -100px; }
+
 /* ---------- X 1600x900 ---------- */
 .poster[data-format="x-16x9"] { width: 1600px; height: 900px; padding: 56px; grid-template-columns: 704px minmax(0, 1fr); grid-template-rows: auto minmax(0, 1fr); column-gap: 64px; row-gap: 32px; --logo: 26px; --sub: 24px; --bul: 22px; --cta: 26px; }
 .poster[data-format="x-16x9"] .top { grid-column: 1; }
@@ -69,12 +74,19 @@
 <script src="../lib/boardgames.data.js"></script>
 <script src="../lib/boardgames.js"></script>
 <script src="../lib/heroes.js"></script>
+<script src="../lib/blockfill.run.js"></script>
+<script>
+// the week board's data is local (data/, written by fetch-blockfill-week.mjs): only its poster loads it
+if (new URLSearchParams(location.search).get('motif') === 'bfweek') document.write('<script src="../../data/blockfill-week.js"><\/script>');
+</script>
+<script type="module" src="../lib/blockfill.js"></script>
 <script>
 /* Which copy fields each format carries, and the headline limits. */
 const FORMATS = {
   'mobile-9x16':   { sub: true, bullets: true,  maxLines: 3, max: 128, min: 66 },
   'x-16x9':        { sub: true, bullets: true,  maxLines: 3, max: 88, min: 48 },
   'nostr-square':  { sub: true, bullets: false, maxLines: 3, max: 104, min: 60 },
+  'feed-4x5':      { sub: true, bullets: false, maxLines: 3, max: 112, min: 60 },
   'nostr-wide':    { sub: true, bullets: false, maxLines: 3, max: 72,  min: 40 },
   'stream-banner': { sub: false, bullets: false, maxLines: 2, max: 88, min: 48 },
 };
@@ -126,6 +138,8 @@ function render(copy) {
   root.querySelectorAll('.hero > [class^="h-"] > *').forEach((e, i) => { e.dataset.part = e.className.split(' ')[0] || 'part' + i; });
   const h = root.querySelector('.head');
   extrude(h, fitHead(h, f));
+  // canvases drawn by the app's renderer (Blockfill): after the layout is final
+  Heroes.paint(root);
   return root;
 }
 
@@ -159,6 +173,8 @@ function probeAll() {
     }
     return x;
   };
+  // a canvas part the renderer never drew (lib/blockfill.js not loaded) is not on the poster
+  hero.querySelectorAll('[data-paint]').forEach((e) => { if (!e.dataset.painted) res.issues.push(`hero ${e.dataset.paint} not painted`); });
   const hasCube = (e) => e.classList.contains('cube') || !!e.querySelector('.cube');
   for (const e of parts) {
     const r = extent(e);

@@ -371,6 +371,59 @@ pixel avatars and names. Facts 67-79. The lobby tournament (P10) is built on its
 
 ---
 
+## 15. Blockfill
+
+**DE Headline:** Schürfe 40 Blöcke.
+**DE Subline:** Jede volle Reihe wird ein Block. Wer diese Woche am schnellsten ist, gewinnt die Bestenliste.
+**DE Bullets:**
+- Sofort üben, ohne Login
+- Gewertet: anmelden, mit Tastatur spielen
+- Die Liga spielt jeden gewerteten Lauf nach
+- Neue Woche jeden Montag, 00:00 Uhr Berliner Zeit
+
+**EN Headline:** Mine 40 blocks.
+**EN Subline:** Every full row becomes a block. Fastest this week wins the board.
+**EN Bullets:**
+- Practice right away, no login
+- Ranked: log in, play on a keyboard
+- The league replays every ranked run
+- New week every Monday, 00:00 Berlin time
+
+**CTA:** esports.einundzwanzig.space/blockfill
+**Designer note:** the game page at hero scale, drawn by the app's own renderer
+(`resources/js/stacker/renderer.js`) on the engine's state at tick 1441 of one seed run
+(`src/gen-blockfill-run.mjs`, accepted by `verify.mjs`): 20 of 40 blocks mined, a straight
+piece over the open right column. The page's fee-rate legend is left out (no "fee" on a promo,
+the league charges none). Facts 80-89. Blockfill is its own game in the mempool look: no other
+game's name or wording.
+
+---
+
+## 16. Blockfill week board
+
+**DE Headline:** Die schnellsten Miner dieser Woche
+**DE Subline:** Blockfill: 40 Blöcke gegen die Uhr. Es zählt dein bester geprüfter Lauf der Woche, die schnellste Zeit gewinnt.
+**DE Bullets:**
+- Die Liga spielt jeden gewerteten Lauf nach
+- Bei Gleichstand zählt der frühere Lauf
+- Neue Woche jeden Montag, 00:00 Uhr Berliner Zeit
+
+**EN Headline:** This week's fastest miners
+**EN Subline:** Blockfill: 40 blocks against the clock. Your best verified run of the week counts, the fastest time wins.
+**EN Bullets:**
+- The league replays every ranked run
+- A tie goes to the earlier run
+- New week every Monday, 00:00 Berlin time
+
+**CTA:** esports.einundzwanzig.space/blockfill
+**Designer note:** a template. The board ("This week's hunt") renders from
+`data/blockfill-week.js`, which `src/fetch-blockfill-week.mjs` reads from the public /blockfill
+page: place, name and best verified time as the page shows them, up to five rows; with fewer
+than three, the rest are open, dashed places. **Fetch again and re-render right before
+posting**; the board changes with every verified run. Formats: 9:16, 4:5, 1:1. Facts 84-89.
+
+---
+
 ## Dropped or corrected since round 1 (see `facts.md` for full reasoning)
 
 - Clan logo moved from "at founding" to "on the manage page, after founding."

@@ -7,7 +7,7 @@ from PIL import Image, ImageDraw, ImageFont
 ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
 out = sys.argv[1] if len(sys.argv) > 1 else os.path.join(ROOT, 'posters', 'contact-sheet.png')
 only = sys.argv[2:]
-FORMATS = [('mobile', 'mobile-9x16'), ('x', 'x-16x9'), ('nostr', 'nostr-square'), ('nostr', 'nostr-wide'), ('stream', 'stream-banner')]
+FORMATS = [('mobile', 'mobile-9x16'), ('x', 'x-16x9'), ('nostr', 'nostr-square'), ('nostr', 'nostr-wide'), ('stream', 'stream-banner'), ('feed', 'feed-4x5')]
 H = 360  # row height per poster in the sheet
 font = ImageFont.truetype(os.path.join(ROOT, '..', '..', 'resources', 'fonts', 'og', 'Unbounded-Bold.ttf'), 22) if os.path.exists(os.path.join(ROOT, '..', '..', 'resources', 'fonts', 'og', 'Unbounded-Bold.ttf')) else ImageFont.load_default()
 small = ImageFont.load_default()

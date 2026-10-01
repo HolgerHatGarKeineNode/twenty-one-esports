@@ -401,9 +401,91 @@
       ${aoeSettings(lang)}
     </div>`;
 
+  /* ===== Blockfill (motif 15) =====
+     The game page (pages/stacker/⚡play) at hero scale: the well, the next queue, the
+     clock, pieces per second and the chain of 40 cubes. The page's fee-rate legend is left
+     out on purpose: a promo line with "fee" in it reads as a cost to the player, and the
+     league never charges one. The well and
+     the previews are drawn by the app's own renderer on the engine's state (lib/blockfill.js)
+     at one tick of the seed run (lib/blockfill.run.js): tick 1441, 20 of 40 blocks mined,
+     a straight piece over the open right column, four rows ready to be mined. The texts
+     are filled in by paint() once the engine module has loaded. */
+  const BF_TICK = 1441;
+  const bfChain = () => `<div class="bf-cubes">${Array.from({ length: 40 }, () => '<i></i>').join('')}</div>`;
+  H.blockfill = (lang) => `
+    <div class="h-blockfill">
+      <div class="bf-well" data-paint="well" data-tick="${BF_TICK}"><canvas></canvas></div>
+      <div class="bf-side">
+        <div class="bf-next"><span class="lb">${K.esc(U('bfNext', lang))}</span><div class="q">${[0, 1, 2, 3, 4].map((i) => `<canvas data-paint="next" data-tick="${BF_TICK}" data-i="${i}"></canvas>`).join('')}</div></div>
+        <dl class="bf-hud"><div class="tm"><dt>${K.esc(U('bfTime', lang))}</dt><dd data-fill="time"></dd></div><div class="pp"><dt>${K.esc(U('bfPps', lang))}</dt><dd data-fill="pps"></dd></div></dl>
+        <div class="bf-chain"><span class="ct"><b data-fill="lines"></b><span> / 40</span></span>${bfChain()}</div>
+      </div>
+    </div>`;
+
+  /* ===== Blockfill week board (motif 16, a template) =====
+     "This week's hunt" as the game page shows it, from data/blockfill-week.js
+     (fetch-blockfill-week.mjs reads the public /blockfill page): place, player name,
+     best verified time (ScoreMetric::format). Up to five rows; fewer than three are
+     filled with open, dashed places, the way the chain shows a block not mined yet. */
+  const MON = { en: ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'], de: ['Jan.', 'Feb.', 'März', 'Apr.', 'Mai', 'Juni', 'Juli', 'Aug.', 'Sep.', 'Okt.', 'Nov.', 'Dez.'] };
+  function weekSpan(start, end, lang) {
+    const a = new Date(start + 'T12:00:00Z'), b = new Date(new Date(end + 'T12:00:00Z').getTime() - 864e5); // end is the next Monday 00:00
+    const d = (x) => (lang === 'de' ? `${x.getUTCDate()}. ${MON.de[x.getUTCMonth()]}` : `${x.getUTCDate()} ${MON.en[x.getUTCMonth()]}`);
+    return `${d(a)} – ${d(b)} ${b.getUTCFullYear()}`;
+  }
+  H.bfweek = (lang) => {
+    const W = window.BF_WEEK;
+    if (!W) throw new Error('data/blockfill-week.js not loaded: run src/fetch-blockfill-week.mjs');
+    const rows = W.rows.slice(0, 5);
+    const open = Math.max(0, 3 - rows.length);
+    const row = (r) => `<li class="bw-row${r.place === 1 ? ' p1' : ''}"><span class="pl">${r.place}</span><b class="nm">${K.esc(r.name)}</b><span class="tm">${K.esc(r.time)}</span></li>`;
+    const free = (n) => `<li class="bw-row open"><span class="pl">${n}</span><i class="nm"></i><i class="tm"></i></li>`;
+    return `
+    <div class="h-bfweek">
+      <div class="bw-card ui-card">
+        <div class="bw-head"><b>${K.esc(U('bfHunt', lang))}</b><span>${K.esc(weekSpan(W.start, W.end, lang))}</span></div>
+        <div class="bw-th"><span>#</span><span>${K.esc(U('bfPlayer', lang))}</span><span>${K.esc(U('bfBestTime', lang))}</span></div>
+        <ol class="bw-rows n${rows.length + open}">${rows.map(row).join('')}${Array.from({ length: open }, (_, i) => free(rows.length + i + 1)).join('')}</ol>
+        <p class="bw-foot">${K.esc(U('bfFirstRun', lang))}</p>
+      </div>
+    </div>`;
+  };
+
+  /* Draws every [data-paint] canvas under root with lib/blockfill.js (the app's renderer)
+     and fills the HUD texts. A no-op until the module has loaded; it calls paint() itself. */
+  function paint(root = document) {
+    const BF = window.BF;
+    if (!BF) return;
+    root.querySelectorAll('[data-paint="well"]').forEach((box) => {
+      const tick = +box.dataset.tick;
+      // the cell follows the room the layout gives the well (its height), whole pixels only
+      box.style.width = ''; box.style.height = '';
+      const r = box.getBoundingClientRect();
+      // and at most --wellmax of the hero's width, so the side keeps its room in flat zones
+      const hero0 = box.closest('.hero') || box.parentElement;
+      const maxw = hero0.getBoundingClientRect().width * (parseFloat(getComputedStyle(box).getPropertyValue('--wellmax')) || 1);
+      const cell = Math.max(4, Math.floor(Math.min((r.height - 4) / BF.SHOWN_ROWS, (maxw - 4) / 10)));
+      box.style.height = (cell * BF.SHOWN_ROWS + 4) + 'px'; box.style.width = (cell * 10 + 4) + 'px';
+      const g = BF.paintWell(box.querySelector('canvas'), tick, cell);
+      const hero = box.closest('[class^="h-"]') || root;
+      const fill = (k, v) => hero.querySelectorAll(`[data-fill="${k}"]`).forEach((e) => { e.textContent = v; });
+      fill('time', BF.formatTicks(g.tick));
+      fill('pps', g.tick > 0 ? ((g.pieces * 60) / g.tick).toFixed(2) : '0.00');
+      fill('lines', String(g.lines));
+      hero.querySelectorAll('.bf-cubes i').forEach((c, i) => c.classList.toggle('on', i < g.lines));
+      box.dataset.painted = '1';
+    });
+    root.querySelectorAll('[data-paint="next"]').forEach((c) => {
+      const r = c.parentElement.getBoundingClientRect();
+      const i = +c.dataset.i, w = Math.floor(c.getBoundingClientRect().width), h = Math.floor(c.getBoundingClientRect().height);
+      BF.paintPreview(c, BF.nextPieces(BF.at(+c.dataset.tick))[i] ?? -1, w, h);
+      c.dataset.painted = r.width ? '1' : '';
+    });
+  }
+
   function build(motif, lang) {
     if (!H[motif]) throw new Error('no hero for motif ' + motif);
     return H[motif](lang);
   }
-  window.Heroes = { build, boardHTML, hudTag, av, crest, H, STRIP, stripCol, stripHTML, legendHTML, tvHTML, bigFace, glyphOf, GAME, AOE, COVER, TICK, aoeResult, aoeSettings, aoeTags, aoeHead };
+  window.Heroes = { paint, weekSpan, build, boardHTML, hudTag, av, crest, H, STRIP, stripCol, stripHTML, legendHTML, tvHTML, bigFace, glyphOf, GAME, AOE, COVER, TICK, aoeResult, aoeSettings, aoeTags, aoeHead };
 })();

@@ -406,3 +406,28 @@ yet: **post only once it is live on prod.** The card's strings are the app's (la
 3. (3s) Survive allied, share 1st place — *the lobby's result: four players go out one by one, the link between satsjaeger and hodlqueen lights up, both #1, "Shared place 1: satsjaeger, hodlqueen"*
 4. (3s) Upload the screenshot, the director confirms — *the same result, the steps tick: "Screenshot of the end screen", "reported, waiting for a director", then "decided"*
 5. (3s) esports.einundzwanzig.space — *logo + URL*
+
+---
+
+## Reel 19 — Blockfill
+
+Sources: `facts.md` 80-89. Five beats of 3 s, 18.4 s with the cuts, as every reel, built to
+loop: the last beat empties the well row by row, so its last frame is the first frame's empty
+well. One continuous run of the engine (fact 87), drawn by the app's renderer at 60 ticks per
+second, one tick per video frame: beats 1-2 play its first 7.2 s in real time, beat 3 cuts to
+its last second. The run is the kit's, not a player's, and stands on no board; beat 4 shows
+the week board without names.
+
+**DE**
+1. (3s) Schürfe 40 Blöcke. — *der leere Schacht, die Uhr läuft ab 0:00.00, Steine in ihren Farben stapeln sich, die Vorschau rückt nach*
+2. (3s) Reihe voll, Block geschürft. — *vier Reihen stehen, ein gerader Stein fällt in die freie rechte Spalte, vier Blöcke auf einmal, „+4 Blöcke geschürft“, die Kette zeigt 4 / 40*
+3. (3s) Die Liga spielt jeden gewerteten Lauf nach. — *Schnitt auf die letzte Sekunde: die letzten vier Blöcke, 40 / 40, „40 Blöcke geschürft in 0:35.150“, „Bestätigt: Die Liga hat deinen Lauf zur selben Zeit nachgespielt“*
+4. (3s) Die schnellste Zeit der Woche gewinnt. — *„Die Jagd dieser Woche“: die Regelzeile, drei freie Plätze, „Dein erster geprüfter gewerteter Lauf dieser Woche bringt dich auf die Bestenliste.“*
+5. (3s) esports.einundzwanzig.space/blockfill — *der Schacht leert sich Reihe für Reihe bis zum Start, das Reel beginnt von vorn*
+
+**EN**
+1. (3s) Mine 40 blocks. — *the empty well, the clock runs from 0:00.00, pieces in their colours stack up, the next queue moves on*
+2. (3s) Fill a row, mine a block. — *four rows stand, a straight piece drops into the open right column, four blocks at once, "+4 blocks mined", the chain shows 4 / 40*
+3. (3s) The league replays every ranked run. — *a cut to the last second: the last four blocks, 40 / 40, "40 blocks mined in 0:35.150", "Verified: the league replayed your run to the same time"*
+4. (3s) Fastest this week wins the board. — *"This week's hunt": the rule line, three open places, "Your first verified ranked run this week puts you on the board."*
+5. (3s) esports.einundzwanzig.space/blockfill — *the well empties row by row back to the start, the reel loops*

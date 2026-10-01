@@ -102,6 +102,8 @@ html, body { width: 1080px; height: 1920px; overflow: hidden; background: #000; 
 <script src="../lib/boardgames.data.js"></script>
 <script src="../lib/boardgames.js"></script>
 <script src="../lib/heroes.js"></script>
+<script src="../lib/blockfill.run.js"></script>
+<script type="module" src="../lib/blockfill.js"></script>
 <script>
 'use strict';
 /* ---------- math ---------- */
@@ -1240,6 +1242,112 @@ S.aoe2 = [
   { html: endCard, update: endUpdate },
 ];
 
+/* ===== Blockfill (reel 19) =====
+   One run of the app's engine (lib/blockfill.run.js, accepted by verify.mjs), drawn by the
+   app's renderer (lib/blockfill.js) at one engine tick per video frame (both 60 per second).
+   Beats 1-2 play ticks 0-431 in real time; beat 3 cuts to the last second (the run ends at
+   tick 2109, 0:35.150); beat 4 is the week board without names; beat 5 mines the leftover
+   rows away bottom-up and ends on tick 0 of the run, the reel's first frame: it loops. The
+   HUD texts are the game page's own (ui-strings.js bf*). */
+const BFX = { cell: 46 };
+const bfHud = (l) => `<div class="bf-side" style="position:absolute;left:500px;top:28px;width:452px;bottom:28px;display:grid;grid-template-rows:auto auto auto minmax(0,1fr) auto;row-gap:36px">
+    <div style="display:grid;row-gap:12px"><span class="lbl" style="font-weight:700">${E(UI('bfNext', l))}</span>
+      <div style="display:flex;gap:10px;align-items:end">${[0, 1, 2, 3, 4].map((i) => `<canvas data-nx="${i}" style="display:block;background:var(--card)"></canvas>`).join('')}</div></div>
+    <div style="display:grid;row-gap:8px"><span class="lbl">${E(UI('bfTime', l))}</span><b data-time style="font:800 76px/1 var(--disp);font-variant-numeric:tabular-nums;white-space:nowrap">0:00.00</b></div>
+    <div style="display:grid;row-gap:8px"><span class="lbl">${E(UI('bfPps', l))}</span><b data-pps style="font:800 44px/1 var(--disp);font-variant-numeric:tabular-nums">0.00</b></div>
+    <div data-tag style="align-self:end;display:grid;row-gap:4px;font:700 28px/1.2 var(--mono);color:var(--btc);opacity:0"><b data-tagn style="font:800 64px/1 var(--disp);color:var(--ink)">+4</b><span>${E(UI('bfMined', l))}</span></div>
+    <div style="display:grid;row-gap:14px"><span style="font:700 36px/1 var(--mono);white-space:nowrap"><b data-lines style="font:800 44px/1 var(--disp)">0</b><span class="dim" style="font-weight:500"> / 40</span></span>
+      <div data-cubes style="display:grid;grid-template-columns:repeat(10,38px);gap:6px">${Array.from({ length: 40 }, () => '<i style="display:block;width:38px;height:38px;border:2px dashed #63636A"></i>').join('')}</div></div>
+  </div>`;
+const bfWell = () => `<div data-well style="position:absolute;left:12px;top:28px;width:${BFX.cell * 10 + 4}px;height:${BFX.cell * 22 + 4}px;border:2px solid #24242B;background:#0E0E11;box-shadow:-12px -12px 0 #141418"><canvas style="display:block"></canvas></div>`;
+function bfDraw(root, tick, flash) {
+  const BF = window.BF;
+  const g = BF.paintWell(root.querySelector('[data-well] canvas'), tick, BFX.cell, flash ? { flash } : {});
+  const next = BF.nextPieces(g);
+  root.querySelectorAll('[data-nx]').forEach((c) => { const i = +c.dataset.nx; BF.paintPreview(c, next[i] ?? -1, i ? 78 : 96, i ? 60 : 76); });
+  const set = (sel, v) => { const e = root.querySelector(sel); if (e) e.textContent = v; };
+  set('[data-time]', BF.formatTicks(g.tick));
+  set('[data-pps]', g.tick > 0 ? ((g.pieces * 60) / g.tick).toFixed(2) : '0.00');
+  set('[data-lines]', String(g.lines));
+  root.querySelectorAll('[data-cubes] i').forEach((c, i) => { const on = i < g.lines; c.style.background = on ? 'var(--btc)' : 'none'; c.style.borderColor = on ? 'var(--btc)' : '#63636A'; c.style.borderStyle = on ? 'solid' : 'dashed'; });
+  // the page's "+N blocks mined" beside the well: from the first clear on, the last clear's count
+  const last = BF.RUN.clears.filter((c) => c[0] < tick).pop();
+  const tag = root.querySelector('[data-tag]');
+  if (tag) { tag.style.opacity = last ? 1 : 0; if (last) root.querySelector('[data-tagn]').textContent = '+' + last[1]; }
+  return g;
+}
+const BF_LAST = () => window.BF_RUN.ticks;
+S.blockfill = [
+  { html: (l) => `<div class="bfr" style="position:absolute;inset:0">${bfWell()}${bfHud(l)}</div>`,
+    update(root, t) { bfDraw(root, Math.round(t * 60)); } },
+  { html: (l) => `<div class="bfr" style="position:absolute;inset:0">${bfWell()}${bfHud(l)}</div>`,
+    // the run goes on where beat 1 stopped
+    update(root, t) { bfDraw(root, Math.round((BEATS[0].len + t) * 60)); } },
+  { html: (l) => `<div class="bfr" style="position:absolute;inset:0">${bfWell()}${bfHud(l)}
+      <div data-res class="card" style="position:absolute;left:500px;top:400px;width:452px;padding:32px;display:grid;row-gap:16px;opacity:0">
+        <span class="lbl">${E(UI('bfMinedIn', l))}</span>
+        <b data-rt style="font:800 72px/1 var(--disp);font-variant-numeric:tabular-nums;white-space:nowrap"></b>
+        <span data-ok style="font:700 26px/1.4 var(--mono);color:var(--win);opacity:0">${E(UI('bfVerified', l))}</span>
+      </div></div>`,
+    update(root, t) {
+      // the last second of the run, in real time, to its finish at BF_LAST()
+      const tick = Math.min(BF_LAST(), BF_LAST() - 60 + Math.round(t * 60));
+      // the game stops at its finish, the flash of the last four blocks runs on in real time (25.2 ticks)
+      const since = (t - 1.0) * 60;
+      bfDraw(root, tick, since >= 0 ? { mined: 4, flash: Math.max(0, 1 - since / 25.2) } : null);
+      const p = eo(seg(t, 1.15, 1.5));
+      const res = root.querySelector('[data-res]');
+      res.style.opacity = p; res.style.transform = `translateY(${(1 - p) * 40}px)`;
+      root.querySelector('[data-rt]').textContent = window.BF.formatTicks(BF_LAST(), 3);
+      // the clock and pps step back under the result card
+      root.querySelectorAll('.bf-side > div:nth-child(2), .bf-side > div:nth-child(3), .bf-side > div:nth-child(4)').forEach((e) => { e.style.opacity = 1 - p; });
+      root.querySelector('[data-ok]').style.opacity = eo(seg(t, 1.9, 2.2));
+    } },
+  { html: (l) => `<div class="bfr" style="position:absolute;inset:0">${bfWell()}
+      <div class="center" style="position:absolute"><div data-card class="card cube" style="width:900px;padding:44px;display:grid;row-gap:28px;--d:28px">
+        <b style="font:800 52px/1.1 var(--disp)">${E(UI('bfHunt', l))}</b>
+        <span class="muted" style="font:500 26px/1.5 var(--mono)">${E(UI('bfWeekRules', l))}</span>
+        <div style="display:grid;row-gap:14px">${[1, 2, 3].map((n) => `<div data-slot style="display:grid;grid-template-columns:72px 1fr 180px;column-gap:20px;align-items:center;padding:22px 24px;border:3px dashed #63636A"><b style="font:800 40px/1 var(--disp);color:var(--ink-3)">${n}</b><i style="display:block;height:16px;background:var(--hairline)"></i><i style="display:block;height:16px;background:var(--hairline)"></i></div>`).join('')}</div>
+        <span style="font:700 28px/1.4 var(--mono);color:var(--btc)">${E(UI('bfFirstRun', l))}</span>
+      </div></div></div>`,
+    update(root, t) {
+      // the finished well stays behind the board, dimmed
+      const w = root.querySelector('[data-well]');
+      window.BF.paintWell(w.querySelector('canvas'), BF_LAST(), BFX.cell, { flash: { mined: 0, flash: 0 } });
+      w.style.opacity = 0.22;
+      cardIn(root, t);
+      root.querySelectorAll('[data-slot]').forEach((e, i) => { const p = back(seg(t, 0.6 + i * 0.25, 1.0 + i * 0.25)); e.style.opacity = clamp(p * 1.5); e.style.transform = `translateX(${(1 - p) * 80}px)`; });
+    } },
+  { html: (l) => `<div class="bfr" style="position:absolute;inset:0">${bfWell()}
+      <div style="position:absolute;left:500px;top:28px;width:452px;bottom:28px;display:grid;align-content:center;justify-items:center;row-gap:56px">
+        <div data-mark class="cube" style="width:240px;height:240px;background:var(--btc);color:var(--on-btc);display:grid;place-items:center;font:900 150px/1 var(--disp);letter-spacing:-.08em;--cube-face:var(--btc);--d:40px">21</div>
+        <div style="font:800 52px/1 var(--disp);text-align:center">TWENTY ONE<small style="display:block;font:500 28px/1.4 var(--mono);color:var(--ink-2);margin-top:12px">esports</small></div>
+        <b style="font:800 44px/1 var(--disp);color:var(--btc)">Blockfill</b>
+      </div></div>`,
+    // no camera push on the loop's last beat: its last frame matches the first one at scale 1
+    push: 0,
+    update(root, t, len) {
+      const BF = window.BF, cv = root.querySelector('[data-well] canvas');
+      const m = root.querySelector('[data-mark]'), p = back(seg(t, 0, 0.5));
+      m.style.transform = `scale(${0.4 + 0.6 * p}) rotate(${(1 - p) * -8}deg)`;
+      // the last 0.8 s: tick 0 of the run, exactly the reel's first frame
+      if (t >= len - 0.8) { BF.paintWell(cv, 0, BFX.cell); return; }
+      // before that, the leftover rows are mined away bottom-up, one after another, each with
+      // the renderer's own flash on the bottom row (a board drawn by drawWell, no piece moving)
+      const end = BF.at(BF_LAST());
+      const rows = [];
+      for (let y = 0; y < 24; y++) { const r = end.board.slice(y * 10, y * 10 + 10); if (r.some((v) => v)) rows.push(r); }
+      const n = rows.length, x = clamp((t - 0.3) / (len - 1.4)) * (n + 1), k = Math.min(n, Math.floor(x));
+      const board = new Uint8Array(240);
+      rows.slice(0, n - k).forEach((r, i) => board.set(r, (24 - (n - k) + i) * 10));
+      const flash = k > 0 ? Math.max(0, 1 - (x - k) * 1.5) : 0;
+      const r = window.devicePixelRatio || 1;
+      cv.width = BFX.cell * 10 * r; cv.height = BFX.cell * 22 * r; cv.style.width = BFX.cell * 10 + 'px'; cv.style.height = BFX.cell * 22 + 'px';
+      const ctx = cv.getContext('2d'); ctx.setTransform(r, 0, 0, r, 0, 0);
+      BF.drawWell(ctx, { board, current: null, finished: true, toppedOut: false }, { cell: BFX.cell, mined: flash > 0 ? 1 : 0, flash });
+    } },
+];
+
 /* ---------- timeline ---------- */
 let BEATS = [], DUR = 0;
 function fitCaption(el) {
@@ -1266,11 +1374,13 @@ function init() {
   DUR = at;
   const scenes = document.getElementById('scenes'), capbox = document.getElementById('capbox');
   scenes.innerHTML = BEATS.map((b) => `<section class="scene" data-beat="${b.i}">${b.scene.html(lang)}</section>`).join('');
-  capbox.innerHTML = BEATS.map((b, i) => i === BEATS.length - 1 && /^[\w.-]+\.[a-z]{2,}$/i.test(b.text)
+  capbox.innerHTML = BEATS.map((b, i) => i === BEATS.length - 1 && /^[\w.-]+\.[a-z]{2,}(\/[\w-]+)?$/i.test(b.text)
     ? `<div class="caption url" data-beat="${b.i}"><span class="slab">${E(b.text)}</span></div>`
     : `<h1 class="caption" data-beat="${b.i}">${Kit.words(b.text)}</h1>`).join('');
   document.getElementById('prog').innerHTML = BEATS.map(() => '<i><b></b></i>').join('');
   document.getElementById('fx').innerHTML = [0, 1, 2, 3, 4, 5].map(() => '<div class="band"></div>').join('') + '<div class="sweep"></div>';
+  // a URL with a path is longer than the plain domain: its slab steps down to stay in the frame (0.6 em per mono glyph)
+  capbox.querySelectorAll('.caption.url').forEach((c) => { const n = c.textContent.trim().length; c.style.fontSize = Math.min(56, Math.floor(940 / (n * 0.6 + 1.2))) + 'px'; });
   // fit captions while visible
   capbox.querySelectorAll('h1.caption').forEach((c) => { c.classList.add('on'); fitCaption(c); c.classList.remove('on'); });
   window.__lang = lang;
@@ -1288,7 +1398,7 @@ function frame(u) {
   b.scene.update(root, t, b.len, window.__lang);
   // camera push
   const g = t < 0.24 && i > 0 ? 1 - t / 0.24 : 0;
-  document.getElementById('scenes').style.transform = `scale(${1 + 0.035 * p}) translateX(${g ? (hash(i * 7 + Math.floor(t * 60)) - 0.5) * 40 * g : 0}px)`;
+  document.getElementById('scenes').style.transform = `scale(${1 + 0.035 * p * (b.scene.push ?? 1)}) translateX(${g ? (hash(i * 7 + Math.floor(t * 60)) - 0.5) * 40 * g : 0}px)`;
   // caption slam + chroma
   const cap = document.querySelector(`.caption[data-beat="${i}"]`);
   const s = eo(t / 0.2), ch = 1 - eo(t / 0.35);
