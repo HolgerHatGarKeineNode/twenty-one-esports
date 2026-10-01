@@ -8,6 +8,12 @@ use App\Games\ScoreGame;
 use App\Models\Rating;
 use App\Models\ScoreRun;
 use App\Models\User;
+use App\Support\TwentyOne\Stream\MempoolLayout;
+use App\Support\TwentyOne\Stream\MempoolSlides;
+use App\Support\TwentyOne\Stream\RotationPlanner;
+use App\Support\TwentyOne\Stream\SceneRenderer;
+use App\Support\TwentyOne\Stream\SceneSource;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Route;
 use Tests\Support\FakeGame;
 use Tests\Support\FakeScoreGame;
@@ -166,6 +172,22 @@ test('the game filter on /matches offers every game', function () {
     preg_match_all('#data-test="game-([a-z0-9-]+)"#', $html, $shown);
 
     expect(gameSurfacesMissing(array_values(array_diff($shown[1], ['all', 'filter-select']))))->toBe([]);
+});
+
+test('the stream\'s mempool slide shows a score game added later, with its name in the legend', function () {
+    // Only the made-up game has an attempt: the slide shows at most two a side (MempoolSlides::ATTEMPTS).
+    ScoreRun::query()->create([
+        'user_id' => User::factory()->create(['name' => 'Sprint Pleb'])->id, 'game' => FakeScoreGame::SLUG, 'mode' => FakeScoreGame::MODE, 'course' => FakeScoreGame::MODE,
+        'value' => 15_966, 'unit' => 'points', 'source' => ScoreRun::MANUAL, 'achieved_at' => now()->subHour(), 'verified_at' => now()->subMinutes(30),
+    ]);
+    Cache::forget(MempoolSlides::CACHE_KEY);
+
+    $data = app(MempoolSlides::class)->all();
+    $svg = SceneRenderer::fromConfig()->svg([...app(SceneSource::class)->rotation(MempoolSlides::SCENE, null, [], 0, 0, []), 'viewers' => null], RotationPlanner::VIEWS[MempoolSlides::SCENE]);
+
+    expect(array_column($data['finished'], 'slug'))->toContain(FakeScoreGame::SLUG)
+        ->and(array_column(MempoolLayout::layout($data)['legend'], 'name'))->toContain('Pixel Sprint')
+        ->and($svg)->toContain('>Pixel Sprint<', '>Sprint Pleb<');
 });
 
 test('the sitemap has a page of every game', function () {

@@ -30,7 +30,10 @@ use Throwable;
 /**
  * The data of the mempool slide (m1), read from the same sources as the
  * mempool strip on /matches: MempoolStrip::build() for the cubes (every
- * game, casual and rated, played and running), the season chain's
+ * game, casual and rated, played and running, and the highscore attempts of
+ * every score game: a verified run played, a run still to confirm waiting,
+ * at most ATTEMPTS a side so the matches keep the other places, and on the
+ * waiting side only after every running match), the season chain's
  * attestations for the blocks. The app classes in App\Support\Matches are
  * read, never changed; this class only reshapes their output for a 1280x720
  * still.
@@ -68,6 +71,9 @@ class MempoolSlides
 
     /** Places the running side keeps while there are that many running games. */
     public const RUNNING = 2;
+
+    /** Highscore attempts a side at most (ScoreAttempts): the matches keep the other places. */
+    public const ATTEMPTS = 2;
 
     public function __construct(private StreamImages $images) {}
 
@@ -120,14 +126,16 @@ class MempoolSlides
         App::setLocale('en');
 
         try {
-            $strip = MempoolStrip::build();
+            $strip = MempoolStrip::build(runs: true, runsPerSide: self::ATTEMPTS);
             $season = Seasons::live();
             $outcomes = $this->outcomes($strip['finished']);
             $finished = array_values(array_filter($strip['finished'], fn (array $cube): bool => ! in_array($cube['key'], $outcomes['void'], true)));
             $blocks = $season === null ? [] : $this->blocks($season->id);
             $left = $season === null ? count($finished) : count($blocks);
+            // A game on now goes before a run that only waits for its check: an attempt never pushes a running match out.
+            $waiting = [...array_filter($strip['running'], fn (array $cube): bool => ! self::isAttempt($cube)), ...array_filter($strip['running'], self::isAttempt(...))];
             // The running side keeps RUNNING places; what the other side leaves free it may use too.
-            $running = array_slice($strip['running'], 0, max(self::RUNNING, self::COLUMNS - $left));
+            $running = array_slice($waiting, 0, max(self::RUNNING, self::COLUMNS - $left));
             // Without a running game the right side is one open cube (MempoolLayout), so it keeps a place too.
             $keep = self::COLUMNS - max(1, count($running));
             $finished = array_slice($finished, max(0, count($finished) - $keep));
@@ -144,6 +152,16 @@ class MempoolSlides
         } finally {
             App::setLocale($locale);
         }
+    }
+
+    /**
+     * Whether a strip cube is a highscore attempt (ScoreAttempts::key()), not a match.
+     *
+     * @param  array<string, mixed>  $cube
+     */
+    private static function isAttempt(array $cube): bool
+    {
+        return str_starts_with((string) $cube['key'], 'run-') || str_starts_with((string) $cube['key'], 'score-');
     }
 
     /**

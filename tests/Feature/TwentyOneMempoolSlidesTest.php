@@ -12,7 +12,9 @@ use App\Enums\BoardGameStatus;
 use App\Enums\ChessEndReason;
 use App\Enums\SeriesResolution;
 use App\Enums\SeriesStatus;
+use App\Enums\StackerRunStatus;
 use App\Enums\TournamentFormat;
+use App\Games\Blockfill;
 use App\Games\Checkers;
 use App\Games\GameRegistry;
 use App\Games\NineMensMorris;
@@ -23,6 +25,7 @@ use App\Models\Season;
 use App\Models\SeasonAttestation;
 use App\Models\SeasonBlockVoid;
 use App\Models\SeriesMatch;
+use App\Models\StackerRun;
 use App\Models\User;
 use App\Support\TwentyOne\Stream\MempoolLayout;
 use App\Support\TwentyOne\Stream\MempoolSlides;
@@ -32,6 +35,7 @@ use App\Support\TwentyOne\Stream\SceneSource;
 use Illuminate\Support\Facades\App;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
+use Tests\Support\BlockfillOn;
 use Tests\Support\CheckersGame;
 use Tests\Support\NineMensMorrisOn;
 
@@ -278,4 +282,93 @@ test('the slide reads a fixed number of queries for any number of games and bloc
         // Four mined, three shown: two places stay with the running games.
         ->and(count(app(MempoolSlides::class)->read()['blocks']))->toBe(3)
         ->and($cached)->toBe(0);
+});
+
+test('a verified Blockfill run is a played cube on the slide: the player\'s face and name, the time and the game', function () {
+    BlockfillOn::play();
+    $this->freezeTime();
+    $ben = User::factory()->create(['name' => 'Ben Stack', 'gamer_tags' => ['steam' => 'STEAM-SECRET-BEN']]);
+    // 5:16.500 in ticks of 1/60 s.
+    StackerRun::factory()->verified(18990)->create(['user_id' => $ben->id]);
+    ChessGame::factory()->finished('1-0')->create(['ended_at' => now()->subMinutes(5)]);
+
+    $data = app(MempoolSlides::class)->read();
+    $svg = mempoolSlide();
+    $run = collect($data['finished'])->firstWhere('slug', Blockfill::SLUG);
+
+    expect(array_column($data['finished'], 'slug'))->toBe(['chess', Blockfill::SLUG])
+        ->and($run['state'])->toBe('fin')
+        ->and($run['score'])->toBe('5:16.500')
+        ->and(array_column($run['sides'], 'name'))->toBe(['Ben Stack'])
+        ->and($svg)->toContain('>5:16.500<', '>Ben Stack<', '>Blockfill<', '>40 blocks<')
+        // One player, nobody beaten; nothing of the player but face and name.
+        ->not->toContain('beat Ben')
+        ->not->toContain('STEAM-SECRET');
+});
+
+test('a run still to confirm waits on the slide without its claimed time', function () {
+    BlockfillOn::play();
+    StackerRun::factory()->create(['status' => StackerRunStatus::Verifying, 'ticks' => 18990, 'submitted_at' => now(), 'user_id' => User::factory()->create(['name' => 'Wanda'])->id]);
+
+    $data = app(MempoolSlides::class)->read();
+    $svg = mempoolSlide();
+
+    expect(array_column($data['running'], 'slug'))->toBe([Blockfill::SLUG])
+        ->and($data['running'][0]['state'])->toBe('live')
+        ->and($data['running'][0]['when'])->toBe('to confirm')
+        ->and($svg)->toContain('>to confirm<', '>pending<', '>Wanda<')
+        ->not->toContain('5:16.500');
+});
+
+test('at most two attempts a side, so the matches keep the other places', function () {
+    BlockfillOn::play();
+    $this->freezeTime();
+    ChessGame::factory()->count(3)->finished('1-0')->sequence(fn ($sequence) => ['ended_at' => now()->subHours(1 + $sequence->index)])->create();
+    ChessGame::factory()->count(2)->sequence(fn ($sequence) => ['ply' => 4 + $sequence->index, 'updated_at' => now()->subHours(1 + $sequence->index)])->create();
+
+    // Newer than every match: without a cap they would fill both sides.
+    foreach (range(1, 4) as $i) {
+        StackerRun::factory()->verified(18990 + $i)->create(['verified_at' => now()->subMinutes($i)]);
+        StackerRun::factory()->create(['status' => StackerRunStatus::Pending, 'ticks' => 18990, 'submitted_at' => now()->subMinutes($i)]);
+    }
+
+    $data = app(MempoolSlides::class)->read();
+    $slugs = [...array_column($data['finished'], 'slug'), ...array_column($data['running'], 'slug')];
+
+    expect(array_count_values(array_column($data['finished'], 'slug'))[Blockfill::SLUG] ?? 0)->toBe(MempoolSlides::ATTEMPTS)
+        ->and(array_count_values(array_column($data['running'], 'slug'))[Blockfill::SLUG] ?? 0)->toBeLessThanOrEqual(MempoolSlides::ATTEMPTS)
+        // A running match goes before a run that only waits for its check.
+        ->and(array_column($data['running'], 'slug'))->toBe(['chess', 'chess'])
+        ->and(array_column($data['finished'], 'slug'))->toContain('chess')
+        ->and(count($slugs))->toBe(MempoolSlides::COLUMNS);
+});
+
+test('the legend names the games on the slide in the registry\'s order, each in its registry colour and with its own logo', function () {
+    BlockfillOn::play();
+    $this->freezeTime();
+    StackerRun::factory()->verified(18990)->create(['verified_at' => now()->subMinutes(2)]);
+    ChessGame::factory()->finished('1-0')->create(['ended_at' => now()->subMinute()]);
+
+    $layout = MempoolLayout::layout(app(MempoolSlides::class)->framed(app(MempoolSlides::class)->read()));
+    $order = array_keys(app(GameRegistry::class)->all());
+    $blockfill = collect($layout['cubes'])->firstWhere('icon', 'grid');
+
+    expect(array_column($layout['legend'], 'name'))->toBe(array_search('chess', $order, true) < array_search(Blockfill::SLUG, $order, true) ? ['Chess', 'Blockfill'] : ['Blockfill', 'Chess'])
+        // Blockfill's registry colour is the league's orange (GameAssets 'var(--color-btc)').
+        ->and(collect($layout['legend'])->firstWhere('name', 'Blockfill')['colour'])->toBe('#F7931A')
+        ->and($blockfill['c'][0])->toBe('#F7931A')
+        // Its logo is the site's grid icon, not the trophy that stands in for an unknown one.
+        ->and(MempoolLayout::logo('grid'))->toContain('<rect x="3" y="3" width="8" height="8"')
+        ->and(MempoolLayout::logo('no-such-icon'))->toBe(MempoolLayout::logo('trophy'));
+});
+
+test('the legend keeps every game on the slide, however long their names, inside the line', function () {
+    $names = ['Age of Empires II', 'Nine Men\'s Morris', 'EA Sports FC 26', 'Rocket League', 'Blockfill'];
+    $cubes = array_map(fn (string $name, int $i): array => ['slug' => 'game-'.$i, 'name' => $name, 'game' => 'other', 'state' => 'fin', 'score' => '1-0', 'mode' => 'Mode', 'when' => '', 'sides' => []], $names, array_keys($names));
+
+    $legend = MempoolLayout::layout(['mode' => 'casual', 'finished' => array_slice($cubes, 0, 4), 'running' => array_slice($cubes, 4)])['legend'];
+    $last = end($legend);
+
+    expect(array_column($legend, 'name'))->toBe($names)
+        ->and($last['textX'] + mb_strlen($last['name']) * 0.6 * $last['size'])->toBeLessThanOrEqual(1240);
 });
