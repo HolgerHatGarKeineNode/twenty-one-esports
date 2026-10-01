@@ -21,6 +21,7 @@ use App\Support\Nostr\NostrKeys;
 use App\Support\Nostr\RejectedEvent;
 use App\Support\Nostr\SignedEventGate;
 use App\Support\Rating\RankTiers;
+use App\Support\Stacker\BlockfillMoments;
 use App\Support\Tournaments\TournamentChampion;
 use App\Support\Tournaments\TournamentSignups;
 use Illuminate\Support\Facades\DB;
@@ -45,7 +46,11 @@ use Illuminate\Support\Facades\RateLimiter;
  * - "I'm in" (P46): the player's entry in a tournament that is open for
  *   sign-up or waits for its draw, with the tournament's invite card, the
  *   player's personal tournament link (P47, the invite that credits them)
- *   and the tournament's `31923` quoted.
+ *   and the tournament's `31923` quoted;
+ * - a Blockfill moment (a verified run that is a personal best, a new first
+ *   place of its week or holds the player's week place,
+ *   {@see BlockfillMoments}), with its own share card and the moment's page
+ *   as the link, last.
  *
  * At most `esports.badges.shares_per_hour` per player: the league relays carry them.
  */
@@ -56,7 +61,7 @@ final class SharePosts
     public const FORMAT = 'wide';
 
     /** The moments a share post can be about. */
-    public const TYPES = ['rank-up', 'block', 'tournament', 'wrapped', 'game', 'series', 'signup'];
+    public const TYPES = ['rank-up', 'block', 'tournament', 'wrapped', 'game', 'series', 'signup', 'blockfill'];
 
     /** Opponents one post mentions at most: a team of five, never a whole bracket. */
     public const MAX_MENTIONS = 5;
@@ -75,6 +80,7 @@ final class SharePosts
             'game' => $this->game($user, $id),
             'series' => $this->series($user, $id),
             'signup' => $this->signup($user, $id),
+            'blockfill' => $this->blockfill($user, $id),
             default => null,
         };
 
@@ -186,6 +192,7 @@ final class SharePosts
             'rank-up' => __('Ranked up to :rank in :ladder on TWENTY ONE Esports.', ['rank' => RankTiers::label((string) $f['tier']), 'ladder' => $f['ladder']]),
             'block' => __('Mined block :height on the TWENTY ONE Esports season chain: +:sats sats.', ['height' => $f['height'], 'sats' => ShareCard::sats((int) $f['reward'])]),
             'tournament' => __('Won :tournament on TWENTY ONE Esports.', ['tournament' => $f['tournament']]),
+            'blockfill' => $this->blockfillSentence($f),
             default => __('My :season on TWENTY ONE Esports: :blocks blocks mined, :sats sats.', ['season' => BadgeCopy::season((string) $f['season']), 'blocks' => $f['blocks'], 'sats' => ShareCard::sats((int) $f['sats'])]),
         };
     }
@@ -244,6 +251,51 @@ final class SharePosts
         $season = Season::query()->where('slug', $slug)->first();
 
         return $season !== null && ShareMoments::hasWrapped($season, $user) ? ShareCard::wrapped($season, $user) : null;
+    }
+
+    /* ---------- A Blockfill moment ------------------------------------------------------------------------------ */
+
+    /**
+     * The player's own verified Blockfill run that is a moment: its share
+     * card, and the moment's page as the link (the card is its preview).
+     */
+    private function blockfill(User $user, string $id): ?SharePost
+    {
+        $moments = app(BlockfillMoments::class);
+        $run = $moments->ownedBy($user, $id);
+        $moment = $run === null ? null : $moments->of($run);
+
+        if ($run === null || $moment === null) {
+            return null;
+        }
+
+        $card = ShareCard::blockfill($run, $moment);
+
+        return new SharePost(
+            type: 'blockfill',
+            sentence: $this->sentence($card),
+            cardUrl: $card->url(self::FORMAT),
+            dimensions: ShareCard::FORMATS[self::FORMAT],
+            storyPath: $card->path('story'),
+            link: self::absolute(route('stacker.moment', $run->id, false)),
+        );
+    }
+
+    /**
+     * One line, no `#` (it would be a hashtag): "Place 1", never "#1".
+     *
+     * @param  array<string, mixed>  $f
+     */
+    private function blockfillSentence(array $f): string
+    {
+        $replace = ['time' => BlockfillMoments::time((int) $f['ticks']), 'week' => BlockfillMoments::weekTitle((string) $f['week']), 'place' => (int) $f['place']];
+
+        return match ($f['kind']) {
+            'final' => __('Finished :week in place :place with :time on TWENTY ONE Esports.', $replace),
+            'first' => __('New first place in :week: 40 blocks mined in :time on TWENTY ONE Esports.', $replace),
+            'pb' => __('New personal best in Blockfill: 40 blocks mined in :time on TWENTY ONE Esports.', $replace),
+            default => __('Place :place so far in :week with :time on TWENTY ONE Esports.', $replace),
+        };
     }
 
     /* ---------- P46: a won game or series, "I'm in" --------------------------------------------------------- */

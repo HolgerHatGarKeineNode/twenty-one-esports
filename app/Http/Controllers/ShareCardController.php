@@ -9,6 +9,7 @@ use App\Models\Tournament;
 use App\Models\User;
 use App\Support\Cards\ShareCard;
 use App\Support\Cards\ShareMoments;
+use App\Support\Stacker\BlockfillMoments;
 use App\Support\Tournaments\TournamentChampion;
 use Illuminate\Http\Response;
 use Illuminate\Support\Facades\App;
@@ -18,7 +19,9 @@ use Illuminate\Support\Facades\App;
  * public, no session, no JavaScript, like the invite card. The locale is part
  * of the URL, so a posted card keeps the language of its post. Only moments
  * that happened are drawn: a rank-up version of a badge, a block the player
- * is a winner of, the champion of a finished tournament, a player's season.
+ * is a winner of, the champion of a finished tournament, a player's season,
+ * a verified Blockfill run that is a moment (BlockfillMoments::card(): kept
+ * while Blockfill is off, so a posted note keeps its picture).
  */
 class ShareCardController extends Controller
 {
@@ -67,6 +70,15 @@ class ShareCardController extends Controller
         abort_if($user === null || ! ShareMoments::hasWrapped($season, $user), 404);
 
         return $this->png($locale, fn (): ShareCard => ShareCard::wrapped($season, $user), $format);
+    }
+
+    public function blockfill(string $locale, string $run, string $format, BlockfillMoments $moments): Response
+    {
+        $moment = $moments->card($run);
+        $facts = $moment === null ? null : $moments->of($moment);
+        abort_if($moment === null || $facts === null, 404);
+
+        return $this->png($locale, fn (): ShareCard => ShareCard::blockfill($moment, $facts), $format);
     }
 
     /**

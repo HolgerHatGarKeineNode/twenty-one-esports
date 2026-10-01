@@ -82,7 +82,7 @@ test('the result screen reads its own run\'s status, nobody else\'s', function (
     $issued = $this->actingAs($user)->postJson(route('stacker.runs.issue'))->assertCreated()->json();
     expect($issued['seed'])->toBe(str_repeat('ab', 16));
 
-    $this->getJson(route('stacker.runs.show', $issued['token']))->assertOk()->assertExactJson(['status' => 'issued', 'reason' => null, 'ticks' => null, 'best' => null, 'best_all_time' => null, 'replay' => null]);
+    $this->getJson(route('stacker.runs.show', $issued['token']))->assertOk()->assertExactJson(['status' => 'issued', 'reason' => null, 'ticks' => null, 'best' => null, 'best_all_time' => null, 'replay' => null, 'moment' => null]);
     $this->actingAs(User::factory()->create())->getJson(route('stacker.runs.show', $issued['token']))->assertNotFound();
 });
 

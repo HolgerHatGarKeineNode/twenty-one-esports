@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Enums\StackerRunStatus;
 use App\Models\StackerRun;
 use App\Models\User;
+use App\Support\Stacker\BlockfillMoments;
 use App\Support\Stacker\StackerBusy;
 use App\Support\Stacker\StackerReplays;
 use App\Support\Stacker\StackerRuns;
@@ -72,7 +73,7 @@ class StackerRunController extends Controller
             return $this->gone($submitted);
         }
 
-        return response()->json(['status' => $submitted->status->value, 'reason' => $submitted->reason], 202);
+        return response()->json(['status' => $submitted->status->value, 'reason' => $submitted->reason, 'moment' => $this->moment($submitted)], 202);
     }
 
     /**
@@ -93,7 +94,21 @@ class StackerRunController extends Controller
             'best_all_time' => $runs->best($user),
             // P5: the run's replay page, once the league keeps its replay (verified among the week's fastest, or held)
             'replay' => StackerReplays::watchable($run) && Route::has('stacker.replay') ? route('stacker.replay', $run->id) : null,
+            // A verified run that is a moment of the player's (a personal best, a first place, a week place): the result screen offers to share it
+            'moment' => $this->moment($run),
         ]);
+    }
+
+    /**
+     * The run's id when it is a Blockfill moment of its player, else null.
+     */
+    private function moment(StackerRun $run): ?string
+    {
+        if ($run->status !== StackerRunStatus::Verified) {
+            return null;
+        }
+
+        return app(BlockfillMoments::class)->run($run->id)?->id === $run->id ? (string) $run->id : null;
     }
 
     private function run(Request $request, string $token, StackerRuns $runs): StackerRun

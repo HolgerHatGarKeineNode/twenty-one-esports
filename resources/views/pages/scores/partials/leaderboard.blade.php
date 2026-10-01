@@ -8,11 +8,14 @@
     to the first place leads (null: not shown).
     Blockfill (plan "Blockfill", P5): a row whose replay the viewer may watch links to it
     (App\Support\Stacker\StackerReplays::forStandings(): their own, an ended week's first ten, admins' flagged ones).
+    $shareMoment: on a Blockfill week, the viewer's own run that is a moment (BlockfillMoments::shareableOn()): their row
+    gets the button that opens the share sheet (components/⚡blockfill-share, on the same page).
 --}}
 @php
     $limit ??= null;
     $staff ??= false;
     $beat ??= null;
+    $shareMoment ??= null;
     $rows = $limit === null ? $standings : array_slice($standings, 0, $limit);
     $replays = app(\App\Support\Stacker\StackerReplays::class)->forStandings($rows, auth()->user() instanceof \App\Models\User ? auth()->user() : null);
     $best = collect($standings)->first(fn ($row): bool => $row->place !== null && $row->value !== null)?->value;
@@ -59,6 +62,12 @@
                             @endif
                             @if ($mine)
                                 <span class="inline-flex h-5 shrink-0 items-center rounded-xs bg-btc px-1.5 text-[11px] font-bold text-on-btc">{{ __('You') }}</span>
+                                @if ($shareMoment !== null)
+                                    <button type="button" x-data x-on:click="window.dispatchEvent(new CustomEvent('blockfill-share', { detail: { moment: @js($shareMoment) } }))" data-test="score-row-share"
+                                            class="-my-2 inline-flex size-11 shrink-0 cursor-pointer items-center justify-center rounded-md text-ink-2 hover:text-btc-hi" aria-label="{{ __('Share this moment') }}" title="{{ __('Share this moment') }}">
+                                        <x-icon name="send" :size="16" />
+                                    </button>
+                                @endif
                             @endif
                         </span>
                         @if ($beat !== null && $row->place === 1 && ! $mine)

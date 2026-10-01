@@ -29,3 +29,6 @@ Route::middleware('auth')->group(function () {
     Route::get('stacker/runs/{token}', [StackerRunController::class, 'show'])->where('token', '[A-Za-z0-9]{'.StackerRuns::TOKEN_LENGTH.'}')->middleware('throttle:stacker-status')->name('stacker.runs.show');
     Route::post('stacker/runs/{token}', [StackerRunController::class, 'submit'])->where('token', '[A-Za-z0-9]{'.StackerRuns::TOKEN_LENGTH.'}')->middleware('throttle:stacker-submit')->name('stacker.runs.submit');
 });
+
+// A player's Blockfill moment (a personal best, a new first place of the week, a week place): the page a share post links last; its card is cards.blockfill.
+Route::livewire('scores/blockfill/moment/{run}', 'pages::stacker.moment')->where('run', '[0-9]{1,18}')->name('stacker.moment');
