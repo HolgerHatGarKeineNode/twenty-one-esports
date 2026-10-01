@@ -116,6 +116,8 @@ const HUB_MEASURE = <<<'JS'
  * edge against its card and the list. An ellipsis leaves scrollWidth equal to clientWidth, so only the
  * natural width shows a cut title. `(shrink)`: the title and the modes get the flex values of 9dfb9b55
  * first (title may shrink, modes shrink 100×) — the positive control that this check sees an ellipsis.
+ * Chromium ellipsises at any shortage ("Rocket Leag…" was short by less than half a pixel), so the
+ * tolerance is 0.05 px on widths kept to 0.001 px.
  */
 const HUB_TITLES = <<<'JS'
     (shrink = false) => {
@@ -132,7 +134,7 @@ const HUB_TITLES = <<<'JS'
             const c = card.getBoundingClientRect();
             const out = Math.max(r.right - c.right, r.right - list.right);
             if (shrink) { b.style.cssText = ''; b.nextElementSibling.style.cssText = ''; }
-            return { slug: card.dataset.test.replace('hub-game-', ''), box: Math.round(r.width * 10) / 10, natural: Math.round(natural * 10) / 10, out: Math.round(out) };
+            return { slug: card.dataset.test.replace('hub-game-', ''), box: Math.round(r.width * 1000) / 1000, natural: Math.round(natural * 1000) / 1000, out: Math.round(out) };
         });
     }
     JS;
@@ -146,7 +148,7 @@ const HUB_TITLES = <<<'JS'
 function hubTitlesWrong(array $titles): array
 {
     return array_values(array_map(fn (array $t): string => $t['slug'].' '.$t['box'].'<'.$t['natural'].' out '.$t['out'],
-        array_filter($titles, fn (array $t): bool => $t['natural'] > $t['box'] + 0.5 || $t['out'] > 0)));
+        array_filter($titles, fn (array $t): bool => $t['natural'] > $t['box'] + 0.05 || $t['out'] > 0)));
 }
 
 test('the hub spends its width on one card grid and does not scroll with the 5 games of the registry or 4 games at 1280, 1440 and 1920 px', function () {
@@ -174,9 +176,10 @@ test('the hub spends its width on one card grid and does not scroll with the 5 g
             $m['titles'] = $sizes["{$count}@{$width}"]['titles'] = $page->evaluate(HUB_TITLES);
 
             if ($count === 5 && $width === 1280) {
-                // Positive control: with the flex values of 9dfb9b55 the same check sees the ellipsis.
+                // Positive control: with the flex values of 9dfb9b55 the same check sees both ellipses ("Age of Empires …", "Rocket Leag…").
                 $sizes['control'] = hubTitlesWrong($page->evaluate(HUB_TITLES, true));
-                expect($sizes['control'])->not->toBe([], 'the title check is blind to an ellipsis');
+                expect(array_map(fn (string $wrong): string => strtok($wrong, ' '), $sizes['control']))
+                    ->toContain('age-of-empires-2', 'rocket-league');
             }
             shellShot($page, "shell-player-{$width}-hub-{$count}games");
 
