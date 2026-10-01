@@ -12,6 +12,12 @@
  * during a ranked run aborts it. A mined block (a cleared row) flashes; the
  * flash is drawn over the running game and never holds it up.
  *
+ * Sound (P8, sound.js): effects for what the player does and music that
+ * follows the run, silent until the first pointer or key press. The control
+ * in the page header sets effects and music on/off and their volumes; a
+ * player's choice is saved on the server (saveSound), a guest's in this
+ * browser.
+ *
  * Test environment only: window.__stacker plays a recorded log at once and
  * reports the state hash, so a browser test can compare it with Node.
  */
@@ -21,6 +27,7 @@ import { keyLabel, keyMap, normalizeControls } from './keys.js';
 import { drawPreview, drawWell, SHOWN_ROWS } from './renderer.js';
 import { encodeReplay, REPLAY_VERSION } from './replay.js';
 import { createSession } from './session.js';
+import { createSound, normalizeSound } from './sound.js';
 import { createTicker, formatTicks } from './ticker.js';
 
 const COUNTDOWN_MS = 3000;
@@ -31,6 +38,9 @@ const POLL_MS = 1000;
 const POLL_TRIES = 40;
 const STORE_CONTROLS = 'blockfill.controls';
 const STORE_BEST = 'blockfill.practice.best';
+const STORE_SOUND = 'blockfill.sound';
+/** A player's sound setting is sent this long after the last change. */
+const SAVE_SOUND_MS = 400;
 
 function csrfHeaders() {
     const token = document.querySelector('meta[name="csrf-token"]')?.content;
@@ -125,7 +135,12 @@ document.addEventListener('alpine:init', () => {
             recorded: null,
             holdSubmit: false,
             release: null,
+            sound: null,
+            wire: null,
+            onGesture: null,
+            saveSound: 0,
         };
+        const initialSound = normalizeSound(config.signedIn ? config.sound : (readStored(STORE_SOUND) ?? config.sound));
 
         return {
             t: config.t,
@@ -143,6 +158,7 @@ document.addEventListener('alpine:init', () => {
             // the best of this week (the one a ranked run has to beat) and of all time (shown beside it)
             rankedBest: config.best,
             allTimeBest: config.allTimeBest,
+            sound: initialSound,
 
             init() {
                 trace(config, 'init');
@@ -166,6 +182,16 @@ document.addEventListener('alpine:init', () => {
                 rt.onVisibility = () => this.visibility();
                 rt.onBlur = () => rt.session?.releaseAll();
                 rt.onResize = () => this.layout();
+                // the browser lets a page sound only after a gesture: the first press unlocks it
+                rt.sound = createSound({ settings: this.sound });
+                rt.onGesture = () => rt.sound.unlock();
+                window.addEventListener('pointerdown', rt.onGesture, true);
+                window.addEventListener('keydown', rt.onGesture, true);
+                this.$watch('mode', () => this.scene());
+                this.$watch('lines', () => this.scene());
+                this.$watch('kind', () => this.scene());
+                // pinned like the elements above: $wire from this component, whatever button calls
+                rt.wire = this.$wire;
                 window.addEventListener('keydown', rt.onKeyDown);
                 window.addEventListener('keyup', rt.onKeyUp);
                 window.addEventListener('blur', rt.onBlur);
@@ -183,6 +209,8 @@ document.addEventListener('alpine:init', () => {
                 trace(config, 'destroy');
                 cancelAnimationFrame(rt.frame);
                 this.unlisten(rt);
+                clearTimeout(rt.saveSound);
+                rt.sound?.destroy();
                 if (window.__stacker?.owner === this) {
                     delete window.__stacker;
                 }
@@ -194,6 +222,8 @@ document.addEventListener('alpine:init', () => {
                 window.removeEventListener('blur', runtime.onBlur);
                 window.removeEventListener('resize', runtime.onResize);
                 document.removeEventListener('visibilitychange', runtime.onVisibility);
+                window.removeEventListener('pointerdown', runtime.onGesture, true);
+                window.removeEventListener('keydown', runtime.onGesture, true);
             },
 
             coarse() {
@@ -339,6 +369,7 @@ document.addEventListener('alpine:init', () => {
                 this.mode = 'countdown';
                 this.revealWell();
                 rt.countdownUntil = performance.now() + COUNTDOWN_MS;
+                let beeped = 0;
                 const step = () => {
                     if (id !== rt.runId || this.mode !== 'countdown') {
                         return;
@@ -346,9 +377,14 @@ document.addEventListener('alpine:init', () => {
                     const left = rt.countdownUntil - performance.now();
                     this.countdown = Math.max(1, Math.ceil(left / 1000));
                     if (left <= 0) {
+                        rt.sound.effect('count', 0);
                         then();
 
                         return;
+                    }
+                    if (this.countdown !== beeped) {
+                        beeped = this.countdown;
+                        rt.sound.effect('count', beeped);
                     }
                     setTimeout(step, Math.min(100, left));
                 };
@@ -386,11 +422,35 @@ document.addEventListener('alpine:init', () => {
                     if (outcome && outcome.cleared > 0) {
                         this.mined(outcome.cleared, now);
                     }
+                    if (outcome) {
+                        this.sounds(outcome);
+                    }
                     if (rt.session.over()) {
                         this.finish();
                     }
                 }
                 this.updateHud();
+            },
+
+            /** The effect for one tick, the most telling thing first; the run's end has its own. */
+            sounds(outcome) {
+                if (rt.session.over()) {
+                    return;
+                }
+                if (outcome.cleared >= 4) {
+                    rt.sound.effect('halving');
+                } else if (outcome.cleared > 0) {
+                    rt.sound.effect('mined', outcome.cleared);
+                }
+                if (outcome.dropped) {
+                    rt.sound.effect('drop');
+                } else if (outcome.locked > 0) {
+                    rt.sound.effect('lock');
+                } else if (outcome.rotated) {
+                    rt.sound.effect('rotate');
+                } else if (outcome.moved) {
+                    rt.sound.effect('move');
+                }
             },
 
             mined(count, now) {
@@ -434,6 +494,7 @@ document.addEventListener('alpine:init', () => {
                     })));
                 }
                 const base = { ticks: outcome.ticks, hash: outcome.stateHash, kind: this.kind, lines: outcome.lines };
+                rt.sound.effect(outcome.finished ? 'fanfare' : 'topout');
                 if (!outcome.finished) {
                     this.result = { ...base, status: 'toppedOut' };
 
@@ -538,6 +599,7 @@ document.addEventListener('alpine:init', () => {
             },
 
             visibility() {
+                rt.sound.visibility();
                 if (!document.hidden) {
                     rt.ticker.reset(performance.now());
 
@@ -556,6 +618,38 @@ document.addEventListener('alpine:init', () => {
                 if (!this.signedIn) {
                     writeStored(STORE_CONTROLS, this.controls);
                 }
+            },
+
+            // ---- sound ---------------------------------------------------------
+
+            /** The music follows the page: menu, run, last ten rows. */
+            scene() {
+                rt.sound?.setScene({ mode: this.mode, kind: this.kind, remaining: GOAL_LINES - this.lines });
+            },
+
+            /** Effects or music on/off (a click, so it may start the sound at once). */
+            toggleSound(channel) {
+                const on = `${channel}On`;
+                this.changeSound({ [on]: !this.sound[on] });
+            },
+
+            /** A volume from its slider; moving it up from silence switches the channel on. */
+            setVolume(channel, value) {
+                const volume = Math.round(Number(value));
+                this.changeSound(volume > 0 ? { [channel]: volume, [`${channel}On`]: true } : { [channel]: volume });
+            },
+
+            changeSound(change) {
+                this.sound = rt.sound.configure({ ...this.sound, ...change });
+                rt.sound.unlock();
+                if (!this.signedIn) {
+                    writeStored(STORE_SOUND, this.sound);
+
+                    return;
+                }
+                clearTimeout(rt.saveSound);
+                const sound = { ...this.sound };
+                rt.saveSound = setTimeout(() => rt.wire.saveSound(sound), SAVE_SOUND_MS);
             },
 
             keyText(action) {
@@ -694,6 +788,9 @@ document.addEventListener('alpine:init', () => {
                         };
                     },
                     run,
+                    sound() {
+                        return rt.sound?.debug() ?? null;
+                    },
                 };
             },
         };

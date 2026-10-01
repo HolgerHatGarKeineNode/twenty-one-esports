@@ -58,6 +58,7 @@ use Illuminate\Support\Str;
  * @property array<string, mixed>|null $chess_settings see {@see ChessSettings}; null = all defaults
  * @property array<string, array{platform: string, crossplay: bool}>|null $casual_settings last casual 1v1 choice per game (App\Support\Series\CasualLobby)
  * @property array<string, mixed>|null $stacker_settings Blockfill handling and keys, see {@see StackerSettings}; null = defaults
+ * @property array<string, mixed>|null $stacker_sound Blockfill effects and music, see {@see StackerSettings::sound()}; null = defaults
  * @property Carbon|null $created_at
  * @property Carbon|null $updated_at
  * @property-read ClanMember|null $clanMember
@@ -121,6 +122,7 @@ class User extends Authenticatable
             'chess_settings' => 'array',
             'casual_settings' => 'array',
             'stacker_settings' => 'array',
+            'stacker_sound' => 'array',
         ];
     }
 

@@ -88,3 +88,48 @@ test('a player saves handling and keys on the gaming page; a key used twice is r
     $page->call('resetStacker');
     expect($user->refresh()->stacker_settings)->toBeNull();
 });
+
+test('sound (P8): a player saves effects and music from the game page, volumes 0-100; a guest gets the defaults', function () {
+    BlockfillOn::play();
+
+    // a guest: effects on, music off, nothing to save
+    expect(Livewire::test('pages::stacker.play')->instance()->config()['sound'])
+        ->toBe(['effects' => 70, 'music' => 50, 'effectsOn' => true, 'musicOn' => false]);
+    Livewire::test('pages::stacker.play')->call('saveSound', ['effects' => 10, 'music' => 10, 'effectsOn' => true, 'musicOn' => true])->assertForbidden();
+
+    $user = User::factory()->create(['stacker_settings' => ['das' => 7, 'arr' => 0, 'sdf' => 41, 'keys' => StackerSettings::DEFAULT_KEYS]]);
+    $page = Livewire::actingAs($user)->test('pages::stacker.play');
+
+    $page->call('saveSound', ['effects' => 0, 'music' => 100, 'effectsOn' => false, 'musicOn' => true])->assertHasNoErrors()->assertOk();
+    expect($user->refresh()->stacker_sound)->toBe(['effects' => 0, 'music' => 100, 'effectsOn' => false, 'musicOn' => true])
+        // its own column: the controls stay as they were
+        ->and($user->stacker_settings['das'])->toBe(7)
+        ->and(Livewire::actingAs($user)->test('pages::stacker.play')->instance()->config()['sound'])->toBe(['effects' => 0, 'music' => 100, 'effectsOn' => false, 'musicOn' => true]);
+
+    // out of range, not a number, not a strict boolean, a missing or stray key: refused, nothing saved
+    foreach ([
+        ['effects' => 101, 'music' => 50, 'effectsOn' => true, 'musicOn' => true],
+        ['effects' => 50, 'music' => -1, 'effectsOn' => true, 'musicOn' => true],
+        ['effects' => 'loud', 'music' => 50, 'effectsOn' => true, 'musicOn' => true],
+        ['effects' => 50, 'music' => 50, 'effectsOn' => 'yes', 'musicOn' => true],
+        ['effects' => 50, 'music' => 50, 'effectsOn' => true],
+        ['effects' => 50, 'music' => 50, 'effectsOn' => true, 'musicOn' => true, 'das' => 1],
+    ] as $broken) {
+        $page->call('saveSound', $broken)->assertHasErrors();
+    }
+    expect($user->refresh()->stacker_sound)->toBe(['effects' => 0, 'music' => 100, 'effectsOn' => false, 'musicOn' => true]);
+
+    // the edges are fine
+    $page->call('saveSound', ['effects' => 100, 'music' => 0, 'effectsOn' => true, 'musicOn' => false])->assertHasNoErrors();
+    expect($user->refresh()->stacker_sound)->toBe(['effects' => 100, 'music' => 0, 'effectsOn' => true, 'musicOn' => false]);
+
+    // the gaming page writes the controls as a whole and leaves the sound alone
+    Livewire::actingAs($user)->test('pages::settings.gaming')->set('stacker.das', 5)->call('saveStacker')->assertHasNoErrors();
+    expect($user->refresh()->stacker_sound)->toBe(['effects' => 100, 'music' => 0, 'effectsOn' => true, 'musicOn' => false]);
+    Livewire::actingAs($user)->test('pages::settings.gaming')->call('resetStacker');
+    expect($user->refresh()->stacker_sound)->not->toBeNull();
+
+    // a broken saved value falls back field by field
+    expect(StackerSettings::normalizeSound(['effects' => 30, 'music' => 300, 'effectsOn' => 1, 'musicOn' => true]))
+        ->toBe(['effects' => 30, 'music' => 50, 'effectsOn' => true, 'musicOn' => true]);
+});
