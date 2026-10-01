@@ -5997,5 +5997,13 @@
     "unconfirmed": "unbestätigt",
     "confirmed": "bestätigt",
     "No runs yet": "Noch keine Läufe",
-    "The first run opens the list.": "Der erste Lauf eröffnet die Liste."
+    "The first run opens the list.": "Der erste Lauf eröffnet die Liste.",
+    "#:place of :count": "#:place von :count",
+    "Personal best": "Persönliche Bestmarke",
+    ":count verified attempt|:count verified attempts": ":count bestätigter Versuch|:count bestätigte Versuche",
+    "Latest verified attempts": "Letzte bestätigte Versuche",
+    "Score games": "Score-Spiele",
+    "Best value": "Bester Wert",
+    "Points per place": "Punkte je Platz",
+    "Everyone plays alone, as often as they like, for the best value inside a leaderboard's window. No series and no Elo: the places of every finished leaderboard score points on the game's points ladder.": "Alle spielen allein, so oft sie wollen, um den besten Wert im Zeitfenster eines Leaderboards. Keine Serie und kein Elo: Die Plätze jedes beendeten Leaderboards bringen Punkte auf der Punkte-Ladder des Spiels."
 }

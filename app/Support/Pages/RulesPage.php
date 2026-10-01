@@ -61,6 +61,7 @@ final class RulesPage
             self::series(),
             ...self::ageOfEmpires2(),
             ...self::blockfill(),
+            ...self::scoreGames(),
             self::tournaments(),
             self::cups(),
             self::prizes(),
@@ -437,6 +438,41 @@ final class RulesPage
         }
 
         return $sections;
+    }
+
+    /**
+     * Every registered score game (Blockfill and any later one) with its
+     * modes: no series and no Elo, the best value in a leaderboard's window
+     * counts and its places score points (ScorePoints). Read from the
+     * registry, so a score game added later is named here with no change;
+     * none while no score game is registered. The table of games and modes
+     * (games()) keeps the games with a ladder and series.
+     *
+     * @return list<Section>
+     */
+    private static function scoreGames(): array
+    {
+        $rows = [];
+        $covers = [];
+
+        foreach (app(GameRegistry::class)->scores() as $game) {
+            foreach ($game->modes() as $mode) {
+                $covers[] = $game->slug();
+                $rows[] = [GameNames::game($game->slug()), __($mode->name), $game->metric($mode)->lowerIsBetter() ? __('the fastest time wins') : __('the highest score wins'),
+                    implode(' · ', ScorePoints::table($game))];
+            }
+        }
+
+        if ($rows === []) {
+            return [];
+        }
+
+        return [[
+            'id' => 'score-games',
+            'title' => __('Score games'),
+            'lead' => __('Everyone plays alone, as often as they like, for the best value inside a leaderboard\'s window. No series and no Elo: the places of every finished leaderboard score points on the game\'s points ladder.'),
+            'table' => ['head' => [__('Game'), __('Mode'), __('Best value'), __('Points per place')], 'rows' => $rows, 'covers' => $covers],
+        ]];
     }
 
     /**

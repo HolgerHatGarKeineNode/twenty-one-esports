@@ -3,6 +3,8 @@
 use App\Enums\PayoutStatus;
 use App\Enums\SeriesStatus;
 use App\Enums\TournamentFormat;
+use App\Games\Blockfill;
+use App\Games\ScoreMetric;
 use App\Models\ChessGame;
 use App\Models\Clan;
 use App\Models\ClanDeparture;
@@ -12,14 +14,19 @@ use App\Models\MatchNumber;
 use App\Models\Rating;
 use App\Models\RatingChange;
 use App\Models\SeriesMatch;
+use App\Models\StackerRun;
 use App\Models\TournamentParticipant;
 use App\Models\TournamentPayout;
 use App\Models\User;
 use App\Support\Payouts\TournamentPlacements;
+use App\Support\Stacker\BlockfillWeeks;
+use App\Support\Stacker\StackerRuns;
+use Carbon\CarbonImmutable;
 use Illuminate\Support\Facades\File;
 use Illuminate\Support\Facades\Http;
 use Pest\Browser\Playwright\Page;
 use Pest\Browser\Support\ComputeUrl;
+use Tests\Support\BlockfillOn;
 use Tests\Support\BrowserConsole;
 use Tests\Support\BrowserLogin;
 use Tests\Support\BrowserWait;
@@ -252,6 +259,55 @@ test('a player with nothing played gets one line per part, nothing cut, as a gue
         ->and($actions)->toBe(['/play', '/tournaments', '/clans']);
 
     foreach ([$guest, $own] as $page) {
+        expect($page->evaluate('() => window.__errors'))->toBe([])
+            ->and($page->evaluate(BrowserConsole::BAD_RESPONSES))->toBe([]);
+    }
+});
+
+test('a Blockfill player gets a score card next to the ladders, measured at 1440 and 375 and in German at 375', function () {
+    BlockfillOn::play();
+    $this->freezeTime();
+    $this->travelTo(CarbonImmutable::parse('2026-10-07 12:00:00'));
+    $player = playerStatsSeed();
+
+    // This week's board: a faster rival, then the player with two runs (the better one counts).
+    foreach ([[User::factory()->create(['name' => 'Ada Blockspace']), 958], [$player, 1500], [$player, 1200]] as [$user, $ticks]) {
+        $run = StackerRun::factory()->for($user)->verified($ticks)->create(['submitted_at' => now()->subMinutes($ticks / 10), 'week' => StackerRuns::weekOf(now())]);
+        app(BlockfillWeeks::class)->record($run, now());
+    }
+
+    $wide = playerStatsPage($player, 1440, 900);
+    playerStatsControl($wide);
+    $desk = playerStatsGeometry($wide);
+    $card = $wide->evaluate('() => { const el = document.querySelector("[data-test=player-score][data-game=blockfill]"); const r = el.getBoundingClientRect(); return {
+        best: el.querySelector("[data-test=player-score-best]").innerText,
+        board: el.querySelector("[data-test=player-score-board-place]").innerText,
+        attempts: el.querySelectorAll("[data-test=player-score-attempt]").length,
+        order: [...document.querySelectorAll("[data-test=player-ladder], [data-test=player-score]")].map((c) => c.dataset.game),
+        width: Math.round(r.width), height: Math.round(r.height) }; }');
+    playerStatsShot($wide, 'player-games-1440');
+
+    $narrow = playerStatsPage($player, 375, 812);
+    $phone = playerStatsGeometry($narrow);
+    playerStatsShot($narrow, 'player-games-375');
+    playerStatsShot($narrow, 'player-games-card-375', '[data-test=player-score]');
+
+    $de = playerStatsPage($player, 375, 812, User::factory()->create(['locale' => 'de']));
+    $german = playerStatsGeometry($de);
+    $words = $de->evaluate('() => [...document.querySelector("[data-test=player-score]").querySelectorAll(".text-ink-3")].map((el) => el.innerText.trim()).filter((t) => t !== "")');
+    playerStatsShot($de, 'player-games-de-375');
+
+    expect($card['best'])->toBe(ScoreMetric::time()->format(Blockfill::milliseconds(1200)))
+        ->and($card['board'])->toBe(ScoreMetric::time()->format(Blockfill::milliseconds(1200)).' · #2 of 2')
+        ->and($card['attempts'])->toBe(2)
+        ->and($card['order'])->toBe(['chess', 'rocket-league', 'rocket-league', 'blockfill'])
+        ->and($desk)->toMatchArray(['overflow' => 0, 'inside' => true, 'small' => [], 'clipped' => [], 'hiddenWhen' => 0])
+        ->and(abs($desk['sideOffset']))->toBeLessThanOrEqual(1)
+        ->and($phone)->toMatchArray(['overflow' => 0, 'inside' => true, 'small' => [], 'clipped' => [], 'hiddenWhen' => 0])
+        ->and($german)->toMatchArray(['overflow' => 0, 'inside' => true, 'small' => [], 'clipped' => [], 'hiddenWhen' => 0])
+        ->and($words)->toContain('Persönliche Bestmarke', 'Letzte bestätigte Versuche');
+
+    foreach ([$wide, $narrow, $de] as $page) {
         expect($page->evaluate('() => window.__errors'))->toBe([])
             ->and($page->evaluate(BrowserConsole::BAD_RESPONSES))->toBe([]);
     }

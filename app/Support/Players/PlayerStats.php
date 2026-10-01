@@ -40,7 +40,7 @@ use Illuminate\Support\Collection;
  * changes, one query for all ladders each.
  *
  * @phpstan-type Summary array{rating: int, results: int, wins: int, draws: int, losses: int, provisional: bool, tier: string|null, pool: string}
- * @phpstan-type Ladder array{key: string, game: string, mode: string, name: string, lineup: Lineup|null, rating: Summary, form: list<'win'|'draw'|'loss'>, peak: int, href: string}
+ * @phpstan-type Ladder array{key: string, game: string, mode: string, name: string, lineup: Lineup|null, rating: Summary, form: list<'win'|'draw'|'loss'>, peak: int, place: int|null, of: int, href: string}
  * @phpstan-type Played array{tournament: Tournament, place: int|null, of: int, prize: int|null}
  * @phpstan-type SeasonRow array{key: string, name: string, casual: bool, results: int, wins: int, draws: int, losses: int}
  * @phpstan-type ClanRow array{clan: Clan|null, name: string, since: CarbonInterface|null, until: CarbonInterface|null}
@@ -92,8 +92,9 @@ final class PlayerStats
             ->select('rating_id')->selectRaw('max("after") as high_after, max("before") as high_before')->groupBy('rating_id')->get()
             ->mapWithKeys(fn (RatingChange $change): array => [(int) $change->rating_id => max((int) $change->getAttribute('high_after'), (int) $change->getAttribute('high_before'))]);
         $lineups = Lineup::query()->whereIn('id', $rows->pluck('lineup_id')->filter())->with('clan')->get()->keyBy('id');
+        $places = $this->places($rows);
 
-        $ladders = $rows->map(function (Rating $row) use ($form, $peaks, $lineups): array {
+        $ladders = $rows->map(function (Rating $row) use ($form, $peaks, $lineups, $places): array {
             $summary = Ratings::summary($row, $row->pool);
 
             return [
@@ -105,6 +106,8 @@ final class PlayerStats
                 'rating' => $summary,
                 'form' => $form[$row->id] ?? [],
                 'peak' => max($summary['rating'], (int) ($peaks[$row->id] ?? 0)),
+                'place' => $places[$row->id]['place'] ?? null,
+                'of' => $places[$row->id]['of'] ?? 0,
                 'href' => route('ladder.show', [$row->game, $row->mode]),
             ];
         });
@@ -114,6 +117,28 @@ final class PlayerStats
             array_search($ladder['mode'], array_keys($registry->find($ladder['game'])?->modes() ?? []), true),
             $ladder['lineup'] !== null,
         ])->all());
+    }
+
+    /**
+     * Everything this player has a standing in, game by game in the
+     * registry's order: the ladder cards of a versus game (ladders()), the
+     * cards of a score game (PlayerScores). A game registered later shows
+     * here with no change to the page; a game the player never played has no card.
+     *
+     * @return list<array{kind: 'ladder', game: string, ladder: Ladder}|array{kind: 'score', game: string, score: array<string, mixed>}>
+     */
+    public function games(): array
+    {
+        $order = array_flip(array_keys(app(GameRegistry::class)->all()));
+        $cards = [
+            ...array_map(fn (array $ladder): array => ['kind' => 'ladder', 'game' => $ladder['game'], 'ladder' => $ladder], $this->ladders()),
+            ...array_map(fn (array $score): array => ['kind' => 'score', 'game' => $score['game'], 'score' => $score], (new PlayerScores($this->user))->cards()),
+        ];
+
+        // A stable sort: within a game the cards keep the order of their own list (modes, then lineups).
+        usort($cards, fn (array $a, array $b): int => ($order[$a['game']] ?? PHP_INT_MAX) <=> ($order[$b['game']] ?? PHP_INT_MAX));
+
+        return $cards;
     }
 
     /**
@@ -240,6 +265,31 @@ final class PlayerStats
     private function ratings(): EloquentCollection
     {
         return $this->ratings ??= Rating::query()->whereIn('subject', $this->results->subjects())->orderBy('id')->get();
+    }
+
+    /**
+     * The place of each rating in its ladder and how many rows that ladder
+     * has, as the ladder page counts them (rating, then more results, then
+     * first rated; every row with a result). One query for all ladders.
+     *
+     * @param  EloquentCollection<int, Rating>  $rows
+     * @return array<int, array{place: int, of: int}>
+     */
+    private function places(EloquentCollection $rows): array
+    {
+        $ranked = Rating::query()->select('id')
+            ->selectRaw('row_number() over (partition by pool, season, game, mode order by rating desc, results desc, id) as place')
+            ->selectRaw('count(*) over (partition by pool, season, game, mode) as total')
+            ->where('results', '>', 0)
+            ->where(function ($query) use ($rows): void {
+                foreach ($rows->unique(fn (Rating $row): string => $row->pool.'|'.$row->season.'|'.$row->game.'|'.$row->mode) as $row) {
+                    $query->orWhere(fn ($one) => $one->where(['pool' => $row->pool, 'season' => $row->season, 'game' => $row->game, 'mode' => $row->mode]));
+                }
+            });
+
+        return Rating::query()->withoutGlobalScopes()->fromSub($ranked, 'ratings')->whereIn('id', $rows->modelKeys())->toBase()->get()
+            ->mapWithKeys(fn (object $row): array => [(int) $row->id => ['place' => (int) $row->place, 'of' => (int) $row->total]])
+            ->all();
     }
 
     /**
