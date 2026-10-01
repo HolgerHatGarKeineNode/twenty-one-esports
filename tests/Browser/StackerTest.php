@@ -135,6 +135,14 @@ test('a player\'s ranked run is started, submitted after the played time and ver
     $page->evaluate('() => window.__stacker.release()');
     BrowserWait::until($page, '() => window.__stacker.state().result?.status === "verified"', 15_000);
 
+    // After the verdict the finished game stays on screen until the player starts another one.
+    $page->evaluate('() => new Promise((resolve) => setTimeout(resolve, 1500))');
+    $after = $page->evaluate('() => window.__stacker.state()');
+    fwrite(STDERR, 'stacker ranked trace: '.json_encode($after['trace']).PHP_EOL);
+    expect([$after['ticks'], $after['hash'], $after['lines'], $after['mode']])->toBe([958, '6102773e', 40, 'result'])
+        ->and($page->evaluate('() => document.querySelector("[data-test=time]").innerText'))->toBe('0:15.96')
+        ->and($page->evaluate('() => getComputedStyle(document.querySelector("[data-test=overlay]")).display'))->toBe('none');
+
     expect($run->refresh())
         ->status->value->toBe('verified')
         ->ticks->toBe(958)

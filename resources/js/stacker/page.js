@@ -16,7 +16,7 @@
  * reports the state hash, so a browser test can compare it with Node.
  */
 
-import { ENGINE_VERSION, GOAL_LINES, nextPieces, run } from './engine.js';
+import { ENGINE_VERSION, GOAL_LINES, nextPieces, run, stateHash } from './engine.js';
 import { keyLabel, keyMap, normalizeControls } from './keys.js';
 import { drawPreview, drawWell, SHOWN_ROWS } from './renderer.js';
 import { encodeReplay, REPLAY_VERSION } from './replay.js';
@@ -80,10 +80,18 @@ function writeStored(key, value) {
 
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
+/** Test environment only: every init, destroy and new session, with where it came from. */
+function trace(config, event) {
+    if (config.testing) {
+        (window.__stackerTrace ??= []).push({ event, at: Math.round(performance.now()), stack: (new Error().stack ?? '').split('\n').slice(2, 7).join(' | ') });
+    }
+}
+
 document.addEventListener('alpine:init', () => {
     window.Alpine.data('stackerGame', (config) => {
         // Not reactive: the engine state changes sixty times a second and is drawn, not bound.
         const rt = {
+            el: null,
             session: null,
             ticker: createTicker(),
             frame: 0,
@@ -121,6 +129,19 @@ document.addEventListener('alpine:init', () => {
             rankedBest: config.best,
 
             init() {
+                trace(config, 'init');
+                // The elements, pinned here: a method called from a button inside an x-if
+                // template runs with that clone's $el and $refs, which are gone once the
+                // template is removed (the start buttons vanish with the countdown).
+                rt.el = {
+                    root: this.$el,
+                    well: this.$refs.well,
+                    wellSlot: this.$refs.wellSlot,
+                    hold: this.$refs.hold,
+                    time: this.$refs.time,
+                    pps: this.$refs.pps,
+                    next: [...this.$el.querySelectorAll('[data-next]')],
+                };
                 this.reducedMotion = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches ?? false;
                 rt.keys = keyMap(this.controls.keys);
                 rt.onKeyDown = (event) => this.key(event, true);
@@ -142,26 +163,31 @@ document.addEventListener('alpine:init', () => {
             },
 
             destroy() {
+                trace(config, 'destroy');
                 cancelAnimationFrame(rt.frame);
-                window.removeEventListener('keydown', rt.onKeyDown);
-                window.removeEventListener('keyup', rt.onKeyUp);
-                window.removeEventListener('blur', rt.onBlur);
-                window.removeEventListener('resize', rt.onResize);
-                document.removeEventListener('visibilitychange', rt.onVisibility);
+                this.unlisten(rt);
                 if (window.__stacker?.owner === this) {
                     delete window.__stacker;
                 }
             },
 
+            unlisten(runtime) {
+                window.removeEventListener('keydown', runtime.onKeyDown);
+                window.removeEventListener('keyup', runtime.onKeyUp);
+                window.removeEventListener('blur', runtime.onBlur);
+                window.removeEventListener('resize', runtime.onResize);
+                document.removeEventListener('visibilitychange', runtime.onVisibility);
+            },
+
             /** Cell size from the room the well has: its slot's width and the window's height. */
             layout() {
-                const slot = this.$refs.wellSlot;
+                const slot = rt.el.wellSlot;
                 const width = slot ? slot.clientWidth : 240;
                 const byWidth = Math.floor(width / 10);
                 const byHeight = Math.floor((window.innerHeight - 200) / SHOWN_ROWS);
                 rt.cell = Math.max(12, Math.min(30, byWidth, byHeight));
-                this.sizeCanvas(this.$refs.well, rt.cell * 10, rt.cell * SHOWN_ROWS);
-                for (const canvas of [this.$refs.hold, ...this.$el.querySelectorAll('[data-next]')]) {
+                this.sizeCanvas(rt.el.well, rt.cell * 10, rt.cell * SHOWN_ROWS);
+                for (const canvas of [rt.el.hold, ...rt.el.next]) {
                     if (canvas) {
                         this.sizeCanvas(canvas, canvas.clientWidth, canvas.clientHeight);
                     }
@@ -183,6 +209,7 @@ document.addEventListener('alpine:init', () => {
             },
 
             newSession(seed, settings = this.controls) {
+                trace(config, 'newSession');
                 rt.seed = seed;
                 rt.session = createSession({ seed, settings: { das: settings.das, arr: settings.arr, sdf: settings.sdf } });
                 rt.flashUntil = 0;
@@ -462,11 +489,11 @@ document.addEventListener('alpine:init', () => {
                 if (!game) {
                     return;
                 }
-                if (this.$refs.time) {
-                    this.$refs.time.textContent = formatTicks(game.tick);
+                if (rt.el.time) {
+                    rt.el.time.textContent = formatTicks(game.tick);
                 }
-                if (this.$refs.pps) {
-                    this.$refs.pps.textContent = game.tick > 0 ? ((game.pieces * 60) / game.tick).toFixed(2) : '0.00';
+                if (rt.el.pps) {
+                    rt.el.pps.textContent = game.tick > 0 ? ((game.pieces * 60) / game.tick).toFixed(2) : '0.00';
                 }
                 if (game.lines !== this.lines) {
                     this.lines = game.lines;
@@ -475,18 +502,18 @@ document.addEventListener('alpine:init', () => {
 
             draw(now) {
                 const game = rt.session?.game;
-                const well = this.$refs.well;
+                const well = rt.el.well;
                 if (!game || !well) {
                     return;
                 }
                 const flash = rt.flashUntil > now ? (rt.flashUntil - now) / FLASH_MS : 0;
                 drawWell(well.getContext('2d'), game, { cell: rt.cell, mined: rt.flashRows, flash });
-                const hold = this.$refs.hold;
+                const hold = rt.el.hold;
                 if (hold?._css) {
                     drawPreview(hold.getContext('2d'), game.hold, { ...hold._css, cell: this.previewCell(hold._css) });
                 }
                 const next = nextPieces(game);
-                this.$el.querySelectorAll('[data-next]').forEach((canvas, index) => {
+                rt.el.next.forEach((canvas, index) => {
                     if (canvas._css) {
                         drawPreview(canvas.getContext('2d'), next[index] ?? -1, { ...canvas._css, cell: this.previewCell(canvas._css) });
                     }
@@ -570,7 +597,15 @@ document.addEventListener('alpine:init', () => {
                     state() {
                         const game = rt.session?.game;
 
-                        return { mode: component.mode, kind: component.kind, result: component.result, ticks: game?.tick ?? 0, lines: game?.lines ?? 0 };
+                        return {
+                            mode: component.mode,
+                            kind: component.kind,
+                            result: component.result,
+                            ticks: game?.tick ?? 0,
+                            lines: game?.lines ?? 0,
+                            hash: game ? stateHash(game) : null,
+                            trace: window.__stackerTrace ?? [],
+                        };
                     },
                     run,
                 };
