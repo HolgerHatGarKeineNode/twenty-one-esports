@@ -2,6 +2,7 @@
 
 use App\Enums\InviteLinkType;
 use App\Enums\JoinRequestStatus;
+use App\Models\BoardGame;
 use App\Models\ChessGame;
 use App\Models\ClanJoinRequest;
 use App\Models\InviteLink;
@@ -87,7 +88,8 @@ new #[Layout('layouts::app')] class extends Component {
 
         session()->forget('invite.intent');
 
-        if ($this->link->type === InviteLinkType::Series || app(InviteLinks::class)->state($this->link, $user) !== 'open') {
+        // A series waits for the lineup and start; a score link has nothing to take.
+        if (in_array($this->link->type, [InviteLinkType::Series, InviteLinkType::Score], true) || app(InviteLinks::class)->state($this->link, $user) !== 'open') {
             return;
         }
 
@@ -122,6 +124,8 @@ new #[Layout('layouts::app')] class extends Component {
 
         if ($made instanceof ChessGame) {
             $this->redirectRoute('games.show', $made);
+        } elseif ($made instanceof BoardGame) {
+            $this->redirectRoute('board.show', $made);
         } elseif ($made instanceof SeriesMatch) {
             $this->redirectRoute('matches.room', $made);
         } else {
@@ -193,7 +197,20 @@ new #[Layout('layouts::app')] class extends Component {
     {
         $user = auth()->user();
 
-        return $user instanceof User ? app(InviteLinks::class)->useOf($this->link, $user)?->load(['game', 'match']) : null;
+        return $user instanceof User ? app(InviteLinks::class)->useOf($this->link, $user)?->load(['game', 'match', 'link']) : null;
+    }
+
+    /** Where a taken invite leads back to: the chess game, the board game or the match room. */
+    public function takenUrl(InviteLinkUse $use): ?string
+    {
+        $board = app(InviteLinks::class)->boardGameOf($use);
+
+        return match (true) {
+            $use->game !== null => route('games.show', $use->game),
+            $board !== null => route('board.show', $board),
+            $use->match !== null => route('matches.room', $use->match),
+            default => null,
+        };
     }
 
     public function joinRequest(): ?ClanJoinRequest
@@ -259,6 +276,10 @@ new #[Layout('layouts::app')] class extends Component {
     }
 }; ?>
 
+{{-- "Beat my time" (a score game such as Blockfill): no seat, no opponent, its own page. --}}
+@if ($this->link->type === InviteLinkType::Score)
+    @include('pages.invites.partials.score', ['link' => $this->link, 'state' => $this->state(), 'openUntil' => $this->when($this->link->expires_at)])
+@else
 @php
     $link = $this->link;
     $copy = new InviteCopy($link);
@@ -273,6 +294,8 @@ new #[Layout('layouts::app')] class extends Component {
     $mine = $viewer !== null && $inviter->is($viewer);
     $name = $inviter->displayName();
     $gamesPlayed = $inviter->whiteGames()->count() + $inviter->blackGames()->count();
+    // A board link plays like chess: a correspondence game reads as a daily game, blitz as blitz.
+    $boardDaily = $type === InviteLinkType::Board && $link->option('mode') === \App\Models\BoardGame::CORRESPONDENCE;
 
     $linkKind = $type === InviteLinkType::Clan
         ? ($link->max_uses === 1 ? __('One player may ask') : __('Anyone with the link may ask'))
@@ -321,6 +344,15 @@ new #[Layout('layouts::app')] class extends Component {
                 default => __('Random'),
             }],
         ],
+        InviteLinkType::Board => [
+            [__('Game'), $copy->gameChip()],
+            [__('Game type'), __('Casual, no rating change')],
+            [__('Colours'), match ($boardDaily ? (string) $link->option('color', 'random') : 'random') {
+                'white' => __(':name plays White', ['name' => $name]),
+                'black' => __(':name plays Black', ['name' => $name]),
+                default => __('Random'),
+            }],
+        ],
         InviteLinkType::Series => [
             [__('Match'), __(':game :mode, best of :bo', ['game' => \App\Support\GameNames::game((string) $link->option('game')), 'mode' => (string) $link->option('mode'), 'bo' => (int) $link->option('best_of')])],
             [__('Series type'), __('Casual scrim, no rating change')],
@@ -338,8 +370,8 @@ new #[Layout('layouts::app')] class extends Component {
         ? [__('Status'), match ($state) { 'expired' => __('Expired, nobody took it'), 'used_up' => __('Used, the link is closed'), default => __('Cancelled by :name', ['name' => $name]) }]
         : [__('Open until'), $this->when($link->expires_at)];
 
-    $steps = match ($type) {
-        InviteLinkType::Blitz => [[__('Continue with Google or Nostr'), __('New here? That creates your player. No password to remember.')], [__('You land at the board'), __('No lobby, no search. :name gets a ping that you are in.', ['name' => $name])], [__('Play your first game'), __('Casual games also build your trust, and trust opens rated play later.')]],
+    $steps = match ($boardDaily ? InviteLinkType::Daily : ($type === InviteLinkType::Board ? InviteLinkType::Blitz : $type)) {
+        InviteLinkType::Blitz =>[[__('Continue with Google or Nostr'), __('New here? That creates your player. No password to remember.')], [__('You land at the board'), __('No lobby, no search. :name gets a ping that you are in.', ['name' => $name])], [__('Play your first game'), __('Casual games also build your trust, and trust opens rated play later.')]],
         InviteLinkType::Daily => [[__('Continue with Google or Nostr'), __('New here? That creates your player. No password to remember.')], [__('You land in the game'), __('Make your move whenever you like. You get a notification when it is your turn again.')], [__('Play your first game'), __('Casual games also build your trust, and trust opens rated play later.')]],
         InviteLinkType::Series => [[__('Continue with Google or Nostr'), __('New here? That creates your player. No password to remember.')], [__('Pick your lineup and a start'), __('Take the challenge with a lineup you captain. No team yet? Start a clan first.')], [__('Play the series'), __(':clan gets a ping, the match room opens for both teams.', ['clan' => $clan?->name])]],
         InviteLinkType::Clan => [[__('Continue with Google or Nostr'), __('New here? That creates your player. No password to remember.')], [__('Your request goes to :clan', ['clan' => $clan?->name]), __('A captain of :clan looks at your profile and confirms. You get a notification.', ['clan' => $clan?->name])], [__('Play for :clan', ['clan' => $clan?->name]), __('Casual games build your trust first.')]],
@@ -348,6 +380,7 @@ new #[Layout('layouts::app')] class extends Component {
     $closedCta = match ($type) {
         InviteLinkType::Blitz => [__('Find a blitz opponent'), route('chess.lobby'), __('Until then, the blitz queue pairs you with whoever is online.')],
         InviteLinkType::Daily => [__('Challenge someone to daily chess'), route('chess.challenge'), __('Until then, you can challenge any player to daily chess.')],
+        InviteLinkType::Board => [__('Play :game', ['game' => $copy->game()]), \App\Support\GameNames::page((string) $link->option('game')), __('Until then, find a game in the lobby.')],
         InviteLinkType::Series => [__('See open matches'), route('matches.index'), __('Until then, look for clans to play on the match list.')],
         InviteLinkType::Clan => [__('Browse clans'), route('clans.index'), __('Clans take new players through open links too. Or start your own clan and invite friends.')],
     };
@@ -364,7 +397,7 @@ new #[Layout('layouts::app')] class extends Component {
         <div class="flex min-w-0 flex-col gap-5 lg:col-start-1 lg:row-start-1 lg:gap-6">
             <div class="flex flex-wrap items-center gap-2">
                 <span class="inline-flex h-7 items-center gap-2 rounded-md border border-line bg-well px-2.5 text-xs">
-                    <x-icon :name="$type->isChess() ? 'pawn' : ($type === InviteLinkType::Series ? (app(\App\Games\GameRegistry::class)->find((string) $link->option('game'))?->assets()->icon ?? 'rocket-league') : 'clans')" :size="14" />{{ $copy->gameChip() }}
+                    <x-icon :name="$type->isChess() ? 'pawn' : (in_array($type, [InviteLinkType::Series, InviteLinkType::Board], true) ? (app(\App\Games\GameRegistry::class)->find((string) $link->option('game'))?->assets()->icon ?? 'rocket-league') : 'clans')" :size="14" />{{ $copy->gameChip() }}
                 </span>
                 <span @class(['inline-flex h-7 items-center gap-1.5 rounded-md border px-2.5 text-xs', 'border-line text-ink-2' => $tag[1] === 'plain', 'border-btc-deep bg-btc-chip font-bold text-btc-hi' => $tag[1] === 'warn'])>
                     @if ($tag[1] === 'warn')<x-icon name="clock" :size="14" />@endif{{ $tag[0] }}
@@ -396,6 +429,9 @@ new #[Layout('layouts::app')] class extends Component {
                         <div class="w-full max-w-[250px] pt-3 pr-3 lg:pt-4 lg:pr-4">
                             @include('pages.invites.partials.board', ['dim' => $closed])
                         </div>
+                    @elseif ($type === InviteLinkType::Board)
+                        {{-- A board game shows its own art, never the chess board. --}}
+                        <x-game-cover :game="(string) $link->option('game')" size="card" loading="eager" :class="$closed ? 'w-full max-w-[250px] rounded-lg opacity-45 grayscale' : 'w-full max-w-[250px] rounded-lg'" />
                     @else
                         <span @class(['flex flex-col items-center gap-2', 'opacity-45 grayscale' => $closed])>
                             <x-clan-tag :clan="$clan" :tile="112" class="flex size-16 items-center justify-center overflow-hidden rounded-xl bg-[linear-gradient(135deg,#F9B25F,#F7931A_55%,#B9640A)] font-display text-sm font-extrabold text-on-btc lg:size-28 lg:text-2xl" />
@@ -405,6 +441,7 @@ new #[Layout('layouts::app')] class extends Component {
                     <span class="hidden text-center text-xs text-ink-2 lg:block">{{ match ($type) {
                         InviteLinkType::Blitz => __('5+3, colours drawn at random'),
                         InviteLinkType::Daily => __('1 move a day'),
+                        InviteLinkType::Board => $boardDaily ? __('1 move a day') : __('5+3, colours drawn at random'),
                         InviteLinkType::Series => __(':mode, best of :bo', ['mode' => (string) $link->option('mode'), 'bo' => (int) $link->option('best_of')]),
                         InviteLinkType::Clan => trans_choice(':count player|:count players', $clan?->members->count() ?? 0),
                     } }}</span>
@@ -489,39 +526,7 @@ new #[Layout('layouts::app')] class extends Component {
                 </div>
             @elseif ($state === 'own')
                 {{-- The inviter: share it --}}
-                <div class="flex flex-col gap-4" data-test="invite-share"
-                     x-data="{ copied: false, hint: '', canShare: typeof navigator.share === 'function', url: @js($link->url()), text: @js($shareText),
-                               async copy(hint = '') { try { await navigator.clipboard.writeText(this.url); this.copied = true; this.hint = hint; setTimeout(() => this.copied = false, 2500); } catch (e) { this.hint = @js(__('Copy did not work here. Select the link and copy it.')); } },
-                               async share(hint) { if (this.canShare) { try { await navigator.share({ title: document.title, text: this.text, url: this.url }); return; } catch (e) { if (e?.name === 'AbortError') return; } } await this.copy(hint); } }">
-                    <h2 class="m-0 font-display text-2xl font-bold">{{ __('Share your invite') }}</h2>
-                    <label for="invite-url" class="text-xs text-ink-2">{{ __('Invite link') }}</label>
-                    <div class="grid grid-cols-[minmax(0,1fr)_auto] gap-2">
-                        <input id="invite-url" type="text" readonly value="{{ $link->url() }}" x-on:focus="$el.select()" data-test="invite-url"
-                               class="h-12 min-w-0 rounded-lg border border-edge bg-ground px-3.5 text-[13px] text-ink">
-                        <button type="button" x-on:click="copy()" data-test="copy-link"
-                                class="btn-p inline-flex h-12 cursor-pointer items-center gap-2 rounded-lg px-4 text-sm font-bold whitespace-nowrap"
-                                x-bind:class="copied ? 'bg-win-tint text-win shadow-[inset_0_0_0_1px_#1F5A34]' : 'bg-btc text-on-btc'">
-                            <span x-show="! copied" class="inline-flex items-center gap-2"><x-icon name="copy" :size="16" /><span class="sm:hidden">{{ __('Copy') }}</span><span class="max-sm:hidden">{{ __('Copy link') }}</span></span>
-                            <span x-show="copied" x-cloak class="inline-flex items-center gap-2"><x-icon name="check" :size="16" />{{ __('Copied') }}</span>
-                        </button>
-                    </div>
-                    <span class="text-xs text-win" role="status" x-show="copied || hint" x-text="hint || @js(__('Link copied. Paste it in any chat.'))" x-cloak></span>
-
-                    <span class="text-xs text-ink-2">{{ __('Share to') }}</span>
-                    <div class="grid grid-cols-2 gap-2">
-                        <button type="button" x-on:click="share(@js(__('Link copied. Paste it into a note in your Nostr app.')))" class="{{ $secondary }}"><x-icon name="chat" :size="16" />Nostr</button>
-                        <button type="button" x-on:click="share(@js(__('Link copied. Paste it in Signal.')))" class="{{ $secondary }}"><x-icon name="send" :size="16" />Signal</button>
-                        <a href="https://t.me/share/url?url={{ urlencode($link->url()) }}&amp;text={{ urlencode($shareText) }}" target="_blank" rel="noopener noreferrer" class="{{ $secondary }}"><x-icon name="send" :size="16" />Telegram</a>
-                        <button type="button" x-show="canShare" x-on:click="share('')" class="{{ $secondary }}" data-test="native-share"><x-icon name="link" :size="16" />{{ __('More apps') }}</button>
-                    </div>
-
-                    <div class="flex flex-col gap-2 border-t border-hairline pt-4 text-xs leading-normal">
-                        <span class="flex items-start gap-2"><x-icon name="clock" :size="14" class="mt-0.5 shrink-0" />{{ __('Open until :time.', ['time' => $this->when($link->expires_at)]) }} {{ $linkKind }}.</span>
-                        <span class="text-ink-2">{{ __('Invites never count toward ratings, Hashrate, blocks or rewards.') }}</span>
-                    </div>
-                    <button type="button" wire:click="revoke" wire:confirm="{{ __('Cancel this invite? The link stops working at once.') }}" data-test="revoke-link"
-                            class="inline-flex min-h-12 w-full cursor-pointer items-center justify-center rounded-lg border border-[#5A2A2E] bg-transparent text-[13px] text-loss">{{ __('Cancel this invite') }}</button>
-                </div>
+                @include('pages.invites.partials.share', ['note' => __('Open until :time.', ['time' => $this->when($link->expires_at)]).' '.$linkKind.'.'])
             @elseif ($closed || $state === 'used_up')
                 <h2 class="m-0 font-display text-2xl font-bold">{{ $mine ? __('Make a new one') : __('Play anyway') }}</h2>
                 <p class="m-0 text-[13px] leading-[1.6] text-ink-2">{{ $mine ? __('A fresh link works the same way.') : __('A new link from :name works the same way.', ['name' => $name]).' '.$closedCta[2] }}</p>
@@ -562,10 +567,8 @@ new #[Layout('layouts::app')] class extends Component {
             @elseif ($state === 'taken' && $use !== null)
                 <h2 class="m-0 font-display text-2xl font-bold">{{ __('You are in') }}</h2>
                 <p class="m-0 text-[13px] leading-[1.6] text-ink-2">{{ __('You took this invite :time.', ['time' => $this->when($use->created_at)]) }}</p>
-                @if ($use->game)
-                    <a href="{{ route('games.show', $use->game) }}" class="{{ $primary }}" data-test="go-to-game">{{ __('Go to the game') }}</a>
-                @elseif ($use->match)
-                    <a href="{{ route('matches.room', $use->match) }}" class="{{ $primary }}" data-test="go-to-game">{{ __('Go to the match room') }}</a>
+                @if ($takenUrl = $this->takenUrl($use))
+                    <a href="{{ $takenUrl }}" class="{{ $primary }}" data-test="go-to-game">{{ $use->match ? __('Go to the match room') : __('Go to the game') }}</a>
                 @endif
             @elseif ($type === InviteLinkType::Series)
                 {{-- Rocket League: pick your lineup and a start --}}
@@ -600,7 +603,7 @@ new #[Layout('layouts::app')] class extends Component {
                 <h2 class="m-0 font-display text-2xl font-bold">{{ __('Ready to play?') }}</h2>
                 <button type="button" wire:click="accept" wire:loading.attr="disabled" class="{{ $primary }}" data-test="accept-invite">{{ __('Accept') }}</button>
                 <a href="{{ route('home') }}" class="inline-flex min-h-11 items-center justify-center text-[13px] text-btc">{{ __('Not now') }}</a>
-                <p class="m-0 text-xs leading-normal text-ink-2">{{ $type === InviteLinkType::Blitz ? __('Accepting opens the board right away. :name gets a ping.', ['name' => $name]) : __('Accepting starts the daily game. :name gets a notification.', ['name' => $name]) }}</p>
+                <p class="m-0 text-xs leading-normal text-ink-2">{{ $type === InviteLinkType::Blitz || ($type === InviteLinkType::Board && ! $boardDaily) ? __('Accepting opens the board right away. :name gets a ping.', ['name' => $name]) : ($boardDaily ? __('Accepting starts the game. :name gets a notification.', ['name' => $name]) : __('Accepting starts the daily game. :name gets a notification.', ['name' => $name])) }}</p>
             @endif
         </aside>
 
@@ -611,3 +614,4 @@ new #[Layout('layouts::app')] class extends Component {
         </div>
     </div>
 </div>
+@endif

@@ -6,6 +6,7 @@ use App\Enums\InviteLinkType;
 use App\Enums\NotificationKind;
 use App\Enums\TournamentStatus;
 use App\Games\GameRegistry;
+use App\Models\BoardGame;
 use App\Models\ChessGame;
 use App\Models\Clan;
 use App\Models\ClanJoinRequest;
@@ -16,6 +17,9 @@ use App\Models\Lineup;
 use App\Models\SeriesMatch;
 use App\Models\Tournament;
 use App\Models\User;
+use App\Support\Board\BoardChallenges;
+use App\Support\Board\BoardGameService;
+use App\Support\Board\BoardRuleViolation;
 use App\Support\Chess\ChessGameService;
 use App\Support\Chess\ChessRuleViolation;
 use App\Support\Chess\ChessTransaction;
@@ -23,6 +27,8 @@ use App\Support\Chess\DailyChallenges;
 use App\Support\Clans\ClanJoinRequests;
 use App\Support\Clans\ClanRuleViolation;
 use App\Support\Engagement\Cosmetics;
+use App\Support\GameNames;
+use App\Support\Notifications\BoardNotifications;
 use App\Support\Notifications\ChessNotifications;
 use App\Support\Notifications\Notice;
 use App\Support\Notifications\Notifier;
@@ -39,8 +45,13 @@ use Illuminate\Support\Facades\DB;
  *  - game links (blitz, daily chess, a Rocket League series) are OPEN:
  *    whoever accepts plays. A one-time link goes to the first who accepts;
  *    a link for "several times" starts one game per player who takes it;
+ *  - board links (nine men's morris, checkers) are open as well and start
+ *    a casual board game in the link's mode;
  *  - clan links only send a join request a captain confirms
  *    (ClanJoinRequests);
+ *  - score links ("beat my time", Blockfill) are never taken: the landing
+ *    opens the game with the inviter's best, one open link per game
+ *    ({@see scoreLink()});
  *  - named invites (a player picked by name) are not links and stay direct.
  *
  * Everything happens at acceptance, nothing when the link is made: the game
@@ -74,12 +85,14 @@ final class InviteLinks
         private ChessNotifications $chessNotifications,
         private Notifier $notifier,
         private GameRegistry $registry,
+        private BoardGameService $boards,
+        private BoardNotifications $boardNotifications,
     ) {}
 
     /* ---------- Making a link ------------------------------------------------------------------------------------ */
 
     /**
-     * @param  array{uses?: string, hours?: int, color?: string, clan?: Clan, lineup_id?: int, best_of?: int, proposals?: list<int>, respond_by?: int, message?: string|null}  $options
+     * @param  array{uses?: string, hours?: int, color?: string, clan?: Clan, lineup_id?: int, best_of?: int, proposals?: list<int>, respond_by?: int, message?: string|null, game?: string, mode?: string}  $options
      *
      * @throws InviteLinkRefused
      */
@@ -87,6 +100,11 @@ final class InviteLinks
     {
         if ($type === InviteLinkType::Tournament) {
             throw new InviteLinkRefused('tournament', __('A tournament link comes from the tournament page.'));
+        }
+
+        // Before the cap: an open score link is handed out again, so asking twice never counts twice.
+        if ($type === InviteLinkType::Score) {
+            return $this->scoreLink($inviter, (string) ($options['game'] ?? ''));
         }
 
         // Tournament links are one per tournament (forTournament()) and do not count against the cap.
@@ -134,6 +152,10 @@ final class InviteLinks
             $attributes['options'] = ['color' => $color];
         }
 
+        if ($type === InviteLinkType::Board) {
+            $attributes['options'] = $this->boardOptions($options);
+        }
+
         if ($type === InviteLinkType::Clan) {
             $clan = $options['clan'] ?? null;
 
@@ -145,6 +167,63 @@ final class InviteLinks
         }
 
         return InviteLink::query()->create($attributes);
+    }
+
+    /**
+     * A board link: the board game, one of its modes a link can start, and
+     * for correspondence the inviter's colour (as a daily chess link).
+     *
+     * @param  array<string, mixed>  $options
+     * @return array{game: string, mode: string, color?: string}
+     */
+    private function boardOptions(array $options): array
+    {
+        $slug = (string) ($options['game'] ?? '');
+        $mode = (string) ($options['mode'] ?? '');
+
+        if (! $this->registry->isBoard($slug) || ! in_array($mode, app(InviteGames::class)->find($slug)['modes'] ?? [], true)) {
+            throw new InviteLinkRefused('game', __('Pick a game.'));
+        }
+
+        if ($mode !== BoardGame::CORRESPONDENCE) {
+            return ['game' => $slug, 'mode' => $mode];
+        }
+
+        $color = (string) ($options['color'] ?? 'random');
+
+        if (! in_array($color, BoardChallenges::COLORS, true)) {
+            throw new InviteLinkRefused('color', __('Pick a colour.'));
+        }
+
+        return ['game' => $slug, 'mode' => $mode, 'color' => $color];
+    }
+
+    /**
+     * "Beat my time" in a score game: one open link per player and game, for
+     * a week, made on first use and handed out again after, so a player who
+     * asks twice shares the same link. A link with less than a day left is
+     * not handed out again: a fresh one is made.
+     *
+     * @throws InviteLinkRefused
+     */
+    private function scoreLink(User $inviter, string $slug): InviteLink
+    {
+        if (! $this->registry->isScore($slug)) {
+            throw new InviteLinkRefused('game', __('Pick a game.'));
+        }
+
+        $open = InviteLink::query()->where(['inviter_id' => $inviter->id, 'type' => InviteLinkType::Score])
+            ->where('options->game', $slug)->whereNull('revoked_at')->where('expires_at', '>', now()->addDay())
+            ->latest('id')->first();
+
+        return $open ?? InviteLink::query()->create([
+            'code' => InviteLink::newCode(),
+            'type' => InviteLinkType::Score,
+            'inviter_id' => $inviter->id,
+            'options' => ['game' => $slug],
+            'max_uses' => null,
+            'expires_at' => now()->addHours(InviteLinkType::Score->defaultExpiryHours()),
+        ]);
     }
 
     /**
@@ -393,10 +472,13 @@ final class InviteLinks
 
                 $made = match ($link->type) {
                     InviteLinkType::Blitz, InviteLinkType::Daily => $this->startGame($link, $user),
+                    InviteLinkType::Board => $this->startBoardGame($link, $user),
                     InviteLinkType::Series => $this->startSeries($link, $user, $choice),
                     InviteLinkType::Clan => $this->requestJoin($link, $user),
                     // Credited at sign-up (creditTournamentSignup()); the landing only opens the tournament.
                     InviteLinkType::Tournament => throw new InviteLinkRefused('tournament', __('Sign up on the tournament page to take this invite.')),
+                    // Nothing to take: the landing opens the game, where the time is beaten.
+                    InviteLinkType::Score => throw new InviteLinkRefused('score', __('Play the game to beat this time.')),
                 };
 
                 $use->chess_game_id = $made instanceof ChessGame ? $made->id : null;
@@ -470,6 +552,58 @@ final class InviteLinks
     }
 
     /**
+     * A casual board game in the link's mode. The board game core refuses a
+     * live game while either player is in one; that refusal rolls the claim
+     * back, so the link stays open for later.
+     */
+    private function startBoardGame(InviteLink $link, User $user): BoardGame
+    {
+        $inviter = $link->inviter;
+        $mode = (string) $link->option('mode', 'blitz');
+        $inviterWhite = match ($mode === BoardGame::CORRESPONDENCE ? (string) $link->option('color', 'random') : 'random') {
+            'white' => true,
+            'black' => false,
+            default => random_int(0, 1) === 0,
+        };
+
+        [$white, $black] = $inviterWhite ? [$inviter, $user] : [$user, $inviter];
+
+        try {
+            return $this->boards->start((string) $link->option('game'), $white, $black, $mode);
+        } catch (BoardRuleViolation $violation) {
+            $inviterBusy = $this->boards->activeGameOf($inviter) !== null || $this->games->activeGameOf($inviter) !== null;
+
+            throw match ($violation->reason) {
+                'already_playing', 'playing_elsewhere' => $inviterBusy
+                    ? new InviteLinkRefused('inviter_busy', __(':name is in another live game right now. Try again in a few minutes.', ['name' => $inviter->displayName()]))
+                    : new InviteLinkRefused('you_busy', __('You are in a live game. One live game at a time: finish it, then take the invite.')),
+                default => new InviteLinkRefused('board_'.$violation->reason, __('That did not work, please try again.')),
+            };
+        }
+    }
+
+    /**
+     * The board game a player started by taking a board link. A use stores
+     * no board game of its own (its columns name a chess game or a series),
+     * so it is this board game between the two that started with the use:
+     * in the same transaction, so within the same second or two.
+     */
+    public function boardGameOf(InviteLinkUse $use): ?BoardGame
+    {
+        $link = $use->link;
+
+        if ($link->type !== InviteLinkType::Board || $use->created_at === null) {
+            return null;
+        }
+
+        return BoardGame::query()->where('game', (string) $link->option('game'))
+            ->where(fn ($query) => $query->where(['white_id' => $use->inviter_id, 'black_id' => $use->user_id])
+                ->orWhere(fn ($query) => $query->where(['white_id' => $use->user_id, 'black_id' => $use->inviter_id])))
+            ->where('created_at', '>=', $use->created_at->copy()->subSeconds(2))
+            ->oldest('id')->first();
+    }
+
+    /**
      * The inviter's lineup challenges the taker's lineup (casual: nothing to
      * sign) and the taker accepts one of the proposed starts, in one go.
      *
@@ -528,6 +662,24 @@ final class InviteLinks
 
         if ($made instanceof ChessGame && $link->type === InviteLinkType::Daily) {
             $this->chessNotifications->gameStarted($made, $inviter);
+
+            return;
+        }
+
+        if ($made instanceof BoardGame && $made->isCorrespondence()) {
+            $this->boardNotifications->gameStarted($made, $inviter);
+
+            return;
+        }
+
+        if ($made instanceof BoardGame) {
+            $this->notifier->send($inviter, NotificationKind::InviteAccepted, new Notice(
+                __(':name took your :game invite', ['name' => $user->displayName(), 'game' => GameNames::game($made->game)], $locale),
+                __(':game blitz 5+3 · Casual · the board is open.', ['game' => GameNames::game($made->game)], $locale),
+                BoardNotifications::gameUrl($made),
+                $made->id,
+                __('Play now', [], $locale),
+            ));
 
             return;
         }

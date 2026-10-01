@@ -80,6 +80,8 @@ Route::middleware('auth')->group(function () {
  * shared on Signal lands on a page that works before login. The preview
  * image carries no session (a crawler fetches it) and never sets a cookie.
  */
+// "Invite a friend": every game a friend can be invited to, the one the player is in picked (InviteGames).
+Route::livewire('invite', 'pages::invites.create')->name('invites.create');
 Route::livewire('i/{link}', 'pages::invites.link')
     ->where('link', InviteLink::CODE_PATTERN)
     ->middleware('throttle:invites')

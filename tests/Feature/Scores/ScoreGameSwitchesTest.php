@@ -154,11 +154,12 @@ test('hubs, rules and weekly events leave it out; /matches lists its highscore a
     $this->get(route('play'))->assertOk()->assertSee('data-test="play-game-'.ScoreDemo::SLUG.'"', false)->assertSee(__('Time attack, the fastest time wins'));
 });
 
-test('the invite link module shows nothing for it', function () {
+test('the invite link module offers "beat my time" for it, never a match or a chess link', function () {
     ScoreDemoOn::play();
 
     Livewire\Livewire::actingAs(User::factory()->create())->test('invite-link', ['game' => ScoreDemo::SLUG])
-        ->assertSet('state', 'hidden');
+        ->assertSet('state', 'score')
+        ->assertDontSeeHtml('data-state="daily"');
 });
 
 test('its leaderboard starts no series and no chess game when the bracket moves', function () {

@@ -3,6 +3,7 @@
 namespace App\Support\Invites;
 
 use App\Enums\InviteLinkType;
+use App\Games\GameRegistry;
 use App\Models\Clan;
 use App\Models\InviteLink;
 use App\Models\User;
@@ -85,8 +86,11 @@ final class InviteCard
     public function fingerprint(string $format): string
     {
         $inviter = $this->link->inviter;
+        // A score link shows the inviter's best, read when drawn: a new best is a new card. Other links keep their fingerprint.
+        $score = $this->link->type === InviteLinkType::Score ? [(new InviteCopy($this->link))->best()] : [];
 
         return substr(hash('sha256', json_encode([
+            ...$score,
             'v' => 2,
             $format,
             app()->getLocale(),
@@ -200,13 +204,21 @@ final class InviteCard
     }
 
     /**
-     * Chess: the board in its cube frame. Rocket League and clans: the
-     * TWENTY ONE mark and the clan tile, never game art.
+     * Chess: the board in its cube frame. A board game or a score game
+     * (Blockfill): its own cover art, with the mode or the time to beat
+     * below, never the chess board. Rocket League and clans: the TWENTY ONE
+     * mark and the clan tile, never game art.
      */
     private function motif(int $x, int $y, int $size): void
     {
         if ($this->link->type->isChess()) {
             $this->board($x, $y + 12, $size - 16);
+
+            return;
+        }
+
+        if ($this->link->type === InviteLinkType::Board || $this->link->type === InviteLinkType::Score) {
+            $this->gameMotif($x, $y, $size);
 
             return;
         }
@@ -232,6 +244,54 @@ final class InviteCard
             ? __(':mode, best of :bo', ['mode' => (string) $this->link->option('mode'), 'bo' => (int) $this->link->option('best_of')])
             : trans_choice(':count player|:count players', $clan?->members()->count() ?? 0);
         $this->text($detail, 'mono', (int) round($size * 0.07), $nameX, $rowY + (int) round($tile * 0.85), self::INK_2);
+    }
+
+    /**
+     * The game's cover (16:9) across the motif's width, the TWENTY ONE mark
+     * when the game has none on disk, and below it the time to beat (score)
+     * or the mode (board game).
+     */
+    private function gameMotif(int $x, int $y, int $size): void
+    {
+        $copy = new InviteCopy($this->link);
+        $path = app(GameRegistry::class)->coverPath((string) $this->link->option('game'));
+        $height = (int) round($size * 9 / 16);
+
+        if ($path !== null) {
+            $this->cover($path, $x, $y + 8, $size, $height);
+        } else {
+            $mark = $height;
+            $this->picture(public_path('icon-512.png'), $x + ($size - $mark) / 2, $y + 8, $mark, (int) round($mark * 0.18));
+        }
+
+        $rowY = $y + 8 + $height + (int) round($size * 0.16);
+
+        // The time itself is the card's question already: below the art only the game and what the link is.
+        $this->text($this->fit($copy->game(), 'display', (int) round($size * 0.08), $size), 'display', (int) round($size * 0.08), $x, $rowY, self::INK);
+        $detail = $this->link->type === InviteLinkType::Score ? __('Beat my time') : $copy->boardMode();
+        $this->text($detail, 'mono', (int) round($size * 0.06), $x, $rowY + (int) round($size * 0.1), self::INK_2);
+    }
+
+    /**
+     * A picture scaled into a `$width` × `$height` box, whole and centred
+     * (letterboxed on the ground colour), square corners.
+     */
+    private function cover(string $path, int $x, int $y, int $width, int $height): void
+    {
+        $bytes = @file_get_contents($path);
+        $source = $bytes === false ? false : @imagecreatefromstring($bytes);
+
+        if ($source === false) {
+            return;
+        }
+
+        $scale = min($width / imagesx($source), $height / imagesy($source));
+        $w = imagesx($source) * $scale;
+        $h = imagesy($source) * $scale;
+        $s = $this->s;
+
+        imagecopyresampled($this->image, $source, (int) round(($x + ($width - $w) / 2) * $s), (int) round(($y + ($height - $h) / 2) * $s), 0, 0,
+            max(1, (int) round($w * $s)), max(1, (int) round($h * $s)), imagesx($source), imagesy($source));
     }
 
     /* ---------- Pieces ------------------------------------------------------------------------------------------ */

@@ -3,6 +3,7 @@
 namespace App\Support\Invites;
 
 use App\Enums\InviteLinkType;
+use App\Models\BoardGame;
 use App\Models\InviteLink;
 use App\Models\Lineup;
 use App\Support\GameNames;
@@ -15,6 +16,10 @@ use App\Support\GameNames;
  */
 final class InviteCopy
 {
+    private ?string $best = null;
+
+    private bool $bestRead = false;
+
     public function __construct(private InviteLink $link) {}
 
     public function inviterName(): string
@@ -38,12 +43,39 @@ final class InviteCopy
         return $id === null ? null : Lineup::query()->with('clan')->find((int) $id);
     }
 
+    /** The game of a board or score link ("Nine Men's Morris", "Blockfill"). */
+    public function game(): string
+    {
+        return GameNames::game((string) $this->link->option('game'));
+    }
+
+    /**
+     * A score link: the inviter's best of this week as people read it
+     * ("1:23.333"), read now, so the link always shows the time to beat.
+     * Null without a run this week.
+     */
+    public function best(): ?string
+    {
+        if (! $this->bestRead) {
+            $this->bestRead = true;
+            $this->best = $this->link->type === InviteLinkType::Score
+                ? app(InviteGames::class)->bestLabel($this->link->inviter, (string) $this->link->option('game'))
+                : null;
+        }
+
+        return $this->best;
+    }
+
     /** "satsjäger challenges you to blitz chess" */
     public function headline(): string
     {
         return match ($this->link->type) {
             InviteLinkType::Blitz => __(':name challenges you to blitz chess', ['name' => $this->inviterName()]),
             InviteLinkType::Daily => __(':name challenges you to daily chess', ['name' => $this->inviterName()]),
+            InviteLinkType::Board => __(':name challenges you to :game', ['name' => $this->inviterName(), 'game' => $this->game()]),
+            InviteLinkType::Score => $this->best() === null
+                ? __(':name challenges you to :game', ['name' => $this->inviterName(), 'game' => $this->game()])
+                : __(':name challenges you to beat :time at :game', ['name' => $this->inviterName(), 'time' => $this->best(), 'game' => $this->game()]),
             InviteLinkType::Series => __(':clan challenges your team to :game', ['clan' => $this->clanName(), 'game' => $this->seriesGame()]),
             InviteLinkType::Clan => __(':name invites you to join :clan', ['name' => $this->inviterName(), 'clan' => $this->clanName()]),
             InviteLinkType::Tournament => __(':name invites you to :tournament', ['name' => $this->inviterName(), 'tournament' => $this->tournamentName()]),
@@ -55,6 +87,12 @@ final class InviteCopy
         return match ($this->link->type) {
             InviteLinkType::Blitz => __('Five minutes each, plus 3 seconds a move. Casual, so no rating is on the line.'),
             InviteLinkType::Daily => __('One move a day, at your pace. Casual, so no rating is on the line.'),
+            InviteLinkType::Board => $this->isCorrespondence()
+                ? __('One move a day, at your pace. Casual, so no rating is on the line.')
+                : __('Five minutes each, plus 3 seconds a move. Casual, so no rating is on the line.'),
+            InviteLinkType::Score => $this->best() === null
+                ? __('Play :game and set the time to beat.', ['game' => $this->game()])
+                : __('Their best this week. Play :game and beat it.', ['game' => $this->game()]),
             InviteLinkType::Series => __(':mode, best of :bo. Casual, so no rating is on the line.', ['mode' => (string) $this->link->option('mode'), 'bo' => (int) $this->link->option('best_of')]),
             InviteLinkType::Clan => filled($this->link->clan?->description)
                 ? (string) $this->link->clan->description
@@ -69,6 +107,8 @@ final class InviteCopy
         return match ($this->link->type) {
             InviteLinkType::Blitz => __('Chess blitz, 5+3'),
             InviteLinkType::Daily => __('Daily chess, 1 move a day'),
+            InviteLinkType::Board => __(':game, :mode', ['game' => $this->game(), 'mode' => $this->boardMode()]),
+            InviteLinkType::Score => __(':game, beat my time', ['game' => $this->game()]),
             InviteLinkType::Series => __(':game, :mode', ['game' => $this->seriesGame(), 'mode' => (string) $this->link->option('mode')]),
             InviteLinkType::Clan => __('Clan invite'),
             InviteLinkType::Tournament => $this->link->tournament === null ? __('Tournament') : GameNames::full($this->link->tournament->game, $this->link->tournament->mode),
@@ -81,6 +121,8 @@ final class InviteCopy
         return match ($this->link->type) {
             InviteLinkType::Blitz => __('Beat me at blitz?'),
             InviteLinkType::Daily => __('Your move?'),
+            InviteLinkType::Board => $this->isCorrespondence() ? __('Your move?') : __('Beat me at :game?', ['game' => $this->game()]),
+            InviteLinkType::Score => $this->best() === null ? __('Beat me at :game?', ['game' => $this->game()]) : __('Beat :time?', ['time' => $this->best()]),
             InviteLinkType::Series => __('Take on :clan?', ['clan' => $this->clanName()]),
             InviteLinkType::Clan => __('Join :clan?', ['clan' => $this->clanName()]),
             InviteLinkType::Tournament => __('Join me in :tournament?', ['tournament' => $this->tournamentName()]),
@@ -92,6 +134,8 @@ final class InviteCopy
         return match ($this->link->type) {
             InviteLinkType::Blitz => __('5+3 chess, casual. Tap to take the seat.'),
             InviteLinkType::Daily => __('Daily chess, one move a day, casual.'),
+            InviteLinkType::Board => __(':game :mode, casual.', ['game' => $this->game(), 'mode' => $this->boardMode()]),
+            InviteLinkType::Score => __(':game, my best this week. Tap to play.', ['game' => $this->game()]),
             InviteLinkType::Series => __(':game :mode, best of :bo.', ['game' => $this->seriesGame(), 'mode' => (string) $this->link->option('mode'), 'bo' => (int) $this->link->option('best_of')]),
             InviteLinkType::Clan => __('Ask to join. A captain confirms.'),
             InviteLinkType::Tournament => __('Sign up on the tournament page.'),
@@ -110,6 +154,17 @@ final class InviteCopy
         return GameNames::game((string) $this->link->option('game'));
     }
 
+    /** The mode of a board link ("Blitz 5+3", "Correspondence"). */
+    public function boardMode(): string
+    {
+        return GameNames::mode((string) $this->link->option('game'), (string) $this->link->option('mode'));
+    }
+
+    private function isCorrespondence(): bool
+    {
+        return $this->link->option('mode') === BoardGame::CORRESPONDENCE;
+    }
+
     /** Page title and og:title. */
     public function title(): string
     {
@@ -122,6 +177,8 @@ final class InviteCopy
         return match ($this->link->type) {
             InviteLinkType::Blitz => __('Blitz chess 5+3, casual. Log in with Google or Nostr and you land right at the board.'),
             InviteLinkType::Daily => __('Daily chess, one move a day, casual. Log in with Google or Nostr and you land right in the game.'),
+            InviteLinkType::Board => __(':game :mode, casual. Log in with Google or Nostr and you land right in the game.', ['game' => $this->game(), 'mode' => $this->boardMode()]),
+            InviteLinkType::Score => __('Play :game in your browser and beat the time.', ['game' => $this->game()]),
             InviteLinkType::Series => __(':game :mode, best of :bo, casual. Take the challenge with your team.', ['game' => $this->seriesGame(), 'mode' => (string) $this->link->option('mode'), 'bo' => (int) $this->link->option('best_of')]),
             InviteLinkType::Clan => __('Ask to join :clan on TWENTY ONE esports. A captain confirms your request.', ['clan' => $this->clanName()]),
             InviteLinkType::Tournament => __('A tournament on TWENTY ONE Esports. Sign up on its page.'),
