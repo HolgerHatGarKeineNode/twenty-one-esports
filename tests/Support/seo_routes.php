@@ -16,10 +16,12 @@ use App\Games\GameRegistry;
 use App\Models\ChessGame;
 use App\Models\Clan;
 use App\Models\SeriesMatch;
+use App\Models\StackerRun;
 use App\Models\Tournament;
 use App\Models\User;
 use App\Support\Invites\InviteLinks;
 use App\Support\Stacker\BlockfillWeeks;
+use App\Support\Stacker\StackerRuns;
 use App\Support\Tournaments\FormatOptions;
 use App\Support\Tournaments\GameProfile;
 use Illuminate\Routing\Route as RouteDefinition;
@@ -127,6 +129,14 @@ function seoRouteFixtures(): array
         'board.correspondence' => fn () => array_map(fn (string $slug): string => route('board.correspondence', $slug), array_keys($registry()->boards())),
         'board.show' => fn () => array_map(fn (string $slug): string => route('board.show', mempoolBoard($slug, ['status' => BoardGameStatus::Active])), array_keys($registry()->boards())),
         'stacker.play' => fn () => [route('stacker.play')],
+        // The replays page with last week's first place on it: a verified run of an ended week, on its board.
+        'stacker.replays' => function (): array {
+            $at = now()->subWeek();
+            $run = StackerRun::factory()->verified(958)->create(['submitted_at' => $at, 'week' => StackerRuns::weekOf($at), 'replay' => 'fixture']);
+            app(BlockfillWeeks::class)->record($run, $at);
+
+            return [route('stacker.replays')];
+        },
         'scores.show' => fn () => array_map(fn (string $slug): string => route('scores.show', $slug), array_keys($registry()->scores())),
         'tournaments.scores' => fn () => [
             route('tournaments.scores', runningScoreBoard(3, attributes: ['published_at' => now()])[0]),

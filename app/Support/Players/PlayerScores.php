@@ -4,6 +4,7 @@ namespace App\Support\Players;
 
 use App\Enums\TournamentFormat;
 use App\Enums\TournamentStatus;
+use App\Games\Blockfill;
 use App\Games\GameRegistry;
 use App\Games\ScoreGame;
 use App\Models\ScoreRun;
@@ -38,7 +39,7 @@ use Illuminate\Support\Facades\Route;
  *
  * @phpstan-type Attempt array{value: string, at: CarbonInterface|null}
  * @phpstan-type Board array{title: string, href: string, value: string|null, place: int|null, of: int}
- * @phpstan-type Card array{key: string, game: string, mode: string, name: string, href: string, best: string, runs: int, board: Board|null, points: array{place: int, points: int, of: int}|null, attempts: list<Attempt>}
+ * @phpstan-type Card array{key: string, game: string, mode: string, name: string, href: string, replays: string|null, best: string, runs: int, board: Board|null, points: array{place: int, points: int, of: int}|null, attempts: list<Attempt>}
  */
 final class PlayerScores
 {
@@ -100,6 +101,8 @@ final class PlayerScores
                     'mode' => $mode->slug,
                     'name' => GameNames::game($slug).' · '.GameNames::mode($slug, $mode->slug),
                     'href' => Route::has('scores.show') ? route('scores.show', $slug) : GameNames::page($slug),
+                    // Blockfill keeps replays: the replays page narrowed to this player (StackerReplays::ofPlayer()).
+                    'replays' => $slug === Blockfill::SLUG && Route::has('stacker.replays') ? route('stacker.replays', ['player' => $this->user->npub]) : null,
                     'best' => $metric->format((int) ($metric->lowerIsBetter() ? $total->low : $total->high)),
                     'runs' => (int) $total->runs,
                     'board' => $board === null ? null : $this->standing($board, $runs->standings($board), $metric->format(...)),

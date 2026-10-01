@@ -215,7 +215,7 @@
     <nav class="ctx hidden h-12 items-center gap-1 border-b border-hairline px-6 lg:flex xl:px-8" style="--game: {{ $active['colour'] }}" aria-label="{{ $active['name'] }}" data-test="context-bar" data-game="{{ $active['slug'] }}">
         <span class="ctx-name">{{ $active['name'] }}</span>
         @foreach ($active['actions'] as $link)
-            <a href="{{ $link['href'] }}" @if ($link['href'] === $current) aria-current="page" @endif class="ctx-link" data-test="ctx-{{ $link['key'] }}">
+            <a href="{{ $link['href'] }}" @if (\App\Support\Navigation\ShellNavigation::isCurrent($link)) aria-current="page" @endif class="ctx-link" data-test="ctx-{{ $link['key'] }}">
                 <x-icon :name="$link['icon']" :size="16" class="max-[90rem]:hidden" />
                 <span class="min-[90rem]:hidden">{{ $link['short'] }}</span><span class="max-[90rem]:hidden">{{ $link['label'] }}</span>
             </a>

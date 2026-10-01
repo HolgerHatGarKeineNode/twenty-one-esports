@@ -35,7 +35,7 @@ use Illuminate\Support\Facades\Route;
  * registered game. Row 2 always shows the active game, so the rule is the
  * same on every page and row 2 always names the game it is about.
  *
- * @phpstan-type NavLink array{key: string, href: string, label: string, short: string, icon: string, test: ?string, mobileTest: ?string, tab: ?string}
+ * @phpstan-type NavLink array{key: string, href: string, label: string, short: string, icon: string, test: ?string, mobileTest: ?string, tab: ?string, routes?: list<string>}
  * @phpstan-type NavGame array{slug: string, name: string, short: string, colour: string, formats: string, kinds: list<string>, page: string, played: bool, actions: list<NavLink>}
  */
 final class ShellNavigation
@@ -226,7 +226,7 @@ final class ShellNavigation
             $name === 'board.show' => $known($this->gameOfBoardGame($route->parameter('boardGame'))),
             $name === 'scores.show' => $known($route->parameter('game')),
             // Blockfill's game page (plan "Blockfill", P6): its own context bar, never the one of the game opened last.
-            $name === 'stacker.play', $name === 'stacker.replay' => $known(Blockfill::SLUG),
+            $name === 'stacker.play', $name === 'stacker.replay', $name === 'stacker.replays', $name === 'stacker.moment' => $known(Blockfill::SLUG),
             // The match list files board games too (plan "Mempool-Streifen", P2), but a board game's filter keeps row 2
             // on the game opened last: a board game's context bar has no Matches link, its games are in its lobby.
             $name === 'matches.index' => $this->registry->isBoard((string) $request->query('game')) ? null : $known($request->query('game')),
@@ -387,6 +387,20 @@ final class ShellNavigation
         return self::link('strongest', route('ladder.strongest'), __('Strongest players'), 'award', null, 'mobile-strongest', __('Strongest'));
     }
 
+    /**
+     * Whether a link is the page on screen (`aria-current="page"` in the
+     * context bar and the tab bar): its own URL, or a page of its `routes`
+     * (the Replays tab on a replay, a week picked on the replays page).
+     *
+     * @param  NavLink  $link
+     */
+    public static function isCurrent(array $link): bool
+    {
+        $request = request();
+
+        return $link['href'] === $request->fullUrl() || (($link['routes'] ?? []) !== [] && $request->routeIs(...$link['routes']));
+    }
+
     /** @return NavLink */
     public static function link(string $key, string $href, string $label, string $icon, ?string $test = null, ?string $mobileTest = null, ?string $short = null, ?string $tab = null): array
     {
@@ -458,13 +472,15 @@ final class ShellNavigation
         }
 
         // Blockfill (plan "Blockfill", P6): the game page first, then its weekly leaderboards in the ladder's place
-        // (the tab bar is the same on both pages), and how a week works.
+        // (the tab bar is the same on both pages), its replays (a tab of their own on phones), and how a week works.
         if ($slug === Blockfill::SLUG && Route::has('stacker.play') && Route::has('scores.show')) {
-            return [
+            return array_values(array_filter([
                 self::link('play', route('stacker.play'), __('Play'), 'bolt', null, null, __('Play'), 'play'),
                 self::link('leaderboard', route('scores.show', $slug), __('Leaderboard'), 'trophy', null, null, null, 'ladder'),
+                // Every replay the viewer may watch; the replay viewer and a shared moment (a replay too) mark this tab.
+                Route::has('stacker.replays') ? [...self::link('replays', route('stacker.replays'), __('Replays'), 'play', null, null, null, 'replays'), 'routes' => ['stacker.replays', 'stacker.replay', 'stacker.moment']] : null,
                 self::link('rules', route('rules').'#'.$slug, __('Rules'), 'shield-check'),
-            ];
+            ]));
         }
 
         // A score game (plan "AoE2 und Trackmania", P4): its leaderboards and points ladder on one page; no matches,

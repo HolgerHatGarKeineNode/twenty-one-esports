@@ -76,6 +76,12 @@
                 <x-icon name="play" :size="20" />{{ __('Play now') }}
             </a>
             <a href="{{ route('rules') }}#blockfill" class="btn-s inline-flex h-14 items-center justify-center rounded-md border border-edge px-5 text-[13px] font-bold text-ink hover:text-ink" data-test="how-it-works">{{ __('How it works') }}</a>
+            {{-- Every replay to watch; an ended week's page opens on that week's first ten --}}
+            @if (\Illuminate\Support\Facades\Route::has('stacker.replays'))
+                <a href="{{ route('stacker.replays', $week !== null && $window->hasEnded() ? ['week' => $week->slug] : []) }}" class="btn-s inline-flex h-14 items-center justify-center gap-2 rounded-md border border-edge px-5 text-[13px] font-bold text-ink hover:text-ink" data-test="hero-replays">
+                    <x-icon name="play" :size="16" class="text-btc-hi" />{{ __('Replays') }}
+                </a>
+            @endif
         </div>
     </div>
 </section>

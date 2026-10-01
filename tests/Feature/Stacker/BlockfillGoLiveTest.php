@@ -152,7 +152,7 @@ test('switched on, Blockfill has its own cover at 480 and 1280 px, each file und
     }
 });
 
-test('switched on, Blockfill is in the hub, on /play and on home, its page is /blockfill, and /blockfill and scores/blockfill share its context bar and tab bar', function () {
+test('switched on, Blockfill is in the hub, on /play and on home, its page is /blockfill, and /blockfill, scores/blockfill and its replays share its context bar and tab bar', function () {
     BlockfillOn::play();
     $nav = ShellNavigation::current();
     $game = collect($nav->games())->firstWhere('slug', Blockfill::SLUG);
@@ -161,20 +161,23 @@ test('switched on, Blockfill is in the hub, on /play and on home, its page is /b
         ->and(array_column($game['actions'], 'href', 'key'))->toBe([
             'play' => route('stacker.play'),
             'leaderboard' => route('scores.show', Blockfill::SLUG),
+            'replays' => route('stacker.replays'),
             'rules' => route('rules').'#blockfill',
         ])
-        ->and(array_column($game['actions'], 'tab', 'key'))->toBe(['play' => 'play', 'leaderboard' => 'ladder', 'rules' => null]);
+        ->and(array_column($game['actions'], 'tab', 'key'))->toBe(['play' => 'play', 'leaderboard' => 'ladder', 'replays' => 'replays', 'rules' => null]);
 
     $this->get(route('play'))->assertOk()->assertSee('data-test="play-game-blockfill"', false);
     $this->get(route('home'))->assertOk()->assertSee('data-game="blockfill"', false);
 
-    foreach ([route('stacker.play'), route('scores.show', Blockfill::SLUG)] as $url) {
+    foreach ([route('stacker.play'), route('scores.show', Blockfill::SLUG), route('stacker.replays')] as $url) {
         $html = $this->get($url)->assertOk()->getContent();
         preg_match('#<nav class="tabbar.*?</nav>#s', $html, $tabbar);
 
         expect($html)->toContain('data-test="context-bar" data-game="blockfill"')
+            ->and($html)->toContain('href="'.route('stacker.replays').'"')
             ->and($tabbar[0] ?? '')->toContain('href="'.route('stacker.play').'"')
             ->and($tabbar[0] ?? '')->toContain('href="'.route('scores.show', Blockfill::SLUG).'"')
+            ->and($tabbar[0] ?? '')->toContain('data-test="tab-replays"')
             ->and($tabbar[0] ?? '')->not->toContain(route('chess.lobby'));
     }
 });

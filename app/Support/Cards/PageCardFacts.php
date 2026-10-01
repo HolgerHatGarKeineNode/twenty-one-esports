@@ -37,6 +37,7 @@ use App\Support\Scores\ScoreWindow;
 use App\Support\SeasonChain\SeasonChains;
 use App\Support\SeasonChain\Seasons;
 use App\Support\Stacker\BlockfillWeeks;
+use App\Support\Stacker\StackerReplays;
 use App\Support\Tournaments\CasualCups;
 use App\Support\Tournaments\Lobbies;
 use App\Support\Tournaments\TournamentSignups;
@@ -572,6 +573,26 @@ final class PageCardFacts
 
             return [
                 'week' => [$start->isoWeek(), $start->isoWeekYear()],
+                'board' => $week === null ? null : self::leaderboard($week),
+            ];
+        });
+    }
+
+    /**
+     * Blockfill's replays page: the leaderboard of the last ended week,
+     * whose first ten replays are public (StackerReplays::top()), cached
+     * like the counts of a fixed page.
+     *
+     * @return array<string, mixed>
+     */
+    public static function blockfillReplays(): array
+    {
+        return Cache::remember('page-card:blockfill-replays', now()->addSeconds(self::COUNTS_TTL), function (): array {
+            $week = app(StackerReplays::class)->endedWeeks(1)[0] ?? null;
+            $start = $week?->starts_at->toImmutable()->setTimezone(BlockfillWeeks::TIMEZONE);
+
+            return [
+                'week' => $start === null ? null : [$start->isoWeek(), $start->isoWeekYear()],
                 'board' => $week === null ? null : self::leaderboard($week),
             ];
         });

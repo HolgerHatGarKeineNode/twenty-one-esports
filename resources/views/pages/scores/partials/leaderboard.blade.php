@@ -6,7 +6,7 @@
     $viewerId: the logged-in player, whose row is marked "You"; $staff: directors and admins also see the source and the
     proof link (a player's link may name their game account, so it is never public); $beat: where "Beat this time" next
     to the first place leads (null: not shown).
-    Blockfill (plan "Blockfill", P5): a row whose replay the viewer may watch links to it
+    Blockfill (plan "Blockfill", P5): a row whose replay the viewer may watch ends in a 44 px play square to it
     (App\Support\Stacker\StackerReplays::forStandings(): their own, an ended week's first ten, admins' flagged ones).
     $shareMoment: on a Blockfill week, the viewer's own run that is a moment (BlockfillMoments::shareableOn()): their row
     gets the button that opens the share sheet (components/⚡blockfill-share, on the same page).
@@ -79,9 +79,6 @@
                     <span class="flex flex-col items-end text-right">
                         @if ($row->value !== null)
                             <b class="font-mono tabular-nums" data-test="score-value">{{ $metric->format($row->value) }}</b>
-                            @isset($replays[$row->participant->id])
-                                <a href="{{ $replays[$row->participant->id] }}" class="inline-flex min-h-6 items-center text-xs font-bold text-ink-2 underline decoration-edge underline-offset-4 hover:text-ink hover:decoration-ink" data-test="score-replay">{{ __('Replay') }}</a>
-                            @endisset
                             @if ($row->place !== null && $row->place > 1 && $best !== null)
                                 <span class="text-xs text-ink-3 tabular-nums" data-test="score-gap">{{ $gap($row->value) }}</span>
                             @endif
@@ -92,6 +89,16 @@
                             <span class="text-[11px] text-ink-3">{{ $row->source }}@if ($row->proofUrl) · <a href="{{ $row->proofUrl }}" rel="nofollow noopener" target="_blank" class="text-ink-2 underline">{{ __('proof') }}</a>@endif</span>
                         @endif
                     </span>
+                    {{-- The replay the viewer may watch: a play square of its own, 44 px, not a word under the time --}}
+                    @isset($replays[$row->participant->id])
+                        <a href="{{ $replays[$row->participant->id] }}" aria-label="{{ __('Watch the replay of :name', ['name' => $row->participant->name]) }}" title="{{ __('Watch replay') }}"
+                           class="inline-flex size-11 shrink-0 items-center justify-center rounded-md border border-line bg-well text-btc-hi hover:border-btc hover:bg-btc hover:text-on-btc" data-test="score-replay">
+                            <x-icon name="play" :size="18" />
+                        </a>
+                    @elseif ($replays !== [])
+                        {{-- The square's room, so the times stay in one column on a board with replays --}}
+                        <span class="size-11 shrink-0" aria-hidden="true"></span>
+                    @endisset
                     @if ($actions !== '')
                         <span class="flex shrink-0 items-center gap-1" data-test="score-row-actions">{!! $actions !!}</span>
                     @endif

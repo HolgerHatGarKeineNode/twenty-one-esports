@@ -401,7 +401,7 @@ test('no text on any card is cut or runs off the edge, in English or German, wit
         fn () => PageCard::boardGame($checkers->refresh()),
         fn () => PageCard::leaderboard($leaderboard->refresh()),
         fn () => PageCard::leaderboard($week->refresh()),
-        ...array_map(fn (string $page): Closure => fn () => PageCard::page($page), ['blockfill', 'board.nine-mens-morris', 'board.checkers', 'board-daily.nine-mens-morris',
+        ...array_map(fn (string $page): Closure => fn () => PageCard::page($page), ['blockfill', 'blockfill-replays', 'board.nine-mens-morris', 'board.checkers', 'board-daily.nine-mens-morris',
             'board-daily.checkers', 'scores.score-demo', 'scores.blockfill']),
         ...array_map(fn (ChessGame $game): Closure => fn () => PageCard::game($game->refresh()), $games),
         fn () => PageCard::tournament($open->refresh()),

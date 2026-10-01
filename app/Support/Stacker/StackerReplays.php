@@ -33,6 +33,18 @@ final class StackerReplays
     /** The places of an ended week whose replays everybody may watch. */
     public const PUBLIC_TOP = 10;
 
+    /** Replays per player on the replays page (`stacker.replays`). */
+    public const LIST_LIMIT = 12;
+
+    /** Another player's newest runs read to find their public replays among them. */
+    public const SCAN_LIMIT = 60;
+
+    /** Finished weeks the replays page offers. */
+    public const WEEKS = 6;
+
+    /** Held runs the replays page shows an admin; the review list has them all. */
+    public const HELD_LIMIT = 5;
+
     public function __construct(private ScoreRuns $scores, private BlockfillWeeks $weeks) {}
 
     /**
@@ -68,6 +80,32 @@ final class StackerReplays
             'finesse' => __('Every piece placed with the fewest presses (:perfect of :of)', ['perfect' => (int) ($finesse['perfect'] ?? 0), 'of' => (int) ($finesse['of'] ?? 0)]),
             default => $flag,
         }, (array) ($hints['flags'] ?? [])));
+    }
+
+    /**
+     * What the replay viewer (components/stacker/replay-viewer) starts
+     * from: the run's replay, its time and end state, and the viewer's words.
+     *
+     * @return array<string, mixed>
+     */
+    public static function viewerConfig(StackerRun $run): array
+    {
+        return [
+            'replay' => (string) $run->replay,
+            'ticks' => (int) $run->ticks,
+            'hash' => (string) $run->state_hash,
+            'testing' => app()->environment('testing'),
+            't' => [
+                'noBlock' => __('No block mined so far'),
+                'block' => __('Block :n of 40'),
+                'minedAt' => __('mined at :time'),
+                'broken' => __('This replay cannot be played.'),
+                'play' => __('Play'),
+                'pause' => __('Pause'),
+                'slider' => __(':time, block :n of 40'),
+                'tick' => __('Tick :n'),
+            ],
+        ];
     }
 
     public function canView(?User $viewer, StackerRun $run): bool
@@ -193,6 +231,135 @@ final class StackerReplays
         }
 
         return $links;
+    }
+
+    /**
+     * The finished weeks whose first ten everybody may watch, newest first:
+     * the weeks before the running one (each ended Monday 00:00 Berlin).
+     *
+     * @return list<Tournament>
+     */
+    public function endedWeeks(int $limit = self::WEEKS): array
+    {
+        $running = BlockfillWeeks::startOf(now());
+
+        return array_values(Tournament::query()->where('game', Blockfill::SLUG)->where('starts_at', '<', $running)
+            ->orderByDesc('starts_at')->limit($limit)->get()
+            ->filter(fn (Tournament $week): bool => ScoreWindow::of($week)->hasEnded())->all());
+    }
+
+    /**
+     * An ended week's public replays: its first PUBLIC_TOP places that still
+     * hold a verified replay, by place. Empty while the week runs. Four
+     * queries for the board, one for the runs with their players.
+     *
+     * @return list<array{place: int, name: string, run: StackerRun, href: string}>
+     */
+    public function top(?Tournament $week): array
+    {
+        if ($week === null || ! ScoreWindow::of($week)->hasEnded() || ! $this->routed()) {
+            return [];
+        }
+
+        $rows = array_values(array_filter($this->scores->standings($week),
+            fn (ScoreStanding $row): bool => $row->place !== null && $row->place <= self::PUBLIC_TOP && $row->runId !== null));
+        $stacker = self::runIds(array_map(fn (ScoreStanding $row): int => (int) $row->runId, $rows));
+        $runs = StackerRun::query()->whereKey(array_values($stacker))->where('status', StackerRunStatus::Verified)->whereNotNull('replay')
+            ->with('user')->get()->keyBy('id');
+        $top = [];
+
+        foreach ($rows as $row) {
+            $run = $runs->get($stacker[(int) $row->runId] ?? 0);
+
+            if ($run instanceof StackerRun) {
+                $top[] = ['place' => (int) $row->place, 'name' => (string) $row->participant->name, 'run' => $run, 'href' => route('stacker.replay', $run->id)];
+            }
+        }
+
+        return $top;
+    }
+
+    /**
+     * The replays of `$player` that `$viewer` may watch, newest first, each
+     * with its week and, for the run that holds the player's place on that
+     * week's board, the place. The player sees all of their own (held ones
+     * included); anybody else only the public ones (forRuns()).
+     *
+     * @return list<array{run: StackerRun, week: ?Tournament, place: ?int, href: string}>
+     */
+    public function ofPlayer(User $player, ?User $viewer, int $limit = self::LIST_LIMIT): array
+    {
+        if (! $this->routed()) {
+            return [];
+        }
+
+        $own = $viewer !== null && $viewer->id === $player->id;
+        $runs = StackerRun::query()->where('user_id', $player->id)->whereNotNull('replay')
+            ->whereIn('status', $own ? [StackerRunStatus::Verified, StackerRunStatus::Review] : [StackerRunStatus::Verified])
+            ->latest('submitted_at')->latest('id')->limit($own ? $limit : self::SCAN_LIMIT)->get();
+        $links = $this->forRuns($runs, $viewer);
+        $shown = array_slice(array_values($runs->filter(fn (StackerRun $run): bool => isset($links[$run->id]))->all()), 0, $limit);
+        $weeks = [];
+        $places = [];
+
+        foreach ($shown as $run) {
+            $key = (string) $run->week;
+
+            if (! array_key_exists($key, $weeks)) {
+                $weeks[$key] = $this->weekOf($run);
+                $places[$key] = $weeks[$key] === null ? [] : $this->placesOf($weeks[$key], $player);
+            }
+        }
+
+        return array_map(fn (StackerRun $run): array => [
+            'run' => $run->setRelation('user', $player),
+            'week' => $weeks[(string) $run->week],
+            'place' => $places[(string) $run->week][$run->id] ?? null,
+            'href' => $links[$run->id],
+        ], $shown);
+    }
+
+    /**
+     * The runs held for an admin's check that `$viewer` may watch: an
+     * admin's only (they carry cheat hints), fastest first, with the number
+     * held in all.
+     *
+     * @return array{runs: list<StackerRun>, total: int}
+     */
+    public function held(?User $viewer, int $limit = self::HELD_LIMIT): array
+    {
+        if ($viewer === null || ! $viewer->isAdmin() || ! $this->routed()) {
+            return ['runs' => [], 'total' => 0];
+        }
+
+        $held = fn () => StackerRun::query()->where('status', StackerRunStatus::Review)->whereNotNull('replay');
+        $runs = $held()->with('user')->orderBy('ticks')->orderBy('id')->limit($limit)->get();
+
+        return [
+            'runs' => array_values($runs->filter(fn (StackerRun $run): bool => self::flagged($run))->all()),
+            'total' => $held()->count(),
+        ];
+    }
+
+    /**
+     * The places on a week's board held by `$player`'s runs, by stacker run id.
+     *
+     * @return array<int, int>
+     */
+    private function placesOf(Tournament $week, User $player): array
+    {
+        $rows = array_values(array_filter($this->scores->standings($week),
+            fn (ScoreStanding $row): bool => $row->participant->user_id === $player->id && $row->place !== null && $row->runId !== null));
+        $stacker = self::runIds(array_map(fn (ScoreStanding $row): int => (int) $row->runId, $rows));
+        $places = [];
+
+        foreach ($rows as $row) {
+            if (isset($stacker[(int) $row->runId])) {
+                $places[$stacker[(int) $row->runId]] = (int) $row->place;
+            }
+        }
+
+        return $places;
     }
 
     private function routed(): bool

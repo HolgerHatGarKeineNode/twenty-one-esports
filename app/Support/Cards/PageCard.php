@@ -53,7 +53,8 @@ final class PageCard
      * The fixed pages with a card of their own (type `page`); next to them a
      * series game's hub (`hub.<game>`), a board game's lobby
      * (`board.<game>`) and correspondence page (`board-daily.<game>`), a
-     * score game's page (`scores.<game>`) and Blockfill (`blockfill`).
+     * score game's page (`scores.<game>`), Blockfill (`blockfill`) and its
+     * replays (`blockfill-replays`).
      */
     public const PAGES = ['home', 'login', 'clans', 'matches', 'games', 'chess', 'tournaments', 'play', 'rules', 'protocol', 'mining', 'live', 'strongest'];
 
@@ -127,7 +128,7 @@ final class PageCard
         return new self('leaderboard', (string) $tournament->id, PageCardFacts::leaderboard($tournament));
     }
 
-    /** A fixed page (PAGES), or a game's page: `hub.`, `board.`, `board-daily.` or `scores.` and its slug, or `blockfill`. */
+    /** A fixed page (PAGES), or a game's page: `hub.`, `board.`, `board-daily.` or `scores.` and its slug, or `blockfill` and `blockfill-replays`. */
     public static function page(string $page): self
     {
         $facts = match (true) {
@@ -135,6 +136,7 @@ final class PageCard
             $page === 'live' => PageCardFacts::live(),
             $page === 'strongest' => PageCardFacts::strongest(),
             $page === 'blockfill' => PageCardFacts::blockfill(),
+            $page === 'blockfill-replays' => PageCardFacts::blockfillReplays(),
             str_starts_with($page, 'hub.') => PageCardFacts::hub(substr($page, 4)),
             str_starts_with($page, 'board.') => PageCardFacts::boardLobby(substr($page, 6), false),
             str_starts_with($page, 'board-daily.') => PageCardFacts::boardLobby(substr($page, 12), true),
@@ -176,7 +178,7 @@ final class PageCard
 
         return match (true) {
             in_array($key, self::PAGES, true) => true,
-            $key === 'blockfill' => $games->find(Blockfill::SLUG) !== null,
+            $key === 'blockfill', $key === 'blockfill-replays' => $games->find(Blockfill::SLUG) !== null,
             str_starts_with($key, 'hub.') => $games->isSeries($slug),
             str_starts_with($key, 'board.') => $games->isBoard($slug),
             str_starts_with($key, 'board-daily.') => $games->isBoard($slug) && $games->mode($slug, BoardGame::CORRESPONDENCE) !== null,
@@ -274,6 +276,7 @@ final class PageCard
                 $this->key === 'live' => $this->drawLive(),
                 $this->key === 'strongest' => $this->drawStrongest(),
                 $this->key === 'blockfill' => $this->drawBlockfill(),
+                $this->key === 'blockfill-replays' => $this->drawBlockfillReplays(),
                 str_starts_with($this->key, 'hub.') => $this->drawHub(),
                 str_starts_with($this->key, 'board.'), str_starts_with($this->key, 'board-daily.') => $this->drawBoardLobby(),
                 str_starts_with($this->key, 'scores.') => $this->drawScoreGame(),
@@ -919,6 +922,17 @@ final class PageCard
         $this->scoreBoard($state, Canvas::ORANGE, 'Blockfill', __('Mine 40 blocks as fast as you can.'), $board, __('No times yet this week. Mine 40 blocks and take first place.'));
     }
 
+    /** Blockfill's replays: the last ended week's first three, whose replays everybody may watch. */
+    private function drawBlockfillReplays(): void
+    {
+        $f = $this->facts;
+        $board = is_array($f['board']) ? $f['board'] : ['game' => Blockfill::SLUG, 'unit' => 'ms', 'top' => [], 'placed' => 0];
+        $state = is_array($f['week']) ? [__('Top replays of :week', ['week' => __('Week :week, :year', ['week' => $f['week'][0], 'year' => $f['week'][1]])])] : [__('Replays')];
+
+        $this->scoreBoard($state, Canvas::ORANGE, __('Blockfill replays'), __('Every run played again, block by block.'), $board,
+            __('No week has ended yet. The first ten go public here.'));
+    }
+
     /**
      * The header of a leaderboard (state, title, line; the game's cover on
      * the right) and its first three as a podium, each with its value.
@@ -1379,6 +1393,7 @@ final class PageCard
             $this->key === 'strongest' => __('Strongest players'),
             str_starts_with($this->key, 'hub.') => GameNames::game(substr($this->key, 4)),
             $this->key === 'blockfill' => 'Blockfill',
+            $this->key === 'blockfill-replays' => __('Blockfill replays'),
             str_starts_with($this->key, 'board.') => GameNames::game(substr($this->key, 6)),
             str_starts_with($this->key, 'board-daily.') => __(':game correspondence', ['game' => GameNames::game(substr($this->key, 12))]),
             str_starts_with($this->key, 'scores.') => __(':game leaderboards', ['game' => GameNames::game(substr($this->key, 7))]),

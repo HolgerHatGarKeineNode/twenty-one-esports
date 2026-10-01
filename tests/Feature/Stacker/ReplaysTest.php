@@ -19,6 +19,8 @@ use App\Models\ScoreRun;
 use App\Models\StackerRun;
 use App\Models\Tournament;
 use App\Models\User;
+use App\Support\Cards\Canvas;
+use App\Support\Cards\PageCard;
 use App\Support\Matches\ScoreAttempts;
 use App\Support\Scores\ScoreRuns;
 use App\Support\Stacker\BlockfillWeeks;
@@ -28,6 +30,10 @@ use App\Support\Stacker\StackerVerdict;
 use App\Support\Stacker\Verifier;
 use Carbon\CarbonImmutable;
 use Carbon\CarbonInterface;
+use Illuminate\Support\Collection;
+use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Storage;
 use Livewire\Livewire;
 use Tests\Support\BlockfillOn;
 use Tests\Support\FakeStackerVerifier;
@@ -248,4 +254,229 @@ test('the run status a player polls names the replay page once the league keeps 
 
     $run->forceFill(['replay' => null])->save();
     $this->actingAs($ada)->getJson(route('stacker.runs.show', $token))->assertOk()->assertJsonPath('replay', null);
+});
+
+/*
+| The replays page (`stacker.replays`, the Replays tab): your own replays, an
+| ended week's first ten, and the held runs for admins, each only when
+| StackerReplays::canView() would let the viewer watch it.
+*/
+
+/**
+ * Week 40 (2026-09-28 to 2026-10-04) ended with eleven players on its board, Ada second; in week 41, running now
+ * (Wednesday 2026-10-07), Ada and Bob have one run each.
+ *
+ * @return array{players: Collection<int, User>, lastWeek: Collection<int, StackerRun>, ada: User, bob: User, adaNow: StackerRun, bobNow: StackerRun}
+ */
+function replayShelves(): array
+{
+    test()->travelTo(CarbonImmutable::parse('2026-09-30 12:00:00'));
+    $players = User::factory()->count(11)->sequence(fn ($sequence) => ['name' => 'Week Forty Player '.($sequence->index + 1)])->create();
+    $lastWeek = $players->values()->map(fn (User $user, int $i): StackerRun => replayRun($user, 1000 + 10 * $i, now()->subHours(20 - $i)));
+
+    test()->travelTo(CarbonImmutable::parse('2026-10-07 12:00:00'));
+    $ada = $players[1];
+    $bob = User::factory()->create(['name' => 'Bob This Week']);
+
+    return [
+        'players' => $players, 'lastWeek' => $lastWeek, 'ada' => $ada, 'bob' => $bob,
+        'adaNow' => replayRun($ada, 990), 'bobNow' => replayRun($bob, 995),
+    ];
+}
+
+test('the replays page lists your own replays newest first with time, week and place, and the ended week\'s first ten, the first one large', function () {
+    ['lastWeek' => $lastWeek, 'ada' => $ada, 'bobNow' => $bobNow, 'adaNow' => $adaNow] = replayShelves();
+
+    $html = $this->actingAs($ada)->get(route('stacker.replays'))->assertOk()
+        ->assertSee('data-test="replays-mine"', false)
+        // Ada's own, newest first: this week's 0:16.500 (#1 of this week so far), then week 40's 0:16.833 (#2)
+        ->assertSeeInOrder([route('stacker.replay', $adaNow), 'Week 41, 2026', route('stacker.replay', $lastWeek[1]), 'Week 40, 2026'], false)
+        ->assertSee('Top replays of Week 40, 2026')
+        ->getContent();
+
+    preg_match('#data-test="replays-mine".*?</section>#s', $html, $mine);
+    preg_match('#data-test="replays-top".*?</section>#s', $html, $top);
+    preg_match('#<a href="([^"]+)"[^>]*?data-test="replays-featured".*?</a>#s', $html, $featured);
+    preg_match_all('#href="([^"]+)"\s+data-test="replays-mine-row"\s*(?:data-place="(\d+)")?#', $mine[0], $mineRows);
+
+    expect($mineRows[1])->toBe([route('stacker.replay', $adaNow), route('stacker.replay', $lastWeek[1])])
+        ->and($mineRows[2])->toBe(['1', '2'])
+        // the week's winner large, then places 2 to 10, never the eleventh, never a run of the running week
+        ->and($featured[1])->toBe(route('stacker.replay', $lastWeek[0]))
+        ->and($featured[0])->toContain('Week Forty Player 1')->toContain('0:16.666')
+        ->and(substr_count($top[0], 'data-test="replays-top-row"'))->toBe(9)
+        ->and($top[0])->toContain('"'.route('stacker.replay', $lastWeek[9]).'"')
+        ->and($top[0])->not->toContain('"'.route('stacker.replay', $lastWeek[10]).'"')
+        ->and($html)->not->toContain('"'.route('stacker.replay', $bobNow).'"')
+        ->and($html)->not->toContain('data-test="replays-held"');
+});
+
+test('a guest sees the ended week\'s first ten and a way in, never a replay of the running week or the eleventh place', function () {
+    ['lastWeek' => $lastWeek, 'adaNow' => $adaNow, 'bobNow' => $bobNow] = replayShelves();
+
+    $html = $this->get(route('stacker.replays'))->assertOk()
+        ->assertSee('data-test="replays-mine-guest"', false)
+        ->assertSee(route('login'), false)
+        ->getContent();
+    preg_match_all('#/blockfill/replays/(\d+)#', $html, $linked);
+
+    expect(array_map('intval', array_values(array_unique($linked[1]))))->toBe($lastWeek->take(10)->pluck('id')->all())
+        ->and($html)->not->toContain('"'.route('stacker.replay', $adaNow).'"')
+        ->and($html)->not->toContain('"'.route('stacker.replay', $bobNow).'"');
+});
+
+test('without an ended week the replays page invites to play, for players and guests', function () {
+    $ada = User::factory()->create();
+
+    foreach ([null, $ada] as $viewer) {
+        $viewer ? $this->actingAs($viewer) : auth()->logout();
+        $this->get(route('stacker.replays'))->assertOk()
+            ->assertSee('data-test="replays-top-empty"', false)
+            ->assertSee('No week has ended yet')
+            ->assertSee('data-test="replays-play"', false)
+            ->assertSee(route('stacker.play'), false);
+    }
+
+    $this->actingAs($ada)->get(route('stacker.replays'))->assertSee('data-test="replays-mine-empty"', false);
+});
+
+test('the week chips show an older ended week\'s first ten', function () {
+    ['lastWeek' => $lastWeek] = replayShelves();
+    // Two weeks on, week 40 is the older of two ended weeks; week 41's only place is Ada's.
+    $this->travelTo(CarbonImmutable::parse('2026-10-14 12:00:00'));
+    $week40 = Tournament::query()->where('slug', 'blockfill-2026-09-28')->sole();
+
+    $this->get(route('stacker.replays'))->assertOk()
+        ->assertSee('Top replays of Week 41, 2026')
+        ->assertSee(route('stacker.replays', ['week' => $week40->slug]), false)
+        ->assertDontSee('href="'.route('stacker.replay', $lastWeek[0]).'"', false);
+
+    $this->get(route('stacker.replays', ['week' => $week40->slug]))->assertOk()
+        ->assertSee('Top replays of Week 40, 2026')
+        ->assertSee('href="'.route('stacker.replay', $lastWeek[0]).'"', false);
+});
+
+test('admins see the held runs with their number and the way to the review list; players never do', function () {
+    $admin = adminUser();
+    $cy = User::factory()->create(['name' => 'Cy Held']);
+    $held = replayRun($cy, 958, hints: ['pps', 'timing']);
+
+    $this->actingAs($admin)->get(route('stacker.replays'))->assertOk()
+        ->assertSee('data-test="replays-held"', false)
+        ->assertSee('data-test="replays-held-count">1<', false)
+        ->assertSee('href="'.route('stacker.replay', $held).'"', false)
+        ->assertSee('2 hints')
+        ->assertSee(route('admin.blockfill'), false);
+
+    // Cy sees the held run as their own, never the admin shelf
+    $this->actingAs($cy)->get(route('stacker.replays'))->assertOk()
+        ->assertDontSee('data-test="replays-held"', false)
+        ->assertSee('href="'.route('stacker.replay', $held).'"', false)
+        ->assertSee('data-test="replay-row-held"', false);
+    $this->actingAs(User::factory()->create())->get(route('stacker.replays'))->assertOk()
+        ->assertDontSee('data-test="replays-held"', false)
+        ->assertDontSee('href="'.route('stacker.replay', $held).'"', false);
+});
+
+test('?player= lists that player\'s replays the viewer may watch: the public ones for others, all for the player', function () {
+    ['lastWeek' => $lastWeek, 'ada' => $ada, 'adaNow' => $adaNow] = replayShelves();
+    $url = route('stacker.replays', ['player' => $ada->npub]);
+
+    $this->get($url)->assertOk()
+        ->assertSee('Replays of '.$ada->displayName())
+        ->assertSee('href="'.route('stacker.replay', $lastWeek[1]).'"', false)
+        ->assertDontSee('href="'.route('stacker.replay', $adaNow).'"', false)
+        ->assertDontSee('href="'.route('stacker.replay', $lastWeek[0]).'"', false);
+
+    $this->actingAs($ada)->get($url)->assertOk()
+        ->assertSee('href="'.route('stacker.replay', $lastWeek[1]).'"', false)
+        ->assertSee('href="'.route('stacker.replay', $adaNow).'"', false);
+
+    // a player without a public replay: the empty state with Play
+    $this->get(route('stacker.replays', ['player' => $lastWeek[10]->user->npub]))->assertOk()
+        ->assertSee('data-test="replays-player-empty"', false)
+        ->assertDontSee('href="'.route('stacker.replay', $lastWeek[10]).'"', false);
+});
+
+test('the replays page reads the same number of queries for 2 and 8 own replays in two weeks', function () {
+    ['ada' => $ada] = replayShelves();
+    $count = function () use ($ada): int {
+        // Cold caches both times: a verified run drops the shell's and the card's cached counts.
+        Cache::flush();
+        DB::flushQueryLog();
+        DB::enableQueryLog();
+        // A fresh model each time: relations loaded by an earlier request would hide their query.
+        $this->actingAs($ada->fresh())->get(route('stacker.replays'))->assertOk();
+        DB::disableQueryLog();
+
+        return count(DB::getQueryLog());
+    };
+    $two = $count();
+
+    foreach (range(1, 6) as $i) {
+        replayRun($ada, 1100 + $i, now()->subMinutes(10 * $i));
+    }
+
+    expect(app(StackerReplays::class)->ofPlayer($ada, $ada))->toHaveCount(8)
+        ->and($count())->toBe($two);
+});
+
+test('the replay viewer and the replays page mark Replays in the context bar and the tab bar', function () {
+    ['ada' => $ada, 'adaNow' => $adaNow] = replayShelves();
+
+    foreach ([route('stacker.replays'), route('stacker.replays', ['week' => 'blockfill-2026-09-28']), route('stacker.replay', $adaNow)] as $url) {
+        $html = $this->actingAs($ada)->get($url)->assertOk()->getContent();
+
+        expect($html)->toContain('data-test="context-bar" data-game="blockfill"')
+            ->and($html)->toMatch('#href="'.preg_quote(route('stacker.replays'), '#').'"\s+aria-current="page"\s+class="ctx-link"\s+data-test="ctx-replays"#')
+            ->and($html)->toMatch('#href="'.preg_quote(route('stacker.replays'), '#').'"\s+class="tab"\s+aria-current="page"\s+data-test="tab-replays"#')
+            ->and(preg_match_all('#aria-current="page"\s+class="ctx-link"#', $html))->toBe(1);
+    }
+});
+
+test('the board hero, every row the viewer may watch and the player page lead to the replays', function () {
+    ['lastWeek' => $lastWeek, 'ada' => $ada] = replayShelves();
+    $week40 = Tournament::query()->where('slug', 'blockfill-2026-09-28')->sole();
+
+    // the hero of scores/blockfill and of an ended week's board
+    $this->get(route('scores.show', 'blockfill'))->assertOk()
+        ->assertSee('data-test="hero-replays"', false)
+        ->assertSee('href="'.route('stacker.replays').'"', false);
+    $board = $this->get(route('tournaments.scores', $week40))->assertOk()
+        ->assertSee('href="'.e(route('stacker.replays', ['week' => $week40->slug])).'"', false)
+        ->getContent();
+
+    // a play square per public row, named for its player, never the word under the time
+    preg_match_all('#<a href="([^"]+)" aria-label="Watch the replay of ([^"]+)" title="Watch replay"\s+class="inline-flex size-11#', $board, $squares);
+    expect($squares[1])->toBe($lastWeek->take(10)->map(fn (StackerRun $run): string => route('stacker.replay', $run))->all())
+        ->and($squares[2][0])->toBe('Week Forty Player 1');
+
+    // the player page's Blockfill card: that player's replays
+    $this->get(route('players.show', $ada->npub))->assertOk()
+        ->assertSee('data-test="player-score-replays"', false)
+        ->assertSee('href="'.e(route('stacker.replays', ['player' => $ada->npub])).'"', false);
+});
+
+test('the replays page has a card of its own: last ended week\'s first three, in both languages', function () {
+    replayShelves();
+    Storage::fake('local');
+    $this->app['env'] = 'production';
+
+    $html = $this->get(route('stacker.replays'))->assertOk()->getContent();
+    preg_match('~<meta property="og:image" content="([^"]+)"~', $html, $image);
+    $card = PageCard::resolve('page', 'blockfill-replays');
+
+    expect($image[1] ?? '')->toContain('blockfill-replays')
+        ->and($card)->not->toBeNull()
+        ->and($card->facts['week'])->toBe([40, 2026])
+        ->and(array_column($card->facts['board']['top'], 'name'))->toBe(['Week Forty Player 1', 'Week Forty Player 2', 'Week Forty Player 3']);
+
+    // Drawn in both languages with the week and the podium, nothing cut.
+    foreach (['en', 'de'] as $locale) {
+        app()->setLocale($locale);
+        Canvas::$cuts = [];
+        expect(substr(PageCard::page('blockfill-replays')->png(), 1, 3))->toBe('PNG')
+            ->and(Canvas::$cuts)->toBe([]);
+    }
+    Canvas::$cuts = null;
 });

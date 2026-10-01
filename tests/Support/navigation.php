@@ -37,9 +37,10 @@ const NAV_VIEWS = [1440 => 900, 1024 => 768, 375 => 667];
 /**
  * Who needs which page, and the most clicks it may take. `max` 1: in the
  * chrome; 2: one page below it; 3: below a detail page, 2 from the overview
- * that owns it.
+ * that owns it. `switch`: a page that exists only while that config switch
+ * is on (its routes are loaded at boot); the walk checks it while it is.
  *
- * @var array<string, array{roles: list<string>, max: int}>
+ * @var array<string, array{roles: list<string>, max: int, switch?: string}>
  */
 const NAV_PAGES = [
     'home' => ['roles' => NAV_ROLES, 'max' => 1],
@@ -100,6 +101,8 @@ const NAV_PAGES = [
     'rules' => ['roles' => NAV_ROLES, 'max' => 1],
     'search' => ['roles' => NAV_ROLES, 'max' => 1],
     'protocol' => ['roles' => NAV_ROLES, 'max' => 1],
+    // Blockfill's replays: a tab of its context bar and of its tab bar on phones.
+    'stacker.replays' => ['roles' => NAV_ROLES, 'max' => 1, 'switch' => 'esports.blockfill.enabled'],
 ];
 
 /**
@@ -411,7 +414,7 @@ function navCrawlRoles(array $roles): array
 
         foreach ($crawl['routes'] as $width => $routes) {
             foreach (NAV_PAGES as $name => $rule) {
-                if (! in_array($role, $rule['roles'], true)) {
+                if (! in_array($role, $rule['roles'], true) || (isset($rule['switch']) && ! config($rule['switch']))) {
                     continue;
                 }
                 $depth = $routes[$name]['depth'] ?? null;

@@ -23,7 +23,7 @@ pest()->group('browser');
 | Switched on, Blockfill is a game like the others: its tile on home, its
 | row on /play and its card in the game hub, each leading to /blockfill;
 | and /blockfill and scores/blockfill share Blockfill's own context bar (from
-| lg) and tab bar (below lg): Play, Leaderboard, Rules. In English and German
+| lg): Play, Leaderboard, Replays, Rules, and tab bar (below lg). In English and German
 | at 375 and 1440 px. Measured: nothing wider than the window, the tile, the
 | row and the bars inside it. Console, uncaught errors and every answer
 | >= 400 are collected on every page (BrowserConsole) and stay empty; a
@@ -109,14 +109,14 @@ test('Blockfill is on home, on /play and in the game hub, each leading to /block
         ->and($cover[1])->toBeGreaterThan(0);
     shellShot($page, "blockfill-shell-home-{$locale}-{$width}");
 
-    // /play: its row, first button to the game, then the leaderboard and the rules.
+    // /play: its row, first button to the game, then the leaderboard, the replays and the rules.
     blockfillShellGo($page, route('play', [], false), $locale);
     $row = $page->evaluate(BLOCKFILL_SHELL_BOX, '[data-test=play-game-blockfill]');
     $buttons = $page->evaluate('() => [...document.querySelectorAll("[data-test=play-game-blockfill] .flex.flex-wrap.items-center.gap-2 a")].map((a) => [a.innerText.trim(), a.getAttribute("href")])');
     fwrite(STDERR, "blockfill shell play {$locale} {$width}: ".json_encode([$row, $buttons]).PHP_EOL);
     expect($row)->not->toBeNull()
         ->and($row[0])->toBeGreaterThanOrEqual(0)->and($row[1])->toBeLessThanOrEqual($width)
-        ->and(array_column($buttons, 1))->toBe([$game, route('scores.show', 'blockfill'), route('rules').'#blockfill'])
+        ->and(array_column($buttons, 1))->toBe([$game, route('scores.show', 'blockfill'), route('stacker.replays'), route('rules').'#blockfill'])
         ->and($buttons[1][0])->toBe($locale === 'de' ? 'Leaderboard' : 'Leaderboard');
     shellShot($page, "blockfill-shell-play-{$locale}-{$width}");
 
@@ -161,8 +161,8 @@ test('/blockfill and scores/blockfill share Blockfill\'s context bar and tab bar
         shellShot($page, "blockfill-shell-{$key}-{$locale}-{$width}");
     }
 
-    $expectedCtx = [['ctx-play', route('stacker.play')], ['ctx-leaderboard', route('scores.show', 'blockfill')], ['ctx-rules', route('rules').'#blockfill']];
-    $expectedTabs = [['tab-play', route('stacker.play')], ['tab-ladder', route('scores.show', 'blockfill')], ['tab-tournaments', route('tournaments.index')]];
+    $expectedCtx = [['ctx-play', route('stacker.play')], ['ctx-leaderboard', route('scores.show', 'blockfill')], ['ctx-replays', route('stacker.replays')], ['ctx-rules', route('rules').'#blockfill']];
+    $expectedTabs = [['tab-play', route('stacker.play')], ['tab-ladder', route('scores.show', 'blockfill')], ['tab-replays', route('stacker.replays')], ['tab-tournaments', route('tournaments.index')]];
 
     foreach ($bars as $bar) {
         expect($bar['ctxGame'])->toBe('blockfill')

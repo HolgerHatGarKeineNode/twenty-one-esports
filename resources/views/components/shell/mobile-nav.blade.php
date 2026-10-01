@@ -16,10 +16,12 @@
 @php
     $current = request()->fullUrl();
     $tabs = [];
-    foreach (['play' => 'bolt', 'matches' => 'matches', 'ladder' => 'ladder'] as $role => $icon) {
+    // Blockfill's replays (it has no matches of its own) take a tab after its leaderboard.
+    foreach (['play' => 'bolt', 'matches' => 'matches', 'ladder' => 'ladder', 'replays' => 'play'] as $role => $icon) {
         foreach ($active['actions'] as $link) {
             if ($link['tab'] === $role) {
-                $tabs[] = ['href' => $link['href'], 'label' => $role === 'play' ? __('Play') : $link['label'], 'icon' => $icon, 'test' => 'tab-'.$role];
+                $tabs[] = ['href' => $link['href'], 'label' => $role === 'play' ? __('Play') : $link['label'], 'icon' => $icon, 'test' => 'tab-'.$role,
+                    'current' => \App\Support\Navigation\ShellNavigation::isCurrent($link)];
             }
         }
     }
@@ -160,7 +162,7 @@
         <ul class="m-0 flex list-none p-0">
             @foreach ($tabs as $tab)
                 <li class="flex-auto">
-                    <a href="{{ $tab['href'] }}" class="tab" @if ($tab['href'] === $current) aria-current="page" @endif @if ($tab['name'] ?? null) aria-label="{{ $tab['name'] }}" @endif data-test="{{ $tab['test'] }}">
+                    <a href="{{ $tab['href'] }}" class="tab" @if ($tab['current'] ?? $tab['href'] === $current) aria-current="page" @endif @if ($tab['name'] ?? null) aria-label="{{ $tab['name'] }}" @endif data-test="{{ $tab['test'] }}">
                         @if ($tab['dot'] ?? false)
                             <span class="relative flex"><x-icon :name="$tab['icon']" :size="22" /><span class="tab-dot" aria-hidden="true" data-test="tab-tournaments-dot"></span></span>
                         @else

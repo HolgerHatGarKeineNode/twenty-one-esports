@@ -312,6 +312,11 @@ new #[Layout('layouts::app', ['scripts' => ['resources/js/stacker/page.js']])] c
                     <span class="font-display text-[40px] leading-none font-extrabold tabular-nums lg:text-[48px]" x-text="result ? time(result.ticks) : ''" data-test="result-time"></span>
                     <span class="text-[13px] font-bold" x-bind:class="{ 'text-win': result?.status === 'verified', 'text-loss': result?.status === 'rejected', 'text-btc': ['verifying', 'pending', 'review', 'submitting', 'busy', 'unsent'].includes(result?.status) }" x-text="statusText()" data-test="result-status"></span>
                     <span class="text-[13px] text-ink-2" x-text="bestLine()" data-test="result-best"></span>
+                    {{-- P5: the replay of this run, once the league keeps it: its own full-width line, right under the verdict --}}
+                    <a x-show="result?.replay" x-cloak x-bind:href="result?.replay" href="#" data-test="result-replay"
+                       class="btn-s inline-flex h-12 w-full items-center justify-center gap-2 rounded-md border border-btc px-5 text-[15px] font-bold text-btc-hi hover:text-btc-hi">
+                        <x-icon name="play" :size="18" />{{ __('Watch replay') }}
+                    </a>
                     {{-- A verified run that is a moment (a personal best, a first place, a week place): the share sheet --}}
                     <div x-show="result?.status === 'verified' && result?.moment" x-cloak data-test="result-share">
                         <x-button variant="secondary" icon="send" x-on:click="shareMoment()" data-test="result-share-open">{{ __('Share this moment') }}</x-button>
@@ -323,8 +328,6 @@ new #[Layout('layouts::app', ['scripts' => ['resources/js/stacker/page.js']])] c
                         @auth
                             <x-button variant="quiet" x-on:click="startRanked()" x-show="kind === 'practice'" class="pointer-coarse:hidden" data-test="result-ranked">{{ __('Ranked run') }}</x-button>
                         @endauth
-                        {{-- P5: the replay of this run, once the league keeps it --}}
-                        <x-button variant="quiet" x-show="result?.replay" x-bind:href="result?.replay" href="#" data-test="result-replay">{{ __('Watch replay') }}</x-button>
                     </div>
                     <p class="m-0 text-[12px] leading-normal text-ink-3" x-show="kind === 'ranked'">{{ __('A ranked run counts once the league has replayed its inputs and reached the same time.') }}</p>
                 </section>

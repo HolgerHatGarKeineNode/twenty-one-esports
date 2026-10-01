@@ -40,6 +40,14 @@
         </a>
     @endif
 
+    @if (($score['replays'] ?? null) !== null)
+        {{-- Blockfill: this player's replays the viewer may watch (an ended week's first ten; all of them for the player) --}}
+        <a href="{{ $score['replays'] }}" class="flex min-h-11 items-center gap-3 rounded-md bg-raised px-3 text-[13px] font-bold text-ink hover:text-ink" data-test="player-score-replays">
+            <span class="flex size-7 shrink-0 items-center justify-center rounded-sm bg-btc text-on-btc" aria-hidden="true"><x-icon name="play" :size="14" /></span>
+            {{ __('Watch replays') }}
+        </a>
+    @endif
+
     <span class="flex flex-col gap-1.5" data-test="player-score-attempts">
         <span class="text-xs text-ink-3">{{ __('Latest verified attempts') }}</span>
         <span class="flex flex-wrap gap-1.5">

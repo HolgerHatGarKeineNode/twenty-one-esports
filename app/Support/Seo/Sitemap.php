@@ -5,6 +5,7 @@ namespace App\Support\Seo;
 use App\Enums\ChessGameStatus;
 use App\Enums\SeriesStatus;
 use App\Enums\TournamentStatus;
+use App\Games\Blockfill;
 use App\Games\GameKind;
 use App\Games\GameRegistry;
 use App\Models\ChessGame;
@@ -123,6 +124,11 @@ final class Sitemap
 
                 if (Route::has('scores.show')) {
                     $urls[] = route('scores.show', $game->slug());
+                }
+
+                // Blockfill's replays: an ended week's first ten are public.
+                if ($game->slug() === Blockfill::SLUG && Route::has('stacker.replays')) {
+                    $urls[] = route('stacker.replays');
                 }
 
                 continue;
