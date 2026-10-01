@@ -86,8 +86,9 @@ final class TournamentPlacements
                 return null;
             }
 
-            if (count($terminal[0]->slots) > 2) {
-                // A score leaderboard (plan "AoE2 und Trackmania", P4) leaves the entries without a valid value unplaced.
+            // A heat or a leaderboard ranks all its entries, also with only two (a score leaderboard, plan "AoE2 und
+            // Trackmania", P4, can have two entries); the entries without a valid value stay unplaced.
+            if (count($terminal[0]->slots) > 2 || in_array($terminal[0]->bracket, ['heat', 'board'], true)) {
                 $stored = TournamentMatch::query()->where('tournament_id', $tournament->id)->where('key', $terminal[0]->key)->first()?->result;
                 $unplaced = array_map(intval(...), (array) ($stored['unplaced'] ?? []));
                 $ranking = array_values(array_filter($last['ranking'], fn (int $id): bool => ! in_array($id, $unplaced, true)));
