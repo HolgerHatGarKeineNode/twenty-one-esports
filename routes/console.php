@@ -576,9 +576,10 @@ Artisan::command('blockfill:weeks', function (BlockfillWeeks $weeks) {
  * Blockfill's jobs, scheduled only while it is registered (plan "Blockfill",
  * P6), so with the switch off none of them runs: the weeks (above), the runs'
  * sweep and prune (above), and the stream bot's week notes on its own profile
- * (a new week once it is open, its winner and top 3 once it is finished,
- * each exactly once; App\Support\StreamBot\BlockfillNotes, same flag and key
- * as the other bot notes).
+ * (a new week once it is open, a new first place at most once per
+ * `blockfill_notes.top_minutes`, its winner and top 3 once it is finished,
+ * each exactly once; App\Support\StreamBot\BlockfillNotes, same flag and
+ * key as the other bot notes).
  */
 if (app(GameRegistry::class)->find(Blockfill::SLUG) !== null) {
     Schedule::command('blockfill:weeks')->hourly()->withoutOverlapping()->onOneServer();

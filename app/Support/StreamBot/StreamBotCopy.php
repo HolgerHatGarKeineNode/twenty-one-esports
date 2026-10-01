@@ -157,6 +157,10 @@ final class StreamBotCopy
         'blockfill_note_winner' => [
             ['🏆 :name goes to :winner in :time', '🧱 Top 3: :podium', '🔁 A new week is on, every run starts from zero', '👉 All weeks: :url'],
         ],
+        // A verified run that took the running week's first place; `:gap` is empty for the week's first one.
+        'blockfill_note_top' => [
+            ['🥇 New first place in :name: :player', '⏱️ :time:gap', '🗓️ The week runs until :ends', '👉 Beat it: :url'],
+        ],
         // Pride notes on the same profile (PrideNotes): players named for what they did, tagged; the
         // rendered slide follows after a blank line. Written by the kommunikator (2026-09-28).
         'pride_note_win' => [

@@ -1151,6 +1151,13 @@ return [
             'per_run' => 3,
             'retry_minutes' => 10,
         ],
+        // Blockfill's notes on the same profile (twentyone:stream-bot:blockfill, BlockfillNotes): a verified
+        // run that takes the running week's first place gets a note, but no sooner than `top_minutes` after
+        // the bot's last Blockfill note (a burst posts only its latest first place), and none in the week's
+        // last hour, when the winner note is next.
+        'blockfill_notes' => [
+            'top_minutes' => 60,
+        ],
         'profile' => [
             'name' => 'TWENTY ONE Bot',
             'about' => 'The bot of the TWENTY ONE Esports stream chat: what is on at esports.einundzwanzig.space, with links. Chats only while the stream is live, and posts every new tournament here. It reads no replies.',
