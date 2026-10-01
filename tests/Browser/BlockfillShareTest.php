@@ -35,6 +35,8 @@ pest()->group('browser');
 */
 
 beforeEach(function () {
+    // The reference bot plays faster than a human: without this its runs would be held for review (P5 hints).
+    config(['esports.blockfill.hints' => ['pps' => 7]]);
     Http::fake(fn () => Http::response([]));
 
     config(['session.driver' => 'database']);

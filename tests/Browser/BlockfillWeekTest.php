@@ -35,6 +35,8 @@ pest()->group('browser');
 */
 
 beforeEach(function () {
+    // The reference bot plays faster than a human: without this its runs would be held for review (P5 hints).
+    config(['esports.blockfill.hints' => ['pps' => 7]]);
     Http::fake(fn () => Http::response([]));
 
     config(['session.driver' => 'database']);
@@ -182,9 +184,10 @@ test('the running week on scores/blockfill: its table between the leaderboards a
     'de 375' => ['de', 375, 812],
 ]);
 
-test('the week\'s pages and scores/blockfill offer Play and say the best run counts automatically, never "Submit your value", no overflow, clean console', function (string $locale, int $width, int $height) {
+test('the week\'s page offers Play and says the best run counts automatically, never "Submit your value", no overflow, clean console', function (string $locale, int $width, int $height) {
+    // The two boards (tournaments.scores, scores.show) open with their own play-first hero, measured in BlockfillWeekPageTest.
     $week = app(BlockfillWeeks::class)->current();
-    $paths = [route('tournaments.show', $week, false), route('tournaments.scores', $week, false), route('scores.show', 'blockfill', false)];
+    $paths = [route('tournaments.show', $week, false)];
     $page = blockfillWeekPage($this->me, $locale, $width, $height, $paths[0]);
 
     foreach ($paths as $index => $path) {
