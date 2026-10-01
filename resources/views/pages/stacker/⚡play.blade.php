@@ -124,7 +124,7 @@ new #[Layout('layouts::app', ['scripts' => ['resources/js/stacker/page.js']])] c
                     </div>
 
                     {{-- The well: the mempool block template the pieces fill --}}
-                    <div x-ref="wellSlot" class="relative flex min-w-0 max-w-[300px] grow justify-center pt-3 lg:pt-6">
+                    <div x-ref="wellSlot" class="relative flex scroll-mt-8 min-w-0 max-w-[300px] grow justify-center pt-3 lg:pt-6">
                         <div class="relative border-2 border-[#24242B] bg-[#0E0E11]" style="box-shadow: -8px -8px 0 #141418;">
                             <canvas x-ref="well" class="block" role="img" aria-label="{{ __('The well with the falling piece') }}" data-test="well"></canvas>
 
@@ -139,7 +139,7 @@ new #[Layout('layouts::app', ['scripts' => ['resources/js/stacker/page.js']])] c
                                         <x-button x-on:click="startRanked()" class="pointer-coarse:hidden" data-test="start-ranked">{{ __('Ranked run') }}</x-button>
                                         <p class="m-0 hidden max-w-[24ch] text-[12px] leading-normal text-ink-2 pointer-coarse:block" data-test="ranked-needs-keyboard">{{ __('Ranked runs need a keyboard. Here you can practise with touch.') }}</p>
                                         <x-button variant="quiet" x-on:click="startPractice()" data-test="start-practice">{{ __('Practice') }}</x-button>
-                                        <p x-show="!signedIn" class="m-0 max-w-[24ch] text-[12px] leading-normal text-ink-2">{{ __('Practice needs no login. Log in for ranked runs.') }}</p>
+                                        <p x-show="!signedIn" class="m-0 max-w-[24ch] text-[12px] leading-normal text-ink-2 pointer-coarse:hidden" data-test="guest-login-note">{{ __('Practice needs no login. Log in for ranked runs.') }}</p>
                                         <p x-show="error" x-text="error" class="m-0 max-w-[24ch] text-[12px] leading-normal text-loss" role="alert" data-test="error"></p>
                                     </div>
                                 </template>
@@ -190,7 +190,7 @@ new #[Layout('layouts::app', ['scripts' => ['resources/js/stacker/page.js']])] c
                 <section x-ref="result" x-show="mode === 'result' && result" class="flex scroll-mt-4 flex-col gap-3 bg-card p-4 lg:p-5" aria-live="polite" data-test="result">
                     <span class="text-sm text-ink-2" x-text="result && result.status !== 'toppedOut' && result.status !== 'aborted' ? @js(__('40 blocks mined in')) : @js(__('Run over at'))"></span>
                     <span class="font-display text-[40px] leading-none font-extrabold tabular-nums lg:text-[48px]" x-text="result ? time(result.ticks) : ''" data-test="result-time"></span>
-                    <span class="text-[13px] font-bold" x-bind:class="{ 'text-win': result?.status === 'verified', 'text-loss': result?.status === 'rejected', 'text-btc': result?.status === 'verifying' || result?.status === 'pending' || result?.status === 'submitting' }" x-text="statusText()" data-test="result-status"></span>
+                    <span class="text-[13px] font-bold" x-bind:class="{ 'text-win': result?.status === 'verified', 'text-loss': result?.status === 'rejected', 'text-btc': ['verifying', 'pending', 'submitting', 'busy', 'unsent'].includes(result?.status) }" x-text="statusText()" data-test="result-status"></span>
                     <span class="text-[13px] text-ink-2" x-text="bestLine()" data-test="result-best"></span>
                     <div class="flex flex-wrap gap-2 pt-1">
                         <x-button x-on:click="restart()" data-test="play-again">{{ __('Play again') }} <kbd class="rounded-sm border border-on-btc/40 px-1.5 text-[11px]" x-text="keyText('restart')"></kbd></x-button>
