@@ -4,8 +4,9 @@
 | Ranked Blockfill weeks mine (plan "Blockfill", P7): the week the league
 | opens is a score window with a solo block (NIP rev. 9.18, plan "AoE2 und
 | Trackmania", P7). Its winner mines exactly one block once the window and
-| the chain's review time are over, an admin reviewed the week's top 3, its
-| 31923 is signed and enough verified players are in the field. Blockfill
+| the chain's review time are over, the week's top 3 are reviewed (on their
+| own when none carries a cheat hint, else by an admin), its 31923 is signed
+| and enough verified players are in the field. Blockfill
 | mines only through the chain draft's proposal. The share card and the
 | pride slide name the week and the winning time, never a ladder. The
 | verifier is a fake (Tests\Support\FakeStackerVerifier); the verdict goes
@@ -122,6 +123,13 @@ function rankedWeek(array $ticks, bool $signed = true): array
     return [$week->refresh(), $users];
 }
 
+/** Marks the verified run of `$user` with a cheat hint, as one verified outside its week's top 10 carries it. */
+function hintedRun(User $user): void
+{
+    $run = StackerRun::query()->where('user_id', $user->id)->sole();
+    $run->forceFill(['flags' => ['hints' => ['flags' => ['timing'], 'pps' => 0.4, 'maxPressesPerTick' => 1, 'timingCv' => 0.1, 'finesse' => ['perfect' => 3, 'of' => 30]]]])->save();
+}
+
 /** Every tick of `scores:tick` at `$at`: the end of the leaderboard and the attestations that are due. */
 function tickAt(CarbonImmutable $at): void
 {
@@ -168,8 +176,34 @@ test('a ranked week with a signed 31923, five verified players and its top 3 rev
         ->and($event->tagsNamed('p'))->toBe([[$users[0]->pubkey, '', 'winner']]);
 });
 
-test('without the review of its top 3 the week mines nothing; reviewed later, it mines on the next tick', function () {
+test('a week whose top 3 carry no cheat hint mines once the chain\'s review time is over, without an admin', function () {
     [$week, $users] = rankedWeek([2870, 2900, 2950, 3000, 3100]);
+    $end = ScoreWindow::of($week)->end;
+    $leaderboards = app(ScoreLeaderboards::class);
+
+    // The board is final; the top 3 count as reviewed only once the review time (48 h) is over.
+    tickAt($end->addHours(47));
+    expect($week->refresh()->status)->toBe(TournamentStatus::Finished)
+        ->and(SeasonAttestation::query()->count())->toBe(0);
+
+    tickAt($end->addHours(48));
+
+    expect(SeasonAttestation::query()->sole()->winners())->toBe([$users[0]->pubkey])
+        ->and($leaderboards->reviewed($week->refresh()))->toBeTrue()
+        ->and(ScoreRun::query()->whereNotNull('verified_by_id')->count())->toBe(0);
+
+    // An hour before, the page said so and offered an admin no button.
+    $this->travelTo($end->addHours(47));
+    expect($leaderboards->reviewed($week))->toBeFalse()
+        ->and($leaderboards->needsAdminReview($week))->toBeFalse();
+    Livewire::actingAs($this->admin)->test('pages::scores.tournament', ['tournament' => $week])
+        ->assertSee('No run of the top 3 carries a cheat hint: they count as reviewed 48 hours after the window')
+        ->assertDontSee('data-test="score-review-confirm"', false);
+});
+
+test('a week with a cheat hint in its top 3 waits for an admin\'s review; confirmed later, it mines on the next tick', function () {
+    [$week, $users] = rankedWeek([2870, 2900, 2950, 3000, 3100]);
+    hintedRun($users[1]);
     $end = ScoreWindow::of($week)->end;
 
     tickAt($end->addHours(49));
@@ -177,10 +211,15 @@ test('without the review of its top 3 the week mines nothing; reviewed later, it
 
     expect($week->refresh()->status)->toBe(TournamentStatus::Finished)
         ->and(app(ScoreLeaderboards::class)->reviewed($week))->toBeFalse()
+        ->and(app(ScoreLeaderboards::class)->needsAdminReview($week))->toBeTrue()
         ->and(app(SeasonChains::class)->attestScoreWindow($week))->toBeNull()
         ->and(SeasonAttestation::query()->count())->toBe(0);
 
-    app(ScoreLeaderboards::class)->confirmReview($week, $this->admin);
+    Livewire::actingAs($this->admin)->test('pages::scores.tournament', ['tournament' => $week])
+        ->assertSee('A run of the top 3 carries cheat hints')
+        ->assertSee('data-test="score-review-confirm"', false)
+        ->call('confirmReview')
+        ->assertSee(__('The top 3 are reviewed.'));
     tickAt($end->addHours(97));
 
     expect(SeasonAttestation::query()->sole()->winners())->toBe([$users[0]->pubkey]);
@@ -188,10 +227,11 @@ test('without the review of its top 3 the week mines nothing; reviewed later, it
 
 test('a player who moves into the top 3 after the review needs a review of his own', function () {
     [$week, $users] = rankedWeek([2870, 2900, 2950, 3000, 3100]);
+    hintedRun($users[3]);
     $end = ScoreWindow::of($week)->end;
     $leaderboards = app(ScoreLeaderboards::class);
 
-    // Reviewed while the board still runs; then the winner is taken off it, and the 4th moves up unreviewed.
+    // Reviewed while the board still runs; then the winner is taken off it, and the 4th (with a hint) moves up unreviewed.
     $this->travelTo($end->addHours(2));
     expect($leaderboards->confirmReview($week->refresh(), $this->admin))->toBe(3);
     $leaderboards->correct($week->refresh(), $this->admin, $users[0]->id, null, 'Not a human run');

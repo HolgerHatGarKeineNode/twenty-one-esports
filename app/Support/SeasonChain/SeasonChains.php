@@ -564,9 +564,10 @@ final class SeasonChains
      * nothing is due: not such a window, not finished, its `31923` not
      * signed, no live season, a window that began before Block 0 (it belongs
      * to no chain), the review time `solo` after its end not over yet, its
-     * top places not reviewed by an admin where the game asks for that
-     * (ScoreGame::reviewedPlaces(); the next tick tries again for both), or
-     * nobody placed.
+     * top places not reviewed where the game asks for that
+     * (ScoreGame::reviewedPlaces(): by the game's own check once the review
+     * time is over, ScoreGame::reviewsItself(), or by an admin; the next tick
+     * tries again for both), or nobody placed.
      */
     public function attestScoreWindow(Tournament $tournament): ?SeasonAttestation
     {
@@ -583,8 +584,9 @@ final class SeasonChains
             return null;
         }
 
-        // A game that asks for it (Blockfill, plan "Blockfill", P7): no attestation before an admin reviewed its top
-        // places. Not a consensus rule: the league signs nothing yet, and the next tick tries again.
+        // A game that asks for it (Blockfill, plan "Blockfill", P7): no attestation before its top places are reviewed,
+        // by its own check after the review time or by an admin. Not a consensus rule: the league signs nothing yet,
+        // and the next tick tries again.
         if (! app(ScoreLeaderboards::class)->reviewed($tournament)) {
             return null;
         }

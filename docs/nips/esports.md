@@ -162,9 +162,10 @@ without an opponent. **One new genesis tag (`solo`), one new tag in `2154` (`win
   with a block at stake that is the farming path, and rule 4 alone would not stop a dozen overlapping leaderboards.
 - **Chosen: the review is a time, not a person.** Rule 2 checks that the attestation's `created_at` is at least
   `review` seconds after the window's end, which every reader can verify; manual submissions still wait for an admin
-  before the places are final (rev. 9.17), and the season-end review can still void the block. A game may ask for an
-  admin's look at its top places on top of that before the league signs ([Blockfill](#blockfill-rev-917-draft): the
-  top 3); that is the league's own policy, not a consensus rule, and no reader can check it.
+  before the places are final (rev. 9.17), and the season-end review can still void the block. A game may ask for a
+  review of its top places on top of that before the league signs ([Blockfill](#blockfill-rev-917-draft): the top 3,
+  checked automatically, an admin's look only for a run with cheat hints); that is the league's own policy, not a
+  consensus rule, and no reader can check it.
 - **Chosen: the field counts trusted entrants with a verified value.** An entrant without a value, below the trust
   minimum, entered by a director only, or disqualified does not make a window count.
 - **Defaults are conservative and not decided by the board** (see [Open points](#open-points)): 5 entrants, 3 window
@@ -1236,8 +1237,13 @@ proves that the inputs reach the time, not that a person played them.
 
 **Mining (rev. 9.18, draft).** A week is a score window the league opened itself, so its winner is a
 [solo block](#solo-blocks-rev-918-draft) candidate once Blockfill has a `weight` in the season's genesis. On top of
-the solo rules the league signs the attestation only after an admin has looked at the runs of the week's top 3; a
-correction that moves another run into them needs a look of its own. A ranked run counts only when the page says it
+the solo rules the league signs the attestation only after the runs of the week's top 3 are reviewed. The review is an
+automatic check plus the review time: a run in which the league's replay found no cheat hint (more pieces per second
+than a person sets, many ticks with more key presses than a person makes, an even key rhythm, every piece placed with
+the fewest presses) counts as reviewed once the solo review time after the week is over; a run with a hint waits for an
+admin's look, and a correction that moves such a run into the top 3 needs a look of its own. A run with a hint that
+would place in the week's top 10 counts nowhere until an admin approves it; one that would not is verified as any
+other. A ranked run counts only when the page says it
 was played with a keyboard (touch is practice). Neither can a reader check: the review and the input device are the
 league's word, as the replay is.
 
@@ -6843,7 +6849,7 @@ record, and its post no `q`.
   48 hours of review) and of the proposal for each score game (weight 1 per mode, 5 % share, 1 block a day); whether
   the window wins should count per share key or across all score games; whether the review should be an admin's
   explicit look at the final places instead of a time for every score game (the league signs automatically once it is
-  over; only Blockfill waits for an admin's look at its top 3); whether an
+  over; Blockfill waits for an admin's look only where a run of its top 3 carries a cheat hint); whether an
   organizer's leaderboard should ever mine; whether the `gate` and `clan` rows of the field, which make rules 1, 3
   and 7 checkable, are acceptable on Nostr, because they name every entrant with a verified value in a window by
   pubkey, whether rules 1, 3 and 7 count them or not (the

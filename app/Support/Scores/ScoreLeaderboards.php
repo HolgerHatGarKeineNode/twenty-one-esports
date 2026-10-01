@@ -10,10 +10,14 @@ use App\Models\TournamentMatch;
 use App\Models\User;
 use App\Support\LeagueTime;
 use App\Support\Scores\Contracts\ScoreSource;
+use App\Support\SeasonChain\ConsensusParameters;
 use App\Support\SeasonChain\SeasonChains;
+use App\Support\SeasonChain\Seasons;
 use App\Support\Tournaments\TournamentInterest;
 use App\Support\Tournaments\TournamentRuleViolation;
 use App\Support\Tournaments\TournamentRunner;
+use Carbon\CarbonImmutable;
+use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 use Throwable;
 
@@ -336,25 +340,77 @@ final class ScoreLeaderboards
     }
 
     /**
-     * Whether an admin reviewed every run behind the top places a game asks
-     * to be reviewed (confirmReview()); true for a game that asks for none,
-     * false while nobody is placed. Fails closed: a place without its run,
-     * or a run not looked at, is not reviewed.
+     * Whether every run behind the top places a game asks to be reviewed is
+     * reviewed: an admin confirmed it (confirmReview()), or the game says it
+     * needs no admin (ScoreGame::reviewsItself(), Blockfill: no cheat hint)
+     * and the chain's review time after the window is over (selfReviewAt()).
+     * True for a game that asks for none, false while nobody is placed. Fails
+     * closed: a place without its run, or a run not looked at, is not
+     * reviewed.
      */
     public function reviewed(Tournament $tournament): bool
     {
+        $runs = $this->reviewedRuns($tournament);
+
+        if ($runs === null) {
+            return $this->runs->gameOf($tournament)->reviewedPlaces() === 0;
+        }
+
+        $game = $this->runs->gameOf($tournament);
+        $timeOver = ! now()->lessThan(self::selfReviewAt($tournament));
+
+        return $runs->every(fn (ScoreRun $run): bool => $run->verified_by_id !== null || ($timeOver && $game->reviewsItself($run)));
+    }
+
+    /**
+     * Whether an admin has to look at the top places: a run behind them is
+     * neither confirmed nor one that needs no admin (ScoreGame::reviewsItself()).
+     * False for a game that asks for no review, and while nobody is placed.
+     */
+    public function needsAdminReview(Tournament $tournament): bool
+    {
+        $runs = $this->reviewedRuns($tournament);
+        $game = $this->runs->gameOf($tournament);
+
+        return $runs !== null && $runs->contains(fn (ScoreRun $run): bool => $run->verified_by_id === null && ! $game->reviewsItself($run));
+    }
+
+    /**
+     * When the top places of a window count as reviewed without an admin
+     * (ScoreGame::reviewsItself()): its end plus the chain's review time of
+     * solo blocks in force now (solo rule 2), or the chain's default without
+     * a live season. The league signs nothing earlier anyway.
+     */
+    public static function selfReviewAt(Tournament $tournament): CarbonImmutable
+    {
+        $live = Seasons::live();
+        $seconds = $live === null ? ConsensusParameters::SOLO_REVIEW : $live->chainParameters()->inForceAt(CarbonImmutable::now())->soloReview;
+
+        return ScoreWindow::of($tournament)->end->addSeconds($seconds);
+    }
+
+    /**
+     * The score runs behind the places a review covers; null when the game
+     * asks for no review, nobody is placed, or a place has no run (fail-closed).
+     *
+     * @return Collection<int, ScoreRun>|null
+     */
+    private function reviewedRuns(Tournament $tournament): ?Collection
+    {
         if ($this->runs->gameOf($tournament)->reviewedPlaces() === 0) {
-            return true;
+            return null;
         }
 
         $top = $this->reviewedStandings($tournament);
         $runIds = array_map(fn (ScoreStanding $standing): ?int => $standing->runId, $top);
 
         if ($top === [] || in_array(null, $runIds, true)) {
-            return false;
+            return null;
         }
 
-        return ScoreRun::query()->whereKey($runIds)->whereNotNull('verified_by_id')->count() === count(array_unique($runIds));
+        $runs = ScoreRun::query()->whereKey($runIds)->get();
+
+        return $runs->count() === count(array_unique($runIds)) ? $runs->toBase() : null;
     }
 
     /**

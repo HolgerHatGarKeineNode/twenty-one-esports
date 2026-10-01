@@ -3,6 +3,7 @@
 namespace App\Games;
 
 use App\Games\Contracts\Game;
+use App\Models\ScoreRun;
 use App\Support\Scores\Contracts\ScoreSource;
 use App\Support\Scores\ServerIngest;
 
@@ -116,6 +117,16 @@ abstract class ScoreGame implements Game
     public function reviewedPlaces(): int
     {
         return 0;
+    }
+
+    /**
+     * Whether the run behind one of the reviewedPlaces() counts as looked at
+     * without an admin once the chain's review time after the window is
+     * over (ScoreLeaderboards::reviewed()); never by default.
+     */
+    public function reviewsItself(ScoreRun $run): bool
+    {
+        return false;
     }
 
     /**

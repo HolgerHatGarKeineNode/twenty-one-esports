@@ -232,6 +232,15 @@ new #[Layout('layouts::app', ['section' => 'tournaments'])] class extends Compon
         return app(ScoreLeaderboards::class)->reviewed($this->tournament);
     }
 
+    /**
+     * Whether an admin has to look at the top places (a run behind them carries cheat hints).
+     */
+    #[Computed]
+    public function needsAdminReview(): bool
+    {
+        return app(ScoreLeaderboards::class)->needsAdminReview($this->tournament);
+    }
+
     public function confirmReview(ScoreLeaderboards $leaderboards): void
     {
         $this->resetErrorBag();
@@ -245,7 +254,7 @@ new #[Layout('layouts::app', ['section' => 'tournaments'])] class extends Compon
         }
 
         $this->flash = __('The top :places are reviewed.', ['places' => $this->game->reviewedPlaces()]);
-        unset($this->reviewed);
+        unset($this->reviewed, $this->needsAdminReview);
     }
 
     private function viewer(): User
@@ -431,15 +440,18 @@ new #[Layout('layouts::app', ['section' => 'tournaments'])] class extends Compon
                 @error('finalize')<p class="m-0 text-[13px] text-loss" role="alert">{{ $message }}</p>@enderror
             @endif
 
-            {{-- Plan "Blockfill", P7: a window that may mine waits for an admin's review of its top places. --}}
+            {{-- Plan "Blockfill", P7: a window that may mine waits for the review of its top places: its own check after
+                 the review time, an admin's look where a run behind them carries cheat hints. --}}
             @if ($game->reviewedPlaces() > 0 && $window->hasEnded() && $standings !== [])
                 <div class="flex flex-col gap-2 border-t border-hairline pt-4 sm:flex-row sm:items-center sm:justify-between" data-test="score-review">
-                    <p class="m-0 max-w-[68ch] text-[13px] leading-normal text-ink-2">{{ $this->reviewed
-                        ? __('The runs of the top :places are reviewed. The window can mine its block once the review time of the season chain is over.', ['places' => $game->reviewedPlaces()])
-                        : __('Before this window can mine its block, an admin reviews the runs of its top :places. A correction that moves another run into them needs a new review.', ['places' => $game->reviewedPlaces()]) }}</p>
-                    @unless ($this->reviewed)
+                    <p class="m-0 max-w-[68ch] text-[13px] leading-normal text-ink-2">{{ match (true) {
+                        $this->reviewed => __('The runs of the top :places are reviewed. The window can mine its block once the review time of the season chain is over.', ['places' => $game->reviewedPlaces()]),
+                        $this->needsAdminReview => __('A run of the top :places carries cheat hints: before this window can mine its block, an admin reviews them. A correction that moves another run into them needs a new review.', ['places' => $game->reviewedPlaces()]),
+                        default => __('No run of the top :places carries a cheat hint: they count as reviewed :hours hours after the window, and the window can mine its block then.', ['places' => $game->reviewedPlaces(), 'hours' => intdiv((int) $window->end->diffInSeconds(ScoreLeaderboards::selfReviewAt($this->tournament)), 3600)]),
+                    } }}</p>
+                    @if (! $this->reviewed && $this->needsAdminReview)
                         <x-button wire:click="confirmReview" wire:confirm="{{ __('Have you looked at the runs of the top :places?', ['places' => $game->reviewedPlaces()]) }}" data-test="score-review-confirm">{{ __('Top :places reviewed', ['places' => $game->reviewedPlaces()]) }}</x-button>
-                    @endunless
+                    @endif
                 </div>
                 @error('review')<p class="m-0 text-[13px] text-loss" role="alert">{{ $message }}</p>@enderror
             @endif

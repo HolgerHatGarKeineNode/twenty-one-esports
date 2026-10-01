@@ -2,6 +2,9 @@
 
 namespace App\Games;
 
+use App\Enums\StackerRunStatus;
+use App\Models\ScoreRun;
+use App\Models\StackerRun;
 use App\Support\Scores\Sources\ReplayScoreSource;
 
 /**
@@ -70,13 +73,34 @@ final class Blockfill extends ScoreGame
     }
 
     /**
-     * A ranked week mines only once an admin reviewed its top 3 (plan
+     * A ranked week mines only once its top 3 are reviewed (plan
      * "Blockfill", P7): a valid input log proves no human, so the fastest
      * runs are looked at before the league signs a block for one of them.
+     * The look is the league's own replay (reviewsItself()); an admin's only
+     * where that found cheat hints.
      */
     public function reviewedPlaces(): int
     {
         return 3;
+    }
+
+    /**
+     * A run of the replay source whose verified Blockfill run carries no
+     * cheat hint (hints.js found none in the league's own replay of it): it
+     * needs no admin, only the review time. A run with hints, approved or
+     * not, and a run without the hints record (fail-closed) wait for an
+     * admin's click (ScoreLeaderboards::confirmReview()).
+     */
+    public function reviewsItself(ScoreRun $run): bool
+    {
+        if ($run->source !== ReplayScoreSource::KEY || $run->external_id === null) {
+            return false;
+        }
+
+        $stacker = StackerRun::query()->find((int) $run->external_id);
+        $flags = $stacker?->flags['hints']['flags'] ?? null;
+
+        return $stacker !== null && $stacker->status === StackerRunStatus::Verified && $flags === [];
     }
 
     /**
