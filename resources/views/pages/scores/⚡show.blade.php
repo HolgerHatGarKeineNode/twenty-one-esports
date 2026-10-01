@@ -1,0 +1,158 @@
+<?php
+
+use App\Enums\TournamentFormat;
+use App\Enums\TournamentStatus;
+use App\Games\GameRegistry;
+use App\Games\ScoreGame;
+use App\Models\Tournament;
+use App\Models\User;
+use App\Support\LeagueTime;
+use App\Support\Scores\ScorePoints;
+use App\Support\Scores\ScoreWindow;
+use Illuminate\Database\Eloquent\Collection;
+use Livewire\Attributes\Computed;
+use Livewire\Attributes\Layout;
+use Livewire\Component;
+
+/*
+ * A score game's page (plan "AoE2 und Trackmania", P4): its leaderboards
+ * (open for sign-up, running, the last finished ones) and its points ladder
+ * per mode, the points of every finished leaderboard summed per player
+ * (ScorePoints). League names only. Routed only while a score game is registered.
+ */
+new #[Layout('layouts::app', ['section' => 'tournaments'])] class extends Component {
+    public string $game;
+
+    public function mount(string $game): void
+    {
+        abort_unless(app(GameRegistry::class)->isScore($game), 404);
+
+        $this->game = $game;
+    }
+
+    public function rendering(\Illuminate\View\View $view): void
+    {
+        $name = \App\Support\GameNames::game($this->game);
+        $view->title($name);
+        app(\App\Support\PageMeta::class)->describe($name, __(':game on TWENTY ONE Esports: leaderboards where everyone plays alone for the best value, and a points ladder.', ['game' => $name]));
+    }
+
+    #[Computed]
+    public function score(): ScoreGame
+    {
+        $game = app(GameRegistry::class)->get($this->game);
+        abort_unless($game instanceof ScoreGame, 404);
+
+        return $game;
+    }
+
+    /**
+     * Published leaderboards of the game: sign-up, running, and the last finished.
+     *
+     * @return Collection<int, Tournament>
+     */
+    #[Computed]
+    public function leaderboards(): Collection
+    {
+        $base = fn () => Tournament::query()->where(['game' => $this->game, 'format' => TournamentFormat::Leaderboard])->whereNotNull('published_at');
+
+        return $base()->whereIn('status', [TournamentStatus::Signup, TournamentStatus::Drawing, TournamentStatus::Running])->orderBy('starts_at')->limit(12)->get()
+            ->concat($base()->where('status', TournamentStatus::Finished)->orderByDesc('starts_at')->limit(6)->get());
+    }
+
+    /**
+     * The points ladder of each mode, the top 20.
+     *
+     * @return array<string, list<array{user: User, points: int}>>
+     */
+    #[Computed]
+    public function ladders(): array
+    {
+        $points = app(ScorePoints::class);
+        $ladders = [];
+
+        foreach ($this->score->modes() as $mode) {
+            $totals = array_slice($points->ladder($this->score, $mode->slug), 0, 20, true);
+            $users = User::query()->whereIn('id', array_keys($totals))->get()->keyBy('id');
+            $ladders[$mode->slug] = array_values(array_filter(array_map(fn (int $user, int $sum): ?array => $users->has($user) ? ['user' => $users->get($user), 'points' => $sum] : null, array_keys($totals), $totals)));
+        }
+
+        return $ladders;
+    }
+}; ?>
+
+@php
+    $score = $this->score;
+    $name = \App\Support\GameNames::game($this->game);
+    $statusLabel = fn (Tournament $tournament): string => match ($tournament->status) {
+        TournamentStatus::Signup => __('Sign-up open'),
+        TournamentStatus::Drawing => __('Sign-up closed'),
+        TournamentStatus::Running => ScoreWindow::of($tournament)->hasEnded() ? __('Window closed') : __('Window open'),
+        default => __('Finished'),
+    };
+@endphp
+
+<div class="flex flex-col gap-6 px-4 pt-6 pb-12 lg:gap-8 lg:px-12 lg:pt-8" data-test="score-game" style="--game: {{ $score->assets()->colour }}">
+    <header class="flex flex-col gap-2">
+        <h1 class="m-0 font-display text-[28px] leading-[1.15] font-bold lg:text-4xl">{{ $name }}</h1>
+        <p class="m-0 max-w-[68ch] text-[13px] leading-normal text-ink-2">{{ __('Everyone plays alone, as often as they like, for the best value on the course inside the window. No lobby, no opponent to wait for. Each leaderboard\'s places score points on the ladder below.') }}</p>
+        <ul class="m-0 flex list-none flex-wrap gap-2 p-0">
+            @foreach ($score->modes() as $mode)
+                <li class="inline-flex min-h-8 items-center gap-2 rounded-md bg-card px-3 text-xs text-ink-2" wire:key="mode-{{ $mode->slug }}">
+                    <b class="text-ink">{{ __($mode->name) }}</b>{{ $score->metric($mode)->lowerIsBetter() ? __('the fastest time wins') : __('the highest score wins') }}
+                </li>
+            @endforeach
+        </ul>
+    </header>
+
+    <section aria-labelledby="boards-h" class="flex flex-col gap-3">
+        <h2 id="boards-h" class="m-0 font-display text-xl font-bold lg:text-2xl">{{ __('Leaderboards') }}</h2>
+        @if ($this->leaderboards->isEmpty())
+            <x-empty-state :heading="__('No leaderboard yet')" :text="__('The next one shows up here as soon as it is published.')">
+                <x-button :href="route('tournaments.index')" variant="secondary">{{ __('All tournaments') }}</x-button>
+            </x-empty-state>
+        @else
+            <ul class="m-0 grid list-none grid-cols-1 gap-3 p-0 md:grid-cols-2 xl:grid-cols-3">
+                @foreach ($this->leaderboards as $tournament)
+                    @php($window = ScoreWindow::of($tournament))
+                    <li wire:key="board-{{ $tournament->id }}" data-test="score-board-card">
+                        <a href="{{ route('tournaments.show', $tournament) }}" class="flex h-full flex-col gap-2 rounded-lg bg-card p-4 text-ink shadow-ring hover:text-ink hover:shadow-[inset_0_0_0_1px_var(--color-btc)]">
+                            <span class="flex items-center justify-between gap-3">
+                                <b class="min-w-0 truncate text-[15px]">{{ $tournament->name }}</b>
+                                <span class="shrink-0 text-xs text-ink-2">{{ $statusLabel($tournament) }}</span>
+                            </span>
+                            <span class="text-xs text-ink-2">{{ __($score->mode($tournament->mode)?->name ?? $tournament->mode) }}@if ($tournament->score_course) · <span class="font-mono">{{ $tournament->score_course }}</span>@endif</span>
+                            <span class="text-xs text-ink-3 tabular-nums">{{ LeagueTime::stamp($window->start) }} – {{ LeagueTime::stamp($window->end) }}</span>
+                        </a>
+                    </li>
+                @endforeach
+            </ul>
+        @endif
+    </section>
+
+    <section aria-labelledby="points-h" class="flex flex-col gap-3">
+        <div class="flex flex-col gap-1">
+            <h2 id="points-h" class="m-0 font-display text-xl font-bold lg:text-2xl">{{ __('Points ladder') }}</h2>
+            <p class="m-0 text-xs text-ink-2">{{ __('Points per place of every finished leaderboard: :table, then 0.', ['table' => implode(' · ', ScorePoints::table($score))]) }}</p>
+        </div>
+        <div class="grid grid-cols-1 gap-3 lg:grid-cols-2">
+            @foreach ($score->modes() as $mode)
+                <div class="flex flex-col gap-2 rounded-lg bg-card px-2 py-4 lg:px-5" wire:key="ladder-{{ $mode->slug }}" data-test="score-points-{{ $mode->slug }}">
+                    <h3 class="m-0 px-2 text-[15px] font-bold lg:px-0">{{ __($mode->name) }}</h3>
+                    @forelse ($this->ladders[$mode->slug] as $index => $entry)
+                        <div class="grid min-h-11 grid-cols-[32px_minmax(0,1fr)_64px] items-center gap-3 border-b border-hairline px-2 text-[13px] last:border-b-0" data-test="score-points-row">
+                            <span class="font-display font-bold text-ink-2 tabular-nums">{{ $index + 1 }}</span>
+                            <span class="flex min-w-0 items-center gap-2">
+                                <x-avatar :user="$entry['user']" :size="22" class="shrink-0 rounded-sm" />
+                                <a href="{{ route('players.show', $entry['user']->npub) }}" class="truncate text-ink hover:text-btc-hi">{{ $entry['user']->displayName() }}</a>
+                            </span>
+                            <b class="text-right tabular-nums">{{ $entry['points'] }}</b>
+                        </div>
+                    @empty
+                        <p class="m-0 px-2 py-3 text-[13px] text-ink-2 lg:px-0">{{ __('No finished leaderboard yet.') }}</p>
+                    @endforelse
+                </div>
+            @endforeach
+        </div>
+    </section>
+</div>
