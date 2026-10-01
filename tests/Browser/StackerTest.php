@@ -395,8 +395,10 @@ test('the next run starts with the well in view, after the result had scrolled t
 
     $forty = stackerFixture('forty-lines');
     $page->evaluate('([inputs, seed, settings]) => window.__stacker.feed(inputs, { seed, settings })', [$forty['inputs'], $forty['seed'], $forty['settings']]);
-    BrowserWait::until($page, '() => { const top = document.querySelector("[data-test=result]").getBoundingClientRect().top; return top >= 0 && top < innerHeight / 2; }', 3_000);
-    expect($page->evaluate(STACKER_WELL_IN_VIEW))->toBeFalse();
+    // shown (a hidden element reports top 0: that would pass before the result is even on screen) and scrolled up
+    BrowserWait::until($page, '() => { const r = document.querySelector("[data-test=result]"); const top = r.getBoundingClientRect().top; return getComputedStyle(r).display !== "none" && top >= 0 && top < innerHeight / 2; }', 3_000);
+    $scrolled = $page->evaluate('() => ({ inView: ('.STACKER_WELL_IN_VIEW.')(), scrollY: Math.round(scrollY), result: document.querySelector("[data-test=result]").getBoundingClientRect().toJSON(), well: document.querySelector("[data-test=well]").getBoundingClientRect().toJSON(), mode: window.__stacker.state().mode })');
+    expect($scrolled['inView'])->toBeFalse(json_encode($scrolled));
 
     // the touch player taps Play again, the keyboard player presses R
     if ($device === 'touch') {
