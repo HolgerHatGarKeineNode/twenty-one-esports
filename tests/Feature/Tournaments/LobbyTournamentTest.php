@@ -109,6 +109,8 @@ test('the draw splits 3 to 40 entries evenly into lobbies of at most 8, in one r
 ]);
 
 test('each lobby\'s settings follow its players and are fixed at the draw with a league name and password', function () {
+    // Four draws can cross a second; the deadline is compared to the second.
+    $this->freezeSecond();
     $nine = lobbiesOf(runningLobby(9));
     $seventeen = lobbiesOf(runningLobby(17));
     $three = lobbiesOf(runningLobby(3));
