@@ -8,7 +8,7 @@
 <section id="{{ $id }}" aria-labelledby="{{ $id }}-h" data-doc-section data-test="doc-section-{{ $id }}"
          x-data="{ open: location.hash === @js('#'.$id) }"
          x-on:hashchange.window="if (location.hash === @js('#'.$id)) open = true"
-         class="scroll-mt-28 rounded-lg bg-card">
+         class="rounded-lg bg-card">
     <h2 id="{{ $id }}-h" class="m-0 font-display text-lg leading-tight font-bold lg:px-6 lg:pt-6 lg:text-xl">
         <button type="button" x-on:click="open = ! open" x-bind:aria-expanded="open.toString()" aria-expanded="false" aria-controls="{{ $id }}-body"
                 class="flex min-h-14 w-full cursor-pointer items-center justify-between gap-3 px-4 text-left lg:hidden" data-test="doc-toggle">
