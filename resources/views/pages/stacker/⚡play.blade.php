@@ -183,6 +183,11 @@ new #[Layout('layouts::app', ['scripts' => ['resources/js/stacker/page.js']])] c
                                     <dt class="text-[12px] text-ink-3 lg:text-sm">{{ __('All-time best') }}</dt>
                                     <dd class="m-0 text-[13px] leading-tight font-bold text-ink-2 tabular-nums lg:text-[16px]" x-text="time(allTimeBest)" data-test="best-all-time"></dd>
                                 </div>
+                                {{-- This browser's practice best: information only, the quietest line --}}
+                                <div>
+                                    <dt class="text-[12px] text-ink-3 lg:text-sm">{{ __('Practice best') }}</dt>
+                                    <dd class="m-0 text-[12px] leading-tight text-ink-3 tabular-nums lg:text-[14px]" x-text="time(practiceBest)" data-test="best-practice"></dd>
+                                </div>
                             @else
                                 <div>
                                     <dt class="text-[12px] text-ink-3 lg:text-sm">{{ __('Your best') }}</dt>

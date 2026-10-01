@@ -57,7 +57,8 @@ final class ReplayScoreSource implements ScoreSource
     {
         return new ScoreRecord(
             Blockfill::milliseconds((int) $run->ticks),
-            // Whole seconds, as score_runs stores them: the same run read again is the same row.
+            // Whole seconds, as score_runs stores them: the same run read again is the same row. Two equal times
+            // handed in within one second therefore tie and go to the earlier joiner (ScoreRuns::standings()).
             CarbonImmutable::instance($run->submitted_at)->startOfSecond(),
             self::KEY,
             null,

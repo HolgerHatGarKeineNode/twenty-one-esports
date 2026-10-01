@@ -330,7 +330,24 @@ test('the game page shows this week\'s board, your place and last week\'s winner
     Livewire::test('pages::scores.show', ['game' => Blockfill::SLUG])
         ->assertSee('Blockfill Week 41, 2026')
         ->assertSeeInOrder([__('Leaderboards'), $other->displayName(), $me->displayName(), __('Points ladder')])
+        // the course is the mode itself: the card names the mode, not its slug
+        ->assertSeeHtml('data-test="score-board-mode">40 blocks')
+        ->assertDontSeeHtml('font-mono">40-blocks')
         ->call('$refresh')->assertOk();
+
+    // In German the week is "Woche", the mode "40 Blöcke"; the stored name stays English.
+    app()->setLocale('de');
+    Livewire::test('pages::scores.show', ['game' => Blockfill::SLUG])
+        ->assertSee('Blockfill Woche 41, 2026')
+        ->assertSeeHtml('data-test="score-board-mode">40 Blöcke')
+        ->assertDontSee('Blockfill Week 41');
+    app()->setLocale('en');
+    expect(blockfillWeek()->name)->toBe('Blockfill Week 41, 2026');
+
+    // A player sees the week's best, the all-time best and, quietest, their practice best.
+    Livewire::actingAs($me)->test('pages::stacker.play')
+        ->assertSeeInOrder([__('Best this week'), __('All-time best'), __('Practice best')])
+        ->assertSeeHtml('data-test="best-practice"');
 
     $this->get(route('scores.show', Blockfill::SLUG))->assertOk();
     $this->get(route('tournaments.scores', blockfillWeek()))->assertOk()->assertSee($me->displayName());

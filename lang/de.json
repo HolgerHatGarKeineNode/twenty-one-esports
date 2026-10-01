@@ -5853,5 +5853,7 @@
     "No winner last week.": "Letzte Woche gab es keinen Sieger.",
     "All weeks and the points ladder": "Alle Wochen und die Punkteliste",
     "Full table": "Ganze Tabelle",
-    "40 blocks": "40 Blöcke"
+    "40 blocks": "40 Blöcke",
+    "Blockfill Week :week, :year": "Blockfill Woche :week, :year",
+    "Practice best": "Bestzeit beim Üben"
 }

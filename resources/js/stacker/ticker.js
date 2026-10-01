@@ -45,9 +45,13 @@ export function createTicker({ maxCatchUp = 30 } = {}) {
     };
 }
 
-/** Ticks as the clock shows them: "0:15.97" (minutes, seconds, hundredths). */
+/**
+ * Ticks as the clock shows them: "0:15.96" (minutes, seconds, hundredths).
+ * Milliseconds rounded down, as the league counts them (Blockfill::milliseconds()),
+ * so the result screen and the weekly leaderboard show the same time.
+ */
 export function formatTicks(ticks, digits = 2) {
-    const ms = Math.round((ticks * 1000) / 60);
+    const ms = Math.floor((ticks * 1000) / 60);
     const minutes = Math.floor(ms / 60000);
     const seconds = Math.floor((ms % 60000) / 1000);
     const fraction = String(ms % 1000).padStart(3, '0').slice(0, digits);

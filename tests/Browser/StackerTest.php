@@ -24,7 +24,7 @@ pest()->group('browser');
 | 1. A guest practises: the built bundle replays every reference run of
 |    tests/Fixtures/stacker to the same ticks and hash as Node (Chromium =
 |    Node), and the recorded 40-line run, fed as a practice run, ends on the
-|    result screen at 0:15.967. Measured at 375 and 1440 px.
+|    result screen at 0:15.966. Measured at 375 and 1440 px.
 | 2. A player plays it as a ranked run: the issued seed is pinned to the
 |    reference seed (`esports.blockfill.testing_seed`, testing only), the
 |    countdown ends with the start call, the recorded log replaces the
@@ -91,7 +91,7 @@ test('a guest practises: Chromium replays every reference run like Node, the 40-
     [$scrollWidth, $clientWidth] = $page->evaluate(BrowserConsole::WIDTHS);
     $well = $page->evaluate('() => { const r = document.querySelector("[data-test=well]").getBoundingClientRect(); return { left: Math.round(r.left), right: Math.round(r.right), width: Math.round(r.width), height: Math.round(r.height) }; }');
 
-    expect($page->evaluate('() => document.querySelector("[data-test=result-time]").innerText'))->toBe('0:15.967')
+    expect($page->evaluate('() => document.querySelector("[data-test=result-time]").innerText'))->toBe('0:15.966')
         ->and($page->evaluate('() => document.querySelector("[data-test=result-status]").innerText'))->toBe('Practice run, not sent')
         ->and($page->evaluate('() => document.querySelector("[data-test=lines]").innerText'))->toBe('40')
         ->and($page->evaluate('() => document.querySelector("[data-test=time]").innerText'))->toBe('0:15.96')

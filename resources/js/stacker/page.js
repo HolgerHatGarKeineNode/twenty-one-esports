@@ -491,8 +491,9 @@ document.addEventListener('alpine:init', () => {
                     }
                 }
                 if (this.result.status === 'verified') {
-                    // the weekly leaderboard below the game reads itself again (P4)
-                    this.$dispatch('stacker-verified');
+                    // the weekly leaderboard below the game reads itself again (P4). Sent on window itself:
+                    // `$dispatch` starts at the element that called this method (the start button, gone by now)
+                    window.dispatchEvent(new CustomEvent('stacker-verified'));
                 }
             },
 

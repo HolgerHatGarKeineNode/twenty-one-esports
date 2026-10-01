@@ -9,6 +9,7 @@ use App\Models\User;
 use App\Support\LeagueTime;
 use App\Support\Scores\ScorePoints;
 use App\Support\Scores\ScoreWindow;
+use App\Support\Stacker\BlockfillWeeks;
 use Illuminate\Database\Eloquent\Collection;
 use Livewire\Attributes\Computed;
 use Livewire\Attributes\Layout;
@@ -131,11 +132,13 @@ new #[Layout('layouts::app', ['section' => 'tournaments'])] class extends Compon
                     @php($window = ScoreWindow::of($tournament))
                     <li wire:key="board-{{ $tournament->id }}" data-test="score-board-card">
                         <a href="{{ route('tournaments.show', $tournament) }}" class="flex h-full flex-col gap-2 rounded-lg bg-card p-4 text-ink shadow-ring hover:text-ink hover:shadow-[inset_0_0_0_1px_var(--color-btc)]">
-                            <span class="flex items-center justify-between gap-3">
-                                <b class="min-w-0 truncate text-[15px]">{{ $tournament->name }}</b>
+                            {{-- The title wraps rather than cutting a translated name short --}}
+                            <span class="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
+                                <b class="min-w-0 text-[15px] [overflow-wrap:anywhere]" data-test="score-board-title">{{ BlockfillWeeks::title($tournament) }}</b>
                                 <span class="shrink-0 text-xs text-ink-2">{{ $statusLabel($tournament) }}</span>
                             </span>
-                            <span class="text-xs text-ink-2">{{ __($score->mode($tournament->mode)?->name ?? $tournament->mode) }}@if ($tournament->score_course) · <span class="font-mono">{{ $tournament->score_course }}</span>@endif</span>
+                            {{-- The course only when it is more than the mode itself (Blockfill's course is its mode) --}}
+                            <span class="text-xs text-ink-2" data-test="score-board-mode">{{ __($score->mode($tournament->mode)?->name ?? $tournament->mode) }}@if ($tournament->score_course && $tournament->score_course !== $tournament->mode) · <span class="font-mono">{{ $tournament->score_course }}</span>@endif</span>
                             <span class="text-xs text-ink-3 tabular-nums">{{ LeagueTime::stamp($window->start) }} – {{ LeagueTime::stamp($window->end) }}</span>
                         </a>
                     </li>
@@ -147,7 +150,7 @@ new #[Layout('layouts::app', ['section' => 'tournaments'])] class extends Compon
     @foreach ($this->running as ['tournament' => $tournament, 'standings' => $standings])
         <section aria-labelledby="running-h-{{ $tournament->id }}" class="flex flex-col gap-3 rounded-lg bg-card px-2 py-4 lg:px-5" wire:key="running-{{ $tournament->id }}" data-test="score-running">
             <div class="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1 px-2 lg:px-0">
-                <h2 id="running-h-{{ $tournament->id }}" class="m-0 text-[15px] font-bold">{{ $tournament->name }}</h2>
+                <h2 id="running-h-{{ $tournament->id }}" class="m-0 text-[15px] font-bold">{{ BlockfillWeeks::title($tournament) }}</h2>
                 <a href="{{ route('tournaments.scores', $tournament) }}" class="inline-flex min-h-11 items-center text-[13px] font-bold text-ink underline decoration-edge underline-offset-4 hover:decoration-ink">{{ __('Full table') }}</a>
             </div>
             @include('pages.scores.partials.leaderboard', ['standings' => $standings, 'metric' => app(\App\Support\Scores\ScoreRuns::class)->metricOf($tournament), 'limit' => 10, 'viewerId' => auth()->id(), 'staff' => false])

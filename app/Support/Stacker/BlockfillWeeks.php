@@ -90,6 +90,22 @@ final class BlockfillWeeks
     }
 
     /**
+     * A leaderboard's name for pages, in the page's language: a Blockfill
+     * week as "Blockfill Week 41, 2026" / "Blockfill Woche 41, 2026" (its
+     * stored name is the English one), any other tournament its own name.
+     */
+    public static function title(Tournament $tournament): string
+    {
+        if ($tournament->game !== Blockfill::SLUG || ! str_starts_with((string) $tournament->slug, 'blockfill-')) {
+            return $tournament->name;
+        }
+
+        $local = $tournament->starts_at->toImmutable()->setTimezone(self::TIMEZONE);
+
+        return __('Blockfill Week :week, :year', ['week' => $local->isoWeek(), 'year' => $local->isoWeekYear()]);
+    }
+
+    /**
      * The leaderboard of the week starting at `$start`, if it was opened.
      */
     public function find(CarbonInterface $start): ?Tournament
@@ -138,6 +154,7 @@ final class BlockfillWeeks
 
         try {
             return Tournament::query()->create([
+                // Stored in English; pages show it in their language (title()).
                 'name' => 'Blockfill Week '.$local->isoWeek().', '.$local->isoWeekYear(),
                 'game' => Blockfill::SLUG,
                 'mode' => Blockfill::MODE,
