@@ -8,6 +8,8 @@
  *
  * The tick delta is the distance to the previous input (the first one counts from
  * tick 0), the action its 3-bit code from ACTIONS, down 1 for press and 0 for release.
+ * Every varint is canonical (the shortest form); the decoder refuses a longer one, so
+ * one log has exactly one encoding and nothing can be padded into its bytes.
  */
 
 import { normalizeSettings, validateLog } from './engine.js';
@@ -146,6 +148,11 @@ export function decodeReplay(text) {
             const b = byte();
             value |= (b & 0x7f) << shift;
             if ((b & 0x80) === 0) {
+                // canonical only: a last byte of 0 after others would be the same number written longer
+                if (b === 0 && shift > 0) {
+                    throw new RangeError('replay varint is not canonical');
+                }
+
                 return value >>> 0;
             }
         }

@@ -1183,10 +1183,13 @@ return [
     | given up as pending (`stacker:sweep`; `stacker:reverify` sends pending
     | runs again). Rate limits: per player (issue_per_hour plus one issue per
     | issue_every_seconds, submits_per_minute), per network (IPv4 address
-    | or IPv6 /64: issue_per_ip_per_hour, submits_per_ip_per_minute) and for
-    | everyone together (issue_global_per_minute). Storage:
-    | practice_replays_kept, the practice runs per player that keep their
-    | replay (older ones drop it); prune_days, after which runs without a
+    | or IPv6 /64: issue_per_ip_per_hour, submits_per_ip_per_minute; the main
+    | control) and for everyone together (issue_global_per_minute, only a
+    | circuit breaker: a fixed window, set high so a burst of free accounts
+    | cannot lock honest players out). Storage: only the verifier's canonical
+    | replay of a verified run is kept, practice runs keep none;
+    | replay_bytes_per_player caps a player's stored replays (oldest first,
+    | the personal best always kept); prune_days, after which runs without a
     | verified time are deleted (`model:prune`, daily).
     |
     */
@@ -1206,8 +1209,8 @@ return [
         'submits_per_minute' => 30,
         'issue_per_ip_per_hour' => 1200,
         'submits_per_ip_per_minute' => 90,
-        'issue_global_per_minute' => 300,
-        'practice_replays_kept' => 20,
+        'issue_global_per_minute' => 3000,
+        'replay_bytes_per_player' => 524288,
         'prune_days' => 30,
         'verifier' => [
             'node' => env('ESPORTS_BLOCKFILL_NODE', 'node'),

@@ -17,19 +17,21 @@ final readonly class StackerVerdict
 
     /**
      * @param  array{das: int, arr: int, sdf: int}|null  $settings
+     * @param  string|null  $replay  the canonical replay the verifier re-encoded (verified only)
      */
     private function __construct(
         public string $outcome,
         public ?string $reason = null,
         public ?array $settings = null,
+        public ?string $replay = null,
     ) {}
 
     /**
      * @param  array{das: int, arr: int, sdf: int}  $settings
      */
-    public static function verified(array $settings): self
+    public static function verified(array $settings, string $replay): self
     {
-        return new self(self::VERIFIED, null, $settings);
+        return new self(self::VERIFIED, null, $settings, $replay);
     }
 
     public static function rejected(string $reason): self

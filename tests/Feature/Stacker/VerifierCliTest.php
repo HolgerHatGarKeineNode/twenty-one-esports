@@ -47,7 +47,10 @@ test('the 40-line reference run is verified at its exact time, with its settings
         ->ticks->toBe(958)
         ->state_hash->toBe('6102773e')
         ->settings->toBe(['das' => 8, 'arr' => 1, 'sdf' => 20])
-        ->reason->toBeNull();
+        ->reason->toBeNull()
+        // the canonical replay as the verifier re-encoded it: the reference run's 1.1 KB, not more
+        ->replay->toBe(BlockfillOn::fixture('forty-lines')['replay']);
+    expect(strlen((string) $run->replay))->toBeLessThan(1200);
 });
 
 test('the verifier rejects what does not replay to the claim', function (string $name, array $overrides, array $config, string $reason) {
@@ -66,6 +69,8 @@ test('the verifier rejects what does not replay to the claim', function (string 
     'fewer than 40 lines (the top-out run)' => ['top-out', [], [], 'unfinished'],
     'an engine it does not know' => ['forty-lines', ['engine' => 'bf9'], [], 'engine'],
     'a replay over the size limit' => ['forty-lines', [], ['esports.blockfill.limits.bytes' => 1000], 'oversize'],
+    'inputs after the run ended (padding)' => ['forty-lines', ['replay' => trim((string) file_get_contents(__DIR__.'/../../Fixtures/stacker/forty-lines-padded.replay'))], [], 'trailing'],
+    'an overlong varint (padding inside the bytes)' => ['forty-lines', ['replay' => trim((string) file_get_contents(__DIR__.'/../../Fixtures/stacker/forty-lines-overlong.replay'))], [], 'malformed'],
     'a replay the engine throws on (answered by verify.mjs itself)' => ['forty-lines', [], ['esports.blockfill.verifier.script' => 'tests/Fixtures/stacker/throwing-engine-verifier.mjs'], 'crash'],
 ]);
 

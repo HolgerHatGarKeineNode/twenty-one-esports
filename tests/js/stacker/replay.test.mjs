@@ -61,12 +61,35 @@ test('malformed replays are refused', () => {
     }
 });
 
-test('the committed .replay files are the encoded reference runs (the PHP verifier tests submit them)', () => {
+const replayFile = (name) => readFileSync(new URL(`../../Fixtures/stacker/${name}.replay`, import.meta.url), 'utf8').trim();
+
+/** The inputs a run actually used: none after its last tick. */
+const used = (f) => f.inputs.filter(([tick]) => tick < f.expected.ticks);
+
+test('the committed .replay files are the reference runs as the verifier stores them (the PHP tests submit them)', () => {
     for (const name of ['forty-lines', 'top-out']) {
         const f = fixture(name);
-        const text = readFileSync(new URL(`../../Fixtures/stacker/${name}.replay`, import.meta.url), 'utf8').trim();
-        assert.equal(text, encodeReplay(header(f), f.inputs), name);
+        assert.equal(replayFile(name), encodeReplay(header(f), used(f)), name);
     }
+    assert.ok(replayFile('forty-lines').length < 1200);
+});
+
+test('the padded and overlong .replay files are the 40-line run plus padding', () => {
+    const f = fixture('forty-lines');
+    const padded = decodeReplay(replayFile('forty-lines-padded'));
+    assert.deepEqual(padded.inputs.slice(0, used(f).length), used(f));
+    assert.ok(padded.inputs.slice(used(f).length).every(([tick]) => tick >= f.expected.ticks));
+    assert.ok(padded.inputs.length > used(f).length + 1000);
+
+    assert.throws(() => decodeReplay(replayFile('forty-lines-overlong')), /varint/);
+});
+
+test('a varint written longer than it needs to be is refused', () => {
+    const canonical = Buffer.from(encodeReplay({ v: 1, engine: 'bf1', seed: '00'.repeat(16), settings: { das: 10, arr: 2, sdf: 20 } }, []), 'base64url');
+    assert.equal(canonical[0], 1);
+    const overlong = Buffer.concat([Buffer.from([0x81, 0x00]), canonical.subarray(1)]).toString('base64url');
+
+    assert.throws(() => decodeReplay(overlong), /varint/);
 });
 
 test('an encoder refuses what a run would refuse', () => {

@@ -28,7 +28,7 @@ use Throwable;
 final class NodeVerifier implements Verifier
 {
     /** Reasons verify.mjs may give; an answer with any other is no answer. */
-    private const REASONS = ['malformed', 'oversize', 'engine', 'seed', 'unfinished', 'mismatch', 'crash'];
+    private const REASONS = ['malformed', 'oversize', 'engine', 'seed', 'unfinished', 'trailing', 'mismatch', 'crash'];
 
     public function verify(StackerRun $run): StackerVerdict
     {
@@ -68,13 +68,20 @@ final class NodeVerifier implements Verifier
 
         if ($answer['ok'] === true) {
             $settings = $answer['settings'] ?? null;
+            $replay = $answer['replay'] ?? null;
+
+            // the canonical replay is what the league keeps: without one the answer is incomplete
+            if (! is_string($replay) || $replay === '' || strlen($replay) > (int) $config['limits']['bytes'] || preg_match('/^[A-Za-z0-9_-]+$/', $replay) !== 1) {
+                return StackerVerdict::unavailable('verifier-unavailable');
+            }
+
             $exact = ($answer['ticks'] ?? null) === $run->ticks && ($answer['hash'] ?? null) === $run->state_hash;
 
             return $exact && is_array($settings) ? StackerVerdict::verified([
                 'das' => (int) ($settings['das'] ?? 0),
                 'arr' => (int) ($settings['arr'] ?? 0),
                 'sdf' => (int) ($settings['sdf'] ?? 0),
-            ]) : StackerVerdict::rejected('mismatch');
+            ], $replay) : StackerVerdict::rejected('mismatch');
         }
 
         $reason = $answer['reason'] ?? null;

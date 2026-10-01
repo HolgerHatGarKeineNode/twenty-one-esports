@@ -12,6 +12,7 @@ use App\Enums\StackerRunStatus;
 use App\Jobs\VerifyStackerRun;
 use App\Models\StackerRun;
 use App\Models\User;
+use App\Support\Stacker\StackerRuns;
 use App\Support\Stacker\StackerVerdict;
 use App\Support\Stacker\Verifier;
 use Illuminate\Console\Scheduling\Schedule;
@@ -174,7 +175,7 @@ test('only a time that beats the player\'s verified best is verified, the rest i
     submitForty($issued['token'])->assertAccepted()->assertJson(['status' => 'practice']);
 
     expect($this->verifier->asked)->toBe([])
-        ->and(runOf($issued)->replay)->not->toBeNull();
+        ->and(runOf($issued)->replay)->toBeNull();
 });
 
 test('an oversized or malformed submission is rejected without the verifier', function () {
@@ -219,22 +220,56 @@ test('a rejection keeps the verifier\'s reason; a verifier that is unavailable o
     }
 });
 
-test('practice runs keep their replay only for the latest few per player', function () {
+test('a practice run keeps no replay; a verified run keeps the verifier\'s canonical replay, never the submitted bytes', function () {
     BlockfillOn::play();
-    config(['esports.blockfill.practice_replays_kept' => 2]);
     $user = User::factory()->create();
     StackerRun::factory()->for($user)->verified(900)->create();
 
-    $seeds = [];
-    foreach (range(1, 3) as $attempt) {
-        $this->travel(3)->seconds();
-        $issued = issueRun($user);
-        submitForty($issued['token'])->assertAccepted()->assertJson(['status' => 'practice']);
-        $seeds[] = $issued['seed'];
-    }
+    $practice = issueRun($user);
+    submitForty($practice['token'])->assertAccepted()->assertJson(['status' => 'practice']);
+    expect(runOf($practice)->replay)->toBeNull();
 
-    expect(array_map(fn (string $seed): bool => StackerRun::query()->where('seed', $seed)->sole()->replay !== null, $seeds))
-        ->toBe([false, true, true]);
+    $this->verifier->verdict = StackerVerdict::verified(['das' => 8, 'arr' => 1, 'sdf' => 20], 'CanonicalFromTheVerifier');
+    $faster = issueRun(User::factory()->create());
+    submitForty($faster['token'])->assertAccepted();
+    expect(runOf($faster))->status->toBe(StackerRunStatus::Verified)->replay->toBe('CanonicalFromTheVerifier');
+});
+
+test('a player\'s stored replays stay within the byte budget, oldest first, the personal best always kept', function () {
+    BlockfillOn::play();
+    config(['esports.blockfill.replay_bytes_per_player' => 3000]);
+    $user = User::factory()->create();
+    $kilobyte = str_repeat('A', 1000);
+    $oldest = StackerRun::factory()->for($user)->verified(1000)->create(['replay' => $kilobyte]);
+    $middle = StackerRun::factory()->for($user)->verified(1100)->create(['replay' => $kilobyte]);
+    $latest = StackerRun::factory()->for($user)->verified(1050)->create(['replay' => $kilobyte]);
+
+    // a new personal best (958 ticks) is verified with a replay of 1000 bytes: 4000 > 3000, the oldest goes
+    $this->verifier->verdict = StackerVerdict::verified(['das' => 8, 'arr' => 1, 'sdf' => 20], $kilobyte);
+    $best = issueRun($user);
+    submitForty($best['token'])->assertAccepted();
+
+    expect(runOf($best))->status->toBe(StackerRunStatus::Verified)->replay->toBe($kilobyte)
+        ->and($oldest->refresh()->replay)->toBeNull()
+        ->and($middle->refresh()->replay)->toBe($kilobyte)
+        ->and($latest->refresh()->replay)->toBe($kilobyte);
+
+    // a budget smaller than the best replay alone: every other replay goes, the best stays
+    config(['esports.blockfill.replay_bytes_per_player' => 500]);
+    app(StackerRuns::class)->enforceReplayBudget($user->id);
+    expect(StackerRun::query()->where('user_id', $user->id)->whereNotNull('replay')->pluck('seed')->all())->toBe([$best['seed']]);
+});
+
+test('an IPv4 address written as IPv6 (::ffff:a.b.c.d) shares its IPv4 network\'s limit', function () {
+    expect(StackerRuns::network('::ffff:192.0.2.10'))->toBe('192.0.2.10')
+        ->and(StackerRuns::network('::FFFF:c000:020a'))->toBe('192.0.2.10')
+        ->and(StackerRuns::network('2001:db8:1:2::1'))->toBe(StackerRuns::network('2001:db8:1:2:ffff::9'))
+        ->and(config('esports.blockfill.issue_global_per_minute'))->toBe(3000);
+
+    BlockfillOn::play();
+    config(['esports.blockfill.issue_per_ip_per_hour' => 1]);
+    $this->actingAs(User::factory()->create())->withServerVariables(['REMOTE_ADDR' => '192.0.2.10'])->postJson(route('stacker.runs.issue'))->assertCreated();
+    $this->actingAs(User::factory()->create())->withServerVariables(['REMOTE_ADDR' => '::ffff:192.0.2.10'])->postJson(route('stacker.runs.issue'))->assertTooManyRequests();
 });
 
 test('issuing is also limited per network (IPv6 by /64) and in total per minute', function () {

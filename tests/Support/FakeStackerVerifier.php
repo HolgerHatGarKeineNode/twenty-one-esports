@@ -35,6 +35,6 @@ final class FakeStackerVerifier implements Verifier
             throw new RuntimeException('verifier exploded');
         }
 
-        return $this->verdict ?? StackerVerdict::verified(['das' => 8, 'arr' => 1, 'sdf' => 20]);
+        return $this->verdict ?? StackerVerdict::verified(['das' => 8, 'arr' => 1, 'sdf' => 20], (string) $run->replay);
     }
 }

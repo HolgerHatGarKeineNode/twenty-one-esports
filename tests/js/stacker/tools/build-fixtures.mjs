@@ -219,3 +219,32 @@ for (const [name, seed, settings, play] of cases) {
     const json = JSON.stringify(body, null, 4).replace(/\[\n\s+(\d+),\n\s+(\d+),\n\s+(\d+)\n\s+\]/g, '[$1, $2, $3]');
     if (process.argv[3] === 'write') writeFileSync(`${out}/${name}.json`, json + '\n');
 }
+
+// The encoded replays the PHP tests submit: each run as the verifier stores it (only the inputs it
+// used), the 40-line run padded with inputs after its end, and with an overlong varint inside.
+const R = await import(`${root}/resources/js/stacker/replay.js`);
+for (const name of ['forty-lines', 'top-out']) {
+    const [, seed, settings, play] = cases.find(([n]) => n === name);
+    const { log, result } = play(seed, settings, E.MAX_TICKS);
+    const used = log.filter(([tick]) => tick < result.ticks);
+    const header = { v: R.REPLAY_VERSION, engine: E.ENGINE_VERSION, seed, settings };
+    const canonical = R.encodeReplay(header, used);
+    console.log(`${name}.replay`, canonical.length, 'chars');
+    if (process.argv[3] === 'write') writeFileSync(`${out}/${name}.replay`, canonical + '\n');
+
+    if (name === 'forty-lines') {
+        const padding = [];
+        for (let i = 0; i < 1500; i++) {
+            padding.push([result.ticks + i, i % 2 === 0 ? 0 : 1, 1], [result.ticks + i, i % 2 === 0 ? 0 : 1, 0]);
+        }
+        const padded = R.encodeReplay(header, [...used, ...padding]);
+        const bytes = Buffer.from(canonical, 'base64url');
+        // the version (1) written as two bytes: 0x81 0x00
+        const overlong = Buffer.concat([Buffer.from([0x81, 0x00]), bytes.subarray(1)]).toString('base64url');
+        console.log('padded', padded.length, 'chars; overlong', overlong.length, 'chars');
+        if (process.argv[3] === 'write') {
+            writeFileSync(`${out}/${name}-padded.replay`, padded + '\n');
+            writeFileSync(`${out}/${name}-overlong.replay`, overlong + '\n');
+        }
+    }
+}

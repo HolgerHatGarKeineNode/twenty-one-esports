@@ -6,15 +6,18 @@
  * with one JSON object on stdin:
  *   {replay, seed, engine, claimed: {ticks, hash}, limits: {ticks, inputs, bytes}}
  * and answers one JSON line on stdout, exit code 0:
- *   {ok: true, ticks, lines, pieces, hash, settings}
- *   {ok: false, reason}  reason: malformed | oversize | engine | seed | unfinished | mismatch | crash
+ *   {ok: true, ticks, lines, pieces, hash, settings, replay}
+ *   {ok: false, reason}  reason: malformed | oversize | engine | seed | unfinished | trailing | mismatch | crash
+ * `replay` is the run re-encoded from exactly the inputs it used: what the league keeps,
+ * never the submitted bytes. Inputs after the run ended (`trailing`) and non-canonical
+ * varints (`malformed`, refused by the decoder) are padding and reject the run.
  * `crash` is the engine throwing on this replay, caught here: the only crash that
  * rejects a run. No answer at all (a non-zero exit, a missing or broken script,
  * a signal) says nothing about the run, so the caller leaves it pending.
  */
 import { realpathSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
-import { decodeReplay } from './replay.js';
+import { decodeReplay, encodeReplay } from './replay.js';
 
 /** Frozen engines by version; a new version adds a line, an old one never goes. */
 const ENGINES = {
@@ -90,11 +93,23 @@ export async function verify(request, engines = ENGINES) {
     if (!result.finished) {
         return { ok: false, reason: 'unfinished' };
     }
+    // the last tick played is result.ticks - 1: an input at result.ticks or later was never used
+    if (inputs.some(([tick]) => tick >= result.ticks)) {
+        return { ok: false, reason: 'trailing' };
+    }
     if (result.ticks !== claimed.ticks || result.stateHash !== claimed.hash) {
         return { ok: false, reason: 'mismatch' };
     }
 
-    return { ok: true, ticks: result.ticks, lines: result.lines, pieces: result.pieces, hash: result.stateHash, settings: header.settings };
+    return {
+        ok: true,
+        ticks: result.ticks,
+        lines: result.lines,
+        pieces: result.pieces,
+        hash: result.stateHash,
+        settings: header.settings,
+        replay: encodeReplay(header, inputs),
+    };
 }
 
 /**

@@ -34,10 +34,12 @@ use Illuminate\Support\Str;
  * - finish(): the verifier's verdict; an unavailable verifier leaves the run
  *   `pending` (fail-closed: no score until it is checked).
  *
- * Storage stays bounded (security audit F1): a replay is kept only for a run
- * that is verifying, pending or verified, and for the latest
- * `practice_replays_kept` practice runs of a player; a rejected run keeps
- * none. Runs without a verified time are pruned after `prune_days`
+ * Storage stays bounded (security audits F1, N1): the submitted replay is
+ * kept only while a run is verifying or pending (the verifier needs it); a
+ * verified run keeps the verifier's canonical re-encoding of exactly the
+ * inputs it used, never the submitted bytes; rejected and practice runs
+ * keep none. A player's stored replays stay within
+ * `replay_bytes_per_player` (enforceReplayBudget()). Runs without a verified time are pruned after `prune_days`
  * (StackerRun::prunable()). sweepStale() gives up verifications that never
  * came back, reverifyPending() sends pending runs again (console only).
  */
@@ -149,7 +151,7 @@ final class StackerRuns
             $fields += ['ticks' => $ticks, 'state_hash' => $hash];
             $fields += $this->outcome($run, $ticks, $now);
 
-            if (in_array($fields['status'], [StackerRunStatus::Verifying, StackerRunStatus::Practice], true)) {
+            if ($fields['status'] === StackerRunStatus::Verifying) {
                 $fields['replay'] = $replay;
             }
         }
@@ -169,10 +171,6 @@ final class StackerRuns
             VerifyStackerRun::dispatch($run->id);
         }
 
-        if ($run->status === StackerRunStatus::Practice) {
-            $this->dropOldPracticeReplays($run->user_id);
-        }
-
         return $run;
     }
 
@@ -182,15 +180,55 @@ final class StackerRuns
     public function finish(StackerRun $run, StackerVerdict $verdict, CarbonInterface $now): void
     {
         $fields = match ($verdict->outcome) {
-            StackerVerdict::VERIFIED => ['status' => StackerRunStatus::Verified, 'settings' => json_encode($verdict->settings), 'verified_at' => $now, 'reason' => null],
+            StackerVerdict::VERIFIED => ['status' => StackerRunStatus::Verified, 'settings' => json_encode($verdict->settings), 'verified_at' => $now, 'reason' => null, 'replay' => $verdict->replay],
             StackerVerdict::REJECTED => ['status' => StackerRunStatus::Rejected, 'reason' => $verdict->reason, 'replay' => null],
             default => ['status' => StackerRunStatus::Pending, 'reason' => $verdict->reason],
         };
 
-        StackerRun::query()
+        $finished = StackerRun::query()
             ->whereKey($run->id)
             ->where('status', StackerRunStatus::Verifying)
-            ->update($this->stored($fields + ['updated_at' => $now]));
+            ->update($this->stored($fields + ['updated_at' => $now])) === 1;
+
+        if ($finished && $verdict->outcome === StackerVerdict::VERIFIED) {
+            $this->enforceReplayBudget($run->user_id);
+        }
+    }
+
+    /**
+     * Drops stored replays of the player's verified runs, oldest first, until
+     * all their stored replays fit `replay_bytes_per_player`. The personal
+     * best keeps its replay even when it alone is over the budget; replays
+     * still waiting for the verifier are never dropped.
+     */
+    public function enforceReplayBudget(int $userId): void
+    {
+        $budget = (int) config('esports.blockfill.replay_bytes_per_player');
+        $stored = StackerRun::query()
+            ->where('user_id', $userId)
+            ->whereNotNull('replay')
+            ->get(['id', 'status', 'ticks', 'replay']);
+
+        $total = $stored->sum(fn (StackerRun $run): int => strlen((string) $run->replay));
+
+        if ($total <= $budget) {
+            return;
+        }
+
+        $best = $stored->where('status', StackerRunStatus::Verified)->sortBy([['ticks', 'asc'], ['id', 'asc']])->first();
+
+        foreach ($stored->where('status', StackerRunStatus::Verified)->sortBy('id') as $candidate) {
+            if ($total <= $budget) {
+                break;
+            }
+
+            if ($candidate->id === $best?->id) {
+                continue;
+            }
+
+            StackerRun::query()->whereKey($candidate->id)->update(['replay' => null]);
+            $total -= strlen((string) $candidate->replay);
+        }
     }
 
     /**
@@ -242,7 +280,12 @@ final class StackerRuns
             return 'unknown';
         }
 
-        return strlen($packed) === 16 ? bin2hex(substr($packed, 0, 8)).'::/64' : (string) $ip;
+        // an IPv4 address written as IPv6 (::ffff:a.b.c.d) is that IPv4 address
+        if (strlen($packed) === 16 && str_starts_with($packed, str_repeat("\0", 10)."\xff\xff")) {
+            return (string) inet_ntop(substr($packed, 12));
+        }
+
+        return strlen($packed) === 16 ? bin2hex(substr($packed, 0, 8)).'::/64' : (string) inet_ntop($packed);
     }
 
     /**
@@ -278,24 +321,6 @@ final class StackerRuns
         }
 
         return ['status' => StackerRunStatus::Verifying];
-    }
-
-    private function dropOldPracticeReplays(int $userId): void
-    {
-        $keep = StackerRun::query()
-            ->where('user_id', $userId)
-            ->where('status', StackerRunStatus::Practice)
-            ->whereNotNull('replay')
-            ->orderByDesc('id')
-            ->limit(max(0, (int) config('esports.blockfill.practice_replays_kept')))
-            ->pluck('id');
-
-        StackerRun::query()
-            ->where('user_id', $userId)
-            ->where('status', StackerRunStatus::Practice)
-            ->whereNotNull('replay')
-            ->whereNotIn('id', $keep)
-            ->update(['replay' => null]);
     }
 
     private function expireIfDue(StackerRun $run, CarbonInterface $now): bool
