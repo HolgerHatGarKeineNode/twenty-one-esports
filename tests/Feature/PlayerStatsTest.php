@@ -3,8 +3,12 @@
 use App\Enums\ClanRole;
 use App\Enums\PayoutStatus;
 use App\Enums\SeriesStatus;
+use App\Enums\StackerRunStatus;
 use App\Enums\TournamentFormat;
 use App\Enums\TournamentStatus;
+use App\Games\Blockfill;
+use App\Games\ScoreMetric;
+use App\Jobs\VerifyStackerRun;
 use App\Models\ChessGame;
 use App\Models\Clan;
 use App\Models\ClanDeparture;
@@ -13,15 +17,25 @@ use App\Models\Lineup;
 use App\Models\LineupSeat;
 use App\Models\Rating;
 use App\Models\RatingChange;
+use App\Models\ScoreRun;
 use App\Models\Season;
 use App\Models\SeriesMatch;
+use App\Models\StackerRun;
 use App\Models\Tournament;
 use App\Models\TournamentParticipant;
 use App\Models\TournamentPayout;
 use App\Models\User;
+use App\Support\GameNames;
 use App\Support\Payouts\TournamentPlacements;
 use App\Support\Players\PlayerStats;
+use App\Support\Scores\ScoreLeaderboards;
+use App\Support\Stacker\BlockfillWeeks;
+use App\Support\Stacker\Verifier;
+use Carbon\CarbonImmutable;
 use Illuminate\Support\Facades\DB;
+use Tests\Support\BlockfillOn;
+use Tests\Support\FakeStackerVerifier;
+use Tests\Support\TestSigner;
 
 /*
 |--------------------------------------------------------------------------
@@ -300,4 +314,77 @@ test('a player with more tournaments than listed: six rows read, the count and t
     $this->get(route('players.show', $player->npub))->assertOk()
         ->assertSee(trans_choice(':count played|:count played', PlayerStats::TOURNAMENTS + $extra))
         ->assertSee("9\u{00A0}000 sats", false);
+});
+
+/** A ranked Blockfill run of `$user` with `$ticks`, decided by the verifier job as verified (it joins its week). */
+function playerStatsBlockfillRun(User $user, int $ticks): StackerRun
+{
+    $run = StackerRun::factory()->for($user)->create([
+        'status' => StackerRunStatus::Verifying, 'issued_at' => now(), 'started_at' => now(), 'submitted_at' => now(),
+        'ticks' => $ticks, 'state_hash' => '00000000', 'replay' => 'AAAA',
+    ]);
+
+    VerifyStackerRun::dispatchSync($run->id);
+
+    return $run->refresh();
+}
+
+test('a player with chess and Blockfill sees the chess ladder with its place and Blockfill with best, week place, points place and attempts', function () {
+    config(['esports.league.nsec' => (new TestSigner)->secret]);
+    app()->instance(Verifier::class, new FakeStackerVerifier);
+    BlockfillOn::play();
+    $time = fn (int $ticks): string => ScoreMetric::time()->format(Blockfill::milliseconds($ticks));
+    $player = User::factory()->create(['name' => 'Stack Pleb']);
+    $rival = User::factory()->create(['name' => 'Fast Rival']);
+    // Chess: two players on the casual blitz ladder, the player second.
+    playerStatsChess($player, [['win', 16], ['loss', -10]]);
+    playerStatsChess($rival, [['win', 30]]);
+
+    // Last week (Monday 2026-09-28 Berlin): the player wins it, and its end scores the points ladder.
+    $this->travelTo(CarbonImmutable::parse('2026-09-30 12:00:00'));
+    app(BlockfillWeeks::class)->open();
+    playerStatsBlockfillRun($player, 900);
+    playerStatsBlockfillRun($rival, 1300);
+
+    // This week: the rival is faster, the player second with their better of two runs.
+    $this->travelTo(CarbonImmutable::parse('2026-10-07 12:00:00'));
+    app(ScoreLeaderboards::class)->tick();
+    app(BlockfillWeeks::class)->open();
+    playerStatsBlockfillRun($player, 1500);
+    playerStatsBlockfillRun($rival, 958);
+    $this->travel(5)->minutes();
+    playerStatsBlockfillRun($player, 1200);
+
+    $html = $this->get(route('players.show', $player->npub))->assertOk()->getContent();
+    $chess = (string) str($html)->after('data-test="player-ladder" data-game="chess"')->before('</li>');
+    $blockfill = (string) str($html)->after('data-test="player-score" data-game="blockfill"')->before('</li>');
+
+    expect($chess)->toContain('>1006<')
+        ->and((string) str($chess)->after('data-test="player-ladder-place"')->before('</span>'))->toContain(__('#:place of :count', ['place' => 2, 'count' => 2]))
+        ->and($blockfill)->toContain(e(GameNames::mode(Blockfill::SLUG, Blockfill::MODE)))
+        ->and($blockfill)->toContain(trans_choice(':count verified attempt|:count verified attempts', 3))
+        // The best of all three runs is last week's.
+        ->and((string) str($blockfill)->after('data-test="player-score-best"')->before('</b>'))->toContain($time(900))
+        // This week: their better run, second of two.
+        ->and((string) str($blockfill)->after('data-test="player-score-board"')->before('</a>'))->toContain(e(__('Blockfill Week :week, :year', ['week' => 41, 'year' => 2026])))
+        ->and((string) str($blockfill)->after('data-test="player-score-board-place"')->before('</span>'))->toContain($time(1200))->toContain(__('#:place of :count', ['place' => 2, 'count' => 2]))
+        // Last week's win leads the points ladder.
+        ->and((string) str($blockfill)->after('data-test="player-score-points"')->before('</span>'))->toContain(__('#:place of :count', ['place' => 1, 'count' => 2]))
+        // The latest attempts, newest first.
+        ->and(preg_match_all('#data-test="player-score-attempt">\s*<b>([^<]+)</b>#', $blockfill, $attempts))->toBe(3)
+        ->and($attempts[1])->toBe([$time(1200), $time(1500), $time(900)])
+        // Chess stands before Blockfill, as in the registry.
+        ->and(strpos($html, 'data-game="chess"'))->toBeLessThan(strpos($html, 'data-game="blockfill"'));
+});
+
+test('a score value nobody verified yet gives no card, and its proof link never reaches the page', function () {
+    BlockfillOn::play();
+    $player = User::factory()->create();
+    ScoreRun::query()->create(['user_id' => $player->id, 'game' => Blockfill::SLUG, 'mode' => Blockfill::MODE, 'course' => Blockfill::MODE, 'value' => 15_000,
+        'unit' => 'ms', 'source' => ScoreRun::MANUAL, 'achieved_at' => now(), 'proof_url' => 'https://example.test/proof/my-account-id']);
+
+    $this->get(route('players.show', $player->npub))->assertOk()
+        ->assertDontSee('data-test="player-score"', false)
+        ->assertSee('data-test="player-ladders-empty"', false)
+        ->assertDontSee('my-account-id');
 });

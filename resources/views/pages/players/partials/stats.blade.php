@@ -1,7 +1,10 @@
 {{--
     The public record under the player header (P31), from
     App\Support\Players\PlayerStats: the ladders first (the standing is what
-    a visitor comes for), the latest results under them; tournaments, seasons
+    a visitor comes for), one card per ladder of a versus game and per mode of
+    a score game, game by game in the registry's order (PlayerStats::games(),
+    so a game registered later shows with no change here; a game never
+    played has no card); the latest results under them; tournaments, seasons
     and clans in the side column from lg. Each part with nothing in it says
     so in one line, with the way to change that on the player's own page.
 
@@ -11,7 +14,7 @@
     use App\Support\PreSeason;
     use App\Support\Rating\Ratings;
 
-    $ladders = $stats->ladders();
+    $games = $stats->games();
     $results = $stats->results();
     $tournaments = $stats->tournaments();
     $seasons = collect($stats->seasons());
@@ -27,7 +30,7 @@
         {{-- Ladders: rating, rank, form, share of wins, peak --}}
         <section aria-labelledby="ps-ladders-h" class="flex flex-col gap-3 lg:gap-4" data-test="player-ladders">
             <h2 id="ps-ladders-h" class="m-0 font-display text-xl font-bold lg:text-2xl">{{ __('Ladders') }}</h2>
-            @if ($ladders === [])
+            @if ($games === [])
                 <div class="flex flex-col items-start gap-3 rounded-lg px-4 py-4 shadow-ring-hairline lg:px-5" data-test="player-ladders-empty">
                     <p class="{{ $empty }}">{{ $isMe ? __('No results yet. Your first finished game puts you on a ladder.') : __('No results yet. The first finished game puts :name on a ladder.', ['name' => $name]) }}</p>
                     @if ($isMe)
@@ -36,15 +39,20 @@
                 </div>
             @else
                 <ul role="list" class="m-0 grid list-none grid-cols-1 gap-3 p-0 sm:grid-cols-2 lg:gap-4">
-                    @foreach ($ladders as $ladder)
+                    @foreach ($games as $card)
+                        @if ($card['kind'] === 'score')
+                            @include('pages.players.partials.score-card', ['score' => $card['score']])
+                            @continue
+                        @endif
                         @php
+                            $ladder = $card['ladder'];
                             $rating = $ladder['rating'];
                             $rated = $rating['pool'] === \App\Models\Rating::RATED;
                             $badge = Ratings::badge($rating['tier']);
                             $share = $rating['results'] > 0 ? (int) round($rating['wins'] / $rating['results'] * 100) : 0;
                             $form = array_pad($ladder['form'], -\App\Support\Players\PlayerStats::FORM, null);
                         @endphp
-                        <li wire:key="ladder-{{ $ladder['key'] }}" class="flex min-w-0 flex-col gap-3 rounded-card bg-card p-4" data-test="player-ladder" data-ladder="{{ $ladder['game'] }}/{{ $ladder['mode'] }}" data-pool="{{ $rating['pool'] }}">
+                        <li wire:key="ladder-{{ $ladder['key'] }}" class="flex min-w-0 flex-col gap-3 rounded-card bg-card p-4" data-test="player-ladder" data-game="{{ $ladder['game'] }}" data-ladder="{{ $ladder['game'] }}/{{ $ladder['mode'] }}" data-pool="{{ $rating['pool'] }}">
                             <a href="{{ $ladder['href'] }}" class="grid min-h-11 grid-cols-[48px_minmax(0,1fr)] items-center gap-3 text-ink hover:text-ink">
                                 <x-game-cover :game="$ladder['game']" size="thumb" class="w-12 rounded-tag" />
                                 <span class="flex min-w-0 flex-col">
@@ -59,6 +67,9 @@
                                     <x-rank-badge :tier="$badge['tier']" :level="$badge['level']" />
                                 @elseif ($rating['provisional'])
                                     <span class="text-xs text-ink-3">{{ __('provisional') }}</span>
+                                @endif
+                                @if ($ladder['place'] !== null)
+                                    <span class="text-xs text-ink-2 tabular-nums" data-test="player-ladder-place">{{ __('#:place of :count', ['place' => $ladder['place'], 'count' => $ladder['of']]) }}</span>
                                 @endif
                                 <span class="ml-auto text-xs text-ink-3" data-test="player-ladder-peak">{{ __('Peak') }} <b class="text-ink-2 tabular-nums">{{ $ladder['peak'] }}</b></span>
                             </span>
