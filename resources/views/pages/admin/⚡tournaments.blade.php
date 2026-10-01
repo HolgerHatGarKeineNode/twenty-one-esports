@@ -15,7 +15,8 @@ use Livewire\Component;
  * first — all of them for an admin, their own for an organizer. The
  * organizers themselves have their own page since P17. Each row links its
  * management actions under its name (<x-tournaments.manage-actions>:
- * prize pool, edit, payouts, each behind its own gate).
+ * publish for a draft, first and orange, then prize pool, edit, payouts,
+ * each behind its own gate).
  */
 new #[Title('Tournaments')] #[Layout('layouts::app', ['section' => 'admin'])] class extends Component {
     public function mount(): void

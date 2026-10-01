@@ -293,7 +293,12 @@ new #[Layout('layouts::app', ['section' => 'admin'])] class extends TournamentFo
         $this->tournament = $tournament->refresh();
         $this->fillFromTournament();
         $this->forget();
-        $this->notice = $changed === [] ? __('Nothing changed.') : __('Saved.').($this->tournament->event_id !== null ? ' '.__('The league published the new version of the tournament.') : '');
+        $this->notice = match (true) {
+            $changed === [] => __('Nothing changed.'),
+            // A draft is not public yet: say where it goes next (user, 2026-10-01).
+            $this->tournament->status === TournamentStatus::Draft => __('Saved. Publish it when ready.'),
+            default => __('Saved.').($this->tournament->event_id !== null ? ' '.__('The league published the new version of the tournament.') : ''),
+        };
     }
 
     public function startRemove(int $signupId): void
@@ -493,7 +498,13 @@ new #[Layout('layouts::app', ['section' => 'admin'])] class extends TournamentFo
                 </span>
             @endisland
             <span class="hidden grow lg:block"></span>
-            <x-button wire:click="save" class="shrink-0" data-test="edit-save">{{ __('Save changes') }}</x-button>
+            <span class="flex shrink-0 flex-wrap gap-3">
+                <x-button wire:click="save" class="shrink-0" data-test="edit-save">{{ __('Save changes') }}</x-button>
+                {{-- A draft's next step beside its save (user, 2026-10-01); the top of the page has it too, in the actions. --}}
+                @if ($tournament->status === TournamentStatus::Draft)
+                    <x-button variant="secondary" :href="route('tournaments.show', $tournament).'#publish'" icon="send" class="shrink-0" data-test="edit-publish">{{ __('Publish tournament') }}</x-button>
+                @endif
+            </span>
         </div>
 
         @include('pages.admin.partials.prize-pot', ['potTournament' => $tournament, 'potSave' => 'savePotSettings'])
