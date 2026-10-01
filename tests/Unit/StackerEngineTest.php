@@ -11,5 +11,5 @@ test('the Blockfill engine replays its reference runs and keeps its rules', func
     $run = (new Factory)->path(dirname(__DIR__, 2))->timeout(60)->run(['node', '--test', 'tests/js/stacker']);
 
     expect($run->successful())->toBeTrue($run->output().$run->errorOutput())
-        ->and($run->output())->toContain('ℹ pass 44')->toContain('ℹ fail 0')->toContain('ℹ skipped 0');
+        ->and($run->output())->toContain('ℹ pass 52')->toContain('ℹ fail 0')->toContain('ℹ skipped 0');
 });

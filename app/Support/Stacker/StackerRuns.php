@@ -61,7 +61,7 @@ final class StackerRuns
             return StackerRun::query()->create([
                 'user_id' => $user->id,
                 'token_hash' => self::hashToken($token),
-                'seed' => bin2hex(random_bytes(16)),
+                'seed' => self::freshSeed(),
                 'engine' => (string) config('esports.blockfill.engine'),
                 'status' => StackerRunStatus::Issued,
                 'issued_at' => $now,
@@ -69,6 +69,22 @@ final class StackerRuns
         });
 
         return [$run, $token];
+    }
+
+    /**
+     * A random 128-bit seed. Only the test environment may pin it
+     * (`esports.blockfill.testing_seed`), so a browser test can play a
+     * recorded reference run as a ranked run.
+     */
+    public static function freshSeed(): string
+    {
+        $pinned = config('esports.blockfill.testing_seed');
+
+        if (app()->environment('testing') && is_string($pinned) && preg_match('/^[0-9a-f]{32}$/', $pinned) === 1) {
+            return $pinned;
+        }
+
+        return bin2hex(random_bytes(16));
     }
 
     public static function hashToken(string $token): string

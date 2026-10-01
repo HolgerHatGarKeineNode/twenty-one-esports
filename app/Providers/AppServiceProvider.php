@@ -144,6 +144,8 @@ class AppServiceProvider extends ServiceProvider
             Limit::perHour((int) config('esports.blockfill.issue_per_ip_per_hour'))->by('stacker-issue-net:'.StackerRuns::network($request->ip())),
             Limit::perMinute((int) config('esports.blockfill.issue_global_per_minute'))->by('stacker-issue-global'),
         ]);
+        // The result screen asks for a submitted run's verdict about once a second until it has one.
+        RateLimiter::for('stacker-status', fn (Request $request): Limit => Limit::perMinute(120)->by('stacker-status:'.$request->user()?->getAuthIdentifier()));
         RateLimiter::for('stacker-submit', fn (Request $request): array => [
             Limit::perMinute((int) config('esports.blockfill.submits_per_minute'))->by('stacker-submit:'.$request->user()?->getAuthIdentifier()),
             Limit::perMinute((int) config('esports.blockfill.submits_per_ip_per_minute'))->by('stacker-submit-net:'.StackerRuns::network($request->ip())),

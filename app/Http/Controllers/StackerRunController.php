@@ -13,7 +13,7 @@ use Illuminate\Http\Response;
 /**
  * Blockfill runs over JSON (plan "Blockfill", P2; routes/stacker.php, only
  * registered while `esports.blockfill.enabled` is on): issue a run, mark its
- * start, submit its replay. Logged-in only, CSRF-checked like every web
+ * start, submit its replay, read its status. Logged-in only, CSRF-checked like every web
  * route, throttled per player. The rules live in StackerRuns.
  *
  * A token that is not the player's answers 404 (whether it exists is none of
@@ -64,6 +64,23 @@ class StackerRunController extends Controller
         }
 
         return response()->json(['status' => $submitted->status->value, 'reason' => $submitted->reason], 202);
+    }
+
+    /**
+     * A run's state for the result screen, which asks until the verdict is in.
+     */
+    public function show(Request $request, string $token, StackerRuns $runs): JsonResponse
+    {
+        $run = $this->run($request, $token, $runs);
+        $user = $request->user();
+        assert($user instanceof User);
+
+        return response()->json([
+            'status' => $run->status->value,
+            'reason' => $run->reason,
+            'ticks' => $run->ticks,
+            'best' => $runs->best($user),
+        ]);
     }
 
     private function run(Request $request, string $token, StackerRuns $runs): StackerRun
