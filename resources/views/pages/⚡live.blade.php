@@ -248,7 +248,7 @@ new #[Layout('layouts::app', ['scripts' => ['resources/js/liveChat.js']])] class
             </button>
         </div>
 
-        @include('pages.live.chat', ['chat' => $this->chat, 'class' => 'max-lg:h-[min(34rem,calc(100svh-var(--live-chat-floor,5rem)-1rem))] max-lg:scroll-mb-[var(--live-chat-floor,5rem)] lg:sticky lg:top-4 lg:col-start-2 lg:row-span-2 lg:row-start-1 lg:h-[max(26rem,calc(100dvh-var(--live-chat-top,14rem)))]'])
+        @include('pages.live.chat', ['chat' => $this->chat, 'class' => 'max-lg:h-[min(34rem,calc(100svh-var(--live-chat-floor,5rem)-1rem))] max-lg:scroll-mb-[var(--live-chat-floor,5rem)] lg:sticky lg:top-below-shell lg:col-start-2 lg:row-span-2 lg:row-start-1 lg:h-[max(26rem,calc(100dvh-var(--live-chat-top,14rem)))]'])
 
         <div class="flex min-w-0 flex-col gap-5 lg:col-start-1 lg:row-start-2">
             {{-- Zap and share right under the stage: the two ways to support it (user: the zap was buried at the bottom). --}}

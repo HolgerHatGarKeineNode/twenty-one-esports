@@ -239,7 +239,7 @@ new #[Title('Challenge')] #[Layout('layouts::app', ['section' => 'chess'])] clas
         </div>
 
         {{-- Summary --}}
-        <aside class="flex flex-col gap-4 self-start rounded-lg bg-card px-4 py-5 lg:sticky lg:top-6 lg:px-6" data-test="challenge-summary">
+        <aside class="flex flex-col gap-4 self-start rounded-lg bg-card px-4 py-5 lg:sticky lg:top-below-shell lg:px-6" data-test="challenge-summary">
             @if ($opponent)
                 <span class="flex items-start gap-3">
                     <x-avatar :user="$opponent" :size="40" class="rounded-md" />

@@ -363,7 +363,7 @@ export function liveChat(config) {
                 return;
             }
 
-            // The grid it starts in, not the column itself: stuck, the column reports its 16 px.
+            // The grid it starts in, not the column itself: stuck, the column reports its sticky top (below the header).
             const top = column.parentElement.getBoundingClientRect().top + window.scrollY;
             const dock = document.querySelector('[data-test=match-dock]');
             const dockTop = dock?.checkVisibility() ? dock.getBoundingClientRect().top : null;

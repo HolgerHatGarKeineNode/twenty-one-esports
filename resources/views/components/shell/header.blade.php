@@ -31,9 +31,16 @@
     $allGames = trans_choice('All :count game|All :count games', count($games));
 @endphp
 
-{{-- An open notification panel or game hub lifts the header above the toast stack (z-50) and the match dock (z-35). --}}
-<header class="relative z-30 shrink-0 bg-bar" x-data="shellHeader" x-bind:style="(bell || hub) ? 'z-index: 55' : ''"
+{{--
+    Sticky (2026-10-01): row 1 stays at the top at every width, row 1 and the context bar from lg (--shell-h,
+    app.css); the page scrolls under it and anchors and focus land below it (scroll-padding-top on the root).
+    --shell-game tints the edge it shows once the page runs under it (.shell-edge). An open notification
+    panel or game hub lifts the header above the toast stack (z-50) and the match dock (z-35); the style is
+    bound as an object, so Alpine adds and removes z-index alone and leaves --shell-game standing.
+--}}
+<header class="shell-header sticky top-0 z-30 shrink-0 bg-bar" style="--shell-game: {{ $active['colour'] }}" x-data="shellHeader" x-bind:style="(bell || hub) ? { zIndex: 55 } : {}"
         x-on:bell-toggle="bell = $event.detail" x-on:keydown.escape.window="closeSearch(); closeHub()">
+    <span class="shell-edge" aria-hidden="true" data-test="shell-edge"></span>
     {{--
         Row 1. Below lg it is the phone's only top bar (56 px: logo, game chips, search, bell or
         "Log in"); from lg the desktop bar (64 px): logo, game tabs, the hub, Tournaments,
@@ -226,12 +233,16 @@
         </form>
     </div>
 
-    {{-- Guests: "New here?" sits inside the header, so the page-top gap under the header stays the same on every page. --}}
-    @guest
-        <x-shell.first-steps />
-    @endguest
-
     <x-shell.game-hub :played="$played" :unplayed="$unplayed" :count="count($games)" />
 </header>
+
+{{--
+    Guests: "New here?" right under the header, outside it: the header is sticky and the strip scrolls away
+    with the page (inside, it held 57 px of a 667 px phone and 69 px at 1440 for as long as the page was read).
+    It still comes before the tab bar and <main>, so the tab order is the one it had inside the header.
+--}}
+@guest
+    <x-shell.first-steps />
+@endguest
 
 <x-shell.mobile-nav :active="$active" :games="$games" :community="$community" :chain="$chain" :tournaments="$tournaments" :admin="$admin" :account="$account" :section="$section" :user="$user" />

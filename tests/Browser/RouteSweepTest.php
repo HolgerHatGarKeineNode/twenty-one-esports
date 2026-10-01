@@ -545,7 +545,9 @@ const SWEEP_GAP_SCRIPT = <<<'JS'
                 parseFloat(style[`border${side}Width`]) > 0 && style[`border${side}Style`] !== 'none');
         };
 
-        const headerBottom = header.getBoundingClientRect().bottom;
+        // A guest's "New here?" strip sits under the sticky header, outside it (it scrolls away): the chrome ends below it.
+        const steps = document.querySelector('[data-test=first-steps]');
+        const headerBottom = Math.max(header.getBoundingClientRect().bottom, steps?.checkVisibility() ? steps.getBoundingClientRect().bottom : 0);
         const viewport = document.documentElement.clientWidth;
         let top = Infinity;
         let first = null;

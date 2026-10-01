@@ -30,6 +30,13 @@
     --spacing-page-top: 1.25rem;
     --spacing-page-top-lg: 2rem;
 
+    /*
+     * Below the sticky header (--shell-h, set per width further down): where a
+     * page's own sticky column stops (`lg:top-below-shell`) and where an anchor
+     * jump or a focused control lands (scroll-padding-top on the root).
+     */
+    --spacing-below-shell: calc(var(--shell-h) + 1.5rem);
+
     /* Surfaces */
     --color-ground: #0A0A0B;
     --color-bar: #111114;
@@ -2083,11 +2090,56 @@ select:focus[data-flux-control] {
  */
 :root {
     --tabbar-h: calc(4rem + env(safe-area-inset-bottom));
+    /* The sticky header: row 1 alone below lg (56 px), row 1 and the context bar from lg (64 + 48 px). */
+    --shell-h: 3.5rem;
+    /* Anchors and focus land below the header and above the phone's tab bar, never under either. */
+    scroll-padding-top: var(--spacing-below-shell);
+    scroll-padding-bottom: calc(var(--tabbar-h) + 1rem);
 }
 
 @media (width >= 64rem) {
     :root {
         --tabbar-h: 0px;
+        --shell-h: 7rem;
+    }
+}
+
+/*
+ * The sticky header lifts off the page once the page runs under it: flat at
+ * the top, then its bottom edge takes the active game's colour and casts a
+ * shadow. The header asks the browser whether it is stuck (a scroll-state
+ * container), so there is no scroll listener to bind and nothing to re-bind
+ * after a wire:navigate swap. A scroll-driven animation would do the same,
+ * but its finished promise never settles at the top of a page, and the
+ * browser tests wait on every running animation. Where scroll-state queries
+ * are missing (Firefox, Safari) the header keeps its hairline and simply does
+ * not lift.
+ */
+.shell-header {
+    container-type: scroll-state;
+}
+
+.shell-edge {
+    position: absolute;
+    inset-inline: 0;
+    bottom: 0;
+    height: 1px;
+    pointer-events: none;
+    opacity: 0;
+    background: color-mix(in srgb, var(--shell-game, var(--color-btc)) 45%, var(--color-hairline));
+    box-shadow: 0 12px 24px -8px rgb(0 0 0 / 0.7);
+    transition: opacity 150ms ease-out;
+}
+
+@container scroll-state(stuck: top) {
+    .shell-edge {
+        opacity: 1;
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .shell-edge {
+        transition: none;
     }
 }
 

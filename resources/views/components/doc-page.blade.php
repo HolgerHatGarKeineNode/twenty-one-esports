@@ -15,7 +15,7 @@
      x-init="const seen = new IntersectionObserver((entries) => entries.filter((e) => e.isIntersecting).forEach((e) => current = e.target.id), { rootMargin: '-30% 0px -60% 0px' });
              $root.querySelectorAll('[data-doc-section]').forEach((el) => seen.observe(el))">
     <nav aria-label="{{ $navLabel }}" class="max-lg:hidden" data-test="doc-nav">
-        <ol class="sticky top-28 m-0 flex list-none flex-col gap-0.5 p-0">
+        <ol class="sticky top-below-shell m-0 flex list-none flex-col gap-0.5 p-0">
             @foreach ($sections as $index => [$id, $title])
                 <li>
                     <a href="#{{ $id }}" x-bind:aria-current="current === @js($id) ? 'location' : null"
