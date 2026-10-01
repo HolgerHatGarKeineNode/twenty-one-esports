@@ -92,13 +92,13 @@ new #[Layout('layouts::app', ['section' => 'tournaments'])] class extends Compon
         // Only a published tournament is public (TournamentPublisher sets both); a draft stays noindex.
         // The first title() call wins (Livewire merges page params first-come), so each branch sets it once.
         if ($tournament->status === TournamentStatus::Draft || $tournament->published_at === null) {
-            $view->title($tournament->name);
+            $view->title($tournament->title());
 
             return;
         }
 
         $locale = app()->getLocale();
-        $title = $tournament->name.' · '.__(':game tournament', ['game' => \App\Support\GameNames::game($tournament->game)]);
+        $title = $tournament->title().' · '.__(':game tournament', ['game' => \App\Support\GameNames::game($tournament->game)]);
         $view->title($title);
 
         $meta = app(PageMeta::class)
@@ -107,7 +107,7 @@ new #[Layout('layouts::app', ['section' => 'tournaments'])] class extends Compon
             ->addStructuredData(StructuredData::breadcrumbs([
                 [__('Home'), LocalizedUrls::for($locale, route('home'))],
                 [__('Tournaments'), LocalizedUrls::for($locale, route('tournaments.index'))],
-                [$tournament->name, LocalizedUrls::for($locale, route('tournaments.show', $tournament))],
+                [$tournament->title(), LocalizedUrls::for($locale, route('tournaments.show', $tournament))],
             ]));
 
         // The link preview (P54): places, pot and start while it is open, the podium once it is over.
@@ -443,8 +443,8 @@ new #[Layout('layouts::app', ['section' => 'tournaments'])] class extends Compon
     $countdown = $landing->countdown();
 
     $shareText = $status === TournamentStatus::Signup && $tournament->isSignupOpen()
-        ? __('Play :tournament with me on TWENTY ONE Esports: :game, :spots.', ['tournament' => $tournament->name, 'game' => $gameLine, 'spots' => trans_choice(':count spot left|:count spots left', $open)])
-        : __(':tournament on TWENTY ONE Esports: :game.', ['tournament' => $tournament->name, 'game' => $gameLine]);
+        ? __('Play :tournament with me on TWENTY ONE Esports: :game, :spots.', ['tournament' => $tournament->title(), 'game' => $gameLine, 'spots' => trans_choice(':count spot left|:count spots left', $open)])
+        : __(':tournament on TWENTY ONE Esports: :game.', ['tournament' => $tournament->title(), 'game' => $gameLine]);
 
     $chips = [
         ['tournaments', __('Format'), $tournament->format->label().($tournament->format === TournamentFormat::Swiss && $options->swissRounds !== null ? ', '.trans_choice(':count round|:count rounds', $options->swissRounds) : ''), 'format'],
@@ -594,7 +594,7 @@ new #[Layout('layouts::app', ['section' => 'tournaments'])] class extends Compon
                     @endif
                 </div>
 
-                <h1 id="t-name" class="m-0 font-display text-[32px] leading-[1.08] font-bold break-words sm:text-[44px] xl:text-[56px]">{{ $tournament->name }}</h1>
+                <h1 id="t-name" class="m-0 font-display text-[32px] leading-[1.08] font-bold break-words sm:text-[44px] xl:text-[56px]">{{ $tournament->title() }}</h1>
             </div>
 
             @if ($this->pool !== null)
@@ -737,7 +737,7 @@ new #[Layout('layouts::app', ['section' => 'tournaments'])] class extends Compon
         {{-- The result (P11): the winner, the share card, and for the winners the share button. --}}
         <section aria-labelledby="tw-h" class="mx-4 flex flex-col gap-4 rounded-card bg-card px-4 py-5 shadow-[inset_0_0_0_1px_#F7931A] sm:flex-row sm:items-center lg:mx-12 lg:px-6" data-test="tournament-winner">
             @php($winnerCard = \App\Support\Cards\ShareCard::tournament($tournament, $champion))
-            <img src="{{ $winnerCard->path('wide') }}" alt="{{ __(':tournament winners', ['tournament' => $tournament->name]) }}" width="1200" height="630" loading="lazy"
+            <img src="{{ $winnerCard->path('wide') }}" alt="{{ __(':tournament winners', ['tournament' => $tournament->title()]) }}" width="1200" height="630" loading="lazy"
                  class="aspect-[1200/630] h-auto w-full shrink-0 rounded-md shadow-ring sm:w-[280px]">
             <div class="flex min-w-0 flex-col gap-2">
                 <span class="flex items-center gap-1.5 text-xs font-bold text-btc-hi"><x-icon name="trophy" :size="14" />{{ __('Winner') }}</span>
@@ -859,8 +859,8 @@ new #[Layout('layouts::app', ['section' => 'tournaments'])] class extends Compon
                 @endif
             </span>
             <span class="flex flex-wrap items-center gap-2">
-                @if ($published && $status !== TournamentStatus::Cancelled)
-                    {{-- The TV view (P19): the bracket full screen, live, for a big screen or a stream. --}}
+                @if ($published && $status !== TournamentStatus::Cancelled && ! $tournament->isBlockfillWeek())
+                    {{-- The TV view (P19): the bracket full screen, live, for a big screen or a stream. A Blockfill week has none (P6). --}}
                     <span class="text-xs text-ink-3 max-sm:hidden" id="tv-hint">{{ __('Full screen for a TV or a stream') }}</span>
                     <x-button variant="quiet" :href="route('tournaments.tv', $tournament)" icon="eye" data-test="to-tv" aria-describedby="tv-hint">{{ __('TV view') }}</x-button>
                 @endif

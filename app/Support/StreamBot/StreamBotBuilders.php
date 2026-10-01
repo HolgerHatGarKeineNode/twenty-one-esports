@@ -219,7 +219,8 @@ final class StreamBotBuilders
     {
         $messages = [];
 
-        foreach (Tournament::query()->where('status', TournamentStatus::Running)->orderBy('starts_at')->orderBy('id')->get() as $tournament) {
+        // A Blockfill week (plan "Blockfill", P6) has no TV view and is announced by its own notes (BlockfillNotes).
+        foreach (Tournament::query()->where('status', TournamentStatus::Running)->exceptBlockfillWeeks()->orderBy('starts_at')->orderBy('id')->get() as $tournament) {
             $name = StreamBotCopy::clean($tournament->name);
 
             if ($name !== '') {
@@ -327,7 +328,7 @@ final class StreamBotBuilders
     private function tournamentWinner(CarbonImmutable $now): array
     {
         $messages = [];
-        $finished = Tournament::query()->where('status', TournamentStatus::Finished)
+        $finished = Tournament::query()->where('status', TournamentStatus::Finished)->exceptBlockfillWeeks()
             ->where('updated_at', '>=', $now->subDays((int) config('esports.stream_bot.winner_days', 14)))
             ->latest('updated_at')->limit(3)->get();
 

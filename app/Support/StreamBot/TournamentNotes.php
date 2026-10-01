@@ -497,6 +497,8 @@ class TournamentNotes
             ->whereNotNull('event_id')
             ->whereNotNull('slug')
             ->whereNotIn('status', [TournamentStatus::Draft, TournamentStatus::Cancelled])
+            // A Blockfill week has notes of its own (BlockfillNotes, plan "Blockfill", P6).
+            ->exceptBlockfillWeeks()
             ->whereNotExists(fn (Builder $query) => $query->from('bot_posts')
                 ->where('bot_posts.subject_type', BotPost::SUBJECT_TOURNAMENT)
                 ->whereColumn('bot_posts.subject_id', 'tournaments.id')

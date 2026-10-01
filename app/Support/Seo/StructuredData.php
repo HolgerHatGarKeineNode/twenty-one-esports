@@ -187,7 +187,7 @@ final class StructuredData
         }
 
         return self::sportsEvent(
-            name: $tournament->name,
+            name: $tournament->title(),
             url: $url,
             sport: GameNames::game($tournament->game),
             start: $tournament->starts_at,

@@ -471,7 +471,7 @@ final class PlayerHub
     {
         return TournamentParticipant::query()
             ->where(fn ($query) => $query->where('user_id', $this->user->id)->orWhereJsonContains('members', $this->user->id))
-            ->whereHas('tournament', fn ($query) => $query->where('status', TournamentStatus::Running))
+            ->whereHas('tournament', fn ($query) => $query->where('status', TournamentStatus::Running)->exceptBlockfillWeeks())
             ->pluck('tournament_id')->map(intval(...))->unique()->values();
     }
 

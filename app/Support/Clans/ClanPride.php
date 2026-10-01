@@ -162,7 +162,7 @@ final class ClanPride
      */
     private function tournaments(array $byUser, array $lineupClan, \Closure $add): void
     {
-        $tournaments = Tournament::query()->where('status', TournamentStatus::Finished)
+        $tournaments = Tournament::query()->where('status', TournamentStatus::Finished)->exceptBlockfillWeeks()
             ->where('starts_at', '>=', now()->subDays(self::TOURNAMENT_DAYS))
             ->latest('starts_at')->latest('id')->limit(self::TOURNAMENTS)->get();
         $podium = [];

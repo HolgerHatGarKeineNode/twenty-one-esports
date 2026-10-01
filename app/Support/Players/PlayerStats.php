@@ -134,7 +134,8 @@ final class PlayerStats
     {
         $me = $this->user->id;
         $entered = fn ($query) => $query->where(fn ($query) => $query->where('user_id', $me)->orWhereJsonContains('members', $me));
-        $played = Tournament::query()->whereIn('status', [TournamentStatus::Running, TournamentStatus::Finished])->whereNotNull('published_at')
+        // A Blockfill week (plan "Blockfill", P6) is a game's leaderboard, not a tournament played.
+        $played = Tournament::query()->whereIn('status', [TournamentStatus::Running, TournamentStatus::Finished])->whereNotNull('published_at')->exceptBlockfillWeeks()
             ->whereHas('participants', $entered);
 
         // Three aggregates and two bounded reads, however many tournaments the player has.

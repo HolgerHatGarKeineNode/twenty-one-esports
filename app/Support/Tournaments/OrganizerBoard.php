@@ -40,7 +40,7 @@ final class OrganizerBoard
      */
     public function groups(?int $except = null, ?string $viewerZone = null): array
     {
-        $tournaments = Tournament::query()->special()
+        $tournaments = Tournament::query()->special()->exceptBlockfillWeeks()
             ->where('status', '!=', TournamentStatus::Draft)
             ->when($except !== null, fn ($query) => $query->whereKeyNot($except))
             ->orderByRaw("case status when 'signup' then 0 when 'drawing' then 1 when 'running' then 1 else 2 end")
