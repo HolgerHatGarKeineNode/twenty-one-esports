@@ -233,6 +233,10 @@ function bunkerPageClean(Page $page): void
 
 test('a bunker login signs every later post of a game without a second pairing, across reload, navigation and a relay drop, and logout forgets it', function (int $width, int $height) {
     config(['esports.league.nsec' => (new TestSigner)->secret]);
+    // Only what this test logs counts below: the app log grows across runs (116 MB after a few
+    // default-suite runs) and reading all of it ran this test out of its 128 MB memory limit.
+    $appLogPath = storage_path('logs/laravel.log');
+    $appLogFrom = is_file($appLogPath) ? (int) filesize($appLogPath) : 0;
     $anna = User::factory()->create(['name' => 'anna-bunker', 'pubkey' => $this->player->pubkey, 'npub' => NostrKeys::hexToNpub($this->player->pubkey), 'locale' => 'en']);
     $bert = User::factory()->create(['name' => 'bert-bunker', 'locale' => 'en']);
     $games = bunkerFinishedGames($anna, $bert, 5);
@@ -301,7 +305,7 @@ test('a bunker login signs every later post of a game without a second pairing, 
     $session = $page->evaluate('() => JSON.parse(localStorage.getItem("esports:nip46:session") ?? "null")');
     $clientKey = (string) ($session['clientSecretKey'] ?? '');
     $payloads = DB::table('sessions')->pluck('payload')->map(fn (string $payload): string => (string) base64_decode($payload))->implode("\n");
-    $appLog = (string) @file_get_contents(storage_path('logs/laravel.log'));
+    $appLog = (string) @file_get_contents($appLogPath, false, null, $appLogFrom);
 
     expect($session['userPubkey'] ?? null)->toBe($anna->pubkey)
         ->and(strlen($clientKey) === 64)->toBeTrue()

@@ -10,6 +10,17 @@
 # outright ("A dependency with the name [Pest\Plugins\Tia\Contracts\State]
 # cannot be resolved" — the same failure other repos in this fleet hit).
 #
+# THE GATE. On every push the default suite runs the test files the diff reaches
+# and this script runs `--changed`: only the browser files the diff reaches
+# (scripts/changed-tests.php), in the same shards as the full run, only the ones
+# that hold such a file. The FULL run (no arguments) is for the daily run and the
+# release batch: `scripts/test-changed.sh --daily`, which also stamps the day
+# (see the header of scripts/test-changed.sh for the trigger).
+#   scripts/test-browser.sh                       the whole suite, sharded
+#   scripts/test-browser.sh --changed             the files the diff to origin/master reaches
+#   scripts/test-browser.sh --changed --dry-run   say which, run nothing
+#   scripts/test-browser.sh <pest args>           one unsharded pest process, as before
+#
 # SHARDING. With no arguments this splits the suite across SHARD_FILES below
 # and runs each group in its own `pest` process, in parallel. Each shard gets:
 #   - its own SQLite database. DB_DATABASE is ":memory:" (phpunit.xml, not
@@ -32,22 +43,26 @@
 # starts, so two shards can never collide even if they start in the same
 # tick.
 #
-# Files are grouped by measured wall time (per-test durations captured with a
-# temporary beforeEach/afterEach timer on this machine — RouteSweepTest alone
-# is heavier than any other file, so it gets its own shard):
-#   1: RouteSweepTest, NotificationDmPagesTest (~29s + ~6s, grown since), LiveCountTest (P20b, the live count and on-air flips), ClanPrideTest (/clans cards and proud moments at 0, 2 and 12 clans)
-#   2: BlitzGameTest, ClanRosterTest, LoginTest, ClanLogoTest, ShareTest, StrongestListTest (~26s + clan logos + P40)
-#   3: ChatAndDailyTest, ChessCorrespondenceQuietTest (P52), SeriesResultTest, OpponentRatedTest, OpponentRequestsTest (P57), TournamentFlowTest, LadderDefaultTest, GameCoversTest, GamePageTest, MempoolStripTest (~27s + P8b + ladder + covers + P26 game pages + the /matches mempool strip)
-#   4: NotificationsTest, SeasonChainTest, ClanEditTest, TournamentChooserTest, EngagementTest (~25s + P10), TournamentEditTest, TournamentHonestDurationTest, RulesProtocolTest (P28/P29), AoeLobbyTest (AoE2 lobby cards en and de at 375 and 1440, a shared place 1 reported and confirmed)
-#   5: NavigationCrawlTest (the P16 walk for guest, player and captain), LivePlayerTest (P20, the floating player and /live against a local ffmpeg-made HLS stream), CasualPlayTest (P23 S3, queue and invite to the ready prompt and the room), BoardGameTest (board game core next to chess: the fixture game to the end at 390 and 1440), NineMensMorrisTest (P3, nine men's morris to a win at 390 and 1440), StackerSoundTest (Blockfill P8: the sound control at 375 and 1440 en and de, settings across a reload, the AudioContext only after a click, 30 s of music timed)
-#   6: NavigationMenusTest, NavigationCrawlStaffTest, InvitePlacementTest (P16 menus and context actions; the walk for organizer and admin), GameChannelTest (P21, the game channels with polls), NostrCommentsTest (P48, comments, likes and RSVPs over a local relay), NostrInvitesZapsTest (P47, follows here, invite DMs, zap the winner, NIP-05 names), BoardCorrespondenceTest (Mühle and Dame by correspondence from a challenge, en and de at 390 and 1440), StackerTest (Blockfill: practice and a ranked run fed through the test hook, 375 and 1440)
-#   7: TournamentLandingTest, PlayerPickerTest, ShellNavigationWidthsTest (the shell at six widths per role, German at the desktop widths), CasualLobbyCardTest (P23 S2, a lobby card host to guest), FairPlayAdminTest (P41, the admin link flow), CasualCupRegionsTest (EU and US cups side by side), LeagueSettingsAdminTest (P44, change and reset a setting), BoardFollowsTest (your follows in a board game lobby, 320/375/1280 en and de), BlockfillWeekTest (the Blockfill week on /blockfill and scores/blockfill, en and de at 375 and 1440)
-#   8: ShellNavigationTest, TournamentTimeTest, BunkerSessionTest, TournamentControlTest (header concept B: hub, context bar, phone sheets, /play; the when block; NIP-46; the P18 control), NavigateRaceTest (a late Livewire answer after wire:navigate is not morphed into the old page), CheckersTest (checkers to a win at 390 and 1440), BoardMiningAdminTest (the board games on the admin season page, en and de at 390 and 1440), BoardFindabilityTest (the board games next to chess on /play and home, en and de at 390 and 1440), BlockfillShellTest (Blockfill on home, /play, the hub and its own context and tab bar, en and de at 375 and 1440)
-#   9: TournamentTvTest (P19, the TV live at 1080p and 4K; its soak test runs only with TV_SOAK), HomeHubTest (home as the engagement hub), LiveChatTest (P24, the stream chat on /live over the mini relay), MeHubTest (P30, the own page), SettingsTabsTest (P51, the settings tabs and the gamer tag page), BoardLeagueTest (board game lobbies to the board, en and de at 390 and 1440)
-# Measured 2026-09-27, every shard in parallel: origin/master (7 shards) ran
-# 69-82 s in shards 1-4 already; a 10-shard split only raised the host load
-# (37 on 24 cores) and with it every shard. The crawl of five roles took 71 s
-# alone (54 s before header concept B), so it is split by role.
+# The shards are balanced by measured seconds per test file (longest first,
+# each into the lightest shard), not by topic: the timings come from
+# TEST_PROFILE_FILE (tests/Support/TestProfile.php) and scripts/test-profile.php
+# over one full run. Measured 2026-10-01 on this workstation (24 cores, 3.5
+# cores busy on average): 9 hand-made shards took 447 s, the slowest one 442 s
+# while the fastest was done after 100; ONE process is faster than its test
+# seconds suggest because a browser test mostly waits for the page, so more
+# shards of equal length is what shortens the run. Re-balance when a file is
+# added or a run shows one shard far behind (the profile prints when each
+# worker finished).
+#
+# A file that is longer than a shard's share is split by test name: an entry
+# `file#=regex` runs only the tests of `file` whose description matches (Pest
+# matches the words of the description, spaces and all; `~` stands for a space
+# in the entry), `file#!regex` runs all the others (the complement is a
+# negative lookahead, so a test added later lands in the `!` half instead of
+# being dropped). Both halves must be
+# present, the check after the array fails loudly otherwise. A split entry is
+# its own `pest` process, started after the plain files of its shard.
+#
 # A file added to tests/Browser/ and not added to SHARD_FILES below would
 # silently never run — the check after the array definition fails loudly
 # instead.
@@ -112,6 +127,46 @@ set -euo pipefail
 
 cd "$(dirname "$0")/.."
 
+# --- 0. --changed [--base REF] [--head REF] [--wide] [--dry-run] ---------------------------------
+# Only the browser files the diff reaches (scripts/changed-tests.php), sharded
+# like the full run: a shard that holds none of them is not started. Decided
+# before the lock and the build, so a diff that reaches nothing costs
+# milliseconds. `ALL` from the map (a layout, a config file, CSS ...) means the
+# full run.
+orig_args=("$@")
+selection=""
+if [ "${1:-}" = "--changed" ]; then
+    shift
+    changed_base=""
+    changed_head="HEAD"
+    changed_wide=""
+    dry_run=""
+    while [ "$#" -gt 0 ]; do
+        case "$1" in
+            --base) changed_base="$2"; shift 2 ;;
+            --head) changed_head="$2"; shift 2 ;;
+            --wide) changed_wide="--wide"; shift ;;
+            --dry-run) dry_run=1; shift ;;
+            *) echo "test-browser: unknown option $1 after --changed" >&2; exit 2 ;;
+        esac
+    done
+    if [ -n "$changed_base" ]; then
+        selection=$(php scripts/changed-tests.php --suite=browser --base "$changed_base" --head "$changed_head" $changed_wide)
+    else
+        selection=$(php scripts/changed-tests.php --suite=browser --head "$changed_head" $changed_wide)
+    fi
+    if [ -z "$selection" ]; then
+        echo "test-browser: no browser test is reached by this diff"
+        exit 0
+    fi
+    if [ -n "$dry_run" ]; then
+        echo "$selection"
+        exit 0
+    fi
+    [ "$selection" = "ALL" ] && selection=""
+    set -- # nothing is left for the single-process path below
+fi
+
 # --- 1. lock wrapper -----------------------------------------------------
 LOCKFILE="${ESPORTS_BROWSER_LOCK:-${TMPDIR:-/tmp}/claude-$(id -u)/esports-browser.lock}"
 
@@ -135,7 +190,7 @@ esports_browser_lock_already_held() {
 if [ -z "${ESPORTS_BROWSER_LOCK_TAKEN:-}" ] && ! esports_browser_lock_already_held; then
     mkdir -p "$(dirname "$LOCKFILE")"
     export ESPORTS_BROWSER_LOCK_TAKEN=1
-    exec flock -o "$LOCKFILE" "$0" "$@"
+    exec flock -o "$LOCKFILE" "$0" ${orig_args[@]+"${orig_args[@]}"}
 fi
 # From here on the lock is held either by an ancestor (old-style caller) or
 # by the `flock -o` above wrapping this exact process (self-wrapped) — and
@@ -175,20 +230,25 @@ esports_sweep_stale_playwright_servers
 npm run build
 
 SHARD_FILES=(
-    "tests/Browser/RouteSweepTest.php tests/Browser/NotificationDmPagesTest.php tests/Browser/LiveCountTest.php tests/Browser/ClanPrideTest.php"
-    "tests/Browser/BlitzGameTest.php tests/Browser/ClanRosterTest.php tests/Browser/LoginTest.php tests/Browser/ClanLogoTest.php tests/Browser/ShareTest.php tests/Browser/StrongestListTest.php tests/Browser/VisualPassTest.php"
-    "tests/Browser/ChatAndDailyTest.php tests/Browser/ChessCorrespondenceQuietTest.php tests/Browser/SeriesResultTest.php tests/Browser/OpponentRatedTest.php tests/Browser/OpponentRequestsTest.php tests/Browser/TournamentFlowTest.php tests/Browser/LadderDefaultTest.php tests/Browser/GameCoversTest.php tests/Browser/GamePageTest.php tests/Browser/MempoolStripTest.php"
-    "tests/Browser/NotificationsTest.php tests/Browser/SeasonChainTest.php tests/Browser/ClanEditTest.php tests/Browser/TournamentChooserTest.php tests/Browser/EngagementTest.php tests/Browser/TournamentEditTest.php tests/Browser/TournamentHonestDurationTest.php tests/Browser/RulesProtocolTest.php tests/Browser/AoeLobbyTest.php"
-    "tests/Browser/NavigationCrawlTest.php tests/Browser/LivePlayerTest.php tests/Browser/CasualPlayTest.php tests/Browser/BoardGameTest.php tests/Browser/NineMensMorrisTest.php tests/Browser/StackerSoundTest.php"
-    "tests/Browser/NavigationMenusTest.php tests/Browser/NavigationCrawlStaffTest.php tests/Browser/InvitePlacementTest.php tests/Browser/ChessLobbyTest.php tests/Browser/GameChannelTest.php tests/Browser/NostrCommentsTest.php tests/Browser/NostrInvitesZapsTest.php tests/Browser/BoardCorrespondenceTest.php tests/Browser/StackerTest.php"
-    "tests/Browser/TournamentLandingTest.php tests/Browser/PlayerPickerTest.php tests/Browser/ShellNavigationWidthsTest.php tests/Browser/CasualLobbyCardTest.php tests/Browser/PlayerStatsTest.php tests/Browser/FairPlayAdminTest.php tests/Browser/CasualCupRegionsTest.php tests/Browser/LeagueSettingsAdminTest.php tests/Browser/BoardFollowsTest.php tests/Browser/BlockfillWeekTest.php"
-    "tests/Browser/ShellNavigationTest.php tests/Browser/TournamentTimeTest.php tests/Browser/BunkerSessionTest.php tests/Browser/TournamentControlTest.php tests/Browser/NavigateRaceTest.php tests/Browser/CheckersTest.php tests/Browser/BoardMiningAdminTest.php tests/Browser/BoardFindabilityTest.php tests/Browser/BlockfillShellTest.php"
-    "tests/Browser/TournamentTvTest.php tests/Browser/HomeHubTest.php tests/Browser/LiveChatTest.php tests/Browser/MeHubTest.php tests/Browser/SettingsTabsTest.php tests/Browser/NostrBarTest.php tests/Browser/BoardLeagueTest.php"
+    "tests/Browser/BoardLeagueTest.php#!two~players~meet|a~guest~watching"
+    "tests/Browser/LivePlayerTest.php#=badge~fits~the~shell~at~320 tests/Browser/BoardCorrespondenceTest.php tests/Browser/NavigateRaceTest.php tests/Browser/LadderDefaultTest.php tests/Browser/CasualLobbyCardTest.php tests/Browser/ClanRosterTest.php"
+    "tests/Browser/LiveChatTest.php tests/Browser/BunkerSessionTest.php tests/Browser/GameChannelTest.php tests/Browser/NineMensMorrisTest.php tests/Browser/MeHubTest.php"
+    "tests/Browser/AoeLobbyTest.php tests/Browser/BlitzGameTest.php tests/Browser/EngagementTest.php tests/Browser/ClanPrideTest.php tests/Browser/GamePageTest.php tests/Browser/TournamentChooserTest.php"
+    "tests/Browser/LivePlayerTest.php#!badge~fits~the~shell~at~320 tests/Browser/NostrInvitesZapsTest.php tests/Browser/BlockfillShellTest.php tests/Browser/GameCoversTest.php tests/Browser/OpponentRatedTest.php tests/Browser/PlayerStatsTest.php"
+    "tests/Browser/NotificationDmPagesTest.php tests/Browser/NavigationMenusTest.php tests/Browser/CheckersTest.php tests/Browser/CasualPlayTest.php tests/Browser/BoardGameTest.php tests/Browser/RulesProtocolTest.php"
+    "tests/Browser/RouteSweepTest.php tests/Browser/NostrCommentsTest.php tests/Browser/VisualPassTest.php tests/Browser/PlayerPickerTest.php tests/Browser/LoginTest.php"
+    "tests/Browser/ShellNavigationTest.php tests/Browser/TournamentFlowTest.php tests/Browser/TournamentLandingTest.php tests/Browser/BoardLeagueTest.php#=two~players~meet|a~guest~watching tests/Browser/TournamentTimeTest.php tests/Browser/FairPlayAdminTest.php"
+    "tests/Browser/SeasonChainTest.php tests/Browser/ChatAndDailyTest.php tests/Browser/StackerSoundTest.php tests/Browser/ChessCorrespondenceQuietTest.php tests/Browser/ClanEditTest.php tests/Browser/TournamentHonestDurationTest.php"
+    "tests/Browser/ShellNavigationWidthsTest.php tests/Browser/NostrBarTest.php tests/Browser/SettingsTabsTest.php tests/Browser/ChessLobbyTest.php tests/Browser/OpponentRequestsTest.php tests/Browser/LeagueSettingsAdminTest.php"
+    "tests/Browser/ShareTest.php tests/Browser/TournamentTvTest.php tests/Browser/BoardFindabilityTest.php tests/Browser/InvitePlacementTest.php tests/Browser/TournamentEditTest.php"
+    "tests/Browser/LiveCountTest.php tests/Browser/StackerTest.php tests/Browser/BoardMiningAdminTest.php tests/Browser/StrongestListTest.php tests/Browser/MempoolStripTest.php"
+    "tests/Browser/NavigationCrawlStaffTest.php tests/Browser/BoardFollowsTest.php tests/Browser/TournamentControlTest.php tests/Browser/BlockfillWeekTest.php tests/Browser/ClanLogoTest.php"
+    "tests/Browser/NavigationCrawlTest.php tests/Browser/CasualCupRegionsTest.php tests/Browser/HomeHubTest.php tests/Browser/NotificationsTest.php tests/Browser/SeriesResultTest.php"
 )
 
 # Guard against a new tests/Browser/*Test.php file that nobody assigned to a
 # shard: without this, it would just never run, and no exit code would say so.
-assigned=$(printf '%s\n' "${SHARD_FILES[@]}" | tr ' ' '\n' | sort)
+assigned=$(printf '%s\n' "${SHARD_FILES[@]}" | tr ' ' '\n' | sed 's/#.*//' | sort -u)
 present=$(cd tests/Browser && ls -- *.php 2>/dev/null | sed 's#^#tests/Browser/#' | sort)
 if [ "$assigned" != "$present" ]; then
     echo "test-browser: SHARD_FILES in $0 does not match tests/Browser/*.php." >&2
@@ -196,6 +256,13 @@ if [ "$assigned" != "$present" ]; then
     echo "$assigned" >&2
     echo "--- present ---" >&2
     echo "$present" >&2
+    exit 1
+fi
+# A split file needs both halves: `file#=regex` and `file#!regex`.
+unpaired=$(printf '%s\n' "${SHARD_FILES[@]}" | tr ' ' '\n' | grep '#' | sed -E 's/#[=!]/ /' | sort | uniq -c | awk '$1 != 2' || true)
+if [ -n "$unpaired" ]; then
+    echo "test-browser: a split entry in SHARD_FILES has no matching other half:" >&2
+    echo "$unpaired" >&2
     exit 1
 fi
 
@@ -251,10 +318,20 @@ run_single() {
     return "$status"
 }
 
+# One pest process in its own process group (see the note in run_shard); sets
+# pest_pid for the cleanup trap and returns pest's exit status.
+run_pest() {
+    setsid vendor/bin/pest --group=browser --no-tia "$@" &
+    pest_pid=$!
+    local st=0
+    wait "$pest_pid" || st=$?
+    return "$st"
+}
+
 run_shard() {
     local idx=$1
     shift
-    local -a files=("$@")
+    local -a entries=("$@")
 
     local port
     port=$(php -r '$s = stream_socket_server("tcp://127.0.0.1:0"); echo explode(":", stream_socket_get_name($s, false))[1];')
@@ -306,26 +383,74 @@ run_shard() {
     # so this shard's cleanup trap can kill that whole group instead of
     # leaving a grandchild behind as an orphan if this shard is killed or
     # times out. Not `local`, for the same reason as `reverb_pid` above.
-    setsid vendor/bin/pest --group=browser --no-tia "${files[@]}" &
-    pest_pid=$!
+    pest_pid=""
 
     cleanup() {
         local ec=$?
         trap - EXIT INT TERM
-        kill -TERM -- -"$pest_pid" 2>/dev/null || true
+        [ -n "$pest_pid" ] && kill -TERM -- -"$pest_pid" 2>/dev/null || true
         kill "$reverb_pid" 2>/dev/null || true
         exit "$ec"
     }
     trap cleanup EXIT INT TERM
 
+    # The plain files go into one pest process, each split entry (file#=re,
+    # file#!re) into one of its own: --filter applies to everything on its
+    # command line.
+    local -a plain=() filtered=()
+    local entry
+    for entry in "${entries[@]}"; do
+        case "$entry" in
+            *'#'*) filtered+=("$entry") ;;
+            *) plain+=("$entry") ;;
+        esac
+    done
+
+    # A shard that ran nothing must not pass: no files, no verdict.
+    if [ "${#plain[@]}" -eq 0 ] && [ "${#filtered[@]}" -eq 0 ]; then
+        echo "test-browser: shard $idx has no test files to run" >&2
+        return 1
+    fi
+
     status=0
-    wait "$pest_pid" || status=$?
+    if [ "${#plain[@]}" -gt 0 ]; then
+        run_pest "${plain[@]}" || status=$?
+    fi
+    for entry in ${filtered[@]+"${filtered[@]}"}; do
+        local file=${entry%%#*} spec=${entry#*#}
+        local mode=${spec:0:1} regex=${spec:1}
+        regex=${regex//\~/ } # entries are space-separated words: `~` stands for a space in the test's description
+        if [ "$mode" = "=" ]; then
+            run_pest "$file" --filter="$regex" || status=$?
+        else
+            run_pest "$file" --filter="^(?!.*($regex))" || status=$?
+        fi
+    done
     return "$status"
 }
 
 if [ "$#" -gt 0 ]; then
     run_single "$@"
     exit $?
+fi
+
+# --changed: keep only the entries of the affected files, and only the shards
+# that still hold one.
+if [ -n "$selection" ]; then
+    declare -A wanted=()
+    for file in $selection; do
+        wanted[$file]=1
+    done
+    kept_shards=()
+    for shard in "${SHARD_FILES[@]}"; do
+        kept=()
+        for entry in $shard; do
+            [ -n "${wanted[${entry%%#*}]:-}" ] && kept+=("$entry")
+        done
+        [ "${#kept[@]}" -gt 0 ] && kept_shards+=("${kept[*]}")
+    done
+    SHARD_FILES=("${kept_shards[@]}")
+    echo "test-browser: --changed: ${#wanted[@]} files in ${#SHARD_FILES[@]} shards"
 fi
 
 LOGDIR=$(mktemp -d)
