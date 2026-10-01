@@ -62,6 +62,9 @@ function seoSkipReason(RouteDefinition $route): ?string
         $name === 'locale.switch' => 'redirect that sets the language',
         $name === 'tournaments.calendar' => 'iCalendar file, not HTML',
         $name === 'players.card' => 'HTML fragment of the player popover, not a page',
+        $name === 'invites.create' => 'the invite picker: an action page; what gets shared is the invite link with its own card',
+        $name === 'stacker.replay' => 'a replay is access-checked per run (its player, admins, a finished week\'s first ten): noindex',
+        $name === 'stacker.moment' => 'a player\'s Blockfill moment: its og:image is its share card (BlockfillShareTest)',
         $name === 'search' => 'search results per query: noindex by design (SearchController), no preview',
         default => null,
     };
