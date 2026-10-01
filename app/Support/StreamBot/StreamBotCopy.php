@@ -149,6 +149,14 @@ final class StreamBotCopy
         'tournament_note_places' => [
             ['🪑 :free of :places places left: :name', '🎮 :game · starts :starts', '⏳ Sign-up closes in :left', '👉 Grab a place: :url'],
         ],
+        // Blockfill's week notes on the same profile (BlockfillNotes, plan "Blockfill", P6): a week once it is open,
+        // its winner and top 3 once it is finished; the week's `nostr:naddr1…` follows after a blank line once published.
+        'blockfill_note_week' => [
+            ['🧱 A new Blockfill week is open: :name', '⏱️ Mine 40 blocks as fast as you can, your best ranked run of the week counts', '🗓️ Until :ends', '👉 Play: :url'],
+        ],
+        'blockfill_note_winner' => [
+            ['🏆 :name goes to :winner in :time', '🧱 Top 3: :podium', '🔁 A new week is on, every run starts from zero', '👉 All weeks: :url'],
+        ],
         // Pride notes on the same profile (PrideNotes): players named for what they did, tagged; the
         // rendered slide follows after a blank line. Written by the kommunikator (2026-09-28).
         'pride_note_win' => [

@@ -24,6 +24,7 @@ use App\Support\Scores\Sources\ReplayScoreSource;
 use App\Support\Tournaments\Engine\Slot;
 use App\Support\Tournaments\FormatOptions;
 use App\Support\Tournaments\GameProfile;
+use App\Support\Tournaments\TournamentPublisher;
 use Carbon\CarbonImmutable;
 use Carbon\CarbonInterface;
 use Illuminate\Database\UniqueConstraintViolationException;
@@ -44,6 +45,7 @@ use Throwable;
  *   sign-up, no cup, no draw) and is stored as a score run of the replay
  *   source. A run outside a running week's window, or of a finished week,
  *   changes nothing.
+ * - announce(): the week's NIP-52 calendar event (31923), once (P6).
  * - sweep(): what record() missed (it failed, or the verifier answered
  *   while the switch was off) joins on the next hourly run, and the score
  *   runs are read again (ScoreLeaderboards::snapshot()).
@@ -59,7 +61,7 @@ final class BlockfillWeeks
 {
     public const TIMEZONE = 'Europe/Berlin';
 
-    public function __construct(private GameRegistry $games, private ScoreRuns $runs, private ScoreLeaderboards $leaderboards) {}
+    public function __construct(private GameRegistry $games, private ScoreRuns $runs, private ScoreLeaderboards $leaderboards, private TournamentPublisher $publisher) {}
 
     public function game(): ?Blockfill
     {
@@ -90,19 +92,11 @@ final class BlockfillWeeks
     }
 
     /**
-     * A leaderboard's name for pages, in the page's language: a Blockfill
-     * week as "Blockfill Week 41, 2026" / "Blockfill Woche 41, 2026" (its
-     * stored name is the English one), any other tournament its own name.
+     * A leaderboard's name for pages, in the page's language (Tournament::title()).
      */
     public static function title(Tournament $tournament): string
     {
-        if ($tournament->game !== Blockfill::SLUG || ! str_starts_with((string) $tournament->slug, 'blockfill-')) {
-            return $tournament->name;
-        }
-
-        $local = $tournament->starts_at->toImmutable()->setTimezone(self::TIMEZONE);
-
-        return __('Blockfill Week :week, :year', ['week' => $local->isoWeek(), 'year' => $local->isoWeekYear()]);
+        return $tournament->title();
     }
 
     /**
@@ -254,6 +248,37 @@ final class BlockfillWeeks
         }
 
         return $done;
+    }
+
+    /**
+     * Signs the 31923 of every running week that has none yet (plan
+     * "Blockfill", P6; NIP "Tournaments", `d` = the week's slug), once per
+     * week (TournamentPublisher::announce()). Nothing while Blockfill is not
+     * registered or without the league key; the next hourly run tries again.
+     * Returns how many were signed.
+     */
+    public function announce(): int
+    {
+        if ($this->game() === null) {
+            return 0;
+        }
+
+        $signed = 0;
+
+        foreach (Tournament::query()->where(['game' => Blockfill::SLUG, 'status' => TournamentStatus::Running])->whereNull('event_id')->orderBy('starts_at')->get() as $week) {
+            if (! $week->isBlockfillWeek()) {
+                continue;
+            }
+
+            try {
+                $signed += $this->publisher->announce($week) === null ? 0 : 1;
+            } catch (Throwable $e) {
+                // One week that fails is reported; the next run tries it again.
+                report($e);
+            }
+        }
+
+        return $signed;
     }
 
     /**

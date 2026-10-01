@@ -10,6 +10,8 @@ use App\Models\NostrEvent;
 use App\Models\Tournament;
 use App\Models\User;
 use App\Support\Prizes\PrizePool;
+use App\Support\Scores\ScoreWindow;
+use App\Support\Scores\Sources\ReplayScoreSource;
 use App\Support\SeasonChain\LeagueKey;
 use App\Support\Series\Ladders;
 use Carbon\CarbonImmutable;
@@ -104,6 +106,39 @@ final class TournamentPublisher
             PublishTournamentCalendar::dispatch();
 
             return $locked;
+        });
+    }
+
+    /**
+     * The first 31923 of a tournament the league opens running, without a
+     * sign-up: a Blockfill week (plan "Blockfill", P6, `d` =
+     * `blockfill-<monday>`). Signed once, under a lock on the tournament: a
+     * second call, or one after another run signed it, signs nothing (null).
+     * Null without the league key too (fail closed; the hourly week job tries
+     * again). The league calendar follows through its job.
+     */
+    public function announce(Tournament $tournament): ?NostrEvent
+    {
+        $league = LeagueKey::fromConfig();
+
+        if ($league === null || $tournament->slug === null) {
+            return null;
+        }
+
+        return DB::transaction(function () use ($tournament, $league): ?NostrEvent {
+            $locked = Tournament::query()->whereKey($tournament->id)->lockForUpdate()->first();
+
+            if ($locked === null || $locked->event_id !== null || $locked->slug === null || $locked->status === TournamentStatus::Draft) {
+                return null;
+            }
+
+            $event = $league->publish(Tournament::CALENDAR_EVENT, $this->tags($locked, $league->pubkey()), $this->content($locked), $this->nextSignedAt($league, $locked->slug));
+            $locked->event_id = $event->id;
+            $locked->save();
+
+            PublishTournamentCalendar::dispatch();
+
+            return $event;
         });
     }
 
@@ -224,6 +259,8 @@ final class TournamentPublisher
         // A casual cup runs over days of round windows (P25): it ends at the latest after its hard cap;
         // a small cup's live evening (S2) at its planned end.
         $end = $tournament->pool_closed_at?->getTimestamp()
+            // A score leaderboard ends with its window (a Blockfill week: the next Monday 00:00 Berlin).
+            ?? ($profile->isScore() ? ScoreWindow::of($tournament)->end->getTimestamp() : null)
             ?? ($tournament->isCasualCup()
                 ? $start + (CasualCups::isEvening($tournament) ? CasualCups::planOf($tournament)['span_minutes'] * 60 : CasualCups::maxDays() * 86400)
                 : $start + (int) ceil($tournament->plannedDuration() * ($profile->isDaily() ? 86400 : 60)));
@@ -332,7 +369,9 @@ final class TournamentPublisher
             'A leaderboard: every player plays alone, as often as they like, for the best value'
                 .($tournament->score_course !== null ? ' on '.strtolower($game instanceof ScoreGame ? $game->courseLabel() : 'course').' '.$tournament->score_course : '')
                 .' from the start until the end of the event; '.($metric?->lowerIsBetter() ? 'the fastest time' : 'the highest score').' wins, a tie goes to the earlier record, a record outside that time does not count.',
-            'Values are read from the game or submitted with a proof link an admin checks; the directors can correct a value, always with a reason.',
+            $game instanceof ScoreGame && $game->sources() === [ReplayScoreSource::class]
+                ? 'Values are the league\'s own replay of each run: a run counts only once the league has played its inputs again and reached the same time; nothing is submitted by hand.'
+                : 'Values are read from the game or submitted with a proof link an admin checks; the directors can correct a value, always with a reason.',
             'Unrated: a leaderboard has no Elo ladder. Its places score points on the game\'s points ladder.',
         ];
     }
