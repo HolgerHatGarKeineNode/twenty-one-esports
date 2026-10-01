@@ -182,6 +182,40 @@ test('the running week on scores/blockfill: its table between the leaderboards a
     'de 375' => ['de', 375, 812],
 ]);
 
+test('the week\'s pages and scores/blockfill offer Play and say the best run counts automatically, never "Submit your value", no overflow, clean console', function (string $locale, int $width, int $height) {
+    $week = app(BlockfillWeeks::class)->current();
+    $paths = [route('tournaments.show', $week, false), route('tournaments.scores', $week, false), route('scores.show', 'blockfill', false)];
+    $page = blockfillWeekPage($this->me, $locale, $width, $height, $paths[0]);
+
+    foreach ($paths as $index => $path) {
+        if ($index > 0) {
+            $page->goto(ComputeUrl::from($path));
+        }
+        BrowserWait::until($page, '() => document.querySelector("[data-test=score-play-button]") !== null', 10_000);
+        $play = $page->evaluate('() => { const b = document.querySelector("[data-test=score-play-button]"); const n = document.querySelector("[data-test=score-play-note]"); b.scrollIntoView({ block: "center" }); const r = b.getBoundingClientRect(), m = n.getBoundingClientRect(); return { label: b.innerText.trim(), note: n.innerText.trim(), href: b.getAttribute("href"), button: [Math.round(r.left), Math.round(r.right), Math.round(r.height)], noteBox: [Math.round(m.left), Math.round(m.right)], submit: document.querySelector("[data-test=to-submit], [data-test=score-submit]") !== null, scroll: document.documentElement.scrollWidth, client: document.documentElement.clientWidth }; }');
+        fwrite(STDERR, "blockfill play {$locale} {$width} {$path}: ".json_encode($play).PHP_EOL);
+
+        expect($play['label'])->toBe($locale === 'de' ? 'Spielen' : 'Play', $path)
+            ->and($play['note'])->toBe($locale === 'de' ? 'Dein bester geprüfter Lauf zählt automatisch' : 'Your best verified run counts automatically')
+            ->and($play['href'])->toBe(route('stacker.play'))
+            ->and($play['submit'])->toBeFalse()
+            ->and($play['button'][0])->toBeGreaterThanOrEqual(0)
+            ->and($play['button'][1])->toBeLessThanOrEqual($width)
+            ->and($play['button'][2])->toBeGreaterThanOrEqual(44)
+            ->and($play['noteBox'][1])->toBeLessThanOrEqual($width)
+            ->and($play['scroll'])->toBeLessThanOrEqual($play['client']);
+        shellShot($page, 'blockfill-play-'.$index.'-'.$locale.'-'.$width);
+    }
+
+    expect($page->evaluate('() => window.__errors'))->toBe([])
+        ->and($page->evaluate(BrowserConsole::BAD_RESPONSES))->toBe([]);
+})->with([
+    'en 375' => ['en', 375, 812],
+    'en 1440' => ['en', 1440, 900],
+    'de 375' => ['de', 375, 812],
+    'de 1440' => ['de', 1440, 900],
+]);
+
 test('a real ranked run puts a new player on this week\'s board without a reload', function () {
     $forty = json_decode((string) file_get_contents(base_path('tests/Fixtures/stacker/forty-lines.json')), true, flags: JSON_THROW_ON_ERROR);
     config(['esports.blockfill.testing_seed' => $forty['seed']]);

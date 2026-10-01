@@ -5625,6 +5625,7 @@
     ":game :mode lineup": ":mode-Lineup · :game",
     "Elo of the :lineup over :n series, from :start to :elo": "Elo des :lineup über :n Serien, von :start auf :elo",
     "This game takes no submissions: its values are read automatically.": "Dieses Spiel nimmt keine Einreichungen an: seine Werte werden automatisch gelesen.",
+    "Your best verified run counts automatically": "Dein bester geprüfter Lauf zählt automatisch",
     "Submissions are closed for this leaderboard.": "Für dieses Leaderboard sind die Einreichungen geschlossen.",
     "Only players in this leaderboard can submit a value.": "Nur Spieler dieses Leaderboards können einen Wert einreichen.",
     "Enter the time as m:ss.mmm, for example 1:23.456.": "Gib die Zeit als m:ss.mmm ein, zum Beispiel 1:23.456.",

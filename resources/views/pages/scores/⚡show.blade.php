@@ -111,6 +111,7 @@ new #[Layout('layouts::app', ['section' => 'tournaments'])] class extends Compon
     <header class="flex flex-col gap-2">
         <h1 class="m-0 font-display text-[28px] leading-[1.15] font-bold lg:text-4xl">{{ $name }}</h1>
         <p class="m-0 max-w-[68ch] text-[13px] leading-normal text-ink-2">{{ __('Everyone plays alone, as often as they like, for the best value on the course inside the window. No lobby, no opponent to wait for. Each leaderboard\'s places score points on the ladder below.') }}</p>
+        @include('pages.scores.partials.play-auto', ['slug' => $this->game, 'class' => 'pt-1'])
         <ul class="m-0 flex list-none flex-wrap gap-2 p-0">
             @foreach ($score->modes() as $mode)
                 <li class="inline-flex min-h-8 items-center gap-2 rounded-md bg-card px-3 text-xs text-ink-2" wire:key="mode-{{ $mode->slug }}">
