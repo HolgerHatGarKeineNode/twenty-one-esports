@@ -5,8 +5,6 @@ namespace App\Support\Scores;
 use App\Enums\TournamentStatus;
 use App\Games\GameRegistry;
 use App\Games\ScoreGame;
-use App\Models\Clan;
-use App\Models\ClanMember;
 use App\Models\ScoreAccountChange;
 use App\Models\ScoreAccountClaim;
 use App\Models\ScoreRun;
@@ -14,7 +12,9 @@ use App\Models\Tournament;
 use App\Models\TournamentParticipant;
 use App\Models\TournamentSignup;
 use App\Models\User;
+use App\Support\Tournaments\TournamentInterest;
 use App\Support\Tournaments\TournamentRuleViolation;
+use Carbon\CarbonImmutable;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Database\UniqueConstraintViolationException;
 use Illuminate\Support\Facades\DB;
@@ -133,8 +133,10 @@ final class ScoreAccounts
             }
 
             ScoreAccountClaim::query()->create(['game' => $game->slug(), 'account_id' => $accountId, 'user_id' => $player->id, 'confirmed_by_id' => $admin->id]);
-            $moved = self::move($game, $accountId, null, $player->id);
+            $kept = [];
+            $moved = self::move($game, $accountId, null, $player->id, $kept);
             self::log($game, $accountId, 'confirm', null, $player->id, $admin, $reason, $moved);
+            self::logKept($game, $accountId, null, $player->id, $admin, $kept);
 
             return $moved;
         });
@@ -164,8 +166,10 @@ final class ScoreAccounts
         return DB::transaction(function () use ($game, $accountId, $player, $admin, $reason, $claim): int {
             $from = $claim->user_id;
             $claim->forceFill(['user_id' => $player->id, 'confirmed_by_id' => $admin->id])->save();
-            $moved = self::move($game, $accountId, $from, $player->id) + self::move($game, $accountId, null, $player->id);
+            $kept = [];
+            $moved = self::move($game, $accountId, $from, $player->id, $kept) + self::move($game, $accountId, null, $player->id, $kept);
             self::log($game, $accountId, 'reassign', $from, $player->id, $admin, $reason, $moved);
+            self::logKept($game, $accountId, $from, $player->id, $admin, $kept);
 
             return $moved;
         });
@@ -187,8 +191,10 @@ final class ScoreAccounts
         return DB::transaction(function () use ($game, $accountId, $admin, $reason, $claim): int {
             $from = $claim->user_id;
             $claim->delete();
-            $moved = ScoreRun::query()->where(['game' => $game->slug(), 'account_id' => $accountId, 'user_id' => $from])->update(['user_id' => null]);
+            $kept = [];
+            $moved = self::move($game, $accountId, $from, null, $kept);
             self::log($game, $accountId, 'revoke', $from, null, $admin, $reason, $moved);
+            self::logKept($game, $accountId, $from, null, $admin, $kept);
 
             return $moved;
         });
@@ -234,20 +240,29 @@ final class ScoreAccounts
         }
 
         $window = ScoreWindow::of($tournament);
+        $service = (string) $game->accountService();
         $active = TournamentParticipant::query()->where('tournament_id', $tournament->id)->whereNull('disqualified_at')
             ->whereIn('user_id', User::query()->select('id'))->pluck('user_id')->map(intval(...))->all();
-        $tags = DB::table('score_account_tags')->where('game', $game->slug())->whereIn('user_id', $active)->where('stored_at', '<', $window->end)
-            ->get(['user_id', 'account_id']);
+        $tags = DB::table('score_account_tags')->where('game', $game->slug())->whereIn('user_id', $active)->get(['user_id', 'account_id', 'stored_at'])->keyBy('user_id');
         $blocking = [];
 
-        foreach ($tags as $tag) {
-            $dismissed = ScoreAccountChange::query()->where(['game' => $game->slug(), 'account_id' => $tag->account_id, 'action' => 'dismiss', 'from_user_id' => $tag->user_id])->exists();
+        foreach (User::query()->whereKey($active)->orderBy('id')->get(['id', 'gamer_tags']) as $user) {
+            $accountId = trim((string) ($user->gamer_tags[$service] ?? ''));
+            $tag = $tags->get($user->id);
+
+            // Round-4 F5: an id with no stored-at row for it (saved while the game was not registered) counts as stored
+            // before the window (fail closed); only a row for this very id stored at or after the end lets it go.
+            if ($accountId === '' || ($tag !== null && $tag->account_id === $accountId && ! CarbonImmutable::parse((string) $tag->stored_at)->lessThan($window->end))) {
+                continue;
+            }
+
+            $dismissed = ScoreAccountChange::query()->where(['game' => $game->slug(), 'account_id' => $accountId, 'action' => 'dismiss', 'from_user_id' => $user->id])->exists();
             $waits = ! $dismissed && ScoreRun::query()->whereNull('user_id')
-                ->where(['game' => $game->slug(), 'mode' => $tournament->mode, 'course' => (string) $tournament->score_course, 'account_id' => $tag->account_id])
+                ->where(['game' => $game->slug(), 'mode' => $tournament->mode, 'course' => (string) $tournament->score_course, 'account_id' => $accountId])
                 ->where('achieved_at', '>=', $window->start)->where('achieved_at', '<', $window->end)->exists();
 
             if ($waits) {
-                $blocking[] = ['account' => (string) $tag->account_id, 'user_id' => (int) $tag->user_id];
+                $blocking[] = ['account' => $accountId, 'user_id' => $user->id];
             }
         }
 
@@ -291,48 +306,53 @@ final class ScoreAccounts
      */
     public static function pending(int $limit = 20, int &$total = 0): array
     {
-        $blocking = self::blocking();
-        $entrants = self::entrantTags();
-        $dismissed = ScoreAccountChange::query()->where('action', 'dismiss')->whereNull('from_user_id')->get(['game', 'account_id'])
-            ->mapWithKeys(fn (ScoreAccountChange $change): array => [$change->game.'|'.$change->account_id => true])->all();
-        $rows = ScoreRun::query()->whereNull('user_id')->whereNotNull('account_id')
-            ->selectRaw('game, account_id, count(*) as runs')->groupBy('game', 'account_id')->orderBy('game')->orderBy('account_id')->get();
-        $groups = [];
+        $games = array_keys(app(GameRegistry::class)->scores());
+        $case = 'case when 1 = 0 then 0';
+        $bindings = [];
 
-        foreach ($rows as $row) {
-            $game = app(GameRegistry::class)->find((string) $row->game);
-
-            if (! $game instanceof ScoreGame) {
-                continue;
-            }
-
-            $account = (string) $row->getAttribute('account_id');
-            $key = $game->slug().'|'.$account;
-
-            // A dismissed id comes back once a player stores it.
-            if (isset($dismissed[$key]) && self::claimers($game, $account) === []) {
-                continue;
-            }
-
-            $groups[] = ['game' => $game, 'account' => $account, 'runs' => (int) $row->getAttribute('runs'), 'blocks' => isset($blocking[$key]),
-                'tier' => isset($blocking[$key]) ? 0 : (isset($entrants[$key]) ? 1 : 2)];
+        foreach (array_keys(self::blocking()) as $key) {
+            [$slug, $account] = explode('|', $key, 2);
+            $case .= ' when (game = ? and account_id = ?) then 0';
+            array_push($bindings, $slug, $account);
         }
 
-        usort($groups, fn (array $a, array $b): int => [$a['tier'], $a['game']->slug(), $a['account']] <=> [$b['tier'], $b['game']->slug(), $b['account']]);
-        $total = count($groups);
+        $entrants = self::entrantIds();
 
-        return array_map(fn (array $group): array => ['game' => $group['game'], 'account' => $group['account'], 'runs' => $group['runs'], 'blocks' => $group['blocks'],
-            'claimers' => array_values(User::query()->whereKey(self::claimers($group['game'], $group['account']))->orderBy('id')->get()->all())],
-            array_slice($groups, 0, max(1, $limit)));
+        if ($entrants !== []) {
+            $case .= ' when exists (select 1 from score_account_tags as t where t.game = score_runs.game and t.account_id = score_runs.account_id and t.user_id in ('.implode(', ', array_fill(0, count($entrants), '?')).')) then 1';
+            array_push($bindings, ...$entrants);
+        }
+
+        // Round-4 F6: tiered, grouped and paged by the database, never every group in memory. A dismissed id nobody
+        // stored stays off the list until a player stores it.
+        $groups = ScoreRun::query()->whereNull('user_id')->whereNotNull('account_id')->whereIn('game', $games)
+            ->where(fn ($query) => $query
+                ->whereNotExists(fn ($sub) => $sub->selectRaw('1')->from('score_account_changes as c')->whereColumn('c.game', 'score_runs.game')->whereColumn('c.account_id', 'score_runs.account_id')
+                    ->where('c.action', 'dismiss')->whereNull('c.from_user_id'))
+                ->orWhereExists(fn ($sub) => $sub->selectRaw('1')->from('score_account_tags as t')->whereColumn('t.game', 'score_runs.game')->whereColumn('t.account_id', 'score_runs.account_id')))
+            ->select(['game', 'account_id'])->selectRaw('count(*) as runs')->selectRaw($case.' else 2 end as tier', $bindings)->groupBy('game', 'account_id');
+        $total = DB::query()->fromSub((clone $groups)->reorder(), 'g')->count();
+        $groupsOut = [];
+
+        foreach ($groups->orderBy('tier')->orderBy('game')->orderBy('account_id')->limit(max(1, $limit))->get() as $row) {
+            $game = app(GameRegistry::class)->find((string) $row->game);
+
+            if ($game instanceof ScoreGame) {
+                $account = (string) $row->getAttribute('account_id');
+                $groupsOut[] = ['game' => $game, 'account' => $account, 'runs' => (int) $row->getAttribute('runs'), 'blocks' => (int) $row->getAttribute('tier') === 0,
+                    'claimers' => array_values(User::query()->whereKey(self::claimers($game, $account))->orderBy('id')->get()->all())];
+            }
+        }
+
+        return $groupsOut;
     }
 
     /**
-     * The (game, account id) pairs stored by a player of a running score
-     * leaderboard or signed up to an open one, keyed "game|account".
+     * The players of a running score leaderboard and those signed up to an open one.
      *
-     * @return array<string, bool>
+     * @return list<int>
      */
-    private static function entrantTags(): array
+    private static function entrantIds(): array
     {
         $games = array_keys(app(GameRegistry::class)->scores());
         $running = TournamentParticipant::query()->whereIn('tournament_id', Tournament::query()->whereIn('game', $games)->where('status', TournamentStatus::Running)->select('id'))
@@ -340,8 +360,7 @@ final class ScoreAccounts
         $open = TournamentSignup::query()->whereIn('tournament_id', Tournament::query()->whereIn('game', $games)->whereIn('status', [TournamentStatus::Signup, TournamentStatus::Drawing])->select('id'))
             ->active()->pluck('members')->flatten()->all();
 
-        return DB::table('score_account_tags')->whereIn('game', $games)->whereIn('user_id', array_values(array_unique(array_map(intval(...), [...$running, ...$open]))))
-            ->get(['game', 'account_id'])->mapWithKeys(fn (object $tag): array => [$tag->game.'|'.$tag->account_id => true])->all();
+        return array_values(array_unique(array_map(intval(...), [...$running, ...$open])));
     }
 
     /**
@@ -380,6 +399,10 @@ final class ScoreAccounts
 
         if ($entrant === null && self::claimers($game, $accountId) !== []) {
             throw new TournamentRuleViolation('claimed', __('Players stored this id: dismiss it for one of them, or confirm it.'));
+        }
+
+        if ($entrant !== null && ! in_array($entrant->id, self::claimers($game, $accountId), true)) {
+            throw new TournamentRuleViolation('not_claimed', __('This player has not stored that account id.'));
         }
 
         self::log($game, $accountId, 'dismiss', $entrant?->id, null, $admin, $reason, 0);
@@ -431,31 +454,23 @@ final class ScoreAccounts
         foreach ($open as $tournament) {
             $signedUp = TournamentSignup::query()->where('tournament_id', $tournament->id)->active()->pluck('members')->flatten()->map(intval(...))->unique()->values()->all();
 
-            if (array_intersect($players, $signedUp) !== [] && self::sharesStake($admin, $signedUp, $players)) {
+            // Round-4 F4: the stakes of every active sign-up, read like those of a running board (P8b).
+            if (array_intersect($players, $signedUp) !== [] && TournamentInterest::ofSignups($tournament, $admin)) {
                 throw new TournamentRuleViolation('interested', __('You have an interest in a running leaderboard of this game that a claimer plays in, so another admin has to decide this account.'));
             }
         }
-    }
 
-    /**
-     * Whether the admin is signed up to that board, or shares a clan with a
-     * claimer signed up to it (the stakes of the tournament gate P8b before
-     * there is a board to read them from).
-     *
-     * @param  array<int, int>  $signedUp
-     * @param  array<int, int>  $players
-     */
-    private static function sharesStake(User $admin, array $signedUp, array $players): bool
-    {
-        if (in_array($admin->id, $signedUp, true)) {
-            return true;
+        // Round-4 F1: a finished board the id's runs fall into counts too (its runs are kept, but nobody with a stake
+        // in it decides the account).
+        $finished = self::finishedWindows($game);
+        $touched = $finished === [] ? [] : array_values(array_unique(array_filter(ScoreRun::query()->where(['game' => $game->slug(), 'account_id' => $accountId])->get()
+            ->map(fn (ScoreRun $run): ?int => self::finishedBoardOf($run, $finished))->all())));
+
+        foreach (Tournament::query()->whereKey($touched)->whereHas('participants', fn ($query) => $query->whereIn('user_id', $players))->get() as $tournament) {
+            if (ScoreLeaderboards::interested($tournament, $admin)) {
+                throw new TournamentRuleViolation('interested', __('You have an interest in a running leaderboard of this game that a claimer plays in, so another admin has to decide this account.'));
+            }
         }
-
-        $claimersIn = array_values(array_intersect($players, $signedUp));
-        $clans = ClanMember::query()->whereIn('user_id', $claimersIn)->pluck('clan_id')->merge(Clan::query()->whereIn('owner_id', $claimersIn)->pluck('id'))->unique()->all();
-
-        return $clans !== [] && (ClanMember::query()->where('user_id', $admin->id)->whereIn('clan_id', $clans)->exists()
-            || Clan::query()->where('owner_id', $admin->id)->whereKey($clans)->exists());
     }
 
     /**
@@ -486,13 +501,30 @@ final class ScoreAccounts
      * another; a run the target has already (same source, course, value and
      * time) is a second copy and goes.
      */
-    private static function move(ScoreGame $game, string $accountId, ?int $from, int $to): int
+    /**
+     * Move the runs of an id from one player (null: pending) to another
+     * (null: back to pending). A run inside the window of a finished
+     * leaderboard stays where it is (round-4 F1): `$kept` gets how many,
+     * per leaderboard.
+     *
+     * @param  array<int, int>  $kept
+     */
+    private static function move(ScoreGame $game, string $accountId, ?int $from, ?int $to, array &$kept): int
     {
         $moved = 0;
         $runs = ScoreRun::query()->where(['game' => $game->slug(), 'account_id' => $accountId])
             ->when($from === null, fn ($query) => $query->whereNull('user_id'), fn ($query) => $query->where('user_id', $from))->orderBy('id')->get();
+        $finished = self::finishedWindows($game);
 
         foreach ($runs as $run) {
+            $board = self::finishedBoardOf($run, $finished);
+
+            if ($board !== null) {
+                $kept[$board] = ($kept[$board] ?? 0) + 1;
+
+                continue;
+            }
+
             try {
                 $run->forceFill(['user_id' => $to])->save();
                 $moved++;
@@ -502,6 +534,49 @@ final class ScoreAccounts
         }
 
         return $moved;
+    }
+
+    /**
+     * The windows of the finished leaderboards of a game.
+     *
+     * @return list<array{id: int, mode: string, course: string, start: CarbonImmutable, end: CarbonImmutable}>
+     */
+    private static function finishedWindows(ScoreGame $game): array
+    {
+        return array_values(Tournament::query()->where(['game' => $game->slug(), 'status' => TournamentStatus::Finished])->get()
+            ->map(function (Tournament $tournament): array {
+                $window = ScoreWindow::of($tournament);
+
+                return ['id' => $tournament->id, 'mode' => $tournament->mode, 'course' => (string) $tournament->score_course,
+                    'start' => CarbonImmutable::instance($window->start), 'end' => CarbonImmutable::instance($window->end)];
+            })->all());
+    }
+
+    /**
+     * The finished leaderboard whose window holds this run, if any.
+     *
+     * @param  list<array{id: int, mode: string, course: string, start: CarbonImmutable, end: CarbonImmutable}>  $finished
+     */
+    private static function finishedBoardOf(ScoreRun $run, array $finished): ?int
+    {
+        foreach ($finished as $board) {
+            if ($board['mode'] === $run->mode && $board['course'] === $run->course && ! $run->achieved_at->lessThan($board['start']) && $run->achieved_at->lessThan($board['end'])) {
+                return $board['id'];
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * @param  array<int, int>  $kept  runs kept per finished leaderboard
+     */
+    private static function logKept(ScoreGame $game, string $accountId, ?int $from, ?int $to, User $admin, array $kept): void
+    {
+        if ($kept !== []) {
+            $boards = implode(', ', array_map(fn (int $board, int $count): string => "#{$board}: {$count}", array_keys($kept), $kept));
+            self::log($game, $accountId, 'kept', $from, $to, $admin, "kept: board finished ({$boards})", 0);
+        }
     }
 
     /**

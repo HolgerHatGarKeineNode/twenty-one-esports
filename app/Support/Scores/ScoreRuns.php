@@ -2,11 +2,13 @@
 
 namespace App\Support\Scores;
 
+use App\Enums\TournamentStatus;
 use App\Games\GameRegistry;
 use App\Games\ScoreGame;
 use App\Games\ScoreMetric;
 use App\Models\ScoreRun;
 use App\Models\Tournament;
+use App\Models\TournamentMatch;
 use App\Models\TournamentParticipant;
 use Carbon\CarbonImmutable;
 use Illuminate\Database\UniqueConstraintViolationException;
@@ -30,6 +32,10 @@ use InvalidArgumentException;
  * window. Best first by the metric; a tie goes to the earlier `achieved_at`,
  * then to the seed. Entries without a value, and disqualified ones, follow
  * without a place.
+ *
+ * A finished or cancelled leaderboard shows only what its end froze into the
+ * board result (round-4 F1): a later account decision or correction never
+ * rewrites its final standings.
  */
 final class ScoreRuns
 {
@@ -107,6 +113,10 @@ final class ScoreRuns
      */
     public function standings(Tournament $tournament): array
     {
+        if (in_array($tournament->status, [TournamentStatus::Finished, TournamentStatus::Cancelled], true)) {
+            return $this->frozen($tournament);
+        }
+
         $course = $this->courseOf($tournament);
         $window = ScoreWindow::of($tournament);
         $participants = TournamentParticipant::query()->where('tournament_id', $tournament->id)
@@ -165,5 +175,61 @@ final class ScoreRuns
         }
 
         return [...$rows, ...$unplaced];
+    }
+
+    /**
+     * The standings as the end froze them (`standings` in the board result:
+     * participant, place, value, when it was set, its source and run). A
+     * board without them (ended before they were kept) shows its places
+     * without values; one without a result (cancelled) shows its entries
+     * without places. Nothing is read from the runs.
+     *
+     * @return list<ScoreStanding>
+     */
+    private function frozen(Tournament $tournament): array
+    {
+        $participants = TournamentParticipant::query()->where('tournament_id', $tournament->id)
+            ->orderByRaw('seed is null')->orderBy('seed')->orderBy('id')->get()->keyBy('id');
+        $match = TournamentMatch::query()->where('tournament_id', $tournament->id)->where('bracket', 'board')->with('slots')->first();
+        $result = $match?->result;
+        $rows = [];
+
+        if (is_array($result) && isset($result['standings']) && is_array($result['standings'])) {
+            $proofs = ScoreRun::query()->whereKey(array_filter(array_column($result['standings'], 'run')))->pluck('proof_url', 'id');
+
+            foreach ($result['standings'] as $row) {
+                $participant = $participants->pull((int) ($row['participant'] ?? 0));
+
+                if ($participant instanceof TournamentParticipant) {
+                    $run = isset($row['run']) ? (int) $row['run'] : null;
+                    $rows[] = new ScoreStanding($participant, isset($row['place']) ? (int) $row['place'] : null, isset($row['value']) ? (int) $row['value'] : null,
+                        isset($row['at']) ? CarbonImmutable::parse((string) $row['at']) : null, isset($row['source']) ? (string) $row['source'] : null,
+                        $run === null ? null : $proofs->get($run), $run);
+                }
+            }
+        } elseif (is_array($result) && isset($result['ranks']) && is_array($result['ranks'])) {
+            $unplaced = array_map(intval(...), (array) ($result['unplaced'] ?? []));
+            $placed = [];
+
+            foreach ($match->slots as $slot) {
+                $participant = $slot->tournament_participant_id === null ? null : $participants->get($slot->tournament_participant_id);
+
+                if ($participant instanceof TournamentParticipant && ! in_array($participant->id, $unplaced, true) && isset($result['ranks'][$slot->slot])) {
+                    $placed[] = [(int) $result['ranks'][$slot->slot], $participants->pull($participant->id)];
+                }
+            }
+
+            usort($placed, fn (array $a, array $b): int => $a[0] <=> $b[0]);
+
+            foreach ($placed as [$place, $participant]) {
+                $rows[] = new ScoreStanding($participant, $place, null, null, null, null, null);
+            }
+        }
+
+        foreach ($participants as $participant) {
+            $rows[] = new ScoreStanding($participant, null, null, null, null, null, null);
+        }
+
+        return $rows;
     }
 }

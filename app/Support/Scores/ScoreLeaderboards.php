@@ -285,6 +285,9 @@ final class ScoreLeaderboards
                 'winner' => is_int($winner) ? $winner : null,
                 'ranks' => $ranks,
                 'unplaced' => $unplaced,
+                // Round-4 F1: the final standings as they were at the end; the page never reads them live again.
+                'standings' => array_map(fn (ScoreStanding $standing): array => ['participant' => $standing->participant->id, 'place' => $standing->place, 'value' => $standing->value,
+                    'at' => $standing->achievedAt?->toIso8601String(), 'source' => $standing->source, 'run' => $standing->runId], $standings),
                 'label' => __('Leaderboard'),
                 'by' => 'scores',
                 'finalized_by' => $actor === null ? null : ['user_id' => $actor->id, 'name' => $actor->displayName()],

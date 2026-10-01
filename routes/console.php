@@ -7,6 +7,7 @@ use App\Jobs\NotifyBlockZero;
 use App\Models\BoardGame;
 use App\Models\ChessGame;
 use App\Models\NostrEvent;
+use App\Models\ScoreRun;
 use App\Models\ScoreServer;
 use App\Support\Board\BoardGameService;
 use App\Support\Chess\ChessGameService;
@@ -352,6 +353,8 @@ Artisan::command('scores:tick', function (ScoreLeaderboards $leaderboards) {
 
 if (app(GameRegistry::class)->scores() !== []) {
     Schedule::command('scores:tick')->hourly()->withoutOverlapping()->onOneServer();
+    // Round-4 F6: finishes of account ids nobody stored or confirmed, older than `prune_days`.
+    Schedule::command('model:prune', ['--model' => [ScoreRun::class]])->daily()->withoutOverlapping()->onOneServer();
 }
 
 /*

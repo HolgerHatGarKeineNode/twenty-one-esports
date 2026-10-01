@@ -39,6 +39,8 @@ use GuzzleHttp\Psr7\PumpStream;
 use GuzzleHttp\Psr7\Response as PsrResponse;
 use GuzzleHttp\Psr7\StreamDecoratorTrait;
 use GuzzleHttp\Psr7\Utils;
+use Illuminate\Log\Events\MessageLogged;
+use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\Exceptions;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Sleep;
@@ -323,13 +325,20 @@ test('p07 S6: an admin signed up for an open leaderboard of the game decides no 
         ->and(ScoreAccounts::confirm($this->game, 'acct-x', $clanmate, livenessAdmin(), 'Showed the account page on stream.'))->toBe(1);
 });
 
-test('stand-in: a mode missing from a registered game still fails loudly; an unregistered game gets the stand-in and a report', function () {
+test('stand-in: a mode missing from a registered game still fails loudly; an unregistered game gets the stand-in and a log line', function () {
     Exceptions::fake();
+    $lines = [];
+    Event::listen(MessageLogged::class, function (MessageLogged $message) use (&$lines): void {
+        $lines[] = $message->message;
+    });
 
     expect(fn () => GameProfile::ofTournament('score-demo', 'no-such-mode'))->toThrow(InvalidArgumentException::class)
-        ->and(GameProfile::ofTournament('gone-game', 'any')->isUnknown())->toBeTrue();
+        ->and(GameProfile::ofTournament('gone-game', 'any')->isUnknown())->toBeTrue()
+        ->and($lines)->toHaveCount(1)
+        ->and($lines[0])->toContain('gone-game/any');
 
-    Exceptions::assertReported(InvalidArgumentException::class);
+    // Round-4 F2: one line, no report with a trace.
+    Exceptions::assertNothingReported();
 });
 
 test('S1: a board ends with the left-out line even when only an admin ends it after the review time', function () {

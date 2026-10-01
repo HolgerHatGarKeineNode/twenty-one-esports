@@ -8,6 +8,7 @@ use App\Models\ClanMember;
 use App\Models\Lineup;
 use App\Models\Tournament;
 use App\Models\TournamentMatch;
+use App\Models\TournamentSignup;
 use App\Models\User;
 use App\Support\SeasonChain\Seasons;
 use Illuminate\Database\Eloquent\Builder;
@@ -72,6 +73,30 @@ final class TournamentInterest
     }
 
     /**
+     * Whether the user has a stake in a tournament that has no match yet
+     * (sign-up or drawing): the stakes of every active sign-up, read like
+     * those of a match. Admins: their own stake only, as in of().
+     */
+    public static function ofSignups(Tournament $tournament, User $user): bool
+    {
+        $since = self::since($tournament);
+        $players = [];
+        $clans = [];
+
+        foreach (TournamentSignup::query()->where('tournament_id', $tournament->id)->active()->get() as $signup) {
+            array_push($players, ...array_map(intval(...), array_filter([$signup->user_id, ...(array) $signup->members])));
+
+            if ($signup->lineup_id !== null) {
+                $clans[] = (int) Lineup::query()->whereKey($signup->lineup_id)->value('clan_id');
+            }
+        }
+
+        [$players, $clans] = self::spread($players, $clans, $since);
+
+        return self::holds($user->id, $players, $clans, $since);
+    }
+
+    /**
      * The players of both entries, and every clan in the match.
      *
      * @return array{0: list<int>, 1: list<int>}
@@ -96,6 +121,18 @@ final class TournamentInterest
             }
         }
 
+        return self::spread($players, $clans, $since);
+    }
+
+    /**
+     * The players and clans, plus every clan the players belong to or left since `$since`.
+     *
+     * @param  array<int, int>  $players
+     * @param  array<int, int>  $clans
+     * @return array{0: list<int>, 1: list<int>}
+     */
+    private static function spread(array $players, array $clans, ?\DateTimeInterface $since): array
+    {
         array_push($clans, ...ClanMember::query()->whereIn('user_id', $players)->pluck('clan_id')->map(intval(...))->all());
         $pubkeys = User::query()->whereIn('id', $players)->pluck('pubkey')->all();
         array_push($clans, ...self::departures($since)->where(fn ($query) => $query->whereIn('user_id', $players)->orWhereIn('pubkey', $pubkeys))

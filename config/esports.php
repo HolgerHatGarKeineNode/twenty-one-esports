@@ -269,6 +269,8 @@ return [
             'submissions_per_day' => 20,
         ],
         'review_hours' => 24,
+        // Finishes of an account id nobody stored or confirmed are deleted after this many days (round-4 F6).
+        'prune_days' => 30,
         'poller' => [
             'user_agent' => env('ESPORTS_SCORE_POLLER_USER_AGENT', 'einundzwanzig-esports (+'.env('APP_URL', 'http://localhost').')'),
             'min_interval_ms' => 1000,

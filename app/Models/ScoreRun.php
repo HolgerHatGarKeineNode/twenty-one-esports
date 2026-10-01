@@ -8,6 +8,7 @@ use App\Games\ScoreMetric;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Attributes\Hidden;
 use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Database\Eloquent\MassPrunable;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Support\Carbon;
@@ -26,7 +27,9 @@ use Illuminate\Support\Carbon;
  *   or the key of a poller or server source (verified when read).
  * - `account_id`: the player's private game account id a server reported; with
  *   `user_id` null the account belongs to no player yet (pending, never shown).
- *   Hidden from every serialization.
+ *   Hidden from every serialization. Such a run of an id nobody stored and
+ *   nobody confirmed is pruned once it is older than
+ *   `esports.score_games.prune_days` (round-4 F6: a public server's strangers).
  *
  * @property int $id
  * @property int|null $tournament_id
@@ -58,9 +61,25 @@ use Illuminate\Support\Carbon;
 #[Hidden(['account_id', 'raw'])]
 class ScoreRun extends Model
 {
+    use MassPrunable;
+
     public const MANUAL = 'manual';
 
     public const DIRECTOR = 'director';
+
+    /**
+     * The runs of an id that belongs to nobody: pending, nobody stored it,
+     * nobody confirmed it, and older than `prune_days`.
+     *
+     * @return Builder<static>
+     */
+    public function prunable(): Builder
+    {
+        return static::query()->whereNull('user_id')->whereNotNull('account_id')
+            ->where('achieved_at', '<', now()->subDays(max(1, (int) config('esports.score_games.prune_days', 30))))
+            ->whereNotExists(fn ($query) => $query->selectRaw('1')->from('score_account_tags as t')->whereColumn('t.game', 'score_runs.game')->whereColumn('t.account_id', 'score_runs.account_id'))
+            ->whereNotExists(fn ($query) => $query->selectRaw('1')->from('score_account_claims as c')->whereColumn('c.game', 'score_runs.game')->whereColumn('c.account_id', 'score_runs.account_id'));
+    }
 
     protected function casts(): array
     {

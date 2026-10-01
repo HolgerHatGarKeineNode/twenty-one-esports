@@ -5,6 +5,8 @@ namespace App\Support\Tournaments;
 use App\Games\BoardGame;
 use App\Games\GameRegistry;
 use App\Games\ScoreGame;
+use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\Log;
 use InvalidArgumentException;
 
 /**
@@ -82,8 +84,10 @@ final readonly class GameProfile
      * switched off) a stand-in that plans nothing: no duration, no estimate,
      * no wait, and nothing starts ({@see isUnknown()}). Pages that list or
      * show such a tournament keep working instead of failing. The stand-in
-     * is reported, and only for a game the registry does not know: a mode
-     * missing from a registered game is a defect and still throws.
+     * is only for a game the registry does not know (a mode missing from a
+     * registered game is a defect and still throws), kept for the request,
+     * and logged as one line at most once a day per game and mode (round-4
+     * F2: a report per call wrote ~250 KB per guest page view).
      */
     public static function ofTournament(string $game, string $mode): self
     {
@@ -94,9 +98,13 @@ final readonly class GameProfile
                 throw $e;
             }
 
-            report($e);
+            return once(function () use ($game, $mode): self {
+                if (Cache::add("game-profile:stand-in:{$game}/{$mode}", true, now()->addDay())) {
+                    Log::warning("No tournament profile for [{$game}/{$mode}]: the game is not registered, so its tournaments use the stand-in that plans nothing.");
+                }
 
-            return new self("{$game}/{$mode}", $game, $mode, 'min', 0, 0, 0, 1, 1, [1], false, 'none');
+                return new self("{$game}/{$mode}", $game, $mode, 'min', 0, 0, 0, 1, 1, [1], false, 'none');
+            });
         }
     }
 

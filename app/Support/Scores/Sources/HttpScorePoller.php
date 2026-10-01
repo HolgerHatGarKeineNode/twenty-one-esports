@@ -8,6 +8,7 @@ use App\Support\Scores\ScoreCourse;
 use App\Support\Scores\ScoreRecord;
 use App\Support\Scores\ScoreSourceUnavailable;
 use Carbon\CarbonInterface;
+use GuzzleHttp\Exception\RequestException;
 use GuzzleHttp\Psr7\Response as PsrResponse;
 use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Http\Client\Response;
@@ -29,10 +30,15 @@ use RuntimeException;
  * - Backoff: a 429, a 5xx or no connection is retried `retries` times, the
  *   wait doubling from `backoff_ms`; a `Retry-After` in seconds wins, up to
  *   `max_retry_after_seconds` (above it the source counts as down).
- * - No redirect is followed; the answer is streamed, uncompressed, and
- *   refused once it passes `max_body_bytes`, without reading the rest.
- * - Wall-clock deadline: reading an answer takes at most `read_deadline_seconds`
- *   in all (a source that sends one byte at a time is refused, round-3 S4).
+ * - No redirect is followed; the answer is uncompressed and refused once it
+ *   passes `max_body_bytes`: cURL stops the transfer there itself
+ *   (CURLOPT_MAXFILESIZE_LARGE, which since cURL 8.4 also ends an answer of
+ *   unknown length once it grows past the cap), and the stored answer is read
+ *   only up to the cap again.
+ * - Time: the whole transfer, headers included, takes at most
+ *   `timeout_seconds` (cURL's total timeout, round-4 F3: a header that drips
+ *   one byte at a time is cut off too); reading the stored answer has its
+ *   own deadline, `read_deadline_seconds` (round-3 S4).
  * - Failing: any other answer, or the last retry failing, throws
  *   ScoreSourceUnavailable. "Could not ask" is never "no record". A 4xx
  *   other than 429 refuses this player only; the rest mean the source is
@@ -93,20 +99,28 @@ abstract class HttpScorePoller implements ScoreSource
             $this->waitForTurn();
 
             $reason = 'no connection';
+            $limit = max(1, (int) config('esports.score_games.poller.max_body_bytes', 1_048_576));
 
             try {
                 $response = Http::withUserAgent((string) config('esports.score_games.poller.user_agent'))
                     ->withHeaders($this->headers())
+                    // Round-4 F3: not streamed, so this is cURL's total timeout for the whole transfer, headers included.
                     ->timeout(max(1, (int) config('esports.score_games.poller.timeout_seconds', 10)))
+                    ->connectTimeout(max(1, (int) config('esports.score_games.poller.timeout_seconds', 10)))
                     // A redirect is no answer (security gate F5): it could lead anywhere, the league follows none.
                     ->withoutRedirecting()
-                    // Re-audit N3: the answer is streamed and read only up to the cap; no compression, so a small
-                    // answer on the wire can never unpack into a big one.
+                    // Re-audit N3: the answer is kept only up to the cap; no compression, so a small answer on the wire
+                    // can never unpack into a big one.
                     ->withHeaders(['Accept-Encoding' => 'identity'])
-                    ->withOptions(['stream' => true, 'decode_content' => false])
+                    ->withOptions(['decode_content' => false, 'curl' => [CURLOPT_MAXFILESIZE_LARGE => $limit]])
                     ->acceptJson()
                     ->get($this->url($account, $course), $this->query($account, $course));
-            } catch (ConnectionException $e) {
+            } catch (ConnectionException|RequestException $e) {
+                // cURL error 63: the answer grew past the cap, and cURL ended the transfer.
+                if (str_contains($e->getMessage(), 'cURL error 63')) {
+                    throw new ScoreSourceUnavailable("Score source [{$this->key()}] refused: an answer larger than {$limit} bytes.", true, $e);
+                }
+
                 $response = null;
                 $reason = $e->getMessage();
             }
@@ -160,6 +174,10 @@ abstract class HttpScorePoller implements ScoreSource
 
         $stream = $response->toPsrResponse()->getBody();
         $body = '';
+
+        if ($stream->isSeekable()) {
+            $stream->rewind();
+        }
         // Round-3 S4: with a streamed answer the timeout holds per read only, so the whole read gets a deadline.
         $seconds = max(1, (int) config('esports.score_games.poller.read_deadline_seconds', 10));
         $deadline = microtime(true) + $seconds;
