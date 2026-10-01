@@ -8,6 +8,7 @@ use App\Models\Tournament;
 use App\Models\User;
 use App\Support\LeagueTime;
 use App\Support\Tournaments\FormatOptions;
+use App\Support\Tournaments\TournamentGames;
 use App\Support\Tournaments\TournamentRuleViolation;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Gate;
@@ -77,6 +78,14 @@ new #[Title('New tournament')] #[Layout('layouts::app', ['section' => 'admin'])]
             'break' => ['nullable', 'numeric', 'between:0,1000'],
             ...$this->deadlineRules(),
         ]);
+
+        // Only a game the chooser offers (TournamentGames): an unknown key, or Blockfill's set by hand, is refused,
+        // never replaced by the default game.
+        if (TournamentGames::find($this->game) === null) {
+            $this->addError('game', __('Pick a game from the list.'));
+
+            return;
+        }
 
         // Typed in the league's zone, whoever types it (the admin's own zone never applies); stored as UTC.
         $startsAt = LeagueTime::parse($this->startsAt);

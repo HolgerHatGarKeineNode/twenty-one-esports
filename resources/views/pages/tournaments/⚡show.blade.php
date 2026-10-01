@@ -742,14 +742,16 @@ new #[Layout('layouts::app', ['section' => 'tournaments'])] class extends Compon
             <div class="flex min-w-0 flex-col gap-2">
                 <span class="flex items-center gap-1.5 text-xs font-bold text-btc-hi"><x-icon name="trophy" :size="14" />{{ __('Winner') }}</span>
                 <h2 id="tw-h" class="m-0 font-display text-2xl font-bold [overflow-wrap:anywhere]">{{ $champion->name }}</h2>
-                @if (auth()->check() && in_array(auth()->id(), $champion->memberIds(), true))
+                @if (auth()->check() && in_array(auth()->id(), $champion->memberIds(), true) && ! $tournament->isBlockfillWeek())
                     <livewire:share-button type="tournament" :moment="(string) $tournament->id" />
                 @endif
             </div>
         </section>
 
-        {{-- P47: a tip for the winners (NIP-57), each whose profile has a Lightning address; nothing otherwise --}}
-        <div class="mx-4 has-[>.hidden]:hidden lg:mx-12"><livewire:zap-winner type="tournament" :subject="(string) $tournament->id" :wire:key="'zap-tournament-'.$tournament->id" /></div>
+        {{-- P47: a tip for the winners (NIP-57), each whose profile has a Lightning address; nothing otherwise. Not for a Blockfill week (P6). --}}
+        @if (! $tournament->isBlockfillWeek())
+            <div class="mx-4 has-[>.hidden]:hidden lg:mx-12"><livewire:zap-winner type="tournament" :subject="(string) $tournament->id" :wire:key="'zap-tournament-'.$tournament->id" /></div>
+        @endif
     @endif
 
     {{-- Who plays --}}

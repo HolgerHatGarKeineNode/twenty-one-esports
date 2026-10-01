@@ -21,6 +21,10 @@ use App\Models\Tournament;
 use App\Models\TournamentParticipant;
 use App\Models\User;
 use App\Support\Cards\PageCardFacts;
+use App\Support\Cards\ShareMoments;
+use App\Support\Cards\SharePosts;
+use App\Support\Cards\ShareRefused;
+use App\Support\Lightning\WinnerZaps;
 use App\Support\Navigation\ShellNavigation;
 use App\Support\Nostr\SignedEvent;
 use App\Support\Pages\RulesPage;
@@ -35,6 +39,7 @@ use App\Support\StreamBot\StreamBotCopy;
 use App\Support\StreamBot\StreamBotPublisher;
 use App\Support\StreamBot\TournamentNotes;
 use App\Support\Tournaments\OrganizerBoard;
+use App\Support\Tournaments\TournamentGames;
 use App\Support\TwentyOne\PublishResult;
 use App\Support\TwentyOne\Stream\BlockfillSlide;
 use App\Support\TwentyOne\Stream\RotationPlanner;
@@ -349,4 +354,60 @@ test('switched off, nothing of Blockfill shows: hub, /play, home, sitemap, rules
     require base_path('routes/console.php');
     $scheduled = collect(app(Schedule::class)->events())->map(fn ($event): string => (string) $event->command)->implode("\n");
     expect($scheduled)->toContain('stacker:sweep')->toContain('blockfill:weeks')->toContain('twentyone:stream-bot:blockfill')->toContain(StackerRun::class);
+});
+
+test('organizers are never offered Blockfill: not in the format chooser, not on the create page, and a create with its key is refused', function () {
+    BlockfillOn::play();
+    $admin = User::factory()->create();
+    Admin::query()->create(['pubkey' => $admin->pubkey]);
+    $key = Blockfill::SLUG.'/'.Blockfill::MODE;
+
+    expect(array_column(TournamentGames::grouped(), 'slug'))->not->toContain(Blockfill::SLUG)
+        ->and(TournamentGames::find($key))->toBeNull()
+        ->and(TournamentGames::keyOf(Blockfill::SLUG, Blockfill::MODE))->toBeNull();
+
+    Livewire::actingAs($admin)->test('pages::admin.tournament-create')
+        ->assertDontSeeHtml($key)
+        ->assertDontSee('Blockfill')
+        // The chooser's own action ignores the key, and the property set directly is refused at create.
+        ->call('pickGame', $key)->assertSet('game', 'blitz')
+        ->set('game', $key)
+        ->set('name', 'Sneaky Blockfill Cup')
+        ->call('select', 'leaderboard')
+        ->call('create')
+        ->assertHasErrors('game');
+
+    expect(Tournament::query()->count())->toBe(0);
+});
+
+test('both Blockfill bot templates pass the copy rules: a link, no hashtag, no fee and no face wording', function () {
+    $values = ['name' => 'Blockfill Week 41, 2026', 'ends' => 'Mon, 12 Oct 2026, 12:00 AM CEST', 'url' => 'https://esports.test/blockfill',
+        'winner' => 'Ada', 'time' => '0:48.333', 'podium' => '1. Ada 0:48.333 · 2. Ben 0:50.000 · 3. Cy 0:51.666'];
+
+    foreach (['blockfill_note_week', 'blockfill_note_winner'] as $template) {
+        foreach (range(0, StreamBotCopy::variants($template) - 1) as $variant) {
+            $text = StreamBotCopy::render($template, $variant, $values);
+
+            expect(StreamBotCopy::violations($text))->toBe([], "{$template} #{$variant}")
+                ->and($text)->not->toContain('#')
+                ->and(mb_strtolower($text))->not->toContain('fee')->not->toContain('face')->not->toContain('gesicht')
+                ->and($text)->toContain('https://esports.test/blockfill');
+        }
+    }
+});
+
+test('a Blockfill week\'s winner gets no zap button and no tournament win to share', function () {
+    [$week, , $users] = goLiveWeek(['Ada' => 2900, 'Ben' => 3000]);
+    $ada = $users['Ada'];
+    $ada->forceFill(['lud16' => 'ada@getalby.com'])->save();
+    goLiveFinish($week);
+
+    expect($week->status)->toBe(TournamentStatus::Finished)
+        ->and(app(WinnerZaps::class)->winners('tournament', (string) $week->id, null))->toBe([])
+        ->and(ShareMoments::tournamentWins($ada))->toBe([])
+        ->and(fn () => app(SharePosts::class)->post($ada, 'tournament', (string) $week->id))->toThrow(ShareRefused::class);
+
+    $this->actingAs($ada)->get(route('tournaments.show', $week))->assertOk()
+        ->assertDontSeeHtml('wire:name="zap-winner"')
+        ->assertDontSeeHtml('wire:name="share-button"');
 });

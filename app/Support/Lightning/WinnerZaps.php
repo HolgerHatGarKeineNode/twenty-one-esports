@@ -235,7 +235,8 @@ final class WinnerZaps
 
         if ($type === 'tournament') {
             $tournament = Tournament::query()->find((int) $id);
-            $champion = $tournament === null ? null : $this->champions->of($tournament);
+            // A Blockfill week (plan "Blockfill", P6) is a game's weekly board, not a tournament won: no zap.
+            $champion = $tournament === null || $tournament->isBlockfillWeek() ? null : $this->champions->of($tournament);
 
             return $champion === null ? [] : $champion->memberIds();
         }

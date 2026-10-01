@@ -205,7 +205,8 @@ final class ShareMoments
         $wins = [];
         $entries = TournamentParticipant::query()
             ->where(fn ($query) => $query->where('user_id', $user->id)->orWhere('members', 'like', '%'.$user->id.'%'))
-            ->whereHas('tournament', fn ($query) => $query->where('status', TournamentStatus::Finished)
+            // A Blockfill week (plan "Blockfill", P6) is no tournament win.
+            ->whereHas('tournament', fn ($query) => $query->where('status', TournamentStatus::Finished)->exceptBlockfillWeeks()
                 ->when($season !== null, fn ($query) => $query->whereBetween('starts_at', [$season->genesis_at, $season->ends_at])))
             ->with('tournament')->get();
 

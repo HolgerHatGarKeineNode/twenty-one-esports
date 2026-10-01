@@ -233,7 +233,8 @@ final class SharePosts
     private function tournament(User $user, int $id): ?ShareCard
     {
         $tournament = Tournament::query()->find($id);
-        $winner = $tournament === null ? null : $this->champions->of($tournament);
+        // A Blockfill week (plan "Blockfill", P6) is a game's weekly board, not a tournament win to share.
+        $winner = $tournament === null || $tournament->isBlockfillWeek() ? null : $this->champions->of($tournament);
 
         return $winner !== null && in_array($user->id, $winner->memberIds(), true) ? ShareCard::tournament($tournament, $winner) : null;
     }
