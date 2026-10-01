@@ -248,8 +248,11 @@ test('a guest practises with the real Practice button and real keys: the well mo
     $idle = $page->evaluate($wellImage);
     $page->locator('[data-test=start-practice]')->click();
     BrowserWait::until($page, '() => window.__stacker.state().mode === "playing" && window.__stacker.state().ticks > 2', 6_000);
-    $started = $page->evaluate($wellImage);
-    $startedAt = $page->evaluate('() => window.__stacker.state().ticks');
+    // The image and the frame it shows, read in one go. The first piece may look like the idle well's (two random seeds
+    // can deal the same piece), so "the well was drawn after the start" is read from the frame's tick, not from a picture.
+    $startedFrame = $page->evaluate('() => ({ image: document.querySelector("[data-test=well]").toDataURL(), drawn: window.__stacker.state().drawn, ticks: window.__stacker.state().ticks })');
+    $started = $startedFrame['image'];
+    $startedAt = $startedFrame['ticks'];
 
     // Only a key moves a piece sideways or locks three pieces this early: gravity takes a second a row.
     $x = $page->evaluate('() => window.__stacker.state().piece.x');
@@ -269,7 +272,7 @@ test('a guest practises with the real Practice button and real keys: the well mo
 
     expect([$state['kind'], $state['mode'], $state['pieces']])->toBe(['practice', 'playing', 3])
         ->and((float) $page->evaluate('() => document.querySelector("[data-test=hud] [x-ref=pps]")?.innerText ?? "0"'))->toBeGreaterThan(0.0)
-        ->and($started)->not->toBe($idle)
+        ->and($startedFrame['drawn']['tick'])->toBeGreaterThan(2)
         ->and($final)->not->toBe($idle)
         // the well was drawn after the keys were played
         ->and($state['drawn']['tick'])->toBeGreaterThan(60)
@@ -325,10 +328,12 @@ test('on a phone every touch button is in reach above the tab bar, and ranked ru
     $page->locator('[data-test=start-practice]')->click();
     BrowserWait::until($page, '() => window.__stacker.state().mode === "playing"', 6_000);
 
-    // at scroll 0, the centre of every button hits that very button (nothing on top, nothing off screen)
+    // the centre of every button hits that very button (nothing on top, nothing off screen); the panel is fixed, so
+    // wherever the start has scrolled the page to (it brings the well below the sticky header and above the panel)
     $hits = $page->evaluate('() => [...document.querySelectorAll("[data-test^=touch-]")].map((b) => { const r = b.getBoundingClientRect(); return [b.dataset.test, document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2)?.closest("[data-test^=touch-]")?.dataset.test ?? null, Math.round(r.bottom)]; })');
     expect(count($hits))->toBe(8)
-        ->and(stackerScrollY($page))->toBe(0);
+        // and the well is whole in view, between the header and the panel
+        ->and($page->evaluate(STACKER_WELL_IN_VIEW))->toBeTrue();
     foreach ($hits as [$button, $hit, $bottom]) {
         expect($hit)->toBe($button, "{$button} at {$width}")->and($bottom)->toBeLessThanOrEqual($height);
     }
@@ -344,11 +349,6 @@ test('on a phone every touch button is in reach above the tab bar, and ranked ru
     'phone 375' => [375, 812],
     'phone 390' => [390, 844],
 ]);
-
-function stackerScrollY(Page $page): int
-{
-    return (int) $page->evaluate('() => window.scrollY');
-}
 
 test('a ranked run the league turns away as busy says it was not saved, never that it arrived', function () {
     $this->freezeTime();
@@ -383,8 +383,8 @@ test('a ranked run the league turns away as busy says it was not saved, never th
         ->and($page->evaluate('() => document.querySelector("[data-test=result-status]").classList.contains("text-btc")'))->toBeTrue();
 });
 
-/** Whether the well lies inside the viewport, above the touch panel when that is shown. */
-const STACKER_WELL_IN_VIEW = '() => { const w = document.querySelector("[data-test=well]").getBoundingClientRect(); const panel = document.querySelector("[data-test=touch]"); const floor = panel && getComputedStyle(panel).display !== "none" ? panel.getBoundingClientRect().top : innerHeight; return w.top >= 0 && w.bottom <= floor; }';
+/** Whether the well lies inside the viewport: below the sticky header, and above the touch panel when that is shown. */
+const STACKER_WELL_IN_VIEW = '() => { const w = document.querySelector("[data-test=well]").getBoundingClientRect(); const panel = document.querySelector("[data-test=touch]"); const floor = panel && getComputedStyle(panel).display !== "none" ? panel.getBoundingClientRect().top : innerHeight; const ceiling = document.querySelector("body > header").getBoundingClientRect().bottom; return w.top >= ceiling && w.bottom <= floor; }';
 
 test('the next run starts with the well in view, after the result had scrolled the page down', function (string $device, int $width, int $height) {
     $page = $device === 'touch' ? visit(BrowserLogin::LANDING)->on()->mobile()->page() : visit(BrowserLogin::LANDING)->page();
