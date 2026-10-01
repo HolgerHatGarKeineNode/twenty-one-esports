@@ -245,7 +245,7 @@ new class extends Component {
                         <p class="m-0 text-xs leading-normal text-ink-2" data-test="lobby-deadline">{{ $reportOpen ? __('Players report by :time; after that a director decides.', ['time' => $time($reportUntil->toIso8601String())]) : __('The time to report is over: a director decides this lobby.') }}</p>
                     @endif
                     @if (isset($lobby['rejected']) && $report === null)
-                        <p class="m-0 text-xs leading-normal text-loss" data-test="lobby-rejected">{{ __('A report was rejected by :name: :reason', ['name' => (string) ($lobby['rejected']['name'] ?? ''), 'reason' => (string) ($lobby['rejected']['reason'] ?? '')]) }}</p>
+                        <p class="m-0 text-xs leading-normal text-loss [overflow-wrap:anywhere]" data-test="lobby-rejected">{{ __('A report was rejected by :name: :reason', ['name' => (string) ($lobby['rejected']['name'] ?? ''), 'reason' => (string) ($lobby['rejected']['reason'] ?? '')]) }}</p>
                     @endif
                     @if ($report !== null)
                         <p class="m-0 text-xs leading-normal text-ink-2" data-test="lobby-reported">{{ __('Reported by :name at :time.', ['name' => (string) ($report['name'] ?? ''), 'time' => $time($report['at'] ?? null)]) }}</p>
