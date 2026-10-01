@@ -4,13 +4,15 @@
  * Run by App\Support\Stacker\NodeVerifier as
  *   node --max-old-space-size=64 resources/js/stacker/verify.mjs
  * with one JSON object on stdin:
- *   {replay, seed, engine, claimed: {ticks, hash}, limits: {ticks, inputs, bytes}}
+ *   {replay, seed, engine, claimed: {ticks, hash}, limits: {ticks, inputs, bytes, inputsPerTick, inputSlack}}
  * and answers one JSON line on stdout, exit code 0:
  *   {ok: true, ticks, lines, pieces, hash, settings, replay}
  *   {ok: false, reason}  reason: malformed | oversize | engine | seed | unfinished | trailing | mismatch | crash
- * `replay` is the run re-encoded from exactly the inputs it used: what the league keeps,
- * never the submitted bytes. Inputs after the run ended (`trailing`) and non-canonical
- * varints (`malformed`, refused by the decoder) are padding and reject the run.
+ * `replay` is the run re-encoded from its decoded inputs (for a valid run the same bytes
+ * as submitted). What bounds its size is not the encoding but the checks: inputs after
+ * the run ended (`trailing`), more inputs than the played time allows (`oversize`: at
+ * most ceil(ticks * inputsPerTick) + inputSlack, so no-op inputs cannot pad a run) and
+ * non-canonical varints (`malformed`, refused by the decoder).
  * `crash` is the engine throwing on this replay, caught here: the only crash that
  * rejects a run. No answer at all (a non-zero exit, a missing or broken script,
  * a signal) says nothing about the run, so the caller leaves it pending.
@@ -56,7 +58,8 @@ export async function verify(request, engines = ENGINES) {
     const { replay, seed, engine, claimed, limits } = request;
     if (typeof replay !== 'string' || typeof seed !== 'string' || typeof engine !== 'string'
         || !claimed || !Number.isInteger(claimed.ticks) || typeof claimed.hash !== 'string'
-        || !limits || !Number.isInteger(limits.ticks) || !Number.isInteger(limits.inputs) || !Number.isInteger(limits.bytes)) {
+        || !limits || !Number.isInteger(limits.ticks) || !Number.isInteger(limits.inputs) || !Number.isInteger(limits.bytes)
+        || typeof limits.inputsPerTick !== 'number' || !(limits.inputsPerTick > 0) || !Number.isInteger(limits.inputSlack)) {
         return { ok: false, reason: 'malformed' };
     }
     if (replay.length > limits.bytes) {
@@ -96,6 +99,9 @@ export async function verify(request, engines = ENGINES) {
     // the last tick played is result.ticks - 1: an input at result.ticks or later was never used
     if (inputs.some(([tick]) => tick >= result.ticks)) {
         return { ok: false, reason: 'trailing' };
+    }
+    if (inputs.length > Math.ceil(result.ticks * limits.inputsPerTick) + limits.inputSlack) {
+        return { ok: false, reason: 'oversize' };
     }
     if (result.ticks !== claimed.ticks || result.stateHash !== claimed.hash) {
         return { ok: false, reason: 'mismatch' };

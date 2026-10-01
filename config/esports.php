@@ -1183,14 +1183,22 @@ return [
     | given up as pending (`stacker:sweep`; `stacker:reverify` sends pending
     | runs again). Rate limits: per player (issue_per_hour plus one issue per
     | issue_every_seconds, submits_per_minute), per network (IPv4 address
-    | or IPv6 /64: issue_per_ip_per_hour, submits_per_ip_per_minute; the main
-    | control) and for everyone together (issue_global_per_minute, only a
-    | circuit breaker: a fixed window, set high so a burst of free accounts
-    | cannot lock honest players out). Storage: only the verifier's canonical
-    | replay of a verified run is kept, practice runs keep none;
-    | replay_bytes_per_player caps a player's stored replays (oldest first,
-    | the personal best always kept); prune_days, after which runs without a
-    | verified time are deleted (`model:prune`, daily).
+    | or IPv6 /64: issue_per_ip_per_hour and issue_per_ip_per_minute,
+    | submits_per_ip_per_minute; the main control) and for everyone together
+    | (issue_global_per_minute, only a circuit breaker with a fixed window:
+    | with 30 issues per network and minute, a burst has to come from at
+    | least 100 networks to reach it, and while it is reached nobody can
+    | start a run until the minute is over). Storage: a verified run keeps
+    | the replay the verifier read, practice and rejected runs keep none.
+    | limits.inputs_per_tick and limits.input_slack bound a run's inputs by
+    | its played time (at most ceil(ticks * inputs_per_tick) + input_slack;
+    | measured bot runs use 0.76 to 0.83 per tick), so a stored 40-line
+    | replay stays at a few KB. replay_bytes_per_player caps a player's stored
+    | replays (oldest first, the personal best always kept);
+    | replay_bytes_total caps all of them together (beyond it only personal
+    | bests keep theirs, oldest others first, a warning in the log once a
+    | day); prune_days, after which runs without a verified time are deleted
+    | (`model:prune`, daily).
     |
     */
 
@@ -1202,15 +1210,19 @@ return [
             'ticks' => 36000,
             'inputs' => 20000,
             'bytes' => 65536,
+            'inputs_per_tick' => 1.0,
+            'input_slack' => 64,
         ],
         'slack_seconds' => 20,
         'issue_every_seconds' => 2,
         'issue_per_hour' => 400,
         'submits_per_minute' => 30,
         'issue_per_ip_per_hour' => 1200,
+        'issue_per_ip_per_minute' => 30,
         'submits_per_ip_per_minute' => 90,
         'issue_global_per_minute' => 3000,
         'replay_bytes_per_player' => 524288,
+        'replay_bytes_total' => 268435456,
         'prune_days' => 30,
         'verifier' => [
             'node' => env('ESPORTS_BLOCKFILL_NODE', 'node'),

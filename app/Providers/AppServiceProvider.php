@@ -142,6 +142,7 @@ class AppServiceProvider extends ServiceProvider
             Limit::perSecond(1, (int) config('esports.blockfill.issue_every_seconds'))->by('stacker-issue-gap:'.$request->user()?->getAuthIdentifier()),
             Limit::perHour((int) config('esports.blockfill.issue_per_hour'))->by('stacker-issue-hour:'.$request->user()?->getAuthIdentifier()),
             Limit::perHour((int) config('esports.blockfill.issue_per_ip_per_hour'))->by('stacker-issue-net:'.StackerRuns::network($request->ip())),
+            Limit::perMinute((int) config('esports.blockfill.issue_per_ip_per_minute'))->by('stacker-issue-net-minute:'.StackerRuns::network($request->ip())),
             Limit::perMinute((int) config('esports.blockfill.issue_global_per_minute'))->by('stacker-issue-global'),
         ]);
         // The result screen asks for a submitted run's verdict about once a second until it has one.

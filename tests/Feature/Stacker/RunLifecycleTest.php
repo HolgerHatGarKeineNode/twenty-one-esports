@@ -17,6 +17,7 @@ use App\Support\Stacker\StackerVerdict;
 use App\Support\Stacker\Verifier;
 use Illuminate\Console\Scheduling\Schedule;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Queue;
 use Illuminate\Support\Facades\Route;
 use Illuminate\Testing\TestResponse;
@@ -87,7 +88,7 @@ test('a player gets a one-time token and a fresh seed, only the token\'s hash is
     expect($issued['token'])->toMatch('/^[A-Za-z0-9]{40}$/')
         ->and($issued['seed'])->toMatch('/^[0-9a-f]{32}$/')
         ->and($issued['engine'])->toBe('bf1')
-        ->and($issued['limits'])->toBe(['ticks' => 36000, 'inputs' => 20000, 'bytes' => 65536])
+        ->and($issued['limits'])->toBe(['ticks' => 36000, 'inputs' => 20000, 'bytes' => 65536, 'inputs_per_tick' => 1, 'input_slack' => 64])
         ->and($run->token_hash)->toBe(hash('sha256', $issued['token']))
         ->and(json_encode($run->getAttributes()))->not->toContain($issued['token'])
         ->and($run->status)->toBe(StackerRunStatus::Issued);
@@ -313,4 +314,60 @@ test('old runs without a verified time are pruned, a stuck verification goes bac
 
     $scheduled = collect(app(Schedule::class)->events())->map(fn ($event): string => (string) $event->command)->implode("\n");
     expect($scheduled)->toContain('stacker:sweep')->toContain('model:prune');
+});
+
+test('a submission with more inputs than its played time allows is refused before the verifier, and nothing is stored', function () {
+    BlockfillOn::play();
+
+    foreach (['forty-lines-noop-prefix', 'forty-lines-finishing-tick'] as $name) {
+        $issued = issueRun(User::factory()->create());
+        $replay = trim((string) file_get_contents(base_path("tests/Fixtures/stacker/{$name}.replay")));
+
+        submitForty($issued['token'], 500, ['replay' => $replay])->assertAccepted()->assertJson(['status' => 'rejected', 'reason' => 'oversize']);
+        expect(runOf($issued)->replay)->toBeNull($name);
+    }
+
+    expect($this->verifier->asked)->toBe([]);
+});
+
+test('above the league-wide replay ceiling only personal bests keep their replay, the oldest others go first', function () {
+    BlockfillOn::play();
+    config(['esports.blockfill.replay_bytes_total' => 4000]);
+    Log::spy();
+    $kilobyte = str_repeat('A', 1000);
+    [$anna, $bert] = User::factory()->count(2)->create();
+    $annaBest = StackerRun::factory()->for($anna)->verified(900)->create(['replay' => $kilobyte]);
+    $annaOld = StackerRun::factory()->for($anna)->verified(1000)->create(['replay' => $kilobyte]);
+    $bertOld = StackerRun::factory()->for($bert)->verified(1100)->create(['replay' => $kilobyte]);
+    $bertNewer = StackerRun::factory()->for($bert)->verified(1050)->create(['replay' => $kilobyte]);
+
+    // Bert's new best (958 ticks, 1000 bytes): 5000 > 4000, Anna's older run goes first
+    $this->verifier->verdict = StackerVerdict::verified(['das' => 8, 'arr' => 1, 'sdf' => 20], $kilobyte);
+    $best = issueRun($bert);
+    submitForty($best['token'])->assertAccepted();
+
+    expect(runOf($best)->replay)->toBe($kilobyte)
+        ->and($annaOld->refresh()->replay)->toBeNull()
+        ->and($annaBest->refresh()->replay)->toBe($kilobyte)
+        ->and($bertOld->refresh()->replay)->toBe($kilobyte)
+        ->and($bertNewer->refresh()->replay)->toBe($kilobyte);
+
+    // a ceiling below the personal bests alone: every other replay goes, both bests stay; one warning a day
+    config(['esports.blockfill.replay_bytes_total' => 1500]);
+    app(StackerRuns::class)->enforceReplayCeiling();
+    app(StackerRuns::class)->enforceReplayCeiling();
+    expect(StackerRun::query()->whereNotNull('replay')->pluck('id')->sort()->values()->all())->toBe([$annaBest->id, runOf($best)->id]);
+    Log::shouldHaveReceived('warning')->once();
+});
+
+test('issuing is also limited per network and minute, so a burst from a few networks cannot reach the league-wide breaker', function () {
+    BlockfillOn::play();
+    config(['esports.blockfill.issue_per_ip_per_minute' => 2]);
+    $issueFrom = fn (string $ip) => $this->actingAs(User::factory()->create())->withServerVariables(['REMOTE_ADDR' => $ip])->postJson(route('stacker.runs.issue'));
+
+    $issueFrom('203.0.113.5')->assertCreated();
+    $issueFrom('203.0.113.5')->assertCreated();
+    $issueFrom('203.0.113.5')->assertTooManyRequests();
+    $issueFrom('203.0.113.6')->assertCreated();
+    expect(config('esports.blockfill.issue_per_ip_per_minute'))->toBe(2);
 });

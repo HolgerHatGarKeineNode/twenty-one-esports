@@ -7,7 +7,9 @@ use App\Jobs\VerifyStackerRun;
 use App\Models\StackerRun;
 use App\Models\User;
 use Carbon\CarbonInterface;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
 
 /**
@@ -34,12 +36,16 @@ use Illuminate\Support\Str;
  * - finish(): the verifier's verdict; an unavailable verifier leaves the run
  *   `pending` (fail-closed: no score until it is checked).
  *
- * Storage stays bounded (security audits F1, N1): the submitted replay is
- * kept only while a run is verifying or pending (the verifier needs it); a
- * verified run keeps the verifier's canonical re-encoding of exactly the
- * inputs it used, never the submitted bytes; rejected and practice runs
- * keep none. A player's stored replays stay within
- * `replay_bytes_per_player` (enforceReplayBudget()). Runs without a verified time are pruned after `prune_days`
+ * Storage stays bounded (security audits F1, N1, R1). The size of a replay
+ * is bounded by its played time: a submission with more inputs than
+ * ceil(ticks * limits.inputs_per_tick) + limits.input_slack is refused here,
+ * before the verifier (which checks the same on the inputs it replays), so
+ * no-op inputs cannot pad a run. The submitted replay is kept only while a
+ * run is verifying or pending; a verified run keeps the replay the verifier
+ * answered with; rejected and practice runs keep none. Stored replays stay
+ * within `replay_bytes_per_player` per player (enforceReplayBudget()) and
+ * `replay_bytes_total` for the league (enforceReplayCeiling()), personal
+ * bests always kept. Runs without a verified time are pruned after `prune_days`
  * (StackerRun::prunable()). sweepStale() gives up verifications that never
  * came back, reverifyPending() sends pending runs again (console only).
  */
@@ -145,8 +151,11 @@ final class StackerRuns
             $fields += ['status' => StackerRunStatus::Rejected, 'reason' => 'oversize'];
         } elseif (! is_string($replay) || $replay === '' || preg_match('/^[A-Za-z0-9_-]+$/', $replay) !== 1
             || ! is_int($ticks) || $ticks < 1 || $ticks > (int) $limits['ticks']
-            || ! is_string($hash) || preg_match('/^[0-9a-f]{8}$/', $hash) !== 1) {
+            || ! is_string($hash) || preg_match('/^[0-9a-f]{8}$/', $hash) !== 1
+            || ($count = self::replayInputCount($replay)) === null) {
             $fields += ['status' => StackerRunStatus::Rejected, 'reason' => 'malformed'];
+        } elseif ($count > self::maxInputs($ticks)) {
+            $fields += ['status' => StackerRunStatus::Rejected, 'reason' => 'oversize'];
         } else {
             $fields += ['ticks' => $ticks, 'state_hash' => $hash];
             $fields += $this->outcome($run, $ticks, $now);
@@ -192,6 +201,112 @@ final class StackerRuns
 
         if ($finished && $verdict->outcome === StackerVerdict::VERIFIED) {
             $this->enforceReplayBudget($run->user_id);
+            $this->enforceReplayCeiling();
+        }
+    }
+
+    /**
+     * The most inputs a run of `$ticks` may carry.
+     */
+    public static function maxInputs(int $ticks): int
+    {
+        $limits = (array) config('esports.blockfill.limits');
+
+        return (int) ceil($ticks * (float) $limits['inputs_per_tick']) + (int) $limits['input_slack'];
+    }
+
+    /**
+     * The input count a replay declares in its header (resources/js/stacker/replay.js:
+     * version, engine, seed, das, arr, sdf, count), or null if the header does not parse.
+     */
+    public static function replayInputCount(string $replay): ?int
+    {
+        $bytes = base64_decode(strtr($replay, '-_', '+/'), true);
+
+        if ($bytes === false) {
+            return null;
+        }
+
+        $at = 0;
+        $varint = function () use ($bytes, &$at): ?int {
+            $value = 0;
+
+            for ($shift = 0; $shift < 28; $shift += 7) {
+                if ($at >= strlen($bytes)) {
+                    return null;
+                }
+
+                $byte = ord($bytes[$at++]);
+                $value |= ($byte & 0x7F) << $shift;
+
+                if (($byte & 0x80) === 0) {
+                    return $value;
+                }
+            }
+
+            return null;
+        };
+
+        $version = $varint();
+        $engineLength = $varint();
+
+        if ($version === null || $engineLength === null || $engineLength > 16) {
+            return null;
+        }
+
+        $at += $engineLength + 16;
+
+        foreach (range(1, 3) as $setting) {
+            if ($varint() === null) {
+                return null;
+            }
+        }
+
+        return $varint();
+    }
+
+    /**
+     * Above `replay_bytes_total` for all stored replays together, only
+     * personal bests keep theirs: the other verified replays go, oldest
+     * first, until the total fits again. While the ceiling is reached a
+     * warning goes to the log, once a day.
+     */
+    public function enforceReplayCeiling(): void
+    {
+        $ceiling = (int) config('esports.blockfill.replay_bytes_total');
+        $total = (int) StackerRun::query()->whereNotNull('replay')->sum(DB::raw('length(replay)'));
+
+        if ($total <= $ceiling) {
+            return;
+        }
+
+        if (Cache::add('stacker:replay-ceiling-warned:'.now()->toDateString(), true, now()->addDay())) {
+            Log::warning('Blockfill replays reached the league-wide ceiling; only personal bests keep their replay now.', ['bytes' => $total, 'ceiling' => $ceiling]);
+        }
+
+        $verified = StackerRunStatus::Verified->value;
+        // a personal best: no verified run of the same player is faster, or as fast and older
+        $candidates = StackerRun::query()
+            ->from('stacker_runs as r')
+            ->where('r.status', $verified)
+            ->whereNotNull('r.replay')
+            ->whereExists(fn ($better) => $better->from('stacker_runs as b')
+                ->whereColumn('b.user_id', 'r.user_id')
+                ->where('b.status', $verified)
+                ->where(fn ($faster) => $faster->whereColumn('b.ticks', '<', 'r.ticks')
+                    ->orWhere(fn ($tie) => $tie->whereColumn('b.ticks', 'r.ticks')->whereColumn('b.id', '<', 'r.id'))))
+            ->orderBy('r.id')
+            ->select(['r.id', DB::raw('length(r.replay) as bytes')])
+            ->toBase()
+            ->cursor();
+
+        foreach ($candidates as $candidate) {
+            if ($total <= $ceiling) {
+                break;
+            }
+
+            StackerRun::query()->whereKey($candidate->id)->update(['replay' => null]);
+            $total -= (int) $candidate->bytes;
         }
     }
 

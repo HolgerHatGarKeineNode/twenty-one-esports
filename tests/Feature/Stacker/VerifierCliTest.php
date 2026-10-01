@@ -70,6 +70,8 @@ test('the verifier rejects what does not replay to the claim', function (string 
     'an engine it does not know' => ['forty-lines', ['engine' => 'bf9'], [], 'engine'],
     'a replay over the size limit' => ['forty-lines', [], ['esports.blockfill.limits.bytes' => 1000], 'oversize'],
     'inputs after the run ended (padding)' => ['forty-lines', ['replay' => trim((string) file_get_contents(__DIR__.'/../../Fixtures/stacker/forty-lines-padded.replay'))], [], 'trailing'],
+    'no-op inputs before the finish (the re-audit probe, 20,000 inputs)' => ['forty-lines', ['replay' => trim((string) file_get_contents(__DIR__.'/../../Fixtures/stacker/forty-lines-noop-prefix.replay'))], [], 'oversize'],
+    'inputs inside the finishing tick, after the last lock' => ['forty-lines', ['replay' => trim((string) file_get_contents(__DIR__.'/../../Fixtures/stacker/forty-lines-finishing-tick.replay'))], [], 'oversize'],
     'an overlong varint (padding inside the bytes)' => ['forty-lines', ['replay' => trim((string) file_get_contents(__DIR__.'/../../Fixtures/stacker/forty-lines-overlong.replay'))], [], 'malformed'],
     'a replay the engine throws on (answered by verify.mjs itself)' => ['forty-lines', [], ['esports.blockfill.verifier.script' => 'tests/Fixtures/stacker/throwing-engine-verifier.mjs'], 'crash'],
 ]);

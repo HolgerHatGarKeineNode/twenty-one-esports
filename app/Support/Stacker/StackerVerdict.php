@@ -17,7 +17,7 @@ final readonly class StackerVerdict
 
     /**
      * @param  array{das: int, arr: int, sdf: int}|null  $settings
-     * @param  string|null  $replay  the canonical replay the verifier re-encoded (verified only)
+     * @param  string|null  $replay  the replay as the verifier re-encoded it from its inputs (verified only)
      */
     private function __construct(
         public string $outcome,

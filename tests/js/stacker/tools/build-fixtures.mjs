@@ -241,10 +241,20 @@ for (const name of ['forty-lines', 'top-out']) {
         const bytes = Buffer.from(canonical, 'base64url');
         // the version (1) written as two bytes: 0x81 0x00
         const overlong = Buffer.concat([Buffer.from([0x81, 0x00]), bytes.subarray(1)]).toString('base64url');
-        console.log('padded', padded.length, 'chars; overlong', overlong.length, 'chars');
+        // 1200 hold presses and releases inside the finishing tick, after the lock that ends the run: never applied
+        const last = used[used.length - 1][0];
+        const finishing = [...used];
+        for (let i = 0; i < 1200; i++) {
+            finishing.push([last, 7, 1], [last, 7, 0]);
+        }
+        const inside = R.encodeReplay(header, finishing);
+        console.log('padded', padded.length, 'chars; overlong', overlong.length, 'chars; finishing-tick', inside.length, 'chars');
         if (process.argv[3] === 'write') {
             writeFileSync(`${out}/${name}-padded.replay`, padded + '\n');
             writeFileSync(`${out}/${name}-overlong.replay`, overlong + '\n');
+            writeFileSync(`${out}/${name}-finishing-tick.replay`, inside + '\n');
         }
+        // forty-lines-noop-prefix.replay is not written here: it is the security re-audit's own probe
+        // (20,000 inputs, releases of keys already up and hold toggles while hold is spent, before the finish).
     }
 }

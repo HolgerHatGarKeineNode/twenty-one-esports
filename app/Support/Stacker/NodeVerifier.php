@@ -46,6 +46,8 @@ final class NodeVerifier implements Verifier
                 'ticks' => (int) $config['limits']['ticks'],
                 'inputs' => (int) $config['limits']['inputs'],
                 'bytes' => (int) $config['limits']['bytes'],
+                'inputsPerTick' => (float) $config['limits']['inputs_per_tick'],
+                'inputSlack' => (int) $config['limits']['input_slack'],
             ],
         ], JSON_THROW_ON_ERROR);
 
@@ -70,7 +72,7 @@ final class NodeVerifier implements Verifier
             $settings = $answer['settings'] ?? null;
             $replay = $answer['replay'] ?? null;
 
-            // the canonical replay is what the league keeps: without one the answer is incomplete
+            // the replay the verifier answers with is what the league keeps: without one the answer is incomplete
             if (! is_string($replay) || $replay === '' || strlen($replay) > (int) $config['limits']['bytes'] || preg_match('/^[A-Za-z0-9_-]+$/', $replay) !== 1) {
                 return StackerVerdict::unavailable('verifier-unavailable');
             }
