@@ -529,8 +529,33 @@ new #[Layout('layouts::app', ['section' => 'tournaments'])] class extends Compon
         {{-- On a phone one compact row without the label, so the pot's number stays in the first screen for organizers too. --}}
         <div class="-mb-10 flex flex-col gap-2 px-4 pt-2 sm:-mb-6 sm:flex-row sm:items-center sm:gap-4 sm:pt-4 lg:-mb-10 lg:px-12" data-test="manage-bar">
             <span class="text-[13px] text-ink-2 max-sm:sr-only">{{ __('You manage this tournament.') }}</span>
-            <x-tournaments.manage-actions :tournament="$tournament" compact />
+            <x-tournaments.manage-actions :tournament="$tournament" :except="['publish']" compact />
         </div>
+    @endif
+
+    {{--
+        A draft at the very top, for whoever may publish it (user, 2026-10-01: the publish form sat far down the
+        page and an admin could not find it). The form is inline, so "Publish tournament" in the admin list and
+        on the edit page (#publish) lands right on it; the create flow lands here too, with its notice.
+    --}}
+    @if ($status === TournamentStatus::Draft && $this->canManage)
+        <section id="publish" aria-labelledby="draft-h" class="mx-4 flex scroll-mt-24 flex-col gap-3 rounded-card bg-card px-4 py-5 shadow-[inset_0_0_0_1px_#F7931A] lg:mx-12 lg:px-6" data-test="draft-banner">
+            @if (is_string($created = session('status')) && $created !== '')
+                <p role="status" class="m-0 rounded-md bg-win-tint px-3 py-2 text-[13px] text-win" data-test="draft-notice">{{ $created }}</p>
+            @endif
+            <div class="flex flex-wrap items-center gap-x-3 gap-y-2">
+                <span class="inline-flex h-6 items-center rounded-xs bg-btc-chip px-2 text-xs font-bold text-btc-hi">{{ $status->label() }}</span>
+                <h2 id="draft-h" class="m-0 text-[15px] font-bold">{{ __('Players cannot see this tournament yet') }}</h2>
+            </div>
+            <p class="m-0 max-w-[80ch] text-[13px] leading-normal text-ink-2">{{ __('It is a draft: only you, its tournament directors and the league’s admins can open this page.') }} {{ __('The league publishes the tournament to its calendar on Nostr. Players can sign up until the time you pick; then the draw runs from the next Bitcoin block.') }}</p>
+            <form wire:submit="publish" class="flex flex-col gap-3" data-test="publish-form">
+                <x-berlin-datetime-input model="closesAt" :label="__('Sign-up closes')" :value="$closesAt" test="closes-at" class="sm:max-w-[400px]" />
+                @if ($error !== '')
+                    <p class="m-0 text-[13px] text-loss" role="alert">{{ $error }}</p>
+                @endif
+                <div><x-button type="submit" icon="send" data-test="publish">{{ __('Publish tournament') }}</x-button></div>
+            </form>
+        </section>
     @endif
 
     {{-- A running casual cup: the viewer's own match first, above the hero (P25, the player it concerns). --}}
@@ -725,18 +750,6 @@ new #[Layout('layouts::app', ['section' => 'tournaments'])] class extends Compon
 
         {{-- P47: a tip for the winners (NIP-57), each whose profile has a Lightning address; nothing otherwise --}}
         <div class="mx-4 has-[>.hidden]:hidden lg:mx-12"><livewire:zap-winner type="tournament" :subject="(string) $tournament->id" :wire:key="'zap-tournament-'.$tournament->id" /></div>
-    @endif
-
-    @if ($status === TournamentStatus::Draft && $this->canManage)
-        <form wire:submit="publish" class="mx-4 flex flex-col gap-3 rounded-card bg-card px-4 py-5 shadow-[inset_0_0_0_1px_#F7931A] lg:mx-12 lg:px-6" data-test="publish-form">
-            <h2 class="m-0 text-[15px] font-bold">{{ __('Publish and open sign-up') }}</h2>
-            <p class="m-0 max-w-[80ch] text-[13px] leading-normal text-ink-2">{{ __('The league publishes the tournament to its calendar on Nostr. Players can sign up until the time you pick; then the draw runs from the next Bitcoin block.') }}</p>
-            <x-berlin-datetime-input model="closesAt" :label="__('Sign-up closes')" :value="$closesAt" test="closes-at" class="sm:max-w-[400px]" />
-            @if ($error !== '')
-                <p class="m-0 text-[13px] text-loss" role="alert">{{ $error }}</p>
-            @endif
-            <div><x-button type="submit" icon="send" data-test="publish">{{ __('Publish tournament') }}</x-button></div>
-        </form>
     @endif
 
     {{-- Who plays --}}

@@ -73,7 +73,8 @@ test('12 blitz players in one evening: Swiss with 6 rounds is recommended and cr
         ->set('name', 'Blitz Night Munich')
         ->call('create')
         ->assertHasNoErrors()
-        ->assertRedirect(route('admin.tournaments'));
+        // Straight onto the draft, whose banner holds the publish form.
+        ->assertRedirect(route('tournaments.show', Tournament::query()->sole()));
 
     $tournament = Tournament::query()->sole();
 

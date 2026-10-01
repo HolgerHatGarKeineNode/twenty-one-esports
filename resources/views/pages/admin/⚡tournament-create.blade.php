@@ -140,7 +140,8 @@ new #[Title('New tournament')] #[Layout('layouts::app', ['section' => 'admin'])]
 
         session()->flash('status', __(':name was created as a draft.', ['name' => $tournament->name]));
 
-        $this->redirectRoute('admin.tournaments', navigate: false);
+        // Straight onto the draft, whose banner at the top holds the publish form (user, 2026-10-01).
+        $this->redirectRoute('tournaments.show', $tournament, navigate: false);
     }
 }; ?>
 

@@ -2,8 +2,10 @@
 
 use App\Enums\TournamentStatus;
 use App\Models\Admin;
+use App\Models\Tournament;
 use App\Models\TournamentSignup;
 use App\Models\User;
+use App\Support\LeagueTime;
 use Illuminate\Support\Facades\File;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Queue;
@@ -222,4 +224,160 @@ test('a running tournament takes a new deadline on the edit page, with a clean c
     expect(implode("\n", editState($page)['errors']))->toContain('positive control');
 
     fwrite(STDERR, "\n[tournament-deadlines] ".json_encode($measured)."\n");
+});
+
+/*
+ * Publishing a draft (user, 2026-10-01: "du hast die publish Funktion total
+ * versteckt"): the draft's row on /admin/tournaments leads with an orange
+ * "Publish tournament", and the draft's page opens with a banner holding the
+ * publish form, both inside the first screen at 375 and 1440.
+ */
+const PUBLISH_STATE = <<<'JS'
+    () => {
+        const rect = (selector) => { const el = document.querySelector(selector); if (!el) return null; const r = el.getBoundingClientRect(); return { top: Math.round(r.top), bottom: Math.round(r.bottom), width: Math.round(r.width) }; };
+        const draftRow = [...document.querySelectorAll('[data-test=tournament-row]')].find((row) => row.querySelector('[data-test=manage-publish]'));
+        return {
+            path: location.pathname,
+            hash: location.hash,
+            viewport: window.innerHeight,
+            scrollY: Math.round(window.scrollY),
+            overflow: document.documentElement.scrollWidth - document.documentElement.clientWidth,
+            lang: document.documentElement.lang,
+            publishButtons: document.querySelectorAll('[data-test=manage-publish]').length,
+            firstAction: draftRow?.querySelector('[data-test=manage-actions] > *')?.dataset.test ?? null,
+            listButton: rect('[data-test=manage-publish]'),
+            listButtonColor: (() => { const b = document.querySelector('[data-test=manage-publish]'); return b ? getComputedStyle(b).backgroundColor : null; })(),
+            banner: rect('[data-test=draft-banner]'),
+            bannerText: document.querySelector('[data-test=draft-banner]')?.textContent.replace(/\s+/g, ' ').trim() ?? null,
+            publishButton: rect('[data-test=publish]'),
+            notice: document.querySelector('[data-test=draft-notice]')?.textContent.trim() ?? null,
+            cta: document.querySelector('[data-test=signup-cta]')?.dataset.state ?? null,
+            rows: [...document.querySelectorAll('[data-test=tournament-row]')].map((row) => row.textContent.replace(/\s+/g, ' ').trim()),
+            errors: window.__errors,
+        };
+    }
+    JS;
+
+test('an admin publishes a draft from its orange button on the tournaments list, through the banner at the top of its page, at 375 and 1440 px', function () {
+    config(['esports.league.nsec' => (new TestSigner)->secret]);
+    $admin = User::factory()->create(['name' => 'satsjaeger']);
+    Admin::query()->create(['pubkey' => $admin->pubkey]);
+    $creator = organizer();
+    $creator->forceFill(['name' => 'markusturm'])->save();
+    $draft = Tournament::factory()->create(['created_by_id' => $creator->id, 'name' => 'Fifa27 Bitcoin Metropole Kempten']);
+    $second = Tournament::factory()->create(['created_by_id' => $creator->id, 'name' => 'Blitz Night Kempten', 'starts_at' => now()->addDays(9)->setTime(19, 0)]);
+    openTournament(['name' => 'Rocket Sunday Munich'], rocketLeague: true);
+
+    $list = route('admin.tournaments');
+    $page = visit(BrowserLogin::url($admin))->page();
+    $page->context()->addInitScript(BrowserConsole::COLLECTOR);
+    $state = fn (): array => [...$page->evaluate(PUBLISH_STATE), 'bad' => $page->evaluate(BrowserConsole::BAD_RESPONSES)];
+    $measured = [];
+
+    foreach ([[375, 812], [1440, 900]] as [$width, $height]) {
+        $page->setViewportSize($width, $height);
+
+        // The list: one orange Publish per draft, the first action of its row.
+        $page->goto(ComputeUrl::from($list));
+        BrowserWait::until($page, '() => document.querySelectorAll("[data-test=tournament-row]").length === 3', 10_000);
+        editShot($page, "publish-admin-list-{$width}");
+        $listed = $state();
+
+        expect($listed['publishButtons'])->toBe(2)
+            ->and($listed['firstAction'])->toBe('manage-publish')
+            ->and($listed['listButtonColor'])->toBe('rgb(247, 147, 26)')
+            ->and($listed['lang'])->toBe('en')
+            ->and($listed['overflow'])->toBeLessThanOrEqual(0)
+            ->and($listed['errors'])->toBe([])
+            ->and($listed['bad'])->toBe([]);
+
+        // The draft's page: the banner and its Publish button in the first screen, no sideways scroll.
+        $page->goto(ComputeUrl::from(route('tournaments.show', $second)));
+        BrowserWait::until($page, '() => document.querySelector("[data-test=draft-banner]") !== null', 10_000);
+        editShot($page, "publish-draft-page-{$width}");
+        $shown = $state();
+        $measured[$width] = ['list button' => $listed['listButton'], 'banner' => $shown['banner'], 'publish' => $shown['publishButton'], 'viewport' => $shown['viewport'], 'overflow' => [$listed['overflow'], $shown['overflow']]];
+
+        expect($shown['banner']['top'])->toBeGreaterThanOrEqual(0)->toBeLessThan($shown['viewport'])
+            ->and($shown['publishButton']['bottom'])->toBeLessThanOrEqual($shown['viewport'])
+            ->and($shown['bannerText'])->toContain('Players cannot see this tournament yet')->toContain('Publish tournament')
+            ->and($shown['publishButtons'])->toBe(0)
+            ->and($shown['overflow'])->toBeLessThanOrEqual(0)
+            ->and($shown['errors'])->toBe([])
+            ->and($shown['bad'])->toBe([]);
+    }
+
+    // The click path at 375: Publish on the list lands on the form, the close time is set, and sign-up opens.
+    $page->setViewportSize(375, 812);
+    $page->goto(ComputeUrl::from($list));
+    BrowserWait::until($page, '() => document.querySelectorAll("[data-test=manage-publish]").length === 2', 10_000);
+    $page->locator('[data-test=tournament-row]:has-text("Fifa27 Bitcoin Metropole Kempten") [data-test=manage-publish]')->click();
+    BrowserWait::until($page, '() => location.hash === "#publish" && document.querySelector("[data-test=draft-banner]") !== null', 10_000);
+    $landed = $state();
+
+    expect($landed['path'])->toBe(parse_url(route('tournaments.show', $draft), PHP_URL_PATH))
+        ->and($landed['banner']['top'])->toBeGreaterThanOrEqual(0)->toBeLessThan($landed['viewport'])
+        ->and($landed['publishButton']['bottom'])->toBeLessThanOrEqual($landed['viewport']);
+
+    $closes = LeagueTime::input($draft->starts_at->copy()->subHours(2));
+    $page->locator('[data-test=closes-at] input')->fill($closes);
+    $page->locator('[data-test=publish]')->click();
+    BrowserWait::until($page, '() => document.querySelector("[data-test=draft-banner]") === null && document.querySelector("[data-test=signup-cta]") !== null', 10_000);
+    $published = $state();
+    $draft->refresh();
+
+    expect($draft->status)->toBe(TournamentStatus::Signup)
+        ->and(LeagueTime::input($draft->signup_closes_at))->toBe($closes)
+        ->and($published['cta'])->toBe('open')
+        ->and($published['overflow'])->toBeLessThanOrEqual(0)
+        ->and($published['errors'])->toBe([])
+        ->and($published['bad'])->toBe([]);
+
+    // Back on the list its row says Sign-up open and carries no Publish; the other draft still does.
+    $page->goto(ComputeUrl::from($list));
+    BrowserWait::until($page, '() => document.querySelectorAll("[data-test=tournament-row]").length === 3', 10_000);
+    $after = $state();
+    $row = collect($after['rows'])->first(fn (string $row): bool => str_contains($row, 'Fifa27 Bitcoin Metropole Kempten'));
+
+    expect($row)->toStartWith('Sign-up open')
+        ->and($after['publishButtons'])->toBe(1)
+        ->and($after['errors'])->toBe([])
+        ->and($after['bad'])->toBe([]);
+
+    // The edit page's Save and publish keeps a typed name: it saves, then lands on the banner.
+    $page->goto(ComputeUrl::from(route('admin.tournaments.edit', $second)));
+    BrowserWait::until($page, '() => document.querySelector("[data-test=edit-publish-top]") !== null', 10_000);
+    $page->locator('[data-test=edit-name]')->fill('Blitz Night Kempten II');
+    $page->locator('[data-test=edit-publish-top]')->click();
+    BrowserWait::until($page, '() => location.hash === "#publish" && document.querySelector("[data-test=draft-banner]") !== null', 10_000);
+    $saved = $state();
+
+    expect($second->refresh()->name)->toBe('Blitz Night Kempten II')
+        ->and($saved['path'])->toBe(parse_url(route('tournaments.show', $second), PHP_URL_PATH))
+        ->and($saved['banner']['top'])->toBeLessThan($saved['viewport'])
+        ->and($saved['errors'])->toBe([])
+        ->and($saved['bad'])->toBe([]);
+
+    // German: the banner of the other draft.
+    $page->goto(ComputeUrl::from(route('locale.switch', 'de', false)));
+    $page->setViewportSize(1440, 900);
+    $page->goto(ComputeUrl::from(route('tournaments.show', $second)));
+    BrowserWait::until($page, '() => document.querySelector("[data-test=draft-banner]") !== null', 10_000);
+    editShot($page, 'publish-draft-page-de-1440');
+    $german = $state();
+
+    expect($german['lang'])->toBe('de')
+        ->and($german['bannerText'])->toContain('Spieler sehen dieses Turnier noch nicht')->toContain('Turnier veröffentlichen')
+        ->and($german['banner']['top'])->toBeLessThan($german['viewport'])
+        ->and($german['overflow'])->toBeLessThanOrEqual(0)
+        ->and($german['errors'])->toBe([])
+        ->and($german['bad'])->toBe([]);
+
+    // Positive control: a thrown error and a broken image on this very page are caught.
+    $page->evaluate('() => { setTimeout(() => { throw new Error("positive control"); }); const img = new Image(); img.src = "/__missing-positive-control.png"; document.body.append(img); }');
+    BrowserWait::until($page, '() => window.__errors.length >= 2', 10_000);
+
+    expect(implode("\n", $state()['errors']))->toContain('positive control')->toContain('__missing-positive-control.png');
+
+    fwrite(STDERR, "\n[publish-cta] ".json_encode($measured)."\n");
 });

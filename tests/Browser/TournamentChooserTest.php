@@ -205,22 +205,25 @@ test('the chooser recommends live at 375 and 1440 px, through island requests on
         ->and(collect($control['livewire'])->where('html', true)->count())->toBe(1)
         ->and($control['errors'])->toBe([]);
 
-    // With a name the same button creates the draft and lands on the list, with its row.
+    // With a name the same button creates the draft and lands on its page, the banner with the notice and the publish form on top.
     $page->locator('[data-test=tournament-name]')->fill('Rocket Night Munich');
     $page->locator('[data-test=tournament-create-button]')->click();
-    BrowserWait::until($page, '() => location.pathname === "/admin/tournaments" && document.querySelector("[data-test=tournament-row]") !== null', 8_000);
+    BrowserWait::until($page, '() => location.pathname.startsWith("/tournaments/") && document.querySelector("[data-test=draft-banner]") !== null', 8_000);
     $listed = $page->evaluate('() => ({
-        rows: [...document.querySelectorAll("[data-test=tournament-row]")].map((row) => row.textContent.replace(/\s+/g, " ").trim()),
-        notice: document.querySelector("[data-test=tournaments-notice]")?.textContent.trim() ?? null,
+        hero: document.querySelector("[data-test=tournament-hero]")?.textContent.replace(/\\s+/g, " ").trim() ?? "",
+        notice: document.querySelector("[data-test=draft-notice]")?.textContent.trim() ?? null,
+        form: document.querySelector("[data-test=draft-banner] [data-test=publish-form]") !== null,
+        bannerTop: Math.round(document.querySelector("[data-test=draft-banner]").getBoundingClientRect().top),
+        viewport: window.innerHeight,
         errors: window.__errors,
     })');
 
-    expect($listed['rows'])->toHaveCount(1)
-        ->and($listed['rows'][0])->toContain('Draft')
-        ->and($listed['rows'][0])->toContain('Rocket Night Munich')
-        ->and($listed['rows'][0])->toContain('Rocket League 3v3')
-        ->and($listed['rows'][0])->toContain('Double Elimination')
+    expect($listed['hero'])->toContain('Rocket Night Munich')
+        ->and($listed['hero'])->toContain('Rocket League 3v3')
+        ->and($listed['hero'])->toContain('Double Elimination')
         ->and($listed['notice'])->toBe('Rocket Night Munich was created as a draft.')
+        ->and($listed['form'])->toBeTrue()
+        ->and($listed['bannerTop'])->toBeLessThan($listed['viewport'])
         ->and($listed['errors'])->toBe([])
         ->and(Tournament::query()->where('name', 'Rocket Night Munich')->sole())
         ->format->toBe(TournamentFormat::DoubleElimination)

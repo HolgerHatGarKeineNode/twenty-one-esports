@@ -12,6 +12,7 @@ use App\Support\LeagueTime;
 use App\Support\Tournaments\FormatOptions;
 use App\Support\Tournaments\GameProfile;
 use Illuminate\Support\Facades\Blade;
+use Livewire\Livewire;
 
 /*
 | Reaching tournaments (user, 2026-09-28): every game page shows the game's
@@ -179,4 +180,93 @@ test('a special tournament heads every page even when a casual cup starts sooner
     $this->get(route('home'))->assertOk()->assertDontSeeHtml('data-test="home-hero"')->assertSeeHtml('data-test="cup-mention"');
     $this->get(route('tournaments.index'))->assertOk()->assertDontSeeHtml('data-test="next-tournament"');
     expect($cup->refresh()->isCasualCup())->toBeTrue();
+});
+
+test('a draft puts Publish tournament first on the admin list, in a banner at the top of its page and on its edit page, for whoever may publish it', function () {
+    $owner = organizer();
+    $draft = Tournament::factory()->create(['created_by_id' => $owner->id, 'status' => TournamentStatus::Draft, 'name' => 'Draft Cup']);
+    $published = Tournament::factory()->signup()->create(['created_by_id' => $owner->id, 'name' => 'Open Cup', 'published_at' => now()]);
+    $publishHref = 'href="'.route('tournaments.show', $draft).'#publish"';
+
+    // The list: one Publish, the draft's, orange and before Edit; none for the published row.
+    foreach ([$owner, anAdmin()] as $manager) {
+        $list = $this->actingAs($manager)->get(route('admin.tournaments'))->assertOk()->getContent();
+        $draftRow = str($list)->after('>Draft Cup<')->before('</tr>')->toString();
+        $openRow = str($list)->after('>Open Cup<')->before('</tr>')->toString();
+        expect(substr_count($list, 'data-test="manage-publish"'))->toBe(1)
+            ->and($draftRow)->toContain($publishHref)
+            ->and(strpos($draftRow, 'data-test="manage-publish"'))->toBeLessThan(strpos($draftRow, 'data-test="manage-edit"'))
+            ->and(str($draftRow)->before('data-test="manage-publish"')->afterLast('<a ')->toString())->toContain('bg-btc ')
+            ->and($openRow)->toContain('data-test="manage-edit"')->not->toContain('manage-publish');
+    }
+
+    // The page: the banner with the form above the hero; the bar above it carries no second Publish.
+    $this->actingAs($owner)->get(route('tournaments.show', $draft))->assertOk()
+        ->assertSeeInOrder(['data-test="manage-bar"', 'id="publish"', 'data-test="draft-banner"', __('Players cannot see this tournament yet'),
+            'data-test="publish-form"', __('Publish tournament'), 'data-test="tournament-hero"'], false)
+        ->assertDontSeeHtml('data-test="manage-publish"');
+    $this->get(route('tournaments.show', $published))->assertOk()->assertDontSeeHtml('data-test="draft-banner"')->assertDontSeeHtml('data-test="publish-form"');
+
+    // The edit page: Save and publish at the top in the actions and beside the save, both a save first, never a plain link that drops edits.
+    $edit = $this->get(route('admin.tournaments.edit', $draft))->assertOk()->getContent();
+    $top = str($edit)->after('data-test="admin-actions"')->before('</header>')->toString();
+    expect($top)->toContain('wire:click="saveAndPublish"')->toContain('data-test="edit-publish-top"')->not->toContain('manage-publish')->not->toContain('#publish')
+        ->and(str($edit)->after('data-test="edit-save"')->before('</span>')->toString())->toContain('data-test="edit-publish"')->toContain('wire:click="saveAndPublish"')->not->toContain('#publish');
+    $this->get(route('admin.tournaments.edit', $published))->assertOk()->assertDontSeeHtml('saveAndPublish')->assertDontSeeHtml('data-test="manage-publish"');
+
+    // A tournament director who may not manage it sees the draft, but no banner and no Publish.
+    $director = User::factory()->create();
+    $draft->directors()->attach($director->id, ['added_by_id' => $owner->id]);
+    $this->actingAs($director)->get(route('tournaments.show', $draft))->assertOk()
+        ->assertDontSeeHtml('data-test="draft-banner"')->assertDontSeeHtml('data-test="publish-form"')->assertDontSeeHtml('#publish"');
+
+    // Another organizer's list does not hold the draft; a player has no list; a player and a guest get the draft's 404.
+    $this->actingAs(organizer())->get(route('admin.tournaments'))->assertOk()->assertDontSee('Draft Cup')->assertDontSeeHtml('manage-publish');
+    $this->actingAs(User::factory()->create())->get(route('admin.tournaments'))->assertForbidden();
+    $this->get(route('tournaments.show', $draft))->assertNotFound();
+    expect(Blade::render('<x-tournaments.manage-actions :tournament="$t" />', ['t' => $draft]))->not->toContain('manage-publish');
+    auth()->logout();
+    $this->get(route('tournaments.show', $draft))->assertNotFound();
+    expect(Blade::render('<x-tournaments.manage-actions :tournament="$t" />', ['t' => $draft]))->not->toContain('manage-publish');
+});
+
+test('a new draft lands on its page with the notice in the banner, and saving a draft says to publish it when ready', function () {
+    $draft = Tournament::factory()->create(['created_by_id' => organizer()->id, 'status' => TournamentStatus::Draft, 'name' => 'Draft Cup']);
+
+    $this->actingAs($draft->creator)->withSession(['status' => __(':name was created as a draft.', ['name' => 'Draft Cup'])])
+        ->get(route('tournaments.show', $draft))->assertOk()
+        ->assertSeeInOrder(['data-test="draft-banner"', 'data-test="draft-notice"', 'Draft Cup was created as a draft.', 'data-test="publish-form"'], false);
+
+    Livewire::actingAs($draft->creator)->test('pages::admin.tournament-edit', ['tournament' => $draft])
+        ->set('name', 'Draft Cup Renamed')
+        ->call('save')
+        ->assertSet('error', '')
+        ->assertSet('notice', __('Saved. Publish it when ready.'))
+        ->assertSeeHtml('data-test="edit-publish"');
+
+    expect($draft->refresh()->name)->toBe('Draft Cup Renamed')->and($draft->status)->toBe(TournamentStatus::Draft);
+});
+
+test('Save and publish on the edit page stores the edits before it opens the publish form, and a refused save stays with its errors', function () {
+    $draft = Tournament::factory()->create(['created_by_id' => organizer()->id, 'status' => TournamentStatus::Draft, 'name' => 'Draft Cup']);
+
+    Livewire::actingAs($draft->creator)->test('pages::admin.tournament-edit', ['tournament' => $draft])
+        ->set('name', '')
+        ->call('saveAndPublish')
+        ->assertHasErrors(['name' => 'required'])
+        ->assertNoRedirect();
+    expect($draft->refresh()->name)->toBe('Draft Cup');
+
+    Livewire::actingAs($draft->creator)->test('pages::admin.tournament-edit', ['tournament' => $draft])
+        ->set('name', 'Draft Cup Renamed')
+        ->call('saveAndPublish')
+        ->assertHasNoErrors()
+        ->assertSet('error', '')
+        ->assertRedirect(route('tournaments.show', $draft).'#publish');
+    expect($draft->refresh()->name)->toBe('Draft Cup Renamed')->and($draft->status)->toBe(TournamentStatus::Draft);
+
+    // Only a draft has it.
+    $open = Tournament::factory()->signup()->create(['created_by_id' => $draft->created_by_id, 'published_at' => now()]);
+    Livewire::actingAs($draft->creator)->test('pages::admin.tournament-edit', ['tournament' => $open])
+        ->call('saveAndPublish')->assertForbidden();
 });
