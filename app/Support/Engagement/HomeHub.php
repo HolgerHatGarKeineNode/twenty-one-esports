@@ -4,11 +4,15 @@ namespace App\Support\Engagement;
 
 use App\Enums\ChessGameStatus;
 use App\Enums\SeriesStatus;
+use App\Enums\TournamentFormat;
 use App\Enums\TournamentStatus;
+use App\Games\Blockfill;
 use App\Games\GameRegistry;
+use App\Games\ScoreGame;
 use App\Models\ChessGame;
 use App\Models\Clan;
 use App\Models\Rating;
+use App\Models\ScoreRun;
 use App\Models\SeriesMatch;
 use App\Models\Tournament;
 use App\Models\User;
@@ -16,18 +20,25 @@ use App\Support\Dock\DockItem;
 use App\Support\Dock\OpenMatches;
 use App\Support\GameNames;
 use App\Support\Rating\Ratings;
+use App\Support\Scores\ScoreRuns;
+use App\Support\Scores\ScoreStanding;
+use App\Support\Scores\ScoreWindow;
 use App\Support\Tournaments\TournamentLanding;
 use App\Support\Tournaments\TournamentPrizePool;
 use Carbon\CarbonInterface;
 use Illuminate\Database\Eloquent\Collection as EloquentCollection;
 use Illuminate\Support\Collection;
+use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\Route;
+use InvalidArgumentException;
 
 /**
  * What home shows as the league's hub (2026-09-27, "Hype auf der
  * Startseite"): the next tournaments with who is in, what is live, the
- * latest results, who joined, and the top of every ladder. Everything is
- * read from the league's own tables; nothing is sample data, and a part
- * with nothing to show is empty (home then says so and offers the action).
+ * latest results, who joined, and the top of every ladder and score
+ * leaderboard. Everything is read from the league's own tables; nothing is
+ * sample data, and a part with nothing to show is empty (home then says so
+ * and offers the action).
  *
  * The number of queries depends on how many tournaments, games and ladders
  * are shown (each capped here), never on how many players are in them:
@@ -38,6 +49,7 @@ use Illuminate\Support\Collection;
  * @phpstan-type Cup array{tournament: Tournament, cta: string, places: array{taken: int, places: int, lineups: int, solos: int}, open: int, seats: list<Seat>, pot: array<string, mixed>|null, startsIn: array{ms: int, text: string}|null}
  * @phpstan-type Result array{kind: string, at: CarbonInterface|null, href: string, winner: string, loser: string, face: User|null, clan: Clan|null, draw: bool, game: string}
  * @phpstan-type Ladder array{game: string, mode: string, name: string, pool: string, href: string, rows: list<array{place: int, rating: int, name: string, user: User|null, clan: Clan|null}>}
+ * @phpstan-type ScoreBoard array{game: string, mode: string, name: string, weekly: bool, board: string|null, href: string, play: string, rows: list<array{place: int, value: string, name: string, user: User}>}
  */
 final class HomeHub
 {
@@ -231,6 +243,90 @@ final class HomeHub
                 ])->all()),
             ];
         }, $ladders);
+    }
+
+    /**
+     * The top three of every score game (Blockfill live, 2026-10-01), in the
+     * grid of the ladders: the leaderboard whose window is open now (the
+     * earliest, for a game with more than one; a Blockfill week is this
+     * week's), its places by best value as ScoreRuns ranks them. A game with
+     * no running leaderboard, or nobody placed on it, has no rows.
+     *
+     * The places are cached as ids and values under a stamp of these games'
+     * score runs (newest id, last change, count), as StrongestList keeps its
+     * ranking: a new or decided run shows at once, anything else (a
+     * disqualification) within the minute the entry lives. A render costs the
+     * running leaderboards, the stamp and the listed players, plus the
+     * standings of each leaderboard on a miss, whatever the number of players
+     * and runs (tests/Feature/HomeScoreBoardsTest.php counts them). No query
+     * at all while no score game is registered.
+     *
+     * @return list<ScoreBoard>
+     */
+    public function scores(): array
+    {
+        $games = app(GameRegistry::class)->scores();
+
+        // A route table cached before the switch went on has no score pages: no card to link.
+        if ($games === [] || ! Route::has('scores.show')) {
+            return [];
+        }
+
+        $slugs = array_values(array_map(fn (ScoreGame $game): string => $game->slug(), $games));
+        $now = now();
+        $boards = Tournament::query()
+            ->whereIn('game', $slugs)
+            ->where(['format' => TournamentFormat::Leaderboard, 'status' => TournamentStatus::Running])
+            ->whereNotNull('published_at')->where('starts_at', '<=', $now)
+            ->orderBy('starts_at')->orderBy('id')->get()
+            ->filter(fn (Tournament $board): bool => ScoreWindow::of($board)->contains($now))
+            ->unique('game')->keyBy('game');
+
+        $places = [];
+
+        if ($boards->isNotEmpty()) {
+            $stamp = ScoreRun::query()->whereIn('game', $slugs)->selectRaw('max(id) as newest, max(updated_at) as touched, count(*) as runs')->first();
+            $runs = app(ScoreRuns::class);
+
+            foreach ($boards as $slug => $board) {
+                $key = 'home:scores:'.$board->id.':'.$stamp?->getAttribute('newest').':'.$stamp?->getAttribute('touched').':'.$stamp?->getAttribute('runs');
+
+                // Ids and values only: the players are loaded per list below.
+                $places[$slug] = Cache::remember($key, 60, fn (): array => array_map(
+                    fn (ScoreStanding $standing): array => ['place' => (int) $standing->place, 'user' => (int) $standing->participant->user_id, 'value' => (int) $standing->value],
+                    array_slice(array_filter($runs->standings($board), fn (ScoreStanding $standing): bool => $standing->place !== null && $standing->participant->user_id !== null), 0, 3),
+                ));
+            }
+        }
+
+        $userIds = array_unique(array_merge(...array_map(fn (array $top): array => array_column($top, 'user'), array_values($places))));
+        $users = $userIds === [] ? collect() : User::query()->whereKey($userIds)->get()->keyBy('id');
+
+        return array_values(array_map(function (ScoreGame $game) use ($boards, $places, $users): array {
+            $board = $boards->get($game->slug());
+            $mode = $board->mode ?? (string) array_key_first($game->modes());
+            $metric = $game->metric($game->mode($mode) ?? throw new InvalidArgumentException("Unknown mode [{$mode}]."));
+            $rows = [];
+
+            foreach ($places[$game->slug()] ?? [] as $place) {
+                $user = $users->get($place['user']);
+
+                if ($user instanceof User) {
+                    $rows[] = ['place' => $place['place'], 'value' => $metric->format($place['value']), 'name' => $user->displayName(), 'user' => $user];
+                }
+            }
+
+            return [
+                'game' => $game->slug(),
+                'mode' => $mode,
+                'name' => GameNames::game($game->slug()).' · '.GameNames::mode($game->slug(), $mode),
+                'weekly' => $game->slug() === Blockfill::SLUG,
+                'board' => $board?->title(),
+                'href' => route('scores.show', $game->slug()),
+                'play' => GameNames::page($game->slug()),
+                'rows' => $rows,
+            ];
+        }, $games));
     }
 
     /**

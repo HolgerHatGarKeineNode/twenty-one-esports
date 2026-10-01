@@ -4,15 +4,20 @@
     ladder. The places are a real order, so they are numbered. A ladder
     nobody has a result in yet says so.
 
-    $ladders: HomeHub::ladders().
+    After them, in the same grid, every score game (HomeHub::scores(),
+    Blockfill live 2026-10-01): its cover, game and mode, this week or the
+    running leaderboard, the three best by their value, and the way to its
+    leaderboards. Nobody placed yet: an invitation to play the first run.
+
+    $ladders: HomeHub::ladders(); $scores: HomeHub::scores().
 --}}
 @php
     $medal = ['1' => 'text-btc', '2' => 'text-ink', '3' => 'text-btc-hi'];
 @endphp
 
-@if ($ladders !== [])
+@if ($ladders !== [] || $scores !== [])
     <section aria-labelledby="ladders-h" class="flex flex-col gap-4 px-4 lg:gap-5 lg:px-12" data-test="ladders">
-        <h2 id="ladders-h" class="m-0 font-display text-xl font-bold lg:text-2xl">{{ __('Top of the ladders') }}</h2>
+        <h2 id="ladders-h" class="m-0 font-display text-xl font-bold lg:text-2xl">{{ $scores === [] ? __('Top of the ladders') : __('Top of the ladders and leaderboards') }}</h2>
         <ul class="m-0 grid list-none grid-cols-1 gap-3 p-0 sm:grid-cols-2 lg:grid-cols-4 lg:gap-5">
             @foreach ($ladders as $ladder)
                 <li class="flex min-w-0 flex-col gap-2 rounded-card bg-card p-3 lg:p-4" data-test="ladder-top" data-game="{{ $ladder['game'] }}">
@@ -44,6 +49,35 @@
                         </ol>
                     @endif
                     <a href="{{ $ladder['href'] }}" class="mt-auto inline-flex min-h-11 items-center text-xs">{{ __('Full ladder') }}</a>
+                </li>
+            @endforeach
+            @foreach ($scores as $score)
+                <li class="flex min-w-0 flex-col gap-2 rounded-card bg-card p-3 lg:p-4" data-test="score-top" data-game="{{ $score['game'] }}">
+                    <a href="{{ $score['href'] }}" class="grid grid-cols-[64px_minmax(0,1fr)] items-center gap-3 text-ink hover:text-ink">
+                        <x-game-cover :game="$score['game']" size="thumb" class="w-16 rounded-tag" />
+                        <span class="flex min-w-0 flex-col">
+                            <b class="truncate text-[13px]">{{ $score['name'] }}</b>
+                            <span class="truncate text-xs text-ink-3">{{ $score['weekly'] ? __('This week') : ($score['board'] ?? __('No leaderboard running')) }}</span>
+                        </span>
+                    </a>
+                    @if ($score['rows'] === [])
+                        <p class="m-0 flex flex-col items-start gap-1 border-t border-hairline pt-2 text-[13px] text-ink-2">
+                            {{ $score['weekly'] ? __('No verified run yet this week. Play the first one.') : __('No verified run yet. Play the first one.') }}
+                            <a href="{{ $score['play'] }}" class="inline-flex min-h-11 items-center font-bold" data-test="score-play">{{ __('Play') }}</a>
+                        </p>
+                    @else
+                        <ol class="m-0 list-none p-0">
+                            @foreach ($score['rows'] as $row)
+                                <li class="grid min-h-11 grid-cols-[16px_28px_minmax(0,1fr)_auto] items-center gap-2 border-t border-hairline text-[13px]" data-test="score-row">
+                                    <b class="font-display text-sm {{ $medal[$row['place']] ?? 'text-ink-2' }}">{{ $row['place'] }}</b>
+                                    <x-avatar :user="$row['user']" :size="28" class="rounded-tag" />
+                                    <span class="truncate">{{ $row['name'] }}</span>
+                                    <span class="font-display text-sm font-bold tabular-nums">{{ $row['value'] }}</span>
+                                </li>
+                            @endforeach
+                        </ol>
+                    @endif
+                    <a href="{{ $score['href'] }}" class="mt-auto inline-flex min-h-11 items-center text-xs">{{ __('Full leaderboard') }}</a>
                 </li>
             @endforeach
         </ul>

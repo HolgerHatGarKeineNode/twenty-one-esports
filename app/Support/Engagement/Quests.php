@@ -2,7 +2,9 @@
 
 namespace App\Support\Engagement;
 
+use App\Games\GameRegistry;
 use App\Models\QuestCredit;
+use App\Models\ScoreRun;
 use App\Models\User;
 use Carbon\CarbonImmutable;
 use Carbon\CarbonInterface;
@@ -13,6 +15,13 @@ use Carbon\CarbonInterface;
  * A result counts when it moved a rating (casual or rated), so the farming
  * guards of the ratings apply here as well: a pairing past its daily cap
  * earns no quest progress either. Weeks are ISO weeks in UTC.
+ *
+ * A score game has no rating (Blockfill live, 2026-10-01): each of its
+ * verified runs set this week counts as one game for "play 3 games", read
+ * from score_runs when progress is shown (ScoreRun rows are never
+ * overwritten, so a run is counted once). A Blockfill practice run is never
+ * verified and never becomes a score run; an unchecked, rejected or
+ * director-entered value does not count, nor a game no longer registered.
  *
  * Idempotent: every credit is keyed by (player, quest, week, result) with a
  * unique index and written with insertOrIgnore. A result reported twice, a
@@ -88,6 +97,7 @@ final class Quests
             ->groupBy('quest')
             ->pluck('credits', 'quest');
 
+        $counts[self::THREE_GAMES] = (int) ($counts[self::THREE_GAMES] ?? 0) + $this->scoreRuns($user);
         $progress = [];
 
         foreach (self::TARGETS as $quest => $target) {
@@ -96,5 +106,28 @@ final class Quests
         }
 
         return $progress;
+    }
+
+    /**
+     * The player's verified runs of a registered score game set in this
+     * week: no query while no score game is registered.
+     */
+    private function scoreRuns(User $user): int
+    {
+        $games = array_keys(app(GameRegistry::class)->scores());
+
+        if ($games === []) {
+            return 0;
+        }
+
+        $start = CarbonImmutable::now()->utc()->startOfWeek(CarbonInterface::MONDAY);
+
+        return ScoreRun::query()
+            ->where('user_id', $user->id)
+            ->whereIn('game', $games)
+            ->where('source', '!=', ScoreRun::DIRECTOR)
+            ->whereNotNull('verified_at')->whereNull('rejected_at')->whereNotNull('value')
+            ->where('achieved_at', '>=', $start)->where('achieved_at', '<', $start->addWeek())
+            ->count();
     }
 }

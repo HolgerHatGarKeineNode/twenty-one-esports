@@ -3,13 +3,18 @@
 use App\Models\ChessGame;
 use App\Models\Clan;
 use App\Models\Rating;
+use App\Models\StackerRun;
 use App\Models\Tournament;
 use App\Models\User;
+use App\Support\Stacker\BlockfillWeeks;
+use App\Support\Stacker\StackerRuns;
+use Carbon\CarbonImmutable;
 use Illuminate\Support\Facades\File;
 use Illuminate\Support\Facades\Http;
 use Pest\Browser\Playwright\Page;
 use Pest\Browser\Support\ComputeUrl;
 use PHPUnit\Framework\ExpectationFailedException;
+use Tests\Support\BlockfillOn;
 use Tests\Support\BrowserWait;
 use Tests\Support\TestSigner;
 
@@ -30,6 +35,10 @@ pest()->group('browser');
 | response >= 400 are collected, with a positive control below.
 |
 | The longer German copy is held to the same first viewport and strip.
+|
+| With Blockfill on, its card closes the grid of the ladders (cover, this
+| week, the top three by time), in English and German at both widths:
+| every card and row inside the window, nothing overflowing.
 |
 | HOME_SHOTS=<dir> additionally writes the English screenshots there;
 | HOME_TAG=<before|after> runs the measurement of the first viewport (words,
@@ -396,6 +405,82 @@ test('without an open tournament the games lead home at 375 and 1440 px', functi
         homeHubTaps($page, $label);
         homeHubClean($page, $label);
         homeHubShot($page, "after-no-tournament-{$width}");
+    }
+});
+
+/** Every card of the ladder grid and every row of the score card, measured. */
+const HOME_HUB_SCORE_GRID = <<<'JS'
+    () => {
+        const grid = document.querySelector('[data-test=ladders] ul');
+        grid.scrollIntoView({ block: 'start' });
+        const box = (el) => { const r = el.getBoundingClientRect(); return { left: Math.round(r.left), right: Math.round(r.right), top: Math.round(r.top), height: Math.round(r.height) }; };
+        const score = document.querySelector('[data-test=score-top]');
+        return {
+            heading: document.getElementById('ladders-h').textContent.trim(),
+            grid: { ...box(grid), scrollWidth: grid.scrollWidth, clientWidth: grid.clientWidth },
+            cards: [...grid.children].map((li) => ({ test: li.dataset.test, game: li.dataset.game, ...box(li), overflow: li.scrollWidth > li.clientWidth })),
+            rows: [...score.querySelectorAll('[data-test=score-row]')].map((row) => ({
+                text: row.innerText.replace(/\s+/g, ' ').trim(), ...box(row), overflow: row.scrollWidth > row.clientWidth,
+                time: row.lastElementChild.textContent.trim(), timeInside: row.lastElementChild.getBoundingClientRect().right <= row.getBoundingClientRect().right + 0.5,
+                avatar: (() => { const img = row.querySelector('img'); return !!img && img.complete && img.naturalWidth > 0; })(),
+            })),
+            subline: score.querySelector('a span span').textContent.trim(),
+            cover: (() => { const r = score.querySelector('[data-game-cover]').getBoundingClientRect(); return r.width > 0 && r.height > 0; })(),
+        };
+    }
+    JS;
+
+test('the Blockfill card sits in the ladder grid at 375 and 1440 px, in English and German', function () {
+    BlockfillOn::play();
+    $this->travelTo(CarbonImmutable::parse('2026-10-07 12:00:00'));
+    homeHubSeed();
+    app(BlockfillWeeks::class)->open();
+
+    // 958 ticks = 0:15.966; one name long enough to need truncating at 375 px.
+    foreach ([['zapmaster', 958], ['A very long Nostr display name that has to be cut off somewhere', 1100], ['lena.k', 1200], ['slowpoke', 3000]] as [$name, $ticks]) {
+        $run = StackerRun::factory()->for(User::factory()->create(['name' => $name]))->verified($ticks)->create(['submitted_at' => now()->subHours(2), 'week' => StackerRuns::weekOf(now())]);
+        app(BlockfillWeeks::class)->record($run);
+    }
+
+    foreach ([['en', 375, 667], ['en', 1440, 900], ['de', 375, 667], ['de', 1440, 900]] as [$lang, $width, $height]) {
+        $label = "scores {$lang} {$width}x{$height}";
+        $page = homeHubPage(null, $width, $height, $lang);
+        BrowserWait::until($page, '() => [...document.querySelectorAll("[data-test=score-top] img")].every((i) => (i.scrollIntoView(), i.complete))', 10_000);
+        $grid = $page->evaluate(HOME_HUB_SCORE_GRID);
+        homeHubRecord($label, $grid);
+
+        $score = array_values(array_filter($grid['cards'], fn (array $card): bool => $card['test'] === 'score-top'));
+
+        expect($grid['heading'])->toBe($lang === 'de' ? 'Die Spitze der Ladders und Bestenlisten' : 'Top of the ladders and leaderboards')
+            ->and($grid['grid']['scrollWidth'])->toBeLessThanOrEqual($grid['grid']['clientWidth'], "{$label}: the grid overflows")
+            ->and($score)->toHaveCount(1)
+            ->and($score[0]['game'])->toBe('blockfill')
+            ->and(end($grid['cards'])['test'])->toBe('score-top', "{$label}: the score card comes after the ladders")
+            ->and($grid['cover'])->toBeTrue()
+            ->and($grid['subline'])->toBe($lang === 'de' ? 'Diese Woche' : 'This week')
+            ->and(array_column($grid['rows'], 'time'))->toBe(['0:15.966', '0:18.333', '0:20.000']);
+
+        foreach ($grid['cards'] as $card) {
+            expect($card['left'])->toBeGreaterThanOrEqual(0, "{$label}: {$card['game']} starts left of the window")
+                ->and($card['right'])->toBeLessThanOrEqual($width, "{$label}: {$card['game']} ends at {$card['right']}")
+                ->and($card['overflow'])->toBeFalse("{$label}: {$card['game']} overflows");
+        }
+
+        foreach ($grid['rows'] as $row) {
+            expect($row['overflow'])->toBeFalse("{$label}: row {$row['text']} overflows")
+                ->and($row['timeInside'])->toBeTrue("{$label}: the time of {$row['text']} sticks out")
+                ->and($row['avatar'])->toBeTrue("{$label}: the avatar of {$row['text']} did not load")
+                ->and($row['height'])->toBeGreaterThanOrEqual(44);
+        }
+
+        homeHubClean($page, $label);
+        homeHubShot($page, "scores-{$lang}-{$width}");
+        $dir = getenv('HOME_SHOTS');
+
+        if (is_string($dir) && $dir !== '') {
+            $page->screenshotElement('[data-test=ladders]', "scores-section-{$lang}-{$width}");
+            File::move(base_path("tests/Browser/Screenshots/scores-section-{$lang}-{$width}.png"), "{$dir}/scores-section-{$lang}-{$width}.png");
+        }
     }
 });
 
