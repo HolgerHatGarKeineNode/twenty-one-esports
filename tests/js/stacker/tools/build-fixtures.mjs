@@ -248,13 +248,22 @@ for (const name of ['forty-lines', 'top-out']) {
             finishing.push([last, 7, 1], [last, 7, 0]);
         }
         const inside = R.encodeReplay(header, finishing);
+        // a header that lies: it declares 1 input, the body carries all of them
+        const prefix = Buffer.from(R.encodeReplay(header, []), 'base64url');
+        const full = Buffer.from(canonical, 'base64url');
+        const countBytes = used.length < 128 ? 1 : used.length < 16384 ? 2 : 3;
+        const lying = Buffer.concat([prefix.subarray(0, prefix.length - 1), Buffer.from([1]), full.subarray(prefix.length - 1 + countBytes)]).toString('base64url');
+        if (process.argv[3] === 'write') {
+            writeFileSync(`${out}/${name}-lying-header.replay`, lying + '\n');
+        }
         console.log('padded', padded.length, 'chars; overlong', overlong.length, 'chars; finishing-tick', inside.length, 'chars');
         if (process.argv[3] === 'write') {
             writeFileSync(`${out}/${name}-padded.replay`, padded + '\n');
             writeFileSync(`${out}/${name}-overlong.replay`, overlong + '\n');
             writeFileSync(`${out}/${name}-finishing-tick.replay`, inside + '\n');
         }
-        // forty-lines-noop-prefix.replay is not written here: it is the security re-audit's own probe
+        // padded-36k.replay/.json (a 40-line run stretched to 36,000 ticks, 20,000 inputs) and
+        // forty-lines-noop-prefix.replay are not written here: it is the security re-audit's own probe
         // (20,000 inputs, releases of keys already up and hold toggles while hold is spent, before the finish).
     }
 }

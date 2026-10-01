@@ -9,10 +9,11 @@
  *   {ok: true, ticks, lines, pieces, hash, settings, replay}
  *   {ok: false, reason}  reason: malformed | oversize | engine | seed | unfinished | trailing | mismatch | crash
  * `replay` is the run re-encoded from its decoded inputs (for a valid run the same bytes
- * as submitted). What bounds its size is not the encoding but the checks: inputs after
- * the run ended (`trailing`), more inputs than the played time allows (`oversize`: at
- * most ceil(ticks * inputsPerTick) + inputSlack, so no-op inputs cannot pad a run) and
- * non-canonical varints (`malformed`, refused by the decoder).
+ * as submitted). Its size is bounded by the checks, not by the encoding: inputs after the
+ * run ended (`trailing`), more inputs than the played time allows (`oversize`: at most
+ * ceil(ticks * inputsPerTick) + inputSlack) and non-canonical varints (`malformed`,
+ * refused by the decoder). Within that bound no-op inputs can still pad a run up to its
+ * played time; the league limits what it keeps instead (StackerRuns::keepWeekTop()).
  * `crash` is the engine throwing on this replay, caught here: the only crash that
  * rejects a run. No answer at all (a non-zero exit, a missing or broken script,
  * a signal) says nothing about the run, so the caller leaves it pending.

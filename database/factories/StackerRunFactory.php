@@ -5,6 +5,7 @@ namespace Database\Factories;
 use App\Enums\StackerRunStatus;
 use App\Models\StackerRun;
 use App\Models\User;
+use App\Support\Stacker\StackerRuns;
 use Illuminate\Database\Eloquent\Factories\Factory;
 use Illuminate\Support\Str;
 
@@ -41,6 +42,7 @@ class StackerRunFactory extends Factory
             'state_hash' => '00000000',
             'submitted_at' => now(),
             'verified_at' => now(),
+            'week' => StackerRuns::weekOf(now()),
         ]);
     }
 }

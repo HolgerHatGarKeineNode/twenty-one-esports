@@ -1188,17 +1188,16 @@ return [
     | (issue_global_per_minute, only a circuit breaker with a fixed window:
     | with 30 issues per network and minute, a burst has to come from at
     | least 100 networks to reach it, and while it is reached nobody can
-    | start a run until the minute is over). Storage: a verified run keeps
-    | the replay the verifier read, practice and rejected runs keep none.
-    | limits.inputs_per_tick and limits.input_slack bound a run's inputs by
-    | its played time (at most ceil(ticks * inputs_per_tick) + input_slack;
-    | measured bot runs use 0.76 to 0.83 per tick), so a stored 40-line
-    | replay stays at a few KB. replay_bytes_per_player caps a player's stored
-    | replays (oldest first, the personal best always kept);
-    | replay_bytes_total caps all of them together (beyond it only personal
-    | bests keep theirs, oldest others first, a warning in the log once a
-    | day); prune_days, after which runs without a verified time are deleted
-    | (`model:prune`, daily).
+    | start a run until the minute is over). limits.inputs_per_tick and
+    | limits.input_slack bound a run's inputs by its played time (at most
+    | ceil(ticks * inputs_per_tick) + input_slack; measured bot runs use 0.76
+    | to 0.83 per tick). The played time is the player's choice, so a replay
+    | can still reach ~33 KB at the 36,000-tick limit. Storage: a verified
+    | run keeps its replay only while it is among the replay_keep_top
+    | fastest of its week (Monday 00:00 Berlin), so at most that many
+    | replays are kept per week; every other run keeps ticks and hash only,
+    | practice and rejected runs keep no replay. prune_days, after which runs
+    | without a verified time are deleted (`model:prune`, daily).
     |
     */
 
@@ -1221,8 +1220,7 @@ return [
         'issue_per_ip_per_minute' => 30,
         'submits_per_ip_per_minute' => 90,
         'issue_global_per_minute' => 3000,
-        'replay_bytes_per_player' => 524288,
-        'replay_bytes_total' => 268435456,
+        'replay_keep_top' => 100,
         'prune_days' => 30,
         'verifier' => [
             'node' => env('ESPORTS_BLOCKFILL_NODE', 'node'),

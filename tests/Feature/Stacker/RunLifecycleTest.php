@@ -16,8 +16,8 @@ use App\Support\Stacker\StackerRuns;
 use App\Support\Stacker\StackerVerdict;
 use App\Support\Stacker\Verifier;
 use Illuminate\Console\Scheduling\Schedule;
+use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Queue;
 use Illuminate\Support\Facades\Route;
 use Illuminate\Testing\TestResponse;
@@ -221,7 +221,7 @@ test('a rejection keeps the verifier\'s reason; a verifier that is unavailable o
     }
 });
 
-test('a practice run keeps no replay; a verified run keeps the verifier\'s canonical replay, never the submitted bytes', function () {
+test('a practice run keeps no replay; a verified run keeps the replay the verifier answered with, never the submitted bytes', function () {
     BlockfillOn::play();
     $user = User::factory()->create();
     StackerRun::factory()->for($user)->verified(900)->create();
@@ -234,31 +234,6 @@ test('a practice run keeps no replay; a verified run keeps the verifier\'s canon
     $faster = issueRun(User::factory()->create());
     submitForty($faster['token'])->assertAccepted();
     expect(runOf($faster))->status->toBe(StackerRunStatus::Verified)->replay->toBe('CanonicalFromTheVerifier');
-});
-
-test('a player\'s stored replays stay within the byte budget, oldest first, the personal best always kept', function () {
-    BlockfillOn::play();
-    config(['esports.blockfill.replay_bytes_per_player' => 3000]);
-    $user = User::factory()->create();
-    $kilobyte = str_repeat('A', 1000);
-    $oldest = StackerRun::factory()->for($user)->verified(1000)->create(['replay' => $kilobyte]);
-    $middle = StackerRun::factory()->for($user)->verified(1100)->create(['replay' => $kilobyte]);
-    $latest = StackerRun::factory()->for($user)->verified(1050)->create(['replay' => $kilobyte]);
-
-    // a new personal best (958 ticks) is verified with a replay of 1000 bytes: 4000 > 3000, the oldest goes
-    $this->verifier->verdict = StackerVerdict::verified(['das' => 8, 'arr' => 1, 'sdf' => 20], $kilobyte);
-    $best = issueRun($user);
-    submitForty($best['token'])->assertAccepted();
-
-    expect(runOf($best))->status->toBe(StackerRunStatus::Verified)->replay->toBe($kilobyte)
-        ->and($oldest->refresh()->replay)->toBeNull()
-        ->and($middle->refresh()->replay)->toBe($kilobyte)
-        ->and($latest->refresh()->replay)->toBe($kilobyte);
-
-    // a budget smaller than the best replay alone: every other replay goes, the best stays
-    config(['esports.blockfill.replay_bytes_per_player' => 500]);
-    app(StackerRuns::class)->enforceReplayBudget($user->id);
-    expect(StackerRun::query()->where('user_id', $user->id)->whereNotNull('replay')->pluck('seed')->all())->toBe([$best['seed']]);
 });
 
 test('an IPv4 address written as IPv6 (::ffff:a.b.c.d) shares its IPv4 network\'s limit', function () {
@@ -330,36 +305,6 @@ test('a submission with more inputs than its played time allows is refused befor
     expect($this->verifier->asked)->toBe([]);
 });
 
-test('above the league-wide replay ceiling only personal bests keep their replay, the oldest others go first', function () {
-    BlockfillOn::play();
-    config(['esports.blockfill.replay_bytes_total' => 4000]);
-    Log::spy();
-    $kilobyte = str_repeat('A', 1000);
-    [$anna, $bert] = User::factory()->count(2)->create();
-    $annaBest = StackerRun::factory()->for($anna)->verified(900)->create(['replay' => $kilobyte]);
-    $annaOld = StackerRun::factory()->for($anna)->verified(1000)->create(['replay' => $kilobyte]);
-    $bertOld = StackerRun::factory()->for($bert)->verified(1100)->create(['replay' => $kilobyte]);
-    $bertNewer = StackerRun::factory()->for($bert)->verified(1050)->create(['replay' => $kilobyte]);
-
-    // Bert's new best (958 ticks, 1000 bytes): 5000 > 4000, Anna's older run goes first
-    $this->verifier->verdict = StackerVerdict::verified(['das' => 8, 'arr' => 1, 'sdf' => 20], $kilobyte);
-    $best = issueRun($bert);
-    submitForty($best['token'])->assertAccepted();
-
-    expect(runOf($best)->replay)->toBe($kilobyte)
-        ->and($annaOld->refresh()->replay)->toBeNull()
-        ->and($annaBest->refresh()->replay)->toBe($kilobyte)
-        ->and($bertOld->refresh()->replay)->toBe($kilobyte)
-        ->and($bertNewer->refresh()->replay)->toBe($kilobyte);
-
-    // a ceiling below the personal bests alone: every other replay goes, both bests stay; one warning a day
-    config(['esports.blockfill.replay_bytes_total' => 1500]);
-    app(StackerRuns::class)->enforceReplayCeiling();
-    app(StackerRuns::class)->enforceReplayCeiling();
-    expect(StackerRun::query()->whereNotNull('replay')->pluck('id')->sort()->values()->all())->toBe([$annaBest->id, runOf($best)->id]);
-    Log::shouldHaveReceived('warning')->once();
-});
-
 test('issuing is also limited per network and minute, so a burst from a few networks cannot reach the league-wide breaker', function () {
     BlockfillOn::play();
     config(['esports.blockfill.issue_per_ip_per_minute' => 2]);
@@ -370,4 +315,74 @@ test('issuing is also limited per network and minute, so a burst from a few netw
     $issueFrom('203.0.113.5')->assertTooManyRequests();
     $issueFrom('203.0.113.6')->assertCreated();
     expect(config('esports.blockfill.issue_per_ip_per_minute'))->toBe(2);
+});
+
+/**
+ * A submission of `$replay` claiming `$ticks` and `$hash`, after the played time plus 500 ms.
+ */
+function submitReplay(string $token, string $replay, int $ticks, string $hash): TestResponse
+{
+    test()->travel(intdiv($ticks * 1000, 60) + 500)->milliseconds();
+
+    return test()->postJson(route('stacker.runs.submit', $token), ['replay' => $replay, 'ticks' => $ticks, 'hash' => $hash]);
+}
+
+test('a verified run keeps its replay only among the week\'s fastest; a run stretched to 36,000 ticks outside them stores none', function () {
+    BlockfillOn::play();
+    config(['esports.blockfill.replay_keep_top' => 2]);
+    $kilobyte = str_repeat('A', 1000);
+    $first = StackerRun::factory()->verified(900)->create(['replay' => $kilobyte]);
+    $second = StackerRun::factory()->verified(1000)->create(['replay' => $kilobyte]);
+
+    $padded = json_decode((string) file_get_contents(base_path('tests/Fixtures/stacker/padded-36k.json')), true);
+    $issued = issueRun(User::factory()->create());
+    submitReplay($issued['token'], trim((string) file_get_contents(base_path('tests/Fixtures/stacker/padded-36k.replay'))), 36000, $padded['hash'])->assertAccepted();
+
+    expect(runOf($issued))->status->toBe(StackerRunStatus::Verified)->ticks->toBe(36000)->replay->toBeNull()
+        ->and($first->refresh()->replay)->toBe($kilobyte)
+        ->and($second->refresh()->replay)->toBe($kilobyte);
+});
+
+test('a run among the week\'s fastest keeps its replay until faster runs push it out; another week is not touched', function () {
+    BlockfillOn::play();
+    config(['esports.blockfill.replay_keep_top' => 2]);
+    $kilobyte = str_repeat('A', 1000);
+    $lastWeek = StackerRun::factory()->verified(800)->create(['replay' => $kilobyte, 'submitted_at' => now()->subWeek(), 'week' => StackerRuns::weekOf(now()->subWeek())]);
+    $fast = StackerRun::factory()->verified(900)->create(['replay' => $kilobyte]);
+    $slow = StackerRun::factory()->verified(1100)->create(['replay' => $kilobyte]);
+
+    // 958 ticks: second of the week, it keeps its replay; 1100 falls out
+    $this->verifier->verdict = StackerVerdict::verified(['das' => 8, 'arr' => 1, 'sdf' => 20], $kilobyte);
+    $issued = issueRun(User::factory()->create());
+    submitForty($issued['token'])->assertAccepted();
+
+    expect(runOf($issued))->status->toBe(StackerRunStatus::Verified)->replay->toBe($kilobyte)
+        ->and($fast->refresh()->replay)->toBe($kilobyte)
+        ->and($slow->refresh()->replay)->toBeNull()
+        ->and($lastWeek->refresh()->replay)->toBe($kilobyte);
+
+    // two faster runs this week: the 958 run falls out as well
+    StackerRun::factory()->verified(850)->create(['replay' => $kilobyte]);
+    app(StackerRuns::class)->keepWeekTop(StackerRuns::weekOf(now()));
+    expect(runOf($issued)->replay)->toBeNull()
+        ->and($fast->refresh()->replay)->toBe($kilobyte)
+        ->and(StackerRun::query()->where('week', StackerRuns::weekOf(now()))->whereNotNull('replay')->count())->toBe(2);
+});
+
+test('a replay whose header lies about its input count is refused before the verifier, with no bytes stored', function () {
+    BlockfillOn::play();
+    $issued = issueRun(User::factory()->create());
+
+    submitForty($issued['token'], 500, ['replay' => trim((string) file_get_contents(base_path('tests/Fixtures/stacker/forty-lines-lying-header.replay')))])
+        ->assertAccepted()->assertJson(['status' => 'rejected', 'reason' => 'malformed']);
+
+    expect(runOf($issued)->replay)->toBeNull()
+        ->and($this->verifier->asked)->toBe([]);
+});
+
+test('the week of a run starts on Monday 00:00 Berlin time, summer and winter', function () {
+    expect(StackerRuns::weekOf(Carbon::parse('2026-10-04 21:59:59', 'UTC')))->toBe('2026-09-28')
+        ->and(StackerRuns::weekOf(Carbon::parse('2026-10-04 22:00:00', 'UTC')))->toBe('2026-10-05')
+        ->and(StackerRuns::weekOf(Carbon::parse('2026-12-06 22:59:59', 'UTC')))->toBe('2026-11-30')
+        ->and(StackerRuns::weekOf(Carbon::parse('2026-12-06 23:00:00', 'UTC')))->toBe('2026-12-07');
 });

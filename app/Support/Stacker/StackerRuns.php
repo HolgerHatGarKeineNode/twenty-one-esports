@@ -7,9 +7,7 @@ use App\Jobs\VerifyStackerRun;
 use App\Models\StackerRun;
 use App\Models\User;
 use Carbon\CarbonInterface;
-use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
 
 /**
@@ -36,16 +34,19 @@ use Illuminate\Support\Str;
  * - finish(): the verifier's verdict; an unavailable verifier leaves the run
  *   `pending` (fail-closed: no score until it is checked).
  *
- * Storage stays bounded (security audits F1, N1, R1). The size of a replay
- * is bounded by its played time: a submission with more inputs than
- * ceil(ticks * limits.inputs_per_tick) + limits.input_slack is refused here,
- * before the verifier (which checks the same on the inputs it replays), so
- * no-op inputs cannot pad a run. The submitted replay is kept only while a
- * run is verifying or pending; a verified run keeps the replay the verifier
- * answered with; rejected and practice runs keep none. Stored replays stay
- * within `replay_bytes_per_player` per player (enforceReplayBudget()) and
- * `replay_bytes_total` for the league (enforceReplayCeiling()), personal
- * bests always kept. Runs without a verified time are pruned after `prune_days`
+ * Storage stays bounded (security audits F1, N1, R1, round 3). Before
+ * anything is stored the whole replay is read (replayInputCount(): canonical
+ * base64url and varints, a header within the limits, exactly as many inputs
+ * as it declares and not one byte more), and it may carry at most
+ * ceil(ticks * limits.inputs_per_tick) + limits.input_slack inputs. That
+ * bounds a replay by its played time, which the player chooses: up to the
+ * 36,000-tick limit a run can still be ~33 KB, padded with inputs that
+ * change nothing. The hard bound is therefore on what is kept: the
+ * submitted replay only while a run is verifying or pending, and for a
+ * verified run the replay the verifier answered with, but only while the
+ * run is among the `replay_keep_top` fastest of its week (keepWeekTop()):
+ * at most that many replays per week. Rejected and practice runs keep
+ * none. Runs without a verified time are pruned after `prune_days`
  * (StackerRun::prunable()). sweepStale() gives up verifications that never
  * came back, reverifyPending() sends pending runs again (console only).
  */
@@ -189,7 +190,14 @@ final class StackerRuns
     public function finish(StackerRun $run, StackerVerdict $verdict, CarbonInterface $now): void
     {
         $fields = match ($verdict->outcome) {
-            StackerVerdict::VERIFIED => ['status' => StackerRunStatus::Verified, 'settings' => json_encode($verdict->settings), 'verified_at' => $now, 'reason' => null, 'replay' => $verdict->replay],
+            StackerVerdict::VERIFIED => [
+                'status' => StackerRunStatus::Verified,
+                'settings' => json_encode($verdict->settings),
+                'verified_at' => $now,
+                'reason' => null,
+                'replay' => $verdict->replay,
+                'week' => self::weekOf($run->submitted_at ?? $now),
+            ],
             StackerVerdict::REJECTED => ['status' => StackerRunStatus::Rejected, 'reason' => $verdict->reason, 'replay' => null],
             default => ['status' => StackerRunStatus::Pending, 'reason' => $verdict->reason],
         };
@@ -200,8 +208,7 @@ final class StackerRuns
             ->update($this->stored($fields + ['updated_at' => $now])) === 1;
 
         if ($finished && $verdict->outcome === StackerVerdict::VERIFIED) {
-            $this->enforceReplayBudget($run->user_id);
-            $this->enforceReplayCeiling();
+            $this->keepWeekTop(self::weekOf($run->submitted_at ?? $now));
         }
     }
 
@@ -216,23 +223,27 @@ final class StackerRuns
     }
 
     /**
-     * The input count a replay declares in its header (resources/js/stacker/replay.js:
-     * version, engine, seed, das, arr, sdf, count), or null if the header does not parse.
+     * The number of inputs in a replay (resources/js/stacker/replay.js), read
+     * to the last byte: canonical base64url and varints, an engine name and
+     * settings within the limits, every input's tick within limits.ticks, and
+     * exactly the declared number of inputs with no byte after them. Null
+     * when any of that fails: a header that lies about its count included.
      */
     public static function replayInputCount(string $replay): ?int
     {
         $bytes = base64_decode(strtr($replay, '-_', '+/'), true);
 
-        if ($bytes === false) {
+        if ($bytes === false || rtrim(strtr(base64_encode($bytes), '+/', '-_'), '=') !== $replay) {
             return null;
         }
 
         $at = 0;
-        $varint = function () use ($bytes, &$at): ?int {
+        $length = strlen($bytes);
+        $varint = function () use ($bytes, $length, &$at): ?int {
             $value = 0;
 
             for ($shift = 0; $shift < 28; $shift += 7) {
-                if ($at >= strlen($bytes)) {
+                if ($at >= $length) {
                     return null;
                 }
 
@@ -240,110 +251,86 @@ final class StackerRuns
                 $value |= ($byte & 0x7F) << $shift;
 
                 if (($byte & 0x80) === 0) {
-                    return $value;
+                    // canonical only, as the decoder: a last byte of 0 after others is the same number written longer
+                    return $byte === 0 && $shift > 0 ? null : $value;
                 }
             }
 
             return null;
         };
 
-        $version = $varint();
-        $engineLength = $varint();
+        $limits = (array) config('esports.blockfill.limits');
+        $engineLength = $varint() === 1 ? $varint() : null;
 
-        if ($version === null || $engineLength === null || $engineLength > 16) {
+        if ($engineLength === null || $engineLength < 1 || $engineLength > 16 || $at + $engineLength + 16 > $length
+            || preg_match('/^[a-z0-9]+$/', substr($bytes, $at, $engineLength)) !== 1) {
             return null;
         }
 
         $at += $engineLength + 16;
 
-        foreach (range(1, 3) as $setting) {
-            if ($varint() === null) {
+        foreach (StackerSettings::LIMITS as [$low, $high]) {
+            $value = $varint();
+
+            if ($value === null || $value < $low || $value > $high) {
                 return null;
             }
         }
 
-        return $varint();
-    }
+        $count = $varint();
 
-    /**
-     * Above `replay_bytes_total` for all stored replays together, only
-     * personal bests keep theirs: the other verified replays go, oldest
-     * first, until the total fits again. While the ceiling is reached a
-     * warning goes to the log, once a day.
-     */
-    public function enforceReplayCeiling(): void
-    {
-        $ceiling = (int) config('esports.blockfill.replay_bytes_total');
-        $total = (int) StackerRun::query()->whereNotNull('replay')->sum(DB::raw('length(replay)'));
-
-        if ($total <= $ceiling) {
-            return;
+        if ($count === null || $count > (int) $limits['inputs']) {
+            return null;
         }
 
-        if (Cache::add('stacker:replay-ceiling-warned:'.now()->toDateString(), true, now()->addDay())) {
-            Log::warning('Blockfill replays reached the league-wide ceiling; only personal bests keep their replay now.', ['bytes' => $total, 'ceiling' => $ceiling]);
-        }
+        $tick = 0;
 
-        $verified = StackerRunStatus::Verified->value;
-        // a personal best: no verified run of the same player is faster, or as fast and older
-        $candidates = StackerRun::query()
-            ->from('stacker_runs as r')
-            ->where('r.status', $verified)
-            ->whereNotNull('r.replay')
-            ->whereExists(fn ($better) => $better->from('stacker_runs as b')
-                ->whereColumn('b.user_id', 'r.user_id')
-                ->where('b.status', $verified)
-                ->where(fn ($faster) => $faster->whereColumn('b.ticks', '<', 'r.ticks')
-                    ->orWhere(fn ($tie) => $tie->whereColumn('b.ticks', 'r.ticks')->whereColumn('b.id', '<', 'r.id'))))
-            ->orderBy('r.id')
-            ->select(['r.id', DB::raw('length(r.replay) as bytes')])
-            ->toBase()
-            ->cursor();
+        for ($i = 0; $i < $count; $i++) {
+            $packed = $varint();
 
-        foreach ($candidates as $candidate) {
-            if ($total <= $ceiling) {
-                break;
+            if ($packed === null) {
+                return null;
             }
 
-            StackerRun::query()->whereKey($candidate->id)->update(['replay' => null]);
-            $total -= (int) $candidate->bytes;
+            $tick += $packed >> 4;
+
+            if ($tick > (int) $limits['ticks']) {
+                return null;
+            }
         }
+
+        return $at === $length ? $count : null;
     }
 
     /**
-     * Drops stored replays of the player's verified runs, oldest first, until
-     * all their stored replays fit `replay_bytes_per_player`. The personal
-     * best keeps its replay even when it alone is over the budget; replays
-     * still waiting for the verifier are never dropped.
+     * The week a run counts in: the date of its Monday, 00:00 Europe/Berlin.
      */
-    public function enforceReplayBudget(int $userId): void
+    public static function weekOf(CarbonInterface $at): string
     {
-        $budget = (int) config('esports.blockfill.replay_bytes_per_player');
-        $stored = StackerRun::query()
-            ->where('user_id', $userId)
+        return $at->copy()->setTimezone('Europe/Berlin')->startOfWeek(CarbonInterface::MONDAY)->toDateString();
+    }
+
+    /**
+     * Only the `replay_keep_top` fastest verified runs of a week keep their
+     * replay; every other verified run of that week drops it. One indexed
+     * query for the week's fastest (week, status, ticks), one update.
+     */
+    public function keepWeekTop(string $week): void
+    {
+        $keep = StackerRun::query()
+            ->where('week', $week)
+            ->where('status', StackerRunStatus::Verified)
+            ->orderBy('ticks')
+            ->orderBy('id')
+            ->limit(max(0, (int) config('esports.blockfill.replay_keep_top')))
+            ->pluck('id');
+
+        StackerRun::query()
+            ->where('week', $week)
+            ->where('status', StackerRunStatus::Verified)
             ->whereNotNull('replay')
-            ->get(['id', 'status', 'ticks', 'replay']);
-
-        $total = $stored->sum(fn (StackerRun $run): int => strlen((string) $run->replay));
-
-        if ($total <= $budget) {
-            return;
-        }
-
-        $best = $stored->where('status', StackerRunStatus::Verified)->sortBy([['ticks', 'asc'], ['id', 'asc']])->first();
-
-        foreach ($stored->where('status', StackerRunStatus::Verified)->sortBy('id') as $candidate) {
-            if ($total <= $budget) {
-                break;
-            }
-
-            if ($candidate->id === $best?->id) {
-                continue;
-            }
-
-            StackerRun::query()->whereKey($candidate->id)->update(['replay' => null]);
-            $total -= strlen((string) $candidate->replay);
-        }
+            ->whereNotIn('id', $keep)
+            ->update(['replay' => null]);
     }
 
     /**
