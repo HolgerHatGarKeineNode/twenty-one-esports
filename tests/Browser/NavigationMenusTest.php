@@ -8,6 +8,7 @@ use App\Models\User;
 use App\Support\Chess\DailyChallenges;
 use App\Support\Navigation\AdminNavigation;
 use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Facades\Route;
 use Pest\Browser\Support\ComputeUrl;
 use Tests\Support\BrowserConsole;
 use Tests\Support\BrowserWait;
@@ -335,7 +336,7 @@ test('the admin nav: groups on top, only the active group\'s pages below, the wh
                     && $m['summary'][1] >= 16 && $m['summary'][2] <= $m['client'] - 16;
 
                 if ($width === 1440) {
-                    $expected = array_map(fn (string $page): string => 'admin-nav-'.$page, array_keys(array_filter(AdminNavigation::PAGES, fn (string $g): bool => $g === $group)));
+                    $expected = array_map(fn (string $page): string => 'admin-nav-'.$page, array_keys(array_filter(AdminNavigation::PAGES, fn (string $g, string $p): bool => $g === $group && ($p !== 'scores' || Route::has('admin.scores')), ARRAY_FILTER_USE_BOTH)));
                     // Two rows of 44 px and the hairline; as wide as the widest group, not as all eleven pages with their labels.
                     $ok = $ok && $m['groups'] && $m['navHeight'] <= 89 && $m['pages'] === $expected && $m['current'] === ['admin-nav-'.$key]
                         && $m['activeGroup'] === AdminNavigation::groupLabel($group) && $widest <= 640;
@@ -361,7 +362,7 @@ test('the admin nav: groups on top, only the active group\'s pages below, the wh
                     navShot($page, "p17-admin-nav-{$locale}-{$width}-map");
                     $page->locator('[data-test=admin-nav-menu] summary')->press('Escape');
                     $closed = $page->evaluate('() => !document.querySelector("[data-test=admin-nav-menu]").open && document.activeElement.tagName === "SUMMARY"');
-                    if (count($map) !== count(AdminNavigation::PAGES) || min($map ?: [0]) < 44 || $fits[0] > $fits[1] || ! $closed) {
+                    if (count($map) !== count(array_filter(array_keys(AdminNavigation::PAGES), fn (string $p): bool => ($p !== 'scores' || Route::has('admin.scores')))) || min($map ?: [0]) < 44 || $fits[0] > $fits[1] || ! $closed) {
                         $failures[] = "{$locale} map @{$width}: ".json_encode([$map, $fits, $closed]);
                     }
                 }
