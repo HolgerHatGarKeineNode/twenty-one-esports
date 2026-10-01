@@ -7,6 +7,8 @@ use App\Jobs\VerifyStackerRun;
 use App\Models\StackerRun;
 use App\Models\User;
 use Carbon\CarbonInterface;
+use Illuminate\Database\Query\Builder as QueryBuilder;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 
@@ -53,6 +55,9 @@ use Illuminate\Support\Str;
 final class StackerRuns
 {
     public const TOKEN_LENGTH = 40;
+
+    /** Cache key of the newest verdict: when, and whether the verifier answered. */
+    public const LAST_VERDICT_KEY = 'stacker:last-verdict';
 
     /**
      * @return array{0: StackerRun, 1: string} the run and its plain token
@@ -139,7 +144,7 @@ final class StackerRuns
      * Takes the submission; null if the token was used already (or the run
      * is otherwise no longer issued). The returned run carries the outcome.
      */
-    public function submit(StackerRun $run, string $body, mixed $replay, mixed $ticks, mixed $hash, CarbonInterface $now): ?StackerRun
+    public function submit(StackerRun $run, string $body, mixed $replay, mixed $ticks, mixed $hash, CarbonInterface $now, ?string $network = null): ?StackerRun
     {
         if ($this->expireIfDue($run, $now)) {
             return $run->refresh();
@@ -162,11 +167,12 @@ final class StackerRuns
             $fields += $this->outcome($run, $ticks, $now);
 
             if ($fields['status'] === StackerRunStatus::Verifying) {
-                if ($this->inflightFull()) {
+                if ($this->inflightFull($run->user_id, $network)) {
                     throw new StackerBusy('Too many runs are waiting for the verifier.');
                 }
 
                 $fields['replay'] = $replay;
+                $fields['network'] = $network;
             }
         }
 
@@ -217,6 +223,29 @@ final class StackerRuns
         if ($finished && $verdict->outcome === StackerVerdict::VERIFIED) {
             $this->keepWeekTop(self::weekOf($run->submitted_at ?? $now));
         }
+
+        // what the verifier said last: the sweep re-sends waiting runs only to a verifier that answers
+        Cache::put(self::LAST_VERDICT_KEY, [
+            'at' => $now->getTimestamp(),
+            'answered' => $verdict->outcome !== StackerVerdict::UNAVAILABLE,
+        ], now()->addDay());
+    }
+
+    /**
+     * Pending runs that still hold a replay go to the verifier again, oldest
+     * first, from the sweep: `redrive_batch` of them when the newest verdict
+     * of the last 10 minutes was a real answer (the verifier is up), one as a
+     * probe otherwise (no verdict lately, or the newest one was "unavailable"):
+     * after an outage nobody can submit while the slots are full, so without
+     * the probe there would be no verdict to learn from. Returns how many.
+     */
+    public function redriveWaiting(CarbonInterface $now): int
+    {
+        $last = Cache::get(self::LAST_VERDICT_KEY);
+        $answering = is_array($last) && ($last['answered'] ?? false) === true
+            && (int) ($last['at'] ?? 0) >= $now->copy()->subMinutes(10)->getTimestamp();
+
+        return $this->reverifyPending($answering ? max(1, (int) config('esports.blockfill.redrive_batch')) : 1, $now);
     }
 
     /**
@@ -336,15 +365,30 @@ final class StackerRuns
                 ->pluck('id')
                 ->all();
 
-            // only the week's runs that still hold a replay (partial index on week where replay is not null)
             StackerRun::query()
-                ->whereIn('id', fn ($holding) => $holding->select('id')->from('stacker_runs')
-                    ->where('week', $week)
-                    ->where('status', StackerRunStatus::Verified->value)
-                    ->whereNotNull('replay'))
+                ->whereIn('id', $this->weekReplayHolders($week))
                 ->when($keep !== [], fn ($outside) => $outside->whereNotIn('id', $keep))
                 ->update(['replay' => null]);
         });
+    }
+
+    /**
+     * The ids of a week's verified runs that still hold a replay. On SQLite
+     * the partial index (week where replay is not null) is named, as the
+     * planner otherwise takes (week, status, ticks) and reads the whole week.
+     */
+    public function weekReplayHolders(string $week): QueryBuilder
+    {
+        $from = DB::connection()->getDriverName() === 'sqlite'
+            ? DB::raw('"stacker_runs" INDEXED BY "stacker_runs_week_replay_index"')
+            : 'stacker_runs';
+
+        return DB::query()
+            ->from($from)
+            ->select('id')
+            ->where('week', $week)
+            ->where('status', StackerRunStatus::Verified->value)
+            ->whereNotNull('replay');
     }
 
     /**
@@ -383,14 +427,23 @@ final class StackerRuns
     }
 
     /**
-     * Whether `replay_inflight_max` runs already wait for the verifier with a replay.
+     * Whether a run of this player from this network may not wait for the
+     * verifier now: `replay_inflight_max` runs hold a replay already, or
+     * this account holds `inflight_per_account` of them, or this network
+     * `inflight_per_network`. The shares keep one account or network from
+     * taking every slot.
      */
-    public function inflightFull(): bool
+    public function inflightFull(?int $userId = null, ?string $network = null): bool
     {
-        return StackerRun::query()
+        $waiting = fn () => StackerRun::query()
             ->whereIn('status', [StackerRunStatus::Verifying, StackerRunStatus::Pending])
-            ->whereNotNull('replay')
-            ->count() >= (int) config('esports.blockfill.replay_inflight_max');
+            ->whereNotNull('replay');
+
+        $config = (array) config('esports.blockfill');
+
+        return ($userId !== null && $waiting()->where('user_id', $userId)->count() >= (int) $config['inflight_per_account'])
+            || ($network !== null && $waiting()->where('network', $network)->count() >= (int) $config['inflight_per_network'])
+            || $waiting()->count() >= (int) $config['replay_inflight_max'];
     }
 
     /**

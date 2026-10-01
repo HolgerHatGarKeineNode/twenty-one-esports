@@ -279,13 +279,15 @@ test('old runs without a verified time are pruned, a stuck verification goes bac
 
     $stuck = StackerRun::factory()->for($user)->create(['status' => StackerRunStatus::Verifying, 'submitted_at' => now()->subMinutes(11), 'updated_at' => now()->subMinutes(11), 'replay' => 'AQ']);
     $fresh = StackerRun::factory()->for($user)->create(['status' => StackerRunStatus::Verifying, 'submitted_at' => now()->subMinutes(9), 'updated_at' => now()->subMinutes(9), 'replay' => 'AQ']);
-    $this->artisan('stacker:sweep')->assertSuccessful();
+    expect(app(StackerRuns::class)->sweepStale(now()))->toBe(1);
     expect($stuck->refresh())->status->toBe(StackerRunStatus::Pending)->reason->toBe('verifier-stale')
         ->and($fresh->refresh()->status)->toBe(StackerRunStatus::Verifying);
 
-    $this->artisan('stacker:reverify')->assertSuccessful();
+    // the scheduled sweep sends it again by itself (a probe of one: no verdict yet), by hand works too
+    $this->artisan('stacker:sweep')->assertSuccessful();
     expect($stuck->refresh()->status)->toBe(StackerRunStatus::Verifying);
     Queue::assertPushedOn('stacker-verify', VerifyStackerRun::class, fn (VerifyStackerRun $job): bool => $job->runId === $stuck->id);
+    Queue::assertPushed(VerifyStackerRun::class, 1);
 
     $scheduled = collect(app(Schedule::class)->events())->map(fn ($event): string => (string) $event->command)->implode("\n");
     expect($scheduled)->toContain('stacker:sweep')->toContain('model:prune');
@@ -393,7 +395,7 @@ test('at most replay_inflight_max runs wait for the verifier with a replay; beyo
     $waiting = StackerRun::factory()->create(['status' => StackerRunStatus::Pending, 'reason' => 'verifier-unavailable', 'replay' => 'AQ', 'submitted_at' => now()]);
     $issued = issueRun(User::factory()->create());
 
-    submitForty($issued['token'])->assertStatus(503)->assertJson(['status' => 'busy']);
+    submitForty($issued['token'])->assertStatus(503)->assertJson(['status' => 'busy'])->assertHeader('Retry-After', '10');
     expect(runOf($issued))->status->toBe(StackerRunStatus::Issued)->replay->toBeNull()->submitted_at->toBeNull()
         ->and($this->verifier->asked)->toBe([]);
 
@@ -446,4 +448,60 @@ test('sending a pending run again keeps the time it was submitted, so it stays i
     // the sweep measures a fresh verification from when it was sent again, not from the old submission
     $this->artisan('stacker:sweep')->assertSuccessful();
     expect($run->refresh()->status)->toBe(StackerRunStatus::Verifying);
+});
+
+test('after an outage the sweep sends the waiting runs again by itself: one probe first, then the rest, and the slots are free again', function () {
+    BlockfillOn::play();
+    config(['esports.blockfill.replay_inflight_max' => 2]);
+    $forty = BlockfillOn::fixture('forty-lines');
+
+    // the outage: two runs end up pending with their replays, the slots are full
+    $this->verifier->verdict = StackerVerdict::unavailable('verifier-unavailable');
+    foreach ([User::factory()->create(), User::factory()->create()] as $player) {
+        submitForty(issueRun($player)['token'])->assertAccepted();
+    }
+    expect(StackerRun::query()->where('status', StackerRunStatus::Pending)->whereNotNull('replay')->count())->toBe(2);
+    submitForty(issueRun(User::factory()->create())['token'])->assertStatus(503);
+
+    // recovery: the verifier answers again; the next sweeps re-send the runs, no command by hand
+    $this->verifier->verdict = null;
+    $this->artisan('stacker:sweep')->assertSuccessful();
+    expect(StackerRun::query()->where('status', StackerRunStatus::Verified)->count())->toBe(1);
+    $this->travel(5)->minutes();
+    $this->artisan('stacker:sweep')->assertSuccessful();
+    expect(StackerRun::query()->where('status', StackerRunStatus::Pending)->count())->toBe(0)
+        ->and(StackerRun::query()->where('status', StackerRunStatus::Verified)->count())->toBe(2);
+
+    $this->travel(3)->seconds();
+    submitForty(issueRun(User::factory()->create())['token'])->assertAccepted();
+});
+
+test('one account holds at most inflight_per_account waiting runs, one network at most inflight_per_network', function () {
+    BlockfillOn::play();
+    config(['esports.blockfill.inflight_per_account' => 1, 'esports.blockfill.inflight_per_network' => 2]);
+    $this->verifier->verdict = StackerVerdict::unavailable('verifier-unavailable');
+    $submitFrom = function (User $player, string $ip) {
+        $issued = test()->actingAs($player)->withServerVariables(['REMOTE_ADDR' => $ip])->postJson(route('stacker.runs.issue'))->assertCreated()->json();
+        test()->withServerVariables(['REMOTE_ADDR' => $ip])->postJson(route('stacker.runs.start', $issued['token']))->assertNoContent();
+
+        return submitForty($issued['token']);
+    };
+
+    $anna = User::factory()->create();
+    $submitFrom($anna, '198.51.100.1')->assertAccepted();
+    $this->travel(3)->seconds();
+    $submitFrom($anna, '198.51.100.2')->assertStatus(503);
+
+    $submitFrom(User::factory()->create(), '198.51.100.3')->assertAccepted();
+    $submitFrom(User::factory()->create(), '198.51.100.3')->assertAccepted();
+    $submitFrom(User::factory()->create(), '198.51.100.3')->assertStatus(503);
+    $submitFrom(User::factory()->create(), '203.0.113.9')->assertAccepted();
+});
+
+test('on SQLite the week top update finds the runs holding a replay through the partial index', function () {
+    $plan = collect(DB::select('EXPLAIN QUERY PLAN '.app(StackerRuns::class)->weekReplayHolders('2026-09-28')->toSql(), ['2026-09-28', 'verified']))
+        ->pluck('detail')->implode(' | ');
+
+    expect(DB::connection()->getDriverName())->toBe('sqlite')
+        ->and($plan)->toContain('stacker_runs_week_replay_index');
 });

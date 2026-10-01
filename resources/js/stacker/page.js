@@ -420,13 +420,14 @@ document.addEventListener('alpine:init', () => {
                     return;
                 }
                 if (submitted.status === 503) {
-                    // the verifier's queue is full: the run was not taken
+                    // the verifier's queue is full: the run was not taken, nothing is saved
                     this.result = { ...this.result, status: 'busy', reason: 'busy' };
 
                     return;
                 }
                 if (submitted.status !== 202 || !submitted.data) {
-                    this.result = { ...this.result, status: 'pending', reason: 'submit' };
+                    // no answer from the league about this run: never claim it arrived
+                    this.result = { ...this.result, status: 'unsent', reason: 'submit' };
 
                     return;
                 }
