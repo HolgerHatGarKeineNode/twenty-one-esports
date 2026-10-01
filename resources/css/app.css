@@ -852,8 +852,9 @@ select:focus[data-flux-control] {
         line-height: 28px;
     }
 
+    /* 15 px: wide digits like 0:20.000 need 98 px at 16 px, the cube has 96. */
     .bs-score--word {
-        font-size: 16px;
+        font-size: 15px;
     }
 
     .bs--sm .bs-score {

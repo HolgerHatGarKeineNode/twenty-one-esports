@@ -47,7 +47,7 @@ const MEMPOOL_CUTS = <<<'JS'
     () => {
         const cut = (el) => el.scrollWidth > el.clientWidth + 1;
         const out = [];
-        document.querySelectorAll('[data-test=block-strip] .bs-stamp, [data-test=block-strip] .bs-stamp-text, [data-test=block-strip] .bs-note, [data-test=block-strip] .bs-when, [data-test=block-strip] .bs-r1, [data-test=block-strip] .bs-num, [data-test=board-row]').forEach((el) => {
+        document.querySelectorAll('[data-test=block-strip] .bs-stamp, [data-test=block-strip] .bs-stamp-text, [data-test=block-strip] .bs-note, [data-test=block-strip] .bs-when, [data-test=block-strip] .bs-r1, [data-test=block-strip] .bs-num, [data-test=block-strip] .bs-score, [data-test=board-row]').forEach((el) => {
             if (cut(el)) { out.push(el.className + ': ' + el.innerText.replace(/\s+/g, ' ') + ' (' + el.scrollWidth + ' > ' + el.clientWidth + ')'); }
         });
         return out;
@@ -170,8 +170,9 @@ test('/matches keeps highscore attempts and matches whole together at 375 and 14
     app(BlockfillWeeks::class)->open();
 
     $ben = User::factory()->create(['name' => 'El Presidento Ben']);
-    StackerRun::factory()->verified(18_990)->create(['user_id' => $ben->id, 'created_at' => now()->subMinutes(6), 'submitted_at' => now()->subMinutes(5), 'verified_at' => now()->subMinutes(5)]);
-    StackerRun::factory()->verified(21_337)->create(['user_id' => User::factory()->create(['name' => 'Satoshis Stapelmeisterin mit langem Namen'])->id, 'created_at' => now()->subMinutes(26), 'submitted_at' => now()->subMinutes(25), 'verified_at' => now()->subMinutes(25)]);
+    // Wide digits: 0:20.000 and 0:50.000 once ran past the 96 px cube at 1440.
+    StackerRun::factory()->verified(1_200)->create(['user_id' => $ben->id, 'created_at' => now()->subMinutes(6), 'submitted_at' => now()->subMinutes(5), 'verified_at' => now()->subMinutes(5)]);
+    StackerRun::factory()->verified(3_000)->create(['user_id' => User::factory()->create(['name' => 'Satoshis Stapelmeisterin mit langem Namen'])->id, 'created_at' => now()->subMinutes(26), 'submitted_at' => now()->subMinutes(25), 'verified_at' => now()->subMinutes(25)]);
     StackerRun::factory()->create(['status' => StackerRunStatus::Pending, 'ticks' => 17_000, 'submitted_at' => now()->subMinutes(2)]);
     StackerRun::factory()->create(['status' => StackerRunStatus::Practice, 'ticks' => 30_000, 'submitted_at' => now()->subMinute()]);
     mempoolSeries(['rated' => true, 'finished_at' => now()->subMinutes(40)]);
@@ -203,7 +204,7 @@ test('/matches keeps highscore attempts and matches whole together at 375 and 14
                 ->and($page->evaluate('() => document.querySelectorAll("[data-test=strip-cube][data-game=blockfill]").length'))->toBe(3, $where)
                 ->and($page->evaluate('() => [...document.querySelectorAll("[data-test=score-row]")].map((el) => el.dataset.state)'))->toBe(['waiting', 'done', 'done'], $where)
                 ->and($page->evaluate('() => document.querySelectorAll("[data-test=match-row], [data-test=chess-row], [data-test=board-row]").length'))->toBe(5, $where)
-                ->and($page->evaluate('() => document.querySelector("[data-test=score-row][data-state=done]").innerText'))->toContain('El Presidento Ben')->toContain('5:16.500');
+                ->and($page->evaluate('() => document.querySelector("[data-test=score-row][data-state=done]").innerText'))->toContain('El Presidento Ben')->toContain('0:20.000');
 
             [$scroll, $client] = $page->evaluate(BrowserConsole::WIDTHS);
             expect($scroll)->toBeLessThanOrEqual($client, "{$where}: the page scrolls sideways ({$scroll} > {$client})")
