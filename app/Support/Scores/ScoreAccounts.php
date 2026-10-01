@@ -5,11 +5,14 @@ namespace App\Support\Scores;
 use App\Enums\TournamentStatus;
 use App\Games\GameRegistry;
 use App\Games\ScoreGame;
+use App\Models\Clan;
+use App\Models\ClanMember;
 use App\Models\ScoreAccountChange;
 use App\Models\ScoreAccountClaim;
 use App\Models\ScoreRun;
 use App\Models\Tournament;
 use App\Models\TournamentParticipant;
+use App\Models\TournamentSignup;
 use App\Models\User;
 use App\Support\Tournaments\TournamentRuleViolation;
 use Illuminate\Database\Eloquent\Collection;
@@ -192,16 +195,109 @@ final class ScoreAccounts
     }
 
     /**
-     * The pending runs of each game account id, for the admin review: the
-     * game, the id, how many runs wait, and every player who stored the id.
-     *
-     * @return list<array{game: ScoreGame, account: string, runs: int, claimers: list<User>}>
+     * Remember when the player stored (or changed) the account id of each
+     * score game, from their gamer tags as just saved: a leaderboard waits
+     * only for an id stored before its window closed (round-3 S1).
      */
-    public static function pending(): array
+    public static function recordStored(User $user): void
     {
-        $groups = [];
+        foreach (app(GameRegistry::class)->scores() as $game) {
+            $service = $game->accountService();
+
+            if ($service === null) {
+                continue;
+            }
+
+            $accountId = trim((string) ($user->gamer_tags[$service] ?? ''));
+            $row = DB::table('score_account_tags')->where(['user_id' => $user->id, 'game' => $game->slug()]);
+
+            if ($accountId === '') {
+                $row->delete();
+            } elseif ($row->value('account_id') !== $accountId) {
+                DB::table('score_account_tags')->updateOrInsert(['user_id' => $user->id, 'game' => $game->slug()], ['account_id' => $accountId, 'stored_at' => now()]);
+            }
+        }
+    }
+
+    /**
+     * What keeps a leaderboard from ending: the account ids its active entries
+     * (not disqualified, not withdrawn) stored before its window closed, that
+     * no admin dismissed for that entry, and that have a pending finish on its
+     * course inside the window.
+     *
+     * @return list<array{account: string, user_id: int}>
+     */
+    public static function blockingFor(Tournament $tournament, ScoreGame $game): array
+    {
+        if ($game->accountService() === null) {
+            return [];
+        }
+
+        $window = ScoreWindow::of($tournament);
+        $active = TournamentParticipant::query()->where('tournament_id', $tournament->id)->whereNull('disqualified_at')
+            ->whereIn('user_id', User::query()->select('id'))->pluck('user_id')->map(intval(...))->all();
+        $tags = DB::table('score_account_tags')->where('game', $game->slug())->whereIn('user_id', $active)->where('stored_at', '<', $window->end)
+            ->get(['user_id', 'account_id']);
+        $blocking = [];
+
+        foreach ($tags as $tag) {
+            $dismissed = ScoreAccountChange::query()->where(['game' => $game->slug(), 'account_id' => $tag->account_id, 'action' => 'dismiss', 'from_user_id' => $tag->user_id])->exists();
+            $waits = ! $dismissed && ScoreRun::query()->whereNull('user_id')
+                ->where(['game' => $game->slug(), 'mode' => $tournament->mode, 'course' => (string) $tournament->score_course, 'account_id' => $tag->account_id])
+                ->where('achieved_at', '>=', $window->start)->where('achieved_at', '<', $window->end)->exists();
+
+            if ($waits) {
+                $blocking[] = ['account' => (string) $tag->account_id, 'user_id' => (int) $tag->user_id];
+            }
+        }
+
+        return $blocking;
+    }
+
+    public static function waitsFor(Tournament $tournament, ScoreGame $game): bool
+    {
+        return self::blockingFor($tournament, $game) !== [];
+    }
+
+    /**
+     * The (game, account id) pairs that keep a running or open leaderboard
+     * of a registered score game from ending, keyed "game|account".
+     *
+     * @return array<string, true>
+     */
+    public static function blocking(): array
+    {
+        $keys = [];
+
+        foreach (app(GameRegistry::class)->scores() as $game) {
+            foreach (Tournament::query()->where('game', $game->slug())->where('status', TournamentStatus::Running)->get() as $tournament) {
+                foreach (self::blockingFor($tournament, $game) as $item) {
+                    $keys[$game->slug().'|'.$item['account']] = true;
+                }
+            }
+        }
+
+        return $keys;
+    }
+
+    /**
+     * The pending runs of each game account id, for the admin review: those
+     * that keep a leaderboard from ending first, then those an entrant of a
+     * running or open leaderboard stored, then the others by id (round-3
+     * S2); unclaimed groups an admin dismissed are left out. `$total` gets
+     * how many groups there are in all.
+     *
+     * @return list<array{game: ScoreGame, account: string, runs: int, blocks: bool, claimers: list<User>}>
+     */
+    public static function pending(int $limit = 20, int &$total = 0): array
+    {
+        $blocking = self::blocking();
+        $entrants = self::entrantTags();
+        $dismissed = ScoreAccountChange::query()->where('action', 'dismiss')->whereNull('from_user_id')->get(['game', 'account_id'])
+            ->mapWithKeys(fn (ScoreAccountChange $change): array => [$change->game.'|'.$change->account_id => true])->all();
         $rows = ScoreRun::query()->whereNull('user_id')->whereNotNull('account_id')
-            ->selectRaw('game, account_id, count(*) as runs')->groupBy('game', 'account_id')->orderBy('game')->orderBy('account_id')->limit(100)->get();
+            ->selectRaw('game, account_id, count(*) as runs')->groupBy('game', 'account_id')->orderBy('game')->orderBy('account_id')->get();
+        $groups = [];
 
         foreach ($rows as $row) {
             $game = app(GameRegistry::class)->find((string) $row->game);
@@ -211,51 +307,94 @@ final class ScoreAccounts
             }
 
             $account = (string) $row->getAttribute('account_id');
-            $groups[] = ['game' => $game, 'account' => $account, 'runs' => (int) $row->getAttribute('runs'),
-                'claimers' => array_values(User::query()->whereKey(self::claimers($game, $account))->orderBy('id')->get()->all())];
+            $key = $game->slug().'|'.$account;
+
+            // A dismissed id comes back once a player stores it.
+            if (isset($dismissed[$key]) && self::claimers($game, $account) === []) {
+                continue;
+            }
+
+            $groups[] = ['game' => $game, 'account' => $account, 'runs' => (int) $row->getAttribute('runs'), 'blocks' => isset($blocking[$key]),
+                'tier' => isset($blocking[$key]) ? 0 : (isset($entrants[$key]) ? 1 : 2)];
         }
 
-        return $groups;
+        usort($groups, fn (array $a, array $b): int => [$a['tier'], $a['game']->slug(), $a['account']] <=> [$b['tier'], $b['game']->slug(), $b['account']]);
+        $total = count($groups);
+
+        return array_map(fn (array $group): array => ['game' => $group['game'], 'account' => $group['account'], 'runs' => $group['runs'], 'blocks' => $group['blocks'],
+            'claimers' => array_values(User::query()->whereKey(self::claimers($group['game'], $group['account']))->orderBy('id')->get()->all())],
+            array_slice($groups, 0, max(1, $limit)));
     }
 
     /**
-     * How many account ids have finishes waiting for an admin (the admin nav badge).
+     * The (game, account id) pairs stored by a player of a running score
+     * leaderboard or signed up to an open one, keyed "game|account".
+     *
+     * @return array<string, bool>
+     */
+    private static function entrantTags(): array
+    {
+        $games = array_keys(app(GameRegistry::class)->scores());
+        $running = TournamentParticipant::query()->whereIn('tournament_id', Tournament::query()->whereIn('game', $games)->where('status', TournamentStatus::Running)->select('id'))
+            ->pluck('user_id')->filter()->all();
+        $open = TournamentSignup::query()->whereIn('tournament_id', Tournament::query()->whereIn('game', $games)->whereIn('status', [TournamentStatus::Signup, TournamentStatus::Drawing])->select('id'))
+            ->active()->pluck('members')->flatten()->all();
+
+        return DB::table('score_account_tags')->whereIn('game', $games)->whereIn('user_id', array_values(array_unique(array_map(intval(...), [...$running, ...$open]))))
+            ->get(['game', 'account_id'])->mapWithKeys(fn (object $tag): array => [$tag->game.'|'.$tag->account_id => true])->all();
+    }
+
+    /**
+     * The admin nav badge: the account ids that keep a leaderboard from ending.
      */
     public static function pendingAccounts(): int
     {
-        return ScoreRun::query()->whereNull('user_id')->whereNotNull('account_id')->distinct()->count('account_id');
+        return count(self::blocking());
     }
 
     /**
-     * The confirmed claims, newest first, for the admin review.
+     * The confirmed claims, newest first, for the admin review; `$total` gets how many there are.
      *
      * @return Collection<int, ScoreAccountClaim>
      */
-    public static function confirmed(): Collection
+    public static function confirmed(int $limit = 20, int &$total = 0): Collection
     {
-        return ScoreAccountClaim::query()->with('user')->latest('updated_at')->latest('id')->limit(100)->get();
+        $total = ScoreAccountClaim::query()->count();
+
+        return ScoreAccountClaim::query()->with('user')->latest('updated_at')->latest('id')->limit(max(1, $limit))->get();
     }
 
     /**
-     * Whether a finish of an id a player of this leaderboard stored waits for
-     * an admin inside its window: the leaderboard is not ended before (an
-     * unconfirmed claim maps nothing, so the end would leave that value out).
+     * An admin says a waiting id is not this entry's ("not this player's"):
+     * the entry no longer holds its leaderboard for that id, and nothing is
+     * mapped. With no entry: an id nobody stored leaves the review list
+     * until somebody stores it.
+     *
+     * @throws TournamentRuleViolation
      */
-    public static function waitsFor(Tournament $tournament, ScoreGame $game): bool
+    public static function dismiss(ScoreGame $game, string $accountId, ?User $entrant, User $admin, string $reason): void
     {
-        $service = $game->accountService();
+        $accountId = trim($accountId);
+        $reason = self::reason($reason);
+        self::assertMayDecide($game, $accountId, $entrant === null ? [] : [$entrant->id], $admin);
 
-        if ($service === null) {
-            return false;
+        if ($entrant === null && self::claimers($game, $accountId) !== []) {
+            throw new TournamentRuleViolation('claimed', __('Players stored this id: dismiss it for one of them, or confirm it.'));
         }
 
-        $ids = User::query()->whereIn('id', TournamentParticipant::query()->where('tournament_id', $tournament->id)->pluck('user_id')->filter()->all())
-            ->get(['id', 'gamer_tags'])->map(fn (User $user): string => trim((string) ($user->gamer_tags[$service] ?? '')))->filter()->unique()->values()->all();
-        $window = ScoreWindow::of($tournament);
+        self::log($game, $accountId, 'dismiss', $entrant?->id, null, $admin, $reason, 0);
+    }
 
-        return $ids !== [] && ScoreRun::query()->whereNull('user_id')
-            ->where(['game' => $game->slug(), 'mode' => $tournament->mode, 'course' => (string) $tournament->score_course])
-            ->whereIn('account_id', $ids)->where('achieved_at', '>=', $window->start)->where('achieved_at', '<', $window->end)->exists();
+    /**
+     * The league ends a leaderboard whose review time is over although ids
+     * of its entries still wait (round-3 S1: its end never depends on
+     * anyone): each is logged as left out.
+     */
+    public static function leaveOut(Tournament $tournament, ScoreGame $game): void
+    {
+        foreach (self::blockingFor($tournament, $game) as $item) {
+            self::log($game, $item['account'], 'left_out', $item['user_id'], null, null, 'left out: pending (leaderboard '.$tournament->id.' ended after its review time)', 0);
+        }
     }
 
     /**
@@ -278,14 +417,45 @@ final class ScoreAccounts
             throw new TournamentRuleViolation('interested', __('You stored this account id yourself, so another admin has to decide it.'));
         }
 
-        $tournaments = Tournament::query()->where(['game' => $game->slug(), 'status' => TournamentStatus::Running])
+        $running = Tournament::query()->where(['game' => $game->slug(), 'status' => TournamentStatus::Running])
             ->whereHas('participants', fn ($query) => $query->whereIn('user_id', $players))->get();
+        // Round-3 S6: an open board counts too, through its active sign-ups.
+        $open = Tournament::query()->where('game', $game->slug())->whereIn('status', [TournamentStatus::Signup, TournamentStatus::Drawing])->get();
 
-        foreach ($tournaments as $tournament) {
+        foreach ($running as $tournament) {
             if (ScoreLeaderboards::interested($tournament, $admin)) {
                 throw new TournamentRuleViolation('interested', __('You have an interest in a running leaderboard of this game that a claimer plays in, so another admin has to decide this account.'));
             }
         }
+
+        foreach ($open as $tournament) {
+            $signedUp = TournamentSignup::query()->where('tournament_id', $tournament->id)->active()->pluck('members')->flatten()->map(intval(...))->unique()->values()->all();
+
+            if (array_intersect($players, $signedUp) !== [] && self::sharesStake($admin, $signedUp, $players)) {
+                throw new TournamentRuleViolation('interested', __('You have an interest in a running leaderboard of this game that a claimer plays in, so another admin has to decide this account.'));
+            }
+        }
+    }
+
+    /**
+     * Whether the admin is signed up to that board, or shares a clan with a
+     * claimer signed up to it (the stakes of the tournament gate P8b before
+     * there is a board to read them from).
+     *
+     * @param  array<int, int>  $signedUp
+     * @param  array<int, int>  $players
+     */
+    private static function sharesStake(User $admin, array $signedUp, array $players): bool
+    {
+        if (in_array($admin->id, $signedUp, true)) {
+            return true;
+        }
+
+        $claimersIn = array_values(array_intersect($players, $signedUp));
+        $clans = ClanMember::query()->whereIn('user_id', $claimersIn)->pluck('clan_id')->merge(Clan::query()->whereIn('owner_id', $claimersIn)->pluck('id'))->unique()->all();
+
+        return $clans !== [] && (ClanMember::query()->where('user_id', $admin->id)->whereIn('clan_id', $clans)->exists()
+            || Clan::query()->where('owner_id', $admin->id)->whereKey($clans)->exists());
     }
 
     /**
@@ -334,9 +504,16 @@ final class ScoreAccounts
         return $moved;
     }
 
-    private static function log(ScoreGame $game, string $accountId, string $action, ?int $from, ?int $to, User $admin, string $reason, int $moved): void
+    /**
+     * One line of the account log, with the pubkeys of the admin and the
+     * players at the time (round-3 S5): a deleted account keeps its line.
+     */
+    private static function log(ScoreGame $game, string $accountId, string $action, ?int $from, ?int $to, ?User $admin, string $reason, int $moved): void
     {
+        $pubkeys = User::query()->whereKey(array_filter([$from, $to]))->pluck('pubkey', 'id');
+
         ScoreAccountChange::query()->create(['game' => $game->slug(), 'account_id' => $accountId, 'action' => $action, 'from_user_id' => $from, 'to_user_id' => $to,
-            'admin_id' => $admin->id, 'reason' => $reason, 'runs_moved' => $moved, 'created_at' => now()]);
+            'admin_id' => $admin?->id, 'admin_pubkey' => $admin?->pubkey, 'from_pubkey' => $from === null ? null : $pubkeys->get($from), 'to_pubkey' => $to === null ? null : $pubkeys->get($to),
+            'reason' => $reason, 'runs_moved' => $moved, 'created_at' => now()]);
     }
 }

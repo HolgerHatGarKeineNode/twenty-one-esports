@@ -79,7 +79,8 @@ test('p04: a claim nobody confirmed maps no finish, not even a future one, and t
     // The admin badge counts the account that waits, and the league does not end the leaderboard over it.
     $this->actingAs(accountsAdmin());
     $badge = collect(AdminNavigation::forCurrentUser()->groups())->flatMap(fn (array $group) => $group['items'])->firstWhere('key', 'scores')['count'];
-    $this->travelTo($tournament->starts_at->addDays(9));
+    // Inside the review time (window end + review_hours); after it the end leaves the id out (round-3 S1, p04b).
+    $this->travelTo($tournament->starts_at->addDays(7)->addHours(2));
 
     expect($badge)->toBe(1)
         ->and(app(ScoreLeaderboards::class)->tick()['finalized'])->toBe(0)
@@ -108,10 +109,10 @@ test('p12: a contested id neither voids nor maps, and a confirmed one stays its 
     storeAccount($attacker, 'acct-rival');
     ($this->finish)('r2', 'acct-rival', 44_000);
 
-    // Nobody confirmed: the attacker does not end the leaderboard as its leader.
-    $this->travelTo($tournament->starts_at->addDays(9));
+    // Nobody confirmed: the attacker does not end the leaderboard as its leader (inside the review time).
+    $this->travelTo($tournament->starts_at->addDays(7)->addHours(2));
 
-    expect(app(ScoreLeaderboards::class)->tick()['finalized'])->toBe(0)
+    expect(fn () => app(ScoreLeaderboards::class)->finalize($tournament, accountsAdmin()))->toThrow(TournamentRuleViolation::class)
         ->and($tournament->refresh()->status)->toBe(TournamentStatus::Running);
 
     ScoreAccounts::confirm($this->game, 'acct-rival', $rival, accountsAdmin(), 'Rival showed his account page on stream.');

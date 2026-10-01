@@ -255,7 +255,8 @@ return [
     | poller: the polite defaults of every HTTP source (user agent with a
     | contact, at most one request per `min_interval_ms`, `retries` with
     | exponential backoff from `backoff_ms`, a `Retry-After` wins up to
-    | `max_retry_after_seconds`, no redirect, answers up to `max_body_bytes`).
+    | `max_retry_after_seconds`, no redirect, answers up to `max_body_bytes`
+    | read within `read_deadline_seconds` in all).
     |
     */
 
@@ -276,6 +277,7 @@ return [
             'backoff_ms' => 2000,
             'max_retry_after_seconds' => 60,
             'max_body_bytes' => 1_048_576,
+            'read_deadline_seconds' => 10,
         ],
     ],
 

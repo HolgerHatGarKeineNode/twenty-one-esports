@@ -7,6 +7,7 @@ use App\Support\Board;
 use App\Support\Chess\ChessSettings;
 use App\Support\Nostr\Nip05Names;
 use App\Support\Nostr\PlayerProfile;
+use App\Support\Scores\ScoreAccounts;
 use Database\Factories\UserFactory;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Collection;
@@ -82,6 +83,14 @@ class User extends Authenticatable
     {
         static::deleting(function (User $user): void {
             app(Nip05Names::class)->releaseForDeletion($user);
+        });
+
+        // When a score game's account id was stored, on every write path: a leaderboard waits only for ids stored
+        // before its window closed (plan "AoE2 und Trackmania", P4, round-3 S1).
+        static::saved(function (User $user): void {
+            if ($user->wasRecentlyCreated || $user->wasChanged('gamer_tags')) {
+                ScoreAccounts::recordStored($user);
+            }
         });
     }
 

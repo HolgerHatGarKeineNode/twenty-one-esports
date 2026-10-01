@@ -12,8 +12,12 @@ use LogicException;
 /**
  * One admin decision about a game account claim of a score game (plan "AoE2
  * und Trackmania", P4; App\Support\Scores\ScoreAccounts): `confirm`,
- * `reassign` or `revoke`, with the reason and the runs it moved. Append-only,
- * like the director log. Admin-only: the account id is private.
+ * `reassign`, `revoke`, `dismiss` ("not this player's", or an id nobody
+ * stored), or `left_out` (the league ended a leaderboard after its review
+ * time although the id waited; no admin), with the reason and the runs it
+ * moved. Append-only, like the director log. The pubkeys are kept as they
+ * were when the line was written, so a deleted account keeps its line.
+ * Admin-only: the account id is private.
  *
  * @property int $id
  * @property string $game
@@ -22,6 +26,9 @@ use LogicException;
  * @property int|null $from_user_id
  * @property int|null $to_user_id
  * @property int|null $admin_id
+ * @property string|null $admin_pubkey the deciding admin's pubkey when the line was written (null: the league)
+ * @property string|null $from_pubkey
+ * @property string|null $to_pubkey
  * @property string $reason
  * @property int $runs_moved
  * @property Carbon|null $created_at
@@ -29,7 +36,7 @@ use LogicException;
  * @property-read User|null $toUser
  * @property-read User|null $admin
  */
-#[Fillable(['game', 'account_id', 'action', 'from_user_id', 'to_user_id', 'admin_id', 'reason', 'runs_moved', 'created_at'])]
+#[Fillable(['game', 'account_id', 'action', 'from_user_id', 'to_user_id', 'admin_id', 'admin_pubkey', 'from_pubkey', 'to_pubkey', 'reason', 'runs_moved', 'created_at'])]
 #[Hidden(['account_id'])]
 class ScoreAccountChange extends Model
 {

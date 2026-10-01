@@ -5754,5 +5754,14 @@
     "Why (kept in the log)": "Warum (bleibt im Protokoll)",
     "Account log": "Konto-Protokoll",
     "No account was decided yet.": "Noch über kein Konto entschieden.",
-    ":count finish moved|:count finishes moved": ":count Zielankunft verschoben|:count Zielankünfte verschoben"
+    ":count finish moved|:count finishes moved": ":count Zielankunft verschoben|:count Zielankünfte verschoben",
+    "Players stored this id: dismiss it for one of them, or confirm it.": "Spieler haben diese ID hinterlegt: verwirf sie für einen von ihnen oder bestätige sie.",
+    "Dismissed: the id leaves the list.": "Verworfen: die ID verschwindet aus der Liste.",
+    "Dismissed for :name: their leaderboard no longer waits for this id.": "Für :name verworfen: das Leaderboard wartet nicht mehr auf diese ID.",
+    "a leaderboard waits for it": "ein Leaderboard wartet darauf",
+    "Not :name's? Their leaderboard no longer waits for this id.": "Nicht von :name? Das Leaderboard wartet dann nicht mehr auf diese ID.",
+    "Not this player's": "Gehört nicht diesem Spieler",
+    "Dismiss this id? It leaves the list until a player stores it.": "Diese ID verwerfen? Sie verschwindet aus der Liste, bis ein Spieler sie hinterlegt.",
+    "Show more (:count left)": "Mehr zeigen (noch :count)",
+    "the league": "die Liga"
 }

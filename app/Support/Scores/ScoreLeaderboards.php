@@ -148,8 +148,10 @@ final class ScoreLeaderboards
 
     /**
      * Read every automatic source of the game for every entry and store what
-     * lies inside the window. A source that cannot be asked is reported and
-     * skipped: what it gave before stays.
+     * lies inside the window. A source that is down is reported and skipped
+     * for the rest of the snapshot; one that refuses a single player (a 4xx)
+     * counts as failed for that player, and the next is asked. What a source
+     * gave before stays.
      *
      * @return array{stored: int, failed: int}
      */
@@ -184,7 +186,12 @@ final class ScoreLeaderboards
                     report($e);
                     $failed++;
 
-                    continue 2;
+                    // Round-3 S3: a refusal of one player (one account the API does not know) skips only that player.
+                    if ($e->sourceDown) {
+                        continue 2;
+                    }
+
+                    continue;
                 }
 
                 if ($record !== null && $this->runs->store($record, $user->id, $course, $window, $account->accountId) !== null) {
@@ -229,17 +236,25 @@ final class ScoreLeaderboards
             throw new TournamentRuleViolation('pending', __('Submissions still wait for an admin. End the leaderboard once every one is decided.'));
         }
 
-        // Re-audit F4: a finish of an id a player stored waits for an admin to confirm whose it is.
-        if (ScoreAccounts::waitsFor($tournament, $this->runs->gameOf($tournament))) {
+        // Re-audit F4: a finish of an id a player stored waits for an admin to confirm whose it is. Round-3 S1: only
+        // until the review time is over; then the end leaves it out (logged), so it never depends on anybody.
+        $game = $this->runs->gameOf($tournament);
+        $leaveOut = self::reviewOver($tournament);
+
+        if (! $leaveOut && ScoreAccounts::waitsFor($tournament, $game)) {
             throw new TournamentRuleViolation('accounts', __('Finishes of an account a player stored wait for an admin to confirm whose it is. End the leaderboard once they are decided.'));
         }
 
-        DB::transaction(function () use ($tournament, $actor): void {
+        DB::transaction(function () use ($tournament, $actor, $game, $leaveOut): void {
             $locked = Tournament::query()->lockForUpdate()->findOrFail($tournament->id);
             $match = TournamentMatch::query()->where('tournament_id', $locked->id)->where('bracket', 'board')->with('slots')->first();
 
             if ($match === null || $match->result !== null) {
                 return;
+            }
+
+            if ($leaveOut) {
+                ScoreAccounts::leaveOut($locked, $game);
             }
 
             $standings = $this->runs->standings($locked);
@@ -281,6 +296,14 @@ final class ScoreLeaderboards
     }
 
     /**
+     * Whether the review time after the window (`review_hours`) is over.
+     */
+    public static function reviewOver(Tournament $tournament): bool
+    {
+        return ! now()->lessThan(ScoreWindow::of($tournament)->end->addHours(max(0, (int) config('esports.score_games.review_hours', 24))));
+    }
+
+    /**
      * Take the snapshots of every running leaderboard, then finalize those
      * whose review time is over and that have no manual submission waiting.
      *
@@ -290,7 +313,6 @@ final class ScoreLeaderboards
     {
         $finalized = 0;
         $snapshots = 0;
-        $review = max(0, (int) config('esports.score_games.review_hours', 24));
 
         foreach (Tournament::query()->where('status', TournamentStatus::Running)->whereIn('game', array_keys($this->games->scores()))->get() as $tournament) {
             try {
@@ -298,8 +320,8 @@ final class ScoreLeaderboards
                 // Once more after the window closed: a best set in its last hour is read before the end is written.
                 $snapshots += $this->snapshot($tournament)['stored'];
 
-                if (! $window->hasEnded() || now()->lessThan($window->end->addHours($review)) || now()->lessThan(ManualSubmissions::closesAt($tournament)) || ScoreRun::query()->pendingReview()->where('tournament_id', $tournament->id)->exists()
-                    || ScoreAccounts::waitsFor($tournament, $this->runs->gameOf($tournament))) {
+                // After the review time an id still waiting for an admin is left out by finalize() (round-3 S1).
+                if (! $window->hasEnded() || ! self::reviewOver($tournament) || now()->lessThan(ManualSubmissions::closesAt($tournament)) || ScoreRun::query()->pendingReview()->where('tournament_id', $tournament->id)->exists()) {
                     continue;
                 }
 

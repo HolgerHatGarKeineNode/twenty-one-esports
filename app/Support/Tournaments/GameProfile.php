@@ -81,13 +81,21 @@ final readonly class GameProfile
      * default, or for a game no longer registered (a score or board game
      * switched off) a stand-in that plans nothing: no duration, no estimate,
      * no wait, and nothing starts ({@see isUnknown()}). Pages that list or
-     * show such a tournament keep working instead of failing.
+     * show such a tournament keep working instead of failing. The stand-in
+     * is reported, and only for a game the registry does not know: a mode
+     * missing from a registered game is a defect and still throws.
      */
     public static function ofTournament(string $game, string $mode): self
     {
         try {
             return self::for($game, $mode);
-        } catch (InvalidArgumentException) {
+        } catch (InvalidArgumentException $e) {
+            if (app(GameRegistry::class)->find($game) !== null) {
+                throw $e;
+            }
+
+            report($e);
+
             return new self("{$game}/{$mode}", $game, $mode, 'min', 0, 0, 0, 1, 1, [1], false, 'none');
         }
     }

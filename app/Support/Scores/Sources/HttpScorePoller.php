@@ -14,6 +14,7 @@ use Illuminate\Http\Client\Response;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Sleep;
+use RuntimeException;
 
 /**
  * The polite base of every source that reads a game's HTTP API (plan "AoE2
@@ -30,8 +31,12 @@ use Illuminate\Support\Sleep;
  *   `max_retry_after_seconds` (above it the source counts as down).
  * - No redirect is followed; the answer is streamed, uncompressed, and
  *   refused once it passes `max_body_bytes`, without reading the rest.
+ * - Wall-clock deadline: reading an answer takes at most `read_deadline_seconds`
+ *   in all (a source that sends one byte at a time is refused, round-3 S4).
  * - Failing: any other answer, or the last retry failing, throws
- *   ScoreSourceUnavailable. "Could not ask" is never "no record".
+ *   ScoreSourceUnavailable. "Could not ask" is never "no record". A 4xx
+ *   other than 429 refuses this player only; the rest mean the source is
+ *   down (round-3 S3). A player with no confirmed account id is not asked.
  */
 abstract class HttpScorePoller implements ScoreSource
 {
@@ -68,6 +73,11 @@ abstract class HttpScorePoller implements ScoreSource
 
     public function bestFor(ScoreAccount $account, ScoreCourse $course, CarbonInterface $windowStart, CarbonInterface $windowEnd): ?ScoreRecord
     {
+        // Round-3 S3: without a confirmed id there is nobody to ask for (never a request with an empty id).
+        if ($account->accountId === null || $account->accountId === '') {
+            return null;
+        }
+
         return ScoreRecord::best($this->records($this->fetch($account, $course), $account, $course), $course->metric(), $windowStart, $windowEnd);
     }
 
@@ -109,7 +119,8 @@ abstract class HttpScorePoller implements ScoreSource
             $reason = $response === null ? $reason : 'HTTP '.$response->status();
 
             if (! $retryable || $attempt >= $retries) {
-                throw new ScoreSourceUnavailable("Score source [{$this->key()}] refused: {$reason}.");
+                // A 4xx (not 429) is about this player (an unknown or removed account): the source itself is up.
+                throw new ScoreSourceUnavailable("Score source [{$this->key()}] refused: {$reason}.", $retryable);
             }
 
             $retryAfter = $response?->header('Retry-After');
@@ -149,15 +160,32 @@ abstract class HttpScorePoller implements ScoreSource
 
         $stream = $response->toPsrResponse()->getBody();
         $body = '';
+        // Round-3 S4: with a streamed answer the timeout holds per read only, so the whole read gets a deadline.
+        $seconds = max(1, (int) config('esports.score_games.poller.read_deadline_seconds', 10));
+        $deadline = microtime(true) + $seconds;
 
-        while (! $stream->eof()) {
-            $body .= $stream->read(8192);
+        try {
+            while (! $stream->eof()) {
+                if (microtime(true) > $deadline) {
+                    $stream->close();
 
-            if (strlen($body) > $limit) {
-                $stream->close();
+                    throw $refuse("an answer not read within {$seconds} s");
+                }
 
-                throw $refuse("an answer larger than {$limit} bytes");
+                $body .= $stream->read(8192);
+
+                if (strlen($body) > $limit) {
+                    $stream->close();
+
+                    throw $refuse("an answer larger than {$limit} bytes");
+                }
             }
+        } catch (RuntimeException $e) {
+            if ($e instanceof ScoreSourceUnavailable) {
+                throw $e;
+            }
+
+            throw new ScoreSourceUnavailable("Score source [{$this->key()}] refused: an answer it could not read ({$e->getMessage()}).", true, $e);
         }
 
         return new Response(new PsrResponse($response->status(), $response->headers(), $body));
