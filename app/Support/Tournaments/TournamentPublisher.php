@@ -411,7 +411,7 @@ final class TournamentPublisher
         ];
 
         if ($tournament->isCasualCup()) {
-            $lines[] = "Places: {$tournament->capacity}.";
+            $lines[] = $this->cupPlacesLine($tournament);
         }
 
         return $lines;
@@ -443,13 +443,21 @@ final class TournamentPublisher
             ! $profile->isChess() && ! $profile->isBoard() && ! $tournament->isDirectorMode() => 'A series is rated on the ladder named here if, at its pairing, that ladder is open, the trust gate passes and the two sides are not of one clan; the league signs the pairing, and the rating counts once the other side confirms the result or an admin decides a dispute. Mix teams play casual.',
             default => 'Matches are rated on the ladder named here while it is open and the trust gate passes; otherwise casual.',
         };
-        // A casual cup names its places, which grow while it fills (P27): each growth is a new version.
         if ($tournament->isCasualCup()) {
-            $lines[] = CasualCups::nextSize($tournament->capacity) !== null && $tournament->status === TournamentStatus::Signup
-                ? "Places: {$tournament->capacity} for now; the league adds places as they fill, up to ".CasualCups::capacity().', until '.max(0, (int) config('esports.casual_cups.growth_freeze_minutes', 60)).' minutes before sign-up closes.'
-                : "Places: {$tournament->capacity}.";
+            $lines[] = $this->cupPlacesLine($tournament);
         }
 
         return $lines;
+    }
+
+    /**
+     * A casual cup names its places, which grow while it fills (P27; a lobby
+     * cup through its own sizes, P10): each growth is a new version.
+     */
+    private function cupPlacesLine(Tournament $tournament): string
+    {
+        return CasualCups::nextSize($tournament) !== null && $tournament->status === TournamentStatus::Signup
+            ? "Places: {$tournament->capacity} for now; the league adds places as they fill, up to ".max(CasualCups::sizesOf($tournament)).', until '.max(0, (int) config('esports.casual_cups.growth_freeze_minutes', 60)).' minutes before sign-up closes.'
+            : "Places: {$tournament->capacity}.";
     }
 }

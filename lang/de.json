@@ -5896,7 +5896,7 @@
     "Players per lobby": "Spieler pro Lobby",
     "Map size by players": "Kartengröße nach Spielern",
     "Rocket League and EA FC players propose one to three times in the window; the other answers within :answer. Without an agreement the match starts at :slot in the cup’s region on the window’s last evening.": "In Rocket League und EA FC schlagen die Spieler im Fenster ein bis drei Zeiten vor; der andere antwortet binnen :answer. Ohne Einigung startet das Match um :slot (Zeit der Region des Cups) am letzten Abend des Fensters.",
-    ":game cups are one lobby match with :places places from the start: they do not grow, play with :min or more at the close (fewer extend sign-up once, then call it off), and every lobby plays at the start.": ":game-Cups sind von Anfang an ein Lobby-Match mit :places Plätzen: Sie wachsen nicht, spielen ab :min Anmeldungen bei Anmeldeschluss (weniger verlängern die Anmeldung einmal, dann wird abgesagt), und jede Lobby spielt zum Start.",
+    ":game cups are one lobby match: they open with :first places and grow the same way, a full lobby of :lobby at a time above :lobby, up to :last. They play with :min or more at the close (fewer extend sign-up once, then call it off), and every lobby plays at the start.": ":game-Cups sind ein Lobby-Match: Sie starten mit :first Plätzen und wachsen genauso, über :lobby jeweils um eine volle Lobby mit :lobby Plätzen, bis :last. Sie spielen ab :min Anmeldungen bei Anmeldeschluss (weniger verlängern die Anmeldung einmal, dann wird abgesagt), und jede Lobby spielt zum Start.",
     "screenshot": "Screenshot",
     "Log in to report a lobby.": "Melde dich an, um eine Lobby zu melden.",
     ":count lobby|:count lobbies": ":count Lobby|:count Lobbys",

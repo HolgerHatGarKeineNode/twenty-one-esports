@@ -556,9 +556,9 @@ final class RulesPage
                 __('A round opens when the round before is done and lasts :window (:large with more than 8 players).', ['window' => self::minutes((int) $c['window_hours'] * 60), 'large' => self::minutes((int) $c['large_window_hours'] * 60)]),
                 __('Rocket League and EA FC players propose one to three times in the window; the other answers within :answer. Without an agreement the match starts at :slot in the cup’s region on the window’s last evening.', ['answer' => self::minutes((int) $c['answer_hours'] * 60), 'slot' => $c['auto_slot']]),
                 __('Cup matches are casual and use the casual 1v1 check-in and deadlines.'),
-                // A lobby game's cups (P10, Lobbies) are one lobby match: no growth, no evening, no proposed times.
-                ...array_map(fn (string $game): string => __(':game cups are one lobby match with :places places from the start: they do not grow, play with :min or more at the close (fewer extend sign-up once, then call it off), and every lobby plays at the start.', [
-                    'game' => GameNames::game($game), 'places' => Lobbies::cupCapacity($game), 'min' => Lobbies::minEntries($game),
+                // A lobby game's cups (P10, Lobbies) are one lobby match: they grow through their own sizes; no evening, no proposed times.
+                ...array_map(fn (string $game): string => __(':game cups are one lobby match: they open with :first places and grow the same way, a full lobby of :lobby at a time above :lobby, up to :last. They play with :min or more at the close (fewer extend sign-up once, then call it off), and every lobby plays at the start.', [
+                    'game' => GameNames::game($game), 'first' => Lobbies::cupSizes($game)[0], 'lobby' => Lobbies::maxPlayers($game), 'last' => Lobbies::cupCapacity($game), 'min' => Lobbies::minEntries($game),
                 ]), array_values(array_filter(CasualCups::enabledGames(), Lobbies::isLobbyGame(...)))),
             ],
             'links' => [[__('Tournaments'), route('tournaments.index')]],

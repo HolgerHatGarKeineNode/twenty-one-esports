@@ -78,11 +78,13 @@ use Throwable;
  *   new version of the 31923 with the evening's start and end.
  *
  * - Lobby cups (P10, Lobbies): a lobby game's cup (Age of Empires II) is
- *   Free for All in one round from the start, with Lobbies::cupCapacity()
- *   places and no growth. At the close it plays with 3 or more
- *   (Lobbies::minEntries()); fewer extend sign-up once, then call it off,
- *   never a small cup's evening. Its one round opens with the draw, its
- *   window the lobby's set-up, time limit and report time.
+ *   Free for All in one round from the start. It opens small and grows
+ *   like every cup, through its own sizes (Lobbies::cupSizes(): 4, 8, then
+ *   a full lobby of 8 at a time up to Lobbies::cupCapacity(), 40); full
+ *   once growth is frozen, it starts at once. At the close it plays with
+ *   3 or more (Lobbies::minEntries()); fewer extend sign-up once, then call
+ *   it off, never a small cup's evening. Its one round opens with the draw,
+ *   its window the lobby's set-up, time limit and report time.
  *
  * Each cup is handled on its own: one that fails is reported and the others
  * go on. Every transition is a conditional update or happens under the
@@ -287,11 +289,23 @@ final class CasualCups
         return max(self::sizes());
     }
 
-    /** The size after this capacity, or null at the last. */
-    public static function nextSize(int $capacity): ?int
+    /**
+     * The sizes this cup grows through: a lobby cup's own (P10,
+     * Lobbies::cupSizes(): 4, 8, then a full lobby at a time up to 40),
+     * else {@see sizes()}.
+     *
+     * @return non-empty-list<int>
+     */
+    public static function sizesOf(Tournament $cup): array
     {
-        foreach (self::sizes() as $size) {
-            if ($size > $capacity) {
+        return Lobbies::isLobby($cup) ? Lobbies::cupSizes($cup->game) : self::sizes();
+    }
+
+    /** The size after the cup's capacity, or null at its last. */
+    public static function nextSize(Tournament $cup): ?int
+    {
+        foreach (self::sizesOf($cup) as $size) {
+            if ($size > $cup->capacity) {
                 return $size;
             }
         }
@@ -536,7 +550,7 @@ final class CasualCups
         $number = (int) Tournament::query()->where('cup_series', $series)->max('cup_number') + 1;
         $closesAt = self::startFor($game, $region, now());
         $profile = GameProfile::for($game, $setup['mode']);
-        // A lobby game's cup (P10) is one lobby match from the start, with all its places.
+        // A lobby game's cup (P10) is one lobby match from the start; it opens small and grows like every cup.
         $lobby = Lobbies::isLobbyGame($game);
 
         try {
@@ -547,7 +561,7 @@ final class CasualCups
                     'mode' => $setup['mode'],
                     'format' => $lobby ? TournamentFormat::FreeForAll : TournamentFormat::DoubleElimination,
                     'options' => FormatOptions::fromArray($lobby ? Lobbies::options($game) : ['bestOf' => $setup['best_of'], 'finalBestOf' => $setup['final_best_of'], 'grandFinal' => 'single'], $profile)->toArray(),
-                    'capacity' => $lobby ? Lobbies::cupCapacity($game) : self::sizes()[0],
+                    'capacity' => $lobby ? Lobbies::cupSizes($game)[0] : self::sizes()[0],
                     'starts_at' => $closesAt,
                     'time_window' => self::maxDays() * ($profile->isDaily() ? 1 : 1440),
                     'on_site' => false,
@@ -631,9 +645,9 @@ final class CasualCups
      */
     public function grow(Tournament $cup, int $signedUp): bool
     {
-        $next = self::nextSize($cup->capacity);
+        $next = self::nextSize($cup);
 
-        if ($next === null || $cup->status !== TournamentStatus::Signup || self::isEvening($cup) || Lobbies::isLobby($cup) || self::growthFrozen($cup) || $cup->capacity - $signedUp > 1) {
+        if ($next === null || $cup->status !== TournamentStatus::Signup || self::isEvening($cup) || self::growthFrozen($cup) || $cup->capacity - $signedUp > 1) {
             return false;
         }
 
@@ -678,6 +692,36 @@ final class CasualCups
             }
 
             $this->publisher->republish(Tournament::query()->with('event')->lockForUpdate()->findOrFail($cup->id));
+
+            return true;
+        });
+    }
+
+    /**
+     * Shrink a lobby cup opened with all its places (P10, before it grew)
+     * to the first of its sizes above its sign-ups (Lobbies::cupSizeFor():
+     * 1 in, 4 places; 9 in, 16), while growth is still open; the calendar
+     * event gets a new version in the same transaction, so a refused
+     * republish leaves the cup as it was published. Counted under the
+     * tournament's lock, which a sign-up takes too: never below who is in.
+     * Idempotent: a cup at or below its step is left alone.
+     */
+    public function fitLobbyCapacity(Tournament $cup): bool
+    {
+        if (! $cup->isCasualCup() || $cup->status !== TournamentStatus::Signup || ! Lobbies::isLobby($cup) || self::growthFrozen($cup)) {
+            return false;
+        }
+
+        return DB::transaction(function () use ($cup): bool {
+            $locked = Tournament::query()->with('event')->lockForUpdate()->findOrFail($cup->id);
+            $fitting = Lobbies::cupSizeFor($locked->game, $this->signedUp($locked));
+
+            if ($locked->status !== TournamentStatus::Signup || ! Lobbies::isLobby($locked) || $fitting >= $locked->capacity) {
+                return false;
+            }
+
+            $locked->forceFill(['capacity' => $fitting])->save();
+            $this->publisher->republish($locked);
 
             return true;
         });

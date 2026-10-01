@@ -198,13 +198,13 @@ test('Rocket League and EA Sports FC cups open with their own series lengths, in
     ['rocket-league', 'Rocket League', 3, 3, 'us'],
 ]);
 
-test('Age of Empires II cups open as one lobby match with all their places, in each region', function (string $region) {
+test('Age of Empires II cups open as one lobby match with 4 places, in each region', function (string $region) {
     $cup = app(CasualCups::class)->ensure('age-of-empires-2', $region);
 
     expect($cup->name)->toBe('AoE2 Casual Cup '.strtoupper($region).' #1')
         ->and($cup->mode)->toBe('1v1')
         ->and($cup->format)->toBe(TournamentFormat::FreeForAll)
-        ->and($cup->capacity)->toBe(40)
+        ->and($cup->capacity)->toBe(4)
         ->and($cup->formatOptions()->heatSize)->toBe(8)
         ->and($cup->formatOptions()->lobbyMinutes)->toBe(135);
 })->with(['eu', 'us']);

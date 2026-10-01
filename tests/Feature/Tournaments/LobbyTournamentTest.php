@@ -177,14 +177,11 @@ test('a casual Age of Empires II cup is drawn as lobbies, and its players hear t
     config(['esports.casual_cups.enabled' => ['age-of-empires-2']]);
     $cup = app(CasualCups::class)->ensure('age-of-empires-2', 'eu');
 
-    foreach (range(1, 9) as $ignored) {
-        [$player, $signer] = keyedPlayer();
-        soloSignup($cup->refresh(), $player, $signer);
-    }
+    cupSignups($cup, 9);
 
-    // Nine of 40 places: the cup never grows, and closes at its start.
+    // Nine in: the cup grew from 4 to 8 to 16 and closes at its start.
     expect(app(CasualCups::class)->grow($cup->refresh(), 9))->toBeFalse()
-        ->and($cup->refresh()->capacity)->toBe(40);
+        ->and($cup->refresh()->capacity)->toBe(16);
 
     $this->travelTo($cup->signup_closes_at->addMinute());
     cupTick();

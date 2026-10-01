@@ -404,8 +404,10 @@ return [
     | count (`map_sizes`), fixed with the lobby at the draw. Players report
     | the places with a screenshot of the end screen until
     | `report_minutes` after the time limit; a director confirms. A casual
-    | cup of the game holds `cup_capacity` places. `setup_minutes` plans
-    | the time to fill the lobby before the game starts.
+    | cup of the game opens with the first of `cup_sizes` and grows through
+    | them like every casual cup (above 8 a full lobby at a time), up to
+    | `cup_capacity` places. `setup_minutes` plans the time to fill the
+    | lobby before the game starts.
     |
     */
 
@@ -436,6 +438,7 @@ return [
                     'restart_minutes' => 5,
                     'setup_minutes' => 15,
                     'report_minutes' => 60,
+                    'cup_sizes' => [4, 8, 16, 24, 32, 40],
                     'cup_capacity' => 40,
                     'map_sizes' => [2 => 'Tiny', 3 => 'Small', 4 => 'Medium', 5 => 'Normal', 6 => 'Normal', 7 => 'Large', 8 => 'Large'],
                 ],

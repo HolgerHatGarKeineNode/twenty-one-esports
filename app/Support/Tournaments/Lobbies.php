@@ -120,10 +120,46 @@ final class Lobbies
         return max(0, (int) (self::config($game)['setup_minutes'] ?? 15)) + self::timeLimit($game);
     }
 
-    /** The places of a casual cup of the game (5 lobbies of 8 by default). */
+    /** The most places a casual cup of the game grows to (5 lobbies of 8 by default). */
     public static function cupCapacity(string $game): int
     {
         return max(self::minEntries($game), (int) (self::config($game)['cup_capacity'] ?? 40));
+    }
+
+    /**
+     * The sizes a casual cup of the game grows through, smallest first
+     * (user 2026-10-01: "Ich dachte wir grenzen immer anfangs ein und
+     * stocken dann immer nach Anmeldungen auf"): `cup_sizes` from the lobby
+     * minimum up, ending at {@see cupCapacity()}. Above 8 each step is one
+     * full lobby: 4, 8, 16, 24, 32, 40.
+     *
+     * @return non-empty-list<int>
+     */
+    public static function cupSizes(string $game): array
+    {
+        $capacity = self::cupCapacity($game);
+        $sizes = array_filter(array_map(intval(...), (array) (self::config($game)['cup_sizes'] ?? [4, 8, 16, 24, 32, 40])),
+            fn (int $size): bool => $size >= self::minEntries($game) && $size < $capacity);
+        $sizes = array_values(array_unique($sizes));
+        sort($sizes);
+
+        return [...$sizes, $capacity];
+    }
+
+    /**
+     * The places a casual cup of the game needs with `$signedUp` in: the
+     * first size above them (0 or 1 in: 4, 9 in: 16), at most
+     * {@see cupCapacity()}, never fewer than are in.
+     */
+    public static function cupSizeFor(string $game, int $signedUp): int
+    {
+        foreach (self::cupSizes($game) as $size) {
+            if ($size > $signedUp) {
+                return $size;
+            }
+        }
+
+        return max(self::cupCapacity($game), $signedUp);
     }
 
     /**
