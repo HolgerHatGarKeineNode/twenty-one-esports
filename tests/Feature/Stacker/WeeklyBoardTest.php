@@ -292,7 +292,7 @@ test('a ranked run that is not faster than the week\'s best is verified too: it 
         $issued = $this->postJson(route('stacker.runs.issue'))->assertCreated()->json();
         $this->postJson(route('stacker.runs.start', $issued['token']))->assertNoContent();
         $this->travel(intdiv($forty['expected']['ticks'] * 1000, 60) + 500)->milliseconds();
-        $this->postJson(route('stacker.runs.submit', $issued['token']), ['replay' => $forty['replay'], 'ticks' => $forty['expected']['ticks'], 'hash' => $forty['expected']['stateHash']])
+        $this->postJson(route('stacker.runs.submit', $issued['token']), ['replay' => $forty['replay'], 'ticks' => $forty['expected']['ticks'], 'hash' => $forty['expected']['stateHash'], 'input' => 'keyboard'])
             ->assertStatus(202)->assertJson(['status' => 'verifying']);
 
         return $issued['token'];
