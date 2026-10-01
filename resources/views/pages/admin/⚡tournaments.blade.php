@@ -8,6 +8,7 @@ use Illuminate\Support\Facades\Gate;
 use Livewire\Attributes\Computed;
 use Livewire\Attributes\Layout;
 use Livewire\Attributes\Title;
+use Livewire\Attributes\Url;
 use Livewire\Component;
 
 /*
@@ -19,6 +20,10 @@ use Livewire\Component;
  * each behind its own gate).
  */
 new #[Title('Tournaments')] #[Layout('layouts::app', ['section' => 'admin'])] class extends Component {
+    /** Which tournaments the list shows: the ones people set up (default), the casual cups the league opens, or all. */
+    #[Url(except: 'manual')]
+    public string $kind = 'manual';
+
     public function mount(): void
     {
         Gate::authorize('create-tournaments');
@@ -48,12 +53,43 @@ new #[Title('Tournaments')] #[Layout('layouts::app', ['section' => 'admin'])] cl
     public function tournaments(): Collection
     {
         // Blockfill's weekly boards (plan "Blockfill", P6) are opened by the league, nobody manages them here.
-        return Tournament::query()->exceptBlockfillWeeks()
-            ->when(! $this->isAdmin, fn ($query) => $query->where('created_by_id', auth()->id()))
+        return $this->listed()
             ->with('creator')
             ->latest('id')
             ->limit(200)
             ->get();
+    }
+
+    /**
+     * How many tournaments each filter shows.
+     *
+     * @return array{manual: int, casual: int, all: int}
+     */
+    #[Computed]
+    public function counts(): array
+    {
+        $kind = $this->kind;
+        $counts = [];
+        foreach (['manual', 'casual', 'all'] as $option) {
+            $this->kind = $option;
+            $counts[$option] = $this->listed()->count();
+        }
+        $this->kind = $kind;
+
+        return $counts;
+    }
+
+    /**
+     * The list's query without order and limit: casual cups only under "casual" or "all".
+     *
+     * @return \Illuminate\Database\Eloquent\Builder<Tournament>
+     */
+    private function listed(): \Illuminate\Database\Eloquent\Builder
+    {
+        return Tournament::query()->exceptBlockfillWeeks()
+            ->when(! $this->isAdmin, fn ($query) => $query->where('created_by_id', auth()->id()))
+            ->when(! in_array($this->kind, ['casual', 'all'], true), fn ($query) => $query->special())
+            ->when($this->kind === 'casual', fn ($query) => $query->casualCup());
     }
 }; ?>
 
@@ -73,6 +109,14 @@ new #[Title('Tournaments')] #[Layout('layouts::app', ['section' => 'admin'])] cl
                 : __('Its last run was :ago: no sign-up closes, no draw runs and no deadline is applied until the scheduler runs `tournaments:tick` every minute again.', ['ago' => $this->scheduler['last_run_at']->diffForHumans()]) }}
         </x-admin.flash>
     @endif
+
+    {{-- The casual cups the league opens on its own stay out of the way unless asked for. --}}
+    <div role="tablist" class="flex w-fit flex-wrap gap-1 rounded-lg bg-card p-1" data-test="tournament-kind">
+        @foreach (['manual' => __('Set up by people'), 'casual' => __('Casual cups'), 'all' => __('All')] as $key => $label)
+            <button type="button" role="tab" wire:click="$set('kind', '{{ $key }}')" aria-selected="{{ $kind === $key ? 'true' : 'false' }}" data-test="kind-{{ $key }}"
+                    @class(['h-11 cursor-pointer rounded-md border-0 px-4 text-[13px]', 'bg-raised font-bold text-btc' => $kind === $key, 'bg-transparent text-ink-2' => $kind !== $key])>{{ $label }} {{ $this->counts[$key] }}</button>
+        @endforeach
+    </div>
 
     <x-admin.panel :title="$this->isAdmin ? __('All tournaments') : __('Your tournaments')" :meta="__('newest first')" id="list-h">
         @if ($this->tournaments->isEmpty())
