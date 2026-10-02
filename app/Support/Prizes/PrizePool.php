@@ -5,6 +5,7 @@ namespace App\Support\Prizes;
 use App\Enums\PayoutStatus;
 use App\Enums\TournamentStatus;
 use App\Models\Tournament;
+use App\Models\TournamentModerationEntry;
 use App\Models\TournamentSponsor;
 use App\Models\User;
 use App\Support\Lightning\LightningAddress;
@@ -557,6 +558,103 @@ final class PrizePool
         if ($sponsor->logo_path !== null && ! TournamentSponsor::query()->where('logo_path', $sponsor->logo_path)->exists()) {
             Storage::disk('public')->delete($sponsor->logo_path);
         }
+    }
+
+    /**
+     * Mark a sponsor's pledge as paid outside the pot's wallet (user,
+     * 2026-10-02: "Rechnung wurde anders gezahlt"): `$sats` count toward the
+     * pot like a paid invoice, and the logo shows, but nothing moves in the
+     * wallet, so a payout never takes them from it. Who, when and the note
+     * are kept on the sponsor and in the moderation log. One mark at a time
+     * (undo it to correct it), and only until the payouts are approved.
+     *
+     * @throws TournamentRuleViolation
+     */
+    public function markPaidOutside(TournamentSponsor $sponsor, User $user, int $sats, string $note = ''): TournamentSponsor
+    {
+        $this->authorize($sponsor->tournament, $user);
+        $note = mb_substr(trim(preg_replace('/\s+/u', ' ', $note) ?? ''), 0, 200);
+
+        if ($sats < 1 || $sats > (int) config('esports.wallet.max_sats')) {
+            throw new TournamentRuleViolation('outside_sats', __('Enter between 1 and :max sats.', ['max' => PreSeason::formatSats((int) config('esports.wallet.max_sats'))]));
+        }
+
+        return DB::transaction(function () use ($sponsor, $user, $sats, $note): TournamentSponsor {
+            $tournament = Tournament::query()->whereKey($sponsor->tournament_id)->lockForUpdate()->firstOrFail();
+            $this->refuseWhenPaidOut($tournament);
+            $locked = TournamentSponsor::query()->whereKey($sponsor->id)->lockForUpdate()->firstOrFail();
+
+            if ($locked->paid_outside_sats !== null) {
+                throw new TournamentRuleViolation('outside_marked', __('This sponsor is marked as paid outside already. Undo that first to change it.'));
+            }
+
+            $locked->forceFill(['paid_outside_sats' => $sats, 'paid_outside_note' => $note === '' ? null : $note, 'paid_outside_by_id' => $user->id, 'paid_outside_at' => now()])->save();
+            $this->logSponsor($tournament, $user, $locked, $note === '' ? null : $note, [null, $sats]);
+
+            return $locked;
+        });
+    }
+
+    /**
+     * Undo a sponsor's outside payment, until the payouts are approved.
+     *
+     * @throws TournamentRuleViolation
+     */
+    public function undoPaidOutside(TournamentSponsor $sponsor, User $user): TournamentSponsor
+    {
+        $this->authorize($sponsor->tournament, $user);
+
+        return DB::transaction(function () use ($sponsor, $user): TournamentSponsor {
+            $tournament = Tournament::query()->whereKey($sponsor->tournament_id)->lockForUpdate()->firstOrFail();
+            $this->refuseWhenPaidOut($tournament);
+            $locked = TournamentSponsor::query()->whereKey($sponsor->id)->lockForUpdate()->firstOrFail();
+
+            if ($locked->paid_outside_sats === null) {
+                throw new TournamentRuleViolation('outside_unmarked', __('This sponsor is not marked as paid outside.'));
+            }
+
+            $was = $locked->paid_outside_sats;
+            $locked->forceFill(['paid_outside_sats' => null, 'paid_outside_note' => null, 'paid_outside_by_id' => null, 'paid_outside_at' => null])->save();
+            $this->logSponsor($tournament, $user, $locked, null, [$was, null]);
+
+            return $locked;
+        });
+    }
+
+    /**
+     * The sponsors' sats marked as paid outside the pot's wallet: part of
+     * the pot, never in the wallet.
+     */
+    public static function paidOutsideSats(Tournament $tournament): int
+    {
+        return (int) $tournament->sponsors()->sum('paid_outside_sats');
+    }
+
+    /**
+     * @throws TournamentRuleViolation
+     */
+    private function refuseWhenPaidOut(Tournament $tournament): void
+    {
+        if ($tournament->payouts_approved_at !== null) {
+            throw new TournamentRuleViolation('paid_out', __('The payouts of this tournament are approved; its sponsors’ payments can no longer change.'));
+        }
+    }
+
+    /**
+     * @param  array{0: int|null, 1: int|null}  $change  sats paid outside, before and after
+     */
+    private function logSponsor(Tournament $tournament, User $user, TournamentSponsor $sponsor, ?string $note, array $change): void
+    {
+        TournamentModerationEntry::query()->create([
+            'tournament_id' => $tournament->id,
+            'user_id' => $user->id,
+            'user_name' => mb_substr($user->displayName(), 0, 80),
+            'action' => 'edited',
+            'subject' => mb_substr(__('Sponsor :name', ['name' => $sponsor->name]), 0, 80),
+            'reason' => $note,
+            'details' => ['paid_outside_sats' => $change],
+            'created_at' => now(),
+        ]);
     }
 
     /**

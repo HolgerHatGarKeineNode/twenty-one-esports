@@ -28,8 +28,10 @@ use Livewire\WithFileUploads;
  * App\Livewire\PrizePotPage; the prizes can change until sign-up closes,
  * because players sign up under them), and the sponsors with their logos
  * and invoices, made by the pot's own wallet (App\Support\Prizes\PotTopUps).
- * The pot is what that wallet holds. Paying out is on the admins' payouts
- * page.
+ * A pledge paid some other way is marked "paid outside" with its sats and a
+ * note, and can be undone until the payouts are approved; the status shows
+ * what is in the wallet apart from what was paid outside it. Paying out is
+ * on the admins' payouts page.
  */
 new #[Layout('layouts::app', ['section' => 'tournaments'])] class extends PrizePotPage {
     use WithFileUploads;
@@ -48,6 +50,14 @@ new #[Layout('layouts::app', ['section' => 'tournaments'])] class extends PrizeP
     public ?int $invoiceId = null;
 
     public string $saved = '';
+
+    /** The sponsor whose "paid outside" form is open; null = none. */
+    #[Locked]
+    public ?int $outsideSponsorId = null;
+
+    public int|string $outsideSats = '';
+
+    public string $outsideNote = '';
 
     public function mount(Tournament $tournament): void
     {
@@ -81,7 +91,7 @@ new #[Layout('layouts::app', ['section' => 'tournaments'])] class extends PrizeP
     #[Computed]
     public function sponsors(): Collection
     {
-        return $this->tournament->sponsors()->get();
+        return $this->tournament->sponsors()->with('paidOutsideBy')->get();
     }
 
     #[Computed]
@@ -122,6 +132,49 @@ new #[Layout('layouts::app', ['section' => 'tournaments'])] class extends PrizeP
     {
         $sponsor = TournamentSponsor::query()->where('tournament_id', $this->tournamentId)->findOrFail($sponsorId);
         $this->guarded(fn () => $pool->removeSponsor($sponsor, $this->me()));
+        unset($this->sponsors);
+    }
+
+    /** Open the "paid outside" form of a sponsor, its amount the open rest of the pledge. */
+    public function openPaidOutside(int $sponsorId): void
+    {
+        $sponsor = TournamentSponsor::query()->where('tournament_id', $this->tournamentId)->findOrFail($sponsorId);
+        $this->me();
+        $this->resetErrorBag();
+        $this->outsideSponsorId = $sponsor->id;
+        $this->outsideSats = $sponsor->openSats() > 0 ? $sponsor->openSats() : '';
+        $this->outsideNote = '';
+    }
+
+    public function closePaidOutside(): void
+    {
+        $this->reset('outsideSponsorId', 'outsideSats', 'outsideNote');
+        $this->resetErrorBag();
+    }
+
+    public function markPaidOutside(PrizePool $pool): void
+    {
+        if ($this->outsideSponsorId === null) {
+            return;
+        }
+
+        $this->validate([
+            'outsideSats' => ['required', 'integer', 'min:1', 'max:'.(int) config('esports.wallet.max_sats')],
+            'outsideNote' => ['nullable', 'string', 'max:200'],
+        ], attributes: ['outsideSats' => __('amount'), 'outsideNote' => __('note')]);
+
+        $sponsor = TournamentSponsor::query()->where('tournament_id', $this->tournamentId)->findOrFail($this->outsideSponsorId);
+
+        if ($this->guarded(fn () => $pool->markPaidOutside($sponsor, $this->me(), (int) $this->outsideSats, $this->outsideNote))) {
+            $this->reset('outsideSponsorId', 'outsideSats', 'outsideNote');
+            unset($this->sponsors);
+        }
+    }
+
+    public function undoPaidOutside(int $sponsorId, PrizePool $pool): void
+    {
+        $sponsor = TournamentSponsor::query()->where('tournament_id', $this->tournamentId)->findOrFail($sponsorId);
+        $this->guarded(fn () => $pool->undoPaidOutside($sponsor, $this->me()));
         unset($this->sponsors);
     }
 
@@ -186,6 +239,8 @@ new #[Layout('layouts::app', ['section' => 'tournaments'])] class extends PrizeP
     $funding = $tournament->hasOwnWallet() ? $pool->funding($tournament) : null;
     $ended = $tournament->pool_closed_at !== null || in_array($tournament->status, [\App\Enums\TournamentStatus::Finished, \App\Enums\TournamentStatus::Cancelled], true);
     $invoice = $this->invoice;
+    $paidOut = $tournament->payouts_approved_at !== null;
+    $outside = PrizePool::paidOutsideSats($tournament);
 @endphp
 
 <x-admin.page active="tournaments" :title="__('Prize pool')" :lead="__('The pot is a wallet of this tournament’s own: anyone can add sats to it, sponsors too. You set the prizes and the sponsors; an admin checks the tournament at its end and pays the winners from that wallet.')" :crumbs="[[__('Tournaments'), route('admin.tournaments')], [$tournament->name, route('tournaments.show', $tournament)]]" data-test="pool-settings">
@@ -206,6 +261,17 @@ new #[Layout('layouts::app', ['section' => 'tournaments'])] class extends PrizeP
                 <b>{{ $sats((int) $pool->potSats($tournament)) }} {{ __('sats') }}</b>
                 · {{ $tournament->isPoolOpen() ? __('open since :date', ['date' => $tournament->pool_opened_at->format('Y-m-d H:i')]) : __('closed at the admin check, :date', ['date' => $tournament->pool_closed_at?->format('Y-m-d H:i')]) }}
             </p>
+            {{-- What the wallet holds apart from what sponsors paid outside it: a payout only ever pays from the wallet. --}}
+            <p class="m-0 text-[13px] text-ink-2" data-test="pool-in-wallet">
+                {{ __('In the wallet: :sats sats', ['sats' => $sats((int) $tournament->pot_balance_sats)]) }}@if ($tournament->pot_balance_at) <span class="text-ink-3">({{ __('read :time', ['time' => $tournament->pot_balance_at->copy()->timezone(\App\Support\LeagueTime::zone())->format('Y-m-d H:i')]) }})</span>@endif
+                @if ($outside > 0) · <span data-test="pool-paid-outside">{{ __('Paid outside the wallet: :sats sats', ['sats' => $sats($outside)]) }}</span>@endif
+            </p>
+            @if ($outside > 0 && ! $paidOut)
+                <p class="m-0 flex items-start gap-2 rounded-md bg-btc-chip px-3 py-2 text-[13px] text-ink" role="note" data-test="pool-outside-warning">
+                    <x-icon name="warn" :size="16" class="mt-0.5 shrink-0 text-btc-hi" />
+                    <span>{{ __('The payout pays only from the wallet. Move the :sats sats paid outside it into the wallet before the payout check, or the prizes will lack them.', ['sats' => $sats($outside)]) }}</span>
+                </p>
+            @endif
             @if ($funding !== null && $funding['leftover'] !== null)
                 <p class="m-0 text-[13px] text-ink-2" data-test="pool-leftover">{{ $funding['funded']
                     ? __('The fixed prizes are covered; :sats sats are left over after prizes and stay in the wallet.', ['sats' => $sats($funding['leftover'])])
@@ -259,19 +325,51 @@ new #[Layout('layouts::app', ['section' => 'tournaments'])] class extends PrizeP
                             <span class="min-w-0">
                                 <b class="block truncate text-[13px]">{{ $sponsor->name }}</b>
                                 <span class="text-xs text-ink-2">{{ __(':pledged sats pledged, :paid sats paid', ['pledged' => $sats($sponsor->pledged_sats), 'paid' => $sats($paid)]) }}</span>
+                                @if ($sponsor->paid_outside_sats !== null)
+                                    <span class="block text-xs text-ink-2 [overflow-wrap:anywhere]" data-test="sponsor-outside">{{ __(':sats sats paid outside the wallet, marked by :name on :date', ['sats' => $sats($sponsor->paidOutsideSats()), 'name' => $sponsor->paidOutsideBy?->displayName() ?? __('a deleted account'), 'date' => $sponsor->paid_outside_at?->copy()->timezone(\App\Support\LeagueTime::zone())->format('Y-m-d H:i')]) }}@if ($sponsor->paid_outside_note): „{{ $sponsor->paid_outside_note }}“@endif</span>
+                                @endif
                             </span>
                         </span>
-                        @if (! $ended)
+                        @if (! $ended || ! $paidOut)
                             <span class="flex shrink-0 flex-wrap gap-2">
-                                @if ($sponsorInvoices)
+                                @if ($sponsorInvoices && ! $ended)
                                     <x-button variant="quiet" wire:click="sponsorInvoice({{ $sponsor->id }})" data-test="sponsor-invoice-button">{{ __('Invoice') }}</x-button>
                                 @endif
-                                @if ($paid === 0)
+                                @if (! $paidOut && $sponsor->paid_outside_sats === null && $outsideSponsorId !== $sponsor->id)
+                                    <x-button variant="quiet" wire:click="openPaidOutside({{ $sponsor->id }})" data-test="sponsor-outside-button">{{ __('Mark as paid outside') }}</x-button>
+                                @endif
+                                @if (! $paidOut && $sponsor->paid_outside_sats !== null)
+                                    <x-button variant="secondary" wire:click="undoPaidOutside({{ $sponsor->id }})" wire:confirm="{{ __('Undo the outside payment of this sponsor?') }}" data-test="sponsor-outside-undo">{{ __('Undo outside payment') }}</x-button>
+                                @endif
+                                @if ($paid === 0 && ! $ended)
                                     <x-button variant="secondary" wire:click="removeSponsor({{ $sponsor->id }})" wire:confirm="{{ __('Remove this sponsor?') }}">{{ __('Remove') }}</x-button>
                                 @endif
                             </span>
                         @endif
                     </li>
+                    @if ($outsideSponsorId === $sponsor->id)
+                        <li class="list-none" wire:key="so-{{ $sponsor->id }}">
+                            <form wire:submit="markPaidOutside" class="flex flex-col gap-3 rounded-md bg-ground p-4 shadow-ring" data-test="sponsor-outside-form">
+                                <p class="m-0 text-[13px] leading-normal text-ink-2">{{ __(':name paid some other way than the invoice. The sats count toward the pot and the logo shows, but they are not in the pot’s wallet: the payout never takes them from it.', ['name' => $sponsor->name]) }}</p>
+                                <div class="grid gap-3 sm:grid-cols-[minmax(0,12rem)_minmax(0,1fr)]">
+                                    <label class="flex flex-col gap-1.5 text-xs text-ink-2">
+                                        {{ __('Amount in sats') }}
+                                        <input type="text" inputmode="numeric" wire:model="outsideSats" class="h-11 rounded-md border border-line bg-well px-3 text-[13px] text-ink" data-test="sponsor-outside-sats">
+                                        @error('outsideSats')<span class="text-loss" role="alert">{{ $message }}</span>@enderror
+                                    </label>
+                                    <label class="flex flex-col gap-1.5 text-xs text-ink-2">
+                                        {{ __('Note (optional)') }}
+                                        <input type="text" maxlength="200" wire:model="outsideNote" placeholder="{{ __('e.g. bank transfer on 1 October') }}" class="h-11 rounded-md border border-line bg-well px-3 text-[13px] text-ink" data-test="sponsor-outside-note">
+                                        @error('outsideNote')<span class="text-loss" role="alert">{{ $message }}</span>@enderror
+                                    </label>
+                                </div>
+                                <div class="flex flex-wrap gap-2">
+                                    <x-button type="submit" data-test="sponsor-outside-save">{{ __('Mark as paid') }}</x-button>
+                                    <x-button variant="secondary" wire:click="closePaidOutside">{{ __('Cancel') }}</x-button>
+                                </div>
+                            </form>
+                        </li>
+                    @endif
                 @endforeach
             </ul>
         @endif
