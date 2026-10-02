@@ -895,6 +895,8 @@ return [
         'nwc_insecure_relays' => array_values(array_filter(array_map('trim', explode(',', (string) env('ESPORTS_NWC_INSECURE_RELAYS', ''))))),
         // How long one payout attempt may hold a payout (Lightning address, invoice, payment).
         'payout_lease_seconds' => 180,
+        // How long a payment from the league wallet waits for the spend lock another payment holds (gate F1 on 8a171405).
+        'spend_lock_wait_seconds' => 15,
         // Invoices anyone may open per IP and minute (zap panel and LNURL callback).
         'invoices_per_minute' => 10,
         'open_invoices_per_user' => 5,

@@ -6447,5 +6447,7 @@
     "Zapped on top by": "Obendrauf gezappt von",
     "Zaps add on top of the pot and are split like it. Zap with Nostr and you show on the sponsors’ wall with your Nostr picture; the league takes nothing.": "Zaps kommen obendrauf auf den Topf und werden wie er aufgeteilt. Zappst du mit Nostr, erscheinst du mit deinem Nostr-Bild an der Sponsorenwand; die Liga behält nichts.",
     "“:note”": "„:note“",
-    ":name paid some other way than the invoice. The sats count toward the pot and the logo shows, but they are not in the league wallet: the payout never takes them from it.": ":name hat anders als per Rechnung bezahlt. Die Sats zählen zum Topf und das Logo erscheint, aber sie liegen nicht in der Liga-Wallet: die Auszahlung nimmt sie nie von dort."
+    ":name paid some other way than the invoice. The sats count toward the pot and the logo shows, but they are not in the league wallet: the payout never takes them from it.": ":name hat anders als per Rechnung bezahlt. Die Sats zählen zum Topf und das Logo erscheint, aber sie liegen nicht in der Liga-Wallet: die Auszahlung nimmt sie nie von dort.",
+    "The zap request is too long. Keep the comment under :max characters.": "Die Zap-Anfrage ist zu lang. Halte den Kommentar unter :max Zeichen.",
+    "Another payment from the league wallet was under way, so nothing was sent. It is tried again.": "Gerade lief eine andere Zahlung aus der Liga-Wallet, darum wurde nichts gesendet. Es wird erneut versucht."
 }

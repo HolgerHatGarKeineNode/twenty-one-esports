@@ -4,6 +4,7 @@ namespace App\Support\Prizes;
 
 use App\Enums\IncomingPaymentStatus;
 use App\Models\IncomingPayment;
+use App\Models\NostrEvent;
 use App\Models\Tournament;
 use App\Support\Nostr\SignedEvent;
 use App\Support\SeasonChain\LeagueKey;
@@ -144,7 +145,12 @@ final class IncomingPayments
             $this->ledger->contribution($payment, $late ? Ledger::RESERVE : $payment->pot);
 
             if ($payment->zap_request !== null) {
-                $this->receipt($payment);
+                $receipt = $this->receipt($payment);
+
+                // A zap into an open tournament pot: its receipt verified once, here (gate F2), never per page view.
+                if ($receipt !== null && $tournament !== null && ! $late) {
+                    $this->verifyZap($payment, $receipt, $tournament);
+                }
             }
         });
     }
@@ -164,13 +170,13 @@ final class IncomingPayments
     /**
      * The zap receipt (NIP-57 `9735`) for a settled zap.
      */
-    private function receipt(IncomingPayment $payment): void
+    private function receipt(IncomingPayment $payment): ?NostrEvent
     {
         $key = LeagueKey::lnurl();
         $request = SignedEvent::fromInput(json_decode((string) $payment->zap_request, true));
 
         if ($key === null || $request === null || $payment->settled_at === null) {
-            return;
+            return null;
         }
 
         $tags = [['p', (string) ($request->tag('p') ?? '')], ['P', $request->pubkey]];
@@ -190,5 +196,24 @@ final class IncomingPayments
 
         $event = $key->publish(9735, $tags, '', $payment->settled_at->getTimestamp());
         $payment->forceFill(['receipt_event_id' => $event->id])->save();
+
+        return $event;
+    }
+
+    /**
+     * Verify a tournament zap's receipt once ({@see ZapReceipts}) and mark the
+     * row: only a verified zap of exactly its invoice's amount, by the
+     * request's author, goes on the wall and on top of the pot.
+     */
+    private function verifyZap(IncomingPayment $payment, NostrEvent $receipt, Tournament $tournament): void
+    {
+        $lnurl = LeagueKey::lnurl()?->pubkey();
+        $pool = LeagueKey::poolPubkey();
+        $zap = $lnurl === null || $pool === null ? null : ZapReceipts::verify(json_decode($receipt->raw, true), $tournament, $lnurl, $pool);
+
+        if ($zap !== null && $zap['sats'] === $payment->amount_sats && $zap['payer'] === $payment->payer_pubkey) {
+            $payment->forceFill(['zap_verified' => true])->save();
+            app(ZapSponsors::class)->forget($tournament->id);
+        }
     }
 }

@@ -36,6 +36,7 @@ use Illuminate\Support\Carbon;
  * @property string|null $preimage
  * @property bool $late
  * @property int|null $receipt_event_id the 9735
+ * @property bool $zap_verified a tournament zap whose receipt the league verified when it signed it
  * @property Carbon|null $checked_at last lookup at the wallet
  * @property int|null $requester_user_id the logged-in user who asked for the invoice
  * @property string|null $requester_ip_hash HMAC of the requester's IP (never the IP itself)
@@ -46,7 +47,7 @@ use Illuminate\Support\Carbon;
  * @property-read NostrEvent|null $receipt
  */
 #[Fillable(['pot', 'tournament_id', 'sponsor_id', 'source', 'payment_hash', 'bolt11', 'amount_sats', 'zap_request', 'payer_pubkey', 'comment',
-    'status', 'expires_at', 'settled_at', 'preimage', 'late', 'receipt_event_id', 'checked_at', 'requester_user_id', 'requester_ip_hash'])]
+    'status', 'expires_at', 'settled_at', 'preimage', 'late', 'receipt_event_id', 'checked_at', 'requester_user_id', 'requester_ip_hash', 'zap_verified'])]
 class IncomingPayment extends Model
 {
     public const RESERVE = 'reserve';
@@ -59,6 +60,7 @@ class IncomingPayment extends Model
             'expires_at' => 'datetime',
             'settled_at' => 'datetime',
             'late' => 'boolean',
+            'zap_verified' => 'boolean',
             'checked_at' => 'datetime',
         ];
     }

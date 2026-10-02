@@ -7,61 +7,34 @@ use App\Models\IncomingPayment;
 use App\Models\Tournament;
 use App\Models\User;
 use App\Support\Nostr\NostrKeys;
-use App\Support\SeasonChain\LeagueKey;
-use Illuminate\Support\Facades\Cache;
+use Illuminate\Container\Attributes\Scoped;
 
 /**
  * The zap sponsors of a tournament (user, 2026-10-02: „auf der Turnierseite
  * selbst können durch Zaps auf das Turnier selbst Sponsoren dazukommen. Die
  * werden dann mit ihren Nostr Avataren stolz präsentiert. Diese zahlen oben
  * drauf auf den Topf"): everyone whose zap to the tournament's calendar
- * event has a receipt that {@see ZapReceipts} verifies, one entry per
+ * event has a receipt that {@see ZapReceipts} verified, one entry per
  * zapper with their zapped sum, the biggest first. Their sats add on top of
  * the pot as announced and are split like it ({@see PrizePool}).
  *
- * The receipts are the league's own, published when the league wallet saw
- * the zap's invoice paid (App\Support\Prizes\IncomingPayments); each is
- * still verified here, and counted once by its id. A zapper chose to zap in
- * public, so their Nostr key, name and picture show; never anything else
- * of a player.
+ * Each receipt is verified once, when the league signs it
+ * (App\Support\Prizes\IncomingPayments, `zap_verified` on its payment row);
+ * the wall is one query over those rows, remembered for the request
+ * (security gate on 8a171405, F2: never re-verified per page view). One row
+ * is one payment and one receipt, so each receipt counts once. A zapper
+ * chose to zap in public, so their Nostr key, name and picture show; never
+ * anything else of a player.
  */
+#[Scoped]
 final class ZapSponsors
 {
-    /** How long a receipt's verification is remembered (it is a pure function of signed data). */
-    private const VERIFIED_TTL = 86_400;
+    /** @var array<int, list<array{pubkey: string, npub: string, sats: int, zaps: int, first: int, user: User|null}>> */
+    private array $walls = [];
 
     /**
-     * The verified zaps into the pot, each receipt once.
-     *
-     * @return list<array{id: string, payer: string, sats: int, at: int, comment: string}>
-     */
-    public function zaps(Tournament $tournament): array
-    {
-        $lnurl = LeagueKey::lnurl()?->pubkey();
-        $pool = LeagueKey::poolPubkey();
-        $address = $tournament->address();
-
-        if ($lnurl === null || $pool === null || $address === null || ! $tournament->hasLeaguePot()) {
-            return [];
-        }
-
-        $payments = IncomingPayment::query()->where('tournament_id', $tournament->id)->where('pot', $tournament->potAccount())
-            ->where('source', 'zap')->where('status', IncomingPaymentStatus::Settled)->where('late', false)
-            ->whereNotNull('receipt_event_id')->with('receipt')->orderBy('id')->get();
-
-        $receipts = [];
-
-        foreach ($payments as $payment) {
-            if ($payment->receipt !== null) {
-                $receipts[] = $payment->receipt->raw;
-            }
-        }
-
-        return self::tally($receipts, $tournament, $lnurl, $pool);
-    }
-
-    /**
-     * Verified zaps out of raw receipts (JSON), each receipt id once.
+     * Verified zaps out of raw receipts (JSON), each receipt id once: the
+     * same check as at settle, for a recount from relay data.
      *
      * @param  list<string>  $receipts
      * @return list<array{id: string, payer: string, sats: int, at: int, comment: string}>
@@ -69,22 +42,12 @@ final class ZapSponsors
     public static function tally(array $receipts, Tournament $tournament, string $lnurlPubkey, string $poolPubkey): array
     {
         $seen = [];
-        $context = hash('sha256', implode('|', [$tournament->address(), $tournament->pool_closed_at?->getTimestamp(), $lnurlPubkey, $poolPubkey]));
 
         foreach ($receipts as $raw) {
-            $input = json_decode($raw, true);
-            $id = is_array($input) && is_string($input['id'] ?? null) ? $input['id'] : null;
+            $zap = ZapReceipts::verify(json_decode($raw, true), $tournament, $lnurlPubkey, $poolPubkey);
 
-            if ($id === null || isset($seen[$id])) {
-                continue;
-            }
-
-            // Keyed by the whole signed text, not the id alone: the id does not cover the signature.
-            $zap = Cache::remember('zap-receipt:'.hash('sha256', $raw).':'.$context, self::VERIFIED_TTL,
-                fn () => ZapReceipts::verify($input, $tournament, $lnurlPubkey, $poolPubkey) ?? false);
-
-            if (is_array($zap) && $zap['id'] === $id) {
-                $seen[$id] = $zap;
+            if ($zap !== null && ! isset($seen[$zap['id']])) {
+                $seen[$zap['id']] = $zap;
             }
         }
 
@@ -94,7 +57,7 @@ final class ZapSponsors
     /** The sats zapped on top of the pot. */
     public function zapSats(Tournament $tournament): int
     {
-        return array_sum(array_column($this->zaps($tournament), 'sats'));
+        return array_sum(array_column($this->wall($tournament), 'sats'));
     }
 
     /**
@@ -106,23 +69,46 @@ final class ZapSponsors
      */
     public function wall(Tournament $tournament): array
     {
-        $byPayer = [];
-
-        foreach ($this->zaps($tournament) as $zap) {
-            $entry = $byPayer[$zap['payer']] ?? ['pubkey' => $zap['payer'], 'npub' => NostrKeys::hexToNpub($zap['payer']), 'sats' => 0, 'zaps' => 0, 'first' => $zap['at'], 'user' => null];
-            $entry['sats'] += $zap['sats'];
-            $entry['zaps']++;
-            $entry['first'] = min($entry['first'], $zap['at']);
-            $byPayer[$zap['payer']] = $entry;
+        if (! $tournament->hasLeaguePot()) {
+            return [];
         }
 
-        $users = User::query()->whereIn('pubkey', array_keys($byPayer))->get()->keyBy('pubkey');
+        return $this->walls[$tournament->id] ??= $this->read($tournament);
+    }
 
-        foreach ($byPayer as $pubkey => $entry) {
-            $byPayer[$pubkey]['user'] = $users->get($pubkey);
+    /** Forget the remembered wall (a zap was verified in this request). */
+    public function forget(int $tournamentId): void
+    {
+        unset($this->walls[$tournamentId]);
+    }
+
+    /**
+     * @return list<array{pubkey: string, npub: string, sats: int, zaps: int, first: int, user: User|null}>
+     */
+    private function read(Tournament $tournament): array
+    {
+        $rows = IncomingPayment::query()->where('tournament_id', $tournament->id)->where('zap_verified', true)
+            ->where('pot', $tournament->potAccount())->where('source', 'zap')->where('status', IncomingPaymentStatus::Settled)
+            ->where('late', false)->whereNotNull('payer_pubkey')
+            ->groupBy('payer_pubkey')
+            ->selectRaw('payer_pubkey, sum(amount_sats) as sats, count(*) as zaps, min(settled_at) as first_at')
+            ->get();
+
+        $users = User::query()->whereIn('pubkey', $rows->pluck('payer_pubkey'))->get()->keyBy('pubkey');
+        $wall = [];
+
+        foreach ($rows as $row) {
+            $pubkey = (string) $row->getAttribute('payer_pubkey');
+            $wall[] = [
+                'pubkey' => $pubkey,
+                'npub' => NostrKeys::hexToNpub($pubkey),
+                'sats' => (int) $row->getAttribute('sats'),
+                'zaps' => (int) $row->getAttribute('zaps'),
+                'first' => (int) strtotime((string) $row->getAttribute('first_at')),
+                'user' => $users->get($pubkey),
+            ];
         }
 
-        $wall = array_values($byPayer);
         usort($wall, fn (array $a, array $b): int => [$b['sats'], $a['first']] <=> [$a['sats'], $b['first']]);
 
         return $wall;

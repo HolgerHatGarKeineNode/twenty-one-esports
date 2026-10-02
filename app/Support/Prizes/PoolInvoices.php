@@ -35,6 +35,12 @@ use function BitWasp\Bech32\encode;
  */
 final class PoolInvoices
 {
+    /** The longest zap request taken, as sent (NIP-57 leaves it open; ours are well below). */
+    public const MAX_ZAP_REQUEST_BYTES = 4096;
+
+    /** The longest zap comment taken, in characters. */
+    public const MAX_ZAP_COMMENT = 280;
+
     public function __construct(private ZapRequests $zapRequests) {}
 
     /**
@@ -46,6 +52,12 @@ final class PoolInvoices
     public function forZapRequest(SignedEvent $request, string $json, int $amountSats, ?Tournament $only = null): IncomingPayment
     {
         $this->checkAmount($amountSats);
+
+        // Small requests only: each one is stored and goes into its receipt (gate F2 on 8a171405).
+        if (strlen($json) > self::MAX_ZAP_REQUEST_BYTES || mb_strlen($request->content) > self::MAX_ZAP_COMMENT) {
+            throw new PoolRefusal(__('The zap request is too long. Keep the comment under :max characters.', ['max' => self::MAX_ZAP_COMMENT]));
+        }
+
         $pot = $this->zapRequests->potOf($request, $amountSats * 1000, $only);
 
         return $this->make($amountSats, hash('sha256', $json), [

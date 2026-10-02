@@ -119,6 +119,7 @@ class TournamentPayout extends Model
             'wallet_error' => __('The league wallet refused the payment.'),
             'insufficient_balance' => __('The league wallet does not hold enough sats.'),
             'balance_unread' => __('The league wallet did not tell its balance, so nothing was sent. It is tried again.'),
+            'wallet_busy' => __('Another payment from the league wallet was under way, so nothing was sent. It is tried again.'),
             'budget_exceeded' => __('The league wallet’s budget for payouts is used up.'),
             'unconfirmed' => __('The wallet has not confirmed the payment yet. It is checked again before anything else happens.'),
             'needs_check' => __('The outcome is unknown and the invoice has expired. Check the wallet, then release the payout if it was not paid.'),
