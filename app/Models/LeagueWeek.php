@@ -21,7 +21,8 @@ use Illuminate\Support\Carbon;
  * (`tournament_id`). Nothing of it is public before it started: players see
  * the tournament, never this row (App\Support\Scores\LeagueWeekDrafts).
  *
- * `settings` per game: Blockfill `{difficulty: <engine id>}` (resources/js/stacker/engine.js ENGINES),
+ * `settings` per game: Blockfill `{difficulty: <engine id>}`, the week's rules as their engine id
+ * (App\Support\Stacker\BlockfillRules: bf1, t60e5g1s1c9, or a frozen id of the first weeks such as bf1hard),
  * TMNF `{track: <UId>, time_limit_minutes: int|null}` (null: the server's own limit of a round).
  *
  * @property int $id

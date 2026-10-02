@@ -14,7 +14,7 @@ use App\Support\Board;
 use App\Support\LeagueTime;
 use App\Support\Notifications\Notice;
 use App\Support\Notifications\Notifier;
-use App\Support\Stacker\BlockfillDifficulty;
+use App\Support\Stacker\BlockfillRules;
 use App\Support\Stacker\BlockfillWeeks;
 use App\Support\Tmnf\TmnfWeeks;
 use Carbon\CarbonImmutable;
@@ -226,7 +226,8 @@ final class LeagueWeekDrafts
 
     /**
      * A game's settings in their stored shape; anything unknown falls back to
-     * the game's default (fail closed: never a track or a difficulty the league does not run).
+     * the game's default (fail closed: never a track or rules the league does not run). Blockfill's
+     * `difficulty` is the week's rules as their engine id (BlockfillRules).
      *
      * @param  array<string, mixed>|null  $settings
      * @return array<string, mixed>
@@ -238,7 +239,7 @@ final class LeagueWeekDrafts
         if ($game === Blockfill::SLUG) {
             $difficulty = $settings['difficulty'] ?? null;
 
-            return ['difficulty' => BlockfillDifficulty::isKnown($difficulty) ? $difficulty : BlockfillDifficulty::default()];
+            return ['difficulty' => BlockfillRules::isKnown($difficulty) ? $difficulty : BlockfillRules::default()];
         }
 
         $track = $settings['track'] ?? null;

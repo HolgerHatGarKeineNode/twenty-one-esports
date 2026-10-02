@@ -3,7 +3,7 @@
  * stacker/⚡replay): an Alpine component around the replay player
  * (replay-player.js), drawn by the game's own renderer. It owns no rules.
  *
- * The chain of 40 mined blocks is the seek bar: a cube column stands where
+ * The chain of mined blocks (40, or the lines of the week's rules) is the seek bar: a cube column stands where
  * its rows were cleared, a click or a drag jumps to that moment, the arrow
  * keys on it go from block to block. Play at 0.5x to 4x; one tick back or on
  * with the buttons or with comma and full stop; Space plays and pauses.
@@ -314,7 +314,7 @@ document.addEventListener('alpine:init', () => {
             },
 
             blockLine() {
-                return this.lines === 0 ? this.t.noBlock : this.t.block.replace(':n', String(Math.min(40, this.lines)));
+                return this.lines === 0 ? this.t.noBlock : this.t.block.replace(':n', String(Math.min(rt.player?.game.goal ?? 40, this.lines)));
             },
 
             minedLine() {
@@ -322,11 +322,11 @@ document.addEventListener('alpine:init', () => {
                     return '';
                 }
 
-                return this.t.minedAt.replace(':time', formatTicks(rt.player.blockTicks[Math.min(40, this.lines) - 1] ?? 0));
+                return this.t.minedAt.replace(':time', formatTicks(rt.player.blockTicks[Math.min(rt.player?.game.goal ?? 40, this.lines) - 1] ?? 0));
             },
 
             sliderText() {
-                return this.t.slider.replace(':time', formatTicks(this.tick)).replace(':n', String(Math.min(40, this.lines)));
+                return this.t.slider.replace(':time', formatTicks(this.tick)).replace(':n', String(Math.min(rt.player?.game.goal ?? 40, this.lines)));
             },
 
             // ---- test hook ---------------------------------------------------

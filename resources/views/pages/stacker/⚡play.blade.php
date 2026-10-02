@@ -8,6 +8,7 @@ use App\Support\PageMeta;
 use App\Support\Scores\ScoreRuns;
 use App\Support\Scores\ScoreStanding;
 use App\Support\Scores\ScoreWindow;
+use App\Support\Stacker\BlockfillRules;
 use App\Support\Stacker\BlockfillWeeks;
 use App\Support\Stacker\StackerRuns;
 use App\Support\Stacker\StackerSettings;
@@ -33,6 +34,9 @@ use Livewire\Component;
  * its result says it was verified but not faster than the week's best. The route exists only while `esports.blockfill.enabled` is on
  * (routes/stacker.php).
  *
+ * The week's rules (BlockfillRules: lines, level-ups, speed) stand as chips
+ * under the heading; practice plays them too.
+ *
  * Below the game, the casual weekly hunt (P4, BlockfillWeeks): this week's
  * leaderboard, the player's own place, and last week's winner. Refreshed
  * when the game reports a verified run (`stacker-verified`).
@@ -55,18 +59,19 @@ new #[Layout('layouts::app', ['scripts' => ['resources/js/stacker/page.js']])] c
         $user = Auth::user();
         $signedIn = $user instanceof User;
         $token = '__TOKEN__';
+        // The week's rules (BlockfillRules): practice plays them too; a ranked run gets its own from the issue
+        $engine = $this->engine;
 
         return [
             'signedIn' => $signedIn,
             'controls' => StackerSettings::of($signedIn ? $user : null),
             // P8: effects and music; a guest's own choice in localStorage wins over these defaults
             'sound' => StackerSettings::sound($signedIn ? $user : null),
-            // P4: the week's best is the one a ranked run has to beat; the all-time best is shown beside it
-            'best' => $signedIn ? app(StackerRuns::class)->best($user, StackerRuns::weekOf(now())) : null,
-            'allTimeBest' => $signedIn ? app(StackerRuns::class)->best($user) : null,
+            // P4: the week's best is the one a ranked run has to beat; the all-time best is shown beside it (both on the week's rules)
+            'best' => $signedIn ? app(StackerRuns::class)->best($user, StackerRuns::weekOf(now()), $engine) : null,
+            'allTimeBest' => $signedIn ? app(StackerRuns::class)->best($user, null, $engine) : null,
             'testing' => app()->environment('testing'),
-            // The week's difficulty (BlockfillDifficulty): practice plays it too; a ranked run gets its own from the issue
-            'engine' => app(BlockfillWeeks::class)->difficultyAt(),
+            'engine' => $engine,
             'urls' => [
                 'issue' => route('stacker.runs.issue'),
                 'start' => route('stacker.runs.start', $token),
@@ -128,6 +133,15 @@ new #[Layout('layouts::app', ['scripts' => ['resources/js/stacker/page.js']])] c
             'effectsOn' => $valid['effectsOn'],
             'musicOn' => $valid['musicOn'],
         ])])->save();
+    }
+
+    /**
+     * The rules ranked runs are issued on now, as their engine id (BlockfillRules).
+     */
+    #[Computed]
+    public function engine(): string
+    {
+        return app(BlockfillWeeks::class)->difficultyAt();
     }
 
     /**
@@ -195,7 +209,13 @@ new #[Layout('layouts::app', ['scripts' => ['resources/js/stacker/page.js']])] c
         <div class="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between lg:gap-8">
             <div class="flex flex-col gap-1 lg:flex-row lg:items-baseline lg:gap-4">
                 <h1 class="m-0 font-display text-[28px] leading-[1.1] font-extrabold lg:text-[30px]">Blockfill</h1>
-                <p class="m-0 text-[13px] leading-normal text-ink-2">{{ __('Mine 40 blocks as fast as you can.') }}</p>
+                <p class="m-0 text-[13px] leading-normal text-ink-2">{{ __('Mine :count blocks as fast as you can.', ['count' => BlockfillRules::of($this->engine)['goal'] ?? 40]) }}</p>
+                {{-- The week's rules: what a run here is played on --}}
+                <ul class="m-0 flex list-none flex-wrap gap-1.5 p-0" aria-label="{{ __('Rules of the week') }}" data-test="stacker-rules">
+                    @foreach (BlockfillRules::chips($this->engine) as $chip)
+                        <li class="inline-flex h-7 items-center rounded-md bg-raised px-2.5 text-xs text-ink" data-test="stacker-rule">{{ $chip }}</li>
+                    @endforeach
+                </ul>
             </div>
 
             @include('pages.stacker.partials.sound-control', ['class' => 'hidden lg:flex'])
@@ -218,6 +238,11 @@ new #[Layout('layouts::app', ['scripts' => ['resources/js/stacker/page.js']])] c
                             <div>
                                 <dt class="text-[12px] text-ink-3 lg:text-sm">{{ __('Pieces per second') }}</dt>
                                 <dd class="m-0 text-[15px] leading-tight font-bold tabular-nums lg:text-[30px]" x-ref="pps">0.00</dd>
+                            </div>
+                            {{-- Only rules with level-ups have a level to show --}}
+                            <div x-show="leveled" x-cloak>
+                                <dt class="text-[12px] text-ink-3 lg:text-sm">{{ __('Level') }}</dt>
+                                <dd class="m-0 text-[15px] leading-tight font-bold tabular-nums lg:text-[30px]" x-text="level" data-test="level">1</dd>
                             </div>
                             @auth
                                 {{-- P4: the week's best is the one a ranked run has to beat; the all-time best is information only --}}
@@ -281,8 +306,8 @@ new #[Layout('layouts::app', ['scripts' => ['resources/js/stacker/page.js']])] c
 
                 {{-- The chain: one cube per mined block --}}
                 <div class="flex items-center justify-center gap-3" data-test="chain">
-                    <span class="shrink-0 text-[15px] font-bold whitespace-nowrap tabular-nums lg:text-[20px]" data-test="chain-count"><span x-text="lines" data-test="lines">0</span><span class="font-normal text-ink-3"> / 40</span></span>
-                    <div class="flex min-w-0 flex-wrap gap-[3px]" role="progressbar" aria-valuemin="0" aria-valuemax="40" x-bind:aria-valuenow="lines" aria-label="{{ __('Blocks mined') }}">
+                    <span class="shrink-0 text-[15px] font-bold whitespace-nowrap tabular-nums lg:text-[20px]" data-test="chain-count"><span x-text="lines" data-test="lines">0</span><span class="font-normal text-ink-3"> / <span x-text="goal" data-test="goal">40</span></span></span>
+                    <div class="flex min-w-0 flex-wrap gap-[3px]" role="progressbar" aria-valuemin="0" x-bind:aria-valuemax="goal" x-bind:aria-valuenow="lines" aria-label="{{ __('Blocks mined') }}">
                         <template x-for="(state, i) in chain()" :key="i">
                             <i class="block size-[7px] lg:size-[12px]" x-bind:class="state === 'done' ? 'bg-btc' : 'border border-dashed border-[#63636A]'"></i>
                         </template>
@@ -310,7 +335,7 @@ new #[Layout('layouts::app', ['scripts' => ['resources/js/stacker/page.js']])] c
             <aside class="flex min-w-0 flex-col gap-6">
                 {{-- The result of the last run --}}
                 <section x-ref="result" x-show="mode === 'result' && result" class="flex scroll-mt-4 flex-col gap-3 bg-card p-4 lg:p-5" aria-live="polite" data-test="result">
-                    <span class="text-sm text-ink-2" x-text="result && result.status !== 'toppedOut' && result.status !== 'aborted' ? @js(__('40 blocks mined in')) : @js(__('Run over at'))"></span>
+                    <span class="text-sm text-ink-2" x-text="result && result.status !== 'toppedOut' && result.status !== 'aborted' ? @js(__(':count blocks mined in')).replace(':count', goal) : @js(__('Run over at'))"></span>
                     <span class="font-display text-[40px] leading-none font-extrabold tabular-nums lg:text-[48px]" x-text="result ? time(result.ticks) : ''" data-test="result-time"></span>
                     <span class="text-[13px] font-bold" x-bind:class="{ 'text-win': result?.status === 'verified', 'text-loss': result?.status === 'rejected', 'text-btc': ['verifying', 'pending', 'review', 'submitting', 'busy', 'unsent'].includes(result?.status) }" x-text="statusText()" data-test="result-status"></span>
                     <span class="text-[13px] text-ink-2" x-text="bestLine()" data-test="result-best"></span>
@@ -380,16 +405,14 @@ new #[Layout('layouts::app', ['scripts' => ['resources/js/stacker/page.js']])] c
         $mine = $this->mine;
         $winner = $this->lastWinner;
         $window = $week === null ? null : ScoreWindow::of($week);
-        $difficulty = $week === null ? null : app(BlockfillWeeks::class)->difficultyOf($week);
     @endphp
     <section x-data x-on:stacker-verified.window="$wire.$refresh()" class="mx-auto mt-8 grid w-full max-w-[1340px] grid-cols-1 gap-6 lg:mt-10 lg:grid-cols-[minmax(0,1fr)_320px] lg:gap-12" aria-labelledby="stacker-week-h" data-test="stacker-week">
         <div class="flex min-w-0 flex-col gap-3 rounded-lg bg-card px-2 py-4 lg:px-5">
             <div class="flex flex-col gap-1 px-2 lg:px-0">
                 <h2 id="stacker-week-h" class="m-0 font-display text-xl font-bold lg:text-2xl">{{ __('This week\'s hunt') }}</h2>
                 <p class="m-0 text-xs leading-normal text-ink-2">{{ __('Your best verified ranked run of the week counts. The fastest time wins, a tie goes to the earlier run. A new week starts every Monday at 00:00 Berlin time.') }}</p>
-                @if ($window && $difficulty)
+                @if ($window)
                     <p class="m-0 text-xs text-ink-3 tabular-nums" data-test="stacker-week-window">{{ \App\Support\LeagueTime::stamp($window->start) }} – {{ \App\Support\LeagueTime::stamp($window->end) }}</p>
-                    <p class="m-0 text-xs text-ink-2" data-test="stacker-week-difficulty"><b class="text-ink">{{ __('Difficulty: :level', ['level' => \App\Support\Stacker\BlockfillDifficulty::label($difficulty)]) }}</b> · {{ \App\Support\Stacker\BlockfillDifficulty::hint($difficulty) }}</p>
                 @endif
             </div>
             @if ($week === null)

@@ -9,7 +9,7 @@ use App\Models\User;
 use App\Support\LeagueTime;
 use App\Support\Scores\LeagueWeekDrafts;
 use App\Support\Scores\ScoreWindow;
-use App\Support\Stacker\BlockfillDifficulty;
+use App\Support\Stacker\BlockfillRules;
 use App\Support\Stacker\BlockfillWeeks;
 use App\Support\Tmnf\TmnfWeeks;
 use Illuminate\Support\Facades\Gate;
@@ -26,13 +26,21 @@ use Livewire\Component;
  * Per registered game: the week that runs now, and every week still to
  * decide (next week's draft from Thursday 12:00 Berlin, a week that was not
  * approved in time) with its settings, a form to change them and "Approve
- * week". Blockfill: the difficulty (BlockfillDifficulty). TMNF: the track
+ * week". Blockfill: the week's rules (BlockfillRules, user 2026-10-02:
+ * "einstellen können, wie viele Blöcke auch gemint werden sollen und wie
+ * schnell das Level steigt"): the lines of a run, the lines per level-up and
+ * the gravity curve, with the old difficulties as quick picks and a summary
+ * sentence that follows the fields. TMNF: the track
  * from the stock tracks on our server (`esports.tmnf.tracks`) and, if the
  * admin wants one, a time limit per round. Admins only (LeagueWeekPolicy).
  */
 new #[Title('League weeks')] #[Layout('layouts::app', ['section' => 'admin'])] class extends Component
 {
-    /** Week id => its form: `difficulty` (Blockfill), `track` and `limit` (TMNF, minutes or ''). */
+    /**
+     * Week id => its form. Blockfill: `goal`, `every` (0: no level-ups), `start`, `step` and `cap`
+     * (BlockfillRules), and `legacy`, the frozen id of a week planned before the rules (bf1hard, ...)
+     * that stays as it is while its preset's fields are untouched. TMNF: `track` and `limit` (minutes or '').
+     */
     public array $form = [];
 
     public string $notice = '';
@@ -105,6 +113,14 @@ new #[Title('League weeks')] #[Layout('layouts::app', ['section' => 'admin'])] c
         $this->refreshPage();
     }
 
+    /** A quick pick fills the week's rule fields (BlockfillRules::PRESETS); nothing is stored before Save or Approve. */
+    public function preset(int $id, string $preset): void
+    {
+        abort_unless(isset($this->form[$id]['goal'], BlockfillRules::PRESETS[$preset]), 404);
+
+        $this->form[$id] = [...$this->form[$id], ...array_map(strval(...), BlockfillRules::PRESETS[$preset])];
+    }
+
     private function week(int $id): LeagueWeek
     {
         $week = LeagueWeek::query()->find($id);
@@ -120,9 +136,28 @@ new #[Title('League weeks')] #[Layout('layouts::app', ['section' => 'admin'])] c
         $key = 'form.'.$week->id;
 
         if ($week->game === Blockfill::SLUG) {
-            $values = $this->validate([$key.'.difficulty' => ['required', 'string', Rule::in(array_keys(BlockfillDifficulty::LEVELS))]])['form'][$week->id];
+            [$goal, $every, $level, $step] = [BlockfillRules::LIMITS['goal'], BlockfillRules::LIMITS['every'], BlockfillRules::LIMITS['level'], BlockfillRules::LIMITS['step']];
+            $values = $this->validate([
+                $key.'.goal' => ['required', 'integer', 'min:'.$goal[0], 'max:'.$goal[1]],
+                $key.'.every' => ['required', 'integer', 'min:0', 'max:'.$every[1]],
+                $key.'.start' => ['required', 'integer', 'min:'.$level[0], 'max:'.$level[1]],
+                // without level-ups the curve has nothing to climb
+                $key.'.step' => ['exclude_if:'.$key.'.every,0', 'required', 'integer', 'min:'.$step[0], 'max:'.$step[1]],
+                $key.'.cap' => ['exclude_if:'.$key.'.every,0', 'required', 'integer', 'gt:'.$key.'.start', 'max:'.$level[1]],
+            ], [
+                $key.'.cap.gt' => __('The top speed must be faster than the start. For one speed all run long, choose no level-ups.'),
+            ], [
+                $key.'.goal' => __('Blocks per run'), $key.'.every' => __('Level up every'), $key.'.start' => __('Start speed'),
+                $key.'.step' => __('Faster per level'), $key.'.cap' => __('Top speed'),
+            ])['form'][$week->id];
 
-            return app(LeagueWeekDrafts::class)->update($week, ['difficulty' => $values['difficulty']]);
+            $rules = ['goal' => (int) $values['goal'], 'every' => (int) $values['every'], 'start' => (int) $values['start']];
+            $rules += $rules['every'] === 0 ? ['step' => 0, 'cap' => $rules['start']] : ['step' => (int) $values['step'], 'cap' => (int) $values['cap']];
+            $legacy = $this->form[$week->id]['legacy'] ?? null;
+            // A week planned on an old difficulty keeps it while its preset is untouched: its runs and board stay on that engine.
+            $engine = is_string($legacy) && $rules === BlockfillRules::fields($legacy) ? $legacy : BlockfillRules::id($rules);
+
+            return app(LeagueWeekDrafts::class)->update($week, ['difficulty' => $engine]);
         }
 
         $values = $this->validate([
@@ -155,7 +190,7 @@ new #[Title('League weeks')] #[Layout('layouts::app', ['section' => 'admin'])] c
             foreach ($entry['open'] as $week) {
                 $settings = LeagueWeekDrafts::normalize($week->game, $week->settings);
                 $this->form[$week->id] = $week->game === Blockfill::SLUG
-                    ? ['difficulty' => $settings['difficulty']]
+                    ? [...array_map(strval(...), BlockfillRules::fields($settings['difficulty'])), 'legacy' => BlockfillRules::isLegacy($settings['difficulty']) ? $settings['difficulty'] : null]
                     : ['track' => $settings['track'], 'limit' => $settings['time_limit_minutes'] === null ? '' : (string) $settings['time_limit_minutes']];
             }
         }
@@ -181,7 +216,7 @@ new #[Title('League weeks')] #[Layout('layouts::app', ['section' => 'admin'])] c
                     @if ($entry['game'] === TrackmaniaNationsForever::SLUG && ($runningTrack = TmnfWeeks::track($running->score_course)) !== null)
                         {{ __('Track: :track.', ['track' => $runningTrack['name']]) }}
                     @elseif ($entry['game'] === Blockfill::SLUG)
-                        {{ __('Difficulty: :level', ['level' => BlockfillDifficulty::label(app(BlockfillWeeks::class)->difficultyOf($running))]) }}.
+                        <span data-test="league-weeks-running-rules">{{ __('Rules: :rules.', ['rules' => implode(' · ', BlockfillRules::chips(app(BlockfillWeeks::class)->difficultyOf($running)))]) }}</span>
                     @endif
                 @else
                     {{ __('No week runs right now.') }}
@@ -215,21 +250,91 @@ new #[Title('League weeks')] #[Layout('layouts::app', ['section' => 'admin'])] c
                     </p>
 
                     @if ($entry['game'] === Blockfill::SLUG)
-                        <fieldset class="m-0 flex min-w-0 flex-col gap-2 border-0 p-0">
-                            <legend class="mb-2 p-0 text-[13px] font-bold text-ink">{{ __('Difficulty') }}</legend>
-                            <div class="grid grid-cols-1 gap-2 sm:grid-cols-2">
-                                @foreach (BlockfillDifficulty::LEVELS as $engine => $level)
-                                    <label class="flex min-h-11 cursor-pointer items-start gap-3 rounded-md border border-edge bg-ground px-3 py-2.5 has-[:checked]:border-btc" data-test="difficulty-{{ $engine }}">
-                                        <input type="radio" wire:model="{{ $field }}.difficulty" value="{{ $engine }}" class="mt-0.5 size-4 shrink-0 accent-btc">
-                                        <span class="flex min-w-0 flex-col gap-0.5">
-                                            <b class="text-[13px] text-ink">{{ BlockfillDifficulty::label($engine) }}</b>
-                                            <span class="text-xs leading-normal text-ink-2">{{ BlockfillDifficulty::hint($engine) }}</span>
-                                        </span>
-                                    </label>
-                                @endforeach
+                        @php
+                            $rules = $this->form[$week->id] ?? [];
+                            $preset = BlockfillRules::presetOf($rules);
+                            $leveled = ($rules['every'] ?? '0') !== '0' && ($rules['every'] ?? '') !== '';
+                            $pick = 'inline-flex h-11 min-w-11 items-center justify-center rounded-md border px-3 text-[13px] font-bold';
+                            $levels = range(BlockfillRules::LIMITS['level'][0], BlockfillRules::LIMITS['level'][1]);
+                        @endphp
+                        <fieldset class="m-0 flex min-w-0 flex-col gap-4 border-0 p-0" data-test="rules">
+                            <legend class="mb-2 p-0 text-[13px] font-bold text-ink">{{ __('Rules of the week') }}</legend>
+
+                            {{-- Quick picks: they fill the fields below; Normal is the rules of every week so far --}}
+                            <div class="flex min-w-0 flex-col gap-1.5">
+                                <span class="text-xs text-ink-2">{{ __('Quick pick') }}</span>
+                                <div class="flex flex-wrap gap-2" role="group" aria-label="{{ __('Quick pick') }}">
+                                    @foreach (BlockfillRules::PRESET_LABELS as $name => [$label, $hint])
+                                        <button type="button" wire:click="preset({{ $week->id }}, '{{ $name }}')" title="{{ __($hint) }}" aria-pressed="{{ $preset === $name ? 'true' : 'false' }}"
+                                                @class([$pick, 'border-btc bg-btc-chip text-btc-hi' => $preset === $name, 'border-edge bg-ground text-ink' => $preset !== $name]) data-test="preset-{{ $name }}">{{ __($label) }}</button>
+                                    @endforeach
+                                </div>
                             </div>
-                            @error($field.'.difficulty')<span class="text-xs text-loss" role="alert">{{ $message }}</span>@enderror
-                            <span class="text-xs leading-normal text-ink-3">{{ __('Ranked runs of the week are played and checked on this difficulty; a run on another one does not count for it.') }}</span>
+
+                            <div class="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                                <div class="flex min-w-0 flex-col gap-1.5">
+                                    <label for="goal-{{ $week->id }}" class="text-[13px] font-bold text-ink">{{ __('Blocks per run') }}</label>
+                                    <div class="flex flex-wrap gap-2">
+                                        <input id="goal-{{ $week->id }}" type="text" inputmode="numeric" wire:model.live.debounce.300ms="{{ $field }}.goal" class="h-11 w-20 shrink-0 rounded-md border border-edge bg-ground px-3 text-[13px] text-ink tabular-nums" data-test="rules-goal">
+                                        @foreach ([20, 40, 60, 100] as $goal)
+                                            <button type="button" wire:click="$set('{{ $field }}.goal', '{{ $goal }}')" @class([$pick, 'tabular-nums', 'border-btc text-btc-hi' => ($rules['goal'] ?? '') === (string) $goal, 'border-edge text-ink' => ($rules['goal'] ?? '') !== (string) $goal]) data-test="rules-goal-{{ $goal }}">{{ $goal }}</button>
+                                        @endforeach
+                                    </div>
+                                    @error($field.'.goal')<span class="text-xs text-loss" role="alert">{{ $message }}</span>@enderror
+                                    <span class="text-xs leading-normal text-ink-3">{{ __('The lines a run clears, :min to :max.', ['min' => BlockfillRules::LIMITS['goal'][0], 'max' => BlockfillRules::LIMITS['goal'][1]]) }}</span>
+                                </div>
+
+                                <div class="flex min-w-0 flex-col gap-1.5">
+                                    <label for="every-{{ $week->id }}" class="text-[13px] font-bold text-ink">{{ __('Level up every') }}</label>
+                                    <div class="flex flex-wrap gap-2">
+                                        <input id="every-{{ $week->id }}" type="text" inputmode="numeric" wire:model.live.debounce.300ms="{{ $field }}.every" class="h-11 w-20 shrink-0 rounded-md border border-edge bg-ground px-3 text-[13px] text-ink tabular-nums" data-test="rules-every">
+                                        @foreach ([10, 8, 5, 3] as $every)
+                                            <button type="button" wire:click="$set('{{ $field }}.every', '{{ $every }}')" @class([$pick, 'tabular-nums', 'border-btc text-btc-hi' => ($rules['every'] ?? '') === (string) $every, 'border-edge text-ink' => ($rules['every'] ?? '') !== (string) $every]) data-test="rules-every-{{ $every }}">{{ $every }}</button>
+                                        @endforeach
+                                        <button type="button" wire:click="$set('{{ $field }}.every', '0')" @class([$pick, 'border-btc text-btc-hi' => ($rules['every'] ?? '') === '0', 'border-edge text-ink' => ($rules['every'] ?? '') !== '0']) data-test="rules-every-0">{{ __('Never') }}</button>
+                                    </div>
+                                    @error($field.'.every')<span class="text-xs text-loss" role="alert">{{ $message }}</span>@enderror
+                                    <span class="text-xs leading-normal text-ink-3">{{ __('Blocks per level-up, 1 to :max; Never keeps one speed all run long.', ['max' => BlockfillRules::LIMITS['every'][1]]) }}</span>
+                                </div>
+
+                                <div class="flex min-w-0 flex-col gap-1.5">
+                                    <label for="start-{{ $week->id }}" class="text-[13px] font-bold text-ink">{{ __('Start speed') }}</label>
+                                    <select id="start-{{ $week->id }}" wire:model.live="{{ $field }}.start" class="{{ $input }}" data-test="rules-start">
+                                        @foreach ($levels as $level)
+                                            <option value="{{ $level }}">{{ __('Level :level · :speed', ['level' => $level, 'speed' => BlockfillRules::levelSpeed($level)]) }}</option>
+                                        @endforeach
+                                    </select>
+                                    @error($field.'.start')<span class="text-xs text-loss" role="alert">{{ $message }}</span>@enderror
+                                </div>
+
+                                @if ($leveled)
+                                    <div class="flex min-w-0 flex-col gap-1.5">
+                                        <label for="step-{{ $week->id }}" class="text-[13px] font-bold text-ink">{{ __('Faster per level') }}</label>
+                                        <select id="step-{{ $week->id }}" wire:model.live="{{ $field }}.step" class="{{ $input }}" data-test="rules-step">
+                                            <option value="">{{ __('Choose…') }}</option>
+                                            @foreach (range(BlockfillRules::LIMITS['step'][0], BlockfillRules::LIMITS['step'][1]) as $step)
+                                                <option value="{{ $step }}">{{ trans_choice('One level of the curve|:count levels of the curve', $step) }}</option>
+                                            @endforeach
+                                        </select>
+                                        @error($field.'.step')<span class="text-xs text-loss" role="alert">{{ $message }}</span>@enderror
+                                    </div>
+
+                                    <div class="flex min-w-0 flex-col gap-1.5 sm:col-start-2">
+                                        <label for="cap-{{ $week->id }}" class="text-[13px] font-bold text-ink">{{ __('Top speed') }}</label>
+                                        <select id="cap-{{ $week->id }}" wire:model.live="{{ $field }}.cap" class="{{ $input }}" data-test="rules-cap">
+                                            <option value="">{{ __('Choose…') }}</option>
+                                            @foreach ($levels as $level)
+                                                <option value="{{ $level }}">{{ __('Level :level · :speed', ['level' => $level, 'speed' => BlockfillRules::levelSpeed($level)]) }}</option>
+                                            @endforeach
+                                        </select>
+                                        @error($field.'.cap')<span class="text-xs text-loss" role="alert">{{ $message }}</span>@enderror
+                                    </div>
+                                @endif
+                            </div>
+
+                            {{-- The rules in one sentence, as the fields stand --}}
+                            <p class="m-0 rounded-md bg-ground px-3 py-2.5 text-[13px] leading-normal text-ink" aria-live="polite" data-test="rules-summary">{{ BlockfillRules::summary($rules) }}</p>
+                            <span class="text-xs leading-normal text-ink-3">{{ __('The speeds follow the guideline curve of Tetris Worlds (Tetris Wiki, Marathon). Ranked runs of the week are played and checked on exactly these rules; a run on other rules does not count for it.') }}</span>
                         </fieldset>
                     @else
                         <div class="grid grid-cols-1 gap-4 lg:grid-cols-[minmax(0,2fr)_minmax(0,1fr)]">

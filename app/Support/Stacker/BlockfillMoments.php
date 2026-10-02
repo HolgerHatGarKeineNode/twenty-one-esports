@@ -107,7 +107,8 @@ final class BlockfillMoments
             return null;
         }
 
-        $earlier = fn () => StackerRun::query()->where('status', StackerRunStatus::Verified)
+        // Only times on the same rules (engine id, BlockfillRules) compare: a 20-line time beats no 60-line one.
+        $earlier = fn () => StackerRun::query()->where('status', StackerRunStatus::Verified)->where('engine', $run->engine)
             // Handed in before it: earlier, or in the same millisecond with a lower id.
             ->where(fn ($before) => $before->where('submitted_at', '<', $run->submitted_at->format('Y-m-d H:i:s.v'))
                 ->orWhere(fn ($same) => $same->where('submitted_at', $run->submitted_at->format('Y-m-d H:i:s.v'))->where('id', '<', $run->id)))

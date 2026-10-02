@@ -107,3 +107,14 @@ test('every difficulty replays the reference runs to its own pinned result, and 
     assert.equal(run(hard.seed, hard.settings, hard.inputs, { engine: 'bf1master' }).toppedOut, true);
     assert.throws(() => run(hard.seed, hard.settings, hard.inputs, { engine: 'bf9' }), RangeError);
 });
+
+test('a run on a week\'s own rules replays to its pinned result on those rules only', () => {
+    const f = fixture('sixty-lines-rules');
+    assert.equal(f.engine, 't60e5g1s1c9');
+    // pinned from the engine itself (2026-10-02), never regenerated: a red line means the rules engine changed
+    assert.deepEqual(f.expected, { ticks: 7575, lines: 61, pieces: 153, finished: true, toppedOut: false, stateHash: '67bab686' });
+    assert.deepEqual(run(f.seed, f.settings, f.inputs, { engine: f.engine }), f.expected);
+    for (const other of ['bf1', 't60g1', 't60e5g1s2c9', 't60e4g1s1c9', 't40e5g1s1c9']) {
+        assert.notDeepEqual(run(f.seed, f.settings, f.inputs, { engine: other }), f.expected, other);
+    }
+});

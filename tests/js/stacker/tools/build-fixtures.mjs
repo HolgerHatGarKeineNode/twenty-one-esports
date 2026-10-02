@@ -84,8 +84,8 @@ function bestPlacement(board, piece) {
  * `pace(n)` is how many ticks it waits before its n-th action (none by default); at the start of piece
  * `burstAt` it presses seven keys in one tick, as a browser hands over the keys of a dropped frame.
  */
-function smartRun(seed, settings, maxTicks, { pace = () => 0, burstAt = -1 } = {}) {
-    const game = E.createGame({ seed, settings });
+function smartRun(seed, settings, maxTicks, { pace = () => 0, burstAt = -1, engine = E.ENGINE_VERSION } = {}) {
+    const game = E.createGame({ seed, settings, engine });
     const log = [];
     let plan = null;
     let planFor = -1;
@@ -289,5 +289,36 @@ for (const name of ['forty-lines', 'top-out', 'seven-minutes']) {
         // padded-36k.replay/.json (a 40-line run stretched to 36,000 ticks, 20,000 inputs) and
         // forty-lines-noop-prefix.replay are not written here: it is the security re-audit's own probe
         // (20,000 inputs, releases of keys already up and hold toggles while hold is spent, before the finish).
+    }
+}
+
+// A week's own rules (engine.js rulesId()): 60 lines, a level every 5 lines, one step of the guideline curve
+// per level up to level 9 (about 10 rows a second), played at a person's pace (6 to 22 ticks before each
+// action). The run, and its replay as the verifier keeps it; its header names the rules.
+{
+    const name = 'sixty-lines-rules';
+    const engine = 't60e5g1s1c9';
+    const seed = '9a1e5b0c4d2f6e8a9b3c1d0e2f4a6b8c';
+    const settings = { das: 10, arr: 2, sdf: 20 };
+    const { log, result } = smartRun(seed, settings, E.MAX_TICKS, { pace: (n) => 6 + ((n * 37) % 17), engine });
+    const used = log.filter(([tick]) => tick < result.ticks);
+    if (JSON.stringify(E.run(seed, settings, used, { engine })) !== JSON.stringify(result)) throw new Error(`${name}: replay differs`);
+    console.log(name, used.length, 'inputs', JSON.stringify(result));
+    const body = {
+        name,
+        engine,
+        seed,
+        settings,
+        expected: { ticks: result.ticks, lines: result.lines, pieces: result.pieces, finished: result.finished, toppedOut: result.toppedOut, stateHash: result.stateHash },
+        inputs: used,
+    };
+    const json = JSON.stringify(body, null, 4).replace(/\[\n\s+(\d+),\n\s+(\d+),\n\s+(\d+)\n\s+\]/g, '[$1, $2, $3]');
+    const replay = R.encodeReplay({ v: R.REPLAY_VERSION, engine, seed, settings }, used);
+    // the same inputs with a header that claims steeper rules (two curve levels per level-up)
+    const steeper = R.encodeReplay({ v: R.REPLAY_VERSION, engine: 't60e5g1s2c9', seed, settings }, used);
+    if (process.argv[3] === 'write') {
+        writeFileSync(`${out}/${name}.json`, json + '\n');
+        writeFileSync(`${out}/${name}.replay`, replay + '\n');
+        writeFileSync(`${out}/${name}-as-steeper.replay`, steeper + '\n');
     }
 }

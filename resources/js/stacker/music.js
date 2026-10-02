@@ -219,15 +219,16 @@ export const FINAL_ROWS = 10;
 export const GOAL_ROWS = 40;
 
 /**
- * Beats per minute of a piece with `remaining` rows left to mine: its own
- * tempo with all 40 rows left, up to `drive` faster with none. The fewer
- * rows left, never slower.
+ * Beats per minute of a piece with `remaining` rows left to mine of `goal`
+ * (the week's lines, 40 by default): its own tempo with all rows left, up to
+ * `drive` faster with none. The fewer rows left, never slower.
  */
-export function tempo(id, remaining) {
+export function tempo(id, remaining, goal = GOAL_ROWS) {
     const piece = PIECES[id];
-    const left = Math.max(0, Math.min(GOAL_ROWS, Number.isFinite(remaining) ? remaining : GOAL_ROWS));
+    const all = Number.isInteger(goal) && goal > 0 ? goal : GOAL_ROWS;
+    const left = Math.max(0, Math.min(all, Number.isFinite(remaining) ? remaining : all));
 
-    return piece.bpm * (1 + piece.drive * (1 - left / GOAL_ROWS));
+    return piece.bpm * (1 + piece.drive * (1 - left / all));
 }
 
 /** Seconds per sixteenth step at a tempo. */

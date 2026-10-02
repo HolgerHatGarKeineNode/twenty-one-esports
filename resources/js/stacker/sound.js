@@ -129,7 +129,7 @@ function level(volume, ceiling) {
  */
 export function createSound({ settings, env = globalThis } = {}) {
     let current = normalizeSound(settings);
-    let scene = { mode: 'idle', kind: 'practice', remaining: 40 };
+    let scene = { mode: 'idle', kind: 'practice', remaining: 40, goal: 40 };
     let ctx = null;
     let buses = null;
     let noise = null;
@@ -522,7 +522,7 @@ export function createSound({ settings, env = globalThis } = {}) {
                     seq = { id: wanted, step: 0, loop: 0, time: seq.time };
                 }
             }
-            const seconds = stepSeconds(tempo(seq.id, scene.remaining));
+            const seconds = stepSeconds(tempo(seq.id, scene.remaining, scene.goal));
             playStep(seq.id, seq.step, seq.time + swingOffset(seq.id, seq.step, seconds), seconds, transposeFor(seq.id, seq.loop));
             seq.time += seconds;
             seq.step++;

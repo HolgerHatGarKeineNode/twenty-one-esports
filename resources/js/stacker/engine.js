@@ -27,7 +27,7 @@ export const VISIBLE_ROWS = 20;
 export const HIDDEN_ROWS = 4;
 export const HEIGHT = VISIBLE_ROWS + HIDDEN_ROWS;
 
-/** Lines that finish a run (the "40 lines" mode). */
+/** Lines that finish a run on the frozen engines (the "40 lines" mode); a week's rules may set others (rulesOf()). */
 export const GOAL_LINES = 40;
 
 /** Pieces shown in the next queue. */
@@ -46,14 +46,40 @@ export const CELL = 65536;
 export const GRAVITY = 1092;
 
 /**
- * The engines by id: a week's difficulty (the admin page "League weeks"). `bf1` is the
- * original rule set; every other id is bf1 with only its gravity changed, so each is a
- * frozen engine of its own and nothing else differs. A replay names the id it was played
- * on (its header), the verifier replays it on exactly that id, and an id is never changed
- * or removed once shipped: a new difficulty is a new line.
+ * The guideline gravity curve, per level (index 0 is level 1), in CELL units per tick:
+ * the curve of Tetris Worlds that most Guideline games use, a row every
+ * (0.8 - (level - 1) * 0.007) ^ (level - 1) seconds (Tetris Wiki, "Marathon", section
+ * "Speed curve", https://tetris.wiki/Marathon, read 2026-10-02), here
+ * floor(CELL / (60 * seconds)) on 60 Hz ticks and at most 20 rows per tick (20G).
+ * Level 1 is GRAVITY, the gravity of every run before the week rules; level 19 is 20G.
+ * Frozen integers, so no float maths runs in a replay.
+ */
+export const GRAVITY_LEVELS = Object.freeze([
+    1092, 1377, 1768, 2310, 3075, 4168, 5758, 8106, 11634, 17026,
+    25415, 38708, 60168, 95483, 154742, 256186, 433424, 749596, 1310720,
+]);
+
+/**
+ * Inclusive bounds of the week rules (rulesId()): `goal` the lines that finish a run,
+ * `every` the lines per level-up, `level` a level of GRAVITY_LEVELS, `step` the levels
+ * of that table one level-up climbs.
+ */
+export const RULE_LIMITS = Object.freeze({
+    goal: Object.freeze([10, 100]),
+    every: Object.freeze([1, 20]),
+    level: Object.freeze([1, GRAVITY_LEVELS.length]),
+    step: Object.freeze([1, 3]),
+});
+
+/**
+ * The frozen engines by id, from before the week rules: a week's difficulty of the first
+ * league weeks. `bf1` is the original rule set; every other id is bf1 with only its gravity
+ * changed. A replay names the id it was played on (its header), the verifier replays it on
+ * exactly that id, and an id is never changed or removed once shipped.
  * - bf1: about one row per second (GRAVITY), the rules every run before 2026-10 was played on;
  * - bf1hard: 3 rows per second; bf1expert: 10 rows per second;
  * - bf1master: 20 rows per tick ("20G"): a new piece lands at once and only slides on the stack.
+ * All of them: 40 lines, no level-ups.
  */
 export const ENGINES = Object.freeze({
     bf1: Object.freeze({ gravity: GRAVITY }),
@@ -63,17 +89,103 @@ export const ENGINES = Object.freeze({
 });
 
 /**
- * The rules of an engine id; an id that is not in ENGINES throws.
+ * @typedef {{goal: number, every: number, start: number, step: number, cap: number}} WeekRules
+ *   goal: lines that finish a run; every: lines per level-up (0: no level-ups, the speed
+ *   stays); start: the level of GRAVITY_LEVELS the run starts on; step: the table levels
+ *   one level-up climbs; cap: the highest table level it climbs to.
+ * @typedef {{goal: number, every: number, start: number, step: number, cap: number, gravity: number}} EngineRules
+ */
+
+const RULES_PATTERN = /^t([1-9][0-9]*)(?:e([1-9][0-9]*)g([1-9][0-9]*)s([1-9][0-9]*)c([1-9][0-9]*)|g([1-9][0-9]*))$/;
+
+const within = (value, [low, high]) => Number.isInteger(value) && value >= low && value <= high;
+
+/**
+ * The one engine id of a rule set: `bf1` for today's rules (40 lines, level 1, no
+ * level-ups), else `t<goal>g<start>` without level-ups and `t<goal>e<every>g<start>s<step>c<cap>`
+ * with them (at most 15 characters, as the replay header and the engine column take 16).
+ * A rule set out of RULE_LIMITS, or level-ups that change nothing (cap not above start),
+ * throws: one rule set never has two ids, so two weeks of the same rules share their board.
+ *
+ * @param {{goal: number, every: number, start: number, step?: number, cap?: number}} rules
+ * @returns {string}
+ */
+export function rulesId({ goal, every, start, step = 0, cap = start }) {
+    if (!within(goal, RULE_LIMITS.goal) || !within(start, RULE_LIMITS.level)) {
+        throw new RangeError('goal or start level out of range');
+    }
+    if (every === 0) {
+        if (step !== 0 || cap !== start) {
+            throw new RangeError('no level-ups: step must be 0 and cap the start level');
+        }
+
+        return goal === GOAL_LINES && start === 1 ? ENGINE_VERSION : `t${goal}g${start}`;
+    }
+    if (!within(every, RULE_LIMITS.every) || !within(step, RULE_LIMITS.step) || !within(cap, RULE_LIMITS.level) || cap <= start) {
+        throw new RangeError('level-ups need every, step and a cap above the start level in range');
+    }
+
+    return `t${goal}e${every}g${start}s${step}c${cap}`;
+}
+
+/**
+ * The rule set of a canonical rules id (rulesId()), or null for anything else, a
+ * non-canonical spelling of a valid rule set included (`t40g1` is `bf1`).
+ *
+ * @param {unknown} id
+ * @returns {Readonly<WeekRules>|null}
+ */
+export function parseRules(id) {
+    const match = typeof id === 'string' ? RULES_PATTERN.exec(id) : null;
+    if (match === null) {
+        return null;
+    }
+    const [goal, every, start, step, cap, steady] = match.slice(1).map((part) => (part === undefined ? undefined : Number(part)));
+    const rules = steady === undefined
+        ? { goal, every, start, step, cap }
+        : { goal, every: 0, start: steady, step: 0, cap: steady };
+    try {
+        return rulesId(rules) === id ? Object.freeze(rules) : null;
+    } catch {
+        return null;
+    }
+}
+
+/** Whether `id` is an engine a run can be played on: a frozen id of ENGINES or a canonical rules id. */
+export function isEngine(id) {
+    return (typeof id === 'string' && Object.hasOwn(ENGINES, id)) || parseRules(id) !== null;
+}
+
+/**
+ * The rules of an engine id; an id that is neither in ENGINES nor a canonical rules id throws.
  *
  * @param {string} engine
- * @returns {Readonly<{gravity: number}>}
+ * @returns {Readonly<EngineRules>}
  */
 export function rulesOf(engine) {
-    if (typeof engine !== 'string' || !Object.hasOwn(ENGINES, engine)) {
+    if (typeof engine === 'string' && Object.hasOwn(ENGINES, engine)) {
+        return Object.freeze({ goal: GOAL_LINES, every: 0, start: 1, step: 0, cap: 1, gravity: ENGINES[engine].gravity });
+    }
+    const rules = parseRules(engine);
+    if (rules === null) {
         throw new RangeError(`unknown engine ${engine}`);
     }
 
-    return ENGINES[engine];
+    return Object.freeze({ ...rules, gravity: GRAVITY_LEVELS[rules.start - 1] });
+}
+
+/** The level a run is on after `lines` lines: 1, and one more every `every` lines. */
+export function levelOf(rules, lines) {
+    return rules.every === 0 ? 1 : 1 + Math.floor(lines / rules.every);
+}
+
+/** The gravity per tick after `lines` lines: the start level's, `step` table levels higher per level-up, up to the cap. */
+export function gravityAt(rules, lines) {
+    if (rules.every === 0) {
+        return rules.gravity;
+    }
+
+    return GRAVITY_LEVELS[Math.min(rules.cap, rules.start + (levelOf(rules, lines) - 1) * rules.step) - 1];
 }
 
 /** Soft drop per tick and SDF step: 3277 of 65536, so SDF 20 drops one cell per tick. */
@@ -129,14 +241,20 @@ export function normalizeSettings(settings) {
 }
 
 /**
- * A new game at tick 0 with the first piece spawned, on engine `engine` (ENGINES; bf1 when not given).
+ * A new game at tick 0 with the first piece spawned, on engine `engine` (an id of ENGINES
+ * or a canonical rules id; bf1 when not given).
  *
  * @param {{seed: string, settings?: Partial<Settings>, engine?: string}} options
  */
 export function createGame({ seed, settings, engine = ENGINE_VERSION }) {
+    const rules = rulesOf(engine);
     const game = {
         engine,
-        gravityStep: rulesOf(engine).gravity,
+        rules,
+        /** Lines that finish the run. */
+        goal: rules.goal,
+        level: 1,
+        gravityStep: rules.gravity,
         seed,
         settings: normalizeSettings(settings),
         rng: createRng(seed),
@@ -325,11 +443,14 @@ function lock(game) {
     }
 
     game.lines += clearLines(game.board);
-    if (game.lines >= GOAL_LINES) {
+    if (game.lines >= game.goal) {
         game.finished = true;
 
         return;
     }
+    // a level-up takes effect with the next piece
+    game.level = levelOf(game.rules, game.lines);
+    game.gravityStep = gravityAt(game.rules, game.lines);
     spawn(game, takeNext(game));
 }
 
@@ -535,7 +656,7 @@ export function validateLog(log) {
     return log;
 }
 
-/** FNV-1a (32-bit) over board, next queue, hold, active piece and counters. */
+/** FNV-1a (32-bit) over board, next queue, hold, active piece and counters, and a week's rules id. */
 export function stateHash(game) {
     let hash = 0x811c9dc5;
     const byte = (value) => {
@@ -568,6 +689,13 @@ export function stateHash(game) {
     word(game.lines);
     word(game.pieces);
     byte((game.finished ? 1 : 0) | (game.toppedOut ? 2 : 0));
+    // a week's rules id is part of the state: the same inputs give the same board under a
+    // curve they never feel, but not the same hash (the frozen ids keep their hashes as they were)
+    if (!Object.hasOwn(ENGINES, game.engine)) {
+        for (let i = 0; i < game.engine.length; i++) {
+            byte(game.engine.charCodeAt(i));
+        }
+    }
 
     return hash.toString(16).padStart(8, '0');
 }
@@ -591,7 +719,7 @@ export function result(game) {
  * @param {string} seed
  * @param {Partial<Settings>} settings
  * @param {LoggedInput[]} inputLog
- * @param {{maxTicks?: number, engine?: string}} [options] `engine`: the id to replay on (ENGINES; bf1 when not given)
+ * @param {{maxTicks?: number, engine?: string}} [options] `engine`: the id to replay on (ENGINES or a rules id; bf1 when not given)
  * @returns {RunResult}
  */
 export function run(seed, settings, inputLog, { maxTicks = MAX_TICKS, engine = ENGINE_VERSION } = {}) {

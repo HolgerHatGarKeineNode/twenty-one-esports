@@ -25,7 +25,9 @@ pest()->group('browser');
 | Thursday 2026-10-08 13:00 Berlin: week 41 runs (TMNF on A02-Race, Blockfill
 | Hard), the drafts of week 42 were just made with its settings. At 1440 and
 | 375 px in English and 375 px in German an admin picks A05-Race with 12
-| minutes a round for TMNF and saves, then approves Blockfill week 42.
+| minutes a round for TMNF and saves, then sets the rules of Blockfill week
+| 42 (60 blocks, a level every 5, one curve level faster each up to level 9:
+| quick chips and selects, the summary sentence following them) and approves it.
 | Measured: no horizontal overflow, every button at least 44 px high, no
 | field outside the window, no text cut. The console, uncaught errors and
 | every answer (the Livewire round-trips included) stay clean, with a
@@ -75,6 +77,19 @@ function leagueWeeksGeometry(Page $page): array
     }');
 }
 
+/**
+ * Does `$action` and waits for the Livewire round-trip it starts to be answered.
+ */
+function leagueWeeksRoundTrip(Page $page, Closure $action): void
+{
+    $count = '() => performance.getEntriesByType("resource").filter((e) => e.initiatorType === "fetch" && e.name.includes("/livewire") && e.responseEnd > 0).length';
+    $before = (int) $page->evaluate($count);
+    $action();
+    BrowserWait::until($page, '() => ('.$count.')() > '.$before, 10_000);
+    // the answer is morphed in on the next frame
+    $page->evaluate('() => new Promise((done) => requestAnimationFrame(() => requestAnimationFrame(done)))');
+}
+
 function leagueWeeksShot(Page $page, string $name): void
 {
     $dir = getenv('LEAGUE_WEEKS_SHOTS');
@@ -111,20 +126,32 @@ test('an admin sets the next TMNF week and approves the next Blockfill week, mea
     BrowserWait::until($page, '() => document.querySelector("[data-test=league-weeks-notice]") !== null', 10_000);
     $saved = $page->evaluate('() => document.querySelector("[data-test=league-weeks-notice]").innerText');
 
-    $page->locator("[data-week=\"{$blockfill->id}\"] [data-test=difficulty-bf1expert]")->click();
-    $page->locator("[data-week=\"{$blockfill->id}\"] [data-test=league-week-approve]")->click();
+    $card = "[data-week=\"{$blockfill->id}\"]";
+    leagueWeeksRoundTrip($page, fn () => $page->locator("{$card} [data-test=rules-goal-60]")->click());
+    leagueWeeksRoundTrip($page, fn () => $page->locator("#start-{$blockfill->id}")->selectOption('1'));
+    leagueWeeksRoundTrip($page, fn () => $page->locator("{$card} [data-test=rules-every-5]")->click());
+    leagueWeeksRoundTrip($page, fn () => $page->locator("#step-{$blockfill->id}")->selectOption('1'));
+    leagueWeeksRoundTrip($page, fn () => $page->locator("#cap-{$blockfill->id}")->selectOption('9'));
+    $rules = $page->evaluate('() => document.querySelector(\'[data-week="'.$blockfill->id.'"] [data-test=rules-summary]\').innerText');
+    $ruled = leagueWeeksGeometry($page);
+    leagueWeeksShot($page, "league-weeks-{$locale}-{$width}-rules");
+    $page->locator("{$card} [data-test=league-week-approve]")->click();
     BrowserWait::until($page, '() => document.querySelector("[data-week=\"'.$blockfill->id.'\"] [data-test=league-week-state]")?.dataset.state === "approved"', 10_000);
     $approved = $page->evaluate('() => document.querySelector("[data-test=league-weeks-notice]").innerText');
     $after = leagueWeeksGeometry($page);
     leagueWeeksShot($page, "league-weeks-{$locale}-{$width}-approved");
 
     expect($first)->toBe($clean, "first load at {$locale} {$width}px")
+        ->and($ruled)->toBe($clean, "rules set at {$locale} {$width}px")
         ->and($after)->toBe($clean, "after approving at {$locale} {$width}px")
+        ->and($rules)->toBe($locale === 'de'
+            ? 'Ein Lauf endet nach 60 Blöcken (abgeräumten Reihen). Alle 5 Blöcke steigt das Level und die Steine fallen eine Stufe schneller auf der Guideline-Kurve: von 1 Reihe/s (Level 1) bis höchstens 11 Reihen/s (Level 9). Die Höchstgeschwindigkeit kommt bei Block 40.'
+            : 'A run ends after 60 blocks (cleared lines). Every 5 blocks the level goes up and pieces fall one step faster on the guideline curve: from 1 row/s (level 1) to at most 11 rows/s (level 9). The top speed comes at block 40.')
         ->and($heading)->toBe($locale === 'de' ? 'Liga-Wochen' : 'League weeks')
         ->and($saved)->toBe($locale === 'de' ? 'Gespeichert. Gib die Woche frei, damit sie mit diesen Einstellungen beginnt.' : 'Saved. Approve the week to let it start with these settings.')
         ->and($approved)->toContain($locale === 'de' ? 'Blockfill-Woche 42 ist freigegeben.' : 'Blockfill week 42 is approved.')
         ->and($tmnf->refresh()->settings)->toBe(['track' => 'I7rI7jAga6C4tGAe5OTDoyLF2fh', 'time_limit_minutes' => 12])
-        ->and($blockfill->refresh()->settings)->toBe(['difficulty' => 'bf1expert'])
+        ->and($blockfill->refresh()->settings)->toBe(['difficulty' => 't60e5g1s1c9'])
         ->and($blockfill->approved_by_id)->toBe($admin->id)
         ->and($page->evaluate('() => window.__errors'))->toBe([], "console at {$locale} {$width}px")
         ->and($page->evaluate(BrowserConsole::BAD_RESPONSES))->toBe([], "answers at {$locale} {$width}px");

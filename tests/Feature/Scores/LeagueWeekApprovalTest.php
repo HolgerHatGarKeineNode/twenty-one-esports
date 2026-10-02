@@ -1,6 +1,7 @@
 <?php
 
 use App\Enums\NotificationKind;
+use App\Enums\StackerRunStatus;
 use App\Enums\TournamentStatus;
 use App\Games\Blockfill;
 use App\Games\TrackmaniaNationsForever;
@@ -14,6 +15,8 @@ use App\Models\User;
 use App\Support\Scores\LeagueWeekDrafts;
 use App\Support\Scores\ScoreRuns;
 use App\Support\Scores\ScoreWindow;
+use App\Support\Stacker\BlockfillMoments;
+use App\Support\Stacker\BlockfillRules;
 use App\Support\Stacker\BlockfillWeeks;
 use App\Support\Stacker\StackerRuns;
 use App\Support\StreamBot\BlockfillNotes;
@@ -195,13 +198,13 @@ test('only admins see the page, change a week and approve it; a started week is 
     $this->actingAs($organizer)->get(route('admin.league-weeks'))->assertForbidden();
     Livewire::actingAs($organizer)->test('pages::admin.league-weeks')->assertForbidden();
 
-    // An admin changes the difficulty and approves; the week keeps what the form showed.
+    // An admin changes the rules and approves; the week keeps what the form showed.
     Livewire::actingAs($this->admin)->test('pages::admin.league-weeks')
         ->assertSee('Blockfill week 42')->assertSee('TMNF week 42')
-        ->set("form.{$draft->id}.difficulty", 'bf1expert')
+        ->call('preset', $draft->id, 'expert')
         ->call('save', $draft->id)
         ->assertSet('notice', 'Saved. Approve the week to let it start with these settings.')
-        ->set("form.{$draft->id}.difficulty", 'bf1master')
+        ->call('preset', $draft->id, 'master')
         ->call('approve', $draft->id)
         ->assertSee('Blockfill week 42 is approved.')
         ->call('$refresh')->assertOk();
@@ -216,7 +219,7 @@ test('only admins see the page, change a week and approve it; a started week is 
         ->assertHasErrors(["form.{$tmnf->id}.limit"])->assertSee('A round must be longer than the author time of E05-Endurance (1:00:05.940).')
         ->call('approve', $draft->id)->assertForbidden();
 
-    expect($draft->refresh()->settings)->toBe(['difficulty' => 'bf1master'])
+    expect($draft->refresh()->settings)->toBe(['difficulty' => 't40g19'])
         ->and($draft->approved_by_id)->toBe($this->admin->id)
         ->and($tmnf->refresh()->settings)->toBe(['track' => TRACK_A02, 'time_limit_minutes' => 10]);
 });
@@ -318,4 +321,111 @@ test('a week counts only runs on its difficulty, and the week before the approva
         ->and(app(ScoreRuns::class)->standings($week)[0]->value)->toBe(Blockfill::milliseconds(2900))
         ->and(app(BlockfillWeeks::class)->difficultyOf($old))->toBe('bf1')
         ->and(app(StackerRuns::class)->issue($player, now())[0]->engine)->toBe('bf1hard');
+});
+
+/*
+| The week's rules (user 2026-10-02, on the card of week 41: "da will ich
+| einstellen können, wie viele Blöcke auch gemint werden sollen und wie
+| schnell das Level steigt"): blocks per run, blocks per level-up and the
+| gravity curve, set on the draft only, carried by every run of the week.
+*/
+
+test('an admin sets the rules of a draft with fields and quick picks, sees them in a sentence, and out-of-range values are refused', function () {
+    weeksAt('2026-10-08 10:00:00');
+    $draft = week42(Blockfill::SLUG);
+    $page = Livewire::actingAs($this->admin)->test('pages::admin.league-weeks');
+    $form = "form.{$draft->id}";
+
+    // Week 42 was drafted from week 41 (the old Hard): shown as the Hard quick pick, and kept as it is while untouched.
+    $page->assertSet("{$form}.goal", '40')->assertSet("{$form}.start", '5')->assertSet("{$form}.legacy", 'bf1hard')
+        ->assertSee('Rules: 40 blocks · Steady 3 rows/s.')
+        ->call('save', $draft->id)->assertSet('notice', 'Nothing changed.');
+    expect($draft->refresh()->settings)->toBe(['difficulty' => 'bf1hard']);
+
+    $page->set("{$form}.goal", '60')->set("{$form}.every", '5')->set("{$form}.start", '1')->set("{$form}.step", '1')->set("{$form}.cap", '9')
+        ->assertSee('A run ends after 60 blocks (cleared lines). Every 5 blocks the level goes up and pieces fall one step faster on the guideline curve: from 1 row/s (level 1) to at most 11 rows/s (level 9). The top speed comes at block 40.')
+        ->call('save', $draft->id)->assertHasNoErrors()->assertSet('notice', 'Saved. Approve the week to let it start with these settings.');
+    expect($draft->refresh()->settings)->toBe(['difficulty' => 't60e5g1s1c9']);
+
+    foreach ([
+        ['goal', '9'], ['goal', '101'], ['goal', 'abc'], ['every', '21'], ['every', '-1'], ['start', '20'], ['start', '0'], ['step', '4'], ['cap', '1'], ['cap', '20'],
+    ] as [$field, $bad]) {
+        $page->call('preset', $draft->id, 'marathon')->set("{$form}.{$field}", $bad)->call('save', $draft->id)->assertHasErrors(["{$form}.{$field}"]);
+    }
+    $page->call('preset', $draft->id, 'marathon')->set("{$form}.cap", '1')->call('save', $draft->id)
+        ->assertSee('The top speed must be faster than the start. For one speed all run long, choose no level-ups.');
+    expect($draft->refresh()->settings)->toBe(['difficulty' => 't60e5g1s1c9']);
+
+    // Without level-ups the curve fields do not count; a quick pick fills every field, Normal is the rules of every week so far.
+    $page->set("{$form}.every", '0')->set("{$form}.cap", '')->set("{$form}.step", 'x')->set("{$form}.goal", '20')->set("{$form}.start", '3')
+        ->assertSee('A run ends after 20 blocks (cleared lines). Pieces fall at 1.6 rows/s all run long (level 3 of the guideline curve); there are no level-ups.')
+        ->call('save', $draft->id)->assertHasNoErrors();
+    expect($draft->refresh()->settings)->toBe(['difficulty' => 't20g3']);
+    $page->call('preset', $draft->id, 'normal')->assertSet("{$form}.every", '0')->call('approve', $draft->id);
+    expect($draft->refresh()->settings)->toBe(['difficulty' => 'bf1'])->and($draft->isApproved())->toBeTrue();
+});
+
+test('only a draft takes new rules: the running week keeps its own', function () {
+    $running = LeagueWeek::query()->where('game', Blockfill::SLUG)->whereNotNull('tournament_id')->sole();
+
+    expect(app(LeagueWeekDrafts::class)->update($running, ['difficulty' => 't60e5g1s1c9']))->toBeFalse()
+        ->and($running->refresh()->settings)->toBe(['difficulty' => 'bf1hard'])
+        ->and(app(BlockfillWeeks::class)->difficultyAt())->toBe('bf1hard');
+
+    // The page has no form for it, and a hand-made call for it changes nothing.
+    Livewire::actingAs($this->admin)->test('pages::admin.league-weeks')
+        ->assertDontSee('Blockfill week 41')
+        ->call('preset', $running->id, 'master')->assertNotFound();
+    expect($running->refresh()->settings)->toBe(['difficulty' => 'bf1hard']);
+});
+
+test('a week on its own rules issues every run on them, shows them as chips, and its board and bests compare only runs on them', function () {
+    weeksAt('2026-10-08 10:00:00');
+    app(LeagueWeekDrafts::class)->update(week42(Blockfill::SLUG), ['difficulty' => 't60e5g1s1c9']);
+    app(LeagueWeekDrafts::class)->approve(week42(Blockfill::SLUG)->refresh(), $this->admin);
+    weeksAt('2026-10-12 08:00:00');
+    $week = app(BlockfillWeeks::class)->current();
+    $player = User::factory()->create(['name' => 'Ada']);
+    $rival = User::factory()->create(['name' => 'Bob']);
+
+    [$issued] = app(StackerRuns::class)->issue($player, now());
+    expect($issued->engine)->toBe('t60e5g1s1c9')
+        ->and(app(BlockfillWeeks::class)->difficultyOf($week))->toBe('t60e5g1s1c9');
+
+    // Runs on the old rules (issued before the week turned): faster, as 40 blocks are fewer than 60, and they count nowhere here.
+    $old = StackerRun::factory()->for($player)->verified(2400)->create(['engine' => 'bf1hard', 'submitted_at' => now(), 'week' => '2026-10-12']);
+    $oldRival = StackerRun::factory()->for($rival)->verified(2300)->create(['engine' => 'bf1', 'submitted_at' => now(), 'week' => '2026-10-12']);
+    $ruled = StackerRun::factory()->for($player)->verified(5200)->create(['engine' => 't60e5g1s1c9', 'submitted_at' => now()->addSecond(), 'week' => '2026-10-12']);
+    $runs = app(StackerRuns::class);
+
+    expect(app(BlockfillWeeks::class)->record($old, now()))->toBeNull()
+        ->and(app(BlockfillWeeks::class)->record($oldRival, now()))->toBeNull()
+        ->and(app(BlockfillWeeks::class)->record($ruled, now())?->value)->toBe(Blockfill::milliseconds(5200))
+        ->and(collect(app(ScoreRuns::class)->standings($week))->map(fn ($row): array => [$row->participant->name, $row->value])->all())->toBe([['Ada', Blockfill::milliseconds(5200)]])
+        // the week's best and the all-time best on the week's rules: the 40-block times are no bests of 60 blocks
+        ->and($runs->best($player, '2026-10-12', 't60e5g1s1c9'))->toBe(5200)
+        ->and($runs->best($player, null, 't60e5g1s1c9'))->toBe(5200)
+        ->and($runs->best($player, '2026-10-12'))->toBe(2400);
+
+    // A run with hints would place against runs on its own rules only: the rival's own 40-block time is no best of 60 blocks,
+    // and ten players with faster 40-block times are no ten places ahead of it.
+    foreach (User::factory()->count(StackerRuns::HELD_PLACES)->create() as $other) {
+        StackerRun::factory()->for($other)->verified(2000)->create(['engine' => 'bf1', 'submitted_at' => now(), 'week' => '2026-10-12']);
+    }
+    $next = StackerRun::factory()->for($rival)->verified(5000)->create(['engine' => 't60e5g1s1c9', 'status' => StackerRunStatus::Verifying, 'submitted_at' => now()->addSeconds(2), 'week' => '2026-10-12']);
+    expect($runs->wouldPlace($next, '2026-10-12'))->toBeTrue();
+
+    // A new personal best only beats a time on the same rules.
+    expect(app(BlockfillMoments::class)->of($ruled->refresh())['pb'] ?? null)->toBeTrue();
+
+    // The game plays the week's rules and shows them; its bests are the bests on them.
+    $chips = ['60 blocks', 'Level up every 5 blocks', 'Speeds up 1 row/s → 11 rows/s'];
+    $this->actingAs($player)->get(route('stacker.play'))->assertOk()
+        ->assertSeeInOrder(['Mine 60 blocks as fast as you can.', ...$chips]);
+    $config = Livewire::actingAs($player)->test('pages::stacker.play')->instance()->config();
+    expect([$config['engine'], $config['best'], $config['allTimeBest']])->toBe(['t60e5g1s1c9', 5200, 5200]);
+    $this->get(route('scores.show', Blockfill::SLUG))->assertOk()->assertSeeInOrder($chips);
+    $this->get(route('tournaments.scores', $week))->assertOk()->assertSeeInOrder($chips);
+    app()->setLocale('de');
+    expect(BlockfillRules::chips('t60e5g1s1c9'))->toBe(['60 Blöcke', 'Level-up alle 5 Blöcke', 'Wird schneller: 1 Reihe/s → 11 Reihen/s']);
 });

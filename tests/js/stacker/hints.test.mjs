@@ -142,3 +142,26 @@ test('the verifier answers the hints with a verified run', async () => {
     });
     assert.deepEqual(relaxed.hints.flags, []);
 });
+
+test('a person\'s 60 lines on a week\'s own rules (a level every 5 lines, up to 10 rows a second) has no hint', () => {
+    const f = fixture('sixty-lines-rules');
+    assert.equal(f.engine, 't60e5g1s1c9');
+    const hints = hintsFor(f.seed, f.settings, f.inputs, {}, f.engine);
+
+    assert.ok(f.expected.finished && f.expected.lines >= 60, JSON.stringify(f.expected));
+    assert.deepEqual(hints.flags, []);
+    assert.ok(hints.pps < 2, JSON.stringify(hints));
+});
+
+test('the same-tick bound grows with a week\'s lines: ten bursts mark a 40-line run, not a 100-line one', () => {
+    const settings = { das: 10, arr: 2, sdf: 20 };
+    const seed = '0123456789abcdef0123456789abcdef';
+    const repeated = [];
+    for (let i = 0; i < 10; i++) {
+        const tick = 5 + i * 3;
+        repeated.push([tick, 4, 1], [tick, 4, 0], [tick, 5, 1], [tick, 5, 0], [tick, 4, 1], [tick, 4, 0], [tick, 5, 1], [tick + 1, 4, 0], [tick + 1, 5, 0]);
+    }
+    assert.ok(hintsFor(seed, settings, repeated, {}, 'bf1').flags.includes('same-tick'));
+    assert.ok(hintsFor(seed, settings, repeated, {}, 't20g1').flags.includes('same-tick'), 'a shorter run keeps the bound');
+    assert.ok(!hintsFor(seed, settings, repeated, {}, 't100g1').flags.includes('same-tick'), '100 lines: 25 bursts');
+});

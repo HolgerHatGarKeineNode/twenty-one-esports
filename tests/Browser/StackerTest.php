@@ -1,5 +1,6 @@
 <?php
 
+use App\Games\Blockfill;
 use App\Models\StackerRun;
 use App\Models\User;
 use App\Support\Stacker\StackerSettings;
@@ -434,3 +435,46 @@ test('on a small phone (360x640) the whole well stays above the touch panel', fu
         ->and($rects['well']['top'])->toBeGreaterThanOrEqual(0)
         ->and($page->evaluate('() => window.__errors'))->toBe([]);
 });
+
+test('a week on its own rules: the page shows them as chips, plays them (60 blocks, the level climbing every 5) and ends at the 60th block, clean console', function (string $locale, int $width, int $height) {
+    leagueWeeksApproved(Blockfill::SLUG, ['difficulty' => 't60e5g1s1c9'], before: 0, after: 0);
+    $this->artisan('blockfill:weeks')->assertSuccessful();
+    $page = stackerPage(null, $width, $height);
+    if ($locale === 'de') {
+        $page->goto(ComputeUrl::from(route('locale.switch', 'de', false)));
+        $page->goto(ComputeUrl::from(route('stacker.play', [], false)));
+        BrowserWait::until($page, '() => window.__stacker !== undefined', 10_000);
+    }
+
+    $chips = $page->evaluate('() => [...document.querySelectorAll("[data-test=stacker-rule]")].map((el) => el.innerText)');
+    $chipsFit = $page->evaluate('() => [...document.querySelectorAll("[data-test=stacker-rule]")].map((el) => { const r = el.getBoundingClientRect(); return r.left >= 0 && r.right <= innerWidth && el.scrollWidth <= el.clientWidth + 1; })');
+    $idle = $page->evaluate('() => ({ goal: document.querySelector("[data-test=goal]").innerText, level: document.querySelector("[data-test=level]").checkVisibility(), cubes: document.querySelectorAll("[data-test=chain] [role=progressbar] i").length })');
+    shellShot($page, "stacker-rules-{$locale}-{$width}-idle");
+
+    // The person-paced 60-block run of the fixtures, fed as practice: it plays on the week's rules.
+    $sixty = stackerFixture('sixty-lines-rules');
+    $fed = $page->evaluate('([inputs, seed, settings]) => window.__stacker.feed(inputs, { seed, settings })', [$sixty['inputs'], $sixty['seed'], $sixty['settings']]);
+    BrowserWait::until($page, '() => window.__stacker.state().result?.status === "practice"', 5_000);
+    [$scrollWidth, $clientWidth] = $page->evaluate(BrowserConsole::WIDTHS);
+    $done = $page->evaluate('() => ({ lines: document.querySelector("[data-test=lines]").innerText, level: Number(document.querySelector("[data-test=level]").innerText), head: document.querySelector("[data-test=result] span").innerText })');
+    shellShot($page, "stacker-rules-{$locale}-{$width}-result");
+
+    expect($chips)->toBe($locale === 'de' ? ['60 Blöcke', 'Level-up alle 5 Blöcke', 'Wird schneller: 1 Reihe/s → 11 Reihen/s'] : ['60 blocks', 'Level up every 5 blocks', 'Speeds up 1 row/s → 11 rows/s'])
+        ->and($chipsFit)->toBe([true, true, true])
+        ->and($idle)->toBe(['goal' => '60', 'level' => true, 'cubes' => 60])
+        ->and($fed)->toBe($sixty['expected'])
+        ->and($done['lines'])->toBe('61')
+        ->and($done['level'])->toBe(12)
+        ->and($done['head'])->toBe($locale === 'de' ? '60 Blöcke geschürft in' : '60 blocks mined in')
+        ->and($scrollWidth)->toBeLessThanOrEqual($clientWidth)
+        ->and($page->evaluate('() => window.__errors'))->toBe([])
+        ->and($page->evaluate(BrowserConsole::BAD_RESPONSES))->toBe([]);
+
+    // Positive control: the collector sees a throw on this very page.
+    $page->evaluate('() => { setTimeout(() => { throw new Error("stacker rules positive control"); }); }');
+    BrowserWait::until($page, '() => window.__errors.some((e) => e.includes("stacker rules positive control"))', 5_000);
+})->with([
+    'en 1440' => ['en', 1440, 900],
+    'en 375' => ['en', 375, 812],
+    'de 375' => ['de', 375, 812],
+]);

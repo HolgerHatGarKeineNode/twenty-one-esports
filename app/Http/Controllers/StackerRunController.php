@@ -38,8 +38,8 @@ class StackerRunController extends Controller
             'engine' => $run->engine,
             'expires_at' => $runs->expiresAt($run)->toIso8601ZuluString('millisecond'),
             'limits' => config('esports.blockfill.limits'),
-            'best' => $runs->best($user, StackerRuns::weekOf(now())),
-            'best_all_time' => $runs->best($user),
+            'best' => $runs->best($user, StackerRuns::weekOf(now()), $run->engine),
+            'best_all_time' => $runs->best($user, null, $run->engine),
         ], 201);
     }
 
@@ -90,8 +90,8 @@ class StackerRunController extends Controller
             'reason' => $run->reason,
             'ticks' => $run->ticks,
             // P4: the best of this week is the one a run has to beat; the all-time best is shown beside it
-            'best' => $runs->best($user, StackerRuns::weekOf(now())),
-            'best_all_time' => $runs->best($user),
+            'best' => $runs->best($user, StackerRuns::weekOf(now()), $run->engine),
+            'best_all_time' => $runs->best($user, null, $run->engine),
             // P5: the run's replay page, once the league keeps its replay (verified among the week's fastest, or held)
             'replay' => StackerReplays::watchable($run) && Route::has('stacker.replay') ? route('stacker.replay', $run->id) : null,
             // A verified run that is a moment of the player's (a personal best, a first place, a week place): the result screen offers to share it

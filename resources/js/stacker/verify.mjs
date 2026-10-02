@@ -1,5 +1,6 @@
 /**
- * Blockfill verifier: replays a submitted run on the engine it was issued on.
+ * Blockfill verifier: replays a submitted run on the engine it was issued on: a frozen
+ * id (bf1, bf1hard, ...) or a week's rules id (engine.js rulesId(), e.g. t60e5g1s1c9).
  *
  * Run by App\Support\Stacker\NodeVerifier as
  *   node --max-old-space-size=64 resources/js/stacker/verify.mjs
@@ -24,7 +25,7 @@
  */
 import { realpathSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
-import { ENGINES as RULES } from './engine.js';
+import { ENGINES as RULES, isEngine } from './engine.js';
 import { hintsFor } from './hints.js';
 import { decodeReplay, encodeReplay } from './replay.js';
 
@@ -34,6 +35,18 @@ import { decodeReplay, encodeReplay } from './replay.js';
  * differ only in their rules, which run() takes from the id.
  */
 const ENGINES = Object.fromEntries(Object.keys(RULES).map((id) => [id, () => import('./engine.js')]));
+
+/**
+ * The module that replays `engine`: its own line, or for a week's rules id bf1's module,
+ * which takes the rules from the id; null for an id the engine does not know.
+ */
+function loaderFor(engines, engine) {
+    if (Object.hasOwn(engines, engine)) {
+        return engines[engine];
+    }
+
+    return isEngine(engine) && Object.hasOwn(engines, 'bf1') ? engines.bf1 : null;
+}
 
 const MAX_STDIN = 1 << 20;
 
@@ -74,7 +87,8 @@ export async function verify(request, engines = ENGINES) {
     if (replay.length > limits.bytes) {
         return { ok: false, reason: 'oversize' };
     }
-    if (!Object.hasOwn(engines, engine)) {
+    const load = loaderFor(engines, engine);
+    if (load === null) {
         return { ok: false, reason: 'engine' };
     }
 
@@ -97,7 +111,7 @@ export async function verify(request, engines = ENGINES) {
 
     let result;
     try {
-        const { run } = await engines[engine]();
+        const { run } = await load();
         result = run(header.seed, header.settings, inputs, { maxTicks: limits.ticks, engine });
     } catch {
         return { ok: false, reason: 'crash' };

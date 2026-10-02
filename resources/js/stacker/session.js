@@ -9,7 +9,7 @@
  * the page's ticker decides when a tick happens.
  */
 
-import { ACTION, ACTIONS, GOAL_LINES, HEIGHT, MAX_TICKS, activeCells, createGame, fits, isOver, result, step } from './engine.js';
+import { ACTION, ACTIONS, HEIGHT, MAX_TICKS, activeCells, createGame, fits, isOver, result, step } from './engine.js';
 import { kicksFor } from './pieces.js';
 
 const HARD = ACTION.HARD;
@@ -86,7 +86,7 @@ function isResting(game) {
 }
 
 /**
- * @param {{seed: string, settings: {das: number, arr: number, sdf: number}, engine?: string}} options `engine`: the week's difficulty (engine.js ENGINES; bf1 when not given)
+ * @param {{seed: string, settings: {das: number, arr: number, sdf: number}, engine?: string}} options `engine`: the week's rules (an engine.js id; bf1 when not given)
  */
 export function createSession({ seed, settings, engine }) {
     const game = createGame({ seed, settings, engine });
@@ -181,7 +181,7 @@ export function createSession({ seed, settings, engine }) {
             if (touchdown) {
                 rested = serial;
             }
-            const left = GOAL_LINES - WARNING_ROWS;
+            const left = game.goal - WARNING_ROWS;
 
             return {
                 cleared,

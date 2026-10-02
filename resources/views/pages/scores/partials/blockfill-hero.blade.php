@@ -1,6 +1,6 @@
 {{--
     The way into Blockfill on its score pages: the cover, the heading, the week as chips (the countdown to its close or
-    "Final standings", the players), the time to beat (a finished week: its winner) and the one primary action, Play now,
+    "Final standings", the players, its rules: BlockfillRules::chips()), the time to beat (a finished week: its winner) and the one primary action, Play now,
     with How it works next to it.
     $heading: the h1; $week: the week shown (null: none opened yet); $standings: its list<ScoreStanding>;
     $metric: its App\Games\ScoreMetric (null without a week).
@@ -41,6 +41,9 @@
                 @if ($standings !== [])
                     <li class="{{ $chip }}" data-test="chip-players"><x-icon name="user" :size="14" class="shrink-0 text-btc-hi" />{{ trans_choice(':count player|:count players', count($standings)) }}</li>
                 @endif
+                @foreach (\App\Support\Stacker\BlockfillRules::chips(app(\App\Support\Stacker\BlockfillWeeks::class)->difficultyOf($week)) as $rule)
+                    <li class="{{ $chip }}" data-test="chip-rule">{{ $rule }}</li>
+                @endforeach
             </ul>
         @endif
 

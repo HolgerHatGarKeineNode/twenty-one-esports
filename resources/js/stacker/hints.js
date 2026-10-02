@@ -8,7 +8,8 @@
  * Four hints, each against a fixed bound:
  * - `pps`: more than 5 pieces per second over the whole run;
  * - `same-tick`: more than 3 key presses in one tick (1/60 s), in at least
- *   10 ticks of the run, or in any tick of a run above 3 pieces per second.
+ *   10 ticks of a 40-line run (a longer run of a week's rules in as many more:
+ *   25 for 100 lines), or in any tick of a run above 3 pieces per second.
  *   One such tick alone is no hint: a browser that drops a frame hands the
  *   keys pressed meanwhile to the next tick together, so a person's slow run
  *   shows one now and then;
@@ -25,7 +26,7 @@
  * always gives the same answer.
  */
 
-import { ACTION, HEIGHT, WIDTH, createGame, fits, isOver, step } from './engine.js';
+import { ACTION, GOAL_LINES, HEIGHT, WIDTH, createGame, fits, isOver, step } from './engine.js';
 import { SHAPES, SPAWN_X, SPAWN_Y, kicksFor } from './pieces.js';
 
 export const LIMITS = Object.freeze({
@@ -115,7 +116,7 @@ function fewestPresses(piece) {
  * @param {{das: number, arr: number, sdf: number}} settings
  * @param {Array<[number, number, number]>} inputs [tick, action, down], in order
  * @param {Partial<typeof LIMITS>} [bounds] other bounds than LIMITS (finite numbers only)
- * @param {string} [engine] the engine id the run was played on (engine.js ENGINES; bf1 when not given)
+ * @param {string} [engine] the engine id the run was played on (engine.js ENGINES or a rules id; bf1 when not given)
  * @returns {{flags: string[], pps: number, maxPressesPerTick: number, sameTickBursts: number, timingCv: number|null, finesse: {perfect: number, of: number}}}
  */
 export function hintsFor(seed, settings, inputs, bounds = {}, engine = undefined) {
@@ -126,6 +127,8 @@ export function hintsFor(seed, settings, inputs, bounds = {}, engine = undefined
         }
     }
     const game = createGame({ seed, settings, engine });
+    // a longer run has more ticks a dropped frame can bunch keys into: the bound grows with its lines
+    limit.sameTickRepeat = Math.max(limit.sameTickRepeat, Math.ceil((limit.sameTickRepeat * game.goal) / GOAL_LINES));
     const presses = inputs.filter(([, , down]) => down === 1);
 
     // presses per tick, and the ticks with more than the bound

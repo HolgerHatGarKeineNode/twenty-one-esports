@@ -24,7 +24,7 @@
  * reports the state hash, so a browser test can compare it with Node.
  */
 
-import { ENGINE_VERSION, GOAL_LINES, nextPieces, run, stateHash } from './engine.js';
+import { ENGINE_VERSION, isEngine, nextPieces, rulesOf, run, stateHash } from './engine.js';
 import { keyLabel, keyMap, normalizeControls } from './keys.js';
 import { drawPreview, drawWell, SHOWN_ROWS } from './renderer.js';
 import { encodeReplay, REPLAY_VERSION } from './replay.js';
@@ -42,6 +42,11 @@ const POLL_MS = 1000;
 const POLL_TRIES = 40;
 const STORE_CONTROLS = 'blockfill.controls';
 const STORE_BEST = 'blockfill.practice.best';
+
+/** The practice best of a rule set: today's rules (bf1) keep the key they always had, a week's own rules get their own. */
+function bestKey(engine) {
+    return engine === ENGINE_VERSION || !isEngine(engine) ? STORE_BEST : `${STORE_BEST}.${engine}`;
+}
 const STORE_SOUND = 'blockfill.sound';
 /** A player's sound setting is sent this long after the last change. */
 const SAVE_SOUND_MS = 400;
@@ -155,12 +160,16 @@ document.addEventListener('alpine:init', () => {
             kind: 'practice',
             controls: normalizeControls(config.signedIn ? config.controls : (readStored(STORE_CONTROLS) ?? config.controls)),
             lines: 0,
+            // the week's rules (engine.js rulesOf()): the lines that finish a run, and the level it is on
+            goal: rulesOf(isEngine(config.engine) ? config.engine : ENGINE_VERSION).goal,
+            level: 1,
+            leveled: rulesOf(isEngine(config.engine) ? config.engine : ENGINE_VERSION).every > 0,
             countdown: 0,
             minedTag: 0,
             reducedMotion: false,
             result: null,
             error: '',
-            practiceBest: readStored(STORE_BEST),
+            practiceBest: readStored(bestKey(config.engine)),
             // the best of this week (the one a ranked run has to beat) and of all time (shown beside it)
             rankedBest: config.best,
             allTimeBest: config.allTimeBest,
@@ -320,6 +329,9 @@ document.addEventListener('alpine:init', () => {
                 rt.session = createSession({ seed, settings: { das: settings.das, arr: settings.arr, sdf: settings.sdf }, engine: engine ?? ENGINE_VERSION });
                 rt.flashUntil = 0;
                 this.lines = 0;
+                this.goal = rt.session.game.goal;
+                this.level = rt.session.game.level;
+                this.leveled = rt.session.game.rules.every > 0;
                 this.minedTag = 0;
                 this.updateHud();
                 // the new game at once: during the countdown the well is empty and Next shows its own pieces
@@ -518,7 +530,7 @@ document.addEventListener('alpine:init', () => {
                     const previous = this.practiceBest;
                     if (previous === null || outcome.ticks < previous) {
                         this.practiceBest = outcome.ticks;
-                        writeStored(STORE_BEST, outcome.ticks);
+                        writeStored(bestKey(rt.session.game.engine), outcome.ticks);
                     }
                     if (previous !== null && outcome.ticks < previous) {
                         // beat a time of its own: a flourish after the fanfare
@@ -661,7 +673,7 @@ document.addEventListener('alpine:init', () => {
 
             /** The music follows the page: menu, run, last ten rows. */
             scene() {
-                rt.sound?.setScene({ mode: this.mode, kind: this.kind, remaining: GOAL_LINES - this.lines });
+                rt.sound?.setScene({ mode: this.mode, kind: this.kind, remaining: this.goal - this.lines, goal: this.goal });
             },
 
             /** Effects or music on/off (a click, so it may start the sound at once). */
@@ -709,6 +721,9 @@ document.addEventListener('alpine:init', () => {
                 if (game.lines !== this.lines) {
                     this.lines = game.lines;
                 }
+                if (game.level !== this.level) {
+                    this.level = game.level;
+                }
             },
 
             draw(now) {
@@ -743,7 +758,7 @@ document.addEventListener('alpine:init', () => {
             },
 
             chain() {
-                return Array.from({ length: GOAL_LINES }, (_, i) => (i < this.lines ? 'done' : 'open'));
+                return Array.from({ length: this.goal }, (_, i) => (i < this.lines ? 'done' : 'open'));
             },
 
             statusText() {

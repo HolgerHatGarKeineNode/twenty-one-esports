@@ -40,8 +40,9 @@ use Throwable;
  *   later, ending on the following Monday 00:00 either way. Not approved, no
  *   week runs. The scheduler opens it every hour (`blockfill:weeks`); the
  *   first verified run of a week opens it too, if it came first.
- * - The week's difficulty (BlockfillDifficulty): the engine its ranked runs
- *   are issued and verified on; only a run of that engine counts for it.
+ * - The week's rules (BlockfillRules: lines, level-ups, gravity curve) as
+ *   their engine id: the engine its ranked runs are issued and verified on;
+ *   only a run of that engine counts for it.
  * - record(): a verified run joins its player to the week's leaderboard (no
  *   sign-up, no cup, no draw) and is stored as a score run of the replay
  *   source. A run outside a running week's window, or of a finished week,
@@ -125,18 +126,18 @@ final class BlockfillWeeks
     }
 
     /**
-     * The difficulty ranked runs are issued on at `$at` (now): the running
-     * week's, or the default while no week runs.
+     * The rules (engine id, BlockfillRules) ranked runs are issued on at `$at`
+     * (now): the running week's, or the default while no week runs.
      */
     public function difficultyAt(?CarbonInterface $at = null): string
     {
         $week = $this->current($at);
 
-        return $week === null ? BlockfillDifficulty::default() : $this->difficultyOf($week);
+        return $week === null ? BlockfillRules::default() : $this->difficultyOf($week);
     }
 
     /**
-     * The difficulty of a week: its plan's, or the default for a week from before the approvals.
+     * The rules (engine id, BlockfillRules) of a week: its plan's, or the default for a week from before the approvals.
      */
     public function difficultyOf(Tournament $week): string
     {
@@ -229,7 +230,7 @@ final class BlockfillWeeks
         $start = self::startOf($run->submitted_at);
         $week = $start->equalTo(self::startOf($now ?? now())) ? $this->open($now) : $this->find($start);
 
-        // Only a run on the week's difficulty counts for it (one issued before a new week started does not).
+        // Only a run on the week's rules counts for it (one issued before a new week started does not).
         if ($week === null || $week->status !== TournamentStatus::Running || $run->engine !== $this->difficultyOf($week)) {
             return null;
         }

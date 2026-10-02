@@ -175,6 +175,37 @@ test('a week\'s difficulty decides the verification: a replay recorded on Hard v
         ->and([$gravity->outcome, $gravity->reason])->toBe([StackerVerdict::REJECTED, 'unfinished']);
 });
 
+test('a week\'s own rules decide the verification: a replay recorded on rules A verifies under A, never under B, and the runs of the old ids still verify', function () {
+    $rules = BlockfillOn::fixture('sixty-lines-rules');
+    $steeper = trim((string) file_get_contents(__DIR__.'/../../Fixtures/stacker/sixty-lines-rules-as-steeper.replay'));
+    $verdict = function (string $fixture, array $overrides): StackerVerdict {
+        StackerRun::query()->delete();
+
+        return app(NodeVerifier::class)->verify(referenceRun($fixture, $overrides));
+    };
+
+    // A: 60 blocks, a level every 5, one curve level per level-up up to level 9 (its header names t60e5g1s1c9).
+    $underA = $verdict('sixty-lines-rules', ['engine' => 't60e5g1s1c9']);
+    // B: the same lines and levels, two curve levels per level-up; and today's rules (bf1).
+    $underB = $verdict('sixty-lines-rules', ['engine' => 't60e5g1s2c9']);
+    $underToday = $verdict('sixty-lines-rules', ['engine' => 'bf1']);
+    // The same inputs with a header rewritten to B, claimed on B with A's result: the hash binds the rules.
+    $lying = $verdict('sixty-lines-rules', ['engine' => 't60e5g1s2c9', 'replay' => $steeper]);
+    // The old ids: the 40-line runs of bf1 and bf1hard.
+    $normal = $verdict('forty-lines', ['engine' => 'bf1']);
+    $hard = $verdict('forty-lines-hard', ['engine' => 'bf1hard']);
+
+    expect($rules['engine'])->toBe('t60e5g1s1c9')
+        ->and($underA->outcome)->toBe(StackerVerdict::VERIFIED)
+        ->and($underA->replay)->toBe($rules['replay'])
+        ->and($underA->hints['flags'])->toBe([])
+        ->and([$underB->outcome, $underB->reason])->toBe([StackerVerdict::REJECTED, 'engine'])
+        ->and([$underToday->outcome, $underToday->reason])->toBe([StackerVerdict::REJECTED, 'engine'])
+        ->and([$lying->outcome, $lying->reason])->toBe([StackerVerdict::REJECTED, 'mismatch'])
+        ->and($normal->outcome)->toBe(StackerVerdict::VERIFIED)
+        ->and($hard->outcome)->toBe(StackerVerdict::VERIFIED);
+});
+
 test('a verifier that gives no valid answer leaves the run pending, never rejected', function () {
     // a timeout too: the worst crafted replay takes well under 100 ms, so 5 s means an overloaded host, not a bad run
     $cases = [

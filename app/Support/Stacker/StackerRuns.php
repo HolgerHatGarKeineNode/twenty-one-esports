@@ -18,7 +18,7 @@ use Throwable;
  * verify.
  *
  * - issue(): a one-time token (shown once, stored as sha256) and a fresh
- *   128-bit seed on the running week's difficulty (its engine id). A player has one active run: a new
+ *   128-bit seed on the running week's rules (their engine id, BlockfillRules). A player has one active run: a new
  *   issue abandons every run of theirs still `issued`.
  * - start(): the browser says the run starts now. A token not started within
  *   `start_seconds` (10 s) expires (abandoned, reason `expired`), so the
@@ -103,7 +103,7 @@ final class StackerRuns
                 'user_id' => $user->id,
                 'token_hash' => self::hashToken($token),
                 'seed' => self::freshSeed(),
-                // The running week's difficulty (BlockfillWeeks::difficultyAt()): the engine the run is played and verified on.
+                // The running week's rules (BlockfillWeeks::difficultyAt()): the engine the run is played and verified on.
                 'engine' => app(BlockfillWeeks::class)->difficultyAt($now),
                 'status' => StackerRunStatus::Issued,
                 'issued_at' => $now,
@@ -276,12 +276,14 @@ final class StackerRuns
      * HELD_PLACES of week `$week`: the player has no verified time as fast
      * in that week yet, and fewer than HELD_PLACES other players have one
      * strictly faster. A tie counts for the run (it may take the place), and
-     * runs still held count for nobody, so in doubt the run is held.
+     * runs still held count for nobody, so in doubt the run is held. Only
+     * times on the run's own rules (its engine) compare: a 20-line time is no
+     * rival of a 60-line one.
      */
     public function wouldPlace(StackerRun $run, string $week): bool
     {
         $ticks = (int) $run->ticks;
-        $own = $this->best((int) $run->user_id, $week);
+        $own = $this->best((int) $run->user_id, $week, $run->engine);
 
         if ($own !== null && $own <= $ticks) {
             return false;
@@ -289,6 +291,7 @@ final class StackerRuns
 
         return StackerRun::query()
             ->where('week', $week)
+            ->where('engine', $run->engine)
             ->where('status', StackerRunStatus::Verified)
             ->where('user_id', '!=', $run->user_id)
             ->where('ticks', '<', $ticks)
@@ -582,7 +585,7 @@ final class StackerRuns
                 ->whereIn('id', $this->weekReplayHolders($week))
                 ->when($top !== [], fn ($outside) => $outside->whereNotIn('id', $top))
                 ->whereNull('flags->moment')->whereNull('flags->shared')
-                ->get(['id', 'user_id', 'status', 'ticks', 'submitted_at', 'week', 'flags']);
+                ->get(['id', 'user_id', 'engine', 'status', 'ticks', 'submitted_at', 'week', 'flags']);
 
             foreach ($unjudged as $run) {
                 if ($moments->of($run) !== null) {
@@ -752,14 +755,16 @@ final class StackerRuns
     /**
      * The player's best verified time in ticks, or null: of all time, or of
      * one week (`$week` as weekOf() gives it, P4: the weekly hunt starts
-     * every player afresh on Monday).
+     * every player afresh on Monday); on one rule set (`$engine`, an engine
+     * id of BlockfillRules) or on any, as times of different lines never compare.
      */
-    public function best(User|int $user, ?string $week = null): ?int
+    public function best(User|int $user, ?string $week = null, ?string $engine = null): ?int
     {
         $best = StackerRun::query()
             ->where('user_id', $user instanceof User ? $user->id : $user)
             ->where('status', StackerRunStatus::Verified)
             ->when($week !== null, fn ($query) => $query->where('week', $week))
+            ->when($engine !== null, fn ($query) => $query->where('engine', $engine))
             ->min('ticks');
 
         return $best === null ? null : (int) $best;
