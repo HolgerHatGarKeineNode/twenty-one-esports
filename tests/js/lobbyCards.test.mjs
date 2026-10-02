@@ -7,11 +7,12 @@
  * runnable alone with `node --test`.
  */
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 import { test } from 'node:test';
 import { finalizeEvent, generateSecretKey, getPublicKey } from 'nostr-tools/pure';
 import * as nip44 from 'nostr-tools/nip44';
 import {
-    ACCOUNT_CARDS, HOST_CARD, MAX_FUTURE, accountTags, cacheEntry, cardContent, casualExpiration, expirationOf, isExpired, lobbyTags, openCardIds, parseCard, randomPassword, validValue,
+    ACCOUNT_CARDS, HOST_CARD, LOBBY_WORDS, MAX_FUTURE, accountTags, cacheEntry, cardContent, casualExpiration, expirationOf, isExpired, lobbyTags, openCardIds, parseCard, randomPassword, validValue,
 } from '../../resources/js/lobbyCards.js';
 import { unwrapMessage, wrapGroupMessage } from '../../resources/js/nostrChat.js';
 
@@ -194,16 +195,32 @@ test('a card goes through seal and wrap with the same expiration on all three la
     assert.deepEqual(plain.wraps[0].tags, [['p', G]]);
 });
 
-test('the suggested password is random, six characters, without look-alikes', () => {
+test('the suggested password is two Bitcoin words of the league\'s list and two digits', () => {
+    // The same list the league reads in PHP (App\Support\LobbyWords).
+    const words = JSON.parse(readFileSync(new URL('../../resources/data/lobby-words.json', import.meta.url), 'utf8'));
+    assert.deepEqual(LOBBY_WORDS, words);
+
     const passwords = new Set(Array.from({ length: 50 }, () => randomPassword()));
 
     assert.equal(passwords.size, 50);
-    for (const password of passwords) assert.match(password, /^[a-hjkmnp-z2-9]{6}$/);
+    for (const password of passwords) {
+        assert.match(password, /^[a-z]{3,8}-[a-z]{3,8}-\d{2}$/);
+        assert.ok(password.length <= 20);
+        const [first, second] = password.split('-');
+        assert.ok(words.includes(first) && words.includes(second), password);
+    }
 
-    // Bytes of 248 and above are dropped, so no character is favoured.
-    let calls = 0;
-    const bytes = (n) => (calls++ === 0 ? new Uint8Array(n).fill(255) : Uint8Array.from({ length: n }, (_, i) => i));
-    assert.equal(randomPassword(6, bytes), 'abcdef');
+    // Draws at or above the largest multiple of the list size (words) or of 100 (digits) are dropped, so nothing is favoured.
+    // A list of up to 256 words draws one byte per word.
+    assert.ok(words.length <= 256);
+    const draws = [[0xff], [0], [1], [0xff], [7]];
+    const bytes = (n) => {
+        const next = draws.shift();
+        assert.equal(next.length, n);
+        return Uint8Array.from(next);
+    };
+    assert.equal(randomPassword(bytes), `${words[0]}-${words[1]}-07`);
+    assert.equal(draws.length, 0);
 });
 
 test('Age of Empires II: the host shares a lobby card, either player may send a Steam or Xbox account card (rev. 9.16)', () => {

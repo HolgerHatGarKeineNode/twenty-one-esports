@@ -12,6 +12,7 @@ use App\Models\LineupSeat;
 use App\Models\MatchNumber;
 use App\Models\SeriesMatch;
 use App\Models\SeriesReport;
+use App\Support\LobbyWords;
 use Carbon\CarbonImmutable;
 use Illuminate\Database\Seeder;
 
@@ -100,8 +101,8 @@ class SeriesMatchSeeder extends Seeder
                 'start_at' => $state === 'open' ? null : $start,
                 'answered_by_id' => $state === 'open' ? null : $challenged->clan->owner_id,
                 'answered_at' => $state === 'open' ? null : $start->subHours(3),
-                'lobby_name' => $state === 'open' ? null : 'e21-'.strtolower($a.'-'.$b),
-                'lobby_password' => $state === 'open' ? null : 'local-'.$number,
+                'lobby_name' => $state === 'open' ? null : LobbyWords::matchName($number),
+                'lobby_password' => $state === 'open' ? null : LobbyWords::password(),
                 'lobby_region' => $state === 'open' ? null : 'EU',
                 'live_games' => $games === [] ? null : $games,
                 'result_games' => $finished ? $games : null,

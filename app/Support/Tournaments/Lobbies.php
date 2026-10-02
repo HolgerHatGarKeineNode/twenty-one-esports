@@ -5,6 +5,7 @@ namespace App\Support\Tournaments;
 use App\Enums\TournamentFormat;
 use App\Models\Tournament;
 use App\Support\GameNames;
+use App\Support\LobbyWords;
 use App\Support\Pages\RulesPage;
 use Carbon\CarbonImmutable;
 use Illuminate\Container\Container;
@@ -29,9 +30,6 @@ use Illuminate\Container\Container;
  */
 final class Lobbies
 {
-    /** The characters of a lobby password: no 0/o, 1/l/i, easy to type in the game. */
-    private const PASSWORD_ALPHABET = 'abcdefghjkmnpqrstuvwxyz23456789';
-
     /**
      * The game's lobby block, or null for a game whose tournaments are not lobbies.
      *
@@ -324,22 +322,16 @@ final class Lobbies
             .min(self::minEntries($game), self::maxPlayers($game)).' to '.self::maxPlayers($game).', wins shared';
     }
 
-    /** The league's name of a lobby: "e21-t42-l2" (tournament 42, lobby 2). */
+    /** The league's name of a lobby: "21-hodl-42-2" (tournament 42, lobby 2), see {@see LobbyWords}. */
     public static function name(Tournament $tournament, int $position): string
     {
-        return 'e21-t'.$tournament->id.'-l'.$position;
+        return LobbyWords::lobbyName($tournament->id, $position);
     }
 
-    /** A fresh password: 6 characters that are easy to read and type. */
+    /** A fresh password: "mempool-halving-42", two Bitcoin words and two digits. */
     public static function password(): string
     {
-        $password = '';
-
-        for ($i = 0; $i < 6; $i++) {
-            $password .= self::PASSWORD_ALPHABET[random_int(0, strlen(self::PASSWORD_ALPHABET) - 1)];
-        }
-
-        return $password;
+        return LobbyWords::password();
     }
 
     /**

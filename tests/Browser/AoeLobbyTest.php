@@ -8,6 +8,7 @@ use App\Models\TournamentMatch;
 use App\Models\TournamentOrganizer;
 use App\Models\TournamentParticipant;
 use App\Models\User;
+use App\Support\LobbyWords;
 use App\Support\Tournaments\FormatOptions;
 use App\Support\Tournaments\GameProfile;
 use App\Support\Tournaments\LobbyResults;
@@ -196,7 +197,7 @@ test('the lobby cards of nine players show 5 and 4 with their own settings, the 
         ->and($measured['outside'])->toBe([false, false])
         ->and($measured['cut'])->toBe([])
         ->and($measured['scroll'])->toBeLessThanOrEqual($measured['client'])
-        ->and($page->evaluate('() => document.querySelector("[data-test=lobby-name]").innerText.trim()'))->toBe('e21-t'.$tournament->id.'-l1')
+        ->and($page->evaluate('() => document.querySelector("[data-test=lobby-name]").innerText.trim()'))->toBe(LobbyWords::lobbyName($tournament->id, 1))
         ->and($page->evaluate('() => document.querySelector("[data-test=lobby-rules]") !== null'))->toBeTrue();
 
     // The password shows on demand, and a Livewire roundtrip of the cards stays clean.

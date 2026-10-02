@@ -3,6 +3,7 @@
 use App\Enums\SeriesStatus;
 use App\Models\SeriesMatch;
 use App\Models\User;
+use App\Support\LobbyWords;
 use App\Support\Series\CasualMatches;
 use Illuminate\Support\Facades\Process;
 use Livewire\Livewire;
@@ -52,7 +53,7 @@ test('Age of Empires II lobby card: only the host composes it, with the proposed
 
     expect($config['casual']['game'])->toBe('age-of-empires-2')
         ->and($config['casual']['isHost'])->toBeTrue()
-        ->and($config['casual']['lobbyName'])->toBe('e21-'.$match->number)
+        ->and($config['casual']['lobbyName'])->toBe(LobbyWords::matchName($match->number))
         ->and($config['labels']['lobbyTitle'])->toBe('Age of Empires II lobby')
         ->and($hostRoom->html())->toContain('data-test="lobby-form"')->toContain('Age of Empires II lobby')
         ->toContain('Host a lobby in Age of Empires II with a password and spectators allowed');
@@ -67,7 +68,7 @@ test('Age of Empires II lobby card: only the host composes it, with the proposed
 
     // A third user gets the public match page, without the room's composer or its proposed name.
     $this->actingAs(User::factory()->create())->get(route('matches.room', $match))->assertRedirect(route('matches.show', $match));
-    expect($this->get(route('matches.show', $match))->assertOk()->getContent())->not->toContain('data-test="card-composer"')->not->toContain('e21-'.$match->number);
+    expect($this->get(route('matches.show', $match))->assertOk()->getContent())->not->toContain('data-test="card-composer"')->not->toContain(LobbyWords::matchName($match->number));
 });
 
 test('Age of Empires II account card: each player gets only their own Steam and Xbox names to send, and no page shows them', function () {
@@ -223,7 +224,7 @@ test('the room hands the chat the host, the flags, A + D and the player\'s own E
         'shared' => false,
         'seen' => false,
         'expiresFrom' => $match->casualChatExpiresFrom()?->getTimestamp(),
-        'lobbyName' => 'e21-'.$match->number,
+        'lobbyName' => LobbyWords::matchName($match->number),
         'eaId' => 'Host_EA',
         'lobbyRules' => '',
     ])

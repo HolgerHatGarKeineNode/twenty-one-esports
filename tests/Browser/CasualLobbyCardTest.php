@@ -2,6 +2,7 @@
 
 use App\Models\SeriesMatch;
 use App\Models\User;
+use App\Support\LobbyWords;
 use App\Support\Nostr\RelayReader;
 use Illuminate\Support\Facades\File;
 use Illuminate\Support\Facades\Http;
@@ -113,8 +114,8 @@ test('the host shares a Rocket League lobby card, the guest sees it drawn from t
 
         $hostPage->locator('[data-test=share-lobby]')->click();
         $prefill = $hostPage->evaluate('() => [document.querySelector("[data-test=card-lobby-name]").value, document.querySelector("[data-test=card-lobby-password]").value]');
-        expect($prefill[0])->toBe('e21-'.$match->number)
-            ->and($prefill[1])->toMatch('/^[a-hjkmnp-z2-9]{6}$/');
+        expect($prefill[0])->toBe(LobbyWords::matchName($match->number))->toMatch('/^21-[a-z]{3,8}-'.$match->number.'$/')
+            ->and($prefill[1])->toMatch('/^[a-z]{3,8}-[a-z]{3,8}-\d{2}$/');
 
         // Markup in a value stays text: drawn with x-text, never as HTML.
         $name = '<i>sats</i>4you';

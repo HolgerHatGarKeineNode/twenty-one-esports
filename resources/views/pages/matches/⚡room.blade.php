@@ -536,7 +536,7 @@ new #[Title('Match room')] #[Layout('layouts::app', ['section' => 'matches', 'sc
         if ($casual !== null) {
             $casual += [
                 // Prefills of the composer, for this player only: a lobby name, and the EA ID from the private gamer tags.
-                'lobbyName' => 'e21-'.$match->number,
+                'lobbyName' => \App\Support\LobbyWords::matchName($match->number),
                 'eaId' => (string) ($this->user()->gamer_tags['ea'] ?? ''),
                 // The league's lobby defaults, one English line in the lobby card's text (LobbyRules, P9).
                 'lobbyRules' => \App\Support\Series\LobbyRules::line($match->game, 'en'),

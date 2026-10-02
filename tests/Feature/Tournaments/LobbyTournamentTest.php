@@ -8,6 +8,7 @@ use App\Models\Tournament;
 use App\Models\TournamentMatch;
 use App\Models\TournamentParticipant;
 use App\Models\User;
+use App\Support\LobbyWords;
 use App\Support\Payouts\PayoutPlan;
 use App\Support\Payouts\TournamentPlacements;
 use App\Support\Series\Ladders;
@@ -124,8 +125,8 @@ test('each lobby\'s settings follow its players and are fixed at the draw with a
         ->and([Lobbies::mapSize('age-of-empires-2', 2), Lobbies::mapSize('age-of-empires-2', 4), Lobbies::mapSize('age-of-empires-2', 6), Lobbies::mapSize('age-of-empires-2', 7)])->toBe(['Tiny', 'Medium', 'Normal', 'Large'])
         ->and($lobby)->toMatchArray(['players' => 5, 'map' => 'Arabia', 'civilizations' => 'free', 'population' => 200, 'lock_teams' => false, 'allied_victory' => true,
             'victory' => 'time-limit', 'time_limit_minutes' => 120, 'spectator_delay_minutes' => 2, 'restarts' => 1, 'restart_minutes' => 5])
-        ->and($lobby['name'])->toBe('e21-t'.$nine[0]->tournament_id.'-l1')
-        ->and($nine[0]->lobby_password)->toMatch('/^[a-z2-9]{6}$/')
+        ->and($lobby['name'])->toBe(LobbyWords::lobbyName($nine[0]->tournament_id, 1))->toMatch('/^21-[a-z]{3,8}-'.$nine[0]->tournament_id.'-1$/')
+        ->and($nine[0]->lobby_password)->toMatch('/^[a-z]{3,8}-[a-z]{3,8}-\d{2}$/')
         ->and($nine[0]->lobby_password)->not->toBe($nine[1]->lobby_password)
         // The players report until the time limit and an hour after it (set-up 15 min, 2 h, 60 min).
         ->and(LobbyResults::reportBy($nine[0])->getTimestamp())->toBe(now()->addMinutes(195)->getTimestamp());

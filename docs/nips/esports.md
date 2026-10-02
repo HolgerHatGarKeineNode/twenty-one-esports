@@ -207,7 +207,7 @@ new tag.
   series rules). Statistics that use points skip such games as they skip "points unknown" today.
 - **Lobby and account cards.** In a casual 1v1 a player hosts a lobby in the game with a password and spectators
   allowed and shares its name and password as a lobby card: `lobby` also takes the value `age-of-empires-2`. The app
-  proposes both (the name `e21-<match>`, a fresh random password). Either player may also send an account card with
+  proposes both (the name `21-<word>-<match>`, a fresh random password of two words and two digits). Either player may also send an account card with
   their Steam or Xbox name, only by pressing Send card: `account` also takes the values `steam` and `xbox`
   ([Lobby and account cards](#lobby-and-account-cards-rev-92)). The league learns only that a card went out; it never
   shows a gamer tag or a game profile ID, keeps no mapping from a game profile to a player beyond the tags a player

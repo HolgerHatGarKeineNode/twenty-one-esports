@@ -12,6 +12,7 @@
  * without an ID withdraws it. `content` is plain English generated from the
  * tags, for other NIP-17 clients; the app never draws a card from it.
  */
+import lobbyWords from '../data/lobby-words.json' with { type: 'json' };
 
 /** Games whose host shares a private match (the NIP's game registry slugs). */
 export const LOBBY_GAMES = { 'rocket-league': 'Rocket League', 'age-of-empires-2': 'Age of Empires II' };
@@ -196,18 +197,31 @@ export function cacheEntry(rumor, now = Math.floor(Date.now() / 1000)) {
     return parseCard(rumor, Number.MAX_SAFE_INTEGER) === null ? rumor : { stub: true };
 }
 
-const PASSWORD_ALPHABET = 'abcdefghjkmnpqrstuvwxyz23456789';
+/** The league's Bitcoin words for lobby passwords: the list App\Support\LobbyWords reads too. */
+export const LOBBY_WORDS = lobbyWords;
 
-/** A fresh random lobby password (no look-alike characters), one per match (NIP threat table). */
-export function randomPassword(length = 6, random = (n) => crypto.getRandomValues(new Uint8Array(n))) {
-    const out = [];
+/**
+ * A uniform integer below `count` from `random`'s bytes: one byte when
+ * `count` fits, else two; a draw at or above the largest multiple of
+ * `count` is dropped, so no value is favoured.
+ */
+function uniformBelow(count, random) {
+    const size = count <= 256 ? 1 : 2;
+    const range = 256 ** size;
+    const limit = range - (range % count);
 
-    // Rejection sampling: 248 is the largest multiple of 31 below 256, so every character is equally likely.
-    while (out.length < length) {
-        for (const byte of random(length * 2)) {
-            if (byte < 248 && out.length < length) out.push(PASSWORD_ALPHABET[byte % PASSWORD_ALPHABET.length]);
-        }
+    for (;;) {
+        const value = random(size).reduce((sum, byte) => sum * 256 + byte, 0);
+        if (value < limit) return value % count;
     }
+}
 
-    return out.join('');
+/**
+ * A fresh random lobby password, one per match (NIP threat table): two
+ * words of the league's list and two digits, "mempool-halving-42".
+ */
+export function randomPassword(random = (n) => crypto.getRandomValues(new Uint8Array(n))) {
+    const word = () => LOBBY_WORDS[uniformBelow(LOBBY_WORDS.length, random)];
+
+    return `${word()}-${word()}-${String(uniformBelow(100, random)).padStart(2, '0')}`;
 }
