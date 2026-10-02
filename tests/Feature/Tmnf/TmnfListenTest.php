@@ -13,6 +13,7 @@ use App\Support\Tmnf\TmnfConnector;
 use App\Support\Tmnf\TmnfLinks;
 use App\Support\Tmnf\TmnfListener;
 use App\Support\Tmnf\TmnfServer;
+use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Sleep;
 
 /*
@@ -208,6 +209,44 @@ test('the listener reconnects after a backoff when the server is away', function
         ->assertSuccessful();
 
     Sleep::assertSequence([Sleep::for(1)->seconds()]);
+});
+
+test('tmnf:restart during a session stops the listener after the callback at hand, before it connects again', function () {
+    tmnfPlayer('satoshi_drives', linked: true);
+    $ends = tmnfServerPlays([[tmnfFrame('constructed-player-finish')], [tmnfFrame('constructed-player-finish')]]);
+    // The deploy runs tmnf:restart while the listener handles this finish.
+    ScoreRun::created(fn () => Artisan::call('tmnf:restart'));
+
+    $this->artisan('tmnf:listen', ['--attempts' => 2])
+        ->expectsOutputToContain('finish 25912 ms on A01-Race: stored')
+        ->expectsOutputToContain('Restart requested (tmnf:restart): stopping after the callback at hand.')
+        ->assertSuccessful();
+
+    expect($ends)->toHaveCount(1)
+        ->and(ScoreRun::query()->count())->toBe(1);
+});
+
+test('tmnf:restart while the server is away stops the listener instead of connecting again', function () {
+    Sleep::fake();
+    Sleep::whenFakingSleep(fn () => Artisan::call('tmnf:restart'));
+    $ends = tmnfServerPlays(['down', [tmnfFrame('constructed-player-finish')]]);
+
+    $this->artisan('tmnf:listen', ['--attempts' => 2])
+        ->expectsOutputToContain('Restart requested (tmnf:restart)')
+        ->assertSuccessful();
+
+    expect($ends)->toHaveCount(0);
+});
+
+test('a restart requested before the listener started does not stop it', function () {
+    $this->artisan('tmnf:restart')->expectsOutputToContain('The TMNF listener stops after its current callback')->assertSuccessful();
+    tmnfPlayer('satoshi_drives', linked: true);
+    tmnfServerPlays([[tmnfFrame('constructed-player-finish')]]);
+
+    $this->artisan('tmnf:listen', ['--attempts' => 1])
+        ->expectsOutputToContain('finish 25912 ms on A01-Race: stored')
+        ->doesntExpectOutputToContain('Restart requested')
+        ->assertSuccessful();
 });
 
 test('switched off, the listener exits at once and stores nothing', function () {

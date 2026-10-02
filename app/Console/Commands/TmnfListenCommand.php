@@ -13,6 +13,7 @@ use App\Support\TwentyOne\Stream\Backoff;
 use Illuminate\Console\Attributes\Description;
 use Illuminate\Console\Attributes\Signature;
 use Illuminate\Console\Command;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Sleep;
 use Throwable;
 
@@ -33,6 +34,11 @@ use Throwable;
  * - Stops on SIGTERM/SIGINT after the callback at hand; `--seconds` stops
  *   after that long, `--attempts` after that many connections (tests, a
  *   manual check).
+ * - Stops the same way once `tmnf:restart` ran after its start (the
+ *   `queue:restart` pattern): the restart time in the cache differs from
+ *   the one read at the start, checked on every loop, so the supervisor
+ *   starts it again on the deployed code. A cache that cannot be read
+ *   counts as no restart (reported once): the finishes keep being stored.
  * - Off (`ESPORTS_TMNF`), it says so and exits at once.
  */
 #[Signature('tmnf:listen
@@ -41,7 +47,12 @@ use Throwable;
 #[Description('Listen to the TMNF dedicated server: finishes become runs, chat codes link logins')]
 class TmnfListenCommand extends Command
 {
+    /** The cache key `tmnf:restart` writes its time to. */
+    public const RESTART_KEY = 'tmnf:listen:restart';
+
     private bool $stopping = false;
+
+    private bool $cacheReported = false;
 
     public function handle(TmnfConnector $connector, TmnfListener $listener, TmnfTrackSwitch $switch): int
     {
@@ -60,7 +71,15 @@ class TmnfListenCommand extends Command
         $backoff = new Backoff((int) config('esports.tmnf.listener.backoff_initial_seconds', 1), (int) config('esports.tmnf.listener.backoff_max_seconds', 60));
         $attempts = max(0, (int) $this->option('attempts'));
         $made = 0;
-        $over = fn (): bool => $this->stopping || ($deadline !== null && microtime(true) >= $deadline);
+        $lastRestart = $this->lastRestart(null);
+        $over = function () use ($deadline, $lastRestart): bool {
+            if (! $this->stopping && $this->lastRestart($lastRestart) !== $lastRestart) {
+                $this->info('Restart requested (tmnf:restart): stopping after the callback at hand.');
+                $this->stopping = true;
+            }
+
+            return $this->stopping || ($deadline !== null && microtime(true) >= $deadline);
+        };
 
         while (! $over() && ($attempts === 0 || $made < $attempts)) {
             $made++;
@@ -115,6 +134,21 @@ class TmnfListenCommand extends Command
         }
 
         return self::SUCCESS;
+    }
+
+    /** The time of the last `tmnf:restart` (null: none yet); `$unreadable` when the cache cannot be read. */
+    private function lastRestart(mixed $unreadable): mixed
+    {
+        try {
+            return Cache::get(self::RESTART_KEY);
+        } catch (Throwable $e) {
+            if (! $this->cacheReported) {
+                $this->cacheReported = true;
+                report($e);
+            }
+
+            return $unreadable;
+        }
     }
 
     /**
