@@ -21,11 +21,14 @@ use App\Models\User;
 use App\Support\Cards\Canvas;
 use App\Support\Cards\PageCard;
 use App\Support\Cards\PageCardFacts;
+use App\Support\Cards\ShareCard;
 use App\Support\GameNames;
 use App\Support\Invites\InviteLinks;
 use App\Support\PageMeta;
 use App\Support\Scores\ScoreRuns;
 use App\Support\Stacker\BlockfillWeeks;
+use App\Support\Tmnf\TmnfMoments;
+use App\Support\Tmnf\TmnfWeeks;
 use Carbon\CarbonImmutable;
 use Illuminate\Support\Facades\Route;
 use Illuminate\Support\Facades\Schema;
@@ -434,4 +437,57 @@ test('no text on any card is cut or runs off the edge, in English or German, wit
     Canvas::$cuts = null;
 
     expect($cuts)->toBe([]);
+});
+
+/**
+ * Pixels of the official TMNF logo's green "Nations" band (Steam store art) inside a box of a card: the card shows
+ * the game's own cover, not a drawn stand-in.
+ */
+function tmnfNationsGreen(string $png, int $x, int $y, int $w, int $h): int
+{
+    $image = imagecreatefromstring($png);
+    $green = 0;
+
+    for ($px = $x; $px < $x + $w; $px += 2) {
+        for ($py = $y; $py < $y + $h; $py += 2) {
+            $rgb = imagecolorat($image, $px, $py);
+            [$r, $g, $b] = [($rgb >> 16) & 0xFF, ($rgb >> 8) & 0xFF, $rgb & 0xFF];
+            $green += $g > 140 && $g - $r > 50 && $g - $b > 90 ? 1 : 0;
+        }
+    }
+
+    return $green;
+}
+
+test('every TMNF link preview shows the official cover art, in English and German, and a new cover is a new URL', function () {
+    tmnfOn();
+    $this->travelTo(CarbonImmutable::parse('2026-10-07 12:00:00'));
+    tmnfPlayer('ada_drives', linked: true, attributes: ['name' => 'Ada']);
+    $run = tmnfFinish('ada_drives', 25_100);
+    $week = app(TmnfWeeks::class)->current();
+    $moment = app(TmnfMoments::class)->of($run);
+
+    // Each card and the box its cover takes.
+    $cards = [
+        'game page' => [fn () => PageCard::page('scores.tmnf')->render(), [600, 48, 536, 252]],
+        'week page' => [fn () => PageCard::tournament($week->refresh())->render(), [688, 48, 448, 210]],
+        'week board' => [fn () => PageCard::leaderboard($week->refresh())->render(), [856, 48, 280, 132]],
+        'moment wide' => [fn () => ShareCard::tmnf($run, $moment)->render('wide'), [64, 112, 352, 198]],
+        'moment story' => [fn () => ShareCard::tmnf($run, $moment)->render('story'), [72, 150, 936, 527]],
+    ];
+
+    foreach (['en', 'de'] as $locale) {
+        app()->setLocale($locale);
+
+        foreach ($cards as $name => [$render, $box]) {
+            expect(tmnfNationsGreen($render(), ...$box))->toBeGreaterThan(20, "{$locale} {$name}");
+        }
+    }
+
+    // The cover's bytes are part of every card's fingerprint: a card cached with the old art is drawn again under a new `v`.
+    $cover = app(GameRegistry::class)->coverVersion('tmnf');
+    $facts = PageCard::page('scores.tmnf')->facts;
+    expect($cover)->toBe(hash_file('xxh3', public_path('images/games/tmnf-1280.jpg')))
+        ->and(app(GameRegistry::class)->coverVersion('no-such-game'))->toBeNull()
+        ->and(PageCard::page('scores.tmnf')->fingerprint())->toBe(substr(hash('sha256', (string) json_encode([1, 'page', 'scores.tmnf', 'de', $facts, config('app.url'), $cover])), 0, 16));
 });

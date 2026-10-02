@@ -223,7 +223,21 @@ final class PageCard
     /** Everything the card shows: a change is a new file and a new `v`. */
     public function fingerprint(): string
     {
-        return substr(hash('sha256', (string) json_encode([self::LAYOUT, $this->type, $this->key, App::getLocale(), $this->facts, config('app.url')])), 0, 16);
+        return substr(hash('sha256', (string) json_encode([self::LAYOUT, $this->type, $this->key, App::getLocale(), $this->facts, config('app.url'), ...$this->coverVersions()])), 0, 16);
+    }
+
+    /**
+     * The versions of the game covers the card may draw (its game, its board's, the next tournament's), so new art
+     * is a new file and a new `v`; none for a card without a game.
+     *
+     * @return list<string>
+     */
+    private function coverVersions(): array
+    {
+        $games = app(GameRegistry::class);
+        $slugs = array_filter([$this->facts['game'] ?? null, $this->facts['board']['game'] ?? null, $this->facts['next']['game'] ?? null], 'is_string');
+
+        return array_values(array_filter(array_map(fn (string $slug): ?string => $games->coverVersion($slug), array_unique($slugs))));
     }
 
     public function url(): string

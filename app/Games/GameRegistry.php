@@ -14,6 +14,9 @@ final class GameRegistry
     /** @var array<string, Game> */
     private array $games = [];
 
+    /** @var array<string, string|null> cover file => coverVersion() */
+    private static array $coverVersions = [];
+
     /**
      * @param  iterable<Game>  $games
      */
@@ -188,5 +191,22 @@ final class GameRegistry
         $path = $cover === null ? null : public_path($cover->path($cover->largest(), 'jpg'));
 
         return $path !== null && is_file($path) ? $path : null;
+    }
+
+    /**
+     * A hash of the bytes of coverPath(), or null without one: the drawn cards
+     * put it into their fingerprint, so new art is a new file and a new `v`
+     * instead of the old picture kept in the card cache. Read once per file
+     * and process.
+     */
+    public function coverVersion(string $slug): ?string
+    {
+        $path = $this->coverPath($slug);
+
+        if ($path === null) {
+            return null;
+        }
+
+        return self::$coverVersions[$path] ??= (hash_file('xxh3', $path) ?: null);
     }
 }

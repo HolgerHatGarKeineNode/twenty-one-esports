@@ -102,6 +102,8 @@ final class InviteCard
             $this->link->clan?->only(['name', 'clantag', 'picture']),
             (new InviteCopy($this->link))->clanName(),
             config('app.url'),
+            // The game's cover it draws: new art is a new card.
+            ...(is_string($game = $this->link->option('game')) && ($cover = app(GameRegistry::class)->coverVersion($game)) !== null ? [$cover] : []),
         ]) ?: ''), 0, 16);
     }
 

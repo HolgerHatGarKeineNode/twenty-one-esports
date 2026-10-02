@@ -5,6 +5,7 @@ namespace App\Support\Cards;
 use App\Enums\TournamentFormat;
 use App\Games\GameRegistry;
 use App\Games\ScoreMetric;
+use App\Games\TrackmaniaNationsForever;
 use App\Models\RankBadgeVersion;
 use App\Models\ScoreRun;
 use App\Models\Season;
@@ -144,7 +145,11 @@ final class ShareCard
      */
     public function fingerprint(string $format): string
     {
-        return substr(hash('sha256', (string) json_encode([self::LAYOUT, $this->type, $this->key, $format, App::getLocale(), $this->facts, config('app.url')])), 0, 16);
+        // The cover a card draws is part of what it shows: new art is a new file and a new `v`.
+        $game = $this->type === 'tmnf' ? TrackmaniaNationsForever::SLUG : ($this->facts['game'] ?? null);
+        $cover = is_string($game) ? app(GameRegistry::class)->coverVersion($game) : null;
+
+        return substr(hash('sha256', (string) json_encode([self::LAYOUT, $this->type, $this->key, $format, App::getLocale(), $this->facts, config('app.url'), ...($cover === null ? [] : [$cover])])), 0, 16);
     }
 
     /** The public URL of the card in the current locale, with its fingerprint. */
@@ -589,7 +594,7 @@ final class ShareCard
 
     private function tmnfWide(): void
     {
-        $this->finishFlag(64, 96, 40, 8, 9);
+        $this->tmnfMark(64, 112, 352, 22);
 
         $x = 440;
         $max = 1136 - $x;
@@ -604,8 +609,8 @@ final class ShareCard
 
     private function tmnfStory(): void
     {
-        $this->kicker('TrackMania Nations Forever', 72, 150);
-        $this->finishFlag(240, 230, 75, 8, 8);
+        // The cover carries the game's name in its own logo.
+        $this->tmnfMark(72, 150, 936, 36);
 
         $this->c->paragraph($this->tmnfHeadline(), 'mono-bold', 44, 72, 960, 936, 2, Canvas::ORANGE);
         $this->c->avatar($this->drawable($this->facts), 72, 1040, 64);
@@ -644,7 +649,32 @@ final class ShareCard
     }
 
     /**
-     * A chequered finish flag on its pole, the TMNF cards' mark: `$columns`
+     * The TMNF cards' mark: the game's official cover (Steam store art, with
+     * its logo) `$w` wide at 16:9, a chequered band of two rows of `$cell` px
+     * under it; without a cover file the finish flag alone.
+     */
+    private function tmnfMark(int $x, int $y, int $w, int $cell): void
+    {
+        $h = (int) round($w * 9 / 16);
+        $path = app(GameRegistry::class)->coverPath(TrackmaniaNationsForever::SLUG);
+
+        if ($path === null || ! $this->c->cover($path, $x, $y, $w, $h)) {
+            $this->finishFlag($x + 14, $y, intdiv($w - 14, 8), 8, 8);
+
+            return;
+        }
+
+        $columns = intdiv($w, $cell);
+
+        for ($row = 0; $row < 2; $row++) {
+            for ($col = 0; $col < $columns; $col++) {
+                $this->c->rect($x + $col * $cell, $y + $h + $cell + $row * $cell, $cell, $cell, ($row + $col) % 2 === 0 ? Canvas::ORANGE : '#0E0E11');
+            }
+        }
+    }
+
+    /**
+     * A chequered finish flag on its pole, the TMNF cards' fallback mark: `$columns`
      * by `$rows` squares of `$cell` px in the league orange and black.
      */
     private function finishFlag(int $x, int $y, int $cell, int $columns, int $rows): void
