@@ -170,3 +170,12 @@ test('an empty manialink with an id removes that manialink only', function () {
     expect($document->getElementsByTagName('manialink')->item(0)?->getAttribute('id'))->toBe(TmnfManialinks::ID_NOTE)
         ->and($document->getElementsByTagName('manialink')->item(0)?->childNodes->length)->toBe(0);
 });
+
+test('the board sits under the stock round clock and on a dark panel, not the light stock grey', function () {
+    $board = TmnfManialinks::board('TWENTY ONE', 40, [['place' => 1, 'name' => 'Ada', 'time' => '0:24.920']]);
+
+    preg_match('/<frame posn="[-\d.]+ ([-\d.]+) 0">/', $board, $frame);
+
+    expect((float) $frame[1])->toBeLessThan(17.8)
+        ->and($board)->not->toContain('NavButton')->toContain('bgcolor="111B"');
+});

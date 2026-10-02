@@ -50,8 +50,12 @@ final class TmnfManialinks
 
     private const WIDTH = 19.4;
 
-    /** Top of the board: under the stock Prev/Best box (y 39 .. 32.9 at 16:9), the same gap as between the stock boxes. */
-    private const TOP = 31.8;
+    /**
+     * Top of the board: under the stock time-attack round clock, which sits
+     * below Prev/Best at about y 22 .. 17.8 (measured in a 16:9 client
+     * screenshot, 2026-10-02: the board at 31.8 covered the clock).
+     */
+    private const TOP = 16.6;
 
     private const ROW_HEIGHT = 1.9;
 
@@ -63,6 +67,9 @@ final class TmnfManialinks
 
     /** The league's orange (#F7931A) in TMF's four-digit RGBA. */
     private const ACCENT = 'F91F';
+
+    /** Panel colour, RGBA: near-black at about 70 %. */
+    private const PANEL = '111B';
 
     /**
      * A page of manialinks, as SendDisplayManialinkPage takes it.
@@ -128,7 +135,7 @@ final class TmnfManialinks
      */
     public static function note(string $text): string
     {
-        $xml = self::quad(-16.0, 0.0, 32.0, 4.2, null, 'Bgs1InRace', 'NavButton')
+        $xml = self::quad(-16.0, 0.0, 32.0, 4.2, self::PANEL)
             .self::quad(-15.0, -3.6, 30.0, 0.2, self::ACCENT)
             .self::label(0.0, -0.8, 30.0, 2.0, self::text($text, 60), 2, 'FFFF', 'center');
 
@@ -172,9 +179,10 @@ final class TmnfManialinks
     /**
      * The rounded translucent grey of the stock in-race boxes (XAseco's widget default), running past the right edge.
      */
+    /** A dark translucent panel: the stock grey was too light for white text against the sky (user, 2026-10-02). */
     private static function box(float $width, float $height): string
     {
-        return self::quad(0.0, 0.0, $width, $height, null, 'Bgs1InRace', 'NavButton');
+        return self::quad(0.0, 0.0, $width, $height, self::PANEL);
     }
 
     private static function quad(float $x, float $y, float $width, float $height, ?string $color, ?string $style = null, ?string $substyle = null): string
