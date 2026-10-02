@@ -130,7 +130,8 @@ class SceneSource
      * PrideSlides::all(), the board scene (d5) a live board game or the board
      * games' teaser (BoardScene), the mempool slide (m1) the games of every
      * game and, while a season runs, its latest blocks (MempoolSlides), Blockfill's
-     * set (f2-f5) its week's board, fresh blocks, new #1 and call to play (BlockfillSlides).
+     * set (f2-f5) its week's board, fresh blocks, new #1 and call to play (BlockfillSlides), TMNF's set (g2-g4) the
+     * race to the author time, the call to join and the time to beat (TmnfSlides).
      *
      * @param  list<ChessGame>  $games  the games on show, in display order
      * @param  array<string, mixed>  $stats  StreamStats::all()
@@ -159,6 +160,11 @@ class SceneSource
 
             return ['tmnf' => $tmnf, 'stats' => $stats,
                 'backdrop' => ($tmnf === null ? null : $this->images->backdrop(TrackmaniaNationsForever::SLUG)) ?? $this->images->backdrop(StreamImages::BRAND)];
+        }
+
+        // TMNF's slide set: the race to the author time, the call to join, the time to beat (TmnfSlides), over official screenshots.
+        if (in_array($scene, TmnfSlides::SCENES, true)) {
+            return app(TmnfSlides::class)->scene($scene, $nowMs, $stats);
         }
 
         // Blockfill's slide set while a week runs: the board, the fresh blocks, a new #1, the call to play (BlockfillSlides).

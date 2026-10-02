@@ -107,6 +107,9 @@ final class RotationPlanner
     /** TMNF's week (TmnfSlide, plan "Trackmania und Restposten", P2), in the pool only while TMNF is registered. */
     public const TMNF_SCENE = 'g1';
 
+    /** TMNF's slides in the pool while TMNF is registered: its week (g1) and its set (TmnfSlides: race, join, time to beat). */
+    public const TMNF_SCENES = [self::TMNF_SCENE, TmnfSlides::RACE, TmnfSlides::JOIN, TmnfSlides::LEADER];
+
     /** A slot of Blockfill's slide set (BlockfillSlides). */
     public const BLOCKFILL = 'blockfill';
 
@@ -138,6 +141,7 @@ final class RotationPlanner
         'f1' => 'stream.rotation.f1-blockfill',
         'f2' => 'stream.rotation.f2-board', 'f3' => 'stream.rotation.f3-fresh', 'f4' => 'stream.rotation.f4-moment', 'f5' => 'stream.rotation.f5-play',
         'g1' => 'stream.rotation.g1-tmnf',
+        'g2' => 'stream.rotation.g2-tmnf-race', 'g3' => 'stream.rotation.g3-tmnf-join', 'g4' => 'stream.rotation.g4-tmnf-leader',
     ];
 
     /**
@@ -238,13 +242,29 @@ final class RotationPlanner
     }
 
     /**
-     * The teaser pool, taken in turn: TEASERS, then Blockfill's week and TMNF's week at the end while each is registered.
+     * The teaser pool, taken in turn: TEASERS, then Blockfill's week while it is registered; while TMNF is registered
+     * its slides (TMNF_SCENES) spread evenly over it, the last one at the end, never two in a row.
      *
      * @return non-empty-list<string>
      */
     public function teasers(): array
     {
-        return [...self::TEASERS, ...($this->blockfill ? [self::BLOCKFILL_SCENE] : []), ...($this->tmnf ? [self::TMNF_SCENE] : [])];
+        $pool = [...self::TEASERS, ...($this->blockfill ? [self::BLOCKFILL_SCENE] : [])];
+
+        if (! $this->tmnf) {
+            return $pool;
+        }
+
+        $spread = [];
+        $taken = 0;
+
+        foreach (self::TMNF_SCENES as $i => $scene) {
+            $until = intdiv(count($pool) * ($i + 1), count(self::TMNF_SCENES));
+            $spread = [...$spread, ...array_slice($pool, $taken, $until - $taken), $scene];
+            $taken = $until;
+        }
+
+        return $spread;
     }
 
     /**

@@ -31,6 +31,7 @@ use App\Support\TwentyOne\Stream\RotationPlanner;
 use App\Support\TwentyOne\Stream\SceneRenderer;
 use App\Support\TwentyOne\Stream\SceneSource;
 use App\Support\TwentyOne\Stream\TmnfSlide;
+use App\Support\TwentyOne\Stream\TmnfSlides;
 use Carbon\CarbonImmutable;
 use Illuminate\Support\Facades\Cache;
 use Livewire\Livewire;
@@ -313,6 +314,89 @@ test('the stream\'s TMNF slide shows the week, its track, the top 5 by league na
 
     expect(RotationPlanner::fromConfig(60)->teasers())->not->toContain(TmnfSlide::SCENE)
         ->and(app(TmnfSlide::class)->data())->toBeNull();
+});
+
+/** A slide of TMNF's set as the stream renders it, read fresh. */
+function tmnfSlideSvg(string $scene): string
+{
+    Cache::flush();
+
+    return SceneRenderer::fromConfig()->svg([...app(SceneSource::class)->rotation($scene, null, [], 0, (int) now()->getTimestampMs(), []), 'viewers' => null], RotationPlanner::VIEWS[$scene]);
+}
+
+/** The words a slide shows. */
+function tmnfSlideWords(string $svg): string
+{
+    preg_match_all('/<text[^>]*>([^<]*)<\/text>/', $svg, $m);
+
+    return html_entity_decode(implode("\n", $m[1]));
+}
+
+test('the stream\'s TMNF set races the top 5 to the author time, calls to join TWENTY ONE and shows the time to beat, each over a screenshot of the game', function () {
+    config(['esports.tmnf.server.login' => 'twentyone_srv']);
+    foreach (['Ada' => 24_420, 'Ben' => 25_100, 'Cy' => 26_900] as $name => $ms) {
+        tmnfPlayer(strtolower($name).'_drives', linked: true, attributes: ['name' => $name]);
+        tmnfFinish(strtolower($name).'_drives', $ms, now()->subHours(3));
+    }
+
+    $race = tmnfSlideSvg(TmnfSlides::RACE);
+    $join = tmnfSlideSvg(TmnfSlides::JOIN);
+    $leader = tmnfSlideSvg(TmnfSlides::LEADER);
+    preg_match_all('/data-unit="lane-marker-(\d)" data-x="([\d.]+)"/', $race, $markers);
+
+    // The race: every lane by league name with its time and its gap to the author time (A01-Race: 0:24.540), the
+    // marker of a time under the author time past the line, the slower ones further from it.
+    expect(tmnfSlideWords($race))->toContain('TMNF Week 41, 2026', 'The race to the author time', 'A01-Race by Nadeo: author time 0:24.540', 'Author 0:24.540',
+        "Ada\n0:24.420\n-0.120", "Ben\n0:25.100\n+0.560", "Cy\n0:26.900\n+2.360")
+        ->and(array_combine($markers[1], array_map('floatval', $markers[2])))->toBe(['1' => 1092.9, '2' => 924.7, '3' => 400.0])
+        // The call to join: our server, the favourite link and the four steps, the QR code of How to join.
+        ->and(tmnfSlideWords($join))->toContain('Join TWENTY ONE', 'Paste tmtp://#addfavourite=twentyone_srv into the Explorer bar', 'Get TrackMania Nations Forever, free on Steam',
+            "Link your login: type the code from the site in the\nserver chat", 'Drive A01-Race. Your best time of the week counts.', 'How to join', 'esports.einundzwanzig.space/scores/tmnf')
+        ->and($join)->toContain('shape-rendering="crispEdges"')
+        // The time to beat: the leader big, under the author time; set three hours ago, so not "new".
+        ->and(tmnfSlideWords($leader))->toContain('The time to beat', 'Ada', '0.120 s under the author time', 'Set 3 hours ago')->not->toContain('New #1');
+
+    foreach (TmnfSlides::SCENES as $scene) {
+        $svg = tmnfSlideSvg($scene);
+        $data = app(SceneSource::class)->rotation($scene, null, [], 0, (int) now()->getTimestampMs(), []);
+
+        // The game on every slide: its cover as the mark, its name in the copy; the backdrop is the slide's own screenshot.
+        expect($svg)->toMatch('/<g data-unit="game-mark"[^>]*>\s*(<[^>]+>\s*)*<image [^>]*xlink:href="data:image\/jpeg;base64,/')
+            ->and(tmnfSlideWords($svg))->toMatch('/\bTMNF\b|TrackMania/')
+            ->and($data['backdrop'])->toBe(TmnfSlides::still($scene))->toStartWith('data:image/jpeg;base64,/9j/')
+            // Never a TMNF login, a fee, a hashtag or a face (the favourite link's "#addfavourite" is TMNF's own link syntax).
+            ->and($svg)->not->toContain('_drives')
+            ->and(str_replace('tmtp://#addfavourite=', '', tmnfSlideWords($svg)))->not->toMatch('/#[A-Za-z]|\bfees?\b|\bface\b|Gesicht/i');
+    }
+
+    app()->setLocale('de');
+    expect(tmnfSlideWords(tmnfSlideSvg(TmnfSlides::LEADER)))->toContain('The time to beat')->not->toContain('Woche');
+
+    // A #1 younger than an hour is new.
+    tmnfPlayer('dee_drives', linked: true, attributes: ['name' => 'Dee']);
+    tmnfFinish('dee_drives', 24_300, now()->subMinutes(5));
+    expect(tmnfSlideWords(tmnfSlideSvg(TmnfSlides::LEADER)))->toContain('New #1 on the board', 'Dee', 'Set 5 minutes ago');
+});
+
+test('TMNF\'s slides are spread over the teaser pool while TMNF is on, never two in a row, and none of them while it is off', function () {
+    $pool = RotationPlanner::fromConfig(60)->teasers();
+    $tmnf = array_keys(array_intersect($pool, RotationPlanner::TMNF_SCENES));
+    $next = array_map(fn (int $i): string => $pool[($i + 1) % count($pool)], $tmnf);
+
+    expect(array_values(array_intersect($pool, RotationPlanner::TMNF_SCENES)))->toBe(['g1', 'g2', 'g3', 'g4'])
+        ->and(array_intersect($next, RotationPlanner::TMNF_SCENES))->toBe([])
+        ->and(array_values(array_diff($pool, RotationPlanner::TMNF_SCENES)))->toBe([...RotationPlanner::TEASERS, ...(in_array('f1', $pool, true) ? ['f1'] : [])]);
+
+    config(['esports.tmnf.enabled' => false]);
+    app()->forgetInstance(GameRegistry::class);
+
+    expect(array_intersect(RotationPlanner::fromConfig(60)->teasers(), RotationPlanner::TMNF_SCENES))->toBe([])
+        ->and(app(TmnfSlides::class)->data())->toBeNull();
+
+    // Switched off, a slide still renders: the invitation to every game over the brand.
+    foreach (TmnfSlides::SCENES as $scene) {
+        expect(tmnfSlideWords(tmnfSlideSvg($scene)))->toContain('Every game');
+    }
 });
 
 test('an admin sees a held finish with its hint instead of a proof link, and approves it', function () {
