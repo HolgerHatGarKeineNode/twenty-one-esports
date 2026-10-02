@@ -48,3 +48,5 @@ plans/
 /docs/promo/*
 !/docs/promo/src/
 !/docs/promo/README.md
+docker/tmnf/prod/.env
+docker/tmnf/prod/config/

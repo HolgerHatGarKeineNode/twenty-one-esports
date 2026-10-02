@@ -24,6 +24,10 @@
 #   TMNF_SERVER_NAME      the server name players see (default "Einundzwanzig eSports")
 #   TMNF_GAME_PORT        host port for players, tcp+udp (default 2350)
 #   TMNF_GAME_BIND        address the game ports bind to (default 127.0.0.1; 0.0.0.0 for the LAN)
+#   TMNF_NETWORK          `host`: the container shares the host's network, so a TMNF client on this
+#                         machine finds the server in its LAN list (its discovery is a UDP broadcast,
+#                         which a published port on a bridge network never receives). The server then
+#                         listens on all interfaces at TMNF_GAME_PORT; XML-RPC stays local only.
 #
 # Its own container, network and image names; no other project's container is touched.
 #
@@ -55,7 +59,7 @@ handshake() {
 }
 
 write_config() {
-    local password=$1 name=$2
+    local password=$1 name=$2 game_port=${3:-2350} xmlrpc_port=${4:-5000} remote=${5:-True}
     mkdir -p "$RUNTIME"
     chmod 700 "$RUNTIME"
     umask 077
@@ -99,14 +103,14 @@ write_config() {
 		<connection_uploadrate>8192</connection_uploadrate>
 		<connection_downloadrate>8192</connection_downloadrate>
 		<force_ip_address></force_ip_address>
-		<server_port>2350</server_port>
+		<server_port>$game_port</server_port>
 		<server_p2p_port>3450</server_p2p_port>
 		<client_port>0</client_port>
 		<bind_ip_address></bind_ip_address>
 		<use_nat_upnp></use_nat_upnp>
 		<p2p_cache_size>600</p2p_cache_size>
-		<xmlrpc_port>5000</xmlrpc_port>
-		<xmlrpc_allowremote>True</xmlrpc_allowremote>
+		<xmlrpc_port>$xmlrpc_port</xmlrpc_port>
+		<xmlrpc_allowremote>$remote</xmlrpc_allowremote>
 		<blacklist_url></blacklist_url>
 		<guestlist_filename></guestlist_filename>
 		<blacklist_filename></blacklist_filename>
@@ -155,19 +159,31 @@ up() {
         exit 1
     fi
 
-    write_config "$password" "$name"
+    local mode
+    mode=$(setting TMNF_NETWORK bridge)
+
+    if [ "$mode" = host ]; then
+        # Shared host network: the ports are the server's own; XML-RPC answers on the loopback only.
+        write_config "$password" "$name" "$game_port" "$port" False
+    else
+        write_config "$password" "$name"
+    fi
 
     if ! docker image inspect "$IMAGE" >/dev/null 2>&1; then
         echo "tmnf-server: building $IMAGE (downloads Nadeo's server archive once)..."
         docker build -q -t "$IMAGE" docker/tmnf >/dev/null
     fi
 
-    docker network inspect "$NETWORK" >/dev/null 2>&1 || docker network create "$NETWORK" >/dev/null
+    local net=()
+    if [ "$mode" = host ]; then
+        net=(--network host)
+    else
+        docker network inspect "$NETWORK" >/dev/null 2>&1 || docker network create "$NETWORK" >/dev/null
+        net=(--network "$NETWORK" -p "127.0.0.1:$port:5000/tcp" -p "$game_bind:$game_port:2350/tcp" -p "$game_bind:$game_port:2350/udp")
+    fi
 
-    docker run -d --name "$CONTAINER" --network "$NETWORK" \
+    docker run -d --name "$CONTAINER" "${net[@]}" \
         --cpus 1 --memory 256m \
-        -p "127.0.0.1:$port:5000/tcp" \
-        -p "$game_bind:$game_port:2350/tcp" -p "$game_bind:$game_port:2350/udp" \
         -v "$PWD/$RUNTIME/league_cfg.txt:/tmnf/GameData/Config/league_cfg.txt:ro" \
         -v "$PWD/docker/tmnf/league.txt:/tmnf/GameData/Tracks/MatchSettings/league.txt:ro" \
         "$IMAGE" >/dev/null

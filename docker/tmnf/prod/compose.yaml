@@ -1,0 +1,46 @@
+# The league's TMNF dedicated server in production (plan "Trackmania und
+# Restposten"): Nadeo's official build 2011-02-21 (../Dockerfile), hardened.
+# Lives in ~/tmnf on the game host; secrets only in ~/tmnf/.env (mode 600).
+#
+#   ./render-config.sh      writes config/league_cfg.txt from .env
+#   docker compose up -d    builds once and starts the server
+#
+# Ports: XML-RPC stays on the loopback (the league reads it through an SSH
+# tunnel, never in clear over the internet). The game port is published on
+# TMNF_GAME_BIND: 127.0.0.1 until the internet mode is configured, then
+# 0.0.0.0. Docker's published ports bypass the host firewall, so the bind
+# address is the real gate.
+name: einundzwanzig-tmnf
+
+services:
+  tmnf:
+    build: { context: .. }
+    image: einundzwanzig-tmnf:2011-02-21
+    container_name: einundzwanzig-tmnf
+    restart: unless-stopped
+    entrypoint: ["/bin/sh", "-c", "exec /tmnf/TrackmaniaServer /nodaemon /noautoquit $${TMNF_MODE} /dedicated_cfg=league_cfg.txt /game_settings=MatchSettings/league.txt"]
+    environment:
+      TMNF_MODE: ${TMNF_MODE:-/lan}
+    user: "10021:10021"
+    read_only: true
+    tmpfs:
+      - /tmp:size=16m,mode=1777
+      - /tmnf/Logs:size=32m,uid=10021,gid=10021,mode=0755
+      - /tmnf/GameData/Cache:size=64m,uid=10021,gid=10021,mode=0755
+    volumes:
+      - ./config/league_cfg.txt:/tmnf/GameData/Config/league_cfg.txt:ro
+      - ../league.txt:/tmnf/GameData/Tracks/MatchSettings/league.txt:ro
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+    pids_limit: 128
+    mem_limit: 256m
+    cpus: 1.0
+    ulimits:
+      nofile: { soft: 4096, hard: 4096 }
+    ports:
+      - "127.0.0.1:${TMNF_XMLRPC_PORT:-5005}:5000/tcp"
+      - "${TMNF_GAME_BIND:-127.0.0.1}:2350:2350/tcp"
+      - "${TMNF_GAME_BIND:-127.0.0.1}:2350:2350/udp"
+    logging:
+      driver: json-file
+      options: { max-size: "10m", max-file: "3" }
