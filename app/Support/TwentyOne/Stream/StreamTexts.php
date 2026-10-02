@@ -2,7 +2,12 @@
 
 namespace App\Support\TwentyOne\Stream;
 
+use App\Games\Blockfill;
+use App\Games\GameRegistry;
+use App\Games\TrackmaniaNationsForever;
 use App\Models\ChessGame;
+use Illuminate\Support\Facades\Cache;
+use Throwable;
 
 /**
  * Title and summary of the stream's 30311 event: the configured loop texts,
@@ -16,6 +21,94 @@ final class StreamTexts
 
     /** Pairings the summary names when several games run. */
     public const PAIRINGS = 3;
+
+    /** How long the games-played count behind a rotating title is kept. */
+    private const PLAYED_CACHE_SECONDS = 300;
+
+    /**
+     * The 30311 texts by turns: what the scene shows (null in the loop), then
+     * the games on offer, the games played and each weekly highscore chase
+     * that is switched on, one every `twentyone.stream.texts.rotate_minutes`.
+     * The turn comes from the clock alone, so a restarted daemon keeps it,
+     * and two neighbouring turns never carry the same title.
+     *
+     * @param  array{title: string, summary: string}|null  $scene
+     * @return array{title: string, summary: string}
+     */
+    public static function rotate(?array $scene, int $now): array
+    {
+        $minutes = max(1, (int) config('twentyone.stream.texts.rotate_minutes', 10));
+        $turns = array_values(array_filter([$scene, ...self::general()]));
+        $titles = [];
+
+        foreach ($turns as $turn) {
+            $titles[$turn['title']] ??= $turn;
+        }
+
+        $turns = array_values($titles);
+
+        return $turns[intdiv($now, $minutes * 60) % count($turns)];
+    }
+
+    /**
+     * The texts that need no live game: the games on offer, the games
+     * played, and the weekly highscore chases switched on.
+     *
+     * @return list<array{title: string, summary: string}>
+     */
+    private static function general(): array
+    {
+        $registry = app(GameRegistry::class);
+        $names = array_values(array_map(fn ($game): string => GameTitle::short($game->name()), $registry->all()));
+        $url = (string) config('twentyone.stream.scene.url');
+        $offer = self::listed($names);
+        $summary = 'TWENTY ONE Esports, the esports arm of EINUNDZWANZIG: '.$offer.'. Ladders, weekly highscores and tournaments for Bitcoiners. Play at '.$url.'. Login via Nostr.';
+        $played = self::played();
+
+        $turns = [
+            ['title' => 'Bitcoiner esports 24/7: '.self::listed(array_slice($names, 0, 3)).(count($names) > 3 ? ' and more' : ''), 'summary' => $summary],
+        ];
+
+        if ($played > 0) {
+            $turns[] = ['title' => number_format($played).' games played on TWENTY ONE Esports', 'summary' => $summary];
+        }
+
+        if ($registry->find(TrackmaniaNationsForever::SLUG) !== null) {
+            $turns[] = ['title' => 'TrackMania Nations Forever: a weekly time attack on our own server', 'summary' => 'Free on Steam, one track a week, your best finish counts. '.$summary];
+        }
+
+        if ($registry->find(Blockfill::SLUG) !== null) {
+            $turns[] = ['title' => 'Blockfill: the weekly highscore chase in the browser', 'summary' => 'Play in the browser, your best run of the week counts. '.$summary];
+        }
+
+        $turns[] = ['title' => 'Tournaments, ladders and highscores · Login via Nostr', 'summary' => $summary];
+
+        return $turns;
+    }
+
+    /**
+     * "A, B and C".
+     *
+     * @param  list<string>  $names
+     */
+    private static function listed(array $names): string
+    {
+        $last = array_pop($names);
+
+        return $names === [] ? (string) $last : implode(', ', $names).' and '.$last;
+    }
+
+    /** Games played, counted at most every few minutes: the daemon asks four times a second. */
+    private static function played(): int
+    {
+        try {
+            return (int) Cache::remember('twentyone.stream.texts.played', self::PLAYED_CACHE_SECONDS, fn (): int => StreamStats::played());
+        } catch (Throwable $e) {
+            report($e);
+
+            return 0;
+        }
+    }
 
     /**
      * The texts for what the scene shows: one live game as {@see for()},

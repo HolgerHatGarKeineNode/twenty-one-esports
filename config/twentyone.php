@@ -101,7 +101,7 @@ return [
         'event' => [
             'd' => 'twentyone-247',
             'title' => 'TWENTY ONE Esports — 24/7 Stream',
-            'summary' => '24/7 stream from TWENTY ONE Esports, the esports arm of EINUNDZWANZIG. Currently looping our promo video while our Bitcoiner ladder platform is in development. Login via Nostr.',
+            'summary' => '24/7 stream from TWENTY ONE Esports, the esports arm of EINUNDZWANZIG: ladders, weekly highscores and tournaments for Bitcoiners. Play at esports.einundzwanzig.space. Login via Nostr.',
             'image' => 'https://blossom.einundzwanzig.space/0ae840119d4dc63522b76e596642a79cd92c4ed9378742b008a33228691dd88c.png',
         ],
 
@@ -110,6 +110,12 @@ return [
 
         // A changed title/summary (a new game) is republished at most this often.
         'text_change_seconds' => 60,
+
+        // The 30311 title/summary take turns (StreamTexts::rotate): the scene's live games, the games on offer,
+        // the games played, the weekly highscore chases. One text this many minutes, then the next.
+        'texts' => [
+            'rotate_minutes' => 10,
+        ],
 
         // The 30311 picture (StreamCover): the next slide every `minutes`, one
         // file overwritten in place, served as /stream/cover.png?v=<hash>.

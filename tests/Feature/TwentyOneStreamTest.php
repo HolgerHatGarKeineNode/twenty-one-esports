@@ -11,6 +11,7 @@ use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\File;
 use Illuminate\Support\Facades\Process;
 use Illuminate\Support\Facades\View;
+use Tests\Support\BlockfillOn;
 
 // One of four files the stream daemon tests are spread over (see tests/Support/twentyone_stream.php).
 pest()->group('nostr');
@@ -198,4 +199,28 @@ test('the daemon keeps what it announces in the cache for the website, gone a mi
     // The viewer socket is bound (no nginx sends anything): a count of 0, not null.
     expect($announced)->toBe(['viewers' => 0, ...StreamTexts::forGames([$game->fresh(['white', 'black'])], 0)])
         ->and(Cache::get('twentyone.stream.announced'))->toBeNull();
+});
+
+test('the 30311 title and summary take turns every few minutes and name every game switched on, not chess alone', function () {
+    BlockfillOn::play();
+    tmnfOn();
+    $minutes = (int) config('twentyone.stream.texts.rotate_minutes');
+    $scene = ['title' => 'Live now: 15 chess games', 'summary' => 'Alice vs Bob and 14 more: live chess'];
+
+    $turns = collect(range(0, 7))->map(fn (int $turn): array => StreamTexts::rotate($scene, 1_000_000_000 - (1_000_000_000 % ($minutes * 60)) + $turn * $minutes * 60));
+    $titles = $turns->pluck('title')->unique()->values();
+    $summaries = $turns->pluck('summary')->implode(' ');
+
+    expect($minutes)->toBeGreaterThan(0)
+        ->and($titles->count())->toBeGreaterThanOrEqual(4)
+        ->and($titles)->toContain('Live now: 15 chess games')
+        ->and($titles->implode(' '))->toContain('TrackMania')->toContain('Blockfill')
+        ->and($summaries)->toContain('Rocket League')->toContain('TrackMania')->toContain('Blockfill')->toContain('Chess')
+        ->and($summaries)->not->toContain('#')->not->toContain('in development');
+
+    // Back to back, a title never repeats.
+    $turns->pluck('title')->sliding(2)->each(fn ($pair) => expect($pair->first())->not->toBe($pair->last()));
+
+    // Without a scene (the loop) the general texts rotate alone.
+    expect(StreamTexts::rotate(null, 1_000_000_000)['title'])->not->toBe('');
 });

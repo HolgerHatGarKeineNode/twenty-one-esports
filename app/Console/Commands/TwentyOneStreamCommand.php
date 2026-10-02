@@ -511,7 +511,8 @@ class TwentyOneStreamCommand extends Command
                 }
             }
 
-            $texts = $this->active?->mode === ModeMachine::SCENE ? StreamTexts::forGames($sceneGames, $sceneMore) : StreamTexts::for(null);
+            // The scene's games take turns with the general texts (every game on offer, the weekly chases).
+            $texts = StreamTexts::rotate($this->active?->mode === ModeMachine::SCENE ? StreamTexts::forGames($sceneGames, $sceneMore) : null, time());
             $published = $cover->image() === null ? $texts : [...$texts, 'image' => $cover->image()];
             // A new viewer count or cover is republished like a text change (at most once per text_change_seconds).
             $announced = [...$published, 'viewers' => $viewerCount];
