@@ -251,6 +251,8 @@ test('the casual cups get no slides of their own; d2 shows them together', funct
 });
 
 test('a casual cup shows its times in its region\'s zone: the US cup at 8 pm Eastern, the EU cup at 8 pm Berlin', function () {
+    // A fixed day before both cups: the dates below are literal, so the real clock must not pass them.
+    $this->travelTo(CarbonImmutable::parse('2026-10-01 12:00:00', 'UTC'));
     // Stored in UTC, as the app does: 20:00 in New York is 00:00 UTC, 20:00 in Berlin 18:00 UTC.
     $usStart = CarbonImmutable::parse('2026-10-03 20:00', 'America/New_York')->utc();
     $euStart = CarbonImmutable::parse('2026-10-03 20:00', 'Europe/Berlin')->utc();
