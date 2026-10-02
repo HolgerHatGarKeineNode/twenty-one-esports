@@ -1,8 +1,10 @@
 <?php
 
 use App\Games\GameRegistry;
+use App\Games\TrackmaniaNationsForever;
 use App\Models\User;
 use App\Support\Stacker\StackerSettings;
+use App\Support\Tmnf\TmnfLinks;
 use Illuminate\Support\Facades\Auth;
 use Livewire\Attributes\Title;
 use Livewire\Component;
@@ -17,6 +19,10 @@ use Livewire\Component;
  * still sends, sealed to the opponent. No flow requires a saved tag.
  * Avatar, platform, time zone and language moved to the account tab.
  *
+ * TMNF (plan "Trackmania und Restposten", P1), only while TMNF is on: a
+ * saved login is linked with a one-time code the player types into our
+ * server's chat (TmnfLinks); the code shows here only, on request.
+ *
  * Blockfill controls (plan "Blockfill", P3), only while Blockfill is on:
  * handling (DAS/ARR/SDF) and keys, one or two per action, each key once
  * (StackerSettings); the game page reads them.
@@ -28,10 +34,23 @@ new #[Title('Gamer tags')] class extends Component {
     /** @var array{das: int, arr: int, sdf: int, keys: array<string, list<string>>} */
     public array $stacker = StackerSettings::DEFAULT_HANDLING + ['keys' => StackerSettings::DEFAULT_KEYS];
 
+    /** The one-time TMNF link code, once the player asked for it. */
+    public ?string $tmnfCode = null;
+
     public function mount(): void
     {
         $this->gamerTags = $this->fields($this->user()->gamer_tags ?? []);
         $this->stacker = StackerSettings::of($this->user());
+    }
+
+    /**
+     * Shows the player's one-time code to link their saved TMNF login (TmnfLinks::codeFor()).
+     */
+    public function showTmnfCode(): void
+    {
+        abort_unless(app(GameRegistry::class)->find(TrackmaniaNationsForever::SLUG) !== null, 404);
+
+        $this->tmnfCode = TmnfLinks::codeFor($this->user());
     }
 
     public function saveStacker(): void
@@ -253,6 +272,9 @@ new #[Title('Gamer tags')] class extends Component {
                                 <span id="tag-{{ $service }}-state" class="flex items-center gap-1.5 text-xs text-win" data-test="tag-state-private"><x-icon name="lock" :size="14" class="shrink-0" />{{ __('Private. Nothing saved.') }}</span>
                             @endif
                             @error('gamerTags.'.$service)<span class="text-xs text-loss" role="alert">{{ $message }}</span>@enderror
+                            @if ($service === TrackmaniaNationsForever::SERVICE && isset($saved[$service]))
+                                @include('pages.settings.partials.tmnf-link', ['linked' => TmnfLinks::isLinked(auth()->user()), 'code' => $tmnfCode])
+                            @endif
                         </div>
                     @endforeach
                 </section>

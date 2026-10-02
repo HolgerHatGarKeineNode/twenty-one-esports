@@ -1377,4 +1377,56 @@ return [
         ],
     ],
 
+    /*
+    |--------------------------------------------------------------------------
+    | TrackMania Nations Forever (plan "Trackmania und Restposten")
+    |--------------------------------------------------------------------------
+    |
+    | Our own TMNF dedicated server, read over its XML-RPC port (GBXRemote 2,
+    | App\Support\Tmnf). enabled: the switch for everything of it
+    | (`ESPORTS_TMNF`, off by default); off, the game is not registered: no
+    | page, no link, no gamer tag field, no job, and `tmnf:listen` waits.
+    |
+    | xmlrpc: where the listener reaches the server and the authorization
+    | level it logs in as (the SuperAdmin password stays in .env; locally
+    | scripts/tmnf-server.sh writes it). server: what players see on the
+    | week page to join (`address` is the host:port or the server login;
+    | null hides the line). listener: the reconnect backoff of `tmnf:listen`.
+    | link: how long a one-time chat code to link a login is valid.
+    | tracks: the league's tracks by their UID, in the order the weeks run
+    | them (week N of the cycle takes entry N mod count); `author_ms` is the
+    | track's author time. outlier_margin_ms: a finish faster than the
+    | author time minus this margin is flagged for an admin, and held only
+    | while it would enter the week's top `outlier_top` (else it counts at once).
+    |
+    */
+
+    'tmnf' => [
+        'enabled' => (bool) env('ESPORTS_TMNF', false),
+        'xmlrpc' => [
+            'host' => env('TMNF_XMLRPC_HOST', '127.0.0.1'),
+            'port' => (int) env('TMNF_XMLRPC_PORT', 5005),
+            'user' => env('TMNF_XMLRPC_USER', 'SuperAdmin'),
+            'password' => env('TMNF_XMLRPC_PASSWORD'),
+            'timeout_seconds' => 5,
+        ],
+        'server' => [
+            'name' => env('TMNF_SERVER_NAME', 'Einundzwanzig eSports'),
+            'address' => env('TMNF_SERVER_ADDRESS'),
+        ],
+        'listener' => [
+            'backoff_initial_seconds' => 1,
+            'backoff_max_seconds' => 60,
+        ],
+        'link' => [
+            'code_minutes' => 30,
+        ],
+        'tracks' => [
+            // Nadeo's stock track A01-Race (TMNF campaign "White", Stadium), shipped with the game and the server.
+            'BeySZdnfuSh4nHY5xztiXLmlrXe' => ['name' => 'A01-Race', 'author' => 'Nadeo', 'environment' => 'Stadium', 'author_ms' => 24_540],
+        ],
+        'outlier_margin_ms' => 1_500,
+        'outlier_top' => 10,
+    ],
+
 ];

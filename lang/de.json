@@ -6195,5 +6195,14 @@
     "Every run played again, block by block.": "Jeder Lauf nachgespielt, Block für Block.",
     "No week has ended yet. Its first ten show up here.": "Noch keine Woche beendet. Ihre ersten zehn erscheinen hier.",
     "Set up by people": "Manuell angelegt",
-    "via Nostr DM": "per Nostr-DM"
+    "via Nostr DM": "per Nostr-DM",
+    "TMNF login": "TMNF-Login",
+    "Link your login": "Login verknüpfen",
+    "Join :server in TMNF": "Tritt in TMNF :server bei",
+    "Open the chat and type the line below": "Öffne den Chat und tippe die Zeile unten",
+    "The server confirms it, and this page shows your login as linked": "Der Server bestätigt es, und diese Seite zeigt deinen Login als verknüpft",
+    "Valid for :minutes minutes, for your saved login only.": "Gilt :minutes Minuten, nur für deinen gespeicherten Login.",
+    "Show my link code": "Meinen Code zeigen",
+    "Linked to our TMNF server: your finishes there count for you.": "Mit unserem TMNF-Server verknüpft: deine Zielzeiten dort zählen für dich.",
+    "Time attack": "Zeitjagd"
 }

@@ -136,6 +136,14 @@
     --color-aoe-2: #D946EF;
     --color-aoe-deep: #86198F;
     --color-aoe-deep-2: #701A75;
+    /*
+     * TrackMania Nations Forever: the teal of a stadium at dusk, a hue no
+     * other game holds (between Checkers' blue and the win green).
+     */
+    --color-tmnf: #5EEAD4;
+    --color-tmnf-2: #14B8A6;
+    --color-tmnf-deep: #115E59;
+    --color-tmnf-deep-2: #134E4A;
 
     /* Flux accent mapped onto the brand orange */
     --color-accent: #F7931A;

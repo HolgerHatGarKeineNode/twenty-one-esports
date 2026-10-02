@@ -77,6 +77,15 @@ abstract class ScoreGame implements Game
     }
 
     /**
+     * What the account id is called in the game ("TMNF login"), in English
+     * for the settings field; null labels it ":game account ID".
+     */
+    public function accountLabel(): ?string
+    {
+        return null;
+    }
+
+    /**
      * The automatic sources the league reads this game from (API pollers,
      * our own servers' records), asked for every entry at every snapshot.
      * Manual submissions are always there on top ({@see acceptsManual()}).

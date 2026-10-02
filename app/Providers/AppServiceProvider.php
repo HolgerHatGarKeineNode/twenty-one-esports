@@ -8,6 +8,7 @@ use App\Games\Contracts\Game;
 use App\Games\GameRegistry;
 use App\Games\ScoreDemo;
 use App\Games\ScoreGame;
+use App\Games\TrackmaniaNationsForever;
 use App\Models\Tournament;
 use App\Models\User;
 use App\Support\Board\LiveGameGuard;
@@ -220,7 +221,8 @@ class AppServiceProvider extends ServiceProvider
     /**
      * The score games of `esports.score_games` (plan "AoE2 und Trackmania",
      * P4): the demo while its switch is on, Blockfill while its switch is on
-     * (plan "Blockfill", P4), then every listed class. None by default. A
+     * (plan "Blockfill", P4), TrackMania Nations Forever while its switch is
+     * on (plan "Trackmania und Restposten"), then every listed class. None by default. A
      * class that is no ScoreGame stays off and is logged, as a wrong board
      * game entry does.
      *
@@ -231,6 +233,7 @@ class AppServiceProvider extends ServiceProvider
         $classes = [
             ...(config('esports.score_games.demo') ? [ScoreDemo::class] : []),
             ...(config('esports.blockfill.enabled') ? [Blockfill::class] : []),
+            ...(config('esports.tmnf.enabled') ? [TrackmaniaNationsForever::class] : []),
             ...(array) config('esports.score_games.games', []),
         ];
         $games = [];

@@ -1,0 +1,117 @@
+<?php
+
+namespace App\Support\Tmnf;
+
+/**
+ * The league's session on its TMNF dedicated server (plan "Trackmania und
+ * Restposten", P1): connect, log in at the configured level, switch the
+ * callbacks on, and the few calls the league needs. One connection; the
+ * listener opens a new one after it broke.
+ *
+ * Settings: `esports.tmnf.xmlrpc` (host, port, user, password, timeout).
+ */
+final class TmnfServer
+{
+    private function __construct(private GbxRemote $remote) {}
+
+    /**
+     * Connects, authenticates and enables callbacks.
+     *
+     * @throws GbxUnavailable when the server cannot be reached or no password is set
+     * @throws GbxFault when the login is refused
+     * @throws GbxProtocolError
+     */
+    public static function open(): self
+    {
+        $config = (array) config('esports.tmnf.xmlrpc', []);
+        $password = (string) ($config['password'] ?? '');
+
+        if ($password === '') {
+            // Fail closed: no SuperAdmin password, no session (never a call with an empty one).
+            throw new GbxUnavailable('TMNF_XMLRPC_PASSWORD is not set.');
+        }
+
+        $timeout = (float) ($config['timeout_seconds'] ?? 5);
+        $server = new self(GbxRemote::connect((string) ($config['host'] ?? '127.0.0.1'), (int) ($config['port'] ?? 5005), $timeout));
+        $server->authenticate((string) ($config['user'] ?? 'SuperAdmin'), $password);
+        $server->enableCallbacks();
+
+        return $server;
+    }
+
+    /**
+     * A session over an existing connection (tests replay recorded frames through it).
+     */
+    public static function over(GbxRemote $remote): self
+    {
+        return new self($remote);
+    }
+
+    /**
+     * @throws GbxFault when the password is wrong ("Password incorrect.")
+     */
+    public function authenticate(string $user, string $password): void
+    {
+        if ($this->remote->call('Authenticate', [$user, $password]) !== true) {
+            throw new GbxFault('The server did not accept the login.');
+        }
+    }
+
+    public function enableCallbacks(bool $enabled = true): void
+    {
+        if ($this->remote->call('EnableCallbacks', [$enabled]) !== true) {
+            throw new GbxFault('The server did not switch the callbacks.');
+        }
+    }
+
+    public function currentChallenge(): TmnfChallenge
+    {
+        return TmnfChallenge::fromStruct($this->remote->call('GetCurrentChallengeInfo'));
+    }
+
+    /**
+     * The current round's ranking (SPlayerRanking: Login, NickName, PlayerId,
+     * Rank, BestTime in ms, BestCheckpoints, Score, ...), best first.
+     *
+     * @return list<array<string, mixed>>
+     */
+    public function currentRanking(int $max = 50, int $offset = 0): array
+    {
+        $ranking = $this->remote->call('GetCurrentRanking', [$max, $offset]);
+
+        if (! is_array($ranking) || ! array_is_list($ranking)) {
+            throw new GbxProtocolError('GetCurrentRanking did not answer with a list.');
+        }
+
+        return array_values(array_filter($ranking, is_array(...)));
+    }
+
+    /**
+     * A line in the server chat, from the server.
+     */
+    public function chat(string $message): void
+    {
+        $this->remote->call('ChatSendServerMessage', [mb_substr($message, 0, 200)]);
+    }
+
+    /**
+     * A line in the chat of one player only.
+     */
+    public function chatTo(string $login, string $message): void
+    {
+        $this->remote->call('ChatSendServerMessageToLogin', [mb_substr($message, 0, 200), $login]);
+    }
+
+    /**
+     * @return list<TmnfCallback>
+     */
+    public function callbacks(float $wait = 1.0): array
+    {
+        return $this->remote->callbacks($wait);
+    }
+
+    public function close(): void
+    {
+        $this->remote->close();
+    }
+}

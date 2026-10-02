@@ -6,6 +6,9 @@
 *.md diff=markdown
 *.php diff=php
 
+# Recorded GBXRemote frames of the TMNF server: byte for byte, CRLF bodies included.
+tests/Fixtures/tmnf/*.bin binary
+
 CHANGELOG.md export-ignore
 README.md export-ignore
 .github/workflows/browser-tests.yml export-ignore

@@ -104,8 +104,13 @@ final class ScoreAccounts
     {
         $services = (array) config('esports.gamer_tags', []);
 
-        foreach (self::services() as $service => $game) {
-            $services[$service] ??= __(':game account ID', ['game' => __($game)]);
+        foreach (app(GameRegistry::class)->scores() as $game) {
+            $service = $game->accountService();
+
+            if ($service !== null) {
+                $label = $game->accountLabel();
+                $services[$service] ??= $label === null ? __(':game account ID', ['game' => __($game->name())]) : __($label);
+            }
         }
 
         return $services;
@@ -189,6 +194,44 @@ final class ScoreAccounts
             $claim->delete();
             $moved = self::move($game, $accountId, $from, null);
             self::log($game, $accountId, 'revoke', $from, null, $admin, $reason, $moved);
+
+            return $moved;
+        });
+    }
+
+    /**
+     * The player proved in the game itself that the account id is theirs
+     * (plan "Trackmania und Restposten", P1: a one-time code the site showed
+     * them, typed into our TMNF server's chat by that very login,
+     * App\Support\Tmnf\TmnfLinks): it maps to them from now on without an
+     * admin, and its pending runs are handed over. Refused when the player has
+     * not stored that id, or when it is confirmed for anybody already (an
+     * admin reassigns it). Logged as `link` with the reason.
+     *
+     * @throws TournamentRuleViolation
+     */
+    public static function confirmByProof(ScoreGame $game, string $accountId, User $player, string $reason): int
+    {
+        $accountId = trim($accountId);
+        $reason = self::reason($reason);
+
+        if (! in_array($player->id, self::claimers($game, $accountId), true)) {
+            throw new TournamentRuleViolation('not_claimed', __('This player has not stored that account id.'));
+        }
+
+        return DB::transaction(function () use ($game, $accountId, $player, $reason): int {
+            if (ScoreAccountClaim::query()->where(['game' => $game->slug(), 'account_id' => $accountId])->lockForUpdate()->exists()) {
+                throw new TournamentRuleViolation('confirmed', __('This account is confirmed already. Reassign or revoke it instead.'));
+            }
+
+            try {
+                ScoreAccountClaim::query()->create(['game' => $game->slug(), 'account_id' => $accountId, 'user_id' => $player->id, 'confirmed_by_id' => null]);
+            } catch (UniqueConstraintViolationException) {
+                throw new TournamentRuleViolation('confirmed', __('This account is confirmed already. Reassign or revoke it instead.'));
+            }
+
+            $moved = self::move($game, $accountId, null, $player->id);
+            self::log($game, $accountId, 'link', null, $player->id, null, $reason, $moved);
 
             return $moved;
         });

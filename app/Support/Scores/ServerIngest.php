@@ -53,10 +53,23 @@ abstract class ServerIngest
      */
     public function ingest(ScoreServer $server, array $payload): array
     {
+        return $this->ingestEvents($server, $this->parse($payload));
+    }
+
+    /**
+     * Stores events a server reported, read already (a listener on the
+     * server's own protocol, plan "Trackmania und Restposten", P1): the same
+     * checks, idempotency and mapping as ingest().
+     *
+     * @param  list<FinishEvent|string>  $events
+     * @return array{accepted: int, duplicate: int, pending: int, refused: array<int, string>}
+     */
+    public function ingestEvents(ScoreServer $server, array $events): array
+    {
         $game = app(GameRegistry::class)->find($server->game);
         $summary = ['accepted' => 0, 'duplicate' => 0, 'pending' => 0, 'refused' => []];
 
-        foreach ($this->parse($payload) as $index => $event) {
+        foreach ($events as $index => $event) {
             $error = is_string($event) ? $event : $this->refusal($game, $event);
 
             if (is_string($event) || $error !== null || ! $game instanceof ScoreGame) {
