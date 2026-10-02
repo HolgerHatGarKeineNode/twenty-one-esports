@@ -42,7 +42,8 @@ function leagueSettingsRefusal(User $admin, array $values): array
 
 test('every listed key has a default in the config that passes its own definition', function () {
     foreach (LeagueSettings::definitions() as $key => $definition) {
-        $default = config($key);
+        // A game's automatic cups (user 2026-10-03) have no config path: their default is the env list's.
+        $default = LeagueSettings::default($key);
 
         expect($default)->not->toBeNull($key)
             ->and(LeagueSettings::normalize($definition, is_array($default) ? implode(', ', $default) : (string) $default))->toBe($default, $key)
@@ -271,6 +272,69 @@ test('a player who is not an admin can neither open the page nor save; an admin 
     $page->set('form.esports-casual-lock-minutes', '45')->call('save')->assertForbidden();
 
     expect(LeagueSettingChange::query()->count())->toBe(0);
+});
+
+test('each cup game has an "Automatic cups" switch; the env list is its default, the switch overrides it either way', function () {
+    config(['esports.casual_cups.enabled' => ['chess', 'checkers']]);
+
+    expect(LeagueSettings::get('esports.casual_cups.games.chess.auto'))->toBe('on')
+        ->and(LeagueSettings::get('esports.casual_cups.games.rocket-league.auto'))->toBe('off')
+        ->and(CasualCups::enabledGames())->toBe(['chess']);
+
+    LeagueSettings::save($this->admin, ['esports.casual_cups.games.chess.auto' => 'off', 'esports.casual_cups.games.rocket-league.auto' => 'on']);
+
+    expect(CasualCups::enabledGames())->toBe(['rocket-league'])
+        ->and(leagueSettingsRefusal($this->admin, ['esports.casual_cups.games.chess.auto' => 'maybe']))->toBe(['esports.casual_cups.games.chess.auto' => 'On or off.']);
+});
+
+test('only an admin switches a game\'s automatic cups: a player is refused at the page, an admin who lost the role at the action', function () {
+    $field = 'form.esports-casual_cups-games-checkers-auto';
+    // An admin by the admin list only, not by the board: removing the row takes the role.
+    config(['esports.casual_cups.enabled' => ['checkers'], 'esports.board' => []]);
+
+    $this->actingAs(User::factory()->create())->get(route('admin.settings'))->assertForbidden();
+
+    $page = Livewire::actingAs($this->admin)->test('pages::admin.settings')
+        ->assertSet($field, 'on')
+        ->assertSee('Automatic cups: Checkers')
+        ->set($field, 'off')
+        ->call('save')
+        ->assertHasNoErrors()
+        ->assertSee('Automatic cups: Checkers</b>:', false)
+        ->assertSee('On → Off');
+
+    expect(LeagueSettings::get('esports.casual_cups.games.checkers.auto'))->toBe('off');
+
+    Admin::query()->where('pubkey', $this->admin->pubkey)->delete();
+    $page->set($field, 'on')->call('save')->assertForbidden();
+
+    expect(LeagueSettings::get('esports.casual_cups.games.checkers.auto'))->toBe('off')
+        ->and(LeagueSettingChange::query()->count())->toBe(1);
+});
+
+test('the data migration switches the automatic cups of Nine Men\'s Morris and Checkers off, once, and keeps an admin\'s choice', function () {
+    $migration = require database_path('migrations/2026_10_02_213535_switch_off_automatic_board_game_cups.php');
+    config(['esports.casual_cups.enabled' => ['chess', 'nine-mens-morris', 'checkers']]);
+
+    // The test database was migrated without a user: a fresh install keeps the env list.
+    expect(LeagueSettingChange::query()->count())->toBe(0);
+
+    $migration->up();
+    $migration->up();
+
+    expect(LeagueSettingChange::query()->orderBy('id')->get(['key', 'before', 'after'])->map(fn (LeagueSettingChange $row): array => [$row->key, $row->before, $row->after])->all())->toBe([
+        ['esports.casual_cups.games.nine-mens-morris.auto', 'on', 'off'],
+        ['esports.casual_cups.games.checkers.auto', 'on', 'off'],
+    ])
+        ->and(LeagueSettings::get('esports.casual_cups.games.nine-mens-morris.auto'))->toBe('off')
+        ->and(LeagueSettings::get('esports.casual_cups.games.checkers.auto'))->toBe('off')
+        ->and(LeagueSettings::get('esports.casual_cups.games.chess.auto'))->toBe('on');
+
+    // An admin switched one back on before a rerun: it stays on.
+    LeagueSettings::save($this->admin, ['esports.casual_cups.games.checkers.auto' => 'on']);
+    $migration->up();
+
+    expect(LeagueSettings::get('esports.casual_cups.games.checkers.auto'))->toBe('on');
 });
 
 test('a board-only value: an admin off the board sees it read-only and is refused; a board member changes it', function () {

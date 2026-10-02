@@ -15,10 +15,11 @@ pest()->group('browser');
 | Finding the board games (plan "Mühle und Dame", P7)
 |--------------------------------------------------------------------------
 |
-| The user could not find Mühle and Dame on /play: they sat at the very end,
-| after every series game, and not in the casual block at the top. Now they
-| are one "Board games" group right after chess on /play, two tiles in the
-| casual block, and next to chess on home. Measured at 390 and 1440 px in
+| The user could not find Mühle and Dame on /play: they were not in the
+| casual block at the top. Now they are two tiles in the casual block and
+| one "Board games" group on /play; since 2026-10-03 that group, home's
+| tiles and the phone's chips put them at the very end again (user: „bitte
+| stelle [Mühle, Dame] überall ganz nach hinten"). Measured at 390 and 1440 px in
 | English and German, for a guest and a player: order, no sideways scroll,
 | console and answers clean, with a positive control.
 |
@@ -30,7 +31,7 @@ beforeEach(function () {
     CheckersGame::play();
 });
 
-test('the board games are a group right after chess on /play, in the casual block and next to chess on home', function (int $width, int $height, string $locale, bool $player) {
+test('the board games are a group at the end of /play, in the casual block and at the end on home', function (int $width, int $height, string $locale, bool $player) {
     $user = $player ? shellPlayer() : null;
     $page = shellPage($user, $width, $height);
     $problems = [];
@@ -66,7 +67,7 @@ test('the board games are a group right after chess on /play, in the casual bloc
     shellOpen($page, '/', $problems);
     $home = $page->evaluate('() => ({ tiles: [...document.querySelectorAll("[data-test=play-tile]")].map((el) => el.dataset.game), scroll: document.documentElement.scrollWidth, client: document.documentElement.clientWidth })');
 
-    // The header: the phone's game chips put the board games next to chess.
+    // The header: the phone's game chips put the board games at the end.
     $chips = $page->evaluate(<<<'JS'
         () => {
             const row = document.getElementById('game-chips');
@@ -81,11 +82,10 @@ test('the board games are a group right after chess on /play, in the casual bloc
     fwrite(STDERR, "\n[board findability] {$locale} {$width}".($player ? ' player' : ' guest').': '.json_encode(compact('play', 'home', 'chips', 'spare')));
 
     $boards = [NineMensMorris::SLUG, Checkers::SLUG];
-    $chessAt = array_search('chess', $play['order'], true);
 
     expect($play['lang'])->toBe($locale)
-        // Right after chess, as one group with its own heading; the cards' names one level below it.
-        ->and(array_slice($play['order'], $chessAt + 1, 2))->toBe($boards)
+        // At the end, as one group with its own heading; the cards' names one level below it.
+        ->and(array_slice($play['order'], -2))->toBe($boards)
         ->and($play['grouped'])->toBe($boards)
         ->and($play['groupHeading'])->toBe($locale === 'de' ? 'Brettspiele' : 'Board games')
         ->and($play['cardHeadings'])->toBe($locale === 'de' ? ['Mühle', 'Dame'] : ["Nine Men's Morris", 'Checkers'])
@@ -97,18 +97,17 @@ test('the board games are a group right after chess on /play, in the casual bloc
         ->and($play['casual'][1]['box']['right'])->toBeLessThanOrEqual($play['casualBlock']['right'])
         ->and($play['casual'][0]['box']['height'])->toBeGreaterThanOrEqual(44)
         ->and($play['scroll'])->toBeLessThanOrEqual($play['client'])
-        // Home: the board games' tiles right after chess's.
-        ->and(array_slice($home['tiles'], array_search('chess', $home['tiles'], true) + 1, 2))->toBe($boards)
+        // Home: the board games' tiles last.
+        ->and(array_slice($home['tiles'], -2))->toBe($boards)
         ->and($home['scroll'])->toBeLessThanOrEqual($home['client'])
         ->and($shell['squeezed'])->toBe([])
         ->and($problems)->toBe([]);
 
     if ($width < 1024) {
         $order = array_column($chips, 'test');
-        $chessChip = array_search('chess', $order, true);
 
-        // The strip scrolls (at 390 px it shows one chip whole); the board games are the next ones after chess.
-        expect(array_slice($order, $chessChip + 1, 2))->toBe(['mobile-'.NineMensMorris::SLUG, 'mobile-'.Checkers::SLUG]);
+        // The strip scrolls (at 390 px it shows one chip whole); the board games are the last chips.
+        expect(array_slice($order, -2))->toBe(['mobile-'.NineMensMorris::SLUG, 'mobile-'.Checkers::SLUG]);
     }
 
     if ($width >= 1024) {

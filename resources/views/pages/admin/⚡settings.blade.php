@@ -164,6 +164,12 @@ new #[Title('League settings')] #[Layout('layouts::app', ['section' => 'admin'])
                                         <option value="{{ $weekday }}">{{ __(ucfirst($weekday)) }}</option>
                                     @endforeach
                                 </select>
+                            @elseif ($definition['type'] === 'toggle')
+                                <select id="setting-{{ $field }}" wire:model="form.{{ $field }}" class="{{ $input }}"@if ($shared !== null) aria-describedby="{{ $shared['id'] }}"@endif @disabled(! $mayChange)>
+                                    @foreach (LeagueSettings::TOGGLE as $state)
+                                        <option value="{{ $state }}">{{ LeagueSettings::display($state) }}</option>
+                                    @endforeach
+                                </select>
                             @elseif ($definition['type'] === 'time')
                                 <input id="setting-{{ $field }}" type="time" wire:model="form.{{ $field }}" class="{{ $input }}"@if ($shared !== null) aria-describedby="{{ $shared['id'] }}"@endif @disabled(! $mayChange)>
                             @else

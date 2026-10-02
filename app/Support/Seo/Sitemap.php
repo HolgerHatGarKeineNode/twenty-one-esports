@@ -105,13 +105,14 @@ final class Sitemap
     {
         $urls = [route('home'), route('clans.index'), route('matches.index'), route('chess.lobby'), route('games.rocket-league'), route('mining'), route('tournaments.index'), route('play')];
 
-        foreach (array_keys(app(GameRegistry::class)->series()) as $series) {
-            $urls[] = GameNames::page($series);
-        }
+        $registry = app(GameRegistry::class);
 
-        $urls = array_values(array_unique($urls));
+        // Every game's pages in the registry's display order (user 2026-10-03: Nine Men's Morris and Checkers last).
+        foreach ($registry->all() as $game) {
+            if ($registry->isSeries($game->slug())) {
+                $urls[] = GameNames::page($game->slug());
+            }
 
-        foreach (app(GameRegistry::class)->all() as $game) {
             // A board game's lobby (plan "Mühle und Dame", P5), while its route is there.
             if ($game->kind() === GameKind::Board && Route::has('board.lobby')) {
                 $urls[] = route('board.lobby', $game->slug());

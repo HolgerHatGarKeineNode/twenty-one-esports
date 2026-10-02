@@ -3,6 +3,7 @@
 namespace App\Support\Tournaments;
 
 use App\Enums\TournamentStatus;
+use App\Games\GameRegistry;
 use App\Models\Tournament;
 use App\Models\TournamentSignup;
 use App\Models\User;
@@ -52,7 +53,8 @@ final class CupBoard
         // Every cup's active sign-ups in one query, with their players: the places and the faces come from here.
         $signups = $cups->isEmpty() ? new Collection
             : TournamentSignup::query()->whereIn('tournament_id', $cups->modelKeys())->active()->with('user')->orderBy('id')->get()->groupBy('tournament_id');
-        $gameOrder = array_flip(CasualCups::enabledGames());
+        // The registry's display order, so a game whose automatic cups are off keeps its place while its last cups run.
+        $gameOrder = array_flip(array_keys(app(GameRegistry::class)->all()));
         $regionOrder = array_flip(array_keys(CasualCups::regions()));
 
         return array_values($cups->groupBy('game')

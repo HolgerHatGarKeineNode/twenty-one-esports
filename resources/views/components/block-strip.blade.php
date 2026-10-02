@@ -19,7 +19,7 @@
     the cube, so it never reads as a block height. When the row is wider than
     the screen it opens on the divider. Every cube shows its game by colour
     AND logo and links to its match; the sides show faces (players) or clan
-    logos. The legend lists only the games on screen.
+    logos. The legend lists only the games on screen, in the registry's order.
 
     Cubes: App\Support\Matches\MatchBlocks::shape().
     size:  md (120 px cubes), sm (100 px, mobile), auto (sm below 1024 px, md above)
@@ -35,8 +35,10 @@
     $groups = [['fin', $finished], ['run', $running]];
     $all = [...$finished, ...$running];
     $chainRow = collect($all)->contains(fn (array $block): bool => ($block['chain'] ?? null) !== null);
-    // The legend names the games on screen, in the order they first appear.
-    $games = collect($all)->unique('slug')->map(fn (array $block): array => ['slug' => $block['slug'], 'game' => $block['game'], 'icon' => $block['icon']])->values();
+    // The legend names the games on screen in the registry's display order (Nine Men's Morris and Checkers last, user 2026-10-03); a game no longer registered after them.
+    $registryOrder = array_flip(array_keys(app(\App\Games\GameRegistry::class)->all()));
+    $games = collect($all)->unique('slug')->map(fn (array $block): array => ['slug' => $block['slug'], 'game' => $block['game'], 'icon' => $block['icon']])
+        ->sortBy(fn (array $game, int $index): array => [$registryOrder[$game['slug']] ?? PHP_INT_MAX, $index])->values();
     $titleId = $title ? 'bs-title-'.substr(md5((string) $title), 0, 6) : null;
 @endphp
 

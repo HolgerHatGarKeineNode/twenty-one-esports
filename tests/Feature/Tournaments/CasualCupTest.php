@@ -18,6 +18,7 @@ use App\Models\User;
 use App\Support\Chess\ChessGameService;
 use App\Support\Chess\ChessInvites;
 use App\Support\Series\CasualMatches;
+use App\Support\Settings\LeagueSettings;
 use App\Support\Tournaments\CasualCups;
 use App\Support\Tournaments\Engine\BracketBuilder;
 use App\Support\Tournaments\Engine\Entrant;
@@ -72,6 +73,46 @@ test('two ticks open exactly one chess cup per region, published by the league l
         ->and($cup->signup_closes_at->utc()->format('Y-m-d H:i'))->toBe('2026-10-10 18:00')
         ->and($cup->starts_at->equalTo($cup->signup_closes_at))->toBeTrue()
         ->and(NostrEvent::query()->findOrFail($cup->event_id)->kind)->toBe(Tournament::CALENDAR_EVENT);
+});
+
+test('a game whose automatic cups an admin switched off opens no new cup; its cups in sign-up and running play on', function () {
+    $admin = User::factory()->create();
+    Admin::query()->create(['pubkey' => $admin->pubkey]);
+    $running = runningCup(4);
+    LeagueSettings::save($admin, ['esports.casual_cups.games.chess.auto' => 'off']);
+    cupTick();
+
+    // Off: the running cup opens its first round; no cup opens in the region without one.
+    expect(CasualCups::enabledGames())->toBe([])
+        ->and(TournamentRound::query()->whereNotNull('window_ends_at')->sole()->stage->tournament_id)->toBe($running->id)
+        ->and(Tournament::query()->where('cup_series', 'chess-us')->exists())->toBeFalse();
+
+    // On for one tick: the US cup opens; off again, it stays in sign-up.
+    LeagueSettings::save($admin, ['esports.casual_cups.games.chess.auto' => 'on']);
+    cupTick();
+    $signup = Tournament::query()->where('cup_open_series', 'chess-us')->firstOrFail();
+    LeagueSettings::save($admin, ['esports.casual_cups.games.chess.auto' => 'off']);
+    cupTick();
+
+    expect($signup->refresh()->status)->toBe(TournamentStatus::Signup);
+
+    // Nobody signs up: extended once, then called off, as before; no next cup opens a day later.
+    $this->travelTo($signup->signup_closes_at);
+    cupTick();
+    $this->travelTo($signup->refresh()->signup_closes_at);
+    cupTick();
+    $this->travel(25)->hours();
+    cupTick();
+
+    expect($signup->refresh()->status)->toBe(TournamentStatus::Cancelled)
+        ->and(Tournament::query()->where('cup_series', 'chess-us')->count())->toBe(1)
+        ->and(Tournament::query()->where('cup_open_series', 'chess-us')->exists())->toBeFalse();
+
+    // Back on: the next tick opens the series' next cup.
+    LeagueSettings::save($admin, ['esports.casual_cups.games.chess.auto' => 'on']);
+    cupTick();
+
+    expect(Tournament::query()->where('cup_open_series', 'chess-us')->value('name'))->toBe('Chess Casual Cup US #1');
 });
 
 test('a concurrent run that opened the cup first leaves one cup, not two', function () {

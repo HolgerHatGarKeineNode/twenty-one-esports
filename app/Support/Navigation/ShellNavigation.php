@@ -87,7 +87,9 @@ final class ShellNavigation
 
     /**
      * Every registered game, the viewer's games first (by their last match),
-     * the others in registry order.
+     * the others in registry order; the games the config keeps last (user
+     * 2026-10-03: Nine Men's Morris and Checkers) close the list in their
+     * order, played or not.
      *
      * @return list<NavGame>
      */
@@ -98,58 +100,30 @@ final class ShellNavigation
         }
 
         $lastPlayed = $this->lastPlayed();
+        $tail = array_values(array_filter((array) config('esports.game_order.last', []), is_string(...)));
         $games = [];
 
         foreach (array_values($this->registry->all()) as $index => $game) {
-            $games[] = [$game, $lastPlayed[$game->slug()] ?? null, $index];
+            $games[] = [$game, $lastPlayed[$game->slug()] ?? null, $index, array_search($game->slug(), $tail, true)];
         }
 
-        // Played games by their last match, newest first; the rest keep the registry order.
-        usort($games, fn (array $a, array $b): int => [$a[1] === null, $b[1] ?? '', $a[2]] <=> [$b[1] === null, $a[1] ?? '', $b[2]]);
+        // The tail games last, in their order; before them the played games by their last match, newest first, then the rest in registry order.
+        usort($games, fn (array $a, array $b): int => [$a[3] === false ? -1 : $a[3], $a[1] === null, $b[1] ?? '', $a[2]] <=> [$b[3] === false ? -1 : $b[3], $b[1] === null, $a[1] ?? '', $b[2]]);
 
         return $this->games = array_map(fn (array $entry): array => $this->describe($entry[0], $entry[1] !== null), $games);
     }
 
     /**
-     * games() with the board games (plan "Mühle und Dame", P7) as one block
-     * next to chess: right after it, or where the first board game stands
-     * when the viewer played one more recently than chess. /play and home
-     * list the games in this order, so nine men's morris and checkers no
-     * longer sit behind every series game at the end.
+     * The order /play, home and the header list the games in: games(), so
+     * Nine Men's Morris and Checkers stand at the end (user 2026-10-03:
+     * "überall ganz nach hinten"), no longer as one block next to chess
+     * (plan "Mühle und Dame", P7).
      *
      * @return list<NavGame>
      */
     public function playOrder(): array
     {
-        $games = $this->games();
-        $boards = array_values(array_filter($games, fn (array $game): bool => $this->registry->isBoard($game['slug'])));
-
-        if ($boards === []) {
-            return $games;
-        }
-
-        $ordered = [];
-        $placed = false;
-
-        foreach ($games as $game) {
-            if ($this->registry->isBoard($game['slug'])) {
-                if (! $placed) {
-                    array_push($ordered, ...$boards);
-                    $placed = true;
-                }
-
-                continue;
-            }
-
-            $ordered[] = $game;
-
-            if ($game['slug'] === 'chess' && ! $placed) {
-                array_push($ordered, ...$boards);
-                $placed = true;
-            }
-        }
-
-        return $ordered;
+        return $this->games();
     }
 
     /**

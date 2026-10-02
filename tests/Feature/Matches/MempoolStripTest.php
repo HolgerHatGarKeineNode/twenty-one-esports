@@ -56,9 +56,9 @@ test('the strip shows every game, casual and rated, finished and running, merged
         'chess:live', 'rocket-league:next',
     ]);
 
-    // Every game in its colour family; the legend names exactly the games on screen.
+    // Every game in its colour family; the legend names exactly the games on screen, in the registry's order.
     preg_match_all('/data-test="strip-legend-game" data-game="([^"]+)"/', $html, $legend);
-    expect($legend[1])->toBe(['rocket-league', 'chess', NineMensMorris::SLUG, Checkers::SLUG])
+    expect($legend[1])->toBe(['chess', 'rocket-league', NineMensMorris::SLUG, Checkers::SLUG])
         ->and($html)->toContain('bs-cube g-morris is-fin')->toContain('bs-cube g-checkers is-fin')->toContain('bs-cube g-rl is-fin')
         ->and($html)->toContain('>Mempool</p>')
         ->toContain('Matches of every game, played and waiting.')

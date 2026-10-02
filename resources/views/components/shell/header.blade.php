@@ -11,7 +11,7 @@
     $nav = \App\Support\Navigation\ShellNavigation::current();
     $nav->remember();
     $user = $nav->user;
-    // The phone's game chips and the hub list the board games next to chess (plan "Mühle und Dame", P7);
+    // The phone's game chips and the hub list the board games at the end (user 2026-10-03);
     // the desktop tabs keep their own order (tabs()): a board games tab does not fit row 1 at 1440 px.
     $games = $nav->playOrder();
     $tabs = $nav->tabs();
@@ -23,8 +23,10 @@
     $admin = $nav->admin();
     $account = $nav->account();
     $upcoming = collect($account)->firstWhere('key', 'upcoming');
-    $played = array_values(array_filter($games, fn (array $game): bool => $game['played']));
-    $unplayed = array_values(array_filter($games, fn (array $game): bool => ! $game['played']));
+    // The hub's "Yours" group first; the games the config keeps last stay at the end even when played (user 2026-10-03), marked "Yours" there.
+    $tail = (array) config('esports.game_order.last', []);
+    $played = array_values(array_filter($games, fn (array $game): bool => $game['played'] && ! in_array($game['slug'], $tail, true)));
+    $unplayed = array_values(array_filter($games, fn (array $game): bool => ! $game['played'] || in_array($game['slug'], $tail, true)));
     $current = request()->fullUrl();
     $onLogin = request()->routeIs('login');
     // On the results page the field keeps what was searched.

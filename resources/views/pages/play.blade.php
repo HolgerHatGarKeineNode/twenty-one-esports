@@ -1,7 +1,7 @@
 {{--
     All games and modes (/play, header concept B): every registered game
     (GameRegistry) with its cover, its modes and what a player does in it,
-    the viewer's games first, the board games as one group next to chess.
+    the viewer's games first, the board games as one group at the end.
     The game hub links here. Public: a guest sees
     the pages anyone can open, and "Log in to play" instead of the actions
     that need an account. The links are the navigation's own
@@ -23,8 +23,8 @@
         <div class="flex max-w-[60ch] flex-col gap-2">
             <h1 class="m-0 font-display text-[28px] leading-[1.1] font-bold lg:text-4xl">{{ __('All games and modes') }}</h1>
             <p class="m-0 text-[13px] leading-normal text-ink-2">
-                {{-- With board games the order is playOrder(): by what the player played, the board games moved next to chess. --}}
-                {{ $user ? ($boards === [] ? __('Your games come first, the one you played last on top.') : __('Sorted by what you played, the latest on top; the board games always stand next to chess.')) : __('Every game of the league. Log in with Nostr or Google to play, challenge and climb a ladder.') }}
+                {{-- With board games the order is playOrder(): by what the player played, the board games at the end. --}}
+                {{ $user ? ($boards === [] ? __('Your games come first, the one you played last on top.') : __('Sorted by what you played, the latest on top; the board games always come last.')) : __('Every game of the league. Log in with Nostr or Google to play, challenge and climb a ladder.') }}
             </p>
         </div>
 
@@ -34,8 +34,8 @@
         @endif
 
         {{--
-            The board games (plan "Mühle und Dame", P7) as one group right after chess (ShellNavigation::playOrder()),
-            not behind every series game at the end.
+            The board games (plan "Mühle und Dame", P7) as one group where the first of them stands: at the end
+            (ShellNavigation::playOrder(), user 2026-10-03).
         --}}
         <ul class="m-0 flex list-none flex-col gap-4 p-0">
             @foreach ($games as $game)

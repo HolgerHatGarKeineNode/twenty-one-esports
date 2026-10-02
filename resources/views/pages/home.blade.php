@@ -31,7 +31,7 @@
     $hub = new HomeHub($user);
     $cups = $hub->cups();
     $live = $hub->live();
-    // The board games next to chess, not behind every series game (plan "Mühle und Dame", P7).
+    // Every game in the navigation's order, Nine Men's Morris and Checkers at the end (user 2026-10-03).
     $games = ShellNavigation::current()->playOrder();
 
     // A live season replaces the Block 0 strip with the season's strip.

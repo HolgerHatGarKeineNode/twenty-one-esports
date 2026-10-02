@@ -107,20 +107,28 @@ final class CasualCups
     /* ---------- Configuration --------------------------------------------------------------------------------- */
 
     /**
-     * The games whose cup series runs, each with a known cup setup. A board
-     * game (plan "Mühle und Dame", P5) runs its cups only while it is
-     * switched on (in the registry); off, its cups stop opening.
+     * The games whose cup series runs, each with a known cup setup, in the
+     * registry's display order (Nine Men's Morris and Checkers last). A
+     * game's automatic cups are switched on or off on /admin/settings
+     * (user 2026-10-03; LeagueSettings, the env list
+     * ESPORTS_CASUAL_CUP_GAMES is the default): off, no new cup opens, and
+     * the cups already open or running play to their end, as tick() moves
+     * them without asking this list. A board game (plan "Mühle und Dame",
+     * P5) runs its cups only while it is switched on (in the registry).
      *
      * @return list<string>
      */
     public static function enabledGames(): array
     {
-        $games = (array) config('esports.casual_cups.games', []);
         $registry = app(GameRegistry::class);
-
-        return array_values(array_filter(array_map(strval(...), (array) config('esports.casual_cups.enabled', [])),
+        $order = array_flip(array_keys($registry->all()));
+        $games = array_values(array_filter(array_map(strval(...), array_keys((array) config('esports.casual_cups.games', []))),
             // Never a score game (plan "AoE2 und Trackmania", P4): a cup pairs players, a score game has no pairing.
-            fn (string $game): bool => isset($games[$game]) && ! $registry->isScore($game) && (! in_array($game, BoardGame::RESERVED_SLUGS, true) || $registry->isBoard($game))));
+            fn (string $game): bool => LeagueSettings::get("esports.casual_cups.games.{$game}.auto") === 'on' && ! $registry->isScore($game)
+                && (! in_array($game, BoardGame::RESERVED_SLUGS, true) || $registry->isBoard($game))));
+        usort($games, fn (string $a, string $b): int => [$order[$a] ?? PHP_INT_MAX, $a] <=> [$order[$b] ?? PHP_INT_MAX, $b]);
+
+        return $games;
     }
 
     /**

@@ -117,3 +117,46 @@ test('an admin changes a league setting and goes back to the default, at 375 and
             ->and(LeagueSettingChange::query()->count())->toBe(2 * $round + 2);
     }
 });
+
+test('an admin switches a game\'s automatic casual cups off and on, at 375 and 1440 px, with a clean console', function () {
+    $admin = User::factory()->create(['name' => 'satsjaeger']);
+    Admin::query()->create(['pubkey' => $admin->pubkey]);
+    config(['esports.casual_cups.enabled' => ['chess', 'checkers']]);
+    $clean = ['overflow' => 0, 'small' => [], 'outside' => [], 'clipped' => [], 'fields' => count(LeagueSettings::definitions())];
+    $select = '#setting-esports-casual_cups-games-checkers-auto';
+
+    foreach ([[375, 812], [1440, 900]] as $round => [$width, $height]) {
+        $page = leagueSettingsPage($admin, $width, $height);
+        $before = $page->evaluate('() => document.querySelector("'.$select.'").value');
+        $page->evaluate('() => document.querySelector("[data-test=settings-group-casual_cups]").scrollIntoView({ block: "start" })');
+        leagueSettingsViewShot($page, "league-settings-auto-cups-{$width}");
+
+        // Off at 375, back on at 1440.
+        $page->locator($select)->selectOption($round === 0 ? 'off' : 'on');
+        $page->locator('[data-test=settings-save]')->click();
+        BrowserWait::until($page, '() => document.querySelector("[data-test=settings-notice]")?.innerText.includes("Saved: 1 value changed.") === true', 10_000);
+        $row = $page->evaluate('() => document.querySelector("[data-test=settings-log-row]").innerText');
+        LeagueSettings::forget();
+
+        expect($before)->toBe($round === 0 ? 'on' : 'off')
+            ->and(leagueSettingsGeometry($page))->toBe($clean, "saved at {$width}px")
+            ->and($row)->toContain('Automatic cups: Checkers')->toContain($round === 0 ? 'On → Off' : 'Off → On')
+            ->and(LeagueSettings::get('esports.casual_cups.games.checkers.auto'))->toBe($round === 0 ? 'off' : 'on')
+            ->and($page->evaluate('() => window.__errors'))->toBe([], "console at {$width}px")
+            ->and($page->evaluate(BrowserConsole::BAD_RESPONSES))->toBe([], "answers at {$width}px");
+    }
+});
+
+/** A viewport shot (not the full page) into LEAGUE_SETTINGS_SHOTS, when set. */
+function leagueSettingsViewShot(Page $page, string $name): void
+{
+    $dir = getenv('LEAGUE_SETTINGS_SHOTS');
+
+    if (! is_string($dir) || $dir === '') {
+        return;
+    }
+
+    File::ensureDirectoryExists($dir);
+    $page->screenshot(false, $name);
+    File::move(base_path('tests/Browser/Screenshots/'.$name.'.png'), $dir.'/'.$name.'.png');
+}

@@ -37,11 +37,19 @@ use Illuminate\Support\Facades\DB;
  * A stored value that no longer passes its definition (a range tightened
  * later) is ignored: the default applies.
  *
- * @phpstan-type Definition array{group: string, label: string, help: string, type: 'int'|'ints'|'time'|'weekday', min: int, max: int, count?: array{0: int, 1: int}, new_only: bool, board_only: bool}
+ * `default`: the default of a key that is not a config path of its own (a
+ * game's automatic casual cups, on while `casual_cups.enabled`, the env
+ * list, names the game); get() and default() return it where config() has
+ * nothing.
+ *
+ * @phpstan-type Definition array{group: string, label: string, help: string, type: 'int'|'ints'|'time'|'weekday'|'toggle', min: int, max: int, count?: array{0: int, 1: int}, new_only: bool, board_only: bool, default?: string}
  */
 final class LeagueSettings
 {
     private const MEMO = 'league-settings.overrides';
+
+    /** The values of a `toggle`. */
+    public const TOGGLE = ['on', 'off'];
 
     public const WEEKDAYS = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday'];
 
@@ -71,7 +79,16 @@ final class LeagueSettings
     {
         $pinned = __('Pinned when a match is paired: running matches keep their deadline, new matches get the new one.');
         $cupStart = __('A cup gets its start when it opens: open cups keep theirs, the game’s next cup in each region opens on the new slot.');
+        $cupAuto = [];
         $cupSlots = [];
+        $autoHelp = __('On: the league opens this game’s next casual cup in each region on its own. Off: no new cup opens; cups in sign-up or running play to their end.');
+
+        // Automatic cups per game (user 2026-10-03), on or off; the env list ESPORTS_CASUAL_CUP_GAMES is the default.
+        foreach ((array) config('esports.casual_cups.games', []) as $game => $setup) {
+            $name = (string) (((array) $setup)['name'] ?? $game);
+            $cupAuto["esports.casual_cups.games.{$game}.auto"] = self::toggle('casual_cups', __('Automatic cups: :game', ['game' => $name]), $autoHelp,
+                in_array($game, array_map(strval(...), (array) config('esports.casual_cups.enabled', [])), true) ? 'on' : 'off');
+        }
 
         // One start day and time per cup game (user, 2026-09-30), the same local time on each region's clock.
         foreach ((array) config('esports.casual_cups.games', []) as $game => $setup) {
@@ -81,6 +98,7 @@ final class LeagueSettings
         }
 
         return [
+            ...$cupAuto,
             ...$cupSlots,
             'esports.casual_cups.min_signup_hours' => self::int('casual_cups', __('Sign-up at least (hours)'), 1, 336, __('A new cup starts at its game’s next start time in its region that leaves at least this much sign-up. Open cups keep their start.'), newOnly: true),
             'esports.casual_cups.sizes' => self::ints('casual_cups', __('Places a cup grows through'), 4, 64, [1, 5], __('Smallest first, separated by commas. A new cup opens with the first size; a cup in sign-up grows along the new sizes from its next step.')),
@@ -118,7 +136,7 @@ final class LeagueSettings
      */
     public static function get(string $path): mixed
     {
-        $value = config($path);
+        $value = config($path) ?? self::default($path);
 
         foreach (self::overrides() as $key => $override) {
             if ($key === $path) {
@@ -133,10 +151,10 @@ final class LeagueSettings
         return $value;
     }
 
-    /** The default of a listed key: the config. */
+    /** The default of a listed key: the config, else the definition's `default`. */
     public static function default(string $key): mixed
     {
-        return config($key);
+        return config($key) ?? (self::definitions()[$key]['default'] ?? null);
     }
 
     /**
@@ -287,7 +305,7 @@ final class LeagueSettings
     /**
      * The value as its definition stores it, or null when it does not pass:
      * an int in range, a list of ints in range ("4, 8, 16" or an array),
-     * HH:MM, or an English weekday.
+     * HH:MM, an English weekday, or "on"/"off".
      *
      * @param  Definition  $definition
      * @return int|string|list<int>|null
@@ -299,6 +317,7 @@ final class LeagueSettings
             'ints' => self::intsIn($input, $definition),
             'time' => is_string($input) && preg_match('/^([01]\d|2[0-3]):[0-5]\d$/', trim($input)) === 1 ? trim($input) : null,
             'weekday' => is_string($input) && in_array(strtolower(trim($input)), self::WEEKDAYS, true) ? strtolower(trim($input)) : null,
+            'toggle' => is_string($input) && in_array(strtolower(trim($input)), self::TOGGLE, true) ? strtolower(trim($input)) : null,
         };
     }
 
@@ -314,6 +333,7 @@ final class LeagueSettings
             'ints' => __(':least to :most whole numbers from :min to :max, separated by commas.', ['least' => $definition['count'][0] ?? 1, 'most' => $definition['count'][1] ?? 1, 'min' => $definition['min'], 'max' => $definition['max']]),
             'time' => __('A time as HH:MM, from 00:00 to 23:59.'),
             'weekday' => __('A day of the week.'),
+            'toggle' => __('On or off.'),
         };
     }
 
@@ -324,6 +344,8 @@ final class LeagueSettings
             $value === null => '–',
             is_array($value) => implode(', ', array_map(strval(...), $value)),
             is_string($value) && in_array($value, self::WEEKDAYS, true) => __(ucfirst($value)),
+            $value === 'on' => __('On'),
+            $value === 'off' => __('Off'),
             is_scalar($value) => (string) $value,
             default => '–',
         };
@@ -392,6 +414,12 @@ final class LeagueSettings
     private static function time(string $group, string $label, string $help, bool $newOnly = false): array
     {
         return ['group' => $group, 'label' => $label, 'help' => $help, 'type' => 'time', 'min' => 0, 'max' => 0, 'new_only' => $newOnly, 'board_only' => false];
+    }
+
+    /** @return Definition */
+    private static function toggle(string $group, string $label, string $help, string $default): array
+    {
+        return ['group' => $group, 'label' => $label, 'help' => $help, 'type' => 'toggle', 'min' => 0, 'max' => 0, 'new_only' => false, 'board_only' => false, 'default' => $default];
     }
 
     /** @return Definition */
