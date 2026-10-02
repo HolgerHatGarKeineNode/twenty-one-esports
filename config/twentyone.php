@@ -114,7 +114,8 @@ return [
         // The 30311 title/summary take turns (StreamTexts::rotate): the scene's live games, the games on offer,
         // the games played, the weekly highscore chases. One text this many minutes, then the next.
         'texts' => [
-            'rotate_minutes' => 10,
+            // 0: no turns, the scene's or the loop's texts only (the test suite runs so; its own rotation test sets 10).
+            'rotate_minutes' => (int) env('TWENTYONE_STREAM_ROTATE_MINUTES', 10),
         ],
 
         // The 30311 picture (StreamCover): the next slide every `minutes`, one

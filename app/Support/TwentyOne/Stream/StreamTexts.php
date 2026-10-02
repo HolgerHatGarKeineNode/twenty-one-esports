@@ -37,7 +37,12 @@ final class StreamTexts
      */
     public static function rotate(?array $scene, int $now): array
     {
-        $minutes = max(1, (int) config('twentyone.stream.texts.rotate_minutes', 10));
+        $minutes = (int) config('twentyone.stream.texts.rotate_minutes', 10);
+
+        if ($minutes <= 0) {
+            return $scene ?? self::for(null);
+        }
+
         $turns = array_values(array_filter([$scene, ...self::general()]));
         $titles = [];
 

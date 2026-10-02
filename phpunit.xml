@@ -49,6 +49,7 @@
         <env name="QUEUE_CONNECTION" value="sync"/>
         <env name="SESSION_DRIVER" value="array"/>
         <env name="ESPORTS_TMNF" value="false" force="true"/>
+        <env name="TWENTYONE_STREAM_ROTATE_MINUTES" value="0" force="true"/>
         <env name="ESPORTS_RELAYS" value="" force="true"/>
         <env name="ESPORTS_CHAT_RELAYS" value="" force="true"/>
         <env name="ESPORTS_PROFILE_RELAYS" value="" force="true"/>

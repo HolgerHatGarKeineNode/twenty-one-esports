@@ -207,6 +207,7 @@ test('the daemon keeps what it announces in the cache for the website, gone a mi
 test('the 30311 title and summary take turns every few minutes and name every game switched on, not chess alone', function () {
     BlockfillOn::play();
     tmnfOn();
+    config(['twentyone.stream.texts.rotate_minutes' => 10]);
     $minutes = (int) config('twentyone.stream.texts.rotate_minutes');
     $scene = ['title' => 'Live now: 15 chess games', 'summary' => 'Alice vs Bob and 14 more: live chess'];
 
@@ -226,4 +227,9 @@ test('the 30311 title and summary take turns every few minutes and name every ga
 
     // Without a scene (the loop) the general texts rotate alone.
     expect(StreamTexts::rotate(null, 1_000_000_000)['title'])->not->toBe('');
+
+    // 0 switches the turns off: the scene's texts, or the loop's.
+    config(['twentyone.stream.texts.rotate_minutes' => 0]);
+    expect(StreamTexts::rotate($scene, 1_000_000_000))->toBe($scene)
+        ->and(StreamTexts::rotate(null, 1_000_000_000))->toBe(StreamTexts::for(null));
 });
