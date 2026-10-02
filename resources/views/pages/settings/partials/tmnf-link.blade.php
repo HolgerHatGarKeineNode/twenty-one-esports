@@ -20,8 +20,8 @@
             </li>
             <li class="flex items-start gap-2 text-[13px] leading-normal text-ink-2">
                 <span class="grid size-6 shrink-0 place-items-center rounded-full bg-card font-mono text-xs font-bold text-ink">2</span>
-                {{-- TMNF's default chat key is T; with the chat board hidden, C shows it and Space starts typing. --}}
-                <span data-test="tmnf-chat-keys">{!! __('On the server press :t to open the chat, type the line below and press :enter. Nothing opens? Press :c, then :space.', ['t' => '<kbd class="rounded-sm bg-card px-1.5 font-mono text-ink">T</kbd>', 'enter' => '<kbd class="rounded-sm bg-card px-1.5 font-mono text-ink">Enter</kbd>', 'c' => '<kbd class="rounded-sm bg-card px-1.5 font-mono text-ink">C</kbd>', 'space' => '<kbd class="rounded-sm bg-card px-1.5 font-mono text-ink">'.e(__('Space')).'</kbd>']) !!}</span>
+                {{-- Measured by the league's first player (2026-10-02): Space opens the chat; T did not. T is the documented default in some setups. --}}
+                <span data-test="tmnf-chat-keys">{!! __('On the server press :space to open the chat, type the line below and press :enter. Nothing opens? Try :t.', ['space' => '<kbd class="rounded-sm bg-card px-1.5 font-mono text-ink">'.e(__('Space')).'</kbd>', 'enter' => '<kbd class="rounded-sm bg-card px-1.5 font-mono text-ink">Enter</kbd>', 't' => '<kbd class="rounded-sm bg-card px-1.5 font-mono text-ink">T</kbd>']) !!}</span>
             </li>
             <li class="flex items-start gap-2 text-[13px] leading-normal text-ink-2">
                 <span class="grid size-6 shrink-0 place-items-center rounded-full bg-card font-mono text-xs font-bold text-ink">3</span>

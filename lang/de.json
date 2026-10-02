@@ -6250,6 +6250,6 @@
     "Open the Explorer in TMNF and paste the link into the bar at the top, then press Enter.": "Öffne in TMNF den Explorer, füg den Link oben in die Leiste ein und drück Enter.",
     "Restart TMNF.": "Starte TMNF neu.",
     "Internet → Favourites → :server → join. Or search for :server in the server list.": "Internet → Favoriten → :server → beitreten. Oder such in der Serverliste nach :server.",
-    "On the server press :t to open the chat, type the line below and press :enter. Nothing opens? Press :c, then :space.": "Drück auf dem Server :t, um den Chat zu öffnen, tipp die Zeile unten und drück :enter. Öffnet sich nichts? Drück :c, dann :space.",
+    "On the server press :space to open the chat, type the line below and press :enter. Nothing opens? Try :t.": "Drück auf dem Server :space, um den Chat zu öffnen, tipp die Zeile unten und drück :enter. Öffnet sich nichts? Versuch :t.",
     "Space": "Leertaste"
 }
