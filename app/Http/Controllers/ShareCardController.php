@@ -10,6 +10,7 @@ use App\Models\User;
 use App\Support\Cards\ShareCard;
 use App\Support\Cards\ShareMoments;
 use App\Support\Stacker\BlockfillMoments;
+use App\Support\Tmnf\TmnfMoments;
 use App\Support\Tournaments\TournamentChampion;
 use Illuminate\Http\Response;
 use Illuminate\Support\Facades\App;
@@ -79,6 +80,18 @@ class ShareCardController extends Controller
         abort_if($moment === null || $facts === null, 404);
 
         return $this->png($locale, fn (): ShareCard => ShareCard::blockfill($moment, $facts), $format);
+    }
+
+    /**
+     * A TMNF moment (TmnfMoments::card(), plan "Trackmania und Restposten", P2); routed only while TMNF is on.
+     */
+    public function tmnf(string $locale, string $run, string $format, TmnfMoments $moments): Response
+    {
+        $moment = $moments->card($run);
+        $facts = $moment === null ? null : $moments->of($moment);
+        abort_if($moment === null || $facts === null, 404);
+
+        return $this->png($locale, fn (): ShareCard => ShareCard::tmnf($moment, $facts), $format);
     }
 
     /**

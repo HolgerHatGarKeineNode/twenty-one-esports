@@ -242,7 +242,7 @@ SHARD_FILES=(
     "tests/Browser/ShellNavigationWidthsTest.php tests/Browser/NostrBarTest.php tests/Browser/SettingsTabsTest.php tests/Browser/ChessLobbyTest.php tests/Browser/OpponentRequestsTest.php tests/Browser/LeagueSettingsAdminTest.php"
     "tests/Browser/ShareTest.php tests/Browser/TournamentTvTest.php tests/Browser/BoardFindabilityTest.php tests/Browser/InvitePlacementTest.php tests/Browser/TournamentEditTest.php tests/Browser/BlockfillReplayTest.php tests/Browser/BlockfillShareTest.php tests/Browser/ScoreMiningAdminTest.php"
     "tests/Browser/LiveCountTest.php tests/Browser/StackerTest.php tests/Browser/BoardMiningAdminTest.php tests/Browser/StrongestListTest.php tests/Browser/MempoolStripTest.php tests/Browser/InviteContextTest.php"
-    "tests/Browser/NavigationCrawlStaffTest.php tests/Browser/BoardFollowsTest.php tests/Browser/TournamentControlTest.php tests/Browser/BlockfillWeekTest.php tests/Browser/ClanLogoTest.php"
+    "tests/Browser/NavigationCrawlStaffTest.php tests/Browser/BoardFollowsTest.php tests/Browser/TournamentControlTest.php tests/Browser/BlockfillWeekTest.php tests/Browser/ClanLogoTest.php tests/Browser/TmnfWeekTest.php"
     "tests/Browser/NavigationCrawlTest.php tests/Browser/CasualCupRegionsTest.php tests/Browser/HomeHubTest.php tests/Browser/NotificationsTest.php tests/Browser/SeriesResultTest.php tests/Browser/ShellStickyHeaderTest.php"
 )
 

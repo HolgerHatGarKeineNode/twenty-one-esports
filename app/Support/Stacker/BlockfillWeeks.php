@@ -11,24 +11,19 @@ use App\Games\GameRegistry;
 use App\Models\ScoreRun;
 use App\Models\StackerRun;
 use App\Models\Tournament;
-use App\Models\TournamentMatch;
-use App\Models\TournamentParticipant;
-use App\Models\TournamentRound;
-use App\Models\TournamentStage;
 use App\Models\User;
+use App\Support\Scores\LeaderboardEntries;
 use App\Support\Scores\ScoreCourse;
 use App\Support\Scores\ScoreLeaderboards;
 use App\Support\Scores\ScoreRuns;
 use App\Support\Scores\ScoreWindow;
 use App\Support\Scores\Sources\ReplayScoreSource;
-use App\Support\Tournaments\Engine\Slot;
 use App\Support\Tournaments\FormatOptions;
 use App\Support\Tournaments\GameProfile;
 use App\Support\Tournaments\TournamentPublisher;
 use Carbon\CarbonImmutable;
 use Carbon\CarbonInterface;
 use Illuminate\Database\UniqueConstraintViolationException;
-use Illuminate\Support\Facades\DB;
 use Throwable;
 
 /**
@@ -285,65 +280,12 @@ final class BlockfillWeeks
     }
 
     /**
-     * Enters the player into the week, once: a participant and a slot on the
-     * leaderboard's one board, seeded in the order they came. True when the
-     * player was new to it.
+     * Enters the player into the week, once (LeaderboardEntries): a
+     * participant and a slot on the leaderboard's one board, seeded in the
+     * order they came. True when the player was new to it.
      */
     public function join(Tournament $week, User $user): bool
     {
-        return DB::transaction(function () use ($week, $user): bool {
-            $locked = Tournament::query()->lockForUpdate()->findOrFail($week->id);
-
-            if (TournamentParticipant::query()->where(['tournament_id' => $locked->id, 'user_id' => $user->id])->exists()) {
-                return false;
-            }
-
-            $seed = (int) TournamentParticipant::query()->where('tournament_id', $locked->id)->max('seed') + 1;
-            $participant = TournamentParticipant::query()->create([
-                'tournament_id' => $locked->id,
-                'user_id' => $user->id,
-                'name' => mb_substr($user->displayName(), 0, 80),
-                'seed' => $seed,
-                'members' => [$user->id],
-            ]);
-
-            $board = $this->board($locked);
-            $board->slots()->create([
-                'slot' => $board->slots()->count(),
-                'source' => Slot::entrant($participant->id)->toArray(),
-                'tournament_participant_id' => $participant->id,
-            ]);
-
-            // The size it is planned and shown with follows the entries (two at least, as a leaderboard needs).
-            $locked->forceFill(['capacity' => max(2, $seed)])->save();
-
-            return true;
-        });
-    }
-
-    /**
-     * The leaderboard's one board match (the engine's Leaderboard bracket:
-     * stage 1, round 1, key `board`), made with the first entry.
-     */
-    private function board(Tournament $week): TournamentMatch
-    {
-        $board = TournamentMatch::query()->where(['tournament_id' => $week->id, 'bracket' => 'board'])->first();
-
-        if ($board !== null) {
-            return $board;
-        }
-
-        $stage = TournamentStage::query()->create(['tournament_id' => $week->id, 'number' => 1, 'format' => TournamentFormat::Leaderboard]);
-        $round = TournamentRound::query()->create(['tournament_stage_id' => $stage->id, 'number' => 1]);
-
-        return $week->matches()->create([
-            'tournament_round_id' => $round->id,
-            'key' => 'board',
-            'group' => null,
-            'bracket' => 'board',
-            'position' => 1,
-            'if_needed' => false,
-            'status' => 'ready',
-        ]);
+        return app(LeaderboardEntries::class)->join($week, $user);
     }
 }

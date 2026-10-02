@@ -311,7 +311,12 @@ new #[Title('Score submissions')] #[Layout('layouts::app', ['section' => 'admin'
                                     @if ($run->tournament)<a href="{{ route('tournaments.scores', $run->tournament) }}" class="text-ink-2 underline decoration-edge underline-offset-4">{{ $run->tournament->title() }}</a> · @endif
                                     <span class="font-mono">{{ $run->course }}</span> · {{ __('set :at', ['at' => LeagueTime::stamp($run->achieved_at)]) }}
                                 </span>
-                                <a href="{{ $run->proof_url }}" rel="nofollow noopener noreferrer" target="_blank" class="text-xs text-ink underline decoration-edge underline-offset-4 [overflow-wrap:anywhere]" data-test="score-proof">{{ $run->proof_url }}</a>
+                                @if ($run->isHeld())
+                                    {{-- A server finish held for a look (plan "Trackmania und Restposten", P2): no proof link, the hint why. --}}
+                                    <span class="flex items-center gap-1.5 text-xs text-loss" data-test="score-held-hint"><x-icon name="warn" :size="14" class="shrink-0" />{{ __('Server finish, held: faster than the author time :author minus :margin s, and it would make the top places.', ['author' => \App\Games\ScoreMetric::time()->format((int) ($run->raw['hint']['author_ms'] ?? 0)), 'margin' => number_format(((int) ($run->raw['hint']['margin_ms'] ?? 0)) / 1000, 1)]) }}</span>
+                                @else
+                                    <a href="{{ $run->proof_url }}" rel="nofollow noopener noreferrer" target="_blank" class="text-xs text-ink underline decoration-edge underline-offset-4 [overflow-wrap:anywhere]" data-test="score-proof">{{ $run->proof_url }}</a>
+                                @endif
                             </span>
                             <span class="flex flex-wrap gap-2">
                                 <x-button wire:click="approve({{ $run->id }})" data-test="score-approve">{{ __('Approve') }}</x-button>

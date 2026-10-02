@@ -5,6 +5,7 @@ use App\Games\Checkers;
 use App\Games\GameRegistry;
 use App\Games\NineMensMorris;
 use App\Games\ScoreGame;
+use App\Games\TrackmaniaNationsForever;
 use App\Models\Rating;
 use App\Models\ScoreRun;
 use App\Models\User;
@@ -27,9 +28,10 @@ use Tests\Support\FakeScoreGame;
 | page that lists games reads the registry, so the game shows everywhere with
 | no further change. Three times on 2026-10-01 a new game (Blockfill) was
 | missing from a surface that kept its own list: /matches, home and the
-| player page. This guard turns every switch on (board games, Blockfill, the
-| score demo), registers a made-up versus game and a made-up score game
-| next to the real ones, and asserts that each game shows on each surface.
+| player page. This guard turns every switch on (board games, Blockfill,
+| TrackMania Nations Forever, the score demo), registers a made-up versus
+| game and a made-up score game next to the real ones, and asserts that each
+| game shows on each surface.
 | A surface that hard-codes its games misses at least the made-up ones and
 | fails here, naming the surface and the games it lost.
 |
@@ -52,6 +54,7 @@ beforeEach(function () {
         'esports.board_games.games.'.Checkers::SLUG.'.enabled' => true,
         'esports.blockfill.enabled' => true,
         'esports.score_games.demo' => true,
+        'esports.tmnf.enabled' => true,
     ]);
     app()->forgetInstance(GameRegistry::class);
 
@@ -136,8 +139,8 @@ test('the registry under test holds every kind of game, the made-up ones include
     $registry = app(GameRegistry::class);
 
     // Not a surface: proof that the switches above took, so a guard below cannot pass over an empty registry.
-    expect(array_keys($registry->all()))->toContain('chess', 'rocket-league', NineMensMorris::SLUG, Checkers::SLUG, Blockfill::SLUG, 'score-demo', 'fake-arena', FakeScoreGame::SLUG)
-        ->and($registry->scores())->toHaveKeys([Blockfill::SLUG, 'score-demo', FakeScoreGame::SLUG]);
+    expect(array_keys($registry->all()))->toContain('chess', 'rocket-league', NineMensMorris::SLUG, Checkers::SLUG, Blockfill::SLUG, TrackmaniaNationsForever::SLUG, 'score-demo', 'fake-arena', FakeScoreGame::SLUG)
+        ->and($registry->scores())->toHaveKeys([Blockfill::SLUG, TrackmaniaNationsForever::SLUG, 'score-demo', FakeScoreGame::SLUG]);
 });
 
 test('the player page shows every game the player has a result in', function () {

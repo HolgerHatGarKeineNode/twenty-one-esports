@@ -7,6 +7,7 @@ use App\Games\Blockfill;
 use App\Games\GameMode;
 use App\Games\GameRegistry;
 use App\Games\NineMensMorris;
+use App\Games\TrackmaniaNationsForever;
 use App\Models\Tournament;
 use App\Support\Board\CheckersRules;
 use App\Support\Board\NineMensMorrisRules;
@@ -61,6 +62,7 @@ final class RulesPage
             self::series(),
             ...self::ageOfEmpires2(),
             ...self::blockfill(),
+            ...self::tmnf(),
             ...self::scoreGames(),
             self::tournaments(),
             self::cups(),
@@ -472,6 +474,45 @@ final class RulesPage
             'title' => __('Score games'),
             'lead' => __('Everyone plays alone, as often as they like, for the best value inside a leaderboard\'s window. No series and no Elo: the places of every finished leaderboard score points on the game\'s points ladder.'),
             'table' => ['head' => [__('Game'), __('Mode'), __('Best value'), __('Points per place')], 'rows' => $rows, 'covers' => $covers],
+        ]];
+    }
+
+    /**
+     * TrackMania Nations Forever on our own server (plan "Trackmania und
+     * Restposten", P2), only while it is switched on: the weekly time attack,
+     * how to join, the private link of a login and the look at outliers.
+     * The numbers are the ones TmnfWeeks, TmnfLinks, TmnfOutliers and ScorePoints apply.
+     *
+     * @return list<Section>
+     */
+    private static function tmnf(): array
+    {
+        $game = app(GameRegistry::class)->find(TrackmaniaNationsForever::SLUG);
+
+        if (! $game instanceof TrackmaniaNationsForever) {
+            return [];
+        }
+
+        $points = ScorePoints::table($game);
+        $links = Route::has('scores.show') ? [[__('This week, How to join and the points ladder'), route('scores.show', TrackmaniaNationsForever::SLUG)]] : [];
+
+        return [[
+            'id' => TrackmaniaNationsForever::SLUG,
+            'title' => GameNames::game(TrackmaniaNationsForever::SLUG),
+            'lead' => __('A weekly time attack on our own TMNF server: one track a week, drive it as often as you like, your best finish counts. No sign-up, no matches.'),
+            'facts' => [
+                [__('Mode'), __('Time attack')],
+                [__('Week'), __('Monday 00:00 to Monday 00:00, Berlin time')],
+                [__('Points'), __('Place 1 to :places: :points', ['places' => count($points), 'points' => implode(' / ', $points)])],
+            ],
+            'items' => [
+                __('A new week starts every Monday at 00:00 Berlin time, on the track of the week. Your first finish on our server puts you on its leaderboard, no sign-up needed.'),
+                __('Your best finish of the week counts. The fastest time wins; with the same time, the earlier finish is ahead.'),
+                __('Only finishes of a linked login count. Save your TMNF login in your gamer tags, ask for a code, and type it in our server chat with that login. The login stays private: no page and no Nostr post shows it.'),
+                __('Our server times every finish. A time more than :seconds seconds below the track\'s author time is looked at by an admin before it counts, if it would make the top :top.', ['seconds' => number_format(((int) config('esports.tmnf.outlier_margin_ms')) / 1000, 1), 'top' => (int) config('esports.tmnf.outlier_top')]),
+                __('After the week, its places score points on the TMNF points ladder. A week is unrated: no Elo, no series, no season blocks.'),
+            ],
+            'links' => $links,
         ]];
     }
 

@@ -5,9 +5,12 @@ namespace App\Support\Tmnf;
 use App\Games\GameRegistry;
 use App\Games\TrackmaniaNationsForever;
 use App\Models\ScoreAccountClaim;
+use App\Models\ScoreRun;
 use App\Models\User;
 use App\Support\Scores\ScoreAccounts;
+use App\Support\Scores\ServerIngest;
 use App\Support\Tournaments\TournamentRuleViolation;
+use Carbon\CarbonImmutable;
 use Illuminate\Support\Facades\Cache;
 
 /**
@@ -24,7 +27,8 @@ use Illuminate\Support\Facades\Cache;
  *    case aside): the server says who typed it, so the login proves itself.
  *
  * The link is a ScoreAccountClaim without an admin (ScoreAccounts::confirmByProof()),
- * so finishes of that login map to the player; pending ones are handed over.
+ * so finishes of that login map to the player; pending ones are handed over
+ * and get the same look a new finish gets (TmnfOutliers, TmnfWeeks).
  * A login confirmed for somebody else already stays theirs: an admin
  * reassigns it on /admin/scores. Nothing here is ever shown in public: the
  * login stays on the settings page and in the admin review.
@@ -140,8 +144,38 @@ final class TmnfLinks
 
         Cache::forget(self::codeKey($code));
         Cache::forget(self::userKey($user->id));
+        self::reviewHandedOver($user, $login);
 
         return 'linked';
+    }
+
+    /**
+     * The finishes the link handed over (pending until now) get the look a
+     * linked finish gets as it comes in (TmnfOutliers): flagged ones keep a
+     * hint, those that would enter their week's top places are held for an
+     * admin; every one enters its week (TmnfWeeks).
+     */
+    private static function reviewHandedOver(User $user, string $login): void
+    {
+        $runs = ScoreRun::query()->where(['game' => TrackmaniaNationsForever::SLUG, 'source' => ServerIngest::SOURCE, 'user_id' => $user->id, 'account_id' => $login])
+            ->whereNotNull('verified_at')->whereNull('tournament_id')->orderBy('achieved_at')->get();
+
+        foreach ($runs as $run) {
+            if (! isset($run->raw['hint'])) {
+                $author = $run->raw['author_ms'] ?? null;
+                $review = app(TmnfOutliers::class)->assess($run->course, (int) $run->value, CarbonImmutable::instance($run->achieved_at), $user->id, is_int($author) ? $author : null);
+
+                if ($review !== null) {
+                    $run->forceFill([
+                        'raw' => [...($run->raw ?? []), 'hint' => $review['hint']],
+                        'tournament_id' => $review['hold']?->id,
+                        'verified_at' => $review['hold'] === null ? $run->verified_at : null,
+                    ])->save();
+                }
+            }
+
+            app(TmnfWeeks::class)->record($run);
+        }
     }
 
     private static function storedLogin(User $user): ?string

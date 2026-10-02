@@ -7,6 +7,7 @@ use App\Enums\TournamentResultsMode;
 use App\Enums\TournamentStatus;
 use App\Games\Blockfill;
 use App\Games\GameRegistry;
+use App\Games\TrackmaniaNationsForever;
 use App\Support\Nostr\NostrKeys;
 use App\Support\Series\Ladders;
 use App\Support\Stacker\BlockfillWeeks;
@@ -504,20 +505,68 @@ class Tournament extends Model
         $query->whereNot(fn (Builder $week) => $week->where('game', Blockfill::SLUG)->whereNotNull('slug')->where('slug', 'like', self::BLOCKFILL_WEEK_SLUG));
     }
 
+    /** The `slug` of a TMNF week, `tmnf-<monday>` (App\Support\Tmnf\TmnfWeeks::slugOf()), as a LIKE pattern. */
+    public const TMNF_WEEK_SLUG = 'tmnf-____-__-__';
+
+    /**
+     * One of TrackMania Nations Forever's weekly leaderboards (plan
+     * "Trackmania und Restposten", P2), opened by the league itself on our
+     * own server's track of the week (App\Support\Tmnf\TmnfWeeks).
+     */
+    public function isTmnfWeek(): bool
+    {
+        return $this->game === TrackmaniaNationsForever::SLUG && preg_match('/^tmnf-\d{4}-\d{2}-\d{2}$/', (string) $this->slug) === 1;
+    }
+
+    /**
+     * A weekly leaderboard the league opens by itself, of any game (a
+     * Blockfill or a TMNF week): no organizer, no sign-up, no prize pool, no
+     * bracket. The lists of tournaments and the stream bot's tournament notes
+     * leave it out (exceptLeagueWeeks()); its game has pages and notes of its own.
+     */
+    public function isLeagueWeek(): bool
+    {
+        return $this->isBlockfillWeek() || $this->isTmnfWeek();
+    }
+
+    /**
+     * A league week while its game is not registered (its switch off): its
+     * pages answer 404, as isSwitchedOffBlockfillWeek() for Blockfill.
+     */
+    public function isSwitchedOffLeagueWeek(): bool
+    {
+        return $this->isLeagueWeek() && app(GameRegistry::class)->find($this->game) === null;
+    }
+
+    /**
+     * Every tournament but the league's weekly leaderboards of any game (isLeagueWeek()).
+     *
+     * @param  Builder<Tournament>  $query
+     */
+    #[Scope]
+    protected function exceptLeagueWeeks(Builder $query): void
+    {
+        $query->whereNot(fn (Builder $week) => $week->where('game', Blockfill::SLUG)->whereNotNull('slug')->where('slug', 'like', self::BLOCKFILL_WEEK_SLUG))
+            ->whereNot(fn (Builder $week) => $week->where('game', TrackmaniaNationsForever::SLUG)->whereNotNull('slug')->where('slug', 'like', self::TMNF_WEEK_SLUG));
+    }
+
     /**
      * The tournament's name for a page, in the page's language: a Blockfill
-     * week as "Blockfill Week 41, 2026" / "Blockfill Woche 41, 2026" (its
-     * stored name is the English one); any other tournament its own name.
+     * week as "Blockfill Week 41, 2026" / "Blockfill Woche 41, 2026", a TMNF
+     * week as "TMNF Week 41, 2026" (their stored names are the English
+     * ones); any other tournament its own name.
      */
     public function title(): string
     {
-        if (! $this->isBlockfillWeek()) {
+        if (! $this->isLeagueWeek()) {
             return $this->name;
         }
 
         $local = $this->starts_at->toImmutable()->setTimezone(BlockfillWeeks::TIMEZONE);
 
-        return __('Blockfill Week :week, :year', ['week' => $local->isoWeek(), 'year' => $local->isoWeekYear()]);
+        return $this->isTmnfWeek()
+            ? __('TMNF Week :week, :year', ['week' => $local->isoWeek(), 'year' => $local->isoWeekYear()])
+            : __('Blockfill Week :week, :year', ['week' => $local->isoWeek(), 'year' => $local->isoWeekYear()]);
     }
 
     public function isDirectorMode(): bool

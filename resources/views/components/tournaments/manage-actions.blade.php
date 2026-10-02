@@ -30,7 +30,7 @@
     $manageActions = array_values(array_filter([
         $manages && $tournament->status === TournamentStatus::Draft && ! in_array('publish', $except, true)
             ? ['publish', route('tournaments.show', $tournament).'#publish', __('Publish tournament'), 'send', 'primary'] : null,
-        $manages && ! in_array($tournament->status, [TournamentStatus::Draft, TournamentStatus::Cancelled], true) && ! in_array('pool', $except, true) && ! $tournament->isBlockfillWeek()
+        $manages && ! in_array($tournament->status, [TournamentStatus::Draft, TournamentStatus::Cancelled], true) && ! in_array('pool', $except, true) && ! $tournament->isLeagueWeek()
             ? ['pool', route('tournaments.pool', $tournament), $tournament->pool_opened_at === null ? __('Set up the prize pool') : __('Prize pool'), 'bolt', 'secondary'] : null,
         $manages && ! in_array('edit', $except, true)
             ? ['edit', route('admin.tournaments.edit', $tournament), __('Edit'), 'settings', 'quiet'] : null,

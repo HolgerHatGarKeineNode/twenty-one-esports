@@ -262,7 +262,7 @@ class PrideSlides
             return null;
         }
 
-        $tournament = Tournament::query()->exceptBlockfillWeeks()->where('status', TournamentStatus::Finished)->where('format', TournamentFormat::FreeForAll)->whereIn('game', $slugs)
+        $tournament = Tournament::query()->exceptLeagueWeeks()->where('status', TournamentStatus::Finished)->where('format', TournamentFormat::FreeForAll)->whereIn('game', $slugs)
             ->addSelect(['decided_at' => TournamentMatch::query()->selectRaw('max(updated_at)')->whereColumn('tournament_id', 'tournaments.id')])
             ->orderByDesc('decided_at')->orderByDesc('id')->first();
         $at = $tournament?->getAttribute('decided_at') === null ? $tournament?->updated_at : Carbon::parse((string) $tournament->getAttribute('decided_at'));

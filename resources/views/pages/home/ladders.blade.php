@@ -62,8 +62,14 @@
                     </a>
                     @if ($score['rows'] === [])
                         <p class="m-0 flex flex-col items-start gap-1 border-t border-hairline pt-2 text-[13px] text-ink-2">
-                            {{ $score['weekly'] ? __('No verified run yet this week. Play the first one.') : __('No verified run yet. Play the first one.') }}
-                            <a href="{{ $score['play'] }}" class="inline-flex min-h-11 items-center font-bold" data-test="score-play">{{ __('Play') }}</a>
+                            @if ($score['game'] === \App\Games\TrackmaniaNationsForever::SLUG)
+                                {{-- TMNF is driven on our own server: its page says how to join (plan "Trackmania und Restposten", P2) --}}
+                                {{ __('No finish yet this week. Drive the first one.') }}
+                                <a href="{{ $score['play'] }}#join" class="inline-flex min-h-11 items-center font-bold" data-test="score-play">{{ __('How to join') }}</a>
+                            @else
+                                {{ $score['weekly'] ? __('No verified run yet this week. Play the first one.') : __('No verified run yet. Play the first one.') }}
+                                <a href="{{ $score['play'] }}" class="inline-flex min-h-11 items-center font-bold" data-test="score-play">{{ __('Play') }}</a>
+                            @endif
                         </p>
                     @else
                         <ol class="m-0 list-none p-0">

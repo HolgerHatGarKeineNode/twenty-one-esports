@@ -81,7 +81,7 @@ new #[Layout('layouts::app', ['section' => 'tournaments'])] class extends Compon
     {
         abort_unless($tournament->isVisibleTo(auth()->user()), 404);
         // A Blockfill week while Blockfill is switched off (P6): no page, its game has none either.
-        abort_if($tournament->isSwitchedOffBlockfillWeek(), 404);
+        abort_if($tournament->isSwitchedOffLeagueWeek(), 404);
 
         $this->tournament = $tournament;
         $this->closesAt = LeagueTime::input($tournament->starts_at->copy()->subHour());
@@ -420,7 +420,7 @@ new #[Layout('layouts::app', ['section' => 'tournaments'])] class extends Compon
     public function pool(): ?array
     {
         // A Blockfill week (P6) has no prize pool.
-        return $this->tournament->isBlockfillWeek() ? null : app(TournamentPrizePool::class)->for($this->tournament);
+        return $this->tournament->isLeagueWeek() ? null : app(TournamentPrizePool::class)->for($this->tournament);
     }
 
     /**
@@ -448,7 +448,10 @@ new #[Layout('layouts::app', ['section' => 'tournaments'])] class extends Compon
     // A score game's leaderboard (plan "AoE2 und Trackmania", P4): no match, no Elo, no seeds that matter.
     $score = $profile->isScore();
     // A Blockfill week (P6): the league opens it, a verified run enters the player; no sign-up, no no-shows, no invites.
-    $week = $tournament->isBlockfillWeek();
+    $week = $tournament->isLeagueWeek();
+    // A TMNF week (plan "Trackmania und Restposten", P2) as a Blockfill week, played on our own server: How to join instead of Play.
+    $tmnfWeek = $tournament->isTmnfWeek();
+    $tmnfTrack = $tmnfWeek ? \App\Support\Tmnf\TmnfWeeks::track($tournament->score_course) : null;
     $scoreGame = $score ? app(\App\Games\GameRegistry::class)->get($tournament->game) : null;
     $scoreMetric = $scoreGame instanceof \App\Games\ScoreGame ? $scoreGame->metric($scoreGame->mode($tournament->mode) ?? throw new \LogicException('A score profile has its mode.')) : null;
     $status = $tournament->status;
@@ -493,6 +496,7 @@ new #[Layout('layouts::app', ['section' => 'tournaments'])] class extends Compon
         ...($openEnd === null ? [['clock', __('Planned duration'), __('about :duration', ['duration' => Estimator::format($tournament->plannedDuration(), $profile)]), 'duration']] : []),
         [$tournament->on_site ? 'home' : 'wifi', __('Where'), $tournament->on_site ? __('On site').', '.trans_choice(':count station|:count stations', (int) $tournament->stations) : __('Online'), 'where'],
         ['shield-check', __('Results'), match (true) {
+            $tmnfWeek => __('every finish timed by our own TMNF server; a time far below the author time waits for an admin'),
             $week => __('every ranked run replayed by the league; only a run that reaches the same time counts'),
             $score => __('values read from the game, or submitted with a proof link an admin checks'),
             default => $tournament->results_mode->label(),
@@ -508,7 +512,11 @@ new #[Layout('layouts::app', ['section' => 'tournaments'])] class extends Compon
         }, 'rated'],
         ...($score && $scoreGame instanceof \App\Games\ScoreGame ? [
             // A Blockfill week's course is its mode: by its name, not its slug (P6).
-            ['flag', __($scoreGame->courseLabel()), $week ? __((string) $scoreGame->mode($tournament->mode)?->name) : ($tournament->score_course ?? __('the directors set it before the start')), 'course'],
+            ['flag', __($scoreGame->courseLabel()), match (true) {
+                $tmnfWeek => $tmnfTrack['name'] ?? (string) $tournament->score_course,
+                $week => __((string) $scoreGame->mode($tournament->mode)?->name),
+                default => $tournament->score_course ?? __('the directors set it before the start'),
+            }, 'course'],
             ['award', __('Wins'), $scoreMetric?->lowerIsBetter() ? __('the fastest time; a tie goes to the earlier record') : __('the highest score; a tie goes to the earlier record'), 'wins'],
         ] : [['award', __('Seeding'), __('by Elo at sign-up close'), 'seeding']]),
         ['mining', __('Season chain'), $week ? __('separate: a week mines no season blocks') : __('separate: tournament matches never mine season blocks'), 'chain'],
@@ -554,7 +562,13 @@ new #[Layout('layouts::app', ['section' => 'tournaments'])] class extends Compon
         ];
     }
 
-    if ($week) {
+    if ($tmnfWeek) {
+        $steps = [
+            [__('Join'), __('Join our TMNF server and link your login once: the site gives you a code to type in the server chat.')],
+            [__('Drive'), __('Drive the track of the week as often as you like. The server times every finish; no sign-up, your first finish puts you on this board.')],
+            [__('Leaderboard'), __('Your best finish of the week ranks. The fastest time wins, a tie goes to the earlier finish; after the week its places score points.')],
+        ];
+    } elseif ($week) {
         $steps = [
             [__('Play'), __('Play a ranked run of Blockfill, logged in and with a keyboard. No sign-up: your first verified run of the week puts you on this board.')],
             [__('Verified'), __('The league replays your run from its seed and your inputs. Only a run that reaches the same time counts; practice runs never do.')],
@@ -688,7 +702,13 @@ new #[Layout('layouts::app', ['section' => 'tournaments'])] class extends Compon
                 @if ($cta !== 'draft')
                     <div class="tl-cta flex flex-col gap-4 rounded-card bg-card p-4 shadow-ring lg:p-5" data-test="signup-cta" data-state="{{ $cta }}">
                         <div class="flex flex-col gap-4 sm:flex-row sm:items-center sm:gap-5">
-                            @if ($week && \Illuminate\Support\Facades\Route::has('stacker.play'))
+                            @if ($tmnfWeek)
+                                {{-- A TMNF week: played on our own server, How to join is right below. --}}
+                                <a href="#join" data-test="to-tmnf-join"
+                                   class="btn-p tl-go inline-flex min-h-14 shrink-0 items-center justify-center gap-2.5 rounded-md bg-btc px-6 font-display text-base font-bold text-on-btc hover:text-on-btc">
+                                    <x-icon name="flag" :size="20" />{{ __('How to join') }}
+                                </a>
+                            @elseif ($week && \Illuminate\Support\Facades\Route::has('stacker.play'))
                                 {{-- A Blockfill week (P6): played on the game page, no sign-up. --}}
                                 <a href="{{ route('stacker.play') }}" data-test="to-blockfill"
                                    class="btn-p tl-go inline-flex min-h-14 shrink-0 items-center justify-center gap-2.5 rounded-md bg-btc px-6 font-display text-base font-bold text-on-btc hover:text-on-btc">
@@ -732,7 +752,7 @@ new #[Layout('layouts::app', ['section' => 'tournaments'])] class extends Compon
                                     @if ($week)
                                         {{ $status === TournamentStatus::Finished
                                             ? ($champion ? __('This week is over. Winner: :name. A new week is on.', ['name' => $champion->name]) : __('This week is over. A new week is on.'))
-                                            : __('No sign-up: your first verified ranked run puts you on the board below.') }}
+                                            : ($tmnfWeek ? __('No sign-up: your first finish on our server puts you on the board below.') : __('No sign-up: your first verified ranked run puts you on the board below.')) }}
                                         <a href="#leaderboard" class="font-bold text-ink underline decoration-edge underline-offset-4 hover:decoration-ink" data-test="to-leaderboard">{{ $status === TournamentStatus::Finished ? __('See the results') : __('See the leaderboard') }}</a>
                                     @else
                                     @switch($cta)
@@ -807,6 +827,11 @@ new #[Layout('layouts::app', ['section' => 'tournaments'])] class extends Compon
         @endif
     </section>
 
+    {{-- A TMNF week: How to join, big, right under the hero (plan "Trackmania und Restposten", P2). --}}
+    @if ($tmnfWeek)
+        <div class="px-4 lg:px-12">@include('pages.scores.partials.tmnf-join', ['week' => $tournament, 'track' => $tmnfTrack])</div>
+    @endif
+
     {{-- P45: the tournament on Nostr (its NIP-52 calendar event), a message to its organizer; a Blockfill week has neither to share (P6) --}}
     @if ($published && ! $week)
         <x-nostr-bar :bar="\App\Support\Nostr\NostrBar::tournament($tournament)" class="mx-4 lg:mx-12" />
@@ -826,14 +851,14 @@ new #[Layout('layouts::app', ['section' => 'tournaments'])] class extends Compon
             <div class="flex min-w-0 flex-col gap-2">
                 <span class="flex items-center gap-1.5 text-xs font-bold text-btc-hi"><x-icon name="trophy" :size="14" />{{ __('Winner') }}</span>
                 <h2 id="tw-h" class="m-0 font-display text-2xl font-bold [overflow-wrap:anywhere]">{{ $champion->name }}</h2>
-                @if (auth()->check() && in_array(auth()->id(), $champion->memberIds(), true) && ! $tournament->isBlockfillWeek())
+                @if (auth()->check() && in_array(auth()->id(), $champion->memberIds(), true) && ! $tournament->isLeagueWeek())
                     <livewire:share-button type="tournament" :moment="(string) $tournament->id" />
                 @endif
             </div>
         </section>
 
         {{-- P47: a tip for the winners (NIP-57), each whose profile has a Lightning address; nothing otherwise. Not for a Blockfill week (P6). --}}
-        @if (! $tournament->isBlockfillWeek())
+        @if (! $tournament->isLeagueWeek())
             <div class="mx-4 has-[>.hidden]:hidden lg:mx-12"><livewire:zap-winner type="tournament" :subject="(string) $tournament->id" :wire:key="'zap-tournament-'.$tournament->id" /></div>
         @endif
     @elseif ($this->sharedFirst !== [])
@@ -933,7 +958,9 @@ new #[Layout('layouts::app', ['section' => 'tournaments'])] class extends Compon
             @endif
         </ul>
 
-        @if ($roster === [] && $week)
+        @if ($roster === [] && $tmnfWeek)
+            <p class="m-0 text-[13px] text-ink-2" data-test="entries-empty">{{ __('No finish yet this week. Drive the first one.') }}</p>
+        @elseif ($roster === [] && $week)
             <p class="m-0 text-[13px] text-ink-2" data-test="entries-empty">{{ __('No verified run yet this week. Play the first one.') }}</p>
         @elseif ($roster === [] && ($drawn || ! $published || $status === TournamentStatus::Cancelled))
             <p class="m-0 text-[13px] text-ink-2" data-test="entries-empty">{{ __('Nobody has signed up yet.') }}</p>
@@ -953,7 +980,7 @@ new #[Layout('layouts::app', ['section' => 'tournaments'])] class extends Compon
                 @endif
             </span>
             <span class="flex flex-wrap items-center gap-2">
-                @if ($published && $status !== TournamentStatus::Cancelled && ! $tournament->isBlockfillWeek())
+                @if ($published && $status !== TournamentStatus::Cancelled && ! $tournament->isLeagueWeek())
                     {{-- The TV view (P19): the bracket full screen, live, for a big screen or a stream. A Blockfill week has none (P6). --}}
                     <span class="text-xs text-ink-3 max-sm:hidden" id="tv-hint">{{ __('Full screen for a TV or a stream') }}</span>
                     <x-button variant="quiet" :href="route('tournaments.tv', $tournament)" icon="eye" data-test="to-tv" aria-describedby="tv-hint">{{ __('TV view') }}</x-button>

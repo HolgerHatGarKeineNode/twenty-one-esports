@@ -86,6 +86,12 @@ test('the next round arrives as BeginChallenge with the track', function () {
     $control = GbxRemote::connect((string) config('esports.tmnf.xmlrpc.host'), (int) config('esports.tmnf.xmlrpc.port'));
     TmnfServer::over($control)->authenticate((string) config('esports.tmnf.xmlrpc.user'), (string) config('esports.tmnf.xmlrpc.password'));
 
+    // A server just started (or just changed track) answers "Change in progress." until it plays (status 4, "Running - Play").
+    $playing = microtime(true) + 30;
+    while (($control->call('GetStatus')['Code'] ?? null) !== 4 && microtime(true) < $playing) {
+        usleep(500_000);
+    }
+
     $control->call('RestartChallenge');
     $deadline = microtime(true) + 20;
     $begun = null;

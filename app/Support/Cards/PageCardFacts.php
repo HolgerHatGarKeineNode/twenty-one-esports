@@ -433,7 +433,7 @@ final class PageCardFacts
             'on_air' => LiveStatus::current()->live,
             'games' => ChessGame::query()->where('status', ChessGameStatus::Active)->count(),
             'first' => $games->isEmpty() ? null : ['white' => self::person($games[0]->white), 'black' => self::person($games[0]->black)],
-            'tournaments' => array_values(Tournament::query()->where('status', TournamentStatus::Running)->whereNotNull('published_at')->exceptBlockfillWeeks()->orderBy('starts_at')->limit(2)->pluck('name')->all()),
+            'tournaments' => array_values(Tournament::query()->where('status', TournamentStatus::Running)->whereNotNull('published_at')->exceptLeagueWeeks()->orderBy('starts_at')->limit(2)->pluck('name')->all()),
             // The slide the stream daemon last rendered (public at /stream/cover.png); its time is part of the facts, so a new slide is a new card.
             'slide' => is_file($cover) ? (int) filemtime($cover) : null,
         ];
@@ -533,7 +533,7 @@ final class PageCardFacts
         $runs = app(ScoreRuns::class);
         $placed = array_values(array_filter($runs->standings($tournament), fn (ScoreStanding $row): bool => $row->place !== null && $row->value !== null));
         $members = User::query()->whereKey(array_filter(array_map(fn (ScoreStanding $row): ?int => $row->participant->user_id, array_slice($placed, 0, self::FACES))))->get()->keyBy('id');
-        $week = $tournament->isBlockfillWeek() ? $tournament->starts_at->toImmutable()->setTimezone(BlockfillWeeks::TIMEZONE) : null;
+        $week = $tournament->isLeagueWeek() ? $tournament->starts_at->toImmutable()->setTimezone(BlockfillWeeks::TIMEZONE) : null;
 
         return [
             // A Blockfill week is named by the card in its language ("Blockfill Week 40, 2026"), every other by its name.
@@ -628,7 +628,7 @@ final class PageCardFacts
             'clans' => [['clans', Clan::query()->count()], ['clan-players', ClanMember::query()->count()]],
             'matches' => [['series-played', SeriesMatch::query()->whereIn('status', [SeriesStatus::Confirmed, SeriesStatus::Resolved])->count()], ['games-played', ChessGame::query()->where('status', ChessGameStatus::Finished)->count()]],
             'games', 'chess' => [['live-games', $liveGames()], ['daily-games', ChessGame::query()->daily()->where('status', ChessGameStatus::Active)->count()], ['games-played', ChessGame::query()->where('status', ChessGameStatus::Finished)->count()]],
-            'tournaments' => [['tournaments-open', self::openTournaments()], ['tournaments-running', Tournament::query()->whereNotNull('published_at')->exceptBlockfillWeeks()->where('status', TournamentStatus::Running)->count()], ['tournaments-finished', Tournament::query()->whereNotNull('published_at')->exceptBlockfillWeeks()->where('status', TournamentStatus::Finished)->count()]],
+            'tournaments' => [['tournaments-open', self::openTournaments()], ['tournaments-running', Tournament::query()->whereNotNull('published_at')->exceptLeagueWeeks()->where('status', TournamentStatus::Running)->count()], ['tournaments-finished', Tournament::query()->whereNotNull('published_at')->exceptLeagueWeeks()->where('status', TournamentStatus::Finished)->count()]],
             'login' => [['players', $players()], ['games', count($offered)]],
             'play', 'rules' => [['games', count($offered)], ['modes', array_sum(array_map(fn ($game): int => count($game->modes()), $offered))]],
             // Without configured relays there is nothing to count; the figure is left out rather than drawn as 0.

@@ -305,7 +305,8 @@ new #[Layout('layouts::app', ['section' => 'tournaments'])] class extends Compon
 
     <dl class="m-0 grid gap-2 sm:grid-cols-3" data-test="score-facts">
         @foreach ([
-            ['flag', $label, $tournament->score_course ?? __('not set yet'), 'course'],
+            // A TMNF track UID is named by its track (plan "Trackmania und Restposten", P2).
+            ['flag', $label, \App\Support\Tmnf\TmnfWeeks::track($tournament->game === \App\Games\TrackmaniaNationsForever::SLUG ? $tournament->score_course : null)['name'] ?? $tournament->score_course ?? __('not set yet'), 'course'],
             ['clock', __('Window opens'), LeagueTime::stamp($window->start), 'opens'],
             ['lock', __('Window closes'), LeagueTime::stamp($window->end), 'closes'],
         ] as [$icon, $term, $fact, $key])

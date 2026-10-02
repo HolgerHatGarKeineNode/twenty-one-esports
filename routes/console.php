@@ -4,6 +4,7 @@ use App\Enums\BoardGameStatus;
 use App\Enums\ChessGameStatus;
 use App\Games\Blockfill;
 use App\Games\GameRegistry;
+use App\Games\TrackmaniaNationsForever;
 use App\Jobs\NotifyBlockZero;
 use App\Models\BoardGame;
 use App\Models\ChessGame;
@@ -32,6 +33,7 @@ use App\Support\Series\CasualScheduler;
 use App\Support\Series\SeriesService;
 use App\Support\Stacker\BlockfillWeeks;
 use App\Support\Stacker\StackerRuns;
+use App\Support\Tmnf\TmnfWeeks;
 use App\Support\Tournaments\TournamentDraws;
 use App\Support\Tournaments\TournamentScheduler;
 use App\Support\Tournaments\TournamentSignups;
@@ -596,4 +598,25 @@ if (app(GameRegistry::class)->find(Blockfill::SLUG) !== null) {
     Schedule::command('stacker:sweep')->everyFiveMinutes()->withoutOverlapping()->onOneServer();
     Schedule::command('model:prune', ['--model' => [StackerRun::class]])->dailyAt('04:41')->withoutOverlapping()->onOneServer();
     Schedule::command('twentyone:stream-bot:blockfill')->everyFiveMinutes()->withoutOverlapping()->onOneServer();
+}
+
+/*
+ * The weekly time attack of TrackMania Nations Forever (plan "Trackmania und
+ * Restposten", P2, TmnfWeeks): opens this week's leaderboard on its track
+ * (Monday 00:00 Europe/Berlin), joins linked players a finish's own hook
+ * missed, and signs its calendar event. Its end is the score kind's own
+ * (`scores:tick`). The finishes come from `tmnf:listen`, a daemon of its own
+ * (not scheduled). Scheduled only while TMNF is registered, with the stream
+ * bot's week notes (TmnfNotes).
+ */
+Artisan::command('tmnf:weeks', function (TmnfWeeks $weeks) {
+    $done = $weeks->sweep();
+    $announced = $weeks->announce();
+
+    $this->info(($done['opened'] ? 'This week\'s TMNF leaderboard is open.' : 'TMNF is off or has no track: no leaderboard opened.')." Joined {$done['joined']} player(s). Signed {$announced} calendar event(s).");
+})->purpose('Open this week\'s TMNF leaderboard, join every linked player with a finish and sign its calendar event');
+
+if (app(GameRegistry::class)->find(TrackmaniaNationsForever::SLUG) !== null) {
+    Schedule::command('tmnf:weeks')->hourly()->withoutOverlapping()->onOneServer();
+    Schedule::command('twentyone:stream-bot:tmnf')->everyFiveMinutes()->withoutOverlapping()->onOneServer();
 }

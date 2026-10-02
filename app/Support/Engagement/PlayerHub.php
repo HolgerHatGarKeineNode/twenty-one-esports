@@ -390,7 +390,7 @@ final class PlayerHub
                 'done' => TournamentSignup::query()->where(fn ($query) => $query->where('user_id', $me)->orWhereJsonContains('members', $me))->exists()
                     // A Blockfill week (P6) is joined by playing, not by signing up for a tournament.
                     || TournamentParticipant::query()->where(fn ($query) => $query->where('user_id', $me)->orWhereJsonContains('members', $me))
-                        ->whereHas('tournament', fn ($query) => $query->exceptBlockfillWeeks())->exists()],
+                        ->whereHas('tournament', fn ($query) => $query->exceptLeagueWeeks())->exists()],
         ];
     }
 
@@ -473,7 +473,7 @@ final class PlayerHub
     {
         return TournamentParticipant::query()
             ->where(fn ($query) => $query->where('user_id', $this->user->id)->orWhereJsonContains('members', $this->user->id))
-            ->whereHas('tournament', fn ($query) => $query->where('status', TournamentStatus::Running)->exceptBlockfillWeeks())
+            ->whereHas('tournament', fn ($query) => $query->where('status', TournamentStatus::Running)->exceptLeagueWeeks())
             ->pluck('tournament_id')->map(intval(...))->unique()->values();
     }
 

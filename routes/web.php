@@ -245,6 +245,10 @@ Route::prefix('cards/{locale}')
         Route::get('wrapped/{season}/{npub}-{format}.png', [ShareCardController::class, 'wrapped'])->where(['season' => '[a-z0-9-]{1,64}', 'npub' => 'npub1[0-9a-z]{58}'])->name('cards.wrapped');
         // A Blockfill moment (BlockfillMoments::card()), also while Blockfill is off: a posted note keeps its picture.
         Route::get('blockfill/{run}-{format}.png', [ShareCardController::class, 'blockfill'])->where('run', '[0-9]{1,18}')->name('cards.blockfill');
+        // A TMNF moment (TmnfMoments::card()), only while TMNF is on: its place is read from the running game.
+        if (config('esports.tmnf.enabled')) {
+            Route::get('tmnf/{run}-{format}.png', [ShareCardController::class, 'tmnf'])->where('run', '[0-9]{1,18}')->name('cards.tmnf');
+        }
         // The link preview of every public page (P54), one per page and state: 1200 × 630.
         Route::get('page/{type}/{key}.png', PageCardController::class)
             ->where(['type' => implode('|', PageCard::TYPES), 'key' => '[a-z0-9][a-z0-9._-]{0,99}'])

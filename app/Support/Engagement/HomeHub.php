@@ -9,6 +9,7 @@ use App\Enums\TournamentStatus;
 use App\Games\Blockfill;
 use App\Games\GameRegistry;
 use App\Games\ScoreGame;
+use App\Games\TrackmaniaNationsForever;
 use App\Models\ChessGame;
 use App\Models\Clan;
 use App\Models\Rating;
@@ -119,7 +120,7 @@ final class HomeHub
      */
     public function running(): EloquentCollection
     {
-        return Tournament::query()->where('status', TournamentStatus::Running)->whereNotNull('published_at')->exceptBlockfillWeeks()->latest('starts_at')->limit(2)->get();
+        return Tournament::query()->where('status', TournamentStatus::Running)->whereNotNull('published_at')->exceptLeagueWeeks()->latest('starts_at')->limit(2)->get();
     }
 
     /**
@@ -320,7 +321,8 @@ final class HomeHub
                 'game' => $game->slug(),
                 'mode' => $mode,
                 'name' => GameNames::game($game->slug()).' · '.GameNames::mode($game->slug(), $mode),
-                'weekly' => $game->slug() === Blockfill::SLUG,
+                // The league's weekly games (Blockfill, TMNF): "This week", never a board's name.
+                'weekly' => in_array($game->slug(), [Blockfill::SLUG, TrackmaniaNationsForever::SLUG], true),
                 'board' => $board?->title(),
                 'href' => route('scores.show', $game->slug()),
                 'play' => GameNames::page($game->slug()),

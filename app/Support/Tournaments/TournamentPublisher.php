@@ -14,6 +14,7 @@ use App\Support\Scores\ScoreWindow;
 use App\Support\Scores\Sources\ReplayScoreSource;
 use App\Support\SeasonChain\LeagueKey;
 use App\Support\Series\Ladders;
+use App\Support\Tmnf\TmnfWeeks;
 use Carbon\CarbonImmutable;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
@@ -348,7 +349,7 @@ final class TournamentPublisher
         }
 
         // A Blockfill week (P6) has neither matches nor a prize pool.
-        if (! $tournament->isBlockfillWeek()) {
+        if (! $tournament->isLeagueWeek()) {
             $lines[] = 'Tournament matches never mine season blocks. The prize pool is the tournament\'s own.';
         }
 
@@ -379,6 +380,17 @@ final class TournamentPublisher
     {
         $game = app(GameRegistry::class)->get($tournament->game);
         $metric = $game instanceof ScoreGame ? $game->metric($game->mode($tournament->mode) ?? throw new \LogicException('A score profile has its mode.')) : null;
+
+        // A TMNF week (plan "Trackmania und Restposten", P2): the track by its name, timed by our own server.
+        if ($tournament->isTmnfWeek()) {
+            $track = TmnfWeeks::track($tournament->score_course);
+
+            return [
+                'A leaderboard on our own TMNF server: every player drives the track '.($track['name'] ?? $tournament->score_course).' alone, as often as they like, from the start until the end of the week; the fastest time wins, a tie goes to the earlier finish, a finish outside that time does not count.',
+                'Times are the finishes our own TMNF server timed, of players who linked their TMNF login; a time far below the author time waits for an admin. Nothing is submitted by hand.',
+                'Unrated: a leaderboard has no Elo ladder. Its places score points on the game\'s points ladder.',
+            ];
+        }
 
         return [
             'A leaderboard: every player plays alone, as often as they like, for the best value'

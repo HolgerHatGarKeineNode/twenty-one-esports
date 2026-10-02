@@ -7,6 +7,7 @@ use App\Games\GameRegistry;
 use App\Games\ScoreGame;
 use App\Games\ScoreMetric;
 use App\Support\Scores\ScoreWindow;
+use App\Support\Scores\ServerIngest;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Attributes\Hidden;
 use Illuminate\Database\Eloquent\Builder;
@@ -145,13 +146,25 @@ class ScoreRun extends Model
     }
 
     /**
-     * Manual submissions still waiting for an admin.
+     * Values still waiting for an admin: manual submissions, and the server
+     * finishes an adapter held for one tournament (a flagged time that would
+     * enter its top places, ServerIngest::review()).
      *
      * @param  Builder<self>  $query
      */
     protected function scopePendingReview(Builder $query): void
     {
-        $query->where('source', self::MANUAL)->whereNull('verified_at')->whereNull('rejected_at');
+        $query->where(fn (Builder $query) => $query->where('source', self::MANUAL)
+            ->orWhere(fn (Builder $query) => $query->where('source', ServerIngest::SOURCE)->whereNotNull('tournament_id')))
+            ->whereNull('verified_at')->whereNull('rejected_at');
+    }
+
+    /**
+     * A server finish held for an admin (ServerIngest::review()).
+     */
+    public function isHeld(): bool
+    {
+        return $this->source === ServerIngest::SOURCE && $this->tournament_id !== null && $this->isPending();
     }
 
     /**

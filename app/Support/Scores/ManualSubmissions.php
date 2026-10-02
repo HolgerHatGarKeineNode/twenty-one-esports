@@ -154,7 +154,8 @@ final class ManualSubmissions
             throw new TournamentRuleViolation('not_admin', __('Only an admin reviews submissions.'));
         }
 
-        if ($run->source !== ScoreRun::MANUAL || ! $run->isPending()) {
+        // A manual submission, or a server finish held for an admin (ServerIngest::review()).
+        if (($run->source !== ScoreRun::MANUAL && ! $run->isHeld()) || ! $run->isPending()) {
             throw new TournamentRuleViolation('reviewed', __('This submission was reviewed already.'));
         }
 

@@ -161,6 +161,17 @@ final class StreamBotCopy
         'blockfill_note_top' => [
             ['🥇 New first place in :name: :player', '⏱️ :time:gap', '🗓️ The week runs until :ends', '👉 Beat it: :url'],
         ],
+        // TMNF's week notes (TmnfNotes, plan "Trackmania und Restposten", P2), as Blockfill's: the week and its track
+        // once it is open, a new first place (`:gap` empty for the week's first), the winner and top 3.
+        'tmnf_note_week' => [
+            ['🏁 A new TMNF week is open: :name', '🏎️ Track :track on our own server, your best finish of the week counts', '🗓️ Until :ends', '👉 How to join: :url'],
+        ],
+        'tmnf_note_winner' => [
+            ['🏆 :name goes to :winner in :time on :track', '🏁 Top 3: :podium', '🔁 A new week is on, every time starts from zero', '👉 All weeks: :url'],
+        ],
+        'tmnf_note_top' => [
+            ['🥇 New first place in :name: :player', '⏱️ :time on :track:gap', '🗓️ The week runs until :ends', '👉 Beat it: :url'],
+        ],
         // Pride notes on the same profile (PrideNotes): players named for what they did, tagged; the
         // rendered slide follows after a blank line. Written by the kommunikator (2026-09-28).
         'pride_note_win' => [

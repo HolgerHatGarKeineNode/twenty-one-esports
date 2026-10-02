@@ -470,6 +470,8 @@ test('every person on a scene has an avatar, a clan its logo, every scene its ba
             'f1' => $brandBackdrop,
             // Blockfill's slide set (BlockfillSlides), switched off here as well: the brand.
             'f2' => $brandBackdrop, 'f3' => $brandBackdrop, 'f4' => $brandBackdrop, 'f5' => $brandBackdrop,
+            // TMNF's week (plan "Trackmania und Restposten", P2), switched off here: the brand.
+            'g1' => $brandBackdrop,
         ])
         ->and($spotlightBackdrop)->toStartWith('data:image/jpeg;base64,/9j/')->not->toBe($brandBackdrop)
         // The fallback scene (gallery or single game) too.

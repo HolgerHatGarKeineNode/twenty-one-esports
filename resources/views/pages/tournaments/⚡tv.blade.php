@@ -33,7 +33,7 @@ new #[Layout('layouts::tv')] class extends Component {
     {
         abort_if($tournament->status === TournamentStatus::Draft, 404);
         // A Blockfill week (plan "Blockfill", P6) is a week-long leaderboard without matches: nothing for a big screen.
-        abort_if($tournament->isBlockfillWeek(), 404);
+        abort_if($tournament->isLeagueWeek(), 404);
 
         $this->tournament = $tournament;
         $this->version = (new TournamentTv($tournament))->version();

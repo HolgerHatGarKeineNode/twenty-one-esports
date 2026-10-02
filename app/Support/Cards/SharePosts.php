@@ -5,6 +5,7 @@ namespace App\Support\Cards;
 use App\Enums\ChessGameStatus;
 use App\Enums\ReportStatus;
 use App\Enums\TournamentStatus;
+use App\Games\ScoreMetric;
 use App\Jobs\PublishNostrEvent;
 use App\Models\ChessGame;
 use App\Models\NostrEvent;
@@ -22,8 +23,12 @@ use App\Support\Nostr\RejectedEvent;
 use App\Support\Nostr\SignedEventGate;
 use App\Support\Rating\RankTiers;
 use App\Support\Stacker\BlockfillMoments;
+use App\Support\Stacker\BlockfillWeeks;
+use App\Support\Tmnf\TmnfMoments;
+use App\Support\Tmnf\TmnfWeeks;
 use App\Support\Tournaments\TournamentChampion;
 use App\Support\Tournaments\TournamentSignups;
+use Carbon\CarbonImmutable;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\RateLimiter;
 
@@ -61,7 +66,7 @@ final class SharePosts
     public const FORMAT = 'wide';
 
     /** The moments a share post can be about. */
-    public const TYPES = ['rank-up', 'block', 'tournament', 'wrapped', 'game', 'series', 'signup', 'blockfill'];
+    public const TYPES = ['rank-up', 'block', 'tournament', 'wrapped', 'game', 'series', 'signup', 'blockfill', 'tmnf'];
 
     /** Opponents one post mentions at most: a team of five, never a whole bracket. */
     public const MAX_MENTIONS = 5;
@@ -81,6 +86,7 @@ final class SharePosts
             'series' => $this->series($user, $id),
             'signup' => $this->signup($user, $id),
             'blockfill' => $this->blockfill($user, $id),
+            'tmnf' => $this->tmnf($user, $id),
             default => null,
         };
 
@@ -193,6 +199,7 @@ final class SharePosts
             'block' => __('Mined block :height on the TWENTY ONE Esports season chain: +:sats sats.', ['height' => $f['height'], 'sats' => ShareCard::sats((int) $f['reward'])]),
             'tournament' => __('Won :tournament on TWENTY ONE Esports.', ['tournament' => $f['tournament']]),
             'blockfill' => $this->blockfillSentence($f),
+            'tmnf' => $this->tmnfSentence($f),
             default => __('My :season on TWENTY ONE Esports: :blocks blocks mined, :sats sats.', ['season' => BadgeCopy::season((string) $f['season']), 'blocks' => $f['blocks'], 'sats' => ShareCard::sats((int) $f['sats'])]),
         };
     }
@@ -241,7 +248,7 @@ final class SharePosts
     {
         $tournament = Tournament::query()->find($id);
         // A Blockfill week (plan "Blockfill", P6) is a game's weekly board, not a tournament win to share.
-        $winner = $tournament === null || $tournament->isBlockfillWeek() ? null : $this->champions->of($tournament);
+        $winner = $tournament === null || $tournament->isLeagueWeek() ? null : $this->champions->of($tournament);
 
         return $winner !== null && in_array($user->id, $winner->memberIds(), true) ? ShareCard::tournament($tournament, $winner) : null;
     }
@@ -279,6 +286,54 @@ final class SharePosts
             storyPath: $card->path('story'),
             link: self::absolute(route('stacker.moment', $run->id, false)),
         );
+    }
+
+    /* ---------- A TMNF moment ----------------------------------------------------------------------------------- */
+
+    /**
+     * The player's own counted TMNF finish that is a moment: its share card,
+     * and its week's page as the link (plan "Trackmania und Restposten", P2).
+     */
+    private function tmnf(User $user, string $id): ?SharePost
+    {
+        $moments = app(TmnfMoments::class);
+        $run = $moments->ownedBy($user, $id);
+        $moment = $run === null ? null : $moments->of($run);
+        $week = $moment === null ? null : app(TmnfWeeks::class)->find(BlockfillWeeks::startOf($run->achieved_at));
+
+        if ($run === null || $moment === null || $week === null) {
+            return null;
+        }
+
+        $card = ShareCard::tmnf($run, $moment);
+
+        return new SharePost(
+            type: 'tmnf',
+            sentence: $this->sentence($card),
+            cardUrl: $card->url(self::FORMAT),
+            dimensions: ShareCard::FORMATS[self::FORMAT],
+            storyPath: $card->path('story'),
+            link: self::absolute(route('tournaments.show', $week, false)),
+        );
+    }
+
+    /**
+     * One line, no `#`: "Place 1", never "#1"; the track and the week by name, never a login.
+     *
+     * @param  array<string, mixed>  $f
+     */
+    private function tmnfSentence(array $f): string
+    {
+        $local = CarbonImmutable::parse((string) $f['week'], BlockfillWeeks::TIMEZONE);
+        $replace = ['time' => ScoreMetric::time()->format((int) $f['ms']), 'track' => (string) $f['track'], 'place' => (int) $f['place'],
+            'week' => __('TMNF Week :week, :year', ['week' => $local->isoWeek(), 'year' => $local->isoWeekYear()])];
+
+        return match ($f['kind']) {
+            'final' => __('Finished :week in place :place: :track in :time on TWENTY ONE Esports.', $replace),
+            'first' => __('New first place in :week: :track in :time on TWENTY ONE Esports.', $replace),
+            'pb' => __('New personal best in TMNF: :track in :time on TWENTY ONE Esports.', $replace),
+            default => __('Place :place so far in :week: :track in :time on TWENTY ONE Esports.', $replace),
+        };
     }
 
     /**

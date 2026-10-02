@@ -53,7 +53,7 @@ new #[Layout('layouts::app', ['section' => 'tournaments'])] class extends PrizeP
     {
         Gate::authorize('manage-tournament', $tournament);
         // A Blockfill week (P6) has no sign-up, no directors' results and no prize pool.
-        abort_if($tournament->isBlockfillWeek(), 404);
+        abort_if($tournament->isLeagueWeek(), 404);
 
         $this->tournamentId = $tournament->id;
         $this->fillPot($tournament);

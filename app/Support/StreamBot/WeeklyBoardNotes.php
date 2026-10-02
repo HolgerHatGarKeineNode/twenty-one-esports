@@ -1,0 +1,463 @@
+<?php
+
+namespace App\Support\StreamBot;
+
+use App\Enums\TournamentStatus;
+use App\Games\ScoreMetric;
+use App\Models\BotPost;
+use App\Models\ScoreRun;
+use App\Models\Tournament;
+use App\Models\TournamentParticipant;
+use App\Support\LeagueTime;
+use App\Support\Nostr\NostrKeys;
+use App\Support\Nostr\SignedEvent;
+use App\Support\Scores\ScoreRuns;
+use App\Support\Scores\ScoreStanding;
+use App\Support\Scores\ScoreWindow;
+use App\Support\SeasonChain\LeagueKey;
+use App\Support\TwentyOne\Stream\BlockfillSlides;
+use Carbon\CarbonImmutable;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
+use LogicException;
+use Throwable;
+
+/**
+ * The stream bot's notes of a game's weekly leaderboard on its own profile
+ * (Blockfill, plan "Blockfill", P6: BlockfillNotes; TrackMania Nations
+ * Forever, plan "Trackmania und Restposten", P2: TmnfNotes): a kind-1 note
+ * when a week is open (SLOT_OPEN), one when it is finished with its winner
+ * and top 3 (SLOT_WINNER), and one for a new first place (SLOT_TOP). A
+ * league week is no organizer's tournament, so TournamentNotes leaves it out.
+ *
+ * - The week note goes out while the week runs, only for the week the clock
+ *   is in (a missed week is not announced late).
+ * - The winner note goes out once the score kind finished the week (its
+ *   review time is over, ScoreLeaderboards), within WINNER_DAYS of its end,
+ *   and only when somebody is on the board.
+ * - The first-place note (slot "top-<score run id>") names a verified run
+ *   that holds the running week's first place on its board (ScoreRuns, so
+ *   waiting, held and rejected runs never count), its time and how much
+ *   faster it is than the first place before it. Not sooner than the game's
+ *   top minutes after the bot's last note of the game of any slot, and not
+ *   while another note of the game is due: a burst of first places posts
+ *   only the one on top when the time is up. None in the week's last
+ *   QUIET_MINUTES (the winner note is next), and none for a first place that
+ *   reached the board more than LATE_MINUTES before the window allowed it
+ *   (a switch that was off does not post old news).
+ *
+ * Exactly once per week and slot (BotPost, the game's subject, one row per
+ * slot), claimed before signing as in FreePlaceNotes: a rival run at the
+ * same time skips it, a failed send is retried with the same signed event
+ * after `retry_minutes`. With the week's 31923 published, the note carries
+ * its `nostr:naddr1…` and a NIP-18 `q` tag; without it the note stands on
+ * its link alone. The players it names are tagged as PrideNotes tags them:
+ * `nostr:npub1…` in place of the name and a `p` tag, at most
+ * PrideNotes::LOBBY_MENTIONS; a player without a Nostr key, or past the cap,
+ * keeps the plain name. Only the account's Nostr key, never a game account.
+ * No `t` tag, no `#`, and nothing about fees: the copy rules of StreamBotCopy.
+ *
+ * Fail closed: without `esports.stream_bot.enabled`, the bot key or a
+ * stream relay (TournamentNotes::setup), or while the game is not
+ * registered, nothing is claimed, signed or sent.
+ */
+abstract class WeeklyBoardNotes
+{
+    public const SLOT_OPEN = 'open';
+
+    public const SLOT_WINNER = 'winner';
+
+    /** The first-place note's slot is this prefix and the id of the score run on top. */
+    public const SLOT_TOP = 'top-';
+
+    /** First-place notes are at least this many minutes apart from any note of the game, unless configured. */
+    public const TOP_MINUTES = 60;
+
+    /** No first-place note this close to the week's end: the winner note follows. */
+    public const QUIET_MINUTES = 60;
+
+    /** A first place older than the window plus this many minutes is no news any more. */
+    public const LATE_MINUTES = 60;
+
+    /** A finished week's winner is announced within this many days of the week's end, never later. */
+    public const WINNER_DAYS = 7;
+
+    /** The top places a winner note names. */
+    public const PODIUM = 3;
+
+    /** Names get this many characters in a note, as in TournamentNotes. */
+    private const NAME_LENGTH = 40;
+
+    /** Notes are written in this locale, whatever the process runs in. */
+    private const LOCALE = 'en';
+
+    public function __construct(
+        protected TournamentNotes $notes,
+        private StreamBotPublisher $publisher,
+        protected ScoreRuns $runs,
+    ) {}
+
+    /**
+     * Whether the game is registered: off, nothing is due, signed or sent.
+     */
+    abstract protected function enabled(): bool;
+
+    /**
+     * The game's week `$now` lies in, if it was opened.
+     */
+    abstract protected function current(CarbonImmutable $now): ?Tournament;
+
+    /**
+     * Whether a tournament of the game is one of its league weeks.
+     */
+    abstract protected function isWeek(Tournament $week): bool;
+
+    /** The game's slug, for its finished weeks. */
+    abstract protected function slug(): string;
+
+    /** The BotPost subject of the game's notes, one row per week and slot. */
+    abstract protected function subject(): string;
+
+    /** The game's name in the log lines ("Blockfill"). */
+    abstract protected function label(): string;
+
+    /** The minutes between first-place notes, configured per game. */
+    abstract protected function topMinutes(): int;
+
+    /**
+     * The open note's text, in English.
+     */
+    abstract protected function weekNote(Tournament $week): string;
+
+    /**
+     * The winner note's text from its rendered names and times, in English.
+     *
+     * @param  array{name: string, winner: string, time: string, podium: string}  $values
+     */
+    abstract protected function winnerNote(Tournament $week, array $values): string;
+
+    /**
+     * The first-place note's text from its rendered values, in English.
+     *
+     * @param  array{name: string, player: string, time: string, gap: string, ends: string}  $values
+     */
+    abstract protected function topNote(Tournament $week, ScoreRun $run, array $values): string;
+
+    /**
+     * One scheduler tick. Returns what happened, for the log.
+     */
+    public function run(CarbonImmutable $now): string
+    {
+        if (! $this->enabled()) {
+            return 'no '.$this->label().' notes: '.$this->label().' is off';
+        }
+
+        $setup = $this->notes->setup();
+
+        if (is_string($setup)) {
+            return $setup;
+        }
+
+        [$key, $relays] = $setup;
+        $lines = [];
+
+        foreach ($this->due($now) as $due) {
+            try {
+                $lines[] = $this->post($key, $due['week'], $due['slot'], $relays, $now);
+            } catch (Throwable $e) {
+                // One broken note must not hold back the other; its claim expires and it is tried again.
+                report($e);
+                $lines[] = strtolower($this->label()).' week '.$due['week']->id.' '.$due['slot'].': failed, '.$e->getMessage();
+            }
+        }
+
+        return $lines === [] ? 'no '.$this->label().' notes: every week has its notes' : implode("\n", $lines);
+    }
+
+    /**
+     * The notes this run would post: the winners of weeks finished within
+     * WINNER_DAYS, oldest first, then the running week of `$now`, then its
+     * first place when nothing else is due; none that was delivered or
+     * freshly claimed. Empty while the game is off.
+     *
+     * @return list<array{week: Tournament, slot: string}>
+     */
+    public function due(CarbonImmutable $now): array
+    {
+        if (! $this->enabled()) {
+            return [];
+        }
+
+        $due = [];
+        $finished = Tournament::query()->where(['game' => $this->slug(), 'status' => TournamentStatus::Finished])
+            ->where('starts_at', '>=', $now->subDays(7 + self::WINNER_DAYS + 1))->orderBy('starts_at')->get();
+
+        foreach ($finished as $week) {
+            if ($this->isWeek($week) && ScoreWindow::of($week)->end->greaterThanOrEqualTo($now->subDays(self::WINNER_DAYS))
+                && $this->runs->standings($week) !== [] && ! $this->taken($week, self::SLOT_WINNER, $now)) {
+                $due[] = ['week' => $week, 'slot' => self::SLOT_WINNER];
+            }
+        }
+
+        $current = $this->current($now);
+
+        if ($current !== null && $current->status === TournamentStatus::Running && ScoreWindow::of($current)->contains($now) && ! $this->taken($current, self::SLOT_OPEN, $now)) {
+            $due[] = ['week' => $current, 'slot' => self::SLOT_OPEN];
+        }
+
+        // The first place waits for every other note of the game, and then for its window.
+        $top = $due === [] && $current !== null ? $this->topSlot($current, $now) : null;
+
+        if ($top !== null) {
+            $due[] = ['week' => $current, 'slot' => $top];
+        }
+
+        return $due;
+    }
+
+    /**
+     * The note's text, in English: the week and how to play it, its new
+     * first place, or its winner and top 3; then the week's calendar event as `nostr:naddr1…`
+     * after a blank line, once it is published.
+     */
+    public function content(Tournament $week, string $slot): string
+    {
+        return $this->compose($week, $slot)['content'];
+    }
+
+    /**
+     * The note's content and the `p` tags of the players it names.
+     *
+     * @return array{content: string, tags: list<list<string>>}
+     */
+    private function compose(Tournament $week, string $slot): array
+    {
+        $previous = app()->getLocale();
+        app()->setLocale(self::LOCALE);
+        $tags = [];
+
+        try {
+            $body = match (true) {
+                $slot === self::SLOT_WINNER => $this->winner($week, $tags),
+                str_starts_with($slot, self::SLOT_TOP) => $this->firstPlace($week, (int) substr($slot, strlen(self::SLOT_TOP)), $tags),
+                default => $this->weekNote($week),
+            };
+        } finally {
+            app()->setLocale($previous);
+        }
+
+        return ['content' => $week->address() === null ? $body : $body."\n\nnostr:".$this->notes->naddr($week), 'tags' => $tags];
+    }
+
+    /**
+     * The kind-1 note: the content, a `p` tag per tagged player and, once
+     * the week's 31923 is published, one NIP-18 `q` tag on its address.
+     * Refused when the text breaks the copy rules.
+     */
+    public function event(LeagueKey $key, Tournament $week, string $slot, int $createdAt): SignedEvent
+    {
+        ['content' => $content, 'tags' => $tags] = $this->compose($week, $slot);
+        $address = $week->address();
+        $tags = $address === null ? $tags : [...$tags, ['q', $address, $this->notes->relayHint() ?? '']];
+        $problems = StreamBotCopy::violations(explode("\n\nnostr:", $content, 2)[0], $tags);
+
+        if ($problems !== []) {
+            throw new LogicException('The stream bot refused its own '.$this->label().' note: '.implode(', ', $problems));
+        }
+
+        return $key->sign(TournamentNotes::KIND_NOTE, $tags, $content, $createdAt);
+    }
+
+    /**
+     * @param  list<list<string>>  $tags
+     */
+    private function winner(Tournament $week, array &$tags): string
+    {
+        $standings = array_values(array_filter($this->runs->standings($week), fn (ScoreStanding $row): bool => $row->place !== null && $row->value !== null));
+        $first = $standings[0] ?? throw new LogicException('A week without a placed player has no winner note.');
+        $metric = ScoreMetric::time();
+        $winner = $this->mention($first->participant, $tags);
+        $podium = [];
+
+        foreach (array_slice($standings, 0, self::PODIUM) as $row) {
+            $podium[] = $row->place.'. '.$this->mention($row->participant, $tags).' '.$metric->format((int) $row->value);
+        }
+
+        return $this->winnerNote($week, [
+            'name' => StreamBotCopy::clean($week->title(), self::NAME_LENGTH),
+            'winner' => $winner,
+            'time' => $metric->format((int) $first->value),
+            'podium' => implode(' · ', $podium),
+        ]);
+    }
+
+    /**
+     * The running week's first place by a verified run: the player, the time,
+     * how much faster than the first place before it (none for the week's
+     * first), the week's end and the game page.
+     *
+     * @param  list<list<string>>  $tags
+     */
+    private function firstPlace(Tournament $week, int $runId, array &$tags): string
+    {
+        $run = ScoreRun::query()->find($runId) ?? throw new LogicException('The first place of '.$this->label().' week '.$week->id.' has no score run '.$runId.'.');
+        $userIds = $week->participants()->pluck('user_id')->filter()->all();
+        $participant = $week->participants()->where('user_id', $run->user_id)->first()
+            ?? throw new LogicException('The first place of '.$this->label().' week '.$week->id.' is nobody on its board.');
+        $window = ScoreWindow::of($week);
+        $metric = ScoreMetric::time();
+
+        // The best time on the board before this run came in, read as ScoreRuns::standings() reads the board.
+        $before = ScoreRun::query()->where(['game' => $run->game, 'mode' => $run->mode, 'course' => $run->course])
+            ->whereIn('user_id', $userIds)->where('source', '!=', ScoreRun::DIRECTOR)
+            ->whereNotNull('verified_at')->whereNull('rejected_at')->whereNotNull('value')
+            ->where(fn ($query) => $query->whereNull('tournament_id')->orWhere('tournament_id', $week->id))
+            ->where('achieved_at', '>=', $window->start)->where('achieved_at', '<', $window->end)
+            ->where('id', '<', $run->id)->min('value');
+        $gap = $before === null ? 0 : (int) $before - (int) $run->value;
+
+        return $this->topNote($week, $run, [
+            'name' => StreamBotCopy::clean($week->title(), self::NAME_LENGTH),
+            'player' => $this->mention($participant, $tags),
+            'time' => $metric->format((int) $run->value),
+            'gap' => $gap > 0 ? ', '.BlockfillSlides::seconds($gap).' faster than the first place before' : '',
+            'ends' => LeagueTime::stamp($window->end),
+        ]);
+    }
+
+    /**
+     * A player as PrideNotes names them: `nostr:npub1…` of their Nostr key,
+     * its `p` tag added once, while the note tags fewer than
+     * PrideNotes::LOBBY_MENTIONS players; the plain name for a player
+     * without a valid key (an entry whose account is gone) or past the cap.
+     * Only the account's Nostr key, never a game account.
+     *
+     * @param  list<list<string>>  $tags
+     */
+    protected function mention(TournamentParticipant $participant, array &$tags): string
+    {
+        $pubkey = (string) $participant->user?->pubkey;
+
+        if (preg_match('/^[0-9a-f]{64}$/', $pubkey) !== 1) {
+            return StreamBotCopy::clean($participant->name, self::NAME_LENGTH);
+        }
+
+        if (! in_array(['p', $pubkey], $tags, true)) {
+            if (count($tags) >= PrideNotes::LOBBY_MENTIONS) {
+                return StreamBotCopy::clean($participant->name, self::NAME_LENGTH);
+            }
+
+            $tags[] = ['p', $pubkey];
+        }
+
+        return 'nostr:'.NostrKeys::hexToNpub($pubkey);
+    }
+
+    /**
+     * The slot of the running week's first place when its note is due:
+     * outside the week's last QUIET_MINUTES, on the board since at most the
+     * window plus LATE_MINUTES, not delivered or freshly claimed, and no
+     * note of the game delivered within the window. Null otherwise.
+     */
+    private function topSlot(Tournament $week, CarbonImmutable $now): ?string
+    {
+        $window = ScoreWindow::of($week);
+        $minutes = max(1, $this->topMinutes());
+
+        if ($week->status !== TournamentStatus::Running || ! $window->contains($now) || $now->greaterThanOrEqualTo($window->end->subMinutes(self::QUIET_MINUTES))) {
+            return null;
+        }
+
+        $first = $this->runs->standings($week)[0] ?? null;
+
+        if ($first === null || $first->place !== 1 || $first->value === null || $first->runId === null) {
+            return null;
+        }
+
+        $run = ScoreRun::query()->find($first->runId);
+
+        if ($run?->verified_at === null || $run->verified_at->lessThan($now->subMinutes($minutes + self::LATE_MINUTES))) {
+            return null;
+        }
+
+        $slot = self::SLOT_TOP.$run->id;
+        $recent = BotPost::query()->where('subject_type', $this->subject())->where('published_at', '>', $now->subMinutes($minutes))->exists();
+
+        return $recent || $this->taken($week, $slot, $now) ? null : $slot;
+    }
+
+    /**
+     * Claim, sign once, send; a line for the log.
+     *
+     * @param  list<string>  $relays
+     */
+    private function post(LeagueKey $key, Tournament $week, string $slot, array $relays, CarbonImmutable $now): string
+    {
+        $subject = $this->subjectOf($week, $slot);
+        $label = strtolower($this->label()).' week '.$week->id.' '.$slot;
+
+        BotPost::query()->insertOrIgnore([...$subject, 'created_at' => $now, 'updated_at' => $now]);
+
+        // The claim: only one run gets the row, and only when nobody tried within retry_minutes.
+        $claimed = BotPost::query()->where($subject)->whereNull('published_at')
+            ->where(fn ($query) => $query->whereNull('attempted_at')->orWhere('attempted_at', '<=', $this->claimCutoff($now)))
+            ->update(['attempted_at' => $now, 'attempts' => DB::raw('attempts + 1'), 'updated_at' => $now]);
+
+        if ($claimed !== 1) {
+            return $label.': taken by another run';
+        }
+
+        $post = BotPost::query()->where($subject)->firstOrFail();
+
+        // Signed once; a retry sends the stored event again, never a new one.
+        if ($post->event === null) {
+            $signed = $this->event($key, $week, $slot, $now->getTimestamp());
+            $post->forceFill(['event_id' => $signed->id, 'event' => json_encode($signed->toArray(), JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR)])->save();
+        }
+
+        $event = SignedEvent::fromInput(json_decode((string) $post->event, true))
+            ?? throw new LogicException('The stored note of '.$label.' is not a valid event.');
+
+        $results = $this->publisher->publish($event->toArray(), $relays);
+        $accepted = count(array_filter($results, fn ($result): bool => $result->accepted));
+
+        $post->forceFill([
+            'relays_accepted' => $accepted,
+            'relays_total' => count($results),
+            'published_at' => $accepted > 0 ? $now : null,
+        ])->save();
+
+        Log::info('Stream bot '.$this->label().' note', [
+            'week' => $week->id,
+            'slot' => $slot,
+            'id' => $event->id,
+            'relays' => array_map(fn ($result): string => $result->accepted ? 'ok' : 'failed: '.$result->message, $results),
+        ]);
+
+        return sprintf('%s: %s id=%s to %d/%d relays', $label, $accepted > 0 ? 'posted' : 'not accepted, retried later', $event->id, $accepted, count($results));
+    }
+
+    /**
+     * Delivered, or claimed by a run within `retry_minutes`.
+     */
+    private function taken(Tournament $week, string $slot, CarbonImmutable $now): bool
+    {
+        return BotPost::query()->where($this->subjectOf($week, $slot))
+            ->where(fn ($query) => $query->whereNotNull('published_at')->orWhere('attempted_at', '>', $this->claimCutoff($now)))
+            ->exists();
+    }
+
+    /**
+     * @return array{subject_type: string, subject_id: int, kind: int, slot: string}
+     */
+    private function subjectOf(Tournament $week, string $slot): array
+    {
+        return ['subject_type' => $this->subject(), 'subject_id' => $week->id, 'kind' => TournamentNotes::KIND_NOTE, 'slot' => $slot];
+    }
+
+    /** A claim older than this is released: its run failed or crashed. */
+    private function claimCutoff(CarbonImmutable $now): CarbonImmutable
+    {
+        return $now->subMinutes(max(1, (int) config('esports.stream_bot.tournament_notes.retry_minutes', 10)));
+    }
+}

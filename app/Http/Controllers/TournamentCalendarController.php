@@ -22,7 +22,7 @@ class TournamentCalendarController extends Controller
     {
         abort_if($tournament->status === TournamentStatus::Draft || $tournament->published_at === null, 404);
         // A Blockfill week while Blockfill is switched off (P6): no page to point to.
-        abort_if($tournament->isSwitchedOffBlockfillWeek(), 404);
+        abort_if($tournament->isSwitchedOffLeagueWeek(), 404);
 
         $planned = $tournament->plannedDuration();
         // A score leaderboard ends with its window (a Blockfill week: the next Monday 00:00 Berlin, 167 to 169 hours).

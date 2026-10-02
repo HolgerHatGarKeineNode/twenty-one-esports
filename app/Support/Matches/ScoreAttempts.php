@@ -6,6 +6,7 @@ use App\Enums\StackerRunStatus;
 use App\Games\Blockfill;
 use App\Games\GameRegistry;
 use App\Games\ScoreMetric;
+use App\Games\TrackmaniaNationsForever;
 use App\Models\Clan;
 use App\Models\ClanMember;
 use App\Models\ScoreRun;
@@ -15,6 +16,7 @@ use App\Models\User;
 use App\Support\GameNames;
 use App\Support\Stacker\BlockfillWeeks;
 use App\Support\Stacker\StackerReplays;
+use App\Support\Tmnf\TmnfWeeks;
 use Carbon\CarbonInterface;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Facades\Route;
@@ -176,9 +178,9 @@ final class ScoreAttempts
     /**
      * Where each attempt links, by its key(): a Blockfill run whose replay the
      * viewer may watch to that replay (P5, StackerReplays::forRuns()), else a
-     * verified Blockfill run to its week's leaderboard (one query for all of
-     * them), a score run to its tournament's leaderboard, everything else to
-     * the game's leaderboards.
+     * verified Blockfill run or TMNF finish to its week's leaderboard (one
+     * query for all of them), a score run to its tournament's leaderboard,
+     * everything else to the game's leaderboards.
      *
      * @param  iterable<StackerRun|ScoreRun>  $runs
      * @return array<string, string>
@@ -191,9 +193,14 @@ final class ScoreAttempts
             if ($run instanceof StackerRun && ! self::isWaiting($run) && $run->submitted_at !== null) {
                 $slugs[self::key($run)] = BlockfillWeeks::slugOf(BlockfillWeeks::startOf($run->submitted_at));
             }
+
+            // A TMNF finish (plan "Trackmania und Restposten", P2): the week of its moment, the same rhythm.
+            if ($run instanceof ScoreRun && $run->game === TrackmaniaNationsForever::SLUG && ! self::isWaiting($run)) {
+                $slugs[self::key($run)] = TmnfWeeks::slugOf(BlockfillWeeks::startOf($run->achieved_at));
+            }
         }
 
-        $weeks = $slugs === [] ? collect() : Tournament::query()->where('game', Blockfill::SLUG)->whereIn('slug', array_unique($slugs))->pluck('id', 'slug');
+        $weeks = $slugs === [] ? collect() : Tournament::query()->whereIn('game', [Blockfill::SLUG, TrackmaniaNationsForever::SLUG])->whereIn('slug', array_unique($slugs))->pluck('id', 'slug');
         $viewer = auth()->user();
         $replays = app(StackerReplays::class)->forRuns(array_filter(is_array($runs) ? $runs : iterator_to_array($runs), fn ($run): bool => $run instanceof StackerRun), $viewer instanceof User ? $viewer : null);
         $links = [];

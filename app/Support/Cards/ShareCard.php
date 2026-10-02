@@ -4,7 +4,9 @@ namespace App\Support\Cards;
 
 use App\Enums\TournamentFormat;
 use App\Games\GameRegistry;
+use App\Games\ScoreMetric;
 use App\Models\RankBadgeVersion;
+use App\Models\ScoreRun;
 use App\Models\Season;
 use App\Models\SeasonAttestation;
 use App\Models\StackerRun;
@@ -16,6 +18,8 @@ use App\Support\GameNames;
 use App\Support\Nostr\NostrKeys;
 use App\Support\Rating\RankTiers;
 use App\Support\Stacker\BlockfillMoments;
+use App\Support\Stacker\BlockfillWeeks;
+use Carbon\CarbonImmutable;
 use Illuminate\Support\Facades\App;
 use Illuminate\Support\Facades\Storage;
 use InvalidArgumentException;
@@ -37,7 +41,7 @@ final class ShareCard
 {
     public const FORMATS = ['wide' => [1200, 630], 'story' => [1080, 1920]];
 
-    public const TYPES = ['rank-up', 'block', 'tournament', 'wrapped', 'tournament-invite', 'blockfill'];
+    public const TYPES = ['rank-up', 'block', 'tournament', 'wrapped', 'tournament-invite', 'blockfill', 'tmnf'];
 
     /** Blockfill's fee colours (resources/js/stacker/palette.js FEE_SCALE), low to high. */
     private const FEES = ['#7383A6', '#3B82E0', '#0FA394', '#5AAE3C', '#F2D45C', '#F7931A', '#F9A8D4'];
@@ -48,7 +52,7 @@ final class ShareCard
     private Canvas $c;
 
     /**
-     * @param  'rank-up'|'block'|'tournament'|'wrapped'|'tournament-invite'|'blockfill'  $type
+     * @param  'rank-up'|'block'|'tournament'|'wrapped'|'tournament-invite'|'blockfill'|'tmnf'  $type
      * @param  string  $key  the card's own part of its file name and URL
      * @param  array<string, mixed>  $facts
      */
@@ -92,6 +96,16 @@ final class ShareCard
     public static function blockfill(StackerRun $run, array $moment): self
     {
         return new self('blockfill', (string) $run->id, ShareMoments::blockfill($run, $moment));
+    }
+
+    /**
+     * A TMNF moment of a counted finish (App\Support\Tmnf\TmnfMoments::of()).
+     *
+     * @param  array{kind: string, place: int|null, final: bool, pb: bool, first: bool, week: string, track: string}  $moment
+     */
+    public static function tmnf(ScoreRun $run, array $moment): self
+    {
+        return new self('tmnf', (string) $run->id, ShareMoments::tmnf($run, $moment));
     }
 
     /** The PNG bytes in the current locale, from the cache when unchanged. */
@@ -143,6 +157,7 @@ final class ShareCard
             'tournament-invite' => 'tournament-invite/'.$this->key,
             'wrapped' => 'wrapped/'.preg_replace('/-(npub1[0-9a-z]+)$/', '/$1', $this->key),
             'blockfill' => 'blockfill/'.$this->key,
+            'tmnf' => 'tmnf/'.$this->key,
         };
 
         return rtrim((string) config('app.url'), '/').'/cards/'.App::getLocale().'/'.$path.'-'.$format.'.png?v='.$this->fingerprint($format);
@@ -167,6 +182,7 @@ final class ShareCard
             'tournament-invite' => $story ? $this->inviteStory() : $this->inviteWide(),
             'wrapped' => $story ? $this->wrappedStory() : $this->wrappedWide(),
             'blockfill' => $story ? $this->blockfillStory() : $this->blockfillWide(),
+            'tmnf' => $story ? $this->tmnfStory() : $this->tmnfWide(),
         };
 
         if ($story) {
@@ -567,6 +583,79 @@ final class ShareCard
             $f['place'] !== null && ! $f['final'] => __('Place :place this week so far', ['place' => (int) $f['place']]),
             default => __('verified: the league replayed the run'),
         };
+    }
+
+    /* ---------- TMNF moment ------------------------------------------------------------------------------------- */
+
+    private function tmnfWide(): void
+    {
+        $this->finishFlag(64, 96, 40, 8, 9);
+
+        $x = 440;
+        $max = 1136 - $x;
+        $this->c->text($this->c->fit($this->tmnfHeadline(), 'mono-bold', 28, $max), 'mono-bold', 28, $x, 112, Canvas::ORANGE);
+        $this->person($x, 140, 44, 30, null);
+        $time = ScoreMetric::time()->format((int) $this->facts['ms']);
+        $size = $this->c->fitSize($time, 'display', [120, 104, 88], $max);
+        $this->c->text($time, 'display', $size, $x, 330, Canvas::INK);
+        $this->c->paragraph($this->tmnfLine(), 'mono', 26, $x, 392, $max, 2, Canvas::INK_2);
+        $this->pill($x, 450, $this->tmnfStatus(), 22);
+    }
+
+    private function tmnfStory(): void
+    {
+        $this->kicker('TrackMania Nations Forever', 72, 150);
+        $this->finishFlag(240, 230, 75, 8, 8);
+
+        $this->c->paragraph($this->tmnfHeadline(), 'mono-bold', 44, 72, 960, 936, 2, Canvas::ORANGE);
+        $this->c->avatar($this->drawable($this->facts), 72, 1040, 64);
+        $name = (string) $this->facts['name'];
+        $nameSize = $this->c->fitSize($name, 'mono-bold', [40, 34, 30], 856);
+        $this->c->text($this->c->fit($name, 'mono-bold', $nameSize, 856), 'mono-bold', $nameSize, 152, 1040 + 64 * 0.72, Canvas::INK);
+        $time = ScoreMetric::time()->format((int) $this->facts['ms']);
+        $size = $this->c->fitSize($time, 'display', [200, 170, 140, 120, 104], 936);
+        $this->c->text($time, 'display', $size, 72, 1340, Canvas::INK);
+        $this->c->paragraph($this->tmnfLine(), 'mono', 36, 72, 1430, 936, 3, Canvas::INK_2);
+        $this->pill(72, 1560, $this->tmnfStatus(), 30);
+    }
+
+    private function tmnfHeadline(): string
+    {
+        return BlockfillMoments::headline((string) $this->facts['kind'], $this->facts['place'] === null ? null : (int) $this->facts['place']);
+    }
+
+    /** "A01-Race · TMNF Week 41, 2026" */
+    private function tmnfLine(): string
+    {
+        $local = CarbonImmutable::parse((string) $this->facts['week'], BlockfillWeeks::TIMEZONE);
+
+        return ((string) $this->facts['track']).' · '.__('TMNF Week :week, :year', ['week' => $local->isoWeek(), 'year' => $local->isoWeekYear()]);
+    }
+
+    private function tmnfStatus(): string
+    {
+        $f = $this->facts;
+
+        return match (true) {
+            $f['kind'] === 'place' => __('so far: the week ends Monday 00:00 Berlin'),
+            $f['place'] !== null && ! $f['final'] => __('Place :place this week so far', ['place' => (int) $f['place']]),
+            default => __('timed by our own TMNF server'),
+        };
+    }
+
+    /**
+     * A chequered finish flag on its pole, the TMNF cards' mark: `$columns`
+     * by `$rows` squares of `$cell` px in the league orange and black.
+     */
+    private function finishFlag(int $x, int $y, int $cell, int $columns, int $rows): void
+    {
+        $this->c->rect($x - 14, $y - 8, 10, $cell * ($rows + 1), '#3A3A42');
+
+        for ($row = 0; $row < $rows; $row++) {
+            for ($col = 0; $col < $columns; $col++) {
+                $this->c->rect($x + $col * $cell, $y + $row * $cell, $cell, $cell, ($row + $col) % 2 === 0 ? Canvas::ORANGE : '#0E0E11');
+            }
+        }
     }
 
     /**

@@ -1169,6 +1169,10 @@ return [
         'blockfill_notes' => [
             'top_minutes' => 60,
         ],
+        // TMNF's week notes, the same rules (twentyone:stream-bot:tmnf, TmnfNotes).
+        'tmnf_notes' => [
+            'top_minutes' => 60,
+        ],
         'profile' => [
             'name' => 'TWENTY ONE Bot',
             'about' => 'The bot of the TWENTY ONE Esports stream chat: what is on at esports.einundzwanzig.space, with links. Chats only while the stream is live, and posts every new tournament here. It reads no replies.',

@@ -6,6 +6,7 @@ use App\Enums\ChessEndReason;
 use App\Enums\ChessGameStatus;
 use App\Games\Blockfill;
 use App\Games\GameRegistry;
+use App\Games\TrackmaniaNationsForever;
 use App\Models\ChessGame;
 use App\Models\ChessQueueEntry;
 use App\Models\Clan;
@@ -150,6 +151,14 @@ class SceneSource
 
             return ['blockfill' => $blockfill, 'stats' => $stats,
                 'backdrop' => ($blockfill === null ? null : $this->images->backdrop(Blockfill::SLUG)) ?? $this->images->backdrop(StreamImages::BRAND)];
+        }
+
+        // TMNF's week (plan "Trackmania und Restposten", P2): its track, top 5 and how to join, over its own blurred cover.
+        if ($scene === TmnfSlide::SCENE) {
+            $tmnf = app(TmnfSlide::class)->cached();
+
+            return ['tmnf' => $tmnf, 'stats' => $stats,
+                'backdrop' => ($tmnf === null ? null : $this->images->backdrop(TrackmaniaNationsForever::SLUG)) ?? $this->images->backdrop(StreamImages::BRAND)];
         }
 
         // Blockfill's slide set while a week runs: the board, the fresh blocks, a new #1, the call to play (BlockfillSlides).

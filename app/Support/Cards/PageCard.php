@@ -7,6 +7,7 @@ use App\Games\Blockfill;
 use App\Games\BoardGame as BoardGameDefinition;
 use App\Games\GameRegistry;
 use App\Games\ScoreMetric;
+use App\Games\TrackmaniaNationsForever;
 use App\Models\BoardGame;
 use App\Models\ChessGame;
 use App\Models\Clan;
@@ -958,13 +959,19 @@ final class PageCard
     }
 
     /**
-     * "Blockfill Week 40, 2026" in the card's language, else the leaderboard's name.
+     * "Blockfill Week 40, 2026" or "TMNF Week 40, 2026" in the card's language, else the leaderboard's name.
      *
      * @param  array<string, mixed>  $f
      */
     private function leaderboardTitle(array $f): string
     {
-        return is_array($f['week']) ? __('Blockfill Week :week, :year', ['week' => $f['week'][0], 'year' => $f['week'][1]]) : (string) $f['name'];
+        if (! is_array($f['week'])) {
+            return (string) $f['name'];
+        }
+
+        return ($f['game'] ?? null) === TrackmaniaNationsForever::SLUG
+            ? __('TMNF Week :week, :year', ['week' => $f['week'][0], 'year' => $f['week'][1]])
+            : __('Blockfill Week :week, :year', ['week' => $f['week'][0], 'year' => $f['week'][1]]);
     }
 
     private function leaderboardStatus(): string

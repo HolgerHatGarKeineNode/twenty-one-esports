@@ -4,6 +4,7 @@ namespace App\Support\TwentyOne\Stream;
 
 use App\Games\Blockfill;
 use App\Games\GameRegistry;
+use App\Games\TrackmaniaNationsForever;
 
 /**
  * Which rotation scene the stream shows now: a pure state machine over time
@@ -103,6 +104,9 @@ final class RotationPlanner
     /** Blockfill's week (BlockfillSlide), in the pool only while Blockfill is registered. */
     public const BLOCKFILL_SCENE = 'f1';
 
+    /** TMNF's week (TmnfSlide, plan "Trackmania und Restposten", P2), in the pool only while TMNF is registered. */
+    public const TMNF_SCENE = 'g1';
+
     /** A slot of Blockfill's slide set (BlockfillSlides). */
     public const BLOCKFILL = 'blockfill';
 
@@ -133,6 +137,7 @@ final class RotationPlanner
         'm1' => 'stream.rotation.m1-mempool',
         'f1' => 'stream.rotation.f1-blockfill',
         'f2' => 'stream.rotation.f2-board', 'f3' => 'stream.rotation.f3-fresh', 'f4' => 'stream.rotation.f4-moment', 'f5' => 'stream.rotation.f5-play',
+        'g1' => 'stream.rotation.g1-tmnf',
     ];
 
     /**
@@ -213,6 +218,7 @@ final class RotationPlanner
         private float $loopSeconds = 60,
         private float $tournamentSeconds = 15,
         private bool $blockfill = false,
+        private bool $tmnf = false,
     ) {}
 
     public static function fromConfig(float $loopSeconds): self
@@ -227,17 +233,18 @@ final class RotationPlanner
             $loopSeconds,
             (float) config('twentyone.stream.rotation.tournament_seconds', 15),
             app(GameRegistry::class)->find(Blockfill::SLUG) !== null,
+            app(GameRegistry::class)->find(TrackmaniaNationsForever::SLUG) !== null,
         );
     }
 
     /**
-     * The teaser pool, taken in turn: TEASERS, and Blockfill's week at the end while it is registered.
+     * The teaser pool, taken in turn: TEASERS, then Blockfill's week and TMNF's week at the end while each is registered.
      *
      * @return non-empty-list<string>
      */
     public function teasers(): array
     {
-        return $this->blockfill ? [...self::TEASERS, self::BLOCKFILL_SCENE] : self::TEASERS;
+        return [...self::TEASERS, ...($this->blockfill ? [self::BLOCKFILL_SCENE] : []), ...($this->tmnf ? [self::TMNF_SCENE] : [])];
     }
 
     /**

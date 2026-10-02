@@ -90,6 +90,16 @@ new #[Layout('layouts::app', ['section' => 'tournaments'])] class extends Compon
     }
 
     /**
+     * TMNF's running week (plan "Trackmania und Restposten", P2; null: another game, or not opened yet), shown first
+     * with How to join.
+     */
+    #[Computed]
+    public function tmnfWeek(): ?Tournament
+    {
+        return $this->game === \App\Games\TrackmaniaNationsForever::SLUG ? app(\App\Support\Tmnf\TmnfWeeks::class)->current() : null;
+    }
+
+    /**
      * The points ladder of each mode, the top 20.
      *
      * @return array<string, list<array{user: User, points: int}>>
@@ -124,6 +134,16 @@ new #[Layout('layouts::app', ['section' => 'tournaments'])] class extends Compon
     $weekStandings = $week !== null ? (collect($this->running)->first(fn ($entry): bool => $entry['tournament']->is($week))['standings'] ?? app(\App\Support\Scores\ScoreRuns::class)->standings($week)) : [];
     $weekMetric = $week !== null ? app(\App\Support\Scores\ScoreRuns::class)->metricOf($week) : null;
     $weekShare = $week !== null ? app(\App\Support\Stacker\BlockfillMoments::class)->shareableOn(auth()->user(), $week) : null;
+    // TMNF (plan "Trackmania und Restposten", P2): the week on our server first, then How to join.
+    $tmnf = $this->game === \App\Games\TrackmaniaNationsForever::SLUG;
+    if ($tmnf) {
+        $week = $this->tmnfWeek;
+        $weekStandings = $week !== null ? (collect($this->running)->first(fn ($entry): bool => $entry['tournament']->is($week))['standings'] ?? app(\App\Support\Scores\ScoreRuns::class)->standings($week)) : [];
+        $weekMetric = $week !== null ? app(\App\Support\Scores\ScoreRuns::class)->metricOf($week) : null;
+        $weekShare = null;
+        $tmnfShare = $week !== null ? app(\App\Support\Tmnf\TmnfMoments::class)->shareableOn(auth()->user(), $week) : null;
+        $tmnfTrack = \App\Support\Tmnf\TmnfWeeks::track($week?->score_course ?? \App\Support\Tmnf\TmnfWeeks::trackFor(BlockfillWeeks::startOf(now())));
+    }
 @endphp
 
 <div class="flex flex-col gap-6 px-4 pt-6 pb-12 lg:gap-8 lg:px-12 lg:pt-8" data-test="score-game" style="--game: {{ $score->assets()->colour }}">
@@ -146,6 +166,25 @@ new #[Layout('layouts::app', ['section' => 'tournaments'])] class extends Compon
         </section>
 
         @include('pages.scores.partials.blockfill-nav', ['week' => null])
+    @elseif ($tmnf)
+        @include('pages.scores.partials.tmnf-hero', ['heading' => $name, 'week' => $week, 'standings' => $weekStandings, 'metric' => $weekMetric, 'track' => $tmnfTrack])
+
+        <section aria-labelledby="week-h" class="flex flex-col gap-3 rounded-lg bg-card px-2 py-4 lg:px-5" @if ($week) wire:key="running-{{ $week->id }}" @endif data-test="score-running">
+            <div class="flex flex-wrap items-center justify-between gap-x-4 gap-y-1 px-2 lg:px-0">
+                <h2 id="week-h" class="m-0 text-[15px] font-bold">{{ $week !== null ? $week->title() : __('This week') }}</h2>
+                @if ($week !== null)
+                    <a href="{{ route('tournaments.show', $week) }}" class="inline-flex min-h-11 items-center text-[13px] font-bold text-ink underline decoration-edge underline-offset-4 hover:decoration-ink" data-test="score-full-table">{{ __('Week page') }}</a>
+                @endif
+            </div>
+            @if ($weekStandings === [])
+                <p class="m-0 px-2 py-3 text-[13px] text-ink-2 lg:px-0" data-test="tmnf-board-empty">{{ __('Nobody has a time this week yet. Join our server and be the first on the board.') }}</p>
+            @else
+                @include('pages.scores.partials.leaderboard', ['standings' => $weekStandings, 'metric' => $weekMetric, 'limit' => 10, 'viewerId' => auth()->id(), 'staff' => false, 'shareMoment' => null])
+            @endif
+            @include('pages.scores.partials.tmnf-share', ['moment' => $tmnfShare])
+        </section>
+
+        @include('pages.scores.partials.tmnf-join', ['week' => $week, 'track' => $tmnfTrack])
     @else
     <header class="flex flex-col gap-2">
         <h1 class="m-0 font-display text-[28px] leading-[1.15] font-bold lg:text-4xl">{{ $name }}</h1>
@@ -173,14 +212,15 @@ new #[Layout('layouts::app', ['section' => 'tournaments'])] class extends Compon
                     @php($window = ScoreWindow::of($tournament))
                     <li wire:key="board-{{ $tournament->id }}" data-test="score-board-card">
                         {{-- A Blockfill week opens on its board; any other leaderboard on its tournament page --}}
-                        <a href="{{ $blockfill ? route('tournaments.scores', $tournament) : route('tournaments.show', $tournament) }}" class="flex h-full flex-col gap-2 rounded-lg bg-card p-4 text-ink shadow-ring hover:text-ink hover:shadow-[inset_0_0_0_1px_var(--color-btc)]">
+                        <a href="{{ $blockfill && ! $tmnf ? route('tournaments.scores', $tournament) : route('tournaments.show', $tournament) }}" class="flex h-full flex-col gap-2 rounded-lg bg-card p-4 text-ink shadow-ring hover:text-ink hover:shadow-[inset_0_0_0_1px_var(--color-btc)]">
                             {{-- The title wraps rather than cutting a translated name short --}}
                             <span class="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
                                 <b class="min-w-0 text-[15px] [overflow-wrap:anywhere]" data-test="score-board-title">{{ BlockfillWeeks::title($tournament) }}</b>
                                 <span class="shrink-0 text-xs text-ink-2">{{ $statusLabel($tournament) }}</span>
                             </span>
                             {{-- The course only when it is more than the mode itself (Blockfill's course is its mode) --}}
-                            <span class="text-xs text-ink-2" data-test="score-board-mode">{{ __($score->mode($tournament->mode)?->name ?? $tournament->mode) }}@if ($tournament->score_course && $tournament->score_course !== $tournament->mode) · <span class="font-mono">{{ $tournament->score_course }}</span>@endif</span>
+                            {{-- A TMNF course is a track UID: its name shows instead --}}
+                            <span class="text-xs text-ink-2" data-test="score-board-mode">{{ __($score->mode($tournament->mode)?->name ?? $tournament->mode) }}@if ($tmnf && ($trackOf = \App\Support\Tmnf\TmnfWeeks::track($tournament->score_course)) !== null) · {{ $trackOf['name'] }}@elseif ($tournament->score_course && $tournament->score_course !== $tournament->mode) · <span class="font-mono">{{ $tournament->score_course }}</span>@endif</span>
                             <span class="text-xs text-ink-3 tabular-nums">{{ LeagueTime::stamp($window->start) }} – {{ LeagueTime::stamp($window->end) }}</span>
                         </a>
                     </li>

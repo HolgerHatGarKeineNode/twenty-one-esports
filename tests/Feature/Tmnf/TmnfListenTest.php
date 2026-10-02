@@ -1,7 +1,6 @@
 <?php
 
 use App\Games\GameRegistry;
-use App\Games\TrackmaniaNationsForever;
 use App\Models\ScoreAccountChange;
 use App\Models\ScoreAccountClaim;
 use App\Models\ScoreRun;
@@ -28,8 +27,6 @@ use Illuminate\Support\Sleep;
 | the session breaks and `--attempts=1` ends the command.
 |
 */
-
-const TMNF_A01 = 'BeySZdnfuSh4nHY5xztiXLmlrXe';
 
 beforeEach(function () {
     tmnfOn();
@@ -74,17 +71,6 @@ function tmnfServerPlays(array $sessions): ArrayObject
     });
 
     return $ends;
-}
-
-function tmnfPlayer(string $login, bool $linked = false): User
-{
-    $user = User::factory()->create(['gamer_tags' => ['tmnf' => $login]]);
-
-    if ($linked) {
-        ScoreAccountClaim::query()->create(['game' => TrackmaniaNationsForever::SLUG, 'account_id' => $login, 'user_id' => $user->id, 'confirmed_by_id' => null]);
-    }
-
-    return $user;
 }
 
 test('a finish of a linked login becomes a verified server run on the current track, in milliseconds', function () {

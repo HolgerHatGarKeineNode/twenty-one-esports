@@ -4,6 +4,7 @@ namespace App\Support\Tmnf;
 
 use App\Games\GameRegistry;
 use App\Games\TrackmaniaNationsForever;
+use App\Models\ScoreRun;
 use App\Models\ScoreServer;
 use App\Support\Scores\FinishEvent;
 use Carbon\CarbonImmutable;
@@ -18,8 +19,9 @@ use Illuminate\Support\Str;
  * - `TrackMania.PlayerFinish` (PlayerUid, Login, TimeOrScore): a time above 0
  *   is a finish (0 means the player retired or respawned at the start). It
  *   is stored as a run of the server source on the current track
- *   (TmnfIngest): verified as read, mapped to a player only through a linked
- *   login, idempotent per finish.
+ *   (TmnfIngest): verified as read (or held for an admin, TmnfOutliers),
+ *   mapped to a player only through a linked login, idempotent per finish;
+ *   a linked player's finish enters them into the week of its track (TmnfWeeks).
  * - `TrackMania.PlayerCheckpoint`: read, nothing stored (a finish carries the time).
  * - `TrackMania.PlayerChat` (PlayerUid, Login, Text, IsRegistredCmd): a
  *   `link <code>` line links the login (TmnfLinks); the player gets an
@@ -100,9 +102,14 @@ final class TmnfListener
             ['player_uid' => $playerUid, 'track' => $challenge->name, 'author_ms' => $challenge->authorTime],
         );
 
-        $summary = app(TmnfIngest::class)->ingestEvents(self::server(), [$event]);
+        $server = self::server();
+        $summary = app(TmnfIngest::class)->ingestEvents($server, [$event]);
+        $run = $summary['accepted'] > 0 ? ScoreRun::query()->where(['score_server_id' => $server->id, 'external_id' => $event->id])->first() : null;
+        // A linked player's finish enters them into the week of its track (P2): no sign-up.
+        $week = $run === null ? null : app(TmnfWeeks::class)->record($run);
         $outcome = match (true) {
-            $summary['accepted'] > 0 => 'stored',
+            $run?->isHeld() === true => 'held for an admin (faster than the author time allows)',
+            $summary['accepted'] > 0 => $week === null ? 'stored, in no running week' : "stored, {$week->name}",
             $summary['pending'] > 0 => 'pending (login not linked)',
             $summary['duplicate'] > 0 => 'duplicate',
             default => 'refused: '.implode(',', $summary['refused']),

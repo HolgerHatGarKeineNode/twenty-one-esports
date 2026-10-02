@@ -7,6 +7,7 @@ use App\Games\GameRegistry;
 use App\Games\ScoreGame;
 use App\Models\ScoreRun;
 use App\Models\ScoreServer;
+use App\Models\Tournament;
 use Illuminate\Database\UniqueConstraintViolationException;
 use LogicException;
 
@@ -30,7 +31,8 @@ use LogicException;
  *   (`user_id` null) with its account id, which no public page ever shows,
  *   until an admin confirms the claim on /admin/scores.
  * - Trusted as read: our own server's record is verified at once (source
- *   `server`); admins still correct a leaderboard through its directors.
+ *   `server`); admins still correct a leaderboard through its directors. An
+ *   adapter may flag a mapped finish and hold it for an admin (review()).
  */
 abstract class ServerIngest
 {
@@ -85,9 +87,12 @@ abstract class ServerIngest
             }
 
             $userId = ScoreAccounts::userFor($game, $event->accountId);
+            // A mapped finish the adapter flags (a time no human drives) carries its hint; one it holds waits for an admin.
+            $review = $userId === null ? null : $this->review($game, $event, $userId);
 
             try {
                 ScoreRun::query()->create([
+                    'tournament_id' => $review['hold']->id ?? null,
                     'user_id' => $userId,
                     'game' => $game->slug(),
                     'mode' => $event->mode,
@@ -96,8 +101,8 @@ abstract class ServerIngest
                     'unit' => $game->metric($game->mode($event->mode) ?? throw new LogicException('The mode was checked above.'))->unit,
                     'source' => self::SOURCE,
                     'achieved_at' => $event->achievedAt,
-                    'verified_at' => now(),
-                    'raw' => $event->raw,
+                    'verified_at' => isset($review['hold']) ? null : now(),
+                    'raw' => $review === null ? $event->raw : [...($event->raw ?? []), 'hint' => $review['hint']],
                     'account_id' => $event->accountId,
                     'score_server_id' => $server->id,
                     'external_id' => $event->id,
@@ -114,6 +119,21 @@ abstract class ServerIngest
         $server->forceFill(['last_seen_at' => now()])->save();
 
         return $summary;
+    }
+
+    /**
+     * The adapter's look at a finish mapped to a player, before it is
+     * stored: null when it counts as read; else its hint (kept in `raw`,
+     * shown to admins only) and, when it must wait for an admin, the
+     * leaderboard it is held for (the run gets that tournament and no
+     * `verified_at`, so ScoreRun::pendingReview() lists it and the board does
+     * not end before it is decided). None by default.
+     *
+     * @return array{hint: array<string, mixed>, hold: Tournament|null}|null
+     */
+    protected function review(ScoreGame $game, FinishEvent $event, int $userId): ?array
+    {
+        return null;
     }
 
     private function refusal(?Game $game, FinishEvent $event): ?string

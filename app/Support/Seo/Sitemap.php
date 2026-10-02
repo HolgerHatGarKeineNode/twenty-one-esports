@@ -155,7 +155,7 @@ final class Sitemap
             'matches' => SeriesMatch::query()->select(['id', 'number', 'updated_at'])->whereIn('status', self::LISTED_SERIES),
             'games' => ChessGame::query()->select(['id', 'updated_at'])->where('status', ChessGameStatus::Finished),
             // Blockfill's weekly boards (plan "Blockfill", P6) are listed on its own pages, not as tournaments.
-            'tournaments' => Tournament::query()->select(['id', 'updated_at'])->where('status', '!=', TournamentStatus::Draft)->whereNotNull('published_at')->exceptBlockfillWeeks(),
+            'tournaments' => Tournament::query()->select(['id', 'updated_at'])->where('status', '!=', TournamentStatus::Draft)->whereNotNull('published_at')->exceptLeagueWeeks(),
             default => throw new InvalidArgumentException("Unknown sitemap section [{$section}]."),
         };
     }

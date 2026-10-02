@@ -86,7 +86,7 @@ new #[Title('Tournaments')] #[Layout('layouts::app', ['section' => 'admin'])] cl
      */
     private function listed(): \Illuminate\Database\Eloquent\Builder
     {
-        return Tournament::query()->exceptBlockfillWeeks()
+        return Tournament::query()->exceptLeagueWeeks()
             ->when(! $this->isAdmin, fn ($query) => $query->where('created_by_id', auth()->id()))
             ->when(! in_array($this->kind, ['casual', 'all'], true), fn ($query) => $query->special())
             ->when($this->kind === 'casual', fn ($query) => $query->casualCup());

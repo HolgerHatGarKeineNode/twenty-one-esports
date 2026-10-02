@@ -8,6 +8,7 @@ use App\Models\LineupSeat;
 use App\Models\RankBadge;
 use App\Models\RankBadgeVersion;
 use App\Models\Rating;
+use App\Models\ScoreRun;
 use App\Models\Season;
 use App\Models\SeasonAttestation;
 use App\Models\StackerRun;
@@ -36,7 +37,9 @@ use Illuminate\Support\Collection;
  * - Season Wrapped: the player's season on one card, blocks, sats, best rank;
  * - a Blockfill moment: a verified run that is a personal best, a new first
  *   place of its week, or holds the player's week place
- *   (App\Support\Stacker\BlockfillMoments).
+ *   (App\Support\Stacker\BlockfillMoments);
+ * - a TMNF moment, the same for a finish on our own server
+ *   (App\Support\Tmnf\TmnfMoments).
  *
  * Only rated results and chain blocks count; casual play has no moments here.
  */
@@ -215,6 +218,22 @@ final class ShareMoments
     }
 
     /**
+     * A TMNF moment of a counted finish (App\Support\Tmnf\TmnfMoments::of()):
+     * the player by their league name, the time in milliseconds, the track.
+     *
+     * @param  array{kind: string, place: int|null, final: bool, pb: bool, first: bool, week: string, track: string}  $moment
+     * @return array<string, mixed>
+     */
+    public static function tmnf(ScoreRun $run, array $moment): array
+    {
+        return [
+            ...self::person($run->user, $run->user->pubkey ?? str_repeat('0', 64)),
+            ...$moment,
+            'ms' => (int) $run->value,
+        ];
+    }
+
+    /**
      * Whether the player has a Season Wrapped card: rated results in that
      * season, their own (a player ladder) or their lineup's (gate F4: a card
      * is drawn and stored only for players who played).
@@ -268,7 +287,7 @@ final class ShareMoments
         $entries = TournamentParticipant::query()
             ->where(fn ($query) => $query->where('user_id', $user->id)->orWhere('members', 'like', '%'.$user->id.'%'))
             // A Blockfill week (plan "Blockfill", P6) is no tournament win.
-            ->whereHas('tournament', fn ($query) => $query->where('status', TournamentStatus::Finished)->exceptBlockfillWeeks()
+            ->whereHas('tournament', fn ($query) => $query->where('status', TournamentStatus::Finished)->exceptLeagueWeeks()
                 ->when($season !== null, fn ($query) => $query->whereBetween('starts_at', [$season->genesis_at, $season->ends_at])))
             ->with('tournament')->get();
 

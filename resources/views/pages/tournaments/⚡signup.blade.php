@@ -41,7 +41,7 @@ new #[Layout('layouts::app', ['section' => 'tournaments'])] class extends Compon
     {
         abort_unless($tournament->isVisibleTo(auth()->user()), 404);
         // A Blockfill week (P6) has no sign-up, no directors' results and no prize pool.
-        abort_if($tournament->isBlockfillWeek(), 404);
+        abort_if($tournament->isLeagueWeek(), 404);
 
         $this->tournament = $tournament;
         $first = $this->lineups->first();
