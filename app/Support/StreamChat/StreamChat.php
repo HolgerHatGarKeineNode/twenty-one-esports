@@ -65,6 +65,27 @@ final readonly class StreamChat
     }
 
     /**
+     * The newest receipt time each legacy signer may still have: the shared
+     * getalby key signs for every Alby user, so only receipts from before the
+     * profile left it count. The league key has no limit.
+     *
+     * @return array<string, int>
+     */
+    public static function zapUntil(): array
+    {
+        $until = (int) config('esports.stream_chat.zap_signers_until', 0);
+        $limits = [];
+
+        foreach ((array) config('esports.stream_chat.zap_signers', []) as $pubkey) {
+            if (NostrKeys::isHexPubkey($pubkey) && $until > 0) {
+                $limits[$pubkey] = $until;
+            }
+        }
+
+        return $limits;
+    }
+
+    /**
      * The LNURL servers whose zap receipts show, each with the LNURL (LUD-01,
      * lowercase bech32) a zap request it receipted must name when it names
      * one: the league's own server (`pool@<host>`, the profile's lud16 since
@@ -136,6 +157,7 @@ final readonly class StreamChat
             'zapSigners' => self::zapSigners(),
             'zapRecipient' => $this->zapRecipient(),
             'zapLnurls' => self::zapLnurls(),
+            'zapUntil' => self::zapUntil(),
             'me' => $viewer?->pubkey,
             'meName' => $viewer?->displayName(),
             'muted' => $viewer instanceof User ? $viewer->mutedPubkeys() : [],

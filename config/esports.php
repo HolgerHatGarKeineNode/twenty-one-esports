@@ -1236,6 +1236,9 @@ return [
             '79f00d3f5a19ec806189fcab03c1be4ff81d18ee4f653c88fac41fe03570f432',
         ))))),
         'zap_signers_lud16' => env('ESPORTS_STREAM_ZAP_SIGNERS_LUD16', 'theben@getalby.com'),
+        // The legacy signers count only receipts made before this unix time: the profile's lud16 left getalby on
+        // 2026-10-03, and getalby's one key signs for every Alby user, so a fresh receipt could be anyone's (audit L1).
+        'zap_signers_until' => (int) env('ESPORTS_STREAM_ZAP_SIGNERS_UNTIL', 1791590400),
         'zap_recipient' => env('ESPORTS_STREAM_ZAP_RECIPIENT'),
         // Characters one message may have, and the pause between two posts of one browser.
         'max_length' => 280,

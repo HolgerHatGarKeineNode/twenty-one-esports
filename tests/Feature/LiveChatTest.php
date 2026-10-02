@@ -62,6 +62,8 @@ test('the stream shows the receipts of the league’s LNURL server and still get
             $league => 'lnurl '.route('lnurl.pay', ['username' => 'pool']),
         ])
         ->and($chat['zapLnurls'][$league])->toBe(strtolower((string) $chat['zapLnurls'][$league]))
+        // The shared getalby key counts only receipts from before its cutoff; the league key has none (audit L1).
+        ->and($chat['zapUntil'])->toBe(['79f00d3f5a19ec806189fcab03c1be4ff81d18ee4f653c88fac41fe03570f432' => 1791590400])
         // A stream zap pays the pool key (the profile key, whose lud16 is the pool).
         ->and($chat['zapRecipient'])->toBe(LeagueKey::poolPubkey());
 

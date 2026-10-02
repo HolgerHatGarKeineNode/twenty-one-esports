@@ -307,3 +307,13 @@ test('profiles are bounded before they are stored: URL length, content size, and
     assert.ok(!Object.hasOwn(kept, (0).toString(16).padStart(64, '0')));
     assert.equal(Object.keys(boundProfiles(store, { maxBytes: 10_000_000 })).length, 400);
 });
+
+test('a legacy signer counts only receipts from before its cutoff; a signer without one is not limited', () => {
+    const { receipt, signer } = zapPair();
+    const options = { address: ADDRESS, recipient: streamKey, signers: [signer] };
+
+    assert.notEqual(parseZap(receipt, { ...options, until: { [signer]: receipt.created_at + 1 } }), null);
+    assert.equal(parseZap(receipt, { ...options, until: { [signer]: receipt.created_at } }), null);
+    assert.equal(parseZap(receipt, { ...options, until: { [signer]: receipt.created_at - 1 } }), null);
+    assert.notEqual(parseZap(receipt, { ...options, until: { other: 1 } }), null);
+});

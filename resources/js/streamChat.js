@@ -125,8 +125,13 @@ export function bolt11Msats(invoice) {
  *
  * @returns {{ id: string, pubkey: string, created_at: number, sats: number, comment: string } | null}
  */
-export function parseZap(receipt, { address, signers = [], recipient = null, lnurl = null, lnurls = null, verify = verifiedAfresh } = {}) {
+export function parseZap(receipt, { address, signers = [], recipient = null, lnurl = null, lnurls = null, until = null, verify = verifiedAfresh } = {}) {
     if (receipt?.kind !== KIND_ZAP || !recipient || !signers.includes(receipt.pubkey) || !tagValues(receipt, 'a').includes(address) || !tagValues(receipt, 'p').includes(recipient)) {
+        return null;
+    }
+
+    // A legacy signer (the shared getalby key) counts only receipts made before its cutoff (audit L1, 2026-10-03).
+    if (until && Object.hasOwn(until, receipt.pubkey) && !(Number(receipt.created_at) < Number(until[receipt.pubkey]))) {
         return null;
     }
 
