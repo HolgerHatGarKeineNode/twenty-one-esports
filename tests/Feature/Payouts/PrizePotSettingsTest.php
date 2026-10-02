@@ -152,7 +152,7 @@ test('the pot shows as set wherever the tournament shows, and what came in only 
         ->assertSeeHtml('data-test="pool-sats">'.$sats.'<')
         ->assertSee(__(':left of :total sats still to be won', ['left' => $sats, 'total' => $sats]))
         ->assertDontSeeHtml('data-test="pool-as-of"')
-        ->assertSeeHtml('data-test="topup-panel"');
+        ->assertSeeHtml('data-test="pot-fill"');
     $this->get(route('tournaments.index'))->assertSeeHtml('data-test="prize-chip"')->assertSee(__(':sats of :target sats pot', ['sats' => $sats, 'target' => $sats]));
     // The game page's poster shows the pot as its big number (user, 2026-09-28), not as a chip.
     $this->get(route('games.rocket-league'))->assertSeeHtml('data-test="next-tournament-pot"')->assertSeeHtml('>'.$sats.'</span>');

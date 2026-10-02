@@ -302,7 +302,7 @@ new #[Layout('layouts::app', ['section' => 'tournaments'])] class extends PrizeP
         @if ($movedFromOwnWallet)
             <p class="m-0 flex items-start gap-2 rounded-md bg-btc-chip px-3 py-2 text-[13px] leading-normal text-ink" role="note" data-test="pool-moved-notice">
                 <x-icon name="warn" :size="16" class="mt-0.5 shrink-0 text-btc-hi" />
-                <span>{{ __('This pot used a wallet of its own until 2 October 2026. Pots are now kept in the league wallet: the sats in your old wallet stay there and do not count. Add them to this pot with “Add to the pot” on the tournament page before the payouts, or the prizes will lack them.') }}</span>
+                <span>{{ __('This pot used a wallet of its own until 2 October 2026. Pots are now kept in the league wallet: the sats in your old wallet stay there and do not count. Add them to this pot with “Pay without Nostr” on the tournament page before the payouts, or the prizes will lack them.') }}</span>
             </p>
         @endif
         @if (! $tournament->hasPot())

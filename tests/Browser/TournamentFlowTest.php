@@ -116,6 +116,42 @@ function tournamentShot(Page $page, string $name): void
 }
 
 /** A page logged in as `$user` with the collector (and the signer stub) armed. */
+/** The "Fill the pot" card in view, the viewport only (P9_SHOTS). */
+function potFillShot(Page $page, string $name): void
+{
+    $dir = getenv('P9_SHOTS');
+
+    if (! is_string($dir) || $dir === '') {
+        return;
+    }
+
+    File::ensureDirectoryExists($dir);
+    $page->evaluate('() => document.querySelector("#pot-fill").scrollIntoView({ block: "start" })');
+    $page->screenshot(false, $name);
+    File::move(base_path('tests/Browser/Screenshots/'.$name.'.png'), $dir.'/'.$name.'.png');
+}
+
+/** The "Fill the pot" card: its box, chips, actions, hint lines, and whether the pool address shows as text. */
+const POT_FILL = <<<'JS'
+    (address) => {
+        const card = document.querySelector('[data-test=pot-fill]');
+        const r = card.getBoundingClientRect();
+        const box = (el) => { const b = el.getBoundingClientRect(); return { left: Math.round(b.left), right: Math.round(b.right), top: Math.round(b.top), height: Math.round(b.height) }; };
+        const hint = card.querySelector('[data-test=pot-fill-hint]');
+        return {
+            box: { left: Math.round(r.left), right: Math.round(r.right), scrollWidth: card.scrollWidth, clientWidth: card.clientWidth },
+            cards: document.querySelectorAll('[data-test=pot-fill]').length,
+            amounts: [...card.querySelectorAll('[data-test=pot-fill-amount]')].map((el) => box(el)),
+            field: box(card.querySelector('[data-test=topup-amount]').closest('label')),
+            zap: box(card.querySelector('[data-test=pot-zap-preview]')),
+            pay: box(card.querySelector('[data-test=topup]')),
+            hintLines: [...hint.children].reduce((n, line) => n + Math.round(line.getBoundingClientRect().height / parseFloat(getComputedStyle(line).lineHeight)), 0),
+            text: card.innerText,
+            address: document.body.innerText.includes(address),
+        };
+    }
+    JS;
+
 function tournamentPage(User $user): Page
 {
     $page = visit(BrowserLogin::url($user))->page();
@@ -381,13 +417,16 @@ test('the prize pot: top-ups by QR code, sponsors, payouts, fixed prizes and the
         $wall['onTop'] = $page->evaluate('() => document.querySelector("[data-test=pool-zaps-on-top]")?.innerText ?? null');
         $wall['pot'] = $page->evaluate('() => document.querySelector("[data-test=pool-sats]").innerText');
         tournamentShot($page, "p9-zap-wall-{$width}");
-        $page->evaluate('() => document.querySelector("#pot-zap").scrollIntoView()');
-        $zapPanel = $page->evaluate(TOURNAMENT_STATE);
-        $zapPanel['box'] = $page->evaluate(WARNING_BOX, '[data-test=pot-zap]');
-        $zapPanel['qr'] = $page->evaluate('() => { const r = document.querySelector("[data-test=pot-zap-qr]").getBoundingClientRect(); return [Math.round(r.width), Math.round(r.height)]; }');
-        $zapPanel['amounts'] = $page->evaluate('() => [...document.querySelectorAll("[data-test=pot-zap-amount]")].map((el) => Math.round(el.getBoundingClientRect().height))');
-        $zapPanel['address'] = $page->evaluate('(address) => document.body.innerText.includes(address)', PoolInvoices::address());
-        tournamentShot($page, "p9-pot-zap-{$width}");
+        // One card fills the pot (user, 2026-10-03): one set of amounts, "Zap with Nostr" first, "Pay without Nostr" beside it.
+        $page->evaluate('() => document.querySelector("#pot-fill").scrollIntoView()');
+        $zapPanel = [...$page->evaluate(TOURNAMENT_STATE), ...$page->evaluate(POT_FILL, PoolInvoices::address())];
+        potFillShot($page, "pot-fill-en-{$width}");
+        // The amount picked is the invoice's: 2 100 sats without Nostr, into this pot.
+        $page->evaluate('() => document.querySelectorAll("[data-test=pot-fill-amount]")[1].click()');
+        $page->locator('[data-test=topup]')->click();
+        BrowserWait::until($page, '() => document.querySelector("[data-test=topup-qr] svg") !== null', 10_000);
+        $picked = IncomingPayment::query()->latest('id')->firstOrFail();
+        $zapPanel['afterPay'] = $page->evaluate(TOURNAMENT_STATE);
 
         expect($wall['errors'])->toBe([])->and($wall['overflow'])->toBeLessThanOrEqual(0)
             ->and($wall['entries'])->toHaveCount(2)
@@ -396,11 +435,41 @@ test('the prize pot: top-ups by QR code, sponsors, payouts, fixed prizes and the
             ->and($wall['list']['left'])->toBeGreaterThanOrEqual(0)->and($wall['list']['right'])->toBeLessThanOrEqual($width)
             ->and($wall['onTop'])->toContain('26')->and($wall['pot'])->toContain('126')
             ->and($zapPanel['errors'])->toBe([])->and($zapPanel['overflow'])->toBeLessThanOrEqual(0)
+            ->and($zapPanel['afterPay']['errors'])->toBe([])
+            ->and($zapPanel['cards'])->toBe(1)
             ->and($zapPanel['box']['left'])->toBeGreaterThanOrEqual(0)->and($zapPanel['box']['right'])->toBeLessThanOrEqual($width)
             ->and($zapPanel['box']['scrollWidth'])->toBeLessThanOrEqual($zapPanel['box']['clientWidth'])
-            ->and($zapPanel['qr'][0])->toBeGreaterThanOrEqual(150)
-            ->and($zapPanel['amounts'])->toHaveCount(4)->and(min($zapPanel['amounts']))->toBeGreaterThanOrEqual(44)
-            ->and($zapPanel['address'])->toBeFalse();
+            ->and($zapPanel['amounts'])->toHaveCount(4)->and(min(array_column($zapPanel['amounts'], 'height')))->toBeGreaterThanOrEqual(44)
+            ->and(max(array_column($zapPanel['amounts'], 'right')))->toBeLessThanOrEqual($zapPanel['box']['right'])
+            ->and($zapPanel['field']['height'])->toBeGreaterThanOrEqual(44)->and($zapPanel['field']['right'])->toBeLessThanOrEqual($zapPanel['box']['right'])
+            ->and([$zapPanel['zap']['height'], $zapPanel['pay']['height']])->each->toBeGreaterThanOrEqual(44)
+            ->and($zapPanel['hintLines'])->toBeLessThanOrEqual(2)
+            ->and($zapPanel['address'])->toBeFalse()
+            ->and($picked->amount_sats)->toBe(2_100)->and($picked->source)->toBe('topup')->and($picked->pot)->toBe('tournament:'.$open->id);
+        // The zap first: above "Pay without Nostr" on a phone, left of it on a desk.
+        expect($width < 640 ? $zapPanel['zap']['top'] < $zapPanel['pay']['top'] : ($zapPanel['zap']['top'] === $zapPanel['pay']['top'] && $zapPanel['zap']['right'] < $zapPanel['pay']['left']))->toBeTrue();
+
+        // The German card on a phone: the longer words still fit, two hint lines at most.
+        if ($width === 375) {
+            $player->forceFill(['locale' => 'de'])->save();
+            $german = tournamentPage($player);
+            $german->setViewportSize($width, $height);
+            $german->goto(ComputeUrl::from(route('tournaments.show', $open)));
+            BrowserWait::until($german, '() => document.querySelector("[data-test=pot-fill]") !== null', 8_000);
+            $german->evaluate('() => document.querySelector("#pot-fill").scrollIntoView()');
+            $de = [...$german->evaluate(TOURNAMENT_STATE), ...$german->evaluate(POT_FILL, PoolInvoices::address())];
+            potFillShot($german, 'pot-fill-de-375');
+            $player->forceFill(['locale' => 'en'])->save();
+
+            expect($de['errors'])->toBe([])->and($de['overflow'])->toBeLessThanOrEqual(0)
+                ->and($de['text'])->toContain('Den Topf füllen', 'Mit Nostr zappen', 'Ohne Nostr bezahlen')
+                ->and($de['box']['scrollWidth'])->toBeLessThanOrEqual($de['box']['clientWidth'])
+                ->and(max(array_column($de['amounts'], 'right')))->toBeLessThanOrEqual($de['box']['right'])
+                ->and($de['field']['right'])->toBeLessThanOrEqual($de['box']['right'])
+                ->and($de['zap']['right'])->toBeLessThanOrEqual($de['box']['right'])->and($de['pay']['right'])->toBeLessThanOrEqual($de['box']['right'])
+                ->and($de['hintLines'])->toBeLessThanOrEqual(2)
+                ->and($de['address'])->toBeFalse();
+        }
 
         $page->goto(ComputeUrl::from(route('tournaments.show', $finished)));
         BrowserWait::until($page, '() => document.querySelector("[data-test=pool-payouts]") !== null', 8_000);

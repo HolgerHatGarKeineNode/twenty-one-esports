@@ -14,8 +14,8 @@
     as text here (user, 2026-09-27). A zapper's name and picture come from
     their Nostr profile: the league's cached one for a player, else read by
     the browser from the profile relays (the generated picture until then).
-    $topUp: true when anyone can add sats right now (the "Add to the pot"
-    panel further down the page, #pot-topup).
+    $topUp: true when anyone can add sats right now (the "Fill the pot"
+    card further down the page, #pot-fill).
     $manage: the viewer manages the tournament (gate `manage-tournament`):
     "Add a sponsor" leads to the sponsor form of the prize pool page.
 --}}
@@ -120,11 +120,8 @@
         @endif
         @if ($topUp || $manage || $zapOpen)
             <div class="flex flex-wrap gap-2" data-test="pool-sponsor-cta">
-                @if ($zapOpen)
-                    <x-button icon="bolt" href="#pot-zap" data-test="pool-zap">{{ __('Zap the pot') }}</x-button>
-                @endif
-                @if ($topUp)
-                    <x-button variant="secondary" icon="bolt" href="#pot-topup" data-test="pool-add">{{ __('Add to the pot') }}</x-button>
+                @if ($topUp || $zapOpen)
+                    <x-button icon="bolt" href="#pot-fill" data-test="pool-fill">{{ __('Fill the pot') }}</x-button>
                 @endif
                 @if ($manage)
                     <x-button variant="quiet" :href="route('tournaments.pool', $tournament).'#sponsors-h'" data-test="pool-add-sponsor">{{ __('Add a sponsor') }}</x-button>

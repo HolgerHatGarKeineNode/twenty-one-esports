@@ -11,13 +11,13 @@ use App\Support\SeasonChain\LeagueKey;
 use Illuminate\Support\Facades\RateLimiter;
 
 /**
- * "Zap the pot" on a tournament's page (user, 2026-10-02: „auf der
- * Turnierseite selbst können durch Zaps auf das Turnier selbst Sponsoren
- * dazukommen"): a NIP-57 zap to the tournament's calendar event, paid into
- * its pot in the league wallet through the league's own LNURL endpoint.
+ * "Zap with Nostr" in a tournament's "Fill the pot" card (user, 2026-10-02:
+ * „auf der Turnierseite selbst können durch Zaps auf das Turnier selbst
+ * Sponsoren dazukommen"): a NIP-57 zap to the tournament's calendar event,
+ * paid into its pot in the league wallet through the league's own LNURL
+ * endpoint. Beside it the card's "Pay without Nostr" is a plain invoice
+ * ({@see PotTopUps}), part of the pot as announced, without a receipt.
  *
- * - Anyone scans the pot's LNURL as a QR code (never an address as text): a
- *   plain payment is part of the pot as announced, without a receipt.
  * - A signed-in player picks an amount, signs the kind 9734 zap request
  *   {@see template()} built (`p` the pool key, `a` the tournament's event,
  *   `amount`, `lnurl`, `relays` = the league relays its receipt goes to) in
@@ -41,14 +41,6 @@ final class PotZaps
     public static function open(Tournament $tournament): bool
     {
         return PotTopUps::enabled($tournament) && PoolInvoices::receives() && $tournament->address() !== null;
-    }
-
-    /** The pot's LNURL as a QR code (LUD-01, upper case for a compact code), or null while it takes no zaps. */
-    public static function lnurlQr(Tournament $tournament): ?string
-    {
-        return self::open($tournament)
-            ? QrCode::svg('lightning:'.PoolInvoices::lnurl($tournament), label: __('QR code to zap the prize pot of :name', ['name' => $tournament->name]))
-            : null;
     }
 
     /**

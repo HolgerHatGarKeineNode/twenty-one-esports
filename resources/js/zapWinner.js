@@ -18,10 +18,11 @@
 import { ensureSigner } from './nostrSign.js';
 import { sameDraft, signerMessage, signTemplate } from './signing.js';
 
-export function zapWinner({ pubkey = null, amounts = [21, 210, 2100], messages = {} } = {}) {
+export function zapWinner({ pubkey = null, amounts = [21, 210, 2100], sats = null, messages = {} } = {}) {
     return {
         open: null,
-        sats: amounts[1] ?? amounts[0] ?? 21,
+        // The amount picked first: the second offered, unless the page names one (the pot card shares it with its invoice).
+        sats: sats ?? amounts[1] ?? amounts[0] ?? 21,
         comment: '',
         // idle -> preparing -> preview -> signing -> invoice
         step: 'idle',

@@ -128,7 +128,7 @@ test('the prize pot heads the tournament page: the pot, the podium and the paid 
     // No paid sponsor yet: it says so, and anyone can add to the pot; "Add a sponsor" is the organizer's.
     $this->actingAs(User::factory()->create())->get(route('tournaments.show', $tournament))->assertOk()
         ->assertSeeInOrder(['data-test="tournament-hero"', 'data-test="prize-pool"', 'data-test="pool-sats">'.ShareCard::sats(100000).'<',
-            'data-test="pool-left"', 'data-test="pool-podium"', 'data-test="pool-no-sponsor"', 'href="#pot-topup"', 'data-test="signup-cta"', 'id="pot-topup"'], false)
+            'data-test="pool-left"', 'data-test="pool-podium"', 'data-test="pool-no-sponsor"', 'href="#pot-fill"', 'data-test="signup-cta"', 'id="pot-fill"'], false)
         ->assertDontSeeHtml('data-test="pool-add-sponsor"');
     $this->actingAs($tournament->creator)->get(route('tournaments.show', $tournament))
         ->assertSeeHtml('href="'.route('tournaments.pool', $tournament).'#sponsors-h"');

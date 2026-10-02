@@ -1120,7 +1120,7 @@ new #[Layout('layouts::app', ['section' => 'tournaments'])] class extends Compon
     </section>
     @endif
 
-    {{-- The pot's working part (P9): its state, "Add to the pot" (#pot-topup) and the payouts; the pot itself heads the page. --}}
+    {{-- The pot's working part (P9): its state, "Fill the pot" (#pot-fill) and the payouts; the pot itself heads the page. --}}
     @if (! $week && ($tournament->pool_opened_at !== null || ($this->canManage && ! in_array($tournament->status, [TournamentStatus::Draft, TournamentStatus::Cancelled], true))))
         <livewire:tournament-pool :tournament="$tournament" :key="'pool-'.$tournament->id" />
     @endif

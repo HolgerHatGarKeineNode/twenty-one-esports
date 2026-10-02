@@ -111,7 +111,7 @@ test('a zap to the tournament’s event lands in its pot, is receipted by the le
         ->assertSeeHtml('data-pubkey="'.$alice->pubkey.'"')->assertSeeHtml('data-zapper-avatar="'.$alice->pubkey.'"')
         ->assertSeeHtml('data-avatar="'.$bob->pubkey.'"')->assertSee('bob_hodl')
         ->assertSee(__(':sats sats', ['sats' => ShareCard::sats(21_000)]))
-        ->assertSeeHtml('data-test="pot-zap-qr"')->assertSeeHtml('data-test="pool-zap"');
+        ->assertSeeHtml('data-test="pot-fill"')->assertSeeHtml('data-test="pool-fill"');
 });
 
 test('receipts are verified: a good one counts once, a wrong amount, signer, event, hash or a late one never', function () {
@@ -216,7 +216,7 @@ test('a signed-in player zaps the pot from its page: the request they sign names
     [$player, $signer] = keyedPlayer();
     $tournament = publishForPool(runningChess(TournamentFormat::SingleElimination, 4));
     $page = Livewire::actingAs($player)->test('tournament-pool', ['tournament' => $tournament])
-        ->assertSeeHtml('data-test="pot-zap"')->assertSeeHtml('data-test="pot-zap-qr"')->assertSeeHtml('data-test="pot-zap-sign"');
+        ->assertSeeHtml('data-test="pot-fill"')->assertSeeHtml('data-test="pot-zap-preview"')->assertSeeHtml('data-test="pot-zap-comment"');
 
     $template = $page->instance()->prepareZap($tournament->id, 2_100, 'GL', app(PotZaps::class))['template'];
     expect(collect($template['tags'])->firstWhere(0, 'a'))->toBe(['a', $tournament->address()])
@@ -235,8 +235,8 @@ test('a signed-in player zaps the pot from its page: the request they sign names
     $forged = $signer->sign(9734, [...$template['tags'], ['e', str_repeat('ab', 32)]], $template['content'], $template['created_at']);
     expect($page->instance()->zapInvoice($tournament->id, 2_100, 'GL', json_encode($forged), app(PotZaps::class)))->toHaveKey('error');
 
-    // A guest sees only the LNURL QR code, never an address as text.
+    // A guest pays without Nostr or logs in to zap; never an address as text.
     auth()->logout();
-    Livewire::test('tournament-pool', ['tournament' => $tournament])->assertSeeHtml('data-test="pot-zap-qr"')
-        ->assertDontSeeHtml('data-test="pot-zap-sign"')->assertDontSee(PoolInvoices::address());
+    Livewire::test('tournament-pool', ['tournament' => $tournament])->assertSeeHtml('data-test="topup"')->assertSeeHtml('data-test="pot-zap-login"')
+        ->assertDontSeeHtml('data-test="pot-zap-preview"')->assertDontSee(PoolInvoices::address());
 });

@@ -10,7 +10,9 @@ use App\Models\User;
 use App\Support\Cards\ShareCard;
 use App\Support\Payouts\PayoutApproval;
 use App\Support\PreSeason;
+use App\Support\Prizes\PoolInvoices;
 use App\Support\Prizes\PotTopUps;
+use App\Support\Prizes\PotZaps;
 use App\Support\SeasonChain\LeagueKey;
 use App\Support\Wallet\Ledger;
 use Illuminate\Http\UploadedFile;
@@ -19,7 +21,7 @@ use Livewire\Livewire;
 
 /*
 | P9 pages: the pot on the tournament page (the pot as set, the prizes, paid
-| sponsors, "Add to the pot"), the pool settings of the organizer, and the
+| sponsors, "Fill the pot"), the pool settings of the organizer, and the
 | admins' payouts page. Every pot is booked in the league wallet (user,
 | 2026-10-02).
 */
@@ -57,6 +59,38 @@ test('anyone adds sats to the pot: the league wallet makes the invoice, shown as
     // Booked for this pot; a plain top-up gets no zap receipt (it carries no zap request).
     expect(app(Ledger::class)->balance($tournament->potAccount()))->toBe(21000)
         ->and(NostrEvent::query()->where('kind', 9735)->count())->toBe(0);
+});
+
+test('one card fills the pot: one set of amounts, the zap with Nostr first and the payment without Nostr beside it', function () {
+    fakeWallet();
+    $tournament = publishForPool(runningChess(TournamentFormat::SingleElimination, 4));
+    $count = fn (string $html, string $test): int => substr_count($html, 'data-test="'.$test.'"');
+
+    $html = Livewire::actingAs(User::factory()->create())->test('tournament-pool', ['tournament' => $tournament])->html();
+
+    expect($count($html, 'pot-fill'))->toBe(1)
+        ->and($count($html, 'pot-fill-amount'))->toBe(count(PotZaps::AMOUNTS))
+        ->and($count($html, 'topup-amount'))->toBe(1)
+        ->and($count($html, 'pot-zap-comment'))->toBe(1)
+        ->and($count($html, 'pot-zap-preview'))->toBe(1)
+        ->and($count($html, 'topup'))->toBe(1)
+        // The two cards of before are gone, and so is the amountless LNURL code: the invoice is for the amount picked.
+        ->and($count($html, 'pot-zap') + $count($html, 'topup-panel') + $count($html, 'pot-zap-qr'))->toBe(0)
+        ->and(strpos($html, 'data-test="pot-zap-preview"'))->toBeLessThan(strpos($html, 'data-test="topup"'))
+        ->and($html)->toContain(__('Fill the pot'), __('Zap with Nostr'), __('Pay without Nostr'))
+        ->and($html)->not->toContain(PoolInvoices::address());
+
+    // A guest pays without Nostr, or logs in to zap.
+    auth()->logout();
+    $guest = Livewire::test('tournament-pool', ['tournament' => $tournament])->html();
+    expect($count($guest, 'pot-fill'))->toBe(1)
+        ->and($count($guest, 'pot-zap-login').$count($guest, 'pot-zap-preview').$count($guest, 'pot-zap-comment').$count($guest, 'topup'))->toBe('1001');
+
+    // The pot's hero leads to that one card.
+    $page = $this->get(route('tournaments.show', $tournament))->assertOk()->getContent();
+    expect($count($page, 'pool-fill'))->toBe(1)
+        ->and($page)->toContain('href="#pot-fill"')
+        ->and($count($page, 'pool-zap') + $count($page, 'pool-add'))->toBe(0);
 });
 
 test('top-ups are hidden when the league wallet cannot make invoices', function () {

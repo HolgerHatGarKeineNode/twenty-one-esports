@@ -27,20 +27,23 @@ use Livewire\Component;
  * the prizes and the paid sponsors are the page's own section
  * (partials/prize-pool, from App\Support\Prizes\WalletPrizePool); this
  * component adds the state of the pot, the organizer's and the admin's
- * links, "Add to the pot", and once an admin approved the payouts, the
+ * links, "Fill the pot", and once an admin approved the payouts, the
  * payout of every winner.
  *
- * Adding to the pot: the league wallet makes a plain invoice booked for
- * this tournament's pot (App\Support\Prizes\PotTopUps, user 2026-10-02),
- * shown as a QR code (never as text) with "open in wallet"; the panel
- * checks every few seconds whether it was paid. When the league wallet
- * cannot make invoices, the panel says top-ups are not enabled.
+ * "Fill the pot" (user, 2026-10-03: one card instead of two), one set of
+ * amounts for both ways in:
  *
- * "Zap the pot" (user, 2026-10-02): the pot's LNURL as a QR code for any
- * wallet, and for a signed-in player a NIP-57 zap to the tournament's event
- * (App\Support\Prizes\PotZaps, signed in the browser by
- * resources/js/zapWinner.js); a zap with its receipt goes on the sponsors'
- * wall and on top of the pot.
+ * - "Zap with Nostr" (user, 2026-10-02): a NIP-57 zap to the tournament's
+ *   event (App\Support\Prizes\PotZaps, signed in the browser by
+ *   resources/js/zapWinner.js); with its receipt it goes on the sponsors'
+ *   wall and on top of the pot. A guest logs in first.
+ * - "Pay without Nostr": the league wallet makes a plain invoice for the
+ *   amount picked, booked for this tournament's pot as announced
+ *   (App\Support\Prizes\PotTopUps), shown as a QR code (never as text)
+ *   with "open in wallet"; the card checks every few seconds whether it was
+ *   paid. The organizer's and the admin's top-up is the same. When the
+ *   league wallet cannot make invoices, the card says top-ups are not
+ *   enabled.
  */
 new class extends Component {
     #[Locked]
@@ -186,8 +189,10 @@ new class extends Component {
     $open = $tournament->isPoolOpen();
     $hasPot = $tournament->pool_opened_at !== null && $tournament->hasPot();
     $topUps = PotTopUps::enabled($tournament);
-    $zapQr = rescue(fn () => PotZaps::lnurlQr($tournament), null, false);
+    $zapOpen = rescue(fn () => PotZaps::open($tournament), false, false);
     $viewer = auth()->user();
+    // A zap is signed with the viewer's own Nostr key: a guest logs in first, an account without a key pays without Nostr.
+    $zapper = $viewer instanceof User && is_string($viewer->pubkey) && $viewer->pubkey !== '' ? $viewer->pubkey : null;
     $invoice = $this->invoice;
     $qr = null;
 
@@ -200,7 +205,7 @@ new class extends Component {
     }
 @endphp
 
-<section @if (! $hasPot) aria-labelledby="pool-panel-h" @else aria-label="{{ __('Add to the pot') }}" @endif class="flex flex-col gap-4 px-4 lg:px-12" data-test="pool-panel">
+<section @if (! $hasPot) aria-labelledby="pool-panel-h" @else aria-label="{{ __('Fill the pot') }}" @endif class="flex flex-col gap-4 px-4 lg:px-12" data-test="pool-panel">
     @if (! $hasPot)
         <h2 id="pool-panel-h" class="m-0 font-display text-xl font-bold lg:text-2xl">{{ __('Prize pool') }}</h2>
     @endif
@@ -235,88 +240,21 @@ new class extends Component {
         @endif
     </div>
 
-    @if ($hasPot && $open && $zapQr !== null)
-        {{-- Zap the pot: on top of it, and on the sponsors' wall with the zapper's Nostr picture. Never an address as text. --}}
-        <div id="pot-zap" class="flex scroll-mt-24 flex-col gap-3 rounded-card bg-card p-4 sm:p-6" data-test="pot-zap"
-             x-data="zapWinner({ pubkey: @js($viewer?->pubkey), amounts: @js(PotZaps::AMOUNTS), messages: @js([...SignerMessages::labels(), 'failed' => __('That did not work. Please try again.'), 'changed' => __('The zap request changed. Check it again, then sign.')]) })">
-            <h3 class="m-0 flex items-center gap-1.5 text-[13px] font-bold"><span class="flex text-bolt"><x-icon name="bolt" :size="16" /></span>{{ __('Zap the pot') }}</h3>
-            <p class="m-0 max-w-[80ch] text-xs leading-normal text-ink-2">{{ __('Zaps add on top of the pot and are split like it. Zap with Nostr and you show on the sponsors’ wall with your Nostr picture; the league takes nothing.') }}</p>
-            <div class="flex min-w-0 flex-col gap-4 sm:flex-row sm:items-start">
-                <div class="flex min-w-0 flex-col items-start gap-2">
-                    <div class="size-40 shrink-0 rounded-sm bg-white p-2 [&>svg]:size-full" data-test="pot-zap-qr">{!! $zapQr !!}</div>
-                    <p class="m-0 max-w-[20rem] text-xs leading-normal text-ink-3">{{ __('Scan with a Lightning wallet: a plain payment goes into the pot as announced, without a place on the wall.') }}</p>
-                </div>
-                @if ($viewer)
-                    <div class="flex min-w-0 grow flex-col gap-3" data-test="pot-zap-sign">
-                        <fieldset class="m-0 flex min-w-0 flex-col gap-2 border-0 p-0">
-                            <legend class="mb-1 text-xs text-ink-2">{{ __('Amount in sats') }}</legend>
-                            <div class="flex flex-wrap gap-2">
-                                @foreach (PotZaps::AMOUNTS as $amount)
-                                    <button type="button" x-on:click="open = {{ $tournament->id }}; pick({{ $amount }})" :aria-pressed="sats === {{ $amount }}" data-test="pot-zap-amount"
-                                            :class="sats === {{ $amount }} ? 'border-btc bg-btc-chip font-bold text-btc-hi' : 'border-line bg-well text-ink'"
-                                            class="inline-flex h-11 min-w-11 cursor-pointer items-center justify-center rounded-md border px-3 text-[13px] tabular-nums">{{ $sats($amount) }}</button>
-                                @endforeach
-                            </div>
-                        </fieldset>
-                        <label class="flex min-w-0 flex-col gap-1.5">
-                            <span class="text-xs text-ink-2">{{ __('Comment (optional, public in the zap)') }}</span>
-                            <input type="text" x-model="comment" x-on:input="step !== 'idle' && reset()" maxlength="{{ PotZaps::MAX_COMMENT }}" data-test="pot-zap-comment"
-                                   class="h-11 w-full min-w-0 rounded-md border border-line bg-well px-3 text-[13px] text-ink">
-                        </label>
-                        <div class="flex flex-wrap gap-2" x-show="step === 'idle' || step === 'preparing'">
-                            <x-button icon="bolt" x-on:click="open = {{ $tournament->id }}; preview()" x-bind:disabled="step === 'preparing'" data-test="pot-zap-preview">
-                                <span x-text="step === 'preparing' ? @js(__('Preparing…')) : @js(__('Zap with Nostr'))">{{ __('Zap with Nostr') }}</span>
-                            </x-button>
-                        </div>
-                        <div x-show="step === 'preview' || step === 'signing'" x-cloak role="group" aria-label="{{ __('Preview of the zap request') }}" data-test="pot-zap-request"
-                             class="flex min-w-0 flex-col gap-2 rounded-md border border-line px-3 py-3">
-                            <p class="m-0 text-[13px] leading-normal" x-text="@js(__('A zap of :sats sats to the prize pot of :name, signed with your key (NIP-57, kind 9734).', ['name' => $tournament->name])).replace(':sats', Number(sats).toLocaleString())"></p>
-                            <div class="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
-                                <x-button variant="quiet" x-on:click="reset()" x-bind:disabled="step === 'signing'">{{ __('Cancel') }}</x-button>
-                                <x-button icon="bolt" x-on:click="sign()" x-bind:disabled="step === 'signing'" class="whitespace-nowrap" data-test="pot-zap-sign-button">
-                                    <span x-text="step === 'signing' ? @js(__('Waiting for your signer…')) : @js(__('Sign and get invoice'))">{{ __('Sign and get invoice') }}</span>
-                                </x-button>
-                            </div>
-                        </div>
-                        <div x-show="step === 'invoice'" x-cloak class="flex min-w-0 flex-col items-start gap-3 sm:flex-row sm:items-center" data-test="pot-zap-invoice">
-                            <div class="size-40 shrink-0 rounded-sm bg-white p-2 [&>svg]:size-full" x-html="qr" data-test="pot-zap-invoice-qr"></div>
-                            <div class="flex min-w-0 flex-col gap-2">
-                                <p class="m-0 text-xs leading-normal text-ink-2">{{ __('Scan with your Lightning wallet, or open it in the wallet on this device. Once it is paid, the league signs the zap receipt and you show on the wall within a minute.') }}</p>
-                                <span class="flex flex-wrap gap-2">
-                                    <a :href="'lightning:' + invoice" class="btn-p inline-flex h-11 min-w-11 items-center justify-center gap-2 rounded-md bg-btc px-4 text-[13px] font-bold text-on-btc hover:text-on-btc"><x-icon name="bolt" :size="16" />{{ __('Open in wallet') }}</a>
-                                    <button type="button" x-on:click="copyInvoice()" class="inline-flex h-11 min-w-11 cursor-pointer items-center justify-center gap-2 rounded-md border border-line bg-card px-3 text-[13px] text-ink">
-                                        <x-icon name="copy" :size="16" /><span x-text="copied ? @js(__('Copied')) : @js(__('Copy invoice'))">{{ __('Copy invoice') }}</span>
-                                    </button>
-                                </span>
-                            </div>
-                        </div>
-                        <p role="alert" class="m-0 text-xs leading-normal text-loss" x-show="error" x-text="error" x-cloak data-test="pot-zap-error"></p>
-                    </div>
-                @endif
-            </div>
-        </div>
-    @endif
-
     @if ($hasPot && $open)
-        <div id="pot-topup" class="flex scroll-mt-24 flex-col gap-3 rounded-card bg-card p-4 sm:p-6" data-test="topup-panel">
-            <h3 class="m-0 flex items-center gap-1.5 text-[13px] font-bold"><span class="flex text-bolt"><x-icon name="bolt-toast" :size="16" /></span>{{ __('Add to the pot') }}</h3>
+        {{--
+            Fill the pot (user, 2026-10-03: one card instead of "Zap the pot" and "Add to the pot"): one set of
+            amounts for both ways in. "Zap with Nostr" first: on top of the pot and on the sponsors' wall. Beside it
+            "Pay without Nostr": an invoice of the league wallet for the amount picked, part of the pot as announced,
+            not on the wall; the organizer's and the admin's top-up as well. Never an address as text.
+        --}}
+        <div id="pot-fill" class="flex scroll-mt-24 flex-col gap-3 rounded-card bg-card p-4 sm:p-6" data-test="pot-fill"
+             x-data="zapWinner({ pubkey: @js($zapper), amounts: @js(PotZaps::AMOUNTS), sats: @js(is_numeric($this->amount) ? (int) $this->amount : PotZaps::AMOUNTS[2]), messages: @js([...SignerMessages::labels(), 'failed' => __('That did not work. Please try again.'), 'changed' => __('The zap request changed. Check it again, then sign.')]) })"
+             x-init="open = {{ $tournament->id }}">
+            <h3 class="m-0 flex items-center gap-1.5 text-[13px] font-bold"><span class="flex text-bolt"><x-icon name="bolt" :size="16" /></span>{{ __('Fill the pot') }}</h3>
 
             @if (! $topUps)
                 <p class="m-0 text-[13px] text-ink-2" data-test="topup-off">{{ __('Top-ups not enabled for this pot.') }}</p>
-            @elseif ($invoice === null)
-                <div class="flex flex-wrap gap-2" role="group" aria-label="{{ __('Amount') }}">
-                    @foreach ([2100, 21000, 210000] as $preset)
-                        <button type="button" wire:click="$set('amount', {{ $preset }})" @class(['inline-flex h-11 cursor-pointer items-center rounded-md border px-3 text-[13px]', 'border-btc bg-btc-chip font-bold text-btc-hi' => (int) $this->amount === $preset, 'border-line bg-well text-ink' => (int) $this->amount !== $preset]) aria-pressed="{{ (int) $this->amount === $preset ? 'true' : 'false' }}">{{ $sats($preset) }}</button>
-                    @endforeach
-                    <label class="flex h-11 items-center gap-2 rounded-md border border-line bg-well px-3 text-[13px] text-ink-2">
-                        <span class="sr-only">{{ __('Amount in sats') }}</span>
-                        <input type="number" min="1" max="{{ (int) config('esports.wallet.max_sats') }}" step="1" wire:model.live.debounce.400ms="amount" class="w-24 bg-transparent text-ink outline-none" data-test="topup-amount">
-                        {{ __('sats') }}
-                    </label>
-                </div>
-                <div><x-button icon="bolt" wire:click="topUp" wire:loading.attr="disabled" data-test="topup">{{ __('Create invoice') }}</x-button></div>
-                <p class="m-0 text-xs leading-normal text-ink-3">{{ __('The league wallet makes the invoice; the sats are booked for this tournament’s pot.') }}</p>
-            @else
+            @elseif ($invoice !== null)
                 <div class="flex flex-col gap-3" data-test="topup-invoice" @if ($invoice->status === IncomingPaymentStatus::Pending) wire:poll.3s="checkInvoice" @endif>
                     @if ($invoice->status === IncomingPaymentStatus::Settled)
                         <p class="m-0 rounded-md bg-win-tint px-3 py-2 text-[13px] text-win" role="status" data-test="topup-received">{{ __('Received: :sats sats. Thank you!', ['sats' => $sats($invoice->amount_sats)]) }}</p>
@@ -339,6 +277,71 @@ new class extends Component {
                         <p class="m-0 text-xs text-ink-3">{{ __('Valid until :time.', ['time' => $invoice->expires_at->copy()->timezone(\App\Support\LeagueTime::zone())->format('H:i')]) }}</p>
                     @endif
                 </div>
+            @else
+                <p class="m-0 max-w-[80ch] text-xs leading-normal text-ink-2" data-test="pot-fill-hint">
+                    @if ($zapOpen)
+                        <span class="block">{{ __('Zaps add on top, on the sponsors’ wall.') }}</span>
+                    @endif
+                    <span class="block">{{ __('Without Nostr: part of the pot, no wall.') }}</span>
+                </p>
+                <fieldset class="m-0 flex min-w-0 flex-col gap-2 border-0 p-0">
+                    <legend class="mb-1 text-xs text-ink-2">{{ __('Amount in sats') }}</legend>
+                    <div class="flex flex-wrap gap-2">
+                        @foreach (PotZaps::AMOUNTS as $amount)
+                            <button type="button" x-on:click="pick({{ $amount }})" :aria-pressed="Number(sats) === {{ $amount }}" data-test="pot-fill-amount"
+                                    :class="Number(sats) === {{ $amount }} ? 'border-btc bg-btc-chip font-bold text-btc-hi' : 'border-line bg-well text-ink'"
+                                    class="inline-flex h-11 min-w-11 cursor-pointer items-center justify-center rounded-md border px-3 text-[13px] tabular-nums">{{ $sats($amount) }}</button>
+                        @endforeach
+                        <label class="flex h-11 items-center gap-2 rounded-md border border-line bg-well px-3 text-[13px] text-ink-2">
+                            <span class="sr-only">{{ __('Another amount in sats') }}</span>
+                            <input type="number" min="1" max="{{ (int) config('esports.wallet.max_sats') }}" step="1" x-model.number="sats" x-on:input="step !== 'idle' && reset()"
+                                   class="w-24 bg-transparent text-ink outline-none" data-test="topup-amount">
+                            {{ __('sats') }}
+                        </label>
+                    </div>
+                </fieldset>
+                @if ($zapOpen && $zapper)
+                    <label class="flex min-w-0 flex-col gap-1.5 sm:max-w-md">
+                        <span class="text-xs text-ink-2">{{ __('Comment (optional, public in the zap)') }}</span>
+                        <input type="text" x-model="comment" x-on:input="step !== 'idle' && reset()" maxlength="{{ PotZaps::MAX_COMMENT }}" data-test="pot-zap-comment"
+                               class="h-11 w-full min-w-0 rounded-md border border-line bg-well px-3 text-[13px] text-ink">
+                    </label>
+                @endif
+                <div class="grid gap-2 sm:flex sm:flex-wrap" x-show="step === 'idle' || step === 'preparing'">
+                    @if ($zapOpen && $zapper)
+                        <x-button icon="bolt" x-on:click="preview()" x-bind:disabled="step === 'preparing'" data-test="pot-zap-preview">
+                            <span x-text="step === 'preparing' ? @js(__('Preparing…')) : @js(__('Zap with Nostr'))">{{ __('Zap with Nostr') }}</span>
+                        </x-button>
+                    @elseif ($zapOpen && $viewer === null)
+                        <x-button icon="bolt" :href="route('login')" data-test="pot-zap-login">{{ __('Log in to zap') }}</x-button>
+                    @endif
+                    <x-button variant="secondary" icon="bolt-toast" x-on:click="$wire.amount = Number(sats); $wire.topUp()" wire:loading.attr="disabled" data-test="topup">{{ __('Pay without Nostr') }}</x-button>
+                </div>
+                @if ($zapOpen && $zapper)
+                    <div x-show="step === 'preview' || step === 'signing'" x-cloak role="group" aria-label="{{ __('Preview of the zap request') }}" data-test="pot-zap-request"
+                         class="flex min-w-0 flex-col gap-2 rounded-md border border-line px-3 py-3">
+                        <p class="m-0 text-[13px] leading-normal" x-text="@js(__('A zap of :sats sats to the prize pot of :name, signed with your key (NIP-57, kind 9734).', ['name' => $tournament->name])).replace(':sats', Number(sats).toLocaleString())"></p>
+                        <div class="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+                            <x-button variant="quiet" x-on:click="reset()" x-bind:disabled="step === 'signing'">{{ __('Cancel') }}</x-button>
+                            <x-button icon="bolt" x-on:click="sign()" x-bind:disabled="step === 'signing'" class="whitespace-nowrap" data-test="pot-zap-sign-button">
+                                <span x-text="step === 'signing' ? @js(__('Waiting for your signer…')) : @js(__('Sign and get invoice'))">{{ __('Sign and get invoice') }}</span>
+                            </x-button>
+                        </div>
+                    </div>
+                    <div x-show="step === 'invoice'" x-cloak class="flex min-w-0 flex-col items-start gap-3 sm:flex-row sm:items-center" data-test="pot-zap-invoice">
+                        <div class="size-40 shrink-0 rounded-sm bg-white p-2 [&>svg]:size-full" x-html="qr" data-test="pot-zap-invoice-qr"></div>
+                        <div class="flex min-w-0 flex-col gap-2">
+                            <p class="m-0 text-xs leading-normal text-ink-2">{{ __('Scan with your Lightning wallet, or open it in the wallet on this device. Once it is paid, the league signs the zap receipt and you show on the wall within a minute.') }}</p>
+                            <span class="flex flex-wrap gap-2">
+                                <a :href="'lightning:' + invoice" class="btn-p inline-flex h-11 min-w-11 items-center justify-center gap-2 rounded-md bg-btc px-4 text-[13px] font-bold text-on-btc hover:text-on-btc"><x-icon name="bolt" :size="16" />{{ __('Open in wallet') }}</a>
+                                <button type="button" x-on:click="copyInvoice()" class="inline-flex h-11 min-w-11 cursor-pointer items-center justify-center gap-2 rounded-md border border-line bg-card px-3 text-[13px] text-ink">
+                                    <x-icon name="copy" :size="16" /><span x-text="copied ? @js(__('Copied')) : @js(__('Copy invoice'))">{{ __('Copy invoice') }}</span>
+                                </button>
+                            </span>
+                        </div>
+                    </div>
+                    <p role="alert" class="m-0 text-xs leading-normal text-loss" x-show="error" x-text="error" x-cloak data-test="pot-zap-error"></p>
+                @endif
             @endif
 
             @error('topup')<p class="m-0 text-[13px] text-loss" role="alert" data-test="topup-error">{{ $message }}</p>@enderror
