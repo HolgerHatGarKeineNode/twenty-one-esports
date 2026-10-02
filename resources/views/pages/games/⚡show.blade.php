@@ -327,7 +327,11 @@ new #[Layout('layouts::app', ['section' => 'chess', 'realtime' => true, 'scripts
             'match' => $this->game->id,
             // Gift wraps are backdated up to two days (NIP-59); gameChat.js reads that far before this.
             'since' => $this->game->created_at?->getTimestamp(),
+            // The opponent's reply from another NIP-17 client (no `match` tag) counts until the end plus a grace (nostrChat.js dmReplies).
+            'settled' => $this->game->ended_at?->getTimestamp(),
             'relays' => array_values(config('esports.chat.relays', [])),
+            // Where the browser looks up both players' DM relays (10050): the chat and the profile relays, as the server does.
+            'lookupRelays' => \App\Support\Notifications\DmRelays::lookupRelays(),
             'muted' => $viewer instanceof User ? $viewer->mutedPubkeys() : [],
             'labels' => [
                 'mute' => __('Mute :name', ['name' => $opponent?->displayName() ?? '']),
@@ -340,6 +344,7 @@ new #[Layout('layouts::app', ['section' => 'chess', 'realtime' => true, 'scripts
                 'noSigner' => __('No Nostr signer found. Install a Nostr browser extension or use a remote signer.'),
                 'notSent' => __('The message did not reach any relay. Please try again.'),
                 'failed' => __('That did not work. Please try again.'),
+                'viaDm' => __('via Nostr DM'),
             ],
         ];
     }

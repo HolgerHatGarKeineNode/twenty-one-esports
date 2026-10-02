@@ -237,6 +237,72 @@ test('a series room chat reads back to the challenge, not just the last two days
     }
 });
 
+test('an opponent\'s reply from Amethyst, sent only to the player\'s DM relay and without the match tag, shows in the room, marked and as text', function () {
+    $free = fn (): int => (int) Process::run(['php', '-r', '$s = stream_socket_server("tcp://127.0.0.1:0"); echo explode(":", stream_socket_get_name($s, false))[1];'])->output();
+    [$chatPort, $inboxPort] = [$free(), $free()];
+    $chatRelay = Process::path(base_path())->start(['php', 'tests/Support/mini-relay.php', (string) $chatPort]);
+    $inboxRelay = Process::path(base_path())->start(['php', 'tests/Support/mini-relay.php', (string) $inboxPort]);
+
+    try {
+        WaitForPort::open('127.0.0.1', $chatPort);
+        WaitForPort::open('127.0.0.1', $inboxPort);
+        $chat = 'ws://127.0.0.1:'.$chatPort;
+        $inbox = 'ws://127.0.0.1:'.$inboxPort;
+        // The DM relay is no chat relay: the room reads it only because Bert's 10050 names it.
+        // It is a profile (lookup) relay so the browser may use a plain ws:// on 127.0.0.1 at all.
+        config(['esports.chat.relays' => [$chat], 'esports.profile_relays' => [$inbox]]);
+
+        $match = SeriesMatch::factory()->accepted()->create([
+            'challenger_lineup_id' => Lineup::factory()->mode('1v1')->ready()->create()->id,
+            'challenged_lineup_id' => Lineup::factory()->mode('1v1')->ready()->create()->id,
+            'created_at' => now()->subHour(),
+        ]);
+        $anna = $match->challengerLineup->clan->owner;
+        $bert = $match->challengedLineup->clan->owner;
+        $annaKey = TestSigner::forBrowser($anna);
+        $bertKey = TestSigner::forBrowser($bert);
+        $stranger = new TestSigner;
+        $publish = fn (array $event, string $relay): array => array_column(app(RelayPublisher::class)->publish(NostrEvent::fromSigned(SignedEvent::fromInput($event)), [$relay]), 'accepted');
+
+        expect($publish($bertKey->sign(10050, [['relay', $inbox]]), $chat))->toBe([true]);
+
+        $page = playerPage($bert, route('matches.room', $match, false));
+        BrowserWait::until($page, '() => window.Alpine && Alpine.$data(document.querySelector("[data-test=room-chat]")).status === "live"', 10_000);
+        $page->locator('#roomchat')->fill('gl hf, lobby in 5');
+        $page->locator('section[data-test=room-chat] form button[type=submit]')->click();
+        BrowserWait::until($page, '() => [...document.querySelectorAll("[data-test=room-chat] li[data-from=me]")].some((li) => li.innerText.includes("gl hf, lobby in 5"))', 10_000);
+
+        // Amethyst: a kind 14 with `p` only, wrapped to Bert and sent to his 10050 relay alone.
+        $at = now()->getTimestamp() + 2;
+        expect($publish((new NotificationDm($annaKey->secret))->build($bert->pubkey, '<b>gg</b> joining now', null, $at)['wrap'], $inbox))->toBe([true])
+            ->and($publish((new NotificationDm($stranger->secret))->build($bert->pubkey, 'buy my course', null, $at)['wrap'], $inbox))->toBe([true]);
+
+        $reply = '() => [...document.querySelectorAll("[data-test=room-chat] li[data-from=them]")].find((li) => li.innerText.includes("<b>gg</b> joining now"))';
+        BrowserWait::until($page, '() => ('.$reply.')() !== undefined', 10_000);
+        // The stranger's DM was opened too (so its absence below is a decision, not a delay).
+        BrowserWait::until($page, '() => Alpine.$data(document.querySelector("[data-test=room-chat]")).rumors.some((r) => r.content === "buy my course")', 10_000);
+
+        expect($page->evaluate('() => { const li = ('.$reply.')(); return [li.querySelector("[data-test=via-dm]").innerText, li.querySelector("b") === null]; }'))->toBe(['via Nostr DM', true])
+            ->and($page->evaluate('() => document.querySelector("[data-test=room-chat]").innerText.includes("buy my course")'))->toBeFalse()
+            ->and($page->evaluate('() => document.querySelectorAll("[data-test=room-chat] [data-test=via-dm]:not([style*=none])").length'))->toBe(1)
+            ->and($page->evaluate('() => window.__errors'))->toBe([]);
+
+        // The label fits its bubble on a desktop and on a phone: nothing clipped, nothing past the bubble.
+        $fits = '() => { const li = ('.$reply.')(); const label = li.querySelector("[data-test=via-dm]").getBoundingClientRect(); const box = li.getBoundingClientRect(); return { inside: label.left >= box.left && label.right <= box.right + 0.5, overflow: li.scrollWidth - li.clientWidth, width: Math.round(label.width) }; }';
+        $desktop = $page->evaluate($fits);
+        $page->setViewportSize(390, 844);
+        BrowserWait::until($page, '() => window.innerWidth === 390', 5_000);
+        $phone = $page->evaluate($fits);
+
+        expect([$desktop['inside'], $desktop['overflow'], $phone['inside'], $phone['overflow']])->toBe([true, 0, true, 0])
+            ->and($phone['width'])->toBeGreaterThan(30)
+            ->and($page->evaluate('() => window.__errors'))->toBe([]);
+    } finally {
+        $chatRelay->stop(1);
+        $inboxRelay->stop(1);
+    }
+});
+
 /*
 |--------------------------------------------------------------------------
 | The match dock (P5f)

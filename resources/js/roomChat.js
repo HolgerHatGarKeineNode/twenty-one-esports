@@ -19,11 +19,19 @@
  *     the host (`lobby_seen_at`);
  *   - cards never enter the local cache: a stub marks the wrap, and the card
  *     is opened again from the relays after a reload.
+ *
+ * Replies from other NIP-17 clients (resources/js/dmInbox.js): the chat
+ * also reads on the player's own DM relays (10050) and publishes each wrap
+ * to its recipient's DM relays too, and it shows an opponent's reply that
+ * lacks the `match` tag when it belongs to this room (dmReplies() in
+ * nostrChat.js), marked "via Nostr DM". Such a reply is always text, never
+ * a card.
  */
 import { SimplePool } from 'nostr-tools/pool';
 import { loadCache, roomEntry, saveCache } from './chatCache.js';
 import { ACCOUNT_CARDS, ACCOUNT_SERVICES, HOST_CARD, accountTags, cardContent, casualExpiration, isExpired, lobbyTags, openCardIds, parseCard, randomPassword } from './lobbyCards.js';
-import { canEncrypt, chatSince, roomMessages, unwrapMessage, wrapGroupMessage } from './nostrChat.js';
+import { extraInboxRelays, lookupInboxes, relaysFor } from './dmInbox.js';
+import { canEncrypt, chatSince, isUntagged, roomMessages, unwrapMessage, wrapGroupMessage } from './nostrChat.js';
 import { ensureSigner } from './nostrSign.js';
 
 const MUTES_KEY = 'esports.chat.mutes';
@@ -52,6 +60,10 @@ export function roomChat(config) {
         cache: {},
         pool: null,
         sub: null,
+        inboxSub: null,
+        // The members' DM relays (10050), looked up once per start: Promise<Map<pubkey, relays>>.
+        inboxes: null,
+        closed: false,
         t: config.labels,
 
         // Casual 1v1 (null in every other room): the league's state, refreshed by the page on each render.
@@ -80,8 +92,15 @@ export function roomChat(config) {
         },
 
         destroy() {
+            this.closed = true;
             this.sub?.close();
+            this.inboxSub?.close();
             this.pool?.destroy();
+        },
+
+        /** The relay pool (a seam for tests/js/dmReplies.test.mjs). */
+        makePool() {
+            return new SimplePool();
         },
 
         async connect() {
@@ -111,16 +130,22 @@ export function roomChat(config) {
             this.cache = cache;
             this.rumors.push(...rumors);
 
-            this.pool = new SimplePool();
-            this.sub = this.pool.subscribe(
-                config.relays,
-                // Back to the series' challenge (`config.since`), not just two days: a series runs for days.
-                { kinds: [1059], '#p': [config.me], since: chatSince(config.since) },
-                {
-                    onevent: (wrap) => this.receive(wrap),
-                    onauth: (template) => window.nostr.signEvent(template),
-                },
-            );
+            this.pool = this.makePool();
+            // Back to the series' challenge (`config.since`), not just two days: a series runs for days.
+            const filter = { kinds: [1059], '#p': [config.me], since: chatSince(config.since) };
+            const handlers = {
+                onevent: (wrap) => this.receive(wrap),
+                onauth: (template) => window.nostr.signEvent(template),
+            };
+            this.sub = this.pool.subscribe(config.relays, filter, handlers);
+
+            // NIP-17: other clients send to my DM relays (10050), so read there too, same filter.
+            const lookup = [...(config.lookupRelays ?? []), ...config.relays];
+            this.inboxes = lookupInboxes(config.members.map((m) => m.pubkey), lookup, { trusted: lookup }).catch(() => new Map());
+            this.inboxes.then((inboxes) => {
+                const extra = extraInboxRelays(config.me, config.relays, inboxes);
+                if (!this.closed && extra.length > 0) this.inboxSub = this.pool.subscribe(extra, filter, handlers);
+            });
         },
 
         async receive(wrap) {
@@ -161,15 +186,19 @@ export function roomChat(config) {
         get messages() {
             const now = nowSeconds();
             const members = config.members.map((m) => m.pubkey);
+            const me = config.members.find((m) => m.pubkey === config.me);
+            // The opponents: the other side's members (or every other member when sides are unknown).
+            const opponents = config.members.filter((m) => m.pubkey !== config.me && (!me?.side || m.side !== me.side)).map((m) => m.pubkey);
             const rumors = roomMessages(
                 this.rumors.filter((r) => !isExpired(r, now)),
-                { me: config.me, members, match: config.match, muted: [] },
+                { me: config.me, members, match: config.match, muted: [], dm: { opponents, since: config.since ?? null, settled: config.settled ?? null } },
             );
             // Cards exist only in a casual room; elsewhere every message is text, as other clients show it.
+            // An untagged reply from another client is never a card.
             const cards = new Map();
 
             if (this.casual) {
-                for (const rumor of rumors) {
+                for (const rumor of rumors.filter((r) => !isUntagged(r))) {
                     const card = parseCard(rumor, now);
                     if (card && !card.invalid) cards.set(rumor.id, card);
                 }
@@ -190,6 +219,7 @@ export function roomChat(config) {
                         from: rumor.pubkey === config.me ? 'me' : 'them',
                         name: this.memberName(rumor.pubkey),
                         text: rumor.content,
+                        viaDm: isUntagged(rumor),
                         card: card === null ? null : this.cardView(card, open.has(rumor.id)),
                         mutedCard: card !== null && this.isMuted(rumor.pubkey) && !this.revealed.includes(rumor.id),
                     };
@@ -245,7 +275,9 @@ export function roomChat(config) {
                 expiration: this.expiration(),
             });
             const onauth = (template) => window.nostr.signEvent(template);
-            const published = wraps.map((wrap, i) => ({ target: targets[i], acks: this.pool.publish(config.relays, wrap, { onauth }) }));
+            // NIP-17: each wrap also to its recipient's DM relays (10050); the chat relays always.
+            const inboxes = (await this.inboxes) ?? new Map();
+            const published = wraps.map((wrap, i) => ({ target: targets[i], acks: this.pool.publish(relaysFor(targets[i], config.relays, inboxes), wrap, { onauth }) }));
             const counted = needOpponent ? published.filter((p) => p.target !== config.me) : published;
 
             try {

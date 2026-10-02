@@ -555,7 +555,11 @@ new #[Title('Match room')] #[Layout('layouts::app', ['section' => 'matches', 'sc
             'match' => $match->number,
             // A series runs for days: the chat reads back to the challenge (gameChat.js does the same per game).
             'since' => $match->created_at?->getTimestamp(),
+            // An opponent's reply from another NIP-17 client (no `match` tag) counts until the result plus a grace (nostrChat.js dmReplies).
+            'settled' => $match->finished_at?->getTimestamp(),
             'relays' => array_values(config('esports.chat.relays', [])),
+            // Where the browser looks up the members' DM relays (10050): the chat and the profile relays, as the server does.
+            'lookupRelays' => \App\Support\Notifications\DmRelays::lookupRelays(),
             'muted' => $this->user()->mutedPubkeys(),
             'labels' => [
                 'you' => __('you'),
@@ -576,6 +580,7 @@ new #[Title('Match room')] #[Layout('layouts::app', ['section' => 'matches', 'sc
                 'cardNotSent' => __('The card did not reach your opponent\'s relays. Please try again.'),
                 'cardInvalid' => __('Every field needs 1 to 64 characters, without line breaks.'),
                 'cardOneOpponent' => __('A card goes to exactly one opponent, and this room has more players.'),
+                'viaDm' => __('via Nostr DM'),
             ],
         ];
     }
@@ -1108,6 +1113,7 @@ new #[Title('Match room')] #[Layout('layouts::app', ['section' => 'matches', 'sc
                     <li class="flex max-w-[85%] flex-col gap-1 rounded-md px-3 py-2" :class="[m.from === 'me' ? 'self-end bg-btc-press' : 'self-start bg-well', m.card && ! m.mutedCard && m.card.state === 'open' ? 'w-[260px] shadow-[inset_0_0_0_1px_#B9640A]' : '']" :data-from="m.from">
                         <span class="flex items-center gap-2 text-[11px]" :class="m.from === 'me' ? 'text-btc-hi' : 'text-ink-2'">
                             <span x-text="m.name + ', ' + time(m.at)"></span>
+                            <span x-show="m.viaDm" class="text-ink-3" data-test="via-dm" x-text="t.viaDm"></span>
                             <button type="button" x-show="m.from !== 'me'" x-on:click="toggleMute(m.pubkey)" class="btn-w inline-flex h-6 cursor-pointer items-center rounded-sm border border-line bg-transparent px-2 text-[10px] text-ink-2" x-text="isMuted(m.pubkey) ? t.muted : t.mute"></button>
                         </span>
                         {{-- A card is drawn from its tags, as text; never from `content`, never as HTML (NIP "Rendering"). --}}

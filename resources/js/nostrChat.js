@@ -208,27 +208,118 @@ export async function wrapGroupMessage(signer, { sender, recipients, content, ma
     return { rumor, wraps, targets };
 }
 
+/** After a match or game is settled, an untagged reply still counts this long (seconds): the "gg" after the result. */
+export const DM_GRACE = 60 * 60;
+
+/** A rumor without the league's `match` tag, as every other NIP-17 client writes it. */
+export function isUntagged(rumor) {
+    return !rumor.tags.some((t) => t[0] === 'match');
+}
+
+/** NIP-17 chat room of a rumor: its author and its `p` set. */
+function participants(rumor) {
+    return new Set([rumor.pubkey, ...rumor.tags.filter((t) => t[0] === 'p').map((t) => t[1])]);
+}
+
+function sameSet(a, b) {
+    return a.size === b.size && [...a].every((x) => b.has(x));
+}
+
+/**
+ * Untagged replies of one room or game: kind-14 rumors another NIP-17
+ * client (Amethyst, 0xchat, Coracle …) wrote in answer to the league's chat,
+ * which carry no `match` tag. Amethyst writes `p` = the other participants
+ * for a plain message, and for a swipe reply a marked `e` plus `p` = the
+ * replied message's recipients and its author, nothing else
+ * (ChatMessageEvent.build / .reply), so the `match` tag never comes back.
+ *
+ * One is shown only when ALL of these hold:
+ *
+ *   1. its author is one of `authors` (the opponents), never a non-member,
+ *      a teammate or me;
+ *   2. its chat room (author + `p`) is exactly the room's member set, the
+ *      way NIP-17 itself defines a conversation: a 1:1 inside a team room
+ *      or a DM that pulls in an outsider is another conversation;
+ *   3. it was written inside the match window: from `since` (the match's
+ *      creation; unknown = none shown) to `settled` plus DM_GRACE (open
+ *      while not settled);
+ *   4. it belongs to THIS room: the tagged message it answers (`e`) is one
+ *      of this room's, or, without such an `e`, the newest tagged message
+ *      of the same conversation written before it is. A DM before any room
+ *      message, or one written after a message of another room or game
+ *      with the same players, is not this room's.
+ *
+ * Trade-off, kept on purpose: rule 4 is the strictest that still catches a
+ * real Amethyst reply, because most replies there are typed into the
+ * conversation without a swipe, so requiring an `e` would miss them. The
+ * price: an unrelated DM between the same players, written inside the
+ * window and after a room message (and before any message of another of
+ * their rooms or games), shows here; and a reply typed after another
+ * room's message lands there, not here. A rumor that carries a `match` tag
+ * of another room never shows (it is that room's). Own replies sent from
+ * another client and teammates' are not shown (rule 1). Game and match
+ * numbers share the `match` tag, as for the tagged messages.
+ */
+export function dmReplies(rumors, { me, members, match, authors, since, settled = null }) {
+    if (!Number.isSafeInteger(since)) return [];
+
+    const room = new Set(members);
+    const authorSet = new Set(authors.filter((p) => p !== me && room.has(p)));
+    const until = Number.isSafeInteger(settled) ? settled + DM_GRACE : null;
+    const inRoom = (rumor) => isRumor(rumor) && sameSet(participants(rumor), room);
+    const tagged = rumors.filter((rumor) => inRoom(rumor) && !isUntagged(rumor));
+    const byId = new Map(tagged.map((rumor) => [rumor.id, rumor]));
+    const matchOf = (rumor) => rumor?.tags.find((t) => t[0] === 'match')?.[1] ?? null;
+
+    return rumors.filter((rumor) => {
+        if (!inRoom(rumor) || !isUntagged(rumor) || !authorSet.has(rumor.pubkey)) return false;
+        if (rumor.created_at < since || (until !== null && rumor.created_at > until)) return false;
+
+        const answered = rumor.tags.filter((t) => t[0] === 'e').map((t) => byId.get(t[1])).find(Boolean);
+        const anchor = answered ?? tagged
+            .filter((t) => t.created_at <= rumor.created_at)
+            .reduce((latest, t) => (latest === null || t.created_at > latest.created_at ? t : latest), null);
+
+        return matchOf(anchor) === String(match);
+    });
+}
+
+/** The tagged list plus the untagged replies, each id once, muted senders left out, oldest first. */
+function withReplies(tagged, replies, muted) {
+    const mutedSet = new Set(muted);
+    const seen = new Set();
+
+    return [...tagged, ...replies]
+        .filter((rumor) => {
+            if (seen.has(rumor.id) || mutedSet.has(rumor.pubkey)) return false;
+            seen.add(rumor.id);
+
+            return true;
+        })
+        .sort((a, b) => a.created_at - b.created_at);
+}
+
 /**
  * The messages of one match room: the right `match`, written by a member of
  * the room, addressed to me (or written by me), each once, oldest first.
- * Messages from muted pubkeys are left out.
+ * Messages from muted pubkeys are left out. With `dm` ({ opponents, since,
+ * settled }), the opponents' untagged replies of this room join them
+ * (dmReplies above); isUntagged() tells them apart.
  */
-export function roomMessages(rumors, { me, members, match, muted = [] }) {
-    const seen = new Set();
+export function roomMessages(rumors, { me, members, match, muted = [], dm = null }) {
     const memberSet = new Set(members);
-    const mutedSet = new Set(muted);
 
-    return rumors
-        .filter((rumor) => {
-            if (!isRumor(rumor) || seen.has(rumor.id)) return false;
-            seen.add(rumor.id);
-            const recipients = rumor.tags.filter((t) => t[0] === 'p').map((t) => t[1]);
-            const forMatch = rumor.tags.some((t) => t[0] === 'match' && t[1] === String(match));
-            const toMe = rumor.pubkey === me || recipients.includes(me);
+    const tagged = rumors.filter((rumor) => {
+        if (!isRumor(rumor)) return false;
+        const recipients = rumor.tags.filter((t) => t[0] === 'p').map((t) => t[1]);
+        const forMatch = rumor.tags.some((t) => t[0] === 'match' && t[1] === String(match));
+        const toMe = rumor.pubkey === me || recipients.includes(me);
 
-            return forMatch && toMe && memberSet.has(rumor.pubkey) && recipients.length > 0 && recipients.every((p) => memberSet.has(p)) && !mutedSet.has(rumor.pubkey);
-        })
-        .sort((a, b) => a.created_at - b.created_at);
+        return forMatch && toMe && memberSet.has(rumor.pubkey) && recipients.length > 0 && recipients.every((p) => memberSet.has(p));
+    });
+    const replies = dm === null ? [] : dmReplies(rumors, { me, members, match, authors: dm.opponents ?? [], since: dm.since, settled: dm.settled ?? null });
+
+    return withReplies(tagged, replies, muted);
 }
 
 /**
@@ -236,20 +327,19 @@ export function roomMessages(rumors, { me, members, match, muted = [] }) {
  * by one of the two to the other, each once (a message arrives as the
  * recipient's copy and, for the sender, as her own copy), oldest first.
  * Messages from muted pubkeys are left out (mute is only ever for oneself).
+ * With `dm` ({ since, settled }), the opponent's untagged replies of this
+ * game join them (dmReplies above).
  */
-export function gameMessages(rumors, { me, opponent, match, muted = [] }) {
-    const seen = new Set();
-    const mutedSet = new Set(muted);
+export function gameMessages(rumors, { me, opponent, match, muted = [], dm = null }) {
+    const tagged = rumors.filter((rumor) => {
+        if (!isRumor(rumor)) return false;
+        const recipient = rumor.tags.find((t) => t[0] === 'p')?.[1];
+        const forGame = rumor.tags.some((t) => t[0] === 'match' && t[1] === String(match));
+        const between = (rumor.pubkey === me && recipient === opponent) || (rumor.pubkey === opponent && recipient === me);
 
-    return rumors
-        .filter((rumor) => {
-            if (!isRumor(rumor) || seen.has(rumor.id)) return false;
-            seen.add(rumor.id);
-            const recipient = rumor.tags.find((t) => t[0] === 'p')?.[1];
-            const forGame = rumor.tags.some((t) => t[0] === 'match' && t[1] === String(match));
-            const between = (rumor.pubkey === me && recipient === opponent) || (rumor.pubkey === opponent && recipient === me);
+        return forGame && between;
+    });
+    const replies = dm === null ? [] : dmReplies(rumors, { me, members: [me, opponent], match, authors: [opponent], since: dm.since, settled: dm.settled ?? null });
 
-            return forGame && between && !mutedSet.has(rumor.pubkey);
-        })
-        .sort((a, b) => a.created_at - b.created_at);
+    return withReplies(tagged, replies, muted);
 }

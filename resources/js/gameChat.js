@@ -17,11 +17,17 @@
  * - Reads back to the game's start (`config.since`, unix seconds), not just
  *   the last two days: a daily game runs for weeks, and a player who comes
  *   back after three days still gets the messages from day one (P5d).
+ * - Replies from other NIP-17 clients (resources/js/dmInbox.js): reads on
+ *   the player's own DM relays (10050) too, sends each wrap to its
+ *   recipient's DM relays too, and shows the opponent's reply without the
+ *   `match` tag when it belongs to this game (dmReplies() in nostrChat.js),
+ *   marked "via Nostr DM".
  */
 import { SimplePool } from 'nostr-tools/pool';
 import { entryFor, loadCache, saveCache } from './chatCache.js';
 import { isExpired } from './lobbyCards.js';
-import { canEncrypt, chatSince, gameMessages, unwrapMessage, wrapMessage } from './nostrChat.js';
+import { extraInboxRelays, lookupInboxes, relaysFor } from './dmInbox.js';
+import { canEncrypt, chatSince, gameMessages, isUntagged, unwrapMessage, wrapMessage } from './nostrChat.js';
 import { ensureSigner } from './nostrSign.js';
 
 const MUTES_KEY = 'esports.chat.mutes';
@@ -46,6 +52,10 @@ export function gameChat(config) {
         cache: {},
         pool: null,
         sub: null,
+        inboxSub: null,
+        // Both players' DM relays (10050), looked up once per start: Promise<Map<pubkey, relays>>.
+        inboxes: null,
+        closed: false,
         t: config.labels,
 
         init() {
@@ -68,8 +78,15 @@ export function gameChat(config) {
 
         destroy() {
             window.removeEventListener('chess-chat-notice', this.onNotice);
+            this.closed = true;
             this.sub?.close();
+            this.inboxSub?.close();
             this.pool?.destroy();
+        },
+
+        /** The relay pool (a seam for tests/js/dmReplies.test.mjs). */
+        makePool() {
+            return new SimplePool();
         },
 
         async connect() {
@@ -98,16 +115,22 @@ export function gameChat(config) {
             this.cache = cache;
             this.rumors.push(...rumors);
 
-            this.pool = new SimplePool();
-            this.sub = this.pool.subscribe(
-                config.relays,
-                { kinds: [1059], '#p': [config.me], since: chatSince(config.since) },
-                {
-                    onevent: (wrap) => this.receive(wrap),
-                    // NIP-42: the league relay serves a gift wrap only to its authenticated recipient.
-                    onauth: (template) => window.nostr.signEvent(template),
-                },
-            );
+            this.pool = this.makePool();
+            const filter = { kinds: [1059], '#p': [config.me], since: chatSince(config.since) };
+            const handlers = {
+                onevent: (wrap) => this.receive(wrap),
+                // NIP-42: the league relay serves a gift wrap only to its authenticated recipient.
+                onauth: (template) => window.nostr.signEvent(template),
+            };
+            this.sub = this.pool.subscribe(config.relays, filter, handlers);
+
+            // NIP-17: other clients send to my DM relays (10050), so read there too, same filter.
+            const lookup = [...(config.lookupRelays ?? []), ...config.relays];
+            this.inboxes = lookupInboxes([config.me, config.opponent.pubkey], lookup, { trusted: lookup }).catch(() => new Map());
+            this.inboxes.then((inboxes) => {
+                const extra = extraInboxRelays(config.me, config.relays, inboxes);
+                if (!this.closed && extra.length > 0) this.inboxSub = this.pool.subscribe(extra, filter, handlers);
+            });
         },
 
         async receive(wrap) {
@@ -137,12 +160,14 @@ export function gameChat(config) {
         get messages() {
             const now = Math.floor(Date.now() / 1000);
             // Spectators have no chat of their own, only the server lines.
-            const own = !config.opponent ? [] : gameMessages(this.rumors.filter((r) => !isExpired(r, now)), { me: config.me, opponent: config.opponent.pubkey, match: config.match, muted: this.muted }).map((rumor) => ({
+            const dm = { since: config.since ?? null, settled: config.settled ?? null };
+            const own = !config.opponent ? [] : gameMessages(this.rumors.filter((r) => !isExpired(r, now)), { me: config.me, opponent: config.opponent.pubkey, match: config.match, muted: this.muted, dm }).map((rumor) => ({
                 id: rumor.id,
                 at: rumor.created_at * 1000,
                 from: rumor.pubkey === config.me ? 'me' : 'them',
                 name: rumor.pubkey === config.me ? config.meName : config.opponent.name,
                 text: rumor.content,
+                viaDm: isUntagged(rumor),
             }));
             const notices = this.notices.map((n, i) => ({ id: 'n' + i, at: n.at, from: 'server', name: this.t.server, text: n.text }));
 
@@ -174,8 +199,10 @@ export function gameChat(config) {
                     match: config.match,
                 });
                 const onauth = (template) => window.nostr.signEvent(template);
-                const delivered = this.pool.publish(config.relays, toRecipient, { onauth });
-                Promise.allSettled(this.pool.publish(config.relays, toSelf, { onauth }));
+                // NIP-17: each wrap also to its recipient's DM relays (10050); the chat relays always.
+                const inboxes = (await this.inboxes) ?? new Map();
+                const delivered = this.pool.publish(relaysFor(config.opponent.pubkey, config.relays, inboxes), toRecipient, { onauth });
+                Promise.allSettled(this.pool.publish(relaysFor(config.me, config.relays, inboxes), toSelf, { onauth }));
 
                 try {
                     await Promise.any(delivered);

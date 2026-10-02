@@ -3581,6 +3581,22 @@ therefore:
   replaces the list, so the app first reads the newest version from the player's relays, as for the
   opponent list.
 
+**Replies from other clients.** Other NIP-17 clients publish to the recipient's `10050` only:
+Amethyst sends each gift wrap to the relays of the recipient's `10050` and nowhere else (to other
+relays only without one), and its kind `14` carries `p` tags (and, for a swipe reply, a marked `e`),
+never `match`. The app's match room and game chat therefore
+
+- look up the members' `10050` on the chat relays and the profile relays, keep per member at most
+  five relays that are `wss://` on a public host (or configured by the league), and read on the
+  player's own ones with the same `{"kinds":[1059],"#p":[...],"since":...}` filter as on the chat relays;
+- publish each wrap to the chat relays and to its recipient's `10050` relays;
+- show a rumor without a `match` tag, marked "via Nostr DM", only if its author is an opponent in the
+  room (never a non-member, a teammate or oneself), its author and `p` set are exactly the room's
+  members, its `created_at` lies between the match's creation and its result plus one hour, and it
+  belongs to the room: the tagged message it answers with `e` is the room's, or else the newest tagged
+  message of the same conversation before it is. An unrelated DM between the same players inside that
+  window, after a room message, is shown as well; nothing in an untagged rumor tells it apart.
+
 **Live games.** Delivery on the relays takes milliseconds (see [Relay behaviour](#relay-behaviour)),
 so a blitz chat uses the same kind `1059`. The ephemeral gift wrap `21059` is not used: three of the
 four relays tested refuse or store it.
@@ -3717,8 +3733,9 @@ the reader, not a tag, and no client reads it.
 field and the values as text (never as HTML). A card is valid when its marker names a known game or
 service and every data value has 1 to 64 characters without control characters (the games' own
 length limits were not checked). An invalid card is shown as a plain message with its `content`, as
-other clients show it. A reply written in another NIP-17 client carries no `match` tag and does not
-appear in the room, like every message without one.
+other clients show it. A reply written in another NIP-17 client carries no `match` tag; it appears
+in the room only under the rule in [Chat](#chat) ("Replies from other clients"), always as text,
+never as a card.
 
 **The newest card wins.** Per author, match and marker (`lobby` with its game, `account` with its
 service) only the card with the greatest `created_at` is open; on equal `created_at` the lowest `id`

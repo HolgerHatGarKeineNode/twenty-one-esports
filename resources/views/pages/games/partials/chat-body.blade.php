@@ -4,6 +4,7 @@
         <li class="flex flex-col gap-0.5" :data-from="m.from">
             <span class="text-[11px]" :class="{ 'text-btc-hi': m.from === 'me', 'text-ink-2': m.from === 'them', 'text-ink-3': m.from === 'server' }">
                 <span class="whitespace-nowrap" x-text="m.name"></span> <span class="text-ink-3" x-text="'· ' + time(m.at)"></span>
+                <span x-show="m.viaDm" class="text-ink-3" data-test="via-dm" x-text="'· ' + t.viaDm"></span>
             </span>
             <span class="break-words" :class="m.from === 'server' ? 'text-ink-2' : 'text-ink'" x-text="m.text"></span>
         </li>
