@@ -27,6 +27,8 @@ services:
       - /tmp:size=16m,mode=1777
       - /tmnf/Logs:size=32m,uid=10021,gid=10021,mode=0755
       - /tmnf/GameData/Cache:size=64m,uid=10021,gid=10021,mode=0755
+      # The server keeps pkey.dat and checksum.txt next to its config; the league config is mounted on top.
+      - /tmnf/GameData/Config:size=4m,uid=10021,gid=10021,mode=0755
     volumes:
       - ./config/league_cfg.txt:/tmnf/GameData/Config/league_cfg.txt:ro
       - ../league.txt:/tmnf/GameData/Tracks/MatchSettings/league.txt:ro

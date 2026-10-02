@@ -2,12 +2,23 @@
 # Writes config/league_cfg.txt for the production TMNF server from ./.env.
 # Never prints a secret. Values: TMNF_XMLRPC_PASSWORD (generated when missing),
 # TMNF_SERVER_NAME, TMNF_SERVER_LOGIN / TMNF_SERVER_PASSWORD /
-# TMNF_SERVER_VALIDATION (the master-server account; empty = LAN only).
+# TMNF_SERVER_VALIDATION (the master-server account; empty = LAN only),
+# TMNF_FORCE_IP (the host's public address: inside Docker the server only sees
+# its bridge address and would announce that to the master server).
 set -euo pipefail
 cd "$(dirname "$0")"
 touch .env && chmod 600 .env
 
-get() { grep -E "^$1=" .env | tail -1 | cut -d= -f2- || true; }
+# A value may be written bare or in one pair of quotes, as in any .env file.
+get() {
+    local value
+    value=$(grep -E "^$1=" .env | tail -1 | cut -d= -f2- || true)
+    case "$value" in
+        \"*\") value=${value#\"}; value=${value%\"} ;;
+        \'*\') value=${value#\'}; value=${value%\'} ;;
+    esac
+    printf '%s' "$value"
+}
 
 if [ -z "$(get TMNF_XMLRPC_PASSWORD)" ]; then
     printf 'TMNF_XMLRPC_PASSWORD=%s\n' "$(head -c 24 /dev/urandom | od -An -tx1 | tr -d ' \n')" >> .env
@@ -15,9 +26,9 @@ fi
 
 password=$(get TMNF_XMLRPC_PASSWORD)
 name=$(get TMNF_SERVER_NAME); name=${name:-Einundzwanzig eSports}
-login=$(get TMNF_SERVER_LOGIN); account=$(get TMNF_SERVER_PASSWORD); validation=$(get TMNF_SERVER_VALIDATION)
+login=$(get TMNF_SERVER_LOGIN); account=$(get TMNF_SERVER_PASSWORD); validation=$(get TMNF_SERVER_VALIDATION); force_ip=$(get TMNF_FORCE_IP)
 
-for value in "$password" "$name" "$login" "$account" "$validation"; do
+for value in "$password" "$name" "$login" "$account" "$validation" "$force_ip"; do
     if printf '%s' "$value" | grep -q '[<>&"]'; then echo "render-config: a value contains < > & or \" (it goes into XML)." >&2; exit 1; fi
 done
 
@@ -63,7 +74,7 @@ cat > config/league_cfg.txt <<CFG
 	<system_config>
 		<connection_uploadrate>8192</connection_uploadrate>
 		<connection_downloadrate>8192</connection_downloadrate>
-		<force_ip_address></force_ip_address>
+		<force_ip_address>${force_ip}</force_ip_address>
 		<server_port>2350</server_port>
 		<server_p2p_port>3450</server_p2p_port>
 		<client_port>0</client_port>
