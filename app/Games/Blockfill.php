@@ -9,8 +9,10 @@ use App\Support\Scores\Sources\ReplayScoreSource;
 
 /**
  * Blockfill, the league's own stacking game (plan "Blockfill", P4), as a
- * score game: one mode, `40-blocks` (clear 40 rows), timed in milliseconds
- * from the verified ticks, the lowest time wins.
+ * score game: one mode, `40-blocks` (its slug from before the week rules; a
+ * run clears the blocks of its week's rules, App\Support\Stacker\BlockfillRules),
+ * timed in milliseconds from the verified ticks, the lowest time wins. The
+ * mode's name is "The week's blocks": a page of one week names its count instead.
  *
  * The league reads no game account: the player is the logged-in user who
  * played the run, and the only source is the league's own replay of it
@@ -40,7 +42,7 @@ final class Blockfill extends ScoreGame
     public function modes(): array
     {
         return [
-            self::MODE => new GameMode(self::MODE, '40 blocks', 1, [], [], 'player', false),
+            self::MODE => new GameMode(self::MODE, 'The week\'s blocks', 1, [], [], 'player', false),
         ];
     }
 
@@ -55,7 +57,7 @@ final class Blockfill extends ScoreGame
     }
 
     /**
-     * The mode is the course: a run is always 40 blocks on a fresh seed.
+     * The mode is the course: a run is always the week's blocks on a fresh seed.
      */
     public function isCourse(string $course): bool
     {

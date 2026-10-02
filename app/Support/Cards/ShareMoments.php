@@ -20,6 +20,7 @@ use App\Support\Prizes\PrizePool;
 use App\Support\Rating\RankTiers;
 use App\Support\Scores\ScoreRuns;
 use App\Support\Scores\ScoreStanding;
+use App\Support\Stacker\BlockfillRules;
 use App\Support\Tournaments\Lobbies;
 use App\Support\Tournaments\TournamentChampion;
 use App\Support\Tournaments\TournamentSignups;
@@ -203,10 +204,11 @@ final class ShareMoments
 
     /**
      * A Blockfill moment (App\Support\Stacker\BlockfillMoments::of()) of a
-     * verified run: the player, the verified time in ticks and what it stands for.
+     * verified run: the player, the verified time in ticks, the blocks of its
+     * rules (`goal`) and what it stands for.
      *
      * @param  array{kind: string, place: int|null, final: bool, pb: bool, first: bool, week: string}  $moment
-     * @return array{name: string, pubkey: string, avatar_path: string|null, kind: string, place: int|null, final: bool, pb: bool, first: bool, week: string, ticks: int}
+     * @return array{name: string, pubkey: string, avatar_path: string|null, kind: string, place: int|null, final: bool, pb: bool, first: bool, week: string, ticks: int, goal: int}
      */
     public static function blockfill(StackerRun $run, array $moment): array
     {
@@ -214,6 +216,7 @@ final class ShareMoments
             ...self::person($run->user, $run->user->pubkey ?? str_repeat('0', 64)),
             ...$moment,
             'ticks' => (int) $run->ticks,
+            'goal' => BlockfillRules::goal($run->engine),
         ];
     }
 

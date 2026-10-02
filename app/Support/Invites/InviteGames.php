@@ -11,6 +11,7 @@ use App\Models\BoardGame;
 use App\Models\User;
 use App\Support\GameNames;
 use App\Support\Navigation\ShellNavigation;
+use App\Support\Stacker\BlockfillWeeks;
 use App\Support\Stacker\StackerRuns;
 
 /**
@@ -110,7 +111,8 @@ final class InviteGames
     /**
      * The player's best of this week in a score game, in the game's unit
      * (milliseconds for a time), or null without one. Blockfill reads its
-     * verified runs of the week (the weekly hunt starts afresh on Monday);
+     * verified runs of the week on the week's rules (the weekly hunt starts
+     * afresh on Monday; a time of other blocks is no best of these);
      * another score game has no best the league can name yet.
      */
     public function best(User $user, string $slug): ?int
@@ -119,7 +121,7 @@ final class InviteGames
             return null;
         }
 
-        $ticks = app(StackerRuns::class)->best($user, StackerRuns::weekOf(now()));
+        $ticks = app(StackerRuns::class)->best($user, StackerRuns::weekOf(now()), app(BlockfillWeeks::class)->difficultyAt());
 
         return $ticks === null ? null : Blockfill::milliseconds($ticks);
     }

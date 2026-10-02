@@ -78,8 +78,8 @@ new #[Layout('layouts::app', ['scripts' => ['resources/js/stacker/page.js']])] c
         $meta = app(PageMeta::class);
         $meta->noindex = true;
         $meta->title = $title;
-        $meta->description = __(':headline: :name mined 40 blocks in :time in :week. Every run is replayed by the league before it counts.', [
-            'headline' => $headline, 'name' => $name, 'time' => $time, 'week' => BlockfillMoments::weekTitle($this->moment['week']),
+        $meta->description = __(':headline: :name mined :count blocks in :time in :week. Every run is replayed by the league before it counts.', [
+            'headline' => $headline, 'name' => $name, 'count' => \App\Support\Stacker\BlockfillRules::goal($run->engine), 'time' => $time, 'week' => BlockfillMoments::weekTitle($this->moment['week']),
         ]);
         $meta->url = route('stacker.moment', $run->id);
         $meta->images = [[$card->url('wide'), ShareCard::FORMATS['wide'][0], ShareCard::FORMATS['wide'][1], $headline.' · '.$name.' · '.$time]];

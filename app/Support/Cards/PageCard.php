@@ -920,7 +920,9 @@ final class PageCard
             'running' => self::LIVE,
             default => Canvas::INK_2,
         };
-        $line = GameNames::full((string) $f['game'], (string) $f['mode']).', '.trans_choice(':count player placed|:count players placed', (int) $f['placed']);
+        // A Blockfill week by its own blocks ("Blockfill 60 blocks"), every other board by its game and mode.
+        $mode = is_int($f['goal'] ?? null) ? GameNames::game((string) $f['game']).' '.trans_choice(':count block|:count blocks', $f['goal']) : GameNames::full((string) $f['game'], (string) $f['mode']);
+        $line = $mode.', '.trans_choice(':count player placed|:count players placed', (int) $f['placed']);
 
         $this->scoreBoard([$this->leaderboardStatus()], $colour, $this->leaderboardTitle($f), $line, $f, __('No values yet. The first valid value takes first place.'));
     }
@@ -934,7 +936,8 @@ final class PageCard
         // With the count when it fits beside the cover, else the week alone.
         $state = (int) $board['placed'] > 0 ? [$week.', '.trans_choice(':count player placed|:count players placed', (int) $board['placed']), $week] : [$week];
 
-        $this->scoreBoard($state, Canvas::ORANGE, 'Blockfill', __('Mine 40 blocks as fast as you can.'), $board, __('No times yet this week. Mine 40 blocks and take first place.'));
+        $blocks = ['count' => (int) ($f['goal'] ?? 40)];
+        $this->scoreBoard($state, Canvas::ORANGE, 'Blockfill', __('Mine :count blocks as fast as you can.', $blocks), $board, __('No times yet this week. Mine :count blocks and take first place.', $blocks));
     }
 
     /** Blockfill's replays: the last ended week's first three, whose replays everybody may watch. */

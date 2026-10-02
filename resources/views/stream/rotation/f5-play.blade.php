@@ -6,7 +6,7 @@
     mono face, so it does not jitter.
 
     Data contract (SceneSource, BlockfillSlides::scene()):
-      $blockfill  array{leader: array{name: string, time: string}|null, countdown: string, url: string, title: string, …}|null
+      $blockfill  array{leader: array{name: string, time: string}|null, countdown: string, url: string, title: string, goal: int (the week's blocks), …}|null
                   null while Blockfill is switched off: the slide invites to every game instead
       $siteQrSvg  string: the QR code of the game page ('' leaves it out)
       $stats      array: the stats bar counts (c-chrome)
@@ -19,7 +19,7 @@
     $leader = is_array($b['leader'] ?? null) ? $b['leader'] : null;
     $best = $leader ? K::clean(K::text($leader, 'time')) : '';
     // One line beside the mark, a size down before anything is cut; never a time split.
-    $head = K::headline('Mine 40 blocks. '.($best !== '' ? 'Beat '.$best : 'Set the first time.'), [44, 36], 984, 1, K::DISPLAY);
+    $head = K::headline('Mine '.max(1, (int) ($b['goal'] ?? 40)).' blocks. '.($best !== '' ? 'Beat '.$best : 'Set the first time.'), [44, 36], 984, 1, K::DISPLAY);
     $week = K::fit('Blockfill '.(preg_replace('/^Blockfill\s*/', '', K::text($b ?? [], 'title')) ?: 'this week'), K::MONO, 22, 560);
     $url = K::text($b ?? [], 'url', 'esports.einundzwanzig.space/blockfill');
     $steps = [

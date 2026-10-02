@@ -572,10 +572,10 @@ final class ShareCard
         return BlockfillMoments::time((int) $this->facts['ticks']);
     }
 
-    /** "40 blocks mined · Blockfill Week 41, 2026" */
+    /** "60 blocks mined · Blockfill Week 41, 2026": the blocks of the run's rules */
     private function blockfillLine(): string
     {
-        return __('40 blocks mined').' · '.BlockfillMoments::weekTitle((string) $this->facts['week']);
+        return __(':count blocks mined', ['count' => (int) ($this->facts['goal'] ?? 40)]).' · '.BlockfillMoments::weekTitle((string) $this->facts['week']);
     }
 
     /** The place a personal best or first place holds now; for a place so far, when it is decided. */

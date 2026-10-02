@@ -8,6 +8,7 @@ use App\Enums\PayoutStatus;
 use App\Enums\SeriesStatus;
 use App\Enums\TournamentFormat;
 use App\Enums\TournamentStatus;
+use App\Games\Blockfill;
 use App\Games\GameRegistry;
 use App\Models\BoardGame;
 use App\Models\ChessGame;
@@ -36,6 +37,7 @@ use App\Support\Scores\ScoreStanding;
 use App\Support\Scores\ScoreWindow;
 use App\Support\SeasonChain\SeasonChains;
 use App\Support\SeasonChain\Seasons;
+use App\Support\Stacker\BlockfillRules;
 use App\Support\Stacker\BlockfillWeeks;
 use App\Support\Stacker\StackerReplays;
 use App\Support\Tournaments\CasualCups;
@@ -541,6 +543,8 @@ final class PageCardFacts
             'week' => $week === null ? null : [$week->isoWeek(), $week->isoWeekYear()],
             'game' => $tournament->game,
             'mode' => $tournament->mode,
+            // a Blockfill week's mode is its own blocks (BlockfillRules), "60 blocks"
+            'goal' => $tournament->game === Blockfill::SLUG ? BlockfillRules::goal(app(BlockfillWeeks::class)->difficultyOf($tournament)) : null,
             'unit' => $runs->metricOf($tournament)->unit,
             'status' => $tournament->isSignupOpen() ? 'open' : $tournament->status->value,
             'ends_utc' => ScoreWindow::of($tournament)->end->copy()->utc()->format('Y-m-d H:i'),
@@ -574,6 +578,8 @@ final class PageCardFacts
             return [
                 'week' => [$start->isoWeek(), $start->isoWeekYear()],
                 'board' => $week === null ? null : self::leaderboard($week),
+                // the blocks of the rules runs are played on now (the week's, or the default while none runs)
+                'goal' => BlockfillRules::goal(app(BlockfillWeeks::class)->difficultyAt()),
             ];
         });
     }

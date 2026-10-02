@@ -533,10 +533,10 @@ new #[Layout('layouts::app', ['section' => 'tournaments'])] class extends Compon
             default => __('yes, on its ladder while that is open and the trust gate passes'),
         }, 'rated'],
         ...($score && $scoreGame instanceof \App\Games\ScoreGame ? [
-            // A Blockfill week's course is its mode: by its name, not its slug (P6).
+            // A Blockfill week's course is its mode: by its own blocks ("60 blocks", BlockfillRules), not its slug (P6).
             ['flag', __($scoreGame->courseLabel()), match (true) {
                 $tmnfWeek => $tmnfTrack['name'] ?? (string) $tournament->score_course,
-                $week => __((string) $scoreGame->mode($tournament->mode)?->name),
+                $week => \App\Support\Stacker\BlockfillRules::weekBlocks($tournament),
                 default => $tournament->score_course ?? __('the directors set it before the start'),
             }, 'course'],
             ['award', __('Wins'), $scoreMetric?->lowerIsBetter() ? __('the fastest time; a tie goes to the earlier record') : __('the highest score; a tie goes to the earlier record'), 'wins'],

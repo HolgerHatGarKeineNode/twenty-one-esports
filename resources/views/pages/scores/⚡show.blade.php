@@ -227,7 +227,7 @@ new #[Layout('layouts::app', ['section' => 'tournaments'])] class extends Compon
                             </span>
                             {{-- The course only when it is more than the mode itself (Blockfill's course is its mode) --}}
                             {{-- A TMNF course is a track UID: its name shows instead --}}
-                            <span class="text-xs text-ink-2" data-test="score-board-mode">{{ __($score->mode($tournament->mode)?->name ?? $tournament->mode) }}@if ($tmnf && ($trackOf = \App\Support\Tmnf\TmnfWeeks::track($tournament->score_course)) !== null) · {{ $trackOf['name'] }}@elseif ($tournament->score_course && $tournament->score_course !== $tournament->mode) · <span class="font-mono">{{ $tournament->score_course }}</span>@endif</span>
+                            <span class="text-xs text-ink-2" data-test="score-board-mode">{{ $tournament->game === \App\Games\Blockfill::SLUG ? \App\Support\Stacker\BlockfillRules::weekBlocks($tournament) : __($score->mode($tournament->mode)?->name ?? $tournament->mode) }}@if ($tmnf && ($trackOf = \App\Support\Tmnf\TmnfWeeks::track($tournament->score_course)) !== null) · {{ $trackOf['name'] }}@elseif ($tournament->score_course && $tournament->score_course !== $tournament->mode) · <span class="font-mono">{{ $tournament->score_course }}</span>@endif</span>
                             <span class="text-xs text-ink-3 tabular-nums">{{ LeagueTime::stamp($window->start) }} – {{ LeagueTime::stamp($window->end) }}</span>
                         </a>
                     </li>

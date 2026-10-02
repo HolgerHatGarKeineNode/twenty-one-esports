@@ -25,6 +25,7 @@ use App\Support\SeasonChain\Seasons;
 use App\Support\Series\Ladders;
 use App\Support\Series\LobbyRules;
 use App\Support\Settings\LeagueSettings;
+use App\Support\Stacker\BlockfillRules;
 use App\Support\Tournaments\CasualCups;
 use App\Support\Tournaments\Lobbies;
 use App\Support\Tournaments\TournamentDeadlines;
@@ -541,9 +542,9 @@ final class RulesPage
         return [[
             'id' => Blockfill::SLUG,
             'title' => GameNames::game(Blockfill::SLUG),
-            'lead' => __('The league\'s own stacking game: mine 40 blocks as fast as you can. One leaderboard a week, no sign-up, no matches.'),
+            'lead' => __('The league\'s own stacking game: mine :blocks as fast as you can. One leaderboard a week, no sign-up, no matches.', ['blocks' => BlockfillRules::weeksBlocks()]),
             'facts' => [
-                [__('Mode'), __('40 blocks')],
+                [__('Mode'), ucfirst(BlockfillRules::weeksBlocks())],
                 [__('Week'), __('Monday 00:00 to Monday 00:00, Berlin time')],
                 [__('Points'), __('Place 1 to :places: :points', ['places' => count($points), 'points' => implode(' / ', $points)])],
             ],

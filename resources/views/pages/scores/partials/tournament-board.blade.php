@@ -20,8 +20,8 @@
     <div class="flex flex-wrap items-center justify-between gap-3">
         <span class="flex min-w-0 flex-col gap-1">
             <h2 id="leaderboard-h" class="m-0 font-display text-xl font-bold lg:text-2xl">{{ __('Leaderboard') }}</h2>
-            {{-- A course that is the mode itself (Blockfill's "40-blocks") is named by the mode, a TMNF track UID by the track's name, never by a slug --}}
-            <span class="text-xs text-ink-2" data-test="score-window">{{ __('Window :state', ['state' => $windowState]) }}@if ($tournament->score_course === $tournament->mode) · {{ \App\Support\GameNames::mode($tournament->game, $tournament->mode) }}@elseif ($tournament->game === \App\Games\TrackmaniaNationsForever::SLUG && ($trackOf = \App\Support\Tmnf\TmnfWeeks::track($tournament->score_course)) !== null) · {{ $trackOf['name'] }}@elseif ($tournament->score_course !== null) · <span class="font-mono">{{ $tournament->score_course }}</span>@endif</span>
+            {{-- A course that is the mode itself (Blockfill's "40-blocks") is named by the mode (a Blockfill week by its own blocks, "60 blocks"), a TMNF track UID by the track's name, never by a slug --}}
+            <span class="text-xs text-ink-2" data-test="score-window">{{ __('Window :state', ['state' => $windowState]) }}@if ($tournament->score_course === $tournament->mode) · {{ $tournament->game === \App\Games\Blockfill::SLUG ? \App\Support\Stacker\BlockfillRules::weekBlocks($tournament) : \App\Support\GameNames::mode($tournament->game, $tournament->mode) }}@elseif ($tournament->game === \App\Games\TrackmaniaNationsForever::SLUG && ($trackOf = \App\Support\Tmnf\TmnfWeeks::track($tournament->score_course)) !== null) · {{ $trackOf['name'] }}@elseif ($tournament->score_course !== null) · <span class="font-mono">{{ $tournament->score_course }}</span>@endif</span>
         </span>
         @if (\Illuminate\Support\Facades\Route::has('tournaments.scores') && $tournament->status !== \App\Enums\TournamentStatus::Draft)
             @php($manual = app(\App\Games\GameRegistry::class)->find($tournament->game)?->acceptsManual() ?? true)

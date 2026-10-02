@@ -390,9 +390,9 @@ final class StackerRuns
     }
 
     /**
-     * Held runs stay bounded like verified replays (P5): per player and week
-     * only the fastest held run waits (an earlier tie stays), and per week
-     * only the `replay_keep_top` fastest held runs. Every other one becomes
+     * Held runs stay bounded like verified replays (P5): per player, week and
+     * rule set (engine) only the fastest held run waits (an earlier tie
+     * stays), and per week and rule set only the `replay_keep_top` fastest held runs. Every other one becomes
      * practice without its replay (reason `review-superseded`): it could not
      * change a standing the kept one would not.
      */
@@ -400,7 +400,8 @@ final class StackerRuns
     {
         DB::transaction(function () use ($run, $now): void {
             $week = (string) $run->week;
-            $held = fn () => StackerRun::query()->where('week', $week)->where('status', StackerRunStatus::Review);
+            // per rule set: a held 40-block run does not supersede a held 60-block one
+            $held = fn () => StackerRun::query()->where('week', $week)->where('engine', $run->engine)->where('status', StackerRunStatus::Review);
             $mine = $held()->where('user_id', $run->user_id)->orderBy('ticks')->orderBy('id')->pluck('id')->all();
             $keep = $held()->orderBy('ticks')->orderBy('id')->limit(max(0, (int) config('esports.blockfill.replay_keep_top')))->pluck('id')->all();
             $drop = [...array_slice($mine, 1), ...$held()->whereNotIn('id', $keep)->pluck('id')->all()];
@@ -572,13 +573,17 @@ final class StackerRuns
     {
         // one transaction: a second worker's verification cannot fall between the top and the update
         DB::transaction(function () use ($week): void {
-            $fastest = fn (int $limit) => StackerRun::query()
+            // Per rule set (engine): times of different blocks never compare; a week has one set, two around its start.
+            $engines = StackerRun::query()->where('week', $week)->where('status', StackerRunStatus::Verified)->distinct()->pluck('engine')->all();
+            $fastest = fn (int $limit): array => collect($engines)->flatMap(fn (string $engine) => StackerRun::query()
                 ->where('week', $week)
+                ->where('engine', $engine)
                 ->where('status', StackerRunStatus::Verified)
                 ->orderBy('ticks')
                 ->orderBy('id')
-                ->limit(max(0, $limit));
-            $top = $fastest((int) config('esports.blockfill.replay_keep_top'))->pluck('id')->all();
+                ->limit(max(0, $limit))
+                ->pluck('id'))->all();
+            $top = $fastest((int) config('esports.blockfill.replay_keep_top'));
             $moments = app(BlockfillMoments::class);
 
             $unjudged = StackerRun::query()
@@ -593,11 +598,16 @@ final class StackerRuns
                 }
             }
 
-            $keep = [
-                ...$top,
-                ...$fastest((int) config('esports.blockfill.replay_keep_shared'))
-                    ->where(fn ($kept) => $kept->whereNotNull('flags->moment')->orWhereNotNull('flags->shared'))->pluck('id')->all(),
-            ];
+            $shared = collect($engines)->flatMap(fn (string $engine) => StackerRun::query()
+                ->where('week', $week)
+                ->where('engine', $engine)
+                ->where('status', StackerRunStatus::Verified)
+                ->where(fn ($kept) => $kept->whereNotNull('flags->moment')->orWhereNotNull('flags->shared'))
+                ->orderBy('ticks')
+                ->orderBy('id')
+                ->limit(max(0, (int) config('esports.blockfill.replay_keep_shared')))
+                ->pluck('id'))->all();
+            $keep = [...$top, ...$shared];
 
             StackerRun::query()
                 ->whereIn('id', $this->weekReplayHolders($week))

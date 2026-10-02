@@ -9,7 +9,7 @@
 
     Data contract (SceneSource, BlockfillSlides::scene()):
       $blockfill  array{moment: array{name: string, time: string, avatar: ?string, before: array{name: string, time: string}|null,
-                    own: bool, by: ?string}|null, leader: array{name: string, time: string}|null, closes: string, url: string, …}|null
+                    own: bool, by: ?string}|null, leader: array{name: string, time: string}|null, goal: int (the week's blocks), closes: string, url: string, …}|null
       $stats      array: unused (the orange frame has no stats bar)
       $backdrop   ?string, optional: Blockfill's blurred cover, faint through the orange
       $cover      ?string, optional: Blockfill's cover as a data URI, the game's mark
@@ -61,7 +61,7 @@
 @if ($line !== '')<text data-unit="line" data-box="299 460 1241 492" x="300" y="484" font-family="JetBrains Mono" font-weight="700" font-size="26" fill="#17120A">{{ $line }}</text>@endif
 @else
 <text data-unit="name" data-box="39 216 1241 278" x="40" y="264" font-family="Unbounded" font-weight="800" font-size="56" fill="#17120A">Be the first on the board.</text>
-<text data-unit="line" data-box="39 300 1241 332" x="40" y="324" font-family="JetBrains Mono" font-weight="700" font-size="26" fill="#17120A">Mine 40 blocks. Your best time this week counts.</text>
+<text data-unit="line" data-box="39 300 1241 332" x="40" y="324" font-family="JetBrains Mono" font-weight="700" font-size="26" fill="#17120A">Mine {{ max(1, (int) ($b['goal'] ?? 40)) }} blocks. Your best time this week counts.</text>
 @endif
 
 <text data-unit="closes" data-box="39 650 600 680" x="40" y="672" font-family="JetBrains Mono" font-weight="700" font-size="22" fill="#17120A">{{ $closes }}</text>

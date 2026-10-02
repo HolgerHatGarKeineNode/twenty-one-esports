@@ -2,6 +2,8 @@
 
 namespace App\Support\Stacker;
 
+use App\Models\Tournament;
+use Carbon\CarbonImmutable;
 use InvalidArgumentException;
 
 /**
@@ -159,6 +161,43 @@ final class BlockfillRules
         $found = array_search($ordered, self::PRESETS, true);
 
         return is_string($found) ? $found : null;
+    }
+
+    /** The blocks (lines) a run on `$engine` mines; 40 for an unknown id, as on every frozen one. */
+    public static function goal(?string $engine): int
+    {
+        return self::of($engine)['goal'] ?? 40;
+    }
+
+    /** "60 blocks": what a run on `$engine` mines, in the current language. */
+    public static function blocks(?string $engine): string
+    {
+        return trans_choice(':count block|:count blocks', self::goal($engine));
+    }
+
+    /** "60 blocks" of a week's own rules. */
+    public static function weekBlocks(Tournament $week): string
+    {
+        return self::blocks(app(BlockfillWeeks::class)->difficultyOf($week));
+    }
+
+    /**
+     * The blocks where no week is in view (the rules page, generic copy): "the week's blocks",
+     * and while a week runs with its number and count, "the week's blocks (60 in week 42)".
+     */
+    public static function weeksBlocks(): string
+    {
+        $weeks = app(BlockfillWeeks::class);
+        $week = $weeks->game() === null ? null : $weeks->current();
+
+        if ($week === null) {
+            return __('the week\'s blocks');
+        }
+
+        return __('the week\'s blocks (:count in week :week)', [
+            'count' => self::goal($weeks->difficultyOf($week)),
+            'week' => CarbonImmutable::instance($week->starts_at)->setTimezone(BlockfillWeeks::TIMEZONE)->isoWeek(),
+        ]);
     }
 
     /**

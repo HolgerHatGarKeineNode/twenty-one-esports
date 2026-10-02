@@ -3,7 +3,7 @@
 {{--
     The replay viewer of one Blockfill run (plan "Blockfill", P5): the stored inputs played again on the shared engine
     and drawn by the game's own renderer (resources/js/stacker/replay-page.js, loaded by resources/js/stacker/page.js:
-    the page's layout lists it), inside `wire:ignore`. The chain of 40 mined blocks is the seek bar. The replay page
+    the page's layout lists it), inside `wire:ignore`. The chain of the run's mined blocks (40, or its week's rules' count) is the seek bar. The replay page
     (`stacker.replay`) and a moment's page (`stacker.moment`) show it; who may see it is the page's question.
     $run: a StackerRun that keeps its replay (StackerReplays::watchable()); $hints: an admin's cheat hint lines.
     The slot is the top of the side column (whose run, or the moment's headline); `actions` the buttons under the facts.
@@ -46,7 +46,7 @@
         </div>
     </section>
 
-    {{-- The seek bar: the chain of 40 mined blocks over the run's time, and the controls --}}
+    {{-- The seek bar: the chain of the run's mined blocks over its time, and the controls --}}
     <section class="flex min-w-0 flex-col gap-3 lg:col-span-2 lg:row-start-3" aria-labelledby="replay-chain-h">
         <div class="flex flex-wrap items-baseline justify-between gap-x-6 gap-y-1">
             <h2 id="replay-chain-h" class="m-0 text-sm font-bold">{{ __('The chain') }}</h2>

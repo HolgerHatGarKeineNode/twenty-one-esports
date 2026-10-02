@@ -9,6 +9,7 @@ use App\Support\LeagueTime;
 use App\Support\Scores\ScoreRuns;
 use App\Support\Scores\ScoreStanding;
 use App\Support\Scores\ScoreWindow;
+use App\Support\Stacker\BlockfillRules;
 use App\Support\Stacker\BlockfillWeeks;
 use Carbon\CarbonImmutable;
 use Carbon\CarbonInterface;
@@ -18,7 +19,7 @@ use Throwable;
 /**
  * Blockfill on the stream (plan "Blockfill", P6): the still `f1`
  * (resources/views/stream/rotation/f1-blockfill.blade.php) with the week's
- * top 5 and the chain of 40 blocks its leader mined, in the teaser pool while
+ * top 5 and the chain of the week's blocks its leader mined, in the teaser pool while
  * Blockfill is registered (RotationPlanner).
  *
  * Which week: this week once somebody is on its board (`running`); before
@@ -38,10 +39,8 @@ final class BlockfillSlide
     /** The places the slide lists. */
     public const TOP = 5;
 
-    /** The blocks of a run: the chain the leader mined. */
-    public const BLOCKS = 40;
-
-    private const CACHE_KEY = 'twentyone:stream:blockfill-slide';
+    /** v2: the read carries the week's blocks (`goal`); a read cached before that has none. */
+    private const CACHE_KEY = 'twentyone:stream:blockfill-slide:v2';
 
     private const CACHE_SECONDS = 15;
 
@@ -55,7 +54,7 @@ final class BlockfillSlide
      * data() read through the cache store for CACHE_SECONDS; a failing cache
      * store reads directly.
      *
-     * @return array{state: string, title: string, line: string, top: list<array{place: int, name: string, time: string, avatar: string|null}>, leader: array{name: string, time: string, avatar: string|null}|null, url: string}|null
+     * @return array{state: string, title: string, line: string, top: list<array{place: int, name: string, time: string, avatar: string|null}>, goal: int, leader: array{name: string, time: string, avatar: string|null}|null, url: string}|null
      */
     public function cached(): ?array
     {
@@ -72,7 +71,7 @@ final class BlockfillSlide
     /**
      * The slide's data, read now.
      *
-     * @return array{state: string, title: string, line: string, top: list<array{place: int, name: string, time: string, avatar: string|null}>, leader: array{name: string, time: string, avatar: string|null}|null, url: string}|null
+     * @return array{state: string, title: string, line: string, top: list<array{place: int, name: string, time: string, avatar: string|null}>, goal: int, leader: array{name: string, time: string, avatar: string|null}|null, url: string}|null
      */
     public function data(?CarbonInterface $now = null): ?array
     {
@@ -80,7 +79,7 @@ final class BlockfillSlide
     }
 
     /**
-     * @return array{state: string, title: string, line: string, top: list<array{place: int, name: string, time: string, ref: array{id: int, pubkey: string, source: string|null}|null}>, url: string}|null
+     * @return array{state: string, title: string, line: string, top: list<array{place: int, name: string, time: string, ref: array{id: int, pubkey: string, source: string|null}|null}>, goal: int, url: string}|null
      */
     private function read(?CarbonInterface $now = null): ?array
     {
@@ -113,6 +112,8 @@ final class BlockfillSlide
                 'title' => $current?->title() ?? 'Blockfill',
                 'line' => $current === null ? 'Next week starts soon' : 'Nobody is on the board yet',
                 'top' => [],
+                // the blocks of the rules runs are played on now (the week's, or the default while none runs)
+                'goal' => BlockfillRules::goal($this->weeks->difficultyAt($now)),
                 'url' => $this->url(),
             ];
         } finally {
@@ -122,11 +123,11 @@ final class BlockfillSlide
 
     /**
      * @param  list<array{place: int, name: string, time: string, ref: array{id: int, pubkey: string, source: string|null}|null}>  $top
-     * @return array{state: string, title: string, line: string, top: list<array{place: int, name: string, time: string, ref: array{id: int, pubkey: string, source: string|null}|null}>, url: string}
+     * @return array{state: string, title: string, line: string, top: list<array{place: int, name: string, time: string, ref: array{id: int, pubkey: string, source: string|null}|null}>, goal: int, url: string}
      */
     private function frame(string $state, Tournament $week, string $line, array $top): array
     {
-        return ['state' => $state, 'title' => $week->title(), 'line' => $line, 'top' => $top, 'url' => $this->url()];
+        return ['state' => $state, 'title' => $week->title(), 'line' => $line, 'top' => $top, 'goal' => BlockfillRules::goal($this->weeks->difficultyOf($week)), 'url' => $this->url()];
     }
 
     /**
@@ -150,8 +151,8 @@ final class BlockfillSlide
     /**
      * The rows with their pictures as data URIs, and the leader (the first row) apart.
      *
-     * @param  array{state: string, title: string, line: string, top: list<array{place: int, name: string, time: string, ref: array{id: int, pubkey: string, source: string|null}|null}>, url: string}|null  $data
-     * @return array{state: string, title: string, line: string, top: list<array{place: int, name: string, time: string, avatar: string|null}>, leader: array{name: string, time: string, avatar: string|null}|null, url: string}|null
+     * @param  array{state: string, title: string, line: string, top: list<array{place: int, name: string, time: string, ref: array{id: int, pubkey: string, source: string|null}|null}>, goal: int, url: string}|null  $data
+     * @return array{state: string, title: string, line: string, top: list<array{place: int, name: string, time: string, avatar: string|null}>, goal: int, leader: array{name: string, time: string, avatar: string|null}|null, url: string}|null
      */
     private function withAvatars(?array $data): ?array
     {
@@ -168,6 +169,7 @@ final class BlockfillSlide
             'title' => $data['title'],
             'line' => $data['line'],
             'top' => $top,
+            'goal' => $data['goal'],
             'leader' => $top === [] ? null : ['name' => $top[0]['name'], 'time' => $top[0]['time'], 'avatar' => $top[0]['avatar']],
             'url' => $data['url'],
         ];

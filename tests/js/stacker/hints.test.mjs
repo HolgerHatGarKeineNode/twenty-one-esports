@@ -153,6 +153,37 @@ test('a person\'s 60 lines on a week\'s own rules (a level every 5 lines, up to 
     assert.ok(hints.pps < 2, JSON.stringify(hints));
 });
 
+test('a short week (10 blocks) judges finesse from 13 pieces on: a program with 16 perfect pieces is hinted, a person\'s 10 blocks are not', () => {
+    const settings = { das: 10, arr: 2, sdf: 20 };
+    const seed = '0123456789abcdef0123456789abcdef';
+    // 8 pieces with the fewest presses (a hard drop at the spawn, or auto-shift to a wall and a hard drop),
+    // then 8 more left to gravity at the spawn (no press: the fewest too) until the stack tops out
+    const program = [];
+    let tick = 2;
+    for (let i = 0; i < 8; i++) {
+        if (i % 3 !== 0) {
+            const side = i % 3 === 1 ? 0 : 1;
+            program.push([tick, side, 1]);
+            tick += 16;
+            program.push([tick, side, 0]);
+        }
+        program.push([tick, 3, 1], [tick + 1, 3, 0]);
+        tick += 7 + (i % 4) * 3;
+    }
+    const short = hintsFor(seed, settings, program, {}, 't10g1');
+    assert.equal(short.finesse.of, 16, JSON.stringify(short));
+    assert.equal(short.finesse.perfect, 16);
+    assert.ok(short.flags.includes('finesse'), JSON.stringify(short));
+    // on 40 blocks the same 16 pieces are too few to judge (20)
+    assert.ok(!hintsFor(seed, settings, program, {}, 'bf1').flags.includes('finesse'));
+
+    // a person's slow run, with a fumbled piece now and then, over the first 10 blocks: no hint
+    const person = fixture('seven-minutes');
+    const slow = hintsFor(person.seed, person.settings, person.inputs, {}, 't10g1');
+    assert.ok(slow.finesse.of >= 13 && slow.finesse.perfect < slow.finesse.of, JSON.stringify(slow));
+    assert.deepEqual(slow.flags, []);
+});
+
 test('the same-tick bound grows with a week\'s lines: ten bursts mark a 40-line run, not a 100-line one', () => {
     const settings = { das: 10, arr: 2, sdf: 20 };
     const seed = '0123456789abcdef0123456789abcdef';

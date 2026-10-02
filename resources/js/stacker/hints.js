@@ -16,7 +16,8 @@
  * - `timing`: the gaps between key presses hardly vary (coefficient of
  *   variation below 0.25 over at least 50 presses): a person's rhythm wobbles;
  * - `finesse`: every judged piece placed with the fewest possible presses
- *   (at least 20 judged). A piece is judged when its placement is clear
+ *   (at least 20 judged; a short week's run at least about half its pieces,
+ *   1.25 per block, and never fewer than 12). A piece is judged when its placement is clear
  *   (one piece locked in its tick, no row cleared) and reachable from the
  *   spawn on an empty well; the fewest presses come from a search over taps,
  *   auto-shift to a wall and turns, with the engine's own kicks.
@@ -38,6 +39,9 @@ export const LIMITS = Object.freeze({
     timingMinPresses: 50,
     finesseMinPieces: 20,
 });
+
+/** The fewest judged pieces a finesse hint ever needs, however short the run. */
+const FINESSE_FLOOR = 12;
 
 const MOVES = new Set([ACTION.LEFT, ACTION.RIGHT, ACTION.CW, ACTION.CCW, ACTION.FLIP]);
 
@@ -129,6 +133,8 @@ export function hintsFor(seed, settings, inputs, bounds = {}, engine = undefined
     const game = createGame({ seed, settings, engine });
     // a longer run has more ticks a dropped frame can bunch keys into: the bound grows with its lines
     limit.sameTickRepeat = Math.max(limit.sameTickRepeat, Math.ceil((limit.sameTickRepeat * game.goal) / GOAL_LINES));
+    // a short run has fewer pieces to judge: about half of them (2.5 pieces a block), at least 12 (a person can place 12 perfectly)
+    limit.finesseMinPieces = Math.min(limit.finesseMinPieces, Math.max(FINESSE_FLOOR, Math.ceil((game.goal * 5) / 4)));
     const presses = inputs.filter(([, , down]) => down === 1);
 
     // presses per tick, and the ticks with more than the bound

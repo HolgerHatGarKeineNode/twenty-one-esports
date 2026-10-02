@@ -24,6 +24,8 @@ use App\Support\Rating\Ratings;
 use App\Support\Scores\ScoreRuns;
 use App\Support\Scores\ScoreStanding;
 use App\Support\Scores\ScoreWindow;
+use App\Support\Stacker\BlockfillRules;
+use App\Support\Stacker\BlockfillWeeks;
 use App\Support\Tournaments\TournamentLanding;
 use App\Support\Tournaments\TournamentPrizePool;
 use Carbon\CarbonInterface;
@@ -320,7 +322,8 @@ final class HomeHub
             return [
                 'game' => $game->slug(),
                 'mode' => $mode,
-                'name' => GameNames::game($game->slug()).' · '.GameNames::mode($game->slug(), $mode),
+                // Blockfill's board by the blocks of the rules runs are played on now ("60 blocks")
+                'name' => GameNames::game($game->slug()).' · '.($game->slug() === Blockfill::SLUG ? BlockfillRules::blocks(app(BlockfillWeeks::class)->difficultyAt()) : GameNames::mode($game->slug(), $mode)),
                 // The league's weekly games (Blockfill, TMNF): "This week", never a board's name.
                 'weekly' => in_array($game->slug(), [Blockfill::SLUG, TrackmaniaNationsForever::SLUG], true),
                 'board' => $board?->title(),

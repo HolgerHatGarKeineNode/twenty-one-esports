@@ -14,6 +14,7 @@ use App\Models\StackerRun;
 use App\Models\Tournament;
 use App\Models\User;
 use App\Support\GameNames;
+use App\Support\Stacker\BlockfillRules;
 use App\Support\Stacker\BlockfillWeeks;
 use App\Support\Stacker\StackerReplays;
 use App\Support\Tmnf\TmnfWeeks;
@@ -158,9 +159,10 @@ final class ScoreAttempts
         return $run instanceof StackerRun ? Blockfill::SLUG : $run->game;
     }
 
+    /** The mode as people read it; a Blockfill run by the blocks of its own rules ("60 blocks"). */
     public static function mode(StackerRun|ScoreRun $run): string
     {
-        return GameNames::mode(self::game($run), $run instanceof StackerRun ? Blockfill::MODE : $run->mode);
+        return $run instanceof StackerRun ? BlockfillRules::blocks($run->engine) : GameNames::mode($run->game, $run->mode);
     }
 
     /**

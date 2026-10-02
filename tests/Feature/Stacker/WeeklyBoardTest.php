@@ -387,7 +387,7 @@ test('the game page shows this week\'s board, your place and last week\'s winner
 
     // A player sees the week's best, the all-time best and, quietest, their practice best.
     Livewire::actingAs($me)->test('pages::stacker.play')
-        ->assertSeeInOrder([__('Best this week'), __('All-time best'), __('Practice best')])
+        ->assertSeeInOrder([__('Best this week'), __('Best on these rules'), __('Practice best')])
         ->assertSeeHtml('data-test="best-practice"');
 
     $this->get(route('scores.show', Blockfill::SLUG))->assertOk();

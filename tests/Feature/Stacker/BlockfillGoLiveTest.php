@@ -421,7 +421,7 @@ test('organizers are never offered Blockfill: not in the format chooser, not on 
 });
 
 test('both Blockfill bot templates pass the copy rules: a link, no hashtag, no fee and no face wording', function () {
-    $values = ['name' => 'Blockfill Week 41, 2026', 'ends' => 'Mon, 12 Oct 2026, 12:00 AM CEST', 'url' => 'https://esports.test/blockfill',
+    $values = ['name' => 'Blockfill Week 41, 2026', 'ends' => 'Mon, 12 Oct 2026, 12:00 AM CEST', 'url' => 'https://esports.test/blockfill', 'blocks' => '60',
         'winner' => 'Ada', 'time' => '0:48.333', 'podium' => '1. Ada 0:48.333 · 2. Ben 0:50.000 · 3. Cy 0:51.666'];
 
     foreach (['blockfill_note_week', 'blockfill_note_winner'] as $template) {

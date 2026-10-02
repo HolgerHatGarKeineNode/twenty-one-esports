@@ -12,6 +12,7 @@ use App\Support\Matches\ScoreAttempts;
 use App\Support\Scores\ScoreRuns;
 use App\Support\Scores\ScoreStanding;
 use App\Support\Scores\ScoreWindow;
+use App\Support\Stacker\BlockfillRules;
 use App\Support\Stacker\BlockfillWeeks;
 use App\Support\Stacker\StackerRuns;
 use Carbon\CarbonImmutable;
@@ -194,8 +195,11 @@ final class BlockfillSlides
             $start = BlockfillWeeks::startOf($now);
             $end = $window->end ?? BlockfillWeeks::endOf($start);
             $local = $start->setTimezone(BlockfillWeeks::TIMEZONE);
+            // the rules runs are played on now: their blocks, and the only runs a badge compares
+            $engine = $week === null ? $this->weeks->difficultyAt($now) : $this->weeks->difficultyOf($week);
             $base = [
                 'title' => $week?->title() ?? 'Blockfill Week '.$local->isoWeek().', '.$local->isoWeekYear(),
+                'goal' => BlockfillRules::goal($engine),
                 'endsMs' => (int) $end->getTimestampMs(),
                 'closes' => $end->setTimezone(BlockfillWeeks::TIMEZONE)->format('l H:i').' Berlin',
                 'url' => $this->url(),
@@ -206,7 +210,7 @@ final class BlockfillSlides
             }
 
             $board = $this->board($week);
-            $fresh = $this->fresh($now, $start, $end);
+            $fresh = $this->fresh($now, $start, $end, $engine);
 
             return [
                 ...$base,
@@ -214,7 +218,7 @@ final class BlockfillSlides
                 'players' => $board['players'],
                 'board' => $board['rows'],
                 'fresh' => $fresh,
-                'moment' => $board['rows'] === [] ? null : $this->moment($now),
+                'moment' => $board['rows'] === [] ? null : $this->moment($now, $engine),
             ];
         } finally {
             app()->setLocale($previousLocale);
@@ -246,19 +250,19 @@ final class BlockfillSlides
      *
      * @return list<array{name: string, ms: int|null, badge: string|null, at: int, ref: array{id: int, pubkey: string, source: string|null}|null}>
      */
-    private function fresh(CarbonImmutable $now, CarbonImmutable $start, CarbonImmutable $end): array
+    private function fresh(CarbonImmutable $now, CarbonImmutable $start, CarbonImmutable $end, string $engine): array
     {
         $runs = ScoreAttempts::stacker('all')->with('user')
             ->where('created_at', '>=', $start)->where('created_at', '<', $end)
             ->latest()->latest('id')->limit(self::FRESH_RUNS)->get();
 
-        return array_values($runs->map(function (StackerRun $run) use ($now): array {
+        return array_values($runs->map(function (StackerRun $run) use ($now, $engine): array {
             $waiting = ScoreAttempts::isWaiting($run);
 
             return [
                 'name' => $run->user->displayName(),
                 'ms' => $waiting ? null : Blockfill::milliseconds((int) $run->ticks),
-                'badge' => $waiting ? null : $this->badge($run),
+                'badge' => $waiting ? null : $this->badge($run, $engine),
                 'at' => (int) (ScoreAttempts::at($run) ?? $now)->getTimestamp(),
                 'ref' => StreamImages::avatarRef($run->user),
             ];
@@ -271,12 +275,17 @@ final class BlockfillSlides
      * `best` when it beat the player's own earlier run of the week, else null.
      * Only one run of the week is `top` at a time: the stream never shows two
      * "New #1" at once. Every ranked run is verified, so a slower one gets no
-     * badge at all.
+     * badge at all. Only runs on the week's rules (`$engine`) compare, and only
+     * they get a badge: a 40-block time is no first place of a 60-block week.
      */
-    private function badge(StackerRun $run): ?string
+    private function badge(StackerRun $run, string $engine): ?string
     {
+        if ($run->engine !== $engine) {
+            return null;
+        }
+
         if ($this->before($run)->where('ticks', '<=', (int) $run->ticks)->doesntExist()) {
-            return StackerRun::query()->where('week', $this->weekOfRun($run))->where('status', StackerRunStatus::Verified)
+            return StackerRun::query()->where('week', $this->weekOfRun($run))->where('engine', $run->engine)->where('status', StackerRunStatus::Verified)
                 ->where('ticks', '<', (int) $run->ticks)->exists() ? 'was' : 'top';
         }
 
@@ -286,7 +295,7 @@ final class BlockfillSlides
     }
 
     /**
-     * The verified runs of the run's week that came in before it: verified in
+     * The verified runs of the run's week and rules that came in before it: verified in
      * an earlier second, or in the same second with a lower id. Only `<` on
      * the timestamp: SQLite keeps it as text with milliseconds, so `=` against
      * a bound second never matches.
@@ -297,7 +306,7 @@ final class BlockfillSlides
     {
         $at = $run->verified_at === null ? null : CarbonImmutable::instance($run->verified_at)->startOfSecond();
 
-        return StackerRun::query()->where('week', $this->weekOfRun($run))
+        return StackerRun::query()->where('week', $this->weekOfRun($run))->where('engine', $run->engine)
             ->where('status', StackerRunStatus::Verified)->whereKeyNot($run->id)
             ->when($at !== null, fn (Builder $query) => $query->where('verified_at', '<', $at->addSecond())
                 ->where(fn (Builder $query) => $query->where('verified_at', '<', $at)->orWhere('id', '<', $run->id)));
@@ -315,7 +324,7 @@ final class BlockfillSlides
      *
      * @return array{key: string, name: string, ms: int, at: int, ref: array{id: int, pubkey: string, source: string|null}|null, before: array{name: string, ms: int, own: bool}|null}|null
      */
-    private function moment(CarbonImmutable $now): ?array
+    private function moment(CarbonImmutable $now, string $engine): ?array
     {
         $minutes = max(1, (int) config('twentyone.stream.rotation.blockfill_moment_minutes', 10));
         $recent = StackerRun::query()->with('user')
@@ -324,7 +333,7 @@ final class BlockfillSlides
             ->orderByDesc('verified_at')->orderByDesc('id')->limit(self::FRESH_RUNS)->get();
 
         foreach ($recent as $run) {
-            if ($this->badge($run) !== 'top') {
+            if ($this->badge($run, $engine) !== 'top') {
                 continue;
             }
 
@@ -367,6 +376,7 @@ final class BlockfillSlides
         return [
             'week' => $read['week'],
             'title' => $read['title'],
+            'goal' => (int) ($read['goal'] ?? 40),
             'countdown' => TournamentSlides::countdown($read['endsMs'], $nowMs),
             'closes' => $read['closes'],
             'players' => $read['players'],

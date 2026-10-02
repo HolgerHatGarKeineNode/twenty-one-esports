@@ -45,7 +45,7 @@ new #[Layout('layouts::app', ['scripts' => ['resources/js/stacker/page.js']])] c
     public function rendering(\Illuminate\View\View $view): void
     {
         $view->title('Blockfill');
-        app(PageMeta::class)->describe('Blockfill', __('Mine 40 blocks as fast as you can: the league\'s own stacking game, every run replayed by the league before it counts.'))
+        app(PageMeta::class)->describe('Blockfill', __('Mine :count blocks as fast as you can: the league\'s own stacking game, every run replayed by the league before it counts.', ['count' => BlockfillRules::goal($this->engine)]))
             ->card(fn () => \App\Support\Cards\PageCard::page('blockfill'));
     }
 
@@ -251,7 +251,8 @@ new #[Layout('layouts::app', ['scripts' => ['resources/js/stacker/page.js']])] c
                                     <dd class="m-0 text-[15px] leading-tight font-bold tabular-nums lg:text-[20px]" x-text="time(rankedBest)" data-test="best"></dd>
                                 </div>
                                 <div>
-                                    <dt class="text-[12px] text-ink-3 lg:text-sm">{{ __('All-time best') }}</dt>
+                                    {{-- Of all time, on the week's rules: a time of other blocks is no best of these --}}
+                                    <dt class="text-[12px] text-ink-3 lg:text-sm">{{ __('Best on these rules') }}</dt>
                                     <dd class="m-0 text-[13px] leading-tight font-bold text-ink-2 tabular-nums lg:text-[16px]" x-text="time(allTimeBest)" data-test="best-all-time"></dd>
                                 </div>
                                 {{-- This browser's practice best: information only, the quietest line --}}

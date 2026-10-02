@@ -13,7 +13,7 @@
     one). With no run at all, the call fills the row.
 
     Data contract (SceneSource, BlockfillSlides::scene()):
-      $blockfill  array{title: string, fresh: list<array{name: string, time: ?string, waiting: bool, badge: 'top'|'was'|'best'|null,
+      $blockfill  array{title: string, goal: int (the week's blocks), fresh: list<array{name: string, time: ?string, waiting: bool, badge: 'top'|'was'|'best'|null,
                     when: string, avatar: ?string}>, leader: array{name: string, time: string}|null, url: string, …}|null
                   null while Blockfill is switched off: the slide invites to every game instead
       $siteQrSvg  string: the QR code of the game page ('' leaves it out)
@@ -84,7 +84,8 @@
     $callTextW = $w - $callTextX - 24;
     $callUrlSize = K::width($url, K::MONO, 18) <= $callTextW ? 18 : 16;
     // A whole sentence or the short one, never a cut one.
-    $callLine = K::width('Mine 40 blocks. Your best run counts.', K::MONO, 20) <= $callTextW ? 'Mine 40 blocks. Your best run counts.' : 'Mine 40 blocks.';
+    $mine = 'Mine '.max(1, (int) ($b['goal'] ?? 40)).' blocks.';
+    $callLine = K::width($mine.' Your best run counts.', K::MONO, 20) <= $callTextW ? $mine.' Your best run counts.' : $mine;
 @endphp
 <svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="1280" height="720" viewBox="0 0 1280 720">
 @include('stream.rotation.partials.defs')

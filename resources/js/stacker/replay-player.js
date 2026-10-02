@@ -5,7 +5,7 @@
  *
  * On creation the run is played once to its end on the engine, keeping a
  * copy of the game every `checkpointEvery` ticks and the tick of every
- * cleared row (the 40 blocks of the chain). seek(t) starts from the last
+ * cleared row (the blocks of the chain, 40 or its rules' count). seek(t) starts from the last
  * copy at or before t and steps on with the logged inputs, so the state at t
  * is exactly the one playing from tick 0 reaches (tests/js/stacker/
  * replay-player.test.mjs). advance() plays on from where the player stands.

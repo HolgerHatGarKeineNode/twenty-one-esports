@@ -5,6 +5,7 @@ namespace App\Support\StreamBot;
 use App\Games\Blockfill;
 use App\Models\Tournament;
 use App\Support\Scores\ScoreRuns;
+use App\Support\Stacker\BlockfillRules;
 use App\Support\Stacker\BlockfillWeeks;
 use Carbon\CarbonImmutable;
 
@@ -68,9 +69,12 @@ final class BlockfillNotes extends WeeklyBoardNotes
         return 'blockfill_note';
     }
 
-    /** The game to play for the week and its first places, the weeks' page for a winner. */
+    /** The game to play for the week and its first places, the weeks' page for a winner; the blocks of the week's rules. */
     protected function extras(Tournament $week, string $kind): array
     {
-        return ['url' => $kind === 'winner' ? route('scores.show', Blockfill::SLUG) : route('stacker.play')];
+        return [
+            'url' => $kind === 'winner' ? route('scores.show', Blockfill::SLUG) : route('stacker.play'),
+            'blocks' => (string) BlockfillRules::goal($this->weeks->difficultyOf($week)),
+        ];
     }
 }

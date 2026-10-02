@@ -1,12 +1,13 @@
 {{--
     F1 · Terminal ticker · Blockfill (plan "Blockfill", P6): the league's own stacking game and its weekly hunt. The
     C frame of d4: header line and stats bar. Left the week, its state (when it ends, its final standings, or that
-    nobody is on the board yet), the chain of 40 blocks its leader mined as 40 cubes in the game's orange, the leader
+    nobody is on the board yet), the chain of the week's blocks (40, or its rules' count) its leader mined as as many
+    cubes in the game's orange, in two rows that share the width, the leader
     with face and time, and the call to play with the game's page. Right the week's top 5 with face, name and time;
     an empty week shows five open places. The league's orange stays on the action and the mined blocks.
 
     Data contract (SceneSource, BlockfillSlide::cached()):
-      $blockfill  array{state: 'empty'|'running'|'finished', title: string, line: string,
+      $blockfill  array{state: 'empty'|'running'|'finished', title: string, line: string, goal: int (the week's blocks),
                     top: list<array{place: int, name: string, time: string, avatar: ?string}>,
                     leader: array{name: string, time: string, avatar: ?string}|null, url: string}|null
                   null while Blockfill is switched off: the slide invites to every game instead
@@ -22,11 +23,16 @@
     $leader = is_array($b['leader'] ?? null) ? $b['leader'] : null;
     $leaderName = $leader ? K::name(K::text($leader, 'name'), 'Player', 32, 470) : null;
     $leaderTime = $leader ? K::fit(K::text($leader, 'time'), K::MONO, 24, 470) : '';
+    $goal = max(1, min(100, (int) ($b['goal'] ?? 40)));
     $chainLabel = match (true) {
-        $leader === null => '40 blocks to mine',
-        $state === 'finished' => 'The winner\'s chain: 40 blocks',
-        default => 'The leader\'s chain: 40 blocks',
+        $leader === null => $goal.' blocks to mine',
+        $state === 'finished' => 'The winner\'s chain: '.$goal.' blocks',
+        default => 'The leader\'s chain: '.$goal.' blocks',
     };
+    // Two rows of cubes over 556 px: 28 px apart for 40 (20 a row), closer for more.
+    $perRow = (int) ceil($goal / 2);
+    $pitch = min(28, intdiv(560, $perRow));
+    $cube = $pitch - 4;
     $rows = [];
     foreach (array_slice(is_array($b['top'] ?? null) ? $b['top'] : [], 0, 5) as $i => $row) {
         if (! is_array($row) || K::clean(K::text($row, 'name')) === '') {
@@ -49,17 +55,17 @@
 <text data-unit="title" data-box="38 150 601 210" x="40" y="200" font-family="Unbounded" font-weight="800" font-size="56" fill="#FFFFFF">Blockfill</text>
 <text data-unit="line" data-box="39 226 601 252" x="40" y="246" font-family="JetBrains Mono" font-weight="700" font-size="22" fill="#FFFFFF">{{ $line }}</text>
 
-{{-- The chain: 40 cubes in two rows of 20, mined (orange, a lit top edge) or still open (dashed). --}}
+{{-- The chain: the week's blocks as cubes in two rows, mined (orange, a lit top edge) or still open (dashed). --}}
 <text data-unit="chain-label" data-box="39 286 601 310" x="40" y="304" font-family="JetBrains Mono" font-weight="700" font-size="18" fill="#A1A1A7">{{ $chainLabel }}</text>
 <g data-unit="chain" data-box="40 322 596 374">
-@foreach (range(0, 39) as $i)
-@php($cx = 40 + ($i % 20) * 28)
-@php($cy = 322 + intdiv($i, 20) * 28)
+@foreach (range(0, $goal - 1) as $i)
+@php($cx = 40 + ($i % $perRow) * $pitch)
+@php($cy = 322 + intdiv($i, $perRow) * 28)
 @if ($leader)
-<rect x="{{ $cx }}" y="{{ $cy }}" width="24" height="24" fill="#F7931A"/>
-<rect x="{{ $cx }}" y="{{ $cy }}" width="24" height="5" fill="#FFC27A"/>
+<rect x="{{ $cx }}" y="{{ $cy }}" width="{{ $cube }}" height="24" fill="#F7931A"/>
+<rect x="{{ $cx }}" y="{{ $cy }}" width="{{ $cube }}" height="5" fill="#FFC27A"/>
 @else
-<rect x="{{ $cx + 0.5 }}" y="{{ $cy + 0.5 }}" width="23" height="23" fill="none" stroke="#63636A" stroke-width="1" stroke-dasharray="3 3"/>
+<rect x="{{ $cx + 0.5 }}" y="{{ $cy + 0.5 }}" width="{{ $cube - 1 }}" height="23" fill="none" stroke="#63636A" stroke-width="1" stroke-dasharray="3 3"/>
 @endif
 @endforeach
 </g>

@@ -343,12 +343,12 @@ final class SharePosts
      */
     private function blockfillSentence(array $f): string
     {
-        $replace = ['time' => BlockfillMoments::time((int) $f['ticks']), 'week' => BlockfillMoments::weekTitle((string) $f['week']), 'place' => (int) $f['place']];
+        $replace = ['time' => BlockfillMoments::time((int) $f['ticks']), 'week' => BlockfillMoments::weekTitle((string) $f['week']), 'place' => (int) $f['place'], 'count' => (int) ($f['goal'] ?? 40)];
 
         return match ($f['kind']) {
             'final' => __('Finished :week in place :place with :time on TWENTY ONE Esports.', $replace),
-            'first' => __('New first place in :week: 40 blocks mined in :time on TWENTY ONE Esports.', $replace),
-            'pb' => __('New personal best in Blockfill: 40 blocks mined in :time on TWENTY ONE Esports.', $replace),
+            'first' => __('New first place in :week: :count blocks mined in :time on TWENTY ONE Esports.', $replace),
+            'pb' => __('New personal best in Blockfill: :count blocks mined in :time on TWENTY ONE Esports.', $replace),
             default => __('Place :place so far in :week with :time on TWENTY ONE Esports.', $replace),
         };
     }

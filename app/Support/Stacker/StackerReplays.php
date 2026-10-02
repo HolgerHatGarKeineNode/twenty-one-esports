@@ -99,12 +99,12 @@ final class StackerReplays
             'testing' => app()->environment('testing'),
             't' => [
                 'noBlock' => __('No block mined so far'),
-                'block' => __('Block :n of 40'),
+                'block' => __('Block :n of :count', ['count' => BlockfillRules::goal($run->engine)]),
                 'minedAt' => __('mined at :time'),
                 'broken' => __('This replay cannot be played.'),
                 'play' => __('Play'),
                 'pause' => __('Pause'),
-                'slider' => __(':time, block :n of 40'),
+                'slider' => __(':time, block :n of :count', ['count' => BlockfillRules::goal($run->engine)]),
                 'tick' => __('Tick :n'),
             ],
         ];
