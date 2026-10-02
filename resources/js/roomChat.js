@@ -18,7 +18,10 @@
  *   - the guest's client tells the league once it opened a valid card from
  *     the host (`lobby_seen_at`);
  *   - cards never enter the local cache: a stub marks the wrap, and the card
- *     is opened again from the relays after a reload.
+ *     is opened again from the relays after a reload;
+ *   - the host's open lobby card is pinned in the steps beside the chat
+ *     (publishPin() into Alpine.store('lobbyPin'), this tab only), with its
+ *     Share lobby, Replace, Close and "Still valid" buttons (pinAction()).
  *
  * Replies from other NIP-17 clients (resources/js/dmInbox.js): the chat
  * also reads on the player's own DM relays (10050) and publishes each wrap
@@ -37,7 +40,7 @@
  */
 import { SimplePool } from 'nostr-tools/pool';
 import { loadCache, roomEntry, saveCache } from './chatCache.js';
-import { ACCOUNT_CARDS, ACCOUNT_SERVICES, HOST_CARD, accountTags, cardContent, casualExpiration, isExpired, lobbyTags, openCardIds, parseCard, randomPassword } from './lobbyCards.js';
+import { ACCOUNT_CARDS, ACCOUNT_SERVICES, HOST_CARD, accountTags, cardContent, casualExpiration, isExpired, lobbyTags, openCardIds, parseCard, pinnedLobbyCard, randomPassword } from './lobbyCards.js';
 import { extraInboxRelays, lookupInboxes, relaysFor } from './dmInbox.js';
 import { canEncrypt, chatSince, isUntagged, roomMessages, unwrapMessage, wrapGroupMessage } from './nostrChat.js';
 import { ensureSigner } from './nostrSign.js';
@@ -91,6 +94,7 @@ export function roomChat(config) {
         accountId: '',
         accountService: '',
         cardError: '',
+        pinError: '',
         revealed: [],
         seenBusy: false,
 
@@ -205,7 +209,8 @@ export function roomChat(config) {
             return pubkey === config.me ? this.t.you : (config.members.find((m) => m.pubkey === pubkey)?.name ?? '');
         },
 
-        get messages() {
+        /** The room's messages (not expired, of its members) and their valid cards as `{ rumor, card }`. */
+        get thread() {
             const now = nowSeconds();
             const members = config.members.map((m) => m.pubkey);
             const me = config.members.find((m) => m.pubkey === config.me);
@@ -217,16 +222,22 @@ export function roomChat(config) {
             );
             // Cards exist only in a casual room; elsewhere every message is text, as other clients show it.
             // An untagged reply from another client is never a card.
-            const cards = new Map();
+            const entries = [];
 
             if (this.casual) {
                 for (const rumor of rumors.filter((r) => !isUntagged(r))) {
                     const card = parseCard(rumor, now);
-                    if (card && !card.invalid) cards.set(rumor.id, card);
+                    if (card && !card.invalid) entries.push({ rumor, card });
                 }
             }
 
-            const open = openCardIds([...cards].map(([id, card]) => ({ rumor: rumors.find((r) => r.id === id), card })));
+            return { rumors, entries };
+        },
+
+        get messages() {
+            const { rumors, entries } = this.thread;
+            const cards = new Map(entries.map((entry) => [entry.rumor.id, entry.card]));
+            const open = openCardIds(entries);
 
             return rumors
                 // A muted player's messages stay hidden; their cards collapse while the match is open (NIP "Mute and abuse").
@@ -246,6 +257,75 @@ export function roomChat(config) {
                         mutedCard: card !== null && this.isMuted(rumor.pubkey) && !this.revealed.includes(rumor.id),
                     };
                 });
+        },
+
+        /* ---------- The pinned lobby card (casual-steps) ---------- */
+
+        /**
+         * The host's open lobby card as the steps draw it, null for none (lobbyCards.js pinnedLobbyCard()).
+         * A muted host's card stays hidden until revealed in the chat, as there (NIP "Mute and abuse").
+         */
+        get pinned() {
+            const c = this.casual;
+            if (!c?.hostPubkey || !c.open) return null;
+            const entry = pinnedLobbyCard(this.thread.entries, { host: c.hostPubkey, game: c.game });
+            if (entry === null || (this.isMuted(entry.rumor.pubkey) && !this.revealed.includes(entry.rumor.id))) return null;
+
+            return {
+                id: entry.rumor.id,
+                name: entry.card.name,
+                password: entry.card.password,
+                by: this.memberName(entry.rumor.pubkey),
+                mine: entry.rumor.pubkey === config.me,
+                time: this.time(entry.rumor.created_at * 1000),
+            };
+        },
+
+        /**
+         * Hands the pin to the steps, outside this wire:ignore scope (x-effect on the chat): only to
+         * Alpine.store('lobbyPin') in this browser tab, never to the page's Livewire state.
+         */
+        publishPin() {
+            const store = window.Alpine?.store('lobbyPin');
+            if (!store) return;
+            store.card = this.pinned;
+            store.busy = this.sending;
+            store.error = this.pinError;
+        },
+
+        /** A button of the pin: `compose` (Share lobby, Replace), `close`, `confirm` (Still valid). */
+        async pinAction(action) {
+            if (!this.casual?.isHost) return;
+            this.pinError = '';
+
+            if (action === 'compose') {
+                if (!this.cardKinds.includes('lobby')) return;
+                this.openComposer('lobby');
+                this.$nextTick(() => this.$root.querySelector('[data-test=lobby-form]')?.scrollIntoView({ block: 'nearest', behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth' }));
+
+                return;
+            }
+
+            if (action === 'close') {
+                await this.sendCard('lobby', true);
+            } else if (action === 'confirm') {
+                await this.confirmCard();
+            }
+
+            this.pinError = this.cardError || this.error;
+        },
+
+        /**
+         * "Still valid": the open card again, same name and password, to the opponent. Sent before the
+         * check-in it was never counted (the league refused `not_checked_in`); re-sending proves it reaches
+         * the opponent now and sets `lobby_shared_at` like any card, and the guest's chat sees it fresh.
+         */
+        async confirmCard() {
+            const pin = this.pinned;
+            if (pin === null || !pin.mine) return;
+            this.lobbyName = pin.name;
+            this.lobbyPassword = pin.password;
+            await this.sendCard('lobby');
         },
 
         /* ---------- The scroll box ---------- */
@@ -344,7 +424,7 @@ export function roomChat(config) {
          * else, the copy to self alone does not count. Resolves to the rumor,
          * or null after setting `error`.
          */
-        async deliver({ content, tags = [], needOpponent = false }) {
+        async deliver({ content, tags = [], needOpponent = false, now = nowSeconds() }) {
             const { rumor, wraps, targets } = await wrapGroupMessage(window.nostr, {
                 sender: config.me,
                 recipients: config.members.map((m) => m.pubkey),
@@ -352,6 +432,7 @@ export function roomChat(config) {
                 match: config.match,
                 tags,
                 expiration: this.expiration(),
+                now,
             });
             const onauth = (template) => window.nostr.signEvent(template);
             // NIP-17: each wrap also to its recipient's DM relays (10050); the chat relays always.
@@ -467,14 +548,20 @@ export function roomChat(config) {
             }
 
             const card = parseCard({ tags, created_at: nowSeconds() });
+            // The newest card wins by `created_at`, the lower id on a tie (openCardIds()): a card in the same second as
+            // my last one of this kind could lose to it, and a Close right after Replace would leave the lobby open.
+            const mine = this.thread.entries.filter((e) => e.rumor.pubkey === config.me && e.card.key === card.key);
+            const at = Math.max(nowSeconds(), ...mine.map((e) => e.rumor.created_at + 1));
             this.sending = true;
 
             try {
-                const rumor = await this.deliver({ content: cardContent(card, config.match, this.casual.lobbyRules ?? ''), tags, needOpponent: true });
+                const rumor = await this.deliver({ content: cardContent(card, config.match, this.casual.lobbyRules ?? ''), tags, needOpponent: true, now: at });
 
                 if (rumor !== null) {
                     this.composer = '';
-                    if (this.casual.isHost && !withdraw && tags[0][1] === HOST_CARD[this.casual.game].value) await this.reportShared();
+                    // Only once the flow runs: before a scheduled match's check-in the league refuses the flag, and
+                    // the pin's "Still valid" sends the card again after it (match #53, 2026-10-02).
+                    if (this.casual.isHost && this.casual.underWay && !withdraw && tags[0][1] === HOST_CARD[this.casual.game].value) await this.reportShared();
                 }
             } catch (error) {
                 console.warn('[chat] card failed', error);
@@ -499,7 +586,7 @@ export function roomChat(config) {
         /** Guest: a valid, open card from the host is on screen, so tell the league once. */
         checkSeen() {
             const c = this.casual;
-            if (!c || c.isHost || !c.started || !c.open || c.seen || this.seenBusy || !c.hostPubkey) return;
+            if (!c || c.isHost || !c.underWay || !c.open || c.seen || this.seenBusy || !c.hostPubkey) return;
             const want = HOST_CARD[c.game];
             const seen = this.messages.some((m) => m.pubkey === c.hostPubkey && m.card && m.card.state === 'open' && !m.mutedCard && m.card.marker === want?.value);
 

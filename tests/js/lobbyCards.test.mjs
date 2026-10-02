@@ -12,7 +12,7 @@ import { test } from 'node:test';
 import { finalizeEvent, generateSecretKey, getPublicKey } from 'nostr-tools/pure';
 import * as nip44 from 'nostr-tools/nip44';
 import {
-    ACCOUNT_CARDS, HOST_CARD, LOBBY_WORDS, MAX_FUTURE, accountTags, cacheEntry, cardContent, casualExpiration, expirationOf, isExpired, lobbyTags, openCardIds, parseCard, randomPassword, validValue,
+    ACCOUNT_CARDS, HOST_CARD, LOBBY_WORDS, MAX_FUTURE, accountTags, cacheEntry, cardContent, casualExpiration, expirationOf, isExpired, lobbyTags, openCardIds, parseCard, pinnedLobbyCard, randomPassword, validValue,
 } from '../../resources/js/lobbyCards.js';
 import { unwrapMessage, wrapGroupMessage } from '../../resources/js/nostrChat.js';
 
@@ -128,6 +128,40 @@ test('the newest card wins per author and marker, the lowest id on a tie', () =>
     // A withdrawal supersedes like any card.
     const closed = entry(host, '06', NOW + 20, [['lobby', 'rocket-league']]);
     assert.deepEqual([...openCardIds([...entries, closed])].sort(), ['01', '02', '06']);
+});
+
+test('the pinned lobby card is the host\'s newest open lobby card; a replaced one gives way, a closed one leaves no pin', () => {
+    const entry = (pubkey, id, createdAt, tags) => {
+        const r = rumor(tags, { pubkey, id, created_at: createdAt });
+
+        return { rumor: r, card: parseCard(r, NOW + 3600) };
+    };
+    const host = 'h'.repeat(64);
+    const guest = 'g'.repeat(64);
+    const room = { host, game: 'rocket-league' };
+    const pinned = (entries) => pinnedLobbyCard(entries, room)?.rumor.id ?? null;
+    const first = entry(host, '10', NOW, lobbyTags({ game: 'rocket-league', name: 'one', password: 'p-1' }));
+    const second = entry(host, '11', NOW + 60, lobbyTags({ game: 'rocket-league', name: 'two', password: 'p-2' }));
+
+    // None yet, or only cards that are no lobby of the host: no pin.
+    assert.equal(pinned([]), null);
+    assert.equal(pinned([entry(guest, '20', NOW, accountTags({ service: 'ea', id: 'x' }))]), null);
+    assert.equal(pinned([entry(host, '21', NOW, accountTags({ service: 'ea', id: 'x' }))]), null);
+    // The guest cannot pin a lobby, nor the host one of another game.
+    assert.equal(pinned([entry(guest, '22', NOW, lobbyTags({ game: 'rocket-league', name: 'n', password: 'p' }))]), null);
+    assert.equal(pinned([entry(host, '23', NOW, lobbyTags({ game: 'age-of-empires-2', name: 'n', password: 'p' }))]), null);
+
+    // The latest open card, whatever order the relays deliver in.
+    assert.equal(pinned([first]), '10');
+    assert.equal(pinned([second, first]), '11');
+    assert.deepEqual([pinnedLobbyCard([first, second], room).card.name, pinnedLobbyCard([first, second], room).card.password], ['two', 'p-2']);
+
+    // Closed: the newest card is the withdrawal, so nothing is pinned, not the card before it.
+    const closed = entry(host, '12', NOW + 120, [['lobby', 'rocket-league']]);
+    assert.equal(pinned([first, second, closed]), null);
+
+    // A new card after the close is pinned again.
+    assert.equal(pinned([first, second, closed, entry(host, '13', NOW + 180, lobbyTags({ game: 'rocket-league', name: 'three', password: 'p-3' }))]), '13');
 });
 
 test('the expiration is the next 00:00 UTC at or after max(A + D, now) + 7 days', () => {

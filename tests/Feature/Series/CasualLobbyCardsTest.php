@@ -1,9 +1,11 @@
 <?php
 
+use App\Enums\Platform;
 use App\Enums\SeriesStatus;
 use App\Models\SeriesMatch;
 use App\Models\User;
 use App\Support\LobbyWords;
+use App\Support\Series\CasualChallenges;
 use App\Support\Series\CasualMatches;
 use Illuminate\Support\Facades\Process;
 use Livewire\Livewire;
@@ -23,7 +25,60 @@ test('the card rules hold in the client: build, parse, validation, newest wins, 
     $run = Process::path(base_path())->timeout(60)->run(['node', '--test', 'tests/js/lobbyCards.test.mjs']);
 
     expect($run->successful())->toBeTrue($run->output().$run->errorOutput())
-        ->and($run->output())->toContain('ℹ pass 13')->toContain('ℹ skipped 0');
+        ->and($run->output())->toContain('ℹ pass 14')->toContain('ℹ skipped 0');
+});
+
+/*
+ * Match #53 (2026-10-02): the host sent the lobby card hours before the
+ * check-in. A scheduled match has its agreed `start_at` from the accept on,
+ * so the chat counted as `started` and let the card out; its "shared" call
+ * was refused (`not_checked_in`) and never made again, so the steps stood at
+ * "Lobby shared" with the card open in the chat. Now the chat hears when the
+ * flow runs (`underWay`), and the steps pin the open card with "Still valid".
+ */
+test('a lobby card sent before the check-in: the chat knows the flow does not run yet, and after the check-in the pin asks the host to confirm it once', function () {
+    [$anna, $bert] = User::factory()->count(2)->create();
+    $at = now()->addDay()->setTime(21, 0)->getTimestamp();
+    $challenges = app(CasualChallenges::class);
+    $match = $challenges->challenge($anna, $bert, 'rocket-league', Platform::Pc, true, [$at], now()->addDay()->setTime(12, 0)->getTimestamp(), '');
+    $match = $challenges->accept($match, $bert, $at, Platform::Pc, true)->refresh();
+    [$host, $guest] = $match->host_side === casualSideOf($match, $anna) ? [$anna, $bert] : [$bert, $anna];
+    $hostName = $host->displayName();
+
+    // Before the check-in: the composer may open (`started`), the flow does not run, and the league refuses the flag.
+    $hostRoom = Livewire::actingAs($host)->test('pages::matches.room', ['match' => $match]);
+    expect($hostRoom->instance()->chatConfig()['casual'])->toMatchArray(['started' => true, 'underWay' => false, 'shared' => false])
+        ->and($hostRoom->call('casualLobbyShared')->effects['returns'][0] ?? null)->toMatchArray(['ok' => false, 'reason' => 'not_checked_in']);
+    // The pin is there for an early card, with no Share lobby and no "Still valid" before the check-in.
+    expect($hostRoom->html())->toContain('data-test="lobby-pin"')->not->toContain('data-test="casual-share"')->not->toContain('data-test="lobby-pin-confirm"');
+
+    $this->travelTo(now()->setTimestamp($at)->subMinutes(5));
+    app(CasualMatches::class)->checkIn($match, $anna);
+    app(CasualMatches::class)->checkIn($match, $bert);
+
+    // Checked in: the chat hears the flow runs; the host's pin offers "Still valid" for the open card, Share lobby without one.
+    $hostRoom = Livewire::actingAs($host)->test('pages::matches.room', ['match' => $match])
+        ->assertDispatched('casual-room', fn (string $name, array $params) => $params['state']['underWay'] === true && $params['state']['shared'] === false);
+    expect($hostRoom->html())->toContain('data-test="lobby-pin"')->toContain('data-test="lobby-pin-confirm"')->toContain('Still valid')
+        ->toContain('data-test="lobby-pin-replace"')->toContain('data-test="lobby-pin-close"')->toContain('data-test="casual-share"')
+        ->toContain('aria-current="step"')
+        ->and($hostRoom->html())->toMatch('/data-test="casual-step-lobby"[^>]*aria-current="step"/');
+
+    // The guest's pin waits for that confirmation; it has no host actions.
+    $guestHtml = Livewire::actingAs($guest)->test('pages::matches.room', ['match' => $match])->html();
+    expect($guestHtml)->toContain('data-test="lobby-pin"')->toContain('Waiting for '.$hostName.' to confirm the lobby is still valid.')
+        ->not->toContain('data-test="lobby-pin-confirm"')->not->toContain('data-test="lobby-pin-close"');
+
+    // "Still valid" re-sends the card and then calls the same flag, now taken: the steps move on to "Joined".
+    Livewire::actingAs($host)->test('pages::matches.room', ['match' => $match])->call('casualLobbyShared')->assertReturned(['ok' => true]);
+    $hostHtml = Livewire::actingAs($host)->test('pages::matches.room', ['match' => $match])->html();
+
+    expect($match->refresh()->lobby_shared_at)->not->toBeNull()
+        ->and($hostHtml)->toMatch('/data-test="casual-step-joined"[^>]*aria-current="step"/')
+        ->not->toContain('data-test="lobby-pin-confirm"')->toContain('data-test="lobby-pin-replace"')
+        ->and($match->lobby_name)->toBeNull()
+        ->and($match->lobby_password)->toBeNull();
+    expect(Livewire::actingAs($guest)->test('pages::matches.room', ['match' => $match])->html())->toContain('data-test="casual-joined"');
 });
 
 test('Age of Empires II: the league\'s lobby rules stand in the casual steps and go with the lobby card as one English line', function () {
@@ -220,6 +275,7 @@ test('the room hands the chat the host, the flags, A + D and the player\'s own E
         'isHost' => true,
         'hostPubkey' => $host->pubkey,
         'started' => true,
+        'underWay' => true,
         'open' => true,
         'shared' => false,
         'seen' => false,

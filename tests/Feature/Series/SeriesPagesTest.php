@@ -48,6 +48,27 @@ function seriesIn(string $state): SeriesMatch
     return $match->refresh();
 }
 
+test('a running series pins the captain\'s lobby above the score with copy buttons, once; after the result it is not pinned', function () {
+    $match = SeriesMatch::factory()->accepted()->create();
+    $captain = seriesCaptain($match);
+    $other = seriesCaptain($match, 'challenged');
+
+    $before = Livewire::actingAs($other)->test('pages::matches.room', ['match' => $match])->html();
+    expect($before)->not->toContain('data-test="room-lobby-pin"');
+
+    app(SeriesService::class)->setLobby($match, $captain, 'e21-pinned-room', 'pw-pinned-room', 'EU');
+    $html = Livewire::actingAs($other)->test('pages::matches.room', ['match' => $match])->html();
+
+    expect($html)->toContain('data-test="room-lobby-pin"')->toContain('data-test="room-lobby-copy-name"')->toContain('data-test="room-lobby-copy-password"')
+        // Above the score, first in the room; name and password once, not again in the lobby section.
+        ->and(strpos($html, 'data-test="room-lobby-pin"'))->toBeLessThan(strpos($html, 'data-test="series-score"'))
+        ->and(substr_count($html, 'e21-pinned-room'))->toBe(2)
+        ->and($html)->not->toContain('data-test="lobby-name"');
+
+    $done = seriesIn('confirmed');
+    expect(Livewire::actingAs(seriesCaptain($done))->test('pages::matches.room', ['match' => $done])->html())->not->toContain('data-test="room-lobby-pin"');
+});
+
 test('every series page survives a Livewire roundtrip', function (string $page, string $who, Closure $params) {
     $admin = User::factory()->create();
     Admin::query()->create(['pubkey' => $admin->pubkey]);

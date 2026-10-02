@@ -424,7 +424,7 @@ new #[Title('Match room')] #[Layout('layouts::app', ['section' => 'matches', 'sc
      * room: the host, the two flags, whether the match runs, and `A + D` for
      * the NIP-40 expiration (SeriesMatch::casualChatExpiresFrom()).
      *
-     * @return array{game: string, isHost: bool, hostPubkey: string|null, started: bool, open: bool, shared: bool, seen: bool, expiresFrom: int|null}|null
+     * @return array{game: string, isHost: bool, hostPubkey: string|null, started: bool, underWay: bool, open: bool, shared: bool, seen: bool, expiresFrom: int|null}|null
      */
     private function casualState(): ?array
     {
@@ -442,6 +442,8 @@ new #[Title('Match room')] #[Layout('layouts::app', ['section' => 'matches', 'sc
             'isHost' => $mySide !== null && $mySide === $match->host_side,
             'hostPubkey' => $hostId === null ? null : User::query()->whereKey($hostId)->value('pubkey'),
             'started' => $match->status === SeriesStatus::Accepted && $match->start_at !== null,
+            // A scheduled match has its `start_at` from the accept on, but lobby and seen flags count only after both checked in.
+            'underWay' => $match->casualUnderWay(),
             'open' => ! $match->status->hasResult(),
             'shared' => $match->lobby_shared_at !== null,
             'seen' => $match->lobby_seen_at !== null,
@@ -736,7 +738,7 @@ new #[Title('Match room')] #[Layout('layouts::app', ['section' => 'matches', 'sc
      x-init="setInterval(() => { if (! document.activeElement?.matches('input, textarea, select') && ! submit) $wire.sync() }, 8000)">
 
     {{-- Header --}}
-    <div @class(['flex flex-wrap items-center gap-x-3 gap-y-2', '-order-2' => $casualFirst])>
+    <div @class(['flex flex-wrap items-center gap-x-3 gap-y-2', 'max-lg:-order-4 lg:-order-2' => $casualFirst])>
         <a href="{{ \App\Support\GameNames::page($m->game) }}" class="shrink-0" title="{{ \App\Support\GameNames::game($m->game) }}" aria-label="{{ \App\Support\GameNames::game($m->game) }}"><x-game-cover :game="$m->game" size="thumb" class="w-16 rounded-sm shadow-ring lg:w-24" data-test="room-game-cover" /></a>
         <h1 class="m-0 font-display text-[26px] font-bold lg:text-[34px]"><span class="lg:hidden">{{ __('Match room') }}</span><span class="max-lg:hidden">{{ __('Match') }}</span></h1>
         <span class="font-display text-xl font-bold text-ink-2 max-lg:hidden lg:text-[28px]">{{ $m->label() }}</span>
@@ -754,6 +756,31 @@ new #[Title('Match room')] #[Layout('layouts::app', ['section' => 'matches', 'sc
                 <span class="text-ink-2">{{ $wait->actionText() }}</span>
             @endif
         </p>
+    @endif
+
+    {{--
+        The lobby a captain set (a lineup or tournament series, SeriesService::setLobby()), pinned right above the
+        score while the series runs (2026-10-02: "die Lobby Karte ... darf nicht irgendwo im Chat unlesbar
+        verschwinden"). The room is the two lineups' only; the section further down keeps the editor.
+    --}}
+    @php($lobbyPinned = ! $casual && $m->lobby_name !== null && $m->status->isRunning())
+    @if ($lobbyPinned)
+        <section aria-labelledby="room-lobby-h" class="flex flex-col gap-2 rounded-lg bg-card px-4 py-3 shadow-[inset_0_0_0_1px_#B9640A] lg:px-6" x-data="{ show: false, copied: '' }" data-test="room-lobby-pin">
+            <span class="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-0.5">
+                <h2 id="room-lobby-h" class="m-0 flex min-w-0 items-center gap-1.5 text-[13px] font-bold"><x-icon name="key" :size="14" class="shrink-0 text-btc-hi" />{{ __('Join this lobby in :game', ['game' => \App\Support\GameNames::game($m->game)]) }}</h2>
+                <span class="min-w-0 text-[11px] text-ink-2 [overflow-wrap:anywhere]">{{ __('host :clan', ['clan' => $m->challenger_name]) }}{{ $m->lobby_region ? ' · '.$m->lobby_region : '' }}</span>
+            </span>
+            <div class="grid min-h-11 grid-cols-[72px_minmax(0,1fr)_auto] items-center gap-2 border-t border-hairline pt-2 text-[13px]">
+                <span class="text-xs text-ink-2">{{ __('Name') }}</span><b class="min-w-0 font-mono break-all" data-test="room-lobby-name">{{ $m->lobby_name }}</b>
+                <button type="button" x-on:click="navigator.clipboard?.writeText(@js($m->lobby_name)); copied = 'name'" aria-label="{{ __('Copy lobby name') }}" data-test="room-lobby-copy-name" class="btn-w inline-flex size-11 cursor-pointer items-center justify-center rounded-md border border-line bg-well text-ink-2"><span x-show="copied !== 'name'"><x-icon name="copy" :size="16" /></span><span x-show="copied === 'name'" x-cloak class="text-win"><x-icon name="check" :size="16" /></span></button>
+            </div>
+            <div class="grid min-h-11 grid-cols-[72px_minmax(0,1fr)_auto_auto] items-center gap-2 border-t border-hairline pt-2 text-[13px]">
+                <span class="text-xs text-ink-2">{{ __('Password') }}</span>
+                <span class="min-w-0"><span x-show="! show">••••••••</span><b x-show="show" x-cloak class="font-mono break-all" data-test="room-lobby-password">{{ $m->lobby_password ?? '–' }}</b></span>
+                <button type="button" x-on:click="show = ! show" :aria-pressed="show ? 'true' : 'false'" aria-label="{{ __('Show password') }}" class="btn-w inline-flex size-11 cursor-pointer items-center justify-center rounded-md border border-line bg-well text-ink-2"><x-icon name="eye" :size="16" /></button>
+                <button type="button" x-on:click="navigator.clipboard?.writeText(@js((string) $m->lobby_password)); copied = 'password'" aria-label="{{ __('Copy password') }}" data-test="room-lobby-copy-password" class="btn-w inline-flex size-11 cursor-pointer items-center justify-center rounded-md border border-line bg-well text-ink-2"><span x-show="copied !== 'password'"><x-icon name="copy" :size="16" /></span><span x-show="copied === 'password'" x-cloak class="text-win"><x-icon name="check" :size="16" /></span></button>
+            </div>
+        </section>
     @endif
 
     {{-- Versus --}}
@@ -806,7 +833,7 @@ new #[Title('Match room')] #[Layout('layouts::app', ['section' => 'matches', 'sc
     <x-nostr-bar :bar="\App\Support\Nostr\NostrBar::match($m, 'room')" />
 
     @if ($error)
-        <p @class(['m-0 rounded-md bg-loss-tint px-4 py-3 text-[13px] text-loss', '-order-2' => $casualFirst]) role="alert" data-test="room-error">{{ $error }}</p>
+        <p @class(['m-0 rounded-md bg-loss-tint px-4 py-3 text-[13px] text-loss', 'max-lg:-order-4 lg:-order-2' => $casualFirst]) role="alert" data-test="room-error">{{ $error }}</p>
     @endif
 
     {{-- Win moment (Overlays.dc.html "Win, once the other captain accepts") --}}
@@ -1051,8 +1078,12 @@ new #[Title('Match room')] #[Layout('layouts::app', ['section' => 'matches', 'sc
         </section>
     </div>
 
-    {{-- Lobby + Chat --}}
-    <div @class(['grid grid-cols-1 gap-5 lg:grid-cols-2', '-order-1' => $casualFirst])>
+    {{--
+        Lobby + Chat. A running casual 1v1 below lg: the grid dissolves (contents), so the steps with the pinned
+        lobby card come right under the header, above the score, and the chat after the score (2026-10-02: the
+        pin and its action above the fold at 375).
+    --}}
+    <div @class(['grid grid-cols-1 gap-5 lg:grid-cols-2', '-order-1 max-lg:contents' => $casualFirst])>
         @if ($casual)
             {{-- An open scheduled challenge has no steps yet: its answer card says what happens. --}}
             @if ($m->status !== \App\Enums\SeriesStatus::Open)
@@ -1072,7 +1103,8 @@ new #[Title('Match room')] #[Layout('layouts::app', ['section' => 'matches', 'sc
                 </form>
             @elseif ($m->lobby_name === null)
                 <p class="m-0 text-[13px] text-ink-2">{{ $m->status->isRunning() ? __('No lobby yet. The host sets name and password here.') : __('The lobby opens once the challenge is accepted.') }}</p>
-            @else
+            {{-- While the series runs, name and password are pinned under the score (room-lobby-pin): shown once, not twice. --}}
+            @elseif (! $lobbyPinned)
                 <div x-data="{ show: false }" class="flex flex-col">
                     <div class="grid min-h-12 grid-cols-[80px_minmax(0,1fr)_auto] items-center gap-2 border-b border-hairline text-sm">
                         <span class="text-ink-2">{{ __('Name') }}</span><b data-test="lobby-name">{{ $m->lobby_name }}</b>
@@ -1110,7 +1142,7 @@ new #[Title('Match room')] #[Layout('layouts::app', ['section' => 'matches', 'sc
             bottom, older ones drawn when scrolled to the top (resources/js/roomChat.js). The height leaves room for the
             sticky header, the phone's tab bar and the match dock, so the field stays clear of them.
         --}}
-        <section aria-labelledby="chat-h" class="room-chat flex flex-col rounded-lg bg-card" x-data="roomChat(@js($this->chatConfig()))" x-on:casual-room.window="casualUpdate($event.detail.state)" x-on:casual-compose.window="cardKinds.includes($event.detail) && openComposer($event.detail)" data-test="room-chat" wire:ignore>
+        <section aria-labelledby="chat-h" @class(['room-chat flex flex-col rounded-lg bg-card', 'max-lg:-order-1' => $casualFirst]) x-data="roomChat(@js($this->chatConfig()))" x-on:casual-room.window="casualUpdate($event.detail.state)" x-on:casual-compose.window="cardKinds.includes($event.detail) && openComposer($event.detail)" x-on:lobby-pin.window="pinAction($event.detail)" x-effect="publishPin()" data-test="room-chat" wire:ignore>
             <span class="flex shrink-0 items-center justify-between gap-2 border-b border-hairline px-4 py-3 lg:px-6"><h2 id="chat-h" class="m-0 text-[15px] font-bold">{{ __('Chat') }}</h2><span class="inline-flex items-center gap-1.5 text-xs text-ink-2"><x-icon name="lock" :size="14" />{{ $casual ? __('private to both players') : __('private to both lineups') }}</span></span>
             <p x-show="status === 'live'" class="m-0 shrink-0 border-b border-hairline px-4 py-2 text-xs leading-normal text-ink-2 lg:px-6" data-test="chat-hint">{{ __('End-to-end encrypted over Nostr: the league server never receives or stores these messages.') }}</p>
             <div class="relative flex min-h-0 grow flex-col">

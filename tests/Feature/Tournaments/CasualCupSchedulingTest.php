@@ -342,6 +342,34 @@ test('a reminder names the time left in its largest whole unit, never thousands 
         ->and($reminder($a))->toStartWith('The league decides in '.trans_choice(':count day|:count days', intdiv($left, 1440), [], 'en').'.');
 });
 
+test('a Rocket League cup series room pins the lobby card in its steps, and counts a card only once both checked in', function () {
+    [, $match, $a, $b] = rlCupMatch();
+    $schedules = app(CupSchedules::class);
+    $at = now()->addHours(2)->getTimestamp();
+    $schedules->propose($match, $a, [$at]);
+    $schedules->accept($match, $b, $at);
+    $this->travelTo(CarbonImmutable::createFromTimestamp($at)->subMinutes(10));
+    cupTick();
+    $series = cupSeriesOf($match);
+    [$host, $guest] = $series->host_side === casualSideOf($series, $a) ? [$a, $b] : [$b, $a];
+
+    // Before the check-in: the chat may hold a card (`started`), the flow does not run, so no card counts yet.
+    $room = Livewire::actingAs($host)->test('pages::matches.room', ['match' => $series]);
+    expect($series->origin)->toBe(SeriesMatch::ORIGIN_CUP)
+        ->and($room->instance()->chatConfig()['casual'])->toMatchArray(['game' => 'rocket-league', 'isHost' => true, 'started' => true, 'underWay' => false])
+        ->and($room->html())->toContain('data-test="lobby-pin"')->not->toContain('data-test="casual-share"');
+
+    app(CasualMatches::class)->checkIn($series, $a);
+    app(CasualMatches::class)->checkIn($series, $b);
+
+    // Checked in: the pin offers Share lobby to the host (no card yet), and the guest waits for it there.
+    $hostHtml = Livewire::actingAs($host)->test('pages::matches.room', ['match' => $series])
+        ->assertDispatched('casual-room', fn (string $name, array $params) => $params['state']['underWay'] === true)->html();
+    expect($hostHtml)->toContain('data-test="lobby-pin"')->toContain('data-test="casual-share"')->toContain('data-test="lobby-pin-confirm"')
+        ->and(Livewire::actingAs($guest)->test('pages::matches.room', ['match' => $series])->html())->toContain('data-test="lobby-pin"')
+        ->toContain('Waiting for '.$series->sideName((string) $series->host_side).' to share the lobby in the chat.');
+});
+
 test('a time left reads in its largest whole unit, rounded down', function (int $minutes, string $text) {
     expect(RulesPage::largestUnit($minutes, 'en'))->toBe($text);
 })->with([

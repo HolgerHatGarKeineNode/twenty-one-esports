@@ -6,9 +6,11 @@
     it the step that runs now: its deadline as a big countdown
     (SeriesMatch::casualNextDeadline()), one primary action for this player,
     and the no-show claim, its answer and the host swap exactly when they
-    apply. The lobby itself is never here: the host shares it as a card in
-    the chat next to this (NIP "Lobby and account cards"); "Share lobby"
-    opens that composer. Needs $m, $mySide, $viewer, $report and $editable
+    apply. The lobby travels as a card in the chat next to this (NIP "Lobby
+    and account cards"); "Share lobby" and "Replace" open that composer. The
+    host's open card is pinned here by the browser from its decrypted chat,
+    never by the league, which only knows that a card went out. Needs $m,
+    $mySide, $viewer, $report and $editable
     from pages/matches/⚡room.
 --}}
 @php
@@ -79,7 +81,7 @@
     $big = 'min-h-14 w-full px-6 font-display text-base font-bold sm:w-auto';
 @endphp
 
-<section aria-labelledby="casual-h" class="flex flex-col gap-4 rounded-lg bg-card px-4 py-5 lg:px-6" data-test="casual-steps">
+<section aria-labelledby="casual-h" class="flex flex-col gap-4 rounded-lg bg-card px-4 py-5 max-lg:-order-3 lg:px-6" data-test="casual-steps">
     <span class="flex flex-wrap items-baseline justify-between gap-2">
         <h2 id="casual-h" class="m-0 text-[15px] font-bold">{{ __('Match steps') }}</h2>
         <span class="text-xs text-ink-2" data-test="casual-role">{{ $mySide === null ? '' : ($iHost ? __('you host') : __('you join')) }}</span>
@@ -105,6 +107,12 @@
     @if ($currentKey !== null)
         @php($currentIndex = array_search($currentKey, array_column($casualSteps, 0), true))
         <p class="m-0 -mt-2 text-xs font-bold text-btc-hi sm:hidden" data-test="casual-current-step">{{ __('Step :n of :total: :label', ['n' => $currentIndex + 1, 'total' => count($casualSteps), 'label' => $casualSteps[$currentIndex][1]]) }}</p>
+    @endif
+
+    @php($lobbyPin = $sharesLobby && $mySide !== null && $m->status === SeriesStatus::Accepted && $m->start_at !== null)
+    {{-- The pinned lobby card, right under the step it belongs to: before the clock, so it and its action stay above the fold at 375. --}}
+    @if ($lobbyPin && $running)
+        @include('pages.matches.partials.casual-lobby-pin')
     @endif
 
     @if ($deadlineText !== null)
@@ -136,18 +144,17 @@
             @elseif ($m->noshow_reported_at !== null)
                 <p class="m-0">{{ __('You claimed a no-show. :name can answer until :time.', ['name' => $otherName, 'time' => $at($m->casualContestDueAt())]) }}</p>
             @elseif ($iHost && $m->lobby_shared_at === null)
-                <p class="m-0">{{ match (true) {
-                    $isRl => __('Create a private match in Rocket League and share its name and password in the chat.'),
-                    $isAoe => __('Host a lobby in Age of Empires II with a password and spectators allowed, then share its name and password in the chat.'),
-                    default => __('Share your EA ID in the chat. :name sends you a friend request; accept it and send the Play a Friend invite.', ['name' => $otherName]),
-                } }}</p>
-                <div>
-                    {{-- Opens the card composer in the chat (roomChat listens for casual-compose). A component attribute compiles no @js: the kind rides on data-kind. --}}
-                    <x-button :icon="$sharesLobby ? 'key' : 'user'" class="{{ $big }}" data-test="casual-share" data-kind="{{ $sharesLobby ? 'lobby' : 'account' }}"
-                              x-on:click="window.dispatchEvent(new CustomEvent('casual-compose', { detail: $el.dataset.kind })); document.querySelector('[data-test=room-chat]')?.scrollIntoView({ block: 'nearest', behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth' })">
-                        {{ $sharesLobby ? __('Share lobby') : __('Share EA ID') }}
-                    </x-button>
-                </div>
+                {{-- Rocket League and Age of Empires II: the lobby pin above carries the instruction and Share lobby. --}}
+                @unless ($sharesLobby)
+                    <p class="m-0">{{ __('Share your EA ID in the chat. :name sends you a friend request; accept it and send the Play a Friend invite.', ['name' => $otherName]) }}</p>
+                    <div>
+                        {{-- Opens the card composer in the chat (roomChat listens for casual-compose). A component attribute compiles no @js: the kind rides on data-kind. --}}
+                        <x-button icon="user" class="{{ $big }}" data-test="casual-share" data-kind="account"
+                                  x-on:click="window.dispatchEvent(new CustomEvent('casual-compose', { detail: $el.dataset.kind })); document.querySelector('[data-test=room-chat]')?.scrollIntoView({ block: 'nearest', behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth' })">
+                            {{ __('Share EA ID') }}
+                        </x-button>
+                    </div>
+                @endunless
             @elseif ($iHost && $m->joined_at === null)
                 <p class="m-0">{{ match (true) {
                     $isRl => __('Waiting for :name to join your private match.', ['name' => $otherName]),
@@ -155,14 +162,15 @@
                     default => __('Accept the friend request from :name and send the Play a Friend invite.', ['name' => $otherName]),
                 } }}</p>
             @elseif (! $iHost && $m->lobby_shared_at === null)
-                <p class="m-0">{{ $sharesLobby ? __('Waiting for :name to share the lobby in the chat.', ['name' => $otherName]) : __('Waiting for :name to share their EA ID in the chat.', ['name' => $otherName]) }}</p>
+                @unless ($sharesLobby)
+                    <p class="m-0">{{ __('Waiting for :name to share their EA ID in the chat.', ['name' => $otherName]) }}</p>
+                @endunless
             @elseif (! $iHost && $m->joined_at === null)
-                <p class="m-0">{{ match (true) {
-                    $isRl => __('Join the private match with the name and password from the card in the chat, then confirm here.'),
-                    $isAoe => __('Find the lobby by its name in the lobby browser, join with the password from the card in the chat, then confirm here.'),
-                    default => __('Send :name a friend request with the EA ID from the chat and accept the invite, then confirm here.', ['name' => $otherName]),
-                } }}</p>
-                <div><x-button icon="check" wire:click="casualJoined" class="{{ $big }}" data-test="casual-joined">{{ __('I am in the lobby') }}</x-button></div>
+                {{-- Rocket League and Age of Empires II: "I am in the lobby" sits in the lobby pin above, under the card. --}}
+                @unless ($sharesLobby)
+                    <p class="m-0">{{ __('Send :name a friend request with the EA ID from the chat and accept the invite, then confirm here.', ['name' => $otherName]) }}</p>
+                    <div><x-button icon="check" wire:click="casualJoined" class="{{ $big }}" data-test="casual-joined">{{ __('I am in the lobby') }}</x-button></div>
+                @endunless
             @else
                 <p class="m-0">{{ __('Both are in. Play, then enter the score.') }}</p>
                 @if ($editable)
@@ -192,6 +200,11 @@
             <p class="m-0">{{ __('Your score is sent. :name accepts it or reports a problem; without an answer the league confirms it.', ['name' => $otherName]) }}</p>
         @endif
     </div>
+
+    {{-- Before the check-in the check-in is the action; a card sent that early waits under it. --}}
+    @if ($lobbyPin && ! $running)
+        @include('pages.matches.partials.casual-lobby-pin')
+    @endif
 
     @unless ($m->status->hasResult())
         @include('pages.matches.partials.lobby-rules')

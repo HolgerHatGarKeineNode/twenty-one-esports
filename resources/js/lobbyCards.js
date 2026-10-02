@@ -161,6 +161,23 @@ export function openCardIds(entries) {
 }
 
 /**
+ * The lobby card the room pins in its steps (2026-10-02: "die Lobby Karte ist
+ * versteckt im Chat!"): the host's open lobby card for the room's game, after
+ * the newest-card-wins rule. Null when the host sent none, when the newest one
+ * closes the lobby (the card before it is not pinned again), and for anyone
+ * else's card. A replaced card gives way to the newer one.
+ *
+ * @param {Array<{ rumor: object, card: object }>} entries valid cards only, as for openCardIds()
+ * @param {{ host: string, game: string }} room the host's pubkey and the room's game slug
+ * @returns {{ rumor: object, card: object }|null}
+ */
+export function pinnedLobbyCard(entries, { host, game }) {
+    const open = openCardIds(entries);
+
+    return entries.find((e) => open.has(e.rumor.id) && e.rumor.pubkey === host && e.card.kind === 'lobby' && e.card.game === game && !e.card.closed) ?? null;
+}
+
+/**
  * The NIP-40 `expiration` of every message in a casual 1v1 room: the next
  * 00:00 UTC at or after max(A + D, now) + 7 days. `expiresFrom` is A + D in
  * unix seconds, as the league hands it to both clients.

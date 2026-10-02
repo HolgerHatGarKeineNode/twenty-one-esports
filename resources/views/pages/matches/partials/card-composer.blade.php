@@ -8,14 +8,9 @@
     like any chat message, the league only hears that it went out.
 --}}
 @php($aoe = $m->game === 'age-of-empires-2')
-<div x-show="status === 'live' && cardKinds.length > 0" x-cloak class="flex flex-col gap-3 border-t border-hairline px-4 py-3 lg:px-6" data-test="card-composer">
+{{-- The lobby card has no buttons here: Share lobby, Replace and Close sit with the pinned card in the steps (casual-steps). --}}
+<div x-show="status === 'live' && (composer !== '' || cardKinds.includes('account'))" x-cloak class="flex flex-col gap-3 border-t border-hairline px-4 py-3 lg:px-6" data-test="card-composer">
     <div x-show="composer === ''" class="flex flex-wrap gap-2">
-        <template x-if="cardKinds.includes('lobby')">
-            <span class="contents">
-                <x-button variant="quiet" icon="key" x-on:click="openComposer('lobby')" ::disabled="sending" data-test="share-lobby"><span x-text="myOpenCard('lobby') ? @js(__('New lobby card')) : @js(__('Share lobby'))"></span></x-button>
-                <x-button variant="quiet" icon="close" x-show="myOpenCard('lobby')" x-on:click="sendCard('lobby', true)" ::disabled="sending" data-test="close-lobby">{{ __('Close lobby') }}</x-button>
-            </span>
-        </template>
         <template x-if="cardKinds.includes('account')">
             <span class="contents">
                 <x-button variant="quiet" icon="user" x-on:click="openComposer('account')" ::disabled="sending" data-test="share-account"><span x-text="myOpenCard('account') ? @js($aoe ? __('Change your name') : __('Change EA ID')) : @js($aoe ? __('Share your Steam or Xbox name') : __('Share EA ID'))"></span></x-button>

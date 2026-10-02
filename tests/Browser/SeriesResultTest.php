@@ -7,6 +7,7 @@ use App\Models\Lineup;
 use App\Models\NostrEvent;
 use App\Models\SeriesMatch;
 use App\Models\User;
+use Illuminate\Support\Facades\File;
 use Illuminate\Support\Facades\Http;
 use Pest\Browser\Playwright\Page;
 use Pest\Browser\Support\ComputeUrl;
@@ -66,6 +67,20 @@ function captainPage(User $user, string $to, int $width): Page
     $page->goto(ComputeUrl::from($to));
 
     return $page;
+}
+
+/** A viewport screenshot into CARD_SHOTS, when set (as in tests/Browser/CasualLobbyCardTest.php). */
+function seriesRoomShot(Page $page, string $name): void
+{
+    $dir = getenv('CARD_SHOTS');
+
+    if (! is_string($dir) || $dir === '') {
+        return;
+    }
+
+    File::ensureDirectoryExists($dir);
+    $page->screenshot(false, $name);
+    File::move(base_path('tests/Browser/Screenshots/'.$name.'.png'), $dir.'/'.$name.'.png');
 }
 
 function enterGoals(Page $page, int $game, int $challenger, int $challenged): void
@@ -182,7 +197,9 @@ test('long clan names, a wide clan tag and a long player name stay inside the ma
     foreach ([$challenger, $challenged] as $lineup) {
         $lineup->seats()->where('user_id', '!=', $lineup->clan->owner_id)->first()->user->update(['name' => 'Abcdefghijklmnopqrstuvwxyzabcdefghijk']);
     }
-    $match = SeriesMatch::factory()->accepted()->create(['challenger_lineup_id' => $challenger->id, 'challenged_lineup_id' => $challenged->id]);
+    // A lobby with a long name without a space: pinned above the score (2026-10-02), it wraps inside its card.
+    $match = SeriesMatch::factory()->accepted()->create(['challenger_lineup_id' => $challenger->id, 'challenged_lineup_id' => $challenged->id,
+        'lobby_name' => 'e21-satoshisunbreakablelobbynamewithoutspace', 'lobby_password' => 'hunter2-secret', 'lobby_region' => 'EU']);
     $room = route('matches.room', $match, false);
     $sizes = [];
 
@@ -191,7 +208,21 @@ test('long clan names, a wide clan tag and a long player name stay inside the ma
         BrowserWait::until($page, '() => document.querySelector("[data-test=series-score]") !== null', 10_000);
         $sizes[$width] = $m = $page->evaluate(P9_ROOM_MEASURE);
 
+        $pin = $page->evaluate('() => {
+            const pin = document.querySelector("[data-test=room-lobby-pin]").getBoundingClientRect();
+            const copies = [...document.querySelectorAll("[data-test=room-lobby-pin] button")].map((b) => b.getBoundingClientRect());
+            // Seen: inside the window, and its bottom edge not covered by the score bar or the tab bar fixed over it.
+            const el = document.querySelector("[data-test=room-lobby-pin]");
+            const hit = document.elementFromPoint(pin.left + pin.width / 2, pin.bottom - 2);
+            const seen = pin.top >= 0 && pin.bottom <= innerHeight && hit !== null && el.contains(hit);
+            return { inside: pin.left >= 0 && pin.right <= document.documentElement.clientWidth, buttons: copies.every((r) => r.right <= pin.right && r.width >= 44), inFold: seen, name: document.querySelector("[data-test=room-lobby-name]").innerText };
+        }');
+        if (in_array($width, [375, 1440], true)) {
+            seriesRoomShot($page, "room-lobby-pin-{$width}");
+        }
+
         expect($m['overflow'])->toBe(0, "overflow @{$width}: ".json_encode($m))
+            ->and($pin)->toBe(['inside' => true, 'buttons' => true, 'inFold' => true, 'name' => 'e21-satoshisunbreakablelobbynamewithoutspace'], "lobby pin @{$width}")
             ->and($m['tagOverlap'])->toBeLessThanOrEqual(0, "tag over the score @{$width}: ".json_encode($m))
             ->and($page->evaluate('() => window.__errors'))->toBe([]);
     }
