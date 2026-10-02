@@ -29,9 +29,11 @@
             </li>
         </ol>
         @if ($code !== null)
-            <div class="flex flex-wrap items-center gap-3">
+            {{-- Asks again every 3 s while the code is on screen: the server confirms in its chat, this block turns into "linked" without a reload. --}}
+            <div class="flex flex-wrap items-center gap-3" wire:poll.3s.visible>
                 <code class="rounded-md bg-ground px-3 py-2 font-mono text-base font-bold tracking-widest text-ink" data-test="tmnf-link-code">link {{ $code }}</code>
                 <span class="text-xs text-ink-2">{{ __('Valid for :minutes minutes, for your saved login only.', ['minutes' => (int) config('esports.tmnf.link.code_minutes')]) }}</span>
+                <span class="inline-flex items-center gap-1.5 text-xs text-ink-2" data-test="tmnf-link-waiting"><span class="size-2 animate-pulse rounded-full bg-tmnf" aria-hidden="true"></span>{{ __('Waiting for the server…') }}</span>
             </div>
         @else
             <x-button variant="quiet" icon="key" wire:click="showTmnfCode" class="self-start" data-test="tmnf-link-show">{{ __('Show my link code') }}</x-button>

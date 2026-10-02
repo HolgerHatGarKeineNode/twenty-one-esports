@@ -1,6 +1,7 @@
 <?php
 
 use App\Models\User;
+use App\Support\Tmnf\TmnfLinks;
 use App\Support\Tmnf\TmnfWeeks;
 use Carbon\CarbonImmutable;
 use Illuminate\Support\Facades\Http;
@@ -135,6 +136,10 @@ test('the settings page links a saved login with a code shown on request, no ove
         ->and($code['scroll'])->toBeLessThanOrEqual($code['client']);
 
     shellShot($page, "tmnf-link-{$locale}-{$width}");
+
+    // The server confirms the code in its chat; the open page turns to "linked" by itself, no reload.
+    expect(TmnfLinks::fromChat('new_driver', $code['text']))->toBe('linked');
+    BrowserWait::until($page, '() => document.querySelector("[data-test=tmnf-linked]") !== null', 10_000);
 
     expect($page->evaluate('() => window.__errors'))->toBe([])
         ->and($page->evaluate(BrowserConsole::BAD_RESPONSES))->toBe([]);

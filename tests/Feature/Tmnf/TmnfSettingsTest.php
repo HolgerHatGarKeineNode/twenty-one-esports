@@ -33,7 +33,9 @@ test('the login is a private gamer tag of its own card, and the link block asks 
         ->assertSee('data-test="tmnf-link-show"', false)->assertDontSee('data-test="tmnf-link-code"', false)
         ->call('showTmnfCode')
         ->assertSeeHtml('data-test="tmnf-link-code">link '.TmnfLinks::codeFor($player->refresh()).'</code>')
-        ->assertSee('data-test="tmnf-link-howto"', false)->assertSee('data-test="tmnf-chat-keys"', false);
+        ->assertSee('data-test="tmnf-link-howto"', false)->assertSee('data-test="tmnf-chat-keys"', false)
+        // While the code shows, the page asks again on its own, so the confirmation appears without a reload.
+        ->assertSeeHtml('wire:poll.3s.visible')->assertSeeHtml('data-test="tmnf-link-waiting"');
 
     expect($player->gamer_tags)->toBe(['tmnf' => 'satoshi_drives']);
 });
