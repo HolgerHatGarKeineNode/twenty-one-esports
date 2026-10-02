@@ -26,8 +26,11 @@ use Illuminate\Support\Str;
  * - `TrackMania.PlayerChat` (PlayerUid, Login, Text, IsRegistredCmd): a
  *   `link <code>` line links the login (TmnfLinks); the player gets an
  *   answer in their own chat. Lines of the server itself (PlayerUid 0) are skipped.
+ * - `TrackMania.PlayerConnect` / `PlayerDisconnect` (Login, ...): the
+ *   in-game overlay for that login (TmnfOverlay); a session's start, a new
+ *   track and a finish mark it too. tick() sends what is due.
  *
- * Holds the track of its connection only, never a process-wide cache.
+ * Holds the track and the overlay of its connection only, never a process-wide cache.
  */
 final class TmnfListener
 {
@@ -36,12 +39,26 @@ final class TmnfListener
 
     private ?TmnfChallenge $challenge = null;
 
+    public function __construct(private TmnfOverlay $overlay) {}
+
     /**
-     * Reads the track the server is on as a session starts.
+     * Reads the track the server is on as a session starts; the overlay is shown to everyone again.
      */
     public function start(TmnfServer $server): TmnfChallenge
     {
+        $this->overlay->reset();
+
         return $this->challenge = $server->currentChallenge();
+    }
+
+    /**
+     * Sends the overlay that is due (the command calls it after every batch of callbacks).
+     *
+     * @throws GbxException when the connection broke
+     */
+    public function tick(TmnfServer $server, ?CarbonImmutable $now = null): void
+    {
+        $this->overlay->tick($server, $now);
     }
 
     public function challenge(): ?TmnfChallenge
@@ -60,6 +77,8 @@ final class TmnfListener
             'TrackMania.BeginChallenge' => $this->begin($params),
             'TrackMania.PlayerFinish' => $this->finish($params, $at ?? CarbonImmutable::now()),
             'TrackMania.PlayerChat' => $this->chat($params, $server),
+            'TrackMania.PlayerConnect' => $this->connect($params),
+            'TrackMania.PlayerDisconnect' => $this->disconnect($params),
             default => null,
         };
     }
@@ -70,6 +89,7 @@ final class TmnfListener
     private function begin(array $params): string
     {
         $this->challenge = TmnfChallenge::fromStruct($params[0] ?? null);
+        $this->overlay->began();
 
         return "track {$this->challenge->name} ({$this->challenge->uid})";
     }
@@ -114,8 +134,33 @@ final class TmnfListener
             $summary['duplicate'] > 0 => 'duplicate',
             default => 'refused: '.implode(',', $summary['refused']),
         };
+        $this->overlay->finished($login, $run, $week, $summary['pending'] > 0);
 
         return "finish {$time} ms on {$challenge->name}: {$outcome}";
+    }
+
+    /**
+     * @param  list<mixed>  $params
+     */
+    private function connect(array $params): null
+    {
+        if (is_string($params[0] ?? null)) {
+            $this->overlay->connected($params[0]);
+        }
+
+        return null;
+    }
+
+    /**
+     * @param  list<mixed>  $params
+     */
+    private function disconnect(array $params): null
+    {
+        if (is_string($params[0] ?? null)) {
+            $this->overlay->left($params[0]);
+        }
+
+        return null;
     }
 
     /**

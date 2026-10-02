@@ -1447,6 +1447,13 @@ return [
         ],
         'outlier_margin_ms' => 1_500,
         'outlier_top' => 10,
+        // The in-game overlay (TmnfOverlay): the week's top 5 and the own line, the site, a finish note. On while
+        // TMNF is on. board_seconds: a burst of finishes updates the board for everyone at most once in this time.
+        'overlay' => [
+            'enabled' => (bool) env('TMNF_OVERLAY', true),
+            'board_seconds' => 5,
+            'note_seconds' => 3,
+        ],
     ],
 
 ];

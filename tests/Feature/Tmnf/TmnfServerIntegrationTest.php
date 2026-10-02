@@ -2,6 +2,8 @@
 
 use App\Support\Tmnf\GbxFault;
 use App\Support\Tmnf\GbxRemote;
+use App\Support\Tmnf\TmnfListener;
+use App\Support\Tmnf\TmnfManialinks;
 use App\Support\Tmnf\TmnfServer;
 
 /*
@@ -117,4 +119,35 @@ test('tmnf:listen connects to the real server and reads its track', function () 
     $this->artisan('tmnf:listen', ['--seconds' => 2])
         ->expectsOutputToContain('Connected to the TMNF server, track A01-Race.')
         ->assertSuccessful();
+})->group('tmnf');
+
+test('the server takes the overlay pages without a fault, removes the note by its id and lists its players', function () {
+    tmnfOn();
+    $server = TmnfServer::open();
+    $control = GbxRemote::connect((string) config('esports.tmnf.xmlrpc.host'), (int) config('esports.tmnf.xmlrpc.port'));
+    TmnfServer::over($control)->authenticate((string) config('esports.tmnf.xmlrpc.user'), (string) config('esports.tmnf.xmlrpc.password'));
+    $page = TmnfManialinks::page(
+        TmnfManialinks::board('TWENTY ONE', 41, [['place' => 1, 'name' => '$o$f00<Satoshi> & "Hal"', 'time' => '0:25.912']]),
+        TmnfManialinks::own(1, '0:25.912', true),
+        TmnfManialinks::footer('esports.einundzwanzig.space'),
+        TmnfManialinks::note('New personal best'),
+    );
+
+    $server->showPage($page);
+    $server->showPage(TmnfManialinks::page(TmnfManialinks::remove(TmnfManialinks::ID_NOTE)));
+
+    expect($server->players())->toBe([])
+        ->and($control->call('GetManialinkPageAnswers'))->toBeArray()
+        // A login that is not on the server is a fault, which the overlay reports and passes over.
+        ->and(fn () => $server->showPage($page, 'nobody_here_'.bin2hex(random_bytes(3))))->toThrow(GbxFault::class);
+
+    // The listener's own first showing on a session: board and footer for everyone, then the player list.
+    $listener = app(TmnfListener::class);
+    $listener->start($server);
+    $listener->tick($server);
+
+    expect($server->callbacks(0.5))->toBeArray();
+
+    $control->close();
+    $server->close();
 })->group('tmnf');

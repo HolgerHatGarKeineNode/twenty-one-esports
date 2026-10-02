@@ -25,6 +25,7 @@ use Throwable;
  *   backoff_initial_seconds doubling to backoff_max_seconds while the server
  *   is away; back to the start once a session ran.
  * - Each callback on its own: one that fails is reported, the next is read.
+ * - After every batch the in-game overlay that is due is sent (TmnfOverlay).
  * - Stops on SIGTERM/SIGINT after the callback at hand; `--seconds` stops
  *   after that long, `--attempts` after that many connections (tests, a
  *   manual check).
@@ -81,6 +82,16 @@ class TmnfListenCommand extends Command
                             report($e);
                             $this->error("{$callback->method} failed: {$e->getMessage()}");
                         }
+                    }
+
+                    try {
+                        $listener->tick($server);
+                    } catch (GbxException $e) {
+                        throw $e;
+                    } catch (Throwable $e) {
+                        // The overlay is shown again on the next track; a failing one never stops the finishes.
+                        report($e);
+                        $this->error("The in-game overlay failed: {$e->getMessage()}");
                     }
                 }
 

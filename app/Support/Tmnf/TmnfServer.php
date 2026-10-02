@@ -103,6 +103,40 @@ final class TmnfServer
     }
 
     /**
+     * Shows a page of manialinks (TmnfManialinks) to everyone, or to one login.
+     * Timeout 0: it stays until a manialink with the same id replaces or
+     * removes it; false: a click does not hide it.
+     *
+     * @throws GbxFault e.g. for a login that is not on the server
+     */
+    public function showPage(string $xml, ?string $login = null): void
+    {
+        $answer = $login === null
+            ? $this->remote->call('SendDisplayManialinkPage', [$xml, 0, false])
+            : $this->remote->call('SendDisplayManialinkPageToLogin', [$login, $xml, 0, false]);
+
+        if ($answer !== true) {
+            throw new GbxFault('The server did not show the manialink page.');
+        }
+    }
+
+    /**
+     * The logins of the players on the server (GetPlayerList, Forever structs without the server itself).
+     *
+     * @return list<string>
+     */
+    public function players(int $max = 255): array
+    {
+        $players = $this->remote->call('GetPlayerList', [$max, 0, 1]);
+
+        if (! is_array($players) || ! array_is_list($players)) {
+            throw new GbxProtocolError('GetPlayerList did not answer with a list.');
+        }
+
+        return array_values(array_filter(array_map(fn (mixed $player): ?string => is_array($player) && is_string($player['Login'] ?? null) && $player['Login'] !== '' ? $player['Login'] : null, $players)));
+    }
+
+    /**
      * @return list<TmnfCallback>
      */
     public function callbacks(float $wait = 1.0): array
