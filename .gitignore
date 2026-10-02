@@ -40,6 +40,9 @@ yarn-error.log
 plans/
 /.codegraph
 
+# Local TMNF test server (scripts/tmnf-server.sh): the generated config holds the SuperAdmin password.
+/docker/tmnf/runtime/
+
 # Promo kit (user 2026-09-27): only the build sources and the README are versioned.
 # Assets, music, renders, gallery and posting texts are large or local marketing material.
 /docs/promo/*
