@@ -133,6 +133,22 @@ final class StreamBotCopy
             ['⚡ Liking the stream? A zap goes a long way', '🌐 :url'],
         ],
 
+        // TMNF's weekly time attack (plan "Trackmania und Restposten"), in the chat only: the running week, a new
+        // best time of it, the finished week's podium. Drivers by Nostr key or league name, never a TMNF login.
+        // The favourite link (tmtp://#addfavourite=…) stays on the week page: zap.stream would render its `#` as a hashtag.
+        'tmnf_week' => [
+            ['🏎️ TMNF time attack this week: :track', '🏁 Drive it on our server :server, your best finish until :ends counts', '👉 How to join: :url'],
+            ['🏁 :name runs on :track', '🏎️ Free to play: join :server in TMNF and set a time before :ends', '👉 Join in: :url'],
+        ],
+        'tmnf_top' => [
+            ['🥇 New best time in :name: :player', '⏱️ :time on :track:gap', '👉 Beat it: :url'],
+            ['⚡ :player tops :name with :time on :track', '🏎️ Think you are faster?', '👉 Your turn: :url'],
+        ],
+        'tmnf_podium' => [
+            ['🏆 :name is over: :winner wins on :track', ':podium', '👉 All weeks: :url'],
+            ['🏁 Final board of :name on :track', ':podium', '👉 :url'],
+        ],
+
         // Notes on the bot's own profile (kind 1, TournamentNotes), one per tournament, by its status
         // when the note goes out. The `nostr:naddr1…` of the calendar event follows after a blank line.
         // Every profile note has several wordings; ProfileNotes picks the one after the type's last note, so the same

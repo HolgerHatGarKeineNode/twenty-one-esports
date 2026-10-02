@@ -6,22 +6,30 @@ use App\Enums\ChessGameStatus;
 use App\Enums\SeriesStatus;
 use App\Enums\TournamentStatus;
 use App\Games\GameRegistry;
+use App\Games\ScoreMetric;
+use App\Games\TrackmaniaNationsForever;
 use App\Models\ChessGame;
 use App\Models\Clan;
 use App\Models\RankBadgeVersion;
 use App\Models\Rating;
+use App\Models\ScoreRun;
 use App\Models\SeriesMatch;
 use App\Models\Tournament;
 use App\Models\User;
+use App\Support\LeagueTime;
 use App\Support\Nostr\NostrKeys;
 use App\Support\PreSeason;
 use App\Support\Prizes\PrizePool;
 use App\Support\Rating\RankTiers;
 use App\Support\Rating\Ratings;
+use App\Support\Scores\ScoreRuns;
+use App\Support\Scores\ScoreWindow;
 use App\Support\SeasonChain\Seasons;
+use App\Support\Tmnf\TmnfWeeks;
 use App\Support\Tournaments\Lobbies;
 use App\Support\Tournaments\TournamentChampion;
 use App\Support\Tournaments\TournamentLanding;
+use App\Support\TwentyOne\Stream\BlockfillSlides;
 use Carbon\CarbonImmutable;
 use Closure;
 use LogicException;
@@ -52,6 +60,12 @@ final class StreamBotBuilders
     /** A series counts as happening from its start for this many hours. */
     public const SERIES_HOURS = 3;
 
+    /** A TMNF week's best time is news for this many hours after it was verified. */
+    public const TMNF_TOP_HOURS = 6;
+
+    /** A finished TMNF week's podium is told for this many hours after the week's end (its review time included). */
+    public const TMNF_PODIUM_HOURS = 48;
+
     /** Messages with numbers are read in this locale, whatever the process runs in. */
     private const LOCALE = 'en';
 
@@ -62,6 +76,9 @@ final class StreamBotBuilders
         private GameRegistry $games,
         private TournamentChampion $champions,
         private PrizePool $pools,
+        private TmnfWeeks $tmnfWeeks,
+        private TmnfNotes $tmnfNotes,
+        private ScoreRuns $runs,
     ) {}
 
     /**
@@ -84,6 +101,9 @@ final class StreamBotBuilders
             'ladder_top' => true,
             'season' => true,
             'stats' => true,
+            'tmnf_week' => true,
+            'tmnf_top' => true,
+            'tmnf_podium' => true,
             'play_blitz' => false,
             'daily_chess' => false,
             'clan_challenge' => false,
@@ -128,6 +148,9 @@ final class StreamBotBuilders
                 'ladder_top' => $this->ladderTop($now),
                 'season' => $this->season($now),
                 'stats' => $this->stats($now),
+                'tmnf_week' => $this->tmnfWeek($now),
+                'tmnf_top' => $this->tmnfTop($now),
+                'tmnf_podium' => $this->tmnfPodium($now),
                 'play_blitz' => $this->feature('play_blitz', route('chess.lobby')),
                 'daily_chess' => $this->feature('daily_chess', route('chess.challenge')),
                 'clan_challenge' => $this->clanChallenge(),
@@ -497,6 +520,122 @@ final class StreamBotBuilders
             'games' => number_format(ChessGame::query()->where('status', ChessGameStatus::Finished)->count()),
             'url' => route('home'),
         ])];
+    }
+
+    /**
+     * The running TMNF week (plan "Trackmania und Restposten"): its track,
+     * our server, its end and the week page, which leads with How to join
+     * and its favourite link. Not the link itself: `tmtp://#addfavourite=…`
+     * would render as a hashtag in zap.stream (its parser knows no tmtp
+     * scheme and takes `#addfavourite` for a tag).
+     *
+     * @return list<StreamBotMessage>
+     */
+    private function tmnfWeek(CarbonImmutable $now): array
+    {
+        $week = $this->runningTmnfWeek($now);
+
+        if ($week === null) {
+            return [];
+        }
+
+        $server = StreamBotCopy::clean((string) config('esports.tmnf.server.name'), 32);
+
+        return [$this->message('tmnf_week', 'tmnf-week:'.$week->id, [
+            'name' => StreamBotCopy::clean($week->title()),
+            'track' => TmnfNotes::track($week),
+            'server' => $server === '' ? null : $server,
+            'ends' => LeagueTime::stamp(ScoreWindow::of($week)->end),
+            'url' => route('tournaments.show', $week),
+        ])];
+    }
+
+    /**
+     * The running TMNF week's first place, while it is at most
+     * TMNF_TOP_HOURS old: its driver tagged, the time, the track and how much
+     * faster than the first place before it. Once per first place.
+     *
+     * @return list<StreamBotMessage>
+     */
+    private function tmnfTop(CarbonImmutable $now): array
+    {
+        $week = $this->runningTmnfWeek($now);
+        $first = $week === null ? null : ($this->runs->standings($week)[0] ?? null);
+
+        if ($week === null || $first === null || $first->place !== 1 || $first->value === null || $first->runId === null) {
+            return [];
+        }
+
+        $run = ScoreRun::query()->find($first->runId);
+        $name = StreamBotCopy::clean($first->participant->user?->displayName() ?? $first->participant->name, 32);
+
+        if ($run?->verified_at === null || $run->verified_at->lessThan($now->subHours(self::TMNF_TOP_HOURS)) || $name === '') {
+            return [];
+        }
+
+        $before = $this->tmnfNotes->previousBest($week, $run);
+        $gap = $before === null ? 0 : $before - (int) $run->value;
+        $tags = [];
+
+        return [$this->message('tmnf_top', 'tmnf-top:'.$run->id, [
+            'name' => StreamBotCopy::clean($week->title()),
+            'player' => $this->mention($first->participant->user, $name, $tags),
+            'time' => ScoreMetric::time()->format((int) $run->value),
+            'track' => TmnfNotes::track($week),
+            'gap' => $gap > 0 ? ', '.BlockfillSlides::seconds($gap).' faster' : '',
+            'url' => route('tournaments.show', $week),
+        ], tags: $tags)];
+    }
+
+    /**
+     * The last finished TMNF week's top 3, each driver tagged, for
+     * TMNF_PODIUM_HOURS after the week's end.
+     *
+     * @return list<StreamBotMessage>
+     */
+    private function tmnfPodium(CarbonImmutable $now): array
+    {
+        $week = $this->tmnfWeeks->game() === null ? null : $this->tmnfWeeks->previous($now);
+
+        if ($week === null || $week->status !== TournamentStatus::Finished || ScoreWindow::of($week)->end->lessThan($now->subHours(self::TMNF_PODIUM_HOURS))) {
+            return [];
+        }
+
+        $tags = [];
+        $podium = [];
+        $winner = null;
+
+        foreach ($this->runs->standings($week) as $row) {
+            $name = StreamBotCopy::clean($row->participant->user?->displayName() ?? $row->participant->name, 24);
+
+            if ($row->place === null || $row->value === null || $name === '' || count($podium) >= WeeklyBoardNotes::PODIUM) {
+                continue;
+            }
+
+            $driver = $this->mention($row->participant->user, $name, $tags);
+            $winner ??= $driver;
+            $podium[] = ['🥇', '🥈', '🥉'][count($podium)].' '.$driver.' '.ScoreMetric::time()->format((int) $row->value);
+        }
+
+        if ($winner === null) {
+            return [];
+        }
+
+        return [$this->message('tmnf_podium', 'tmnf-podium:'.$week->id, [
+            'name' => StreamBotCopy::clean($week->title()),
+            'winner' => $winner,
+            'track' => TmnfNotes::track($week),
+            'podium' => implode(' · ', $podium),
+            'url' => route('scores.show', TrackmaniaNationsForever::SLUG),
+        ], tags: $tags)];
+    }
+
+    /** The TMNF week `$now` lies in while it runs; null while TMNF is off or no week is open. */
+    private function runningTmnfWeek(CarbonImmutable $now): ?Tournament
+    {
+        $week = $this->tmnfWeeks->game() === null ? null : $this->tmnfWeeks->current($now);
+
+        return $week !== null && $week->status === TournamentStatus::Running && ScoreWindow::of($week)->contains($now) ? $week : null;
     }
 
     /**

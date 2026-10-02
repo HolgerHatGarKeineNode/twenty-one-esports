@@ -91,7 +91,7 @@ test('every fact builder stays silent without its facts', function (string $buil
     expect(botBuild($builder))->toBe([]);
 })->with([
     'tournament_signup', 'tournament_last_call', 'tournament_live', 'live_game', 'live_games', 'live_series',
-    'tournament_winner', 'rank_up', 'new_clan', 'ladder_top', 'season', 'stats',
+    'tournament_winner', 'rank_up', 'new_clan', 'ladder_top', 'season', 'stats', 'tmnf_week', 'tmnf_top', 'tmnf_podium',
 ]);
 
 test('the feature tips that depend on something stay silent without it', function () {
@@ -107,7 +107,8 @@ test('no builder ever writes a hashtag, and every message has a link and 1 to 4 
     $this->builders->pickVariantsWith(fn (int $variants): int => $variant % $variants);
     $messages = [];
 
-    foreach (array_keys($this->builders->all()) as $builder) {
+    // TMNF's builders need a running and a finished week: TmnfStreamChatTest holds them to the same rules.
+    foreach (array_diff(array_keys($this->builders->all()), ['tmnf_week', 'tmnf_top', 'tmnf_podium']) as $builder) {
         $built = botBuild($builder);
         expect($built)->not->toBe([], "builder {$builder} made no message with data");
         $messages = [...$messages, ...$built];
