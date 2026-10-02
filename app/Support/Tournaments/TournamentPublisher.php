@@ -9,6 +9,8 @@ use App\Jobs\PublishTournamentCalendar;
 use App\Models\NostrEvent;
 use App\Models\Tournament;
 use App\Models\User;
+use App\Support\Prizes\PoolInvoices;
+use App\Support\Prizes\PotTopUps;
 use App\Support\Prizes\PrizePool;
 use App\Support\Scores\ScoreWindow;
 use App\Support\Scores\Sources\ReplayScoreSource;
@@ -247,8 +249,10 @@ final class TournamentPublisher
      * NIP-52 tags of the tournament (NIP "Tournaments" table): one `D` per UTC
      * day of the timeframe, the ladder `a` only when it was frozen with the
      * first version (rated tournament), and `end` at the pot's close once it
-     * closed (P9). No `zap` tag: a tournament pot is its own wallet, never
-     * zapped through the league's pool key. No `t` tag: the league posts no
+     * closed (P9). A `zap` tag naming the pool key while the pot takes zaps
+     * (NIP-57 appendix G, NIP rev. 9.12: a zap to the event goes to the
+     * league's LNURL endpoint and into this tournament's pot; dropped with the
+     * version at the close). No `t` tag: the league posts no
      * hashtags (a standing rule of this project, 2026-09-28).
      *
      * @return list<list<string>>
@@ -292,6 +296,13 @@ final class TournamentPublisher
             $tags[] = ['a', $tournament->ladder_address, ''];
         }
 
+        // Zaps to this event go into its pot (user, 2026-10-02): only while the pot is open in the league wallet.
+        $pool = LeagueKey::poolPubkey();
+
+        if ($pool !== null && PotTopUps::enabled($tournament) && PoolInvoices::receives()) {
+            $tags[] = ['zap', $pool, (string) (config('esports.relays')[0] ?? ''), '1'];
+        }
+
         $tags[] = ['alt', ($calledOff ? 'Called off tournament: ' : 'Tournament: ').$tournament->name.', '.$tournament->starts_at->utc()->format('Y-m-d H:i').' UTC'];
 
         return $tags;
@@ -309,13 +320,13 @@ final class TournamentPublisher
             $fixed = $tournament->prizeFixed();
 
             return 'Prizes: '.implode(', ', array_map(fn (int $sats, int $index): string => 'place '.($index + 1).' '.$sats.' sats', $fixed, array_keys($fixed)))
-                .', fixed, paid from the league wallet once this tournament\'s pot has received their sum and '.$fee.' for routing fees; tied places share the sum of their amounts, a team\'s share is split equally among its roster, sats are rounded down and the rest stays with the league.';
+                .', fixed, paid from the league wallet once this tournament\'s pot has received their sum and '.$fee.' for routing fees; zaps to this event add on top and are split in proportion to these amounts; tied places share the sum of their amounts, a team\'s share is split equally among its roster, sats are rounded down and the rest stays with the league.';
         }
 
         $split = $tournament->prizeSplit();
 
         return 'Prize split: '.implode(', ', array_map(fn (int $percent, int $index): string => 'place '.($index + 1).' '.$percent.' %', $split, array_keys($split)))
-            .' of what this tournament\'s pot received in the league wallet, paid from it after '.$fee.' is held back for routing fees; tied places share their percentages, a team\'s share is split equally among its roster, sats are rounded down and the rest stays with the league.';
+            .' of what this tournament\'s pot received in the league wallet, zaps to this event included, paid from it after '.$fee.' is held back for routing fees; tied places share their percentages, a team\'s share is split equally among its roster, sats are rounded down and the rest stays with the league.';
     }
 
     private function summary(Tournament $tournament): string

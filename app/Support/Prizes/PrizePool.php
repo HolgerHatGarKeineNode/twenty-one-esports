@@ -35,6 +35,11 @@ use Illuminate\Support\Facades\Storage;
  * Pots of the former own-wallet design whose payouts were approved before
  * finish paying from that wallet (Tournament::hasOwnWallet()).
  *
+ * Zaps to the tournament's calendar event add on top (user, 2026-10-02:
+ * „Diese zahlen oben drauf auf den Topf also +"): the pot shown is the pot
+ * as set plus every zap with a verified receipt ({@see ZapSponsors}), split
+ * like it. Sponsors entered by the organizer are part of the pot as set.
+ *
  * Two ways to set the prizes, both part of the rules players sign up under
  * (they change while the tournament is a draft or open for sign-up, never
  * after sign-up closed):
@@ -75,14 +80,15 @@ final class PrizePool
     /** A legacy own wallet's balance read older than this is shown as stale (seconds). */
     public const BALANCE_STALE_AFTER = 600;
 
-    public function __construct(private TournamentPublisher $publisher, private SponsorLogos $logos, private Ledger $ledger) {}
+    public function __construct(private TournamentPublisher $publisher, private SponsorLogos $logos, private Ledger $ledger, private ZapSponsors $zapSponsors) {}
 
     /**
-     * The pot's sats as the tournament sets it (user, 2026-09-28: „nicht die
-     * Zahl nehmen, die in der Wallet als Balance ist, sondern den Pot, wie er
-     * im Turnier eingestellt ist“): the fixed prizes' sum, else the target;
-     * without either, what came in (booked in the league wallet, and paid
-     * outside it). Null without a pot.
+     * The pot's sats: the pot as the tournament sets it (user, 2026-09-28:
+     * „nicht die Zahl nehmen, die in der Wallet als Balance ist, sondern den
+     * Pot, wie er im Turnier eingestellt ist“), the fixed prizes' sum or the
+     * target, plus the zaps on top; without either, what came in (booked in
+     * the league wallet, zaps included, and paid outside it). Null without a
+     * pot.
      */
     public function potSats(Tournament $tournament): ?int
     {
@@ -91,10 +97,18 @@ final class PrizePool
         }
 
         if ($tournament->prizeMode() === Tournament::PRIZES_FIXED) {
-            return self::fixedTotal($tournament);
+            return self::fixedTotal($tournament) + $this->zapSats($tournament);
         }
 
-        return $tournament->prize_target_sats ?? $this->fundedSats($tournament) + self::paidOutsideSats($tournament);
+        return $tournament->prize_target_sats === null
+            ? $this->fundedSats($tournament) + self::paidOutsideSats($tournament)
+            : $tournament->prize_target_sats + $this->zapSats($tournament);
+    }
+
+    /** The sats zapped on top of the pot (verified receipts before it closed). */
+    public function zapSats(Tournament $tournament): int
+    {
+        return $this->zapSponsors->zapSats($tournament);
     }
 
     /**
@@ -194,22 +208,42 @@ final class PrizePool
 
     /**
      * What the places share at the check, from `$funded` sats that came into
-     * the pot: percent mode splits them less the fee reserve; fixed mode pays
-     * exactly the fixed sum (approved only when `$funded` covers it and its
-     * reserve, {@see shortfall()}).
+     * the pot, `$zaps` of them zapped on top: percent mode splits them all
+     * less the fee reserve (the zaps are in it); fixed mode pays the fixed
+     * sum and the zaps less their fee reserve, pro rata ({@see zapBonus()};
+     * approved only when the rest covers the fixed prizes, {@see shortfall()}).
      */
-    public static function payable(Tournament $tournament, int $funded): int
+    public static function payable(Tournament $tournament, int $funded, int $zaps = 0): int
     {
-        return self::requiredSats($tournament) === null ? self::afterFeeReserve($funded) : self::fixedTotal($tournament);
+        return self::requiredSats($tournament) === null
+            ? self::afterFeeReserve($funded)
+            : self::fixedTotal($tournament) + array_sum(self::zapBonus($tournament->prizeFixed(), $zaps));
     }
 
     /**
      * How many sats `$funded` lacks for the fixed prizes and their fee
-     * reserve; 0 when it covers them, and always 0 in percent mode.
+     * reserve, not counting the `$zaps` on top (they pay their own share); 0
+     * when it covers them, and always 0 in percent mode.
      */
-    public static function shortfall(Tournament $tournament, int $funded): int
+    public static function shortfall(Tournament $tournament, int $funded, int $zaps = 0): int
     {
-        return max(0, (int) self::requiredSats($tournament) - $funded);
+        return max(0, (int) self::requiredSats($tournament) - ($funded - $zaps));
+    }
+
+    /**
+     * The zaps on top split like fixed prizes: each place gets the share of
+     * `$zaps` (less their fee reserve) its fixed amount has of the fixed sum,
+     * rounded down; what is left stays in the pot.
+     *
+     * @param  list<int>  $fixed
+     * @return list<int>
+     */
+    public static function zapBonus(array $fixed, int $zaps): array
+    {
+        $total = array_sum($fixed);
+        $shared = $zaps > 0 ? self::afterFeeReserve($zaps) : 0;
+
+        return array_map(fn (int $amount): int => $total > 0 ? intdiv($shared * $amount, $total) : 0, $fixed);
     }
 
     /**
@@ -221,7 +255,9 @@ final class PrizePool
     public function projection(Tournament $tournament): array
     {
         if ($tournament->prizeMode() === Tournament::PRIZES_FIXED) {
-            return array_map(fn (int $sats, int $index): array => ['place' => $index + 1, 'percent' => null, 'sats' => $sats],
+            $bonus = self::zapBonus($tournament->prizeFixed(), $this->zapSats($tournament));
+
+            return array_map(fn (int $sats, int $index): array => ['place' => $index + 1, 'percent' => null, 'sats' => $sats + $bonus[$index]],
                 $tournament->prizeFixed(), array_keys($tournament->prizeFixed()));
         }
 
@@ -243,7 +279,8 @@ final class PrizePool
      */
     public function funding(Tournament $tournament): array
     {
-        $balance = $this->fundedSats($tournament);
+        // Fixed prizes are funded without the zaps on top: those are split on top of them.
+        $balance = $this->fundedSats($tournament) - ($tournament->prizeMode() === Tournament::PRIZES_FIXED ? $this->zapSats($tournament) : 0);
 
         if ($tournament->prizeMode() === Tournament::PRIZES_FIXED) {
             $total = self::fixedTotal($tournament);

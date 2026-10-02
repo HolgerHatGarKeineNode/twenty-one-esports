@@ -22,6 +22,7 @@ import './casualPlay.js';
 import './badgeShare.js';
 import './nostrBar.js';
 import './zapWinner.js';
+import './potZappers.js';
 import './followsHereUi.js';
 import './captured.js';
 import './sanNotation.js';

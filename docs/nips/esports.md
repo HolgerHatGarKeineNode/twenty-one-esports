@@ -52,14 +52,16 @@ a game channel for each board game, nine men's morris and checkers, while the le
 **revision 9.16** (2026-09-30): Age of Empires II: Definitive Edition in the game registry as a series game
 whose games have a winner and no points, with its game channel and lobby cards; **revision 9.17**
 (2026-10-01, draft): score games, a highscore or time attack read per player, run as leaderboard
-tournaments without a new kind). Not
+tournaments without a new kind; **revision 9.19** (2026-10-02): every tournament pot is booked in the
+league wallet again, zaps to a tournament's `31923` go into its pot with receipts by the league's LNURL
+server key, and a sponsor's pledge can be marked paid outside the wallet; it replaces revision 9.1). Not
 submitted to
 `nostr-protocol/nips`. Kind
 numbers are checked against the official NIP index and other registries (see
 [Kind numbers and collision check](#kind-numbers-and-collision-check)); every example in this
 document is a real signed event that was published to and read back from local relays
 (`docs/plans/2026-09-25T1212-esports-v1-ladder/p1-relay-proof.md`, rounds 1 to 6). Revision 7 adds
-no example yet, and neither do revisions 8, 8.1, 9, 9.1, 9.2, 9.3, 9.5, 9.6, 9.7, 9.8, 9.9, 9.10, 9.11, 9.12, 9.13, 9.14, 9.15, 9.16 and 9.18 (see [Open points](#open-points)).
+no example yet, and neither do revisions 8, 8.1, 9, 9.1, 9.2, 9.3, 9.5, 9.6, 9.7, 9.8, 9.9, 9.10, 9.11, 9.12, 9.13, 9.14, 9.15, 9.16, 9.18 and 9.19 (see [Open points](#open-points)).
 Revision 9.10 needs none: it adds no event and no tag. Neither does revision 9.11: the league signs nothing new, and the zap
 request it describes is plain NIP-57. Nor does revision 9.12: a board game's tournament is an ordinary `31923` whose summary
 names the game and mode, and a board game has no ladder yet. Revision 9.13 does sign new events for the
@@ -95,6 +97,10 @@ The rules marked "rev. 9" concern tournament prize pools only; a pool opened aft
 revision 9 follows them, whatever revision its tournament was published under. The rules marked
 "rev. 9.1" replace those of revision 9 where they differ, for every pot from the day the league adopts
 revision 9.1 (a league pot of revision 9 becomes no pot; see [Prize pool funding](#prize-pool-funding)).
+The rules marked "rev. 9.19" replace those of revision 9.1 for every pot from the day the league adopts
+revision 9.19: a pot in a tournament's own wallet whose payouts were not approved yet becomes a pot in
+the league wallet (its own wallet keeps its sats; the organizer adds them through the tournament page),
+and one whose payouts were approved finishes paying from its own wallet.
 The rules marked "rev. 9.4" concern chess game notes only; they apply to every chess game that ends
 after the league adopts revision 9.4, whatever revision its ladder follows. A correspondence game
 begun earlier keeps its move notes as history and goes on from its last move without new ones.
@@ -136,6 +142,49 @@ The rules marked "rev. 9.18" are a draft as well, written before the first Block
 season chain as **solo blocks**. They apply to every chain season whose genesis the league signs after adopting
 revision 9.18; a genesis without the `solo` tag has its defaults. No versus candidate, ladder, tag or rule changes: a
 genesis without a score game's `weight` signs exactly the tags it signed before.
+
+### Changelog of revision 9.19 (2026-10-02)
+
+Every tournament pot is booked in the league wallet, and zaps to a tournament's calendar event fill it
+(user, 2026-10-02: „nutze doch einfach Zaps auf Nostr Events, das sind einfache Rechnungen an einem
+Event und bitte nicht pro Turnier Wallets fordern"). It replaces revision 9.1. No new kind and no new
+tag; checked against a fake NIP-47 wallet in the app's feature suite, not on a public relay, and
+without printed examples.
+
+- **One wallet, one book** ([Prize pool funding](#prize-pool-funding)): a pot asks for no wallet of its
+  own. Every invoice for it (a top-up, a sponsor's invoice, a zap) is made by the league wallet's
+  receive-only connection, recorded with its payment hash and the pot `tournament:<id>` before anyone
+  sees it, and once paid booked into that tournament's account of the league ledger. A payment settled
+  at or after the pot closed is booked to the reserve.
+- **Zaps to the `31923`**: while the pot is open, the tournament's `31923` carries
+  `["zap", "<pool key>", "<relay>", "1"]` again (NIP-57 appendix G); the last version at the check drops
+  it. The league's LNURL endpoint takes a zap request with exactly one `a` naming the current address of
+  a tournament whose pot is open, `p` the pool key, an `amount` equal to the payment, a `k` of `31923`
+  and an `e` only of one of that tournament's own versions, if present; it refuses two `a`, an `a` of
+  another author, a closed pot and an unknown `e`. The invoice's description hash is SHA-256 of the
+  request as sent; once the league wallet reports it paid (`lookup_invoice`, the preimage checked
+  against the payment hash), the LNURL server key signs the `9735` (revision 9's tags) to the league
+  relays. A receipt claims what the league wallet reported; the payer can match their own payment.
+- **A tournament's LNURL**: `/.well-known/lnurlp/<pool name>?pot=<tournament id>`, the same endpoint,
+  shown as a QR code on the tournament page, never as text. A plain payment through it goes into that
+  pot, with a description hash of SHA-256 of its metadata (`TWENTY ONE Esports prize pot of <slug>`)
+  and no receipt; a zap request through it must name that tournament.
+- **On top**: a zap counts on top of the pot as announced only with a receipt that passes: kind `9735`
+  signed by the LNURL server key; `description` a signed `9734` with `p` the pool key and `a` the
+  tournament; the receipt's `p` and `a` the same; `bolt11` amount equal to the request's `amount`; the
+  invoice's description hash SHA-256 of `description`; `created_at` before the pot closed. Each receipt
+  id counts once. The shown pot is the pot as set (the target or the fixed prizes) plus those zaps.
+  Percent prizes split everything the pot received, zaps included, less the fee reserve; fixed prizes
+  are paid as set, each place plus its share of the zaps (less their fee reserve) in proportion to its
+  amount. Plain payments and sponsors' invoices are part of the pot as announced.
+- **Paid outside the wallet**: an organizer or admin can mark a sponsor's pledge as paid some other way,
+  with the sats and a note, and undo it until the payouts are approved. It counts toward the pot as
+  shown, never toward what the wallet holds for it.
+- **Payout**: from the league wallet's paying connection. The approval refuses fixed prizes the pot
+  does not cover (without its zaps), and a plan that exceeds what the pot's account holds or what the
+  wallet holds beyond the other tournament pots; every payment reads the wallet's balance again and is
+  not sent when it is short of that or of the pot's account. Each paid prize and its fee leave the pot's
+  account.
 
 ### Changelog of revision 9.18 (2026-10-01, draft)
 
@@ -973,7 +1022,7 @@ no kind of their own; round 5 adds `2156` to `2158`):
 | `30000` | 51 | anchor list, `d` = `esports/<league key>/anchors` | trust key |
 | `14` in `13` in `1059` | 17, 59 | private chat between players; notifications | a player; the notification key |
 | `10050` | 17 | a player's DM relays | the player |
-| `9734`, `9735` | 57 | zaps to a pot: bounty, reserve (rev. 5, see [Pots and zap targets](#pots-and-zap-targets-rev-5)); rev. 9.1: never a tournament's pot, which takes plain invoices from its own wallet | the zapper; the league's LNURL server key |
+| `9734`, `9735` | 57 | zaps to a pot: bounty, reserve (rev. 5, see [Pots and zap targets](#pots-and-zap-targets-rev-5)); rev. 9.1: never a tournament's pot; rev. 9.19: a tournament's pot again, in the league wallet | the zapper; the league's LNURL server key |
 | `9041` | 75 | rev. 5: the league reserve as a zap goal | league key |
 | `30000` | 51 | rev. 5: the admin list, `d` = `esports/<league key>/admins` | league key |
 | `1985` | 32 | rev. 5: release of Block 0 (`release-block-0`); correction of the season review (`void-block`) | a listed admin; the league key |
@@ -1083,7 +1132,7 @@ it and returns non-matching events; see the relay proof).
 | `window` | `<start>`, `<end>` | 2154 of a score window (rev. 9.18) | the window in Unix seconds, `start` included, `end` excluded |
 | `effective` | `<unix seconds>` | 2158 (rev. 5) | from when a parameter change is in force |
 | `tip` | `<block id>` | 2158 (rev. 5) | the newest block when the change was signed |
-| `zap` | `<pool key>`, `<relay>`, `1` | 2150 (rev. 5, never in a tournament challenge), 31923 (rev. 7: optional in a tournament; rev. 9.1: never, see [Tournaments](#tournaments)), 9041 | NIP-57 appendix G: zaps to this event go to the league's LNURL endpoint |
+| `zap` | `<pool key>`, `<relay>`, `1` | 2150 (rev. 5, never in a tournament challenge), 31923 (rev. 7: optional in a tournament; rev. 9.1: never; rev. 9.19: while the pot is open, see [Tournaments](#tournaments)), 9041 | NIP-57 appendix G: zaps to this event go to the league's LNURL endpoint |
 | `action` | `signup` \| `withdraw` | 22150 (rev. 7) | what the tournament consent does |
 | `entered-by` | `<director pubkey>` | 2154 (rev. 7) | the tournament director whose entry decided this result, lower-case hex; see [Director results](#director-results-rev-7) |
 | `bolt11`, `preimage` | `<invoice>`; `<hex>` | 2157 (rev. 5) | the paid invoice and its preimage |
@@ -1872,7 +1921,7 @@ states the prizes of its pot (see [Prize pool funding](#prize-pool-funding)).
 | `location` | the tournament page |
 | `r` | the rules page |
 | `a` | the league calendar (`31924:<league>:tournaments`), and the ladder the matches are rated on; rev. 7: the ladder only in a rated tournament, see below |
-| `zap` | the pool key, weight `1` (NIP-57 appendix G): zaps go to the pool, not to the league key; rev. 7: only while the tournament has a prize pool, see below; rev. 9: dropped again when the pool closes; rev. 9.1: never, a tournament's pot is its own wallet and takes no zaps |
+| `zap` | the pool key, weight `1` (NIP-57 appendix G): zaps go to the pool, not to the league key; rev. 7: only while the tournament has a prize pool, see below; rev. 9: dropped again when the pool closes; rev. 9.1: never, a tournament's pot is its own wallet and takes no zaps; rev. 9.19: again while the pot in the league wallet is open, dropped at the check |
 | `alt` | NIP-31 text |
 
 No `t` tag: the league posts no hashtags (since 2026-09-28; versions signed before carry `esports` and
@@ -4020,7 +4069,17 @@ ordinary notification DMs as above:
 
 ## Prize pool funding
 
-**Revision 9.1: a tournament's pot is always its own wallet.** Every prize pot is a wallet of the
+**Revision 9.19: every pot is booked in the league wallet, and zaps fill it.** It replaces revision
+9.1 below (kept for the pots it governed; see the [changelog of revision 9.19](#changelog-of-revision-919-2026-10-02)
+for the rules). A pot asks for no wallet; every invoice for it is the league wallet's and is booked into
+the tournament's account of the league ledger; the `31923` carries the pool key's `zap` tag while the
+pot is open; a zap counts on top of the pot only with a receipt that passes the six checks there, each
+receipt once; the payout comes from the league wallet and never takes more than the pot's account
+holds or the wallet holds beyond the other pots. Organizers' sponsors are part of the pot as announced;
+a pledge marked paid outside the wallet counts toward the pot as shown but never toward what the
+wallet holds.
+
+**Revision 9.1 (replaced by revision 9.19): a tournament's pot is always its own wallet.** Every prize pot is a wallet of the
 tournament's own, connected over NIP-47; the league's wallet, its ledger and its LNURL endpoint
 belong to the season chain (the reserve, [Pots and zap targets](#pots-and-zap-targets-rev-5)) and
 never hold, count or pay a tournament's pot. Revisions 4 to 9 described a league pot funded by zaps

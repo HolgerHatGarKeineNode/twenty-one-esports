@@ -41,7 +41,7 @@ function zapRequest(TestSigner $signer, int $msats, array $tags): SignedEvent
     return SignedEvent::fromInput($signer->sign(9734, [['relays', 'wss://relay.example.org'], ['amount', (string) $msats], ['p', (string) LeagueKey::poolPubkey()], ...$tags], '', now()->getTimestamp()));
 }
 
-test('a zap lands in the league reserve once, and a request for any other pot is refused', function () {
+test('a zap lands in the league reserve once, a tournament’s in its pot, and a request for any other pot is refused', function () {
     $wallet = fakeWallet();
     $tournament = publishForPool(runningChess(TournamentFormat::SingleElimination, 4));
     $signer = new TestSigner;
@@ -51,9 +51,12 @@ test('a zap lands in the league reserve once, and a request for any other pot is
     $payment = $invoices->forZapRequest($zap, $zap->toJson(), 21_000);
     expect($payment->pot)->toBe(IncomingPayment::RESERVE);
 
-    // Refused: a tournament (its pot is its own wallet), a pot we do not run yet (`e`), another recipient, another amount.
+    // A tournament's calendar event by `a`: its pot (user, 2026-10-02).
+    $toTournament = zapRequest($signer, 1_000_000, [['a', (string) $tournament->address()], ['k', '31923']]);
+    expect($invoices->forZapRequest($toTournament, $toTournament->toJson(), 1_000)->pot)->toBe($tournament->potAccount());
+
+    // Refused: a pot we do not run yet (`e`), another recipient, another amount.
     $refused = [
-        zapRequest($signer, 1_000_000, [['a', (string) $tournament->address()], ['k', '31923']]),
         zapRequest($signer, 1_000_000, [['e', str_repeat('ab', 32)]]),
         SignedEvent::fromInput($signer->sign(9734, [['p', (new TestSigner)->pubkey], ['amount', '1000000']], '', now()->getTimestamp())),
         zapRequest($signer, 2_000_000, []),
@@ -68,7 +71,7 @@ test('a zap lands in the league reserve once, and a request for any other pot is
     app(IncomingPayments::class)->check($payment, 0);
     app(IncomingPayments::class)->settle($payment->refresh(), WalletTransaction::fromResult(['state' => 'settled']));
 
-    expect(IncomingPayment::query()->count())->toBe(1)
+    expect(IncomingPayment::query()->count())->toBe(2)
         ->and(LedgerTransfer::query()->where('reason', 'contribution')->count())->toBe(1)
         ->and(app(Ledger::class)->balance(Ledger::RESERVE))->toBe(21_000)
         ->and(fn () => app(Ledger::class)->contribution($payment, 'tournament:x'))->toThrow(InvalidArgumentException::class)

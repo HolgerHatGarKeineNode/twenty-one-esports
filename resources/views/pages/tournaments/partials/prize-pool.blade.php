@@ -3,13 +3,17 @@
     2026-09-28: "das ist das wichtigste an einem Turnier", it sat far down
     the page): the pot as the tournament sets it, what is still to be won of
     it (less only what was paid out, never the wallet balance), what each
-    place wins as a podium, and the paid sponsors with their logos. Rendered
+    place wins as a podium, the paid sponsors with their logos, and the zap
+    sponsors with their Nostr pictures and zapped sums, the biggest first;
+    their sats are on top of the pot (user, 2026-10-02). Rendered
     only when the tournament has a pot (App\Support\Tournaments\
     TournamentPrizePool), so every number here is the pot's own.
 
-    $pool: the shape of TournamentPrizePool::for() — sats, left, mode,
-    split, sponsors. A Lightning address is never shown as text here (user,
-    2026-09-27).
+    $pool: the shape of TournamentPrizePool::for() — sats, base, zaps,
+    zappers, left, mode, split, sponsors. A Lightning address is never shown
+    as text here (user, 2026-09-27). A zapper's name and picture come from
+    their Nostr profile: the league's cached one for a player, else read by
+    the browser from the profile relays (the generated picture until then).
     $topUp: true when anyone can add sats right now (the "Add to the pot"
     panel further down the page, #pot-topup).
     $manage: the viewer manages the tournament (gate `manage-tournament`):
@@ -23,6 +27,9 @@
     $rest = array_slice($pool['split'], 3);
     $topUp ??= false;
     $manage ??= false;
+    $zappers = $pool['zappers'] ?? [];
+    $zapped = (int) ($pool['zaps'] ?? 0);
+    $zapOpen = \App\Support\Prizes\PotZaps::open($tournament);
 @endphp
 <section aria-labelledby="pool-h" class="tl-pot flex flex-col gap-4 rounded-card bg-btc-chip p-4 shadow-ring-btc sm:p-5" data-test="prize-pool">
     <div class="flex flex-col gap-1">
@@ -30,6 +37,12 @@
         <p class="m-0 flex flex-col gap-1">
             <span class="flex items-baseline gap-2 font-display leading-none font-bold text-btc tabular-nums"><span class="text-[44px] sm:text-[56px]" data-test="pool-sats">{{ $sats($pool['sats']) }}</span><span class="text-lg sm:text-xl">{{ __('sats') }}</span></span>
             <span class="text-[13px] text-ink-2" data-test="pool-left">{{ __(':left of :total sats still to be won', ['left' => $sats($poolLeft), 'total' => $sats($pool['sats'])]) }}</span>
+            @if ($zapped > 0)
+                <span class="flex flex-wrap items-center gap-x-2 gap-y-1 text-[13px]" data-test="pool-zaps-on-top">
+                    <b class="inline-flex items-center gap-1 text-btc-hi"><x-icon name="bolt" :size="14" />{{ __('+:sats sats from zaps on top', ['sats' => $sats($zapped)]) }}</b>
+                    <span class="text-ink-2">{{ __(':base sats pot + :zaps sats zaps', ['base' => $sats((int) ($pool['base'] ?? $pool['sats'])), 'zaps' => $sats($zapped)]) }}</span>
+                </span>
+            @endif
         </p>
         @if ($pool['sats'] > 0)
             <span class="mt-1 h-1.5 w-full overflow-hidden rounded-full bg-raised" aria-hidden="true"><span class="block h-full bg-btc" style="width: {{ min(100, (int) floor(100 * $poolLeft / $pool['sats'])) }}%"></span></span>
@@ -82,8 +95,34 @@
         @else
             <p class="m-0 text-[13px] leading-normal text-ink-2" data-test="pool-no-sponsor">{{ __('No sponsor yet. Sponsors show here with their logo once they have paid.') }}</p>
         @endif
-        @if ($topUp || $manage)
+        @if ($zappers !== [])
+            {{-- The zap sponsors: their Nostr picture and name, the sum they zapped; the biggest first. --}}
+            <div class="flex flex-col gap-2" data-test="pool-zappers" x-data="potZappers" data-relays="{{ json_encode(array_values((array) config('esports.profile_relays', []))) }}">
+                <span class="text-xs text-ink-2">{{ __('Zapped on top by') }}</span>
+                <ol class="m-0 flex list-none gap-2 overflow-x-auto p-0 pb-1 sm:flex-wrap sm:overflow-visible sm:pb-0">
+                    @foreach ($zappers as $zapper)
+                        @php($zapName = $zapper['user']?->displayName() ?? \Illuminate\Support\Str::limit($zapper['npub'], 12, '…'))
+                        <li class="flex h-14 max-w-[240px] min-w-0 shrink-0 items-center gap-2.5 rounded-md bg-ground px-3 shadow-ring-hairline" data-test="pool-zapper" data-pubkey="{{ $zapper['pubkey'] }}" wire:key="zapper-{{ $zapper['pubkey'] }}">
+                            @if ($zapper['user'])
+                                <x-avatar :user="$zapper['user']" :size="36" class="shrink-0" />
+                            @else
+                                <img src="{{ \App\Support\Nostr\PlayerProfile::generatedAvatarUrl($zapper['pubkey']) }}" alt="{{ __(':name avatar, generated', ['name' => $zapName]) }}" width="36" height="36" loading="lazy" decoding="async" referrerpolicy="no-referrer"
+                                     data-zapper-avatar="{{ $zapper['pubkey'] }}" class="block size-9 shrink-0 rounded-full bg-raised object-cover">
+                            @endif
+                            <span class="flex min-w-0 flex-col">
+                                <span class="truncate text-[13px] font-bold" @unless ($zapper['user']) data-zapper-name="{{ $zapper['pubkey'] }}" @endunless>{{ $zapName }}</span>
+                                <span class="text-xs text-btc-hi tabular-nums" data-test="pool-zapper-sats">{{ __(':sats sats', ['sats' => $sats($zapper['sats'])]) }}</span>
+                            </span>
+                        </li>
+                    @endforeach
+                </ol>
+            </div>
+        @endif
+        @if ($topUp || $manage || $zapOpen)
             <div class="flex flex-wrap gap-2" data-test="pool-sponsor-cta">
+                @if ($zapOpen)
+                    <x-button icon="bolt" href="#pot-zap" data-test="pool-zap">{{ __('Zap the pot') }}</x-button>
+                @endif
                 @if ($topUp)
                     <x-button variant="secondary" icon="bolt" href="#pot-topup" data-test="pool-add">{{ __('Add to the pot') }}</x-button>
                 @endif

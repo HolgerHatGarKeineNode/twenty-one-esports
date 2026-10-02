@@ -337,7 +337,7 @@ new #[Layout('layouts::app', ['section' => 'tournaments'])] class extends PrizeP
                                 <b class="block truncate text-[13px]">{{ $sponsor->name }}</b>
                                 <span class="text-xs text-ink-2">{{ __(':pledged sats pledged, :paid sats paid', ['pledged' => $sats($sponsor->pledged_sats), 'paid' => $sats($paid)]) }}</span>
                                 @if ($sponsor->paid_outside_sats !== null)
-                                    <span class="block text-xs text-ink-2 [overflow-wrap:anywhere]" data-test="sponsor-outside">{{ __(':sats sats paid outside the wallet, marked by :name on :date', ['sats' => $sats($sponsor->paidOutsideSats()), 'name' => $sponsor->paidOutsideBy?->displayName() ?? __('a deleted account'), 'date' => $sponsor->paid_outside_at?->copy()->timezone(\App\Support\LeagueTime::zone())->format('Y-m-d H:i')]) }}@if ($sponsor->paid_outside_note): „{{ $sponsor->paid_outside_note }}“@endif</span>
+                                    <span class="block text-xs text-ink-2 [overflow-wrap:anywhere]" data-test="sponsor-outside">{{ __(':sats sats paid outside the wallet, marked by :name on :date', ['sats' => $sats($sponsor->paidOutsideSats()), 'name' => $sponsor->paidOutsideBy?->displayName() ?? __('a deleted account'), 'date' => $sponsor->paid_outside_at?->copy()->timezone(\App\Support\LeagueTime::zone())->format('Y-m-d H:i')]) }}@if ($sponsor->paid_outside_note): {{ __('“:note”', ['note' => $sponsor->paid_outside_note]) }}@endif</span>
                                 @endif
                             </span>
                         </span>
@@ -361,7 +361,7 @@ new #[Layout('layouts::app', ['section' => 'tournaments'])] class extends PrizeP
                     @if ($outsideSponsorId === $sponsor->id)
                         <li class="list-none" wire:key="so-{{ $sponsor->id }}">
                             <form wire:submit="markPaidOutside" class="flex flex-col gap-3 rounded-md bg-ground p-4 shadow-ring" data-test="sponsor-outside-form">
-                                <p class="m-0 text-[13px] leading-normal text-ink-2">{{ __(':name paid some other way than the invoice. The sats count toward the pot and the logo shows, but they are not in the pot’s wallet: the payout never takes them from it.', ['name' => $sponsor->name]) }}</p>
+                                <p class="m-0 text-[13px] leading-normal text-ink-2">{{ __(':name paid some other way than the invoice. The sats count toward the pot and the logo shows, but they are not in the league wallet: the payout never takes them from it.', ['name' => $sponsor->name]) }}</p>
                                 <div class="grid gap-3 sm:grid-cols-[minmax(0,12rem)_minmax(0,1fr)]">
                                     <label class="flex flex-col gap-1.5 text-xs text-ink-2">
                                         {{ __('Amount in sats') }}

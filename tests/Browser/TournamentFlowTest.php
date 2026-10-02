@@ -12,10 +12,14 @@ use App\Models\TournamentSignup;
 use App\Models\TournamentSponsor;
 use App\Models\User;
 use App\Support\Chess\ChessGameService;
+use App\Support\Nostr\SignedEvent;
 use App\Support\Payouts\PayoutApproval;
 use App\Support\Payouts\PayoutRunner;
+use App\Support\Prizes\IncomingPayments;
+use App\Support\Prizes\PoolInvoices;
 use App\Support\Prizes\PrizePool;
 use App\Support\Prizes\SponsorLogos;
+use App\Support\SeasonChain\LeagueKey;
 use App\Support\Tournaments\TournamentRunner;
 use Carbon\CarbonImmutable;
 use Illuminate\Http\Client\Factory as HttpFactory;
@@ -288,8 +292,27 @@ test('the prize pot: top-ups by QR code, sponsors, payouts, fixed prizes and the
     // An open pot that takes top-ups, 50/30/20.
     $openPot = $league;
     $open = openTournament(['name' => 'Halving Cup', 'capacity' => 8], rocketLeague: true);
-    app(PrizePool::class)->configurePot($open, $open->creator, true, null, Tournament::PRIZES_PERCENT, [50, 30, 20]);
+    app(PrizePool::class)->configurePot($open, $open->creator, true, 100_000, Tournament::PRIZES_PERCENT, [50, 30, 20]);
     fundPool($league, $open->refresh(), 42_000);
+
+    // Zap sponsors (user, 2026-10-02): a stranger and a player zap the tournament's event; the league receipts each.
+    $zapPot = function (TestSigner $signer, int $sats, string $comment) use ($league, $open): void {
+        $request = SignedEvent::fromInput($signer->sign(9734, [['relays', 'wss://relay.example.org'], ['amount', (string) ($sats * 1000)],
+            ['p', (string) LeagueKey::poolPubkey()], ['a', (string) $open->address()], ['k', '31923']], $comment, now()->getTimestamp()));
+        $payment = app(PoolInvoices::class)->forZapRequest($request, $request->toJson(), $sats);
+        $league->settleIncoming($payment->payment_hash);
+        app(IncomingPayments::class)->check($payment, 0);
+    };
+    $zapPot(new TestSigner, 21_000, 'Stack sats');
+    $stacker = new TestSigner;
+    User::factory()->withPubkey($stacker->pubkey)->create(['name' => 'satoshi_stacker', 'locale' => 'en']);
+    $zapPot($stacker, 5_000, '');
+
+    // The sponsors section: one pledge paid outside the wallet (with a note), one still open.
+    $bakery = TournamentSponsor::query()->create(['tournament_id' => $open->id, 'name' => 'Hodl Bakery', 'pledged_sats' => 10_500,
+        'logo_path' => app(SponsorLogos::class)->store(UploadedFile::fake()->image('bakery.png', 480, 160))]);
+    app(PrizePool::class)->markPaidOutside($bakery, $open->creator, 8_000, 'Bank transfer on 1 October');
+    TournamentSponsor::query()->create(['tournament_id' => $open->id, 'name' => 'Lightning Pizza', 'pledged_sats' => 50_000]);
 
     // Fixed amounts the pot covers, with sats left over.
     $walletPot = openTournament(['name' => 'Stacker Open', 'capacity' => 8], rocketLeague: true);
@@ -348,6 +371,37 @@ test('the prize pot: top-ups by QR code, sponsors, payouts, fixed prizes and the
         $received = $page->evaluate(TOURNAMENT_STATE);
         tournamentShot($page, "p9-topup-received-{$width}");
 
+        // The zap sponsors' wall with "+N sats from zaps on top", then the zap panel with the pot's LNURL QR code.
+        $page->goto(ComputeUrl::from(route('tournaments.show', $open)));
+        BrowserWait::until($page, '() => document.querySelector("[data-test=pool-zappers]") !== null', 8_000);
+        $page->evaluate('() => document.querySelector("[data-test=prize-pool]").scrollIntoView()');
+        $wall = $page->evaluate(TOURNAMENT_STATE);
+        $wall['entries'] = $page->evaluate('() => [...document.querySelectorAll("[data-test=pool-zapper]")].map((el) => { const r = el.getBoundingClientRect(); const img = el.querySelector("img").getBoundingClientRect(); return { text: el.innerText.replace(/\\s+/g, " "), left: Math.round(r.left), right: Math.round(r.right), height: Math.round(r.height), avatar: Math.round(img.width) }; })');
+        $wall['list'] = $page->evaluate('() => { const ol = document.querySelector("[data-test=pool-zappers] ol"); const r = ol.getBoundingClientRect(); return { left: Math.round(r.left), right: Math.round(r.right), scrollWidth: ol.scrollWidth, clientWidth: ol.clientWidth }; }');
+        $wall['onTop'] = $page->evaluate('() => document.querySelector("[data-test=pool-zaps-on-top]")?.innerText ?? null');
+        $wall['pot'] = $page->evaluate('() => document.querySelector("[data-test=pool-sats]").innerText');
+        tournamentShot($page, "p9-zap-wall-{$width}");
+        $page->evaluate('() => document.querySelector("#pot-zap").scrollIntoView()');
+        $zapPanel = $page->evaluate(TOURNAMENT_STATE);
+        $zapPanel['box'] = $page->evaluate(WARNING_BOX, '[data-test=pot-zap]');
+        $zapPanel['qr'] = $page->evaluate('() => { const r = document.querySelector("[data-test=pot-zap-qr]").getBoundingClientRect(); return [Math.round(r.width), Math.round(r.height)]; }');
+        $zapPanel['amounts'] = $page->evaluate('() => [...document.querySelectorAll("[data-test=pot-zap-amount]")].map((el) => Math.round(el.getBoundingClientRect().height))');
+        $zapPanel['address'] = $page->evaluate('(address) => document.body.innerText.includes(address)', PoolInvoices::address());
+        tournamentShot($page, "p9-pot-zap-{$width}");
+
+        expect($wall['errors'])->toBe([])->and($wall['overflow'])->toBeLessThanOrEqual(0)
+            ->and($wall['entries'])->toHaveCount(2)
+            ->and($wall['entries'][0]['text'])->toContain('21')->and($wall['entries'][1]['text'])->toContain('satoshi_stacker')
+            ->and(collect($wall['entries'])->every(fn (array $e): bool => $e['avatar'] >= 32 && $e['height'] >= 44))->toBeTrue()
+            ->and($wall['list']['left'])->toBeGreaterThanOrEqual(0)->and($wall['list']['right'])->toBeLessThanOrEqual($width)
+            ->and($wall['onTop'])->toContain('26')->and($wall['pot'])->toContain('126')
+            ->and($zapPanel['errors'])->toBe([])->and($zapPanel['overflow'])->toBeLessThanOrEqual(0)
+            ->and($zapPanel['box']['left'])->toBeGreaterThanOrEqual(0)->and($zapPanel['box']['right'])->toBeLessThanOrEqual($width)
+            ->and($zapPanel['box']['scrollWidth'])->toBeLessThanOrEqual($zapPanel['box']['clientWidth'])
+            ->and($zapPanel['qr'][0])->toBeGreaterThanOrEqual(150)
+            ->and($zapPanel['amounts'])->toHaveCount(4)->and(min($zapPanel['amounts']))->toBeGreaterThanOrEqual(44)
+            ->and($zapPanel['address'])->toBeFalse();
+
         $page->goto(ComputeUrl::from(route('tournaments.show', $finished)));
         BrowserWait::until($page, '() => document.querySelector("[data-test=pool-payouts]") !== null', 8_000);
         $page->evaluate('() => document.querySelector("[data-test=prize-pool]").scrollIntoView()');
@@ -381,6 +435,34 @@ test('the prize pot: top-ups by QR code, sponsors, payouts, fixed prizes and the
         $settings = $desk->evaluate(TOURNAMENT_STATE);
         $settings['wide'] = $desk->evaluate(POOL_WIDE);
         tournamentShot($desk, "p9-pool-settings-{$width}");
+
+        // The sponsors section: a pledge paid outside the wallet with who, when and the note; "Mark as paid outside" opens its form.
+        $desk->evaluate('() => document.querySelector("#sponsors-h").scrollIntoView()');
+        $sponsors = $desk->evaluate(TOURNAMENT_STATE);
+        $sponsors['rows'] = $desk->evaluate('() => [...document.querySelectorAll("[data-test=sponsor-row]")].map((el) => { const r = el.getBoundingClientRect(); return { left: Math.round(r.left), right: Math.round(r.right), text: el.innerText.replace(/\\s+/g, " ") }; })');
+        $sponsors['buttons'] = $desk->evaluate('() => [...document.querySelectorAll("[data-test=sponsor-outside-button], [data-test=sponsor-outside-undo]")].map((el) => { const r = el.getBoundingClientRect(); return [Math.round(r.left), Math.round(r.right), Math.round(r.height)]; })');
+        $sponsors['warning'] = $desk->evaluate('() => document.querySelector("[data-test=pool-outside-warning]")?.innerText ?? null');
+        tournamentShot($desk, "p9-sponsors-{$width}");
+        $desk->locator('[data-test=sponsor-outside-button]')->click();
+        BrowserWait::until($desk, '() => document.querySelector("[data-test=sponsor-outside-form]") !== null', 8_000);
+        $desk->evaluate('() => document.querySelector("[data-test=sponsor-outside-form]").scrollIntoView({block: "center"})');
+        $outsideForm = $desk->evaluate(TOURNAMENT_STATE);
+        $outsideForm['box'] = $desk->evaluate(WARNING_BOX, '[data-test=sponsor-outside-form]');
+        $outsideForm['sats'] = $desk->evaluate('() => document.querySelector("[data-test=sponsor-outside-sats]").value');
+        $outsideForm['inputs'] = $desk->evaluate('() => [...document.querySelectorAll("[data-test=sponsor-outside-form] input")].map((el) => { const r = el.getBoundingClientRect(); return [Math.round(r.left), Math.round(r.right), Math.round(r.height)]; })');
+        tournamentShot($desk, "p9-sponsor-outside-form-{$width}");
+
+        expect($sponsors['errors'])->toBe([])->and($sponsors['overflow'])->toBeLessThanOrEqual(0)
+            ->and($sponsors['rows'])->toHaveCount(2)
+            ->and($sponsors['rows'][0]['text'])->toContain('Bank transfer on 1 October')->toContain('paid outside the wallet')
+            ->and(collect($sponsors['rows'])->every(fn (array $row): bool => $row['left'] >= 0 && $row['right'] <= $width))->toBeTrue()
+            ->and($sponsors['buttons'])->toHaveCount(2)
+            ->and(collect($sponsors['buttons'])->every(fn (array $b): bool => $b[0] >= 0 && $b[1] <= $width && $b[2] >= 44))->toBeTrue()
+            ->and($sponsors['warning'])->toContain('8')
+            ->and($outsideForm['errors'])->toBe([])->and($outsideForm['overflow'])->toBeLessThanOrEqual(0)
+            ->and($outsideForm['sats'])->toBe('50000')
+            ->and($outsideForm['box']['left'])->toBeGreaterThanOrEqual(0)->and($outsideForm['box']['right'])->toBeLessThanOrEqual($width)
+            ->and(collect($outsideForm['inputs'])->every(fn (array $b): bool => $b[0] >= 0 && $b[1] <= $width && $b[2] >= 44))->toBeTrue();
 
         // The optional pot of the create page: on, no wallet to connect, a target and a preset with its preview in sats.
         $desk->goto(ComputeUrl::from(route('admin.tournaments.create')));
@@ -459,7 +541,7 @@ test('the prize pot: top-ups by QR code, sponsors, payouts, fixed prizes and the
             ->and($index['errors'])->toBe([])->and($index['overflow'])->toBeLessThanOrEqual(0)
             ->and($walletShow['errors'])->toBe([])->and($walletShow['overflow'])->toBeLessThanOrEqual(0);
 
-        $measured[$width] = ['shortForm' => $shortForm, 'shortPayouts' => $shortState, 'invoice' => $invoice, 'received' => $received, 'payouts' => $payouts, 'fixed' => $fixed, 'admin' => $adminState, 'settings' => $settings, 'create' => $create, 'edit' => $edit, 'index' => $index, 'walletShow' => $walletShow];
+        $measured[$width] = ['wall' => $wall, 'zapPanel' => $zapPanel, 'sponsors' => $sponsors, 'outsideForm' => $outsideForm, 'shortForm' => $shortForm, 'shortPayouts' => $shortState, 'invoice' => $invoice, 'received' => $received, 'payouts' => $payouts, 'fixed' => $fixed, 'admin' => $adminState, 'settings' => $settings, 'create' => $create, 'edit' => $edit, 'index' => $index, 'walletShow' => $walletShow];
     }
 
     expect($finished->payouts()->pluck('status')->map->value->sort()->values()->all())->toBe(['open', 'paid', 'paid', 'paid'])

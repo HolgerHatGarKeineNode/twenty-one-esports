@@ -5,9 +5,13 @@ use App\Enums\PayoutStatus;
 use App\Models\IncomingPayment;
 use App\Models\Tournament;
 use App\Models\TournamentPayout;
+use App\Models\User;
+use App\Support\Lightning\ZapRefused;
+use App\Support\Nostr\SignerMessages;
 use App\Support\PreSeason;
 use App\Support\Prizes\PoolRefusal;
 use App\Support\Prizes\PotTopUps;
+use App\Support\Prizes\PotZaps;
 use App\Support\Prizes\PrizePool;
 use App\Support\QrCode;
 use Illuminate\Support\Collection;
@@ -31,6 +35,12 @@ use Livewire\Component;
  * shown as a QR code (never as text) with "open in wallet"; the panel
  * checks every few seconds whether it was paid. When the league wallet
  * cannot make invoices, the panel says top-ups are not enabled.
+ *
+ * "Zap the pot" (user, 2026-10-02): the pot's LNURL as a QR code for any
+ * wallet, and for a signed-in player a NIP-57 zap to the tournament's event
+ * (App\Support\Prizes\PotZaps, signed in the browser by
+ * resources/js/zapWinner.js); a zap with its receipt goes on the sponsors'
+ * wall and on top of the pot.
  */
 new class extends Component {
     #[Locked]
@@ -81,6 +91,44 @@ new class extends Component {
         } catch (PoolRefusal $refusal) {
             $this->addError('topup', $refusal->getMessage());
         }
+    }
+
+    /**
+     * @return array{template?: array<string, mixed>, error?: string}
+     */
+    public function prepareZap(int $tournamentId, int $sats, string $comment, PotZaps $zaps): array
+    {
+        try {
+            return ['template' => $zaps->template($this->zapper(), $this->tournament, $sats, $comment)];
+        } catch (ZapRefused $refused) {
+            return ['error' => $refused->getMessage()];
+        }
+    }
+
+    /**
+     * @return array{invoice?: string, qr?: string, error?: string}
+     */
+    public function zapInvoice(int $tournamentId, int $sats, string $comment, string $signed, PotZaps $zaps): array
+    {
+        if (! $this->allowedToInvoice()) {
+            return ['error' => __('Too many invoices at once. Please wait a minute.')];
+        }
+
+        try {
+            $answer = $zaps->invoice($this->zapper(), $this->tournament, $sats, $comment, json_decode($signed, true));
+
+            return ['invoice' => $answer['invoice'], 'qr' => $answer['qr']];
+        } catch (ZapRefused $refused) {
+            return ['error' => $refused->getMessage()];
+        }
+    }
+
+    private function zapper(): User
+    {
+        $user = Auth::user();
+        abort_unless($user instanceof User, 403);
+
+        return $user;
     }
 
     public function checkInvoice(PotTopUps $topUps): void
@@ -138,6 +186,8 @@ new class extends Component {
     $open = $tournament->isPoolOpen();
     $hasPot = $tournament->pool_opened_at !== null && $tournament->hasPot();
     $topUps = PotTopUps::enabled($tournament);
+    $zapQr = rescue(fn () => PotZaps::lnurlQr($tournament), null, false);
+    $viewer = auth()->user();
     $invoice = $this->invoice;
     $qr = null;
 
@@ -184,6 +234,68 @@ new class extends Component {
             </div>
         @endif
     </div>
+
+    @if ($hasPot && $open && $zapQr !== null)
+        {{-- Zap the pot: on top of it, and on the sponsors' wall with the zapper's Nostr picture. Never an address as text. --}}
+        <div id="pot-zap" class="flex scroll-mt-24 flex-col gap-3 rounded-card bg-card p-4 sm:p-6" data-test="pot-zap"
+             x-data="zapWinner({ pubkey: @js($viewer?->pubkey), amounts: @js(PotZaps::AMOUNTS), messages: @js([...SignerMessages::labels(), 'failed' => __('That did not work. Please try again.'), 'changed' => __('The zap request changed. Check it again, then sign.')]) })">
+            <h3 class="m-0 flex items-center gap-1.5 text-[13px] font-bold"><span class="flex text-bolt"><x-icon name="bolt" :size="16" /></span>{{ __('Zap the pot') }}</h3>
+            <p class="m-0 max-w-[80ch] text-xs leading-normal text-ink-2">{{ __('Zaps add on top of the pot and are split like it. Zap with Nostr and you show on the sponsors’ wall with your Nostr picture; the league takes nothing.') }}</p>
+            <div class="flex min-w-0 flex-col gap-4 sm:flex-row sm:items-start">
+                <div class="flex min-w-0 flex-col items-start gap-2">
+                    <div class="size-40 shrink-0 rounded-sm bg-white p-2 [&>svg]:size-full" data-test="pot-zap-qr">{!! $zapQr !!}</div>
+                    <p class="m-0 max-w-[20rem] text-xs leading-normal text-ink-3">{{ __('Scan with a Lightning wallet: a plain payment goes into the pot as announced, without a place on the wall.') }}</p>
+                </div>
+                @if ($viewer)
+                    <div class="flex min-w-0 grow flex-col gap-3" data-test="pot-zap-sign">
+                        <fieldset class="m-0 flex min-w-0 flex-col gap-2 border-0 p-0">
+                            <legend class="mb-1 text-xs text-ink-2">{{ __('Amount in sats') }}</legend>
+                            <div class="flex flex-wrap gap-2">
+                                @foreach (PotZaps::AMOUNTS as $amount)
+                                    <button type="button" x-on:click="open = {{ $tournament->id }}; pick({{ $amount }})" :aria-pressed="sats === {{ $amount }}" data-test="pot-zap-amount"
+                                            :class="sats === {{ $amount }} ? 'border-btc bg-btc-chip font-bold text-btc-hi' : 'border-line bg-well text-ink'"
+                                            class="inline-flex h-11 min-w-11 cursor-pointer items-center justify-center rounded-md border px-3 text-[13px] tabular-nums">{{ $sats($amount) }}</button>
+                                @endforeach
+                            </div>
+                        </fieldset>
+                        <label class="flex min-w-0 flex-col gap-1.5">
+                            <span class="text-xs text-ink-2">{{ __('Comment (optional, public in the zap)') }}</span>
+                            <input type="text" x-model="comment" x-on:input="step !== 'idle' && reset()" maxlength="{{ PotZaps::MAX_COMMENT }}" data-test="pot-zap-comment"
+                                   class="h-11 w-full min-w-0 rounded-md border border-line bg-well px-3 text-[13px] text-ink">
+                        </label>
+                        <div class="flex flex-wrap gap-2" x-show="step === 'idle' || step === 'preparing'">
+                            <x-button icon="bolt" x-on:click="open = {{ $tournament->id }}; preview()" x-bind:disabled="step === 'preparing'" data-test="pot-zap-preview">
+                                <span x-text="step === 'preparing' ? @js(__('Preparing…')) : @js(__('Zap with Nostr'))">{{ __('Zap with Nostr') }}</span>
+                            </x-button>
+                        </div>
+                        <div x-show="step === 'preview' || step === 'signing'" x-cloak role="group" aria-label="{{ __('Preview of the zap request') }}" data-test="pot-zap-request"
+                             class="flex min-w-0 flex-col gap-2 rounded-md border border-line px-3 py-3">
+                            <p class="m-0 text-[13px] leading-normal" x-text="@js(__('A zap of :sats sats to the prize pot of :name, signed with your key (NIP-57, kind 9734).', ['name' => $tournament->name])).replace(':sats', Number(sats).toLocaleString())"></p>
+                            <div class="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+                                <x-button variant="quiet" x-on:click="reset()" x-bind:disabled="step === 'signing'">{{ __('Cancel') }}</x-button>
+                                <x-button icon="bolt" x-on:click="sign()" x-bind:disabled="step === 'signing'" class="whitespace-nowrap" data-test="pot-zap-sign-button">
+                                    <span x-text="step === 'signing' ? @js(__('Waiting for your signer…')) : @js(__('Sign and get invoice'))">{{ __('Sign and get invoice') }}</span>
+                                </x-button>
+                            </div>
+                        </div>
+                        <div x-show="step === 'invoice'" x-cloak class="flex min-w-0 flex-col items-start gap-3 sm:flex-row sm:items-center" data-test="pot-zap-invoice">
+                            <div class="size-40 shrink-0 rounded-sm bg-white p-2 [&>svg]:size-full" x-html="qr" data-test="pot-zap-invoice-qr"></div>
+                            <div class="flex min-w-0 flex-col gap-2">
+                                <p class="m-0 text-xs leading-normal text-ink-2">{{ __('Scan with your Lightning wallet, or open it in the wallet on this device. Once it is paid, the league signs the zap receipt and you show on the wall within a minute.') }}</p>
+                                <span class="flex flex-wrap gap-2">
+                                    <a :href="'lightning:' + invoice" class="btn-p inline-flex h-11 min-w-11 items-center justify-center gap-2 rounded-md bg-btc px-4 text-[13px] font-bold text-on-btc hover:text-on-btc"><x-icon name="bolt" :size="16" />{{ __('Open in wallet') }}</a>
+                                    <button type="button" x-on:click="copyInvoice()" class="inline-flex h-11 min-w-11 cursor-pointer items-center justify-center gap-2 rounded-md border border-line bg-card px-3 text-[13px] text-ink">
+                                        <x-icon name="copy" :size="16" /><span x-text="copied ? @js(__('Copied')) : @js(__('Copy invoice'))">{{ __('Copy invoice') }}</span>
+                                    </button>
+                                </span>
+                            </div>
+                        </div>
+                        <p role="alert" class="m-0 text-xs leading-normal text-loss" x-show="error" x-text="error" x-cloak data-test="pot-zap-error"></p>
+                    </div>
+                @endif
+            </div>
+        </div>
+    @endif
 
     @if ($hasPot && $open)
         <div id="pot-topup" class="flex scroll-mt-24 flex-col gap-3 rounded-card bg-card p-4 sm:p-6" data-test="topup-panel">

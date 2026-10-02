@@ -11,6 +11,7 @@ use App\Support\Cards\ShareCard;
 use App\Support\Payouts\PayoutApproval;
 use App\Support\PreSeason;
 use App\Support\Prizes\PotTopUps;
+use App\Support\SeasonChain\LeagueKey;
 use App\Support\Wallet\Ledger;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Storage;
@@ -87,9 +88,9 @@ test('the organizer sets the prizes and a sponsor whose invoice comes from the l
         ->set('potEnabled', true)->call('savePotSettings')->assertSet('potError', '');
     $tournament->refresh();
 
-    // Published already: the pot opened at once, with a new 31923 that names the prizes and has no `zap` tag.
+    // Published already: the pot opened at once, with a new 31923 that names the prizes and routes zaps to the pool key.
     expect($tournament->pool_opened_at)->not->toBeNull()
-        ->and(collect($tournament->event->payload()['tags'])->where(0, 'zap'))->toBeEmpty()
+        ->and(collect($tournament->event->payload()['tags'])->where(0, 'zap')->pluck(1)->all())->toBe([LeagueKey::poolPubkey()])
         ->and($tournament->event->payload()['content'])->toContain('league wallet');
 
     $page->set('potSplit', [60, 40, 10])->call('savePotSettings')->assertNotSet('potError', '');

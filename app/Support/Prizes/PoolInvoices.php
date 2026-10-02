@@ -4,6 +4,7 @@ namespace App\Support\Prizes;
 
 use App\Enums\IncomingPaymentStatus;
 use App\Models\IncomingPayment;
+use App\Models\Tournament;
 use App\Support\Lightning\Bolt11;
 use App\Support\Nostr\SignedEvent;
 use App\Support\PreSeason;
@@ -18,16 +19,19 @@ use function BitWasp\Bech32\convertBits;
 use function BitWasp\Bech32\encode;
 
 /**
- * Invoices into the league reserve (the Season-Chain's pot), all made by
- * the league's receiving wallet connection through its own LNURL endpoint
- * `pool@<host>` and each recorded with its payment hash before anyone sees
- * it: a zap request from any Nostr client (NIP-57), or a plain LNURL payment.
+ * Invoices of the league's LNURL endpoint `pool@<host>`, all made by the
+ * league's receiving wallet connection and each recorded with its payment
+ * hash and pot before anyone sees it: a zap request from any Nostr client
+ * (NIP-57) into the reserve or, naming a tournament's calendar event by
+ * `a`, into that tournament's pot (user, 2026-10-02: „nutze doch einfach
+ * Zaps auf Nostr Events"; {@see ZapRequests}); or a plain LNURL payment,
+ * into the reserve, or into a tournament's pot through that tournament's
+ * LNURL (`?pot=<id>`, the QR code on its page).
  *
- * Tournament pots never come here: each is its tournament's own NWC wallet
- * ({@see PotTopUps}; user, 2026-09-27). The invoice's description hash is
- * SHA-256 of the zap request exactly as received, so the receipt can carry
- * it as `description`. Fail closed: without the receiving wallet or the
- * LNURL server key nothing is made.
+ * A zap's invoice has as description hash SHA-256 of the zap request exactly
+ * as received, so the receipt can carry it as `description`; a plain
+ * payment's is SHA-256 of the metadata served (LUD-06). Fail closed: without
+ * the receiving wallet or the LNURL server key nothing is made.
  */
 final class PoolInvoices
 {
@@ -39,13 +43,14 @@ final class PoolInvoices
      *
      * @throws PoolRefusal
      */
-    public function forZapRequest(SignedEvent $request, string $json, int $amountSats): IncomingPayment
+    public function forZapRequest(SignedEvent $request, string $json, int $amountSats, ?Tournament $only = null): IncomingPayment
     {
         $this->checkAmount($amountSats);
-        $pot = $this->zapRequests->potOf($request, $amountSats * 1000);
+        $pot = $this->zapRequests->potOf($request, $amountSats * 1000, $only);
 
         return $this->make($amountSats, hash('sha256', $json), [
             'pot' => $pot,
+            'tournament_id' => $pot === IncomingPayment::RESERVE ? null : (int) substr($pot, strlen('tournament:')),
             'source' => 'zap',
             'zap_request' => $json,
             'payer_pubkey' => $request->pubkey,
@@ -54,28 +59,36 @@ final class PoolInvoices
     }
 
     /**
-     * A payment through the LNURL endpoint without a zap request: the reserve.
+     * A payment through the LNURL endpoint without a zap request: the
+     * reserve, or through a tournament's LNURL that tournament's pot (part
+     * of the pot as announced; without a receipt it is no zap on top).
      *
      * @throws PoolRefusal
      */
-    public function forPlainPayment(int $amountSats, string $comment): IncomingPayment
+    public function forPlainPayment(int $amountSats, string $comment, ?Tournament $tournament = null): IncomingPayment
     {
         $this->checkAmount($amountSats);
 
-        return $this->make($amountSats, hash('sha256', self::metadata()), [
-            'pot' => IncomingPayment::RESERVE,
+        if ($tournament !== null && ! PotTopUps::enabled($tournament)) {
+            throw new PoolRefusal(__('This tournament takes no zaps into its pot right now.'));
+        }
+
+        return $this->make($amountSats, hash('sha256', self::metadata($tournament)), [
+            'pot' => $tournament === null ? IncomingPayment::RESERVE : $tournament->potAccount(),
+            'tournament_id' => $tournament?->id,
             'source' => 'lnurl',
             'comment' => self::comment($comment) ?: null,
         ]);
     }
 
     /**
-     * The LUD-06 metadata of the league's pool address.
+     * The LUD-06 metadata of the league's pool address, or of a tournament's
+     * LNURL on it (named by its stable slug).
      */
-    public static function metadata(): string
+    public static function metadata(?Tournament $tournament = null): string
     {
         return (string) json_encode([
-            ['text/plain', 'TWENTY ONE Esports league reserve'],
+            ['text/plain', $tournament === null ? 'TWENTY ONE Esports league reserve' : 'TWENTY ONE Esports prize pot of '.$tournament->slug],
             ['text/identifier', self::address()],
         ], JSON_UNESCAPED_SLASHES);
     }
@@ -96,10 +109,14 @@ final class PoolInvoices
         return config('esports.wallet.lnurl_username', 'pool').'@'.parse_url((string) config('app.url'), PHP_URL_HOST);
     }
 
-    /** The LNURL of the league's pay endpoint, bech32 `lnurl` (LUD-01), for the zap request's `lnurl` tag. */
-    public static function lnurl(): string
+    /**
+     * The LNURL of the league's pay endpoint, bech32 `lnurl` (LUD-01), for
+     * the zap request's `lnurl` tag; with a tournament, the same endpoint
+     * for that tournament's pot (`?pot=<id>`, the QR code on its page).
+     */
+    public static function lnurl(?Tournament $tournament = null): string
     {
-        $url = route('lnurl.pay', ['username' => config('esports.wallet.lnurl_username', 'pool')]);
+        $url = route('lnurl.pay', array_filter(['username' => config('esports.wallet.lnurl_username', 'pool'), 'pot' => $tournament?->id]));
         $bytes = array_values(unpack('C*', $url) ?: []);
 
         return strtoupper(encode('lnurl', convertBits($bytes, count($bytes), 8, 5, true)));

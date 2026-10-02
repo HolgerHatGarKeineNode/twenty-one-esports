@@ -203,8 +203,9 @@ new #[Title('Payouts')] #[Layout('layouts::app', ['section' => 'admin'])] class 
     $prizePool = app(PrizePool::class);
     $fixedMode = $tournament?->prizeMode() === Tournament::PRIZES_FIXED;
     $funded = $tournament ? $prizePool->fundedSats($tournament) : 0;
-    $pool = $tournament ? PrizePool::payable($tournament, $funded) : null;
-    $shortfall = $tournament ? PrizePool::shortfall($tournament, $funded) : 0;
+    $zaps = $tournament ? $prizePool->zapSats($tournament) : 0;
+    $pool = $tournament ? PrizePool::payable($tournament, $funded, $zaps) : null;
+    $shortfall = $tournament ? PrizePool::shortfall($tournament, $funded, $zaps) : 0;
     $payouts = $this->payouts;
     $pending = $payouts->where('status', PayoutStatus::Pending);
 @endphp
@@ -273,10 +274,10 @@ new #[Title('Payouts')] #[Layout('layouts::app', ['section' => 'admin'])] class 
                 @if ($blocker)
                     <p class="m-0 text-[13px] text-loss" data-test="payouts-blocker">{{ $blocker }}</p>
                     @if ($shortfall > 0)
-                        <p class="m-0 text-[13px] text-ink-2" data-test="payouts-underfunded">{{ __('The pot has received :have sats; the fixed prizes need :need sats with the fee reserve, :missing sats more.', ['have' => $sats($funded), 'need' => $sats((int) PrizePool::requiredSats($tournament)), 'missing' => $sats($shortfall)]) }}</p>
+                        <p class="m-0 text-[13px] text-ink-2" data-test="payouts-underfunded">{{ __('The pot has received :have sats; the fixed prizes need :need sats with the fee reserve, :missing sats more.', ['have' => $sats($funded - $zaps), 'need' => $sats((int) PrizePool::requiredSats($tournament)), 'missing' => $sats($shortfall)]) }}</p>
                     @endif
                 @else
-                    @php($preview = $pool === null ? null : app(PayoutPlan::class)->compute($tournament, $pool))
+                    @php($preview = $pool === null ? null : app(PayoutPlan::class)->compute($tournament, $pool, $zaps))
                     @if ($preview)
                         <ul class="m-0 flex list-none flex-col p-0 text-[13px]" data-test="payouts-preview">
                             @foreach ($preview['rows'] as $row)

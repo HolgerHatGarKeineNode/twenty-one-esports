@@ -62,7 +62,7 @@ final class PayoutApproval
             [$tournament->status !== TournamentStatus::Finished, 'Payouts are approved once the tournament has finished.'],
             [$tournament->pool_opened_at === null || ! $tournament->hasLeaguePot(), 'This tournament has no prize pool.'],
             [! WalletSetup::canPay() || ! WalletSetup::canReceive(), 'The league wallet is not connected, so nothing can be paid out.'],
-            [PrizePool::shortfall($tournament, $this->pool->fundedSats($tournament)) > 0, 'The pot has received less than the fixed prizes need with the fee reserve. Add the missing sats to the pot first.'],
+            [PrizePool::shortfall($tournament, $this->pool->fundedSats($tournament), $this->pool->zapSats($tournament)) > 0, 'The pot has received less than the fixed prizes need with the fee reserve. Add the missing sats to the pot first.'],
             [LeagueKey::fromConfig() === null, 'The league key is not set up, so nothing can be published yet.'],
         ];
 
@@ -140,15 +140,17 @@ final class PayoutApproval
                 return $locked;
             }
 
-            // Under the lock: what came in, never more (a payment settling now is booked before or after, never twice).
+            // Under the lock: what came in, never more (a payment settling now is booked before or after, never twice);
+            // the zaps on top are those with a verified receipt from before this close.
             $funded = $this->pool->fundedSats($locked);
+            $zaps = $this->pool->zapSats($locked);
 
-            if (PrizePool::shortfall($locked, $funded) > 0) {
+            if (PrizePool::shortfall($locked, $funded, $zaps) > 0) {
                 throw new TournamentRuleViolation('pot_short', __('The pot has received less than the fixed prizes need with the fee reserve. Add the missing sats to the pot first.'));
             }
 
-            $pool = PrizePool::payable($locked, $funded);
-            $plan = $this->plan->compute($locked, $pool) ?? throw new TournamentRuleViolation('no_places', __('The final places of this tournament cannot be read from its bracket.'));
+            $pool = PrizePool::payable($locked, $funded, $zaps);
+            $plan = $this->plan->compute($locked, $pool, $zaps) ?? throw new TournamentRuleViolation('no_places', __('The final places of this tournament cannot be read from its bracket.'));
             $total = array_sum(array_column($plan['rows'], 'amount'));
 
             // Never more than the pot holds in the league ledger, nor more than the wallet holds beyond the other pots.

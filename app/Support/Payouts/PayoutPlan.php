@@ -7,12 +7,14 @@ use App\Models\TournamentParticipant;
 use App\Models\User;
 use App\Support\FairPlay\AccountLinks;
 use App\Support\FairPlay\FairPlay;
+use App\Support\Prizes\PrizePool;
 
 /**
  * Who gets what from a tournament's pot (P9, open question 10 with the CEO
  * defaults): by place, either in the tournament's percentages of `$poolSats`
  * (50/30/20 unless the organizer set another split before sign-up closed)
- * or its fixed amounts (user, 2026-09-27).
+ * or its fixed amounts (user, 2026-09-27), each with its share of the zaps
+ * on top ({@see PrizePool::zapBonus()}, user 2026-10-02).
  *
  * - Tied places share: two sides tied for third share the percentages of
  *   places 3 and 4 equally (with 50/30/20 that is 10 % each), or the sum of
@@ -36,7 +38,7 @@ final class PayoutPlan
     /**
      * @return array{rows: list<array{place: int, participant: TournamentParticipant, user: User, amount: int}>, remainder: int}|null null while the places cannot be read
      */
-    public function compute(Tournament $tournament, int $poolSats): ?array
+    public function compute(Tournament $tournament, int $poolSats, int $zapSats = 0): ?array
     {
         $places = $this->placements->of($tournament);
 
@@ -46,6 +48,8 @@ final class PayoutPlan
 
         $split = $tournament->prizeSplit();
         $fixed = $tournament->prizeMode() === Tournament::PRIZES_FIXED ? $tournament->prizeFixed() : null;
+        // Zaps on top of fixed prizes are split like them (percent prizes have them in `$poolSats`).
+        $bonus = $fixed === null ? [] : PrizePool::zapBonus($fixed, $zapSats);
         $participants = TournamentParticipant::query()->where('tournament_id', $tournament->id)->get()->keyBy('id');
         $rows = [];
         $paid = 0;
@@ -56,7 +60,7 @@ final class PayoutPlan
 
             for ($index = $place - 1; $index < $place - 1 + count($ids); $index++) {
                 $percent += $split[$index] ?? 0;
-                $amount += $fixed[$index] ?? 0;
+                $amount += ($fixed[$index] ?? 0) + ($bonus[$index] ?? 0);
             }
 
             $group = $fixed === null ? intdiv(max(0, $poolSats) * $percent, 100) : $amount;

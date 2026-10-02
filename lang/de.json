@@ -6432,5 +6432,20 @@
     "The pot is kept in the league wallet, booked for this tournament alone: anyone can add sats to it, sponsors too. You set the prizes and the sponsors; an admin checks the tournament at its end and pays the winners from the league wallet.": "Der Topf liegt in der Liga-Wallet, gebucht nur für dieses Turnier: jeder kann Sats hinzufügen, Sponsoren auch. Du legst die Preise und die Sponsoren fest; ein Admin prüft das Turnier am Ende und zahlt die Gewinner aus der Liga-Wallet aus.",
     "This pot received :funded sats through it and holds :held sats now.": "Dieser Topf hat darüber :funded Sats erhalten und hält jetzt :held Sats.",
     "This pot used a wallet of its own until 2 October 2026. Pots are now kept in the league wallet: the sats in your old wallet stay there and do not count. Add them to this pot with “Add to the pot” on the tournament page before the payouts, or the prizes will lack them.": "Dieser Topf hatte bis zum 2. Oktober 2026 eine eigene Wallet. Töpfe liegen jetzt in der Liga-Wallet: die Sats in deiner alten Wallet bleiben dort und zählen nicht. Füg sie vor den Auszahlungen mit „In den Topf einzahlen“ auf der Turnierseite diesem Topf hinzu, sonst fehlen sie bei den Preisen.",
-    "Tied places share the sum of their amounts; a team’s share is split equally among its roster. What the pot holds beyond the prizes stays with the league.": "Gleichplatzierte teilen sich die Summe ihrer Beträge; der Anteil eines Teams wird zu gleichen Teilen auf seinen Kader verteilt. Was der Topf über die Preise hinaus hält, bleibt bei der Liga."
+    "Tied places share the sum of their amounts; a team’s share is split equally among its roster. What the pot holds beyond the prizes stays with the league.": "Gleichplatzierte teilen sich die Summe ihrer Beträge; der Anteil eines Teams wird zu gleichen Teilen auf seinen Kader verteilt. Was der Topf über die Preise hinaus hält, bleibt bei der Liga.",
+    "+:sats sats from zaps on top": "+:sats Sats aus Zaps obendrauf",
+    ":base sats pot + :zaps sats zaps": ":base Sats Topf + :zaps Sats Zaps",
+    "A zap of :sats sats to the prize pot of :name, signed with your key (NIP-57, kind 9734).": "Ein Zap über :sats Sats in den Preistopf von :name, signiert mit deinem Schlüssel (NIP-57, Kind 9734).",
+    "QR code to zap the prize pot of :name": "QR-Code, um den Preistopf von :name zu zappen",
+    "Scan with a Lightning wallet: a plain payment goes into the pot as announced, without a place on the wall.": "Mit einer Lightning-Wallet scannen: eine einfache Zahlung geht in den angekündigten Topf, ohne Platz an der Wand.",
+    "Scan with your Lightning wallet, or open it in the wallet on this device. Once it is paid, the league signs the zap receipt and you show on the wall within a minute.": "Scanne mit deiner Lightning-Wallet oder öffne sie in der Wallet auf diesem Gerät. Sobald sie bezahlt ist, signiert die Liga die Zap-Quittung und du erscheinst innerhalb einer Minute an der Wand.",
+    "The zap request names another event than the tournament.": "Die Zap-Anfrage nennt ein anderes Event als das Turnier.",
+    "This tournament takes no zaps into its pot right now.": "Dieses Turnier nimmt gerade keine Zaps in seinen Topf an.",
+    "This zap request names no tournament.": "Diese Zap-Anfrage nennt kein Turnier.",
+    "Zap the pot": "Den Topf zappen",
+    "Zap with Nostr": "Mit Nostr zappen",
+    "Zapped on top by": "Obendrauf gezappt von",
+    "Zaps add on top of the pot and are split like it. Zap with Nostr and you show on the sponsors’ wall with your Nostr picture; the league takes nothing.": "Zaps kommen obendrauf auf den Topf und werden wie er aufgeteilt. Zappst du mit Nostr, erscheinst du mit deinem Nostr-Bild an der Sponsorenwand; die Liga behält nichts.",
+    "“:note”": "„:note“",
+    ":name paid some other way than the invoice. The sats count toward the pot and the logo shows, but they are not in the league wallet: the payout never takes them from it.": ":name hat anders als per Rechnung bezahlt. Die Sats zählen zum Topf und das Logo erscheint, aber sie liegen nicht in der Liga-Wallet: die Auszahlung nimmt sie nie von dort."
 }

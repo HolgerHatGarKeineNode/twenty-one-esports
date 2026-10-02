@@ -13,11 +13,12 @@ use App\Support\Tournaments\TournamentPrizePool;
  * 2026-09-28). The prizes are the percents of that pot (less the fee
  * reserve) or the fixed amounts; what came in only feeds the funding bar.
  * The sponsors are the ones who paid, by invoice or outside the wallet (a
- * pledge alone shows nothing).
+ * pledge alone shows nothing); the zappers are on their own wall, their
+ * sats on top of the pot ({@see ZapSponsors}).
  */
 final class WalletPrizePool implements TournamentPrizePool
 {
-    public function __construct(private PrizePool $pool) {}
+    public function __construct(private PrizePool $pool, private ZapSponsors $zaps) {}
 
     public function for(Tournament $tournament): ?array
     {
@@ -36,9 +37,15 @@ final class WalletPrizePool implements TournamentPrizePool
         }
 
         $funding = $this->pool->funding($tournament);
+        $zappers = $this->zaps->wall($tournament);
+        // The pot shows as the pot as set plus the zaps on top (without a target: what else came in, plus the zaps).
+        $zapped = min($sats, array_sum(array_column($zappers, 'sats')));
 
         return [
             'sats' => $sats,
+            'base' => $sats - $zapped,
+            'zaps' => $zapped,
+            'zappers' => $zappers,
             'left' => (int) $this->pool->remainingSats($tournament),
             'mode' => $tournament->prizeMode(),
             'split' => $this->pool->projection($tournament),
