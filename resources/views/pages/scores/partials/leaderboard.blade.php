@@ -3,6 +3,7 @@
     (never a game account), the best value inside the window with its gap to the first, and when it was set. Entries
     without a value follow without a place. Each row ends in its actions (pages.scores.partials.row-actions).
     $standings: list<App\Support\Scores\ScoreStanding>; $metric: App\Games\ScoreMetric; $limit: rows shown (null: all);
+    $skip: rows left out at the top (a page that shows them above already, as TMNF's podium; default 0);
     $viewerId: the logged-in player, whose row is marked "You"; $staff: directors and admins also see the source and the
     proof link (a player's link may name their game account, so it is never public); $beat: where "Beat this time" next
     to the first place leads (null: not shown).
@@ -16,7 +17,8 @@
     $staff ??= false;
     $beat ??= null;
     $shareMoment ??= null;
-    $rows = $limit === null ? $standings : array_slice($standings, 0, $limit);
+    $skip ??= 0;
+    $rows = array_slice($standings, $skip, $limit);
     $replays = app(\App\Support\Stacker\StackerReplays::class)->forStandings($rows, auth()->user() instanceof \App\Models\User ? auth()->user() : null);
     $best = collect($standings)->first(fn ($row): bool => $row->place !== null && $row->value !== null)?->value;
     // The gap to the first: under a minute as seconds ("+1.667"), above it as the value is written ("+1:02.345").

@@ -316,6 +316,41 @@ test('the stream\'s TMNF slide shows the week, its track, the top 5 by league na
         ->and(app(TmnfSlide::class)->data())->toBeNull();
 });
 
+test('the week board leads with the cover and How to join, shows the track with its picture and author time, the podium and the rows, and links onward', function () {
+    foreach (['Ada' => 24_420, 'Ben' => 25_100, 'Cy' => 25_400, 'Dee' => 26_900] as $name => $ms) {
+        tmnfPlayer(strtolower($name).'_drives', linked: true, attributes: ['name' => $name]);
+        tmnfFinish(strtolower($name).'_drives', $ms);
+    }
+    $week = app(TmnfWeeks::class)->current();
+    $this->travelTo(CarbonImmutable::parse('2026-10-14 12:00:00'));
+    app(TmnfWeeks::class)->open();
+    $this->travelTo(CarbonImmutable::parse('2026-10-07 12:00:00'));
+
+    $response = $this->get(route('tournaments.scores', $week))->assertOk();
+
+    $response->assertSee('data-test="tmnf-hero"', false)->assertSee('data-game-cover="tmnf"', false)
+        ->assertSeeInOrder(['data-test="tmnf-hero"', 'data-test="how-to-join"', 'data-test="tmnf-podium"', 'data-test="tmnf-track"', 'data-test="tmnf-join"'], false)
+        ->assertSee('href="#join"', false)->assertSee('id="join"', false)
+        // The track: its picture, name, environment, author and author time as chips.
+        ->assertSee('images/tmnf/stadium-960.webp', false)->assertSee('A01-Race')->assertSee('Stadium')->assertSee('Nadeo')
+        ->assertSee('data-test="track-author-time"', false)->assertSee('0:24.540')
+        // The podium: the first three with their times and how they stand to the author time; the rows from 4th on.
+        ->assertSeeInOrder(['data-test="podium-1"', 'Ada', '0:24.420', 'data-test="podium-2"', 'Ben', '0:25.100', 'data-test="podium-3"', 'Cy'], false)
+        ->assertSee('data-test="beat-author"', false)
+        ->assertSeeInOrder(['data-test="score-leaderboard"', 'Dee', '0:26.900'], false)
+        // Onward: the game page, its points ladder, the rules, the week page.
+        ->assertSee('data-test="nav-game"', false)->assertSee('data-test="nav-points"', false)->assertSee('data-test="nav-rules"', false)->assertSee('data-test="nav-week-page"', false)
+        ->assertDontSee('_drives')->assertDontSee('data-test="score-facts"', false);
+
+    // The next week's board links back to this one as last week.
+    $this->travelTo(CarbonImmutable::parse('2026-10-14 12:00:00'));
+    $this->get(route('tournaments.scores', app(TmnfWeeks::class)->current()))->assertOk()
+        ->assertSee('data-test="nav-last-week"', false)->assertSee(route('tournaments.scores', $week), false)
+        ->assertSee('data-test="tmnf-board-empty"', false);
+
+    $this->withSession(['locale' => 'de'])->get(route('tournaments.scores', $week))->assertOk()->assertSee('So machst du mit')->assertSee('Autorenzeit');
+});
+
 /** A slide of TMNF's set as the stream renders it, read fresh. */
 function tmnfSlideSvg(string $scene): string
 {

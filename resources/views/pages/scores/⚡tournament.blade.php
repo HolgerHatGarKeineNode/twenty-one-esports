@@ -279,6 +279,9 @@ new #[Layout('layouts::app', ['section' => 'tournaments'])] class extends Compon
     $label = __($game->courseLabel());
     // Blockfill leads with its game (Play now), not with a submission form: its runs are read from the game itself.
     $blockfill = $tournament->game === \App\Games\Blockfill::SLUG && \Illuminate\Support\Facades\Route::has('stacker.play');
+    // TMNF (plan "Trackmania und Restposten"): the week leads with the game, How to join, the podium and the track.
+    $tmnf = $tournament->game === \App\Games\TrackmaniaNationsForever::SLUG;
+    $tmnfTrack = $tmnf ? \App\Support\Tmnf\TmnfWeeks::track($tournament->score_course) : null;
     $statusOf = fn (ScoreRun $run): array => match (true) {
         $run->verified_at !== null => [__('counts'), 'text-win'],
         $run->rejected_at !== null => [__('rejected: :reason', ['reason' => (string) $run->note]), 'text-loss'],
@@ -290,6 +293,8 @@ new #[Layout('layouts::app', ['section' => 'tournaments'])] class extends Compon
 <div class="flex flex-col gap-6 px-4 pt-6 pb-12 lg:gap-8 lg:px-12 lg:pt-8" data-test="score-tournament" @if ($running) wire:poll.30s.visible @endif>
     @if ($blockfill)
         @include('pages.scores.partials.blockfill-hero', ['heading' => $tournament->title(), 'week' => $tournament, 'standings' => $standings, 'metric' => $metric])
+    @elseif ($tmnf)
+        @include('pages.scores.partials.tmnf-hero', ['heading' => $tournament->title(), 'week' => $tournament, 'standings' => $standings, 'metric' => $metric, 'track' => $tmnfTrack])
     @else
     <header class="flex flex-col gap-2">
         <a href="{{ route('tournaments.show', $tournament) }}" class="inline-flex min-h-6 items-center gap-1.5 self-start text-xs text-ink-2 hover:text-ink">
@@ -325,6 +330,23 @@ new #[Layout('layouts::app', ['section' => 'tournaments'])] class extends Compon
         <p class="m-0 text-[13px] text-win" role="status" data-test="score-flash">{{ $flash }}</p>
     @endif
 
+    @if ($tmnf)
+        {{-- The board as a podium with the rows from fourth place on (directors see every row: theirs carry the actions), the track beside it. --}}
+        <div class="grid grid-cols-1 gap-6 lg:grid-cols-[minmax(0,1fr)_minmax(0,400px)] lg:items-start">
+            <section aria-labelledby="table-h" class="flex flex-col gap-4 rounded-lg bg-card px-2 py-4 lg:px-6 lg:py-5">
+                <h2 id="table-h" class="m-0 px-2 text-[15px] font-bold lg:px-0">{{ $tournament->status === TournamentStatus::Finished ? __('Final standings') : __('Standings') }}</h2>
+                @if ($standings === [])
+                    <p class="m-0 px-2 py-3 text-[13px] text-ink-2 lg:px-0" data-test="tmnf-board-empty">{{ __('Nobody has a time this week yet. Join our server and be the first on the board.') }}</p>
+                @else
+                    <div class="px-2 lg:px-0">@include('pages.scores.partials.tmnf-podium', ['standings' => $standings, 'metric' => $metric, 'authorMs' => (int) ($tmnfTrack['author_ms'] ?? 0)])</div>
+                    @if ($staff || count($standings) > 3)
+                        @include('pages.scores.partials.leaderboard', ['standings' => $standings, 'metric' => $metric, 'viewerId' => auth()->id(), 'staff' => $staff, 'skip' => $staff ? 0 : 3])
+                    @endif
+                @endif
+            </section>
+            @include('pages.scores.partials.tmnf-track', ['track' => $tmnfTrack])
+        </div>
+    @else
     <section aria-labelledby="table-h" class="flex flex-col gap-3 rounded-lg bg-card px-2 py-4 lg:px-6 lg:py-5">
         <h2 id="table-h" class="m-0 px-2 text-[15px] font-bold lg:px-0">{{ $tournament->status === TournamentStatus::Finished ? __('Final standings') : __('Standings') }}</h2>
         @if ($blockfill && $standings === [])
@@ -333,8 +355,12 @@ new #[Layout('layouts::app', ['section' => 'tournaments'])] class extends Compon
             @include('pages.scores.partials.leaderboard', ['standings' => $standings, 'metric' => $metric, 'viewerId' => auth()->id(), 'staff' => $staff, 'beat' => $blockfill && $running && $window->hasStarted() && ! $window->hasEnded() ? route('stacker.play') : null])
         @endif
     </section>
+    @endif
 
-    @if ($blockfill)
+    @if ($tmnf)
+        @include('pages.scores.partials.tmnf-nav', ['week' => $tournament])
+        @include('pages.scores.partials.tmnf-join', ['week' => $tournament, 'track' => $tmnfTrack])
+    @elseif ($blockfill)
         @include('pages.scores.partials.blockfill-nav', ['week' => $tournament])
     {{-- Another game the league checks itself takes no submission: Play instead, for everyone while it runs --}}
     @elseif ($running && ! $game->acceptsManual())

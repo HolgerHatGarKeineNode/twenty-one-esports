@@ -121,6 +121,108 @@ test('the game page and the week page lead with the week and How to join, no ove
     'de 375' => ['de', 375, 812],
 ]);
 
+/**
+ * The week board's layout: the hero's How to join button against the viewport and the phone's tab bar, the podium's
+ * places and names, the track card, every box of the board inside the viewport.
+ */
+const TMNF_BOARD_MEASURE = <<<'JS'
+    () => {
+        const box = (el) => { const r = el.getBoundingClientRect(); return [Math.round(r.left), Math.round(r.top), Math.round(r.right), Math.round(r.bottom)]; };
+        const cta = document.querySelector('[data-test=how-to-join]');
+        const podium = [...document.querySelectorAll('[data-test=tmnf-podium] > li')].map((li) => {
+            const name = li.querySelector('a, span.truncate');
+            return { place: li.dataset.test, box: box(li), name: name ? [name.clientWidth, name.scrollWidth] : null };
+        });
+        const outside = [...document.querySelectorAll('[data-test=score-tournament] *')].filter((el) => {
+            const r = el.getBoundingClientRect();
+            return r.width > 0 && el.checkVisibility() && (r.left < -0.5 || r.right > innerWidth + 0.5);
+        }).map((el) => el.tagName + '.' + (el.dataset.test || el.className).toString().slice(0, 40));
+        return {
+            scroll: document.documentElement.scrollWidth, client: document.documentElement.clientWidth,
+            cta: box(cta),
+            podium, track: box(document.querySelector('[data-test=tmnf-track]')), outside,
+            podiumOrder: podium.map((p) => p.place),
+        };
+    }
+    JS;
+
+test('the week board leads with the cover and How to join above the fold, the podium and the track fit, clean console', function (string $locale, int $width, int $height) {
+    $page = tmnfWeekPage($this->me, $locale, $width, $height, route('tournaments.scores', $this->week, false));
+    BrowserWait::until($page, '() => document.querySelector("[data-test=tmnf-podium]") !== null && document.querySelector("[data-game-cover=tmnf] img")?.complete', 10_000);
+
+    $m = $page->evaluate(TMNF_BOARD_MEASURE);
+    fwrite(STDERR, "tmnf board {$locale} {$width}: ".json_encode($m).PHP_EOL);
+
+    // The tab bar is 4rem on a phone: the primary action stands above it on the first screen.
+    $fold = $width < 1024 ? $height - 64 : $height;
+    expect($m['scroll'])->toBeLessThanOrEqual($m['client'])
+        ->and($m['outside'])->toBe([])
+        ->and($m['cta'][3])->toBeLessThanOrEqual($fold)
+        ->and($m['cta'][1])->toBeGreaterThan(0)
+        ->and(count($m['podium']))->toBe(3)
+        ->and($m['track'][0])->toBeGreaterThanOrEqual(0)->and($m['track'][2])->toBeLessThanOrEqual($width);
+    // Every podium name keeps room to show (the long name truncates, never squeezes to 0 px).
+    foreach ($m['podium'] as $place) {
+        expect($place['name'][0])->toBeGreaterThan(40);
+    }
+
+    shellShot($page, "tmnf-board-{$locale}-{$width}");
+    $page->evaluate('() => document.querySelector("[data-test=tmnf-podium]").scrollIntoView({ block: "start" })');
+    shellShot($page, "tmnf-board-podium-{$locale}-{$width}");
+
+    expect($page->evaluate('() => window.__errors'))->toBe([])
+        ->and($page->evaluate(BrowserConsole::BAD_RESPONSES))->toBe([]);
+
+    // A Livewire roundtrip (the board polls) keeps the console clean too.
+    $page->evaluate('() => Livewire.all()[0]?.$wire.$refresh()');
+    BrowserWait::until($page, '() => document.querySelector("[data-test=tmnf-podium]") !== null', 5_000);
+    expect($page->evaluate('() => window.__errors'))->toBe([]);
+})->with([
+    'en 375' => ['en', 375, 812],
+    'en 1440' => ['en', 1440, 900],
+    'de 375' => ['de', 375, 812],
+]);
+
+/** The official Steam art's top-right corner is its pale sky haze (near white); the drawn stand-in before it was dark. */
+const TMNF_COVER_PIXEL = <<<'JS'
+    async () => {
+        // The biggest TMNF cover on the page (the header's game switcher carries a small one too).
+        const img = [...document.querySelectorAll('[data-game-cover=tmnf] img')].sort((a, b) => b.getBoundingClientRect().width - a.getBoundingClientRect().width)[0];
+        if (!img) { return null; }
+        img.closest('[data-game-cover]').dataset.probed = '1';
+        img.loading = 'eager';
+        img.scrollIntoView({ block: 'center' });
+        await img.decode().catch(() => null);
+        const c = document.createElement('canvas');
+        c.width = img.naturalWidth; c.height = img.naturalHeight;
+        const ctx = c.getContext('2d');
+        ctx.drawImage(img, 0, 0);
+        const [r, g, b] = ctx.getImageData(Math.round(c.width * 0.97), Math.round(c.height * 0.03), 1, 1).data;
+        return { src: img.currentSrc.split('/').pop(), shown: Math.round(img.getBoundingClientRect().width), rgb: [r, g, b] };
+    }
+    JS;
+
+test('the official TMNF cover is the picture on the home page\'s game grid, the game page and the week board', function (int $width, int $height) {
+    foreach (['home' => route('home', [], false), 'scores' => route('scores.show', 'tmnf', false), 'board' => route('tournaments.scores', $this->week, false)] as $name => $path) {
+        $page = tmnfWeekPage($this->me, 'en', $width, $height, $path);
+        BrowserWait::until($page, '() => document.querySelector("[data-game-cover=tmnf] img") !== null', 10_000);
+        $pixel = $page->evaluate(TMNF_COVER_PIXEL);
+        fwrite(STDERR, "tmnf cover {$name} {$width}: ".json_encode($pixel).PHP_EOL);
+
+        expect($pixel['src'])->toMatch('/^tmnf-(480|1280)\.(webp|jpg)$/')
+            ->and(min($pixel['rgb']))->toBeGreaterThan(220);
+        expect($pixel['shown'])->toBeGreaterThan(120);
+        $page->evaluate('() => document.querySelector("[data-probed]").scrollIntoView({ block: "center" })');
+        shellShot($page, "tmnf-cover-{$name}-{$width}");
+
+        expect($page->evaluate('() => window.__errors'))->toBe([])
+            ->and($page->evaluate(BrowserConsole::BAD_RESPONSES))->toBe([]);
+    }
+})->with([
+    '375' => [375, 812],
+    '1440' => [1440, 900],
+]);
+
 test('the settings page links a saved login with a code shown on request, no overflow, clean console', function (string $locale, int $width, int $height) {
     $player = tmnfPlayer('new_driver', attributes: ['name' => 'New Driver']);
     $page = tmnfWeekPage($player, $locale, $width, $height, route('gaming.edit', [], false));
