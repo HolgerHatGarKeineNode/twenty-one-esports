@@ -29,22 +29,22 @@ with Pillow (contact sheet).
 
 ## What's in here
 
-**Posters**: 16 motifs, from `src/copy/posters.md`, each in DE and EN, 142 PNGs at @2x:
+**Posters**: 17 motifs, from `src/copy/posters.md`, each in DE and EN, 152 PNGs at @2x:
 
 | Format | Size (CSS px, PNG is @2x) | Folder | Motifs |
 |---|---|---|---|
-| Mobile / story | 1080×1920 | `posters/mobile/` | all 16 |
+| Mobile / story | 1080×1920 | `posters/mobile/` | all 17 |
 | X | 1600×900 | `posters/x/` | all but bfweek |
-| Nostr square | 1080×1080 | `posters/nostr/` | all 16 |
+| Nostr square | 1080×1080 | `posters/nostr/` | all 17 |
 | Nostr / link card | 1200×630 | `posters/nostr/` | all but bfweek |
-| Stream banner | 1920×480 | `posters/stream/` | blitz, watch, tournaments, mempool, onstream, livecup, aoe2 |
+| Stream banner | 1920×480 | `posters/stream/` | blitz, watch, tournaments, mempool, onstream, livecup, aoe2, tmnf |
 | Feed 4:5 | 1080×1350 | `posters/feed/` | blockfill, bfweek (`MOTIF_FORMATS` in `render-posters.mjs`) |
 
 Motifs: `login` (Nostr login), `blitz` (blitz chess), `watch` (watch live), `daily`
 (Fernschach), `clans`, `tournaments`, `invite` (invite friends), `opensource` (optional),
 `morris` (Mühle), `checkers` (Dame), `mempool` (mempool to block), `onstream` (on the stream),
 `livecup` (tournaments live), `aoe2` (Age of Empires II), `blockfill` (Blockfill), `bfweek`
-(Blockfill week board, a template).
+(Blockfill week board, a template), `tmnf` (TrackMania Nations Forever).
 File name: `<motif>-<format>-<lang>.png`. Overview: `posters/contact-sheet.png`.
 
 **Reels**: 19 scripts from `src/copy/reels.md` (blitz, daily, clans, invite, watch, login, tournaments, opensource, grasp, satspot, fifa, cups, morris, checkers, mempool, onstream, livecup, aoe2, blockfill), DE and
@@ -122,6 +122,13 @@ subject; the cup is a lobby cup (40 places, no growth, fact 77) and shows as suc
   `bfweek` and look at it right before posting**; it names real players exactly as the page does.
 - No fee legend (the page's "Fee rate of a piece"): no "fee" on a promo, the league never charges
   players. No prize claim (a Blockfill week pays none, fact 85). No other game's name or wording.
+
+**TrackMania Nations Forever** (`tmnf`, added 2026-10-02, live on prod): the weekly time attack on the
+league's own server TWENTY ONE, with the join call. Facts 90-98. The hero is the game's official cover
+(read from `public/images/games/tmnf-1280.jpg`: render from a tree with the commit "TMNF shows its official Steam cover everywhere", an older
+tree draws the old placeholder), the How to join card in the app's words and Nadeo's author time on
+A01-Race. No player and no player's time. **The track is the one `config/esports.php` lists (A01-Race);
+when a second track is added, check which one runs before posting and re-render.**
 
 **Pseudonymous copy (user, 2026-10-01):** no "face" / "Gesicht" anywhere in the copy; players
 are their avatar and their name.

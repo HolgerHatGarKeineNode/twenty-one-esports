@@ -188,6 +188,20 @@ are master `8dfce13a`.
 | 88 | The week board poster shows the public board as /blockfill shows it (place, name, best verified time), fetched right before rendering; on 2026-10-01: week 28 Sep - 5 Oct 2026, one row, "El Presidento Ben" 5:16.500 | `src/fetch-blockfill-week.mjs` → `data/blockfill-week.js` | changes with every verified run |
 | 89 | Blockfill is its own game in the mempool look: no other game's name, trademark or wording in the copy | user brief 2026-10-01 | rule |
 
+## Added 2026-10-02 — TrackMania Nations Forever (motif 17): the weekly time attack on our own server
+
+| # | Claim | Source | Live? |
+|---|---|---|---|
+| 90 | TMNF is live on the site: the game page /scores/tmnf answers 200 and shows A01-Race, TWENTY ONE and the author time 0:24.540 | `curl https://esports.einundzwanzig.space/scores/tmnf` on 2026-10-02 (200; "A01-Race", "TWENTY ONE", "0:24.540", "free to play on Steam" in the page); registered while `ESPORTS_TMNF` is on (`config/esports.php` `tmnf.enabled`, `AppServiceProvider::scoreGames()`) | LIVE |
+| 91 | TrackMania Nations Forever is free on Steam | string "TrackMania Nations Forever is free to play on Steam." / "TrackMania Nations Forever ist auf Steam kostenlos spielbar." (`resources/views/pages/scores/partials/tmnf-join.blade.php`), its link `https://store.steampowered.com/app/11020/` | LIVE |
+| 92 | The league runs its own server, TWENTY ONE; the server times every finish, and a finish it reports is a run of the league | `config/esports.php` `tmnf.server.name` (`TWENTY ONE`); `app/Games/TrackmaniaNationsForever.php` docblock ("every finish the server reports is a run of the server source, verified as read, because the server timed it"); string "Timed by our server" | LIVE |
+| 93 | The track: A01-Race, Nadeo's stock track in the Stadium environment, author time 0:24.540 | `config/esports.php` `tmnf.tracks` (`'name' => 'A01-Race', 'author' => 'Nadeo', 'environment' => 'Stadium', 'author_ms' => 24_540`); `TmnfWeeks::trackFor()` rotates over that list, one track today | LIVE (changes when a track is added) |
+| 94 | One week, one board: your best finish of the week counts, the fastest time wins; a new week every Monday 00:00 Berlin time | strings "As often as you like. Your best finish of the week counts, the fastest time wins." and "A new week every Monday 00:00 Berlin" (`tmnf-join.blade.php`); `app/Support/Tmnf/TmnfWeeks.php` (`open()`, weeks from `BlockfillWeeks::startOf`, Europe/Berlin) | LIVE |
+| 95 | A free Nations account joins a player-hosted server from its Favourites: the site hands out the favourite link, then restart and join from Favourites | `config/esports.php` comment at `tmnf.server.login` ("A free Nations account may only join a player-hosted server from its Favourites", FreeZone FAQ, Nadeo 2010); the steps in `tmnf-join.blade.php` ("Copy the link with the button.", "Open the Explorer in TMNF and paste the link into the bar at the top, then press Enter.", "Restart TMNF.") | LIVE |
+| 96 | A finish counts for a player once their TMNF login is linked with a one-time code typed in the server chat; the login is never public | `app/Support/Tmnf/TmnfLinks.php`; `TrackmaniaNationsForever` docblock ("a login maps to a league player only once they linked it with a one-time code typed into the server chat … never in public"); string "Save your TMNF login, then type the code the site gives you in the server chat. Only you see the login." | LIVE |
+| 97 | The cover on the posters is the game's official Steam store art, the same file the site shows | `public/images/games/tmnf-1280.jpg` (commit "TMNF shows its official Steam cover everywhere": Steam's library hero and logo, user decision 2026-10-02) | LIVE |
+| 98 | No fee, no prize claim: a TMNF week is a board, the copy promises no sats and no fee | user rule "no fees, ever"; nothing in `TmnfWeeks` pays a prize | rule |
+
 ## Corrected in round 2 — clan "lineup" is Rocket League only, not a chess feature
 
 Round 1's clan copy said clans have a "Kader"/"lineup" and play chess "team matches

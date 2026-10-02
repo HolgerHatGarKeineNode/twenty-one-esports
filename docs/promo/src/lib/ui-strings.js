@@ -197,6 +197,19 @@
     bfFirstRun: { en: 'Your first verified ranked run this week puts you on the board.', de: 'Dein erster geprüfter gewerteter Lauf dieser Woche bringt dich auf die Bestenliste.' },
     bfPlayer: { en: 'Player', de: 'Spieler' },
     bfBestTime: { en: 'Best time', de: 'Bestzeit' },
+    // TMNF (pages/scores/partials/tmnf-join, tmnf-track)
+    tmHowToJoin: { en: 'How to join', de: 'So machst du mit' },
+    tmGet: { en: 'Get TMNF', de: 'TMNF holen' },
+    tmJoinServer: { en: 'Join our server', de: 'Unserem Server beitreten' },
+    tmLink: { en: 'Link your login', de: 'Login verknüpfen' },
+    tmDrive: { en: 'Drive :track', de: ':track fahren' },
+    tmFree: { en: 'TrackMania Nations Forever is free to play on Steam.', de: 'TrackMania Nations Forever ist auf Steam kostenlos spielbar.' },
+    tmAuthorTime: { en: 'Author time', de: 'Autorenzeit' },
+    tmTrackOfWeek: { en: 'Track of the week', de: 'Strecke der Woche' },
+    tmTimeAttack: { en: 'Time attack', de: 'Zeitjagd' },
+    tmTimed: { en: 'Timed by our server', de: 'Gemessen von unserem Server' },
+    tmNewWeek: { en: 'A new week every Monday 00:00 Berlin', de: 'Jeden Montag 00:00 Berlin eine neue Woche' },
+    tmBestCounts: { en: 'As often as you like. Your best finish of the week counts, the fastest time wins.', de: 'So oft du willst. Deine beste Zeit der Woche zählt, die schnellste gewinnt.' },
   };
   window.UI = (key, lang, vars) => {
     const e = S[key];

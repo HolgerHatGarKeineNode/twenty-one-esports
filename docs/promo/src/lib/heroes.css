@@ -540,3 +540,53 @@
   .h-bfweek { font-size: max(14px, min(2.4cqw, 4.6cqh)); }
   .h-bfweek .bw-th { display: none; }
 }
+
+/* ---------------- TrackMania Nations Forever (motif 17) ----------------
+ * Portrait: the cover across the top (cropped from the top right, where its logo is), How to join and the
+ * track card side by side under it; narrow (nostr wide): the cover and How to join only.
+ * Landscape: the cover and the track card stacked left, How to join right. Banner (9:5 and wider): one row. */
+.h-tmnf { --tmnf: #5EEAD4; --tmnf-2: #14B8A6; --tmnf-deep: #115E59;
+  display: grid; grid-template-columns: minmax(0, 1.35fr) minmax(0, 1fr); grid-template-rows: minmax(0, 1.1fr) minmax(0, 1fr);
+  gap: 4.5cqmin; font-size: max(15px, min(2.5cqw, 2.4cqh)); }
+.h-tmnf .tm-cover { grid-column: 1 / -1; --cube-face: var(--tmnf-deep); background: var(--card); display: grid; grid-template-rows: minmax(0, 1fr) auto; }
+.h-tmnf .tm-art { min-height: 0; background-size: cover; background-position: 100% 0; }
+.h-tmnf .tm-tags { display: flex; flex-wrap: nowrap; font: 700 max(11px, .8em)/1 var(--mono); border-top: 3px solid var(--tmnf-2); overflow: hidden; }
+.h-tmnf .tm-tags > span { padding: .55em .7em; color: var(--tmnf); white-space: nowrap; }
+.h-tmnf .tm-tags .mk { display: flex; align-items: center; gap: .4em; background: var(--tmnf); color: var(--on-btc); }
+.h-tmnf .tm-tags .mk b { font: 800 1em/1 var(--disp); }
+.h-tmnf .tm-tags .gl { width: 1.2em; height: 1.2em; display: block; }
+.h-tmnf .tm-join { display: grid; align-content: space-between; row-gap: .6em; padding: .9em 1em; border-top: .3em solid var(--tmnf-2); min-height: 0; }
+.h-tmnf .tj-h { display: grid; row-gap: .2em; }
+.h-tmnf .tj-h b { font: 800 1.05em/1.15 var(--disp); }
+.h-tmnf .tj-srv { font: 800 1.4em/1.05 var(--disp); color: var(--tmnf); }
+.h-tmnf .tj-steps { list-style: none; display: grid; row-gap: .45em; }
+.h-tmnf .tj-steps li { display: grid; grid-template-columns: 1.8em minmax(0, 1fr); column-gap: .55em; align-items: center; font: 700 max(11px, .88em)/1.2 var(--mono); }
+.h-tmnf .tj-steps i { font: 800 .95em/1 var(--disp); font-style: normal; display: grid; place-items: center; width: 1.8em; height: 1.8em; background: rgba(94,234,212,.18); color: var(--tmnf); }
+.h-tmnf .tj-foot { font: 500 max(11px, .76em)/1.4 var(--mono); color: var(--ink-2); }
+.h-tmnf .tm-time { display: grid; align-content: space-between; justify-items: start; row-gap: .3em; padding: .9em 1em; border-top: .3em solid var(--tmnf-2); min-height: 0; }
+.h-tmnf .tt-l { font: 700 max(11px, .78em)/1.2 var(--mono); color: var(--ink-2); }
+.h-tmnf .tt-track { font: 800 1.3em/1.1 var(--disp); }
+.h-tmnf .tt-time { font: 800 1.8em/1 var(--mono); color: var(--tmnf); font-variant-numeric: tabular-nums; }
+.h-tmnf .tt-chips { display: flex; flex-wrap: wrap; gap: .35em; }
+.h-tmnf .tt-chips span { font: 700 max(11px, .75em)/1 var(--mono); padding: .4em .55em; background: var(--raised); color: var(--ink); white-space: nowrap; }
+@container (max-width: 640px) {
+  .h-tmnf { grid-template-columns: minmax(0, 1fr); }
+  .h-tmnf .tm-x, .h-tmnf .tj-foot, .h-tmnf .tm-time { display: none; }
+}
+@container (min-aspect-ratio: 5/4) {
+  .h-tmnf { grid-template-columns: minmax(0, 1.25fr) minmax(0, 1fr); grid-template-rows: auto minmax(0, 1fr); font-size: max(15px, min(1.9cqw, 3.3cqh)); }
+  .h-tmnf .tm-cover { grid-column: 1; grid-row: 1; grid-template-rows: auto auto; }
+  .h-tmnf .tm-art { aspect-ratio: 16 / 9; }
+  .h-tmnf .tm-time { grid-column: 1; grid-row: 2; grid-template-columns: auto auto; grid-template-rows: auto auto auto; column-gap: 1.2em; align-content: center; }
+  .h-tmnf .tm-time .tt-chips { grid-column: 1 / -1; }
+  .h-tmnf .tm-join { grid-column: 2; grid-row: 1 / 3; }
+}
+@container (min-aspect-ratio: 9/5) {
+  .h-tmnf { grid-template-columns: minmax(0, 1.15fr) minmax(0, 1fr) minmax(0, .7fr); grid-template-rows: minmax(0, 1fr); font-size: max(15px, min(1.3cqw, 4.4cqh)); }
+  .h-tmnf .tm-cover { grid-column: 1; grid-row: 1; grid-template-rows: minmax(0, 1fr) auto; }
+  .h-tmnf .tm-art { aspect-ratio: auto; }
+  .h-tmnf .tm-x { display: none; }
+  .h-tmnf .tm-join { grid-column: 2; grid-row: 1; }
+  .h-tmnf .tm-time { grid-column: 3; grid-row: 1; grid-template-columns: minmax(0, 1fr); align-content: center; row-gap: .5em; }
+  .h-tmnf .tm-time .tt-chips { grid-column: auto; }
+}

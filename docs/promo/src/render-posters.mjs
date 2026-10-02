@@ -26,7 +26,7 @@ export const FORMATS = [
   { id: 'feed-4x5', dir: 'feed', w: 1080, h: 1350 },
 ];
 /* The stream banner only where a stream audience is the addressee. */
-export const STREAM_MOTIFS = ['blitz', 'watch', 'tournaments', 'mempool', 'onstream', 'livecup', 'aoe2'];
+export const STREAM_MOTIFS = ['blitz', 'watch', 'tournaments', 'mempool', 'onstream', 'livecup', 'aoe2', 'tmnf'];
 export const LANGS = ['de', 'en'];
 /* Formats a motif is limited to; motifs not listed get every format but the feed 4:5.
  * The feed format (Instagram-style 4:5) is the Blockfill set's, added on 2026-10-01. */

@@ -424,6 +424,35 @@ posting**; the board changes with every verified run. Formats: 9:16, 4:5, 1:1. F
 
 ---
 
+## 17. TrackMania Nations Forever
+
+**DE Headline:** Unser TMNF-Server. Bestzeit der Woche.
+**DE Subline:** TrackMania Nations Forever ist kostenlos auf Steam. Fahr A01-Race auf TWENTY ONE: Der Server misst jede Zielankunft, deine schnellste der Woche zählt.
+**DE Bullets:**
+- Kostenlos auf Steam, Beitritt über die Favoriten
+- Login einmal mit einem Code im Server-Chat verknüpfen
+- Nadeos Autorenzeit auf A01-Race: 0:24.540
+- Neue Woche jeden Montag, 00:00 Uhr Berliner Zeit
+
+**EN Headline:** Our TMNF server. Best time of the week.
+**EN Subline:** TrackMania Nations Forever is free on Steam. Drive A01-Race on TWENTY ONE: the server times every finish, your fastest of the week counts.
+**EN Bullets:**
+- Free on Steam, join from your Favourites
+- Link your login once with a code in the server chat
+- Nadeo's author time on A01-Race: 0:24.540
+- New week every Monday, 00:00 Berlin time
+
+**CTA:** esports.einundzwanzig.space/scores/tmnf
+**Designer note:** the game's official cover (Steam store art, the same file the site shows) with
+a tag strip in the game's teal (time attack, the track, timed by our server), the How to join
+card with its four steps in the app's own words (pages/scores/partials/tmnf-join), and the track
+card with Nadeo's author time. No player and no player's time: the board changes every week.
+Formats: all five, the stream banner included. Facts 90-98. **The track is the one
+`config/esports.php` lists today (A01-Race); a second track rotates it (`TmnfWeeks::trackFor`):
+check the track before posting and re-render if it changed.**
+
+---
+
 ## Dropped or corrected since round 1 (see `facts.md` for full reasoning)
 
 - Clan logo moved from "at founding" to "on the manage page, after founding."

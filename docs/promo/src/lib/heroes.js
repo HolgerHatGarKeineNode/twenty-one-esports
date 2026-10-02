@@ -451,6 +451,39 @@
     </div>`;
   };
 
+  /* ===== TrackMania Nations Forever (motif 17) =====
+     The weekly time attack on the league's own server, as its pages show it: the game's
+     official cover (Steam store art, public/images/games/tmnf-1280.jpg) with a tag strip
+     (time attack, the track, timed by our server), the How to join card with its four
+     steps (pages/scores/partials/tmnf-join) and the track card with Nadeo's author time
+     (pages/scores/partials/tmnf-track; config/esports.php `tmnf.tracks`). No player and no
+     time of a player: the board changes every week. */
+  const TM = { server: 'TWENTY ONE', track: 'A01-Race', environment: 'Stadium', author: 'Nadeo', authorTime: '0:24.540' };
+  const TM_COVER = '../../../../public/images/games/tmnf-1280.jpg';
+  const TM_FLAG = '<path d="M4 21V4M4 4h14l-3 4 3 4H4"></path>';
+  H.tmnf = (lang) => `
+    <div class="h-tmnf">
+      <div class="tm-cover cube"><div class="tm-art" style="background-image:url('${TM_COVER}')"></div>
+        <div class="tm-tags"><span class="mk"><svg class="gl" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${TM_FLAG}</svg><b>TMNF</b></span><span>${K.esc(U('tmTimeAttack', lang))}</span><span>${K.esc(TM.track)}</span><span class="tm-x">${K.esc(U('tmTimed', lang))}</span></div></div>
+      <div class="tm-join ui-card">
+        <div class="tj-h"><b>${K.esc(U('tmHowToJoin', lang))}</b><span class="tj-srv">${K.esc(TM.server)}</span></div>
+        <ol class="tj-steps">
+          <li><i>1</i><span>${K.esc(U('tmGet', lang))}</span></li>
+          <li><i>2</i><span>${K.esc(U('tmJoinServer', lang))}</span></li>
+          <li><i>3</i><span>${K.esc(U('tmLink', lang))}</span></li>
+          <li><i>4</i><span>${K.esc(U('tmDrive', lang, { track: TM.track }))}</span></li>
+        </ol>
+        <p class="tj-foot">${K.esc(U('tmFree', lang))}</p>
+      </div>
+      <div class="tm-time ui-card">
+        <span class="tt-l">${K.esc(U('tmTrackOfWeek', lang))}</span>
+        <b class="tt-track">${K.esc(TM.track)}</b>
+        <span class="tt-l">${K.esc(U('tmAuthorTime', lang))}</span>
+        <b class="tt-time">${K.esc(TM.authorTime)}</b>
+        <span class="tt-chips"><span>${K.esc(TM.environment)}</span><span>${K.esc(TM.author)}</span></span>
+      </div>
+    </div>`;
+
   /* Draws every [data-paint] canvas under root with lib/blockfill.js (the app's renderer)
      and fills the HUD texts. A no-op until the module has loaded; it calls paint() itself. */
   function paint(root = document) {
@@ -487,5 +520,5 @@
     if (!H[motif]) throw new Error('no hero for motif ' + motif);
     return H[motif](lang);
   }
-  window.Heroes = { paint, weekSpan, build, boardHTML, hudTag, av, crest, H, STRIP, stripCol, stripHTML, legendHTML, tvHTML, bigFace, glyphOf, GAME, AOE, COVER, TICK, aoeResult, aoeSettings, aoeTags, aoeHead };
+  window.Heroes = { TM, TM_COVER, paint, weekSpan, build, boardHTML, hudTag, av, crest, H, STRIP, stripCol, stripHTML, legendHTML, tvHTML, bigFace, glyphOf, GAME, AOE, COVER, TICK, aoeResult, aoeSettings, aoeTags, aoeHead };
 })();
