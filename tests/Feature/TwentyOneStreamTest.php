@@ -191,13 +191,16 @@ test('the daemon keeps what it announces in the cache for the website, gone a mi
     File::put(config('twentyone.stream.prepared'), 'fake');
     fakeEncoder($this->dir);
     $game = ChessGame::factory()->create();
+    // The texts take turns by the clock (StreamTexts::rotate): a frozen clock names the turn.
+    $this->freezeTime();
+    $turn = StreamTexts::rotate(StreamTexts::forGames([$game->fresh(['white', 'black'])], 0), now()->getTimestamp());
 
     Artisan::call('twentyone:stream', ['--no-publish' => true, '--stop-after' => 3]);
     $announced = Cache::get('twentyone.stream.announced');
     $this->travel(61)->seconds();
 
     // The viewer socket is bound (no nginx sends anything): a count of 0, not null.
-    expect($announced)->toBe(['viewers' => 0, ...StreamTexts::forGames([$game->fresh(['white', 'black'])], 0)])
+    expect($announced)->toBe(['viewers' => 0, ...$turn])
         ->and(Cache::get('twentyone.stream.announced'))->toBeNull();
 });
 
