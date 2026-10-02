@@ -438,9 +438,10 @@ new #[Layout('layouts::app', ['section' => 'matches'])] class extends Component 
         <div class="flex flex-wrap items-end justify-between gap-x-6 gap-y-4">
             <h1 class="m-0 font-display text-[28px] font-bold lg:text-[34px]">{{ __('Matches') }}</h1>
 
-            <div class="flex flex-wrap items-center justify-end gap-x-6 gap-y-3">
-                <div class="flex items-center gap-2">
-                    <label for="f-game-select" id="f-game" class="text-xs text-ink-3">{{ __('Game title') }}</label>
+            <div class="flex min-w-0 max-w-full grow flex-wrap items-center justify-end gap-x-6 gap-y-3">
+                {{-- The game filter takes a row of its own and wraps: nine games with full names overflowed 2000 px (2026-10-03). --}}
+                <div class="flex min-w-0 basis-full items-start justify-end gap-2">
+                    <label for="f-game-select" id="f-game" class="text-xs text-ink-3 sm:mt-3.5">{{ __('Game title') }}</label>
                     {{-- Below sm a select (the buttons do not fit a phone), from sm the buttons: short labels (RL, FC27, AoE2, Morris) below 2xl, cover and name from 2xl; seven buttons with covers overflowed 640 px (754 px document), five with full names 1280 px (1486 px document, Age of Empires II). The name drops its subtitle ("Age of Empires II"); the accessible name starts with the visible text (x-games.filter-label). --}}
                     <select id="f-game-select" wire:change="pickGame($event.target.value)" data-test="game-filter-select"
                             class="h-11 w-[200px] rounded-md border border-edge bg-ground px-3 text-[13px] text-ink sm:hidden">
@@ -449,12 +450,12 @@ new #[Layout('layouts::app', ['section' => 'matches'])] class extends Component 
                             <option value="{{ $key }}" @selected($game === $key)>{{ GameNames::game($key) }}</option>
                         @endforeach
                     </select>
-                    <div role="group" aria-labelledby="f-game" class="flex max-w-full overflow-hidden rounded-md border border-line max-sm:hidden">
+                    <div role="group" aria-labelledby="f-game" class="flex min-w-0 max-w-full flex-wrap justify-end gap-1.5 max-sm:hidden">
                         <button type="button" wire:click="pickGame('all')" aria-pressed="{{ $game === 'all' ? 'true' : 'false' }}" data-test="game-all"
-                                @class([$filterBtn, 'bg-btc font-bold text-on-btc' => $game === 'all', 'bg-ground text-ink-2 hover:text-ink' => $game !== 'all'])>{{ __('All') }}</button>
+                                @class([$filterBtn, 'rounded-md border border-line', 'bg-btc font-bold text-on-btc' => $game === 'all', 'bg-ground text-ink-2 hover:text-ink' => $game !== 'all'])>{{ __('All') }}</button>
                         @foreach ($gameFilters as $key => $option)
                             <button type="button" wire:click="pickGame('{{ $key }}')" aria-pressed="{{ $game === $key ? 'true' : 'false' }}" data-test="game-{{ $key }}"
-                                    @class([$filterBtn, 'inline-flex items-center gap-2 border-l border-line', 'bg-btc font-bold text-on-btc' => $game === $key, 'bg-ground text-ink-2 hover:text-ink' => $game !== $key])><x-games.filter-label :game="$key" :short="__($option->assets()->shortLabel)" /></button>
+                                    @class([$filterBtn, 'inline-flex items-center gap-2 rounded-md border border-line', 'bg-btc font-bold text-on-btc' => $game === $key, 'bg-ground text-ink-2 hover:text-ink' => $game !== $key])><x-games.filter-label :game="$key" :short="__($option->assets()->shortLabel)" /></button>
                         @endforeach
                     </div>
                 </div>

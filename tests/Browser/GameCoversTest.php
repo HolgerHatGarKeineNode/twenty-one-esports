@@ -169,7 +169,12 @@ test('covers show on /tournaments, the games menu, the challenge form and the ma
     expect($page->evaluate('() => { const g = document.querySelector("[aria-labelledby=f-game][role=group]"); return [g.checkVisibility(), g.scrollWidth <= g.clientWidth]; }'))->toBe([true, true]);
     assertCleanPage($page, '/matches at 640');
     // Positive control of the fit check: a button too wide for the group makes it false.
-    expect($page->evaluate('() => { const g = document.querySelector("[aria-labelledby=f-game][role=group]"); g.insertAdjacentHTML("beforeend", \'<button style="flex:none;width:2000px">x</button>\'); return g.scrollWidth <= g.clientWidth; }'))->toBeFalse();
+    // The group wraps now (overflow visible), so the control measures what the eye sees: a button beyond the window.
+    expect($page->evaluate('() => { const g = document.querySelector("[aria-labelledby=f-game][role=group]"); g.insertAdjacentHTML("beforeend", \'<button style="flex:none;width:2000px">x</button>\'); return [...g.querySelectorAll("button")].every((x) => { const r = x.getBoundingClientRect(); return r.left >= 0 && r.right <= window.innerWidth; }); }'))->toBeFalse();
+
+    // Many games (nine live on 2026-10-03, the last one cut off from 1536 px, where the full names show): the buttons wrap onto more rows and every one stays on screen.
+    $wide = gameCoverPage($captain, route('matches.index', absolute: false), 1600);
+    expect($wide->evaluate('() => { const g = document.querySelector("[aria-labelledby=f-game][role=group]"); const b = g.querySelector("button[data-test^=game-]:not([data-test=game-all])"); for (let i = 0; i < 8; i++) { g.appendChild(b.cloneNode(true)); } const out = [...g.querySelectorAll("button")].filter((x) => { const r = x.getBoundingClientRect(); return r.right > window.innerWidth || r.left < 0; }).length; return [out, document.documentElement.scrollWidth <= document.documentElement.clientWidth]; }'))->toBe([0, true]);
 
     // Positive control: the same collector and cover check see a thrown error and a broken cover.
     $page = gameCoverPage($captain, route('matches.index', absolute: false), 1440);
