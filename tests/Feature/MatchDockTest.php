@@ -100,7 +100,7 @@ test('chess items come live first, then what is on the player by deadline, then 
         ->and(app(OpenMatches::class)->summary($me))->toBe(['open' => 7, 'need' => 5, 'wait' => 2]);
 });
 
-test('series join the dock only when live, soon, or waiting on someone', function () {
+test('every open series is on the dock: live, soon, waiting on someone, or scheduled later at the end', function () {
     $me = User::factory()->create();
     $mine = Lineup::factory()->ready()->create(['clan_id' => Clan::factory()->create(['owner_id' => $me->id])->id]);
 
@@ -113,9 +113,11 @@ test('series join the dock only when live, soon, or waiting on someone', functio
     SeriesReport::query()->create(['series_match_id' => $sentReport->id, 'side' => 'challenger', 'games' => [['winner' => 'challenger', 'challenger' => 3, 'challenged' => 1]], 'roster' => [], 'status' => ReportStatus::Open]);
     $disputed = dockSeries($mine, 'challenger', ['status' => SeriesStatus::Disputed, 'start_at' => now()->subHour()]);
 
-    // Not on the dock: a challenge the player sent, a series three hours away, a finished one.
+    // A series three hours away waits at the end, counting down (2026-10-02: every open room has a tab).
+    $later = dockSeries($mine, 'challenger', ['status' => SeriesStatus::Accepted, 'start_at' => now()->addHours(3)]);
+
+    // Not on the dock: a challenge the player sent, a finished one.
     dockSeries($mine, 'challenger', ['status' => SeriesStatus::Open]);
-    dockSeries($mine, 'challenger', ['status' => SeriesStatus::Accepted, 'start_at' => now()->addHours(3)]);
     dockSeries($mine, 'challenger', ['status' => SeriesStatus::Confirmed]);
 
     // A result to accept has no deadline, so it follows the ones that have one.
@@ -128,9 +130,10 @@ test('series join the dock only when live, soon, or waiting on someone', functio
         'series-'.$toAccept->number,
         'series-'.$sentReport->number,
         'series-'.$disputed->number,
+        'series-'.$later->number,
     ])
         ->and($items->map(fn (DockItem $item) => [$item->phase, $item->needsYou])->values()->all())->toBe([
-            ['live', true], ['starts', true], ['answer', true], ['accept', true], ['waiting', false], ['dispute', false],
+            ['live', true], ['starts', true], ['answer', true], ['accept', true], ['waiting', false], ['dispute', false], ['scheduled', false],
         ])
         // The score from the player's side.
         ->and($items['series-'.$toAccept->number]->trailing)->toBe('0 : 1');

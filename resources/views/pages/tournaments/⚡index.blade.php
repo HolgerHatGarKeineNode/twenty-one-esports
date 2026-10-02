@@ -93,6 +93,11 @@ new #[Title('Tournaments')] #[Layout('layouts::app', ['section' => 'tournaments'
 @endphp
 
 <div class="flex flex-col gap-5 px-4 pt-8 pb-10 lg:px-12" data-test="tournaments-index">
+    {{-- The tournaments the viewer is signed up for first, each with the way out while sign-up is open (2026-10-02). --}}
+    @auth
+        <livewire:upcoming-events only="tournament" wire:key="upcoming-tournaments" />
+    @endauth
+
     <div class="flex flex-col gap-2 lg:flex-row lg:items-baseline lg:gap-4">
         <h1 class="m-0 font-display text-[28px] font-bold lg:text-[34px]">{{ __('Tournaments') }}</h1>
         <p class="m-0 text-[13px] leading-normal text-ink-2">

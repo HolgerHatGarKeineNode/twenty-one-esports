@@ -315,6 +315,11 @@ new #[Layout('layouts::app', ['section' => 'matches', 'scripts' => ['resources/j
 @endphp
 
 <div class="flex grow flex-col" data-test="game-page" data-game="{{ $slug }}" style="--game: {{ $colour }}">
+    {{-- The viewer's open rooms and tournaments of this game first (2026-10-02). --}}
+    @auth
+        <livewire:upcoming-events :game="$slug" frame="px-4 pt-4 lg:px-12" wire:key="upcoming-game" />
+    @endauth
+
     {{--
         The hero. Below sm the cover sits small beside the name, so the action, the pulse and the invite
         under them stay above the phone's tab bar (InvitePlacementTest). From sm the cover spans the rows

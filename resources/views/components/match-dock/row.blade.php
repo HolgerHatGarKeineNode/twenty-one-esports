@@ -19,7 +19,7 @@
                     <span class="truncate">{{ $item->line }}</span>
                 </span>
                 <span @class(['truncate text-xs', 'text-loss' => $urgent, 'text-ink' => ! $urgent && $item->needsYou, 'text-ink-2' => ! $urgent && ! $item->needsYou])
-                      @if ($item->tick) data-tick='@json($item->tick)' data-suffix="{{ __(':left left') }}" @endif>{{ $item->tick ? __(':left left', ['left' => $item->trailing]) : $item->trailing }}</span>
+                      @if ($item->tick) data-tick='@json($item->tick)' data-suffix="{{ $item->countsToStart() ? __('in :left') : __(':left left') }}" @endif>{{ $item->tick ? ($item->countsToStart() ? __('in :left', ['left' => $item->trailing]) : __(':left left', ['left' => $item->trailing])) : $item->trailing }}</span>
             </span>
             @unless ($item->needsYou && $item->action)
                 <x-icon name="next" :size="16" class="text-ink-3" />

@@ -31,6 +31,7 @@
         'dot' => $open > 0, 'name' => $open > 0 ? __('Tournaments').', '.$open.' '.trans_choice('open for sign-up|open for sign-up', $open) : null];
     $profile = $account[0] ?? null;
     $accountLinks = array_slice($account, 1);
+    $upcomingCount = (int) (collect($account)->firstWhere('key', 'upcoming')['count'] ?? 0);
     $chainTests = ['mempool' => 'mobile-mempool', 'mining' => 'mobile-season', 'casual' => 'mobile-casual'];
     $everywhere = [
         [...$community[0], 'icon' => 'clans', 'test' => 'mobile-clans'],
@@ -85,6 +86,7 @@
                             <a href="{{ $link['href'] }}" class="{{ $row }}" @if ($link['mobileTest']) data-test="{{ $link['mobileTest'] }}" @endif>
                                 <x-icon :name="$link['icon']" :size="18" class="text-ink-3" />
                                 <span class="min-w-0 leading-tight break-words">{{ $link['label'] }}</span>
+                                @isset($link['count'])<span class="nav-count ml-auto">{{ $link['count'] }}</span>@endisset
                             </a>
                         </li>
                     @endforeach
@@ -175,8 +177,14 @@
             <li class="flex-auto">
                 <button type="button" class="tab w-full cursor-pointer" aria-controls="more-sheet" x-bind:aria-expanded="open.toString()" aria-expanded="false" aria-haspopup="dialog"
                         x-on:click="toggle($el)" data-test="tab-more">
-                    <x-icon name="menu" :size="22" />
-                    <span>{{ __('More') }}</span>
+                    @if ($upcomingCount > 0)
+                        {{-- The account's upcoming matches and events (UpcomingEvents) sit in More: the dot says so. --}}
+                        <span class="relative flex"><x-icon name="menu" :size="22" /><span class="tab-dot" aria-hidden="true" data-test="tab-more-dot"></span></span>
+                        <span>{{ __('More') }}<span class="sr-only">, {{ trans_choice(':count upcoming match or event|:count upcoming matches and events', $upcomingCount) }}</span></span>
+                    @else
+                        <x-icon name="menu" :size="22" />
+                        <span>{{ __('More') }}</span>
+                    @endif
                 </button>
             </li>
         </ul>

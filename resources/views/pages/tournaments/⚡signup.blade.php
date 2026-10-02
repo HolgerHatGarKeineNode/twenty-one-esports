@@ -299,7 +299,8 @@ new #[Layout('layouts::app', ['section' => 'tournaments'])] class extends Compon
                 @include('pages.tournaments.partials.share', ['tournament' => $tournament, 'label' => __('Bring a friend: every spot filled is one more match'),
                     'text' => __('I’m in :tournament on TWENTY ONE Esports (:game). :spots. Join me:', ['tournament' => $tournament->name, 'game' => $gameLine, 'spots' => trans_choice(':count spot left|:count spots left', $left)])])
 
-                <div class="flex flex-wrap items-center gap-3 border-t border-hairline pt-4">
+                {{-- `#withdraw`: "Can't make it? Withdraw" of the upcoming events (UpcomingEvents) lands here. --}}
+                <div id="withdraw" class="flex scroll-mt-24 flex-wrap items-center gap-3 border-t border-hairline pt-4">
                     @if ($open && ($entry->lineup_id === null || ($entry->lineup?->isActingCaptain($me) ?? false)))
                         <x-button variant="secondary" x-on:click="run('prepareWithdraw', 'withdraw')" ::disabled="busy" data-test="withdraw">{{ __('Pull out') }}</x-button>
                         <span class="text-xs text-ink-3">{{ __('You can pull out until sign-up closes.') }}</span>

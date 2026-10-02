@@ -41,17 +41,21 @@ use Illuminate\Support\Facades\Route;
  *
  * What gets a tab: live blitz games, daily games in both directions, blitz
  * invites and daily challenges received, clan invites received, casual 1v1
- * invites received (P23), Rocket League and EA FC series that are live, that
- * start within the next hour, that wait for this player's answer or
- * acceptance, or whose result waits for the other side or an admin. A
- * series counts for a player seated in one of its lineups and for a player
- * of a roster side (a tournament's 1v1 or mix team, a casual 1v1), whose
- * ready check is a tab of its own. Not on the dock: invites and challenges
- * this player sent, and scheduled series more than an hour away.
+ * invites received (P23), challenges waiting for this player's answer, every
+ * open match room ({@see rooms()}: scheduled, in its check-in, live, or with
+ * its result waiting) and the registered tournaments of the day
+ * ({@see UpcomingEvents::tournaments()}). A series counts for a player seated
+ * in one of its lineups and for a player of a roster side (a tournament's
+ * 1v1 or mix team, a casual 1v1), whose ready check is a tab of its own. Not
+ * on the dock: invites and challenges this player sent.
  *
- * Order: live first, then everything on this player by deadline, then what
- * waits for the other side by deadline. One query per kind, each capped at
- * KIND_LIMIT rows.
+ * A room more than an hour from its start (or from its check-in) waits at
+ * the end and counts down to it (2026-10-02: "Meine offenen Match Rooms gehen
+ * total unter und ich finde sie nicht wieder").
+ *
+ * Order: live first (a check-in that is on this player counts as live), then
+ * everything on this player by deadline, then what waits by deadline. One
+ * query per kind, each capped at KIND_LIMIT rows.
  */
 final class OpenMatches
 {
@@ -77,19 +81,49 @@ final class OpenMatches
     {
         $nowMs = (int) now()->getTimestampMs();
 
-        $items = collect()
-            ->concat($this->games($user, $excludeGame, $nowMs))
-            ->concat($this->boardGames($user, $excludeBoard, $nowMs))
-            ->concat($this->boardInvites($user))
-            ->concat($this->boardChallenges($user))
-            ->concat($this->blitzInvites($user))
-            ->concat($this->dailyChallenges($user))
-            ->concat($this->clanInvites($user))
-            ->concat($this->casualInvites($user))
-            ->concat($this->series($user, $excludeSeries, $nowMs));
+        return self::order(collect([
+            ...$this->games($user, $excludeGame, $nowMs),
+            ...$this->boardGames($user, $excludeBoard, $nowMs),
+            ...$this->boardInvites($user),
+            ...$this->boardChallenges($user),
+            ...$this->blitzInvites($user),
+            ...$this->dailyChallenges($user),
+            ...$this->clanInvites($user),
+            ...$this->casualInvites($user),
+            ...$this->series($user, $excludeSeries, $nowMs),
+            ...app(UpcomingEvents::class)->tournaments($user, todayOnly: true)->all(),
+        ]));
+    }
 
+    /**
+     * The open match rooms of a player: every series they play or captain
+     * that is not decided yet (accepted: scheduled, in its check-in, lobby or
+     * live; reported or disputed: its result waits), casual or tournament,
+     * most urgent first. An open challenge is no room yet.
+     *
+     * @return Collection<int, DockItem>
+     */
+    public function rooms(User $user): Collection
+    {
+        $rooms = array_filter($this->series($user, null, (int) now()->getTimestampMs()), fn (DockItem $item): bool => $item->model instanceof SeriesMatch && $item->model->status->isRunning());
+
+        return self::order(collect($rooms));
+    }
+
+    /**
+     * Urgency order, the one every list of open items uses: live first,
+     * then what is on the player, then what waits; each by its deadline,
+     * soonest first, and an item without one after those with one. A
+     * check-in on the player leads its group: its window closes with a
+     * forfeit, while a live series' "deadline" is the start it already had.
+     *
+     * @param  Collection<int, DockItem>  $items
+     * @return Collection<int, DockItem>
+     */
+    public static function order(Collection $items): Collection
+    {
         return $items
-            ->sortBy(fn (DockItem $item) => [self::GROUP_ORDER[$item->group], $item->deadlineMs ?? PHP_INT_MAX, $item->key])
+            ->sortBy(fn (DockItem $item) => [self::GROUP_ORDER[$item->group], $item->phase === 'checkin' && $item->needsYou ? 0 : 1, $item->deadlineMs ?? PHP_INT_MAX, $item->key])
             ->values();
     }
 
@@ -175,7 +209,7 @@ final class OpenMatches
 
     /**
      * @param  'live'|'need'|'wait'  $group
-     * @param  'accept'|'answer'|'dispute'|'invite'|'live'|'ready'|'starts'|'their_move'|'waiting'|'your_move'  $phase
+     * @param  'accept'|'answer'|'checkin'|'dispute'|'invite'|'live'|'ready'|'scheduled'|'starts'|'their_move'|'waiting'|'your_move'  $phase
      * @param  array{endsAt: int, format: 'clock'|'hm', total: int, redUnder: int}|null  $tick
      */
     private function seriesDockItem(SeriesMatch $match, string $other, string $group, string $phase, bool $needsYou, string $state, string $trailing, string $line, ?string $action, ?int $deadline, ?array $tick = null, ?User $face = null): DockItem
@@ -694,8 +728,6 @@ final class OpenMatches
         $matches = self::involving(SeriesMatch::query(), $user, $lineups)
             ->whereIn('status', [SeriesStatus::Open, SeriesStatus::Accepted, SeriesStatus::Reported, SeriesStatus::Disputed])
             ->when($exclude !== null, fn ($query) => $query->where('number', '!=', $exclude))
-            // Scheduled series join an hour before their start.
-            ->where(fn ($query) => $query->where('status', '!=', SeriesStatus::Accepted)->orWhereNull('start_at')->orWhere('start_at', '<=', now()->addMilliseconds(self::STARTS_SOON_MS)))
             ->with(['challengerLineup.seats', 'challengerLineup.clan', 'challengedLineup.seats', 'challengedLineup.clan', 'latestReport'])
             ->latest('id')
             ->limit(self::KIND_LIMIT)
@@ -740,9 +772,7 @@ final class OpenMatches
                     ['endsAt' => (int) $match->respond_by->getTimestampMs(), 'format' => 'hm', 'total' => max(1, (int) $match->respond_by->getTimestampMs() - (int) ($match->created_at ?? now())->getTimestampMs()), 'redUnder' => self::DAILY_RED_MS])
                 : null,
             SeriesStatus::Accepted => $match->start_at !== null && $match->start_at->isFuture()
-                ? $this->seriesDockItem($match, $other, 'need', 'starts', true, __('Starts'), SeriesPresenter::time($match->start_at, $user, 'H:i'),
-                    __('Series :number starts at :time', ['number' => $match->label(), 'time' => SeriesPresenter::time($match->start_at, $user, 'H:i')]), __('View'),
-                    (int) $match->start_at->getTimestampMs())
+                ? $this->startsItem($match, $other, $user, $nowMs)
                 : $this->seriesDockItem($match, $other, 'live', 'live', true, __('Live'), $scoreText,
                     __('Series :number, live :score', ['number' => $match->label(), 'score' => $scoreText]), __('View'),
                     (int) ($match->start_at ?? $match->created_at ?? now())->getTimestampMs()),
@@ -759,6 +789,22 @@ final class OpenMatches
                 (int) ($match->updated_at ?? now())->getTimestampMs()),
             default => null,
         };
+    }
+
+    /**
+     * A series ahead of its start: within the hour on this player ("Starts",
+     * as before), further out waiting at the end of the dock; both count down
+     * to the start.
+     */
+    private function startsItem(SeriesMatch $match, string $other, User $user, int $nowMs): DockItem
+    {
+        $startMs = (int) $match->start_at?->getTimestampMs();
+        $soon = $startMs - $nowMs <= self::STARTS_SOON_MS;
+        $tick = ['endsAt' => $startMs, 'format' => 'hm', 'total' => max(1, $startMs - $nowMs), 'redUnder' => 0];
+
+        return $this->seriesDockItem($match, $other, $soon ? 'need' : 'wait', $soon ? 'starts' : 'scheduled', $soon, self::text('Starts'), self::format($startMs - $nowMs, 'hm'),
+            self::text('Series :number starts at :time', ['number' => $match->label(), 'time' => SeriesPresenter::time($match->start_at ?? now(), $user, 'H:i')]), self::text('View'),
+            $startMs, $tick);
     }
 
     /**
@@ -784,15 +830,26 @@ final class OpenMatches
         }
 
         // A scheduled 1v1 (P23 S4) waiting for its check-in: on this player while the window is open and they are not in.
+        // Before its window it counts down to the window's opening; in it, "Check in now" while this player is not in.
         if ($match->awaitsCheckIn()) {
             $opens = $match->checkInOpensAt();
-            $open = $opens === null || ! $opens->isFuture();
-            $mine = $open && $match->readyAt($side) === null;
+            $line = self::text('Casual :number, check-in', ['number' => $match->label()]);
 
-            return $this->seriesDockItem($match, $other, 'need', 'ready', $mine, $open ? self::text('Check in') : self::text('Starts'),
-                $open && $endsAt !== null ? self::format($endsAt - $nowMs, 'clock') : SeriesPresenter::time($match->scheduledAt() ?? now(), $user, 'H:i'),
-                self::text('Casual :number, check-in', ['number' => $match->label()]), $mine ? self::text('Check in') : null,
-                $endsAt, $open && $endsAt !== null ? ['endsAt' => $endsAt, 'format' => 'clock', 'total' => max(1, (int) $match->casualSetting('checkin_before_minutes') * 60_000 + (int) $match->casualSetting('checkin_after_minutes') * 60_000), 'redUnder' => 60_000] : null, $face);
+            if ($opens !== null && $opens->isFuture()) {
+                $opensMs = (int) $opens->getTimestampMs();
+                $soon = $opensMs - $nowMs <= self::STARTS_SOON_MS;
+
+                return $this->seriesDockItem($match, $other, $soon ? 'need' : 'wait', 'scheduled', false, self::text('Check-in'), self::format($opensMs - $nowMs, 'hm'),
+                    $line, self::text('View'), $opensMs,
+                    ['endsAt' => $opensMs, 'format' => 'hm', 'total' => max(1, $opensMs - $nowMs), 'redUnder' => 0], $face);
+            }
+
+            $mine = $match->readyAt($side) === null;
+
+            return $this->seriesDockItem($match, $other, $mine ? 'live' : 'need', 'checkin', $mine, $mine ? self::text('Check in now') : self::text('Checked in'),
+                $endsAt !== null ? self::format($endsAt - $nowMs, 'clock') : '',
+                $line, $mine ? self::text('Check in') : null,
+                $endsAt, $endsAt !== null ? ['endsAt' => $endsAt, 'format' => 'clock', 'total' => max(1, (int) $match->casualSetting('checkin_before_minutes') * 60_000 + (int) $match->casualSetting('checkin_after_minutes') * 60_000), 'redUnder' => 60_000] : null, $face);
         }
 
         $onMe = $next !== null && ($next['side'] === $side || ($next['side'] === null && $next['kind'] === 'report'));
@@ -800,6 +857,8 @@ final class OpenMatches
             'lobby' => $next['side'] === $side ? self::text('Share the lobby') : self::text('Lobby coming'),
             'join' => $next['side'] === $side ? self::text('Join the lobby') : self::text('Opponent joins'),
             'contest' => $next['side'] === $side ? self::text('Answer the claim') : self::text('No-show claimed'),
+            // Lobby shared and joined: what is left is to play and report.
+            'report' => self::text('Report result'),
             default => self::text('Live'),
         };
         $minutes = match ($next['kind'] ?? null) {

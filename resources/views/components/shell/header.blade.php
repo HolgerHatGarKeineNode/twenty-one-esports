@@ -22,6 +22,7 @@
     $tournaments = $nav->tournaments();
     $admin = $nav->admin();
     $account = $nav->account();
+    $upcoming = collect($account)->firstWhere('key', 'upcoming');
     $played = array_values(array_filter($games, fn (array $game): bool => $game['played']));
     $unplayed = array_values(array_filter($games, fn (array $game): bool => ! $game['played']));
     $current = request()->fullUrl();
@@ -174,6 +175,10 @@
                 <button type="button" title="{{ $user->displayName() }} · {{ $user->shortNpub() }}" class="flex h-11 shrink-0 cursor-pointer items-center gap-2 rounded-md border border-line bg-well pr-2 pl-1.5 text-[13px] text-ink" data-test="account-chip">
                     <x-avatar :user="$user" :size="28" class="shrink-0" />
                     <span>{{ __('You') }}</span><span class="sr-only" data-test="account-chip-name">, {{ $user->displayName() }}</span>
+                    @if ($upcoming)
+                        {{-- Open match rooms and registered tournaments (UpcomingEvents), listed first in the menu. --}}
+                        <span class="nav-count" data-test="upcoming-count"><span class="sr-only">, </span>{{ $upcoming['count'] }}<span class="sr-only"> {{ trans_choice('upcoming match or event|upcoming matches and events', $upcoming['count']) }}</span></span>
+                    @endif
                     <x-icon name="chevron-down" :size="16" class="text-ink-3" />
                 </button>
 
@@ -187,7 +192,7 @@
                     </div>
                     <flux:menu.separator />
                     @foreach ($account as $link)
-                        <flux:menu.item :href="$link['href']" :data-test="$link['test']"><x-icon :name="$link['icon']" :size="16" class="me-2 text-ink-3" />{{ $link['label'] }}</flux:menu.item>
+                        <flux:menu.item :href="$link['href']" :data-test="$link['test']"><x-icon :name="$link['icon']" :size="16" class="me-2 text-ink-3" />{{ $link['label'] }}@isset($link['count'])<span class="nav-count ms-auto">{{ $link['count'] }}</span>@endisset</flux:menu.item>
                     @endforeach
                     <flux:menu.separator />
                     {{-- Forget a mill remote signer first, so the next person on this browser does not inherit it. --}}

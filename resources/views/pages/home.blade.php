@@ -64,6 +64,11 @@
 <x-layouts::app section="home" flush :scripts="$live['boards']->isNotEmpty() ? ['resources/js/chess.js'] : []">
     <h1 class="sr-only">{{ __('TWENTY ONE Esports: chess and Rocket League for Bitcoiners') }}</h1>
 
+    {{-- A player's next match or event first, above the stage, at every width (2026-10-02). --}}
+    @auth
+        <livewire:upcoming-events variant="card" />
+    @endauth
+
     <div class="hh-stage flex flex-col gap-5 pb-5 lg:gap-6 lg:pb-8" data-test="home-stage">
         @include('pages.home.your-next', ['items' => $hub->yourNext()])
 

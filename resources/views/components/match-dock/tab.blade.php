@@ -23,7 +23,7 @@
         <span @class(['dk-name', 'text-ink' => $item->needsYou, 'text-ink-2' => ! $item->needsYou])><span class="sr-only">{{ $item->sentence }}. </span><span aria-hidden="true">{{ $item->name }}</span></span>
         <span aria-hidden="true" @class(['dk-line', 'text-btc' => $item->needsYou, 'text-ink-2' => ! $item->needsYou])>
             @if ($item->isLive() && $item->kind === 'series')<span class="dk-live size-2 shrink-0 rounded-full bg-btc"></span>@endif
-            <span class="truncate">{{ $item->state }}</span>
+            <span @class(['truncate', 'font-bold animate-live' => $item->phase === 'checkin' && $item->needsYou])>{{ $item->state }}</span>
             <span class="grow"></span>
             <span @class(['shrink-0', 'text-loss' => $urgent, 'text-ink' => ! $urgent && $item->needsYou, 'text-ink-2' => ! $urgent && ! $item->needsYou])
                   @if ($item->tick) data-tick='@json($item->tick)' @endif data-test="dock-tab-number">{{ $item->trailing }}</span>

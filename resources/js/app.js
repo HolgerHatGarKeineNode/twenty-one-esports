@@ -11,6 +11,7 @@ import blockZeroCountdown from './blockZeroCountdown.js';
 import { profileCardHost, profileStore } from './profiles.js';
 import { dropFailedBunker, forgetForeignSession } from './millAuth.js';
 import matchDock from './matchDock.js';
+import upcomingEvents from './upcomingEvents.js';
 import boardLobby from './boardLobby.js';
 import playerPicker from './playerPicker.js';
 import { firstSteps, shellHeader, shellSheet } from './shellNav.js';
@@ -46,6 +47,8 @@ document.addEventListener('alpine:init', () => {
     window.Alpine.data('profileCardHost', profileCardHost);
     // The match dock of a logged-in player (P5f).
     window.Alpine.data('matchDock', matchDock);
+    // Open match rooms and registered tournaments on home, /matches, /tournaments and a game page.
+    window.Alpine.data('upcomingEvents', upcomingEvents);
     // The player picker combobox, <x-player-picker>.
     window.Alpine.data('playerPicker', playerPicker);
     // The shell navigation: header and game hub, the phone's More sheet, the guests' first steps.

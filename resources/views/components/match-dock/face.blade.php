@@ -7,6 +7,9 @@
 <span class="relative flex shrink-0" style="width: {{ $size }}px; height: {{ $size }}px">
     @if ($item->face)
         <x-avatar :user="$item->face" :size="$size" class="rounded-md" />
+    @elseif ($item->kind === 'tournament')
+        {{-- A registered tournament (UpcomingEvents): a trophy on the tint, the game's mark in the corner. --}}
+        <span class="flex size-full items-center justify-center rounded-md bg-btc-tint text-btc" aria-hidden="true"><x-icon name="trophy" :size="(int) round($size * 0.55)" /></span>
     @else
         <x-clan-tag :clan="$item->clan" :tag="$item->tag" :tile="$size" class="flex size-full items-center justify-center rounded-md bg-btc-tint text-[10px] font-bold text-btc" aria-hidden="true" />
     @endif

@@ -440,16 +440,16 @@ test('a scheduled match: step 1 is "Checked in", the clock counts to the opening
         ->assertSee('data-test="casual-step-ready" data-done="1"', false);
 });
 
-test('the dock shows a scheduled match as starting, then as check-in on the player until they are in', function () {
+test('the dock counts a scheduled match down to its check-in, then asks the player to check in now until they are in', function () {
     [$match, $anna] = casualPlayScheduled(before: 30);
     $dock = app(OpenMatches::class);
 
     $item = $dock->for($anna)->sole();
-    expect([$item->phase, $item->state, $item->needsYou, $item->tick])->toBe(['ready', 'Starts', false, null]);
+    expect([$item->phase, $item->state, $item->needsYou, $item->tick['endsAt']])->toBe(['scheduled', 'Check-in', false, (int) $match->checkInOpensAt()->getTimestampMs()]);
 
     $this->travel(21)->minutes();
     $item = $dock->for($anna)->sole();
-    expect([$item->state, $item->needsYou, $item->tick['endsAt']])->toBe(['Check in', true, (int) $match->ready_by->getTimestampMs()]);
+    expect([$item->state, $item->needsYou, $item->tick['endsAt']])->toBe(['Check in now', true, (int) $match->ready_by->getTimestampMs()]);
 
     app(CasualMatches::class)->checkIn($match, $anna);
     expect($dock->for($anna)->sole()->needsYou)->toBeFalse();

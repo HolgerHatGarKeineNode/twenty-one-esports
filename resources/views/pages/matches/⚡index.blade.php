@@ -424,6 +424,11 @@ new #[Layout('layouts::app', ['section' => 'matches'])] class extends Component 
 @endphp
 
 <div class="flex grow flex-col gap-6 pb-10" data-test="matches">
+    {{-- The viewer's open match rooms first (2026-10-02: "Meine offenen Match Rooms gehen total unter"). --}}
+    @auth
+        <livewire:upcoming-events only="series" frame="px-4 pt-4 lg:px-12" wire:key="upcoming-rooms" />
+    @endauth
+
     @if ($strip['finished'] !== [] || $strip['running'] !== [])
         {{-- The copy promises mining only while a season runs: before Block 0 and between seasons no win mines. --}}
         <x-block-strip :finished="$strip['finished']" :running="$strip['running']" :title="__('Mempool')" :chain-live="$strip['live']" :lead="$lead" />

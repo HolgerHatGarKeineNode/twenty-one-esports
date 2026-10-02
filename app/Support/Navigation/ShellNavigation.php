@@ -14,6 +14,7 @@ use App\Models\ClanInvite;
 use App\Models\SeriesMatch;
 use App\Models\Tournament;
 use App\Models\User;
+use App\Support\Dock\UpcomingEvents;
 use App\Support\GameNames;
 use App\Support\Matches\MempoolStrip;
 use App\Support\SeasonChain\Seasons;
@@ -35,7 +36,7 @@ use Illuminate\Support\Facades\Route;
  * registered game. Row 2 always shows the active game, so the rule is the
  * same on every page and row 2 always names the game it is about.
  *
- * @phpstan-type NavLink array{key: string, href: string, label: string, short: string, icon: string, test: ?string, mobileTest: ?string, tab: ?string, routes?: list<string>}
+ * @phpstan-type NavLink array{key: string, href: string, label: string, short: string, icon: string, test: ?string, mobileTest: ?string, tab: ?string, routes?: list<string>, count?: int}
  * @phpstan-type NavGame array{slug: string, name: string, short: string, colour: string, formats: string, kinds: list<string>, page: string, played: bool, actions: list<NavLink>}
  */
 final class ShellNavigation
@@ -358,6 +359,7 @@ final class ShellNavigation
         return array_values(array_filter([
             // The own hub (P30); the public player page is one click from there.
             self::link('page', route('dashboard'), __('Your page'), 'user', 'account-page', 'mobile-page'),
+            $this->upcoming($user),
             match (true) {
                 $clan !== null => self::link('clan', route('clans.show', $clan), __('Your clan'), 'clans', 'account-clan', 'mobile-clan'),
                 $invite !== null => self::link('invite', route('invites.show', $invite), __('Clan invite from :clan', ['clan' => $invite->clan->name]), 'clans', 'account-clan-invite', 'mobile-clan-invite'),
@@ -372,6 +374,26 @@ final class ShellNavigation
             self::link('badges', route('settings.badges'), __('Badges and sharing'), 'award', 'account-badges', 'mobile-badges'),
             $this->isAdmin || $this->isOrganizer ? self::link('tournaments', route('admin.tournaments'), __('Your tournaments'), 'trophy', 'account-tournaments', 'mobile-tournaments') : null,
         ]));
+    }
+
+    /**
+     * The viewer's open match rooms and registered tournaments
+     * (UpcomingEvents, 2026-10-02) with their count: the one event itself,
+     * or home's "Your next match" card for several. Null with none.
+     *
+     * @return NavLink|null
+     */
+    public function upcoming(User $user): ?array
+    {
+        $items = app(UpcomingEvents::class)->for($user);
+
+        if ($items->isEmpty()) {
+            return null;
+        }
+
+        $href = $items->count() === 1 ? $items->first()->href : route('home').'#upcoming-h';
+
+        return [...self::link('upcoming', $href, __('Your matches and events'), 'calendar', 'account-upcoming', 'mobile-upcoming'), 'count' => $items->count()];
     }
 
     /**

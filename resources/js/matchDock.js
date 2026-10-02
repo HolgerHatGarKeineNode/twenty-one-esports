@@ -65,6 +65,8 @@ export default function matchDock(config) {
         announcement: '',
         offset: config.now - Date.now(),
         timers: [],
+        // `endsAt` of every number seen still running, so reaching zero is noticed once.
+        ahead: new Set(),
         listened: new Map(),
         connected: false,
         busy: false,
@@ -197,6 +199,12 @@ export default function matchDock(config) {
             this.$root.querySelectorAll('[data-tick]').forEach((el) => {
                 const tick = JSON.parse(el.dataset.tick);
                 const left = tick.endsAt - now;
+                // A number that runs out on this page ends a phase (a check-in opens, a series starts): render again, once per moment.
+                if (left > 0) {
+                    this.ahead.add(tick.endsAt);
+                } else if (this.ahead.delete(tick.endsAt)) {
+                    this.requestRefresh();
+                }
                 const text = formatLeft(left, tick.format, config.labels);
                 el.textContent = el.dataset.suffix ? el.dataset.suffix.replace(':left', text) : text;
                 // Inline, so it wins over whichever text colour the server rendered.

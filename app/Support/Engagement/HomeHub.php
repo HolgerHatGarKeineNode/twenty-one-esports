@@ -332,7 +332,9 @@ final class HomeHub
     }
 
     /**
-     * What waits for the viewer, their move first (the match dock's own list).
+     * What waits for the viewer, their move first (the match dock's own
+     * list), without the open rooms and tournaments: those head home in
+     * the "Your next match" card (<livewire:upcoming-events>).
      *
      * @return Collection<int, DockItem>
      */
@@ -343,6 +345,7 @@ final class HomeHub
         }
 
         return app(OpenMatches::class)->for($this->viewer)
+            ->reject(fn (DockItem $item): bool => $item->kind === 'tournament' || ($item->model instanceof SeriesMatch && $item->model->status->isRunning()))
             ->sortBy(fn (DockItem $item): int => $item->isLive() ? 0 : ($item->needsYou ? 1 : 2))
             ->take($limit)->values();
     }

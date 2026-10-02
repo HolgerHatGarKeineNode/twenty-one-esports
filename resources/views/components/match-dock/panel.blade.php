@@ -24,8 +24,10 @@
             'accept' => __('Review the result'),
             'answer' => __('Answer the challenge'),
             'ready' => __('Press Ready'),
+            'checkin' => $item->needsYou ? __('Check in now') : __('Open match room'),
             default => __('Open match room'),
         },
+        $model instanceof \App\Models\Tournament => __('Open tournament'),
         default => __('Answer'),
     };
 @endphp
@@ -117,12 +119,15 @@
                 <span class="flex min-w-0 flex-col gap-1">
                     <b class="text-sm">{{ $item->sentence }}</b>
                     @if ($item->tick)
-                        <span @class(['text-xs', 'text-loss' => $urgent, 'text-btc' => ! $urgent]) data-tick='@json($item->tick)' data-suffix="{{ __(':left left') }}">{{ __(':left left', ['left' => $item->trailing]) }}</span>
+                        <span @class(['text-xs', 'text-loss' => $urgent, 'text-btc' => ! $urgent]) data-tick='@json($item->tick)' data-suffix="{{ $item->countsToStart() ? __('in :left') : __(':left left') }}">{{ $item->countsToStart() ? __('in :left', ['left' => $item->trailing]) : __(':left left', ['left' => $item->trailing]) }}</span>
                     @endif
                 </span>
             </div>
         @endif
 
         <a href="{{ $item->href }}" @class(['w-full', 'dk-cta' => $item->needsYou, 'dk-sec' => ! $item->needsYou]) data-test="dock-panel-cta">{{ $cta }}</a>
+        @if ($item->withdraw)
+            <a href="{{ $item->withdraw }}" class="-mt-2 inline-flex min-h-11 items-center justify-center text-xs text-ink-2 hover:text-ink">{{ __('Can’t make it? Pull out') }}</a>
+        @endif
     </div>
 </div>
