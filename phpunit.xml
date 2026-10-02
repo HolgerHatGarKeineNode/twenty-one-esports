@@ -48,6 +48,7 @@
         <env name="MAIL_MAILER" value="array"/>
         <env name="QUEUE_CONNECTION" value="sync"/>
         <env name="SESSION_DRIVER" value="array"/>
+        <env name="ESPORTS_TMNF" value="false" force="true"/>
         <env name="ESPORTS_RELAYS" value="" force="true"/>
         <env name="ESPORTS_CHAT_RELAYS" value="" force="true"/>
         <env name="ESPORTS_PROFILE_RELAYS" value="" force="true"/>

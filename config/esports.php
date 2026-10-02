@@ -1415,8 +1415,11 @@ return [
             'timeout_seconds' => 5,
         ],
         'server' => [
-            'name' => env('TMNF_SERVER_NAME', 'Einundzwanzig eSports'),
+            'name' => env('TMNF_SERVER_NAME', 'TWENTY ONE'),
             'address' => env('TMNF_SERVER_ADDRESS'),
+            // The server's master-server login. A free Nations account may only join a player-hosted server
+            // from its Favourites, so How to join hands out tmtp://#addfavourite=<login> (FreeZone FAQ, Nadeo 2010).
+            'login' => env('TMNF_SERVER_LOGIN'),
         ],
         'listener' => [
             'backoff_initial_seconds' => 1,

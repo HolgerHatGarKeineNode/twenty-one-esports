@@ -8,6 +8,10 @@
     $serverName = (string) config('esports.tmnf.server.name');
     $serverAddress = config('esports.tmnf.server.address');
     $serverAddress = is_string($serverAddress) && trim($serverAddress) !== '' ? trim($serverAddress) : null;
+    // A free Nations account reaches a player-hosted server only from its Favourites: hand out that link when the login is known.
+    $serverLogin = config('esports.tmnf.server.login');
+    $favourite = is_string($serverLogin) && preg_match('/^[A-Za-z0-9_.-]{1,40}$/', trim($serverLogin)) === 1 ? 'tmtp://#addfavourite='.trim($serverLogin) : null;
+    $serverAddress = $favourite ?? $serverAddress;
     $linked = auth()->check() && \App\Support\Tmnf\TmnfLinks::isLinked(auth()->user());
     $authorTime = ($track['author_ms'] ?? 0) > 0 ? \App\Games\ScoreMetric::time()->format((int) $track['author_ms']) : null;
     $trackName = $track['name'] ?? __('the track of the week');
@@ -33,12 +37,21 @@
             <span class="font-display text-lg leading-tight font-bold [overflow-wrap:anywhere]" data-test="join-server-name">{{ $serverName }}</span>
             @if ($serverAddress !== null)
                 <span x-data="{ copied: false }" class="flex min-w-0 items-center gap-2">
-                    <code class="min-w-0 rounded-sm bg-well px-2 py-1 font-mono text-[13px] text-ink [overflow-wrap:anywhere]" data-test="join-server-address">{{-- A narrow card breaks before the port, never inside it --}}{!! str_replace(':', '<wbr>:', e($serverAddress)) !!}</code>
+                    <code class="min-w-0 rounded-sm bg-well px-2 py-1 font-mono text-[13px] text-ink [overflow-wrap:anywhere]" data-test="join-server-address">{{-- A narrow card breaks before the port, never inside it --}}{!! $favourite !== null ? e($serverAddress) : str_replace(':', '<wbr>:', e($serverAddress)) !!}</code>
                     <button type="button" class="inline-flex size-11 shrink-0 cursor-pointer items-center justify-center rounded-md border border-line bg-well text-ink-2 hover:text-ink" aria-label="{{ __('Copy the server address') }}"
                             x-on:click="navigator.clipboard?.writeText(@js($serverAddress)).then(() => { copied = true; setTimeout(() => copied = false, 1500) })" data-test="join-copy-address">
                         <x-icon name="copy" :size="16" x-show="! copied" /><x-icon name="check" :size="16" x-show="copied" x-cloak class="text-win" />
                     </button>
                 </span>
+                @if ($favourite !== null)
+                    {{-- Free Nations accounts: favourite first, restart, then join (FreeZone FAQ); the in-game Explorer bar takes the tmtp:// link. --}}
+                    <ol class="m-0 flex list-decimal flex-col gap-1.5 pl-5 text-[13px] leading-normal text-ink-2 marker:font-bold marker:text-tmnf" data-test="join-favourite-steps">
+                        <li>{{ __('Copy the link with the button.') }}</li>
+                        <li>{{ __('Open the Explorer in TMNF and paste the link into the bar at the top, then press Enter.') }}</li>
+                        <li>{{ __('Restart TMNF.') }}</li>
+                        <li>{!! __('Internet → Favourites → :server → join. Or search for :server in the server list.', ['server' => '<b class="text-ink" data-test="join-search-name">'.e($serverName).'</b>']) !!}</li>
+                    </ol>
+                @endif
             @else
                 <span class="text-[13px] text-ink-2" data-test="join-server-soon">{{ __('The address shows here once the server is online.') }}</span>
             @endif

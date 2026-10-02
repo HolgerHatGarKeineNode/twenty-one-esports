@@ -25,7 +25,7 @@ if [ -z "$(get TMNF_XMLRPC_PASSWORD)" ]; then
 fi
 
 password=$(get TMNF_XMLRPC_PASSWORD)
-name=$(get TMNF_SERVER_NAME); name=${name:-Einundzwanzig eSports}
+name=$(get TMNF_SERVER_NAME); name=${name:-TWENTY ONE}
 login=$(get TMNF_SERVER_LOGIN); account=$(get TMNF_SERVER_PASSWORD); validation=$(get TMNF_SERVER_VALIDATION); force_ip=$(get TMNF_FORCE_IP)
 
 for value in "$password" "$name" "$login" "$account" "$validation" "$force_ip"; do

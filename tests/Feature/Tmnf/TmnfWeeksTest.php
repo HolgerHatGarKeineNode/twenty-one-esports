@@ -239,7 +239,7 @@ test('the week page leads with How to join: the server, the link and the track; 
 
     $this->get(route('tournaments.show', $week))->assertOk()
         ->assertSee('data-test="to-tmnf-join"', false)->assertSee('data-test="tmnf-join"', false)
-        ->assertSee('Einundzwanzig eSports')->assertSee('tmnf.example.org:2350')->assertSee('A01-Race')->assertSee('24.540')
+        ->assertSee('TWENTY ONE')->assertSee('tmnf.example.org:2350')->assertSee('A01-Race')->assertSee('24.540')
         ->assertSee('https://store.steampowered.com/app/11020/', false)
         ->assertDontSee('data-test="to-signup"', false)->assertDontSee('data-test="to-blockfill"', false)
         ->assertDontSee('ada_drives')->assertDontSee(TMNF_A01);
@@ -304,7 +304,7 @@ test('the stream\'s TMNF slide shows the week, its track, the top 5 by league na
 
     $svg = SceneRenderer::fromConfig()->svg([...app(SceneSource::class)->rotation(TmnfSlide::SCENE, null, [], 0, 0, []), 'viewers' => null], RotationPlanner::VIEWS[TmnfSlide::SCENE]);
 
-    expect($svg)->toContain('>TMNF Week 41, 2026<', '>A01-Race<', '>Ada<', '>Ben<', '>0:25.100<', 'Join Einundzwanzig eSports in TMNF', '/scores/tmnf<')
+    expect($svg)->toContain('>TMNF Week 41, 2026<', '>A01-Race<', '>Ada<', '>Ben<', '>0:25.100<', 'Join TWENTY ONE in TMNF', '/scores/tmnf<')
         ->and($svg)->not->toContain('_drives')
         ->and(RotationPlanner::fromConfig(60)->teasers())->toContain(TmnfSlide::SCENE);
 
@@ -340,4 +340,18 @@ test('home, the rules and the attempts on /matches carry the week: its card show
         ->and(ScoreAttempts::links([$run]))->toBe([ScoreAttempts::key($run) => route('tournaments.scores', $week)]);
 
     $this->get(route('rules'))->assertOk()->assertSee('id="tmnf"', false)->assertSee('Only finishes of a linked login count.');
+});
+
+test('with a server login, How to join gives the favourite link and the restart step free Nations accounts need', function () {
+    config(['esports.tmnf.server.login' => 'e21league']);
+    tmnfPlayer('ada_drives', linked: true);
+    tmnfFinish('ada_drives', 25_100);
+    $week = app(TmnfWeeks::class)->current();
+
+    $this->get(route('tournaments.show', $week))->assertOk()
+        ->assertSee('tmtp://#addfavourite=e21league', false)
+        ->assertSee('data-test="join-favourite-steps"', false)
+        ->assertSee('Open the Explorer in TMNF and paste the link into the bar at the top, then press Enter.')
+        ->assertSee('Restart TMNF.')
+        ->assertSee('data-test="join-search-name"', false);
 });

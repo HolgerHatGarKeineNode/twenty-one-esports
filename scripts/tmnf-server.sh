@@ -21,7 +21,7 @@
 #   TMNF_XMLRPC_PORT      host port of XML-RPC, bound to 127.0.0.1 only (default 5005)
 #   TMNF_XMLRPC_USER      the authorization level Laravel logs in as (default SuperAdmin)
 #   TMNF_XMLRPC_PASSWORD  its password; generated into .env on the first `up` when missing
-#   TMNF_SERVER_NAME      the server name players see (default "Einundzwanzig eSports")
+#   TMNF_SERVER_NAME      the server name players see (default "TWENTY ONE")
 #   TMNF_GAME_PORT        host port for players, tcp+udp (default 2350)
 #   TMNF_GAME_BIND        address the game ports bind to (default 127.0.0.1; 0.0.0.0 for the LAN)
 #   TMNF_NETWORK          `host`: the container shares the host's network, so a TMNF client on this
@@ -148,7 +148,7 @@ up() {
     fi
 
     local name host port game_port game_bind
-    name=$(setting TMNF_SERVER_NAME 'Einundzwanzig eSports')
+    name=$(setting TMNF_SERVER_NAME 'TWENTY ONE')
     host=$(setting TMNF_XMLRPC_HOST 127.0.0.1)
     port=$(setting TMNF_XMLRPC_PORT 5005)
     game_port=$(setting TMNF_GAME_PORT 2350)

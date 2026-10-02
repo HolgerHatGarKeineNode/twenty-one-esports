@@ -6246,5 +6246,9 @@
     "Your time is on the board. Share it.": "Deine Zeit steht auf dem Leaderboard. Teil sie.",
     "every finish timed by our own TMNF server; a time far below the author time waits for an admin": "jede Zielankunft gemessen von unserem eigenen TMNF-Server; eine Zeit weit unter der Autorenzeit wartet auf einen Admin",
     "the track of the week": "die Strecke der Woche",
-    "timed by our own TMNF server": "gemessen von unserem eigenen TMNF-Server"
+    "timed by our own TMNF server": "gemessen von unserem eigenen TMNF-Server",
+    "Copy the link with the button.": "Kopier den Link mit dem Knopf.",
+    "Open the Explorer in TMNF and paste the link into the bar at the top, then press Enter.": "Öffne in TMNF den Explorer, füg den Link oben in die Leiste ein und drück Enter.",
+    "Restart TMNF.": "Starte TMNF neu.",
+    "Internet → Favourites → :server → join. Or search for :server in the server list.": "Internet → Favoriten → :server → beitreten. Oder such in der Serverliste nach :server."
 }
