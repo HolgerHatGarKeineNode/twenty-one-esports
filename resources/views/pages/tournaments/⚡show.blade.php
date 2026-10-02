@@ -25,6 +25,7 @@ use App\Support\Tournaments\CasualCups;
 use App\Support\Tournaments\CupSchedules;
 use App\Support\Tournaments\Estimator;
 use App\Support\Tournaments\FormatCopy;
+use App\Support\Tournaments\LobbyResults;
 use App\Support\Tournaments\MatchWait;
 use App\Support\Tournaments\Preview;
 use App\Support\Tournaments\TournamentChampion;
@@ -323,6 +324,27 @@ new #[Layout('layouts::app', ['section' => 'tournaments'])] class extends Compon
         }
 
         unset($this->cupMatch);
+    }
+
+    /**
+     * The viewer's own lobby of a running lobby tournament (P10), still to
+     * be played: pinned above the hero with the league's name and password
+     * (2026-10-02, the lobby list sits far down the page). Only for a player
+     * of that lobby (LobbyResults::plays()), as on its card; a director sees
+     * every lobby's access on the cards and has none of his own here.
+     */
+    #[Computed]
+    public function myLobby(): ?TournamentMatch
+    {
+        $user = auth()->user();
+
+        if (! $user instanceof User || $this->tournament->status !== TournamentStatus::Running) {
+            return null;
+        }
+
+        return TournamentMatch::query()->where('tournament_id', $this->tournament->id)->whereNotNull('lobby')->whereNull('result')->where('status', 'ready')
+            ->with(['slots.participant', 'tournament'])->orderBy('position')->get()
+            ->first(fn (TournamentMatch $match): bool => LobbyResults::plays($match, $user));
     }
 
     /**
@@ -636,6 +658,11 @@ new #[Layout('layouts::app', ['section' => 'tournaments'])] class extends Compon
     {{-- A running casual cup: the viewer's own match first, above the hero (P25, the player it concerns). --}}
     @if ($this->cupMatch)
         @include('pages.tournaments.partials.cup-match', ['cup' => $this->cupMatch, 'error' => $cupError])
+    @endif
+
+    {{-- A running lobby tournament: the viewer's own lobby, name and password with copy buttons, above the hero (P10). --}}
+    @if ($this->myLobby)
+        @include('pages.tournaments.partials.my-lobby', ['match' => $this->myLobby, 'tournament' => $tournament])
     @endif
 
     {{-- The viewer's own match with the countdown to the league's automatic decision (P18, slice 5). --}}

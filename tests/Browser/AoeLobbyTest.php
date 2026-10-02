@@ -218,6 +218,64 @@ test('the lobby cards of nine players show 5 and 4 with their own settings, the 
     'desktop 1440, de' => [1440, 900, 'de'],
 ]);
 
+test('a player\'s own lobby is pinned above the hero at 375 and 1440: name and password copy, the password shows on demand, the console stays clean', function (int $width, int $height) {
+    [$tournament] = aoeLobbyTournament();
+    $lobby = TournamentMatch::query()->where('tournament_id', $tournament->id)->orderBy('position')->with('slots.participant')->firstOrFail();
+    $player = User::query()->find($lobby->slots[0]->participant->user_id);
+    $page = shellPage($player, $width, $height);
+    $page->context()->addInitScript('Object.defineProperty(navigator, "clipboard", { configurable: true, value: { writeText: async (text) => { (window.__copied ??= []).push(text); } } });');
+    $problems = [];
+    shellOpen($page, route('tournaments.show', $tournament, false), $problems);
+
+    // On screen without scrolling: the pin and both copy buttons above the fold (the phone's tab bar counts as below it).
+    $box = $page->evaluate('() => {
+        // Seen: inside the window, and its bottom edge not covered by a bar fixed over it.
+        const seen = (el) => {
+            const box = el.getBoundingClientRect();
+            if (box.top < 0 || box.bottom > innerHeight) return false;
+            const hit = document.elementFromPoint(box.left + box.width / 2, box.bottom - 2);
+            return hit !== null && el.contains(hit);
+        };
+        const pinEl = document.querySelector("[data-test=my-lobby]");
+        const pin = pinEl.getBoundingClientRect();
+        const copies = [...document.querySelectorAll("[data-test=my-lobby] [data-test^=my-lobby-copy]")];
+        return {
+            scrollY: window.scrollY,
+            inFold: seen(pinEl),
+            copies: copies.map((b) => seen(b) && b.getBoundingClientRect().width >= 44 && b.getBoundingClientRect().height >= 44),
+            aboveHero: pin.bottom <= document.querySelector("[data-test=tournament-hero]").getBoundingClientRect().top,
+            overflow: document.documentElement.scrollWidth - document.documentElement.clientWidth,
+            text: document.querySelector("[data-test=my-lobby]").innerText,
+        };
+    }');
+    shellShot($page, "aoe-my-lobby-en-{$width}");
+
+    expect(array_diff_key($box, ['text' => 0]))->toBe(['scrollY' => 0, 'inFold' => true, 'copies' => [true, true], 'aboveHero' => true, 'overflow' => 0])
+        ->and($box['text'])->toContain('Join this lobby in Age of Empires II')->toContain($lobby->lobby['name'])->toContain('Lobby 1')
+        ->not->toContain($lobby->lobby_password);
+
+    // Copy writes the values; the password shows on demand.
+    $page->locator('[data-test=my-lobby-copy-name]')->click();
+    $page->locator('[data-test=my-lobby-copy-password]')->click();
+    BrowserWait::until($page, '() => (window.__copied ?? []).length === 2', 5_000);
+    expect($page->evaluate('() => window.__copied'))->toBe([$lobby->lobby['name'], $lobby->lobby_password]);
+    $page->locator('[data-test=my-lobby-show]')->click();
+    BrowserWait::until($page, '() => document.querySelector("[data-test=my-lobby-password]")?.checkVisibility()', 5_000);
+    expect($page->evaluate('() => document.querySelector("[data-test=my-lobby-password]").innerText.trim()'))->toBe($lobby->lobby_password);
+
+    // A Livewire roundtrip keeps the pin, and the page stays clean.
+    $page->evaluate('() => Livewire.all().find((c) => c.el.querySelector("[data-test=my-lobby]")).$wire.$refresh()');
+    BrowserWait::until($page, '() => document.querySelector("[data-test=my-lobby-name]")?.innerText.trim() === '.json_encode($lobby->lobby['name']), 5_000);
+    expect([...$problems, ...$page->evaluate('() => window.__errors'), ...$page->evaluate(BrowserConsole::BAD_RESPONSES)])->toBe([]);
+
+    // Positive control: the collector sees a throw and a failed fetch on this very page.
+    $page->evaluate('() => { setTimeout(() => { throw new Error("my lobby positive control"); }); fetch("/tournaments/0"); }');
+    BrowserWait::until($page, '() => window.__errors.some((e) => e.includes("my lobby positive control")) && window.__errors.some((e) => e.startsWith("404 "))', 5_000);
+})->with([
+    'phone 375' => [375, 812],
+    'desktop 1440' => [1440, 900],
+]);
+
 test('a player reports a shared place 1 with the end screen, and a director confirms it', function () {
     [$tournament, $director] = aoeLobbyTournament();
     $lobby = TournamentMatch::query()->where('tournament_id', $tournament->id)->where('position', 2)->with('slots.participant')->sole();

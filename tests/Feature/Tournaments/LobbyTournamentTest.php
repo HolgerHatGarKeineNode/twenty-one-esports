@@ -311,6 +311,32 @@ test('the lobby card shows the settings to everyone, and the name and password o
         ->assertSee('Kartengröße')->assertSee('Bündnissieg')->assertSee('Zeitlimit, 2 Stunden');
 });
 
+test('a player\'s own lobby is pinned above the hero with name, password and copy buttons; nobody else gets it, and a decided lobby leaves the pin', function () {
+    $tournament = runningLobby(9);
+    [$first, $second] = lobbiesOf($tournament)->all();
+    $player = User::query()->find($first->slots[0]->participant->user_id);
+    $other = User::query()->find($second->slots[0]->participant->user_id);
+    $director = User::query()->find($tournament->created_by_id);
+
+    $html = $this->actingAs($player)->get(route('tournaments.show', $tournament))->assertOk()->getContent();
+    expect($html)->toContain('data-test="my-lobby"')->toContain('data-test="my-lobby-copy-name"')->toContain('data-test="my-lobby-copy-password"')
+        ->toContain('Join this lobby in Age of Empires II')
+        // Pinned first: above the hero and above the lobby list.
+        ->and(strpos($html, 'data-test="my-lobby"'))->toBeLessThan(strpos($html, 'data-test="tournament-hero"'))
+        ->and(substr($html, strpos($html, 'data-test="my-lobby"'), 6000))->toContain($first->lobby['name'])->toContain($first->lobby_password)
+        ->not->toContain($second->lobby_password);
+
+    // The other lobby's player gets his own; the director and an outsider get no pin and no password outside the cards' rule.
+    expect($this->actingAs($other)->get(route('tournaments.show', $tournament))->getContent())->toContain('data-test="my-lobby"')->toContain($second->lobby_password)->not->toContain($first->lobby_password)
+        ->and($this->actingAs($director)->get(route('tournaments.show', $tournament))->getContent())->not->toContain('data-test="my-lobby"');
+    expect($this->actingAs(User::factory()->create())->get(route('tournaments.show', $tournament))->getContent())->not->toContain('data-test="my-lobby"')
+        ->not->toContain($first->lobby_password)->not->toContain($second->lobby_password);
+
+    // Decided: the lobby is over, the pin goes.
+    $first->forceFill(['result' => ['ranks' => [1, 2, 3, 4, 5]]])->save();
+    expect($this->actingAs($player)->get(route('tournaments.show', $tournament))->getContent())->not->toContain('data-test="my-lobby"');
+});
+
 test('a lobby result is stored as its kind and names and worded in the reader\'s language: confirmed in English, read in German', function () {
     $tournament = runningLobby(4);
     $lobby = lobbiesOf($tournament)->sole();

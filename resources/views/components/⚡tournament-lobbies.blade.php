@@ -193,7 +193,7 @@ new class extends Component {
                     'reported' => $report['places'][$slot->tournament_participant_id] ?? null,
                 ])->sortBy(fn (array $side): array => [$side['place'] ?? PHP_INT_MAX, $side['name']])->values();
             @endphp
-            <article wire:key="lobby-{{ $match->id }}" class="flex min-w-0 flex-col gap-4 rounded-card bg-card p-4 lg:p-5" data-test="lobby-card" data-lobby="{{ $match->position }}" data-players="{{ $count }}">
+            <article wire:key="lobby-{{ $match->id }}" id="lobby-{{ $match->position }}" class="flex min-w-0 scroll-mt-20 flex-col gap-4 rounded-card bg-card p-4 lg:p-5" data-test="lobby-card" data-lobby="{{ $match->position }}" data-players="{{ $count }}">
                 <header class="flex flex-wrap items-center justify-between gap-2">
                     <h3 class="m-0 text-[15px] font-bold">{{ __('Lobby :number', ['number' => $match->position]) }} <span class="font-normal text-ink-2">· {{ trans_choice(':count player|:count players', $count) }}</span></h3>
                     @if ($done)
