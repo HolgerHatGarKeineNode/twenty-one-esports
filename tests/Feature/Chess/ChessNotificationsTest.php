@@ -124,5 +124,6 @@ test('a switched-off trigger, a per-game choice and a live game decide what goes
     $games->move($blitz, $anna, 'e2e4');
 
     expect(notified())->toBe(['push' => [], 'dm' => []])
-        ->and($dmOnly->notifications()->where('type', 'your_move')->count())->toBe(1);
+        // "Your move" never goes to the bell: the game bar shows the turn.
+        ->and($dmOnly->notifications()->where('type', 'your_move')->count())->toBe(0);
 });

@@ -287,7 +287,7 @@ test('a cup play-now invite and a cup game the league started reach an away play
 
 /* ---------- "Your move": at the board, and once an hour ---------------------------------------------------- */
 
-test('ten quick daily chess moves send the opponent one push over the burst, and the bell every move', function () {
+test('ten quick daily chess moves send the opponent one push over the burst, and no bell entry for any move', function () {
     $anna = reachPlayer();
     $bert = reachPlayer();
     $games = app(ChessGameService::class);
@@ -300,8 +300,9 @@ test('ten quick daily chess moves send the opponent one push over the burst, and
 
     expect(remoteTo($bert))->toBe(['push' => 1, 'dm' => 0])
         ->and(remoteTo($anna))->toBe(['push' => 0, 'dm' => 0])
-        ->and($bert->notifications()->where('type', 'your_move')->count())->toBe(5)
-        ->and($anna->notifications()->where('type', 'your_move')->count())->toBe(5);
+        // The game bar shows whose turn it is; a bell entry per move buried what matters (user, 2026-10-02).
+        ->and($bert->notifications()->where('type', 'your_move')->count())->toBe(0)
+        ->and($anna->notifications()->where('type', 'your_move')->count())->toBe(0);
 
     // After a two-hour pause the next move reaches Anna again.
     $this->travel(2)->hours();
@@ -347,7 +348,7 @@ test('the per-game "only here", the push switch and the "your move" switch each 
         expect(remoteTo($bert))->toBe(['push' => 0, 'dm' => 0]);
     }
 
-    expect($here->notifications()->count())->toBe(1)
+    expect($here->notifications()->count())->toBe(0)
         ->and($switchedOff->notifications()->count())->toBe(0);
 });
 
@@ -381,7 +382,7 @@ test('a quick correspondence board game sends the same one push over the burst',
     expect($game->ply)->toBe(10)
         ->and(remoteTo($bert))->toBe(['push' => 1, 'dm' => 0])
         ->and(remoteTo($anna))->toBe(['push' => 0, 'dm' => 0])
-        ->and($bert->notifications()->where('type', 'your_move')->count())->toBe(5);
+        ->and($bert->notifications()->where('type', 'your_move')->count())->toBe(0);
 });
 
 /* ---------- The deadline reminder: once a turn ------------------------------------------------------------- */
@@ -460,7 +461,7 @@ test('each settings row says how far its kind reaches, and says it true', functi
         ->and($reach['game_over'])->toBe('bell; push only for correspondence games')
         ->and($reach['opponent_resigned'])->toBe('bell; push only for correspondence games')
         ->and($reach['invite_accepted'])->toBe('bell; push only for an invite link')
-        ->and($reach['your_move'])->toBe('bell; push at most once an hour per game')
+        ->and($reach['your_move'])->toBe('push at most once an hour per game; the game bar shows your turn')
         ->and($reach['reminder'])->toBe('bell, push and DM, even while you are here')
         ->and($reach['cup_game_now'])->toBe('bell and push')
         ->and($reach['game_started'])->toBe('bell and push');

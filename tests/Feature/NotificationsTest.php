@@ -1,5 +1,6 @@
 <?php
 
+use App\Enums\NotificationKind;
 use App\Events\ChessGameStarted;
 use App\Events\UserNotified;
 use App\Models\ChessGame;
@@ -70,11 +71,6 @@ test('each kind of notification is stored for the right player and can be marked
 
             return $anna;
         })(),
-        'your_move' => (function () use ($anna, $bert, $games) {
-            $games->move($games->start($anna, $bert, ChessGame::CORRESPONDENCE), $anna, 'e2e4');
-
-            return $bert;
-        })(),
         'reminder' => (function () use ($anna, $bert, $games) {
             $games->start($anna, $bert, ChessGame::CORRESPONDENCE);
             $this->travel(18)->hours();
@@ -106,7 +102,18 @@ test('each kind of notification is stored for the right player and can be marked
         ->call('markRead', $notification->id);
 
     expect($notification->refresh()->read_at)->not->toBeNull();
-})->with(['invite', 'invite_accepted', 'challenge', 'game_started', 'your_move', 'reminder', 'opponent_resigned', 'game_over', 'clan_join_request']);
+})->with(['invite', 'invite_accepted', 'challenge', 'game_started', 'reminder', 'opponent_resigned', 'game_over', 'clan_join_request']);
+
+test('"your move" never lands in the bell: the floating game bar already shows whose turn it is', function () {
+    [$anna, $bert] = [User::factory()->create(), User::factory()->create()];
+    $games = app(ChessGameService::class);
+    $games->move($games->start($anna, $bert, ChessGame::CORRESPONDENCE), $anna, 'e2e4');
+    $games->move($games->start($anna, $bert), $anna, 'e2e4');
+
+    expect($bert->notifications()->where('type', 'your_move')->count())->toBe(0)
+        ->and(NotificationKind::YourMove->inBell())->toBeFalse()
+        ->and(NotificationKind::Reminder->inBell())->toBeTrue();
+});
 
 test('the bell opens a notification, marks everything read and never touches another player\'s', function () {
     [$anna, $bert] = User::factory()->count(2)->create();

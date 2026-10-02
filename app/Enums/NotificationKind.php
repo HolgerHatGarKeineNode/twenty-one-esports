@@ -173,11 +173,22 @@ enum NotificationKind: string
             $this->pageOnly() => 'only on the page',
             $this === self::Reminder => 'bell, push and DM, even while you are here',
             $this->dmAllowed() => 'bell, push and DM',
-            $this === self::YourMove => 'bell; push at most once an hour per game',
+            $this === self::YourMove => 'push at most once an hour per game; the game bar shows your turn',
             in_array($this, [self::OpponentResigned, self::GameOver], true) => 'bell; push only for correspondence games',
             $this === self::InviteAccepted => 'bell; push only for an invite link',
             default => 'bell and push',
         };
+    }
+
+    /**
+     * Stored in the bell. "Your move" is not: one entry per move of every
+     * blitz and correspondence game buried what matters (a match room, a
+     * tournament on the day), and the floating game bar already shows whose
+     * turn it is. It still goes out by push, throttled (YourMoveThrottle).
+     */
+    public function inBell(): bool
+    {
+        return $this !== self::YourMove;
     }
 
     /**

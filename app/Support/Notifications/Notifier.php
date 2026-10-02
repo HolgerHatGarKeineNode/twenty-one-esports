@@ -71,7 +71,9 @@ final class Notifier
             return [];
         }
 
-        $this->inApp($user, $kind, $notice);
+        if ($kind->inBell()) {
+            $this->inApp($user, $kind, $notice);
+        }
 
         if (! $remote) {
             return [];

@@ -167,7 +167,7 @@ test('a challenge is refused to oneself, for a game without correspondence and p
 
 /* ---------- Moves, deadlines, timeouts ---------------------------------------------------------------------- */
 
-test('a move within the deadline is played, gives the opponent a full day and tells them in the bell, never by DM', function () {
+test('a move within the deadline is played, gives the opponent a full day, puts nothing in the bell and never sends a DM', function () {
     [$anna, $bert] = [correspondencePlayer(), correspondencePlayer()];
     $game = correspondenceGame($anna, $bert);
     $service = app(BoardGameService::class);
@@ -181,8 +181,8 @@ test('a move within the deadline is played, gives the opponent a full day and te
         ->and($game->turn)->toBe('b')
         ->and($game->deadline_ms)->toBe((int) now()->getTimestampMs() + CORRESPONDENCE_DAY_MS)
         ->and($game->white_ms)->toBe(CORRESPONDENCE_DAY_MS)
-        ->and($bert->notifications()->where('type', 'your_move')->sole()->data['url'])->toBe(route('board.show', $game))
-        ->and($bert->notifications()->where('type', 'your_move')->sole()->data['body'])->toContain('1. d2')
+        // The game bar shows the turn; the bell keeps no entry per move (user, 2026-10-02).
+        ->and($bert->notifications()->where('type', 'your_move')->count())->toBe(0)
         // "Your move" is never a DM (user decision 2026-09-30, NotificationKind::dmAllowed()).
         ->and(Bus::dispatched(SendNostrDm::class))->toHaveCount(0)
         ->and($service->snapshot($game)['clock'])->toMatchArray(['b' => CORRESPONDENCE_DAY_MS, 'running' => 'b'])
