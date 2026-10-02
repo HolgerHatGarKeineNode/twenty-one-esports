@@ -60,6 +60,11 @@ use Throwable;
  * note signed with another key than the configured bot key is left alone
  * (a deletion by this key would not delete it), with a warning.
  *
+ * Pacing and variety (ProfileNotes, note type "tournament"): the notes
+ * keep the type's cooldown and daily cap, special tournaments before the
+ * casual cups, and each takes the wording after the last one. A correction
+ * goes out at once (the old note is deleted already), and counts.
+ *
  * A tournament called off before its note went out gets none. Fail
  * closed: without `esports.stream_bot.enabled`, the bot key or a stream
  * relay, nothing is claimed, signed or sent.
@@ -67,6 +72,9 @@ use Throwable;
 class TournamentNotes
 {
     public const KIND_NOTE = 1;
+
+    /** The note type of these notes for ProfileNotes (cooldown, daily cap, wording). */
+    public const NOTE_TYPE = 'tournament';
 
     /** NIP-09 deletion request. */
     public const KIND_DELETION = 5;
@@ -491,12 +499,20 @@ class TournamentNotes
 
     /**
      * Published tournaments without a delivered note and not claimed by a
-     * run within `retry_minutes`, oldest published first, at most `per_run`.
+     * run within `retry_minutes`: the special tournaments first, then the
+     * casual cups, each oldest published first, at most `per_run` and what
+     * the type's cooldown and daily cap allow (ProfileNotes).
      *
      * @return list<Tournament>
      */
     public function due(CarbonImmutable $now): array
     {
+        $limit = min($this->perRun(), ProfileNotes::allowance(self::NOTE_TYPE, $now));
+
+        if ($limit <= 0) {
+            return [];
+        }
+
         return array_values(Tournament::query()
             ->with('event')
             ->whereNotNull('event_id')
@@ -510,30 +526,28 @@ class TournamentNotes
                 ->where('bot_posts.kind', self::KIND_NOTE)
                 ->where(fn (Builder $taken) => $taken->whereNotNull('bot_posts.published_at')
                     ->orWhere('bot_posts.attempted_at', '>', $this->claimCutoff($now))))
+            ->orderByRaw('case when cup_series is null then 0 else 1 end')
             ->orderBy('published_at')
             ->orderBy('id')
-            ->limit($this->perRun())
+            ->limit($limit)
             ->get()
             ->all());
     }
 
     /**
-     * The note's text: the copy for the tournament's status, then the
-     * calendar event as `nostr:naddr1…` after a blank line.
+     * The note's text: the copy for the tournament's status in the wording
+     * `$variant` (null: the one the next note takes), then the calendar
+     * event as `nostr:naddr1…` after a blank line.
      */
-    public function content(Tournament $tournament): string
+    public function content(Tournament $tournament, ?int $variant = null): string
     {
         $previous = app()->getLocale();
         app()->setLocale(self::LOCALE);
 
         try {
-            $template = match ($tournament->status) {
-                TournamentStatus::Signup => 'tournament_note_open',
-                TournamentStatus::Drawing, TournamentStatus::Running => 'tournament_note_running',
-                default => 'tournament_note_finished',
-            };
+            $template = $this->template($tournament);
 
-            $body = StreamBotCopy::render($template, 0, [
+            $body = StreamBotCopy::render($template, $variant ?? $this->nextVariant($tournament), [
                 'name' => StreamBotCopy::clean($tournament->name, self::NAME_LENGTH),
                 'game' => $this->gameLine($tournament),
                 'starts' => $this->startStamp($tournament),
@@ -547,15 +561,32 @@ class TournamentNotes
         return $body."\n\nnostr:".$this->naddr($tournament);
     }
 
+    /** The template of a tournament's note, by its status when the note goes out. */
+    private function template(Tournament $tournament): string
+    {
+        return match ($tournament->status) {
+            TournamentStatus::Signup => 'tournament_note_open',
+            TournamentStatus::Drawing, TournamentStatus::Running => 'tournament_note_running',
+            default => 'tournament_note_finished',
+        };
+    }
+
+    /** The wording the next tournament note takes (ProfileNotes). */
+    private function nextVariant(Tournament $tournament): int
+    {
+        return ProfileNotes::nextVariant(self::NOTE_TYPE, StreamBotCopy::variants($this->template($tournament)));
+    }
+
     /**
-     * The kind-1 note: the content and one NIP-18 `q` tag on the calendar
-     * event's address with its relay hint. No `t` tag, no `#` (a standing
-     * rule of this project), no `p` (the league account is not pinged).
+     * The kind-1 note in the wording `$variant` (null: the next one): the
+     * content and one NIP-18 `q` tag on the calendar event's address with
+     * its relay hint. No `t` tag, no `#` (a standing rule of this project),
+     * no `p` (the league account is not pinged).
      */
-    public function event(LeagueKey $key, Tournament $tournament, int $createdAt): SignedEvent
+    public function event(LeagueKey $key, Tournament $tournament, int $createdAt, ?int $variant = null): SignedEvent
     {
         $address = $tournament->address() ?? throw new LogicException('An unpublished tournament has no note.');
-        $content = $this->content($tournament);
+        $content = $this->content($tournament, $variant);
         $tags = [['q', $address, $this->relayHint() ?? '']];
         $body = explode("\n\nnostr:", $content, 2)[0];
         $problems = StreamBotCopy::violations($body, $tags);
@@ -602,8 +633,14 @@ class TournamentNotes
 
         // Signed once; a retry sends the stored event again, never a new one.
         if ($post->event === null) {
-            $signed = $this->event($key, $tournament, $now->getTimestamp());
-            $post->forceFill(['event_id' => $signed->id, 'event' => json_encode($signed->toArray(), JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR)])->save();
+            $variant = $this->nextVariant($tournament);
+            $signed = $this->event($key, $tournament, $now->getTimestamp(), $variant);
+            $post->forceFill([
+                'event_id' => $signed->id,
+                'event' => json_encode($signed->toArray(), JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR),
+                'note_type' => self::NOTE_TYPE,
+                'variant' => $variant,
+            ])->save();
         }
 
         $event = SignedEvent::fromInput(json_decode((string) $post->event, true))

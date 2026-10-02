@@ -135,42 +135,68 @@ final class StreamBotCopy
 
         // Notes on the bot's own profile (kind 1, TournamentNotes), one per tournament, by its status
         // when the note goes out. The `nostr:naddr1…` of the calendar event follows after a blank line.
+        // Every profile note has several wordings; ProfileNotes picks the one after the type's last note, so the same
+        // wording never follows itself. A tournament note always names its start (TournamentNotes finds a moved one by it).
         'tournament_note_open' => [
             ['🏆 New tournament: :name', '🎮 :game · starts :starts', '💰 :pot sats in the pot', '👉 Sign up: :url'],
+            ['📣 Sign-up is open: :name', '🗓️ :game, starts :starts', '💰 :pot sats up for grabs', '👉 Join in: :url'],
+            ['⚔️ :name is taking sign-ups', '🎮 :game · starts :starts', '💰 Pot: :pot sats', '👉 Grab a place: :url'],
         ],
         'tournament_note_running' => [
             ['🏆 Tournament on now: :name', '🎮 :game · started :starts', '💰 :pot sats in the pot', '👉 Follow it: :url'],
+            ['🔴 :name is under way', '🎮 :game · started :starts', '💰 :pot sats in the pot', '👉 Watch the bracket: :url'],
         ],
         'tournament_note_finished' => [
             ['🏆 Tournament: :name', '🎮 :game · played :starts', '💰 :pot sats in the pot', '👉 Bracket and results: :url'],
+            ['🏁 :name is decided', '🎮 :game · played :starts', '💰 :pot sats in the pot', '👉 See how it went: :url'],
         ],
         // Free-places reminders on the same profile (FreePlaceNotes, P49), while sign-up is open and
         // places are left; the `nostr:naddr1…` follows after a blank line here too.
         'tournament_note_places' => [
             ['🪑 :free of :places places left: :name', '🎮 :game · starts :starts', '⏳ Sign-up closes in :left', '👉 Grab a place: :url'],
+            ['⏳ :left left to join :name', '🪑 :free of :places places still free', '🎮 :game · starts :starts', '👉 Sign up: :url'],
+            ['🙋 Still room in :name: :free of :places places', '🗓️ :game · starts :starts', '⏳ Sign-up closes in :left', '👉 :url'],
         ],
         // Blockfill's week notes on the same profile (BlockfillNotes, plan "Blockfill", P6): a week once it is open,
         // its winner and top 3 once it is finished; the week's `nostr:naddr1…` follows after a blank line once published.
         'blockfill_note_week' => [
             ['🧱 A new Blockfill week is open: :name', '⏱️ Mine 40 blocks as fast as you can, your best ranked run of the week counts', '🗓️ Until :ends', '👉 Play: :url'],
+            ['⛏️ :name starts now, the board is empty', '🧱 40 blocks against the clock, only your best ranked run counts', '🗓️ Open until :ends', '👉 Start mining: :url'],
         ],
         'blockfill_note_winner' => [
             ['🏆 :name goes to :winner in :time', '🧱 Top 3: :podium', '🔁 A new week is on, every run starts from zero', '👉 All weeks: :url'],
+            ['🥇 :winner wins :name in :time', '🧱 Podium: :podium', '🔁 Fresh week, fresh board', '👉 All weeks: :url'],
         ],
         // A verified run that took the running week's first place; `:gap` is empty for the week's first one.
         'blockfill_note_top' => [
             ['🥇 New first place in :name: :player', '⏱️ :time:gap', '🗓️ The week runs until :ends', '👉 Beat it: :url'],
+            ['⚡ :player takes the lead in :name', '⏱️ :time:gap', '🗓️ Open until :ends', '👉 Your turn: :url'],
+            ['🧱 Top of the board in :name: :player', '⏱️ :time:gap', '🗓️ Still time until :ends', '👉 Try to beat it: :url'],
+        ],
+        // Several first places since the bot's last one (a burst) in one note: `:count` of them, the leader now and
+        // the others who held the top meanwhile (`:others` null, so left out, when the leader only beat themself).
+        'blockfill_note_top_burst' => [
+            ['🥇 :count new first places in :name', '🏁 On top now: :player in :time', '⚔️ Also held it: :others', '👉 Beat it: :url'],
+            ['🔥 First place changed hands :count times in :name', '🥇 :player leads with :time', '⚔️ Before: :others', '👉 Your turn: :url'],
         ],
         // TMNF's week notes (TmnfNotes, plan "Trackmania und Restposten", P2), as Blockfill's: the week and its track
         // once it is open, a new first place (`:gap` empty for the week's first), the winner and top 3.
         'tmnf_note_week' => [
             ['🏁 A new TMNF week is open: :name', '🏎️ Track :track on our own server, your best finish of the week counts', '🗓️ Until :ends', '👉 How to join: :url'],
+            ['🏎️ :name is on: Track :track', '🏁 Free to play on our own server, only your best finish counts', '🗓️ Open until :ends', '👉 How to join: :url'],
         ],
         'tmnf_note_winner' => [
             ['🏆 :name goes to :winner in :time on :track', '🏁 Top 3: :podium', '🔁 A new week is on, every time starts from zero', '👉 All weeks: :url'],
+            ['🥇 :winner wins :name on :track in :time', '🏁 Podium: :podium', '🔁 Fresh week, fresh board', '👉 All weeks: :url'],
         ],
+        // On the profile only with `esports.stream_bot.tmnf_notes.top_on_profile`; the chat tells new best times (tmnf_top).
         'tmnf_note_top' => [
             ['🥇 New first place in :name: :player', '⏱️ :time on :track:gap', '🗓️ The week runs until :ends', '👉 Beat it: :url'],
+            ['⚡ :player takes the lead in :name', '⏱️ :time on :track:gap', '🗓️ Open until :ends', '👉 Your turn: :url'],
+        ],
+        'tmnf_note_top_burst' => [
+            ['🥇 :count new first places in :name', '🏁 On top now: :player in :time on :track', '⚔️ Also held it: :others', '👉 Beat it: :url'],
+            ['🔥 First place changed hands :count times in :name', '🥇 :player leads with :time on :track', '⚔️ Before: :others', '👉 Your turn: :url'],
         ],
         // Pride notes on the same profile (PrideNotes): players named for what they did, tagged; the
         // rendered slide follows after a blank line. Written by the kommunikator (2026-09-28).

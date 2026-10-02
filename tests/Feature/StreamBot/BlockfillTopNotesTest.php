@@ -3,8 +3,8 @@
 /*
 | The stream bot's "new first place" note of a running Blockfill week
 | (BlockfillNotes::SLOT_TOP): a verified run that takes the week's first
-| place gets one kind-1 note, at most one per `top_minutes`, only the latest
-| of a burst, none in the week's last hour, none for runs without a verified
+| place gets one kind-1 note, at most one per `top_minutes`, a burst in one
+| note led by its latest, none in the week's last hour, none for runs without a verified
 | time, none with a switch off, and never twice. The player is tagged as
 | PrideNotes tags them (`nostr:npub1…` and `p`), a player without a Nostr key
 | keeps the plain name.
@@ -109,13 +109,15 @@ function topNoteTick(string $at): void
 }
 
 /**
- * The "new first place" notes sent so far.
+ * The "new first place" notes sent so far, found by their rows (their wording rotates, ProfileNotes).
  *
  * @return list<SignedEvent>
  */
 function topNotes(object $relays): array
 {
-    return array_values(array_filter($relays->sent, fn (SignedEvent $event): bool => str_contains($event->content, 'New first place')));
+    $ids = BotPost::query()->where('subject_type', BlockfillNotes::SUBJECT)->where('slot', 'like', 'top-%')->whereNotNull('event_id')->pluck('event_id')->all();
+
+    return array_values(array_filter($relays->sent, fn (SignedEvent $event): bool => in_array($event->id, $ids, true)));
 }
 
 test('a verified run that takes the week\'s first place gives exactly one note, however often the job runs', function () {
@@ -135,7 +137,7 @@ test('a verified run that takes the week\'s first place gives exactly one note, 
         ->and(BotPost::query()->where('subject_type', BlockfillNotes::SUBJECT)->where('slot', 'like', 'top-%')->whereNotNull('published_at')->count())->toBe(1);
 });
 
-test('a second first place within the window waits until the window ends, and then only the latest one goes out', function () {
+test('a second first place within the window waits until the window ends, and then one note leads with the latest and names the one between', function () {
     topNoteRun('Ada', 3100);
     topNoteTick('2026-10-07 12:00:00');
 
@@ -154,8 +156,11 @@ test('a second first place within the window waits until the window ends, and th
     topNoteTick('2026-10-07 13:05:00');
     $notes = topNotes($this->relays);
 
+    // The burst (Ben, then Cy) is one summary note (ProfileVarietyTest): Cy on top, Ben as the one who held it between.
     expect($notes)->toHaveCount(2)
-        ->and($notes[1]->content)->toContain(topNoteNpub('Cy'))->not->toContain(topNoteNpub('Ben'))
+        ->and(explode("\n", $notes[1]->content)[1])->toContain(topNoteNpub('Cy'))->not->toContain(topNoteNpub('Ben'))
+        ->and(explode("\n", $notes[1]->content)[2])->toContain(topNoteNpub('Ben'))
+        ->and($notes[1]->content)->not->toContain(topNoteNpub('Ada'))
         ->and(BotPost::query()->where('subject_type', BlockfillNotes::SUBJECT)->where('slot', 'like', 'top-%')->count())->toBe(2);
 });
 
@@ -229,12 +234,13 @@ test('the note tags the player (nostr:npub1… and p), names the time, the gap t
     $naddr = app(TournamentNotes::class)->naddr($week);
     [$text] = explode("\n\nnostr:", $note->content, 2);
 
+    // The week's second first-place note takes the type's second wording (ProfileNotes).
     expect($note->kind)->toBe(1)
         ->and($note->content)->toBe(
-            '🥇 New first place in Blockfill Week 41, 2026: '.topNoteNpub('Ben')."\n"
+            '⚡ '.topNoteNpub('Ben')." takes the lead in Blockfill Week 41, 2026\n"
             ."⏱️ 0:50.000, 1.666 s faster than the first place before\n"
-            ."🗓️ The week runs until Mon, 12 Oct 2026, 12:00 AM CEST\n"
-            .'👉 Beat it: '.route('stacker.play')."\n\nnostr:".$naddr)
+            ."🗓️ Open until Mon, 12 Oct 2026, 12:00 AM CEST\n"
+            .'👉 Your turn: '.route('stacker.play')."\n\nnostr:".$naddr)
         ->and(route('stacker.play'))->toEndWith('/blockfill')
         ->and(StreamBotCopy::violations($text, $note->tags))->toBe([])
         ->and($note->tags)->toBe([['p', User::query()->where('name', 'Ben')->sole()->pubkey], ['q', $week->address(), app(TournamentNotes::class)->relayHint() ?? '']])
@@ -294,8 +300,9 @@ test('a first place that reached the board long before the window allowed a note
     topNoteRun('Ben', 3000);
     topNoteTick('2026-10-07 12:30:00');
 
+    // Ada's old first place is no part of a burst either: the note is Ben's alone.
     expect(topNotes($this->relays))->toHaveCount(1)
-        ->and(topNotes($this->relays)[0]->content)->toContain(topNoteNpub('Ben'));
+        ->and(topNotes($this->relays)[0]->content)->toContain(topNoteNpub('Ben'))->not->toContain(topNoteNpub('Ada'));
 });
 
 test('a new week\'s own note goes first, and its first place waits the window after it', function () {
@@ -305,7 +312,7 @@ test('a new week\'s own note goes first, and its first place waits the window af
     topNoteRun('Ada', 3100);
     topNoteTick('2026-10-11 22:10:00');
 
-    $opens = fn (): int => count(array_filter($this->relays->sent, fn (SignedEvent $event): bool => str_contains($event->content, 'A new Blockfill week is open')));
+    $opens = fn (): int => BotPost::query()->where(['subject_type' => BlockfillNotes::SUBJECT, 'slot' => BlockfillNotes::SLOT_OPEN])->whereNotNull('published_at')->count();
 
     expect($opens())->toBe(2)
         ->and(topNotes($this->relays))->toBe([]);

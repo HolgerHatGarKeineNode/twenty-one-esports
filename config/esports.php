@@ -1164,14 +1164,27 @@ return [
         ],
         // Blockfill's notes on the same profile (twentyone:stream-bot:blockfill, BlockfillNotes): a verified
         // run that takes the running week's first place gets a note, but no sooner than `top_minutes` after
-        // the bot's last Blockfill note (a burst posts only its latest first place), and none in the week's
-        // last hour, when the winner note is next.
+        // the bot's last Blockfill note, and none in the week's last hour, when the winner note is next.
+        // Several first places since the last such note become one summary note naming everyone who held it.
         'blockfill_notes' => [
             'top_minutes' => 60,
+            'top_on_profile' => true,
         ],
-        // TMNF's week notes, the same rules (twentyone:stream-bot:tmnf, TmnfNotes).
+        // TMNF's week notes, the same rules (twentyone:stream-bot:tmnf, TmnfNotes); its new best times go
+        // to the stream chat instead of the profile (StreamBotBuilders `tmnf_top`, user 2026-10-02).
         'tmnf_notes' => [
             'top_minutes' => 60,
+            'top_on_profile' => false,
+        ],
+        // Pacing of the profile notes per note type (ProfileNotes, user 2026-10-02: the profile looked
+        // spammy): `cooldown_minutes` after the type's last delivered note, at most `daily_cap` delivered
+        // per Berlin day; 0 or a missing type is no limit. A held-back note goes out on a later run,
+        // unless its own window closed meanwhile (a free-places slot, a first place gone stale).
+        'profile_limits' => [
+            'tournament' => ['cooldown_minutes' => 60, 'daily_cap' => 6],
+            'free_places' => ['cooldown_minutes' => 60, 'daily_cap' => 6],
+            'blockfill_top' => ['cooldown_minutes' => 0, 'daily_cap' => 3],
+            'tmnf_top' => ['cooldown_minutes' => 0, 'daily_cap' => 3],
         ],
         'profile' => [
             'name' => 'TWENTY ONE Bot',

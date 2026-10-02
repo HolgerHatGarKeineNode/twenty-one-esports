@@ -3,6 +3,8 @@
 namespace App\Console\Commands;
 
 use App\Support\StreamBot\PrideNotes;
+use App\Support\StreamBot\ProfileNotes;
+use App\Support\StreamBot\StreamBotCopy;
 use Carbon\CarbonImmutable;
 use Illuminate\Console\Attributes\Description;
 use Illuminate\Console\Attributes\Signature;
@@ -13,8 +15,8 @@ use Illuminate\Console\Command;
  * Scheduled every five minutes; a type posts in its slot, at most once a
  * day and only when its text changed.
  *
- * `--dry-run` prints the note of every type as it would read now,
- * whatever the slot; it claims, renders, signs, sends and stores nothing.
+ * `--dry-run` prints the note of every type as it would read now, in the
+ * wording its next note takes, whatever the slot; it claims, renders, signs, sends and stores nothing.
  */
 #[Signature('twentyone:stream-bot:pride
     {--dry-run : Print every type\'s note as it would read now; claim, sign, send and store nothing}')]
@@ -32,7 +34,7 @@ class TwentyOneStreamBotPrideCommand extends Command
         }
 
         foreach (PrideNotes::TYPES as $type => [$name]) {
-            $note = $notes->compose($type, (int) $now->dayOfYear);
+            $note = $notes->compose($type, ProfileNotes::nextVariant(PrideNotes::noteType($type), StreamBotCopy::variants(PrideNotes::TYPES[$type][2])));
             $this->line('--- '.$name.($note === null ? ': nothing to show' : ', tags: '.count($note['tags'])));
 
             if ($note !== null) {

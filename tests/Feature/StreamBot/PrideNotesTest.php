@@ -92,6 +92,23 @@ test('the latest win goes out once in its slot, with the slide, the winner tagge
         ->and($this->published)->toHaveCount(1);
 });
 
+test('the next win note takes the next wording, even with a quiet day between them', function () {
+    // Sat 2026-09-26 and Mon 2026-09-28, both in the win slot; Sunday had nothing new.
+    $this->travelTo(Carbon::parse('2026-09-26 17:30:00', 'UTC'));
+    ChessGame::factory()->finished('1-0')->create(['white_id' => $this->winner, 'black_id' => $this->loser, 'ended_at' => now()->subHour()]);
+    app(PrideNotes::class)->run(now()->toImmutable());
+
+    $this->travelTo(Carbon::parse('2026-09-28 17:30:00', 'UTC'));
+    ChessGame::factory()->finished('0-1')->create(['white_id' => $this->winner, 'black_id' => $this->loser, 'ended_at' => now()->subHour()]);
+    app(PrideNotes::class)->run(now()->toImmutable());
+
+    $opening = fn (SignedEvent $note): string => mb_substr($note->content, 0, 1);
+
+    expect($this->published)->toHaveCount(2)
+        ->and($opening($this->published[1]))->not->toBe($opening($this->published[0]))
+        ->and(BotPost::query()->where('subject_type', PrideNotes::SUBJECT)->orderBy('id')->pluck('variant')->all())->toBe([0, 1]);
+});
+
 test('a note no relay took is sent again later as the same event', function () {
     $this->travelTo(Carbon::parse('2026-09-26 17:30:00', 'UTC'));
     ChessGame::factory()->finished('0-1')->create(['white_id' => $this->loser, 'black_id' => $this->winner, 'ended_at' => now()->subHour()]);

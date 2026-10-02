@@ -32,6 +32,8 @@ beforeEach(function () {
         'esports.stream_bot.enabled' => true,
         'esports.stream_bot.nsec' => $this->botKey->secret,
         'esports.stream_bot.tournament_notes.per_run' => 10,
+        // The pacing of the profile notes (ProfileVarietyTest) is not what this file tests.
+        'esports.stream_bot.profile_limits' => [],
         'twentyone.stream.relays' => ['wss://stream.test'],
     ]);
 
@@ -138,7 +140,8 @@ test('the dry run names every deletion and what it would do, and changes nothing
         ->toContain("tournament {$four->id} {$four->slug}: missing on wss://two.test, resend")
         ->toContain('Deleted bot notes (kind 1): 1')
         ->toContain("tournament {$three->id}: note {$this->deletedNote} deleted by {$this->deletions['note']['id']}, renew")
-        ->toContain('🏆 New tournament: Heal Cup 3')
+        // The renewed note in the wording the next note takes (ProfileNotes rotates them).
+        ->toContain(explode("\n", app(TournamentNotes::class)->content($three))[0])->toContain('Heal Cup 3')
         ->toContain($this->league->pubkey.':'.str_repeat('ab', 32))
         ->toContain($this->botKey->pubkey.':'.$three->address())
         ->toContain('Dry run: nothing was signed, stored or sent.')

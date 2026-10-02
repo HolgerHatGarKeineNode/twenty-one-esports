@@ -3,20 +3,19 @@
 namespace App\Support\StreamBot;
 
 use App\Games\TrackmaniaNationsForever;
-use App\Models\ScoreRun;
 use App\Models\Tournament;
-use App\Support\LeagueTime;
 use App\Support\Scores\ScoreRuns;
-use App\Support\Scores\ScoreWindow;
 use App\Support\Tmnf\TmnfWeeks;
 use Carbon\CarbonImmutable;
 
 /**
  * The stream bot's TMNF week notes on its own profile (plan "Trackmania und
  * Restposten", P2), as Blockfill's (WeeklyBoardNotes): the week and its
- * track once it is open, its new first place, its winner and top 3. The
- * players are tagged by their Nostr key, never by a TMNF login. The
- * first-place notes are at least `esports.stream_bot.tmnf_notes.top_minutes` apart.
+ * track once it is open, its winner and top 3. The players are tagged by
+ * their Nostr key, never by a TMNF login. Its new first places go to the
+ * stream chat (StreamBotBuilders `tmnf_top`, user 2026-10-02); on the
+ * profile only with `esports.stream_bot.tmnf_notes.top_on_profile`, then at
+ * least `top_minutes` apart.
  */
 final class TmnfNotes extends WeeklyBoardNotes
 {
@@ -62,27 +61,28 @@ final class TmnfNotes extends WeeklyBoardNotes
         return (int) config('esports.stream_bot.tmnf_notes.top_minutes', self::TOP_MINUTES);
     }
 
-    protected function weekNote(Tournament $week): string
+    /** Off by default: TMNF's new best times go to the stream chat (StreamBotBuilders `tmnf_top`, user 2026-10-02). */
+    protected function topOnProfile(): bool
     {
-        return StreamBotCopy::render('tmnf_note_week', 0, [
-            'name' => StreamBotCopy::clean($week->title(), 40),
-            'track' => $this->track($week),
-            'ends' => LeagueTime::stamp(ScoreWindow::of($week)->end),
-            'url' => route('tournaments.show', $week),
-        ]);
+        return (bool) config('esports.stream_bot.tmnf_notes.top_on_profile', false);
     }
 
-    protected function winnerNote(Tournament $week, array $values): string
+    protected function prefix(): string
     {
-        return StreamBotCopy::render('tmnf_note_winner', 0, [...$values, 'track' => $this->track($week), 'url' => route('scores.show', TrackmaniaNationsForever::SLUG)]);
+        return 'tmnf_note';
     }
 
-    protected function topNote(Tournament $week, ScoreRun $run, array $values): string
+    /** The week's track and page (How to join), the weeks' page for a winner. */
+    protected function extras(Tournament $week, string $kind): array
     {
-        return StreamBotCopy::render('tmnf_note_top', 0, [...$values, 'track' => $this->track($week), 'url' => route('tournaments.show', $week)]);
+        return [
+            'track' => self::track($week),
+            'url' => $kind === 'winner' ? route('scores.show', TrackmaniaNationsForever::SLUG) : route('tournaments.show', $week),
+        ];
     }
 
-    private function track(Tournament $week): string
+    /** The week's track by name, as the notes and the stream chat name it. */
+    public static function track(Tournament $week): string
     {
         return StreamBotCopy::clean(TmnfWeeks::track($week->score_course)['name'] ?? (string) $week->score_course, 40);
     }

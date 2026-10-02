@@ -23,11 +23,17 @@ use Illuminate\Support\Carbon;
  * kind 5 on the same tournament, slot: the first 16 characters of the
  * deleted note's id; `published_at` once every relay took it.
  *
+ * `note_type` and `variant` are set when a note is signed (ProfileNotes):
+ * what kind of note it is, for its type's cooldown and daily cap, and the
+ * wording it used, so the type's next note takes the next one.
+ *
  * @property int $id
  * @property string $subject_type
  * @property int $subject_id
  * @property int $kind
  * @property string $slot
+ * @property string|null $note_type
+ * @property int|null $variant
  * @property string|null $event_id
  * @property string|null $event
  * @property int $attempts
@@ -38,7 +44,7 @@ use Illuminate\Support\Carbon;
  * @property Carbon|null $created_at
  * @property Carbon|null $updated_at
  */
-#[Fillable(['subject_type', 'subject_id', 'kind', 'slot', 'event_id', 'event', 'attempts', 'relays_accepted', 'relays_total', 'attempted_at', 'published_at'])]
+#[Fillable(['subject_type', 'subject_id', 'kind', 'slot', 'note_type', 'variant', 'event_id', 'event', 'attempts', 'relays_accepted', 'relays_total', 'attempted_at', 'published_at'])]
 class BotPost extends Model
 {
     public const SUBJECT_TOURNAMENT = 'tournament';
@@ -51,6 +57,7 @@ class BotPost extends Model
         return [
             'subject_id' => 'integer',
             'kind' => 'integer',
+            'variant' => 'integer',
             'attempts' => 'integer',
             'relays_accepted' => 'integer',
             'relays_total' => 'integer',

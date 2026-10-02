@@ -30,7 +30,9 @@ use Throwable;
  * tournament's shared 1st place with every player on it tagged), the
  * climbers of the week (e2), who just signed up (e3), the biggest pot's
  * prizes (e4). A type posts only when it has data and its text differs from
- * its last note, so a quiet day posts nothing.
+ * its last note, so a quiet day posts nothing. Each type takes the wording
+ * after its last note's (ProfileNotes, note type "pride_<name>"), so the
+ * same wording never follows itself, quiet days in between or not.
  *
  * Exactly once per type and day (BotPost, subject `pride`, the type as
  * subject id, the day as slot): claimed before it is signed, signed once,
@@ -369,9 +371,11 @@ class PrideNotes
         $subject = ['subject_type' => self::SUBJECT, 'subject_id' => $type, 'kind' => self::KIND_NOTE, 'slot' => $day];
         $post = BotPost::query()->where($subject)->first();
 
+        $variant = ProfileNotes::nextVariant(self::noteType($type), StreamBotCopy::variants(self::TYPES[$type][2]));
+
         // Not signed yet: only when there is something new to say.
         if ($post === null || $post->event === null) {
-            $note = $this->compose($type, (int) $now->dayOfYear);
+            $note = $this->compose($type, $variant);
 
             if ($note === null) {
                 return $name.': nothing to show';
@@ -395,10 +399,15 @@ class PrideNotes
         $post = BotPost::query()->where($subject)->firstOrFail();
 
         if ($post->event === null) {
-            $note ??= $this->compose($type, (int) $now->dayOfYear) ?? throw new LogicException('The pride note lost its data.');
+            $note ??= $this->compose($type, $variant) ?? throw new LogicException('The pride note lost its data.');
             [$url, $imeta] = $this->image($scene, $note['slide']);
             $signed = $key->sign(self::KIND_NOTE, [...$note['tags'], $imeta], $note['body']."\n\n".$url, $now->getTimestamp());
-            $post->forceFill(['event_id' => $signed->id, 'event' => json_encode($signed->toArray(), JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR)])->save();
+            $post->forceFill([
+                'event_id' => $signed->id,
+                'event' => json_encode($signed->toArray(), JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR),
+                'note_type' => self::noteType($type),
+                'variant' => $variant,
+            ])->save();
         }
 
         $event = SignedEvent::fromInput(json_decode((string) $post->event, true))
@@ -410,6 +419,12 @@ class PrideNotes
         Log::info('Stream bot pride note', ['type' => $name, 'id' => $event->id, 'relays' => array_map(fn ($result): string => $result->accepted ? 'ok' : 'failed: '.$result->message, $results)]);
 
         return sprintf('%s: %s id=%s to %d/%d relays', $name, $accepted > 0 ? 'posted' : 'not accepted, retried later', $event->id, $accepted, count($results));
+    }
+
+    /** The ProfileNotes note type of a pride type: "pride_win", "pride_climbers", … */
+    public static function noteType(int $type): string
+    {
+        return 'pride_'.self::TYPES[$type][0];
     }
 
     /**

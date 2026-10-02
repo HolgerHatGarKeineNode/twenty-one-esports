@@ -17,6 +17,7 @@ use App\Support\Scores\ScoreWindow;
 use App\Support\SeasonChain\LeagueKey;
 use App\Support\TwentyOne\Stream\BlockfillSlides;
 use Carbon\CarbonImmutable;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use LogicException;
@@ -40,11 +41,17 @@ use Throwable;
  *   waiting, held and rejected runs never count), its time and how much
  *   faster it is than the first place before it. Not sooner than the game's
  *   top minutes after the bot's last note of the game of any slot, and not
- *   while another note of the game is due: a burst of first places posts
- *   only the one on top when the time is up. None in the week's last
- *   QUIET_MINUTES (the winner note is next), and none for a first place that
- *   reached the board more than LATE_MINUTES before the window allowed it
- *   (a switch that was off does not post old news).
+ *   while another note of the game is due. A burst (several first places
+ *   since the bot's last first-place note of the week) becomes one summary
+ *   note: how many, the leader now and the others who held the top
+ *   meanwhile, all tagged. At most the type's daily cap per Berlin day
+ *   (ProfileNotes, "<game>_top"), and only while the game's
+ *   `top_on_profile` is on. None in the week's last QUIET_MINUTES (the
+ *   winner note is next), and none for a first place that reached the board
+ *   more than LATE_MINUTES before the window allowed it (a switch that was
+ *   off does not post old news).
+ * - Every note takes the wording after the last one of its type
+ *   (ProfileNotes, "<game>_open", "<game>_winner", "<game>_top").
  *
  * Exactly once per week and slot (BotPost, the game's subject, one row per
  * slot), claimed before signing as in FreePlaceNotes: a rival run at the
@@ -85,6 +92,9 @@ abstract class WeeklyBoardNotes
     /** The top places a winner note names. */
     public const PODIUM = 3;
 
+    /** The others a summary of first places names besides the leader. */
+    public const BURST_OTHERS = 3;
+
     /** Names get this many characters in a note, as in TournamentNotes. */
     private const NAME_LENGTH = 40;
 
@@ -124,24 +134,22 @@ abstract class WeeklyBoardNotes
     /** The minutes between first-place notes, configured per game. */
     abstract protected function topMinutes(): int;
 
-    /**
-     * The open note's text, in English.
-     */
-    abstract protected function weekNote(Tournament $week): string;
+    /** Whether first places go on the profile at all, configured per game. */
+    abstract protected function topOnProfile(): bool;
 
     /**
-     * The winner note's text from its rendered names and times, in English.
-     *
-     * @param  array{name: string, winner: string, time: string, podium: string}  $values
+     * The game's StreamBotCopy templates start with this ("blockfill_note"):
+     * `_week`, `_winner`, `_top`, `_top_burst`, all in English.
      */
-    abstract protected function winnerNote(Tournament $week, array $values): string;
+    abstract protected function prefix(): string;
 
     /**
-     * The first-place note's text from its rendered values, in English.
+     * The game's own values of a note of `$kind` ("week", "winner", "top"):
+     * its link (`url`) and whatever else its templates name (a track).
      *
-     * @param  array{name: string, player: string, time: string, gap: string, ends: string}  $values
+     * @return array<string, string>
      */
-    abstract protected function topNote(Tournament $week, ScoreRun $run, array $values): string;
+    abstract protected function extras(Tournament $week, string $kind): array;
 
     /**
      * One scheduler tick. Returns what happened, for the log.
@@ -226,9 +234,10 @@ abstract class WeeklyBoardNotes
     }
 
     /**
-     * The note's content and the `p` tags of the players it names.
+     * The note's content in the wording its type takes next, the `p` tags of
+     * the players it names, its note type and that wording (ProfileNotes).
      *
-     * @return array{content: string, tags: list<list<string>>}
+     * @return array{content: string, tags: list<list<string>>, type: string, variant: int}
      */
     private function compose(Tournament $week, string $slot): array
     {
@@ -237,16 +246,35 @@ abstract class WeeklyBoardNotes
         $tags = [];
 
         try {
-            $body = match (true) {
-                $slot === self::SLOT_WINNER => $this->winner($week, $tags),
-                str_starts_with($slot, self::SLOT_TOP) => $this->firstPlace($week, (int) substr($slot, strlen(self::SLOT_TOP)), $tags),
-                default => $this->weekNote($week),
+            [$kind, $template, $values] = match (true) {
+                $slot === self::SLOT_WINNER => ['winner', $this->prefix().'_winner', $this->winner($week, $tags)],
+                str_starts_with($slot, self::SLOT_TOP) => ['top', ...$this->firstPlace($week, (int) substr($slot, strlen(self::SLOT_TOP)), $tags)],
+                default => ['open', $this->prefix().'_week', [
+                    'name' => StreamBotCopy::clean($week->title(), self::NAME_LENGTH),
+                    'ends' => LeagueTime::stamp(ScoreWindow::of($week)->end),
+                    ...$this->extras($week, 'week'),
+                ]],
             };
+
+            $type = $this->noteType($kind);
+            $variant = ProfileNotes::nextVariant($type, StreamBotCopy::variants($template));
+            $body = StreamBotCopy::render($template, $variant, $values);
         } finally {
             app()->setLocale($previous);
         }
 
-        return ['content' => $week->address() === null ? $body : $body."\n\nnostr:".$this->notes->naddr($week), 'tags' => $tags];
+        return [
+            'content' => $week->address() === null ? $body : $body."\n\nnostr:".$this->notes->naddr($week),
+            'tags' => $tags,
+            'type' => $type,
+            'variant' => $variant,
+        ];
+    }
+
+    /** The ProfileNotes note type of a kind ("open", "winner", "top") of this game's notes: "blockfill_top", … */
+    public function noteType(string $kind): string
+    {
+        return $this->slug().'_'.$kind;
     }
 
     /**
@@ -256,7 +284,17 @@ abstract class WeeklyBoardNotes
      */
     public function event(LeagueKey $key, Tournament $week, string $slot, int $createdAt): SignedEvent
     {
-        ['content' => $content, 'tags' => $tags] = $this->compose($week, $slot);
+        return $this->sign($key, $week, $slot, $createdAt)['event'];
+    }
+
+    /**
+     * The signed note with its note type and wording.
+     *
+     * @return array{event: SignedEvent, type: string, variant: int}
+     */
+    private function sign(LeagueKey $key, Tournament $week, string $slot, int $createdAt): array
+    {
+        ['content' => $content, 'tags' => $tags, 'type' => $type, 'variant' => $variant] = $this->compose($week, $slot);
         $address = $week->address();
         $tags = $address === null ? $tags : [...$tags, ['q', $address, $this->notes->relayHint() ?? '']];
         $problems = StreamBotCopy::violations(explode("\n\nnostr:", $content, 2)[0], $tags);
@@ -265,13 +303,17 @@ abstract class WeeklyBoardNotes
             throw new LogicException('The stream bot refused its own '.$this->label().' note: '.implode(', ', $problems));
         }
 
-        return $key->sign(TournamentNotes::KIND_NOTE, $tags, $content, $createdAt);
+        return ['event' => $key->sign(TournamentNotes::KIND_NOTE, $tags, $content, $createdAt), 'type' => $type, 'variant' => $variant];
     }
 
     /**
+     * The winner note's values: the week, its winner and time, its top 3,
+     * and the game's own (its link).
+     *
      * @param  list<list<string>>  $tags
+     * @return array<string, string>
      */
-    private function winner(Tournament $week, array &$tags): string
+    private function winner(Tournament $week, array &$tags): array
     {
         $standings = array_values(array_filter($this->runs->standings($week), fn (ScoreStanding $row): bool => $row->place !== null && $row->value !== null));
         $first = $standings[0] ?? throw new LogicException('A week without a placed player has no winner note.');
@@ -283,46 +325,137 @@ abstract class WeeklyBoardNotes
             $podium[] = $row->place.'. '.$this->mention($row->participant, $tags).' '.$metric->format((int) $row->value);
         }
 
-        return $this->winnerNote($week, [
+        return [
             'name' => StreamBotCopy::clean($week->title(), self::NAME_LENGTH),
             'winner' => $winner,
             'time' => $metric->format((int) $first->value),
             'podium' => implode(' · ', $podium),
-        ]);
+            ...$this->extras($week, 'winner'),
+        ];
     }
 
     /**
      * The running week's first place by a verified run: the player, the time,
      * how much faster than the first place before it (none for the week's
-     * first), the week's end and the game page.
+     * first), the week's end and the game page. With more first places since
+     * the bot's last first-place note of the week, each verified within the
+     * top minutes plus LATE_MINUTES before this one (a burst), the summary
+     * instead: how many, the leader now and up to BURST_OTHERS others who
+     * held the top meanwhile (most recent first), each tagged.
      *
      * @param  list<list<string>>  $tags
+     * @return array{0: string, 1: array<string, string|null>} the template and its values
      */
-    private function firstPlace(Tournament $week, int $runId, array &$tags): string
+    private function firstPlace(Tournament $week, int $runId, array &$tags): array
     {
         $run = ScoreRun::query()->find($runId) ?? throw new LogicException('The first place of '.$this->label().' week '.$week->id.' has no score run '.$runId.'.');
-        $userIds = $week->participants()->pluck('user_id')->filter()->all();
-        $participant = $week->participants()->where('user_id', $run->user_id)->first()
+        $participants = $week->participants()->with('user')->get()->keyBy('user_id');
+        $participant = $participants->get($run->user_id)
             ?? throw new LogicException('The first place of '.$this->label().' week '.$week->id.' is nobody on its board.');
         $window = ScoreWindow::of($week);
         $metric = ScoreMetric::time();
 
-        // The best time on the board before this run came in, read as ScoreRuns::standings() reads the board.
-        $before = ScoreRun::query()->where(['game' => $run->game, 'mode' => $run->mode, 'course' => $run->course])
-            ->whereIn('user_id', $userIds)->where('source', '!=', ScoreRun::DIRECTOR)
-            ->whereNotNull('verified_at')->whereNull('rejected_at')->whereNotNull('value')
-            ->where(fn ($query) => $query->whereNull('tournament_id')->orWhere('tournament_id', $week->id))
-            ->where('achieved_at', '>=', $window->start)->where('achieved_at', '<', $window->end)
-            ->where('id', '<', $run->id)->min('value');
-        $gap = $before === null ? 0 : (int) $before - (int) $run->value;
+        $runs = $this->countedRuns($week, $run)->where('id', '<=', $run->id)->orderBy('id')->get(['id', 'user_id', 'value', 'verified_at']);
 
-        return $this->topNote($week, $run, [
+        // Every run that took the first place when it came in. The burst: those after the last first-place note
+        // and no staler than this note may be (top minutes plus LATE_MINUTES before this run), so old news stays out.
+        $lastNoted = $this->lastNotedTop($week);
+        $fresh = $run->verified_at?->toImmutable()->subMinutes(max(1, $this->topMinutes()) + self::LATE_MINUTES);
+        $best = null;
+        $before = null;
+        $burst = [];
+
+        foreach ($runs as $counted) {
+            if ($counted->id === $run->id) {
+                $before = $best;
+            }
+
+            if ($best === null || (int) $counted->value < $best) {
+                $best = (int) $counted->value;
+
+                if ($counted->id > $lastNoted && ($fresh === null || $counted->verified_at?->greaterThanOrEqualTo($fresh) === true)) {
+                    $burst[] = $counted;
+                }
+            }
+        }
+
+        $gap = $before === null ? 0 : $before - (int) $run->value;
+        $values = [
             'name' => StreamBotCopy::clean($week->title(), self::NAME_LENGTH),
             'player' => $this->mention($participant, $tags),
             'time' => $metric->format((int) $run->value),
             'gap' => $gap > 0 ? ', '.BlockfillSlides::seconds($gap).' faster than the first place before' : '',
             'ends' => LeagueTime::stamp($window->end),
-        ]);
+            ...$this->extras($week, 'top'),
+        ];
+
+        if (count($burst) < 2) {
+            return [$this->prefix().'_top', $values];
+        }
+
+        $others = [];
+
+        foreach (array_reverse($burst) as $holder) {
+            $other = $participants->get($holder->user_id);
+
+            if ($holder->user_id !== $run->user_id && $other instanceof TournamentParticipant && ! array_key_exists((int) $holder->user_id, $others)) {
+                $others[(int) $holder->user_id] = $other;
+            }
+        }
+
+        $named = [];
+
+        // A loop, not array_map: an arrow function would tag into a copy of `$tags`.
+        foreach (array_slice(array_values($others), 0, self::BURST_OTHERS) as $other) {
+            $named[] = $this->mention($other, $tags);
+        }
+
+        $more = count($others) - count($named);
+
+        return [$this->prefix().'_top_burst', [
+            ...$values,
+            'count' => (string) count($burst),
+            'others' => $named === [] ? null : implode(', ', $named).($more > 0 ? ' and '.$more.' more' : ''),
+        ]];
+    }
+
+    /**
+     * The best time on the week's board before `$run` came in, null for none
+     * (the stream chat's new best time names how much faster it is).
+     */
+    public function previousBest(Tournament $week, ScoreRun $run): ?int
+    {
+        $before = $this->countedRuns($week, $run)->where('id', '<', $run->id)->min('value');
+
+        return $before === null ? null : (int) $before;
+    }
+
+    /**
+     * The week's counted runs on `$run`'s track, read as ScoreRuns::standings()
+     * reads the board: verified, not rejected, by a player on the board, inside
+     * the week's window, not the director's.
+     *
+     * @return Builder<ScoreRun>
+     */
+    private function countedRuns(Tournament $week, ScoreRun $run): Builder
+    {
+        $window = ScoreWindow::of($week);
+
+        return ScoreRun::query()->where(['game' => $run->game, 'mode' => $run->mode, 'course' => $run->course])
+            ->whereIn('user_id', $week->participants()->pluck('user_id')->filter()->all())->where('source', '!=', ScoreRun::DIRECTOR)
+            ->whereNotNull('verified_at')->whereNull('rejected_at')->whereNotNull('value')
+            ->where(fn ($query) => $query->whereNull('tournament_id')->orWhere('tournament_id', $week->id))
+            ->where('achieved_at', '>=', $window->start)->where('achieved_at', '<', $window->end);
+    }
+
+    /**
+     * The score run id of the week's last delivered first-place note, 0 for none.
+     */
+    private function lastNotedTop(Tournament $week): int
+    {
+        return (int) BotPost::query()->where(['subject_type' => $this->subject(), 'subject_id' => $week->id, 'kind' => TournamentNotes::KIND_NOTE])
+            ->where('slot', 'like', self::SLOT_TOP.'%')->whereNotNull('published_at')->pluck('slot')
+            ->map(fn (string $slot): int => (int) substr($slot, strlen(self::SLOT_TOP)))->max();
     }
 
     /**
@@ -363,6 +496,10 @@ abstract class WeeklyBoardNotes
     {
         $window = ScoreWindow::of($week);
         $minutes = max(1, $this->topMinutes());
+
+        if (! $this->topOnProfile() || ProfileNotes::allowance($this->noteType('top'), $now) <= 0) {
+            return null;
+        }
 
         if ($week->status !== TournamentStatus::Running || ! $window->contains($now) || $now->greaterThanOrEqualTo($window->end->subMinutes(self::QUIET_MINUTES))) {
             return null;
@@ -411,8 +548,13 @@ abstract class WeeklyBoardNotes
 
         // Signed once; a retry sends the stored event again, never a new one.
         if ($post->event === null) {
-            $signed = $this->event($key, $week, $slot, $now->getTimestamp());
-            $post->forceFill(['event_id' => $signed->id, 'event' => json_encode($signed->toArray(), JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR)])->save();
+            ['event' => $signed, 'type' => $type, 'variant' => $variant] = $this->sign($key, $week, $slot, $now->getTimestamp());
+            $post->forceFill([
+                'event_id' => $signed->id,
+                'event' => json_encode($signed->toArray(), JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR),
+                'note_type' => $type,
+                'variant' => $variant,
+            ])->save();
         }
 
         $event = SignedEvent::fromInput(json_decode((string) $post->event, true))

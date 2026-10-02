@@ -3,11 +3,8 @@
 namespace App\Support\StreamBot;
 
 use App\Games\Blockfill;
-use App\Models\ScoreRun;
 use App\Models\Tournament;
-use App\Support\LeagueTime;
 use App\Support\Scores\ScoreRuns;
-use App\Support\Scores\ScoreWindow;
 use App\Support\Stacker\BlockfillWeeks;
 use Carbon\CarbonImmutable;
 
@@ -61,22 +58,19 @@ final class BlockfillNotes extends WeeklyBoardNotes
         return (int) config('esports.stream_bot.blockfill_notes.top_minutes', self::TOP_MINUTES);
     }
 
-    protected function weekNote(Tournament $week): string
+    protected function topOnProfile(): bool
     {
-        return StreamBotCopy::render('blockfill_note_week', 0, [
-            'name' => StreamBotCopy::clean($week->title(), 40),
-            'ends' => LeagueTime::stamp(ScoreWindow::of($week)->end),
-            'url' => route('stacker.play'),
-        ]);
+        return (bool) config('esports.stream_bot.blockfill_notes.top_on_profile', true);
     }
 
-    protected function winnerNote(Tournament $week, array $values): string
+    protected function prefix(): string
     {
-        return StreamBotCopy::render('blockfill_note_winner', 0, [...$values, 'url' => route('scores.show', Blockfill::SLUG)]);
+        return 'blockfill_note';
     }
 
-    protected function topNote(Tournament $week, ScoreRun $run, array $values): string
+    /** The game to play for the week and its first places, the weeks' page for a winner. */
+    protected function extras(Tournament $week, string $kind): array
     {
-        return StreamBotCopy::render('blockfill_note_top', 0, [...$values, 'url' => route('stacker.play')]);
+        return ['url' => $kind === 'winner' ? route('scores.show', Blockfill::SLUG) : route('stacker.play')];
     }
 }

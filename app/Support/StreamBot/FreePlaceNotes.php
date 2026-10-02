@@ -39,13 +39,20 @@ use Throwable;
  * TournamentNotes: a rival run at the same time skips it, a failed send is
  * retried with the same signed event after `retry_minutes`, while its slot
  * is still due and places are still left. At most `per_run` notes per run
- * across all tournaments, the soonest sign-up close first.
+ * across all tournaments, the special tournaments first, then the casual
+ * cups, each the soonest sign-up close first; and no more than the note
+ * type's cooldown and daily cap allow (ProfileNotes, "free_places"). A
+ * reminder held back by them goes out later while its slot is still due,
+ * else it is skipped. Each reminder takes the wording after the last one.
  *
  * Fail closed: without `esports.stream_bot.enabled`, the bot key or a
  * stream relay, nothing is claimed, signed or sent (TournamentNotes::setup).
  */
 class FreePlaceNotes
 {
+    /** The note type of these notes for ProfileNotes (cooldown, daily cap, wording). */
+    public const NOTE_TYPE = 'free_places';
+
     /** Names get this many characters in a note, as in TournamentNotes. */
     private const NAME_LENGTH = 80;
 
@@ -88,13 +95,14 @@ class FreePlaceNotes
     /**
      * The notes this run would post: published tournaments in sign-up with
      * a due slot, places left and no delivered or freshly claimed note for
-     * that slot, soonest close first, at most `per_run`.
+     * that slot, the special tournaments first, each soonest close first, at
+     * most `per_run` and what the type's cooldown and daily cap allow.
      *
      * @return list<array{tournament: Tournament, slot: string, free: int, places: int}>
      */
     public function due(CarbonImmutable $now): array
     {
-        $perRun = max(0, (int) LeagueSettings::get('esports.stream_bot.free_places.per_run'));
+        $perRun = min(max(0, (int) LeagueSettings::get('esports.stream_bot.free_places.per_run')), ProfileNotes::allowance(self::NOTE_TYPE, $now));
         $longest = max([0, ...$this->slotHours(false), ...$this->slotHours(true)]);
 
         if ($perRun === 0 || $longest === 0) {
@@ -108,6 +116,7 @@ class FreePlaceNotes
             ->whereNotNull('slug')
             ->where('signup_closes_at', '>', $now->addMinutes($this->stopMinutes()))
             ->where('signup_closes_at', '<=', $now->addHours($longest))
+            ->orderByRaw('case when cup_series is null then 0 else 1 end')
             ->orderBy('signup_closes_at')
             ->orderBy('id')
             ->get();
@@ -175,17 +184,18 @@ class FreePlaceNotes
     }
 
     /**
-     * The note's text: the free places, the game, the start (a casual cup on
+     * The note's text in the wording `$variant` (null: the one the next
+     * reminder takes): the free places, the game, the start (a casual cup on
      * its region's clock, everything else on the league's), the time left to
      * sign up and the link, then the calendar event as `nostr:naddr1…`.
      */
-    public function content(Tournament $tournament, int $free, int $places, CarbonImmutable $now): string
+    public function content(Tournament $tournament, int $free, int $places, CarbonImmutable $now, ?int $variant = null): string
     {
         $previous = app()->getLocale();
         app()->setLocale(self::LOCALE);
 
         try {
-            $body = StreamBotCopy::render('tournament_note_places', 0, [
+            $body = StreamBotCopy::render('tournament_note_places', $variant ?? self::nextVariant(), [
                 'free' => $free,
                 'places' => $places,
                 'name' => StreamBotCopy::clean($tournament->name, self::NAME_LENGTH),
@@ -202,13 +212,14 @@ class FreePlaceNotes
     }
 
     /**
-     * The kind-1 note: the content and one NIP-18 `q` tag on the calendar
-     * event's address with its relay hint. No `t` tag, no `#`.
+     * The kind-1 note in the wording `$variant` (null: the next one): the
+     * content and one NIP-18 `q` tag on the calendar event's address with
+     * its relay hint. No `t` tag, no `#`.
      */
-    public function event(LeagueKey $key, Tournament $tournament, int $free, int $places, CarbonImmutable $now): SignedEvent
+    public function event(LeagueKey $key, Tournament $tournament, int $free, int $places, CarbonImmutable $now, ?int $variant = null): SignedEvent
     {
         $address = $tournament->address() ?? throw new LogicException('An unpublished tournament has no free-places note.');
-        $content = $this->content($tournament, $free, $places, $now);
+        $content = $this->content($tournament, $free, $places, $now, $variant);
         $tags = [['q', $address, $this->notes->relayHint() ?? '']];
         $body = explode("\n\nnostr:", $content, 2)[0];
         $problems = StreamBotCopy::violations($body, $tags);
@@ -247,8 +258,14 @@ class FreePlaceNotes
 
         // Signed once; a retry sends the stored event again, never a new one.
         if ($post->event === null) {
-            $signed = $this->event($key, $tournament, $due['free'], $due['places'], $now);
-            $post->forceFill(['event_id' => $signed->id, 'event' => json_encode($signed->toArray(), JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR)])->save();
+            $variant = self::nextVariant();
+            $signed = $this->event($key, $tournament, $due['free'], $due['places'], $now, $variant);
+            $post->forceFill([
+                'event_id' => $signed->id,
+                'event' => json_encode($signed->toArray(), JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR),
+                'note_type' => self::NOTE_TYPE,
+                'variant' => $variant,
+            ])->save();
         }
 
         $event = SignedEvent::fromInput(json_decode((string) $post->event, true))
@@ -271,6 +288,12 @@ class FreePlaceNotes
         ]);
 
         return sprintf('%s: %s id=%s to %d/%d relays', $label, $accepted > 0 ? 'posted' : 'not accepted, retried later', $event->id, $accepted, count($results));
+    }
+
+    /** The wording the next reminder takes (ProfileNotes). */
+    private static function nextVariant(): int
+    {
+        return ProfileNotes::nextVariant(self::NOTE_TYPE, StreamBotCopy::variants('tournament_note_places'));
     }
 
     /**
