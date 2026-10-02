@@ -45,6 +45,37 @@ export const CELL = 65536;
 /** Gravity per tick: 1092 of 65536, about one cell per 60 ticks (one per second), all run long. */
 export const GRAVITY = 1092;
 
+/**
+ * The engines by id: a week's difficulty (the admin page "League weeks"). `bf1` is the
+ * original rule set; every other id is bf1 with only its gravity changed, so each is a
+ * frozen engine of its own and nothing else differs. A replay names the id it was played
+ * on (its header), the verifier replays it on exactly that id, and an id is never changed
+ * or removed once shipped: a new difficulty is a new line.
+ * - bf1: about one row per second (GRAVITY), the rules every run before 2026-10 was played on;
+ * - bf1hard: 3 rows per second; bf1expert: 10 rows per second;
+ * - bf1master: 20 rows per tick ("20G"): a new piece lands at once and only slides on the stack.
+ */
+export const ENGINES = Object.freeze({
+    bf1: Object.freeze({ gravity: GRAVITY }),
+    bf1hard: Object.freeze({ gravity: 3277 }),
+    bf1expert: Object.freeze({ gravity: 10923 }),
+    bf1master: Object.freeze({ gravity: 20 * CELL }),
+});
+
+/**
+ * The rules of an engine id; an id that is not in ENGINES throws.
+ *
+ * @param {string} engine
+ * @returns {Readonly<{gravity: number}>}
+ */
+export function rulesOf(engine) {
+    if (typeof engine !== 'string' || !Object.hasOwn(ENGINES, engine)) {
+        throw new RangeError(`unknown engine ${engine}`);
+    }
+
+    return ENGINES[engine];
+}
+
 /** Soft drop per tick and SDF step: 3277 of 65536, so SDF 20 drops one cell per tick. */
 export const SOFT_DROP_STEP = 3277;
 
@@ -98,13 +129,14 @@ export function normalizeSettings(settings) {
 }
 
 /**
- * A new game at tick 0 with the first piece spawned.
+ * A new game at tick 0 with the first piece spawned, on engine `engine` (ENGINES; bf1 when not given).
  *
- * @param {{seed: string, settings?: Partial<Settings>}} options
+ * @param {{seed: string, settings?: Partial<Settings>, engine?: string}} options
  */
-export function createGame({ seed, settings }) {
+export function createGame({ seed, settings, engine = ENGINE_VERSION }) {
     const game = {
-        engine: ENGINE_VERSION,
+        engine,
+        gravityStep: rulesOf(engine).gravity,
         seed,
         settings: normalizeSettings(settings),
         rng: createRng(seed),
@@ -422,7 +454,8 @@ function fall(game) {
         return;
     }
     const softStep = SOFT_DROP_STEP * sdf;
-    game.gravity += soft && softStep > GRAVITY ? softStep : GRAVITY;
+    const gravity = game.gravityStep;
+    game.gravity += soft && softStep > gravity ? softStep : gravity;
     while (game.gravity >= CELL) {
         if (!fits(game, c.piece, c.rot, c.x, c.y + 1)) {
             game.gravity = 0;
@@ -558,15 +591,15 @@ export function result(game) {
  * @param {string} seed
  * @param {Partial<Settings>} settings
  * @param {LoggedInput[]} inputLog
- * @param {{maxTicks?: number}} [options]
+ * @param {{maxTicks?: number, engine?: string}} [options] `engine`: the id to replay on (ENGINES; bf1 when not given)
  * @returns {RunResult}
  */
-export function run(seed, settings, inputLog, { maxTicks = MAX_TICKS } = {}) {
+export function run(seed, settings, inputLog, { maxTicks = MAX_TICKS, engine = ENGINE_VERSION } = {}) {
     if (!Number.isInteger(maxTicks) || maxTicks < 1 || maxTicks > MAX_TICKS) {
         throw new RangeError(`maxTicks must be a whole number from 1 to ${MAX_TICKS}`);
     }
     const log = validateLog(inputLog);
-    const game = createGame({ seed, settings });
+    const game = createGame({ seed, settings, engine });
     let next = 0;
     while (!isOver(game) && game.tick < maxTicks) {
         const inputs = [];

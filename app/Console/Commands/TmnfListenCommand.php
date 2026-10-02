@@ -7,6 +7,8 @@ use App\Games\TrackmaniaNationsForever;
 use App\Support\Tmnf\GbxException;
 use App\Support\Tmnf\TmnfConnector;
 use App\Support\Tmnf\TmnfListener;
+use App\Support\Tmnf\TmnfServer;
+use App\Support\Tmnf\TmnfTrackSwitch;
 use App\Support\TwentyOne\Stream\Backoff;
 use Illuminate\Console\Attributes\Description;
 use Illuminate\Console\Attributes\Signature;
@@ -26,6 +28,8 @@ use Throwable;
  *   is away; back to the start once a session ran.
  * - Each callback on its own: one that fails is reported, the next is read.
  * - After every batch the in-game overlay that is due is sent (TmnfOverlay).
+ * - The track of the week (TmnfTrackSwitch): every few seconds the server
+ *   is put on the track of the approved week, which opens once it is there.
  * - Stops on SIGTERM/SIGINT after the callback at hand; `--seconds` stops
  *   after that long, `--attempts` after that many connections (tests, a
  *   manual check).
@@ -39,7 +43,7 @@ class TmnfListenCommand extends Command
 {
     private bool $stopping = false;
 
-    public function handle(TmnfConnector $connector, TmnfListener $listener): int
+    public function handle(TmnfConnector $connector, TmnfListener $listener, TmnfTrackSwitch $switch): int
     {
         if (! app(GameRegistry::class)->find(TrackmaniaNationsForever::SLUG) instanceof TrackmaniaNationsForever) {
             $this->warn('TMNF is switched off (ESPORTS_TMNF): nothing to listen to.');
@@ -66,8 +70,11 @@ class TmnfListenCommand extends Command
                 $track = $listener->start($server);
                 $backoff->reset();
                 $this->info("Connected to the TMNF server, track {$track->name}.");
+                $switch->connected();
 
                 while (! $over()) {
+                    $this->syncTrack($switch, $server);
+
                     foreach ($server->callbacks(1.0) as $callback) {
                         try {
                             $line = $listener->handle($callback, $server);
@@ -97,6 +104,7 @@ class TmnfListenCommand extends Command
 
                 $server->close();
             } catch (GbxException $e) {
+                $switch->unreachable($e->getMessage());
                 $wait = $backoff->next();
                 $this->warn("TMNF server unavailable ({$e->getMessage()}); trying again in {$wait} s.");
 
@@ -107,5 +115,32 @@ class TmnfListenCommand extends Command
         }
 
         return self::SUCCESS;
+    }
+
+    /**
+     * Puts the server on the week's track when a check is due. A broken
+     * session goes to the reconnect above; anything else is reported and the
+     * next check tries again.
+     *
+     * @throws GbxException
+     */
+    private function syncTrack(TmnfTrackSwitch $switch, TmnfServer $server): void
+    {
+        if (! $switch->due()) {
+            return;
+        }
+
+        try {
+            $line = $switch->sync($server);
+
+            if ($line !== null) {
+                $this->line($line);
+            }
+        } catch (GbxException $e) {
+            throw $e;
+        } catch (Throwable $e) {
+            report($e);
+            $this->error("Track check failed: {$e->getMessage()}");
+        }
     }
 }

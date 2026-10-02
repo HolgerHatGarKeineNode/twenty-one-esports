@@ -115,16 +115,17 @@ function fewestPresses(piece) {
  * @param {{das: number, arr: number, sdf: number}} settings
  * @param {Array<[number, number, number]>} inputs [tick, action, down], in order
  * @param {Partial<typeof LIMITS>} [bounds] other bounds than LIMITS (finite numbers only)
+ * @param {string} [engine] the engine id the run was played on (engine.js ENGINES; bf1 when not given)
  * @returns {{flags: string[], pps: number, maxPressesPerTick: number, sameTickBursts: number, timingCv: number|null, finesse: {perfect: number, of: number}}}
  */
-export function hintsFor(seed, settings, inputs, bounds = {}) {
+export function hintsFor(seed, settings, inputs, bounds = {}, engine = undefined) {
     const limit = { ...LIMITS };
     for (const key of Object.keys(LIMITS)) {
         if (bounds !== null && typeof bounds === 'object' && Number.isFinite(bounds[key])) {
             limit[key] = bounds[key];
         }
     }
-    const game = createGame({ seed, settings });
+    const game = createGame({ seed, settings, engine });
     const presses = inputs.filter(([, , down]) => down === 1);
 
     // presses per tick, and the ticks with more than the bound

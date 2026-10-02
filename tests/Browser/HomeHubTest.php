@@ -1,5 +1,6 @@
 <?php
 
+use App\Games\Blockfill;
 use App\Models\ChessGame;
 use App\Models\Clan;
 use App\Models\Rating;
@@ -433,6 +434,7 @@ const HOME_HUB_SCORE_GRID = <<<'JS'
 test('the Blockfill card sits in the ladder grid at 375 and 1440 px, in English and German', function () {
     BlockfillOn::play();
     $this->travelTo(CarbonImmutable::parse('2026-10-07 12:00:00'));
+    leagueWeeksApproved(Blockfill::SLUG);
     homeHubSeed();
     app(BlockfillWeeks::class)->open();
 

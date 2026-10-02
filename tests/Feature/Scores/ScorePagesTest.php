@@ -66,6 +66,8 @@ beforeEach(function () {
     Queue::fake();
     config(['esports.league.nsec' => (new TestSigner)->secret]);
     $this->fake = ScoreDemoOn::play();
+    // The admins approved the weeks around now (the approval itself: LeagueWeekApprovalTest).
+    leagueWeeksApproved(Blockfill::SLUG);
 });
 
 test('an organizer creates a leaderboard of a score game: only the leaderboard format can run', function () {

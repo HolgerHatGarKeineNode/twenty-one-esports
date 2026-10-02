@@ -9,6 +9,7 @@ use App\Enums\SeriesStatus;
 use App\Enums\TournamentFormat;
 use App\Games\Blockfill;
 use App\Games\GameRegistry;
+use App\Games\TrackmaniaNationsForever;
 use App\Models\ChessGame;
 use App\Models\Clan;
 use App\Models\Rating;
@@ -56,6 +57,9 @@ beforeEach(function () {
     Storage::fake('local');
     // Publishing a tournament signs with the league key.
     config(['esports.league.nsec' => (new TestSigner)->secret]);
+    // The admins approved the weeks around now (the approval itself: LeagueWeekApprovalTest).
+    leagueWeeksApproved(Blockfill::SLUG);
+    leagueWeeksApproved(TrackmaniaNationsForever::SLUG);
 });
 
 /**

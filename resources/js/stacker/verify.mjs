@@ -24,13 +24,16 @@
  */
 import { realpathSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
+import { ENGINES as RULES } from './engine.js';
 import { hintsFor } from './hints.js';
 import { decodeReplay, encodeReplay } from './replay.js';
 
-/** Frozen engines by version; a new version adds a line, an old one never goes. */
-const ENGINES = {
-    bf1: () => import('./engine.js'),
-};
+/**
+ * Frozen engines by version; a new version adds a line, an old one never goes. The
+ * difficulties of engine.js (ENGINES there: bf1, bf1hard, ...) share its module and
+ * differ only in their rules, which run() takes from the id.
+ */
+const ENGINES = Object.fromEntries(Object.keys(RULES).map((id) => [id, () => import('./engine.js')]));
 
 const MAX_STDIN = 1 << 20;
 
@@ -95,7 +98,7 @@ export async function verify(request, engines = ENGINES) {
     let result;
     try {
         const { run } = await engines[engine]();
-        result = run(header.seed, header.settings, inputs, { maxTicks: limits.ticks });
+        result = run(header.seed, header.settings, inputs, { maxTicks: limits.ticks, engine });
     } catch {
         return { ok: false, reason: 'crash' };
     }
@@ -115,7 +118,7 @@ export async function verify(request, engines = ENGINES) {
 
     let hints;
     try {
-        hints = hintsFor(header.seed, header.settings, inputs, request.hints);
+        hints = hintsFor(header.seed, header.settings, inputs, request.hints, engine);
     } catch {
         return { ok: false, reason: 'crash' };
     }

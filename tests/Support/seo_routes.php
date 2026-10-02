@@ -12,6 +12,7 @@ use App\Enums\ChessEndReason;
 use App\Enums\InviteLinkType;
 use App\Enums\TournamentFormat;
 use App\Enums\TournamentResultsMode;
+use App\Games\Blockfill;
 use App\Games\GameRegistry;
 use App\Models\ChessGame;
 use App\Models\Clan;
@@ -38,6 +39,7 @@ function seoEverySwitchOn(): void
     CheckersGame::play();
     ScoreDemoOn::play();
     BlockfillOn::play();
+    leagueWeeksApproved(Blockfill::SLUG);
 }
 
 /**

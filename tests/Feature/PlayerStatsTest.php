@@ -55,6 +55,11 @@ use Tests\Support\TestSigner;
  *
  * @param  list<array{0: string, 1: int}>  $games  [result from the player's side (win|loss|draw), delta]
  */
+beforeEach(function () {
+    // The admins approved the weeks around now (the approval itself: LeagueWeekApprovalTest).
+    leagueWeeksApproved(Blockfill::SLUG);
+});
+
 function playerStatsChess(User $player, array $games, string $pool = Rating::CASUAL, string $season = ''): Rating
 {
     $rating = Rating::query()->create(['pool' => $pool, 'season' => $season, 'game' => 'chess', 'mode' => 'blitz', 'subject' => 'user:'.$player->id, 'user_id' => $player->id,

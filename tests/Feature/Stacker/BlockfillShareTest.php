@@ -9,6 +9,7 @@
 */
 
 use App\Enums\StackerRunStatus;
+use App\Games\Blockfill;
 use App\Games\GameRegistry;
 use App\Jobs\VerifyStackerRun;
 use App\Models\StackerRun;
@@ -39,6 +40,8 @@ beforeEach(function () {
     // A Wednesday of ISO week 41: the week started on Monday 2026-10-05 00:00 Berlin.
     $this->travelTo(CarbonImmutable::parse('2026-10-07 12:00:00'));
     BlockfillOn::play();
+    // The admins approved the weeks around now (the approval itself: LeagueWeekApprovalTest).
+    leagueWeeksApproved(Blockfill::SLUG);
 });
 
 /** A run of `$user` with `$ticks` handed in `$hoursAgo` hours ago, through the real verdict job (or left `$status`). */

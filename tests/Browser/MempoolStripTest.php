@@ -4,6 +4,7 @@ use App\Enums\BoardGameStatus;
 use App\Enums\SeriesResolution;
 use App\Enums\SeriesStatus;
 use App\Enums\StackerRunStatus;
+use App\Games\Blockfill;
 use App\Games\Checkers;
 use App\Games\NineMensMorris;
 use App\Models\ChessGame;
@@ -167,6 +168,7 @@ test('/matches keeps the mempool strip and the table whole at 320, 375 and 1280 
 */
 test('/matches keeps highscore attempts and matches whole together at 375 and 1440 px, in English and German, with a clean console', function () {
     BlockfillOn::play();
+    leagueWeeksApproved(Blockfill::SLUG);
     app(BlockfillWeeks::class)->open();
 
     $ben = User::factory()->create(['name' => 'El Presidento Ben']);

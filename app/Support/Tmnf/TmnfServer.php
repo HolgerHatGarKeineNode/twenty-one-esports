@@ -87,6 +87,109 @@ final class TmnfServer
     }
 
     /**
+     * The tracks in the server's selection (SChallengeInfo each: Name, UId,
+     * FileName, Environnement, Author, GoldTime, CopperPrice), from `$start`.
+     *
+     * @return list<array<string, mixed>>
+     */
+    public function challengeList(int $max = 100, int $start = 0): array
+    {
+        $list = $this->remote->call('GetChallengeList', [$max, $start]);
+
+        if (! is_array($list) || ! array_is_list($list)) {
+            throw new GbxProtocolError('GetChallengeList did not answer with a list.');
+        }
+
+        return array_values(array_filter($list, is_array(...)));
+    }
+
+    /**
+     * A track file on the server, read without playing it (GetChallengeInfo):
+     * `$file` relative to GameData/Tracks, e.g. `Campaigns\Nations\White\A02-Race.Challenge.Gbx`.
+     */
+    public function challengeInfo(string $file): TmnfChallenge
+    {
+        return TmnfChallenge::fromStruct($this->remote->call('GetChallengeInfo', [$file]));
+    }
+
+    /**
+     * Puts a track file into the selection right after the current track (InsertChallenge).
+     *
+     * @throws GbxFault when the server refuses it (no such file, already in the selection)
+     */
+    public function insertChallenge(string $file): void
+    {
+        $this->expectTrue('InsertChallenge', [$file]);
+    }
+
+    /**
+     * Makes a track of the selection the next one (ChooseNextChallenge).
+     */
+    public function chooseNextChallenge(string $file): void
+    {
+        $this->expectTrue('ChooseNextChallenge', [$file]);
+    }
+
+    /**
+     * Ends the current round and loads the next track now (NextChallenge); BeginChallenge follows.
+     */
+    public function nextChallenge(): void
+    {
+        $this->expectTrue('NextChallenge');
+    }
+
+    /**
+     * Plays the current track again from the start (RestartChallenge): a new time limit applies then.
+     */
+    public function restartChallenge(): void
+    {
+        $this->expectTrue('RestartChallenge');
+    }
+
+    /**
+     * Takes a track out of the selection (RemoveChallenge); never the one being played.
+     */
+    public function removeChallenge(string $file): void
+    {
+        $this->expectTrue('RemoveChallenge', [$file]);
+    }
+
+    /**
+     * The time attack limit of a round in ms (GetTimeAttackLimit, the
+     * `CurrentValue` of {CurrentValue, NextValue}).
+     */
+    public function timeAttackLimit(): int
+    {
+        $limit = $this->remote->call('GetTimeAttackLimit');
+
+        if (! is_array($limit) || ! is_int($limit['CurrentValue'] ?? null)) {
+            throw new GbxProtocolError('GetTimeAttackLimit did not answer with {CurrentValue, NextValue}.');
+        }
+
+        return $limit['CurrentValue'];
+    }
+
+    /**
+     * The time attack limit of the next round in ms (SetTimeAttackLimit: it applies from the next track on).
+     */
+    public function setTimeAttackLimit(int $milliseconds): void
+    {
+        $this->expectTrue('SetTimeAttackLimit', [$milliseconds]);
+    }
+
+    /**
+     * @param  list<mixed>  $params
+     *
+     * @throws GbxFault when the server answers with anything but true
+     */
+    private function expectTrue(string $method, array $params = []): void
+    {
+        if ($this->remote->call($method, $params) !== true) {
+            throw new GbxFault("The server did not accept {$method}.");
+        }
+    }
+
+    /**
      * A line in the server chat, from the server.
      */
     public function chat(string $message): void

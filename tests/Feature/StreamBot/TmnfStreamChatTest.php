@@ -10,6 +10,7 @@
  */
 
 use App\Games\GameRegistry;
+use App\Games\TrackmaniaNationsForever;
 use App\Models\User;
 use App\Support\Nostr\NostrKeys;
 use App\Support\Scores\ScoreLeaderboards;
@@ -36,6 +37,8 @@ beforeEach(function () {
     $this->travelTo(CarbonImmutable::parse('2026-10-07 12:00:00'));
     $this->builders = app(StreamBotBuilders::class);
     $this->builders->pickVariantsWith(fn (int $variants): int => 0);
+    // The admins approved the weeks around now (the approval itself: LeagueWeekApprovalTest).
+    leagueWeeksApproved(TrackmaniaNationsForever::SLUG);
 });
 
 /**

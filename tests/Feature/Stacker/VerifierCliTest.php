@@ -14,6 +14,7 @@
 */
 
 use App\Enums\StackerRunStatus;
+use App\Games\Blockfill;
 use App\Jobs\VerifyStackerRun;
 use App\Models\Admin;
 use App\Models\ScoreRun;
@@ -29,6 +30,11 @@ use Tests\Support\BlockfillOn;
  *
  * @param  array<string, mixed>  $overrides
  */
+beforeEach(function () {
+    // The admins approved the weeks around now (the approval itself: LeagueWeekApprovalTest).
+    leagueWeeksApproved(Blockfill::SLUG);
+});
+
 function referenceRun(string $name, array $overrides = []): StackerRun
 {
     $fixture = BlockfillOn::fixture($name);
@@ -143,6 +149,31 @@ test('the verifier rejects what does not replay to the claim', function (string 
     'an overlong varint (padding inside the bytes)' => ['forty-lines', ['replay' => trim((string) file_get_contents(__DIR__.'/../../Fixtures/stacker/forty-lines-overlong.replay'))], [], 'malformed'],
     'a replay the engine throws on (answered by verify.mjs itself)' => ['forty-lines', [], ['esports.blockfill.verifier.script' => 'tests/Fixtures/stacker/throwing-engine-verifier.mjs'], 'crash'],
 ]);
+
+test('a week\'s difficulty decides the verification: a replay recorded on Hard verifies only as a Hard run, and a Normal replay claimed on Hard fails its gravity', function () {
+    config(['esports.blockfill.hints' => ['pps' => 7]]);
+    $hard = BlockfillOn::fixture('forty-lines-hard');
+    $sevenMinutes = BlockfillOn::fixture('seven-minutes');
+    $onHard = trim((string) file_get_contents(__DIR__.'/../../Fixtures/stacker/seven-minutes-on-hard.replay'));
+    // One run at a time: a seed is unique among the runs.
+    $verdict = function (array $overrides): StackerVerdict {
+        StackerRun::query()->delete();
+
+        return app(NodeVerifier::class)->verify(referenceRun('forty-lines-hard', $overrides));
+    };
+
+    // Recorded on Hard (its header names bf1hard): verified on a run issued on Hard, refused on one issued on Normal.
+    $asHard = $verdict(['engine' => 'bf1hard']);
+    $asNormal = $verdict(['engine' => 'bf1']);
+    // The 7-minute Normal run with its header rewritten to Hard: 3 rows a second tops the slow player out (golden.test.mjs pins 4641 ticks).
+    $gravity = $verdict(['engine' => 'bf1hard', 'seed' => $sevenMinutes['seed'], 'replay' => $onHard, 'ticks' => $sevenMinutes['expected']['ticks'], 'state_hash' => $sevenMinutes['expected']['stateHash']]);
+
+    expect($hard['engine'])->toBe('bf1hard')
+        ->and($asHard->outcome)->toBe(StackerVerdict::VERIFIED)
+        ->and($asHard->replay)->toBe($hard['replay'])
+        ->and([$asNormal->outcome, $asNormal->reason])->toBe([StackerVerdict::REJECTED, 'engine'])
+        ->and([$gravity->outcome, $gravity->reason])->toBe([StackerVerdict::REJECTED, 'unfinished']);
+});
 
 test('a verifier that gives no valid answer leaves the run pending, never rejected', function () {
     // a timeout too: the worst crafted replay takes well under 100 ms, so 5 s means an overloaded host, not a bad run

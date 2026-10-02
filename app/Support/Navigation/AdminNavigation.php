@@ -4,6 +4,7 @@ namespace App\Support\Navigation;
 
 use App\Enums\PayoutStatus;
 use App\Enums\StackerRunStatus;
+use App\Models\LeagueWeek;
 use App\Models\ScoreRun;
 use App\Models\SeriesMatch;
 use App\Models\StackerRun;
@@ -33,6 +34,7 @@ final class AdminNavigation
         'events' => 'league',
         'settings' => 'league',
         'tournaments' => 'tournaments',
+        'league-weeks' => 'tournaments',
         'payouts' => 'tournaments',
         'scores' => 'tournaments',
         'blockfill' => 'tournaments',
@@ -82,6 +84,8 @@ final class AdminNavigation
             ['key' => 'tournaments', 'label' => self::groupLabel('tournaments'), 'items' => [
                 // Not „Tournaments“ again: the group already says it, the strip would read it twice.
                 self::item('tournaments', __('All tournaments'), route('admin.tournaments')),
+                // The weekly Blockfill and TMNF boards wait for an admin's approval (LeagueWeekDrafts); the count is the drafts not approved yet.
+                self::item('league-weeks', __('League weeks'), route('admin.league-weeks'), LeagueWeek::query()->whereNull('approved_at')->whereNull('tournament_id')->where('starts_at', '>', now()->subWeek())->count()),
                 self::item('payouts', __('Payouts'), route('admin.payouts'), $payable),
                 // Score submissions waiting for a check (plan "AoE2 und Trackmania", P4), only while a score game is registered.
                 ...(Route::has('admin.scores') ? [self::item('scores', __('Score submissions'), route('admin.scores'), ScoreRun::query()->pendingReview()->count() + ScoreAccounts::pendingAccounts())] : []),

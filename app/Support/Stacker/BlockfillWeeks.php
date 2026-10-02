@@ -13,6 +13,7 @@ use App\Models\StackerRun;
 use App\Models\Tournament;
 use App\Models\User;
 use App\Support\Scores\LeaderboardEntries;
+use App\Support\Scores\LeagueWeekDrafts;
 use App\Support\Scores\ScoreCourse;
 use App\Support\Scores\ScoreLeaderboards;
 use App\Support\Scores\ScoreRuns;
@@ -33,9 +34,14 @@ use Throwable;
  * same week a run counts in (StackerRuns::weekOf()).
  *
  * - open(): the week's leaderboard, made once (its slug
- *   `blockfill-<monday>` is unique), running and published from its start.
- *   The scheduler opens it every hour (`blockfill:weeks`); the first
- *   verified run of a week opens it too, if it came first.
+ *   `blockfill-<monday>` is unique), running and published from its start,
+ *   but only once an admin approved the week (LeagueWeekDrafts, user
+ *   2026-10-02): at its planned start, or at the approval when that came
+ *   later, ending on the following Monday 00:00 either way. Not approved, no
+ *   week runs. The scheduler opens it every hour (`blockfill:weeks`); the
+ *   first verified run of a week opens it too, if it came first.
+ * - The week's difficulty (BlockfillDifficulty): the engine its ranked runs
+ *   are issued and verified on; only a run of that engine counts for it.
  * - record(): a verified run joins its player to the week's leaderboard (no
  *   sign-up, no cup, no draw) and is stored as a score run of the replay
  *   source. A run outside a running week's window, or of a finished week,
@@ -119,8 +125,28 @@ final class BlockfillWeeks
     }
 
     /**
-     * Opens the leaderboard of the week `$now` lies in, once. Null while
-     * Blockfill is not registered.
+     * The difficulty ranked runs are issued on at `$at` (now): the running
+     * week's, or the default while no week runs.
+     */
+    public function difficultyAt(?CarbonInterface $at = null): string
+    {
+        $week = $this->current($at);
+
+        return $week === null ? BlockfillDifficulty::default() : $this->difficultyOf($week);
+    }
+
+    /**
+     * The difficulty of a week: its plan's, or the default for a week from before the approvals.
+     */
+    public function difficultyOf(Tournament $week): string
+    {
+        return (string) LeagueWeekDrafts::normalize(Blockfill::SLUG, app(LeagueWeekDrafts::class)->ofTournament($week)?->settings)['difficulty'];
+    }
+
+    /**
+     * Opens the leaderboard of the week `$now` lies in, once, if an admin
+     * approved it (LeagueWeekDrafts::startable()). Null while Blockfill is not
+     * registered or the week is not approved.
      */
     public function open(?CarbonInterface $now = null): ?Tournament
     {
@@ -130,20 +156,30 @@ final class BlockfillWeeks
             return null;
         }
 
-        $start = self::startOf($now ?? now());
+        $now ??= now();
+        $start = self::startOf($now);
         $existing = $this->find($start);
 
         if ($existing !== null) {
             return $existing;
         }
 
+        $drafts = app(LeagueWeekDrafts::class);
+        $plan = $drafts->startable(Blockfill::SLUG, $start, $now);
+
+        if ($plan === null) {
+            return null;
+        }
+
+        // At its planned start, or at the approval when that came later; the end is the Monday either way.
+        $opens = LeagueWeekDrafts::startTime($plan);
         $end = self::endOf($start);
         $local = $start->setTimezone(self::TIMEZONE);
         $profile = GameProfile::for(Blockfill::SLUG, Blockfill::MODE);
 
         try {
             // forceCreate: `opened_by_league` is never mass assignable (audit F1 of plan "AoE2 und Trackmania", P7).
-            return Tournament::query()->forceCreate([
+            $week = Tournament::query()->forceCreate([
                 // Stored in English; pages show it in their language (title()).
                 'name' => 'Blockfill Week '.$local->isoWeek().', '.$local->isoWeekYear(),
                 'game' => Blockfill::SLUG,
@@ -151,10 +187,10 @@ final class BlockfillWeeks
                 'format' => TournamentFormat::Leaderboard,
                 'options' => FormatOptions::defaults($profile)->toArray(),
                 'capacity' => 2,
-                'starts_at' => $start,
+                'starts_at' => $opens,
                 'time_window' => 7,
-                // The window is exactly this week: 167, 168 or 169 hours (ScoreWindow reads the game length in days).
-                'times' => ['game' => $start->diffInMinutes($end) / 1440],
+                // The window is the rest of this week: 167, 168 or 169 hours from Monday, less for a late start (ScoreWindow reads the game length in days).
+                'times' => ['game' => $opens->diffInMinutes($end) / 1440],
                 'on_site' => false,
                 'results_mode' => TournamentResultsMode::Players,
                 'status' => TournamentStatus::Running,
@@ -162,13 +198,19 @@ final class BlockfillWeeks
                 // The league's own window: the only kind that can mine a solo block (plan "Blockfill", P7).
                 'opened_by_league' => true,
                 'slug' => self::slugOf($start),
-                'published_at' => $start,
+                'published_at' => $opens,
                 'score_course' => Blockfill::MODE,
             ]);
         } catch (UniqueConstraintViolationException) {
             // Another run opened it first.
-            return $this->find($start);
+            $week = $this->find($start);
         }
+
+        if ($week !== null) {
+            $drafts->started($plan, $week);
+        }
+
+        return $week;
     }
 
     /**
@@ -187,7 +229,8 @@ final class BlockfillWeeks
         $start = self::startOf($run->submitted_at);
         $week = $start->equalTo(self::startOf($now ?? now())) ? $this->open($now) : $this->find($start);
 
-        if ($week === null || $week->status !== TournamentStatus::Running) {
+        // Only a run on the week's difficulty counts for it (one issued before a new week started does not).
+        if ($week === null || $week->status !== TournamentStatus::Running || $run->engine !== $this->difficultyOf($week)) {
             return null;
         }
 
@@ -210,7 +253,8 @@ final class BlockfillWeeks
     }
 
     /**
-     * Opens this week's leaderboard; every running week's verified players
+     * Makes next week's draft when it is due, opens this week's leaderboard
+     * if it was approved; every running week's verified players
      * who are not in it yet join, and its score runs are read again.
      *
      * @return array{opened: bool, joined: int, read: int}
@@ -223,13 +267,20 @@ final class BlockfillWeeks
             return $done;
         }
 
+        try {
+            // The admins' part first (LeagueWeekDrafts): next week's draft, their bell entries.
+            app(LeagueWeekDrafts::class)->prepare(Blockfill::SLUG, $now);
+        } catch (Throwable $e) {
+            report($e);
+        }
+
         $done['opened'] = $this->open($now) !== null;
 
         foreach (Tournament::query()->where(['game' => Blockfill::SLUG, 'status' => TournamentStatus::Running])->orderBy('starts_at')->get() as $week) {
             try {
                 $window = ScoreWindow::of($week);
                 $entered = $week->participants()->pluck('user_id')->filter()->all();
-                $missing = StackerRun::query()->where('status', StackerRunStatus::Verified)
+                $missing = StackerRun::query()->where('status', StackerRunStatus::Verified)->where('engine', $this->difficultyOf($week))
                     ->where('submitted_at', '>=', $window->start->format('Y-m-d H:i:s.v'))
                     ->where('submitted_at', '<', $window->end->format('Y-m-d H:i:s.v'))
                     ->whereNotIn('user_id', $entered)->distinct()->pluck('user_id');

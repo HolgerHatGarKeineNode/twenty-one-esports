@@ -1,6 +1,7 @@
 <?php
 
 use App\Enums\SeriesStatus;
+use App\Games\Blockfill;
 use App\Models\Admin;
 use App\Models\Clan;
 use App\Models\SeriesMatch;
@@ -386,6 +387,7 @@ test('the admin nav: groups on top, only the active group\'s pages below, the wh
 
 test('Blockfill\'s replays: a tab of its context bar and its tab bar, marked on the replays page, on a replay and on a shared moment, at 375 and 1440 px', function () {
     BlockfillOn::play();
+    leagueWeeksApproved(Blockfill::SLUG);
     $player = User::factory()->create(['name' => 'Replay Walker']);
     $forty = BlockfillOn::fixture('forty-lines');
     $run = StackerRun::factory()->for($player)->verified(958)->create(['replay' => $forty['replay'], 'state_hash' => '6102773e', 'seed' => $forty['seed']]);

@@ -14,6 +14,7 @@
 */
 
 use App\Enums\StackerRunStatus;
+use App\Games\Blockfill;
 use App\Jobs\VerifyStackerRun;
 use App\Models\Admin;
 use App\Models\ScoreRun;
@@ -47,6 +48,8 @@ beforeEach(function () {
     $this->travelTo(CarbonImmutable::parse('2026-10-07 12:00:00'));
     BlockfillOn::play();
     $this->replay = BlockfillOn::fixture('forty-lines')['replay'];
+    // The admins approved the weeks around now (the approval itself: LeagueWeekApprovalTest).
+    leagueWeeksApproved(Blockfill::SLUG);
 });
 
 /**

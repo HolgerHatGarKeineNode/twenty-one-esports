@@ -11,6 +11,7 @@
 */
 
 use App\Enums\StackerRunStatus;
+use App\Games\Blockfill;
 use App\Games\GameRegistry;
 use App\Jobs\VerifyStackerRun;
 use App\Models\BotPost;
@@ -40,6 +41,8 @@ beforeEach(function () {
 
     // Monday morning: week 41 (from Monday 2026-10-05 00:00 Berlin) opens with its 31923, and its week note goes out.
     $this->travelTo(CarbonImmutable::parse('2026-10-05 08:00:00'));
+    // The admins approved the weeks around now (the approval itself: LeagueWeekApprovalTest).
+    leagueWeeksApproved(Blockfill::SLUG);
     $this->artisan('blockfill:weeks')->assertSuccessful();
     $this->artisan('twentyone:stream-bot:blockfill')->assertSuccessful();
     $this->week = app(BlockfillWeeks::class)->current();

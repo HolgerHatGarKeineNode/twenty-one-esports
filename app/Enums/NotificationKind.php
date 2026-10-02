@@ -46,6 +46,7 @@ enum NotificationKind: string
     case SeasonPayout = 'season_payout';
     case OpponentRequest = 'opponent_request';
     case CupGameNow = 'cup_game_now';
+    case LeagueWeekApproval = 'league_week_approval';
 
     /**
      * The page follows the link on its own after a short, cancellable
@@ -110,6 +111,8 @@ enum NotificationKind: string
      * | block0                   | BlockZeroNotifications (asked for: the date, the release)                   | days           | push, DM         |
      * | season_payout            | SeasonSettlement (sats wait for a Lightning address)                        | days           | push, DM         |
      * | opponent_request         | OpponentRequests (accept or decline)                                        | days           | push, DM         |
+     * | league_week_approval     | LeagueWeekDrafts (admins only: a league week needs approving, a reminder,   | days           | page only        |
+     * |                          | the TMNF server could not be switched to the week's track)                  |                |                  |
      *
      * (1) Never a DM (user decision 2026-09-30: "IMMER sinnlos"). A push at
      * most once per game and hour, and not while the player is at the board
@@ -154,7 +157,8 @@ enum NotificationKind: string
     public function group(): ?string
     {
         return match ($this) {
-            self::MatchFound, self::Invite, self::CasualMatchFound, self::CasualInvite, self::CasualOpponentJoined => null,
+            // The admins' league week approvals: no switch, an admin cannot opt out of the week they must approve.
+            self::MatchFound, self::Invite, self::CasualMatchFound, self::CasualInvite, self::CasualOpponentJoined, self::LeagueWeekApproval => null,
             self::Challenge, self::GameStarted, self::YourMove, self::Reminder, self::OpponentResigned, self::GameOver => 'correspondence',
             self::InviteAccepted, self::CasualLobbyShared, self::CasualNoShow, self::CasualReport, self::CasualResult,
             self::CasualChallenge, self::CasualChallengeAnswer, self::CasualReminder, self::CasualCheckIn => 'play',
@@ -211,7 +215,7 @@ enum NotificationKind: string
         return match ($this) {
             self::MatchFound, self::Invite, self::InviteAccepted, self::Challenge, self::YourMove, self::Reminder, self::ClanJoinRequest, self::InviteLinkTaken,
             self::CasualMatchFound, self::CasualInvite, self::CasualLobbyShared, self::CasualNoShow, self::CasualReport,
-            self::CasualChallenge, self::CasualReminder, self::CasualCheckIn, self::TournamentReminder, self::OpponentRequest, self::CupGameNow => 'challenge',
+            self::CasualChallenge, self::CasualReminder, self::CasualCheckIn, self::TournamentReminder, self::OpponentRequest, self::CupGameNow, self::LeagueWeekApproval => 'challenge',
             self::ClanJoinAnswer, self::TournamentEntryRemoved, self::TournamentNews, self::CasualResult, self::CasualOpponentJoined, self::CasualChallengeAnswer, self::BlockZero, self::SeasonPayout => 'confirmed',
             self::GameStarted, self::OpponentResigned => 'success',
             self::GameOver => 'confirmed',
@@ -271,6 +275,7 @@ enum NotificationKind: string
             self::BlockZero => ['Block 0', 'you asked to be told: the date of Block 0, and when the board releases it'],
             self::SeasonPayout => ['Season payout', 'your season sats wait for a Lightning address in your Nostr profile'],
             self::OpponentRequest => ['Opponent request', 'a player added you as an opponent; accept or decline'],
+            self::LeagueWeekApproval => ['League week approval', 'admins only: a Blockfill or TMNF week waits for your approval'],
         };
     }
 

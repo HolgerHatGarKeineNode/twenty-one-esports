@@ -1,10 +1,16 @@
 <?php
 
+use App\Games\TrackmaniaNationsForever;
+use App\Models\LeagueWeek;
+use App\Support\Stacker\BlockfillWeeks;
 use App\Support\Tmnf\GbxFault;
 use App\Support\Tmnf\GbxRemote;
 use App\Support\Tmnf\TmnfListener;
 use App\Support\Tmnf\TmnfManialinks;
 use App\Support\Tmnf\TmnfServer;
+use App\Support\Tmnf\TmnfTrackSwitch;
+use App\Support\Tmnf\TmnfWeeks;
+use Illuminate\Support\Facades\Process;
 
 /*
 |--------------------------------------------------------------------------
@@ -18,6 +24,11 @@ use App\Support\Tmnf\TmnfServer;
 |     scripts/tmnf-server.sh up
 |     vendor/bin/pest --group=tmnf
 |     scripts/tmnf-server.sh down
+|
+| The track switch of an approved week (TmnfTrackSwitch) runs here too:
+| the server goes to A02-Race and back to the league's A01-Race, and its
+| own log names the track the week opened on. It reads the log with
+| `docker exec` on the container scripts/tmnf-server.sh starts.
 |
 | What a server without a driving player cannot show (PlayerFinish,
 | PlayerCheckpoint, a player's chat line) is covered by the constructed
@@ -150,4 +161,98 @@ test('the server takes the overlay pages without a fault, removes the note by it
 
     $control->close();
     $server->close();
+})->group('tmnf');
+
+/**
+ * Waits until the server plays (GetStatus 4, "Running - Play"): before that it answers a change with "Change in progress.".
+ */
+function tmnfWaitPlaying(float $seconds = 30): bool
+{
+    $control = GbxRemote::connect((string) config('esports.tmnf.xmlrpc.host'), (int) config('esports.tmnf.xmlrpc.port'));
+    TmnfServer::over($control)->authenticate((string) config('esports.tmnf.xmlrpc.user'), (string) config('esports.tmnf.xmlrpc.password'));
+    $deadline = microtime(true) + $seconds;
+
+    while (($playing = ($control->call('GetStatus')['Code'] ?? null) === 4) === false && microtime(true) < $deadline) {
+        usleep(500_000);
+    }
+
+    $control->close();
+
+    return $playing;
+}
+
+/**
+ * Waits until the server plays `$uid` (its BeginChallenge came), reading the callbacks meanwhile.
+ */
+function tmnfWaitForTrack(TmnfServer $server, string $uid, float $seconds = 30): bool
+{
+    $deadline = microtime(true) + $seconds;
+
+    while (microtime(true) < $deadline) {
+        $server->callbacks(0.5);
+
+        try {
+            if ($server->currentChallenge()->uid === $uid) {
+                return true;
+            }
+        } catch (GbxFault) {
+            // "Change in progress." while it loads.
+        }
+    }
+
+    return false;
+}
+
+test('an approved week on A02-Race: the listener switches the real server to it, the week opens on it, the server log agrees, and the server goes back', function () {
+    tmnfOn();
+    $a02 = 'JwKdDsOUh4L9_eYyRsdiA2o1fW1';
+    $start = BlockfillWeeks::startOf(now());
+    $plan = LeagueWeek::query()->forceCreate(['game' => TrackmaniaNationsForever::SLUG, 'starts_at' => $start, 'settings' => ['track' => $a02, 'time_limit_minutes' => 10], 'approved_at' => now()->subHour()]);
+    $server = TmnfServer::open();
+    $switch = app(TmnfTrackSwitch::class);
+
+    try {
+        // A playing server only: a server just started answers "Change in progress." to a switch.
+        tmnfWaitPlaying();
+
+        expect($server->currentChallenge()->uid)->toBe(TMNF_A01)
+            ->and(app(TmnfWeeks::class)->open())->toBeNull();
+
+        $sent = $switch->sync($server);
+        $arrived = tmnfWaitForTrack($server, $a02);
+        // The listener's next check: on the track, the other one leaves the selection and the week opens.
+        $opened = $switch->sync($server);
+        tmnfWaitPlaying();
+        $switch->sync($server);
+        $week = app(TmnfWeeks::class)->current();
+        $log = Process::run(['docker', 'exec', 'einundzwanzig-esports-tmnf', 'cat', '/tmnf/Logs/GameLog..txt'])->output();
+        preg_match_all('/Loading challenge (\S+) \(([A-Za-z0-9_]+)\)/', $log, $loads, PREG_SET_ORDER);
+
+        expect($sent)->toBe('switching the server to A02-Race ('.$a02.', Campaigns\\Nations\\White\\A02-Race.Challenge.Gbx), 10 min a round')
+            ->and($arrived)->toBeTrue()
+            ->and($opened)->toContain('TMNF Week')->toContain('is open')
+            ->and($week?->score_course)->toBe($a02)
+            ->and($plan->refresh()->track_ready_at)->not->toBeNull()
+            ->and($plan->tournament_id)->toBe($week?->id)
+            ->and($server->timeAttackLimit())->toBe(600_000)
+            // Only the week's track is left in the selection: the next round loads it again.
+            ->and(array_column($server->challengeList(), 'UId'))->toBe([$a02])
+            // The server's own log: the last track it loaded is the week's.
+            ->and(end($loads)[2] ?? null)->toBe($week?->score_course)
+            ->and(end($loads)[1] ?? null)->toBe('A02-Race.Challenge.Gbx');
+    } finally {
+        // Back to what scripts/tmnf-server.sh starts: the league's A01-Race alone, 15 minutes a round.
+        $league = 'Challenges\\League\\A01-Race.Challenge.Gbx';
+        tmnfWaitPlaying();
+        $server->setTimeAttackLimit(900_000);
+        $server->insertChallenge($league);
+        $server->chooseNextChallenge($league);
+        $server->nextChallenge();
+        tmnfWaitForTrack($server, TMNF_A01);
+        tmnfWaitPlaying();
+        $server->removeChallenge('Campaigns\\Nations\\White\\A02-Race.Challenge.Gbx');
+        $server->close();
+    }
+
+    expect(TmnfServer::open()->currentChallenge()->fileName)->toBe('Challenges/League/A01-Race.Challenge.Gbx');
 })->group('tmnf');

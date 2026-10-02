@@ -31,6 +31,11 @@ use Tests\Support\ScoreDemoOn;
 /** 5:16.500 in ticks of 1/60 s. */
 const ATTEMPT_TICKS = 18990;
 
+beforeEach(function () {
+    // The admins approved the weeks around now (the approval itself: LeagueWeekApprovalTest).
+    leagueWeeksApproved(Blockfill::SLUG);
+});
+
 function attemptPlayer(string $name): User
 {
     return User::factory()->create(['name' => $name, 'gamer_tags' => ['steam' => 'STEAM-SECRET-'.$name]]);

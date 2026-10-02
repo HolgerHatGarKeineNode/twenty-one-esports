@@ -32,6 +32,8 @@ beforeEach(function () {
     $this->app->instance(Verifier::class, new FakeStackerVerifier);
     // A Wednesday: the Blockfill week started on Monday 2026-10-05 00:00 Berlin.
     $this->travelTo(CarbonImmutable::parse('2026-10-07 12:00:00'));
+    // The admins approved the weeks around now (the approval itself: LeagueWeekApprovalTest).
+    leagueWeeksApproved(Blockfill::SLUG);
 });
 
 /** A ranked run of `$user` with `$ticks`, decided by the verifier job as verified (it joins the week). */

@@ -107,12 +107,11 @@ final class BlockfillSlide
                 return $this->frame('finished', $previous, $previous->status === TournamentStatus::Finished ? 'Final standings' : 'Week over, the last runs are being checked', $last);
             }
 
-            $local = BlockfillWeeks::startOf($now)->setTimezone(BlockfillWeeks::TIMEZONE);
-
+            // No week runs (not approved yet, LeagueWeekDrafts): no week number is shown for it.
             return [
                 'state' => 'empty',
-                'title' => $current?->title() ?? 'Blockfill Week '.$local->isoWeek().', '.$local->isoWeekYear(),
-                'line' => 'Nobody is on the board yet',
+                'title' => $current?->title() ?? 'Blockfill',
+                'line' => $current === null ? 'Next week starts soon' : 'Nobody is on the board yet',
                 'top' => [],
                 'url' => $this->url(),
             ];

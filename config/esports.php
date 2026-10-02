@@ -1410,9 +1410,11 @@ return [
     | week page to join (`address` is the host:port or the server login;
     | null hides the line). listener: the reconnect backoff of `tmnf:listen`.
     | link: how long a one-time chat code to link a login is valid.
-    | tracks: the league's tracks by their UID, in the order the weeks run
-    | them (week N of the cycle takes entry N mod count); `author_ms` is the
-    | track's author time. outlier_margin_ms: a finish faster than the
+    | tracks: the tracks an admin may pick for a week (/admin/league-weeks),
+    | by their UID; `author_ms` is the track's author time, `file` where the
+    | server finds it (relative to GameData/Tracks; the listener switches
+    | the server with it). Only the very first draft, with no week before
+    | it, takes entry N mod count for week N of the cycle. outlier_margin_ms: a finish faster than the
     | author time minus this margin is flagged for an admin, and held only
     | while it would enter the week's top `outlier_top` (else it counts at once).
     |
@@ -1442,8 +1444,35 @@ return [
             'code_minutes' => 30,
         ],
         'tracks' => [
-            // Nadeo's stock track A01-Race (TMNF campaign "White", Stadium), shipped with the game and the server.
-            'BeySZdnfuSh4nHY5xztiXLmlrXe' => ['name' => 'A01-Race', 'author' => 'Nadeo', 'environment' => 'Stadium', 'author_ms' => 24_540],
+            // Nadeo's stock tracks of the Nations campaign A01 to E05 (White, Green, Blue, Red, Black; Stadium), shipped
+            // with the game and the dedicated server. UId, name, author and author time are what Nadeo's dedicated server
+            // (build 2011-02-21, scripts/tmnf-server.sh) answered to GetChallengeInfo for each `file` on 2026-10-02; the
+            // files lie under GameData/Tracks/Campaigns/Nations/ in the server archive (docker/tmnf/Dockerfile).
+            'BeySZdnfuSh4nHY5xztiXLmlrXe' => ['name' => 'A01-Race', 'author' => 'Nadeo', 'environment' => 'Stadium', 'author_ms' => 24_540, 'file' => 'Campaigns\Nations\White\A01-Race.Challenge.Gbx'],
+            'JwKdDsOUh4L9_eYyRsdiA2o1fW1' => ['name' => 'A02-Race', 'author' => 'Nadeo', 'environment' => 'Stadium', 'author_ms' => 16_250, 'file' => 'Campaigns\Nations\White\A02-Race.Challenge.Gbx'],
+            'mWxQhvvPOoNfPaq18j3dokLqyO7' => ['name' => 'A03-Race', 'author' => 'Nadeo', 'environment' => 'Stadium', 'author_ms' => 18_750, 'file' => 'Campaigns\Nations\White\A03-Race.Challenge.Gbx'],
+            'SEHmwPJVBl3NpHS56w6Sirac2Ic' => ['name' => 'A04-Acrobatic', 'author' => 'Nadeo', 'environment' => 'Stadium', 'author_ms' => 5950, 'file' => 'Campaigns\Nations\White\A04-Acrobatic.Challenge.Gbx'],
+            'I7rI7jAga6C4tGAe5OTDoyLF2fh' => ['name' => 'A05-Race', 'author' => 'Nadeo', 'environment' => 'Stadium', 'author_ms' => 16_910, 'file' => 'Campaigns\Nations\White\A05-Race.Challenge.Gbx'],
+            '8oDWqaNMXpyFg6e_QUb07Wzpkk3' => ['name' => 'B01-Race', 'author' => 'Nadeo', 'environment' => 'Stadium', 'author_ms' => 26_200, 'file' => 'Campaigns\Nations\Green\B01-Race.Challenge.Gbx'],
+            'b4ubJL0Aayrg7aqhe0RwI4jBQR1' => ['name' => 'B02-Race', 'author' => 'Nadeo', 'environment' => 'Stadium', 'author_ms' => 27_410, 'file' => 'Campaigns\Nations\Green\B02-Race.Challenge.Gbx'],
+            'HIH70OwdsvC7ZX_oKOWhwqDITx2' => ['name' => 'B03-Race', 'author' => 'Nadeo', 'environment' => 'Stadium', 'author_ms' => 27_110, 'file' => 'Campaigns\Nations\Green\B03-Race.Challenge.Gbx'],
+            'OfPhGxBSu5zHgl3GsndJGGens8k' => ['name' => 'B04-Acrobatic', 'author' => 'Nadeo', 'environment' => 'Stadium', 'author_ms' => 13_020, 'file' => 'Campaigns\Nations\Green\B04-Acrobatic.Challenge.Gbx'],
+            'R2W9o_MsXRP2PNp46stzmMWkgHb' => ['name' => 'B05-Race', 'author' => 'Nadeo', 'environment' => 'Stadium', 'author_ms' => 26_280, 'file' => 'Campaigns\Nations\Green\B05-Race.Challenge.Gbx'],
+            'eDgWjoKe2dT3GfoTCGCmI_qMvfk' => ['name' => 'C01-Race', 'author' => 'Nadeo', 'environment' => 'Stadium', 'author_ms' => 29_580, 'file' => 'Campaigns\Nations\Blue\C01-Race.Challenge.Gbx'],
+            'hlRjJEZGm0yr1sT91CtdIwmqsti' => ['name' => 'C02-Race', 'author' => 'Nadeo', 'environment' => 'Stadium', 'author_ms' => 42_470, 'file' => 'Campaigns\Nations\Blue\C02-Race.Challenge.Gbx'],
+            'c4oQLgleEPkNtehypwdYXTkmVvi' => ['name' => 'C03-Acrobatic', 'author' => 'Nadeo', 'environment' => 'Stadium', 'author_ms' => 13_900, 'file' => 'Campaigns\Nations\Blue\C03-Acrobatic.Challenge.Gbx'],
+            'yWy7ROt2lgk2zL44HKdBgUjuthi' => ['name' => 'C04-Race', 'author' => 'Nadeo', 'environment' => 'Stadium', 'author_ms' => 39_800, 'file' => 'Campaigns\Nations\Blue\C04-Race.Challenge.Gbx'],
+            'UR7xWwTkMeFB2kqVLVVOGDBCKFb' => ['name' => 'C05-Endurance', 'author' => 'Nadeo', 'environment' => 'Stadium', 'author_ms' => 116_390, 'file' => 'Campaigns\Nations\Blue\C05-Endurance.Challenge.Gbx'],
+            'E0ZXX6DbQ1wZXMiLYW77zgjFcB9' => ['name' => 'D01-endurance', 'author' => 'Nadeo', 'environment' => 'Stadium', 'author_ms' => 153_260, 'file' => 'Campaigns\Nations\Red\D01-endurance.Challenge.Gbx'],
+            'r7OqCgR3yODNwmJcPGyUafJKRAh' => ['name' => 'D02-Race', 'author' => 'Nadeo', 'environment' => 'Stadium', 'author_ms' => 52_630, 'file' => 'Campaigns\Nations\Red\D02-Race.Challenge.Gbx'],
+            'KvPlXufFJaLjDGSRP1rcregOaX3' => ['name' => 'D03-Acrobatic', 'author' => 'Nadeo', 'environment' => 'Stadium', 'author_ms' => 15_940, 'file' => 'Campaigns\Nations\Red\D03-Acrobatic.Challenge.Gbx'],
+            'h1doGRJ46hAGF3AeCJPsPHE_Vb2' => ['name' => 'D04-Race', 'author' => 'Nadeo', 'environment' => 'Stadium', 'author_ms' => 52_860, 'file' => 'Campaigns\Nations\Red\D04-Race.Challenge.Gbx'],
+            'iDnUBYbFhfD0QIPmIyRvy1UIw_0' => ['name' => 'D05-Race', 'author' => 'Nadeo', 'environment' => 'Stadium', 'author_ms' => 71_430, 'file' => 'Campaigns\Nations\Red\D05-Race.Challenge.Gbx'],
+            'tURAqsuKtDsCV7B0bWEszBV78Re' => ['name' => 'E01-Obstacle', 'author' => 'Nadeo', 'environment' => 'Stadium', 'author_ms' => 45_560, 'file' => 'Campaigns\Nations\Black\E01-Obstacle.Challenge.Gbx'],
+            'FW0uBAWV9d_9K9Dl2ZTYMn6iJHd' => ['name' => 'E02-Endurance', 'author' => 'Nadeo', 'environment' => 'Stadium', 'author_ms' => 277_480, 'file' => 'Campaigns\Nations\Black\E02-Endurance.Challenge.Gbx'],
+            'DTq2M5w_EKfxPgXLRJ29kHndMYj' => ['name' => 'E03-Endurance', 'author' => 'Nadeo', 'environment' => 'Stadium', 'author_ms' => 329_780, 'file' => 'Campaigns\Nations\Black\E03-Endurance.Challenge.Gbx'],
+            'xedOkArRfmIHfm9VFnKrLsOQ4hd' => ['name' => 'E04-Obstacle', 'author' => 'Nadeo', 'environment' => 'Stadium', 'author_ms' => 121_060, 'file' => 'Campaigns\Nations\Black\E04-Obstacle.Challenge.Gbx'],
+            'eMBnCjky7WmlP9G0R9xOrNFQV7c' => ['name' => 'E05-Endurance', 'author' => 'Nadeo', 'environment' => 'Stadium', 'author_ms' => 3_605_940, 'file' => 'Campaigns\Nations\Black\E05-Endurance.Challenge.Gbx'],
         ],
         'outlier_margin_ms' => 1_500,
         'outlier_top' => 10,
@@ -1454,6 +1483,30 @@ return [
             'board_seconds' => 5,
             'note_seconds' => 3,
         ],
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
+    | League weeks: the admins approve every week (user 2026-10-02)
+    |--------------------------------------------------------------------------
+    |
+    | The weekly leaderboards the league opens by itself (Blockfill, TMNF)
+    | start only once an admin approved them on /admin/league-weeks
+    | (App\Support\Scores\LeagueWeekDrafts). The next week is made as a draft
+    | with the previous week's settings at `draft_weekday` (ISO, 1 = Monday)
+    | `draft_time` (Europe/Berlin) of the week before; the admins get a bell
+    | entry, and a reminder `reminder_hours` before the planned start
+    | (Monday 00:00 Berlin) while it is still not approved. An approved week
+    | starts at its planned start, or at its approval when that came later;
+    | it ends on the following Monday 00:00 either way. Not approved, no
+    | week runs.
+    |
+    */
+
+    'league_weeks' => [
+        'draft_weekday' => 4,
+        'draft_time' => '12:00',
+        'reminder_hours' => 24,
     ],
 
 ];

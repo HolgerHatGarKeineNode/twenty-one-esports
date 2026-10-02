@@ -1,5 +1,6 @@
 <?php
 
+use App\Games\Blockfill;
 use App\Models\Admin;
 use App\Models\StackerRun;
 use App\Models\User;
@@ -54,6 +55,7 @@ beforeEach(function () {
     BlockfillOn::play();
     $this->freezeTime();
     $this->travelTo(CarbonImmutable::parse('2026-10-07 12:00:00'));
+    leagueWeeksApproved(Blockfill::SLUG);
 
     $weeks = app(BlockfillWeeks::class);
     $verified = function (User $user, int $ticks, CarbonImmutable $at) use ($weeks): void {

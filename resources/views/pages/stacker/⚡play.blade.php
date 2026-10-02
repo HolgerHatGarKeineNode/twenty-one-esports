@@ -65,6 +65,8 @@ new #[Layout('layouts::app', ['scripts' => ['resources/js/stacker/page.js']])] c
             'best' => $signedIn ? app(StackerRuns::class)->best($user, StackerRuns::weekOf(now())) : null,
             'allTimeBest' => $signedIn ? app(StackerRuns::class)->best($user) : null,
             'testing' => app()->environment('testing'),
+            // The week's difficulty (BlockfillDifficulty): practice plays it too; a ranked run gets its own from the issue
+            'engine' => app(BlockfillWeeks::class)->difficultyAt(),
             'urls' => [
                 'issue' => route('stacker.runs.issue'),
                 'start' => route('stacker.runs.start', $token),
@@ -378,17 +380,22 @@ new #[Layout('layouts::app', ['scripts' => ['resources/js/stacker/page.js']])] c
         $mine = $this->mine;
         $winner = $this->lastWinner;
         $window = $week === null ? null : ScoreWindow::of($week);
+        $difficulty = $week === null ? null : app(BlockfillWeeks::class)->difficultyOf($week);
     @endphp
     <section x-data x-on:stacker-verified.window="$wire.$refresh()" class="mx-auto mt-8 grid w-full max-w-[1340px] grid-cols-1 gap-6 lg:mt-10 lg:grid-cols-[minmax(0,1fr)_320px] lg:gap-12" aria-labelledby="stacker-week-h" data-test="stacker-week">
         <div class="flex min-w-0 flex-col gap-3 rounded-lg bg-card px-2 py-4 lg:px-5">
             <div class="flex flex-col gap-1 px-2 lg:px-0">
                 <h2 id="stacker-week-h" class="m-0 font-display text-xl font-bold lg:text-2xl">{{ __('This week\'s hunt') }}</h2>
                 <p class="m-0 text-xs leading-normal text-ink-2">{{ __('Your best verified ranked run of the week counts. The fastest time wins, a tie goes to the earlier run. A new week starts every Monday at 00:00 Berlin time.') }}</p>
-                @if ($window)
+                @if ($window && $difficulty)
                     <p class="m-0 text-xs text-ink-3 tabular-nums" data-test="stacker-week-window">{{ \App\Support\LeagueTime::stamp($window->start) }} – {{ \App\Support\LeagueTime::stamp($window->end) }}</p>
+                    <p class="m-0 text-xs text-ink-2" data-test="stacker-week-difficulty"><b class="text-ink">{{ __('Difficulty: :level', ['level' => \App\Support\Stacker\BlockfillDifficulty::label($difficulty)]) }}</b> · {{ \App\Support\Stacker\BlockfillDifficulty::hint($difficulty) }}</p>
                 @endif
             </div>
-            @if ($this->standings === [])
+            @if ($week === null)
+                {{-- No week runs: the admins have not approved the next one yet (LeagueWeekDrafts). --}}
+                <p class="m-0 px-2 py-4 text-[13px] text-ink-2 lg:px-0" data-test="next-week-soon">{{ __('Next week starts soon. Ranked runs count again once it is open.') }}</p>
+            @elseif ($this->standings === [])
                 <p class="m-0 px-2 py-4 text-[13px] text-ink-2 lg:px-0" data-test="stacker-week-empty">{{ __('Nobody has a verified run this week yet. Yours could be the first.') }}</p>
             @else
                 @include('pages.scores.partials.leaderboard', ['standings' => $this->standings, 'metric' => $metric, 'limit' => 10, 'viewerId' => auth()->id(), 'staff' => false,

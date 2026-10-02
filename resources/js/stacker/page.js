@@ -312,11 +312,12 @@ document.addEventListener('alpine:init', () => {
                 canvas._css = { width, height };
             },
 
-            newSession(seed, settings = this.controls) {
+            /** A new game; `engine` is the difficulty: the issued run's for a ranked run, else this week's (config.engine). */
+            newSession(seed, settings = this.controls, engine = config.engine) {
                 trace(config, 'newSession');
                 rt.seed = seed;
                 rt.touched = false;
-                rt.session = createSession({ seed, settings: { das: settings.das, arr: settings.arr, sdf: settings.sdf } });
+                rt.session = createSession({ seed, settings: { das: settings.das, arr: settings.arr, sdf: settings.sdf }, engine: engine ?? ENGINE_VERSION });
                 rt.flashUntil = 0;
                 this.lines = 0;
                 this.minedTag = 0;
@@ -366,7 +367,7 @@ document.addEventListener('alpine:init', () => {
                     this.rankedBest = issued.data.best;
                     this.allTimeBest = issued.data.best_all_time ?? this.allTimeBest;
                 }
-                this.newSession(issued.data.seed);
+                this.newSession(issued.data.seed, this.controls, issued.data.engine);
                 this.beginCountdown(id, async () => {
                     const started = await request('POST', this.tokenUrl(config.urls.start));
                     if (id !== rt.runId) {
@@ -536,7 +537,7 @@ document.addEventListener('alpine:init', () => {
                     rt.holdSubmit = false;
                 }
                 this.result = { ...base, status: 'submitting', previous: this.rankedBest };
-                const replay = encodeReplay({ v: REPLAY_VERSION, engine: ENGINE_VERSION, seed: rt.seed, settings: rt.session.game.settings }, rt.session.log);
+                const replay = encodeReplay({ v: REPLAY_VERSION, engine: rt.session.game.engine, seed: rt.seed, settings: rt.session.game.settings }, rt.session.log);
                 const submitted = await request('POST', this.tokenUrl(config.urls.submit), { replay, ticks: outcome.ticks, hash: outcome.stateHash, input: rt.touched ? 'touch' : 'keyboard' });
                 if (id !== rt.runId) {
                     return;

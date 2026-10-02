@@ -25,7 +25,7 @@
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { test } from 'node:test';
-import { ACTION, ENGINE_VERSION, run } from '../../../resources/js/stacker/engine.js';
+import { ACTION, ENGINES, ENGINE_VERSION, run } from '../../../resources/js/stacker/engine.js';
 
 const NAMES = ['forty-lines', 'top-out', 'hard-drops', 'seven-minutes'];
 
@@ -69,4 +69,41 @@ test('one input a tick later gives a different run', () => {
     const result = run(f.seed, f.settings, late);
     assert.notEqual(result.stateHash, f.expected.stateHash);
     assert.deepEqual([result.ticks, result.lines, result.toppedOut], [347, 1, true]);
+});
+
+/*
+ * The difficulties of a league week (engine.js ENGINES): bf1 with only its gravity changed.
+ * Each id is frozen like bf1, so the results below are pinned from the engine itself
+ * (2026-10-02) and never regenerated: a red line here means an engine id changed.
+ */
+const DIFFICULTIES = {
+    'seven-minutes': {
+        bf1hard: { ticks: 4641, lines: 3, pieces: 25, finished: false, toppedOut: true, stateHash: '134e8f64' },
+        bf1expert: { ticks: 1587, lines: 0, pieces: 18, finished: false, toppedOut: true, stateHash: 'c8e2f6d0' },
+        bf1master: { ticks: 503, lines: 0, pieces: 15, finished: false, toppedOut: true, stateHash: '85dc9455' },
+    },
+    'top-out': {
+        bf1hard: { ticks: 1546, lines: 0, pieces: 27, finished: false, toppedOut: true, stateHash: 'e7d705d9' },
+        bf1expert: { ticks: 1577, lines: 0, pieces: 27, finished: false, toppedOut: true, stateHash: 'a7be3fa1' },
+        bf1master: { ticks: 1402, lines: 1, pieces: 32, finished: false, toppedOut: true, stateHash: '7c02231f' },
+    },
+};
+
+test('every difficulty replays the reference runs to its own pinned result, and bf1 is the default', () => {
+    assert.deepEqual(Object.keys(ENGINES), ['bf1', 'bf1hard', 'bf1expert', 'bf1master']);
+
+    for (const [name, byEngine] of Object.entries(DIFFICULTIES)) {
+        const f = fixture(name);
+        assert.deepEqual(run(f.seed, f.settings, f.inputs, { engine: 'bf1' }), f.expected, `${name} on bf1`);
+        for (const [engine, expected] of Object.entries(byEngine)) {
+            assert.deepEqual(run(f.seed, f.settings, f.inputs, { engine }), expected, `${name} on ${engine}`);
+        }
+    }
+
+    // the 40-line program hard-drops every piece within a few ticks: up to 10 rows a second it plays the same, 20G tops it out
+    const hard = fixture('forty-lines-hard');
+    assert.equal(hard.engine, 'bf1hard');
+    assert.deepEqual(run(hard.seed, hard.settings, hard.inputs, { engine: hard.engine }), hard.expected);
+    assert.equal(run(hard.seed, hard.settings, hard.inputs, { engine: 'bf1master' }).toppedOut, true);
+    assert.throws(() => run(hard.seed, hard.settings, hard.inputs, { engine: 'bf9' }), RangeError);
 });

@@ -9,6 +9,8 @@
  */
 
 use App\Enums\StackerRunStatus;
+use App\Games\Blockfill;
+use App\Games\TrackmaniaNationsForever;
 use App\Jobs\VerifyStackerRun;
 use App\Models\BotPost;
 use App\Models\StackerRun;
@@ -55,6 +57,9 @@ beforeEach(function () {
 
     // Sat 2026-09-26 06:00 UTC, 08:00 in Berlin.
     $this->travelTo(CarbonImmutable::parse('2026-09-26 06:00:00'));
+    // The admins approved the weeks around now (the approval itself: LeagueWeekApprovalTest).
+    leagueWeeksApproved(Blockfill::SLUG);
+    leagueWeeksApproved(TrackmaniaNationsForever::SLUG);
 });
 
 /**

@@ -7,10 +7,12 @@ use App\Enums\TournamentResultsMode;
 use App\Enums\TournamentStatus;
 use App\Games\GameRegistry;
 use App\Games\TrackmaniaNationsForever;
+use App\Models\LeagueWeek;
 use App\Models\ScoreRun;
 use App\Models\Tournament;
 use App\Models\User;
 use App\Support\Scores\LeaderboardEntries;
+use App\Support\Scores\LeagueWeekDrafts;
 use App\Support\Scores\ScoreWindow;
 use App\Support\Scores\ServerIngest;
 use App\Support\Stacker\BlockfillWeeks;
@@ -29,12 +31,17 @@ use Throwable;
  * Europe/Berlin (BlockfillWeeks' rhythm, a week of 167 or 169 hours when the
  * clocks change).
  *
- * - The track of a week: `esports.tmnf.tracks` in turn, week by week from
- *   CYCLE_START (one track: every week the same).
+ * - The track of a week: the one an admin approved for it (LeagueWeekDrafts,
+ *   user 2026-10-02), a draft starting from the previous week's; the first
+ *   draft of all takes `esports.tmnf.tracks` in turn from CYCLE_START.
  * - open(): the week's leaderboard, once (slug `tmnf-<monday>`, unique),
- *   running and published from its start, its course the track's UID. The
- *   scheduler opens it every hour (`tmnf:weeks`); the first finish of a
- *   week opens it too.
+ *   running and published from its start, its course the track's UID, but
+ *   only once an admin approved the week and the listener saw the server on
+ *   its track (TmnfTrackSwitch): at its planned start, or later at the
+ *   approval or the switch, ending on the following Monday 00:00 either way.
+ *   Not approved, no week runs. The scheduler opens it every hour
+ *   (`tmnf:weeks`), the listener as soon as the server is on the track, and
+ *   the first finish of a week too.
  * - record(): a finish of a linked login on the week's track inside its
  *   window joins the player (no sign-up). The run itself is the server's
  *   (TmnfIngest): verified as read, or held for an admin (TmnfOutliers).
@@ -49,6 +56,14 @@ final class TmnfWeeks
 {
     /** The Monday the track cycle starts from (Europe/Berlin). */
     public const CYCLE_START = '2026-01-05';
+
+    /** The time limit of a round an admin may set for a week, in minutes (null: the server's own, league.txt). */
+    public const MIN_ROUND_MINUTES = 3;
+
+    public const MAX_ROUND_MINUTES = 120;
+
+    /** The server's own time limit of a round (timeattack_limit in docker/tmnf/league.txt), used while a week sets none. */
+    public const SERVER_ROUND_MINUTES = 15;
 
     public function __construct(private GameRegistry $games, private TournamentPublisher $publisher) {}
 
@@ -67,7 +82,7 @@ final class TmnfWeeks
     /**
      * A track of `esports.tmnf.tracks` by its UID, or null for one the league does not run.
      *
-     * @return array{uid: string, name: string, author: string, environment: string, author_ms: int}|null
+     * @return array{uid: string, name: string, author: string, environment: string, author_ms: int, file: string}|null
      */
     public static function track(?string $uid): ?array
     {
@@ -83,6 +98,8 @@ final class TmnfWeeks
             'author' => (string) ($track['author'] ?? ''),
             'environment' => (string) ($track['environment'] ?? ''),
             'author_ms' => (int) ($track['author_ms'] ?? 0),
+            // Where the server finds it, relative to GameData/Tracks (InsertChallenge, ChooseNextChallenge).
+            'file' => (string) ($track['file'] ?? ''),
         ];
     }
 
@@ -118,31 +135,41 @@ final class TmnfWeeks
     }
 
     /**
-     * Opens the leaderboard of the week `$now` lies in, once. Null while TMNF
-     * is not registered or no track is configured.
+     * Opens the leaderboard of the week `$now` lies in, once, if an admin
+     * approved it and the listener saw the server on its track. Null while
+     * TMNF is not registered, or the week is not approved or not on its track yet.
      */
     public function open(?CarbonInterface $now = null): ?Tournament
     {
-        $start = BlockfillWeeks::startOf($now ?? now());
-        $track = self::trackFor($start);
-
-        if ($this->game() === null || $track === null) {
+        if ($this->game() === null) {
             return null;
         }
 
+        $now ??= now();
+        $start = BlockfillWeeks::startOf($now);
         $existing = $this->find($start);
 
         if ($existing !== null) {
             return $existing;
         }
 
+        $drafts = app(LeagueWeekDrafts::class);
+        $plan = $drafts->startable(TrackmaniaNationsForever::SLUG, $start, $now);
+        $track = $plan === null ? null : self::track((string) ($plan->settings['track'] ?? ''));
+
+        // Never a week on a track the server is not on (TmnfTrackSwitch marks it once it saw it there).
+        if ($plan === null || $track === null || $plan->track_ready_at === null) {
+            return null;
+        }
+
+        $opens = LeagueWeekDrafts::startTime($plan);
         $end = BlockfillWeeks::endOf($start);
         $local = $start->setTimezone(BlockfillWeeks::TIMEZONE);
         $profile = GameProfile::for(TrackmaniaNationsForever::SLUG, TrackmaniaNationsForever::MODE);
 
         try {
             // forceCreate: `opened_by_league` is never mass assignable. False: a TMNF week mines no season block.
-            return Tournament::query()->forceCreate([
+            $week = Tournament::query()->forceCreate([
                 // Stored in English; pages show it in their language (title()).
                 'name' => 'TMNF Week '.$local->isoWeek().', '.$local->isoWeekYear(),
                 'game' => TrackmaniaNationsForever::SLUG,
@@ -150,21 +177,57 @@ final class TmnfWeeks
                 'format' => TournamentFormat::Leaderboard,
                 'options' => FormatOptions::defaults($profile)->toArray(),
                 'capacity' => 2,
-                'starts_at' => $start,
+                'starts_at' => $opens,
                 'time_window' => 7,
-                'times' => ['game' => $start->diffInMinutes($end) / 1440],
+                'times' => ['game' => $opens->diffInMinutes($end) / 1440],
                 'on_site' => false,
                 'results_mode' => TournamentResultsMode::Players,
                 'status' => TournamentStatus::Running,
                 'created_by_id' => null,
                 'opened_by_league' => false,
                 'slug' => self::slugOf($start),
-                'published_at' => $start,
-                'score_course' => $track,
+                'published_at' => $opens,
+                'score_course' => $track['uid'],
             ]);
         } catch (UniqueConstraintViolationException) {
-            return $this->find($start);
+            $week = $this->find($start);
         }
+
+        if ($week !== null) {
+            $drafts->started($plan, $week);
+        }
+
+        return $week;
+    }
+
+    /**
+     * The track and the round's time limit the server should run now: the
+     * approved plan of this week once it may start, else the running week's
+     * track (a week from before the approvals has no time limit of its own).
+     * Null when no week runs or is due: the server keeps what it has.
+     *
+     * @return array{track: array{uid: string, name: string, author: string, environment: string, author_ms: int, file: string}, limit_ms: int|null, plan: LeagueWeek|null}|null
+     */
+    public function target(?CarbonInterface $now = null): ?array
+    {
+        if ($this->game() === null) {
+            return null;
+        }
+
+        $now ??= now();
+        $start = BlockfillWeeks::startOf($now);
+        $drafts = app(LeagueWeekDrafts::class);
+        $week = $this->find($start);
+        $plan = $week !== null ? $drafts->ofTournament($week) : $drafts->startable(TrackmaniaNationsForever::SLUG, $start, $now);
+
+        if ($week === null && $plan === null) {
+            return null;
+        }
+
+        $track = self::track($plan !== null ? (string) ($plan->settings['track'] ?? '') : $week->score_course);
+        $minutes = $plan?->settings['time_limit_minutes'] ?? null;
+
+        return $track === null ? null : ['track' => $track, 'limit_ms' => is_int($minutes) ? $minutes * 60_000 : null, 'plan' => $plan];
     }
 
     /**
@@ -219,7 +282,23 @@ final class TmnfWeeks
             return $done;
         }
 
+        try {
+            // The admins' part first (LeagueWeekDrafts): next week's draft, their bell entries.
+            app(LeagueWeekDrafts::class)->prepare(TrackmaniaNationsForever::SLUG, $now);
+        } catch (Throwable $e) {
+            report($e);
+        }
+
         $done['opened'] = $this->open($now) !== null;
+
+        if (! $done['opened']) {
+            try {
+                // Approved and due, but the server is not on its track (no listener): the admins hear it once.
+                app(TmnfTrackSwitch::class)->overdue(CarbonImmutable::instance($now ?? now()));
+            } catch (Throwable $e) {
+                report($e);
+            }
+        }
 
         foreach (Tournament::query()->where(['game' => TrackmaniaNationsForever::SLUG, 'status' => TournamentStatus::Running])->orderBy('starts_at')->get() as $week) {
             try {

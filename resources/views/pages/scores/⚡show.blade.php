@@ -142,7 +142,8 @@ new #[Layout('layouts::app', ['section' => 'tournaments'])] class extends Compon
         $weekMetric = $week !== null ? app(\App\Support\Scores\ScoreRuns::class)->metricOf($week) : null;
         $weekShare = null;
         $tmnfShare = $week !== null ? app(\App\Support\Tmnf\TmnfMoments::class)->shareableOn(auth()->user(), $week) : null;
-        $tmnfTrack = \App\Support\Tmnf\TmnfWeeks::track($week?->score_course ?? \App\Support\Tmnf\TmnfWeeks::trackFor(BlockfillWeeks::startOf(now())));
+        // No week runs (not approved yet): no track is guessed for it.
+        $tmnfTrack = \App\Support\Tmnf\TmnfWeeks::track($week?->score_course);
     }
 @endphp
 
@@ -158,7 +159,10 @@ new #[Layout('layouts::app', ['section' => 'tournaments'])] class extends Compon
                     <a href="{{ route('tournaments.scores', $week) }}" class="inline-flex min-h-11 items-center text-[13px] font-bold text-ink underline decoration-edge underline-offset-4 hover:decoration-ink" data-test="score-full-table">{{ __('Full table') }}</a>
                 @endif
             </div>
-            @if ($weekStandings === [])
+            @if ($week === null)
+                {{-- No week runs: the admins have not approved the next one yet (LeagueWeekDrafts). --}}
+                <p class="m-0 px-2 py-3 text-[13px] text-ink-2 lg:px-0" data-test="next-week-soon">{{ __('Next week starts soon. Ranked runs count again once it is open.') }}</p>
+            @elseif ($weekStandings === [])
                 @include('pages.scores.partials.blockfill-empty', ['finished' => false])
             @else
                 @include('pages.scores.partials.leaderboard', ['standings' => $weekStandings, 'metric' => $weekMetric, 'limit' => 10, 'viewerId' => auth()->id(), 'staff' => false, 'beat' => route('stacker.play'), 'shareMoment' => $weekShare])
@@ -176,7 +180,10 @@ new #[Layout('layouts::app', ['section' => 'tournaments'])] class extends Compon
                     <a href="{{ route('tournaments.show', $week) }}" class="inline-flex min-h-11 items-center text-[13px] font-bold text-ink underline decoration-edge underline-offset-4 hover:decoration-ink" data-test="score-full-table">{{ __('Week page') }}</a>
                 @endif
             </div>
-            @if ($weekStandings === [])
+            @if ($week === null)
+                {{-- No week runs: the admins have not approved the next one yet (LeagueWeekDrafts). --}}
+                <p class="m-0 px-2 py-3 text-[13px] text-ink-2 lg:px-0" data-test="next-week-soon">{{ __('Next week starts soon. Your times count again once it is open.') }}</p>
+            @elseif ($weekStandings === [])
                 <p class="m-0 px-2 py-3 text-[13px] text-ink-2 lg:px-0" data-test="tmnf-board-empty">{{ __('Nobody has a time this week yet. Join our server and be the first on the board.') }}</p>
             @else
                 @include('pages.scores.partials.leaderboard', ['standings' => $weekStandings, 'metric' => $weekMetric, 'limit' => 10, 'viewerId' => auth()->id(), 'staff' => false, 'shareMoment' => null])

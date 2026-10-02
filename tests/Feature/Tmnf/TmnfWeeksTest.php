@@ -56,6 +56,8 @@ beforeEach(function () {
     config(['esports.league.nsec' => (new TestSigner)->secret, 'esports.tmnf.server.address' => 'tmnf.example.org:2350']);
     // A Wednesday noon of week 41.
     $this->travelTo(CarbonImmutable::parse('2026-10-07 12:00:00'));
+    // The admins approved the weeks on A01-Race (the approval itself: LeagueWeekApprovalTest).
+    leagueWeeksApproved(TrackmaniaNationsForever::SLUG);
 });
 
 /** Ends the week as the score kind does: past its window and review time. */

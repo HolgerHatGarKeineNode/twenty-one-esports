@@ -35,7 +35,8 @@ export function createReplayPlayer(text, { checkpointEvery = 300 } = {}) {
         byTick.get(tick).push([action, down]);
     }
 
-    const fresh = () => createGame({ seed: header.seed, settings: header.settings });
+    // the engine id of its header: a week's difficulty replays on its own gravity
+    const fresh = () => createGame({ seed: header.seed, settings: header.settings, engine: header.engine });
     const play = (game) => step(game, byTick.get(game.tick) ?? []);
 
     // one pass to the end: checkpoints, the cleared rows, the result

@@ -9,7 +9,6 @@ use App\Support\LeagueTime;
 use App\Support\Scores\ScoreRuns;
 use App\Support\Scores\ScoreStanding;
 use App\Support\Scores\ScoreWindow;
-use App\Support\Stacker\BlockfillWeeks;
 use App\Support\Tmnf\TmnfWeeks;
 use Carbon\CarbonImmutable;
 use Carbon\CarbonInterface;
@@ -103,14 +102,12 @@ final class TmnfSlide
                 return $this->frame('finished', $previous, $previous->status === TournamentStatus::Finished ? 'Final standings' : 'Week over, the times are being checked', $last);
             }
 
-            $start = BlockfillWeeks::startOf($now);
-            $local = $start->setTimezone(BlockfillWeeks::TIMEZONE);
-
+            // No week runs (not approved yet, LeagueWeekDrafts): no week number and no track is shown for it.
             return [
                 'state' => 'empty',
-                'title' => $current?->title() ?? 'TMNF Week '.$local->isoWeek().', '.$local->isoWeekYear(),
-                'line' => 'Nobody is on the board yet',
-                'track' => $this->trackName($current->score_course ?? TmnfWeeks::trackFor($start)),
+                'title' => $current?->title() ?? 'TMNF',
+                'line' => $current === null ? 'Next week starts soon' : 'Nobody is on the board yet',
+                'track' => $this->trackName($current?->score_course),
                 'server' => (string) config('esports.tmnf.server.name'),
                 'top' => [],
                 'url' => $this->url(),

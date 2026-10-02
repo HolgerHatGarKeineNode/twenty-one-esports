@@ -52,6 +52,8 @@ beforeEach(function () {
     $this->app->instance(Verifier::class, $this->verifier);
     // A Wednesday: this week started on Monday 2026-10-05 00:00 Berlin (CEST), 2026-10-04 22:00 UTC.
     $this->travelTo(CarbonImmutable::parse('2026-10-07 12:00:00'));
+    // The admins approved the weeks, on the original rules (the approval itself: LeagueWeekApprovalTest).
+    leagueWeeksApproved(Blockfill::SLUG);
 });
 
 /**
@@ -174,6 +176,7 @@ test('the week runs from Monday 00:00 to Monday 00:00 Berlin, 167 or 169 hours a
 
     // Spring: summer time starts on Sunday 2027-03-28, so the week from Monday 2027-03-22 has 167 hours.
     $this->travelTo(CarbonImmutable::parse('2027-03-24 12:00:00'));
+    leagueWeeksApproved(Blockfill::SLUG);
     $spring = ScoreWindow::of($weeks->open());
     expect($spring->start->toIso8601String())->toBe('2027-03-21T23:00:00+00:00')
         ->and($spring->end->toIso8601String())->toBe('2027-03-28T22:00:00+00:00')
@@ -344,9 +347,9 @@ test('the game page shows this week\'s board, your place and last week\'s winner
     BlockfillOn::play();
     [$winner, $me, $other] = User::factory()->count(3)->create();
 
-    // Empty at first: no week yet, no winner.
+    // Empty at first: no week open yet (it opens with the hourly run or the first run), no winner.
     $this->get(route('stacker.play'))->assertOk()
-        ->assertSee(__('Nobody has a verified run this week yet. Yours could be the first.'))
+        ->assertSee(__('Next week starts soon. Ranked runs count again once it is open.'))
         ->assertSee(__('No winner last week.'))
         ->assertSee(__('Log in and play a ranked run to get on the board.'));
 

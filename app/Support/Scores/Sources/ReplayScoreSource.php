@@ -9,6 +9,7 @@ use App\Support\Scores\Contracts\ScoreSource;
 use App\Support\Scores\ScoreAccount;
 use App\Support\Scores\ScoreCourse;
 use App\Support\Scores\ScoreRecord;
+use App\Support\Stacker\BlockfillWeeks;
 use Carbon\CarbonImmutable;
 use Carbon\CarbonInterface;
 
@@ -20,8 +21,9 @@ use Carbon\CarbonInterface;
  *
  * The value is the verified time in milliseconds (Blockfill::milliseconds()),
  * the moment is the submission: the same moment that decides the run's week
- * (StackerRuns::weekOf()). Best is the fewest ticks inside [start, end),
- * a tie going to the earlier submission. Any other game or course has none.
+ * (StackerRuns::weekOf()). Best is the fewest ticks inside [start, end) on
+ * the difficulty of the week the window lies in, a tie going to the earlier
+ * submission. Any other game or course has none.
  */
 final class ReplayScoreSource implements ScoreSource
 {
@@ -41,6 +43,8 @@ final class ReplayScoreSource implements ScoreSource
         $run = StackerRun::query()
             ->where('user_id', $account->userId)
             ->where('status', StackerRunStatus::Verified)
+            // Only runs on the difficulty of the week the window lies in (BlockfillWeeks::difficultyAt()).
+            ->where('engine', app(BlockfillWeeks::class)->difficultyAt($windowStart))
             ->whereNotNull('ticks')->whereNotNull('submitted_at')
             ->where('submitted_at', '>=', $windowStart->format('Y-m-d H:i:s.v'))
             ->where('submitted_at', '<', $windowEnd->format('Y-m-d H:i:s.v'))

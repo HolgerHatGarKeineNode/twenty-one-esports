@@ -268,6 +268,7 @@ test('a Blockfill player gets a score card next to the ladders, measured at 1440
     BlockfillOn::play();
     $this->freezeTime();
     $this->travelTo(CarbonImmutable::parse('2026-10-07 12:00:00'));
+    leagueWeeksApproved(Blockfill::SLUG);
     $player = playerStatsSeed();
 
     // This week's board: a faster rival, then the player with two runs (the better one counts).

@@ -26,6 +26,8 @@ beforeEach(function () {
     // A Wednesday: this week started on Monday 2026-10-05 00:00 Berlin.
     $this->travelTo(CarbonImmutable::parse('2026-10-07 12:00:00'));
     $this->weeks = app(BlockfillWeeks::class);
+    // The admins approved the weeks around now (the approval itself: LeagueWeekApprovalTest).
+    leagueWeeksApproved(Blockfill::SLUG);
 });
 
 function blockfillPageRun(User $user, int $ticks, CarbonImmutable $at): void

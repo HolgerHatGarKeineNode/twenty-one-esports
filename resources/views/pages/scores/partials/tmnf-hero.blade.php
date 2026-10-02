@@ -37,6 +37,9 @@
                 <li class="{{ $chip }}" data-test="chip-final"><x-icon name="check" :size="14" class="shrink-0 text-win" />{{ __('Finished') }}</li>
             @elseif ($week !== null)
                 <li class="{{ $chip }}" data-test="chip-closed"><x-icon name="lock" :size="14" class="shrink-0 text-ink-2" />{{ __('Window closed') }}</li>
+            @else
+                {{-- No week runs: the admins have not approved the next one yet. --}}
+                <li class="{{ $chip }}" data-test="chip-next-week-soon"><x-icon name="clock" :size="14" class="shrink-0 text-tmnf" />{{ __('Next week starts soon') }}</li>
             @endif
             @if ($standings !== [])
                 <li class="{{ $chip }}" data-test="chip-players"><x-icon name="user" :size="14" class="shrink-0 text-tmnf" />{{ trans_choice(':count player|:count players', count($standings)) }}</li>

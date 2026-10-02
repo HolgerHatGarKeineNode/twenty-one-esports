@@ -1,6 +1,7 @@
 <?php
 
 use App\Enums\StackerRunStatus;
+use App\Games\Blockfill;
 use App\Models\Admin;
 use App\Models\StackerRun;
 use App\Models\User;
@@ -48,6 +49,7 @@ beforeEach(function () {
     });
 
     BlockfillOn::play();
+    leagueWeeksApproved(Blockfill::SLUG);
 });
 
 /**
@@ -240,6 +242,7 @@ function replayShelfWorld(): array
         'Nakamoto Institute Night Shift', 'Orange Pill Academy', 'Blockspace Bob', 'Mempool Mia', 'Tenth Place Tim', 'Eleventh Place Eve'];
 
     test()->travelTo(CarbonImmutable::parse('2026-09-30 12:00:00'));
+    leagueWeeksApproved(Blockfill::SLUG);
     $lastWeek = [];
 
     foreach ($names as $i => $name) {
@@ -253,6 +256,7 @@ function replayShelfWorld(): array
     }
 
     test()->travelTo(CarbonImmutable::parse('2026-10-07 12:00:00'));
+    leagueWeeksApproved(Blockfill::SLUG);
     $adminNow = replayFixtureRun($admin);
     $held = replayFixtureRun(User::factory()->create(['name' => 'Fast Fingers']), ['pps', 'finesse'], ownSeed: true);
 

@@ -8,6 +8,7 @@
 */
 
 use App\Enums\StackerRunStatus;
+use App\Games\Blockfill;
 use App\Jobs\VerifyStackerRun;
 use App\Models\StackerRun;
 use App\Models\User;
@@ -27,6 +28,8 @@ beforeEach(function () {
     $this->app->instance(Verifier::class, new FakeStackerVerifier);
     // A Wednesday: the week started on Monday 2026-10-05 00:00 Berlin (CEST) and ends Monday 2026-10-12 00:00 Berlin.
     $this->travelTo(CarbonImmutable::parse('2026-10-07 12:00:00'));
+    // The admins approved the weeks around now (the approval itself: LeagueWeekApprovalTest).
+    leagueWeeksApproved(Blockfill::SLUG);
 });
 
 /** A run of `$user` with `$ticks` (60 a second) handed in `$minutesAgo` ago, through the real verdict job. */

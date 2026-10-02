@@ -25,6 +25,9 @@ Route::middleware(['auth', 'admin'])->prefix('admin')->name('admin.')->group(fun
     // League settings (P44): the operational values an admin changes, with their log.
     Route::livewire('settings', 'pages::admin.settings')->name('settings');
 
+    // League weeks: the next Blockfill and TMNF week, its settings and the approval it needs to start.
+    Route::livewire('league-weeks', 'pages::admin.league-weeks')->name('league-weeks');
+
     // Trust (P7d): the reports the trust job read, dismissals and exclusions.
     Route::livewire('trust', 'pages::admin.trust')->name('trust');
 

@@ -581,7 +581,7 @@ Artisan::command('blockfill:weeks', function (BlockfillWeeks $weeks) {
     $done = $weeks->sweep();
     $announced = $weeks->announce();
 
-    $this->info(($done['opened'] ? 'This week\'s leaderboard is open.' : 'Blockfill is off: no leaderboard opened.')." Joined {$done['joined']} player(s), read {$done['read']} best run(s). Signed {$announced} calendar event(s).");
+    $this->info(($done['opened'] ? 'This week\'s leaderboard is open.' : 'No leaderboard opened: Blockfill is off, or this week is not approved yet.')." Joined {$done['joined']} player(s), read {$done['read']} best run(s). Signed {$announced} calendar event(s).");
 })->purpose('Open this week\'s Blockfill leaderboard, join every verified player and sign its calendar event');
 
 /*
@@ -613,7 +613,7 @@ Artisan::command('tmnf:weeks', function (TmnfWeeks $weeks) {
     $done = $weeks->sweep();
     $announced = $weeks->announce();
 
-    $this->info(($done['opened'] ? 'This week\'s TMNF leaderboard is open.' : 'TMNF is off or has no track: no leaderboard opened.')." Joined {$done['joined']} player(s). Signed {$announced} calendar event(s).");
+    $this->info(($done['opened'] ? 'This week\'s TMNF leaderboard is open.' : 'No TMNF leaderboard opened: TMNF is off, this week is not approved yet, or the server is not on its track yet.')." Joined {$done['joined']} player(s). Signed {$announced} calendar event(s).");
 })->purpose('Open this week\'s TMNF leaderboard, join every linked player with a finish and sign its calendar event');
 
 if (app(GameRegistry::class)->find(TrackmaniaNationsForever::SLUG) !== null) {

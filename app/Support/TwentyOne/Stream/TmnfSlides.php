@@ -201,14 +201,15 @@ final class TmnfSlides
         }
 
         $start = BlockfillWeeks::startOf($now);
-        $local = $start->setTimezone(BlockfillWeeks::TIMEZONE);
-        $track = TmnfWeeks::track($week->score_course ?? TmnfWeeks::trackFor($start));
+        // No week runs (not approved yet, LeagueWeekDrafts): no track is guessed for it.
+        $track = TmnfWeeks::track($week?->score_course);
         $end = $week === null ? BlockfillWeeks::endOf($start) : ScoreWindow::of($week)->end;
         $login = config('esports.tmnf.server.login');
 
         return [
             'state' => $state,
-            'week' => $week?->title() ?? 'TMNF Week '.$local->isoWeek().', '.$local->isoWeekYear(),
+            // No week runs (not approved yet, LeagueWeekDrafts): no week number is shown for it.
+            'week' => $week?->title() ?? 'TMNF',
             'track' => $track['name'] ?? 'the track of the week',
             'author' => $track['author'] ?? '',
             'authorMs' => (int) ($track['author_ms'] ?? 0),

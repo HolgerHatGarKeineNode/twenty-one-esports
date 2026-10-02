@@ -18,7 +18,7 @@ use Throwable;
  * verify.
  *
  * - issue(): a one-time token (shown once, stored as sha256) and a fresh
- *   128-bit seed on the current engine. A player has one active run: a new
+ *   128-bit seed on the running week's difficulty (its engine id). A player has one active run: a new
  *   issue abandons every run of theirs still `issued`.
  * - start(): the browser says the run starts now. A token not started within
  *   `start_seconds` (10 s) expires (abandoned, reason `expired`), so the
@@ -103,7 +103,8 @@ final class StackerRuns
                 'user_id' => $user->id,
                 'token_hash' => self::hashToken($token),
                 'seed' => self::freshSeed(),
-                'engine' => (string) config('esports.blockfill.engine'),
+                // The running week's difficulty (BlockfillWeeks::difficultyAt()): the engine the run is played and verified on.
+                'engine' => app(BlockfillWeeks::class)->difficultyAt($now),
                 'status' => StackerRunStatus::Issued,
                 'issued_at' => $now,
             ]);

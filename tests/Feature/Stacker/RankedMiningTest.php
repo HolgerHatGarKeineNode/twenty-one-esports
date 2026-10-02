@@ -63,6 +63,8 @@ beforeEach(function () {
 
     $this->admin = User::factory()->create(['name' => 'Reviewer']);
     Admin::query()->create(['pubkey' => $this->admin->pubkey]);
+    // The admins approved the weeks around now (the approval itself: LeagueWeekApprovalTest).
+    leagueWeeksApproved(Blockfill::SLUG);
 });
 
 /**

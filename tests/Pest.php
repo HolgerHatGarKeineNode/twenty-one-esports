@@ -50,6 +50,7 @@ require_once __DIR__.'/Support/move_history.php';
 require_once __DIR__.'/Support/mempool.php';
 require_once __DIR__.'/Support/scores.php';
 require_once __DIR__.'/Support/tmnf.php';
+require_once __DIR__.'/Support/league_weeks.php';
 require_once __DIR__.'/Integration/Support/helpers.php';
 
 // No test of the default suite may reach the real network: an unfaked

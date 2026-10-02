@@ -1,5 +1,6 @@
 <?php
 
+use App\Games\TrackmaniaNationsForever;
 use App\Models\User;
 use App\Support\Tmnf\TmnfLinks;
 use App\Support\Tmnf\TmnfWeeks;
@@ -44,6 +45,7 @@ beforeEach(function () {
     tmnfOn();
     $this->freezeTime();
     $this->travelTo(CarbonImmutable::parse('2026-10-07 12:00:00'));
+    leagueWeeksApproved(TrackmaniaNationsForever::SLUG);
 
     $names = ['Hal Finney Fan' => 24_870, 'Ada Fullthrottle' => 25_120, 'A very long Nostr display name that has to be cut off somewhere' => 25_480, 'Nakamoto' => 26_010, 'Mempool Max' => 27_300];
     foreach (array_keys($names) as $index => $name) {

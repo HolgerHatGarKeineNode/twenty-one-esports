@@ -67,6 +67,8 @@ beforeEach(function () {
     $this->app->instance(Verifier::class, new FakeStackerVerifier);
     // A Wednesday: the week started on Monday 2026-10-05 00:00 Berlin (CEST), ISO week 41.
     $this->travelTo(CarbonImmutable::parse('2026-10-07 12:00:00'));
+    // The admins approved the weeks around now (the approval itself: LeagueWeekApprovalTest).
+    leagueWeeksApproved(Blockfill::SLUG);
 });
 
 /** A verified run of `$user` with `$ticks`, handed in at `$at`, through the real verdict job. */
@@ -579,6 +581,7 @@ test('a week shows no seed numbers and no prize pool, even to an admin, and has 
 test('the calendar file of a week across a clock change ends with the week: 169 hours in October, 167 in March', function (string $at, string $start, string $end) {
     BlockfillOn::play();
     $this->travelTo(CarbonImmutable::parse($at));
+    leagueWeeksApproved(Blockfill::SLUG);
     $week = app(BlockfillWeeks::class)->open();
     $ics = $this->get(route('tournaments.calendar', $week))->assertOk()->getContent();
 

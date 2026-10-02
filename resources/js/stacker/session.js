@@ -86,10 +86,10 @@ function isResting(game) {
 }
 
 /**
- * @param {{seed: string, settings: {das: number, arr: number, sdf: number}}} options
+ * @param {{seed: string, settings: {das: number, arr: number, sdf: number}, engine?: string}} options `engine`: the week's difficulty (engine.js ENGINES; bf1 when not given)
  */
-export function createSession({ seed, settings }) {
-    const game = createGame({ seed, settings });
+export function createSession({ seed, settings, engine }) {
+    const game = createGame({ seed, settings, engine });
     /** @type {Array<[number, number, number]>} */
     const log = [];
     const down = new Set();

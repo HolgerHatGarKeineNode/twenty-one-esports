@@ -1,5 +1,6 @@
 <?php
 
+use App\Games\Blockfill;
 use App\Models\StackerRun;
 use App\Models\User;
 use App\Support\Stacker\BlockfillWeeks;
@@ -47,6 +48,7 @@ beforeEach(function () {
     BlockfillOn::play();
     $this->freezeTime();
     $this->travelTo(CarbonImmutable::parse('2026-10-07 12:00:00'));
+    leagueWeeksApproved(Blockfill::SLUG);
 
     // This week's board with two players, so scores/blockfill and the game page show a running week.
     foreach (['Hal Finney Fan' => 2900, 'Ada Blockspace' => 3000] as $name => $ticks) {
@@ -189,6 +191,7 @@ test('the page of a week: the Play button to /blockfill in the first screen, how
     // An empty week: the next one, opened before anybody played it (every Monday until the first verified run).
     if ($empty) {
         $this->travelTo(CarbonImmutable::parse('2026-10-12 09:00:00'));
+        leagueWeeksApproved(Blockfill::SLUG);
         app(BlockfillWeeks::class)->open();
     }
     $page = blockfillShellPage($guest ? null : $this->player, $locale, $width, $height);
