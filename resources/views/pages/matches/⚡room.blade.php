@@ -1105,11 +1105,22 @@ new #[Title('Match room')] #[Layout('layouts::app', ['section' => 'matches', 'sc
         </section>
         @endif
 
-        <section aria-labelledby="chat-h" class="flex min-h-[420px] flex-col rounded-lg bg-card" x-data="roomChat(@js($this->chatConfig()))" x-on:casual-room.window="casualUpdate($event.detail.state)" x-on:casual-compose.window="cardKinds.includes($event.detail) && openComposer($event.detail)" data-test="room-chat" wire:ignore>
-            <span class="flex items-center justify-between gap-2 border-b border-hairline px-4 py-3 lg:px-6"><h2 id="chat-h" class="m-0 text-[15px] font-bold">{{ __('Chat') }}</h2><span class="inline-flex items-center gap-1.5 text-xs text-ink-2"><x-icon name="lock" :size="14" />{{ $casual ? __('private to both players') : __('private to both lineups') }}</span></span>
-            <p x-show="status === 'live'" class="m-0 border-b border-hairline px-4 py-2 text-xs leading-normal text-ink-2 lg:px-6" data-test="chat-hint">{{ __('End-to-end encrypted over Nostr: the league server never receives or stores these messages.') }}</p>
-            <ol aria-live="polite" class="m-0 flex min-h-0 grow list-none flex-col justify-end gap-3 overflow-y-auto px-4 py-3 text-[13px] leading-normal lg:px-6" data-test="chat-messages">
-                <template x-for="m in messages" :key="m.id">
+        {{--
+            A fixed height (.room-chat): the room never grows with the chat, the messages scroll inside, newest at the
+            bottom, older ones drawn when scrolled to the top (resources/js/roomChat.js). The height leaves room for the
+            sticky header, the phone's tab bar and the match dock, so the field stays clear of them.
+        --}}
+        <section aria-labelledby="chat-h" class="room-chat flex flex-col rounded-lg bg-card" x-data="roomChat(@js($this->chatConfig()))" x-on:casual-room.window="casualUpdate($event.detail.state)" x-on:casual-compose.window="cardKinds.includes($event.detail) && openComposer($event.detail)" data-test="room-chat" wire:ignore>
+            <span class="flex shrink-0 items-center justify-between gap-2 border-b border-hairline px-4 py-3 lg:px-6"><h2 id="chat-h" class="m-0 text-[15px] font-bold">{{ __('Chat') }}</h2><span class="inline-flex items-center gap-1.5 text-xs text-ink-2"><x-icon name="lock" :size="14" />{{ $casual ? __('private to both players') : __('private to both lineups') }}</span></span>
+            <p x-show="status === 'live'" class="m-0 shrink-0 border-b border-hairline px-4 py-2 text-xs leading-normal text-ink-2 lg:px-6" data-test="chat-hint">{{ __('End-to-end encrypted over Nostr: the league server never receives or stores these messages.') }}</p>
+            <div class="relative flex min-h-0 grow flex-col">
+            <ol x-ref="list" x-effect="arrived(messages)" x-on:scroll.passive="onScroll()" aria-live="polite" class="m-0 flex min-h-0 grow list-none flex-col gap-3 overflow-y-auto overscroll-contain px-4 py-3 text-[13px] leading-normal lg:px-6" data-test="chat-messages">
+                {{-- Pushes a short list to the bottom; a long one scrolls (justify-end would cut off its top). --}}
+                <li aria-hidden="true" class="mt-auto"></li>
+                <li x-show="hasOlder" class="self-center" data-test="chat-older">
+                    <button type="button" x-on:click="loadOlder()" class="btn-w inline-flex min-h-11 cursor-pointer items-center rounded-md border border-line bg-transparent px-3 text-xs text-ink-2">{{ __('Earlier messages') }}</button>
+                </li>
+                <template x-for="m in visible" :key="m.id">
                     <li class="flex max-w-[85%] flex-col gap-1 rounded-md px-3 py-2" :class="[m.from === 'me' ? 'self-end bg-btc-press' : 'self-start bg-well', m.card && ! m.mutedCard && m.card.state === 'open' ? 'w-[260px] shadow-[inset_0_0_0_1px_#B9640A]' : '']" :data-from="m.from">
                         <span class="flex items-center gap-2 text-[11px]" :class="m.from === 'me' ? 'text-btc-hi' : 'text-ink-2'">
                             <span x-text="m.name + ', ' + time(m.at)"></span>
@@ -1148,10 +1159,16 @@ new #[Title('Match room')] #[Layout('layouts::app', ['section' => 'matches', 'sc
                 <li x-show="status === 'no-relays'" class="text-ink-2">{{ __('The chat has no relay here, so it is off.') }}</li>
                 <li x-show="error" class="text-loss" role="alert" x-text="error"></li>
             </ol>
+            {{-- Scrolled up while messages arrive: they wait below, counted, until the player comes back down. --}}
+            <button type="button" x-show="unseen > 0" x-cloak x-on:click="toBottom()" data-test="chat-new-pill"
+                    class="absolute bottom-3 left-1/2 inline-flex h-9 -translate-x-1/2 cursor-pointer items-center gap-1.5 rounded-full border-0 bg-btc px-4 text-xs font-bold whitespace-nowrap text-on-btc shadow-[0_8px_16px_rgba(10,10,11,.6)]">
+                <span>{{ __('New messages') }}</span><span x-text="'(' + unseen + ')'"></span><span aria-hidden="true">↓</span>
+            </button>
+            </div>
             @if ($casual)
                 @include('pages.matches.partials.card-composer')
             @endif
-            <form x-show="status === 'live'" x-on:submit.prevent="send()" class="flex gap-2 border-t border-hairline px-4 pt-3 pb-4 lg:px-6">
+            <form x-show="status === 'live'" x-on:submit.prevent="send()" class="flex shrink-0 gap-2 border-t border-hairline px-4 pt-3 pb-4 lg:px-6" data-test="chat-form">
                 <label for="roomchat" class="sr-only">{{ __('Message to both lineups') }}</label>
                 <input id="roomchat" x-model="input" placeholder="{{ __('Message') }}" autocomplete="off" maxlength="500" class="h-11 min-w-0 grow rounded-lg border border-edge bg-ground px-3.5 text-[13px] text-ink placeholder:text-ink-3">
                 <button type="submit" aria-label="{{ __('Send message') }}" :disabled="sending" class="btn-w inline-flex size-11 shrink-0 cursor-pointer items-center justify-center rounded-md border border-line bg-well text-ink disabled:opacity-50"><x-icon name="send" :size="16" /></button>
@@ -1198,7 +1215,7 @@ new #[Title('Match room')] #[Layout('layouts::app', ['section' => 'matches', 'sc
 
     {{-- Sticky score bar (MobileMatchRoom); a casual 1v1 only once both are in, before that its steps carry the action. --}}
     @if ($editable && (! $casual || $m->joined_at !== null))
-        <div class="fixed inset-x-0 bottom-0 z-20 flex items-center gap-3 bg-bar px-4 py-3 shadow-[0_-1px_0_#2A2A30] lg:hidden" data-page-bar>
+        <div class="fixed inset-x-0 bottom-0 z-20 flex items-center gap-3 bg-bar px-4 py-3 shadow-[0_-1px_0_#2A2A30] lg:hidden" data-page-bar data-room-bar>
             <span class="flex flex-col"><b class="font-display text-[22px]">{{ $wins['challenger'] }}:{{ $wins['challenged'] }}</b><span class="text-[11px] text-ink-2">{{ $wins['challenger'] === $wins['challenged'] ? __('level') : __(':clan lead the series', ['clan' => $m->sideName($wins['challenger'] > $wins['challenged'] ? 'challenger' : 'challenged')]) }}</span></span>
             <span class="grow"></span>
             <button type="button" x-on:click="submit = true" class="btn-p inline-flex h-[52px] cursor-pointer items-center gap-2 rounded-md border-0 bg-btc px-5 text-sm font-bold text-on-btc"><x-icon name="shield-check" :size="18" />{{ __('Submit final score') }}</button>

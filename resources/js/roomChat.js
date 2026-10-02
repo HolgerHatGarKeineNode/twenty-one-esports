@@ -26,6 +26,14 @@
  * lacks the `match` tag when it belongs to this room (dmReplies() in
  * nostrChat.js), marked "via Nostr DM". Such a reply is always text, never
  * a card.
+ *
+ * The box has a fixed height and scrolls inside (2026-10-02: "dass der Chat
+ * die Höhe aufbloatet"): it opens at the newest message and draws the last
+ * PAGE messages; scrolled to the top it draws PAGE more, keeping what was on
+ * screen where it was. At the bottom it follows new messages; scrolled up, a
+ * "New messages" pill counts them instead of moving the text. The relays
+ * deliver the history at once (wraps carry randomised times, NIP-59, so they
+ * cannot be paged by time), so "older" is a window over what arrived.
  */
 import { SimplePool } from 'nostr-tools/pool';
 import { loadCache, roomEntry, saveCache } from './chatCache.js';
@@ -39,6 +47,12 @@ const MUTES_KEY = 'esports.chat.mutes';
 /** The guest asks again this often when its "seen" beat the host's "shared" to the league. */
 const SEEN_RETRIES = [1000, 2000, 4000, 8000, 16000];
 
+/** Messages drawn at first and added per scroll to the top. */
+export const PAGE = 30;
+
+/** Within this many pixels of an edge counts as at it. */
+const EDGE = 24;
+
 function writeJson(key, value) {
     try {
         localStorage.setItem(key, JSON.stringify(value));
@@ -50,6 +64,9 @@ function writeJson(key, value) {
 const nowSeconds = () => Math.floor(Date.now() / 1000);
 
 export function roomChat(config) {
+    // The newest message seen, outside the reactive state: arrived() runs in an x-effect and must not depend on it.
+    let lastId = null;
+
     return {
         rumors: [],
         input: '',
@@ -76,6 +93,11 @@ export function roomChat(config) {
         cardError: '',
         revealed: [],
         seenBusy: false,
+
+        // The scroll box: how many of the newest messages are drawn, whether it sits at the bottom, what arrived below.
+        shown: PAGE,
+        atBottom: true,
+        unseen: 0,
 
         init() {
             this.muted = [...new Set(config.muted ?? [])];
@@ -224,6 +246,63 @@ export function roomChat(config) {
                         mutedCard: card !== null && this.isMuted(rumor.pubkey) && !this.revealed.includes(rumor.id),
                     };
                 });
+        },
+
+        /* ---------- The scroll box ---------- */
+
+        /** The newest `shown` messages: what the list draws. */
+        get visible() {
+            const messages = this.messages;
+
+            return messages.slice(Math.max(0, messages.length - this.shown));
+        },
+
+        get hasOlder() {
+            return this.messages.length > this.shown;
+        },
+
+        /**
+         * The list changed. At the bottom it stays there, whatever arrived (the relays deliver the
+         * history in any order, older messages land above the newest). Scrolled up, a new last
+         * message counts for the pill, unless it is mine: sending takes the box down.
+         */
+        arrived(messages) {
+            const last = messages[messages.length - 1] ?? null;
+            const newLast = last !== null && last.id !== lastId;
+            lastId = last?.id ?? null;
+
+            if (this.atBottom || (newLast && last.from === 'me')) {
+                this.$nextTick(() => this.toBottom());
+            } else if (newLast) {
+                this.unseen += 1;
+            }
+        },
+
+        onScroll() {
+            const list = this.$refs.list;
+            if (!list) return;
+            this.atBottom = list.scrollHeight - list.scrollTop - list.clientHeight <= EDGE;
+            if (this.atBottom) this.unseen = 0;
+            if (list.scrollTop <= EDGE && this.hasOlder) this.loadOlder();
+        },
+
+        /** PAGE more at the top, with the text on screen kept in place (the box grows above it). */
+        loadOlder() {
+            const list = this.$refs.list;
+            if (!list || !this.hasOlder) return;
+            const fromBottom = list.scrollHeight - list.scrollTop;
+            this.shown += PAGE;
+            this.$nextTick(() => {
+                list.scrollTop = list.scrollHeight - fromBottom;
+            });
+        },
+
+        toBottom() {
+            const list = this.$refs.list;
+            if (!list) return;
+            list.scrollTop = list.scrollHeight;
+            this.atBottom = true;
+            this.unseen = 0;
         },
 
         /** What the template draws of a card: title, fields as text, and its state. */

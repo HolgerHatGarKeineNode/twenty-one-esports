@@ -2100,9 +2100,18 @@ select:focus[data-flux-control] {
     --tabbar-h: calc(4rem + env(safe-area-inset-bottom));
     /* The sticky header: row 1 alone below lg (56 px), row 1 and the context bar from lg (64 + 48 px). */
     --shell-h: 3.5rem;
-    /* Anchors and focus land below the header and above the phone's tab bar, never under either. */
+    /*
+     * The match dock's floating bar while it shows (P5f; it renders its spacer exactly then): 56 px and 16 px
+     * of air. A match room's sticky score bar (phones) carries the dock as a 44 px tab on its top edge instead.
+     */
+    --dock-h: 0px;
+    /* Anchors and focus land below the header and above the phone's tab bar and the dock, never under them. */
     scroll-padding-top: var(--spacing-below-shell);
-    scroll-padding-bottom: calc(var(--tabbar-h) + 1rem);
+    scroll-padding-bottom: calc(var(--tabbar-h) + var(--dock-h) + 1rem);
+}
+
+:root:has([data-test="dock-spacer"]) {
+    --dock-h: 4.5rem;
 }
 
 @media (width >= 64rem) {
@@ -2110,6 +2119,22 @@ select:focus[data-flux-control] {
         --tabbar-h: 0px;
         --shell-h: 7rem;
     }
+}
+
+@media (width < 64rem) {
+    :root:has([data-room-bar]) {
+        --dock-h: 7.5rem;
+    }
+}
+
+/*
+ * The chat of a match room (2026-10-02): a fixed height that fits between the sticky header and whatever
+ * floats at the bottom (tab bar, dock, score bar), so with the box in view its field is never covered; the
+ * messages scroll inside (resources/js/roomChat.js).
+ */
+.room-chat {
+    height: clamp(20rem, calc(100svh - var(--shell-h) - var(--tabbar-h) - var(--dock-h) - 2.5rem), 35rem);
+    scroll-margin-bottom: calc(var(--tabbar-h) + var(--dock-h) + 1rem);
 }
 
 /*
