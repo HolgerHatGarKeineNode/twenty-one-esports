@@ -246,6 +246,36 @@ final class TournamentPublisher
     }
 
     /**
+     * The 31923 `end`: the pot's close when that lies after the start, else
+     * the score window's end, a casual cup's planned span, or the planned
+     * duration.
+     */
+    public static function end(Tournament $tournament): int
+    {
+        $start = $tournament->starts_at->getTimestamp();
+        $profile = $tournament->profile();
+        // The pot's close is the end only after the start: a pot released during sign-up (PotRelease) closes
+        // before the tournament starts, and a calendar event must never end before it begins (audit 2026-10-03).
+        $closed = $tournament->pool_closed_at !== null && $tournament->pool_closed_at->greaterThan($tournament->starts_at)
+            ? $tournament->pool_closed_at->getTimestamp() : null;
+        $end = $closed
+            // A score leaderboard ends with its window (a Blockfill week: the next Monday 00:00 Berlin).
+            ?? ($profile->isScore() ? ScoreWindow::of($tournament)->end->getTimestamp() : null)
+            // A casual cup runs over days of round windows (P25): it ends at the latest after its hard cap;
+            // a small cup's live evening (S2) at its planned end.
+            ?? ($tournament->isCasualCup()
+                ? $start + match (true) {
+                    CasualCups::isEvening($tournament) => CasualCups::planOf($tournament)['span_minutes'] * 60,
+                    // A lobby cup (P10) is one lobby match: it ends with the time limit.
+                    Lobbies::isLobby($tournament) => Lobbies::plannedMinutes($tournament->game) * 60,
+                    default => CasualCups::maxDays() * 86400,
+                }
+                : $start + (int) ceil($tournament->plannedDuration() * ($profile->isDaily() ? 86400 : 60)));
+
+        return $end;
+    }
+
+    /**
      * NIP-52 tags of the tournament (NIP "Tournaments" table): one `D` per UTC
      * day of the timeframe, the ladder `a` only when it was frozen with the
      * first version (rated tournament), and `end` at the pot's close once it
@@ -260,20 +290,7 @@ final class TournamentPublisher
     private function tags(Tournament $tournament, string $league): array
     {
         $start = $tournament->starts_at->getTimestamp();
-        $profile = $tournament->profile();
-        // A casual cup runs over days of round windows (P25): it ends at the latest after its hard cap;
-        // a small cup's live evening (S2) at its planned end.
-        $end = $tournament->pool_closed_at?->getTimestamp()
-            // A score leaderboard ends with its window (a Blockfill week: the next Monday 00:00 Berlin).
-            ?? ($profile->isScore() ? ScoreWindow::of($tournament)->end->getTimestamp() : null)
-            ?? ($tournament->isCasualCup()
-                ? $start + match (true) {
-                    CasualCups::isEvening($tournament) => CasualCups::planOf($tournament)['span_minutes'] * 60,
-                    // A lobby cup (P10) is one lobby match: it ends with the time limit.
-                    Lobbies::isLobby($tournament) => Lobbies::plannedMinutes($tournament->game) * 60,
-                    default => CasualCups::maxDays() * 86400,
-                }
-                : $start + (int) ceil($tournament->plannedDuration() * ($profile->isDaily() ? 86400 : 60)));
+        $end = self::end($tournament);
         $page = route('tournaments.show', $tournament);
         // NIP-52 has no status for a called-off event (P18): the new version says it in title and summary.
         $calledOff = $tournament->status === TournamentStatus::Cancelled;

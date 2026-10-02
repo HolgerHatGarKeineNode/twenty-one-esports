@@ -10,6 +10,7 @@ use App\Support\PreSeason;
 use App\Support\Prizes\PotRelease;
 use App\Support\Prizes\PotTopUps;
 use App\Support\Prizes\PrizePool;
+use App\Support\Tournaments\TournamentPublisher;
 use App\Support\Tournaments\TournamentRuleViolation;
 use App\Support\Wallet\Ledger;
 use Livewire\Livewire;
@@ -206,4 +207,14 @@ test('a payment to the pot settled after the release goes to the reserve, even o
         ->and($ledger->balance($tournament->potAccount()))->toBe(0)
         ->and($ledger->balance(Ledger::RESERVE))->toBe(12_000)
         ->and($ledger->heldForTournaments())->toBe(0);
+});
+
+test('a pot released during sign-up never makes the calendar event end before it starts', function () {
+    $tournament = switchedOffPot(7_000);
+    app(PotRelease::class)->release($tournament, anAdmin(), 7_000, 'switched off');
+    $tournament->refresh();
+
+    expect($tournament->pool_closed_at)->not->toBeNull()
+        ->and($tournament->pool_closed_at->lessThan($tournament->starts_at))->toBeTrue()
+        ->and(TournamentPublisher::end($tournament))->toBeGreaterThan($tournament->starts_at->getTimestamp());
 });
