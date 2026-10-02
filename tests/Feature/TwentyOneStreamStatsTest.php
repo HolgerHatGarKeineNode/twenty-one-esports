@@ -4,19 +4,23 @@ use App\Enums\ChessEndReason;
 use App\Enums\ChessGameStatus;
 use App\Enums\SeriesResolution;
 use App\Enums\SeriesStatus;
+use App\Enums\StackerRunStatus;
 use App\Models\BoardGame;
 use App\Models\ChessGame;
 use App\Models\Clan;
 use App\Models\ClanMember;
 use App\Models\Lineup;
 use App\Models\Rating;
+use App\Models\ScoreRun;
 use App\Models\SeriesMatch;
+use App\Models\StackerRun;
 use App\Models\User;
 use App\Support\TwentyOne\Stream\RotationPlanner;
 use App\Support\TwentyOne\Stream\SceneRenderer;
 use App\Support\TwentyOne\Stream\SceneSource;
 use App\Support\TwentyOne\Stream\StreamStats;
 use Illuminate\Support\Carbon;
+use Tests\Support\BlockfillOn;
 use Tests\Support\CheckersGame;
 
 /**
@@ -195,4 +199,21 @@ test('every game reaches the stream: its ladders (the season ladder first, a lin
         ->and($boards['checkers/blitz'])->toMatchArray(['gameName' => 'Checkers', 'modeName' => 'Blitz 5+3', 'pool' => Rating::CASUAL])
         ->and($c3)->toContain('Chess Blitz 5+3', 'Rocket League 3v3', 'Checkers Blitz 5+3', 'Rocket &lt;Pack&gt;', '>season<')
         ->and($c3)->not->toContain('<Pack>');
+});
+
+test('games played counts highscore attempts too: verified Blockfill runs and score runs, casual and ranked alike, never one still waiting', function () {
+    $this->travelTo(Carbon::parse('2026-09-27 08:00:00', 'UTC'));
+    BlockfillOn::play();
+    tmnfOn();
+    $player = User::factory()->create();
+    ChessGame::factory()->finished()->create(['ended_at' => now()->subDays(2)]);
+    StackerRun::factory()->for($player)->create(['status' => StackerRunStatus::Verified, 'verified_at' => now()->subHour(), 'submitted_at' => now()->subHour()]);
+    StackerRun::factory()->for($player)->create(['status' => StackerRunStatus::Verifying, 'submitted_at' => now()->subMinute()]);
+    ScoreRun::query()->create(['game' => 'tmnf', 'mode' => 'time-attack', 'course' => 'A01', 'value' => 26_100, 'unit' => 'ms', 'source' => 'server',
+        'user_id' => $player->id, 'achieved_at' => now()->subHour(), 'verified_at' => now()->subHour(), 'account_id' => 'a']);
+    ScoreRun::query()->create(['game' => 'tmnf', 'mode' => 'time-attack', 'course' => 'A01', 'value' => 27_100, 'unit' => 'ms', 'source' => 'server',
+        'user_id' => $player->id, 'achieved_at' => now()->subMinute(), 'verified_at' => null, 'account_id' => 'a']);
+
+    expect(StreamStats::played())->toBe(3)
+        ->and(StreamStats::played(now('Europe/Berlin')->startOfDay()->utc()))->toBe(2);
 });

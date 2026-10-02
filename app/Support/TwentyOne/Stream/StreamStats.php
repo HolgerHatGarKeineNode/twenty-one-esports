@@ -15,6 +15,7 @@ use App\Models\Rating;
 use App\Models\SeriesMatch;
 use App\Models\User;
 use App\Support\Clans\ClanPride;
+use App\Support\Matches\ScoreAttempts;
 use App\Support\Rating\Ratings;
 use Carbon\CarbonInterface;
 use Illuminate\Database\Eloquent\Builder;
@@ -135,9 +136,12 @@ class StreamStats
 
     /**
      * Games played (since `$since`): finished chess games, finished board
-     * games of a board game that is switched on, and series with a result
-     * that was not voided. One query, whatever the tables hold: the site
-     * footer counts with it too, so the two numbers never disagree.
+     * games of a board game that is switched on, series with a result that
+     * was not voided, and the checked highscore attempts of the score games
+     * (Blockfill runs, server and screenshot runs) — casual and ranked alike,
+     * the same attempts the mempool shows as done. One query, whatever the
+     * tables hold: the site footer counts with it too, so the two numbers
+     * never disagree.
      */
     public static function played(?CarbonInterface $since = null): int
     {
@@ -145,19 +149,28 @@ class StreamStats
         $boards = self::boardGames()->where('status', BoardGameStatus::Finished);
         $series = self::decidedSeries();
 
+        $stacker = ScoreAttempts::blockfill() ? ScoreAttempts::stacker('done') : null;
+        $scoreGames = ScoreAttempts::scoreSlugs(ScoreAttempts::slugs());
+        $scores = $scoreGames === [] ? null : ScoreAttempts::scores($scoreGames, 'done');
+
         if ($since !== null) {
             $chess->where('ended_at', '>=', $since);
             $boards->where('ended_at', '>=', $since);
             $series->where('finished_at', '>=', $since);
+            $stacker?->where('verified_at', '>=', $since);
+            $scores?->where('achieved_at', '>=', $since);
         }
 
         $row = DB::query()
             ->selectSub($chess->toBase()->selectRaw('count(*)'), 'chess')
             ->selectSub($boards->toBase()->selectRaw('count(*)'), 'boards')
             ->selectSub($series->toBase()->selectRaw('count(*)'), 'series')
+            ->when($stacker !== null, fn ($query) => $query->selectSub($stacker->toBase()->selectRaw('count(*)'), 'stacker'))
+            ->when($scores !== null, fn ($query) => $query->selectSub($scores->toBase()->selectRaw('count(*)'), 'scores'))
             ->first();
 
-        return (int) ($row->chess ?? 0) + (int) ($row->boards ?? 0) + (int) ($row->series ?? 0);
+        return (int) ($row->chess ?? 0) + (int) ($row->boards ?? 0) + (int) ($row->series ?? 0)
+            + (int) ($row->stacker ?? 0) + (int) ($row->scores ?? 0);
     }
 
     /**
