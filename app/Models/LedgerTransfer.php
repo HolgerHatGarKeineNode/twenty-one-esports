@@ -20,7 +20,7 @@ use Illuminate\Support\Carbon;
  * @property string $from_account
  * @property string $to_account
  * @property int $sats
- * @property string $reason contribution | payout | fee | remainder | season_payout | season_payout_fee
+ * @property string $reason contribution | payout | fee | remainder | season_payout | season_payout_fee | tournament_payout | tournament_payout_fee
  * @property int|null $incoming_payment_id
  * @property int|null $tournament_payout_id
  * @property int|null $tournament_id

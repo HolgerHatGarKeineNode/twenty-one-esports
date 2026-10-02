@@ -4,36 +4,21 @@ namespace App\Livewire\Concerns;
 
 use App\Models\Tournament;
 use App\Models\User;
-use App\Support\PreSeason;
-use App\Support\Prizes\PotBalances;
 use App\Support\Prizes\PrizePool;
 use App\Support\Tournaments\TournamentRuleViolation;
 use Illuminate\Support\Facades\Auth;
-use Illuminate\Support\Facades\Gate;
-use Illuminate\Support\Facades\RateLimiter;
 
 /**
  * The optional prize pot of the tournament create and edit pages and of the
- * pool page (P9, user 2026-09-27): off by default; on, the pot is the
- * tournament's own NWC wallet (never the league's), with its prizes set in
- * one of two modes: a share of the pot per place (presets or custom, 100 %
- * in total) or fixed sats per place, both previewed in sats. The rules live
- * in {@see PrizePool::configurePot()}.
- *
- * The connection string is typed into `$potUri` and nowhere else: it is
- * never filled from the database, and it is cleared after every save, so a
- * stored one never reaches the page or the Livewire snapshot. A stored
- * connection shows as "connected" with replace and remove.
+ * pool page (P9, user 2026-09-27): off by default; on, the pot is booked in
+ * the league wallet (user, 2026-10-02: no wallet of its own is asked for),
+ * with its prizes set in one of two modes: a share of the pot per place
+ * (presets or custom, 100 % in total) or fixed sats per place, both
+ * previewed in sats. The rules live in {@see PrizePool::configurePot()}.
  */
 trait EditsPrizePot
 {
     public bool $potEnabled = false;
-
-    /** A newly pasted connection string; never a stored one. */
-    public string $potUri = '';
-
-    /** The stored connection is being replaced: the field shows. */
-    public bool $potReplacing = false;
 
     public string $potTarget = '';
 
@@ -46,34 +31,20 @@ trait EditsPrizePot
     /** @var list<int|string> sats per place */
     public array $potFixed = [];
 
-    /** Balance of the pasted wallet at its last check, in sats; null = not checked. */
-    public ?int $potCheckedSats = null;
-
     public string $potNotice = '';
 
     public string $potError = '';
-
-    /**
-     * The live check of the pasted string, run by {@see checkNewPotWallet()}
-     * before a transaction; used by the next {@see savePot()} of this request.
-     *
-     * @var array{uri: string, check: array{balance: int, lud16: string|null, can_receive: bool, receive_missing?: list<string>|null}}|null
-     */
-    private ?array $potWalletChecked = null;
 
     /** The tournament whose pot this is; null on the create page. */
     abstract protected function potTournament(): ?Tournament;
 
     protected function fillPot(?Tournament $tournament): void
     {
-        $this->potEnabled = $tournament?->hasOwnWallet() === true;
-        $this->potUri = '';
-        $this->potReplacing = false;
+        $this->potEnabled = $tournament?->hasPot() === true;
         $this->potTarget = $tournament?->prize_target_sats === null ? '' : (string) $tournament->prize_target_sats;
         $this->potMode = $tournament?->prizeMode() ?? Tournament::PRIZES_PERCENT;
         $this->potSplit = $tournament?->prizeSplit() ?? Tournament::DEFAULT_SPLIT;
         $this->potFixed = $tournament?->prizeFixed() ?: [];
-        $this->potCheckedSats = null;
     }
 
     public function usePotMode(string $mode): void
@@ -121,182 +92,57 @@ trait EditsPrizePot
         }
     }
 
-    public function replacePotWallet(): void
-    {
-        $this->potReplacing = true;
-    }
-
     /**
-     * Remove the stored wallet connection, and with it the pot (its sats stay in that wallet).
-     */
-    public function removePotWallet(): void
-    {
-        $tournament = $this->potTournament();
-
-        if ($tournament === null) {
-            return;
-        }
-
-        $this->potEnabled = false;
-
-        if ($this->savePot($tournament)) {
-            $this->fillPot($tournament->refresh());
-            $this->potNotice = __('The wallet connection was removed; this tournament has no prize pot now.');
-        } else {
-            $this->potEnabled = true;
-        }
-    }
-
-    /**
-     * Ask the pasted wallet for its balance now (and whether it may pay).
-     */
-    public function checkPotConnection(PrizePool $pool): void
-    {
-        $this->potError = $this->potNotice = '';
-        $this->potCheckedSats = null;
-        $user = $this->potUser();
-
-        if (! $this->mayCheckWallet($user)) {
-            return;
-        }
-
-        if (trim($this->potUri) === '') {
-            $this->potError = __('Paste the connection string of the pot’s wallet.');
-
-            return;
-        }
-
-        try {
-            $check = $pool->checkWallet($this->potUri);
-        } catch (TournamentRuleViolation $violation) {
-            $this->potError = $violation->getMessage();
-
-            return;
-        }
-
-        $this->potCheckedSats = $check['balance'];
-        $this->potNotice = __('Connected. The wallet holds :sats sats and may pay invoices.', ['sats' => PreSeason::formatSats($check['balance'])])
-            .' '.match (true) {
-                $check['can_receive'] => __('Anyone can add sats to it from the tournament page.'),
-                ($check['receive_missing'] ?? null) === null => __('The wallet did not list what this connection may do (get_info), so top-ups from the tournament page stay off. Allow “get info” for it in the wallet.'),
-                default => __('Top-ups from the tournament page are off: this connection lacks :methods. Allow them for it in the wallet, then check again.', ['methods' => implode(', ', $check['receive_missing'])]),
-            };
-    }
-
-    /**
-     * Read the stored wallet's balance now (organizer or admin, once every 10 s per tournament).
-     */
-    public function readPotBalance(PotBalances $balances): void
-    {
-        $this->potError = $this->potNotice = '';
-        $tournament = $this->potTournament();
-
-        if ($tournament === null || ! $tournament->hasOwnWallet()) {
-            return;
-        }
-
-        Gate::forUser($this->potUser())->authorize('manage-tournament', $tournament);
-        $key = 'pot-read:'.$tournament->id;
-
-        if (RateLimiter::tooManyAttempts($key, 1)) {
-            $this->potError = __('Read a moment ago. Wait :seconds s and try again.', ['seconds' => RateLimiter::availableIn($key)]);
-
-            return;
-        }
-
-        RateLimiter::hit($key, 10);
-
-        if ($balances->read($tournament)) {
-            $this->potNotice = __('Balance read: :sats sats.', ['sats' => PreSeason::formatSats((int) $tournament->pot_balance_sats)]);
-        } else {
-            $this->potError = __('The wallet did not tell its balance (:code). The last known balance stays.', ['code' => (string) $tournament->pot_balance_error]);
-        }
-    }
-
-    /**
-     * The sats the percent preview splits: a checked wallet's balance, the
-     * stored pot's balance, else the target, each less the fee reserve; null
-     * when there is none of these.
+     * The sats the percent preview splits: a typed target, else what came
+     * into the stored pot, each less the fee reserve; null when there is
+     * neither.
      */
     public function potPreviewSats(): ?int
     {
-        // The pot as set comes first (user, 2026-09-28): a typed target, then a balance.
+        // The pot as set comes first (user, 2026-09-28): a typed target, then what came in.
         $target = trim($this->potTarget);
 
         if (ctype_digit($target) && (int) $target > 0) {
             return PrizePool::afterFeeReserve((int) $target);
         }
 
-        if ($this->potCheckedSats !== null) {
-            return PrizePool::afterFeeReserve($this->potCheckedSats);
-        }
-
         $tournament = $this->potTournament();
+        $funded = $tournament !== null && $tournament->hasPot() ? app(PrizePool::class)->fundedSats($tournament) : 0;
 
-        if ($tournament !== null && $tournament->hasOwnWallet() && $tournament->pot_balance_sats !== null && $tournament->pot_balance_sats > 0) {
-            return PrizePool::afterFeeReserve($tournament->pot_balance_sats);
-        }
-
-        return null;
+        return $funded > 0 ? PrizePool::afterFeeReserve($funded) : null;
     }
 
     /**
-     * The balance the fixed-mode summary compares with: a checked wallet's,
-     * else the stored pot's; null when unknown.
+     * What came into the stored pot (the fixed-mode summary compares with
+     * it); null on the create page or without a pot.
      */
     public function potKnownBalance(): ?int
     {
-        return $this->potCheckedSats ?? ($this->potTournament()?->hasOwnWallet() === true ? $this->potTournament()->pot_balance_sats : null);
+        $tournament = $this->potTournament();
+
+        return $tournament !== null && $tournament->hasPot() ? app(PrizePool::class)->fundedSats($tournament) : null;
     }
 
     /**
-     * Check a newly pasted connection string live now, before the caller
-     * opens a transaction for the save (the create page, re-gate O1: the
-     * wallet calls take up to a minute and must not hold SQLite's write
-     * lock). False with `$potError` set when it was refused; true when
-     * there is nothing to check or it passed.
+     * The create page asked the pot's own wallet here before its transaction
+     * (re-gate O1). No wallet is asked for any more, so there is nothing to
+     * check: always true.
      */
     protected function checkNewPotWallet(): bool
     {
         $this->potError = $this->potNotice = '';
-        $this->potWalletChecked = null;
-        $uri = trim($this->potUri);
-
-        if (! $this->potEnabled || $uri === '') {
-            return true;
-        }
-
-        // The same budget as the check button, counted before (F1).
-        if (! $this->mayCheckWallet($this->potUser())) {
-            return false;
-        }
-
-        try {
-            $this->potWalletChecked = ['uri' => $uri, 'check' => app(PrizePool::class)->checkWallet($uri)];
-        } catch (TournamentRuleViolation $violation) {
-            $this->potError = $violation->getMessage();
-
-            return false;
-        }
 
         return true;
     }
 
     /**
      * Save the pot of `$tournament` as the form says; false with `$potError`
-     * set when it was refused (the pasted string stays for a correction).
+     * set when it was refused.
      */
     protected function savePot(Tournament $tournament): bool
     {
         $this->potError = $this->potNotice = '';
         $target = trim($this->potTarget);
-        $checked = $this->potWalletChecked !== null && $this->potWalletChecked['uri'] === trim($this->potUri) ? $this->potWalletChecked['check'] : null;
-        $this->potWalletChecked = null;
-
-        // A new connection string is checked live on save, unless it was just now: the same budget as the check button, counted before (F1).
-        if ($this->potEnabled && trim($this->potUri) !== '' && $checked === null && ! $this->mayCheckWallet($this->potUser())) {
-            return false;
-        }
 
         if ($this->potEnabled && $this->potMode === Tournament::PRIZES_PERCENT && $target !== '' && ! ctype_digit($target)) {
             $this->potError = __('The target is a whole number of sats.');
@@ -309,42 +155,16 @@ trait EditsPrizePot
                 $tournament,
                 $this->potUser(),
                 $this->potEnabled,
-                $this->potEnabled ? $this->potUri : null,
                 $this->potEnabled && $target !== '' && ctype_digit($target) ? (int) $target : null,
                 $this->potMode,
                 $this->potSplit,
                 $this->potFixed,
-                $checked,
             );
         } catch (TournamentRuleViolation $violation) {
             $this->potError = $violation->getMessage();
 
             return false;
         }
-
-        // The pasted connection string never outlives the request that saved it.
-        $this->potUri = '';
-        $this->potReplacing = false;
-        $this->potCheckedSats = null;
-
-        return true;
-    }
-
-    /**
-     * Every live wallet check (the button, and each save with a new string)
-     * counts against one budget per user, before the check runs: six a minute.
-     */
-    private function mayCheckWallet(User $user): bool
-    {
-        $key = 'pot-check:'.$user->id;
-
-        if (RateLimiter::tooManyAttempts($key, 6)) {
-            $this->potError = __('Too many checks. Wait :seconds s and try again.', ['seconds' => RateLimiter::availableIn($key)]);
-
-            return false;
-        }
-
-        RateLimiter::hit($key, 60);
 
         return true;
     }

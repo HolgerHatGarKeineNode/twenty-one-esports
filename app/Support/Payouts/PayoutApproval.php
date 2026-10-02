@@ -10,11 +10,13 @@ use App\Models\User;
 use App\Support\FairPlay\AccountLinks;
 use App\Support\FairPlay\FairPlay;
 use App\Support\Lightning\LightningAddress;
-use App\Support\Prizes\PotBalances;
 use App\Support\Prizes\PrizePool;
 use App\Support\SeasonChain\LeagueKey;
 use App\Support\Tournaments\TournamentPublisher;
 use App\Support\Tournaments\TournamentRuleViolation;
+use App\Support\Wallet\Ledger;
+use App\Support\Wallet\NwcError;
+use App\Support\Wallet\ReceivingWallet;
 use App\Support\Wallet\WalletSetup;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Gate;
@@ -25,24 +27,30 @@ use Illuminate\Support\Facades\Gate;
  * publishes the tournament's last version with `end` at the close, the
  * places are read from the bracket, and one payout per player is written
  * with its fixed idempotency key. Nothing is paid here; the admin pays
- * afterwards, from the pot's own wallet.
+ * afterwards, from the league wallet.
  *
  * Admins only (gate `admin`): organizers set up the pot and see the
  * payouts, but the check and the payment are the league's (decision P9).
- * Fail closed: without the pot's wallet connection or the league key
- * nothing closes, and a percent pot is what its wallet holds at this
- * moment (read now, never assumed; fixed prizes are approved even when
- * the read fails, with a warning on the page). Percent prizes split that balance less the
- * fee reserve ({@see PrizePool::payable()}); fixed prizes are approved as
- * set, and a balance short of them is only a warning on the page (user,
- * 2026-09-27: the admin is responsible). What is left stays in
- * the pot's wallet; the league wallet and ledger are never touched.
- * Approving twice changes nothing: the tournament row is locked and
- * approved only once, and the idempotency keys are unique.
+ *
+ * The pot is the tournament's account in the league ledger (user,
+ * 2026-10-02). Fail closed, before anything closes:
+ *
+ * - without the league wallet's paying connection or the league key;
+ * - when the prizes and their fee reserve exceed what came into the pot
+ *   through the league wallet (percent prizes split exactly that, less the
+ *   reserve, {@see PrizePool::payable()}; fixed prizes short of it are
+ *   refused: a short pot would pay with other pots' sats);
+ * - when the league wallet does not tell its balance now, or holds less
+ *   than the prizes beyond what it holds for the other tournament pots.
+ *
+ * Sats a sponsor paid outside the wallet are never part of it. What is
+ * left after the prizes stays in the pot's account. Approving twice changes
+ * nothing: the tournament row is locked and approved only once, and the
+ * idempotency keys are unique.
  */
 final class PayoutApproval
 {
-    public function __construct(private PayoutPlan $plan, private TournamentPublisher $publisher, private PotBalances $balances) {}
+    public function __construct(private PayoutPlan $plan, private TournamentPublisher $publisher, private PrizePool $pool, private Ledger $ledger) {}
 
     /**
      * What keeps the admin from approving, or null.
@@ -52,8 +60,9 @@ final class PayoutApproval
         $reasons = [
             [$tournament->payouts_approved_at !== null, 'The payouts of this tournament are approved already.'],
             [$tournament->status !== TournamentStatus::Finished, 'Payouts are approved once the tournament has finished.'],
-            [$tournament->pool_opened_at === null || ! $tournament->hasOwnWallet(), 'This tournament has no prize pool.'],
-            [! WalletSetup::potCanPay($tournament), 'The connection of this pot’s own wallet is missing, so nothing can be paid out.'],
+            [$tournament->pool_opened_at === null || ! $tournament->hasLeaguePot(), 'This tournament has no prize pool.'],
+            [! WalletSetup::canPay() || ! WalletSetup::canReceive(), 'The league wallet is not connected, so nothing can be paid out.'],
+            [PrizePool::shortfall($tournament, $this->pool->fundedSats($tournament)) > 0, 'The pot has received less than the fixed prizes need with the fee reserve. Add the missing sats to the pot first.'],
             [LeagueKey::fromConfig() === null, 'The league key is not set up, so nothing can be published yet.'],
         ];
 
@@ -117,24 +126,38 @@ final class PayoutApproval
             throw new TournamentRuleViolation('payout_blocked', $blocker);
         }
 
-        // Percent prizes are a share of what the wallet holds now: read, never assumed (fail closed). Fixed prizes do not
-        // depend on the balance: an unreadable one is a warning on the page, the admin is responsible (coordinator, 2026-09-27).
-        if (! $this->balances->read($tournament) && $tournament->prizeMode() !== Tournament::PRIZES_FIXED) {
-            throw new TournamentRuleViolation('pot_unread', __('The pot’s wallet did not tell its balance just now, so nothing was approved. Try again in a moment.'));
+        // The league wallet is shared by every pot and the reserve: read now, never assumed (fail closed).
+        $balance = self::walletBalance();
+
+        if ($balance === null) {
+            throw new TournamentRuleViolation('wallet_unread', __('The league wallet did not tell its balance just now, so nothing was approved. Try again in a moment.'));
         }
 
-        return DB::transaction(function () use ($tournament, $admin): Tournament {
+        return DB::transaction(function () use ($tournament, $admin, $balance): Tournament {
             $locked = Tournament::query()->whereKey($tournament->id)->lockForUpdate()->firstOrFail();
 
             if ($locked->payouts_approved_at !== null) {
                 return $locked;
             }
 
+            // Under the lock: what came in, never more (a payment settling now is booked before or after, never twice).
+            $funded = $this->pool->fundedSats($locked);
+
+            if (PrizePool::shortfall($locked, $funded) > 0) {
+                throw new TournamentRuleViolation('pot_short', __('The pot has received less than the fixed prizes need with the fee reserve. Add the missing sats to the pot first.'));
+            }
+
+            $pool = PrizePool::payable($locked, $funded);
+            $plan = $this->plan->compute($locked, $pool) ?? throw new TournamentRuleViolation('no_places', __('The final places of this tournament cannot be read from its bracket.'));
+            $total = array_sum(array_column($plan['rows'], 'amount'));
+
+            // Never more than the pot holds in the league ledger, nor more than the wallet holds beyond the other pots.
+            if ($total > $this->pool->heldSats($locked) || $total > $balance - $this->ledger->heldForTournaments($locked->potAccount())) {
+                throw new TournamentRuleViolation('pot_uncovered', __('The league wallet holds less than these prizes beyond what it keeps for the other pots, so nothing was approved. Check the wallet.'));
+            }
+
             $locked->forceFill(['pool_closed_at' => now(), 'payouts_approved_at' => now(), 'payouts_approved_by_id' => $admin->id])->save();
             $this->publisher->republish($locked);
-
-            $pool = PrizePool::payable($locked, (int) $locked->pot_balance_sats);
-            $plan = $this->plan->compute($locked, $pool) ?? throw new TournamentRuleViolation('no_places', __('The final places of this tournament cannot be read from its bracket.'));
 
             foreach ($plan['rows'] as $row) {
                 $user = $row['user'];
@@ -156,5 +179,17 @@ final class PayoutApproval
 
             return $locked;
         });
+    }
+
+    /** The league wallet's balance now, in sats; null when it does not tell (fail closed). */
+    public static function walletBalance(): ?int
+    {
+        $wallet = ReceivingWallet::fromConfig();
+
+        try {
+            return $wallet?->balanceSats();
+        } catch (NwcError) {
+            return null;
+        }
     }
 }

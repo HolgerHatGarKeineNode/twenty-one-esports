@@ -7,12 +7,13 @@ use App\Support\Tournaments\TournamentPrizePool;
 
 /**
  * The prize pot wherever a tournament shows (P9), behind the seam the pages
- * and the TV were built with. A pot is the tournament's own wallet: its sats
- * are the pot as the tournament sets it (the fixed prizes' sum or the
- * target; the last balance read only without either, user 2026-09-28). The
- * prizes are the percents of that pot (less the fee reserve) or the fixed
- * amounts; the balance only feeds the funding bar. The
- * sponsors are the ones whose invoice is paid (a pledge alone shows nothing).
+ * and the TV were built with. A pot is booked in the league wallet (user,
+ * 2026-10-02): its sats are the pot as the tournament sets it (the fixed
+ * prizes' sum or the target; what came in only without either, user
+ * 2026-09-28). The prizes are the percents of that pot (less the fee
+ * reserve) or the fixed amounts; what came in only feeds the funding bar.
+ * The sponsors are the ones who paid, by invoice or outside the wallet (a
+ * pledge alone shows nothing).
  */
 final class WalletPrizePool implements TournamentPrizePool
 {
@@ -45,7 +46,8 @@ final class WalletPrizePool implements TournamentPrizePool
             'target' => $funding['goal'],
             'have' => $funding['have'],
             'funded' => $funding['funded'],
-            'as_of' => $tournament->pot_balance_at,
+            // A league pot is booked exactly; only a legacy own wallet had a balance read with a time.
+            'as_of' => $tournament->hasOwnWallet() ? $tournament->pot_balance_at : null,
             'stale' => $tournament->pool_closed_at === null && PrizePool::isBalanceStale($tournament),
         ];
     }

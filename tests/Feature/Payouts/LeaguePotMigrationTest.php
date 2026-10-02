@@ -35,3 +35,24 @@ test('league pots become no pot with a moderation entry, own-wallet and approved
         ->and(DB::table('tournaments')->find($own->id)->pot_source)->toBe(Tournament::POT_WALLET)
         ->and(DB::table('tournament_moderation_entries')->where('subject', 'Prize pot')->count())->toBe(2);
 });
+
+test('own-wallet pots move to the league wallet with a moderation entry; approved ones keep their wallet; nothing is deleted', function () {
+    $migration = require database_path('migrations/2026_10_02_190948_move_tournament_pots_to_the_league_wallet.php');
+
+    $open = runningChess(TournamentFormat::SingleElimination, 4);
+    $approved = runningChess(TournamentFormat::SingleElimination, 4);
+    $none = runningChess(TournamentFormat::SingleElimination, 4);
+    DB::table('tournaments')->where('id', $open->id)->update(['pot_source' => 'wallet', 'pool_opened_at' => now(), 'pot_nwc_uri' => 'encrypted-old', 'pot_balance_sats' => 21_000]);
+    DB::table('tournaments')->where('id', $approved->id)->update(['pot_source' => 'wallet', 'pool_opened_at' => now(), 'payouts_approved_at' => now(), 'pot_nwc_uri' => 'encrypted-approved']);
+
+    $migration->up();
+
+    $row = DB::table('tournaments')->find($open->id);
+    expect($row->pot_source)->toBe(Tournament::POT_LEAGUE)
+        ->and($row->pot_nwc_uri)->toBe('encrypted-old')
+        ->and($row->pot_balance_sats)->toBe(21_000)
+        ->and(DB::table('tournament_moderation_entries')->where('tournament_id', $open->id)->where('subject', 'Prize pot')->value('reason'))->toContain('league wallet')
+        ->and(DB::table('tournaments')->find($approved->id)->pot_source)->toBe(Tournament::POT_WALLET)
+        ->and(DB::table('tournaments')->find($none->id)->pot_source)->toBeNull()
+        ->and(DB::table('tournament_moderation_entries')->where('subject', 'Prize pot')->count())->toBe(1);
+});

@@ -85,7 +85,7 @@ final class TournamentPublisher
             $slug = $locked->slug ?? Str::limit(Str::slug($locked->name), 50, '').'-'.$locked->id;
 
             // A prize pot set on the draft opens with the first version (P9).
-            if ($locked->hasOwnWallet() && $locked->pool_opened_at === null && PrizePool::canOpen()) {
+            if ($locked->hasPot() && $locked->pool_opened_at === null && PrizePool::canOpen()) {
                 $locked->forceFill(['pool_opened_at' => now()]);
             }
 
@@ -298,8 +298,8 @@ final class TournamentPublisher
     }
 
     /**
-     * The prizes in words (NIP rev. 9): percents of the pot or fixed sats per
-     * place, both paid from the tournament's own wallet.
+     * The prizes in words (NIP rev. 9.12): percents of the pot or fixed sats
+     * per place, the pot booked in the league wallet for this tournament.
      */
     private function prizes(Tournament $tournament): string
     {
@@ -309,13 +309,13 @@ final class TournamentPublisher
             $fixed = $tournament->prizeFixed();
 
             return 'Prizes: '.implode(', ', array_map(fn (int $sats, int $index): string => 'place '.($index + 1).' '.$sats.' sats', $fixed, array_keys($fixed)))
-                .', fixed, paid from the tournament\'s own wallet once it holds their sum and '.$fee.' for routing fees; tied places share the sum of their amounts, a team\'s share is split equally among its roster, sats are rounded down and the rest stays in that wallet.';
+                .', fixed, paid from the league wallet once this tournament\'s pot has received their sum and '.$fee.' for routing fees; tied places share the sum of their amounts, a team\'s share is split equally among its roster, sats are rounded down and the rest stays with the league.';
         }
 
         $split = $tournament->prizeSplit();
 
         return 'Prize split: '.implode(', ', array_map(fn (int $percent, int $index): string => 'place '.($index + 1).' '.$percent.' %', $split, array_keys($split)))
-            .' of the pot, held in the tournament\'s own wallet and paid from it after '.$fee.' is held back for routing fees; tied places share their percentages, a team\'s share is split equally among its roster, sats are rounded down and the rest stays in that wallet.';
+            .' of what this tournament\'s pot received in the league wallet, paid from it after '.$fee.' is held back for routing fees; tied places share their percentages, a team\'s share is split equally among its roster, sats are rounded down and the rest stays with the league.';
     }
 
     private function summary(Tournament $tournament): string
@@ -350,10 +350,10 @@ final class TournamentPublisher
 
         // A Blockfill week (P6) has neither matches nor a prize pool.
         if (! $tournament->isLeagueWeek()) {
-            $lines[] = 'Tournament matches never mine season blocks. The prize pool is the tournament\'s own.';
+            $lines[] = 'Tournament matches never mine season blocks. The prize pool is booked for this tournament alone.';
         }
 
-        if ($tournament->pool_opened_at !== null && $tournament->hasOwnWallet()) {
+        if ($tournament->pool_opened_at !== null && $tournament->hasPot()) {
             $lines[] = $this->prizes($tournament);
         }
         $lines[] = 'Page: '.route('tournaments.show', $tournament);

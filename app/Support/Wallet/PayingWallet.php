@@ -5,9 +5,10 @@ namespace App\Support\Wallet;
 use App\Models\Tournament;
 
 /**
- * A NIP-47 connection that pays: a tournament pot's own wallet
- * ({@see forTournament()}), or the league wallet's paying connection
- * (`esports.wallet.nwc_uri`, the Season-Chain's only, never a tournament's).
+ * A NIP-47 connection that pays: the league wallet's paying connection
+ * (`esports.wallet.nwc_uri`; every pot since 2026-10-02 and the reserve),
+ * or a legacy tournament pot's own wallet ({@see forTournament()}), kept for
+ * pots whose payouts were approved before.
  * Only the payout runner holds one (App\Support\Payouts\PayoutRunner;
  * tests/Feature/Payouts/WalletTest.php keeps it that way): receiving,
  * counting and reconciling use {@see ReceivingWallet}. Null without a valid
@@ -25,9 +26,9 @@ final class PayingWallet
     }
 
     /**
-     * The wallet a tournament's prizes are paid from: its pot's own NWC
-     * wallet, and nothing else. Null without one (a tournament never falls
-     * back to the league wallet).
+     * Legacy: the own NWC wallet of a pot approved before the league wallet
+     * took over. Null for every other tournament (those pay from
+     * {@see fromConfig()}).
      */
     public static function forTournament(Tournament $tournament): ?self
     {

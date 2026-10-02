@@ -23,11 +23,13 @@ use Livewire\WithFileUploads;
 /*
  * A tournament's prize pool settings (P9), for its organizer and admins
  * (gate `manage-tournament`, checked on the route and again in every
- * action): the pot (the tournament's own wallet, its prizes as percents or
- * fixed amounts, the same section as on the create and edit pages:
- * App\Livewire\PrizePotPage; the prizes can change until sign-up closes,
- * because players sign up under them), and the sponsors with their logos
- * and invoices, made by the pot's own wallet (App\Support\Prizes\PotTopUps).
+ * action): the pot (booked in the league wallet since 2026-10-02, its
+ * prizes as percents or fixed amounts, the same section as on the create and
+ * edit pages: App\Livewire\PrizePotPage; the prizes can change until
+ * sign-up closes, because players sign up under them), and the sponsors with
+ * their logos and invoices, made by the league wallet for this pot
+ * (App\Support\Prizes\PotTopUps). A pot moved from a wallet of its own says
+ * that wallet keeps its sats until they are added here.
  * A pledge paid some other way is marked "paid outside" with its sats and a
  * note, and can be undone until the payouts are approved; the status shows
  * what is in the wallet apart from what was paid outside it. Paying out is
@@ -236,14 +238,17 @@ new #[Layout('layouts::app', ['section' => 'tournaments'])] class extends PrizeP
     $pool = app(PrizePool::class);
     $sats = fn (int $value): string => PreSeason::formatSats($value);
     $sponsorInvoices = PotTopUps::enabled($tournament);
-    $funding = $tournament->hasOwnWallet() ? $pool->funding($tournament) : null;
+    $funding = $tournament->hasPot() ? $pool->funding($tournament) : null;
+    $funded = $pool->fundedSats($tournament);
+    // Moved from a wallet of its own (2026-10-02): that wallet keeps its sats; the organizer adds them to this pot.
+    $movedFromOwnWallet = $tournament->hasLeaguePot() && $tournament->pot_nwc_uri !== null && $tournament->payouts_approved_at === null;
     $ended = $tournament->pool_closed_at !== null || in_array($tournament->status, [\App\Enums\TournamentStatus::Finished, \App\Enums\TournamentStatus::Cancelled], true);
     $invoice = $this->invoice;
     $paidOut = $tournament->payouts_approved_at !== null;
     $outside = PrizePool::paidOutsideSats($tournament);
 @endphp
 
-<x-admin.page active="tournaments" :title="__('Prize pool')" :lead="__('The pot is a wallet of this tournament’s own: anyone can add sats to it, sponsors too. You set the prizes and the sponsors; an admin checks the tournament at its end and pays the winners from that wallet.')" :crumbs="[[__('Tournaments'), route('admin.tournaments')], [$tournament->name, route('tournaments.show', $tournament)]]" data-test="pool-settings">
+<x-admin.page active="tournaments" :title="__('Prize pool')" :lead="__('The pot is kept in the league wallet, booked for this tournament alone: anyone can add sats to it, sponsors too. You set the prizes and the sponsors; an admin checks the tournament at its end and pays the winners from the league wallet.')" :crumbs="[[__('Tournaments'), route('admin.tournaments')], [$tournament->name, route('tournaments.show', $tournament)]]" data-test="pool-settings">
     <x-slot:actions>
         <x-tournaments.manage-actions :tournament="$tournament" :except="['pool']" />
     </x-slot:actions>
@@ -252,8 +257,14 @@ new #[Layout('layouts::app', ['section' => 'tournaments'])] class extends PrizeP
 
     <section aria-labelledby="state-h" class="flex flex-col gap-3 rounded-lg bg-card px-4 py-5 lg:px-6" data-test="pool-state">
         <h2 id="state-h" class="m-0 text-[15px] font-bold">{{ __('Status') }}</h2>
-        @if (! $tournament->hasOwnWallet())
-            <p class="m-0 text-[13px] leading-normal text-ink-2" data-test="pool-no-pot">{{ __('No prize pot yet: connect the tournament’s own wallet below.') }}</p>
+        @if ($movedFromOwnWallet)
+            <p class="m-0 flex items-start gap-2 rounded-md bg-btc-chip px-3 py-2 text-[13px] leading-normal text-ink" role="note" data-test="pool-moved-notice">
+                <x-icon name="warn" :size="16" class="mt-0.5 shrink-0 text-btc-hi" />
+                <span>{{ __('This pot used a wallet of its own until 2 October 2026. Pots are now kept in the league wallet: the sats in your old wallet stay there and do not count. Add them to this pot with “Add to the pot” on the tournament page before the payouts, or the prizes will lack them.') }}</span>
+            </p>
+        @endif
+        @if (! $tournament->hasPot())
+            <p class="m-0 text-[13px] leading-normal text-ink-2" data-test="pool-no-pot">{{ __('No prize pot yet: switch it on below.') }}</p>
         @elseif ($tournament->pool_opened_at === null)
             <p class="m-0 text-[13px] leading-normal text-ink-2">{{ __('The pot opens when the tournament is published.') }}</p>
         @else
@@ -261,20 +272,20 @@ new #[Layout('layouts::app', ['section' => 'tournaments'])] class extends PrizeP
                 <b>{{ $sats((int) $pool->potSats($tournament)) }} {{ __('sats') }}</b>
                 · {{ $tournament->isPoolOpen() ? __('open since :date', ['date' => $tournament->pool_opened_at->format('Y-m-d H:i')]) : __('closed at the admin check, :date', ['date' => $tournament->pool_closed_at?->format('Y-m-d H:i')]) }}
             </p>
-            {{-- What the wallet holds apart from what sponsors paid outside it: a payout only ever pays from the wallet. --}}
+            {{-- What came into the league wallet for this pot apart from what sponsors paid outside it: a payout only ever pays from the wallet. --}}
             <p class="m-0 text-[13px] text-ink-2" data-test="pool-in-wallet">
-                {{ __('In the wallet: :sats sats', ['sats' => $sats((int) $tournament->pot_balance_sats)]) }}@if ($tournament->pot_balance_at) <span class="text-ink-3">({{ __('read :time', ['time' => $tournament->pot_balance_at->copy()->timezone(\App\Support\LeagueTime::zone())->format('Y-m-d H:i')]) }})</span>@endif
+                {{ __('In the league wallet for this pot: :sats sats', ['sats' => $sats($funded)]) }}
                 @if ($outside > 0) · <span data-test="pool-paid-outside">{{ __('Paid outside the wallet: :sats sats', ['sats' => $sats($outside)]) }}</span>@endif
             </p>
             @if ($outside > 0 && ! $paidOut)
                 <p class="m-0 flex items-start gap-2 rounded-md bg-btc-chip px-3 py-2 text-[13px] text-ink" role="note" data-test="pool-outside-warning">
                     <x-icon name="warn" :size="16" class="mt-0.5 shrink-0 text-btc-hi" />
-                    <span>{{ __('The payout pays only from the wallet. Move the :sats sats paid outside it into the wallet before the payout check, or the prizes will lack them.', ['sats' => $sats($outside)]) }}</span>
+                    <span>{{ __('The payout pays only from the wallet. Add the :sats sats paid outside it to the pot before the payout check, or the prizes will lack them.', ['sats' => $sats($outside)]) }}</span>
                 </p>
             @endif
             @if ($funding !== null && $funding['leftover'] !== null)
                 <p class="m-0 text-[13px] text-ink-2" data-test="pool-leftover">{{ $funding['funded']
-                    ? __('The fixed prizes are covered; :sats sats are left over after prizes and stay in the wallet.', ['sats' => $sats($funding['leftover'])])
+                    ? __('The fixed prizes are covered; :sats sats are left over after prizes and stay with the league.', ['sats' => $sats($funding['leftover'])])
                     : __('Funded :have of :goal sats for the fixed prizes.', ['have' => $sats($funding['have']), 'goal' => $sats((int) $funding['goal'])]) }}</p>
             @endif
         @endif
@@ -285,13 +296,13 @@ new #[Layout('layouts::app', ['section' => 'tournaments'])] class extends PrizeP
         @if ($saved !== '')<p class="m-0 text-[13px] text-win" role="status" data-test="pool-saved">{{ $saved }}</p>@endif
     @endunless
 
-    @if ($tournament->hasOwnWallet())
+    @if ($tournament->hasPot())
     <section aria-labelledby="sponsors-h" class="flex flex-col gap-4 rounded-lg bg-card px-4 py-5 lg:px-6" data-test="pool-sponsors-admin">
         <div class="flex flex-col gap-1">
             <h2 id="sponsors-h" class="m-0 text-[15px] font-bold">{{ __('Sponsors') }}</h2>
-            <p class="m-0 text-[13px] leading-normal text-ink-2">{{ __('A sponsor pays a Lightning invoice for their pledge, made by the pot’s own wallet. Their logo shows on the tournament page once it is paid; logos stay on this site and are not published on Nostr.') }}</p>
+            <p class="m-0 text-[13px] leading-normal text-ink-2">{{ __('A sponsor pays a Lightning invoice for their pledge, made by the league wallet for this pot; their pledge is part of the pot as announced. Their logo shows on the tournament page once it is paid; logos stay on this site and are not published on Nostr.') }}</p>
             @unless ($sponsorInvoices)
-                <p class="m-0 text-xs text-ink-2" data-test="sponsor-invoices-off">{{ __('Top-ups not enabled for this pot: its connection may not make invoices, so sponsors pay the wallet directly and show without a paid mark.') }}</p>
+                <p class="m-0 text-xs text-ink-2" data-test="sponsor-invoices-off">{{ __('Invoices are off: the league wallet cannot make them right now. Mark a pledge paid some other way as paid outside.') }}</p>
             @endunless
         </div>
 

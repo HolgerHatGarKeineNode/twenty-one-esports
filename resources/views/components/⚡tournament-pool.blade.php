@@ -26,12 +26,11 @@ use Livewire\Component;
  * links, "Add to the pot", and once an admin approved the payouts, the
  * payout of every winner.
  *
- * Adding to the pot: the tournament's own wallet makes a plain invoice
- * (App\Support\Prizes\PotTopUps), shown as a QR code (never as text) with
- * "open in wallet"; the panel checks every few seconds at that wallet
- * whether it was paid. No zap, no league wallet: the pot is the tournament's
- * own (user, 2026-09-27). When the pot's connection may not make invoices,
- * the panel says top-ups are not enabled.
+ * Adding to the pot: the league wallet makes a plain invoice booked for
+ * this tournament's pot (App\Support\Prizes\PotTopUps, user 2026-10-02),
+ * shown as a QR code (never as text) with "open in wallet"; the panel
+ * checks every few seconds whether it was paid. When the league wallet
+ * cannot make invoices, the panel says top-ups are not enabled.
  */
 new class extends Component {
     #[Locked]
@@ -137,7 +136,7 @@ new class extends Component {
     $canManage = auth()->check() && Gate::allows('manage-tournament', $tournament);
     $isAdmin = auth()->check() && Gate::allows('admin');
     $open = $tournament->isPoolOpen();
-    $hasPot = $tournament->pool_opened_at !== null && $tournament->hasOwnWallet();
+    $hasPot = $tournament->pool_opened_at !== null && $tournament->hasPot();
     $topUps = PotTopUps::enabled($tournament);
     $invoice = $this->invoice;
     $qr = null;
@@ -162,8 +161,8 @@ new class extends Component {
             @else
                 <p class="m-0 text-xs text-ink-3" data-test="pool-state">
                     {{ $fixed
-                        ? __('Held in the tournament’s own wallet, paid out from it; the fixed prizes are paid once it covers them and :percent % for routing fees.', ['percent' => PrizePool::WALLET_FEE_PERCENT])
-                        : __('Held in the tournament’s own wallet, paid out from it; :percent % stays back for routing fees.', ['percent' => PrizePool::WALLET_FEE_PERCENT]) }} ·
+                        ? __('Kept in the league wallet for this tournament alone; the fixed prizes are paid once the pot covers them and :percent % for routing fees.', ['percent' => PrizePool::WALLET_FEE_PERCENT])
+                        : __('Kept in the league wallet for this tournament alone; :percent % stays back for routing fees.', ['percent' => PrizePool::WALLET_FEE_PERCENT]) }} ·
                     {{ $open ? __('open to everyone until the tournament ends') : __('closed at the admin check, :date', ['date' => $tournament->pool_closed_at?->format('Y-m-d H:i')]) }}
                 </p>
                 <p class="m-0 max-w-[80ch] text-xs leading-normal text-ink-2">
@@ -204,7 +203,7 @@ new class extends Component {
                     </label>
                 </div>
                 <div><x-button icon="bolt" wire:click="topUp" wire:loading.attr="disabled" data-test="topup">{{ __('Create invoice') }}</x-button></div>
-                <p class="m-0 text-xs leading-normal text-ink-3">{{ __('The tournament’s own wallet makes the invoice; the sats go straight into its pot.') }}</p>
+                <p class="m-0 text-xs leading-normal text-ink-3">{{ __('The league wallet makes the invoice; the sats are booked for this tournament’s pot.') }}</p>
             @else
                 <div class="flex flex-col gap-3" data-test="topup-invoice" @if ($invoice->status === IncomingPaymentStatus::Pending) wire:poll.3s="checkInvoice" @endif>
                     @if ($invoice->status === IncomingPaymentStatus::Settled)

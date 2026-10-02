@@ -493,13 +493,12 @@ Schedule::command('horizon:snapshot')->everyFiveMinutes();
 /*
  * The league wallet (P9): paid pool invoices are settled and receipted, and
  * unfinished payouts continued (never started) every minute; once a day the
- * wallet's balance is compared with the pots. Both do nothing without the
- * wallet connections. Every two minutes the pots held in tournaments' own
- * wallets are read (their balance is the pot).
+ * wallet's balance is compared with the pots (the reserve and every
+ * tournament's, all booked in it since 2026-10-02). Both do nothing without
+ * the wallet connections.
  */
 Schedule::command('wallet:sync')->everyMinute()->withoutOverlapping();
 Schedule::command('wallet:reconcile')->dailyAt('04:21')->withoutOverlapping();
-Schedule::command('wallet:read-pots')->everyTwoMinutes()->withoutOverlapping();
 
 /*
  * The stream chat bot (P22): every minute it checks its own cadence (live

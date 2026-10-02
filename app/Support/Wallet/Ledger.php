@@ -5,20 +5,24 @@ namespace App\Support\Wallet;
 use App\Models\IncomingPayment;
 use App\Models\LedgerTransfer;
 use App\Models\SeasonPayout;
+use App\Models\TournamentPayout;
 use Illuminate\Database\UniqueConstraintViolationException;
 use InvalidArgumentException;
 
 /**
- * The league wallet's double-entry book (P9, plan "Wallet und Töpfe"), the
- * Season-Chain's only: every movement of sats is one booking from account A
- * to account B ({@see LedgerTransfer}), so each booking balances by
- * construction and the sum over all accounts is always zero.
+ * The league wallet's double-entry book (P9, plan "Wallet und Töpfe"): every
+ * movement of sats is one booking from account A to account B
+ * ({@see LedgerTransfer}), so each booking balances by construction and the
+ * sum over all accounts is always zero.
  *
- * Accounts: `outside` (the world beyond the wallet) and `reserve`. What the
- * wallet should hold is minus the balance of `outside`. Paid season payouts
- * leave the reserve (P37); with no pre-funding the reserve may go below
- * zero on the book, and the wallet then simply cannot pay. Tournament pots are
- * never booked here: each is its tournament's own wallet (user, 2026-09-27).
+ * Accounts: `outside` (the world beyond the wallet), `reserve` (the
+ * Season-Chain's pot) and one per tournament pot, `tournament:<id>` (user,
+ * 2026-10-02: every pot is booked in the league wallet). What the wallet
+ * should hold is minus the balance of `outside`; what it holds for one
+ * tournament is that tournament's balance. Paid season payouts leave the
+ * reserve (P37), paid tournament payouts their tournament's account. A
+ * sponsor's sats paid outside the wallet are never booked here: they are not
+ * in it.
  *
  * Each booking is tied to its cause by a unique key, so booking the same
  * cause twice (a retried job, a double click) is a no-op.
@@ -29,11 +33,13 @@ final class Ledger
 
     public const RESERVE = 'reserve';
 
-    /** A settled invoice of the league wallet: from outside into the reserve. */
+    private const TOURNAMENT_PREFIX = 'tournament:';
+
+    /** A settled invoice of the league wallet: from outside into its pot (the reserve or a tournament's). */
     public function contribution(IncomingPayment $payment, string $pot): void
     {
-        if ($pot !== self::RESERVE) {
-            throw new InvalidArgumentException('The league ledger books the reserve only; tournament pots are their own wallets.');
+        if ($pot !== self::RESERVE && preg_match('/^tournament:[1-9][0-9]*$/', $pot) !== 1) {
+            throw new InvalidArgumentException('A contribution goes to the reserve or to one tournament pot.');
         }
 
         $this->book(self::OUTSIDE, $pot, $payment->amount_sats, 'contribution', ['incoming_payment_id' => $payment->id]);
@@ -55,12 +61,52 @@ final class Ledger
     }
 
     /**
+     * A paid prize of a tournament pot in the league wallet: the amount and
+     * its routing fee (rounded up to whole sats) leave that tournament's
+     * account for the outside.
+     */
+    public function tournamentPayout(TournamentPayout $payout): void
+    {
+        $account = self::TOURNAMENT_PREFIX.$payout->tournament_id;
+        $this->book($account, self::OUTSIDE, $payout->amount_sats, 'tournament_payout', ['tournament_payout_id' => $payout->id]);
+
+        $fee = (int) ceil(((int) $payout->fees_msats) / 1000);
+
+        if ($fee > 0) {
+            $this->book($account, self::OUTSIDE, $fee, 'tournament_payout_fee', ['tournament_payout_id' => $payout->id]);
+        }
+    }
+
+    /**
      * Credits minus debits of an account.
      */
     public function balance(string $account): int
     {
         return (int) LedgerTransfer::query()->where('to_account', $account)->sum('sats')
             - (int) LedgerTransfer::query()->where('from_account', $account)->sum('sats');
+    }
+
+    /** Everything ever booked into an account (a pot's contributions, before anything was paid from it). */
+    public function credited(string $account): int
+    {
+        return (int) LedgerTransfer::query()->where('to_account', $account)->sum('sats');
+    }
+
+    /**
+     * What the league wallet holds for tournament pots, all of them or all
+     * but one: never to be spent on anything else.
+     */
+    public function heldForTournaments(?string $except = null): int
+    {
+        $in = LedgerTransfer::query()->where('to_account', 'like', self::TOURNAMENT_PREFIX.'%');
+        $out = LedgerTransfer::query()->where('from_account', 'like', self::TOURNAMENT_PREFIX.'%');
+
+        if ($except !== null) {
+            $in->where('to_account', '!=', $except);
+            $out->where('from_account', '!=', $except);
+        }
+
+        return (int) $in->sum('sats') - (int) $out->sum('sats');
     }
 
     /**

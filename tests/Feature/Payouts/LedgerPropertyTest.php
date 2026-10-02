@@ -15,12 +15,13 @@ use Tests\Support\TestSigner;
 
 /*
 | P9 DoD (wallet), as properties over random runs:
-| - the league ledger (the reserve, Season-Chain only): every booking moves
-|   a positive amount between two accounts, all accounts sum to zero, and
-|   the book equals the league wallet;
-| - a tournament pot (its own wallet): the payouts never exceed what the pot
-|   may pay, in either mode, and the wallet loses exactly what was paid plus
-|   the routing fees, nothing booked in the league ledger.
+| - the league ledger: every booking moves a positive amount between two
+|   accounts, all accounts sum to zero, and the book equals the league
+|   wallet;
+| - a tournament pot (booked in the league wallet since 2026-10-02): the
+|   payouts never exceed what the pot may pay, in either mode, the wallet
+|   loses exactly what was paid plus the routing fees, and the pot's account
+|   loses exactly the same.
 */
 
 test('every booking of the league reserve balances and the book equals the league wallet, over random runs', function () {
@@ -47,19 +48,20 @@ test('every booking of the league reserve balances and the book equals the leagu
         ->and($accounts->filter(fn (string $account): bool => str_starts_with($account, 'tournament:')))->toBeEmpty();
 });
 
-test('a pot never pays more than it may, in either mode, and its wallet loses exactly the prizes and their fees', function () {
+test('a pot never pays more than it may, in either mode, and the wallet and its account lose exactly the prizes and their fees', function () {
     mt_srand(2158);
-    fakeWallet();
+    $wallet = fakeWallet();
+    $ledger = app(Ledger::class);
 
     foreach (range(1, 4) as $run) {
-        $pot = ownPotWallet(0);
         // A fresh HTTP fake per run: the first registered one would answer for every later pot.
         Http::swap(new HttpFactory);
-        fakeLightningAddresses($pot);
+        fakeLightningAddresses($wallet);
         $fixed = $run % 2 === 0 ? [mt_rand(1_000, 20_000), mt_rand(1_000, 10_000)] : null;
         $sats = $fixed === null ? mt_rand(1, 90_000) : array_sum($fixed) + PrizePool::feeReserve(array_sum($fixed)) + mt_rand(0, 5_000);
-        $tournament = finishedPoolTournament($pot, $sats, 4, split: [[50, 30, 20], [60, 40]][$run % 2], fixed: $fixed);
-        $before = $pot->balanceMsats;
+        $tournament = finishedPoolTournament($wallet, $sats, 4, split: [[50, 30, 20], [60, 40]][$run % 2], fixed: $fixed);
+        $before = $wallet->balanceMsats;
+        $requests = count($wallet->payRequests());
 
         app(PayoutApproval::class)->approve($tournament, anAdmin());
 
@@ -68,10 +70,14 @@ test('a pot never pays more than it may, in either mode, and its wallet loses ex
         }
 
         $paid = (int) $tournament->payouts()->where('status', 'paid')->sum('amount_sats');
+        $payments = count($wallet->payRequests()) - $requests;
         $limit = $fixed === null ? PrizePool::afterFeeReserve($sats) : array_sum($fixed);
 
         expect($paid)->toBeLessThanOrEqual($limit)
-            ->and($before - $pot->balanceMsats)->toBe($paid * 1000 + count($pot->payRequests()) * $pot->feeMsats)
-            ->and(LedgerTransfer::query()->count())->toBe(0);
+            ->and($before - $wallet->balanceMsats)->toBe($paid * 1000 + $payments * $wallet->feeMsats)
+            ->and($ledger->balance($tournament->potAccount()))->toBe($sats - $paid - $payments * (int) ceil($wallet->feeMsats / 1000));
     }
+
+    $accounts = LedgerTransfer::query()->pluck('from_account')->merge(LedgerTransfer::query()->pluck('to_account'))->unique();
+    expect($accounts->sum(fn (string $account): int => $ledger->balance($account)))->toBe(0);
 });

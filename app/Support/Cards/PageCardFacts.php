@@ -120,7 +120,7 @@ final class PageCardFacts
         $places = app(TournamentSignups::class)->places($tournament);
         // The pot as the tournament sets it (the fixed prizes' sum, else the target) and what is still to be won
         // after the prizes paid so far: the "X of Y sats" rule. Never the wallet's balance, not even as a fallback.
-        $pot = $tournament->pool_opened_at === null || ! $tournament->hasOwnWallet() ? null
+        $pot = $tournament->pool_opened_at === null || ! $tournament->hasPot() ? null
             : ($tournament->prizeMode() === Tournament::PRIZES_FIXED ? PrizePool::fixedTotal($tournament) : $tournament->prize_target_sats);
         $pot = $pot !== null && $pot > 0 ? (int) $pot : null;
         $cup = $tournament->isCasualCup();

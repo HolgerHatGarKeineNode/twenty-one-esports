@@ -10,43 +10,35 @@ use App\Models\TournamentSponsor;
 use App\Models\User;
 use App\Support\Wallet\NwcError;
 use App\Support\Wallet\ReceivingWallet;
+use App\Support\Wallet\WalletSetup;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\RateLimiter;
 
 /**
- * Sats into a tournament's pot from anyone (P9, user 2026-09-27: every
- * tournament has its own NWC wallet and pot): a plain invoice made by that
- * wallet (NIP-47 `make_invoice`), recorded with its payment hash before
- * anyone sees it, and settled once that same wallet reports it paid
- * (`lookup_invoice`). The league's wallet, ledger and LNURL key are never
- * used, so there is no NIP-57 zap receipt: only the LNURL server of the
- * wallet that made an invoice could sign one (NIP rev. 9).
+ * Sats into a tournament's pot from anyone (P9): a plain invoice made by the
+ * league wallet (user, 2026-10-02: „das landet eh alles in eine Wallet von
+ * wo aus ausgezahlt werden kann"), recorded with its payment hash and its
+ * pot `tournament:<id>` before anyone sees it, and booked into that
+ * tournament's account of the league ledger once the wallet reports it paid
+ * ({@see IncomingPayments}). A plain top-up is part of the pot as announced
+ * ("included").
  *
- * Only while the pot is open and its connection may make and look up
- * invoices (`pot_can_receive`, from `get_info` when it was connected);
+ * Only while the pot is open and the league wallet can make invoices;
  * otherwise the page says top-ups are not enabled. The limits of security
- * gate F2 hold here too ({@see InvoiceCaps}; the page limits invoices per
- * minute), and the wallet is reached only through the relay guard of F1.
- * Sponsor invoices are the same, from the organizer's page, with caps of
- * their own. A cancelled tournament takes no invoices (its pot closed).
+ * gate F2 hold here ({@see InvoiceCaps}; the page limits invoices per
+ * minute). Sponsor invoices are the same, from the organizer's page, with
+ * caps of their own. A cancelled tournament takes no invoices (its pot
+ * closed).
  */
 final class PotTopUps
 {
-    /**
-     * How long past its expiry an invoice is still looked up. After that it
-     * is expired here, whatever its wallet answers or if it never answers
-     * (re-gate F-B): a wallet that says `pending` forever must not keep it
-     * in every wallet:sync run.
-     */
-    public const EXPIRY_GRACE_SECONDS = 600;
-
-    public function __construct(private PotBalances $balances) {}
+    public function __construct(private IncomingPayments $payments) {}
 
     public static function enabled(Tournament $tournament): bool
     {
-        return $tournament->hasOwnWallet() && $tournament->isPoolOpen() && $tournament->pot_can_receive === true
+        return $tournament->hasLeaguePot() && $tournament->isPoolOpen() && WalletSetup::canReceive()
             && $tournament->status !== TournamentStatus::Cancelled;
     }
 
@@ -89,107 +81,12 @@ final class PotTopUps
     }
 
     /**
-     * Look the invoice up at the tournament's wallet (at most every few
-     * seconds) and settle or expire it; a settled top-up reads the pot's
-     * balance again. Returns it fresh.
+     * Look the invoice up at the league wallet (at most every few seconds)
+     * and settle or expire it. Returns it fresh.
      */
     public function check(IncomingPayment $payment, int $minSeconds = 3): IncomingPayment
     {
-        return $this->lookUp($payment, $minSeconds)[0];
-    }
-
-    /**
-     * @return array{0: IncomingPayment, 1: bool} the payment, fresh, and whether its wallet timed out
-     */
-    private function lookUp(IncomingPayment $payment, int $minSeconds): array
-    {
-        if ($payment->status !== IncomingPaymentStatus::Pending) {
-            return [$payment, false];
-        }
-
-        if (self::overdue($payment)) {
-            IncomingPayment::query()->whereKey($payment->id)->where('status', IncomingPaymentStatus::Pending)->update(['status' => IncomingPaymentStatus::Expired]);
-
-            return [$payment->refresh(), false];
-        }
-
-        $tournament = $payment->tournament_id === null ? null : Tournament::query()->find($payment->tournament_id);
-
-        if ($tournament === null || $payment->pot !== IncomingPayment::tournamentPot($tournament->id)
-            || ($payment->checked_at !== null && $payment->checked_at->getTimestamp() > now()->getTimestamp() - $minSeconds)) {
-            return [$payment, false];
-        }
-
-        $wallet = $tournament->hasOwnWallet() ? ReceivingWallet::fromUri($tournament->pot_nwc_uri) : null;
-
-        if ($wallet === null) {
-            return [$payment, false];
-        }
-
-        $payment->forceFill(['checked_at' => now()])->save();
-
-        try {
-            $transaction = $wallet->lookup($payment->payment_hash);
-        } catch (NwcError $error) {
-            Log::info('Pot invoice lookup failed', ['payment' => $payment->id, 'code' => $error->errorCode]);
-
-            return [$payment, $error->isTimeout()];
-        }
-
-        if ($transaction !== null && $transaction->isSettled()) {
-            $preimage = $transaction->preimage !== null && hash('sha256', (string) hex2bin($transaction->preimage)) === $payment->payment_hash ? $transaction->preimage : null;
-            $settledAt = now()->setTimestamp(min($transaction->settledAt ?? now()->getTimestamp(), now()->getTimestamp()));
-            $late = $tournament->pool_closed_at !== null && $settledAt->greaterThanOrEqualTo($tournament->pool_closed_at);
-
-            $claimed = IncomingPayment::query()->whereKey($payment->id)->where('status', IncomingPaymentStatus::Pending)
-                ->update(['status' => IncomingPaymentStatus::Settled, 'settled_at' => $settledAt, 'preimage' => $preimage, 'late' => $late]);
-
-            if ($claimed === 1 && ! $late) {
-                $this->balances->read($tournament);
-            }
-        } elseif ($payment->expires_at->isPast() && ($transaction === null || in_array($transaction->state, ['expired', 'failed'], true))) {
-            IncomingPayment::query()->whereKey($payment->id)->where('status', IncomingPaymentStatus::Pending)->update(['status' => IncomingPaymentStatus::Expired]);
-        }
-
-        return [$payment->refresh(), false];
-    }
-
-    /**
-     * Every open pot invoice, for the scheduler (`wallet:sync`).
-     */
-    public function checkAll(): int
-    {
-        $settled = 0;
-
-        $slow = [];
-
-        IncomingPayment::query()->where('pot', 'like', 'tournament:%')->where('status', IncomingPaymentStatus::Pending)
-            ->where('created_at', '>', now()->subDay())
-            ->orderBy('id')
-            ->each(function (IncomingPayment $payment) use (&$settled, &$slow): void {
-                // A pot wallet that timed out once is not asked again in this run: one slow wallet costs one timeout (gate F-B).
-                // An overdue invoice is still expired: that needs no wallet.
-                $wallet = 'tournament:'.$payment->tournament_id;
-
-                if (isset($slow[$wallet]) && ! self::overdue($payment)) {
-                    return;
-                }
-
-                [$fresh, $timedOut] = $this->lookUp($payment, 20);
-
-                if ($timedOut) {
-                    $slow[$wallet] = true;
-                }
-
-                $settled += $fresh->status === IncomingPaymentStatus::Settled ? 1 : 0;
-            });
-
-        return $settled;
-    }
-
-    private static function overdue(IncomingPayment $payment): bool
-    {
-        return $payment->expires_at->getTimestamp() + self::EXPIRY_GRACE_SECONDS < now()->getTimestamp();
+        return $this->payments->check($payment, $minSeconds);
     }
 
     /**
@@ -197,7 +94,7 @@ final class PotTopUps
      */
     private function make(Tournament $tournament, int $amountSats, string $source, string $description, ?TournamentSponsor $sponsor = null): IncomingPayment
     {
-        $wallet = self::enabled($tournament) ? ReceivingWallet::fromUri($tournament->pot_nwc_uri) : null;
+        $wallet = self::enabled($tournament) ? ReceivingWallet::fromConfig() : null;
 
         if ($wallet === null) {
             throw new PoolRefusal(__('Top-ups are not enabled for this pot.'));
@@ -213,9 +110,9 @@ final class PotTopUps
         try {
             $invoice = $wallet->makePlainInvoice($amountSats, mb_substr($description, 0, 200), (int) config('esports.wallet.invoice_expiry_seconds', 900));
         } catch (NwcError $error) {
-            Log::warning('Pot invoice: the tournament wallet made no invoice', ['tournament' => $tournament->id, 'code' => $error->errorCode]);
+            Log::warning('Pot invoice: the league wallet made no invoice', ['tournament' => $tournament->id, 'code' => $error->errorCode]);
 
-            throw new PoolRefusal(__('The pot’s wallet did not answer. Please try again in a moment.'));
+            throw new PoolRefusal(__('The league wallet did not answer. Please try again in a moment.'));
         }
 
         return DB::transaction(fn (): IncomingPayment => IncomingPayment::query()->create([

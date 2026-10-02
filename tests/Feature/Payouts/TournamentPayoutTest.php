@@ -11,14 +11,18 @@ use App\Support\Payouts\PayoutPlan;
 use App\Support\Payouts\PayoutRunner;
 use App\Support\PreSeason;
 use App\Support\Tournaments\TournamentRuleViolation;
+use App\Support\Wallet\Ledger;
 use Livewire\Livewire;
 use Tests\Support\FakeNwcTransport;
 
 /*
-| P9 DoD: a payout from the pot's own fake NWC wallet pays exactly once,
-| also on a double click and on a retry; a missing Lightning address keeps
-| it open. Percent prizes split the balance less the fee reserve; fixed
-| prizes are paid exactly, and a balance short of them is only a warning.
+| P9 DoD: a payout from the league's fake NWC wallet pays exactly once, also
+| on a double click and on a retry; a missing Lightning address keeps it
+| open. Every pot is booked in the league wallet (2026-10-02): percent prizes
+| split what came into the pot less the fee reserve; fixed prizes are paid
+| exactly, and a pot short of them is not approved. A payout never takes
+| more than its pot's account holds, nor the sats the wallet keeps for the
+| other pots.
 */
 
 test('the pool is split by place, ties share, and every winner is paid once with a published payout', function () {
@@ -40,10 +44,13 @@ test('the pool is split by place, ties share, and every winner is paid once with
         PayTournamentPayout::dispatch($payout->id);
     }
 
+    // Each prize and its fee (1 sat in the fake wallet) leave the pot's account, booked once.
     expect($tournament->payouts()->pluck('status')->unique()->all())->toBe([PayoutStatus::Paid])
         ->and($wallet->paid)->toHaveCount(4)
         ->and($wallet->payRequests())->toHaveCount(4)
-        ->and(LedgerTransfer::query()->count())->toBe(0);
+        ->and(LedgerTransfer::query()->where('reason', 'tournament_payout')->count())->toBe(4)
+        ->and(LedgerTransfer::query()->where('reason', 'tournament_payout_fee')->count())->toBe(4)
+        ->and(app(Ledger::class)->balance($tournament->potAccount()))->toBe(100_000 - 99_000 - 4);
 
     $payout = $tournament->payouts()->where('place', 1)->sole();
     $event = SignedEvent::fromInput(json_decode(NostrEvent::query()->findOrFail($payout->event_id)->raw, true));
@@ -171,16 +178,59 @@ test('a player without a Lightning address keeps the payout open with its reason
         ->and($payout->lud16)->toBe('late@wallet.example');
 });
 
-test('without the pot’s wallet connection nothing is approved or attempted', function () {
+test('without the league wallet’s paying connection nothing is approved or attempted', function () {
     fakeWallet();
     $wallet = ownPotWallet(0);
     fakeLightningAddresses($wallet);
     $tournament = finishedPoolTournament($wallet, 10_000, 2);
-    $tournament->forceFill(['pot_nwc_uri' => 'broken'])->save();
+    config(['esports.wallet.nwc_uri' => 'broken']);
 
-    expect(fn () => app(PayoutApproval::class)->approve($tournament, anAdmin()))->toThrow(TournamentRuleViolation::class, 'own wallet')
+    expect(fn () => app(PayoutApproval::class)->approve($tournament, anAdmin()))->toThrow(TournamentRuleViolation::class, 'league wallet is not connected')
         ->and($tournament->refresh()->payouts_approved_at)->toBeNull()
         ->and($tournament->payouts()->count())->toBe(0);
+});
+
+test('a payout never takes more than its pot holds, nor the sats the league wallet keeps for other pots', function () {
+    $wallet = fakeWallet();
+    fakeLightningAddresses($wallet);
+    $tournament = finishedPoolTournament($wallet, 10_000, 2);
+    $other = publishForPool(openTournament());
+    fundPool($wallet, $other, 50_000);
+
+    // The wallet holds less than the prizes beyond the other pot's 50 000: nothing is approved.
+    $wallet->balanceMsats = 55_000_000;
+    expect(fn () => app(PayoutApproval::class)->approve($tournament, anAdmin()))->toThrow(TournamentRuleViolation::class, 'holds less than these prizes')
+        ->and($tournament->refresh()->payouts_approved_at)->toBeNull();
+
+    $wallet->balanceMsats = 60_000_000;
+    app(PayoutApproval::class)->approve($tournament, anAdmin());
+    $first = $tournament->payouts()->where('place', 1)->sole();
+    $second = $tournament->payouts()->where('place', 2)->sole();
+    $requests = count($wallet->payRequests());
+
+    // Another pot's payout or the reserve drained the wallet since: the prize is not covered, nothing is sent.
+    $wallet->balanceMsats = 53_000_000;
+    app(PayoutRunner::class)->run($first, true);
+    expect($first->refresh()->status)->toBe(PayoutStatus::Failed)->and($first->reason)->toBe('insufficient_balance')
+        ->and(count($wallet->payRequests()))->toBe($requests);
+
+    // A payout above what its pot's account holds is never sent either, however full the wallet is.
+    $wallet->balanceMsats = 50_000_000_000;
+    TournamentPayout::query()->whereKey($second->id)->update(['amount_sats' => 10_001]);
+    app(PayoutRunner::class)->run($second->refresh(), true);
+    expect($second->refresh()->status)->toBe(PayoutStatus::Failed)->and($second->reason)->toBe('insufficient_balance')
+        ->and(count($wallet->payRequests()))->toBe($requests);
+
+    // A balance the wallet does not tell sends nothing either.
+    $wallet->hideBalance = true;
+    app(PayoutRunner::class)->run($first->refresh(), true);
+    expect($first->refresh()->reason)->toBe('balance_unread')->and(count($wallet->payRequests()))->toBe($requests);
+
+    // Covered again: paid once, booked out of the pot's account.
+    $wallet->hideBalance = false;
+    app(PayoutRunner::class)->run($first->refresh(), false);
+    expect($first->refresh()->status)->toBe(PayoutStatus::Paid)
+        ->and(app(Ledger::class)->balance($tournament->potAccount()))->toBe(10_000 - $first->amount_sats - 1);
 });
 
 test('only an admin approves payouts, and approving twice changes nothing', function () {
@@ -197,64 +247,50 @@ test('only an admin approves payouts, and approving twice changes nothing', func
         ->and($tournament->payouts()->count())->toBe(2);
 });
 
-test('fixed prizes: a short balance is a warning next to them, the approval still writes them, and a failed payment pays on retry after a top-up', function () {
+test('fixed prizes: a pot short of them is not approved until it is topped up', function () {
     fakeWallet();
     $wallet = ownPotWallet(0);
     fakeLightningAddresses($wallet);
-    // 50 000 + 30 000 need 80 800 sats with the 1 % fee reserve; the pot holds 60 000 (user, 2026-09-27: a warning, never a block).
+    // 50 000 + 30 000 need 80 800 sats with the 1 % fee reserve; the pot received 60 000 (coordinator, 2026-10-02: a block, the wallet is shared).
     $tournament = finishedPoolTournament($wallet, 60_000, 2, fixed: [50_000, 30_000]);
     $admin = anAdmin();
 
     Livewire::actingAs($admin)->test('pages::admin.payouts', ['tournamentId' => $tournament->id])
-        ->assertSeeHtml('data-test="payouts-underfunded"')
+        ->assertSeeHtml('data-test="payouts-underfunded"')->assertSeeHtml('data-test="payouts-blocker"')
         ->assertSee(PreSeason::formatSats(20_800))->assertSee(PreSeason::formatSats(80_800))
-        ->assertSeeHtml('data-test="approve-payouts"')
-        ->call('approve')->assertHasNoErrors();
+        ->assertDontSeeHtml('data-test="approve-payouts"')
+        ->call('approve')->assertHasErrors('payouts');
 
-    expect($tournament->refresh()->payouts_approved_at)->not->toBeNull()
-        ->and($tournament->payouts()->orderBy('place')->pluck('amount_sats', 'place')->all())->toBe([1 => 50_000, 2 => 30_000]);
+    expect($tournament->refresh()->payouts_approved_at)->toBeNull()->and($tournament->payouts()->count())->toBe(0);
+
+    fundPool($wallet, $tournament, 20_800);
+    Livewire::actingAs($admin)->test('pages::admin.payouts', ['tournamentId' => $tournament->id])
+        ->assertDontSeeHtml('data-test="payouts-underfunded"')->call('approve')->assertHasNoErrors();
 
     foreach ($tournament->payouts()->orderBy('place')->get() as $payout) {
         app(PayoutRunner::class)->run($payout, true);
     }
 
-    // The first prize fits, the second does not: it fails as the wallet said, nothing is invented.
-    $second = $tournament->payouts()->where('place', 2)->sole();
-    expect($tournament->payouts()->where('place', 1)->sole()->status)->toBe(PayoutStatus::Paid)
-        ->and($second->status)->toBe(PayoutStatus::Failed);
-
-    $wallet->balanceMsats += 30_000_000;
-    app(PayoutRunner::class)->run($second->refresh(), true);
-    expect($second->refresh()->status)->toBe(PayoutStatus::Paid);
+    expect($tournament->payouts()->orderBy('place')->pluck('amount_sats', 'place')->all())->toBe([1 => 50_000, 2 => 30_000])
+        ->and($tournament->payouts()->pluck('status')->unique()->all())->toBe([PayoutStatus::Paid]);
 });
 
-test('fixed prizes: an unreadable balance is a warning and the approval goes through; percent prizes are refused without a read', function () {
+test('an unreadable league wallet approves nothing, in either mode', function () {
     fakeWallet();
     config(['esports.wallet.nwc_timeout_seconds' => 1]);
     $wallet = ownPotWallet(0);
     fakeLightningAddresses($wallet);
-    $tournament = finishedPoolTournament($wallet, 85_000, 2, fixed: [50_000, 30_000]);
+    $fixed = finishedPoolTournament($wallet, 85_000, 2, fixed: [50_000, 30_000]);
+    $percent = finishedPoolTournament($wallet, 40_000, 2);
     app(FakeNwcTransport::class)->offline[$wallet->pubkey] = true;
 
-    // The read fails: the warning says so next to the prizes, and the approval still writes them (coordinator, 2026-09-27).
-    $page = Livewire::actingAs(anAdmin())->test('pages::admin.payouts', ['tournamentId' => $tournament->id])
-        ->call('readBalance')->assertHasErrors('payouts')
-        ->assertSeeHtml('data-test="payouts-unread"')->assertSee(__('Balance could not be read; you can still approve, the admin is responsible.'))
-        ->assertSeeHtml('data-test="approve-payouts"');
-    $page->call('approve')->assertHasNoErrors();
+    Livewire::actingAs(anAdmin())->test('pages::admin.payouts', ['tournamentId' => $fixed->id])
+        ->call('readBalance')->assertHasErrors('payouts');
 
-    expect($tournament->refresh()->payouts_approved_at)->not->toBeNull()
-        ->and($tournament->payouts()->orderBy('place')->pluck('amount_sats', 'place')->all())->toBe([1 => 50_000, 2 => 30_000]);
-
-    // Percent prizes are a share of the balance read now: no read, no approval.
-    $percentWallet = ownPotWallet(0);
-    fakeLightningAddresses($percentWallet);
-    $percent = finishedPoolTournament($percentWallet, 40_000, 2);
-    app(FakeNwcTransport::class)->offline[$percentWallet->pubkey] = true;
-
-    expect(fn () => app(PayoutApproval::class)->approve($percent, anAdmin()))->toThrow(TournamentRuleViolation::class, 'did not tell its balance just now')
-        ->and($percent->refresh()->payouts_approved_at)->toBeNull()->and($percent->payouts()->count())->toBe(0);
-    Livewire::actingAs(anAdmin())->test('pages::admin.payouts', ['tournamentId' => $percent->id])->assertDontSeeHtml('data-test="payouts-unread"');
+    foreach ([$fixed, $percent] as $tournament) {
+        expect(fn () => app(PayoutApproval::class)->approve($tournament, anAdmin()))->toThrow(TournamentRuleViolation::class, 'did not tell its balance just now')
+            ->and($tournament->refresh()->payouts_approved_at)->toBeNull()->and($tournament->payouts()->count())->toBe(0);
+    }
 });
 
 test('fixed prizes: a covered balance shows no warning', function () {
@@ -267,7 +303,7 @@ test('fixed prizes: a covered balance shows no warning', function () {
         ->assertDontSeeHtml('data-test="payouts-underfunded"')->assertSeeHtml('data-test="approve-payouts"');
 });
 
-test('fixed prizes: tied places share the sum of their amounts, rounded down, the rest stays in the wallet', function () {
+test('fixed prizes: tied places share the sum of their amounts, rounded down, the rest stays in the pot', function () {
     fakeWallet();
     $wallet = ownPotWallet(0);
     fakeLightningAddresses($wallet);

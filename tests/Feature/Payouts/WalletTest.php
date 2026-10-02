@@ -22,13 +22,13 @@ use Illuminate\Support\Facades\File;
 use Tests\Support\TestSigner;
 
 /*
-| P9 DoD (wallet). The league wallet and its ledger are the Season-Chain's
-| only (user, 2026-09-27: "Jedes Turnier bekommt seine eigene NWC und
-| eigenen Pot. niemals einen fremden oder von der Season"): its bookings
-| balance, a zap lands in the reserve by payment hash, the daily
+| P9 DoD (wallet). The league wallet and its ledger hold the reserve and,
+| since 2026-10-02, every tournament pot, each in its own account (user:
+| „das landet eh alles in eine Wallet von wo aus ausgezahlt werden kann"):
+| its bookings balance, a zap lands in its pot by payment hash, the daily
 | reconciliation reports a deviation, the paying connection is named by the
-| payout runner only, and no tournament flow ever reaches the league wallet
-| or the ledger.
+| payout runner only, and a tournament's flows book into its own account,
+| never the reserve.
 */
 
 /**
@@ -71,7 +71,8 @@ test('a zap lands in the league reserve once, and a request for any other pot is
     expect(IncomingPayment::query()->count())->toBe(1)
         ->and(LedgerTransfer::query()->where('reason', 'contribution')->count())->toBe(1)
         ->and(app(Ledger::class)->balance(Ledger::RESERVE))->toBe(21_000)
-        ->and(fn () => app(Ledger::class)->contribution($payment, IncomingPayment::tournamentPot($tournament->id)))->toThrow(InvalidArgumentException::class);
+        ->and(fn () => app(Ledger::class)->contribution($payment, 'tournament:x'))->toThrow(InvalidArgumentException::class)
+        ->and(fn () => app(Ledger::class)->contribution($payment, 'outside'))->toThrow(InvalidArgumentException::class);
 });
 
 test('the daily reconciliation of the league wallet agrees with the reserve and reports a deviation', function () {
@@ -112,32 +113,31 @@ test('the paying connection is named by the payout runner only', function () {
     expect($naming)->toBe($allowed);
 });
 
-test('no tournament flow touches the league wallet, its ledger or its LNURL key', function () {
-    // The league wallet is set up and answers; tournaments must still never call it.
+test('every tournament flow runs on the league wallet and books only into the tournament’s own account', function () {
     $league = fakeWallet();
-    $pot = ownPotWallet(0);
-    fakeLightningAddresses($pot);
+    fakeLightningAddresses($league);
     $tournament = openTournament();
     $organizer = $tournament->creator;
+    $ledger = app(Ledger::class);
 
-    // Pot settings with a live check, a top-up and a sponsor invoice, both settled, the schedule, a balance read.
-    app(PrizePool::class)->configurePot($tournament, $organizer, true, $pot->uri('pay'), null, Tournament::PRIZES_PERCENT, [60, 40]);
+    // Pot settings, a top-up and a sponsor invoice, both settled by the schedule.
+    app(PrizePool::class)->configurePot($tournament, $organizer, true, null, Tournament::PRIZES_PERCENT, [60, 40]);
     $tournament->refresh();
     $topUp = app(PotTopUps::class)->invoice($tournament, 30_000);
     $sponsor = app(PrizePool::class)->addSponsor($tournament, $organizer, 'Satoshi’s Pizza', 10_000, null);
     $sponsorInvoice = app(PotTopUps::class)->sponsorInvoice($sponsor, $organizer);
-    $pot->settleIncoming($topUp->payment_hash);
-    $pot->settleIncoming($sponsorInvoice->payment_hash);
+    $league->settleIncoming($topUp->payment_hash);
+    $league->settleIncoming($sponsorInvoice->payment_hash);
     $this->travel(1)->minutes();
     $this->artisan('wallet:sync')->assertSuccessful();
-    $this->artisan('wallet:read-pots')->assertSuccessful();
 
     expect($topUp->refresh()->status)->toBe(IncomingPaymentStatus::Settled)
         ->and($sponsor->refresh()->isPaid())->toBeTrue()
-        ->and($tournament->refresh()->pot_balance_sats)->toBe(40_000);
+        ->and(app(PrizePool::class)->fundedSats($tournament))->toBe(40_000)
+        ->and($ledger->balance(Ledger::RESERVE))->toBe(0);
 
-    // A tournament with a pot in the same wallet plays out; the admin approves and pays; the schedule continues what is open.
-    $finished = finishedPoolTournament($pot, 0, 4);
+    // A tournament with a pot plays out; the admin approves and pays from the league wallet; the schedule continues what is open.
+    $finished = finishedPoolTournament($league, 20_000, 4);
     app(PayoutApproval::class)->approve($finished, anAdmin());
 
     foreach ($finished->payouts()->get() as $payout) {
@@ -145,11 +145,13 @@ test('no tournament flow touches the league wallet, its ledger or its LNURL key'
     }
 
     $this->artisan('wallet:sync')->assertSuccessful();
+    $paid = (int) $finished->payouts()->where('status', 'paid')->sum('amount_sats');
 
     expect($finished->payouts()->where('status', 'paid')->count())->toBe(4)
-        ->and($pot->payRequests())->toHaveCount(4)
-        ->and($league->calls)->toBe([])
-        ->and(LedgerTransfer::query()->count())->toBe(0)
+        ->and($ledger->balance($finished->potAccount()))->toBe(20_000 - $paid - 4)
+        ->and($ledger->balance($tournament->potAccount()))->toBe(40_000)
+        ->and($ledger->balance(Ledger::RESERVE))->toBe(0)
         ->and(IncomingPayment::query()->where('pot', IncomingPayment::RESERVE)->count())->toBe(0)
+        // Plain top-ups and sponsor invoices carry no zap request, so no receipt.
         ->and(NostrEvent::query()->where('kind', 9735)->count())->toBe(0);
 });

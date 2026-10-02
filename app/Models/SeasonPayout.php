@@ -120,6 +120,7 @@ class SeasonPayout extends Model
             'invoice_mismatch' => __('The Lightning address returned an invoice that does not match (amount, description or network).'),
             'invoice_expired' => __('The invoice expired before it was paid.'),
             'insufficient_balance' => __('The payout wallet does not hold enough sats. Top up the payout wallet, then retry.'),
+            'balance_unread' => __('The league wallet did not tell its balance, so nothing was sent. It is tried again.'),
             'budget_exceeded' => __('The payout wallet’s budget for payouts is used up. Raise it or top up the payout wallet, then retry.'),
             'wallet_error' => __('The payout wallet refused the payment. Top up the payout wallet if it is low, then retry.'),
             'unconfirmed' => __('The wallet has not confirmed the payment yet. It is checked again before anything else happens.'),

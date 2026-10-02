@@ -34,7 +34,7 @@
             ? ['pool', route('tournaments.pool', $tournament), $tournament->pool_opened_at === null ? __('Set up the prize pool') : __('Prize pool'), 'bolt', 'secondary'] : null,
         $manages && ! in_array('edit', $except, true)
             ? ['edit', route('admin.tournaments.edit', $tournament), __('Edit'), 'settings', 'quiet'] : null,
-        $manageUser !== null && Gate::forUser($manageUser)->allows('admin') && $tournament->pool_opened_at !== null && $tournament->hasOwnWallet() && ! in_array('payouts', $except, true)
+        $manageUser !== null && Gate::forUser($manageUser)->allows('admin') && $tournament->pool_opened_at !== null && $tournament->hasPot() && ! in_array('payouts', $except, true)
             ? ['payouts', route('admin.payouts', ['tournament' => $tournament->id]), __('Payouts'), 'send', 'quiet'] : null,
     ]));
 @endphp

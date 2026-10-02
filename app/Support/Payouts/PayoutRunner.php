@@ -21,14 +21,20 @@ use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
 
 /**
- * Pays one payout, exactly once, to the player's Lightning address: a
- * tournament payout (P9) from the tournament pot's own NWC wallet, never
- * from the league wallet, and nothing is booked in the league ledger; a
- * season payout (P37) from the league wallet's paying connection
- * (`esports.wallet.nwc_uri`), booked out of the reserve once it is paid.
- * The only holder of a {@see PayingWallet}. There is no balance check
- * before a payment (user, 2026-09-28): a wallet that cannot pay fails the
- * payout with its reason, and an admin retries after a top-up.
+ * Pays one payout, exactly once, to the player's Lightning address, from the
+ * league wallet's paying connection (`esports.wallet.nwc_uri`): a tournament
+ * payout (P9) out of its tournament's account in the league ledger, a
+ * season payout (P37) out of the reserve, each booked once it is paid. A
+ * tournament payout approved before the league wallet took over (2026-10-02)
+ * still pays from that pot's own wallet and books nothing. The only holder
+ * of a {@see PayingWallet}.
+ *
+ * The league wallet is shared by every pot (user, 2026-10-02), so before
+ * each payment from it ({@see covered()}) the wallet's balance is read and
+ * must cover the amount beyond what it holds for the other tournament pots,
+ * and a tournament payout must not exceed what its own account still holds.
+ * Otherwise nothing is sent: the payout fails as `insufficient_balance`
+ * (retryable), or waits as `balance_unread` when the wallet did not tell.
  *
  * Three guards, each enough against a double click or a retried job:
  *
@@ -168,13 +174,46 @@ final class PayoutRunner
     }
 
     /**
-     * The wallet a payout is paid from: a tournament's from its pot's own
-     * wallet (never the league's), a season's from the league wallet's
-     * paying connection (never a pot's). Null without one (fail closed).
+     * The wallet a payout is paid from: the league wallet's paying
+     * connection, or for a legacy pot approved before 2026-10-02 that pot's
+     * own wallet. Null without one (fail closed).
      */
     private static function wallet(TournamentPayout|SeasonPayout $payout): ?PayingWallet
     {
-        return $payout instanceof SeasonPayout ? PayingWallet::fromConfig() : PayingWallet::forTournament($payout->tournament);
+        return $payout instanceof TournamentPayout && $payout->tournament->hasOwnWallet()
+            ? PayingWallet::forTournament($payout->tournament)
+            : PayingWallet::fromConfig();
+    }
+
+    /** Paid from the league wallet and booked in its ledger (every payout but a legacy pot's). */
+    private static function fromLeagueWallet(TournamentPayout|SeasonPayout $payout): bool
+    {
+        return ! ($payout instanceof TournamentPayout && $payout->tournament->hasOwnWallet());
+    }
+
+    /**
+     * Whether the league wallet may pay this payout now: `null` when it does
+     * not tell its balance, else whether the balance covers the amount beyond
+     * what the wallet holds for the other tournament pots, and (a tournament
+     * payout) the pot's own account still holds it.
+     */
+    private function covered(TournamentPayout|SeasonPayout $payout): ?bool
+    {
+        $balance = PayoutApproval::walletBalance();
+
+        if ($balance === null) {
+            return null;
+        }
+
+        $ledger = app(Ledger::class);
+
+        if ($payout instanceof SeasonPayout) {
+            return $payout->amount_sats <= $balance - $ledger->heldForTournaments();
+        }
+
+        $account = $payout->tournament->potAccount();
+
+        return $payout->amount_sats <= $ledger->balance($account) && $payout->amount_sats <= $balance - $ledger->heldForTournaments($account);
     }
 
     /** `Tournament` or `Season`, for the log. */
@@ -295,6 +334,20 @@ final class PayoutRunner
             return;
         }
 
+        // The shared league wallet: never another pot's sats (fail closed, nothing is sent).
+        if (self::fromLeagueWallet($payout) && ($covered = $this->covered($payout)) !== true) {
+            if ($covered === null) {
+                $this->note($payout, 'balance_unread');
+
+                return;
+            }
+
+            Log::warning(self::kind($payout).' payout not covered by the league wallet', ['payout' => $payout->id]);
+            $payout::query()->whereKey($payout->id)->where('status', PayoutStatus::Paying)->update(['status' => PayoutStatus::Failed, 'reason' => 'insufficient_balance']);
+
+            return;
+        }
+
         try {
             $result = $wallet->pay($bolt11);
         } catch (NwcError $error) {
@@ -349,9 +402,11 @@ final class PayoutRunner
             $relay = (string) (config('esports.relays')[0] ?? '');
             $event = $league->publish(2157, $payout->payoutTags($preimage, $relay), '', now()->getTimestamp());
 
-            // A season payout leaves the league wallet: booked once (tournament pots are never booked).
+            // A payout leaves the league wallet: booked once, out of the reserve or the tournament's pot (a legacy pot books nothing).
             if ($payout instanceof SeasonPayout) {
                 app(Ledger::class)->seasonPayout($payout);
+            } elseif (self::fromLeagueWallet($payout)) {
+                app(Ledger::class)->tournamentPayout($payout);
             }
 
             $payout->forceFill(['event_id' => $event->id])->save();

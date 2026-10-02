@@ -11,6 +11,7 @@ use App\Models\User;
 use App\Support\Lightning\Bolt11;
 use App\Support\Payouts\PayoutApproval;
 use App\Support\Prizes\PotTopUps;
+use App\Support\Prizes\PrizePool;
 use Illuminate\Support\Facades\Process;
 use Tests\Integration\Support\RelayCheck;
 use Tests\Integration\Support\Stack;
@@ -22,25 +23,24 @@ pest()->group('integration');
 | P9 in the real stack: a tournament pot, topped up and paid out
 |--------------------------------------------------------------------------
 |
-| The prize pot of a chess tournament is the tournament's own NWC wallet
-| (user, 2026-09-27), here the fake NIP-47 wallet service on the local
-| `nak serve` relay (never a real wallet). A top-up invoice is made by that
-| wallet over the relay, a payer settles it, and `wallet:sync` sees it with
-| lookup_invoice and reads the pot's balance. The prizes are fixed amounts.
-| After the admin check, each payout is paid by `payouts:run` from the same
-| wallet — the winner's by TWO such processes started at once, which race
+| The prize pot of a chess tournament is booked in the league wallet (user,
+| 2026-10-02), here the fake NIP-47 wallet service on the local `nak serve`
+| relay (never a real wallet). A top-up invoice is made by that wallet over
+| the relay, a payer settles it, and `wallet:sync` sees it with
+| lookup_invoice and books it into the tournament's account. The prizes are
+| fixed amounts. After the admin check, each payout is paid by `payouts:run`
+| from the same wallet — the winner's by TWO such processes started at once, which race
 | for the same payout in the one SQLite file. The wallet must see exactly
 | one `pay_invoice` per invoice, every payout has its Payout (2157) on the
 | relay with a preimage that hashes to its invoice, and no zap receipt
 | (9735) exists: a top-up is a plain invoice.
 |
-| The stack's league wallet is the same fake service; that no tournament
-| flow reaches the league wallet or its ledger is proven in the feature
-| suite (WalletTest), with separate fakes.
+| That every tournament flow books only into its own account is proven in
+| the feature suite (WalletTest).
 |
 */
 
-test('a tournament pot: topped up through its own wallet, paid once per winner by racing processes, proven on the relay', function () {
+test('a tournament pot: topped up through the league wallet, paid once per winner by racing processes, proven on the relay', function () {
     $stack = Stack::instance();
     $stack->wallet();
     $relay = new RelayCheck($stack->relayUrl);
@@ -49,7 +49,6 @@ test('a tournament pot: topped up through its own wallet, paid once per winner b
     $tournament = Stack::retryOnLock(fn () => runningChess(TournamentFormat::SingleElimination, 4));
     Stack::retryOnLock(fn () => publishForPool($tournament));
     Stack::retryOnLock(fn () => $tournament->refresh()->forceFill([
-        'pot_nwc_uri' => $stack->nwc->uri('pay', $stack->relayUrl), 'pot_balance_sats' => 0,
         'prize_mode' => Tournament::PRIZES_FIXED, 'prize_fixed' => [10_500, 6_300, 2_100],
     ])->save());
 
@@ -57,7 +56,7 @@ test('a tournament pot: topped up through its own wallet, paid once per winner b
         User::query()->whereKey($participant->user_id)->update(['lud16' => 'player'.$participant->id.'@'.$stack->nwc->lnurlHost()]);
     }
 
-    // Anyone adds sats: the invoice comes from the pot's own wallet.
+    // Anyone adds sats: the invoice comes from the league wallet, booked for this pot.
     $payment = Stack::retryOnLock(fn () => app(PotTopUps::class)->invoice($tournament->refresh(), 21_000));
     expect($payment->pot)->toBe('tournament:'.$tournament->id)->and($payment->source)->toBe('topup')
         ->and($payment->status)->toBe(IncomingPaymentStatus::Pending)
@@ -66,9 +65,9 @@ test('a tournament pot: topped up through its own wallet, paid once per winner b
     $stack->nwc->settle($payment->payment_hash);
     $stack->artisan('wallet:sync');
     expect($payment->refresh()->status)->toBe(IncomingPaymentStatus::Settled)
-        ->and($tournament->refresh()->pot_balance_sats)->toBeGreaterThanOrEqual(21_000)
+        ->and(app(PrizePool::class)->fundedSats($tournament->refresh()))->toBe(21_000)
         ->and(collect($stack->nwc->state()['calls'])->where('method', 'lookup_invoice')->where('payment_hash', $payment->payment_hash))->not->toBeEmpty()
-        ->and(LedgerTransfer::query()->count())->toBe(0);
+        ->and(LedgerTransfer::query()->where('reason', 'contribution')->count())->toBe(1);
 
     Stack::retryOnLock(fn () => playOutAsDirector($tournament));
     $admin = anAdmin();

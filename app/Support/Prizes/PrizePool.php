@@ -8,15 +8,11 @@ use App\Models\Tournament;
 use App\Models\TournamentModerationEntry;
 use App\Models\TournamentSponsor;
 use App\Models\User;
-use App\Support\Lightning\LightningAddress;
 use App\Support\PreSeason;
 use App\Support\SeasonChain\LeagueKey;
 use App\Support\Tournaments\TournamentPublisher;
 use App\Support\Tournaments\TournamentRuleViolation;
-use App\Support\Wallet\NwcConnection;
-use App\Support\Wallet\NwcError;
-use App\Support\Wallet\ReceivingWallet;
-use App\Support\Wallet\RelayGuard;
+use App\Support\Wallet\Ledger;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Gate;
@@ -26,13 +22,18 @@ use Illuminate\Support\Facades\Storage;
  * A tournament's prize pot (P9, NIP "Prize pool funding"): what it holds,
  * what each place wins, and what its organizer may change.
  *
- * A pot is always the tournament's own NWC wallet (user, 2026-09-27: "Jedes
- * Turnier bekommt seine eigene NWC und eigenen Pot. niemals einen fremden
- * oder von der Season"). Its sats are that wallet's balance, read over
- * NIP-47 ({@see PotBalances}); the league's wallet and ledger belong to the
- * Season-Chain and are never touched here. The organizer or an admin
- * (gate `manage-tournament`) connects the wallet and sets the prizes;
- * paying out is for admins only (App\Support\Payouts\PayoutApproval).
+ * A pot is booked in the league wallet (user, 2026-10-02: „nutze doch
+ * einfach Zaps auf Nostr Events … bitte nicht pro Turnier Wallets fordern …
+ * das landet eh alles in eine Wallet von wo aus ausgezahlt werden kann"):
+ * every invoice for it is made by the league wallet and, once paid, booked
+ * into the tournament's account of the league ledger ({@see Ledger}). That
+ * account is what the pot holds; nothing is read from any other wallet. A
+ * sponsor's sats paid outside the wallet count toward the pot but are never
+ * in that account, so no payout takes them from the wallet. The organizer
+ * or an admin (gate `manage-tournament`) switches the pot on and sets the
+ * prizes; paying out is for admins only (App\Support\Payouts\PayoutApproval).
+ * Pots of the former own-wallet design whose payouts were approved before
+ * finish paying from that wallet (Tournament::hasOwnWallet()).
  *
  * Two ways to set the prizes, both part of the rules players sign up under
  * (they change while the tournament is a draft or open for sign-up, never
@@ -71,38 +72,60 @@ final class PrizePool
 
     public const WALLET_FEE_MIN = 10;
 
-    /** A balance read older than this is shown as stale (seconds). */
+    /** A legacy own wallet's balance read older than this is shown as stale (seconds). */
     public const BALANCE_STALE_AFTER = 600;
 
-    public function __construct(private TournamentPublisher $publisher, private SponsorLogos $logos, private RelayGuard $relays) {}
+    public function __construct(private TournamentPublisher $publisher, private SponsorLogos $logos, private Ledger $ledger) {}
 
     /**
-     * The pot's sats: the last balance read from its wallet (null without a
-     * pot, or before the first successful read: nothing is shown rather
-     * than a guess).
+     * The pot's sats as the tournament sets it (user, 2026-09-28: „nicht die
+     * Zahl nehmen, die in der Wallet als Balance ist, sondern den Pot, wie er
+     * im Turnier eingestellt ist“): the fixed prizes' sum, else the target;
+     * without either, what came in (booked in the league wallet, and paid
+     * outside it). Null without a pot.
      */
     public function potSats(Tournament $tournament): ?int
     {
-        if (! $tournament->hasOwnWallet()) {
+        if (! $tournament->hasPot()) {
             return null;
         }
 
-        // The pot as the tournament sets it, not the wallet's balance (user,
-        // 2026-09-28: „nicht die Zahl nehmen, die in der Wallet als Balance
-        // ist, sondern den Pot, wie er im Turnier eingestellt ist“): the
-        // fixed prizes' sum, else the target; the balance only without either.
         if ($tournament->prizeMode() === Tournament::PRIZES_FIXED) {
             return self::fixedTotal($tournament);
         }
 
-        return $tournament->prize_target_sats ?? $tournament->pot_balance_sats;
+        return $tournament->prize_target_sats ?? $this->fundedSats($tournament) + self::paidOutsideSats($tournament);
+    }
+
+    /**
+     * What came into the pot through the league wallet, before anything was
+     * paid from it: the paid invoices (top-ups, sponsor invoices, zaps)
+     * booked into the tournament's account. A legacy own-wallet pot: its last
+     * balance read.
+     */
+    public function fundedSats(Tournament $tournament): int
+    {
+        if ($tournament->hasOwnWallet()) {
+            return (int) $tournament->pot_balance_sats;
+        }
+
+        return $tournament->hasLeaguePot() ? $this->ledger->credited($tournament->potAccount()) : 0;
+    }
+
+    /**
+     * What the league wallet holds for the pot now: what came in, less the
+     * prizes and their fees paid from it.
+     */
+    public function heldSats(Tournament $tournament): int
+    {
+        return $tournament->hasLeaguePot() ? $this->ledger->balance($tournament->potAccount()) : 0;
     }
 
     /**
      * The pot a public screen may show (the stream's slides): as potSats(),
-     * but null for none, zero, or a wallet balance older than
-     * BALANCE_STALE_AFTER when the tournament sets neither prizes nor a
-     * target (the stream bot applies the same rule).
+     * but null for none or zero, and for a legacy own wallet whose balance
+     * read is old when the tournament sets neither prizes nor a target (the
+     * stream bot applies the same rule).
      */
     public function shownPotSats(Tournament $tournament): ?int
     {
@@ -154,9 +177,9 @@ final class PrizePool
 
     /**
      * What the pot should hold for its fixed prizes: their sum and its fee
-     * reserve. Null in percent mode (any balance splits). A warning on the
-     * pot form and the payouts page when the balance is short, never a
-     * block: the admin is responsible (user, 2026-09-27).
+     * reserve. Null in percent mode (whatever came in splits). A pot short of
+     * it is not approved (coordinator, 2026-10-02): with every pot in one
+     * wallet, a short pot would pay its prizes with other pots' sats.
      */
     public static function requiredSats(Tournament $tournament): ?int
     {
@@ -170,23 +193,23 @@ final class PrizePool
     }
 
     /**
-     * What the places share at the check, from a balance of `$balance`:
-     * percent mode splits the balance less the fee reserve; fixed mode pays
-     * exactly the fixed sum, whatever the balance (a short balance is a
-     * warning; a payment the wallet cannot make fails and can be retried).
+     * What the places share at the check, from `$funded` sats that came into
+     * the pot: percent mode splits them less the fee reserve; fixed mode pays
+     * exactly the fixed sum (approved only when `$funded` covers it and its
+     * reserve, {@see shortfall()}).
      */
-    public static function payable(Tournament $tournament, int $balance): int
+    public static function payable(Tournament $tournament, int $funded): int
     {
-        return self::requiredSats($tournament) === null ? self::afterFeeReserve($balance) : self::fixedTotal($tournament);
+        return self::requiredSats($tournament) === null ? self::afterFeeReserve($funded) : self::fixedTotal($tournament);
     }
 
     /**
-     * How many sats `$balance` lacks for the fixed prizes and their fee
+     * How many sats `$funded` lacks for the fixed prizes and their fee
      * reserve; 0 when it covers them, and always 0 in percent mode.
      */
-    public static function shortfall(Tournament $tournament, int $balance): int
+    public static function shortfall(Tournament $tournament, int $funded): int
     {
-        return max(0, (int) self::requiredSats($tournament) - $balance);
+        return max(0, (int) self::requiredSats($tournament) - $funded);
     }
 
     /**
@@ -211,15 +234,16 @@ final class PrizePool
     /**
      * How far the pot is from what it is meant to pay: `goal` is the fixed
      * sum (fixed mode) or the organizer's target (percent mode, null
-     * without one); `have` what the pot can pay towards it (the balance less
-     * the fee reserve); `leftover` what stays in the wallet after fixed
-     * prizes and their reserve.
+     * without one); `have` what the pot can pay towards it (what came into
+     * the league wallet for it, less the fee reserve in fixed mode);
+     * `leftover` what stays in its account after fixed prizes and their
+     * reserve. Sats paid outside the wallet are not part of it.
      *
      * @return array{goal: int|null, have: int, funded: bool, leftover: int|null}
      */
     public function funding(Tournament $tournament): array
     {
-        $balance = (int) $tournament->pot_balance_sats;
+        $balance = $this->fundedSats($tournament);
 
         if ($tournament->prizeMode() === Tournament::PRIZES_FIXED) {
             $total = self::fixedTotal($tournament);
@@ -234,10 +258,15 @@ final class PrizePool
     }
 
     /**
-     * Whether the last balance read is old or failed since.
+     * Legacy own wallet: whether its last balance read is old or failed
+     * since. A league pot is never stale: its ledger is exact.
      */
     public static function isBalanceStale(Tournament $tournament): bool
     {
+        if (! $tournament->hasOwnWallet()) {
+            return false;
+        }
+
         return $tournament->pot_balance_at === null || $tournament->pot_balance_error !== null
             || $tournament->pot_balance_at->lt(now()->subSeconds(self::BALANCE_STALE_AFTER));
     }
@@ -330,69 +359,9 @@ final class PrizePool
     }
 
     /**
-     * Check a wallet connection string live, as the pot settings do before
-     * saving it: its relays are public `wss://` hosts ({@see RelayGuard}),
-     * the wallet answers `get_balance`, and it does not deny `pay_invoice`
-     * (the winners are paid from it). Whether it may `make_invoice` decides
-     * whether anyone can add sats through the tournament page. The league's
-     * own wallet is refused: it belongs to the Season-Chain. Several
-     * tournaments may share one wallet (user, 2026-09-27): the organizer caps
-     * each connection's budget in the wallet or uses a sub-wallet, and the
-     * balance is a visual check only. The string is never part of a message.
-     *
-     * @return array{balance: int, lud16: string|null, can_receive: bool, receive_missing: list<string>|null}
-     *
-     * @throws TournamentRuleViolation
-     */
-    public function checkWallet(#[\SensitiveParameter] string $uri): array
-    {
-        $connection = NwcConnection::fromUri($uri);
-        $wallet = ReceivingWallet::fromUri($uri);
-
-        if ($connection === null || $wallet === null) {
-            throw new TournamentRuleViolation('pot_uri', __('That is not a wallet connection string. It starts with nostr+walletconnect:// and names a relay and a secret.'));
-        }
-
-        // Its relays make the server connect: checked before anything is sent (security gate F1).
-        foreach ($connection->relays as $relay) {
-            if ($this->relays->target($relay) === null) {
-                throw new TournamentRuleViolation('pot_relay', __('The relay of this connection string cannot be used: it has to be a wss:// address on a public host name.'));
-            }
-        }
-
-        foreach ([config('esports.wallet.nwc_uri'), config('esports.wallet.nwc_receive_uri')] as $league) {
-            if (NwcConnection::fromUri($league)?->walletPubkey === $connection->walletPubkey) {
-                throw new TournamentRuleViolation('pot_league_wallet', __('This is the league’s own wallet. A tournament pot needs a wallet of its own.'));
-            }
-        }
-
-        try {
-            $balance = $wallet->balanceSats();
-        } catch (NwcError $error) {
-            throw new TournamentRuleViolation('pot_wallet', $error->isTimeout()
-                ? __('The wallet did not answer. Check that it is online and that the connection string is current.')
-                : __('The wallet did not tell its balance (:code). Allow “get balance” for this connection.', ['code' => PotBalances::code($error)]));
-        }
-
-        $methods = $wallet->methods();
-
-        if ($methods !== null && ! in_array('pay_invoice', $methods, true)) {
-            throw new TournamentRuleViolation('pot_pay', __('This connection may not pay invoices, so the winners could not be paid from it. Allow “pay invoice” for it in the wallet.'));
-        }
-
-        parse_str((string) parse_url(trim($uri), PHP_URL_QUERY), $query);
-        $lud16 = is_string($query['lud16'] ?? null) && LightningAddress::target($query['lud16']) !== null ? strtolower($query['lud16']) : null;
-
-        $missing = $methods === null ? null : array_values(array_diff(['make_invoice', 'lookup_invoice'], $methods));
-
-        return ['balance' => $balance, 'lud16' => $lud16, 'can_receive' => $missing === [], 'receive_missing' => $missing];
-    }
-
-    /**
      * The prize pot of the tournament create and edit pages and the pool
-     * page: off (`$enabled` false) or the tournament's own wallet with its
-     * prizes. A new connection string is checked live ({@see checkWallet()})
-     * and stored encrypted; null keeps the stored one. A published
+     * page: off (`$enabled` false) or on, booked in the league wallet, with
+     * its prizes. No wallet is asked for (user, 2026-10-02). A published
      * tournament's pot is open at once, and the rules on Nostr get a new
      * version when the pot or its prizes changed.
      *
@@ -401,13 +370,10 @@ final class PrizePool
      *
      * @param  array<int, mixed>  $split  percents per place (percent mode)
      * @param  array<int, mixed>  $fixed  sats per place (fixed mode)
-     * @param  array{balance: int, lud16: string|null, can_receive: bool, receive_missing?: list<string>|null}|null  $checked  the result of {@see checkWallet()} for this very
-     *                                                                                                                         `$uri`, when the caller ran it before a transaction of its own (a
-     *                                                                                                                         wallet call inside one holds SQLite's write lock, re-gate O1)
      *
      * @throws TournamentRuleViolation
      */
-    public function configurePot(Tournament $tournament, User $user, bool $enabled, #[\SensitiveParameter] ?string $uri, ?int $targetSats, string $mode, array $split, array $fixed = [], ?array $checked = null): Tournament
+    public function configurePot(Tournament $tournament, User $user, bool $enabled, ?int $targetSats, string $mode, array $split, array $fixed = []): Tournament
     {
         $this->authorize($tournament, $user);
         $this->refuseWhenEnded($tournament);
@@ -434,15 +400,7 @@ final class PrizePool
             throw new TournamentRuleViolation('split', $error);
         }
 
-        $uri = is_string($uri) && trim($uri) !== '' ? trim($uri) : null;
-
-        if ($enabled && $uri === null && $tournament->pot_nwc_uri === null) {
-            throw new TournamentRuleViolation('pot_uri', __('Paste the connection string of the pot’s wallet.'));
-        }
-
-        $check = $enabled && $uri !== null ? ($checked ?? $this->checkWallet($uri)) : null;
-
-        return DB::transaction(function () use ($tournament, $enabled, $uri, $targetSats, $mode, $split, $fixed, $prizesChanged, $check): Tournament {
+        return DB::transaction(function () use ($tournament, $enabled, $targetSats, $mode, $split, $fixed, $prizesChanged): Tournament {
             $locked = Tournament::query()->whereKey($tournament->id)->lockForUpdate()->firstOrFail();
 
             // The checks above read a row that may have moved during the live wallet check: again, under the lock.
@@ -454,26 +412,20 @@ final class PrizePool
             }
 
             $published = in_array($locked->status, [TournamentStatus::Signup, TournamentStatus::Drawing, TournamentStatus::Running], true);
-            $had = $locked->hasOwnWallet();
+            $had = $locked->hasPot();
             $wasOpen = $locked->pool_opened_at !== null;
             $fixedMode = $mode === Tournament::PRIZES_FIXED;
 
             $fill = $enabled ? [
-                'pot_source' => Tournament::POT_WALLET,
+                'pot_source' => Tournament::POT_LEAGUE,
                 'prize_mode' => $fixedMode ? Tournament::PRIZES_FIXED : null,
                 'prize_fixed' => $fixedMode ? $fixed : null,
                 'prize_split' => $fixedMode || $split === Tournament::DEFAULT_SPLIT ? null : $split,
                 'prize_target_sats' => $fixedMode || $targetSats === 0 ? null : $targetSats,
             ] : [
                 'pot_source' => null, 'prize_mode' => null, 'prize_fixed' => null, 'prize_split' => null, 'prize_target_sats' => null,
-                'pot_nwc_uri' => null, 'pot_lud16' => null, 'pot_balance_sats' => null, 'pot_balance_at' => null, 'pot_balance_error' => null,
-                'pot_can_receive' => null, 'pool_opened_at' => null,
+                'pool_opened_at' => null,
             ];
-
-            if ($check !== null) {
-                $fill += ['pot_nwc_uri' => $uri, 'pot_lud16' => $check['lud16'], 'pot_balance_sats' => $check['balance'], 'pot_balance_at' => now(),
-                    'pot_balance_error' => null, 'pot_can_receive' => $check['can_receive']];
-            }
 
             if ($enabled && $published && ! $wasOpen && self::canOpen()) {
                 $fill['pool_opened_at'] = now();
@@ -493,13 +445,13 @@ final class PrizePool
     /**
      * After sign-up closed the pot is part of the rules players signed up
      * under: it can be neither switched off (and on again with other
-     * prizes) nor added. Its wallet can still be replaced.
+     * prizes) nor added.
      *
      * @throws TournamentRuleViolation
      */
     private function refuseFrozenToggle(Tournament $tournament, bool $enabled): void
     {
-        if ($enabled !== $tournament->hasOwnWallet() && ! $this->canChangeSplit($tournament)) {
+        if ($enabled !== $tournament->hasPot() && ! $this->canChangeSplit($tournament)) {
             throw new TournamentRuleViolation('pot_frozen', __('The prize pot is part of the rules players signed up under; it cannot be switched on or off after sign-up closed.'));
         }
     }

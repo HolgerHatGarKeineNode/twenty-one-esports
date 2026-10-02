@@ -26,7 +26,8 @@ use swentel\nostr\Sign\Sign;
  * relay client in the integration suite (tests/Integration/Support/fake-nwc-wallet.php).
  *
  * Levers: `failNext` answers the next pay_invoice with that error code;
- * `loseNextAnswer` pays but sends no answer (the league sees a timeout);
+ * `loseNextAnswer` pays the next pay_invoice but sends no answer (the league
+ * sees a timeout);
  * `ignoreNextRequest` neither pays nor answers.
  */
 final class FakeNwcWallet
@@ -57,6 +58,9 @@ final class FakeNwcWallet
     public bool $loseNextAnswer = false;
 
     public bool $ignoreNextRequest = false;
+
+    /** Answers get_balance with an error (the wallet will not tell its balance). */
+    public bool $hideBalance = false;
 
     /** When set, invoices carry this expiry (seconds) whatever the league asked for. */
     public ?int $invoiceExpiry = null;
@@ -181,12 +185,13 @@ final class FakeNwcWallet
             'pay_invoice' => $role !== 'pay' ? ['error' => ['code' => 'RESTRICTED', 'message' => 'no pay permission']] : $this->payInvoice((string) ($params['invoice'] ?? '')),
             'make_invoice' => $this->makeInvoice((int) ($params['amount'] ?? 0), is_string($params['description_hash'] ?? null) ? $params['description_hash'] : null, (int) ($params['expiry'] ?? 3600)),
             'lookup_invoice' => $this->lookup((string) ($params['payment_hash'] ?? '')),
-            'get_balance' => ['result' => ['balance' => $this->balanceMsats]],
+            'get_balance' => $this->hideBalance ? ['error' => ['code' => 'INTERNAL', 'message' => 'no balance']] : ['result' => ['balance' => $this->balanceMsats]],
             'get_info' => ['result' => ['alias' => 'fake', 'network' => 'regtest', 'methods' => $role === 'pay' ? ($this->payMethods ?? ['pay_invoice', 'make_invoice', 'lookup_invoice', 'get_balance', 'get_info']) : ['make_invoice', 'lookup_invoice', 'get_balance', 'get_info']]],
             default => ['error' => ['code' => 'NOT_IMPLEMENTED', 'message' => $method]],
         };
 
-        if ($this->loseNextAnswer) {
+        // Only a payment's answer is lost (a balance read before it is answered).
+        if ($this->loseNextAnswer && $method === 'pay_invoice') {
             $this->loseNextAnswer = false;
 
             return null;

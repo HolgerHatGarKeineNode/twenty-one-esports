@@ -75,19 +75,19 @@ use Illuminate\Support\Carbon;
  * @property int|null $response_minutes
  * @property int|null $prize_target_sats the organizer's goal for the pool (P9); shown, never paid from by itself
  * @property list<int>|null $prize_split percent per place, null = {@see self::DEFAULT_SPLIT}
- * @property Carbon|null $pool_opened_at the pot is open since then (set at publish, own wallet only)
+ * @property Carbon|null $pool_opened_at the pot is open since then (set at publish)
  * @property Carbon|null $pool_closed_at receipts after it count for the reserve (the admin check at the end)
  * @property Carbon|null $payouts_approved_at
  * @property int|null $payouts_approved_by_id
- * @property string|null $pot_source `wallet` | null (no pot): a pot is always the tournament's own NWC wallet
+ * @property string|null $pot_source `league` (the pot is booked in the league wallet), `wallet` (legacy: the tournament's own NWC wallet, kept only for pots whose payouts were approved before 2026-10-02) or null (no pot)
  * @property string|null $prize_mode `percent` (null) or `fixed`
  * @property list<int>|null $prize_fixed sats per place in `fixed` mode
- * @property bool|null $pot_can_receive the pot's connection may `make_invoice` (top-ups); null = unknown
- * @property string|null $pot_nwc_uri the tournament's own NWC connection (encrypted at rest, never shown)
- * @property string|null $pot_lud16 the Lightning address of that wallet, if its connection string names one
- * @property int|null $pot_balance_sats last balance read from the own wallet
- * @property Carbon|null $pot_balance_at when that balance was read
- * @property string|null $pot_balance_error why the latest read failed (the last good value stays)
+ * @property bool|null $pot_can_receive legacy own wallet: its connection may `make_invoice`; unused for league pots
+ * @property string|null $pot_nwc_uri legacy: the tournament's own NWC connection (encrypted at rest, never shown); kept, unused, after a pot moved to the league wallet
+ * @property string|null $pot_lud16 legacy: the Lightning address of that wallet
+ * @property int|null $pot_balance_sats legacy: last balance read from the own wallet
+ * @property Carbon|null $pot_balance_at legacy: when that balance was read
+ * @property string|null $pot_balance_error legacy: why the latest read failed
  * @property Carbon|null $paused_at set while an organizer or admin paused the running tournament (P18, TournamentControl)
  * @property string|null $cup_series its casual cup series (P25, CasualCups): "<game>-<region>", "chess-eu"; null for every other tournament
  * @property int|null $cup_number its number in that series; null once called off (the number is taken again)
@@ -300,7 +300,18 @@ class Tournament extends Model
         return $this->pool_opened_at !== null && $this->pool_closed_at === null;
     }
 
-    /** The only pot source: the tournament's own NWC wallet (the league wallet is the Season-Chain's). */
+    /**
+     * A pot booked in the league wallet (user, 2026-10-02: „das landet eh alles
+     * in eine Wallet von wo aus ausgezahlt werden kann"): its sats are the
+     * tournament's account in the league ledger.
+     */
+    public const POT_LEAGUE = 'league';
+
+    /**
+     * Legacy: a pot in the tournament's own NWC wallet. Only pots whose
+     * payouts were approved before the league wallet took over keep it, to
+     * finish paying from that wallet.
+     */
     public const POT_WALLET = 'wallet';
 
     public const PRIZES_PERCENT = 'percent';
@@ -323,10 +334,28 @@ class Tournament extends Model
         return $this->prizeMode() === self::PRIZES_FIXED ? array_map(intval(...), $this->prize_fixed ?? []) : [];
     }
 
-    /** The pot lives in the tournament's own NWC wallet, not in the league's. */
+    /** The tournament has a prize pot (booked in the league wallet, or a legacy own wallet). */
+    public function hasPot(): bool
+    {
+        return in_array($this->pot_source, [self::POT_LEAGUE, self::POT_WALLET], true);
+    }
+
+    /** The pot is booked in the league wallet (every new pot). */
+    public function hasLeaguePot(): bool
+    {
+        return $this->pot_source === self::POT_LEAGUE;
+    }
+
+    /** Legacy: the pot lives in the tournament's own NWC wallet (approved before the league wallet took over). */
     public function hasOwnWallet(): bool
     {
         return $this->pot_source === self::POT_WALLET;
+    }
+
+    /** The ledger account of this tournament's pot in the league wallet. */
+    public function potAccount(): string
+    {
+        return 'tournament:'.$this->id;
     }
 
     /**

@@ -21,6 +21,8 @@ use Tests\Support\FakeNwcTransport;
 /*
 | P9 security gate (2026-09-27), one regression per finding:
 | F1 a pot's NWC relay URL made the server open websockets anywhere (SSRF);
+|    since 2026-10-02 no pot takes a connection string at all, and the relay
+|    guard stays in front of every NWC connection;
 | F2 an invoice path without the limiter (the signed zap, now the top-up);
 | F3 a payout went to the profile's current Lightning address, not the approved one.
 */
@@ -29,29 +31,14 @@ afterEach(function () {
     app()['env'] = 'testing';
 });
 
-/** A connection string of the fake pot wallet, pointed at another relay. */
-function uriWithRelay(string $relay): string
-{
-    $own = ownPotWallet();
-
-    return (string) preg_replace('/relay=[^&]+/', 'relay='.rawurlencode($relay), $own->uri('pay'));
-}
-
-test('F1: a relay on a loopback, private or non-TLS address is refused before any connection', function (string $relay, array $answers, bool $production) {
-    fakeWallet();
-    $resolver = new FakeHostResolver($answers);
-    app()->instance(HostResolver::class, $resolver);
-    $uri = uriWithRelay($relay);
-    $transport = app(FakeNwcTransport::class);
-    $calls = $transport->calls;
+test('F1: a relay on a loopback, private or non-TLS address is refused by the relay guard', function (string $relay, array $answers, bool $production) {
+    app()->instance(HostResolver::class, new FakeHostResolver($answers));
 
     if ($production) {
         app()['env'] = 'production';
     }
 
-    expect(fn () => app(PrizePool::class)->checkWallet($uri))->toThrow(TournamentRuleViolation::class, 'wss://')
-        ->and($transport->calls)->toBe($calls)
-        ->and(app(RelayGuard::class)->target($relay))->toBeNull();
+    expect(app(RelayGuard::class)->target($relay))->toBeNull();
 })->with([
     'loopback IP' => ['wss://127.0.0.1/', [], false],
     'localhost' => ['wss://localhost/', [], false],
@@ -64,11 +51,9 @@ test('F1: a relay on a loopback, private or non-TLS address is refused before an
 ]);
 
 test('F1: a wss:// relay on a public name passes and is pinned to the address that was checked', function () {
-    fakeWallet();
     app()->instance(HostResolver::class, new FakeHostResolver(['relay.example.com' => ['93.184.215.14']]));
 
-    expect(app(PrizePool::class)->checkWallet(uriWithRelay('wss://relay.example.com/v1'))['balance'])->toBe(100_000)
-        ->and(app(RelayGuard::class)->target('wss://relay.example.com/v1'))->toBe(['host' => 'relay.example.com', 'ip' => '93.184.215.14']);
+    expect(app(RelayGuard::class)->target('wss://relay.example.com/v1'))->toBe(['host' => 'relay.example.com', 'ip' => '93.184.215.14']);
 
     // The socket goes to the checked address; TLS still verifies the name.
     $socket = (new PinnedStreamFactory('relay.example.com', '93.184.215.14'))->createSocketClient(new Uri('ssl://relay.example.com:443'));
@@ -96,39 +81,28 @@ test('F1: the websocket transport never connects to a refused relay (and does to
     fclose($server);
 });
 
-test('F1: every live wallet check counts against the limit before it runs, on the check, create and edit paths', function () {
+test('F1: no page takes a wallet connection string: a pot is switched on without one and no wallet is asked', function () {
     fakeWallet();
-    $own = ownPotWallet();
-    // The receive connection may not pay: each check reaches the wallet and fails, so nothing saves.
-    $refused = $own->uri('receive');
     $transport = app(FakeNwcTransport::class);
     $tournament = openTournament();
+    $calls = $transport->calls;
 
-    $pages = [
-        'check' => fn () => Livewire::actingAs(organizer())->test('pages::admin.tournament-create')->set('potEnabled', true)->set('potUri', $refused),
-        'create' => fn () => Livewire::actingAs(organizer())->test('pages::admin.tournament-create')->set('name', 'Limit Cup')
-            ->set('potEnabled', true)->set('potUri', $refused),
-        'edit' => fn () => Livewire::actingAs($tournament->creator)->test('pages::admin.tournament-edit', ['tournament' => $tournament])
-            ->set('potEnabled', true)->set('potUri', $refused),
-    ];
-    $actions = ['check' => 'checkPotConnection', 'create' => 'create', 'edit' => 'savePotSettings'];
-
-    foreach ($pages as $path => $page) {
-        $page = $page();
-
-        for ($i = 1; $i <= 6; $i++) {
-            $page->call($actions[$path])->assertNotSet('potError', __('Too many checks. Wait :seconds s and try again.', ['seconds' => 60]));
-        }
-
-        $calls = $transport->calls;
-        $page->call($actions[$path]);
-
-        expect($page->get('potError'))->toStartWith('Too many checks')
-            ->and($transport->calls)->toBe($calls);
+    foreach ([
+        Livewire::actingAs(organizer())->test('pages::admin.tournament-create'),
+        Livewire::actingAs($tournament->creator)->test('pages::admin.tournament-edit', ['tournament' => $tournament]),
+        Livewire::actingAs($tournament->creator)->test('pages::tournaments.pool', ['tournament' => $tournament]),
+    ] as $page) {
+        $page->set('potEnabled', true)->assertDontSeeHtml('nostr+walletconnect')->assertDontSeeHtml('data-test="pot-uri"')
+            ->assertSeeHtml('data-test="pot-league-wallet"');
+        expect(fn () => $page->set('potUri', 'nostr+walletconnect://x'))->toThrow(Exception::class);
     }
 
-    expect(Tournament::query()->where('name', 'Limit Cup')->exists())->toBeFalse()
-        ->and($tournament->refresh()->pot_source)->toBeNull();
+    Livewire::actingAs($tournament->creator)->test('pages::tournaments.pool', ['tournament' => $tournament])
+        ->set('potEnabled', true)->call('savePotSettings')->assertSet('potError', '');
+
+    expect($tournament->refresh()->pot_source)->toBe(Tournament::POT_LEAGUE)
+        ->and($tournament->pot_nwc_uri)->toBeNull()
+        ->and($transport->calls)->toBe($calls);
 });
 
 test('F2: thirty top-ups in a minute make at most the per-user limit of invoices, whatever the network says', function () {
@@ -194,15 +168,13 @@ test('F3: a changed Lightning address is not paid until an admin approves it', f
 
 test('hardening: the pot settings check the tournament again under the row lock', function () {
     fakeWallet();
-    $own = ownPotWallet();
     $tournament = openTournament();
-    // The tournament is called off while the wallet is being checked.
-    $own->onRequest = fn () => Tournament::query()->whereKey($tournament->id)->update(['status' => TournamentStatus::Cancelled]);
+    // The tournament is called off after the page read it, before the pot is saved.
+    Tournament::query()->whereKey($tournament->id)->update(['status' => TournamentStatus::Cancelled]);
 
-    expect(fn () => app(PrizePool::class)->configurePot($tournament, $tournament->creator, true, $own->uri('pay'), null, Tournament::PRIZES_PERCENT, [50, 30, 20]))
+    expect(fn () => app(PrizePool::class)->configurePot($tournament, $tournament->creator, true, null, Tournament::PRIZES_PERCENT, [50, 30, 20]))
         ->toThrow(TournamentRuleViolation::class, __('This tournament has ended; its pool can no longer change.'))
-        ->and($tournament->refresh()->pot_source)->toBeNull()
-        ->and($tournament->pot_nwc_uri)->toBeNull();
+        ->and($tournament->refresh()->pot_source)->toBeNull();
 });
 
 test('re-gate R2: an admin approves only the address they were shown, not one swapped in since', function () {

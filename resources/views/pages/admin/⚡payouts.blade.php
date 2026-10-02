@@ -9,7 +9,6 @@ use App\Support\PreSeason;
 use App\Support\Payouts\PayoutApproval;
 use App\Support\Payouts\PayoutPlan;
 use App\Support\Payouts\PayoutRunner;
-use App\Support\Prizes\PotBalances;
 use App\Support\Prizes\PrizePool;
 use App\Support\SeasonChain\LeagueKey;
 use App\Support\Tournaments\TournamentRuleViolation;
@@ -19,6 +18,7 @@ use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\Facades\RateLimiter;
 use Livewire\Attributes\Computed;
 use Livewire\Attributes\Layout;
+use Livewire\Attributes\Locked;
 use Livewire\Attributes\Title;
 use Livewire\Attributes\Url;
 use Livewire\Component;
@@ -36,20 +36,25 @@ use Livewire\Component;
  * the wallet left unclear stays "Paying" and is looked up again; one whose
  * invoice expired unclear needs a look into the wallet and a "Release".
  *
- * Every pot is its tournament's own NWC wallet (user, 2026-09-27): the
- * panel shows that wallet's state (connected or not, never its URI) and its
- * last balance, with "Read balance now". The league wallet is the
- * Season-Chain's and is not shown here. Fail closed: without the pot's
- * connection nothing can be approved or paid. A balance short of the fixed
- * prizes is a warning next to them, not a block (user, 2026-09-27: the
- * admin is responsible); a payment the wallet cannot make fails and can be
- * retried.
+ * Every pot is booked in the league wallet (user, 2026-10-02): the panel
+ * shows what came into the pot and what its account still holds, apart from
+ * what sponsors paid outside the wallet (never in it, never paid out from
+ * it), and the league wallet's balance on "Read balance now". Fail closed:
+ * without the league wallet nothing is approved or paid, a pot short of its
+ * fixed prizes is not approved, and the approval and every payment check the
+ * wallet's balance against the other pots (PayoutApproval, PayoutRunner).
+ * A pot approved before the league wallet took over still pays from its own
+ * wallet.
  */
 new #[Title('Payouts')] #[Layout('layouts::app', ['section' => 'admin'])] class extends Component {
     #[Url(as: 'tournament')]
     public ?int $tournamentId = null;
 
     public string $notice = '';
+
+    /** The league wallet's balance at the last "Read balance now"; null = not read on this page. */
+    #[Locked]
+    public ?int $walletSats = null;
 
     public function mount(): void
     {
@@ -68,13 +73,13 @@ new #[Title('Payouts')] #[Layout('layouts::app', ['section' => 'admin'])] class 
     #[Computed]
     public function tournaments(): Collection
     {
-        return Tournament::query()->whereNotNull('pool_opened_at')->where('pot_source', Tournament::POT_WALLET)->latest('id')->limit(100)->get();
+        return Tournament::query()->whereNotNull('pool_opened_at')->whereIn('pot_source', [Tournament::POT_LEAGUE, Tournament::POT_WALLET])->latest('id')->limit(100)->get();
     }
 
     #[Computed]
     public function tournament(): ?Tournament
     {
-        return $this->tournamentId === null ? null : Tournament::query()->whereNotNull('pool_opened_at')->where('pot_source', Tournament::POT_WALLET)->find($this->tournamentId);
+        return $this->tournamentId === null ? null : Tournament::query()->whereNotNull('pool_opened_at')->whereIn('pot_source', [Tournament::POT_LEAGUE, Tournament::POT_WALLET])->find($this->tournamentId);
     }
 
     /**
@@ -86,17 +91,12 @@ new #[Title('Payouts')] #[Layout('layouts::app', ['section' => 'admin'])] class 
         return $this->tournament === null ? new Collection : $this->tournament->payouts()->with(['participant', 'event'])->get();
     }
 
-    /** Read the pot's wallet balance now (once every 10 s per tournament). */
-    public function readBalance(PotBalances $balances): void
+    /** Read the league wallet's balance now (once every 10 s per admin). */
+    public function readBalance(): void
     {
         Gate::authorize('admin');
         $this->notice = '';
-
-        if ($this->tournament === null) {
-            return;
-        }
-
-        $key = 'pot-read:'.$this->tournament->id;
+        $key = 'league-wallet-read:'.auth()->id();
 
         if (RateLimiter::tooManyAttempts($key, 1)) {
             $this->addError('payouts', __('Read a moment ago. Wait :seconds s and try again.', ['seconds' => RateLimiter::availableIn($key)]));
@@ -105,12 +105,11 @@ new #[Title('Payouts')] #[Layout('layouts::app', ['section' => 'admin'])] class 
         }
 
         RateLimiter::hit($key, 10);
+        $this->walletSats = PayoutApproval::walletBalance();
 
-        if (! $balances->read($this->tournament)) {
-            $this->addError('payouts', __('The wallet did not tell its balance (:code). The last known balance stays.', ['code' => (string) $this->tournament->pot_balance_error]));
+        if ($this->walletSats === null) {
+            $this->addError('payouts', __('The league wallet did not tell its balance. Try again in a moment.'));
         }
-
-        unset($this->tournament);
     }
 
     public function approve(PayoutApproval $approval): void
@@ -197,15 +196,15 @@ new #[Title('Payouts')] #[Layout('layouts::app', ['section' => 'admin'])] class 
 @php
     $sats = fn (int $value): string => PreSeason::formatSats($value);
     $tournament = $this->tournament;
-    // Every pot is paid from its tournament's own wallet (user, 2026-09-27).
+    // Every pot is paid from the league wallet (user, 2026-10-02); a legacy pot approved before from its own.
     $payingHere = $tournament !== null && WalletSetup::potCanPay($tournament);
     $leagueKey = LeagueKey::fromConfig() !== null;
     $approval = app(PayoutApproval::class);
+    $prizePool = app(PrizePool::class);
     $fixedMode = $tournament?->prizeMode() === Tournament::PRIZES_FIXED;
-    $pool = $tournament ? PrizePool::payable($tournament, (int) $tournament->pot_balance_sats) : null;
-    $shortfall = $tournament ? PrizePool::shortfall($tournament, (int) $tournament->pot_balance_sats) : 0;
-    // Fixed prizes are approved without a fresh read too; the page says when the last one failed.
-    $unread = $fixedMode && ($tournament->pot_balance_error !== null || $tournament->pot_balance_at === null);
+    $funded = $tournament ? $prizePool->fundedSats($tournament) : 0;
+    $pool = $tournament ? PrizePool::payable($tournament, $funded) : null;
+    $shortfall = $tournament ? PrizePool::shortfall($tournament, $funded) : 0;
     $payouts = $this->payouts;
     $pending = $payouts->where('status', PayoutStatus::Pending);
 @endphp
@@ -217,7 +216,7 @@ new #[Title('Payouts')] #[Layout('layouts::app', ['section' => 'admin'])] class 
 
     @if ($this->tournaments->isEmpty())
         <x-admin.panel>
-        <x-admin.empty :text="__('No tournament has a prize pot yet. Organizers connect one on their tournament’s prize pool page.')" data-test="payouts-empty">
+        <x-admin.empty :text="__('No tournament has a prize pot yet. Organizers switch one on on their tournament’s prize pool page.')" data-test="payouts-empty">
             <x-button variant="quiet" :href="route('admin.tournaments')">{{ __('All tournaments') }}</x-button>
         </x-admin.empty>
     </x-admin.panel>
@@ -237,9 +236,13 @@ new #[Title('Payouts')] #[Layout('layouts::app', ['section' => 'admin'])] class 
             <div class="flex flex-col gap-1">
                 <h2 id="t-h" class="m-0 text-[15px] font-bold"><a href="{{ route('tournaments.show', $tournament) }}">{{ $tournament->name }}</a></h2>
                 <p class="m-0 text-[13px] text-ink-2" data-test="pot-wallet-state">
-                    {{ $payingHere ? __('The pot’s own wallet is connected.') : __('The connection of this pot’s own wallet is missing, so nothing can be paid out.') }}
-                    {{ __('Balance: :sats sats as of :time', ['sats' => $sats((int) $tournament->pot_balance_sats), 'time' => $tournament->pot_balance_at?->copy()->timezone(\App\Support\LeagueTime::zone())->format('Y-m-d H:i') ?? '–']) }}
-                    @if ($tournament->pot_balance_error) · <span class="text-loss">{{ __('the last read failed (:code)', ['code' => $tournament->pot_balance_error]) }}</span>@endif
+                    @if ($tournament->hasOwnWallet())
+                        {{ $payingHere ? __('Approved before the league wallet took over: paid from the pot’s own wallet.') : __('The connection of this pot’s own wallet is missing, so nothing can be paid out.') }}
+                    @else
+                        {{ $payingHere ? __('Paid from the league wallet.') : __('The league wallet is not connected, so nothing can be paid out.') }}
+                        <span data-test="pot-ledger">{{ __('This pot received :funded sats through it and holds :held sats now.', ['funded' => $sats($funded), 'held' => $sats($prizePool->heldSats($tournament))]) }}</span>
+                        @if ($walletSats !== null)<span data-test="league-balance">{{ __('League wallet: :sats sats.', ['sats' => $sats($walletSats)]) }}</span>@endif
+                    @endif
                 </p>
                 <p class="m-0 text-[13px] text-ink-2">
                     @if ($fixedMode)
@@ -259,36 +262,27 @@ new #[Title('Payouts')] #[Layout('layouts::app', ['section' => 'admin'])] class 
 
             @if ($tournament->payouts_approved_at === null)
                 @php($blocker = $approval->blocker($tournament))
-                <p class="m-0 max-w-[80ch] text-[13px] leading-normal text-ink-2">{{ __('The check reads the pot’s wallet balance again, closes the pot (later payments stay in its wallet), publishes the tournament’s end on Nostr, reads the final places from the bracket and writes one payout per player. Nothing is paid yet.') }}</p>
+                <p class="m-0 max-w-[80ch] text-[13px] leading-normal text-ink-2">{{ __('The check reads the league wallet’s balance, closes the pot (later payments go to the league reserve), publishes the tournament’s end on Nostr, reads the final places from the bracket and writes one payout per player. Nothing is paid yet.') }}</p>
                 @if (($outside = PrizePool::paidOutsideSats($tournament)) > 0)
                     {{-- Sponsors' sats marked as paid outside the wallet: part of the pot, never in the wallet the payout pays from. --}}
                     <p class="m-0 flex max-w-[80ch] items-start gap-2 rounded-md bg-loss-tint px-3 py-2 text-[13px] leading-normal text-loss" role="alert" data-test="payouts-outside-warning">
                         <x-icon name="warn" :size="16" class="mt-0.5 shrink-0" />
-                        <span>{{ __('Sponsors paid :outside sats outside the wallet. They are not in it, and the payout pays only from the wallet: :wallet sats. Move them into the wallet first, or the prizes will lack them.', ['outside' => $sats($outside), 'wallet' => $sats((int) $tournament->pot_balance_sats)]) }}</span>
+                        <span>{{ __('Sponsors paid :outside sats outside the wallet. They are not in it, and the payout pays only from what came into the pot through the wallet: :wallet sats. Add them to the pot first, or the prizes will lack them.', ['outside' => $sats($outside), 'wallet' => $sats($funded)]) }}</span>
                     </p>
                 @endif
                 @if ($blocker)
                     <p class="m-0 text-[13px] text-loss" data-test="payouts-blocker">{{ $blocker }}</p>
+                    @if ($shortfall > 0)
+                        <p class="m-0 text-[13px] text-ink-2" data-test="payouts-underfunded">{{ __('The pot has received :have sats; the fixed prizes need :need sats with the fee reserve, :missing sats more.', ['have' => $sats($funded), 'need' => $sats((int) PrizePool::requiredSats($tournament)), 'missing' => $sats($shortfall)]) }}</p>
+                    @endif
                 @else
                     @php($preview = $pool === null ? null : app(PayoutPlan::class)->compute($tournament, $pool))
-                    @if ($unread)
-                        <p class="m-0 flex max-w-[80ch] items-start gap-2 rounded-md bg-loss-tint px-3 py-2 text-[13px] leading-normal text-loss" role="alert" data-test="payouts-unread">
-                            <x-icon name="warn" :size="16" class="mt-0.5 shrink-0" />
-                            <span>{{ __('Balance could not be read; you can still approve, the admin is responsible.') }}</span>
-                        </p>
-                    @endif
-                    @if ($shortfall > 0)
-                        <p class="m-0 flex max-w-[80ch] items-start gap-2 rounded-md bg-loss-tint px-3 py-2 text-[13px] leading-normal text-loss" role="alert" data-test="payouts-underfunded">
-                            <x-icon name="warn" :size="16" class="mt-0.5 shrink-0" />
-                            <span>{{ __('Warning: the pot holds :have sats, :missing sats less than the fixed prizes need with the fee reserve (:need sats). You can still approve; a payment the wallet cannot make fails and can be retried after a top-up.', ['have' => $sats((int) $tournament->pot_balance_sats), 'missing' => $sats($shortfall), 'need' => $sats((int) PrizePool::requiredSats($tournament))]) }}</span>
-                        </p>
-                    @endif
                     @if ($preview)
                         <ul class="m-0 flex list-none flex-col p-0 text-[13px]" data-test="payouts-preview">
                             @foreach ($preview['rows'] as $row)
                                 <li class="flex justify-between gap-3 border-t border-hairline py-1.5"><span>{{ $row['place'] }}. {{ $row['user']->displayName() }}</span><b>{{ $sats($row['amount']) }} {{ __('sats') }}</b></li>
                             @endforeach
-                            <li class="flex justify-between gap-3 border-t border-hairline py-1.5 text-ink-2"><span>{{ __('Remainder, stays in the pot’s wallet') }}</span><span>{{ $sats($preview['remainder']) }} {{ __('sats') }}</span></li>
+                            <li class="flex justify-between gap-3 border-t border-hairline py-1.5 text-ink-2"><span>{{ __('Remainder, stays in the pot') }}</span><span>{{ $sats($preview['remainder']) }} {{ __('sats') }}</span></li>
                         </ul>
                     @endif
                     <div><x-button wire:click="approve" wire:confirm="{{ __('Close the pool and write the payouts? This cannot be undone.') }}" data-test="approve-payouts">{{ __('Check and close the pool') }}</x-button></div>
