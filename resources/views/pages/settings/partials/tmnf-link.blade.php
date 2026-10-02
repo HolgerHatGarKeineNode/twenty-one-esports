@@ -16,11 +16,12 @@
         <ol class="m-0 grid list-none grid-cols-1 gap-2 p-0 sm:grid-cols-3">
             <li class="flex items-start gap-2 text-[13px] leading-normal text-ink-2">
                 <span class="grid size-6 shrink-0 place-items-center rounded-full bg-card font-mono text-xs font-bold text-ink">1</span>
-                <span>{{ __('Join :server in TMNF', ['server' => $serverName]) }}@if (is_string($serverAddress) && $serverAddress !== '') <span class="font-mono text-ink [overflow-wrap:anywhere]" data-test="tmnf-link-address">{{ $serverAddress }}</span>@endif</span>
+                <span>{{ __('Join :server in TMNF', ['server' => $serverName]) }} <a href="{{ route('scores.show', 'tmnf') }}#join" class="font-bold text-ink underline underline-offset-2" data-test="tmnf-link-howto">{{ __('How to join') }}</a></span>
             </li>
             <li class="flex items-start gap-2 text-[13px] leading-normal text-ink-2">
                 <span class="grid size-6 shrink-0 place-items-center rounded-full bg-card font-mono text-xs font-bold text-ink">2</span>
-                <span>{{ __('Open the chat and type the line below') }}</span>
+                {{-- TMNF's default chat key is T; with the chat board hidden, C shows it and Space starts typing. --}}
+                <span data-test="tmnf-chat-keys">{!! __('On the server press :t to open the chat, type the line below and press :enter. Nothing opens? Press :c, then :space.', ['t' => '<kbd class="rounded-sm bg-card px-1.5 font-mono text-ink">T</kbd>', 'enter' => '<kbd class="rounded-sm bg-card px-1.5 font-mono text-ink">Enter</kbd>', 'c' => '<kbd class="rounded-sm bg-card px-1.5 font-mono text-ink">C</kbd>', 'space' => '<kbd class="rounded-sm bg-card px-1.5 font-mono text-ink">'.e(__('Space')).'</kbd>']) !!}</span>
             </li>
             <li class="flex items-start gap-2 text-[13px] leading-normal text-ink-2">
                 <span class="grid size-6 shrink-0 place-items-center rounded-full bg-card font-mono text-xs font-bold text-ink">3</span>

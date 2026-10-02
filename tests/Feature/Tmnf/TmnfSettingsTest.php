@@ -32,7 +32,8 @@ test('the login is a private gamer tag of its own card, and the link block asks 
         ->set('gamerTags.tmnf', 'satoshi_drives')->call('save')->assertHasNoErrors()
         ->assertSee('data-test="tmnf-link-show"', false)->assertDontSee('data-test="tmnf-link-code"', false)
         ->call('showTmnfCode')
-        ->assertSeeHtml('data-test="tmnf-link-code">link '.TmnfLinks::codeFor($player->refresh()).'</code>');
+        ->assertSeeHtml('data-test="tmnf-link-code">link '.TmnfLinks::codeFor($player->refresh()).'</code>')
+        ->assertSee('data-test="tmnf-link-howto"', false)->assertSee('data-test="tmnf-chat-keys"', false);
 
     expect($player->gamer_tags)->toBe(['tmnf' => 'satoshi_drives']);
 });
