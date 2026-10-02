@@ -1,5 +1,6 @@
 <?php
 
+use App\Games\TrackmaniaNationsForever;
 use App\Models\ScoreRun;
 use App\Support\Tmnf\TmnfCallback;
 use App\Support\Tmnf\TmnfListener;
@@ -25,6 +26,8 @@ use Carbon\CarbonImmutable;
 beforeEach(function () {
     tmnfOn();
     $this->travelTo(CarbonImmutable::parse('2026-10-07 20:00:00'));
+    // Weeks open only once an admin approved them (LeagueWeekDrafts).
+    leagueWeeksApproved(TrackmaniaNationsForever::SLUG);
     $this->listener = app(TmnfListener::class);
 });
 
