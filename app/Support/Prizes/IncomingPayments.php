@@ -170,7 +170,8 @@ final class IncomingPayments
     }
 
     /**
-     * The zap receipt (NIP-57 `9735`) for a settled zap.
+     * The zap receipt (NIP-57 `9735`) for a settled zap: `p`, `P`, the
+     * request's `a`, `k` and, for a tournament's pot, its checked `e`.
      */
     private function receipt(IncomingPayment $payment): ?NostrEvent
     {
@@ -184,6 +185,11 @@ final class IncomingPayments
         $tags = [['p', (string) ($request->tag('p') ?? '')], ['P', $request->pubkey]];
 
         foreach (['a', 'e', 'k'] as $name) {
+            // An `e` was checked against the tournament's own versions only: a reserve zap's (the stream's version) is not vouched for.
+            if ($name === 'e' && $payment->pot === IncomingPayment::RESERVE) {
+                continue;
+            }
+
             if ($request->tag($name) !== null) {
                 $tags[] = [$name, (string) $request->tag($name)];
             }

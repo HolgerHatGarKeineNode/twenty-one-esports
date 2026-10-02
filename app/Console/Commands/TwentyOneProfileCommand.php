@@ -3,6 +3,8 @@
 namespace App\Console\Commands;
 
 use App\Support\Nostr\NostrKeys;
+use App\Support\Prizes\PoolInvoices;
+use App\Support\SeasonChain\LeagueKey;
 use App\Support\TwentyOne\EventBuilder;
 use App\Support\TwentyOne\RelayPublisher;
 use App\Support\TwentyOne\TwentyOneSigner;
@@ -34,6 +36,13 @@ class TwentyOneProfileCommand extends Command
 
         /** @var array<string, mixed> $profile */
         $profile = (array) config('twentyone.profile');
+
+        // The league's pool takes only zaps whose `p` is the pool key: a profile of another key would have every zap refused.
+        if (is_string($profile['lud16'] ?? null) && strcasecmp(trim($profile['lud16']), PoolInvoices::address()) === 0 && LeagueKey::poolPubkey() !== $signer->pubkey) {
+            $this->error('The lud16 is the league pool ('.PoolInvoices::address().'), which takes zaps for ESPORTS_POOL_NPUB only, and that is not this key. Set ESPORTS_POOL_NPUB to '.NostrKeys::hexToNpub($signer->pubkey).' first.');
+
+            return self::FAILURE;
+        }
         $publicRelays = RelayPublisher::relayUrls(config('twentyone.relays.public'));
 
         $events = [

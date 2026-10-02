@@ -6,6 +6,7 @@ use App\Models\User;
 use App\Support\Lightning\Lnurl;
 use App\Support\Nostr\NostrKeys;
 use App\Support\Nostr\SignerMessages;
+use App\Support\Prizes\PoolInvoices;
 use App\Support\SeasonChain\LeagueKey;
 use App\Support\StreamBot\StreamCoordinates;
 use App\Support\TwentyOne\EventBuilder;
@@ -64,16 +65,47 @@ final readonly class StreamChat
     }
 
     /**
+     * The LNURL servers whose zap receipts show, each with the LNURL (LUD-01,
+     * lowercase bech32) a zap request it receipted must name when it names
+     * one: the league's own server (`pool@<host>`, the profile's lud16 since
+     * 2026-10-03) and the old ones in `esports.stream_chat.zap_signers`
+     * (getalby, `zap_signers_lud16`), so their receipts still show.
+     *
+     * @return array<string, string|null> signer pubkey (hex) => its LNURL, null when unknown
+     */
+    public static function zapLnurls(): array
+    {
+        $old = config('esports.stream_chat.zap_signers_lud16');
+        $oldLnurl = Lnurl::fromAddress(is_string($old) ? $old : null);
+        $lnurls = [];
+
+        foreach ((array) config('esports.stream_chat.zap_signers', []) as $pubkey) {
+            if (NostrKeys::isHexPubkey($pubkey)) {
+                $lnurls[$pubkey] = $oldLnurl;
+            }
+        }
+
+        $league = LeagueKey::lnurl()?->pubkey();
+
+        if ($league !== null) {
+            $lnurls[$league] = strtolower(PoolInvoices::lnurl());
+        }
+
+        return $lnurls;
+    }
+
+    /**
      * @return list<string>
      */
     public static function zapSigners(): array
     {
-        return array_values(array_filter((array) config('esports.stream_chat.zap_signers', []), fn (mixed $pubkey): bool => NostrKeys::isHexPubkey($pubkey)));
+        return array_keys(self::zapLnurls());
     }
 
     /**
      * Whom a zap of the stream pays: `esports.stream_chat.zap_recipient`
-     * (hex or npub) when set, else the stream key (the 30311's host). A
+     * (hex or npub) when set, else the pool key (whose profile's lud16 is the
+     * league's `pool@<host>`), else the stream key (the 30311's host). A
      * receipt and its request must both name it as `p`.
      */
     public function zapRecipient(): string
@@ -81,19 +113,7 @@ final readonly class StreamChat
         $configured = config('esports.stream_chat.zap_recipient');
         $hex = is_string($configured) && trim($configured) !== '' ? NostrKeys::toHex(trim($configured)) : null;
 
-        return $hex ?? $this->stream->pubkey;
-    }
-
-    /**
-     * The recipient's LNURL (LUD-01, lowercase bech32 `lnurl`) from the stream's
-     * lud16 (`twentyone.nostr.lud16`, LUD-16: `https://<domain>/.well-known/lnurlp/<user>`).
-     * A zap request that names an `lnurl` must name this one. Null without a lud16.
-     */
-    public static function zapLnurl(): ?string
-    {
-        $lud16 = config('twentyone.nostr.lud16');
-
-        return Lnurl::fromAddress(is_string($lud16) ? $lud16 : null);
+        return $hex ?? LeagueKey::poolPubkey() ?? $this->stream->pubkey;
     }
 
     /**
@@ -115,7 +135,7 @@ final readonly class StreamChat
             'bot' => self::botPubkey(),
             'zapSigners' => self::zapSigners(),
             'zapRecipient' => $this->zapRecipient(),
-            'zapLnurl' => self::zapLnurl(),
+            'zapLnurls' => self::zapLnurls(),
             'me' => $viewer?->pubkey,
             'meName' => $viewer?->displayName(),
             'muted' => $viewer instanceof User ? $viewer->mutedPubkeys() : [],

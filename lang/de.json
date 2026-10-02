@@ -6469,5 +6469,7 @@
     "e.g. tournament cancelled, sponsor agreed": "z. B. Turnier abgesagt, Sponsor einverstanden",
     "Release :sats sats": ":sats Sats freigeben",
     "released to the league reserve": "hat an die Liga-Reserve freigegeben",
-    "Sats in the league wallet": "Sats in der Liga-Wallet"
+    "Sats in the league wallet": "Sats in der Liga-Wallet",
+    "Zaps go to the league pool for prizes.": "Zaps gehen in den Liga-Pool, für Preise.",
+    "The zap request names another event than the stream.": "Die Zap-Anfrage nennt ein anderes Event als den Stream."
 }

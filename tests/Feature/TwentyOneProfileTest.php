@@ -77,3 +77,23 @@ test('the command never prints the secret key', function () {
             ->and($output)->not->toContain($this->key->secret);
     }
 });
+
+test('the profile pays into the league pool and says what the league runs; it is refused while the pool takes another key', function () {
+    config(['app.url' => 'https://esports.einundzwanzig.space', 'esports.wallet.pool_npub' => NostrKeys::hexToNpub((new TestSigner)->pubkey)]);
+
+    // The pool would refuse every zap of this profile: nothing is signed.
+    $this->artisan('twentyone:profile', ['--dry-run' => true])
+        ->expectsOutputToContain('Set ESPORTS_POOL_NPUB to '.NostrKeys::hexToNpub($this->key->pubkey).' first.')
+        ->assertExitCode(1);
+
+    config(['esports.wallet.pool_npub' => NostrKeys::hexToNpub($this->key->pubkey)]);
+    expect(Artisan::call('twentyone:profile', ['--dry-run' => true]))->toBe(0);
+    preg_match_all('/^\{.*?^\}/ms', Artisan::output(), $events);
+    $kind0 = collect($events[0])->map(fn (string $json): array => (array) json_decode($json, true))->firstWhere('kind', 0);
+    $profile = json_decode((string) ($kind0['content'] ?? ''), true);
+
+    expect($profile['lud16'] ?? null)->toBe('pool@esports.einundzwanzig.space')
+        ->and($profile['about'] ?? '')->toContain('Ladders, weekly highscores and tournaments', 'Login via Nostr', 'Der Esports-Zweig der deutschsprachigen Bitcoin-Community EINUNDZWANZIG.')
+        ->not->toContain('in development')
+        ->not->toContain('#');
+});

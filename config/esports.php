@@ -1209,17 +1209,21 @@ return [
     | (`twentyone.stream.relays`) plus the bot's `chat_relays`; set but empty
     | = no chat (the tests force that, so no page ever reaches a real relay).
     |
-    | `zap_signers`: the pubkeys whose zap receipts are shown (NIP-57: the
-    | receipt is signed by the recipient's LNURL server). The default is the
-    | `nostrPubkey` of the stream's lud16 (`twentyone.nostr.lud16`,
-    | theben@getalby.com), read from
-    | https://getalby.com/.well-known/lnurlp/theben on 2026-09-28. Any other
-    | signer's receipt is dropped: anyone can publish a 9735.
+    | Zap receipts shown (NIP-57: the receipt is signed by the recipient's
+    | LNURL server; anyone can publish a 9735, so any other signer's receipt
+    | is dropped): those of the league's own server (`esports.wallet.
+    | lnurl_nsec`, behind `pool@<host>`, the profile's lud16 since
+    | 2026-10-03: stream zaps go to the league reserve), always, and those of
+    | `zap_signers`, the servers of earlier addresses, so their receipts
+    | still show. The default is the `nostrPubkey` of `zap_signers_lud16`,
+    | theben@getalby.com (the profile's lud16 until 2026-10-03), read from
+    | https://getalby.com/.well-known/lnurlp/theben on 2026-09-28. A
+    | request's `lnurl`, when it names one, must be its signer's: getalby
+    | also signs receipts for everybody else's zaps.
     |
-    | `zap_recipient`: whom a stream zap pays (hex or npub); unset = the
-    | stream key. Receipt and request must both carry it as `p`, and a
-    | request's `lnurl` must be the one of `twentyone.nostr.lud16`: that
-    | signer also signs receipts for everybody else's zaps.
+    | `zap_recipient`: whom a stream zap pays (hex or npub); unset = the pool
+    | key (`esports.wallet.pool_npub`, the profile key), else the stream key.
+    | Receipt and request must both carry it as `p`.
     |
     */
 
@@ -1231,6 +1235,7 @@ return [
             'ESPORTS_STREAM_ZAP_SIGNERS',
             '79f00d3f5a19ec806189fcab03c1be4ff81d18ee4f653c88fac41fe03570f432',
         ))))),
+        'zap_signers_lud16' => env('ESPORTS_STREAM_ZAP_SIGNERS_LUD16', 'theben@getalby.com'),
         'zap_recipient' => env('ESPORTS_STREAM_ZAP_RECIPIENT'),
         // Characters one message may have, and the pause between two posts of one browser.
         'max_length' => 280,

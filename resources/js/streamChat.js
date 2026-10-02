@@ -117,14 +117,15 @@ export function bolt11Msats(invoice) {
  * receipt kind 9735 signed by one of `signers`, carrying the stream's `a` and
  * the stream's zap `recipient` as `p`; its `description` a validly signed
  * kind-9734 zap request for the same address and the same `p`, whose
- * `lnurl` (when it has one) is the recipient's `lnurl`; an invoice amount
- * that, when the request names one, is exactly that amount. Without a
- * recipient nothing counts: a receipt the signer made for someone else's
- * zap must not show as a zap of this stream.
+ * `lnurl` (when it has one) is the `lnurl` of the receipt's signer (`lnurls`,
+ * signer -> lnurl: each LNURL server signs only for its own address; without
+ * `lnurls`, the one `lnurl`); an invoice amount that, when the request names
+ * one, is exactly that amount. Without a recipient nothing counts: a receipt
+ * the signer made for someone else's zap must not show as a zap of this stream.
  *
  * @returns {{ id: string, pubkey: string, created_at: number, sats: number, comment: string } | null}
  */
-export function parseZap(receipt, { address, signers = [], recipient = null, lnurl = null, verify = verifiedAfresh } = {}) {
+export function parseZap(receipt, { address, signers = [], recipient = null, lnurl = null, lnurls = null, verify = verifiedAfresh } = {}) {
     if (receipt?.kind !== KIND_ZAP || !recipient || !signers.includes(receipt.pubkey) || !tagValues(receipt, 'a').includes(address) || !tagValues(receipt, 'p').includes(recipient)) {
         return null;
     }
@@ -141,7 +142,8 @@ export function parseZap(receipt, { address, signers = [], recipient = null, lnu
     }
 
     const asksLnurl = tagValues(request, 'lnurl')[0];
-    if (asksLnurl !== undefined && (!lnurl || String(asksLnurl).toLowerCase() !== String(lnurl).toLowerCase())) {
+    const signersLnurl = lnurls ? (Object.hasOwn(lnurls, receipt.pubkey) ? lnurls[receipt.pubkey] : null) : lnurl;
+    if (asksLnurl !== undefined && (!signersLnurl || String(asksLnurl).toLowerCase() !== String(signersLnurl).toLowerCase())) {
         return null;
     }
 

@@ -200,7 +200,7 @@ export function liveChat(config) {
                 };
             }
 
-            const zap = parseZap(event, { address: config.address, signers: config.zapSigners ?? [], recipient: config.zapRecipient ?? null, lnurl: config.zapLnurl ?? null });
+            const zap = parseZap(event, { address: config.address, signers: config.zapSigners ?? [], recipient: config.zapRecipient ?? null, lnurls: config.zapLnurls ?? {} });
 
             return zap ? { type: 'zap', ...zap, tokens: tokenize(zap.comment, []) } : null;
         },

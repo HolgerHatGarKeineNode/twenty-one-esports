@@ -238,7 +238,10 @@ test('every rotation scene renders from the real data: moves in SAN, the QR code
         ->and($svgs['c5'])->toContain('<path style="stroke:#17120a"')
         ->and($svgs['c4'])->toContain('<path style="stroke:#17120a"')
         ->and(implode('', $svgs))->not->toContain('getalby')
-        ->and(implode('', $svgs))->not->toContain('LNURL');
+        ->and(implode('', $svgs))->not->toContain('LNURL')
+        // Where a stream zap goes (user, 2026-10-03): the league pool, said on both zap slides.
+        ->and($svgs['a5'])->toContain('Zaps go to the league pool for prizes.')
+        ->and($svgs['c5'])->toContain('the league pool, for prizes');
 
     // The feature slides: a tournament without a pot or cup gives the empty states; with them, the pot and the cup.
     $withPot = $renderer->svg($source->rotation('d1', null, [], 0, 0, $stats, null, [[...$slide, 'id' => 99, 'pot' => 4000], [...$slide, 'pot' => 21000]]), RotationPlanner::VIEWS['d1']);

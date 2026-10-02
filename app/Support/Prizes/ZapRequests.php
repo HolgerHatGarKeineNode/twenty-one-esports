@@ -7,6 +7,8 @@ use App\Models\NostrEvent;
 use App\Models\Tournament;
 use App\Support\Nostr\SignedEvent;
 use App\Support\SeasonChain\LeagueKey;
+use App\Support\StreamBot\StreamCoordinates;
+use App\Support\TwentyOne\EventBuilder;
 
 /**
  * Which pot a zap request (NIP-57 `9734`) to the league's LNURL endpoint
@@ -22,8 +24,16 @@ use App\Support\SeasonChain\LeagueKey;
  *   it must be one of that tournament's own versions, a `k` must say
  *   `31923`. Two `a`, or an `a` the league does not run a pot for, are
  *   refused rather than counted in the wrong pot;
- * - no `a` and no `e`: the league reserve. An `e` alone names a pot the
- *   league does not run (the reserve's zap goal, match fees): refused.
+ * - no `a` and no `e`: the league reserve, a zap of the league's profile
+ *   (its lud16 is this endpoint; user, 2026-10-03: „Dass alle Zaps an das
+ *   Profil in den Pool gehen ist total in Ordnung"). An `e` alone names a
+ *   pot the league does not run (the reserve's zap goal, match fees):
+ *   refused;
+ * - one `a` naming the league's own 24/7 stream (`30311:<stream key>:<d>`,
+ *   {@see StreamCoordinates}): the reserve as well. zap.stream sends the
+ *   `a` alone, Amethyst adds the version as `e` and `k` = `30311`. The
+ *   stream's versions are not stored, so such an `e` is not checked and
+ *   never copied into the receipt ({@see IncomingPayments}).
  *
  * Through a tournament's own LNURL (`?pot=<id>`, the QR code on its page)
  * the request must name exactly that tournament.
@@ -73,6 +83,18 @@ final class ZapRequests
             return IncomingPayment::RESERVE;
         }
 
+        if (count($addresses) === 1 && self::isLeagueStream((string) ($addresses[0][0] ?? ''))) {
+            if ($only !== null) {
+                throw new PoolRefusal(__('This zap request names no tournament.'));
+            }
+
+            if (($kind = $request->tag('k')) !== null && $kind !== (string) EventBuilder::KIND_LIVE_ACTIVITY) {
+                throw new PoolRefusal(__('The zap request names another event than the stream.'));
+            }
+
+            return IncomingPayment::RESERVE;
+        }
+
         $tournament = count($addresses) === 1 ? self::tournamentAt((string) ($addresses[0][0] ?? '')) : null;
 
         if ($tournament === null || ! PotTopUps::enabled($tournament) || ($only !== null && $only->id !== $tournament->id)) {
@@ -91,6 +113,17 @@ final class ZapRequests
         }
 
         return IncomingPayment::tournamentPot($tournament->id);
+    }
+
+    /**
+     * Whether this is the address of the league's own 24/7 stream
+     * (`30311:<stream key>:<d>`): false while no stream is announced.
+     */
+    public static function isLeagueStream(string $address): bool
+    {
+        $stream = StreamCoordinates::fromConfig();
+
+        return $stream !== null && hash_equals($stream->address(), $address);
     }
 
     /**

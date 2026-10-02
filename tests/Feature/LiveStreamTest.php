@@ -232,6 +232,7 @@ test('/live renders on and off air, for a guest and a player', function (bool $l
         ->assertSee(route('games.show', $game))
         // A QR code, never a Lightning address as text.
         ->assertSee('data-test="live-zap"', false)
+        ->assertSeeInOrder(['data-test="live-zap-pool"', __('Zaps go to the league pool for prizes.')], false)
         ->assertDontSee((string) config('twentyone.profile.lud16'));
 
     // Both states are in the page (the feed flips them while it is open); the server's state shows first.

@@ -1,6 +1,7 @@
 {{--
-    A5 · Arena · zap this stream. The LNURL as a QR code on the left, one headline and one sentence on the right.
-    No Lightning address as text, no zap counts. Without a QR code the text moves left and names only the bolt.
+    A5 · Arena · zap this stream. The LNURL as a QR code on the left, one headline and one sentence on the right,
+    and where the sats go: the league pool (pool@<host>, the profile's lud16; user, 2026-10-03). No Lightning
+    address as text, no zap counts. Without a QR code the text moves left and names only the bolt.
 
     Data contract:
       $qrSvg     string: the LNURL QR as SVG (trusted file content, resources/stream/qr/lnurl.svg as `qrencode -t SVG
@@ -25,6 +26,7 @@
 @else
 <text x="{{ $tx }}" y="364" font-family="JetBrains Mono" font-weight="700" font-size="26" fill="#FFFFFF">Tap the bolt in your Nostr client.</text>
 @endif
+<text x="{{ $tx }}" y="{{ $hasQr ? 464 : 428 }}" font-family="JetBrains Mono" font-weight="700" font-size="26" fill="#F7931A" data-zap-pool="1">Zaps go to the league pool for prizes.</text>
 <text x="{{ $tx }}" y="672" font-family="JetBrains Mono" font-weight="700" font-size="22" fill="#F7931A">esports.einundzwanzig.space</text>
 @php($vb = \App\Support\TwentyOne\Stream\RotationKit::viewerBadge($viewers ?? null, 1024, 64, \App\Support\TwentyOne\Stream\RotationKit::DISPLAY, 24, 18))
 @if ($vb)@include('stream.rotation.partials.viewers', ['vb' => $vb, 'eyeInk' => '#F7931A', 'countInk' => '#FFFFFF', 'wordInk' => '#ADADB0'])@endif

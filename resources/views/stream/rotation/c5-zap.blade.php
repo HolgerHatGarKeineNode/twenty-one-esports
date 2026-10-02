@@ -1,5 +1,6 @@
 {{--
-    C5 · Terminal ticker · zap this stream. Bolt and headline, a two-row table (how, with what), the LNURL as a QR
+    C5 · Terminal ticker · zap this stream. Bolt and headline, a three-row table (how, with what, to whom: the
+    league pool, user 2026-10-03), the LNURL as a QR
     code on the right, the stats bar at the bottom. No Lightning address as text, no zap counts, and no
     NIP-05 either: name@domain reads like a Lightning address and pays nowhere.
 
@@ -26,6 +27,9 @@
 <text x="40" y="350" font-family="JetBrains Mono" font-weight="700" font-size="18" fill="#A1A1A7">with</text>
 <text x="320" y="350" font-family="JetBrains Mono" font-weight="700" font-size="24" fill="#FFFFFF">{{ $hasQr ? 'a Lightning wallet or a Nostr client' : 'a Nostr client with zaps' }}</text>
 <rect x="40" y="370" width="{{ $hasQr ? 880 : 1200 }}" height="1" fill="#2A2A30"/>
+<text x="40" y="408" font-family="JetBrains Mono" font-weight="700" font-size="18" fill="#A1A1A7">to</text>
+<text x="320" y="408" font-family="JetBrains Mono" font-weight="700" font-size="24" fill="#F7931A" data-zap-pool="1">the league pool, for prizes</text>
+<rect x="40" y="428" width="{{ $hasQr ? 880 : 1200 }}" height="1" fill="#2A2A30"/>
 @if ($hasQr)
 @include('stream.rotation.partials.qr', ['qr' => $qrSvg, 'modules' => $qrModules ?? null, 'x' => 960, 'y' => 250, 'size' => 280])
 @endif

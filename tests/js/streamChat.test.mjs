@@ -226,6 +226,25 @@ test('a zap is bound to the stream recipient: receipt p, request p, and the requ
     assert.equal(parse(zapPair({ requestTags: [['a', ADDRESS], ['p', streamKey], ['amount', '21000'], ['lnurl', 'lnurl1streamrecipient']] }), { lnurl: null }), null);
 });
 
+test('each LNURL server is bound to its own address: the league key to the pool, the old one to its own', () => {
+    const leagueKey = generateSecretKey();
+    const oldKey = generateSecretKey();
+    const lnurls = { [getPublicKey(leagueKey)]: 'lnurl1pool', [getPublicKey(oldKey)]: 'lnurl1oldaddress' };
+    const signers = Object.keys(lnurls);
+    const naming = (signerKey, lnurl) => zapPair({ signerKey, requestTags: [['a', ADDRESS], ['p', streamKey], ['amount', '21000'], ...(lnurl ? [['lnurl', lnurl]] : [])] });
+    const parse = (pair) => parseZap(pair.receipt, { address: ADDRESS, signers, recipient: streamKey, lnurls });
+
+    // zap.stream names no lnurl; Amethyst names the one it paid.
+    assert.equal(parse(naming(leagueKey, null)).sats, 21);
+    assert.equal(parse(naming(leagueKey, 'LNURL1POOL')).sats, 21);
+    assert.equal(parse(naming(oldKey, 'lnurl1oldaddress')).sats, 21);
+    // A server's receipt for a request that paid the other address does not count.
+    assert.equal(parse(naming(oldKey, 'lnurl1pool')), null);
+    assert.equal(parse(naming(leagueKey, 'lnurl1oldaddress')), null);
+    // A signer without an address of its own counts only for requests that name none.
+    assert.equal(parseZap(naming(oldKey, 'lnurl1oldaddress').receipt, { address: ADDRESS, signers, recipient: streamKey, lnurls: { [getPublicKey(leagueKey)]: 'lnurl1pool' } }), null);
+});
+
 test('the auditor payload stays bounded: 63 KB of :a: with one emoji tag', () => {
     const content = ':a:'.repeat(21_000);
     const started = performance.now();

@@ -2,8 +2,12 @@
 
 use App\Models\ChatMute;
 use App\Models\User;
+use App\Support\Lightning\Lnurl;
 use App\Support\Nostr\NostrKeys;
+use App\Support\Prizes\PoolInvoices;
+use App\Support\SeasonChain\LeagueKey;
 use App\Support\StreamChat\StreamChat;
+use Illuminate\Support\Facades\URL;
 use Livewire\Livewire;
 use Tests\Support\TestSigner;
 
@@ -36,27 +40,54 @@ test('the chat reads and posts under the stream address on the stream relays plu
         ->and($chat['me'])->toBeNull()
         ->and($chat['maxLength'])->toBe(280)
         ->and($chat['cooldownMs'])->toBe(2000)
-        ->and($chat['zapSigners'])->toBe(['79f00d3f5a19ec806189fcab03c1be4ff81d18ee4f653c88fac41fe03570f432'])
         ->and($chat['avatarUrl'])->toContain(StreamChat::AVATAR_PLACEHOLDER);
 });
 
-test('a zap must pay the stream key through the stream lud16\'s LNURL, unless another recipient is configured', function () {
-    config(['twentyone.nostr.lud16' => 'TheBen@GetAlby.com']);
+/** The URL inside a bech32 `lnurl` (LUD-01). */
+function lnurlUrl(?string $lnurl): string
+{
+    [$hrp, $data] = \BitWasp\Bech32\decodeRaw((string) $lnurl);
+
+    return $hrp.' '.implode('', array_map('chr', \BitWasp\Bech32\convertBits($data, count($data), 5, 8, false)));
+}
+
+test('the stream shows the receipts of the league’s LNURL server and still getalby’s, each bound to its own address', function () {
+    fakeWallet();
+    $league = (string) LeagueKey::lnurl()?->pubkey();
     $chat = StreamChat::current()->config(null);
 
-    [$hrp, $data] = \BitWasp\Bech32\decodeRaw($chat['zapLnurl']);
-    $url = implode('', array_map('chr', \BitWasp\Bech32\convertBits($data, count($data), 5, 8, false)));
+    expect($chat['zapSigners'])->toBe(['79f00d3f5a19ec806189fcab03c1be4ff81d18ee4f653c88fac41fe03570f432', $league])
+        ->and(array_map(fn (?string $lnurl): string => lnurlUrl($lnurl), $chat['zapLnurls']))->toBe([
+            '79f00d3f5a19ec806189fcab03c1be4ff81d18ee4f653c88fac41fe03570f432' => 'lnurl https://getalby.com/.well-known/lnurlp/theben',
+            $league => 'lnurl '.route('lnurl.pay', ['username' => 'pool']),
+        ])
+        ->and($chat['zapLnurls'][$league])->toBe(strtolower((string) $chat['zapLnurls'][$league]))
+        // A stream zap pays the pool key (the profile key, whose lud16 is the pool).
+        ->and($chat['zapRecipient'])->toBe(LeagueKey::poolPubkey());
 
-    expect($chat['zapRecipient'])->toBe($this->stream->pubkey)
-        ->and($hrp)->toBe('lnurl')
-        ->and($chat['zapLnurl'])->toBe(strtolower($chat['zapLnurl']))
-        ->and($url)->toBe('https://getalby.com/.well-known/lnurlp/theben');
-
+    // Without the league's server only the old signers show; another recipient when configured.
     $other = new TestSigner;
-    config(['esports.stream_chat.zap_recipient' => NostrKeys::hexToNpub($other->pubkey), 'twentyone.nostr.lud16' => 'not an address']);
-    $chat = StreamChat::current()->config(null);
-    expect($chat['zapRecipient'])->toBe($other->pubkey)
-        ->and($chat['zapLnurl'])->toBeNull();
+    config(['esports.wallet.lnurl_nsec' => null, 'esports.wallet.pool_npub' => null, 'esports.stream_chat.zap_signers_lud16' => 'not an address']);
+    expect(StreamChat::current()->config(null))->zapSigners->toBe(['79f00d3f5a19ec806189fcab03c1be4ff81d18ee4f653c88fac41fe03570f432'])
+        ->zapLnurls->toBe(['79f00d3f5a19ec806189fcab03c1be4ff81d18ee4f653c88fac41fe03570f432' => null])
+        ->zapRecipient->toBe($this->stream->pubkey);
+
+    config(['esports.stream_chat.zap_recipient' => NostrKeys::hexToNpub($other->pubkey)]);
+    expect(StreamChat::current()->config(null)['zapRecipient'])->toBe($other->pubkey);
+});
+
+test('the profile’s lud16 is the league’s pool address, and a zap request the stream checks names that same LNURL', function () {
+    config(['app.url' => 'https://esports.einundzwanzig.space']);
+    URL::forceRootUrl('https://esports.einundzwanzig.space');
+    URL::forceScheme('https');
+    fakeWallet();
+
+    $lud16 = (string) config('twentyone.profile.lud16');
+
+    expect($lud16)->toBe(PoolInvoices::address())->toBe('pool@esports.einundzwanzig.space')
+        ->and(Lnurl::fromAddress($lud16))->toBe(strtolower(PoolInvoices::lnurl()))
+        ->and(StreamChat::zapLnurls()[(string) LeagueKey::lnurl()?->pubkey()])->toBe(Lnurl::fromAddress($lud16))
+        ->and(lnurlUrl(Lnurl::fromAddress($lud16)))->toBe('lnurl https://esports.einundzwanzig.space/.well-known/lnurlp/pool');
 });
 
 test('set chat relays replace the stream relays, an empty setting switches the chat off, and junk is dropped', function () {

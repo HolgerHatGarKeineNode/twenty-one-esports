@@ -259,6 +259,7 @@ new #[Layout('layouts::app', ['scripts' => ['resources/js/liveChat.js']])] class
                         <div class="flex min-w-0 flex-col gap-1">
                             <h2 id="live-zap-h" class="m-0 text-[15px] font-bold">{{ __('Zap the stream') }}</h2>
                             <p class="m-0 text-xs leading-5 text-ink-2">{{ __('Scan the code with your Lightning wallet, or tap the bolt in your Nostr client.') }}</p>
+                            <p class="m-0 text-xs leading-5 font-bold text-btc-hi" data-test="live-zap-pool">{{ __('Zaps go to the league pool for prizes.') }}</p>
                         </div>
                     </section>
                 @endif
