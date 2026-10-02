@@ -131,8 +131,10 @@ final class IncomingPayments
                 : Tournament::query()->whereKey($payment->tournament_id)->lockForUpdate()->first();
 
             // A tournament's pot takes nothing once it closed (the admin check): later sats go to the reserve.
+            // A released pot (PotRelease) takes nothing at all, not even sats the wallet received before the release.
             $late = $tournament === null ? $payment->pot !== IncomingPayment::RESERVE
-                : $tournament->pool_closed_at !== null && $settledAt->greaterThanOrEqualTo($tournament->pool_closed_at);
+                : ($tournament->pool_closed_at !== null && $settledAt->greaterThanOrEqualTo($tournament->pool_closed_at))
+                    || $this->ledger->isReleased($tournament->id);
 
             $claimed = IncomingPayment::query()->whereKey($payment->id)->where('pot', $payment->pot)->where('status', IncomingPaymentStatus::Pending)
                 ->update(['status' => IncomingPaymentStatus::Settled, 'settled_at' => $settledAt, 'preimage' => $preimage, 'late' => $late]);

@@ -428,6 +428,7 @@ new #[Layout('layouts::app', ['section' => 'admin'])] class extends TournamentFo
         'messaged' => __('wrote to all players'),
         'reminded' => __('reminded a player'),
         'lobby_no_result' => __('closed a lobby without a result'),
+        'pot_released' => __('released to the league reserve'),
     ];
     $shown = fn (mixed $value): string => match (true) {
         $value === null, $value === [] => '—',
@@ -443,6 +444,7 @@ new #[Layout('layouts::app', ['section' => 'admin'])] class extends TournamentFo
         'checkin_minutes' => __('Chess and board games: first move within (minutes)'), 'noshow_minutes' => __('Series: no-show report after (minutes)'),
         'report_hours' => __('Series: result due (hours after the start)'), 'response_minutes' => __('Series: answer within (minutes)'),
         'result' => __('Result'), 'elo' => __('Elo'), 'voided' => __('Voided and paired again'), 'held' => __('On hold'), 'forfeited' => __('Lost by forfeit'),
+        'pot_sats' => __('Sats in the league wallet'),
     ];
 @endphp
 

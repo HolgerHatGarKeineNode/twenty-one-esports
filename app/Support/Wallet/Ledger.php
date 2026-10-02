@@ -5,6 +5,7 @@ namespace App\Support\Wallet;
 use App\Models\IncomingPayment;
 use App\Models\LedgerTransfer;
 use App\Models\SeasonPayout;
+use App\Models\Tournament;
 use App\Models\TournamentPayout;
 use Illuminate\Database\UniqueConstraintViolationException;
 use InvalidArgumentException;
@@ -20,7 +21,8 @@ use InvalidArgumentException;
  * 2026-10-02: every pot is booked in the league wallet). What the wallet
  * should hold is minus the balance of `outside`; what it holds for one
  * tournament is that tournament's balance. Paid season payouts leave the
- * reserve (P37), paid tournament payouts their tournament's account. A
+ * reserve (P37), paid tournament payouts their tournament's account; a
+ * released pot moves what its account still holds to the reserve. A
  * sponsor's sats paid outside the wallet are never booked here: they are not
  * in it.
  *
@@ -34,6 +36,9 @@ final class Ledger
     public const RESERVE = 'reserve';
 
     private const TOURNAMENT_PREFIX = 'tournament:';
+
+    /** The reason of a pot's release to the reserve: unique per tournament (`reason`, `tournament_id`). */
+    private const POT_RELEASE = 'pot_release';
 
     /** A settled invoice of the league wallet: from outside into its pot (the reserve or a tournament's). */
     public function contribution(IncomingPayment $payment, string $pot): void
@@ -75,6 +80,22 @@ final class Ledger
         if ($fee > 0) {
             $this->book($account, self::OUTSIDE, $fee, 'tournament_payout_fee', ['tournament_payout_id' => $payout->id]);
         }
+    }
+
+    /**
+     * An admin releases what a cancelled tournament's pot, or a pot switched
+     * off, still holds to the reserve (user, 2026-10-03): the whole balance
+     * of its account, once per tournament.
+     */
+    public function potRelease(Tournament $tournament, int $sats): void
+    {
+        $this->book($tournament->potAccount(), self::RESERVE, $sats, self::POT_RELEASE, ['tournament_id' => $tournament->id]);
+    }
+
+    /** Whether a tournament's pot was released to the reserve; anything paid to it later goes there too. */
+    public function isReleased(int $tournamentId): bool
+    {
+        return LedgerTransfer::query()->where('reason', self::POT_RELEASE)->where('tournament_id', $tournamentId)->exists();
     }
 
     /**

@@ -9,6 +9,7 @@ use App\Models\User;
 use App\Support\Clans\ClanLogos;
 use App\Support\PreSeason;
 use App\Support\Prizes\PoolRefusal;
+use App\Support\Prizes\PotRelease;
 use App\Support\Prizes\PotTopUps;
 use App\Support\Prizes\PrizePool;
 use App\Support\Tournaments\TournamentRuleViolation;
@@ -33,7 +34,9 @@ use Livewire\WithFileUploads;
  * A pledge paid some other way is marked "paid outside" with its sats and a
  * note, and can be undone until the payouts are approved; the status shows
  * what is in the wallet apart from what was paid outside it. Paying out is
- * on the admins' payouts page.
+ * on the admins' payouts page. What a cancelled tournament's pot, or a pot
+ * switched off, still holds in the league wallet an admin releases to the
+ * league reserve, with a note and a confirm step (App\Support\Prizes\PotRelease).
  */
 new #[Layout('layouts::app', ['section' => 'tournaments'])] class extends PrizePotPage {
     use WithFileUploads;
@@ -60,6 +63,12 @@ new #[Layout('layouts::app', ['section' => 'tournaments'])] class extends PrizeP
     public int|string $outsideSats = '';
 
     public string $outsideNote = '';
+
+    /** The sats the open release confirm names; null = closed. */
+    #[Locked]
+    public ?int $releaseSats = null;
+
+    public string $releaseNote = '';
 
     public function mount(Tournament $tournament): void
     {
@@ -180,6 +189,38 @@ new #[Layout('layouts::app', ['section' => 'tournaments'])] class extends PrizeP
         unset($this->sponsors);
     }
 
+    /** Open the confirm step of the release, naming what the pot holds now (admins only). */
+    public function openRelease(PotRelease $release): void
+    {
+        abort_unless(Gate::forUser($this->me())->allows('admin'), 403);
+        $this->resetErrorBag();
+        $sats = $release->releasableSats($this->tournament);
+        $this->releaseSats = $sats > 0 ? $sats : null;
+        $this->releaseNote = '';
+    }
+
+    public function closeRelease(): void
+    {
+        $this->reset('releaseSats', 'releaseNote');
+        $this->resetErrorBag();
+    }
+
+    public function releasePot(PotRelease $release): void
+    {
+        if ($this->releaseSats === null) {
+            return;
+        }
+
+        $this->validate(['releaseNote' => ['required', 'string', 'max:'.PotRelease::NOTE_MAX]], attributes: ['releaseNote' => __('note')]);
+        $sats = $this->releaseSats;
+
+        if ($this->guarded(fn () => $release->release($this->tournament, $this->me(), $sats, $this->releaseNote))) {
+            $this->reset('releaseSats', 'releaseNote');
+            unset($this->tournament);
+            $this->saved = __('Released :sats sats to the league reserve.', ['sats' => PreSeason::formatSats($sats)]);
+        }
+    }
+
     public function sponsorInvoice(int $sponsorId, PotTopUps $topUps): void
     {
         $sponsor = TournamentSponsor::query()->where('tournament_id', $this->tournamentId)->findOrFail($sponsorId);
@@ -246,6 +287,7 @@ new #[Layout('layouts::app', ['section' => 'tournaments'])] class extends PrizeP
     $invoice = $this->invoice;
     $paidOut = $tournament->payouts_approved_at !== null;
     $outside = PrizePool::paidOutsideSats($tournament);
+    $releasable = auth()->user()?->can('admin') ? app(PotRelease::class)->releasableSats($tournament) : 0;
 @endphp
 
 <x-admin.page active="tournaments" :title="__('Prize pool')" :lead="__('The pot is kept in the league wallet, booked for this tournament alone: anyone can add sats to it, sponsors too. You set the prizes and the sponsors; an admin checks the tournament at its end and pays the winners from the league wallet.')" :crumbs="[[__('Tournaments'), route('admin.tournaments')], [$tournament->name, route('tournaments.show', $tournament)]]" data-test="pool-settings">
@@ -290,6 +332,36 @@ new #[Layout('layouts::app', ['section' => 'tournaments'])] class extends PrizeP
             @endif
         @endif
     </section>
+
+    @if ($releasable > 0)
+        <section aria-labelledby="release-h" class="flex flex-col gap-3 rounded-lg bg-card px-4 py-5 lg:px-6" data-test="pool-release">
+            <h2 id="release-h" class="m-0 text-[15px] font-bold">{{ __('Left in the league wallet') }}</h2>
+            <p class="m-0 text-[13px] leading-normal text-ink-2">{{ $tournament->status === \App\Enums\TournamentStatus::Cancelled
+                ? __('This tournament was cancelled, so no prizes are paid from its pot. The league wallet still keeps :sats sats for it.', ['sats' => $sats($releasable)])
+                : __('This pot is switched off, so no prizes are paid from it. The league wallet still keeps :sats sats for it.', ['sats' => $sats($releasable)]) }}</p>
+            @if ($releaseSats === null)
+                <div><x-button variant="quiet" wire:click="openRelease" data-test="pool-release-button">{{ __('Release :sats sats to the league reserve', ['sats' => $sats($releasable)]) }}</x-button></div>
+            @else
+                <form wire:submit="releasePot" class="flex flex-col gap-3 rounded-md bg-ground p-4 shadow-ring" data-test="pool-release-confirm">
+                    <p class="m-0 flex items-start gap-2 text-[13px] leading-normal text-ink" role="note">
+                        <x-icon name="warn" :size="16" class="mt-0.5 shrink-0 text-btc-hi" />
+                        <span>{{ __(':sats sats move from this pot to the league reserve, and the pot closes: whatever is paid to it later goes to the reserve too. This cannot be undone.', ['sats' => $sats($releaseSats)]) }}</span>
+                    </p>
+                    <label class="flex flex-col gap-1.5 text-xs text-ink-2">
+                        {{ __('Note for the moderation log') }}
+                        <input type="text" maxlength="{{ PotRelease::NOTE_MAX }}" wire:model="releaseNote" required placeholder="{{ __('e.g. tournament cancelled, sponsor agreed') }}" class="h-11 rounded-md border border-line bg-well px-3 text-[13px] text-ink" data-test="pool-release-note">
+                        @error('releaseNote')<span class="text-loss" role="alert">{{ $message }}</span>@enderror
+                    </label>
+                    <div class="flex flex-wrap gap-2">
+                        <x-button type="submit" data-test="pool-release-save">{{ __('Release :sats sats', ['sats' => $sats($releaseSats)]) }}</x-button>
+                        <x-button variant="secondary" wire:click="closeRelease">{{ __('Cancel') }}</x-button>
+                    </div>
+                </form>
+            @endif
+        </section>
+    @endif
+
+    @if ($ended && $saved !== '')<p class="m-0 text-[13px] text-win" role="status" data-test="pool-saved">{{ $saved }}</p>@endif
 
     @unless ($ended)
         @include('pages.admin.partials.prize-pot', ['potTournament' => $tournament, 'potSave' => 'savePotSettings'])

@@ -6452,5 +6452,22 @@
     "“:note”": "„:note“",
     ":name paid some other way than the invoice. The sats count toward the pot and the logo shows, but they are not in the league wallet: the payout never takes them from it.": ":name hat anders als per Rechnung bezahlt. Die Sats zählen zum Topf und das Logo erscheint, aber sie liegen nicht in der Liga-Wallet: die Auszahlung nimmt sie nie von dort.",
     "The zap request is too long. Keep the comment under :max characters.": "Die Zap-Anfrage ist zu lang. Halte den Kommentar unter :max Zeichen.",
-    "Another payment from the league wallet was under way, so nothing was sent. It is tried again.": "Gerade lief eine andere Zahlung aus der Liga-Wallet, darum wurde nichts gesendet. Es wird erneut versucht."
+    "Another payment from the league wallet was under way, so nothing was sent. It is tried again.": "Gerade lief eine andere Zahlung aus der Liga-Wallet, darum wurde nichts gesendet. Es wird erneut versucht.",
+    "Only an admin can release a pot to the league reserve.": "Nur ein Admin kann einen Topf an die Liga-Reserve freigeben.",
+    "Say why the pot is released: the note goes into the moderation log.": "Schreib, warum der Topf freigegeben wird: Die Notiz kommt ins Moderationsprotokoll.",
+    "The payouts of this tournament are approved; its pot pays its winners and cannot be released.": "Die Auszahlungen dieses Turniers sind freigegeben; sein Topf zahlt die Gewinner aus und kann nicht an die Reserve gehen.",
+    "Only the pot of a cancelled tournament, or a pot switched off, can be released to the league reserve.": "Nur der Topf eines abgesagten Turniers oder ein abgeschalteter Topf kann an die Liga-Reserve freigegeben werden.",
+    "This pot holds nothing in the league wallet.": "Dieser Topf hat nichts in der Liga-Wallet.",
+    "The pot holds :sats sats by now. Check the amount and release again.": "Der Topf hat inzwischen :sats Sats. Prüf den Betrag und gib ihn erneut frei.",
+    "Released :sats sats to the league reserve.": ":sats Sats an die Liga-Reserve freigegeben.",
+    "Left in the league wallet": "Rest in der Liga-Wallet",
+    "This tournament was cancelled, so no prizes are paid from its pot. The league wallet still keeps :sats sats for it.": "Dieses Turnier wurde abgesagt, aus seinem Topf werden also keine Preise gezahlt. Die Liga-Wallet hält noch :sats Sats dafür.",
+    "This pot is switched off, so no prizes are paid from it. The league wallet still keeps :sats sats for it.": "Dieser Topf ist abgeschaltet, aus ihm werden also keine Preise gezahlt. Die Liga-Wallet hält noch :sats Sats dafür.",
+    "Release :sats sats to the league reserve": ":sats Sats an die Liga-Reserve freigeben",
+    ":sats sats move from this pot to the league reserve, and the pot closes: whatever is paid to it later goes to the reserve too. This cannot be undone.": ":sats Sats gehen aus diesem Topf an die Liga-Reserve, und der Topf schließt: Was später noch eingezahlt wird, geht ebenfalls in die Reserve. Das lässt sich nicht rückgängig machen.",
+    "Note for the moderation log": "Notiz fürs Moderationsprotokoll",
+    "e.g. tournament cancelled, sponsor agreed": "z. B. Turnier abgesagt, Sponsor einverstanden",
+    "Release :sats sats": ":sats Sats freigeben",
+    "released to the league reserve": "hat an die Liga-Reserve freigegeben",
+    "Sats in the league wallet": "Sats in der Liga-Wallet"
 }

@@ -25,7 +25,7 @@ use LogicException;
  * @property int $tournament_id
  * @property int|null $user_id
  * @property string $user_name
- * @property 'edited'|'removed'|'blocked'|'unblocked'|'reconfirm'|'result'|'disqualified'|'paused'|'resumed'|'round_restarted'|'aborted'|'messaged'|'reminded' $action
+ * @property 'edited'|'removed'|'blocked'|'unblocked'|'reconfirm'|'result'|'disqualified'|'paused'|'resumed'|'round_restarted'|'aborted'|'messaged'|'reminded'|'pot_released' $action
  * @property int|null $tournament_signup_id
  * @property string|null $subject
  * @property string|null $reason
