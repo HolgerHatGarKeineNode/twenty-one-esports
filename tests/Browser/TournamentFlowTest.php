@@ -187,6 +187,8 @@ test('sign-up signs in the browser, and the tournament page shows the bracket wi
         $page->goto(ComputeUrl::from(route('tournaments.signup', $open)));
         BrowserWait::until($page, '() => document.querySelector("[data-test='.$button.']") !== null', 8_000);
         tournamentShot($page, "p8b-signup-{$width}");
+        // Rocket League is played in the player's own copy: the sign-up needs the ownership tick.
+        $page->locator('[data-test=owns-game]')->check();
         $page->locator("[data-test={$button}]")->click();
         BrowserWait::until($page, '() => document.querySelector("[data-test=my-entry]") !== null', 10_000);
         $signup = $page->evaluate(TOURNAMENT_STATE);

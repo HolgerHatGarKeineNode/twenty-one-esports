@@ -268,6 +268,8 @@ test('signing up feels like taking a seat: before, while the signer is asked, an
 
         // Hold the signer until the "while signing" state is measured.
         $page->evaluate('() => { const sign = window.nostr.signEvent; window.nostr.signEvent = (draft) => new Promise((resolve) => { window.__release = () => resolve(sign(draft)); }); }');
+        // Rocket League is played in the player's own copy: the sign-up needs the ownership tick.
+        $page->locator('[data-test=owns-game]')->check();
         $page->locator('[data-test=enter-solo]')->click();
         BrowserWait::until($page, '() => typeof window.__release === "function"', 10_000);
         $signing = $page->evaluate('() => ({ button: document.querySelector("[data-test=enter-solo]").innerText.replace(/\s+/g, " ").trim(), disabled: document.querySelector("[data-test=enter-solo]").disabled, seat: getComputedStyle(document.querySelector("[data-test=your-seat-slot] .tl-slide-in")).display })');

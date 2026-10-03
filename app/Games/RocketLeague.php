@@ -2,11 +2,13 @@
 
 namespace App\Games;
 
+use App\Games\Contracts\PlayedOnOwnCopy;
+
 /**
  * Rocket League: 1v1, 2v2, 3v3 lineups, best of 3 or 5, team goals per game
  * (validated as every series game, {@see SeriesGame}); `ot` marks overtime.
  */
-final class RocketLeague extends SeriesGame
+final class RocketLeague extends SeriesGame implements PlayedOnOwnCopy
 {
     /** Optional per-game flags (`score` tag, position 5+). */
     public const FLAGS = ['ot'];
@@ -37,6 +39,30 @@ final class RocketLeague extends SeriesGame
     public function flags(): array
     {
         return self::FLAGS;
+    }
+
+    /**
+     * Checked 2026-10-03. Free to play since 2020 on the Epic Games Store,
+     * PlayStation, Xbox and Nintendo Switch ("free-to-play" on
+     * https://www.playstation.com/en-us/games/rocket-league/, price 0.00 on
+     * https://www.nintendo.com/us/store/products/rocket-league-switch/; the
+     * Epic slug `rocket-league` answers on Epic's product API). Not on
+     * Steam: app 252950 has no price there any more, new players cannot
+     * get it. Xbox stays unlinked, no Xbox page was checked.
+     */
+    public function stores(): array
+    {
+        return [
+            new GameStore(StorePlatform::Epic, 'https://store.epicgames.com/en-US/p/rocket-league'),
+            new GameStore(StorePlatform::PlayStation, 'https://www.playstation.com/en-us/games/rocket-league/'),
+            new GameStore(StorePlatform::Xbox),
+            new GameStore(StorePlatform::NintendoSwitch, 'https://www.nintendo.com/us/store/products/rocket-league-switch/'),
+        ];
+    }
+
+    public function isFreeToPlay(): bool
+    {
+        return true;
     }
 
     public function assets(): GameAssets

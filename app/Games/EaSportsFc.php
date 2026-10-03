@@ -2,6 +2,8 @@
 
 namespace App\Games;
 
+use App\Games\Contracts\PlayedOnOwnCopy;
+
 /**
  * EA Sports FC, one registry entry per yearly edition (FC 26, FC 27): two
  * editions do not play each other, so each has its own ladders.
@@ -13,7 +15,7 @@ namespace App\Games;
  * a game won on penalties is reported with its winner and the goals left
  * unknown (NIP `score`: points unknown). No per-game flags.
  */
-abstract class EaSportsFc extends SeriesGame
+abstract class EaSportsFc extends SeriesGame implements PlayedOnOwnCopy
 {
     abstract protected function edition(): int;
 
@@ -48,6 +50,12 @@ abstract class EaSportsFc extends SeriesGame
     public function flags(): array
     {
         return [];
+    }
+
+    /** Sold on every platform, never free (the Steam pages list a price). */
+    public function isFreeToPlay(): bool
+    {
+        return false;
     }
 
     public function assets(): GameAssets

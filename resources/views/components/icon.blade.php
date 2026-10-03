@@ -75,6 +75,14 @@
         'checkers' => '<ellipse cx="12" cy="9" rx="8" ry="3.5"></ellipse><path d="M4 9v5c0 1.9 3.6 3.5 8 3.5s8-1.6 8-3.5V9"></path><ellipse cx="12" cy="9" rx="4" ry="1.6"></ellipse>',
         // Age of Empires II: a castle keep with its gate.
         'castle' => '<path d="M4 21V8h3v3h2.5V8h5v3H17V8h3v13zM10 21v-4a2 2 0 0 1 4 0v4"></path>',
+        // Where to get a game played on its own copy (App\Games\StorePlatform): simple glyphs, no logo files.
+        // PlayStation: its four face buttons. Xbox: the sphere with its curved X. Switch: the two Joy-Con.
+        // Steam: the valve arm between two joints. Epic: the shield with an E.
+        'store-playstation' => '<path d="M6.5 3.5 9.5 8.5h-6z"></path><circle cx="17" cy="6.5" r="2.8"></circle><path d="m4 15.5 5 5M9 15.5l-5 5"></path><rect x="14.2" y="15.2" width="5.6" height="5.6"></rect>',
+        'store-xbox' => '<circle cx="12" cy="12" r="9"></circle><path d="M7.5 6.5c2.5 1.5 7 7.5 9 11M16.5 6.5c-2.5 1.5-7 7.5-9 11"></path>',
+        'store-switch' => '<path d="M10 3H7a4 4 0 0 0-4 4v10a4 4 0 0 0 4 4h3zM14 3h3a4 4 0 0 1 4 4v10a4 4 0 0 1-4 4h-3z"></path><circle cx="6.5" cy="8" r="1.3"></circle><circle cx="17.5" cy="14" r="1.3"></circle>',
+        'store-steam' => '<circle cx="12" cy="12" r="9"></circle><circle cx="15" cy="9" r="2.5"></circle><circle cx="9" cy="15.5" r="1.8"></circle><path d="m10.4 14.3 2.8-3.4M3.5 13.5l4 1.3"></path>',
+        'store-epic' => '<path d="M5 3h14v14l-7 4-7-4z"></path><path d="M14.5 7.5h-5v7h5M9.5 11h4"></path>',
         // A like on Nostr (P48, NIP-25).
         'heart' => '<path d="M20.8 4.6a5.5 5.5 0 0 0-7.8 0L12 5.7l-1-1.1a5.5 5.5 0 0 0-7.8 7.8L12 21.2l8.8-8.8a5.5 5.5 0 0 0 0-7.8z"></path>',
         default => throw new InvalidArgumentException("Unknown icon [{$name}]."),

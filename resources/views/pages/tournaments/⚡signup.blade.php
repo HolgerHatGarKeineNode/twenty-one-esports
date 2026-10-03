@@ -1,10 +1,13 @@
 <?php
 
+use App\Games\Contracts\PlayedOnOwnCopy;
+use App\Games\GameRegistry;
 use App\Models\Lineup;
 use App\Models\LineupSeat;
 use App\Models\Tournament;
 use App\Models\TournamentSignup;
 use App\Models\User;
+use App\Support\GameNames;
 use App\Support\Invites\InviteLinks;
 use App\Support\Nostr\RejectedEvent;
 use App\Support\Nostr\SignerMessages;
@@ -23,6 +26,10 @@ use Livewire\Component;
  *
  * The artboard's membership, prize share and preferred role rows belong to
  * the prize pool (P9) and are not built here.
+ *
+ * A game played outside the site (PlayedOnOwnCopy) needs the player's tick
+ * that they own it before either entry is prepared or stored (user,
+ * 2026-10-03: players signed up who did not own the game).
  */
 new #[Layout('layouts::app', ['section' => 'tournaments'])] class extends Component {
     public Tournament $tournament;
@@ -33,6 +40,9 @@ new #[Layout('layouts::app', ['section' => 'tournaments'])] class extends Compon
     public array $members = [];
 
     public string $error = '';
+
+    /** The player's tick "I own <game> on one of these platforms"; only asked for a game played outside the site. */
+    public bool $ownsGame = false;
 
     /** True right after this visit's own sign-up went through: the confirmation plays its burst once. */
     public bool $justEntered = false;
@@ -103,24 +113,24 @@ new #[Layout('layouts::app', ['section' => 'tournaments'])] class extends Compon
     /** @return list<array<string, mixed>>|null */
     public function prepareSolo(): ?array
     {
-        return $this->attempt(fn () => app(TournamentSignups::class)->prepareSolo($this->tournament, $this->user()));
+        return $this->attempt(fn () => $this->owned(fn () => app(TournamentSignups::class)->prepareSolo($this->tournament, $this->user())));
     }
 
     public function enterSolo(string $signed): void
     {
-        $this->justEntered = $this->attempt(fn () => app(TournamentSignups::class)->enterSolo($this->tournament, $this->user(), $this->decode($signed))) !== null;
+        $this->justEntered = $this->attempt(fn () => $this->owned(fn () => app(TournamentSignups::class)->enterSolo($this->tournament, $this->user(), $this->decode($signed)))) !== null;
         $this->creditInvite();
     }
 
     /** @return list<array<string, mixed>>|null */
     public function prepareLineup(): ?array
     {
-        return $this->attempt(fn () => app(TournamentSignups::class)->prepareLineup($this->tournament, $this->user(), (int) $this->lineupId, $this->members));
+        return $this->attempt(fn () => $this->owned(fn () => app(TournamentSignups::class)->prepareLineup($this->tournament, $this->user(), (int) $this->lineupId, $this->members)));
     }
 
     public function enterLineup(string $signed): void
     {
-        $this->justEntered = $this->attempt(fn () => app(TournamentSignups::class)->enterLineup($this->tournament, $this->user(), (int) $this->lineupId, $this->members, $this->decode($signed))) !== null;
+        $this->justEntered = $this->attempt(fn () => $this->owned(fn () => app(TournamentSignups::class)->enterLineup($this->tournament, $this->user(), (int) $this->lineupId, $this->members, $this->decode($signed)))) !== null;
         $this->creditInvite();
     }
 
@@ -150,6 +160,24 @@ new #[Layout('layouts::app', ['section' => 'tournaments'])] class extends Compon
     {
         $this->justEntered = false;
         $this->attempt(fn () => app(TournamentSignups::class)->withdraw($this->tournament, $this->user(), $this->decode($signed)));
+    }
+
+    /**
+     * Runs an entry step only once the player ticked that they own a game
+     * played outside the site; refuses it before anything is prepared or stored.
+     *
+     * @template T
+     *
+     * @param  callable(): T  $step
+     * @return T
+     */
+    private function owned(callable $step): mixed
+    {
+        if (! $this->ownsGame && app(GameRegistry::class)->find($this->tournament->game) instanceof PlayedOnOwnCopy) {
+            throw new TournamentRuleViolation('own_copy_unconfirmed', __('Tick that you own :game first.', ['game' => GameNames::game($this->tournament->game)]));
+        }
+
+        return $step();
     }
 
     private function user(): User
@@ -309,6 +337,9 @@ new #[Layout('layouts::app', ['section' => 'tournaments'])] class extends Compon
                     @endif
                 </div>
             @else
+                {{-- A game played outside the site: the notice and the tick that the player owns it, before either entry. --}}
+                @include('pages.tournaments.partials.own-copy', ['tournament' => $tournament, 'confirm' => true])
+
                 @if ($lineup)
                     <div class="flex flex-col gap-3 rounded-md bg-ground p-4 shadow-ring-hairline" data-test="lineup-entry">
                         <h2 class="m-0 text-[15px] font-bold">{{ __('Bring your lineup') }}</h2>

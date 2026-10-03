@@ -2,6 +2,7 @@
 
 namespace App\Games;
 
+use App\Games\Contracts\PlayedOnOwnCopy;
 use App\Support\Tmnf\TmnfIngest;
 
 /**
@@ -21,7 +22,7 @@ use App\Support\Tmnf\TmnfIngest;
  * Registered as a score game only while `esports.tmnf.enabled` is on
  * (AppServiceProvider::scoreGames()).
  */
-final class TrackmaniaNationsForever extends ScoreGame
+final class TrackmaniaNationsForever extends ScoreGame implements PlayedOnOwnCopy
 {
     public const SLUG = 'tmnf';
 
@@ -86,6 +87,20 @@ final class TrackmaniaNationsForever extends ScoreGame
     public function acceptsManual(): bool
     {
         return false;
+    }
+
+    /**
+     * Checked 2026-10-03: Steam app 11020 is free (`is_free` in Steam's
+     * appdetails), PC only, the same link the join steps carry.
+     */
+    public function stores(): array
+    {
+        return [new GameStore(StorePlatform::Steam, 'https://store.steampowered.com/app/11020/')];
+    }
+
+    public function isFreeToPlay(): bool
+    {
+        return true;
     }
 
     public function assets(): GameAssets

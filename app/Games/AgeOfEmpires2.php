@@ -2,6 +2,8 @@
 
 namespace App\Games;
 
+use App\Games\Contracts\PlayedOnOwnCopy;
+
 /**
  * Age of Empires II: Definitive Edition, played as a series like Rocket
  * League: best of 1 or 3. 1v1 is a player ladder (as RL 1v1, NIP rev. 7.1);
@@ -13,7 +15,7 @@ namespace App\Games;
  * the game itself (password, spectators allowed); checking the result
  * against the game's match history comes with a later phase.
  */
-final class AgeOfEmpires2 extends SeriesGame
+final class AgeOfEmpires2 extends SeriesGame implements PlayedOnOwnCopy
 {
     public function slug(): string
     {
@@ -43,6 +45,25 @@ final class AgeOfEmpires2 extends SeriesGame
     }
 
     public function hasGoals(): bool
+    {
+        return false;
+    }
+
+    /**
+     * Checked 2026-10-03: Steam app 813780 (with a price), the Xbox store page
+     * (Xbox Series X|S and PC) and PlayStation's page of the Definitive
+     * Edition. Not free to play.
+     */
+    public function stores(): array
+    {
+        return [
+            new GameStore(StorePlatform::Steam, 'https://store.steampowered.com/app/813780/'),
+            new GameStore(StorePlatform::Xbox, 'https://www.xbox.com/en-US/games/store/age-of-empires-ii-definitive-edition/9N42SSSX2MTG'),
+            new GameStore(StorePlatform::PlayStation, 'https://www.playstation.com/en-us/games/age-of-empires-ii/'),
+        ];
+    }
+
+    public function isFreeToPlay(): bool
     {
         return false;
     }

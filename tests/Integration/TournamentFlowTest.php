@@ -85,6 +85,8 @@ test('a Rocket League 3v3 tournament: creation, clan + solo-pool sign-up, and a 
 
     $captainPage = integrationPage($captain, integrationRoute('tournaments.signup', $tournament));
     BrowserWait::until($captainPage, '() => document.querySelector("[data-test=enter-lineup]") !== null', 30_000);
+    // Rocket League is played in the player's own copy: the sign-up needs the ownership tick.
+    $captainPage->locator('[data-test=owns-game]')->check();
     $captainPage->locator('[data-test=enter-lineup]')->click();
     BrowserWait::until($captainPage, '() => document.querySelector("[data-test=my-entry]") !== null', 30_000);
 
@@ -96,6 +98,7 @@ test('a Rocket League 3v3 tournament: creation, clan + solo-pool sign-up, and a 
         $soloUsers[] = $solo;
         $soloPage = integrationPage($solo, integrationRoute('tournaments.signup', $tournament));
         BrowserWait::until($soloPage, '() => document.querySelector("[data-test=enter-solo]") !== null', 30_000);
+        $soloPage->locator('[data-test=owns-game]')->check();
         $soloPage->locator('[data-test=enter-solo]')->click();
         BrowserWait::until($soloPage, '() => document.querySelector("[data-test=my-entry]") !== null', 30_000);
     }

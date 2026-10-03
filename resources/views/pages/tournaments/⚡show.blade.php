@@ -733,9 +733,12 @@ new #[Layout('layouts::app', ['section' => 'tournaments'])] class extends Compon
                     <p class="m-0 max-w-[60ch] text-[15px] leading-relaxed text-ink-2">{{ __($formatCopy['how']) }}</p>
                 @endif
 
-                {{-- The call to action for the viewer's state --}}
+                {{-- The call to action for the viewer's state; below lg it comes first in its column, before the
+                     date and the description, so a phone has the action in its first screen (user, 2026-10-03). --}}
                 @if ($cta !== 'draft')
-                    <div class="tl-cta flex flex-col gap-4 rounded-card bg-card p-4 shadow-ring lg:p-5" data-test="signup-cta" data-state="{{ $cta }}">
+                    <div class="tl-cta flex flex-col gap-4 rounded-card bg-card p-4 shadow-ring max-lg:order-first lg:p-5" data-test="signup-cta" data-state="{{ $cta }}">
+                        {{-- A game played outside the site: "you need your own copy", above the action. --}}
+                        @include('pages.tournaments.partials.own-copy', ['tournament' => $tournament])
                         <div class="flex flex-col gap-4 sm:flex-row sm:items-center sm:gap-5">
                             @if ($tmnfWeek)
                                 {{-- A TMNF week: played on our own server, How to join is right below. --}}

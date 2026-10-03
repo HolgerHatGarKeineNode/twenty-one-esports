@@ -6476,5 +6476,10 @@
     "Log in to zap": "Zum Zappen anmelden",
     "Zaps go to the league pool for prizes.": "Zaps gehen in den Liga-Pool, für Preise.",
     "The zap request names another event than the stream.": "Die Zap-Anfrage nennt ein anderes Event als den Stream.",
-    "This pot used a wallet of its own until 2 October 2026. Pots are now kept in the league wallet: the sats in your old wallet stay there and do not count. Add them to this pot with “Pay without Nostr” on the tournament page before the payouts, or the prizes will lack them.": "Dieser Topf hatte bis zum 2. Oktober 2026 eine eigene Wallet. Töpfe liegen jetzt in der Liga-Wallet: die Sats in deiner alten Wallet bleiben dort und zählen nicht. Füg sie vor den Auszahlungen mit „Ohne Nostr bezahlen“ auf der Turnierseite diesem Topf hinzu, sonst fehlen sie bei den Preisen."
+    "This pot used a wallet of its own until 2 October 2026. Pots are now kept in the league wallet: the sats in your old wallet stay there and do not count. Add them to this pot with “Pay without Nostr” on the tournament page before the payouts, or the prizes will lack them.": "Dieser Topf hatte bis zum 2. Oktober 2026 eine eigene Wallet. Töpfe liegen jetzt in der Liga-Wallet: die Sats in deiner alten Wallet bleiben dort und zählen nicht. Füg sie vor den Auszahlungen mit „Ohne Nostr bezahlen“ auf der Turnierseite diesem Topf hinzu, sonst fehlen sie bei den Preisen.",
+    "You need your own copy of :game to play": "Du musst :game besitzen, um mitzuspielen",
+    "Platforms": "Plattformen",
+    "Free to play": "Kostenlos spielbar",
+    "I own :game on one of these platforms": "Ich besitze :game auf einer dieser Plattformen",
+    "Tick that you own :game first.": "Bestätige zuerst, dass du :game besitzt."
 }
