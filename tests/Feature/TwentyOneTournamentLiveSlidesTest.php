@@ -141,7 +141,8 @@ test('a finished tournament with a bye: its champion, the podium, the path, and 
         ->and($frame['board']['columns'][count($frame['board']['columns']) - 1]['label'])->toBe('Final')
         ->and($frame['standing'])->toBeNull()
         ->and($slides->frames($slides->snapshots(), $finishedMs + 47 * 3_600_000))->toHaveCount(1)
-        ->and($slides->frames($slides->snapshots(), $finishedMs + 49 * 3_600_000))->toBe([]);
+        ->and($slides->frames($slides->snapshots(), $finishedMs + 121 * 3_600_000))->toBe([])
+        ->and($slides->frames($slides->snapshots(), $finishedMs + 119 * 3_600_000))->not->toBe([]);
 });
 
 test('a drawing tournament shows its field, the block and the time to its start; called off, draft and switched-off games never', function () {
