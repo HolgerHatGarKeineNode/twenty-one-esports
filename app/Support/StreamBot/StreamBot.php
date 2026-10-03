@@ -71,30 +71,13 @@ class StreamBot
      */
     public function blocker(CarbonImmutable $now, ?LeagueKey $key, ?StreamCoordinates $stream, bool $readChat = true): ?string
     {
-        if (! (bool) config('esports.stream_bot.enabled', false)) {
-            return 'ESPORTS_STREAM_BOT_ENABLED is off';
+        $air = $this->airBlocker($now, $key, $stream);
+
+        if ($air !== null) {
+            return $air;
         }
 
-        if ($key === null) {
-            return 'ESPORTS_STREAM_BOT_NSEC is not set or not a valid secret key';
-        }
-
-        if ($stream === null) {
-            return 'the stream has no key, d tag or relay (twentyone.nostr, twentyone.stream)';
-        }
-
-        $offAir = $this->liveness->problem($now);
-
-        if ($offAir !== null) {
-            return 'the stream is not live ('.$offAir.')';
-        }
-
-        $quiet = $this->isQuiet($now);
-
-        if ($quiet !== false) {
-            return $quiet === null ? 'ESPORTS_STREAM_BOT_QUIET_HOURS is unreadable (treated as quiet)' : 'quiet hours';
-        }
-
+        assert($key !== null && $stream !== null);
         $cap = (int) config('esports.stream_bot.daily_cap', 24);
 
         if ($this->postsToday($now) >= $cap) {
@@ -119,6 +102,40 @@ class StreamBot
             if ($this->chat->humansSince($stream, $key->pubkey(), $lastDelivered->posted_at->getTimestamp() + 1) === []) {
                 return 'no human wrote since the last post, and '.intdiv($alone, 60).' min have not passed';
             }
+        }
+
+        return null;
+    }
+
+    /**
+     * Rules 1-3 alone: the switch, the key, a stream, live, outside the quiet
+     * hours. What a moment the bot must not miss (ChampionChat's GG) still
+     * waits for; the cadence rules 4-6 it skips.
+     */
+    public function airBlocker(CarbonImmutable $now, ?LeagueKey $key, ?StreamCoordinates $stream): ?string
+    {
+        if (! (bool) config('esports.stream_bot.enabled', false)) {
+            return 'ESPORTS_STREAM_BOT_ENABLED is off';
+        }
+
+        if ($key === null) {
+            return 'ESPORTS_STREAM_BOT_NSEC is not set or not a valid secret key';
+        }
+
+        if ($stream === null) {
+            return 'the stream has no key, d tag or relay (twentyone.nostr, twentyone.stream)';
+        }
+
+        $offAir = $this->liveness->problem($now);
+
+        if ($offAir !== null) {
+            return 'the stream is not live ('.$offAir.')';
+        }
+
+        $quiet = $this->isQuiet($now);
+
+        if ($quiet !== false) {
+            return $quiet === null ? 'ESPORTS_STREAM_BOT_QUIET_HOURS is unreadable (treated as quiet)' : 'quiet hours';
         }
 
         return null;

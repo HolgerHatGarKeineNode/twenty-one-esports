@@ -580,6 +580,13 @@ Schedule::command('twentyone:stream-bot:pride')->everyFiveMinutes()->withoutOver
 Schedule::command('twentyone:stream-bot:champions')->everyFiveMinutes()->withoutOverlapping()->onOneServer();
 
 /*
+ * The GG in the stream chat the moment a tournament is decided (ChampionChat):
+ * every minute, so it lands within a minute or two of the finish; once per
+ * tournament, on air and outside the quiet hours only. Same flag and key.
+ */
+Schedule::command('twentyone:stream-bot:gg')->everyMinute()->withoutOverlapping()->onOneServer();
+
+/*
  * The game channels (P21, NIP "Game channels"): the fixed kind 40 of every
  * game and its kind 41 with the chat relays, republished daily so a relay
  * that lost them or a new chat relay gets them without a manual step. The

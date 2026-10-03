@@ -1175,6 +1175,14 @@ return [
             'per_run' => 3,
             'retry_minutes' => 10,
         ],
+        // The GG in the stream chat the moment a tournament is decided (twentyone:stream-bot:gg, ChampionChat): once per
+        // tournament, past the rotation's interval, cap and never-twice rule, but only on air and outside the quiet hours,
+        // and only within `window_minutes` of the finish (a late GG is no GG). A send no relay took is retried after
+        // `retry_minutes` with the same signed event.
+        'gg' => [
+            'window_minutes' => (int) env('ESPORTS_STREAM_BOT_GG_WINDOW_MINUTES', 30),
+            'retry_minutes' => 2,
+        ],
         // Reminders on the same profile while a tournament still has free places (P49,
         // twentyone:stream-bot:free-places): one note per slot, a slot being hours before sign-up
         // closes. A slot is due from its moment until the next slot's moment (or the stop), and

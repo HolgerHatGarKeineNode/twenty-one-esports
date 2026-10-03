@@ -66,6 +66,11 @@ final class StreamBotCopy
         ],
 
         // Results and pride.
+        // The GG the moment a tournament is decided (ChampionChat), outside the rotation: one winner, then a shared place 1.
+        'tournament_gg' => [
+            ['🏆 GG! :winner wins :name 🎉 :url'],
+            ['🏆 GG! :winner win :name 🎉 :url'],
+        ],
         'tournament_winner' => [
             ['🥇 :winner won :name', '🎉 GG to everyone who played', '👉 Bracket and results: :url'],
             ['🏆 Champion of :name: :winner', '👉 See how it went: :url'],
