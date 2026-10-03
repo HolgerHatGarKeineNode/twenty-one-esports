@@ -101,7 +101,8 @@ final class TournamentModeration
      * participant broke the draw on the foreign key every minute). A solo
      * entry goes; a lineup drops the players gone and keeps its entry while
      * it still fields a team (the sign-up rule: at least the team size),
-     * else it goes too. Each step is a league line in the moderation log.
+     * else it goes too. Each step is a league line in the moderation log,
+     * and open pages hear of it by push (TournamentChanged) after the commit.
      * Returns how many entries were withdrawn.
      */
     public function withdrawOrphaned(Tournament $locked, string $reason): int
@@ -109,6 +110,7 @@ final class TournamentModeration
         $signups = TournamentSignup::query()->where('tournament_id', $locked->id)->active()->orderBy('id')->lockForUpdate()->get();
         $present = User::query()->whereKey($signups->pluck('members')->flatten()->map(intval(...))->unique()->all())->pluck('id')->all();
         $withdrawn = 0;
+        $changed = false;
 
         foreach ($signups as $signup) {
             $members = array_map(intval(...), $signup->members);
@@ -121,6 +123,7 @@ final class TournamentModeration
             if ($signup->lineup_id !== null && count($left) >= $locked->teamSize()) {
                 $signup->forceFill(['members' => $left])->save();
                 $this->logLeague($locked, 'left', $signup, $reason);
+                $changed = true;
 
                 continue;
             }
@@ -128,6 +131,12 @@ final class TournamentModeration
             $signup->forceFill(['withdrawn_at' => now()])->save();
             $this->logLeague($locked, 'withdrawn', $signup, $reason);
             $withdrawn++;
+            $changed = true;
+        }
+
+        // Open pages draw again without the entry, as for a player's own withdrawal (after the commit, never on a rollback).
+        if ($changed) {
+            Broadcasts::send(new TournamentChanged($locked->id, 'withdrawn'));
         }
 
         return $withdrawn;

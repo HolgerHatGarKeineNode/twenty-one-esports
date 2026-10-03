@@ -2,6 +2,7 @@
 
 use App\Enums\NotificationKind;
 use App\Enums\TournamentStatus;
+use App\Events\TournamentChanged;
 use App\Livewire\Actions\DeleteAccount;
 use App\Models\Admin;
 use App\Models\Tournament;
@@ -10,9 +11,11 @@ use App\Models\TournamentParticipant;
 use App\Models\TournamentSignup;
 use App\Models\User;
 use App\Support\Tournaments\TournamentDraws;
+use App\Support\Tournaments\TournamentModeration;
 use Illuminate\Contracts\Debug\ExceptionHandler;
 use Illuminate\Database\QueryException;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Queue;
 use Tests\Support\TestSigner;
@@ -108,6 +111,21 @@ test('deleting an account withdraws its open sign-ups with a log line, and the d
         ->and($tournament->refresh()->status)->toBe(TournamentStatus::Running)
         ->and(TournamentParticipant::query()->where('tournament_id', $tournament->id)->pluck('user_id')->sort()->values()->all())
         ->toBe([$players[1]->id, $players[2]->id]);
+});
+
+test('withdrawing an orphaned entry pushes the change to open pages after the commit, and nothing when none is orphaned', function () {
+    [$tournament, $players] = orphanSoloTournament(3);
+    Event::fake([TournamentChanged::class]);
+    $moderation = app(TournamentModeration::class);
+
+    DB::transaction(fn () => $moderation->withdrawOrphaned(Tournament::query()->lockForUpdate()->findOrFail($tournament->id), 'none gone'));
+    Event::assertNotDispatched(TournamentChanged::class);
+
+    User::query()->whereKey($players[0]->id)->delete();
+    DB::transaction(fn () => $moderation->withdrawOrphaned(Tournament::query()->lockForUpdate()->findOrFail($tournament->id), 'gone'));
+
+    Event::assertDispatchedTimes(TournamentChanged::class, 1);
+    Event::assertDispatched(TournamentChanged::class, fn (TournamentChanged $event): bool => $event->tournamentId === $tournament->id && $event->reason === 'withdrawn');
 });
 
 test('deleting an account during the draw wait withdraws the entry too', function () {
