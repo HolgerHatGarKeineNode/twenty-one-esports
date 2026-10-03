@@ -6,6 +6,8 @@ use App\Enums\BoardGameStatus;
 use App\Enums\ChessGameStatus;
 use App\Enums\IncomingPaymentStatus;
 use App\Enums\SeriesStatus;
+use App\Enums\TournamentFormat;
+use App\Enums\TournamentStatus;
 use App\Games\BoardGame;
 use App\Games\GameRegistry;
 use App\Models\BoardGame as BoardGameModel;
@@ -14,9 +16,13 @@ use App\Models\IncomingPayment;
 use App\Models\Season;
 use App\Models\SeasonAttestation;
 use App\Models\SeriesMatch;
+use App\Models\Tournament;
 use App\Models\User;
 use App\Support\Board\RatedBoard;
 use App\Support\Chess\RatedChess;
+use App\Support\Scores\ScoreRuns;
+use App\Support\Scores\ScoreStanding;
+use App\Support\Scores\ScoreWindow;
 use Carbon\CarbonImmutable;
 
 /**
@@ -416,7 +422,7 @@ final class ChainOverview
 
     /**
      * Finished wins per game and mode in [from, to): the activity before
-     * Block 0, when nothing is rated yet.
+     * Block 0, when nothing is rated yet. A score window counts by its end.
      *
      * @return list<array{weight_key: string, game: string, winners: int, per_week: float}>
      */
@@ -444,6 +450,27 @@ final class ChainOverview
             $counts[$row->game.'/'.$row->mode] = (int) $row->getAttribute('total');
         }
 
+        // Score windows (a TMNF or Blockfill week): a window the league opened itself, closed in the range with a
+        // top score, is one solo win, as SeasonChains::attestScoreWindow() would attest it. An organizer's never mines.
+        $windows = Tournament::query()->where(['status' => TournamentStatus::Finished, 'format' => TournamentFormat::Leaderboard, 'opened_by_league' => true])
+            ->whereIn('game', array_keys($this->games->scores()))->whereNull('created_by_id')->where('starts_at', '<', $to)->get();
+        $runs = app(ScoreRuns::class);
+
+        foreach ($windows as $window) {
+            $end = ScoreWindow::of($window)->end;
+
+            if ($end->lt($from) || $end->gte($to)) {
+                continue;
+            }
+
+            $top = array_filter($runs->standings($window), fn (ScoreStanding $row): bool => $row->place !== null && $row->value !== null);
+
+            if ($top !== []) {
+                $key = $window->game.'/'.$window->mode;
+                $counts[$key] = ($counts[$key] ?? 0) + 1;
+            }
+        }
+
         $streams = [];
 
         foreach ($counts as $key => $total) {
@@ -451,7 +478,8 @@ final class ChainOverview
             $streams[] = [
                 'weight_key' => $key,
                 'game' => $game,
-                'winners' => $this->games->mode($game, $mode)->teamSize ?? 1,
+                // A score window mines a solo block: one winner.
+                'winners' => $this->games->isScore($game) ? 1 : ($this->games->mode($game, $mode)->teamSize ?? 1),
                 'per_week' => $total / $weeks,
             ];
         }

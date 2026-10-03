@@ -368,3 +368,22 @@ describe('chain draft', function () {
             ->and(ChainDraft::stored()['shares'])->toBe(['chess' => 35, 'rocket-league' => 40, 'ea-sports-fc' => 25]);
     });
 });
+
+test('before Block 0 the forecast counts a closed league window with a top score as one solo win; an organizer\'s window and one nobody placed in do not', function () {
+    config(['esports.league.nsec' => (new TestSigner)->secret]);
+    [$won, $users] = soloWindow(3);
+    soloPlay($won, $users);
+    [$organizers, $drivers] = soloWindow(2, User::factory()->create(), 'score-week-2');
+    soloPlay($organizers, $drivers);
+    [$empty] = soloWindow(2, null, 'score-week-3');
+    $end = ScoreWindow::of($won)->end;
+
+    $this->travelTo($end->addHours(25));
+    app(ScoreLeaderboards::class)->tick();
+
+    expect([$won->refresh()->status, $organizers->refresh()->status, $empty->refresh()->status])->each->toBe(TournamentStatus::Finished);
+
+    $streams = collect(app(ChainOverview::class)->draft()['streams'])->keyBy('weight_key');
+
+    expect($streams->get('score-demo/time-trial'))->toBe(['weight_key' => 'score-demo/time-trial', 'game' => 'score-demo', 'winners' => 1, 'per_week' => 1 / 4]);
+});
