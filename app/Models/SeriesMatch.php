@@ -694,7 +694,30 @@ class SeriesMatch extends Model
 
     public function sideName(string $side): string
     {
-        return $side === 'challenger' ? $this->challenger_name : $this->challenged_name;
+        $stored = $side === 'challenger' ? $this->challenger_name : $this->challenged_name;
+        $lineup = $side === 'challenger' ? $this->challenger_lineup_id : $this->challenged_lineup_id;
+        $ids = (array) ($this->sides[$side] ?? []);
+
+        // A solo side is its player: the live profile name, not the one frozen at the challenge, so a
+        // renamed player is never shown under two names on one page (2026-10-03, "UWE" / "Industrie_KPI").
+        if ($lineup === null && count($ids) === 1) {
+            $id = (int) reset($ids);
+
+            return $this->liveSoloNames()[$id] ?? $stored;
+        }
+
+        return $stored;
+    }
+
+    /**
+     * The live names of both solo sides, read once per match.
+     *
+     * @return array<int, string>
+     */
+    private function liveSoloNames(): array
+    {
+        return once(fn (): array => User::query()->whereKey(array_map(intval(...), array_merge((array) ($this->sides['challenger'] ?? []), (array) ($this->sides['challenged'] ?? []))))
+            ->get()->mapWithKeys(fn (User $user): array => [$user->id => $user->displayName()])->all());
     }
 
     public function sideTag(string $side): string

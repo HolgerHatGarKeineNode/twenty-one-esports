@@ -99,7 +99,8 @@ new #[Layout('layouts::app', ['section' => 'matches'])] class extends Component 
         if ($report !== null) {
             $users = \App\Models\User::query()->whereIn('pubkey', array_column($report->roster, 'pubkey'))->get()->keyBy('pubkey');
 
-            return array_map(fn (array $entry) => ['name' => $entry['name'], 'role' => $entry['role'], 'side' => $entry['side'], 'npub' => \App\Support\Nostr\NostrKeys::hexToNpub($entry['pubkey']), 'user' => $users->get($entry['pubkey'])], $report->roster);
+            // The live profile name: the report froze the name of its day, and a renamed player read as a stranger (2026-10-03).
+            return array_map(fn (array $entry) => ['name' => $users->get($entry['pubkey'])?->displayName() ?? $entry['name'], 'role' => $entry['role'], 'side' => $entry['side'], 'npub' => \App\Support\Nostr\NostrKeys::hexToNpub($entry['pubkey']), 'user' => $users->get($entry['pubkey'])], $report->roster);
         }
 
         $series = app(SeriesService::class);

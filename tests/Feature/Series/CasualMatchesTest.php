@@ -305,3 +305,10 @@ test('the result reads from the winner\'s side: a challenged player who won 2 of
 
     expect($html)->toMatch('/data-test="win-score">\s*2 : 1\s*</');
 });
+
+test('a solo side shows its player\'s live name: a player who renamed is never shown under the old name next to the new one', function () {
+    [$match, $host] = casualStarted();
+    $host->forceFill(['name' => 'Renamed Player'])->save();
+
+    expect($match->fresh()->sideName('challenger'))->toBe('Renamed Player');
+});
