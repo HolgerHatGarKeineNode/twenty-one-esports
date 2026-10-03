@@ -196,7 +196,7 @@ final class MiniRelay
     }
 
     /**
-     * @param  list<array<string, mixed>>  $filters
+     * @param  array<mixed>  $filters  as the client sent them, objects or not (answer() refuses what is not)
      */
     private function subscribe(int $key, string $subscription, array $filters): void
     {
@@ -219,10 +219,24 @@ final class MiniRelay
     }
 
     /**
-     * @param  list<array<string, mixed>>  $filters
+     * @param  array<mixed>  $sent
      */
-    private function answer(int $key, string $subscription, array $filters): void
+    private function answer(int $key, string $subscription, array $sent): void
     {
+        // Every filter must be an object, as on nos.lol, Primal and nostr.mom (measured 2026-10-03): a list of
+        // filters sent as one filter matched every event here and nothing there, so the game chat read no history.
+        $filters = [];
+
+        foreach ($sent as $filter) {
+            if (! is_array($filter) || ($filter !== [] && array_is_list($filter))) {
+                $this->send($key, ['CLOSED', $subscription, 'error: bad req: provided filter is not an object']);
+
+                return;
+            }
+
+            $filters[] = $filter;
+        }
+
         if ($this->maxFilters !== null && count($filters) > $this->maxFilters) {
             $this->send($key, ['CLOSED', $subscription, 'error: too many filters (max '.$this->maxFilters.')']);
 

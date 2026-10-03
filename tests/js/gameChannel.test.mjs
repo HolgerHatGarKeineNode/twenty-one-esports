@@ -29,7 +29,8 @@ function channel({ counting = new Set(), accounts = new Set(), me = null, meCoun
     const CHANNEL = hex();
     const subs = [];
     const lookups = [];
-    const comp = gameChannel({ channel: CHANNEL, creator: hex(), relays: [], labels: new Proxy({}, { get: (_, key) => String(key) }), me, meName: 'me', meCounts });
+    const config = { channel: CHANNEL, creator: hex(), relays: [], labels: new Proxy({}, { get: (_, key) => String(key) }), me, meName: 'me', meCounts };
+    const comp = gameChannel(config);
     comp.$wire = {
         players: async (keys) => {
             lookups.push([...keys]);
@@ -41,7 +42,14 @@ function channel({ counting = new Set(), accounts = new Set(), me = null, meCoun
     comp.$refs = {};
     comp.init();
     made.push(comp);
-    comp.pool = { subscribe: (relays, filters) => { subs.push(filters); return { close() {} }; }, destroy() {} };
+    // init() opened nothing (no relays); the votes now go to one fake relay. The pool's real contract (nostr-tools 2.x):
+    // subscribe() takes ONE filter, so a list there is the bug that emptied the chat on the relays (2026-10-03).
+    config.relays.push('wss://relay.test');
+    comp.pool = {
+        subscribe: (relays, filter) => assert.fail('subscribe() takes one filter; use subscribeFilters(): ' + JSON.stringify(filter).slice(0, 80)),
+        subscribeMap: (requests) => { subs.push(requests.map((request) => request.filter)); return { close() {} }; },
+        destroy() {},
+    };
     comp.status = 'live';
 
     const poll = (pubkey, createdAt = NOW - 1000) => ({ id: hex(), pubkey, kind: 1068, created_at: createdAt, content: 'Q?', tags: [['e', CHANNEL, '', 'root'], ['option', 'a1', 'A'], ['option', 'b2', 'B'], ['polltype', 'singlechoice'], ['endsAt', String(NOW + 86400)]] });

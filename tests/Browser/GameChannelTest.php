@@ -260,6 +260,45 @@ test('the chess channel sits under the lobby, and the invite keeps its place in 
     }
 });
 
+test('a message sent in the chess chat is still there after a reload, next to the history the relay already had', function () {
+    $player = User::factory()->create(['locale' => 'de']);
+    TestSigner::forBrowser($player);
+    $other = new TestSigner;
+    $chess = (string) GameChannels::channelId('chess');
+    $now = now()->getTimestamp();
+    [$relay, , $seed] = p21Relay([
+        $other->sign(42, [['e', $chess, '', 'root']], 'anyone up for a blitz?', $now - 300),
+        // Another channel's message: never shown here, so the reload proves the channel's own REQ.
+        $other->sign(42, [['e', $this->channel, '', 'root']], 'rocket league only', $now - 290),
+    ]);
+
+    try {
+        $page = p21Page($player, '/chess', 375, 812);
+        BrowserWait::until($page, '() => ('.P21_TEXTS.')().length > 0', 5_000);
+        $history = $page->evaluate(P21_TEXTS);
+
+        $page->locator('#game-chat-input')->fill('Ich hoffe ihr habt Spaß');
+        $page->locator('[data-test=game-chat-send]')->click();
+        BrowserWait::until($page, '() => document.querySelector("#game-chat-input").value === "" && ('.P21_TEXTS.')().includes("Ich hoffe ihr habt Spaß")', 10_000);
+
+        $page->reload();
+        BrowserWait::until($page, '() => window.Alpine !== undefined && Alpine.$data(document.querySelector("[data-test=game-chat]"))?.status === "live"', 10_000);
+        BrowserWait::until($page, '() => ('.P21_TEXTS.')().length >= 2', 5_000);
+
+        expect($history)->toBe(['anyone up for a blitz?'])
+            ->and($page->evaluate(P21_TEXTS))->toBe(['anyone up for a blitz?', 'Ich hoffe ihr habt Spaß'])
+            ->and($page->evaluate('() => document.querySelector("[data-test=game-chat-empty]")?.checkVisibility() ?? false'))->toBeFalse()
+            ->and(p21Errors($page))->toBe([]);
+
+        // Positive control: the collector on the reloaded page catches a thrown error.
+        $page->evaluate('() => { setTimeout(() => { throw new Error("probe-throw"); }); }');
+        BrowserWait::until($page, '() => window.__errors.some((e) => e.includes("probe-throw"))', 5_000);
+    } finally {
+        $relay->stop(1);
+        @unlink($seed);
+    }
+});
+
 test('the auditor\'s 63 KB message renders bounded here too, and keeps the main thread under 200 ms', function () {
     $dir = sys_get_temp_dir().'/p21-img-'.getmypid().'-'.bin2hex(random_bytes(3));
     File::ensureDirectoryExists($dir);

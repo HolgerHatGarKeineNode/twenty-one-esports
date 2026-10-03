@@ -74,6 +74,17 @@ function writeJson(key, value) {
     }
 }
 
+/**
+ * One REQ per relay carrying every filter. SimplePool.subscribe() takes ONE
+ * filter (nostr-tools 2.x): handed a list, it sent `["REQ", id, [f1, f2]]`,
+ * which nos.lol, Primal and nostr.mom refuse ("provided filter is not an
+ * object", measured 2026-10-03), so the chat read no history and a sent
+ * message was gone after a reload. subscribeMap() groups the filters per relay.
+ */
+export function subscribeFilters(pool, relays, filters, params) {
+    return pool.subscribeMap([...new Set(relays)].flatMap((url) => filters.map((filter) => ({ url, filter }))), params);
+}
+
 const nextFrame = (callback) => (typeof requestAnimationFrame === 'function' ? requestAnimationFrame(callback) : setTimeout(callback, 16));
 const cancelFrame = (handle) => (typeof cancelAnimationFrame === 'function' ? cancelAnimationFrame(handle) : clearTimeout(handle));
 
@@ -157,7 +168,8 @@ export function gameChannel(config) {
             if (this.status === 'off') return;
 
             this.pool = new SimplePool();
-            this.sub = this.pool.subscribe(
+            this.sub = subscribeFilters(
+                this.pool,
                 config.relays,
                 [
                     { kinds: [KIND_MESSAGE], '#e': [config.channel], limit: config.history ?? 120 },
@@ -348,7 +360,7 @@ export function gameChannel(config) {
                 const filters = [{ kinds: [KIND_VOTE], '#e': ids, limit: VOTES_LIMIT }];
                 if (authors.length > 0) filters.push({ kinds: [KIND_VOTE], '#e': ids, authors });
                 this.votes?.close();
-                this.votes = this.pool.subscribe(config.relays, filters, { onevent: (event) => this.receive(event) });
+                this.votes = subscribeFilters(this.pool, config.relays, filters, { onevent: (event) => this.receive(event) });
             }, 250);
         },
 
