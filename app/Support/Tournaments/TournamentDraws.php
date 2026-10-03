@@ -197,13 +197,20 @@ final class TournamentDraws
      * mix team in the solo pool, publish the `2155` (NIP: "Tournament Draw").
      * A replacement names the draw it replaces and why.
      */
+    public static function drawsOnTip(): bool
+    {
+        return config('esports.bitcoin.draw_block', 'tip') !== 'next';
+    }
+
     private function commit(Tournament $locked, LeagueKey $league, int $tip, ?string $reason): void
     {
         $size = $locked->teamSize();
         $solos = TournamentSignup::query()->where('tournament_id', $locked->id)->active()->whereNull('lineup_id')->orderBy('id')->get();
         $previous = $locked->drawEvent;
 
-        $locked->forceFill(['draw_height' => $tip + 1, 'draw_committed_at' => now()]);
+        // `tip` (default since 2026-10-03, the user: "Das Turnier muss sofort beginnen können"): the newest block at
+        // the close seeds the draw at once; `next` waits for the first block after the commitment.
+        $locked->forceFill(['draw_height' => self::drawsOnTip() ? $tip : $tip + 1, 'draw_committed_at' => now()]);
 
         if ($locked->profile()->entersTeams() && $solos->count() >= $size) {
             $pubkeys = User::query()->whereIn('id', $solos->pluck('members')->flatten()->all())->pluck('pubkey', 'id');
@@ -247,7 +254,7 @@ final class TournamentDraws
             return false;
         }
 
-        if ($tournament->draw_committed_at === null || $minedAt <= $tournament->draw_committed_at->getTimestamp()) {
+        if (! self::drawsOnTip() && ($tournament->draw_committed_at === null || $minedAt <= $tournament->draw_committed_at->getTimestamp())) {
             $league = LeagueKey::fromConfig();
 
             if ($league !== null) {

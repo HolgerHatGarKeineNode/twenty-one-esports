@@ -177,3 +177,28 @@ test('a draw that leaves fewer than two participants calls the tournament off an
         ->and($tournament->refresh()->status)->toBe(TournamentStatus::Cancelled);
     drawCalledOffPublished($tournament, $first);
 });
+
+test('by default the newest block at the close seeds the draw at once: no wait for the next block', function () {
+    config(['esports.bitcoin.draw_block' => 'tip', 'esports.bitcoin.confirmations' => 1]);
+    $hash = hash('sha256', 'block 900000');
+    Http::fake(fn ($request) => match (true) {
+        str_ends_with($request->url(), '/blocks/tip/height') => Http::response('900000'),
+        str_ends_with($request->url(), '/block-height/900000') => Http::response($hash),
+        str_ends_with($request->url(), '/block/'.$hash) => Http::response(['timestamp' => now()->subMinutes(5)->getTimestamp()]),
+        default => Http::response('', 404),
+    });
+
+    $tournament = openTournament(['capacity' => 5], rocketLeague: true);
+    [$lineupA, $captainA, $signerA] = keyedLineup();
+    [$lineupB, $captainB, $signerB] = keyedLineup();
+    lineupSignup($tournament, $lineupA, $captainA, $signerA);
+    lineupSignup($tournament, $lineupB, $captainB, $signerB);
+
+    $this->travel(25)->hours();
+    $draws = app(TournamentDraws::class);
+
+    expect($draws->close($tournament->refresh()))->toBeTrue()
+        ->and($tournament->refresh()->draw_height)->toBe(900000)
+        ->and($draws->resolve($tournament))->toBeTrue()
+        ->and($tournament->refresh()->status)->toBe(TournamentStatus::Running);
+});

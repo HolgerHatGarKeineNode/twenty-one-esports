@@ -50,6 +50,9 @@
         <env name="SESSION_DRIVER" value="array"/>
         <env name="ESPORTS_TMNF" value="false" force="true"/>
         <env name="TWENTYONE_STREAM_ROTATE_MINUTES" value="0" force="true"/>
+        <!-- The suite pins the old draw rules (first block after the close, six confirmations); TournamentDrawOnTipTest covers the default. -->
+        <env name="ESPORTS_BITCOIN_DRAW_BLOCK" value="next" force="true"/>
+        <env name="ESPORTS_BITCOIN_CONFIRMATIONS" value="6" force="true"/>
         <env name="ESPORTS_RELAYS" value="" force="true"/>
         <env name="ESPORTS_CHAT_RELAYS" value="" force="true"/>
         <env name="ESPORTS_PROFILE_RELAYS" value="" force="true"/>

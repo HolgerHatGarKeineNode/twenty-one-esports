@@ -746,7 +746,9 @@ return [
     'bitcoin' => [
         'api' => env('ESPORTS_BITCOIN_API', 'https://mempool.space/api'),
         'timeout_seconds' => 5,
-        'confirmations' => (int) env('ESPORTS_BITCOIN_CONFIRMATIONS', 6),
+        'confirmations' => (int) env('ESPORTS_BITCOIN_CONFIRMATIONS', 1),
+        // tip: the newest block at the close seeds the draw, so it starts at once; next: the first block after it.
+        'draw_block' => env('ESPORTS_BITCOIN_DRAW_BLOCK', 'tip'),
     ],
 
     /*
