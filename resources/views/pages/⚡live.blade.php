@@ -176,7 +176,11 @@ new #[Layout('layouts::app', ['scripts' => ['resources/js/liveChat.js']])] class
         From lg: the stage and under it the programme on the left, the chat as a
         column on the right, as tall as the window allows below the page title
         and sticky while the programme scrolls by. Below lg: stage, then the
-        chat and the programme as two views behind a switch, then sharing.
+        chat and the programme as two views behind a switch, then sharing; there
+        the chat fits the band the root's scroll-padding leaves between the sticky
+        header and the tab bar plus dock (app.css), so scrolled into view it sits
+        wholly in it. It carries no scroll margin of its own: one on top of the
+        root's padding reserved the bars twice and pushed its top under the header.
     --}}
     <div class="grid grid-cols-1 gap-5 lg:grid-cols-[minmax(0,1fr)_360px] lg:items-start lg:gap-x-6 lg:gap-y-5" x-data="{ tab: 'chat' }">
         <div class="flex min-w-0 flex-col gap-4 lg:col-start-1 lg:row-start-1">
@@ -248,7 +252,7 @@ new #[Layout('layouts::app', ['scripts' => ['resources/js/liveChat.js']])] class
             </button>
         </div>
 
-        @include('pages.live.chat', ['chat' => $this->chat, 'class' => 'max-lg:h-[min(34rem,calc(100svh-var(--live-chat-floor,5rem)-1rem))] max-lg:scroll-mb-[var(--live-chat-floor,5rem)] lg:sticky lg:top-below-shell lg:col-start-2 lg:row-span-2 lg:row-start-1 lg:h-[max(26rem,calc(100dvh-var(--live-chat-top,14rem)))]'])
+        @include('pages.live.chat', ['chat' => $this->chat, 'class' => 'max-lg:h-[min(34rem,calc(100svh-var(--spacing-below-shell)-var(--tabbar-h)-var(--dock-h)-1rem))] lg:sticky lg:top-below-shell lg:col-start-2 lg:row-span-2 lg:row-start-1 lg:h-[max(26rem,calc(100dvh-var(--live-chat-top,14rem)))]'])
 
         <div class="flex min-w-0 flex-col gap-5 lg:col-start-1 lg:row-start-2">
             {{-- Zap and share right under the stage: the two ways to support it (user: the zap was buried at the bottom). --}}

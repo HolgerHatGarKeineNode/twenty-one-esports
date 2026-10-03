@@ -348,20 +348,9 @@ export function liveChat(config) {
             const column = this.$root;
             if (!column) return;
 
-            if (window.innerWidth < 1024) {
-                // Phones: the tab bar and the dock bar float over the page's bottom edge (`data-live-floor`).
-                // The chat stays shorter than the band above them, and scrolls into view above them.
-                const floors = [...document.querySelectorAll('[data-live-floor]')]
-                    .filter((el) => el.checkVisibility())
-                    .map((el) => el.getBoundingClientRect().top)
-                    .filter((top) => top > window.innerHeight / 2);
-                const value = Math.round(window.innerHeight - Math.min(window.innerHeight, ...floors) + 8) + 'px';
-                if (column.style.getPropertyValue('--live-chat-floor') !== value) {
-                    column.style.setProperty('--live-chat-floor', value);
-                }
-
-                return;
-            }
+            // Phones: the height comes from the root's --tabbar-h and --dock-h alone (pages/⚡live), the
+            // same values its scroll-padding reserves, so nothing is measured here.
+            if (window.innerWidth < 1024) return;
 
             // The grid it starts in, not the column itself: stuck, the column reports its sticky top (below the header).
             const top = column.parentElement.getBoundingClientRect().top + window.scrollY;
