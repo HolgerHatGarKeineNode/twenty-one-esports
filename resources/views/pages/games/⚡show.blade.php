@@ -165,14 +165,7 @@ new #[Layout('layouts::app', ['section' => 'chess', 'realtime' => true, 'scripts
     {
         $panel = TournamentGameEnd::of($this->game->refresh(), auth()->user());
 
-        return $panel === null ? null : Blade::render('<x-tournaments.game-end :panel="$panel" :framed="false" reveal />', ['panel' => $panel]);
-    }
-
-    /** Where the panel's countdown goes: the next game of the pairing once it exists, else the tournament page. */
-    #[Json]
-    public function tournamentNext(): ?string
-    {
-        return TournamentGameEnd::redirect($this->game, auth()->user());
+        return $panel === null ? null : Blade::render('<x-tournaments.game-end :panel="$panel" :framed="false" />', ['panel' => $panel]);
     }
 
     /* ---------- Opponent disconnected (live) --------------------------------------------------------------- */

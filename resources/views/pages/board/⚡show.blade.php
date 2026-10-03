@@ -139,14 +139,7 @@ new #[Layout('layouts::app', ['realtime' => true, 'scripts' => ['resources/js/bo
         $game = $this->boardGame->refresh();
         $panel = $game->isActive() ? null : TournamentGameEnd::of($game, auth()->user());
 
-        return $panel === null ? null : Blade::render('<x-tournaments.game-end :panel="$panel" :framed="false" reveal />', ['panel' => $panel]);
-    }
-
-    /** Where the panel's countdown goes: the next game of the pairing once it exists, else the tournament page. */
-    #[Json]
-    public function tournamentNext(): ?string
-    {
-        return TournamentGameEnd::redirect($this->boardGame, auth()->user());
+        return $panel === null ? null : Blade::render('<x-tournaments.game-end :panel="$panel" :framed="false" />', ['panel' => $panel]);
     }
 
     /**

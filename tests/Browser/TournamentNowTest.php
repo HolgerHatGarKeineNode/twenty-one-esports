@@ -23,9 +23,10 @@ pest()->group('browser');
 | A player of a knockout whose semi-final is won waits ("Wait for the next
 | round", the round's live count). The other semi-final ends: the final and
 | its game are created on the server, and the open page turns into "Play
-| now" without a reload (the tournament's push, or the page's poll), flips,
-| and opens the final's board by itself. Measured at en 375 and 1440 and de
-| 375: the hero is the first thing on the page and ends above the phone's
+| now" without a reload (the tournament's push, or the page's poll) and
+| flips. It stays on the tournament page ("Das bitte ausmachen": no automatic
+| opening); the big button opens the game. Measured at en 375 and 1440 and
+| de 375: the hero is the first thing on the page and ends above the phone's
 | tab bar.
 |
 | Collected: console.error/warn, uncaught errors, rejected promises, fetch
@@ -116,7 +117,7 @@ function nowShot(Page $page, string $name): void
     File::move(base_path('tests/Browser/Screenshots/'.$name.'.png'), $dir.'/'.$name.'.png');
 }
 
-test('a waiting player sees the hero first, above the tab bar, and it flips to "Play now" and opens the final without a reload', function () {
+test('a waiting player sees the hero first, above the tab bar, and it flips to "Play now" without a reload and stays on the page', function () {
     $measured = [];
     $page = null;
 
@@ -147,7 +148,7 @@ test('a waiting player sees the hero first, above the tab bar, and it flips to "
             ->and($wait['errors'])->toBe([]);
 
         if ($locale === 'en') {
-            expect($wait['text'])->toContain('Wait for the next round')->toContain('Round 1: 1 match still playing')->toContain('This page switches to your game by itself.');
+            expect($wait['text'])->toContain('Wait for the next round')->toContain('Round 1: 1 match still playing')->toContain('This page tells you as soon as your game starts.');
         } else {
             expect($wait['text'])->toContain('Warte auf die nächste Runde')->toContain('Runde 1: 1 Match läuft noch');
         }
@@ -164,25 +165,24 @@ test('a waiting player sees the hero first, above the tab bar, and it flips to "
         $game = $final->chessGame;
 
         BrowserWait::until($page, '() => document.querySelector("[data-test=now-hero]")?.dataset.state === "play"', 25_000);
-        BrowserWait::until($page, '() => document.querySelector("[data-test=now-go]")?.checkVisibility()', 3_000);
         // The flip runs 300 ms: measure the settled hero.
         usleep(500_000);
         $play = $page->evaluate(NOW_MEASURE);
         nowShot($page, "now-play-{$locale}-{$width}");
 
-        expect($play['text'])->toContain('Play now')->toContain('Go to your game')->toContain('Your game opens in')
+        expect($play['text'])->toContain('Play now')->toContain('Go to your game')->not->toContain('Your game opens in')
             ->and($play['path'])->toBe(parse_url(route('tournaments.show', $tournament), PHP_URL_PATH))
             ->and($play['action']['height'])->toBeGreaterThanOrEqual(56)
             ->and($play['action']['bottom'])->toBeLessThanOrEqual($play['tab'] ?? $height)
             ->and($play['avatars'])->toBe(2)
             ->and($play['errors'])->toBe([]);
 
-        // And it opens the final's board by itself.
-        BrowserWait::until($page, '() => location.pathname === '.json_encode(parse_url(route('games.show', $game), PHP_URL_PATH)), 10_000);
-        BrowserWait::until($page, '() => document.readyState === "complete"', 8_000);
+        // No automatic opening (user, 2026-10-03): six seconds later the page is still the tournament.
+        usleep(6_000_000);
         $landed = $page->evaluate('() => ({ errors: window.__errors ?? ["collector missing"], path: location.pathname })');
 
-        expect($landed['errors'])->toBe([]);
+        expect($landed['errors'])->toBe([])
+            ->and($landed['path'])->toBe(parse_url(route('tournaments.show', $tournament), PHP_URL_PATH));
 
         $measured["{$locale}-{$width}"] = $wait + ['play' => array_diff_key($play, ['text' => 1]), 'landed' => $landed['path']];
     }

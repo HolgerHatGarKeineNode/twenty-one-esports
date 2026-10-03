@@ -6,8 +6,9 @@
     form, the lobby's name and password, the league's automatic decision).
 
     The wire:key carries the state, so a push or a poll that changes it builds a new hero; tournamentNow.js
-    then flips it, chimes and opens the game once it turns into "Play now". The state's colour, the game's
-    cover and the two players' avatars make it the unmistakable first thing (user, 2026-10-03).
+    then flips it and chimes once it turns into "Play now". It never opens the game on its own (user,
+    2026-10-03: "Das bitte ausmachen"): the big button does. The state's colour, the game's cover and the
+    two players' avatars make it the unmistakable first thing (user, 2026-10-03).
 
     `$now` (TournamentNow::of()), `$tournament`, `$cup` (cupMatch() or null), `$error`, `$waits` (myWaits()),
     `$lobby` (myLobby() or null).
@@ -31,7 +32,7 @@
     $cover = app(\App\Games\GameRegistry::class)->cover((string) $now['game']);
 @endphp
 <section aria-labelledby="now-h" wire:key="now-{{ $state }}"
-         x-data="tournamentNow({ id: {{ $tournament->id }}, state: @js($state), go: @js($now['go']) })" :class="flipped && 'tn-flip'"
+         x-data="tournamentNow({ id: {{ $tournament->id }}, state: @js($state) })" :class="flipped && 'tn-flip'"
          @class([
              'relative isolate mx-4 mt-2 flex flex-col overflow-hidden rounded-card border-2 lg:mx-12 lg:mt-4',
              'border-btc bg-btc-tint' => $tone === 'act',
@@ -149,23 +150,16 @@
         @endif
     </div>
 
-    @if ($action !== null || $now['go'])
+    @if ($action !== null)
         <div class="flex min-w-0 flex-col gap-2 lg:items-end">
-            @if ($action !== null && isset($action['href']))
+            @if (isset($action['href']))
                 <a href="{{ $action['href'] }}" class="btn-p inline-flex min-h-16 w-full items-center justify-center gap-3 rounded-md bg-btc px-8 text-lg font-bold text-on-btc hover:text-on-btc lg:min-w-[300px]" data-test="now-action">
                     <x-icon :name="$action['icon']" :size="22" />{{ $action['label'] }}
                 </a>
-            @elseif ($action !== null)
+            @else
                 <button type="button" wire:click="{{ $action['wire'] }}" wire:loading.attr="disabled" class="btn-p inline-flex min-h-16 w-full cursor-pointer items-center justify-center gap-3 rounded-md bg-btc px-8 text-lg font-bold text-on-btc hover:text-on-btc disabled:opacity-60 lg:min-w-[300px]" data-test="now-action">
                     <x-icon :name="$action['icon']" :size="22" />{{ $action['label'] }}
                 </button>
-            @endif
-            @if ($now['go'])
-                <p class="m-0 flex min-h-11 items-center gap-3 text-[13px] text-ink-2" x-show="flipped" x-cloak role="status" data-test="now-go">
-                    <span x-show="! stopped" x-text="@js(__('Your game opens in :s s.')).replace(':s s', left + ' s')"></span>
-                    <span x-show="stopped">{{ __('You stay on this page.') }}</span>
-                    <button type="button" x-show="! stopped" x-on:click="stay()" class="inline-flex min-h-11 shrink-0 cursor-pointer items-center text-ink underline decoration-edge underline-offset-4 hover:decoration-btc" data-test="now-stay">{{ __('Stay here') }}</button>
-                </p>
             @endif
         </div>
     @endif

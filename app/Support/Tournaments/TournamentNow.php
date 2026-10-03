@@ -55,18 +55,18 @@ final class TournamentNow
     public const BOARDS = 4;
 
     /** Every key of the hero, so each state names only what it says. */
-    private const DEFAULTS = ['context' => null, 'line' => null, 'action' => null, 'go' => null, 'until' => null, 'round' => null, 'others' => null,
+    private const DEFAULTS = ['context' => null, 'line' => null, 'action' => null, 'until' => null, 'round' => null, 'others' => null,
         'paused' => false, 'boards' => [], 'lobby' => null, 'live' => 0, 'me' => null, 'opponent' => null];
 
     /**
      * @param  array<string, mixed>|null  $cup  the show page's cupMatch()
-     * @return array{state: string, title: string, context: string|null, line: string|null, action: array{label: string, href?: string, wire?: string, icon: string}|null, go: string|null, until: CarbonInterface|null, round: array{number: int, total: int, playing: int}|null, others: string|null, paused: bool, boards: list<array{label: string, url: string}>, lobby: array{name: string|null, password: string|null, chat: bool}|null, live: int, me: User|null, opponent: User|null, game: string}|null
+     * @return array{state: string, title: string, context: string|null, line: string|null, action: array{label: string, href?: string, wire?: string, icon: string}|null, until: CarbonInterface|null, round: array{number: int, total: int, playing: int}|null, others: string|null, paused: bool, boards: list<array{label: string, url: string}>, lobby: array{name: string|null, password: string|null, chat: bool}|null, live: int, me: User|null, opponent: User|null, game: string}|null
      */
     public static function of(Tournament $tournament, ?User $viewer, ?array $cup = null, ?TournamentMatch $lobby = null): ?array
     {
         $now = self::resolve($tournament, $viewer, $cup, $lobby);
 
-        /** @var array{state: string, title: string, context: string|null, line: string|null, action: array{label: string, href?: string, wire?: string, icon: string}|null, go: string|null, until: CarbonInterface|null, round: array{number: int, total: int, playing: int}|null, others: string|null, paused: bool, boards: list<array{label: string, url: string}>, lobby: array{name: string|null, password: string|null, chat: bool}|null, live: int, me: User|null, opponent: User|null, game: string}|null */
+        /** @var array{state: string, title: string, context: string|null, line: string|null, action: array{label: string, href?: string, wire?: string, icon: string}|null, until: CarbonInterface|null, round: array{number: int, total: int, playing: int}|null, others: string|null, paused: bool, boards: list<array{label: string, url: string}>, lobby: array{name: string|null, password: string|null, chat: bool}|null, live: int, me: User|null, opponent: User|null, game: string}|null */
         return $now === null ? null : [...self::DEFAULTS, 'paused' => $tournament->status === TournamentStatus::Running && $tournament->isPaused(), 'game' => $tournament->game, ...$now];
     }
 
@@ -158,7 +158,7 @@ final class TournamentNow
             $url = $game instanceof BoardGame ? route('board.show', $game) : route('games.show', ['game' => $game]);
 
             return [...$face, 'state' => 'play', 'title' => (string) __('Play now'), 'context' => $context, 'line' => (string) __('Your game is live and your clock runs.'),
-                'action' => ['label' => (string) __('Go to your game'), 'href' => $url, 'icon' => 'pawn'], 'go' => $url];
+                'action' => ['label' => (string) __('Go to your game'), 'href' => $url, 'icon' => 'pawn']];
         }
 
         $series = $match->seriesMatch;
@@ -181,12 +181,12 @@ final class TournamentNow
 
         if ($opponentBusy) {
             $line = match (true) {
-                $cup !== null && $cup['outgoing'] !== null => (string) __(':name is in another game right now. Your invite waits; this page opens your game once they accept.', ['name' => $name]),
+                $cup !== null && $cup['outgoing'] !== null => (string) __(':name is in another game right now. Your invite waits; this page tells you once they accept.', ['name' => $name]),
                 $cup !== null && ! ($cup['evening'] ?? false) => (string) __(':name is in another game right now. Invite them when it ends, or the league starts your game at :slot.', ['name' => $name, 'slot' => $cup['slot']->copy()->setTimezone(self::zone($viewer))->translatedFormat('D j M, H:i')]),
                 default => (string) __(':name is in another game right now. Yours starts within a minute after it ends.', ['name' => $name]),
             };
 
-            return [...$face, 'state' => 'busy', 'title' => (string) __('Your opponent is still playing'), 'context' => $context, 'line' => $line.' '.__('This page switches to your game by itself.')];
+            return [...$face, 'state' => 'busy', 'title' => (string) __('Your opponent is still playing'), 'context' => $context, 'line' => $line.' '.__('This page tells you as soon as your game starts.')];
         }
 
         if ($viewerBusy) {
@@ -198,7 +198,7 @@ final class TournamentNow
             return [...$face, ...match (true) {
                 $cup['incoming'] !== null => ['state' => 'ready', 'title' => (string) __('Your opponent is ready'), 'context' => $context, 'line' => (string) __(':name invited you to your cup game.', ['name' => $name]),
                     'action' => ['label' => (string) __('Start your game'), 'wire' => 'acceptCupInvite('.(int) $cup['incoming']->id.')', 'icon' => 'pawn']],
-                $cup['outgoing'] !== null => ['state' => 'invited', 'title' => (string) __('Invite sent'), 'context' => $context, 'line' => (string) __('Waiting for :name to accept. Stay here: this page opens your game.', ['name' => $name])],
+                $cup['outgoing'] !== null => ['state' => 'invited', 'title' => (string) __('Invite sent'), 'context' => $context, 'line' => (string) __('Waiting for :name to accept. Stay here: this page tells you when your game starts.', ['name' => $name])],
                 default => ['state' => 'start', 'title' => (string) __('Start your game'), 'context' => $context,
                     'line' => ($cup['evening'] ?? false) ? (string) __('Both online? Invite your opponent now. Otherwise the league starts your game as soon as you are both free.') : (string) __('Both online? Invite your opponent now. Otherwise the league starts your game at :slot.', ['slot' => $cup['slot']->copy()->setTimezone(self::zone($viewer))->translatedFormat('D j M, H:i')]),
                     'action' => ['label' => (string) __('Invite your opponent'), 'wire' => 'playCupMatch', 'icon' => 'pawn']],
@@ -206,7 +206,7 @@ final class TournamentNow
         }
 
         if ($playsHere) {
-            return [...$face, 'state' => 'starting', 'title' => (string) __('Your game starts soon'), 'context' => $context, 'line' => (string) __('Stay here: this page opens your game as soon as it is ready.')];
+            return [...$face, 'state' => 'starting', 'title' => (string) __('Your game starts soon'), 'context' => $context, 'line' => (string) __('Stay here: this page tells you as soon as your game is ready.')];
         }
 
         $wait = $viewer === null ? null : collect(TournamentWaits::ofPlayer($tournament, $viewer))->first(fn (MatchWait $wait): bool => $wait->matchId === $match->id);
@@ -229,7 +229,7 @@ final class TournamentNow
         $waitLine = $deadline !== null
             ? (string) __('The next round starts when they finish, at the latest at :time.', ['time' => $deadline->copy()->setTimezone(self::zone($viewer))->translatedFormat('H:i')])
             : (string) __('The next round starts when they finish.');
-        $flip = (string) __('This page switches to your game by itself.');
+        $flip = (string) __('This page tells you as soon as your game starts.');
 
         $last = TournamentMatch::query()->where('tournament_id', $tournament->id)->whereNotNull('result')->where('bracket', '!=', 'bye')
             ->whereHas('slots', fn ($query) => $query->where('tournament_participant_id', $participant->id))

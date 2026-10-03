@@ -99,7 +99,7 @@ test('a player whose match is done waits: the round\'s live count, the strip and
         ->toContain('Round 1: 3 matches still playing')
         ->toContain('data-test="now-strip"')
         ->toContain('The next round starts when they finish.')
-        ->toContain('This page switches to your game by itself.')
+        ->toContain('This page tells you as soon as your game starts.')
         ->not->toContain('data-test="now-action"');
 });
 
@@ -141,8 +141,8 @@ test('a player whose opponent is in another game is told why the game waits (use
 
     expect(nowHero(nowPage($cup, $white)))->toContain('data-state="busy"')
         ->toContain('Your opponent is still playing')
-        ->toContain(e($name).' is in another game right now. Your invite waits; this page opens your game once they accept.')
-        ->toContain('This page switches to your game by itself.')
+        ->toContain(e($name).' is in another game right now. Your invite waits; this page tells you once they accept.')
+        ->toContain('This page tells you as soon as your game starts.')
         ->not->toContain('data-test="now-action"');
 
     // Their round robin's next opponent still plays round 1: the next game starts within a minute after it ends.

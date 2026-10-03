@@ -1,6 +1,5 @@
 <?php
 
-use App\Enums\ChessGameStatus;
 use App\Enums\SeriesStatus;
 use App\Enums\TournamentFormat;
 use App\Enums\TournamentResultsMode;
@@ -34,8 +33,10 @@ use Tests\Support\NineMensMorrisOn;
 | sondern einfache Hinweise für den Spieler, wie es weitergeht": the chess
 | game page, the board game page and the series room show the tournament
 | panel (result, where the match stands, what comes next, the others still
-| playing, "Back to the tournament", the countdown) and no rematch, next
-| opponent or new game. A casual game keeps its follow-ups.
+| playing, "Back to the tournament") and no rematch, next opponent or new
+| game. A casual game keeps its follow-ups. Nobody is moved off the page on
+| their own ("Da ist ein Auto-Redirect irgendwie drin oder? Das bitte
+| ausmachen"): no countdown, no redirect.
 |
 */
 
@@ -61,8 +62,11 @@ test('a finished tournament chess game shows the tournament panel and no rematch
         ->assertSee('data-state="waiting"', false)
         ->assertSeeInOrder([$tournament->name, 'Round 1', 'Your match is done: wait for the next round', 'You won this game', 'Your next match starts as soon as your opponent is known.', '1 other match is still being played.', 'Back to the tournament'])
         ->assertSee(route('tournaments.show', $tournament), false)
-        ->assertSee('data-test="tournament-countdown"', false)
-        ->assertSee("The tournament page opens in 10\u{00A0}s.")
+        ->assertDontSee('data-test="tournament-countdown"', false)
+        ->assertDontSee('data-test="tournament-stay"', false)
+        ->assertDontSee('tournamentGameEnd(', false)
+        ->assertDontSeeText('The tournament page opens in')
+        ->assertDontSeeText('Stay here')
         ->assertDontSee('data-test="challenge-again"', false)
         ->assertDontSee('data-test="done-find-next"', false)
         ->assertDontSee('data-test="play-again"', false)
@@ -75,19 +79,15 @@ test('a finished tournament chess game shows the tournament panel and no rematch
         ->assertSeeInOrder(['You are out', 'You lost this game', 'Thanks for playing! Follow the rest of the tournament on the tournament page.'])
         ->assertDontSeeText('Rematch');
 
-    // A spectator sees the panel without the countdown; nobody is moved off the page.
+    // A spectator sees the panel too.
     $this->actingAs(User::factory()->create())->get(route('games.show', $game))->assertOk()
         ->assertSee('data-test="tournament-panel"', false)
         ->assertSee('The match is over')
         ->assertDontSee('data-test="tournament-countdown"', false);
 
-    // Opened again later, the game no longer counts down.
-    $this->travel(TournamentGameEnd::RECENT_MINUTES + 1)->minutes();
-    $this->actingAs($white)->get(route('games.show', $game))->assertOk()
-        ->assertSee('data-test="tournament-panel"', false)
-        ->assertDontSee('data-test="tournament-countdown"', false);
-
-    expect(TournamentGameEnd::redirect($game, $white))->toBe(route('tournaments.show', $tournament));
+    // No redirect anywhere: the panel carries no countdown data, and nothing answers where to go.
+    expect(TournamentGameEnd::of($game, $white))->not->toHaveKeys(['countdown', 'seconds', 'next'])
+        ->and(method_exists(TournamentGameEnd::class, 'redirect'))->toBeFalse();
 });
 
 test('the live board of a tournament chess game renders the panel once the game is over and offers no rematch', function () {
@@ -108,32 +108,31 @@ test('the live board of a tournament chess game renders the panel once the game 
     expect($html)->toContain('data-state="won"')
         ->and($html)->toContain('You won the tournament')
         ->and($html)->toContain('You won this game')
-        ->and($html)->toContain('data-test="tournament-countdown"')
-        ->and($page->instance()->tournamentNext())->toBe(route('tournaments.show', $tournament))
+        ->and($html)->not->toContain('data-test="tournament-countdown"')
+        ->and($html)->not->toContain('tournamentGameEnd(')
+        ->and(method_exists($page->instance(), 'tournamentNext'))->toBeFalse()
         ->and($tournament->refresh()->status)->toBe(TournamentStatus::Finished);
 });
 
-test('a chess duel shows game 1 of 3 with the score, and the countdown goes straight to game 2 once it exists', function () {
+test('a chess duel shows game 1 of 3 with the score and that game 2 follows, and stays on game 1', function () {
     $tournament = runningChess(TournamentFormat::RoundRobin, 2, TournamentResultsMode::Players, ['iterations' => 3, 'rankBy' => 'points']);
     [$first] = endChessGames($tournament);
     [$white, $black] = [$first->white, $first->black];
 
     app(ChessGameService::class)->resign($first, $black);
-    $second = ChessGame::query()->whereIn('tournament_match_id', $tournament->matches()->select('id'))->whereKeyNot($first->id)->where('status', ChessGameStatus::Active)->sole();
     $panel = TournamentGameEnd::of($first->refresh(), $white);
 
     expect($panel['state'])->toBe('continues')
         ->and($panel['step'])->toBe('Game 1 of 3')
         ->and($panel['score'])->toBe('Score 1 : 0')
         ->and($panel['line'])->toBe('Game 2 follows.')
-        ->and($panel['next'])->toBeTrue()
-        ->and(TournamentGameEnd::redirect($first, $white))->toBe(route('games.show', $second))
-        ->and(TournamentGameEnd::redirect($first, $black))->toBe(route('games.show', $second))
+        ->and($panel)->not->toHaveKey('next')
         ->and(TournamentGameEnd::of($first, $black)['score'])->toBe('Score 0 : 1');
 
     $this->actingAs($black)->get(route('games.show', $first))->assertOk()
         ->assertSeeInOrder(['Game 1 of 3', 'Score 0 : 1', 'Your match goes on', 'You lost this game', 'Game 2 follows.'])
-        ->assertSee("Your next game opens in 10\u{00A0}s.")
+        ->assertDontSeeText('Your next game opens in')
+        ->assertDontSee('data-test="tournament-countdown"', false)
         ->assertDontSeeText('Rematch');
 });
 
@@ -159,7 +158,7 @@ test('a finished tournament board game shows the tournament panel and no next op
     $this->actingAs($game->white)->get(route('board.show', $game))->assertOk()
         ->assertSee('data-test="tournament-panel"', false)
         ->assertSeeInOrder(['Your match is done: wait for the next round', 'You won this game', 'Back to the tournament'])
-        ->assertSee('data-test="tournament-countdown"', false)
+        ->assertDontSee('data-test="tournament-countdown"', false)
         ->assertDontSee('data-test="next-opponent"', false)
         ->assertDontSeeText('Find next opponent');
 
@@ -200,7 +199,7 @@ test('a confirmed tournament series shows the tournament panel in the room and n
     $this->actingAs($winner)->get(route('matches.room', $series))->assertOk()
         ->assertSee('data-test="tournament-panel"', false)
         ->assertSeeInOrder(['Your match is done: wait for the next round', 'You won the series', 'Back to the tournament'])
-        ->assertSee('data-test="tournament-countdown"', false)
+        ->assertDontSee('data-test="tournament-countdown"', false)
         ->assertDontSee('data-test="casual-rematch-card"', false)
         ->assertDontSee('data-test="series-again"', false);
 
@@ -209,16 +208,14 @@ test('a confirmed tournament series shows the tournament panel in the room and n
         ->assertSee('You lost the series')
         ->assertDontSee('data-test="casual-rematch-card"', false);
 
-    expect(Livewire::actingAs($winner)->test('pages::matches.room', ['match' => $series])->instance()->tournamentNext())
-        ->toBe(route('tournaments.show', $tournament));
+    expect(method_exists(Livewire::actingAs($winner)->test('pages::matches.room', ['match' => $series])->instance(), 'tournamentNext'))->toBeFalse();
 });
 
 test('a casual chess game keeps its rematch and next search and shows no tournament panel', function () {
     $game = ChessGame::factory()->finished()->create();
     $white = $game->white;
 
-    expect(TournamentGameEnd::of($game, $white))->toBeNull()
-        ->and(TournamentGameEnd::redirect($game, $white))->toBeNull();
+    expect(TournamentGameEnd::of($game, $white))->toBeNull();
 
     $this->actingAs($white)->get(route('games.show', $game))->assertOk()
         ->assertSee('data-test="play-again"', false)

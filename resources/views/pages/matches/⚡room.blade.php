@@ -21,7 +21,6 @@ use App\Support\Series\SeriesService;
 use App\Support\Tournaments\TournamentGameEnd;
 use Illuminate\Support\Facades\DB;
 use Livewire\Attributes\Computed;
-use Livewire\Attributes\Json;
 use Livewire\Attributes\Layout;
 use Livewire\Attributes\Locked;
 use Livewire\Attributes\On;
@@ -315,13 +314,6 @@ new #[Title('Match room')] #[Layout('layouts::app', ['section' => 'matches', 'sc
     public function casualContestNoShow(): void
     {
         $this->attempt(fn () => app(CasualMatches::class)->contestNoShow($this->match, $this->user()));
-    }
-
-    /** Where a tournament series' end panel counts down to: the next series of the pairing once it exists, else the tournament page (TournamentGameEnd). */
-    #[Json]
-    public function tournamentNext(): ?string
-    {
-        return TournamentGameEnd::redirect($this->fresh(), auth()->user());
     }
 
     /**

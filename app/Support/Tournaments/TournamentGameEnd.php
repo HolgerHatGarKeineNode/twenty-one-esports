@@ -13,7 +13,6 @@ use App\Models\Tournament;
 use App\Models\TournamentMatch;
 use App\Models\TournamentStage;
 use App\Models\User;
-use Carbon\CarbonInterface;
 use Illuminate\Support\Collection;
 
 /**
@@ -26,25 +25,20 @@ use Illuminate\Support\Collection;
  * duel plays its games as matches between the same pair: "Game 2 of 3"),
  * what comes next for the viewer (the match goes on, wait for the next
  * round, out, the cup won, the tournament over) and how many matches the
- * others are still playing. A player of a game that just ended is taken to
- * the tournament page after a countdown, or straight to the next game of
- * the same pairing once it exists ({@see redirect()}).
+ * others are still playing, and "Back to the tournament". Nobody is moved
+ * off the page on their own (user, 2026-10-03: "Da ist ein Auto-Redirect
+ * irgendwie drin oder? Das bitte ausmachen"): the player stays on the
+ * finished game to look at it.
  *
  * Read-only: it reads the stored bracket after TournamentRunner synced it.
  */
 final class TournamentGameEnd
 {
-    /** A game that ended longer ago than this no longer counts down: a player opening an old game stays on it. */
-    public const RECENT_MINUTES = 15;
-
-    /** Seconds before a player of a game that just ended is taken on; `esports.tournaments.end_redirect_seconds` overrides it (the browser test pins it shorter). */
-    public const REDIRECT_SECONDS = 10;
-
     /**
      * The panel for one finished tournament game, series or aborted game;
      * null when it is no tournament game.
      *
-     * @return array{tournament: string, round: string, url: string, state: string, headline: string, result: string|null, step: string|null, score: string|null, line: string|null, others: string|null, player: bool, countdown: bool, seconds: int, next: bool}|null
+     * @return array{tournament: string, round: string, url: string, state: string, headline: string, result: string|null, step: string|null, score: string|null, line: string|null, others: string|null, player: bool}|null
      */
     public static function of(ChessGame|BoardGame|SeriesMatch $played, ?User $viewer): ?array
     {
@@ -78,9 +72,6 @@ final class TournamentGameEnd
             };
         }
 
-        $ended = $played instanceof SeriesMatch ? $played->finished_at : $played->ended_at;
-        $countdown = $slot !== null && $ended instanceof CarbonInterface && $ended->gte(now()->subMinutes(self::RECENT_MINUTES));
-
         return [
             'tournament' => $tournament->title(),
             // The round, so a cup game reads as one (user, 2026-10-03: "Warum dann diese verwirrende Meldungen?").
@@ -94,9 +85,6 @@ final class TournamentGameEnd
             'line' => $line,
             'others' => $tournament->status === TournamentStatus::Running ? self::others($tournament, $pair) : null,
             'player' => $slot !== null,
-            'countdown' => $countdown,
-            'seconds' => max(1, (int) config('esports.tournaments.end_redirect_seconds', self::REDIRECT_SECONDS)),
-            'next' => $countdown && self::nextGameUrl($played, $pair, $viewer) !== null,
         ];
     }
 
@@ -129,22 +117,6 @@ final class TournamentGameEnd
             'url' => route('tournaments.show', $tournament),
             'cup' => $cup,
         ];
-    }
-
-    /**
-     * Where the countdown takes a player: the next game of the same pairing
-     * once it exists, else the tournament page. Null when it is no
-     * tournament game.
-     */
-    public static function redirect(ChessGame|BoardGame|SeriesMatch $played, ?User $viewer): ?string
-    {
-        $match = self::matchOf($played);
-
-        if ($match === null) {
-            return null;
-        }
-
-        return self::nextGameUrl($played, self::pairMatches($match), $viewer) ?? route('tournaments.show', $match->tournament);
     }
 
     private static function matchOf(ChessGame|BoardGame|SeriesMatch $played): ?TournamentMatch
@@ -308,39 +280,5 @@ final class TournamentGameEnd
             ->where('status', 'ready')->whereNull('result')->whereNotIn('id', $pair->pluck('id'))->count();
 
         return $count === 0 ? null : trans_choice(':count other match is still being played.|:count other matches are still being played.', $count);
-    }
-
-    /**
-     * The viewer's next game of the same pairing once it exists: a replay
-     * of the same match or the next game of a duel.
-     *
-     * @param  Collection<int, TournamentMatch>  $pair
-     */
-    private static function nextGameUrl(ChessGame|BoardGame|SeriesMatch $played, Collection $pair, ?User $viewer): ?string
-    {
-        if ($viewer === null) {
-            return null;
-        }
-
-        $ids = $pair->pluck('id');
-
-        if ($played instanceof ChessGame) {
-            $game = ChessGame::query()->whereIn('tournament_match_id', $ids)->whereKeyNot($played->id)->where('status', ChessGameStatus::Active)
-                ->where(fn ($query) => $query->where('white_id', $viewer->id)->orWhere('black_id', $viewer->id))->latest('id')->first();
-
-            return $game === null ? null : route('games.show', $game);
-        }
-
-        if ($played instanceof BoardGame) {
-            $game = BoardGame::query()->whereIn('tournament_match_id', $ids)->whereKeyNot($played->id)->where('status', BoardGameStatus::Active)
-                ->where(fn ($query) => $query->where('white_id', $viewer->id)->orWhere('black_id', $viewer->id))->latest('id')->first();
-
-            return $game === null ? null : route('board.show', $game);
-        }
-
-        $series = SeriesMatch::query()->whereIn('tournament_match_id', $ids)->whereKeyNot($played->id)->latest('id')->get()
-            ->first(fn (SeriesMatch $series): bool => $series->status->isRunning());
-
-        return $series === null ? null : route('matches.room', $series);
     }
 }

@@ -28,7 +28,6 @@ import './captured.js';
 import './sanNotation.js';
 import './tournamentLanding.js';
 import './autoDecision.js';
-import './tournamentGameEnd.js';
 import './tournamentNow.js';
 import './leagueTime.js';
 import './tournamentTv.js';
