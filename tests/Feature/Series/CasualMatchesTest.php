@@ -288,3 +288,20 @@ test('the host hears when the guest joined the lobby, in the app only by default
         ->and(casualAlerts())->not->toContain([$guest->id, 'casual_opponent_joined'])
         ->and(Queue::pushed(SendNostrDm::class)->filter(fn (SendNostrDm $job) => $job->user->is($host))->count())->toBe(0);
 });
+
+test('the result reads from the winner\'s side: a challenged player who won 2 of 3 sees 2 : 1 next to their name', function () {
+    [$match, $host, $guest] = casualStarted();
+    $match->forceFill(['best_of' => 3])->save();
+    $series = app(SeriesService::class);
+    $series->saveLiveGame($match, $guest, 0, 5, 1, null);
+    $series->saveLiveGame($match, $guest, 1, 0, 2, null);
+    $series->saveLiveGame($match, $guest, 2, 5, 6, null);
+    $series->report($match, $guest, []);
+    $this->travel(30)->minutes();
+    app(CasualScheduler::class)->tick();
+
+    expect($match->refresh()->winner)->toBe('challenged');
+    $html = $this->actingAs($guest)->get(route('matches.room', $match))->assertOk()->getContent();
+
+    expect($html)->toMatch('/data-test="win-score">\s*2 : 1\s*</');
+});

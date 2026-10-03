@@ -850,7 +850,9 @@ new #[Title('Match room')] #[Layout('layouts::app', ['section' => 'matches', 'sc
             </span>
             <span class="flex flex-col items-center gap-2">
                 <span class="inline-flex h-7 items-center gap-1.5 rounded-sm bg-win-tint px-2.5 text-xs font-bold text-win shadow-[inset_0_0_0_1px_#1F5A34]"><x-icon name="check" :size="14" />{{ $m->resolution?->label() ?? __('Accepted') }}</span>
-                <b class="font-display text-[56px] leading-none font-extrabold lg:text-[72px]">{{ $wins['challenger'] }} : {{ $wins['challenged'] }}</b>
+                {{-- The score reads from the named winner's side (2 : 1 next to the winner), never challenger first. --}}
+                @php($lead = $m->winner === 'challenged' ? ['challenged', 'challenger'] : ['challenger', 'challenged'])
+                <b class="font-display text-[56px] leading-none font-extrabold lg:text-[72px]" data-test="win-score">{{ $wins[$lead[0]] }} : {{ $wins[$lead[1]] }}</b>
                 <span class="text-[13px] text-ink-2">BO{{ $m->best_of }}, {{ $m->mode }}, {{ __('match :number', ['number' => $m->label()]) }}, {{ $m->rated ? __('saved') : __('casual, saved') }}</span>
             </span>
             <span class="flex flex-col gap-1 text-xs leading-normal text-ink-2 lg:items-end lg:text-right">
@@ -1014,7 +1016,7 @@ new #[Title('Match room')] #[Layout('layouts::app', ['section' => 'matches', 'sc
                                @class(['h-11 w-full rounded-md border bg-ground px-2 text-center text-[15px] text-ink disabled:opacity-60', 'border-btc' => $current && $editable, 'border-edge' => ! ($current && $editable)])>
                         @if ($box === 'c')<span class="text-center text-ink-3">:</span>@endif
                     @endforeach
-                    <span @class(['text-[13px]', 'text-win' => $row['winner'] === 'challenger', 'text-loss' => $row['winner'] === 'challenged', 'text-btc' => $row['winner'] === null && $current && ! $m->start_at?->isFuture(), 'text-ink-3' => $row['winner'] === null && ! $current])>
+                    <span @class(['text-[13px]', 'text-win' => $row['winner'] !== null && $row['winner'] === ($mySide ?? 'challenger'), 'text-loss' => $row['winner'] !== null && $row['winner'] !== ($mySide ?? 'challenger'), 'text-btc' => $row['winner'] === null && $current && ! $m->start_at?->isFuture(), 'text-ink-3' => $row['winner'] === null && ! $current])>
                         @if ($row['winner'] !== null)
                             {{ __(':tag win', ['tag' => $m->sideTag($row['winner'])]) }}
                         @elseif ($decided)
