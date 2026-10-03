@@ -3964,8 +3964,6 @@
     "The time to share the lobby is over, so the host can no longer be swapped.": "Die Zeit zum Teilen der Lobby ist vorbei, deshalb kann der Host nicht mehr getauscht werden.",
     "The chat is end-to-end encrypted with your Nostr key. Open it to read and write messages.": "Der Chat ist mit deinem Nostr-Schlüssel Ende-zu-Ende verschlüsselt. Öffne ihn, um Nachrichten zu lesen und zu schreiben.",
     "The chat is end-to-end encrypted between the players (NIP-17). The league cannot read it, so there is no excerpt here. Ask the captains for screenshots instead.": "Der Chat ist zwischen den Spielern Ende-zu-Ende verschlüsselt (NIP-17). Die Liga kann ihn nicht lesen, daher gibt es hier keinen Auszug. Bitte die Captains stattdessen um Screenshots.",
-    ":tournament: live evening :start": ":tournament: Live-Abend :start",
-    "Few signed up, so the cup is one evening: :format, :games games for you, about :minutes minutes. The league starts every game on the board; be online.": "Es haben sich wenige angemeldet, deshalb ist der Cup ein Abend: :format, :games Partien für dich, etwa :minutes Minuten. Die Liga startet jede Partie auf dem Brett; sei online.",
     "Tonight's round: the league starts your game on the board as soon as you are both free. Stay online.": "Die Runde heute Abend: Die Liga startet eure Partie auf dem Brett, sobald ihr beide frei seid. Bleib online.",
     "1v1 challenge answered": "1v1-Herausforderung beantwortet",
     "1v1 challenge from :name": "1v1-Herausforderung von :name",
@@ -6492,6 +6490,10 @@
     "Places score points on the ladder": "Plätze bringen Punkte in der Ladder",
     "Mines no season blocks": "Schürft keine Season-Blöcke",
     "About this week": "Zu dieser Woche",
-    "Tournament :name: the check before the draw failed": "Turnier :name: die Prüfung vor der Auslosung ist fehlgeschlagen",
-    "Duel": "Duell"
+    "Duel": "Duell",
+    ":tournament starts now (:start)": ":tournament startet jetzt (:start)",
+    ":tournament starts :start": ":tournament startet :start",
+    "Few signed up, so the cup is played in one go: :format, :games games for you, about :minutes minutes. The league starts every game on the board; be online.": "Es haben sich wenige angemeldet, deshalb wird der Cup am Stück gespielt: :format, :games Partien für dich, etwa :minutes Minuten. Die Liga startet jede Partie auf dem Brett; sei online.",
+    "Few signed up, so the cup is played in one go: :format, :games games for you, about :minutes minutes. At the start the league opens your match against your opponent; you find it on the cup page.": "Es haben sich wenige angemeldet, deshalb wird der Cup am Stück gespielt: :format, :games Spiele für dich, etwa :minutes Minuten. Zum Start eröffnet die Liga dein Match gegen deinen Gegner; du findest es auf der Cup-Seite.",
+    "Tournament :name: the check before the draw failed": "Turnier :name: die Prüfung vor der Auslosung ist fehlgeschlagen"
 }

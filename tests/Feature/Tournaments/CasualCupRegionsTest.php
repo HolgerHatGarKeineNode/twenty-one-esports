@@ -208,7 +208,7 @@ test('a US cup with three players plays its evening at 20:00 New York at its clo
     expect($cup->format)->toBe(TournamentFormat::RoundRobin)
         ->and($cup->starts_at->setTimezone('America/New_York')->format('D Y-m-d H:i'))->toBe('Sat 2026-10-10 20:00')
         ->and($player->timezone)->toBeNull()
-        ->and($player->notifications()->get()->pluck('data.title')->last())->toBe('Chess Casual Cup US #1: live evening Sat 10 Oct, 20:00 EDT');
+        ->and($player->notifications()->get()->pluck('data.title')->last())->toBe('Chess Casual Cup US #1 starts now (Sat 10 Oct, 20:00 EDT)');
 });
 
 test('a US cup with a lone player is extended to its game\'s next US slot, across the US clock change', function () {

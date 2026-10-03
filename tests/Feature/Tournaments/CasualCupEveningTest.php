@@ -175,7 +175,7 @@ test('at the close three players switch to a round robin evening that starts at 
         ->and(count($versions))->toBe($beforeSwitch + 1)
         ->and((int) $tags['start'])->toBe($cup->starts_at->getTimestamp())
         ->and((int) $tags['end'])->toBe($cup->starts_at->getTimestamp() + $plan['span_minutes'] * 60)
-        ->and(User::query()->findOrFail($player)->notifications()->get()->pluck('data.title')->last())->toBe('Chess Casual Cup EU #1: live evening Sat 10 Oct, 20:00 CEST');
+        ->and(User::query()->findOrFail($player)->notifications()->get()->pluck('data.title')->last())->toBe('Chess Casual Cup EU #1 starts now (Sat 10 Oct, 20:00 CEST)');
 
     // The block comes: the round robin is drawn, and nothing starts before the evening; no further version.
     $tip = 900001;
@@ -282,4 +282,28 @@ test('in a round robin a game nobody tried to play is lost by both', function ()
     $match = TournamentMatch::query()->where('tournament_id', $cup->id)->where('status', 'ready')->with('slots.participant', 'round.stage')->firstOrFail();
 
     expect(CasualCups::decision($cup, $match))->toMatchArray(['winner' => null, 'double_loss' => true, 'by' => 'league']);
+});
+
+test('a small Rocket League cup is told it starts now and that the league opens the match on the cup page, not on a board', function () {
+    $tip = 900000;
+    eveningBlocks($tip);
+    config(['esports.casual_cups.enabled' => ['rocket-league']]);
+    cupTick();
+    $cup = Tournament::query()->where('cup_open_series', 'rocket-league-eu')->firstOrFail();
+
+    foreach (range(1, 2) as $ignored) {
+        [$player, $signer] = keyedPlayer();
+        soloSignup($cup->refresh(), $player, $signer);
+    }
+
+    $this->travelTo($cup->refresh()->signup_closes_at);
+    cupTick();
+    $cup->refresh();
+    $notice = User::query()->findOrFail($cup->signups()->firstOrFail()->members[0])->notifications()->get()->last();
+
+    expect($cup->format)->toBe(TournamentFormat::SingleElimination)
+        ->and($notice->data['title'])->toBe($cup->name.' starts now (Sat 10 Oct, 20:00 CEST)')
+        ->and($notice->data['body'])->toContain('Duel')
+        ->and($notice->data['body'])->toContain('the league opens your match against your opponent; you find it on the cup page')
+        ->and($notice->data['body'])->not->toContain('on the board');
 });

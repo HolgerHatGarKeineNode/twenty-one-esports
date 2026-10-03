@@ -44,22 +44,34 @@ final class CasualCupNotices
     }
 
     /**
-     * A small cup switched to its live evening (S2): when it starts, the
-     * format, and that the league starts every game.
+     * A small cup switched to one session at its close (S2; since
+     * 2026-10-03 it keeps its start, so it mostly starts now): when, the
+     * format, and how the first match comes. The league starts a chess or
+     * board game on the board itself; a series game's match (Rocket League,
+     * EA FC) is opened at the start, to be found on the cup page.
      *
      * @param  array{rounds: int, games_per_player: int, round_minutes: int, play_minutes: int, span_minutes: int}  $plan
      */
     public function eveningAnnounced(Tournament $cup, array $plan): void
     {
+        $now = $cup->starts_at->lessThanOrEqualTo(now()->addMinute());
+        $board = $cup->profile()->isChess() || $cup->profile()->isBoard();
+
         foreach ($this->signedUp($cup) as $player) {
             $locale = $this->locale($player);
+            $facts = [
+                'format' => CasualCups::isDuel($cup) ? __('Duel', [], $locale) : __($cup->format->label(), [], $locale),
+                'games' => $plan['games_per_player'],
+                'minutes' => $plan['span_minutes'],
+            ];
+            $start = ['tournament' => $cup->name, 'start' => $this->time($cup->starts_at, $player, $cup)];
 
-            $this->send($player, $cup, __(':tournament: live evening :start', ['tournament' => $cup->name, 'start' => $this->time($cup->starts_at, $player, $cup)], $locale),
-                __('Few signed up, so the cup is one evening: :format, :games games for you, about :minutes minutes. The league starts every game on the board; be online.', [
-                    'format' => __($cup->format->label(), [], $locale),
-                    'games' => $plan['games_per_player'],
-                    'minutes' => $plan['span_minutes'],
-                ], $locale), $locale);
+            $this->send($player, $cup,
+                $now ? __(':tournament starts now (:start)', $start, $locale) : __(':tournament starts :start', $start, $locale),
+                $board
+                    ? __('Few signed up, so the cup is played in one go: :format, :games games for you, about :minutes minutes. The league starts every game on the board; be online.', $facts, $locale)
+                    : __('Few signed up, so the cup is played in one go: :format, :games games for you, about :minutes minutes. At the start the league opens your match against your opponent; you find it on the cup page.', $facts, $locale),
+                $locale);
         }
     }
 
