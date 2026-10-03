@@ -195,7 +195,7 @@ test('the numbering runs per series: EU goes on to #2 while US stays at #1', fun
 
 /* ---------- The evening and the extension on the region's clock ----------------------------------------------- */
 
-test('a US cup with three players plays its evening at 20:00 New York the next day, and says so in New York time', function () {
+test('a US cup with three players plays its evening at 20:00 New York at its close, and says so in New York time', function () {
     Http::fake(['*/blocks/tip/height' => Http::response('900000')]);
     $cup = app(CasualCups::class)->ensure('chess', 'us');
     cupSignups($cup, 3);
@@ -206,9 +206,9 @@ test('a US cup with three players plays its evening at 20:00 New York the next d
     $player = User::query()->findOrFail($cup->signups()->firstOrFail()->members[0]);
 
     expect($cup->format)->toBe(TournamentFormat::RoundRobin)
-        ->and($cup->starts_at->setTimezone('America/New_York')->format('D Y-m-d H:i'))->toBe('Sun 2026-10-11 20:00')
+        ->and($cup->starts_at->setTimezone('America/New_York')->format('D Y-m-d H:i'))->toBe('Sat 2026-10-10 20:00')
         ->and($player->timezone)->toBeNull()
-        ->and($player->notifications()->get()->pluck('data.title')->last())->toBe('Chess Casual Cup US #1: live evening Sun 11 Oct, 20:00 EDT');
+        ->and($player->notifications()->get()->pluck('data.title')->last())->toBe('Chess Casual Cup US #1: live evening Sat 10 Oct, 20:00 EDT');
 });
 
 test('a US cup with a lone player is extended to its game\'s next US slot, across the US clock change', function () {

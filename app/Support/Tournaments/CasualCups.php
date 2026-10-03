@@ -723,7 +723,7 @@ final class CasualCups
         }
 
         // A lobby cup (P10) has no small format: too few extend sign-up once, then it is called off.
-        if (! Lobbies::isLobby($cup) && $this->toEvening($cup, $signedUp)) {
+        if (! Lobbies::isLobby($cup) && $this->toEvening($cup, $signedUp, keepStart: true)) {
             $this->draws->close($cup->refresh());
 
             return 'evenings';
