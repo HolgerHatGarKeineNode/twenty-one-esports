@@ -253,9 +253,10 @@ new #[Layout('layouts::app', ['section' => 'tournaments'])] class extends Compon
                 @endif
             </div>
 
-            {{-- The arena: everyone who is in, then your seat; your picture slides into it while you sign --}}
+            {{-- The arena: everyone who is in, then your seat; your picture slides into it while you sign.
+                 Before the sign-up it goes below the entry, so a phone has the confirm button in its first screen. --}}
             @if ($open || $entry)
-                <div class="flex flex-col gap-3" data-test="arena">
+                <div @class(['flex flex-col gap-3', 'order-last' => ! $entry]) data-test="arena">
                     <div class="flex flex-wrap items-center gap-2">
                         @foreach ($faces as $face)
                             <x-avatar :user="$face" :size="44" class="rounded-md" />
@@ -337,10 +338,13 @@ new #[Layout('layouts::app', ['section' => 'tournaments'])] class extends Compon
                     @endif
                 </div>
             @else
-                {{-- A game played outside the site: the notice and the tick that the player owns it, before either entry. --}}
-                @include('pages.tournaments.partials.own-copy', ['tournament' => $tournament, 'confirm' => true])
+                {{-- A game played outside the site: the notice, compact; the tick that the player owns it sits next to the
+                     confirm button (above the lineup when the player captains one, the solo entry follows it). --}}
+                @include('pages.tournaments.partials.own-copy', ['tournament' => $tournament, 'compact' => true])
 
                 @if ($lineup)
+                    @include('pages.tournaments.partials.own-copy-tick', ['tournament' => $tournament])
+
                     <div class="flex flex-col gap-3 rounded-md bg-ground p-4 shadow-ring-hairline" data-test="lineup-entry">
                         <h2 class="m-0 text-[15px] font-bold">{{ __('Bring your lineup') }}</h2>
                         <label class="flex flex-col gap-1.5 text-xs text-ink-2">
@@ -378,14 +382,12 @@ new #[Layout('layouts::app', ['section' => 'tournaments'])] class extends Compon
 
                 <div class="flex flex-col gap-3 rounded-md bg-ground p-4 shadow-ring-hairline" data-test="solo-entry">
                     <h2 class="m-0 text-[15px] font-bold">{{ $teams ? __('You play solo, we draw you into a mix team.') : __('Take your seat') }}</h2>
-                    <p class="m-0 text-[13px] leading-normal text-ink-2">
-                        {{ $teams
-                            ? __('When registration closes, all solo players are drawn into teams of :size from the hash of the next Bitcoin block. Every mix team gets a meme name. The draw is public and anyone can re-check it. Players left over wait as substitutes.', ['size' => $tournament->teamSize()])
-                            : __('Seeding is by Elo when registration closes; equal Elo goes to whoever signed up first.') }}
-                    </p>
                     @if ($lineup)
                         <p class="m-0 rounded-sm px-3 py-2 text-xs text-btc-hi shadow-[inset_0_0_0_1px_#5A3A12]">{{ __('You are captain of :clan. If you go solo, :clan can’t field you in this tournament.', ['clan' => $lineup->clan->name]) }}</p>
                     @endif
+                    @unless ($lineup)
+                        @include('pages.tournaments.partials.own-copy-tick', ['tournament' => $tournament])
+                    @endunless
                     <div>
                         <button type="button" x-on:click="who = 'solo'; run('prepareSolo', 'enterSolo')" x-bind:disabled="busy" data-test="enter-solo"
                                 @class(['inline-flex min-h-14 cursor-pointer items-center justify-center gap-2.5 rounded-md px-6 font-display text-base font-bold disabled:cursor-wait disabled:opacity-80',
@@ -395,6 +397,11 @@ new #[Layout('layouts::app', ['section' => 'tournaments'])] class extends Compon
                             <span x-show="busy && who === 'solo'" x-cloak>{{ __('Signing…') }}</span>
                         </button>
                     </div>
+                    <p class="m-0 text-[13px] leading-normal text-ink-2">
+                        {{ $teams
+                            ? __('When registration closes, all solo players are drawn into teams of :size from the hash of the next Bitcoin block. Every mix team gets a meme name. The draw is public and anyone can re-check it. Players left over wait as substitutes.', ['size' => $tournament->teamSize()])
+                            : __('Seeding is by Elo when registration closes; equal Elo goes to whoever signed up first.') }}
+                    </p>
                 </div>
                 <p class="m-0 text-xs leading-normal text-ink-3">{{ __('You sign with your Nostr key; the league keeps the signature as your consent and never publishes it. By registering you accept the tournament rules. You can pull out until registration closes.') }}</p>
             @endif

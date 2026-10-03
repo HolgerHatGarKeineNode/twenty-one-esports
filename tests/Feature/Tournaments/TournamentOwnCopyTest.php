@@ -45,6 +45,10 @@ test('an FC 26 tournament page says you need your own copy, with its platforms l
         ->toContain('href="https://store.steampowered.com/app/3405690/"', 'href="https://www.nintendo.com/us/store/products/ea-sports-fc-26-switch/"')
         ->toContain('data-test="own-copy-playstation"', 'data-test="own-copy-xbox"', 'data-test="own-copy-epic"')
         ->not->toContain('data-test="own-copy-free"')
+        // Only the Switch says it plays only against itself (esports.casual.crossplay_excluded).
+        ->and(substr_count($html, 'data-test="own-copy-no-crossplay"'))->toBe(1)
+        ->and(strpos($html, 'data-test="own-copy-no-crossplay"'))->toBeGreaterThan(strpos($html, 'data-test="own-copy-switch"'))
+        ->and($html)->toContain('no crossplay')
         // Above the sign-up action.
         ->and(strpos($html, 'data-test="own-copy"'))->toBeLessThan(strpos($html, 'data-test="to-signup"'));
 
@@ -59,7 +63,7 @@ test('Rocket League says free to play and leaves out Steam, where new players ca
     $html = $this->get(route('tournaments.show', openTournament(rocketLeague: true)))->assertOk()->getContent();
 
     expect($html)->toContain('You need your own copy of Rocket League to play', 'data-test="own-copy-free"', 'data-test="own-copy-epic"')
-        ->not->toContain('data-test="own-copy-steam"');
+        ->not->toContain('data-test="own-copy-steam"', 'data-test="own-copy-no-crossplay"');
 });
 
 test('the sign-up to an FC 26 tournament is refused without the ownership tick and accepted with it', function () {
@@ -69,7 +73,9 @@ test('the sign-up to an FC 26 tournament is refused without the ownership tick a
     $page = Livewire::actingAs($user)->test('pages::tournaments.signup', ['tournament' => $tournament])
         ->assertSee('data-test="own-copy"', false)
         ->assertSee('I own EA Sports FC 26 on one of these platforms')
-        ->assertSee('data-test="owns-game"', false);
+        ->assertSee('data-test="owns-game"', false)
+        // The tick sits right before the confirm button.
+        ->assertSeeInOrder(['data-test="own-copy"', 'data-test="owns-game"', 'data-test="enter-solo"'], false);
 
     // Without the tick: nothing to sign, and a signed consent from elsewhere is not stored either.
     expect($page->instance()->prepareSolo())->toBeNull();

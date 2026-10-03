@@ -28,6 +28,18 @@ enum StorePlatform: string
     }
 
     /**
+     * The device it runs on, as App\Enums\Platform's value: the PC stores are
+     * `pc`, a console is itself. `esports.casual.crossplay_excluded` lists these.
+     */
+    public function device(): string
+    {
+        return match ($this) {
+            self::Steam, self::Epic => 'pc',
+            default => $this->value,
+        };
+    }
+
+    /**
      * The x-icon name of its glyph.
      */
     public function icon(): string
