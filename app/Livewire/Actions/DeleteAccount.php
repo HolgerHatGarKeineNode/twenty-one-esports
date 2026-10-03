@@ -8,10 +8,12 @@ use App\Models\Admin;
 use App\Models\ChessGame;
 use App\Models\Tournament;
 use App\Models\TournamentParticipant;
+use App\Models\TournamentSignup;
 use App\Models\User;
 use App\Support\Chess\ChessGameService;
 use App\Support\Chess\ChessRuleViolation;
 use App\Support\Clans\ClanService;
+use App\Support\Tournaments\TournamentModeration;
 use App\Support\Tournaments\TournamentRunner;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
@@ -21,7 +23,7 @@ use Illuminate\Validation\ValidationException;
 
 class DeleteAccount
 {
-    public function __construct(private ChessGameService $games, private ClanService $clans, private TournamentRunner $runner) {}
+    public function __construct(private ChessGameService $games, private ClanService $clans, private TournamentRunner $runner, private TournamentModeration $moderation) {}
 
     /**
      * Delete everything this site stores about the user and log them out.
@@ -34,6 +36,11 @@ class DeleteAccount
      * account is withdrawn, and each match it would still play goes to the
      * opponent by forfeit, unrated (TournamentRunner::forfeitWithdrawn()).
      * Results already played stay with their pinned subjects (P7d F3).
+     *
+     * An entry of a tournament not drawn yet (sign-up or draw pending) is
+     * withdrawn, or a lineup drops the player while it still fields a team,
+     * with a league line in the moderation log: an entry left behind broke
+     * the draw on prod (2026-10-03, TournamentModeration::withdrawOrphaned()).
      */
     public function __invoke(User $user): void
     {
@@ -70,11 +77,16 @@ class DeleteAccount
             ->filter(fn (TournamentParticipant $participant): bool => in_array($user->id, $participant->memberIds(), true))
             ->pluck('tournament_id')->unique()->values();
 
+        $undrawn = TournamentSignup::query()->active()
+            ->whereHas('tournament', fn ($query) => $query->whereIn('status', [TournamentStatus::Signup, TournamentStatus::Drawing]))
+            ->get()->filter(fn (TournamentSignup $signup): bool => in_array($user->id, array_map(intval(...), $signup->members), true))
+            ->pluck('tournament_id')->unique()->values();
+
         if ($user->avatar_path !== null) {
             Storage::disk('public')->delete($user->avatar_path);
         }
 
-        DB::transaction(function () use ($user): void {
+        DB::transaction(function () use ($user, $undrawn): void {
             Admin::query()->where('pubkey', $user->pubkey)->delete();
 
             // The player leaves the clan like anyone else (a departure row with the pubkey, so the
@@ -86,6 +98,10 @@ class DeleteAccount
             }
 
             $user->delete();
+
+            foreach ($undrawn as $tournamentId) {
+                $this->moderation->withdrawOrphaned(Tournament::query()->lockForUpdate()->findOrFail((int) $tournamentId), 'The player deleted their account.');
+            }
         });
 
         foreach (Tournament::query()->whereIn('id', $tournaments)->get() as $tournament) {

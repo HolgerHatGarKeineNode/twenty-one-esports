@@ -2,13 +2,18 @@
 
 namespace App\Support\Tournaments;
 
+use App\Enums\NotificationKind;
 use App\Enums\TournamentStatus;
 use App\Models\Tournament;
 use App\Models\TournamentParticipant;
 use App\Models\TournamentSignup;
 use App\Models\User;
+use App\Support\Notifications\Notice;
+use App\Support\Notifications\Notifier;
 use App\Support\Rating\Ratings;
+use App\Support\Scores\LeagueWeekDrafts;
 use App\Support\SeasonChain\LeagueKey;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Throwable;
 
@@ -33,16 +38,28 @@ use Throwable;
  * new version of its 31923 that says so (as an admin's abort). Fail
  * closed: without the league key or a readable block nothing moves; the
  * scheduler tries again (`tournaments:tick`).
+ *
+ * An entry whose players have no account left is withdrawn before the
+ * entries are counted and before the participants are created
+ * (TournamentModeration::withdrawOrphaned()). A close or draw that throws
+ * anyway is reported and rings every admin in the bell, at most once per
+ * tournament and hour: on prod (2026-10-03) one sat in "Draw pending" for
+ * hours with only the error log knowing why.
  */
 final class TournamentDraws
 {
     public const TOURNAMENT_DRAW = 2155;
+
+    /** Reason of the league line for an entry the draw leaves out. */
+    public const ORPHAN_REASON = 'No player of this entry has an account any more.';
 
     public function __construct(
         private BitcoinBlocks $blocks,
         private TournamentBrackets $brackets,
         private TournamentRunner $runner,
         private TournamentPublisher $publisher,
+        private TournamentModeration $moderation,
+        private Notifier $notifier,
     ) {}
 
     /**
@@ -57,11 +74,11 @@ final class TournamentDraws
 
         // Each tournament on its own: one that fails is reported and the others go on.
         foreach (Tournament::query()->where('status', TournamentStatus::Signup)->where('signup_closes_at', '<=', now())->get() as $tournament) {
-            $closed += $this->isolated(fn (): bool => $this->close($tournament)) ? 1 : 0;
+            $closed += $this->isolated(fn (): bool => $this->close($tournament), $tournament) ? 1 : 0;
         }
 
         foreach (Tournament::query()->where('status', TournamentStatus::Drawing)->get() as $tournament) {
-            $drawn += $this->isolated(fn (): bool => $this->resolve($tournament)) ? 1 : 0;
+            $drawn += $this->isolated(fn (): bool => $this->resolve($tournament), $tournament) ? 1 : 0;
         }
 
         foreach (Tournament::query()->where('status', TournamentStatus::Running)->get() as $tournament) {
@@ -77,15 +94,52 @@ final class TournamentDraws
 
     /**
      * @param  callable(): bool  $step
+     * @param  Tournament|null  $alert  the tournament whose admins hear of a failure (close and draw)
      */
-    private function isolated(callable $step): bool
+    private function isolated(callable $step, ?Tournament $alert = null): bool
     {
         try {
             return $step();
         } catch (Throwable $e) {
             report($e);
 
+            if ($alert !== null) {
+                $this->alertAdmins($alert, $e);
+            }
+
             return false;
+        }
+    }
+
+    /**
+     * A bell entry for every admin that the close or draw of this tournament
+     * failed, with a short reason; at most once per tournament and hour, so a
+     * failure that repeats every minute does not bury the bell.
+     */
+    private function alertAdmins(Tournament $tournament, Throwable $e): void
+    {
+        try {
+            if (! Cache::add("tournament-draw-alert:{$tournament->id}", true, now()->addHour())) {
+                return;
+            }
+
+            $reason = mb_strimwidth(trim(strtok($e->getMessage(), "\n") ?: class_basename($e)), 0, 200, '…');
+
+            foreach (LeagueWeekDrafts::admins() as $admin) {
+                $locale = $admin->locale ?? (string) config('app.locale');
+
+                // The bell only (remote: false): an admin acts on it on the tournament's edit page.
+                $this->notifier->send($admin, NotificationKind::LeagueAlert, new Notice(
+                    __('Tournament :name: the draw failed', ['name' => $tournament->name], $locale),
+                    $reason,
+                    route('admin.tournaments.edit', $tournament),
+                    null,
+                    __('Open tournament', [], $locale),
+                ), remote: false);
+            }
+        } catch (Throwable $alertFailed) {
+            // The alert never hides the failure itself, which is reported above.
+            report($alertFailed);
         }
     }
 
@@ -109,6 +163,7 @@ final class TournamentDraws
                 return false;
             }
 
+            $this->moderation->withdrawOrphaned($locked, self::ORPHAN_REASON);
             $signups = TournamentSignup::query()->where('tournament_id', $locked->id)->active()->orderBy('id')->get();
             $size = $locked->teamSize();
             $solos = $signups->whereNull('lineup_id');
@@ -263,6 +318,9 @@ final class TournamentDraws
 
     private function createParticipants(Tournament $tournament, string $hash): void
     {
+        // A participant of a player without an account breaks on the foreign key (prod 2026-10-03).
+        $this->moderation->withdrawOrphaned($tournament, self::ORPHAN_REASON);
+
         // Seeded on the frozen ladder while it is open, else by the casual ratings (NIP rev. 7).
         $pool = Ratings::pool($tournament->openLadder() !== null);
         $signups = TournamentSignup::query()->where('tournament_id', $tournament->id)->active()->orderBy('id')->get();

@@ -93,6 +93,45 @@ final class TournamentModeration
     }
 
     /**
+     * Withdraw, inside the caller's transaction on the locked tournament, the
+     * entries whose players no longer have an account (prod 2026-10-03: a
+     * deleted account left its solo entry active, and creating its
+     * participant broke the draw on the foreign key every minute). A solo
+     * entry goes; a lineup drops the players gone and keeps its entry while
+     * it still fields a team (the sign-up rule: at least the team size),
+     * else it goes too. Each step is a league line in the moderation log.
+     * Returns how many entries were withdrawn.
+     */
+    public function withdrawOrphaned(Tournament $locked, string $reason): int
+    {
+        $signups = TournamentSignup::query()->where('tournament_id', $locked->id)->active()->orderBy('id')->lockForUpdate()->get();
+        $present = User::query()->whereKey($signups->pluck('members')->flatten()->map(intval(...))->unique()->all())->pluck('id')->all();
+        $withdrawn = 0;
+
+        foreach ($signups as $signup) {
+            $members = array_map(intval(...), $signup->members);
+            $left = array_values(array_intersect($members, $present));
+
+            if (count($left) === count($members) && $members !== [] && ($signup->lineup_id !== null || $signup->user_id !== null)) {
+                continue;
+            }
+
+            if ($signup->lineup_id !== null && count($left) >= $locked->teamSize()) {
+                $signup->forceFill(['members' => $left])->save();
+                $this->logLeague($locked, 'left', $signup, $reason);
+
+                continue;
+            }
+
+            $signup->forceFill(['withdrawn_at' => now()])->save();
+            $this->logLeague($locked, 'withdrawn', $signup, $reason);
+            $withdrawn++;
+        }
+
+        return $withdrawn;
+    }
+
+    /**
      * @throws TournamentRuleViolation
      */
     public function unblock(Tournament $tournament, User $actor, int $banId): void
@@ -204,6 +243,28 @@ final class TournamentModeration
     {
         $signup->forceFill(['removed_at' => now(), 'removed_by_id' => $actor->id, 'removal_reason' => $reason])->save();
         $this->log($locked, $actor, 'removed', subject: $signup->name, reason: $reason, signupId: $signup->id);
+    }
+
+    /**
+     * A line of the league itself (no actor). A solo entry is named "Deleted
+     * player", as its games are: the log does not keep the name of an account
+     * that asked to be deleted.
+     *
+     * @param  'left'|'withdrawn'  $action
+     */
+    private function logLeague(Tournament $locked, string $action, TournamentSignup $signup, string $reason): void
+    {
+        TournamentModerationEntry::query()->create([
+            'tournament_id' => $locked->id,
+            'user_id' => null,
+            'user_name' => 'League',
+            'action' => $action,
+            'tournament_signup_id' => $signup->id,
+            'subject' => $signup->lineup_id === null ? 'Deleted player' : mb_substr($signup->name, 0, 80),
+            'reason' => $reason,
+            'details' => null,
+            'created_at' => now(),
+        ]);
     }
 
     private function block(Tournament $locked, User $actor, User $player, string $reason): void

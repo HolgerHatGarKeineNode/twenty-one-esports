@@ -429,6 +429,8 @@ new #[Layout('layouts::app', ['section' => 'admin'])] class extends TournamentFo
         'reminded' => __('reminded a player'),
         'lobby_no_result' => __('closed a lobby without a result'),
         'pot_released' => __('released to the league reserve'),
+        'left' => __('took a player whose account is gone off an entry'),
+        'withdrawn' => __('withdrew an entry whose account is gone'),
     ];
     $shown = fn (mixed $value): string => match (true) {
         $value === null, $value === [] => '—',
