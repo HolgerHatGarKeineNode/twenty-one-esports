@@ -11,7 +11,7 @@
 @use('App\Support\TwentyOne\Stream\TvSlides', 'Tv')
 @php
     $t = is_array($tournament ?? null) ? $tournament : [];
-    $duels = array_values(array_filter(array_slice((array) ($t['live'] ?? []), 0, 2), fn (mixed $m): bool => is_array($m) && count((array) ($m['sides'] ?? [])) === 2));
+    $duels = \App\Support\TwentyOne\Stream\TvSlides::duels((array) ($t['live'] ?? []));
     $solo = count($duels) === 1;
     $faceD = $solo ? 192 : 115;
     $roundH = 26;

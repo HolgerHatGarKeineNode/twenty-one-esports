@@ -13,7 +13,7 @@
 @php
     $t = is_array($tournament ?? null) ? $tournament : [];
     $tvData = is_array($t['tv'] ?? null) ? $t['tv'] : [];
-    $tables = array_values(array_filter(array_slice((array) ($tvData['tables'] ?? []), 0, 4), fn (mixed $x): bool => is_array($x) && ($x['rows'] ?? []) !== []));
+    $tables = \App\Support\TwentyOne\Stream\TvSlides::tables((array) ($tvData['tables'] ?? []));
     $standing = is_array($t['standing'] ?? null) ? $t['standing'] : null;
     $teams = is_int($t['teamSize'] ?? null) && $t['teamSize'] > 1;
 @endphp

@@ -435,4 +435,42 @@ final class TvSlides
 
         return ['k' => $k, 'columns' => $out, 'lines' => $lines];
     }
+
+    /**
+     * The first two matches up now that have both sides (a class helper: a view closure leaks on every render).
+     *
+     * @param  array<mixed>  $live
+     * @return list<array<string, mixed>>
+     */
+    public static function duels(array $live): array
+    {
+        $duels = [];
+
+        foreach (array_slice($live, 0, 2) as $match) {
+            if (is_array($match) && count((array) ($match['sides'] ?? [])) === 2) {
+                $duels[] = $match;
+            }
+        }
+
+        return $duels;
+    }
+
+    /**
+     * The first four tables that have rows.
+     *
+     * @param  array<mixed>  $tables
+     * @return list<array<string, mixed>>
+     */
+    public static function tables(array $tables): array
+    {
+        $kept = [];
+
+        foreach (array_slice($tables, 0, 4) as $table) {
+            if (is_array($table) && ($table['rows'] ?? []) !== []) {
+                $kept[] = $table;
+            }
+        }
+
+        return $kept;
+    }
 }

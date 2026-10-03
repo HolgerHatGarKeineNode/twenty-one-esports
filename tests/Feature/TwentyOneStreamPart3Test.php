@@ -139,7 +139,7 @@ test('the work dir may not lie inside the served HLS directory', function () {
     Process::assertNothingRan();
 });
 
-test('a running tournament holds the stream with its live bracket and who is still standing; the next tournament waits until it ends', function () {
+test('a running tournament holds the stream in its TV look; the next tournament waits until it ends', function () {
     config(['esports.league.nsec' => (new TestSigner)->secret]);
     File::put(config('twentyone.stream.prepared'), 'fake');
     fakeEncoder($this->dir);
@@ -153,9 +153,10 @@ test('a running tournament holds the stream with its live bracket and who is sti
     $output = Artisan::output();
 
     // A running tournament takes the stream (2026-10-03): live bracket, then who is still standing, no call to sign up meanwhile.
-    expect($output)->toMatch('/rotation: t[abc]4 tournament '.$running->id.', rendered in/')->toMatch('/rotation: t[abc]5 tournament '.$running->id.', rendered in/')
-        ->and(preg_match('/rotation: t[abc]4 tournament/', $output, $four, PREG_OFFSET_CAPTURE))->toBe(1)
-        ->and(preg_match('/rotation: t[abc]5 tournament/', $output, $five, PREG_OFFSET_CAPTURE))->toBe(1)
+    // In its TV look: the bracket first, then the matches up now or the standings.
+    expect($output)->toContain('rotation: tv1 tournament '.$running->id.', rendered in')->toMatch('/rotation: tv[23] tournament '.$running->id.', rendered in/')
+        ->and(preg_match('/rotation: tv1 tournament/', $output, $four, PREG_OFFSET_CAPTURE))->toBe(1)
+        ->and(preg_match('/rotation: tv[23] tournament/', $output, $five, PREG_OFFSET_CAPTURE))->toBe(1)
         ->and($four[0][1])->toBeLessThan($five[0][1])
         ->and($output)->not->toContain('not built')->not->toContain('failed')
         ->and($output)->not->toContain('tournament '.$next->id.',');

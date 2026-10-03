@@ -14,7 +14,7 @@
     $state = (string) ($box['state'] ?? 'waiting');
     $live = $state === 'live';
     $sides = array_values(array_filter((array) ($box['sides'] ?? []), is_array(...)));
-    $winnerKnown = $state === 'done' && collect($sides)->contains(fn (array $s): bool => ($s['won'] ?? false) === true);
+    $winnerKnown = $state === 'done' && in_array(true, array_map('boolval', array_column($sides, 'won')), true);
     $padX = round($fs * 0.5, 1);
     $padY = round($fs * 0.35, 1);
     $pitch = round($fs * 1.25 + $fs * 0.2, 1);
