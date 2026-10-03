@@ -136,10 +136,15 @@ class LightningAddress
         if ($invoice === null
             || ! in_array($invoice->network, (array) config('esports.wallet.invoice_networks', ['bc']), true)
             || $invoice->amountMsats !== $msats
-            || $invoice->descriptionHash !== hash('sha256', $zapRequestJson)
             || $invoice->expiresAt() < time() + 60
         ) {
             throw new LightningAddressFailure('invoice_mismatch', 'the invoice does not match the zap request');
+        }
+
+        // The description hash is not required to match (user decision 2026-10-03, "Primal MUSS gehen"): Primal
+        // hashes something other than the zap request we send. A mismatch is logged.
+        if ($invoice->descriptionHash !== hash('sha256', $zapRequestJson)) {
+            Log::info('Zap invoice with a foreign description hash taken', ['host' => parse_url($callback, PHP_URL_HOST), 'msats' => $msats]);
         }
 
         return $invoice;

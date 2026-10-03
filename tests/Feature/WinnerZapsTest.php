@@ -47,11 +47,11 @@ beforeEach(function () {
  * callback with an invoice that commits to the `nostr` it got (or, with
  * `$wrongHash`, to something else).
  */
-function fakeZapWallet(bool $allowsNostr = true, bool $wrongHash = false, bool $nostrPubkey = true): void
+function fakeZapWallet(bool $allowsNostr = true, bool $wrongHash = false, bool $nostrPubkey = true, bool $wrongAmount = false): void
 {
     // A fresh client each time: a second Http::fake() on the same factory never answers (the first stub wins).
     Http::swap(new Factory);
-    Http::fake(function (Request $request) use ($allowsNostr, $wrongHash, $nostrPubkey) {
+    Http::fake(function (Request $request) use ($allowsNostr, $wrongHash, $nostrPubkey, $wrongAmount) {
         $url = parse_url($request->url());
 
         if (($url['host'] ?? '') !== 'wallet.example') {
@@ -68,7 +68,7 @@ function fakeZapWallet(bool $allowsNostr = true, bool $wrongHash = false, bool $
 
         parse_str($url['query'] ?? '', $query);
 
-        return Http::response(['pr' => Bolt11Fixture::make((int) $query['amount'], hash('sha256', $wrongHash ? 'something else' : (string) ($query['nostr'] ?? '')), network: 'bcrt')['invoice'], 'routes' => []]);
+        return Http::response(['pr' => Bolt11Fixture::make((int) $query['amount'] + ($wrongAmount ? 1000 : 0), hash('sha256', $wrongHash ? 'something else' : (string) ($query['nostr'] ?? '')), network: 'bcrt')['invoice'], 'routes' => []]);
     });
 }
 
@@ -171,7 +171,7 @@ test('a signed zap: the previewed zap request, checked against the template, bec
     });
 });
 
-test('a zap is refused for a changed request, a foreign key, a wallet without zaps and an invoice that commits to something else', function () {
+test('a zap is refused for a changed request, a foreign key, a wallet without zaps and an invoice for another amount', function () {
     $zapperKey = new TestSigner;
     $zapper = User::factory()->withPubkey($zapperKey->pubkey)->create();
     $anna = User::factory()->create(['lud16' => 'anna@wallet.example']);
@@ -196,9 +196,14 @@ test('a zap is refused for a changed request, a foreign key, a wallet without za
         expect(fn () => $zaps->invoice($zapper, 'game', (string) $game->id, $anna->id, 21, '', $sign($zapperKey, $template['tags'])))->toThrow(ZapRefused::class, 'takes no Nostr zaps');
     }
 
-    fakeZapWallet(wrongHash: true);
+    fakeZapWallet(wrongAmount: true);
     $zaps = app(WinnerZaps::class);
     expect(fn () => $zaps->invoice($zapper, 'game', (string) $game->id, $anna->id, 21, '', $sign($zapperKey, $template['tags'])))->toThrow(ZapRefused::class, 'matching invoice');
+
+    // Primal hashes something other than the zap request (measured 2026-10-03): the invoice is taken, the mismatch logged.
+    fakeZapWallet(wrongHash: true);
+    $zaps = app(WinnerZaps::class);
+    expect($zaps->invoice($zapper, 'game', (string) $game->id, $anna->id, 21, '', $sign($zapperKey, $template['tags']))['invoice'])->toStartWith('lnbcrt');
 
     // Not the winner, too much, yourself.
     expect(fn () => $zaps->template($zapper, 'game', (string) $game->id, $game->black_id, 21, ''))->toThrow(ZapRefused::class)
