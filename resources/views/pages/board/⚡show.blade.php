@@ -291,7 +291,7 @@ new #[Layout('layouts::app', ['realtime' => true, 'scripts' => ['resources/js/bo
                 <p role="alert" class="m-0 text-[13px] text-loss" x-show="error" x-text="error" data-test="board-error"></p>
 
                 <template x-if="state.status !== 'active'">
-                    <div class="flex flex-col gap-3 rounded-lg bg-card p-4">
+                    <div class="flex flex-col gap-3 rounded-lg bg-card p-4" data-test="board-result">
                         <span class="text-base font-bold" data-test="result" x-text="outcome"></span>
                         @if ($boardGame->tournament_match_id === null)
                             <x-button :href="route('board.lobby', $boardGame->game)" icon="bolt" data-test="next-opponent">{{ __('Find next opponent') }}</x-button>

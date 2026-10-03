@@ -624,10 +624,90 @@ new #[Layout('layouts::app', ['section' => 'chess', 'realtime' => true, 'scripts
 
                 @foreach (['top', 'bottom'] as $side)
                     @php($sideColor = $side === 'top' ? 'topColor' : 'bottomColor')
+                    @if ($side === 'top')
+                        <div class="max-lg:contents lg:col-start-2 lg:row-start-1 lg:flex lg:flex-col lg:gap-2.5" data-test="side-head">
+                            {{--
+                                Game over (ChessOverlays 1) and aborted (ChessStates), off the board (user, 2026-10-03: "nicht
+                                verdecken, sonst sieht man gar nicht, wie es zum Schachmatt zustande kam"): the final position
+                                stays in full view and the moves stay steppable. From lg it heads the side column, above the
+                                players and the moves; below lg this wrapper dissolves and the card sits under the board.
+                            --}}
+                            <template x-if="outcome">
+                                <section aria-labelledby="go-h" class="order-3 flex flex-col gap-3 rounded-lg bg-card p-5 shadow-[inset_0_0_0_1px_#2A2A30] lg:order-none" data-test="game-over">
+                                    <template x-if="outcome.key !== 'aborted'">
+                                        <div class="flex flex-col gap-3">
+                                            <div class="flex items-center gap-3">
+                                                <span class="flex size-10 shrink-0 items-center justify-center rounded-lg"
+                                                      :class="{ 'bg-[#122016] text-win': outcome.tone === 'win', 'bg-loss-tint text-loss': outcome.tone === 'loss', 'bg-well text-ink-2': outcome.tone === 'draw' }">
+                                                    <x-icon name="trophy" :size="22" x-show="outcome.tone === 'win'" /><x-icon name="flag" :size="22" x-show="outcome.tone === 'loss'" /><x-icon name="draw" :size="22" x-show="outcome.tone === 'draw'" />
+                                                </span>
+                                                <span class="flex min-w-0 flex-col gap-0.5">
+                                                    <h2 id="go-h" class="m-0 font-display text-2xl font-bold" :class="{ 'text-win': outcome.tone === 'win', 'text-loss': outcome.tone === 'loss', 'text-ink': outcome.tone === 'draw' }" x-text="outcome.title" data-test="outcome"></h2>
+                                                    <span class="text-[13px] text-ink-2" x-text="outcome.reason"></span>
+                                                </span>
+                                                <span class="grow"></span><b class="font-display text-lg whitespace-nowrap" x-text="outcome.result"></b>
+                                            </div>
+                                            <div class="flex flex-col border-t border-hairline">
+                                                {{-- A tournament game (user, 2026-10-03): the rating row only when a rating really moved, no casual "Hashrate" line unless it mined. --}}
+                                                <div class="grid h-[38px] grid-cols-[120px_minmax(0,1fr)] items-center border-b border-hairline text-[13px]" @if ($tournamentGame) x-show="color && state.rating?.[color] && state.rating[color].delta !== 0" data-test="game-over-rating-row" @endif><span class="text-ink-2">{{ __('Rating') }}</span><span data-test="game-over-rating" x-text="color && state.rating?.[color] ? (state.rating[color].pool === 'casual' ? @js(__('Casual')) : @js(__('Elo'))) + ' ' + state.rating[color].after + ' ' + (state.rating[color].delta > 0 ? '+' + state.rating[color].delta : (state.rating[color].delta < 0 ? '−' + Math.abs(state.rating[color].delta) : '±0')) : @js(__('casual, no Elo change'))">{{ __('casual, no Elo change') }}</span></div>
+                                                <div class="grid min-h-[38px] grid-cols-[120px_minmax(0,1fr)] items-center border-b border-hairline py-1.5 text-[13px]" @if ($tournamentGame) x-show="state.mining" data-test="game-over-mining-row" @endif><span class="text-ink-2">{{ __('Hashrate') }}</span><span data-test="game-over-mining" :class="state.mining?.status === 'block' ? 'text-win' : ''" x-text="state.mining ? state.mining.text : @js(__('casual games do not count'))">{{ __('casual games do not count') }}</span></div>
+                                            </div>
+                                            {{-- A tournament game: the panel below says what the result means; the badge would push it under the phone's chat bar. --}}
+                                            @unless ($tournamentGame)
+                                                <span class="inline-flex h-7 items-center gap-1.5 self-start rounded-sm bg-[#122016] px-2.5 text-xs font-bold text-win"><x-icon name="shield-check" :size="14" />{{ __('Saved') }}</span>
+                                            @endunless
+                                            @if ($tournamentGame)
+                                                <x-tournaments.game-end-slot :url="$tournamentUrl" />
+                                            @else
+                                                <x-button :href="route('chess.lobby', ['search' => 1, ...($game->rated ? ['rated' => 1] : [])])" class="w-full" data-test="find-next">{{ __('Find next opponent') }}</x-button>
+                                            @endif
+                                            {{-- P11: a rated result can be a rank up or a mined block; the share cards live on one page. --}}
+                                            <template x-if="color && state.rating?.[color]?.pool === 'rated'">
+                                                <a href="{{ route('settings.badges') }}#share" class="inline-flex min-h-11 items-center justify-center gap-1.5 text-[13px]" data-test="game-over-share"><x-icon name="send" :size="14" /><span x-text="state.mining?.status === 'block' && outcome.tone === 'win' ? @js(__('Share your block')) : @js(__('Badges and share cards'))"></span></a>
+                                            </template>
+                                            {{-- A tournament game has no rematch: the tournament decides the next game. --}}
+                                            @unless ($tournamentGame)
+                                            <template x-if="color">
+                                                <div class="grid grid-cols-2 gap-2">
+                                                    <template x-if="!state.rematchOffer">
+                                                        <x-button variant="quiet" icon="retry" x-on:click="call('offerRematch')" data-test="rematch">{{ __('Rematch') }}</x-button>
+                                                    </template>
+                                                    <template x-if="state.rematchOffer === color">
+                                                        <x-button variant="quiet" disabled class="opacity-70">{{ __('Rematch offered') }}</x-button>
+                                                    </template>
+                                                    <template x-if="state.rematchOffer && state.rematchOffer !== color">
+                                                        <x-button icon="retry" x-on:click="call('acceptRematch')" data-test="accept-rematch">{{ __('Accept rematch') }}</x-button>
+                                                    </template>
+                                                    <x-button variant="quiet" :href="route('games.show', $game)">{{ __('Replay game') }}</x-button>
+                                                </div>
+                                            </template>
+                                            @endunless
+                                            {{-- Rev. 9.4: optional, never on its own; the finished game's page shows the preview first. --}}
+                                            <template x-if="color && state.ply > 0 && state.status === 'finished' && !state.posted?.[color]">
+                                                <a href="{{ route('games.show', ['game' => $game, 'post' => 1]) }}#post" class="inline-flex min-h-11 items-center justify-center gap-1.5 text-[13px]" data-test="game-over-post"><x-icon name="send" :size="14" />{{ __('Share this game on Nostr') }}</a>
+                                            </template>
+                                        </div>
+                                    </template>
+                                    <template x-if="outcome.key === 'aborted'">
+                                        <div class="flex flex-col gap-3.5" data-test="aborted">
+                                            <b id="go-h" class="text-base">{{ __('Game aborted') }}</b>
+                                            <span class="text-[13px] leading-normal text-ink-2">{{ __('The game ended before both sides made their first move. It does not count.') }}</span>
+                                            @if ($tournamentGame)
+                                                <x-tournaments.game-end-slot :url="$tournamentUrl" />
+                                            @else
+                                                <span class="grid grid-cols-2 gap-2">
+                                                    <x-button :href="route('chess.lobby', ['search' => 1, ...($game->rated ? ['rated' => 1] : [])])" data-test="search-again">{{ __('Search again') }}</x-button>
+                                                    <x-button variant="quiet" :href="route('chess.lobby')">{{ __('Back to lobby') }}</x-button>
+                                                </span>
+                                            @endif
+                                        </div>
+                                    </template>
+                                </section>
+                            </template>
+                    @endif
                     <div @class([
-                        'grid grid-cols-[minmax(0,1fr)_auto] items-center gap-3 lg:col-start-2 lg:flex lg:flex-col lg:items-stretch lg:gap-2.5',
-                        'lg:row-start-1' => $side === 'top',
-                        'order-3 lg:order-none lg:row-start-3' => $side === 'bottom',
+                        'grid grid-cols-[minmax(0,1fr)_auto] items-center gap-3 lg:flex lg:flex-col lg:items-stretch lg:gap-2.5',
+                        'order-3 lg:order-none lg:col-start-2 lg:row-start-3' => $side === 'bottom',
                     ]) data-test="player-{{ $side }}">
                         {{-- Name card (kit section 6), with the opponent's Nostr profile (P10a) --}}
                         <div @class(['relative flex min-h-14 min-w-0 items-center gap-3 lg:items-start lg:overflow-hidden lg:rounded-lg lg:bg-card lg:p-3', 'lg:order-2' => $side === 'bottom'])>
@@ -653,6 +733,9 @@ new #[Layout('layouts::app', ['section' => 'chess', 'realtime' => true, 'scripts
                             @endif
                         @endforeach
                     </div>
+                    @if ($side === 'top')
+                        </div>
+                    @endif
                 @endforeach
 
                 {{--
@@ -757,83 +840,6 @@ new #[Layout('layouts::app', ['section' => 'chess', 'realtime' => true, 'scripts
                                             <button type="button" x-on:click="confirmAbort()" class="inline-flex h-11 cursor-pointer items-center justify-center gap-2 rounded-md border border-[#5A2A2E] bg-transparent px-4 text-[13px] text-loss">{{ __('Abort game') }}</button>
                                         </div>
                                         <span class="text-xs text-ink-3">{{ __('With no first move after 30 s the server aborts on its own.') }}</span>
-                                    </div>
-                                </div>
-                            </template>
-
-                            {{-- Game over (ChessOverlays 1) and aborted (ChessStates) --}}
-                            <template x-if="outcome">
-                                <div class="absolute inset-0 flex items-center justify-center p-3" data-test="game-over">
-                                    <div aria-hidden="true" class="absolute inset-0 bg-[rgba(10,10,11,.72)]"></div>
-                                    <div role="dialog" aria-modal="true" aria-labelledby="go-h" class="relative flex w-full max-w-[368px] flex-col gap-3 rounded-lg bg-card p-5 shadow-[inset_0_0_0_1px_#2A2A30,0_16px_48px_rgba(0,0,0,.6)]">
-                                        <template x-if="outcome.key !== 'aborted'">
-                                            <div class="flex flex-col gap-3">
-                                                <div class="flex items-center gap-3">
-                                                    <span class="flex size-10 shrink-0 items-center justify-center rounded-lg"
-                                                          :class="{ 'bg-[#122016] text-win': outcome.tone === 'win', 'bg-loss-tint text-loss': outcome.tone === 'loss', 'bg-well text-ink-2': outcome.tone === 'draw' }">
-                                                        <x-icon name="trophy" :size="22" x-show="outcome.tone === 'win'" /><x-icon name="flag" :size="22" x-show="outcome.tone === 'loss'" /><x-icon name="draw" :size="22" x-show="outcome.tone === 'draw'" />
-                                                    </span>
-                                                    <span class="flex min-w-0 flex-col gap-0.5">
-                                                        <h2 id="go-h" class="m-0 font-display text-2xl font-bold" :class="{ 'text-win': outcome.tone === 'win', 'text-loss': outcome.tone === 'loss', 'text-ink': outcome.tone === 'draw' }" x-text="outcome.title" data-test="outcome"></h2>
-                                                        <span class="text-[13px] text-ink-2" x-text="outcome.reason"></span>
-                                                    </span>
-                                                    <span class="grow"></span><b class="font-display text-lg whitespace-nowrap" x-text="outcome.result"></b>
-                                                </div>
-                                                <div class="flex flex-col border-t border-hairline">
-                                                    {{-- A tournament game (user, 2026-10-03): the rating row only when a rating really moved, no casual "Hashrate" line unless it mined. --}}
-                                                    <div class="grid h-[38px] grid-cols-[120px_minmax(0,1fr)] items-center border-b border-hairline text-[13px]" @if ($tournamentGame) x-show="color && state.rating?.[color] && state.rating[color].delta !== 0" data-test="game-over-rating-row" @endif><span class="text-ink-2">{{ __('Rating') }}</span><span data-test="game-over-rating" x-text="color && state.rating?.[color] ? (state.rating[color].pool === 'casual' ? @js(__('Casual')) : @js(__('Elo'))) + ' ' + state.rating[color].after + ' ' + (state.rating[color].delta > 0 ? '+' + state.rating[color].delta : (state.rating[color].delta < 0 ? '−' + Math.abs(state.rating[color].delta) : '±0')) : @js(__('casual, no Elo change'))">{{ __('casual, no Elo change') }}</span></div>
-                                                    <div class="grid min-h-[38px] grid-cols-[120px_minmax(0,1fr)] items-center border-b border-hairline py-1.5 text-[13px]" @if ($tournamentGame) x-show="state.mining" data-test="game-over-mining-row" @endif><span class="text-ink-2">{{ __('Hashrate') }}</span><span data-test="game-over-mining" :class="state.mining?.status === 'block' ? 'text-win' : ''" x-text="state.mining ? state.mining.text : @js(__('casual games do not count'))">{{ __('casual games do not count') }}</span></div>
-                                                </div>
-                                                {{-- A tournament game: the panel below says what the result means; the badge would push it under the phone's chat bar. --}}
-                                                @unless ($tournamentGame)
-                                                    <span class="inline-flex h-7 items-center gap-1.5 self-start rounded-sm bg-[#122016] px-2.5 text-xs font-bold text-win"><x-icon name="shield-check" :size="14" />{{ __('Saved') }}</span>
-                                                @endunless
-                                                @if ($tournamentGame)
-                                                    <x-tournaments.game-end-slot :url="$tournamentUrl" />
-                                                @else
-                                                    <x-button :href="route('chess.lobby', ['search' => 1, ...($game->rated ? ['rated' => 1] : [])])" class="w-full" data-test="find-next">{{ __('Find next opponent') }}</x-button>
-                                                @endif
-                                                {{-- P11: a rated result can be a rank up or a mined block; the share cards live on one page. --}}
-                                                <template x-if="color && state.rating?.[color]?.pool === 'rated'">
-                                                    <a href="{{ route('settings.badges') }}#share" class="inline-flex min-h-11 items-center justify-center gap-1.5 text-[13px]" data-test="game-over-share"><x-icon name="send" :size="14" /><span x-text="state.mining?.status === 'block' && outcome.tone === 'win' ? @js(__('Share your block')) : @js(__('Badges and share cards'))"></span></a>
-                                                </template>
-                                                {{-- A tournament game has no rematch: the tournament decides the next game. --}}
-                                                @unless ($tournamentGame)
-                                                <template x-if="color">
-                                                    <div class="grid grid-cols-2 gap-2">
-                                                        <template x-if="!state.rematchOffer">
-                                                            <x-button variant="quiet" icon="retry" x-on:click="call('offerRematch')" data-test="rematch">{{ __('Rematch') }}</x-button>
-                                                        </template>
-                                                        <template x-if="state.rematchOffer === color">
-                                                            <x-button variant="quiet" disabled class="opacity-70">{{ __('Rematch offered') }}</x-button>
-                                                        </template>
-                                                        <template x-if="state.rematchOffer && state.rematchOffer !== color">
-                                                            <x-button icon="retry" x-on:click="call('acceptRematch')" data-test="accept-rematch">{{ __('Accept rematch') }}</x-button>
-                                                        </template>
-                                                        <x-button variant="quiet" :href="route('games.show', $game)">{{ __('Replay game') }}</x-button>
-                                                    </div>
-                                                </template>
-                                                @endunless
-                                                {{-- Rev. 9.4: optional, never on its own; the finished game's page shows the preview first. --}}
-                                                <template x-if="color && state.ply > 0 && state.status === 'finished' && !state.posted?.[color]">
-                                                    <a href="{{ route('games.show', ['game' => $game, 'post' => 1]) }}#post" class="inline-flex min-h-11 items-center justify-center gap-1.5 text-[13px]" data-test="game-over-post"><x-icon name="send" :size="14" />{{ __('Share this game on Nostr') }}</a>
-                                                </template>
-                                            </div>
-                                        </template>
-                                        <template x-if="outcome.key === 'aborted'">
-                                            <div class="flex flex-col gap-3.5" data-test="aborted">
-                                                <b id="go-h" class="text-base">{{ __('Game aborted') }}</b>
-                                                <span class="text-[13px] leading-normal text-ink-2">{{ __('The game ended before both sides made their first move. It does not count.') }}</span>
-                                                @if ($tournamentGame)
-                                                    <x-tournaments.game-end-slot :url="$tournamentUrl" />
-                                                @else
-                                                    <span class="grid grid-cols-2 gap-2">
-                                                        <x-button :href="route('chess.lobby', ['search' => 1, ...($game->rated ? ['rated' => 1] : [])])" data-test="search-again">{{ __('Search again') }}</x-button>
-                                                        <x-button variant="quiet" :href="route('chess.lobby')">{{ __('Back to lobby') }}</x-button>
-                                                    </span>
-                                                @endif
-                                            </div>
-                                        </template>
                                     </div>
                                 </div>
                             </template>

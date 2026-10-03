@@ -275,7 +275,7 @@ test('a tournament game offers no abort, and a missed first move ends it on the 
         tournamentShot($page, "p18-forfeit-{$width}");
 
         $card = $page->evaluate('() => {
-            const dialog = document.querySelector("[data-test=game-over] [role=dialog]").getBoundingClientRect();
+            const dialog = document.querySelector("[data-test=game-over]").getBoundingClientRect();
             const reason = document.querySelector("[data-test=outcome] + span");
 
             return { left: dialog.left, right: dialog.right, width: dialog.width, height: dialog.height, reason: reason.innerText, clipped: reason.scrollWidth - reason.clientWidth };
