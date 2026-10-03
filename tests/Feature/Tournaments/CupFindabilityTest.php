@@ -59,6 +59,8 @@ function findableCupMatch(): array
     $cup = runningCup(4);
     cupTick();
     $match = openCupMatches($cup)->first();
+    // A live round (a cup evening): only a round ending within casual_lock_hours locks casual play.
+    $match->round->forceFill(['window_ends_at' => now()->addMinutes(30)])->save();
 
     return [$cup, $match, ...matchPlayers($match)];
 }
@@ -225,4 +227,11 @@ test('the league opening a tournament series or starting a tournament game tells
     foreach ([$game->white, $game->black] as $player) {
         expect($player->notifications()->get()->pluck('data')->where('title', $chess->name.': your game is on'))->toHaveCount(1);
     }
+});
+
+test('a cup round over days does not keep its players out of casual games', function () {
+    [, $match, $a] = findableCupMatch();
+    $match->round->forceFill(['window_ends_at' => now()->addHours(36)])->save();
+
+    expect(App\Support\Tournaments\CupMatchNow::lockOf($a))->toBeNull();
 });

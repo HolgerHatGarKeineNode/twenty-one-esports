@@ -310,5 +310,6 @@ test('a solo side shows its player\'s live name: a player who renamed is never s
     [$match, $host] = casualStarted();
     $host->forceFill(['name' => 'Renamed Player'])->save();
 
-    expect($match->fresh()->sideName('challenger'))->toBe('Renamed Player');
+    // The host's side is drawn at random: read it from the match.
+    expect($match->fresh()->sideName($match->participantSideOf($host)))->toBe('Renamed Player');
 });

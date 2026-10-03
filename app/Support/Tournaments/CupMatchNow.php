@@ -68,7 +68,10 @@ final class CupMatchNow
     public static function lockOf(User $user): ?TournamentMatch
     {
         return self::open($user)
-            ->whereHas('round', fn (Builder $query) => $query->whereNotNull('window_ends_at'))
+            // Only a live round locks: one that ends within `casual_lock_hours`. A cup round over days (36–48 h
+            // windows) must not keep a player out of casual games for two days (2026-10-03).
+            ->whereHas('round', fn (Builder $query) => $query->whereNotNull('window_ends_at')
+                ->where('window_ends_at', '<=', now()->addHours(max(1, (int) config('esports.tournaments.casual_lock_hours', 3)))))
             ->with('tournament')
             ->orderBy('id')
             ->first();
