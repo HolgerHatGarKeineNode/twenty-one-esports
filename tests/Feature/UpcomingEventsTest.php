@@ -307,3 +307,43 @@ test('home, /matches, /tournaments, the game page of that game and the account m
     auth()->logout();
     $this->get(route('home'))->assertOk()->assertDontSee('data-test="upcoming-', false);
 });
+
+test('home\'s card lists every event on the day of the first one, always visible; only later days wait behind "+N more"', function () {
+    $me = User::factory()->create(['locale' => 'en', 'timezone' => 'Europe/Berlin']);
+    // Wednesday noon in Berlin: two tonight, one tomorrow, one next week.
+    $first = upcomingTournament($me, now()->setTime(18, 0));
+    $tonight = upcomingTournament($me, now()->setTime(21, 30));
+    $tomorrow = upcomingTournament($me, now()->addDay()->setTime(19, 0));
+    $nextWeek = upcomingTournament($me, now()->addWeek());
+
+    $html = $this->actingAs($me)->get(route('home'))->assertOk()->getContent();
+    $card = substr($html, strpos($html, 'data-test="upcoming-card"'));
+    $card = substr($card, 0, strpos($card, '</section>'));
+    $sameDay = substr($card, strpos($card, 'data-test="upcoming-same-day"'));
+    $sameDay = substr($sameDay, 0, strpos($sameDay, '</ul>'));
+    $later = substr($card, strpos($card, 'id="upcoming-more-list"'));
+
+    expect(substr($card, 0, strpos($card, 'data-test="upcoming-same-day"')))->toContain('data-key="tournament-'.$first->id.'"')
+        // The second one tonight: in the always-visible list, not behind the toggle.
+        ->and($sameDay)->toContain('data-key="tournament-'.$tonight->id.'"')
+        ->and($sameDay)->not->toContain('x-show')
+        ->and($sameDay)->not->toContain('data-key="tournament-'.$tomorrow->id.'"')
+        // Later days behind "+2 more".
+        ->and($card)->toContain('+2 more')
+        ->and($later)->toContain('x-show="more"')
+        ->and($later)->toContain('data-key="tournament-'.$tomorrow->id.'"')
+        ->and($later)->toContain('data-key="tournament-'.$nextWeek->id.'"')
+        ->and($later)->not->toContain('data-key="tournament-'.$tonight->id.'"');
+});
+
+test('the control: with nothing else on the first event\'s day there is no same-day list, and every other event waits behind the toggle', function () {
+    $me = User::factory()->create(['locale' => 'en', 'timezone' => 'Europe/Berlin']);
+    upcomingTournament($me, now()->setTime(18, 0));
+    $tomorrow = upcomingTournament($me, now()->addDay()->setTime(19, 0));
+
+    $html = $this->actingAs($me)->get(route('home'))->assertOk()->getContent();
+
+    expect($html)->not->toContain('data-test="upcoming-same-day"')
+        ->and($html)->toContain('+1 more')
+        ->and(substr($html, strpos($html, 'id="upcoming-more-list"')))->toContain('data-key="tournament-'.$tomorrow->id.'"');
+});

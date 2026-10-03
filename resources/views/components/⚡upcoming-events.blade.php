@@ -13,7 +13,9 @@ use Livewire\Component;
  * open match rooms and registered tournaments, most urgent first.
  *
  * - `card`: home, at the very top: the most urgent one big (cover, who,
- *   countdown, one large button), the rest behind "+N more";
+ *   countdown, one large button), every other one on the same day (the
+ *   viewer's time zone) listed under it, always visible (user, 2026-10-03),
+ *   only the later days behind "+N more";
  * - `list`: the top of /matches (rooms), /tournaments (tournaments) and a
  *   game page (that game's), one row each.
  *
@@ -65,6 +67,18 @@ new class extends Component {
     $config = ['now' => $nowMs, 'labels' => ['hm' => __(':h h :m'), 'min' => __(':m min')]];
     // The words around a running number: "in 3 h 20" before something starts, "4:10 left" for a step.
     $suffix = fn (DockItem $item): string => $item->countsToStart() ? __('in :left') : __(':left left');
+    // The calendar day an event starts on, in the viewer's time zone: a tournament's start, a room's agreed start, else its own deadline.
+    $zone = (string) (auth()->user()?->timezone ?: config('esports.preseason.display_timezone'));
+    $dayOf = function (DockItem $item) use ($zone): ?string {
+        $at = match (true) {
+            $item->model instanceof \App\Models\Tournament => $item->model->starts_at,
+            $item->model instanceof \App\Models\SeriesMatch => $item->model->start_at,
+            default => null,
+        };
+        $ms = $at?->getTimestampMs() ?? $item->deadlineMs;
+
+        return $ms === null ? null : \Illuminate\Support\Carbon::createFromTimestampMs($ms)->setTimezone($zone)->toDateString();
+    };
     $button = fn (DockItem $item): string => match (true) {
         $item->kind === 'tournament' => __('Open tournament'),
         $item->phase === 'checkin' && $item->needsYou => __('Check in now'),
@@ -78,7 +92,9 @@ new class extends Component {
         @if ($variant === 'card')
             @php
                 $first = $items->first();
-                $rest = $items->slice(1);
+                $day = $dayOf($first);
+                $sameDay = $items->slice(1)->filter(fn (DockItem $item): bool => $day !== null && $dayOf($item) === $day)->values();
+                $rest = $items->slice(1)->reject(fn (DockItem $item): bool => $day !== null && $dayOf($item) === $day)->values();
                 $heading = $first->kind === 'tournament' ? __('Your next event') : __('Your next match');
             @endphp
             <section aria-labelledby="upcoming-h" class="px-4 pt-4 lg:px-12 lg:pt-6" data-test="upcoming-card" x-data="{ more: false }">
@@ -120,6 +136,15 @@ new class extends Component {
                         @endif
                     </div>
                     </div>
+
+                    {{-- The rest of the first one's day, always in sight (user, 2026-10-03): a second game tonight is no "more". --}}
+                    @if ($sameDay->isNotEmpty())
+                        <ul class="m-0 flex list-none flex-col gap-1 border-t border-hairline p-0 pt-2 lg:grid lg:grid-cols-2" data-test="upcoming-same-day">
+                            @foreach ($sameDay as $item)
+                                <x-upcoming.row :item="$item" :now-ms="$nowMs" :suffix="$suffix($item)" />
+                            @endforeach
+                        </ul>
+                    @endif
 
                     @if ($rest->isNotEmpty())
                         <ul id="upcoming-more-list" class="m-0 flex list-none flex-col gap-1 border-t border-hairline p-0 pt-2 lg:grid lg:grid-cols-2" x-show="more" x-cloak>
