@@ -60,8 +60,13 @@ Artisan::command('chess:check-clocks', function (ChessGameService $games) {
         ->where('deadline_ms', '<=', (int) now()->getTimestampMs())
         ->get();
 
+    // Each game on its own: one that throws is reported and the others still end on time.
     foreach ($due as $game) {
-        $games->checkClock($game);
+        try {
+            $games->checkClock($game);
+        } catch (Throwable $e) {
+            report($e);
+        }
     }
 
     $this->info("Checked {$due->count()} game(s).");
@@ -82,8 +87,13 @@ Artisan::command('board:check-clocks', function (BoardGameService $games) {
         ->where('deadline_ms', '<=', (int) now()->getTimestampMs())
         ->get();
 
+    // Each game on its own: one that throws is reported and the others still end on time.
     foreach ($due as $game) {
-        $games->checkClock($game);
+        try {
+            $games->checkClock($game);
+        } catch (Throwable $e) {
+            report($e);
+        }
     }
 
     $this->info("Checked {$due->count()} game(s).");

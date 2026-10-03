@@ -21,6 +21,7 @@ use Illuminate\Console\Scheduling\Schedule;
 use Illuminate\Contracts\Broadcasting\Broadcaster;
 use Illuminate\Database\QueryException;
 use Illuminate\Support\Facades\Event;
+use Illuminate\Support\Facades\Exceptions;
 use Illuminate\Support\Facades\Queue;
 use Illuminate\Support\Facades\Route;
 use Livewire\Livewire;
@@ -268,6 +269,20 @@ test('a flag falls by the queued job: the side to move loses on time', function 
         ->and($game->white_ms)->toBe(0)
         ->and($game->deadline_ms)->toBeNull();
     Event::assertDispatched(BoardGameUpdated::class, fn (BoardGameUpdated $event) => $event->state['reason'] === 'timeout');
+});
+
+test('a game that throws in the clock sweep is reported, and the other games still end on time', function () {
+    $bad = playBoard(startBoardGame(), ['b2', 'a1', 'c3']);
+    $good = playBoard(startBoardGame(), ['b2', 'a1', 'c3']);
+    Exceptions::fake();
+    BoardGame::saving(fn (BoardGame $game) => $game->id === $bad->id ? throw new RuntimeException('a broken game') : null);
+
+    $this->travel(300)->seconds();
+    $this->artisan('board:check-clocks')->expectsOutput('Checked 2 game(s).')->assertSuccessful();
+
+    expect($good->refresh()->status)->toBe(BoardGameStatus::Finished)
+        ->and($bad->refresh()->status)->toBe(BoardGameStatus::Active);
+    Exceptions::assertReported(fn (RuntimeException $e): bool => $e->getMessage() === 'a broken game');
 });
 
 test('a flag falls by the scheduled sweep when no job ran; a missed first move aborts', function () {

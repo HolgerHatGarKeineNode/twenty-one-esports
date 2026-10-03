@@ -8,6 +8,7 @@ use App\Models\User;
 use App\Support\Chess\ChessGameService;
 use App\Support\Chess\ChessRuleViolation;
 use Illuminate\Support\Facades\Event;
+use Illuminate\Support\Facades\Exceptions;
 
 // Clocks are compared to the millisecond: time only moves when a test travels.
 beforeEach(fn () => $this->freezeTime());
@@ -100,6 +101,20 @@ test('a flag falls on the server without anyone moving again', function () {
         ->and($game->white_ms)->toBe(303_000);
 
     Event::assertDispatched(ChessGameUpdated::class, fn (ChessGameUpdated $event) => $event->state['reason'] === 'timeout');
+});
+
+test('a game that throws in the clock sweep is reported, and the other games still end on time', function () {
+    $bad = playChess(ChessGame::factory()->create(), ['e2e4', 'e7e5', 'g1f3']);
+    $good = playChess(ChessGame::factory()->create(), ['e2e4', 'e7e5', 'g1f3']);
+    Exceptions::fake();
+    ChessGame::saving(fn (ChessGame $game) => $game->id === $bad->id ? throw new RuntimeException('a broken game') : null);
+
+    $this->travel(302)->seconds();
+    $this->artisan('chess:check-clocks')->expectsOutput('Checked 2 game(s).')->assertSuccessful();
+
+    expect($good->refresh()->status)->toBe(ChessGameStatus::Finished)
+        ->and($bad->refresh()->status)->toBe(ChessGameStatus::Active);
+    Exceptions::assertReported(fn (RuntimeException $e): bool => $e->getMessage() === 'a broken game');
 });
 
 test('with no first move in time the server aborts the game', function () {
