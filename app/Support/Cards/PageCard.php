@@ -256,7 +256,7 @@ final class PageCard
                 '0-1' => __(':name won', ['name' => $f['black']['name']]),
                 default => $this->gameHeadline(),
             }.'. '.$f['white']['name'].' '.__('(white)').', '.$f['black']['name'].' '.__('(black)').'.',
-            'tournament' => $f['name'].'. '.$this->tournamentStatus().'.',
+            'tournament' => $f['name'].'. '.$this->tournamentStatus().'.'.($f['score_unit'] !== null ? ' '.$this->leaderLine().'.' : ''),
             'player' => $f['name'].($f['best'] !== null ? '. '.$this->bestLine() : '').'.',
             'clan' => $f['name'].'. '.trans_choice(':count player|:count players', (int) $f['members']).'.',
             'series' => $f['challenger']['name'].' vs '.$f['challenged']['name'].'.',
@@ -534,7 +534,44 @@ final class PageCard
             $this->c->text($this->c->fit(__(':local local time', ['local' => $f['starts_local']]), 'mono', self::MIN, $max), 'mono', self::MIN, self::M, $after + 42, Canvas::INK_2);
         }
 
+        if ($f['score_unit'] !== null) {
+            $this->leader(self::M, 480, self::RIGHT - self::M);
+
+            return;
+        }
+
         $this->seats(self::M, 424, self::RIGHT - self::M, 56);
+    }
+
+    /** A score leaderboard's best so far and who holds it ("Best time 0:25.100 by Ada"), or that there is none yet. */
+    private function leaderLine(): string
+    {
+        $leader = $this->facts['leader'];
+        $time = $this->facts['score_unit'] === 'ms';
+
+        if ($leader === null) {
+            return $time ? __('No time yet') : __('No score yet');
+        }
+
+        return __($time ? 'Best time :value by :name' : 'Best score :value by :name', ['value' => $leader['value'], 'name' => $leader['name']]);
+    }
+
+    /** In place of the places on a score leaderboard: the best value large in orange, who holds it beside it. */
+    private function leader(int $x, int $baseline, int $width): void
+    {
+        $leader = $this->facts['leader'];
+        $time = $this->facts['score_unit'] === 'ms';
+
+        if ($leader === null) {
+            $this->c->text($time ? __('No time yet') : __('No score yet'), 'display', 44, $x, $baseline, Canvas::INK_2);
+
+            return;
+        }
+
+        $this->c->text($time ? __('Best time') : __('Best score'), 'mono-bold', self::MIN, $x, $baseline - 62, Canvas::INK_2);
+        $this->c->text($leader['value'], 'display', 52, $x, $baseline, Canvas::ORANGE);
+        $after = $x + $this->c->width($leader['value'], 'display', 52) + 32;
+        $this->c->text($this->c->fit((string) $leader['name'], 'display', 40, $x + $width - $after), 'display', 40, $after, $baseline, Canvas::INK);
     }
 
     /** "Chess Blitz 5+3, Swiss"; a lobby tournament (P10) "Age of Empires II: Definitive Edition, One lobby match". */

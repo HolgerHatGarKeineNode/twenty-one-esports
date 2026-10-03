@@ -9,6 +9,7 @@ use App\Models\NostrEvent;
 use App\Models\ScoreRun;
 use App\Models\Tournament;
 use App\Models\User;
+use App\Support\Cards\PageCard;
 use App\Support\Cards\ShareCard;
 use App\Support\Cards\SharePosts;
 use App\Support\Cards\ShareRefused;
@@ -475,4 +476,21 @@ test('with a server login, How to join gives the favourite link and the restart 
         ->assertSee('Open the Explorer in TMNF and paste the link into the bar at the top, then press Enter.')
         ->assertSee('Restart TMNF.')
         ->assertSee('data-test="join-search-name"', false);
+});
+
+test('the week\'s link preview shows the best time and its holder, "No time yet" before the first run, never places', function () {
+    $this->artisan('tmnf:weeks')->assertSuccessful();
+    $week = app(TmnfWeeks::class)->current();
+
+    expect(PageCard::tournament($week)->alt())->toContain('No time yet')->not->toContain('places');
+
+    tmnfPlayer('ada_drives', linked: true, attributes: ['name' => 'Ada']);
+    tmnfPlayer('ben_drives', linked: true, attributes: ['name' => 'Ben']);
+    tmnfFinish('ada_drives', 25_100);
+    tmnfFinish('ben_drives', 25_400);
+    $card = PageCard::tournament($week->refresh());
+
+    expect($card->alt())->toContain('Best time 0:25.100 by Ada')->not->toContain('places')
+        ->and($card->facts['leader'])->toBe(['value' => '0:25.100', 'name' => 'Ada'])
+        ->and(substr($card->render(), 0, 8))->toBe("\x89PNG\r\n\x1a\n");
 });

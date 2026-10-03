@@ -126,6 +126,9 @@ final class PageCardFacts
         $cup = $tournament->isCasualCup();
         $zone = $cup ? CasualCups::timezoneOf($tournament) : (string) config('esports.preseason.display_timezone');
         $starts = $tournament->starts_at;
+        // A score leaderboard (a TMNF or Blockfill week) has no places to fill: its capacity follows the entries.
+        $unit = $tournament->format === TournamentFormat::Leaderboard && app(GameRegistry::class)->isScore($tournament->game)
+            ? app(ScoreRuns::class)->metricOf($tournament)->unit : null;
 
         return [
             'name' => $tournament->title(),
@@ -147,7 +150,29 @@ final class PageCardFacts
             'pot' => $pot,
             'left' => $pot === null ? null : max(0, $pot - PrizePool::paidSats($tournament)),
             'podium' => $tournament->status === TournamentStatus::Finished ? self::podium($tournament) : [],
+            // `ms` or `points` on a score leaderboard, else null.
+            'score_unit' => $unit,
+            'leader' => $unit !== null ? self::leader($tournament) : null,
         ];
+    }
+
+    /**
+     * The best value of a score leaderboard so far, formatted, and who holds
+     * it; null before the first counted run.
+     *
+     * @return array{value: string, name: string}|null
+     */
+    private static function leader(Tournament $tournament): ?array
+    {
+        $runs = app(ScoreRuns::class);
+
+        foreach ($runs->standings($tournament) as $row) {
+            if ($row->place !== null && $row->value !== null) {
+                return ['value' => $runs->metricOf($tournament)->format((int) $row->value), 'name' => (string) $row->participant->name];
+            }
+        }
+
+        return null;
     }
 
     /**
