@@ -387,7 +387,7 @@ test('a ranked run the league turns away as busy says it was not saved, never th
 /** Whether the well lies inside the viewport: below the sticky header, and above the touch panel when that is shown. */
 const STACKER_WELL_IN_VIEW = '() => { const w = document.querySelector("[data-test=well]").getBoundingClientRect(); const panel = document.querySelector("[data-test=touch]"); const floor = panel && getComputedStyle(panel).display !== "none" ? panel.getBoundingClientRect().top : innerHeight; const ceiling = document.querySelector("body > header").getBoundingClientRect().bottom; return w.top >= ceiling && w.bottom <= floor; }';
 
-test('the next run starts with the well in view, after the result had scrolled the page down', function (string $device, int $width, int $height) {
+test('the next run starts with the well in view, after the result had scrolled the page down', function (string $device, int $width, int $height, ?int $countdownMs) {
     $page = $device === 'touch' ? visit(BrowserLogin::LANDING)->on()->mobile()->page() : visit(BrowserLogin::LANDING)->page();
     $page->context()->addInitScript(BrowserConsole::COLLECTOR);
     $page->setViewportSize($width, $height);
@@ -401,20 +401,28 @@ test('the next run starts with the well in view, after the result had scrolled t
     $scrolled = $page->evaluate('() => ({ inView: ('.STACKER_WELL_IN_VIEW.')(), scrollY: Math.round(scrollY), result: document.querySelector("[data-test=result]").getBoundingClientRect().toJSON(), well: document.querySelector("[data-test=well]").getBoundingClientRect().toJSON(), mode: window.__stacker.state().mode })');
     expect($scrolled['inView'])->toBeFalse(json_encode($scrolled));
 
+    // The countdown's length is pinned, not left to the wall clock: 0 is the order in which it ran out before the
+    // checks below looked (a slow round trip on a loaded host), and the checks must hold in that order too.
+    if ($countdownMs !== null) {
+        $page->evaluate('(ms) => window.__stacker.countdown(ms)', $countdownMs);
+    }
+
     // the touch player taps Play again, the keyboard player presses R
     if ($device === 'touch') {
         $page->locator('[data-test=play-again]')->tap();
     } else {
         $page->locator('body')->press('KeyR');
     }
-    BrowserWait::until($page, '() => window.__stacker.state().mode === "countdown"', 3_000);
+    // the next run has begun: its countdown, or already the run once the countdown is over
+    BrowserWait::until($page, '() => { const s = window.__stacker.state(); return s.result === null && ["countdown", "playing"].includes(s.mode); }', 3_000);
     BrowserWait::until($page, STACKER_WELL_IN_VIEW, 3_000);
     shellShot($page, "stacker-{$width}-restart");
 
     expect($page->evaluate('() => window.__errors'))->toBe([]);
 })->with([
-    'touch 375' => ['touch', 375, 812],
-    'keyboard 1023' => ['keyboard', 1023, 800],
+    'touch 375' => ['touch', 375, 812, null],
+    'keyboard 1023' => ['keyboard', 1023, 800, null],
+    'touch 375, countdown over before the checks' => ['touch', 375, 812, 0],
 ]);
 
 test('on a small phone (360x640) the whole well stays above the touch panel', function () {

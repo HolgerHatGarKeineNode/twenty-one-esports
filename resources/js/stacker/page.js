@@ -131,6 +131,8 @@ document.addEventListener('alpine:init', () => {
             flashUntil: 0,
             flashRows: 0,
             countdownUntil: 0,
+            // the countdown's length; the browser tests set it (test hook countdown()) instead of racing the clock
+            countdownMs: COUNTDOWN_MS,
             token: null,
             seed: null,
             keys: new Map(),
@@ -405,7 +407,7 @@ document.addEventListener('alpine:init', () => {
             beginCountdown(id, then) {
                 this.mode = 'countdown';
                 this.revealWell();
-                rt.countdownUntil = performance.now() + COUNTDOWN_MS;
+                rt.countdownUntil = performance.now() + rt.countdownMs;
                 let beeped = 0;
                 const step = () => {
                     if (id !== rt.runId || this.mode !== 'countdown') {
@@ -835,6 +837,14 @@ document.addEventListener('alpine:init', () => {
                     },
                     release() {
                         rt.release?.();
+                    },
+                    /**
+                     * Sets the length of every countdown from now on, in ms: 0 starts a
+                     * run at once, so a test can pin either order of the countdown's end
+                     * and its own checks instead of hoping the wall clock picks one.
+                     */
+                    countdown(ms) {
+                        rt.countdownMs = Math.max(0, Number(ms) || 0);
                     },
                     state() {
                         const game = rt.session?.game;
