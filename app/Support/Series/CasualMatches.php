@@ -145,7 +145,9 @@ final class CasualMatches
      */
     public static function runningMatchOf(User $user, ?int $except = null): ?SeriesMatch
     {
-        return self::playedBy(SeriesMatch::query()->whereNotNull('origin'), $user)
+        // A casual cup's series (RL, EA FC) runs a whole round window in the players' own game: it never locks
+        // the site's live games, else a player in two cups at once cannot start the other cup's chess game (2026-10-03).
+        return self::playedBy(SeriesMatch::query()->whereNotNull('origin')->where('origin', '!=', SeriesMatch::ORIGIN_CUP), $user)
             ->whereIn('status', self::RUNNING)
             ->where(fn (Builder $query) => $query->whereNotIn('origin', SeriesMatch::SCHEDULED_ORIGINS)
                 ->orWhere('start_at', '<=', now()->addMinutes((int) config('esports.casual.checkin_before_minutes', 10))))

@@ -324,7 +324,7 @@ new #[Layout('layouts::app', ['section' => 'tournaments', 'realtime' => true])] 
             $action($user);
         } catch (ChessRuleViolation|BoardRuleViolation $violation) {
             $this->cupError = match ($violation->reason) {
-                'already_playing', 'accept_while_playing', 'playing_elsewhere' => __('You are in a live game. One live game at a time: finish it, then play your cup match.'),
+                'already_playing', 'accept_while_playing', 'playing_elsewhere', 'casual_playing' => __('You are in a live game. One live game at a time: finish it, then play your cup match.'),
                 'opponent_playing' => __('Your opponent is in another live game right now. Try again when it is over.'),
                 'invite_closed' => __('That invite is no longer open.'),
                 'match_not_open', 'not_your_match' => __('This match cannot be started now.'),

@@ -92,6 +92,8 @@ test('a proposed and accepted time starts the cup series when its check-in opens
     $series = cupSeriesOf($match);
 
     expect($series->origin)->toBe(SeriesMatch::ORIGIN_CUP)
+        // A cup series never locks the site's live games: a player in two cups still starts the other's chess game.
+        ->and(App\Support\Series\CasualMatches::runningMatchOf($a))->toBeNull()
         ->and($series->status)->toBe(SeriesStatus::Accepted)
         ->and($series->best_of)->toBe(3)
         ->and($series->rated)->toBeFalse()
