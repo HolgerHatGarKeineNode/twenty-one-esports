@@ -716,9 +716,13 @@ class SeriesMatch extends Model
      */
     private function liveSoloNames(): array
     {
-        return once(fn (): array => User::query()->whereKey(array_map(intval(...), array_merge((array) ($this->sides['challenger'] ?? []), (array) ($this->sides['challenged'] ?? []))))
-            ->get()->mapWithKeys(fn (User $user): array => [$user->id => $user->displayName()])->all());
+        // On the instance, not once(): once() keys by spl_object_id, which a later model can reuse in a daemon.
+        return $this->liveSoloNames ??= User::query()->whereKey(array_map(intval(...), array_merge((array) ($this->sides['challenger'] ?? []), (array) ($this->sides['challenged'] ?? []))))
+            ->get()->mapWithKeys(fn (User $user): array => [$user->id => $user->displayName()])->all();
     }
+
+    /** @var array<int, string>|null */
+    private ?array $liveSoloNames = null;
 
     public function sideTag(string $side): string
     {
