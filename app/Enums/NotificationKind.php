@@ -115,7 +115,8 @@ enum NotificationKind: string
      * | league_week_approval     | LeagueWeekDrafts (admins only: a league week needs approving, a reminder,   | days           | page only        |
      * |                          | the TMNF server could not be switched to the week's track)                  |                |                  |
      * | league_alert             | TournamentDraws (admins only: a tournament's close or draw failed; once     | hours          | page only        |
-     * |                          | per tournament and hour)                                                    |                |                  |
+     * |                          | per tournament and hour); TournamentPreflight (a check before the close     |                |                  |
+     * |                          | or draw failed; once per tournament, check and hour)                        |                |                  |
      *
      * (1) Never a DM (user decision 2026-09-30: "IMMER sinnlos"). A push at
      * most once per game and hour, and not while the player is at the board

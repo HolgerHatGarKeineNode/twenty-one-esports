@@ -301,6 +301,46 @@ final class TournamentDraws
     }
 
     /**
+     * The draw rehearsed (TournamentPreflight, P7): the participants and the
+     * bracket as resolve() would build them from this hash, in a transaction
+     * that is always rolled back. A casual cup still following its sign-ups
+     * is drawn in the format they pick now (CasualCups::plannedFormat()).
+     * Whatever the real draw would throw is thrown here, before the close;
+     * nothing stays (no participant, no bracket, no withdrawal, no push).
+     * Returns how many participants the draw would create.
+     *
+     * @throws Throwable
+     */
+    public function rehearse(Tournament $tournament, string $hash): int
+    {
+        DB::beginTransaction();
+
+        try {
+            $locked = Tournament::query()->with('event')->lockForUpdate()->findOrFail($tournament->id);
+
+            if ($locked->participants()->exists()) {
+                return $locked->participants()->count();
+            }
+
+            if (CasualCups::followsSignups($locked)) {
+                $plan = CasualCups::plannedFormat($locked);
+                $locked->forceFill(['format' => $plan['format'], 'options' => FormatOptions::fromArray($plan['options'], $locked->profile())->toArray()])->save();
+            }
+
+            $this->createParticipants($locked, $hash);
+            $participants = $locked->participants()->count();
+
+            if ($participants >= Lobbies::minEntriesOf($locked)) {
+                $this->brackets->generate($locked, $hash);
+            }
+
+            return $participants;
+        } finally {
+            DB::rollBack();
+        }
+    }
+
+    /**
      * The mix teams a block hash makes of this tournament's solo pool, with
      * their names: the same hash always gives the same teams.
      *

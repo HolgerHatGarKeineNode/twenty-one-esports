@@ -35,6 +35,7 @@ use App\Support\Stacker\BlockfillWeeks;
 use App\Support\Stacker\StackerRuns;
 use App\Support\Tmnf\TmnfWeeks;
 use App\Support\Tournaments\TournamentDraws;
+use App\Support\Tournaments\TournamentPreflight;
 use App\Support\Tournaments\TournamentScheduler;
 use App\Support\Tournaments\TournamentSignups;
 use Illuminate\Foundation\Inspiring;
@@ -355,6 +356,39 @@ Artisan::command('tournaments:tick', function (TournamentScheduler $scheduler) {
 })->purpose('Move tournaments on and apply their due deadlines');
 
 Schedule::command('tournaments:tick')->everyMinute()->withoutOverlapping()->onOneServer();
+
+/*
+ * The check before the close (P7, TournamentPreflight): every tournament
+ * whose sign-up closes within 90 minutes and every draw pending is checked
+ * for the accounts of its entries, a format that fits them, the Bitcoin API,
+ * the league key and the scheduler's heartbeat, and its draw is rehearsed on
+ * the current tip and rolled back. Each finding is logged and rings the
+ * admins, at most once per tournament, finding and hour.
+ */
+Artisan::command('tournaments:preflight', function (TournamentPreflight $preflight) {
+    $rows = $preflight->run();
+
+    if ($rows === []) {
+        $this->info('No tournament closes within '.TournamentPreflight::WINDOW_MINUTES.' minutes or waits for its draw.');
+
+        return 0;
+    }
+
+    $this->table(['Tournament', 'Status', 'Check', 'Result', 'Detail'], array_map(fn (array $row): array => [
+        '#'.$row['tournament']->id.' '.$row['tournament']->name,
+        $row['tournament']->status->value,
+        $row['check'],
+        $row['ok'] ? 'ok' : 'FAILED',
+        $row['detail'],
+    ], $rows));
+
+    $failed = count(array_filter($rows, fn (array $row): bool => ! $row['ok']));
+    $failed === 0 ? $this->info('Every check passed.') : $this->error("{$failed} check(s) failed: the admins were told.");
+
+    return $failed === 0 ? 0 : 1;
+})->purpose('Check the tournaments that close or draw soon, and rehearse their draw');
+
+Schedule::command('tournaments:preflight')->everyTenMinutes()->withoutOverlapping()->onOneServer();
 
 /*
  * Livewire's temporary uploads (livewire-tmp) older than a day (re-audit P10,
