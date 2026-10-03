@@ -54,9 +54,8 @@ use App\Games\TrackmaniaNationsForever;
  * every round is one running tournament for `runningSeconds`, its slides as
  * the tournament TV shows them (RUNNING_PARTS: live bracket, still standing,
  * live bracket, how it runs), in the round's look. Several running
- * tournaments take turns, never the same twice in a row; after every pass
- * through all of them one break slot follows: a live game's match while one
- * runs, else one EVERY_ROUND teaser. No loop while a tournament runs.
+ * tournaments take turns, never the same twice in a row, and nothing else
+ * shows until the last one ends: no match, no teaser, no loop.
  *
  * Blockfill (plan "Blockfill", P6) has one teaser, BLOCKFILL_SCENE (f1,
  * BlockfillSlide): while it is registered it joins the end of the pool
@@ -196,7 +195,7 @@ final class RotationPlanner
     /** The running tournament shown last. */
     private ?int $lastRunning = null;
 
-    /** Running-tournament rounds so far (the break slot comes after every pass through all of them). */
+    /** Running-tournament rounds so far. */
     private int $runningRounds = 0;
 
     /** Rounds that carried a look (every round with games, every tournament round without). */
@@ -456,7 +455,7 @@ final class RotationPlanner
      * A running tournament's round: the next running one after the one shown
      * last (never the same twice in a row while another runs), its
      * RUNNING_PARTS for `runningSeconds` together, and after every pass
-     * through all running ones the break slot.
+     * through all running ones nothing else.
      *
      * @param  list<array{id: int, blitz: bool}>  $games
      * @return list<array{kind: string, look?: string, gameId?: int, tournamentId?: int, part?: int, scene?: string, key?: string, seconds?: float}>
@@ -470,11 +469,9 @@ final class RotationPlanner
         $seconds = max(1.0, $this->runningSeconds) / count(self::RUNNING_PARTS);
         $queue = array_map(fn (int $part): array => ['kind' => self::TOURNAMENT, 'look' => $look, 'tournamentId' => $id, 'part' => $part, 'key' => 'running:'.$id, 'seconds' => $seconds], self::RUNNING_PARTS);
 
-        if (++$this->runningRounds % count($this->running) === 0) {
-            $queue[] = $games === []
-                ? $this->everyRound()[$this->runningRounds % count(self::EVERY_ROUND)]
-                : ['kind' => self::MATCH, 'look' => $look, 'gameId' => $games[$this->matchTurn++ % count($games)]['id']];
-        }
+        // Only the running tournaments' slides while one runs, nothing in between (user, 2026-10-03:
+        // "bei laufenden Turnieren auch nur noch die Live-Turnier-Folien … erst wenn das Turnier fertig ist, wieder alle anderen").
+        $this->runningRounds++;
 
         return $queue;
     }

@@ -36,14 +36,15 @@ function liveRotation(float $seconds, Closure $liveAt, ?Closure $upcomingAt = nu
     return $log;
 }
 
-test('a running tournament holds the stream: live bracket, still standing, live bracket, how it runs, a break slide after each hold, no loop', function () {
-    // 90 s a hold in four slides, a 12 s teaser after it.
+test('a running tournament holds the stream: live bracket, still standing, live bracket, how it runs, nothing else in between, no loop', function () {
+    // 90 s a hold in four slides, hold after hold: only the tournament while it runs (2026-10-03).
     $log = liveRotation(306, fn () => [['id' => 5, 'phase' => 'running', 'fomo' => true]]);
 
     expect($log)->toBe([
         '0 ta4 @5', '22.5 ta5 @5', '45 ta4 @5', '67.5 ta3 @5',
-        '102 tb4 @5', '124.5 tb5 @5', '147 tb4 @5', '169.5 tb3 @5',
-        '204 tc4 @5', '226.5 tc5 @5', '249 tc4 @5', '271.5 tc3 @5',
+        '90 tb4 @5', '112.5 tb5 @5', '135 tb4 @5', '157.5 tb3 @5',
+        '180 tc4 @5', '202.5 tc5 @5', '225 tc4 @5', '247.5 tc3 @5',
+        '270 ta4 @5', '292.5 ta5 @5',
     ]);
 });
 
@@ -66,16 +67,17 @@ test('while a tournament runs, the upcoming ones wait', function () {
 
     expect($log)->toBe([
         '0 ta4 @5', '22.5 ta5 @5', '45 ta4 @5', '67.5 ta3 @5',
-        '102 tb4 @5', '124.5 tb5 @5', '147 tb4 @5', '169.5 tb3 @5',
-        '204 tc4 @5', '226.5 tc5 @5', '249 tc4 @5', '271.5 tc3 @5',
+        '90 tb4 @5', '112.5 tb5 @5', '135 tb4 @5', '157.5 tb3 @5',
+        '180 tc4 @5', '202.5 tc5 @5', '225 tc4 @5', '247.5 tc3 @5',
+        '270 ta4 @5', '292.5 ta5 @5',
     ]);
 });
 
 test('a tournament that finishes while its live bracket is on ends the slide at once; its next round shows the champion', function () {
     $log = liveRotation(185, fn (float $t): array => [['id' => 5, 'phase' => $t < 35 ? 'running' : 'finished', 'fomo' => false]]);
 
-    // Still standing from 22.5 s ends at 35, the rest of the hold is skipped: the break teaser, the loop, then the champion.
-    expect($log)->toBe(['0 ta4 @5', '22.5 ta5 @5', '77 tb6 @5', '92 tb4 @5', '155 tc6 @5', '170 tc5 @5']);
+    // Still standing from 22.5 s ends at 35, the rest of the hold is skipped: the loop, then the champion.
+    expect($log)->toBe(['0 ta4 @5', '22.5 ta5 @5', '65 tb6 @5', '80 tb4 @5', '143 tc6 @5', '158 tc5 @5']);
 });
 
 test('a running tournament takes the stream within one planner step, two running ones alternate with the hold', function () {
@@ -98,6 +100,6 @@ test('a running tournament takes the stream within one planner step, two running
         }
     }
 
-    // 5 holds 90 s in four slides, then 6 for 90 s, a break slide after the pass, then 5 again: never the same twice in a row.
-    expect($shown)->toBe(['@5 32.5', '@5 55', '@5 77.5', '@5 100', '@6 122.5', '@6 145', '@6 167.5', '@6 190', RotationPlanner::TEASER, '@5 224.5', '@5 247', '@5 269.5', '@5 292']);
+    // 5 holds 90 s in four slides, then 6 for 90 s, then 5 again, nothing in between: never the same twice in a row.
+    expect($shown)->toBe(['@5 32.5', '@5 55', '@5 77.5', '@5 100', '@6 122.5', '@6 145', '@6 167.5', '@6 190', '@5 212.5', '@5 235', '@5 257.5', '@5 280', '@6 302.5']);
 });
