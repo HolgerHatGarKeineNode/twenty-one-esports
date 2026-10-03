@@ -238,9 +238,11 @@ new #[Layout('layouts::app', ['section' => 'tournaments'])] class extends Compon
     $faces = array_values(array_filter(array_map(fn (array $row) => $row['users'][0] ?? null, array_slice($others, 0, 6))));
     $moreIn = max(0, count($others) - count($faces));
     $yourSeed = $landing->yourSeed();
+    // A casual cup picks its format by who is in (CasualCups::plannedFormat()): this sign-up may just have changed it.
+    $followNote = \App\Support\Tournaments\CasualCups::followNote($tournament);
 @endphp
 
-<div class="flex flex-col gap-6 px-4 pb-12 lg:px-12" data-test="tournament-signup">
+<div class="flex flex-col gap-6 px-4 pb-12 lg:px-12" data-test="tournament-signup" @if ($open) x-data="tournamentLive({ id: {{ $tournament->id }} })" @endif>
     <a href="{{ route('tournaments.show', $tournament) }}" class="inline-flex min-h-11 items-center gap-1.5 self-start text-[13px]"><x-icon name="prev" :size="16" />{{ $tournament->name }}</a>
 
     <div class="grid gap-6 lg:grid-cols-[minmax(0,1fr)_380px] lg:items-start">
@@ -312,6 +314,9 @@ new #[Layout('layouts::app', ['section' => 'tournaments'])] class extends Compon
                         @endif
                     </p>
                     <p class="m-0 flex items-center gap-2 text-[13px] text-ink-2"><x-icon name="flag" :size="16" class="shrink-0 text-win" />{{ __('Round 1 starts :time.', ['time' => $at($tournament->starts_at)]) }}</p>
+                    @if ($followNote !== null)
+                        <p class="m-0 flex items-center gap-2 text-[13px] text-ink-2" data-test="entry-format-follows"><x-icon name="tournaments" :size="16" class="shrink-0 text-win" />{{ $followNote }}</p>
+                    @endif
                 </div>
 
                 {{-- P46: "I'm in" as a note signed by the player, with the invite card and the tournament's page; preview first --}}
@@ -420,7 +425,7 @@ new #[Layout('layouts::app', ['section' => 'tournaments'])] class extends Compon
         <aside class="flex flex-col gap-4 self-start">
             @include('pages.tournaments.partials.cover', ['tournament' => $tournament, 'class' => 'w-full'])
             <dl class="m-0 grid grid-cols-2 gap-2 text-[13px]">
-                <div class="flex flex-col gap-0.5 rounded-md bg-card px-3.5 py-3"><dt class="text-xs text-ink-3">{{ __('Format') }}</dt><dd class="m-0">{{ \App\Support\Tournaments\Lobbies::formatLabel($tournament) }}</dd></div>
+                <div class="flex flex-col gap-0.5 rounded-md bg-card px-3.5 py-3"><dt class="text-xs text-ink-3">{{ __('Format') }}</dt><dd class="m-0" data-test="signup-format">{{ \App\Support\Tournaments\Lobbies::formatLabel($tournament) }}</dd></div>
                 <div class="flex flex-col gap-0.5 rounded-md bg-card px-3.5 py-3"><dt class="text-xs text-ink-3">{{ __('Places') }}</dt><dd class="m-0 tabular-nums" data-test="places">{{ $places['taken'] }} / {{ $places['places'] }}</dd></div>
                 <div class="col-span-2 flex flex-col gap-0.5 rounded-md bg-card px-3.5 py-3"><dt class="text-xs text-ink-3">{{ __('Starts') }}</dt><dd class="m-0">{{ $at($tournament->starts_at) }}</dd></div>
             </dl>

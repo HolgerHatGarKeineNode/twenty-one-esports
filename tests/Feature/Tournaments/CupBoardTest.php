@@ -169,8 +169,8 @@ test('with a cup open for sign-up the head says tournament and what a cup is, an
 
     // FC 26 starts Friday 18:00, the others Saturday 20:00, each on its clock: FC 26 in Berlin is the earliest.
     expect($head)->toContain('data-tournament="'.$next->id.'"', 'data-test="cup-next-name">'.$next->name.'</a>')
-        // No format before the close: CasualCups::formatFor() picks it by the field, and 4 places never play the stored double elimination.
-        ->toContain('EA Sports FC 26 1v1 tournament, 4 places', 'The format is set at the start, by how many play.')
+        // The format follows the sign-ups (CasualCups::plannedFormat()): 3 in play a round robin, never the stored double elimination.
+        ->toContain('EA Sports FC 26 1v1 tournament, 4 places', 'Format follows the sign-ups: 3 players → Round Robin')
         ->toContain('role="timer"', 'data-test="cup-next-countdown">4 days 06:00:00</span>')
         ->toContain('href="'.route('login').'"')
         ->and(substr_count($head, 'data-test="cup-next-face"'))->toBe(3)
@@ -202,7 +202,7 @@ test('in German the head says Turnier and Casual-Elo', function () {
     $head = cupHead(Blade::render('<x-tournaments.cup-mentions heading filters />'));
     app()->setLocale('en');
 
-    expect($head)->toContain('Turniere', 'Die Liga eröffnet für jedes Spiel und jede Region selbst einen Cup. Seine Partien sind casual und bewegen nur dein Casual-Elo.', 'Turnier EA Sports FC 26 1v1, 4 Plätze', 'Das Format steht zum Start fest, je nachdem, wie viele spielen.', 'Anmeldung offen');
+    expect($head)->toContain('Turniere', 'Die Liga eröffnet für jedes Spiel und jede Region selbst einen Cup. Seine Partien sind casual und bewegen nur dein Casual-Elo.', 'Turnier EA Sports FC 26 1v1, 4 Plätze', 'Das Format folgt den Anmeldungen: 2 Spieler → Single Elimination', 'Anmeldung offen');
 });
 
 test('when every cup is running the head has no next cup, and each running row shows the format its field got', function () {

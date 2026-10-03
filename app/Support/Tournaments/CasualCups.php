@@ -433,6 +433,84 @@ final class CasualCups
     }
 
     /**
+     * Whether the cup's format still follows its sign-ups: a casual cup in
+     * sign-up that was not switched yet. Its stored format stays the double
+     * elimination it was opened with ({@see isEvening()} and
+     * {@see minEntries()} key off it); what it will play is
+     * {@see plannedFormat()}. A lobby cup (P10) is Free for All from the start.
+     */
+    public static function followsSignups(Tournament $tournament): bool
+    {
+        return $tournament->isCasualCup() && $tournament->status === TournamentStatus::Signup && ! self::isEvening($tournament) && ! Lobbies::isLobby($tournament);
+    }
+
+    /**
+     * The format the cup would play if sign-up closed now (user, 2026-10-03:
+     * "Das muss dynamisch passieren und immer das perfekte Format wählen"):
+     * {@see formatFor()} for its active sign-ups, at least 2, the same call the
+     * close makes ({@see settleSignup()}, toEvening()). Read on every render,
+     * so a sign-up or a withdrawal changes it at once. A cup that does not
+     * follow its sign-ups ({@see followsSignups()}) and any other tournament:
+     * the stored format.
+     *
+     * @return array{format: TournamentFormat, options: array<string, mixed>, players: int}
+     */
+    public static function plannedFormat(Tournament $cup): array
+    {
+        if (! self::followsSignups($cup)) {
+            return ['format' => $cup->format, 'options' => (array) $cup->options, 'players' => self::players($cup)];
+        }
+
+        $players = max(2, TournamentSignup::query()->where('tournament_id', $cup->id)->active()->count());
+        $format = self::formatFor($cup, $players) ?? throw new LogicException('Two players always have a format.');
+
+        return ['format' => $format['format'], 'options' => (array) $format['options'], 'players' => $players];
+    }
+
+    /** The format a tournament's chips, cards and lines name: {@see plannedFormat()} while a cup follows its sign-ups. */
+    public static function shownFormat(Tournament $tournament): TournamentFormat
+    {
+        return self::followsSignups($tournament) ? self::plannedFormat($tournament)['format'] : $tournament->format;
+    }
+
+    /**
+     * The cup as it would be played if sign-up closed now, for the surfaces
+     * that draw it (bracket preview, how it runs): an unsaved copy with the
+     * planned format, its options and as many places as players (a double
+     * elimination of 9 is drawn for 9, not for the 16 places it has). Never
+     * save it. Any other tournament comes back as it is.
+     */
+    public static function asPlanned(Tournament $tournament): Tournament
+    {
+        if (! self::followsSignups($tournament)) {
+            return $tournament;
+        }
+
+        $plan = self::plannedFormat($tournament);
+        $planned = clone $tournament;
+        $planned->format = $plan['format'];
+        $planned->options = FormatOptions::fromArray($plan['options'], $tournament->profile())->toArray();
+        $planned->capacity = $plan['players'];
+
+        return $planned;
+    }
+
+    /** "Format follows the sign-ups: 6 players → Round Robin" while a cup follows its sign-ups, else null. */
+    public static function followNote(Tournament $tournament): ?string
+    {
+        if (! self::followsSignups($tournament)) {
+            return null;
+        }
+
+        $plan = self::plannedFormat($tournament);
+
+        return __('Format follows the sign-ups: :players → :format', [
+            'players' => trans_choice(':count player|:count players', $plan['players']),
+            'format' => $plan['format']->label(),
+        ]);
+    }
+
+    /**
      * The evening of a small cup as planned: rounds, the games each player
      * plays, their play time (the game profile's length per game) and the
      * whole evening with the breaks, in minutes.

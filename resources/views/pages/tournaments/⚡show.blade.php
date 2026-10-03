@@ -67,7 +67,7 @@ use Livewire\Component;
  * deadline, the league's auto slot, and "Play your cup match" (an invite
  * only to that opponent) or the opponent's invite to accept.
  */
-new #[Layout('layouts::app', ['section' => 'tournaments'])] class extends Component {
+new #[Layout('layouts::app', ['section' => 'tournaments', 'realtime' => true])] class extends Component {
     public Tournament $tournament;
 
     public string $closesAt = '';
@@ -128,12 +128,14 @@ new #[Layout('layouts::app', ['section' => 'tournaments'])] class extends Compon
         $zone = (string) config('esports.preseason.display_timezone');
         $date = fn (\Carbon\CarbonInterface $at): string => $at->copy()->timezone($zone)->format('Y-m-d H:i T');
         $teams = $tournament->profile()->entersTeams();
+        // A casual cup in sign-up names the format and the field it would play now (CasualCups::asPlanned()).
+        $planned = CasualCups::asPlanned($tournament);
 
         $facts = [
             'game' => \App\Support\GameNames::game($tournament->game),
             'mode' => $tournament->mode === 'correspondence' ? __('Daily') : ($tournament->mode === 'blitz' ? __('Blitz 5+3') : $tournament->mode),
             'format' => \App\Support\Tournaments\Lobbies::formatLabel($tournament),
-            'who' => $teams ? trans_choice(':count team|:count teams', $tournament->capacity) : trans_choice(':count player|:count players', $tournament->capacity),
+            'who' => $teams ? trans_choice(':count team|:count teams', $planned->capacity) : trans_choice(':count player|:count players', $planned->capacity),
             'where' => $tournament->on_site ? __('on site') : __('online'),
             'date' => $date($tournament->starts_at),
         ];
@@ -610,7 +612,10 @@ new #[Layout('layouts::app', ['section' => 'tournaments'])] class extends Compon
         ];
     }
 
-    $formatCopy = FormatCopy::for($tournament->format);
+    // A casual cup in sign-up is described and drawn in the format its sign-ups pick now (CasualCups::plannedFormat()).
+    $planned = $landing->planned();
+    $followNote = CasualCups::followNote($tournament);
+    $formatCopy = FormatCopy::for($planned->format);
     $noShow = $score
         ? __('Nobody waits for anybody here: whoever sets no value inside the window gets no place.')
         : ($tournament->isDirectorMode()
@@ -621,15 +626,17 @@ new #[Layout('layouts::app', ['section' => 'tournaments'])] class extends Compon
 
     // Projected bracket before the draw: the chooser's animated preview for the planned size, and round 1 if sign-up closed now.
     $projection = $landing->projection();
-    $previewOptions = $tournament->format === TournamentFormat::Swiss && $options->swissRounds === null ? $options->withSwissRounds(Estimator::swissDefault($tournament->capacity)) : $options;
-    $preview = $projection !== null ? Preview::for($tournament->format, $tournament->capacity, $previewOptions, 480, 208) : null;
-    $previewSmall = $projection !== null ? Preview::for($tournament->format, $tournament->capacity, $previewOptions, 326, 196) : null;
+    $plannedOptions = $planned->formatOptions();
+    $previewOptions = $planned->format === TournamentFormat::Swiss && $plannedOptions->swissRounds === null ? $plannedOptions->withSwissRounds(Estimator::swissDefault($planned->capacity)) : $plannedOptions;
+    $preview = $projection !== null ? Preview::for($planned->format, $planned->capacity, $previewOptions, 480, 208) : null;
+    $previewSmall = $projection !== null ? Preview::for($planned->format, $planned->capacity, $previewOptions, 326, 196) : null;
+    $previewWho = $teams ? trans_choice(':count team|:count teams', $planned->capacity) : trans_choice(':count player|:count players', $planned->capacity);
 
     $cellCount = $places['places'] <= 96 ? $places['places'] : 0;
     $fillStep = $places['taken'] > 0 ? min(70, (int) round(900 / $places['taken'])) : 0;
 @endphp
 
-<div class="flex flex-col gap-12 pb-16 lg:gap-16" data-test="tournament-show" data-cta="{{ $cta }}" @if ($poll) wire:poll.15s.visible @endif>
+<div class="flex flex-col gap-12 pb-16 lg:gap-16" data-test="tournament-show" data-cta="{{ $cta }}" @if ($poll) wire:poll.15s.visible x-data="tournamentLive({ id: {{ $tournament->id }} })" @endif>
     {{--
         The organizer's and admin's bar (user, 2026-09-28: the prize pool was too hard to reach): prize pool,
         edit and payouts, each behind its own gate (<x-tournaments.manage-actions>), at the top of the page.
@@ -1047,6 +1054,13 @@ new #[Layout('layouts::app', ['section' => 'tournaments'])] class extends Compon
             </span>
         </div>
 
+        @if ($followNote !== null && $projection !== null)
+            {{-- A casual cup picks its format by who is in (CasualCups::plannedFormat()); every sign-up redraws it. --}}
+            <p class="m-0 inline-flex items-center gap-2 self-start rounded-sm bg-btc-chip px-3 py-1.5 text-[13px] text-btc-hi" data-test="format-follows">
+                <x-icon name="tournaments" :size="14" />{{ $followNote }}
+            </p>
+        @endif
+
         @if ($lobbies)
             {{-- How every lobby is played (P10): the same sentences as /rules and the game page (Lobbies::rules()). --}}
             <div class="flex flex-col gap-2 rounded-card bg-card p-4 lg:p-5" data-test="lobby-rules">
@@ -1064,11 +1078,11 @@ new #[Layout('layouts::app', ['section' => 'tournaments'])] class extends Compon
         @elseif ($drawn)
             @include('pages.tournaments.partials.stages', ['stages' => $this->stages, 'tournament' => $tournament])
         @elseif ($projection !== null)
-            <div class="grid gap-4 lg:grid-cols-[minmax(0,5fr)_minmax(0,7fr)] lg:items-start" data-test="bracket-preview" data-format="{{ $tournament->format->value }}">
+            <div class="grid gap-4 lg:grid-cols-[minmax(0,5fr)_minmax(0,7fr)] lg:items-start" data-test="bracket-preview" data-format="{{ $planned->format->value }}" data-players="{{ $planned->capacity }}">
                 <figure class="m-0 flex flex-col gap-2 rounded-card bg-card p-4" x-data x-ref="figure">
                     @foreach ([['desktop', $preview, 480, 208, 'hidden lg:block'], ['mobile', $previewSmall, 326, 196, 'lg:hidden']] as [$size, $shape, $width, $height, $visibility])
                         <svg viewBox="0 0 {{ $width }} {{ $height }}" class="tf-preview {{ $visibility }} h-auto w-full" role="img" wire:key="pv-{{ $size }}"
-                             aria-label="{{ __('Preview of :format for :who', ['format' => $formatLabel, 'who' => $teams ? trans_choice(':count team|:count teams', $tournament->capacity) : trans_choice(':count player|:count players', $tournament->capacity)]) }}">
+                             aria-label="{{ __('Preview of :format for :who', ['format' => $formatLabel, 'who' => $previewWho]) }}">
                             @foreach ($shape['lines'] as $line)
                                 <path d="{{ $line['d'] }}" fill="none" stroke="#3A3A42" stroke-width="1" style="animation-delay: {{ $line['delay'] }}s" />
                             @endforeach
@@ -1083,7 +1097,7 @@ new #[Layout('layouts::app', ['section' => 'tournaments'])] class extends Compon
                         </svg>
                     @endforeach
                     <figcaption class="flex items-start gap-3 text-xs leading-normal text-ink-2">
-                        <span class="grow">{{ __(':format for :who. Each block is one match, lit in the round it is played.', ['format' => $formatLabel, 'who' => $teams ? trans_choice(':count team|:count teams', $tournament->capacity) : trans_choice(':count player|:count players', $tournament->capacity)]) }}</span>
+                        <span class="grow" data-test="preview-caption">{{ __(':format for :who. Each block is one match, lit in the round it is played.', ['format' => $formatLabel, 'who' => $previewWho]) }}</span>
                         <button type="button" class="min-h-6 shrink-0 cursor-pointer text-btc hover:text-btc-hi" data-test="preview-replay"
                                 x-on:click="$refs.figure.querySelectorAll('svg').forEach((svg) => { svg.classList.remove('tf-preview'); void svg.getBoundingClientRect(); svg.classList.add('tf-preview'); })">{{ __('Play again') }}</button>
                     </figcaption>

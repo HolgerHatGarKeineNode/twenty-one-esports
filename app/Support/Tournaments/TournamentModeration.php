@@ -3,12 +3,14 @@
 namespace App\Support\Tournaments;
 
 use App\Enums\NotificationKind;
+use App\Events\TournamentChanged;
 use App\Models\LineupSeat;
 use App\Models\Tournament;
 use App\Models\TournamentBan;
 use App\Models\TournamentModerationEntry;
 use App\Models\TournamentSignup;
 use App\Models\User;
+use App\Support\Chess\Broadcasts;
 use App\Support\Notifications\Notice;
 use App\Support\Notifications\Notifier;
 use App\Support\Rating\Ratings;
@@ -243,6 +245,8 @@ final class TournamentModeration
     {
         $signup->forceFill(['removed_at' => now(), 'removed_by_id' => $actor->id, 'removal_reason' => $reason])->save();
         $this->log($locked, $actor, 'removed', subject: $signup->name, reason: $reason, signupId: $signup->id);
+        // Open pages draw again without the entry (TournamentSignups does the same for a sign-up or a withdrawal).
+        Broadcasts::send(new TournamentChanged($locked->id, 'removed'));
     }
 
     /**

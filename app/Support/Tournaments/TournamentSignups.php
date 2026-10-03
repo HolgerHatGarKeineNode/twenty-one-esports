@@ -2,6 +2,7 @@
 
 namespace App\Support\Tournaments;
 
+use App\Events\TournamentChanged;
 use App\Models\ClanMember;
 use App\Models\Lineup;
 use App\Models\LineupSeat;
@@ -10,6 +11,7 @@ use App\Models\Tournament;
 use App\Models\TournamentBan;
 use App\Models\TournamentSignup;
 use App\Models\User;
+use App\Support\Chess\Broadcasts;
 use App\Support\Nostr\RejectedEvent;
 use App\Support\Nostr\SignedEvent;
 use App\Support\Nostr\SignedEventGate;
@@ -211,6 +213,9 @@ final class TournamentSignups
             if ($updated !== 1) {
                 throw new TournamentRuleViolation('not_entered', __('You are not signed up.'));
             }
+
+            // Every open page of the tournament draws again: the places, who is in, a casual cup's planned format.
+            Broadcasts::send(new TournamentChanged($signup->tournament_id, 'withdrawn'));
         });
     }
 
@@ -447,6 +452,8 @@ final class TournamentSignups
             $locked = Tournament::query()->with('event')->lockForUpdate()->findOrFail($tournament->id);
             [$lineupId, $name, $members, $template] = $plan($locked);
             $event = $this->verify($signed, $template, $user);
+            // Every open page of the tournament draws again: the places, who is in, a casual cup's planned format.
+            Broadcasts::send(new TournamentChanged($locked->id, 'signup'));
 
             return TournamentSignup::query()->create([
                 'tournament_id' => $locked->id,

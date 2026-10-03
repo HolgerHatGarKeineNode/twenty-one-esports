@@ -227,7 +227,8 @@ class TournamentSlides
             'game' => GameTitle::of($tournament->game),
             // A lobby tournament (P10) has no mode to name (no "1v1"), and its format is the lobby match.
             'mode' => Lobbies::isLobby($tournament) ? '' : ($this->games->mode($tournament->game, $tournament->mode)->name ?? $tournament->mode),
-            'format' => Lobbies::isLobby($tournament) ? 'One lobby match' : $tournament->format->label(),
+            // A casual cup in sign-up: the format its sign-ups pick now (CasualCups::shownFormat()), not the stored one.
+            'format' => Lobbies::isLobby($tournament) ? 'One lobby match' : CasualCups::shownFormat($tournament)->label(),
             'teamSize' => $tournament->teamSize(),
             'rated' => $tournament->openLadder() !== null,
             'where' => $tournament->on_site ? 'On site' : 'Online',
@@ -242,7 +243,10 @@ class TournamentSlides
             'openSpots' => $open,
             'preview' => $this->preview($landing->projection(), $names, Lobbies::isLobby($tournament)),
             // How it runs (TournamentPlaybook), for the places it was set up for; the next-tournament slide (t?7) reads it.
-            'howItRuns' => TournamentPlaybook::of($tournament, $places['places'], $timezone),
+            // A casual cup in sign-up runs in its planned format for the players it has (CasualCups::asPlanned()).
+            'howItRuns' => CasualCups::followsSignups($tournament)
+                ? TournamentPlaybook::of($planned = CasualCups::asPlanned($tournament), $planned->capacity, $timezone)
+                : TournamentPlaybook::of($tournament, $places['places'], $timezone),
             'url' => rtrim((string) config('twentyone.stream.scene.url'), '/').'/tournaments/'.$tournament->id,
             'deadlineMs' => $countdown['ms'] ?? null,
             'closesMs' => $tournament->signup_closes_at?->getTimestampMs(),

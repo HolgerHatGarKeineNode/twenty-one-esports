@@ -21,6 +21,7 @@ use App\Support\Rating\RankTiers;
 use App\Support\Scores\ScoreRuns;
 use App\Support\Scores\ScoreStanding;
 use App\Support\Stacker\BlockfillRules;
+use App\Support\Tournaments\CasualCups;
 use App\Support\Tournaments\Lobbies;
 use App\Support\Tournaments\TournamentChampion;
 use App\Support\Tournaments\TournamentSignups;
@@ -153,7 +154,8 @@ final class ShareMoments
             'tournament' => $tournament->name,
             'game' => $tournament->game,
             'mode' => $tournament->mode,
-            'format' => $tournament->format->value,
+            // A casual cup in sign-up: the format its sign-ups pick now (CasualCups::shownFormat()).
+            'format' => CasualCups::shownFormat($tournament)->value,
             // A lobby tournament (P10) draws "One lobby match" without its mode.
             'lobby' => Lobbies::isLobby($tournament),
             'status' => $tournament->isSignupOpen() ? 'open' : $tournament->status->value,

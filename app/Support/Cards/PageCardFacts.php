@@ -131,7 +131,8 @@ final class PageCardFacts
             'name' => $tournament->title(),
             'game' => $tournament->game,
             'mode' => $tournament->mode,
-            'format' => $tournament->format->value,
+            // A casual cup in sign-up: the format its sign-ups pick now (CasualCups::shownFormat()).
+            'format' => CasualCups::shownFormat($tournament)->value,
             // A lobby tournament (P10) draws "One lobby match" without its mode.
             'lobby' => Lobbies::isLobby($tournament),
             'status' => $tournament->isSignupOpen() ? 'open' : $tournament->status->value,

@@ -18,8 +18,8 @@
       (the first open seat is the way in, as on a game page's poster), a live
       countdown to the start (countdown() in resources/js/tournamentLanding.js)
       and the button. Without one, a line says when the next cup comes (the
-      league's gap after a final or a call-off). No format before sign-up
-      closes: CasualCups::formatFor() picks it by the field (review of P3).
+      league's gap after a final or a call-off). The format follows the
+      sign-ups: CasualCups::followNote() names the one the field plays now.
       At zero the countdown says sign-up closed instead of a dead button.
 
     $winner: CupBoard::lastWinner(). $next: a CupBoard row or null. $empty: no cup is open or running.
@@ -87,8 +87,8 @@
                         <a href="{{ $nextShow }}" class="text-ink hover:text-btc-hi" data-test="cup-next-name">{{ $nextCup->name }}</a>
                     </h3>
                     <p class="m-0 text-[13px] leading-normal text-ink-2" data-test="cup-next-facts">{{ __(':mode tournament, :places places', ['mode' => Lobbies::gameLine($nextCup), 'places' => $next['places']]) }}</p>
-                    {{-- The format is not known before the close: CasualCups::formatFor() picks it by how many signed up. --}}
-                    <p class="m-0 text-xs leading-normal text-ink-3" data-test="cup-next-format">{{ Lobbies::isLobby($nextCup) ? __('One lobby match: everyone plays at once, in lobbies of at most 8.') : __('The format is set at the start, by how many play.') }}</p>
+                    {{-- The format follows the sign-ups (CasualCups::plannedFormat()): the one the field would play now. --}}
+                    <p class="m-0 text-xs leading-normal text-ink-3" data-test="cup-next-format">{{ Lobbies::isLobby($nextCup) ? __('One lobby match: everyone plays at once, in lobbies of at most 8.') : (\App\Support\Tournaments\CasualCups::followNote($nextCup) ?? Lobbies::formatLabel($nextCup)) }}</p>
                 </div>
 
                 {{-- As many columns as seats up to eight, each at most 48 px: four seats are four real faces, not half a row. --}}

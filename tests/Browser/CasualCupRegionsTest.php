@@ -520,3 +520,93 @@ test('the cups\' head says tournament and brings the winner and the next cup und
             ->and($page->evaluate(BrowserConsole::BAD_RESPONSES))->toBe([]);
     }
 });
+
+/*
+| A cup's format follows its sign-ups (user, 2026-10-03: "Am besten mit
+| Heartbeat und ständiger Anpassung, damit die Live-Bracket-Preview auch
+| stimmig bleibt"): the page is open while other players sign up, and the
+| preview, the note and the format chip change by push (TournamentChanged),
+| without a reload. Measured at 1440 and 375 in English and at 375 in German.
+*/
+const PLANNED_STATE = <<<'JS'
+    () => {
+        const preview = document.querySelector('[data-test=bracket-preview]');
+        const note = document.querySelector('[data-test=format-follows]');
+        const r = note ? note.getBoundingClientRect() : null;
+        const svg = [...(preview?.querySelectorAll('svg') ?? [])].find((s) => s.checkVisibility());
+        return {
+            lang: document.documentElement.lang,
+            format: preview?.dataset.format ?? null,
+            players: Number(preview?.dataset.players ?? 0),
+            note: note?.innerText.trim() ?? null,
+            chip: document.querySelector('[data-test=tournament-format]')?.innerText.trim() ?? null,
+            matches: document.querySelectorAll('[data-test=projected-match]').length,
+            openSpots: [...document.querySelectorAll('[data-test=bracket]')].some((b) => b.innerText.includes('Open spot') || b.innerText.includes('Offener Platz')),
+            svgWidth: svg ? Math.round(svg.getBoundingClientRect().width) : 0,
+            noteInside: r !== null && r.left >= 0 && r.right <= window.innerWidth,
+            overflow: document.documentElement.scrollWidth - document.documentElement.clientWidth,
+        };
+    }
+    JS;
+
+test('the page of a cup follows the sign-ups by push, without a reload: round robin of 6, of 7, then a double elimination of 9', function () {
+    // The push is the trigger; the 15 s poll only the fallback.
+    expect(config('broadcasting.default'))->toBe('reverb', 'Run this through `composer test:browser`, which starts Reverb.');
+    config(['esports.casual_cups.enabled' => ['chess']]);
+    app(CasualCups::class)->tick();
+    $cup = Tournament::query()->where('cup_open_series', 'chess-eu')->sole();
+    cupSignups($cup, 6);
+    $path = route('tournaments.show', $cup, false);
+
+    $page = cupRegionsPage($path, 1440, 900, '[data-test=bracket-preview]');
+    cupRegionsControl($page);
+    $six = $page->evaluate(PLANNED_STATE);
+    cupRegionsShot($page, 'cup-planned-6-1440-en');
+
+    // Subscribed before anyone signs up; the page counts the pushes it hears.
+    BrowserWait::until($page, '() => window.Echo?.connector.pusher.connection.state === "connected" && window.Echo.connector.channels["tournament.'.$cup->id.'"]?.subscription?.subscribed === true', 10_000);
+    $page->evaluate('() => { window.__pushes = 0; window.Echo.connector.pusher.connection.bind("message", (m) => { if (m.event === "tournament.changed") window.__pushes++; }); }');
+    $page->evaluate('() => { window.__sameDocument = "same-document"; }');
+
+    // A 7th player signs up elsewhere: still a round robin, now of 7, within a few seconds (well under the 15 s poll).
+    cupSignups($cup, 1);
+    BrowserWait::until($page, '() => document.querySelector("[data-test=bracket-preview]")?.dataset.players === "7"', 5_000);
+    $seven = $page->evaluate(PLANNED_STATE);
+
+    // Two more: 9 players play a double elimination of 9.
+    cupSignups($cup, 2);
+    BrowserWait::until($page, '() => document.querySelector("[data-test=bracket-preview]")?.dataset.players === "9"', 5_000);
+    $nine = $page->evaluate(PLANNED_STATE);
+    cupRegionsShot($page, 'cup-planned-9-1440-en');
+
+    expect($six)->toMatchArray(['format' => 'round-robin', 'players' => 6, 'note' => 'Format follows the sign-ups: 6 players → Round Robin', 'chip' => 'Round Robin', 'matches' => 3, 'openSpots' => false, 'overflow' => 0, 'noteInside' => true])
+        ->and($six['svgWidth'])->toBeGreaterThan(300)
+        ->and($seven)->toMatchArray(['format' => 'round-robin', 'players' => 7, 'note' => 'Format follows the sign-ups: 7 players → Round Robin', 'openSpots' => false])
+        ->and($nine)->toMatchArray(['format' => 'double-elimination', 'players' => 9, 'note' => 'Format follows the sign-ups: 9 players → Double Elimination', 'chip' => 'Double Elimination', 'openSpots' => false, 'overflow' => 0])
+        // No reload: the same document, and every step came by push.
+        ->and($page->evaluate('() => window.__sameDocument'))->toBe('same-document')
+        ->and($page->evaluate('() => window.__pushes'))->toBeGreaterThanOrEqual(2)
+        ->and($page->evaluate('() => window.__errors'))->toBe([])
+        ->and($page->evaluate(BrowserConsole::BAD_RESPONSES))->toBe([]);
+
+    // On a phone, in English and in German: the same plan, nothing wider than the window.
+    foreach (['en', 'de'] as $lang) {
+        $narrow = cupRegionsPage($path, 375, 812, '[data-test=bracket-preview]');
+
+        if ($lang === 'de') {
+            $narrow->goto(ComputeUrl::from('/locale/de'));
+            $narrow->goto(ComputeUrl::from($path));
+            BrowserWait::until($narrow, '() => window.Alpine && document.querySelector("[data-test=bracket-preview]") !== null && document.fonts.status === "loaded"', 10_000);
+        }
+
+        $narrow->evaluate('() => document.querySelector("[data-test=bracket]").scrollIntoView()');
+        $state = $narrow->evaluate(PLANNED_STATE);
+        cupRegionsShot($narrow, "cup-planned-9-375-{$lang}");
+
+        expect([$lang, $state['lang'], $state['format'], $state['players'], $state['overflow'], $state['noteInside'], $state['openSpots']])->toBe([$lang, $lang, 'double-elimination', 9, 0, true, false])
+            ->and($state['note'])->toBe($lang === 'de' ? 'Das Format folgt den Anmeldungen: 9 Spieler → Double Elimination' : 'Format follows the sign-ups: 9 players → Double Elimination')
+            ->and($state['svgWidth'])->toBeGreaterThan(250)->toBeLessThanOrEqual(375)
+            ->and($narrow->evaluate('() => window.__errors'))->toBe([])
+            ->and($narrow->evaluate(BrowserConsole::BAD_RESPONSES))->toBe([]);
+    }
+});

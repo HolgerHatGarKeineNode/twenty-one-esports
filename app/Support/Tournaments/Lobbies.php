@@ -64,11 +64,13 @@ final class Lobbies
 
     /**
      * The format a tournament's chips and lines name: "Swiss"; a lobby
-     * tournament "One lobby match", as the stream slides say it.
+     * tournament "One lobby match", as the stream slides say it; a casual cup
+     * in sign-up the format it would play if sign-up closed now
+     * (CasualCups::shownFormat()), never the double elimination it is stored as.
      */
     public static function formatLabel(Tournament $tournament): string
     {
-        return self::isLobby($tournament) ? __('One lobby match') : $tournament->format->label();
+        return self::isLobby($tournament) ? __('One lobby match') : CasualCups::shownFormat($tournament)->label();
     }
 
     /**

@@ -270,8 +270,48 @@ export function localTime({ at, zone, label }) {
     };
 }
 
+/**
+ * tournamentLive({ id }) — on the Livewire root of the tournament page and its
+ * sign-up page: renders the page again from the server when the tournament
+ * moves (TournamentChanged on the public `tournament.{id}` channel: a sign-up,
+ * a withdrawal, a result), so a casual cup's planned format and its bracket
+ * preview follow every sign-up without a reload. Pushes within REFRESH_MS make
+ * one render. Without a websocket (no window.Echo) the page's wire:poll is
+ * the fallback.
+ */
+const REFRESH_MS = 300;
+
+export function tournamentLive({ id }) {
+    return {
+        channel: null,
+        timer: null,
+
+        init() {
+            if (!window.Echo) {
+                return;
+            }
+
+            this.channel = window.Echo.channel('tournament.' + id);
+            this.channel.listen('.tournament.changed', () => {
+                clearTimeout(this.timer);
+                this.timer = setTimeout(() => this.$wire.$refresh(), REFRESH_MS);
+            });
+        },
+
+        destroy() {
+            clearTimeout(this.timer);
+
+            if (this.channel) {
+                this.channel.stopListening('.tournament.changed');
+                this.channel = null;
+            }
+        },
+    };
+}
+
 if (typeof document !== 'undefined') {
     document.addEventListener('alpine:init', () => {
+        window.Alpine.data('tournamentLive', tournamentLive);
         window.Alpine.data('countdown', countdown);
         window.Alpine.data('countUp', countUp);
         window.Alpine.data('startsIn', startsIn);

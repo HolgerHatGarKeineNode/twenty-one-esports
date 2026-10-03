@@ -43,6 +43,8 @@ final class TournamentLanding
 
     private bool $entryLoaded = false;
 
+    private ?Tournament $planned = null;
+
     public function __construct(private readonly Tournament $tournament, private readonly ?User $viewer) {}
 
     public function drawn(): bool
@@ -249,9 +251,22 @@ final class TournamentLanding
     }
 
     /**
+     * The tournament as it would be played if sign-up closed now: a casual
+     * cup in sign-up with the format its sign-ups pick and one place per
+     * player (CasualCups::asPlanned()), any other tournament as it is. Only
+     * for drawing; places and the call to action read the tournament itself.
+     */
+    public function planned(): Tournament
+    {
+        return $this->planned ??= CasualCups::asPlanned($this->tournament);
+    }
+
+    /**
      * Round 1 as it would be drawn if sign-up closed now, from the same
      * bracket builder the draw uses, with an open seat for every place not
      * yet taken. Null once the tournament is drawn (the real bracket shows).
+     * A casual cup in sign-up is drawn in its planned format for the players
+     * it has ({@see planned()}): no open seats, as the close would draw it.
      *
      * @return array{matches: list<array{key: string, group: int|null, sides: list<array{seed: int, name: string|null, mix: bool, you: bool}>}>, byes: list<int>, groups: array<int, list<array{seed: int, name: string|null, mix: bool, you: bool}>>}|null
      */
@@ -261,7 +276,7 @@ final class TournamentLanding
             return null;
         }
 
-        $tournament = $this->tournament;
+        $tournament = $this->planned();
         $capacity = max(2, $tournament->capacity);
         $known = array_values(array_filter($this->roster(), fn (array $row): bool => $row['seed'] !== null));
         $mixTeams = $tournament->profile()->entersTeams() ? intdiv($this->places()['solos'], max(1, $tournament->teamSize())) : 0;
