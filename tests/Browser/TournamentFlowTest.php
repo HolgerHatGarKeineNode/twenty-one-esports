@@ -623,3 +623,95 @@ test('the prize pot: top-ups by QR code, sponsors, payouts, fixed prizes and the
 
     fwrite(STDERR, "\n[p9-pool] ".json_encode($measured)."\n");
 });
+
+/*
+| "Fill the pot" notices a zap by itself (user, 2026-10-03: „21 sats
+| gezapped, aber es kommt keine automatische Meldung, dass es ankam."): the
+| player zaps 210 sats with Nostr, the fake wallet settles the invoice, and
+| the card switches to the thank-you without a reload, the pot and the
+| sponsors' wall with it. At en 375 and 1440 and de 375, collector armed,
+| with a positive control. P9_SHOTS=<dir> writes the screenshots there.
+*/
+const POT_ARRIVED = <<<'JS'
+    (pubkey) => {
+        const card = document.querySelector('[data-test=pot-fill]');
+        const r = card.getBoundingClientRect();
+        const note = card.querySelector('[data-test=topup-received]');
+        const n = note?.getBoundingClientRect();
+        return {
+            box: { left: Math.round(r.left), right: Math.round(r.right), scrollWidth: card.scrollWidth, clientWidth: card.clientWidth },
+            note: note ? { text: note.innerText, left: Math.round(n.left), right: Math.round(n.right), height: Math.round(n.height), scrollWidth: note.scrollWidth, clientWidth: note.clientWidth } : null,
+            qr: card.querySelector('[data-test=topup-qr]') !== null,
+            polling: card.querySelector('[wire\\:poll\\.3s]') !== null,
+            pot: document.querySelector('[data-test=pool-sats]').innerText,
+            wall: document.querySelector('[data-test=pool-zapper][data-pubkey="' + pubkey + '"] [data-test=pool-zapper-sats]')?.innerText ?? null,
+            reloaded: window.__potMarker !== 1,
+        };
+    }
+    JS;
+
+test('a paid zap switches the "Fill the pot" card to the thank-you by itself, with the pot and the wall, at en 375 and 1440 and de 375', function () {
+    $league = fakeWallet();
+    $open = openTournament(['name' => 'Halving Cup', 'capacity' => 8], rocketLeague: true);
+    app(PrizePool::class)->configurePot($open, $open->creator, true, 100_000, Tournament::PRIZES_PERCENT, [50, 30, 20]);
+    fundPool($league, $open->refresh(), 42_000);
+    $player = User::factory()->create(['name' => 'hodlqueen', 'locale' => 'en']);
+    TestSigner::forBrowser($player);
+    $pubkey = (string) $player->refresh()->pubkey;
+    $measured = [];
+    $page = null;
+
+    foreach ([['en', 375, 812], ['en', 1440, 900], ['de', 375, 812]] as [$locale, $width, $height]) {
+        $player->forceFill(['locale' => $locale])->save();
+        $page = tournamentPage($player);
+        $page->setViewportSize($width, $height);
+        $page->goto(ComputeUrl::from(route('tournaments.show', $open)));
+        BrowserWait::until($page, '() => document.querySelector("[data-test=pot-zap-preview]") !== null', 8_000);
+        $page->evaluate('() => document.querySelector("#pot-fill").scrollIntoView()');
+        $before = $page->evaluate(POT_ARRIVED, $pubkey);
+
+        // 210 sats with Nostr: preview, sign, and the card shows the zap's invoice and polls it.
+        $page->evaluate('() => document.querySelectorAll("[data-test=pot-fill-amount]")[0].click()');
+        $page->locator('[data-test=pot-zap-preview]')->click();
+        BrowserWait::until($page, '() => document.querySelector("[data-test=pot-zap-sign-button]")?.checkVisibility() === true', 8_000);
+        $page->locator('[data-test=pot-zap-sign-button]')->click();
+        BrowserWait::until($page, '() => document.querySelector("[data-test=topup-qr] svg") !== null', 10_000);
+        $zap = IncomingPayment::query()->latest('id')->firstOrFail();
+        $page->evaluate('() => { window.__potMarker = 1; }');
+        $waiting = $page->evaluate(POT_ARRIVED, $pubkey);
+        potFillShot($page, "pot-zap-waiting-{$locale}-{$width}");
+
+        // Paid: the league wallet settles it, the card notices by itself, no reload.
+        $league->settleIncoming($zap->payment_hash);
+        $paidAt = microtime(true);
+        BrowserWait::until($page, '() => document.querySelector("[data-test=topup-received]") !== null', 15_000);
+        $switchMs = (int) round((microtime(true) - $paidAt) * 1000);
+        // The page around the card renders its pot and wall again: the player's zapped sum changes.
+        BrowserWait::until($page, '() => (document.querySelector("[data-test=pool-zapper][data-pubkey=\''.$pubkey.'\'] [data-test=pool-zapper-sats]")?.innerText ?? null) !== '.json_encode($before['wall']), 8_000);
+        $arrived = [...$page->evaluate(TOURNAMENT_STATE), ...$page->evaluate(POT_ARRIVED, $pubkey)];
+        potFillShot($page, "pot-zap-arrived-{$locale}-{$width}");
+
+        expect($zap->source)->toBe('zap')->and($zap->amount_sats)->toBe(210)->and($zap->payer_pubkey)->toBe($pubkey)
+            ->and($zap->refresh()->zap_verified)->toBeTrue()
+            ->and($waiting['qr'])->toBeTrue()->and($waiting['polling'])->toBeTrue()
+            ->and($switchMs)->toBeLessThan(10_000)
+            ->and($arrived['errors'])->toBe([])->and($arrived['overflow'])->toBeLessThanOrEqual(0)
+            ->and($arrived['reloaded'])->toBeFalse()
+            ->and($arrived['qr'])->toBeFalse()->and($arrived['polling'])->toBeFalse()
+            ->and($arrived['note']['text'])->toBe($locale === 'de' ? '✓ 210 Sats angekommen, danke!' : '✓ 210 sats arrived, thank you!')
+            ->and($arrived['note']['left'])->toBeGreaterThanOrEqual($arrived['box']['left'])->and($arrived['note']['right'])->toBeLessThanOrEqual($arrived['box']['right'])
+            ->and($arrived['note']['scrollWidth'])->toBeLessThanOrEqual($arrived['note']['clientWidth'])
+            ->and($arrived['box']['left'])->toBeGreaterThanOrEqual(0)->and($arrived['box']['right'])->toBeLessThanOrEqual($width)
+            ->and($arrived['pot'])->not->toBe($before['pot'])
+            ->and($arrived['wall'])->not->toBeNull()->and($arrived['wall'])->not->toBe($before['wall']);
+
+        $measured["{$locale}-{$width}"] = ['before' => $before, 'waiting' => $waiting, 'switchMs' => $switchMs, 'arrived' => $arrived];
+    }
+
+    // Positive control: an error thrown on the page reaches the collector.
+    $page->evaluate('() => { setTimeout(() => { throw new Error("probe"); }, 0); }');
+    BrowserWait::until($page, '() => window.__errors.length > 0', 5_000);
+    expect(implode(' | ', $page->evaluate(TOURNAMENT_STATE)['errors']))->toContain('probe');
+
+    fwrite(STDERR, "\n[pot-zap-arrived] ".json_encode($measured)."\n");
+});

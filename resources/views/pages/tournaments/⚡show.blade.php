@@ -38,6 +38,7 @@ use App\Support\Tournaments\TournamentWaits;
 use Illuminate\Support\Facades\Gate;
 use Livewire\Attributes\Computed;
 use Livewire\Attributes\Layout;
+use Livewire\Attributes\On;
 use Livewire\Component;
 
 /*
@@ -433,6 +434,13 @@ new #[Layout('layouts::app', ['section' => 'tournaments'])] class extends Compon
         $names = TournamentParticipant::query()->whereKey($first['participants'])->pluck('name', 'id');
 
         return array_values(array_map(fn (int $id): string => (string) ($names[$id] ?? ''), $first['participants']));
+    }
+
+    /** The "Fill the pot" card saw its invoice paid: render the pot and the sponsors' wall again. */
+    #[On('pot-filled')]
+    public function potFilled(): void
+    {
+        unset($this->pool);
     }
 
     /**

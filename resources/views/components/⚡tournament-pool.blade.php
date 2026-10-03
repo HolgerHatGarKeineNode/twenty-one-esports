@@ -9,6 +9,7 @@ use App\Models\User;
 use App\Support\Lightning\ZapRefused;
 use App\Support\Nostr\SignerMessages;
 use App\Support\PreSeason;
+use App\Support\Prizes\InvoiceCaps;
 use App\Support\Prizes\PoolRefusal;
 use App\Support\Prizes\PotTopUps;
 use App\Support\Prizes\PotZaps;
@@ -40,12 +41,23 @@ use Livewire\Component;
  * - "Pay without Nostr": the league wallet makes a plain invoice for the
  *   amount picked, booked for this tournament's pot as announced
  *   (App\Support\Prizes\PotTopUps), shown as a QR code (never as text)
- *   with "open in wallet"; the card checks every few seconds whether it was
- *   paid. The organizer's and the admin's top-up is the same. When the
- *   league wallet cannot make invoices, the card says top-ups are not
- *   enabled.
+ *   with "open in wallet". The organizer's and the admin's top-up is the
+ *   same. When the league wallet cannot make invoices, the card says top-ups
+ *   are not enabled.
+ *
+ * Either invoice stays on the card until it settles or runs out (user,
+ * 2026-10-03: „21 sats gezapped, aber es kommt keine automatische Meldung,
+ * dass es ankam."): the card polls it every 3 seconds, asks the league wallet
+ * about it at most every LOOKUP_SECONDS seconds (the settle path of
+ * App\Support\Prizes\IncomingPayments, never without the wallet's answer),
+ * then says thank you and has the page render its pot and sponsors' wall
+ * again (`pot-filled`), or says it expired. It only ever shows an invoice its
+ * viewer asked for (invoice()).
  */
 new class extends Component {
+    /** How often the card asks the league wallet about its invoice, at most (`wallet:sync` asks about every open one in the background). */
+    public const LOOKUP_SECONDS = 5;
+
     #[Locked]
     public int $tournamentId;
 
@@ -74,10 +86,25 @@ new class extends Component {
         return $this->tournament->payouts_approved_at === null ? collect() : $this->tournament->payouts()->with('event')->get();
     }
 
+    /**
+     * The card's invoice, only while it is its viewer's own: asked for by the
+     * same account, or by a guest from the same network. Another viewer (a
+     * replayed card) gets none, and nothing is looked up for them.
+     */
     #[Computed]
     public function invoice(): ?IncomingPayment
     {
-        return $this->invoiceId === null ? null : IncomingPayment::query()->where('tournament_id', $this->tournamentId)->find($this->invoiceId);
+        if ($this->invoiceId === null) {
+            return null;
+        }
+
+        $requester = InvoiceCaps::requester();
+
+        return IncomingPayment::query()->where('tournament_id', $this->tournamentId)->whereKey($this->invoiceId)
+            ->when($requester['requester_user_id'] !== null,
+                fn ($query) => $query->where('requester_user_id', $requester['requester_user_id']),
+                fn ($query) => $query->whereNull('requester_user_id')->where('requester_ip_hash', $requester['requester_ip_hash']))
+            ->first();
     }
 
     public function topUp(PotTopUps $topUps): void
@@ -119,6 +146,9 @@ new class extends Component {
 
         try {
             $answer = $zaps->invoice($this->zapper(), $this->tournament, $sats, $comment, json_decode($signed, true));
+            // The card shows the zap's invoice itself, like a top-up's, and notices when it is paid.
+            $this->invoiceId = $answer['id'];
+            unset($this->invoice);
 
             return ['invoice' => $answer['invoice'], 'qr' => $answer['qr']];
         } catch (ZapRefused $refused) {
@@ -139,9 +169,26 @@ new class extends Component {
         $invoice = $this->invoice;
 
         if ($invoice !== null && $invoice->status === IncomingPaymentStatus::Pending) {
-            $topUps->check($invoice);
+            // At most every LOOKUP_SECONDS per invoice (its `checked_at`), however often the card or anyone calls this.
+            $fresh = $topUps->check($invoice, self::LOOKUP_SECONDS);
             unset($this->invoice, $this->tournament);
+
+            if ($fresh->status === IncomingPaymentStatus::Settled) {
+                $this->dispatch('pot-filled');
+            }
         }
+    }
+
+    /**
+     * Whether the invoice ran out: expired here, or past its expiry with the
+     * wallet asked once since then and still unpaid (the wallet's answer
+     * turns it `expired` only after a grace, App\Support\Prizes\IncomingPayments).
+     */
+    private function hasRunOut(IncomingPayment $invoice): bool
+    {
+        return $invoice->status === IncomingPaymentStatus::Expired
+            || ($invoice->status === IncomingPaymentStatus::Pending && $invoice->expires_at->isPast()
+                && $invoice->checked_at !== null && $invoice->checked_at->greaterThanOrEqualTo($invoice->expires_at));
     }
 
     public function closeInvoice(): void
@@ -194,9 +241,11 @@ new class extends Component {
     // A zap is signed with the viewer's own Nostr key: a guest logs in first, an account without a key pays without Nostr.
     $zapper = $viewer instanceof User && is_string($viewer->pubkey) && $viewer->pubkey !== '' ? $viewer->pubkey : null;
     $invoice = $this->invoice;
+    $expired = $invoice !== null && $this->hasRunOut($invoice);
+    $waiting = $invoice !== null && $invoice->status === IncomingPaymentStatus::Pending && ! $expired;
     $qr = null;
 
-    if ($invoice !== null && $invoice->status === IncomingPaymentStatus::Pending) {
+    if ($waiting) {
         try {
             $qr = QrCode::svg('lightning:'.$invoice->bolt11, label: __('Lightning invoice for :sats sats', ['sats' => $sats($invoice->amount_sats)]));
         } catch (InvalidArgumentException) {
@@ -255,13 +304,14 @@ new class extends Component {
             @if (! $topUps)
                 <p class="m-0 text-[13px] text-ink-2" data-test="topup-off">{{ __('Top-ups not enabled for this pot.') }}</p>
             @elseif ($invoice !== null)
-                <div class="flex flex-col gap-3" data-test="topup-invoice" @if ($invoice->status === IncomingPaymentStatus::Pending) wire:poll.3s="checkInvoice" @endif>
+                {{-- Either way in: polled until it settles or runs out. Leaving it resets the zap steps too. --}}
+                <div class="flex flex-col gap-3" data-test="topup-invoice" @if ($waiting) wire:poll.3s="checkInvoice" @endif>
                     @if ($invoice->status === IncomingPaymentStatus::Settled)
-                        <p class="m-0 rounded-md bg-win-tint px-3 py-2 text-[13px] text-win" role="status" data-test="topup-received">{{ __('Received: :sats sats. Thank you!', ['sats' => $sats($invoice->amount_sats)]) }}</p>
-                        <div><x-button variant="quiet" wire:click="closeInvoice" data-test="topup-again">{{ __('Add more') }}</x-button></div>
-                    @elseif ($invoice->status === IncomingPaymentStatus::Expired)
-                        <p class="m-0 text-[13px] text-loss" role="status">{{ __('This invoice expired unpaid.') }}</p>
-                        <div><x-button variant="quiet" wire:click="closeInvoice">{{ __('New invoice') }}</x-button></div>
+                        <p class="m-0 rounded-md bg-win-tint px-3 py-2 text-[13px] text-win" role="status" data-test="topup-received">{{ __('✓ :sats sats arrived, thank you!', ['sats' => $sats($invoice->amount_sats)]) }}</p>
+                        <div><x-button variant="quiet" x-on:click="reset()" wire:click="closeInvoice" data-test="topup-again">{{ __('Add more') }}</x-button></div>
+                    @elseif ($expired)
+                        <p class="m-0 text-[13px] text-loss" role="status" data-test="topup-expired">{{ __('Invoice expired — create a new one') }}</p>
+                        <div><x-button variant="quiet" x-on:click="reset()" wire:click="closeInvoice">{{ __('New invoice') }}</x-button></div>
                     @else
                         <p class="m-0 text-[13px]">{{ __('Scan with any Lightning wallet to pay :sats sats. This page notices the payment by itself.', ['sats' => $sats($invoice->amount_sats)]) }}</p>
                         @if ($qr !== null)
@@ -272,7 +322,7 @@ new class extends Component {
                             <x-button variant="quiet" icon="copy" data-invoice="{{ $invoice->bolt11 }}" x-on:click="navigator.clipboard?.writeText($el.dataset.invoice).then(() => { copied = true; setTimeout(() => copied = false, 1500) })">
                                 <span x-text="copied ? @js(__('Copied')) : @js(__('Copy invoice'))">{{ __('Copy invoice') }}</span>
                             </x-button>
-                            <x-button variant="secondary" wire:click="closeInvoice">{{ __('Cancel') }}</x-button>
+                            <x-button variant="secondary" x-on:click="reset()" wire:click="closeInvoice">{{ __('Cancel') }}</x-button>
                         </div>
                         <p class="m-0 text-xs text-ink-3">{{ __('Valid until :time.', ['time' => $invoice->expires_at->copy()->timezone(\App\Support\LeagueTime::zone())->format('H:i')]) }}</p>
                     @endif
@@ -326,18 +376,6 @@ new class extends Component {
                             <x-button icon="bolt" x-on:click="sign()" x-bind:disabled="step === 'signing'" class="whitespace-nowrap" data-test="pot-zap-sign-button">
                                 <span x-text="step === 'signing' ? @js(__('Waiting for your signer…')) : @js(__('Sign and get invoice'))">{{ __('Sign and get invoice') }}</span>
                             </x-button>
-                        </div>
-                    </div>
-                    <div x-show="step === 'invoice'" x-cloak class="flex min-w-0 flex-col items-start gap-3 sm:flex-row sm:items-center" data-test="pot-zap-invoice">
-                        <div class="size-40 shrink-0 rounded-sm bg-white p-2 [&>svg]:size-full" x-html="qr" data-test="pot-zap-invoice-qr"></div>
-                        <div class="flex min-w-0 flex-col gap-2">
-                            <p class="m-0 text-xs leading-normal text-ink-2">{{ __('Scan with your Lightning wallet, or open it in the wallet on this device. Once it is paid, the league signs the zap receipt and you show on the wall within a minute.') }}</p>
-                            <span class="flex flex-wrap gap-2">
-                                <a :href="'lightning:' + invoice" class="btn-p inline-flex h-11 min-w-11 items-center justify-center gap-2 rounded-md bg-btc px-4 text-[13px] font-bold text-on-btc hover:text-on-btc"><x-icon name="bolt" :size="16" />{{ __('Open in wallet') }}</a>
-                                <button type="button" x-on:click="copyInvoice()" class="inline-flex h-11 min-w-11 cursor-pointer items-center justify-center gap-2 rounded-md border border-line bg-card px-3 text-[13px] text-ink">
-                                    <x-icon name="copy" :size="16" /><span x-text="copied ? @js(__('Copied')) : @js(__('Copy invoice'))">{{ __('Copy invoice') }}</span>
-                                </button>
-                            </span>
                         </div>
                     </div>
                     <p role="alert" class="m-0 text-xs leading-normal text-loss" x-show="error" x-text="error" x-cloak data-test="pot-zap-error"></p>
