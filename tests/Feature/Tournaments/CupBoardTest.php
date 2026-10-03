@@ -202,7 +202,7 @@ test('in German the head says Turnier and Casual-Elo', function () {
     $head = cupHead(Blade::render('<x-tournaments.cup-mentions heading filters />'));
     app()->setLocale('en');
 
-    expect($head)->toContain('Turniere', 'Die Liga eröffnet für jedes Spiel und jede Region selbst einen Cup. Seine Partien sind casual und bewegen nur dein Casual-Elo.', 'Turnier EA Sports FC 26 1v1, 4 Plätze', 'Das Format folgt den Anmeldungen: 2 Spieler → Single Elimination', 'Anmeldung offen');
+    expect($head)->toContain('Turniere', 'Die Liga eröffnet für jedes Spiel und jede Region selbst einen Cup. Seine Partien sind casual und bewegen nur dein Casual-Elo.', 'Turnier EA Sports FC 26 1v1, 4 Plätze', 'Das Format folgt den Anmeldungen: 2 Spieler → Duell', 'Anmeldung offen');
 });
 
 test('when every cup is running the head has no next cup, and each running row shows the format its field got', function () {

@@ -8,6 +8,7 @@ use App\Support\Cards\PageCardFacts;
 use App\Support\Cards\ShareMoments;
 use App\Support\Tournaments\CasualCups;
 use App\Support\Tournaments\FormatOptions;
+use App\Support\Tournaments\Lobbies;
 use App\Support\Tournaments\TournamentSignups;
 use App\Support\TwentyOne\Stream\TournamentSlides;
 use Carbon\CarbonImmutable;
@@ -205,4 +206,26 @@ test('the stream slide and the link previews of a cup with 6 sign-ups name and d
         ->and($slide['howItRuns']['steps'][0])->toBe(['title' => '5 rounds', 'line' => 'Everyone plays everyone.'])
         ->and(PageCardFacts::tournament($cup)['format'])->toBe(TournamentFormat::RoundRobin->value)
         ->and(ShareMoments::tournamentInvite($cup)['format'])->toBe(TournamentFormat::RoundRobin->value);
+});
+
+test('a cup of two is named a duel, planned or stored, in English and German; a third player makes it a round robin', function () {
+    $cup = openCup();
+    cupSignups($cup, 2);
+    $cup->refresh();
+
+    expect(Lobbies::formatLabel($cup))->toBe('Duel')
+        ->and(CasualCups::followNote($cup))->toBe('Format follows the sign-ups: 2 players → Duel');
+
+    app()->setLocale('de');
+    expect(Lobbies::formatLabel($cup))->toBe('Duell');
+    app()->setLocale('en');
+
+    cupSignups($cup, 1);
+    expect(Lobbies::formatLabel($cup->refresh()))->toBe('Round Robin');
+
+    // Switched at the close to the chess duel (a round robin of three games) and drawn with two.
+    $cup->signups()->active()->latest('id')->firstOrFail()->forceFill(['withdrawn_at' => now()])->save();
+    $cup->forceFill(['status' => TournamentStatus::Drawing, 'format' => TournamentFormat::RoundRobin, 'options' => ['iterations' => 3, 'rankBy' => 'points']])->save();
+
+    expect(Lobbies::formatLabel($cup->refresh()))->toBe('Duel');
 });

@@ -495,6 +495,30 @@ final class CasualCups
         return $planned;
     }
 
+    /**
+     * A casual cup played by two (formatFor(): one match, stored as a round
+     * robin of `duel_games` or a best-of single elimination): planned so
+     * while it follows its sign-ups, or switched to it at its close.
+     */
+    public static function isDuel(Tournament $tournament): bool
+    {
+        if (! $tournament->isCasualCup() || Lobbies::isLobby($tournament)) {
+            return false;
+        }
+
+        if (self::followsSignups($tournament)) {
+            return self::plannedFormat($tournament)['players'] === 2;
+        }
+
+        return self::isEvening($tournament) && self::players($tournament) === 2;
+    }
+
+    /** The name of a cup's (planned) format: "Duel" for two ({@see isDuel()}), else the format's own. */
+    public static function formatLabel(Tournament $tournament): string
+    {
+        return self::isDuel($tournament) ? __('Duel') : self::shownFormat($tournament)->label();
+    }
+
     /** "Format follows the sign-ups: 6 players → Round Robin" while a cup follows its sign-ups, else null. */
     public static function followNote(Tournament $tournament): ?string
     {
@@ -506,7 +530,7 @@ final class CasualCups
 
         return __('Format follows the sign-ups: :players → :format', [
             'players' => trans_choice(':count player|:count players', $plan['players']),
-            'format' => $plan['format']->label(),
+            'format' => self::isDuel($tournament) ? __('Duel') : $plan['format']->label(),
         ]);
     }
 
