@@ -20,6 +20,7 @@ use App\Support\Tournaments\Estimator;
 use App\Support\Tournaments\Lobbies;
 use App\Support\Tournaments\LobbyResults;
 use App\Support\Tournaments\TournamentLanding;
+use App\Support\Tournaments\TournamentPrizePool;
 use App\Support\Tournaments\TournamentTv;
 use Carbon\CarbonInterface;
 use Illuminate\Support\Carbon;
@@ -198,7 +199,7 @@ class TournamentLiveSlides
      *
      * @param  list<array<string, mixed>>  $frames  frames() of this poll
      * @param  list<array<string, mixed>>  $upcoming  TournamentSlides::frames() of this poll
-     * @return list<array{id: int, phase: string, fomo: bool, takeover: bool}>
+     * @return list<array{id: int, phase: string, fomo: bool, takeover: bool, parts?: list<int>}>
      */
     public static function entries(array $frames, array $upcoming): array
     {
@@ -206,7 +207,9 @@ class TournamentLiveSlides
 
         foreach ($frames as $frame) {
             if (is_int($frame['id'] ?? null) && in_array($frame['phase'] ?? null, self::PHASES, true)) {
-                $entries[] = ['id' => $frame['id'], 'phase' => $frame['phase'], 'fomo' => self::next($frame, $upcoming) !== null, 'takeover' => (bool) ($frame['takeover'] ?? $frame['phase'] === 'running')];
+                $entry = ['id' => $frame['id'], 'phase' => $frame['phase'], 'fomo' => self::next($frame, $upcoming) !== null, 'takeover' => (bool) ($frame['takeover'] ?? $frame['phase'] === 'running')];
+                // A running tournament's TV-look slides (TvSlides::VIEWS) without the ones it has no data for.
+                $entries[] = $frame['phase'] === 'running' ? [...$entry, 'parts' => self::runningParts($frame)] : $entry;
             }
         }
 
@@ -326,6 +329,7 @@ class TournamentLiveSlides
             'finishedMs' => null,
             'sharedFirst' => [],
             'podiumMore' => 0,
+            'tv' => null,
         ];
 
         if ($phase === 'drawing') {
@@ -381,6 +385,7 @@ class TournamentLiveSlides
             ];
             $snapshot['live'] = Lobbies::isLobby($tournament) ? [] : array_map(fn (array $box): array => ['round' => $box['round'], 'sides' => array_values(array_filter(array_map(fn (array $side): ?array => $name($side['entry']), $box['sides'])))],
                 TournamentTv::spotlight($stages, 2));
+            $snapshot['tv'] = $this->tv($tournament, $stages, $tv, $name);
         }
 
         foreach ($tv->ticker(3 * self::RESULTS) as $item) {
@@ -428,6 +433,122 @@ class TournamentLiveSlides
         }
 
         return [...$snapshot, 'pictures' => $pictures];
+    }
+
+    /**
+     * What the running slides (tv1..tv4) need beyond the board, read as the
+     * tournament TV reads it (pages::tournaments.tv): the game line and the
+     * format as its header says them, the current stage's title when there
+     * is more than one stage, each table part's current round with its
+     * pairings (`rounds`, the TV's bracket scene of a table stage), the
+     * whole bracket of a knockout stage (`tree`: every section and round), the
+     * tables (`tables`, its standings scene, at most 4 of TABLE_ROWS rows),
+     * and the pot with the places still open (`prize`, its pot scene; null
+     * without a pot or with no place open).
+     *
+     * @param  list<array<string, mixed>>  $stages
+     * @param  callable(array<string, mixed>|null): (array{pic: string, seed: int|null, name: string}|null)  $name
+     * @return array{gameLine: string, formatLabel: string, stage: string|null, tree: array{title: string|null, sections: list<array{title: string|null, columns: list<array{label: string, boxes: list<array<string, mixed>>}>}>}|null, rounds: list<array{title: string, round: int, boxes: list<array<string, mixed>>, byes: list<string>}>, tables: list<array{title: string, advance: int|null, rows: list<array<string, mixed>>}>, prize: array{sats: int, places: list<array{place: int, sats: int}>}|null}
+     */
+    private function tv(Tournament $tournament, array $stages, TournamentTv $tv, callable $name): array
+    {
+        $current = TournamentTv::currentStage($stages);
+        $rounds = [];
+        $settled = [];
+
+        foreach ($current['parts'] ?? [] as $part) {
+            if ($part['kind'] !== 'table') {
+                continue;
+            }
+
+            $round = TournamentTv::tableRound($part);
+
+            if ($round === null) {
+                continue;
+            }
+
+            $boxes = array_values(array_filter($round['boxes'], fn (array $box): bool => $box['bracket'] !== 'bye'));
+            $byes = array_values(array_filter($round['boxes'], fn (array $box): bool => $box['bracket'] === 'bye'));
+            $rounds[] = [
+                'title' => (string) ($part['title'] ?? $current['title']),
+                'round' => $round['number'],
+                'boxes' => array_map(fn (array $box): array => $this->box($box, $name), array_slice($boxes, 0, 6)),
+                'byes' => array_map(fn (array $box): string => PublicName::clean((string) ($box['sides'][0]['name'] ?? '')), $byes),
+            ];
+        }
+
+        foreach ($current === null ? [] : TournamentTv::boxesOf($current) as $box) {
+            if ($box['bracket'] === 'third-place' && $box['status'] === 'done') {
+                $settled = [3, 4];
+            }
+        }
+
+        // The whole bracket of the stage in play, as the TV draws it: every section (upper, lower, grand final), every
+        // round, every box. Groups played as knockouts: the group with a match to play. A match not needed (the
+        // grand final reset) is left out.
+        $tree = null;
+        $brackets = array_values(array_filter($current['parts'] ?? [], fn (array $part): bool => $part['kind'] === 'bracket'));
+
+        if ($brackets !== []) {
+            $part = $brackets[count($brackets) - 1];
+            foreach ($brackets as $candidate) {
+                if (self::partOpen($candidate)) {
+                    $part = $candidate;
+
+                    break;
+                }
+            }
+
+            $sections = [];
+            $boxCount = 0;
+            foreach ($part['sections'] as $section) {
+                $columns = [];
+                foreach ($section['columns'] as $column) {
+                    $boxes = array_values(array_filter($column['matches'], fn (array $box): bool => $box['status'] !== 'skipped'));
+                    if ($boxes !== []) {
+                        $boxCount += count($boxes);
+                        $columns[] = ['label' => (string) $column['label'], 'boxes' => array_map(fn (array $box): array => $this->box($box, $name), $boxes)];
+                    }
+                }
+                if ($columns !== []) {
+                    $sections[] = ['title' => isset($section['title']) ? (string) $section['title'] : null, 'columns' => $columns];
+                }
+            }
+
+            // Up to a 32-player double elimination fits one slide; a bigger tree keeps the cropped board.
+            $tree = $sections === [] || $boxCount > 64 ? null : ['title' => isset($part['title']) ? (string) $part['title'] : null, 'sections' => $sections];
+        }
+
+        $pool = app(TournamentPrizePool::class)->for($tournament);
+        $places = $pool === null ? [] : array_values(array_map(fn (array $share): array => ['place' => (int) $share['place'], 'sats' => (int) $share['sats']],
+            array_filter($pool['split'], fn (array $share): bool => ! in_array($share['place'], $settled, true))));
+
+        return [
+            'gameLine' => Lobbies::gameLine($tournament),
+            'formatLabel' => Lobbies::formatLabel($tournament),
+            'stage' => count($stages) > 1 && $current !== null ? (string) $current['title'] : null,
+            'rounds' => $rounds,
+            'tree' => $tree,
+            'tables' => array_map(fn (array $table): array => ['title' => (string) $table['title'], 'advance' => $table['advance'],
+                'rows' => $this->rows($table['rows'], $table['advance'], self::TABLE_ROWS, $name)], array_slice($tv->tables($stages), 0, 4)),
+            'prize' => $pool === null || $places === [] ? null : ['sats' => (int) $pool['sats'], 'places' => $places],
+        ];
+    }
+
+    /**
+     * The running slides a frame has, in the order the stream shows them
+     * (RotationPlanner::RUNNING_PARTS): the bracket (1), up now (2) only with
+     * a match live, the standings (3), the pot (4) only with a pot and a
+     * place still open. The tournament TV leaves the same scenes out.
+     *
+     * @param  array<string, mixed>  $frame
+     * @return list<int>
+     */
+    public static function runningParts(array $frame): array
+    {
+        $tv = is_array($frame['tv'] ?? null) ? $frame['tv'] : [];
+
+        return array_values(array_filter([1, ($frame['live'] ?? []) !== [] ? 2 : null, 3, is_array($tv['prize'] ?? null) ? 4 : null]));
     }
 
     /**
@@ -918,7 +1039,7 @@ class TournamentLiveSlides
      *
      * @param  array<string, mixed>  $box
      * @param  callable(array<string, mixed>|null): (array{pic: string, seed: int|null, name: string}|null)  $name
-     * @return array{key: string, state: string, label: string|null, from: list<string|null>, sides: list<array{pic: string|null, seed: int|null, name: string, known: bool, score: string|null, won: bool}>}
+     * @return array{key: string, bracket: string, state: string, label: string|null, from: list<string|null>, sides: list<array{pic: string|null, seed: int|null, name: string, known: bool, score: string|null, won: bool}>}
      */
     private function box(array $box, callable $name): array
     {
@@ -938,6 +1059,7 @@ class TournamentLiveSlides
 
         return [
             'key' => (string) $box['key'],
+            'bracket' => (string) $box['bracket'],
             'state' => match (true) {
                 $box['bracket'] === 'bye' => 'bye',
                 ($box['outcome'] ?? null) === 'void' => 'void',
@@ -1124,6 +1246,19 @@ class TournamentLiveSlides
 
         if (is_array($snapshot['standing'])) {
             $snapshot['standing']['faces'] = array_map($face, $snapshot['standing']['faces']);
+        }
+
+        if (is_array($snapshot['tv'] ?? null)) {
+            $sides = fn (array $box): array => [...$box, 'sides' => array_map($face, $box['sides'])];
+            $snapshot['tv']['rounds'] = array_map(fn (array $round): array => [...$round, 'boxes' => array_map($sides, $round['boxes'])], $snapshot['tv']['rounds']);
+            if (is_array($snapshot['tv']['tree'] ?? null)) {
+                foreach ($snapshot['tv']['tree']['sections'] as $si => $section) {
+                    foreach ($section['columns'] as $ci => $column) {
+                        $snapshot['tv']['tree']['sections'][$si]['columns'][$ci]['boxes'] = array_map($sides, $column['boxes']);
+                    }
+                }
+            }
+            $snapshot['tv']['tables'] = array_map(fn (array $table): array => [...$table, 'rows' => array_map($face, $table['rows'])], $snapshot['tv']['tables']);
         }
 
         $board = $snapshot['board'];

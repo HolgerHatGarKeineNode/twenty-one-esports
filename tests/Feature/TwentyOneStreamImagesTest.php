@@ -456,6 +456,8 @@ test('every person on a scene has an avatar, a clan its logo, every scene its ba
             'ta3' => $chessBackdrop, 'ta4' => $chessBackdrop, 'ta5' => $chessBackdrop, 'ta6' => $chessBackdrop, 'ta7' => $chessBackdrop,
             'tb3' => $chessBackdrop, 'tb4' => $chessBackdrop, 'tb5' => $chessBackdrop, 'tb6' => $chessBackdrop, 'tb7' => $chessBackdrop,
             'tc3' => $chessBackdrop, 'tc4' => $chessBackdrop, 'tc5' => $chessBackdrop, 'tc6' => $chessBackdrop, 'tc7' => $chessBackdrop,
+            // A running tournament's slides in its tournament TV's look.
+            'tv1' => $chessBackdrop, 'tv2' => $chessBackdrop, 'tv3' => $chessBackdrop, 'tv4' => $chessBackdrop,
             'd1' => $brandBackdrop, 'd2' => $brandBackdrop, 'd3' => $brandBackdrop, 'd4' => $brandBackdrop,
             'e1' => $brandBackdrop, 'e2' => $brandBackdrop, 'e3' => $brandBackdrop, 'e4' => $brandBackdrop,
             // The board scene without a live board game (plan "Mühle und Dame", P7): the teaser on the brand.

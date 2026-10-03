@@ -26,6 +26,7 @@ use App\Support\TwentyOne\Stream\StreamStats;
 use App\Support\TwentyOne\Stream\StreamTexts;
 use App\Support\TwentyOne\Stream\TournamentLiveSlides;
 use App\Support\TwentyOne\Stream\TournamentSlides;
+use App\Support\TwentyOne\Stream\TvSlides;
 use App\Support\TwentyOne\Stream\ViewerFeed;
 use App\Support\TwentyOne\TwentyOneSigner;
 use Closure;
@@ -645,7 +646,7 @@ class TwentyOneStreamCommand extends Command
         $scene = (string) $slot['scene'];
         // A slide past sign-up takes its tournament from the live frames, an upcoming one from the sign-up frames; how it
         // runs (t?3) shows both, and a tournament is in one list only.
-        $tournament = in_array($scene, RotationPlanner::LIVE_TOURNAMENT_SCENES, true)
+        $tournament = in_array($scene, RotationPlanner::LIVE_TOURNAMENT_SCENES, true) || isset(TvSlides::VIEWS[$scene])
             ? collect($live)->firstWhere('id', $slot['tournamentId']) ?? collect($tournaments)->firstWhere('id', $slot['tournamentId'])
             : collect($tournaments)->firstWhere('id', $slot['tournamentId']);
 

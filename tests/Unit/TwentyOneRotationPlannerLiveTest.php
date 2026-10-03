@@ -36,22 +36,22 @@ function liveRotation(float $seconds, Closure $liveAt, ?Closure $upcomingAt = nu
     return $log;
 }
 
-test('a running tournament holds the stream: live bracket, still standing, live bracket, how it runs, nothing else in between, no loop', function () {
+test('a running tournament holds the stream: its tournament TV bracket, up now, standings and pot, nothing else in between, no loop', function () {
     // 90 s a hold in four slides, hold after hold: only the tournament while it runs (2026-10-03).
     $log = liveRotation(306, fn () => [['id' => 5, 'phase' => 'running', 'fomo' => true]]);
 
     expect($log)->toBe([
-        '0 ta4 @5', '22.5 ta5 @5', '45 ta4 @5', '67.5 ta3 @5',
-        '90 tb4 @5', '112.5 tb5 @5', '135 tb4 @5', '157.5 tb3 @5',
-        '180 tc4 @5', '202.5 tc5 @5', '225 tc4 @5', '247.5 tc3 @5',
-        '270 ta4 @5', '292.5 ta5 @5',
+        '0 tv1 @5', '22.5 tv2 @5', '45 tv3 @5', '67.5 tv4 @5',
+        '90 tv1 @5', '112.5 tv2 @5', '135 tv3 @5', '157.5 tv4 @5',
+        '180 tv1 @5', '202.5 tv2 @5', '225 tv3 @5', '247.5 tv4 @5',
+        '270 tv1 @5', '292.5 tv2 @5',
     ]);
 });
 
 test('the call to sign up for the next one never cuts into a running tournament\'s hold', function () {
     $log = liveRotation(90, fn () => [['id' => 5, 'phase' => 'running', 'fomo' => true]]);
 
-    expect($log)->toBe(['0 ta4 @5', '22.5 ta5 @5', '45 ta4 @5', '67.5 ta3 @5']);
+    expect($log)->toBe(['0 tv1 @5', '22.5 tv2 @5', '45 tv3 @5', '67.5 tv4 @5']);
 });
 
 test('a finished tournament shows its champion, then the final bracket and its pride in turn; a drawing one how it runs', function () {
@@ -66,18 +66,18 @@ test('while a tournament runs, the upcoming ones wait', function () {
     $log = liveRotation(306, fn () => [['id' => 5, 'phase' => 'running', 'fomo' => false]], fn () => [9]);
 
     expect($log)->toBe([
-        '0 ta4 @5', '22.5 ta5 @5', '45 ta4 @5', '67.5 ta3 @5',
-        '90 tb4 @5', '112.5 tb5 @5', '135 tb4 @5', '157.5 tb3 @5',
-        '180 tc4 @5', '202.5 tc5 @5', '225 tc4 @5', '247.5 tc3 @5',
-        '270 ta4 @5', '292.5 ta5 @5',
+        '0 tv1 @5', '22.5 tv2 @5', '45 tv3 @5', '67.5 tv4 @5',
+        '90 tv1 @5', '112.5 tv2 @5', '135 tv3 @5', '157.5 tv4 @5',
+        '180 tv1 @5', '202.5 tv2 @5', '225 tv3 @5', '247.5 tv4 @5',
+        '270 tv1 @5', '292.5 tv2 @5',
     ]);
 });
 
 test('a tournament that finishes while its live bracket is on ends the slide at once; its next round shows the champion', function () {
     $log = liveRotation(185, fn (float $t): array => [['id' => 5, 'phase' => $t < 35 ? 'running' : 'finished', 'fomo' => false]]);
 
-    // Still standing from 22.5 s ends at 35, the rest of the hold is skipped: the loop, then the champion.
-    expect($log)->toBe(['0 ta4 @5', '22.5 ta5 @5', '65 tb6 @5', '80 tb4 @5', '143 tc6 @5', '158 tc5 @5']);
+    // Up now from 22.5 s ends at 35, the rest of the hold is skipped: the loop, then the champion.
+    expect($log)->toBe(['0 tv1 @5', '22.5 tv2 @5', '65 ta6 @5', '80 ta4 @5', '143 tb6 @5', '158 tb5 @5']);
 });
 
 test('a running tournament takes the stream within one planner step, two running ones alternate with the hold', function () {
@@ -87,7 +87,7 @@ test('a running tournament takes the stream within one planner step, two running
     // A chess match is on show; the tournament starts at 10 s and takes the very next step.
     expect($planner->at(0, $game)['kind'])->toBe(RotationPlanner::MATCH);
     $slot = $planner->at(10, $game, [], BoardScene::OFF, [['id' => 5, 'phase' => 'running', 'fomo' => false]]);
-    expect($slot)->toMatchArray(['kind' => RotationPlanner::TOURNAMENT, 'scene' => 'tb4', 'tournamentId' => 5])
+    expect($slot)->toMatchArray(['kind' => RotationPlanner::TOURNAMENT, 'scene' => 'tv1', 'tournamentId' => 5])
         ->and($planner->runningTournament())->toBe(5);
 
     $two = [['id' => 5, 'phase' => 'running', 'fomo' => false], ['id' => 6, 'phase' => 'running', 'fomo' => false]];
@@ -111,4 +111,10 @@ test('a casual cup between its live matches does not take the stream: it is one 
     // Quiet: far fewer tournament slides than a takeover's back-to-back holds, so the rest of the rotation shows between them.
     expect(count($quiet))->toBeLessThan(count($live))
         ->and($live)->toHaveCount(14);
+});
+
+test('a running tournament without a match live or a pot leaves those slides out, the others share the hold', function () {
+    $log = liveRotation(90, fn () => [['id' => 5, 'phase' => 'running', 'fomo' => false, 'parts' => [1, 3]]]);
+
+    expect($log)->toBe(['0 tv1 @5', '45 tv3 @5']);
 });

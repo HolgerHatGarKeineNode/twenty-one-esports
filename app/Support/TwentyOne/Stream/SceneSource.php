@@ -195,7 +195,7 @@ class SceneSource
             };
         }
 
-        if (in_array($scene, RotationPlanner::TOURNAMENT_SCENES, true)) {
+        if (in_array($scene, RotationPlanner::TOURNAMENT_SCENES, true) || isset(TvSlides::VIEWS[$scene])) {
             if ($tournament === null) {
                 throw new LogicException('A tournament slide needs a tournament.');
             }

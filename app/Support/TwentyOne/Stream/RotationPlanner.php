@@ -52,9 +52,9 @@ use App\Games\TrackmaniaNationsForever;
  * Running tournaments take the stream (the user: "Laufende Turniere müssen
  * sofort in den LIVE STREAM"): while one runs, the round ends at once and
  * every round is one running tournament for `runningSeconds`, its slides as
- * the tournament TV shows them (RUNNING_PARTS: live bracket, still standing,
- * live bracket, how it runs), in the round's look. Several running
- * tournaments take turns, never the same twice in a row, and nothing else
+ * the tournament TV shows them (RUNNING_PARTS in the TV look, tv1..tv4: bracket,
+ * up now, standings, pot; a part without data is left out, the rest share the hold).
+ * Several running tournaments take turns, never the same twice in a row, and nothing else
  * shows until the last one ends: no match, no teaser, no loop.
  *
  * Blockfill (plan "Blockfill", P6) has one teaser, BLOCKFILL_SCENE (f1,
@@ -141,6 +141,8 @@ final class RotationPlanner
         'ta3' => 'stream.rotation.ta3-how', 'ta4' => 'stream.rotation.ta4-live', 'ta5' => 'stream.rotation.ta5-standing', 'ta6' => 'stream.rotation.ta6-champion', 'ta7' => 'stream.rotation.ta7-next',
         'tb3' => 'stream.rotation.tb3-how', 'tb4' => 'stream.rotation.tb4-live', 'tb5' => 'stream.rotation.tb5-standing', 'tb6' => 'stream.rotation.tb6-champion', 'tb7' => 'stream.rotation.tb7-next',
         'tc3' => 'stream.rotation.tc3-how', 'tc4' => 'stream.rotation.tc4-live', 'tc5' => 'stream.rotation.tc5-standing', 'tc6' => 'stream.rotation.tc6-champion', 'tc7' => 'stream.rotation.tc7-next',
+        // A running tournament's slides while it holds the stream, in its tournament TV's look (tv1..tv4).
+        ...TvSlides::VIEWS,
         'd1' => 'stream.rotation.d1-pots', 'd2' => 'stream.rotation.d2-cups', 'd3' => 'stream.rotation.d3-invite', 'd4' => 'stream.rotation.d4-nostr',
         'e1' => 'stream.rotation.e1-win', 'e2' => 'stream.rotation.e2-climbers', 'e3' => 'stream.rotation.e3-signups', 'e4' => 'stream.rotation.e4-prizes',
         'd5' => 'stream.rotation.d5-board', 'd6' => 'stream.rotation.d6-spotlight',
@@ -169,8 +171,15 @@ final class RotationPlanner
      */
     public const PHASE_PARTS = ['running' => [4, [5, 3]], 'drawing' => [3, []], 'finished' => [6, [4, 5]]];
 
-    /** A running tournament's slides while it holds the stream, each a share of `runningSeconds`. */
-    public const RUNNING_PARTS = [4, 5, 4, 3];
+    /**
+     * A running tournament's slides while it holds the stream, each a share of `runningSeconds`: the parts of the
+     * TV look (RUNNING_LOOK; TvSlides::VIEWS tv1..tv4: bracket, up now, standings, pot), less the ones its entry
+     * leaves out (`parts`, TournamentLiveSlides::runningParts()).
+     */
+    public const RUNNING_PARTS = [1, 2, 3, 4];
+
+    /** The look of a running tournament's slides: its tournament TV ('tv1'..'tv4'). */
+    public const RUNNING_LOOK = 'v';
 
     /** The part that points the audience to the next tournament's sign-up. */
     public const NEXT_PART = 7;
@@ -191,6 +200,9 @@ final class RotationPlanner
 
     /** @var list<int> the running tournaments' ids, as the last call to at() reported them */
     private array $running = [];
+
+    /** @var array<int, list<int>> running tournament id => the RUNNING_PARTS it has data for */
+    private array $runningParts = [];
 
     /** The running tournament shown last. */
     private ?int $lastRunning = null;
@@ -298,7 +310,7 @@ final class RotationPlanner
      * @param  list<array{id: int, blitz: bool}>  $games  the games on show, in display order
      * @param  list<int>  $tournaments  the upcoming tournaments' ids, soonest sign-up close first
      * @param  string  $boards  BoardScene::OFF, IDLE or LIVE
-     * @param  list<array{id: int, phase: string, fomo: bool, takeover?: bool}>  $live  the tournaments past sign-up (TournamentLiveSlides::entries()), in turn order
+     * @param  list<array{id: int, phase: string, fomo: bool, takeover?: bool, parts?: list<int>}>  $live  the tournaments past sign-up (TournamentLiveSlides::entries()), in turn order
      * @param  string  $blockfillWeek  BlockfillSlides::OFF, IDLE, EMPTY or RUNNING
      * @param  string|null  $blockfillMoment  the key of a new #1 of the last minutes (BlockfillSlides::state())
      * @return array{kind: string, scene: string|null, gameId: int|null, tournamentId: int|null, until: float}
@@ -315,6 +327,7 @@ final class RotationPlanner
             // A running tournament takes the stream unless it says otherwise (a casual cup between its live matches).
             if ($entry['phase'] === 'running' && ($entry['takeover'] ?? true)) {
                 $this->running[] = $entry['id'];
+                $this->runningParts[$entry['id']] = array_values(array_intersect(self::RUNNING_PARTS, $entry['parts'] ?? self::RUNNING_PARTS)) ?: [self::RUNNING_PARTS[0]];
             }
 
             if (isset(self::PHASE_PARTS[$entry['phase']])) {
@@ -466,9 +479,9 @@ final class RotationPlanner
         $at = $this->lastRunning === null ? false : array_search($this->lastRunning, $this->running, true);
         $id = $this->running[$at === false ? 0 : ($at + 1) % count($this->running)];
         $this->lastRunning = $id;
-        $look = $this->nextLook();
-        $seconds = max(1.0, $this->runningSeconds) / count(self::RUNNING_PARTS);
-        $queue = array_map(fn (int $part): array => ['kind' => self::TOURNAMENT, 'look' => $look, 'tournamentId' => $id, 'part' => $part, 'key' => 'running:'.$id, 'seconds' => $seconds], self::RUNNING_PARTS);
+        $parts = $this->runningParts[$id] ?? self::RUNNING_PARTS;
+        $seconds = max(1.0, $this->runningSeconds) / count($parts);
+        $queue = array_map(fn (int $part): array => ['kind' => self::TOURNAMENT, 'look' => self::RUNNING_LOOK, 'tournamentId' => $id, 'part' => $part, 'key' => 'running:'.$id, 'seconds' => $seconds], $parts);
 
         // Only the running tournaments' slides while one runs, nothing in between (user, 2026-10-03:
         // "bei laufenden Turnieren auch nur noch die Live-Turnier-Folien … erst wenn das Turnier fertig ist, wieder alle anderen").

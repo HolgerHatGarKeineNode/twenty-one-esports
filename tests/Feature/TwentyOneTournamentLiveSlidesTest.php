@@ -192,8 +192,8 @@ test('the next tournament to sign up for: the same game first, else the soonest 
     expect(TournamentLiveSlides::next($frame, $upcoming)['id'])->toBe(4)
         ->and(TournamentLiveSlides::next(['id' => 1, 'game' => 'Rocket League'], $upcoming)['id'])->toBe(2)
         ->and(TournamentLiveSlides::next($frame, [$upcoming[1]]))->toBeNull()
-        ->and(TournamentLiveSlides::entries([['id' => 1, 'phase' => 'running', 'game' => 'Chess']], $upcoming))->toBe([['id' => 1, 'phase' => 'running', 'fomo' => true, 'takeover' => true]])
-        ->and(TournamentLiveSlides::entries([['id' => 1, 'phase' => 'running', 'game' => 'Chess']], []))->toBe([['id' => 1, 'phase' => 'running', 'fomo' => false, 'takeover' => true]]);
+        ->and(TournamentLiveSlides::entries([['id' => 1, 'phase' => 'running', 'game' => 'Chess']], $upcoming))->toBe([['id' => 1, 'phase' => 'running', 'fomo' => true, 'takeover' => true, 'parts' => [1, 3]]])
+        ->and(TournamentLiveSlides::entries([['id' => 1, 'phase' => 'running', 'game' => 'Chess']], []))->toBe([['id' => 1, 'phase' => 'running', 'fomo' => false, 'takeover' => true, 'parts' => [1, 3]]]);
 });
 
 test('every live tournament slide renders a running and a finished tournament with escaped names, and points to the next one', function () {
@@ -230,7 +230,7 @@ test('every live tournament slide renders a running and a finished tournament wi
         $upcomingHow .= $renderer->svg([...$source->rotation($scene, null, [], 0, $now, $stats, $upcoming[0], $upcoming), 'viewers' => null], RotationPlanner::VIEWS[$scene]);
     }
 
-    expect($svgs)->toHaveCount(30)
+    expect($svgs)->toHaveCount(2 * count(RotationPlanner::LIVE_TOURNAMENT_SCENES))
         ->and(array_filter($svgs, fn (string $svg): bool => ! str_contains($svg, 'width="1280" height="720"')))->toBe([])
         ->and(array_keys(array_filter($svgs, fn (string $svg): bool => ! str_contains($svg, '1,234') || ! str_contains($svg, 'watching'))))->toBe([])
         ->and($all)->not->toContain('<script>')->not->toContain('<b>one')->not->toContain('<i>Open')
@@ -353,4 +353,25 @@ test('a casual cup over days takes the whole stream only while one of its matche
     Cache::flush();
 
     expect(liveFrame($cup->fresh())['takeover'])->toBeTrue();
+});
+
+test('a running tournament holds the stream in four slides drawn like its tournament TV: bracket, up now, standings, pot', function () {
+    $t = runningChess(TournamentFormat::TwoStage, 6, options: ['groupSize' => 3, 'advance' => 2]);
+    $t->forceFill(['name' => 'Friday <b>Cup</b>', 'pot_source' => Tournament::POT_LEAGUE, 'prize_target_sats' => 21000, 'pool_opened_at' => now()])->save();
+    liveRounds($t, 1);
+    $frame = liveFrame($t);
+    $units = fn (string $scene): string => implode(' | ', liveUnits($frame, $scene, 1234));
+
+    expect(TournamentLiveSlides::entries([$frame], []))->toBe([['id' => $t->id, 'phase' => 'running', 'fomo' => false, 'takeover' => true, 'parts' => [1, 2, 3, 4]]])
+        ->and(array_map(fn (int $part): string => RotationPlanner::VIEWS['t'.RotationPlanner::RUNNING_LOOK.$part], RotationPlanner::RUNNING_PARTS))->toBe(['stream.rotation.tv1-bracket', 'stream.rotation.tv2-up-now', 'stream.rotation.tv3-standings', 'stream.rotation.tv4-pot'])
+        // The TV's header and footer on every slide: the name, the address, the latest result, the tabs.
+        ->and($units('tv1'))->toContain('Friday <b>Cup</b>', 'Follow on your phone', 'tournaments/'.$t->id, 'Latest', 'Bracket', 'Up now', 'Standings', 'Prize pool', 'Group A', 'Round 2')
+        ->and($units('tv2'))->toContain('vs', 'Seed ')
+        ->and($units('tv3'))->toContain('Group A', 'Group B', 'Through', 'Wins, draws, losses and points')
+        ->and($units('tv4'))->toContain('In the pot', '21,000', '1st place', 'can still win it')
+        ->and(mb_strtolower($units('tv1').$units('tv2').$units('tv3').$units('tv4')))->not->toContain('face')->not->toContain('#');
+
+    // Without a pot the pot slide is left out, as the TV leaves its pot scene out.
+    $t->forceFill(['pot_source' => null])->save();
+    expect(TournamentLiveSlides::runningParts(liveFrame($t)))->toBe([1, 2, 3]);
 });
