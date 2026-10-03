@@ -7,6 +7,7 @@ use App\Enums\SeriesStatus;
 use App\Models\SeriesMatch;
 use App\Models\User;
 use App\Support\Notifications\CasualNotifications;
+use App\Support\Tournaments\CupMatchNow;
 use Illuminate\Support\Facades\DB;
 
 /**
@@ -52,6 +53,11 @@ final class CasualChallenges
             throw CasualMatches::refuse('queue_locked', ['time' => $until->copy()->timezone($challenger->timezone ?? config('esports.preseason.display_timezone'))->format('H:i')]);
         }
 
+        // The casual lock (user, 2026-10-03): an open cup match in a running round comes first.
+        if (($cup = CupMatchNow::refusal($challenger, $opponent)) !== null) {
+            throw CasualMatches::refuse($cup['reason'], ['name' => $opponent->displayName()]);
+        }
+
         ['proposals' => $proposals, 'message' => $message] = SeriesService::schedule($proposals, $respondBy, $message);
 
         $match = DB::transaction(function () use ($challenger, $opponent, $game, $platform, $crossplay, $proposals, $respondBy, $message): SeriesMatch {
@@ -78,6 +84,11 @@ final class CasualChallenges
     public function accept(SeriesMatch $match, User $user, int $start, Platform $platform, bool $crossplay): SeriesMatch
     {
         $match = $this->open($match, $user, 'challenged');
+
+        // The casual lock (user, 2026-10-03): an open cup match in a running round comes first.
+        if (CupMatchNow::lockOf($user) !== null) {
+            throw CasualMatches::refuse(CupMatchNow::LOCKED);
+        }
 
         if (! in_array($start, $match->proposals, true)) {
             throw CasualMatches::refuse('start_not_proposed');

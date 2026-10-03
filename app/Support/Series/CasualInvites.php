@@ -12,6 +12,7 @@ use App\Models\SeriesQueueEntry;
 use App\Models\User;
 use App\Support\Chess\Broadcasts;
 use App\Support\Notifications\CasualNotifications;
+use App\Support\Tournaments\CupMatchNow;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 
@@ -95,6 +96,11 @@ final class CasualInvites
 
         $this->matches->assertGame($game);
         $this->matches->assertMayPlay($inviter);
+
+        // The casual lock (user, 2026-10-03): the invitee's open cup match comes first.
+        if (CupMatchNow::lockOf($invitee) !== null) {
+            throw CasualMatches::refuse(CupMatchNow::OTHER_LOCKED, ['name' => $invitee->displayName()]);
+        }
 
         $previous = $this->outgoing($inviter);
         $mode = CasualMatches::mode();
@@ -197,8 +203,8 @@ final class CasualInvites
                 return 'opponent_playing';
             }
 
-            if ($this->matches->busyReason($invitee) !== null) {
-                return 'accept_while_playing';
+            if (($busy = $this->matches->busyReason($invitee)) !== null) {
+                return $busy === CupMatchNow::LOCKED ? $busy : 'accept_while_playing';
             }
 
             if (! CasualMatches::compatible($invite->game, $invite->platform, $invite->crossplay, $platform, $crossplay)) {

@@ -388,7 +388,8 @@ return [
     | now_minutes: "Challenge now" proposes a start this many minutes ahead,
     | and the other captain has until then to accept.
     | noshow_minutes: from this long after the start, a captain whose opponent
-    | is not in the lobby can report a no-show (MatchRoom.dc.html: 15 min).
+    | is not in the lobby can report a no-show (MatchRoom.dc.html: 15 min;
+    | 20 since 2026-10-03, when players could not find their cup matches).
     | regions: the lobby regions offered in the match room.
     |
     | lobby_rules: the league's defaults for the lobby a host creates in the
@@ -426,7 +427,7 @@ return [
         'respond_max_days' => 7,
         'plan_max_days' => 14,
         'now_minutes' => 10,
-        'noshow_minutes' => 15,
+        'noshow_minutes' => 20,
         'regions' => ['EU', 'US-East', 'US-West', 'South America', 'Middle East', 'Oceania', 'Asia'],
         'lobby_rules' => [
             'age-of-empires-2' => [
@@ -544,6 +545,13 @@ return [
     | long for its first move, per mode, instead of `chess.first_move_seconds`.
     | A side that misses it loses the match by forfeit (unrated, like a
     | director forfeit). Slice 2 makes this a setting of each tournament.
+    | Blitz 10 minutes since 2026-10-03 (was 5): in a live cup 4 of 9 games
+    | were forfeited with 0-1 moves because players did not find them in time;
+    | the round clock's no-show wait went from 15 to 20 minutes with it.
+    |
+    | first_move_nudge_seconds: this long into a tournament game's first-move
+    | window, the player still to move gets one reminder ("<opponent> is
+    | waiting — your cup game is live", TournamentReminders).
     |
     | first_move_restarts: when both sides miss their first move (White did
     | not move and Black never opened the board), the game restarts this many
@@ -589,16 +597,17 @@ return [
     */
 
     'tournaments' => [
-        'first_move_seconds' => ['blitz' => 300, 'correspondence' => 86400],
+        'first_move_seconds' => ['blitz' => 600, 'correspondence' => 86400],
         'first_move_restarts' => 1,
         'drawn_replays' => 2,
         'unanswered_report_hours' => 2,
         'report_hours' => 2,
         'response_minutes' => 30,
-        'round_clock' => ['noshow_minutes' => 15, 'grace_minutes' => 5, 'response_minutes' => 10],
+        'round_clock' => ['noshow_minutes' => 20, 'grace_minutes' => 5, 'response_minutes' => 10],
         'messages_per_hour' => 5,
         'reminders' => array_values(array_map(intval(...), array_filter(array_map('trim', explode(',', (string) env('ESPORTS_TOURNAMENT_REMINDERS', '30,5'))), is_numeric(...)))),
         'remind_every_minutes' => 10,
+        'first_move_nudge_seconds' => 120,
     ],
 
     /*

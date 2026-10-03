@@ -353,10 +353,9 @@ final class TournamentMatchMaker
             return null;
         }
 
-        // A cup game may start while its players are away (the auto slot): they are told on every channel.
-        if ($tournament->isCasualCup()) {
-            $this->cupNotices->gameStarted($tournament, $game, $acceptedBy);
-        }
+        // A tournament game may start while its players are away (the auto slot, the next round): they are told on
+        // every channel, a sound and a toast on the page (user, 2026-10-03: in a live cup players missed their games).
+        $this->cupNotices->gameStarted($tournament, $game, $acceptedBy);
 
         return $game;
     }
@@ -410,10 +409,9 @@ final class TournamentMatchMaker
             return null;
         }
 
-        // A cup game may start while its players are away (the auto slot): they are told on every channel.
-        if ($tournament->isCasualCup()) {
-            $this->cupNotices->gameStarted($tournament, $game, $acceptedBy);
-        }
+        // A tournament game may start while its players are away (the auto slot, the next round): they are told on
+        // every channel, a sound and a toast on the page (user, 2026-10-03: in a live cup players missed their games).
+        $this->cupNotices->gameStarted($tournament, $game, $acceptedBy);
 
         return $game;
     }
@@ -483,6 +481,7 @@ final class TournamentMatchMaker
         ]);
 
         app(CasualMatches::class)->announce($series);
+        $this->cupNotices->seriesOpened($tournament, $series, ['challenger' => $a->memberIds(), 'challenged' => $b->memberIds()]);
 
         return $series;
     }
@@ -560,6 +559,9 @@ final class TournamentMatchMaker
             $event = $league->publish($template['kind'], $template['tags'], $template['content'], $template['created_at']);
             $series->forceFill(['challenge_event_id' => $event->id])->save();
         }
+
+        // Its players are told wherever they are (user, 2026-10-03).
+        $this->cupNotices->seriesOpened($tournament, $series, ['challenger' => $a->memberIds(), 'challenged' => $b->memberIds()]);
 
         return $series;
     }

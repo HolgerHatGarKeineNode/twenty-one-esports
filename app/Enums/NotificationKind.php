@@ -96,7 +96,8 @@ enum NotificationKind: string
      * |                          | CasualCupNotices (called off, live evening set, moved, match open with a    |                |                  |
      * |                          | 36-48 h window, times suggested, time agreed)                               |                |                  |
      * | cup_game_now             | CasualCupNotices::invited (play-now invite, 600 s), ::gameStarted (the      | minutes        | push             |
-     * |                          | league started a cup game: 300 s to the first move)                         |                |                  |
+     * |                          | league started a cup game: 600 s to the first move); TournamentReminders    |                |                  |
+     * |                          | (2 min into the first-move window: the opponent is waiting)                 |                |                  |
      * | casual_match_found       | CasualNotifications::matchFound (Ready within 60 s)                         | seconds        | page only        |
      * | casual_invite            | CasualNotifications::inviteReceived (120 s)                                 | 120 s          | page only        |
      * | casual_lobby_shared      | CasualNotifications::lobbyShared (join within 10 min)                       | 10 min         | push             |

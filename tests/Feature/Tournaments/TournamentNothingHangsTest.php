@@ -124,13 +124,13 @@ test('blitz: a side that misses its first move loses the tournament match by for
     $game = p18Game($tournament);
     $service = app(ChessGameService::class);
 
-    // Tournament window, not the global 30 s; and a player cannot abort a tournament game.
+    // Tournament window (10 min since 2026-10-03), not the global 30 s; and a player cannot abort a tournament game.
     expect($game->rated)->toBeTrue()
-        ->and($game->deadline_ms - $game->turn_started_ms)->toBe(300_000)
+        ->and($game->deadline_ms - $game->turn_started_ms)->toBe(600_000)
         ->and(fn () => $service->abort($game, $game->black))->toThrow(ChessRuleViolation::class, 'tournament_game');
 
     $game = $service->move($game, $game->white, 'e2e4');
-    expect($game->deadline_ms - $game->turn_started_ms)->toBe(300_000);
+    expect($game->deadline_ms - $game->turn_started_ms)->toBe(600_000);
 
     $game = p18MissFirstMove($game);
     $tags = NostrEvent::query()->findOrFail(SeasonAttestation::query()->sole()->nostr_event_id)->payload()['tags'];

@@ -15,6 +15,7 @@ use App\Support\Notifications\ChessNotifications;
 use App\Support\Series\CasualInvites;
 use App\Support\Series\CasualMatches;
 use App\Support\Tournaments\CasualCupNotices;
+use App\Support\Tournaments\CupMatchNow;
 use App\Support\Tournaments\TournamentMatchMaker;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
@@ -165,6 +166,11 @@ final class ChessInvites
             throw ChessGameService::casualPlaying();
         }
 
+        // The casual lock (user, 2026-10-03): an open cup match in a running round comes first.
+        if (($cup = CupMatchNow::refusal($inviter, $invitee)) !== null) {
+            throw new ChessRuleViolation($cup['reason'], $cup['message']);
+        }
+
         $previous = $this->outgoing($inviter);
 
         $invite = DB::transaction(function () use ($inviter, $invitee, $mode, $previous): ChessInvite|string {
@@ -278,6 +284,18 @@ final class ChessInvites
 
             if ($live && CasualMatches::runningMatchOf($invitee) !== null) {
                 return 'casual_playing';
+            }
+
+            // The casual lock (user, 2026-10-03): a cup match in a running round comes first; a cup invite is that match.
+            if ($invite->tournament_match_id === null && CupMatchNow::lockOf($invite->inviter) !== null) {
+                $invite->forceFill(['status' => ChessInviteStatus::Withdrawn])->save();
+                $this->announce($invite);
+
+                return 'opponent_playing';
+            }
+
+            if ($invite->tournament_match_id === null && CupMatchNow::lockOf($invitee) !== null) {
+                return CupMatchNow::LOCKED;
             }
 
             // Accepted before the game starts, so the start's withdrawal of

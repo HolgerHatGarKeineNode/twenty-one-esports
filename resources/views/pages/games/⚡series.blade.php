@@ -315,6 +315,11 @@ new #[Layout('layouts::app', ['section' => 'matches', 'scripts' => ['resources/j
 @endphp
 
 <div class="flex grow flex-col" data-test="game-page" data-game="{{ $slug }}" style="--game: {{ $colour }}">
+    {{-- An open cup match comes first, whatever its game (CupMatchNow; user, 2026-10-03). --}}
+    @auth
+        <livewire:cup-match variant="banner" frame="block px-4 pt-4 lg:px-12" wire:key="cup-banner-game" />
+    @endauth
+
     {{-- The viewer's open rooms and tournaments of this game first (2026-10-02). --}}
     @auth
         <livewire:upcoming-events :game="$slug" frame="px-4 pt-4 lg:px-12" wire:key="upcoming-game" />

@@ -10,6 +10,7 @@ use App\Support\Notifications\ChessNotifications;
 use App\Support\Series\CasualInvites;
 use App\Support\Series\CasualMatches;
 use App\Support\Settings\LeagueSettings;
+use App\Support\Tournaments\CupMatchNow;
 use Carbon\CarbonInterface;
 
 /**
@@ -49,6 +50,11 @@ final class ChessQueue
 
         if (CasualMatches::runningMatchOf($user) !== null) {
             throw ChessGameService::casualPlaying();
+        }
+
+        // The casual lock (user, 2026-10-03): an open cup match in a running round comes first.
+        if (($cup = CupMatchNow::refusal($user)) !== null) {
+            throw new ChessRuleViolation($cup['reason'], $cup['message']);
         }
 
         // Rated (P7d): only while the season is live, trust ranks exist and the player is Trusted.
@@ -158,6 +164,13 @@ final class ChessQueue
                 return $this->games->activeGameOf($user);
             }
 
+            // A cup match opened while this player searched (the casual lock): the search ends.
+            if (CupMatchNow::lockOf($user) !== null) {
+                $entry->delete();
+
+                return null;
+            }
+
             $now = now();
             $candidates = ChessQueueEntry::query()
                 ->where('user_id', '!=', $user->id)
@@ -170,7 +183,7 @@ final class ChessQueue
 
             foreach ($candidates as $candidate) {
                 // In a casual 1v1 by now (P23): that player stops searching blitz.
-                if (CasualMatches::runningMatchOf($candidate->user) !== null) {
+                if (CasualMatches::runningMatchOf($candidate->user) !== null || CupMatchNow::lockOf($candidate->user) !== null) {
                     $candidate->delete();
 
                     continue;

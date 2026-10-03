@@ -513,6 +513,9 @@ new #[Layout('layouts::app', ['section' => 'chess', 'realtime' => true, 'scripts
                 'invite_self' => __('You cannot invite yourself.'),
                 'rated_not_open', 'not_looking' => $violation->getMessage(),
                 'casual_playing' => __('Finish your casual 1v1 first.'),
+                // The casual lock (user, 2026-10-03): the banner above links the cup match.
+                'cup_match_first' => __('Your cup match comes first.'),
+                'opponent_in_cup' => $violation->getMessage(),
                 'lost_race' => __('Someone else answered first. Please try again.'),
                 default => __('That did not work, please try again.'),
             };
@@ -538,6 +541,11 @@ new #[Layout('layouts::app', ['section' => 'chess', 'realtime' => true, 'scripts
 
 <div class="flex grow flex-col" x-data="chessLobby(@js(['userId' => $user?->id, 'poll' => max(30, (int) config('esports.chess.lobby_poll_seconds'))]))" data-server-now="{{ (int) now()->getTimestampMs() }}" data-looking="{{ $user?->looking_to_play === 'chess/blitz' ? 'true' : 'false' }}">
     <div class="flex flex-col gap-6 px-4 pb-8 lg:gap-8 lg:px-12 lg:pb-10">
+        {{-- An open cup match comes first (CupMatchNow; user, 2026-10-03): above the title, and the casual lock says why a search is refused. --}}
+        @auth
+            <livewire:cup-match variant="banner" frame="block" wire:key="cup-banner-lobby" />
+        @endauth
+
         {{-- The title below lg; from lg the header's chess bar names the page. --}}
         <div class="flex items-baseline justify-between gap-3 lg:hidden" data-test="lobby-title">
             <h1 class="m-0 font-display text-2xl leading-tight font-bold">{{ __('Chess') }}</h1>

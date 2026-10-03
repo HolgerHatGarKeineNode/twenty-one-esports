@@ -35,6 +35,7 @@ use App\Support\Notifications\Notifier;
 use App\Support\Series\ChallengeDraft;
 use App\Support\Series\SeriesRuleViolation;
 use App\Support\Series\SeriesService;
+use App\Support\Tournaments\CupMatchNow;
 use Carbon\CarbonInterface;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Facades\DB;
@@ -464,6 +465,14 @@ final class InviteLinks
 
                 if ($this->useOf($link, $user) !== null) {
                     throw new InviteLinkRefused('already_taken', __('You already took this invite.'));
+                }
+
+                // The casual lock (user, 2026-10-03): an open cup match in a running round comes first; a clan or tournament link is no game.
+                $cup = in_array($link->type, [InviteLinkType::Blitz, InviteLinkType::Daily, InviteLinkType::Board, InviteLinkType::Series], true)
+                    ? CupMatchNow::refusal($user, $link->inviter) : null;
+
+                if ($cup !== null) {
+                    throw new InviteLinkRefused($cup['reason'], $cup['message']);
                 }
 
                 $this->claim($link);

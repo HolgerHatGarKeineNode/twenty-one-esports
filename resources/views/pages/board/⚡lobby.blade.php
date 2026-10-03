@@ -530,6 +530,8 @@ new #[Layout('layouts::app', ['realtime' => true, 'scripts' => ['resources/js/ga
                 'opponent_playing' => __('That player is already in another live game, so the invite is closed.'),
                 'invite_self' => __('You cannot invite yourself.'),
                 'not_looking', 'rated_not_open' => $violation->getMessage(),
+                'cup_match_first' => __('Your cup match comes first.'),
+                'opponent_in_cup' => $violation->getMessage(),
                 default => __('That did not work, please try again.'),
             };
         }

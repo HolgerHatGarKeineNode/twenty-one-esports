@@ -6583,5 +6583,22 @@
     "Your opponent": "Dein Gegner",
     "Your opponent is ready": "Dein Gegner ist bereit",
     "Your opponent is still playing": "Dein Gegner spielt noch",
-    "your opponent": "deinen Gegner"
+    "your opponent": "deinen Gegner",
+    "Your cup match comes first.": "Dein Cup-Match geht vor.",
+    ":name is playing a cup match right now.": ":name spielt gerade ein Cup-Match.",
+    "Your cup game is live — play now": "Deine Cup-Partie läuft — jetzt spielen",
+    "Your tournament game is live — play now": "Deine Turnierpartie läuft — jetzt spielen",
+    "Your lobby": "Deine Lobby",
+    "You have a cup game live": "Deine Cup-Partie läuft",
+    "You have a tournament game live": "Deine Turnierpartie läuft",
+    "Your cup match is on": "Dein Cup-Match läuft",
+    "Your tournament match is on": "Dein Turnier-Match läuft",
+    "Your cup match is next": "Dein Cup-Match steht an",
+    "Your tournament match is next": "Dein Turnier-Match steht an",
+    "Your cup match comes first: casual games wait until it is done.": "Dein Cup-Match geht vor: Casual-Partien warten, bis es entschieden ist.",
+    ":tournament: your match is on": ":tournament: Dein Match läuft",
+    "Against :name. Open the match room to check in and play.": "Gegen :name. Öffne den Match-Raum, um einzuchecken und zu spielen.",
+    ":name is waiting — your cup game is live": ":name wartet — deine Cup-Partie läuft",
+    ":name is waiting — your tournament game is live": ":name wartet — deine Turnierpartie läuft",
+    "Make your first move within :time, or you lose this game by forfeit.": "Mach deinen ersten Zug innerhalb von :time, sonst verlierst du diese Partie kampflos."
 }

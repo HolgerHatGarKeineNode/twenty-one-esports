@@ -16,6 +16,7 @@ use App\Support\Chess\Broadcasts;
 use App\Support\Chess\ChessGameService;
 use App\Support\Notifications\CasualNotifications;
 use App\Support\Settings\LeagueSettings;
+use App\Support\Tournaments\CupMatchNow;
 use Carbon\CarbonInterface;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Query\Builder as QueryBuilder;
@@ -100,12 +101,17 @@ final class CasualMatches
     /**
      * One live game at a time: a live chess game, a live board game (plan
      * "Mühle und Dame", P5) or a running casual 1v1 keeps a player out of
-     * the queue and the invites. Null when free.
+     * the queue and the invites. So does an open cup match in a running
+     * round (the casual lock, CupMatchNow; user, 2026-10-03). Null when free.
      */
     public function busyReason(User $user): ?string
     {
         if ($this->chess->activeGameOf($user) !== null || $this->activeMatchOf($user) !== null || app(BoardGameService::class)->activeGameOf($user) !== null) {
             return 'already_playing';
+        }
+
+        if (CupMatchNow::lockOf($user) !== null) {
+            return CupMatchNow::LOCKED;
         }
 
         return null;
@@ -756,6 +762,8 @@ final class CasualMatches
             'unknown_game' => __('There is no casual 1v1 for this game.'),
             'queue_locked' => __('You did not show up to your recent matches. You can play casual 1v1 again at :time.', $replace),
             'already_playing' => __('Finish your current game first.'),
+            CupMatchNow::LOCKED => __('Your cup match comes first.'),
+            CupMatchNow::OTHER_LOCKED => __(':name is playing a cup match right now.', $replace),
             'invite_self' => __('You cannot invite yourself.'),
             'not_looking' => __(':name is not looking for a game right now.', $replace),
             'invite_closed' => __('This invite is no longer open.'),

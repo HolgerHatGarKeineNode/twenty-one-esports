@@ -170,6 +170,9 @@
                 </a>
             @endif
 
+            {{-- An open cup match on every page (CupMatchNow; user, 2026-10-03): pulsing while the game is live. --}}
+            <livewire:cup-match variant="badge" />
+
             <livewire:notification-bell />
 
             <flux:dropdown position="bottom" align="end" class="hidden lg:block">

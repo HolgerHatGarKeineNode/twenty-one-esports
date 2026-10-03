@@ -7,6 +7,7 @@ use App\Models\ChessChallenge;
 use App\Models\ChessGame;
 use App\Models\User;
 use App\Support\Notifications\ChessNotifications;
+use App\Support\Tournaments\CupMatchNow;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\RateLimiter;
@@ -56,6 +57,11 @@ final class DailyChallenges
 
         if (mb_strlen($message) > 140) {
             throw new ChessRuleViolation('challenge_message');
+        }
+
+        // The casual lock (user, 2026-10-03): an open cup match in a running round comes first.
+        if (($cup = CupMatchNow::refusal($challenger, $challenged)) !== null) {
+            throw new ChessRuleViolation($cup['reason'], $cup['message']);
         }
 
         $open = ChessChallenge::query()
@@ -137,6 +143,11 @@ final class DailyChallenges
 
             if ($challenge->challenged_id !== $challenged->id || ! $challenge->isOpen()) {
                 throw new ChessRuleViolation('challenge_closed');
+            }
+
+            // The casual lock (user, 2026-10-03): an open cup match in a running round comes first.
+            if (($cup = CupMatchNow::refusal($challenged, $challenge->challenger)) !== null) {
+                throw new ChessRuleViolation($cup['reason'], $cup['message']);
             }
 
             $challengerWhite = match ($challenge->color) {

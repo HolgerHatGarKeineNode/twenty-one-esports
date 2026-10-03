@@ -4,6 +4,7 @@ use App\Models\ChessGame;
 use App\Models\User;
 use App\Support\Dock\DockItem;
 use App\Support\Dock\OpenMatches;
+use App\Support\Tournaments\CupMatchNow;
 use Illuminate\Support\Collection;
 use Livewire\Attributes\Computed;
 use Livewire\Attributes\Locked;
@@ -51,10 +52,15 @@ new class extends Component {
     #[Locked]
     public bool $quiet = false;
 
+    /** The page's path, read at mount: the cup entry stays off the page it leads to. */
+    #[Locked]
+    public string $path = '';
+
     public function mount(): void
     {
         ['game' => $this->excludeGame, 'series' => $this->excludeSeries] = OpenMatches::onScreen(request());
         $this->excludeBoard = OpenMatches::boardOnScreen(request());
+        $this->path = '/'.ltrim(request()->path(), '/');
 
         if ($this->excludeGame !== null) {
             $game = ChessGame::query()->find($this->excludeGame);
@@ -70,6 +76,20 @@ new class extends Component {
     public function items(): Collection
     {
         return app(OpenMatches::class)->for($this->user(), $this->excludeGame, $this->excludeSeries, $this->excludeBoard);
+    }
+
+    /**
+     * The player's open cup match (CupMatchNow; user, 2026-10-03): the
+     * dock's first entry, highlighted. Not on the page it leads to.
+     *
+     * @return array{state: 'live'|'lobby'|'waiting', key: string, href: string, label: string, short: string, tournament: string, round: string, opponent: string, cup: bool, locked: bool, match: int}|null
+     */
+    #[Computed]
+    public function cup(): ?array
+    {
+        $cup = app(CupMatchNow::class)->for($this->user());
+
+        return $cup === null || parse_url($cup['href'], PHP_URL_PATH) === $this->path ? null : $cup;
     }
 
     private function user(): User
@@ -105,6 +125,40 @@ new class extends Component {
 <div x-data="matchDock(@js($config))" data-need="{{ $counts['need'] }}" data-open="{{ $counts['open'] }}" data-test="match-dock-root"
      x-on:keydown.escape.window="close(true)" x-on:bell-toggle.window="$event.detail && close(false)" x-on:chat-sheet-toggle.window="chatOpen = $event.detail; $event.detail && close(false)">
     <span class="sr-only" aria-live="polite" x-text="announcement"></span>
+
+    {{--
+        The open cup match first, above the dock's own bar and highlighted (user, 2026-10-03: in a live cup
+        players could not find their matches). It floats above the bar where there is one: the phone's bar
+        (56 px) or the page's own bottom bar, the desktop bar (from lg, not on a game page).
+    --}}
+    @php($cup = $this->cup)
+    @if ($cup)
+        <div aria-hidden="true" class="h-16 lg:hidden" x-show="! pageBar" data-test="dock-cup-spacer"></div>
+        <a href="{{ $cup['href'] }}" wire:key="dock-cup-{{ $cup['key'] }}"
+           @class([
+               'fixed inset-x-4 z-[35] flex h-14 items-center gap-3 rounded-xl pr-3 pl-3 lg:right-6 lg:left-auto lg:w-[380px]',
+               'bottom-[calc(var(--tabbar-h)+5rem)]' => $items->isNotEmpty(),
+               'bottom-[calc(var(--tabbar-h)+1rem)]' => $items->isEmpty(),
+               'lg:bottom-[88px]' => $items->isNotEmpty() && ! $gamePage,
+               'lg:bottom-4' => $items->isEmpty() || $gamePage,
+               'bg-btc text-on-btc shadow-[0_0_0_1px_var(--color-btc-hi),0_16px_32px_rgba(10,10,11,.8)] hover:text-on-btc' => $cup['state'] === 'live',
+               'bg-card text-ink shadow-[inset_3px_0_0_var(--color-btc),0_0_0_2px_var(--color-btc),0_16px_32px_rgba(10,10,11,.8)] hover:text-ink' => $cup['state'] !== 'live',
+           ])
+           x-show="! keyboard && ! chatOpen" x-bind:style="pageBar && { bottom: (pageBar + 52) + 'px' }"
+           data-test="dock-cup" data-state="{{ $cup['state'] }}" data-live-floor>
+            <span @class(['relative flex size-9 shrink-0 items-center justify-center rounded-lg', 'bg-on-btc text-btc' => $cup['state'] === 'live', 'bg-btc text-on-btc' => $cup['state'] !== 'live'])>
+                <x-icon name="trophy" :size="18" />
+                @if ($cup['state'] === 'live')
+                    <span aria-hidden="true" class="absolute -top-1 -right-1 flex size-3.5 items-center justify-center rounded-full bg-btc"><span class="size-2.5 animate-live rounded-full bg-live"></span></span>
+                @endif
+            </span>
+            <span class="flex min-w-0 grow flex-col gap-0.5">
+                <b class="truncate text-[13px] leading-4" data-test="dock-cup-label">{{ $cup['label'] }}</b>
+                <span @class(['truncate text-xs leading-4', 'text-on-btc' => $cup['state'] === 'live', 'text-ink-2' => $cup['state'] !== 'live'])>{{ $cup['tournament'] }} · {{ $cup['round'] }}</span>
+            </span>
+            <x-icon name="next" :size="18" class="shrink-0" />
+        </a>
+    @endif
 
     @if ($items->isNotEmpty())
         {{--

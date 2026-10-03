@@ -326,6 +326,8 @@ new #[Layout('layouts::app')] class extends Component {
             $this->error = match ($violation->reason) {
                 'challenge_self' => __('You cannot challenge yourself.'),
                 'challenge_open' => __('There is already an open challenge between the two of you.'),
+                'cup_match_first' => __('Your cup match comes first.'),
+                'opponent_in_cup' => $violation->getMessage(),
                 'challenge_closed' => __('That challenge is no longer open.'),
                 'challenge_limit' => __('You sent as many challenges as a day allows. Try again in :time.', [
                     'time' => $this->opponent === null ? '' : now()->addSeconds(BoardChallenges::availableIn($user, $this->opponent))->diffForHumans(syntax: CarbonInterface::DIFF_ABSOLUTE),

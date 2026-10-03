@@ -26,6 +26,7 @@ use App\Support\SeasonChain\GatePin;
 use App\Support\SeasonChain\SeasonChains;
 use App\Support\Series\CasualMatches;
 use App\Support\Series\Ladders;
+use App\Support\Tournaments\CupMatchNow;
 use App\Support\Tournaments\TournamentRunner;
 use Closure;
 use Illuminate\Support\Facades\DB;
@@ -128,6 +129,13 @@ final class BoardGameService
                 // One live game at a time across games (P5): live chess and a running casual 1v1 count too.
                 if (app(ChessGameService::class)->activeGameOf($player) !== null || CasualMatches::runningMatchOf($player) !== null) {
                     throw new BoardRuleViolation('playing_elsewhere', "{$player->id} already plays a live game of another kind.");
+                }
+            }
+
+            // The casual lock (user, 2026-10-03): no casual game, live or by correspondence, while a player's cup match in a running round is open.
+            foreach ($tournamentMatchId === null ? [$white, $black] : [] as $player) {
+                if (CupMatchNow::lockOf($player) !== null) {
+                    throw new BoardRuleViolation(CupMatchNow::LOCKED, __('Your cup match comes first.'));
                 }
             }
 

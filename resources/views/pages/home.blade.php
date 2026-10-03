@@ -64,6 +64,11 @@
 <x-layouts::app section="home" flush :scripts="$live['boards']->isNotEmpty() ? ['resources/js/chess.js'] : []">
     <h1 class="sr-only">{{ __('TWENTY ONE Esports: chess and Rocket League for Bitcoiners') }}</h1>
 
+    {{-- An open cup match before anything else (CupMatchNow; user, 2026-10-03). --}}
+    @auth
+        <livewire:cup-match variant="banner" frame="block px-4 pt-4 lg:px-12 lg:pt-6" />
+    @endauth
+
     {{-- A player's next match or event first, above the stage, at every width (2026-10-02). --}}
     @auth
         <livewire:upcoming-events variant="card" />

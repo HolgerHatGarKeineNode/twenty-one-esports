@@ -424,6 +424,11 @@ new #[Layout('layouts::app', ['section' => 'matches'])] class extends Component 
 @endphp
 
 <div class="flex grow flex-col gap-6 pb-10" data-test="matches">
+    {{-- An open cup match comes first (CupMatchNow; user, 2026-10-03). --}}
+    @auth
+        <livewire:cup-match variant="banner" frame="block px-4 pt-4 lg:px-12" wire:key="cup-banner-matches" />
+    @endauth
+
     {{-- The viewer's open match rooms first (2026-10-02: "Meine offenen Match Rooms gehen total unter"). --}}
     @auth
         <livewire:upcoming-events only="series" frame="px-4 pt-4 lg:px-12" wire:key="upcoming-rooms" />

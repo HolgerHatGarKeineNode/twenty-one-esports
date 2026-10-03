@@ -4,6 +4,8 @@ namespace App\Support\Tournaments;
 
 use App\Enums\NotificationKind;
 use App\Enums\TournamentStatus;
+use App\Models\BoardGame;
+use App\Models\ChessGame;
 use App\Models\Tournament;
 use App\Models\TournamentMatch;
 use App\Models\TournamentReminder;
@@ -48,8 +50,9 @@ final class TournamentReminders
     public function tick(): int
     {
         $points = self::points();
+        $nudgeAfter = max(0, (int) config('esports.tournaments.first_move_nudge_seconds', 0));
 
-        if ($points === []) {
+        if ($points === [] && $nudgeAfter === 0) {
             return 0;
         }
 
@@ -58,7 +61,8 @@ final class TournamentReminders
         foreach (Tournament::query()->where('status', TournamentStatus::Running)->orderBy('id')->get() as $tournament) {
             try {
                 foreach (TournamentWaits::of($tournament) as $wait) {
-                    $sent += $this->due($tournament, $wait, $points);
+                    $sent += $points === [] ? 0 : $this->due($tournament, $wait, $points);
+                    $sent += $this->nudge($tournament, $wait, $nudgeAfter);
                 }
             } catch (Throwable $e) {
                 report($e);
@@ -158,6 +162,82 @@ final class TournamentReminders
         }
 
         return $sent;
+    }
+
+    /**
+     * `first_move_nudge_seconds` into a tournament game's first-move window
+     * (user, 2026-10-03: 4 of 9 cup games were forfeited with 0 or 1 moves),
+     * the player still to move hears it once: "<opponent> is waiting — your
+     * cup game is live", in the bell, as a toast and a sound on the page.
+     * Once per player and window: the row (state `first_move_nudge`, the
+     * window's end as `due_at`) is written before the notification.
+     */
+    private function nudge(Tournament $tournament, MatchWait $wait, int $after): int
+    {
+        if ($after === 0 || $wait->state !== 'first_move' || ! $wait->counts() || $wait->since === null || $wait->subject === null
+            || $wait->since->addSeconds($after)->isFuture() || ! $wait->decidesAt?->isFuture()) {
+            return 0;
+        }
+
+        $game = $this->gameOf($wait->subject);
+
+        // A live game only: a correspondence game's first move has a day, and its own reminders.
+        if ($game === null || $game->isCorrespondence()) {
+            return 0;
+        }
+
+        $sent = 0;
+
+        foreach ($wait->waitingOn as ['user_id' => $userId]) {
+            $inserted = TournamentReminder::query()->insertOrIgnore([[
+                'tournament_id' => $tournament->id,
+                'tournament_match_id' => $wait->matchId,
+                'user_id' => $userId,
+                'subject' => $wait->subject,
+                'state' => 'first_move_nudge',
+                'due_at' => $wait->decidesAt->toDateTimeString(),
+                'minutes_before' => 0,
+                'created_at' => now()->toDateTimeString(),
+            ]]);
+
+            $player = $inserted > 0 ? User::query()->find($userId) : null;
+
+            if ($player === null) {
+                continue;
+            }
+
+            $locale = $player->locale ?? (string) config('app.locale');
+            $opponent = $game->opponentOf($player)?->displayName() ?? '';
+            $cup = $tournament->isCasualCup();
+            // Both missed (White did not move, Black never opened the board): nobody is waiting on the other yet.
+            $title = count($wait->waitingOn) === 1 && $opponent !== ''
+                ? ($cup ? __(':name is waiting — your cup game is live', ['name' => $opponent], $locale) : __(':name is waiting — your tournament game is live', ['name' => $opponent], $locale))
+                : ($cup ? __('Your cup game is live — play now', [], $locale) : __('Your tournament game is live — play now', [], $locale));
+
+            // No `match`: the page shows the toast even while the game has a tab on the dock (alerts.js).
+            $this->notifier->send($player, NotificationKind::CupGameNow, new Notice(
+                $title,
+                __('Make your first move within :time, or you lose this game by forfeit.', ['time' => RulesPage::largestUnit(max(1, (int) ceil(($wait->decidesAt->getTimestamp() - now()->getTimestamp()) / 60)), $locale)], $locale),
+                $wait->url,
+                null,
+                __('Play now', [], $locale),
+            ));
+            $sent++;
+        }
+
+        return $sent;
+    }
+
+    /** The chess or board game a wait's subject names (`chess:<id>`, `board:<id>`). */
+    private function gameOf(string $subject): ChessGame|BoardGame|null
+    {
+        [$kind, $id] = array_pad(explode(':', $subject, 2), 2, '0');
+
+        return match ($kind) {
+            'chess' => ChessGame::query()->with(['white', 'black'])->find((int) $id),
+            'board' => BoardGame::query()->with(['white', 'black'])->find((int) $id),
+            default => null,
+        };
     }
 
     private function send(Tournament $tournament, User $player, MatchWait $wait, ?User $sender = null): void

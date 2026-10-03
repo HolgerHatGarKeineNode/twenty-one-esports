@@ -14,6 +14,7 @@ use App\Support\Chess\ChessGameService;
 use App\Support\Rating\Ratings;
 use App\Support\Series\CasualInvites;
 use App\Support\Series\CasualMatches;
+use App\Support\Tournaments\CupMatchNow;
 use Carbon\CarbonInterface;
 use Illuminate\Support\Facades\DB;
 
@@ -64,6 +65,11 @@ final class BoardQueue
         }
 
         self::assertFree($this->games, $user);
+
+        // The casual lock (user, 2026-10-03): an open cup match in a running round comes first.
+        if (($cup = CupMatchNow::refusal($user)) !== null) {
+            throw new BoardRuleViolation($cup['reason'], $cup['message']);
+        }
 
         // Rated (P6): only while the season is live, the rated queue is offered and the player is Trusted.
         $refusal = $rated ? $this->ratedBoard->refusal($user, $slug, $mode) : null;
@@ -169,6 +175,13 @@ final class BoardQueue
                 return $this->games->activeGameOf($user);
             }
 
+            // A cup match opened while this player searched (the casual lock): the search ends.
+            if (CupMatchNow::lockOf($user) !== null) {
+                $entry->delete();
+
+                return null;
+            }
+
             $now = now();
             $candidates = BoardQueueEntry::query()
                 ->where('user_id', '!=', $user->id)
@@ -181,6 +194,12 @@ final class BoardQueue
                 ->get();
 
             foreach ($candidates as $candidate) {
+                if (CupMatchNow::lockOf($candidate->user) !== null) {
+                    $candidate->delete();
+
+                    continue;
+                }
+
                 $distance = abs($entry->rating - $candidate->rating);
 
                 if ($distance > min($this->range($entry, $now), $this->range($candidate, $now))) {

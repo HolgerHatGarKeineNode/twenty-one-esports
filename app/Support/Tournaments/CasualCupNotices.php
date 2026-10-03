@@ -7,6 +7,7 @@ use App\Models\BoardGame;
 use App\Models\BoardInvite;
 use App\Models\ChessGame;
 use App\Models\ChessInvite;
+use App\Models\SeriesMatch;
 use App\Models\Tournament;
 use App\Models\TournamentMatch;
 use App\Models\TournamentRound;
@@ -245,7 +246,36 @@ final class CasualCupNotices
                 $game instanceof BoardGame ? route('board.show', $game) : route('games.show', $game),
                 $game instanceof ChessGame ? $game->id : null,
                 __('Play now', [], $locale),
+                // The "opponent found" sound: a game whose first-move window runs (user, 2026-10-03).
+                'matchFound',
             ), $game instanceof ChessGame ? $game : null);
+        }
+    }
+
+    /**
+     * The league opened a tournament series (a cup's scheduled match, a
+     * players tournament's series): every player of both sides, wherever
+     * they are, with the way into the match room (user, 2026-10-03: in a
+     * live cup players did not find their matches). The page plays the
+     * sound and shows the toast, a hidden tab a desktop notification.
+     *
+     * @param  array{challenger: list<int>, challenged: list<int>}  $sides  the players of each side
+     */
+    public function seriesOpened(Tournament $tournament, SeriesMatch $series, array $sides): void
+    {
+        foreach ($sides as $side => $userIds) {
+            foreach (User::query()->whereKey($userIds)->get() as $player) {
+                $locale = $this->locale($player);
+
+                $this->notifier->send($player, NotificationKind::CupGameNow, new Notice(
+                    __(':tournament: your match is on', ['tournament' => $tournament->name], $locale),
+                    __('Against :name. Open the match room to check in and play.', ['name' => $series->sideName(SeriesMatch::otherSide($side))], $locale),
+                    route('matches.room', $series),
+                    null,
+                    __('Open match room', [], $locale),
+                    'matchFound',
+                ));
+            }
         }
     }
 

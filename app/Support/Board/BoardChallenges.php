@@ -10,6 +10,7 @@ use App\Models\BoardGame;
 use App\Models\User;
 use App\Support\Notifications\BoardNotifications;
 use App\Support\SeasonChain\RatedTrustGate;
+use App\Support\Tournaments\CupMatchNow;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\RateLimiter;
@@ -100,6 +101,11 @@ final class BoardChallenges
 
         if ($this->openBetween($challenger, $challenged, $slug)) {
             throw new BoardRuleViolation('challenge_open');
+        }
+
+        // The casual lock (user, 2026-10-03): an open cup match in a running round comes first.
+        if (($cup = CupMatchNow::refusal($challenger, $challenged)) !== null) {
+            throw new BoardRuleViolation($cup['reason'], $cup['message']);
         }
 
         $counted = [];
@@ -202,6 +208,11 @@ final class BoardChallenges
 
             if ($challenge->challenged_id !== $challenged->id || ! $challenge->isOpen()) {
                 throw new BoardRuleViolation('challenge_closed');
+            }
+
+            // The casual lock (user, 2026-10-03): an open cup match in a running round comes first.
+            if (($cup = CupMatchNow::refusal($challenged, $challenge->challenger)) !== null) {
+                throw new BoardRuleViolation($cup['reason'], $cup['message']);
             }
 
             $challengerWhite = match ($challenge->color) {
