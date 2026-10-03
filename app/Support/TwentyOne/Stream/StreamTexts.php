@@ -144,6 +144,25 @@ final class StreamTexts
     }
 
     /**
+     * The texts while a running tournament holds the stream: its name and game
+     * from its live frame (TournamentLiveSlides; the name already through PublicName).
+     *
+     * @param  array<string, mixed>  $frame
+     * @return array{title: string, summary: string}
+     */
+    public static function forTournament(array $frame): array
+    {
+        $name = PublicName::limit((string) ($frame['name'] ?? ''), 2 * self::NAME_LIMIT) ?: 'Tournament';
+        $game = (string) ($frame['game'] ?? '');
+        $now = is_string($frame['now'] ?? null) ? ' '.$frame['now'].'.' : '';
+
+        return [
+            'title' => 'Live now: '.$name.($game === '' ? '' : ' · '.$game.' tournament'),
+            'summary' => $name.' is running:'.$now.' The bracket and the matches live on TWENTY ONE Esports, the esports arm of EINUNDZWANZIG. Follow it at '.($frame['url'] ?? config('twentyone.stream.scene.url')).'. Login via Nostr.',
+        ];
+    }
+
+    /**
      * @return array{title: string, summary: string}
      */
     public static function for(?ChessGame $game): array

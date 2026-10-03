@@ -49,6 +49,15 @@ use App\Games\TrackmaniaNationsForever;
  * games are switched on but none runs, every BOARD_IDLE_EVERY-th round
  * shows it as a teaser; switched off, never. The loop is not cut short for it.
  *
+ * Running tournaments take the stream (the user: "Laufende Turniere müssen
+ * sofort in den LIVE STREAM"): while one runs, the round ends at once and
+ * every round is one running tournament for `runningSeconds`, its slides as
+ * the tournament TV shows them (RUNNING_PARTS: live bracket, still standing,
+ * live bracket, how it runs), in the round's look. Several running
+ * tournaments take turns, never the same twice in a row; after every pass
+ * through all of them one break slot follows: a live game's match while one
+ * runs, else one EVERY_ROUND teaser. No loop while a tournament runs.
+ *
  * Blockfill (plan "Blockfill", P6) has one teaser, BLOCKFILL_SCENE (f1,
  * BlockfillSlide): while it is registered it joins the end of the pool
  * (teasers()); switched off, never. While a week runs (BlockfillSlides::state(),
@@ -161,6 +170,9 @@ final class RotationPlanner
      */
     public const PHASE_PARTS = ['running' => [4, [5, 3]], 'drawing' => [3, []], 'finished' => [6, [4, 5]]];
 
+    /** A running tournament's slides while it holds the stream, each a share of `runningSeconds`. */
+    public const RUNNING_PARTS = [4, 5, 4, 3];
+
     /** The part that points the audience to the next tournament's sign-up. */
     public const NEXT_PART = 7;
 
@@ -170,10 +182,22 @@ final class RotationPlanner
     /** "phase:id" of the tournament slide on show, null for any other slot. */
     private ?string $slotTournament = null;
 
-    /** @var list<array{kind: string, look?: string, gameId?: int, tournamentId?: int, part?: int, scene?: string, key?: string}> the rest of the current round */
+    /** @var list<array{kind: string, look?: string, gameId?: int, tournamentId?: int, part?: int, scene?: string, key?: string, seconds?: float}> the rest of the current round */
     private array $queue = [];
 
     private bool $roundWithGames = false;
+
+    /** The current round is a running tournament's (it holds the stream). */
+    private bool $roundRunning = false;
+
+    /** @var list<int> the running tournaments' ids, as the last call to at() reported them */
+    private array $running = [];
+
+    /** The running tournament shown last. */
+    private ?int $lastRunning = null;
+
+    /** Running-tournament rounds so far (the break slot comes after every pass through all of them). */
+    private int $runningRounds = 0;
 
     /** Rounds that carried a look (every round with games, every tournament round without). */
     private int $lookRounds = 0;
@@ -223,6 +247,7 @@ final class RotationPlanner
         private float $tournamentSeconds = 15,
         private bool $blockfill = false,
         private bool $tmnf = false,
+        private float $runningSeconds = 90,
     ) {}
 
     public static function fromConfig(float $loopSeconds): self
@@ -238,6 +263,7 @@ final class RotationPlanner
             (float) config('twentyone.stream.rotation.tournament_seconds', 15),
             app(GameRegistry::class)->find(Blockfill::SLUG) !== null,
             app(GameRegistry::class)->find(TrackmaniaNationsForever::SLUG) !== null,
+            (float) config('twentyone.stream.rotation.running_tournament_seconds', 90),
         );
     }
 
@@ -284,8 +310,13 @@ final class RotationPlanner
         $this->boards = $boards;
         $this->blockfillWeek = $blockfillWeek;
         $this->tournamentKeys = [];
+        $this->running = [];
 
         foreach ($live as $entry) {
+            if ($entry['phase'] === 'running') {
+                $this->running[] = $entry['id'];
+            }
+
             if (isset(self::PHASE_PARTS[$entry['phase']])) {
                 $this->tournamentKeys[$entry['phase'].':'.$entry['id']] = $entry['fomo'];
             }
@@ -315,6 +346,11 @@ final class RotationPlanner
     {
         assert($this->slot !== null);
 
+        // A running tournament takes the stream at once.
+        if ($this->running !== [] && ! $this->roundRunning) {
+            return true;
+        }
+
         return match ($this->slot['kind']) {
             // Live priority: a game ends the loop at once.
             self::LOOP => $ids !== [],
@@ -338,7 +374,12 @@ final class RotationPlanner
         $start = $this->slot !== null && $now >= $this->slot['until'] && $now - $this->slot['until'] < 1 ? $this->slot['until'] : $now;
 
         // A round without games gives way as soon as a game is there.
-        if (! $this->roundWithGames && $games !== []) {
+        if (! $this->roundWithGames && ! $this->roundRunning && $games !== []) {
+            $this->queue = [];
+        }
+
+        // A running tournament ends any other round.
+        if ($this->running !== [] && ! $this->roundRunning) {
             $this->queue = [];
         }
 
@@ -373,6 +414,14 @@ final class RotationPlanner
     private function plan(array $games, array $tournaments): void
     {
         $teasers = array_fill(0, max(1, $this->teasersPerRound), ['kind' => self::TEASER]);
+        $this->roundRunning = $this->running !== [];
+
+        if ($this->roundRunning) {
+            $this->roundWithGames = false;
+            $this->queue = $this->runningRound($games);
+
+            return;
+        }
 
         if ($games === []) {
             $this->roundWithGames = false;
@@ -401,6 +450,42 @@ final class RotationPlanner
             ...$this->blockfillRound(),
             ...$teasers,
         ];
+    }
+
+    /**
+     * A running tournament's round: the next running one after the one shown
+     * last (never the same twice in a row while another runs), its
+     * RUNNING_PARTS for `runningSeconds` together, and after every pass
+     * through all running ones the break slot.
+     *
+     * @param  list<array{id: int, blitz: bool}>  $games
+     * @return list<array{kind: string, look?: string, gameId?: int, tournamentId?: int, part?: int, scene?: string, key?: string, seconds?: float}>
+     */
+    private function runningRound(array $games): array
+    {
+        $at = $this->lastRunning === null ? false : array_search($this->lastRunning, $this->running, true);
+        $id = $this->running[$at === false ? 0 : ($at + 1) % count($this->running)];
+        $this->lastRunning = $id;
+        $look = $this->nextLook();
+        $seconds = max(1.0, $this->runningSeconds) / count(self::RUNNING_PARTS);
+        $queue = array_map(fn (int $part): array => ['kind' => self::TOURNAMENT, 'look' => $look, 'tournamentId' => $id, 'part' => $part, 'key' => 'running:'.$id, 'seconds' => $seconds], self::RUNNING_PARTS);
+
+        if (++$this->runningRounds % count($this->running) === 0) {
+            $queue[] = $games === []
+                ? $this->everyRound()[$this->runningRounds % count(self::EVERY_ROUND)]
+                : ['kind' => self::MATCH, 'look' => $look, 'gameId' => $games[$this->matchTurn++ % count($games)]['id']];
+        }
+
+        return $queue;
+    }
+
+    /**
+     * The running tournament on show now, null when the stream shows anything else.
+     */
+    public function runningTournament(): ?int
+    {
+        return $this->roundRunning && $this->slot !== null && $this->slot['kind'] === self::TOURNAMENT && in_array($this->slot['tournamentId'], $this->running, true)
+            ? $this->slot['tournamentId'] : null;
     }
 
     /**
@@ -501,7 +586,7 @@ final class RotationPlanner
     }
 
     /**
-     * @param  array{kind: string, look?: string, gameId?: int, tournamentId?: int, part?: int, scene?: string, key?: string}  $entry
+     * @param  array{kind: string, look?: string, gameId?: int, tournamentId?: int, part?: int, scene?: string, key?: string, seconds?: float}  $entry
      * @param  list<array{id: int, blitz: bool}>  $games
      * @param  list<string>  $tournaments
      * @return array{kind: string, scene: string|null, gameId: int|null, tournamentId: int|null, until: float}|null null when it no longer applies
@@ -523,7 +608,7 @@ final class RotationPlanner
                     return null;
                 }
 
-                $slot = $this->slot(self::TOURNAMENT, 't'.($entry['look'] ?? 'a').$part, null, $start + $this->tournamentSeconds, $entry['tournamentId'] ?? null);
+                $slot = $this->slot(self::TOURNAMENT, 't'.($entry['look'] ?? 'a').$part, null, $start + ($entry['seconds'] ?? $this->tournamentSeconds), $entry['tournamentId'] ?? null);
                 $this->slotTournament = $key;
 
                 return $slot;

@@ -287,6 +287,8 @@ class TwentyOneStreamCommand extends Command
         $liveSlides = app(TournamentLiveSlides::class);
         /** @var list<array<string, mixed>> $liveSnapshots */
         $liveSnapshots = [];
+        /** @var list<array<string, mixed>> $liveFrames */
+        $liveFrames = [];
         $slotKey = null;
         /** @var array{view: view-string, data: array<string, mixed>, fallback: array<string, mixed>|null, label: string, announce: bool}|null $frame */
         $frame = null;
@@ -512,7 +514,12 @@ class TwentyOneStreamCommand extends Command
             }
 
             // The scene's games take turns with the general texts (every game on offer, the weekly chases).
-            $texts = StreamTexts::rotate($this->active?->mode === ModeMachine::SCENE ? StreamTexts::forGames($sceneGames, $sceneMore) : null, now()->getTimestamp());
+            // A running tournament on show names itself, without taking turns (it holds the stream).
+            $shownTournament = $planner->runningTournament();
+            $tournamentFrame = $shownTournament === null ? null : collect($liveFrames)->firstWhere('id', $shownTournament);
+            $texts = $this->active?->mode === ModeMachine::SCENE && is_array($tournamentFrame)
+                ? StreamTexts::forTournament($tournamentFrame)
+                : StreamTexts::rotate($this->active?->mode === ModeMachine::SCENE ? StreamTexts::forGames($sceneGames, $sceneMore) : null, now()->getTimestamp());
             $published = $cover->image() === null ? $texts : [...$texts, 'image' => $cover->image()];
             // A new viewer count or cover is republished like a text change (at most once per text_change_seconds).
             $announced = [...$published, 'viewers' => $viewerCount];

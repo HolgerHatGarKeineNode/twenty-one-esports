@@ -207,6 +207,8 @@ return [
             'loop_every_rounds' => 3,
             'loop_fallback_seconds' => 60,
             'tournament_seconds' => 15,
+            // While a tournament runs it takes the stream (RotationPlanner): this long per running tournament, then the next one.
+            'running_tournament_seconds' => (int) env('TWENTYONE_STREAM_RUNNING_TOURNAMENT_SECONDS', 90),
             // A Blockfill run that took first place this many minutes ago still gets its moment slide (f4, BlockfillSlides).
             'blockfill_moment_minutes' => 10,
             // A finished tournament keeps its champion and final bracket on the stream this long after its last result (TournamentLiveSlides).

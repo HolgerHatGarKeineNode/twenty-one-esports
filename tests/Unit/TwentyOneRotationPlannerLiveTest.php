@@ -36,21 +36,21 @@ function liveRotation(float $seconds, Closure $liveAt, ?Closure $upcomingAt = nu
     return $log;
 }
 
-test('a running tournament: its live bracket every round, then still standing and how it runs in turn, then the next one to sign up for', function () {
-    // Rounds without games: loop at 0, tournament rounds at 30 and 123 (3 slides and 4 teasers each), loop at 216.
-    $log = liveRotation(30 + 93 + 93 + 30 + 60, fn () => [['id' => 5, 'phase' => 'running', 'fomo' => true]]);
+test('a running tournament holds the stream: live bracket, still standing, live bracket, how it runs, a break slide after each hold, no loop', function () {
+    // 90 s a hold in four slides, a 12 s teaser after it.
+    $log = liveRotation(306, fn () => [['id' => 5, 'phase' => 'running', 'fomo' => true]]);
 
     expect($log)->toBe([
-        '30 ta4 @5', '45 ta5 @5', '60 ta7 @5',
-        '123 tb4 @5', '138 tb3 @5', '153 tb7 @5',
-        '246 tc4 @5', '261 tc5 @5', '276 tc7 @5',
+        '0 ta4 @5', '22.5 ta5 @5', '45 ta4 @5', '67.5 ta3 @5',
+        '102 tb4 @5', '124.5 tb5 @5', '147 tb4 @5', '169.5 tb3 @5',
+        '204 tc4 @5', '226.5 tc5 @5', '249 tc4 @5', '271.5 tc3 @5',
     ]);
 });
 
-test('without an open tournament to point to, the call to sign up is left out', function () {
-    $log = liveRotation(30 + 60, fn () => [['id' => 5, 'phase' => 'running', 'fomo' => false]]);
+test('the call to sign up for the next one never cuts into a running tournament\'s hold', function () {
+    $log = liveRotation(90, fn () => [['id' => 5, 'phase' => 'running', 'fomo' => true]]);
 
-    expect($log)->toBe(['30 ta4 @5', '45 ta5 @5']);
+    expect($log)->toBe(['0 ta4 @5', '22.5 ta5 @5', '45 ta4 @5', '67.5 ta3 @5']);
 });
 
 test('a finished tournament shows its champion, then the final bracket and its pride in turn; a drawing one how it runs', function () {
@@ -61,19 +61,43 @@ test('a finished tournament shows its champion, then the final bracket and its p
         ->and($drawing)->toBe(['30 ta3 @3', '45 ta7 @3']);
 });
 
-test('tournaments past sign-up and upcoming ones take turns, one per round, the live ones first', function () {
-    $log = liveRotation(30 + 78 + 93 + 30 + 60, fn () => [['id' => 5, 'phase' => 'running', 'fomo' => false]], fn () => [9]);
+test('while a tournament runs, the upcoming ones wait', function () {
+    $log = liveRotation(306, fn () => [['id' => 5, 'phase' => 'running', 'fomo' => false]], fn () => [9]);
 
     expect($log)->toBe([
-        '30 ta4 @5', '45 ta5 @5',
-        '108 tb1 @9', '123 tb2 @9', '138 tb3 @9',
-        '231 tc4 @5', '246 tc3 @5',
+        '0 ta4 @5', '22.5 ta5 @5', '45 ta4 @5', '67.5 ta3 @5',
+        '102 tb4 @5', '124.5 tb5 @5', '147 tb4 @5', '169.5 tb3 @5',
+        '204 tc4 @5', '226.5 tc5 @5', '249 tc4 @5', '271.5 tc3 @5',
     ]);
 });
 
 test('a tournament that finishes while its live bracket is on ends the slide at once; its next round shows the champion', function () {
-    $log = liveRotation(30 + 93 + 60, fn (float $t): array => [['id' => 5, 'phase' => $t < 35 ? 'running' : 'finished', 'fomo' => false]]);
+    $log = liveRotation(185, fn (float $t): array => [['id' => 5, 'phase' => $t < 35 ? 'running' : 'finished', 'fomo' => false]]);
 
-    // The bracket from 30 s ends at 35 instead of 45, the rest of that round's running slides are skipped.
-    expect($log)->toBe(['30 ta4 @5', '83 tb6 @5', '98 tb5 @5']);
+    // Still standing from 22.5 s ends at 35, the rest of the hold is skipped: the break teaser, the loop, then the champion.
+    expect($log)->toBe(['0 ta4 @5', '22.5 ta5 @5', '77 tb6 @5', '92 tb4 @5', '155 tc6 @5', '170 tc5 @5']);
+});
+
+test('a running tournament takes the stream within one planner step, two running ones alternate with the hold', function () {
+    $planner = new RotationPlanner(45, 60, 20, 12, 3, 3, 30, 15, runningSeconds: 90);
+    $game = [['id' => 7, 'blitz' => true]];
+
+    // A chess match is on show; the tournament starts at 10 s and takes the very next step.
+    expect($planner->at(0, $game)['kind'])->toBe(RotationPlanner::MATCH);
+    $slot = $planner->at(10, $game, [], BoardScene::OFF, [['id' => 5, 'phase' => 'running', 'fomo' => false]]);
+    expect($slot)->toMatchArray(['kind' => RotationPlanner::TOURNAMENT, 'scene' => 'tb4', 'tournamentId' => 5])
+        ->and($planner->runningTournament())->toBe(5);
+
+    $two = [['id' => 5, 'phase' => 'running', 'fomo' => false], ['id' => 6, 'phase' => 'running', 'fomo' => false]];
+    $shown = [];
+    for ($t = 10.25; $t < 10 + 3 * 90 + 12; $t += 0.25) {
+        $slot = $planner->at($t, [], [], BoardScene::OFF, $two);
+        $label = $slot['kind'] === RotationPlanner::TOURNAMENT ? '@'.$slot['tournamentId'].' '.$slot['until'] : $slot['kind'];
+        if (end($shown) !== $label) {
+            $shown[] = $label;
+        }
+    }
+
+    // 5 holds 90 s in four slides, then 6 for 90 s, a break slide after the pass, then 5 again: never the same twice in a row.
+    expect($shown)->toBe(['@5 32.5', '@5 55', '@5 77.5', '@5 100', '@6 122.5', '@6 145', '@6 167.5', '@6 190', RotationPlanner::TEASER, '@5 224.5', '@5 247', '@5 269.5', '@5 292']);
 });
