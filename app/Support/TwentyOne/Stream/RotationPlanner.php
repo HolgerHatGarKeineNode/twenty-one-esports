@@ -57,6 +57,16 @@ use App\Games\TrackmaniaNationsForever;
  * Several running tournaments take turns, never the same twice in a row, and nothing else
  * shows until the last one ends: no match, no teaser, no loop.
  *
+ * A tournament just decided takes the stream for its champion (user,
+ * 2026-10-03): the first poll that reports a finished tournament with its
+ * `moment` (TournamentLiveSlides::entries(): decided within
+ * `champion_moment_seconds`) ends whatever shows, a running tournament's hold
+ * included, and its champion slide in the big champion look (CHAMPION_SCENE,
+ * tx6, as the tournament page's champion hero) holds the stream alone for
+ * `championSeconds`, once per tournament. Several decided at once follow one
+ * another. Then the tournament is one of the rotation as before (its champion
+ * part 6 in the round's look), and a running tournament takes the stream again.
+ *
  * Blockfill (plan "Blockfill", P6) has one teaser, BLOCKFILL_SCENE (f1,
  * BlockfillSlide): while it is registered it joins the end of the pool
  * (teasers()); switched off, never. While a week runs (BlockfillSlides::state(),
@@ -141,6 +151,8 @@ final class RotationPlanner
         'ta3' => 'stream.rotation.ta3-how', 'ta4' => 'stream.rotation.ta4-live', 'ta5' => 'stream.rotation.ta5-standing', 'ta6' => 'stream.rotation.ta6-champion', 'ta7' => 'stream.rotation.ta7-next',
         'tb3' => 'stream.rotation.tb3-how', 'tb4' => 'stream.rotation.tb4-live', 'tb5' => 'stream.rotation.tb5-standing', 'tb6' => 'stream.rotation.tb6-champion', 'tb7' => 'stream.rotation.tb7-next',
         'tc3' => 'stream.rotation.tc3-how', 'tc4' => 'stream.rotation.tc4-live', 'tc5' => 'stream.rotation.tc5-standing', 'tc6' => 'stream.rotation.tc6-champion', 'tc7' => 'stream.rotation.tc7-next',
+        // The champion moment right after a tournament is decided (CHAMPION_SCENE), in the big champion look.
+        'tx6' => 'stream.rotation.tx6-champion-moment',
         // A running tournament's slides while it holds the stream, in its tournament TV's look (tv1..tv4).
         ...TvSlides::VIEWS,
         'd1' => 'stream.rotation.d1-pots', 'd2' => 'stream.rotation.d2-cups', 'd3' => 'stream.rotation.d3-invite', 'd4' => 'stream.rotation.d4-nostr',
@@ -160,10 +172,10 @@ final class RotationPlanner
      * the next tournament to sign up for (7).
      */
     public const TOURNAMENT_SCENES = ['ta1', 'ta2', 'tb1', 'tb2', 'tc1', 'tc2',
-        'ta3', 'ta4', 'ta5', 'ta6', 'ta7', 'tb3', 'tb4', 'tb5', 'tb6', 'tb7', 'tc3', 'tc4', 'tc5', 'tc6', 'tc7'];
+        'ta3', 'ta4', 'ta5', 'ta6', 'ta7', 'tb3', 'tb4', 'tb5', 'tb6', 'tb7', 'tc3', 'tc4', 'tc5', 'tc6', 'tc7', self::CHAMPION_SCENE];
 
-    /** The slides of a tournament past its sign-up (TournamentLiveSlides), by look. */
-    public const LIVE_TOURNAMENT_SCENES = ['ta3', 'ta4', 'ta5', 'ta6', 'ta7', 'tb3', 'tb4', 'tb5', 'tb6', 'tb7', 'tc3', 'tc4', 'tc5', 'tc6', 'tc7'];
+    /** The slides of a tournament past its sign-up (TournamentLiveSlides), by look, and the champion moment's. */
+    public const LIVE_TOURNAMENT_SCENES = ['ta3', 'ta4', 'ta5', 'ta6', 'ta7', 'tb3', 'tb4', 'tb5', 'tb6', 'tb7', 'tc3', 'tc4', 'tc5', 'tc6', 'tc7', self::CHAMPION_SCENE];
 
     /**
      * The slide parts of each phase past sign-up: the first every round, then one of the second group in turn
@@ -177,6 +189,12 @@ final class RotationPlanner
      * leaves out (`parts`, TournamentLiveSlides::runningParts()).
      */
     public const RUNNING_PARTS = [1, 2, 3, 4];
+
+    /** The look of the champion moment: the big champion slide ('tx6'). */
+    public const CHAMPION_LOOK = 'x';
+
+    /** The champion moment's slide right after a tournament is decided. */
+    public const CHAMPION_SCENE = 'tx6';
 
     /** The look of a running tournament's slides: its tournament TV ('tv1'..'tv4'). */
     public const RUNNING_LOOK = 'v';
@@ -203,6 +221,15 @@ final class RotationPlanner
 
     /** @var array<int, list<int>> running tournament id => the RUNNING_PARTS it has data for */
     private array $runningParts = [];
+
+    /** @var list<int> decided tournaments whose champion moment is still to come, in the order they were reported */
+    private array $moments = [];
+
+    /** @var array<int, true> tournaments whose champion moment was shown (once each) */
+    private array $celebrated = [];
+
+    /** The current round is a champion moment (it holds the stream). */
+    private bool $roundMoment = false;
 
     /** The running tournament shown last. */
     private ?int $lastRunning = null;
@@ -259,6 +286,7 @@ final class RotationPlanner
         private bool $blockfill = false,
         private bool $tmnf = false,
         private float $runningSeconds = 90,
+        private float $championSeconds = 120,
     ) {}
 
     public static function fromConfig(float $loopSeconds): self
@@ -275,6 +303,7 @@ final class RotationPlanner
             app(GameRegistry::class)->find(Blockfill::SLUG) !== null,
             app(GameRegistry::class)->find(TrackmaniaNationsForever::SLUG) !== null,
             (float) config('twentyone.stream.rotation.running_tournament_seconds', 90),
+            (float) config('twentyone.stream.rotation.champion_moment_seconds', 120),
         );
     }
 
@@ -310,7 +339,7 @@ final class RotationPlanner
      * @param  list<array{id: int, blitz: bool}>  $games  the games on show, in display order
      * @param  list<int>  $tournaments  the upcoming tournaments' ids, soonest sign-up close first
      * @param  string  $boards  BoardScene::OFF, IDLE or LIVE
-     * @param  list<array{id: int, phase: string, fomo: bool, takeover?: bool, parts?: list<int>}>  $live  the tournaments past sign-up (TournamentLiveSlides::entries()), in turn order
+     * @param  list<array{id: int, phase: string, fomo: bool, takeover?: bool, parts?: list<int>, moment?: bool}>  $live  the tournaments past sign-up (TournamentLiveSlides::entries()), in turn order
      * @param  string  $blockfillWeek  BlockfillSlides::OFF, IDLE, EMPTY or RUNNING
      * @param  string|null  $blockfillMoment  the key of a new #1 of the last minutes (BlockfillSlides::state())
      * @return array{kind: string, scene: string|null, gameId: int|null, tournamentId: int|null, until: float}
@@ -332,6 +361,11 @@ final class RotationPlanner
 
             if (isset(self::PHASE_PARTS[$entry['phase']])) {
                 $this->tournamentKeys[$entry['phase'].':'.$entry['id']] = $entry['fomo'];
+            }
+
+            // Just decided: its champion moment comes next, once.
+            if ($entry['phase'] === 'finished' && ($entry['moment'] ?? false) && ! isset($this->celebrated[$entry['id']]) && ! in_array($entry['id'], $this->moments, true)) {
+                $this->moments[] = $entry['id'];
             }
         }
 
@@ -359,8 +393,13 @@ final class RotationPlanner
     {
         assert($this->slot !== null);
 
-        // A running tournament takes the stream at once.
-        if ($this->running !== [] && ! $this->roundRunning) {
+        // A champion moment takes the stream at once, a running tournament's hold included.
+        if ($this->moments !== [] && ! $this->roundMoment) {
+            return true;
+        }
+
+        // A running tournament takes the stream at once, after a champion moment.
+        if ($this->running !== [] && ! $this->roundRunning && ! $this->roundMoment) {
             return true;
         }
 
@@ -396,8 +435,13 @@ final class RotationPlanner
             $this->queue = [];
         }
 
-        // A new #1 is next, once, at most every MOMENT_COOLDOWN_SECONDS; the round goes on after it.
-        if ($moment !== null && $moment !== $this->lastMoment && $this->blockfillWeek === BlockfillSlides::RUNNING
+        // A champion moment ends any other round.
+        if ($this->moments !== [] && ! $this->roundMoment) {
+            $this->queue = [];
+        }
+
+        // A new #1 is next, once, at most every MOMENT_COOLDOWN_SECONDS; the round goes on after it (not before a champion moment).
+        if ($this->moments === [] && $moment !== null && $moment !== $this->lastMoment && $this->blockfillWeek === BlockfillSlides::RUNNING
             && ($this->lastMomentAt === null || $start - $this->lastMomentAt >= self::MOMENT_COOLDOWN_SECONDS)) {
             $this->lastMoment = $moment;
             $this->lastMomentAt = $start;
@@ -427,6 +471,20 @@ final class RotationPlanner
     private function plan(array $games, array $tournaments): void
     {
         $teasers = array_fill(0, max(1, $this->teasersPerRound), ['kind' => self::TEASER]);
+
+        // A champion moment: the decided tournament's champion slide alone, for championSeconds.
+        if ($this->moments !== []) {
+            $id = array_shift($this->moments);
+            $this->celebrated[$id] = true;
+            $this->roundMoment = true;
+            $this->roundRunning = false;
+            $this->roundWithGames = false;
+            $this->queue = [['kind' => self::TOURNAMENT, 'look' => self::CHAMPION_LOOK, 'tournamentId' => $id, 'part' => 6, 'key' => 'finished:'.$id, 'seconds' => max(1.0, $this->championSeconds)]];
+
+            return;
+        }
+
+        $this->roundMoment = false;
         $this->roundRunning = $this->running !== [];
 
         if ($this->roundRunning) {

@@ -115,7 +115,8 @@ test('every tournament slide of an AoE2 lobby tournament, upcoming, running and 
 
     $offenders = array_filter(array_map(fn (string $svg): array => pairingWords(slideWords($svg)), $svgs));
 
-    expect($svgs)->toHaveCount(39)
+    // 41: the champion moment (tx6) joined the live slides, rendered for the running and the finished tournament.
+    expect($svgs)->toHaveCount(41)
         ->and($offenders)->toBe([])
         // The preview: the lobbies the draw would make now, with their players.
         ->and(slideWords($svgs['upcoming-ta2']))->toContain('lobbies if sign-up closed now', 'lobby 1', 'signed 1')

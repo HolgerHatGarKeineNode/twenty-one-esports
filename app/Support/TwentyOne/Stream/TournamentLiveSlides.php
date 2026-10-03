@@ -194,20 +194,24 @@ class TournamentLiveSlides
     }
 
     /**
-     * What the planner needs of this poll's frames: id, phase, and whether a
-     * next tournament is open for sign-up to point the audience to.
+     * What the planner needs of this poll's frames: id, phase, whether a
+     * next tournament is open for sign-up to point the audience to, and
+     * whether a finished one was decided within `$momentSeconds` of `$nowMs`
+     * (`moment`: its champion takes the stream, RotationPlanner).
      *
      * @param  list<array<string, mixed>>  $frames  frames() of this poll
      * @param  list<array<string, mixed>>  $upcoming  TournamentSlides::frames() of this poll
-     * @return list<array{id: int, phase: string, fomo: bool, takeover: bool, parts?: list<int>}>
+     * @return list<array{id: int, phase: string, fomo: bool, takeover: bool, moment: bool, parts?: list<int>}>
      */
-    public static function entries(array $frames, array $upcoming): array
+    public static function entries(array $frames, array $upcoming, ?int $nowMs = null, int $momentSeconds = 0): array
     {
         $entries = [];
 
         foreach ($frames as $frame) {
             if (is_int($frame['id'] ?? null) && in_array($frame['phase'] ?? null, self::PHASES, true)) {
-                $entry = ['id' => $frame['id'], 'phase' => $frame['phase'], 'fomo' => self::next($frame, $upcoming) !== null, 'takeover' => (bool) ($frame['takeover'] ?? $frame['phase'] === 'running')];
+                $finishedMs = $frame['finishedMs'] ?? null;
+                $moment = $frame['phase'] === 'finished' && $nowMs !== null && is_int($finishedMs) && $nowMs >= $finishedMs && $nowMs - $finishedMs < $momentSeconds * 1000;
+                $entry = ['id' => $frame['id'], 'phase' => $frame['phase'], 'fomo' => self::next($frame, $upcoming) !== null, 'takeover' => (bool) ($frame['takeover'] ?? $frame['phase'] === 'running'), 'moment' => $moment];
                 // A running tournament's TV-look slides (TvSlides::VIEWS) without the ones it has no data for.
                 $entries[] = $frame['phase'] === 'running' ? [...$entry, 'parts' => self::runningParts($frame)] : $entry;
             }
@@ -1299,8 +1303,9 @@ class TournamentLiveSlides
             $snapshot['board'] = $board;
         }
 
+        // The finish stays (entries(): the champion moment counts from it); the start becomes the countdown.
         $startsMs = $snapshot['startsMs'];
-        unset($snapshot['startsMs'], $snapshot['finishedMs']);
+        unset($snapshot['startsMs']);
 
         return [
             ...$snapshot,

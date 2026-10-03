@@ -193,8 +193,8 @@ test('the next tournament to sign up for: the same game first, else the soonest 
     expect(TournamentLiveSlides::next($frame, $upcoming)['id'])->toBe(4)
         ->and(TournamentLiveSlides::next(['id' => 1, 'game' => 'Rocket League'], $upcoming)['id'])->toBe(2)
         ->and(TournamentLiveSlides::next($frame, [$upcoming[1]]))->toBeNull()
-        ->and(TournamentLiveSlides::entries([['id' => 1, 'phase' => 'running', 'game' => 'Chess']], $upcoming))->toBe([['id' => 1, 'phase' => 'running', 'fomo' => true, 'takeover' => true, 'parts' => [1, 3]]])
-        ->and(TournamentLiveSlides::entries([['id' => 1, 'phase' => 'running', 'game' => 'Chess']], []))->toBe([['id' => 1, 'phase' => 'running', 'fomo' => false, 'takeover' => true, 'parts' => [1, 3]]]);
+        ->and(TournamentLiveSlides::entries([['id' => 1, 'phase' => 'running', 'game' => 'Chess']], $upcoming))->toBe([['id' => 1, 'phase' => 'running', 'fomo' => true, 'takeover' => true, 'moment' => false, 'parts' => [1, 3]]])
+        ->and(TournamentLiveSlides::entries([['id' => 1, 'phase' => 'running', 'game' => 'Chess']], []))->toBe([['id' => 1, 'phase' => 'running', 'fomo' => false, 'takeover' => true, 'moment' => false, 'parts' => [1, 3]]]);
 });
 
 test('every live tournament slide renders a running and a finished tournament with escaped names, and points to the next one', function () {
@@ -363,7 +363,7 @@ test('a running tournament holds the stream in four slides drawn like its tourna
     $frame = liveFrame($t);
     $units = fn (string $scene): string => implode(' | ', liveUnits($frame, $scene, 1234));
 
-    expect(TournamentLiveSlides::entries([$frame], []))->toBe([['id' => $t->id, 'phase' => 'running', 'fomo' => false, 'takeover' => true, 'parts' => [1, 2, 3, 4]]])
+    expect(TournamentLiveSlides::entries([$frame], []))->toBe([['id' => $t->id, 'phase' => 'running', 'fomo' => false, 'takeover' => true, 'moment' => false, 'parts' => [1, 2, 3, 4]]])
         ->and(array_map(fn (int $part): string => RotationPlanner::VIEWS['t'.RotationPlanner::RUNNING_LOOK.$part], RotationPlanner::RUNNING_PARTS))->toBe(['stream.rotation.tv1-bracket', 'stream.rotation.tv2-up-now', 'stream.rotation.tv3-standings', 'stream.rotation.tv4-pot'])
         // The TV's header and footer on every slide: the name, the address, the latest result, the tabs.
         ->and($units('tv1'))->toContain('Friday <b>Cup</b>', 'Follow on your phone', 'tournaments/'.$t->id, 'Latest', 'Bracket', 'Up now', 'Standings', 'Prize pool', 'Group A', 'Round 2')

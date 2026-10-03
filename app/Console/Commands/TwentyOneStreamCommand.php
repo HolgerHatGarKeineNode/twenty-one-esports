@@ -382,7 +382,7 @@ class TwentyOneStreamCommand extends Command
                     $this->advanceCover($cover, $source, $tournaments, $sceneGames, $sceneMore, $stats, $now);
                 }
 
-                $slot = $planner->at($now, array_map(fn (ChessGame $game): array => ['id' => $game->id, 'blitz' => ! $game->isCorrespondence()], $sceneGames), TournamentSlides::featured($tournaments), $boards, TournamentLiveSlides::entries($liveFrames, $tournaments), $blockfill['week'], $blockfill['moment']);
+                $slot = $planner->at($now, array_map(fn (ChessGame $game): array => ['id' => $game->id, 'blitz' => ! $game->isCorrespondence()], $sceneGames), TournamentSlides::featured($tournaments), $boards, TournamentLiveSlides::entries($liveFrames, $tournaments, (int) ($now * 1000), (int) config('twentyone.stream.rotation.champion_moment_seconds', 120)), $blockfill['week'], $blockfill['moment']);
                 $modes->tick($slot['kind'] !== RotationPlanner::LOOP, (int) $now);
 
                 if ($slot['scene'] !== null) {
