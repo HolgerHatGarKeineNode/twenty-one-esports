@@ -6,6 +6,7 @@ use App\Models\Tournament;
 use App\Models\TournamentPayout;
 use App\Models\User;
 use App\Support\Tournaments\TournamentChampion;
+use Livewire\Livewire;
 use Tests\Support\TestSigner;
 
 /*
@@ -113,6 +114,17 @@ test('the prize is named in sats once the league paid it', function () {
     $payout->forceFill(['status' => PayoutStatus::Paid])->save();
 
     expect(championHero($this->get(route('tournaments.show', $tournament))->getContent()))->toContain('data-test="champion-prize"')->toContain('21,000');
+});
+
+test('the champion moment survives a Livewire roundtrip, for the winner and a guest', function () {
+    $tournament = championMomentTournament();
+    $winner = User::query()->findOrFail(app(TournamentChampion::class)->of($tournament)->user_id);
+
+    // The guest first: actingAs() stays for every later test() of this case.
+    Livewire::test('pages::tournaments.show', ['tournament' => $tournament])
+        ->call('$refresh')->assertOk()->assertSeeHtml('data-test="champion-share"');
+    Livewire::actingAs($winner)->test('pages::tournaments.show', ['tournament' => $tournament])
+        ->call('$refresh')->assertOk()->assertSeeHtml('data-test="champion-hero"')->assertSee('You won!');
 });
 
 test('the German page says it in German', function () {
