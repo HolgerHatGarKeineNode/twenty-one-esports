@@ -5,6 +5,7 @@ namespace App\Support\TwentyOne\Stream;
 use App\Enums\TournamentStatus;
 use App\Games\ScoreMetric;
 use App\Models\Tournament;
+use App\Models\User;
 use App\Support\LeagueTime;
 use App\Support\Scores\ScoreRuns;
 use App\Support\Scores\ScoreStanding;
@@ -144,7 +145,7 @@ final class TmnfSlide
 
         return array_map(fn (ScoreStanding $row): array => [
             'place' => (int) $row->place,
-            'name' => (string) $row->participant->name,
+            'name' => $row->participant->user instanceof User ? PublicName::of($row->participant->user) : (string) $row->participant->name,
             'time' => $metric->format((int) $row->value),
             'ref' => StreamImages::avatarRef($row->participant->user),
         ], array_slice(array_values($rows), 0, self::TOP));

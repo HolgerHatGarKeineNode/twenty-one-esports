@@ -630,7 +630,7 @@ class PrideSlides
 
         $pubkeys = [...$block->winners(), ...array_map(strval(...), (array) ($block->candidate['losers'] ?? []))];
         $users = User::query()->whereIn('pubkey', $pubkeys)->get()->keyBy('pubkey');
-        $person = fn (string $pubkey): array => ['name' => PublicName::clean($users->get($pubkey)?->displayName() ?? 'npub1…'.substr($pubkey, -4)), 'ref' => StreamImages::avatarRef($users->get($pubkey))];
+        $person = fn (string $pubkey): array => ['name' => ($user = $users->get($pubkey)) instanceof User ? PublicName::of($user) : PublicName::ofKey($pubkey), 'ref' => StreamImages::avatarRef($users->get($pubkey))];
         $miners = array_map($person, array_slice($block->winners(), 0, 3));
         $first = $block->winners()[0] ?? null;
         $mined = SeasonAttestation::query()->where('season_id', $block->season_id)->whereNotNull('height')->whereNotIn('id', $voided);

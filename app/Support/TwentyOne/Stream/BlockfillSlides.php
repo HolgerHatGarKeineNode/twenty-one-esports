@@ -8,6 +8,7 @@ use App\Games\GameRegistry;
 use App\Games\ScoreMetric;
 use App\Models\StackerRun;
 use App\Models\Tournament;
+use App\Models\User;
 use App\Support\Matches\ScoreAttempts;
 use App\Support\Scores\ScoreRuns;
 use App\Support\Scores\ScoreStanding;
@@ -237,7 +238,7 @@ final class BlockfillSlides
         return [
             'rows' => array_map(fn (ScoreStanding $row): array => [
                 'place' => (int) $row->place,
-                'name' => (string) $row->participant->name,
+                'name' => $row->participant->user instanceof User ? PublicName::of($row->participant->user) : (string) $row->participant->name,
                 'ms' => (int) $row->value,
                 'ref' => StreamImages::avatarRef($row->participant->user),
             ], array_slice($placed, 0, self::BOARD_PLACES)),
@@ -260,7 +261,7 @@ final class BlockfillSlides
             $waiting = ScoreAttempts::isWaiting($run);
 
             return [
-                'name' => $run->user->displayName(),
+                'name' => PublicName::of($run->user),
                 'ms' => $waiting ? null : Blockfill::milliseconds((int) $run->ticks),
                 'badge' => $waiting ? null : $this->badge($run, $engine),
                 'at' => (int) (ScoreAttempts::at($run) ?? $now)->getTimestamp(),
@@ -341,12 +342,12 @@ final class BlockfillSlides
 
             return [
                 'key' => 'run-'.$run->id,
-                'name' => $run->user->displayName(),
+                'name' => PublicName::of($run->user),
                 'ms' => Blockfill::milliseconds((int) $run->ticks),
                 'at' => (int) $run->verified_at?->getTimestamp(),
                 'ref' => StreamImages::avatarRef($run->user),
                 'before' => $previous === null ? null : [
-                    'name' => $previous->user->displayName(),
+                    'name' => PublicName::of($previous->user),
                     'ms' => Blockfill::milliseconds((int) $previous->ticks),
                     'own' => $previous->user_id === $run->user_id,
                 ],

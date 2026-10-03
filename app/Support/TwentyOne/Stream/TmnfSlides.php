@@ -7,6 +7,7 @@ use App\Games\GameRegistry;
 use App\Games\ScoreMetric;
 use App\Games\TrackmaniaNationsForever;
 use App\Models\Tournament;
+use App\Models\User;
 use App\Support\Scores\ScoreRuns;
 use App\Support\Scores\ScoreStanding;
 use App\Support\Scores\ScoreWindow;
@@ -235,7 +236,7 @@ final class TmnfSlides
 
         return array_map(fn (ScoreStanding $row): array => [
             'place' => (int) $row->place,
-            'name' => (string) $row->participant->name,
+            'name' => $row->participant->user instanceof User ? PublicName::of($row->participant->user) : (string) $row->participant->name,
             'ms' => (int) $row->value,
             'at' => $row->achievedAt?->getTimestamp(),
             'ref' => StreamImages::avatarRef($row->participant->user),

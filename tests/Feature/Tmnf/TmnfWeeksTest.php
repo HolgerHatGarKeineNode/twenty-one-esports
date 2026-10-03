@@ -494,3 +494,18 @@ test('the week\'s link preview shows the best time and its holder, "No time yet"
         ->and($card->facts['leader'])->toBe(['value' => '0:25.100', 'name' => 'Ada'])
         ->and(substr($card->render(), 0, 8))->toBe("\x89PNG\r\n\x1a\n");
 });
+
+test('the stream\'s TMNF slides name a player without a profile name by the verified NIP-05, else the short npub, and follow a name set later', function () {
+    $nip = tmnfPlayer('nip_drives', linked: true, attributes: ['name' => null, 'nip05' => 'nip@example.org', 'nip05_verified_at' => now()]);
+    $bare = tmnfPlayer('bare_drives', linked: true, attributes: ['name' => null]);
+    $late = tmnfPlayer('late_drives', linked: true, attributes: ['name' => null]);
+    tmnfFinish('nip_drives', 25_100);
+    tmnfFinish('bare_drives', 25_400);
+    tmnfFinish('late_drives', 25_800);
+    // The name arrives after the first finish entered the week.
+    $late->forceFill(['name' => 'Lena'])->save();
+    $expected = ['nip@example.org', 'npub1…'.substr($bare->npub, -4), 'Lena'];
+
+    expect(array_column(app(TmnfSlide::class)->data()['top'], 'name'))->toBe($expected)
+        ->and(array_column(app(TmnfSlides::class)->data()['lanes'], 'name'))->toBe($expected);
+});

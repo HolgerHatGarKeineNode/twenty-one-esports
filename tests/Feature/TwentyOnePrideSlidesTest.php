@@ -295,3 +295,17 @@ test('a styled name keeps its letters on the stream instead of losing them', fun
         ->and(RotationKit::clean('Ｂｅｎ 🚀'))->toBe('Ben')
         ->and(RotationKit::clean('Müller'))->toBe('Müller');
 });
+
+test('the block slide names a miner without a profile name by the short npub and a key without an account by its own npub, never the hex key', function () {
+    $season = openSeason();
+    $miner = User::factory()->create(['name' => null]);
+    $gone = User::factory()->create(['name' => 'Gone']);
+    shareBlock($season, 1, $miner, $gone);
+    $goneNpub = $gone->npub;
+    $gone->delete();
+
+    $block = app(PrideSlides::class)->all()['block'];
+
+    expect(array_column($block['miners'], 'name'))->toBe(['npub1…'.substr($miner->npub, -4)])
+        ->and($block['beat'])->toBe(['npub1…'.substr($goneNpub, -4)]);
+});
