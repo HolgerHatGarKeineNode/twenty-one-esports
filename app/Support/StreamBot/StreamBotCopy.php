@@ -214,6 +214,13 @@ final class StreamBotCopy
             ['🥇 :count new first places in :name', '🏁 On top now: :player in :time on :track', '⚔️ Also held it: :others', '👉 Beat it: :url'],
             ['🔥 First place changed hands :count times in :name', '🥇 :player leads with :time on :track', '⚔️ Before: :others', '👉 Your turn: :url'],
         ],
+        // A finished tournament's champion on the same profile (ChampionNotes), once per tournament: the winner tagged,
+        // the prize only once it is paid out; the `nostr:naddr1…` and the rendered champion slide follow after blank lines.
+        'champion_note' => [
+            ['🏆 :winner wins :name (:game)', '🎉 Congratulations, champion!', '⚡ :prize sats prize paid out', '👉 Bracket and results: :url'],
+            ['🏆 :winner wins :name (:game)', '🎉 GG and congrats on the title', '⚡ :prize sats won', '👉 See how it went: :url'],
+            ['🏆 :winner wins :name (:game)', '👏 Well played, and congratulations', '⚡ :prize sats paid out to the champion', '👉 All the results: :url'],
+        ],
         // Pride notes on the same profile (PrideNotes): players named for what they did, tagged; the
         // rendered slide follows after a blank line. Written by the kommunikator (2026-09-28).
         'pride_note_win' => [

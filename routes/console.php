@@ -573,6 +573,13 @@ Schedule::command('twentyone:stream-bot:free-places')->everyFiveMinutes()->witho
 Schedule::command('twentyone:stream-bot:pride')->everyFiveMinutes()->withoutOverlapping()->onOneServer();
 
 /*
+ * The champion of every newly finished tournament (special or casual cup,
+ * finished within five days) on the same profile, once, with its champion
+ * slide and the winner tagged. Same flag and key.
+ */
+Schedule::command('twentyone:stream-bot:champions')->everyFiveMinutes()->withoutOverlapping()->onOneServer();
+
+/*
  * The game channels (P21, NIP "Game channels"): the fixed kind 40 of every
  * game and its kind 41 with the chat relays, republished daily so a relay
  * that lost them or a new chat relay gets them without a manual step. The

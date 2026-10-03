@@ -1156,6 +1156,16 @@ return [
                 'prizes' => ['time' => '19:00', 'timezone' => 'America/New_York'],
             ],
         ],
+        // A finished tournament's champion on the same profile (twentyone:stream-bot:champions, ChampionNotes): one note
+        // per special tournament or casual cup with a single champion, with its rendered champion slide; only those
+        // finished within `days` (no flood of old ones), at most `per_run` per run, a failed send retried after
+        // `retry_minutes` with the same signed event. The slides are kept with the pride slides (`pride_notes.image_dir`).
+        'champion_notes' => [
+            'enabled' => (bool) env('ESPORTS_STREAM_BOT_CHAMPION_NOTES', true),
+            'days' => 5,
+            'per_run' => 3,
+            'retry_minutes' => 10,
+        ],
         // Reminders on the same profile while a tournament still has free places (P49,
         // twentyone:stream-bot:free-places): one note per slot, a slot being hours before sign-up
         // closes. A slot is due from its moment until the next slot's moment (or the stop), and

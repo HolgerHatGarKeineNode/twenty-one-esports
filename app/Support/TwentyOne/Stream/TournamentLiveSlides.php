@@ -251,6 +251,18 @@ class TournamentLiveSlides
             || SeriesMatch::query()->whereIn('tournament_match_id', $matches)->where('status', SeriesStatus::Accepted)->exists();
     }
 
+    /**
+     * When a finished tournament ended: its last result (the latest update of
+     * its matches), else a casual cup's end or the tournament's last update.
+     * The stream's finished window and the champion notes (ChampionNotes) both count from it.
+     */
+    public static function finishedAt(Tournament $tournament): ?CarbonInterface
+    {
+        $finishedAt = TournamentMatch::query()->where('tournament_id', $tournament->id)->max('updated_at');
+
+        return $finishedAt === null ? ($tournament->cup_ended_at ?? $tournament->updated_at) : Carbon::parse((string) $finishedAt);
+    }
+
     public static function phase(Tournament $tournament): string
     {
         return match ($tournament->status) {
@@ -400,8 +412,7 @@ class TournamentLiveSlides
         $snapshot['upset'] = $this->upset($boxes, $name);
 
         if ($phase === 'finished') {
-            $finishedAt = TournamentMatch::query()->where('tournament_id', $tournament->id)->max('updated_at');
-            $finished = $finishedAt === null ? ($tournament->cup_ended_at ?? $tournament->updated_at) : Carbon::parse((string) $finishedAt);
+            $finished = self::finishedAt($tournament);
             $snapshot['finishedAt'] = $at($finished);
             $snapshot['finishedMs'] = $finished?->getTimestampMs();
             $champion = $tv->champion();
