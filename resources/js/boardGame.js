@@ -355,6 +355,13 @@ document.addEventListener('alpine:init', () => {
             return (this.state.daily ? this.t.status.daily : this.t.status.live).replace(':move', this.state.ply + 1).replace(':side', this.state.turn === 'w' ? this.t.white : this.t.black);
         },
 
+        /** Seconds left for the first move, or null when no first-move deadline runs. */
+        get firstMoveLeft() {
+            if (this.state.status !== 'active' || !this.state.firstMoveDeadline) return null;
+
+            return Math.max(0, Math.ceil((this.state.firstMoveDeadline - this.serverNow()) / 1000));
+        },
+
         get firstMoveLine() {
             if (this.state.status !== 'active' || !this.state.firstMoveDeadline) return '';
             const seconds = Math.max(0, Math.ceil((this.state.firstMoveDeadline - this.serverNow()) / 1000));

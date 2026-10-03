@@ -472,6 +472,8 @@ new #[Layout('layouts::app', ['section' => 'chess', 'realtime' => true, 'scripts
             'pastStart' => __('Earlier position: the start position.'),
             // A tournament game ends at the first-move deadline by the league's decision (P18, slice 5): say what happens.
             'firstMove' => $this->game->tournament_match_id !== null ? __('Auto-decision in :s s: :side loses by forfeit (if the other side never came, the game is aborted)') : __(':side: first move within :s s'),
+            // The same deadline as the player's own countdown, for a tournament game only (user, 2026-10-03).
+            'cupFirstMove' => $this->game->tournament_match_id === null ? null : ['mine' => __('Make your first move within :time or you lose this cup game'), 'theirs' => __(':side must move within :time or loses this cup game')],
             'offerDraw' => __('Offer draw'),
             'drawOffered' => __('Draw offered'),
             'black' => __('Black'),
@@ -585,6 +587,9 @@ new #[Layout('layouts::app', ['section' => 'chess', 'realtime' => true, 'scripts
 @endphp
 
 <div class="flex grow flex-col">
+    {{-- A tournament game says so first, above everything else (user, 2026-10-03). --}}
+    <x-tournaments.game-banner :banner="$tournamentGame ? TournamentGameEnd::banner($game) : null" class="mx-4 mb-4 lg:mx-12 lg:mb-5" />
+
     @if ($live && $game->isCorrespondence())
         @include('pages.games.partials.daily', ['game' => $game, 'players' => $players, 'color' => $color, 'opponent' => $opponent])
     @elseif ($live)
@@ -628,7 +633,7 @@ new #[Layout('layouts::app', ['section' => 'chess', 'realtime' => true, 'scripts
                         <div @class(['relative flex min-h-14 min-w-0 items-center gap-3 lg:items-start lg:overflow-hidden lg:rounded-lg lg:bg-card lg:p-3', 'lg:order-2' => $side === 'bottom'])>
                             @foreach ($players as $pc => $p)
                                 <span x-show="{{ $sideColor }} === '{{ $pc }}'" class="contents" data-test="player-card-{{ $pc }}">
-                                    <x-chess.player-card :player="$p" :color="$pc" :you="$pc === $color"><x-rating :rating="$p['rating']" :label="__('Solo')" /></x-chess.player-card>
+                                    <x-chess.player-card :player="$p" :color="$pc" :you="$pc === $color">@if ($tournamentGame && ! $game->rated)<x-tournaments.game-chip />@else<x-rating :rating="$p['rating']" :label="__('Solo')" />@endif</x-chess.player-card>
                                 </span>
                             @endforeach
                         </div>
@@ -834,11 +839,19 @@ new #[Layout('layouts::app', ['section' => 'chess', 'realtime' => true, 'scripts
                             </template>
                         </x-chess.board>
 
-                        {{-- First-move notice --}}
+                        {{-- First-move notice. A tournament game ends at this deadline by the league's decision: the countdown leads, the rule stays under it. --}}
                         <template x-if="firstMoveLeft !== null">
-                            <p class="m-0 px-4 text-[13px] text-btc-hi lg:px-0" role="status" data-test="first-move">
-                                <span x-text="t.firstMove.replace(':side', state.turn === 'w' ? t.white : t.black).replace(':s', firstMoveLeft)"></span>
-                            </p>
+                            @if ($tournamentGame)
+                                <div class="mx-4 flex flex-col gap-1 rounded-lg bg-btc-tint px-4 py-3 shadow-[inset_0_0_0_1px_var(--color-btc)] lg:mx-0" role="status" data-test="first-move">
+                                    <b class="font-display text-base leading-snug text-btc-hi lg:text-lg" data-test="first-move-cup"
+                                       x-text="(color === state.turn ? t.cupFirstMove.mine : t.cupFirstMove.theirs.replace(':side', t.names[state.turn])).replace(':time', Math.floor(firstMoveLeft / 60) + ':' + String(firstMoveLeft % 60).padStart(2, '0'))"></b>
+                                    <span class="text-xs text-ink-2" x-text="t.firstMove.replace(':side', state.turn === 'w' ? t.white : t.black).replace(':s', firstMoveLeft)"></span>
+                                </div>
+                            @else
+                                <p class="m-0 px-4 text-[13px] text-btc-hi lg:px-0" role="status" data-test="first-move">
+                                    <span x-text="t.firstMove.replace(':side', state.turn === 'w' ? t.white : t.black).replace(':s', firstMoveLeft)"></span>
+                                </p>
+                            @endif
                         </template>
 
                         @if ($color)

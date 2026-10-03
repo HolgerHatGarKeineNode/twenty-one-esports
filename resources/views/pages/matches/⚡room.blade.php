@@ -746,12 +746,15 @@ new #[Title('Match room')] #[Layout('layouts::app', ['section' => 'matches', 'sc
      x-data="{ submit: false }"
      x-init="setInterval(() => { if (! document.activeElement?.matches('input, textarea, select') && ! submit) $wire.sync() }, 8000)">
 
+    {{-- A tournament series says so first, above everything else, the casual steps included (user, 2026-10-03). --}}
+    <x-tournaments.game-banner :banner="$m->tournament_match_id !== null ? TournamentGameEnd::banner($m) : null" class="-order-10" />
+
     {{-- Header --}}
     <div @class(['flex flex-wrap items-center gap-x-3 gap-y-2', 'max-lg:-order-4 lg:-order-2' => $casualFirst])>
         <a href="{{ \App\Support\GameNames::page($m->game) }}" class="shrink-0" title="{{ \App\Support\GameNames::game($m->game) }}" aria-label="{{ \App\Support\GameNames::game($m->game) }}"><x-game-cover :game="$m->game" size="thumb" class="w-16 rounded-sm shadow-ring lg:w-24" data-test="room-game-cover" /></a>
         <h1 class="m-0 font-display text-[26px] font-bold lg:text-[34px]"><span class="lg:hidden">{{ __('Match room') }}</span><span class="max-lg:hidden">{{ __('Match') }}</span></h1>
         <span class="font-display text-xl font-bold text-ink-2 max-lg:hidden lg:text-[28px]">{{ $m->label() }}</span>
-        <span class="inline-flex h-[26px] items-center rounded-sm bg-btc-chip px-2.5 text-xs font-bold text-btc-hi shadow-[inset_0_0_0_1px_#B9640A]">{{ $m->rated ? __('Rated') : __('Casual') }}</span>
+        <span class="inline-flex h-[26px] items-center rounded-sm bg-btc-chip px-2.5 text-xs font-bold text-btc-hi shadow-[inset_0_0_0_1px_#B9640A]">{{ $m->rated ? __('Rated') : ($m->tournament_match_id !== null ? __('Tournament') : __('Casual')) }}</span>
         <span class="grow"></span>
         <span class="inline-flex h-[34px] items-center gap-2 rounded-md px-3.5 text-[13px] font-bold {{ $status[1] }}" data-test="room-status"><span class="size-[7px] animate-live rounded-full bg-current"></span>{{ $status[0] }}</span>
         <span class="text-[13px] text-ink-2 max-lg:hidden">{{ __(':n of 2 checks', ['n' => $checks]) }}</span>

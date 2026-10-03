@@ -101,6 +101,37 @@ final class TournamentGameEnd
     }
 
     /**
+     * The banner at the very top of a tournament game's page, live and after
+     * its end (user, 2026-10-03: "groß fett rein, oben, dass es sich um ein
+     * Turnierspiel handelt"): the tournament, its round, the game of a duel
+     * ("Game 2 of 3") and what is at stake. Null when it is no tournament game.
+     *
+     * @return array{tournament: string, round: string, step: string|null, stake: string, url: string, cup: bool}|null
+     */
+    public static function banner(ChessGame|BoardGame|SeriesMatch $played): ?array
+    {
+        $match = self::matchOf($played);
+
+        if ($match === null) {
+            return null;
+        }
+
+        $tournament = $match->tournament;
+        $pair = self::pairMatches($match);
+        $index = $pair->search(fn (TournamentMatch $other): bool => $other->id === $match->id);
+        $cup = $tournament->isCasualCup();
+
+        return [
+            'tournament' => $tournament->title(),
+            'round' => (string) __('Round :number', ['number' => $match->round->number]),
+            'step' => $pair->count() > 1 && $index !== false ? (string) __('Game :n of :total', ['n' => $index + 1, 'total' => $pair->count()]) : null,
+            'stake' => $cup ? (string) __('Cup game — counts for the tournament') : (string) __('Tournament game — counts for the tournament'),
+            'url' => route('tournaments.show', $tournament),
+            'cup' => $cup,
+        ];
+    }
+
+    /**
      * Where the countdown takes a player: the next game of the same pairing
      * once it exists, else the tournament page. Null when it is no
      * tournament game.

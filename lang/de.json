@@ -6530,5 +6530,12 @@
     ":count other match is still being played.|:count other matches are still being played.": "Ein weiteres Match läuft noch.|:count weitere Matches laufen noch.",
     "Your next game opens in :s s.": "Deine nächste Partie öffnet sich in :s s.",
     "The tournament page opens in :s s.": "Die Turnierseite öffnet sich in :s s.",
-    "You stay on this page.": "Du bleibst auf dieser Seite."
+    "You stay on this page.": "Du bleibst auf dieser Seite.",
+    "Cup game": "Cup-Partie",
+    "Tournament game": "Turnierpartie",
+    "Cup game — counts for the tournament": "Cup-Partie — zählt für das Turnier",
+    "Tournament game — counts for the tournament": "Turnierpartie — zählt für das Turnier",
+    "Counts for the tournament": "Zählt für das Turnier",
+    "Make your first move within :time or you lose this cup game": "Mach deinen ersten Zug innerhalb von :time, sonst verlierst du diese Cup-Partie",
+    ":side must move within :time or loses this cup game": ":side muss innerhalb von :time ziehen, sonst ist diese Cup-Partie verloren"
 }

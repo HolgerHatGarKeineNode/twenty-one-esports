@@ -202,6 +202,8 @@ new #[Layout('layouts::app', ['realtime' => true, 'scripts' => ['resources/js/bo
                 'black' => __('Black'),
                 'names' => ['w' => $this->name('w'), 'b' => $this->name('b')],
                 'firstMove' => __(':side: first move within :s s'),
+                // A tournament game's first-move deadline, in the player's words (user, 2026-10-03).
+                'cupFirstMove' => $this->boardGame->tournament_match_id === null ? null : ['mine' => __('Make your first move within :time or you lose this cup game'), 'theirs' => __(':side must move within :time or loses this cup game')],
                 'drawOffer' => __(':name offers a draw', ['name' => $this->name($this->boardGame->colorOf(auth()->user()) === 'w' ? 'b' : 'w')]),
                 'status' => ['live' => __('Live · move :move · :side to move'), 'daily' => __('Correspondence · move :move · :side to move'), 'over' => __('Game over'), 'aborted' => __('Aborted')],
                 'deadline' => __(':side moves by :time, or loses on time.'),
@@ -232,6 +234,9 @@ new #[Layout('layouts::app', ['realtime' => true, 'scripts' => ['resources/js/bo
 @endphp
 
 <div class="flex grow flex-col px-4 pb-8 lg:px-12 lg:pb-10">
+    {{-- A tournament game says so first, above everything else (user, 2026-10-03). --}}
+    <x-tournaments.game-banner :banner="$boardGame->tournament_match_id !== null ? TournamentGameEnd::banner($boardGame) : null" class="mx-auto mb-4 w-full max-w-[1000px] lg:mb-5" />
+
     <div wire:ignore x-data="boardGame(@js($config))" x-on:keydown.window="browseKey($event)" class="mx-auto flex w-full max-w-[1000px] flex-col gap-4 lg:gap-5" data-test="board-game" data-mode="{{ $boardGame->mode }}">
 
         {{-- Title row --}}
@@ -272,7 +277,16 @@ new #[Layout('layouts::app', ['realtime' => true, 'scripts' => ['resources/js/bo
 
             {{-- Status, actions, moves --}}
             <div class="flex min-w-0 flex-col gap-3">
-                <p class="m-0 text-[13px] text-ink-2" x-show="firstMoveLine" x-text="firstMoveLine" data-test="first-move"></p>
+                @if ($boardGame->tournament_match_id !== null)
+                    {{-- A tournament game ends at the first-move deadline by the league's decision: the countdown leads, the rule stays under it. --}}
+                    <div class="flex flex-col gap-1 rounded-lg bg-btc-tint px-4 py-3 shadow-[inset_0_0_0_1px_var(--color-btc)]" role="status" x-show="firstMoveLine" data-test="first-move">
+                        <b class="font-display text-base leading-snug text-btc-hi lg:text-lg" data-test="first-move-cup"
+                           x-text="firstMoveLeft === null ? '' : (color === state.turn ? t.cupFirstMove.mine : t.cupFirstMove.theirs.replace(':side', t.names[state.turn])).replace(':time', Math.floor(firstMoveLeft / 60) + ':' + String(firstMoveLeft % 60).padStart(2, '0'))"></b>
+                        <span class="text-xs text-ink-2" x-text="firstMoveLine"></span>
+                    </div>
+                @else
+                    <p class="m-0 text-[13px] text-ink-2" x-show="firstMoveLine" x-text="firstMoveLine" data-test="first-move"></p>
+                @endif
                 <p class="m-0 text-[13px] text-ink-2" x-show="deadlineLine" x-text="deadlineLine" data-test="deadline"></p>
                 <p role="alert" class="m-0 text-[13px] text-loss" x-show="error" x-text="error" data-test="board-error"></p>
 
