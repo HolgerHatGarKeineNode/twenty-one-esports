@@ -14,6 +14,7 @@ use App\Games\Blockfill;
 use App\Models\StackerRun;
 use App\Models\User;
 use App\Support\Scores\ScoreLeaderboards;
+use App\Support\Stacker\BlockfillRules;
 use App\Support\Stacker\BlockfillWeeks;
 use App\Support\Stacker\StackerRuns;
 use Carbon\CarbonImmutable;
@@ -199,3 +200,14 @@ test('an empty week\'s own page leads with Play now and the empty podium, in Eng
     'en' => ['en', 'Play now', 'No time yet this week. The first verified run takes #1.'],
     'de' => ['de', 'Jetzt spielen', 'Noch keine Zeit diese Woche. Der erste geprüfte Lauf holt #1.'],
 ]);
+
+test('the week page\'s search description names the week\'s blocks, never the rule id', function () {
+    $week = $this->weeks->open();
+
+    $html = $this->get(route('tournaments.show', $week))->assertOk()->getContent();
+    preg_match('#<meta name="description" content="([^"]*)">#', $html, $match);
+    $description = html_entity_decode($match[1] ?? '', ENT_QUOTES);
+
+    expect($description)->toContain('Blockfill tournament ('.BlockfillRules::weekBlocks($week).')')
+        ->and($description)->not->toContain(Blockfill::MODE);
+});

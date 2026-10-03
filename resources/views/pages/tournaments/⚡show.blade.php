@@ -133,7 +133,13 @@ new #[Layout('layouts::app', ['section' => 'tournaments', 'realtime' => true])] 
 
         $facts = [
             'game' => \App\Support\GameNames::game($tournament->game),
-            'mode' => $tournament->mode === 'correspondence' ? __('Daily') : ($tournament->mode === 'blitz' ? __('Blitz 5+3') : $tournament->mode),
+            // The mode's name, never its id: a Blockfill week names its own blocks ("60 blocks"), not "40-blocks".
+            'mode' => match (true) {
+                $tournament->mode === 'correspondence' => __('Daily'),
+                $tournament->mode === 'blitz' => __('Blitz 5+3'),
+                $tournament->game === \App\Games\Blockfill::SLUG => \App\Support\Stacker\BlockfillRules::weekBlocks($tournament),
+                default => \App\Support\GameNames::mode($tournament->game, $tournament->mode),
+            },
             'format' => \App\Support\Tournaments\Lobbies::formatLabel($tournament),
             'who' => $teams ? trans_choice(':count team|:count teams', $planned->capacity) : trans_choice(':count player|:count players', $planned->capacity),
             'where' => $tournament->on_site ? __('on site') : __('online'),
