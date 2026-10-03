@@ -482,6 +482,10 @@ new #[Layout('layouts::app', ['section' => 'tournaments'])] class extends Compon
     // A TMNF week (plan "Trackmania und Restposten", P2) as a Blockfill week, played on our own server: How to join instead of Play.
     $tmnfWeek = $tournament->isTmnfWeek();
     $tmnfTrack = $tmnfWeek ? \App\Support\Tmnf\TmnfWeeks::track($tournament->score_course) : null;
+    // A Blockfill week's page as TMNF's week board (plan "Restposten nach TMNF", P4): the game's hero with Play now,
+    // the rules as chips, the podium and the board, the way onward; no roster, steps text, facts or questions.
+    $blockfillWeek = $week && ! $tmnfWeek && \Illuminate\Support\Facades\Route::has('stacker.play');
+    $weekStandings = $blockfillWeek && $tournament->participants()->exists() ? app(\App\Support\Scores\ScoreRuns::class)->standings($tournament) : [];
     $scoreGame = $score ? app(\App\Games\GameRegistry::class)->get($tournament->game) : null;
     $scoreMetric = $scoreGame instanceof \App\Games\ScoreGame ? $scoreGame->metric($scoreGame->mode($tournament->mode) ?? throw new \LogicException('A score profile has its mode.')) : null;
     $status = $tournament->status;
@@ -685,6 +689,12 @@ new #[Layout('layouts::app', ['section' => 'tournaments'])] class extends Compon
         page). Below lg in reading order: cover, name, pot, call to action, so the pot's number is in the
         phone's first screen.
     --}}
+    @if ($blockfillWeek)
+        {{-- A Blockfill week: the game's own hero (cover, the week and its rules as chips, the time to beat, Play now) and its three steps. --}}
+        <div class="flex flex-col gap-6 px-4 pt-4 lg:px-12 lg:pt-8">
+            @include('pages.scores.partials.blockfill-hero', ['heading' => $tournament->title(), 'week' => $tournament, 'standings' => $weekStandings, 'metric' => $scoreMetric])
+        </div>
+    @else
     <section aria-labelledby="t-name" class="tl-hero relative isolate" data-test="tournament-hero">
         <div class="grid gap-4 px-4 sm:gap-6 lg:grid-cols-[minmax(0,1fr)_minmax(0,440px)] lg:grid-rows-[auto_1fr] lg:gap-x-12 lg:px-12">
             <div class="flex min-w-0 flex-col gap-5 lg:col-start-2 lg:row-start-1 lg:self-end">
@@ -864,6 +874,7 @@ new #[Layout('layouts::app', ['section' => 'tournaments'])] class extends Compon
             </div>
         @endif
     </section>
+    @endif
 
     {{-- A TMNF week: How to join, big, right under the hero (plan "Trackmania und Restposten", P2). --}}
     @if ($tmnfWeek)
@@ -907,7 +918,8 @@ new #[Layout('layouts::app', ['section' => 'tournaments'])] class extends Compon
         </section>
     @endif
 
-    {{-- Who plays --}}
+    {{-- Who plays (a Blockfill week: its podium and board below are who plays) --}}
+    @unless ($blockfillWeek)
     <section aria-labelledby="entries-h" class="flex flex-col gap-4 px-4 lg:px-12" data-test="entries">
         <div class="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
             <h2 id="entries-h" class="m-0 font-display text-xl font-bold lg:text-2xl">{{ __('Who plays') }}</h2>
@@ -1004,8 +1016,11 @@ new #[Layout('layouts::app', ['section' => 'tournaments'])] class extends Compon
             <p class="m-0 text-[13px] text-ink-2" data-test="entries-empty">{{ __('Nobody has signed up yet.') }}</p>
         @endif
     </section>
+    @endunless
 
-    @if ($score)
+    @if ($blockfillWeek)
+        @include('pages.tournaments.partials.blockfill-board', ['tournament' => $tournament, 'standings' => $weekStandings, 'metric' => $scoreMetric])
+    @elseif ($score)
         @include('pages.scores.partials.tournament-board', ['tournament' => $tournament, 'metric' => $scoreMetric, 'drawn' => $drawn])
     @else
     {{-- The bracket: projected before the draw, the real one after it --}}
@@ -1136,7 +1151,8 @@ new #[Layout('layouts::app', ['section' => 'tournaments'])] class extends Compon
         <livewire:tournament-pool :tournament="$tournament" :key="'pool-'.$tournament->id" />
     @endif
 
-    {{-- How it works, and the facts --}}
+    {{-- How it works, and the facts (a Blockfill week has them as steps and chips above) --}}
+    @unless ($blockfillWeek)
     <section aria-labelledby="how-h" class="grid gap-8 px-4 lg:grid-cols-[minmax(0,5fr)_minmax(0,7fr)] lg:gap-12 lg:px-12">
         <div class="flex flex-col gap-4">
             <h2 id="how-h" class="m-0 font-display text-xl font-bold lg:text-2xl">{{ __('How it works') }}</h2>
@@ -1168,9 +1184,12 @@ new #[Layout('layouts::app', ['section' => 'tournaments'])] class extends Compon
             @endif
         </div>
     </section>
+    @endunless
 
-    {{-- Questions, and the proof for the nerds --}}
-    <section aria-labelledby="faq-h" class="flex flex-col gap-3 px-4 lg:px-12" data-test="faq">
+    {{-- Questions, and the proof for the nerds (a Blockfill week: the proof alone, its chips answer the questions) --}}
+    @if (! $blockfillWeek || $proof !== [])
+    <section @unless ($blockfillWeek) aria-labelledby="faq-h" @endunless class="flex flex-col gap-3 px-4 lg:px-12" data-test="{{ $blockfillWeek ? 'week-proof' : 'faq' }}">
+        @unless ($blockfillWeek)
         <h2 id="faq-h" class="m-0 font-display text-xl font-bold lg:text-2xl">{{ __('Questions') }}</h2>
         <div class="grid gap-2 lg:grid-cols-2 lg:items-start">
             @foreach ([
@@ -1193,6 +1212,7 @@ new #[Layout('layouts::app', ['section' => 'tournaments'])] class extends Compon
                 </details>
             @endforeach
         </div>
+        @endunless
 
         @if ($proof !== [])
             <details class="group rounded-md bg-card" data-test="nerds">
@@ -1208,6 +1228,7 @@ new #[Layout('layouts::app', ['section' => 'tournaments'])] class extends Compon
             </details>
         @endif
     </section>
+    @endif
 
     {{-- P48: comments and likes on the tournament's calendar event (NIP-22, NIP-25), read from the league relays --}}
     @if ($published)

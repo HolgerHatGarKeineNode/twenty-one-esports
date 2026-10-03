@@ -6482,5 +6482,10 @@
     "Free to play": "Kostenlos spielbar",
     "I own :game on one of these platforms": "Ich besitze :game auf einer dieser Plattformen",
     "Tick that you own :game first.": "Bestätige zuerst, dass du :game besitzt.",
-    "no crossplay": "kein Crossplay"
+    "no crossplay": "kein Crossplay",
+    "Fastest time wins": "Schnellste Zeit gewinnt",
+    "A tie goes to the earlier run": "Bei Gleichstand zählt der frühere Lauf",
+    "Places score points on the ladder": "Plätze bringen Punkte in der Ladder",
+    "Mines no season blocks": "Schürft keine Season-Blöcke",
+    "About this week": "Zu dieser Woche"
 }

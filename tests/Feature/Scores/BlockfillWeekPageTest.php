@@ -142,3 +142,60 @@ test('the German page says the same in German', function () {
         ->assertSee('Noch keine Zeit diese Woche. Der erste geprüfte Lauf holt #1.')
         ->assertDontSee('Play now');
 });
+
+test('the week\'s own page leads with the cover and Play now, the rules and facts as chips, the podium and the board, and links onward; no text walls', function () {
+    blockfillPageRun(User::factory()->create(['name' => 'Last Week Winner']), 2800, CarbonImmutable::parse('2026-10-01 12:00:00'));
+    foreach (['Hal Finney Fan' => 2900, 'Ada Blockspace' => 3000, 'Nakamoto' => 3100, 'Mempool Max' => 3200, 'Satoshi Stacker' => 3300] as $name => $ticks) {
+        blockfillPageRun(${'u'.$ticks} = User::factory()->create(['name' => $name]), $ticks, now()->subHours(3)->addMinutes($ticks / 100));
+    }
+    $week = $this->weeks->current();
+
+    $html = $this->actingAs($u3000)->get(route('tournaments.show', $week))->assertOk()
+        ->assertSeeHtml('data-test="blockfill-hero"')
+        ->assertSeeHtml('data-game-cover="blockfill"')
+        ->assertSeeHtml('data-test="time-to-beat"')
+        ->assertSeeHtml('data-test="blockfill-steps"')
+        ->assertSeeHtml('data-test="week-podium"')
+        // The rules of the week as chips: its blocks and its speed.
+        ->assertSeeInOrder(['data-test="chip-rule"', '40 blocks', 'data-test="chip-rule"', 'Steady 1 row/s'], false)
+        ->assertSeeInOrder(['data-test="week-facts"', __('Fastest time wins'), __('A tie goes to the earlier run'), __('Places score points on the ladder'), __('Mines no season blocks')], false)
+        // No paragraphs: not How it works, not the facts, not the questions, not the roster above the board.
+        ->assertDontSeeHtml('data-test="how-it-works"><')
+        ->assertDontSeeHtml('id="how-h"')
+        ->assertDontSeeHtml('data-test="facts"')
+        ->assertDontSeeHtml('id="faq-h"')
+        ->assertDontSeeHtml('data-test="entries"')
+        ->assertDontSeeHtml('data-test="to-blockfill"')
+        ->getContent();
+
+    // Play now first, then the podium, then the rows from 4th place on (the podium holds 1 to 3).
+    preg_match_all('/data-test="score-row" data-place="(\d+)"/', $html, $rows);
+    expect(blockfillPageAttr($html, 'play-now'))->toBe(route('stacker.play'))
+        ->and(strpos($html, 'data-test="play-now"'))->toBeLessThan(strpos($html, 'data-test="week-podium"'))
+        ->and(strpos($html, 'data-test="week-podium"'))->toBeLessThan(strpos($html, 'data-test="score-leaderboard"'))
+        ->and(preg_match_all('/data-test="podium-\d"/', $html))->toBe(3)
+        ->and($rows[1])->toBe(['4', '5'])
+        ->and(blockfillPageAttr($html, 'to-scores'))->toBe(route('tournaments.scores', $week))
+        ->and(blockfillPageAttr($html, 'nav-points'))->toBe(route('scores.show', Blockfill::SLUG).'#points')
+        ->and(blockfillPageAttr($html, 'nav-runs'))->toBe(route('matches.index', ['game' => Blockfill::SLUG]))
+        ->and(blockfillPageAttr($html, 'nav-last-week'))->toBe(route('tournaments.scores', $this->weeks->previous()));
+
+    Livewire::actingAs($u3000)->test('pages::tournaments.show', ['tournament' => $week])->call('$refresh')->assertOk();
+});
+
+test('an empty week\'s own page leads with Play now and the empty podium, in English and German', function (string $locale, string $play, string $empty) {
+    $week = $this->weeks->open();
+
+    $html = $this->get(route('tournaments.show', $week).'?lang='.$locale)->assertOk()
+        ->assertSee($play)
+        ->assertSeeHtml('data-test="first-place-free"')
+        ->assertSeeHtml('data-test="score-empty-week"')
+        ->assertDontSeeHtml('data-test="week-podium"')
+        ->getContent();
+
+    expect(html_entity_decode($html, ENT_QUOTES))->toContain($empty)
+        ->and(blockfillPageAttr($html, 'play-now'))->toBe(route('stacker.play'));
+})->with([
+    'en' => ['en', 'Play now', 'No time yet this week. The first verified run takes #1.'],
+    'de' => ['de', 'Jetzt spielen', 'Noch keine Zeit diese Woche. Der erste geprüfte Lauf holt #1.'],
+]);

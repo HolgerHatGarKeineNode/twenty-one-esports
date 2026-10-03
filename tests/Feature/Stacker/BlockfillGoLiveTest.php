@@ -455,12 +455,13 @@ test('a Blockfill week\'s winner gets no zap button and no tournament win to sha
 test('the page of a week tells how a week works: play, verified, leaderboard, the replay as its results, a Play button; no sign-up, no no-show, no invite row', function (string $locale, array $seen, array $unseen) {
     [$week] = goLiveWeek(['Ada' => 2900]);
     $html = $this->get(route('tournaments.show', $week).'?lang='.$locale)->assertOk()->getContent();
-    preg_match('#data-test="how-it-works".*?</ol>#s', $html, $how);
-    preg_match('#data-fact="results".*?</div>#s', $html, $results);
-    preg_match('#data-fact="course".*?</div>#s', $html, $course);
-    preg_match('#data-fact="chain".*?</div>#s', $html, $chain);
+    // P4 (plan "Restposten nach TMNF"): the steps as a track, the rules in the hero's chips, the facts as chips beside the board.
+    preg_match('#data-test="blockfill-steps".*?</ol>#s', $html, $how);
+    preg_match('#data-test="hero-chips".*?</ul>#s', $html, $results);
+    preg_match('#data-test="week-facts".*?</ul>#s', $html, $course);
+    $chain = [''];
 
-    expect($html)->toContain('data-test="to-blockfill"')->toContain('href="'.route('stacker.play').'"')
+    expect($html)->toMatch('#<a href="'.preg_quote(route('stacker.play'), '#').'"[^>]*data-test="play-now"#')
         ->and($html)->not->toContain('data-test="to-signup"')
         ->and($html)->not->toContain(route('tournaments.signup', $week))
         ->and($html)->not->toContain('data-test="who-is-in"')
@@ -475,10 +476,10 @@ test('the page of a week tells how a week works: play, verified, leaderboard, th
         expect(html_entity_decode($html, ENT_QUOTES))->not->toContain($text);
     }
 })->with([
-    'en' => ['en', ['Play a ranked run of Blockfill', 'The league replays your run', 'Your best verified run of the week ranks', 'every ranked run replayed by the league', '40 blocks', 'a week mines no season blocks'],
-        ['What if someone does not show up?', 'link that proves it', 'values read from the game', 'Confirm with your Nostr key', 'tournament matches never mine']],
-    'de' => ['de', ['Spiel einen gewerteten Blockfill-Lauf', 'Die Liga spielt deinen Lauf', 'Dein bester geprüfter Lauf der Woche zählt', 'jeder gewertete Lauf von der Liga nachgespielt', '40 Blöcke', 'eine Woche schürft keine Season-Blöcke'],
-        ['Was, wenn jemand nicht erscheint?', 'Link, der ihn belegt']],
+    'en' => ['en', ['Ranked, logged in', 'The server replays it', 'Your best time counts', '40 blocks', 'Steady 1 row/s', 'Fastest time wins', 'Mines no season blocks'],
+        ['What if someone does not show up?', 'link that proves it', 'values read from the game', 'Confirm with your Nostr key', 'tournament matches never mine', 'Play a ranked run of Blockfill']],
+    'de' => ['de', ['Ranked, eingeloggt', 'Server spielt ihn nach', 'Deine Bestzeit zählt', '40 Blöcke', 'Gleichbleibend 1 Reihe/s', 'Schnellste Zeit gewinnt', 'Schürft keine Season-Blöcke'],
+        ['Was, wenn jemand nicht erscheint?', 'Link, der ihn belegt', 'Spiel einen gewerteten Blockfill-Lauf']],
 ]);
 
 test('the draw page of a week is 404; with Blockfill switched off its page, calendar file and TV are 404 too; on, the calendar file is in the language of the request and ends with the week', function () {
@@ -549,8 +550,9 @@ test('an empty week says nobody has a verified run yet, in en and de, with no se
         // The places meter waits for the draw, and a week is drawn from its start: it is opened running.
         ->and($week->status)->toBe(TournamentStatus::Running);
 })->with([
-    'en' => ['en', 'No verified run yet this week. Play the first one.'],
-    'de' => ['de', 'Diese Woche noch kein geprüfter Lauf. Spiel den ersten.'],
+    // P4 (plan "Restposten nach TMNF"): the empty podium of the board says it, as on the week's board page.
+    'en' => ['en', 'No time yet this week. The first verified run takes #1.'],
+    'de' => ['de', 'Noch keine Zeit diese Woche. Der erste geprüfte Lauf holt #1.'],
 ]);
 
 test('a week shows no seed numbers and no prize pool, even to an admin, and has no sign-up, director or pool page, switched on or off', function () {

@@ -111,7 +111,8 @@
             <li class="px-2 py-6 text-[13px] text-ink-2">{{ __('Nobody is in yet.') }}</li>
         @endforelse
     </ol>
-    @if ($limit !== null && count($standings) > $limit)
-        <p class="m-0 px-2 pt-2 text-xs text-ink-3">{{ __('Showing :shown of :total.', ['shown' => $limit, 'total' => count($standings)]) }}</p>
+    {{-- The rows left out at the top are shown above (a podium): they count as shown. --}}
+    @if ($limit !== null && count($standings) > $skip + $limit)
+        <p class="m-0 px-2 pt-2 text-xs text-ink-3">{{ __('Showing :shown of :total.', ['shown' => $skip + $limit, 'total' => count($standings)]) }}</p>
     @endif
 </div>

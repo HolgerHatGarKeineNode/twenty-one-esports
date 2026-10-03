@@ -224,15 +224,16 @@ test('a game the league checks itself (Blockfill) offers Play instead of a submi
     app(BlockfillWeeks::class)->join($week, $player);
     $this->actingAs($player);
 
-    // The week page offers Play with its note; the two Blockfill boards open with their own play-first hero.
-    foreach ([route('tournaments.show', $week) => 'score-play-button', route('tournaments.scores', $week) => 'play-now', route('scores.show', Blockfill::SLUG) => 'play-now'] as $url => $button) {
+    // The week page and the two Blockfill boards open with the game's play-first hero (plan "Restposten nach TMNF", P4).
+    foreach ([route('tournaments.show', $week) => 'play-now', route('tournaments.scores', $week) => 'play-now', route('scores.show', Blockfill::SLUG) => 'play-now'] as $url => $button) {
         $html = $this->get($url)->assertOk()->getContent();
         expect($html)->not->toContain('data-test="to-submit"', $url)
             ->not->toContain('data-test="score-submit"')
             ->not->toContain(__('Submit your value'))
             ->toMatch('/<a[^>]*href="'.preg_quote(route('stacker.play'), '/').'"[^>]*data-test="'.$button.'"/');
     }
-    expect($this->get(route('tournaments.show', $week))->getContent())->toContain(__('Your best verified run counts automatically'));
+    // What counts: the steps under the hero say the best time counts, with no submission.
+    expect($this->get(route('tournaments.show', $week))->getContent())->toContain(__('Your best time counts'));
     // The week's full table is named as one, not as "all values".
     expect($this->get(route('tournaments.show', $week))->getContent())->toMatch('/data-test="to-scores">(\s|<!--.*?-->)*'.__('Full table').'\s*</')->not->toContain(__('All values'));
 

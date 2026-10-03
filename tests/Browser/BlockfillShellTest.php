@@ -187,7 +187,7 @@ test('/blockfill and scores/blockfill share Blockfill\'s context bar and tab bar
     'de 1440' => ['de', 1440, 900],
 ]);
 
-test('the page of a week: the Play button to /blockfill in the first screen, how a week works, no sign-up or invite row', function (string $locale, int $width, int $height, bool $guest = false, bool $empty = false) {
+test('the page of a week: Play now to /blockfill in the first screen, the three steps, no sign-up or invite row', function (string $locale, int $width, int $height, bool $guest = false, bool $empty = false) {
     // An empty week: the next one, opened before anybody played it (every Monday until the first verified run).
     if ($empty) {
         $this->travelTo(CarbonImmutable::parse('2026-10-12 09:00:00'));
@@ -200,25 +200,25 @@ test('the page of a week: the Play button to /blockfill in the first screen, how
     blockfillShellGo($page, route('tournaments.show', $week, false), $locale);
 
     // [left, right, bottom, href, text, the top of what covers the window's bottom: the tab bar below lg, else the window's edge]
-    $play = $page->evaluate('() => { const a = document.querySelector("[data-test=to-blockfill]"); const r = a.getBoundingClientRect(); const bar = document.querySelector("[data-test=tab-bar]"); const floor = bar && bar.getClientRects().length > 0 ? bar.getBoundingClientRect().top : window.innerHeight; return [Math.round(r.left), Math.round(r.right), Math.round(r.bottom), a.getAttribute("href"), a.innerText.trim(), Math.round(floor)]; }');
-    $how = $page->evaluate('() => document.querySelector("[data-test=how-it-works]").innerText');
+    $play = $page->evaluate('() => { const a = document.querySelector("[data-test=play-now]"); const r = a.getBoundingClientRect(); const bar = document.querySelector("[data-test=tab-bar]"); const floor = bar && bar.getClientRects().length > 0 ? bar.getBoundingClientRect().top : window.innerHeight; return [Math.round(r.left), Math.round(r.right), Math.round(r.bottom), a.getAttribute("href"), a.innerText.trim(), Math.round(floor)]; }');
+    $how = $page->evaluate('() => document.querySelector("[data-test=blockfill-steps]").innerText');
     fwrite(STDERR, "blockfill week page {$locale} {$width}: ".json_encode($play).PHP_EOL);
 
     expect($play[0])->toBeGreaterThanOrEqual(0)->and($play[1])->toBeLessThanOrEqual($width)
         // Whole in the first screen, above the tab bar.
         ->and($play[2])->toBeLessThanOrEqual($play[5])
         ->and($play[3])->toBe(route('stacker.play'))
-        ->and($play[4])->toBe($locale === 'de' ? 'Blockfill spielen' : 'Play Blockfill')
-        ->and($how)->toContain($locale === 'de' ? 'Die Liga spielt deinen Lauf' : 'The league replays your run')
+        ->and($play[4])->toBe($locale === 'de' ? 'Jetzt spielen' : 'Play now')
+        ->and($how)->toContain($locale === 'de' ? 'Server spielt ihn nach' : 'The server replays it')
         ->and($page->evaluate('() => ["to-signup", "who-is-in", "places-meter", "tournament-share", "nostr-bar"].filter((t) => document.querySelector(`[data-test=${t}]`))'))->toBe([])
         ->and($page->evaluate('() => document.querySelector("h1").innerText.trim()'))->toBe(($locale === 'de' ? 'Blockfill Woche ' : 'Blockfill Week ').($empty ? '42' : '41').', 2026')
-        ->and($page->evaluate('() => document.querySelector("[data-test=entries-empty]")?.innerText ?? null'))->toBe(! $empty ? null
-            : ($locale === 'de' ? 'Diese Woche noch kein geprüfter Lauf. Spiel den ersten.' : 'No verified run yet this week. Play the first one.'));
+        ->and($page->evaluate('() => document.querySelector("[data-test=score-empty-week] p")?.innerText ?? null'))->toBe(! $empty ? null
+            : ($locale === 'de' ? 'Noch keine Zeit diese Woche. Der erste geprüfte Lauf holt #1.' : 'No time yet this week. The first verified run takes #1.'));
 
     shellShot($page, "blockfill-week-page-{$locale}-{$width}{$suffix}");
-    $page->evaluate('() => document.querySelector("[data-test=entries]").scrollIntoView({ block: "start" })');
+    $page->evaluate('() => document.querySelector("[data-test=tournament-leaderboard]").scrollIntoView({ block: "start" })');
     shellShot($page, "blockfill-week-page-entries-{$locale}-{$width}{$suffix}");
-    $page->evaluate('() => document.querySelector("[data-test=how-it-works]").scrollIntoView({ block: "start" })');
+    $page->evaluate('() => document.querySelector("[data-test=week-facts]").scrollIntoView({ block: "start" })');
     shellShot($page, "blockfill-week-page-how-{$locale}-{$width}{$suffix}");
     expect($page->evaluate('() => window.__errors'))->toBe([])
         ->and($page->evaluate(BrowserConsole::BAD_RESPONSES))->toBe([]);

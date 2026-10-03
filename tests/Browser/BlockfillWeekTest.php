@@ -188,34 +188,87 @@ test('the running week on scores/blockfill: its table between the leaderboards a
     'de 375' => ['de', 375, 812],
 ]);
 
-test('the week\'s page offers Play and says the best run counts automatically, never "Submit your value", no overflow, clean console', function (string $locale, int $width, int $height) {
-    // The two boards (tournaments.scores, scores.show) open with their own play-first hero, measured in BlockfillWeekPageTest.
-    $week = app(BlockfillWeeks::class)->current();
-    $paths = [route('tournaments.show', $week, false)];
-    $page = blockfillWeekPage($this->me, $locale, $width, $height, $paths[0]);
-
-    foreach ($paths as $index => $path) {
-        if ($index > 0) {
-            $page->goto(ComputeUrl::from($path));
-        }
-        BrowserWait::until($page, '() => document.querySelector("[data-test=score-play-button]") !== null', 10_000);
-        $play = $page->evaluate('() => { const b = document.querySelector("[data-test=score-play-button]"); const n = document.querySelector("[data-test=score-play-note]"); b.scrollIntoView({ block: "center" }); const r = b.getBoundingClientRect(), m = n.getBoundingClientRect(); return { label: b.innerText.trim(), note: n.innerText.trim(), href: b.getAttribute("href"), button: [Math.round(r.left), Math.round(r.right), Math.round(r.height)], noteBox: [Math.round(m.left), Math.round(m.right)], submit: document.querySelector("[data-test=to-submit], [data-test=score-submit]") !== null, scroll: document.documentElement.scrollWidth, client: document.documentElement.clientWidth }; }');
-        fwrite(STDERR, "blockfill play {$locale} {$width} {$path}: ".json_encode($play).PHP_EOL);
-
-        expect($play['label'])->toBe($locale === 'de' ? 'Spielen' : 'Play', $path)
-            ->and($play['note'])->toBe($locale === 'de' ? 'Dein bester geprüfter Lauf zählt automatisch' : 'Your best verified run counts automatically')
-            ->and($play['href'])->toBe(route('stacker.play'))
-            ->and($play['submit'])->toBeFalse()
-            ->and($play['button'][0])->toBeGreaterThanOrEqual(0)
-            ->and($play['button'][1])->toBeLessThanOrEqual($width)
-            ->and($play['button'][2])->toBeGreaterThanOrEqual(44)
-            ->and($play['noteBox'][1])->toBeLessThanOrEqual($width)
-            ->and($play['scroll'])->toBeLessThanOrEqual($play['client']);
-        shellShot($page, 'blockfill-play-'.$index.'-'.$locale.'-'.$width);
+/**
+ * The week's own page (plan "Restposten nach TMNF", P4): Play now against the viewport and the phone's tab bar, the
+ * podium's names, every box of the hero and the board inside the viewport, the facts and the way onward.
+ */
+const BLOCKFILL_WEEK_PAGE_MEASURE = <<<'JS'
+    () => {
+        const box = (el) => { const r = el.getBoundingClientRect(); return [Math.round(r.left), Math.round(r.top), Math.round(r.right), Math.round(r.bottom)]; };
+        const play = document.querySelector('[data-test=play-now]');
+        const bar = document.querySelector('[data-test=tab-bar]');
+        const podium = [...document.querySelectorAll('[data-test=week-podium] > li')].map((li) => {
+            const name = li.querySelector('a.truncate, span.truncate');
+            return { place: li.dataset.test, box: box(li), name: name ? [name.clientWidth, name.scrollWidth, name.innerText] : null };
+        });
+        const scope = [...document.querySelectorAll('[data-test=blockfill-hero], [data-test=blockfill-steps], [data-test=tournament-leaderboard], [data-test=week-facts], [data-test=blockfill-nav]')];
+        const outside = scope.flatMap((root) => [root, ...root.querySelectorAll('*')]).filter((el) => {
+            const r = el.getBoundingClientRect();
+            return el.checkVisibility() && (r.left < -0.5 || r.right > innerWidth + 0.5);
+        }).map((el) => el.tagName + '.' + (el.dataset.test || el.className).toString().slice(0, 40));
+        return {
+            scroll: document.documentElement.scrollWidth, client: document.documentElement.clientWidth,
+            play: box(play), playText: play.innerText.trim(), href: play.getAttribute('href'),
+            tabBar: bar && bar.getClientRects().length > 0 ? Math.round(bar.getBoundingClientRect().top) : null,
+            podium, rows: [...document.querySelectorAll('[data-test=tournament-leaderboard] [data-test=score-row]')].map((r) => r.dataset.place),
+            rules: [...document.querySelectorAll('[data-test=chip-rule]')].map((c) => c.innerText.trim()),
+            facts: [...document.querySelectorAll('[data-test=week-facts] li')].map((c) => c.innerText.trim()),
+            nav: [...document.querySelectorAll('[data-test=blockfill-nav] a')].map((a) => a.dataset.test),
+            walls: ['how-it-works', 'facts', 'faq', 'entries', 'to-blockfill', 'score-play-button'].filter((t) => document.querySelector(`[data-test=${t}]`) && !(t === 'how-it-works' && document.querySelector('[data-test=how-it-works]').tagName === 'A')),
+            outside, lang: document.documentElement.lang,
+        };
     }
+    JS;
+
+test('the week\'s page leads with the cover and Play now above the fold, the rules as chips, the podium and the board fit, the way onward, clean console', function (string $locale, int $width, int $height) {
+    $week = app(BlockfillWeeks::class)->current();
+    $page = blockfillWeekPage($this->me, $locale, $width, $height, route('tournaments.show', $week, false));
+    BrowserWait::until($page, '() => document.querySelector("[data-test=week-podium]") !== null && document.querySelector("[data-game-cover=blockfill] img")?.complete', 10_000);
+    $page->evaluate('() => window.scrollTo(0, 0)');
+
+    $m = $page->evaluate(BLOCKFILL_WEEK_PAGE_MEASURE);
+    fwrite(STDERR, "blockfill week page {$locale} {$width}: ".json_encode($m).PHP_EOL);
+
+    // Below lg the tab bar covers the window's bottom: Play now stands whole above it in the first screen.
+    $fold = $m['tabBar'] ?? $height;
+    expect($m['lang'])->toBe($locale)
+        ->and($m['tabBar'] !== null)->toBe($width < 1024)
+        ->and($m['scroll'])->toBeLessThanOrEqual($m['client'])
+        ->and($m['outside'])->toBe([])
+        ->and($m['play'][1])->toBeGreaterThan(0)
+        ->and($m['play'][3])->toBeLessThanOrEqual($fold)
+        ->and($m['play'][3] - $m['play'][1])->toBeGreaterThanOrEqual(44)
+        ->and($m['playText'])->toBe($locale === 'de' ? 'Jetzt spielen' : 'Play now')
+        ->and($m['href'])->toBe(route('stacker.play'))
+        ->and($m['rules'])->toBe($locale === 'de' ? ['40 Blöcke', 'Gleichbleibend 1 Reihe/s'] : ['40 blocks', 'Steady 1 row/s'])
+        ->and(count($m['facts']))->toBe(4)
+        ->and($m['nav'])->toBe(['nav-last-week', 'nav-points', 'nav-calendar', 'nav-runs'])
+        ->and($m['walls'])->toBe([])
+        ->and(array_column($m['podium'], 'place'))->toBe(['podium-1', 'podium-2', 'podium-3'])
+        ->and($m['rows'])->toBe(['4', '5']);
+    // Every podium name keeps room to show (the long name truncates, never squeezes to 0 px).
+    foreach ($m['podium'] as $place) {
+        expect($place['name'][0])->toBeGreaterThan(40);
+    }
+
+    shellShot($page, "blockfill-week-page-{$locale}-{$width}");
+    $page->evaluate('() => document.querySelector("[data-test=tournament-leaderboard]").scrollIntoView({ block: "start" })');
+    shellShot($page, "blockfill-week-page-board-{$locale}-{$width}");
+    $page->evaluate('() => document.querySelector("[data-test=week-facts]").scrollIntoView({ block: "start" })');
+    shellShot($page, "blockfill-week-page-onward-{$locale}-{$width}");
 
     expect($page->evaluate('() => window.__errors'))->toBe([])
         ->and($page->evaluate(BrowserConsole::BAD_RESPONSES))->toBe([]);
+
+    // A Livewire roundtrip (the page polls) keeps the console clean and the podium in place.
+    $page->evaluate('() => { window.__refreshed = false; const c = Livewire.all().find((c) => c.el.matches("[data-test=tournament-show]")); c.$wire.$refresh().then(() => { window.__refreshed = true; }); }');
+    BrowserWait::until($page, '() => window.__refreshed === true && document.querySelector("[data-test=week-podium]") !== null', 5_000);
+    expect($page->evaluate('() => window.__errors'))->toBe([])
+        ->and($page->evaluate(BrowserConsole::BAD_RESPONSES))->toBe([]);
+
+    // Positive control: the collector sees a throw and a failed answer on this very page.
+    $page->evaluate('() => { setTimeout(() => { throw new Error("blockfill week page positive control"); }); fetch("/tournaments/nothing-here"); }');
+    BrowserWait::until($page, '() => window.__errors.some((e) => e.includes("blockfill week page positive control")) && window.__errors.some((e) => e.startsWith("404 "))', 5_000);
 })->with([
     'en 375' => ['en', 375, 812],
     'en 1440' => ['en', 1440, 900],

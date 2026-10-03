@@ -338,7 +338,7 @@ new #[Layout('layouts::app', ['section' => 'tournaments'])] class extends Compon
                 @if ($standings === [])
                     <p class="m-0 px-2 py-3 text-[13px] text-ink-2 lg:px-0" data-test="tmnf-board-empty">{{ __('Nobody has a time this week yet. Join our server and be the first on the board.') }}</p>
                 @else
-                    <div class="px-2 lg:px-0">@include('pages.scores.partials.tmnf-podium', ['standings' => $standings, 'metric' => $metric, 'authorMs' => (int) ($tmnfTrack['author_ms'] ?? 0)])</div>
+                    <div class="px-2 lg:px-0">@include('pages.scores.partials.podium', ['standings' => $standings, 'metric' => $metric, 'authorMs' => (int) ($tmnfTrack['author_ms'] ?? 0)])</div>
                     @if ($staff || count($standings) > 3)
                         @include('pages.scores.partials.leaderboard', ['standings' => $standings, 'metric' => $metric, 'viewerId' => auth()->id(), 'staff' => $staff, 'skip' => $staff ? 0 : 3])
                     @endif
