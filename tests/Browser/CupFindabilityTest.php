@@ -125,9 +125,12 @@ test('a cup participant finds the match on home and sees the toast and the flip 
         $page->context()->addInitScript(TestSigner::browserStub($black));
         $page->setViewportSize($width, $height);
         $page->goto(ComputeUrl::from(route('home')));
-        BrowserWait::until($page, '() => document.querySelector("[data-test=dock-cup]") !== null && document.readyState === "complete"', 8_000);
-        // Echo connects after load; give the private channel a moment before the league acts.
-        usleep(1_500_000);
+        // The league acts only once the player's private channel is subscribed: Reverb drops an event sent
+        // before that. Waited for, not slept: a usleep() froze this in-process server, so the channel's
+        // /broadcasting/auth stayed unanswered and the subscription landed a few ms before the accept, or after it.
+        BrowserWait::until($page, '() => document.querySelector("[data-test=dock-cup]") !== null && document.readyState === "complete"'
+            .' && window.Echo?.connector?.pusher?.connection?.state === "connected"'
+            .' && window.Echo.connector.pusher.channel("private-App.Models.User.'.$black->id.'")?.subscribed === true', 8_000);
         $before = $page->evaluate(CUP_MEASURE);
         cupShot($page, "cup-waiting-{$locale}-{$width}");
 
