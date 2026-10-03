@@ -139,22 +139,24 @@ test('the work dir may not lie inside the served HLS directory', function () {
     Process::assertNothingRan();
 });
 
-test('a running tournament brings its live bracket and who is still standing into the rotation, then the call to sign up for the next one', function () {
+test('a running tournament holds the stream with its live bracket and who is still standing; the next tournament waits until it ends', function () {
     config(['esports.league.nsec' => (new TestSigner)->secret]);
     File::put(config('twentyone.stream.prepared'), 'fake');
     fakeEncoder($this->dir);
     fakeRenderer($this->dir);
     shortRotation();
-    config(['twentyone.stream.rotation.tournament_seconds' => 1.5]);
+    config(['twentyone.stream.rotation.tournament_seconds' => 1.5, 'twentyone.stream.rotation.running_tournament_seconds' => 6]);
     $running = runningChess(TournamentFormat::SingleElimination, 4);
     $next = openTournament();
 
     Artisan::call('twentyone:stream', ['--no-publish' => true, '--stop-after' => 7]);
     $output = Artisan::output();
 
-    expect($output)->toContain('rotation: ta4 tournament '.$running->id.', rendered in', 'rotation: ta5 tournament '.$running->id.', rendered in', 'rotation: ta7 tournament '.$running->id.', rendered in')
-        ->and(strpos($output, 'rotation: ta4 tournament'))->toBeLessThan(strpos($output, 'rotation: ta5 tournament'))
-        ->and(strpos($output, 'rotation: ta5 tournament'))->toBeLessThan(strpos($output, 'rotation: ta7 tournament'))
+    // A running tournament takes the stream (2026-10-03): live bracket, then who is still standing, no call to sign up meanwhile.
+    expect($output)->toMatch('/rotation: t[abc]4 tournament '.$running->id.', rendered in/')->toMatch('/rotation: t[abc]5 tournament '.$running->id.', rendered in/')
+        ->and(preg_match('/rotation: t[abc]4 tournament/', $output, $four, PREG_OFFSET_CAPTURE))->toBe(1)
+        ->and(preg_match('/rotation: t[abc]5 tournament/', $output, $five, PREG_OFFSET_CAPTURE))->toBe(1)
+        ->and($four[0][1])->toBeLessThan($five[0][1])
         ->and($output)->not->toContain('not built')->not->toContain('failed')
         ->and($output)->not->toContain('tournament '.$next->id.',');
 });
