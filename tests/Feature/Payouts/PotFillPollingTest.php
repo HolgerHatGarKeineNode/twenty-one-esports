@@ -72,6 +72,8 @@ test('a paid zap switches the card to the thank-you by itself and puts the zappe
 });
 
 test('the card asks the league wallet about its invoice at most every 5 seconds', function () {
+    // Frozen: under a parallel run real seconds pass between the calls and the 4 s step would cross the 5 s limit.
+    $this->freezeSecond();
     $league = fakeWallet();
     $tournament = publishForPool(runningChess(TournamentFormat::SingleElimination, 4));
     $card = Livewire::test('tournament-pool', ['tournament' => $tournament])->set('amount', 2100)->call('topUp');
