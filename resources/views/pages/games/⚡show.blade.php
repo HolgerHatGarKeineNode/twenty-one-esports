@@ -16,6 +16,8 @@ use App\Support\PageMeta;
 use App\Support\Rating\Ratings;
 use App\Support\Seo\LocalizedUrls;
 use App\Support\Seo\StructuredData;
+use App\Support\Tournaments\TournamentGameEnd;
+use Illuminate\Support\Facades\Blade;
 use Livewire\Attributes\Json;
 use Livewire\Attributes\Layout;
 use Livewire\Attributes\Locked;
@@ -150,6 +152,27 @@ new #[Layout('layouts::app', ['section' => 'chess', 'realtime' => true, 'scripts
     public function declineRematch(): array
     {
         return $this->act(fn (ChessGameService $games, User $user) => $games->declineRematch($this->game, $user));
+    }
+
+    /* ---------- A tournament game's end (TournamentGameEnd) ------------------------------------------------- */
+
+    /**
+     * The "what comes next" panel, rendered once the game ended on the live
+     * board: it reads the bracket as the league synced it after the result.
+     */
+    #[Json]
+    public function tournamentPanel(): ?string
+    {
+        $panel = TournamentGameEnd::of($this->game->refresh(), auth()->user());
+
+        return $panel === null ? null : Blade::render('<x-tournaments.game-end :panel="$panel" :framed="false" reveal />', ['panel' => $panel]);
+    }
+
+    /** Where the panel's countdown goes: the next game of the pairing once it exists, else the tournament page. */
+    #[Json]
+    public function tournamentNext(): ?string
+    {
+        return TournamentGameEnd::redirect($this->game, auth()->user());
     }
 
     /* ---------- Opponent disconnected (live) --------------------------------------------------------------- */
@@ -549,6 +572,9 @@ new #[Layout('layouts::app', ['section' => 'chess', 'realtime' => true, 'scripts
     $live = $game->status === ChessGameStatus::Active;
     // A tournament game cannot be aborted: a missed first move is a forfeit (P18).
     $abortable = $game->tournament_match_id === null;
+    // A tournament game ends on the tournament's "what comes next", never on a rematch or a new search.
+    $tournamentGame = $game->tournament_match_id !== null;
+    $tournamentUrl = $tournamentGame ? route('tournaments.show', $game->tournamentMatch?->tournament_id ?? 0) : null;
     $players = ['w' => $this->player($game->white), 'b' => $this->player($game->black)];
     $opponent = $color === null ? null : $players[$color === 'w' ? 'b' : 'w'];
     // A guest has the "New here?" strip above the page (~70 px at 1440): its board gives up what the first
@@ -749,15 +775,25 @@ new #[Layout('layouts::app', ['section' => 'chess', 'realtime' => true, 'scripts
                                                     <span class="grow"></span><b class="font-display text-lg whitespace-nowrap" x-text="outcome.result"></b>
                                                 </div>
                                                 <div class="flex flex-col border-t border-hairline">
-                                                    <div class="grid h-[38px] grid-cols-[120px_minmax(0,1fr)] items-center border-b border-hairline text-[13px]"><span class="text-ink-2">{{ __('Rating') }}</span><span data-test="game-over-rating" x-text="color && state.rating?.[color] ? (state.rating[color].pool === 'casual' ? @js(__('Casual')) : @js(__('Elo'))) + ' ' + state.rating[color].after + ' ' + (state.rating[color].delta > 0 ? '+' + state.rating[color].delta : (state.rating[color].delta < 0 ? '−' + Math.abs(state.rating[color].delta) : '±0')) : @js(__('casual, no Elo change'))">{{ __('casual, no Elo change') }}</span></div>
-                                                    <div class="grid min-h-[38px] grid-cols-[120px_minmax(0,1fr)] items-center border-b border-hairline py-1.5 text-[13px]"><span class="text-ink-2">{{ __('Hashrate') }}</span><span data-test="game-over-mining" :class="state.mining?.status === 'block' ? 'text-win' : ''" x-text="state.mining ? state.mining.text : @js(__('casual games do not count'))">{{ __('casual games do not count') }}</span></div>
+                                                    {{-- A tournament game (user, 2026-10-03): the rating row only when a rating really moved, no casual "Hashrate" line unless it mined. --}}
+                                                    <div class="grid h-[38px] grid-cols-[120px_minmax(0,1fr)] items-center border-b border-hairline text-[13px]" @if ($tournamentGame) x-show="color && state.rating?.[color] && state.rating[color].delta !== 0" data-test="game-over-rating-row" @endif><span class="text-ink-2">{{ __('Rating') }}</span><span data-test="game-over-rating" x-text="color && state.rating?.[color] ? (state.rating[color].pool === 'casual' ? @js(__('Casual')) : @js(__('Elo'))) + ' ' + state.rating[color].after + ' ' + (state.rating[color].delta > 0 ? '+' + state.rating[color].delta : (state.rating[color].delta < 0 ? '−' + Math.abs(state.rating[color].delta) : '±0')) : @js(__('casual, no Elo change'))">{{ __('casual, no Elo change') }}</span></div>
+                                                    <div class="grid min-h-[38px] grid-cols-[120px_minmax(0,1fr)] items-center border-b border-hairline py-1.5 text-[13px]" @if ($tournamentGame) x-show="state.mining" data-test="game-over-mining-row" @endif><span class="text-ink-2">{{ __('Hashrate') }}</span><span data-test="game-over-mining" :class="state.mining?.status === 'block' ? 'text-win' : ''" x-text="state.mining ? state.mining.text : @js(__('casual games do not count'))">{{ __('casual games do not count') }}</span></div>
                                                 </div>
-                                                <span class="inline-flex h-7 items-center gap-1.5 self-start rounded-sm bg-[#122016] px-2.5 text-xs font-bold text-win"><x-icon name="shield-check" :size="14" />{{ __('Saved') }}</span>
-                                                <x-button :href="route('chess.lobby', ['search' => 1, ...($game->rated ? ['rated' => 1] : [])])" class="w-full" data-test="find-next">{{ __('Find next opponent') }}</x-button>
+                                                {{-- A tournament game: the panel below says what the result means; the badge would push it under the phone's chat bar. --}}
+                                                @unless ($tournamentGame)
+                                                    <span class="inline-flex h-7 items-center gap-1.5 self-start rounded-sm bg-[#122016] px-2.5 text-xs font-bold text-win"><x-icon name="shield-check" :size="14" />{{ __('Saved') }}</span>
+                                                @endunless
+                                                @if ($tournamentGame)
+                                                    <x-tournaments.game-end-slot :url="$tournamentUrl" />
+                                                @else
+                                                    <x-button :href="route('chess.lobby', ['search' => 1, ...($game->rated ? ['rated' => 1] : [])])" class="w-full" data-test="find-next">{{ __('Find next opponent') }}</x-button>
+                                                @endif
                                                 {{-- P11: a rated result can be a rank up or a mined block; the share cards live on one page. --}}
                                                 <template x-if="color && state.rating?.[color]?.pool === 'rated'">
                                                     <a href="{{ route('settings.badges') }}#share" class="inline-flex min-h-11 items-center justify-center gap-1.5 text-[13px]" data-test="game-over-share"><x-icon name="send" :size="14" /><span x-text="state.mining?.status === 'block' && outcome.tone === 'win' ? @js(__('Share your block')) : @js(__('Badges and share cards'))"></span></a>
                                                 </template>
+                                                {{-- A tournament game has no rematch: the tournament decides the next game. --}}
+                                                @unless ($tournamentGame)
                                                 <template x-if="color">
                                                     <div class="grid grid-cols-2 gap-2">
                                                         <template x-if="!state.rematchOffer">
@@ -772,6 +808,7 @@ new #[Layout('layouts::app', ['section' => 'chess', 'realtime' => true, 'scripts
                                                         <x-button variant="quiet" :href="route('games.show', $game)">{{ __('Replay game') }}</x-button>
                                                     </div>
                                                 </template>
+                                                @endunless
                                                 {{-- Rev. 9.4: optional, never on its own; the finished game's page shows the preview first. --}}
                                                 <template x-if="color && state.ply > 0 && state.status === 'finished' && !state.posted?.[color]">
                                                     <a href="{{ route('games.show', ['game' => $game, 'post' => 1]) }}#post" class="inline-flex min-h-11 items-center justify-center gap-1.5 text-[13px]" data-test="game-over-post"><x-icon name="send" :size="14" />{{ __('Share this game on Nostr') }}</a>
@@ -782,10 +819,14 @@ new #[Layout('layouts::app', ['section' => 'chess', 'realtime' => true, 'scripts
                                             <div class="flex flex-col gap-3.5" data-test="aborted">
                                                 <b id="go-h" class="text-base">{{ __('Game aborted') }}</b>
                                                 <span class="text-[13px] leading-normal text-ink-2">{{ __('The game ended before both sides made their first move. It does not count.') }}</span>
-                                                <span class="grid grid-cols-2 gap-2">
-                                                    <x-button :href="route('chess.lobby', ['search' => 1, ...($game->rated ? ['rated' => 1] : [])])" data-test="search-again">{{ __('Search again') }}</x-button>
-                                                    <x-button variant="quiet" :href="route('chess.lobby')">{{ __('Back to lobby') }}</x-button>
-                                                </span>
+                                                @if ($tournamentGame)
+                                                    <x-tournaments.game-end-slot :url="$tournamentUrl" />
+                                                @else
+                                                    <span class="grid grid-cols-2 gap-2">
+                                                        <x-button :href="route('chess.lobby', ['search' => 1, ...($game->rated ? ['rated' => 1] : [])])" data-test="search-again">{{ __('Search again') }}</x-button>
+                                                        <x-button variant="quiet" :href="route('chess.lobby')">{{ __('Back to lobby') }}</x-button>
+                                                    </span>
+                                                @endif
                                             </div>
                                         </template>
                                     </div>

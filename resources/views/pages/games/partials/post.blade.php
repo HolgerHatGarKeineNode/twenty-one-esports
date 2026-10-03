@@ -68,7 +68,8 @@
                 <a x-show="postUrl" :href="postUrl" target="_blank" rel="noopener noreferrer" class="inline-flex min-h-11 items-center text-[13px] font-bold underline underline-offset-2" data-test="game-post-view">{{ __('View it on Nostr') }}<span class="sr-only"> {{ __('(opens njump.me in a new tab)') }}</span></a>
             </span>
         </template>
-        @if ($rival ?? null)
+        {{-- A tournament game has no rematch (`rematch` false): the tournament decides the next game. --}}
+        @if (($rival ?? null) && ($rematch ?? true))
             <x-button :href="route('chess.challenge', ['to' => $rival->npub])" icon="retry" class="whitespace-nowrap" data-test="challenge-again">{{ __('Rematch') }}</x-button>
         @endif
     </div>

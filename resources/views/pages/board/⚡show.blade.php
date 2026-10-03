@@ -7,6 +7,8 @@ use App\Models\User;
 use App\Support\Board\BoardGameService;
 use App\Support\Board\BoardRuleViolation;
 use App\Support\GameNames;
+use App\Support\Tournaments\TournamentGameEnd;
+use Illuminate\Support\Facades\Blade;
 use Livewire\Attributes\Json;
 use Livewire\Attributes\Layout;
 use Livewire\Attributes\Locked;
@@ -125,6 +127,26 @@ new #[Layout('layouts::app', ['realtime' => true, 'scripts' => ['resources/js/bo
         $games->checkClock($this->boardGame);
 
         return ['ok' => true, 'error' => null, 'state' => $games->snapshot($this->boardGame->refresh())];
+    }
+
+    /**
+     * A tournament game's "what comes next" panel (TournamentGameEnd), once
+     * the game is over; null while it runs or outside a tournament.
+     */
+    #[Json]
+    public function tournamentPanel(): ?string
+    {
+        $game = $this->boardGame->refresh();
+        $panel = $game->isActive() ? null : TournamentGameEnd::of($game, auth()->user());
+
+        return $panel === null ? null : Blade::render('<x-tournaments.game-end :panel="$panel" :framed="false" reveal />', ['panel' => $panel]);
+    }
+
+    /** Where the panel's countdown goes: the next game of the pairing once it exists, else the tournament page. */
+    #[Json]
+    public function tournamentNext(): ?string
+    {
+        return TournamentGameEnd::redirect($this->boardGame, auth()->user());
     }
 
     /**
@@ -260,7 +282,8 @@ new #[Layout('layouts::app', ['realtime' => true, 'scripts' => ['resources/js/bo
                         @if ($boardGame->tournament_match_id === null)
                             <x-button :href="route('board.lobby', $boardGame->game)" icon="bolt" data-test="next-opponent">{{ __('Find next opponent') }}</x-button>
                         @else
-                            <x-button variant="secondary" :href="route('tournaments.show', $boardGame->tournamentMatch?->tournament_id ?? 0)" data-test="back-to-tournament">{{ __('Back to the tournament') }}</x-button>
+                            {{-- A tournament game: what comes next in the tournament (user, 2026-10-03), rendered now for a game already over. --}}
+                            <x-tournaments.game-end-slot :url="route('tournaments.show', $boardGame->tournamentMatch?->tournament_id ?? 0)" :panel="$boardGame->isActive() ? null : TournamentGameEnd::of($boardGame, auth()->user())" />
                         @endif
                     </div>
                 </template>

@@ -97,15 +97,21 @@
         </div>
     </section>
 
+    {{-- A tournament game: what comes next in the tournament, never a rematch or a new search (user, 2026-10-03). --}}
+    @php($tournamentPanel = \App\Support\Tournaments\TournamentGameEnd::of($game, auth()->user()))
     @php($rival = ! $aborted && ($color ?? null) !== null ? $players[$color === 'w' ? 'b' : 'w']['user'] : null)
+
+    @if ($tournamentPanel)
+        <x-tournaments.game-end :panel="$tournamentPanel" class="lg:max-w-[720px]" />
+    @endif
 
     {{-- Sharing the game on Nostr, right under the result, with the rematch beside it: optional, by button (rev. 9.4) --}}
     @if ($postable)
-        @include('pages.games.partials.post', ['game' => $game, 'color' => $color, 'winner' => $winner, 'rival' => $rival])
+        @include('pages.games.partials.post', ['game' => $game, 'color' => $color, 'winner' => $winner, 'rival' => $rival, 'rematch' => $tournamentPanel === null])
     @endif
 
     {{-- Play again (players only): the same opponent as a daily challenge (in the share card when there is one), the next blitz pairing, or a friend by link --}}
-    @if ($rival)
+    @if ($rival && $tournamentPanel === null)
         <section aria-labelledby="again-h" class="flex flex-col gap-3" data-test="play-again">
             <div class="flex flex-col gap-3 rounded-lg bg-card px-4 py-4 sm:flex-row sm:items-center sm:gap-6 lg:px-6">
                 <span class="flex min-w-0 grow flex-col gap-1">

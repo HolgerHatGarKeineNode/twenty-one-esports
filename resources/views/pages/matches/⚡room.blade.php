@@ -18,8 +18,10 @@ use App\Support\Series\CasualMatches;
 use App\Support\Series\SeriesPresenter;
 use App\Support\Series\SeriesRuleViolation;
 use App\Support\Series\SeriesService;
+use App\Support\Tournaments\TournamentGameEnd;
 use Illuminate\Support\Facades\DB;
 use Livewire\Attributes\Computed;
+use Livewire\Attributes\Json;
 use Livewire\Attributes\Layout;
 use Livewire\Attributes\Locked;
 use Livewire\Attributes\On;
@@ -313,6 +315,13 @@ new #[Title('Match room')] #[Layout('layouts::app', ['section' => 'matches', 'sc
     public function casualContestNoShow(): void
     {
         $this->attempt(fn () => app(CasualMatches::class)->contestNoShow($this->match, $this->user()));
+    }
+
+    /** Where a tournament series' end panel counts down to: the next series of the pairing once it exists, else the tournament page (TournamentGameEnd). */
+    #[Json]
+    public function tournamentNext(): ?string
+    {
+        return TournamentGameEnd::redirect($this->fresh(), auth()->user());
     }
 
     /**
@@ -862,8 +871,14 @@ new #[Title('Match room')] #[Layout('layouts::app', ['section' => 'matches', 'sc
             </span>
         </section>
 
+        {{-- A tournament series: what comes next in the tournament instead of a rematch or another series (user, 2026-10-03). --}}
+        @php($tournamentPanel = TournamentGameEnd::of($m, $viewer))
+        @if ($tournamentPanel)
+            <x-tournaments.game-end :panel="$tournamentPanel" wire:key="tournament-end-{{ $m->id }}" />
+        @endif
+
         {{-- A casual 1v1 (P23 S3): the same opponent again, as a direct invite. --}}
-        @if ($casual && $mySide !== null && $m->resolution !== \App\Enums\SeriesResolution::Void)
+        @if ($casual && $tournamentPanel === null && $mySide !== null && $m->resolution !== \App\Enums\SeriesResolution::Void)
             @php(['outgoing' => $rematchOut, 'incoming' => $rematchIn] = $this->rematchInvites())
             @php($rematchOpen = $m->finished_at !== null && $m->finished_at->gte(now()->subMinutes((int) config('esports.casual.rematch_minutes'))))
             @if ($rematchIn || $rematchOut || $rematchOpen)
@@ -894,7 +909,7 @@ new #[Title('Match room')] #[Layout('layouts::app', ['section' => 'matches', 'sc
         {{-- The next series: a captain challenges the same lineup again (the challenge form, prefilled) --}}
         @php($ownLineup = $captainSide !== null ? $m->lineup($captainSide) : null)
         @php($theirLineup = $captainSide !== null ? $m->lineup(SeriesMatch::otherSide($captainSide)) : null)
-        @if ($ownLineup !== null && $theirLineup !== null)
+        @if ($ownLineup !== null && $theirLineup !== null && $tournamentPanel === null)
             <section aria-labelledby="again-h" class="flex flex-col gap-3 rounded-lg bg-card px-4 py-4 sm:flex-row sm:items-center sm:gap-6 lg:px-6" data-test="series-again">
                 <span class="flex min-w-0 grow flex-col gap-1">
                     <h2 id="again-h" class="m-0 font-display text-base leading-[1.25] font-bold">{{ __('Another series') }}</h2>
