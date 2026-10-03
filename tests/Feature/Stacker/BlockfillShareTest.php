@@ -173,9 +173,10 @@ test('only the owner is offered the share: not another player, not a guest, not 
     $week = app(BlockfillWeeks::class)->current();
 
     foreach (['/scores/blockfill', '/tournaments/'.$week->id, '/blockfill'] as $url) {
-        $this->actingAs($stranger)->get($url)->assertOk()->assertDontSee('data-test="score-row-share"', false);
+        // The week page draws the top three on a podium: there the share sits under the own place.
+        $this->actingAs($stranger)->get($url)->assertOk()->assertDontSee('data-test="score-row-share"', false)->assertDontSee('data-test="podium-share"', false);
         $own = $this->actingAs($m['bert'])->get($url)->assertOk()->getContent();
-        expect(substr_count($own, 'data-test="score-row-share"'))->toBe(1, $url)
+        expect(substr_count($own, 'data-test="score-row-share"') + substr_count($own, 'data-test="podium-share"'))->toBe(1, $url)
             ->and($own)->toContain("moment: '".$id."'")
             ->and($own)->toContain('data-test="blockfill-share"');
     }
