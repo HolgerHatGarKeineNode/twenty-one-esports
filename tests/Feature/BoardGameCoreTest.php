@@ -12,6 +12,7 @@ use App\Events\BoardGameStarted;
 use App\Events\BoardGameUpdated;
 use App\Games\GameRegistry;
 use App\Jobs\CheckBoardClock;
+use App\Livewire\Actions\DeleteAccount;
 use App\Models\BoardGame;
 use App\Models\BoardMove;
 use App\Models\User;
@@ -24,6 +25,7 @@ use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\Exceptions;
 use Illuminate\Support\Facades\Queue;
 use Illuminate\Support\Facades\Route;
+use Illuminate\Validation\ValidationException;
 use Livewire\Livewire;
 use Tests\Support\FixtureBoardGame;
 use Tests\Support\FixtureBoardRules;
@@ -283,6 +285,32 @@ test('a game that throws in the clock sweep is reported, and the other games sti
     expect($good->refresh()->status)->toBe(BoardGameStatus::Finished)
         ->and($bad->refresh()->status)->toBe(BoardGameStatus::Active);
     Exceptions::assertReported(fn (RuntimeException $e): bool => $e->getMessage() === 'a broken game');
+});
+
+test('deleting an account ends its live board games: aborted before both first moves, else resigned', function () {
+    // A player plays one live board game at a time: one leaving player per game.
+    [$leaving, $leavingLater] = [User::factory()->create(), User::factory()->create()];
+    $unmoved = startBoardGame($leaving);
+    $moved = playBoard(startBoardGame(User::factory()->create(), $leavingLater), ['b2', 'a1']);
+    $opponent = $moved->white;
+
+    app(DeleteAccount::class)($leaving);
+    app(DeleteAccount::class)($leavingLater);
+
+    expect(User::query()->whereKey([$leaving->id, $leavingLater->id])->exists())->toBeFalse()
+        ->and($unmoved->refresh()->only(['white_id', 'status', 'end_reason']))->toBe(['white_id' => null, 'status' => BoardGameStatus::Aborted, 'end_reason' => 'aborted'])
+        ->and($moved->refresh()->only(['black_id', 'status', 'result', 'end_reason']))->toBe(['black_id' => null, 'status' => BoardGameStatus::Finished, 'result' => '1-0', 'end_reason' => 'resignation'])
+        ->and(app(BoardGameService::class)->activeGameOf($opponent))->toBeNull();
+});
+
+test('a rated live board game holds the account deletion back, as rated chess does', function () {
+    $leaving = User::factory()->create();
+    $game = startBoardGame($leaving);
+    $game->forceFill(['rated' => true])->save();
+
+    expect(fn () => app(DeleteAccount::class)($leaving))->toThrow(ValidationException::class, 'rated game')
+        ->and(User::query()->whereKey($leaving->id)->exists())->toBeTrue()
+        ->and($game->refresh()->status)->toBe(BoardGameStatus::Active);
 });
 
 test('a flag falls by the scheduled sweep when no job ran; a missed first move aborts', function () {

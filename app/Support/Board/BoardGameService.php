@@ -358,6 +358,26 @@ final class BoardGameService
     }
 
     /**
+     * A player of a live tournament game forfeits it (their account is being
+     * deleted, as ChessGameService::forfeit()): the opponent wins by forfeit,
+     * unrated, and the match hears of it like any other result.
+     *
+     * @throws BoardRuleViolation for a game of no tournament, or one that is over already
+     */
+    public function forfeit(BoardGame $game, User $user): BoardGame
+    {
+        return $this->change($game, function (BoardGame $game, int $now) use ($user): void {
+            $color = $this->playerColor($game, $user);
+
+            if ($game->tournament_match_id === null) {
+                throw new BoardRuleViolation('not_a_tournament_game');
+            }
+
+            $this->end($game, BoardGameStatus::Finished, $color === 'w' ? '0-1' : '1-0', BoardEndReason::Forfeit->value, $now);
+        });
+    }
+
+    /**
      * The league voids a live tournament game (TournamentControl: a result
      * set by an organizer or admin, a restart, a call-off): it ends unrated,
      * and the match no longer counts it.

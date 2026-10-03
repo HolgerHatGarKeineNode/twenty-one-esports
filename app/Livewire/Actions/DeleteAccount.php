@@ -2,14 +2,18 @@
 
 namespace App\Livewire\Actions;
 
+use App\Enums\BoardGameStatus;
 use App\Enums\ChessGameStatus;
 use App\Enums\TournamentStatus;
 use App\Models\Admin;
+use App\Models\BoardGame;
 use App\Models\ChessGame;
 use App\Models\Tournament;
 use App\Models\TournamentParticipant;
 use App\Models\TournamentSignup;
 use App\Models\User;
+use App\Support\Board\BoardGameService;
+use App\Support\Board\BoardRuleViolation;
 use App\Support\Chess\ChessGameService;
 use App\Support\Chess\ChessRuleViolation;
 use App\Support\Clans\ClanService;
@@ -23,14 +27,15 @@ use Illuminate\Validation\ValidationException;
 
 class DeleteAccount
 {
-    public function __construct(private ChessGameService $games, private ClanService $clans, private TournamentRunner $runner, private TournamentModeration $moderation) {}
+    public function __construct(private ChessGameService $games, private BoardGameService $boardGames, private ClanService $clans, private TournamentRunner $runner, private TournamentModeration $moderation) {}
 
     /**
      * Delete everything this site stores about the user and log them out.
      *
      * Signed Nostr events (challenges, results) are not ours to delete: they
      * live on relays under the user's key. The flash message says so. Chess
-     * games and ratings stay too, with the player shown as "Deleted player".
+     * games, board games and ratings stay too, with the player shown as
+     * "Deleted player".
      *
      * A running tournament loses the player (P18): an entry left without any
      * account is withdrawn, and each match it would still play goes to the
@@ -46,9 +51,13 @@ class DeleteAccount
     {
         // A rated game still being played is pinned league evidence; deleting the account
         // would cascade it away and take the result from the opponent (security gate F3).
+        // The same for a rated board game (Mühle, Dame): its result is league evidence as well.
         $rated = ChessGame::query()->where('rated', true)->where('status', ChessGameStatus::Active)
             ->where(fn ($query) => $query->where('white_id', $user->id)->orWhere('black_id', $user->id))
-            ->exists();
+            ->exists()
+            || BoardGame::query()->where('rated', true)->where('status', BoardGameStatus::Active)
+                ->where(fn ($query) => $query->where('white_id', $user->id)->orWhere('black_id', $user->id))
+                ->exists();
 
         if ($rated) {
             throw ValidationException::withMessages(['confirmDeletion' => __('Finish your rated game first: deleting your account now would take its result from your opponent.')]);
@@ -69,6 +78,24 @@ class DeleteAccount
                     default => $this->games->abort($game, $user),
                 };
             } catch (ChessRuleViolation) {
+                // ended in between
+            }
+        }
+
+        // A live board game ends the same way: aborted before both first moves, else resigned;
+        // a tournament game is forfeited, so the match goes to the opponent.
+        $boards = BoardGame::query()->where('status', BoardGameStatus::Active)
+            ->where(fn ($query) => $query->where('white_id', $user->id)->orWhere('black_id', $user->id))
+            ->get();
+
+        foreach ($boards as $game) {
+            try {
+                match (true) {
+                    $game->tournament_match_id !== null => $this->boardGames->forfeit($game, $user),
+                    $game->clocksRunning() => $this->boardGames->resign($game, $user),
+                    default => $this->boardGames->abort($game, $user),
+                };
+            } catch (BoardRuleViolation) {
                 // ended in between
             }
         }
