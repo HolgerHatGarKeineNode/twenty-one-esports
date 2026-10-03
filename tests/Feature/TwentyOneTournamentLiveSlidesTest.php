@@ -1,9 +1,11 @@
 <?php
 
+use App\Enums\ChessGameStatus;
 use App\Enums\TournamentFormat;
 use App\Enums\TournamentStatus;
 use App\Games\GameRegistry;
 use App\Models\Admin;
+use App\Models\ChessGame;
 use App\Models\Tournament;
 use App\Models\TournamentMatch;
 use App\Models\User;
@@ -17,6 +19,7 @@ use App\Support\TwentyOne\Stream\StreamStats;
 use App\Support\TwentyOne\Stream\TournamentLiveSlides;
 use App\Support\TwentyOne\Stream\TournamentSlides;
 use Illuminate\Support\Carbon;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Queue;
 use Tests\Support\TestSigner;
 
@@ -189,8 +192,8 @@ test('the next tournament to sign up for: the same game first, else the soonest 
     expect(TournamentLiveSlides::next($frame, $upcoming)['id'])->toBe(4)
         ->and(TournamentLiveSlides::next(['id' => 1, 'game' => 'Rocket League'], $upcoming)['id'])->toBe(2)
         ->and(TournamentLiveSlides::next($frame, [$upcoming[1]]))->toBeNull()
-        ->and(TournamentLiveSlides::entries([['id' => 1, 'phase' => 'running', 'game' => 'Chess']], $upcoming))->toBe([['id' => 1, 'phase' => 'running', 'fomo' => true]])
-        ->and(TournamentLiveSlides::entries([['id' => 1, 'phase' => 'running', 'game' => 'Chess']], []))->toBe([['id' => 1, 'phase' => 'running', 'fomo' => false]]);
+        ->and(TournamentLiveSlides::entries([['id' => 1, 'phase' => 'running', 'game' => 'Chess']], $upcoming))->toBe([['id' => 1, 'phase' => 'running', 'fomo' => true, 'takeover' => true]])
+        ->and(TournamentLiveSlides::entries([['id' => 1, 'phase' => 'running', 'game' => 'Chess']], []))->toBe([['id' => 1, 'phase' => 'running', 'fomo' => false, 'takeover' => true]]);
 });
 
 test('every live tournament slide renders a running and a finished tournament with escaped names, and points to the next one', function () {
@@ -336,4 +339,18 @@ test('the next-one slide on the desk fits its sentence once, next to the viewer 
     $units = liveUnits(liveFrame($t), 'tb7', 12345);
 
     expect($units['bug-note'])->toEndWith('… is live.');
+});
+
+test('a casual cup over days takes the whole stream only while one of its matches is played; a special tournament always', function () {
+    $cup = runningCup(4);
+    $special = runningChess(TournamentFormat::SingleElimination, 4);
+
+    expect(liveFrame($cup)['takeover'])->toBeFalse()
+        ->and(liveFrame($special)['takeover'])->toBeTrue();
+
+    $match = TournamentMatch::query()->where('tournament_id', $cup->id)->where('status', 'ready')->firstOrFail();
+    ChessGame::factory()->create(['tournament_match_id' => $match->id, 'status' => ChessGameStatus::Active]);
+    Cache::flush();
+
+    expect(liveFrame($cup->fresh())['takeover'])->toBeTrue();
 });

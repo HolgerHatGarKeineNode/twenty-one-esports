@@ -2,9 +2,15 @@
 
 namespace App\Support\TwentyOne\Stream;
 
+use App\Enums\BoardGameStatus;
+use App\Enums\ChessGameStatus;
+use App\Enums\SeriesStatus;
 use App\Enums\TournamentFormat;
 use App\Enums\TournamentStatus;
 use App\Games\GameRegistry;
+use App\Models\BoardGame;
+use App\Models\ChessGame;
+use App\Models\SeriesMatch;
 use App\Models\Tournament;
 use App\Models\TournamentMatch;
 use App\Support\Payouts\TournamentPlacements;
@@ -192,7 +198,7 @@ class TournamentLiveSlides
      *
      * @param  list<array<string, mixed>>  $frames  frames() of this poll
      * @param  list<array<string, mixed>>  $upcoming  TournamentSlides::frames() of this poll
-     * @return list<array{id: int, phase: string, fomo: bool}>
+     * @return list<array{id: int, phase: string, fomo: bool, takeover: bool}>
      */
     public static function entries(array $frames, array $upcoming): array
     {
@@ -200,7 +206,7 @@ class TournamentLiveSlides
 
         foreach ($frames as $frame) {
             if (is_int($frame['id'] ?? null) && in_array($frame['phase'] ?? null, self::PHASES, true)) {
-                $entries[] = ['id' => $frame['id'], 'phase' => $frame['phase'], 'fomo' => self::next($frame, $upcoming) !== null];
+                $entries[] = ['id' => $frame['id'], 'phase' => $frame['phase'], 'fomo' => self::next($frame, $upcoming) !== null, 'takeover' => (bool) ($frame['takeover'] ?? $frame['phase'] === 'running')];
             }
         }
 
@@ -227,6 +233,19 @@ class TournamentLiveSlides
         }
 
         return $open[0] ?? null;
+    }
+
+    /**
+     * A match of this tournament is being played right now: its chess or board
+     * game is on, or its series lobby was agreed and the result is not in yet.
+     */
+    public static function playingNow(Tournament $tournament): bool
+    {
+        $matches = TournamentMatch::query()->where('tournament_id', $tournament->id)->select('id');
+
+        return ChessGame::query()->whereIn('tournament_match_id', $matches)->where('status', ChessGameStatus::Active)->exists()
+            || BoardGame::query()->whereIn('tournament_match_id', $matches)->where('status', BoardGameStatus::Active)->exists()
+            || SeriesMatch::query()->whereIn('tournament_match_id', $matches)->where('status', SeriesStatus::Accepted)->exists();
     }
 
     public static function phase(Tournament $tournament): string
@@ -265,6 +284,9 @@ class TournamentLiveSlides
         $snapshot = [
             'id' => $tournament->id,
             'phase' => $phase,
+            // Takes the whole stream while it runs (RotationPlanner): a special tournament always; a casual cup only on
+            // its live evening or while one of its matches is live (user, 2026-10-03), else a cup over days would hold it for days.
+            'takeover' => $phase === 'running' && (! $tournament->isCasualCup() || CasualCups::isEvening($tournament) || self::playingNow($tournament)),
             'status' => match ($phase) {
                 'drawing' => 'Draw pending',
                 'finished' => 'Finished',

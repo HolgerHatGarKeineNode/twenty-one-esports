@@ -103,3 +103,12 @@ test('a running tournament takes the stream within one planner step, two running
     // 5 holds 90 s in four slides, then 6 for 90 s, then 5 again, nothing in between: never the same twice in a row.
     expect($shown)->toBe(['@5 32.5', '@5 55', '@5 77.5', '@5 100', '@6 122.5', '@6 145', '@6 167.5', '@6 190', '@5 212.5', '@5 235', '@5 257.5', '@5 280', '@6 302.5']);
 });
+
+test('a casual cup between its live matches does not take the stream: it is one slot among the others, and takes over once a match is live', function () {
+    $quiet = liveRotation(306, fn () => [['id' => 7, 'phase' => 'running', 'fomo' => false, 'takeover' => false]]);
+    $live = liveRotation(306, fn () => [['id' => 7, 'phase' => 'running', 'fomo' => false, 'takeover' => true]]);
+
+    // Quiet: far fewer tournament slides than a takeover's back-to-back holds, so the rest of the rotation shows between them.
+    expect(count($quiet))->toBeLessThan(count($live))
+        ->and($live)->toHaveCount(14);
+});

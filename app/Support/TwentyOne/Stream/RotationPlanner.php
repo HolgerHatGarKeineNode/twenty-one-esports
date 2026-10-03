@@ -298,7 +298,7 @@ final class RotationPlanner
      * @param  list<array{id: int, blitz: bool}>  $games  the games on show, in display order
      * @param  list<int>  $tournaments  the upcoming tournaments' ids, soonest sign-up close first
      * @param  string  $boards  BoardScene::OFF, IDLE or LIVE
-     * @param  list<array{id: int, phase: string, fomo: bool}>  $live  the tournaments past sign-up (TournamentLiveSlides::entries()), in turn order
+     * @param  list<array{id: int, phase: string, fomo: bool, takeover?: bool}>  $live  the tournaments past sign-up (TournamentLiveSlides::entries()), in turn order
      * @param  string  $blockfillWeek  BlockfillSlides::OFF, IDLE, EMPTY or RUNNING
      * @param  string|null  $blockfillMoment  the key of a new #1 of the last minutes (BlockfillSlides::state())
      * @return array{kind: string, scene: string|null, gameId: int|null, tournamentId: int|null, until: float}
@@ -312,7 +312,8 @@ final class RotationPlanner
         $this->running = [];
 
         foreach ($live as $entry) {
-            if ($entry['phase'] === 'running') {
+            // A running tournament takes the stream unless it says otherwise (a casual cup between its live matches).
+            if ($entry['phase'] === 'running' && ($entry['takeover'] ?? true)) {
                 $this->running[] = $entry['id'];
             }
 
