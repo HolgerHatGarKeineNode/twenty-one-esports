@@ -680,6 +680,8 @@ return [
         'sizes' => [4, 8, 16],
         'growth_freeze_minutes' => 60,
         'min_players' => 6,
+        // 6 to this many players play a round robin at the close instead of a double elimination full of byes.
+        'round_robin_up_to' => 8,
         'regions' => [
             'eu' => ['label' => 'EU', 'timezone' => 'Europe/Berlin'],
             'us' => ['label' => 'US', 'timezone' => 'America/New_York'],

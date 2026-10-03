@@ -328,6 +328,12 @@ final class CasualCups
             || ! $cup->signup_closes_at->toImmutable()->subMinutes(max(0, (int) config('esports.casual_cups.growth_freeze_minutes', 60)))->isFuture();
     }
 
+    /** The most players a cup plays as a round robin rather than a double elimination. */
+    public static function roundRobinUpTo(): int
+    {
+        return max(self::minPlayers() - 1, (int) config('esports.casual_cups.round_robin_up_to', 8));
+    }
+
     public static function minPlayers(): int
     {
         return max(2, (int) config('esports.casual_cups.min_players', 6));
@@ -407,7 +413,7 @@ final class CasualCups
             return null;
         }
 
-        if ($players >= self::minPlayers()) {
+        if ($players > self::roundRobinUpTo()) {
             return ['format' => TournamentFormat::DoubleElimination, 'options' => $cup->options];
         }
 
@@ -622,6 +628,13 @@ final class CasualCups
 
         if ($cup->signup_closes_at === null || $cup->signup_closes_at->isFuture()) {
             return null;
+        }
+
+        // Up to `round_robin_up_to` players a double elimination is mostly byes: everyone plays everyone
+        // instead, starting at the close as planned (user, 2026-10-03: "so ein Matchmaking macht keinen Sinn").
+        if (! self::isEvening($cup) && ! Lobbies::isLobby($cup) && $signedUp >= self::minPlayers() && $signedUp <= self::roundRobinUpTo()) {
+            $this->toEvening($cup, $signedUp, keepStart: true);
+            $cup->refresh();
         }
 
         // Switched already (a draw that could not commit yet is tried again).
@@ -892,7 +905,7 @@ final class CasualCups
      * evening: one new version of the 31923 with the evening's start and
      * end, and a notice to every player.
      */
-    private function toEvening(Tournament $cup, int $players): bool
+    private function toEvening(Tournament $cup, int $players, bool $keepStart = false): bool
     {
         $format = self::formatFor($cup, $players);
 
@@ -900,7 +913,7 @@ final class CasualCups
             return false;
         }
 
-        $switched = DB::transaction(function () use ($cup, $format): bool {
+        $switched = DB::transaction(function () use ($cup, $format, $keepStart): bool {
             $locked = Tournament::query()->with('event')->lockForUpdate()->findOrFail($cup->id);
 
             if ($locked->status !== TournamentStatus::Signup || $locked->signup_closes_at === null || $locked->signup_closes_at->isFuture() || self::isEvening($locked)) {
@@ -910,7 +923,7 @@ final class CasualCups
             $locked->forceFill([
                 'format' => $format['format'],
                 'options' => FormatOptions::fromArray($format['options'], $locked->profile())->toArray(),
-                'starts_at' => self::eveningStart($locked->signup_closes_at, self::timezoneOf($locked)),
+                'starts_at' => $keepStart ? $locked->starts_at->max($locked->signup_closes_at) : self::eveningStart($locked->signup_closes_at, self::timezoneOf($locked)),
             ])->save();
             $this->publisher->republish($locked);
 

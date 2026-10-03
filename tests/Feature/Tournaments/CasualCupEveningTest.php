@@ -96,8 +96,33 @@ test('the format follows the players at the last close', function (int $players,
     '2: three games' => [2, TournamentFormat::RoundRobin, 3],
     '3: round robin' => [3, TournamentFormat::RoundRobin, 1],
     '5: round robin' => [5, TournamentFormat::RoundRobin, 1],
-    '6: double elimination' => [6, TournamentFormat::DoubleElimination, null],
+    '6: round robin, not a bracket of byes' => [6, TournamentFormat::RoundRobin, 1],
+    '8: round robin' => [8, TournamentFormat::RoundRobin, 1],
+    '9: double elimination' => [9, TournamentFormat::DoubleElimination, null],
 ]);
+
+test('six players at the close play a round robin that starts at the close as planned, not a double elimination full of byes', function () {
+    $tip = 900000;
+    eveningBlocks($tip);
+    cupTick();
+    $cup = openCup();
+    cupSignups($cup, 6);
+    $start = $cup->starts_at->getTimestamp();
+
+    $this->travelTo($cup->signup_closes_at);
+    cupTick();
+    $cup->refresh();
+
+    expect($cup->format)->toBe(TournamentFormat::RoundRobin)
+        ->and($cup->status)->toBe(TournamentStatus::Drawing)
+        ->and($cup->starts_at->getTimestamp())->toBe($start);
+
+    $tip = 900001;
+    cupTick();
+
+    expect($cup->refresh()->status)->toBe(TournamentStatus::Running)
+        ->and(TournamentMatch::query()->where('tournament_id', $cup->id)->count())->toBe(15);
+});
 
 test('two players of a series game play one best of three', function (string $game, int $bestOf) {
     $cup = Tournament::factory()->make(['cup_series' => $game, 'game' => $game, 'mode' => '1v1', 'format' => TournamentFormat::DoubleElimination]);
