@@ -1999,6 +1999,71 @@ select:focus[data-flux-control] {
     }
 }
 
+/*
+ * The champion moment (partials/champion): the gold stage light behind the
+ * champion, and once per browser and tournament (championMoment.js) a rain
+ * of small blocks and a gold sheen over the name. Reduced motion: still.
+ */
+.cm-stage {
+    background:
+        radial-gradient(ellipse 60% 70% at var(--cm-light-x, 18%) 30%, color-mix(in oklab, var(--color-rank-gold) 22%, transparent), transparent 70%),
+        var(--color-ground);
+}
+
+.cm-rain {
+    position: absolute;
+    inset: 0;
+    overflow: hidden;
+    pointer-events: none;
+    display: none;
+}
+
+.is-celebrating .cm-rain {
+    display: block;
+}
+
+.cm-rain > span {
+    position: absolute;
+    top: -16px;
+    left: var(--x);
+    width: var(--s, 10px);
+    height: var(--s, 10px);
+    border-radius: 2px;
+    background: var(--c, var(--color-rank-gold));
+    opacity: 0;
+    animation: cm-fall var(--t, 1.8s) cubic-bezier(0.3, 0.6, 0.6, 1) var(--d, 0s) both;
+}
+
+@keyframes cm-fall {
+    0% { opacity: 1; transform: translate3d(0, 0, 0) rotate(0deg); }
+    85% { opacity: 1; }
+    100% { opacity: 0; transform: translate3d(var(--drift, 0px), var(--fall, 640px), 0) rotate(var(--r, 180deg)); }
+}
+
+.is-celebrating .cm-foil {
+    background: linear-gradient(100deg, var(--color-ink) 35%, var(--color-rank-gold) 50%, var(--color-ink) 65%) 120% 0 / 300% 100%;
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+    animation: cm-foil 1.4s ease-out 0.3s both;
+}
+
+@keyframes cm-foil {
+    to { background-position: -60% 0; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .cm-rain {
+        display: none !important;
+    }
+
+    .is-celebrating .cm-foil {
+        animation: none;
+        background: none;
+        color: inherit;
+    }
+}
+
 .tl-seats {
     display: grid;
     grid-template-columns: repeat(var(--cells), minmax(0, 1fr));

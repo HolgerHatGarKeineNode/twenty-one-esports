@@ -76,7 +76,7 @@ test('the call to action follows the tournament and the viewer in every status',
         playOutAsDirector($tournament);
 
         return [$tournament, null];
-    }, 'finished', 'See the results'],
+    }, 'finished', 'Share the win'], // the champion moment on top (ChampionMomentTest) holds the way to the results
     'called off' => [function () {
         $tournament = openTournament();
         $tournament->forceFill(['status' => TournamentStatus::Cancelled])->save();

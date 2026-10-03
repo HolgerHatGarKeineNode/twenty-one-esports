@@ -29,6 +29,7 @@ use App\Support\Tournaments\LobbyResults;
 use App\Support\Tournaments\MatchWait;
 use App\Support\Tournaments\Preview;
 use App\Support\Tournaments\TournamentChampion;
+use App\Support\Tournaments\TournamentChampionMoment;
 use App\Support\Tournaments\TournamentLanding;
 use App\Support\Tournaments\TournamentNow;
 use App\Support\Tournaments\TournamentPrizePool;
@@ -427,6 +428,18 @@ new #[Layout('layouts::app', ['section' => 'tournaments', 'realtime' => true])] 
         return new TournamentLanding($this->tournament, auth()->user());
     }
 
+    /**
+     * The champion moment at the top of a finished tournament page (TournamentChampionMoment): null while it runs,
+     * for a league week and when no place 1 can be read.
+     *
+     * @return array<string, mixed>|null
+     */
+    #[Computed]
+    public function championMoment(): ?array
+    {
+        return TournamentChampionMoment::of($this->tournament, auth()->user());
+    }
+
     #[Computed]
     public function champion(): ?TournamentParticipant
     {
@@ -521,6 +534,7 @@ new #[Layout('layouts::app', ['section' => 'tournaments', 'realtime' => true])] 
     $open = $landing->openSeats();
     $yourSeed = $landing->yourSeed();
     $champion = $this->champion;
+    $championMoment = $this->championMoment;
     $pageUrl = route('tournaments.show', $tournament);
     // A lobby tournament names its game alone and "One lobby match", never "1v1" or Free for All.
     $gameLine = \App\Support\Tournaments\Lobbies::gameLine($tournament);
@@ -665,7 +679,10 @@ new #[Layout('layouts::app', ['section' => 'tournaments', 'realtime' => true])] 
         everything else, also the organizer's bar. One state per viewer with one primary action; it holds the cup match,
         the lobby and the match countdowns that stood here as three cards.
     --}}
-    @if ($this->now)
+    {{-- A finished tournament opens on its champion (user, 2026-10-03), the viewer's own place inside it. --}}
+    @if ($championMoment)
+        @include('pages.tournaments.partials.champion', ['moment' => $championMoment, 'tournament' => $tournament, 'results' => $score ? '#leaderboard' : '#bracket'])
+    @elseif ($this->now)
         @include('pages.tournaments.partials.now', ['now' => $this->now, 'tournament' => $tournament, 'cup' => $this->cupMatch, 'error' => $cupError, 'waits' => $this->myWaits, 'lobby' => $this->myLobby])
     @endif
 
@@ -765,7 +782,8 @@ new #[Layout('layouts::app', ['section' => 'tournaments', 'realtime' => true])] 
 
                 {{-- The call to action for the viewer's state; below lg it comes first in its column, before the
                      date and the description, so a phone has the action in its first screen (user, 2026-10-03). --}}
-                @if ($cta !== 'draft')
+                {{-- A finished tournament with its champion moment on top needs no second "results" button and line here. --}}
+                @if ($cta !== 'draft' && ! ($cta === 'finished' && $championMoment))
                     <div class="tl-cta flex flex-col gap-4 rounded-card bg-card p-4 shadow-ring max-lg:order-first lg:p-5" data-test="signup-cta" data-state="{{ $cta }}">
                         {{-- A game played outside the site: "you need your own copy", above the action. --}}
                         @include('pages.tournaments.partials.own-copy', ['tournament' => $tournament])
@@ -911,7 +929,10 @@ new #[Layout('layouts::app', ['section' => 'tournaments', 'realtime' => true])] 
         <div class="mx-4 has-[>.hidden]:hidden lg:mx-12"><livewire:follows-here context="tournament" :subject="(string) $tournament->id" :wire:key="'follows-here-t-'.$tournament->id" /></div>
     @endif
 
-    @if ($champion)
+    @if ($championMoment)
+        {{-- P47: a tip for the winners (NIP-57), each whose profile has a Lightning address; nothing otherwise. --}}
+        <div class="mx-4 has-[>.hidden]:hidden lg:mx-12"><livewire:zap-winner type="tournament" :subject="(string) $tournament->id" :wire:key="'zap-tournament-'.$tournament->id" /></div>
+    @elseif ($champion)
         {{-- The result (P11): the winner, the share card, and for the winners the share button. --}}
         <section aria-labelledby="tw-h" class="mx-4 flex flex-col gap-4 rounded-card bg-card px-4 py-5 shadow-[inset_0_0_0_1px_#F7931A] sm:flex-row sm:items-center lg:mx-12 lg:px-6" data-test="tournament-winner">
             @php($winnerCard = \App\Support\Cards\ShareCard::tournament($tournament, $champion))

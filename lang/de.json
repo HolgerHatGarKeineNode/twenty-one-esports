@@ -6600,5 +6600,21 @@
     "Against :name. Open the match room to check in and play.": "Gegen :name. Öffne den Match-Raum, um einzuchecken und zu spielen.",
     ":name is waiting — your cup game is live": ":name wartet — deine Cup-Partie läuft",
     ":name is waiting — your tournament game is live": ":name wartet — deine Turnierpartie läuft",
-    "Make your first move within :time, or you lose this game by forfeit.": "Mach deinen ersten Zug innerhalb von :time, sonst verlierst du diese Partie kampflos."
+    "Make your first move within :time, or you lose this game by forfeit.": "Mach deinen ersten Zug innerhalb von :time, sonst verlierst du diese Partie kampflos.",
+    "Shared 1st place · :tournament": "Geteilter 1. Platz · :tournament",
+    "Champion · :tournament": "Champion · :tournament",
+    "You won!": "Du hast gewonnen!",
+    "sats prize": "Sats Preisgeld",
+    ":count draw|:count draws": ":count Remis|:count Remis",
+    ":count loss|:count losses": ":count Niederlage|:count Niederlagen",
+    "no loss": "keine Niederlage",
+    ":count point|:count points": ":count Punkt|:count Punkte",
+    ":names share 1st place in :tournament": ":names teilen sich Platz 1 bei :tournament",
+    ":name won :tournament": ":name hat :tournament gewonnen",
+    "Share the win": "Sieg teilen",
+    "Podium": "Podium",
+    "The path to the title": "Der Weg zum Titel",
+    "Beat": "Sieg gegen",
+    "Drew with": "Remis gegen",
+    "Lost to": "Niederlage gegen"
 }

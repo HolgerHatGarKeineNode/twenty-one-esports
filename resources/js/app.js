@@ -30,6 +30,7 @@ import './sanNotation.js';
 import './tournamentLanding.js';
 import './autoDecision.js';
 import './tournamentNow.js';
+import './championMoment.js';
 import './leagueTime.js';
 import './tournamentTv.js';
 // Comments, likes and RSVPs on Nostr (P48): tournament, game and match pages.

@@ -359,9 +359,9 @@ test('a finished lobby tournament names its shared 1st place across all lobbies 
     $names = collect([$first->slots[0], $first->slots[1], $second->slots[0]])->sortBy('tournament_participant_id')->map(fn ($slot): string => (string) $slot->participant->name)->implode(', ');
 
     $this->get(route('tournaments.show', $tournament))->assertOk()
+        // The champion moment on top (ChampionMomentTest) names everybody on the shared place 1.
         ->assertSee('data-test="tournament-shared-first"', false)
-        ->assertSeeInOrder(['Shared 1st place: '.$names])
-        ->assertSee('Finished. Shared 1st place: '.$names.'.')
+        ->assertSeeInOrder(['data-shared="1"', 'Shared 1st place · '.$tournament->title(), $names], false)
         ->assertDontSee('data-test="tournament-winner"', false);
     // A single winner keeps the winner card.
     $single = runningLobby(4);

@@ -114,9 +114,10 @@ test('a knocked-out player is out, with "Watch the rest"; the winner of a final 
     [$game, $white, $black] = nowFirstGame($final);
     app(ChessGameService::class)->resign($game, $black);
 
+    // Finished, the page opens on the champion moment (ChampionMomentTest), with the viewer's own line in it.
     expect($final->refresh()->status)->toBe(TournamentStatus::Finished)
-        ->and(nowHero(nowPage($final, $white)))->toContain('data-state="won"')->toContain('You won the tournament')
-        ->and(nowHero(nowPage($final, $black)))->toContain('data-state="over"')->toContain('You finished in place 2');
+        ->and(nowPage($final, $white))->toContain('data-viewer="won"')->toContain('You won!')->not->toContain('data-test="now-hero"')
+        ->and(nowPage($final, $black))->toContain('data-viewer="placed"')->toContain('You finished in place 2')->not->toContain('data-test="now-hero"');
 });
 
 test('a player without a game this round has a bye', function () {
