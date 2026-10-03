@@ -30,6 +30,7 @@ use App\Support\Tournaments\MatchWait;
 use App\Support\Tournaments\Preview;
 use App\Support\Tournaments\TournamentChampion;
 use App\Support\Tournaments\TournamentLanding;
+use App\Support\Tournaments\TournamentNow;
 use App\Support\Tournaments\TournamentPrizePool;
 use App\Support\Tournaments\TournamentPublisher;
 use App\Support\Tournaments\TournamentRuleViolation;
@@ -62,10 +63,10 @@ use Livewire\Component;
  * TournamentPrizePool); the zap panel, the payouts and the organizer's and
  * admin's links are their own component (components/⚡tournament-pool).
  *
- * A casual cup (P25, CasualCups) carries a "Casual" marker, and a player
- * with an open chess match in it gets the match card: the opponent, the
- * deadline, the league's auto slot, and "Play your cup match" (an invite
- * only to that opponent) or the opponent's invite to accept.
+ * A casual cup (P25, CasualCups) carries a "Casual" marker. Every running
+ * page opens on "What to do now" (TournamentNow, partials/now): a player's
+ * one next step (play, start, join the lobby, wait, bye, out, won) or a
+ * spectator's live boards; a cup's invite and times live there.
  */
 new #[Layout('layouts::app', ['section' => 'tournaments', 'realtime' => true])] class extends Component {
     public Tournament $tournament;
@@ -263,7 +264,7 @@ new #[Layout('layouts::app', ['section' => 'tournaments', 'realtime' => true])] 
             $this->cupError = $violation->getMessage();
         }
 
-        unset($this->cupMatch);
+        unset($this->cupMatch, $this->now);
     }
 
     public function playCupMatch(): void
@@ -332,7 +333,19 @@ new #[Layout('layouts::app', ['section' => 'tournaments', 'realtime' => true])] 
             };
         }
 
-        unset($this->cupMatch);
+        unset($this->cupMatch, $this->now);
+    }
+
+    /**
+     * "What to do now" for the viewer (TournamentNow): the hero at the very top of a running or finished
+     * tournament page; null when there is nothing to say (a draft, sign-up, a score leaderboard).
+     *
+     * @return array<string, mixed>|null
+     */
+    #[Computed]
+    public function now(): ?array
+    {
+        return TournamentNow::of($this->tournament, auth()->user(), $this->cupMatch, $this->myLobby);
     }
 
     /**
@@ -647,6 +660,15 @@ new #[Layout('layouts::app', ['section' => 'tournaments', 'realtime' => true])] 
         The organizer's and admin's bar (user, 2026-09-28: the prize pool was too hard to reach): prize pool,
         edit and payouts, each behind its own gate (<x-tournaments.manage-actions>), at the top of the page.
     --}}
+    {{--
+        "What to do now" (TournamentNow, user 2026-10-03): the first thing on a running or finished tournament page, above
+        everything else, also the organizer's bar. One state per viewer with one primary action; it holds the cup match,
+        the lobby and the match countdowns that stood here as three cards.
+    --}}
+    @if ($this->now)
+        @include('pages.tournaments.partials.now', ['now' => $this->now, 'tournament' => $tournament, 'cup' => $this->cupMatch, 'error' => $cupError, 'waits' => $this->myWaits, 'lobby' => $this->myLobby])
+    @endif
+
     @if ($this->canManage)
         {{-- On a phone one compact row without the label, so the pot's number stays in the first screen for organizers too. --}}
         <div class="-mb-10 flex flex-col gap-2 px-4 pt-2 sm:-mb-6 sm:flex-row sm:items-center sm:gap-4 sm:pt-4 lg:-mb-10 lg:px-12" data-test="manage-bar">
@@ -678,21 +700,6 @@ new #[Layout('layouts::app', ['section' => 'tournaments', 'realtime' => true])] 
                 <div><x-button type="submit" icon="send" data-test="publish">{{ __('Publish tournament') }}</x-button></div>
             </form>
         </section>
-    @endif
-
-    {{-- A running casual cup: the viewer's own match first, above the hero (P25, the player it concerns). --}}
-    @if ($this->cupMatch)
-        @include('pages.tournaments.partials.cup-match', ['cup' => $this->cupMatch, 'error' => $cupError])
-    @endif
-
-    {{-- A running lobby tournament: the viewer's own lobby, name and password with copy buttons, above the hero (P10). --}}
-    @if ($this->myLobby)
-        @include('pages.tournaments.partials.my-lobby', ['match' => $this->myLobby, 'tournament' => $tournament])
-    @endif
-
-    {{-- The viewer's own match with the countdown to the league's automatic decision (P18, slice 5). --}}
-    @if ($this->myWaits !== [])
-        @include('pages.tournaments.partials.my-waits', ['waits' => $this->myWaits, 'tournament' => $tournament])
     @endif
 
     {{--

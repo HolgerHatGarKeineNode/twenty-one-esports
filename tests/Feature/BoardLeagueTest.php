@@ -340,7 +340,7 @@ test('a board game cup opens only while its board game is on, and "Play your cup
         ->and($game->first_move_seconds)->toBeGreaterThan(30)
         ->and(ChessGame::query()->count())->toBe(0)
         // The cup page leads to the board game, not to a chess game.
-        ->and(Livewire::actingAs($white)->test('pages::tournaments.show', ['tournament' => $cup])->assertSeeHtml('data-test="cup-match-game"')->assertSee(route('board.show', $game), false))->not->toBeNull();
+        ->and(Livewire::actingAs($white)->test('pages::tournaments.show', ['tournament' => $cup])->assertSeeHtml('data-test="now-hero" data-state="play"')->assertSee(route('board.show', $game), false))->not->toBeNull();
 
     // Switched off, its cups stop opening.
     config(['esports.board_games.games.checkers.enabled' => false]);

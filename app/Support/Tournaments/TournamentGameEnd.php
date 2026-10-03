@@ -194,11 +194,11 @@ final class TournamentGameEnd
     }
 
     /**
-     * The viewer's state once this match is decided.
+     * The viewer's state once this match is decided; the tournament page's "What to do now" hero (TournamentNow) reads it too.
      *
      * @return array{0: string, 1: string, 2: string|null}
      */
-    private static function after(Tournament $tournament, TournamentMatch $match, ?int $slot): array
+    public static function after(Tournament $tournament, TournamentMatch $match, ?int $slot): array
     {
         $cup = $tournament->isCasualCup();
 
@@ -302,7 +302,7 @@ final class TournamentGameEnd
      *
      * @param  Collection<int, TournamentMatch>  $pair
      */
-    private static function others(Tournament $tournament, Collection $pair): ?string
+    public static function others(Tournament $tournament, Collection $pair): ?string
     {
         $count = TournamentMatch::query()->where('tournament_id', $tournament->id)->where('bracket', '!=', 'bye')
             ->where('status', 'ready')->whereNull('result')->whereNotIn('id', $pair->pluck('id'))->count();

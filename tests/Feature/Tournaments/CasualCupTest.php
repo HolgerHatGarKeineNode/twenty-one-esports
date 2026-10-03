@@ -361,15 +361,14 @@ test('the cup page marks the cup casual and lets a player invite their opponent'
 
     Livewire::actingAs($white)->test('pages::tournaments.show', ['tournament' => $cup])
         ->assertSeeHtml('data-test="casual-marker"')
-        ->assertSeeHtml('data-test="cup-match-play"')
-        // The player's own cup match comes before the hero, at the top of the page.
-        ->assertSeeHtmlInOrder(['data-test="cup-match"', 'data-test="tournament-hero"'])
+        // "What to do now" comes first, before the tournament's own hero: start your game.
+        ->assertSeeHtmlInOrder(['data-test="now-hero" data-state="start"', 'wire:click="playCupMatch"', 'data-test="tournament-hero"'])
         ->call('playCupMatch')
         ->assertHasNoErrors()
-        ->assertSeeHtml('data-test="cup-match-waiting"');
+        ->assertSeeHtml('data-test="now-hero" data-state="invited"');
 
     Livewire::actingAs($black)->test('pages::tournaments.show', ['tournament' => $cup])
-        ->assertSeeHtml('data-test="cup-match-accept"')
+        ->assertSeeHtml('data-test="now-hero" data-state="ready"')
         ->call('acceptCupInvite', ChessInvite::query()->sole()->id)
         ->assertRedirect(route('games.show', ChessGame::query()->sole()));
 });

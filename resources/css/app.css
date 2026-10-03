@@ -1960,6 +1960,45 @@ select:focus[data-flux-control] {
     from { opacity: 0; transform: translateY(12px) scale(0.98); }
 }
 
+/*
+ * The "What to do now" hero (partials/now): the round's matches as one strip,
+ * a segment per match, decided ones filled, the ones still playing pulse.
+ * When the hero turns into "Play now" on an open page it flips in once
+ * (tournamentNow.js); reduced motion keeps it still.
+ */
+.tn-strip {
+    display: grid;
+    grid-template-columns: repeat(var(--matches), minmax(0, 1fr));
+    gap: 4px;
+}
+
+.tn-strip > span {
+    height: 6px;
+    border-radius: 2px;
+    background: var(--color-btc);
+}
+
+.tn-strip > span.is-playing {
+    background: var(--color-btc-ring);
+    animation: var(--animate-live);
+}
+
+.tn-flip {
+    animation: tn-flip 0.3s ease-out both;
+    transform-origin: top center;
+}
+
+@keyframes tn-flip {
+    from { opacity: 0; transform: perspective(800px) rotateX(-70deg); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .tn-flip,
+    .tn-strip > span.is-playing {
+        animation: none;
+    }
+}
+
 .tl-seats {
     display: grid;
     grid-template-columns: repeat(var(--cells), minmax(0, 1fr));

@@ -3,7 +3,8 @@
     above the hero (2026-10-02: the lobby list sits far down the page): the league's name and password with
     copy buttons, the report deadline, and the way to the lobby's card, where the places are reported. Only
     for a player of this lobby (LobbyResults::plays()), the same rule as the card's access block.
-    `$match`: the lobby (App\Models\TournamentMatch), `$tournament`.
+    `$match`: the lobby (App\Models\TournamentMatch), `$tournament`; `$embedded`: inside the "What to do now"
+    hero (partials/now), which carries the card and the heading.
 --}}
 @php
     use App\Support\Tournaments\LobbyResults;
@@ -11,8 +12,9 @@
     $lobby = (array) $match->lobby;
     $reportUntil = LobbyResults::reportUntil($match);
     $zone = (string) (auth()->user()?->timezone ?? config('esports.preseason.display_timezone'));
+    $embedded ??= false;
 @endphp
-<section aria-labelledby="my-lobby-h" class="mx-4 flex flex-col gap-2 rounded-card bg-card px-4 py-4 shadow-[inset_0_0_0_1px_#F7931A] lg:mx-12 lg:px-6" x-data="{ show: false, copied: '' }" data-test="my-lobby">
+<section aria-labelledby="my-lobby-h" @class(['flex flex-col gap-2', 'mx-4 rounded-card bg-card px-4 py-4 shadow-[inset_0_0_0_1px_#F7931A] lg:mx-12 lg:px-6' => ! $embedded, 'max-w-[520px]' => $embedded]) x-data="{ show: false, copied: '' }" data-test="my-lobby">
     <span class="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-0.5">
         <h2 id="my-lobby-h" class="m-0 flex items-center gap-1.5 text-[15px] font-bold"><x-icon name="key" :size="16" class="shrink-0 text-btc-hi" />{{ __('Join this lobby in :game', ['game' => \App\Support\GameNames::game($tournament->game)]) }}</h2>
         <span class="text-xs text-ink-2">{{ __('Lobby :number', ['number' => $match->position]) }} · {{ trans_choice(':count player|:count players', $match->slots->count()) }}</span>

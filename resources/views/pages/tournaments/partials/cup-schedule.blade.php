@@ -5,7 +5,7 @@
     opponent's proposal to accept, the player's own proposal waiting, or the
     form to propose one to three times. Without an agreement the league
     starts it at the auto slot. Needs $cup, $error and $format from
-    partials/cup-match.
+    partials/now (the "What to do now" hero).
 --}}
 @php
     $checkinBefore = (int) config('esports.casual.checkin_before_minutes', 10);
