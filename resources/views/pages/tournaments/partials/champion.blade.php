@@ -60,7 +60,9 @@
         @endforeach
     </div>
 
-    <div class="grid gap-8 px-4 pt-6 pb-8 lg:grid-cols-[minmax(0,1fr)_minmax(0,460px)] lg:gap-x-16 lg:px-12 lg:pt-12 lg:pb-12">
+    {{-- With the open desk beside the page from xl (pages/tournaments/show) the podium goes under the champion there:
+         beside it, the name's column was 428 px at 1440 and "Player 1" broke inside the word (measured 2026-10-04). --}}
+    <div @class(['grid gap-8 px-4 pt-6 pb-8 lg:grid-cols-[minmax(0,1fr)_minmax(0,460px)] lg:gap-x-16 lg:px-12 lg:pt-12 lg:pb-12', 'xl:grid-cols-1' => $desk ?? null])>
         {{-- The champion --}}
         <div class="flex min-w-0 flex-col gap-6" @if ($shared) data-test="tournament-shared-first" @else data-test="tournament-winner" @endif>
             <div class="flex min-w-0 flex-col gap-4 sm:flex-row sm:items-center sm:gap-8">
@@ -151,7 +153,7 @@
         </div>
 
         {{-- The podium --}}
-        <ol class="m-0 grid list-none grid-cols-3 items-end gap-2 self-end p-0 lg:gap-3" aria-label="{{ __('Podium') }}" data-test="champion-podium">
+        <ol @class(['m-0 grid list-none grid-cols-3 items-end gap-2 self-end p-0 lg:gap-3', 'xl:w-full xl:max-w-[460px]' => $desk ?? null]) aria-label="{{ __('Podium') }}" data-test="champion-podium">
             @foreach ($steps as $place => ['step' => $step, 'avatar' => $size, 'order' => $order])
                 @php($row = $byPlace->get($place))
                 <li class="flex min-w-0 flex-col items-center gap-1.5 text-center {{ $order }}" data-test="podium-{{ $place }}">

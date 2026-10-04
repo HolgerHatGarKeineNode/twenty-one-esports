@@ -48,6 +48,7 @@ function readMarker(me, desk) {
 export function deskChat(config) {
     const chat = roomChat({ ...config, match: null, casual: null, cacheName: 'desk', tags: [['desk', String(config.desk)]] });
     const baseInit = chat.init;
+    const baseDestroy = chat.destroy;
     const managers = new Set(config.members.filter((m) => m.manager).map((m) => m.pubkey));
 
     const desk = {
@@ -75,10 +76,20 @@ export function deskChat(config) {
             if (this.headless) return;
 
             // The history, not the whole panel: a message counts as read once the list it sits in is on screen.
-            new IntersectionObserver(([entry]) => { this.inView = entry.isIntersecting; }, { threshold: 0.25 }).observe(this.$root.querySelector('[data-test=desk-messages]'));
-            document.addEventListener('visibilitychange', () => { this.pageVisible = document.visibilityState === 'visible'; });
+            this.inViewObserver = new IntersectionObserver(([entry]) => { this.inView = entry.isIntersecting; }, { threshold: 0.25 });
+            this.inViewObserver.observe(this.$root.querySelector('[data-test=desk-messages]'));
+            // Removed in destroy(): a wire:navigate away must not leave a listener holding this desk.
+            this.teardown = new AbortController();
+            document.addEventListener('visibilitychange', () => { this.pageVisible = document.visibilityState === 'visible'; }, { signal: this.teardown.signal });
 
             if (window.location.hash === '#desk') this.$nextTick(() => this.focusDesk());
+        },
+
+        /** Alpine calls it when the panel leaves the page (wire:navigate included): the room's sockets, then the desk's own hooks. */
+        destroy() {
+            baseDestroy?.call(this);
+            this.teardown?.abort();
+            this.inViewObserver?.disconnect();
         },
 
         get thread() {

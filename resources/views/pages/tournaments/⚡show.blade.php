@@ -681,9 +681,12 @@ new #[Layout('layouts::app', ['section' => 'tournaments', 'realtime' => true, 's
 
     $cellCount = $places['places'] <= 96 ? $places['places'] : 0;
     $fillStep = $places['taken'] > 0 ? min(70, (int) round(900 / $places['taken'])) : 0;
+    // Sign-up and the draw have no hero of their own: the open desk sits under the sign-up box (user, 2026-10-04),
+    // so a phone opens on the tournament's name. With "What to do now" or the champion it comes right after those.
+    $deskInHero = $this->desk !== null && ! $championMoment && ! $this->now && ! $week && $cta !== 'draft';
 @endphp
 
-<div @class(['flex flex-col gap-12 pb-16 lg:gap-16', 'chat-rail-host xl:[--chat-rail-own:0px] xl:[--chat-rail-bottom:4rem]' => $this->desk !== null, 'xl:[--chat-rail-top:1rem]' => $this->desk !== null && ($championMoment || $this->now)]) data-test="tournament-show" data-cta="{{ $cta }}" @if ($poll) wire:poll.15s.visible x-data="tournamentLive({ id: {{ $tournament->id }} })" @endif>
+<div @class(['flex flex-col gap-12 pb-16 lg:gap-16', 'chat-rail-host xl:[--chat-rail-own:0px] xl:[--chat-rail-bottom:4rem]' => $this->desk !== null, 'xl:[--chat-rail-top:1rem]' => $this->desk !== null && ! $championMoment && $this->now]) data-test="tournament-show" data-cta="{{ $cta }}" @if ($poll) wire:poll.15s.visible x-data="tournamentLive({ id: {{ $tournament->id }} })" @endif>
     {{--
         The organizer's and admin's bar (user, 2026-09-28: the prize pool was too hard to reach): prize pool,
         edit and payouts, each behind its own gate (<x-tournaments.manage-actions>), at the top of the page.
@@ -702,10 +705,10 @@ new #[Layout('layouts::app', ['section' => 'tournaments', 'realtime' => true, 's
 
     {{--
         The tournament desk, always open for its members (user, 2026-10-04: "versteckt hinter einem Button-Klick, das
-        ist schlechte UX"): below xl right under the hero (during sign-up and the draw, which have none, at the top);
-        from xl `.chat-rail` makes it a sticky side column beside the whole page (resources/css/app.css).
+        ist schlechte UX"): below xl right under the hero (during sign-up and the draw: under the sign-up box, further
+        down); from xl `.chat-rail` makes it a sticky side column beside the whole page (resources/css/app.css).
     --}}
-    @if ($this->desk)
+    @if ($this->desk && ! $deskInHero)
         <div class="chat-rail mx-4 lg:mx-12 xl:mx-0" data-test="desk-rail"><x-tournaments.desk-chat :desk="$this->desk" /></div>
     @endif
 
@@ -755,7 +758,8 @@ new #[Layout('layouts::app', ['section' => 'tournaments', 'realtime' => true, 's
             @include('pages.scores.partials.blockfill-hero', ['heading' => $tournament->title(), 'week' => $tournament, 'standings' => $weekStandings, 'metric' => $scoreMetric])
         </div>
     @else
-    <section aria-labelledby="t-name" class="tl-hero relative isolate" data-test="tournament-hero">
+    {{-- With the desk inside (sign-up), static from xl: the column then stands beside the whole page, not this section. --}}
+    <section aria-labelledby="t-name" @class(['tl-hero relative isolate', 'xl:static' => $deskInHero]) data-test="tournament-hero">
         <div class="grid gap-4 px-4 sm:gap-6 lg:grid-cols-[minmax(0,1fr)_minmax(0,440px)] lg:grid-rows-[auto_1fr] lg:gap-x-12 lg:px-12">
             <div class="flex min-w-0 flex-col gap-5 lg:col-start-2 lg:row-start-1 lg:self-end">
                 @include('pages.tournaments.partials.cover', ['tournament' => $tournament, 'class' => 'tl-poster-in w-full lg:max-w-[440px] lg:justify-self-end'])
@@ -895,6 +899,9 @@ new #[Layout('layouts::app', ['section' => 'tournaments', 'realtime' => true, 's
                             </div>
                         @endif
                     </div>
+                    @if ($deskInHero)
+                        <div class="chat-rail max-lg:order-first" data-test="desk-rail"><x-tournaments.desk-chat :desk="$this->desk" /></div>
+                    @endif
                 @endif
 
                 @if ($week)

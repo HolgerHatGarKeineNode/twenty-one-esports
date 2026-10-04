@@ -34,7 +34,8 @@ pest()->group('browser');
 | sticky side column beside the content, under the header, 24 px above the
 | dock, also scrolled), en 375 and de 375 (right under the "What to do now"
 | hero; the hero's desk button brings the whole desk between the header and
-| the tab bar; no sideways scroll).
+| the tab bar; no sideways scroll). During sign-up the desk stands under the
+| sign-up box; with the champion its column starts level with that hero.
 |
 | Collected: console.error/warn, uncaught errors, rejected promises, fetch
 | and XHR >= 400; a thrown error at the end proves the collector sees one.
@@ -240,6 +241,11 @@ test('the desk is open without a click: a player and the direction talk there, t
         BrowserWait::until($pageG, deskSees('them', 'We are on it, the game is paused', true), 10_000);
         expect($pageG->evaluate('() => window.__errors'))->toBe([]);
 
+        // Away with wire:navigate: the desk lets go of its page hooks (visibilitychange listener, observer).
+        $pageG->evaluate('() => { window.__desk = Alpine.$data(document.querySelector("[data-test=desk-chat]")); window.__deskAborted = () => window.__desk.teardown.signal.aborted; Livewire.navigate("/"); }');
+        BrowserWait::until($pageG, '() => location.pathname === "/" && document.querySelector("[data-test=desk-chat]") === null && window.__deskAborted() === true', 10_000);
+        expect($pageG->evaluate('() => window.__errors'))->toBe([]);
+
         // A reload: the desk is open again, both messages there.
         deskReload($pageA);
         BrowserWait::until($pageA, deskSees('me', 'My clock froze in round 1', false), 10_000);
@@ -342,37 +348,146 @@ test('the desk is open without a click: a player and the direction talk there, t
     }
 });
 
-test('during sign-up the open desk stands at the top on a phone and beside the page from 1440, the old banner gone', function () {
+/** Where the desk stands on a page without "What to do now": its box, the hero's, the sign-up box's, the content beside it. */
+const DESK_PLACE = <<<'JS'
+    () => {
+        const r = (sel) => { const el = document.querySelector(sel); if (! el) return null; const b = el.getBoundingClientRect(); return { top: Math.round(b.top), bottom: Math.round(b.bottom), left: Math.round(b.left), right: Math.round(b.right) }; };
+        const rail = document.querySelector('.chat-rail');
+        // Leaves outside the column; decoration (aria-hidden, e.g. the champion's falling blocks, clipped by its stage) is no content.
+        const content = [...document.querySelectorAll('[data-test=tournament-show] *')].filter((el) => (! rail || ! rail.contains(el)) && ! el.closest('[aria-hidden=true]') && el.children.length === 0 && el.checkVisibility() && el.getBoundingClientRect().width > 0);
+        // Words of the champion's name that the line breaks inside (overflow-wrap: anywhere breaks a word rather than overflow).
+        const split = (() => {
+            const h = document.querySelector('#champion-h');
+            if (! h) return null;
+            const walker = document.createTreeWalker(h, NodeFilter.SHOW_TEXT);
+            let n = 0;
+            for (let node = walker.nextNode(); node; node = walker.nextNode()) {
+                for (const m of node.textContent.matchAll(/\S+/g)) {
+                    const range = document.createRange();
+                    range.setStart(node, m.index);
+                    range.setEnd(node, m.index + m[0].length);
+                    if (new Set([...range.getClientRects()].map((r) => Math.round(r.top))).size > 1) n++;
+                }
+            }
+            return n;
+        })();
+        const host = document.querySelector('[data-test=tournament-show]');
+        return {
+            split, vw: innerWidth, rail: rail !== null, hostPadRight: parseFloat(getComputedStyle(host).paddingRight),
+            chat: r('[data-test=desk-chat]'), heroBox: r('[data-test=tournament-hero]'), hero: r('[data-test=tournament-hero]'), champion: r('[data-test=champion-hero]'),
+            title: r('#t-name'), signup: r('[data-test=signup-cta]'), header: r('.shell-header').bottom,
+            contentRight: Math.round(Math.max(...content.map((el) => el.getBoundingClientRect().right))),
+            // Which leaf that is, so a failing bound names its element.
+            contentRightBy: (() => { const el = content.reduce((a, b) => (b.getBoundingClientRect().right > a.getBoundingClientRect().right ? b : a)); return el.tagName + '.' + String(el.className).slice(0, 80) + ' ' + (el.closest('[data-test]')?.dataset.test ?? ''); })(),
+            position: document.querySelector('[data-test=desk-chat]') ? getComputedStyle(document.querySelector('[data-test=desk-chat]')).position : null,
+            row: document.querySelector('[data-test=desk-row]') !== null,
+            overflow: document.documentElement.scrollWidth - document.documentElement.clientWidth, vh: innerHeight,
+            errors: window.__errors,
+        };
+    }
+    JS;
+
+/** The tournament page for `$user` at 375 and at 1440, measured with DESK_PLACE, screenshots named `$shot`. @return array{phone: array<string, mixed>, wide: array<string, mixed>} */
+function deskPlaces(User $user, string $url, string $shot): array
+{
+    $page = visit(BrowserLogin::url($user))->page();
+    $page->context()->addInitScript(DESK_COLLECTOR);
+    $page->setViewportSize(375, 812);
+    $page->goto(ComputeUrl::from($url));
+    BrowserWait::until($page, '() => window.Alpine && Alpine.$data(document.querySelector("[data-test=desk-chat]"))?.status !== undefined', 10_000);
+    $phone = $page->evaluate(DESK_PLACE);
+    deskShot($page, $shot.'-en-375');
+    // The sign-up box's own size on a phone: scrolled to the desk.
+    $page->evaluate('() => document.querySelector("[data-test=desk-chat]").scrollIntoView({ block: "start" })');
+    Execution::instance()->wait(0.3);
+    deskShot($page, $shot.'-en-375-desk');
+    $page->setViewportSize(1440, 900);
+    $page->evaluate('() => scrollTo(0, 0)');
+    Execution::instance()->wait(0.4);
+    $wide = $page->evaluate(DESK_PLACE);
+    deskShot($page, $shot.'-en-1440');
+    $page->evaluate('() => scrollTo(0, 600)');
+    Execution::instance()->wait(0.4);
+    $wide['scrolled'] = $page->evaluate(DESK_PLACE);
+
+    fwrite(STDERR, "\n[desk {$shot}] ".json_encode(compact('phone', 'wide'))."\n");
+
+    return compact('phone', 'wide');
+}
+
+test('during sign-up a phone opens on the tournament\'s name and the open desk stands under the sign-up box; from 1440 beside the page', function () {
     config(['esports.chat.relays' => [], 'esports.profile_relays' => []]);
     $tournament = openTournament();
     [$solo, $soloKey] = keyedPlayer();
     soloSignup($tournament, $solo, $soloKey);
 
-    $page = visit(BrowserLogin::url($solo))->page();
-    $page->context()->addInitScript(DESK_COLLECTOR);
-    $page->setViewportSize(375, 812);
-    $page->goto(ComputeUrl::from(route('tournaments.show', $tournament, false)));
-    BrowserWait::until($page, '() => window.Alpine && Alpine.$data(document.querySelector("[data-test=desk-chat]"))?.status !== undefined', 10_000);
-
-    $place = '() => { const chat = document.querySelector("[data-test=desk-chat]").getBoundingClientRect(); const hero = document.querySelector("[data-test=tournament-hero]").getBoundingClientRect(); const header = document.querySelector(".shell-header").getBoundingClientRect(); return { chatTop: Math.round(chat.top), chatBottom: Math.round(chat.bottom), chatLeft: Math.round(chat.left), heroTop: Math.round(hero.top), contentRight: (() => { const rail = document.querySelector(".chat-rail"); return Math.round(Math.max(...[...document.querySelectorAll("[data-test=tournament-show] *")].filter((el) => ! rail.contains(el) && el.children.length === 0 && el.checkVisibility() && el.getBoundingClientRect().width > 0).map((el) => el.getBoundingClientRect().right))); })(), header: Math.round(header.bottom), status: Alpine.$data(document.querySelector("[data-test=desk-chat]")).status, row: document.querySelector("[data-test=desk-row]") !== null, overflow: document.documentElement.scrollWidth - document.documentElement.clientWidth, errors: window.__errors }; }';
-    $phone = $page->evaluate($place);
-    deskShot($page, 'desk-signup-en-375');
-    $page->setViewportSize(1440, 900);
-    Execution::instance()->wait(0.4);
-    $wide = $page->evaluate($place);
-    deskShot($page, 'desk-signup-en-1440');
-
-    fwrite(STDERR, "\n[desk signup] ".json_encode(compact('phone', 'wide'))."\n");
+    ['phone' => $phone, 'wide' => $wide] = deskPlaces($solo, route('tournaments.show', $tournament, false), 'desk-signup');
 
     expect($phone['row'])->toBeFalse()
-        ->and($phone['chatTop'])->toBeGreaterThanOrEqual($phone['header'])
-        ->and($phone['chatBottom'])->toBeLessThanOrEqual($phone['heroTop'])
+        // The first screen: the tournament's name under the header, the sign-up box, then the desk.
+        ->and($phone['title']['top'])->toBeGreaterThanOrEqual($phone['header'])
+        ->and($phone['title']['bottom'])->toBeLessThanOrEqual($phone['vh'])
+        ->and($phone['chat']['top'])->toBeGreaterThan($phone['signup']['bottom'])
+        ->and($phone['chat']['top'] - $phone['signup']['bottom'])->toBeLessThanOrEqual(24)
         ->and($phone['overflow'])->toBe(0)
-        ->and($wide['chatLeft'])->toBeGreaterThanOrEqual($wide['contentRight'] + 24)
-        // Its top on the page's first line: the tournament's own hero.
-        ->and($wide['chatTop'])->toBe($wide['heroTop'])
-        ->and($wide['chatTop'])->toBeGreaterThanOrEqual($wide['header'])
+        // From 1440: a sticky column beside the content, its top on the hero's, staying there when scrolled.
+        ->and($wide['position'])->toBe('sticky')
+        ->and($wide['chat']['left'])->toBeGreaterThanOrEqual($wide['contentRight'] + 24)
+        ->and($wide['chat']['top'])->toBe($wide['hero']['top'])
+        ->and($wide['scrolled']['chat']['top'])->toBe($wide['chat']['top'])
         ->and($wide['overflow'])->toBe(0)
         ->and($phone['errors'])->toBe([])
         ->and($wide['errors'])->toBe([]);
+});
+
+test('a day after the end the open desk\'s column starts level with the champion hero', function () {
+    config(['esports.chat.relays' => [], 'esports.profile_relays' => []]);
+    $tournament = runningChess(TournamentFormat::SingleElimination, 2, TournamentResultsMode::Director);
+    playOutAsDirector($tournament);
+    $player = User::query()->findOrFail($tournament->participants()->orderBy('id')->firstOrFail()->user_id);
+
+    ['phone' => $phone, 'wide' => $wide] = deskPlaces($player, route('tournaments.show', $tournament, false), 'desk-champion');
+
+    expect($phone['chat']['top'])->toBeGreaterThanOrEqual($phone['champion']['bottom'])
+        ->and($phone['overflow'])->toBe(0)
+        // The champion's name never breaks inside a word, also with the column beside it.
+        ->and($phone['split'])->toBe(0)
+        ->and($wide['split'])->toBe(0)
+        ->and($wide['chat']['top'])->toBe($wide['champion']['top'])
+        ->and($wide['chat']['left'])->toBeGreaterThanOrEqual($wide['contentRight'] + 24)
+        ->and($wide['overflow'])->toBe(0)
+        ->and($phone['errors'])->toBe([])
+        ->and($wide['errors'])->toBe([]);
+});
+
+test('a guest and a logged-in non-member get the tournament page in full width at 1440 and 1920, no empty column on the right', function () {
+    config(['esports.chat.relays' => [], 'esports.profile_relays' => []]);
+    $tournament = runningChess(TournamentFormat::SingleElimination, 2, TournamentResultsMode::Players);
+    $url = ComputeUrl::from(route('tournaments.show', $tournament, false));
+    $measured = [];
+
+    foreach (['guest' => null, 'stranger' => User::factory()->create()] as $who => $user) {
+        $page = $user === null ? visit('/')->page() : visit(BrowserLogin::url($user))->page();
+        $page->context()->addInitScript(DESK_COLLECTOR);
+
+        foreach ([1440, 1920] as $width) {
+            $page->setViewportSize($width, 900);
+            $page->goto($url);
+            BrowserWait::until($page, '() => window.Alpine !== undefined && document.readyState === "complete"', 10_000);
+            Execution::instance()->wait(0.3);
+            $m = $measured["{$who}-{$width}"] = $page->evaluate(DESK_PLACE);
+            deskShot($page, "desk-none-{$who}-en-{$width}");
+
+            expect($m['rail'])->toBeFalse("{$who} {$width}")
+                ->and($m['chat'])->toBeNull("{$who} {$width}")
+                ->and($m['hostPadRight'])->toEqual(0, "{$who} {$width}")
+                // The tournament's hero spans the window and its content reaches the page's right padding (48 px).
+                ->and($m['heroBox']['right'])->toBe($width, "{$who} {$width}")
+                ->and($m['contentRight'])->toBe($width - 48, "{$who} {$width}")
+                ->and($m['overflow'])->toBe(0, "{$who} {$width}")
+                ->and($m['errors'])->toBe([], "{$who} {$width}");
+        }
+    }
+
+    fwrite(STDERR, "\n[desk none] ".json_encode(array_map(fn (array $m): array => array_intersect_key($m, array_flip(['heroBox', 'contentRight', 'hostPadRight', 'rail'])), $measured))."\n");
 });
