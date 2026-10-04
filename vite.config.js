@@ -19,6 +19,7 @@ export default defineConfig({
                 'resources/js/liveChat.js',
                 'resources/js/gameChannel.js',
                 'resources/js/stacker/page.js',
+                'resources/js/tournamentTv.js',
             ],
             refresh: true,
             fonts: [

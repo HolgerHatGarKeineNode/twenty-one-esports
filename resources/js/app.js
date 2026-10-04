@@ -36,7 +36,7 @@ import './tournamentNow.js';
 import './deskButton.js';
 import './championMoment.js';
 import './leagueTime.js';
-import './tournamentTv.js';
+// The tournament TV's script (tournamentTv.js) loads only on the TV (layouts/tv), as its own entry.
 // Comments, likes and RSVPs on Nostr (P48): tournament, game and match pages.
 import './nostrComments.js';
 import { dropAnswersForDetachedComponents } from './livewireDetached.js';

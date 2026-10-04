@@ -36,7 +36,7 @@
     <div x-show="showChip" x-cloak data-test="picker-chip"
          class="flex h-11 min-w-0 items-center gap-2 rounded-md bg-ground pr-1 pl-2.5 text-[13px] shadow-ring">
         <template x-if="chosen">
-            <img x-bind:src="chosen.avatar" alt="" width="24" height="24" referrerpolicy="no-referrer"
+            <img x-bind:src="chosen.avatar" alt="" width="24" height="24" loading="lazy" decoding="async" referrerpolicy="no-referrer"
                  x-on:error="if ($el.src !== chosen.fallback) $el.src = chosen.fallback"
                  class="block size-6 shrink-0 rounded-full bg-raised object-cover">
         </template>

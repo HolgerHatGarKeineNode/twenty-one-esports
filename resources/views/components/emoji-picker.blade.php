@@ -20,7 +20,7 @@
             <template x-for="e in recent.filter((x) => x.custom)" :key="':' + e.shortcode">
                 <button type="button" x-on:click="{{ $pick }}" :aria-label="pickLabel(e)" :title="':' + e.shortcode + ':'"
                         class="flex size-9 shrink-0 cursor-pointer items-center justify-center rounded-control hover:bg-row-hover">
-                    <img :src="e.url" :alt="':' + e.shortcode + ':'" referrerpolicy="no-referrer" loading="lazy" class="size-6 object-contain">
+                    <img :src="e.url" :alt="':' + e.shortcode + ':'" width="24" height="24" referrerpolicy="no-referrer" loading="lazy" class="size-6 object-contain">
                 </button>
             </template>
             <template x-for="e in recent.filter((x) => !x.custom)" :key="e.u">
@@ -55,7 +55,7 @@
         <template x-for="e in customResults" :key="':' + e.shortcode">
             <button type="button" x-on:click="{{ $pick }}" :aria-label="pickLabel(e)" :title="':' + e.shortcode + ':'" data-custom
                     class="flex aspect-square cursor-pointer items-center justify-center rounded-control hover:bg-row-hover">
-                <img :src="e.url" :alt="':' + e.shortcode + ':'" referrerpolicy="no-referrer" loading="lazy" class="size-6 object-contain">
+                <img :src="e.url" :alt="':' + e.shortcode + ':'" width="24" height="24" referrerpolicy="no-referrer" loading="lazy" class="size-6 object-contain">
             </button>
         </template>
         <template x-for="e in standardResults" :key="e.u">
