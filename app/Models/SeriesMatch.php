@@ -416,7 +416,7 @@ class SeriesMatch extends Model
      * Null when none runs: no league deadlines (a ladder series, a director
      * tournament), a decided series, or one waiting for an admin.
      *
-     * @return array{kind: 'report'|'noshow'|'response', at: CarbonInterface, side: 'challenger'|'challenged'|null}|null
+     * @return array{kind: 'report'|'noshow'|'response'|'checkin_noshow'|'checkin_double', at: CarbonInterface, side: 'challenger'|'challenged'|null}|null
      */
     public function nextDeadline(): ?array
     {
@@ -440,7 +440,7 @@ class SeriesMatch extends Model
             $in = array_values(array_filter(self::SIDES, fn (string $side): bool => $this->readyAt($side) !== null));
 
             if (count($in) === 1 && $check->isFuture()) {
-                return ['kind' => 'checkin_noshow', 'at' => $check, 'side' => self::otherSide($in[0])];
+                return ['kind' => 'checkin_noshow', 'at' => $check, 'side' => $in[0] === 'challenger' ? 'challenged' : 'challenger'];
             }
 
             $double = $check->copy()->addMinutes((int) $this->responseMinutes());
