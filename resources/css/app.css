@@ -2234,11 +2234,13 @@ select:focus[data-flux-control] {
 /*
  * The chat of a match room (2026-10-02): a fixed height that fits between the sticky header and whatever
  * floats at the bottom (tab bar, dock, score bar), so with the box in view its field is never covered; the
- * messages scroll inside (resources/js/roomChat.js).
+ * messages scroll inside (resources/js/roomChat.js). The height is exactly the band the root's scroll-padding
+ * leaves (--spacing-below-shell above, tab bar plus dock plus 1rem below). No scroll margin of its own: on
+ * top of that padding it reserved the bars twice, and scrolled into view from below on a phone with the
+ * score bar its top ran 109 px under the sticky header (measured 2026-10-04, tests/Browser/ChatAndDailyTest.php).
  */
 .room-chat {
-    height: clamp(20rem, calc(100svh - var(--shell-h) - var(--tabbar-h) - var(--dock-h) - 2.5rem), 35rem);
-    scroll-margin-bottom: calc(var(--tabbar-h) + var(--dock-h) + 1rem);
+    height: clamp(20rem, calc(100svh - var(--spacing-below-shell) - var(--tabbar-h) - var(--dock-h) - 1rem), 35rem);
 }
 
 /*

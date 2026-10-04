@@ -579,3 +579,43 @@ test('an opponent profile read from the relay shows on the board and in the play
         @unlink($seed);
     }
 });
+
+test('on a phone the room chat scrolled into view sits wholly between the sticky header and the tab bar plus the score bar', function () {
+    $match = SeriesMatch::factory()->accepted()->create([
+        'challenger_lineup_id' => Lineup::factory()->mode('2v2')->ready()->create()->id,
+        'challenged_lineup_id' => Lineup::factory()->mode('2v2')->ready()->create()->id,
+    ]);
+    $captain = $match->challengerLineup->clan->owner;
+    TestSigner::forBrowser($captain);
+
+    $page = playerPage($captain, route('matches.room', $match, false));
+    $page->setViewportSize(375, 812);
+    BrowserWait::until($page, '() => document.querySelector("[data-room-bar]")?.checkVisibility() === true', 5_000);
+
+    // Scrolled to from above and from below, as the casual steps' card buttons and a long room bring it into view.
+    $measured = [];
+
+    foreach (['above' => '0', 'below' => 'document.documentElement.scrollHeight'] as $from => $scroll) {
+        $measured[$from] = $page->evaluate('() => {
+            window.scrollTo(0, '.$scroll.');
+            const chat = document.querySelector("[data-test=room-chat]");
+            chat.scrollIntoView({ block: "nearest" });
+            const box = chat.getBoundingClientRect();
+            const floors = [...document.querySelectorAll("body *")].filter((el) => {
+                const style = getComputedStyle(el);
+                const r = el.getBoundingClientRect();
+                return style.position === "fixed" && r.height > 0 && r.height < 200 && r.top > innerHeight / 2 && r.width >= innerWidth * 0.9;
+            }).map((el) => Math.round(el.getBoundingClientRect().top));
+            return { top: Math.round(box.top), bottom: Math.round(box.bottom), height: Math.round(box.height), header: Math.round(document.querySelector(".shell-header").getBoundingClientRect().bottom), floor: Math.min(innerHeight, ...floors) };
+        }');
+    }
+
+    fwrite(STDERR, "\n[room-chat] ".json_encode($measured)."\n");
+
+    foreach ($measured as $from => $row) {
+        expect($row['top'])->toBeGreaterThanOrEqual($row['header'], $from)
+            ->and($row['bottom'])->toBeLessThanOrEqual($row['floor'], $from);
+    }
+
+    expect($page->evaluate('() => window.__errors'))->toBe([]);
+});
