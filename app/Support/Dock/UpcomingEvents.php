@@ -12,6 +12,7 @@ use App\Models\TournamentSignup;
 use App\Models\User;
 use App\Support\GameNames;
 use App\Support\PreSeason;
+use App\Support\RequestMemo;
 use App\Support\Series\SeriesPresenter;
 use Carbon\CarbonInterface;
 use Illuminate\Support\Collection;
@@ -71,22 +72,32 @@ final class UpcomingEvents
      */
     public function tournaments(User $user, bool $todayOnly = false): Collection
     {
-        $lineups = OpenMatches::lineupsOf($user);
         $nowMs = (int) now()->getTimestampMs();
 
-        $signups = TournamentSignup::query()->active()
-            ->where(fn ($query) => $query->whereJsonContains('members', $user->id)->orWhereIn('lineup_id', $lineups))
+        return $this->signups($user)
+            ->filter(fn (TournamentSignup $signup): bool => ! $todayOnly || self::isToday($signup->tournament))
+            ->map(fn (TournamentSignup $signup): DockItem => $this->item($signup, $user, $nowMs))
+            ->values();
+    }
+
+    /**
+     * The player's active sign-ups they are still in, once per request: the
+     * dock asks for today's, the account menu and home for all (P2).
+     *
+     * @return Collection<int, TournamentSignup>
+     */
+    private function signups(User $user): Collection
+    {
+        return RequestMemo::remember('upcoming-signups.'.$user->id, fn (): Collection => TournamentSignup::query()->active()
+            ->where(fn ($query) => $query->whereJsonContains('members', $user->id)->orWhereIn('lineup_id', OpenMatches::lineupsOf($user)))
             ->whereHas('tournament', fn ($query) => $query->whereIn('status', self::ACTIVE)->exceptLeagueWeeks())
             ->with(['tournament', 'lineup.clan', 'lineup.seats'])
             ->latest('id')
             ->limit(OpenMatches::KIND_LIMIT)
             ->get()
-            ->unique('tournament_id');
-
-        return $signups
-            ->filter(fn (TournamentSignup $signup): bool => (! $todayOnly || self::isToday($signup->tournament)) && ! $this->isOut($signup))
-            ->map(fn (TournamentSignup $signup): DockItem => $this->item($signup, $user, $nowMs))
-            ->values();
+            ->unique('tournament_id')
+            ->reject(fn (TournamentSignup $signup): bool => $this->isOut($signup))
+            ->values());
     }
 
     /** Running, past its start, or starting later today in Berlin. */

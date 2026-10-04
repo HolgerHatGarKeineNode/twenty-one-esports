@@ -136,7 +136,7 @@ test('a failing cache store does not take the pages down: the footer counts dire
 | The budgets are the numbers measured on 2026-10-04 and the assertion is
 | `<=`: a route that costs more turns red, a route that got cheaper stays
 | green and its budget is lowered by hand (P2 does that, with the saving
-| named). Measured on SQLite, like the whole suite: the count of statements,
+| named: docs/plans/…-performance/p2-ergebnis.md, one step per commit). Measured on SQLite, like the whole suite: the count of statements,
 | not their cost on PostgreSQL.
 |
 | QUERY_BUDGET_REPORT=<file> writes the measured table there (markdown).
@@ -199,18 +199,18 @@ function budgetLoad(string $uri): array
  * @var array<string, array{0: int|null, 1: int}>
  */
 const PAGE_BUDGETS = [
-    'rules' => [5, 52],
-    'home' => [34, 114],
-    'play' => [3, 60],
-    'tournaments.show' => [30, 122],
-    'matches.room' => [null, 64],
-    'live' => [14, 62],
-    'clans.index' => [8, 59],
-    'mining' => [17, 64],
-    'games.index' => [5, 52],
-    'matches.index' => [38, 85],
-    'scores.show' => [7, 54],
-    'dashboard' => [null, 102],
+    'rules' => [5, 36],
+    'home' => [34, 76],
+    'play' => [3, 40],
+    'tournaments.show' => [30, 106],
+    'matches.room' => [null, 55],
+    'live' => [14, 46],
+    'clans.index' => [8, 43],
+    'mining' => [17, 48],
+    'games.index' => [5, 36],
+    'matches.index' => [38, 69],
+    'scores.show' => [7, 38],
+    'dashboard' => [null, 66],
 ];
 
 test('the hot routes stay within their total query budget, as a guest and as the active player, and load without a Livewire roundtrip', function () {

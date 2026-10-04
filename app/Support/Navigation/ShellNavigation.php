@@ -17,6 +17,7 @@ use App\Models\User;
 use App\Support\Dock\UpcomingEvents;
 use App\Support\GameNames;
 use App\Support\Matches\MempoolStrip;
+use App\Support\RequestMemo;
 use App\Support\SeasonChain\Seasons;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Cache;
@@ -78,11 +79,16 @@ final class ShellNavigation
         $this->isOrganizer = ! $this->isAdmin && (bool) $user?->isTournamentOrganizer();
     }
 
+    /**
+     * The navigation of this request: the header, home's game list and /play
+     * share one instance, so its gate checks and lists are worked out once (P2).
+     */
     public static function current(): self
     {
         $user = auth()->user();
+        $user = $user instanceof User ? $user : null;
 
-        return new self($user instanceof User ? $user : null, request(), app(GameRegistry::class));
+        return RequestMemo::remember('shell-navigation.'.($user->id ?? 'guest'), fn (): self => new self($user, request(), app(GameRegistry::class)));
     }
 
     /**

@@ -17,6 +17,7 @@ use App\Support\Engagement\ClanHashrate;
 use App\Support\PageMeta;
 use App\Support\Prizes\WalletPrizePool;
 use App\Support\Rating\RatingSettings;
+use App\Support\RequestMemo;
 use App\Support\SeasonChain\AnchoredTrustFacts;
 use App\Support\SeasonChain\TrustFacts;
 use App\Support\Settings\LeagueSettings;
@@ -32,6 +33,7 @@ use Illuminate\Cache\RateLimiting\Limit;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Foundation\Application;
 use Illuminate\Foundation\DevCommands;
+use Illuminate\Foundation\Http\Events\RequestHandled;
 use Illuminate\Http\Request;
 use Illuminate\Queue\Events\JobProcessing;
 use Illuminate\Support\Facades\Date;
@@ -171,6 +173,9 @@ class AppServiceProvider extends ServiceProvider
             RatingSettings::forget();
             LeagueSettings::forget();
         });
+
+        // A request's memos (RequestMemo) end with its response.
+        Event::listen(RequestHandled::class, fn (RequestHandled $event) => RequestMemo::close($event->request));
 
         // `composer dev` also runs the scheduler: the chess flag sweep
         // (routes/console.php) is part of how a clock runs out.

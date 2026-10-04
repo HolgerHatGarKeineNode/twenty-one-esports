@@ -24,6 +24,7 @@ use App\Models\SeriesInvite;
 use App\Models\SeriesMatch;
 use App\Models\User;
 use App\Support\GameNames;
+use App\Support\RequestMemo;
 use App\Support\Series\CasualInvites;
 use App\Support\Series\SeriesPresenter;
 use Illuminate\Database\Eloquent\Builder;
@@ -693,11 +694,12 @@ final class OpenMatches
      */
     public static function lineupsOf(User $user): Collection
     {
-        return LineupSeat::query()->where('user_id', $user->id)->whereNotNull('accepted_at')->pluck('lineup_id')
+        // Asked by the shell, the dock and the page body (4-5 times a page): once per request (P2).
+        return RequestMemo::remember('lineups-of.'.$user->id, fn (): Collection => LineupSeat::query()->where('user_id', $user->id)->whereNotNull('accepted_at')->pluck('lineup_id')
             ->concat(Lineup::query()->whereIn('clan_id', Clan::query()->where('owner_id', $user->id)->select('id'))->pluck('id'))
             ->map(intval(...))
             ->unique()
-            ->values();
+            ->values());
     }
 
     /**
@@ -721,29 +723,46 @@ final class OpenMatches
      */
     private function series(User $user, ?int $exclude, int $nowMs): array
     {
-        $lineups = self::lineupsOf($user);
-
         $user->loadMissing('clanMember');
 
-        $matches = self::involving(SeriesMatch::query(), $user, $lineups)
-            ->whereIn('status', [SeriesStatus::Open, SeriesStatus::Accepted, SeriesStatus::Reported, SeriesStatus::Disputed])
-            ->when($exclude !== null, fn ($query) => $query->where('number', '!=', $exclude))
-            ->with(['challengerLineup.seats', 'challengerLineup.clan', 'challengedLineup.seats', 'challengedLineup.clan', 'latestReport'])
-            ->latest('id')
-            ->limit(self::KIND_LIMIT)
-            ->get();
-
-        // participantSideOf() reads this player's seat, its user and their
-        // clan: those seats get the player loaded above (clanMember included)
-        // instead of two lazy queries per series. The other seats' users are
-        // never read here, so they are not loaded at all.
-        foreach ($matches as $match) {
-            foreach ([$match->challengerLineup, $match->challengedLineup] as $lineup) {
-                $lineup?->seats->where('user_id', $user->id)->each(fn (LineupSeat $seat) => $seat->setRelation('user', $user));
-            }
-        }
+        // The dock and UpcomingEvents (the shell's account menu, home's card) both read this list: one query per
+        // request (P2). One row more than the cap, so dropping the series on screen still leaves KIND_LIMIT rows,
+        // the same rows a `number != $exclude` in the query gave.
+        $matches = $this->openSeries($user)
+            ->when($exclude !== null, fn (Collection $matches) => $matches->reject(fn (SeriesMatch $match): bool => (int) $match->number === $exclude))
+            ->take(self::KIND_LIMIT)
+            ->values();
 
         return array_values($matches->map(fn (SeriesMatch $match) => $this->seriesItem($match, $user, $nowMs))->filter()->values()->all());
+    }
+
+    /**
+     * The player's undecided series, newest first, KIND_LIMIT + 1 of them, once per request.
+     *
+     * @return Collection<int, SeriesMatch>
+     */
+    private function openSeries(User $user): Collection
+    {
+        return RequestMemo::remember('open-series.'.$user->id, function () use ($user): Collection {
+            $matches = self::involving(SeriesMatch::query(), $user, self::lineupsOf($user))
+                ->whereIn('status', [SeriesStatus::Open, SeriesStatus::Accepted, SeriesStatus::Reported, SeriesStatus::Disputed])
+                ->with(['challengerLineup.seats', 'challengerLineup.clan', 'challengedLineup.seats', 'challengedLineup.clan', 'latestReport'])
+                ->latest('id')
+                ->limit(self::KIND_LIMIT + 1)
+                ->get();
+
+            // participantSideOf() reads this player's seat, its user and their
+            // clan: those seats get the player loaded above (clanMember included)
+            // instead of two lazy queries per series. The other seats' users are
+            // never read here, so they are not loaded at all.
+            foreach ($matches as $match) {
+                foreach ([$match->challengerLineup, $match->challengedLineup] as $lineup) {
+                    $lineup?->seats->where('user_id', $user->id)->each(fn (LineupSeat $seat) => $seat->setRelation('user', $user));
+                }
+            }
+
+            return $matches;
+        });
     }
 
     private function seriesItem(SeriesMatch $match, User $user, int $nowMs): ?DockItem
