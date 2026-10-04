@@ -206,6 +206,8 @@ test('the automatic reminders go out at each point before the decision, exactly 
     [$series] = waitsSeries($tournament);
     [$a, $b] = waitsPlayers($series);
     $tick = fn (): int => app(TournamentScheduler::class)->tick()['reminded'];
+    // Both sides checked in: the lobby check-in rules (SeriesService::autoNoShow()) stay out of this test.
+    SeriesMatch::query()->update(['ready_at_challenger' => now(), 'ready_at_challenged' => now()]);
 
     // Report due 2 h after the start. 31 minutes before it: nothing yet.
     $this->travel(89)->minutes();

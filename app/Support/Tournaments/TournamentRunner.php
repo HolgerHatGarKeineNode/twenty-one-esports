@@ -674,6 +674,30 @@ final class TournamentRunner
     }
 
     /**
+     * Neither side checked in to the lobby by the check-in no-show time plus the response time, and nothing is
+     * entered (user, 2026-10-04: "beide nicht eingecheckt = Doppel-No-Show"): the double no-show rule decides the
+     * match, the series ends like a withdrawn side's. False when anything changed meanwhile.
+     */
+    public function decideNobodyCheckedIn(SeriesMatch $series): bool
+    {
+        $series = $series->fresh() ?? $series;
+        $match = TournamentMatch::query()->with(['tournament', 'slots.participant', 'round.stage', 'seriesMatch'])->find($series->tournament_match_id);
+
+        if ($match === null || $match->result !== null || $match->isReplaced($series->id) || $match->tournament->isCasualCup() || $match->tournament->isDirectorMode()
+            || $series->status !== SeriesStatus::Accepted || $series->noshow_reported_at !== null || $series->ready_at_challenger !== null || $series->ready_at_challenged !== null
+            || $series->currentGames() !== [] || count($match->slots) !== 2) {
+            return false;
+        }
+
+        $result = $this->doubleNoShow($match) + ['number' => $series->number];
+        $this->forfeitSeries($series, is_int($result['winner'] ?? null) ? $result['winner'] : null, 'Neither side checked in to the lobby in time.');
+        $this->store($match, $result);
+        $this->sync($match->tournament);
+
+        return true;
+    }
+
+    /**
      * An accepted tournament series of a withdrawn side, decided by the league
      * as a forfeit: unrated like a director forfeit (no rating change, so the
      * attestation carries `forfeit` and no `elo`), void when both withdrew.

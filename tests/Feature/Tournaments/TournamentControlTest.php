@@ -404,6 +404,8 @@ test('while paused the tick applies no deadline, and on resume every deadline mo
     $admin = ctlAdmin();
     $series = ctlSeries(ctlMatch($tournament, 1));
     $due = $series->reportDueAt();
+    // Both sides checked in: the lobby check-in rules (SeriesService::autoNoShow()) stay out of this test.
+    SeriesMatch::query()->update(['ready_at_challenger' => now(), 'ready_at_challenged' => now()]);
 
     expect($due?->equalTo(now()->addHours(2)))->toBeTrue();
 

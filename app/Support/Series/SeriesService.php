@@ -791,6 +791,14 @@ final class SeriesService
 
         $in = array_values(array_filter(SeriesMatch::SIDES, fn (string $side): bool => $match->readyAt($side) !== null));
 
+        // Nobody checked in: after the check-in no-show time plus the response time (a side may still check in, then
+        // the other one is the no-show), the double no-show rule decides the match (TournamentRunner).
+        if ($in === []) {
+            $due = $match->autoNoshowAt()?->copy()->addMinutes((int) $match->responseMinutes());
+
+            return $due !== null && ! $due->isFuture() && app(TournamentRunner::class)->decideNobodyCheckedIn($match);
+        }
+
         if (count($in) !== 1) {
             return false;
         }

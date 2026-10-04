@@ -64,8 +64,8 @@ final class TournamentScheduler
         $done = ['cups' => $cups, ...$this->draws->advanceDue()];
 
         // Lobby check-in: one side in, the other not after `auto_noshow_minutes` = the league reports the no-show.
-        $done['noshows'] = $this->each($this->timed()->where('status', SeriesStatus::Accepted)->whereNull('noshow_reported_at')
-            ->where(fn (Builder $query) => $query->whereNotNull('ready_at_challenger')->orWhereNotNull('ready_at_challenged')),
+        // Nobody in after that plus the response time = double no-show.
+        $done['noshows'] = $this->each($this->timed()->where('status', SeriesStatus::Accepted)->whereNull('noshow_reported_at'),
             fn (SeriesMatch $match): bool => $this->series->autoNoShow($match));
         $done['forfeited'] = $this->each($this->timed()->where('status', SeriesStatus::Accepted)->whereNotNull('noshow_reported_at'),
             fn (SeriesMatch $match): bool => $this->series->forfeitNoShow($match));

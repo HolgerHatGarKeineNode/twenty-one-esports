@@ -102,6 +102,8 @@ test('an online series runs on the round clock: no-show 15, result 15 + longest 
     // RL 1v1, one final (Bo5): 15 + (5 + 5 × 8 × 1.25) + 5 = 75 minutes after the start.
     $tournament = honestTournament(TournamentFormat::SingleElimination, 2);
     $series = honestSeries(honestMatch($tournament, 'm1-1'));
+    // Both sides checked in: the lobby check-in rules (SeriesService::autoNoShow()) stay out of this test.
+    SeriesMatch::query()->update(['ready_at_challenger' => now(), 'ready_at_challenged' => now()]);
 
     expect($series->best_of)->toBe(5)
         ->and($series->deadlines)->toBe(['noshow_minutes' => 15, 'report_minutes' => 75, 'response_minutes' => 10])
