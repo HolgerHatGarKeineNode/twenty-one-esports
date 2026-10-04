@@ -3,6 +3,7 @@
 use App\Enums\ChessGameStatus;
 use App\Enums\TournamentFormat;
 use App\Enums\TournamentStatus;
+use App\Models\Admin;
 use App\Models\ChessGame;
 use App\Models\NostrEvent;
 use App\Models\SeriesMatch;
@@ -16,6 +17,7 @@ use App\Support\Tournaments\CasualCups;
 use App\Support\Tournaments\Engine\Standings;
 use App\Support\Tournaments\TournamentChampion;
 use App\Support\Tournaments\TournamentRunner;
+use App\Support\TwentyOne\Stream\TournamentLiveSlides;
 use Carbon\CarbonImmutable;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Queue;
@@ -242,6 +244,24 @@ test('a Rocket League duel is one best-of-3 series the league starts at the even
     cupTick();
 
     expect(SeriesMatch::query()->sole()->best_of)->toBe(3);
+});
+
+test('a duel is called "Duel" on the stream\'s live slide and the director desk, a lobby tournament "One lobby match" in the next-tournament teaser', function () {
+    $cup = runningCup(2, TournamentFormat::RoundRobin, ['iterations' => 3, 'rankBy' => 'points']);
+    $admin = User::factory()->create();
+    Admin::query()->create(['pubkey' => $admin->pubkey]);
+    $live = collect(app(TournamentLiveSlides::class)->snapshots())->firstWhere('id', $cup->id);
+
+    expect(CasualCups::isDuel($cup))->toBeTrue()
+        ->and($live['format'])->toBe('Duel');
+    $this->actingAs($admin)->get(route('tournaments.director', $cup))->assertOk()->assertSee('Duel, 2 players')->assertDontSee('Round Robin, 2 players');
+
+    // The teaser lists special tournaments only (no cup): its lobby tournament reads as the lobby match, as the tournaments index does.
+    Tournament::factory()->create([
+        'name' => 'Lobby Night', 'game' => 'age-of-empires-2', 'mode' => '1v1', 'format' => TournamentFormat::FreeForAll,
+        'status' => TournamentStatus::Signup, 'signup_closes_at' => now()->addDay(), 'cup_series' => null,
+    ]);
+    $this->blade('<x-next-tournament />')->assertSee('One lobby match')->assertDontSee('Free for All');
 });
 
 /* ---------- The table ----------------------------------------------------------------------------------------- */

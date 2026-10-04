@@ -187,7 +187,7 @@ new #[Layout('layouts::app', ['section' => 'tournaments'])] class extends Compon
     $zone = (string) (auth()->user()->timezone ?? config('esports.preseason.display_timezone'));
     $view = new TournamentView($tournament);
     $canManage = Gate::allows('manage-tournament', $tournament);
-    $chip = $tournament->format->label().', '.trans_choice(':count player|:count players', $tournament->participants()->count()).', '.($tournament->on_site ? trans_choice('on site with :count board|on site with :count boards', (int) $tournament->stations) : __('Online'));
+    $chip = \App\Support\Tournaments\Lobbies::formatLabel($tournament).', '.trans_choice(':count player|:count players', $tournament->participants()->count()).', '.($tournament->on_site ? trans_choice('on site with :count board|on site with :count boards', (int) $tournament->stations) : __('Online'));
 @endphp
 
 <div class="flex flex-col gap-5 px-4 pt-6 pb-10 lg:px-12" data-test="director-desk">

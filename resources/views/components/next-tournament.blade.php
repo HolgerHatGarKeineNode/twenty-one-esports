@@ -11,6 +11,7 @@
     use App\Models\Tournament;
     use App\Support\GameNames;
     use App\Support\PreSeason;
+    use App\Support\Tournaments\Lobbies;
 
     $next = Tournament::query()->special()->where('status', TournamentStatus::Signup)->where('signup_closes_at', '>', now())
         ->when($game !== null, fn ($query) => $query->where('game', $game))
@@ -23,7 +24,7 @@
         <span class="flex items-baseline justify-between gap-3"><h2 id="{{ $headingId }}" class="m-0 text-[15px] font-bold">{{ __('Next tournament') }}</h2><a href="{{ route('tournaments.index') }}" class="inline-flex min-h-11 items-center text-xs lg:min-h-6">{{ __('All tournaments') }}</a></span>
         <a href="{{ route('tournaments.show', $next) }}" class="flex flex-col gap-1 text-ink hover:text-ink">
             <b class="font-display text-lg leading-[1.25] break-words">{{ $next->name }}</b>
-            <span class="text-xs text-ink-2">{{ GameNames::full($next->game, $next->mode) }} · {{ $next->format->label() }}</span>
+            <span class="text-xs text-ink-2">{{ GameNames::full($next->game, $next->mode) }} · {{ Lobbies::formatLabel($next) }}</span>
         </a>
         <p class="m-0 text-[13px] text-ink-2">{{ __('Sign-up closes :when', ['when' => $next->signup_closes_at->copy()->timezone($zone)->locale(app()->getLocale())->isoFormat('ddd HH:mm')]) }}</p>
         <x-button variant="quiet" :href="auth()->check() ? route('tournaments.signup', $next) : route('tournaments.show', $next)" class="self-start" data-test="next-tournament-register">{{ auth()->check() ? __('Register') : __('See the tournament') }}</x-button>

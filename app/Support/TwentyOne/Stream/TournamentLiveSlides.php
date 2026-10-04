@@ -316,7 +316,7 @@ class TournamentLiveSlides
             'game' => GameTitle::of($tournament->game),
             // A lobby tournament (P10) has no mode to name (no "1v1"), and its format is the lobby match.
             'mode' => Lobbies::isLobby($tournament) ? '' : ($this->games->mode($tournament->game, $tournament->mode)->name ?? $tournament->mode),
-            'format' => Lobbies::isLobby($tournament) ? 'One lobby match' : $tournament->format->label(),
+            'format' => Lobbies::isLobby($tournament) ? 'One lobby match' : CasualCups::formatLabel($tournament),
             'teamSize' => $tournament->teamSize(),
             'rated' => $tournament->openLadder() !== null,
             'where' => $tournament->on_site ? 'On site' : 'Online',
