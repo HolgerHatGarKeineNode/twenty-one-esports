@@ -83,6 +83,15 @@ final class Ledger
     }
 
     /**
+     * A prize the player passed on (PayoutStatus::Forwarded): its amount goes from the tournament's pot to the reserve,
+     * which funds the next pots; once per payout.
+     */
+    public function payoutForwarded(TournamentPayout $payout): void
+    {
+        $this->book(self::TOURNAMENT_PREFIX.$payout->tournament_id, self::RESERVE, $payout->amount_sats, 'tournament_payout_forwarded', ['tournament_payout_id' => $payout->id]);
+    }
+
+    /**
      * An admin releases what a cancelled tournament's pot, or a pot switched
      * off, still holds to the reserve (user, 2026-10-03): the whole balance
      * of its account, once per tournament.

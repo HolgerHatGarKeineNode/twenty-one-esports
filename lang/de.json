@@ -6725,5 +6725,13 @@
     "The pot includes :outside sats sponsors paid outside the wallet. The approval books them into the pot; the league wallet has to hold them.": "Der Topf enthält :outside Sats, die Sponsoren außerhalb der Wallet bezahlt haben. Die Freigabe bucht sie in den Topf; die Liga-Wallet muss sie halten.",
     ":tournament moved to :time": ":tournament wurde auf :time verschoben",
     "Too few players signed up for the planned time, so the cup moved. Your sign-up was reset: sign up again if you can play then.": "Für den geplanten Termin haben sich zu wenige angemeldet, deshalb wurde der Cup verschoben. Deine Anmeldung wurde zurückgesetzt: Melde dich neu an, wenn du dann spielen kannst.",
-    "Paid in anonymously": "Anonym eingezahlt"
+    "Paid in anonymously": "Anonym eingezahlt",
+    "Passed on to the next pot": "An den nächsten Topf weitergereicht",
+    "Payment of :sats sats to :name started. The status updates here by itself.": "Zahlung von :sats Sats an :name gestartet. Der Status aktualisiert sich hier von selbst.",
+    "This prize can no longer be passed on.": "Dieser Preis kann nicht mehr weitergereicht werden.",
+    ":name passed :sats sats on to the next pot.": ":name hat :sats Sats an den nächsten Topf weitergereicht.",
+    "Starting…": "Startet…",
+    ":name passes :sats sats on to the next pot? They are not paid out, the tournament page shows it.": ":name reicht :sats Sats an den nächsten Topf weiter? Sie werden nicht ausgezahlt, die Turnierseite zeigt es an.",
+    "Pass on": "Weiterreichen",
+    ":name passed the prize on: it goes into the next pot.": ":name hat den Preis weitergereicht: Er geht in den nächsten Topf."
 }

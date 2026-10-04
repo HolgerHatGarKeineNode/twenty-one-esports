@@ -20,6 +20,9 @@ enum PayoutStatus: string
     case Paid = 'paid';
     case Failed = 'failed';
 
+    /** The player passed the prize on to the league reserve for the next pot (user, 2026-10-04); never paid. */
+    case Forwarded = 'forwarded';
+
     public function label(): string
     {
         return match ($this) {
@@ -28,6 +31,7 @@ enum PayoutStatus: string
             self::Paying => __('Paying'),
             self::Paid => __('Paid'),
             self::Failed => __('Failed'),
+            self::Forwarded => __('Passed on to the next pot'),
         };
     }
 

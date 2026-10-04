@@ -406,7 +406,10 @@ new class extends Component {
                                 <td class="py-2 pr-3 [overflow-wrap:anywhere]">{{ $payout->name }}</td>
                                 <td class="py-2 pr-3 text-right whitespace-nowrap">{{ $sats($payout->amount_sats) }} {{ __('sats') }}</td>
                                 <td class="py-2">
-                                    <span @class(['inline-flex h-6 items-center rounded-xs px-2 text-xs font-bold', 'bg-win-tint text-win' => $payout->status === PayoutStatus::Paid, 'bg-btc-chip text-btc-hi' => $payout->status !== PayoutStatus::Paid])>{{ $payout->status->label() }}</span>
+                                    <span @class(['inline-flex h-6 items-center rounded-xs px-2 text-xs font-bold', 'bg-win-tint text-win' => $payout->status === PayoutStatus::Paid, 'bg-raised text-ink-2' => $payout->status === PayoutStatus::Forwarded, 'bg-btc-chip text-btc-hi' => ! in_array($payout->status, [PayoutStatus::Paid, PayoutStatus::Forwarded], true)])>{{ $payout->status->label() }}</span>
+                                    @if ($payout->status === PayoutStatus::Forwarded)
+                                        <span class="mt-1 block text-xs text-ink-2" data-test="payout-forwarded">{{ __(':name passed the prize on: it goes into the next pot.', ['name' => $payout->name]) }}</span>
+                                    @endif
                                     @if ($payout->status === PayoutStatus::Open && $payout->reasonText())
                                         <span class="mt-1 block text-xs text-ink-2">{{ $payout->reasonText() }}</span>
                                     @endif

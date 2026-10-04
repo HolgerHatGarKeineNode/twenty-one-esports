@@ -5,6 +5,7 @@ use App\Enums\TournamentStatus;
 use App\Jobs\PayTournamentPayout;
 use App\Models\Tournament;
 use App\Models\TournamentPayout;
+use Illuminate\Support\Facades\DB;
 use App\Support\PreSeason;
 use App\Support\Payouts\PayoutApproval;
 use App\Support\Payouts\PayoutPlan;
@@ -51,6 +52,9 @@ new #[Title('Payouts')] #[Layout('layouts::app', ['section' => 'admin'])] class 
     public ?int $tournamentId = null;
 
     public string $notice = '';
+
+    /** A payment was started here: the panel polls until nothing is paying any more. */
+    public bool $watching = false;
 
     /** The league wallet's balance at the last "Read balance now"; null = not read on this page. */
     #[Locked]
@@ -139,8 +143,37 @@ new #[Title('Payouts')] #[Layout('layouts::app', ['section' => 'admin'])] class 
         // An open payout is never paid: its address needs an approval first (approveAddress).
         if ($payout->status->isPayable()) {
             PayTournamentPayout::dispatch($payout->id);
+            // Feedback at once (user, 2026-10-04: "es passiert nichts … da braucht es Status anzeigen"): the payment runs
+            // in the queue, the list refreshes itself until it is settled.
+            $this->notice = __('Payment of :sats sats to :name started. The status updates here by itself.', ['sats' => PreSeason::formatSats($payout->amount_sats), 'name' => $payout->name]);
+            $this->watching = true;
         }
 
+        unset($this->payouts);
+    }
+
+    /**
+     * The player passes the prize on to the reserve for the next pot (user, 2026-10-04: a director who played for fun);
+     * it stays in the split, is never paid, and the tournament page says so.
+     */
+    public function forward(int $payoutId): void
+    {
+        Gate::authorize('admin');
+
+        $forwarded = DB::transaction(function () use ($payoutId): ?TournamentPayout {
+            $payout = TournamentPayout::query()->where('tournament_id', $this->tournamentId)->lockForUpdate()->findOrFail($payoutId);
+
+            if (! in_array($payout->status, [PayoutStatus::Open, PayoutStatus::Pending, PayoutStatus::Failed], true)) {
+                return null;
+            }
+
+            $payout->forceFill(['status' => PayoutStatus::Forwarded, 'reason' => null])->save();
+            app(\App\Support\Wallet\Ledger::class)->payoutForwarded($payout);
+
+            return $payout;
+        });
+
+        $this->notice = $forwarded === null ? __('This prize can no longer be passed on.') : __(':name passed :sats sats on to the next pot.', ['name' => $forwarded->name, 'sats' => PreSeason::formatSats($forwarded->amount_sats)]);
         unset($this->payouts);
     }
 
@@ -233,7 +266,8 @@ new #[Title('Payouts')] #[Layout('layouts::app', ['section' => 'admin'])] class 
     @endif
 
     @if ($tournament)
-        <section aria-labelledby="t-h" class="flex flex-col gap-4 rounded-lg bg-card px-4 py-5 lg:px-6" data-test="payouts-tournament-panel">
+        <section aria-labelledby="t-h" class="flex flex-col gap-4 rounded-lg bg-card px-4 py-5 lg:px-6" data-test="payouts-tournament-panel"
+                 @if ($this->watching || $this->payouts->contains(fn ($payout) => $payout->status === PayoutStatus::Paying)) wire:poll.3s @endif>
             <div class="flex flex-col gap-1">
                 <h2 id="t-h" class="m-0 text-[15px] font-bold"><a href="{{ route('tournaments.show', $tournament) }}">{{ $tournament->name }}</a></h2>
                 <p class="m-0 text-[13px] text-ink-2" data-test="pot-wallet-state">
@@ -321,7 +355,13 @@ new #[Title('Payouts')] #[Layout('layouts::app', ['section' => 'admin'])] class 
                                             <x-button variant="quiet" wire:click="approveAddress({{ $payout->id }}, '{{ $newAddress }}')" wire:confirm="{{ __('Pay this prize to :address from now on?', ['address' => $newAddress]) }}" data-test="approve-address">{{ __('Approve :address', ['address' => $newAddress]) }}</x-button>
                                         @endif
                                         @if ($payout->status->isPayable())
-                                            <x-button variant="quiet" wire:click="pay({{ $payout->id }})" wire:confirm="{{ __('Send :sats sats to :address?', ['sats' => $sats($payout->amount_sats), 'address' => $payout->lud16 ?? $payout->name]) }}" :disabled="! $payingHere" data-test="pay-one">{{ $payout->status === PayoutStatus::Failed ? __('Retry') : __('Pay') }}</x-button>
+                                            <x-button variant="quiet" wire:click="pay({{ $payout->id }})" wire:confirm="{{ __('Send :sats sats to :address?', ['sats' => $sats($payout->amount_sats), 'address' => $payout->lud16 ?? $payout->name]) }}" x-on:click="navigator.vibrate?.(15)" wire:loading.attr="disabled" wire:target="pay({{ $payout->id }})" :disabled="! $payingHere" data-test="pay-one">
+                                                <span wire:loading.remove wire:target="pay({{ $payout->id }})">{{ $payout->status === PayoutStatus::Failed ? __('Retry') : __('Pay') }}</span>
+                                                <span wire:loading wire:target="pay({{ $payout->id }})">{{ __('Starting…') }}</span>
+                                            </x-button>
+                                        @endif
+                                        @if (in_array($payout->status, [PayoutStatus::Open, PayoutStatus::Pending, PayoutStatus::Failed], true))
+                                            <x-button variant="quiet" wire:click="forward({{ $payout->id }})" wire:confirm="{{ __(':name passes :sats sats on to the next pot? They are not paid out, the tournament page shows it.', ['name' => $payout->name, 'sats' => $sats($payout->amount_sats)]) }}" x-on:click="navigator.vibrate?.(15)" data-test="forward-one">{{ __('Pass on') }}</x-button>
                                         @elseif ($payout->status === PayoutStatus::Paying)
                                             <x-button variant="quiet" wire:click="check({{ $payout->id }})" :disabled="! $payingHere">{{ __('Check') }}</x-button>
                                             @if ($payout->reason === 'needs_check')
