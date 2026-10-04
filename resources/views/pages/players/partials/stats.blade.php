@@ -8,7 +8,7 @@
     and clans in the side column from lg. Each part with nothing in it says
     so in one line, with the way to change that on the player's own page.
 
-    $stats: PlayerStats, $name: the player's display name, $isMe: the own page.
+    $stats: PlayerStats, $tournaments: its tournaments() when already read, $name: the player's display name, $isMe: the own page.
 --}}
 @php
     use App\Support\PreSeason;
@@ -16,7 +16,7 @@
 
     $games = $stats->games();
     $results = $stats->results();
-    $tournaments = $stats->tournaments();
+    $tournaments ??= $stats->tournaments();
     $seasons = collect($stats->seasons());
     $clans = $stats->clans();
     $side = 'flex flex-col gap-3 rounded-lg bg-card px-4 py-4 lg:px-5';

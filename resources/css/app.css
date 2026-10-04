@@ -2064,6 +2064,74 @@ select:focus[data-flux-control] {
     }
 }
 
+/*
+ * The player's trophies (pages/players/partials/trophies): every place 1 to 3
+ * stands on its podium step, gold, silver or bronze, its height the place and
+ * the number on it (so the colour never carries the place alone). The newest
+ * win, while recent (App\Support\Players\PlayerTrophies::RECENT_DAYS), lands
+ * once on load: the step rises like a mempool block settling, one sheen runs
+ * over it, the words follow. Finite animations only, nothing loops, so a
+ * browser test never waits on it. Reduced motion: still.
+ */
+.pt-feature {
+    background:
+        radial-gradient(ellipse 55% 90% at 0% 100%, color-mix(in oklab, var(--pt-tone, var(--color-rank-gold)) 16%, transparent), transparent 70%),
+        var(--color-card);
+    box-shadow: inset 0 0 0 1px color-mix(in oklab, var(--pt-tone, var(--color-rank-gold)) 30%, transparent);
+}
+
+.pt-step {
+    position: relative;
+    display: flex;
+    align-items: flex-start;
+    justify-content: center;
+    overflow: hidden;
+    border-radius: var(--radius-tag) var(--radius-tag) 0 0;
+    background: var(--pt-tone, var(--color-rank-gold));
+    box-shadow: inset 0 -4px 0 color-mix(in oklab, var(--pt-tone, var(--color-rank-gold)) 55%, black);
+    color: var(--color-on-btc);
+    font-family: var(--font-display);
+    font-weight: 700;
+    line-height: 1;
+}
+
+.pt-arrive .pt-step {
+    transform-origin: bottom;
+    animation: pt-rise 0.55s var(--ease-pop) 0.15s both;
+}
+
+.pt-arrive .pt-step::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(100deg, transparent 30%, rgba(255, 255, 255, 0.65) 50%, transparent 70%) 160% 0 / 250% 100% no-repeat;
+    animation: pt-sheen 0.9s ease-out 0.7s both;
+}
+
+.pt-arrive .pt-words {
+    animation: pt-words 0.3s ease-out 0.45s both;
+}
+
+@keyframes pt-rise {
+    from { transform: scaleY(0.15); opacity: 0; }
+}
+
+@keyframes pt-sheen {
+    to { background-position: -60% 0; }
+}
+
+@keyframes pt-words {
+    from { opacity: 0; transform: translateY(6px); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .pt-arrive .pt-step,
+    .pt-arrive .pt-step::after,
+    .pt-arrive .pt-words {
+        animation: none;
+    }
+}
+
 .tl-seats {
     display: grid;
     grid-template-columns: repeat(var(--cells), minmax(0, 1fr));

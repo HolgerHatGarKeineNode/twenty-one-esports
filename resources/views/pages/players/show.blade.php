@@ -1,9 +1,11 @@
 {{--
     Player page. The header follows PlayerHeader.dc.html (1440) and
     MobilePlayerHeader.dc.html (390): banner, picture, name, NIP-05, bio,
-    clan, website, whether zaps can be received, npub, and the rating chips (P7b: chess
+    clan, website, whether zaps can be received, npub, the honours (tournament
+    wins, other podium places, prizes paid; 2026-10-04) and the rating chips (P7b: chess
     blitz and each Rocket League lineup, casual before Block 0) and, for a
-    signed-in visitor, "Add as opponent" (P7e). Below it the rank badges
+    signed-in visitor, "Add as opponent" (P7e). Below it the trophies
+    (partials/trophies, App\Support\Players\PlayerTrophies), the rank badges
     (P11) and the public record (P31, partials/stats): ladders with rating,
     rank, form, share of wins and peak, the latest results, tournaments with
     place and paid prize, the season record and the clans. Everything here is
@@ -27,6 +29,11 @@
         ->describe($name, $description)
         ->card(fn () => \App\Support\Cards\PageCard::player($user))
         ->addStructuredData(\App\Support\Seo\StructuredData::profilePage($profile, \App\Support\Seo\LocalizedUrls::for(app()->getLocale())));
+
+    // The record is read once: the honours under the name and the side column below share it.
+    $stats = new \App\Support\Players\PlayerStats($user);
+    $tournaments = $stats->tournaments();
+    $honours = app(\App\Support\Players\PlayerTrophies::class)->of($user);
 @endphp
 <x-layouts::app :title="$name">
     <div class="flex flex-col gap-6 pb-6 lg:px-12 lg:pb-8">
@@ -64,6 +71,24 @@
                     @else
                         <span class="flex items-center gap-1.5 text-[13px] text-ink-2"><x-icon name="user" :size="14" />{{ __('No Nostr profile yet') }}</span>
                     @endif
+                    {{-- The honours (PlayerTrophies, PlayerStats): tournament wins, other podium places, prizes the league paid; nothing when there are none. --}}
+                    @if ($honours['wins'] > 0 || $honours['podiums'] > 0 || $tournaments['prizes'] > 0)
+                        <span class="mt-1.5 flex flex-wrap items-center gap-2" data-test="player-honours">
+                            @if ($honours['wins'] > 0)
+                                <span class="inline-flex h-8 items-center gap-2 rounded-md bg-[color-mix(in_oklab,var(--color-rank-gold)_14%,var(--color-card))] px-3 text-[13px] font-bold whitespace-nowrap text-rank-gold shadow-[inset_0_0_0_1px_color-mix(in_oklab,var(--color-rank-gold)_40%,transparent)]" data-test="player-honours-wins">
+                                    <x-icon name="trophy" :size="16" />{{ trans_choice(':count tournament win|:count tournament wins', $honours['wins']) }}
+                                </span>
+                            @endif
+                            @if ($honours['podiums'] > 0)
+                                <span class="inline-flex h-8 items-center rounded-md bg-card px-3 text-[13px] whitespace-nowrap text-ink-2 shadow-ring" data-test="player-honours-podiums">{{ __(':count× 2nd or 3rd place', ['count' => $honours['podiums']]) }}</span>
+                            @endif
+                            @if ($tournaments['prizes'] > 0)
+                                <span class="inline-flex h-8 items-center gap-1.5 rounded-md bg-btc-chip px-3 text-[13px] font-bold whitespace-nowrap text-btc-hi" data-test="player-honours-prizes">
+                                    <x-icon name="bolt" :size="14" />{{ __(':sats sats won', ['sats' => \App\Support\PreSeason::formatSats($tournaments['prizes'])]) }}
+                                </span>
+                            @endif
+                        </span>
+                    @endif
                 </div>
                 @unless ($isMe)
                     <div class="flex min-w-0 flex-wrap items-center gap-3 max-lg:order-last lg:max-w-[520px] lg:flex-nowrap lg:pb-1">
@@ -88,7 +113,7 @@
                     @if ($profile->hasProfile && $profile->about)
                         <p class="m-0 max-w-[64ch] text-sm leading-relaxed whitespace-pre-line [overflow-wrap:anywhere]" data-test="header-about">{{ $profile->about }}</p>
                     @elseif (! $profile->hasProfile)
-                        <p class="m-0 max-w-[64ch] text-sm leading-relaxed text-ink-2">{{ __('A picture, banner and bio appear here once :name has a Nostr profile. Until then the avatar is drawn from the player key, so it stays the same everywhere.', ['name' => $name]) }}</p>
+                        <p class="m-0 max-w-[64ch] text-sm leading-relaxed text-ink-2 [overflow-wrap:anywhere]">{{ __('A picture, banner and bio appear here once :name has a Nostr profile. Until then the avatar is drawn from the player key, so it stays the same everywhere.', ['name' => $name]) }}</p>
                     @endif
                     <div class="flex flex-wrap gap-2">
                         @foreach ($chips as $chip)
@@ -131,6 +156,11 @@
             </div>
         </section>
 
+        {{-- The trophies: places 1 to 3, the newest win first and, while recent, landing once --}}
+        @if ($honours['trophies'] !== [])
+            @include('pages.players.partials.trophies', ['trophies' => $honours['trophies']])
+        @endif
+
         {{-- P45: the player on Nostr: open, share, message, zap (QR of their LNURL only), follow --}}
         <x-nostr-bar :bar="\App\Support\Nostr\NostrBar::player($user, $profile->hasProfile ? $profile->lud16 : null)" class="mx-4 lg:mx-0" />
 
@@ -144,6 +174,6 @@
             <livewire:rank-badges :player="$user" />
         </div>
 
-        @include('pages.players.partials.stats', ['stats' => new \App\Support\Players\PlayerStats($user), 'name' => $name, 'isMe' => $isMe])
+        @include('pages.players.partials.stats', ['stats' => $stats, 'tournaments' => $tournaments, 'name' => $name, 'isMe' => $isMe])
     </div>
 </x-layouts::app>
