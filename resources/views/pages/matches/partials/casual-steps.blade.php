@@ -81,14 +81,20 @@
     $big = 'min-h-14 w-full px-6 font-display text-base font-bold sm:w-auto';
 @endphp
 
-<section aria-labelledby="casual-h" class="flex flex-col gap-4 rounded-lg bg-card px-4 py-5 max-lg:-order-3 lg:px-6" data-test="casual-steps">
+{{-- [overflow-wrap:anywhere]: a 40-character name without a space in the clock line ran 49 px out of the page at 390 (2026-10-04). --}}
+<section aria-labelledby="casual-h" class="flex flex-col gap-3 rounded-lg bg-card px-4 pt-3 pb-4 [overflow-wrap:anywhere] lg:gap-4 lg:px-6 lg:py-5" data-test="casual-steps">
+    {{-- Below sm the running step takes the heading's line (the heading stays for screen readers): the pin under it stays in the first screen at 375 under the versus. --}}
     <span class="flex flex-wrap items-baseline justify-between gap-2">
-        <h2 id="casual-h" class="m-0 text-[15px] font-bold">{{ __('Match steps') }}</h2>
+        <h2 id="casual-h" @class(['m-0 text-[15px] font-bold', 'max-sm:sr-only' => $currentKey !== null])>{{ __('Match steps') }}</h2>
+        @if ($currentKey !== null)
+            @php($currentIndex = array_search($currentKey, array_column($casualSteps, 0), true))
+            <p class="m-0 min-w-0 text-xs font-bold text-btc-hi sm:hidden" data-test="casual-current-step">{{ __('Step :n of :total: :label', ['n' => $currentIndex + 1, 'total' => count($casualSteps), 'label' => $casualSteps[$currentIndex][1]]) }}</p>
+        @endif
         <span class="text-xs text-ink-2" data-test="casual-role">{{ $mySide === null ? '' : ($iHost ? __('you host') : __('you join')) }}</span>
     </span>
 
-    {{-- The timeline: a rail with one stop per step, the running one in orange. --}}
-    <ol class="m-0 grid list-none grid-cols-5 p-0" data-test="casual-timeline">
+    {{-- The timeline: a rail with one stop per step, the running one in orange. Below sm the line "Step n of 5" above says the same in words. --}}
+    <ol class="m-0 grid list-none grid-cols-5 p-0 max-sm:hidden" data-test="casual-timeline">
         @foreach ($casualSteps as $index => [$key, $label, $done, $detail])
             @php($current = $key === $currentKey)
             @php($nextDone = $casualSteps[$index + 1][2] ?? false)
@@ -97,17 +103,12 @@
                 <span @class(['relative z-10 flex size-4 items-center justify-center rounded-full border-2', 'border-win bg-win text-on-btc' => $done, 'border-btc bg-btc ring-4 ring-btc-press' => $current, 'border-edge bg-card' => ! $done && ! $current])>
                     @if ($done)<x-icon name="check" :size="10" />@endif
                 </span>
-                {{-- Below sm five labels do not fit (German "Beigetreten"): the dots stay, the running step is named under the rail. --}}
+                {{-- Below sm five labels do not fit (German "Beigetreten"): the running step is named in the heading row instead. --}}
                 <b @class(['max-w-full text-xs leading-tight break-words max-sm:sr-only', 'text-win' => $done, 'text-btc-hi' => $current, 'text-ink-2' => ! $done && ! $current])>{{ $label }}</b>
                 <span class="max-w-full text-[11px] leading-snug break-words text-ink-3 max-sm:sr-only">{{ $detail }}</span>
             </li>
         @endforeach
     </ol>
-
-    @if ($currentKey !== null)
-        @php($currentIndex = array_search($currentKey, array_column($casualSteps, 0), true))
-        <p class="m-0 -mt-2 text-xs font-bold text-btc-hi sm:hidden" data-test="casual-current-step">{{ __('Step :n of :total: :label', ['n' => $currentIndex + 1, 'total' => count($casualSteps), 'label' => $casualSteps[$currentIndex][1]]) }}</p>
-    @endif
 
     @php($lobbyPin = $sharesLobby && $mySide !== null && $m->status === SeriesStatus::Accepted && $m->start_at !== null)
     {{-- The pinned lobby card, right under the step it belongs to: before the clock, so it and its action stay above the fold at 375. --}}
@@ -118,7 +119,7 @@
     @if ($deadlineText !== null)
         {{-- The clock of the running step. --}}
         <div class="flex flex-wrap items-end justify-between gap-x-4 gap-y-1 rounded-md bg-well px-4 py-3" data-test="casual-deadline" data-kind="{{ $deadline['kind'] }}">
-            <span class="flex min-w-0 items-center gap-2 text-[13px] leading-normal"><x-icon name="clock" :size="16" class="shrink-0 text-btc-hi" /><span>{{ $deadlineText }}</span></span>
+            <span class="flex min-w-0 items-center gap-2 text-[13px] leading-normal"><x-icon name="clock" :size="16" class="shrink-0 text-btc-hi" /><span class="min-w-0">{{ $deadlineText }}</span></span>
             <b class="font-display text-[32px] leading-none font-bold text-btc-hi tabular-nums" role="timer" x-data="casualClock({{ ($deadline['kind'] === 'checkin' && $checkInOpens?->isFuture() ? $checkInOpens : $deadline['at'])->getTimestamp() }}, {{ now()->getTimestampMs() }})" x-text="left" data-test="casual-clock"></b>
         </div>
     @endif
@@ -173,8 +174,9 @@
                 @endunless
             @else
                 <p class="m-0">{{ __('Both are in. Play, then enter the score.') }}</p>
+                {{-- The submit sits under the games in the room (user, 2026-10-04): this jumps there instead of a second submit. --}}
                 @if ($editable)
-                    <div><x-button icon="shield-check" x-on:click="submit = true" class="{{ $big }}" data-test="casual-report">{{ __('Submit final score') }}</x-button></div>
+                    <div><x-button icon="chevron-down" href="#report" class="{{ $big }}" data-test="casual-report">{{ __('Enter the score') }}</x-button></div>
                 @endif
             @endif
 

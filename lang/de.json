@@ -6716,5 +6716,11 @@
     ":name counts as a no-show": ":name gilt als nicht erschienen",
     "Check in to the lobby in the match room, or you count as a no-show.": "Check im Match-Raum in die Lobby ein, sonst giltst du als nicht erschienen.",
     "Double no-show: nobody checked in": "Doppel-No-Show: niemand hat eingecheckt",
-    "Check in to the lobby in the match room, or the match is decided as a double no-show.": "Check im Match-Raum in die Lobby ein, sonst wird das Match als Doppel-No-Show entschieden."
+    "Check in to the lobby in the match room, or the match is decided as a double no-show.": "Check im Match-Raum in die Lobby ein, sonst wird das Match als Doppel-No-Show entschieden.",
+    "If something goes wrong": "Wenn etwas schiefgeht",
+    "Enter every game above, then submit the final score. The other side accepts it or reports a problem.": "Trag oben jedes Spiel ein, dann melde das Endergebnis. Die andere Seite bestätigt es oder meldet ein Problem.",
+    "Your captain enters the games and submits the final score.": "Dein Captain trägt die Spiele ein und meldet das Endergebnis.",
+    "Once the match starts at :time, you enter the games and submit the final score here.": "Sobald das Match um :time beginnt, trägst du hier die Spiele ein und meldest das Endergebnis.",
+    "Enter the score": "Ergebnis eintragen",
+    "The pot includes :outside sats sponsors paid outside the wallet. The approval books them into the pot; the league wallet has to hold them.": "Der Topf enthält :outside Sats, die Sponsoren außerhalb der Wallet bezahlt haben. Die Freigabe bucht sie in den Topf; die Liga-Wallet muss sie halten."
 }

@@ -60,8 +60,8 @@ test('a running series pins the captain\'s lobby above the score with copy butto
     $html = Livewire::actingAs($other)->test('pages::matches.room', ['match' => $match])->html();
 
     expect($html)->toContain('data-test="room-lobby-pin"')->toContain('data-test="room-lobby-copy-name"')->toContain('data-test="room-lobby-copy-password"')
-        // Above the score, first in the room, and again in the lobby section beside the chat (user, 2026-10-04).
-        ->and(strpos($html, 'data-test="room-lobby-pin"'))->toBeLessThan(strpos($html, 'data-test="series-score"'))
+        // Under the versus, first thing after who-vs-who (user, 2026-10-04), and again in the lobby section beside the chat.
+        ->and(strpos($html, 'data-test="room-lobby-pin"'))->toBeGreaterThan(strpos($html, 'data-test="series-score"'))
         ->and($html)->toContain('data-test="lobby-name"')
         ->and(strpos($html, 'data-test="lobby-name"'))->toBeGreaterThan(strpos($html, 'data-test="series-score"'));
 
