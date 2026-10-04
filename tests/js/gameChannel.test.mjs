@@ -170,3 +170,48 @@ test('the viewer who counts sees their own poll at once; one who does not gets n
     other.comp.openPollForm();
     assert.equal(other.comp.composing, false);
 });
+
+test('the closed bar counts what came since the chat was last open, shows the newest, and opening it reads everything', async () => {
+    const stored = new Map();
+    const realStorage = globalThis.localStorage;
+    globalThis.localStorage = { getItem: (key) => stored.get(key) ?? null, setItem: (key, value) => stored.set(key, value) };
+
+    try {
+        const me = hex();
+        const { comp, message } = channel({ me });
+        const [alice, bob, muted] = [hex(), hex(), hex()];
+        comp.muted = [muted];
+        // A first visit: only the last 24 hours count as unread, never the whole history.
+        comp.receive({ ...message(alice, 'old news'), created_at: NOW - 2 * 86400 });
+        comp.receive(message(alice, 'gg'));
+        comp.receive(message(muted, 'spam'));
+        comp.receive(message(me, 'mine'));
+        comp.receive({ ...message(bob, 'rematch?  https://example.com/x'), created_at: NOW - 1 });
+        await wait(40);
+
+        assert.equal(comp.open, false);
+        assert.equal(comp.unread, 2, 'alice\'s and bob\'s recent messages; not the old one, not the muted one, not mine');
+        assert.equal(comp.latest?.pubkey, bob);
+        assert.equal(comp.previewText(comp.latest), 'rematch? example.com/x');
+        assert.equal(comp.toggleLabel, 'openChat, newMessages');
+        assert.equal(stored.has('esports.chat.seen'), false, 'nothing is read while the bar is closed');
+
+        comp.toggle();
+        assert.equal(comp.open, true);
+        assert.equal(comp.unread, 0);
+        const seen = JSON.parse(stored.get('esports.chat.seen'));
+        assert.equal(Object.values(seen)[0], NOW - 1);
+
+        // Open, a new message is read as it comes; closed again, the next one counts.
+        comp.receive({ ...message(alice, 'next'), created_at: NOW });
+        await wait(40);
+        assert.equal(comp.unread, 0);
+        comp.toggle();
+        comp.receive({ ...message(alice, 'later'), created_at: NOW + 1 });
+        await wait(40);
+        assert.equal(comp.unread, 1);
+        assert.equal(comp.unreadBadge, '1');
+    } finally {
+        globalThis.localStorage = realStorage;
+    }
+});

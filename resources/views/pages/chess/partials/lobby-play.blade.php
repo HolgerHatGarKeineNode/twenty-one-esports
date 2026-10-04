@@ -24,12 +24,13 @@
     $tag = 'inline-block rounded-xs px-1.5 text-[11px] leading-4 font-bold';
 @endphp
 
-<section aria-labelledby="play-h" class="flex flex-col gap-2 lg:gap-3" data-test="play"
+<section aria-labelledby="play-h" class="@container flex flex-col gap-2 lg:gap-3" data-test="play"
          x-data="{ stage: @js($busy ? 'blitz' : null), help: false, rated: false }"
          x-init="if (stage === null && location.hash === '#blitz') stage = 'blitz'">
     <h2 id="play-h" class="sr-only">{{ __('Ways to play') }}</h2>
 
-    <ul role="list" class="m-0 grid list-none grid-cols-2 gap-2 p-0 lg:grid-cols-6 lg:gap-3" data-test="play-grid">
+    {{-- Columns by the section's own width (2026-10-03): from xl the game chat's side column takes 392 px, and six tiles below 72rem cut their words. --}}
+    <ul role="list" class="m-0 grid list-none grid-cols-2 gap-2 p-0 @3xl:grid-cols-3 @6xl:grid-cols-6 lg:gap-3" data-test="play-grid">
         <li>
             <x-chess.lobby-tile :label="__('Blitz')" variant="primary" data-test="play-blitz"
                                 x-on:click="stage = stage === 'blitz' ? null : 'blitz'" x-bind:aria-expanded="(stage === 'blitz').toString()"

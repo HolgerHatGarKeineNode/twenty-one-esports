@@ -10,7 +10,7 @@
     $rated = $top['pool'] === 'rated';
 @endphp
 
-<section aria-labelledby="ladder-card-h" class="flex flex-col gap-3 rounded-lg bg-card px-4 py-4 lg:col-span-3 lg:px-5" data-test="lobby-ladder" data-pool="{{ $top['pool'] }}">
+<section aria-labelledby="ladder-card-h" class="flex flex-col gap-3 rounded-lg bg-card px-4 py-4 lg:col-span-3 lg:px-5 xl:max-2xl:col-span-12" data-test="lobby-ladder" data-pool="{{ $top['pool'] }}">
     <span class="flex items-baseline justify-between gap-3">
         <h2 id="ladder-card-h" class="m-0 text-[15px] font-bold">{{ __('Blitz ladder') }}</h2>
         <span class="rounded-xs px-1.5 py-0.5 text-[11px] leading-4 text-ink-2 shadow-ring">{{ $rated ? __('Rated') : __('Casual') }}</span>

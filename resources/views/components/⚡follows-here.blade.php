@@ -210,7 +210,7 @@ new class extends Component {
 <div @class(['contents' => $viewer !== null, 'hidden' => $viewer === null])>
     @if ($viewer)
         <section id="follows-here" aria-labelledby="fh-h-{{ $this->getId() }}" data-test="follows-here" data-context="{{ $context }}"
-                 class="flex min-w-0 flex-col gap-3 rounded-card bg-card px-4 py-4 shadow-ring lg:px-5"
+                 class="@container flex min-w-0 flex-col gap-3 rounded-card bg-card px-4 py-4 shadow-ring lg:px-5"
                  x-data="followsHere(@js([
                      'me' => $viewer->pubkey,
                      'relays' => NostrBar::browserRelays(),
@@ -241,7 +241,7 @@ new class extends Component {
             <p class="m-0 text-xs leading-normal text-ink-3" x-show="state === 'done' && ! complete" x-cloak x-text="label('partial', { answered, asked })" data-test="follows-here-partial"></p>
 
             @if ($this->players->isNotEmpty())
-                <ul class="m-0 grid list-none grid-cols-1 gap-2 p-0 sm:grid-cols-2 xl:grid-cols-3" data-test="follows-here-list">
+                <ul class="m-0 grid list-none grid-cols-1 gap-2 p-0 @xl:grid-cols-2 @5xl:grid-cols-3" data-test="follows-here-list">
                     @foreach ($this->players as $player)
                         <li wire:key="fh-{{ $player->id }}" class="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1 rounded-md bg-well px-3 py-2" data-test="follows-here-player">
                             <x-avatar :user="$player" :size="36" class="shrink-0" />

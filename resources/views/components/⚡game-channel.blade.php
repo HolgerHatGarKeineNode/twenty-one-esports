@@ -11,8 +11,8 @@ use Livewire\Component;
 
 /*
  * The global chat of a game (P21, NIP "Game channels"): a NIP-28 public
- * channel with NIP-88 polls on the chat relays, on the game's overview page
- * (/chess, /games/{slug}). Messages, polls and votes go from the browser to
+ * channel with NIP-88 polls on the chat relays, on every game's page
+ * (GameNames::page(): /chess, /games/{slug}, /scores/tmnf, /blockfill). Messages, polls and votes go from the browser to
  * the relays and back (resources/js/gameChannel.js); the server hands out
  * the channel, keeps a viewer's own mutes and answers which pubkeys are
  * league players (their name and avatar, and whose poll votes count).
@@ -75,25 +75,59 @@ new class extends Component
     $durations = [3600 => __('1 hour'), 86400 => __('1 day'), 259200 => __('3 days'), 604800 => __('1 week')];
 @endphp
 
+{{--
+    Placement (2026-10-03, user: "Kann der Chat bitte weiter oben hin? Ganz da unten geht er verloren."): below xl
+    the page puts the chat right under its head, collapsed to one bar with the latest message and the unread count,
+    opened in place; from xl the page's `.chat-rail` holds it as a sticky side column (resources/css/app.css), always
+    open, between the header and the dock. Behaviour (history, polls, mutes) is the same in both.
+--}}
 <section aria-labelledby="game-chat-h" wire:ignore data-test="game-chat" data-game="{{ $game }}" data-channel="{{ $chat['channel'] ?? '' }}"
-         class="flex flex-col overflow-hidden rounded-lg bg-card shadow-ring"
-         @if ($chat) x-data="gameChannel(@js($chat))" @endif>
-    <header class="flex flex-wrap items-center gap-x-3 gap-y-1 border-b border-hairline px-4 py-3 lg:px-5">
-        <x-icon name="chat" :size="18" class="shrink-0 text-btc" />
-        <h2 id="game-chat-h" class="m-0 text-[15px] font-bold">{{ __(':game chat', ['game' => $gameName]) }}</h2>
-        <span class="text-xs text-ink-2">{{ __('Talk and vote with everyone who plays :game.', ['game' => $gameName]) }}</span>
-        <span class="grow"></span>
-        <span class="inline-flex h-6 items-center gap-1.5 rounded-tag px-2 text-[11px] text-ink-2 shadow-ring" title="{{ __('NIP-28 channel and NIP-88 polls on the chat relays') }}"><x-icon name="link" :size="12" />{{ __('Public on Nostr') }}</span>
+         class="@container flex flex-col overflow-hidden rounded-lg border-t-2 border-(--game,var(--color-btc)) bg-card shadow-ring"
+         @if ($chat) x-data="gameChannel(@js($chat))" :data-open="open.toString()" @endif>
+    <header @class(['relative flex items-center gap-3 border-b border-hairline px-4 py-3 lg:px-5', 'max-xl:border-b-0' => $chat !== null])
+            @if ($chat) :class="{ 'max-xl:border-b-0': ! open }" @endif>
+        <x-icon name="chat" :size="18" class="shrink-0 self-start text-btc max-xl:mt-0.5" />
+        <div class="flex min-w-0 grow flex-col gap-1">
+            <span class="flex flex-wrap items-baseline gap-x-3 gap-y-1">
+                <h2 id="game-chat-h" class="m-0 text-[15px] font-bold">{{ __(':game chat', ['game' => $gameName]) }}</h2>
+                <span @class(['text-xs text-ink-2', 'max-xl:hidden' => $chat !== null]) @if ($chat) :class="{ 'max-xl:hidden': ! open }" @endif>{{ __('Talk and vote with everyone who plays :game.', ['game' => $gameName]) }}</span>
+            </span>
+            @if ($chat)
+                {{-- Collapsed: the newest message (or poll), so a closed chat still shows that people talk here. --}}
+                <p x-show="! open" id="game-chat-preview-{{ $game }}" class="m-0 flex min-w-0 items-center gap-2 text-[13px] leading-5 xl:hidden" data-test="game-chat-preview">
+                    <template x-if="latest">
+                        <span class="flex min-w-0 items-center gap-2">
+                            <img :src="avatarOf(latest.pubkey)" alt="" width="20" height="20" referrerpolicy="no-referrer" loading="lazy" x-on:error="$el.src = generatedAvatar(latest.pubkey)" class="size-5 shrink-0 rounded-full bg-raised object-cover">
+                            <b class="max-w-[40%] shrink-0 truncate font-bold text-ink-2" x-text="nameOf(latest.pubkey)"></b>
+                            <span class="min-w-0 truncate text-ink" x-text="previewText(latest)"></span>
+                        </span>
+                    </template>
+                    <span x-show="! latest" class="truncate text-ink-3" x-text="previewIdle"></span>
+                </p>
+            @endif
+        </div>
+        @if ($chat)
+            <span x-show="! open && unread > 0" x-cloak class="inline-flex h-6 min-w-6 shrink-0 items-center justify-center rounded-tag bg-btc px-1.5 text-xs font-bold text-on-btc tabular-nums xl:hidden" data-test="game-chat-unread" x-text="unreadBadge"></span>
+        @endif
+        {{-- In the side column the composer's line says it ("Public on Nostr, visible in every client."); the title keeps the width. --}}
+        <span @class(['relative z-10 inline-flex h-6 shrink-0 items-center gap-1.5 self-start rounded-tag px-2 text-[11px] text-ink-2 shadow-ring', 'max-xl:hidden max-sm:hidden xl:hidden' => $chat !== null]) @if ($chat) :class="{ 'max-xl:hidden': ! open }" @endif title="{{ __('NIP-28 channel and NIP-88 polls on the chat relays') }}"><x-icon name="link" :size="12" />{{ __('Public on Nostr') }}</span>
+        @if ($chat)
+            <x-icon name="chevron-down" :size="18" class="shrink-0 text-ink-2 transition-transform duration-200 ease-out motion-reduce:transition-none xl:hidden" x-bind:class="open ? 'rotate-180' : ''" />
+            {{-- The whole bar opens and closes the chat below xl; from xl the chat is always open and this is gone. --}}
+            <button type="button" x-on:click="toggle()" :aria-expanded="open.toString()" aria-controls="game-chat-body-{{ $game }}" aria-describedby="game-chat-preview-{{ $game }}" :aria-label="toggleLabel" data-test="game-chat-toggle"
+                    class="absolute inset-0 cursor-pointer rounded-t-lg focus-visible:outline-offset-[-2px] xl:hidden"></button>
+        @endif
     </header>
 
     @if ($chat === null)
         <p class="m-0 px-4 py-4 text-[13px] leading-5 text-ink-2 lg:px-5" data-test="game-chat-off">{{ __('The chat of this game is not set up yet.') }}</p>
     @else
-        <div class="grid grid-cols-1 lg:grid-cols-[minmax(0,1fr)_300px]">
+        <div id="game-chat-body-{{ $game }}" class="grid grid-cols-1 transition-opacity duration-200 ease-out starting:opacity-0 motion-reduce:transition-none max-xl:hidden @3xl:grid-cols-[minmax(0,1fr)_300px] xl:flex xl:min-h-0 xl:grow xl:flex-col"
+             :class="{ 'max-xl:hidden': ! open }" data-test="game-chat-body">
             {{-- The conversation --}}
-            <div class="flex min-w-0 flex-col lg:border-r lg:border-hairline">
-                {{-- As tall as a conversation needs, up to a fixed height; an empty channel stays short. --}}
-                <div class="relative flex min-h-0 flex-col" :class="hasItems ? 'h-[360px] lg:h-[440px]' : 'h-44'">
+            <div class="flex min-w-0 flex-col @3xl:border-r @3xl:border-hairline xl:min-h-0 xl:grow">
+                {{-- As tall as a conversation needs, up to a fixed height; an empty channel stays short. In the side column: the column's height. --}}
+                <div class="relative flex min-h-0 flex-col xl:h-auto xl:grow" :class="hasItems ? 'h-[360px] lg:h-[440px]' : 'h-44'">
                     <ol x-ref="list" x-on:scroll.passive="onScroll()" role="log" aria-label="{{ __('Chat messages') }}" data-test="game-chat-list"
                         class="m-0 flex min-h-0 grow list-none flex-col overflow-y-auto overscroll-contain px-2 py-2">
                         <li aria-hidden="true" class="grow"></li>
@@ -246,8 +280,12 @@ new class extends Component
                 @endif
             </div>
 
-            {{-- From lg: the open polls beside the conversation, to vote without scrolling for them. --}}
-            <aside aria-labelledby="game-polls-h" class="hidden flex-col gap-3 px-4 py-4 lg:flex" data-test="game-chat-polls">
+            {{--
+                Where the chat is 48rem wide: the open polls beside the conversation, to vote without scrolling for
+                them (narrower, below xl, they are in the conversation only). In the xl side column above it instead,
+                at most 40 % of the column, and only while a poll is open.
+            --}}
+            <aside aria-labelledby="game-polls-h" data-polls="0" :data-polls="openPolls.length" class="hidden flex-col gap-3 px-4 py-4 @3xl:flex xl:order-first xl:flex xl:max-h-[40%] xl:shrink-0 xl:overflow-y-auto xl:overscroll-contain xl:border-b xl:border-hairline xl:py-3 xl:data-[polls=0]:hidden" data-test="game-chat-polls">
                 <span class="flex items-center justify-between gap-2">
                     <h3 id="game-polls-h" class="m-0 text-[13px] font-bold">{{ __('Open polls') }}</h3>
                     @unless ($guest)

@@ -2,8 +2,10 @@
 
 namespace App\Support\GameChat;
 
+use App\Games\Blockfill;
 use App\Games\BoardGame;
 use App\Games\GameRegistry;
+use App\Games\TrackmaniaNationsForever;
 use App\Models\LineupSeat;
 use App\Models\Rating;
 use App\Models\User;
@@ -39,7 +41,8 @@ use swentel\nostr\Sign\Sign;
  * board game is switched on (`esports.board_games`, GameRegistry::isBoard()):
  * a switched-off board game shows no chat and the command signs nothing for
  * it. Its id is fixed all the same, so switching it on later opens exactly
- * the channel computed here.
+ * the channel computed here. TMNF and Blockfill (2026-10-03) follow the same
+ * terms behind their own switches (`esports.tmnf`, `esports.blockfill`).
  */
 final class GameChannels
 {
@@ -61,12 +64,19 @@ final class GameChannels
         'checkers' => 'Checkers',
         // Rev. 9.16: Age of Empires II, always open like the other series games.
         'age-of-empires-2' => 'Age of Empires II: Definitive Edition',
+        // 2026-10-03 (user: "Die anderen Spiele haben auch ALLE Chats oder?"): the two score games, each only while
+        // its own switch registers it (has()).
+        'tmnf' => 'TrackMania Nations Forever',
+        'blockfill' => 'Blockfill',
     ];
+
+    /** Games that exist only behind a switch: their channel is open only while the registry has them. */
+    private const SWITCHED = [...BoardGame::RESERVED_SLUGS, TrackmaniaNationsForever::SLUG, Blockfill::SLUG];
 
     /**
      * Whether the game's channel is open: shown on its page and published. A
-     * board game's only while it is switched on (the registry has it); the
-     * others always.
+     * board game's, TMNF's and Blockfill's only while it is switched on (the
+     * registry has it); the others always.
      */
     public static function has(string $game): bool
     {
@@ -74,7 +84,7 @@ final class GameChannels
             return false;
         }
 
-        return ! in_array($game, BoardGame::RESERVED_SLUGS, true) || app(GameRegistry::class)->isBoard($game);
+        return ! in_array($game, self::SWITCHED, true) || app(GameRegistry::class)->find($game) !== null;
     }
 
     /**
@@ -251,6 +261,13 @@ final class GameChannels
                 'pollInvalid' => __('A poll needs a question and 2 to 4 different answers.'),
                 'voteNotSent' => __('Your vote did not reach any relay. Please try again.'),
                 'notCountedYet' => __('Your vote is shown to you but counts once you have a result in the league.'),
+                // The collapsed bar below xl (2026-10-03): its button and the line it shows without a message.
+                'openChat' => __('Open the chat'),
+                'closeChat' => __('Close the chat'),
+                'asks' => __('asks'),
+                'connecting' => __('Connecting to the chat …'),
+                'chatEmpty' => __('No messages yet. Start the conversation or ask a question.'),
+                'chatOff' => __('The chat has no relay here, so it is off.'),
             ],
         ];
     }

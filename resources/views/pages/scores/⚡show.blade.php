@@ -21,7 +21,7 @@ use Livewire\Component;
  * per mode, the points of every finished leaderboard summed per player
  * (ScorePoints). League names only. Routed only while a score game is registered.
  */
-new #[Layout('layouts::app', ['section' => 'tournaments'])] class extends Component {
+new #[Layout('layouts::app', ['section' => 'tournaments', 'scripts' => ['resources/js/gameChannel.js']])] class extends Component {
     public string $game;
 
     public function mount(string $game): void
@@ -147,7 +147,8 @@ new #[Layout('layouts::app', ['section' => 'tournaments'])] class extends Compon
     }
 @endphp
 
-<div class="flex flex-col gap-6 px-4 pt-6 pb-12 lg:gap-8 lg:px-12 lg:pt-8" data-test="score-game" style="--game: {{ $score->assets()->colour }}">
+@php($chatRail = $tmnf && \App\Support\GameChat\GameChannels::has($this->game))
+<div @class(['flex flex-col gap-6 px-4 pt-6 pb-12 lg:gap-8 lg:px-12 lg:pt-8', 'chat-rail-host xl:[--chat-rail-top:2rem] xl:[--chat-rail-bottom:3rem]' => $chatRail]) data-test="score-game" style="--game: {{ $score->assets()->colour }}">
     @if ($blockfill)
         {{-- Blockfill: the game first (Play now), then this week's board, then the way around the weeks. --}}
         @include('pages.scores.partials.blockfill-hero', ['heading' => $name, 'week' => $week, 'standings' => $weekStandings, 'metric' => $weekMetric])
@@ -172,6 +173,11 @@ new #[Layout('layouts::app', ['section' => 'tournaments'])] class extends Compon
         @include('pages.scores.partials.blockfill-nav', ['week' => null])
     @elseif ($tmnf)
         @include('pages.scores.partials.tmnf-hero', ['heading' => $name, 'week' => $week, 'standings' => $weekStandings, 'metric' => $weekMetric, 'track' => $tmnfTrack])
+
+        {{-- TMNF's global chat (2026-10-03, every game has one): right under the hero and its way in, from xl the side column. --}}
+        @if ($chatRail)
+            <div class="chat-rail"><livewire:game-channel :game="$this->game" :wire:key="'game-channel-'.$this->game" /></div>
+        @endif
 
         <section aria-labelledby="week-h" class="flex flex-col gap-3 rounded-lg bg-card px-2 py-4 lg:px-5" @if ($week) wire:key="running-{{ $week->id }}" @endif data-test="score-running">
             <div class="flex flex-wrap items-center justify-between gap-x-4 gap-y-1 px-2 lg:px-0">

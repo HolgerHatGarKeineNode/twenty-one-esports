@@ -558,7 +558,7 @@ new #[Layout('layouts::app', ['realtime' => true, 'scripts' => ['resources/js/ga
 <div class="flex grow flex-col" @if ($this->waiting) wire:poll.4s="poll" @endif
      x-data="boardLobby(@js(['userId' => $user?->id, 'lookingKey' => $slug.'/blitz', 'looking' => $user?->looking_to_play === $slug.'/blitz']))"
      data-test="board-lobby" data-game="{{ $slug }}">
-    <div class="flex flex-col gap-6 px-4 pb-8 lg:gap-8 lg:px-12 lg:pb-10">
+    <div class="chat-rail-host flex flex-col gap-6 px-4 pb-8 lg:gap-8 lg:px-12 lg:pb-10">
         {{-- The title below lg, with the rating and the rules; from lg the header's context bar names the page and links the rules. --}}
         <div class="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1 lg:hidden" data-test="lobby-title">
             <h1 class="m-0 font-display text-2xl leading-tight font-bold">{{ $name }}</h1>
@@ -596,6 +596,9 @@ new #[Layout('layouts::app', ['realtime' => true, 'scripts' => ['resources/js/ga
 
         @include('pages.board.partials.lobby-play', ['user' => $user, 'entry' => $entry, 'outgoing' => $outgoing, 'name' => $name])
 
+        {{-- The global chat of this board game (P1 of plan brettspiel-chat-und-follows), as chess's: right under the way to play, from xl the side column. --}}
+        <div class="chat-rail"><livewire:game-channel :game="$slug" :wire:key="'game-channel-'.$slug" /></div>
+
         {{-- The next tournament of this board game open for sign-up, then its casual cups, as on every game page. --}}
         @if ($this->nextTournament)
             <x-tournaments.poster :tournament="$this->nextTournament" heading-id="lobby-next-h" />
@@ -604,7 +607,7 @@ new #[Layout('layouts::app', ['realtime' => true, 'scripts' => ['resources/js/ga
         @endif
         <x-tournaments.cup-mentions :game="$slug" titled />
 
-        {{-- The player's own business and the live lobby. Below lg in reading order: your games, live, ladder. --}}
+        {{-- The player's own business and the live lobby. Below lg in reading order: your games, live, ladder. From xl to 2xl, beside the chat column, 5 | 7 with the ladder under both. --}}
         <div class="grid grid-cols-1 gap-4 lg:grid-cols-12 lg:items-start lg:gap-5">
             @include('pages.board.partials.lobby-games', ['user' => $user, 'active' => $active, 'name' => $name])
             @include('pages.board.partials.lobby-live', ['user' => $user, 'active' => $active, 'name' => $name])
@@ -613,8 +616,6 @@ new #[Layout('layouts::app', ['realtime' => true, 'scripts' => ['resources/js/ga
 
         {{-- Plan brettspiel-chat-und-follows, P2: who of the player's Nostr follows plays here, to invite or challenge, as in chess --}}
         <livewire:follows-here context="board" :subject="$slug" :wire:key="'follows-here-'.$slug" />
-        {{-- The global chat of this board game (P1 of the same plan): as chess's, under the follows, above the weekly events. --}}
-        <livewire:game-channel :game="$slug" />
 
         {{-- Weekly events (P10): the next dates of the recurring slots, all games. --}}
         <x-weekly-events :events="app(App\Support\Engagement\WeeklySlots::class)->upcoming(4)" heading-id="lobby-weekly-h" class="rounded-lg bg-card px-4 py-5 lg:px-6" />

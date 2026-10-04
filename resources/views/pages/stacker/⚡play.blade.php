@@ -41,7 +41,7 @@ use Livewire\Component;
  * leaderboard, the player's own place, and last week's winner. Refreshed
  * when the game reports a verified run (`stacker-verified`).
  */
-new #[Layout('layouts::app', ['scripts' => ['resources/js/stacker/page.js']])] class extends Component {
+new #[Layout('layouts::app', ['scripts' => ['resources/js/stacker/page.js', 'resources/js/gameChannel.js']])] class extends Component {
     public function rendering(\Illuminate\View\View $view): void
     {
         $view->title('Blockfill');
@@ -204,9 +204,10 @@ new #[Layout('layouts::app', ['scripts' => ['resources/js/stacker/page.js']])] c
     $fees = ['#7383A6', '#3B82E0', '#0FA394', '#5AAE3C', '#F2D45C', '#F7931A', '#F9A8D4'];
 @endphp
 
-<div class="flex grow flex-col px-4 pb-8 lg:px-12 lg:pb-10">
+<div @class(['flex grow flex-col px-4 pb-8 lg:px-12 lg:pb-10', 'chat-rail-host' => \App\Support\GameChat\GameChannels::has('blockfill')])>
     <div wire:ignore x-data="stackerGame(@js($config))" class="mx-auto flex w-full max-w-[1340px] flex-col gap-5 lg:gap-8" data-test="stacker">
-        <div class="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between lg:gap-8">
+        {{-- Beside the chat column (xl) the title block may wrap: the sound row stays on the title's line, not on the block's middle. --}}
+        <div class="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between lg:gap-8 xl:items-start">
             <div class="flex flex-col gap-1 lg:flex-row lg:items-baseline lg:gap-4">
                 <h1 class="m-0 font-display text-[28px] leading-[1.1] font-extrabold lg:text-[30px]">Blockfill</h1>
                 <p class="m-0 text-[13px] leading-normal text-ink-2">{{ __('Mine :count blocks as fast as you can.', ['count' => BlockfillRules::of($this->engine)['goal'] ?? 40]) }}</p>
@@ -221,7 +222,8 @@ new #[Layout('layouts::app', ['scripts' => ['resources/js/stacker/page.js']])] c
             @include('pages.stacker.partials.sound-control', ['class' => 'hidden lg:flex'])
         </div>
 
-        <div class="grid grid-cols-1 gap-6 lg:grid-cols-[minmax(0,1fr)_320px] lg:gap-12">
+        {{-- Beside the chat column (xl) the keyboard panel goes under the game until 120rem, so the well keeps its size. --}}
+        <div @class(['grid grid-cols-1 gap-6 lg:grid-cols-[minmax(0,1fr)_320px] lg:gap-12', 'xl:grid-cols-1 min-[120rem]:grid-cols-[minmax(0,1fr)_320px]' => \App\Support\GameChat\GameChannels::has('blockfill')])>
             <section class="flex min-w-0 flex-col gap-5" aria-label="{{ __('Game') }}">
                 <div class="flex items-start justify-center gap-3 lg:gap-10">
                     {{-- Hold and the clock --}}
@@ -398,6 +400,14 @@ new #[Layout('layouts::app', ['scripts' => ['resources/js/stacker/page.js']])] c
             </aside>
         </div>
     </div>
+
+    {{--
+        Blockfill's global chat (2026-10-03, every game has one): right under the game, from xl the side column. The
+        game reads no key typed into the chat's fields (key() skips INPUT, TEXTAREA, SELECT).
+    --}}
+    @if (\App\Support\GameChat\GameChannels::has('blockfill'))
+        <div class="chat-rail mx-auto mt-8 w-full max-w-[1340px] lg:mt-10 xl:mt-0"><livewire:game-channel game="blockfill" wire:key="game-channel-blockfill" /></div>
+    @endif
 
     {{-- The casual weekly hunt (P4): this week's leaderboard, your place, last week's winner --}}
     @php

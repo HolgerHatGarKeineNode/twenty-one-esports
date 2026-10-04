@@ -31,6 +31,12 @@ import { signerMessage, signTemplate } from './signing.js';
 import { botMark, displayRows, insertSorted, length, sendBlocker, tokenize } from './streamChat.js';
 
 const MUTES_KEY = 'esports.chat.mutes';
+/** Per channel id: the `created_at` of the newest item the viewer had in front of them (the chat open or the side column). */
+const SEEN_KEY = 'esports.chat.seen';
+/** A first visit counts what came in this long before as unread: activity, not the whole history. */
+const FIRST_VISIT_WINDOW_S = 86400;
+/** From here the page holds the chat as an always-open side column (`.chat-rail`, resources/css/app.css). */
+const RAIL_QUERY = '(width >= 80rem)';
 const KEEP = 200;
 const BOTTOM_SLACK = 48;
 /** Polls whose votes are read (the newest shown ones). */
@@ -144,6 +150,11 @@ export function gameChannel(config) {
         // tick for "closes in", twice a minute
         clock: nowSeconds(),
 
+        // Below xl the chat is one bar until the viewer opens it; from xl it is the open side column (`rail`).
+        open: false,
+        rail: false,
+        seenAt: 0,
+
         // The poll form
         composing: false,
         question: '',
@@ -164,6 +175,19 @@ export function gameChannel(config) {
             if (this.me) writeJson(MUTES_KEY, this.muted);
 
             this.clockTimer = setInterval(() => { this.clock = nowSeconds(); }, 30_000);
+
+            const seen = readJson(SEEN_KEY, {});
+            this.seenAt = Number.isInteger(seen?.[config.channel]) ? seen[config.channel] : nowSeconds() - FIRST_VISIT_WINDOW_S;
+            if (typeof window.matchMedia === 'function') {
+                this.railQuery = window.matchMedia(RAIL_QUERY);
+                this.rail = this.railQuery.matches;
+                this.onRail = (event) => {
+                    this.rail = event.matches;
+                    if (this.rail) this.$nextTick(() => this.scrollToBottom());
+                    this.markSeen();
+                };
+                this.railQuery.addEventListener?.('change', this.onRail);
+            }
 
             if (this.status === 'off') return;
 
@@ -194,6 +218,7 @@ export function gameChannel(config) {
             cancelFrame(state.frame);
             cancelFrame(state.itemsFrame);
             clearInterval(this.clockTimer);
+            this.railQuery?.removeEventListener?.('change', this.onRail);
             this.sub?.close();
             this.votes?.close();
             this.pool?.destroy();
@@ -255,6 +280,7 @@ export function gameChannel(config) {
             this.items = messages <= KEEP ? list : list.filter((item) => item.type !== 'message' || messages-- <= KEEP);
 
             for (const item of added) this.wantPerson(item.pubkey, 'author');
+            this.markSeen();
             if (this.status !== 'live') return;
             if (follow || added.some((item) => item.pubkey === this.me)) {
                 this.$nextTick(() => this.scrollToBottom());
@@ -538,6 +564,75 @@ export function gameChannel(config) {
 
         get hasItems() {
             return this.rows.length > 0;
+        },
+
+        /* ---------- The bar below xl: open, latest, unread ----------------------------------- */
+
+        toggle() {
+            this.open = !this.open;
+            if (!this.open) return;
+            this.markSeen();
+            this.$nextTick(() => this.scrollToBottom());
+        },
+
+        /** Whether the viewer has the messages in front of them: the chat open, or the side column. */
+        get showing() {
+            return this.open || this.rail;
+        },
+
+        /** Everything shown up to now counts as read while the chat is in front of the viewer. */
+        markSeen() {
+            if (!this.showing) return;
+            const newest = this.items.reduce((max, item) => Math.max(max, item.created_at), 0);
+            if (newest <= this.seenAt) return;
+            this.seenAt = newest;
+            const seen = readJson(SEEN_KEY, {});
+            writeJson(SEEN_KEY, { ...(seen && typeof seen === 'object' && !Array.isArray(seen) ? seen : {}), [config.channel]: newest });
+        },
+
+        /** The newest message or poll the list shows (no muted fold, nothing the creator hid). */
+        get latest() {
+            const rows = this.rows;
+            for (let index = rows.length - 1; index >= 0; index--) {
+                if (rows[index].type === 'message' || rows[index].type === 'poll') return rows[index].item;
+            }
+
+            return null;
+        },
+
+        /** Messages and polls of others since the viewer last had the chat in front of them, muted ones left out. */
+        get unread() {
+            this.modVersion;
+            return this.items.filter((item) => item.created_at > this.seenAt && item.pubkey !== this.me && !this.muted.includes(item.pubkey)
+                && !state.mod.hidden.has(item.id) && !state.mod.muted.has(item.pubkey)).length;
+        },
+
+        get unreadBadge() {
+            return this.unread > 99 ? '99+' : String(this.unread);
+        },
+
+        get unreadLabel() {
+            return this.unread === 1 ? t.newMessage : t.newMessages.replace(':count', this.unread);
+        },
+
+        get toggleLabel() {
+            const action = this.open ? t.closeChat : t.openChat;
+
+            return this.unread > 0 && !this.open ? action + ', ' + this.unreadLabel : action;
+        },
+
+        /** One line of the newest item as plain text: a message's tokens, or "asks" and the question of a poll. */
+        previewText(item) {
+            if (item.type === 'poll') return t.asks + ' ' + (item.poll?.question ?? '');
+
+            return (item.tokens ?? []).map((token) => (token.type === 'emoji' ? ':' + token.value + ':' : token.value)).join('').replace(/\s+/g, ' ').trim();
+        },
+
+        /** The bar's line while there is no message to show. */
+        get previewIdle() {
+            if (this.status === 'off') return t.chatOff;
+
+            return this.status === 'live' ? t.chatEmpty : t.connecting;
         },
 
         /** A poll's result as the card draws it, from `tallies`: per answer the count, the share and whether it is mine or leading. */

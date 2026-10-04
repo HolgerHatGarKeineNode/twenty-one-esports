@@ -314,7 +314,7 @@ new #[Layout('layouts::app', ['section' => 'matches', 'scripts' => ['resources/j
     $h2 = 'm-0 font-display text-lg leading-tight font-bold lg:text-xl';
 @endphp
 
-<div class="flex grow flex-col" data-test="game-page" data-game="{{ $slug }}" style="--game: {{ $colour }}">
+<div class="chat-rail-host flex grow flex-col xl:[--chat-rail-own:0px] xl:[--chat-rail-top:2rem]" data-test="game-page" data-game="{{ $slug }}" style="--game: {{ $colour }}">
     {{-- An open cup match comes first, whatever its game (CupMatchNow; user, 2026-10-03). --}}
     @auth
         <livewire:cup-match variant="banner" frame="block px-4 pt-4 lg:px-12" wire:key="cup-banner-game" />
@@ -360,7 +360,17 @@ new #[Layout('layouts::app', ['section' => 'matches', 'scripts' => ['resources/j
     --}}
     <div class="flex grow flex-col gap-6 px-4 pb-8 lg:grid lg:grid-cols-12 lg:grid-rows-[auto_auto_auto_1fr] lg:items-start lg:gap-x-6 lg:gap-y-5 lg:px-12 lg:pb-10">
         {{-- Invite a friend: the join link of the player's clan (series are played by clan lineups). --}}
-        <div class="min-w-0 lg:col-span-4 lg:col-start-9 lg:row-start-1"><livewire:invite-link :game="$slug" place="game" /></div>
+        {{--
+            With it, the global chat of the game (P21; 2026-10-03 "weiter oben"): right under the head and the
+            invite (which keeps its first-viewport place on phones, InvitePlacementTest), in the right column from
+            lg, and from xl the page's side column (.chat-rail).
+        --}}
+        <div class="flex min-w-0 flex-col gap-4 lg:col-span-4 lg:col-start-9 lg:row-start-1">
+            <livewire:invite-link :game="$slug" place="game" />
+            @if (\App\Support\GameChat\GameChannels::has($slug))
+                <div class="chat-rail"><livewire:game-channel :game="$slug" :wire:key="'game-channel-'.$slug" /></div>
+            @endif
+        </div>
 
         {{-- A player's next step on this game; a guest has the league's "New here?" steps in the header and "Log in to play" above. --}}
         @auth
@@ -460,11 +470,6 @@ new #[Layout('layouts::app', ['section' => 'matches', 'scripts' => ['resources/j
                     </ol>
                 @endif
             </section>
-
-            {{-- The global chat of the game (P21): a NIP-28 channel with polls. --}}
-            @if (\App\Support\GameChat\GameChannels::has($slug))
-                <livewire:game-channel :game="$slug" />
-            @endif
 
             {{-- P47: who of the player's Nostr follows plays here, with a 1v1 where the game has one --}}
             <livewire:follows-here context="series" :subject="$slug" :wire:key="'follows-here-'.$slug" />

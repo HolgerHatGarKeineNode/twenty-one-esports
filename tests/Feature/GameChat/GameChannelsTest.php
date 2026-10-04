@@ -8,6 +8,7 @@ use App\Models\LineupSeat;
 use App\Models\Rating;
 use App\Models\User;
 use App\Support\GameChat\GameChannels;
+use App\Support\GameNames;
 use App\Support\Nostr\NostrKeys;
 use App\Support\Nostr\RelayReader;
 use App\Support\Nostr\SignedEvent;
@@ -17,6 +18,7 @@ use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Process;
 use Livewire\Livewire;
+use Tests\Support\BlockfillOn;
 use Tests\Support\CheckersGame;
 use Tests\Support\NineMensMorrisOn;
 use Tests\Support\TestSigner;
@@ -41,7 +43,7 @@ test('the component stays cheap under a flood: no redraw for votes nobody counts
     $run = Process::path(base_path())->timeout(90)->run(['node', '--test', 'tests/js/gameChannel.test.mjs']);
 
     expect($run->successful())->toBeTrue($run->output().$run->errorOutput())
-        ->and($run->output())->toContain('ℹ pass 6')->toContain('ℹ skipped 0');
+        ->and($run->output())->toContain('ℹ pass 7')->toContain('ℹ skipped 0');
 });
 
 test('each game has its own channel, fixed by the creator, and the league key signs exactly that id', function () {
@@ -51,8 +53,8 @@ test('each game has its own channel, fixed by the creator, and the league key si
     $ids = array_map(fn (string $game): ?string => GameChannels::channelId($game), array_keys(GameChannels::GAMES));
     $signed = SignedEvent::fromInput($league->sign(40, [], GameChannels::createContent('rocket-league'), GameChannels::CREATED_AT));
 
-    expect(array_keys(GameChannels::GAMES))->toBe(['chess', 'rocket-league', 'ea-sports-fc-26', 'ea-sports-fc-27', 'nine-mens-morris', 'checkers', 'age-of-empires-2'])
-        ->and(array_unique($ids))->toHaveCount(7)
+    expect(array_keys(GameChannels::GAMES))->toBe(['chess', 'rocket-league', 'ea-sports-fc-26', 'ea-sports-fc-27', 'nine-mens-morris', 'checkers', 'age-of-empires-2', 'tmnf', 'blockfill'])
+        ->and(array_unique($ids))->toHaveCount(9)
         ->and($ids)->each->toMatch('/^[0-9a-f]{64}$/')
         ->and(GameChannels::channelId('rocket-league'))->toBe($signed?->id)
         ->and($signed?->hasValidSignature())->toBeTrue()
@@ -92,6 +94,9 @@ test('the board games add two channels and change none of the four: every id of 
         'nine-mens-morris' => '136e4c7ed8a34dad000eb89ce942a8e2b34ed522ef6038b14475a71bfa3c8f68',
         'checkers' => '6e4221b5f8548e475e956cd73d43ef1a64b199c87abe2dd0b29162b70d093abd',
         'age-of-empires-2' => '7400cae2664605d1d134e74b9ba88f2c8743b8fa10b72f2d1615a3a05212d496',
+        // TMNF and Blockfill (2026-10-03), each equal to nostr-tools' getEventHash.
+        'tmnf' => '7b93615bc0584b65c91ad7a6f43045378397b94df0f5a905f1ccdac3ac1611a3',
+        'blockfill' => '2eb506f4d95521318d9d03e071ce7f9bf50abd1ceb92d136d9c842ce4a51b5ca',
     ];
     $ids = fn (): array => array_combine(array_keys(GameChannels::GAMES), array_map(GameChannels::channelId(...), array_keys(GameChannels::GAMES)));
 
@@ -442,11 +447,64 @@ test('the command signs a board game\'s channel only while the board game is swi
         ->and(json_decode($morrisMeta['content'], true)['name'])->toBe("TWENTY ONE esports · Nine Men's Morris")
         ->and($output)->toContain('checkers: switched off, nothing signed')->not->toContain((string) GameChannels::channelId('checkers'));
 
-    // Both on: seven channels, each signed with exactly its id.
+    // Both on: seven channels, each signed with exactly its id (TMNF and Blockfill stay off here).
     CheckersGame::play();
     [$events, $output] = gameChannelsDryRun();
-    expect($creates($events))->toBe(array_map(GameChannels::channelId(...), array_keys(GameChannels::GAMES)))
+    expect($creates($events))->toBe(array_map(GameChannels::channelId(...), array_values(array_diff(array_keys(GameChannels::GAMES), ['tmnf', 'blockfill']))))
         ->and($events)->toHaveCount(14)
         ->and(collect($events)->every(fn (array $event): bool => SignedEvent::fromInput($event)?->hasValidSignature() === true))->toBeTrue()
-        ->and($output)->not->toContain('switched off');
+        ->and($output)->not->toContain('nine-mens-morris: switched off')->not->toContain('checkers: switched off');
+});
+
+test('TMNF and Blockfill have their own channels, fixed like the others, open and published only while their switch is on', function () {
+    $league = new TestSigner;
+    config(['esports.league.nsec' => $league->secret, 'esports.game_chat.creator' => null]);
+    $tmnf = GameChannels::channelId('tmnf');
+    $blockfill = GameChannels::channelId('blockfill');
+
+    // Off (as the test app boots): the ids are fixed all the same, the channels closed and not signed.
+    expect($tmnf)->toMatch('/^[0-9a-f]{64}$/')->and($blockfill)->toMatch('/^[0-9a-f]{64}$/')
+        ->and(GameChannels::has('tmnf'))->toBeFalse()
+        ->and(GameChannels::has('blockfill'))->toBeFalse();
+    [, $output] = gameChannelsDryRun();
+    expect($output)->toContain('tmnf: switched off, nothing signed')->toContain('blockfill: switched off, nothing signed')
+        ->and($output)->not->toContain((string) $tmnf)->not->toContain((string) $blockfill);
+
+    tmnfOn();
+    BlockfillOn::play();
+    [$events] = gameChannelsDryRun();
+    $signed = collect($events)->where('kind', 40)->keyBy('id');
+
+    expect(GameChannels::open())->toContain('tmnf', 'blockfill')
+        ->and($signed->get($tmnf)['content'] ?? null)->toBe('{"name":"TWENTY ONE esports · TrackMania Nations Forever","about":"The global chat of TrackMania Nations Forever in the TWENTY ONE esports league: talk and vote."}')
+        ->and($signed->get($blockfill)['content'] ?? null)->toBe('{"name":"TWENTY ONE esports · Blockfill","about":"The global chat of Blockfill in the TWENTY ONE esports league: talk and vote."}')
+        ->and(SignedEvent::fromInput($signed->get($tmnf))?->hasValidSignature())->toBeTrue()
+        ->and(SignedEvent::fromInput($signed->get($blockfill))?->hasValidSignature())->toBeTrue()
+        ->and(collect($events)->where('kind', 41)->map(fn (array $event): string => $event['tags'][0][1])->values()->all())->toContain($tmnf, $blockfill);
+
+    // Frozen on 2026-10-03 for a fixed creator, equal to nostr-tools' getEventHash: a changed field is another channel.
+    config(['esports.league.nsec' => null, 'esports.game_chat.creator' => str_repeat('a', 64)]);
+    expect(GameChannels::channelId('tmnf'))->toBe('7b93615bc0584b65c91ad7a6f43045378397b94df0f5a905f1ccdac3ac1611a3')
+        ->and(GameChannels::channelId('blockfill'))->toBe('2eb506f4d95521318d9d03e071ce7f9bf50abd1ceb92d136d9c842ce4a51b5ca');
+});
+
+test('every game in the registry has its chat on its page, every switch on', function () {
+    NineMensMorrisOn::play();
+    CheckersGame::play();
+    tmnfOn();
+    BlockfillOn::play();
+    config(['esports.game_chat.creator' => (new TestSigner)->pubkey, 'esports.chat.relays' => ['ws://127.0.0.1:7777']]);
+    $games = array_keys(app(GameRegistry::class)->all());
+
+    // Every kind of game is in the run: chess, a series game, a board game and both score games.
+    expect($games)->toContain('chess', 'rocket-league', 'nine-mens-morris', 'checkers', 'tmnf', 'blockfill');
+
+    foreach ($games as $game) {
+        $page = GameNames::page($game);
+        $html = (string) $this->get($page)->assertOk()->getContent();
+
+        expect(GameChannels::has($game))->toBeTrue("{$game} has no open channel")
+            ->and(str_contains($html, 'data-test="game-chat" data-game="'.$game.'" data-channel="'.GameChannels::channelId($game).'"'))->toBeTrue("{$page} has no chat of {$game}")
+            ->and($html)->toContain('x-data="gameChannel(');
+    }
 });

@@ -2258,6 +2258,61 @@ select:focus[data-flux-control] {
 }
 
 /*
+ * The game chat as a side column (2026-10-03, user: "Er kann auch gerne auf größerem Desktop an der Seite sein").
+ * From xl a game page (`.chat-rail-host`) makes room on its right and `.chat-rail`, which sits in the page's flow
+ * right under its head below xl, becomes a column as tall as the page; the chat inside sticks under the header and
+ * ends above the dock. One chat element in both places: one relay subscription, nothing moved by script.
+ * --chat-rail-own: the host's own right padding (0 where its children carry the padding);
+ * --chat-rail-top / --chat-rail-bottom: the host's vertical padding, so the column lines up with the content.
+ */
+@media (width >= 80rem) {
+    .chat-rail-host {
+        --chat-rail-w: 22.5rem;
+        --chat-rail-gap: 2rem;
+        position: relative;
+        padding-right: calc(var(--chat-rail-w) + var(--chat-rail-gap) + var(--chat-rail-own, 3rem));
+    }
+
+    .chat-rail {
+        position: absolute;
+        top: var(--chat-rail-top, 0px);
+        right: 3rem;
+        bottom: var(--chat-rail-bottom, 2.5rem);
+        width: var(--chat-rail-w);
+    }
+
+    /*
+     * It sticks exactly where it starts (header, the page's top padding, the host's own top), so it never jumps
+     * and its height, measured from there, ends 1.5rem above the dock in every scroll position.
+     */
+    .chat-rail > [data-test="game-chat"] {
+        --chat-rail-stick: calc(var(--shell-h) + var(--spacing-page-top-lg) + var(--chat-rail-top, 0px));
+        position: sticky;
+        top: var(--chat-rail-stick);
+        height: calc(100svh - var(--chat-rail-stick) - var(--chat-rail-floor, var(--dock-h)) - 1.5rem);
+        max-height: 100%;
+    }
+
+    /*
+     * The dock's open cup match floats above its bar on the right, where the column ends (components/⚡match-dock:
+     * 56 px tall, 16 px up alone, 88 px up above the bar): the column ends above it too.
+     */
+    :root:has([data-test="dock-cup"]) .chat-rail-host {
+        --chat-rail-floor: max(var(--dock-h), 4.5rem);
+    }
+
+    :root:has([data-test="dock-cup"]):has([data-test="dock-spacer"]) .chat-rail-host {
+        --chat-rail-floor: 9rem;
+    }
+}
+
+@media (width >= 96rem) {
+    .chat-rail-host {
+        --chat-rail-w: 25rem;
+    }
+}
+
+/*
  * The sticky header lifts off the page once the page runs under it: flat at
  * the top, then its bottom edge takes the active game's colour and casts a
  * shadow. The header asks the browser whether it is stuck (a scroll-state

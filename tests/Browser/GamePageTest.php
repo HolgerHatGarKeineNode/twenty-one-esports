@@ -173,8 +173,9 @@ test('an EA FC page with nothing played says so in one line per part, no empty c
 
     expect($empty['lines'])->each->toBeLessThanOrEqual(90)
         // No part grows into a big empty box. P56: the clans sit in the 4-of-12 side column from lg, where their two
-        // one-line empty states wrap once each (251 px measured at 1440).
-        ->and(max($empty['parts']))->toBeLessThanOrEqual(260)
+        // one-line empty states wrap once each (251 px measured at 1440; 271 px since 2026-10-03, when the game chat's
+        // side column took 392 px from xl and the 4-of-12 column shrank to about 300 px).
+        ->and(max($empty['parts']))->toBeLessThanOrEqual(280)
         ->and($empty['charts'])->toBe(0)
         ->and($desk)->toMatchArray(['overflow' => 0, 'inside' => true, 'small' => [], 'clipped' => []])
         ->and($phone)->toMatchArray(['overflow' => 0, 'inside' => true, 'small' => [], 'clipped' => []])

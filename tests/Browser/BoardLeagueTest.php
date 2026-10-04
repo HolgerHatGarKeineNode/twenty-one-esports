@@ -231,6 +231,39 @@ const BOARD_PARITY_SECTIONS = <<<'JS'
         .sort((a, b) => a[1] - b[1] || a[2] - b[2])
     JS;
 
+/**
+ * The expected section order with the game chat in its place (2026-10-03, user: "weiter oben"): below xl right
+ * after "play"; from xl (1280 px) the chat is the side column, so it leaves the reading order and must stand
+ * right of every other section instead.
+ *
+ * @param  list<string>  $expected
+ * @return array{0: list<string>, 1: Closure(list<array{0: string, 1: int, 2: int}>): list<string>}
+ */
+function boardLeagueChatOrder(array $expected, int $width, Closure $order): array
+{
+    if ($width < 1280) {
+        $at = (int) array_search('play', $expected, true) + 1;
+
+        return [[...array_slice($expected, 0, $at), 'chat', ...array_slice($expected, $at)], $order];
+    }
+
+    // From xl to 2xl the lobby row is 5 | 7 beside the chat column, with the ladder under both: after "online".
+    if ($width < 1536 && in_array('ladder', $expected, true) && in_array('online', $expected, true)) {
+        $expected = array_values(array_diff($expected, ['ladder']));
+        array_splice($expected, (int) array_search('online', $expected, true) + 1, 0, ['ladder']);
+    }
+
+    return [$expected, function (array $rows) use ($order): array {
+        $chat = collect($rows)->firstWhere(0, 'chat');
+        $others = array_values(array_filter($rows, fn (array $row): bool => $row[0] !== 'chat'));
+
+        expect($chat)->not->toBeNull('the chat is on the page')
+            ->and($chat[2] ?? 0)->toBeGreaterThan(max(array_column($others, 2)), 'the chat stands right of every section, in its own column');
+
+        return $order($others);
+    }];
+}
+
 /** Every visible leaf text box of the new parts whose text is wider than its box. */
 const BOARD_PARITY_CUT = <<<'JS'
     () => [...document.querySelectorAll('[data-test=cup-head] *, [data-test=online-now] *, [data-test=play-grid] b, [data-test=play-grid] span, [data-test=lobby-title] *')]
@@ -350,7 +383,8 @@ test('the board lobby has the chess lobby\'s arrangement, shows who is online an
     // From lg the title is the header's context bar: the lobby's own title row is hidden on both.
     $expected = $width >= 1024 ? array_values(array_diff($expected, ['title'])) : $expected;
     $expected[] = 'follows';
-    $expected[] = 'chat';
+    // The game chat (2026-10-03, "weiter oben"): right under the way to play below xl; from xl the side column beside all.
+    [$expected, $order] = boardLeagueChatOrder($expected, $width, $order);
 
     expect($order($measured['board']['sections']))->toBe($expected)
         ->and($order($measured['chess']['sections']))->toBe($expected)
@@ -397,7 +431,8 @@ test('the board lobby has the chess lobby\'s arrangement, shows who is online an
 /*
 | P1 of plan brettspiel-chat-und-follows (user, 2026-09-30: "ich hätte genau
 | die selbe Anordnung erwartet"): each board game has its own game chat, in
-| chess's slot under the lobby and above the weekly events. Filled over a
+| chess's slot (since 2026-10-03 right under the way to play, a bar opened in
+| place below xl, the side column from xl). Filled over a
 | real websocket to the in-memory relay (never a real relay) with 40
 | messages by league players whose names are 41 and 42 characters without a
 | break, by two keys the league does not know, a 280-character word, a long
@@ -484,11 +519,13 @@ test('each board game chat sits in chess\'s slot and holds long names, long word
         BrowserWait::until($chess, $live, 10_000);
         $page = boardLeaguePage($viewer, route('board.lobby', NineMensMorris::SLUG, false), $width, $height, $locale);
         BrowserWait::until($page, $live, 10_000);
+        // Below xl the chat is one bar under the way to play (2026-10-03): opened, as a reader does; from xl it is open.
+        $page->evaluate('() => { const toggle = document.querySelector("[data-test=game-chat-toggle]"); if (toggle.checkVisibility()) toggle.click(); }');
         // All 40 in, each author looked up: the 16 messages of the two unknown keys carry "not in the league" once the answer is in.
         BrowserWait::until($page, '() => document.querySelectorAll("[data-test=game-chat-message]").length === 40 && [...document.querySelectorAll("[data-test=game-chat-outside]")].filter((tag) => tag.checkVisibility()).length === 16', 10_000);
         $page->evaluate('() => document.querySelector("[data-test=game-chat]").scrollIntoView({ block: "start" })');
 
-        $sections = ['chess' => array_column($chess->evaluate(BOARD_PARITY_SECTIONS), 0), 'board' => array_column($page->evaluate(BOARD_PARITY_SECTIONS), 0)];
+        $sections = ['chess' => $chess->evaluate(BOARD_PARITY_SECTIONS), 'board' => $page->evaluate(BOARD_PARITY_SECTIONS)];
         $filled = $page->evaluate(BOARD_CHAT_MEASURE);
         if ($locale === 'en') {
             shellShot($page, 'board-chat-'.($signedIn ? 'player' : 'guest').'-'.$width);
@@ -510,9 +547,9 @@ test('each board game chat sits in chess\'s slot and holds long names, long word
 
         fwrite(STDERR, 'board chat '.$locale.' '.$width.' '.($signedIn ? 'player' : 'guest').': '.json_encode(compact('sections', 'filled', 'after', 'collected')).PHP_EOL);
 
-        $expected = [...($width >= 1024 ? ['play', 'next', 'cups', 'games', 'live', 'ladder', 'online'] : ['title', 'play', 'next', 'cups', 'games', 'live', 'online', 'ladder']), ...($signedIn ? ['follows'] : []), 'chat'];
-        expect($sections['board'])->toBe($expected)
-            ->and($sections['chess'])->toBe($expected)
+        [$expected, $order] = boardLeagueChatOrder([...($width >= 1024 ? ['play', 'next', 'cups', 'games', 'live', 'ladder', 'online'] : ['title', 'play', 'next', 'cups', 'games', 'live', 'online', 'ladder']), ...($signedIn ? ['follows'] : [])], $width, fn (array $rows): array => array_column($rows, 0));
+        expect($order($sections['board']))->toBe($expected)
+            ->and($order($sections['chess']))->toBe($expected)
             ->and($filled['heading'])->toBe($locale === 'de' ? 'Mühle-Chat' : "Nine Men's Morris chat")
             ->and($signedIn ? $filled['guest'] : str_replace("\n", ' ', (string) $filled['guest']))->toBe($signedIn ? null : ($locale === 'de' ? 'Zum Chatten anmelden Mitlesen kann jeder.' : 'Log in to chat Reading is open to everyone.'))
             ->and($filled['form'])->toBe($signedIn)

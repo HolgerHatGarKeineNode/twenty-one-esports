@@ -540,7 +540,7 @@ new #[Layout('layouts::app', ['section' => 'chess', 'realtime' => true, 'scripts
 @endphp
 
 <div class="flex grow flex-col" x-data="chessLobby(@js(['userId' => $user?->id, 'poll' => max(30, (int) config('esports.chess.lobby_poll_seconds'))]))" data-server-now="{{ (int) now()->getTimestampMs() }}" data-looking="{{ $user?->looking_to_play === 'chess/blitz' ? 'true' : 'false' }}">
-    <div class="flex flex-col gap-6 px-4 pb-8 lg:gap-8 lg:px-12 lg:pb-10">
+    <div class="chat-rail-host flex flex-col gap-6 px-4 pb-8 lg:gap-8 lg:px-12 lg:pb-10">
         {{-- An open cup match comes first (CupMatchNow; user, 2026-10-03): above the title, and the casual lock says why a search is refused. --}}
         @auth
             <livewire:cup-match variant="banner" frame="block" wire:key="cup-banner-lobby" />
@@ -584,6 +584,9 @@ new #[Layout('layouts::app', ['section' => 'chess', 'realtime' => true, 'scripts
 
         @include('pages.chess.partials.lobby-play', ['user' => $user, 'entry' => $entry, 'outgoing' => $outgoing])
 
+        {{-- The global chat of chess (P21), right under the way to play (2026-10-03); from xl the side column (.chat-rail). --}}
+        <div class="chat-rail"><livewire:game-channel game="chess" wire:key="game-channel-chess" /></div>
+
         {{-- The next chess tournament open for sign-up, as on every game page (user, 2026-09-28). --}}
         @if ($this->nextTournament)
             <x-tournaments.poster :tournament="$this->nextTournament" heading-id="lobby-next-h" />
@@ -592,7 +595,7 @@ new #[Layout('layouts::app', ['section' => 'chess', 'realtime' => true, 'scripts
         @endif
         <x-tournaments.cup-mentions game="chess" titled />
 
-        {{-- The player's own business and the live lobby. Below lg in reading order: your games, live, ladder. --}}
+        {{-- The player's own business and the live lobby. Below lg in reading order: your games, live, ladder. From xl to 2xl, beside the chat column, 5 | 7 with the ladder under both. --}}
         <div class="grid grid-cols-1 gap-4 lg:grid-cols-12 lg:items-start lg:gap-5">
             @include('pages.chess.partials.lobby-games', ['user' => $user, 'active' => $active])
             @include('pages.chess.partials.lobby-live', ['user' => $user, 'active' => $active])
@@ -601,9 +604,6 @@ new #[Layout('layouts::app', ['section' => 'chess', 'realtime' => true, 'scripts
 
         {{-- P47: who of the player's Nostr follows plays here, to challenge; an invite DM for the others --}}
         <livewire:follows-here context="chess" />
-
-        {{-- The global chat of chess (P21): a NIP-28 channel with polls, under the lobby, above the weekly events. --}}
-        <livewire:game-channel game="chess" />
 
         {{-- Weekly events (P10): the next dates of the recurring slots, all games. --}}
         <x-weekly-events :events="app(App\Support\Engagement\WeeklySlots::class)->upcoming(4)" heading-id="lobby-weekly-h" class="rounded-lg bg-card px-4 py-5 lg:px-6" />

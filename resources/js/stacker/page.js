@@ -514,13 +514,15 @@ document.addEventListener('alpine:init', () => {
                 this.lines = outcome.lines;
                 this.updateHud();
                 this.draw(performance.now());
-                // on a narrow screen the result sits below the well: bring it into view (it is set below, before any await)
-                if (window.innerWidth < 1024) {
-                    // after Alpine has shown the result (x-show) and the browser has laid it out
-                    this.$nextTick(() => requestAnimationFrame(() => requestAnimationFrame(() => {
-                        rt.el.result.scrollIntoView({ block: 'start', behavior: this.reducedMotion ? 'auto' : 'smooth' });
-                    })));
-                }
+                // where the result sits below the well (a narrow screen, or beside the game chat's column from xl,
+                // 2026-10-03): bring it into view (it is set below, before any await). Asked of the layout, not the
+                // window width, after Alpine has shown the result (x-show) and the browser has laid it out.
+                this.$nextTick(() => requestAnimationFrame(() => requestAnimationFrame(() => {
+                    if (rt.el.result.getBoundingClientRect().top < rt.el.well.getBoundingClientRect().bottom) {
+                        return;
+                    }
+                    rt.el.result.scrollIntoView({ block: 'start', behavior: this.reducedMotion ? 'auto' : 'smooth' });
+                })));
                 const base = { ticks: outcome.ticks, hash: outcome.stateHash, kind: this.kind, lines: outcome.lines };
                 rt.sound.effect(outcome.finished ? 'fanfare' : 'topout');
                 if (!outcome.finished) {
