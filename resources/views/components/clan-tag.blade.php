@@ -1,3 +1,5 @@
+@blaze
+
 @props(['clan' => null, 'tag' => null, 'size' => 'md', 'tile' => null, 'compact' => false, 'loading' => 'lazy'])
 
 {{--

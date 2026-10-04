@@ -1,3 +1,5 @@
+@blaze
+
 @props(['tier' => 'provisional', 'level' => 1, 'size' => 'md'])
 
 {{--

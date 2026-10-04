@@ -1,3 +1,5 @@
+@blaze
+
 @props(['user' => null, 'name' => null, 'size' => 24, 'src' => null, 'background' => 'linear-gradient(135deg, #F9B25F, #B9640A)'])
 
 {{--

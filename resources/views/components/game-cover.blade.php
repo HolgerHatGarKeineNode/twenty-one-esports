@@ -1,3 +1,5 @@
+@blaze
+
 @props(['game', 'size' => 'card', 'loading' => 'lazy'])
 
 {{--
