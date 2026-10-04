@@ -17,6 +17,7 @@ use App\Models\TournamentModerationEntry;
 use App\Models\TournamentParticipant;
 use App\Models\User;
 use App\Support\Chess\ChessGameService;
+use App\Support\Navigation\ShellNavigation;
 use App\Support\Series\SeriesService;
 use App\Support\Tournaments\FormatOptions;
 use App\Support\Tournaments\GameProfile;
@@ -384,4 +385,14 @@ test('a heartbeat the cache hands back as a numeric string counts as fresh', fun
 
     expect(TournamentScheduler::health()['stale'])->toBeFalse()
         ->and(TournamentScheduler::health()['last_run_at']->timestamp)->toBe(now()->timestamp);
+});
+
+test('an overdue series shows in the admin badge at once, not after the badge cache runs out', function () {
+    [, $series] = deadlineDuel();
+    $this->travel(2)->hours();
+    // The badge is read (and cached) while the series is due but not yet marked.
+    expect(ShellNavigation::openCases())->toBe(0);
+
+    expect(app(SeriesService::class)->markOverdue($series->refresh()))->toBeTrue()
+        ->and(ShellNavigation::openCases())->toBe(1);
 });

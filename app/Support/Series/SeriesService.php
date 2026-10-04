@@ -828,6 +828,8 @@ final class SeriesService
 
         if ($updated === 1) {
             $this->broadcastChange($match);
+            // An open case for the admins now (the badge caches up to 60 s, ShellNavigation::openCases()).
+            ShellNavigation::forgetOpenCases();
         }
 
         return $updated === 1;
@@ -1360,6 +1362,7 @@ final class SeriesService
 
         if ($updated === 1) {
             $this->broadcastChange($match);
+            ShellNavigation::forgetOpenCases();
         }
 
         return $updated === 1;
