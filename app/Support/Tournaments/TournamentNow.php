@@ -266,6 +266,12 @@ final class TournamentNow
                 'line' => (string) __('The final standings come when the last games end.'), 'action' => ['label' => (string) __('Watch the rest'), 'href' => self::watchUrl($tournament), 'icon' => 'eye'], 'round' => $live];
         }
 
+        // Swiss pairs one round at a time, so nothing lies ahead in any round: only its planned count tells the last one.
+        if (! $ahead && $last->round->stage->format === TournamentFormat::Swiss && $last->round->number >= app(TournamentRunner::class)->swissRounds($tournament)) {
+            return ['state' => 'done', 'title' => (string) __('Your matches are done — waiting for the others'), 'context' => $live === null ? null : self::roundLine($live),
+                'line' => (string) __('The final standings come when the last games end.'), 'action' => ['label' => (string) __('Watch the rest'), 'href' => self::watchUrl($tournament), 'icon' => 'eye'], 'round' => $live];
+        }
+
         return ['state' => 'wait', 'title' => (string) __('Wait for the next round'), 'context' => $live === null ? null : self::roundLine($live),
             'line' => ($live !== null && $live['playing'] > 0 ? $waitLine : (string) $line).' '.$flip, 'until' => $deadline, 'round' => $live,
             'others' => $live === null ? TournamentGameEnd::others($tournament, collect([$last])) : null];

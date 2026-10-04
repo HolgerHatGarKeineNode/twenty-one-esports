@@ -103,6 +103,30 @@ test('a player whose match is done waits: the round\'s live count, the strip and
         ->not->toContain('data-test="now-action"');
 });
 
+test('in a Swiss stage\'s last round a player whose match is done is told the matches are done, not to wait for a next round', function () {
+    // Two rounds planned: after round 1 a next round comes.
+    $two = runningChess(TournamentFormat::Swiss, 4, TournamentResultsMode::Players, ['swissRounds' => 2]);
+    [$game, $white, $black] = nowFirstGame($two);
+    app(ChessGameService::class)->resign($game, $black);
+
+    expect(nowHero(nowPage($two, $white)))->toContain('data-state="wait"')->toContain('Wait for the next round');
+
+    // One round planned: round 1 is the last, and the other match is still playing.
+    $one = runningChess(TournamentFormat::Swiss, 4, TournamentResultsMode::Players, ['swissRounds' => 1]);
+    [$game, $white, $black] = nowFirstGame($one);
+    app(ChessGameService::class)->resign($game, $black);
+    $hero = nowHero(nowPage($one, $white));
+
+    expect($one->refresh()->status)->toBe(TournamentStatus::Running)
+        ->and($hero)->toContain('data-state="done"')
+        ->toContain('Your matches are done — waiting for the others')
+        ->toContain('Round 1: 1 match still playing')
+        ->toContain('The final standings come when the last games end.')
+        ->toContain('Watch the rest')
+        ->not->toContain('Wait for the next round')
+        ->not->toContain('The next round starts');
+});
+
 test('a knocked-out player is out, with "Watch the rest"; the winner of a final is the champion', function () {
     $tournament = runningChess(TournamentFormat::SingleElimination, 4, TournamentResultsMode::Players);
     [$game, $white, $black] = nowFirstGame($tournament);
