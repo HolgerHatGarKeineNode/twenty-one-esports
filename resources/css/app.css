@@ -2244,6 +2244,20 @@ select:focus[data-flux-control] {
 }
 
 /*
+ * The tournament desk's drawer (components/tournaments/desk-chat): below the sticky header with a strip of the page
+ * left in view on a phone (it ends on the tab bar), the full height under the header from lg.
+ */
+.desk-drawer {
+    top: calc(var(--shell-h) + 1rem);
+}
+
+@media (width >= 64rem) {
+    .desk-drawer {
+        top: var(--shell-h);
+    }
+}
+
+/*
  * The sticky header lifts off the page once the page runs under it: flat at
  * the top, then its bottom edge takes the active game's colour and casts a
  * shadow. The header asks the browser whether it is stuck (a scroll-state

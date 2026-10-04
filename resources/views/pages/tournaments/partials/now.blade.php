@@ -11,7 +11,7 @@
     two players' avatars make it the unmistakable first thing (user, 2026-10-03).
 
     `$now` (TournamentNow::of()), `$tournament`, `$cup` (cupMatch() or null), `$error`, `$waits` (myWaits()),
-    `$lobby` (myLobby() or null).
+    `$lobby` (myLobby() or null), `$desk` (TournamentDesk::for() or null: the desk button under the action).
 --}}
 @php
     use App\Support\Tournaments\TournamentNow;
@@ -150,17 +150,19 @@
         @endif
     </div>
 
-    @if ($action !== null)
+    @if ($action !== null || ($desk ?? null))
         <div class="flex min-w-0 flex-col gap-2 lg:items-end">
             @if (isset($action['href']))
                 <a href="{{ $action['href'] }}" class="btn-p inline-flex min-h-16 w-full items-center justify-center gap-3 rounded-md bg-btc px-8 text-lg font-bold text-on-btc hover:text-on-btc lg:min-w-[300px]" data-test="now-action">
                     <x-icon :name="$action['icon']" :size="22" />{{ $action['label'] }}
                 </a>
-            @else
+            @elseif ($action !== null)
                 <button type="button" wire:click="{{ $action['wire'] }}" wire:loading.attr="disabled" class="btn-p inline-flex min-h-16 w-full cursor-pointer items-center justify-center gap-3 rounded-md bg-btc px-8 text-lg font-bold text-on-btc hover:text-on-btc disabled:opacity-60 lg:min-w-[300px]" data-test="now-action">
                     <x-icon :name="$action['icon']" :size="22" />{{ $action['label'] }}
                 </button>
             @endif
+            {{-- The tournament desk (TournamentDesk): a problem or a question goes to the direction from here. --}}
+            <x-tournaments.desk-button :desk="$desk ?? null" drawer class="w-full lg:w-auto" />
         </div>
     @endif
     </div>

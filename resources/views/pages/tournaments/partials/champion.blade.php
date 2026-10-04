@@ -11,7 +11,7 @@
     else shares the page, whose link preview is the podium card.
 
     `$moment` (TournamentChampionMoment::of()), `$tournament`, `$results` (the anchor of the results: #bracket or
-    #leaderboard). The closing comment marks the section's end for the feature test.
+    #leaderboard), `$desk` (TournamentDesk::for() or null). The closing comment marks the section's end for the feature test.
 --}}
 @php
     $champions = $moment['champions'];
@@ -145,6 +145,8 @@
                 <a href="{{ $results }}" class="btn-w inline-flex h-12 items-center justify-center gap-2 rounded-md border border-line bg-well px-6 text-[15px] font-bold text-ink hover:text-ink" data-test="champion-results">
                     <x-icon name="tournaments" :size="18" />{{ __('Results') }}
                 </a>
+                {{-- The tournament desk stays open a day after the end (TournamentDesk): a question about the result or the prize. --}}
+                <x-tournaments.desk-button :desk="$desk ?? null" drawer class="h-12" />
             </div>
         </div>
 

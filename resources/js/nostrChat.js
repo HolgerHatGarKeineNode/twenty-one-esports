@@ -174,16 +174,17 @@ export async function unwrapMessage(signer, wrap, me) {
 /**
  * The unsigned kind-14 message to a group (NIP-17 chat room: the author plus
  * the `p` set), here the players of both lineups of a series. `match` is the
- * league match number. `tags` are extra tags (a lobby or account card,
- * resources/js/lobbyCards.js); `expiration` the NIP-40 time of a casual 1v1
- * room, or null.
+ * league match number; null for a group that is no match (the tournament
+ * desk, which names itself in `tags`). `tags` are extra tags (a lobby or
+ * account card, resources/js/lobbyCards.js; the desk's `desk`); `expiration`
+ * the NIP-40 time of a casual 1v1 room, or null.
  */
 export function makeGroupRumor({ sender, recipients, content, match, tags = [], expiration = null, now = Math.floor(Date.now() / 1000) }) {
     const rumor = {
         pubkey: sender,
         created_at: now,
         kind: 14,
-        tags: [...recipients.filter((p) => p !== sender).map((p) => ['p', p]), ['match', String(match)], ...tags, ...expirationTags(expiration)],
+        tags: [...recipients.filter((p) => p !== sender).map((p) => ['p', p]), ...(match == null ? [] : [['match', String(match)]]), ...tags, ...expirationTags(expiration)],
         content,
     };
 
@@ -211,9 +212,13 @@ export async function wrapGroupMessage(signer, { sender, recipients, content, ma
 /** After a match or game is settled, an untagged reply still counts this long (seconds): the "gg" after the result. */
 export const DM_GRACE = 60 * 60;
 
-/** A rumor without the league's `match` tag, as every other NIP-17 client writes it. */
+/**
+ * A rumor without the league's `match` tag, as every other NIP-17 client
+ * writes it. A tournament desk message (`desk`, deskMessages() below) is the
+ * league's too: it never counts as a reply in a room or a game.
+ */
 export function isUntagged(rumor) {
-    return !rumor.tags.some((t) => t[0] === 'match');
+    return !rumor.tags.some((t) => t[0] === 'match' || t[0] === 'desk');
 }
 
 /** NIP-17 chat room of a rumor: its author and its `p` set. */
@@ -342,4 +347,28 @@ export function gameMessages(rumors, { me, opponent, match, muted = [], dm = nul
     const replies = dm === null ? [] : dmReplies(rumors, { me, members: [me, opponent], match, authors: [opponent], since: dm.since, settled: dm.settled ?? null });
 
     return withReplies(tagged, replies, muted);
+}
+
+/**
+ * The messages of one tournament desk (resources/js/deskChat.js): the right
+ * `desk` (the league's tournament id), written by a member of the desk as it
+ * is now, addressed to me (or written by me), each once, oldest first.
+ * Unlike a match room, the recipients are not checked against today's
+ * members: the desk follows sign-ups and withdrawals, so a message sent
+ * before a player withdrew still names them and stays readable. Messages
+ * from muted pubkeys are left out.
+ */
+export function deskMessages(rumors, { me, members, desk, muted = [] }) {
+    const memberSet = new Set(members);
+
+    const tagged = rumors.filter((rumor) => {
+        if (!isRumor(rumor)) return false;
+        const recipients = rumor.tags.filter((t) => t[0] === 'p').map((t) => t[1]);
+        const forDesk = rumor.tags.some((t) => t[0] === 'desk' && t[1] === String(desk));
+        const toMe = rumor.pubkey === me || recipients.includes(me);
+
+        return forDesk && toMe && memberSet.has(rumor.pubkey) && recipients.length > 0;
+    });
+
+    return withReplies(tagged, [], muted);
 }

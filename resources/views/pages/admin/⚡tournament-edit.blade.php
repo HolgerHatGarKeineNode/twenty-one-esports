@@ -456,6 +456,8 @@ new #[Layout('layouts::app', ['section' => 'admin'])] class extends TournamentFo
     </x-slot:badge>
     <x-slot:actions>
         <x-button variant="quiet" :href="route('tournaments.show', $tournament)" data-test="to-tournament">{{ __('Tournament page') }}</x-button>
+        {{-- The tournament desk (TournamentDesk): the players' questions, answered on the tournament page. --}}
+        <x-tournaments.desk-button :desk="\App\Support\Tournaments\TournamentDesk::for($tournament, auth()->user())" />
         {{-- A draft's Publish saves first (saveAndPublish), so the manage actions' plain link is left out here. --}}
         @if ($tournament->status === TournamentStatus::Draft)
             <x-button wire:click="saveAndPublish" icon="send" class="whitespace-nowrap" data-test="edit-publish-top">{{ __('Save and publish') }}</x-button>

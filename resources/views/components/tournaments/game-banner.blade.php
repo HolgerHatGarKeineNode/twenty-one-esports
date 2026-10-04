@@ -5,8 +5,8 @@
     live and after the end (App\Support\Tournaments\TournamentGameEnd::banner();
     user, 2026-10-03: "groß fett rein, oben, dass es sich um ein Turnierspiel
     handelt"): the trophy, the tournament, its round and the game of a duel,
-    what is at stake, and the way to the tournament page. Nothing for any
-    other game.
+    what is at stake, the tournament desk for its players and direction, and
+    the way to the tournament page. Nothing for any other game.
 --}}
 @if ($banner)
     <section aria-label="{{ $banner['cup'] ? __('Cup game') : __('Tournament game') }}"
@@ -22,6 +22,11 @@
             </span>
             <span class="text-[13px] font-bold text-ink" data-test="tournament-banner-stake">{{ $banner['stake'] }}</span>
         </span>
+        @php($desk = isset($banner['tournamentId']) && ($deskTournament = \App\Models\Tournament::query()->find($banner['tournamentId'])) !== null ? \App\Support\Tournaments\TournamentDesk::for($deskTournament, auth()->user()) : null)
+        @if ($desk)
+            {{-- The tournament desk (TournamentDesk), for the players and the direction only: a problem with this game goes there. --}}
+            <x-tournaments.desk-button :desk="$desk" class="max-sm:w-full" />
+        @endif
         <x-button :href="$banner['url']" icon="trophy" class="shrink-0 max-sm:w-full" data-test="tournament-banner-link">{{ __('Tournament page') }}</x-button>
     </section>
 @endif

@@ -54,14 +54,16 @@ whose games have a winner and no points, with its game channel and lobby cards; 
 (2026-10-01, draft): score games, a highscore or time attack read per player, run as leaderboard
 tournaments without a new kind; **revision 9.19** (2026-10-02): every tournament pot is booked in the
 league wallet again, zaps to a tournament's `31923` go into its pot with receipts by the league's LNURL
-server key, and a sponsor's pledge can be marked paid outside the wallet; it replaces revision 9.1). Not
+server key, and a sponsor's pledge can be marked paid outside the wallet; it replaces revision 9.1;
+**revision 9.20** (2026-10-04): the tournament desk, a NIP-17 group of a tournament's players and its
+direction, with the rumor tag `desk`). Not
 submitted to
 `nostr-protocol/nips`. Kind
 numbers are checked against the official NIP index and other registries (see
 [Kind numbers and collision check](#kind-numbers-and-collision-check)); every example in this
 document is a real signed event that was published to and read back from local relays
 (`docs/plans/2026-09-25T1212-esports-v1-ladder/p1-relay-proof.md`, rounds 1 to 6). Revision 7 adds
-no example yet, and neither do revisions 8, 8.1, 9, 9.1, 9.2, 9.3, 9.5, 9.6, 9.7, 9.8, 9.9, 9.10, 9.11, 9.12, 9.13, 9.14, 9.15, 9.16, 9.18 and 9.19 (see [Open points](#open-points)).
+no example yet, and neither do revisions 8, 8.1, 9, 9.1, 9.2, 9.3, 9.5, 9.6, 9.7, 9.8, 9.9, 9.10, 9.11, 9.12, 9.13, 9.14, 9.15, 9.16, 9.18, 9.19 and 9.20 (see [Open points](#open-points)).
 Revision 9.10 needs none: it adds no event and no tag. Neither does revision 9.11: the league signs nothing new, and the zap
 request it describes is plain NIP-57. Nor does revision 9.12: a board game's tournament is an ordinary `31923` whose summary
 names the game and mode, and a board game has no ladder yet. Revision 9.13 does sign new events for the
@@ -142,6 +144,20 @@ The rules marked "rev. 9.18" are a draft as well, written before the first Block
 season chain as **solo blocks**. They apply to every chain season whose genesis the league signs after adopting
 revision 9.18; a genesis without the `solo` tag has its defaults. No versus candidate, ladder, tag or rule changes: a
 genesis without a score game's `weight` signs exactly the tags it signed before.
+
+### Changelog of revision 9.20 (2026-10-04)
+
+A private chat per tournament between its players and its direction (user, 2026-10-03: „pro Turnier
+einen Turnierleiter-Chat auch als ephemeral Chat Nostr-Gruppe, damit alle Spieler mit der Turnierleitung
+chatten können, für Probleme oder Bugs oder sonstiges"). No new kind; one new rumor tag. Checked
+against the in-memory test relay of the app's browser suite, not on a public relay, and without
+printed examples.
+
+- **The tournament desk** ([Tournament desk](#tournament-desk-rev-920)): a NIP-17 group whose kind `14`
+  rumors carry `["desk", "<tournament id>"]` instead of `match`; sealed, wrapped and published like a
+  match room message.
+- **`desk` counts as tagged**: a rumor with `desk` is never an untagged reply from another client in a
+  match room or a game chat.
 
 ### Changelog of revision 9.19 (2026-10-02)
 
@@ -1102,6 +1118,7 @@ it and returns non-matching events; see the relay proof).
 | `respond_by` | `<unix seconds>` | 2150 (not in a league-signed tournament pairing, rev. 8.1) | the challenge is open until this time. Deliberately **not** NIP-40 `expiration`, see [Relay behaviour](#relay-behaviour) |
 | `tournament` | `<slug>` | 2150 (optional), 2155 | revision 3 only: the tournament a challenge belongs to. Revision 4 references the tournament's `31923` with `a` instead |
 | `match` | `<positive integer>` | 2150, 2154 (rev. 4); `14` rumors | the league match number, assigned by the league before the challenge is signed and copied into every attestation of the challenge; in a chat or notification rumor the match it is about |
+| `desk` | `<positive integer>` | `14` rumors (rev. 9.20) | the league's id of the tournament whose desk the message belongs to, see [Tournament desk](#tournament-desk-rev-920); such a rumor carries no `match` |
 | `pairing` | `queue` \| `tournament` | 2150 (rev. 4, optional) | the league paired the two sides: the rated queue or a tournament bracket. Absent: one side chose the other. Changes the trust gate, see [Trust gate](#trust-gate). Rev. 8.1: a `2150` signed by the league key always carries `tournament` |
 | `clan` | `<pubkey>`, `<clan address>` | 2154 (rev. 4) | the clan a rated player was an active member of at the accept; one row per rated player with a clan. Input of [Clan hashrate](#clan-hashrate) |
 | `hashrate` | `<win>`, `<draw>`, `<loss>`, `<team win bonus>` | 32152 (rev. 4) | activity points of the season, see [Clan hashrate](#clan-hashrate); its presence makes the ladder a revision-4 ladder |
@@ -3908,6 +3925,27 @@ source strings, with their entries in `lang/*.json`):
   players (NIP-17). The league cannot read it, so there is no excerpt here." becomes "The chat is
   end-to-end encrypted over Nostr: the league server never receives or stores it, so there is no
   excerpt here." (the sentence about screenshots stays).
+
+### Tournament desk (rev. 9.20)
+
+Each tournament has one private group chat between its players and the people who run it, for
+problems, bugs and questions. It is a NIP-17 group like a match room:
+
+- **Members.** The active entrants (before the bracket every sign-up that was neither withdrawn nor
+  removed, its players and whoever entered it; after it every entry that is not disqualified) and the
+  tournament direction: the creator, the named directors and the league's admins. The league derives
+  the list on each page load and hands it only to a member; a client sends each message to the `p`
+  list of that moment, so a player who withdrew receives nothing new.
+- **Rumor.** Kind `14` with `p` for every other member and `["desk", "<tournament id>"]`, no `match`.
+  Sealed, wrapped and published to the chat relays and each recipient's `10050` as in [Chat](#chat).
+- **Reading.** A client shows a rumor with the tournament's `desk` that is addressed to the player (or
+  written by them) and whose author is a member now. Its `p` set is not compared with today's members,
+  unlike a match room: a message sent before someone withdrew still names them. Untagged replies from
+  other clients are not shown in the desk.
+- **Direction.** A message whose author belongs to the direction is marked as such; the direction is
+  not muted by a player's mutes.
+- **Open** from sign-up until 24 hours after the tournament's last result; never for a draft, a
+  called-off tournament or a league week. Messages carry no NIP-40 `expiration`.
 
 ### Game channels (rev. 9.3)
 

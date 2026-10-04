@@ -116,6 +116,8 @@ final class TournamentGameEnd
             'stake' => $cup ? (string) __('Cup game — counts for the tournament') : (string) __('Tournament game — counts for the tournament'),
             'url' => route('tournaments.show', $tournament),
             'cup' => $cup,
+            // The tournament desk's button (TournamentDesk::for(), per viewer, in the banner component).
+            'tournamentId' => $tournament->id,
         ];
     }
 

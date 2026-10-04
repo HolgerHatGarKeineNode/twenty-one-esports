@@ -15,6 +15,7 @@ export default defineConfig({
                 'resources/js/boardGame.js',
                 'resources/js/push.js',
                 'resources/js/matchRoom.js',
+                'resources/js/tournamentDesk.js',
                 'resources/js/liveChat.js',
                 'resources/js/gameChannel.js',
                 'resources/js/stacker/page.js',

@@ -30,6 +30,7 @@ use App\Support\Tournaments\MatchWait;
 use App\Support\Tournaments\Preview;
 use App\Support\Tournaments\TournamentChampion;
 use App\Support\Tournaments\TournamentChampionMoment;
+use App\Support\Tournaments\TournamentDesk;
 use App\Support\Tournaments\TournamentLanding;
 use App\Support\Tournaments\TournamentNow;
 use App\Support\Tournaments\TournamentPrizePool;
@@ -69,7 +70,7 @@ use Livewire\Component;
  * one next step (play, start, join the lobby, wait, bye, out, won) or a
  * spectator's live boards; a cup's invite and times live there.
  */
-new #[Layout('layouts::app', ['section' => 'tournaments', 'realtime' => true])] class extends Component {
+new #[Layout('layouts::app', ['section' => 'tournaments', 'realtime' => true, 'scripts' => ['resources/js/tournamentDesk.js']])] class extends Component {
     public Tournament $tournament;
 
     public string $closesAt = '';
@@ -394,6 +395,19 @@ new #[Layout('layouts::app', ['section' => 'tournaments', 'realtime' => true])] 
         return auth()->check() && Gate::allows('manage-tournament', $this->tournament);
     }
 
+    /**
+     * The tournament desk for the viewer (TournamentDesk): its chat config,
+     * or null while it is closed or the viewer is not a member. Only a
+     * member's page carries the member list.
+     *
+     * @return array<string, mixed>|null
+     */
+    #[Computed]
+    public function desk(): ?array
+    {
+        return TournamentDesk::for($this->tournament, auth()->user());
+    }
+
     #[Computed]
     public function canDirect(): bool
     {
@@ -681,9 +695,23 @@ new #[Layout('layouts::app', ['section' => 'tournaments', 'realtime' => true])] 
     --}}
     {{-- A finished tournament opens on its champion (user, 2026-10-03), the viewer's own place inside it. --}}
     @if ($championMoment)
-        @include('pages.tournaments.partials.champion', ['moment' => $championMoment, 'tournament' => $tournament, 'results' => $score ? '#leaderboard' : '#bracket'])
+        @include('pages.tournaments.partials.champion', ['moment' => $championMoment, 'tournament' => $tournament, 'results' => $score ? '#leaderboard' : '#bracket', 'desk' => $this->desk])
     @elseif ($this->now)
-        @include('pages.tournaments.partials.now', ['now' => $this->now, 'tournament' => $tournament, 'cup' => $this->cupMatch, 'error' => $cupError, 'waits' => $this->myWaits, 'lobby' => $this->myLobby])
+        @include('pages.tournaments.partials.now', ['now' => $this->now, 'tournament' => $tournament, 'cup' => $this->cupMatch, 'error' => $cupError, 'waits' => $this->myWaits, 'lobby' => $this->myLobby, 'desk' => $this->desk])
+    @elseif ($this->desk)
+        {{-- Sign-up and the draw have no hero: the desk gets its own row at the top, for the players and the direction. --}}
+        <section aria-labelledby="desk-row-h" class="mx-4 mt-2 flex flex-col gap-3 rounded-card bg-card px-4 py-4 shadow-[inset_0_0_0_1px_var(--color-btc)] sm:flex-row sm:items-center sm:gap-6 lg:mx-12 lg:mt-4 lg:px-6" data-test="desk-row">
+            <span class="flex min-w-0 grow flex-col gap-1">
+                <h2 id="desk-row-h" class="m-0 text-[15px] font-bold">{{ __('Questions or a problem?') }}</h2>
+                <span class="text-[13px] leading-normal text-ink-2">{{ $this->desk['manager'] ? __('The players of this tournament can write to you at the tournament desk.') : __('Write to the tournament direction at the tournament desk. Only the players and the direction read it.') }}</span>
+            </span>
+            <x-tournaments.desk-button :desk="$this->desk" drawer />
+        </section>
+    @endif
+
+    {{-- The desk's drawer, opened by any desk button on this page or by #desk in the address. --}}
+    @if ($this->desk)
+        <x-tournaments.desk-chat :desk="$this->desk" />
     @endif
 
     @if ($this->canManage)

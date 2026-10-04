@@ -6616,5 +6616,16 @@
     "The path to the title": "Der Weg zum Titel",
     "Beat": "Sieg gegen",
     "Drew with": "Remis gegen",
-    "Lost to": "Niederlage gegen"
+    "Lost to": "Niederlage gegen",
+    "Tournament desk": "Turnierleiter-Chat",
+    "Tournament direction": "Turnierleitung",
+    "private to the players and the tournament direction": "nur für die Spieler und die Turnierleitung",
+    "Every player of this tournament reads along. Your messages are marked as the tournament direction.": "Alle Spieler dieses Turniers lesen mit. Deine Nachrichten sind als Turnierleitung markiert.",
+    "A problem, a bug, a question? Write to the tournament direction here. Every player of this tournament reads along.": "Ein Problem, ein Fehler, eine Frage? Schreib hier der Turnierleitung. Alle Spieler dieses Turniers lesen mit.",
+    "No messages yet. Ask the tournament direction anything.": "Noch keine Nachrichten. Frag die Turnierleitung, was du wissen willst.",
+    "Your signer cannot encrypt messages (NIP-44), so the chat is off. A Nostr extension or signer app with NIP-44 turns it on.": "Dein Signer kann keine Nachrichten verschlüsseln (NIP-44), deshalb ist der Chat aus. Eine Nostr-Erweiterung oder Signer-App mit NIP-44 schaltet ihn ein.",
+    "Message to the tournament desk": "Nachricht in den Turnierleiter-Chat",
+    "Questions or a problem?": "Fragen oder ein Problem?",
+    "The players of this tournament can write to you at the tournament desk.": "Die Spieler dieses Turniers können dir im Turnierleiter-Chat schreiben.",
+    "Write to the tournament direction at the tournament desk. Only the players and the direction read it.": "Schreib der Turnierleitung im Turnierleiter-Chat. Nur die Spieler und die Turnierleitung lesen mit."
 }

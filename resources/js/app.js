@@ -30,6 +30,8 @@ import './sanNotation.js';
 import './tournamentLanding.js';
 import './autoDecision.js';
 import './tournamentNow.js';
+// The tournament desk's buttons and unread badge; the chat itself loads only where it runs.
+import './deskButton.js';
 import './championMoment.js';
 import './leagueTime.js';
 import './tournamentTv.js';

@@ -39,7 +39,7 @@
  * cannot be paged by time), so "older" is a window over what arrived.
  */
 import { SimplePool } from 'nostr-tools/pool';
-import { loadCache, roomEntry, saveCache } from './chatCache.js';
+import { entryFor, loadCache, saveCache } from './chatCache.js';
 import { ACCOUNT_CARDS, ACCOUNT_SERVICES, HOST_CARD, accountTags, cardContent, casualExpiration, isExpired, lobbyTags, openCardIds, parseCard, pinnedLobbyCard, randomPassword } from './lobbyCards.js';
 import { extraInboxRelays, lookupInboxes, relaysFor } from './dmInbox.js';
 import { canEncrypt, chatSince, isUntagged, roomMessages, unwrapMessage, wrapGroupMessage } from './nostrChat.js';
@@ -152,7 +152,7 @@ export function roomChat(config) {
         start() {
             this.status = 'live';
             // The room's own cache (resources/js/chatCache.js): checked on load, expired entries pruned, cards only as stubs.
-            const { cache, rumors } = loadCache('room', config.me);
+            const { cache, rumors } = loadCache(this.cacheName(), config.me);
             this.cache = cache;
             this.rumors.push(...rumors);
 
@@ -188,9 +188,14 @@ export function roomChat(config) {
                 }
             }
 
-            this.cache[wrap.id] = roomEntry(rumor);
+            this.cache[wrap.id] = entryFor(this.cacheName(), rumor);
             if (rumor !== null && this.cache[wrap.id] !== null) this.add(rumor);
-            saveCache('room', config.me, this.cache);
+            saveCache(this.cacheName(), config.me, this.cache);
+        },
+
+        /** Which local cache this chat keeps (chatCache.js): `room`, or the tournament desk's own. */
+        cacheName() {
+            return config.cacheName ?? 'room';
         },
 
         add(rumor) {
@@ -430,7 +435,8 @@ export function roomChat(config) {
                 recipients: config.members.map((m) => m.pubkey),
                 content,
                 match: config.match,
-                tags,
+                // The chat's own tags (the tournament desk's `desk`) before a message's (a card).
+                tags: [...(config.tags ?? []), ...tags],
                 expiration: this.expiration(),
                 now,
             });
