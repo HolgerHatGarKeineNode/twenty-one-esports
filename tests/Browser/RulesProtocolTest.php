@@ -88,7 +88,7 @@ test('the rules: a sticky section list on desktop that follows the reader, accor
 
     $wide->locator('[data-test=doc-nav] a[href="#prizes"]')->click();
     BrowserWait::until($wide, '() => document.querySelector("[data-test=doc-nav] a[aria-current=location]")?.getAttribute("href") === "#prizes"', 5_000);
-    $sticky = $wide->evaluate('() => { const r = document.querySelector("[data-test=doc-nav] ol").getBoundingClientRect(); return { top: Math.round(r.top), visible: r.bottom > 0 && r.top < innerHeight, heading: Math.round(document.querySelector("#prizes").getBoundingClientRect().top) }; }');
+    $sticky = $wide->evaluate('() => { const r = document.querySelector("[data-test=doc-nav] ol").getBoundingClientRect(); return { top: Math.round(r.top), header: Math.round(document.querySelector(".shell-header").getBoundingClientRect().bottom), visible: r.bottom > 0 && r.top < innerHeight, heading: Math.round(document.querySelector("#prizes").getBoundingClientRect().top) }; }');
     docShot($wide, 'rules-prizes-1440', false);
 
     $narrow = docPage('/rules', 375, 812);
@@ -107,7 +107,10 @@ test('the rules: a sticky section list on desktop that follows the reader, accor
 
     expect($desk)->toMatchArray(['overflow' => 0, 'small' => [], 'clipped' => [], 'outside' => []])
         ->and($sticky['visible'])->toBeTrue()
-        ->and($sticky['top'])->toBeLessThanOrEqual(120)
+        // The header stays on top while you scroll (230746bb): the list sticks right under it, a 24 px gap below, never beneath it.
+        ->and($sticky['header'])->toBeGreaterThan(0)
+        ->and($sticky['top'])->toBeGreaterThanOrEqual($sticky['header'])
+        ->and($sticky['top'])->toBeLessThanOrEqual($sticky['header'] + 28)
         ->and($sticky['heading'])->toBeLessThan(200)
         ->and($closed)->toBe(0)
         ->and($phone)->toMatchArray(['overflow' => 0, 'small' => [], 'clipped' => [], 'outside' => []])

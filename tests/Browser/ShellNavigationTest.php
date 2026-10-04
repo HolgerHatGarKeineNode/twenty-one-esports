@@ -316,7 +316,8 @@ test('on a phone: game chips, the tab bar, the More sheet and the hub sheet; the
     $m = $page->evaluate($rects);
     fwrite(STDERR, "\n[shell-mobile] player 375x667 ".json_encode($m));
 
-    expect($m['tabs'])->toBe(['Play 63', 'Matches 63', 'Ladder 63', 'Tournaments 63', 'More 63'])
+    // shellPlayer() has an accepted series, so the More tab carries its screen-reader hint (the count of upcoming matches, 93653e8a).
+    expect($m['tabs'])->toBe(['Play 63', 'Matches 63', 'Ladder 63', 'Tournaments 63', 'More, 1 upcoming match or event 63'])
         ->and($m['dock'])->not->toBeNull()
         ->and($m['dock'][1])->toBeLessThanOrEqual($m['tabbar'][0] - 8)
         // The active game's chip is inside the row's visible part.

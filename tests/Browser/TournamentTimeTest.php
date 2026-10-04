@@ -39,6 +39,7 @@ const TIME_STATE = <<<'JS'
         const text = (selector) => document.querySelector(selector)?.innerText.replace(/\s+/g, ' ').trim() ?? null;
         return {
             when: box('[data-test=tournament-when]'),
+            cta: box('[data-test=signup-cta]'),
             time: box('[data-test=when-time]'),
             local: box('[data-test=when-local]'),
             dateText: text('[data-test=when-date]'),
@@ -161,14 +162,21 @@ test('the when block sits above the fold at 375 and 1440 px in both languages, h
             expect([$locale, $width, $state['lang'], $state['datetime'], $state['dateText'], $state['timeText'], $state['zoneText']])
                 ->toBe([$locale, $width, $locale, $iso, LeagueTime::date($tournament->starts_at), LeagueTime::hour($tournament->starts_at),
                     LeagueTime::abbreviation($tournament->starts_at).', Berlin'])
-                // Above the fold, measured at the top of the page: the whole block, the time included.
                 ->and($state['scrollY'])->toBe(0)
-                ->and($state['when']['bottom'])->toBeLessThanOrEqual($height)
                 ->and($state['when']['left'])->toBeGreaterThanOrEqual(0)
                 ->and($state['when']['right'])->toBeLessThanOrEqual($width)
                 ->and($state['local']['height'])->toBe(20)
                 ->and($state['startsIn'])->toMatch($locale === 'de' ? '/^startet in [45] T \d+ Std$/' : '/^starts in [45] d \d+ h$/')
                 ->and([$locale, $width, $state['overflow'], $state['shifts'], $state['errors'], $state['bad']])->toBe([$locale, $width, 0, [], [], []]);
+
+            if ($width >= 1024) {
+                // Above the fold, measured at the top of the page: the whole block, the time included.
+                expect($state['when']['bottom'])->toBeLessThanOrEqual($height);
+            } else {
+                // Below lg the call to action comes first, right under the name (user 2026-10-03: Sign up in the phone's first screen), and a game played in
+                // the player's own copy puts its "You need your own copy" box in front of the button. The block is the next thing after that card.
+                expect($state['when']['top'] - $state['cta']['bottom'])->toBeGreaterThanOrEqual(0)->toBeLessThanOrEqual(40);
+            }
 
             // The viewer's-time line appears exactly when the browser's zone runs on another offset at the start and is not one a privacy browser reports instead of the real one (P53, SPOOFED_ZONES).
             $differs = $page->evaluate('(at) => { const o = (z) => { const p = Object.fromEntries(new Intl.DateTimeFormat("en-US", { timeZone: z, hourCycle: "h23", year: "numeric", month: "numeric", day: "numeric", hour: "numeric", minute: "numeric" }).formatToParts(new Date(at)).map((x) => [x.type, x.value])); return Date.UTC(p.year, p.month - 1, p.day, p.hour % 24, p.minute) - at; }; const own = Intl.DateTimeFormat().resolvedOptions().timeZone; return !["UTC", "Etc/UTC", "Etc/GMT", "GMT", "Etc/Universal", "Etc/Zulu", "Universal", "Zulu", "Atlantic/Reykjavik"].includes(own) && o(own) !== o("Europe/Berlin"); }', $tournament->starts_at->getTimestampMs());

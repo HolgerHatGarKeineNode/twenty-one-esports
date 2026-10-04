@@ -106,6 +106,7 @@ const CHAMPION_RECTS = <<<'JS'
             page: rect('[data-test=tournament-show]'),
             name: rect('[data-test=champion-name]'),
             share: rect('[data-test=champion-share-button]') ?? rect('[data-test=share-post]'),
+            rail: rect('[data-test=desk-rail]'),
             results: rect('[data-test=champion-results]'),
             podium: rect('[data-test=champion-podium]'),
             nameSize: parseFloat(getComputedStyle(document.querySelector('[data-test=champion-name]')).fontSize),
@@ -143,7 +144,9 @@ test('a finished tournament opens on its champion at 375 and 1440, in English an
         expect($m['hero'])->not->toBeNull($label)
             // The first thing of the page, full width.
             ->and(abs($m['hero']['top'] - $m['page']['top']))->toBeLessThan(1, $label.': hero at the top')
-            ->and($m['heroWidth'])->toBeGreaterThanOrEqual($width - 20, $label.': full width')
+            // A member of the tournament's desk (the winner) has the desk chat open beside the page from xl (34446af8, 22.5 rem and a 2 rem gap): the hero fills the rest.
+            ->and(($m['rail'] !== null))->toBe($viewer !== null, $label.': the desk rail is there for the desk\'s members only')
+            ->and($m['heroWidth'])->toBeGreaterThanOrEqual(($m['rail'] !== null && $width >= 1280 ? $m['rail']['left'] - 32 : $width) - 20, $label.': full width')
             // The name in display type and the way to share it in the first screen.
             ->and($m['nameSize'])->toBeGreaterThanOrEqual($width >= 1024 ? 72.0 : 40.0, $label.': name size')
             ->and($m['name']['bottom'])->toBeLessThanOrEqual($height, $label.': name above the fold')

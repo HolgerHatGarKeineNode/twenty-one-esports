@@ -1,6 +1,7 @@
 <?php
 
 use App\Games\Blockfill;
+use App\Games\GameRegistry;
 use App\Models\ChessGame;
 use App\Models\Clan;
 use App\Models\Rating;
@@ -321,12 +322,30 @@ test('the next tournament leads home at 375 and 1440 px, for a guest and a playe
 
             expect($page->evaluate('() => document.querySelector("[data-test=home-hero]").dataset.tournament'))->toBe((string) $tournament->id);
 
-            // The hero's cover, name, time, seats and call to action lie inside the first viewport.
+            // A player with an open match or a signed-up tournament has "Your next event" (UpcomingEvents) on top of home, ahead of the hero (93653e8a, 9c809992).
+            $upcoming = $page->evaluate(HOME_HUB_BOX, '[data-test=upcoming-card]');
+            $heroTop = $page->evaluate(HOME_HUB_BOX, '[data-test=home-hero]');
+            expect($upcoming !== null)->toBe($user !== null, "{$label}: the next-event card is there for the player only");
+
+            if ($upcoming !== null) {
+                expect($upcoming['top'])->toBeGreaterThanOrEqual(0)->and($upcoming['bottom'])->toBeLessThanOrEqual($heroTop['top'] + 1, "{$label}: the card comes before the hero");
+            }
+
+            // The hero's cover, name, time, seats and call to action lie inside the first viewport; behind that card on a phone the hero begins in it and goes on below the fold.
             foreach (['hero-cover', 'hero-name', 'hero-when', 'hero-seats', 'hero-cta'] as $test) {
                 $box = $page->evaluate(HOME_HUB_BOX, "[data-test={$test}]");
                 fwrite(STDERR, "\n[home] {$label} {$test}: ".json_encode($box)."\n");
-                expect($box['top'])->toBeGreaterThanOrEqual(0, "{$label}: {$test} starts above the window")
-                    ->and($box['bottom'])->toBeLessThanOrEqual($floor, "{$label}: {$test} ends at {$box['bottom']}, under the floor {$floor}");
+                expect($box['top'])->toBeGreaterThanOrEqual(0, "{$label}: {$test} starts above the window");
+
+                if ($upcoming !== null && $width < 1024) {
+                    if ($test === 'hero-cover') {
+                        expect($box['top'])->toBeLessThan($floor, "{$label}: the hero's cover begins above the window's floor");
+                    }
+
+                    continue;
+                }
+
+                expect($box['bottom'])->toBeLessThanOrEqual($floor, "{$label}: {$test} ends at {$box['bottom']}, under the floor {$floor}");
             }
 
             // Twelve faces, four open seats, the count counted up to 12, the pot on the cover.
@@ -444,6 +463,14 @@ test('the Blockfill card sits in the ladder grid at 375 and 1440 px, in English 
         app(BlockfillWeeks::class)->record($run);
     }
 
+    // The games menu's order: the registry's, which the grid sorts by (a stable sort: a game's ladder stays before its score board).
+    $rank = array_flip(array_values(array_map(fn ($game) => $game->slug(), app(GameRegistry::class)->all())));
+    $inMenuOrder = function (array $games) use ($rank): array {
+        usort($games, fn (string $a, string $b): int => ($rank[$a] ?? PHP_INT_MAX) <=> ($rank[$b] ?? PHP_INT_MAX));
+
+        return $games;
+    };
+
     foreach ([['en', 375, 667], ['en', 1440, 900], ['de', 375, 667], ['de', 1440, 900]] as [$lang, $width, $height]) {
         $label = "scores {$lang} {$width}x{$height}";
         $page = homeHubPage(null, $width, $height, $lang);
@@ -457,7 +484,8 @@ test('the Blockfill card sits in the ladder grid at 375 and 1440 px, in English 
             ->and($grid['grid']['scrollWidth'])->toBeLessThanOrEqual($grid['grid']['clientWidth'], "{$label}: the grid overflows")
             ->and($score)->toHaveCount(1)
             ->and($score[0]['game'])->toBe('blockfill')
-            ->and(end($grid['cards'])['test'])->toBe('score-top', "{$label}: the score card comes after the ladders")
+            // One list in the games menu's order, ladders and score boards interleaved (01cfde9b), not the score cards behind the ladders.
+            ->and(array_column($grid['cards'], 'game'))->toBe($inMenuOrder(array_column($grid['cards'], 'game')), "{$label}: the cards follow the games menu's order")
             ->and($grid['cover'])->toBeTrue()
             ->and($grid['subline'])->toBe($lang === 'de' ? 'Diese Woche' : 'This week')
             ->and(array_column($grid['rows'], 'time'))->toBe(['0:15.966', '0:18.333', '0:20.000']);
