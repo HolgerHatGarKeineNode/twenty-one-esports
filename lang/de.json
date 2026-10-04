@@ -4186,6 +4186,8 @@
     ":game 1v1, answer now": ":game 1v1, jetzt antworten",
     ":name invites you to a :game 1v1": ":name lädt dich zu einem :game 1v1 ein",
     "A rematch can be sent only right after a match with a result.": "Eine Revanche geht nur direkt nach einem Match mit Ergebnis.",
+    "A tournament match has no rematch: the tournament decides your next match.": "Ein Turnier-Match hat keine Revanche: Das Turnier bestimmt dein nächstes Match.",
+    "A tournament game has no rematch: the tournament decides your next game.": "Eine Turnierpartie hat keine Revanche: Das Turnier bestimmt deine nächste Partie.",
     "Step :n of :total: :label": "Schritt :n von :total: :label",
     "The lobby reaches your opponent only through the encrypted match chat. A browser extension such as Alby or nos2x, or a signer app such as Amber with a bunker link, can do it.": "Die Lobby erreicht deinen Gegner nur über den verschlüsselten Match-Chat. Eine Browser-Erweiterung wie Alby oder nos2x oder eine Signer-App wie Amber mit Bunker-Link kann das.",
     "The check-in opens at :open, the match starts :time": "Der Check-in öffnet um :open, das Match startet :time",

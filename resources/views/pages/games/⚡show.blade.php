@@ -489,6 +489,7 @@ new #[Layout('layouts::app', ['section' => 'chess', 'realtime' => true, 'scripts
                 'signature_rejected' => __('Your signature did not match the post. Nothing was posted.'), 'already_posted' => __('You already posted this game.'),
                 'not_finished' => __('Only a finished game can be posted.'), 'reload' => __('This page is out of date. Please reload it.'),
                 'browsing' => __('The board shows an earlier position. Go back to the current position to move.'),
+                'tournament_rematch' => __('A tournament game has no rematch: the tournament decides your next game.'),
                 'default' => __('That did not work. The board shows the server\'s state.')],
             'disconnected' => [
                 'title' => __(':name disconnected', ['name' => $this->game->opponentOf(auth()->user())?->displayName() ?? '']),

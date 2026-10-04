@@ -7,6 +7,7 @@ use App\Enums\TournamentStatus;
 use App\Games\NineMensMorris;
 use App\Models\BoardGame;
 use App\Models\ChessGame;
+use App\Models\SeriesInvite;
 use App\Models\SeriesMatch;
 use App\Models\Tournament;
 use App\Models\TournamentMatch;
@@ -14,6 +15,7 @@ use App\Models\TournamentParticipant;
 use App\Models\User;
 use App\Support\Board\BoardGameService;
 use App\Support\Chess\ChessGameService;
+use App\Support\Series\CasualInvites;
 use App\Support\Series\SeriesService;
 use App\Support\Tournaments\FormatOptions;
 use App\Support\Tournaments\GameProfile;
@@ -23,6 +25,7 @@ use App\Support\Tournaments\TournamentRunner;
 use Illuminate\Support\Facades\Queue;
 use Livewire\Livewire;
 use Tests\Support\NineMensMorrisOn;
+use Tests\Support\TestSigner;
 
 /*
 |--------------------------------------------------------------------------
@@ -209,6 +212,40 @@ test('a confirmed tournament series shows the tournament panel in the room and n
         ->assertDontSee('data-test="casual-rematch-card"', false);
 
     expect(method_exists(Livewire::actingAs($winner)->test('pages::matches.room', ['match' => $series])->instance(), 'tournamentNext'))->toBeFalse();
+});
+
+test('the server refuses a rematch of a tournament chess game and of a cup series with the reason, not only the buttons are gone', function () {
+    config(['esports.league.nsec' => (new TestSigner)->secret, 'esports.casual_cups.enabled' => ['rocket-league']]);
+    $tournament = runningChess(TournamentFormat::SingleElimination, 4, TournamentResultsMode::Players);
+    [$game] = endChessGames($tournament);
+    [$white, $black] = [$game->white, $game->black];
+    app(ChessGameService::class)->resign($game, $black);
+    $board = Livewire::actingAs($white)->test('pages::games.show', ['game' => $game->refresh()]);
+
+    expect($board->call('offerRematch')->effects['returns'][0])->toMatchArray(['ok' => false, 'error' => 'tournament_rematch'])
+        ->and($game->refresh()->rematch_offer)->toBeNull();
+    expect($board->instance()->labels()['errors']['tournament_rematch'] ?? null)->toBe('A tournament game has no rematch: the tournament decides your next game.');
+
+    // An offer stored before the rule is not accepted either.
+    $game->forceFill(['rematch_offer' => 'w'])->save();
+    expect(Livewire::actingAs($black)->test('pages::games.show', ['game' => $game->refresh()])->call('acceptRematch')->effects['returns'][0])
+        ->toMatchArray(['ok' => false, 'error' => 'tournament_rematch'])
+        ->and(ChessGame::query()->where('rematch_of_id', $game->id)->exists())->toBeFalse();
+
+    // A cup series is a casual pairing (origin "cup"), so the casual rematch would have taken it.
+    $cup = runningCup(2, TournamentFormat::SingleElimination, ['bestOf' => 3, 'finalBestOf' => 3], 'rocket-league', '1v1');
+    cupTick();
+    $series = SeriesMatch::query()->where('origin', SeriesMatch::ORIGIN_CUP)->whereIn('tournament_match_id', $cup->matches()->select('id'))->sole();
+    $host = User::query()->findOrFail($series->rosterSide('challenger')[0]);
+    $series->forceFill(['status' => SeriesStatus::Confirmed, 'finished_at' => now()])->save();
+    app(TournamentRunner::class)->store(TournamentMatch::query()->findOrFail($series->tournament_match_id), ['winner' => 0, 'games_won' => [2.0, 0.0], 'points' => [], 'forfeit' => false, 'label' => '2-0', 'by' => 'players']);
+    app(TournamentRunner::class)->sync($cup->refresh());
+
+    // The cup of two is over, so no cup match locks the pair any more: only the tournament origin stands in the way.
+    expect($series->refresh()->status)->toBe(SeriesStatus::Confirmed)
+        ->and($cup->refresh()->status)->toBe(TournamentStatus::Finished)
+        ->and(casualRefusal(fn () => app(CasualInvites::class)->rematch($series->refresh(), $host)))->toBe('tournament_rematch')
+        ->and(SeriesInvite::query()->count())->toBe(0);
 });
 
 test('a casual chess game keeps its rematch and next search and shows no tournament panel', function () {

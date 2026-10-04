@@ -630,12 +630,14 @@ final class ChessGameService
     /**
      * Offer a rematch after a finished game; if the opponent already offered
      * one, this accepts it and starts the new game with colours swapped.
+     * A tournament game has none: the tournament decides the next game.
      *
      * @throws ChessRuleViolation
      */
     public function offerRematch(ChessGame $game, User $user): ?ChessGame
     {
         $color = $this->playerColor($game, $user);
+        $this->refuseTournamentRematch($game);
 
         if ($game->rematch_offer === $this->opponent($color)) {
             return $this->acceptRematch($game, $user);
@@ -655,6 +657,7 @@ final class ChessGameService
     {
         $game->refresh();
         $color = $this->playerColor($game, $user);
+        $this->refuseTournamentRematch($game);
 
         if ($game->status !== ChessGameStatus::Finished || $game->rematch_id !== null) {
             throw new ChessRuleViolation('no_rematch');
@@ -665,6 +668,19 @@ final class ChessGameService
         }
 
         return $this->start($game->black, $game->white, $game->mode, $game);
+    }
+
+    /**
+     * A tournament game has no rematch (user, 2026-10-03): the buttons are
+     * gone, and a direct call is refused here as well.
+     *
+     * @throws ChessRuleViolation
+     */
+    private function refuseTournamentRematch(ChessGame $game): void
+    {
+        if ($game->tournament_match_id !== null) {
+            throw new ChessRuleViolation('tournament_rematch');
+        }
     }
 
     /**

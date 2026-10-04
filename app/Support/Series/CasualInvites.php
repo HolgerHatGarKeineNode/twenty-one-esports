@@ -59,7 +59,8 @@ final class CasualInvites
      * `esports.casual.rematch_seconds`, with the platforms both played on.
      * It needs no "Looking to play": the two just played each other.
      * Only within `esports.casual.rematch_minutes` of the result, and only
-     * for a match with a result (a void one has none).
+     * for a match with a result (a void one has none). A tournament series
+     * has none at all: the tournament decides the next match.
      *
      * @throws SeriesRuleViolation
      */
@@ -71,6 +72,10 @@ final class CasualInvites
 
         if (! $match->isCasualPairing() || $side === null || $opponentId === null) {
             throw CasualMatches::refuse('not_player');
+        }
+
+        if ($match->tournament_match_id !== null || $match->origin === SeriesMatch::ORIGIN_CUP) {
+            throw CasualMatches::refuse('tournament_rematch');
         }
 
         if (! $match->status->hasResult() || $match->resolution === SeriesResolution::Void || $finished === null
