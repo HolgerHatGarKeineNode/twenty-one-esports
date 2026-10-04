@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Enums\JoinRequestOrigin;
 use App\Enums\JoinRequestStatus;
 use Database\Factories\ClanJoinRequestFactory;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
@@ -11,7 +12,9 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Support\Carbon;
 
 /**
- * A player asks to join a clan through a clan link (P6b). League data only:
+ * A player asks to join a clan through a clan link (P6b), or applies on the
+ * clan page with a short form (origin `application`: games, platforms, time
+ * zone, message; plan "Clan-Bewerbungen"). League data only:
  * the NIP lets only the owner's key list players (kind 32150), so a captain's
  * yes is stored here and the owner lists the player afterwards
  * (App\Support\Clans\ClanJoinRequests).
@@ -24,6 +27,11 @@ use Illuminate\Support\Carbon;
  * @property int|null $decided_by_id
  * @property Carbon|null $decided_at
  * @property int|null $clan_invite_id
+ * @property JoinRequestOrigin $origin
+ * @property list<string>|null $games
+ * @property list<string>|null $platforms
+ * @property string|null $timezone
+ * @property string|null $message
  * @property Carbon|null $created_at
  * @property Carbon|null $updated_at
  * @property-read Clan $clan
@@ -32,7 +40,7 @@ use Illuminate\Support\Carbon;
  * @property-read ClanInvite|null $clanInvite
  * @property-read InviteLink|null $link
  */
-#[Fillable(['clan_id', 'user_id', 'invite_link_id', 'status', 'decided_by_id', 'decided_at', 'clan_invite_id'])]
+#[Fillable(['clan_id', 'user_id', 'invite_link_id', 'status', 'decided_by_id', 'decided_at', 'clan_invite_id', 'origin', 'games', 'platforms', 'timezone', 'message'])]
 class ClanJoinRequest extends Model
 {
     /** @use HasFactory<ClanJoinRequestFactory> */
@@ -42,8 +50,16 @@ class ClanJoinRequest extends Model
     {
         return [
             'status' => JoinRequestStatus::class,
+            'origin' => JoinRequestOrigin::class,
+            'games' => 'array',
+            'platforms' => 'array',
             'decided_at' => 'datetime',
         ];
+    }
+
+    public function isApplication(): bool
+    {
+        return $this->origin === JoinRequestOrigin::Application;
     }
 
     /**

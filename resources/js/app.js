@@ -25,6 +25,7 @@ import './nostrBar.js';
 import './zapWinner.js';
 import './potZappers.js';
 import './followsHereUi.js';
+import './clanDmsUi.js';
 import './captured.js';
 import './sanNotation.js';
 import './tournamentLanding.js';

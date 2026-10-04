@@ -1,11 +1,12 @@
-@props(['clan', 'moment' => null, 'challenge' => null, 'mine' => false, 'numbers' => null, 'loading' => 'lazy'])
+@props(['clan', 'moment' => null, 'challenge' => null, 'apply' => null, 'mine' => false, 'numbers' => null, 'loading' => 'lazy'])
 
 {{--
     One clan on /clans as a card: its mark on the house cube (the logo, or
     the tag when there is none), tag and name, its proudest moment
     (ClanPride; nothing when it has none), the players' faces, meetup city
-    and founding day, and "Challenge" when the viewer may challenge one of
-    its Rocket League lineups. A card with a tournament place, a won series
+    and founding day, "Challenge" when the viewer may challenge one of
+    its Rocket League lineups, and "Apply" (or "Applied") when the viewer may
+    apply to it ($apply: ['url' => string, 'applied' => bool] or null). A card with a tournament place, a won series
     or a streak is lit: an orange edge on top. The name link covers the
     whole card (one tab stop); "Challenge" sits above it.
 
@@ -72,8 +73,13 @@
             @endif
         </span>
         <span class="text-[13px] text-ink-2">{{ trans_choice(':count player|:count players', $members->count()) }}</span>
+        @if ($apply)
+            <a href="{{ $apply['url'] }}" class="btn-s relative z-10 ml-auto inline-flex h-11 shrink-0 items-center gap-2 rounded-md border border-edge px-4 text-[13px] font-bold text-ink hover:text-ink" data-test="clan-card-apply" data-applied="{{ $apply['applied'] ? 'true' : 'false' }}">
+                {{ $apply['applied'] ? __('Applied') : __('Apply') }}<span class="sr-only"> {{ $clan->name }}</span>
+            </a>
+        @endif
         @if ($challenge)
-            <a href="{{ $challenge }}" class="btn-s relative z-10 ml-auto inline-flex h-11 shrink-0 items-center gap-2 rounded-md border border-edge px-4 text-[13px] font-bold text-ink hover:text-ink" data-test="clan-card-challenge">
+            <a href="{{ $challenge }}" @class(['btn-s relative z-10 inline-flex h-11 shrink-0 items-center gap-2 rounded-md border border-edge px-4 text-[13px] font-bold text-ink hover:text-ink', 'ml-auto' => ! $apply]) data-test="clan-card-challenge">
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true" class="shrink-0"><path d="M8 5v14l11-7z"></path></svg>
                 {{ __('Challenge') }}<span class="sr-only"> {{ $clan->name }}</span>
             </a>

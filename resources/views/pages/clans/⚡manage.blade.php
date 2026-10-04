@@ -5,6 +5,7 @@ use App\Enums\InviteLinkType;
 use App\Enums\InviteStatus;
 use App\Enums\JoinRequestStatus;
 use App\Enums\LineupRole;
+use App\Enums\Platform;
 use App\Games\GameRegistry;
 use App\Support\GameNames;
 use App\Models\Clan;
@@ -15,6 +16,7 @@ use App\Models\InviteLink;
 use App\Models\Lineup;
 use App\Models\LineupSeat;
 use App\Models\User;
+use App\Support\Clans\ClanApplication;
 use App\Support\Clans\ClanDraft;
 use App\Support\Clans\ClanJoinRequests;
 use App\Support\Clans\ClanLogos;
@@ -517,10 +519,27 @@ new #[Layout('layouts::app', ['section' => 'clans'])] class extends Component
         unset($this->joinRequests);
     }
 
-    public function declineRequest(int $requestId, ClanJoinRequests $requests): void
+    /**
+     * Declines; with a reply (an application's "Decline" field) it returns
+     * the text the captain's signer sends the applicant as NIP-17.
+     *
+     * @return array{pubkey: string, content: string}|null
+     */
+    public function declineRequest(int $requestId, string $reply = ''): ?array
     {
-        $this->attempt(fn () => $requests->decline($this->joinRequest($requestId), $this->user()), 'joinRequests');
+        $requests = app(ClanJoinRequests::class);
+        $request = $this->joinRequest($requestId);
+        $declined = $this->attempt(fn () => $requests->decline($request, $this->user()), 'joinRequests');
         unset($this->joinRequests);
+
+        return $declined === false ? null : $requests->declineDm($request, mb_substr($reply, 0, ClanApplication::MESSAGE_MAX));
+    }
+
+    /** The clan's "Applications open" switch (plan "Clan-Bewerbungen", P4). */
+    public function toggleApplications(ClanJoinRequests $requests): void
+    {
+        $this->attempt(fn () => $requests->setApplicationsOpen($this->clan, $this->user(), ! $this->clan->applications_open), 'joinRequests');
+        unset($this->clan);
     }
 
     /**
@@ -987,12 +1006,33 @@ new #[Layout('layouts::app', ['section' => 'clans'])] class extends Component
 
     {{-- Join requests and the join link (P6b, States.dc.html "Join request, captain side") --}}
     @php($requests = $this->joinRequests)
-    <section id="join-requests" aria-labelledby="jr-h" class="flex flex-col gap-3.5 rounded-lg bg-card px-4 py-5 lg:px-6" data-test="join-requests">
-        <span class="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1"><h2 id="jr-h" class="m-0 text-[15px] font-bold">{{ __('Join requests') }}</h2><span class="text-xs text-ink-3">{{ __(':clan, seen by captains only', ['clan' => $clan->name]) }}</span></span>
+    {{-- Applications (plan "Clan-Bewerbungen", P4) are join requests too: the form data on top, the same answers, a decline with an optional reply sent by the captain's signer as NIP-17. --}}
+    <section id="join-requests" aria-labelledby="jr-h" class="flex flex-col gap-3.5 rounded-lg bg-card px-4 py-5 lg:px-6" data-test="join-requests"
+             x-data="clanDms({ me: @js(auth()->user()->pubkey), relays: @js(\App\Support\Nostr\NostrBar::browserRelays()), labels: @js([
+                 'sent' => __('Your reply went out as an encrypted Nostr message.'),
+                 'none' => __('Declined. Your reply did not reach the player as a Nostr message.'),
+                 'noSigner' => __('Declined. No Nostr signer was found to send your reply.'),
+                 'signer' => \App\Support\Nostr\SignerMessages::labels(),
+                 'no_nip44' => __("Your signer can't send private messages the modern way — update it or use one that supports NIP-44."),
+             ]) })">
+        <span class="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1"><h2 id="jr-h" class="m-0 text-[15px] font-bold">{{ __('Applications and join requests') }}</h2><span class="text-xs text-ink-3">{{ __(':clan, seen by captains only', ['clan' => $clan->name]) }}</span></span>
+        <label class="flex min-h-11 cursor-pointer items-center justify-between gap-4 rounded-md bg-well px-3 py-2" data-test="applications-switch">
+            <span class="flex min-w-0 flex-col gap-0.5"><b class="text-[13px]">{{ __('Applications open') }}</b><span class="text-xs leading-normal text-ink-2">{{ $clan->applications_open ? __('Players can apply on the clan page and in the clan list.') : __('Nobody can apply right now. Join links still work.') }}</span></span>
+            <input type="checkbox" role="switch" @checked($clan->applications_open) wire:click="toggleApplications" data-test="applications-open"
+                   class="h-6 w-11 shrink-0 cursor-pointer appearance-none rounded-full bg-raised transition-colors before:block before:size-5 before:translate-x-0.5 before:rounded-full before:bg-ink-2 before:transition-transform checked:bg-btc checked:before:translate-x-[22px] checked:before:bg-on-btc motion-reduce:transition-none motion-reduce:before:transition-none">
+        </label>
         @error('joinRequests')<p class="m-0 text-xs text-loss" role="alert">{{ $message }}</p>@enderror
+        <p class="m-0 text-xs text-ink-2" x-show="dmNote" x-text="dmNote" x-cloak role="status" data-test="decline-dm-note"></p>
+        <p class="m-0 text-xs text-loss" x-show="dmError" x-text="dmError" x-cloak role="alert" data-test="decline-dm-error"></p>
+        <p class="m-0 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-ink-2" x-show="waiting.length > 0" x-cloak data-test="decline-dm-confirm">
+            <span x-text="@js(__('No DM inbox relays (NIP-17) for :count of them. Send it as an older NIP-04 message instead?')).replace(':count', waiting.length)"></span>
+            <button type="button" x-on:click="sendWaiting()" x-bind:disabled="dmBusy" data-test="decline-dm-nip04"
+                    class="inline-flex h-11 cursor-pointer items-center rounded-md border border-line bg-well px-4 text-[13px] text-ink disabled:cursor-wait disabled:opacity-70">{{ __('Send as NIP-04') }}</button>
+        </p>
         @forelse ($requests as $request)
             @php($applicant = $request->user)
-            <div wire:key="jr-{{ $request->id }}" class="grid grid-cols-1 items-center gap-3 rounded-md px-3 py-3 shadow-ring lg:grid-cols-[minmax(0,1fr)_auto]" data-test="join-request">
+            <div wire:key="jr-{{ $request->id }}" class="grid grid-cols-1 items-center gap-3 rounded-md px-3 py-3 shadow-ring lg:grid-cols-[minmax(0,1fr)_auto]" data-test="{{ $request->isApplication() ? 'application' : 'join-request' }}"
+                 x-data="{ replying: false, reply: '' }">
                 <span class="flex min-w-0 items-center gap-3">
                     <x-avatar :user="$applicant" :size="40" class="rounded-md" />
                     <span class="flex min-w-0 flex-col gap-0.5">
@@ -1002,6 +1042,23 @@ new #[Layout('layouts::app', ['section' => 'clans'])] class extends Component
                             {{ trans_choice(':count game played|:count games played', $applicant->whiteGames()->count() + $applicant->blackGames()->count()) }}.
                             {{ __('Asked :time.', ['time' => $request->created_at?->diffForHumans()]) }}
                         </span>
+                        @if ($request->isApplication())
+                            <span class="flex flex-wrap gap-1.5 pt-1" data-test="application-fields">
+                                <span class="inline-flex h-6 items-center rounded-tag bg-btc-chip px-2 text-[11px] font-bold text-btc-hi">{{ __('Application') }}</span>
+                                @foreach ($request->games ?? [] as $slug)
+                                    <span class="inline-flex h-6 items-center rounded-tag bg-well px-2 text-[11px] text-ink">{{ app(GameRegistry::class)->name($slug) }}</span>
+                                @endforeach
+                                @foreach ($request->platforms ?? [] as $platform)
+                                    <span class="inline-flex h-6 items-center rounded-tag border border-line px-2 text-[11px] text-ink-2">{{ Platform::tryFrom($platform)?->label() ?? $platform }}</span>
+                                @endforeach
+                                @if ($request->timezone)
+                                    <span class="inline-flex h-6 items-center gap-1 rounded-tag border border-line px-2 text-[11px] text-ink-2"><x-icon name="clock" :size="12" />{{ $request->timezone }}</span>
+                                @endif
+                            </span>
+                            @if (filled($request->message))
+                                <span class="max-w-[68ch] text-[13px] leading-normal break-words text-ink" data-test="application-message">“{{ $request->message }}”</span>
+                            @endif
+                        @endif
                         @if ($request->status === JoinRequestStatus::Approved)
                             <span class="text-xs text-btc-hi" data-test="join-request-approved">{{ __('Approved by :name. Waiting for the founder to add them to the clan record.', ['name' => $request->decidedBy?->displayName() ?? '']) }}</span>
                         @endif
@@ -1017,12 +1074,32 @@ new #[Layout('layouts::app', ['section' => 'clans'])] class extends Component
                         <button type="button" wire:click="approveRequest({{ $request->id }})" data-test="approve-request"
                                 class="btn-p inline-flex h-11 cursor-pointer items-center justify-center rounded-md bg-btc px-5 text-sm font-bold text-on-btc">{{ __('Approve') }}</button>
                     @endif
-                    <button type="button" wire:click="declineRequest({{ $request->id }})" data-test="decline-request"
-                            class="btn-w inline-flex h-11 cursor-pointer items-center justify-center rounded-md border border-line bg-well px-4 text-[13px] text-ink">{{ __('Decline') }}</button>
+                    @if ($request->isApplication())
+                        <button type="button" x-on:click="replying = true; $nextTick(() => $refs.reply.focus())" x-show="! replying" data-test="decline-request"
+                                class="btn-w inline-flex h-11 cursor-pointer items-center justify-center rounded-md border border-line bg-well px-4 text-[13px] text-ink">{{ __('Decline') }}</button>
+                    @else
+                        <button type="button" wire:click="declineRequest({{ $request->id }})" data-test="decline-request"
+                                class="btn-w inline-flex h-11 cursor-pointer items-center justify-center rounded-md border border-line bg-well px-4 text-[13px] text-ink">{{ __('Decline') }}</button>
+                    @endif
                 </span>
+                @if ($request->isApplication())
+                    <form x-show="replying" x-cloak class="flex flex-col gap-2 lg:col-span-2" data-test="decline-form"
+                          x-on:submit.prevent="const text = reply; deliver(await $wire.declineRequest({{ $request->id }}, text))">
+                        <label class="flex flex-col gap-2"><span class="text-xs text-ink-2">{{ __('Reply to :name (optional, sent as an encrypted Nostr message from your signer)', ['name' => $applicant->displayName()]) }}</span>
+                            <textarea x-ref="reply" x-model="reply" maxlength="{{ ClanApplication::MESSAGE_MAX }}" rows="2" data-test="decline-reply"
+                                      class="w-full rounded-lg border border-edge bg-ground px-3 py-2.5 text-[13px] leading-normal text-ink placeholder:text-ink-3"></textarea>
+                        </label>
+                        <span class="flex flex-wrap gap-2">
+                            <button type="submit" data-test="decline-confirm" x-bind:disabled="dmBusy"
+                                    class="btn-w inline-flex h-11 cursor-pointer items-center justify-center rounded-md border border-line bg-well px-4 text-[13px] font-bold text-ink disabled:cursor-wait disabled:opacity-70">{{ __('Decline application') }}</button>
+                            <button type="button" x-on:click="replying = false; reply = ''"
+                                    class="inline-flex h-11 cursor-pointer items-center rounded-md border-0 bg-transparent px-3 text-[13px] text-ink-2 hover:text-ink">{{ __('Cancel') }}</button>
+                        </span>
+                    </form>
+                @endif
             </div>
         @empty
-            <p class="m-0 text-[13px] text-ink-2">{{ __('No open requests. Share a join link and new players can ask to join.') }}</p>
+            <p class="m-0 text-[13px] text-ink-2">{{ $clan->applications_open ? __('No open applications. Players apply on your clan page or in the clan list, or share a join link below.') : __('No open requests. Share a join link and new players can ask to join.') }}</p>
         @endforelse
         <span class="text-xs leading-normal text-ink-3">{{ $isOwner
             ? __('Approving adds the player to the clan record with your key; they join once they confirm their membership. Declining tells them plainly and closes the request.')

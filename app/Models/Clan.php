@@ -33,12 +33,13 @@ use Illuminate\Support\Carbon;
  * @property string|null $meetup_latitude
  * @property string|null $meetup_longitude
  * @property string|null $event_id
+ * @property bool $applications_open
  * @property Carbon|null $created_at
  * @property Carbon|null $updated_at
  */
 #[Fillable([
     'slug', 'owner_id', 'owner_pubkey', 'name', 'clantag', 'description', 'picture',
-    'meetup_name', 'meetup_city', 'meetup_url', 'meetup_latitude', 'meetup_longitude', 'event_id',
+    'meetup_name', 'meetup_city', 'meetup_url', 'meetup_latitude', 'meetup_longitude', 'event_id', 'applications_open',
 ])]
 class Clan extends Model
 {
@@ -52,6 +53,18 @@ class Clan extends Model
 
     /** Clan tag, NIP tag `clantag`. */
     public const TAG_PATTERN = '/^[A-Z0-9]{2,4}$/';
+
+    /** "Applications open" is on for every new clan (plan "Clan-Bewerbungen"). */
+    protected $attributes = [
+        'applications_open' => true,
+    ];
+
+    protected function casts(): array
+    {
+        return [
+            'applications_open' => 'boolean',
+        ];
+    }
 
     public function getRouteKeyName(): string
     {

@@ -247,6 +247,9 @@ new #[Layout('layouts::app', ['section' => 'clans'])] class extends Component {
     {{-- P45: the clan on Nostr (its 32150), a message to its owner --}}
     <x-nostr-bar :bar="\App\Support\Nostr\NostrBar::clan($clan)" />
 
+    {{-- Apply to the clan (plan "Clan-Bewerbungen"): the form, then the status; nothing for its members. `?apply=1` (the clan list) opens the form. --}}
+    <livewire:clan-apply :clan-id="$clan->id" :open="request()->boolean('apply')" />
+
     {{-- A captain's join link, at the top of the own clan (renders nothing for anyone else) --}}
     <livewire:invite-link :clan-id="$clan->id" place="clan" />
 

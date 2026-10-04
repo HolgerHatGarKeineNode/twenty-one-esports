@@ -1,4 +1,4 @@
-@props(['clan', 'moments', 'challenge' => null, 'mine' => false])
+@props(['clan', 'moments', 'challenge' => null, 'apply' => null, 'mine' => false])
 
 {{--
     The clan with the strongest moment right now (ClanPride::spotlight()),
@@ -64,6 +64,11 @@
             <a href="{{ $challenge }}" class="btn-p relative z-10 inline-flex h-11 items-center gap-2 self-start rounded-md bg-btc px-5 text-sm font-bold text-on-btc hover:text-on-btc sm:self-end" data-test="clan-spotlight-challenge">
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true" class="shrink-0"><path d="M8 5v14l11-7z"></path></svg>
                 {{ __('Challenge :clan', ['clan' => $clan->name]) }}
+            </a>
+        @endif
+        @if ($apply)
+            <a href="{{ $apply['url'] }}" class="btn-s relative z-10 inline-flex h-11 items-center gap-2 self-start rounded-md border border-edge px-4 text-[13px] font-bold text-ink hover:text-ink sm:self-end" data-test="clan-card-apply" data-applied="{{ $apply['applied'] ? 'true' : 'false' }}">
+                {{ $apply['applied'] ? __('Applied') : __('Apply') }}<span class="sr-only"> {{ $clan->name }}</span>
             </a>
         @endif
     </div>

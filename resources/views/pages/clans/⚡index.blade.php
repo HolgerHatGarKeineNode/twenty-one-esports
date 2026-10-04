@@ -1,7 +1,9 @@
 <?php
 
 use App\Games\GameRegistry;
+use App\Enums\JoinRequestStatus;
 use App\Models\Clan;
+use App\Models\ClanJoinRequest;
 use App\Models\Lineup;
 use App\Models\User;
 use App\Support\Clans\ClanPride;
@@ -101,6 +103,39 @@ new #[Layout('layouts::app', ['section' => 'clans'])] class extends Component {
         $user = auth()->user();
 
         return $user instanceof User ? $user->clanMember?->clan_id : null;
+    }
+
+    /**
+     * The clans the viewer has an open application or join request with.
+     *
+     * @return list<int>
+     */
+    #[Computed]
+    public function appliedTo(): array
+    {
+        $user = auth()->user();
+
+        return $user instanceof User
+            ? ClanJoinRequest::query()->where('user_id', $user->id)->whereIn('status', [JoinRequestStatus::Pending, JoinRequestStatus::Approved])->pluck('clan_id')->all()
+            : [];
+    }
+
+    /**
+     * "Apply" on a clan card (plan "Clan-Bewerbungen", P3): the clan page with
+     * the form open, or "Applied" while the viewer's request is open. None on
+     * the own clan or a clan with applications off.
+     *
+     * @return array{url: string, applied: bool}|null
+     */
+    public function applyFor(Clan $clan): ?array
+    {
+        $applied = in_array($clan->id, $this->appliedTo, true);
+
+        if ($clan->id === $this->myClanId || (! $applied && ! $clan->applications_open)) {
+            return null;
+        }
+
+        return ['url' => $applied ? route('clans.show', $clan) : route('clans.show', ['clan' => $clan, 'apply' => 1]), 'applied' => $applied];
     }
 
     /**
@@ -265,7 +300,7 @@ new #[Layout('layouts::app', ['section' => 'clans'])] class extends Component {
     </div>
 
     @if ($spotlight)
-        <x-clans.spotlight :clan="$spotlight" :moments="$pride[$spotlight->id]" :challenge="$challenges[$spotlight->id] ?? null" :mine="$spotlight->id === $myClanId" wire:key="spot-{{ $spotlight->id }}" />
+        <x-clans.spotlight :clan="$spotlight" :moments="$pride[$spotlight->id]" :challenge="$challenges[$spotlight->id] ?? null" :apply="$this->applyFor($spotlight)" :mine="$spotlight->id === $myClanId" wire:key="spot-{{ $spotlight->id }}" />
     @endif
 
     {{-- The season standings, top three each, once Block 0 is mined: pride with numbers, so above the cards. --}}
@@ -364,7 +399,7 @@ new #[Layout('layouts::app', ['section' => 'clans'])] class extends Component {
     @elseif ($grid->isNotEmpty())
         <section aria-label="{{ __('All clans') }}" class="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:gap-6 xl:grid-cols-3" data-test="clan-grid">
             @foreach ($grid as $clan)
-                <x-clans.card :clan="$clan" :moment="$pride[$clan->id][0] ?? null" :challenge="$challenges[$clan->id] ?? null" :mine="$clan->id === $myClanId"
+                <x-clans.card :clan="$clan" :moment="$pride[$clan->id][0] ?? null" :challenge="$challenges[$clan->id] ?? null" :apply="$this->applyFor($clan)" :mine="$clan->id === $myClanId"
                               :numbers="$live ? ['rating' => $this->stats->clanRating($clan)['rating'], 'week' => $this->stats->hashrate($clan)['week']] : null"
                               :loading="$loop->index < 3 ? 'eager' : 'lazy'" wire:key="clan-{{ $clan->id }}" />
             @endforeach
