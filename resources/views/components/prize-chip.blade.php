@@ -2,13 +2,14 @@
     The prize pot of a tournament in a list or teaser (P9): what is still to
     be won of the pot as the tournament sets it (the fixed prizes' sum or the
     target), less only what was paid out; never the wallet balance (user,
-    2026-09-28). Nothing when the tournament has no open pot.
+    2026-09-28). Nothing when the tournament has no open pot. A list primes
+    its chips in one go (PrizeChips::prime()); a lone chip works out its own.
 --}}
 @props(['tournament'])
 @php
-    $chipPool = app(\App\Support\Prizes\PrizePool::class);
-    $chipSats = $tournament->pool_opened_at === null ? null : $chipPool->potSats($tournament);
-    $chipLeft = $chipSats === null ? null : $chipPool->remainingSats($tournament);
+    $chip = \App\Support\Prizes\PrizeChips::of($tournament);
+    $chipSats = $chip['sats'] ?? null;
+    $chipLeft = $chip['left'] ?? null;
     $chipFormat = fn (int $value): string => \App\Support\Cards\ShareCard::sats($value);
 @endphp
 @if ($chipSats !== null)

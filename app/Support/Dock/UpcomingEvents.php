@@ -73,11 +73,18 @@ final class UpcomingEvents
     public function tournaments(User $user, bool $todayOnly = false): Collection
     {
         $nowMs = (int) now()->getTimestampMs();
+        $signups = $this->signups($user)->filter(fn (TournamentSignup $signup): bool => ! $todayOnly || self::isToday($signup->tournament));
+        $rooms = $this->roomsIn($signups->pluck('tournament')->filter(fn (Tournament $tournament): bool => self::isLive($tournament, $nowMs)), $user);
 
-        return $this->signups($user)
-            ->filter(fn (TournamentSignup $signup): bool => ! $todayOnly || self::isToday($signup->tournament))
-            ->map(fn (TournamentSignup $signup): DockItem => $this->item($signup, $user, $nowMs))
+        return $signups
+            ->map(fn (TournamentSignup $signup): DockItem => $this->item($signup, $user, $nowMs, $rooms))
             ->values();
+    }
+
+    /** Running, or past its start: the item leads to the player's room, else to the tournament. */
+    private static function isLive(Tournament $tournament, int $nowMs): bool
+    {
+        return $tournament->status === TournamentStatus::Running || (int) $tournament->starts_at->getTimestampMs() <= $nowMs;
     }
 
     /**
@@ -88,16 +95,19 @@ final class UpcomingEvents
      */
     private function signups(User $user): Collection
     {
-        return RequestMemo::remember('upcoming-signups.'.$user->id, fn (): Collection => TournamentSignup::query()->active()
-            ->where(fn ($query) => $query->whereJsonContains('members', $user->id)->orWhereIn('lineup_id', OpenMatches::lineupsOf($user)))
-            ->whereHas('tournament', fn ($query) => $query->whereIn('status', self::ACTIVE)->exceptLeagueWeeks())
-            ->with(['tournament', 'lineup.clan', 'lineup.seats'])
-            ->latest('id')
-            ->limit(OpenMatches::KIND_LIMIT)
-            ->get()
-            ->unique('tournament_id')
-            ->reject(fn (TournamentSignup $signup): bool => $this->isOut($signup))
-            ->values());
+        return RequestMemo::remember('upcoming-signups.'.$user->id, function () use ($user): Collection {
+            $signups = TournamentSignup::query()->active()
+                ->where(fn ($query) => $query->whereJsonContains('members', $user->id)->orWhereIn('lineup_id', OpenMatches::lineupsOf($user)))
+                ->whereHas('tournament', fn ($query) => $query->whereIn('status', self::ACTIVE)->exceptLeagueWeeks())
+                ->with(['tournament', 'lineup.clan', 'lineup.seats'])
+                ->latest('id')
+                ->limit(OpenMatches::KIND_LIMIT)
+                ->get()
+                ->unique('tournament_id');
+            $out = $this->outOf($signups);
+
+            return $signups->reject(fn (TournamentSignup $signup): bool => isset($out[$signup->id]))->values();
+        });
     }
 
     /** Running, past its start, or starting later today in Berlin. */
@@ -109,37 +119,53 @@ final class UpcomingEvents
     }
 
     /**
-     * After the draw: the entry was not drawn in, was disqualified, or has
-     * no match left in a bracket that ends with a final.
+     * The sign-ups that are out, after the draw: the entry was not drawn in,
+     * was disqualified, or has no match left in a bracket that ends with a
+     * final. Two queries for all of them, not two per sign-up (P2, S7).
+     *
+     * @param  Collection<int, TournamentSignup>  $signups
+     * @return array<int, true> sign-up id => out
      */
-    private function isOut(TournamentSignup $signup): bool
+    private function outOf(Collection $signups): array
     {
-        $tournament = $signup->tournament;
+        $running = $signups->filter(fn (TournamentSignup $signup): bool => $signup->tournament->status === TournamentStatus::Running);
 
-        if ($tournament->status !== TournamentStatus::Running) {
-            return false;
+        if ($running->isEmpty()) {
+            return [];
         }
 
-        $participant = TournamentParticipant::query()->where('tournament_id', $tournament->id)->where('tournament_signup_id', $signup->id)->first();
+        $participants = TournamentParticipant::query()->whereIn('tournament_signup_id', $running->pluck('id')->all())->get()
+            // A sign-up is drawn into its own tournament only.
+            ->filter(fn (TournamentParticipant $participant): bool => $running->firstWhere('id', $participant->tournament_signup_id)?->tournament_id === $participant->tournament_id)
+            ->keyBy('tournament_signup_id');
+        $finals = $running->filter(fn (TournamentSignup $signup): bool => $signup->tournament->format->hasFinal());
+        // Eloquent's only() filters by model key: the participants are keyed by their sign-up here.
+        $finalists = $participants->toBase()->only($finals->pluck('id')->all())->map(fn (TournamentParticipant $participant): int => $participant->id)->values();
+        $playing = $finalists->isEmpty() ? [] : array_flip(TournamentMatchSlot::query()->whereIn('tournament_participant_id', $finalists)
+            ->whereIn('tournament_match_id', TournamentMatch::query()->whereIn('tournament_id', $finals->pluck('tournament_id')->unique()->values())->whereIn('status', ['waiting', 'ready'])->select('id'))
+            ->distinct()->pluck('tournament_participant_id')->map(fn (mixed $id): int => (int) $id)->all());
+        $out = [];
 
-        if ($participant === null || $participant->isDisqualified()) {
-            return true;
+        foreach ($running as $signup) {
+            $participant = $participants->get($signup->id);
+
+            if ($participant === null || $participant->isDisqualified()
+                || ($signup->tournament->format->hasFinal() && ! isset($playing[$participant->id]))) {
+                $out[$signup->id] = true;
+            }
         }
 
-        if (! $tournament->format->hasFinal()) {
-            return false;
-        }
-
-        return ! TournamentMatchSlot::query()->where('tournament_participant_id', $participant->id)
-            ->whereIn('tournament_match_id', TournamentMatch::query()->where('tournament_id', $tournament->id)->whereIn('status', ['waiting', 'ready'])->select('id'))
-            ->exists();
+        return $out;
     }
 
-    private function item(TournamentSignup $signup, User $user, int $nowMs): DockItem
+    /**
+     * @param  array<int, string>  $rooms  {@see roomsIn()}
+     */
+    private function item(TournamentSignup $signup, User $user, int $nowMs, array $rooms): DockItem
     {
         $tournament = $signup->tournament;
         $startMs = (int) $tournament->starts_at->getTimestampMs();
-        $running = $tournament->status === TournamentStatus::Running || $startMs <= $nowMs;
+        $running = self::isLive($tournament, $nowMs);
         $today = self::isToday($tournament);
         $soon = ! $running && $startMs - $nowMs <= OpenMatches::STARTS_SOON_MS;
         $name = $tournament->title();
@@ -158,7 +184,7 @@ final class UpcomingEvents
             face: null,
             tag: null,
             number: '',
-            href: $running ? ($this->roomIn($tournament, $user) ?? route('tournaments.show', $tournament)) : route('tournaments.show', $tournament),
+            href: $running ? ($rooms[$tournament->id] ?? route('tournaments.show', $tournament)) : route('tournaments.show', $tournament),
             title: $title,
             state: $running ? self::text('Live') : self::text('Starts'),
             trailing: $running ? $game : $left,
@@ -177,15 +203,35 @@ final class UpcomingEvents
         );
     }
 
-    /** The player's open room in this tournament, once drawn. */
-    private function roomIn(Tournament $tournament, User $user): ?string
+    /**
+     * The player's open room in each of these tournaments, once drawn: one
+     * query for all of them, not one per tournament (P2, S7).
+     *
+     * @param  Collection<int, Tournament>  $tournaments
+     * @return array<int, string> tournament id => room URL
+     */
+    private function roomsIn(Collection $tournaments, User $user): array
     {
-        $match = OpenMatches::involving(SeriesMatch::query(), $user, OpenMatches::lineupsOf($user))
-            ->whereIn('tournament_match_id', TournamentMatch::query()->where('tournament_id', $tournament->id)->select('id'))
-            ->get()
-            ->first(fn (SeriesMatch $match): bool => $match->status->isRunning());
+        if ($tournaments->isEmpty()) {
+            return [];
+        }
 
-        return $match === null ? null : route('matches.room', $match);
+        $rooms = [];
+        $matches = OpenMatches::involving(SeriesMatch::query(), $user, OpenMatches::lineupsOf($user))
+            ->whereIn('tournament_match_id', TournamentMatch::query()->whereIn('tournament_id', $tournaments->pluck('id')->unique()->values())->select('id'))
+            ->with('tournamentMatch:id,tournament_id')
+            ->orderBy('id')
+            ->get();
+
+        foreach ($matches as $match) {
+            $tournamentId = (int) $match->tournamentMatch?->tournament_id;
+
+            if (! isset($rooms[$tournamentId]) && $match->status->isRunning()) {
+                $rooms[$tournamentId] = route('matches.room', $match);
+            }
+        }
+
+        return $rooms;
     }
 
     /** "20:00" today, else "Sat, Oct 4 · 20:00", in the player's zone (SeriesPresenter::time()). */

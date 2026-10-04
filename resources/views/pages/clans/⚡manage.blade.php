@@ -1039,7 +1039,7 @@ new #[Layout('layouts::app', ['section' => 'clans'])] class extends Component
                         <x-player-link :user="$applicant" class="inline-flex min-h-11 max-w-full items-center text-[15px] font-bold"><span class="truncate">{{ $applicant->displayName() }}</span></x-player-link>
                         <span class="text-xs leading-normal text-ink-2">
                             {{ trans_choice('Joined :count day ago|Joined :count days ago', (int) $applicant->created_at?->diffInDays(now())) }},
-                            {{ trans_choice(':count game played|:count games played', $applicant->whiteGames()->count() + $applicant->blackGames()->count()) }}.
+                            {{ trans_choice(':count game played|:count games played', (int) $applicant->white_games_count + (int) $applicant->black_games_count) }}.
                             {{ __('Asked :time.', ['time' => $request->created_at?->diffForHumans()]) }}
                         </span>
                         @if ($request->isApplication())

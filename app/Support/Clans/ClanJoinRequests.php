@@ -302,7 +302,8 @@ final class ClanJoinRequests
         return ClanJoinRequest::query()
             ->where('clan_id', $clan->id)
             ->whereIn('status', [JoinRequestStatus::Pending, JoinRequestStatus::Approved])
-            ->with(['user', 'decidedBy'])
+            // The manage page shows each applicant's games played: counted with the users, not two queries a row (P2).
+            ->with(['user' => fn ($query) => $query->withCount(['whiteGames', 'blackGames']), 'decidedBy'])
             ->oldest('id')
             ->get();
     }

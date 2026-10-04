@@ -22,6 +22,7 @@ use App\Support\Series\CasualChallenges;
 use App\Support\Series\CasualMatches;
 use App\Support\Tournaments\TournamentRunner;
 use Illuminate\Support\Collection;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Queue;
 use Livewire\Livewire;
 use Tests\Support\TestSigner;
@@ -269,6 +270,41 @@ test('a tournament leaves the list once finished, called off, pulled out of, or 
 
     expect(app(UpcomingEvents::class)->tournaments($loser))->toBeEmpty()
         ->and(upcomingKeys(app(UpcomingEvents::class)->tournaments($winner)))->toBe(['tournament-'.$tournament->id]);
+});
+
+test('whether the player is still in costs the same queries for one running tournament as for five', function () {
+    $me = User::factory()->create();
+    // In each running single elimination $me takes over a seat of round 1; the draw has ready matches for every seat.
+    $enter = function () use ($me): Tournament {
+        $tournament = runningChess(TournamentFormat::SingleElimination, 4);
+        $participant = TournamentParticipant::query()->where('tournament_id', $tournament->id)->orderBy('id')->firstOrFail();
+        $signup = TournamentSignup::query()->create(['tournament_id' => $tournament->id, 'user_id' => $me->id, 'name' => 'x', 'members' => [$me->id]]);
+        $participant->forceFill(['user_id' => $me->id, 'tournament_signup_id' => $signup->id])->save();
+
+        return $tournament;
+    };
+    $count = function () use ($me): array {
+        DB::flushQueryLog();
+        DB::enableQueryLog();
+        $keys = upcomingKeys(app(UpcomingEvents::class)->tournaments($me));
+        DB::disableQueryLog();
+
+        return [count(DB::getQueryLog()), count($keys)];
+    };
+
+    $enter();
+    [$one, $listedOne] = $count();
+    $tournaments = collect(range(2, 5))->map(fn () => $enter());
+    [$five, $listedFive] = $count();
+
+    // Out, each in its own way: disqualified, not drawn in (no participant row), no match left in the bracket.
+    TournamentParticipant::query()->where('tournament_id', $tournaments[0]->id)->where('user_id', $me->id)->update(['disqualified_at' => now()]);
+    TournamentParticipant::query()->where('tournament_id', $tournaments[1]->id)->where('user_id', $me->id)->update(['tournament_signup_id' => null]);
+    TournamentMatch::query()->where('tournament_id', $tournaments[2]->id)->update(['status' => 'done']);
+
+    expect([$listedOne, $listedFive])->toBe([1, 5])
+        ->and($five)->toBe($one)
+        ->and(upcomingKeys(app(UpcomingEvents::class)->tournaments($me)))->toHaveCount(2);
 });
 
 test('home, /matches, /tournaments, the game page of that game and the account menu show a player\'s open room, and nobody else\'s', function () {

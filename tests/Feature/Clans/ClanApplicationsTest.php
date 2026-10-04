@@ -4,6 +4,7 @@ use App\Enums\ClanRole;
 use App\Enums\JoinRequestOrigin;
 use App\Enums\JoinRequestStatus;
 use App\Jobs\SendNostrDm;
+use App\Models\ChessGame;
 use App\Models\Clan;
 use App\Models\ClanInvite;
 use App\Models\ClanJoinRequest;
@@ -270,4 +271,32 @@ test('the clan list shows Apply on other clans, not on the own one, and a guest 
     $this->actingAs($member)->get(route('clans.index'))->assertOk()
         ->assertSee('href="'.route('clans.show', ['clan' => 'nonce-hunters', 'apply' => 1]).'"', false)
         ->assertDontSee('href="'.route('clans.show', ['clan' => $clan, 'apply' => 1]).'"', false);
+});
+
+test('the manage page asks the same queries for one applicant as for five, and counts each one\'s games', function () {
+    ['clan' => $clan, 'owner' => $owner] = applicationClan();
+    $applicant = function () use ($clan): void {
+        $player = User::factory()->create();
+        ChessGame::factory()->create(['white_id' => $player->id]);
+        app(ClanJoinRequests::class)->apply($clan, $player, applyForm());
+    };
+    $queries = function () use ($clan, $owner): array {
+        $this->actingAs($owner)->get(route('clans.manage', $clan))->assertOk();
+        DB::flushQueryLog();
+        DB::enableQueryLog();
+        $html = (string) $this->actingAs($owner)->get(route('clans.manage', $clan))->assertOk()->getContent();
+        DB::disableQueryLog();
+
+        return [count(DB::getQueryLog()), substr_count($html, '1 game played')];
+    };
+
+    $applicant();
+    [$one, $oneShown] = $queries();
+    foreach (range(2, 5) as $n) {
+        $applicant();
+    }
+    [$five, $fiveShown] = $queries();
+
+    expect([$oneShown, $fiveShown])->toBe([1, 5])
+        ->and($five)->toBe($one);
 });

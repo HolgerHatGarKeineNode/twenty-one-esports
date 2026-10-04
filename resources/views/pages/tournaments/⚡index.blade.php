@@ -90,6 +90,8 @@ new #[Title('Tournaments')] #[Layout('layouts::app', ['section' => 'tournaments'
     $eager = $hero === null ? 4 : 0;
     // The cups open for sign-up or running stand on the cup board (P53); the ended ones are listed under it.
     $listed = $this->tournaments->filter(fn (Tournament $t): bool => $t->isCasualCup() && ! in_array($t->status, [TournamentStatus::Signup, TournamentStatus::Running], true));
+    // Every prize chip of the page from one set of grouped queries, not five per tournament (P2).
+    \App\Support\Prizes\PrizeChips::prime([...($hero === null ? [] : [$hero['tournament']]), ...array_column($cards, 'tournament'), ...$listed->all()]);
 @endphp
 
 <div class="flex flex-col gap-5 px-4 pt-8 pb-10 lg:px-12" data-test="tournaments-index">
