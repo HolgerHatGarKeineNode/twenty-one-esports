@@ -37,8 +37,9 @@ const SHELL_MEASURE = <<<'JS'
         }
         const tabs = [...document.querySelectorAll('.gtab:not(.gtab-hub)')].filter((el) => el.checkVisibility({ checkVisibilityCSS: true })).map((el) => el.dataset.test.replace('game-tab-', '') + ':' + el.querySelector(getComputedStyle(el.querySelector('.gtab-full')).display === 'none' ? '.gtab-short' : '.gtab-full').textContent.trim());
         // Squeezed, not scrolled: a row whose content is wider than its box, a label cut short.
+        // Not a `.sr-only` span: it is a 1 px clipped box by design (the More tab's ", 1 upcoming match", 93653e8a), its text is for the screen reader.
         const squeezed = [...document.querySelectorAll('[data-test=game-tabs], [data-test=context-bar], [data-test=tab-bar] ul, [data-test=tab-bar] .tab span, .nav-link, .ctx-link')]
-            .filter((el) => el.checkVisibility({ checkVisibilityCSS: true }) && el.scrollWidth > el.clientWidth + 1)
+            .filter((el) => el.checkVisibility({ checkVisibilityCSS: true }) && !el.closest('.sr-only') && el.scrollWidth > el.clientWidth + 1)
             .map((el) => `${el.dataset.test || el.className.split(' ')[0] || el.tagName} ${el.scrollWidth}>${el.clientWidth}`);
         // The phone's game chips: no label cut inside its chip, no chip wider than the row, the active one whole inside the row's visible part.
         const chipRow = document.getElementById('game-chips');
