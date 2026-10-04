@@ -69,12 +69,16 @@ const NAV_PAGES = [
     'clans.create' => ['roles' => ['player'], 'max' => 2],
     'clans.manage' => ['roles' => ['captain'], 'max' => 2],
     'invites.show' => ['roles' => ['player'], 'max' => 1],
+    // "Invite a friend": the account menu's link, on phones in the More sheet (ShellNavigation::account()).
+    'invites.create' => ['roles' => NAV_LOGGED_IN, 'max' => 1],
     'tournaments.index' => ['roles' => NAV_ROLES, 'max' => 1],
     'tournaments.show' => ['roles' => NAV_ROLES, 'max' => 2],
     'tournaments.draw' => ['roles' => NAV_ROLES, 'max' => 3],
     'tournaments.tv' => ['roles' => NAV_ROLES, 'max' => 3],
     'tournaments.signup' => ['roles' => ['player', 'captain'], 'max' => 3],
     'tournaments.director' => ['roles' => ['organizer', 'admin'], 'max' => 3],
+    // The live control page: the first button of the manage bar on a tournament page, which the tournaments list opens.
+    'tournaments.live' => ['roles' => ['organizer', 'admin'], 'max' => 3],
     'tournaments.pool' => ['roles' => ['organizer', 'admin'], 'max' => 3],
     'admin.tournaments' => ['roles' => ['organizer', 'admin'], 'max' => 1],
     'admin.tournaments.create' => ['roles' => ['organizer', 'admin'], 'max' => 2],
@@ -86,6 +90,8 @@ const NAV_PAGES = [
     'admin.season' => ['roles' => ['admin'], 'max' => 2],
     'admin.events' => ['roles' => ['admin'], 'max' => 2],
     'admin.settings' => ['roles' => ['admin'], 'max' => 2],
+    // The next Blockfill and TMNF week and its approval: a page of the admin strip, like the other admin pages.
+    'admin.league-weeks' => ['roles' => ['admin'], 'max' => 2],
     'admin.trust' => ['roles' => ['admin'], 'max' => 2],
     'admin.fair-play' => ['roles' => ['admin'], 'max' => 2],
     'admin.nip05' => ['roles' => ['admin'], 'max' => 2],
@@ -142,6 +148,7 @@ const NAV_NOT_PAGES = [
     'cards.tournament-invite' => 'image',
     'cards.page' => 'image',
     'cards.wrapped' => 'image',
+    'cards.blockfill' => 'image: the share card of a Blockfill run',
 ];
 
 /**

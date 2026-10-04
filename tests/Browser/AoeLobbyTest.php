@@ -316,7 +316,8 @@ test('a player reports a shared place 1 with the end screen, and a director conf
     shellOpen($desk, route('tournaments.show', $tournament, false), $problems);
     fwrite(STDERR, "\n[aoe lobby report] ".json_encode(compact('result', 'shot')));
 
-    $winners = $lobby->slots->take(2)->map(fn ($slot): string => $slot->participant->name)->all();
+    // The participants are read here: loaded with the slots, as the lazy-loading guard (local and testing) wants.
+    $winners = $lobby->loadMissing('slots.participant')->slots->take(2)->map(fn ($slot): string => $slot->participant->name)->all();
 
     expect($shot)->toBe([200, 'image/webp'])
         ->and($result['label'])->toBe('Shared place 1: '.implode(', ', $winners))
