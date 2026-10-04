@@ -23,6 +23,7 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Route;
+use Throwable;
 
 /**
  * Every list of the shell navigation (header concept B, "game tabs"), built
@@ -53,6 +54,9 @@ final class ShellNavigation
 
     /** Cache key of the waiting count behind the Mempool badge. */
     public const MEMPOOL_KEY = 'shell:mempool-waiting';
+
+    /** Cache key of the open cases behind the admin badge ({@see openCases()}). */
+    public const OPEN_CASES_KEY = 'shell:open-cases';
 
     public readonly bool $isAdmin;
 
@@ -314,7 +318,43 @@ final class ShellNavigation
      */
     public function admin(): ?array
     {
-        return $this->isAdmin ? ['href' => route('admin.disputes'), 'count' => SeriesMatch::query()->openCase()->count()] : null;
+        return $this->isAdmin ? ['href' => route('admin.disputes'), 'count' => self::openCases()] : null;
+    }
+
+    /**
+     * The open cases (SeriesMatch::openCase()) for the admin badge on every
+     * page an admin opens: Cache::flexible, fresh 30 s, then served while one
+     * request recounts, up to 60 s (performance plan P2, S9). A series moving
+     * into or out of a case and a new report forget it ({@see forgetOpenCases()}:
+     * SeriesMatch and SeriesReport model events, and the guarded status
+     * updates of SeriesService and AccountLinks, which write past the model).
+     * A report turning old enough to be a case writes nothing: that shows
+     * within the minute. A failing cache store is reported and the count is
+     * taken directly.
+     */
+    public static function openCases(): int
+    {
+        $count = fn (): int => SeriesMatch::query()->openCase()->count();
+
+        try {
+            return (int) Cache::flexible(self::OPEN_CASES_KEY, [30, 60], $count);
+        } catch (Throwable $e) {
+            report($e);
+
+            return $count();
+        }
+    }
+
+    /** The admin badge counts anew, once the write is committed. */
+    public static function forgetOpenCases(): void
+    {
+        DB::afterCommit(function (): void {
+            try {
+                Cache::forget(self::OPEN_CASES_KEY);
+            } catch (Throwable $e) {
+                report($e);
+            }
+        });
     }
 
     /**

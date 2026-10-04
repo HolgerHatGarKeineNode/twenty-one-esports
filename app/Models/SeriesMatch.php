@@ -7,6 +7,7 @@ use App\Enums\SeriesResolution;
 use App\Enums\SeriesStatus;
 use App\Games\GameMode;
 use App\Games\GameRegistry;
+use App\Support\Navigation\ShellNavigation;
 use App\Support\Settings\LeagueSettings;
 use Carbon\CarbonInterface;
 use Database\Factories\SeriesMatchFactory;
@@ -148,6 +149,12 @@ class SeriesMatch extends Model
         static::updated(function (SeriesMatch $match): void {
             if ($match->wasChanged('sides')) {
                 $match->syncSidePlayers();
+            }
+        });
+        // What makes a series an admin case (openCase()) changed: the admin badge counts anew.
+        static::saved(function (SeriesMatch $match): void {
+            if ($match->wasRecentlyCreated || $match->wasChanged(['status', 'noshow_reported_at', 'overdue_at', 'origin'])) {
+                ShellNavigation::forgetOpenCases();
             }
         });
     }

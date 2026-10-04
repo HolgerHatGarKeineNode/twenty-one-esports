@@ -5,6 +5,7 @@ namespace App\Models;
 use App\Enums\Platform;
 use App\Support\Board;
 use App\Support\Chess\ChessSettings;
+use App\Support\Engagement\HomeHub;
 use App\Support\Nostr\Nip05Names;
 use App\Support\Nostr\PlayerProfile;
 use App\Support\Scores\ScoreAccounts;
@@ -95,6 +96,10 @@ class User extends Authenticatable
                 ScoreAccounts::recordStored($user);
             }
         });
+
+        // Home's newcomers (HomeHub, cached).
+        static::created(fn () => HomeHub::forgetNewcomers());
+        static::deleted(fn () => HomeHub::forgetNewcomers());
     }
 
     /**

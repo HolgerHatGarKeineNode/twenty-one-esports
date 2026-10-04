@@ -3,6 +3,7 @@
 namespace App\Models;
 
 use App\Enums\ReportStatus;
+use App\Support\Navigation\ShellNavigation;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -35,6 +36,12 @@ use Illuminate\Support\Carbon;
 #[Fillable(['series_match_id', 'user_id', 'side', 'games', 'roster', 'status', 'event_id', 'responded_by_id', 'response_reason', 'response_event_id', 'responded_at'])]
 class SeriesReport extends Model
 {
+    protected static function booted(): void
+    {
+        // A new or answered report can open or close an admin case (ShellNavigation::openCases()).
+        static::saved(fn () => ShellNavigation::forgetOpenCases());
+    }
+
     protected function casts(): array
     {
         return [

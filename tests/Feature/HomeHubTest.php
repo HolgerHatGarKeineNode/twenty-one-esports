@@ -171,6 +171,8 @@ test('results, live boards, newcomers and the top of the ladders come from the l
 
 test('the queries do not grow with entrants, boards, results, newcomers or ladder rows', function () {
     $queries = function (): int {
+        // Warm: a new player or clan forgets the cached newcomers (HomeHub::newcomers()), the next visit refills it.
+        test()->get(route('home'))->assertOk();
         DB::flushQueryLog();
         DB::enableQueryLog();
         test()->get(route('home'))->assertOk();

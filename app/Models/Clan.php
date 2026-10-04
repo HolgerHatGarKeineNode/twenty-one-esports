@@ -4,6 +4,7 @@ namespace App\Models;
 
 use App\Enums\ClanRole;
 use App\Support\Clans\ClanLogos;
+use App\Support\Engagement\HomeHub;
 use App\Support\Nostr\NostrKeys;
 use Database\Factories\ClanFactory;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
@@ -58,6 +59,13 @@ class Clan extends Model
     protected $attributes = [
         'applications_open' => true,
     ];
+
+    protected static function booted(): void
+    {
+        // Home's newcomers (HomeHub, cached).
+        static::created(fn () => HomeHub::forgetNewcomers());
+        static::deleted(fn () => HomeHub::forgetNewcomers());
+    }
 
     protected function casts(): array
     {

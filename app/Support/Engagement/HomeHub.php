@@ -32,8 +32,10 @@ use Carbon\CarbonInterface;
 use Illuminate\Database\Eloquent\Collection as EloquentCollection;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Route;
 use InvalidArgumentException;
+use Throwable;
 
 /**
  * What home shows as the league's hub (2026-09-27, "Hype auf der
@@ -68,6 +70,9 @@ final class HomeHub
     public const RESULTS = 6;
 
     public const NEWCOMERS = 10;
+
+    /** Cache key of the newcomers' ids and counts ({@see newcomers()}). */
+    public const NEWCOMERS_KEY = 'home:newcomers';
 
     /** @var list<Cup>|null */
     private ?array $cups = null;
@@ -169,19 +174,63 @@ final class HomeHub
     /**
      * Who joined lately: the newest players and clans, and how many came this week.
      *
+     * Which ones and the counts come from Cache::flexible (fresh 30 s, then
+     * served while one request recounts, up to 60 s; performance plan P2,
+     * S9); the rows themselves are read fresh by id, so a new name or
+     * picture shows at once. A new or deleted player or clan forgets the
+     * entry (User and Clan model events, {@see forgetNewcomers()}). A failing
+     * cache store is reported and the lists are read directly.
+     *
      * @return array{players: EloquentCollection<int, User>, clans: EloquentCollection<int, Clan>, playersThisWeek: int, clansThisWeek: int, clanCount: int}
      */
     public function newcomers(): array
     {
-        $week = now()->subWeek();
+        $read = function (): array {
+            $week = now()->subWeek();
+
+            return [
+                'players' => User::query()->latest('created_at')->latest('id')->limit(self::NEWCOMERS)->pluck('id')->map(fn (mixed $id): int => (int) $id)->all(),
+                'clans' => Clan::query()->latest('created_at')->latest('id')->limit(4)->pluck('id')->map(fn (mixed $id): int => (int) $id)->all(),
+                'playersThisWeek' => User::query()->where('created_at', '>=', $week)->count(),
+                'clansThisWeek' => Clan::query()->where('created_at', '>=', $week)->count(),
+                'clanCount' => Clan::query()->count(),
+            ];
+        };
+
+        try {
+            /** @var array{players: list<int>, clans: list<int>, playersThisWeek: int, clansThisWeek: int, clanCount: int} $newest */
+            $newest = Cache::flexible(self::NEWCOMERS_KEY, [30, 60], $read);
+        } catch (Throwable $e) {
+            report($e);
+            $newest = $read();
+        }
+
+        $players = $newest['players'] === [] ? new EloquentCollection : User::query()->whereKey($newest['players'])->get();
+        $clans = $newest['clans'] === [] ? new EloquentCollection : Clan::query()->withCount('members')->whereKey($newest['clans'])->get();
+
+        $playerOrder = array_flip($newest['players']);
+        $clanOrder = array_flip($newest['clans']);
 
         return [
-            'players' => User::query()->latest('created_at')->latest('id')->limit(self::NEWCOMERS)->get(),
-            'clans' => Clan::query()->withCount('members')->latest('created_at')->latest('id')->limit(4)->get(),
-            'playersThisWeek' => User::query()->where('created_at', '>=', $week)->count(),
-            'clansThisWeek' => Clan::query()->where('created_at', '>=', $week)->count(),
-            'clanCount' => Clan::query()->count(),
+            // In the cached order: newest first.
+            'players' => $players->sortBy(fn (User $user): int => $playerOrder[$user->id] ?? PHP_INT_MAX)->values(),
+            'clans' => $clans->sortBy(fn (Clan $clan): int => $clanOrder[$clan->id] ?? PHP_INT_MAX)->values(),
+            'playersThisWeek' => $newest['playersThisWeek'],
+            'clansThisWeek' => $newest['clansThisWeek'],
+            'clanCount' => $newest['clanCount'],
         ];
+    }
+
+    /** A player or clan came or went: the newcomers are read anew, once the write is committed. */
+    public static function forgetNewcomers(): void
+    {
+        DB::afterCommit(function (): void {
+            try {
+                Cache::forget(self::NEWCOMERS_KEY);
+            } catch (Throwable $e) {
+                report($e);
+            }
+        });
     }
 
     /**

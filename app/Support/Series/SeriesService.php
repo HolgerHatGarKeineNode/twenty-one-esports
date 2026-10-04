@@ -24,6 +24,7 @@ use App\Models\TournamentMatch;
 use App\Models\User;
 use App\Support\Chess\Broadcasts;
 use App\Support\FairPlay\FairPlay;
+use App\Support\Navigation\ShellNavigation;
 use App\Support\Nostr\NostrKeys;
 use App\Support\Nostr\RejectedEvent;
 use App\Support\Nostr\SignedEvent;
@@ -1051,6 +1052,9 @@ final class SeriesService
                 throw new SeriesRuleViolation('already_decided', __('This match was decided in between. Please look again.'));
             }
 
+            // Written past the model: a dispute opens an admin case, a confirmation closes one.
+            ShellNavigation::forgetOpenCases();
+
             if ($status === 'confirmed') {
                 $this->rateAndAttest($match);
             }
@@ -1178,6 +1182,9 @@ final class SeriesService
             if ($updated !== 1) {
                 throw new SeriesRuleViolation('changed', __('This match changed in between. Please look again.'));
             }
+
+            // Written past the model: the decided case leaves the admin badge.
+            ShellNavigation::forgetOpenCases();
 
             if ($falseReport?->user !== null) {
                 FalseReport::query()->create([

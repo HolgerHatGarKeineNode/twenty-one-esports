@@ -18,6 +18,7 @@ use App\Models\SeriesMatch;
 use App\Models\TournamentMatch;
 use App\Models\TournamentPayout;
 use App\Models\User;
+use App\Support\Navigation\ShellNavigation;
 use App\Support\Nostr\NostrKeys;
 use App\Support\Rating\RatingService;
 use Illuminate\Database\Eloquent\Builder;
@@ -219,6 +220,8 @@ final class AccountLinks
                     'resolution_reason' => self::VOID_REASON,
                     'resolved_by_id' => $admin->id,
                 ]);
+                // Written past the model: a voided series is no admin case any more.
+                ShellNavigation::forgetOpenCases();
 
                 $this->markTournamentMatch($match->tournament_match_id);
                 FairPlayVoid::query()->create(['account_link_id' => $link->id, 'source' => 'series', 'source_id' => $match->id, 'match_number' => $match->number, 'previous' => $previous, 'elo' => $elo]);
