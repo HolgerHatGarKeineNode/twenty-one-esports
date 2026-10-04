@@ -44,18 +44,35 @@ new #[Layout('layouts::app', ['section' => 'clans'])] class extends Component {
     }
 
     /**
-     * Every clan with its players and lineups, once per request; the search filters this list.
+     * The players a card shows as faces: the member rows and, of each user,
+     * only what <x-avatar> reads (performance plan P2, S8: every search
+     * keystroke loaded every member's full user row).
+     *
+     * @return array<string, \Closure>
+     */
+    public static function faces(): array
+    {
+        return [
+            'members' => fn ($query) => $query->select(['id', 'clan_id', 'user_id', 'role', 'joined_at']),
+            'members.user' => fn ($query) => $query->select(['id', 'pubkey', 'npub', 'name', 'picture', 'avatar_path', 'profile_checked_at']),
+        ];
+    }
+
+    /**
+     * Every clan with its lineups and its number of players, once per
+     * request; the search filters this list. The players themselves are
+     * loaded for the cards on screen only ({@see clans()}, {@see spotlight()}).
      *
      * @return Collection<int, Clan>
      */
     #[Computed]
     public function directory(): Collection
     {
-        return Clan::query()->with(['members.user', 'lineups'])->orderBy('name')->get();
+        return Clan::query()->with('lineups')->withCount('members')->orderBy('name')->get();
     }
 
     /**
-     * The clans the search matches (name, tag or meetup city), by name.
+     * The clans the search matches (name, tag or meetup city), by name, with their faces.
      *
      * @return Collection<int, Clan>
      */
@@ -64,9 +81,11 @@ new #[Layout('layouts::app', ['section' => 'clans'])] class extends Component {
     {
         $search = mb_strtolower(trim($this->search));
 
-        return $search === '' ? $this->directory : $this->directory->filter(fn (Clan $clan): bool => str_contains(mb_strtolower($clan->name), $search)
+        $clans = $search === '' ? $this->directory : $this->directory->filter(fn (Clan $clan): bool => str_contains(mb_strtolower($clan->name), $search)
             || str_contains(mb_strtolower($clan->clantag), $search)
             || str_contains(mb_strtolower((string) $clan->meetup_city), $search))->values();
+
+        return $clans->loadMissing(self::faces());
     }
 
     /**
@@ -86,7 +105,7 @@ new #[Layout('layouts::app', ['section' => 'clans'])] class extends Component {
     {
         $id = trim($this->search) === '' ? ClanPride::spotlight($this->pride) : null;
 
-        return $id === null ? null : $this->directory->firstWhere('id', $id);
+        return $id === null ? null : $this->directory->firstWhere('id', $id)?->loadMissing(self::faces());
     }
 
     /** The page's clan numbers, computed once per request. */
@@ -260,7 +279,7 @@ new #[Layout('layouts::app', ['section' => 'clans'])] class extends Component {
     $challenges = $this->challenges;
     $myClanId = $this->myClanId;
     $grid = $spotlight === null ? $clans : $clans->reject(fn ($clan) => $clan->id === $spotlight->id)->values();
-    $players = $directory->sum(fn ($clan) => $clan->members->count());
+    $players = (int) $directory->sum('members_count');
     $meetups = $directory->filter(fn ($clan) => filled($clan->meetup_name))->count();
     $myClan = $myClanId === null ? null : $directory->firstWhere('id', $myClanId);
 @endphp

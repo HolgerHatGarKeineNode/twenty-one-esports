@@ -1,13 +1,16 @@
 <?php
 
+use App\Enums\ClanRole;
 use App\Enums\InviteStatus;
 use App\Enums\LineupRole;
 use App\Models\Clan;
 use App\Models\ClanInvite;
+use App\Models\ClanMember;
 use App\Models\Lineup;
 use App\Models\User;
 use App\Support\Clans\ClanDraft;
 use App\Support\Clans\ClanService;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Queue;
 use Livewire\Livewire;
@@ -201,4 +204,46 @@ test('another clan\'s page offers the challenge with both lineups picked, its ow
 
     $this->actingAs($theirs->clan->owner)->get(route('clans.show', $theirs->clan))->assertOk()
         ->assertDontSee('data-test="challenge-clan"', false);
+});
+
+test('a search on /clans loads the faces of the matching clans only, and of each player only what the avatar shows', function () {
+    $clans = Clan::factory()->count(5)->sequence(fn ($sequence) => ['name' => 'Clan '.chr(65 + $sequence->index)])->create();
+    foreach ($clans as $clan) {
+        foreach (User::factory()->count(2)->create() as $user) {
+            ClanMember::query()->create(['clan_id' => $clan->id, 'user_id' => $user->id, 'role' => ClanRole::Member, 'joined_at' => now()]);
+        }
+    }
+    $page = Livewire::test('pages::clans.index');
+
+    DB::flushQueryLog();
+    DB::enableQueryLog();
+    $page->set('search', 'Clan C')->assertSee('Clan C')->assertDontSee('Clan D');
+    $users = collect(DB::getQueryLog())->filter(fn (array $query): bool => str_contains($query['query'], 'from "users" where "users"."id" in'));
+    DB::disableQueryLog();
+
+    // One users query for the faces: the three players of Clan C, seven columns, not the whole row.
+    // Eager loading writes integer keys into the SQL: `in (4, 9, 10)`.
+    preg_match('/"users"\."id" in \(([^)]*)\)/', (string) $users->first()['query'], $ids);
+    expect($users)->toHaveCount(1)
+        ->and(count(explode(',', $ids[1] ?? '')))->toBe(3)
+        ->and($users->first()['query'])->toStartWith('select "id", "pubkey", "npub", "name", "picture", "avatar_path", "profile_checked_at" from "users"')
+        ->and($page->html())->toContain('3 players');
+});
+
+test('/clans asks the same queries for one clan as for five', function () {
+    $count = function (): int {
+        $this->get(route('clans.index'))->assertOk();
+        DB::flushQueryLog();
+        DB::enableQueryLog();
+        $this->get(route('clans.index'))->assertOk();
+        DB::disableQueryLog();
+
+        return count(DB::getQueryLog());
+    };
+
+    Clan::factory()->create();
+    $one = $count();
+    Clan::factory()->count(4)->create();
+
+    expect($count())->toBe($one);
 });
