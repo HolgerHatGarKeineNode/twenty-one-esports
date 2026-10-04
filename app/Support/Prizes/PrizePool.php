@@ -105,6 +105,15 @@ final class PrizePool
             : $tournament->prize_target_sats + $this->zapSats($tournament);
     }
 
+    /**
+     * The pot the payout splits: the pot as set (potSats(): the target, or what came in plus what sponsors paid
+     * outside the wallet; fixed prizes plus zaps), all of it, whatever the wallet holds (user, 2026-10-04).
+     */
+    public function payoutPotSats(Tournament $tournament): int
+    {
+        return max(0, (int) $this->potSats($tournament));
+    }
+
     /** The sats zapped on top of the pot (verified receipts before it closed). */
     public function zapSats(Tournament $tournament): int
     {

@@ -50,7 +50,7 @@ use Illuminate\Support\Facades\Gate;
  */
 final class PayoutApproval
 {
-    public function __construct(private PayoutPlan $plan, private TournamentPublisher $publisher, private PrizePool $pool, private Ledger $ledger) {}
+    public function __construct(private PayoutPlan $plan, private TournamentPublisher $publisher, private PrizePool $pool) {}
 
     /**
      * What keeps the admin from approving, or null.
@@ -62,7 +62,6 @@ final class PayoutApproval
             [$tournament->status !== TournamentStatus::Finished, 'Payouts are approved once the tournament has finished.'],
             [$tournament->pool_opened_at === null || ! $tournament->hasLeaguePot(), 'This tournament has no prize pool.'],
             [! WalletSetup::canPay() || ! WalletSetup::canReceive(), 'The league wallet is not connected, so nothing can be paid out.'],
-            [PrizePool::shortfall($tournament, $this->pool->fundedSats($tournament), $this->pool->zapSats($tournament)) > 0, 'The pot has received less than the fixed prizes need with the fee reserve. Add the missing sats to the pot first.'],
             [LeagueKey::fromConfig() === null, 'The league key is not set up, so nothing can be published yet.'],
         ];
 
@@ -126,37 +125,18 @@ final class PayoutApproval
             throw new TournamentRuleViolation('payout_blocked', $blocker);
         }
 
-        // The league wallet is shared by every pot and the reserve: read now, never assumed (fail closed).
-        $balance = self::walletBalance();
-
-        if ($balance === null) {
-            throw new TournamentRuleViolation('wallet_unread', __('The league wallet did not tell its balance just now, so nothing was approved. Try again in a moment.'));
-        }
-
-        return DB::transaction(function () use ($tournament, $admin, $balance): Tournament {
+        // The pot as set is paid out by share (user, 2026-10-04, explicit approval: "Was eingestellt ist im Topf wird
+        // anteilig ausgezahlt, fertig … Wenn die Wallet nicht genug Sats hat, muss extern halt einer aufladen"):
+        // no wallet or pot balance check here.
+        return DB::transaction(function () use ($tournament, $admin): Tournament {
             $locked = Tournament::query()->whereKey($tournament->id)->lockForUpdate()->firstOrFail();
 
             if ($locked->payouts_approved_at !== null) {
                 return $locked;
             }
 
-            // Under the lock: what came in, never more (a payment settling now is booked before or after, never twice);
-            // the zaps on top are those with a verified receipt from before this close.
-            $funded = $this->pool->fundedSats($locked);
             $zaps = $this->pool->zapSats($locked);
-
-            if (PrizePool::shortfall($locked, $funded, $zaps) > 0) {
-                throw new TournamentRuleViolation('pot_short', __('The pot has received less than the fixed prizes need with the fee reserve. Add the missing sats to the pot first.'));
-            }
-
-            $pool = PrizePool::payable($locked, $funded, $zaps);
-            $plan = $this->plan->compute($locked, $pool, $zaps) ?? throw new TournamentRuleViolation('no_places', __('The final places of this tournament cannot be read from its bracket.'));
-            $total = array_sum(array_column($plan['rows'], 'amount'));
-
-            // Never more than the pot holds in the league ledger, nor more than the wallet holds beyond the other pots.
-            if ($total > $this->pool->heldSats($locked) || $total > $balance - $this->ledger->heldForTournaments($locked->potAccount())) {
-                throw new TournamentRuleViolation('pot_uncovered', __('The league wallet holds less than these prizes beyond what it keeps for the other pots, so nothing was approved. Check the wallet.'));
-            }
+            $plan = $this->plan->compute($locked, $this->pool->payoutPotSats($locked), $zaps) ?? throw new TournamentRuleViolation('no_places', __('The final places of this tournament cannot be read from its bracket.'));
 
             $locked->forceFill(['pool_closed_at' => now(), 'payouts_approved_at' => now(), 'payouts_approved_by_id' => $admin->id])->save();
             $this->publisher->republish($locked);

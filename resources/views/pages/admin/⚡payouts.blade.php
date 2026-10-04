@@ -204,8 +204,8 @@ new #[Title('Payouts')] #[Layout('layouts::app', ['section' => 'admin'])] class 
     $fixedMode = $tournament?->prizeMode() === Tournament::PRIZES_FIXED;
     $funded = $tournament ? $prizePool->fundedSats($tournament) : 0;
     $zaps = $tournament ? $prizePool->zapSats($tournament) : 0;
-    $pool = $tournament ? PrizePool::payable($tournament, $funded, $zaps) : null;
-    $shortfall = $tournament ? PrizePool::shortfall($tournament, $funded, $zaps) : 0;
+    $pool = $tournament ? $prizePool->payoutPotSats($tournament) : null;
+    $shortfall = 0;
     $payouts = $this->payouts;
     $pending = $payouts->where('status', PayoutStatus::Pending);
 @endphp
@@ -264,13 +264,6 @@ new #[Title('Payouts')] #[Layout('layouts::app', ['section' => 'admin'])] class 
             @if ($tournament->payouts_approved_at === null)
                 @php($blocker = $approval->blocker($tournament))
                 <p class="m-0 max-w-[80ch] text-[13px] leading-normal text-ink-2">{{ __('The check reads the league wallet’s balance, closes the pot (later payments go to the league reserve), publishes the tournament’s end on Nostr, reads the final places from the bracket and writes one payout per player. Nothing is paid yet.') }}</p>
-                @if (($outside = PrizePool::paidOutsideSats($tournament)) > 0)
-                    {{-- Sponsors' sats marked as paid outside the wallet: part of the pot, never in the wallet the payout pays from. --}}
-                    <p class="m-0 flex max-w-[80ch] items-start gap-2 rounded-md bg-loss-tint px-3 py-2 text-[13px] leading-normal text-loss" role="alert" data-test="payouts-outside-warning">
-                        <x-icon name="warn" :size="16" class="mt-0.5 shrink-0" />
-                        <span>{{ __('Sponsors paid :outside sats outside the wallet. They are not in it, and the payout pays only from what came into the pot through the wallet: :wallet sats. Add them to the pot first, or the prizes will lack them.', ['outside' => $sats($outside), 'wallet' => $sats($funded)]) }}</span>
-                    </p>
-                @endif
                 @if ($blocker)
                     <p class="m-0 text-[13px] text-loss" data-test="payouts-blocker">{{ $blocker }}</p>
                     @if ($shortfall > 0)

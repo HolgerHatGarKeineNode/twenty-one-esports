@@ -214,6 +214,12 @@ final class PayoutRunner
      */
     private function covered(TournamentPayout|SeasonPayout $payout): ?bool
     {
+        // A tournament prize is paid from the pot as set (user, 2026-10-04, explicit approval): no balance gate; a
+        // wallet short of sats fails the payment, which stays retryable until someone tops the wallet up.
+        if ($payout instanceof TournamentPayout) {
+            return true;
+        }
+
         $balance = PayoutApproval::walletBalance();
 
         if ($balance === null) {
@@ -224,13 +230,8 @@ final class PayoutRunner
         $needed = $payout->amount_sats + PrizePool::feeReserve($payout->amount_sats);
         $available = $balance - self::inFlight($payout);
 
-        if ($payout instanceof SeasonPayout) {
-            return $needed <= $available - $ledger->heldForTournaments();
-        }
-
-        $account = $payout->tournament->potAccount();
-
-        return $payout->amount_sats <= $ledger->balance($account) && $needed <= $available - $ledger->heldForTournaments($account);
+        // A season payout (the reserve's sats): never what the wallet keeps for the tournament pots.
+        return $needed <= $available - $ledger->heldForTournaments();
     }
 
     /**
