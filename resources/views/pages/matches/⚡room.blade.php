@@ -19,6 +19,7 @@ use App\Support\Series\SeriesPresenter;
 use App\Support\Series\SeriesRuleViolation;
 use App\Support\Series\SeriesService;
 use App\Support\Tournaments\TournamentGameEnd;
+use Carbon\CarbonInterface;
 use Illuminate\Support\Facades\DB;
 use Livewire\Attributes\Computed;
 use Livewire\Attributes\Layout;
@@ -81,6 +82,11 @@ new #[Title('Match room')] #[Layout('layouts::app', ['section' => 'matches', 'sc
     /** Safety net for whatever the fingerprint does not see. */
     public const RENDER_AT_LEAST = 60;
 
+    /** The client's fallback sync (resources/js/matchRoom.js roomSync): without a live websocket, and with one. */
+    public const POLL_SECONDS = 30;
+
+    public const POLL_SECONDS_WITH_SOCKET = 120;
+
     /** The match with every relation the room reads, loaded once per request (fresh()). */
     private ?SeriesMatch $current = null;
 
@@ -100,9 +106,11 @@ new #[Title('Match room')] #[Layout('layouts::app', ['section' => 'matches', 'sc
     }
 
     /**
-     * The 8 s tick of the page: pull the live sheet written by the other
-     * captain. Most ticks find nothing new; they answer without a render
-     * (P5g: the full room was ~57 KB per tick) and the page stays as it is.
+     * The page's sync (resources/js/matchRoom.js roomSync: a push for this
+     * series, a clock edge, the fallback poll): pull the live sheet written
+     * by the other captain. Most syncs find nothing new; they answer without
+     * a render (P5g: the full room was ~57 KB per tick) and the page stays as
+     * it is.
      */
     public function sync(): void
     {
@@ -663,6 +671,26 @@ new #[Title('Match room')] #[Layout('layouts::app', ['section' => 'matches', 'sc
     }
 
     /**
+     * The next moment the room changes by the clock alone, in server ms: the
+     * clock edges fingerprint() compares against now (kick-off, the no-show
+     * window, a casual match's deadlines). The client syncs just after it
+     * (roomSync), so the page turns on time without a tick every 8 s.
+     */
+    public function nextEdgeMs(): ?int
+    {
+        $match = $this->fresh();
+        $edges = [$match->start_at, $match->noshowReportableAt()];
+
+        if ($match->isCasualPairing()) {
+            array_push($edges, $match->casualLobbyDueAt(), $match->casualJoinDueAt(), $match->casualNextDeadline()['at'] ?? null);
+        }
+
+        $future = array_filter($edges, fn (mixed $edge): bool => $edge instanceof CarbonInterface && $edge->isFuture());
+
+        return $future === [] ? null : min(array_map(fn (CarbonInterface $edge): int => (int) $edge->getTimestampMs(), $future));
+    }
+
+    /**
      * @return list<mixed>
      */
     private function decode(string $signed): array
@@ -762,8 +790,8 @@ new #[Title('Match room')] #[Layout('layouts::app', ['section' => 'matches', 'sc
 @endphp
 
 <div class="flex grow flex-col gap-5 px-4 pt-4 pb-28 lg:mx-auto lg:w-full lg:max-w-[1232px] lg:px-4 lg:pt-8 lg:pb-10" data-test="match-room"
-     x-data="{ submit: false, reportInView: false }"
-     x-init="setInterval(() => { if (! document.activeElement?.matches('input, textarea, select') && ! submit) $wire.sync() }, 8000)">
+     x-data="roomSync(@js(['userId' => $viewer->id, 'number' => $m->number, 'poll' => $this::POLL_SECONDS, 'pollWithSocket' => $this::POLL_SECONDS_WITH_SOCKET]))"
+     data-server-now="{{ (int) now()->getTimestampMs() }}" data-next-edge="{{ $this->nextEdgeMs() ?? 0 }}">
 
     {{-- 1. Who vs who, and where it stands: the tournament first (user, 2026-10-03), the versus, then status and deadline in one line. --}}
     <div class="flex flex-col gap-2 lg:gap-4" data-flow="1" data-test="room-head">

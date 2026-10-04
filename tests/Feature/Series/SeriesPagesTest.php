@@ -153,6 +153,26 @@ test('the room tick answers without a render until something changed, and loads 
         ->and($room->html())->toContain('data-test="series-score">1 : 0<');
 });
 
+test('the room syncs on a push and at its next clock edge, not on an 8 s interval (performance plan P3)', function () {
+    $match = SeriesMatch::factory()->accepted()->create(['start_at' => now()->addMinutes(2)->startOfMinute()]);
+    $captain = seriesCaptain($match);
+    $room = Livewire::actingAs($captain)->test('pages::matches.room', ['match' => $match]);
+
+    // The client part (resources/js/matchRoom.js roomSync) gets the series to listen for and the fallback seconds;
+    // the next edge is the kick-off.
+    expect($room->html())->toContain('x-data="roomSync(')->not->toContain('setInterval')
+        ->and($room->html())->toContain('data-next-edge="'.$match->start_at->getTimestampMs().'"');
+
+    // After the kick-off the next edge is the no-show window, then there is none.
+    $this->travel(3)->minutes();
+    $room->call('$refresh')->assertOk();
+    expect($room->html())->toContain('data-next-edge="'.$match->refresh()->noshowReportableAt()->getTimestampMs().'"');
+
+    $this->travelTo($match->noshowReportableAt()->addMinute());
+    $room->call('$refresh')->assertOk();
+    expect($room->html())->toContain('data-next-edge="0"');
+});
+
 test('the room tick renders when a rating or a captain changed outside the match row', function () {
     $match = SeriesMatch::factory()->accepted()->create();
     $room = Livewire::actingAs(seriesCaptain($match))->test('pages::matches.room', ['match' => $match]);
