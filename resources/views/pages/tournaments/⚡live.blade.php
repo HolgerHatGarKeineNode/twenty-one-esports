@@ -19,7 +19,7 @@ use Livewire\Component;
  * the desk chat (TournamentDesk, resources/js/deskChat.js) and the public bracket (TournamentView). The route and
  * mount check `manage-tournament`, the control checks it again for every action.
  */
-new #[Layout('layouts::app', ['section' => 'tournaments'])] class extends Component {
+new #[Layout('layouts::app', ['section' => 'tournaments', 'realtime' => true, 'scripts' => ['resources/js/tournamentDesk.js']])] class extends Component {
     public Tournament $tournament;
 
     public function mount(Tournament $tournament): void
