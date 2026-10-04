@@ -11,11 +11,13 @@ use App\Support\SeasonChain\LeagueKey;
 use App\Support\SeasonChain\SeasonChains;
 use Carbon\CarbonImmutable;
 use Carbon\CarbonInterface;
+use Illuminate\Contracts\Http\Kernel as HttpKernel;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Vite;
 use Tests\Integration\Support\Stack;
 use Tests\Support\BrowserAssets;
+use Tests\Support\BrowserBodylessFraming;
 use Tests\Support\TestSigner;
 use Tests\TestCase;
 
@@ -101,9 +103,13 @@ pest()->extend(TestCase::class)
     //
     // The built assets come through /__test/assets/ (Tests\Support\BrowserAssets),
     // which lets the browser cache them within a context.
+    //
+    // A 204 leaves the in-process server with a Content-Length of 0 (Tests\Support\BrowserBodylessFraming):
+    // framed as chunked it ends in a late "0\r\n\r\n" that breaks the page's next fetch on the same socket.
     ->beforeEach(function (): void {
         Vite::useHotFile(storage_path('framework/testing/vite-hot-disabled-for-browser-tests'));
         BrowserAssets::use();
+        app(HttpKernel::class)->pushMiddleware(BrowserBodylessFraming::class);
     })
     ->group('browser')
     ->in('Browser');
