@@ -36,7 +36,7 @@ test('the components directory compiles with Blaze, except the shell and the com
         ->and($config->shouldCompile($path('tournaments/next-empty')))->toBeTrue()
         ->and($config->shouldCompile($path('shell/header')))->toBeFalse()
         ->and($config->shouldCompile($path('shell/footer')))->toBeFalse()
-        ->and($config->shouldCompile($path('nostr-login')))->toBeFalse()
+        ->and($config->shouldCompile($path('nostr-login')))->toBeTrue()
         ->and($config->shouldCompile($path('upcoming/row')))->toBeFalse()
         ->and($config->shouldCompile($path('upcoming/when')))->toBeFalse()
         ->and($config->shouldCompile($path('opponents/needs-mutual')))->toBeFalse()
