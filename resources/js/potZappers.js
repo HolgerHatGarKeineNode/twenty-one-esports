@@ -11,6 +11,8 @@
  * generated picture and the shortened npub. Text goes in as text, never as
  * HTML.
  */
+import { proxiedAvatar } from './imageProxy.js';
+
 const WAIT_MS = 2500;
 const MAX_NAME = 48;
 
@@ -69,7 +71,7 @@ export function potZappers() {
                             img.onerror = null;
                             img.src = fallback;
                         };
-                        img.src = picture;
+                        img.src = proxiedAvatar(picture, Number(img.getAttribute('width')) || img.width);
                         img.alt = name ?? img.alt.replace(/, generated$/, '');
                     }
                 }

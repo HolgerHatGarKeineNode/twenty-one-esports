@@ -16,7 +16,8 @@
 @if ($user)
     @php
         $name ??= $user->displayName();
-        $picture = $user->avatarUrl();
+        // Sized for the image proxy: a 96 px cut up to 48 px, a larger one above (App\Support\ImageProxy).
+        $picture = $user->avatarUrl((int) $size);
         $generated = App\Support\Nostr\PlayerProfile::generatedAvatarUrl($user->pubkey);
         $generatedAlt = __(':name avatar, generated', ['name' => $name]);
         // Two radius utilities on one element: the stylesheet order would decide, not the caller.

@@ -6,6 +6,7 @@ use App\Enums\Platform;
 use App\Support\Board;
 use App\Support\Chess\ChessSettings;
 use App\Support\Engagement\HomeHub;
+use App\Support\ImageProxy;
 use App\Support\Nostr\Nip05Names;
 use App\Support\Nostr\PlayerProfile;
 use App\Support\Scores\ScoreAccounts;
@@ -219,8 +220,21 @@ class User extends Authenticatable
     /**
      * Our own uploaded avatar wins over the kind-0 picture, which is only
      * ever loaded over https. Null: draw the Blockpile ({@see PlayerProfile}).
+     * The kind-0 picture goes through the image proxy when one is configured
+     * ({@see ImageProxy}), cut for a picture drawn at `$size` CSS px.
      */
-    public function avatarUrl(): ?string
+    public function avatarUrl(int $size = ImageProxy::SMALL_MAX): ?string
+    {
+        $source = $this->avatarSource();
+
+        return $source === null || $this->avatar_path !== null ? $source : ImageProxy::avatar($source, $size);
+    }
+
+    /**
+     * The picture's own URL, not proxied: our upload or the https kind-0
+     * picture. For the browser that sizes it itself (resources/js/profiles.js).
+     */
+    public function avatarSource(): ?string
     {
         if ($this->avatar_path !== null) {
             return Storage::disk('public')->url($this->avatar_path);

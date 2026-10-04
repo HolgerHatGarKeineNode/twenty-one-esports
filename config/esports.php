@@ -97,6 +97,25 @@ return [
 
     /*
     |--------------------------------------------------------------------------
+    | Image proxy for foreign avatars (performance plan P5)
+    |--------------------------------------------------------------------------
+    |
+    | The einundzwanzig-group image proxy (`GET /img/{preset}?src=`): it fetches
+    | a kind-0 picture once, crops it and serves a small WebP from its disk
+    | cache. Measured 2026-10-04 on the 52 foreign prod avatars: 25.1 MB
+    | direct, 0.13 MB through the `avatar` preset. Empty: the browser loads the
+    | picture from its own host, as before. Example:
+    | `https://group.einundzwanzig.space/img`. Only App\Support\ImageProxy and
+    | proxiedAvatar() (resources/js/imageProxy.js) build these URLs; our own
+    | uploads and generated avatars stay local, and the stream and card
+    | builders that fetch bytes on the server read the original URL.
+    |
+    */
+
+    'image_proxy_url' => rtrim((string) env('IMG_PROXY_URL', ''), '/'),
+
+    /*
+    |--------------------------------------------------------------------------
     | NIP-05 names on the league's domain (P47)
     |--------------------------------------------------------------------------
     |

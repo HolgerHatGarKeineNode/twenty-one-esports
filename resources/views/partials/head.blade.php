@@ -67,6 +67,12 @@
 <link rel="apple-touch-icon" href="/apple-touch-icon.png">
 <link rel="manifest" href="/site.webmanifest">
 
+{{-- Foreign avatars come through the image proxy when one is set (App\Support\ImageProxy, resources/js/imageProxy.js). --}}
+@if (filled(config('esports.image_proxy_url')))
+    <link rel="preconnect" href="{{ preg_replace('#^(https?://[^/]+).*$#', '$1', config('esports.image_proxy_url')) }}">
+    <meta name="image-proxy" content="{{ config('esports.image_proxy_url') }}">
+@endif
+
 @fonts
 
 @vite(['resources/css/app.css', 'resources/js/app.js'])

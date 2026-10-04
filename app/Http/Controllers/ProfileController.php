@@ -33,7 +33,8 @@ class ProfileController extends Controller
         return response()->json([
             'updated' => $updated->mapWithKeys(fn (User $user): array => [$user->pubkey => [
                 'name' => $user->displayName(),
-                'avatar' => $user->avatarUrl(),
+                // The picture's own URL: profiles.js sizes it for each avatar it swaps (proxiedAvatar()).
+                'avatar' => $user->avatarSource(),
             ]])->all(),
         ]);
     }

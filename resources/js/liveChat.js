@@ -28,6 +28,7 @@ import { SimplePool } from 'nostr-tools/pool';
 import { npubEncode } from 'nostr-tools/nip19';
 import { knownCustomEmojis, loadUserCustomEmojis, pushRecentEmoji } from './emoji.js';
 import { emojiPicker, emojiPopover } from './emojiPicker.js';
+import { proxiedAvatar } from './imageProxy.js';
 import { ensureSigner } from './nostrSign.js';
 import { newest, readRelays } from './relayRead.js';
 import { signerMessage, signTemplate } from './signing.js';
@@ -446,7 +447,9 @@ export function liveChat(config) {
         },
 
         avatarOf(pubkey) {
-            return this.profiles[pubkey]?.picture ?? this.generatedAvatar(pubkey);
+            // 16 and 24 px in the chat: the proxy's small cut when there is one (imageProxy.js).
+            const picture = this.profiles[pubkey]?.picture;
+            return picture ? proxiedAvatar(picture) : this.generatedAvatar(pubkey);
         },
 
         generatedAvatar(pubkey) {

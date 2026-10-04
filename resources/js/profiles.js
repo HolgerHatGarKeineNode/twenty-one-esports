@@ -18,6 +18,8 @@
  *    the same card as a bottom sheet (MobileProfileHovercard.dc.html).
  *    The card is an HTML fragment from GET /players/{npub}/card.
  */
+import { proxiedAvatar } from './imageProxy.js';
+
 const LOCAL_TTL_MS = 30 * 60 * 1000;
 const STORAGE_KEY = 'twentyone.profiles.asked';
 const BATCH = 50;
@@ -113,7 +115,9 @@ function swapAvatars(pubkey, profile) {
     }
 
     document.querySelectorAll(`img[data-avatar="${pubkey}"]`).forEach((img) => {
-        if (img.getAttribute('src') === profile.avatar) {
+        // Cut for the size this avatar is drawn at (x-avatar sets width), through the image proxy when there is one.
+        const src = proxiedAvatar(profile.avatar, Number(img.getAttribute('width')) || img.width);
+        if (img.getAttribute('src') === src) {
             return;
         }
         img.onerror = () => {
@@ -122,7 +126,7 @@ function swapAvatars(pubkey, profile) {
             img.alt = img.dataset.fallbackAlt;
         };
         img.alt = img.alt.replace(/, generated$/, '');
-        img.src = profile.avatar;
+        img.src = src;
     });
 }
 
