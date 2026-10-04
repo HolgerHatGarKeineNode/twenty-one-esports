@@ -6733,5 +6733,13 @@
     "Starting…": "Startet…",
     ":name passes :sats sats on to the next pot? They are not paid out, the tournament page shows it.": ":name reicht :sats Sats an den nächsten Topf weiter? Sie werden nicht ausgezahlt, die Turnierseite zeigt es an.",
     "Pass on": "Weiterreichen",
-    ":name passed the prize on: it goes into the next pot.": ":name hat den Preis weitergereicht: Er geht in den nächsten Topf."
+    ":name passed the prize on: it goes into the next pot.": ":name hat den Preis weitergereicht: Er geht in den nächsten Topf.",
+    "Zap the players": "Zap für die Spieler",
+    "Trophies": "Trophäen",
+    "Shared tournament win": "Geteilter Turniersieg",
+    "Shared 2nd place": "Geteilter Platz 2",
+    "Shared 3rd place": "Geteilter Platz 3",
+    ":count tournament win|:count tournament wins": ":count Turniersieg|:count Turniersiege",
+    ":count× 2nd or 3rd place": ":count× Platz 2 oder 3",
+    ":sats sats won": ":sats Sats gewonnen"
 }

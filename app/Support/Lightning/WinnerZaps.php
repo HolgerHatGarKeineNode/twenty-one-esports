@@ -6,12 +6,15 @@ use App\Enums\ChessGameStatus;
 use App\Models\ChessGame;
 use App\Models\SeriesMatch;
 use App\Models\Tournament;
+use App\Models\TournamentParticipant;
 use App\Models\User;
 use App\Support\Cards\SharePosts;
 use App\Support\Nostr\NostrBar;
 use App\Support\Nostr\NostrKeys;
 use App\Support\Nostr\SignedEvent;
 use App\Support\Nostr\SignedEventGate;
+use App\Support\Payouts\PayoutPlan;
+use App\Support\Payouts\TournamentPlacements;
 use App\Support\QrCode;
 use App\Support\Tournaments\TournamentChampion;
 use Illuminate\Support\Facades\RateLimiter;
@@ -43,6 +46,9 @@ final class WinnerZaps
 
     public const MAX_WINNERS = 5;
 
+    /** A finished tournament offers everyone who played, best place first. */
+    public const MAX_TOURNAMENT_PLAYERS = 16;
+
     /** The amounts offered, in sats. */
     public const AMOUNTS = [21, 210, 2100, 21000];
 
@@ -69,7 +75,8 @@ final class WinnerZaps
         }
 
         // One query for the whole winning side (a tournament lineup, a series roster).
-        $users = User::query()->whereKey($ids)->whereNotNull('lud16')->orderBy('id')->get();
+        // In the order given (a tournament's best place first), never more than MAX_WINNERS.
+        $users = User::query()->whereKey($ids)->whereNotNull('lud16')->get()->sortBy(fn (User $user): int => (int) array_search($user->id, $ids, true))->values();
         $zappable = [];
 
         foreach ($users as $user) {
@@ -85,7 +92,7 @@ final class WinnerZaps
                 'qr' => QrCode::svg('lightning:'.strtoupper($lnurl), label: __('QR code to zap :name', ['name' => $user->displayName()])),
             ];
 
-            if (count($zappable) === self::MAX_WINNERS) {
+            if (count($zappable) === ($type === 'tournament' ? self::MAX_TOURNAMENT_PLAYERS : self::MAX_WINNERS)) {
                 break;
             }
         }
@@ -238,7 +245,18 @@ final class WinnerZaps
             // A Blockfill week (plan "Blockfill", P6) is a game's weekly board, not a tournament won: no zap.
             $champion = $tournament === null || $tournament->isLeagueWeek() ? null : $this->champions->of($tournament);
 
-            return $champion === null ? [] : $champion->memberIds();
+            if ($champion === null) {
+                return [];
+            }
+
+            // Everyone who really played, best place first (user, 2026-10-04: "unfair nur den Sieger hier anzuzeigen …
+            // außer no-show oder disqualified"): the final places without the excluded entries (PayoutPlan::excluded()).
+            $excluded = PayoutPlan::excluded($tournament);
+            $places = app(TournamentPlacements::class)->of($tournament) ?? [['place' => 1, 'participants' => [$champion->id]]];
+            $order = array_values(array_filter(array_merge(...array_map(fn (array $place): array => $place['participants'], $places)), fn (int $id): bool => ! isset($excluded[$id])));
+            $participants = TournamentParticipant::query()->whereKey($order)->get()->keyBy('id');
+
+            return array_values(array_unique(array_merge(...array_map(fn (int $id): array => $participants->get($id)?->memberIds() ?? [], $order ?: [0]))));
         }
 
         return [];

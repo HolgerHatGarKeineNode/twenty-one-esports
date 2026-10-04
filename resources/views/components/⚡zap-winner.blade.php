@@ -88,7 +88,7 @@ new class extends Component {
                  class="flex min-w-0 flex-col gap-3 rounded-lg bg-card px-4 py-4 lg:px-5"
                  x-data="zapWinner({ pubkey: @js($viewer?->pubkey), amounts: @js(WinnerZaps::AMOUNTS), messages: @js([...SignerMessages::labels(), 'failed' => __('That did not work. Please try again.'), 'changed' => __('The zap request changed. Check it again, then sign.')]) })">
             <span class="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
-                <h2 id="zw-h-{{ $this->getId() }}" class="m-0 flex items-center gap-1.5 text-[15px] font-bold"><x-icon name="bolt" :size="16" class="shrink-0 text-bolt" />{{ trans_choice('Zap the winner|Zap the winners', count($winners)) }}</h2>
+                <h2 id="zw-h-{{ $this->getId() }}" class="m-0 flex items-center gap-1.5 text-[15px] font-bold"><x-icon name="bolt" :size="16" class="shrink-0 text-bolt" />{{ $type === 'tournament' ? __('Zap the players') : trans_choice('Zap the winner|Zap the winners', count($winners)) }}</h2>
                 <span class="text-xs text-ink-2">{{ __('A tip from you, straight to their wallet. The league takes nothing.') }}</span>
             </span>
 

@@ -4,6 +4,7 @@ use App\Enums\SeriesStatus;
 use App\Models\ChessGame;
 use App\Models\NostrEvent;
 use App\Models\SeriesMatch;
+use App\Models\TournamentParticipant;
 use App\Models\User;
 use App\Support\Lightning\Lnurl;
 use App\Support\Lightning\WinnerZaps;
@@ -108,7 +109,7 @@ test('a finished game offers the zap only for a winner with a Lightning address,
     $this->get(route('games.show', $noAddress))->assertOk()->assertDontSee('data-test="zap-winner"', false);
 });
 
-test('a series offers each winning player with an address, at most five; a tournament its champion', function () {
+test('a series offers each winning player with an address, at most five; a tournament everyone who played, the champion first', function () {
     $winners = User::factory()->count(7)->sequence(fn ($sequence) => ['lud16' => 'w'.$sequence->index.'@wallet.example'])->create();
     $losers = User::factory()->count(2)->create(['lud16' => 'loser@wallet.example']);
     $match = SeriesMatch::factory()->create([
@@ -126,7 +127,7 @@ test('a series offers each winning player with an address, at most five; a tourn
 
     $champion = User::factory()->create(['lud16' => 'champ@wallet.example']);
     $tournament = shareTournament($champion, $losers[0]);
-    expect(array_map(fn (array $row): int => $row['user']->id, app(WinnerZaps::class)->winners('tournament', (string) $tournament->id, null)))->toBe([$champion->id]);
+    expect(array_map(fn (array $row): int => $row['user']->id, app(WinnerZaps::class)->winners('tournament', (string) $tournament->id, null)))->toBe([$champion->id, $losers[0]->id]);
     $this->get(route('tournaments.show', $tournament))->assertOk()->assertSee('data-test="zap-winner"', false)->assertDontSee('champ@wallet.example');
 });
 
@@ -209,4 +210,13 @@ test('a zap is refused for a changed request, a foreign key, a wallet without za
     expect(fn () => $zaps->template($zapper, 'game', (string) $game->id, $game->black_id, 21, ''))->toThrow(ZapRefused::class)
         ->and(fn () => $zaps->template($zapper, 'game', (string) $game->id, $anna->id, WinnerZaps::MAX_SATS + 1, ''))->toThrow(ZapRefused::class)
         ->and(fn () => $zaps->template($anna, 'game', (string) $game->id, $anna->id, 21, ''))->toThrow(ZapRefused::class);
+});
+
+test('a disqualified player of a finished tournament is not offered for a zap', function () {
+    $champion = User::factory()->create(['lud16' => 'champ@wallet.example']);
+    $runnerUp = User::factory()->create(['lud16' => 'second@wallet.example']);
+    $tournament = shareTournament($champion, $runnerUp);
+    TournamentParticipant::query()->where('tournament_id', $tournament->id)->where('user_id', $runnerUp->id)->update(['disqualified_at' => now()]);
+
+    expect(array_map(fn (array $row): int => $row['user']->id, app(WinnerZaps::class)->winners('tournament', (string) $tournament->id, null)))->toBe([$champion->id]);
 });
