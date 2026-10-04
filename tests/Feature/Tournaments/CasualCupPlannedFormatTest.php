@@ -175,9 +175,10 @@ test('a withdrawal that makes it 8 again turns the plan back into a round robin 
 test('the tournament page listens for the sign-ups and polls only as the fallback without a websocket', function () {
     $cup = openCup();
 
-    // The 15 s poll lives in tournamentLive (resources/js/livePoll.js): only without a live socket (performance plan P3).
+    // The 15 s poll lives in tournamentLive (resources/js/livePoll.js): only without a live socket (performance plan P3);
+    // a push or a poll calls refreshLive, which renders the islands alone while the tournament runs (P4).
     $this->get(route('tournaments.show', $cup))->assertOk()
-        ->assertSee('x-data="tournamentLive({ id: '.$cup->id.', poll: 15 })"', false)
+        ->assertSee('x-data="tournamentLive({ id: '.$cup->id.', poll: 15, action: \'refreshLive\' })"', false)
         ->assertDontSee('wire:poll', false);
 
     Livewire::test('pages::tournaments.show', ['tournament' => $cup])->call('$refresh')->assertOk();

@@ -288,12 +288,17 @@ export function localTime({ at, zone, label }) {
  * the tab is hidden (livePoll.js, performance plan P3). Before P3 the page
  * polled every 15 s next to the socket: four full renders (~63 KB each) a
  * minute per viewer.
+ *
+ * `action` is the component method a push or a poll calls: `$refresh` (the
+ * whole page) by default; the tournament page passes `refreshLive`, which
+ * renders only its "now" and board islands while the tournament runs
+ * (performance plan P4).
  */
 const REFRESH_MS = 300;
 const JITTER_MS = 1500;
 const SAFETY_NET_S = 120;
 
-export function tournamentLive({ id, poll = 0 }) {
+export function tournamentLive({ id, poll = 0, action = '$refresh' }) {
     return {
         channel: null,
         timer: null,
@@ -301,7 +306,7 @@ export function tournamentLive({ id, poll = 0 }) {
 
         init() {
             if (poll > 0) {
-                this.stopPoll = livePoll({ seconds: poll, withSocket: SAFETY_NET_S, run: () => this.$wire.$refresh() });
+                this.stopPoll = livePoll({ seconds: poll, withSocket: SAFETY_NET_S, run: () => this.$wire[action]() });
             }
 
             if (!window.Echo) {
@@ -313,7 +318,7 @@ export function tournamentLive({ id, poll = 0 }) {
                 if (this.timer !== null) return;
                 this.timer = setTimeout(() => {
                     this.timer = null;
-                    this.$wire.$refresh();
+                    this.$wire[action]();
                 }, jittered(REFRESH_MS, JITTER_MS));
             });
         },

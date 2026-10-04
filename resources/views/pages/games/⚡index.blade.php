@@ -65,7 +65,9 @@ new #[Layout('layouts::app', ['section' => 'chess', 'scripts' => ['resources/js/
                 @foreach ($this->blitz as $game)
                     <li wire:key="blitz-{{ $game->id }}" class="flex min-w-0 flex-col gap-2.5 border-b border-hairline pb-3 sm:border-0 sm:pb-0" data-test="live-game">
                         <span class="flex min-w-0 items-center gap-2 text-[13px]"><x-avatar :user="$game->black" :size="18" class="rounded-sm" /><b class="truncate">{{ $game->black->displayName() }}</b></span>
-                        <div class="hidden justify-center py-1 sm:flex" x-data="{ cells: window.chessBoardCells(@js($game->fen), { noCoords: true }), boardLabel: @js(__('Live board of :number', ['number' => $game->number()])) }">
+                        {{-- The 64 squares are built when the board comes into view: a phone hides the boards and builds none (48 boards were 24 576 of the page's 25 996 DOM nodes, tests/Browser/RenderScopeTest.php). --}}
+                        <div class="hidden justify-center py-1 sm:flex" x-data="{ cells: [], boardLabel: @js(__('Live board of :number', ['number' => $game->number()])) }"
+                             x-intersect.once.margin.200px="cells = window.chessBoardCells(@js($game->fen), { noCoords: true })" data-test="live-board">
                             <x-chess.board class="mt-4 mr-4 max-w-40" />
                         </div>
                         <span class="flex min-w-0 items-center gap-2 text-[13px]"><x-avatar :user="$game->white" :size="18" class="rounded-sm" /><b class="truncate">{{ $game->white->displayName() }}</b></span>

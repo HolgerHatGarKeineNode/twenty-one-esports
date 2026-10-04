@@ -1,3 +1,5 @@
+@blaze
+
 @props(['rating', 'label' => null, 'delta' => null, 'compact' => false])
 
 {{--

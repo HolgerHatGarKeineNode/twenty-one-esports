@@ -149,7 +149,15 @@ function profileBadge({ pubkey, relays = [], messages = {} }) {
     };
 }
 
-function sharePost({ pubkey, relays = [], messages = {} }) {
+/**
+ * The preview sheet is one element per page (performance plan P4): cloned once from the first share button's
+ * <template data-share-sheet>, then moved into the slot of whichever button opened it and bound to that button's
+ * state (Alpine.initTree after Alpine.destroyTree), so its card and note stay right under that button.
+ */
+let sheet = null;
+let sheetOwner = null;
+
+function sharePost({ pubkey, relays = [], messages = {}, preview = null }) {
     return {
         // idle -> preview (the exact note and its card) -> posting -> done; nothing is signed before "Sign and post".
         step: 'idle',
@@ -157,6 +165,42 @@ function sharePost({ pubkey, relays = [], messages = {} }) {
         error: null,
         warning: null,
         published: 0,
+        preview,
+
+        /** Moves the page's one preview sheet under this button; false when another button is posting with it. */
+        mountSheet() {
+            if (sheetOwner !== null && sheetOwner !== this && sheetOwner.step === 'posting') {
+                return false;
+            }
+
+            const slot = this.$root.querySelector('[data-share-slot]');
+            const source = document.querySelector('template[data-share-sheet]');
+
+            if (sheet === null && source !== null) {
+                sheet = source.content.firstElementChild.cloneNode(true);
+            }
+
+            if (slot === null || sheet === null) {
+                return false;
+            }
+
+            if (sheetOwner !== null && sheetOwner !== this) {
+                sheetOwner.cancel();
+            }
+
+            if (sheet.parentElement !== slot) {
+                if (sheet.isConnected) {
+                    window.Alpine.destroyTree(sheet);
+                }
+
+                slot.append(sheet);
+                window.Alpine.initTree(sheet);
+            }
+
+            sheetOwner = this;
+
+            return true;
+        },
 
         get busy() {
             return this.step === 'opening' || this.step === 'posting';
@@ -182,6 +226,13 @@ function sharePost({ pubkey, relays = [], messages = {} }) {
                 const template = await wire.prepareShare();
 
                 if (! template || typeof template !== 'object') {
+                    this.step = 'idle';
+
+                    return;
+                }
+
+                if (! this.mountSheet()) {
+                    this.error = messages.failed ?? 'That did not work. Please try again.';
                     this.step = 'idle';
 
                     return;

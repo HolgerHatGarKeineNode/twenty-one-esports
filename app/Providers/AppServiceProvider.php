@@ -45,6 +45,7 @@ use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\RateLimiter;
 use Illuminate\Support\Facades\Vite;
 use Illuminate\Support\ServiceProvider;
+use Livewire\Blaze\Blaze;
 
 class AppServiceProvider extends ServiceProvider
 {
@@ -272,9 +273,33 @@ class AppServiceProvider extends ServiceProvider
             app()->isProduction(),
         );
 
+        $this->configureBlaze();
+
         // A relation read that was not eager loaded throws outside production (performance plan P2; P1 only logged
         // it): a missing eager load fails the test that reaches it instead of costing a query per row. In production
         // the guard is off, so a missed one costs a query there and never a 500.
         Model::preventLazyLoading(! app()->isProduction());
+    }
+
+    /**
+     * Blaze compiles the anonymous components into plain PHP functions (performance plan P4): the same HTML
+     * without Blade's component pipeline. Compile only, no folding: most components translate with __() or read
+     * the profile cache (x-avatar, x-player-link: ProfileCache::isStale()). `x-icon` memoizes itself (@blaze).
+     *
+     * Left to Blade, as a precaution and not because a failure was seen: the shell (header, footer, mobile nav:
+     * @csrf, Livewire children) and the components that mount a Livewire child, whose keys Livewire builds
+     * from its own loop markers during the render. Livewire's single-file components (⚡) are not Blade components.
+     * The rendered HTML of the hot pages is compared with plain Blade in docs/plans/…-performance/p4-ergebnis.md.
+     */
+    protected function configureBlaze(): void
+    {
+        $components = resource_path('views/components');
+
+        Blaze::optimize()
+            ->in($components)
+            ->in($components.'/shell', compile: false)
+            ->in($components.'/opponents/needs-mutual.blade.php', compile: false)
+            ->in($components.'/upcoming/row.blade.php', compile: false)
+            ->in($components.'/upcoming/when.blade.php', compile: false);
     }
 }

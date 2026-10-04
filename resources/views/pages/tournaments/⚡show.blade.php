@@ -41,6 +41,7 @@ use App\Support\Tournaments\TournamentWaits;
 use Illuminate\Support\Facades\Gate;
 use Livewire\Attributes\Computed;
 use Livewire\Attributes\Layout;
+use Livewire\Attributes\Locked;
 use Livewire\Attributes\On;
 use Livewire\Component;
 
@@ -78,6 +79,10 @@ new #[Layout('layouts::app', ['section' => 'tournaments', 'realtime' => true, 's
     public string $error = '';
 
     public string $cupError = '';
+
+    /** The page's shape at its last full render (shape()): a push renders the islands alone only while it holds. */
+    #[Locked]
+    public string $renderedShape = '';
 
     /** @var list<string> the times a player proposes for a cup series match (P25 S3), league time */
     public array $cupTimes = ['', '', ''];
@@ -119,6 +124,12 @@ new #[Layout('layouts::app', ['section' => 'tournaments', 'realtime' => true, 's
 
         // The link preview (P54): places, pot and start while it is open, the podium once it is over.
         $meta->card(fn () => \App\Support\Cards\PageCard::tournament($tournament));
+    }
+
+    /** After the render: shape() reads page(), computed by then, so it adds no query. */
+    public function rendered(): void
+    {
+        $this->renderedShape = $this->shape();
     }
 
     /**
@@ -511,182 +522,230 @@ new #[Layout('layouts::app', ['section' => 'tournaments', 'realtime' => true, 's
             ? (new TournamentView($this->tournament))->stages()
             : [];
     }
+
+    /**
+     * Everything the template reads about the tournament and the viewer, computed once per request. A computed and
+     * not a @php block: the islands ("now", "board") render on their own and see no locals of the page around them,
+     * so the page and each island read the same values from here.
+     *
+     * @return array<string, mixed>
+     */
+    #[Computed]
+    public function page(): array
+    {
+        // Read once: a computed that returns null is not remembered (Livewire's `??=`), and each read of
+        // TournamentDesk::for() costs about six queries.
+        $desk = $this->desk;
+        $now = $this->now;
+        $tournament = $this->tournament;
+        $landing = $this->landing;
+        $profile = $tournament->profile();
+        $options = $tournament->formatOptions();
+        $zone = (string) (auth()->user()->timezone ?? config('esports.preseason.display_timezone'));
+        $teams = $profile->entersTeams();
+        $chess = $profile->isChess();
+        // Chess and the board games (plan "Mühle und Dame", P5) play their games here, with a clock; the series are reported.
+        $playsHere = $chess || $profile->isBoard();
+        // A score game's leaderboard (plan "AoE2 und Trackmania", P4): no match, no Elo, no seeds that matter.
+        $score = $profile->isScore();
+        // A Blockfill week (P6): the league opens it, a verified run enters the player; no sign-up, no no-shows, no invites.
+        $week = $tournament->isLeagueWeek();
+        // A TMNF week (plan "Trackmania und Restposten", P2) as a Blockfill week, played on our own server: How to join instead of Play.
+        $tmnfWeek = $tournament->isTmnfWeek();
+        $tmnfTrack = $tmnfWeek ? \App\Support\Tmnf\TmnfWeeks::track($tournament->score_course) : null;
+        // A Blockfill week's page as TMNF's week board (plan "Restposten nach TMNF", P4): the game's hero with Play now,
+        // the rules as chips, the podium and the board, the way onward; no roster, steps text, facts or questions.
+        $blockfillWeek = $week && ! $tmnfWeek && \Illuminate\Support\Facades\Route::has('stacker.play');
+        $weekStandings = $blockfillWeek && $tournament->participants()->exists() ? app(\App\Support\Scores\ScoreRuns::class)->standings($tournament) : [];
+        $scoreGame = $score ? app(\App\Games\GameRegistry::class)->get($tournament->game) : null;
+        $scoreMetric = $scoreGame instanceof \App\Games\ScoreGame ? $scoreGame->metric($scoreGame->mode($tournament->mode) ?? throw new \LogicException('A score profile has its mode.')) : null;
+        $status = $tournament->status;
+        // A lobby tournament (plan "AoE2 und Trackmania", P10): one lobby match, its lobby cards instead of a bracket.
+        $lobbies = \App\Support\Tournaments\Lobbies::isLobby($tournament);
+        $drawn = $landing->drawn();
+        $published = $status !== TournamentStatus::Draft && $tournament->published_at !== null;
+        $places = $landing->places();
+        $roster = $landing->roster();
+        $cta = $landing->cta();
+        $deadline = $landing->deadline();
+        $open = $landing->openSeats();
+        $yourSeed = $landing->yourSeed();
+        $champion = $this->champion;
+        $championMoment = $this->championMoment;
+        $pageUrl = route('tournaments.show', $tournament);
+        // A lobby tournament names its game alone and "One lobby match", never "1v1" or Free for All.
+        $gameLine = \App\Support\Tournaments\Lobbies::gameLine($tournament);
+        $formatLabel = \App\Support\Tournaments\Lobbies::formatLabel($tournament);
+        $at = fn (\Carbon\CarbonInterface $moment): string => LeagueTime::stamp($moment);
+        $poll = in_array($status, [TournamentStatus::Signup, TournamentStatus::Drawing, TournamentStatus::Running], true) && $published;
+
+        // Who is in, for the line under the button: the two best seeds by name, the rest counted.
+        $named = array_map(fn (array $row): string => $row['name'], array_slice($roster, 0, 2));
+        $inLine = match (count($roster)) {
+            0 => __('Nobody is in yet. The first seat is yours.'),
+            1 => __(':a is in.', ['a' => $named[0]]),
+            2 => __(':a and :b are in.', ['a' => $named[0], 'b' => $named[1]]),
+            default => trans_choice(':a, :b and :count other are in.|:a, :b and :count others are in.', count($roster) - 2, ['a' => $named[0], 'b' => $named[1]]),
+        };
+        $faces = array_values(array_filter(array_map(fn (array $row) => $row['users'][0] ?? null, array_slice($roster, 0, 5))));
+
+        $countdown = $landing->countdown();
+
+        $shareText = $status === TournamentStatus::Signup && $tournament->isSignupOpen()
+            ? __('Play :tournament with me on TWENTY ONE Esports: :game, :spots.', ['tournament' => $tournament->title(), 'game' => $gameLine, 'spots' => trans_choice(':count spot left|:count spots left', $open)])
+            : __(':tournament on TWENTY ONE Esports: :game.', ['tournament' => $tournament->title(), 'game' => $gameLine]);
+
+        $chips = [
+            ['tournaments', __('Format'), $formatLabel.($tournament->format === TournamentFormat::Swiss && $options->swissRounds !== null ? ', '.trans_choice(':count round|:count rounds', $options->swissRounds) : ''), 'format'],
+            // Online the end is open (P18): the start, and when it is expected to end, never a planned duration.
+            ['flag', __('Starts'), $at($tournament->starts_at).(($openEnd = $landing->openEndLine($zone)) !== null ? ' · '.$openEnd : ''), 'starts'],
+            ...($openEnd === null ? [['clock', __('Planned duration'), __('about :duration', ['duration' => Estimator::format($tournament->plannedDuration(), $profile)]), 'duration']] : []),
+            [$tournament->on_site ? 'home' : 'wifi', __('Where'), $tournament->on_site ? __('On site').', '.trans_choice(':count station|:count stations', (int) $tournament->stations) : __('Online'), 'where'],
+            ['shield-check', __('Results'), match (true) {
+                $tmnfWeek => __('every finish timed by our own TMNF server; a time far below the author time waits for an admin'),
+                $week => __('every ranked run replayed by the league; only a run that reaches the same time counts'),
+                $score => __('values read from the game, or submitted with a proof link an admin checks'),
+                default => $tournament->results_mode->label(),
+            }, 'results'],
+            ['ladder', __('Rated'), match (true) {
+                $score => __('no: a leaderboard has no Elo ladder; its places score points on the game\'s points ladder'),
+                $status === TournamentStatus::Draft => __('decided when it is published'),
+                $tournament->ladder_address === null => __('no: published before Block 0, so every match is casual'),
+                // A board game (plan "Mühle und Dame", P6) is rated like chess when played here.
+                $profile->isBoard() && $tournament->isDirectorMode() => __('no: a board game result the directors enter was not played on the league server'),
+                ! $chess && ! $profile->isBoard() && ! $tournament->isDirectorMode() => __('yes, if its ladder is open at the pairing and the trust gate passes; counts once the other side confirms. Mix teams and same-clan pairings play casual'),
+                default => __('yes, on its ladder while that is open and the trust gate passes'),
+            }, 'rated'],
+            ...($score && $scoreGame instanceof \App\Games\ScoreGame ? [
+                // A Blockfill week's course is its mode: by its own blocks ("60 blocks", BlockfillRules), not its slug (P6).
+                ['flag', __($scoreGame->courseLabel()), match (true) {
+                    $tmnfWeek => $tmnfTrack['name'] ?? (string) $tournament->score_course,
+                    $week => \App\Support\Stacker\BlockfillRules::weekBlocks($tournament),
+                    default => $tournament->score_course ?? __('the directors set it before the start'),
+                }, 'course'],
+                ['award', __('Wins'), $scoreMetric?->lowerIsBetter() ? __('the fastest time; a tie goes to the earlier record') : __('the highest score; a tie goes to the earlier record'), 'wins'],
+            ] : [['award', __('Seeding'), __('by Elo at sign-up close'), 'seeding']]),
+            ['mining', __('Season chain'), $week ? __('separate: a week mines no season blocks') : __('separate: tournament matches never mine season blocks'), 'chain'],
+        ];
+
+        if (! $drawn && $tournament->signup_closes_at !== null) {
+            array_splice($chips, 2, 0, [['lock', __('Sign-up closes'), $at($tournament->signup_closes_at), 'closes']]);
+        }
+
+        $proof = array_values(array_filter([
+            $tournament->naddr() ? ['naddr', $tournament->naddr()] : null,
+            $tournament->event ? [__('Calendar event'), $tournament->event->event_id] : null,
+            $tournament->draw_height ? [__('Draw block'), (string) $tournament->draw_height] : null,
+            $tournament->draw_hash ? [__('Block hash'), $tournament->draw_hash] : null,
+            $tournament->drawEvent ? [__('Draw event'), $tournament->drawEvent->event_id] : null,
+        ]));
+
+        $steps = [
+            [__('Sign up'), $teams
+                ? __('Captains enter their lineup; everyone else enters solo and is drawn into a mix team. You confirm with your Nostr key and can pull out until sign-up closes.')
+                : __('Confirm with your Nostr key. You can pull out until sign-up closes.')],
+            [__('The draw'), $teams
+                ? __('When sign-up closes, lineups are seeded by Elo. The hash of the next Bitcoin block draws the mix teams and seeds the bracket, so anyone can re-check it.')
+                : __('When sign-up closes, players are seeded by Elo, equal Elo by earlier sign-up. The hash of the next Bitcoin block seeds the bracket.')],
+            [__('Play'), $tournament->isDirectorMode()
+                ? __('Play your match; the tournament directors enter the result. Winners move on until the last match decides.')
+                : ($playsHere ? __('Your games start here on the site, with a clock. Winners move on until the last round decides.') : __('Report your series; the other side confirms it. Winners move on until the last match decides.'))],
+        ];
+
+        if ($lobbies) {
+            $steps = [
+                $steps[0],
+                [__('The draw'), __('When sign-up closes, players are seeded by Elo, and the hash of the next Bitcoin block splits them evenly into lobbies of up to :max.', ['max' => \App\Support\Tournaments\Lobbies::maxPlayers($tournament->game)])],
+                [__('Play'), __('Join your lobby with the name and password on its card. One diplomacy game; then report the places with a screenshot of the end screen, and a director confirms them.')],
+            ];
+        }
+
+        if ($score) {
+            $steps = [
+                $steps[0],
+                [__('The window'), __('From the start until the end, play the course alone as often as you like. Your best value inside that time counts; a record set before or after does not.')],
+                [__('Your value'), __('Submit your best with a link that proves it, and an admin checks it; or the league reads it from the game. When the window has closed, the best value wins.')],
+            ];
+        }
+
+        if ($tmnfWeek) {
+            $steps = [
+                [__('Join'), __('Join our TMNF server and link your login once: the site gives you a code to type in the server chat.')],
+                [__('Drive'), __('Drive the track of the week as often as you like. The server times every finish; no sign-up, your first finish puts you on this board.')],
+                [__('Leaderboard'), __('Your best finish of the week ranks. The fastest time wins, a tie goes to the earlier finish; after the week its places score points.')],
+            ];
+        } elseif ($week) {
+            $steps = [
+                [__('Play'), __('Play a ranked run of Blockfill, logged in and with a keyboard. No sign-up: your first verified run of the week puts you on this board.')],
+                [__('Verified'), __('The league replays your run from its seed and your inputs. Only a run that reaches the same time counts; practice runs never do.')],
+                [__('Leaderboard'), __('Your best verified run of the week ranks. The fastest time wins, a tie goes to the earlier run; after the week its places score points.')],
+            ];
+        }
+
+        // A casual cup in sign-up is described and drawn in the format its sign-ups pick now (CasualCups::plannedFormat()).
+        $planned = $landing->planned();
+        $followNote = CasualCups::followNote($tournament);
+        $formatCopy = FormatCopy::for($planned->format);
+        $noShow = $score
+            ? __('Nobody waits for anybody here: whoever sets no value inside the window gets no place.')
+            : ($tournament->isDirectorMode()
+            ? __('A tournament director can record a no-show. The other side wins by forfeit, and no Elo changes hands.')
+            : ($playsHere
+                ? __('Games run here with a clock, like every game on the site.')
+                : __('Results come from the players: one side reports, the other confirms. If they disagree, an admin decides.')));
+
+        // Projected bracket before the draw: the chooser's animated preview for the planned size, and round 1 if sign-up closed now.
+        $projection = $landing->projection();
+        $plannedOptions = $planned->formatOptions();
+        $previewOptions = $planned->format === TournamentFormat::Swiss && $plannedOptions->swissRounds === null ? $plannedOptions->withSwissRounds(Estimator::swissDefault($planned->capacity)) : $plannedOptions;
+        $preview = $projection !== null ? Preview::for($planned->format, $planned->capacity, $previewOptions, 480, 208) : null;
+        $previewSmall = $projection !== null ? Preview::for($planned->format, $planned->capacity, $previewOptions, 326, 196) : null;
+        $previewWho = $teams ? trans_choice(':count team|:count teams', $planned->capacity) : trans_choice(':count player|:count players', $planned->capacity);
+
+        $cellCount = $places['places'] <= 96 ? $places['places'] : 0;
+        $fillStep = $places['taken'] > 0 ? min(70, (int) round(900 / $places['taken'])) : 0;
+        // Sign-up and the draw have no hero of their own: the open desk sits under the sign-up box (user, 2026-10-04),
+        // so a phone opens on the tournament's name. With "What to do now" or the champion it comes right after those.
+        $deskInHero = $desk !== null && ! $championMoment && ! $now && ! $week && $cta !== 'draft';
+
+        return get_defined_vars();
+    }
+
+    /**
+     * A push or the fallback poll (tournamentLive, `action: 'refreshLive'`): while the tournament runs and the
+     * page keeps its shape, only "What to do now" and the board render again (performance plan P4); anything else
+     * (sign-up, the draw, the end, a champion, the desk or the now box appearing) renders the whole page.
+     */
+    public function refreshLive(): void
+    {
+        if ($this->renderedShape === '' || $this->renderedShape !== $this->shape()) {
+            return;
+        }
+
+        $this->renderIsland('now');
+        $this->renderIsland('board');
+        $this->skipRender();
+    }
+
+    /**
+     * What decides the page around the islands: the status, the champion, the now box and the desk. Empty when the
+     * islands may not render alone: not running, or a score board (its boards hold their own Livewire children).
+     */
+    private function shape(): string
+    {
+        if ($this->tournament->status !== TournamentStatus::Running || $this->tournament->profile()->isScore() || $this->tournament->isLeagueWeek()) {
+            return '';
+        }
+
+        $page = $this->page;
+
+        return implode('|', [$this->tournament->status->value, $page['championMoment'] === null ? 0 : 1, $page['now'] === null ? 0 : 1, $page['desk'] === null ? 0 : 1]);
+    }
 }; ?>
 
-@php
-    $tournament = $this->tournament;
-    $landing = $this->landing;
-    $profile = $tournament->profile();
-    $options = $tournament->formatOptions();
-    $zone = (string) (auth()->user()->timezone ?? config('esports.preseason.display_timezone'));
-    $teams = $profile->entersTeams();
-    $chess = $profile->isChess();
-    // Chess and the board games (plan "Mühle und Dame", P5) play their games here, with a clock; the series are reported.
-    $playsHere = $chess || $profile->isBoard();
-    // A score game's leaderboard (plan "AoE2 und Trackmania", P4): no match, no Elo, no seeds that matter.
-    $score = $profile->isScore();
-    // A Blockfill week (P6): the league opens it, a verified run enters the player; no sign-up, no no-shows, no invites.
-    $week = $tournament->isLeagueWeek();
-    // A TMNF week (plan "Trackmania und Restposten", P2) as a Blockfill week, played on our own server: How to join instead of Play.
-    $tmnfWeek = $tournament->isTmnfWeek();
-    $tmnfTrack = $tmnfWeek ? \App\Support\Tmnf\TmnfWeeks::track($tournament->score_course) : null;
-    // A Blockfill week's page as TMNF's week board (plan "Restposten nach TMNF", P4): the game's hero with Play now,
-    // the rules as chips, the podium and the board, the way onward; no roster, steps text, facts or questions.
-    $blockfillWeek = $week && ! $tmnfWeek && \Illuminate\Support\Facades\Route::has('stacker.play');
-    $weekStandings = $blockfillWeek && $tournament->participants()->exists() ? app(\App\Support\Scores\ScoreRuns::class)->standings($tournament) : [];
-    $scoreGame = $score ? app(\App\Games\GameRegistry::class)->get($tournament->game) : null;
-    $scoreMetric = $scoreGame instanceof \App\Games\ScoreGame ? $scoreGame->metric($scoreGame->mode($tournament->mode) ?? throw new \LogicException('A score profile has its mode.')) : null;
-    $status = $tournament->status;
-    // A lobby tournament (plan "AoE2 und Trackmania", P10): one lobby match, its lobby cards instead of a bracket.
-    $lobbies = \App\Support\Tournaments\Lobbies::isLobby($tournament);
-    $drawn = $landing->drawn();
-    $published = $status !== TournamentStatus::Draft && $tournament->published_at !== null;
-    $places = $landing->places();
-    $roster = $landing->roster();
-    $cta = $landing->cta();
-    $deadline = $landing->deadline();
-    $open = $landing->openSeats();
-    $yourSeed = $landing->yourSeed();
-    $champion = $this->champion;
-    $championMoment = $this->championMoment;
-    $pageUrl = route('tournaments.show', $tournament);
-    // A lobby tournament names its game alone and "One lobby match", never "1v1" or Free for All.
-    $gameLine = \App\Support\Tournaments\Lobbies::gameLine($tournament);
-    $formatLabel = \App\Support\Tournaments\Lobbies::formatLabel($tournament);
-    $at = fn (\Carbon\CarbonInterface $moment): string => LeagueTime::stamp($moment);
-    $poll = in_array($status, [TournamentStatus::Signup, TournamentStatus::Drawing, TournamentStatus::Running], true) && $published;
+@php(extract([...$this->page]))
 
-    // Who is in, for the line under the button: the two best seeds by name, the rest counted.
-    $named = array_map(fn (array $row): string => $row['name'], array_slice($roster, 0, 2));
-    $inLine = match (count($roster)) {
-        0 => __('Nobody is in yet. The first seat is yours.'),
-        1 => __(':a is in.', ['a' => $named[0]]),
-        2 => __(':a and :b are in.', ['a' => $named[0], 'b' => $named[1]]),
-        default => trans_choice(':a, :b and :count other are in.|:a, :b and :count others are in.', count($roster) - 2, ['a' => $named[0], 'b' => $named[1]]),
-    };
-    $faces = array_values(array_filter(array_map(fn (array $row) => $row['users'][0] ?? null, array_slice($roster, 0, 5))));
-
-    $countdown = $landing->countdown();
-
-    $shareText = $status === TournamentStatus::Signup && $tournament->isSignupOpen()
-        ? __('Play :tournament with me on TWENTY ONE Esports: :game, :spots.', ['tournament' => $tournament->title(), 'game' => $gameLine, 'spots' => trans_choice(':count spot left|:count spots left', $open)])
-        : __(':tournament on TWENTY ONE Esports: :game.', ['tournament' => $tournament->title(), 'game' => $gameLine]);
-
-    $chips = [
-        ['tournaments', __('Format'), $formatLabel.($tournament->format === TournamentFormat::Swiss && $options->swissRounds !== null ? ', '.trans_choice(':count round|:count rounds', $options->swissRounds) : ''), 'format'],
-        // Online the end is open (P18): the start, and when it is expected to end, never a planned duration.
-        ['flag', __('Starts'), $at($tournament->starts_at).(($openEnd = $landing->openEndLine($zone)) !== null ? ' · '.$openEnd : ''), 'starts'],
-        ...($openEnd === null ? [['clock', __('Planned duration'), __('about :duration', ['duration' => Estimator::format($tournament->plannedDuration(), $profile)]), 'duration']] : []),
-        [$tournament->on_site ? 'home' : 'wifi', __('Where'), $tournament->on_site ? __('On site').', '.trans_choice(':count station|:count stations', (int) $tournament->stations) : __('Online'), 'where'],
-        ['shield-check', __('Results'), match (true) {
-            $tmnfWeek => __('every finish timed by our own TMNF server; a time far below the author time waits for an admin'),
-            $week => __('every ranked run replayed by the league; only a run that reaches the same time counts'),
-            $score => __('values read from the game, or submitted with a proof link an admin checks'),
-            default => $tournament->results_mode->label(),
-        }, 'results'],
-        ['ladder', __('Rated'), match (true) {
-            $score => __('no: a leaderboard has no Elo ladder; its places score points on the game\'s points ladder'),
-            $status === TournamentStatus::Draft => __('decided when it is published'),
-            $tournament->ladder_address === null => __('no: published before Block 0, so every match is casual'),
-            // A board game (plan "Mühle und Dame", P6) is rated like chess when played here.
-            $profile->isBoard() && $tournament->isDirectorMode() => __('no: a board game result the directors enter was not played on the league server'),
-            ! $chess && ! $profile->isBoard() && ! $tournament->isDirectorMode() => __('yes, if its ladder is open at the pairing and the trust gate passes; counts once the other side confirms. Mix teams and same-clan pairings play casual'),
-            default => __('yes, on its ladder while that is open and the trust gate passes'),
-        }, 'rated'],
-        ...($score && $scoreGame instanceof \App\Games\ScoreGame ? [
-            // A Blockfill week's course is its mode: by its own blocks ("60 blocks", BlockfillRules), not its slug (P6).
-            ['flag', __($scoreGame->courseLabel()), match (true) {
-                $tmnfWeek => $tmnfTrack['name'] ?? (string) $tournament->score_course,
-                $week => \App\Support\Stacker\BlockfillRules::weekBlocks($tournament),
-                default => $tournament->score_course ?? __('the directors set it before the start'),
-            }, 'course'],
-            ['award', __('Wins'), $scoreMetric?->lowerIsBetter() ? __('the fastest time; a tie goes to the earlier record') : __('the highest score; a tie goes to the earlier record'), 'wins'],
-        ] : [['award', __('Seeding'), __('by Elo at sign-up close'), 'seeding']]),
-        ['mining', __('Season chain'), $week ? __('separate: a week mines no season blocks') : __('separate: tournament matches never mine season blocks'), 'chain'],
-    ];
-
-    if (! $drawn && $tournament->signup_closes_at !== null) {
-        array_splice($chips, 2, 0, [['lock', __('Sign-up closes'), $at($tournament->signup_closes_at), 'closes']]);
-    }
-
-    $proof = array_values(array_filter([
-        $tournament->naddr() ? ['naddr', $tournament->naddr()] : null,
-        $tournament->event ? [__('Calendar event'), $tournament->event->event_id] : null,
-        $tournament->draw_height ? [__('Draw block'), (string) $tournament->draw_height] : null,
-        $tournament->draw_hash ? [__('Block hash'), $tournament->draw_hash] : null,
-        $tournament->drawEvent ? [__('Draw event'), $tournament->drawEvent->event_id] : null,
-    ]));
-
-    $steps = [
-        [__('Sign up'), $teams
-            ? __('Captains enter their lineup; everyone else enters solo and is drawn into a mix team. You confirm with your Nostr key and can pull out until sign-up closes.')
-            : __('Confirm with your Nostr key. You can pull out until sign-up closes.')],
-        [__('The draw'), $teams
-            ? __('When sign-up closes, lineups are seeded by Elo. The hash of the next Bitcoin block draws the mix teams and seeds the bracket, so anyone can re-check it.')
-            : __('When sign-up closes, players are seeded by Elo, equal Elo by earlier sign-up. The hash of the next Bitcoin block seeds the bracket.')],
-        [__('Play'), $tournament->isDirectorMode()
-            ? __('Play your match; the tournament directors enter the result. Winners move on until the last match decides.')
-            : ($playsHere ? __('Your games start here on the site, with a clock. Winners move on until the last round decides.') : __('Report your series; the other side confirms it. Winners move on until the last match decides.'))],
-    ];
-
-    if ($lobbies) {
-        $steps = [
-            $steps[0],
-            [__('The draw'), __('When sign-up closes, players are seeded by Elo, and the hash of the next Bitcoin block splits them evenly into lobbies of up to :max.', ['max' => \App\Support\Tournaments\Lobbies::maxPlayers($tournament->game)])],
-            [__('Play'), __('Join your lobby with the name and password on its card. One diplomacy game; then report the places with a screenshot of the end screen, and a director confirms them.')],
-        ];
-    }
-
-    if ($score) {
-        $steps = [
-            $steps[0],
-            [__('The window'), __('From the start until the end, play the course alone as often as you like. Your best value inside that time counts; a record set before or after does not.')],
-            [__('Your value'), __('Submit your best with a link that proves it, and an admin checks it; or the league reads it from the game. When the window has closed, the best value wins.')],
-        ];
-    }
-
-    if ($tmnfWeek) {
-        $steps = [
-            [__('Join'), __('Join our TMNF server and link your login once: the site gives you a code to type in the server chat.')],
-            [__('Drive'), __('Drive the track of the week as often as you like. The server times every finish; no sign-up, your first finish puts you on this board.')],
-            [__('Leaderboard'), __('Your best finish of the week ranks. The fastest time wins, a tie goes to the earlier finish; after the week its places score points.')],
-        ];
-    } elseif ($week) {
-        $steps = [
-            [__('Play'), __('Play a ranked run of Blockfill, logged in and with a keyboard. No sign-up: your first verified run of the week puts you on this board.')],
-            [__('Verified'), __('The league replays your run from its seed and your inputs. Only a run that reaches the same time counts; practice runs never do.')],
-            [__('Leaderboard'), __('Your best verified run of the week ranks. The fastest time wins, a tie goes to the earlier run; after the week its places score points.')],
-        ];
-    }
-
-    // A casual cup in sign-up is described and drawn in the format its sign-ups pick now (CasualCups::plannedFormat()).
-    $planned = $landing->planned();
-    $followNote = CasualCups::followNote($tournament);
-    $formatCopy = FormatCopy::for($planned->format);
-    $noShow = $score
-        ? __('Nobody waits for anybody here: whoever sets no value inside the window gets no place.')
-        : ($tournament->isDirectorMode()
-        ? __('A tournament director can record a no-show. The other side wins by forfeit, and no Elo changes hands.')
-        : ($playsHere
-            ? __('Games run here with a clock, like every game on the site.')
-            : __('Results come from the players: one side reports, the other confirms. If they disagree, an admin decides.')));
-
-    // Projected bracket before the draw: the chooser's animated preview for the planned size, and round 1 if sign-up closed now.
-    $projection = $landing->projection();
-    $plannedOptions = $planned->formatOptions();
-    $previewOptions = $planned->format === TournamentFormat::Swiss && $plannedOptions->swissRounds === null ? $plannedOptions->withSwissRounds(Estimator::swissDefault($planned->capacity)) : $plannedOptions;
-    $preview = $projection !== null ? Preview::for($planned->format, $planned->capacity, $previewOptions, 480, 208) : null;
-    $previewSmall = $projection !== null ? Preview::for($planned->format, $planned->capacity, $previewOptions, 326, 196) : null;
-    $previewWho = $teams ? trans_choice(':count team|:count teams', $planned->capacity) : trans_choice(':count player|:count players', $planned->capacity);
-
-    $cellCount = $places['places'] <= 96 ? $places['places'] : 0;
-    $fillStep = $places['taken'] > 0 ? min(70, (int) round(900 / $places['taken'])) : 0;
-    // Sign-up and the draw have no hero of their own: the open desk sits under the sign-up box (user, 2026-10-04),
-    // so a phone opens on the tournament's name. With "What to do now" or the champion it comes right after those.
-    $deskInHero = $this->desk !== null && ! $championMoment && ! $this->now && ! $week && $cta !== 'draft';
-@endphp
-
-<div @class(['flex flex-col gap-12 pb-16 lg:gap-16', 'chat-rail-host xl:[--chat-rail-own:0px] xl:[--chat-rail-bottom:4rem]' => $this->desk !== null, 'xl:[--chat-rail-top:1rem]' => $this->desk !== null && ! $championMoment && $this->now]) data-test="tournament-show" data-cta="{{ $cta }}" @if ($poll) x-data="tournamentLive({ id: {{ $tournament->id }}, poll: 15 })" @endif>
+<div @class(['flex flex-col gap-12 pb-16 lg:gap-16', 'chat-rail-host xl:[--chat-rail-own:0px] xl:[--chat-rail-bottom:4rem]' => $desk !== null, 'xl:[--chat-rail-top:1rem]' => $desk !== null && ! $championMoment && $now]) data-test="tournament-show" data-cta="{{ $cta }}" @if ($poll) x-data="tournamentLive({ id: {{ $tournament->id }}, poll: 15, action: 'refreshLive' })" @endif>
     {{--
         The organizer's and admin's bar (user, 2026-09-28: the prize pool was too hard to reach): prize pool,
         edit and payouts, each behind its own gate (<x-tournaments.manage-actions>), at the top of the page.
@@ -697,19 +756,22 @@ new #[Layout('layouts::app', ['section' => 'tournaments', 'realtime' => true, 's
         the lobby and the match countdowns that stood here as three cards.
     --}}
     {{-- A finished tournament opens on its champion (user, 2026-10-03), the viewer's own place inside it. --}}
+    @island(name: 'now', always: true)
+    @php(extract([...$this->page]))
     @if ($championMoment)
-        @include('pages.tournaments.partials.champion', ['moment' => $championMoment, 'tournament' => $tournament, 'results' => $score ? '#leaderboard' : '#bracket', 'desk' => $this->desk])
-    @elseif ($this->now)
-        @include('pages.tournaments.partials.now', ['now' => $this->now, 'tournament' => $tournament, 'cup' => $this->cupMatch, 'error' => $cupError, 'waits' => $this->myWaits, 'lobby' => $this->myLobby, 'desk' => $this->desk])
+        @include('pages.tournaments.partials.champion', ['moment' => $championMoment, 'tournament' => $tournament, 'results' => $score ? '#leaderboard' : '#bracket', 'desk' => $desk])
+    @elseif ($now)
+        @include('pages.tournaments.partials.now', ['now' => $now, 'tournament' => $tournament, 'cup' => $this->cupMatch, 'error' => $cupError, 'waits' => $this->myWaits, 'lobby' => $this->myLobby, 'desk' => $desk])
     @endif
+    @endisland
 
     {{--
         The tournament desk, always open for its members (user, 2026-10-04: "versteckt hinter einem Button-Klick, das
         ist schlechte UX"): below xl right under the hero (during sign-up and the draw: under the sign-up box, further
         down); from xl `.chat-rail` makes it a sticky side column beside the whole page (resources/css/app.css).
     --}}
-    @if ($this->desk && ! $deskInHero)
-        <div class="chat-rail mx-4 lg:mx-12 xl:mx-0" data-test="desk-rail"><x-tournaments.desk-chat :desk="$this->desk" /></div>
+    @if ($desk && ! $deskInHero)
+        <div class="chat-rail mx-4 lg:mx-12 xl:mx-0" data-test="desk-rail"><x-tournaments.desk-chat :desk="$desk" /></div>
     @endif
 
     @if ($this->canManage || $this->canDirect)
@@ -761,7 +823,9 @@ new #[Layout('layouts::app', ['section' => 'tournaments', 'realtime' => true, 's
     {{-- With the desk inside (sign-up), static from xl: the column then stands beside the whole page, not this section. --}}
     <section aria-labelledby="t-name" @class(['tl-hero relative isolate', 'xl:static' => $deskInHero]) data-test="tournament-hero">
         <div class="grid gap-4 px-4 sm:gap-6 lg:grid-cols-[minmax(0,1fr)_minmax(0,440px)] lg:grid-rows-[auto_1fr] lg:gap-x-12 lg:px-12">
-            <div class="flex min-w-0 flex-col gap-5 lg:col-start-2 lg:row-start-1 lg:self-end">
+            {{-- Below lg the cover follows the call to action: with the own-copy box in front of it, Sign up stood
+                 behind the tab bar at 375 x 812 under a cover above the name (measured, 2026-10-04). --}}
+            <div class="flex min-w-0 flex-col gap-5 max-lg:order-last lg:col-start-2 lg:row-start-1 lg:self-end">
                 @include('pages.tournaments.partials.cover', ['tournament' => $tournament, 'class' => 'tl-poster-in w-full lg:max-w-[440px] lg:justify-self-end'])
             </div>
 
@@ -900,7 +964,7 @@ new #[Layout('layouts::app', ['section' => 'tournaments', 'realtime' => true, 's
                         @endif
                     </div>
                     @if ($deskInHero)
-                        <div class="chat-rail max-lg:order-first" data-test="desk-rail"><x-tournaments.desk-chat :desk="$this->desk" /></div>
+                        <div class="chat-rail max-lg:order-first" data-test="desk-rail"><x-tournaments.desk-chat :desk="$desk" /></div>
                     @endif
                 @endif
 
@@ -989,6 +1053,9 @@ new #[Layout('layouts::app', ['section' => 'tournaments', 'realtime' => true, 's
         </section>
     @endif
 
+    {{-- The board: who plays and the bracket (or the leaderboard), rendered alone on a push while the tournament runs (refreshLive) --}}
+    @island(name: 'board', always: true)
+    @php(extract([...$this->page]))
     {{-- Who plays (a Blockfill week: its podium and board below are who plays) --}}
     @unless ($blockfillWeek)
     <section aria-labelledby="entries-h" class="flex flex-col gap-4 px-4 lg:px-12" data-test="entries">
@@ -1223,6 +1290,7 @@ new #[Layout('layouts::app', ['section' => 'tournaments', 'realtime' => true, 's
         @endif
     </section>
     @endif
+    @endisland
 
     {{-- The pot's working part (P9): its state, "Fill the pot" (#pot-fill) and the payouts; the pot itself heads the page. --}}
     @if (! $week && ($tournament->pool_opened_at !== null || ($this->canManage && ! in_array($tournament->status, [TournamentStatus::Draft, TournamentStatus::Cancelled], true))))

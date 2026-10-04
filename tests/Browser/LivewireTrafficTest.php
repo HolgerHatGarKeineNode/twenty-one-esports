@@ -521,9 +521,11 @@ test('a push renders once, the fallback poll comes back without a socket, a hidd
         ->and(trafficCount($seen['room no socket'], 'pages::matches.room:sync'))->toBe(2)
         ->and($seen['room hidden']['requests'])->toBe(0)
         ->and(trafficCount($seen['room back'], 'pages::matches.room:sync'))->toBe(1)
-        // The tournament page: one render per push; every 15 s without the socket.
-        ->and(trafficCount($seen['tournament push'], 'pages::tournaments.show:$refresh'))->toBe(1)
-        ->and(trafficCount($seen['tournament no socket'], 'pages::tournaments.show:$refresh'))->toBe(4)
+        // The tournament page: one render per push; every 15 s without the socket. While it runs, a push renders
+        // only its "now" and board islands (refreshLive, P4): ~29 KB instead of the ~63 KB page.
+        ->and(trafficCount($seen['tournament push'], 'pages::tournaments.show:refreshLive'))->toBe(1)
+        ->and($seen['tournament push']['received'])->toBeLessThan(40_000)
+        ->and(trafficCount($seen['tournament no socket'], 'pages::tournaments.show:refreshLive'))->toBe(4)
         // One notification, one request, with the dock, the cup badge and the bell in it.
         ->and($seen['home notification']['requests'])->toBe(1)
         ->and(array_key_first($seen['home notification']['labels']))->toContain('match-dock:$refresh')->toContain('notification-bell:$refresh')->toContain('cup-match:$refresh')

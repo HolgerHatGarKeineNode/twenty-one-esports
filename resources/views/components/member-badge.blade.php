@@ -1,3 +1,5 @@
+@blaze
+
 @props(['long' => false, 'solid' => false])
 
 {{--

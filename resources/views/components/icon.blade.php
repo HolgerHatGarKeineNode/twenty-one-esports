@@ -1,3 +1,5 @@
+@blaze(memo: true)
+
 @props(['name', 'size' => 20])
 
 {{-- Stroke icons used across the TWENTY ONE screens, paths copied from the designs. --}}
