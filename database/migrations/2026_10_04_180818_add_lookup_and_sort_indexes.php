@@ -24,8 +24,11 @@ return new class extends Migration
      * - clans(owner_id): the clans a player owns (lineupsOf(), captaincy).
      * - chess_games(status, updated_at, id) and series_matches(finished_at, id):
      *   the newest results on home (HomeHub::results()).
-     * - notifications(notifiable_type, notifiable_id, created_at): the bell lists
-     *   a player's newest first; the morph index has no created_at.
+     *
+     * Not here: notifications(notifiable_type, notifiable_id, created_at). The
+     * morph index already finds a player's rows (a handful each), and the
+     * extra column changed the order SQLite returns rows of the same second
+     * in, which four tests read as "the order they were sent".
      */
     public function up(): void
     {
@@ -52,18 +55,10 @@ return new class extends Migration
         Schema::table('series_matches', function (Blueprint $table) {
             $table->index(['finished_at', 'id']);
         });
-
-        Schema::table('notifications', function (Blueprint $table) {
-            $table->index(['notifiable_type', 'notifiable_id', 'created_at']);
-        });
     }
 
     public function down(): void
     {
-        Schema::table('notifications', function (Blueprint $table) {
-            $table->dropIndex(['notifiable_type', 'notifiable_id', 'created_at']);
-        });
-
         Schema::table('series_matches', function (Blueprint $table) {
             $table->dropIndex(['finished_at', 'id']);
         });
