@@ -287,6 +287,7 @@ class AppServiceProvider extends ServiceProvider
      * the profile cache (x-avatar, x-player-link: ProfileCache::isStale()). `x-icon` memoizes itself (@blaze).
      *
      * Left to Blade, as a precaution and not because a failure was seen: the shell (header, footer, mobile nav:
+     *
      * @csrf, Livewire children) and the components that mount a Livewire child, whose keys Livewire builds
      * from its own loop markers during the render. Livewire's single-file components (⚡) are not Blade components.
      * The rendered HTML of the hot pages is compared with plain Blade in docs/plans/…-performance/p4-ergebnis.md.
@@ -300,6 +301,9 @@ class AppServiceProvider extends ServiceProvider
             ->in($components.'/shell', compile: false)
             ->in($components.'/opponents/needs-mutual.blade.php', compile: false)
             ->in($components.'/upcoming/row.blade.php', compile: false)
-            ->in($components.'/upcoming/when.blade.php', compile: false);
+            ->in($components.'/upcoming/when.blade.php', compile: false)
+            // A plain view pulled in with @include, not a tag: Blaze would compile it into a function definition and the
+            // include would print nothing (reviewer, 2026-10-05: every game chat's poll card came out empty).
+            ->in($components.'/game-channel-poll.blade.php', compile: false);
     }
 }

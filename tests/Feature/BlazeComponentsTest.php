@@ -56,3 +56,19 @@ test('a memoized icon keeps its own attributes', function () {
     expect(substr_count($html, 'class="shrink-0 a"'))->toBe(2)
         ->and(substr_count($html, 'class="shrink-0 b"'))->toBe(1);
 });
+
+test('a component file used as a plain view (@include, view()) is left to Blade, or Blaze would print nothing', function () {
+    // Every @include/view() of a file under components/ must be in configureBlaze()'s compile: false list.
+    $used = [];
+    foreach ([resource_path('views'), app_path(), base_path('routes')] as $root) {
+        foreach (new RecursiveIteratorIterator(new RecursiveDirectoryIterator($root, FilesystemIterator::SKIP_DOTS)) as $file) {
+            if ($file->isFile() && str_ends_with($file->getFilename(), '.php')
+                && preg_match_all("/(?:@include(?:If|When|First)?|view|@each)\\(\\s*'components\\.([a-z0-9._-]+)'/", (string) file_get_contents($file->getPathname()), $found)) {
+                array_push($used, ...$found[1]);
+            }
+        }
+    }
+
+    expect(array_values(array_unique($used)))->toBe(['game-channel-poll'])
+        ->and(trim(Blade::render("@include('components.game-channel-poll')")))->not->toBe('');
+});
