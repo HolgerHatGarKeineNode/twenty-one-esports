@@ -48,8 +48,10 @@ pest()->group('browser');
 |
 | What it does not see: server pushes (no event is broadcast here, so Echo is
 | connected and silent: the idle cost), time-dependent server state (the
-| server's clock is real), and requests that are not Livewire's: those are
-| counted by path next to it ("other"), without bytes.
+| server's clock is frozen at the start and the page's calendar begins on that
+| instant, so the countdowns the dock waits for end at the same virtual second
+| on every run), and requests that are not Livewire's: those are counted by
+| path next to it ("other"), without bytes.
 |
 | Every page: the console stays empty (collector and the plugin's list), every
 | answer is 2xx, and a thrown error, a 404 fetch and a failing Livewire call
@@ -72,6 +74,10 @@ const TRAFFIC_PROBE = <<<'JS'
         const realSetInterval = window.setInterval.bind(window);
         const realClearInterval = window.clearInterval.bind(window);
         const RealDate = Date;
+        // The page's calendar starts at the instant the server's clock is frozen on (the test sets window.__trafficBase): the countdowns
+        // the dock counts down to (a check-in, a series start) then end after the same virtual seconds in every run, whatever the real time
+        // between the fixture and the page's first timer was.
+        const base = typeof window.__trafficBase === 'number' ? window.__trafficBase : null;
         const realPerformanceNow = performance.now.bind(performance);
         const queue = new Map();
         let virtualNow = 0;
@@ -89,8 +95,8 @@ const TRAFFIC_PROBE = <<<'JS'
         window.clearTimeout = (id) => (queue.has(id) ? queue.delete(id) : realClearTimeout(id));
         window.clearInterval = (id) => (queue.has(id) ? queue.delete(id) : realClearInterval(id));
         window.Date = class extends RealDate {
-            constructor(...args) { args.length ? super(...args) : super(RealDate.now() + virtualNow); }
-            static now() { return RealDate.now() + virtualNow; }
+            constructor(...args) { args.length ? super(...args) : super((base ?? RealDate.now()) + virtualNow); }
+            static now() { return (base ?? RealDate.now()) + virtualNow; }
         };
         performance.now = () => realPerformanceNow() + virtualNow;
 
@@ -159,6 +165,8 @@ const TRAFFIC_PROBE = <<<'JS'
                     sent: seen.reduce((sum, r) => sum + r.sent, 0),
                     received: seen.reduce((sum, r) => sum + r.received, 0),
                     statuses: seen.map((r) => r.status),
+                    // When each one started, in virtual seconds since the page's clock began: what moved it shows in the spacing.
+                    at: seen.map((r) => Math.round(r.at / 100) / 10),
                     labels,
                     other: { ...other },
                 };
@@ -218,14 +226,22 @@ function trafficWorld(): array
 /**
  * Opens the page, lets it start up on the virtual clock, then measures one window.
  *
- * @return array{load: array<string, mixed>, window: array<string, mixed>, errors: list<string>}
+ * @return array{echo: bool, load: array<string, mixed>, window: array<string, mixed>, errors: list<string>}
  */
 function trafficMeasure(Page $page, string $url): array
 {
     $page->goto(ComputeUrl::from($url));
     BrowserWait::until($page, '() => document.readyState === "complete" && window.__traffic?.hasLivewire() === true', 15_000);
 
-    return Playwright::usingTimeout(120_000, function () use ($page): array {
+    // Echo is its own script and connects over a real websocket, outside the virtual clock. The window starts with it
+    // connected: the idle state this test says it measures (no event is broadcast, the socket is up and silent).
+    $echo = $page->evaluate('() => document.querySelector("meta[name=reverb]") !== null && document.querySelector("script[src*=echo-]") !== null');
+
+    if ($echo) {
+        BrowserWait::until($page, '() => window.Echo?.connector?.pusher?.connection?.state === "connected"', 15_000);
+    }
+
+    return Playwright::usingTimeout(120_000, function () use ($page, $echo): array {
         $page->evaluate('() => window.__traffic.resetOther()');
         $page->evaluate('async (ms) => { await window.__traffic.advance(ms); }', TRAFFIC_LOAD_MS);
         $load = $page->evaluate('() => window.__traffic.since(0)');
@@ -234,6 +250,7 @@ function trafficMeasure(Page $page, string $url): array
         $page->evaluate('async (ms) => { await window.__traffic.advance(ms); }', TRAFFIC_WINDOW_MS);
 
         return [
+            'echo' => $echo,
             'load' => $load,
             'window' => $page->evaluate('(mark) => window.__traffic.since(mark)', $mark),
             'errors' => [...$page->evaluate('() => window.__errors'), ...$page->evaluate(BrowserConsole::BAD_RESPONSES)],
@@ -242,21 +259,27 @@ function trafficMeasure(Page $page, string $url): array
 }
 
 /*
-| Today's numbers (2026-10-04) as the upper bound per page: [requests in the window, request + response bytes].
-| The request count is exact (it repeated in three runs); the bytes carry 10 % on top of the measured size, rounded
-| up to 1 000, because tokens and timestamps in the snapshots change by a few dozen bytes per run. P3 lowers them
-| with the saving named.
+| The upper bound per page: [requests in the window, request + response bytes]. First set on 2026-10-04 from runs on the real clock, where the
+| dock's refresh at a countdown's end counted two or three times for the same code (the countdowns ended after the time the fixture and the
+| page's start-up took). Since the server's clock stands still and the page's calendar starts on it (the test body, TRAFFIC_PROBE) the
+| counts repeat exactly (two runs, 2026-10-04): 4, 5, 8, 1, 2, 3. The bytes carry 10 % on top of the measured size, rounded up to 1 000,
+| because tokens and timestamps in the snapshots change by a few dozen bytes per run. P3 lowers them with the saving named.
 */
 const TRAFFIC_BUDGETS = [
     'tournament (guest)' => [4, 280_000],
-    'tournament (player)' => [6, 380_000],
-    'room (player)' => [9, 65_000],
-    'home (player)' => [2, 56_000],
+    'tournament (player)' => [5, 353_000],
+    'room (player)' => [8, 41_000],
+    'home (player)' => [1, 28_000],
     'live (guest)' => [2, 126_000],
-    'live (player)' => [5, 241_000],
+    'live (player)' => [3, 185_000],
 ];
 
 test('the hot pages cost this many Livewire roundtrips and bytes in a minute, with a clean console and 2xx answers', function () {
+    // The server's clock stands still from here on, the page's calendar starts on the same instant (TRAFFIC_PROBE): what the dock counts down
+    // to is then the same set of moments on every run. With the real clock the count of its refreshes moved by one with the time the
+    // fixture and each page's start-up took (2026-10-04: 2 and 3 for the same code).
+    $this->freezeSecond();
+    $frozenAt = now()->getTimestampMs();
     $world = trafficWorld();
     $cases = [
         'tournament (guest)' => [null, route('tournaments.show', $world['tournament'])],
@@ -278,6 +301,7 @@ test('the hot pages cost this many Livewire roundtrips and bytes in a minute, wi
         $webpage = visit($viewer === null ? BrowserLogin::LANDING : BrowserLogin::url($viewer));
         $page = $webpage->page();
         $page->context()->addInitScript(BrowserConsole::COLLECTOR);
+        $page->context()->addInitScript('window.__trafficBase = '.$frozenAt.';');
         $page->context()->addInitScript(TRAFFIC_PROBE);
         $page->setViewportSize(1440, 900);
 
@@ -285,7 +309,7 @@ test('the hot pages cost this many Livewire roundtrips and bytes in a minute, wi
         $bytes = $run['window']['sent'] + $run['window']['received'];
         $measured[$name] = [
             'window' => $run['window']['requests'], 'sent' => $run['window']['sent'], 'received' => $run['window']['received'],
-            'load' => $run['load']['requests'], 'labels' => $run['window']['labels'], 'other' => $run['window']['other'],
+            'load' => $run['load']['requests'], 'labels' => $run['window']['labels'], 'at' => $run['window']['at'], 'other' => $run['window']['other'], 'echo' => $run['echo'],
         ];
         $last = [$webpage, $page];
 
@@ -323,7 +347,11 @@ test('the hot pages cost this many Livewire roundtrips and bytes in a minute, wi
     }
 
     // The collector sees traffic where traffic is known to be: the room syncs every 8 s, the tournament page polls every 15 s.
-    expect($measured['room (player)']['window'])->toBeGreaterThanOrEqual(6)
+    // The pages of a logged-in player run with a socket (the wait above is not dormant), and the guest's tournament page polls.
+    expect($measured['room (player)']['echo'])->toBeTrue()
+        ->and($measured['home (player)']['echo'])->toBeTrue()
+        ->and($measured['live (player)']['echo'])->toBeTrue()
+        ->and($measured['room (player)']['window'])->toBeGreaterThanOrEqual(6)
         ->and($measured['tournament (guest)']['window'])->toBeGreaterThanOrEqual(3)
         ->and($problems)->toBe([])
         ->and($over)->toBe([]);

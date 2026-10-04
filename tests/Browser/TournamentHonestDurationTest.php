@@ -62,7 +62,9 @@ const HONEST_STATE = <<<'JS'
 beforeEach(function () {
     Http::fake(fn () => Http::response([]));
 
-    config(['session.driver' => 'database']);
+    // The reference case of EstimatorRangeTest and the Feature test: the round clock's deadlines pinned, not the league's current ones (noshow_minutes 20 since,
+    // which moves the worst case of 16 players by 30 minutes).
+    config(['session.driver' => 'database', 'esports.tournaments.round_clock' => ['noshow_minutes' => 15, 'grace_minutes' => 5, 'response_minutes' => 10]]);
 
     app()->rebinding('request', function ($app): void {
         $app['session']->forgetDrivers();
@@ -75,7 +77,12 @@ beforeEach(function () {
 
 function honestLine(Page $page, string $expected): array
 {
-    BrowserWait::until($page, '() => document.querySelector("[data-test=duration-range-line]")?.textContent.replace(/\s+/g, " ").trim() === '.json_encode($expected), 8_000);
+    try {
+        BrowserWait::until($page, '() => document.querySelector("[data-test=duration-range-line]")?.textContent.replace(/\s+/g, " ").trim() === '.json_encode($expected), 8_000);
+    } catch (RuntimeException $timeout) {
+        // Say what the line read when the wait ran out: the expected text alone does not show which part moved.
+        throw new RuntimeException($timeout->getMessage().' [the line read: '.json_encode($page->evaluate('() => document.querySelector("[data-test=duration-range-line]")?.textContent.replace(/\\s+/g, " ").trim() ?? null')).']', 0, $timeout);
+    }
 
     return $page->evaluate(HONEST_STATE);
 }

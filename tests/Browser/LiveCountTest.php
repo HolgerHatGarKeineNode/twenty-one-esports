@@ -79,7 +79,9 @@ const COUNT_PROBE = <<<'JS'
 
 beforeEach(function () {
     Http::fake(fn () => Http::response([]));
-    config(['session.driver' => 'database', 'esports.live.poll_seconds' => 1]);
+    // The pages poll 15 times faster than in production and every page of a test stays open: the 240 per minute and IP of the status route (production: a poll
+    // every 15 s) were crossed under load, when a test lasts longer, and a 429 is an error of the page. Refusal is tested on purpose below, with 0.
+    config(['session.driver' => 'database', 'esports.live.poll_seconds' => 1, 'esports.live.status_per_minute' => 100_000]);
 
     app()->rebinding('request', function ($app): void {
         $app['session']->forgetDrivers();

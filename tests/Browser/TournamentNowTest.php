@@ -124,7 +124,8 @@ test('a waiting player sees the hero first, above the tab bar, and it flips to "
     foreach ([[375, 812, 'en', true], [1440, 900, 'en', false], [375, 812, 'de', false]] as [$width, $height, $locale, $flip]) {
         $tournament = runningChess(TournamentFormat::SingleElimination, 4, TournamentResultsMode::Players);
         $tournament->forceFill(['name' => 'Halving Blitz Cup', 'published_at' => now()])->save();
-        [$semi, $other] = ChessGame::query()->whereIn('tournament_match_id', $tournament->matches()->select('id'))->orderBy('id')->get()->all();
+        // The players are read below: loaded with the games, as the lazy-loading guard (local and testing) wants.
+        [$semi, $other] = ChessGame::query()->with(['white', 'black'])->whereIn('tournament_match_id', $tournament->matches()->select('id'))->orderBy('id')->get()->all();
         [$white, $black] = [$semi->white, $semi->black];
         $white->forceFill(['locale' => $locale])->save();
         app(ChessGameService::class)->resign($semi, $black);
