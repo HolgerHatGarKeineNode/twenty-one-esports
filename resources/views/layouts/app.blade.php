@@ -51,6 +51,5 @@
         <x-profile-card-host />
 
         @livewireScripts
-        @fluxScripts
     </body>
 </html>

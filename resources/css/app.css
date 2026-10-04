@@ -4,8 +4,13 @@
 @source '../views';
 @source '../../app/Support';
 @source '../../vendor/laravel/framework/src/Illuminate/Pagination/resources/views/*.blade.php';
-@source '../../vendor/livewire/flux-pro/stubs/**/*.blade.php';
-@source '../../vendor/livewire/flux/stubs/**/*.blade.php';
+/*
+ * No <flux:*> component renders here any more (performance plan P5): flux.css
+ * itself adds Flux's and Flux Pro's stubs as sources, and their classes were
+ * most of this stylesheet. The import stays for its tokens and base rules.
+ */
+@source not '../../vendor/livewire/flux-pro/stubs';
+@source not '../../vendor/livewire/flux/stubs';
 
 @custom-variant dark (&:where(.dark, .dark *));
 
@@ -2567,6 +2572,36 @@ select:focus[data-flux-control] {
         font-weight: 700;
         line-height: 20px;
         text-align: center;
+    }
+
+    /*
+     * An item of the account menu (shell header, performance plan P5): the
+     * look Flux's menu item had (32 px row, 14 px medium, a raised row under
+     * the pointer and the keyboard focus), without Flux's script.
+     */
+    .account-item {
+        display: flex;
+        align-items: center;
+        width: 100%;
+        padding: 6px 8px;
+        border-radius: var(--radius-md);
+        color: var(--color-ink);
+        font-size: 14px;
+        font-weight: 500;
+        line-height: 20px;
+        text-align: start;
+        user-select: none;
+    }
+
+    .account-item:hover,
+    .account-item:focus {
+        color: var(--color-ink);
+        background: var(--color-zinc-600);
+        outline: none;
+    }
+
+    .account-item:focus-visible {
+        box-shadow: inset 0 0 0 1px var(--color-edge);
     }
 
     /*

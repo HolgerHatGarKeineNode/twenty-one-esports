@@ -41,7 +41,7 @@
     panel or game hub lifts the header above the toast stack (z-50) and the match dock (z-35); the style is
     bound as an object, so Alpine adds and removes z-index alone and leaves --shell-game standing.
 --}}
-<header class="shell-header sticky top-0 z-30 shrink-0 bg-bar" style="--shell-game: {{ $active['colour'] }}" x-data="shellHeader" x-bind:style="(bell || hub) ? { zIndex: 55 } : {}"
+<header class="shell-header sticky top-0 z-30 shrink-0 bg-bar" style="--shell-game: {{ $active['colour'] }}" x-data="shellHeader" x-bind:style="(bell || hub || account) ? { zIndex: 55 } : {}"
         x-on:bell-toggle="bell = $event.detail" x-on:keydown.escape.window="closeSearch(); closeHub()">
     <span class="shell-edge" aria-hidden="true" data-test="shell-edge"></span>
     {{--
@@ -175,9 +175,16 @@
 
             <livewire:notification-bell />
 
-            <flux:dropdown position="bottom" align="end" class="hidden lg:block">
+            {{--
+                The account menu: a menu button (WAI-ARIA pattern, shellHeader in resources/js/shellNav.js), no Flux
+                script on the page for it (performance plan P5). Enter, Space or ArrowDown open it on the first item,
+                ArrowUp on the last; arrows, Home and End move; Escape, Tab or a click outside close it.
+            --}}
+            <div class="relative hidden lg:block" x-on:click.outside="closeAccount(false)" x-on:keydown.escape="if (account) { $event.stopPropagation(); closeAccount() }" x-on:focusout="accountFocusOut($event)">
                 {{-- The chip shows the avatar and "You"; the full name is in the tooltip and at the top of the menu. --}}
-                <button type="button" title="{{ $user->displayName() }} · {{ $user->shortNpub() }}" class="flex h-11 shrink-0 cursor-pointer items-center gap-2 rounded-md border border-line bg-well pr-2 pl-1.5 text-[13px] text-ink" data-test="account-chip">
+                <button type="button" title="{{ $user->displayName() }} · {{ $user->shortNpub() }}" class="flex h-11 shrink-0 cursor-pointer items-center gap-2 rounded-md border border-line bg-well pr-2 pl-1.5 text-[13px] text-ink"
+                        aria-haspopup="menu" aria-controls="account-menu" aria-expanded="false" x-bind:aria-expanded="account.toString()" x-ref="accountChip"
+                        x-on:click="toggleAccount()" x-on:keydown.down.prevent="openAccount('first')" x-on:keydown.up.prevent="openAccount('last')" data-test="account-chip">
                     <x-avatar :user="$user" :size="28" class="shrink-0" />
                     <span>{{ __('You') }}</span><span class="sr-only" data-test="account-chip-name">, {{ $user->displayName() }}</span>
                     @if ($upcoming)
@@ -187,7 +194,9 @@
                     <x-icon name="chevron-down" :size="16" class="text-ink-3" />
                 </button>
 
-                <flux:menu class="max-w-72">
+                <div id="account-menu" role="menu" aria-label="{{ __('Account') }}" tabindex="-1" x-ref="accountMenu" x-show="account" x-cloak data-nav-panel
+                     x-on:keydown="accountKey($event)" data-test="account-menu"
+                     class="absolute top-full right-0 z-50 mt-[5px] w-max max-w-72 min-w-48 rounded-lg border border-zinc-600 bg-zinc-700 p-[.3125rem] shadow-xs focus:outline-hidden">
                     <div class="flex items-center gap-2.5 px-2 pt-1.5 pb-2" data-test="account-menu-name">
                         <x-avatar :user="$user" :size="32" class="shrink-0" />
                         <span class="flex min-w-0 flex-col leading-tight">
@@ -195,18 +204,18 @@
                             <span class="text-[11px] text-ink-3">{{ $user->shortNpub() }}</span>
                         </span>
                     </div>
-                    <flux:menu.separator />
+                    <div class="-mx-[.3125rem] my-[.3125rem] h-px bg-white/20" role="separator"></div>
                     @foreach ($account as $link)
-                        <flux:menu.item :href="$link['href']" :data-test="$link['test']"><x-icon :name="$link['icon']" :size="16" class="me-2 text-ink-3" />{{ $link['label'] }}@isset($link['count'])<span class="nav-count ms-auto">{{ $link['count'] }}</span>@endisset</flux:menu.item>
+                        <a href="{{ $link['href'] }}" role="menuitem" tabindex="-1" class="account-item" @if ($link['test']) data-test="{{ $link['test'] }}" @endif><x-icon :name="$link['icon']" :size="16" class="me-2 text-ink-3" />{{ $link['label'] }}@isset($link['count'])<span class="nav-count ms-auto">{{ $link['count'] }}</span>@endisset</a>
                     @endforeach
-                    <flux:menu.separator />
+                    <div class="-mx-[.3125rem] my-[.3125rem] h-px bg-white/20" role="separator"></div>
                     {{-- Forget a mill remote signer first, so the next person on this browser does not inherit it. --}}
                     <form method="POST" action="{{ route('logout') }}" x-on:submit="window.forgetNostrSigner?.()">
                         @csrf
-                        <flux:menu.item as="button" type="submit" class="w-full"><x-icon name="logout" :size="16" class="me-2 text-ink-3" />{{ __('Log out') }}</flux:menu.item>
+                        <button type="submit" role="menuitem" tabindex="-1" class="account-item cursor-pointer"><x-icon name="logout" :size="16" class="me-2 text-ink-3" />{{ __('Log out') }}</button>
                     </form>
-                </flux:menu>
-            </flux:dropdown>
+                </div>
+            </div>
         @else
             <a href="{{ route('login') }}" @if ($onLogin) aria-current="page" @endif
                class="btn-s hidden h-11 shrink-0 items-center rounded-md border border-edge px-4 text-[13px] font-bold text-ink hover:text-ink lg:flex">{{ __('Log in') }}</a>

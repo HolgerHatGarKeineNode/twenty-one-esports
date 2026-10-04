@@ -23,6 +23,8 @@ export function shellHeader() {
         search: false,
         bell: false,
         hub: false,
+        // The account menu (desktop chip): a WAI-ARIA menu button, see openAccount() and accountKey().
+        account: false,
         filter: '',
         kind: 'all',
         opener: null,
@@ -49,6 +51,7 @@ export function shellHeader() {
             this.focusTicket++;
             // The field sits in the search row under the header (plan "Mempool-Streifen", P4): open it first.
             this.closeHub(false);
+            this.account = false;
             this.search = true;
             this.$nextTick(() => field.focus());
         },
@@ -87,6 +90,7 @@ export function shellHeader() {
         openHub(button) {
             this.opener = button;
             this.search = false;
+            this.account = false;
             this.hub = true;
             window.dispatchEvent(new CustomEvent('nav-sheet', { detail: 'hub' }));
             this.focusTicket++;
@@ -106,6 +110,54 @@ export function shellHeader() {
                 const ticket = ++this.focusTicket;
                 this.$nextTick(() => { if (this.focusTicket === ticket) this.opener?.focus({ preventScroll: true }); });
             }
+        },
+
+        toggleAccount() {
+            this.account ? this.closeAccount() : this.openAccount('first');
+        },
+
+        /** Open the account menu with the focus on its first or last item (Enter/Space/ArrowDown, ArrowUp). */
+        openAccount(which = 'first') {
+            this.closeHub(false);
+            this.search = false;
+            this.account = true;
+            this.focusTicket++;
+            this.$nextTick(() => {
+                const items = this.accountItems();
+                (which === 'last' ? items[items.length - 1] : items[0])?.focus({ preventScroll: true });
+            });
+        },
+
+        closeAccount(returnFocus = true) {
+            if (!this.account) return;
+            this.account = false;
+            if (returnFocus) {
+                const ticket = ++this.focusTicket;
+                this.$nextTick(() => { if (this.focusTicket === ticket) this.$refs.accountChip?.focus({ preventScroll: true }); });
+            }
+        },
+
+        accountItems() {
+            return [...(this.$refs.accountMenu?.querySelectorAll('[role=menuitem]') ?? [])];
+        },
+
+        /** Arrows, Home and End move between the items; Tab leaves the menu and closes it. */
+        accountKey(event) {
+            const items = this.accountItems();
+            const at = items.indexOf(document.activeElement);
+            const move = { ArrowDown: at + 1, ArrowUp: at - 1, Home: 0, End: items.length - 1 }[event.key];
+            if (event.key === 'Tab') {
+                this.closeAccount(false);
+                return;
+            }
+            if (move === undefined || items.length === 0) return;
+            event.preventDefault();
+            items[(move + items.length) % items.length].focus({ preventScroll: true });
+        },
+
+        /** The focus left the chip and the menu (a click elsewhere, a screen reader jump): close without taking it back. */
+        accountFocusOut(event) {
+            if (this.account && event.relatedTarget && !event.currentTarget.contains(event.relatedTarget)) this.closeAccount(false);
         },
 
         shows(tile) {

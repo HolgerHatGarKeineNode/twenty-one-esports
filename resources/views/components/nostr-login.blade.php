@@ -25,15 +25,15 @@
     data-test="nostr-login"
 >
     @if ($slot->isEmpty())
-        <flux:button variant="primary" x-on:click="loginWithGoogle()" x-bind:disabled="busy">
+        <x-button variant="primary" x-on:click="loginWithGoogle()" x-bind:disabled="busy">
             {{ __('Continue with Google') }}
-        </flux:button>
+        </x-button>
 
-        <flux:button x-on:click="loginWithNostr()" x-bind:disabled="busy">
+        <x-button variant="secondary" x-on:click="loginWithNostr()" x-bind:disabled="busy">
             {{ __('Continue with Nostr') }}
-        </flux:button>
+        </x-button>
 
-        <flux:text x-show="error" x-text="error" x-cloak class="text-red-500" role="alert"></flux:text>
+        <p x-show="error" x-text="error" x-cloak class="text-sm text-red-500" role="alert"></p>
     @else
         {{ $slot }}
     @endif
