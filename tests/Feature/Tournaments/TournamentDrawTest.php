@@ -10,6 +10,7 @@ use App\Models\User;
 use App\Support\Tournaments\DrawOrder;
 use App\Support\Tournaments\MemeNames;
 use App\Support\Tournaments\TournamentDraws;
+use App\Support\Tournaments\TournamentRunner;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Queue;
 use Tests\Support\TestSigner;
@@ -102,9 +103,16 @@ test('sign-up closes into a committed draw, and the mined block draws mix teams 
         ->and($draws->mixTeams($tournament, $hash)['reserves'])->toBe([$byKey[$expected['reserves'][0]]])
         // The lineups are seeded first, the mix teams after them in draw order.
         ->and($mix->pluck('seed')->all())->toBe([3, 4])
-        // Round 1 is played as two normal series; the mix team side has no lineup.
-        ->and(SeriesMatch::query()->whereNotNull('tournament_match_id')->count())->toBe(2)
-        ->and(SeriesMatch::query()->whereNotNull('sides')->count())->toBe(2);
+        // Drawn and running, but no match starts before the tournament's start (tournament 2, 2026-10-04).
+        ->and(SeriesMatch::query()->whereNotNull('tournament_match_id')->count())->toBe(0);
+
+    $this->travelTo($tournament->starts_at->addSecond());
+    app(TournamentRunner::class)->sync($tournament->refresh());
+
+    // Round 1 is played as two normal series from the start; the mix team side has no lineup.
+    expect(SeriesMatch::query()->whereNotNull('tournament_match_id')->count())->toBe(2)
+        ->and(SeriesMatch::query()->whereNotNull('sides')->count())->toBe(2)
+        ->and(SeriesMatch::query()->whereNotNull('tournament_match_id')->get()->every(fn (SeriesMatch $series): bool => $series->start_at->gte($tournament->starts_at)))->toBeTrue();
 
     $this->get(route('tournaments.draw', $tournament))->assertOk()->assertSee($names[0])->assertSee('Verified draw');
 });

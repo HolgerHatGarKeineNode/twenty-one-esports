@@ -100,6 +100,13 @@ final class TournamentMatchMaker
             return;
         }
 
+        // Drawn at the sign-up close (`draw_committed_at`), it runs (and takes the stream) before its start, but no match starts before
+        // `starts_at` (tournament 2, 2026-10-04: round 1 paired an hour early, its report deadline ran out at the
+        // start). A casual cup schedules each series itself (CasualCups::seriesStartsAt()).
+        if (! $tournament->isCasualCup() && $tournament->draw_committed_at !== null && $tournament->starts_at->isFuture()) {
+            return;
+        }
+
         // A held match (P18) waits for an organizer's or admin's decision.
         $matches = TournamentMatch::query()->where('tournament_id', $tournament->id)->where('status', 'ready')
             ->where('bracket', '!=', 'bye')->whereNull('result')->whereNull('held')

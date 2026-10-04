@@ -310,7 +310,7 @@ class TournamentLiveSlides
                 'drawing' => 'Draw pending',
                 'finished' => 'Finished',
                 // Paused by an organizer or an admin (TournamentControl): nothing is played now.
-                default => $paused ? 'Paused' : 'Live now',
+                default => $paused ? 'Paused' : ($tournament->draw_committed_at !== null && $tournament->starts_at->isFuture() ? 'Starting soon' : 'Live now'),
             },
             'name' => PublicName::clean($tournament->name),
             'game' => GameTitle::of($tournament->game),
