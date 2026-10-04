@@ -298,3 +298,29 @@ test('signing up feels like taking a seat: before, while the signer is asked, an
 
     fwrite(STDERR, "\n[landing-signup] ".json_encode($measured)."\n");
 });
+
+test('a phone sees Sign up above the tab bar, with the own-copy box in front of it, at 375 x 812 and 390 x 844', function () {
+    $tournament = landingRocketLeague('Einundzwanzig Fifa 2026', 16);
+    landingEntries($tournament, ['Wels', 'markusturm', 'hodlqueen']);
+    $measured = [];
+
+    foreach (['guest' => null, 'player' => User::factory()->create(['name' => 'visitor', 'locale' => 'en'])] as $who => $user) {
+        $page = $user === null ? visit('/')->page() : landingPage($user);
+
+        foreach ([[375, 812], [390, 844]] as [$width, $height]) {
+            $page->setViewportSize($width, $height);
+            $page->goto(ComputeUrl::from(route('tournaments.show', $tournament)));
+            BrowserWait::until($page, '() => document.querySelector("[data-test=to-signup]") !== null && window.Alpine !== undefined', 10_000);
+            $measured[$who][$width] = $m = $page->evaluate('() => {
+                const box = (s) => { const el = document.querySelector(s); if (!el) return null; const r = el.getBoundingClientRect(); return { top: Math.round(r.top), bottom: Math.round(r.bottom) }; };
+                return { button: box("[data-test=to-signup]"), ownCopy: box("[data-test=own-copy]"), tabBar: box("[data-test=tab-bar]"), title: box("#t-name"), pool: box("[data-test=prize-pool]"), scrollY: Math.round(scrollY) };
+            }');
+
+            expect([$who, $width, $m['scrollY']])->toBe([$who, $width, 0])
+                ->and($m['ownCopy']['bottom'])->toBeLessThanOrEqual($m['button']['top'])
+                ->and([$who, $width, $m['button']['bottom'] <= $m['tabBar']['top']])->toBe([$who, $width, true]);
+        }
+    }
+
+    fwrite(STDERR, "\n[landing-cta] ".json_encode($measured)."\n");
+});

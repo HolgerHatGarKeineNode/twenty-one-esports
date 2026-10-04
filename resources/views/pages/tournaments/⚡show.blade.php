@@ -823,7 +823,9 @@ new #[Layout('layouts::app', ['section' => 'tournaments', 'realtime' => true, 's
     {{-- With the desk inside (sign-up), static from xl: the column then stands beside the whole page, not this section. --}}
     <section aria-labelledby="t-name" @class(['tl-hero relative isolate', 'xl:static' => $deskInHero]) data-test="tournament-hero">
         <div class="grid gap-4 px-4 sm:gap-6 lg:grid-cols-[minmax(0,1fr)_minmax(0,440px)] lg:grid-rows-[auto_1fr] lg:gap-x-12 lg:px-12">
-            <div class="flex min-w-0 flex-col gap-5 lg:col-start-2 lg:row-start-1 lg:self-end">
+            {{-- Below lg the cover follows the call to action: with the own-copy box in front of it, Sign up stood
+                 behind the tab bar at 375 x 812 under a cover above the name (measured, 2026-10-04). --}}
+            <div class="flex min-w-0 flex-col gap-5 max-lg:order-last lg:col-start-2 lg:row-start-1 lg:self-end">
                 @include('pages.tournaments.partials.cover', ['tournament' => $tournament, 'class' => 'tl-poster-in w-full lg:max-w-[440px] lg:justify-self-end'])
             </div>
 
