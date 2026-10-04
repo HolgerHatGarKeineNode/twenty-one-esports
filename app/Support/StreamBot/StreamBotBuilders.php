@@ -364,7 +364,7 @@ final class StreamBotBuilders
         foreach ($finished as $tournament) {
             $champion = $this->champions->of($tournament);
             $winner = StreamBotCopy::clean($champion?->user?->displayName() ?? $champion?->name, 32);
-            $name = StreamBotCopy::clean($tournament->name);
+            $name = StreamBotCopy::resultName($tournament->name);
 
             if ($winner === '' || $name === '') {
                 continue;

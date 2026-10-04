@@ -12,6 +12,7 @@ use App\Support\Nostr\NostrKeys;
 use App\Support\Nostr\SignedEvent;
 use App\Support\StreamBot\ChampionNotes;
 use App\Support\StreamBot\PrideNotes;
+use App\Support\StreamBot\StreamBotCopy;
 use App\Support\StreamBot\StreamBotPublisher;
 use App\Support\Tournaments\TournamentChampion;
 use App\Support\TwentyOne\PublishResult;
@@ -186,4 +187,11 @@ test('fails closed without the bot key, the flag or a relay; a dry run posts not
     expect(app(ChampionNotes::class)->run(now()->toImmutable()))->toContain('no stream relay')
         ->and($this->published)->toBe([])
         ->and(BotPost::query()->count())->toBe(0);
+});
+
+test('a result post never names a sats amount from the tournament name', function () {
+    expect(StreamBotCopy::resultName('21,000 Sats, Zero Ball Control'))->toBe('Zero Ball Control')
+        ->and(StreamBotCopy::resultName('21k sats Cup'))->toBe('Cup')
+        ->and(StreamBotCopy::resultName('Blitz Night Berlin'))->toBe('Blitz Night Berlin')
+        ->and(StreamBotCopy::resultName('Season 2 Finale'))->toBe('Season 2 Finale');
 });

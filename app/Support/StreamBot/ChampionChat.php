@@ -140,7 +140,7 @@ class ChampionChat
     public function compose(Tournament $tournament): ?array
     {
         $winners = $this->winners($tournament);
-        $name = StreamBotCopy::clean($tournament->name, self::NAME_LENGTH);
+        $name = StreamBotCopy::resultName($tournament->name, self::NAME_LENGTH);
 
         if ($winners === [] || $name === '') {
             return null;

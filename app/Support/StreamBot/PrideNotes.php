@@ -225,7 +225,7 @@ class PrideNotes
             // "blitz chess"; a series keeps its game's name as written ("Rocket League 1v1").
             'mode' => ($win['kind'] ?? null) === 'series' ? (string) ($win['mode'] ?? '') : strtolower((string) ($win['mode'] ?? 'chess')),
             'elo' => is_int($delta) && $delta > 0 ? '+'.$delta.' casual Elo' : null,
-            'tournament' => StreamBotCopy::clean((string) ($win['tournament'] ?? ''), 80),
+            'tournament' => StreamBotCopy::resultName((string) ($win['tournament'] ?? ''), 80),
             // The game's page (a chess game, a board game) or the tournament a board game won (PrideSlides).
             'url' => is_string($win['url'] ?? null) && $win['url'] !== '' ? $win['url'] : route('games.show', (int) $win['gameId']),
         ];
@@ -261,7 +261,7 @@ class PrideNotes
         return $winners === [] ? null : [
             'first' => count($winners) + $more > 1 ? 'Shared 1st place' : '1st place',
             'winners' => implode(', ', $winners).($more > 0 ? ' +'.$more.' more' : ''),
-            'tournament' => StreamBotCopy::clean((string) ($win['tournament'] ?? ''), 80),
+            'tournament' => StreamBotCopy::resultName((string) ($win['tournament'] ?? ''), 80),
             'mode' => StreamBotCopy::clean((string) ($win['mode'] ?? ''), 60),
             'players' => (string) (int) ($win['players'] ?? 0),
             'url' => is_string($win['url'] ?? null) && $win['url'] !== '' ? $win['url'] : route('tournaments.index'),

@@ -331,6 +331,20 @@ final class StreamBotCopy
      * `nostr:` references of its own, at most `$max` characters. Empty when
      * nothing is left.
      */
+    /**
+     * A tournament's name in a result post, without a sats amount in it (user, 2026-10-04: "Der Bot darf keine Gewinn
+     * Zahlen schreiben"; "@UWE wins 21,000 Sats, Zero Ball Control" read as a prize): "21,000 Sats, Zero Ball Control"
+     * becomes "Zero Ball Control". A name that is nothing but an amount stays as it is.
+     */
+    public static function resultName(?string $name, int $max = 40): string
+    {
+        $clean = self::clean($name, 200);
+        $stripped = trim((string) preg_replace('/(?<![\p{L}\p{N}])[\d][\d.,\s\x{202F}\x{00A0}]*\s*k?\s*sats?\b[\s,:;\-–—|·]*/iu', ' ', $clean), " \t,:;-–—|·");
+        $stripped = trim((string) preg_replace('/\s{2,}/u', ' ', $stripped));
+
+        return self::clean($stripped === '' ? $clean : $stripped, $max);
+    }
+
     public static function clean(?string $name, int $max = 40): string
     {
         $name = (string) $name;
