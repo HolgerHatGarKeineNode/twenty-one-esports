@@ -436,7 +436,8 @@ return [
                 'spectator_delay_minutes' => 2,
                 'restart_minutes' => 5,
                 'lobby' => [
-                    'min_entries' => 3,
+                    // Two players are a match too (user, 2026-10-04: "AoE2 hätte man doch mit 2 Teilnehmern spielen können").
+                    'min_entries' => 2,
                     'max_players' => 8,
                     'map' => 'Arabia',
                     'civilizations' => 'free',

@@ -6722,5 +6722,7 @@
     "Your captain enters the games and submits the final score.": "Dein Captain trägt die Spiele ein und meldet das Endergebnis.",
     "Once the match starts at :time, you enter the games and submit the final score here.": "Sobald das Match um :time beginnt, trägst du hier die Spiele ein und meldest das Endergebnis.",
     "Enter the score": "Ergebnis eintragen",
-    "The pot includes :outside sats sponsors paid outside the wallet. The approval books them into the pot; the league wallet has to hold them.": "Der Topf enthält :outside Sats, die Sponsoren außerhalb der Wallet bezahlt haben. Die Freigabe bucht sie in den Topf; die Liga-Wallet muss sie halten."
+    "The pot includes :outside sats sponsors paid outside the wallet. The approval books them into the pot; the league wallet has to hold them.": "Der Topf enthält :outside Sats, die Sponsoren außerhalb der Wallet bezahlt haben. Die Freigabe bucht sie in den Topf; die Liga-Wallet muss sie halten.",
+    ":tournament moved to :time": ":tournament wurde auf :time verschoben",
+    "Too few players signed up for the planned time, so the cup moved. Your sign-up was reset: sign up again if you can play then.": "Für den geplanten Termin haben sich zu wenige angemeldet, deshalb wurde der Cup verschoben. Deine Anmeldung wurde zurückgesetzt: Melde dich neu an, wenn du dann spielen kannst."
 }

@@ -154,14 +154,15 @@ test('creating an Age of Empires II tournament offers only the lobby format and 
         ->and($tournament->formatOptions()->heatSize)->toBe(8)
         ->and($tournament->plannedDuration())->toEqual(135);
 
-    // Two players are too few for a lobby, and a team mode has no lobby format at all.
+    // Two players are a lobby match too (user, 2026-10-04: "AoE2 hätte man doch mit 2 Teilnehmern spielen können"),
+    // and a team mode has no lobby format at all.
     Livewire::actingAs($organizer)->test('pages::admin.tournament-create')
-        ->set('name', 'Too small')->call('pickGame', 'age-of-empires-2/1v1')->set('players', '2')
-        ->call('create')->assertHasErrors('format');
+        ->set('name', 'Two players')->call('pickGame', 'age-of-empires-2/1v1')->set('players', '2')
+        ->call('create')->assertHasNoErrors('format');
     $teams = Livewire::actingAs($organizer)->test('pages::admin.tournament-create')->call('pickGame', 'age-of-empires-2/2v2');
 
     expect(collect($teams->instance()->evaluation->rows)->filter->enabled->all())->toBe([])
-        ->and(Tournament::query()->count())->toBe(1);
+        ->and(Tournament::query()->count())->toBe(2);
 });
 
 test('a casual Age of Empires II cup is drawn as lobbies, and its players hear their lobby', function () {

@@ -227,15 +227,18 @@ test('at the close six players start the cup, a lone player extends sign-up once
         ->and($lone->signup_closes_at->equalTo(now()->addWeek()))->toBeTrue()
         ->and($lone->starts_at->equalTo($lone->signup_closes_at))->toBeTrue();
 
+    // A new date resets the sign-ups (user, 2026-10-04): the player is told and signs up again for the new time.
+    $player = User::query()->findOrFail($lone->signups()->firstOrFail()->members[0]);
+    expect($lone->signups()->active()->count())->toBe(0)
+        ->and($player->notifications()->count())->toBe(1)
+        ->and((string) $player->notifications()->first()->data['title'])->toContain('moved to');
+
     $this->travelTo($lone->signup_closes_at);
     cupTick();
 
-    $player = User::query()->findOrFail($lone->signups()->firstOrFail()->members[0]);
-
     expect($lone->refresh()->status)->toBe(TournamentStatus::Cancelled)
         ->and($lone->cup_open_series)->toBeNull()
-        ->and(NostrEvent::query()->findOrFail($lone->event_id)->payload()['tags'][1][1])->toStartWith('Called off: ')
-        ->and($player->notifications()->count())->toBe(1);
+        ->and(NostrEvent::query()->findOrFail($lone->event_id)->payload()['tags'][1][1])->toStartWith('Called off: ');
 });
 
 test('the draw alone never closes a cup short of players: that is the cups\' own decision', function () {

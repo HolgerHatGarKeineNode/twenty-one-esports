@@ -1058,7 +1058,11 @@ final class CasualCups
      */
     private function extend(Tournament $cup): bool
     {
-        return DB::transaction(function () use ($cup): bool {
+        // A new date resets the sign-ups (user, 2026-10-04: "Wenn neuer Termin, dann müssen auch alle Teilnehmer
+        // resettet werden"): who signed up for the old time is told and signs up again for the new one.
+        $players = [];
+
+        $extended = DB::transaction(function () use ($cup, &$players): bool {
             $locked = Tournament::query()->with('event')->lockForUpdate()->findOrFail($cup->id);
 
             if ($locked->status !== TournamentStatus::Signup || $locked->cup_extended_at !== null || $locked->signup_closes_at?->isFuture()) {
@@ -1069,11 +1073,21 @@ final class CasualCups
             // Strictly after the close, and never in the past (a clock that was down for a week).
             $closesAt = self::nextSlot($locked->game, $region, CarbonImmutable::now()->max($locked->signup_closes_at ?? now())->addSecond());
             $locked->forceFill(['signup_closes_at' => $closesAt, 'starts_at' => $closesAt, 'cup_extended_at' => now()])->save();
+            $signups = TournamentSignup::query()->where('tournament_id', $locked->id)->active()->get();
+            $players = array_values(array_unique($signups->flatMap(fn (TournamentSignup $signup): array => $signup->members)->map(intval(...))->all()));
+            TournamentSignup::query()->whereKey($signups->modelKeys())
+                ->update(['removed_at' => now(), 'removal_reason' => 'Moved to a new date: sign up again for it.']);
             // The new close is a new version of the 31923 (NIP "Tournaments": a change of time).
             $this->publisher->republish($locked);
 
             return true;
         });
+
+        if ($extended) {
+            $this->notices->rescheduled($cup->refresh(), $players);
+        }
+
+        return $extended;
     }
 
     /**

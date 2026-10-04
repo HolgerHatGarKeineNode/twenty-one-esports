@@ -15,6 +15,7 @@ use App\Models\TournamentSignup;
 use App\Models\User;
 use App\Support\Notifications\Notice;
 use App\Support\Notifications\Notifier;
+use App\Support\PreSeason;
 use Carbon\CarbonImmutable;
 use Carbon\CarbonInterface;
 use Illuminate\Database\Eloquent\Collection;
@@ -30,6 +31,23 @@ use Illuminate\Database\Eloquent\Collection;
 final class CasualCupNotices
 {
     public function __construct(private Notifier $notifier) {}
+
+    /**
+     * Too few at the planned time, so the cup moved (CasualCups::extend()) and every sign-up was reset: the new time,
+     * and to sign up again.
+     *
+     * @param  list<int>  $userIds
+     */
+    public function rescheduled(Tournament $cup, array $userIds): void
+    {
+        foreach (User::query()->whereKey($userIds)->get() as $player) {
+            $locale = $this->locale($player);
+            $time = CarbonImmutable::instance($cup->starts_at)->setTimezone(PreSeason::timezoneFor($player))->settings(['locale' => $locale])->translatedFormat('D j M, H:i T');
+
+            $this->send($player, $cup, __(':tournament moved to :time', ['tournament' => $cup->name, 'time' => $time], $locale),
+                __('Too few players signed up for the planned time, so the cup moved. Your sign-up was reset: sign up again if you can play then.', [], $locale), $locale);
+        }
+    }
 
     /**
      * @param  list<int>  $userIds
