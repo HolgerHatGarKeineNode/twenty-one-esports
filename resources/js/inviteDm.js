@@ -2,8 +2,8 @@
  * Invite DMs (P47): the player picks follows who do not play here yet and
  * sends each one a direct message with their personal invite link, signed
  * and encrypted by the player's own signer and sent from the browser
- * (directMessage.js: NIP-17 where it can, NIP-04 only after the player
- * agreed for that recipient). The league never sees the text.
+ * (directMessage.js: NIP-17 to every recipient with a DM relay list, NIP-04
+ * only to one without, after the player agreed for that recipient). The league never sees the text.
  *
  * Two steps, and only the second one sends:
  *
@@ -12,13 +12,15 @@
  * - sendInvites() is called by the "Sign and send" click. One recipient
  *   after the other; a recipient that could only get NIP-04 is reported as
  *   `confirm` with the reason and gets nothing until a later call lists them
- *   in `allowNip04`. A signer that fails or declines stops the run: the rest
- *   stays `pending` instead of asking again and again.
+ *   in `allowNip04`; a signer without NIP-44 is `refused` (`no_nip44`) for a
+ *   recipient who reads NIP-17, never downgraded. A signer that fails or
+ *   declines stops the run: the rest stays `pending` instead of asking again
+ *   and again (directMessage.js, sendDirectMessages()).
  *
  * No DOM or Alpine import: tests/js/inviteDm.test.mjs runs it in Node with
  * fake relays and key-backed signers.
  */
-import { DirectMessageRefused, sendDirectMessage } from './directMessage.js';
+import { sendDirectMessage, sendDirectMessages } from './directMessage.js';
 
 /** Recipients of one invite round at most: every one is a signing prompt (or several) in the signer. */
 export const MAX_INVITES = 10;
@@ -67,34 +69,6 @@ export function inviteDraft({ sender = null, recipients, text, link }) {
  */
 export async function sendInvites({ sender, recipients, text, link, signer, relays, allowNip04 = [], send = sendDirectMessage, options = {}, onResult = null }) {
     const draft = inviteDraft({ sender, recipients, text, link });
-    const results = [];
-    let stopped = false;
 
-    for (const recipient of draft.recipients) {
-        let result;
-
-        if (stopped) {
-            result = { recipient, status: 'pending' };
-        } else {
-            try {
-                const sent = await send({ sender, recipient, content: draft.content, signer, relays, allowNip04: allowNip04.includes(recipient), options });
-                result = { recipient, status: sent.delivered > 0 ? 'sent' : 'unsent', format: sent.format };
-            } catch (error) {
-                if (error instanceof DirectMessageRefused && error.code === 'confirm_nip04') {
-                    result = { recipient, status: 'confirm', reason: error.reason };
-                } else if (error instanceof DirectMessageRefused) {
-                    result = { recipient, status: 'refused', code: error.code };
-                } else {
-                    // The signer declined or failed: do not ask it again for the next one.
-                    result = { recipient, status: 'error', error };
-                    stopped = true;
-                }
-            }
-        }
-
-        results.push(result);
-        onResult?.(result);
-    }
-
-    return results;
+    return sendDirectMessages({ sender, recipients: draft.recipients, content: draft.content, signer, relays, allowNip04, send, options, onResult });
 }

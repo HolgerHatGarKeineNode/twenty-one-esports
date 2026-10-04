@@ -1,8 +1,9 @@
 /**
  * Player-to-player DMs (resources/js/directMessage.js) against fake relays
  * and key-backed signers: NIP-17 to the recipient's DM relays when they have
- * a `10050` and the signer can do NIP-44, NIP-04 when they have none or the
- * signer cannot, refused when nothing fits. The recipient opens what was
+ * a `10050`, NIP-04 only when every relay answered and they have none, a
+ * signer without NIP-44 refused instead of downgraded, refused when nothing
+ * fits. The recipient opens what was
  * sent with their own key. Run by tests/Nostr/DirectMessageTest.php.
  */
 import assert from 'node:assert/strict';
@@ -10,7 +11,7 @@ import { test } from 'node:test';
 import { finalizeEvent, generateSecretKey, getPublicKey } from 'nostr-tools/pure';
 import * as nip04 from 'nostr-tools/nip04';
 import * as nip44 from 'nostr-tools/nip44';
-import { DirectMessageRefused, sendDirectMessage } from '../../resources/js/directMessage.js';
+import { DirectMessageRefused, sendDirectMessage, sendDirectMessages } from '../../resources/js/directMessage.js';
 import { unwrapMessage } from '../../resources/js/nostrChat.js';
 
 function keySigner(secret, { with44 = true, with04 = true } = {}) {
@@ -102,21 +103,23 @@ test('recipient without a DM relay list: NIP-04 kind 4 to their inbox, readable 
     assert.equal(nip04.decrypt(erinSecret, alice, sent[0].event.content), 'hi');
 });
 
-test('a signer without NIP-44 falls back to NIP-04 even when the recipient has a DM relay list', async () => {
+test('a signer without NIP-44 is no longer downgraded to NIP-04 when the recipient has a DM relay list: nothing goes out', async () => {
     const sent = [];
     const WebSocketImpl = fakeSockets({ 'ws://lookup': { events: [erinDmList, erinRelayList], eose: true } }, sent);
 
-    const result = await sendDirectMessage({ sender: alice, recipient: erin, content: 'hi', signer: keySigner(aliceSecret, { with44: false }), relays: ['ws://lookup'], allowNip04: true, options: { WebSocketImpl, timeoutMs: 200 } });
-
-    assert.equal(result.format, 'nip04');
-    assert.ok(sent.length > 0 && sent.every((s) => s.event.kind === 4));
+    await assert.rejects(
+        sendDirectMessage({ sender: alice, recipient: erin, content: 'hi', signer: keySigner(aliceSecret, { with44: false }), relays: ['ws://lookup'], allowNip04: true, options: { WebSocketImpl, timeoutMs: 200 } }),
+        (error) => error instanceof DirectMessageRefused && error.code === 'no_nip44',
+    );
+    assert.deepEqual(sent, []);
 });
 
-test('refused, with nothing sent: no encryption at all; no DM list and no NIP-04; NIP-04 but no relay answered', async () => {
+test('refused, with nothing sent: no encryption at all; no DM list and no NIP-04; no NIP-44 and no relay answered', async () => {
     const cases = [
-        [{ 'ws://lookup': { events: [erinDmList], eose: true } }, keySigner(aliceSecret, { with44: false, with04: false }), 'no_encryption'],
+        [{ 'ws://lookup': { events: [erinRelayList], eose: true } }, keySigner(aliceSecret, { with44: false, with04: false }), 'no_encryption'],
+        [{ 'ws://lookup': { events: [erinDmList], eose: true } }, keySigner(aliceSecret, { with44: false, with04: false }), 'no_nip44'],
         [{ 'ws://lookup': { events: [erinRelayList], eose: true } }, keySigner(aliceSecret, { with04: false }), 'no_dm_relays'],
-        [{ 'ws://lookup': { down: true } }, keySigner(aliceSecret, { with44: false }), 'not_read'],
+        [{ 'ws://lookup': { down: true } }, keySigner(aliceSecret, { with44: false }), 'no_nip44'],
     ];
 
     for (const [relays, signer, code] of cases) {
@@ -161,7 +164,7 @@ test('audit F3: the relay holding the DM relay list is down, the other answers: 
 test('audit F3: NIP-04 is never sent without the sender agreeing, and says why', async () => {
     for (const [relays, signer, reason] of [
         [{ 'ws://lookup': { events: [erinRelayList], eose: true } }, keySigner(aliceSecret), 'no_dm_relays'],
-        [{ 'ws://lookup': { events: [erinDmList], eose: true } }, keySigner(aliceSecret, { with44: false }), 'no_nip44'],
+        [{ 'ws://lookup': { events: [erinRelayList], eose: true } }, keySigner(aliceSecret, { with44: false }), 'no_dm_relays'],
     ]) {
         const sent = [];
         let signed = 0;
@@ -173,4 +176,87 @@ test('audit F3: NIP-04 is never sent without the sender agreeing, and says why',
         assert.equal(signed, 0, reason);
         assert.deepEqual(sent, [], reason);
     }
+});
+
+/*
+ * P1 of the clan applications plan (user, 2026-10-04: "Die veraltete am besten sperren und nur
+ * verwenden, wenn das Profil dafür nicht ausgelegt ist (weil INBOX-Relay fehlt)"): a recipient
+ * who names DM relays (10050) never gets a kind 4, whatever the signer can, whatever the sender
+ * agreed to; a signer without NIP-44 is refused instead of downgraded.
+ */
+test('a recipient with a DM relay list never gets a kind 4, for any signer, even with allowNip04', async () => {
+    // A list whose only relay is no websocket URL still says "I read NIP-17".
+    const unusable = signed(erinSecret, 10050, [['relay', 'erin-dm.example']]);
+    for (const list of [erinDmList, unusable]) {
+        for (const capabilities of [{}, { with44: false }, { with04: false }, { with44: false, with04: false }]) {
+            const sent = [];
+            const WebSocketImpl = fakeSockets({ 'ws://lookup': { events: [list, erinRelayList], eose: true } }, sent);
+            try {
+                await sendDirectMessage({ sender: alice, recipient: erin, content: 'hi', signer: keySigner(aliceSecret, capabilities), relays: ['ws://lookup'], allowNip04: true, options: { WebSocketImpl, timeoutMs: 200 } });
+            } catch (error) {
+                assert.ok(error instanceof DirectMessageRefused, String(error));
+            }
+            assert.ok(sent.every((s) => s.event.kind === 1059), JSON.stringify(capabilities) + ' ' + JSON.stringify(list.tags));
+        }
+    }
+});
+
+test('a signer without NIP-44 is refused with no_nip44, not downgraded: recipient with a DM relay list, or a lookup nobody answered', async () => {
+    for (const relays of [{ 'ws://lookup': { events: [erinDmList, erinRelayList], eose: true } }, { 'ws://lookup': { down: true } }]) {
+        const sent = [];
+        let signedCount = 0;
+        const signer = keySigner(aliceSecret, { with44: false });
+        const counting = { ...signer, signEvent: async (draft) => { signedCount++; return signer.signEvent(draft); } };
+        await assert.rejects(
+            sendDirectMessage({ sender: alice, recipient: erin, content: 'hi', signer: counting, relays: ['ws://lookup'], allowNip04: true, options: { WebSocketImpl: fakeSockets(relays, sent), timeoutMs: 200 } }),
+            (error) => error instanceof DirectMessageRefused && error.code === 'no_nip44',
+        );
+        assert.equal(signedCount, 0);
+        assert.deepEqual(sent, []);
+    }
+});
+
+test('a signer without NIP-44 still reaches a recipient with no DM relay list by NIP-04, after the yes', async () => {
+    const sent = [];
+    const relays = { 'ws://lookup': { events: [erinRelayList], eose: true } };
+    const signer = keySigner(aliceSecret, { with44: false });
+    await assert.rejects(
+        sendDirectMessage({ sender: alice, recipient: erin, content: 'hi', signer, relays: ['ws://lookup'], options: { WebSocketImpl: fakeSockets(relays, sent), timeoutMs: 200 } }),
+        (error) => error.code === 'confirm_nip04' && error.reason === 'no_dm_relays',
+    );
+    assert.deepEqual(sent, []);
+
+    const result = await sendDirectMessage({ sender: alice, recipient: erin, content: 'hi', signer, relays: ['ws://lookup'], allowNip04: true, options: { WebSocketImpl: fakeSockets(relays, sent), timeoutMs: 200 } });
+    assert.equal(result.format, 'nip04');
+    assert.ok(sent.length > 0 && sent.every((s) => s.event.kind === 4));
+});
+
+test('sendDirectMessages: one text to several recipients, each on its own route', async () => {
+    const finnSecret = generateSecretKey();
+    const finn = getPublicKey(finnSecret);
+    const finnRelayList = signed(finnSecret, 10002, [['r', 'ws://finn-inbox', 'read']]);
+    const relays = { 'ws://lookup': { events: [erinDmList, erinRelayList, finnRelayList, aliceDmList], eose: true } };
+
+    // NIP-44 signer: erin gets NIP-17, finn (no 10050) waits for a yes, then gets NIP-04.
+    let sent = [];
+    const seen = [];
+    let results = await sendDirectMessages({ sender: alice, recipients: [erin, finn, erin], content: 'Application: chess, EU evenings', signer: keySigner(aliceSecret), relays: ['ws://lookup'], options: { WebSocketImpl: fakeSockets(relays, sent), timeoutMs: 200 }, onResult: (r) => seen.push(r.recipient) });
+    assert.deepEqual(results.map((r) => [r.recipient, r.status, r.format ?? r.reason]), [[erin, 'sent', 'nip17'], [finn, 'confirm', 'no_dm_relays']]);
+    assert.deepEqual(seen, [erin, finn]);
+    assert.ok(sent.every((s) => s.event.kind === 1059));
+
+    sent = [];
+    results = await sendDirectMessages({ sender: alice, recipients: [finn], content: 'x', signer: keySigner(aliceSecret), relays: ['ws://lookup'], allowNip04: [finn], options: { WebSocketImpl: fakeSockets(relays, sent), timeoutMs: 200 } });
+    assert.deepEqual(results.map((r) => [r.status, r.format]), [['sent', 'nip04']]);
+
+    // Signer without NIP-44: erin is refused, never downgraded.
+    sent = [];
+    results = await sendDirectMessages({ sender: alice, recipients: [erin], content: 'x', signer: keySigner(aliceSecret, { with44: false }), relays: ['ws://lookup'], allowNip04: [erin], options: { WebSocketImpl: fakeSockets(relays, sent), timeoutMs: 200 } });
+    assert.deepEqual(results.map((r) => [r.status, r.code]), [['refused', 'no_nip44']]);
+    assert.deepEqual(sent, []);
+
+    // A signer that fails stops the run: the rest stays pending.
+    const failing = { ...keySigner(aliceSecret), signEvent: async () => { throw new Error('declined'); } };
+    results = await sendDirectMessages({ sender: alice, recipients: [erin, finn], content: 'x', signer: failing, relays: ['ws://lookup'], options: { WebSocketImpl: fakeSockets(relays, []), timeoutMs: 200 } });
+    assert.deepEqual(results.map((r) => r.status), ['error', 'pending']);
 });

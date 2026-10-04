@@ -40,7 +40,7 @@
                  'followAlready' => __('You already follow :name.', ['name' => $name]),
                  'dm_no_encryption' => __('Your signer cannot encrypt messages (neither NIP-44 nor NIP-04).'),
                  'dm_no_dm_relays' => __(':name has no relays for direct messages, and your signer has no NIP-04 to reach them otherwise.', ['name' => $name]),
-                 'dm_not_read' => __('No relay answered, so it is unknown where :name receives messages. Please try again later.', ['name' => $name]),
+                 'dm_no_nip44' => __("Your signer can't send private messages the modern way — update it or use one that supports NIP-44."),
                  'dm_empty' => __('Write a message first.'),
                  'dm_self' => __('That is your own key.'),
              ],
@@ -138,11 +138,10 @@
                 <span class="min-w-0 basis-60 grow text-xs leading-normal text-ink-3">{{ __('Encrypted and signed by your own signer, sent from this browser to :name\'s relays. The league does not store it.', ['name' => $name]) }}</span>
             </div>
             <p role="status" class="m-0 text-xs text-win" x-show="dmStep === 'sent' && dmFormat === 'nip17'" x-cloak data-test="nostr-dm-sent">{{ __('Sent, end-to-end encrypted (NIP-17).') }}</p>
-            {{-- P45 audit F3: the older format only after the sender agreed, with the confirmed reason. --}}
+            {{-- P45 audit F3: the older format only after the sender agreed, and only for a recipient without a DM relay list (P1, 2026-10-04). --}}
             <div class="flex min-w-0 flex-col gap-2 rounded-md bg-well px-3 py-3" x-show="dmStep === 'confirm'" x-cloak data-test="nostr-dm-confirm" role="alertdialog" aria-labelledby="nostr-dm-confirm-text-{{ $bar->context }}">
                 <p id="nostr-dm-confirm-text-{{ $bar->context }}" class="m-0 text-xs leading-normal text-ink">
                     <span x-show="dmConfirm === 'no_dm_relays'">{{ __('Every relay asked answered, and :name has no DM relay list, so NIP-17 cannot reach them. Send it as an older NIP-04 DM? Relays then see who wrote to whom and when, not what.', ['name' => $name]) }}</span>
-                    <span x-show="dmConfirm === 'no_nip44'">{{ __('Your signer cannot do NIP-44, so this can only go as an older NIP-04 DM. Send it that way? Relays then see who wrote to whom and when, not what.') }}</span>
                 </p>
                 <div class="flex flex-wrap gap-2">
                     <button type="button" data-test="nostr-dm-send-nip04" x-on:click="sendDm(true)"

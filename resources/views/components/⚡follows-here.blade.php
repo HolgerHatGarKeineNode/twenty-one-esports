@@ -225,7 +225,7 @@ new class extends Component {
                          'unsent' => __('Signed, but no relay took it.'),
                          'dm_no_encryption' => __('Your signer cannot encrypt messages (neither NIP-44 nor NIP-04).'),
                          'dm_no_dm_relays' => __('No relays for direct messages, and your signer has no NIP-04 to reach them otherwise.'),
-                         'dm_not_read' => __('No relay answered, so it is unknown where they receive messages.'),
+                         'dm_no_nip44' => __("Your signer can't send private messages the modern way — update it or use one that supports NIP-44."),
                          'dm_self' => __('That is your own key.'),
                      ],
                  ]))"
@@ -353,7 +353,7 @@ new class extends Component {
                                             <span class="shrink-0 text-xs text-ink-2" x-show="results[pubkey]?.status === 'skipped'">{{ __('Skipped') }}</span>
                                             {{-- P45 audit F3: the older format only after a yes for exactly this person. --}}
                                             <span class="flex min-w-0 basis-full flex-wrap items-center gap-2" x-show="results[pubkey]?.status === 'confirm'" role="alertdialog" data-test="follows-invite-confirm">
-                                                <span class="min-w-0 grow text-xs leading-normal text-ink" x-text="results[pubkey]?.reason === 'no_nip44' ? @js(__('Your signer cannot do NIP-44, so this can only go as an older NIP-04 DM. Send it that way? Relays then see who wrote to whom and when, not what.')) : @js(__('This person has no DM relay list, so NIP-17 cannot reach them. Send it as an older NIP-04 DM? Relays then see who wrote to whom and when, not what.'))"></span>
+                                                <span class="min-w-0 grow text-xs leading-normal text-ink" x-text="@js(__('This person has no DM relay list, so NIP-17 cannot reach them. Send it as an older NIP-04 DM? Relays then see who wrote to whom and when, not what.'))"></span>
                                                 <button type="button" class="{{ $primary }}" x-on:click="send(pubkey)" x-bind:disabled="busy" data-test="follows-invite-nip04">{{ __('Send as NIP-04') }}</button>
                                                 <button type="button" class="{{ $button }}" x-on:click="skip(pubkey)">{{ __('Skip') }}</button>
                                             </span>

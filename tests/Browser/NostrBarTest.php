@@ -395,3 +395,41 @@ test('message: NIP-17 to a player with a DM relay list, NIP-04 to one without; e
         ->and($page->evaluate('() => window.__errors'))->toBe([])
         ->and($page->evaluate(BrowserConsole::BAD_RESPONSES))->toBe([]);
 });
+
+/*
+ * P1 of the clan applications plan (user, 2026-10-04: "Die veraltete am besten sperren"): a
+ * signer without NIP-44 is told why, and nothing reaches the relay: no NIP-04 downgrade to a
+ * player who reads NIP-17.
+ */
+test('message: a signer without NIP-44 is refused with a clear reason, and nothing goes out to a player with a DM relay list', function () {
+    $viewer = User::factory()->create(['locale' => 'en']);
+    TestSigner::forBrowser($viewer);
+    $viewer->refresh();
+
+    $ritaKey = new TestSigner;
+    $rita = User::factory()->withPubkey($ritaKey->pubkey)->create(['name' => 'Relay Rita']);
+    nostrBarSend($this->relayUrl, $ritaKey->sign(10050, [['relay', $this->relayUrl]]));
+
+    foreach ([375, 1440] as $width) {
+        $page = nostrBarPage($viewer, route('players.show', $rita->npub, false), $width);
+        $page->evaluate('() => { delete window.nostr.nip44; }');
+        $page->locator('[data-test=nostr-message]')->click();
+        $page->locator('[data-test=nostr-dm-text]')->fill('only NIP-04 here');
+        $page->locator('[data-test=nostr-dm-send]')->click();
+        BrowserWait::until($page, '() => document.querySelector("[data-test=nostr-dm-error]")?.checkVisibility() === true', 15_000);
+        nostrBarShot($page, 'nostr-bar-message-no-nip44-'.$width);
+
+        $box = $page->evaluate('() => { const e = document.querySelector("[data-test=nostr-dm-error]"); const r = e.getBoundingClientRect(); return { text: e.innerText.trim(), left: r.left, right: r.right, width: r.width, scroll: document.documentElement.scrollWidth, viewport: window.innerWidth, confirm: document.querySelector("[data-test=nostr-dm-confirm]").checkVisibility() }; }');
+
+        expect($box['text'])->toBe("Your signer can't send private messages the modern way — update it or use one that supports NIP-44.")
+            ->and($box['confirm'])->toBeFalse()
+            ->and($box['left'])->toBeGreaterThanOrEqual(0)
+            ->and($box['right'])->toBeLessThanOrEqual($box['viewport'])
+            ->and($box['scroll'])->toBeLessThanOrEqual($box['viewport'])
+            ->and($page->evaluate('() => window.__errors'))->toBe([])
+            ->and($page->evaluate(BrowserConsole::BAD_RESPONSES))->toBe([]);
+    }
+
+    expect(nostrBarQuery($this->relayUrl, '-k 4 -a '.$viewer->pubkey))->toBe([])
+        ->and(nostrBarQuery($this->relayUrl, '-k 1059 -t p='.$rita->pubkey))->toBe([]);
+});
