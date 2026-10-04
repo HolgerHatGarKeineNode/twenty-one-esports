@@ -200,7 +200,7 @@ function budgetLoad(string $uri): array
  */
 const PAGE_BUDGETS = [
     'rules' => [5, 36],
-    'home' => [34, 76],
+    'home' => [33, 75],
     'play' => [3, 40],
     'tournaments.show' => [30, 106],
     'matches.room' => [null, 55],

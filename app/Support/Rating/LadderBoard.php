@@ -18,6 +18,8 @@ use Illuminate\Support\Carbon;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Str;
+use Throwable;
 
 /**
  * Everything the ladder page shows beside the rows themselves (P32), each in
@@ -54,6 +56,9 @@ final class LadderBoard
 
     /** A web view of any Nostr event or key, for readers without a client. */
     public const NJUMP = 'https://njump.me/';
+
+    /** Cache key of the rating stamp ({@see ratingStamp()}). */
+    public const RATING_STAMP_KEY = 'rating-changes:stamp';
 
     public function __construct(
         public readonly string $game,
@@ -166,16 +171,38 @@ final class LadderBoard
     }
 
     /**
-     * What a cache of rating-derived values keys on: the newest change, its
-     * last update and the number of reverted changes, so any new, edited or
-     * reverted rating change anywhere gives a new stamp. One query.
+     * What a cache of rating-derived values keys on: a version that
+     * {@see ratingsChanged()} renews whenever a rating change is written,
+     * edited, reverted or deleted (RatingChange's model events), so any of
+     * those anywhere gives a new stamp. A cache read, no query (P2, S6: it
+     * used to scan rating_changes on every request).
+     *
+     * A ULID rather than an incremented counter: an increment on a missing
+     * key (a flushed or evicted cache) starts again at 1 and would hand out
+     * a stamp an older cache entry may still be stored under; a fresh ULID
+     * never repeats.
      */
     public static function ratingStamp(): string
     {
-        $stamp = RatingChange::query()->withoutGlobalScope(RatingChange::LIVE)->toBase()
-            ->selectRaw('max(id) as id, max(updated_at) as at, count(reverted_at) as reverted')->first();
+        return (string) Cache::rememberForever(self::RATING_STAMP_KEY, fn (): string => (string) Str::ulid());
+    }
 
-        return ($stamp->id ?? 0).':'.($stamp->at ?? '').':'.($stamp->reverted ?? 0);
+    /**
+     * Renews the rating stamp once the write is committed: a reader inside
+     * the window between a stamp renewed before the commit and the commit
+     * itself would cache the old values under the new stamp. A cache that
+     * cannot be written must not fail the rating write: reported, and the
+     * caches keyed on the stamp run out on their own (10 minutes).
+     */
+    public static function ratingsChanged(): void
+    {
+        DB::afterCommit(function (): void {
+            try {
+                Cache::forever(self::RATING_STAMP_KEY, (string) Str::ulid());
+            } catch (Throwable $e) {
+                report($e);
+            }
+        });
     }
 
     /**

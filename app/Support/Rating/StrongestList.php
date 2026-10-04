@@ -16,8 +16,8 @@ use Illuminate\Support\Facades\Cache;
  * The ranking comes from LadderBoard::globalBreakdown() and is cached under
  * LadderBoard::ratingStamp(), so it moves with the next rating change. A
  * render costs a fixed number of queries whatever the season's size: the
- * live season, the stamp, the breakdown on a cache miss, and the listed
- * players with their clans.
+ * live season, the breakdown on a cache miss, and the listed players with
+ * their clans (the stamp is a cache read).
  *
  * Without a live season (before Block 0, between seasons) there is nothing
  * to rank: `season` is null and the list is empty.

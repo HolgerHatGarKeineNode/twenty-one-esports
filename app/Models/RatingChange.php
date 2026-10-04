@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Support\Rating\LadderBoard;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
@@ -54,6 +55,10 @@ class RatingChange extends Model
     protected static function booted(): void
     {
         static::addGlobalScope(self::LIVE, fn (Builder $query) => $query->whereNull($query->qualifyColumn('reverted_at')));
+
+        // The caches of rating-derived values (ladder scores, the Strongest list) key on this stamp.
+        static::saved(fn () => LadderBoard::ratingsChanged());
+        static::deleted(fn () => LadderBoard::ratingsChanged());
     }
 
     protected function casts(): array
