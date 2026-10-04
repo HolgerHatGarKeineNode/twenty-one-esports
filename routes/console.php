@@ -6,6 +6,7 @@ use App\Games\Blockfill;
 use App\Games\GameRegistry;
 use App\Games\TrackmaniaNationsForever;
 use App\Jobs\NotifyBlockZero;
+use App\Models\BellNotification;
 use App\Models\BoardGame;
 use App\Models\ChessGame;
 use App\Models\NostrEvent;
@@ -203,6 +204,18 @@ Artisan::command('notifications:dm-digest', function (DmDigest $digest) {
 })->purpose('Send each player one Nostr DM with the notifications they chose to get once a day');
 
 Schedule::command('notifications:dm-digest')->dailyAt('18:00')->timezone('Europe/Berlin')->withoutOverlapping()->onOneServer();
+
+/*
+ * Pruning (performance plan P2, S11), conservative: read bell notifications
+ * older than 90 days beyond each player's newest 20 (App\Models\BellNotification),
+ * and failed jobs older than 90 days (2160 hours). Not pruned: nostr_events
+ * (the league's signed record, linked from attestations, reports, parameter
+ * changes and clan pages) and relay_deliveries (a game's and a clan's page
+ * show which relays accepted its event, at any age, and the republisher reads
+ * the deliveries of every current replaceable event).
+ */
+Schedule::command('model:prune', ['--model' => [BellNotification::class]])->dailyAt('04:31')->withoutOverlapping()->onOneServer();
+Schedule::command('queue:prune-failed', ['--hours' => 2160])->dailyAt('04:36')->withoutOverlapping()->onOneServer();
 
 /*
  * A fresh VAPID key pair for Web Push, printed for `.env`. Nothing is written:
