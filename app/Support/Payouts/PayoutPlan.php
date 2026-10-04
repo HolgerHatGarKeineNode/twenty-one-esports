@@ -2,7 +2,9 @@
 
 namespace App\Support\Payouts;
 
+use App\Enums\SeriesResolution;
 use App\Models\Tournament;
+use App\Models\TournamentMatch;
 use App\Models\TournamentParticipant;
 use App\Models\User;
 use App\Support\FairPlay\AccountLinks;
@@ -29,7 +31,12 @@ use App\Support\Prizes\PrizePool;
  *   {@see AccountLinks}) wins nothing: its share is not written and stays in
  *   the pot, never moved to a teammate or the next place.
  *
- * Pure apart from reading the participants and their users.
+ * - Who did not play wins nothing (user, 2026-10-04: "verhindern, dass Leute die no-show komplett sind oder
+ *   disqualified irgendwelche Auszahlungen bekommen … Der Pot muss sich dann auf die verteilen, die wirklich
+ *   mitgespielt haben"): a disqualified entry, and an entry that lost a match as a no-show ({@see excluded()}), is
+ *   taken out of the places, and everyone behind it moves up, so their share goes to those who played.
+ *
+ * Pure apart from reading the participants, the matches and the users.
  */
 final class PayoutPlan
 {
@@ -45,6 +52,8 @@ final class PayoutPlan
         if ($places === null) {
             return null;
         }
+
+        $places = self::withoutExcluded($places, self::excluded($tournament));
 
         $split = $tournament->prizeSplit();
         $fixed = $tournament->prizeMode() === Tournament::PRIZES_FIXED ? $tournament->prizeFixed() : null;
@@ -97,5 +106,71 @@ final class PayoutPlan
         }
 
         return ['rows' => $rows, 'remainder' => max(0, $poolSats - $paid)];
+    }
+
+    /**
+     * The entries that win nothing: disqualified ones, both sides of a match decided as a double no-show, the side
+     * that lost by a no-show (reported and unanswered, or not checked in) or as withdrawn.
+     *
+     * @return array<int, true> participant id => true
+     */
+    public static function excluded(Tournament $tournament): array
+    {
+        $excluded = array_fill_keys(TournamentParticipant::query()->where('tournament_id', $tournament->id)->whereNotNull('disqualified_at')->pluck('id')->all(), true);
+        $matches = TournamentMatch::query()->where('tournament_id', $tournament->id)->whereNotNull('result')->with(['slots', 'seriesMatch'])->get();
+
+        foreach ($matches as $match) {
+            $result = (array) $match->result;
+            $sides = $match->slots->pluck('tournament_participant_id')->all();
+
+            if (($result['decided'] ?? null) === 'noshow') {
+                foreach (array_filter($sides) as $id) {
+                    $excluded[(int) $id] = true;
+                }
+
+                continue;
+            }
+
+            $winner = $result['winner'] ?? null;
+
+            if (! is_int($winner) || count($sides) !== 2) {
+                continue;
+            }
+
+            $series = $match->seriesMatch;
+            $noShowLoss = ($result['decided'] ?? null) === 'withdrawn'
+                || ($series !== null && $series->resolution === SeriesResolution::Forfeit && $series->noshow_reported_at !== null);
+            $loser = $sides[1 - $winner] ?? null;
+
+            if ($noShowLoss && $loser !== null) {
+                $excluded[(int) $loser] = true;
+            }
+        }
+
+        return $excluded;
+    }
+
+    /**
+     * The places without the excluded entries, numbered again so everyone behind moves up (ties stay together).
+     *
+     * @param  list<array{place: int, participants: list<int>}>  $places
+     * @param  array<int, true>  $excluded
+     * @return list<array{place: int, participants: list<int>}>
+     */
+    private static function withoutExcluded(array $places, array $excluded): array
+    {
+        $kept = [];
+        $next = 1;
+
+        foreach ($places as ['participants' => $ids]) {
+            $ids = array_values(array_filter($ids, fn (int $id): bool => ! isset($excluded[$id])));
+
+            if ($ids !== []) {
+                $kept[] = ['place' => $next, 'participants' => $ids];
+                $next += count($ids);
+            }
+        }
+
+        return $kept;
     }
 }
