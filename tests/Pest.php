@@ -64,7 +64,13 @@ require_once __DIR__.'/Integration/Support/helpers.php';
 // host, exactly as before, only instantly.
 pest()->extend(TestCase::class)
     ->use(RefreshDatabase::class)
-    ->beforeEach(fn () => Http::preventStrayRequests())
+    ->beforeEach(function (): void {
+        Http::preventStrayRequests();
+        // The stream command refreshes the cover picture at config('twentyone.stream.cover.path'); with the fake renderer
+        // (tests/Support/twentyone_stream.php) it wrote a 4-byte "PNG" into the checkout's real storage/app/stream/cover.png,
+        // where /stream/cover.png then served it to whatever read it next (measured 2026-10-04: TwentyOneStreamTest, Part2, Part3).
+        config(['twentyone.stream.cover.path' => storage_path('framework/testing/stream-cover/'.getmypid().'/cover.png')]);
+    })
     ->group('feature')
     ->in('Feature');
 

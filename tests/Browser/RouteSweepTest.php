@@ -698,6 +698,10 @@ test('every route renders without console errors, page errors, bad responses or 
     config(['esports.stream_bot.pride_notes.image_dir' => storage_path('framework/testing/pride')]);
     File::ensureDirectoryExists(storage_path('framework/testing/pride'));
     File::put(PrideNotes::imagePath(SWEEP_PRIDE_HASH), (string) base64_decode('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg=='));
+    // /stream/cover.png serves the file the stream daemon last wrote (storage/app/stream/cover.png, gitignored): a checkout that
+    // never ran the daemon answered 404 and the sweep went red, one that had was green by accident. The sweep brings its own.
+    config(['twentyone.stream.cover.path' => storage_path('framework/testing/sweep-stream-cover.png')]);
+    File::put((string) config('twentyone.stream.cover.path'), (string) base64_decode('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg=='));
 
     $routes = [...sweepRoutes(buildSweepFixtures($user)), ...sweepExtraPages($user)];
     expect($routes)->not->toBeEmpty();
