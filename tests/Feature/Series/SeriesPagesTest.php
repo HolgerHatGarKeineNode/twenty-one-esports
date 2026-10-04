@@ -60,10 +60,10 @@ test('a running series pins the captain\'s lobby above the score with copy butto
     $html = Livewire::actingAs($other)->test('pages::matches.room', ['match' => $match])->html();
 
     expect($html)->toContain('data-test="room-lobby-pin"')->toContain('data-test="room-lobby-copy-name"')->toContain('data-test="room-lobby-copy-password"')
-        // Above the score, first in the room; name and password once, not again in the lobby section.
+        // Above the score, first in the room, and again in the lobby section beside the chat (user, 2026-10-04).
         ->and(strpos($html, 'data-test="room-lobby-pin"'))->toBeLessThan(strpos($html, 'data-test="series-score"'))
-        ->and(substr_count($html, 'e21-pinned-room'))->toBe(2)
-        ->and($html)->not->toContain('data-test="lobby-name"');
+        ->and($html)->toContain('data-test="lobby-name"')
+        ->and(strpos($html, 'data-test="lobby-name"'))->toBeGreaterThan(strpos($html, 'data-test="series-score"'));
 
     $done = seriesIn('confirmed');
     expect(Livewire::actingAs(seriesCaptain($done))->test('pages::matches.room', ['match' => $done])->html())->not->toContain('data-test="room-lobby-pin"');

@@ -1120,8 +1120,8 @@ new #[Title('Match room')] #[Layout('layouts::app', ['section' => 'matches', 'sc
                 </form>
             @elseif ($m->lobby_name === null)
                 <p class="m-0 text-[13px] text-ink-2">{{ $m->status->isRunning() ? __('No lobby yet. The host sets name and password here.') : __('The lobby opens once the challenge is accepted.') }}</p>
-            {{-- While the series runs, name and password are pinned under the score (room-lobby-pin): shown once, not twice. --}}
-            @elseif (! $lobbyPinned)
+            {{-- Also beside the chat while it runs (user, 2026-10-04: "Die Lobby Daten müssen auch neben dem Chat da stehen"), not only pinned under the score. --}}
+            @else
                 <div x-data="{ show: false }" class="flex flex-col">
                     <div class="grid min-h-12 grid-cols-[80px_minmax(0,1fr)_auto] items-center gap-2 border-b border-hairline text-sm">
                         <span class="text-ink-2">{{ __('Name') }}</span><b data-test="lobby-name">{{ $m->lobby_name }}</b>
