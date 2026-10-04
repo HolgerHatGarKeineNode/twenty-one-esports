@@ -127,6 +127,32 @@ test('a hidden tab asks nothing, and once when it comes back', () => {
     assert.equal(runs, 2);
 });
 
+test('a reconnect in a hidden tab asks once when the tab comes back, not only at the next safety net', () => {
+    const socket = connection('connected');
+    const p = page({ socket });
+    let runs = 0;
+    livePoll({ seconds: 30, withSocket: 120, run: () => runs++ });
+    p.hide(true);
+    socket.set('unavailable');
+    socket.set('connected');
+    assert.equal(runs, 0);
+
+    p.hide(false);
+    assert.equal(runs, 1);
+});
+
+test('stop() leaves the socket: a reconnect after it asks nothing', () => {
+    const socket = connection('connected');
+    const p = page({ socket });
+    let runs = 0;
+    const stop = livePoll({ seconds: 30, withSocket: 0, run: () => runs++ });
+    stop();
+    socket.set('unavailable');
+    socket.set('connected');
+    p.advance(60_000);
+    assert.equal(runs, 0);
+});
+
 test('stop() ends the poll and its listeners', () => {
     const socket = connection('unavailable');
     const p = page({ socket });

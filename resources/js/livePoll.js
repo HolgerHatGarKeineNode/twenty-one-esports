@@ -65,9 +65,11 @@ export function livePoll({ seconds, withSocket = 0, run }) {
     };
 
     const onState = ({ current }) => {
+        if (stopped) return;
         if (current === 'connected') {
-            // Back after a gap: whatever was pushed meanwhile is lost, so ask once.
-            if (wasConnected && !document.hidden) run();
+            // Back after a gap: whatever was pushed meanwhile is lost, so ask once (in a hidden tab: once it is shown again).
+            if (wasConnected && document.hidden) missed = true;
+            else if (wasConnected) run();
             wasConnected = true;
         }
         schedule();
