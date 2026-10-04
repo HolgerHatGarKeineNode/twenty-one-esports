@@ -20,7 +20,9 @@ use Livewire\Component;
  * the next reload of a closed bell leaves the list out again.
  *
  * A new notification reaches the page as a window event (resources/js/alerts.js,
- * `esports-notification`), and the bell reloads itself.
+ * `esports-notification`), and the bell reloads itself, in the same request
+ * as the dock and the cup badge (resources/js/notificationBell.js,
+ * playerEvents.js).
  */
 new class extends Component {
     public const LIMIT = 20;
@@ -90,9 +92,8 @@ new class extends Component {
     $unread = $this->unread;
 @endphp
 
-<div class="relative" x-data="{ open: false }"
-     x-init="$watch('open', (value) => { $dispatch('bell-toggle', value); value ? $wire.loadList() : ($wire.showList = false) })"
-     x-on:esports-notification.window="$wire.$refresh()" x-on:dock-toggle.window="$event.detail && (open = false)"
+<div class="relative" x-data="notificationBell(@js(['userId' => auth()->id(), 'poll' => (int) config('esports.dock.poll_seconds'), 'pollWithSocket' => (int) config('esports.dock.poll_seconds_with_socket')]))"
+     x-on:dock-toggle.window="$event.detail && (open = false)"
      x-on:keydown.escape.window="open = false" x-on:click.outside="open = false" data-test="bell">
     <button type="button" x-on:click="open = ! open" x-bind:aria-expanded="open.toString()" aria-controls="bell-panel"
             class="relative flex size-11 shrink-0 cursor-pointer items-center justify-center rounded-lg text-ink-2 hover:text-ink lg:border lg:border-line lg:bg-well"

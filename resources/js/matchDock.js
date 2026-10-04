@@ -7,13 +7,17 @@
  * Live: the player's private channel (a notification, a game that started,
  * an invite that changed, a series that changed) and the public watch channel
  * of every chess game on the dock ask for `$refresh`. Without a websocket the
- * dock polls, and it polls slowly with one too, in case an event was missed. A
+ * dock polls, and it polls slowly with one too, in case an event was missed.
+ * The channel and the poll are the shell's one dispatcher (playerEvents.js),
+ * shared with the cup badge and the bell. A
  * refresh waits while the pointer or the keyboard focus is inside the dock,
  * so a tab never moves under the player's hand (MatchDock.dc.html "Order").
  *
  * The panels live in the `panel` island: loaded when a tab is first opened,
  * reloaded on the next opening after the dock changed.
  */
+
+import { subscribePlayerEvents } from './playerEvents.js';
 
 const FOLD_KEY = 'esports.dock-folded';
 const REFRESH_DEBOUNCE_MS = 250;
@@ -68,9 +72,8 @@ export default function matchDock(config) {
         // `endsAt` of every number seen still running, so reaching zero is noticed once.
         ahead: new Set(),
         listened: new Map(),
-        connected: false,
         busy: false,
-        poller: null,
+        unsubscribe: null,
         debounce: null,
 
         init() {
@@ -91,15 +94,22 @@ export default function matchDock(config) {
             window.addEventListener('resize', () => this.measure());
             window.visualViewport?.addEventListener('resize', () => this.measure());
 
-            this.connect();
+            // The player's channel and the slow poll come from the shell's one dispatcher (playerEvents.js, P3):
+            // the batch reaches the dock, the cup badge and the bell in the same task, so they render in one request.
+            this.unsubscribe = subscribePlayerEvents(config, () => {
+                this.pending = true;
+                clearTimeout(this.debounce);
+                this.flush();
+            });
+            this.watchGames();
             if (!window.Echo && document.readyState !== 'complete') {
-                window.addEventListener('load', () => this.connect(), { once: true });
+                window.addEventListener('load', () => this.watchGames(), { once: true });
             }
-            this.schedulePoll();
         },
 
         destroy() {
             this.timers.forEach((timer) => clearInterval(timer));
+            this.unsubscribe?.();
         },
 
         /* ---------- open, close, fold ------------------------------------------------------------------- */
@@ -220,25 +230,6 @@ export default function matchDock(config) {
 
         /* ---------- live ---------------------------------------------------------------------------------- */
 
-        connect() {
-            if (!window.Echo || this.connected) return;
-            this.connected = true;
-            const refresh = () => this.requestRefresh();
-            window.Echo.private('App.Models.User.' + document.querySelector('meta[name="presence-user"]')?.content)
-                .listen('.user.notified', refresh)
-                .listen('.chess.game-started', refresh)
-                .listen('.chess.invite', refresh)
-                // Board games (plan "Mühle und Dame", P5): a game started, an invite sent or answered.
-                .listen('.board.game-started', refresh)
-                .listen('.board.invite', refresh)
-                // Rocket League series: challenge, answer, live score, result (App\Events\SeriesMatchChanged).
-                .listen('.series.changed', refresh)
-                // Casual 1v1 invites (P23, App\Events\SeriesInviteChanged).
-                .listen('.series.invite', refresh);
-            this.watchGames();
-            this.schedulePoll();
-        },
-
         /** The watch channel of every chess game on the dock: a move there turns its tab. */
         watchGames() {
             if (!window.Echo) return;
@@ -255,16 +246,6 @@ export default function matchDock(config) {
                 window.Echo.channel('game.' + id + '.watch').stopListening('.game.updated', handler);
                 this.listened.delete(id);
             });
-        },
-
-        schedulePoll() {
-            clearInterval(this.poller);
-            const seconds = window.Echo ? config.pollWithSocket : config.poll;
-            if (seconds > 0) {
-                this.poller = setInterval(() => {
-                    if (!document.hidden) this.requestRefresh();
-                }, seconds * 1000);
-            }
         },
 
         requestRefresh() {

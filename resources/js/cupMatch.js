@@ -2,55 +2,30 @@
  * The cup match signal on the client (resources/views/components/⚡cup-match.blade.php:
  * the header badge and the page banner; App\Support\Tournaments\CupMatchNow).
  * What it shows comes from the server; this module only asks for a new render
- * when something may have changed: a notification (alerts.js raises
- * `esports-notification` for every one, the league's "your cup game is on"
- * included), a game that started or a series that changed on the player's
- * private channel, and a slow poll in case an event was missed.
+ * when something may have changed: a notification (the league's "your cup
+ * game is on" included), a game that started, a series that changed, and the
+ * slow poll in case an event was missed. All of them come from the shell's
+ * one dispatcher (playerEvents.js), in the same batch as the dock's and the
+ * bell's, so the renders leave as one request (performance plan P3, F5).
+ * A guest has no cup match: nothing is asked.
  */
+import { subscribePlayerEvents } from './playerEvents.js';
 
-const REFRESH_DEBOUNCE_MS = 250;
+const REASONS = ['notification', 'game', 'series', 'poll'];
 
 export default function cupMatch(config) {
     return {
-        connected: false,
-        poller: null,
-        debounce: null,
-        onNotification: null,
+        unsubscribe: null,
 
         init() {
-            this.onNotification = () => this.requestRefresh();
-            window.addEventListener('esports-notification', this.onNotification);
-            this.connect();
-            if (!window.Echo && document.readyState !== 'complete') {
-                window.addEventListener('load', () => this.connect(), { once: true });
-            }
-            const seconds = window.Echo ? config.pollWithSocket : config.poll;
-            if (seconds > 0) {
-                this.poller = setInterval(() => {
-                    if (!document.hidden) this.requestRefresh();
-                }, seconds * 1000);
-            }
+            if (!config.userId) return;
+            this.unsubscribe = subscribePlayerEvents(config, (reasons) => {
+                if (REASONS.some((reason) => reasons.has(reason))) this.$wire.$refresh();
+            });
         },
 
         destroy() {
-            window.removeEventListener('esports-notification', this.onNotification);
-            clearInterval(this.poller);
-            clearTimeout(this.debounce);
-        },
-
-        connect() {
-            if (!window.Echo || this.connected || !config.userId) return;
-            this.connected = true;
-            const refresh = () => this.requestRefresh();
-            window.Echo.private('App.Models.User.' + config.userId)
-                .listen('.chess.game-started', refresh)
-                .listen('.board.game-started', refresh)
-                .listen('.series.changed', refresh);
-        },
-
-        requestRefresh() {
-            clearTimeout(this.debounce);
-            this.debounce = setTimeout(() => this.$wire.$refresh(), REFRESH_DEBOUNCE_MS);
+            this.unsubscribe?.();
         },
     };
 }
