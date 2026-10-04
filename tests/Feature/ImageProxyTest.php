@@ -2,6 +2,8 @@
 
 use App\Models\User;
 use App\Support\ImageProxy;
+use App\Support\Nostr\PlayerProfile;
+use App\Support\Seo\StructuredData;
 
 /*
 |--------------------------------------------------------------------------
@@ -65,4 +67,13 @@ test('our own upload, the generated avatar and an old http picture never go thro
 
     $html = (string) $this->blade('<x-avatar :user="$user" :size="28" />', ['user' => $none]);
     expect($html)->not->toContain('group.example.test');
+});
+
+test('the profile page tells crawlers the original picture, not the small proxy cut', function () {
+    config(['esports.image_proxy_url' => IMAGE_PROXY_TEST_BASE]);
+    $player = User::factory()->create(['name' => 'max', 'picture' => 'https://example.com/max.png']);
+
+    $person = StructuredData::profilePage(PlayerProfile::for($player), route('players.show', $player->npub));
+
+    expect(json_encode($person))->toContain('"image":"https:\/\/example.com\/max.png"')->not->toContain('group.example.test');
 });

@@ -76,7 +76,8 @@ final class StructuredData
             'name' => $profile->name,
             'url' => $url,
             'identifier' => $profile->user->npub,
-            'image' => $profile->picture ?? $profile->generatedAvatar,
+            // The original picture, not the small proxy cut the page shows (IMG_PROXY_URL): crawlers want the full image.
+            'image' => $profile->user->avatarSource() ?? $profile->generatedAvatar,
             'description' => filled($profile->about) ? $profile->about : null,
             'sameAs' => $profile->website !== null ? [$profile->website] : null,
             'memberOf' => $profile->clan === null ? null : [
