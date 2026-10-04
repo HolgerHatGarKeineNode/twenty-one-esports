@@ -140,7 +140,7 @@ test('with the switch off there is no score card, and turned on there is one', f
         ->and(homeCards($on, 'score-top'))->toHaveCount(1);
 });
 
-test('the ladder cards stay as they were and come first, the score card after them', function () {
+test('the ladder cards stay as they were, and every card sits in the games menu\'s order (score boards between the ladders)', function () {
     $winner = User::factory()->create(['name' => 'zapmaster']);
     Rating::query()->create(['pool' => Rating::CASUAL, 'season' => '', 'game' => 'chess', 'mode' => 'blitz', 'subject' => 'user:'.$winner->id, 'user_id' => $winner->id, 'rating' => 1234, 'results' => 3]);
 
@@ -152,7 +152,8 @@ test('the ladder cards stay as they were and come first, the score card after th
 
     expect($ladders)->toBe(homeCards($off, 'ladder-top'))
         ->and($ladders)->toHaveCount(count(app(GameRegistry::class)->versus()))
-        ->and(strpos($on, 'data-test="score-top"'))->toBeGreaterThan(strrpos($on, 'data-test="ladder-top"'));
+        ->and(array_values(array_unique(array_filter(array_map(fn (string $slug): ?string => $slug, (preg_match_all('#data-test="(?:ladder|score)-top" data-game="([a-z0-9-]+)"#', $on, $m) ? $m[1] : []))))))
+        ->toBe(array_values(array_intersect(array_map(fn ($game): string => $game->slug(), app(GameRegistry::class)->all()), $m[1])));
 });
 
 test('a verified ranked run counts for "play 3 games", a practice run and an unchecked value do not', function () {

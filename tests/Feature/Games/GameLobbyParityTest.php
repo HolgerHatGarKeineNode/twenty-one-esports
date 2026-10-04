@@ -78,7 +78,8 @@ test('the board lobby has the chess lobby\'s sections in the chess lobby\'s orde
     $chess = lobbySections($this->get(route('chess.lobby'))->assertOk()->getContent());
     $board = lobbySections($this->get(route('board.lobby', NineMensMorris::SLUG))->assertOk()->getContent());
 
-    $expected = ['title', 'play', 'next tournament', 'cups', 'your games', 'live', 'online', 'ladder', ...($signedIn ? ['follows'] : []), 'chat'];
+    // The chat sits right under the play row since 2026-10-04 (a bar on the phone, the side column from 1280 px).
+    $expected = ['title', 'play', 'chat', 'next tournament', 'cups', 'your games', 'live', 'online', 'ladder', ...($signedIn ? ['follows'] : [])];
 
     expect($board)->toBe($expected)
         ->and($chess)->toBe($expected);

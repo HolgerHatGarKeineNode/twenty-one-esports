@@ -13,13 +13,20 @@
 --}}
 @php
     $medal = ['1' => 'text-btc', '2' => 'text-ink', '3' => 'text-btc-hi'];
+    // One list in the games' order, the order of the games menu (Mühle and Dame last, user 2026-10-04):
+    // ladders and score boards interleaved, not ladders first.
+    $rank = array_flip(array_values(array_map(fn ($game) => $game->slug(), app(\App\Games\GameRegistry::class)->all())));
+    $tops = [...array_map(fn (array $ladder) => ['kind' => 'ladder', 'item' => $ladder], $ladders), ...array_map(fn (array $score) => ['kind' => 'score', 'item' => $score], $scores)];
+    usort($tops, fn (array $a, array $b) => ($rank[$a['item']['game']] ?? PHP_INT_MAX) <=> ($rank[$b['item']['game']] ?? PHP_INT_MAX));
 @endphp
 
 @if ($ladders !== [] || $scores !== [])
     <section aria-labelledby="ladders-h" class="flex flex-col gap-4 px-4 lg:gap-5 lg:px-12" data-test="ladders">
         <h2 id="ladders-h" class="m-0 font-display text-xl font-bold lg:text-2xl">{{ $scores === [] ? __('Top of the ladders') : __('Top of the ladders and leaderboards') }}</h2>
         <ul class="m-0 grid list-none grid-cols-1 gap-3 p-0 sm:grid-cols-2 lg:grid-cols-4 lg:gap-5">
-            @foreach ($ladders as $ladder)
+            @foreach ($tops as $top)
+                @if ($top['kind'] === 'ladder')
+                @php($ladder = $top['item'])
                 <li class="flex min-w-0 flex-col gap-2 rounded-card bg-card p-3 lg:p-4" data-test="ladder-top" data-game="{{ $ladder['game'] }}">
                     <a href="{{ $ladder['href'] }}" class="grid grid-cols-[64px_minmax(0,1fr)] items-center gap-3 text-ink hover:text-ink">
                         <x-game-cover :game="$ladder['game']" size="thumb" class="w-16 rounded-tag" />
@@ -50,8 +57,8 @@
                     @endif
                     <a href="{{ $ladder['href'] }}" class="mt-auto inline-flex min-h-11 items-center text-xs">{{ __('Full ladder') }}</a>
                 </li>
-            @endforeach
-            @foreach ($scores as $score)
+                @else
+                @php($score = $top['item'])
                 <li class="flex min-w-0 flex-col gap-2 rounded-card bg-card p-3 lg:p-4" data-test="score-top" data-game="{{ $score['game'] }}">
                     <a href="{{ $score['href'] }}" class="grid grid-cols-[64px_minmax(0,1fr)] items-center gap-3 text-ink hover:text-ink">
                         <x-game-cover :game="$score['game']" size="thumb" class="w-16 rounded-tag" />
@@ -85,6 +92,7 @@
                     @endif
                     <a href="{{ $score['href'] }}" class="mt-auto inline-flex min-h-11 items-center text-xs">{{ __('Full leaderboard') }}</a>
                 </li>
+                @endif
             @endforeach
         </ul>
     </section>
