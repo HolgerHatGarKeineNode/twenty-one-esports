@@ -67,6 +67,22 @@ new #[Layout('layouts::app', ['section' => 'tournaments', 'realtime' => true, 's
             : [];
     }
 
+    /**
+     * Every open series of the tournament with its check-in and deadlines (user, 2026-10-04: "Übersichten darüber, wer
+     * eingecheckt ist und wer nicht und ALLE Fristen").
+     *
+     * @return list<\App\Models\SeriesMatch>
+     */
+    #[Computed]
+    public function openSeries(): array
+    {
+        return \App\Models\SeriesMatch::query()
+            ->whereIn('tournament_match_id', \App\Models\TournamentMatch::query()->where('tournament_id', $this->tournament->id)->select('id'))
+            ->whereIn('status', [\App\Enums\SeriesStatus::Accepted, \App\Enums\SeriesStatus::Reported, \App\Enums\SeriesStatus::Disputed])
+            ->with('latestReport')->orderBy('number')->get()
+            ->reject(fn (\App\Models\SeriesMatch $series): bool => $series->isCasualPairing())->values()->all();
+    }
+
     #[Computed]
     public function canManage(): bool
     {
@@ -121,6 +137,67 @@ new #[Layout('layouts::app', ['section' => 'tournaments', 'realtime' => true, 's
             @endif
         </nav>
     </header>
+
+    @if ($this->openSeries !== [])
+        @php
+            $viewer = auth()->user();
+            // One deadline: its time in the viewer's zone and the minutes left (negative once past).
+            $due = fn (?\Carbon\CarbonInterface $at): ?array => $at === null ? null : [
+                'time' => \App\Support\Series\SeriesPresenter::time($at, $viewer, 'H:i'),
+                'left' => (int) floor(now()->diffInMinutes($at, false)),
+            ];
+        @endphp
+        <section aria-labelledby="live-overview-h" class="flex flex-col gap-3" data-test="live-overview">
+            <h2 id="live-overview-h" class="m-0 text-[15px] font-bold">{{ __('Check-in and deadlines') }}</h2>
+            <div class="grid gap-3 md:grid-cols-2">
+                @foreach ($this->openSeries as $series)
+                    @php
+                        $deadlines = array_filter([
+                            [__('Start'), $due($series->start_at), false],
+                            [__('No-show can be reported'), $due($series->noshowReportableAt()), false],
+                            [__('Not checked in = no-show'), $due($series->autoNoshowAt()), true],
+                            [__('Result due'), $due($series->reportDueAt()), true],
+                            $series->noshow_reported_at ? [__('No-show answer due'), $due($series->noshowForfeitAt()), true] : null,
+                            $series->status === \App\Enums\SeriesStatus::Reported ? [__('Report answer due'), $due($series->responseDueAt()), true] : null,
+                        ], fn ($row) => $row !== null && $row[1] !== null);
+                    @endphp
+                    <article class="flex min-w-0 flex-col gap-3 rounded-lg bg-card px-4 py-4" wire:key="ov-{{ $series->id }}" data-test="live-series">
+                        <header class="flex flex-wrap items-center gap-x-3 gap-y-1">
+                            <a href="{{ route('matches.room', $series) }}" class="text-[13px] font-bold text-btc" wire:navigate>{{ $series->label() }}</a>
+                            <span class="text-xs text-ink-2">{{ match (true) {
+                                $series->noshow_reported_at !== null => __('No-show reported'),
+                                $series->overdue_at !== null => __('With the admins'),
+                                $series->status === \App\Enums\SeriesStatus::Reported => __('Result reported'),
+                                $series->status === \App\Enums\SeriesStatus::Disputed => __('Disputed'),
+                                default => __('Playing'),
+                            } }}</span>
+                        </header>
+                        <ul class="m-0 flex list-none flex-col gap-1.5 p-0 text-[13px]">
+                            @foreach (\App\Models\SeriesMatch::SIDES as $side)
+                                <li class="flex min-w-0 items-center justify-between gap-3" data-test="live-checkin-{{ $side }}">
+                                    <b class="min-w-0 truncate">{{ $side === 'challenger' ? $series->challenger_name : $series->challenged_name }}</b>
+                                    @if ($series->readyAt($side))
+                                        <span class="inline-flex shrink-0 items-center gap-1 text-win"><x-icon name="check" :size="14" />{{ __('in the lobby since :time', ['time' => \App\Support\Series\SeriesPresenter::time($series->readyAt($side), $viewer, 'H:i')]) }}</span>
+                                    @else
+                                        <span class="shrink-0 text-btc">{{ __('not checked in yet') }}</span>
+                                    @endif
+                                </li>
+                            @endforeach
+                        </ul>
+                        <dl class="m-0 grid grid-cols-[minmax(0,1fr)_auto_auto] gap-x-3 gap-y-1 border-t border-hairline pt-3 text-xs">
+                            @foreach ($deadlines as [$label, $at, $counts])
+                                <dt class="min-w-0 text-ink-2">{{ $label }}</dt>
+                                <dd class="m-0 font-bold tabular-nums">{{ $at['time'] }}</dd>
+                                <dd @class(['m-0 text-right tabular-nums', 'text-ink-3' => $at['left'] < 0 || ! $counts, 'text-btc' => $counts && $at['left'] >= 0 && $at['left'] <= 10, 'text-ink-2' => $counts && $at['left'] > 10])>
+                                    {{ $at['left'] < 0 ? __('passed') : __('in :minutes min', ['minutes' => $at['left']]) }}
+                                </dd>
+                            @endforeach
+                        </dl>
+                    </article>
+                @endforeach
+            </div>
+        </section>
+    @endif
 
     @if ($this->desk)
         <div class="chat-rail xl:mx-0" data-test="desk-rail"><x-tournaments.desk-chat :desk="$this->desk" /></div>

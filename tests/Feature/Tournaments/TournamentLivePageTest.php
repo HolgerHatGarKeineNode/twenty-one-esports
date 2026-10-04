@@ -56,7 +56,8 @@ test('the direction opens the live page with control, chat and bracket; a player
 
     $this->actingAs($admin)->get(route('tournaments.live', $tournament))->assertOk()
         ->assertSee('data-test="tournament-live"', false)->assertSee('data-test="live-bracket"', false)
-        ->assertSee('data-test="desk-chat"', false)->assertSee('Tournament control');
+        ->assertSee('data-test="desk-chat"', false)->assertSee('Tournament control')
+        ->assertSee('data-test="live-overview"', false)->assertSee('Not checked in = no-show')->assertSee('Result due')->assertSee('not checked in yet');
 
     $this->actingAs($tournament->creator)->get(route('tournaments.live', $tournament))->assertOk();
     $this->actingAs($tournament->creator)->get(route('tournaments.show', $tournament))->assertSee(route('tournaments.live', $tournament), false);

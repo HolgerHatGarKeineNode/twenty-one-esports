@@ -342,6 +342,19 @@ class SeriesMatch extends Model
         return $this->deadlines === null ? null : (int) $this->deadlines['response_minutes'];
     }
 
+    /** From when a side may report a no-show: `noshow_minutes` after the start, pauses not counted; null before a start. */
+    public function noshowReportableAt(): ?CarbonInterface
+    {
+        return $this->start_at?->copy()->addMinutes($this->noshowMinutes())->addSeconds($this->pausedAfter($this->start_at));
+    }
+
+    /** A tournament series' lobby check-in: a side still not in then while the other is counts as a no-show (SeriesService::autoNoShow()). */
+    public function autoNoshowAt(): ?CarbonInterface
+    {
+        return $this->tournament_match_id === null || $this->deadlines === null ? null
+            : $this->start_at?->copy()->addMinutes((int) config('esports.tournaments.auto_noshow_minutes', 30))->addSeconds($this->pausedAfter($this->start_at));
+    }
+
     /** When a series nobody reported joins the admin queue; null without league deadlines. Round clock: minutes after the start. */
     public function reportDueAt(): ?CarbonInterface
     {

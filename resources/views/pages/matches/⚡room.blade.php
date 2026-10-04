@@ -647,7 +647,7 @@ new #[Title('Match room')] #[Layout('layouts::app', ['section' => 'matches', 'sc
     private function fingerprint(): string
     {
         $match = $this->fresh();
-        $noshowFrom = $match->start_at?->copy()->addMinutes($match->noshowMinutes());
+        $noshowFrom = $match->noshowReportableAt();
 
         // A casual match: the open rematch invites and which deadline runs (a claim opens when one passes).
         $casual = $match->isCasualPairing()
@@ -708,7 +708,7 @@ new #[Title('Match room')] #[Layout('layouts::app', ['section' => 'matches', 'sc
     $toAnswer = ! $directorEntered && $m->status === SeriesStatus::Reported && $report?->status === ReportStatus::Open && $captainSide !== null && $captainSide !== $report->side;
     $playing = count(array_filter($this->sheet, fn ($g) => $g['winner'] !== null));
     $captainOf = fn (string $side) => $m->lineup($side)?->clan?->owner?->displayName() ?? '';
-    $noshowFrom = $m->start_at?->copy()->addMinutes($m->noshowMinutes());
+    $noshowFrom = $m->noshowReportableAt();
     $checks = ($report !== null && $report->status !== ReportStatus::Superseded ? 1 : 0) + ($m->status->hasResult() ? 1 : 0);
     $status = match ($m->status) {
         SeriesStatus::Open => [__('Waiting for an answer'), 'bg-btc-press text-btc-hi'],

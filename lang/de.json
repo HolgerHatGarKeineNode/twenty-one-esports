@@ -6684,5 +6684,15 @@
     "Check in once you are in the game lobby. :minutes minutes after the start, a side that has not checked in while the other has counts as a no-show and has :response minutes to answer.": "Check ein, sobald du in der Spiel-Lobby bist. :minutes Minuten nach dem Start gilt eine Seite, die nicht eingecheckt hat, während die andere eingecheckt ist, als nicht erschienen und hat :response Minuten Zeit zu antworten.",
     "Only a tournament match has a lobby check-in.": "Nur ein Turniermatch hat einen Lobby-Check-in.",
     "Only a player of this match can check in.": "Nur ein Spieler dieses Matches kann einchecken.",
-    "The check-in opens when the match starts.": "Der Check-in öffnet, wenn das Match beginnt."
+    "The check-in opens when the match starts.": "Der Check-in öffnet, wenn das Match beginnt.",
+    "Check-in and deadlines": "Check-in und Fristen",
+    "No-show can be reported": "No-Show meldbar ab",
+    "Not checked in = no-show": "Nicht eingecheckt = No-Show",
+    "Result due": "Ergebnis fällig",
+    "No-show answer due": "Antwort auf No-Show bis",
+    "Report answer due": "Antwort auf Ergebnis bis",
+    "With the admins": "Bei den Admins",
+    "Result reported": "Ergebnis gemeldet",
+    "passed": "vorbei",
+    "in :minutes min": "in :minutes Min."
 }

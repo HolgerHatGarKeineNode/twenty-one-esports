@@ -729,7 +729,7 @@ final class SeriesService
             throw CasualMatches::refuse('casual_match');
         }
 
-        $from = $match->start_at?->copy()->addMinutes($match->noshowMinutes());
+        $from = $match->noshowReportableAt();
 
         if ($match->status !== SeriesStatus::Accepted || $from === null || $from->isFuture()) {
             throw new SeriesRuleViolation('noshow_early', __('A no-show can be reported :minutes minutes after the start.', ['minutes' => $match->noshowMinutes()]));
@@ -795,9 +795,9 @@ final class SeriesService
             return false;
         }
 
-        $due = $match->start_at->copy()->addMinutes((int) config('esports.tournaments.auto_noshow_minutes', 30))->addSeconds($match->pausedAfter($match->start_at));
+        $due = $match->autoNoshowAt();
 
-        if ($due->isFuture()) {
+        if ($due === null || $due->isFuture()) {
             return false;
         }
 
