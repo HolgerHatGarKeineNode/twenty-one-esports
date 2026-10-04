@@ -208,6 +208,11 @@ new #[Title('Match room')] #[Layout('layouts::app', ['section' => 'matches', 'sc
         }
     }
 
+    public function checkInLobby(): void
+    {
+        $this->attempt(fn () => app(SeriesService::class)->checkInLobby($this->match, $this->user()));
+    }
+
     public function reportNoShow(): void
     {
         $this->attempt(fn () => app(SeriesService::class)->reportNoShow($this->match, $this->user()));
@@ -1136,6 +1141,28 @@ new #[Title('Match room')] #[Layout('layouts::app', ['section' => 'matches', 'sc
                 <div><x-button variant="quiet" icon="brush" wire:click="openLobbyEditor" data-test="change-lobby">{{ $m->lobby_name === null ? __('Set lobby') : __('Change lobby') }}</x-button></div>
             @endif
             @include('pages.matches.partials.lobby-rules')
+            @if ($m->status === SeriesStatus::Accepted && $m->tournament_match_id !== null && ! $m->isCasualPairing() && $m->start_at !== null)
+                {{-- Lobby check-in (user, 2026-10-04): a signal for both sides and the direction; not in after the auto no-show time while the other is = no-show. --}}
+                <div class="mt-2 flex flex-col gap-2 border-t border-hairline pt-3" data-test="lobby-checkin">
+                    <b class="text-[13px]">{{ __('Lobby check-in') }}</b>
+                    <ul class="m-0 flex list-none flex-col gap-1 p-0 text-[13px]">
+                        @foreach (\App\Models\SeriesMatch::SIDES as $checkSide)
+                            <li class="flex flex-wrap items-center gap-2" data-test="checkin-{{ $checkSide }}">
+                                <span class="font-bold">{{ $checkSide === 'challenger' ? $m->challenger_name : $m->challenged_name }}</span>
+                                @if ($m->readyAt($checkSide))
+                                    <span class="inline-flex items-center gap-1 text-win"><x-icon name="check" :size="14" />{{ __('in the lobby since :time', ['time' => SeriesPresenter::time($m->readyAt($checkSide), $viewer, 'H:i')]) }}</span>
+                                @else
+                                    <span class="text-ink-3">{{ __('not checked in yet') }}</span>
+                                @endif
+                            </li>
+                        @endforeach
+                    </ul>
+                    <p class="m-0 text-xs leading-normal text-ink-2">{{ __('Check in once you are in the game lobby. :minutes minutes after the start, a side that has not checked in while the other has counts as a no-show and has :response minutes to answer.', ['minutes' => (int) config('esports.tournaments.auto_noshow_minutes', 30), 'response' => $m->responseMinutes()]) }}</p>
+                    @if ($captainSide !== null && $m->readyAt($captainSide) === null)
+                        <span><x-button icon="check" wire:click="checkInLobby" :disabled="$m->start_at->isFuture()" class="disabled:cursor-not-allowed disabled:opacity-50" data-test="checkin-lobby">{{ __('I\'m in the lobby') }}</x-button></span>
+                    @endif
+                </div>
+            @endif
             @if ($m->status === SeriesStatus::Accepted && $noshowFrom)
                 <div class="mt-2 flex flex-col gap-2 border-t border-hairline pt-3">
                     <b class="text-[13px]">{{ __('Opponent not in the lobby?') }}</b>

@@ -743,6 +743,70 @@ final class SeriesService
         $this->broadcastChange($match);
     }
 
+    /* ---------- Lobby check-in (tournament series) ------------------------------------------------------------- */
+
+    /**
+     * "I'm in the lobby" (user, 2026-10-04): a tournament series' side says it is there, a signal for the other side and
+     * the direction (TournamentWaits). From the start on; once per side. A casual 1v1 has its own check-in.
+     */
+    public function checkInLobby(SeriesMatch $match, User $user): void
+    {
+        $match = $this->fresh($match);
+
+        if ($match->tournament_match_id === null || $match->isCasualPairing()) {
+            throw new SeriesRuleViolation('not_tournament', __('Only a tournament match has a lobby check-in.'));
+        }
+
+        $side = $match->captainSideOf($user);
+
+        if ($side === null) {
+            throw new SeriesRuleViolation('not_captain', __('Only a player of this match can check in.'));
+        }
+
+        if ($match->status !== SeriesStatus::Accepted || $match->start_at === null || $match->start_at->isFuture()) {
+            throw new SeriesRuleViolation('checkin_closed', __('The check-in opens when the match starts.'));
+        }
+
+        if ($match->readyAt($side) !== null) {
+            return;
+        }
+
+        SeriesMatch::query()->whereKey($match->id)->whereNull('ready_at_'.$side)->update(['ready_at_'.$side => now()]);
+        $this->broadcastChange($match->refresh());
+    }
+
+    /**
+     * One side checked in, the other did not within `auto_noshow_minutes` of the start (pauses do not count) and nothing
+     * is entered: the league reports the no-show for the side that is there. The absent side answers within the response
+     * deadline, or forfeitNoShow() decides (user, 2026-10-04: "EINCHECKEN nicht klicken nach 30min = NO-SHOW").
+     */
+    public function autoNoShow(SeriesMatch $match): bool
+    {
+        $match = $this->fresh($match);
+
+        if ($match->tournament_match_id === null || $match->isCasualPairing() || $match->status !== SeriesStatus::Accepted || $match->start_at === null
+            || $match->noshow_reported_at !== null || $match->currentGames() !== [] || self::isDirectorEntered($match)) {
+            return false;
+        }
+
+        $in = array_values(array_filter(SeriesMatch::SIDES, fn (string $side): bool => $match->readyAt($side) !== null));
+
+        if (count($in) !== 1) {
+            return false;
+        }
+
+        $due = $match->start_at->copy()->addMinutes((int) config('esports.tournaments.auto_noshow_minutes', 30))->addSeconds($match->pausedAfter($match->start_at));
+
+        if ($due->isFuture()) {
+            return false;
+        }
+
+        $match->update(['noshow_side' => $in[0], 'noshow_reported_at' => now()]);
+        $this->broadcastChange($match);
+
+        return true;
+    }
+
     /* ---------- Result report (2152) -------------------------------------------------------------------------- */
 
     /**

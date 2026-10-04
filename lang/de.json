@@ -6676,5 +6676,13 @@
     "Accept or decline: :url": "Annehmen oder ablehnen: :url",
     ":clan declined your application and replies:": ":clan hat deine Bewerbung abgelehnt und antwortet:",
     "No DM inbox relays (NIP-17) for :count of them. Send it as an older NIP-04 message instead?": "Für :count davon gibt es keine DM-Inbox-Relays (NIP-17). Stattdessen als ältere NIP-04-Nachricht senden?",
-    "Live control": "Live-Steuerung"
+    "Live control": "Live-Steuerung",
+    "Lobby check-in": "Lobby-Check-in",
+    "in the lobby since :time": "in der Lobby seit :time",
+    "not checked in yet": "noch nicht eingecheckt",
+    "I'm in the lobby": "Ich bin in der Lobby",
+    "Check in once you are in the game lobby. :minutes minutes after the start, a side that has not checked in while the other has counts as a no-show and has :response minutes to answer.": "Check ein, sobald du in der Spiel-Lobby bist. :minutes Minuten nach dem Start gilt eine Seite, die nicht eingecheckt hat, während die andere eingecheckt ist, als nicht erschienen und hat :response Minuten Zeit zu antworten.",
+    "Only a tournament match has a lobby check-in.": "Nur ein Turniermatch hat einen Lobby-Check-in.",
+    "Only a player of this match can check in.": "Nur ein Spieler dieses Matches kann einchecken.",
+    "The check-in opens when the match starts.": "Der Check-in öffnet, wenn das Match beginnt."
 }

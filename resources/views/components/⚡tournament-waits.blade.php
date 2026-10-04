@@ -46,6 +46,21 @@ new class extends Component {
         return TournamentWaits::of($this->tournament->refresh());
     }
 
+    /**
+     * The lobby check-in of each waiting series (user, 2026-10-04), by tournament match id.
+     *
+     * @return array<int, \App\Models\SeriesMatch>
+     */
+    #[Computed]
+    public function checkIns(): array
+    {
+        $ids = array_map(fn (MatchWait $wait): int => $wait->matchId, $this->waits);
+
+        return $ids === [] ? [] : \App\Models\SeriesMatch::query()->whereIn('tournament_match_id', $ids)->where('status', \App\Enums\SeriesStatus::Accepted)
+            ->get(['id', 'tournament_match_id', 'challenger_name', 'challenged_name', 'ready_at_challenger', 'ready_at_challenged', 'origin'])
+            ->reject(fn (\App\Models\SeriesMatch $series): bool => $series->isCasualPairing())->keyBy('tournament_match_id')->all();
+    }
+
     #[On('tournament-controlled')]
     public function refreshWaits(): void
     {
@@ -108,6 +123,19 @@ new class extends Component {
                         <x-tournaments.auto-decision :wait="$wait" class="text-xs text-ink-2" />
                     @elseif ($wait->consequence !== null)
                         <span class="text-xs {{ $wait->needsAdmin ? 'font-bold text-loss' : 'text-ink-2' }}" data-test="wait-consequence">{{ $wait->needsAdmin ? __('Needs you: :what', ['what' => $wait->consequenceText()]) : $wait->consequenceText() }}</span>
+                    @endif
+
+                    @if ($checkIn = $this->checkIns[$wait->matchId] ?? null)
+                        <span class="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1 text-xs" data-test="wait-checkin">
+                            <span class="text-ink-3">{{ __('Lobby check-in') }}</span>
+                            @foreach (\App\Models\SeriesMatch::SIDES as $checkSide)
+                                <span @class(['inline-flex items-center gap-1', 'text-win' => $checkIn->readyAt($checkSide), 'text-ink-3' => ! $checkIn->readyAt($checkSide)])>
+                                    @if ($checkIn->readyAt($checkSide))<x-icon name="check" :size="12" />@endif
+                                    <b class="[overflow-wrap:anywhere]">{{ $checkSide === 'challenger' ? $checkIn->challenger_name : $checkIn->challenged_name }}</b>
+                                    {{ $checkIn->readyAt($checkSide) ? SeriesPresenter::time($checkIn->readyAt($checkSide), $viewer, 'H:i') : __('not checked in yet') }}
+                                </span>
+                            @endforeach
+                        </span>
                     @endif
 
                     @if ($wait->waitingOn !== [] || $wait->since !== null)

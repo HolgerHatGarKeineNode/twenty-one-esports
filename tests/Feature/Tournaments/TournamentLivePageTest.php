@@ -5,13 +5,16 @@ use App\Enums\TournamentResultsMode;
 use App\Enums\TournamentStatus;
 use App\Events\TournamentChanged;
 use App\Models\Admin;
+use App\Models\SeriesMatch;
 use App\Models\Tournament;
 use App\Models\TournamentParticipant;
 use App\Models\User;
+use App\Support\Series\SeriesService;
 use App\Support\Tournaments\FormatOptions;
 use App\Support\Tournaments\GameProfile;
 use App\Support\Tournaments\TournamentBrackets;
 use App\Support\Tournaments\TournamentRunner;
+use App\Support\Tournaments\TournamentScheduler;
 use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\Queue;
 
@@ -59,4 +62,30 @@ test('the direction opens the live page with control, chat and bracket; a player
     $this->actingAs($tournament->creator)->get(route('tournaments.show', $tournament))->assertSee(route('tournaments.live', $tournament), false);
 
     $this->actingAs(User::query()->where('name', 'Player 1')->firstOrFail())->get(route('tournaments.live', $tournament))->assertForbidden();
+});
+
+test('a player checks in to the lobby; one side in and the other not after 30 minutes is a no-show the league reports', function () {
+    $tournament = livePageTournament();
+    $series = SeriesMatch::query()->whereNotNull('tournament_match_id')->orderBy('id')->firstOrFail();
+    $in = User::query()->findOrFail($series->sides['challenger'][0]);
+    $service = app(SeriesService::class);
+
+    $this->actingAs($in)->get(route('matches.room', $series))->assertOk()->assertSee('data-test="checkin-lobby"', false);
+
+    $service->checkInLobby($series, $in);
+    expect($series->refresh()->ready_at_challenger)->not->toBeNull()
+        ->and($series->ready_at_challenged)->toBeNull();
+
+    $this->travel(29)->minutes();
+    expect($service->autoNoShow($series->refresh()))->toBeFalse();
+
+    $this->travel(2)->minutes();
+    app(TournamentScheduler::class)->tick();
+    expect($series->refresh()->noshow_side)->toBe('challenger')
+        ->and($series->noshow_reported_at)->not->toBeNull();
+
+    // Both in, or nobody in: no automatic no-show.
+    $both = SeriesMatch::query()->whereNotNull('tournament_match_id')->whereKeyNot($series->id)->firstOrFail();
+    $both->forceFill(['ready_at_challenger' => now(), 'ready_at_challenged' => now()])->save();
+    expect($service->autoNoShow($both))->toBeFalse();
 });

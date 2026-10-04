@@ -604,6 +604,9 @@ return [
         'report_hours' => 2,
         'response_minutes' => 30,
         'round_clock' => ['noshow_minutes' => 20, 'grace_minutes' => 5, 'response_minutes' => 10],
+        // Lobby check-in of a tournament series (user, 2026-10-04): this long after the start, a side that did not check in
+        // while the other did is reported as a no-show by the league; it answers within `response_minutes` or forfeits.
+        'auto_noshow_minutes' => (int) env('ESPORTS_TOURNAMENT_AUTO_NOSHOW_MINUTES', 30),
         'messages_per_hour' => 5,
         'reminders' => array_values(array_map(intval(...), array_filter(array_map('trim', explode(',', (string) env('ESPORTS_TOURNAMENT_REMINDERS', '30,5'))), is_numeric(...)))),
         'remind_every_minutes' => 10,

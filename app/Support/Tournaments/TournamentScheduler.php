@@ -56,13 +56,17 @@ final class TournamentScheduler
     public function __construct(private TournamentDraws $draws, private SeriesService $series, private CasualCups $cups, private TournamentReminders $reminders, private LobbyResults $lobbies, private LobbySwitch $lobbySwitch) {}
 
     /**
-     * @return array{cups: array{opened: int, grown: int, extended: int, evenings: int, cancelled: int, rounds: int, decided: int}, closed: int, drawn: int, forfeited: int, overdue: int, confirmed: int, reminded: int, lobbies: array{overdue: int, closed: int, pruned: int}, healed?: int}
+     * @return array{cups: array{opened: int, grown: int, extended: int, evenings: int, cancelled: int, rounds: int, decided: int}, closed: int, drawn: int, noshows: int, forfeited: int, overdue: int, confirmed: int, reminded: int, lobbies: array{overdue: int, closed: int, pruned: int}, healed?: int}
      */
     public function tick(): array
     {
         $cups = $this->cups->tick();
         $done = ['cups' => $cups, ...$this->draws->advanceDue()];
 
+        // Lobby check-in: one side in, the other not after `auto_noshow_minutes` = the league reports the no-show.
+        $done['noshows'] = $this->each($this->timed()->where('status', SeriesStatus::Accepted)->whereNull('noshow_reported_at')
+            ->where(fn (Builder $query) => $query->whereNotNull('ready_at_challenger')->orWhereNotNull('ready_at_challenged')),
+            fn (SeriesMatch $match): bool => $this->series->autoNoShow($match));
         $done['forfeited'] = $this->each($this->timed()->where('status', SeriesStatus::Accepted)->whereNotNull('noshow_reported_at'),
             fn (SeriesMatch $match): bool => $this->series->forfeitNoShow($match));
         $done['overdue'] = $this->each($this->timed()->where('status', SeriesStatus::Accepted)->whereNull('noshow_reported_at')->whereNull('overdue_at'),
