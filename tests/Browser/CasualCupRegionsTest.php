@@ -307,8 +307,9 @@ test('the game filter of the cup board stays inside the window with seven games,
         }
     }
 
-    expect($measured['en 1440']['names'])->toBe(['Chess', 'RL, Rocket League', 'FC26, EA Sports FC 26', 'FC27, EA Sports FC 27', 'AoE2, Age of Empires II: Definitive Edition', "Morris, Nine Men's Morris", 'Checkers'])
-        ->and($measured['en 1536']['names'])->toBe(['Chess', 'Rocket League', 'EA Sports FC 26', 'EA Sports FC 27', 'Age of Empires II: Definitive Edition', "Nine Men's Morris", 'Checkers'])
+    // The cup board follows the games menu's order since b45c7907 (the registry's, GameRegistry::ordered()): FC27 before FC26.
+    expect($measured['en 1440']['names'])->toBe(['Chess', 'RL, Rocket League', 'FC27, EA Sports FC 27', 'FC26, EA Sports FC 26', 'AoE2, Age of Empires II: Definitive Edition', "Morris, Nine Men's Morris", 'Checkers'])
+        ->and($measured['en 1536']['names'])->toBe(['Chess', 'Rocket League', 'EA Sports FC 27', 'EA Sports FC 26', 'Age of Empires II: Definitive Edition', "Nine Men's Morris", 'Checkers'])
         ->and($page->evaluate('() => window.__errors'))->toBe([])
         ->and($page->evaluate(BrowserConsole::BAD_RESPONSES))->toBe([]);
 });
