@@ -238,7 +238,6 @@ new #[Title('Payouts')] #[Layout('layouts::app', ['section' => 'admin'])] class 
     $funded = $tournament ? $prizePool->fundedSats($tournament) : 0;
     $zaps = $tournament ? $prizePool->zapSats($tournament) : 0;
     $pool = $tournament ? $prizePool->payoutPotSats($tournament) : null;
-    $shortfall = 0;
     $payouts = $this->payouts;
     $pending = $payouts->where('status', PayoutStatus::Pending);
 @endphp
@@ -275,15 +274,15 @@ new #[Title('Payouts')] #[Layout('layouts::app', ['section' => 'admin'])] class 
                         {{ $payingHere ? __('Approved before the league wallet took over: paid from the pot’s own wallet.') : __('The connection of this pot’s own wallet is missing, so nothing can be paid out.') }}
                     @else
                         {{ $payingHere ? __('Paid from the league wallet.') : __('The league wallet is not connected, so nothing can be paid out.') }}
-                        <span data-test="pot-ledger">{{ __('This pot received :funded sats through it and holds :held sats now.', ['funded' => $sats($funded), 'held' => $sats($prizePool->heldSats($tournament))]) }}</span>
+                        <span data-test="pot-ledger">{{ __('The pot as set: :pot sats, paid out by share. If the league wallet holds less, top it up.', ['pot' => $sats((int) $pool)]) }}</span>
                         @if ($walletSats !== null)<span data-test="league-balance">{{ __('League wallet: :sats sats.', ['sats' => $sats($walletSats)]) }}</span>@endif
                     @endif
                 </p>
                 <p class="m-0 text-[13px] text-ink-2">
                     @if ($fixedMode)
-                        {{ __('Fixed prizes: :prizes sats; the pot needs :need sats with the fee reserve.', ['prizes' => implode(' / ', array_map($sats, $tournament->prizeFixed())), 'need' => $sats((int) PrizePool::requiredSats($tournament))]) }}
+                        {{ __('Fixed prizes: :prizes sats', ['prizes' => implode(' / ', array_map($sats, $tournament->prizeFixed()))]) }}
                     @else
-                        {{ __('Split: :split', ['split' => implode(' / ', $tournament->prizeSplit())]) }} · {{ __(':payable sats to split after the fee reserve', ['payable' => $sats((int) $pool)]) }}
+                        {{ __('Split: :split', ['split' => implode(' / ', $tournament->prizeSplit())]) }} · {{ __(':payable sats to split', ['payable' => $sats((int) $pool)]) }}
                     @endif
                     @if ($tournament->payouts_approved_at) · {{ __('checked :date', ['date' => $tournament->payouts_approved_at->format('Y-m-d H:i')]) }}@endif
                 </p>
@@ -297,12 +296,9 @@ new #[Title('Payouts')] #[Layout('layouts::app', ['section' => 'admin'])] class 
 
             @if ($tournament->payouts_approved_at === null)
                 @php($blocker = $approval->blocker($tournament))
-                <p class="m-0 max-w-[80ch] text-[13px] leading-normal text-ink-2">{{ __('The check reads the league wallet’s balance, closes the pot (later payments go to the league reserve), publishes the tournament’s end on Nostr, reads the final places from the bracket and writes one payout per player. Nothing is paid yet.') }}</p>
+                <p class="m-0 max-w-[80ch] text-[13px] leading-normal text-ink-2">{{ __('The check closes the pot (later payments go to the league reserve), publishes the tournament’s end on Nostr, reads the final places from the bracket and writes one payout per player. Nothing is paid yet.') }}</p>
                 @if ($blocker)
                     <p class="m-0 text-[13px] text-loss" data-test="payouts-blocker">{{ $blocker }}</p>
-                    @if ($shortfall > 0)
-                        <p class="m-0 text-[13px] text-ink-2" data-test="payouts-underfunded">{{ __('The pot has received :have sats; the fixed prizes need :need sats with the fee reserve, :missing sats more.', ['have' => $sats($funded - $zaps), 'need' => $sats((int) PrizePool::requiredSats($tournament)), 'missing' => $sats($shortfall)]) }}</p>
-                    @endif
                 @else
                     @php($preview = $pool === null ? null : app(PayoutPlan::class)->compute($tournament, $pool, $zaps))
                     @if ($preview)

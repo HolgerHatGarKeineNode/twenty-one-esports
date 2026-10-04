@@ -64,7 +64,7 @@ test('a pot needs no wallet: switched on with a target and a preset, previewed f
 
     $page = createPage()->set('potEnabled', true)->set('potTarget', '300000')
         ->call('usePotPreset', '60-30-10')->assertSet('potSplit', [60, 30, 10])
-        ->assertSeeHtml('data-test="pot-preview"')->assertSee(__(':sats sats', ['sats' => PreSeason::formatSats(intdiv(PrizePool::afterFeeReserve(300_000) * 60, 100))]));
+        ->assertSeeHtml('data-test="pot-preview"')->assertSee(__(':sats sats', ['sats' => PreSeason::formatSats(intdiv(300_000 * 60, 100))]));
 
     $page->call('create')->assertHasNoErrors();
     $tournament = Tournament::query()->where('name', 'Pot Cup')->sole();
@@ -232,10 +232,9 @@ test('fixed amounts: each place wins exactly its sats, the pot shows funded X of
     config(['esports.wallet.fixed_prizes_max_total_sats' => 50_000_000]);
     $page->call('savePotSettings')->assertSet('potError', '');
     fundPool($league, $tournament->refresh(), 50_000);
-    // Saved although the pot received less than the prizes need; the payouts wait until it covers them.
+    // Saved although the pot received less than the prizes: they are paid as set (user, 2026-10-04), no funding warning.
     $page = Livewire::actingAs($tournament->creator)->test('pages::admin.tournament-edit', ['tournament' => $tournament])
-        ->assertSeeHtml('data-test="pot-fixed-funding"')->assertSee(__('You can still save; the payouts are approved only once the pot covers them.'), false)
-        ->assertSee(PreSeason::formatSats(35_850))->assertSee(PreSeason::formatSats(85_850));
+        ->assertDontSeeHtml('data-test="pot-fixed-funding"');
 
     $tournament->refresh();
     expect($tournament->prizeMode())->toBe(Tournament::PRIZES_FIXED)
@@ -276,7 +275,7 @@ test('the prize mode switches freely before sign-up closes and is frozen after, 
     expect($tournament->refresh()->prizeMode())->toBe(Tournament::PRIZES_PERCENT)
         ->and($tournament->prizeSplit())->toBe([60, 30, 10])
         ->and($tournament->prize_fixed)->toBeNull()
-        ->and(app(PrizePool::class)->projection($tournament)[0])->toBe(['place' => 1, 'percent' => 60, 'sats' => intdiv(PrizePool::afterFeeReserve(10_000) * 60, 100)]);
+        ->and(app(PrizePool::class)->projection($tournament)[0])->toBe(['place' => 1, 'percent' => 60, 'sats' => intdiv(10_000 * 60, 100)]);
 
     $this->travel(3)->seconds();
     $tournament->forceFill(['signup_closes_at' => now()->subMinute()])->save();

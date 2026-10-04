@@ -250,7 +250,8 @@ final class PrizePool
     public static function zapBonus(array $fixed, int $zaps): array
     {
         $total = array_sum($fixed);
-        $shared = $zaps > 0 ? self::afterFeeReserve($zaps) : 0;
+        // All of the zaps, like the pot (user, 2026-10-04: the pot as set is paid out by share, no fee reserve).
+        $shared = max(0, $zaps);
 
         return array_map(fn (int $amount): int => $total > 0 ? intdiv($shared * $amount, $total) : 0, $fixed);
     }
@@ -270,7 +271,8 @@ final class PrizePool
                 $tournament->prizeFixed(), array_keys($tournament->prizeFixed()));
         }
 
-        $payable = self::afterFeeReserve((int) $this->potSats($tournament));
+        // The whole pot as set, as the payout splits it (PayoutApproval, user 2026-10-04).
+        $payable = $this->payoutPotSats($tournament);
 
         return array_map(fn (int $percent, int $index): array => ['place' => $index + 1, 'percent' => $percent, 'sats' => intdiv($payable * $percent, 100)],
             $tournament->prizeSplit(), array_keys($tournament->prizeSplit()));

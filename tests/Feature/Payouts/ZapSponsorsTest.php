@@ -150,9 +150,9 @@ test('pot math: a sponsor is part of the pot as announced, zaps are on top, and 
     paidPotZap($league, new TestSigner, $fixed, 10_000);
     $bonus = PrizePool::zapBonus([60_000, 30_000], 10_000);
 
-    expect($bonus)->toBe([6_600, 3_300])
+    expect($bonus)->toBe([6_666, 3_333])
         ->and($pool->potSats($fixed->refresh()))->toBe(100_000)
-        ->and(array_column($pool->projection($fixed), 'sats'))->toBe([66_600, 33_300])
+        ->and(array_column($pool->projection($fixed), 'sats'))->toBe([66_666, 33_333])
         ->and(PrizePool::shortfall($fixed, $pool->fundedSats($fixed), $pool->zapSats($fixed)))->toBe(0);
 
     app(PayoutApproval::class)->approve($fixed, anAdmin());
@@ -162,7 +162,7 @@ test('pot math: a sponsor is part of the pot as announced, zaps are on top, and 
     }
 
     expect($fixed->payouts()->orderBy('place')->get()->map(fn (TournamentPayout $p): array => [$p->place, $p->amount_sats, $p->status->value])->all())
-        ->toBe([[1, 66_600, 'paid'], [2, 33_300, 'paid']])
+        ->toBe([[1, 66_666, 'paid'], [2, 33_333, 'paid']])
         ->and(app(Ledger::class)->balance($fixed->potAccount()))->toBeGreaterThanOrEqual(0);
 
     // Zaps never fund the fixed prizes themselves: without the base, the pot is short.

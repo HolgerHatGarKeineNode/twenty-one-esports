@@ -15,7 +15,7 @@
     $potFixedValues = array_map(fn ($value): int => is_numeric($value) ? (int) $value : 0, $this->potFixed);
     $potSum = array_sum($potValues);
     $potFixedSum = array_sum($potFixedValues);
-    $potFixedNeed = $potFixedSum + \App\Support\Prizes\PrizePool::feeReserve($potFixedSum);
+    $potFixedNeed = $potFixedSum;
     $potBalance = $this->potKnownBalance();
     $potPreset = \App\Support\Prizes\PrizePool::presetOf($this->potSplit);
     $potPreview = $this->potPreviewSats();
@@ -59,7 +59,7 @@
                 <div class="flex flex-wrap items-center gap-2">
                     <x-button variant="quiet" wire:click="addPotPlace" data-test="pot-fixed-add">{{ __('Add a place') }}</x-button>
                     <x-button variant="quiet" wire:click="removePotPlace">{{ __('Remove the last place') }}</x-button>
-                    <span class="text-xs text-ink-3" data-test="pot-fixed-sum">{{ __('Total: :sats sats; the pot needs :need sats with the fee reserve.', ['sats' => $potFormat($potFixedSum), 'need' => $potFormat($potFixedNeed)]) }}</span>
+                    <span class="text-xs text-ink-3" data-test="pot-fixed-sum">{{ __('Total: :sats sats', ['sats' => $potFormat($potFixedSum)]) }}</span>
                 </div>
             @else
                 <div class="flex flex-wrap gap-2" role="group" aria-label="{{ __('Presets') }}">
@@ -102,16 +102,6 @@
                         </li>
                     @endforeach
                 </ol>
-                @if ($potBalance !== null)
-                    @if ($potBalance >= $potFixedNeed)
-                        <span class="text-xs text-win" data-test="pot-fixed-funding">{{ __('The pot has received :balance sats: the prizes are covered, :left sats are left over after prizes.', ['balance' => $potFormat($potBalance), 'left' => $potFormat($potBalance - $potFixedNeed)]) }}</span>
-                    @else
-                        <p class="m-0 flex max-w-[80ch] items-start gap-2 rounded-md bg-loss-tint px-3 py-2 text-[13px] leading-normal text-loss" role="status" data-test="pot-fixed-funding">
-                            <x-icon name="warn" :size="16" class="mt-0.5 shrink-0" />
-                            <span>{{ __('The pot has received :balance sats, :missing sats less than the fixed prizes need with the fee reserve (:need sats). You can still save; the payouts are approved only once the pot covers them.', ['balance' => $potFormat($potBalance), 'missing' => $potFormat($potFixedNeed - $potBalance), 'need' => $potFormat($potFixedNeed)]) }}</span>
-                        </p>
-                    @endif
-                @endif
                 <span class="text-xs text-ink-3">{{ __('Tied places share the sum of their amounts; a team’s share is split equally among its roster. What the pot holds beyond the prizes stays with the league.') }}</span>
             @else
                 @if ($potPreview !== null)

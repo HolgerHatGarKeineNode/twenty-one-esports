@@ -103,13 +103,13 @@ trait EditsPrizePot
         $target = trim($this->potTarget);
 
         if (ctype_digit($target) && (int) $target > 0) {
-            return PrizePool::afterFeeReserve((int) $target);
+            return (int) $target;
         }
 
         $tournament = $this->potTournament();
         $funded = $tournament !== null && $tournament->hasPot() ? app(PrizePool::class)->fundedSats($tournament) : 0;
 
-        return $funded > 0 ? PrizePool::afterFeeReserve($funded) : null;
+        return $funded > 0 ? $funded : null;
     }
 
     /**
