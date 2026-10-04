@@ -41,7 +41,7 @@ beforeEach(function () {
 /** @return list<ChessGame> */
 function bannerChessGames(Tournament $tournament): array
 {
-    return ChessGame::query()->whereIn('tournament_match_id', $tournament->matches()->select('id'))->orderBy('id')->get()->all();
+    return ChessGame::query()->whereIn('tournament_match_id', $tournament->matches()->select('id'))->with(['white', 'black'])->orderBy('id')->get()->all();
 }
 
 test('a live tournament chess game opens with the banner above the game, the cup first-move rule and no casual rating', function () {

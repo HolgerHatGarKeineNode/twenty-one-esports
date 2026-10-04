@@ -193,7 +193,7 @@ final class PayoutRunner
      */
     private static function wallet(TournamentPayout|SeasonPayout $payout): ?PayingWallet
     {
-        return $payout instanceof TournamentPayout && $payout->tournament->hasOwnWallet()
+        return $payout instanceof TournamentPayout && $payout->loadMissing('tournament')->tournament->hasOwnWallet()
             ? PayingWallet::forTournament($payout->tournament)
             : PayingWallet::fromConfig();
     }

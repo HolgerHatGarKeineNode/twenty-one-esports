@@ -742,7 +742,7 @@ final class TournamentRunner
     private function doubleNoShow(TournamentMatch $match): array
     {
         // A casual cup decides as at its deadlines (P25): who tried to play, else a draw of lots.
-        if ($match->tournament->isCasualCup()) {
+        if ($match->loadMissing('tournament')->tournament->isCasualCup()) {
             return CasualCups::decision($match->tournament, $match);
         }
 

@@ -534,7 +534,7 @@ test('restarting a round voids its unconfirmed series and pairs them again, once
 
     $service->report($reported, $winner, []);
     ctlWin(ctlMatch($tournament, 1, 2), 0);
-    $round = $first->round;
+    $round = $first->loadMissing('round')->round;
 
     expect(ctl()->restartRound($tournament, $admin, $round->id, 0, 'Server outage during the round'))->toBeTrue()
         // The same click again: the round is restarted already.

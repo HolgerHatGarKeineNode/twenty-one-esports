@@ -128,7 +128,8 @@ final class ScoreRuns
 
         $course = $this->courseOf($tournament);
         $window = ScoreWindow::of($tournament);
-        $participants = TournamentParticipant::query()->where('tournament_id', $tournament->id)
+        // Every reader of a standing names its player (boards, podiums, stream slides): the users come along.
+        $participants = TournamentParticipant::query()->where('tournament_id', $tournament->id)->with('user')
             ->orderByRaw('seed is null')->orderBy('seed')->orderBy('id')->get();
         $userIds = $participants->pluck('user_id')->filter()->all();
 
@@ -200,7 +201,7 @@ final class ScoreRuns
      */
     private function frozen(Tournament $tournament): array
     {
-        $participants = TournamentParticipant::query()->where('tournament_id', $tournament->id)
+        $participants = TournamentParticipant::query()->where('tournament_id', $tournament->id)->with('user')
             ->orderByRaw('seed is null')->orderBy('seed')->orderBy('id')->get()->keyBy('id');
         $match = TournamentMatch::query()->where('tournament_id', $tournament->id)->where('bracket', 'board')->with('slots')->first();
         $result = $match?->result;

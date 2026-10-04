@@ -83,7 +83,7 @@ test('every tournament slide of an AoE2 lobby tournament, upcoming, running and 
     $running = slideLobby(9);
     $finished = slideLobby(9);
     $finished->forceFill(['name' => 'Lobby Done'])->save();
-    [$a, $b] = TournamentMatch::query()->where('tournament_id', $finished->id)->with('slots')->orderBy('position')->get()->all();
+    [$a, $b] = TournamentMatch::query()->where('tournament_id', $finished->id)->with('slots.participant')->orderBy('position')->get()->all();
     $places = fn (TournamentMatch $match, array $places): array => $match->slots->mapWithKeys(fn ($slot, int $i): array => [$slot->tournament_participant_id => $places[$i]])->all();
     app(LobbyResults::class)->enter($a, $finished->creator, $places($a, [1, 1, 3, 4, 5]));
     app(LobbyResults::class)->enter($b, $finished->creator, $places($b, [1, 2, 3, 4]));

@@ -65,7 +65,7 @@ test('a two-stage bracket stores both stages and the groups', function () {
         ->and(TournamentParticipant::query()->distinct()->pluck('group')->sort()->values()->all())->toBe([1, 2, 3])
         ->and($tournament->matches()->count())->toBe(23)
         // 3 groups, top 2: no two of one group meet in the first round of the final stage.
-        ->and($tournament->matches()->where('key', 'like', 'f-m1-%')->get()->map(fn (TournamentMatch $match) => $match->slots->pluck('source.group')->unique()->count())->all())
+        ->and($tournament->matches()->where('key', 'like', 'f-m1-%')->with('slots')->get()->map(fn (TournamentMatch $match) => $match->slots->pluck('source.group')->unique()->count())->all())
         ->toBe([2, 2]);
 });
 

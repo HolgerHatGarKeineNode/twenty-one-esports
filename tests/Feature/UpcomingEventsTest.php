@@ -111,7 +111,7 @@ test('an open room is an undecided series the viewer plays or captains, casual o
     $casual = upcomingCasual($me, $friend, now()->addDay()->setTime(18, 0));
 
     $rooms = app(OpenMatches::class)->rooms($me);
-    $seated = $lineup->seats->first(fn ($seat) => $seat->user_id !== $me->id)->user;
+    $seated = $lineup->load('seats.user')->seats->first(fn ($seat) => $seat->user_id !== $me->id)->user;
     $stranger = User::factory()->create();
 
     expect(upcomingKeys($rooms))->toEqualCanonicalizing(['series-'.$later->number, 'series-'.$live->number, 'series-'.$reported->number, 'series-'.$disputed->number, 'series-'.$casual->number])

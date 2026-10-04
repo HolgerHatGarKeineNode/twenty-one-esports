@@ -50,7 +50,7 @@ beforeEach(function () {
 /** The first-round chess games of a players-mode tournament, in bracket order. */
 function endChessGames(Tournament $tournament): array
 {
-    return ChessGame::query()->whereIn('tournament_match_id', $tournament->matches()->select('id'))->orderBy('id')->get()->all();
+    return ChessGame::query()->whereIn('tournament_match_id', $tournament->matches()->select('id'))->with(['white', 'black'])->orderBy('id')->get()->all();
 }
 
 test('a finished tournament chess game shows the tournament panel and no rematch or new search', function () {

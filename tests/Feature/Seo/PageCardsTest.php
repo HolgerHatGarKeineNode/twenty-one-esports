@@ -368,7 +368,7 @@ test('no text on any card is cut or runs off the edge, in English or German, wit
     TournamentPayout::query()->create(['tournament_id' => $open->id, 'user_id' => null, 'participant_id' => null, 'pubkey' => str_repeat('b', 64),
         'name' => 'x', 'place' => 1, 'amount_sats' => 1_000, 'idempotency_key' => 'p54-long-open', 'status' => PayoutStatus::Paid]);
 
-    foreach ($cup->participants()->orderBy('id')->get() as $index => $entry) {
+    foreach ($cup->participants()->with('user')->orderBy('id')->get() as $index => $entry) {
         $entry->forceFill(['name' => ['Satoshi Nakamoto', 'HalvingHodler21', 'Lightning Larry', 'Hal Finney'][$index] ?? $entry->name])->save();
         TournamentPayout::query()->create(['tournament_id' => $cup->id, 'user_id' => $entry->user_id, 'participant_id' => $entry->id, 'pubkey' => $entry->user?->pubkey ?? str_repeat('c', 64),
             'name' => $entry->name, 'place' => $index + 1, 'amount_sats' => 1_000_000, 'idempotency_key' => 'p54-long-'.$index, 'status' => PayoutStatus::Paid]);

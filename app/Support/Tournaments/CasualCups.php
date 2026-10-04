@@ -1307,6 +1307,8 @@ final class CasualCups
      */
     public static function mayStart(TournamentMatch $match, bool $invited = false): bool
     {
+        // The match maker's list carries the round and the games, not the tournament.
+        $match->loadMissing(['round', 'tournament', 'chessGame', 'boardGame']);
         $endsAt = $match->round->window_ends_at;
 
         if ($endsAt === null) {

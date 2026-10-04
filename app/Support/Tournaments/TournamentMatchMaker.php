@@ -203,7 +203,8 @@ final class TournamentMatchMaker
             return null;
         }
 
-        $match->refresh();
+        // refresh() reloads the slots but not their participants: those are read under the lock too.
+        $match->refresh()->loadMissing('slots.participant');
 
         if ($match->status !== 'ready' || $match->result !== null || $match->held !== null) {
             return false;

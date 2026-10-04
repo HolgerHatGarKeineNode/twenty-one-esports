@@ -371,7 +371,8 @@ final class ShellNavigation
         }
 
         // The clan a player is in, else an invite waiting for their answer (P16: both were only a notification away).
-        $clan = $user->clanMember?->clan;
+        // The same query a lazy read would run; explicit, so a viewer hydrated in a list (a test's actingAs) passes the guard.
+        $clan = $user->loadMissing('clanMember.clan')->clanMember?->clan;
         $invite = $clan === null
             ? ClanInvite::query()->where('invitee_id', $user->id)->where('status', InviteStatus::Pending)->with('clan')->latest()->first()
             : null;

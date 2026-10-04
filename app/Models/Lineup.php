@@ -87,6 +87,8 @@ class Lineup extends Model
      */
     public function activeCount(): int
     {
+        $this->loadActiveSeats();
+
         return $this->seats->filter(fn (LineupSeat $seat) => $seat->role->countsTowardsMinimum() && $seat->isActive($this->clan_id))->count();
     }
 
@@ -105,11 +107,12 @@ class Lineup extends Model
      */
     public function isActingCaptain(?User $user): bool
     {
-        if ($user === null || $user->clanMember?->clan_id !== $this->clan_id) {
+        // Loaded once where the caller has not: a no-op for a lineup read with its clan and seats' users.
+        if ($user === null || $user->loadMissing('clanMember')->clanMember?->clan_id !== $this->clan_id) {
             return false;
         }
 
-        if ($this->clan->owner_id === $user->id) {
+        if ($this->loadMissing('clan')->clan->owner_id === $user->id) {
             return true;
         }
 
@@ -129,7 +132,8 @@ class Lineup extends Model
 
         $seat = $this->seats->firstWhere('user_id', $user->id);
 
-        return $seat !== null && $seat->isActive($this->clan_id) ? $seat : null;
+        // Only this seat's player: the dock hands its seats the viewer already loaded, and the others are never read.
+        return $seat !== null && $seat->loadMissing('user.clanMember')->isActive($this->clan_id) ? $seat : null;
     }
 
     /**
@@ -139,9 +143,21 @@ class Lineup extends Model
      */
     public function activeSeats(): array
     {
+        $this->loadActiveSeats();
+
         return array_values($this->seats
             ->filter(fn (LineupSeat $seat) => $seat->isActive($this->clan_id))
             ->sortBy(fn (LineupSeat $seat) => [$seat->role === LineupRole::Substitute ? 1 : 0, $seat->id])
             ->all());
+    }
+
+    /**
+     * What LineupSeat::isActive() reads of every seat (its user's clan), in
+     * three queries for the lineup instead of two per seat; what is loaded
+     * already stays (performance plan P2, lazy-loading guard).
+     */
+    private function loadActiveSeats(): void
+    {
+        $this->loadMissing('seats.user.clanMember');
     }
 }

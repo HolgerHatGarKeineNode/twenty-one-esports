@@ -349,7 +349,7 @@ final class TournamentSignups
      */
     private function entrantsOf(TournamentSignup $signup): array
     {
-        $event = $signup->event;
+        $event = $signup->loadMissing('event')->event;
         $signed = $event?->payload();
 
         if ($event === null || $signed === null) {

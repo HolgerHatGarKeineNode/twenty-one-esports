@@ -139,7 +139,7 @@ test('every open series is on the dock: live, soon, waiting on someone, or sched
         ->and($items['series-'.$toAccept->number]->trailing)->toBe('0 : 1');
 
     // A player of the lineup who is not its captain waits; the answer is the captain's.
-    $player = $mine->seats->first(fn ($seat) => $seat->user_id !== $me->id)->user;
+    $player = $mine->load('seats.user')->seats->first(fn ($seat) => $seat->user_id !== $me->id)->user;
     expect(collect(dockKeys($player))->contains('series-'.$toAnswer->number))->toBeFalse()
         ->and(app(OpenMatches::class)->for($player)->firstWhere('key', 'series-'.$toAccept->number)->phase)->toBe('waiting');
 });
@@ -227,7 +227,7 @@ test('the dock reads a player\'s series without a query per series', function ()
     $owner = User::factory()->create();
     $mine = Lineup::factory()->ready()->create(['clan_id' => Clan::factory()->create(['owner_id' => $owner->id])->id]);
     // A seated player who is not the captain: the lookup goes through the seat, its user and their clan.
-    $player = $mine->seats->first(fn ($seat) => $seat->user_id !== $owner->id)->user;
+    $player = $mine->load('seats.user')->seats->first(fn ($seat) => $seat->user_id !== $owner->id)->user;
 
     $queries = function () use ($player): int {
         DB::flushQueryLog();

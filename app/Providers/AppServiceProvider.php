@@ -43,7 +43,6 @@ use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\RateLimiter;
 use Illuminate\Support\ServiceProvider;
-use Livewire\Component;
 
 class AppServiceProvider extends ServiceProvider
 {
@@ -268,67 +267,9 @@ class AppServiceProvider extends ServiceProvider
             app()->isProduction(),
         );
 
-        // Performance plan P1(b): a relation read that was not eager loaded is logged, never thrown, and only outside
-        // production (P2 fixes the findings, then the handler throws). One line per model.relation and place per process.
+        // A relation read that was not eager loaded throws outside production (performance plan P2; P1 only logged
+        // it): a missing eager load fails the test that reaches it instead of costing a query per row. In production
+        // the guard is off, so a missed one costs a query there and never a 500.
         Model::preventLazyLoading(! app()->isProduction());
-        Model::handleLazyLoadingViolationUsing(function (Model $model, string $relation): void {
-            $where = self::lazyLoadingPlace();
-            $key = $model::class.'.'.$relation.' @ '.$where;
-
-            if (isset(self::$lazyLoadingSeen[$key])) {
-                return;
-            }
-
-            self::$lazyLoadingSeen[$key] = true;
-            Log::warning('lazy-loading-violation '.$key, [
-                'model' => $model::class,
-                'relation' => $relation,
-                'where' => $where,
-                'request' => request()->method().' '.request()->path(),
-            ]);
-        });
-    }
-
-    /** @var array<string, true> */
-    private static array $lazyLoadingSeen = [];
-
-    /**
-     * Where a lazy-loaded relation was read: the first frame outside vendor/ and this provider. A class under app/
-     * or a test names its file and line; a Blade view its source (the compiled file ends in a `PATH ... ENDPATH`
-     * comment); a Livewire single-file component its name (`livewire:pages::games.show::render`), found on the
-     * component's own frame, because its compiled class carries no source path.
-     */
-    private static function lazyLoadingPlace(): string
-    {
-        $inCompiledComponent = false;
-
-        foreach (debug_backtrace(DEBUG_BACKTRACE_PROVIDE_OBJECT | DEBUG_BACKTRACE_IGNORE_ARGS, 40) as $frame) {
-            if ($inCompiledComponent && ($frame['object'] ?? null) instanceof Component && ! str_contains($frame['function'], '{closure')) {
-                return 'livewire:'.$frame['object']->getName().'::'.$frame['function'];
-            }
-
-            $file = $frame['file'] ?? null;
-
-            if (! is_string($file) || str_contains($file, '/vendor/') || $file === __FILE__) {
-                continue;
-            }
-
-            if (str_contains($file, '/storage/framework/views/') && str_contains($file, '/livewire/classes/')) {
-                $inCompiledComponent = true;
-
-                continue;
-            }
-
-            if (str_contains($file, '/storage/framework/views/')) {
-                $tail = (string) @file_get_contents($file, false, null, max(0, (int) @filesize($file) - 400));
-                $source = preg_match('~PATH (.+?) ENDPATH~', $tail, $match) === 1 ? $match[1] : $file;
-
-                return str_replace(base_path().'/', '', $source);
-            }
-
-            return str_replace(base_path().'/', '', $file).':'.($frame['line'] ?? 0);
-        }
-
-        return 'unknown';
     }
 }

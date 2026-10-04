@@ -85,7 +85,7 @@ function securedPlaces(TournamentMatch $match, array $places): array
 
 function securedPlayer(TournamentMatch $match, int $slot): User
 {
-    return User::query()->findOrFail($match->slots[$slot]->participant->user_id);
+    return User::query()->findOrFail($match->loadMissing('slots.participant')->slots[$slot]->participant->user_id);
 }
 
 function securedDirector(Tournament $tournament, User $user, int $addedBy): void

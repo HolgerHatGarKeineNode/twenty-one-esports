@@ -552,7 +552,7 @@ new #[Layout('layouts::app', ['section' => 'chess', 'realtime' => true, 'scripts
      */
     public function replay(): array
     {
-        $moves = $this->game->moves;
+        $moves = $this->game->loadMissing('moves')->moves;
 
         return [
             'fens' => [$this->game->startFen(), ...$moves->pluck('fen')->all()],

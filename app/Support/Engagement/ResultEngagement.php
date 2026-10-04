@@ -58,7 +58,7 @@ final class ResultEngagement
      */
     private function playersOf(RatingChange $change): array
     {
-        $rating = $change->rating;
+        $rating = $change->loadMissing('rating')->rating;
 
         if ($change->source === RatingChange::BOARD) {
             $game = BoardGame::query()->find($change->source_id);

@@ -131,7 +131,7 @@ final readonly class NostrBar
         $lineup = $match->lineup($other);
         $captain = $lineup?->seats->first(fn ($seat): bool => $seat->role === LineupRole::Captain && $seat->accepted_at !== null);
 
-        return $captain->user ?? $lineup?->clan?->owner;
+        return $captain?->loadMissing('user')->user ?? $lineup?->clan?->owner;
     }
 
     /**

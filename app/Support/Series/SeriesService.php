@@ -1302,7 +1302,7 @@ final class SeriesService
     public static function isDirectorEntered(SeriesMatch $match): bool
     {
         return $match->tournament_match_id !== null
-            && ($match->tournamentMatch?->tournament?->isDirectorMode() ?? false);
+            && ($match->loadMissing('tournamentMatch.tournament')->tournamentMatch?->tournament?->isDirectorMode() ?? false);
     }
 
     public function requestNewReport(SeriesMatch $match, User $admin): void
@@ -1582,6 +1582,7 @@ final class SeriesService
 
         $clanIds = array_filter([$match->challengerLineup?->clan_id, $match->challengedLineup?->clan_id]);
         // A side without a lineup (a tournament's RL 1v1 player) counts with its player's clan at the pairing.
+        $admin->loadMissing('clanMember.clan');
         $ownClan = $admin->clanMember !== null && (in_array($admin->clanMember->clan_id, $clanIds, true)
             || in_array($admin->clanMember->clan->address(), array_values($match->clans_at_accept ?? []), true));
 
@@ -1728,6 +1729,9 @@ final class SeriesService
         if ($lineup === null) {
             return;
         }
+
+        // isActingCaptain() reads each seat's user, their clan and the lineup's clan.
+        $lineup->loadMissing(['clan', 'seats.user.clanMember']);
 
         foreach ($lineup->seats->filter(fn (LineupSeat $seat) => $lineup->isActingCaptain($seat->user)) as $seat) {
             $locale = $seat->user->locale ?? config('app.locale');

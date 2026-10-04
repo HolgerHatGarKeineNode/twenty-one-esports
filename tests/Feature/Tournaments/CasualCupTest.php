@@ -322,7 +322,7 @@ test('round 1 opens with a 48 h window; nothing starts before the auto slot, the
     expect(ChessGame::query()->whereNotNull('tournament_match_id')->count())->toBe(2);
 
     // Started while the players may be away: both of every game are told, with their colour and the game link.
-    foreach (ChessGame::query()->whereNotNull('tournament_match_id')->get() as $game) {
+    foreach (ChessGame::query()->whereNotNull('tournament_match_id')->with(['white', 'black'])->get() as $game) {
         foreach (['White' => $game->white, 'Black' => $game->black] as $color => $player) {
             $started = $player->notifications()->get()->pluck('data')->firstWhere('title', 'Chess Casual Cup EU #1: your game is on');
 
@@ -466,6 +466,6 @@ test('a drawn cup game is played again with the colours swapped, then Armageddon
     expect(ChessGame::query()->count())->toBe(3)
         ->and($whites[1])->not->toBe($whites[0])
         ->and($match->result['decided'])->toBe('armageddon')
-        ->and($match->slots[$match->result['winner']]->participant->user_id)->toBe($armageddon->black_id)
+        ->and($match->load('slots.participant')->slots[$match->result['winner']]->participant->user_id)->toBe($armageddon->black_id)
         ->and($cup->refresh()->status)->toBe(TournamentStatus::Finished);
 });

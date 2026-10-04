@@ -31,6 +31,8 @@
         ? __('Game aborted')
         : ($winner === null ? __('Draw · :reason', ['reason' => mb_strtolower($reason)]) : __(':name wins · :reason', ['name' => $players[$winner]['name'], 'reason' => mb_strtolower($reason)]));
     $replay = $this->replay();
+    // The moves and the signed record, loaded once here when the page did not (the lazy-loading guard throws).
+    $game->loadMissing(['moves', 'recordEvent']);
     $lastMove = $game->moves->last();
     $clock = fn (int $ms) => intdiv(intdiv($ms + 999, 1000), 60).':'.str_pad((string) (intdiv($ms + 999, 1000) % 60), 2, '0', STR_PAD_LEFT);
     $moveCount = intdiv($game->ply + 1, 2);

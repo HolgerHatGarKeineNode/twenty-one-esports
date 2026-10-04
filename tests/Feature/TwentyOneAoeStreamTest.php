@@ -74,7 +74,7 @@ function aoeLobby(int $n, string $name = 'Lobby Night', ?Closure $nameOf = null)
 /** The lobbies of a lobby tournament, in order. @return list<TournamentMatch> */
 function aoeLobbies(Tournament $tournament): array
 {
-    return TournamentMatch::query()->where('tournament_id', $tournament->id)->with('slots')->orderBy('position')->get()->all();
+    return TournamentMatch::query()->where('tournament_id', $tournament->id)->with('slots.participant.user')->orderBy('position')->get()->all();
 }
 
 /** The places `$places` (in slot order) as LobbyResults takes them. @return array<int, int> */

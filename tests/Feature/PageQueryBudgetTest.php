@@ -14,10 +14,10 @@ use App\Models\User;
 use App\Providers\AppServiceProvider;
 use App\Support\Navigation\ShellNavigation;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\LazyLoadingViolationException;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Exceptions;
-use Illuminate\Support\Facades\Log;
 use Tests\Support\ScoreDemoOn;
 use Tests\Support\TestSigner;
 
@@ -280,29 +280,22 @@ test('the hot routes stay within their total query budget, as a guest and as the
 
 /*
 |--------------------------------------------------------------------------
-| Lazy loading is logged, never thrown (performance plan P1b)
+| Lazy loading throws outside production (performance plan P1b, P2)
 |--------------------------------------------------------------------------
 |
-| Outside production a relation read on a model of a collection that was not
-| eager loaded writes one `lazy-loading-violation <model>.<relation> @ <place>`
-| warning (AppServiceProvider). P2 fixes what the suite logs, then the handler
-| throws. In production the guard is off, so a missed eager load costs a query
-| there and never a 500.
+| P1 logged every relation read on a model of a collection that was not
+| eager loaded; P2 fixed what the suite logged, and now the guard throws in
+| local and testing. In production the guard is off, so a missed eager load costs a query there
+| and never a 500.
 |
 */
 
-test('a lazy-loaded relation is logged with its model, relation and place, and does not throw', function () {
-    // The provider logs a place once per process: this test asks again, so it starts from an empty list.
-    (new ReflectionProperty(AppServiceProvider::class, 'lazyLoadingSeen'))->setValue(null, []);
+test('a lazy-loaded relation throws outside production', function () {
     Clan::factory()->count(2)->create();
     $clans = Clan::query()->get();
-    Log::spy();
 
     expect(Model::preventsLazyLoading())->toBeTrue()
-        ->and($clans->map(fn (Clan $clan) => $clan->owner->id)->all())->toHaveCount(2);
-
-    Log::shouldHaveReceived('warning')->once()->withArgs(fn (string $message, array $context): bool => str_starts_with($message, 'lazy-loading-violation '.Clan::class.'.owner @ tests/Feature/PageQueryBudgetTest.php:')
-        && $context['model'] === Clan::class && $context['relation'] === 'owner');
+        ->and(fn () => $clans->first()->owner)->toThrow(LazyLoadingViolationException::class, 'Attempted to lazy load [owner] on model [App\\Models\\Clan]');
 });
 
 test('the lazy-loading guard is off in production', function () {

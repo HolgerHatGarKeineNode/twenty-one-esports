@@ -79,7 +79,7 @@ function runningLobby(int $n, TournamentResultsMode $mode = TournamentResultsMod
 /** The lobbies of a tournament, by position, with their slots. */
 function lobbiesOf(Tournament $tournament)
 {
-    return TournamentMatch::query()->where('tournament_id', $tournament->id)->with('slots.participant')->orderBy('position')->get();
+    return TournamentMatch::query()->where('tournament_id', $tournament->id)->with(['round', 'slots.participant'])->orderBy('position')->get();
 }
 
 /** The places of a lobby in slot order as participant id => place. */

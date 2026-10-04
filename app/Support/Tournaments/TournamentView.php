@@ -236,7 +236,8 @@ final class TournamentView
             'href' => $match->seriesMatch !== null
                 ? route('matches.show', $match->seriesMatch)
                 : ($match->chessGame !== null ? route('games.show', $match->chessGame)
-                    : ($match->boardGame !== null && Route::has('board.show') ? route('board.show', $match->boardGame) : null)),
+                    // The director page's matches come without their board game: read only for a match that has neither.
+                    : ($match->loadMissing('boardGame')->boardGame !== null && Route::has('board.show') ? route('board.show', $match->boardGame) : null)),
             // A result set on the tournament control (P18) is marked like a director's.
             'director' => $match->isDirectorResult() || ($result['by'] ?? null) === 'control' ? self::marker((array) $result) : null,
             'held' => $match->held !== null,
