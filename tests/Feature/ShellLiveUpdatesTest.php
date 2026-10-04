@@ -17,7 +17,7 @@ test('the poll asks only without a live socket or a hidden tab, and the shell co
     $run = Process::path(base_path())->timeout(60)->run(['node', '--test', 'tests/js/livePoll.test.mjs']);
 
     expect($run->successful())->toBeTrue($run->output().$run->errorOutput())
-        ->and($run->output())->toContain('ℹ pass 5')->toContain('ℹ fail 0');
+        ->and($run->output())->toContain('ℹ pass 7')->toContain('ℹ fail 0');
 });
 
 test('the bell and the cup badge hand their renders to the dispatcher and survive a roundtrip', function () {
