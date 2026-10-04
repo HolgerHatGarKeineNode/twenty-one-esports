@@ -119,11 +119,13 @@ final class ProfileCache
             return false;
         }
 
-        // The same version again: the cache is confirmed current, nothing changes.
+        // The same version again: the cache is confirmed current. A Lightning address the stored copy lacks is filled in
+        // from it (user, 2026-10-04: a winner's lud16 stayed empty, the profile cached before the column was read).
         if ($cachedAt !== null && $event->createdAt === $cachedAt) {
-            $user->forceFill(['profile_checked_at' => now()])->save();
+            $lud16 = $user->lud16 === null ? self::lud16($metadata['lud16'] ?? null) : null;
+            $user->forceFill(['profile_checked_at' => now(), ...($lud16 !== null ? ['lud16' => $lud16] : [])])->save();
 
-            return false;
+            return $lud16 !== null;
         }
 
         $nip05 = self::nip05($metadata['nip05'] ?? null);

@@ -12,7 +12,11 @@ use App\Models\IncomingPayment;
 use App\Models\Tournament;
 use App\Models\User;
 use App\Support\Nostr\HostResolver;
+use App\Support\Nostr\SignedEvent;
+use App\Support\Prizes\IncomingPayments;
+use App\Support\Prizes\PoolInvoices;
 use App\Support\Prizes\PotTopUps;
+use App\Support\SeasonChain\LeagueKey;
 use App\Support\Tournaments\TournamentPublisher;
 use App\Support\Wallet\Ledger;
 use App\Support\Wallet\NwcTransport;
@@ -199,4 +203,23 @@ function ownPotWallet(int $sats = 100_000): FakeNwcWallet
     $wallet->balanceMsats += $sats * 1000;
 
     return $wallet;
+}
+
+/** A zap request of `$signer` to the tournament's event, `$sats` sats. */
+function potZapRequest(TestSigner $signer, Tournament $tournament, int $sats, string $comment = '', array $extra = []): SignedEvent
+{
+    return SignedEvent::fromInput($signer->sign(9734, [
+        ['relays', 'wss://relay.example.org'], ['amount', (string) ($sats * 1000)], ['p', (string) LeagueKey::poolPubkey()],
+        ['a', (string) $tournament->address()], ['k', '31923'], ...$extra,
+    ], $comment, now()->getTimestamp()));
+}
+
+/** A zap paid the real way: the league's invoice for the request, settled, its receipt signed by the league. */
+function paidPotZap(FakeNwcWallet $league, TestSigner $signer, Tournament $tournament, int $sats, string $comment = ''): IncomingPayment
+{
+    $request = potZapRequest($signer, $tournament, $sats, $comment);
+    $payment = app(PoolInvoices::class)->forZapRequest($request, $request->toJson(), $sats);
+    $league->settleIncoming($payment->payment_hash);
+
+    return app(IncomingPayments::class)->check($payment, 0);
 }

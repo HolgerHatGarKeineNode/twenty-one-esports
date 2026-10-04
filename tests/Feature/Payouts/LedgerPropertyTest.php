@@ -19,7 +19,8 @@ use Tests\Support\TestSigner;
 |   accounts, all accounts sum to zero, and the book equals the league
 |   wallet;
 | - a tournament pot (booked in the league wallet since 2026-10-02): the
-|   payouts never exceed what the pot may pay, in either mode, the wallet
+|   payouts never exceed the pot as set (the whole of it in percent mode, no
+|   fee reserve; the fixed sum in fixed mode, user 2026-10-04), the wallet
 |   loses exactly what was paid plus the routing fees, and the pot's account
 |   loses exactly the same.
 */
@@ -48,7 +49,7 @@ test('every booking of the league reserve balances and the book equals the leagu
         ->and($accounts->filter(fn (string $account): bool => str_starts_with($account, 'tournament:')))->toBeEmpty();
 });
 
-test('a pot never pays more than it may, in either mode, and the wallet and its account lose exactly the prizes and their fees', function () {
+test('a pot never pays more than the pot as set, in either mode, and the wallet and its account lose exactly the prizes and their fees', function () {
     mt_srand(2158);
     $wallet = fakeWallet();
     $ledger = app(Ledger::class);
@@ -71,9 +72,11 @@ test('a pot never pays more than it may, in either mode, and the wallet and its 
 
         $paid = (int) $tournament->payouts()->where('status', 'paid')->sum('amount_sats');
         $payments = count($wallet->payRequests()) - $requests;
-        $limit = $fixed === null ? PrizePool::afterFeeReserve($sats) : array_sum($fixed);
+        $limit = $fixed === null ? $sats : array_sum($fixed);
 
+        // Percent mode pays the whole pot but for rounding to whole sats (no fee reserve held back); fixed mode its sum.
         expect($paid)->toBeLessThanOrEqual($limit)
+            ->and($limit - $paid)->toBeLessThan(10)
             ->and($before - $wallet->balanceMsats)->toBe($paid * 1000 + $payments * $wallet->feeMsats)
             ->and($ledger->balance($tournament->potAccount()))->toBe($sats - $paid - $payments * (int) ceil($wallet->feeMsats / 1000));
     }

@@ -25,7 +25,6 @@ use App\Support\Tournaments\TournamentPublisher;
 use App\Support\Wallet\Ledger;
 use Livewire\Livewire;
 use Tests\Support\Bolt11Fixture;
-use Tests\Support\FakeNwcWallet;
 use Tests\Support\TestSigner;
 
 /*
@@ -38,25 +37,6 @@ use Tests\Support\TestSigner;
 | counts on top of the pot and on the wall, each once. Sponsors entered by
 | the organizer are part of the pot as announced.
 */
-
-/** A zap request of `$signer` to the tournament's event, `$sats` sats. */
-function potZapRequest(TestSigner $signer, Tournament $tournament, int $sats, string $comment = '', array $extra = []): SignedEvent
-{
-    return SignedEvent::fromInput($signer->sign(9734, [
-        ['relays', 'wss://relay.example.org'], ['amount', (string) ($sats * 1000)], ['p', (string) LeagueKey::poolPubkey()],
-        ['a', (string) $tournament->address()], ['k', '31923'], ...$extra,
-    ], $comment, now()->getTimestamp()));
-}
-
-/** A zap paid the real way: the league's invoice for the request, settled, its receipt signed by the league. */
-function paidPotZap(FakeNwcWallet $league, TestSigner $signer, Tournament $tournament, int $sats, string $comment = ''): IncomingPayment
-{
-    $request = potZapRequest($signer, $tournament, $sats, $comment);
-    $payment = app(PoolInvoices::class)->forZapRequest($request, $request->toJson(), $sats);
-    $league->settleIncoming($payment->payment_hash);
-
-    return app(IncomingPayments::class)->check($payment, 0);
-}
 
 /**
  * A receipt as the LNURL server key signs it, for a request with `$requestAmount` msats and an invoice of `$invoiceAmount` msats.
@@ -162,7 +142,7 @@ test('pot math: a sponsor is part of the pot as announced, zaps are on top, and 
     expect($pool->potSats($percent))->toBe(110_000)->and($pool->fundedSats($percent))->toBe(110_000);
 
     app(PayoutApproval::class)->approve($percent, anAdmin());
-    expect((int) $percent->payouts()->sum('amount_sats'))->toBe(intdiv(PrizePool::afterFeeReserve(110_000) * 50, 100) + intdiv(PrizePool::afterFeeReserve(110_000) * 30, 100));
+    expect((int) $percent->payouts()->sum('amount_sats'))->toBe(intdiv(110_000 * 50, 100) + intdiv(110_000 * 30, 100));
 
     // Fixed 60 000 / 30 000: funded with their fee reserve, plus a zap of 10 000 split 2 : 1 after its own reserve.
     $fixed = finishedPoolTournament($league, 90_900, 2, fixed: [60_000, 30_000]);

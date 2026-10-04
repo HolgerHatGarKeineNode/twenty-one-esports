@@ -127,6 +127,19 @@ test('an older profile never replaces a newer one, the same one only confirms th
     expect($player->refresh())->name->toBe('current')->profile_checked_at->toEqual(now());
 });
 
+test('the same profile version fills in a Lightning address the stored copy lacks', function () {
+    [$player, $signer] = knownPlayer();
+    $at = now()->subDay()->getTimestamp();
+    handIn([kindZero($signer, ['name' => 'Ben', 'lud16' => 'theben@getalby.com'], createdAt: $at)])->assertOk();
+    // A copy cached before the address was read (as on prod, 2026-10-04): same event, no lud16.
+    $player->refresh()->forceFill(['lud16' => null])->save();
+
+    handIn([kindZero($signer, ['name' => 'Ben', 'lud16' => 'theben@getalby.com'], createdAt: $at)])->assertOk();
+
+    expect($player->refresh()->lud16)->toBe('theben@getalby.com')
+        ->and($player->lud16_changed_at)->toBeNull();
+});
+
 test('of two versions in one batch the newer wins, whatever their order', function () {
     [$player, $signer] = knownPlayer();
 

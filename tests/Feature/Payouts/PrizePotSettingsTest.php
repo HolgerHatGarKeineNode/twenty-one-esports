@@ -172,12 +172,11 @@ test('a pot pays from the league wallet, exactly once, out of its own account, a
         ->assertSeeHtml('data-test="pot-ledger"')
         ->assertSee(__('Remainder, stays in the pot'))->call('approve')->assertHasNoErrors();
     $tournament->refresh();
-    $payable = PrizePool::afterFeeReserve(41_000);
     $payouts = $tournament->payouts()->orderBy('place')->orderBy('id')->get();
 
-    // Split from what came into the pot, less the fee reserve.
-    expect($payouts->sum('amount_sats'))->toBeLessThanOrEqual($payable)
-        ->and($payouts->first()->amount_sats)->toBe(intdiv($payable * 50, 100))
+    // Split from the whole pot as set (what came into it), no fee reserve held back.
+    expect($payouts->sum('amount_sats'))->toBe(41_000)
+        ->and($payouts->first()->amount_sats)->toBe(intdiv(41_000 * 50, 100))
         ->and($payouts->firstWhere('lud16', null)?->status)->toBe(PayoutStatus::Open);
     $requests = count($league->payRequests());
 

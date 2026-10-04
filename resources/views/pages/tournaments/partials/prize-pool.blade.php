@@ -118,6 +118,21 @@
                 </ol>
             </div>
         @endif
+        @if (($pool['deposits'] ?? []) !== [])
+            {{-- Anonymous top-ups: no name to show, but whoever paid sees their sats arrived (user, 2026-10-04). --}}
+            <div class="flex flex-col gap-2" data-test="pool-deposits">
+                <span class="text-xs text-ink-2">{{ __('Paid in anonymously') }}</span>
+                <ol class="m-0 flex list-none flex-wrap gap-2 p-0">
+                    @foreach ($pool['deposits'] as $deposit)
+                        <li class="flex h-10 items-center gap-2 rounded-md bg-ground px-3 text-xs shadow-ring-hairline" data-test="pool-deposit">
+                            <x-icon name="bolt" :size="14" class="shrink-0 text-btc" />
+                            <span class="font-bold text-btc-hi tabular-nums">{{ __(':sats sats', ['sats' => $sats($deposit['sats'])]) }}</span>
+                            @if ($deposit['at'])<span class="text-ink-3">{{ \App\Support\Series\SeriesPresenter::time($deposit['at'], auth()->user(), 'j M, H:i') }}</span>@endif
+                        </li>
+                    @endforeach
+                </ol>
+            </div>
+        @endif
         @if ($topUp || $manage || $zapOpen)
             <div class="flex flex-wrap gap-2" data-test="pool-sponsor-cta">
                 @if ($topUp || $zapOpen)

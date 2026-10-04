@@ -8,6 +8,7 @@ use App\Models\Tournament;
 use App\Models\User;
 use App\Support\Nostr\NostrKeys;
 use Illuminate\Container\Attributes\Scoped;
+use Illuminate\Support\Carbon;
 
 /**
  * The zap sponsors of a tournament (user, 2026-10-02: „auf der Turnierseite
@@ -31,6 +32,9 @@ final class ZapSponsors
 {
     /** @var array<int, list<array{pubkey: string, npub: string, sats: int, zaps: int, first: int, user: User|null}>> */
     private array $walls = [];
+
+    /** @var array<int, list<array{sats: int, at: Carbon|null}>> */
+    private array $deposits = [];
 
     /**
      * Verified zaps out of raw receipts (JSON), each receipt id once: the
@@ -76,10 +80,23 @@ final class ZapSponsors
         return $this->walls[$tournament->id] ??= $this->read($tournament);
     }
 
+    /**
+     * The anonymous top-ups of the pot (no Nostr key), oldest first: read with the wall in the same query, so whoever
+     * paid without a key sees their sats arrived (user, 2026-10-04).
+     *
+     * @return list<array{sats: int, at: Carbon|null}>
+     */
+    public function deposits(Tournament $tournament): array
+    {
+        $this->wall($tournament);
+
+        return $this->deposits[$tournament->id] ?? [];
+    }
+
     /** Forget the remembered wall (a zap was verified in this request). */
     public function forget(int $tournamentId): void
     {
-        unset($this->walls[$tournamentId]);
+        unset($this->walls[$tournamentId], $this->deposits[$tournamentId]);
     }
 
     /**
@@ -87,24 +104,35 @@ final class ZapSponsors
      */
     private function read(Tournament $tournament): array
     {
-        $rows = IncomingPayment::query()->where('tournament_id', $tournament->id)->where('zap_verified', true)
-            ->where('pot', $tournament->potAccount())->where('source', 'zap')->where('status', IncomingPaymentStatus::Settled)
-            ->where('late', false)->whereNotNull('payer_pubkey')
-            ->groupBy('payer_pubkey')
-            ->selectRaw('payer_pubkey, sum(amount_sats) as sats, count(*) as zaps, min(settled_at) as first_at')
-            ->get();
+        // One query for the verified zaps and the anonymous top-ups (ZapWallCostTest: one read per request).
+        $payments = IncomingPayment::query()->where('tournament_id', $tournament->id)->where('status', IncomingPaymentStatus::Settled)
+            ->where('late', false)
+            ->where(fn ($query) => $query->where(fn ($zap) => $zap->where('source', 'zap')->where('zap_verified', true)
+                ->where('pot', $tournament->potAccount())->whereNotNull('payer_pubkey'))
+                ->orWhere(fn ($topUp) => $topUp->where('source', 'topup')->whereNull('payer_pubkey')))
+            ->orderBy('settled_at')->get(['source', 'payer_pubkey', 'amount_sats', 'settled_at']);
 
-        $users = User::query()->whereIn('pubkey', $rows->pluck('payer_pubkey'))->get()->keyBy('pubkey');
+        $this->deposits[$tournament->id] = array_values($payments->where('source', 'topup')
+            ->map(fn (IncomingPayment $payment): array => ['sats' => (int) $payment->amount_sats, 'at' => $payment->settled_at])->all());
+
+        $rows = $payments->where('source', 'zap')->groupBy('payer_pubkey')->map(fn ($group, $pubkey): array => [
+            'payer_pubkey' => (string) $pubkey,
+            'sats' => (int) $group->sum('amount_sats'),
+            'zaps' => $group->count(),
+            'first_at' => (string) $group->min('settled_at'),
+        ])->values();
+
+        $users = $rows->isEmpty() ? collect() : User::query()->whereIn('pubkey', $rows->pluck('payer_pubkey'))->get()->keyBy('pubkey');
         $wall = [];
 
         foreach ($rows as $row) {
-            $pubkey = (string) $row->getAttribute('payer_pubkey');
+            $pubkey = $row['payer_pubkey'];
             $wall[] = [
                 'pubkey' => $pubkey,
                 'npub' => NostrKeys::hexToNpub($pubkey),
-                'sats' => (int) $row->getAttribute('sats'),
-                'zaps' => (int) $row->getAttribute('zaps'),
-                'first' => (int) strtotime((string) $row->getAttribute('first_at')),
+                'sats' => $row['sats'],
+                'zaps' => $row['zaps'],
+                'first' => (int) strtotime($row['first_at']),
                 'user' => $users->get($pubkey),
             ];
         }

@@ -1,23 +1,30 @@
 <?php
 
+use App\Enums\PayoutStatus;
 use App\Models\Tournament;
 use App\Models\TournamentModerationEntry;
+use App\Models\TournamentParticipant;
 use App\Models\TournamentSponsor;
 use App\Models\User;
 use App\Support\Cards\ShareCard;
 use App\Support\Payouts\PayoutApproval;
+use App\Support\Payouts\PayoutRunner;
+use App\Support\Payouts\TournamentPlacements;
 use App\Support\Prizes\PrizePool;
 use App\Support\Tournaments\TournamentRuleViolation;
 use Illuminate\Support\Facades\Storage;
 use Livewire\Livewire;
+use Tests\Support\TestSigner;
 
 /*
 | A sponsor's pledge paid some other way than the pot's invoice (user,
 | 2026-10-02: "Rechnung wurde anders gezahlt"): whoever manages the pot marks
 | it as paid outside, with an amount (the open rest by default) and a note.
-| It counts toward the pot like a paid invoice and shows the logo, but it is
-| not in the wallet: the payout never takes it from there, and the pages say
-| so. Undone until the payouts are approved.
+| It counts toward the pot like a paid invoice and shows the logo. Since
+| 2026-10-04 it is part of what the payouts split, like everything set in the
+| pot (user: "Sponsoren usw und Prüfung der Wallet ist vollkommen EGAL … Was
+| eingestellt ist im Topf wird anteilig ausgezahlt"): whoever holds the money
+| tops the wallet up. Undone until the payouts are approved.
 */
 
 function sponsorOf(Tournament $tournament, int $pledge = 10_500, string $name = 'Hodl Bakery'): TournamentSponsor
@@ -101,7 +108,7 @@ test('only whoever manages the pot marks or undoes an outside payment, with a va
         ->call('openPaidOutside', $other->id)->assertNotFound();
 });
 
-test('outside money is never taken from the wallet: the payout splits only what the wallet holds, and nothing changes once approved', function () {
+test('a sponsor paid outside the wallet is part of the split, and nothing changes once approved', function () {
     Storage::fake('public');
     fakeWallet();
     $pot = ownPotWallet(0);
@@ -112,13 +119,15 @@ test('outside money is never taken from the wallet: the payout splits only what 
     $pool->markPaidOutside($sponsor, anAdmin(), 50_000, 'cash at the meetup');
     $admin = anAdmin();
 
+    // No warning about money outside the wallet any more: it is simply in the pot.
     Livewire::actingAs($admin)->test('pages::admin.payouts', ['tournamentId' => $tournament->id])
-        ->assertSeeHtml('data-test="payouts-outside-warning"');
+        ->assertDontSeeHtml('data-test="payouts-outside-warning"')
+        ->assertSeeHtml('data-test="approve-payouts"');
 
     app(PayoutApproval::class)->approve($tournament, $admin);
 
-    // 20 000 in the wallet less the 1 % fee reserve; the 50 000 paid outside are not split.
-    expect((int) $tournament->payouts()->sum('amount_sats'))->toBeLessThanOrEqual(PrizePool::afterFeeReserve(20_000))
+    // 20 000 in the wallet plus the 50 000 paid outside are 70 000; 50/30 of it, no fee reserve.
+    expect($tournament->payouts()->orderBy('place')->pluck('amount_sats')->all())->toBe([35_000, 21_000])
         ->and(fn () => $pool->undoPaidOutside($sponsor, $admin))->toThrow(TournamentRuleViolation::class)
         ->and(fn () => $pool->markPaidOutside(sponsorOf(Tournament::query()->findOrFail($tournament->id), 100, 'Late'), $admin, 100))->toThrow(TournamentRuleViolation::class)
         ->and($sponsor->refresh()->paid_outside_sats)->toBe(50_000);
@@ -127,4 +136,38 @@ test('outside money is never taken from the wallet: the payout splits only what 
         ->assertDontSeeHtml('data-test="sponsor-outside-undo"')
         ->assertDontSeeHtml('data-test="sponsor-outside-button"')
         ->assertSee(ShareCard::sats(50_000));
+});
+
+test('21 000 paid outside plus 210 zapped are split 62.5 / 37.5 between the two players who played, though the wallet holds only the 210', function () {
+    $wallet = fakeWallet();
+    fakeLightningAddresses($wallet);
+    config(['esports.wallet.open_invoices_per_user' => 100]);
+    $tournament = finishedPoolTournament($wallet, 0, 4);
+    $tournament->forceFill(['pool_closed_at' => null])->save();
+    $admin = anAdmin();
+
+    // The pot is what came in through the wallet (a zap of 210) plus the sponsor's pledge, paid outside.
+    paidPotZap($wallet, new TestSigner, $tournament, 210);
+    $pool = app(PrizePool::class);
+    $pool->markPaidOutside(sponsorOf($tournament, 21_000), $admin, 21_000, 'bank transfer');
+    // The semi-final losers (tied third) did not play on: only the finalists are eligible (62.5 / 37.5 of the pot).
+    TournamentParticipant::query()->whereKey(app(TournamentPlacements::class)->of($tournament)[2]['participants'])->update(['disqualified_at' => now()]);
+    $wallet->balanceMsats = 210_000;
+    $wallet->calls = [];
+
+    app(PayoutApproval::class)->approve($tournament->refresh(), $admin);
+
+    // 21 210 in all, no fee reserve: 21 210 * 62.5 % = 13 256.25 and * 37.5 % = 7 953.75, each rounded down.
+    expect($pool->potSats($tournament))->toBe(21_210)->and($pool->fundedSats($tournament))->toBe(210)
+        ->and($tournament->payouts()->orderBy('place')->pluck('amount_sats', 'place')->all())->toBe([1 => 13_256, 2 => 7_953])
+        ->and(collect($wallet->calls)->where('method', 'get_balance')->all())->toBe([]);
+
+    // The wallet really holds less: the payment is refused and stays retryable; once someone topped it up it is paid.
+    $first = $tournament->payouts()->where('place', 1)->sole();
+    app(PayoutRunner::class)->run($first, true);
+    expect($first->refresh()->status)->toBe(PayoutStatus::Failed)->and($first->reason)->toBe('insufficient_balance')->and($wallet->paid)->toBe([]);
+
+    $wallet->balanceMsats = 50_000_000_000;
+    app(PayoutRunner::class)->run($first->refresh(), true);
+    expect($first->refresh()->status)->toBe(PayoutStatus::Paid)->and($wallet->paid)->toHaveCount(1);
 });

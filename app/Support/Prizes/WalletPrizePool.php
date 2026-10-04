@@ -38,6 +38,9 @@ final class WalletPrizePool implements TournamentPrizePool
 
         $funding = $this->pool->funding($tournament);
         $zappers = $this->zaps->wall($tournament);
+        // Anonymous top-ups (the "fill the pot" invoice, no Nostr key): shown too, so whoever paid sees their sats arrived
+        // (user, 2026-10-04: "anonyme Einzahlungen auch anzeigen, damit er es sehen kann").
+        $deposits = $this->zaps->deposits($tournament);
         // The pot shows as the pot as set plus the zaps on top (without a target: what else came in, plus the zaps).
         $zapped = min($sats, array_sum(array_column($zappers, 'sats')));
 
@@ -46,6 +49,7 @@ final class WalletPrizePool implements TournamentPrizePool
             'base' => $sats - $zapped,
             'zaps' => $zapped,
             'zappers' => $zappers,
+            'deposits' => $deposits,
             'left' => (int) $this->pool->remainingSats($tournament),
             'mode' => $tournament->prizeMode(),
             'split' => $this->pool->projection($tournament),
