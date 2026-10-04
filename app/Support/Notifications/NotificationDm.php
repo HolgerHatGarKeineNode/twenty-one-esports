@@ -128,10 +128,10 @@ final class NotificationDm
 
     /**
      * NIP "Notifications" (rev. 9.7): the player's DM relays are looked up
-     * ({@see DmRelays}). With a `10050` the message is a NIP-17 gift wrap to
-     * those relays; with none (the lookup answered, the list is missing) a
-     * NIP-04 kind `4` to the player's NIP-65 inbox; with no answer at all a
-     * gift wrap, as before. Every DM also goes to the chat relays, where it
+     * ({@see DmRelays}). With a `10050` naming a relay the message is a
+     * NIP-17 gift wrap to those relays, never a kind `4`; with none (every
+     * lookup relay answered, no list or an empty one) a NIP-04 kind `4` to
+     * the player's NIP-65 inbox; with no complete answer a gift wrap. Every DM also goes to the chat relays, where it
      * has always gone. `$fresh` skips the cached lookup.
      */
     public function deliver(User $user, string $text, ?int $match = null, bool $fresh = false): ?DmDelivery

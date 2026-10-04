@@ -11,6 +11,10 @@ namespace App\Support\Notifications;
  * answer counts as "has no DM relay list" (P45 audit F3). `dmRelays` may be
  * filled while `known` is false: a list some relay returned is used. `dmRelays` are the relays of the newest `10050`,
  * `inboxRelays` the read relays of the newest NIP-65 list (`10002`).
+ * `namesDmRelays`: the newest `10050` names at least one relay, usable by the
+ * server or not (a host without `wss://`): such a player reads NIP-17 and
+ * never gets a kind 4 (user, 2026-10-04: "nur verwenden, wenn das Profil
+ * dafür nicht ausgelegt ist (weil INBOX-Relay fehlt)").
  */
 final readonly class DmRoute
 {
@@ -26,6 +30,7 @@ final readonly class DmRoute
         public bool $known,
         public array $dmRelays = [],
         public array $inboxRelays = [],
+        public bool $namesDmRelays = false,
     ) {}
 
     public static function unknown(): self
@@ -34,16 +39,16 @@ final readonly class DmRoute
     }
 
     /**
-     * NIP-17 unless every lookup relay answered and none has a `10050`: then
-     * NIP-04, the only DM a client without NIP-17 reads (P45, the user's
-     * decision of 2026-09-28). An unanswered lookup stays NIP-17, the format
-     * that shows the least to the relays.
+     * NIP-17 unless every lookup relay answered and none has a `10050` naming
+     * a relay: then NIP-04, the only DM a client without NIP-17 reads (P45,
+     * the user's decisions of 2026-09-28 and 2026-10-04). An unanswered
+     * lookup stays NIP-17, the format that shows the least to the relays.
      *
      * @return 'nip17'|'nip04'
      */
     public function format(): string
     {
-        return $this->known && $this->dmRelays === [] ? self::NIP04 : self::NIP17;
+        return $this->known && $this->dmRelays === [] && ! $this->namesDmRelays ? self::NIP04 : self::NIP17;
     }
 
     /**

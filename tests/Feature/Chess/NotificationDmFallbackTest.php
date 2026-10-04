@@ -156,6 +156,35 @@ test('the newest DM relay list counts, even when an older one had relays', funct
     expect(app(DmRelays::class)->for($this->player->pubkey)->format())->toBe('nip04');
 });
 
+/*
+ * P1 of the clan applications plan (user, 2026-10-04: "Die veraltete am besten sperren und nur
+ * verwenden, wenn das Profil dafür nicht ausgelegt ist (weil INBOX-Relay fehlt)"): a player whose
+ * DM relay list names a relay never gets a kind 4, complete or partial lookup, fresh or cached.
+ */
+test('a player with a DM relay list never gets a kind 4, fresh or from the cached lookup', function (array $relayTags, ?int $answered) {
+    fakeDmLookup([
+        $this->player->sign(10050, $relayTags),
+        $this->player->sign(10002, [['r', DM_INBOX_RELAY, 'read']]),
+    ], answered: $answered);
+
+    foreach ([true, false] as $fresh) {
+        $delivery = NotificationDm::fromConfig()->deliver($this->user, 'Your application to the clan arrived', fresh: $fresh);
+
+        expect($delivery->format)->toBe('nip17')
+            ->and($delivery->event->kind)->toBe(1059)
+            ->and(array_keys(deliveriesOf($delivery->event)))->not->toContain(DM_INBOX_RELAY);
+    }
+
+    expect(RelayDelivery::query()->whereIn('nostr_event_id', NostrEvent::query()->where('kind', 4)->select('id'))->count())->toBe(0)
+        ->and(NostrEvent::query()->where('kind', 4)->count())->toBe(0);
+})->with([
+    'usable relay, complete lookup' => [[['relay', DM_PLAYER_RELAY]], null],
+    'usable relay, partial lookup' => [[['relay', DM_PLAYER_RELAY]], 1],
+    // Named, but no websocket URL: the player still reads NIP-17, never NIP-04.
+    'relay without a scheme, complete lookup' => [[['relay', 'inbox.example.com']], null],
+    'relay with an http scheme, complete lookup' => [[['relay', 'https://inbox.example.com']], null],
+]);
+
 test('a relay the player names that is not public is never contacted', function () {
     fakeDmLookup([$this->player->sign(10050, [['relay', 'ws://10.0.0.5:6379'], ['relay', DM_PLAYER_RELAY]])]);
 

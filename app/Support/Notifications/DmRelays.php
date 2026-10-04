@@ -57,7 +57,7 @@ final class DmRelays
         $key = 'dm-relays:'.$pubkey;
 
         if (! $fresh && is_array($cached = Cache::get($key))) {
-            return new DmRoute(true, $cached['dm'] ?? [], $cached['inbox'] ?? []);
+            return new DmRoute(true, $cached['dm'] ?? [], $cached['inbox'] ?? [], (bool) ($cached['named'] ?? false));
         }
 
         $relays = self::lookupRelays();
@@ -73,10 +73,12 @@ final class DmRelays
 
         // Complete: every lookup relay answered to EOSE. Only then is a missing 10050 a fact (audit F3).
         $complete = $read['answered'] === count($relays);
+        $dmList = self::newest($read['events'], $pubkey, 10050);
         $route = new DmRoute(
             $complete,
-            self::urls(self::newest($read['events'], $pubkey, 10050), fn (array $tag): bool => ($tag[0] ?? null) === 'relay'),
+            self::urls($dmList, fn (array $tag): bool => ($tag[0] ?? null) === 'relay'),
             self::urls(self::newest($read['events'], $pubkey, 10002), fn (array $tag): bool => ($tag[0] ?? null) === 'r' && in_array($tag[2] ?? 'read', ['read'], true)),
+            self::namesRelays($dmList),
         );
 
         // A partial answer is never remembered: the next DM asks again.
@@ -84,7 +86,7 @@ final class DmRelays
             return $route;
         }
 
-        Cache::put($key, ['dm' => $route->dmRelays, 'inbox' => $route->inboxRelays], now()->addMinutes(self::CACHE_MINUTES));
+        Cache::put($key, ['dm' => $route->dmRelays, 'inbox' => $route->inboxRelays, 'named' => $route->namesDmRelays], now()->addMinutes(self::CACHE_MINUTES));
 
         return $route;
     }
@@ -100,6 +102,21 @@ final class DmRelays
         usort($mine, fn (SignedEvent $a, SignedEvent $b): int => [$b->createdAt, $a->id] <=> [$a->createdAt, $b->id]);
 
         return $mine[0] ?? null;
+    }
+
+    /**
+     * Whether a `10050` names any relay at all, usable here or not
+     * ({@see DmRoute::$namesDmRelays}). An empty list names no inbox.
+     */
+    private static function namesRelays(?SignedEvent $list): bool
+    {
+        foreach ($list === null ? [] : $list->tags as $tag) {
+            if (($tag[0] ?? null) === 'relay' && is_string($tag[1] ?? null) && trim($tag[1]) !== '') {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     /**
