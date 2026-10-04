@@ -114,7 +114,7 @@ beforeEach(function () {
     });
 });
 
-function liveShot(Page $page, string $name): void
+function tournamentLiveShot(Page $page, string $name): void
 {
     $dir = getenv('LIVE_SHOTS');
 
@@ -217,7 +217,7 @@ test('the live page sorts eight open series by urgency and holds 40-character na
                 'cards' => $probe['cards'], 'lanes' => $probe['lanes'], 'tops' => $probe['tops']];
 
             if ($locale === 'en') {
-                liveShot($page, "live-{$width}");
+                tournamentLiveShot($page, "live-{$width}");
             }
 
             expect($probe['lang'])->toBe($locale)
@@ -237,7 +237,7 @@ test('the live page sorts eight open series by urgency and holds 40-character na
     // A Livewire roundtrip: pick an entry to disqualify, then cancel; the console stays empty, every answer is 2xx.
     $page->locator('[data-test^=control-dq-]')->first()->click();
     BrowserWait::until($page, '() => document.querySelector("[data-test=control-dq-form]") !== null', 10_000);
-    liveShot($page, 'live-dq-1440');
+    tournamentLiveShot($page, 'live-dq-1440');
     $page->locator('[data-test=control-dq-cancel]')->click();
     BrowserWait::until($page, '() => document.querySelector("[data-test=control-dq-form]") === null', 10_000);
     $webpage->assertNoJavaScriptErrors();
@@ -278,7 +278,7 @@ test('the live page without anything open: sign-up, no open series, a named dire
         $probe = $page->evaluate(LIVE_PROBE);
         $hooks = $page->evaluate('() => ["live-overview", "live-empty", "control", "desk-chat", "live-no-bracket"].filter((t) => document.querySelector(`[data-test=${t}]`))');
         $measured[$case] = ['scroll' => $probe['scroll'], 'overflowing' => count($probe['overflowing']), 'hooks' => $hooks, 'height' => $probe['tops']['page']];
-        liveShot($page, "live-{$case}-390");
+        tournamentLiveShot($page, "live-{$case}-390");
 
         expect($probe['scroll'][0])->toBeLessThanOrEqual($probe['scroll'][1])
             ->and($probe['overflowing'])->toBe([]);
@@ -324,7 +324,7 @@ test('the match room check-in block holds a 40-character name and says both cloc
             }
             JS);
         $measured[$width] = ['scroll' => $box['scroll'], 'height' => $box['height'], 'outside' => count($box['outside'])];
-        liveShot($page, "room-checkin-{$width}");
+        tournamentLiveShot($page, "room-checkin-{$width}");
 
         expect($box['scroll'][0])->toBeLessThanOrEqual($box['scroll'][1])
             ->and($box['outside'])->toBe([])
