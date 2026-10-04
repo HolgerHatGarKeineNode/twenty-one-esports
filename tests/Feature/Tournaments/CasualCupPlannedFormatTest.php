@@ -10,6 +10,7 @@ use App\Support\Tournaments\CasualCups;
 use App\Support\Tournaments\FormatOptions;
 use App\Support\Tournaments\Lobbies;
 use App\Support\Tournaments\TournamentSignups;
+use App\Support\TwentyOne\Stream\TournamentPlaybook;
 use App\Support\TwentyOne\Stream\TournamentSlides;
 use Carbon\CarbonImmutable;
 use Illuminate\Support\Facades\Event;
@@ -228,4 +229,23 @@ test('a cup of two is named a duel, planned or stored, in English and German; a 
     $cup->forceFill(['status' => TournamentStatus::Drawing, 'format' => TournamentFormat::RoundRobin, 'options' => ['iterations' => 3, 'rankBy' => 'points']])->save();
 
     expect(Lobbies::formatLabel($cup->refresh()))->toBe('Duel');
+});
+
+test('the stream\'s "How it runs" tells a duel its games, planned or live: chess N games with the colours alternating, a series best of N', function () {
+    $duel = [['title' => 'Duel', 'line' => '3 games, colours alternate. Most points wins.']];
+
+    // Planned from two sign-ups (the next-tournament slide).
+    $cup = openCup();
+    cupSignups($cup, 2);
+    $slide = app(TournamentSlides::class)->data($cup->refresh(), now()->getTimestampMs());
+
+    expect($slide['howItRuns']['steps'])->toBe($duel)->and($slide['howItRuns']['short'])->toBe('One match, two players');
+
+    // Switched at the close to the chess duel (a round robin of three games); a running Rocket League duel is a best of 3.
+    $cup->forceFill(['status' => TournamentStatus::Drawing, 'format' => TournamentFormat::RoundRobin, 'options' => ['iterations' => 3, 'rankBy' => 'points']])->save();
+    $series = runningCup(2, TournamentFormat::SingleElimination, ['bestOf' => 3, 'finalBestOf' => 3], 'rocket-league', '1v1');
+
+    expect(TournamentPlaybook::of($cup->refresh(), 2, 'UTC')['steps'])->toBe($duel)
+        ->and(TournamentPlaybook::of($series, 2, 'UTC')['steps'])->toBe([['title' => 'Duel', 'line' => 'Best of 3.']])
+        ->and(json_encode(TournamentPlaybook::of($series, 2, 'UTC')))->not->toContain('Lose once')->not->toContain('Final');
 });

@@ -57,9 +57,12 @@ final class TournamentPlaybook
             ];
         }
 
+        // A cup of two plays one match (CasualCups::formatFor()), not the round robin or knockout it is stored as.
+        $duel = CasualCups::isDuel($tournament);
+
         return [
-            'short' => FormatCopy::for($tournament->format)['short'],
-            'steps' => self::steps($tournament, $n),
+            'short' => $duel ? 'One match, two players' : FormatCopy::for($tournament->format)['short'],
+            'steps' => $duel ? self::duelSteps($tournament) : self::steps($tournament, $n),
             'matches' => self::matches($profile->isSeries(), $options->bestOf, $tournament->format->hasFinal() ? $options->finalBestOf : $options->bestOf, $profile->isDaily()),
             'showUp' => self::showUp($tournament, $profile->isSeries(), $n),
             'starts' => $at($tournament->starts_at, 'D j M, H:i T'),
@@ -98,6 +101,21 @@ final class TournamentPlaybook
             // Not enabled for any live game (Estimator::disabledReason); described plainly, never drawn.
             default => [['title' => $tournament->format->label(), 'line' => FormatCopy::for($tournament->format)['how']]],
         };
+    }
+
+    /**
+     * A duel's one match: chess as a round robin of two over `duel_games`
+     * games, the series games as one best of `duel_best_of`.
+     *
+     * @return list<array{title: string, line: string}>
+     */
+    private static function duelSteps(Tournament $tournament): array
+    {
+        $options = $tournament->formatOptions();
+
+        return [['title' => 'Duel', 'line' => $tournament->profile()->isSeries()
+            ? 'Best of '.$options->bestOf.'.'
+            : $options->iterations.' games, colours alternate. Most points wins.']];
     }
 
     /**
