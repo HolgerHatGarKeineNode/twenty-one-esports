@@ -260,15 +260,10 @@ final class TournamentNow
                 'line' => (string) __('Thanks for playing!'), 'action' => ['label' => (string) __('Watch the rest'), 'href' => self::watchUrl($tournament), 'icon' => 'eye'], 'round' => $live];
         }
 
-        // A table (round robin) stores every round up front: no match ahead means all games are played.
-        if (! $ahead && $last->round->stage->format === TournamentFormat::RoundRobin) {
-            return ['state' => 'done', 'title' => (string) __('Your games are done'), 'context' => $live === null ? null : self::roundLine($live),
-                'line' => (string) __('The final standings come when the last games end.'), 'action' => ['label' => (string) __('Watch the rest'), 'href' => self::watchUrl($tournament), 'icon' => 'eye'], 'round' => $live];
-        }
+        if (! $ahead && TournamentGameEnd::playedOut($tournament, $last)) {
+            $title = $last->round->stage->format === TournamentFormat::RoundRobin ? __('Your games are done') : __('Your matches are done — waiting for the others');
 
-        // Swiss pairs one round at a time, so nothing lies ahead in any round: only its planned count tells the last one.
-        if (! $ahead && $last->round->stage->format === TournamentFormat::Swiss && $last->round->number >= app(TournamentRunner::class)->swissRounds($tournament)) {
-            return ['state' => 'done', 'title' => (string) __('Your matches are done — waiting for the others'), 'context' => $live === null ? null : self::roundLine($live),
+            return ['state' => 'done', 'title' => (string) $title, 'context' => $live === null ? null : self::roundLine($live),
                 'line' => (string) __('The final standings come when the last games end.'), 'action' => ['label' => (string) __('Watch the rest'), 'href' => self::watchUrl($tournament), 'icon' => 'eye'], 'round' => $live];
         }
 

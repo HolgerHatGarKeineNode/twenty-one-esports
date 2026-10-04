@@ -139,6 +139,62 @@ test('a chess duel shows game 1 of 3 with the score and that game 2 follows, and
         ->assertDontSeeText('Rematch');
 });
 
+test('a player whose last Swiss or round-robin match is done is told the matches are done, not to wait for a next round', function () {
+    // Swiss, one round planned: round 1 is the last, and the other match is still playing.
+    $swiss = runningChess(TournamentFormat::Swiss, 4, TournamentResultsMode::Players, ['swissRounds' => 1]);
+    [$game] = endChessGames($swiss);
+    app(ChessGameService::class)->resign($game, $game->black);
+
+    expect($swiss->refresh()->status)->toBe(TournamentStatus::Running);
+    $this->actingAs($game->white)->get(route('games.show', $game))->assertOk()
+        ->assertSee('data-state="done"', false)
+        ->assertSeeInOrder(['Your matches are done — waiting for the others', 'You won this game', 'The final standings come when the last games end.', '1 other match is still being played.', 'Back to the tournament'])
+        ->assertDontSeeText('wait for the next round')
+        ->assertDontSeeText('The next round starts');
+
+    // Round robin of three, results by the directors: after two rounds the entry with the round-3 bye has played both its games.
+    $table = runningChess(TournamentFormat::RoundRobin, 3);
+    $runner = app(TournamentRunner::class);
+
+    foreach (range(1, 2) as $number) {
+        $round = TournamentRunner::currentRound($table->refresh());
+
+        foreach (TournamentMatch::query()->where('tournament_round_id', $round->id)->where('status', 'ready')->get() as $match) {
+            $runner->enterResult($match, $table->creator, ['result' => '1-0']);
+        }
+
+        $runner->closeRound($round, $table->creator);
+    }
+
+    $open = TournamentMatch::query()->where('tournament_id', $table->id)->whereNull('result')->where('bracket', '!=', 'bye')->with('slots.participant')->sole();
+    $player = TournamentParticipant::query()->where('tournament_id', $table->id)->whereNotIn('id', $open->slots->pluck('tournament_participant_id'))->sole()->user;
+    $last = ChessGame::query()->whereIn('tournament_match_id', $table->matches()->select('id'))
+        ->where(fn ($query) => $query->where('white_id', $player->id)->orWhere('black_id', $player->id))->orderByDesc('id')->firstOrFail();
+
+    expect($table->refresh()->status)->toBe(TournamentStatus::Running);
+    $this->actingAs($player)->get(route('games.show', $last))->assertOk()
+        ->assertSee('data-state="done"', false)
+        ->assertSee('Your matches are done — waiting for the others')
+        ->assertDontSeeText('wait for the next round');
+
+    // A two-stage group's last round is not the end: the knockout stage follows.
+    $groups = runningChess(TournamentFormat::TwoStage, 8);
+
+    while (($round = TournamentRunner::currentRound($groups->refresh())->load('stage'))->number < $round->stage->rounds()->count()) {
+        foreach (TournamentMatch::query()->where('tournament_round_id', $round->id)->where('status', 'ready')->get() as $match) {
+            $runner->enterResult($match, $groups->creator, ['result' => '1-0']);
+        }
+
+        $runner->closeRound($round, $groups->creator);
+    }
+
+    $match = TournamentMatch::query()->where('tournament_round_id', $round->id)->where('status', 'ready')->with(['round.stage', 'slots.participant'])->firstOrFail();
+    $runner->enterResult($match, $groups->creator, ['result' => '1-0']);
+
+    expect(TournamentGameEnd::after($groups->refresh(), $match->refresh()->load(['round.stage', 'slots.participant']), 0))
+        ->toBe(['waiting', 'Your match is done: wait for the next round', 'The next round starts once the open matches are decided.']);
+});
+
 test('a finished tournament board game shows the tournament panel and no next opponent', function () {
     NineMensMorrisOn::play();
     $tournament = Tournament::factory()->create([

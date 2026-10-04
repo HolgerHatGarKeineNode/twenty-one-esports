@@ -24,7 +24,7 @@ use Illuminate\Support\Collection;
  * It says the result of this game, where the match stands (a two-player
  * duel plays its games as matches between the same pair: "Game 2 of 3"),
  * what comes next for the viewer (the match goes on, wait for the next
- * round, out, the cup won, the tournament over) and how many matches the
+ * round, all matches played, out, the cup won, the tournament over) and how many matches the
  * others are still playing, and "Back to the tournament". Nobody is moved
  * off the page on their own (user, 2026-10-03: "Da ist ein Auto-Redirect
  * irgendwie drin oder? Das bitte ausmachen"): the player stays on the
@@ -201,7 +201,33 @@ final class TournamentGameEnd
             return ['out', __('You are out'), $cup ? __('Thanks for playing! Follow the rest of the cup on the tournament page.') : __('Thanks for playing! Follow the rest of the tournament on the tournament page.')];
         }
 
+        if ($participantId !== null && self::playedOut($tournament, $match)) {
+            return ['done', __('Your matches are done — waiting for the others'), __('The final standings come when the last games end.')];
+        }
+
         return ['waiting', __('Your match is done: wait for the next round'), __('The next round starts once the open matches are decided.')];
+    }
+
+    /**
+     * Whether an entry with no match ahead has played its last match: a round
+     * robin stores every round up front, so nothing ahead means all games are
+     * played; Swiss pairs one round at a time, so only its planned count
+     * tells the last round. A group stage is never the end: its knockout
+     * stage follows. The tournament page's hero (TournamentNow) reads it too.
+     */
+    public static function playedOut(Tournament $tournament, TournamentMatch $last): bool
+    {
+        $stage = $last->round->stage;
+
+        if ($stage->number < (int) TournamentStage::query()->where('tournament_id', $tournament->id)->max('number')) {
+            return false;
+        }
+
+        return match ($stage->format) {
+            TournamentFormat::RoundRobin => true,
+            TournamentFormat::Swiss => $last->round->number >= app(TournamentRunner::class)->swissRounds($tournament),
+            default => false,
+        };
     }
 
     /** Whether the match is a knockout of the last stage: an entry without a further match there is out. */
