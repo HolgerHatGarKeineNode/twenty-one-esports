@@ -14,6 +14,7 @@ use App\Models\User;
 use App\Support\Board\LiveGameGuard;
 use App\Support\Clans\ClanStats;
 use App\Support\Engagement\ClanHashrate;
+use App\Support\LatinFontPreloads;
 use App\Support\PageMeta;
 use App\Support\Prizes\WalletPrizePool;
 use App\Support\Rating\RatingSettings;
@@ -42,6 +43,7 @@ use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\RateLimiter;
+use Illuminate\Support\Facades\Vite;
 use Illuminate\Support\ServiceProvider;
 
 class AppServiceProvider extends ServiceProvider
@@ -172,6 +174,9 @@ class AppServiceProvider extends ServiceProvider
             RatingSettings::forget();
             LeagueSettings::forget();
         });
+
+        // @fonts preloads the latin webfont files only; latin-ext loads when a page uses its glyphs (P5, F12).
+        Vite::usePreloadTagAttributes(LatinFontPreloads::resolve(...));
 
         // A request's memos (RequestMemo) end with its response.
         Event::listen(RequestHandled::class, fn (RequestHandled $event) => RequestMemo::close($event->request));
