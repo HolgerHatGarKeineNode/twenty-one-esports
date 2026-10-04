@@ -1,6 +1,7 @@
 <?php
 
 use App\Enums\StackerRunStatus;
+use App\Games\Blockfill;
 use App\Jobs\VerifyStackerRun;
 use App\Models\StackerRun;
 use App\Models\User;
@@ -169,6 +170,8 @@ test('the result screen of a verified ranked run opens the share sheet', functio
 
 test('the player\'s own row on scores/blockfill opens the share sheet', function (string $locale, int $width) {
     $this->travelTo(CarbonImmutable::parse('2026-10-07 12:00:00'));
+    // No week runs until an admin approved it (d2fa67ca): without the approval the board has no rows to put a button in.
+    leagueWeeksApproved(Blockfill::SLUG);
     $this->app->instance(Verifier::class, new FakeStackerVerifier);
     $others = ['HalvingHodler21' => 2800, 'Lightning Larry' => 3300];
 
