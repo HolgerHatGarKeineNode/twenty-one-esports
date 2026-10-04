@@ -7,9 +7,12 @@ use App\Models\Admin;
 use App\Models\ChessGame;
 use App\Models\Tournament;
 use App\Models\TournamentMatch;
+use App\Models\TournamentParticipant;
 use App\Models\User;
 use App\Support\Tournaments\TournamentDesk;
+use App\Support\Tournaments\TournamentDraws;
 use App\Support\Tournaments\TournamentSignups;
+use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Queue;
 use Livewire\Livewire;
 use Tests\Support\TestSigner;
@@ -91,15 +94,83 @@ test('a withdrawn player is not a member any more, nor is a removed entry', func
         ->and(TournamentDesk::for($tournament, $anna))->toBeNull();
 });
 
-test('after the draw the members are the bracket\'s entries, a disqualified one left out', function () {
+test('after the draw the members are the bracket\'s entries, a disqualified one kept', function () {
     $tournament = runningChess(TournamentFormat::SingleElimination, 4, TournamentResultsMode::Players);
     $entries = $tournament->participants()->orderBy('id')->get();
     $entries[3]->update(['disqualified_at' => now()]);
 
-    $players = $entries->take(3)->map(fn ($entry) => User::query()->find($entry->user_id)->pubkey)->all();
+    $players = $entries->map(fn ($entry) => User::query()->find($entry->user_id)->pubkey)->all();
+    $disqualified = User::query()->find($entries[3]->user_id);
 
     expect(deskPubkeys($tournament))->toEqualCanonicalizing([...$players, $tournament->creator->pubkey])
-        ->and(deskPubkeys($tournament))->not->toContain(User::query()->find($entries[3]->user_id)->pubkey);
+        ->and(TournamentDesk::isMember($tournament, $disqualified))->toBeTrue()
+        ->and(TournamentDesk::for($tournament, $disqualified))->not->toBeNull();
+});
+
+/*
+ * Tournament 2, 2026-10-04: the organizer saw a desk message of 11:06 UTC in Amethyst and none of 15:00/15:04. NIP-17
+ * ("The set of `pubkey` + `p` tags defines a chat room. If a new `p` tag is added or a current one is removed, a new
+ * room is created with a clean message history.") and Amethyst key a group by its pubkey set, so every change of the
+ * desk's member list opens a new, empty conversation in every other client. During sign-up that cannot be helped
+ * (a new entrant has to join); from the close on the set holds: the draw leaves the solo pool's reserves in, and a
+ * disqualification does not take its players out.
+ */
+test('from the sign-up close to the end the desk keeps one member set: draw, reserves and disqualifications included', function () {
+    $hash = hash('sha256', 'block 900001');
+    $tip = 900000;
+    Http::fake(function ($request) use (&$tip, $hash) {
+        return match (true) {
+            str_ends_with($request->url(), '/blocks/tip/height') => Http::response((string) $tip),
+            str_ends_with($request->url(), '/block-height/900001') => Http::response($hash),
+            str_ends_with($request->url(), '/block/'.$hash) => Http::response(['timestamp' => now()->addMinutes(10)->getTimestamp()]),
+            default => Http::response('', 404),
+        };
+    });
+    config(['esports.bitcoin.draw_block' => 'next']);
+
+    // RL 3v3: two lineups and seven solo players, so the draw makes two mix teams and leaves one reserve.
+    $tournament = openTournament(['capacity' => 5], rocketLeague: true);
+    $director = User::factory()->create();
+    $tournament->directors()->attach($director->id, ['added_by_id' => $tournament->created_by_id]);
+    [$lineupA, $captainA, $signerA] = keyedLineup();
+    [$lineupB, $captainB, $signerB] = keyedLineup();
+    lineupSignup($tournament, $lineupA, $captainA, $signerA);
+    lineupSignup($tournament, $lineupB, $captainB, $signerB);
+
+    $solos = [];
+
+    foreach (range(1, 7) as $ignored) {
+        [$player, $signer] = keyedPlayer();
+        soloSignup($tournament, $player, $signer);
+        $solos[] = $player->pubkey;
+    }
+
+    $atClose = deskPubkeys($tournament);
+    expect($atClose)->toContain($tournament->creator->pubkey, $director->pubkey, $captainA->pubkey, $captainB->pubkey, ...$solos);
+
+    $this->travel(25)->hours();
+    $draws = app(TournamentDraws::class);
+    expect($draws->close($tournament->refresh()))->toBeTrue()
+        ->and($tournament->refresh()->status)->toBe(TournamentStatus::Drawing)
+        ->and(deskPubkeys($tournament))->toEqualCanonicalizing($atClose);
+
+    $tip = 900006;
+    expect($draws->resolve($tournament))->toBeTrue()
+        ->and($tournament->refresh()->status)->toBe(TournamentStatus::Running)
+        ->and($draws->mixTeams($tournament, $hash)['reserves'])->toHaveCount(1)
+        // The reserve signed up and may still come in: the draw does not open a new room for everybody.
+        ->and(deskPubkeys($tournament))->toEqualCanonicalizing($atClose);
+
+    $reserve = User::query()->findOrFail($draws->mixTeams($tournament, $hash)['reserves'][0]);
+    expect(TournamentDesk::for($tournament, $reserve))->not->toBeNull();
+
+    // A disqualified mix team and lineup stay in the desk (they may ask the direction why), the room stays one room.
+    TournamentParticipant::query()->where('tournament_id', $tournament->id)->orderBy('id')->get()->take(2)
+        ->each(fn (TournamentParticipant $entry) => $entry->update(['disqualified_at' => now()]));
+    expect(deskPubkeys($tournament))->toEqualCanonicalizing($atClose);
+
+    $tournament->update(['status' => TournamentStatus::Finished]);
+    expect(deskPubkeys($tournament))->toEqualCanonicalizing($atClose);
 });
 
 test('the desk is open from sign-up until a day after the end, never for a draft or a called-off tournament', function () {

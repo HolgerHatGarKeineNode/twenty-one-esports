@@ -21,13 +21,24 @@ use Carbon\CarbonInterface;
  * never through the league server, which cannot read it and stores nothing.
  *
  * Members, read on every page load (NIP-17 sends to the `p` list of the
- * moment, so the group follows sign-ups and withdrawals):
+ * moment):
  *
- *   - the entrants: before the bracket exists every active sign-up (its
- *     players and the person who entered it), after it every entry that is
- *     not disqualified (its players, and who entered it);
+ *   - the entrants: the players of every active sign-up and the person who
+ *     entered it, and the players of every bracket entry;
  *   - the tournament direction (`manager`): the creator, the named
  *     directors and the league's admins; their messages are marked.
+ *
+ * NIP-17: "The set of `pubkey` + `p` tags defines a chat room. If a new `p`
+ * tag is added or a current one is removed, a new room is created with a
+ * clean message history." Other clients (Amethyst) key the group by that set,
+ * so each change of the list opens a new, empty conversation there (tournament
+ * 2, 2026-10-04: the organizer saw the desk message of 11:06 UTC in Amethyst,
+ * not those of 15:00). During sign-up that cannot be helped: an entrant joins
+ * or withdraws. From the close on the set holds until the desk closes: the
+ * draw keeps the solo pool's reserves in, and a disqualified entry stays a
+ * member. That is deliberate: a disqualification during the run must not open
+ * a new room for every player, the disqualified player may still ask the
+ * direction why, and the bracket shows the entry publicly anyway.
  *
  * Open from sign-up through a day after the end (TournamentLiveSlides::
  * finishedAt()); never for a draft, a called-off tournament or a league week
@@ -152,20 +163,22 @@ final class TournamentDesk
     }
 
     /**
+     * The players of every active sign-up and who entered it, plus the
+     * players of every bracket entry, disqualified ones included. Sign-ups
+     * are frozen from the close on (TournamentModeration::assertBeforeDraw()),
+     * and every bracket entry is drawn from them, so this set no longer
+     * changes after the close: a solo player the draw left as a reserve
+     * stays, and so does a disqualified entry.
+     *
      * @return list<int>
      */
     private static function entrantIds(Tournament $tournament): array
     {
-        $entries = TournamentParticipant::query()->where('tournament_id', $tournament->id)->whereNull('disqualified_at')->get();
+        $signedUp = TournamentSignup::query()->where('tournament_id', $tournament->id)->active()->get()
+            ->flatMap(fn (TournamentSignup $signup): array => [...array_map(intval(...), $signup->members ?? []), ...($signup->user_id === null ? [] : [$signup->user_id])])->all();
+        $drawn = TournamentParticipant::query()->where('tournament_id', $tournament->id)->get()
+            ->flatMap(fn (TournamentParticipant $entry): array => $entry->memberIds())->all();
 
-        if (TournamentParticipant::query()->where('tournament_id', $tournament->id)->exists()) {
-            $enteredBy = TournamentSignup::query()->whereKey($entries->pluck('tournament_signup_id')->filter()->all())->pluck('user_id')->filter()->all();
-            $ids = [...$entries->flatMap(fn (TournamentParticipant $entry): array => $entry->memberIds())->all(), ...$enteredBy];
-        } else {
-            $ids = TournamentSignup::query()->where('tournament_id', $tournament->id)->active()->get()
-                ->flatMap(fn (TournamentSignup $signup): array => [...array_map(intval(...), $signup->members ?? []), ...($signup->user_id === null ? [] : [$signup->user_id])])->all();
-        }
-
-        return array_values(array_unique(array_map(intval(...), $ids)));
+        return array_values(array_unique(array_map(intval(...), [...$signedUp, ...$drawn])));
     }
 }
