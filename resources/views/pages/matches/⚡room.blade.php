@@ -1016,8 +1016,8 @@ new #[Title('Match room')] #[Layout('layouts::app', ['section' => 'matches', 'sc
         <section aria-labelledby="games-h" class="flex flex-col gap-3 rounded-lg bg-card px-4 py-5 lg:px-6" data-test="games">
             <span class="flex flex-wrap items-baseline justify-between gap-2"><h2 id="games-h" class="m-0 text-[15px] font-bold">{{ __('Games in this series') }}</h2><span class="text-xs text-ink-2">{{ $hasGoals ? __('after each game, enter the team goals from the end screen') : __('after each game, pick its winner') }}</span></span>
             @if ($hasGoals)
-            <div class="grid grid-cols-[64px_56px_12px_56px_minmax(0,1fr)] items-center gap-2 text-xs text-ink-3 lg:grid-cols-[72px_60px_12px_60px_minmax(0,1fr)_130px]">
-                <span>{{ __('Game #') }}</span><span class="text-center">{{ $m->challenger_tag }}</span><span></span><span class="text-center">{{ $m->challenged_tag }}</span><span>{{ __('Winner') }}</span><span class="max-lg:hidden"></span>
+            <div class="grid grid-cols-[64px_56px_12px_56px_minmax(0,1fr)] items-end gap-2 text-xs text-ink-3 lg:grid-cols-[72px_60px_12px_60px_minmax(0,1fr)_130px]">
+                <span>{{ __('Game #') }}</span><span class="text-center leading-tight [overflow-wrap:anywhere]" data-test="sheet-name-challenger">{{ $m->challenger_name }}</span><span></span><span class="text-center leading-tight [overflow-wrap:anywhere]" data-test="sheet-name-challenged">{{ $m->challenged_name }}</span><span>{{ __('Winner') }}</span><span class="max-lg:hidden"></span>
             </div>
             @endif
             @foreach ($this->sheet as $index => $row)
@@ -1027,13 +1027,13 @@ new #[Title('Match room')] #[Layout('layouts::app', ['section' => 'matches', 'sc
                     <b>{{ __('Game :n', ['n' => $index + 1]) }}</b>
                     @foreach ($hasGoals ? ['c', 'd'] : [] as $box)
                         <input type="number" inputmode="numeric" min="0" max="99" wire:model.live.blur="sheet.{{ $index }}.{{ $box }}" @disabled(! $editable || $row['unknown'] || $decided)
-                               aria-label="{{ __('Goals of :clan in game :n', ['clan' => $m->sideTag($box === 'c' ? 'challenger' : 'challenged'), 'n' => $index + 1]) }}" data-test="goals-{{ $index }}-{{ $box }}"
+                               aria-label="{{ __('Goals of :clan in game :n', ['clan' => $box === 'c' ? $m->challenger_name : $m->challenged_name, 'n' => $index + 1]) }}" data-test="goals-{{ $index }}-{{ $box }}"
                                @class(['h-11 w-full rounded-md border bg-ground px-2 text-center text-[15px] text-ink disabled:opacity-60', 'border-btc' => $current && $editable, 'border-edge' => ! ($current && $editable)])>
                         @if ($box === 'c')<span class="text-center text-ink-3">:</span>@endif
                     @endforeach
                     <span @class(['text-[13px]', 'text-win' => $row['winner'] !== null && $row['winner'] === ($mySide ?? 'challenger'), 'text-loss' => $row['winner'] !== null && $row['winner'] !== ($mySide ?? 'challenger'), 'text-btc' => $row['winner'] === null && $current && ! $m->start_at?->isFuture(), 'text-ink-3' => $row['winner'] === null && ! $current])>
                         @if ($row['winner'] !== null)
-                            {{ __(':tag win', ['tag' => $m->sideTag($row['winner'])]) }}
+                            {{ __(':tag win', ['tag' => $row['winner'] === 'challenger' ? $m->challenger_name : $m->challenged_name]) }}
                         @elseif ($decided)
                             {{ __('not needed') }}
                         @else
