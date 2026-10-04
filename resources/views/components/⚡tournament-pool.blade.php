@@ -176,6 +176,11 @@ new class extends Component {
             if ($fresh->status === IncomingPaymentStatus::Settled) {
                 $this->dispatch('pot-filled');
             }
+
+            // Still waiting and not run out: the card shows the same, so the 3 s poll answers without a render (P3).
+            if ($fresh->status === IncomingPaymentStatus::Pending && ! $this->hasRunOut($fresh)) {
+                $this->skipRender();
+            }
         }
     }
 

@@ -99,6 +99,8 @@ test('an invoice that ran out unpaid shows as expired and the card stops polling
 
     $this->travelTo($payment->expires_at->copy()->subSeconds(10));
     $card->call('checkInvoice')->assertSeeHtml('data-test="topup-qr"')->assertSeeHtml('wire:poll');
+    // Still waiting: the 3 s poll answers without a render (performance plan P3).
+    expect($card->effects)->not->toHaveKey('html');
 
     // The wallet still calls it pending (it is expired here only after a grace); the card asks once more, then says so.
     $this->travelTo($payment->expires_at->copy()->addSeconds(1));

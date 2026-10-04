@@ -282,6 +282,16 @@ test('the floating player is never on the TV view', function () {
         ->assertDontSee('data-test="live-badge"', false);
 });
 
+test('/live polls only its programme island, not the whole page (performance plan P3)', function () {
+    $html = $this->get(route('live'))->assertOk()->getContent();
+    $root = (string) preg_replace('/^.*?(<div[^>]*data-test="live-page"[^>]*>).*$/s', '$1', $html);
+    $island = (string) preg_replace('/^.*?(<div[^>]*data-test="live-programme-island"[^>]*>).*$/s', '$1', $html);
+
+    expect($root)->toContain('data-test="live-page"')->not->toContain('wire:poll')
+        ->and($island)->toContain('wire:poll.30s.visible')
+        ->and(substr_count($html, 'wire:poll'))->toBe(1);
+});
+
 test('the /live page survives a Livewire roundtrip on and off air', function () {
     Livewire::test('pages::live')->call('$refresh')->assertOk()->assertSee('The stream is off air right now.');
 

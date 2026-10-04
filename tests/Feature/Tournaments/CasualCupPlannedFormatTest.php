@@ -179,6 +179,8 @@ test('the tournament page listens for the sign-ups and polls only as the fallbac
     $this->get(route('tournaments.show', $cup))->assertOk()
         ->assertSee('x-data="tournamentLive({ id: '.$cup->id.', poll: 15 })"', false)
         ->assertDontSee('wire:poll', false);
+
+    Livewire::test('pages::tournaments.show', ['tournament' => $cup])->call('$refresh')->assertOk();
 });
 
 test('a special tournament keeps its own format and places in the preview', function () {

@@ -53,6 +53,18 @@ new #[Title('Gamer tags')] class extends Component {
         $this->tmnfCode = TmnfLinks::codeFor($this->user());
     }
 
+    /**
+     * The 3 s poll while the link code shows (partials/tmnf-link): renders
+     * the page only once the server confirmed the link, so the waiting
+     * seconds cost no render of the whole settings page (performance plan P3).
+     */
+    public function checkTmnfLink(): void
+    {
+        if (! TmnfLinks::isLinked($this->user())) {
+            $this->skipRender();
+        }
+    }
+
     public function saveStacker(): void
     {
         abort_unless((bool) config('esports.blockfill.enabled'), 404);
