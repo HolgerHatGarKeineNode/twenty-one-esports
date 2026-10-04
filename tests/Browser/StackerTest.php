@@ -157,9 +157,12 @@ test('a player\'s ranked run is started, submitted after the played time and ver
     $user = User::factory()->create(['stacker_settings' => $forty['settings'] + ['keys' => StackerSettings::DEFAULT_KEYS]]);
 
     $page = stackerPage($user, 1440, 900);
+    // The countdown is held open while the test acts in it, not left to race the 3-second wall clock; countdown(0) then ends it.
+    $page->evaluate('() => window.__stacker.countdown(60_000)');
     $page->locator('[data-test=start-ranked]')->click();
     BrowserWait::until($page, '() => window.__stacker.state().mode === "countdown" && window.__stacker.state().kind === "ranked" && document.querySelector("[data-test=countdown]") !== null', 5_000);
     expect($page->evaluate('(inputs) => window.__stacker.feed(inputs, { hold: true })', $forty['inputs']))->toBe('queued');
+    $page->evaluate('() => window.__stacker.countdown(0)');
 
     // The countdown ends with the start call; the recorded run plays at once and waits before it is sent.
     BrowserWait::until($page, '() => window.__stacker.state().result?.status === "held"', 8_000);
@@ -204,6 +207,9 @@ test('a player\'s practice stays in the browser and leads back to a ranked run; 
     $runRequests = '() => performance.getEntriesByType("resource").filter((e) => e.name.includes("/stacker/runs")).length';
 
     // Practice: the quiet button, played in the browser alone.
+    // The countdown is held open for the whole test (the practice start and the ranked start below both read its length);
+    // the practice feed ends the practice countdown by replacing the run, countdown(0) ends the ranked one.
+    $page->evaluate('() => window.__stacker.countdown(60_000)');
     $page->locator('[data-test=start-practice]')->click();
     BrowserWait::until($page, '() => window.__stacker.state().kind === "practice" && window.__stacker.state().mode === "countdown"', 3_000);
     $page->evaluate('([inputs, seed, settings]) => window.__stacker.feed(inputs, { seed, settings })', [$forty['inputs'], $forty['seed'], $forty['settings']]);
@@ -216,6 +222,7 @@ test('a player\'s practice stays in the browser and leads back to a ranked run; 
     $page->locator('[data-test=result-ranked]')->click();
     BrowserWait::until($page, '() => window.__stacker.state().mode === "countdown" && window.__stacker.state().kind === "ranked" && document.querySelector("[data-test=countdown]") !== null', 5_000);
     expect($page->evaluate('(inputs) => window.__stacker.feed(inputs, { hold: true })', $forty['inputs']))->toBe('queued');
+    $page->evaluate('() => window.__stacker.countdown(0)');
     BrowserWait::until($page, '() => window.__stacker.state().result?.status === "held"', 8_000);
     $this->travel(17)->seconds();
     $page->evaluate('() => window.__stacker.release()');
@@ -364,9 +371,12 @@ test('a ranked run the league turns away as busy says it was not saved, never th
     $user = User::factory()->create(['stacker_settings' => $forty['settings'] + ['keys' => StackerSettings::DEFAULT_KEYS]]);
 
     $page = stackerPage($user, 1440, 900);
+    // The countdown is held open while the test acts in it, not left to race the 3-second wall clock; countdown(0) then ends it.
+    $page->evaluate('() => window.__stacker.countdown(60_000)');
     $page->locator('[data-test=start-ranked]')->click();
     BrowserWait::until($page, '() => window.__stacker.state().mode === "countdown" && window.__stacker.state().kind === "ranked" && document.querySelector("[data-test=countdown]") !== null', 5_000);
     $page->evaluate('(inputs) => window.__stacker.feed(inputs, { hold: true })', $forty['inputs']);
+    $page->evaluate('() => window.__stacker.countdown(0)');
     BrowserWait::until($page, '() => window.__stacker.state().result?.status === "held"', 8_000);
 
     // every slot taken: the submission is answered 503

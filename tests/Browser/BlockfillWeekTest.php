@@ -291,9 +291,12 @@ test('a real ranked run puts a new player on this week\'s board without a reload
         ->and($page->evaluate('() => document.querySelector("[data-test=stacker-week-place]")'))->toBeNull();
 
     // The real flow: start, countdown, the recorded run instead of the keyboard, submitted after the played time.
+    // The countdown is held open while the test acts in it, not left to race the 3-second wall clock; countdown(0) then ends it.
+    $page->evaluate('() => window.__stacker.countdown(60_000)');
     $page->locator('[data-test=start-ranked]')->click();
     BrowserWait::until($page, '() => window.__stacker.state().mode === "countdown" && window.__stacker.state().kind === "ranked" && document.querySelector("[data-test=countdown]") !== null', 5_000);
     expect($page->evaluate('(inputs) => window.__stacker.feed(inputs, { hold: true })', $forty['inputs']))->toBe('queued');
+    $page->evaluate('() => window.__stacker.countdown(0)');
     BrowserWait::until($page, '() => window.__stacker.state().result?.status === "held"', 8_000);
     $this->travel(17)->seconds();
     $page->evaluate('() => window.__stacker.release()');
