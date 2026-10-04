@@ -25,6 +25,17 @@ test('a guest sees every live game on the live games page, and no finished one',
     $this->get(route('chess.lobby'))->assertOk()->assertSee('data-test="all-live-games"', false);
 });
 
+test('a blitz board on the live games page builds its squares when it comes into view, and the page survives a roundtrip', function () {
+    $blitz = ChessGame::factory()->create();
+
+    // Performance plan P4: no squares on load (a phone hides the boards), x-intersect builds them.
+    $this->get(route('games.index'))->assertOk()
+        ->assertSee('x-data="{ cells: [], boardLabel:', false)
+        ->assertSee('x-intersect.once.margin.200px="cells = window.chessBoardCells(', false);
+
+    Livewire::test('pages::games.index')->assertSee($blitz->number())->call('$refresh')->assertOk();
+});
+
 test('a guest reads a live game\'s state move by move but cannot act in it', function () {
     $game = ChessGame::factory()->create();
     app(ChessGameService::class)->move($game, $game->white, 'e2e4');
