@@ -124,12 +124,16 @@ test('a guest practises: Chromium replays every reference run like Node, the 40-
         ->and($counterHeight24)->toBeLessThan($lineHeight * 1.5);
 
     // R starts the next run: during its countdown the well is the new, empty game and Next its own queue.
+    // The countdown is held open while the checks look, not left to race the 3-second wall clock (a slow round trip
+    // on a loaded host saw the run already playing); the hook then ends it, and the run starts.
+    $page->evaluate('() => window.__stacker.countdown(60_000)');
     $page->locator('body')->press('KeyR');
     BrowserWait::until($page, '() => window.__stacker.state().mode === "countdown"', 3_000);
     $countdown = $page->evaluate('() => window.__stacker.state()');
     $nextImages = '() => [...document.querySelectorAll("[data-next]")].map((c) => c.toDataURL())';
     $nextInCountdown = $page->evaluate($nextImages);
     shellShot($page, "stacker-{$width}-countdown");
+    $page->evaluate('() => window.__stacker.countdown(0)');
     BrowserWait::until($page, '() => window.__stacker.state().mode === "playing"', 5_000);
     expect($countdown['boardEmpty'])->toBeTrue()
         ->and($countdown['drawn'])->toBe(['seed' => $countdown['seed'], 'tick' => 0])

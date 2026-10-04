@@ -844,9 +844,14 @@ document.addEventListener('alpine:init', () => {
                      * Sets the length of every countdown from now on, in ms: 0 starts a
                      * run at once, so a test can pin either order of the countdown's end
                      * and its own checks instead of hoping the wall clock picks one.
+                     * A countdown already running ends `ms` from now, so a test can hold
+                     * one open while it looks and then let the run start.
                      */
                     countdown(ms) {
                         rt.countdownMs = Math.max(0, Number(ms) || 0);
+                        if (component.mode === 'countdown') {
+                            rt.countdownUntil = performance.now() + rt.countdownMs;
+                        }
                     },
                     state() {
                         const game = rt.session?.game;
