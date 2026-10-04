@@ -101,6 +101,23 @@ final class BlockChain
         return $this->attestations;
     }
 
+    /**
+     * The blocks as the read pages use them: when, what it paid, its game and
+     * mode and how many players won it (Estimator, ChainOverview's supply curve).
+     *
+     * @return list<array{at: CarbonImmutable, reward: int, weight_key: string, game: string, winners: int}>
+     */
+    public function blockRows(): array
+    {
+        return array_map(fn (Block $block): array => [
+            'at' => $block->candidate->attestedAt,
+            'reward' => $block->reward,
+            'weight_key' => $block->candidate->weightKey,
+            'game' => $block->candidate->game,
+            'winners' => count($block->candidate->winners),
+        ], $this->blocks);
+    }
+
     public function mined(): int
     {
         return $this->state->mined();

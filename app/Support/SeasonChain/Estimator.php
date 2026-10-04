@@ -53,17 +53,29 @@ final class Estimator
      */
     public function fromChain(BlockChain $chain, CarbonImmutable $now): array
     {
-        $season = $chain->season;
+        return $this->fromBlocks($chain->season, $chain->blockRows(), $chain->mined(), $chain->minedByGameAndEra(), $now);
+    }
+
+    /**
+     * The same forecast from the blocks as rows (BlockChain::blockRows()),
+     * which SeasonChains::readout() keeps in the cache.
+     *
+     * @param  list<array{at: CarbonImmutable, reward: int, weight_key: string, game: string, winners: int}>  $blocks
+     * @param  array<string, array<int, int>>  $minedByGameAndEra
+     * @return array<string, mixed>
+     */
+    public function fromBlocks(SeasonParameters $season, array $blocks, int $mined, array $minedByGameAndEra, CarbonImmutable $now): array
+    {
         $from = $now->subDays($this->windowDays);
         $counts = [];
 
-        foreach ($chain->blocks() as $block) {
-            $at = $block->candidate->attestedAt;
+        foreach ($blocks as $block) {
+            $at = $block['at'];
             if ($at->gt($from) && $at->lte($now)) {
-                $key = $block->candidate->weightKey;
-                $counts[$key] ??= ['game' => $block->candidate->game, 'blocks' => 0, 'winners' => 0];
+                $key = $block['weight_key'];
+                $counts[$key] ??= ['game' => $block['game'], 'blocks' => 0, 'winners' => 0];
                 $counts[$key]['blocks']++;
-                $counts[$key]['winners'] += count($block->candidate->winners);
+                $counts[$key]['winners'] += $block['winners'];
             }
         }
 
@@ -80,17 +92,17 @@ final class Estimator
 
         $passed = [];
         $running = 0;
-        foreach ($chain->blocks() as $block) {
-            $running += $block->reward;
+        foreach ($blocks as $block) {
+            $running += $block['reward'];
             foreach ($this->milestones as $milestone) {
                 $label = (string) $milestone;
                 if (! isset($passed[$label]) && $running >= $milestone * $season->supply) {
-                    $passed[$label] = $this->weeksSince($season, $block->candidate->attestedAt);
+                    $passed[$label] = $this->weeksSince($season, $block['at']);
                 }
             }
         }
 
-        return $this->forecast($season, $now, $streams, $chain->mined(), $chain->minedByGameAndEra(), $passed);
+        return $this->forecast($season, $now, $streams, $mined, $minedByGameAndEra, $passed);
     }
 
     /**

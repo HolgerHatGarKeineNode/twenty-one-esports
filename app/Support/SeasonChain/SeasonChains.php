@@ -32,6 +32,7 @@ use App\Support\Scores\ScoreStanding;
 use App\Support\Scores\ScoreWindow;
 use App\Support\Series\Ladders;
 use Carbon\CarbonImmutable;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Throwable;
 
@@ -57,6 +58,60 @@ final class SeasonChains
     public const GENESIS = 2156;
 
     public const PARAMETER_CHANGE = 2158;
+
+    /** How long a readout stays cached; its key changes with every state it depends on anyway. */
+    public const READOUT_TTL_HOURS = 24;
+
+    /** Block times in the readout cache: UTC to the microsecond, so a forecast reads the same instant. */
+    private const READOUT_TIME = 'Y-m-d H:i:s.u';
+
+    /**
+     * What the read pages show of a season's chain (home, /mining,
+     * AdminSeason), from one replay, cached (performance plan P2, S3: every
+     * visit replayed every attestation, /mining also loaded every block).
+     *
+     * The key is everything the replay reads: the newest attestation, the
+     * newest parameter change (changeParameters() writes one without an
+     * attestation) and the season row itself (its parameters, supply,
+     * schedule and minimum trust). Attestations and parameter changes are
+     * only ever added, never edited, so a new row is a new key. Plain arrays
+     * only: the cache unserializes no objects (`cache.serializable_classes`).
+     *
+     * @return array{mined: int, mined_by_game_and_era: array<string, array<int, int>>, blocks: list<array{at: CarbonImmutable, reward: int, weight_key: string, game: string, winners: int}>, stored: array{times: list<int>, miner_count: int, miners: array<string, array{blocks: int, sats: int}>}}
+     */
+    public function readout(Season $season): array
+    {
+        $newest = DB::query()->selectRaw('(select max(id) from season_attestations where season_id = ?) as attestation, (select max(id) from season_parameter_changes where season_id = ?) as parameters', [$season->id, $season->id])->first();
+        $key = 'season-chain:'.$season->id.':'.(int) ($newest->attestation ?? 0).':'.(int) ($newest->parameters ?? 0).':'.md5((string) json_encode($season->getAttributes()));
+
+        /** @var array{mined: int, mined_by_game_and_era: array<string, array<int, int>>, blocks: list<array{at: string, reward: int, weight_key: string, game: string, winners: int}>, stored: array{times: list<int>, miner_count: int, miners: array<string, array{blocks: int, sats: int}>}} $cached */
+        $cached = Cache::remember($key, now()->addHours(self::READOUT_TTL_HOURS), function () use ($season): array {
+            $chain = $this->chain($season);
+            $miners = [];
+            $times = [];
+
+            // The stored blocks (their heights as written), newest first as /mining listed them: their times (the
+            // block count, the blocks of a day) and the top miners (ties keep this order).
+            foreach ($season->attestations()->whereNotNull('height')->orderByDesc('height')->select(['attested_at', 'candidate', 'reward_per_player'])->toBase()->cursor() as $row) {
+                $times[] = CarbonImmutable::parse((string) $row->attested_at, 'UTC')->getTimestamp();
+
+                foreach ((array) (json_decode((string) $row->candidate, true)['winners'] ?? []) as $pubkey) {
+                    $miners[(string) $pubkey] ??= ['blocks' => 0, 'sats' => 0];
+                    $miners[(string) $pubkey]['blocks']++;
+                    $miners[(string) $pubkey]['sats'] += (int) $row->reward_per_player;
+                }
+            }
+
+            return [
+                'mined' => $chain->mined(),
+                'mined_by_game_and_era' => $chain->minedByGameAndEra(),
+                'blocks' => array_map(fn (array $block): array => [...$block, 'at' => $block['at']->utc()->format(self::READOUT_TIME)], $chain->blockRows()),
+                'stored' => ['times' => $times, 'miner_count' => count($miners), 'miners' => $miners],
+            ];
+        });
+
+        return [...$cached, 'blocks' => array_map(fn (array $block): array => [...$block, 'at' => CarbonImmutable::parse($block['at'], 'UTC')], $cached['blocks'])];
+    }
 
     /** The chain of a season, replayed from its stored attestations. */
     public function chain(Season $season): BlockChain

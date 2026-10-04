@@ -44,7 +44,7 @@
         $season = [
             'name' => BadgeCopy::season($liveSeason->slug),
             'height' => $chains->tip($liveSeason)['height'] ?? 0,
-            'mined' => PreSeason::formatSats($chains->chain($liveSeason)->mined()),
+            'mined' => PreSeason::formatSats($chains->readout($liveSeason)['mined']),
             'supply' => PreSeason::formatSats($liveSeason->supply),
         ];
     }

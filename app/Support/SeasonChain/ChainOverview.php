@@ -119,10 +119,12 @@ final class ChainOverview
     public function live(Season $season, ?CarbonImmutable $now = null): array
     {
         $now ??= CarbonImmutable::now();
-        $chain = $this->chains->chain($season);
-        $parameters = $chain->season;
+        // The replay's figures come cached (SeasonChains::readout()); the parameters are built fresh, one query.
+        $readout = $this->chains->readout($season);
+        $parameters = $season->chainParameters();
         $era = $parameters->contains($now) ? $parameters->eraAt($now) : null;
-        $blocks = $season->attestations()->whereNotNull('height')->orderByDesc('height')->get();
+        // The ten newest blocks only: the counts and the top miners are in the readout (P2, S3).
+        $latest = $season->attestations()->whereNotNull('height')->orderByDesc('height')->limit(10)->get();
         $today = $now->utc()->startOfDay();
 
         return [
@@ -131,22 +133,22 @@ final class ChainOverview
             'era' => $era,
             'next_halving' => $era !== null && $era < $parameters->eras() ? $parameters->eraStart($era + 1) : null,
             'supply' => $parameters->supply,
-            'mined' => $chain->mined(),
-            'remaining' => $chain->remaining(),
-            'blocks' => $blocks->count(),
-            'blocks_today' => $blocks->filter(fn (SeasonAttestation $block): bool => $block->attested_at->gte($today))->count(),
+            'mined' => $readout['mined'],
+            'remaining' => $parameters->supply - $readout['mined'],
+            'blocks' => count($readout['stored']['times']),
+            'blocks_today' => count(array_filter($readout['stored']['times'], fn (int $at): bool => $at >= $today->getTimestamp())),
             'tip' => $this->chains->tip($season),
-            'last_block_at' => $blocks->first()?->attested_at,
+            'last_block_at' => $latest->first()?->attested_at,
             'rewards_now' => $this->rewards($parameters, $parameters->inForceAt($now), $era ?? 1),
             'schedule' => $this->schedule($parameters, $now),
-            'mined_by_game_and_era' => $chain->minedByGameAndEra(),
-            'latest' => $this->latest($blocks->take(10)->values()->all()),
-            'miners' => $this->miners($blocks->values()->all()),
-            'miner_count' => $blocks->flatMap(fn (SeasonAttestation $block): array => $block->winners())->unique()->count(),
+            'mined_by_game_and_era' => $readout['mined_by_game_and_era'],
+            'latest' => $this->latest($latest->all()),
+            'miners' => $this->miners($readout['stored']['miners']),
+            'miner_count' => $readout['stored']['miner_count'],
             'rejected' => $season->attestations()->whereNotNull('candidate')->whereNull('height')->selectRaw('reason, count(*) as total')->groupBy('reason')->pluck('total', 'reason')->map(fn (mixed $n): int => (int) $n)->all(),
             'changes' => $season->parameterChanges()->with('changedBy')->orderByDesc('effective_at')->orderByDesc('id')->get(),
-            'estimate' => $estimate = Estimator::fromConfig()->fromChain($chain, $now),
-            'curve' => $this->supplyCurve($season, $chain, $now, $estimate['end_mined']),
+            'estimate' => $estimate = Estimator::fromConfig()->fromBlocks($parameters, $readout['blocks'], $readout['mined'], $readout['mined_by_game_and_era'], $now),
+            'curve' => $this->curve($season, $readout['blocks'], $now, $estimate['end_mined']),
             'in_force' => $parameters->inForceAt($now),
         ];
     }
@@ -184,21 +186,32 @@ final class ChainOverview
      */
     public function supplyCurve(Season $season, BlockChain $chain, CarbonImmutable $now, ?int $forecast): array
     {
+        return $this->curve($season, $chain->blockRows(), $now, $forecast);
+    }
+
+    /**
+     * {@see supplyCurve()} from the blocks as rows (BlockChain::blockRows(), SeasonChains::readout()).
+     *
+     * @param  list<array{at: CarbonImmutable, reward: int, weight_key: string, game: string, winners: int}>  $blocks
+     * @return array{from: CarbonImmutable, to: CarbonImmutable, now: CarbonImmutable, supply: int, halvings: list<array{era: int, from: CarbonImmutable}>, forecast: int|null, days: list<array{day: string, at: CarbonImmutable, blocks: int, sats: int, total: int}>}
+     */
+    private function curve(Season $season, array $blocks, CarbonImmutable $now, ?int $forecast): array
+    {
         $from = CarbonImmutable::instance($season->genesis_at);
         $to = CarbonImmutable::instance($season->ends_at);
         $total = 0;
         $days = [];
 
-        foreach ($chain->blocks() as $block) {
-            $at = $block->candidate->attestedAt->utc();
+        foreach ($blocks as $block) {
+            $at = $block['at']->utc();
             $day = $at->format('Y-m-d');
-            $total += $block->reward;
+            $total += $block['reward'];
             $last = array_key_last($days);
 
             if ($last !== null && $days[$last]['day'] === $day) {
-                $days[$last] = ['day' => $day, 'at' => $at, 'blocks' => $days[$last]['blocks'] + 1, 'sats' => $days[$last]['sats'] + $block->reward, 'total' => $total];
+                $days[$last] = ['day' => $day, 'at' => $at, 'blocks' => $days[$last]['blocks'] + 1, 'sats' => $days[$last]['sats'] + $block['reward'], 'total' => $total];
             } else {
-                $days[] = ['day' => $day, 'at' => $at, 'blocks' => 1, 'sats' => $block->reward, 'total' => $total];
+                $days[] = ['day' => $day, 'at' => $at, 'blocks' => 1, 'sats' => $block['reward'], 'total' => $total];
             }
         }
 
@@ -381,23 +394,14 @@ final class ChainOverview
     }
 
     /**
-     * Blocks and sats per winning player, most sats first.
+     * The ten players with the most sats (then blocks), from the totals per
+     * winning player that SeasonChains::readout() sums over the stored blocks.
      *
-     * @param  array<int, SeasonAttestation>  $blocks
+     * @param  array<string, array{blocks: int, sats: int}>  $totals
      * @return list<array{name: string, blocks: int, sats: int}>
      */
-    private function miners(array $blocks): array
+    private function miners(array $totals): array
     {
-        $totals = [];
-
-        foreach ($blocks as $block) {
-            foreach ($block->winners() as $pubkey) {
-                $totals[$pubkey] ??= ['blocks' => 0, 'sats' => 0];
-                $totals[$pubkey]['blocks']++;
-                $totals[$pubkey]['sats'] += $block->reward_per_player;
-            }
-        }
-
         uasort($totals, fn (array $a, array $b): int => [$b['sats'], $b['blocks']] <=> [$a['sats'], $a['blocks']]);
         $names = $this->names(array_keys($totals));
         $rows = [];
