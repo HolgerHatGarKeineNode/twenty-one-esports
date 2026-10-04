@@ -39,6 +39,18 @@ test('the badges tab lists every moment with a share button and the rank badges,
     Livewire::actingAs($this->user)->test('pages::settings.badges')->call('$refresh')->assertOk();
 });
 
+test('a page of share buttons carries one preview sheet, not one per button (performance plan P4)', function () {
+    $html = $this->actingAs($this->user)->get(route('settings.badges'))->assertOk()->getContent();
+
+    expect(substr_count($html, 'data-test="share-button"'))->toBeGreaterThanOrEqual(6)
+        ->and(substr_count($html, 'data-test="share-preview"'))->toBe(1)
+        ->and(substr_count($html, '<template data-share-sheet>'))->toBe(1)
+        ->and(substr_count($html, 'data-share-slot'))->toBe(substr_count($html, 'data-test="share-button"'));
+
+    Livewire::actingAs($this->user)->test('share-button', ['type' => 'block', 'moment' => (string) $this->moments['block']->id])
+        ->call('$refresh')->assertOk();
+});
+
 test('the badges tab is linked from the account menu and from every settings tab bar', function () {
     $home = $this->actingAs($this->user)->get(route('dashboard'))->assertOk();
     $home->assertSee('data-test="account-badges"', false)->assertSee('data-test="mobile-badges"', false);
