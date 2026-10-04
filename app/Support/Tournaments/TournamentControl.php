@@ -619,7 +619,6 @@ final class TournamentControl
 
         $notify = DB::transaction(function () use ($tournament, $actor, $participantIds, $reason): array {
             $locked = $this->lock($tournament, [TournamentStatus::Running]);
-            $this->assertNoEntrant($locked, $actor, __('You play in this tournament, so another organizer or an admin has to disqualify an entry.'));
 
             $participants = TournamentParticipant::query()->where('tournament_id', $locked->id)->lockForUpdate()->whereKey($participantIds)->get();
 
@@ -1037,18 +1036,6 @@ final class TournamentControl
         }
 
         return $locked;
-    }
-
-    /**
-     * @throws TournamentRuleViolation
-     */
-    private function assertNoEntrant(Tournament $tournament, User $actor, string $message): void
-    {
-        $plays = $tournament->participants()->get()->contains(fn (TournamentParticipant $participant): bool => in_array($actor->id, $participant->memberIds(), true));
-
-        if ($plays) {
-            throw new TournamentRuleViolation('entrant', $message);
-        }
     }
 
     /**
