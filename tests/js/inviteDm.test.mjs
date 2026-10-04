@@ -74,9 +74,9 @@ function fakeSockets(relays, sent, opened = []) {
 const lookup = {
     'ws://lookup': {
         events: [
-            signed(erinSecret, 10050, [['relay', 'ws://erin-dm']]),
+            signed(erinSecret, 10050, [['relay', 'wss://erin-dm.example']]),
             signed(finnSecret, 10002, [['r', 'ws://finn-inbox', 'read']]),
-            signed(aliceSecret, 10050, [['relay', 'ws://alice-dm']]),
+            signed(aliceSecret, 10050, [['relay', 'wss://alice-dm.example']]),
         ],
     },
 };
@@ -118,7 +118,7 @@ test('the click: NIP-17 to a recipient with DM relays, NIP-04 held back for one 
     assert.equal(sent.filter((entry) => entry.event.kind === 4).length, 0, 'no NIP-04 DM before the yes');
 
     // Erin reads the invite with her own key, from her DM relay.
-    const wrap = sent.find((entry) => entry.url === 'ws://erin-dm' && entry.event.kind === 1059);
+    const wrap = sent.find((entry) => entry.url === 'wss://erin-dm.example/' && entry.event.kind === 1059);
     const rumor = await unwrapMessage(keySigner(erinSecret), wrap.event, erin);
     assert.equal(rumor.content, text);
     assert.equal(rumor.pubkey, alice);

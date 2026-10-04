@@ -30,15 +30,11 @@
  * in every page's bundle. No DOM or Alpine import: tests/js/directMessage.test.mjs
  * runs it in Node with fake relays and key-backed signers.
  */
+import { inboxRelaysOf, normalizedRelays } from './dmInbox.js';
 import { wrapDirectMessage } from './nostrChat.js';
 import { canEncrypt } from './signerCapabilities.js';
 import { newest, publishToRelays, readRelays, relayUrls, writeRelaysOf } from './relayRead.js';
 import { signTemplate } from './signing.js';
-
-/** NIP-17: the relays of a `10050`. */
-export function dmRelaysOf(list) {
-    return relayUrls((list?.tags ?? []).filter((tag) => tag[0] === 'relay').map((tag) => tag[1]));
-}
 
 /**
  * Whether a `10050` names any relay at all, usable here or not: such a
@@ -83,8 +79,10 @@ export async function routeDirectMessage({ sender, recipient, signer, relays, op
     const complete = results.length > 0 && results.every((result) => result.eose);
     const events = results.flatMap((result) => result.events);
     const theirList = newest(events, recipient, 10050);
-    const theirDm = dmRelaysOf(theirList);
-    const ownDm = dmRelaysOf(newest(events, sender, 10050));
+    // A 10050 is signed by its author, not by the league: only public wss:// (or configured) relays, at most five,
+    // the filter of the chats (dmInbox.js, DM audit 2026-10-04).
+    const theirDm = inboxRelaysOf(theirList, relays);
+    const ownDm = inboxRelaysOf(newest(events, sender, 10050), relays);
     const nip44 = canEncrypt(signer);
     const nip04 = canNip04(signer);
     // NIP-17 is the format unless every relay answered and no 10050 names a relay for the recipient.
@@ -118,7 +116,10 @@ export async function routeDirectMessage({ sender, recipient, signer, relays, op
 /**
  * Encrypt, sign and publish one message. `relays`: the configured lookup
  * and fallback relays. Returns what went out and how many relays took the
- * recipient's copy.
+ * recipient's copy: for NIP-17 only the recipient's DM relays count when
+ * they name usable ones (DM audit 2026-10-04: a fallback relay that took
+ * the wrap made the bar say "sent" although no inbox of theirs had it);
+ * without usable ones the fallback relays are where it goes, and count.
  *
  * @returns {Promise<{ format: 'nip17'|'nip04', delivered: number, events: object[] }>}
  */
@@ -140,7 +141,13 @@ export async function sendDirectMessage({ sender, recipient, content, signer, re
 
     if (route.format === 'nip17') {
         const { toRecipient, toSelf } = await wrapDirectMessage(signer, { sender, recipient, content: text, now });
-        const delivered = await publishToRelays([...route.recipientRelays, ...fallback], toRecipient, options);
+        const inbox = new Set(route.recipientRelays);
+        const extra = fallback.filter((url) => !inbox.has(normalizedRelays([url])[0]));
+        const [toInbox, toFallback] = await Promise.all([
+            publishToRelays(route.recipientRelays, toRecipient, options),
+            publishToRelays(extra, toRecipient, options),
+        ]);
+        const delivered = route.recipientRelays.length > 0 ? toInbox : toFallback;
         await publishToRelays(route.ownRelays.length > 0 ? route.ownRelays : fallback, toSelf, options);
 
         return { format: 'nip17', delivered, events: [toRecipient, toSelf] };

@@ -67,9 +67,9 @@ function fakeSockets(relays, sent) {
     };
 }
 
-const erinDmList = signed(erinSecret, 10050, [['relay', 'ws://erin-dm']]);
+const erinDmList = signed(erinSecret, 10050, [['relay', 'wss://erin-dm.example']]);
 const erinRelayList = signed(erinSecret, 10002, [['r', 'ws://erin-inbox', 'read'], ['r', 'ws://erin-outbox', 'write']]);
-const aliceDmList = signed(aliceSecret, 10050, [['relay', 'ws://alice-dm']]);
+const aliceDmList = signed(aliceSecret, 10050, [['relay', 'wss://alice-dm.example']]);
 
 test('recipient with a DM relay list: NIP-17 to those relays, a copy to the sender, and erin reads it', async () => {
     const sent = [];
@@ -80,8 +80,8 @@ test('recipient with a DM relay list: NIP-17 to those relays, a copy to the send
     assert.equal(result.format, 'nip17');
     const toErin = sent.filter((s) => s.event.tags.some((t) => t[0] === 'p' && t[1] === erin));
     const toAlice = sent.filter((s) => s.event.tags.some((t) => t[0] === 'p' && t[1] === alice));
-    assert.deepEqual(toErin.map((s) => s.url).sort(), ['ws://erin-dm', 'ws://lookup']);
-    assert.deepEqual(toAlice.map((s) => s.url), ['ws://alice-dm']);
+    assert.deepEqual(toErin.map((s) => s.url).sort(), ['ws://lookup', 'wss://erin-dm.example/']);
+    assert.deepEqual(toAlice.map((s) => s.url), ['wss://alice-dm.example/']);
     assert.ok(sent.every((s) => s.event.kind === 1059));
 
     const rumor = await unwrapMessage(keySigner(erinSecret), toErin[0].event, erin);
@@ -259,4 +259,60 @@ test('sendDirectMessages: one text to several recipients, each on its own route'
     const failing = { ...keySigner(aliceSecret), signEvent: async () => { throw new Error('declined'); } };
     results = await sendDirectMessages({ sender: alice, recipients: [erin, finn], content: 'x', signer: failing, relays: ['ws://lookup'], options: { WebSocketImpl: fakeSockets(relays, []), timeoutMs: 200 } });
     assert.deepEqual(results.map((r) => r.status), ['error', 'pending']);
+});
+
+/*
+ * DM audit leftovers (2026-10-04). (a) "Sent" must mean a relay of the recipient's DM relay list took the
+ * wrap: the fallback relays the bar also publishes to do not count while the recipient names usable DM
+ * relays. (b) A 10050 is signed by the recipient, not by the league: the browser connects only to public
+ * `wss://` relays (or configured ones) of it, at most five, the same filter the chats apply
+ * (resources/js/dmInbox.js, inboxRelaysOf).
+ */
+test('audit (a): the recipient\'s DM relays all refuse or are down: delivered is 0, though the fallback relay took it', async () => {
+    const sent = [];
+    const WebSocketImpl = fakeSockets({ 'ws://lookup': { events: [erinDmList, erinRelayList], eose: true }, 'wss://erin-dm.example/': { down: true } }, sent);
+
+    const result = await sendDirectMessage({ sender: alice, recipient: erin, content: 'hi', signer: keySigner(aliceSecret), relays: ['ws://lookup'], options: { WebSocketImpl, timeoutMs: 200 } });
+
+    assert.equal(result.format, 'nip17');
+    // The fallback still gets its copy, it just does not count as delivered.
+    assert.ok(sent.some((s) => s.url === 'ws://lookup' && s.event.tags.some((t) => t[0] === 'p' && t[1] === erin)));
+    assert.equal(result.delivered, 0);
+
+    const [row] = await sendDirectMessages({ sender: alice, recipients: [erin], content: 'hi', signer: keySigner(aliceSecret), relays: ['ws://lookup'], options: { WebSocketImpl: fakeSockets({ 'ws://lookup': { events: [erinDmList, erinRelayList], eose: true }, 'wss://erin-dm.example/': { down: true } }, []), timeoutMs: 200 } });
+    assert.equal(row.status, 'unsent');
+});
+
+test('audit (a): delivered counts the recipient\'s DM relays only; without usable ones, the fallback relays count', async () => {
+    const twoInboxes = signed(erinSecret, 10050, [['relay', 'wss://erin-dm.example'], ['relay', 'wss://erin-dm2.example']]);
+    let WebSocketImpl = fakeSockets({ 'ws://lookup': { events: [twoInboxes], eose: true }, 'ws://fallback': { events: [], eose: true }, 'wss://erin-dm2.example/': { down: true } }, []);
+    let result = await sendDirectMessage({ sender: alice, recipient: erin, content: 'hi', signer: keySigner(aliceSecret), relays: ['ws://lookup', 'ws://fallback'], options: { WebSocketImpl, timeoutMs: 200 } });
+    assert.equal(result.delivered, 1);
+
+    // A 10050 whose only relay is not a public wss:// URL: NIP-17 to the fallback relays, and those count.
+    const privateOnly = signed(erinSecret, 10050, [['relay', 'ws://10.0.0.5']]);
+    WebSocketImpl = fakeSockets({ 'ws://lookup': { events: [privateOnly], eose: true } }, []);
+    result = await sendDirectMessage({ sender: alice, recipient: erin, content: 'hi', signer: keySigner(aliceSecret), relays: ['ws://lookup'], options: { WebSocketImpl, timeoutMs: 200 } });
+    assert.equal(result.format, 'nip17');
+    assert.equal(result.delivered, 1);
+});
+
+test('audit (b): a DM relay list reaches the browser only as public wss:// relays (or configured ones), at most five, for recipient and sender', async () => {
+    const crowded = signed(erinSecret, 10050, [
+        ['relay', 'ws://10.0.0.5'], ['relay', 'wss://localhost'], ['relay', 'wss://192.168.1.2'], ['relay', 'ws://plain.example'],
+        ...['a', 'b', 'c', 'd', 'e', 'f'].map((n) => ['relay', `wss://${n}.example`]),
+        ['relay', 'ws://lookup'],
+    ]);
+    const aliceCrowded = signed(aliceSecret, 10050, [['relay', 'wss://alice-dm.example'], ['relay', 'ws://127.0.0.1:7777']]);
+    const sent = [];
+    const WebSocketImpl = fakeSockets({ 'ws://lookup': { events: [crowded, aliceCrowded], eose: true } }, sent);
+
+    await sendDirectMessage({ sender: alice, recipient: erin, content: 'hi', signer: keySigner(aliceSecret), relays: ['ws://lookup'], options: { WebSocketImpl, timeoutMs: 200 } });
+
+    const toErin = [...new Set(sent.filter((s) => s.event.tags.some((t) => t[0] === 'p' && t[1] === erin)).map((s) => s.url))].sort();
+    const toAlice = [...new Set(sent.filter((s) => s.event.tags.some((t) => t[0] === 'p' && t[1] === alice)).map((s) => s.url))].sort();
+    // The first five usable ones (f is the sixth; the configured lookup relay, named last, gets its copy as the
+    // fallback); nothing private, plain or local.
+    assert.deepEqual(toErin, ['ws://lookup', 'wss://a.example/', 'wss://b.example/', 'wss://c.example/', 'wss://d.example/', 'wss://e.example/']);
+    assert.deepEqual(toAlice, ['wss://alice-dm.example/']);
 });
