@@ -121,7 +121,10 @@ final class TournamentDeadlines
      * after the series' start, derived from its best-of, unless the
      * tournament set its own `report_hours`.
      *
-     * @return array{noshow_minutes: int, report_hours?: int, report_minutes?: int, response_minutes: int}
+     * On the round clock it also pins the lobby check-in (`checkin_minutes`, SeriesService::autoNoShow()): a series paired
+     * without it (before the check-in existed, or a multi-day tournament) is never decided by the check-in rules.
+     *
+     * @return array{noshow_minutes: int, report_hours?: int, report_minutes?: int, response_minutes: int, checkin_minutes?: int}
      */
     public static function forSeries(Tournament $tournament, int $bestOf): array
     {
@@ -132,6 +135,7 @@ final class TournamentDeadlines
                 'noshow_minutes' => $clock->noshowMinutes,
                 ...($clock->reportHours !== null ? ['report_hours' => $clock->reportHours] : ['report_minutes' => $clock->reportDueMinutes($tournament->profile(), $bestOf)]),
                 'response_minutes' => $clock->responseMinutes,
+                'checkin_minutes' => (int) config('esports.tournaments.auto_noshow_minutes', 30),
             ];
         }
 

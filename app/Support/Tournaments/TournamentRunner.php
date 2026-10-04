@@ -680,19 +680,37 @@ final class TournamentRunner
      */
     public function decideNobodyCheckedIn(SeriesMatch $series): bool
     {
-        $series = $series->fresh() ?? $series;
-        $match = TournamentMatch::query()->with(['tournament', 'slots.participant', 'round.stage', 'seriesMatch'])->find($series->tournament_match_id);
+        // Under the tournament's lock and with the series and the match read anew, like the tick's other deadlines:
+        // a check-in, a game, a report, a result set by hand or a pause after the tick read the series wins.
+        $decided = DB::transaction(function () use ($series): ?Tournament {
+            $tournament = Tournament::query()->whereKey(TournamentMatch::query()->whereKey($series->tournament_match_id)->select('tournament_id'))->lockForUpdate()->first();
 
-        if ($match === null || $match->result !== null || $match->isReplaced($series->id) || $match->tournament->isCasualCup() || $match->tournament->isDirectorMode()
-            || $series->status !== SeriesStatus::Accepted || $series->noshow_reported_at !== null || $series->ready_at_challenger !== null || $series->ready_at_challenged !== null
-            || $series->currentGames() !== [] || count($match->slots) !== 2) {
+            if ($tournament === null || $tournament->status !== TournamentStatus::Running || $tournament->isPaused() || $tournament->isCasualCup() || $tournament->isDirectorMode()) {
+                return null;
+            }
+
+            $locked = SeriesMatch::query()->lockForUpdate()->find($series->id);
+            $match = TournamentMatch::query()->with(['tournament', 'slots.participant', 'round.stage', 'seriesMatch'])->lockForUpdate()->find($series->tournament_match_id);
+            $due = $locked?->autoNoshowAt()?->copy()->addMinutes((int) $locked->responseMinutes());
+
+            if ($locked === null || $match === null || $match->result !== null || $match->isReplaced($locked->id) || $due === null || $due->isFuture()
+                || $locked->status !== SeriesStatus::Accepted || $locked->noshow_reported_at !== null || $locked->overdue_at !== null
+                || $locked->ready_at_challenger !== null || $locked->ready_at_challenged !== null || $locked->currentGames() !== [] || count($match->slots) !== 2) {
+                return null;
+            }
+
+            $result = $this->doubleNoShow($match) + ['number' => $locked->number];
+            $this->forfeitSeries($locked, is_int($result['winner'] ?? null) ? $result['winner'] : null, 'Neither side checked in to the lobby in time.');
+            $this->store($match, $result);
+
+            return $match->tournament;
+        });
+
+        if ($decided === null) {
             return false;
         }
 
-        $result = $this->doubleNoShow($match) + ['number' => $series->number];
-        $this->forfeitSeries($series, is_int($result['winner'] ?? null) ? $result['winner'] : null, 'Neither side checked in to the lobby in time.');
-        $this->store($match, $result);
-        $this->sync($match->tournament);
+        $this->sync($decided);
 
         return true;
     }

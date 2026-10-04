@@ -771,7 +771,10 @@ final class SeriesService
             return;
         }
 
-        SeriesMatch::query()->whereKey($match->id)->whereNull('ready_at_'.$side)->update(['ready_at_'.$side => now()]);
+        // Checking in answers a no-show reported against this side (by the league or the other side): it is there now.
+        $answers = $match->noshow_reported_at !== null && $match->noshow_side === SeriesMatch::otherSide($side);
+        SeriesMatch::query()->whereKey($match->id)->whereNull('ready_at_'.$side)
+            ->update(['ready_at_'.$side => now(), ...($answers ? ['noshow_side' => null, 'noshow_reported_at' => null] : [])]);
         $this->broadcastChange($match->refresh());
     }
 
@@ -785,7 +788,8 @@ final class SeriesService
         $match = $this->fresh($match);
 
         if ($match->tournament_match_id === null || $match->isCasualPairing() || $match->status !== SeriesStatus::Accepted || $match->start_at === null
-            || $match->noshow_reported_at !== null || $match->currentGames() !== [] || self::isDirectorEntered($match)) {
+            || $match->noshow_reported_at !== null || $match->overdue_at !== null || $match->currentGames() !== [] || $match->autoNoshowAt() === null
+            || self::isDirectorEntered($match)) {
             return false;
         }
 
@@ -794,25 +798,38 @@ final class SeriesService
         // Nobody checked in: after the check-in no-show time plus the response time (a side may still check in, then
         // the other one is the no-show), the double no-show rule decides the match (TournamentRunner).
         if ($in === []) {
-            $due = $match->autoNoshowAt()?->copy()->addMinutes((int) $match->responseMinutes());
+            // autoNoshowAt() is not null here (guard above); the runner checks it again under the lock.
+            $due = $match->autoNoshowAt()->copy()->addMinutes((int) $match->responseMinutes());
 
-            return $due !== null && ! $due->isFuture() && app(TournamentRunner::class)->decideNobodyCheckedIn($match);
+            return ! $due->isFuture() && app(TournamentRunner::class)->decideNobodyCheckedIn($match);
         }
 
         if (count($in) !== 1) {
             return false;
         }
 
-        $due = $match->autoNoshowAt();
+        $absent = SeriesMatch::otherSide($in[0]);
 
-        if ($due === null || $due->isFuture()) {
-            return false;
+        // A conditional update under the tournament's lock, like every deadline the tick applies (TournamentScheduler):
+        // a game entered, a report, a check-in or a pause after the tick read the series wins.
+        $updated = DB::transaction(function () use ($match, $in, $absent): int {
+            $locked = $this->lockForDeadline($match);
+            $due = $locked?->autoNoshowAt();
+
+            if ($locked === null || $due === null || $due->isFuture() || $locked->currentGames() !== []) {
+                return 0;
+            }
+
+            return self::notPaused(SeriesMatch::query()->whereKey($match->id)->where('status', SeriesStatus::Accepted)
+                ->whereNull('noshow_reported_at')->whereNull('overdue_at')->whereNotNull('ready_at_'.$in[0])->whereNull('ready_at_'.$absent))
+                ->update(['noshow_side' => $in[0], 'noshow_reported_at' => now()]);
+        });
+
+        if ($updated === 1) {
+            $this->broadcastChange($match);
         }
 
-        $match->update(['noshow_side' => $in[0], 'noshow_reported_at' => now()]);
-        $this->broadcastChange($match);
-
-        return true;
+        return $updated === 1;
     }
 
     /* ---------- Result report (2152) -------------------------------------------------------------------------- */

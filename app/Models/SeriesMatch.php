@@ -77,7 +77,7 @@ use Illuminate\Support\Facades\DB;
  * @property int|null $tournament_match_id the tournament match this series plays (P8b)
  * @property int $tournament_attempt 1, or the replay number after an admin voided the series before (P18)
  * @property array{challenger?: list<int>, challenged?: list<int>}|null $sides a roster side's players (mix team, RL 1v1 player): no lineup
- * @property array{noshow_minutes: int, report_hours?: int, report_minutes?: int, response_minutes: int, pauses?: list<array{0: int, 1: int}>}|null $deadlines a players-mode tournament's deadlines, pinned at the pairing (P18; `report_minutes` on the round clock; `pauses`: the tournament's pauses while the series ran, unix seconds from and to, {@see pausedAfter()}); null = none run by the league
+ * @property array{noshow_minutes: int, report_hours?: int, report_minutes?: int, response_minutes: int, checkin_minutes?: int, pauses?: list<array{0: int, 1: int}>}|null $deadlines a players-mode tournament's deadlines, pinned at the pairing (P18; `report_minutes` on the round clock; `pauses`: the tournament's pauses while the series ran, unix seconds from and to, {@see pausedAfter()}); null = none run by the league
  * @property Carbon|null $overdue_at when the league moved it to the admin queue: nobody reported by the report deadline (P18)
  * @property string|null $origin a casual 1v1 without a clan (P23): `queue` or `invite`; null for every other series
  * @property string|null $host_side the side that opens the game lobby (casual 1v1), drawn at the pairing
@@ -351,8 +351,10 @@ class SeriesMatch extends Model
     /** A tournament series' lobby check-in: a side still not in then while the other is counts as a no-show (SeriesService::autoNoShow()). */
     public function autoNoshowAt(): ?CarbonInterface
     {
-        return $this->tournament_match_id === null || $this->deadlines === null ? null
-            : $this->start_at?->copy()->addMinutes((int) config('esports.tournaments.auto_noshow_minutes', 30))->addSeconds($this->pausedAfter($this->start_at));
+        // Pinned at the pairing (TournamentDeadlines::forSeries()): a series without it has no check-in rule.
+        $minutes = $this->tournament_match_id === null ? null : ($this->deadlines['checkin_minutes'] ?? null);
+
+        return $minutes === null ? null : $this->start_at?->copy()->addMinutes((int) $minutes)->addSeconds($this->pausedAfter($this->start_at));
     }
 
     /** When a series nobody reported joins the admin queue; null without league deadlines. Round clock: minutes after the start. */

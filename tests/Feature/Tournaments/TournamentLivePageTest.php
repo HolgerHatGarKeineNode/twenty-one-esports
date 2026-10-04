@@ -19,6 +19,7 @@ use App\Support\Tournaments\TournamentBrackets;
 use App\Support\Tournaments\TournamentControl;
 use App\Support\Tournaments\TournamentRunner;
 use App\Support\Tournaments\TournamentScheduler;
+use App\Support\Tournaments\TournamentWaits;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\Queue;
@@ -195,4 +196,46 @@ test('the live page with nothing open says so: no open series, a draw pending, a
     $director = User::factory()->create();
     $tournament->directors()->attach($director->id);
     $this->actingAs($director)->get(route('tournaments.live', $tournament))->assertOk()->assertDontSee('data-test="control"', false);
+});
+
+test('a series paired without the pinned check-in (before it existed) is never decided by the check-in rules', function () {
+    livePageTournament();
+    $series = SeriesMatch::query()->whereNotNull('tournament_match_id')->orderBy('id')->firstOrFail();
+    expect($series->deadlines['checkin_minutes'] ?? null)->toBe((int) config('esports.tournaments.auto_noshow_minutes'));
+
+    $deadlines = $series->deadlines;
+    unset($deadlines['checkin_minutes']);
+    $series->forceFill(['deadlines' => $deadlines])->save();
+
+    $this->travel(50)->minutes();
+    app(TournamentScheduler::class)->tick();
+
+    expect($series->refresh()->status)->toBe(SeriesStatus::Accepted)
+        ->and($series->autoNoshowAt())->toBeNull()
+        ->and($series->nextDeadline()['kind'])->toBe('report');
+});
+
+test('the check-in deadlines are the next deadline, and checking in late answers the no-show', function () {
+    livePageTournament();
+    $series = SeriesMatch::query()->whereNotNull('tournament_match_id')->orderBy('id')->firstOrFail();
+    expect($series->nextDeadline())->toMatchArray(['kind' => 'checkin_double', 'side' => null]);
+
+    $in = User::query()->findOrFail($series->sides['challenger'][0]);
+    $late = User::query()->findOrFail($series->sides['challenged'][0]);
+    $service = app(SeriesService::class);
+    $service->checkInLobby($series, $in);
+    expect($series->refresh()->nextDeadline())->toMatchArray(['kind' => 'checkin_noshow', 'side' => 'challenged'])
+        ->and(collect(TournamentWaits::of($series->tournamentMatch->tournament))->firstWhere('matchId', $series->tournament_match_id)?->state)->toBe('checkin');
+
+    $this->travel(31)->minutes();
+    app(TournamentScheduler::class)->tick();
+    expect($series->refresh()->noshow_side)->toBe('challenger');
+
+    $service->checkInLobby($series, $late);
+    expect($series->refresh()->noshow_reported_at)->toBeNull()
+        ->and($series->ready_at_challenged)->not->toBeNull();
+
+    $this->travel(15)->minutes();
+    app(TournamentScheduler::class)->tick();
+    expect($series->refresh()->status)->toBe(SeriesStatus::Accepted);
 });
