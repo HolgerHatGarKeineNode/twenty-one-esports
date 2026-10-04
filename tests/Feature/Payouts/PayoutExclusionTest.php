@@ -25,10 +25,23 @@ test('a disqualified entry wins nothing and everyone behind it moves up a place'
 
     expect($rows->pluck('participant.id')->all())->not->toContain($champion)
         ->and($rows->firstWhere('place', 1)['participant']->id)->toBe($second)
+        // Three players left hold 50/30/20 of the whole pot as before (all three places stay held): no scaling.
         ->and($rows->firstWhere('place', 1)['amount'])->toBe(49_500)
         // The two losing semi-finalists moved up to share places 2 and 3: 30 % + 20 % between them.
         ->and($rows->where('place', 2)->pluck('amount')->all())->toBe([24_750, 24_750])
         ->and($after['remainder'])->toBe(0);
+});
+
+test('with only two players left the whole percent pot goes to them in the split\'s proportions', function () {
+    fakeWallet();
+    $tournament = finishedPoolTournament(ownPotWallet(0), 100_000);
+    $places = app(TournamentPlacements::class)->of($tournament);
+    // The two losing semi-finalists (tied third) are out: 50/30 of the split held now, 100 % before.
+    TournamentParticipant::query()->whereKey($places[2]['participants'])->update(['disqualified_at' => now()]);
+
+    $rows = collect(app(PayoutPlan::class)->compute($tournament, 100_000)['rows']);
+
+    expect($rows->pluck('amount', 'place')->all())->toBe([1 => 62_500, 2 => 37_500]);
 });
 
 test('an entry that lost as a no-show wins nothing', function () {

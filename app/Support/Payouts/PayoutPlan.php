@@ -34,7 +34,9 @@ use App\Support\Prizes\PrizePool;
  * - Who did not play wins nothing (user, 2026-10-04: "verhindern, dass Leute die no-show komplett sind oder
  *   disqualified irgendwelche Auszahlungen bekommen … Der Pot muss sich dann auf die verteilen, die wirklich
  *   mitgespielt haben"): a disqualified entry, and an entry that lost a match as a no-show ({@see excluded()}), is
- *   taken out of the places, and everyone behind it moves up, so their share goes to those who played.
+ *   taken out of the places, and everyone behind it moves up. With percent prizes the share the excluded entries
+ *   held is spread over the players' places in the split's proportions (50/30/20 with only two players left:
+ *   62.5/37.5); fixed prizes stay fixed per place.
  *
  * Pure apart from reading the participants, the matches and the users.
  */
@@ -53,9 +55,14 @@ final class PayoutPlan
             return null;
         }
 
-        $places = self::withoutExcluded($places, self::excluded($tournament));
-
         $split = $tournament->prizeSplit();
+        // Percent prizes: the share the excluded entries held goes to those who played, in the split's proportions
+        // (held before = the split's places that had an entry; held after = those the players left hold now).
+        $heldBefore = array_sum(array_slice($split, 0, array_sum(array_map(fn (array $place): int => count($place['participants']), $places))));
+        $places = self::withoutExcluded($places, self::excluded($tournament));
+        $heldAfter = array_sum(array_slice($split, 0, array_sum(array_map(fn (array $place): int => count($place['participants']), $places))));
+        $scale = $heldAfter > 0 && $heldBefore > $heldAfter ? [$heldBefore, $heldAfter] : [1, 1];
+
         $fixed = $tournament->prizeMode() === Tournament::PRIZES_FIXED ? $tournament->prizeFixed() : null;
         // Zaps on top of fixed prizes are split like them (percent prizes have them in `$poolSats`).
         $bonus = $fixed === null ? [] : PrizePool::zapBonus($fixed, $zapSats);
@@ -72,7 +79,7 @@ final class PayoutPlan
                 $amount += ($fixed[$index] ?? 0) + ($bonus[$index] ?? 0);
             }
 
-            $group = $fixed === null ? intdiv(max(0, $poolSats) * $percent, 100) : $amount;
+            $group = $fixed === null ? intdiv(max(0, $poolSats) * $percent * $scale[0], 100 * $scale[1]) : $amount;
 
             if ($group <= 0) {
                 continue;
