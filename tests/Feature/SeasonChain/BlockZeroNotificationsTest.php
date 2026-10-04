@@ -40,8 +40,7 @@ function blockZeroDmsTo(User $user): array
  */
 function blockZeroBell(User $user): array
 {
-    // reorder(): the notifications relation sorts newest first by itself, and a second oldest() only breaks its ties.
-    return $user->notifications()->reorder()->oldest()->get()
+    return $user->notifications()->oldest()->get()
         ->filter(fn ($notification) => ($notification->data['kind'] ?? null) === NotificationKind::BlockZero->value)
         ->map(fn ($notification) => (string) $notification->data['title'])->values()->all();
 }
@@ -117,9 +116,7 @@ test('a planned Block 0 date is told once to each player who asked, in their zon
     $this->artisan('esports:block0-heads-up')->expectsOutput('Nobody waits for a Block 0 date.')->assertSuccessful();
     expect(blockZeroBell($berlin))->toHaveCount(1);
 
-    // The board moves the date: a new heads-up. A minute later, so the bell's oldest-first order is not a tie
-    // (two rows with the same created_at come back in index order, which is no order at all).
-    $this->travel(1)->minutes();
+    // The board moves the date: a new heads-up.
     planBlock0($at->addDay()->toIso8601String());
     $this->artisan('esports:block0-heads-up')->assertSuccessful();
 
