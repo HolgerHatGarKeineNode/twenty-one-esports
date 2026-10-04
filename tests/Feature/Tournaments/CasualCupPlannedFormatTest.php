@@ -172,12 +172,15 @@ test('a withdrawal that makes it 8 again turns the plan back into a round robin 
     Event::assertDispatched(TournamentChanged::class, fn (TournamentChanged $event): bool => $event->tournamentId === $cup->id && $event->reason === 'withdrawn');
 });
 
-test('the tournament page listens for the sign-ups and polls as the fallback', function () {
+test('the tournament page listens for the sign-ups and polls only as the fallback without a websocket', function () {
     $cup = openCup();
 
+    // The 15 s poll lives in tournamentLive (resources/js/livePoll.js): only without a live socket (performance plan P3).
     $this->get(route('tournaments.show', $cup))->assertOk()
-        ->assertSee('x-data="tournamentLive({ id: '.$cup->id.' })"', false)
-        ->assertSee('wire:poll.15s.visible', false);
+        ->assertSee('x-data="tournamentLive({ id: '.$cup->id.', poll: 15 })"', false)
+        ->assertDontSee('wire:poll', false);
+
+    Livewire::test('pages::tournaments.show', ['tournament' => $cup])->call('$refresh')->assertOk();
 });
 
 test('a special tournament keeps its own format and places in the preview', function () {

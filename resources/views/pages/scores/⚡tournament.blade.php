@@ -17,6 +17,7 @@ use App\Support\Tournaments\TournamentRuleViolation;
 use Illuminate\Database\Eloquent\Collection;
 use Livewire\Attributes\Computed;
 use Livewire\Attributes\Layout;
+use Livewire\Attributes\Locked;
 use Livewire\Component;
 
 /*
@@ -49,6 +50,10 @@ new #[Layout('layouts::app', ['section' => 'tournaments'])] class extends Compon
 
     public string $flash = '';
 
+    /** Fingerprint of what the last render showed; an unchanged board skips the render on poll(). */
+    #[Locked]
+    public string $shown = '';
+
     public function mount(Tournament $tournament): void
     {
         abort_unless($tournament->isVisibleTo(auth()->user()) && app(GameRegistry::class)->isScore($tournament->game), 404);
@@ -58,8 +63,46 @@ new #[Layout('layouts::app', ['section' => 'tournaments'])] class extends Compon
         $this->achievedAt = LeagueTime::input(now());
     }
 
+    /**
+     * The 30 s poll of a running board (performance plan P3): reads the
+     * board again and answers without a render when nothing a render shows
+     * has changed, instead of sending the whole page every time.
+     */
+    public function poll(): void
+    {
+        $this->tournament->refresh();
+
+        if ($this->fingerprint() === $this->shown) {
+            $this->skipRender();
+        }
+    }
+
+    /**
+     * What a render of the board depends on that can change while the page
+     * is open: the standings (place, value, time, source and run of every
+     * entry), the tournament row (status, course, review), the clock edges
+     * of the window and its grace, the viewer's submissions and the
+     * directors' corrections, and the flash line.
+     */
+    private function fingerprint(): string
+    {
+        $window = ScoreWindow::of($this->tournament);
+        $grace = (int) config('esports.score_games.manual.grace_minutes', 60);
+
+        return hash('xxh128', (string) json_encode([
+            array_map(fn (ScoreStanding $row): array => [$row->participant->id, $row->participant->name, $row->place, $row->value, $row->achievedAt?->getTimestamp(), $row->source, $row->runId], $this->standings),
+            $this->tournament->only(['status', 'score_course', 'updated_at']),
+            [$window->hasStarted(), $window->hasEnded(), now()->lessThan($window->end->addMinutes($grace))],
+            // Read as the view reads them, so a render costs no query more than before.
+            $this->entered && $this->game->acceptsManual() ? $this->mine->map(fn (ScoreRun $run): array => $run->only(['id', 'verified_at', 'rejected_at', 'note']))->all() : [],
+            $this->corrections->modelKeys(),
+            $this->flash,
+        ]));
+    }
+
     public function rendering(\Illuminate\View\View $view): void
     {
+        $this->shown = $this->fingerprint();
         $view->title(__('Leaderboard').': '.$this->tournament->title());
         $meta = app(\App\Support\PageMeta::class)->describe(__('Leaderboard').': '.$this->tournament->title(),
             __(':tournament: every player\'s best value inside the window, best first.', ['tournament' => $this->tournament->title()]));
@@ -290,7 +333,7 @@ new #[Layout('layouts::app', ['section' => 'tournaments'])] class extends Compon
     $field = 'h-11 w-full min-w-0 rounded-md border border-edge bg-ground px-3 text-[13px] text-ink';
 @endphp
 
-<div class="flex flex-col gap-6 px-4 pt-6 pb-12 lg:gap-8 lg:px-12 lg:pt-8" data-test="score-tournament" @if ($running) wire:poll.30s.visible @endif>
+<div class="flex flex-col gap-6 px-4 pt-6 pb-12 lg:gap-8 lg:px-12 lg:pt-8" data-test="score-tournament" @if ($running) wire:poll.30s.visible="poll" @endif>
     @if ($blockfill)
         @include('pages.scores.partials.blockfill-hero', ['heading' => $tournament->title(), 'week' => $tournament, 'standings' => $standings, 'metric' => $metric])
     @elseif ($tmnf)

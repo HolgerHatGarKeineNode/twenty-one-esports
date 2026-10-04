@@ -106,6 +106,17 @@ new #[Layout('layouts::app', ['realtime' => true, 'scripts' => ['resources/js/ga
     #[Locked]
     public bool $canInvite = true;
 
+    /** A poll renders at least every RENDER_AT_LEAST seconds, whatever the fingerprint says. */
+    public const RENDER_AT_LEAST = 60;
+
+    /** Fingerprint of what the last render showed while waiting; an unchanged poll skips the render. */
+    #[Locked]
+    public string $shown = '';
+
+    /** Unix time of the last render. */
+    #[Locked]
+    public int $renderedAt = 0;
+
     public function mount(string $board): void
     {
         abort_unless(app(GameRegistry::class)->isBoard($board), 404);
@@ -119,6 +130,12 @@ new #[Layout('layouts::app', ['realtime' => true, 'scripts' => ['resources/js/ga
         $view->title($name);
         app(PageMeta::class)->describe($name, __('Play :game blitz 5+3 live against Bitcoiners: find an opponent, invite a player and climb the casual ladder. The server checks every move.', ['game' => $name]))
             ->card(fn () => \App\Support\Cards\PageCard::page('board.'.$this->slug));
+
+        // Only a waiting lobby polls; an idle one does not pay for the fingerprint's queries.
+        if ($this->waiting) {
+            $this->shown = $this->fingerprint();
+            $this->renderedAt = now()->getTimestamp();
+        }
 
         $outgoing = $this->outgoing;
         $this->invitedUserId = $outgoing?->invitee_id;
@@ -245,6 +262,33 @@ new #[Layout('layouts::app', ['realtime' => true, 'scripts' => ['resources/js/ga
             $queue = app(BoardQueue::class);
             $this->goTo($queue->entryOf($user) !== null ? $queue->pair($user) : app(BoardGameService::class)->activeGameOf($user));
         });
+
+        // Most polls pair nobody: they answer without a render of the whole lobby (performance plan P3), as the
+        // match room's sync does; the rest of the page still renders once every RENDER_AT_LEAST seconds.
+        unset($this->entry, $this->outgoing, $this->incoming, $this->activeGame, $this->searching);
+
+        if ($this->fingerprint() === $this->shown && now()->getTimestamp() - $this->renderedAt < self::RENDER_AT_LEAST) {
+            $this->skipRender();
+        }
+    }
+
+    /**
+     * What the waiting player sees change: the queue entry and its range,
+     * the open invite, the invites received, the live game, how many search,
+     * and the error line.
+     */
+    private function fingerprint(): string
+    {
+        $entry = $this->entry;
+
+        return hash('xxh128', (string) json_encode([
+            $entry === null ? null : [$entry->id, app(BoardQueue::class)->range($entry)],
+            $this->outgoing?->only(['id', 'status', 'expires_at']),
+            $this->incoming->modelKeys(),
+            $this->activeGame?->id,
+            $this->searching,
+            $this->error,
+        ]));
     }
 
     public function invite(int $userId): void

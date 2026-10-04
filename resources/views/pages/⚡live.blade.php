@@ -27,7 +27,8 @@ use Livewire\Component;
  * The stage and the on-air line follow the page's live feed (P20b,
  * Alpine.store('live')): the count changes without a reload, and the stage
  * starts playing when the stream comes on air while the page is open. Both
- * are wire:ignore'd; the 30-second poll refreshes the lists. The floating player
+ * are wire:ignore'd; the 30-second poll refreshes the lists (only their island,
+ * `programme`: performance plan P3). The floating player
  * (<x-live-player>) is not rendered here.
  *
  * The stream chat (P24, pages/live/chat, resources/js/liveChat.js): the
@@ -152,7 +153,7 @@ new #[Layout('layouts::app', ['scripts' => ['resources/js/liveChat.js']])] class
     ];
 @endphp
 
-<div class="flex flex-col gap-5 px-4 pb-8 lg:gap-6 lg:px-12" wire:poll.30s.visible data-test="live-page" data-live="{{ $status->live ? '1' : '0' }}">
+<div class="flex flex-col gap-5 px-4 pb-8 lg:gap-6 lg:px-12" data-test="live-page" data-live="{{ $status->live ? '1' : '0' }}">
     <div class="flex flex-wrap items-end justify-between gap-x-6 gap-y-2">
         <div class="flex max-w-[76ch] flex-col gap-1.5">
             <h1 class="m-0 font-display text-2xl leading-tight font-bold lg:text-[28px]">{{ __('Live stream') }}</h1>
@@ -290,19 +291,22 @@ new #[Layout('layouts::app', ['scripts' => ['resources/js/liveChat.js']])] class
 
             {{-- The programme: what is on the stream. Under the stage from lg; the second view below lg. --}}
             <aside id="live-programme" class="flex flex-col rounded-lg bg-card max-lg:order-first" :class="tab === 'programme' ? '' : 'max-lg:hidden'" aria-label="{{ __('On the stream') }}" data-test="live-programme">
+                {{-- The 30-second poll refreshes only this island (performance plan P3): the two lists, not the whole page. --}}
+                @island(name: 'programme')
+                <div class="flex flex-col" wire:poll.30s.visible data-test="live-programme-island">
                 <section aria-labelledby="live-now-h" class="flex flex-col gap-2 px-4 py-4 lg:px-5" data-test="live-now">
                     <span class="flex items-baseline justify-between gap-3">
                         <h2 id="live-now-h" class="m-0 text-[15px] font-bold">{{ __('Live now') }}</h2>
                         <a href="{{ route('games.index') }}" class="inline-flex min-h-11 items-center text-xs lg:min-h-6">{{ __('All live games') }}</a>
                     </span>
-                    @if ($games->isEmpty())
+                    @if ($this->games->isEmpty())
                         <p class="m-0 text-[13px] leading-5 text-ink-2">
-                            {{ $status->live ? __('No game running. Start a blitz game and it is on the stream.') : __('No game running right now.') }}
+                            {{ $this->status->live ? __('No game running. Start a blitz game and it is on the stream.') : __('No game running right now.') }}
                             <a href="{{ route('chess.lobby') }}">{{ __('Play blitz') }}</a>
                         </p>
                     @else
                         <ul class="m-0 flex list-none flex-col p-0">
-                            @foreach ($games as $game)
+                            @foreach ($this->games as $game)
                                 <li wire:key="live-game-{{ $game->id }}" class="border-t border-hairline first:border-0" data-test="live-now-game">
                                     <a href="{{ route('games.show', $game) }}" class="flex min-h-12 items-center gap-3 py-2 text-[13px] text-ink hover:bg-row-hover hover:text-ink">
                                         <span class="flex min-w-0 grow flex-col gap-1">
@@ -335,7 +339,8 @@ new #[Layout('layouts::app', ['scripts' => ['resources/js/liveChat.js']])] class
                         </ul>
                     </section>
                 @endif
-
+                </div>
+                @endisland
             </aside>
         </div>
     </div>

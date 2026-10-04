@@ -146,9 +146,15 @@ test('the organizer sets the prizes and a sponsor whose invoice comes from the l
     $payment = IncomingPayment::query()->sole();
     expect($payment->source)->toBe('sponsor')->and($payment->sponsor_id)->toBe($sponsor->id)->and($payment->zap_request)->toBeNull();
 
+    // Still unpaid: the 5 s poll answers without a render (performance plan P3); paid, it renders.
+    $this->travel(10)->seconds();
+    $page->call('checkInvoice')->assertOk();
+    expect($page->effects)->not->toHaveKey('html');
+
     $pot->settleIncoming($payment->payment_hash);
     $this->travel(10)->seconds();
     $page->call('checkInvoice');
+    expect($page->effects)->toHaveKey('html');
 
     $this->get(route('tournaments.show', $tournament))->assertSee('Satoshi’s Pizza')->assertSeeHtml('data-test="pool-sats">'.ShareCard::sats(500000).'<');
 });

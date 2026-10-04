@@ -2,6 +2,9 @@
 
 use App\Enums\InviteStatus;
 use App\Enums\TournamentFormat;
+use App\Events\SeriesMatchChanged;
+use App\Events\TournamentChanged;
+use App\Events\UserNotified;
 use App\Models\ChessGame;
 use App\Models\ClanInvite;
 use App\Models\Lineup;
@@ -160,6 +163,8 @@ const TRAFFIC_PROBE = <<<'JS'
                     received: seen.reduce((sum, r) => sum + r.received, 0),
                     statuses: seen.map((r) => r.status),
                     labels,
+                    // When each roundtrip left, in virtual ms since load: tells a poll from a one-off.
+                    at: seen.map((r) => r.at),
                     other: { ...other },
                 };
             },
@@ -242,18 +247,21 @@ function trafficMeasure(Page $page, string $url): array
 }
 
 /*
-| Today's numbers (2026-10-04) as the upper bound per page: [requests in the window, request + response bytes].
-| The request count is exact (it repeated in three runs); the bytes carry 10 % on top of the measured size, rounded
-| up to 1 000, because tokens and timestamps in the snapshots change by a few dozen bytes per run. P3 lowers them
-| with the saving named.
+| The numbers after P3 (2026-10-04) as the upper bound per page: [requests in the window, request + response bytes].
+| P1 measured 4 / 6 / 9 / 2 / 2 / 5 requests (tournament guest and player, room, home, live guest and player);
+| P3 took out every poll that ran next to a connected socket. What is left are the dock's renders when a number it
+| counts down (data-tick) reaches zero, 0.25 s after it (matchDock.js requestRefresh), not a poll; their number was
+| 2 or 3 between runs on home (and 3 or 4 on /live before P3); the budget takes the larger one.
+| The bytes carry 10 % on top of the largest measured size, rounded up to 1 000, because tokens and timestamps in
+| the snapshots change by a few dozen bytes per run.
 */
 const TRAFFIC_BUDGETS = [
-    'tournament (guest)' => [4, 280_000],
-    'tournament (player)' => [6, 380_000],
-    'room (player)' => [9, 65_000],
-    'home (player)' => [2, 56_000],
-    'live (guest)' => [2, 126_000],
-    'live (player)' => [5, 241_000],
+    'tournament (guest)' => [0, 0],
+    'tournament (player)' => [2, 57_000],
+    'room (player)' => [2, 48_000],
+    'home (player)' => [3, 84_000],
+    'live (guest)' => [0, 0],
+    'live (player)' => [3, 85_000],
 ];
 
 test('the hot pages cost this many Livewire roundtrips and bytes in a minute, with a clean console and 2xx answers', function () {
@@ -285,7 +293,7 @@ test('the hot pages cost this many Livewire roundtrips and bytes in a minute, wi
         $bytes = $run['window']['sent'] + $run['window']['received'];
         $measured[$name] = [
             'window' => $run['window']['requests'], 'sent' => $run['window']['sent'], 'received' => $run['window']['received'],
-            'load' => $run['load']['requests'], 'labels' => $run['window']['labels'], 'other' => $run['window']['other'],
+            'load' => $run['load']['requests'], 'labels' => $run['window']['labels'], 'at' => $run['window']['at'], 'other' => $run['window']['other'],
         ];
         $last = [$webpage, $page];
 
@@ -322,10 +330,10 @@ test('the hot pages cost this many Livewire roundtrips and bytes in a minute, wi
         file_put_contents($report, implode("\n", $rows)."\n");
     }
 
-    // The collector sees traffic where traffic is known to be: the room syncs every 8 s, the tournament page polls every 15 s.
-    expect($measured['room (player)']['window'])->toBeGreaterThanOrEqual(6)
-        ->and($measured['tournament (guest)']['window'])->toBeGreaterThanOrEqual(3)
-        ->and($problems)->toBe([])
+    // Since P3 a page with a live socket and nothing pushed is quiet: the traffic that remains is the dock's renders
+    // at a deadline it counts down to (data-tick), not a poll. That the room and the tournament page still ask when
+    // they have to (a push, no socket) is the next test's job.
+    expect($problems)->toBe([])
         ->and($over)->toBe([]);
 
     // Positive controls on the last page. The count follows a timer the test adds: a 10-second poll of its own
@@ -354,4 +362,145 @@ test('the hot pages cost this many Livewire roundtrips and bytes in a minute, wi
     expect(implode("\n", array_column($page->javaScriptErrors(), 'message')))->toContain('positive control')
         ->and($statuses)->not->toBe([])
         ->and(array_filter($statuses, fn ($status): bool => $status >= 200 && $status <= 299))->toBe([]);
+});
+
+/*
+|--------------------------------------------------------------------------
+| The other side of P3: the pages still ask when they have to
+|--------------------------------------------------------------------------
+|
+| A quiet minute (above) proves nothing on its own: a page that never asks
+| would pass it too. So, on the same virtual clock: a push makes exactly one
+| render (the shell's three components in ONE request), the socket going
+| away brings the fallback poll back (room every 30 s, tournament page every
+| 15 s), a hidden tab asks nothing and once when it comes back, and /live's
+| poll carries only its programme island once that is on screen.
+*/
+
+/** The Livewire requests of a page on the real clock, by the components and actions each carries. */
+const REQUEST_COUNTER = <<<'JS'
+    (() => {
+        window.__requests = [];
+        document.addEventListener('livewire:init', () => {
+            Livewire.interceptRequest(({ request, onSend }) => {
+                onSend(() => window.__requests.push([...request.messages].map((m) => m.component.name + ':' + ([...m.actions].map((a) => a.name).join('+') || 'render')).join(',')));
+            });
+        });
+    })();
+    JS;
+
+/** Waits until the page's socket has subscribed `$channel`, then counts the pushes it hears from there on. */
+function trafficSubscribed(Page $page, string $channel): void
+{
+    BrowserWait::until($page, '() => window.Echo?.connector.pusher.connection.state === "connected" && window.Echo.connector.pusher.channel('.json_encode($channel).')?.subscribed === true', 10_000);
+    $page->evaluate('() => { window.__pushes = 0; if (! window.__pushCounter) { window.__pushCounter = true; window.Echo.connector.pusher.connection.bind("message", (m) => { if (m.event && ! m.event.startsWith("pusher")) window.__pushes++; }); } }');
+}
+
+/** Lets `$ms` virtual milliseconds pass and returns what Livewire sent meanwhile. */
+function trafficWindow(Page $page, int $ms): array
+{
+    $mark = $page->evaluate('() => window.__traffic.mark()');
+    Playwright::usingTimeout(120_000, fn () => $page->evaluate('async (ms) => { await window.__traffic.advance(ms); }', $ms));
+
+    return $page->evaluate('(mark) => window.__traffic.since(mark)', $mark);
+}
+
+/** Roundtrips whose label names `$needle` (a component:action). */
+function trafficCount(array $window, string $needle): int
+{
+    return array_sum(array_filter($window['labels'], fn (int $n, string $label): bool => str_contains($label, $needle), ARRAY_FILTER_USE_BOTH));
+}
+
+test('a push renders once, the fallback poll comes back without a socket, a hidden tab asks nothing, and /live polls only its island', function () {
+    $world = trafficWorld();
+    $player = $world['player'];
+    $series = $world['series'];
+    $tournament = $world['tournament'];
+    $seen = [];
+
+    $open = function (?User $viewer, string $url): Page {
+        $webpage = visit($viewer === null ? BrowserLogin::LANDING : BrowserLogin::url($viewer));
+        $page = $webpage->page();
+        $page->context()->addInitScript(BrowserConsole::COLLECTOR);
+        $page->context()->addInitScript(TRAFFIC_PROBE);
+        $page->setViewportSize(1440, 900);
+        trafficMeasure($page, $url);
+
+        return $page;
+    };
+
+    // The room: a series push makes one request that carries the room's sync (and the dock's and badge's renders).
+    $room = $open($player, route('matches.room', $series));
+    trafficSubscribed($room, 'private-App.Models.User.'.$player->id);
+    event(new SeriesMatchChanged([$player->id], $series->number, $series->status->value));
+    BrowserWait::until($room, '() => window.__pushes >= 1', 10_000);
+    $seen['room push'] = trafficWindow($room, 2_000);
+
+    // No socket: the room asks every 30 s; a hidden tab asks nothing, and once when it comes back.
+    $room->evaluate('() => window.Echo.connector.pusher.disconnect()');
+    $seen['room no socket'] = trafficWindow($room, 60_000);
+    $room->evaluate('() => { Object.defineProperty(document, "hidden", { configurable: true, get: () => true }); document.dispatchEvent(new Event("visibilitychange")); }');
+    // A batch the shell raised just before the tab hid still leaves (playerEvents.js, 250 ms); then the quiet.
+    trafficWindow($room, 1_000);
+    $seen['room hidden'] = trafficWindow($room, 120_000);
+    $room->evaluate('() => { Object.defineProperty(document, "hidden", { configurable: true, get: () => false }); document.dispatchEvent(new Event("visibilitychange")); }');
+    $seen['room back'] = trafficWindow($room, 1_000);
+    $roomErrors = [...$room->evaluate('() => window.__errors'), ...$room->evaluate(BrowserConsole::BAD_RESPONSES)];
+
+    // The tournament page: a push renders it once, after its random wait; without a socket it polls every 15 s.
+    $show = $open(null, route('tournaments.show', $tournament));
+    trafficSubscribed($show, 'tournament.'.$tournament->id);
+    event(new TournamentChanged($tournament->id, 'result'));
+    BrowserWait::until($show, '() => window.__pushes >= 1', 10_000);
+    $seen['tournament push'] = trafficWindow($show, 2_000);
+    $show->evaluate('() => window.Echo.connector.pusher.disconnect()');
+    $seen['tournament no socket'] = trafficWindow($show, 60_000);
+    $showErrors = [...$show->evaluate('() => window.__errors'), ...$show->evaluate(BrowserConsole::BAD_RESPONSES)];
+
+    // Home: one notification renders the dock, the cup badge and banner, and the bell in ONE request. On the REAL
+    // clock: the virtual one fires the 250 ms waits before Livewire's own 5 ms bundling buffer runs out, and so
+    // bundles requests that a browser sends apart (the bell used to ask at once, the others 250 ms later).
+    $webpage = visit(BrowserLogin::url($player));
+    $home = $webpage->page();
+    $home->context()->addInitScript(BrowserConsole::COLLECTOR);
+    $home->context()->addInitScript(REQUEST_COUNTER);
+    $home->setViewportSize(1440, 900);
+    $home->goto(ComputeUrl::from(route('home')));
+    BrowserWait::until($home, '() => document.readyState === "complete" && window.__requests !== undefined && typeof window.Livewire !== "undefined"', 15_000);
+    trafficSubscribed($home, 'private-App.Models.User.'.$player->id);
+    $before = $home->evaluate('() => window.__requests.length');
+    event(new UserNotified($player->id, ['id' => 'p3-push', 'kind' => 'invite', 'title' => 'P3', 'body' => 'P3', 'url' => route('home'),
+        'match' => null, 'action' => null, 'sound' => 'none', 'tone' => 'confirmed', 'redirect' => false]));
+    BrowserWait::until($home, '() => window.__pushes >= 1', 10_000);
+    usleep(1_500_000);
+    $requests = array_slice($home->evaluate('() => window.__requests'), $before);
+    $seen['home notification'] = ['requests' => count($requests), 'received' => 0, 'labels' => array_count_values($requests), 'at' => []];
+    $homeErrors = [...$home->evaluate('() => window.__errors'), ...$home->evaluate(BrowserConsole::BAD_RESPONSES)];
+
+    // /live: the programme scrolled into view, its 30 s poll renders the island only.
+    $live = $open(null, route('live'));
+    $live->evaluate('() => document.querySelector("[data-test=live-programme]")?.scrollIntoView()');
+    BrowserWait::until($live, '() => { const r = document.querySelector("[data-test=live-programme]")?.getBoundingClientRect(); return r && r.top < innerHeight && r.bottom > 0; }', 5_000);
+    $seen['live island'] = trafficWindow($live, 60_000);
+    $liveErrors = [...$live->evaluate('() => window.__errors'), ...$live->evaluate(BrowserConsole::BAD_RESPONSES)];
+
+    fwrite(STDERR, "\n[livewire-pushes] ".json_encode(array_map(fn (array $w): array => ['requests' => $w['requests'], 'received' => $w['received'], 'labels' => $w['labels'], 'at' => $w['at']], $seen))."\n");
+
+    expect($roomErrors)->toBe([])->and($showErrors)->toBe([])->and($homeErrors)->toBe([])->and($liveErrors)->toBe([])
+        // A push: one request, which carries the room's sync.
+        ->and($seen['room push']['requests'])->toBe(1)
+        ->and(trafficCount($seen['room push'], 'pages::matches.room:sync'))->toBe(1)
+        // No socket: every 30 s; hidden: nothing from the room or anything else; back: one catch-up.
+        ->and(trafficCount($seen['room no socket'], 'pages::matches.room:sync'))->toBe(2)
+        ->and($seen['room hidden']['requests'])->toBe(0)
+        ->and(trafficCount($seen['room back'], 'pages::matches.room:sync'))->toBe(1)
+        // The tournament page: one render per push; every 15 s without the socket.
+        ->and(trafficCount($seen['tournament push'], 'pages::tournaments.show:$refresh'))->toBe(1)
+        ->and(trafficCount($seen['tournament no socket'], 'pages::tournaments.show:$refresh'))->toBe(4)
+        // One notification, one request, with the dock, the cup badge and the bell in it.
+        ->and($seen['home notification']['requests'])->toBe(1)
+        ->and(array_key_first($seen['home notification']['labels']))->toContain('match-dock:$refresh')->toContain('notification-bell:$refresh')->toContain('cup-match:$refresh')
+        // /live: two island polls in a minute, each a fraction of the ~56 KB page.
+        ->and(trafficCount($seen['live island'], 'pages::live:$refresh'))->toBe(2)
+        ->and($seen['live island']['received'])->toBeLessThan(2 * 20_000);
 });

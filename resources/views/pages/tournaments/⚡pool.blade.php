@@ -236,8 +236,13 @@ new #[Layout('layouts::app', ['section' => 'tournaments'])] class extends PrizeP
     public function checkInvoice(PotTopUps $topUps): void
     {
         if ($this->invoice !== null && $this->invoice->status === IncomingPaymentStatus::Pending) {
-            $topUps->check($this->invoice);
+            $fresh = $topUps->check($this->invoice);
             unset($this->invoice, $this->sponsors);
+
+            // Still waiting: nothing on the page changed, so the 5 s poll answers without a render (and its QR code; P3).
+            if ($fresh->status === IncomingPaymentStatus::Pending) {
+                $this->skipRender();
+            }
         }
     }
 

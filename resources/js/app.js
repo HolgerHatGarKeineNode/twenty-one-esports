@@ -13,6 +13,7 @@ import { dropFailedBunker, forgetForeignSession } from './millAuth.js';
 import matchDock from './matchDock.js';
 import upcomingEvents from './upcomingEvents.js';
 import cupMatch from './cupMatch.js';
+import notificationBell from './notificationBell.js';
 import boardLobby from './boardLobby.js';
 import playerPicker from './playerPicker.js';
 import { firstSteps, shellHeader, shellSheet } from './shellNav.js';
@@ -58,6 +59,8 @@ document.addEventListener('alpine:init', () => {
     window.Alpine.data('upcomingEvents', upcomingEvents);
     // The player's open cup match: the header badge and the page banner (CupMatchNow).
     window.Alpine.data('cupMatch', cupMatch);
+    // The bell's panel and its renders; one dispatcher feeds the dock, the badge and the bell (playerEvents.js).
+    window.Alpine.data('notificationBell', notificationBell);
     // The player picker combobox, <x-player-picker>.
     window.Alpine.data('playerPicker', playerPicker);
     // The shell navigation: header and game hub, the phone's More sheet, the guests' first steps.

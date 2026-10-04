@@ -40,6 +40,23 @@ test('the login is a private gamer tag of its own card, and the link block asks 
     expect($player->gamer_tags)->toBe(['tmnf' => 'satoshi_drives']);
 });
 
+test('the 3 s poll of the link code answers without a render until the server confirmed the link (performance plan P3)', function () {
+    tmnfOn();
+    $player = User::factory()->create(['gamer_tags' => ['tmnf' => 'satoshi_drives']]);
+    $page = Livewire::actingAs($player)->test('pages::settings.gaming')->call('showTmnfCode')
+        ->assertSeeHtml('wire:poll.3s.visible="checkTmnfLink"');
+
+    $page->call('checkTmnfLink')->assertOk();
+    expect($page->effects)->not->toHaveKey('html');
+
+    ScoreAccountClaim::query()->create(['game' => 'tmnf', 'account_id' => 'satoshi_drives', 'user_id' => $player->id]);
+    $page->call('checkTmnfLink')->assertOk();
+    expect($page->effects)->toHaveKey('html')
+        ->and($page->html())->toContain('data-test="tmnf-linked"');
+
+    $page->call('$refresh')->assertOk();
+});
+
 test('a linked login shows as linked, and no public page names it', function () {
     tmnfOn();
     $player = User::factory()->create(['gamer_tags' => ['tmnf' => 'satoshi_drives']]);

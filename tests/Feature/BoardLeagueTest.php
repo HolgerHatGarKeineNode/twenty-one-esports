@@ -169,6 +169,28 @@ test('the lobby finds an opponent and moves both players to the board', function
         ->assertRedirect(route('board.show', BoardGame::query()->sole()));
 });
 
+test('the searching lobby\'s poll answers without a render until something it shows changed (performance plan P3)', function () {
+    $this->freezeSecond();
+    [$a, $b] = User::factory()->count(2)->create();
+    $lobby = Livewire::actingAs($a)->test('pages::board.lobby', ['board' => NineMensMorris::SLUG])
+        ->call('findOpponent')->assertSeeHtml('wire:poll.4s="poll"');
+
+    $lobby->call('poll')->assertOk()->assertNoRedirect();
+    expect($lobby->effects)->not->toHaveKey('html');
+
+    // Another player starts searching (another board game's count would not change): the Blitz tile's count moves.
+    app(BoardQueue::class)->join($b, Checkers::SLUG);
+    $lobby->call('poll')->assertOk();
+    expect($lobby->effects)->not->toHaveKey('html');
+    app(BoardQueue::class)->leave($b);
+
+    // The rest of the page still renders once a minute.
+    $this->travel(61)->seconds();
+    $lobby->call('poll')->assertOk();
+    expect($lobby->effects)->toHaveKey('html');
+    $lobby->call('$refresh')->assertOk();
+});
+
 /* ---------- One live game at a time ------------------------------------------------------------------------- */
 
 test('one live game at a time: a board game keeps chess out, and live chess keeps the board games out', function () {

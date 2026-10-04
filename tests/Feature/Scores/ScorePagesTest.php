@@ -127,6 +127,32 @@ test('a player submits a value with a proof, an admin approves it, and it leads 
     $this->get(route('tournaments.show', $tournament))->assertOk()->assertSee('data-test="tournament-leaderboard"', false)->assertSee('0:59.250');
 });
 
+test('the 30 s poll of a running board answers without a render until the board changed (performance plan P3)', function () {
+    [$tournament, [$a]] = publishedScoreBoard();
+    $this->travelTo($tournament->starts_at->addHours(2));
+    $admin = User::factory()->create();
+    Admin::query()->create(['pubkey' => $admin->pubkey]);
+    $board = Livewire::test('pages::scores.tournament', ['tournament' => $tournament])->assertSeeHtml('wire:poll.30s.visible="poll"');
+
+    $board->call('poll')->assertOk();
+    expect($board->effects)->not->toHaveKey('html');
+
+    // A value is approved elsewhere: the next poll renders it.
+    Livewire::actingAs($a)->test('pages::scores.tournament', ['tournament' => $tournament])
+        ->set('value', '0:59.250')->set('achievedAt', LeagueTime::input(now()->subHour()))->set('proofUrl', 'https://replays.example.org/run/42')
+        ->call('submit')->assertHasNoErrors();
+    Livewire::actingAs($admin)->test('pages::admin.scores')->call('approve', ScoreRun::query()->sole()->id);
+    auth()->logout();
+
+    $board->call('poll')->assertOk();
+    expect($board->effects)->toHaveKey('html')
+        ->and($board->html())->toContain('0:59.250');
+
+    $board->call('poll')->assertOk();
+    expect($board->effects)->not->toHaveKey('html');
+    $board->call('$refresh')->assertOk();
+});
+
 test('a rejected submission says why, and nobody reviews their own', function () {
     [$tournament, [$a]] = publishedScoreBoard();
     $this->travelTo($tournament->starts_at->addHours(2));
