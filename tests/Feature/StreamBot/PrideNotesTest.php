@@ -150,7 +150,7 @@ test('the biggest pot\'s prizes go out in the US evening slot with the tournamen
 
     expect($log)->toContain('prizes: posted')
         ->and($this->published)->toHaveCount(1)
-        ->and($this->published[0]->content)->toContain('21,000', 'Sats Cup', '10,395 / 6,237 / 4,158 sats', route('tournaments.show', $pot))
+        ->and($this->published[0]->content)->toContain('21,000', 'Sats Cup', '10,500 / 6,300 / 4,200 sats', route('tournaments.show', $pot))
         ->and(collect($this->published[0]->tags)->where(0, 'p')->all())->toBe([]);
 });
 

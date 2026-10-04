@@ -86,7 +86,7 @@ test('the pride slides name the latest winner, the week\'s climbers, new sign-up
         ->and($pride['signups'])->toHaveCount(1)
         ->and($pride['signups'][0])->toMatchArray(['tournament' => 'Cup <script>', 'pot' => null])
         ->and($pride['prizes'])->toMatchArray(['name' => 'Sats Cup', 'pot' => 21000])
-        ->and(array_column($pride['prizes']['places'], 'sats'))->toBe([10395, 6237, 4158]);
+        ->and(array_column($pride['prizes']['places'], 'sats'))->toBe([10500, 6300, 4200]);
 
     // The views render it escaped, and the empty states when there is nothing.
     $renderer = SceneRenderer::fromConfig();
@@ -100,7 +100,7 @@ test('the pride slides name the latest winner, the week\'s climbers, new sign-up
     expect($svgs['e1'])->toContain('>Ben<', 'beat Zoe &lt;b&gt;', '+16 casual Elo')
         ->and($svgs['e2'])->toContain('+83 Elo', '+60 Elo', '+26 Elo', '3 results in Chess and Checkers')
         ->and($svgs['e3'])->toContain('Cup &lt;script&gt;')
-        ->and($svgs['e4'])->toContain('10,395 sats', '6,237 sats', '4,158 sats')
+        ->and($svgs['e4'])->toContain('10,500 sats', '6,300 sats', '4,200 sats')
         ->and(implode('', $svgs))->not->toContain('<script>', '<b>');
 });
 
