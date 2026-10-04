@@ -294,7 +294,13 @@ new class extends Component {
             <span class="inline-flex h-6 items-center rounded-xs bg-btc-chip px-2 text-xs font-bold text-btc-hi" data-test="control-paused">{{ __('Paused') }}</span>
         @endif
     </span>
-    <p class="m-0 max-w-[80ch] text-xs leading-normal text-ink-2">{{ __('Admins and the organizer of this tournament. Every step is logged with your name, and the players read the reasons. A result set here is the league’s decision; correcting a played result that moved Elo reverts that Elo and applies the corrected one. A rated decision on a disputed series stays on the disputes page.') }}</p>
+    {{-- The rules of the section, one click away: during a live event the actions come first (2026-10-04). --}}
+    <details class="group text-xs text-ink-2" data-test="control-help">
+        <summary class="inline-flex min-h-6 cursor-pointer list-none items-center gap-1.5 text-ink-2 hover:text-ink [&::-webkit-details-marker]:hidden">
+            <x-icon name="chevron-down" :size="14" class="shrink-0 transition-transform duration-150 group-open:rotate-180 motion-reduce:transition-none" />{{ __('How control works') }}
+        </summary>
+        <p class="m-0 mt-2 max-w-[80ch] leading-normal">{{ __('Admins and the organizer of this tournament. Every step is logged with your name, and the players read the reasons. A result set here is the league’s decision; correcting a played result that moved Elo reverts that Elo and applies the corrected one. A rated decision on a disputed series stays on the disputes page.') }}</p>
+    </details>
 
     @if ($notice !== '')
         <p class="m-0 rounded-md bg-win-tint px-4 py-3 text-[13px] text-win shadow-[inset_0_0_0_1px_#1F5A34]" role="status" data-test="control-notice">{{ $notice }}</p>
@@ -445,7 +451,7 @@ new class extends Component {
                                 <span class="text-xs font-bold text-loss" data-test="control-disqualified">{{ __('disqualified') }}</span>
                             @else
                                 @php $picked = in_array($participant->id, $disqualifyPicked, true); @endphp
-                                <x-button :variant="$picked ? 'primary' : 'quiet'" wire:click="startDisqualify({{ $participant->id }})" class="h-9 px-3" aria-pressed="{{ $picked ? 'true' : 'false' }}" data-test="control-dq-{{ $participant->id }}">{{ $picked ? __('Picked') : __('Disqualify') }}</x-button>
+                                <x-button :variant="$picked ? 'primary' : 'quiet'" :icon="$picked ? 'check' : null" wire:click="startDisqualify({{ $participant->id }})" class="h-9 shrink-0 px-3" aria-pressed="{{ $picked ? 'true' : 'false' }}" data-test="control-dq-{{ $participant->id }}">{{ $picked ? __('Picked') : __('Disqualify') }}</x-button>
                             @endif
                         </span>
                     </li>
@@ -453,15 +459,21 @@ new class extends Component {
             </ul>
             @if ($disqualifyPicked !== [])
                 @php $pickedNames = $this->participants->whereIn('id', $disqualifyPicked)->pluck('name')->all(); @endphp
-                <form wire:submit="disqualify" class="flex flex-col gap-2 rounded-md bg-ground p-3 shadow-ring" data-test="control-dq-form">
-                    <p class="m-0 text-xs text-ink-2">{{ __('Pick more entries to disqualify them together: when both sides of a match are out, nobody moves on from it.') }}</p>
+                <form wire:submit="disqualify" class="flex flex-col gap-3 rounded-md bg-ground p-3 shadow-[inset_0_0_0_1px_#5A2A2E]" data-test="control-dq-form">
+                    {{-- Who goes out, as a list: a button that named them all ran past a phone's width with long names. --}}
+                    <ul class="m-0 flex list-none flex-col gap-1 p-0 text-[13px]" data-test="control-dq-picked">
+                        @foreach ($pickedNames as $pickedName)
+                            <li class="flex min-w-0 items-start gap-2"><x-icon name="close" :size="14" class="mt-0.5 shrink-0 text-loss" /><b class="min-w-0 [overflow-wrap:anywhere]">{{ $pickedName }}</b></li>
+                        @endforeach
+                    </ul>
+                    <p class="m-0 text-xs leading-normal text-ink-2">{{ __('Pick more entries to disqualify them together: when both sides of a match are out, nobody moves on from it.') }}</p>
                     <label class="flex flex-col gap-1.5 text-xs text-ink-2">
                         {{ __('Reason (the players read it)') }}
                         <input wire:model="disqualifyReason" maxlength="500" class="{{ $field }}" data-test="control-dq-reason">
                     </label>
                     <span class="flex flex-wrap gap-2">
-                        <x-button type="submit" data-test="control-dq-confirm">{{ __('Disqualify :name', ['name' => implode(', ', $pickedNames)]) }}</x-button>
-                        <x-button variant="quiet" wire:click="cancelDisqualify">{{ __('Cancel') }}</x-button>
+                        <x-button type="submit" data-test="control-dq-confirm">{{ __('Disqualify (:count)', ['count' => count($pickedNames)]) }}</x-button>
+                        <x-button variant="quiet" wire:click="cancelDisqualify" data-test="control-dq-cancel">{{ __('Cancel') }}</x-button>
                     </span>
                 </form>
             @endif

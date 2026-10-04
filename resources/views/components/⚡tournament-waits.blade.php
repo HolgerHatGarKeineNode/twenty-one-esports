@@ -126,13 +126,15 @@ new class extends Component {
                     @endif
 
                     @if ($checkIn = $this->checkIns[$wait->matchId] ?? null)
-                        <span class="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1 text-xs" data-test="wait-checkin">
+                        {{-- One chip per side: a check mark and the time when in, a clock when not (never colour alone). --}}
+                        <span class="flex min-w-0 flex-wrap items-center gap-2 text-xs" data-test="wait-checkin">
                             <span class="text-ink-3">{{ __('Lobby check-in') }}</span>
                             @foreach (\App\Models\SeriesMatch::SIDES as $checkSide)
-                                <span @class(['inline-flex items-center gap-1', 'text-win' => $checkIn->readyAt($checkSide), 'text-ink-3' => ! $checkIn->readyAt($checkSide)])>
-                                    @if ($checkIn->readyAt($checkSide))<x-icon name="check" :size="12" />@endif
-                                    <b class="[overflow-wrap:anywhere]">{{ $checkSide === 'challenger' ? $checkIn->challenger_name : $checkIn->challenged_name }}</b>
-                                    {{ $checkIn->readyAt($checkSide) ? SeriesPresenter::time($checkIn->readyAt($checkSide), $viewer, 'H:i') : __('not checked in yet') }}
+                                @php $checkedAt = $checkIn->readyAt($checkSide); @endphp
+                                <span @class(['inline-flex min-w-0 max-w-full items-start gap-1.5 rounded-xs px-2 py-1', 'bg-win-tint text-win' => $checkedAt, 'bg-btc-chip text-btc-hi' => ! $checkedAt]) data-test="wait-checkin-{{ $checkSide }}">
+                                    <x-icon :name="$checkedAt ? 'check' : 'clock'" :size="12" class="mt-0.5 shrink-0" />
+                                    <span class="min-w-0 [overflow-wrap:anywhere]"><b>{{ $checkSide === 'challenger' ? $checkIn->challenger_name : $checkIn->challenged_name }}</b>
+                                        {{ $checkedAt ? __('in since :time', ['time' => SeriesPresenter::time($checkedAt, $viewer, 'H:i')]) : __('not in yet') }}</span>
                                 </span>
                             @endforeach
                         </span>

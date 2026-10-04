@@ -1,5 +1,6 @@
 <?php
 
+use App\Enums\SeriesStatus;
 use App\Enums\TournamentFormat;
 use App\Enums\TournamentResultsMode;
 use App\Enums\TournamentStatus;
@@ -8,6 +9,7 @@ use App\Models\Admin;
 use App\Models\SeriesMatch;
 use App\Models\Tournament;
 use App\Models\TournamentMatch;
+use App\Models\TournamentOrganizer;
 use App\Models\TournamentParticipant;
 use App\Models\User;
 use App\Support\Series\SeriesService;
@@ -17,6 +19,7 @@ use App\Support\Tournaments\TournamentBrackets;
 use App\Support\Tournaments\TournamentControl;
 use App\Support\Tournaments\TournamentRunner;
 use App\Support\Tournaments\TournamentScheduler;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\Queue;
 
@@ -59,7 +62,7 @@ test('the direction opens the live page with control, chat and bracket; a player
     $this->actingAs($admin)->get(route('tournaments.live', $tournament))->assertOk()
         ->assertSee('data-test="tournament-live"', false)->assertSee('data-test="live-bracket"', false)
         ->assertSee('data-test="desk-chat"', false)->assertSee('Tournament control')
-        ->assertSee('data-test="live-overview"', false)->assertSee('Not checked in = no-show')->assertSee('Result due')->assertSee('not checked in yet');
+        ->assertSee('data-test="live-overview"', false)->assertSee('Auto no-show if only one side is in')->assertSee('Result due')->assertSee('not in yet');
 
     $this->actingAs($tournament->creator)->get(route('tournaments.live', $tournament))->assertOk();
     $this->actingAs($tournament->creator)->get(route('tournaments.show', $tournament))->assertSee(route('tournaments.live', $tournament), false);
@@ -107,4 +110,89 @@ test('two entries of one match disqualified together: the match is a double no-s
     // A knockout allows no draw: the higher seed is carried on without a game (seedDecision), and is out there too.
     expect($match->result['decided'] ?? null)->toBe('noshow')
         ->and(TournamentParticipant::query()->whereKey($ids)->whereNotNull('disqualified_at')->count())->toBe(2);
+});
+
+test('nobody checked in by the check-in no-show time plus the response time: the double no-show rule decides the match', function () {
+    livePageTournament();
+    $series = SeriesMatch::query()->whereNotNull('tournament_match_id')->orderBy('id')->firstOrFail();
+    $minutes = (int) config('esports.tournaments.auto_noshow_minutes') + (int) $series->responseMinutes();
+
+    $this->travel($minutes - 1)->minutes();
+    app(TournamentScheduler::class)->tick();
+    expect(TournamentMatch::query()->findOrFail($series->tournament_match_id)->result)->toBeNull();
+
+    $this->travel(2)->minutes();
+    app(TournamentScheduler::class)->tick();
+    expect(TournamentMatch::query()->findOrFail($series->tournament_match_id)->result['decided'] ?? null)->toBe('noshow')
+        ->and($series->refresh()->status)->toBe(SeriesStatus::Resolved);
+});
+
+test('an organizer who plays in the tournament may disqualify entries', function () {
+    $tournament = livePageTournament();
+    $player = User::query()->where('name', 'Player 2')->firstOrFail();
+    $tournament->forceFill(['created_by_id' => $player->id])->save();
+    TournamentOrganizer::query()->create(['pubkey' => $player->pubkey]);
+    $other = TournamentParticipant::query()->where('tournament_id', $tournament->id)->where('name', 'Player 4')->firstOrFail();
+
+    expect(app(TournamentControl::class)->disqualifyMany($tournament->refresh(), $player, [$other->id], 'Gone'))->toBe(1);
+});
+
+test('the live page costs the same queries with one and with five open series: the overview adds none per series', function () {
+    $admin = User::factory()->create();
+    Admin::query()->create(['pubkey' => $admin->pubkey]);
+    $counts = [];
+
+    foreach ([2 => 1, 16 => 5] as $capacity => $open) {
+        $profile = GameProfile::for('rocket-league', '1v1');
+        $tournament = Tournament::factory()->create([
+            'game' => 'rocket-league', 'mode' => '1v1', 'format' => TournamentFormat::SingleElimination, 'capacity' => $capacity,
+            'options' => FormatOptions::fromArray(['thirdPlace' => false], $profile)->toArray(),
+            'results_mode' => TournamentResultsMode::Players, 'status' => TournamentStatus::Running,
+            'slug' => 'live-q-'.$capacity, 'created_by_id' => organizer()->id,
+        ]);
+
+        foreach (range(1, $capacity) as $index) {
+            $player = User::factory()->create();
+            TournamentParticipant::query()->create(['tournament_id' => $tournament->id, 'user_id' => $player->id, 'name' => "Q{$capacity} {$index}", 'rating' => 1200 - $index, 'members' => [$player->id]]);
+        }
+
+        app(TournamentBrackets::class)->generate($tournament, str_repeat('ab', 32));
+        app(TournamentRunner::class)->sync($tournament);
+        $series = SeriesMatch::query()->whereIn('tournament_match_id', $tournament->matches()->select('id'))->orderBy('id')->get();
+        // Three of eight decided: five stay open, one of them with a side checked in.
+        $series->slice($open)->each(fn (SeriesMatch $one) => $one->forceFill(['status' => SeriesStatus::Confirmed])->save());
+        $series->first()->forceFill(['ready_at_challenger' => now()])->save();
+
+        $this->actingAs($admin)->get(route('tournaments.live', $tournament))->assertOk();
+        DB::flushQueryLog();
+        DB::enableQueryLog();
+        $this->actingAs($admin)->get(route('tournaments.live', $tournament))->assertOk()->assertSee('data-test="live-series"', false);
+        $counts[$open] = count(DB::getQueryLog());
+        DB::disableQueryLog();
+    }
+
+    fwrite(STDERR, "\n[live-queries] ".json_encode($counts)."\n");
+
+    // Measured 2026-10-04: 76 and 83. The board reads only what openSeries() loads (one series query, one latestReport
+    // query, at N=1 and N=5 alike); the +7 are per-match `users where id in (a, b)` lookups outside the board.
+    expect($counts[1])->toBeLessThanOrEqual(90)->and($counts[5])->toBeLessThanOrEqual(90)
+        ->and($counts[5] - $counts[1])->toBeLessThanOrEqual(10);
+});
+
+test('the live page with nothing open says so: no open series, a draw pending, a director without manage rights', function () {
+    $tournament = livePageTournament();
+    $admin = User::factory()->create();
+    Admin::query()->create(['pubkey' => $admin->pubkey]);
+    SeriesMatch::query()->whereIn('tournament_match_id', $tournament->matches()->select('id'))->update(['status' => SeriesStatus::Confirmed]);
+
+    $this->actingAs($admin)->get(route('tournaments.live', $tournament))->assertOk()
+        ->assertSee('data-test="live-empty"', false)->assertDontSee('data-test="live-overview"', false);
+
+    $tournament->forceFill(['status' => TournamentStatus::Drawing])->save();
+    $this->actingAs($admin)->get(route('tournaments.live', $tournament))->assertOk()
+        ->assertDontSee('data-test="live-empty"', false)->assertDontSee('data-test="live-overview"', false)->assertSee('data-test="control"', false);
+
+    $director = User::factory()->create();
+    $tournament->directors()->attach($director->id);
+    $this->actingAs($director)->get(route('tournaments.live', $tournament))->assertOk()->assertDontSee('data-test="control"', false);
 });

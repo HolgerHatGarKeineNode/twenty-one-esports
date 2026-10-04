@@ -50,7 +50,8 @@
             @elseif ($side['mix'])
                 <span class="inline-flex h-5 items-center rounded-xs bg-raised px-1.5 text-[10px] text-ink-2">{{ __('mix') }}</span>
             @endif
-            <span @class(['min-w-0 grow truncate', 'font-bold text-ink' => $side['won'], 'text-ink-3' => ! $side['known']])>{{ $side['name'] }}</span>
+            {{-- Wraps instead of truncating: two long names that differ only at the end stay apart (2026-10-04, live page). --}}
+            <span @class(['min-w-0 grow leading-snug [overflow-wrap:anywhere]', 'font-bold text-ink' => $side['won'], 'text-ink-3' => ! $side['known']])>{{ $side['name'] }}</span>
             @if ($side['score'] !== null)
                 <span @class(['tabular-nums', 'font-bold text-btc' => $side['won']])>{{ $side['score'] }}</span>
             @endif

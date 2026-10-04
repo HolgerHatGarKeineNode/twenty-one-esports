@@ -1142,24 +1142,45 @@ new #[Title('Match room')] #[Layout('layouts::app', ['section' => 'matches', 'sc
             @endif
             @include('pages.matches.partials.lobby-rules')
             @if ($m->status === SeriesStatus::Accepted && $m->tournament_match_id !== null && ! $m->isCasualPairing() && $m->start_at !== null)
-                {{-- Lobby check-in (user, 2026-10-04): a signal for both sides and the direction; not in after the auto no-show time while the other is = no-show. --}}
-                <div class="mt-2 flex flex-col gap-2 border-t border-hairline pt-3" data-test="lobby-checkin">
-                    <b class="text-[13px]">{{ __('Lobby check-in') }}</b>
-                    <ul class="m-0 flex list-none flex-col gap-1 p-0 text-[13px]">
+                {{--
+                    Lobby check-in (user, 2026-10-04): a signal for both sides and the direction. The rule sentence names the
+                    clock time of SeriesMatch::autoNoshowAt() and only where SeriesService::autoNoShow() can act (league
+                    deadlines, players enter the results); a director tournament has no automatic no-show.
+                --}}
+                @php($autoNoshowAt = SeriesService::isDirectorEntered($m) ? null : $m->autoNoshowAt())
+                @php($myCheckIn = $captainSide !== null ? $m->readyAt($captainSide) : null)
+                <div class="mt-2 flex flex-col gap-3 border-t border-hairline pt-3" data-test="lobby-checkin">
+                    <h3 class="m-0 text-[13px] font-bold">{{ __('Lobby check-in') }}</h3>
+                    <ul class="m-0 flex list-none flex-col gap-2 p-0 text-[13px]">
                         @foreach (\App\Models\SeriesMatch::SIDES as $checkSide)
-                            <li class="flex flex-wrap items-center gap-2" data-test="checkin-{{ $checkSide }}">
-                                <span class="font-bold">{{ $checkSide === 'challenger' ? $m->challenger_name : $m->challenged_name }}</span>
-                                @if ($m->readyAt($checkSide))
-                                    <span class="inline-flex items-center gap-1 text-win"><x-icon name="check" :size="14" />{{ __('in the lobby since :time', ['time' => SeriesPresenter::time($m->readyAt($checkSide), $viewer, 'H:i')]) }}</span>
+                            @php($checkedAt = $m->readyAt($checkSide))
+                            <li class="grid grid-cols-[minmax(0,1fr)_auto] items-start gap-3" data-test="checkin-{{ $checkSide }}">
+                                <span class="min-w-0 leading-snug font-bold [overflow-wrap:anywhere]">{{ $checkSide === 'challenger' ? $m->challenger_name : $m->challenged_name }}@if ($checkSide === $captainSide) <span class="font-normal text-ink-3">{{ __('(you)') }}</span>@endif</span>
+                                @if ($checkedAt)
+                                    <span class="inline-flex items-center gap-1 text-xs whitespace-nowrap text-win"><x-icon name="check" :size="14" class="shrink-0" />{{ __('in since :time', ['time' => SeriesPresenter::time($checkedAt, $viewer, 'H:i')]) }}</span>
                                 @else
-                                    <span class="text-ink-3">{{ __('not checked in yet') }}</span>
+                                    <span class="inline-flex items-center gap-1 text-xs whitespace-nowrap text-ink-3"><x-icon name="clock" :size="14" class="shrink-0" />{{ __('not in yet') }}</span>
                                 @endif
                             </li>
                         @endforeach
                     </ul>
-                    <p class="m-0 text-xs leading-normal text-ink-2">{{ __('Check in once you are in the game lobby. :minutes minutes after the start, a side that has not checked in while the other has counts as a no-show and has :response minutes to answer.', ['minutes' => (int) config('esports.tournaments.auto_noshow_minutes', 30), 'response' => $m->responseMinutes()]) }}</p>
-                    @if ($captainSide !== null && $m->readyAt($captainSide) === null)
-                        <span><x-button icon="check" wire:click="checkInLobby" :disabled="$m->start_at->isFuture()" class="disabled:cursor-not-allowed disabled:opacity-50" data-test="checkin-lobby">{{ __('I\'m in the lobby') }}</x-button></span>
+                    @if ($autoNoshowAt !== null)
+                        {{-- The two clock times of SeriesService::autoNoShow(), time first like the live page's deadlines. --}}
+                        <div class="flex flex-col gap-1.5 text-xs leading-normal text-ink-2" data-test="checkin-rule">
+                            <span>{{ __('If no game is entered:') }}</span>
+                            <ol class="m-0 flex list-none flex-col gap-1.5 p-0">
+                                <li class="grid grid-cols-[3rem_minmax(0,1fr)] gap-x-2"><b class="text-ink tabular-nums">{{ SeriesPresenter::time($autoNoshowAt, $viewer, 'H:i') }}</b><span>{{ __('Only one side in: the other counts as a no-show and has :response minutes to answer.', ['response' => $m->responseMinutes()]) }}</span></li>
+                                <li class="grid grid-cols-[3rem_minmax(0,1fr)] gap-x-2"><b class="text-ink tabular-nums">{{ SeriesPresenter::time($autoNoshowAt->copy()->addMinutes((int) $m->responseMinutes()), $viewer, 'H:i') }}</b><span>{{ __('Nobody in: the double no-show rule decides the match.') }}</span></li>
+                            </ol>
+                        </div>
+                    @endif
+                    @if ($captainSide !== null && $myCheckIn === null)
+                        <span class="flex flex-wrap items-center gap-x-3 gap-y-2">
+                            <x-button icon="check" wire:click="checkInLobby" :disabled="$m->start_at->isFuture()" class="disabled:cursor-not-allowed disabled:opacity-50" data-test="checkin-lobby">{{ __('I\'m in the lobby') }}</x-button>
+                            <span class="text-xs text-ink-2">{{ $m->start_at->isFuture() ? __('Opens at :time, when the match starts.', ['time' => SeriesPresenter::time($m->start_at, $viewer, 'H:i')]) : __('Press it once you are in the game lobby.') }}</span>
+                        </span>
+                    @elseif ($myCheckIn !== null)
+                        <p class="m-0 inline-flex items-center gap-1.5 text-xs font-bold text-win" data-test="checkin-done"><x-icon name="check" :size="14" class="shrink-0" />{{ __('You are checked in.') }}</p>
                     @endif
                 </div>
             @endif
