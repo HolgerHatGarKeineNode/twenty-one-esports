@@ -15,6 +15,7 @@ use App\Models\ClanDeparture;
 use App\Models\ClanMember;
 use App\Models\Lineup;
 use App\Models\LineupSeat;
+use App\Models\MatchNumber;
 use App\Models\Rating;
 use App\Models\RatingChange;
 use App\Models\ScoreRun;
@@ -200,6 +201,26 @@ test('a lineup series counts for a player only from the day their seat was accep
     expect(substr_count($owner, 'data-test="player-result"'))->toBe(2)
         ->and(substr_count($late, 'data-test="player-result"'))->toBe(1)
         ->and($late)->toContain('>2 : 0<')->toContain(e($other->clan->name));
+});
+
+test('a series of roster sides (a tournament 1v1) counts for the players on its sides, and only for them', function () {
+    [$anna, $bert, $carl] = User::factory()->count(3)->create();
+    $game = ['challenger' => 3, 'challenged' => 1, 'winner' => 'challenger'];
+    SeriesMatch::factory()->create([
+        'challenger_lineup_id' => null, 'challenged_lineup_id' => null,
+        'number' => MatchNumber::query()->create(['user_id' => $anna->id, 'used_at' => now()])->id,
+        'created_by_id' => null, 'game' => 'rocket-league', 'mode' => '1v1',
+        'challenger_name' => $anna->displayName(), 'challenged_name' => $bert->displayName(), 'challenger_tag' => 'ANNA', 'challenged_tag' => 'BERT',
+        'challenger_lineup_address' => '', 'challenged_lineup_address' => '',
+        'sides' => ['challenger' => [$anna->id], 'challenged' => [$bert->id]],
+        'status' => SeriesStatus::Confirmed, 'winner' => 'challenger', 'finished_at' => now()->subHour(), 'result_games' => [$game, $game],
+    ]);
+
+    $outcomes = fn (User $user): array => preg_match_all('/data-test="player-result" data-outcome="(\w+)"/', (string) $this->get(route('players.show', $user->npub))->getContent(), $found) > 0 ? $found[1] : [];
+
+    expect($outcomes($anna))->toBe(['win'])
+        ->and($outcomes($bert))->toBe(['loss'])
+        ->and($outcomes($carl))->toBe([]);
 });
 
 test('tournaments show the place and only the prize the league paid, never a pot', function () {

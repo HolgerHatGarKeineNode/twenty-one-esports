@@ -14,6 +14,7 @@ use App\Support\GameNames;
 use Carbon\CarbonInterface;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Collection;
+use Illuminate\Support\Facades\DB;
 
 /**
  * A player's latest results, chess games and series together, newest first,
@@ -147,7 +148,8 @@ final class RecentResults
         return SeriesMatch::query()
             ->whereIn('status', [SeriesStatus::Confirmed, SeriesStatus::Resolved])->whereIn('winner', SeriesMatch::SIDES)
             ->where(function (Builder $query) use ($me): void {
-                $query->whereJsonContains('sides->challenger', $me)->orWhereJsonContains('sides->challenged', $me);
+                // series_match_players mirrors `sides`: an index lookup, not a JSON scan of every series (P2, S5b).
+                $query->whereIn('id', DB::table('series_match_players')->where('user_id', $me)->select('series_match_id'));
 
                 foreach ($this->seats() as $lineupId => $seat) {
                     $query->orWhere(fn (Builder $one) => $one
