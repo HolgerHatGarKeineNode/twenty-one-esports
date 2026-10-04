@@ -686,7 +686,7 @@ new #[Layout('layouts::app', ['section' => 'tournaments', 'realtime' => true, 's
     $deskInHero = $this->desk !== null && ! $championMoment && ! $this->now && ! $week && $cta !== 'draft';
 @endphp
 
-<div @class(['flex flex-col gap-12 pb-16 lg:gap-16', 'chat-rail-host xl:[--chat-rail-own:0px] xl:[--chat-rail-bottom:4rem]' => $this->desk !== null, 'xl:[--chat-rail-top:1rem]' => $this->desk !== null && ! $championMoment && $this->now]) data-test="tournament-show" data-cta="{{ $cta }}" @if ($poll) wire:poll.15s.visible x-data="tournamentLive({ id: {{ $tournament->id }} })" @endif>
+<div @class(['flex flex-col gap-12 pb-16 lg:gap-16', 'chat-rail-host xl:[--chat-rail-own:0px] xl:[--chat-rail-bottom:4rem]' => $this->desk !== null, 'xl:[--chat-rail-top:1rem]' => $this->desk !== null && ! $championMoment && $this->now]) data-test="tournament-show" data-cta="{{ $cta }}" @if ($poll) x-data="tournamentLive({ id: {{ $tournament->id }}, poll: 15 })" @endif>
     {{--
         The organizer's and admin's bar (user, 2026-09-28: the prize pool was too hard to reach): prize pool,
         edit and payouts, each behind its own gate (<x-tournaments.manage-actions>), at the top of the page.

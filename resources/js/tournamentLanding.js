@@ -11,6 +11,8 @@
  *     motion the server's number simply stays.
  */
 
+import { jittered, livePoll } from './livePoll.js';
+
 const pad = (value) => String(value).padStart(2, '0');
 
 export function countdown({ at, days = ':count day|:count days' } = {}) {
@@ -271,35 +273,54 @@ export function localTime({ at, zone, label }) {
 }
 
 /**
- * tournamentLive({ id }) — on the Livewire root of the tournament page and its
- * sign-up page: renders the page again from the server when the tournament
- * moves (TournamentChanged on the public `tournament.{id}` channel: a sign-up,
- * a withdrawal, a result), so a casual cup's planned format and its bracket
- * preview follow every sign-up without a reload. Pushes within REFRESH_MS make
- * one render. Without a websocket (no window.Echo) the page's wire:poll is
- * the fallback.
+ * tournamentLive({ id, poll }) — on the Livewire root of the tournament page,
+ * its live page and its sign-up page: renders the page again from the server
+ * when the tournament moves (TournamentChanged on the public `tournament.{id}`
+ * channel: a sign-up, a withdrawal, a result), so a casual cup's planned
+ * format and its bracket preview follow every sign-up without a reload.
+ * Pushes within one wait make one render; the wait carries a random part
+ * (JITTER_MS), so a push to every viewer of a big tournament does not reach
+ * the server as one herd.
+ *
+ * `poll` (seconds) is the fallback of a page that must not go stale: it asks
+ * the server every `poll` seconds only while there is no live websocket, and
+ * every SAFETY_NET_S while there is one (a push lost on the way); never while
+ * the tab is hidden (livePoll.js, performance plan P3). Before P3 the page
+ * polled every 15 s next to the socket: four full renders (~63 KB each) a
+ * minute per viewer.
  */
 const REFRESH_MS = 300;
+const JITTER_MS = 1500;
+const SAFETY_NET_S = 120;
 
-export function tournamentLive({ id }) {
+export function tournamentLive({ id, poll = 0 }) {
     return {
         channel: null,
         timer: null,
+        stopPoll: null,
 
         init() {
+            if (poll > 0) {
+                this.stopPoll = livePoll({ seconds: poll, withSocket: SAFETY_NET_S, run: () => this.$wire.$refresh() });
+            }
+
             if (!window.Echo) {
                 return;
             }
 
             this.channel = window.Echo.channel('tournament.' + id);
             this.channel.listen('.tournament.changed', () => {
-                clearTimeout(this.timer);
-                this.timer = setTimeout(() => this.$wire.$refresh(), REFRESH_MS);
+                if (this.timer !== null) return;
+                this.timer = setTimeout(() => {
+                    this.timer = null;
+                    this.$wire.$refresh();
+                }, jittered(REFRESH_MS, JITTER_MS));
             });
         },
 
         destroy() {
             clearTimeout(this.timer);
+            this.stopPoll?.();
 
             if (this.channel) {
                 this.channel.stopListening('.tournament.changed');
