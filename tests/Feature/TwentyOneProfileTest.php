@@ -97,3 +97,14 @@ test('the profile pays into the league pool and says what the league runs; it is
         ->not->toContain('in development')
         ->not->toContain('#');
 });
+
+test('the profile publishes its DM inbox (kind 10050) and its inbox/outbox list on three public relays', function () {
+    $builder = app(EventBuilder::class);
+
+    $dm = $builder->dmRelayList(config('twentyone.relays.dm'));
+    $outbox = $builder->relayList(config('twentyone.relays.public'));
+
+    expect($dm->getKind())->toBe(10050)
+        ->and(array_map(fn (array $tag): string => $tag[0], $dm->getTags()))->toBe(['relay', 'relay', 'relay'])
+        ->and($outbox->getTags())->toHaveCount(3);
+});

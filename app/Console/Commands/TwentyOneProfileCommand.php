@@ -16,7 +16,7 @@ use RuntimeException;
 #[Signature('twentyone:profile
     {--relays= : Comma-separated relay URLs to publish to, instead of twentyone.relays.public}
     {--dry-run : Print the signed events and send nothing}')]
-#[Description('Sign and publish the TWENTY ONE Esports Nostr profile (kind 0) and relay list (kind 10002)')]
+#[Description('Sign and publish the TWENTY ONE Esports Nostr profile (kind 0), relay list (kind 10002) and DM inbox relays (kind 10050)')]
 class TwentyOneProfileCommand extends Command
 {
     /**
@@ -48,6 +48,8 @@ class TwentyOneProfileCommand extends Command
         $events = [
             $signer->sign($builder->profile($profile)),
             $signer->sign($builder->relayList($publicRelays)),
+            // NIP-17: without a 10050 nobody can reach this profile with a gift-wrapped DM (user, 2026-10-04).
+            $signer->sign($builder->dmRelayList(RelayPublisher::relayUrls(config('twentyone.relays.dm')))),
         ];
 
         if ($this->option('dry-run')) {

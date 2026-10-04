@@ -54,8 +54,15 @@ return [
     */
 
     'relays' => [
+        // Inbox and outbox (kind 10002): three free public relays for redundancy (user, 2026-10-04). Damus left out:
+        // it refuses or drops writes from the prod host (503/403 measured 2026-10-03).
         'public' => [
-            'wss://relay.damus.io',
+            'wss://nos.lol',
+            'wss://relay.primal.net',
+            'wss://nostr.mom',
+        ],
+        // DM inbox (NIP-17 kind 10050): where people's gift-wrapped DMs to this profile land.
+        'dm' => [
             'wss://nos.lol',
             'wss://relay.primal.net',
             'wss://nostr.mom',

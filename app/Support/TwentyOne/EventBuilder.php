@@ -35,7 +35,27 @@ final class EventBuilder
     }
 
     /**
-     * Kind 10002 (NIP-65): one `r` tag per relay, read and write.
+     * The DM inbox relays (NIP-17 kind 10050): where others send gift-wrapped DMs to this key.
+     *
+     * @param  list<string>  $relays
+     */
+    public function dmRelayList(array $relays): Event
+    {
+        $tags = [];
+
+        foreach (array_unique($relays) as $relay) {
+            if (! self::isRelayUrl($relay)) {
+                throw new InvalidArgumentException('Not a relay URL: '.$relay);
+            }
+
+            $tags[] = ['relay', $relay];
+        }
+
+        return $this->event(10050)->setTags($tags);
+    }
+
+    /**
+     * Kind 10002 (NIP-65): one `r` tag per relay, read and write (inbox and outbox).
      *
      * @param  list<string>  $relays
      */
