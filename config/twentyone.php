@@ -158,7 +158,7 @@ return [
             'dir' => env('TWENTYONE_STREAM_MUSIC_DIR') ?: storage_path('app/stream/music'),
             'instrumental_dir' => env('TWENTYONE_STREAM_INSTRUMENTAL_DIR') ?: storage_path('app/stream/music/instrumental'),
             // How many instrumentals play between two vocal tracks.
-            'instrumentals_per_vocal' => 3,
+            'instrumentals_per_vocal' => (int) env('TWENTYONE_STREAM_INSTRUMENTALS_PER_VOCAL', 6),
             'list_hours' => 12,
             // Where the music is on the wall clock (MusicTimeline): a new encoder goes on from there.
             'timeline_file' => env('TWENTYONE_STREAM_MUSIC_TIMELINE_FILE') ?: storage_path('app/stream/music-timeline.json'),
