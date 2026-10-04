@@ -13,9 +13,10 @@
  *     unread badge on every desk button: Alpine.store('desk') holds the count
  *     and the read marker per tournament, the marker also in localStorage.
  *
- * The page's own desk (the drawer on the tournament page) draws the chat;
- * elsewhere a desk button starts one without a view (`headless`) just for
- * the count (resources/js/deskButton.js). Both read the wraps the way the
+ * The page's own desk (the always open panel on the tournament page; user,
+ * 2026-10-04: no chat hidden behind a click) draws the chat and counts what
+ * it shows as read while it is in view; elsewhere a desk button starts one
+ * without a view (`headless`) just for the count (resources/js/deskButton.js). Both read the wraps the way the
  * room does: on their own only with a NIP-44 capable extension; without
  * one, the count comes from the messages opened before (the desk's cache).
  * Mute is not offered here: the direction's notices reach every member.
@@ -50,14 +51,16 @@ export function deskChat(config) {
     const managers = new Set(config.members.filter((m) => m.manager).map((m) => m.pubkey));
 
     const desk = {
-        open: false,
+        // The panel is on screen (IntersectionObserver) and the tab is in front: only then is a message read.
+        inView: false,
+        pageVisible: typeof document === 'undefined' || document.visibilityState === 'visible',
         headless: config.headless ?? false,
 
         init() {
             const store = deskStore();
             store.read[config.desk] ??= readMarker(config.me, config.desk);
-            // The drawer wins: a desk button on this page opens it instead of following its link.
-            if (!this.headless) store.running[config.desk] = 'drawer';
+            // The page's panel wins: a desk button on this page brings it into view instead of following its link.
+            if (!this.headless) store.running[config.desk] = 'view';
             else store.running[config.desk] ??= 'badge';
 
             baseInit.call(this);
@@ -69,7 +72,13 @@ export function deskChat(config) {
                 this.rumors.push(...rumors);
             }
 
-            if (!this.headless && window.location.hash === '#desk') this.openDesk();
+            if (this.headless) return;
+
+            // The history, not the whole panel: a message counts as read once the list it sits in is on screen.
+            new IntersectionObserver(([entry]) => { this.inView = entry.isIntersecting; }, { threshold: 0.25 }).observe(this.$root.querySelector('[data-test=desk-messages]'));
+            document.addEventListener('visibilitychange', () => { this.pageVisible = document.visibilityState === 'visible'; });
+
+            if (window.location.hash === '#desk') this.$nextTick(() => this.focusDesk());
         },
 
         get thread() {
@@ -101,14 +110,25 @@ export function deskChat(config) {
             return this.messages.filter((m) => m.from === 'them' && m.at > read).length;
         },
 
-        /** Hands the count to every desk button (x-effect on the drawer, an effect for a headless desk). */
+        /**
+         * The panel's one effect: first what is on screen counts as read, then the count goes to the buttons. One
+         * effect, in this order: as two, the count's effect could run before the read marker moved and not run
+         * again (Alpine drops a job that is still in the queue it is flushing), and a badge kept counting what was
+         * on screen (measured 2026-10-04, tests/Browser/TournamentDeskTest.php: unread 0, badge "1").
+         */
+        sync() {
+            this.markRead();
+            this.publish();
+        },
+
+        /** Hands the count to every desk button (sync() on the panel, an effect for a headless desk). */
         publish() {
             deskStore().unread[config.desk] = this.unread;
         },
 
-        /** The drawer is open: everything on screen is read. */
+        /** The panel is in view in the front tab: everything on screen is read. */
         markRead() {
-            if (!this.open) return;
+            if (this.headless || !this.inView || !this.pageVisible) return;
             const newest = Math.max(0, ...this.messages.map((m) => Math.floor(m.at / 1000)));
             const store = deskStore();
             if (newest <= (store.read[config.desk] ?? 0)) return;
@@ -121,18 +141,17 @@ export function deskChat(config) {
             }
         },
 
-        openDesk() {
-            this.open = true;
+        /** A desk button or #desk: the panel into view (unless it already is, as the side column is), the newest message, the field. */
+        focusDesk() {
+            const box = this.$root.getBoundingClientRect();
+            if (box.top < 0 || box.bottom > window.innerHeight) {
+                this.$root.scrollIntoView({ block: 'start', behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth' });
+            }
             this.$nextTick(() => {
                 this.toBottom();
                 // The field takes the focus on a wide screen; a phone's keyboard opens only on a tap into it.
                 if (matchMedia('(min-width: 64rem)').matches) this.$refs.input?.focus({ preventScroll: true });
             });
-        },
-
-        closeDesk() {
-            this.open = false;
-            if (window.location.hash === '#desk') history.replaceState(null, '', window.location.pathname + window.location.search);
         },
     };
 

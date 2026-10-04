@@ -683,7 +683,7 @@ new #[Layout('layouts::app', ['section' => 'tournaments', 'realtime' => true, 's
     $fillStep = $places['taken'] > 0 ? min(70, (int) round(900 / $places['taken'])) : 0;
 @endphp
 
-<div class="flex flex-col gap-12 pb-16 lg:gap-16" data-test="tournament-show" data-cta="{{ $cta }}" @if ($poll) wire:poll.15s.visible x-data="tournamentLive({ id: {{ $tournament->id }} })" @endif>
+<div @class(['flex flex-col gap-12 pb-16 lg:gap-16', 'chat-rail-host xl:[--chat-rail-own:0px] xl:[--chat-rail-bottom:4rem]' => $this->desk !== null, 'xl:[--chat-rail-top:1rem]' => $this->desk !== null && ($championMoment || $this->now)]) data-test="tournament-show" data-cta="{{ $cta }}" @if ($poll) wire:poll.15s.visible x-data="tournamentLive({ id: {{ $tournament->id }} })" @endif>
     {{--
         The organizer's and admin's bar (user, 2026-09-28: the prize pool was too hard to reach): prize pool,
         edit and payouts, each behind its own gate (<x-tournaments.manage-actions>), at the top of the page.
@@ -698,20 +698,15 @@ new #[Layout('layouts::app', ['section' => 'tournaments', 'realtime' => true, 's
         @include('pages.tournaments.partials.champion', ['moment' => $championMoment, 'tournament' => $tournament, 'results' => $score ? '#leaderboard' : '#bracket', 'desk' => $this->desk])
     @elseif ($this->now)
         @include('pages.tournaments.partials.now', ['now' => $this->now, 'tournament' => $tournament, 'cup' => $this->cupMatch, 'error' => $cupError, 'waits' => $this->myWaits, 'lobby' => $this->myLobby, 'desk' => $this->desk])
-    @elseif ($this->desk)
-        {{-- Sign-up and the draw have no hero: the desk gets its own row at the top, for the players and the direction. --}}
-        <section aria-labelledby="desk-row-h" class="mx-4 mt-2 flex flex-col gap-3 rounded-card bg-card px-4 py-4 shadow-[inset_0_0_0_1px_var(--color-btc)] sm:flex-row sm:items-center sm:gap-6 lg:mx-12 lg:mt-4 lg:px-6" data-test="desk-row">
-            <span class="flex min-w-0 grow flex-col gap-1">
-                <h2 id="desk-row-h" class="m-0 text-[15px] font-bold">{{ __('Questions or a problem?') }}</h2>
-                <span class="text-[13px] leading-normal text-ink-2">{{ $this->desk['manager'] ? __('The players of this tournament can write to you at the tournament desk.') : __('Write to the tournament direction at the tournament desk. Only the players and the direction read it.') }}</span>
-            </span>
-            <x-tournaments.desk-button :desk="$this->desk" drawer />
-        </section>
     @endif
 
-    {{-- The desk's drawer, opened by any desk button on this page or by #desk in the address. --}}
+    {{--
+        The tournament desk, always open for its members (user, 2026-10-04: "versteckt hinter einem Button-Klick, das
+        ist schlechte UX"): below xl right under the hero (during sign-up and the draw, which have none, at the top);
+        from xl `.chat-rail` makes it a sticky side column beside the whole page (resources/css/app.css).
+    --}}
     @if ($this->desk)
-        <x-tournaments.desk-chat :desk="$this->desk" />
+        <div class="chat-rail mx-4 lg:mx-12 xl:mx-0" data-test="desk-rail"><x-tournaments.desk-chat :desk="$this->desk" /></div>
     @endif
 
     @if ($this->canManage)

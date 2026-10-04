@@ -3,9 +3,10 @@
  * badge (components/tournaments/desk-button): in the "What to do now" and
  * champion heroes, on a tournament game's banner and on the admin edit page.
  *
- * It is a link to the desk on the tournament page (#desk). Where the page
- * has the desk's drawer, a click opens the drawer instead. The count comes
- * from Alpine.store('desk'), which the drawer fills; on a page without one,
+ * It is a link to the desk on the tournament page (#desk). On that page,
+ * where the desk is always open (components/tournaments/desk-chat), a click
+ * brings it into view and puts the cursor into its field. The count comes
+ * from Alpine.store('desk'), which the open desk fills; on a page without one,
  * the first button of a tournament starts a desk without a view for it
  * (resources/js/deskChat.js, loaded only then, so no other page carries the
  * chat's code).
@@ -15,7 +16,7 @@ export function deskButton({ desk, config = null }) {
         init() {
             const Alpine = window.Alpine;
 
-            // After the whole page started: a drawer further down the page claims the desk first.
+            // After the whole page started: the open desk further down the page claims it first.
             setTimeout(async () => {
                 const store = Alpine.store('desk');
                 if (config === null || store.running[desk]) return;
@@ -35,7 +36,7 @@ export function deskButton({ desk, config = null }) {
         },
 
         go(event) {
-            if (window.Alpine.store('desk')?.running[desk] !== 'drawer') return;
+            if (window.Alpine.store('desk')?.running[desk] !== 'view') return;
             event.preventDefault();
             window.dispatchEvent(new CustomEvent('desk-open', { detail: desk }));
         },
@@ -43,7 +44,7 @@ export function deskButton({ desk, config = null }) {
 }
 
 document.addEventListener('alpine:init', () => {
-    // unread: messages since last read; read: that marker (unix seconds); running: `drawer` or `badge`, per tournament.
+    // unread: messages since last read; read: that marker (unix seconds); running: `view` or `badge`, per tournament.
     window.Alpine.store('desk', { unread: {}, read: {}, running: {} });
     window.Alpine.data('deskButton', deskButton);
 });

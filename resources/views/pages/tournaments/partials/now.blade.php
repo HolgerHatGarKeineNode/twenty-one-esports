@@ -161,8 +161,8 @@
                     <x-icon :name="$action['icon']" :size="22" />{{ $action['label'] }}
                 </button>
             @endif
-            {{-- The tournament desk (TournamentDesk): a problem or a question goes to the direction from here. --}}
-            <x-tournaments.desk-button :desk="$desk ?? null" drawer class="w-full lg:w-auto" />
+            {{-- The tournament desk (TournamentDesk): open right below (from xl beside), this button brings it into view. --}}
+            <x-tournaments.desk-button :desk="$desk ?? null" on-page class="w-full lg:w-auto" />
         </div>
     @endif
     </div>

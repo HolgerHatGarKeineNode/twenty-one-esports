@@ -192,3 +192,41 @@ test('a manager finds the desk on the admin edit page', function () {
         ->assertSee('data-test="desk-button"', false)
         ->assertSee(route('tournaments.show', $tournament).'#desk', false);
 });
+
+/*
+ * User, 2026-10-04: "Das mit dem Chat ist schon ok, aber leider versteckt hinter einem Button-Klick, das ist
+ * schlechte UX." The desk is drawn open on the page for every member: history, hint and field in the markup with
+ * no dialog and no open/close state around them, right under the "What to do now" hero, and during sign-up at
+ * the top instead of the "Questions or a problem?" banner. A guest gets none of it.
+ */
+test('the desk chat is drawn open for a member, under the hero or at the top during sign-up, never for a guest', function () {
+    $tournament = runningChess(TournamentFormat::SingleElimination, 2, TournamentResultsMode::Players);
+    $player = User::query()->find($tournament->participants()->first()->user_id);
+
+    $html = $this->actingAs($player)->get(route('tournaments.show', $tournament))->assertOk()
+        ->assertSeeInOrder(['data-test="now-hero"', 'data-test="desk-rail"', 'id="desk"', 'data-test="desk-chat"', 'data-test="desk-messages"', 'data-test="desk-hint"', 'data-test="desk-form"', 'data-test="tournament-hero"'], false)
+        ->getContent();
+
+    $panel = substr($html, (int) strpos($html, 'data-test="desk-rail"'));
+    $panel = substr($panel, 0, (int) strpos($panel, 'data-test="desk-send"'));
+    expect($panel)->not->toContain('role="dialog"')
+        ->not->toContain('aria-modal')
+        ->not->toContain('x-show="open"')
+        ->not->toContain('desk-close')
+        ->and($html)->toContain('chat-rail-host');
+
+    // During sign-up there is no hero: the open desk is the first thing, the old banner is gone.
+    $open = openTournament();
+    [$solo, $soloKey] = keyedPlayer();
+    soloSignup($open, $solo, $soloKey);
+    $this->actingAs($solo)->get(route('tournaments.show', $open))->assertOk()
+        ->assertSeeInOrder(['data-test="tournament-show"', 'data-test="desk-rail"', 'data-test="desk-form"', 'data-test="tournament-hero"'], false)
+        ->assertDontSee('data-test="desk-row"', false)
+        ->assertDontSee('Questions or a problem?');
+
+    auth()->logout();
+    $this->get(route('tournaments.show', $tournament))->assertOk()
+        ->assertDontSee('data-test="desk-rail"', false)
+        ->assertDontSee('id="desk"', false)
+        ->assertDontSee('chat-rail-host', false);
+});

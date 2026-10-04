@@ -146,7 +146,7 @@
                     <x-icon name="tournaments" :size="18" />{{ __('Results') }}
                 </a>
                 {{-- The tournament desk stays open a day after the end (TournamentDesk): a question about the result or the prize. --}}
-                <x-tournaments.desk-button :desk="$desk ?? null" drawer class="h-12" />
+                <x-tournaments.desk-button :desk="$desk ?? null" on-page class="h-12" />
             </div>
         </div>
 

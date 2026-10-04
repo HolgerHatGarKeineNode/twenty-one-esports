@@ -1,16 +1,16 @@
-@props(['desk' => null, 'drawer' => false])
+@props(['desk' => null, 'onPage' => false])
 
 {{--
     The "Tournament desk" button with its unread badge (App\Support\Tournaments\TournamentDesk; user, 2026-10-03:
     "auch prominent verfügbar für die Spieler"): in the "What to do now" and champion heroes, on a tournament game's
-    banner and on the admin edit page. It links to the desk drawer on the tournament page (#desk); on that page a
-    click opens the drawer (resources/js/deskButton.js).
+    banner and on the admin edit page. It links to the always open desk on the tournament page (#desk); on that page
+    a click brings the desk into view and puts the cursor into its field (resources/js/deskButton.js).
 
     `$desk`: TournamentDesk::for() for the viewer; nothing renders for null (no member, or the desk is closed).
-    `$drawer`: the page has the desk's drawer, so the button sends no chat config of its own (the drawer counts).
+    `$onPage`: the page shows the desk itself, so the button sends no chat config of its own (the desk counts).
 --}}
 @if ($desk)
-    <a href="{{ $desk['url'] }}" x-data="deskButton({ desk: {{ (int) $desk['desk'] }}, config: @js($drawer ? null : $desk) })" x-on:click="go($event)"
+    <a href="{{ $desk['url'] }}" x-data="deskButton({ desk: {{ (int) $desk['desk'] }}, config: @js($onPage ? null : $desk) })" x-on:click="go($event)"
        :aria-label="unread > 0 ? @js(__('Tournament desk')) + ', ' + @js(__(':count new')).replace(':count', unread) : null"
        {{ $attributes->class('btn-w relative inline-flex h-11 shrink-0 items-center justify-center gap-2 rounded-md border border-line bg-well px-4 text-[13px] font-bold whitespace-nowrap text-ink hover:text-ink') }}
        data-test="desk-button">

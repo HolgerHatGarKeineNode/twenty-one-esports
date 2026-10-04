@@ -2244,24 +2244,11 @@ select:focus[data-flux-control] {
 }
 
 /*
- * The tournament desk's drawer (components/tournaments/desk-chat): below the sticky header with a strip of the page
- * left in view on a phone (it ends on the tab bar), the full height under the header from lg.
- */
-.desk-drawer {
-    top: calc(var(--shell-h) + 1rem);
-}
-
-@media (width >= 64rem) {
-    .desk-drawer {
-        top: var(--shell-h);
-    }
-}
-
-/*
  * The game chat as a side column (2026-10-03, user: "Er kann auch gerne auf größerem Desktop an der Seite sein").
  * From xl a game page (`.chat-rail-host`) makes room on its right and `.chat-rail`, which sits in the page's flow
  * right under its head below xl, becomes a column as tall as the page; the chat inside sticks under the header and
- * ends above the dock. One chat element in both places: one relay subscription, nothing moved by script.
+ * ends above the dock. One chat element in both places: one relay subscription, nothing moved by script. The
+ * tournament page holds its desk (components/tournaments/desk-chat) the same way (user, 2026-10-04).
  * --chat-rail-own: the host's own right padding (0 where its children carry the padding);
  * --chat-rail-top / --chat-rail-bottom: the host's vertical padding, so the column lines up with the content.
  */
@@ -2285,7 +2272,8 @@ select:focus[data-flux-control] {
      * It sticks exactly where it starts (header, the page's top padding, the host's own top), so it never jumps
      * and its height, measured from there, ends 1.5rem above the dock in every scroll position.
      */
-    .chat-rail > [data-test="game-chat"] {
+    .chat-rail > [data-test="game-chat"],
+    .chat-rail > [data-test="desk-chat"] {
         --chat-rail-stick: calc(var(--shell-h) + var(--spacing-page-top-lg) + var(--chat-rail-top, 0px));
         position: sticky;
         top: var(--chat-rail-stick);
