@@ -182,6 +182,8 @@ Route::middleware('auth')->group(function () {
         ->middleware('can:manage-tournament,tournament')->name('tournaments.pool');
     Route::livewire('tournaments/{tournament}/director', 'pages::tournaments.director')->whereNumber('tournament')
         ->middleware('can:direct-tournament,tournament')->name('tournaments.director');
+    // The live control page: control, desk chat and bracket on one screen for the tournament direction.
+    Route::livewire('tournaments/{tournament}/live', 'pages::tournaments.live')->whereNumber('tournament')->name('tournaments.live');
     // A lobby report's end screen (P10), for the directors only: the file never has a public URL.
     Route::get('tournaments/{tournament}/lobbies/{match}/screenshot', LobbyScreenshotController::class)->whereNumber(['tournament', 'match'])
         ->name('tournaments.lobby-screenshot');

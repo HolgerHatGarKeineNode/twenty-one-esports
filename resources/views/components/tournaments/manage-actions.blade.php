@@ -27,7 +27,11 @@
 
     $manageUser = auth()->user();
     $manages = $manageUser !== null && Gate::forUser($manageUser)->allows('manage-tournament', $tournament);
+    $directs = $manageUser !== null && Gate::forUser($manageUser)->allows('direct-tournament', $tournament);
     $manageActions = array_values(array_filter([
+        // The live control page (user, 2026-10-04: "nicht gut erreichbar für die Turnierleiter"): first while it can run.
+        ($manages || $directs) && in_array($tournament->status, [TournamentStatus::Signup, TournamentStatus::Drawing, TournamentStatus::Running], true) && ! in_array('live', $except, true) && ! $tournament->isLeagueWeek()
+            ? ['live', route('tournaments.live', $tournament), __('Live control'), 'play', 'primary'] : null,
         $manages && $tournament->status === TournamentStatus::Draft && ! in_array('publish', $except, true)
             ? ['publish', route('tournaments.show', $tournament).'#publish', __('Publish tournament'), 'send', 'primary'] : null,
         $manages && ! in_array($tournament->status, [TournamentStatus::Draft, TournamentStatus::Cancelled], true) && ! in_array('pool', $except, true) && ! $tournament->isLeagueWeek()

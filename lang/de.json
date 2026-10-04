@@ -6675,5 +6675,6 @@
     "Time zone: :zone": "Zeitzone: :zone",
     "Accept or decline: :url": "Annehmen oder ablehnen: :url",
     ":clan declined your application and replies:": ":clan hat deine Bewerbung abgelehnt und antwortet:",
-    "No DM inbox relays (NIP-17) for :count of them. Send it as an older NIP-04 message instead?": "Für :count davon gibt es keine DM-Inbox-Relays (NIP-17). Stattdessen als ältere NIP-04-Nachricht senden?"
+    "No DM inbox relays (NIP-17) for :count of them. Send it as an older NIP-04 message instead?": "Für :count davon gibt es keine DM-Inbox-Relays (NIP-17). Stattdessen als ältere NIP-04-Nachricht senden?",
+    "Live control": "Live-Steuerung"
 }

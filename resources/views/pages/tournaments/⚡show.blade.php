@@ -712,7 +712,7 @@ new #[Layout('layouts::app', ['section' => 'tournaments', 'realtime' => true, 's
         <div class="chat-rail mx-4 lg:mx-12 xl:mx-0" data-test="desk-rail"><x-tournaments.desk-chat :desk="$this->desk" /></div>
     @endif
 
-    @if ($this->canManage)
+    @if ($this->canManage || $this->canDirect)
         {{-- On a phone one compact row without the label, so the pot's number stays in the first screen for organizers too. --}}
         <div class="-mb-10 flex flex-col gap-2 px-4 pt-2 sm:-mb-6 sm:flex-row sm:items-center sm:gap-4 sm:pt-4 lg:-mb-10 lg:px-12" data-test="manage-bar">
             <span class="text-[13px] text-ink-2 max-sm:sr-only">{{ __('You manage this tournament.') }}</span>
