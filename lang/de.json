@@ -6712,5 +6712,9 @@
     "Nobody in: the double no-show rule decides the match.": "Niemand eingecheckt: Die Doppel-No-Show-Regel entscheidet das Match.",
     "Opens at :time, when the match starts.": "Öffnet um :time, wenn das Match beginnt.",
     "Press it once you are in the game lobby.": "Drück ihn, sobald du in der Spiel-Lobby bist.",
-    "You are checked in.": "Du bist eingecheckt."
+    "You are checked in.": "Du bist eingecheckt.",
+    ":name counts as a no-show": ":name gilt als nicht erschienen",
+    "Check in to the lobby in the match room, or you count as a no-show.": "Check im Match-Raum in die Lobby ein, sonst giltst du als nicht erschienen.",
+    "Double no-show: nobody checked in": "Doppel-No-Show: niemand hat eingecheckt",
+    "Check in to the lobby in the match room, or the match is decided as a double no-show.": "Check im Match-Raum in die Lobby ein, sonst wird das Match als Doppel-No-Show entschieden."
 }

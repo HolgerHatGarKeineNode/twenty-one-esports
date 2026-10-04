@@ -158,6 +158,7 @@ test('a series nobody reported joins the admin queue at the report deadline, onc
     [, $series] = deadlineDuel();
     // Both sides checked in: the lobby check-in rules (SeriesService::autoNoShow()) stay out of this test.
     SeriesMatch::query()->update(['ready_at_challenger' => now(), 'ready_at_challenged' => now()]);
+    $series->refresh();
     $admin = deadlineAdmin();
 
     expect($series->nextDeadline())->toMatchArray(['kind' => 'report', 'side' => null])

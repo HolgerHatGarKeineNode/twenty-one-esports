@@ -224,6 +224,10 @@ final class TournamentWaits
                 consequence: ':name loses by forfeit', action: 'Enter the game or answer in the match room, or you lose by forfeit.', params: ['name' => $base->sideName($next['side'])]),
             'response' => $base->waitOnSide($next['side'])->make('response', since: self::at($series->latestReport?->created_at), decidesAt: $at,
                 consequence: 'The league confirms the reported result, unrated', action: 'Confirm or dispute the reported result, or the league confirms it.'),
+            'checkin_noshow' => $base->waitOnSide($next['side'])->make('checkin', since: self::at($series->start_at), decidesAt: $at,
+                consequence: ':name counts as a no-show', action: 'Check in to the lobby in the match room, or you count as a no-show.', params: ['name' => $base->sideName($next['side'])]),
+            'checkin_double' => $base->waitOnSide('challenger')->waitOnSide('challenged')->make('checkin', since: self::at($series->start_at), decidesAt: $at,
+                consequence: 'Double no-show: nobody checked in', action: 'Check in to the lobby in the match room, or the match is decided as a double no-show.'),
             default => $base->waitOnSide('challenger')->waitOnSide('challenged')->make('report', since: self::at($series->start_at), decidesAt: $at,
                 consequence: 'The series goes to the admins', action: 'Report the result, or the series goes to the admins.'),
         };

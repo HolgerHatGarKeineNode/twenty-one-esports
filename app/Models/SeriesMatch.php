@@ -431,6 +431,25 @@ class SeriesMatch extends Model
             return $at === null ? null : ['kind' => 'noshow', 'at' => $at, 'side' => $side];
         }
 
+        // The lobby check-in (SeriesService::autoNoShow()): one side in, the other counts as a no-show at autoNoshowAt();
+        // nobody in, the double no-show rule decides after the response time on top. Both before the report deadline.
+        // (A director-entered tournament has no league deadlines, so it never gets here.)
+        $check = $this->status === SeriesStatus::Accepted && $this->overdue_at === null && $this->currentGames() === [] ? $this->autoNoshowAt() : null;
+
+        if ($check !== null) {
+            $in = array_values(array_filter(self::SIDES, fn (string $side): bool => $this->readyAt($side) !== null));
+
+            if (count($in) === 1 && $check->isFuture()) {
+                return ['kind' => 'checkin_noshow', 'at' => $check, 'side' => self::otherSide($in[0])];
+            }
+
+            $double = $check->copy()->addMinutes((int) $this->responseMinutes());
+
+            if ($in === [] && $double->isFuture()) {
+                return ['kind' => 'checkin_double', 'at' => $double, 'side' => null];
+            }
+        }
+
         if ($this->status === SeriesStatus::Accepted && $this->overdue_at === null) {
             $at = $this->reportDueAt();
 

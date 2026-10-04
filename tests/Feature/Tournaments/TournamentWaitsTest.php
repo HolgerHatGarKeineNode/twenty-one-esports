@@ -79,6 +79,9 @@ function waitsKnockout(): Tournament
 /** @return list<SeriesMatch> the first round's series, in bracket order */
 function waitsSeries(Tournament $tournament): array
 {
+    // Both sides checked in: the lobby check-in deadlines (SeriesMatch::nextDeadline()) stay out of these cases.
+    SeriesMatch::query()->whereNull('ready_at_challenger')->update(['ready_at_challenger' => now(), 'ready_at_challenged' => now()]);
+
     return TournamentMatch::query()->where('tournament_id', $tournament->id)->where('bracket', '!=', 'bye')->whereHas('seriesMatch')
         ->orderBy('position')->get()->map(fn (TournamentMatch $match): SeriesMatch => SeriesMatch::query()->where('tournament_match_id', $match->id)->sole())->all();
 }
