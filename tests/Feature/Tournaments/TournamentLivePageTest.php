@@ -7,12 +7,14 @@ use App\Events\TournamentChanged;
 use App\Models\Admin;
 use App\Models\SeriesMatch;
 use App\Models\Tournament;
+use App\Models\TournamentMatch;
 use App\Models\TournamentParticipant;
 use App\Models\User;
 use App\Support\Series\SeriesService;
 use App\Support\Tournaments\FormatOptions;
 use App\Support\Tournaments\GameProfile;
 use App\Support\Tournaments\TournamentBrackets;
+use App\Support\Tournaments\TournamentControl;
 use App\Support\Tournaments\TournamentRunner;
 use App\Support\Tournaments\TournamentScheduler;
 use Illuminate\Support\Facades\Event;
@@ -89,4 +91,20 @@ test('a player checks in to the lobby; one side in and the other not after 30 mi
     $both = SeriesMatch::query()->whereNotNull('tournament_match_id')->whereKeyNot($series->id)->firstOrFail();
     $both->forceFill(['ready_at_challenger' => now(), 'ready_at_challenged' => now()])->save();
     expect($service->autoNoShow($both))->toBeFalse();
+});
+
+test('two entries of one match disqualified together: the match is a double no-show, nobody of it wins by forfeit', function () {
+    $tournament = livePageTournament();
+    $admin = User::factory()->create();
+    Admin::query()->create(['pubkey' => $admin->pubkey]);
+    $match = TournamentMatch::query()->where('tournament_id', $tournament->id)->whereHas('round', fn ($q) => $q->where('number', 1))
+        ->with('slots')->orderBy('position')->firstOrFail();
+    $ids = $match->slots->pluck('tournament_participant_id')->all();
+
+    expect(app(TournamentControl::class)->disqualifyMany($tournament, $admin, $ids, 'Both did not show'))->toBe(2);
+
+    $match->refresh();
+    // A knockout allows no draw: the higher seed is carried on without a game (seedDecision), and is out there too.
+    expect($match->result['decided'] ?? null)->toBe('noshow')
+        ->and(TournamentParticipant::query()->whereKey($ids)->whereNotNull('disqualified_at')->count())->toBe(2);
 });

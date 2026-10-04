@@ -595,38 +595,66 @@ final class TournamentControl
      */
     public function disqualify(Tournament $tournament, User $actor, int $participantId, string $reason): bool
     {
+        return $this->disqualifyMany($tournament, $actor, [$participantId], $reason) > 0;
+    }
+
+    /**
+     * Several entries at once (user, 2026-10-04: both sides of a match did not show): all are marked first, so a match
+     * whose two sides are both out is decided as a double no-show (TournamentRunner::forfeitWithdrawn()) instead of
+     * sending one of them on as the winner. Returns how many entries were disqualified now.
+     *
+     * @param  list<int>  $participantIds
+     *
+     * @throws TournamentRuleViolation
+     */
+    public function disqualifyMany(Tournament $tournament, User $actor, array $participantIds, string $reason): int
+    {
         $this->authorize($tournament, $actor);
         $reason = $this->reason($reason);
+        $participantIds = array_values(array_unique(array_map(intval(...), $participantIds)));
 
-        $notify = DB::transaction(function () use ($tournament, $actor, $participantId, $reason): ?array {
+        if ($participantIds === []) {
+            return 0;
+        }
+
+        $notify = DB::transaction(function () use ($tournament, $actor, $participantIds, $reason): array {
             $locked = $this->lock($tournament, [TournamentStatus::Running]);
             $this->assertNoEntrant($locked, $actor, __('You play in this tournament, so another organizer or an admin has to disqualify an entry.'));
 
-            $participant = TournamentParticipant::query()->where('tournament_id', $locked->id)->lockForUpdate()->find($participantId)
-                ?? throw new TournamentRuleViolation('no_entry', __('This entry is not part of the tournament.'));
+            $participants = TournamentParticipant::query()->where('tournament_id', $locked->id)->lockForUpdate()->whereKey($participantIds)->get();
 
-            if ($participant->isDisqualified()) {
-                return null;
+            if ($participants->count() !== count($participantIds)) {
+                throw new TournamentRuleViolation('no_entry', __('This entry is not part of the tournament.'));
             }
 
-            $participant->forceFill(['disqualified_at' => now(), 'disqualified_by_id' => $actor->id, 'disqualification_reason' => $reason])->save();
-            $forfeited = $this->forfeitUnderWay($locked, $participant);
+            $now = $participants->reject(fn (TournamentParticipant $participant): bool => $participant->isDisqualified())->values();
 
-            $this->moderation->log($locked, $actor, 'disqualified', subject: $participant->name, reason: $reason,
-                details: $forfeited === [] ? null : ['forfeited' => [null, $forfeited]]);
+            foreach ($now as $participant) {
+                $participant->forceFill(['disqualified_at' => now(), 'disqualified_by_id' => $actor->id, 'disqualification_reason' => $reason])->save();
+            }
 
-            return $participant->memberIds();
+            $notify = [];
+
+            foreach ($now as $participant) {
+                $forfeited = $this->forfeitUnderWay($locked, $participant);
+                $this->moderation->log($locked, $actor, 'disqualified', subject: $participant->name, reason: $reason,
+                    details: $forfeited === [] ? null : ['forfeited' => [null, $forfeited]]);
+                $notify = [...$notify, ...$participant->memberIds()];
+            }
+
+            return ['count' => $now->count(), 'members' => array_values(array_unique($notify))];
         });
 
-        if ($notify === null) {
-            return false;
+        if ($notify['count'] === 0) {
+            return 0;
         }
 
-        // The rest of its matches are forfeited as they become ready (TournamentRunner::forfeitWithdrawn()).
+        // The rest of their matches are forfeited as they become ready (TournamentRunner::forfeitWithdrawn()); a match
+        // with both sides out becomes a double no-show there.
         $this->runner->sync($tournament->refresh(), 'disqualified');
-        $this->tell($tournament, $notify, NotificationKind::TournamentEntryRemoved, 'You were disqualified from :tournament', $reason, $actor);
+        $this->tell($tournament, $notify['members'], NotificationKind::TournamentEntryRemoved, 'You were disqualified from :tournament', $reason, $actor);
 
-        return true;
+        return $notify['count'];
     }
 
     /**
@@ -650,6 +678,11 @@ final class TournamentControl
                 || ($board !== null && $board->status === BoardGameStatus::Active);
 
             if (! $running || count($match->slots) !== 2) {
+                continue;
+            }
+
+            // Both sides out (disqualified together): no winner here, TournamentRunner::forfeitWithdrawn() decides it.
+            if (($match->slots[0]->participant?->isDisqualified() ?? false) && ($match->slots[1]->participant?->isDisqualified() ?? false)) {
                 continue;
             }
 

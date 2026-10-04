@@ -6694,5 +6694,7 @@
     "With the admins": "Bei den Admins",
     "Result reported": "Ergebnis gemeldet",
     "passed": "vorbei",
-    "in :minutes min": "in :minutes Min."
+    "in :minutes min": "in :minutes Min.",
+    "Picked": "Ausgewählt",
+    "Pick more entries to disqualify them together: when both sides of a match are out, nobody moves on from it.": "Wähle weitere Einträge, um sie gemeinsam zu disqualifizieren: Sind beide Seiten eines Matches raus, kommt aus diesem Match niemand weiter."
 }

@@ -50,6 +50,9 @@ new class extends Component {
 
     public ?int $disqualifying = null;
 
+    /** @var list<int> the entries picked to disqualify together (both sides of a match that did not show) */
+    public array $disqualifyPicked = [];
+
     public string $disqualifyReason = '';
 
     public ?int $restarting = null;
@@ -135,23 +138,34 @@ new class extends Component {
         });
     }
 
+    /** Pick or unpick an entry; the form below the list disqualifies every picked entry at once. */
     public function startDisqualify(int $participantId): void
     {
-        $this->disqualifying = $participantId;
-        $this->disqualifyReason = $this->error = '';
+        $this->disqualifyPicked = in_array($participantId, $this->disqualifyPicked, true)
+            ? array_values(array_diff($this->disqualifyPicked, [$participantId]))
+            : [...$this->disqualifyPicked, $participantId];
+        $this->disqualifying = $this->disqualifyPicked[0] ?? null;
+        $this->error = '';
+    }
+
+    public function cancelDisqualify(): void
+    {
+        $this->disqualifyPicked = [];
+        $this->disqualifying = null;
     }
 
     public function disqualify(): void
     {
-        if ($this->disqualifying === null) {
+        if ($this->disqualifyPicked === []) {
             return;
         }
 
         $this->attempt(function (): string {
-            $changed = app(TournamentControl::class)->disqualify($this->tournament, $this->user(), (int) $this->disqualifying, $this->disqualifyReason);
-            $this->disqualifying = null;
+            $count = app(TournamentControl::class)->disqualifyMany($this->tournament, $this->user(), $this->disqualifyPicked, $this->disqualifyReason);
+            $this->cancelDisqualify();
+            $this->disqualifyReason = '';
 
-            return $changed ? __('Disqualified. Their remaining matches are lost by forfeit.') : __('Nothing changed.');
+            return $count > 0 ? __('Disqualified. Their remaining matches are lost by forfeit.') : __('Nothing changed.');
         });
     }
 
@@ -430,24 +444,27 @@ new class extends Component {
                             @if ($participant->isDisqualified())
                                 <span class="text-xs font-bold text-loss" data-test="control-disqualified">{{ __('disqualified') }}</span>
                             @else
-                                <x-button variant="quiet" wire:click="startDisqualify({{ $participant->id }})" class="h-9 px-3" data-test="control-dq-{{ $participant->id }}">{{ __('Disqualify') }}</x-button>
+                                @php $picked = in_array($participant->id, $disqualifyPicked, true); @endphp
+                                <x-button :variant="$picked ? 'primary' : 'quiet'" wire:click="startDisqualify({{ $participant->id }})" class="h-9 px-3" aria-pressed="{{ $picked ? 'true' : 'false' }}" data-test="control-dq-{{ $participant->id }}">{{ $picked ? __('Picked') : __('Disqualify') }}</x-button>
                             @endif
                         </span>
-                        @if ($disqualifying === $participant->id)
-                            <form wire:submit="disqualify" class="flex flex-col gap-2 rounded-md bg-ground p-3 shadow-ring" data-test="control-dq-form">
-                                <label class="flex flex-col gap-1.5 text-xs text-ink-2">
-                                    {{ __('Reason (the players read it)') }}
-                                    <input wire:model="disqualifyReason" maxlength="500" class="{{ $field }}" data-test="control-dq-reason">
-                                </label>
-                                <span class="flex flex-wrap gap-2">
-                                    <x-button type="submit" data-test="control-dq-confirm">{{ __('Disqualify :name', ['name' => $participant->name]) }}</x-button>
-                                    <x-button variant="quiet" wire:click="$set('disqualifying', null)">{{ __('Cancel') }}</x-button>
-                                </span>
-                            </form>
-                        @endif
                     </li>
                 @endforeach
             </ul>
+            @if ($disqualifyPicked !== [])
+                @php $pickedNames = $this->participants->whereIn('id', $disqualifyPicked)->pluck('name')->all(); @endphp
+                <form wire:submit="disqualify" class="flex flex-col gap-2 rounded-md bg-ground p-3 shadow-ring" data-test="control-dq-form">
+                    <p class="m-0 text-xs text-ink-2">{{ __('Pick more entries to disqualify them together: when both sides of a match are out, nobody moves on from it.') }}</p>
+                    <label class="flex flex-col gap-1.5 text-xs text-ink-2">
+                        {{ __('Reason (the players read it)') }}
+                        <input wire:model="disqualifyReason" maxlength="500" class="{{ $field }}" data-test="control-dq-reason">
+                    </label>
+                    <span class="flex flex-wrap gap-2">
+                        <x-button type="submit" data-test="control-dq-confirm">{{ __('Disqualify :name', ['name' => implode(', ', $pickedNames)]) }}</x-button>
+                        <x-button variant="quiet" wire:click="cancelDisqualify">{{ __('Cancel') }}</x-button>
+                    </span>
+                </form>
+            @endif
         </div>
     @endif
 
