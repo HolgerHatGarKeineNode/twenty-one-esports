@@ -88,7 +88,7 @@ final class Ledger
      */
     public function payoutForwarded(TournamentPayout $payout): void
     {
-        $this->book(self::TOURNAMENT_PREFIX.$payout->tournament_id, self::RESERVE, $payout->amount_sats, 'tournament_payout_forwarded', ['tournament_payout_id' => $payout->id]);
+        $this->book(self::TOURNAMENT_PREFIX.$payout->tournament_id, self::RESERVE, $payout->amount_sats, 'payout_forwarded', ['tournament_payout_id' => $payout->id]);
     }
 
     /**

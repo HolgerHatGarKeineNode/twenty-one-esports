@@ -34,3 +34,12 @@ test('an admin passes a prize on: never paid, the reserve gets it, the tournamen
 
     Livewire::test('tournament-pool', ['tournament' => $tournament])->assertSeeHtml('data-test="payout-forwarded"');
 });
+
+test('every ledger booking reason fits the reason column (varchar 24 on PostgreSQL; SQLite does not check)', function () {
+    preg_match_all("/book\\([^;]*?'([a-z_]+)'/s", (string) file_get_contents(app_path('Support/Wallet/Ledger.php')), $reasons);
+    preg_match_all("/const [A-Z_]+ = '([a-z_]+)';/", (string) file_get_contents(app_path('Support/Wallet/Ledger.php')), $constants);
+
+    foreach ([...$reasons[1], ...$constants[1]] as $reason) {
+        expect(strlen($reason))->toBeLessThanOrEqual(24, "ledger reason {$reason} is longer than the column");
+    }
+});
