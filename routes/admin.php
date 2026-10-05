@@ -1,6 +1,7 @@
 <?php
 
 use App\Http\Controllers\DisputeEvidenceController;
+use App\Http\Controllers\SiteModerationController;
 use Illuminate\Support\Facades\Route;
 
 /*
@@ -33,6 +34,10 @@ Route::middleware(['auth', 'admin'])->prefix('admin')->name('admin.')->group(fun
 
     // Fair play (P41): linked accounts of one person, and players locked after confirmed false reports.
     Route::livewire('fair-play', 'pages::admin.fair-play')->name('fair-play');
+
+    // Site-wide mutes and bans of a Nostr key: the list with Undo, and the moderation menu on every chat message.
+    Route::livewire('moderation', 'pages::admin.moderation')->name('moderation');
+    Route::post('moderation', SiteModerationController::class)->middleware('throttle:60,1')->name('moderation.store');
 
     // NIP-05 names (P47): the names players claimed on the league's domain, and revoking one.
     Route::livewire('nip05', 'pages::admin.nip05')->name('nip05');

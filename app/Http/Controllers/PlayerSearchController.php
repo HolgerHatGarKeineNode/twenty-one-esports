@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Models\User;
+use App\Support\Moderation\SiteModeration;
 use App\Support\Nostr\NostrKeys;
 use App\Support\Nostr\PlayerProfile;
 use App\Support\Search\PlayerMatches;
@@ -50,8 +51,12 @@ class PlayerSearchController extends Controller
             return response()->json([]);
         }
 
+        // A key banned from the site is never suggested to invite, challenge or link (SiteModeration); admins still find it.
+        $banned = $request->user()?->can('admin') ? [] : SiteModeration::state()['banned'];
+
         $rows = $query
             ->whereKeyNot(array_map(intval(...), $validated['exclude'] ?? []))
+            ->when($banned !== [], fn ($query) => $query->whereNotIn('pubkey', $banned))
             ->limit(self::LIMIT)
             ->get(['id', 'pubkey', 'npub', 'name', 'picture', 'avatar_path'])
             ->map(fn (User $user): array => [
@@ -68,7 +73,7 @@ class PlayerSearchController extends Controller
         // `keys` mode (<x-player-picker allow-npub>): a valid key nobody here has yet is offered as itself.
         $pubkey = NostrKeys::toHex($term);
 
-        if ($keys && $pubkey !== null && $rows === [] && ! User::query()->where('pubkey', $pubkey)->exists()) {
+        if ($keys && $pubkey !== null && $rows === [] && ! in_array($pubkey, $banned, true) && ! User::query()->where('pubkey', $pubkey)->exists()) {
             $rows = [[
                 'id' => null,
                 'name' => 'npub1…'.Str::substr(NostrKeys::hexToNpub($pubkey), -4),

@@ -4,6 +4,7 @@ use App\Models\ChatMute;
 use App\Models\User;
 use App\Support\GameChat\GameChannels;
 use App\Support\GameNames;
+use App\Support\Moderation\SiteModeration;
 use App\Support\Nostr\NostrKeys;
 use Livewire\Attributes\Json;
 use Livewire\Attributes\Locked;
@@ -29,8 +30,19 @@ new class extends Component
     public function config(): ?array
     {
         $viewer = auth()->user();
+        $viewer = $viewer instanceof User ? $viewer : null;
+        $config = GameChannels::config($this->game, $viewer);
 
-        return GameChannels::config($this->game, $viewer instanceof User ? $viewer : null);
+        if ($config === null) {
+            return null;
+        }
+
+        // Keys an admin muted or banned site-wide: left out of the list for everyone (SiteModeration).
+        $config['hidden'] = SiteModeration::hiddenFor($viewer);
+        // The viewer's own mute says so, apart from an admin's "Mute for everyone" in the same menu.
+        $config['labels']['mute'] = __('Mute :name for me');
+
+        return $config;
     }
 
     /**
@@ -165,6 +177,7 @@ new class extends Component
                                                         class="btn-w inline-flex h-8 cursor-pointer items-center gap-2 rounded-control border border-line bg-well px-2.5 text-xs text-ink">
                                                     <x-icon name="mute" :size="14" /><span x-text="muteLabel(row.item.pubkey)"></span>
                                                 </button>
+                                                <x-chat-moderation />
                                             </span>
                                         </div>
                                     </div>

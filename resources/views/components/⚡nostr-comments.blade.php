@@ -126,7 +126,7 @@ new class extends Component {
                      'readRelays' => (int) config('esports.comments.read_relays', 5),
                      'writeRelays' => ProfileBadges::browserRelays(),
                      'moderation' => ['creator' => GameChannels::creator(), 'relays' => GameChannels::relays()],
-                     'muted' => $me instanceof User ? $me->mutedPubkeys() : [],
+                     'muted' => \App\Support\Moderation\SiteModeration::leftOutFor($me instanceof User ? $me : null),
                      'me' => $me?->pubkey,
                      'page' => (int) config('esports.comments.page', 20),
                      'maxShown' => (int) config('esports.comments.max_shown', 200),

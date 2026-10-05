@@ -27,7 +27,8 @@
     $rest = array_slice($pool['split'], 3);
     $topUp ??= false;
     $manage ??= false;
-    $zappers = $pool['zappers'] ?? [];
+    // A key an admin muted or banned site-wide shows no name or picture here; its sats still count in the pot (SiteModeration).
+    $zappers = array_values(array_filter($pool['zappers'] ?? [], fn (array $zapper): bool => ! \App\Support\Moderation\SiteModeration::isHidden($zapper['pubkey'])));
     $zapped = (int) ($pool['zaps'] ?? 0);
     $zapOpen = \App\Support\Prizes\PotZaps::open($tournament);
 @endphp

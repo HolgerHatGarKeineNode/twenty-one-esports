@@ -143,6 +143,63 @@ final class TournamentModeration
     }
 
     /**
+     * Take a player an admin banned from the site (App\Support\Moderation\SiteModeration)
+     * out of every tournament before its draw: a solo entry is removed, a
+     * lineup drops the player and keeps its entry while it still fields a
+     * team (as for a deleted account, withdrawOrphaned()), else it is
+     * removed too. Each step is a line in that tournament's moderation log
+     * with the admin and the neutral reason; the remaining players of a
+     * removed lineup entry hear of it, the banned player does not. Returns
+     * how many entries were changed or removed.
+     */
+    public function withdrawBanned(User $actor, User $player, string $reason): int
+    {
+        $tournamentIds = TournamentSignup::query()->active()
+            ->where(fn ($query) => $query->where('user_id', $player->id)->orWhereJsonContains('members', $player->id))
+            ->distinct()->pluck('tournament_id')->map(intval(...))->all();
+        $changed = 0;
+
+        foreach ($tournamentIds as $tournamentId) {
+            [$tournament, $notify, $count] = DB::transaction(function () use ($tournamentId, $actor, $player, $reason): array {
+                $locked = Tournament::query()->lockForUpdate()->find($tournamentId);
+
+                if ($locked === null || ! $locked->isBeforeDraw()) {
+                    return [null, [], 0];
+                }
+
+                $signups = TournamentSignup::query()->where('tournament_id', $locked->id)->active()
+                    ->where(fn ($query) => $query->where('user_id', $player->id)->orWhereJsonContains('members', $player->id))
+                    ->lockForUpdate()->get();
+                $notify = [];
+
+                foreach ($signups as $signup) {
+                    $left = array_values(array_filter(array_map(intval(...), $signup->members), fn (int $id): bool => $id !== $player->id));
+
+                    if ($signup->lineup_id !== null && count($left) >= $locked->teamSize()) {
+                        $signup->forceFill(['members' => $left])->save();
+                        $this->log($locked, $actor, 'removed', subject: $signup->name, reason: $reason, signupId: $signup->id);
+                        Broadcasts::send(new TournamentChanged($locked->id, 'removed'));
+
+                        continue;
+                    }
+
+                    $this->markRemoved($locked, $actor, $signup, $reason);
+                    $notify = [...$notify, ...array_filter($this->recipients($signup), fn (int $id): bool => $id !== $player->id)];
+                }
+
+                return [$locked, array_values(array_unique($notify)), $signups->count()];
+            });
+
+            if ($tournament instanceof Tournament) {
+                $this->notifyRemoved($tournament, $notify, $reason);
+                $changed += $count;
+            }
+        }
+
+        return $changed;
+    }
+
+    /**
      * @throws TournamentRuleViolation
      */
     public function unblock(Tournament $tournament, User $actor, int $banId): void

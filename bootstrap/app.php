@@ -1,8 +1,10 @@
 <?php
 
+use App\Http\Middleware\EndBannedSessions;
 use App\Http\Middleware\EnsureUserIsAdmin;
 use App\Http\Middleware\RefreshStaleMembership;
 use App\Http\Middleware\SetLocale;
+use Illuminate\Contracts\Auth\Middleware\AuthenticatesRequests;
 use Illuminate\Foundation\Application;
 use Illuminate\Foundation\Configuration\Exceptions;
 use Illuminate\Foundation\Configuration\Middleware;
@@ -17,9 +19,14 @@ return Application::configure(basePath: dirname(__DIR__))
     )
     ->withMiddleware(function (Middleware $middleware): void {
         $middleware->web(append: [
+            // Before anything reads the viewer: a banned key is a guest from its next request on (SiteModeration).
+            EndBannedSessions::class,
             SetLocale::class,
             RefreshStaleMembership::class,
         ]);
+
+        // Ahead of `auth` and `can:` in every route: a banned key is logged out first, so a page that needs a login sends it there.
+        $middleware->prependToPriorityList(before: AuthenticatesRequests::class, prepend: EndBannedSessions::class);
 
         $middleware->alias([
             'admin' => EnsureUserIsAdmin::class,

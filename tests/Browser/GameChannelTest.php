@@ -1,6 +1,8 @@
 <?php
 
+use App\Models\Admin;
 use App\Models\ChessGame;
+use App\Models\PubkeyModeration;
 use App\Models\Rating;
 use App\Models\User;
 use App\Support\GameChat\GameChannels;
@@ -456,6 +458,87 @@ test('TMNF and Blockfill have their chat too: a bar after the hero or the game a
     'tmnf' => ['tmnf', '/scores/tmnf', '[data-test=tmnf-hero]'],
     'blockfill' => ['blockfill', '/blockfill', '[data-test=stacker]'],
 ]);
+
+/*
+| Site-wide mute (user, 2026-10-05: "globales Muten für alle im Chat"): an
+| admin opens the menu on a spammer's message, picks "Mute for everyone",
+| gives a reason and confirms; the message leaves the admin's list at once
+| and a second logged-in viewer's list by push, without a reload. The
+| personal "Mute … for me" stays beside it, worded apart. The menu with its
+| reason form fits at 390 and 1440.
+*/
+test('an admin mutes a message author for everyone: the message leaves a second viewer\'s chat without a reload', function () {
+    [$admin, $viewer] = User::factory()->count(2)->create();
+    TestSigner::forBrowser($admin);
+    TestSigner::forBrowser($viewer);
+    // After forBrowser(): it gives the account its real key.
+    Admin::query()->create(['pubkey' => $admin->refresh()->pubkey]);
+    $spammer = new TestSigner;
+    $friend = new TestSigner;
+    $root = ['e', $this->channel, '', 'root'];
+    $now = now()->getTimestamp();
+    [$relay, , $seed] = p21Relay([
+        $friend->sign(42, [$root], 'good game yesterday', $now - 300),
+        $spammer->sign(42, [$root], 'obscene spam here', $now - 200),
+    ]);
+    $menu = '(s) => { const message = document.querySelector(s); const form = message.querySelector("[data-test=chat-mod-form]"); const chat = document.querySelector("[data-test=game-chat]").getBoundingClientRect(); const box = form.getBoundingClientRect(); return { overflow: document.documentElement.scrollWidth - document.documentElement.clientWidth, inside: box.left >= chat.left && box.right <= chat.right, visible: form.checkVisibility(), personal: message.querySelector("[data-test=game-chat-mute]").innerText.trim() }; }';
+
+    try {
+        $adminPage = p21Page($admin, '/games/rocket-league');
+        $viewerPage = p21Page($viewer, '/games/rocket-league');
+
+        // Positive control on the viewer's page: the collector catches a thrown error and a 500; then it starts empty.
+        $viewerPage->evaluate('() => { setTimeout(() => { throw new Error("probe-throw"); }); return fetch("/__test/server-error"); }');
+        BrowserWait::until($viewerPage, '() => window.__errors.some((e) => e.includes("probe-throw")) && window.__errors.some((e) => e.startsWith("500 ")) && performance.getEntries().some((e) => e.name.includes("/__test/server-error") && e.responseStatus === 500)', 5_000);
+        $viewerPage->evaluate('() => { window.__errors = []; performance.clearResourceTimings(); }');
+
+        foreach ([$adminPage, $viewerPage] as $page) {
+            BrowserWait::until($page, '() => ('.P21_TEXTS.')().includes("obscene spam here")', 10_000);
+        }
+        // The viewer is no admin: their menu has only their own mute.
+        expect($viewerPage->evaluate('() => document.querySelectorAll("[data-test=chat-moderation]").length'))->toBe(0)
+            // The viewer's page listens on the moderation channel (logged in: Echo is there).
+            ->and($viewerPage->evaluate('() => window.esportsSiteHidden?.listening === true'))->toBeTrue();
+
+        $message = '[data-test=game-chat-message][data-pubkey="'.$spammer->pubkey.'"]';
+        $adminPage->locator($message.' button[aria-expanded]')->first()->click();
+        p21Shot($adminPage, 'moderation-menu-items-1440', '[data-test=game-chat]');
+        $adminPage->locator($message.' [data-test=chat-mod-mute]')->click();
+        $adminPage->locator($message.' [data-test=chat-mod-reason]')->fill('Obscene spam');
+        $wide = $adminPage->evaluate($menu, $message);
+        p21Shot($adminPage, 'moderation-menu-1440', '[data-test=game-chat]');
+
+        $adminPage->locator($message.' [data-test=chat-mod-confirm]')->click();
+        BrowserWait::until($adminPage, '() => ! ('.P21_TEXTS.')().includes("obscene spam here")', 5_000);
+        BrowserWait::until($viewerPage, '() => ! ('.P21_TEXTS.')().includes("obscene spam here")', 10_000);
+
+        expect($viewerPage->evaluate(P21_TEXTS))->toBe(['good game yesterday'])
+            ->and($adminPage->evaluate(P21_TEXTS))->toBe(['good game yesterday'])
+            ->and(PubkeyModeration::query()->where('pubkey', $spammer->pubkey)->where('actor_pubkey', $admin->pubkey)->value('reason'))->toBe('Obscene spam')
+            ->and(['overflow' => $wide['overflow'], 'inside' => $wide['inside'], 'visible' => $wide['visible']])->toBe(['overflow' => 0, 'inside' => true, 'visible' => true])
+            // The personal mute says it is the viewer's own, apart from the admin's "Mute for everyone".
+            ->and($wide['personal'])->toStartWith('Mute ')->toEndWith(' for me');
+
+        // Phone: the same menu and reason form inside the chat, nothing sideways (the other author's message, not muted).
+        $friendMessage = '[data-test=game-chat-message][data-pubkey="'.$friend->pubkey.'"]';
+        $adminPage->setViewportSize(390, 844);
+        Execution::instance()->wait(0.3);
+        $adminPage->locator('[data-test=game-chat-toggle]')->click();
+        $adminPage->locator($friendMessage.' button[aria-expanded]')->first()->click();
+        $adminPage->locator($friendMessage.' [data-test=chat-mod-ban]')->click();
+        $adminPage->evaluate('(s) => document.querySelector(s).scrollIntoView({ block: "center" })', $friendMessage);
+        Execution::instance()->wait(0.3);
+        $narrow = $adminPage->evaluate($menu, $friendMessage);
+        p21Shot($adminPage, 'moderation-menu-390', '[data-test=game-chat]');
+
+        expect(['overflow' => $narrow['overflow'], 'inside' => $narrow['inside'], 'visible' => $narrow['visible']])->toBe(['overflow' => 0, 'inside' => true, 'visible' => true])
+            ->and(p21Errors($viewerPage))->toBe([])
+            ->and(p21Errors($adminPage))->toBe([]);
+    } finally {
+        $relay->stop(1);
+        @unlink($seed);
+    }
+});
 
 test('a message sent in the chess chat is still there after a reload, next to the history the relay already had', function () {
     $player = User::factory()->create(['locale' => 'de']);
