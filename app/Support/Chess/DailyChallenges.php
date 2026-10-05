@@ -6,6 +6,7 @@ use App\Enums\ChessInviteStatus;
 use App\Models\ChessChallenge;
 use App\Models\ChessGame;
 use App\Models\User;
+use App\Support\Moderation\SiteModeration;
 use App\Support\Notifications\ChessNotifications;
 use App\Support\Tournaments\CupMatchNow;
 use Illuminate\Support\Collection;
@@ -47,6 +48,11 @@ final class DailyChallenges
     {
         if ($challenger->is($challenged)) {
             throw new ChessRuleViolation('challenge_self');
+        }
+
+        // A key banned from the site takes part in nothing (SiteModeration); the page says only that it did not work.
+        if (SiteModeration::isBanned($challenged->pubkey) || SiteModeration::isBanned($challenger->pubkey)) {
+            throw new ChessRuleViolation('not_available');
         }
 
         if (! in_array($color, self::COLORS, true)) {

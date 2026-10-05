@@ -765,6 +765,7 @@ final class CasualMatches
             CupMatchNow::LOCKED => __('Your cup match comes first.'),
             CupMatchNow::OTHER_LOCKED => __(':name is playing a cup match right now.', $replace),
             'invite_self' => __('You cannot invite yourself.'),
+            'not_available' => __('This player cannot be invited right now.'),
             'not_looking' => __(':name is not looking for a game right now.', $replace),
             'invite_closed' => __('This invite is no longer open.'),
             'not_searching' => __('This player is not searching right now.'),

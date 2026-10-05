@@ -184,7 +184,8 @@ export default ({ messages = {}, challengeUrl = '/auth/nostr/challenge' } = {}) 
             window.location.assign(result.redirect);
         } catch (error) {
             console.warn('[login] login failed:', error);
-            this.fail(this.messages.failed);
+            // 403: the league refuses this key (a site ban); its own neutral sentence, not "try again".
+            this.fail(error?.status === 403 && error.message ? error.message : this.messages.failed);
         }
     },
 

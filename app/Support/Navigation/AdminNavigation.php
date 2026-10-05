@@ -44,6 +44,8 @@ final class AdminNavigation
         'fair-play' => 'people',
         'nip05' => 'people',
         'status' => 'system',
+        // Site-wide mutes and bans. Here, not under Players & roles or League: in German both are as wide as the nav allows (NavigationMenusTest, 640 px).
+        'moderation' => 'system',
     ];
 
     public function __construct(private readonly ?User $user) {}
@@ -101,6 +103,7 @@ final class AdminNavigation
             ]],
             ['key' => 'system', 'label' => self::groupLabel('system'), 'items' => [
                 self::item('status', __('Status'), route('admin.status')),
+                self::item('moderation', __('Moderation'), route('admin.moderation')),
             ]],
         ];
     }

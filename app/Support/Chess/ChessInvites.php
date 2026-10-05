@@ -11,6 +11,7 @@ use App\Models\ChessQueueEntry;
 use App\Models\SeriesQueueEntry;
 use App\Models\TournamentMatch;
 use App\Models\User;
+use App\Support\Moderation\SiteModeration;
 use App\Support\Notifications\ChessNotifications;
 use App\Support\Series\CasualInvites;
 use App\Support\Series\CasualMatches;
@@ -156,6 +157,11 @@ final class ChessInvites
     {
         if ($inviter->is($invitee)) {
             throw new ChessRuleViolation('invite_self');
+        }
+
+        // A key banned from the site takes part in nothing (SiteModeration); the page says only that it did not work.
+        if (SiteModeration::isBanned($invitee->pubkey) || SiteModeration::isBanned($inviter->pubkey)) {
+            throw new ChessRuleViolation('not_available');
         }
 
         if ($this->games->activeGameOf($inviter) !== null) {

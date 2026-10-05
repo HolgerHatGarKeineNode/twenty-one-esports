@@ -11,6 +11,7 @@ use App\Models\SeriesMatch;
 use App\Models\SeriesQueueEntry;
 use App\Models\User;
 use App\Support\Chess\Broadcasts;
+use App\Support\Moderation\SiteModeration;
 use App\Support\Notifications\CasualNotifications;
 use App\Support\Tournaments\CupMatchNow;
 use Illuminate\Support\Collection;
@@ -97,6 +98,11 @@ final class CasualInvites
     {
         if ($inviter->is($invitee)) {
             throw CasualMatches::refuse('invite_self');
+        }
+
+        // A key banned from the site takes part in nothing (SiteModeration).
+        if (SiteModeration::isBanned($invitee->pubkey) || SiteModeration::isBanned($inviter->pubkey)) {
+            throw CasualMatches::refuse('not_available');
         }
 
         $this->matches->assertGame($game);

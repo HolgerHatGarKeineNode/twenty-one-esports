@@ -15,6 +15,7 @@ use App\Models\SeriesQueueEntry;
 use App\Models\TournamentMatch;
 use App\Models\User;
 use App\Support\Chess\Broadcasts;
+use App\Support\Moderation\SiteModeration;
 use App\Support\Series\CasualInvites;
 use App\Support\Tournaments\CasualCupNotices;
 use App\Support\Tournaments\CupMatchNow;
@@ -61,6 +62,11 @@ final class BoardInvites
     {
         if ($inviter->is($invitee)) {
             throw new BoardRuleViolation('invite_self');
+        }
+
+        // A key banned from the site takes part in nothing (SiteModeration); the page says only that it did not work.
+        if (SiteModeration::isBanned($invitee->pubkey) || SiteModeration::isBanned($inviter->pubkey)) {
+            throw new BoardRuleViolation('not_available');
         }
 
         $definition = $this->registry->find($slug);

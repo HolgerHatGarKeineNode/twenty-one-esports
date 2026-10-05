@@ -40,6 +40,8 @@ import './leagueTime.js';
 // Comments, likes and RSVPs on Nostr (P48): tournament, game and match pages.
 import './nostrComments.js';
 import { dropAnswersForDetachedComponents } from './livewireDetached.js';
+// The admin's moderation menu on chat messages (site-wide mute and ban).
+import { siteModeration } from './siteHidden.js';
 
 // A Livewire answer for a component that wire:navigate already took off the page is not morphed into it.
 document.addEventListener('livewire:init', () => dropAnswersForDetachedComponents(window.Livewire));
@@ -47,6 +49,7 @@ document.addEventListener('livewire:init', () => dropAnswersForDetachedComponent
 // Nostr login (P3): Alpine component for <x-nostr-login />.
 document.addEventListener('alpine:init', () => {
     window.Alpine.data('nostrLogin', nostrLogin);
+    window.Alpine.data('siteModeration', siteModeration);
     window.Alpine.data('blockZeroCountdown', blockZeroCountdown);
     // A board game's lobby (pages/board/⚡lobby): online list and "Looking to play", as chessLobby.
     window.Alpine.data('boardLobby', boardLobby);

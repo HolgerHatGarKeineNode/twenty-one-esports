@@ -6,6 +6,7 @@ use App\Enums\Platform;
 use App\Enums\SeriesStatus;
 use App\Models\SeriesMatch;
 use App\Models\User;
+use App\Support\Moderation\SiteModeration;
 use App\Support\Notifications\CasualNotifications;
 use App\Support\Tournaments\CupMatchNow;
 use Illuminate\Support\Facades\DB;
@@ -43,6 +44,11 @@ final class CasualChallenges
     {
         if ($challenger->is($opponent)) {
             throw CasualMatches::refuse('invite_self');
+        }
+
+        // A key banned from the site takes part in nothing (SiteModeration).
+        if (SiteModeration::isBanned($opponent->pubkey) || SiteModeration::isBanned($challenger->pubkey)) {
+            throw CasualMatches::refuse('not_available');
         }
 
         $this->matches->assertGame($game);

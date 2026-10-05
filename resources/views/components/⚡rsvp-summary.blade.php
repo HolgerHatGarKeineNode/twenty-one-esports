@@ -53,7 +53,7 @@ new class extends Component {
                  'readRelays' => (int) config('esports.comments.read_relays', 5),
                  'readLimit' => (int) config('esports.comments.read_limit', 500),
                  'moderation' => ['creator' => GameChannels::creator(), 'relays' => GameChannels::relays()],
-                 'muted' => $viewer instanceof User ? $viewer->mutedPubkeys() : [],
+                 'muted' => \App\Support\Moderation\SiteModeration::leftOutFor($viewer instanceof User ? $viewer : null),
                  'faces' => 6,
              ]))">
             <x-icon name="calendar" :size="14" class="shrink-0" />

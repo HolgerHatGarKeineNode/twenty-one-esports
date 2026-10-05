@@ -29,6 +29,8 @@
  *   publishes it; guests only read.
  *   Mutes are the viewer's own, as in the game chat: localStorage plus the
  *   account (Livewire `setMuted`); a run of muted messages folds into one line.
+ *   Keys an admin muted or banned site-wide (`config.hidden`, live by push:
+ *   resources/js/siteHidden.js) are left out entirely, their zaps too.
  * - emojiPicker / emojiPopover (resources/js/emojiPicker.js, shared with
  *   the game channels of P21): the emoji picker of einundzwanzig-group
  *   (bridge.ts, emoji-picker.blade.php), ported to nostr-tools. Only pointer
@@ -42,6 +44,7 @@ import { proxiedAvatar } from './imageProxy.js';
 import { ensureSigner } from './nostrSign.js';
 import { newest, publicRelay, readProfiles, readRelays } from './relayRead.js';
 import { signerMessage, signTemplate } from './signing.js';
+import { visible, watchSiteHidden } from './siteHidden.js';
 import { NJUMP, botMark, boundProfiles, compareItems, displayRows, formatSats, insertSorted, isHttps, isStreamMessage, length, messageTemplate, newestPage, olderPage, parseZap, profileOf, relayHints, sendBlocker, tokenize } from './streamChat.js';
 
 const MUTES_KEY = 'esports.chat.mutes';
@@ -127,6 +130,8 @@ export function liveChat(config) {
         unseen: 0,
         older: 'idle',
         muted: [],
+        // Keys an admin muted or banned site-wide (siteHidden.js), as a Set; replaced, never changed in place, so the list redraws.
+        siteHidden: new Set(),
         revealed: [],
         menuFor: null,
         me: config.me ?? null,
@@ -138,6 +143,7 @@ export function liveChat(config) {
             // The account's list is the truth for a logged-in viewer; a guest keeps hers on this device.
             this.muted = [...new Set(this.me ? (config.muted ?? []) : (Array.isArray(local) ? local : []))];
             if (this.me) writeJson(MUTES_KEY, this.muted);
+            this.stopSiteHidden = watchSiteHidden(config.hidden ?? [], this.me, (hidden) => { this.siteHidden = hidden; });
 
             this.profiles = cachedProfiles();
             // In flight; found ones are in `profiles`, missing ones in `misses`.
@@ -199,6 +205,7 @@ export function liveChat(config) {
 
         destroy() {
             this.destroyed = true;
+            this.stopSiteHidden?.();
             this.fitObserver?.disconnect();
             this.listObserver?.disconnect();
             window.removeEventListener('resize', this.fit);
@@ -282,7 +289,7 @@ export function liveChat(config) {
             if (this.items.length <= before && this.older === 'end') this.older = 'idle';
             this.wantPeople(item);
 
-            if (!pinned && atEnd && !this.muted.includes(item.pubkey)) {
+            if (!pinned && atEnd && !this.muted.includes(item.pubkey) && !this.siteHidden.has(item.pubkey)) {
                 this.unseen += 1;
             }
         },
@@ -373,7 +380,7 @@ export function liveChat(config) {
 
         /** The list's rows; `cont` marks a message that continues its author's previous one (within 2 min): no name line again. */
         get rows() {
-            const rows = displayRows(this.items, { muted: this.muted, revealed: this.revealed });
+            const rows = displayRows(visible(this.items, this.siteHidden), { muted: this.muted, revealed: this.revealed });
             rows.forEach((row, index) => {
                 const previous = rows[index - 1];
                 row.cont = row.type === 'message' && previous?.type === 'message' && previous.item.pubkey === row.item.pubkey && row.item.created_at - previous.item.created_at < 120;

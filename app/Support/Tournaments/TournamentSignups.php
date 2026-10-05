@@ -12,6 +12,7 @@ use App\Models\TournamentBan;
 use App\Models\TournamentSignup;
 use App\Models\User;
 use App\Support\Chess\Broadcasts;
+use App\Support\Moderation\SiteModeration;
 use App\Support\Nostr\RejectedEvent;
 use App\Support\Nostr\SignedEvent;
 use App\Support\Nostr\SignedEventGate;
@@ -80,6 +81,7 @@ final class TournamentSignups
     {
         $this->assertOpen($tournament);
         $this->assertNotBlocked($tournament, [$user->id]);
+        $this->assertNoneBanned([$user->id]);
         $this->assertNotEntered($tournament, [$user->id]);
 
         if ($tournament->profile()->entersTeams()) {
@@ -175,6 +177,7 @@ final class TournamentSignups
 
         // Every active seat, not only the players listed: a lineup plays from its seats.
         $this->assertNotBlocked($tournament, [$captain->id, ...$ids, ...array_map(fn (LineupSeat $seat): int => $seat->user_id, $lineup->activeSeats())]);
+        $this->assertNoneBanned([$captain->id, ...$ids]);
         $this->assertNotEntered($tournament, $ids);
         $this->assertCapacity($tournament, $tournament->teamSize());
 
@@ -308,6 +311,22 @@ final class TournamentSignups
     {
         if (TournamentBan::query()->where('tournament_id', $tournament->id)->whereIn('user_id', $userIds)->exists()) {
             throw new TournamentRuleViolation('blocked', __('A player here is blocked from this tournament by its organizer.'));
+        }
+    }
+
+    /**
+     * Nobody banned from the site (SiteModeration) enters, neither solo nor
+     * as a player or the captain of a lineup entry. Neutral wording: no
+     * label on the player.
+     *
+     * @param  list<int>  $userIds
+     */
+    private function assertNoneBanned(array $userIds): void
+    {
+        $banned = SiteModeration::state()['banned'];
+
+        if ($banned !== [] && User::query()->whereKey($userIds)->whereIn('pubkey', $banned)->exists()) {
+            throw new TournamentRuleViolation('not_available', __('A player of this entry cannot take part.'));
         }
     }
 

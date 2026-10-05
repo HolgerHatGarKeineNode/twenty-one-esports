@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Models\InviteLink;
 use App\Models\User;
 use App\Support\Membership;
+use App\Support\Moderation\SiteModeration;
 use App\Support\Nostr\LoginChallenges;
 use App\Support\Nostr\NostrKeys;
 use App\Support\Nostr\NostrLogin;
@@ -56,6 +57,12 @@ class NostrLoginController extends Controller
 
         if ($event === null) {
             return response()->json(['message' => __('Login failed. Please try again.')], 401);
+        }
+
+        // A key an admin banned from the site (SiteModeration) never gets in, with or without an account
+        // yet, and no account is made for it. Read from the table, not the cache. Neutral wording.
+        if (SiteModeration::isBannedNow($event->pubkey)) {
+            return response()->json(['message' => __('This key cannot sign in here.')], 403);
         }
 
         $user = User::query()->firstOrCreate(

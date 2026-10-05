@@ -86,6 +86,7 @@
                                                 class="btn-w inline-flex h-8 cursor-pointer items-center gap-2 rounded-control border border-line bg-well px-2.5 text-xs text-ink">
                                             <x-icon name="mute" :size="14" /><span x-text="muteLabel(row.item.pubkey)"></span>
                                         </button>
+                                        <x-chat-moderation />
                                     </span>
                                 </div>
                             </div>

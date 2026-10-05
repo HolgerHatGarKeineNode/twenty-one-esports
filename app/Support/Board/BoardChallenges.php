@@ -8,6 +8,7 @@ use App\Games\GameRegistry;
 use App\Models\BoardChallenge;
 use App\Models\BoardGame;
 use App\Models\User;
+use App\Support\Moderation\SiteModeration;
 use App\Support\Notifications\BoardNotifications;
 use App\Support\SeasonChain\RatedTrustGate;
 use App\Support\Tournaments\CupMatchNow;
@@ -77,6 +78,11 @@ final class BoardChallenges
     {
         if ($challenger->is($challenged)) {
             throw new BoardRuleViolation('challenge_self');
+        }
+
+        // A key banned from the site takes part in nothing (SiteModeration); the page says only that it did not work.
+        if (SiteModeration::isBanned($challenged->pubkey) || SiteModeration::isBanned($challenger->pubkey)) {
+            throw new BoardRuleViolation('not_available');
         }
 
         $definition = $this->registry->find($slug);

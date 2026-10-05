@@ -21,7 +21,9 @@
  *   says where it links, the player page for a league account, njump.me for
  *   anybody else.
  * - Mutes are the viewer's own (localStorage and the account, ChatMute);
- *   the creator's kind 43/44 hide for everyone on this app.
+ *   the creator's kind 43/44 hide for everyone on this app, and so do the
+ *   keys an admin muted or banned site-wide (`config.hidden`, live by push:
+ *   resources/js/siteHidden.js).
  * - Guests read only.
  */
 import { SimplePool } from 'nostr-tools/pool';
@@ -32,6 +34,7 @@ import { emojiPicker, emojiPopover } from './emojiPicker.js';
 import { ensureSigner } from './nostrSign.js';
 import { signerMessage, signTemplate } from './signing.js';
 import { NJUMP, botMark, displayRows, insertSorted, length, sendBlocker, tokenize } from './streamChat.js';
+import { watchSiteHidden } from './siteHidden.js';
 
 const MUTES_KEY = 'esports.chat.mutes';
 /** Per channel id: the `created_at` of the newest item the viewer had in front of them (the chat open or the side column). */
@@ -115,6 +118,8 @@ export function gameChannel(config) {
         book: new Map(),
         moderationEvents: [],
         mod: { hidden: new Set(), muted: new Set() },
+        // Keys an admin muted or banned site-wide (siteHidden.js): left out like the creator's mutes.
+        siteHidden: new Set(),
         asked: new Set(),
         queues: { poll: new Set(), author: new Set(), voter: new Set() },
         buckets: { author: { tokens: BUCKET_SIZE, at: Date.now() }, voter: { tokens: BUCKET_SIZE, at: Date.now() } },
@@ -127,6 +132,8 @@ export function gameChannel(config) {
         itemsFrame: null,
         rowCache: new Map(),
     };
+    /** Left out for everyone: hidden by the creator, or its author muted by the creator or site-wide. */
+    const leftOut = (item) => state.mod.hidden.has(item.id) || state.mod.muted.has(item.pubkey) || state.siteHidden.has(item.pubkey);
 
     return {
         t,
@@ -178,6 +185,10 @@ export function gameChannel(config) {
             if (this.me) writeJson(MUTES_KEY, this.muted);
 
             this.clockTimer = setInterval(() => { this.clock = nowSeconds(); }, 30_000);
+            this.stopSiteHidden = watchSiteHidden(config.hidden ?? [], this.me, (hidden) => {
+                state.siteHidden = hidden;
+                this.modVersion += 1;
+            });
 
             const seen = readJson(SEEN_KEY, {});
             this.seenAt = Number.isInteger(seen?.[config.channel]) ? seen[config.channel] : nowSeconds() - FIRST_VISIT_WINDOW_S;
@@ -221,6 +232,7 @@ export function gameChannel(config) {
             cancelFrame(state.frame);
             cancelFrame(state.itemsFrame);
             clearInterval(this.clockTimer);
+            this.stopSiteHidden?.();
             this.railQuery?.removeEventListener?.('change', this.onRail);
             this.sub?.close();
             this.votes?.close();
@@ -294,7 +306,7 @@ export function gameChannel(config) {
             if (follow || added.some((item) => item.pubkey === this.me)) {
                 this.$nextTick(() => this.scrollToBottom());
             } else {
-                this.unseen += added.filter((item) => !this.muted.includes(item.pubkey)).length;
+                this.unseen += added.filter((item) => !this.muted.includes(item.pubkey) && !leftOut(item)).length;
             }
         },
 
@@ -556,7 +568,7 @@ export function gameChannel(config) {
          */
         get rows() {
             this.modVersion;
-            const shown = this.items.filter((item) => !state.mod.hidden.has(item.id) && !state.mod.muted.has(item.pubkey));
+            const shown = this.items.filter((item) => !leftOut(item));
             const rows = displayRows(shown, { muted: this.muted, revealed: this.revealed });
             const cache = new Map();
             const stable = rows.map((row, index) => {
@@ -577,7 +589,7 @@ export function gameChannel(config) {
         /** Open polls, newest first: the side column from lg. */
         get openPolls() {
             this.modVersion;
-            return this.items.filter((item) => item.type === 'poll' && !isClosed(item.poll, this.clock) && !state.mod.hidden.has(item.id) && !state.mod.muted.has(item.pubkey)).reverse().slice(0, 3).map((item) => item.poll);
+            return this.items.filter((item) => item.type === 'poll' && !isClosed(item.poll, this.clock) && !leftOut(item)).reverse().slice(0, 3).map((item) => item.poll);
         },
 
         get hasItems() {
@@ -621,8 +633,7 @@ export function gameChannel(config) {
         /** Messages and polls of others since the viewer last had the chat in front of them, muted ones left out. */
         get unread() {
             this.modVersion;
-            return this.items.filter((item) => item.created_at > this.seenAt && item.pubkey !== this.me && !this.muted.includes(item.pubkey)
-                && !state.mod.hidden.has(item.id) && !state.mod.muted.has(item.pubkey)).length;
+            return this.items.filter((item) => item.created_at > this.seenAt && item.pubkey !== this.me && !this.muted.includes(item.pubkey) && !leftOut(item)).length;
         },
 
         get unreadBadge() {

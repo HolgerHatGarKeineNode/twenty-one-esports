@@ -8,6 +8,7 @@ use App\Games\ScoreGame;
 use App\Models\ScoreRun;
 use App\Models\ScoreServer;
 use App\Models\Tournament;
+use App\Support\Moderation\SiteModeration;
 use Illuminate\Database\UniqueConstraintViolationException;
 use LogicException;
 
@@ -87,6 +88,13 @@ abstract class ServerIngest
             }
 
             $userId = ScoreAccounts::userFor($game, $event->accountId);
+
+            // A player banned from the site gets no finish on a board (SiteModeration).
+            if ($userId !== null && SiteModeration::isBannedUser($userId)) {
+                $summary['refused'][$index] = 'account';
+
+                continue;
+            }
             // A mapped finish the adapter flags (a time no human drives) carries its hint; one it holds waits for an admin.
             $review = $userId === null ? null : $this->review($game, $event, $userId);
 

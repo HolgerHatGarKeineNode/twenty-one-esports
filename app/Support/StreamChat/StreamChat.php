@@ -4,6 +4,7 @@ namespace App\Support\StreamChat;
 
 use App\Models\User;
 use App\Support\Lightning\Lnurl;
+use App\Support\Moderation\SiteModeration;
 use App\Support\Nostr\NostrKeys;
 use App\Support\Nostr\SignerMessages;
 use App\Support\Prizes\PoolInvoices;
@@ -193,6 +194,8 @@ final readonly class StreamChat
             'me' => $viewer?->pubkey,
             'meName' => $viewer?->displayName(),
             'muted' => $viewer instanceof User ? $viewer->mutedPubkeys() : [],
+            // Keys an admin muted or banned site-wide: their messages and zaps are left out for everyone (SiteModeration).
+            'hidden' => SiteModeration::hiddenFor($viewer),
             'maxLength' => (int) config('esports.stream_chat.max_length', 280),
             'cooldownMs' => (int) config('esports.stream_chat.cooldown_ms', 2000),
             'history' => max(1, (int) config('esports.stream_chat.history', 50)),
@@ -204,7 +207,7 @@ final readonly class StreamChat
                 'bot' => __('bot'),
                 'newMessages' => __(':count new'),
                 'newMessage' => __('1 new'),
-                'mute' => __('Mute :name'),
+                'mute' => __('Mute :name for me'),
                 'unmute' => __('Unmute :name'),
                 'mutedOne' => __('1 message from a muted account'),
                 'mutedMany' => __(':count messages from muted accounts'),
