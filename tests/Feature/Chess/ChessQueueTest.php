@@ -192,7 +192,8 @@ test('"Find opponent" with an open invite pairs with its inviter at once', funct
     app(ChessQueue::class)->join($carl); // someone else waits in range; the invite still comes first
     $invite = app(ChessInvites::class)->invite($anna, $bert);
 
-    $lobby = Livewire::actingAs($bert)->test('pages::chess.lobby')->call('findOpponent');
+    // The invite is blitz: "Find opponent" in blitz answers it (a rapid search would not).
+    $lobby = Livewire::actingAs($bert)->test('pages::chess.lobby')->call('findOpponent', false, 'blitz');
 
     $game = ChessGame::query()->sole();
     $lobby->assertRedirect(route('games.show', $game));
@@ -215,7 +216,7 @@ test('"Find opponent" does not answer an invite whose inviter is gone or playing
     }
 
     Livewire::actingAs($bert)->test('pages::chess.lobby')
-        ->call('findOpponent')
+        ->call('findOpponent', false, 'blitz')
         ->assertNoRedirect()
         ->assertSeeHtml('data-test="searching"');
 

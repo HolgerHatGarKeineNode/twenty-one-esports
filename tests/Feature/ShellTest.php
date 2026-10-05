@@ -129,6 +129,7 @@ test('the games menu and the account menus link every chess page, so none is fou
         ->toContain('href="'.route('me.correspondence').'"')
         ->toContain('href="'.route('settings.chess').'"')
         ->toContain('href="'.route('chess.challenge').'"')
-        ->toContain('href="'.route('ladder.show', ['chess', 'blitz']).'"')
+        // The rapid ladder first (plan "Schach Rapid und Clan", P3); blitz and daily by the ladder page's switch.
+        ->toContain('href="'.route('ladder.show', ['chess', 'rapid']).'"')
         ->toContain('data-test="mobile-chess-settings"');
 });

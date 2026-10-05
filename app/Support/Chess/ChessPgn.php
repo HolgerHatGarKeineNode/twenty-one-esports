@@ -42,7 +42,8 @@ final class ChessPgn
 
         $headers = [
             // The league signs the record of a rated game (NIP rev. 9.4): its Event must not say casual.
-            'Event' => 'TWENTY ONE esports, '.($game->rated ? 'rated' : 'casual').($game->isCorrespondence() ? ' daily chess' : ' blitz'),
+            // The mode from the registry (plan "Schach Rapid und Clan", P3): "rapid", "blitz", "daily chess".
+            'Event' => 'TWENTY ONE esports, '.($game->rated ? 'rated' : 'casual').' '.($game->isCorrespondence() ? 'daily chess' : ChessModes::word($game->mode)),
             'Site' => route('games.show', $game),
             'Date' => $date->format('Y.m.d'),
             'Round' => '-',

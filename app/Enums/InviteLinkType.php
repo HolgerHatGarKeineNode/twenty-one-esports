@@ -2,6 +2,8 @@
 
 namespace App\Enums;
 
+use App\Models\ChessGame;
+
 /**
  * What an invite link `/i/{code}` opens (P6b). Game links are open: whoever
  * accepts plays. A clan link only sends a join request that a captain
@@ -9,6 +11,9 @@ namespace App\Enums;
  * tournament: it opens the tournament page and credits the player as the
  * referrer when the invited player signs up. Named invites (a player picked
  * by name) are not links of this kind and stay direct.
+ *
+ * A rapid link (plan "Schach Rapid und Clan", P2) is a blitz link in Rapid
+ * 10+5: live chess, colours drawn at random.
  *
  * A board link is a game link to a board game other than chess (nine men's
  * morris, checkers): `options.game` and `options.mode` (blitz or
@@ -19,6 +24,7 @@ namespace App\Enums;
 enum InviteLinkType: string
 {
     case Blitz = 'blitz';
+    case Rapid = 'rapid';
     case Daily = 'daily';
     case Series = 'series';
     case Clan = 'clan';
@@ -33,7 +39,24 @@ enum InviteLinkType: string
 
     public function isChess(): bool
     {
-        return $this === self::Blitz || $this === self::Daily;
+        return $this->isLiveChess() || $this === self::Daily;
+    }
+
+    /** A live chess link on a clock (blitz, rapid): one live game at a time, colours at random. */
+    public function isLiveChess(): bool
+    {
+        return $this === self::Blitz || $this === self::Rapid;
+    }
+
+    /** The chess mode the link starts, or null for a link that is no chess game. */
+    public function chessMode(): ?string
+    {
+        return match ($this) {
+            self::Blitz => 'blitz',
+            self::Rapid => 'rapid',
+            self::Daily => ChessGame::CORRESPONDENCE,
+            default => null,
+        };
     }
 
     /**
@@ -44,7 +67,7 @@ enum InviteLinkType: string
     public function expiryChoices(): array
     {
         return match ($this) {
-            self::Blitz => [1, 24, 48],
+            self::Blitz, self::Rapid => [1, 24, 48],
             self::Daily, self::Series, self::Board => [24, 48, 168],
             self::Clan => [24, 168, 720],
             // A week: the inviter's best is the week's (InviteLinks::create() keeps one open per game).
@@ -57,7 +80,7 @@ enum InviteLinkType: string
     public function defaultExpiryHours(): int
     {
         return match ($this) {
-            self::Blitz => 24,
+            self::Blitz, self::Rapid => 24,
             self::Daily, self::Series, self::Board => 48,
             self::Clan, self::Tournament, self::Score => 168,
         };

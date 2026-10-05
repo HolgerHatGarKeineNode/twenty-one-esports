@@ -13,6 +13,7 @@ use App\Models\User;
 use App\Support\Chess\Broadcasts;
 use App\Support\Chess\ChessGameService;
 use App\Support\Chess\ChessInvites;
+use App\Support\Chess\ChessModes;
 use App\Support\Chess\ChessQueue;
 use App\Support\Chess\ChessRuleViolation;
 use App\Support\Chess\DailyChallenges;
@@ -68,6 +69,16 @@ use Livewire\Component;
  * Your games | Live now (boards, who is online, "Looking to play") | the
  * blitz ladder's top five. Explanations sit behind the panel's "?"
  * (progressive disclosure), never in the first viewport.
+ *
+ * Rapid (plan "Schach Rapid und Clan", P2; user, 2026-10-05): Rapid 10+5 is
+ * the first tile and the mode the page opens on, Blitz 5+3 the second; both
+ * open the same quick-play panel in their mode (Alpine `liveMode`, the
+ * page's, so the online list invites in it too). Each tile counts who
+ * searches its mode; "Either" searches both and pairs with the first fitting
+ * opponent. After `switch_hint_seconds` alone the searching card says how
+ * many search the other mode and offers to switch (ChessQueue::switchHint);
+ * the card asks the server at that moment (checkAt). The ladder card opens
+ * on the rapid ladder, with blitz and daily one click away.
  */
 new #[Layout('layouts::app', ['section' => 'chess', 'realtime' => true, 'scripts' => ['resources/js/chess.js', 'resources/js/gameChannel.js']])] class extends Component
 {
@@ -101,10 +112,14 @@ new #[Layout('layouts::app', ['section' => 'chess', 'realtime' => true, 'scripts
     #[Locked]
     public bool $canInvite = true;
 
+    /** The mode of the ladder card: rapid first (user, 2026-10-05), blitz and daily by its switch. */
+    public string $ladderMode = ChessModes::DEFAULT;
+
     /**
      * "Find next opponent" / "Search again" land here with `?search=1`, and
      * after a rated game with `&rated=1` (P7e): rated again if rated is still
-     * open for this player, else casual with the reason shown.
+     * open for this player, else casual with the reason shown. `&mode=`
+     * searches that live mode again (the default without), `&either=1` both.
      */
     public function mount(): void
     {
@@ -113,51 +128,92 @@ new #[Layout('layouts::app', ['section' => 'chess', 'realtime' => true, 'scripts
         }
 
         $rated = request()->boolean('rated');
+        $mode = ChessModes::isLive((string) request()->query('mode')) ? (string) request()->query('mode') : ChessModes::DEFAULT;
+        $either = request()->boolean('either');
 
-        if ($rated && $this->ratedRefusal !== null) {
-            $this->notice = __('Rated is closed for you right now, so this search is casual. :reason', ['reason' => $this->ratedRefusal]);
+        if ($rated && ($refusal = $this->refusalFor($mode, $either)) !== null) {
+            $this->notice = __('Rated is closed for you right now, so this search is casual. :reason', ['reason' => $refusal]);
             $rated = false;
         }
 
-        $this->findOpponent($rated);
+        $this->findOpponent($rated, $mode, $either);
     }
 
-    public function findOpponent(bool $rated = false): void
+    /**
+     * Join the live queue in one mode, or in every live mode (`either`).
+     */
+    public function findOpponent(bool $rated = false, string $mode = ChessModes::DEFAULT, bool $either = false): void
     {
-        $this->attempt(function (User $user) use ($rated): void {
-            $refusal = $rated ? $this->ratedRefusal : null;
+        $this->attempt(function (User $user) use ($rated, $mode, $either): void {
+            $refusal = $rated ? $this->refusalFor($mode, $either) : null;
 
             if ($refusal !== null) {
                 throw new ChessRuleViolation('rated_not_open', $refusal);
             }
 
-            $this->goTo(app(ChessQueue::class)->join($user, 'blitz', rated: $rated));
+            $this->goTo(app(ChessQueue::class)->join($user, ChessModes::isLive($mode) ? $mode : ChessModes::DEFAULT, rated: $rated, either: $either));
         });
     }
 
+    /** The searching card's switch hint: search another mode, or every live mode, keeping the place. */
+    public function switchSearch(string $mode, bool $either = false): void
+    {
+        $this->attempt(fn (User $user) => $this->goTo(app(ChessQueue::class)->switchTo($user, $mode, $either)));
+    }
+
+    /** The ladder card's switch: rapid, blitz or daily. */
+    public function showLadder(string $mode): void
+    {
+        if (in_array($mode, ChessModes::all(), true)) {
+            $this->ladderMode = $mode;
+        }
+
+        unset($this->ladderTop);
+    }
+
     /**
-     * Why this player cannot search a rated blitz game now, or null. The
-     * queue itself pairs two rated players only if they list each other, so
-     * a player who lists nobody back would wait forever: refused here.
+     * Why a rated search in this mode (or, with `either`, in every live
+     * mode) is refused for this player now, or null.
+     */
+    private function refusalFor(string $mode, bool $either): ?string
+    {
+        $refusals = $this->ratedRefusals;
+        $mode = array_key_exists($mode, $refusals) ? $mode : ChessModes::DEFAULT;
+
+        if ($either && in_array(null, $refusals, true)) {
+            return null;
+        }
+
+        return $refusals[$mode] ?? null;
+    }
+
+    /**
+     * Why this player cannot search a rated game in each live mode now, or
+     * null for the modes open to them (rapid's ladder opens later than
+     * blitz's in a running season, NIP rev. 9.22). The queue itself pairs
+     * two rated players only if they list each other, so a player who lists
+     * nobody back would wait forever: refused here.
+     *
+     * @return array<string, string|null>
      */
     #[Computed]
-    public function ratedRefusal(): ?string
+    public function ratedRefusals(): array
     {
         $user = auth()->user();
+        $refusals = [];
 
-        if (! $user instanceof User) {
-            return Ladders::isOpen('chess', 'blitz') ? __('Log in to play rated games.') : Seasons::restMessage();
+        foreach (ChessModes::live() as $mode) {
+            if (! $user instanceof User) {
+                $refusals[$mode] = Ladders::isOpen('chess', $mode) ? __('Log in to play rated games.') : Seasons::restMessage();
+
+                continue;
+            }
+
+            $refusals[$mode] = app(RatedChess::class)->refusal($user, $mode)
+                ?? ($this->mutualOpponents === 0 ? __('Rated play needs a player you list each other with. Add opponents on their player pages; they add you back.') : null);
         }
 
-        $refusal = app(RatedChess::class)->refusal($user, 'blitz');
-
-        if ($refusal !== null) {
-            return $refusal;
-        }
-
-        return $this->mutualOpponents === 0
-            ? __('Rated play needs a player you list each other with. Add opponents on their player pages; they add you back.')
-            : null;
+        return $refusals;
     }
 
     /** How many players this one lists each other with (the rated queue pairs only those). */
@@ -234,9 +290,11 @@ new #[Layout('layouts::app', ['section' => 'chess', 'realtime' => true, 'scripts
         });
     }
 
-    public function invite(int $userId): void
+    /** An invite from the online list, in the live mode the page has open (blitz from the follows list, as before). */
+    public function invite(int $userId, string $mode = 'blitz'): void
     {
-        $this->attempt(fn (User $user) => $this->goTo(app(ChessInvites::class)->invite($user, User::query()->findOrFail($userId))->game));
+        $mode = ChessModes::isLive($mode) ? $mode : 'blitz';
+        $this->attempt(fn (User $user) => $this->goTo(app(ChessInvites::class)->invite($user, User::query()->findOrFail($userId), $mode)->game));
     }
 
     public function withdrawInvite(): void
@@ -301,7 +359,7 @@ new #[Layout('layouts::app', ['section' => 'chess', 'realtime' => true, 'scripts
     public function rendering(\Illuminate\View\View $view): void
     {
         $view->title(__('Chess'));
-        app(PageMeta::class)->describe(__('Chess'), __('Play blitz chess 5+3 live or daily chess against Bitcoiners: find an opponent, watch the live boards and follow your daily games.'));
+        app(PageMeta::class)->describe(__('Chess'), __('Play rapid chess 10+5 or blitz 5+3 live, or daily chess, against Bitcoiners: find an opponent, watch the live boards and follow your daily games.'));
         app(\App\Support\PageMeta::class)->card(fn () => \App\Support\Cards\PageCard::page('chess'));
 
         $outgoing = $this->outgoing;
@@ -412,17 +470,19 @@ new #[Layout('layouts::app', ['section' => 'chess', 'realtime' => true, 'scripts
     }
 
     /**
-     * The blitz ladder's top five, from the view the ladder page opens on:
-     * rated once it has a result, casual before (ladder/⚡show activePool()).
+     * The top five of the ladder card's mode (rapid unless switched), from
+     * the view the ladder page opens on: rated once it has a result, casual
+     * before (ladder/⚡show activePool()).
      *
      * @return array{pool: string, rows: Collection<int, Rating>}
      */
     #[Computed]
     public function ladderTop(): array
     {
-        $season = Ratings::season(Rating::RATED, 'chess', 'blitz');
+        $mode = in_array($this->ladderMode, ChessModes::all(), true) ? $this->ladderMode : ChessModes::DEFAULT;
+        $season = Ratings::season(Rating::RATED, 'chess', $mode);
         $top = fn (string $pool, string $season): Collection => Rating::query()
-            ->where(['pool' => $pool, 'season' => $season, 'game' => 'chess', 'mode' => 'blitz'])
+            ->where(['pool' => $pool, 'season' => $season, 'game' => 'chess', 'mode' => $mode])
             ->where('results', '>', 0)->whereNotNull('user_id')->with('user')
             ->orderByDesc('rating')->orderByDesc('results')->orderBy('id')->limit(5)->get();
 
@@ -469,7 +529,13 @@ new #[Layout('layouts::app', ['section' => 'chess', 'realtime' => true, 'scripts
 
         $now = now();
         $net = (int) $now->copy()->addSeconds(max(30, (int) config('esports.chess.lobby_poll_seconds')))->getTimestampMs();
-        $due = $this->entry !== null ? app(ChessQueue::class)->nextWidening($this->entry, $now) : $this->outgoing?->expires_at;
+        $queue = app(ChessQueue::class);
+        $due = $this->entry !== null ? $queue->nextWidening($this->entry, $now) : $this->outgoing?->expires_at;
+
+        // The switch hint's moment (plan "Schach Rapid und Clan", P2): the card asks then, no push announces it.
+        if ($this->entry !== null && ($hintAt = $queue->switchHintAt($this->entry))->greaterThan($now)) {
+            $due = $due === null || $hintAt->lessThan($due) ? $hintAt : $due;
+        }
 
         // Half a second late, so the server's clock has passed that moment too.
         return $due === null ? $net : min($net, (int) $due->getTimestampMs() + 500);
@@ -479,6 +545,26 @@ new #[Layout('layouts::app', ['section' => 'chess', 'realtime' => true, 'scripts
     public function searching(): int
     {
         return ChessQueueEntry::query()->count();
+    }
+
+    /**
+     * Who searches each live mode (the tiles' counts), an "either" search in both.
+     *
+     * @return array<string, int>
+     */
+    #[Computed]
+    public function searchingByMode(): array
+    {
+        return app(ChessQueue::class)->counts();
+    }
+
+    /**
+     * @return array{mode: string, count: int}|null
+     */
+    #[Computed]
+    public function switchHint(): ?array
+    {
+        return $this->entry !== null ? app(ChessQueue::class)->switchHint($this->entry) : null;
     }
 
     /**
@@ -521,7 +607,7 @@ new #[Layout('layouts::app', ['section' => 'chess', 'realtime' => true, 'scripts
             };
         }
 
-        unset($this->entry, $this->outgoing, $this->incoming, $this->activeGame);
+        unset($this->entry, $this->outgoing, $this->incoming, $this->activeGame, $this->searchingByMode, $this->switchHint);
     }
 
     private function goTo(?ChessGame $game): void
@@ -539,7 +625,7 @@ new #[Layout('layouts::app', ['section' => 'chess', 'realtime' => true, 'scripts
     $active = $this->activeGame;
 @endphp
 
-<div class="flex grow flex-col" x-data="chessLobby(@js(['userId' => $user?->id, 'poll' => max(30, (int) config('esports.chess.lobby_poll_seconds'))]))" data-server-now="{{ (int) now()->getTimestampMs() }}" data-looking="{{ $user?->looking_to_play === 'chess/blitz' ? 'true' : 'false' }}">
+<div class="flex grow flex-col" x-data="chessLobby(@js(['userId' => $user?->id, 'poll' => max(30, (int) config('esports.chess.lobby_poll_seconds')), 'liveMode' => $entry?->mode ?? ChessModes::DEFAULT]))" data-server-now="{{ (int) now()->getTimestampMs() }}" data-looking="{{ $user?->looking_to_play === 'chess/blitz' ? 'true' : 'false' }}">
     <div class="chat-rail-host flex flex-col gap-6 px-4 pb-8 lg:gap-8 lg:px-12 lg:pb-10">
         {{-- An open cup match comes first (CupMatchNow; user, 2026-10-03): above the title, and the casual lock says why a search is refused. --}}
         @auth
@@ -549,7 +635,7 @@ new #[Layout('layouts::app', ['section' => 'chess', 'realtime' => true, 'scripts
         {{-- The title below lg; from lg the header's chess bar names the page. --}}
         <div class="flex items-baseline justify-between gap-3 lg:hidden" data-test="lobby-title">
             <h1 class="m-0 font-display text-2xl leading-tight font-bold">{{ __('Chess') }}</h1>
-            @auth<x-rating :rating="\App\Support\Rating\Ratings::headline($user->id, 'chess', 'blitz')" :label="__('Blitz')" class="text-[13px] text-ink-2" />@endauth
+            @auth<x-rating :rating="\App\Support\Rating\Ratings::headline($user->id, 'chess', ChessModes::DEFAULT)" :label="ChessModes::short(ChessModes::DEFAULT)" class="text-[13px] text-ink-2" />@endauth
         </div>
         <h1 class="sr-only max-lg:hidden">{{ __('Chess') }}</h1>
 
@@ -563,14 +649,14 @@ new #[Layout('layouts::app', ['section' => 'chess', 'realtime' => true, 'scripts
                     <p role="status" class="m-0 rounded-lg bg-card px-4 py-3 text-[13px] leading-normal text-ink-2 shadow-ring" data-test="lobby-notice">{{ $notice }}</p>
                 @endif
 
-                {{-- Blitz invites received: they expire in minutes, so they come before everything else. --}}
+                {{-- Live invites received (rapid or blitz): they expire in minutes, so they come before everything else. --}}
                 @foreach ($this->incoming as $invite)
                     <div wire:key="invite-{{ $invite->id }}" class="flex flex-col gap-3 rounded-lg bg-card p-3 shadow-ring-btc lg:flex-row lg:items-center lg:px-4" data-test="incoming-invite">
                         <span class="flex min-w-0 grow items-center gap-3">
                             <x-player-link :user="$invite->inviter" class="shrink-0"><x-avatar :user="$invite->inviter" :size="40" class="rounded-md" /></x-player-link>
                             <span class="flex min-w-0 flex-col gap-0.5">
                                 <b class="text-[15px] wrap-anywhere">{{ __(':name invites you', ['name' => $invite->inviter->displayName()]) }}</b>
-                                <span class="text-xs text-ink-2">{{ __('Blitz 5+3 · Casual · colours drawn at random') }}</span>
+                                <span class="text-xs text-ink-2" data-test="incoming-invite-mode">{{ __(':mode · Casual · colours drawn at random', ['mode' => ChessModes::label($invite->mode)]) }}</span>
                             </span>
                         </span>
                         <span class="grid grid-cols-2 gap-2 lg:flex">
@@ -599,7 +685,7 @@ new #[Layout('layouts::app', ['section' => 'chess', 'realtime' => true, 'scripts
         <div class="grid grid-cols-1 gap-4 lg:grid-cols-12 lg:items-start lg:gap-5">
             @include('pages.chess.partials.lobby-games', ['user' => $user, 'active' => $active])
             @include('pages.chess.partials.lobby-live', ['user' => $user, 'active' => $active])
-            @include('pages.chess.partials.lobby-ladder')
+            @include('pages.chess.partials.lobby-ladder', ['ladderMode' => $this->ladderMode, 'ladderModes' => ChessModes::all()])
         </div>
 
         {{-- P47: who of the player's Nostr follows plays here, to challenge; an invite DM for the others --}}

@@ -97,6 +97,8 @@ final class PageCardFacts
         return [
             'number' => $game->number !== null ? $game->number() : null,
             'daily' => $game->isCorrespondence(),
+            // The mode by name (plan "Schach Rapid und Clan", P3): the card says "Casual Rapid 10+5", never blitz for every live game.
+            'mode' => $game->mode,
             'rated' => (bool) $game->rated,
             'status' => $game->status->value,
             'result' => $game->status === ChessGameStatus::Finished ? $game->result : null,

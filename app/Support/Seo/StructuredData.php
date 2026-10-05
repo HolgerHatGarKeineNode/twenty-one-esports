@@ -8,6 +8,7 @@ use App\Enums\TournamentStatus;
 use App\Models\ChessGame;
 use App\Models\SeriesMatch;
 use App\Models\Tournament;
+use App\Support\Chess\ChessModes;
 use App\Support\GameNames;
 use App\Support\Nostr\PlayerProfile;
 use Carbon\CarbonInterface;
@@ -125,8 +126,9 @@ final class StructuredData
     }
 
     /**
-     * A chess game (blitz or daily) between two players. A chess game starts
-     * when it is created (pages/matches/index).
+     * A chess game (rapid, blitz or daily) between two players, its mode in
+     * the name ("…, Rapid 10+5"). A chess game starts when it is created
+     * (pages/matches/index).
      *
      * @return array<string, mixed>
      */
@@ -142,7 +144,7 @@ final class StructuredData
         }
 
         return self::sportsEvent(
-            name: $name,
+            name: $name.' · '.ChessModes::label($game->mode),
             url: $url,
             sport: __('Chess'),
             start: $game->created_at,

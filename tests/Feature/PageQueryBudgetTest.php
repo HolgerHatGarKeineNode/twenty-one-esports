@@ -7,12 +7,14 @@ use App\Models\ChessGame;
 use App\Models\Clan;
 use App\Models\ClanInvite;
 use App\Models\Lineup;
+use App\Models\NostrEvent;
 use App\Models\SeriesMatch;
 use App\Models\Tournament;
 use App\Models\TournamentSignup;
 use App\Models\User;
 use App\Providers\AppServiceProvider;
 use App\Support\Navigation\ShellNavigation;
+use App\Support\Series\Ladders;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\LazyLoadingViolationException;
 use Illuminate\Support\Facades\Cache;
@@ -278,6 +280,40 @@ test('the hot routes stay within their total query budget, as a guest and as the
 
     expect($over)->toBe([])
         ->and($roundtrips)->toBe([]);
+});
+
+/*
+| A closed rapid ladder in a live season (plan "Schach Rapid und Clan", P1
+| gate 2026-10-05): the season was released before rapid joined, so its
+| 32152 is missing until the board's next rule change. Every page that asks
+| Ladders::isOpen('chess', 'rapid') (lobby, profile chips, navigation,
+| dashboard) must cost no more than with the ladder open: a miss is
+| remembered for the rest of the request (Ladders::published()).
+*/
+test('a closed rapid ladder costs no more queries than an open one, on every page that asks for it', function () {
+    $this->travelTo(now()->setTime(12, 0));
+    $world = budgetWorld();
+    $this->actingAs($world['player']);
+    $uris = [
+        'home' => route('home'),
+        'dashboard' => route('dashboard'),
+        'chess.lobby' => route('chess.lobby'),
+        'players.show' => route('players.show', $world['player']->npub),
+        'rules' => route('rules'),
+        'mining' => route('mining'),
+    ];
+
+    $open = array_map(fn (string $uri): int => budgetLoad($uri)['queries'], $uris);
+
+    NostrEvent::query()->where(['kind' => Ladders::KIND, 'd' => 'chess/rapid/'.Ladders::season()])->delete();
+    expect(Ladders::isOpen('chess', 'rapid'))->toBeFalse()->and(Ladders::isOpen('chess', 'blitz'))->toBeTrue();
+
+    $closed = array_map(fn (string $uri): int => budgetLoad($uri)['queries'], $uris);
+    $more = array_filter(array_map(fn (string $name): ?string => $closed[$name] > $open[$name] ? "{$name}: {$closed[$name]} closed, {$open[$name]} open" : null, array_keys($uris)));
+
+    expect($more)->toBe([])
+        ->and($closed['dashboard'])->toBeLessThanOrEqual(PAGE_BUDGETS['dashboard'][1])
+        ->and($closed['home'])->toBeLessThanOrEqual(PAGE_BUDGETS['home'][1]);
 });
 
 /*

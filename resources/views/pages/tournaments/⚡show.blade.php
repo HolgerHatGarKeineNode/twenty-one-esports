@@ -150,7 +150,6 @@ new #[Layout('layouts::app', ['section' => 'tournaments', 'realtime' => true, 's
             // The mode's name, never its id: a Blockfill week names its own blocks ("60 blocks"), not "40-blocks".
             'mode' => match (true) {
                 $tournament->mode === 'correspondence' => __('Daily'),
-                $tournament->mode === 'blitz' => __('Blitz 5+3'),
                 $tournament->game === \App\Games\Blockfill::SLUG => \App\Support\Stacker\BlockfillRules::weekBlocks($tournament),
                 default => \App\Support\GameNames::mode($tournament->game, $tournament->mode),
             },

@@ -161,7 +161,7 @@ final class GameRecords
     private function alt(ChessGame $game, string $what): string
     {
         $headers = ChessPgn::headersFor($game);
-        $mode = $game->isCorrespondence() ? 'daily' : 'blitz';
+        $mode = ChessModes::word($game->mode);
 
         return "{$what} {$game->number()} ({$mode}): {$headers['White']} vs {$headers['Black']}, {$game->result} (NIP-64 PGN)";
     }

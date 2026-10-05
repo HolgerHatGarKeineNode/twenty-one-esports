@@ -3,7 +3,7 @@
     turns every five minutes through every game and mode with a result (RotationKit::ladderPair over StreamStats'
     `boards`: chess, the board games that are on, Rocket League, EA Sports FC; the season ladder once it has rows,
     else the casual one). The top two of each as a big face with the rank on its corner (the leader crowned; a clan
-    lineup shows its logo), then name, Elo and record. Without any ladder the halves are chess blitz and daily with an
+    lineup shows its logo), then name, Elo and record. Without any ladder the halves are chess rapid and daily with an
     empty seat; a lone ladder gets an invitation beside it. The scene's backdrop lies full-bleed under both halves.
 
     Data contract:
@@ -34,7 +34,7 @@
             ];
         }
         $title = $board === null ? ($pair === [] ? 'Chess' : 'Every game') : $board['gameName'];
-        $sub = $board === null ? ($pair === [] ? ($hi === 0 ? 'Blitz 5+3' : 'Daily') : 'has a ladder') : trim($board['modeName'].($board['rated'] ? ', season ladder' : ', casual ladder'), ', ');
+        $sub = $board === null ? ($pair === [] ? ($hi === 0 ? 'Rapid 10+5' : 'Daily') : 'has a ladder') : trim($board['modeName'].($board['rated'] ? ', season ladder' : ', casual ladder'), ', ');
         $halves[] = ['ox' => $ox, 'title' => K::fit($title, K::DISPLAY, 44, 560), 'sub' => K::fit($sub, K::MONO, 22, 560), 'ink' => $ink, 'ink2' => $ink2, 'rows' => $rows, 'daily' => $hi === 1, 'lone' => $board === null && $pair !== []];
     }
 @endphp

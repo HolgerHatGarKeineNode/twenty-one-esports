@@ -105,9 +105,11 @@ final class HomeHub
     }
 
     /**
-     * Live blitz boards (the latest first) and how many blitz and daily games run now.
+     * Live boards, every live mode (rapid and blitz, the latest first), and
+     * how many live and daily games run now ("Live", not "Blitz": plan
+     * "Schach Rapid und Clan", P3).
      *
-     * @return array{boards: EloquentCollection<int, ChessGame>, blitz: int, daily: int}
+     * @return array{boards: EloquentCollection<int, ChessGame>, live: int, daily: int}
      */
     public function live(): array
     {
@@ -115,7 +117,7 @@ final class HomeHub
 
         return [
             'boards' => (clone $active)->live()->with(['white', 'black'])->latest('id')->limit(self::BOARDS)->get(),
-            'blitz' => (clone $active)->live()->count(),
+            'live' => (clone $active)->live()->count(),
             'daily' => (clone $active)->daily()->count(),
         ];
     }

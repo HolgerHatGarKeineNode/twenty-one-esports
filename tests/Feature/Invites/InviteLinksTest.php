@@ -82,6 +82,7 @@ test('every link type has its landing, for a guest and for a logged-in player', 
     $this->actingAs(User::factory()->create())->get($link->url())->assertOk()->assertSee($heading)->assertDontSeeHtml('data-test="login-google"');
 })->with([
     'blitz' => [fn () => app(InviteLinks::class)->create(User::factory()->create(['name' => 'satsjäger']), InviteLinkType::Blitz), 'satsjäger challenges you to blitz chess'],
+    'rapid' => [fn () => app(InviteLinks::class)->create(User::factory()->create(['name' => 'satsjäger']), InviteLinkType::Rapid), 'satsjäger challenges you to rapid chess'],
     'daily' => [fn () => app(InviteLinks::class)->create(User::factory()->create(['name' => 'satsjäger']), InviteLinkType::Daily), 'satsjäger challenges you to daily chess'],
     'series' => [fn () => inviteSeriesLink(inviteLineup(clan: ['name' => 'Laser Eyes'])), 'Laser Eyes challenges your team to Rocket League'],
     'clan' => [fn () => app(InviteLinks::class)->create(($clan = Clan::factory()->create(['name' => 'Laser Eyes']))->owner, InviteLinkType::Clan, ['clan' => $clan]), 'invites you to join Laser Eyes'],
@@ -89,17 +90,19 @@ test('every link type has its landing, for a guest and for a logged-in player', 
 
 /* ---------- Game links are open --------------------------------------------------------------------------------- */
 
-test('a stranger takes an open blitz link: a casual live game starts, the inviter is told, the referral is stored', function () {
+test('a stranger takes an open live link: a casual live game in its mode starts, the inviter is told, the referral is stored', function (InviteLinkType $type, string $mode, string $headline, string $clock) {
     [$anna, $stranger] = User::factory()->count(2)->create();
-    $link = $this->links->create($anna, InviteLinkType::Blitz);
+    $link = $this->links->create($anna, $type);
 
     Livewire::actingAs($stranger)->test('pages::invites.link', ['link' => $link])
-        ->assertSee(__(':name challenges you to blitz chess', ['name' => $anna->displayName()]))
+        ->assertSee(__($headline, ['name' => $anna->displayName()]))
+        ->assertSee($clock)
+        ->call('$refresh')->assertOk()
         ->call('accept')
         ->assertRedirect(route('games.show', ChessGame::query()->sole()));
 
     $game = ChessGame::query()->sole();
-    expect($game->mode)->toBe('blitz')
+    expect($game->mode)->toBe($mode)
         ->and($game->rated)->toBeFalse()
         ->and($game->status)->toBe(ChessGameStatus::Active)
         ->and([$game->white_id, $game->black_id])->toEqualCanonicalizing([$anna->id, $stranger->id])
@@ -108,8 +111,11 @@ test('a stranger takes an open blitz link: a casual live game starts, the invite
     $use = InviteLinkUse::query()->sole();
     expect($use->only(['inviter_id', 'user_id', 'chess_game_id', 'was_new']))
         ->toBe(['inviter_id' => $anna->id, 'user_id' => $stranger->id, 'chess_game_id' => $game->id, 'was_new' => false]);
-    expect($anna->notifications()->sole()->data['title'])->toBe(__(':name took your blitz invite', ['name' => $stranger->displayName()]));
-});
+    expect($anna->notifications()->sole()->data['title'])->toBe(__(':name took your :mode invite', ['name' => $stranger->displayName(), 'mode' => ucfirst($mode)]));
+})->with([
+    'blitz' => [InviteLinkType::Blitz, 'blitz', ':name challenges you to blitz chess', '5+3'],
+    'rapid' => [InviteLinkType::Rapid, 'rapid', ':name challenges you to rapid chess', '10+5'],
+]);
 
 test('a daily link starts a daily game with the colour the inviter chose', function () {
     [$anna, $stranger] = User::factory()->count(2)->create();

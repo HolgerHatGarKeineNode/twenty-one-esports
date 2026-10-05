@@ -202,7 +202,7 @@ new class extends Component {
     $invites = $viewer !== null && $this->invites();
     $lookingKey = $this->lookingKey();
     // The tag "Online now" puts on a player who looks for this lobby's blitz (components/lobby/online-now), word for word.
-    $lookingTag = $context === 'board' ? __('looking: :game', ['game' => GameNames::game($subject)]) : __('looking: Blitz 5+3');
+    $lookingTag = $context === 'board' ? __('looking: :game', ['game' => GameNames::game($subject)]) : __('looking: live chess');
     $correspondence = $context === 'board' && app(GameRegistry::class)->mode($subject, BoardGame::CORRESPONDENCE) !== null;
     $button = 'inline-flex h-11 min-w-11 shrink-0 cursor-pointer items-center justify-center gap-2 rounded-md border border-line bg-well px-3 text-[13px] text-ink hover:text-ink';
     $primary = 'btn-p inline-flex h-11 min-w-11 cursor-pointer items-center justify-center gap-2 rounded-md bg-btc px-4 text-[13px] font-bold text-on-btc hover:text-on-btc disabled:cursor-default disabled:opacity-60';

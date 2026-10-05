@@ -37,7 +37,7 @@
     $clock = fn (int $ms) => intdiv(intdiv($ms + 999, 1000), 60).':'.str_pad((string) (intdiv($ms + 999, 1000) % 60), 2, '0', STR_PAD_LEFT);
     $moveCount = intdiv($game->ply + 1, 2);
     $pgn = ChessPgn::of($game);
-    $timeControl = $daily ? __('Daily chess (1 move/day)') : __('Blitz 5+3');
+    $timeControl = $daily ? __('Daily chess (1 move/day)') : \App\Support\Chess\ChessModes::label($game->mode);
     $record = $game->recordEvent;
     $relays = $record?->deliveries()->get() ?? collect();
     $accepted = $relays->where('accepted', true)->count();
@@ -66,7 +66,7 @@
         <button type="button" aria-label="{{ __('Copy game link') }}" x-data x-on:click="navigator.clipboard?.writeText(window.location.href)"
                 class="flex size-8 cursor-pointer items-center justify-center rounded-md bg-well text-ink-2"><x-icon name="copy" :size="14" /></button>
         <span class="grow"></span>
-        <span class="text-[13px] text-btc">{{ $game->rated ? ($daily ? __('Rated · Daily chess') : __('Rated · Blitz 5+3')) : ($daily ? __('Casual · Daily chess') : __('Casual · Blitz 5+3')) }}</span>
+        <span class="text-[13px] text-btc">{{ $daily ? ($game->rated ? __('Rated · Daily chess') : __('Casual · Daily chess')) : ($game->rated ? __('Rated · :mode', ['mode' => \App\Support\Chess\ChessModes::label($game->mode)]) : __('Casual · :mode', ['mode' => \App\Support\Chess\ChessModes::label($game->mode)])) }}</span>
         @unless ($aborted)
             <span class="flex h-[34px] items-center gap-2 rounded-md bg-[#122016] px-3 text-[13px] font-bold text-win" data-test="saved-badge"><x-icon name="check" :size="16" />{{ $record ? __('Saved & verified') : __('Saved') }}</span>
         @endunless
@@ -87,7 +87,7 @@
                 @elseif ($daily)
                     {{ $lastMove ? $moveCount.'. '.($game->ply % 2 === 0 ? '… ' : '').\App\Support\Chess\SanNotation::display($lastMove->san).' · ' : '' }}{{ __('Daily chess') }} · {{ trans_choice(':count move|:count moves', $moveCount) }} · {{ trans_choice(':count day|:count days', $days) }}
                 @else
-                    {{ $lastMove ? $moveCount.'. '.($game->ply % 2 === 0 ? '… ' : '').\App\Support\Chess\SanNotation::display($lastMove->san).' · ' : '' }}{{ __('Blitz 5+3') }} · {{ trans_choice(':count move|:count moves', $moveCount) }} · {{ __('time left :white vs :black', ['white' => $clock($game->white_ms), 'black' => $clock($game->black_ms)]) }}
+                    {{ $lastMove ? $moveCount.'. '.($game->ply % 2 === 0 ? '… ' : '').\App\Support\Chess\SanNotation::display($lastMove->san).' · ' : '' }}{{ $timeControl }} · {{ trans_choice(':count move|:count moves', $moveCount) }} · {{ __('time left :white vs :black', ['white' => $clock($game->white_ms), 'black' => $clock($game->black_ms)]) }}
                 @endif
             </span>
         </span>
@@ -112,7 +112,7 @@
         @include('pages.games.partials.post', ['game' => $game, 'color' => $color, 'winner' => $winner, 'rival' => $rival, 'rematch' => $tournamentPanel === null])
     @endif
 
-    {{-- Play again (players only): the same opponent as a daily challenge (in the share card when there is one), the next blitz pairing, or a friend by link --}}
+    {{-- Play again (players only): the same opponent as a daily challenge (in the share card when there is one), the next pairing in the game's mode, or a friend by link --}}
     @if ($rival && $tournamentPanel === null)
         <section aria-labelledby="again-h" class="flex flex-col gap-3" data-test="play-again">
             <div class="flex flex-col gap-3 rounded-lg bg-card px-4 py-4 sm:flex-row sm:items-center sm:gap-6 lg:px-6">
@@ -125,7 +125,7 @@
                         <x-button :href="route('chess.challenge', ['to' => $rival->npub])" icon="retry" data-test="challenge-again">{{ __('Rematch') }}</x-button>
                     @endunless
                     @unless ($daily)
-                        <x-button variant="quiet" :href="route('chess.lobby', ['search' => 1, ...($game->rated ? ['rated' => 1] : [])])" data-test="done-find-next">{{ __('Find next opponent') }}</x-button>
+                        <x-button variant="quiet" :href="route('chess.lobby', ['search' => 1, ...($game->rated ? ['rated' => 1] : []), 'mode' => $game->mode])" data-test="done-find-next">{{ __('Find next opponent') }}</x-button>
                     @endunless
                 </span>
             </div>

@@ -117,7 +117,7 @@
                     @endif
                     <div class="flex flex-wrap gap-2">
                         @foreach ($chips as $chip)
-                            <span class="inline-flex h-8 max-w-full min-w-0 items-center gap-2 rounded-md bg-card px-3 text-xs whitespace-nowrap shadow-ring" data-test="header-rating">
+                            <span class="inline-flex h-8 max-w-full min-w-0 items-center gap-2 rounded-md bg-card px-3 text-xs whitespace-nowrap shadow-ring" data-test="header-rating" @isset($chip['mode']) data-chess-mode="{{ $chip['mode'] }}" @endisset>
                                 <span class="text-ink-3">{{ $chip['label'] }}</span><x-rating :rating="$chip['rating']" class="text-ink-2" />
                             </span>
                         @endforeach

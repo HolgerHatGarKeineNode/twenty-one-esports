@@ -8,13 +8,23 @@
  * and attests nothing, and blitz and daily stay open.
  */
 
+use App\Enums\ChessGameStatus;
+use App\Enums\InviteLinkType;
+use App\Enums\TournamentFormat;
+use App\Enums\TournamentResultsMode;
 use App\Models\ChessGame;
+use App\Models\ChessInvite;
+use App\Models\ChessQueueEntry;
+use App\Models\InviteLink;
 use App\Models\NostrEvent;
 use App\Models\Rating;
 use App\Models\Season;
 use App\Models\SeasonAttestation;
+use App\Models\Tournament;
+use App\Models\TournamentMatch;
 use App\Models\User;
 use App\Support\Chess\ChessGameService;
+use App\Support\Chess\ChessInvites;
 use App\Support\Chess\ChessPgn;
 use App\Support\Chess\ChessQueue;
 use App\Support\Chess\ChessRuleViolation;
@@ -25,8 +35,13 @@ use App\Support\Rating\RatingService;
 use App\Support\SeasonChain\SeasonChains;
 use App\Support\SeasonChain\TrustFacts;
 use App\Support\Series\Ladders;
+use App\Support\Tournaments\CasualCups;
 use App\Support\Tournaments\GameProfile;
+use App\Support\Tournaments\TournamentGames;
 use Carbon\CarbonImmutable;
+use Illuminate\Routing\Route;
+use Illuminate\Support\Facades\DB;
+use Livewire\Livewire;
 use Tests\Support\TestSigner;
 use Tests\Support\TrustedFacts;
 
@@ -162,4 +177,214 @@ test('the rapid ladder page answers before Block 0, while closed in a live seaso
 
     publishLadders(Season::query()->sole());
     $this->get(route('ladder.show', ['chess', 'rapid']).'?pool=rated')->assertOk()->assertSee('Ladder record');
+});
+
+/*
+ * P2: rapid in the queue (user, 2026-10-05). Two entries pair only in a mode
+ * both take; "either" takes rapid and blitz and pairs with the first fit;
+ * after switch_hint_seconds alone the card names the other mode's searchers.
+ */
+
+test('rapid and blitz searchers never pair with each other; the same mode pairs', function () {
+    [$anna, $bert, $cora] = User::factory()->count(3)->create();
+    $queue = app(ChessQueue::class);
+
+    expect($queue->join($anna, 'rapid'))->toBeNull()
+        ->and($queue->join($bert, 'blitz'))->toBeNull()
+        ->and($queue->counts())->toBe(['rapid' => 1, 'blitz' => 1]);
+
+    $game = $queue->join($cora, 'rapid');
+
+    expect($game?->mode)->toBe('rapid')
+        ->and([$game->white_id, $game->black_id])->toEqualCanonicalizing([$anna->id, $cora->id])
+        ->and($queue->entryOf($bert)?->mode)->toBe('blitz')
+        ->and(fn () => $queue->join($cora, 'correspondence'))->toThrow(ChessRuleViolation::class);
+});
+
+test('"either" pairs with the first fitting searcher of either mode, in that searcher\'s mode', function () {
+    [$anna, $bert, $cora, $dora] = User::factory()->count(4)->create();
+    $queue = app(ChessQueue::class);
+
+    $queue->join($anna, 'blitz');
+    $first = $queue->join($bert, 'rapid', either: true);
+
+    expect($first?->mode)->toBe('blitz')
+        ->and([$first->white_id, $first->black_id])->toEqualCanonicalizing([$anna->id, $bert->id]);
+
+    $queue->join($cora, 'rapid', either: true);
+    expect($queue->entryOf($cora)?->takes())->toBe(['rapid', 'blitz'])
+        ->and($queue->counts())->toBe(['rapid' => 1, 'blitz' => 1]);
+
+    $second = $queue->join($dora, 'rapid');
+    expect($second?->mode)->toBe('rapid');
+});
+
+test('two "either" searchers play the first choice of the one who waited longer', function () {
+    [$anna, $bert] = User::factory()->count(2)->create();
+    $queue = app(ChessQueue::class);
+
+    $queue->join($anna, 'blitz', either: true);
+    $this->travel(5)->seconds();
+    $game = $queue->join($bert, 'rapid', either: true);
+
+    expect($game?->mode)->toBe('blitz');
+});
+
+test('a rated "either" search takes only the modes whose ladder is open for the player', function () {
+    seasonBeforeRapid();
+    $anna = User::factory()->create();
+    $queue = app(ChessQueue::class);
+
+    expect($queue->join($anna, 'rapid', rated: true, either: true))->toBeNull()
+        ->and($queue->entryOf($anna)?->takes())->toBe(['blitz'])
+        ->and($queue->entryOf($anna)?->rated)->toBeTrue();
+});
+
+test('after 30 s alone the searching card names the other mode\'s searchers, and switching keeps the place', function () {
+    $this->freezeTime();
+    [$anna, $bert] = User::factory()->count(2)->create();
+    $queue = app(ChessQueue::class);
+
+    $queue->join($anna, 'rapid');
+    $entry = $queue->entryOf($anna);
+    // Bert searches blitz, far away in rating: nobody fits anybody yet.
+    ChessQueueEntry::query()->create(['user_id' => $bert->id, 'mode' => 'blitz', 'rated' => false, 'rating' => 2400, 'joined_at' => now()]);
+
+    $this->travel(29)->seconds();
+    expect($queue->switchHint($entry))->toBeNull()
+        ->and($queue->switchHintAt($entry)->getTimestamp())->toBe($entry->joined_at->getTimestamp() + 30);
+
+    $this->travel(1)->seconds();
+    expect($queue->switchHint($entry))->toBe(['mode' => 'blitz', 'count' => 1]);
+
+    // Nothing to name once Anna takes blitz too.
+    expect($queue->switchTo($anna, 'rapid', either: true))->toBeNull()
+        ->and($queue->entryOf($anna)?->takes())->toBe(['rapid', 'blitz'])
+        ->and($queue->entryOf($anna)?->joined_at->getTimestamp())->toBe($entry->joined_at->getTimestamp())
+        ->and($queue->switchHint($queue->entryOf($anna)))->toBeNull();
+
+    // Switched to blitz with the range of 30 s waited: Bert fits once the range opens far enough.
+    ChessQueueEntry::query()->where('user_id', $bert->id)->update(['rating' => 1250]);
+    $game = $queue->switchTo($anna, 'blitz');
+
+    expect($game?->mode)->toBe('blitz');
+});
+
+test('the lobby searches rapid by default, blitz from its tile, both with "either", and shows the switch hint', function () {
+    $this->freezeTime();
+    [$anna, $bert] = User::factory()->count(2)->create();
+
+    $lobby = Livewire::actingAs($anna)->test('pages::chess.lobby')->call('findOpponent');
+    expect(ChessQueueEntry::query()->where('user_id', $anna->id)->value('mode'))->toBe('rapid');
+    $lobby->assertSeeHtml('data-test="play-rapid-state"')->assertDontSeeHtml('data-test="switch-hint"')->call('$refresh')->assertOk();
+
+    ChessQueueEntry::query()->create(['user_id' => $bert->id, 'mode' => 'blitz', 'rated' => false, 'rating' => 2400, 'joined_at' => now()]);
+    $this->travel(31)->seconds();
+
+    $lobby->call('$refresh')->assertOk()->assertSeeHtml('data-test="switch-hint" data-mode="blitz"')
+        ->call('switchSearch', 'blitz')->assertOk();
+    expect(ChessQueueEntry::query()->where('user_id', $anna->id)->value('mode'))->toBe('blitz');
+
+    $lobby->call('cancelSearch')->call('findOpponent', false, 'blitz', true)->assertOk()->assertSeeHtml('data-test="play-blitz-state"')->assertSeeHtml('data-test="play-rapid-state"');
+    expect(ChessQueueEntry::query()->where('user_id', $anna->id)->sole()->takes())->toBe(['blitz', 'rapid']);
+});
+
+test('a friend invite goes out in rapid: "Looking to play" takes it, a rapid searcher starts at once, the lobby says the mode', function () {
+    [$anna, $bert, $cora] = User::factory()->lookingToPlay()->count(3)->create();
+    $invites = app(ChessInvites::class);
+
+    // Bert's switch is the lobby's live-chess switch (stored as chess/blitz): a rapid invite reaches him.
+    $invite = $invites->invite($anna, $bert, 'rapid');
+    expect($invite->mode)->toBe('rapid')
+        ->and(ChessInvites::looksFor('chess/blitz', 'rapid'))->toBeTrue()
+        ->and(ChessInvites::looksFor('chess/blitz', 'correspondence'))->toBeFalse()
+        ->and(ChessInvites::looksFor('nine-mens-morris/blitz', 'rapid'))->toBeFalse();
+
+    Livewire::actingAs($bert)->test('pages::chess.lobby')->assertOk()
+        ->assertSeeHtml('data-test="incoming-invite-mode">'.e(__(':mode · Casual · colours drawn at random', ['mode' => 'Rapid 10+5'])).'<')
+        ->call('acceptInvite', $invite->id);
+    expect(ChessGame::query()->sole()->mode)->toBe('rapid');
+
+    // A player searching "either" is paired the moment a rapid invite arrives.
+    app(ChessQueue::class)->join($cora, 'blitz', either: true);
+    $other = User::factory()->lookingToPlay()->create();
+    $started = $invites->invite($other, $cora, 'rapid');
+    expect($started->refresh()->chess_game_id)->not->toBeNull()
+        ->and(ChessGame::query()->findOrFail($started->chess_game_id)->mode)->toBe('rapid');
+
+    // The lobby's online list invites in the open mode.
+    $dora = User::factory()->lookingToPlay()->create();
+    Livewire::actingAs(User::factory()->create())->test('pages::chess.lobby')->call('invite', $dora->id, 'rapid')->assertOk();
+    expect(ChessInvite::query()->where('invitee_id', $dora->id)->sole()->mode)->toBe('rapid');
+});
+
+test('/invite offers rapid for chess and makes a rapid link', function () {
+    $anna = User::factory()->create();
+
+    $html = $this->actingAs($anna)->get(route('invites.create', ['game' => 'chess']))->assertOk()->getContent();
+    expect($html)->toContain('data-test="invite-mode-rapid"')
+        ->and(strpos($html, 'data-test="invite-mode-rapid"'))->toBeLessThan(strpos($html, 'data-test="invite-mode-blitz"'));
+
+    Livewire::actingAs($anna)->test('pages::invites.create', ['game' => 'chess'])->set('mode', 'rapid')->call('createLink')->assertOk();
+    expect(InviteLink::query()->sole()->type)->toBe(InviteLinkType::Rapid);
+});
+
+test('the next weekly chess cup is rapid; a blitz cup already open stays blitz', function () {
+    config(['esports.league.nsec' => (new TestSigner)->secret]);
+    $blitz = runningCup(4);
+
+    expect(CasualCups::setup('chess')['mode'])->toBe('rapid')
+        // The EU series has its blitz cup open: nothing new, nothing rewritten.
+        ->and(app(CasualCups::class)->ensure('chess', 'eu'))->toBeNull()
+        ->and($blitz->refresh()->mode)->toBe('blitz');
+
+    $rapid = app(CasualCups::class)->ensure('chess', 'us');
+
+    expect($rapid)->toBeInstanceOf(Tournament::class)
+        ->and($rapid->mode)->toBe('rapid')
+        ->and($rapid->profile()->key)->toBe('rapid')
+        ->and(Tournament::query()->where('mode', 'blitz')->pluck('id')->all())->toBe([$blitz->id]);
+});
+
+test('a director can pick rapid for a tournament, and its games get the rapid clock and first-move window', function () {
+    expect(collect(TournamentGames::grouped())->firstWhere('slug', 'chess')['options'])->toContain(['rapid', 'Rapid 10+5'])
+        ->and(TournamentGames::find('rapid'))->toBe(['chess', 'rapid']);
+
+    $tournament = runningChess(TournamentFormat::SingleElimination, 2, TournamentResultsMode::Players, chessMode: 'rapid');
+    $match = TournamentMatch::query()->where('tournament_id', $tournament->id)->sole();
+    $game = ChessGame::query()->where('tournament_match_id', $match->id)->where('status', ChessGameStatus::Active)->sole();
+
+    expect($game->mode)->toBe('rapid')
+        ->and([$game->initial_ms, $game->increment_ms])->toBe([600_000, 5_000])
+        ->and($game->deadline_ms - $game->turn_started_ms)->toBe(600_000);
+});
+
+test('in a request a closed ladder is asked once, and a ladder published later in the same request is seen; outside a request it is asked again', function () {
+    $season = seasonBeforeRapid();
+    $count = function (Closure $ask): int {
+        DB::flushQueryLog();
+        DB::enableQueryLog();
+        $ask();
+        DB::disableQueryLog();
+
+        return count(array_filter(DB::getQueryLog(), fn (array $query): bool => str_contains($query['query'], 'nostr_events')));
+    };
+
+    // A worker or the stream daemon (no route): every ask of the closed ladder reads again, so another process's publish is seen.
+    expect(Ladders::isOpen('chess', 'rapid'))->toBeFalse()
+        ->and($count(fn () => Ladders::isOpen('chess', 'rapid')))->toBe(1);
+    $template = NostrEvent::query()->where(['kind' => Ladders::KIND, 'd' => 'chess/blitz/'.$season->slug])->firstOrFail();
+    DB::table('nostr_events')->insert([...collect($template->getAttributes())->except('id')->all(), 'event_id' => str_repeat('e', 64), 'd' => 'chess/rapid/'.$season->slug]);
+    expect(Ladders::isOpen('chess', 'rapid'))->toBeTrue();
+
+    // An HTTP request: the full read is complete, a miss costs nothing more until a ladder version is stored.
+    DB::table('nostr_events')->where('event_id', str_repeat('e', 64))->delete();
+    Ladders::forget();
+    request()->setRouteResolver(fn () => new Route('GET', 'chess', []));
+    expect(Ladders::isOpen('chess', 'rapid'))->toBeFalse()
+        ->and($count(fn () => [Ladders::isOpen('chess', 'rapid'), Ladders::isOpen('chess', 'rapid'), Ladders::isOpen('chess', 'blitz')]))->toBe(0);
+
+    $this->travel(2)->minutes();
+    app(SeasonChains::class)->changeParameters(rapidBoardMember(), ['weights' => ['chess/rapid' => 1500]], 'Rapid joins the season.', CarbonImmutable::now());
+    expect(Ladders::isOpen('chess', 'rapid'))->toBeTrue();
 });

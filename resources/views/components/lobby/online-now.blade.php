@@ -1,4 +1,4 @@
-@props(['user' => null, 'lookingKey' => 'chess/blitz', 'lookingTag' => null, 'canInvite' => true, 'showElo' => true])
+@props(['user' => null, 'lookingKey' => 'chess/blitz', 'lookingTag' => null, 'canInvite' => true, 'showElo' => true, 'inviteMode' => null])
 
 {{--
     "Online now" of a game lobby: everyone on the presence channel `online`
@@ -19,6 +19,8 @@
     a player who looks for it. `canInvite`: false while the viewer is in a
     live game. `showElo`: the member's Elo, which the channel carries for
     chess blitz only (routes/channels.php), so a board game lobby hides it.
+    `inviteMode`: an Alpine expression passed as invite(id, mode) (the chess
+    lobby's `liveMode`: rapid or blitz); null = invite(id).
 --}}
 @php
     $lookingTag ??= __('looking: Blitz 5+3');
@@ -79,7 +81,7 @@
                         </template>
                         {{-- Only a player who is looking can be invited (ChessInvites::invite, BoardInvites::invite refuse the rest). --}}
                         <template x-if="! invited(m) && m.looking === '{{ $lookingKey }}'">
-                            <button type="button" x-on:click="$wire.invite(m.id)" class="btn-w inline-flex h-11 shrink-0 cursor-pointer items-center rounded-md border border-line bg-well px-3 text-[13px] text-ink" data-test="invite">{{ __('Invite') }}</button>
+                            <button type="button" x-on:click="$wire.invite(m.id{{ $inviteMode !== null ? ', '.$inviteMode : '' }})" class="btn-w inline-flex h-11 shrink-0 cursor-pointer items-center rounded-md border border-line bg-well px-3 text-[13px] text-ink" data-test="invite">{{ __('Invite') }}</button>
                         </template>
                     @endif
                 </li>

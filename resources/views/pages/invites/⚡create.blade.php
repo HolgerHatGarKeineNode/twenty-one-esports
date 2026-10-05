@@ -1,7 +1,9 @@
 <?php
 
 use App\Enums\InviteLinkType;
+use App\Models\ChessGame;
 use App\Models\User;
+use App\Support\Chess\ChessModes;
 use App\Support\GameNames;
 use App\Support\Invites\InviteGames;
 use App\Support\Invites\InviteLinkRefused;
@@ -98,7 +100,7 @@ new #[Layout('layouts::app')] class extends Component {
     $kindLabel = fn (array $entry): string => match ($entry['kind']) {
         'score' => __('Beat my time'),
         'series' => __('Team challenge'),
-        default => implode(' · ', array_map(fn (string $mode): string => $entry['kind'] === 'chess' ? ($mode === 'blitz' ? __('Blitz') : __('Daily')) : GameNames::mode($entry['slug'], $mode), $entry['modes'])),
+        default => implode(' · ', array_map(fn (string $mode): string => $entry['kind'] === 'chess' ? ChessModes::short($mode === 'daily' ? ChessGame::CORRESPONDENCE : $mode) : GameNames::mode($entry['slug'], $mode), $entry['modes'])),
     };
     $best = $picked !== null && $picked['kind'] === 'score' && $viewer instanceof User ? app(InviteGames::class)->bestLabel($viewer, $picked['slug']) : null;
     $primary = 'btn-p inline-flex min-h-14 w-full cursor-pointer items-center justify-center gap-2.5 rounded-lg bg-btc px-5 text-[15px] font-bold text-on-btc hover:text-on-btc disabled:cursor-wait disabled:opacity-70';
@@ -125,10 +127,10 @@ new #[Layout('layouts::app')] class extends Component {
                 </div>
 
                 @if (count($picked['modes']) > 1)
-                    <div role="radiogroup" aria-label="{{ __('Game type') }}" class="grid grid-cols-2 gap-2">
+                    <div role="radiogroup" aria-label="{{ __('Game type') }}" @class(['grid gap-2', 'grid-cols-3' => count($picked['modes']) === 3, 'grid-cols-2' => count($picked['modes']) !== 3])>
                         @foreach ($picked['modes'] as $value)
                             <button type="button" role="radio" wire:click="$set('mode', '{{ $value }}')" aria-checked="{{ $mode === $value ? 'true' : 'false' }}" data-test="invite-mode-{{ $value }}"
-                                    @class(['min-h-11 cursor-pointer rounded-md border bg-ground px-2 text-[13px] text-ink', 'border-btc' => $mode === $value, 'border-line' => $mode !== $value])>{{ $picked['kind'] === 'chess' ? ($value === 'blitz' ? __('Blitz 5+3') : __('Daily, 1 move a day')) : GameNames::mode($picked['slug'], $value) }}</button>
+                                    @class(['min-h-11 cursor-pointer rounded-md border bg-ground px-2 text-[13px] text-ink', 'border-btc' => $mode === $value, 'border-line' => $mode !== $value])>{{ $picked['kind'] === 'chess' ? ($value === 'daily' ? __('Daily, 1 move a day') : ChessModes::label($value)) : GameNames::mode($picked['slug'], $value) }}</button>
                         @endforeach
                     </div>
                 @endif

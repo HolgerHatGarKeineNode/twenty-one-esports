@@ -42,7 +42,7 @@ final class RatedChess
         }
 
         if (! self::offered()) {
-            return __('Rated chess is not open yet. Blitz games are casual for now.');
+            return __('Rated chess is not open yet. Rapid and blitz games are casual for now.');
         }
 
         if (! $this->gate->isAvailable()) {

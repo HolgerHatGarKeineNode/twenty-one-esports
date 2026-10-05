@@ -5,6 +5,7 @@ namespace App\Models;
 use App\Support\Nostr\SignedEvent;
 use App\Support\SeasonChain\OpponentLists;
 use App\Support\SeasonChain\OpponentRequests;
+use App\Support\Series\Ladders;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\HasMany;
@@ -36,6 +37,11 @@ class NostrEvent extends Model
     protected static function booted(): void
     {
         static::created(function (self $event): void {
+            // A new ladder version: what this request remembered about published and closed ladders is stale.
+            if ($event->kind === Ladders::KIND) {
+                Ladders::forget();
+            }
+
             $before = OpponentLists::track($event);
 
             if ($before === null) {

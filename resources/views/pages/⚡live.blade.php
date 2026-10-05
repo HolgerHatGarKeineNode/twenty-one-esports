@@ -337,7 +337,7 @@ new #[Layout('layouts::app', ['scripts' => ['resources/js/liveChat.js']])] class
                                             <span class="flex min-w-0 items-center gap-1.5"><x-avatar :user="$game->white" :size="18" class="rounded-sm" /><span class="truncate">{{ $game->white->displayName() }}</span></span>
                                             <span class="flex min-w-0 items-center gap-1.5"><x-avatar :user="$game->black" :size="18" class="rounded-sm" /><span class="truncate">{{ $game->black->displayName() }}</span></span>
                                         </span>
-                                        <span class="shrink-0 text-right text-xs text-ink-2">{{ $game->isCorrespondence() ? __('Daily') : __('Blitz') }}<br>{{ __('move :n', ['n' => intdiv($game->ply, 2) + 1]) }}</span>
+                                        <span class="shrink-0 text-right text-xs text-ink-2">{{ \App\Support\Chess\ChessModes::short($game->mode) }}<br>{{ __('move :n', ['n' => intdiv($game->ply, 2) + 1]) }}</span>
                                     </a>
                                 </li>
                             @endforeach

@@ -33,7 +33,7 @@
                         <x-avatar :user="$opponent" :size="28" class="rounded-sm" />
                         <span class="flex min-w-0 grow flex-col gap-0.5">
                             <b class="truncate text-[13px]">{{ $opponent?->displayName() }}</b>
-                            <span class="text-xs text-ink-2">{{ __('Blitz 5+3') }}, {{ $active->number() }}</span>
+                            <span class="text-xs text-ink-2">{{ \App\Support\Chess\ChessModes::label($active->mode) }}, {{ $active->number() }}</span>
                         </span>
                         <span class="{{ $tag }} flex items-center gap-1.5 bg-btc text-on-btc"><span class="size-1.5 animate-live rounded-full bg-on-btc" aria-hidden="true"></span>{{ __('Live') }}</span>
                     </a>

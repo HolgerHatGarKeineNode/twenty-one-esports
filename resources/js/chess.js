@@ -866,10 +866,16 @@ registerAlpine(() => {
         /* The one-time question about desktop notifications, asked when the player joins the queue. */
         askNotify: false,
 
-        // rated: the lobby's Casual/Rated choice (P7e); the server checks it again.
-        joinQueue(rated = false) {
+        /*
+         * The live mode the quick-play panel has open (plan "Schach Rapid und Clan", P2): rapid unless the
+         * player opened the blitz tile. The online list's invites go out in it too.
+         */
+        liveMode: config.liveMode ?? 'rapid',
+
+        // rated: the lobby's Casual/Rated choice (P7e); either: every live mode. The server checks both again.
+        joinQueue(rated = false, mode = this.liveMode, either = false) {
             this.askNotify = window.esportsAlerts?.shouldAsk() ?? false;
-            this.$wire.findOpponent(rated === true);
+            this.$wire.findOpponent(rated === true, mode, either === true);
         },
 
         async answerNotify(allow) {

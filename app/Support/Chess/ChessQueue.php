@@ -26,6 +26,13 @@ use Carbon\CarbonInterface;
  * An open invite comes first (P5e): a player who searches while holding
  * one is paired with its inviter at once, if the inviter is free and still
  * online (ChessInvites).
+ *
+ * Rapid and blitz (plan "Schach Rapid und Clan", P2; user, 2026-10-05): two
+ * entries pair only in a mode both take. "Either" takes every live mode
+ * (ChessModes::live()); when both take more than one, the game is played in
+ * the first choice of the one who waited longer. A player who waited
+ * `switch_hint_seconds` alone is told when others search another mode
+ * (switchHint), so a small player base does not wait in two queues.
  */
 final class ChessQueue
 {
@@ -38,12 +45,17 @@ final class ChessQueue
     ) {}
 
     /**
-     * Join (or stay in) the queue and try to pair at once.
+     * Join (or stay in) the queue and try to pair at once. `either`: take
+     * every live mode, `mode` first.
      *
      * @throws ChessRuleViolation when the player is already in a live game
      */
-    public function join(User $user, string $mode = 'blitz', bool $rated = false): ?ChessGame
+    public function join(User $user, string $mode = 'blitz', bool $rated = false, bool $either = false): ?ChessGame
     {
+        if (! ChessModes::isLive($mode)) {
+            throw new ChessRuleViolation('mode_not_live');
+        }
+
         if ($this->games->activeGameOf($user) !== null) {
             throw new ChessRuleViolation('already_playing');
         }
@@ -57,25 +69,34 @@ final class ChessQueue
             throw new ChessRuleViolation($cup['reason'], $cup['message']);
         }
 
-        // Rated (P7d): only while the season is live, trust ranks exist and the player is Trusted.
-        $refusal = $rated ? $this->ratedChess()->refusal($user, $mode) : null;
+        $modes = $either ? array_values(array_unique([$mode, ...ChessModes::live()])) : [$mode];
 
-        if ($refusal !== null) {
-            throw new ChessRuleViolation('rated_not_open', $refusal);
+        // Rated (P7d): only while the season is live, trust ranks exist and the player is Trusted.
+        // "Either" searches rated in the modes whose ladder is open for this player (rapid opens later, rev. 9.22).
+        if ($rated) {
+            $refusals = array_map(fn (string $wanted): ?string => $this->ratedChess()->refusal($user, $wanted), array_combine($modes, $modes));
+            $open = array_keys(array_filter($refusals, fn (?string $refusal): bool => $refusal === null));
+
+            if ($open === []) {
+                throw new ChessRuleViolation('rated_not_open', (string) $refusals[$mode]);
+            }
+
+            $modes = $open;
         }
 
         // One intent at a time (P23): searching blitz ends a casual 1v1 search and withdraws the casual invite sent.
         SeriesQueueEntry::query()->where('user_id', $user->id)->delete();
         $this->casualInvites->withdrawOutgoing($user);
 
-        $invited = $this->fromOpenInvite($user, $mode);
+        $invited = $this->fromOpenInvite($user, $modes);
 
         if ($invited !== null) {
             return $invited;
         }
 
         ChessQueueEntry::query()->firstOrCreate(['user_id' => $user->id], [
-            'mode' => $mode,
+            'mode' => $modes[0],
+            'modes' => count($modes) > 1 ? $modes : null,
             'rated' => $rated,
             'rating' => (int) config('esports.chess.queue.start_rating'),
             'joined_at' => now(),
@@ -85,16 +106,111 @@ final class ChessQueue
     }
 
     /**
-     * The newest open invite in this mode whose inviter is still online,
+     * Search another mode instead, from the searching card's hint: the entry
+     * keeps its place (joined_at, so its widened range) and tries to pair at
+     * once. `either`: take every live mode, `mode` first. A rated entry
+     * switches only to a mode whose ladder is open for this player.
+     *
+     * @throws ChessRuleViolation
+     */
+    public function switchTo(User $user, string $mode, bool $either = false): ?ChessGame
+    {
+        $entry = $this->entryOf($user);
+
+        if ($entry === null) {
+            return $this->games->activeGameOf($user);
+        }
+
+        if (! ChessModes::isLive($mode)) {
+            throw new ChessRuleViolation('mode_not_live');
+        }
+
+        $modes = $either ? array_values(array_unique([$mode, ...ChessModes::live()])) : [$mode];
+
+        if ($entry->rated) {
+            $modes = array_values(array_filter($modes, fn (string $wanted): bool => $this->ratedChess()->refusal($user, $wanted) === null));
+
+            if ($modes === []) {
+                throw new ChessRuleViolation('rated_not_open', (string) $this->ratedChess()->refusal($user, $mode));
+            }
+        }
+
+        $entry->forceFill(['mode' => $modes[0], 'modes' => count($modes) > 1 ? $modes : null])->save();
+
+        return $this->pair($user);
+    }
+
+    /**
+     * How many players search each live mode right now, the default first.
+     * An "either" entry counts in every mode it takes.
+     *
+     * @return array<string, int>
+     */
+    public function counts(): array
+    {
+        $counts = array_fill_keys(ChessModes::live(), 0);
+
+        foreach (ChessQueueEntry::query()->get(['id', 'mode', 'modes']) as $entry) {
+            foreach ($entry->takes() as $mode) {
+                if (isset($counts[$mode])) {
+                    $counts[$mode]++;
+                }
+            }
+        }
+
+        return $counts;
+    }
+
+    /**
+     * The searching card's hint (user, 2026-10-05): once this entry waited
+     * `switch_hint_seconds`, the live mode it does not take that the most
+     * others search (in its kind, casual or rated), with their count; null
+     * before then, or while nobody searches another mode.
+     *
+     * @return array{mode: string, count: int}|null
+     */
+    public function switchHint(ChessQueueEntry $entry, ?CarbonInterface $now = null): ?array
+    {
+        if ($this->switchHintAt($entry)->greaterThan($now ?? now())) {
+            return null;
+        }
+
+        $others = array_fill_keys(array_values(array_diff(ChessModes::live(), $entry->takes())), 0);
+
+        foreach (ChessQueueEntry::query()->where('user_id', '!=', $entry->user_id)->where('rated', $entry->rated)->get(['id', 'mode', 'modes']) as $other) {
+            foreach ($other->takes() as $mode) {
+                if (isset($others[$mode])) {
+                    $others[$mode]++;
+                }
+            }
+        }
+
+        arsort($others);
+        $mode = array_key_first($others);
+
+        return $mode !== null && $others[$mode] > 0 ? ['mode' => (string) $mode, 'count' => $others[$mode]] : null;
+    }
+
+    /** When the searching card may show its switch hint (esports.chess.queue.switch_hint_seconds after joining). */
+    public function switchHintAt(ChessQueueEntry $entry): CarbonInterface
+    {
+        return $entry->joined_at->copy()->addSeconds(max(0, (int) config('esports.chess.queue.switch_hint_seconds')));
+    }
+
+    /**
+     * The newest open invite in one of these modes whose inviter is still online,
      * accepted as a found match. Online is asked of the websocket server;
      * when it cannot tell (null), the invite counts: it is at most
      * invite_seconds old, and the Accept button would start the same game
      * without asking. An inviter who plays by now withdraws the invite
      * (ChessInvites::accept), and the next one is tried.
      */
-    private function fromOpenInvite(User $user, string $mode): ?ChessGame
+    /**
+     * @param  list<string>  $modes
+     */
+    private function fromOpenInvite(User $user, array $modes): ?ChessGame
     {
-        foreach ($this->invites->incoming($user)->where('mode', $mode) as $invite) {
+        foreach ($this->invites->incoming($user)->whereIn('mode', $modes) as $invite) {
             if ($this->presence->online($invite->inviter) === false) {
                 continue;
             }
@@ -172,9 +288,9 @@ final class ChessQueue
             }
 
             $now = now();
+            // Every entry of this kind: the modes two entries share are compared below (a mode list, not a column).
             $candidates = ChessQueueEntry::query()
                 ->where('user_id', '!=', $user->id)
-                ->where('mode', $entry->mode)
                 ->where('rated', $entry->rated)
                 ->orderBy('joined_at')
                 ->lockForUpdate()
@@ -182,7 +298,13 @@ final class ChessQueue
                 ->get();
 
             foreach ($candidates as $candidate) {
-                // In a casual 1v1 by now (P23): that player stops searching blitz.
+                $mode = self::commonMode($entry, $candidate);
+
+                if ($mode === null) {
+                    continue;
+                }
+
+                // In a casual 1v1 by now (P23): that player stops searching live chess.
                 if (CasualMatches::runningMatchOf($candidate->user) !== null || CupMatchNow::lockOf($candidate->user) !== null) {
                     $candidate->delete();
 
@@ -208,7 +330,7 @@ final class ChessQueue
                     continue;
                 }
 
-                $game = $this->games->start($white, $black, $entry->mode, ratedGate: $gate);
+                $game = $this->games->start($white, $black, $mode, ratedGate: $gate);
 
                 // The waiting player may be on another page, or in another tab.
                 $this->notifications->matchFound($game);
@@ -218,6 +340,30 @@ final class ChessQueue
 
             return null;
         });
+    }
+
+    /**
+     * The mode two entries are paired in: the one mode both take, or, when
+     * they share more, the first choice of the entry that waited longer
+     * (the earlier row on a tie); null when they share none.
+     */
+    public static function commonMode(ChessQueueEntry $a, ChessQueueEntry $b): ?string
+    {
+        $shared = array_intersect($a->takes(), $b->takes());
+
+        if ($shared === []) {
+            return null;
+        }
+
+        $first = $b->joined_at->lessThan($a->joined_at) || ($b->joined_at->equalTo($a->joined_at) && $b->id < $a->id) ? $b : $a;
+
+        foreach ($first->takes() as $mode) {
+            if (in_array($mode, $shared, true)) {
+                return $mode;
+            }
+        }
+
+        return null;
     }
 
     /**

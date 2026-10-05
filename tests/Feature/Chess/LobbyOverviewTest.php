@@ -31,7 +31,9 @@ beforeEach(function () {
 
 /** The `data-test` hooks of every function the lobby offers, in page order. */
 dataset('functions', [
+    'rapid tile' => ['play-rapid'],
     'blitz tile' => ['play-blitz'],
+    'either' => ['either'],
     'casual/rated' => ['game-kind'],
     'casual' => ['kind-casual'],
     'rated' => ['kind-rated'],
@@ -50,6 +52,7 @@ dataset('functions', [
     'online now' => ['online-now'],
     'ladder' => ['lobby-ladder'],
     'ladder link' => ['lobby-ladder-link'],
+    'ladder switch' => ['lobby-ladder-modes'],
 ]);
 
 test('a player finds every function of the lobby', function (string $hook) {
@@ -81,16 +84,19 @@ test('the player-only controls are the player\'s; a guest gets the way to log in
     expect(tileOf($guest->getContent(), 'play-challenge'))->toContain('href="'.route('login').'"');
 });
 
-test('tiles are actions: blitz and the invite open their panel in place, daily and tournaments lead into their flow, team match is not a control', function () {
+test('tiles are actions: rapid, blitz and the invite open their panel in place, daily and tournaments lead into their flow, team match is not a control', function () {
     $html = $this->actingAs(User::factory()->create())->get(route('chess.lobby'))->assertOk()->getContent();
 
-    expect(tileOf($html, 'play-blitz'))->toStartWith('<button')->toContain('aria-controls="lobby-blitz"')->toContain('aria-expanded="false"')
+    // Rapid 10+5 first and the one orange tile (user, 2026-10-05), blitz second; both open the quick-play panel in their mode.
+    expect(strpos($html, 'data-test="play-rapid"'))->toBeLessThan(strpos($html, 'data-test="play-blitz"'))
+        ->and(tileOf($html, 'play-rapid'))->toStartWith('<button')->toContain('aria-controls="lobby-quick"')->toContain('bg-btc-chip')->toContain('10+5')
+        ->and(tileOf($html, 'play-blitz'))->toStartWith('<button')->toContain('aria-controls="lobby-quick"')->toContain('aria-expanded="false"')->not->toContain('bg-btc-chip')
         ->and(tileOf($html, 'play-invite'))->toStartWith('<button')->toContain('aria-controls="lobby-invite"')
         ->and(tileOf($html, 'play-daily'))->toStartWith('<a')->toContain('href="'.route('chess.challenge').'"')
         ->and(tileOf($html, 'play-tournaments'))->toStartWith('<a')->toContain('href="'.route('tournaments.index').'"')
         ->and(tileOf($html, 'play-team'))->toStartWith('<div')->toContain('aria-disabled="true"')->toContain(__('Soon'))
         // The panels exist once, closed until their tile opens them.
-        ->and(substr_count($html, 'id="lobby-blitz"'))->toBe(1)
+        ->and(substr_count($html, 'id="lobby-quick"'))->toBe(1)
         ->and(substr_count($html, 'id="lobby-invite"'))->toBe(1)
         // The explanations are behind "?", not in the first view.
         ->and($html)->toMatch('/id="blitz-help" x-show="help" x-cloak/');
@@ -158,10 +164,10 @@ test('the tournaments tile names the next chess tournament open for sign-up and 
         ->not->toContain('RL Sunday');
 });
 
-test('the ladder shows its top five from the view the ladder opens on', function () {
+test('the ladder shows its top five from the view the ladder opens on, rapid first', function () {
     $players = User::factory()->count(6)->create();
     foreach ($players as $index => $player) {
-        Rating::query()->create(['pool' => Rating::CASUAL, 'season' => '', 'game' => 'chess', 'mode' => 'blitz', 'subject' => 'user:'.$player->id,
+        Rating::query()->create(['pool' => Rating::CASUAL, 'season' => '', 'game' => 'chess', 'mode' => 'rapid', 'subject' => 'user:'.$player->id,
             'user_id' => $player->id, 'rating' => 1000 + $index * 10, 'results' => 3, 'wins' => 2, 'draws' => 0, 'losses' => 1]);
     }
 
@@ -171,13 +177,22 @@ test('the ladder shows its top five from the view the ladder opens on', function
         ->and($html)->toContain('data-pool="casual"')
         ->and($html)->toContain($players[5]->displayName())
         ->and($html)->not->toContain('>'.e($players[0]->displayName()).'<')
-        ->and(strpos($html, e($players[5]->displayName())))->toBeLessThan(strpos($html, e($players[1]->displayName())));
+        ->and(strpos($html, e($players[5]->displayName())))->toBeLessThan(strpos($html, e($players[1]->displayName())))
+        ->and(tileOf($html, 'lobby-ladder-link'))->toContain('href="'.route('ladder.show', ['chess', 'rapid']).'"');
+
+    // Blitz and daily by the switch; the rapid rows are not theirs.
+    Livewire::test('pages::chess.lobby')->assertOk()
+        ->call('showLadder', 'blitz')->assertSet('ladderMode', 'blitz')
+        ->assertSeeHtml('data-test="lobby-ladder-empty"')->assertSeeHtml('href="'.route('ladder.show', ['chess', 'blitz']).'"')
+        ->call('showLadder', 'correspondence')->assertSet('ladderMode', 'correspondence')
+        ->call('showLadder', 'bullet')->assertSet('ladderMode', 'correspondence')
+        ->call('$refresh')->assertOk();
 });
 
-test('/chess#blitz opens the blitz panel, and a search shows its card whatever the tile', function () {
+test('/chess#blitz and #rapid open the quick-play panel in that mode, and a search shows its card whatever the tile', function () {
     $player = User::factory()->create();
     $html = $this->actingAs($player)->get(route('chess.lobby'))->assertOk()->getContent();
-    expect($html)->toContain("if (stage === null && location.hash === '#blitz') stage = 'blitz'");
+    expect($html)->toContain(".includes(location.hash.slice(1))) { liveMode = location.hash.slice(1); stage = 'quick' }");
 
     app(ChessQueue::class)->join($player);
     $html = $this->actingAs($player)->get(route('chess.lobby'))->assertOk()->getContent();

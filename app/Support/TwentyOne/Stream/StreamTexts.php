@@ -6,6 +6,7 @@ use App\Games\Blockfill;
 use App\Games\GameRegistry;
 use App\Games\TrackmaniaNationsForever;
 use App\Models\ChessGame;
+use App\Support\Chess\ChessModes;
 use Illuminate\Support\Facades\Cache;
 use Throwable;
 
@@ -175,7 +176,8 @@ final class StreamTexts
         }
 
         $players = self::players($game);
-        [$kind, $described] = $game->isCorrespondence() ? ['Chess Correspondence', 'correspondence chess, one move a day,'] : ['Chess Blitz', 'live blitz chess'];
+        // The live mode by its registry word (plan "Schach Rapid und Clan", P3): "Chess Rapid", "live rapid chess".
+        [$kind, $described] = $game->isCorrespondence() ? ['Chess Correspondence', 'correspondence chess, one move a day,'] : ['Chess '.ucfirst(ChessModes::word($game->mode)), 'live '.ChessModes::word($game->mode).' chess'];
 
         return [
             'title' => 'Live now: '.$players.' · '.$kind,

@@ -66,7 +66,7 @@ new #[Layout('layouts::app', ['section' => 'chess', 'realtime' => true, 'scripts
         $title = $name.': '.$white.' vs '.$black;
         $view->title($title);
 
-        $kind = $game->rated ? ($daily ? __('Rated · Daily chess') : __('Rated · Blitz 5+3')) : ($daily ? __('Casual · Daily chess') : __('Casual · Blitz 5+3'));
+        $kind = $daily ? ($game->rated ? __('Rated · Daily chess') : __('Casual · Daily chess')) : ($game->rated ? __('Rated · :mode', ['mode' => \App\Support\Chess\ChessModes::label($game->mode)]) : __('Casual · :mode', ['mode' => \App\Support\Chess\ChessModes::label($game->mode)]));
         $description = __(':kind: :white (white) vs :black (black) in the TWENTY ONE esports league.', ['kind' => $kind, 'white' => $white, 'black' => $black]).' '.match ($game->status) {
             ChessGameStatus::Active => __('Live now: watch the board move by move.'),
             ChessGameStatus::Aborted => __('Aborted before both first moves'),
@@ -653,7 +653,7 @@ new #[Layout('layouts::app', ['section' => 'chess', 'realtime' => true, 'scripts
                                             @if ($tournamentGame)
                                                 <x-tournaments.game-end-slot :url="$tournamentUrl" />
                                             @else
-                                                <x-button :href="route('chess.lobby', ['search' => 1, ...($game->rated ? ['rated' => 1] : [])])" class="w-full" data-test="find-next">{{ __('Find next opponent') }}</x-button>
+                                                <x-button :href="route('chess.lobby', ['search' => 1, ...($game->rated ? ['rated' => 1] : []), 'mode' => $game->mode])" class="w-full" data-test="find-next">{{ __('Find next opponent') }}</x-button>
                                             @endif
                                             {{-- P11: a rated result can be a rank up or a mined block; the share cards live on one page. --}}
                                             <template x-if="color && state.rating?.[color]?.pool === 'rated'">
@@ -690,7 +690,7 @@ new #[Layout('layouts::app', ['section' => 'chess', 'realtime' => true, 'scripts
                                                 <x-tournaments.game-end-slot :url="$tournamentUrl" />
                                             @else
                                                 <span class="grid grid-cols-2 gap-2">
-                                                    <x-button :href="route('chess.lobby', ['search' => 1, ...($game->rated ? ['rated' => 1] : [])])" data-test="search-again">{{ __('Search again') }}</x-button>
+                                                    <x-button :href="route('chess.lobby', ['search' => 1, ...($game->rated ? ['rated' => 1] : []), 'mode' => $game->mode])" data-test="search-again">{{ __('Search again') }}</x-button>
                                                     <x-button variant="quiet" :href="route('chess.lobby')">{{ __('Back to lobby') }}</x-button>
                                                 </span>
                                             @endif
@@ -932,7 +932,7 @@ new #[Layout('layouts::app', ['section' => 'chess', 'realtime' => true, 'scripts
             {{-- Details (desktop) --}}
             <div class="hidden grid-cols-2 gap-5 lg:grid">
                 <div class="rounded-lg bg-card px-6 py-2">
-                    @foreach ([[__('Time control'), __('Blitz 5+3 · 5 min, +3 s per move')], [__('Started'), $game->created_at?->timezone(config('app.timezone'))->isoFormat('ddd YYYY-MM-DD · HH:mm')], [__('Kind'), $game->rated ? __('Rated') : __('Casual · casual Elo only')], [__('Moves'), __('checked by the server, one by one')]] as [$key, $value])
+                    @foreach ([[__('Time control'), __(':mode · :minutes min, +:seconds s per move', ['mode' => \App\Support\Chess\ChessModes::label($game->mode), 'minutes' => intdiv((int) $game->initial_ms, 60_000), 'seconds' => intdiv((int) $game->increment_ms, 1000)])], [__('Started'), $game->created_at?->timezone(config('app.timezone'))->isoFormat('ddd YYYY-MM-DD · HH:mm')], [__('Kind'), $game->rated ? __('Rated') : __('Casual · casual Elo only')], [__('Moves'), __('checked by the server, one by one')]] as [$key, $value])
                         <div class="grid h-11 grid-cols-[180px_minmax(0,1fr)] items-center border-b border-hairline text-sm last:border-0"><span class="text-ink-2">{{ $key }}</span><span>{{ $value }}</span></div>
                     @endforeach
                 </div>

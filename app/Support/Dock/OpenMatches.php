@@ -23,6 +23,7 @@ use App\Models\LineupSeat;
 use App\Models\SeriesInvite;
 use App\Models\SeriesMatch;
 use App\Models\User;
+use App\Support\Chess\ChessModes;
 use App\Support\GameNames;
 use App\Support\RequestMemo;
 use App\Support\Series\CasualInvites;
@@ -300,11 +301,12 @@ final class OpenMatches
             tag: null,
             number: $game->number(),
             href: route('games.show', $game),
-            title: __('Blitz'),
+            // The game's own mode (plan "Schach Rapid und Clan", P3): "Rapid", "Blitz"; `kind` stays `blitz` for every live game.
+            title: ChessModes::short($game->mode),
             state: $state,
             trailing: self::format($left, 'clock'),
-            line: __('Blitz :number, :state', ['number' => $game->number(), 'state' => mb_strtolower($state)]),
-            sentence: __('Blitz :number against :name, :state, :left on your clock', ['number' => $game->number(), 'name' => $name, 'state' => mb_strtolower($state), 'left' => self::format($left, 'clock')]),
+            line: __(':mode :number, :state', ['mode' => ChessModes::short($game->mode), 'number' => $game->number(), 'state' => mb_strtolower($state)]),
+            sentence: __(':mode :number against :name, :state, :left on your clock', ['mode' => ChessModes::short($game->mode), 'number' => $game->number(), 'name' => $name, 'state' => mb_strtolower($state), 'left' => self::format($left, 'clock')]),
             action: $mine ? self::text('Play') : null,
             deadlineMs: $endsAt ?? $nowMs + $myMs,
             tick: $endsAt === null ? null : ['endsAt' => $endsAt, 'format' => 'clock', 'total' => max(1, $game->initial_ms), 'redUnder' => self::BLITZ_RED_MS],
@@ -593,11 +595,11 @@ final class OpenMatches
                 tag: null,
                 number: '',
                 href: route('chess.lobby'),
-                title: __('Blitz invite'),
+                title: __(':mode invite', ['mode' => ChessModes::short($invite->mode)]),
                 state: __('Answer'),
                 trailing: self::format($endsAt - (int) now()->getTimestampMs(), 'clock'),
-                line: __('Blitz invite, answer now'),
-                sentence: __(':name invites you to a blitz game', ['name' => $name]),
+                line: __(':mode invite, answer now', ['mode' => ChessModes::short($invite->mode)]),
+                sentence: __(':name invites you to a :mode game', ['name' => $name, 'mode' => ChessModes::label($invite->mode)]),
                 action: __('Answer'),
                 deadlineMs: $endsAt,
                 tick: ['endsAt' => $endsAt, 'format' => 'clock', 'total' => max(1, $total), 'redUnder' => self::BLITZ_RED_MS],

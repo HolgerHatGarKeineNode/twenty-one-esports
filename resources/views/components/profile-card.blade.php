@@ -100,7 +100,7 @@
             <span class="text-ink-3">{{ __('Rating') }}</span>
             <span class="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1">
                 @foreach ($chips as $chip)
-                    <span class="inline-flex items-center gap-1 whitespace-nowrap"><span class="text-ink-3">{{ $chip['label'] }}</span><x-rating :rating="$chip['rating']" class="text-ink-2" /></span>
+                    <span class="inline-flex items-center gap-1 whitespace-nowrap" data-test="card-rating" @isset($chip['mode']) data-chess-mode="{{ $chip['mode'] }}" @endisset><span class="text-ink-3">{{ $chip['label'] }}</span><x-rating :rating="$chip['rating']" class="text-ink-2" /></span>
                 @endforeach
             </span>
         </div>

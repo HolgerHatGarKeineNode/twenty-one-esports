@@ -21,6 +21,7 @@ use App\Support\Board\BoardChallenges;
 use App\Support\Board\BoardGameService;
 use App\Support\Board\BoardRuleViolation;
 use App\Support\Chess\ChessGameService;
+use App\Support\Chess\ChessModes;
 use App\Support\Chess\ChessRuleViolation;
 use App\Support\Chess\ChessTransaction;
 use App\Support\Chess\DailyChallenges;
@@ -43,7 +44,7 @@ use Illuminate\Support\Facades\DB;
 /**
  * Invite deep links `/i/{code}` (P6b, plan "Einladungs-Deep-Links"):
  *
- *  - game links (blitz, daily chess, a Rocket League series) are OPEN:
+ *  - game links (blitz, rapid, daily chess, a Rocket League series) are OPEN:
  *    whoever accepts plays. A one-time link goes to the first who accepts;
  *    a link for "several times" starts one game per player who takes it;
  *  - board links (nine men's morris, checkers) are open as well and start
@@ -468,7 +469,7 @@ final class InviteLinks
                 }
 
                 // The casual lock (user, 2026-10-03): an open cup match in a running round comes first; a clan or tournament link is no game.
-                $cup = in_array($link->type, [InviteLinkType::Blitz, InviteLinkType::Daily, InviteLinkType::Board, InviteLinkType::Series], true)
+                $cup = in_array($link->type, [InviteLinkType::Blitz, InviteLinkType::Rapid, InviteLinkType::Daily, InviteLinkType::Board, InviteLinkType::Series], true)
                     ? CupMatchNow::refusal($user, $link->inviter) : null;
 
                 if ($cup !== null) {
@@ -480,7 +481,7 @@ final class InviteLinks
                 $use = new InviteLinkUse(['invite_link_id' => $link->id, 'inviter_id' => $link->inviter_id, 'user_id' => $user->id, 'was_new' => $wasNew]);
 
                 $made = match ($link->type) {
-                    InviteLinkType::Blitz, InviteLinkType::Daily => $this->startGame($link, $user),
+                    InviteLinkType::Blitz, InviteLinkType::Rapid, InviteLinkType::Daily => $this->startGame($link, $user),
                     InviteLinkType::Board => $this->startBoardGame($link, $user),
                     InviteLinkType::Series => $this->startSeries($link, $user, $choice),
                     InviteLinkType::Clan => $this->requestJoin($link, $user),
@@ -539,7 +540,7 @@ final class InviteLinks
     private function startGame(InviteLink $link, User $user): ChessGame
     {
         $inviter = $link->inviter;
-        $blitz = $link->type === InviteLinkType::Blitz;
+        $blitz = $link->type->isLiveChess();
 
         if ($blitz && $this->games->activeGameOf($inviter) !== null) {
             throw new InviteLinkRefused('inviter_busy', __(':name is in another live game right now. Try again in a few minutes.', ['name' => $inviter->displayName()]));
@@ -557,7 +558,7 @@ final class InviteLinks
 
         [$white, $black] = $inviterWhite ? [$inviter, $user] : [$user, $inviter];
 
-        return $this->games->start($white, $black, $blitz ? 'blitz' : ChessGame::CORRESPONDENCE);
+        return $this->games->start($white, $black, (string) $link->type->chessMode());
     }
 
     /**
@@ -695,8 +696,8 @@ final class InviteLinks
 
         if ($made instanceof ChessGame) {
             $this->notifier->send($inviter, NotificationKind::InviteAccepted, new Notice(
-                __(':name took your blitz invite', ['name' => $user->displayName()], $locale),
-                __('Blitz 5+3 · Casual · the board is open.', [], $locale),
+                __(':name took your :mode invite', ['name' => $user->displayName(), 'mode' => ChessModes::short($made->mode)], $locale),
+                __(':mode · Casual · the board is open.', ['mode' => ChessModes::label($made->mode)], $locale),
                 route('games.show', $made),
                 $made->id,
                 __('Play now', [], $locale),

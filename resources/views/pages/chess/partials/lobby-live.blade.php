@@ -1,5 +1,5 @@
 {{--
-    "Live now" in the chess lobby: the running blitz boards with both
+    "Live now" in the chess lobby: the running live boards (rapid and blitz) with both
     players' ratings, then who is online (presence channel `online`) with
     "Looking to play" and an invite per player. The list and the switch are
     Alpine's (chessLobby in resources/js/chess.js); a Livewire render never
@@ -47,5 +47,6 @@
     </div>
 
     {{-- Online now: presence channel `online` (components/lobby/online-now, shared with the board game lobbies). --}}
-    <x-lobby.online-now :user="$user" looking-key="chess/blitz" :can-invite="! $active" />
+    {{-- "Looking to play" here is live chess (stored as `chess/blitz`); an invite goes out in the mode the quick-play panel has open. --}}
+    <x-lobby.online-now :user="$user" looking-key="chess/blitz" :looking-tag="__('looking: live chess')" :can-invite="! $active" invite-mode="liveMode" />
 </section>

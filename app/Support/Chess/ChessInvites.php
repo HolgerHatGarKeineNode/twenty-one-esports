@@ -186,7 +186,7 @@ final class ChessInvites
             // declines what is still open when it turns off.
             $looking = User::query()->whereKey($invitee->id)->lockForUpdate()->value('looking_to_play');
 
-            if ($looking !== 'chess/'.$mode) {
+            if (! self::looksFor($looking, $mode)) {
                 return 'not_looking';
             }
 
@@ -339,12 +339,29 @@ final class ChessInvites
 
     private function searchesFor(User $invitee, ChessInvite $invite): bool
     {
-        return ChessQueueEntry::query()
+        $entry = ChessQueueEntry::query()
             ->where('user_id', $invitee->id)
-            ->where('mode', $invite->mode)
             ->where('rated', false)
             ->lockForUpdate()
-            ->exists();
+            ->first();
+
+        return $entry !== null && in_array($invite->mode, $entry->takes(), true);
+    }
+
+    /**
+     * Whether a "Looking to play" state takes an invite in this mode. The
+     * chess lobby's switch is one for live chess (stored as `chess/blitz`,
+     * the value every stored row and the online list know): it takes a
+     * rapid invite as well as a blitz one (plan "Schach Rapid und Clan", P2).
+     */
+    public static function looksFor(?string $looking, string $mode): bool
+    {
+        if ($looking === 'chess/'.$mode) {
+            return true;
+        }
+
+        return $looking !== null && str_starts_with($looking, 'chess/')
+            && ChessModes::isLive(substr($looking, 6)) && ChessModes::isLive($mode);
     }
 
     /**

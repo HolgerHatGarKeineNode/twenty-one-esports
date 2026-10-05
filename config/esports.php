@@ -412,6 +412,9 @@ return [
         'queue' => [
             'start_rating' => 1000,
             'range' => ['initial' => 150, 'step' => 150, 'every_seconds' => 30, 'max' => 600],
+            // Plan "Schach Rapid und Clan" (user, 2026-10-05): after this long alone in one mode, the searching card
+            // says how many search the other live mode and offers to switch (ChessQueue::switchHint).
+            'switch_hint_seconds' => 30,
         ],
         'pairing_limit_per_day' => ['rated' => 3, 'casual' => null],
         'invite_seconds' => 120,
@@ -720,7 +723,8 @@ return [
     'casual_cups' => [
         'enabled' => array_values(array_filter(array_map('trim', explode(',', (string) env('ESPORTS_CASUAL_CUP_GAMES', 'chess,rocket-league,ea-sports-fc-26,ea-sports-fc-27,age-of-empires-2,nine-mens-morris,checkers'))))),
         'games' => [
-            'chess' => ['name' => 'Chess', 'mode' => 'blitz', 'best_of' => 1, 'final_best_of' => 1, 'slot' => ['weekday' => 'saturday', 'time' => '20:00']],
+            // Rapid 10+5 since plan "Schach Rapid und Clan", P2 (user, 2026-10-05); a cup already made keeps its `mode`.
+            'chess' => ['name' => 'Chess', 'mode' => 'rapid', 'best_of' => 1, 'final_best_of' => 1, 'slot' => ['weekday' => 'saturday', 'time' => '20:00']],
             'rocket-league' => ['name' => 'Rocket League', 'mode' => '1v1', 'best_of' => 3, 'final_best_of' => 3, 'slot' => ['weekday' => 'saturday', 'time' => '20:00']],
             'ea-sports-fc-26' => ['name' => 'EA FC 26', 'mode' => '1v1', 'best_of' => 1, 'final_best_of' => 3, 'slot' => ['weekday' => 'friday', 'time' => '18:00']],
             'ea-sports-fc-27' => ['name' => 'EA FC 27', 'mode' => '1v1', 'best_of' => 1, 'final_best_of' => 3, 'slot' => ['weekday' => 'friday', 'time' => '20:00']],

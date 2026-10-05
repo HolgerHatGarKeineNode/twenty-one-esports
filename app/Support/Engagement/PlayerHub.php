@@ -19,6 +19,8 @@ use App\Models\Tournament;
 use App\Models\TournamentParticipant;
 use App\Models\TournamentSignup;
 use App\Models\User;
+use App\Support\Chess\ChessInvites;
+use App\Support\Chess\ChessModes;
 use App\Support\Dock\DockItem;
 use App\Support\Dock\OpenMatches;
 use App\Support\GameNames;
@@ -350,7 +352,8 @@ final class PlayerHub
     }
 
     /**
-     * "Looking to play" per game that has it: chess blitz (the lobby) and
+     * "Looking to play" per game that has it: live chess (the lobby: every
+     * live mode, ChessModes::live(), rapid first) and
      * every game with casual 1v1 (its page). A player looks for one at a
      * time; the switch lives where the game is played.
      *
@@ -359,7 +362,8 @@ final class PlayerHub
     public function looking(): array
     {
         $current = (string) $this->user->looking_to_play;
-        $rows = [['game' => 'chess', 'name' => GameNames::full('chess', 'blitz'), 'on' => $current === 'chess/blitz', 'href' => route('chess.lobby')]];
+        $live = implode(' / ', array_map(ChessModes::label(...), ChessModes::live()));
+        $rows = [['game' => 'chess', 'name' => GameNames::game('chess').' '.$live, 'on' => ChessInvites::looksFor($current, ChessModes::DEFAULT), 'href' => route('chess.lobby')]];
 
         foreach (CasualLobby::games() as $game) {
             $rows[] = ['game' => $game, 'name' => GameNames::game($game), 'on' => $current === $game.'/'.CasualMatches::mode(), 'href' => GameNames::page($game).'#casual'];
@@ -382,7 +386,7 @@ final class PlayerHub
             ->where('signup_closes_at', '>', now())->orderBy('starts_at')->first();
 
         return [
-            ['key' => 'blitz', 'label' => __('Play a blitz game'), 'href' => route('chess.lobby'),
+            ['key' => 'blitz', 'label' => __('Play a chess game'), 'href' => route('chess.lobby'),
                 'done' => ChessGame::query()->where('status', ChessGameStatus::Finished)->where(fn ($query) => $query->where('white_id', $me)->orWhere('black_id', $me))->exists()],
             ['key' => 'clan', 'label' => __('Join a clan'), 'href' => route('clans.index'),
                 'done' => $this->user->clanMember !== null],

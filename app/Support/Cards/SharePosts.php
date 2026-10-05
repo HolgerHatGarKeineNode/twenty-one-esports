@@ -16,6 +16,7 @@ use App\Models\SeriesMatch;
 use App\Models\Tournament;
 use App\Models\User;
 use App\Support\Badges\BadgeCopy;
+use App\Support\Chess\ChessModes;
 use App\Support\Invites\InviteLinkRefused;
 use App\Support\Invites\InviteLinks;
 use App\Support\Nostr\NostrKeys;
@@ -380,7 +381,7 @@ final class SharePosts
             type: 'game',
             sentence: $game->isCorrespondence()
                 ? __('Won a daily chess game against :opponent on TWENTY ONE Esports.', ['opponent' => $name])
-                : __('Won a blitz game against :opponent on TWENTY ONE Esports.', ['opponent' => $name]),
+                : __('Won a :mode game against :opponent on TWENTY ONE Esports.', ['mode' => ChessModes::label($game->mode), 'opponent' => $name]),
             cardUrl: PageCard::game($game)->url(),
             dimensions: [PageCard::WIDTH, PageCard::HEIGHT],
             storyPath: null,

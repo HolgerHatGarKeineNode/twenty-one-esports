@@ -173,13 +173,20 @@ new #[Layout('layouts::app', ['section' => 'ladder'])] class extends Component
     }
 
     /**
+     * Chess in ChessModes order (rapid, the default, first: plan "Schach Rapid und Clan", P3), every other game in registry order.
+     *
      * @return list<array{0: string, 1: string}> mode slug => label, for the switch
      */
     #[Computed]
     public function modes(): array
     {
-        return array_values(array_map(fn (GameMode $mode) => [$mode->slug, __($mode->name)],
-            app(GameRegistry::class)->get($this->game)->modes()));
+        $modes = app(GameRegistry::class)->get($this->game)->modes();
+
+        if ($this->game === 'chess') {
+            $modes = array_map(fn (string $slug): GameMode => $modes[$slug], \App\Support\Chess\ChessModes::all());
+        }
+
+        return array_values(array_map(fn (GameMode $mode) => [$mode->slug, __($mode->name)], $modes));
     }
 }; ?>
 

@@ -28,6 +28,8 @@ use Carbon\CarbonImmutable;
  */
 final class Ladders
 {
+    private const MEMO = 'ladders-published.';
+
     public const KIND = 32152;
 
     /**
@@ -69,16 +71,24 @@ final class Ladders
      * Every ladder of the season the league signed, with the time of its
      * first version, is read once per request or job (one query, whatever the
      * number of ladders and moments a page asks about), and a published
-     * ladder stays published. A ladder missing from that read is asked again
-     * on its own, since it may be published later in the same request or job
-     * (a parameter change); it is never kept as closed.
+     * ladder stays published. Every 32152 the league stores drops that read
+     * (NostrEvent::booted() calls forget()), so a ladder published later in
+     * the same request or job (a parameter change) is seen.
+     *
+     * A ladder missing from the read: in an HTTP request it is closed for the
+     * rest of the request, since the read was complete and is dropped with
+     * every new ladder version (a closed rapid ladder in a live season cost
+     * one query per ask, P1 gate 2026-10-05). Outside a request (a queue
+     * worker, the stream daemon: one request object for the life of the
+     * process, and another process may publish) it is asked again on its
+     * own every time and never kept as closed.
      */
     private static function published(string $pubkey, string $d, ?CarbonImmutable $at = null): bool
     {
         $query = fn () => NostrEvent::query()->where(['kind' => self::KIND, 'pubkey' => $pubkey]);
         $attributes = request()->attributes;
         $season = substr($d, (int) strrpos($d, '/') + 1);
-        $memo = 'ladders-published.'.$pubkey.'.'.$season;
+        $memo = self::MEMO.$pubkey.'.'.$season;
         $first = $attributes->get($memo);
         $fresh = ! is_array($first);
 
@@ -90,7 +100,8 @@ final class Ladders
         }
 
         if (! isset($first[$d])) {
-            $signedAt = $fresh ? null : $query()->where('d', $d)->min('signed_at');
+            $complete = $fresh || request()->route() !== null;
+            $signedAt = $complete ? null : $query()->where('d', $d)->min('signed_at');
 
             if ($signedAt === null) {
                 return false;
@@ -101,6 +112,21 @@ final class Ladders
         }
 
         return $at === null || $first[$d] <= $at->getTimestamp();
+    }
+
+    /**
+     * Drop what this request or job remembered about published and closed
+     * ladders: a 32152 was just stored (NostrEvent::booted()).
+     */
+    public static function forget(): void
+    {
+        $attributes = request()->attributes;
+
+        foreach (array_keys($attributes->all()) as $key) {
+            if (str_starts_with((string) $key, self::MEMO)) {
+                $attributes->remove((string) $key);
+            }
+        }
     }
 
     public static function isOpen(string $game, string $mode): bool

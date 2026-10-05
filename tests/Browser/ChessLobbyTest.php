@@ -146,7 +146,7 @@ test('every way to play is in the first viewport, and each tile does its job at 
 
         // The tile row and each tile: in the first viewport, above the chrome at the bottom.
         lobbyAboveFloor($page, '[data-test=play-grid]', "grid {$width}");
-        foreach (['play-blitz', 'play-daily', 'play-challenge', 'play-invite', 'play-tournaments', 'play-team'] as $tile) {
+        foreach (['play-rapid', 'play-blitz', 'play-daily', 'play-challenge', 'play-invite', 'play-tournaments', 'play-team'] as $tile) {
             lobbyAboveFloor($page, "[data-test={$tile}]", "{$tile} {$width}");
         }
         // No tile cuts its words: every visible line of a tile fits its box.
@@ -154,7 +154,7 @@ test('every way to play is in the first viewport, and each tile does its job at 
         expect($page->evaluate('() => document.querySelector("[data-test=play-daily-count]").textContent.trim()'))->toStartWith('2')
             ->and($page->evaluate('() => document.querySelector("[data-test=play-online-count]").textContent'))->toBe('2')
             // Nothing opened yet: the panels wait for their tiles.
-            ->and($page->evaluate('() => [document.querySelector("#lobby-blitz").checkVisibility(), document.querySelector("#lobby-invite").checkVisibility()]'))->toBe([false, false]);
+            ->and($page->evaluate('() => [document.querySelector("#lobby-quick").checkVisibility(), document.querySelector("#lobby-invite").checkVisibility()]'))->toBe([false, false]);
         lobbyShot($page, "lobby-{$width}");
         lobbyClean($page, "lobby {$width}");
 
@@ -184,7 +184,7 @@ test('every way to play is in the first viewport, and each tile does its job at 
 
         // The invite tile: its module opens in place and makes a link.
         $page->locator('[data-test=play-invite]')->click();
-        BrowserWait::until($page, '() => document.querySelector("[data-test=invite-module]").checkVisibility() && ! document.querySelector("#lobby-blitz").checkVisibility()', 5_000);
+        BrowserWait::until($page, '() => document.querySelector("[data-test=invite-module]").checkVisibility() && ! document.querySelector("#lobby-quick").checkVisibility()', 5_000);
         lobbyAboveFloor($page, '[data-test=invite-create]', "invite create {$width}");
         lobbyShot($page, "lobby-invite-{$width}");
         lobbyClean($page, "invite {$width}");

@@ -153,7 +153,7 @@ test('the rated queue refuses while rated chess is off, without trust ranks or f
 
     config(['esports.chess.rated_queue' => false]);
     app()->instance(TrustFacts::class, chessFacts());
-    expect($reason($a))->toBe('Rated chess is not open yet. Blitz games are casual for now.');
+    expect($reason($a))->toBe('Rated chess is not open yet. Rapid and blitz games are casual for now.');
 
     config(['esports.chess.rated_queue' => true]);
     app()->instance(TrustFacts::class, new NoTrustFacts);

@@ -14,6 +14,7 @@ use App\Models\ClanInvite;
 use App\Models\SeriesMatch;
 use App\Models\Tournament;
 use App\Models\User;
+use App\Support\Chess\ChessModes;
 use App\Support\Dock\UpcomingEvents;
 use App\Support\GameNames;
 use App\Support\Matches\MempoolStrip;
@@ -455,6 +456,12 @@ final class ShellNavigation
     {
         $slug = $game->slug();
         $modes = $game->modes();
+
+        // Chess in ChessModes order: rapid, the default, first (plan "Schach Rapid und Clan", P3).
+        if ($slug === 'chess') {
+            $modes = array_map(fn (string $mode) => $modes[$mode], array_combine(ChessModes::all(), ChessModes::all()));
+        }
+
         $kinds = array_values(array_filter([
             array_filter($modes, fn ($mode) => $mode->rates === 'player') !== [] ? 'solo' : null,
             array_filter($modes, fn ($mode) => $mode->rates === 'lineup' || $mode->boards !== []) !== [] ? 'clan' : null,
@@ -491,12 +498,13 @@ final class ShellNavigation
 
         if ($slug === 'chess') {
             return array_values(array_filter([
-                self::link('play', route('chess.lobby'), __('Play blitz'), 'bolt', null, null, __('Play'), 'play'),
+                self::link('play', route('chess.lobby'), __('Play live'), 'bolt', null, null, __('Play'), 'play'),
                 $user ? self::link('daily', route('me.correspondence'), __('Daily games'), 'calendar', null, null, __('Daily')) : null,
                 $user ? self::link('challenge', route('chess.challenge'), __('Challenge a player'), 'send', 'games-menu-challenge', 'mobile-challenge-player', __('Challenge')) : null,
                 self::link('watch', route('games.index'), __('Watch live'), 'eye', 'games-menu-live', 'mobile-live-games', __('Watch')),
                 self::link('matches', $matches, __('Matches'), 'matches', null, null, null, 'matches'),
-                self::link('ladder', route('ladder.show', ['chess', 'blitz']), __('Ladder'), 'ladder', null, null, null, 'ladder'),
+                // The rapid ladder first (user, 2026-10-05); blitz and daily by the ladder page's mode switch.
+                self::link('ladder', route('ladder.show', ['chess', ChessModes::DEFAULT]), __('Ladder'), 'ladder', null, null, null, 'ladder'),
                 self::strongest(),
                 $user ? self::link('settings', route('settings.chess'), __('Chess settings'), 'settings', null, null, __('Settings')) : null,
             ]));

@@ -105,7 +105,7 @@ test('with the season live, Rated stays closed while rated chess is off, before 
 
     // ESPORTS_RATED_CHESS off.
     config(['esports.chess.rated_queue' => false]);
-    expect(ratedChoice($anna))->toBe(['false', 'Rated chess is not open yet. Blitz games are casual for now.'])
+    expect(ratedChoice($anna))->toBe(['false', 'Rated chess is not open yet. Rapid and blitz games are casual for now.'])
         ->and(searchRated($anna)[1])->toBeFalse();
     config(['esports.chess.rated_queue' => true]);
 
@@ -141,10 +141,10 @@ test('open: two Trusted players who list each other search Rated and get a rated
 
     expect(ratedChoice($anna))->toBe(['true', 'Casual pairs you with anyone online and moves only your casual Elo. Rated pairs you only with a Trusted player you list each other with (you have 1).']);
 
-    Livewire::actingAs($anna)->test('pages::chess.lobby')->call('findOpponent', true)->assertSet('error', '')->assertSee('Blitz · rated');
+    Livewire::actingAs($anna)->test('pages::chess.lobby')->call('findOpponent', true, 'blitz')->assertSet('error', '')->assertSee('Blitz · rated');
     expect(ChessQueueEntry::query()->where('user_id', $anna->id)->value('rated'))->toBeTrue();
 
-    $page = Livewire::actingAs($bert)->test('pages::chess.lobby')->call('findOpponent', true)->assertSet('error', '');
+    $page = Livewire::actingAs($bert)->test('pages::chess.lobby')->call('findOpponent', true, 'blitz')->assertSet('error', '');
     $game = ChessGame::query()->sole();
     $lists = app(Opponents::class);
 
@@ -168,18 +168,19 @@ test('"Find next opponent" after a rated game searches rated again while rated i
     // The game page's end-of-game links carry the choice: rated only for a rated game.
     $rated = ChessGame::factory()->rated()->create(['white_id' => $anna->id, 'black_id' => $bert->id]);
     $casual = ChessGame::factory()->create(['white_id' => $anna->id, 'black_id' => $bert->id]);
-    $this->actingAs($anna)->get(route('games.show', $rated))->assertOk()->assertSee(route('chess.lobby', ['search' => 1, 'rated' => 1]));
-    $this->actingAs($anna)->get(route('games.show', $casual))->assertOk()->assertSee(e(route('chess.lobby', ['search' => 1])).'"', false)->assertDontSee(route('chess.lobby', ['search' => 1, 'rated' => 1]));
+    // And the mode (plan "Schach Rapid und Clan", P2): after a blitz game the next search is blitz, after rapid rapid.
+    $this->actingAs($anna)->get(route('games.show', $rated))->assertOk()->assertSee(route('chess.lobby', ['search' => 1, 'rated' => 1, 'mode' => 'blitz']));
+    $this->actingAs($anna)->get(route('games.show', $casual))->assertOk()->assertSee(e(route('chess.lobby', ['search' => 1, 'mode' => 'blitz'])).'"', false)->assertDontSee(route('chess.lobby', ['search' => 1, 'rated' => 1]));
     ChessGame::query()->delete();
 
     // Rated still open: the search is rated.
-    Livewire::withQueryParams(['search' => 1, 'rated' => 1])->actingAs($anna)->test('pages::chess.lobby')->assertSet('notice', '')->assertSee('Blitz · rated');
+    Livewire::withQueryParams(['search' => 1, 'rated' => 1, 'mode' => 'blitz'])->actingAs($anna)->test('pages::chess.lobby')->assertSet('notice', '')->assertSee('Blitz · rated');
     expect(ChessQueueEntry::query()->where('user_id', $anna->id)->value('rated'))->toBeTrue();
     app(ChessQueue::class)->leave($anna);
 
     // bert took anna off his list: rated is closed for her, the search is casual and says why.
     app(Opponents::class)->remove($bert, $anna->pubkey, $bertSigner->signTemplates(app(Opponents::class)->prepareRemove($bert, $anna->pubkey)));
-    Livewire::withQueryParams(['search' => 1, 'rated' => 1])->actingAs($anna)->test('pages::chess.lobby')
+    Livewire::withQueryParams(['search' => 1, 'rated' => 1, 'mode' => 'blitz'])->actingAs($anna)->test('pages::chess.lobby')
         ->assertSet('error', '')
         ->assertSet('notice', 'Rated is closed for you right now, so this search is casual. Rated play needs a player you list each other with. Add opponents on their player pages; they add you back.')
         ->assertSee('Blitz · casual');

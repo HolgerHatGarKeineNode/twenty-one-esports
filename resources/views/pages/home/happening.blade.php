@@ -24,10 +24,10 @@
         <div class="flex flex-col gap-3 rounded-card bg-card p-4 lg:col-span-5 lg:p-5" data-test="live-boards">
             <span class="flex items-baseline justify-between gap-3">
                 <span class="flex items-center gap-2 text-[13px] font-bold">
-                    @if ($live['blitz'] + $live['daily'] > 0)
+                    @if ($live['live'] + $live['daily'] > 0)
                         <span class="size-2 animate-live rounded-full bg-win" aria-hidden="true"></span>
                     @endif
-                    {{ trans_choice(':count live blitz board|:count live blitz boards', $live['blitz']) }}, {{ trans_choice(':count daily game|:count daily games', $live['daily']) }}
+                    <span data-test="live-boards-count">{{ trans_choice(':count live board|:count live boards', $live['live']) }}, {{ trans_choice(':count daily game|:count daily games', $live['daily']) }}</span>
                 </span>
                 <a href="{{ route('games.index') }}" @navigate(route('games.index')) class="inline-flex min-h-11 shrink-0 items-center text-xs" data-test="home-live-games">{{ __('Watch all') }}</a>
             </span>

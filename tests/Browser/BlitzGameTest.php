@@ -318,7 +318,7 @@ test('the lobby switch answers every click, the online list holds still, and an 
     BrowserWait::until($pageA, $settled, 5_000);
     expect($pageA->evaluate('() => '.$switch.'.getAttribute("aria-checked")'))->toBe('true')
         ->and($anna->refresh()->looking_to_play)->toBe('chess/blitz');
-    BrowserWait::until($pageB, '() => '.rowOf($anna).'?.textContent.includes("looking: Blitz 5+3")', 5_000);
+    BrowserWait::until($pageB, '() => '.rowOf($anna).'?.textContent.includes("looking: live chess")', 5_000);
 
     // Bert moves around the site (full page loads): Anna's list never drops him.
     foreach (['/clans', '/chess', '/clans', '/chess'] as $to) {

@@ -71,6 +71,7 @@ final class InviteCopy
     {
         return match ($this->link->type) {
             InviteLinkType::Blitz => __(':name challenges you to blitz chess', ['name' => $this->inviterName()]),
+            InviteLinkType::Rapid => __(':name challenges you to rapid chess', ['name' => $this->inviterName()]),
             InviteLinkType::Daily => __(':name challenges you to daily chess', ['name' => $this->inviterName()]),
             InviteLinkType::Board => __(':name challenges you to :game', ['name' => $this->inviterName(), 'game' => $this->game()]),
             InviteLinkType::Score => $this->best() === null
@@ -86,6 +87,7 @@ final class InviteCopy
     {
         return match ($this->link->type) {
             InviteLinkType::Blitz => __('Five minutes each, plus 3 seconds a move. Casual, so no rating is on the line.'),
+            InviteLinkType::Rapid => __('Ten minutes each, plus 5 seconds a move. Casual, so no rating is on the line.'),
             InviteLinkType::Daily => __('One move a day, at your pace. Casual, so no rating is on the line.'),
             InviteLinkType::Board => $this->isCorrespondence()
                 ? __('One move a day, at your pace. Casual, so no rating is on the line.')
@@ -106,6 +108,7 @@ final class InviteCopy
     {
         return match ($this->link->type) {
             InviteLinkType::Blitz => __('Chess blitz, 5+3'),
+            InviteLinkType::Rapid => __('Chess rapid, 10+5'),
             InviteLinkType::Daily => __('Daily chess, 1 move a day'),
             InviteLinkType::Board => __(':game, :mode', ['game' => $this->game(), 'mode' => $this->boardMode()]),
             InviteLinkType::Score => __(':game, beat my time', ['game' => $this->game()]),
@@ -120,6 +123,7 @@ final class InviteCopy
     {
         return match ($this->link->type) {
             InviteLinkType::Blitz => __('Beat me at blitz?'),
+            InviteLinkType::Rapid => __('Beat me at rapid?'),
             InviteLinkType::Daily => __('Your move?'),
             InviteLinkType::Board => $this->isCorrespondence() ? __('Your move?') : __('Beat me at :game?', ['game' => $this->game()]),
             InviteLinkType::Score => $this->best() === null ? __('Beat me at :game?', ['game' => $this->game()]) : __('Beat :time?', ['time' => $this->best()]),
@@ -133,6 +137,7 @@ final class InviteCopy
     {
         return match ($this->link->type) {
             InviteLinkType::Blitz => __('5+3 chess, casual. Tap to take the seat.'),
+            InviteLinkType::Rapid => __('10+5 chess, casual. Tap to take the seat.'),
             InviteLinkType::Daily => __('Daily chess, one move a day, casual.'),
             InviteLinkType::Board => __(':game :mode, casual.', ['game' => $this->game(), 'mode' => $this->boardMode()]),
             InviteLinkType::Score => __(':game, my best this week. Tap to play.', ['game' => $this->game()]),
@@ -176,6 +181,7 @@ final class InviteCopy
     {
         return match ($this->link->type) {
             InviteLinkType::Blitz => __('Blitz chess 5+3, casual. Log in with Google or Nostr and you land right at the board.'),
+            InviteLinkType::Rapid => __('Rapid chess 10+5, casual. Log in with Google or Nostr and you land right at the board.'),
             InviteLinkType::Daily => __('Daily chess, one move a day, casual. Log in with Google or Nostr and you land right in the game.'),
             InviteLinkType::Board => __(':game :mode, casual. Log in with Google or Nostr and you land right in the game.', ['game' => $this->game(), 'mode' => $this->boardMode()]),
             InviteLinkType::Score => __('Play :game in your browser and beat the time.', ['game' => $this->game()]),

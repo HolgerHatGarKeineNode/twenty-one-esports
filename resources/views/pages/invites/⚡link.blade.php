@@ -335,7 +335,7 @@ new #[Layout('layouts::app')] class extends Component {
     };
 
     $details = match ($type) {
-        InviteLinkType::Blitz, InviteLinkType::Daily => [
+        InviteLinkType::Blitz, InviteLinkType::Rapid, InviteLinkType::Daily => [
             [__('Game'), $copy->gameChip()],
             [__('Game type'), __('Casual, no rating change')],
             [__('Colours'), match ($type === InviteLinkType::Daily ? (string) $link->option('color', 'random') : 'random') {
@@ -371,7 +371,7 @@ new #[Layout('layouts::app')] class extends Component {
         : [__('Open until'), $this->when($link->expires_at)];
 
     $steps = match ($boardDaily ? InviteLinkType::Daily : ($type === InviteLinkType::Board ? InviteLinkType::Blitz : $type)) {
-        InviteLinkType::Blitz =>[[__('Continue with Google or Nostr'), __('New here? That creates your player. No password to remember.')], [__('You land at the board'), __('No lobby, no search. :name gets a ping that you are in.', ['name' => $name])], [__('Play your first game'), __('Casual games also build your trust, and trust opens rated play later.')]],
+        InviteLinkType::Blitz, InviteLinkType::Rapid => [[__('Continue with Google or Nostr'), __('New here? That creates your player. No password to remember.')], [__('You land at the board'), __('No lobby, no search. :name gets a ping that you are in.', ['name' => $name])], [__('Play your first game'), __('Casual games also build your trust, and trust opens rated play later.')]],
         InviteLinkType::Daily => [[__('Continue with Google or Nostr'), __('New here? That creates your player. No password to remember.')], [__('You land in the game'), __('Make your move whenever you like. You get a notification when it is your turn again.')], [__('Play your first game'), __('Casual games also build your trust, and trust opens rated play later.')]],
         InviteLinkType::Series => [[__('Continue with Google or Nostr'), __('New here? That creates your player. No password to remember.')], [__('Pick your lineup and a start'), __('Take the challenge with a lineup you captain. No team yet? Start a clan first.')], [__('Play the series'), __(':clan gets a ping, the match room opens for both teams.', ['clan' => $clan?->name])]],
         InviteLinkType::Clan => [[__('Continue with Google or Nostr'), __('New here? That creates your player. No password to remember.')], [__('Your request goes to :clan', ['clan' => $clan?->name]), __('A captain of :clan looks at your profile and confirms. You get a notification.', ['clan' => $clan?->name])], [__('Play for :clan', ['clan' => $clan?->name]), __('Casual games build your trust first.')]],
@@ -379,6 +379,7 @@ new #[Layout('layouts::app')] class extends Component {
 
     $closedCta = match ($type) {
         InviteLinkType::Blitz => [__('Find a blitz opponent'), route('chess.lobby'), __('Until then, the blitz queue pairs you with whoever is online.')],
+        InviteLinkType::Rapid => [__('Find a rapid opponent'), route('chess.lobby'), __('Until then, the rapid queue pairs you with whoever is online.')],
         InviteLinkType::Daily => [__('Challenge someone to daily chess'), route('chess.challenge'), __('Until then, you can challenge any player to daily chess.')],
         InviteLinkType::Board => [__('Play :game', ['game' => $copy->game()]), \App\Support\GameNames::page((string) $link->option('game')), __('Until then, find a game in the lobby.')],
         InviteLinkType::Series => [__('See open matches'), route('matches.index'), __('Until then, look for clans to play on the match list.')],
@@ -440,6 +441,7 @@ new #[Layout('layouts::app')] class extends Component {
                     @endif
                     <span class="hidden text-center text-xs text-ink-2 lg:block">{{ match ($type) {
                         InviteLinkType::Blitz => __('5+3, colours drawn at random'),
+                        InviteLinkType::Rapid => __('10+5, colours drawn at random'),
                         InviteLinkType::Daily => __('1 move a day'),
                         InviteLinkType::Board => $boardDaily ? __('1 move a day') : __('5+3, colours drawn at random'),
                         InviteLinkType::Series => __(':mode, best of :bo', ['mode' => (string) $link->option('mode'), 'bo' => (int) $link->option('best_of')]),
@@ -603,7 +605,7 @@ new #[Layout('layouts::app')] class extends Component {
                 <h2 class="m-0 font-display text-2xl font-bold">{{ __('Ready to play?') }}</h2>
                 <button type="button" wire:click="accept" wire:loading.attr="disabled" class="{{ $primary }}" data-test="accept-invite">{{ __('Accept') }}</button>
                 <a href="{{ route('home') }}" class="inline-flex min-h-11 items-center justify-center text-[13px] text-btc">{{ __('Not now') }}</a>
-                <p class="m-0 text-xs leading-normal text-ink-2">{{ $type === InviteLinkType::Blitz || ($type === InviteLinkType::Board && ! $boardDaily) ? __('Accepting opens the board right away. :name gets a ping.', ['name' => $name]) : ($boardDaily ? __('Accepting starts the game. :name gets a notification.', ['name' => $name]) : __('Accepting starts the daily game. :name gets a notification.', ['name' => $name])) }}</p>
+                <p class="m-0 text-xs leading-normal text-ink-2">{{ $type->isLiveChess() || ($type === InviteLinkType::Board && ! $boardDaily) ? __('Accepting opens the board right away. :name gets a ping.', ['name' => $name]) : ($boardDaily ? __('Accepting starts the game. :name gets a notification.', ['name' => $name]) : __('Accepting starts the daily game. :name gets a notification.', ['name' => $name])) }}</p>
             @endif
         </aside>
 

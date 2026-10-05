@@ -56,9 +56,9 @@ test('a won rated game: the game card, the opponent mentioned, the league record
     $nevent = NostrKeys::nevent($record->event_id, $league->pubkey, 64);
 
     expect($template['kind'])->toBe(1)
-        ->and($template['content'])->toBe("Won a blitz game against bert on TWENTY ONE Esports.\nGG nostr:{$bert->npub}\n\n{$card}\nhttps://esports.example/games/{$game->id}\n\nnostr:{$nevent}")
+        ->and($template['content'])->toBe("Won a Blitz 5+3 game against bert on TWENTY ONE Esports.\nGG nostr:{$bert->npub}\n\n{$card}\nhttps://esports.example/games/{$game->id}\n\nnostr:{$nevent}")
         ->and($template['tags'])->toBe([
-            ['imeta', 'url '.$card, 'm image/png', 'dim 1200x630', 'alt Won a blitz game against bert on TWENTY ONE Esports.'],
+            ['imeta', 'url '.$card, 'm image/png', 'dim 1200x630', 'alt Won a Blitz 5+3 game against bert on TWENTY ONE Esports.'],
             ['r', 'https://esports.example/games/'.$game->id],
             ['p', $bert->pubkey],
             ['q', $record->event_id, 'wss://league.example', $league->pubkey],

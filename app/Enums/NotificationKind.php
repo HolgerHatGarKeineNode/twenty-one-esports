@@ -250,8 +250,8 @@ enum NotificationKind: string
     public function setting(): array
     {
         return match ($this) {
-            self::MatchFound => ['Opponent found', 'the blitz queue paired you, the game starts'],
-            self::Invite => ['Blitz invite', 'a friend invites you to a live game'],
+            self::MatchFound => ['Opponent found', 'the live queue paired you, the game starts'],
+            self::Invite => ['Live invite', 'a friend invites you to a live game'],
             self::InviteAccepted => ['Invite accepted', 'your friend accepted, the game starts'],
             self::Challenge => ['Challenge received', 'someone challenged you to daily chess, a board game by correspondence, or your clan to a match'],
             self::GameStarted => ['Daily game started', 'your daily challenge was accepted'],

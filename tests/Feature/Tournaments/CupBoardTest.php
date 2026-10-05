@@ -176,7 +176,7 @@ test('with a cup open for sign-up the head says tournament and what a cup is, an
         ->and(substr_count($head, 'data-test="cup-next-face"'))->toBe(3)
         ->and($head)->toContain('title="cup_player_'.$next->id.'_1"')
         // The board says tournament too, and every row shows who is in.
-        ->and($html)->toContain('Blitz 5+3 tournament</span>')
+        ->and($html)->toContain('Rapid 10+5 tournament</span>')
         ->and(str($html)->after('data-test="cup-hall"')->before('id="formats-h"')->toString())->not->toContain('Double Elimination', 'data-test="cup-format"')
         ->and(substr_count($html, 'data-test="cup-faces"'))->toBe(1)
         // No cup has ended yet: no winner, and no line about the next cup.

@@ -19,7 +19,7 @@ use App\Support\Stacker\StackerRuns;
  * up in the invite picker (/invite) and in the invite module by its kind
  * alone, with no list to keep:
  *
- *  - chess: a daily or a blitz link (InviteLinkType::Daily, ::Blitz);
+ *  - chess: a daily, a rapid or a blitz link (InviteLinkType::Daily, ::Rapid, ::Blitz);
  *  - a board game (nine men's morris, checkers): a board link in its own
  *    modes, correspondence first when the game has it (InviteLinkType::Board);
  *  - a series game: the team challenge, made on the challenge page with a
@@ -39,8 +39,8 @@ final class InviteGames
     /** The board game modes a link can start, in the order offered (correspondence first, as daily chess). */
     public const BOARD_MODES = [BoardGame::CORRESPONDENCE, 'blitz'];
 
-    /** The chess link modes, in the order offered (the module made daily links before the picker). */
-    public const CHESS_MODES = ['daily', 'blitz'];
+    /** The chess link modes, in the order offered (the module made daily links before the picker; rapid before blitz, plan "Schach Rapid und Clan"). */
+    public const CHESS_MODES = ['daily', 'rapid', 'blitz'];
 
     public function __construct(private GameRegistry $registry) {}
 
@@ -101,7 +101,11 @@ final class InviteGames
     public function linkType(string $slug, ?string $mode = null): ?InviteLinkType
     {
         return match ($this->find($slug)['kind'] ?? null) {
-            'chess' => $mode === 'blitz' ? InviteLinkType::Blitz : InviteLinkType::Daily,
+            'chess' => match ($mode) {
+                'blitz' => InviteLinkType::Blitz,
+                'rapid' => InviteLinkType::Rapid,
+                default => InviteLinkType::Daily,
+            },
             'board' => InviteLinkType::Board,
             'score' => InviteLinkType::Score,
             default => null,

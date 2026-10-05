@@ -418,7 +418,7 @@ test('in a live game the follow row offers no blitz invite, as "Online now" offe
     expect($seen['canInvite'])->toBeFalse()
         ->and($seen['rowInvite'])->toBe(0)
         ->and($seen['onlineInvite'])->toBe(0)
-        ->and($seen['presence'])->toBe($lobby === 'chess' ? 'looking: Blitz 5+3' : "looking: Nine Men's Morris")
+        ->and($seen['presence'])->toBe($lobby === 'chess' ? 'looking: live chess' : "looking: Nine Men's Morris")
         // Without the invite next to it, the challenge is the row's labelled action again.
         ->and(implode(' ', $seen['challengeLabel']))->not->toMatch('/(^|\s)sr-only(\s|$)/')
         ->and(BoardInvite::query()->count())->toBe(0)

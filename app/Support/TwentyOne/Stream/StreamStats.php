@@ -36,7 +36,8 @@ use Throwable;
  * orders them. Names are raw display names; the scene views clean and
  * escape them. Nothing here is estimated.
  *
- * `ladders` are the two casual chess ladders (blitz, daily); `boards` every
+ * `ladders` are the casual chess ladders (rapid, blitz, daily: plan
+ * "Schach Rapid und Clan", P3); `boards` every
  * ladder of every registered game and mode with a result, in the registry's
  * order: the season's rated ladder once it has rows, else the casual one
  * (as the home page's ladder tiles choose). A lineup ladder (Rocket League
@@ -54,7 +55,7 @@ class StreamStats
     public const CACHE_KEY = 'twentyone.stream.stats';
 
     /** Ladder slug => chess mode. */
-    public const LADDERS = ['blitz' => 'blitz', 'daily' => ChessGame::CORRESPONDENCE];
+    public const LADDERS = ['rapid' => 'rapid', 'blitz' => 'blitz', 'daily' => ChessGame::CORRESPONDENCE];
 
     /** Rows each ladder of `boards` lists. */
     public const BOARD_ROWS = 4;
@@ -63,7 +64,7 @@ class StreamStats
     public const CLAN_FACES = 5;
 
     /**
-     * @return array{players: int, clans: int, gamesPlayed: int, liveNow: int, gamesToday: int, ladders: array{blitz: list<array{rank: int, name: string, elo: int, games: int, wins: int, draws: int, losses: int, avatar: string|null}>, daily: list<array{rank: int, name: string, elo: int, games: int, wins: int, draws: int, losses: int, avatar: string|null}>}, boards: list<array<string, mixed>>, clan: array{name: string, tag: string, members: int, games: int, founded: string|null, logoUrl: string|null, logo: string|null, pride: string|null, faces: list<string|null>}|null}
+     * @return array{players: int, clans: int, gamesPlayed: int, liveNow: int, gamesToday: int, ladders: array{rapid: list<array<string, mixed>>, blitz: list<array{rank: int, name: string, elo: int, games: int, wins: int, draws: int, losses: int, avatar: string|null}>, daily: list<array{rank: int, name: string, elo: int, games: int, wins: int, draws: int, losses: int, avatar: string|null}>}, boards: list<array<string, mixed>>, clan: array{name: string, tag: string, members: int, games: int, founded: string|null, logoUrl: string|null, logo: string|null, pride: string|null, faces: list<string|null>}|null}
      */
     public function all(): array
     {
@@ -86,7 +87,7 @@ class StreamStats
      * the refs existed (just after a deploy) gets no picture, not an error.
      *
      * @param  array<string, mixed>  $counts  count()
-     * @return array{players: int, clans: int, gamesPlayed: int, liveNow: int, gamesToday: int, ladders: array{blitz: list<array{rank: int, name: string, elo: int, games: int, wins: int, draws: int, losses: int, avatar: string|null}>, daily: list<array{rank: int, name: string, elo: int, games: int, wins: int, draws: int, losses: int, avatar: string|null}>}, boards: list<array<string, mixed>>, clan: array{name: string, tag: string, members: int, games: int, founded: string|null, logoUrl: string|null, logo: string|null, pride: string|null, faces: list<string|null>}|null}
+     * @return array{players: int, clans: int, gamesPlayed: int, liveNow: int, gamesToday: int, ladders: array{rapid: list<array<string, mixed>>, blitz: list<array{rank: int, name: string, elo: int, games: int, wins: int, draws: int, losses: int, avatar: string|null}>, daily: list<array{rank: int, name: string, elo: int, games: int, wins: int, draws: int, losses: int, avatar: string|null}>}, boards: list<array<string, mixed>>, clan: array{name: string, tag: string, members: int, games: int, founded: string|null, logoUrl: string|null, logo: string|null, pride: string|null, faces: list<string|null>}|null}
      */
     private function withPictures(array $counts): array
     {
@@ -98,7 +99,8 @@ class StreamStats
             'gamesPlayed' => $counts['gamesPlayed'],
             'liveNow' => $counts['liveNow'],
             'gamesToday' => $counts['gamesToday'],
-            'ladders' => ['blitz' => $this->ladderWithAvatars($counts['ladders']['blitz']), 'daily' => $this->ladderWithAvatars($counts['ladders']['daily'])],
+            // A count cached before rapid joined has no rapid ladder: an empty one, not an error.
+            'ladders' => ['rapid' => $this->ladderWithAvatars($counts['ladders']['rapid'] ?? []), 'blitz' => $this->ladderWithAvatars($counts['ladders']['blitz']), 'daily' => $this->ladderWithAvatars($counts['ladders']['daily'])],
             'boards' => $this->boardsWithAvatars(is_array($counts['boards'] ?? null) ? $counts['boards'] : []),
             'clan' => $clan === null ? null : [
                 'name' => $clan['name'], 'tag' => $clan['tag'], 'members' => $clan['members'], 'games' => $clan['games'],
@@ -110,7 +112,7 @@ class StreamStats
     }
 
     /**
-     * @return array{players: int, clans: int, gamesPlayed: int, liveNow: int, gamesToday: int, ladders: array{blitz: list<array{rank: int, name: string, elo: int, games: int, wins: int, draws: int, losses: int, avatarRef: array{id: int, pubkey: string, source: string|null}|null}>, daily: list<array{rank: int, name: string, elo: int, games: int, wins: int, draws: int, losses: int, avatarRef: array{id: int, pubkey: string, source: string|null}|null}>}, boards: list<array<string, mixed>>, clan: array{name: string, tag: string, members: int, games: int, founded: string|null, logoUrl: string|null, logoRef: string|null, pride: string|null, faceRefs: list<array{id: int, pubkey: string, source: string|null}>}|null}
+     * @return array{players: int, clans: int, gamesPlayed: int, liveNow: int, gamesToday: int, ladders: array{rapid: list<array<string, mixed>>, blitz: list<array{rank: int, name: string, elo: int, games: int, wins: int, draws: int, losses: int, avatarRef: array{id: int, pubkey: string, source: string|null}|null}>, daily: list<array{rank: int, name: string, elo: int, games: int, wins: int, draws: int, losses: int, avatarRef: array{id: int, pubkey: string, source: string|null}|null}>}, boards: list<array<string, mixed>>, clan: array{name: string, tag: string, members: int, games: int, founded: string|null, logoUrl: string|null, logoRef: string|null, pride: string|null, faceRefs: list<array{id: int, pubkey: string, source: string|null}>}|null}
      */
     public function count(): array
     {
@@ -126,6 +128,7 @@ class StreamStats
                 + $this->boardGames()->where('status', BoardGameStatus::Active)->count(),
             'gamesToday' => $this->played($today),
             'ladders' => [
+                'rapid' => $this->ladder(self::LADDERS['rapid']),
                 'blitz' => $this->ladder(self::LADDERS['blitz']),
                 'daily' => $this->ladder(self::LADDERS['daily']),
             ],

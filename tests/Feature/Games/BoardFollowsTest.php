@@ -68,7 +68,7 @@ test('a board lobby\'s follow is challenged by correspondence with them picked, 
 
     // The chess lobby's rows read the same presence for chess's key; the own page's rows say nothing about presence.
     expect(Livewire::actingAs($me)->test('follows-here', ['context' => 'chess'])->call('match', [$friend->pubkey])->html())
-        ->toContain('\u0022lookingKey\u0022:\u0022chess')->toContain('looking: Blitz 5+3')->toContain('data-test="follows-here-invite"');
+        ->toContain('\u0022lookingKey\u0022:\u0022chess')->toContain('looking: live chess')->toContain('data-test="follows-here-invite"');
     expect(Livewire::actingAs($me)->test('follows-here', ['context' => 'me'])->call('match', [$friend->pubkey])->html())
         ->toContain('\u0022lookingKey\u0022:null')->not->toContain('data-test="follows-here-presence"')->not->toContain('data-test="follows-here-invite"');
 });

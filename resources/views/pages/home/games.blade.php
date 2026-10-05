@@ -8,7 +8,7 @@
     $games: ShellNavigation::games(); $live: HomeHub::live(); $stage: bool.
 --}}
 @php
-    $liveChess = $live['blitz'] + $live['daily'];
+    $liveChess = $live['live'] + $live['daily'];
 @endphp
 
 <section aria-labelledby="play-h" @class(['flex flex-col gap-4 px-4 lg:gap-5 lg:px-12', 'pt-5 lg:pt-8' => $stage]) data-test="play-now" @if ($stage) data-stage @endif>

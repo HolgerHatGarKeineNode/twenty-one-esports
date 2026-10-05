@@ -6,7 +6,7 @@
     $chip = \App\Support\Series\SeriesPresenter::chipFor($live ? 'live' : ($aborted ? 'closed' : 'done'), $live ? __('live') : ($aborted ? __('aborted') : __('done')));
     $format = $chessGame->isCorrespondence()
         ? __('Daily chess')
-        : __('Blitz :minutes+:seconds', ['minutes' => intdiv($chessGame->initial_ms, 60_000), 'seconds' => intdiv($chessGame->increment_ms, 1_000)]);
+        : __(':mode :minutes+:seconds', ['mode' => \App\Support\Chess\ChessModes::short($chessGame->mode), 'minutes' => intdiv($chessGame->initial_ms, 60_000), 'seconds' => intdiv($chessGame->increment_ms, 1_000)]);
     $mine = $viewer !== null ? $chessGame->colorOf($viewer) : null;
     $resultText = match (true) {
         $live => $chessGame->isCorrespondence() ? __('in progress') : __('playing'),
@@ -21,7 +21,7 @@
     $at = $chessGame->ended_at ?? $chessGame->created_at;
 @endphp
 
-<a href="{{ route('games.show', $chessGame) }}" wire:key="c-{{ $chessGame->id }}" data-test="chess-row"
+<a href="{{ route('games.show', $chessGame) }}" wire:key="c-{{ $chessGame->id }}" data-test="chess-row" data-mode="{{ $chessGame->mode }}"
    class="tr grid min-h-11 grid-cols-[64px_minmax(0,1fr)_auto] items-center gap-x-3 gap-y-1 rounded-sm px-2 py-2 text-[13px] text-ink hover:text-ink lg:h-11 lg:grid-cols-[96px_minmax(0,1fr)_88px_120px_150px_200px_120px] lg:gap-4 lg:py-0">
     <span class="font-bold text-btc">{{ $chessGame->number() }}</span>
     {{-- Each side with its face (P53: the rows read as text; a series row carries the clan tags). Below lg one side per line, from lg one line. --}}

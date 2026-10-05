@@ -16,9 +16,10 @@ use Livewire\Component;
 /*
  * Challenge a player to daily chess (ChessChallenge.dc.html). Until Elo
  * exists (P7) every game is casual: "Rated" is shown disabled, the trust
- * column and the Elo stakes of the design are left out. Blitz with a friend
- * stays in the lobby ("invite a friend who is online"); Rapid and Bullet are
- * "soon" as in the design.
+ * column and the Elo stakes of the design are left out. A live game with a
+ * friend stays in the lobby ("invite a friend who is online"), one card per
+ * live mode of the registry (rapid 10+5 and blitz 5+3, plan "Schach Rapid und
+ * Clan", P3); Bullet is "soon" as in the design.
  *
  * The player search sits in the island `players` (performance plan P7): a
  * keystroke renders the list only, not the page. Picking a player renders
@@ -204,10 +205,12 @@ new #[Title('Challenge')] #[Layout('layouts::app', ['section' => 'chess'])] clas
                     <span role="radio" aria-checked="true" class="flex flex-col gap-1.5 rounded-lg bg-ground px-4 py-3.5 shadow-[inset_0_0_0_2px_#F7931A]">
                         <b class="font-display text-xl">1/day</b><span class="text-[13px]">{{ __('Daily chess') }}</span><span class="text-xs leading-normal text-ink-2">{{ __('1 move per day, at your pace') }}</span>
                     </span>
-                    <a href="{{ route('chess.lobby') }}#online-h" class="flex flex-col gap-1.5 rounded-lg bg-ground px-4 py-3.5 text-ink shadow-ring hover:text-ink">
-                        <span class="flex items-baseline justify-between"><b class="font-display text-xl">5+3</b><span class="text-[11px] text-ink-2">{{ __('friend') }}</span></span><span class="text-[13px]">{{ __('Blitz') }}</span><span class="text-xs leading-normal text-ink-2">{{ __('invite a friend who is online now') }}</span>
-                    </a>
-                    @foreach ([['15+10', __('Rapid'), __('15 minutes, +10 s per move')], ['1+0', __('Bullet'), __('1 minute, no increment')]] as [$tc, $name, $text])
+                    @foreach (\App\Support\Chess\ChessModes::live() as $liveMode)
+                        <a href="{{ route('chess.lobby') }}#{{ $liveMode }}" class="flex flex-col gap-1.5 rounded-lg bg-ground px-4 py-3.5 text-ink shadow-ring hover:text-ink" data-test="challenge-live-{{ $liveMode }}">
+                            <span class="flex items-baseline justify-between"><b class="font-display text-xl">{{ \App\Support\Chess\ChessModes::clock($liveMode) }}</b><span class="text-[11px] text-ink-2">{{ __('friend') }}</span></span><span class="text-[13px]">{{ \App\Support\Chess\ChessModes::short($liveMode) }}</span><span class="text-xs leading-normal text-ink-2">{{ __('invite a friend who is online now') }}</span>
+                        </a>
+                    @endforeach
+                    @foreach ([['1+0', __('Bullet'), __('1 minute, no increment')]] as [$tc, $name, $text])
                         <span role="radio" aria-checked="false" aria-disabled="true" class="flex flex-col gap-1.5 rounded-lg bg-ground px-4 py-3.5 text-ink-3 shadow-ring">
                             <span class="flex items-baseline justify-between"><b class="font-display text-xl">{{ $tc }}</b><span class="text-[11px]">{{ __('soon') }}</span></span><span class="text-[13px]">{{ $name }}</span><span class="text-xs leading-normal">{{ $text }}</span>
                         </span>

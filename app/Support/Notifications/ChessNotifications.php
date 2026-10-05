@@ -8,6 +8,7 @@ use App\Models\ChessChallenge;
 use App\Models\ChessGame;
 use App\Models\ChessInvite;
 use App\Models\User;
+use App\Support\Chess\ChessModes;
 use App\Support\Chess\SanNotation;
 use Illuminate\Support\Carbon;
 
@@ -19,7 +20,7 @@ use Illuminate\Support\Carbon;
  * - reminder: a daily move is due soon (ChessSettings "Remind me when")
  * - challenge: someone challenged you to daily chess
  * - game_started: your daily challenge was accepted (P5c)
- * - match_found, invite, invite_accepted: live blitz, in the app only (P5c)
+ * - match_found, invite, invite_accepted: live chess (rapid, blitz), in the app only (P5c)
  * - opponent_resigned / game_over: a game ended; the resigning player gets
  *   game_over, the other one opponent_resigned (P5c: blitz too, in the app)
  */
@@ -120,7 +121,7 @@ final class ChessNotifications
     }
 
     /**
-     * The blitz queue paired these two: both are told, wherever they are.
+     * The live queue paired these two: both are told, wherever they are.
      */
     public function matchFound(ChessGame $game): void
     {
@@ -148,7 +149,7 @@ final class ChessNotifications
 
         $this->notifier->send($player, NotificationKind::Invite, new Notice(
             __(':name invites you', ['name' => $invite->inviter->displayName()], $locale),
-            __('Blitz 5+3 · Casual · colours drawn at random', [], $locale),
+            __(':mode · Casual · colours drawn at random', ['mode' => ChessModes::label($invite->mode, $locale)], $locale),
             route('chess.lobby'),
             null,
             __('Answer', [], $locale),
@@ -197,7 +198,7 @@ final class ChessNotifications
             if ($won && $game->end_reason === ChessEndReason::Resignation) {
                 $this->notifier->send($player, NotificationKind::OpponentResigned, new Notice(
                     __(':name resigned', ['name' => $game->opponentOf($player)?->displayName() ?? ''], $locale),
-                    __(':mode :number · you won', ['mode' => $daily ? __('Daily chess', [], $locale) : __('Blitz', [], $locale), 'number' => $game->number()], $locale),
+                    __(':mode :number · you won', ['mode' => $daily ? __('Daily chess', [], $locale) : ChessModes::short($game->mode, $locale), 'number' => $game->number()], $locale),
                     $url,
                     $game->id,
                     __('See the game', [], $locale),
@@ -216,7 +217,7 @@ final class ChessNotifications
             $this->notifier->send($player, NotificationKind::GameOver, new Notice(
                 $daily
                     ? __('Daily chess :number is over', ['number' => $game->number()], $locale)
-                    : __('Blitz :number is over', ['number' => $game->number()], $locale),
+                    : __(':mode :number is over', ['mode' => ChessModes::short($game->mode, $locale), 'number' => $game->number()], $locale),
                 __(':outcome · :reason', [
                     'outcome' => $label,
                     'reason' => __(($game->end_reason ?? ChessEndReason::Aborted)->label(), [], $locale),

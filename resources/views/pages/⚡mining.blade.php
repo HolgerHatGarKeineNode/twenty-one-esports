@@ -292,7 +292,7 @@ new #[Layout('layouts::app', ['section' => 'mining'])] class extends Component
         </div>
         <p class="m-0 text-xs text-ink-3">{{ __('Inside an era every valid win of a game pays the same, fixed when its block is saved; halvings never reverse. Mined / cap: no game can take more than its share of an era.') }}</p>
         @unless (collect(array_keys($chain['rewards_now']))->filter(fn (string $key): bool => str_starts_with($key, 'chess/'))->every(fn (string $key): bool => ChainOverview::mines($key)))
-            <p class="m-0 text-xs text-ink-2" data-test="rated-chess-not-open">{{ __('Rated chess is not open yet, so chess wins do not mine. Its rewards apply from the day rated blitz opens.') }}</p>
+            <p class="m-0 text-xs text-ink-2" data-test="rated-chess-not-open">{{ __('Rated chess is not open yet, so chess wins do not mine. Its rewards apply from the day rated chess opens.') }}</p>
         @endunless
         @unless (collect(array_keys($chain['rewards_now']))->reject(fn (string $key): bool => str_starts_with($key, 'chess/'))->every(fn (string $key): bool => ChainOverview::mines($key)))
             <p class="m-0 text-xs text-ink-2" data-test="rated-board-not-open">{{ __('Rated board games are not open yet, so their wins do not mine. Their rewards apply from the day their rated games open.') }}</p>

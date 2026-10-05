@@ -11,6 +11,7 @@ use App\Games\TrackmaniaNationsForever;
 use App\Models\Tournament;
 use App\Support\Board\CheckersRules;
 use App\Support\Board\NineMensMorrisRules;
+use App\Support\Chess\ChessModes;
 use App\Support\FairPlay\FairPlay;
 use App\Support\GameNames;
 use App\Support\PreSeason;
@@ -220,7 +221,7 @@ final class RulesPage
                 __('Clan lineups play the team modes. The captain picks who plays each series.'),
                 __('A series ends as soon as one side has won the majority of its games.'),
             ],
-            'links' => [[__('All games and modes'), route('play')], [__('Ladders'), route('ladder.show', ['chess', 'blitz'])]],
+            'links' => [[__('All games and modes'), route('play')], [__('Ladders'), route('ladder.show', ['chess', ChessModes::DEFAULT])]],
         ];
     }
 
@@ -271,18 +272,21 @@ final class RulesPage
         return [
             'id' => 'chess',
             'title' => __('Chess'),
-            'lead' => __('Blitz 5+3 live, or daily chess with one move a day.'),
+            // Every chess mode from the registry (plan "Schach Rapid und Clan", P3): "Rapid 10+5, Blitz 5+3 live, or daily chess …".
+            'lead' => __(':modes live, or daily chess with one move a day. Each mode has its own Elo.', ['modes' => implode(', ', array_map(ChessModes::label(...), ChessModes::live()))]),
             'facts' => [
                 [__('First move'), self::seconds((int) $c['first_move_seconds'])],
                 [__('Claim after a disconnect'), self::seconds((int) $c['disconnect_claim_seconds'])],
                 [__('Answer a daily challenge'), self::minutes((int) $c['challenge_hours'] * 60)],
-                [__('Blitz invite open'), self::seconds((int) $c['invite_seconds'])],
+                [__('Live invite open'), self::seconds((int) $c['invite_seconds'])],
+                [__('Switch hint after'), self::seconds((int) $c['queue']['switch_hint_seconds'])],
             ],
             'items' => [
                 __('Each side makes its first move within the time above, or the game is aborted. In a tournament a missed first move loses by forfeit.'),
                 __('A daily game gives the side to move one day. A missed day loses on time; before both first moves it aborts the game.'),
-                __('If your opponent stays disconnected from a running blitz game, you can claim the win after the time above.'),
-                __('The blitz queue starts near your rating and widens the range by :step every :seconds.', ['step' => (int) $c['queue']['range']['step'], 'seconds' => self::seconds((int) $c['queue']['range']['every_seconds'])]),
+                __('If your opponent stays disconnected from a running live game, you can claim the win after the time above.'),
+                __('The live queue starts near your rating and widens the range by :step every :seconds.', ['step' => (int) $c['queue']['range']['step'], 'seconds' => self::seconds((int) $c['queue']['range']['every_seconds'])]),
+                __('The queue pairs only players who search the same mode. "Either" searches every live mode and takes the first opponent who fits; after the time above alone you see who searches another mode.'),
                 __('You can send :total daily challenges a day, :each to the same player.', ['total' => (int) $c['challenges_per_day'], 'each' => (int) $c['challenges_per_recipient_per_day']]),
             ],
             'links' => [[__('Chess'), route('chess.lobby')]],
@@ -577,7 +581,7 @@ final class RulesPage
             'title' => __('Tournaments'),
             'lead' => __('Each tournament page shows its own format, times and deadlines. The league defaults are these.'),
             'facts' => [
-                [__('Chess first move'), self::seconds((int) $t['first_move_seconds']['blitz'])],
+                ...array_map(fn (string $mode): array => [__('Chess first move, :mode', ['mode' => ChessModes::label($mode)]), self::seconds((int) ($t['first_move_seconds'][$mode] ?? config('esports.chess.first_move_seconds')))], ChessModes::live()),
                 [__('Series no-show'), self::minutes($defaults['noshow_minutes'])],
                 [__('Report due'), self::minutes($defaults['report_hours'] * 60)],
                 [__('Answer a report'), self::minutes($defaults['response_minutes'])],

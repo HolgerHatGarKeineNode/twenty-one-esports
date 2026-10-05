@@ -84,8 +84,8 @@ final class StreamBotCopy
             ['🛡️ Welcome to the league, :name [:tag]!', '👉 Meet the clan: :url'],
         ],
         'ladder_top' => [
-            ['🪜 Blitz ladder right now', ':podium', '👉 Full ladder: :url'],
-            ['🪜 Where the blitz ladder stands', ':podium', '👉 See it all: :url'],
+            ['🪜 :ladder ladder right now', ':podium', '👉 Full ladder: :url'],
+            ['🪜 Where the :ladder ladder stands', ':podium', '👉 See it all: :url'],
         ],
         'season_live' => [
             ['⛏️ The season is live: rated wins mine blocks on the league chain', '👉 Watch the chain grow: :url'],
@@ -102,11 +102,11 @@ final class StreamBotCopy
 
         // What you can do.
         'play_blitz' => [
-            ['⚡ Fancy a quick game? Blitz chess 5+3 in the lobby', '👉 :url'],
-            ['♟️ One blitz game before bed? 5+3, right in the browser', '👉 :url'],
+            ['⚡ Fancy a game? Rapid 10+5 or blitz 5+3 in the lobby', '👉 :url'],
+            ['♟️ One rapid game before bed? 10+5, right in the browser', '👉 :url'],
         ],
         'daily_chess' => [
-            ['📬 No time for blitz? Daily chess: one move a day, whenever it suits you', '👉 Challenge someone: :url'],
+            ['📬 No time for a live game? Daily chess: one move a day, whenever it suits you', '👉 Challenge someone: :url'],
             ['📬 Short on time? Daily chess: one move a day, no rush', '👉 Start a game: :url'],
         ],
         'clan_challenge' => [

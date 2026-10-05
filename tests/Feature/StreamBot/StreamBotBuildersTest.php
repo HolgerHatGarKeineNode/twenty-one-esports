@@ -273,7 +273,7 @@ test('the feature tips link the exact page', function (string $builder, string $
     ['clan_challenge', '/challenges/create'],
     ['invite_friend', '/chess'],
     ['clans', '/clans'],
-    ['badges', '/ladder/chess/blitz'],
+    ['badges', '/ladder/chess/rapid'],
     ['all_games', '/play'],
     ['login', '/login'],
     ['zap', ''],

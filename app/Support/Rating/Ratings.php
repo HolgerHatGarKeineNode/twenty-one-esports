@@ -10,6 +10,8 @@ use App\Models\Rating;
 use App\Models\RatingChange;
 use App\Models\SeriesMatch;
 use App\Models\User;
+use App\Support\Badges\BadgeCopy;
+use App\Support\Chess\ChessModes;
 use App\Support\Series\Ladders;
 
 /**
@@ -122,14 +124,35 @@ final class Ratings
 
     /**
      * The rating chips of a player (PlayerHeader.dc.html, the player card):
-     * chess blitz always, plus each Rocket League lineup the player has a
-     * seat in, every one from its headline ladder (casual before Block 0).
+     * chess in the default mode (rapid) always and every other chess mode the
+     * player has a result in (plan "Schach Rapid und Clan", P3: one chip per
+     * rated chess mode, from the registry), plus each Rocket League lineup
+     * the player has a seat in, every one from its headline ladder (casual
+     * before Block 0).
      *
-     * @return list<array{label: string, rating: array<string, mixed>}>
+     * @return list<array{label: string, rating: array<string, mixed>, mode?: string}>
      */
     public static function chipsFor(User $user): array
     {
-        $chips = [['label' => __('Chess blitz'), 'rating' => self::headline($user->id, 'chess', 'blitz')]];
+        $chips = [];
+        // Every chess mode's headline row in one query (the player page's query count stays flat per mode).
+        $ladders = [];
+
+        foreach (ChessModes::all() as $mode) {
+            $pool = self::pool(Ladders::isOpen('chess', $mode));
+            $ladders[$mode] = [$pool, self::season($pool, 'chess', $mode)];
+        }
+
+        $rows = Rating::query()->where(['game' => 'chess', 'subject' => 'user:'.$user->id])->whereIn('mode', array_keys($ladders))->get();
+
+        foreach ($ladders as $mode => [$pool, $season]) {
+            $row = $season === null ? null : $rows->first(fn (Rating $rating): bool => $rating->mode === $mode && $rating->pool === $pool && $rating->season === $season);
+            $rating = self::summary($row, $pool);
+
+            if ($mode === ChessModes::DEFAULT || $rating['results'] > 0) {
+                $chips[] = ['label' => BadgeCopy::ladder('chess', $mode), 'rating' => $rating, 'mode' => $mode];
+            }
+        }
 
         $seats = LineupSeat::query()->where('user_id', $user->id)->whereNotNull('accepted_at')
             ->whereHas('lineup', fn ($query) => $query->whereIn('game', array_keys(app(GameRegistry::class)->series())))

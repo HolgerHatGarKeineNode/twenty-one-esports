@@ -94,7 +94,7 @@ new #[Title('Your page')] #[Layout('layouts::app')] class extends Component {
             <p class="m-0 flex min-h-11 flex-wrap items-center gap-x-4 gap-y-2 text-[13px] text-ink-2" data-test="me-needs-empty">
                 {{ __('Nothing waits for you.') }}
                 @unless ($fresh)
-                    <a href="{{ route('chess.lobby') }}" class="inline-flex min-h-11 items-center gap-1.5 font-bold text-ink hover:text-ink"><x-icon name="bolt" :size="16" class="text-btc" />{{ __('Play blitz') }}</a>
+                    <a href="{{ route('chess.lobby') }}" class="inline-flex min-h-11 items-center gap-1.5 font-bold text-ink hover:text-ink"><x-icon name="bolt" :size="16" class="text-btc" />{{ __('Play live') }}</a>
                 @endunless
             </p>
         @else

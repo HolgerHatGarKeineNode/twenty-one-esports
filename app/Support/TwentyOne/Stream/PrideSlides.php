@@ -27,6 +27,7 @@ use App\Models\TournamentParticipant;
 use App\Models\TournamentSignup;
 use App\Models\User;
 use App\Support\Cards\ShareMoments;
+use App\Support\Chess\ChessModes;
 use App\Support\Payouts\TournamentPlacements;
 use App\Support\Prizes\PrizePool;
 use App\Support\Rating\RankTiers;
@@ -302,7 +303,7 @@ class PrideSlides
             'loser' => PublicName::clean($loser->displayName()),
             'loserRef' => StreamImages::avatarRef($loser),
             // "Blitz chess", "Daily chess"; "Checkers blitz 5+3" for a board game: the pride note writes it in lower case.
-            'mode' => $chess ? ($result->isCorrespondence() ? 'Daily chess' : 'Blitz chess')
+            'mode' => $chess ? ($result->isCorrespondence() ? 'Daily chess' : ucfirst(ChessModes::word($result->mode)).' chess')
                 : $this->games->name($result->game).' '.mb_strtolower($this->games->mode($result->game, $result->mode)->name ?? $result->mode),
             'delta' => $this->delta($source, $result->id, 'user:'.$winner->id, Rating::CASUAL),
             'ratedDelta' => $this->delta($source, $result->id, 'user:'.$winner->id, Rating::RATED),

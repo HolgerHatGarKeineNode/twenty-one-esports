@@ -4,6 +4,7 @@ namespace App\Support\StreamBot;
 
 use App\Games\GameRegistry;
 use App\Models\BotPost;
+use App\Support\Chess\ChessModes;
 use App\Support\Nostr\NostrKeys;
 use App\Support\Nostr\SignedEvent;
 use App\Support\SeasonChain\LeagueKey;
@@ -296,7 +297,7 @@ class PrideNotes
      * gain (PrideSlides orders each climber's ladders by gain). A ladder of
      * a game no longer registered (a board game switched off) is no link;
      * data cached before the ladders were read (just after a deploy) falls
-     * back to the chess blitz ladder.
+     * back to the default chess ladder (rapid).
      *
      * @param  list<array<string, mixed>>  $climbers
      */
@@ -312,7 +313,7 @@ class PrideNotes
             }
         }
 
-        return route('ladder.show', ['game' => 'chess', 'mode' => 'blitz']);
+        return route('ladder.show', ['game' => 'chess', 'mode' => ChessModes::DEFAULT]);
     }
 
     /**

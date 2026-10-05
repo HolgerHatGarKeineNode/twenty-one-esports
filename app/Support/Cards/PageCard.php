@@ -15,6 +15,7 @@ use App\Models\SeriesMatch;
 use App\Models\Tournament;
 use App\Models\User;
 use App\Support\Badges\BadgeCopy;
+use App\Support\Chess\ChessModes;
 use App\Support\GameNames;
 use App\Support\Nostr\NostrKeys;
 use App\Support\Rating\RankTiers;
@@ -476,15 +477,16 @@ final class PageCard
         return $reason === null ? [$count, $count] : [$reason.' '.trans_choice('after :count move|after :count moves', $moves), $reason];
     }
 
-    /** "Rated blitz 5+3"; the game's number is in the preview's title, its tournament on a line of its own. */
+    /** "Rated Rapid 10+5", "Casual Blitz 5+3"; the game's number is in the preview's title, its tournament on a line of its own. */
     private function gameKind(): string
     {
         $f = $this->facts;
+        $mode = ChessModes::label((string) ($f['mode'] ?? 'blitz'));
         $kind = match (true) {
             $f['rated'] && $f['daily'] => __('Rated daily chess'),
-            $f['rated'] => __('Rated blitz 5+3'),
+            $f['rated'] => __('Rated :mode', ['mode' => $mode]),
             $f['daily'] => __('Casual daily chess'),
-            default => __('Casual blitz 5+3'),
+            default => __('Casual :mode', ['mode' => $mode]),
         };
 
         return $kind;
@@ -1473,7 +1475,7 @@ final class PageCard
             'clans' => __('Every clan of the league with its players, lineups and Clan Rating.'),
             'matches' => __('Every series and chess game by match number: live, scheduled and done.'),
             'games' => __('Every chess game running now. Watch without logging in.'),
-            'chess' => __('Blitz 5+3 live or daily chess against Bitcoiners.'),
+            'chess' => __(':modes live or daily chess against Bitcoiners.', ['modes' => implode(' / ', array_map(ChessModes::label(...), ChessModes::live()))]),
             'tournaments' => __('Open sign-ups, running brackets and results, drawn from a Bitcoin block.'),
             // With every game switched on the names outgrow the three lines of drawPage(): then the line names none.
             'play' => ($this->c->lineCount($named, 'mono', 30, 740) ?? 4) <= 3 ? $named : __('Every game of the league, every mode in one place.'),

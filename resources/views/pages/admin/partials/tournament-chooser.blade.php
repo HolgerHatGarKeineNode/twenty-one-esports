@@ -166,7 +166,7 @@
         ? __('A daily chess game is planned at :days days, 1 move a day. :break day between rounds.', ['days' => $profile->gameLength + 0, 'break' => $profile->break + 0])
         : ($series
             ? __('One :game game: about :minutes min, plus :setup min to set up each series. A Bo:best series is planned at :slot min (all games played). :break min between rounds.', ['game' => GameNames::game($profile->game), 'minutes' => $profile->gameLength + 0, 'setup' => $profile->setup + 0, 'best' => $options->bestOf, 'slot' => $profile->slot($options->bestOf) + 0, 'break' => $profile->break + 0])
-            : __('One Blitz 5+3 game: up to :minutes min, including pairing. :break min between rounds.', ['minutes' => $profile->gameLength + 0, 'break' => $profile->break + 0])));
+            : __('One :mode game: up to :minutes min, including pairing. :break min between rounds.', ['mode' => GameNames::mode($profile->game, $profile->mode), 'minutes' => $profile->gameLength + 0, 'break' => $profile->break + 0])));
 
     $tieBreakLabels = [
         'median-buchholz' => __('Buchholz, median'),

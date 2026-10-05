@@ -10,6 +10,7 @@ use App\Models\SeriesQueueEntry;
 use App\Models\User;
 use App\Support\Chess\Broadcasts;
 use App\Support\Chess\ChessInvites;
+use App\Support\Chess\ChessModes;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
 
@@ -193,7 +194,8 @@ final class CasualQueue
         $user->forceFill(['looking_to_play' => $wanted])->save();
         Broadcasts::send(new LookingToPlayChanged($user->id, $wanted));
 
-        if ($previous === 'chess/blitz') {
+        // The chess lobby's live switch (`chess/blitz`, which takes rapid invites too: ChessInvites::looksFor()).
+        if ($previous !== null && ChessInvites::looksFor($previous, ChessModes::DEFAULT)) {
             $this->chessInvites->declineAll($user);
         } elseif ($previous !== null) {
             $this->invites->declineAll($user);

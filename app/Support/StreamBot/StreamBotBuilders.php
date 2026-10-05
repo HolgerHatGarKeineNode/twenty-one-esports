@@ -16,6 +16,7 @@ use App\Models\ScoreRun;
 use App\Models\SeriesMatch;
 use App\Models\Tournament;
 use App\Models\User;
+use App\Support\Chess\ChessModes;
 use App\Support\LeagueTime;
 use App\Support\Nostr\NostrKeys;
 use App\Support\PreSeason;
@@ -156,7 +157,7 @@ final class StreamBotBuilders
                 'clan_challenge' => $this->clanChallenge(),
                 'invite_friend' => $this->feature('invite_friend', route('chess.lobby')),
                 'clans' => $this->clans(),
-                'badges' => $this->feature('badges', route('ladder.show', ['chess', 'blitz'])),
+                'badges' => $this->feature('badges', route('ladder.show', ['chess', ChessModes::DEFAULT])),
                 'all_games' => $this->allGames(),
                 'login' => $this->feature('login', route('login')),
                 'zap' => $this->zap(),
@@ -443,18 +444,29 @@ final class StreamBotBuilders
     }
 
     /**
-     * The top three of the casual blitz ladder, as the ladder page orders it.
+     * The top three of a casual live chess ladder, as the ladder page orders
+     * it: the first live mode with results, rapid first (plan "Schach Rapid
+     * und Clan", P3), so a young rapid ladder does not silence the message.
      *
      * @return list<StreamBotMessage>
      */
     private function ladderTop(CarbonImmutable $now): array
     {
-        $rows = Rating::query()
-            ->where(['pool' => Rating::CASUAL, 'season' => Ratings::season(Rating::CASUAL, 'chess', 'blitz'), 'game' => 'chess', 'mode' => 'blitz'])
-            ->where('results', '>', 0)
-            ->with('user')
-            ->orderByDesc('rating')->orderByDesc('results')->orderBy('id')
-            ->limit(3)->get();
+        $mode = ChessModes::DEFAULT;
+        $rows = collect();
+
+        foreach (ChessModes::live() as $mode) {
+            $rows = Rating::query()
+                ->where(['pool' => Rating::CASUAL, 'season' => Ratings::season(Rating::CASUAL, 'chess', $mode), 'game' => 'chess', 'mode' => $mode])
+                ->where('results', '>', 0)
+                ->with('user')
+                ->orderByDesc('rating')->orderByDesc('results')->orderBy('id')
+                ->limit(3)->get();
+
+            if ($rows->isNotEmpty()) {
+                break;
+            }
+        }
 
         $podium = [];
         $tags = [];
@@ -472,8 +484,9 @@ final class StreamBotBuilders
         }
 
         return [$this->message('ladder_top', 'ladder-top:'.$now->format('Y-m-d').':'.implode(',', $rows->pluck('user_id')->all()), [
+            'ladder' => ucfirst($mode),
             'podium' => implode(' · ', $podium),
-            'url' => route('ladder.show', ['chess', 'blitz']),
+            'url' => route('ladder.show', ['chess', $mode]),
         ], tags: $tags)];
     }
 

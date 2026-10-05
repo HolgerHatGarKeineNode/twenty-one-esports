@@ -25,7 +25,7 @@
         @elseif (! $found && ! $missedNumber)
             <x-empty-state class="rounded-lg bg-card px-5 py-8 lg:px-10" :heading="__('Nothing found for “:term”', ['term' => $term])" :text="$hint" data-test="search-empty">
                 <x-button :href="route('clans.index')" variant="secondary">{{ __('Browse the clans') }}</x-button>
-                <x-button :href="route('ladder.show', ['chess', 'blitz'])" variant="secondary">{{ __('See the ladder') }}</x-button>
+                <x-button :href="route('ladder.show', ['chess', \App\Support\Chess\ChessModes::DEFAULT])" variant="secondary">{{ __('See the ladder') }}</x-button>
             </x-empty-state>
         @else
             <div class="grid grid-cols-1 items-start gap-4 lg:grid-cols-2 lg:gap-6">

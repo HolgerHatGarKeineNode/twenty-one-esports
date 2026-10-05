@@ -279,7 +279,7 @@ test('a chess game is a SportsEvent between two players', function () {
     $html = $this->get($url)->getContent();
     $event = jsonLdGraph($html)[1];
 
-    expect($event)->toMatchArray(['@type' => 'SportsEvent', 'url' => $url, 'sport' => 'Chess', 'name' => 'Game #12: '.$game->white->displayName().' vs '.$game->black->displayName()])
+    expect($event)->toMatchArray(['@type' => 'SportsEvent', 'url' => $url, 'sport' => 'Chess', 'name' => 'Game #12: '.$game->white->displayName().' vs '.$game->black->displayName().' · Blitz 5+3'])
         ->and($event['competitor'])->toBe([
             ['@type' => 'Person', 'name' => $game->white->displayName(), 'url' => route('players.show', $game->white->npub)],
             ['@type' => 'Person', 'name' => $game->black->displayName(), 'url' => route('players.show', $game->black->npub)],
