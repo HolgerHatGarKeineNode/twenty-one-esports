@@ -277,8 +277,9 @@ test('the Season page survives a Livewire roundtrip between seasons too', functi
 test('the supply table of an ended season without blocks does not promise a first block', function () {
     $curve = ['from' => now(), 'to' => now()->addWeeks(24), 'now' => now()->addWeeks(24), 'supply' => 2100000, 'halvings' => [], 'forecast' => null, 'days' => []];
 
-    $ended = view('components.supply-chart', ['curve' => $curve, 'zone' => 'UTC', 'ended' => true])->render();
-    $live = view('components.supply-chart', ['curve' => $curve, 'zone' => 'UTC'])->render();
+    // Rendered as the tag the page uses: Blaze compiles components/ into functions, a plain view() of it prints nothing.
+    $ended = (string) $this->blade('<x-supply-chart :curve="$curve" zone="UTC" :ended="true" />', ['curve' => $curve]);
+    $live = (string) $this->blade('<x-supply-chart :curve="$curve" zone="UTC" />', ['curve' => $curve]);
 
     expect($ended)->toContain('No block was mined this season.')->not->toContain('mines block 1')
         ->and($live)->toContain('mines block 1');
