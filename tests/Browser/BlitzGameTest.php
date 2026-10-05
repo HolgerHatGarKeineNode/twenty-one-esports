@@ -276,6 +276,9 @@ test('a player who searches and is invited lands in the inviter\'s game at once'
     $pageB->locator('[data-test=find-opponent-button]')->click();
     BrowserWait::until($pageB, '() => document.querySelector("[data-test=searching]") !== null', 10_000);
 
+    // The online list invites in the mode Anna's quick-play panel has open (rapid unless she opens Blitz):
+    // Bert searches blitz, so she opens the Blitz tile first and the invite starts his game at once.
+    ChessLobby::openBlitz($pageA);
     $pageA->evaluate('() => '.rowOf($bert).'.querySelector("[data-test=invite]").click()');
 
     BrowserWait::until($pageA, '() => location.pathname.startsWith("/games/")', 10_000);
