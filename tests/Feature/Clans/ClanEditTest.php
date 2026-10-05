@@ -121,7 +121,7 @@ test('the owner edits name, description and logo: a new signed clan event with t
         ->set('logo', UploadedFile::fake()->image('logo.png', 900, 600))
         ->assertHasNoErrors();
 
-    signEdit($page, $signer)->assertHasNoErrors()->assertSet('editingClan', false);
+    signEdit($page, $signer)->assertHasNoErrors()->assertDispatched('clan-edited');
 
     $clan->refresh();
     $event = latestClanEvent();
@@ -196,6 +196,8 @@ test('only the owner can edit: a captain, a member and an outsider are refused',
     Livewire::actingAs($member)->test('pages::clans.manage', ['clan' => $clan])
         ->assertSee('Only the founder of Laser Eyes can edit it')
         ->assertDontSee('data-test="open-edit"', false)
+        ->assertDontSee('data-test="edit-card"', false)
+        ->assertSet('editName', '')
         ->call('openEdit')
         ->assertForbidden();
 
@@ -335,10 +337,38 @@ test('a logo that cannot be written after the edit is reported and shown as an e
         ->call('prepareEdit')
         ->assertReturned(null)
         ->assertHasNoErrors()
-        ->assertSet('editingClan', false);
+        ->assertDispatched('clan-edited');
 
     expect(Storage::disk('public')->exists(ClanLogos::DIRECTORY.'/'.basename($clan->picture)))->toBeTrue()
         ->and(NostrEvent::query()->count())->toBe($events);
+});
+
+test('the edit card is in the page from the start with the stored clan, opens in the browser and Cancel goes back to the stored clan (performance plan P7)', function () {
+    ['clan' => $clan, 'owner' => $owner] = editableClan();
+
+    $page = Livewire::actingAs($owner)->test('pages::clans.manage', ['clan' => $clan])
+        ->assertSet('editName', 'Laser Eyes')
+        ->assertSeeHtml('x-on:click="editOpen = true" data-test="open-edit"')
+        ->assertSeeHtml('x-show="editOpen" x-cloak data-test="edit-card"')
+        ->assertSeeHtml('FRAGMENT:type=island|name=edit-clan');
+
+    $page->set('editName', 'Something else')->set('meetupQuery', 'zz')->call('cancelEdit')
+        ->assertSet('editName', 'Laser Eyes')->assertSet('meetupQuery', '')->assertHasNoErrors();
+});
+
+test('the roster tab switches in the browser and goes along with the next request: the render keeps it (performance plan P7)', function () {
+    ['clan' => $clan, 'owner' => $owner] = editableClan();
+
+    $page = Livewire::actingAs($owner)->test('pages::clans.manage', ['clan' => $clan])
+        ->assertSeeHtml('x-on:click="$wire.$set(\'tab\', \'former\', false)"');
+    expect($page->html())->toMatch('/data-test="tab-active">/')
+        ->and($page->html())->toMatch('/style="display: none;" data-test="tab-former"/');
+
+    $page->set('tab', 'former')->call('$refresh')->assertOk();
+    expect($page->html())->toMatch('/style="display: none;" data-test="tab-active"/')
+        ->and($page->html())->toMatch('/data-test="tab-former">/');
+
+    $page->set('tab', 'nonsense')->assertSet('tab', 'active');
 });
 
 test('the manage page survives a Livewire roundtrip with the edit card open and a logo picked', function () {
