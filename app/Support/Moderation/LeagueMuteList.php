@@ -210,13 +210,16 @@ final class LeagueMuteList
 
     /**
      * The date of a new version: one second after its base, never further
-     * back than BACKDATE_LIMIT; now when there is no list at all.
+     * back than BACKDATE_LIMIT. With no list seen at all it is dated at the
+     * limit too, so a client list the quorum missed (a stale relay list
+     * pointing at the wrong relays) still wins on every relay that holds it
+     * (security re-gate 2026-10-05, L1).
      */
     public static function signedAt(?SignedEvent $base): int
     {
-        $now = now()->getTimestamp();
+        $floor = now()->getTimestamp() - self::BACKDATE_LIMIT;
 
-        return $base === null ? $now : max($base->createdAt + 1, $now - self::BACKDATE_LIMIT);
+        return $base === null ? $floor : max($base->createdAt + 1, $floor);
     }
 
     /**

@@ -329,8 +329,10 @@ test('no list anywhere: the site\'s keys with empty content, and an unchanged li
     app(SiteModeration::class)->mute(muteListAdmin(), $target, 'spam spam');
 
     $event = app(LeagueMuteList::class)->publish();
+    // Dated a year back, not now: a client list the quorum missed (stale relay list) still wins (re-gate 2026-10-05, L1).
     expect(muteListTags($event))->toBe([['p', $target]])
-        ->and($event->payload()['content'])->toBe('');
+        ->and($event->payload()['content'])->toBe('')
+        ->and($event->signed_at)->toBe(now()->getTimestamp() - LeagueMuteList::BACKDATE_LIMIT);
 
     relaysHold($this->relays, $event);
     expect(app(LeagueMuteList::class)->publish())->toBeNull()
