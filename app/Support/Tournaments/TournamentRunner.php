@@ -250,6 +250,13 @@ final class TournamentRunner
 
     private function isComplete(Tournament $tournament): bool
     {
+        // A leaderboard ends when ScoreLeaderboards::finalize() wrote its board's result, never for want of an open match:
+        // a league week opens before anyone joined and its board match comes with the first player (2026-10-05: the
+        // minute tick's sync() ended the new Blockfill and TMNF weeks within a minute, so no run reached a board).
+        if ($tournament->format === TournamentFormat::Leaderboard) {
+            return TournamentMatch::query()->where('tournament_id', $tournament->id)->where('bracket', 'board')->where('status', 'done')->exists();
+        }
+
         $open = TournamentMatch::query()->where('tournament_id', $tournament->id)->whereNotIn('status', ['done', 'skipped'])->exists();
 
         if ($open) {

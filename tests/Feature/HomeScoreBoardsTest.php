@@ -1,6 +1,7 @@
 <?php
 
 use App\Enums\StackerRunStatus;
+use App\Enums\TournamentStatus;
 use App\Games\Blockfill;
 use App\Games\GameRegistry;
 use App\Jobs\VerifyStackerRun;
@@ -11,6 +12,7 @@ use App\Models\User;
 use App\Support\Engagement\Quests;
 use App\Support\Stacker\BlockfillWeeks;
 use App\Support\Stacker\Verifier;
+use App\Support\Tournaments\TournamentDraws;
 use Carbon\CarbonImmutable;
 use Carbon\CarbonInterface;
 use Illuminate\Support\Facades\Cache;
@@ -232,4 +234,16 @@ test('the score card costs the same queries for two players or twenty', function
 
     expect($manyCold)->toBe($fewCold)->and($manyWarm)->toBe($fewWarm)->and($fewWarm)->toBeLessThan($fewCold)
         ->and($playerThree)->toBe($playerOne);
+});
+
+test('the minute tick leaves an open Blockfill week running, and a run after it still reaches the board', function () {
+    // 2026-10-05: the week opened with nobody on it, the tournament tick's sync() read "no open match" as done and ended it 50 s later.
+    BlockfillOn::play();
+    $week = app(BlockfillWeeks::class)->open();
+
+    app(TournamentDraws::class)->advanceDue();
+    homeVerifiedRun(User::factory()->create(['name' => 'latecomer']), 1300);
+
+    expect($week->refresh()->status)->toBe(TournamentStatus::Running)
+        ->and($this->get(route('home'))->assertOk()->getContent())->toContain('latecomer');
 });
