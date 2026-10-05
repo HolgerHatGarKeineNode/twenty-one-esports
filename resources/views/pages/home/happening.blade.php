@@ -83,6 +83,17 @@
                 </a>
             @endforeach
 
+            {{-- Chess team matches being played now (plan "Schach Rapid und Clan", P6) --}}
+            @foreach ($teamMatches ?? [] as $teamMatch)
+                <a href="{{ route('matches.show', $teamMatch) }}" @navigate(route('matches.show', $teamMatch)) class="grid min-h-14 grid-cols-[minmax(0,1fr)_auto] items-center gap-3 rounded-card bg-card px-4 py-2 text-ink shadow-ring hover:text-ink" data-test="live-team-match">
+                    <span class="flex min-w-0 flex-col">
+                        <b class="truncate text-[13px]">{{ $teamMatch->sideName('challenger') }} {{ \App\Support\Series\SeriesPresenter::score($teamMatch)['text'] }} {{ $teamMatch->sideName('challenged') }}</b>
+                        <span class="flex items-center gap-1.5 text-xs text-btc-hi"><span class="size-1.5 animate-live rounded-full bg-btc" aria-hidden="true"></span>{{ __('Team match live') }} · {{ trans_choice(':count board|:count boards', (int) $teamMatch->boards) }}</span>
+                    </span>
+                    <span class="inline-flex items-center gap-1.5 text-xs font-bold"><x-icon name="eye" :size="14" />{{ __('Watch live') }}</span>
+                </a>
+            @endforeach
+
             {{-- The latest results, the winner's face first --}}
             <div class="flex flex-col gap-2 rounded-card bg-card p-4 lg:p-5" data-test="results">
                 <h3 class="m-0 text-[13px] font-bold">{{ __('Latest results') }}</h3>

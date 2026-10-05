@@ -203,7 +203,8 @@ function budgetLoad(string $uri): array
 const PAGE_BUDGETS = [
     'rules' => [5, 36],
     // +1 (plan "Schach Rapid und Clan", P1): every ladder opens only once published, read in one query per request.
-    'home' => [30, 72],
+    // +1 (P6): the chess team matches being played now (HomeHub::liveTeamMatches()), one query whatever the count.
+    'home' => [31, 73],
     'play' => [3, 40],
     'tournaments.show' => [30, 82],
     'matches.room' => [null, 55],

@@ -28,6 +28,7 @@ use App\Models\TournamentSignup;
 use App\Models\User;
 use App\Support\Cards\ShareMoments;
 use App\Support\Chess\ChessModes;
+use App\Support\Chess\ChessTeamMatches;
 use App\Support\Payouts\TournamentPlacements;
 use App\Support\Prizes\PrizePool;
 use App\Support\Rating\RankTiers;
@@ -233,14 +234,10 @@ class PrideSlides
     private function latestSeries(): ?array
     {
         $slugs = array_keys($this->games->series());
-
-        if ($slugs === []) {
-            return null;
-        }
-
         $since = now()->subDays(self::DAYS);
         // A forfeit (a no-show) is a result, but nothing to be proud of: no pride for it.
-        $decided = fn () => StreamStats::decidedSeries()->whereIn('winner', SeriesMatch::SIDES)->whereIn('game', $slugs)->whereNotNull('finished_at')
+        // A won chess team match counts too (plan "Schach Rapid und Clan", P6), though chess is no series game.
+        $decided = fn () => StreamStats::decidedSeries()->whereIn('winner', SeriesMatch::SIDES)->where(fn ($query) => $query->whereIn('game', $slugs)->orWhereNotNull('boards'))->whereNotNull('finished_at')
             ->where(fn ($query) => $query->whereNull('resolution')->orWhere('resolution', '!=', SeriesResolution::Forfeit))
             ->with(['challengerLineup.clan', 'challengedLineup.clan', 'latestReport'])->latest('finished_at')->latest('id');
         $match = $decided()->where('finished_at', '>=', $since)->first() ?? $decided()->first();
@@ -326,14 +323,24 @@ class PrideSlides
     {
         $side = (string) $match->winner;
         $other = SeriesMatch::otherSide($side);
-        $ids = static fn (string $want): array => array_values(array_map(fn (array $seat): int => (int) $seat['user_id'], array_filter($match->countedRoster(), fn (array $seat): bool => $seat['side'] === $want)));
+        $team = $match->isTeamMatch();
+        // A team match's players are the ones named for its boards.
+        $ids = static fn (string $want): array => $team
+            ? array_values(array_map(intval(...), $match->boardPlayers()->where('side', $want)->whereNotNull('user_id')->pluck('user_id')->all()))
+            : array_values(array_map(fn (array $seat): int => (int) $seat['user_id'], array_filter($match->countedRoster(), fn (array $seat): bool => $seat['side'] === $want)));
         $winners = User::query()->whereKey($ids($side) ?: $match->rosterSide($side))->get();
         $losers = User::query()->whereKey($ids($other) ?: $match->rosterSide($other))->get();
-        $solo = $match->gameMode()->teamSize === 1;
+        $solo = ! $team && $match->gameMode()->teamSize === 1;
         $winner = $solo ? $winners->first() : null;
         $loser = $solo ? $losers->first() : null;
         $clan = $solo ? null : $match->sideClan($side);
-        $score = SeriesMatch::seriesScore($match->result_games);
+        if ($team) {
+            $points = ChessTeamMatches::score(ChessTeamMatches::boardResults($match));
+            $scoreText = ChessTeamMatches::points($points[$side]).'-'.ChessTeamMatches::points($points[$other]);
+        } else {
+            $score = SeriesMatch::seriesScore($match->result_games);
+            $scoreText = $score[$side] + $score[$other] > 0 ? $score[$side].'-'.$score[$other] : null;
+        }
         $subject = $solo && $winner !== null ? 'user:'.$winner->id : ($match->lineup($side) === null ? null : 'lineup:'.$match->lineup($side)->id);
         $tournament = $this->wonTournament($match, $winners->first());
 
@@ -348,9 +355,9 @@ class PrideSlides
             'loser' => PublicName::clean($loser?->displayName() ?? $match->sideName($other)),
             'loserRef' => $loser === null ? null : StreamImages::avatarRef($loser),
             // The pride note (StreamBot\PrideNotes) words the win with `mode`; the slide prints the game's short title.
-            'mode' => $this->games->name($match->game).' '.$match->mode,
-            'shownMode' => GameTitle::of($match->game).' '.$match->mode,
-            'score' => $score[$side] + $score[$other] > 0 ? $score[$side].'-'.$score[$other] : null,
+            'mode' => $team ? 'chess team match' : $this->games->name($match->game).' '.$match->mode,
+            'shownMode' => $team ? 'Team match '.GameTitle::of($match->game).' '.$match->mode : GameTitle::of($match->game).' '.$match->mode,
+            'score' => $scoreText,
             'delta' => $subject === null ? null : $this->delta(RatingChange::SERIES, $match->id, $subject, Rating::CASUAL),
             'ratedDelta' => $subject === null ? null : $this->delta(RatingChange::SERIES, $match->id, $subject, Rating::RATED),
             'block' => $this->minedBlock(SeasonAttestation::SERIES, $match->id),

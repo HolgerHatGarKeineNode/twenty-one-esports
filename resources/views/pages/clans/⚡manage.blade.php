@@ -1165,7 +1165,7 @@ new #[Layout('layouts::app', ['section' => 'clans'])] class extends Component
                 [__('Players'), trans_choice(':count active|:count active', $members->count()).', '.trans_choice(':count invite open|:count invites open', $pending->count()), 'text-ink'],
                 [__('Captains'), $captains, 'text-ink'],
                 [__('Founded'), $clan->created_at?->translatedFormat('M j'), 'text-ink'],
-                [__('Clan Rating, chess'), ! $clanStats->seasonLive() ? __('starts at Block 0') : ($rating['rating'] ? __(':n, average of the top 3 players', ['n' => $rating['rating']]) : __('needs 3 blitz Elos')), 'text-ink'],
+                [__('Clan Rating, chess'), ! $clanStats->seasonLive() ? __('starts at Block 0') : ($rating['rating'] ? __(':n, average of the top 3 players', ['n' => $rating['rating']]) : __('needs 3 rapid Elos')), 'text-ink'],
                 [__('Hashrate'), ! $clanStats->seasonLive() ? __('starts at Block 0') : __(':season this season, :week in the last 7 days', ['season' => $hash['season'], 'week' => $hash['week']]), 'text-btc'],
             ] as [$key, $value, $colour])
                 <div class="grid min-h-11 grid-cols-[120px_minmax(0,1fr)] items-center gap-3 border-b border-hairline py-1 text-sm lg:grid-cols-[160px_minmax(0,1fr)]"><span class="text-ink-2">{{ $key }}</span><span class="{{ $colour }}">{{ $value }}</span></div>

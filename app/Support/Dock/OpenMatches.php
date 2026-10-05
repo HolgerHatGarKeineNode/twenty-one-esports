@@ -22,8 +22,10 @@ use App\Models\Lineup;
 use App\Models\LineupSeat;
 use App\Models\SeriesInvite;
 use App\Models\SeriesMatch;
+use App\Models\SeriesMatchBoard;
 use App\Models\User;
 use App\Support\Chess\ChessModes;
+use App\Support\Chess\ChessTeamMatches;
 use App\Support\GameNames;
 use App\Support\RequestMemo;
 use App\Support\Series\CasualInvites;
@@ -228,6 +230,7 @@ final class OpenMatches
             number: $match->label(),
             href: route('matches.room', $match),
             title: match (true) {
+                $match->isTeamMatch() => self::text('Team match'),
                 $match->isCasualPairing() => self::text('Casual 1v1'),
                 $match->ladder_address !== null => self::text('Ladder series'),
                 default => self::text('Series'),
@@ -779,6 +782,10 @@ final class OpenMatches
             return $this->casualItem($match, $side, $user, $nowMs);
         }
 
+        if ($match->isTeamMatch() && $match->status === SeriesStatus::Accepted) {
+            return $this->teamItem($match, $side, $user, $nowMs);
+        }
+
         $captainSide = $match->captainSideOf($user);
         $other = SeriesMatch::otherSide($side);
         $score = SeriesMatch::seriesScore($match->currentGames());
@@ -810,6 +817,55 @@ final class OpenMatches
                 (int) ($match->updated_at ?? now())->getTimestampMs()),
             default => null,
         };
+    }
+
+    /**
+     * An accepted chess team match (plan "Schach Rapid und Clan", P6). Before
+     * the lineup lock it is on the captains only, counting down to the lock
+     * they name their players by. From the lock it is a tab of the named
+     * players and the captains: the start with the player's board, then the
+     * live team score. A lineup member who was not named has no tab.
+     */
+    private function teamItem(SeriesMatch $match, string $side, User $user, int $nowMs): ?DockItem
+    {
+        $other = SeriesMatch::otherSide($side);
+        $captain = $match->captainSideOf($user) !== null;
+        $lock = ChessTeamMatches::lockAt($match);
+
+        if ($match->lineup_locked_at === null) {
+            if (! $captain || $lock === null) {
+                return null;
+            }
+
+            $lockMs = (int) $lock->getTimestampMs();
+            $named = ChessTeamMatches::hasNamed($match, $side);
+
+            return $this->seriesDockItem($match, $other, $named ? 'wait' : 'need', 'scheduled', ! $named, $named ? self::text('Lineup set') : self::text('Name your players'), self::format(max(0, $lockMs - $nowMs), 'hm'),
+                self::text('Team match :number, lineup by :time', ['number' => $match->label(), 'time' => SeriesPresenter::time($lock, $user, 'H:i')]), self::text('View'),
+                $lockMs, ['endsAt' => $lockMs, 'format' => 'hm', 'total' => max(1, $lockMs - $nowMs), 'redUnder' => 0]);
+        }
+
+        $board = SeriesMatchBoard::query()->where(['series_match_id' => $match->id, 'user_id' => $user->id])->value('board');
+
+        if ($board === null && ! $captain) {
+            return null;
+        }
+
+        $startMs = (int) ($match->start_at ?? now())->getTimestampMs();
+        $boardText = $board === null ? '' : ', '.self::text('board :n', ['n' => (int) $board]);
+
+        if ($startMs > $nowMs) {
+            return $this->seriesDockItem($match, $other, 'need', 'starts', $board !== null, self::text('Starts'), self::format($startMs - $nowMs, 'hm'),
+                self::text('Team match :number starts at :time', ['number' => $match->label(), 'time' => SeriesPresenter::time($match->start_at ?? now(), $user, 'H:i')]).$boardText, self::text('View'),
+                $startMs, ['endsAt' => $startMs, 'format' => 'hm', 'total' => max(1, $startMs - (int) $match->lineup_locked_at->getTimestampMs()), 'redUnder' => 0]);
+        }
+
+        $score = SeriesPresenter::teamScore($match);
+        $scoreText = ChessTeamMatches::points($score[$side]).' : '.ChessTeamMatches::points($score[$other]);
+
+        return $this->seriesDockItem($match, $other, 'live', 'live', $board !== null, self::text('Live'), $scoreText,
+            self::text('Team match :number, live :score', ['number' => $match->label(), 'score' => $scoreText]).$boardText, self::text('View'),
+            $startMs);
     }
 
     /**

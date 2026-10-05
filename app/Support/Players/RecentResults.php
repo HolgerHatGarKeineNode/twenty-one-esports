@@ -3,6 +3,7 @@
 namespace App\Support\Players;
 
 use App\Enums\ChessGameStatus;
+use App\Enums\SeriesResolution;
 use App\Enums\SeriesStatus;
 use App\Models\ChessGame;
 use App\Models\LineupSeat;
@@ -10,7 +11,9 @@ use App\Models\Rating;
 use App\Models\RatingChange;
 use App\Models\SeriesMatch;
 use App\Models\User;
+use App\Support\Chess\ChessTeamMatches;
 use App\Support\GameNames;
+use App\Support\Series\SeriesPresenter;
 use Carbon\CarbonInterface;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Collection;
@@ -80,7 +83,10 @@ final class RecentResults
                     'loss' => '0–1',
                     default => '½–½',
                 },
-                'game' => GameNames::full('chess', $game->mode),
+                // A board of a clan team match says so (plan "Schach Rapid und Clan", P6).
+                'game' => $game->series_match_id !== null
+                    ? __('Board :board · team match :number', ['board' => $game->board, 'number' => '#'.$game->matchNumber()]).' · '.GameNames::full('chess', $game->mode)
+                    : GameNames::full('chess', $game->mode),
                 'at' => $game->updated_at,
                 'delta' => $deltas['chess:'.$game->id] ?? null,
             ];
@@ -94,7 +100,10 @@ final class RecentResults
             }
 
             $other = SeriesMatch::otherSide($side);
-            $score = SeriesMatch::seriesScore($match->result_games);
+            $team = $match->isTeamMatch();
+            $score = $team
+                ? array_map(fn (int $half): string => ChessTeamMatches::points($half), SeriesPresenter::teamScore($match))
+                : SeriesMatch::seriesScore($match->result_games);
 
             $results[] = [
                 'key' => 'series-'.$match->id,
@@ -103,9 +112,9 @@ final class RecentResults
                 'face' => $faces[$match->rosterSide($other)[0] ?? 0] ?? null,
                 'clan' => $match->sideClan($other),
                 'tag' => $match->sideTag($other),
-                'outcome' => $match->winner === $side ? 'win' : 'loss',
+                'outcome' => $match->winner === $side ? 'win' : ($match->winner === 'none' ? 'draw' : 'loss'),
                 'score' => $score[$side].' : '.$score[$other],
-                'game' => GameNames::full($match->game, $match->mode),
+                'game' => $team ? __('Team match').' · '.GameNames::full($match->game, $match->mode) : GameNames::full($match->game, $match->mode),
                 'at' => $match->finished_at ?? $match->updated_at,
                 'delta' => $deltas['series:'.$match->id] ?? null,
             ];
@@ -146,7 +155,10 @@ final class RecentResults
         $me = $this->user->id;
 
         return SeriesMatch::query()
-            ->whereIn('status', [SeriesStatus::Confirmed, SeriesStatus::Resolved])->whereIn('winner', SeriesMatch::SIDES)
+            ->whereIn('status', [SeriesStatus::Confirmed, SeriesStatus::Resolved])
+            // A team draw (no winner, decided by the boards) counts as a result; a void or a forfeit without a winner never does.
+            ->where(fn (Builder $query) => $query->whereIn('winner', SeriesMatch::SIDES)
+                ->orWhere(fn (Builder $draw) => $draw->whereNotNull('boards')->where('winner', 'none')->where('resolution', SeriesResolution::Admin)))
             ->where(function (Builder $query) use ($me): void {
                 // series_match_players mirrors `sides`: an index lookup, not a JSON scan of every series (P2, S5b).
                 $query->whereIn('id', DB::table('series_match_players')->where('user_id', $me)->select('series_match_id'));

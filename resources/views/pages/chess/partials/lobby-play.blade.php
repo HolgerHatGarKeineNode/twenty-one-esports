@@ -40,6 +40,10 @@
     $zone = PreSeason::timezoneFor($user);
     $busy = $entry !== null || $outgoing !== null;
     $tag = 'inline-block rounded-xs px-1.5 text-[11px] leading-4 font-bold';
+    // Team match (plan "Schach Rapid und Clan", P6): a clan member goes to their clan page (its team matches and the
+    // challenge), everyone else to the clans to pick one.
+    $teamClan = $user?->clanMember?->clan;
+    $teamHref = $teamClan !== null ? route('clans.show', $teamClan) : route('clans.index');
 @endphp
 
 <section aria-labelledby="play-h" class="@container flex flex-col gap-2 lg:gap-3" data-test="play"
@@ -50,7 +54,7 @@
     <h2 id="play-h" class="sr-only">{{ __('Ways to play') }}</h2>
 
     {{-- Columns by the section's own width (2026-10-03): from xl the game chat's side column takes 392 px, and six tiles below 72rem cut their words. --}}
-    {{-- Rapid first (user, 2026-10-05). Below a 48rem section 2 columns of six tiles, three rows as before rapid (the Team match teaser, not playable yet, waits for the wider grid: a fourth row pushed "Find opponent" and the invite under the tab bar at 375 x 667); from 48rem 4 columns, Rapid two wide, seven tiles in two rows. --}}
+    {{-- Rapid first (user, 2026-10-05). Below a 48rem section 2 columns of six tiles, three rows as before rapid (the Team match tile waits for the wider grid: a fourth row pushed "Find opponent" and the invite under the tab bar at 375 x 667; below 48rem it is a slim link at the end of the section); from 48rem 4 columns, Rapid two wide, seven tiles in two rows. --}}
     <ul role="list" class="m-0 grid list-none grid-cols-2 gap-2 p-0 @3xl:grid-cols-4 lg:gap-3" data-test="play-grid">
         @foreach ($liveModes as $liveMode)
             <li @class(['@3xl:col-span-2' => $loop->first])>
@@ -123,8 +127,8 @@
             </x-chess.lobby-tile>
         </li>
         <li class="@max-3xl:hidden">
-            <x-chess.lobby-tile :label="__('Team match')" icon="clans" variant="muted" data-test="play-team">
-                <x-slot:meta><span class="{{ $tag }} bg-raised text-ink-2" data-test="play-team-soon">{{ __('Soon') }}</span></x-slot:meta>
+            <x-chess.lobby-tile :label="__('Team match')" icon="clans" :href="$teamHref" data-test="play-team">
+                <x-slot:meta>{{ __('Rapid · 2 or 3 boards') }}</x-slot:meta>
                 <x-slot:detail>{{ __('Clan against clan') }}</x-slot:detail>
             </x-chess.lobby-tile>
         </li>
@@ -271,4 +275,11 @@
     <div id="lobby-invite" x-show="stage === 'invite'" x-cloak x-transition:enter="transition duration-200 ease-out motion-reduce:transition-none" x-transition:enter-start="opacity-0 -translate-y-1">
         <livewire:invite-link place="lobby" />
     </div>
+
+    {{-- Below 48rem the Team match entry is one slim row after everything else, so "Find opponent" stays above the tab bar. --}}
+    <a href="{{ $teamHref }}" class="flex min-h-11 items-center gap-2 rounded-md border border-line px-3 text-[13px] text-ink hover:text-ink @3xl:hidden" data-test="play-team-link">
+        <x-icon name="clans" :size="16" class="shrink-0 text-ink-2" />
+        <b class="shrink-0">{{ __('Team match') }}</b>
+        <span class="min-w-0 truncate text-ink-2">{{ __('Clan against clan') }} · {{ __('Rapid · 2 or 3 boards') }}</span>
+    </a>
 </section>

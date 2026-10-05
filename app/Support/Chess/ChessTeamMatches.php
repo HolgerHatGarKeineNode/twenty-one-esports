@@ -15,6 +15,7 @@ use App\Models\SeriesMatch;
 use App\Models\SeriesMatchBoard;
 use App\Models\SeriesQueueEntry;
 use App\Models\User;
+use App\Support\Notifications\TeamMatchNotifications;
 use App\Support\Rating\EloRating;
 use App\Support\SeasonChain\GatePin;
 use App\Support\SeasonChain\SeasonChains;
@@ -295,6 +296,23 @@ final class ChessTeamMatches
      */
     public function lock(SeriesMatch $match): ?string
     {
+        $outcome = $this->lockOnce($match);
+
+        // Told once, after the decision is stored (plan "Schach Rapid und Clan", P6).
+        match ($outcome) {
+            'locked' => app(TeamMatchNotifications::class)->locked($match->refresh()),
+            'forfeit', 'void' => app(TeamMatchNotifications::class)->lockMissed($match->refresh(), $outcome),
+            default => null,
+        };
+
+        return $outcome;
+    }
+
+    /**
+     * @return 'locked'|'forfeit'|'void'|null
+     */
+    private function lockOnce(SeriesMatch $match): ?string
+    {
         $outcome = DB::transaction(function () use ($match): ?array {
             $locked = SeriesMatch::query()->lockForUpdate()->find($match->id);
             $lockAt = $locked === null ? null : self::lockAt($locked);
@@ -432,7 +450,12 @@ final class ChessTeamMatches
         foreach ($due as $match) {
             for ($board = 1; $board <= (int) $match->boards; $board++) {
                 try {
-                    $started += $this->startBoard($match, $board) === null ? 0 : 1;
+                    $game = $this->startBoard($match, $board);
+
+                    if ($game !== null) {
+                        $started++;
+                        app(TeamMatchNotifications::class)->boardStarted($game);
+                    }
                 } catch (UniqueConstraintViolationException) {
                     // Another tick created this board first: nothing to do.
                 } catch (\Throwable $e) {
@@ -624,6 +647,20 @@ final class ChessTeamMatches
      * @return 'won'|'draw'|'forfeit'|'void'|null
      */
     public function settle(SeriesMatch $match): ?string
+    {
+        $outcome = $this->settleOnce($match);
+
+        if ($outcome !== null) {
+            app(TeamMatchNotifications::class)->result($match->refresh(), $outcome);
+        }
+
+        return $outcome;
+    }
+
+    /**
+     * @return 'won'|'draw'|'forfeit'|'void'|null
+     */
+    private function settleOnce(SeriesMatch $match): ?string
     {
         $outcome = DB::transaction(function () use ($match): ?array {
             $locked = SeriesMatch::query()->lockForUpdate()->find($match->id);

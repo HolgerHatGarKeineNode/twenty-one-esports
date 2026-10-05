@@ -61,7 +61,7 @@
 
 <div @class(['flex flex-col gap-5 px-4 pb-8 lg:px-12 lg:pb-10', 'max-lg:pb-24' => $chat ?? null]) data-test="chess-game-done">
     <div class="flex flex-wrap items-center gap-x-4 gap-y-2">
-        <h1 class="m-0 font-display text-[22px] font-bold lg:text-[28px]">{{ $daily ? __('Daily chess') : __('Game') }}</h1>
+        <h1 class="m-0 font-display text-[22px] font-bold lg:text-[28px]">{{ $daily ? __('Daily chess') : ($game->series_match_id !== null ? __('Board :n', ['n' => $game->board]) : __('Game')) }}</h1>
         <span class="text-sm text-btc">{{ $game->number() }}</span>
         <button type="button" aria-label="{{ __('Copy game link') }}" x-data x-on:click="navigator.clipboard?.writeText(window.location.href)"
                 class="flex size-8 cursor-pointer items-center justify-center rounded-md bg-well text-ink-2"><x-icon name="copy" :size="14" /></button>
@@ -101,6 +101,8 @@
 
     {{-- A tournament game: what comes next in the tournament, never a rematch or a new search (user, 2026-10-03). --}}
     @php($tournamentPanel = \App\Support\Tournaments\TournamentGameEnd::of($game, auth()->user()))
+    {{-- A team match board (plan "Schach Rapid und Clan", P6): no rematch or next search, the team match decides what comes next. --}}
+    @php($teamBoard = $game->series_match_id !== null)
     @php($rival = ! $aborted && ($color ?? null) !== null ? $players[$color === 'w' ? 'b' : 'w']['user'] : null)
 
     @if ($tournamentPanel)
@@ -109,11 +111,11 @@
 
     {{-- Sharing the game on Nostr, right under the result, with the rematch beside it: optional, by button (rev. 9.4) --}}
     @if ($postable)
-        @include('pages.games.partials.post', ['game' => $game, 'color' => $color, 'winner' => $winner, 'rival' => $rival, 'rematch' => $tournamentPanel === null])
+        @include('pages.games.partials.post', ['game' => $game, 'color' => $color, 'winner' => $winner, 'rival' => $rival, 'rematch' => $tournamentPanel === null && ! $teamBoard])
     @endif
 
     {{-- Play again (players only): the same opponent as a daily challenge (in the share card when there is one), the next pairing in the game's mode, or a friend by link --}}
-    @if ($rival && $tournamentPanel === null)
+    @if ($rival && $tournamentPanel === null && ! $teamBoard)
         <section aria-labelledby="again-h" class="flex flex-col gap-3" data-test="play-again">
             <div class="flex flex-col gap-3 rounded-lg bg-card px-4 py-4 sm:flex-row sm:items-center sm:gap-6 lg:px-6">
                 <span class="flex min-w-0 grow flex-col gap-1">

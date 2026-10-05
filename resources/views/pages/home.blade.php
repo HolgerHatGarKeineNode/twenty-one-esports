@@ -98,7 +98,7 @@
             @include('pages.home.games', ['games' => $games, 'live' => $live, 'stage' => false])
         @endif
 
-        @include('pages.home.happening', ['live' => $live, 'running' => $hub->running(), 'results' => $hub->results(), 'newcomers' => $hub->newcomers()])
+        @include('pages.home.happening', ['live' => $live, 'running' => $hub->running(), 'teamMatches' => $hub->liveTeamMatches(), 'results' => $hub->results(), 'newcomers' => $hub->newcomers()])
 
         @include('pages.home.ladders', ['ladders' => $hub->ladders(), 'scores' => $hub->scores()])
 

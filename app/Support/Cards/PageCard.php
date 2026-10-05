@@ -807,7 +807,7 @@ final class PageCard
         $size = $this->c->fitSize($label, 'display', [52, 44, 36], $block - 24);
         $this->c->text($label, 'display', $size, $center - $this->c->width($label, 'display', $size) / 2, 72 + $block / 2 + $size * 0.36, is_array($score) ? self::DARK : Canvas::INK);
 
-        $line = GameNames::full((string) $f['game'], (string) $f['mode']).', '.__('best of :n', ['n' => $f['best_of']]).', '.($f['rated'] ? __('rated') : __('casual'));
+        $line = GameNames::full((string) $f['game'], (string) $f['mode']).', '.(($f['boards'] ?? null) !== null ? __('team match, :count boards', ['count' => $f['boards']]) : __('best of :n', ['n' => $f['best_of']])).', '.($f['rated'] ? __('rated') : (($f['boards'] ?? null) !== null ? __('friendly') : __('casual')));
         $this->textCenter($line, 'mono', self::MIN, $center, 436, Canvas::INK_2, 1000);
         $this->textCenter($this->seriesStatus(), 'mono-bold', self::MIN, $center, 480, $f['status'] === 'accepted' ? Canvas::ORANGE : Canvas::INK, 1000);
     }
@@ -817,7 +817,11 @@ final class PageCard
         $f = $this->facts;
 
         if ($f['winner'] !== null) {
-            return __(':name won the series', ['name' => $f[$f['winner']]['name']]);
+            return ($f['boards'] ?? null) !== null ? __(':name won the team match', ['name' => $f[$f['winner']]['name']]) : __(':name won the series', ['name' => $f[$f['winner']]['name']]);
+        }
+
+        if ($f['draw'] ?? false) {
+            return __('Team draw · no bonus');
         }
 
         return match ($f['status']) {

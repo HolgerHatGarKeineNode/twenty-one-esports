@@ -64,6 +64,11 @@ final class StreamBotCopy
             ['🏁 :game: :home vs :away, best of :best_of', '👉 Follow the match: :url'],
             ['🏁 :home vs :away in :game, best of :best_of', '👀 Catch it live: :url'],
         ],
+        // A chess team match of two clans (plan "Schach Rapid und Clan", P6), posted by the live_series builder.
+        'live_team_match' => [
+            ['♟️ Clan team match: :home vs :away, :boards boards of rapid at once', '👉 Watch every board: :url'],
+            ['♟️ :home vs :away: a chess team match over :boards boards is on', '👀 Follow the boards live: :url'],
+        ],
 
         // Results and pride.
         // The GG the moment a tournament is decided (ChampionChat), outside the rotation: one winner, then a shared place 1.

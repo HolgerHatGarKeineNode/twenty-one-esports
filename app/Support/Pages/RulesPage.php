@@ -12,6 +12,7 @@ use App\Models\Tournament;
 use App\Support\Board\CheckersRules;
 use App\Support\Board\NineMensMorrisRules;
 use App\Support\Chess\ChessModes;
+use App\Support\Chess\ChessTeamMatches;
 use App\Support\FairPlay\FairPlay;
 use App\Support\GameNames;
 use App\Support\PreSeason;
@@ -59,6 +60,7 @@ final class RulesPage
             self::games(),
             self::casual(),
             self::chess(),
+            self::teamMatches(),
             self::series(),
             ...self::ageOfEmpires2(),
             ...self::blockfill(),
@@ -290,6 +292,44 @@ final class RulesPage
                 __('You can send :total daily challenges a day, :each to the same player.', ['total' => (int) $c['challenges_per_day'], 'each' => (int) $c['challenges_per_recipient_per_day']]),
             ],
             'links' => [[__('Chess'), route('chess.lobby')]],
+        ];
+    }
+
+    /**
+     * Clan team matches in chess (plan "Schach Rapid und Clan", P6; NIP rev.
+     * 9.22): rapid only, 2 or 3 boards, the lineup lock, the board order, the
+     * first-move window with its floor on a late start, board forfeit and
+     * void, the team draw, friendlies and the pair limit; every number from
+     * config (App\Support\Chess\ChessTeamMatches).
+     *
+     * @return Section
+     */
+    private static function teamMatches(): array
+    {
+        $lock = ChessTeamMatches::lockMinutes();
+
+        return [
+            'id' => 'clan-team-match',
+            'title' => __('Clan team match'),
+            'lead' => __('Two clans play chess on 2 or 3 boards at the same time, all in :mode. The board points decide the team match.', ['mode' => ChessModes::label('rapid')]),
+            'facts' => [
+                [__('Boards'), '2 / 3'],
+                [__('Lineup lock'), __(':time before the start', ['time' => self::minutes($lock)])],
+                [__('First move per board'), self::seconds(ChessTeamMatches::firstMoveSeconds())],
+                [__('Rated team matches per clan pair'), __('1 per :time', ['time' => self::minutes((int) config('esports.team_matches.rated_pair_days', 7) * 1440)])],
+            ],
+            'items' => [
+                __('Team matches are played in rapid only. The challenging captain picks 2 or 3 boards.'),
+                __('Each captain names one player per board until :time before the start. A clan without a full lineup at the lock loses the whole team match by forfeit; if neither clan named one, it is void.', ['time' => self::minutes($lock)]),
+                __('At the lock the league orders each side by rapid Elo: the strongest player plays board 1. The challenging clan has White on boards 1 and 3.'),
+                __('Every board starts on its own at the agreed time. The side to move has :seconds for the first move, or loses that board by forfeit. A board the league starts late still gives at least :floor from its actual start.', ['seconds' => self::seconds(ChessTeamMatches::firstMoveSeconds()), 'floor' => self::seconds(ChessTeamMatches::lateStartFloorSeconds())]),
+                __('A board forfeit counts one point for the side that showed up. A board where neither side moved is void and counts for nobody.'),
+                __('A win is 1 point, a draw ½. The clan with more board points wins the team match and its +5 hashrate bonus. Equal points are a team draw: each clan keeps the hashrate of its boards, without a bonus.'),
+                __('In a rated team match every board is a rated solo game on the rapid ladder. A friendly is unrated and earns no hashrate.'),
+                __('Two clans play one rated team match per :time. Friendlies are not limited.', ['time' => self::minutes((int) config('esports.team_matches.rated_pair_days', 7) * 1440)]),
+                __('From the lock until the end the named players cannot start any other game.'),
+            ],
+            'links' => [[__('Clans'), route('clans.index')], [__('Matches'), route('matches.index', ['game' => 'team'])]],
         ];
     }
 

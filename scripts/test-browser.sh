@@ -244,7 +244,7 @@ SHARD_FILES=(
     "tests/Browser/LiveCountTest.php tests/Browser/StackerTest.php tests/Browser/BoardMiningAdminTest.php tests/Browser/StrongestListTest.php tests/Browser/MempoolStripTest.php tests/Browser/InviteContextTest.php tests/Browser/TournamentGameBannerTest.php tests/Browser/ChampionMomentTest.php"
     "tests/Browser/NavigationCrawlStaffTest.php tests/Browser/BodylessResponseFramingTest.php tests/Browser/BoardFollowsTest.php tests/Browser/TournamentControlTest.php tests/Browser/TournamentLiveTest.php tests/Browser/BlockfillWeekTest.php tests/Browser/ClanLogoTest.php tests/Browser/TmnfWeekTest.php"
     "tests/Browser/NavigationCrawlTest.php tests/Browser/CasualCupRegionsTest.php tests/Browser/HomeHubTest.php tests/Browser/NotificationsTest.php tests/Browser/SeriesResultTest.php tests/Browser/ShellStickyHeaderTest.php tests/Browser/TournamentGameEndTest.php tests/Browser/TournamentNowTest.php tests/Browser/GameEndBoardVisibleTest.php tests/Browser/TournamentDeskTest.php"
-    "tests/Browser/MatchRoomFlowTest.php tests/Browser/PlayerPrideTest.php tests/Browser/RenderScopeTest.php tests/Browser/UiTogglesTrafficTest.php tests/Browser/TeamLineupTest.php tests/Browser/TeamMatchLiveTest.php"
+    "tests/Browser/MatchRoomFlowTest.php tests/Browser/PlayerPrideTest.php tests/Browser/RenderScopeTest.php tests/Browser/UiTogglesTrafficTest.php tests/Browser/TeamLineupTest.php tests/Browser/TeamMatchLiveTest.php tests/Browser/TeamMatchSurfacesTest.php"
 )
 
 # Guard against a new tests/Browser/*Test.php file that nobody assigned to a

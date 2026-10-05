@@ -84,7 +84,7 @@ test('the player-only controls are the player\'s; a guest gets the way to log in
     expect(tileOf($guest->getContent(), 'play-challenge'))->toContain('href="'.route('login').'"');
 });
 
-test('tiles are actions: rapid, blitz and the invite open their panel in place, daily and tournaments lead into their flow, team match is not a control', function () {
+test('tiles are actions: rapid, blitz and the invite open their panel in place, daily, tournaments and team match lead into their flow', function () {
     $html = $this->actingAs(User::factory()->create())->get(route('chess.lobby'))->assertOk()->getContent();
 
     // Rapid 10+5 first and the one orange tile (user, 2026-10-05), blitz second; both open the quick-play panel in their mode.
@@ -94,7 +94,9 @@ test('tiles are actions: rapid, blitz and the invite open their panel in place, 
         ->and(tileOf($html, 'play-invite'))->toStartWith('<button')->toContain('aria-controls="lobby-invite"')
         ->and(tileOf($html, 'play-daily'))->toStartWith('<a')->toContain('href="'.route('chess.challenge').'"')
         ->and(tileOf($html, 'play-tournaments'))->toStartWith('<a')->toContain('href="'.route('tournaments.index').'"')
-        ->and(tileOf($html, 'play-team'))->toStartWith('<div')->toContain('aria-disabled="true"')->toContain(__('Soon'))
+        // Team match (plan "Schach Rapid und Clan", P6): a real entry; without a clan it leads to the clans, below 48rem as a slim link.
+        ->and(tileOf($html, 'play-team'))->toStartWith('<a')->toContain('href="'.route('clans.index').'"')->not->toContain(__('Soon'))
+        ->and($html)->toContain('href="'.route('clans.index').'" class="flex min-h-11')
         // The panels exist once, closed until their tile opens them.
         ->and(substr_count($html, 'id="lobby-quick"'))->toBe(1)
         ->and(substr_count($html, 'id="lobby-invite"'))->toBe(1)

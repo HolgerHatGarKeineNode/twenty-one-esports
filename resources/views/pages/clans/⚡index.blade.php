@@ -348,7 +348,7 @@ new #[Layout('layouts::app', ['section' => 'clans'])] class extends Component {
             <div class="flex flex-col gap-3 rounded-card bg-card px-4 py-4 lg:px-5">
                 <span class="flex flex-col gap-0.5">
                     <h2 id="cr-h" class="m-0 text-[15px] font-bold">{{ __('Strongest clans') }}</h2>
-                    <span class="text-xs text-ink-3">{{ __('Clan Rating: the average of the 3 best solo blitz Elos') }}</span>
+                    <span class="text-xs text-ink-3">{{ __('Clan Rating: the average of the 3 best solo rapid Elos') }}</span>
                 </span>
                 <ol class="m-0 flex list-none flex-col gap-1 p-0">
                     @forelse ($this->byRating as $index => $row)
@@ -362,7 +362,7 @@ new #[Layout('layouts::app', ['section' => 'clans'])] class extends Component {
                             <span class="flex flex-col items-end gap-0.5"><b class="font-display text-[15px]">{{ $row['rating'] }}</b><span class="text-[11px] whitespace-nowrap text-ink-3">{{ __('avg top 3') }}</span></span>
                         </li>
                     @empty
-                        <li class="py-3 text-[13px] text-ink-2">{{ __('No clan has 3 blitz Elos yet.') }}</li>
+                        <li class="py-3 text-[13px] text-ink-2">{{ __('No clan has 3 rapid Elos yet.') }}</li>
                     @endforelse
                 </ol>
             </div>
@@ -454,7 +454,7 @@ new #[Layout('layouts::app', ['section' => 'clans'])] class extends Component {
                     <span class="transition-transform duration-150 group-open:rotate-90 motion-reduce:transition-none" aria-hidden="true">▸</span>{{ __('How it counts') }}
                 </summary>
                 <ul class="m-0 flex max-w-[72ch] list-disc flex-col gap-2 pb-2 pl-5 text-xs leading-[1.6] text-ink-2" data-test="hashrate-empty">
-                    <li>{{ __('Clan Rating: the average of the 3 best solo blitz Elos in the clan. Chess has no separate team Elo: every board of a team match is a rated solo game.') }}</li>
+                    <li>{{ __('Clan Rating: the average of the 3 best solo rapid Elos in the clan. Chess has no separate team Elo: every board of a team match is a rated solo game.') }}</li>
                     <li>{{ __('Hashrate: win 3, draw 2, loss 1 per rated game; a won team match or series adds +5 for the clan. Casual games don\'t count.') }}</li>
                     <li>{{ __('Meetup against meetup: a clan counts for the city of the portal meetup it is linked to.') }}</li>
                     <li><a href="{{ route('rules') }}">{{ __('All league rules') }}</a></li>

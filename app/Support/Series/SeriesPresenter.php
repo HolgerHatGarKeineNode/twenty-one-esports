@@ -8,11 +8,13 @@ use App\Games\GameRegistry;
 use App\Models\NostrEvent;
 use App\Models\SeriesMatch;
 use App\Models\User;
+use App\Support\Chess\ChessTeamMatches;
 use App\Support\GameNames;
 use App\Support\Matches\MatchBlocks;
 use App\Support\Nostr\NostrKeys;
 use App\Support\PreSeason;
 use App\Support\Rating\Ratings;
+use App\Support\RequestMemo;
 use Carbon\CarbonInterface;
 
 /**
@@ -154,6 +156,10 @@ final class SeriesPresenter
             return ['text' => '–', 'sub' => __('void')];
         }
 
+        if ($match->isTeamMatch()) {
+            return self::teamScoreCell($match);
+        }
+
         $games = $match->currentGames();
 
         if ($games === []) {
@@ -172,7 +178,49 @@ final class SeriesPresenter
 
     public static function format(SeriesMatch $match): string
     {
-        return $match->mode.' · BO'.$match->best_of;
+        return $match->mode.' · '.($match->isTeamMatch() ? trans_choice(':count board|:count boards', (int) $match->boards) : 'BO'.$match->best_of);
+    }
+
+    /**
+     * A chess team match's score in half points over its ended boards
+     * (ChessTeamMatches::boardResults()), worked out once per request: the
+     * strip, the table and the dock ask for the same match.
+     *
+     * @return array{challenger: int, challenged: int}
+     */
+    public static function teamScore(SeriesMatch $match): array
+    {
+        if ($match->lineup_locked_at === null) {
+            return ['challenger' => 0, 'challenged' => 0];
+        }
+
+        return RequestMemo::remember('team-score.'.$match->id, fn (): array => ChessTeamMatches::score(ChessTeamMatches::boardResults($match)));
+    }
+
+    /**
+     * "1½ : ½" for a team match: its board points once the lineups are
+     * locked, a dash before; a whole-match forfeit or void says so.
+     *
+     * @return array{text: string, sub: string}
+     */
+    private static function teamScoreCell(SeriesMatch $match): array
+    {
+        if ($match->resolution === SeriesResolution::Forfeit) {
+            return ['text' => '–', 'sub' => __('forfeit')];
+        }
+
+        if ($match->lineup_locked_at === null || ($match->start_at?->isFuture() ?? true)) {
+            return ['text' => '–', 'sub' => ''];
+        }
+
+        $score = self::teamScore($match);
+        $sub = match (true) {
+            $match->status->hasResult() && $match->winner === 'none' => __('team draw'),
+            $match->status->hasResult() => $match->rated ? '' : __('friendly'),
+            default => __('live'),
+        };
+
+        return ['text' => ChessTeamMatches::points($score['challenger']).' : '.ChessTeamMatches::points($score['challenged']), 'sub' => $sub];
     }
 
     /**
@@ -268,7 +316,8 @@ final class SeriesPresenter
     public static function block(SeriesMatch $match, bool $newest = false, ?User $viewer = null, ?array $chain = null): array
     {
         $score = self::score($match);
-        $wins = SeriesMatch::seriesScore($match->currentGames());
+        $team = $match->isTeamMatch();
+        $wins = $team ? self::teamScore($match) : SeriesMatch::seriesScore($match->currentGames());
         $state = self::blockState($match);
         $leader = $wins['challenger'] === $wins['challenged'] ? null : ($wins['challenger'] > $wins['challenged'] ? 'challenger' : 'challenged');
         // A finished series without a winner is void or a draw, never "playing" (#40 read "läuft" once it was annulled).
@@ -304,7 +353,7 @@ final class SeriesPresenter
             number: $match->label(),
             slug: $match->game,
             mode: $short.' '.$match->mode,
-            score: $state === 'next' ? 'BO'.$match->best_of : $score['text'],
+            score: $state === 'next' ? ($team ? trans_choice(':count board|:count boards', (int) $match->boards) : 'BO'.$match->best_of) : $score['text'],
             who: $who,
             when: $when,
             sides: [$side('challenger'), $side('challenged')],
@@ -314,7 +363,7 @@ final class SeriesPresenter
                 'status' => $state === 'fin' ? $who : self::chip($match)['label'], 'a' => $match->challenger_name, 'b' => $match->challenged_name,
             ]).($chain === null ? '' : ', '.$chain['spoken']),
             state: $state,
-            level: $state === 'fin' ? '100%' : ($state === 'next' ? '0%' : (int) round(min(1, $played / max(1, intdiv($match->best_of, 2) + 1)) * 100).'%'),
+            level: $state === 'fin' ? '100%' : ($state === 'next' ? '0%' : ($team ? '50%' : (int) round(min(1, $played / max(1, intdiv($match->best_of, 2) + 1)) * 100).'%')),
             casual: ! $match->rated,
             dot: $state === 'live' && $match->status === SeriesStatus::Accepted,
             newest: $newest,

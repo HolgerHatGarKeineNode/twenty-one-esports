@@ -5,6 +5,7 @@ namespace App\Support\Cards;
 use App\Enums\BoardGameStatus;
 use App\Enums\ChessGameStatus;
 use App\Enums\PayoutStatus;
+use App\Enums\SeriesResolution;
 use App\Enums\SeriesStatus;
 use App\Enums\TournamentFormat;
 use App\Enums\TournamentStatus;
@@ -23,6 +24,7 @@ use App\Models\Tournament;
 use App\Models\TournamentParticipant;
 use App\Models\TournamentPayout;
 use App\Models\User;
+use App\Support\Chess\ChessTeamMatches;
 use App\Support\Clans\ClanLogos;
 use App\Support\GameNames;
 use App\Support\Payouts\TournamentPlacements;
@@ -319,7 +321,14 @@ final class PageCardFacts
     public static function series(SeriesMatch $match): array
     {
         $decided = $match->status->hasResult() && in_array($match->winner, ['challenger', 'challenged'], true);
-        $score = $decided ? SeriesMatch::seriesScore($match->result_games) : null;
+        $team = $match->isTeamMatch();
+        // A chess team match (plan "Schach Rapid und Clan", P6): its board points, also for a team draw.
+        $teamDraw = $team && $match->status->hasResult() && $match->winner === 'none' && $match->resolution === SeriesResolution::Admin;
+        $score = match (true) {
+            $team && ($decided || $teamDraw) => array_map(fn (int $half): string => ChessTeamMatches::points($half), ChessTeamMatches::score(ChessTeamMatches::boardResults($match))),
+            $decided => SeriesMatch::seriesScore($match->result_games),
+            default => null,
+        };
         $side = function (string $side) use ($match): array {
             $clan = $match->sideClan($side);
             $logo = app(ClanLogos::class)->pathOf($clan?->picture);
@@ -338,10 +347,12 @@ final class PageCardFacts
             'rated' => (bool) $match->rated,
             'status' => $match->status->value,
             'best_of' => (int) ($match->best_of ?? 0),
+            'boards' => $team ? (int) $match->boards : null,
+            'draw' => $teamDraw,
             'challenger' => $side('challenger'),
             'challenged' => $side('challenged'),
             'winner' => $decided ? $match->winner : null,
-            'score' => $score === null ? null : [(int) $score['challenger'], (int) $score['challenged']],
+            'score' => $score === null ? null : ($team ? [(string) $score['challenger'], (string) $score['challenged']] : [(int) $score['challenger'], (int) $score['challenged']]),
             'at' => $match->scheduledAt()?->copy()->utc()->format('Y-m-d H:i'),
         ];
     }

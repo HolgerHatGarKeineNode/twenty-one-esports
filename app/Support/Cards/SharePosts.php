@@ -17,6 +17,7 @@ use App\Models\Tournament;
 use App\Models\User;
 use App\Support\Badges\BadgeCopy;
 use App\Support\Chess\ChessModes;
+use App\Support\Chess\ChessTeamMatches;
 use App\Support\Invites\InviteLinkRefused;
 use App\Support\Invites\InviteLinks;
 use App\Support\Nostr\NostrKeys;
@@ -412,17 +413,23 @@ final class SharePosts
         }
 
         $opponents = User::query()->whereKey($this->playersOf($match, $lost))->whereNotNull('pubkey')->orderBy('id')->limit(self::MAX_MENTIONS)->get();
-        $score = SeriesMatch::seriesScore($match->result_games);
+        $team = $match->isTeamMatch();
+        $score = $team
+            ? array_map(fn (int $half): string => ChessTeamMatches::points($half), ChessTeamMatches::score(ChessTeamMatches::boardResults($match)))
+            : SeriesMatch::seriesScore($match->result_games);
         $report = $match->latestReport;
-        $record = $match->rated && $report !== null && $report->status !== ReportStatus::Superseded ? $report->event : null;
+        // A team match has no result report: the league's boards decide it.
+        $record = ! $team && $match->rated && $report !== null && $report->status !== ReportStatus::Superseded ? $report->event : null;
 
         return new SharePost(
             type: 'series',
-            sentence: __('Won :score against :side in :ladder on TWENTY ONE Esports.', [
-                'score' => $score[$won].'–'.$score[$lost],
-                'side' => $match->sideName($lost),
-                'ladder' => BadgeCopy::ladder($match->game, $match->mode),
-            ]),
+            sentence: $team
+                ? __('Won the chess team match :score against :side on TWENTY ONE Esports.', ['score' => $score[$won].'–'.$score[$lost], 'side' => $match->sideName($lost)])
+                : __('Won :score against :side in :ladder on TWENTY ONE Esports.', [
+                    'score' => $score[$won].'–'.$score[$lost],
+                    'side' => $match->sideName($lost),
+                    'ladder' => BadgeCopy::ladder($match->game, $match->mode),
+                ]),
             cardUrl: PageCard::series($match)->url(),
             dimensions: [PageCard::WIDTH, PageCard::HEIGHT],
             storyPath: null,
@@ -442,6 +449,11 @@ final class SharePosts
      */
     public function playersOf(SeriesMatch $match, string $side): array
     {
+        // A chess team match: the players named for its boards (plan "Schach Rapid und Clan", P6), never the whole lineup.
+        if ($match->isTeamMatch()) {
+            return array_values(array_map(intval(...), $match->boardPlayers()->where('side', $side)->whereNotNull('user_id')->pluck('user_id')->all()));
+        }
+
         $played = array_map(intval(...), $match->rosters[$side] ?? []);
 
         if ($played !== []) {

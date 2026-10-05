@@ -12,10 +12,12 @@ use App\Models\RatingChange;
 use App\Models\SeriesMatch;
 use App\Models\User;
 use App\Support\Badges\BadgeCopy;
+use App\Support\Chess\ChessTeamMatches;
 use App\Support\Engagement\ClanHashrate;
 use App\Support\Rating\ClanRating;
 use App\Support\Rating\Ratings;
 use App\Support\Series\Ladders;
+use App\Support\Series\SeriesPresenter;
 use Illuminate\Support\Collection;
 
 /**
@@ -25,7 +27,8 @@ use Illuminate\Support\Collection;
  * (no Clan Rating, no Hashrate, no rank) and the pages say so.
  *
  * - Clan Rating (NIP "Terminology"): the average of the three best rated
- *   chess blitz ratings of the clan's members in the live season.
+ *   chess rapid ratings of the clan's members in the live season (user,
+ *   2026-10-05: team matches are rapid, so the clan rating follows rapid).
  * - Hashrate: {@see ClanHashrate}, for the season and the last 7 days.
  * - A lineup's Elo: its rated ladder once it is open, the casual one before
  *   (as the player chips do); rank among the rows of that ladder.
@@ -36,6 +39,9 @@ use Illuminate\Support\Collection;
  */
 final class ClanStats
 {
+    /** The chess ladder the Clan Rating and the top players read. */
+    public const RATING_MODE = 'rapid';
+
     private readonly ?string $season;
 
     /** @var array<int, array{rating: int|null, top: list<int>}>|null */
@@ -66,7 +72,7 @@ final class ClanStats
     }
 
     /**
-     * The members' rated blitz ratings of the live season, best first.
+     * The members' rated rapid ratings of the live season, best first.
      *
      * @return Collection<int, array{user: User, rating: int, tier: string|null}>
      */
@@ -78,7 +84,7 @@ final class ClanStats
 
         return Rating::query()
             ->with('user')
-            ->where(['pool' => Rating::RATED, 'season' => $this->season, 'game' => 'chess', 'mode' => 'blitz'])
+            ->where(['pool' => Rating::RATED, 'season' => $this->season, 'game' => 'chess', 'mode' => self::RATING_MODE])
             ->whereIn('user_id', ClanMember::query()->where('clan_id', $clan->id)->select('user_id'))
             ->orderByDesc('rating')->orderBy('id')
             ->limit($limit)
@@ -237,8 +243,18 @@ final class ClanStats
         $rows = $matches->take($limit)->map(function (SeriesMatch $match) use ($sideOf, $deltas): array {
             $side = $sideOf($match);
             $other = SeriesMatch::otherSide($side);
-            $score = $match->status->hasResult() ? SeriesMatch::seriesScore($match->result_games) : ($match->latestReport?->score() ?? ['challenger' => 0, 'challenged' => 0]);
-            $result = ! $match->status->hasResult() ? 'wait' : ($match->winner === $side ? 'win' : 'loss');
+            $team = $match->isTeamMatch();
+            $score = match (true) {
+                $team => array_map(fn (int $half): string => ChessTeamMatches::points($half), SeriesPresenter::teamScore($match)),
+                $match->status->hasResult() => SeriesMatch::seriesScore($match->result_games),
+                default => $match->latestReport?->score() ?? ['challenger' => 0, 'challenged' => 0],
+            };
+            $result = match (true) {
+                ! $match->status->hasResult() => 'wait',
+                $match->winner === $side => 'win',
+                $team && $match->winner === 'none' => 'draw',
+                default => 'loss',
+            };
             $delta = $deltas[$match->id] ?? null;
 
             return [
@@ -246,9 +262,9 @@ final class ClanStats
                 $match->sideTag($other),
                 $match->sideName($other),
                 $score[$side].' : '.$score[$other],
-                $match->mode.' · BO'.$match->best_of,
+                SeriesPresenter::format($match),
                 $result,
-                $delta === null ? (string) ($result === 'wait' ? __('pending') : __('no Elo')) : ($delta >= 0 ? '+'.$delta : '−'.abs((int) $delta)),
+                $delta === null ? (string) ($result === 'wait' ? __('pending') : ($team ? __('per board') : __('no Elo'))) : ($delta >= 0 ? '+'.$delta : '−'.abs((int) $delta)),
                 ($match->finished_at ?? $match->updated_at)?->diffForHumans() ?? '',
             ];
         })->all();
@@ -376,7 +392,7 @@ final class ClanStats
 
         $rows = Rating::query()
             ->join('clan_members', 'clan_members.user_id', '=', 'ratings.user_id')
-            ->where(['ratings.pool' => Rating::RATED, 'ratings.season' => $this->season, 'ratings.game' => 'chess', 'ratings.mode' => 'blitz'])
+            ->where(['ratings.pool' => Rating::RATED, 'ratings.season' => $this->season, 'ratings.game' => 'chess', 'ratings.mode' => self::RATING_MODE])
             ->orderByDesc('ratings.rating')
             ->get(['clan_members.clan_id', 'ratings.rating']);
 

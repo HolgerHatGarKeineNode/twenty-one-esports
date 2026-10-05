@@ -30,8 +30,8 @@ beforeEach(function () {
 
 /**
  * Laser Eyes [LSR] (the tag the old sample ledger knew) with three members
- * rated 1200, 1100 and 1000 in the live season's blitz ladder, and one rated
- * win of its owner that earns the clan 3 hashrate points.
+ * rated 1200, 1100 and 1000 in the live season's rapid ladder, and one rated
+ * blitz win of its owner (its blitz Elo never counts for the Clan Rating) that earns the clan 3 hashrate points.
  *
  * @return array{0: Clan, 1: User}
  */
@@ -50,7 +50,7 @@ function clanWithRealNumbers(): array
     }
 
     foreach ([1200, 1100, 1000] as $index => $value) {
-        Rating::query()->create(['pool' => Rating::RATED, 'season' => 'season-1', 'game' => 'chess', 'mode' => 'blitz', 'subject' => 'user:'.$members[$index]->id, 'user_id' => $members[$index]->id, 'rating' => $value, 'results' => 9]);
+        Rating::query()->create(['pool' => Rating::RATED, 'season' => 'season-1', 'game' => 'chess', 'mode' => 'rapid', 'subject' => 'user:'.$members[$index]->id, 'user_id' => $members[$index]->id, 'rating' => $value, 'results' => 9]);
     }
 
     // Other ladders never count for the Clan Rating: casual blitz, rated daily chess.
@@ -67,9 +67,10 @@ function clanWithRealNumbers(): array
 test('the clans page and the clan page show the same real Clan Rating, Hashrate and Block Height', function () {
     [$clan, $owner] = clanWithRealNumbers();
 
-    // After the win: 1200 + 16 (established k 32 against a provisional 1000), 1100, 1000.
+    // The blitz win moved the owner's rated blitz Elo only; the Clan Rating reads rapid: 1200, 1100, 1000.
     $owner->refresh();
-    $top = Rating::query()->where(['pool' => Rating::RATED, 'user_id' => $owner->id])->value('rating');
+    expect(Rating::query()->where(['pool' => Rating::RATED, 'user_id' => $owner->id, 'mode' => 'blitz'])->value('rating'))->toBeGreaterThan(1000);
+    $top = Rating::query()->where(['pool' => Rating::RATED, 'user_id' => $owner->id, 'mode' => 'rapid'])->value('rating');
     $clanRating = (int) round(($top + 1100 + 1000) / 3);
 
     $this->get(route('clans.index'))->assertOk()

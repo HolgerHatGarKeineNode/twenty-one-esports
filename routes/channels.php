@@ -3,6 +3,7 @@
 use App\Models\BoardGame;
 use App\Models\ChessGame;
 use App\Models\User;
+use App\Support\Chess\ChessModes;
 use App\Support\Nostr\PlayerProfile;
 use App\Support\Rating\Ratings;
 use Illuminate\Support\Facades\Broadcast;
@@ -46,7 +47,8 @@ Broadcast::channel('board.{boardGame}', function (User $user, BoardGame $boardGa
  * shares here is shown to every other logged-in player.
  */
 Broadcast::channel('online', function (User $user) {
-    $blitz = Ratings::headline($user->id, 'chess', 'blitz');
+    // The rapid Elo, the lobby's default mode and the clans' (plan "Schach Rapid und Clan", P6); the list labels it.
+    $rapid = Ratings::headline($user->id, 'chess', ChessModes::DEFAULT);
 
     return [
         'id' => $user->id,
@@ -57,8 +59,9 @@ Broadcast::channel('online', function (User $user) {
         'npub' => $user->npub,
         'pubkey' => $user->pubkey,
         'looking' => $user->looking_to_play,
-        // Blitz Elo as of joining: casual before Block 0, rated after (P7b).
-        'elo' => $blitz['rating'],
-        'provisional' => $blitz['provisional'],
+        // Rapid Elo as of joining: casual before Block 0, rated after (P7b).
+        'elo' => $rapid['rating'],
+        'eloMode' => ChessModes::DEFAULT,
+        'provisional' => $rapid['provisional'],
     ];
 });

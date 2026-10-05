@@ -18,7 +18,7 @@
     (`chess/blitz`, `<board game>/blitz`). `lookingTag`: the tag on a row of
     a player who looks for it. `canInvite`: false while the viewer is in a
     live game. `showElo`: the member's Elo, which the channel carries for
-    chess blitz only (routes/channels.php), so a board game lobby hides it.
+    chess rapid only, labelled (routes/channels.php), so a board game lobby hides it.
     `inviteMode`: an Alpine expression passed as invite(id, mode) (the chess
     lobby's `liveMode`: rapid or blitz); null = invite(id).
 --}}
@@ -67,7 +67,7 @@
                         </a>
                         <span class="-mt-1.5 flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1 pb-1.5 pl-9 empty:hidden" x-show="m.looking === '{{ $lookingKey }}'{{ $showElo ? ' || m.elo' : '' }}">
                             @if ($showElo)
-                                <span class="text-xs text-ink-2" x-show="m.elo" data-test="online-elo"><span x-text="m.elo"></span><span class="text-ink-3" x-show="m.provisional"> · {{ __('provisional') }}</span></span>
+                                <span class="text-xs text-ink-2" x-show="m.elo" data-test="online-elo"><span class="text-ink-3">{{ \App\Support\Chess\ChessModes::short(\App\Support\Chess\ChessModes::DEFAULT) }} </span><span x-text="m.elo"></span><span class="text-ink-3" x-show="m.provisional"> · {{ __('provisional') }}</span></span>
                             @endif
                             <span x-show="m.looking === '{{ $lookingKey }}'" class="max-w-full rounded-xs bg-win-tint px-1.5 py-0.5 text-[11px] font-bold wrap-break-word text-win shadow-ring-win" data-test="online-looking">{{ $lookingTag }}</span>
                         </span>

@@ -130,9 +130,12 @@ new #[Layout('layouts::app', ['section' => 'matches'])] class extends Component 
         ];
     }
 
+    /** The "Team" filter: chess team matches only (plan "Schach Rapid und Clan", P6). */
+    public const TEAM = 'team';
+
     private function listable(string $game): bool
     {
-        return $game === 'all' || in_array($game, $this->gameFilters(), true);
+        return $game === 'all' || $game === self::TEAM || in_array($game, $this->gameFilters(), true);
     }
 
     public function pickStatus(string $status): void
@@ -167,7 +170,8 @@ new #[Layout('layouts::app', ['section' => 'matches'])] class extends Component 
         $clan = $this->selectedClan;
 
         return MempoolStrip::onChain($query, $this->chain)
-            ->when($this->game !== 'all', fn (Builder $query) => $query->where('game', $this->game))
+            ->when($this->game === self::TEAM, fn (Builder $query) => $query->whereNotNull('boards'))
+            ->when($this->game !== 'all' && $this->game !== self::TEAM, fn (Builder $query) => $query->where('game', $this->game))
             ->when($clan !== null, fn (Builder $query) => $query->where(fn (Builder $query) => $query
                 ->whereIn('challenger_lineup_id', $clan->lineups()->select('id'))
                 ->orWhereIn('challenged_lineup_id', $clan->lineups()->select('id'))))
@@ -314,7 +318,7 @@ new #[Layout('layouts::app', ['section' => 'matches'])] class extends Component 
      */
     private function listsSeries(): bool
     {
-        return $this->game === 'all' || app(GameRegistry::class)->isSeries($this->game);
+        return $this->game === 'all' || $this->game === self::TEAM || app(GameRegistry::class)->isSeries($this->game);
     }
 
     /**
@@ -454,6 +458,7 @@ new #[Layout('layouts::app', ['section' => 'matches'])] class extends Component 
                         @foreach ($gameFilters as $key => $option)
                             <option value="{{ $key }}" @selected($game === $key)>{{ GameNames::game($key) }}</option>
                         @endforeach
+                        <option value="team" @selected($game === 'team')>{{ __('Chess team matches') }}</option>
                     </select>
                     <div role="group" aria-labelledby="f-game" class="flex min-w-0 max-w-full flex-wrap justify-end gap-1.5 max-sm:hidden">
                         <button type="button" wire:click="pickGame('all')" aria-pressed="{{ $game === 'all' ? 'true' : 'false' }}" data-test="game-all"
@@ -462,6 +467,9 @@ new #[Layout('layouts::app', ['section' => 'matches'])] class extends Component 
                             <button type="button" wire:click="pickGame('{{ $key }}')" aria-pressed="{{ $game === $key ? 'true' : 'false' }}" data-test="game-{{ $key }}"
                                     @class([$filterBtn, 'inline-flex items-center gap-2 rounded-md border border-line', 'bg-btc font-bold text-on-btc' => $game === $key, 'bg-ground text-ink-2 hover:text-ink' => $game !== $key])><x-games.filter-label :game="$key" :short="__($option->assets()->shortLabel)" /></button>
                         @endforeach
+                        {{-- Chess team matches of two clans, over 2 or 3 rapid boards. --}}
+                        <button type="button" wire:click="pickGame('team')" aria-pressed="{{ $game === 'team' ? 'true' : 'false' }}" data-test="game-team" aria-label="{{ __('Chess team matches') }}"
+                                @class([$filterBtn, 'rounded-md border border-line', 'bg-btc font-bold text-on-btc' => $game === 'team', 'bg-ground text-ink-2 hover:text-ink' => $game !== 'team'])>{{ __('Team') }}</button>
                     </div>
                 </div>
                 {{-- Season: the rated matches, whose wins mine the season chain; Casual: the ones that never mine. Narrows strip and table. --}}

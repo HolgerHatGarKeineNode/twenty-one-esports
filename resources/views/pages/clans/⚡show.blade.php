@@ -7,7 +7,11 @@ use App\Models\ClanMember;
 use App\Models\Lineup;
 use App\Models\LineupSeat;
 use App\Models\NostrEvent;
+use App\Models\SeriesMatch;
 use App\Models\User;
+use App\Enums\SeriesStatus;
+use App\Support\Series\SeriesPresenter;
+use Illuminate\Support\Collection;
 use App\Support\Clans\ClanStats;
 use App\Support\Nostr\NostrKeys;
 use App\Support\PageMeta;
@@ -168,6 +172,55 @@ new #[Layout('layouts::app', ['section' => 'clans'])] class extends Component {
         return route('challenges.create', array_filter(['lineup' => $mine?->id, 'to' => $target->id]));
     }
 
+    /** The clan's chess rapid lineup, the one that plays team matches (plan "Schach Rapid und Clan", P6). */
+    #[Computed]
+    public function rapidLineup(): ?Lineup
+    {
+        return $this->clan->lineups->first(fn (Lineup $lineup): bool => $lineup->game === 'chess' && $lineup->mode === 'rapid');
+    }
+
+    /**
+     * The clan's team matches without a result yet: challenged, scheduled or
+     * live, the next start first.
+     *
+     * @return Collection<int, SeriesMatch>
+     */
+    #[Computed]
+    public function openTeamMatches(): Collection
+    {
+        $ids = $this->clan->lineups->pluck('id')->all();
+
+        return $ids === [] ? collect() : SeriesMatch::query()
+            ->whereNotNull('boards')
+            ->whereIn('status', [SeriesStatus::Open, SeriesStatus::Accepted])
+            ->where(fn ($query) => $query->whereIn('challenger_lineup_id', $ids)->orWhereIn('challenged_lineup_id', $ids))
+            ->with(['challengerLineup.clan', 'challengedLineup.clan'])
+            ->orderByRaw('start_at is null')->orderBy('start_at')->orderBy('id')
+            ->limit(5)
+            ->get();
+    }
+
+    /**
+     * "Challenge to a team match" on another clan's page: the challenge form
+     * with their rapid lineup picked (and the viewer's, when they captain
+     * one); null for its own members and for a clan without a rapid lineup.
+     */
+    public function teamChallengeUrl(): ?string
+    {
+        $user = auth()->user();
+        $theirs = $this->rapidLineup;
+
+        if ($theirs === null || ($user instanceof User && $this->clan->memberOf($user) !== null)) {
+            return null;
+        }
+
+        $mine = $user instanceof User && $user->clanMember !== null
+            ? Lineup::query()->where(['clan_id' => $user->clanMember->clan_id, 'game' => 'chess', 'mode' => 'rapid'])->first()
+            : null;
+
+        return route('challenges.create', array_filter(['lineup' => $mine?->isActingCaptain($user) === true ? $mine->id : null, 'to' => $theirs->id]));
+    }
+
     public function canManage(): bool
     {
         $user = auth()->user();
@@ -318,14 +371,14 @@ new #[Layout('layouts::app', ['section' => 'clans'])] class extends Component {
                         <b class="text-right">{{ $row['rating'] }}</b>
                     </div>
                 @empty
-                    <p class="m-0 text-[13px] text-ink-2" data-test="rating-empty">{{ $live ? __('No player has a blitz Elo yet.') : __('Clan Ratings start at Block 0, with the first rated blitz games.') }}</p>
+                    <p class="m-0 text-[13px] text-ink-2" data-test="rating-empty">{{ $live ? __('No player has a rapid Elo yet.') : __('Clan Ratings start at Block 0, with the first rated rapid games.') }}</p>
                 @endforelse
             </div>
             <span class="text-xs text-ink-3">
                 @if ($rating['rating'])
                     ({{ implode(' + ', $rating['top']) }}) / 3 = {{ $rating['rating'] }}
                 @else
-                    {{ __('needs 3 blitz Elos') }}
+                    {{ __('needs 3 rapid Elos') }}
                 @endif
             </span>
         </section>
@@ -402,6 +455,51 @@ new #[Layout('layouts::app', ['section' => 'clans'])] class extends Component {
         @endif
     </section>
 
+    {{-- Chess team matches: the public rapid lineup and what is coming (plan "Schach Rapid und Clan", P6). --}}
+    @php($rapid = $this->rapidLineup)
+    @php($openTeam = $this->openTeamMatches)
+    @if ($rapid !== null || $openTeam->isNotEmpty())
+        <section aria-labelledby="tm-h" class="flex flex-col gap-3 rounded-lg bg-card px-4 py-4 lg:px-6 lg:py-5" data-test="clan-team-matches">
+            <div class="flex flex-wrap items-center justify-between gap-x-4 gap-y-2">
+                <div class="flex min-w-0 flex-wrap items-center gap-x-4 gap-y-1"><h2 id="tm-h" class="m-0 text-[15px] font-bold">{{ __('Chess team matches') }}</h2><span class="text-xs text-ink-3">{{ __('Rapid 10+5 over 2 or 3 boards') }}</span></div>
+                @if ($teamChallenge = $this->teamChallengeUrl())
+                    <a href="{{ $teamChallenge }}" class="inline-flex h-11 items-center rounded-md border border-line px-4 text-[13px] font-bold text-ink hover:text-ink" data-test="challenge-team-match">{{ __('Challenge to a team match') }}</a>
+                @endif
+            </div>
+            @if ($rapid !== null)
+                @php($rapidSeats = $rapid->seats->filter(fn (LineupSeat $seat): bool => $seat->accepted_at !== null && $seat->user !== null))
+                <div class="flex flex-col gap-1.5" data-test="rapid-lineup">
+                    <span class="text-xs font-bold text-ink-2">{{ __('Rapid lineup') }}</span>
+                    @if ($rapidSeats->isEmpty())
+                        <span class="text-[13px] text-ink-2">{{ __('No players confirmed yet.') }}</span>
+                    @else
+                        <ul class="m-0 flex list-none flex-wrap gap-2 p-0">
+                            @foreach ($rapidSeats as $seat)
+                                <li class="max-w-full"><a href="{{ route('players.show', $seat->user) }}" class="inline-flex h-11 max-w-full items-center gap-1.5 rounded-sm bg-well px-3 text-[13px] text-ink hover:text-ink"><span class="truncate">{{ $seat->user->name }}</span><span class="shrink-0 text-xs text-ink-3">{{ $seat->role->label() }}</span></a></li>
+                            @endforeach
+                        </ul>
+                    @endif
+                </div>
+            @endif
+            <div class="flex flex-col" data-test="upcoming-team-matches">
+                <span class="text-xs font-bold text-ink-2">{{ __('Next team matches') }}</span>
+                @forelse ($openTeam as $teamMatch)
+                    @php($theirSide = $this->clan->lineups->contains('id', $teamMatch->challenger_lineup_id) ? 'challenged' : 'challenger')
+                    @php($cell = SeriesPresenter::score($teamMatch))
+                    <a href="{{ route('matches.show', $teamMatch) }}" class="tr grid h-11 grid-cols-[48px_minmax(0,1fr)_auto] items-center gap-3 rounded-sm px-2 text-[13px] text-ink hover:text-ink lg:grid-cols-[96px_minmax(0,1fr)_120px_150px_160px] lg:gap-4" data-test="team-match-row">
+                        <span class="font-bold text-btc">{{ $teamMatch->label() }}</span>
+                        <span class="flex min-w-0 items-center gap-2 whitespace-nowrap"><x-clan-tag :tag="$teamMatch->sideTag($theirSide)" size="sm" /><span class="truncate">{{ $teamMatch->sideName($theirSide) }}</span></span>
+                        <span class="hidden text-ink-2 lg:block">{{ SeriesPresenter::format($teamMatch) }}</span>
+                        <span class="hidden text-ink-2 lg:block">{{ $teamMatch->rated ? __('Rated') : __('Friendly') }}@if ($cell['text'] !== '–') · {{ $cell['text'] }}@endif</span>
+                        <span class="text-right whitespace-nowrap text-ink-2">{{ SeriesPresenter::when($teamMatch, auth()->user()) }}</span>
+                    </a>
+                @empty
+                    <p class="m-0 py-3 text-[13px] text-ink-2">{{ __('No team match scheduled.') }}</p>
+                @endforelse
+            </div>
+        </section>
+    @endif
+
     {{-- Matches (P6) --}}
     <section aria-labelledby="mt-h" class="flex flex-col rounded-lg bg-card px-4 pt-2 pb-4 lg:px-6">
         <div class="flex h-[52px] items-center justify-between gap-3"><h2 id="mt-h" class="m-0 text-[15px] font-bold">{{ __('Matches') }}</h2><a href="{{ route('matches.index', ['clan' => $clan->slug]) }}" class="flex h-11 items-center truncate text-[13px]" data-test="clan-matches">{{ __('All :clan matches', ['clan' => $clan->name]) }}</a></div>
@@ -415,8 +513,8 @@ new #[Layout('layouts::app', ['section' => 'clans'])] class extends Component {
                     <span class="flex min-w-0 items-center gap-2 whitespace-nowrap"><x-clan-tag :tag="$oppTag" size="sm" /><span class="truncate">{{ $opponent }}</span></span>
                     <span class="font-bold whitespace-nowrap">{{ $score }}</span>
                     <span class="hidden text-ink-2 lg:block">{{ $format }}</span>
-                    <span @class(['flex items-center gap-1.5 font-bold', 'text-win' => $result === 'win', 'text-loss' => $result === 'loss', 'text-btc-hi' => $result === 'wait'])>
-                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" class="shrink-0"><path d="{{ ['win' => 'M5 12.5 10 17 19 7', 'loss' => 'M6 6l12 12M18 6 6 18', 'wait' => 'M12 7v5l3 2M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0'][$result] }}"></path></svg>
+                    <span @class(['flex items-center gap-1.5 font-bold', 'text-win' => $result === 'win', 'text-loss' => $result === 'loss', 'text-btc-hi' => $result === 'wait', 'text-ink-2' => $result === 'draw'])>
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" class="shrink-0"><path d="{{ ['win' => 'M5 12.5 10 17 19 7', 'loss' => 'M6 6l12 12M18 6 6 18', 'wait' => 'M12 7v5l3 2M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0', 'draw' => 'M5 12h14'][$result] }}"></path></svg>
                         <span class="truncate">{{ $result === 'wait' ? __('to confirm') : __($result) }}</span>
                     </span>
                     <span @class(['hidden text-right font-bold lg:block', 'text-win' => str_starts_with($elo, '+'), 'text-loss' => str_starts_with($elo, '−'), 'text-ink-3' => ! str_starts_with($elo, '+') && ! str_starts_with($elo, '−')])>{{ __($elo) }}</span>

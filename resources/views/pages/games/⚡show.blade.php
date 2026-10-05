@@ -566,8 +566,11 @@ new #[Layout('layouts::app', ['section' => 'chess', 'realtime' => true, 'scripts
     $viewer = auth()->user();
     $color = $game->colorOf($viewer);
     $live = $game->status === ChessGameStatus::Active;
-    // A tournament game cannot be aborted: a missed first move is a forfeit (P18).
-    $abortable = $game->tournament_match_id === null;
+    // A tournament game or a team match board cannot be aborted: a missed first move is a forfeit (P18; plan "Schach Rapid und Clan", P6).
+    $abortable = ! $game->hasEnvelope();
+    // A board of a clan team match: no rematch or new search, its way back is the team match.
+    $teamBoard = $game->series_match_id !== null;
+    $teamUrl = $teamBoard ? route('matches.show', (int) $game->matchNumber()) : null;
     // A tournament game ends on the tournament's "what comes next", never on a rematch or a new search.
     $tournamentGame = $game->tournament_match_id !== null;
     $tournamentUrl = $tournamentGame ? route('tournaments.show', $game->tournamentMatch?->tournament_id ?? 0) : null;
@@ -583,6 +586,9 @@ new #[Layout('layouts::app', ['section' => 'chess', 'realtime' => true, 'scripts
 <div class="flex grow flex-col">
     {{-- A tournament game says so first, above everything else (user, 2026-10-03). --}}
     <x-tournaments.game-banner :banner="$tournamentGame ? TournamentGameEnd::banner($game) : null" class="mx-4 mb-4 lg:mx-12 lg:mb-5" />
+    @if ($teamBoard)
+        @include('pages.games.partials.team-board', ['game' => $game, 'url' => $teamUrl])
+    @endif
 
     @if ($live && $game->isCorrespondence())
         @include('pages.games.partials.daily', ['game' => $game, 'players' => $players, 'color' => $color, 'opponent' => $opponent])
@@ -595,7 +601,7 @@ new #[Layout('layouts::app', ['section' => 'chess', 'realtime' => true, 'scripts
 
             {{-- Title row --}}
             <div class="flex flex-wrap items-center gap-x-4 gap-y-2">
-                <h1 class="m-0 font-display text-[22px] font-bold lg:text-[28px]">{{ __('Game') }}</h1>
+                <h1 class="m-0 font-display text-[22px] font-bold lg:text-[28px]">{{ $teamBoard ? __('Board :n', ['n' => $game->board]) : __('Game') }}</h1>
                 <span class="text-sm text-btc">{{ $game->number() }}</span>
                 <button type="button" aria-label="{{ __('Copy game link') }}" x-on:click="navigator.clipboard?.writeText(window.location.href)"
                         class="hidden size-8 cursor-pointer items-center justify-center rounded-md bg-well text-ink-2 lg:flex"><x-icon name="copy" :size="14" /></button>
@@ -652,6 +658,8 @@ new #[Layout('layouts::app', ['section' => 'chess', 'realtime' => true, 'scripts
                                             @endunless
                                             @if ($tournamentGame)
                                                 <x-tournaments.game-end-slot :url="$tournamentUrl" />
+                                            @elseif ($teamBoard)
+                                                <x-button :href="$teamUrl" class="w-full" data-test="back-to-team-match">{{ __('Back to the team match') }}</x-button>
                                             @else
                                                 <x-button :href="route('chess.lobby', ['search' => 1, ...($game->rated ? ['rated' => 1] : []), 'mode' => $game->mode])" class="w-full" data-test="find-next">{{ __('Find next opponent') }}</x-button>
                                             @endif
@@ -659,8 +667,8 @@ new #[Layout('layouts::app', ['section' => 'chess', 'realtime' => true, 'scripts
                                             <template x-if="color && state.rating?.[color]?.pool === 'rated'">
                                                 <a href="{{ route('settings.badges') }}#share" class="inline-flex min-h-11 items-center justify-center gap-1.5 text-[13px]" data-test="game-over-share"><x-icon name="send" :size="14" /><span x-text="state.mining?.status === 'block' && outcome.tone === 'win' ? @js(__('Share your block')) : @js(__('Badges and share cards'))"></span></a>
                                             </template>
-                                            {{-- A tournament game has no rematch: the tournament decides the next game. --}}
-                                            @unless ($tournamentGame)
+                                            {{-- A tournament game or a team match board has no rematch: the tournament or the team match decides. --}}
+                                            @unless ($tournamentGame || $teamBoard)
                                             <template x-if="color">
                                                 <div class="grid grid-cols-2 gap-2">
                                                     <template x-if="!state.rematchOffer">
@@ -688,6 +696,8 @@ new #[Layout('layouts::app', ['section' => 'chess', 'realtime' => true, 'scripts
                                             <span class="text-[13px] leading-normal text-ink-2">{{ __('The game ended before both sides made their first move. It does not count.') }}</span>
                                             @if ($tournamentGame)
                                                 <x-tournaments.game-end-slot :url="$tournamentUrl" />
+                                            @elseif ($teamBoard)
+                                                <x-button :href="$teamUrl" class="w-full" data-test="back-to-team-match">{{ __('Back to the team match') }}</x-button>
                                             @else
                                                 <span class="grid grid-cols-2 gap-2">
                                                     <x-button :href="route('chess.lobby', ['search' => 1, ...($game->rated ? ['rated' => 1] : []), 'mode' => $game->mode])" data-test="search-again">{{ __('Search again') }}</x-button>

@@ -338,6 +338,20 @@ final class StreamBotBuilders
                 continue;
             }
 
+            if ($match->isTeamMatch()) {
+                // Before its lock a team match may still end as a forfeit: posted once its boards are set.
+                if ($match->lineup_locked_at !== null) {
+                    $messages[] = $this->message('live_team_match', 'live-series:'.$match->id, [
+                        'home' => $home,
+                        'away' => $away,
+                        'boards' => (int) $match->boards,
+                        'url' => route('matches.show', $match->number),
+                    ], 'live_series');
+                }
+
+                continue;
+            }
+
             $messages[] = $this->message('live_series', 'live-series:'.$match->id, [
                 'game' => $this->games->name($match->game),
                 'home' => $home,

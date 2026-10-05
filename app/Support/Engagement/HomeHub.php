@@ -3,6 +3,7 @@
 namespace App\Support\Engagement;
 
 use App\Enums\ChessGameStatus;
+use App\Enums\SeriesResolution;
 use App\Enums\SeriesStatus;
 use App\Enums\TournamentFormat;
 use App\Enums\TournamentStatus;
@@ -24,6 +25,7 @@ use App\Support\Rating\Ratings;
 use App\Support\Scores\ScoreRuns;
 use App\Support\Scores\ScoreStanding;
 use App\Support\Scores\ScoreWindow;
+use App\Support\Series\SeriesPresenter;
 use App\Support\Stacker\BlockfillRules;
 use App\Support\Stacker\BlockfillWeeks;
 use App\Support\Tournaments\TournamentLanding;
@@ -133,7 +135,23 @@ final class HomeHub
     }
 
     /**
+     * Chess team matches being played now (plan "Schach Rapid und Clan", P6):
+     * locked, started and without a result yet.
+     *
+     * @return EloquentCollection<int, SeriesMatch>
+     */
+    public function liveTeamMatches(): EloquentCollection
+    {
+        return SeriesMatch::query()->whereNotNull('boards')->whereNotNull('lineup_locked_at')
+            ->where('status', SeriesStatus::Accepted)->where('start_at', '<=', now())
+            ->with(['challengerLineup.clan', 'challengedLineup.clan'])
+            ->orderByDesc('start_at')->limit(2)->get();
+    }
+
+    /**
      * The latest results, chess games and series together, newest first.
+     * A team match also lands here as a draw (no winner, plan "Schach Rapid
+     * und Clan", P6); a void or forfeited series never does.
      *
      * @return list<Result>
      */
@@ -154,17 +172,25 @@ final class HomeHub
                 ];
             });
 
-        $series = SeriesMatch::query()->whereIn('status', [SeriesStatus::Confirmed, SeriesStatus::Resolved])->whereIn('winner', SeriesMatch::SIDES)
+        $series = SeriesMatch::query()->whereIn('status', [SeriesStatus::Confirmed, SeriesStatus::Resolved])
+            ->where(fn ($query) => $query->whereIn('winner', SeriesMatch::SIDES)
+                ->orWhere(fn ($query) => $query->whereNotNull('boards')->where('winner', 'none')->whereNull('resolution_reason')->where('resolution', SeriesResolution::Admin)))
             ->with(['challengerLineup.clan', 'challengedLineup.clan'])
             ->latest('finished_at')->latest('id')->limit(self::RESULTS)->get()
             ->map(function (SeriesMatch $match): array {
-                $side = (string) $match->winner;
+                $draw = ! in_array($match->winner, SeriesMatch::SIDES, true);
+                $side = $draw ? 'challenger' : (string) $match->winner;
                 $other = SeriesMatch::otherSide($side);
+                $game = GameNames::full($match->game, $match->mode);
+
+                if ($match->isTeamMatch()) {
+                    $game = __('Team match :score', ['score' => SeriesPresenter::score($match)['text']]).' · '.$game;
+                }
 
                 return [
                     'kind' => 'series', 'at' => $match->finished_at ?? $match->updated_at, 'href' => route('matches.show', $match),
                     'winner' => $match->sideName($side), 'loser' => $match->sideName($other), 'face' => null, 'clan' => $match->sideClan($side),
-                    'draw' => false, 'game' => GameNames::full($match->game, $match->mode),
+                    'draw' => $draw, 'game' => $game,
                 ];
             });
 
