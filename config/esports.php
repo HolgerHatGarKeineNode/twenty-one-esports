@@ -899,8 +899,9 @@ return [
     | connections, both `nostr+walletconnect://...` URIs in `.env` only:
     |
     | - `nwc_uri` can pay, with a budget limit set in the wallet;
-    | - `nwc_receive_uri` only receives: `make_invoice`, `lookup_invoice`,
-    |   `get_balance` for zaps into the reserve through `pool@<host>`.
+    | - `nwc_receive_uri` only receives: `make_invoice`, `lookup_invoice`
+    |   for zaps into the reserve through `pool@<host>`. The wallet's balance
+    |   is never read (user, 2026-10-05).
     |
     | Fail closed: without a connection nothing is attempted; the pages say
     | so. The secrets never reach a log, an exception, a response, a Livewire
@@ -1343,6 +1344,16 @@ return [
     | (App\Support\GameChat\GameChannels); `php artisan esports:game-channels`
     | signs and publishes the kind 40 and 41 with the league key.
     |
+    | `publish_relays`: where that command publishes the kind 40 and 41 on top
+    | of the chat relays (comma-separated `ESPORTS_GAME_CHANNEL_RELAYS`; an
+    | unset or empty one takes the default set; nothing locally and in
+    | testing, where the chat relays suffice). The default (user, 2026-10-05: „Mehr
+    | Relays einsetzen und Relays dürfen soft failen!") adds the public relays
+    | that answered from the prod server on 2026-09-26 (primal, nostr.mom,
+    | snort, offchain.pub, nostr.bitcoiner.social, nostr.oxtr.dev). A relay
+    | that refuses (rate limit, a newer kind 41, a timeout) is logged and
+    | never fails the run. The kind 41 still names only the chat relays.
+    |
     | Polls: a question of at most `question_max` characters, 2 to
     | `max_options` answers of at most `option_max`, closing after one of
     | `durations` (seconds). Only polls and votes of accounts that count are
@@ -1353,6 +1364,10 @@ return [
 
     'game_chat' => [
         'creator' => env('ESPORTS_GAME_CHAT_CREATOR'),
+        'publish_relays' => array_values(array_filter(array_map('trim', explode(',', match (env('APP_ENV')) {
+            'local', 'testing' => (string) env('ESPORTS_GAME_CHANNEL_RELAYS', ''),
+            default => (string) (env('ESPORTS_GAME_CHANNEL_RELAYS') ?: 'wss://relay.primal.net,wss://nostr.mom,wss://relay.snort.social,wss://offchain.pub,wss://nostr.bitcoiner.social,wss://nostr.oxtr.dev'),
+        })))),
         'max_length' => 280,
         'cooldown_ms' => 2000,
         'history' => 120,

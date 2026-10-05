@@ -15,8 +15,6 @@ use App\Support\SeasonChain\LeagueKey;
 use App\Support\Tournaments\TournamentPublisher;
 use App\Support\Tournaments\TournamentRuleViolation;
 use App\Support\Wallet\Ledger;
-use App\Support\Wallet\NwcError;
-use App\Support\Wallet\ReceivingWallet;
 use App\Support\Wallet\WalletSetup;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Gate;
@@ -33,15 +31,10 @@ use Illuminate\Support\Facades\Gate;
  * payouts, but the check and the payment are the league's (decision P9).
  *
  * The pot is the tournament's account in the league ledger (user,
- * 2026-10-02). Fail closed, before anything closes:
- *
- * - without the league wallet's paying connection or the league key;
- * - when the prizes and their fee reserve exceed what came into the pot
- *   through the league wallet (percent prizes split exactly that, less the
- *   reserve, {@see PrizePool::payable()}; fixed prizes short of it are
- *   refused: a short pot would pay with other pots' sats);
- * - when the league wallet does not tell its balance now, or holds less
- *   than the prizes beyond what it holds for the other tournament pots.
+ * 2026-10-02). Fail closed, before anything closes: without the league
+ * wallet's connections or the league key ({@see blocker()}). The pot as set
+ * is split (user, 2026-10-04); the wallet's balance is never read (user,
+ * 2026-10-05).
  *
  * Sats a sponsor paid outside the wallet are never part of it. What is
  * left after the prizes stays in the pot's account. Approving twice changes
@@ -161,17 +154,5 @@ final class PayoutApproval
 
             return $locked;
         });
-    }
-
-    /** The league wallet's balance now, in sats; null when it does not tell (fail closed). */
-    public static function walletBalance(): ?int
-    {
-        $wallet = ReceivingWallet::fromConfig();
-
-        try {
-            return $wallet?->balanceSats();
-        } catch (NwcError) {
-            return null;
-        }
     }
 }

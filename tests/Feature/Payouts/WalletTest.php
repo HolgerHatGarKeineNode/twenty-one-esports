@@ -6,7 +6,6 @@ use App\Models\IncomingPayment;
 use App\Models\LedgerTransfer;
 use App\Models\NostrEvent;
 use App\Models\Tournament;
-use App\Models\WalletReconciliation;
 use App\Support\Nostr\SignedEvent;
 use App\Support\Payouts\PayoutApproval;
 use App\Support\Payouts\PayoutRunner;
@@ -25,9 +24,8 @@ use Tests\Support\TestSigner;
 | P9 DoD (wallet). The league wallet and its ledger hold the reserve and,
 | since 2026-10-02, every tournament pot, each in its own account (user:
 | „das landet eh alles in eine Wallet von wo aus ausgezahlt werden kann"):
-| its bookings balance, a zap lands in its pot by payment hash, the daily
-| reconciliation reports a deviation, the paying connection is named by the
-| payout runner only, and a tournament's flows book into its own account,
+| its bookings balance, a zap lands in its pot by payment hash, the paying
+| connection is named by the payout runner only, and a tournament's flows book into its own account,
 | never the reserve.
 */
 
@@ -76,28 +74,6 @@ test('a zap lands in the league reserve once, a tournament’s in its pot, and a
         ->and(app(Ledger::class)->balance(Ledger::RESERVE))->toBe(21_000)
         ->and(fn () => app(Ledger::class)->contribution($payment, 'tournament:x'))->toThrow(InvalidArgumentException::class)
         ->and(fn () => app(Ledger::class)->contribution($payment, 'outside'))->toThrow(InvalidArgumentException::class);
-});
-
-test('the daily reconciliation of the league wallet agrees with the reserve and reports a deviation', function () {
-    $wallet = fakeWallet();
-    $wallet->balanceMsats = 0;
-    $payment = app(PoolInvoices::class)->forPlainPayment(12_345, 'for the season');
-    $wallet->settleIncoming($payment->payment_hash);
-    app(IncomingPayments::class)->check($payment, 0);
-
-    $this->artisan('wallet:reconcile')->assertSuccessful();
-    expect(WalletReconciliation::query()->latest('id')->first())->deviation_sats->toBe(0)->ledger_sats->toBe(12_345);
-
-    // Sats that no booking explains: a deposit outside the endpoint.
-    $wallet->balanceMsats += 5_000_000;
-    $this->artisan('wallet:reconcile')->assertFailed();
-    $run = WalletReconciliation::query()->latest('id')->first();
-    expect($run->deviation_sats)->toBe(5_000)->and($run->agrees())->toBeFalse();
-
-    // A wallet that does not answer is a failed run, not a clean one.
-    $wallet->ignoreNextRequest = true;
-    $this->artisan('wallet:reconcile')->assertFailed();
-    expect(WalletReconciliation::query()->latest('id')->first())->error->toBe('TIMEOUT');
 });
 
 test('the paying connection is named by the payout runner only', function () {

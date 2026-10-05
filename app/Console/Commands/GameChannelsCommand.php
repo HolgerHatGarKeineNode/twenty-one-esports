@@ -10,6 +10,7 @@ use Illuminate\Console\Attributes\Description;
 use Illuminate\Console\Attributes\Signature;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\Log;
 
 /**
  * Signs and publishes the game channels (P21, NIP "Game channels") with the
@@ -18,6 +19,17 @@ use Illuminate\Support\Facades\Cache;
  * creator's moderation instead (NIP-28 kind 44 for a pubkey, kind 43 for a
  * message), which the app honours for every reader. Nothing is stored:
  * the events live on the chat relays.
+ *
+ * Publishes to the chat relays plus `esports.game_chat.publish_relays`
+ * (GameChannels::publishRelays()). Relays may fail softly (user,
+ * 2026-10-05: „Relays dürfen soft failen!"): a refusal (rate limit, a newer
+ * kind 41, a timeout, no connection) is logged as info and never fails the
+ * run; an event no relay took is logged as a warning, and the run still
+ * exits successfully so the scheduler does not report it as an error. A
+ * relay that answers `replaced:` / `have newer event` holds a newer kind 41
+ * of the same channel, so the channel's metadata is there: it counts as
+ * reached. Only a missing league key, another creator, a malformed target,
+ * a kind 40 without its channel id or no relay at all fail the command.
  *
  * Runs daily (routes/console.php) and is safe to: the kind 40 are fixed
  * events, and a kind 41 keeps its `created_at` while it does not change, so
@@ -30,7 +42,7 @@ use Illuminate\Support\Facades\Cache;
 #[Signature('esports:game-channels
     {--mute= : npub or hex of a pubkey the channels hide for everyone (kind 44)}
     {--hide= : id of a message the channels hide for everyone (kind 43)}
-    {--relays= : Comma-separated relay URLs instead of esports.chat.relays}
+    {--relays= : Comma-separated relay URLs instead of the chat and publish relays}
     {--dry-run : Print the signed events and send nothing}')]
 #[Description('Publish the game channels (NIP-28 kind 40 and 41) or the league\'s moderation (kind 43, 44)')]
 class GameChannelsCommand extends Command
@@ -51,7 +63,7 @@ class GameChannelsCommand extends Command
             return self::FAILURE;
         }
 
-        $relays = $this->option('relays') !== null ? RelayPublisher::relayUrls($this->option('relays')) : GameChannels::relays();
+        $relays = $this->option('relays') !== null ? RelayPublisher::relayUrls($this->option('relays')) : GameChannels::publishRelays();
         $now = now()->getTimestamp();
         $events = [];
 
@@ -116,20 +128,34 @@ class GameChannelsCommand extends Command
             return self::FAILURE;
         }
 
-        $everyEventTaken = true;
-
         foreach ($events as $event) {
-            $taken = false;
+            $reached = false;
 
             foreach ($publisher->publish($event, $relays, (float) config('esports.relay_timeout_seconds', 5)) as $result) {
-                $taken = $taken || $result->accepted;
+                $superseded = ! $result->accepted && self::superseded($result->message);
+                $reached = $reached || $result->accepted || $superseded;
                 $this->line(sprintf('kind %d %s %s', $event['kind'], $result->relay, $result->accepted ? 'ok'.($result->message !== '' ? ' ('.$result->message.')' : '') : 'failed: '.$result->message));
+
+                if (! $result->accepted) {
+                    Log::info('Game channels: a relay refused an event', ['relay' => $result->relay, 'kind' => $event['kind'], 'id' => $event['id'], 'message' => $result->message, 'superseded' => $superseded]);
+                }
             }
 
-            $everyEventTaken = $everyEventTaken && $taken;
+            if (! $reached) {
+                Log::warning('Game channels: no relay took an event', ['kind' => $event['kind'], 'id' => $event['id'], 'relays' => count($relays)]);
+                $this->warn("kind {$event['kind']} {$event['id']}: no relay took it, tried again with the next run");
+            }
         }
 
-        return $everyEventTaken ? self::SUCCESS : self::FAILURE;
+        return self::SUCCESS;
+    }
+
+    /** A refusal because the relay holds a newer version of the event (`replaced:`, `have newer event`). */
+    private static function superseded(string $message): bool
+    {
+        $message = strtolower($message);
+
+        return str_starts_with($message, 'replaced:') || str_contains($message, 'have newer event');
     }
 
     /**
