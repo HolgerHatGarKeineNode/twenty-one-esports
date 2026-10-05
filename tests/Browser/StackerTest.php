@@ -500,3 +500,34 @@ test('a week on its own rules: the page shows them as chips, plays them (60 bloc
     'en 375' => ['en', 375, 812],
     'de 375' => ['de', 375, 812],
 ]);
+
+test('with an open match the dock stays off the phone\'s playfield, every touch button is free, and on a desktop the dock shows', function () {
+    // Players, 2026-10-05: "die Anzeige da unten stört … ist die Steuerung überdeckt und man kann dann nicht steuern".
+    $player = User::factory()->member()->create(['name' => 'Phone Player']);
+    \App\Models\ChessGame::factory()->daily()->create(['white_id' => $player->id]);
+
+    $page = visit(BrowserLogin::url($player))->on()->mobile()->page();
+    $page->context()->addInitScript(BrowserConsole::COLLECTOR);
+    $page->setViewportSize(390, 844);
+    $page->goto(ComputeUrl::from(route('stacker.play', [], false)));
+    BrowserWait::until($page, '() => window.__stacker !== undefined && document.querySelector("[data-test=match-dock-root]") !== null', 10_000);
+    $page->locator('[data-test=start-practice]')->click();
+    BrowserWait::until($page, '() => window.__stacker.state().mode === "playing"', 6_000);
+
+    $phone = $page->evaluate('() => ({ dock: document.querySelector("[data-test=match-dock-root]").getClientRects().length, hits: [...document.querySelectorAll("[data-test^=touch-]")].map((b) => { const r = b.getBoundingClientRect(); return document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2)?.closest("[data-test^=touch-]")?.dataset.test === b.dataset.test; }) })');
+    expect($phone['dock'])->toBe(0)
+        ->and($phone['hits'])->toHaveCount(8)->not->toContain(false)
+        ->and($page->evaluate('() => window.__errors'))->toBe([]);
+    shellShot($page, 'stacker-390-dock-away');
+
+    // Elsewhere on the phone the dock stays, and on the desktop playfield too.
+    $page->goto(ComputeUrl::from('/rules'));
+    BrowserWait::until($page, '() => document.querySelector("[data-test=match-dock-root]") !== null', 10_000);
+    expect($page->evaluate('() => document.querySelector("[data-test=match-dock-root]").getClientRects().length'))->toBeGreaterThan(0);
+
+    $page->setViewportSize(1440, 900);
+    $page->goto(ComputeUrl::from(route('stacker.play', [], false)));
+    BrowserWait::until($page, '() => document.querySelector("[data-test=match-dock-root]") !== null', 10_000);
+    expect($page->evaluate('() => document.querySelector("[data-test=match-dock-root]").getClientRects().length'))->toBeGreaterThan(0)
+        ->and($page->evaluate('() => window.__errors'))->toBe([]);
+});

@@ -41,7 +41,7 @@ use Livewire\Component;
  * leaderboard, the player's own place, and last week's winner. Refreshed
  * when the game reports a verified run (`stacker-verified`).
  */
-new #[Layout('layouts::app', ['scripts' => ['resources/js/stacker/page.js', 'resources/js/gameChannel.js']])] class extends Component {
+new #[Layout('layouts::app', ['scripts' => ['resources/js/stacker/page.js', 'resources/js/gameChannel.js'], 'playfield' => true])] class extends Component {
     public function rendering(\Illuminate\View\View $view): void
     {
         $view->title('Blockfill');

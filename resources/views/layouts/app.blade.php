@@ -1,4 +1,4 @@
-@props(['title' => null, 'section' => null, 'realtime' => false, 'scripts' => [], 'flush' => false])
+@props(['title' => null, 'section' => null, 'realtime' => false, 'scripts' => [], 'flush' => false, 'playfield' => false])
 
 {{--
     The TWENTY ONE shell: header, content, footer, toast stack.
@@ -6,7 +6,11 @@
     (Reverb websocket) for pages that listen to broadcasts, and only for those;
     `scripts` lists extra Vite entries a page needs (e.g. the chess board);
     `flush` drops the page-top spacing under the header, for the few designs
-    that start full-bleed (the pre-launch home and its Block 0 bar).
+    that start full-bleed (the pre-launch home and its Block 0 bar);
+    `playfield` marks a page played with on-screen controls (Blockfill): below
+    lg the match dock and the floating live player stay away, so nothing
+    covers the controls (players, 2026-10-05: "die Anzeige da unten … überdeckt
+    die Steuerung"). From lg they show as everywhere.
 --}}
 <!DOCTYPE html>
 <html lang="{{ str_replace('_', '-', app()->getLocale()) }}" class="dark">
@@ -33,11 +37,15 @@
         <x-shell.footer />
 
         {{-- The live stream (P20): a floating player at the bottom left while it is on air. --}}
-        <x-live-player />
+        <div @class(['contents', 'max-lg:hidden' => $playfield]) data-test="shell-live-player">
+            <x-live-player />
+        </div>
 
         {{-- The match dock (P5f): open matches at the bottom of every page of a logged-in player. --}}
         @auth
-            <livewire:match-dock />
+            <div @class(['contents', 'max-lg:hidden' => $playfield]) data-test="shell-match-dock">
+                <livewire:match-dock />
+            </div>
 
             {{-- Casual 1v1 (P23 S3): the ready check of a pairing, on whatever page the player is. --}}
             <livewire:casual-ready />
