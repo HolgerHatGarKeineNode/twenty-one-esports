@@ -391,12 +391,17 @@ Schedule::command('series:expire-challenges')->everyMinute()->withoutOverlapping
  * the boards are ordered by rapid Elo and the players reserved. One side
  * named nobody: it loses the team match by forfeit; neither side: void. Once
  * per match (ChessTeamMatches::lock() reads the row again under its lock).
+ * At the start every board starts on its own, once (P5); a team match whose
+ * boards have all ended gets its result here too, should the board's own
+ * call after its end have failed.
  */
 Artisan::command('teammatches:tick', function (ChessTeamMatches $teamMatches) {
     $done = $teamMatches->lockDue();
+    $started = $teamMatches->startDue();
+    $settled = $teamMatches->settleDue();
 
-    $this->info("Locked {$done['locked']} team match lineup(s), forfeited {$done['forfeited']}, voided {$done['voided']}.");
-})->purpose('Lock the lineups of chess team matches 30 minutes before the start');
+    $this->info("Locked {$done['locked']} team match lineup(s), forfeited {$done['forfeited']}, voided {$done['voided']}; started {$started} board(s); settled {$settled} team match(es).");
+})->purpose('Lock the lineups of chess team matches 30 minutes before the start, start their boards and settle them');
 
 Schedule::command('teammatches:tick')->everyMinute()->withoutOverlapping()->onOneServer();
 

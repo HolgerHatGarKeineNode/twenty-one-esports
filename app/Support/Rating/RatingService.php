@@ -95,7 +95,7 @@ final class RatingService
             (bool) $game->rated, 'chess', $game->mode,
             ['subject' => 'user:'.$game->white_id, 'user_id' => $game->white_id],
             ['subject' => 'user:'.$game->black_id, 'user_id' => $game->black_id],
-            $score, RatingChange::CHESS, $game->id, $game->number,
+            $score, RatingChange::CHESS, $game->id, $game->matchNumber(),
         );
     }
 

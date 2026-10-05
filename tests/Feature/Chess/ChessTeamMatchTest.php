@@ -1,5 +1,7 @@
 <?php
 
+use App\Enums\ChessEndReason;
+use App\Enums\ChessGameStatus;
 use App\Enums\ClanRole;
 use App\Enums\LineupRole;
 use App\Enums\Platform;
@@ -15,6 +17,7 @@ use App\Models\LineupSeat;
 use App\Models\MatchNumber;
 use App\Models\NostrEvent;
 use App\Models\Rating;
+use App\Models\RatingChange;
 use App\Models\SeasonAttestation;
 use App\Models\SeriesMatch;
 use App\Models\SeriesMatchBoard;
@@ -28,6 +31,7 @@ use App\Support\Chess\ChessInvites;
 use App\Support\Chess\ChessQueue;
 use App\Support\Chess\ChessRuleViolation;
 use App\Support\Chess\ChessTeamMatches;
+use App\Support\Engagement\ClanHashrate;
 use App\Support\Nostr\EsportsEventRules;
 use App\Support\Nostr\SignedEvent;
 use App\Support\SeasonChain\TrustFacts;
@@ -53,7 +57,8 @@ use Tests\Support\TrustedFacts;
  * team matches"): challenge and answer with `boards`, the rated pair limit,
  * the guards that keep the series report flow off a team match, the hidden
  * lineup, the lock (board order, forfeit, void) and the reservation of the
- * locked players.
+ * locked players; P5: the start of the boards, board forfeit and void, the
+ * team result, its hashrate and attestations, and the live view.
  */
 
 beforeEach(function () {
@@ -602,4 +607,400 @@ test('an accepted friendly of the same two clans in the window never blocks a ra
 
     expect($rated->rated)->toBeTrue()
         ->and($rated->status)->toBe(SeriesStatus::Accepted);
+});
+
+/*
+ * P5: start, board forfeit and void, team result, hashrate, attestations
+ * and the live view (NIP rev. 9.22, "Start and board forfeit", "Team result").
+ */
+
+/**
+ * An accepted team match whose captains named their players, locked.
+ *
+ * @return array{0: SeriesMatch, 1: array{0: Lineup, 1: User, 2: TestSigner}, 2: array{0: Lineup, 1: User, 2: TestSigner}}
+ */
+function lockedTeamMatch(bool $rated = false, int $boards = 2): array
+{
+    [$match, $a, $b] = acceptedTeamMatch($rated, $boards);
+    $teamMatches = app(ChessTeamMatches::class);
+    $teamMatches->name($match, $a[1], array_slice(activeIds($a[0]), 0, $boards));
+    $teamMatches->name($match, $b[1], array_slice(activeIds($b[0]), 0, $boards));
+    travelToLock($match);
+    expect($teamMatches->lock($match))->toBe('locked');
+
+    return [$match->refresh(), $a, $b];
+}
+
+/**
+ * At the start: every board started, keyed by board.
+ *
+ * @return array<int, ChessGame>
+ */
+function startedBoards(SeriesMatch $match): array
+{
+    test()->travelTo($match->refresh()->start_at->copy()->addSecond());
+    app(ChessTeamMatches::class)->startDue();
+
+    return ChessGame::query()->with(['white', 'black'])->where('series_match_id', $match->id)->orderBy('board')->get()->keyBy('board')->all();
+}
+
+/** Play these moves in turn, White first; returns the game as it is now. */
+function playMoves(ChessGame $game, array $ucis): ChessGame
+{
+    $service = app(ChessGameService::class);
+
+    foreach ($ucis as $uci) {
+        $game = $game->refresh()->loadMissing(['white', 'black']);
+        $service->move($game, $game->turn() === 'w' ? $game->white : $game->black, $uci, $game->ply + 1);
+    }
+
+    return $game->refresh();
+}
+
+/** Two moves, then `$loser` ('w' or 'b') resigns: a rated result with a record. */
+function decideBoard(ChessGame $game, string $loser): ChessGame
+{
+    $game = playMoves($game, ['e2e4', 'e7e5'])->loadMissing(['white', 'black']);
+    app(ChessGameService::class)->resign($game, $loser === 'w' ? $game->white : $game->black);
+
+    return $game->refresh();
+}
+
+function drawBoard(ChessGame $game): ChessGame
+{
+    $game = playMoves($game, ['e2e4', 'e7e5'])->loadMissing(['white', 'black']);
+    app(ChessGameService::class)->offerDraw($game, $game->white);
+    app(ChessGameService::class)->acceptDraw($game->refresh(), $game->black);
+
+    return $game->refresh();
+}
+
+/** A rated team match needs a live season with the rapid ladder and trusted players. */
+function ratedTeamSetup(): void
+{
+    openSeason(['slug' => 'season-1']);
+    app()->bind(TrustFacts::class, TrustedFacts::class);
+}
+
+/** The attestation of a board as a signed event, or null. */
+function boardAttestation(ChessGame $game): ?SignedEvent
+{
+    $row = SeasonAttestation::query()->where('source', SeasonAttestation::CHESS)->where('source_id', $game->id)->first();
+
+    return $row === null ? null : SignedEvent::fromInput(NostrEvent::query()->findOrFail($row->nostr_event_id)->payload());
+}
+
+test('at the start each board starts once with its own first-move window, and a second tick or a second insert creates nothing', function () {
+    [$match, [$lineupA], [$lineupB]] = lockedTeamMatch(boards: 2);
+    $teamMatches = app(ChessTeamMatches::class);
+
+    // Before the start nothing starts.
+    $this->travelTo($match->start_at->copy()->subSecond());
+    expect($teamMatches->startDue())->toBe(0);
+
+    $this->travelTo($match->start_at->copy()->addSeconds(20));
+    $this->artisan('teammatches:tick')->expectsOutputToContain('started 2 board(s)')->assertSuccessful();
+    $this->artisan('teammatches:tick')->expectsOutputToContain('started 0 board(s)')->assertSuccessful();
+
+    $games = ChessGame::query()->where('series_match_id', $match->id)->orderBy('board')->get();
+    $player = fn (string $side, int $board) => SeriesMatchBoard::query()->where('series_match_id', $match->id)->where('side', $side)->where('board', $board)->value('user_id');
+
+    expect($games)->toHaveCount(2)
+        ->and($teamMatches->startDue())->toBe(0)
+        ->and($teamMatches->startBoard($match, 1))->toBeNull()
+        ->and($games->pluck('board')->all())->toBe([1, 2])
+        ->and($games->pluck('mode')->unique()->all())->toBe(['rapid'])
+        ->and($games->pluck('number')->unique()->all())->toBe([null])
+        ->and($games->pluck('rated')->unique()->all())->toBe([false])
+        // The challenger has White on odd boards.
+        ->and($games[0]->white_id)->toBe($player('challenger', 1))
+        ->and($games[0]->black_id)->toBe($player('challenged', 1))
+        ->and($games[1]->white_id)->toBe($player('challenged', 2))
+        ->and($games[1]->black_id)->toBe($player('challenger', 2))
+        // 600 s from the agreed start, not from the (late) tick.
+        ->and($games[0]->first_move_seconds)->toBe(600)
+        ->and($games[0]->deadline_ms)->toBe($match->start_at->getTimestampMs() + 600_000)
+        ->and($games[0]->number())->toBe('#'.$match->number.'/1');
+
+    // The backstop under the lock (a no-op on SQLite): the unique index refuses a second board 1.
+    expect(fn () => DB::transaction(fn () => ChessGame::factory()->create(['mode' => 'rapid', 'series_match_id' => $match->id, 'board' => 1])))
+        ->toThrow(UniqueConstraintViolationException::class);
+});
+
+test('a board starts for its reserved players and for one still in a live game, while every other game stays refused', function () {
+    [$match, [$lineupA], [$lineupB]] = lockedTeamMatch(boards: 2);
+    $busy = User::query()->findOrFail(SeriesMatchBoard::query()->where('series_match_id', $match->id)->where('side', 'challenged')->where('board', 1)->value('user_id'));
+    $free = User::factory()->create();
+    // A live blitz game from before the lock.
+    ChessGame::factory()->create(['white_id' => $busy->id, 'black_id' => $free->id, 'mode' => 'blitz']);
+
+    expect(ChessTeamMatches::reservationOf($busy)?->id)->toBe($match->id);
+
+    $games = startedBoards($match);
+    $reason = function (Closure $action): ?string {
+        try {
+            $action();
+        } catch (ChessRuleViolation $violation) {
+            return $violation->reason;
+        }
+
+        return null;
+    };
+
+    expect($games)->toHaveCount(2)
+        ->and($games[1]->black_id)->toBe($busy->id)
+        // The reservation still refuses every game that is not a board of this team match.
+        // (a daily game, which a running live game does not refuse on its own).
+        ->and($reason(fn () => app(ChessGameService::class)->start($games[2]->white, User::factory()->create(), 'correspondence')))->toBe(ChessTeamMatches::RESERVED)
+        ->and($reason(fn () => app(ChessGameService::class)->start(User::factory()->create(), $games[2]->black, 'correspondence')))->toBe(ChessTeamMatches::RESERVED);
+
+    // The busy player misses the first move after White's: only that board is lost, by forfeit.
+    $board = playMoves($games[1], ['e2e4']);
+    $this->travelTo(now()->addSeconds(601));
+    app(ChessGameService::class)->checkClock($board);
+
+    expect($board->refresh()->end_reason)->toBe(ChessEndReason::Forfeit)
+        ->and($board->result)->toBe('1-0')
+        ->and($games[2]->refresh()->status)->not->toBe(ChessGameStatus::Finished);
+});
+
+test('a rated team match whose pinned ladder is no longer open starts casual boards, never rated without a ladder', function () {
+    ratedTeamSetup();
+    [$open] = lockedTeamMatch(rated: true);
+    $rated = startedBoards($open);
+
+    expect(collect($rated)->every(fn (ChessGame $game): bool => $game->rated && $game->ladder_address === Ladders::address('chess', 'rapid') && $game->gate_at_accept !== null))->toBeTrue();
+
+    [$closed] = lockedTeamMatch(rated: true);
+    $closed->forceFill(['ladder_address' => str_replace('season-1', 'season-0', (string) $closed->ladder_address)])->save();
+    $casual = startedBoards($closed);
+
+    expect($closed->rated)->toBeTrue()
+        ->and(collect($casual)->every(fn (ChessGame $game): bool => ! $game->rated && $game->ladder_address === null && $game->gate_at_accept === null && $game->clans_at_accept === null))->toBeTrue();
+
+    decideBoard($casual[1], 'b');
+    expect(Rating::query()->where('mode', 'rapid')->where('pool', Rating::RATED)->count())->toBe(0);
+});
+
+test('a board forfeit counts one board point, is unrated and is attested with the team result', function () {
+    ratedTeamSetup();
+    [$match] = lockedTeamMatch(rated: true);
+    $games = startedBoards($match);
+    $service = app(ChessGameService::class);
+
+    // Board 1: the challenger (White) never moves, the challenged Black opened the board.
+    $service->markPresent($games[1], $games[1]->black);
+    // Board 2: a draw.
+    drawBoard($games[2]);
+
+    expect(boardAttestation($games[2]->refresh()))->not->toBeNull();
+
+    $this->travelTo($match->start_at->copy()->addSeconds(601));
+    $service->checkClock($games[1]);
+    $match->refresh();
+    $forfeit = boardAttestation($games[1]->refresh());
+
+    expect($games[1]->end_reason)->toBe(ChessEndReason::Forfeit)
+        ->and($games[1]->result)->toBe('0-1')
+        ->and(RatingChange::query()->where('source', RatingChange::CHESS)->where('source_id', $games[1]->id)->exists())->toBeFalse()
+        // ½ : 1½, the challenged side wins on board points.
+        ->and($match->status)->toBe(SeriesStatus::Resolved)
+        ->and($match->resolution)->toBe(SeriesResolution::Admin)
+        ->and($match->winner)->toBe('challenged')
+        ->and($match->finished_at)->not->toBeNull()
+        ->and(ChessTeamMatches::score(ChessTeamMatches::boardResults($match)))->toBe(['challenger' => 1, 'challenged' => 3])
+        ->and($forfeit->tag('resolution'))->toBe('forfeit')
+        ->and($forfeit->tag('winner'))->toBe('challenged')
+        ->and($forfeit->tagsNamed('elo'))->toBe([])
+        ->and($forfeit->tagsNamed('block'))->toBe([])
+        ->and($forfeit->tag('match'))->toBe((string) $match->number)
+        ->and(ChessTeamMatches::reservationOf($games[1]->white))->toBeNull();
+});
+
+test('a board where neither player moved is void and counts no point; the other boards decide', function () {
+    ratedTeamSetup();
+    [$match] = lockedTeamMatch(rated: true);
+    $games = startedBoards($match);
+
+    // Board 2 (the challenged side White): the challenger's Black resigns after two moves.
+    decideBoard($games[2], 'b');
+    // Board 1: nobody moves, Black never opens it.
+    $this->travelTo($match->start_at->copy()->addSeconds(601));
+    app(ChessGameService::class)->checkClock($games[1]);
+    $match->refresh();
+    $void = boardAttestation($games[1]->refresh());
+
+    expect($games[1]->status)->toBe(ChessGameStatus::Aborted)
+        ->and($match->winner)->toBe('challenged')
+        ->and($match->resolution)->toBe(SeriesResolution::Admin)
+        ->and(ChessTeamMatches::score(ChessTeamMatches::boardResults($match)))->toBe(['challenger' => 0, 'challenged' => 2])
+        ->and($void->tag('resolution'))->toBe('void')
+        ->and($void->tag('winner'))->toBe('none')
+        ->and($void->tagsNamed('board')[0][3])->toBe('*')
+        ->and($void->tagsNamed('elo'))->toBe([]);
+});
+
+test('a side that made no first move on any board loses the whole team match by forfeit, attested once and unrated', function () {
+    ratedTeamSetup();
+    [$match] = lockedTeamMatch(rated: true);
+    $games = startedBoards($match);
+    $service = app(ChessGameService::class);
+
+    // Board 1: the challenger's White moves, the challenged Black never does. Board 2: the challenged White never
+    // moves, the challenger's Black is there.
+    playMoves($games[1], ['e2e4']);
+    $service->markPresent($games[2], $games[2]->black);
+    $this->travelTo($match->start_at->copy()->addSeconds(1200));
+    $service->checkClock($games[1]);
+    $service->checkClock($games[2]);
+    $match->refresh();
+
+    $attestation = SeasonAttestation::query()->where('source', SeasonAttestation::SERIES)->where('source_id', $match->id)->sole();
+    $event = SignedEvent::fromInput(NostrEvent::query()->findOrFail($attestation->nostr_event_id)->payload());
+
+    expect($match->status)->toBe(SeriesStatus::Resolved)
+        ->and($match->resolution)->toBe(SeriesResolution::Forfeit)
+        ->and($match->winner)->toBe('challenger')
+        ->and($match->finished_at)->not->toBeNull()
+        ->and($event->tag('resolution'))->toBe('forfeit')
+        ->and($event->tagsNamed('elo'))->toBe([])
+        ->and($event->tagsNamed('board'))->toBe([])
+        // No board attestation: the whole team match is the one forfeit.
+        ->and(SeasonAttestation::query()->where('source', SeasonAttestation::CHESS)->count())->toBe(0)
+        ->and(app(ChessTeamMatches::class)->settle($match))->toBeNull();
+});
+
+test('a rated 2:1 team win adds the team bonus once, and every board is attested with the lineups, its board, the challenge number and its events', function () {
+    ratedTeamSetup();
+    [$match, [$lineupA], [$lineupB]] = lockedTeamMatch(rated: true, boards: 3);
+    $games = startedBoards($match);
+
+    // Board 1 and 3: the challenger plays White; board 2: Black.
+    decideBoard($games[1], 'b');
+    decideBoard($games[2], 'w');
+    decideBoard($games[3], 'w');
+    $match->refresh();
+    $clanA = $lineupA->clan->address();
+    $clanB = $lineupB->clan->address();
+    $hashrate = app(ClanHashrate::class)->breakdown('season-1');
+
+    expect($match->winner)->toBe('challenger')
+        ->and($match->finished_at)->not->toBeNull()
+        ->and(ChessTeamMatches::score(ChessTeamMatches::boardResults($match)))->toBe(['challenger' => 4, 'challenged' => 2])
+        ->and($hashrate[$clanA]['teamWins'])->toBe(1)
+        ->and($hashrate[$clanA]['bonus'])->toBe(5)
+        ->and($hashrate[$clanB]['bonus'] ?? 0)->toBe(0)
+        ->and($hashrate[$clanA]['points'])->toBe(2 * 3 + 1 * 1 + 5)
+        ->and($hashrate[$clanB]['points'])->toBe(1 * 3 + 2 * 1);
+
+    $board = $games[2]->refresh();
+    $event = boardAttestation($board);
+    $record = SignedEvent::fromInput(NostrEvent::query()->findOrFail($board->record_event_id)->payload());
+    $challenger = User::query()->findOrFail(SeriesMatchBoard::query()->where('series_match_id', $match->id)->where('side', 'challenger')->where('board', 2)->value('user_id'));
+    $challenged = User::query()->findOrFail(SeriesMatchBoard::query()->where('series_match_id', $match->id)->where('side', 'challenged')->where('board', 2)->value('user_id'));
+    $ladder = Ladders::address('chess', 'rapid');
+
+    // NIP rev. 9.22 "League Attestation", "Chess": e challenge, answer and record; the ladder and both lineups with
+    // roles; the players by side with their lineup role; one board row; winner by side, not by colour.
+    expect(array_slice($event->tags, 0, 10))->toBe([
+        ['e', $match->challengeEvent->event_id, '', $match->challengeEvent->pubkey],
+        ['e', $match->answerEvent->event_id, '', $match->answerEvent->pubkey],
+        ['e', $record->id, '', $record->pubkey],
+        ['a', $ladder, ''],
+        ['a', $match->challenger_lineup_address, '', 'challenger'],
+        ['a', $match->challenged_lineup_address, '', 'challenged'],
+        ['p', $challenger->pubkey, '', 'challenger', 'player'],
+        ['p', $challenged->pubkey, '', 'challenged', 'player'],
+        ['board', '2', $challenged->pubkey, $challenger->pubkey, '0-1'],
+        ['resolution', 'admin'],
+    ])
+        // Black won board 2, and Black is the challenger side there.
+        ->and($event->tag('winner'))->toBe('challenger')
+        ->and($event->tagsNamed('elo'))->toHaveCount(2)
+        ->and($event->tag('match'))->toBe((string) $match->number)
+        ->and(collect($event->tagsNamed('gate'))->pluck(0)->all())->toContain($challenger->pubkey, $challenged->pubkey)
+        ->and(collect($event->tagsNamed('clan'))->mapWithKeys(fn (array $tag) => [$tag[0] => $tag[1]])->all())->toBe([$challenged->pubkey => $clanB, $challenger->pubkey => $clanA])
+        ->and(SeasonAttestation::query()->where('source', SeasonAttestation::CHESS)->where('source_id', $board->id)->value('board'))->toBe(2)
+        // NIP "Game Record": e challenge, the challenge's a (both lineups, the ladder), the board, the players.
+        ->and(array_slice($record->tags, 0, 7))->toBe([
+            ['e', $match->challengeEvent->event_id, '', $match->challengeEvent->pubkey],
+            ['a', $match->challenger_lineup_address, ''],
+            ['a', $match->challenged_lineup_address, ''],
+            ['a', $ladder, ''],
+            ['board', '2'],
+            ['p', $challenged->pubkey, '', 'white'],
+            ['p', $challenger->pubkey, '', 'black'],
+        ])
+        // No team result event: three board attestations and nothing for the series.
+        ->and(SeasonAttestation::query()->where('source', SeasonAttestation::CHESS)->count())->toBe(3)
+        ->and(SeasonAttestation::query()->where('source', SeasonAttestation::SERIES)->count())->toBe(0);
+});
+
+test('a 1½:1½ team draw has no winner and no bonus, each clan keeps its board points, and the result time is set', function () {
+    ratedTeamSetup();
+    [$match, [$lineupA], [$lineupB]] = lockedTeamMatch(rated: true, boards: 3);
+    $games = startedBoards($match);
+
+    decideBoard($games[1], 'b');
+    drawBoard($games[2]);
+    decideBoard($games[3], 'w');
+    $match->refresh();
+    $hashrate = app(ClanHashrate::class)->breakdown('season-1');
+    $clanA = $lineupA->clan->address();
+    $clanB = $lineupB->clan->address();
+
+    expect($match->status)->toBe(SeriesStatus::Resolved)
+        ->and($match->resolution)->toBe(SeriesResolution::Admin)
+        ->and($match->winner)->toBe('none')
+        ->and($match->finished_at)->not->toBeNull()
+        ->and(ChessTeamMatches::points(ChessTeamMatches::score(ChessTeamMatches::boardResults($match))['challenger']))->toBe('1½')
+        ->and($hashrate[$clanA]['bonus'])->toBe(0)
+        ->and($hashrate[$clanB]['bonus'])->toBe(0)
+        ->and($hashrate[$clanA]['teamWins'])->toBe(0)
+        ->and($hashrate[$clanA]['points'])->toBe(3 + 2 + 1)
+        ->and($hashrate[$clanB]['points'])->toBe(1 + 2 + 3);
+});
+
+test('a friendly team match is decided on board points and earns no hashrate', function () {
+    openSeason(['slug' => 'season-1']);
+    [$match] = lockedTeamMatch(rated: false);
+    $games = startedBoards($match);
+    $events = NostrEvent::query()->count();
+
+    decideBoard($games[1], 'b');
+    decideBoard($games[2], 'w');
+
+    expect($match->refresh()->winner)->toBe('challenger')
+        ->and($match->rated)->toBeFalse()
+        ->and(app(ClanHashrate::class)->breakdown('season-1'))->toBe([])
+        // No record, no attestation: a friendly is league data.
+        ->and(NostrEvent::query()->count())->toBe($events);
+});
+
+test('the team match page shows every board with its clocks and the team score, live for guests, and answers a roundtrip', function () {
+    [$match] = lockedTeamMatch(boards: 2);
+
+    // After the lock, before the start: the boards with their players, no game yet.
+    $this->get(route('matches.show', $match))->assertOk()
+        ->assertSee('Team match #'.$match->number)
+        ->assertSeeHtml('data-test="team-match-boards"')
+        ->assertSeeHtml('data-test="team-board-2"')
+        ->assertDontSeeHtml('data-test="flow"')
+        // The websocket is on for guests on this page.
+        ->assertSeeHtml('name="alert-settings"');
+
+    $games = startedBoards($match);
+    playMoves($games[1], ['e2e4', 'e7e5']);
+    decideBoard($games[2], 'w');
+
+    Livewire::test('team-match-boards', ['match' => $match])
+        ->assertOk()
+        ->assertSeeHtml('data-test="team-board-clock-1-w"')
+        ->assertSeeHtml('data-game="'.$games[1]->id.'"')
+        ->assertSeeHtml('href="'.route('games.show', $games[1]).'"')
+        ->assertSeeInOrder([$match->sideName('challenger'), '1 : 0', $match->sideName('challenged')])
+        ->call('$refresh')->assertOk();
+
+    $this->get(route('matches.show', $match))->assertOk()->assertSee('Live');
+    $this->get(route('games.show', $games[1]))->assertOk()->assertSee('#'.$match->number.'/1');
 });

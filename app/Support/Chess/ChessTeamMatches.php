@@ -2,9 +2,12 @@
 
 namespace App\Support\Chess;
 
+use App\Enums\ChessEndReason;
+use App\Enums\ChessGameStatus;
 use App\Enums\SeriesResolution;
 use App\Enums\SeriesStatus;
 use App\Models\BoardQueueEntry;
+use App\Models\ChessGame;
 use App\Models\ChessQueueEntry;
 use App\Models\LineupSeat;
 use App\Models\Rating;
@@ -13,11 +16,14 @@ use App\Models\SeriesMatchBoard;
 use App\Models\SeriesQueueEntry;
 use App\Models\User;
 use App\Support\Rating\EloRating;
+use App\Support\SeasonChain\GatePin;
+use App\Support\SeasonChain\SeasonChains;
 use App\Support\Series\Ladders;
 use App\Support\Series\SeriesRuleViolation;
 use App\Support\Series\SeriesService;
 use Carbon\CarbonInterface;
 use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Database\UniqueConstraintViolationException;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 
@@ -47,8 +53,20 @@ use Illuminate\Support\Facades\DB;
  *   asks {@see refusal()}).
  * - **Pair limit** ({@see ratedPairBlocked()}): one rated team match per
  *   pair of clans in a rolling `rated_pair_days`; friendlies are unlimited.
- *
- * Starting the boards, board forfeits and the team result come with P5.
+ * - **Start** ({@see startDue()}, P5). At the start every board starts on
+ *   its own, once ({@see startBoard()}: the match row locked and read again,
+ *   the unique (series_match_id, board) behind it), for its two players
+ *   whatever else they do: a player held in a game from before the lock
+ *   simply misses the first move (CEO decision 2026-10-05). Each side to
+ *   move has `first_move_seconds` from the start (ChessGameService).
+ * - **Team result** ({@see settle()}, P5). Once every board has ended: a
+ *   side that showed up at no board loses the whole team match by forfeit
+ *   (attested once, unrated, as at the lock; neither side: void). Otherwise
+ *   the board points decide (win 1, draw 1/2, board forfeit 1 for the side
+ *   that showed up, void board none), `winner` is the side with more,
+ *   `none` for a team draw; the boards the league decided (forfeit, void)
+ *   are attested now, the played ones were attested when they ended. No
+ *   team result event: the NIP derives it from the board attestations.
  */
 final class ChessTeamMatches
 {
@@ -58,11 +76,17 @@ final class ChessTeamMatches
     /** The reason code when the other player is reserved for a team match. */
     public const OTHER_RESERVED = 'opponent_in_team_match';
 
-    public function __construct(private SeriesService $series) {}
+    public function __construct(private SeriesService $series, private ChessGameService $games, private SeasonChains $chains) {}
 
     public static function lockMinutes(): int
     {
         return max(1, (int) config('esports.team_matches.lock_minutes', 30));
+    }
+
+    /** The first-move window of a board, from the agreed start (NIP rev. 9.22: 600 seconds). */
+    public static function firstMoveSeconds(): int
+    {
+        return max(1, (int) config('esports.team_matches.first_move_seconds', 600));
     }
 
     /** When the lineups lock: `lock_minutes` before the agreed start; null before an accept. */
@@ -375,6 +399,287 @@ final class ChessTeamMatches
         return $rating === null
             ? ['rating' => EloRating::fromConfig('rating')->start, 'pool' => 'start', 'results' => 0]
             : ['rating' => $rating->rating, 'pool' => $rating->pool, 'results' => $rating->results];
+    }
+
+    /* ---------- Start --------------------------------------------------------------------------------------------- */
+
+    /**
+     * Every board of a locked team match whose start has come, started once
+     * each; returns how many games were created. A board that throws is
+     * reported and the others still start.
+     */
+    public function startDue(): int
+    {
+        $started = 0;
+        $due = SeriesMatch::query()->whereNotNull('boards')->where('status', SeriesStatus::Accepted)->whereNotNull('lineup_locked_at')
+            ->whereNotNull('start_at')->where('start_at', '<=', now())
+            ->whereRaw('(select count(*) from chess_games where chess_games.series_match_id = series_matches.id) < series_matches.boards')
+            ->orderBy('start_at')->get();
+
+        foreach ($due as $match) {
+            for ($board = 1; $board <= (int) $match->boards; $board++) {
+                try {
+                    $started += $this->startBoard($match, $board) === null ? 0 : 1;
+                } catch (UniqueConstraintViolationException) {
+                    // Another tick created this board first: nothing to do.
+                } catch (\Throwable $e) {
+                    report($e);
+                }
+            }
+        }
+
+        return $started;
+    }
+
+    /**
+     * Start one board, at most once: under a lock on the match row, read
+     * again, only when no game exists for it yet (on SQLite the lock is a
+     * no-op and the unique index is what refuses a second insert). Board k
+     * is player k of the challenger side against player k of the challenged
+     * side; the challenger has White on odd boards (NIP rev. 9.22). Null
+     * when nothing was due, or when a player's account is gone (that board
+     * counts as missed, {@see boardResults()}).
+     */
+    public function startBoard(SeriesMatch $match, int $board): ?ChessGame
+    {
+        return DB::transaction(function () use ($match, $board): ?ChessGame {
+            $locked = SeriesMatch::query()->lockForUpdate()->find($match->id);
+
+            if ($locked === null || ! $locked->isTeamMatch() || $locked->status !== SeriesStatus::Accepted || $locked->lineup_locked_at === null
+                || $locked->start_at === null || $locked->start_at->isFuture() || $board < 1 || $board > (int) $locked->boards) {
+                return null;
+            }
+
+            if (ChessGame::query()->where('series_match_id', $locked->id)->where('board', $board)->exists()) {
+                return null;
+            }
+
+            $seats = SeriesMatchBoard::query()->with('user')->where('series_match_id', $locked->id)->where('board', $board)->get()->keyBy('side');
+            $challenger = $seats->get('challenger')?->user;
+            $challenged = $seats->get('challenged')?->user;
+
+            if ($challenger === null || $challenged === null) {
+                return null;
+            }
+
+            [$white, $black] = $board % 2 === 1 ? [$challenger, $challenged] : [$challenged, $challenger];
+
+            return $this->games->start($white, $black, (string) $locked->mode,
+                ratedGate: $locked->rated ? GatePin::fromArray($locked->gate_at_accept) : null, teamMatch: $locked, board: $board);
+        });
+    }
+
+    /* ---------- Team result --------------------------------------------------------------------------------------- */
+
+    /**
+     * Each board as it stands: its two players by side, its game, and what
+     * it counts. Points are half points (a win 2, a draw 1), so a score
+     * never meets a float. `outcome`: `pending` (not started), `live`,
+     * `played` (a result over the board), `forfeit` (a missed first move;
+     * `showed` is the side that won it) or `void` (nobody showed up).
+     *
+     * @return list<array{board: int, white: string, players: array<string, User|null>, game: ChessGame|null, outcome: 'pending'|'live'|'played'|'forfeit'|'void', points: array{challenger: int, challenged: int}, showed: list<string>}>
+     */
+    public static function boardResults(SeriesMatch $match): array
+    {
+        $games = ChessGame::query()->where('series_match_id', $match->id)->get()->keyBy('board');
+        $seats = SeriesMatchBoard::query()->with('user')->where('series_match_id', $match->id)->whereNotNull('board')->get()->groupBy('board');
+        $windowOver = $match->start_at !== null && $match->start_at->copy()->addSeconds(self::firstMoveSeconds())->isPast();
+        $results = [];
+
+        for ($board = 1; $board <= (int) $match->boards; $board++) {
+            $white = $board % 2 === 1 ? 'challenger' : 'challenged';
+            $black = SeriesMatch::otherSide($white);
+            $players = ['challenger' => null, 'challenged' => null];
+
+            foreach ($seats->get($board) ?? [] as $seat) {
+                $players[$seat->side] = $seat->user;
+            }
+
+            $game = $games->get($board);
+            $row = ['board' => $board, 'white' => $white, 'players' => $players, 'game' => $game, 'outcome' => 'pending', 'points' => ['challenger' => 0, 'challenged' => 0], 'showed' => []];
+
+            if ($game === null) {
+                // Never started because an account is gone: once the first-move window is over the other side
+                // wins the board, both gone: void.
+                $gone = array_keys(array_filter($players, fn (?User $user): bool => $user === null));
+
+                if ($match->lineup_locked_at !== null && $windowOver && $gone !== []) {
+                    $row['outcome'] = count($gone) === 1 ? 'forfeit' : 'void';
+
+                    if (count($gone) === 1) {
+                        $row['showed'] = [SeriesMatch::otherSide($gone[0])];
+                        $row['points'] = self::boardPoint($row['showed'][0]);
+                    }
+                }
+            } elseif ($game->status === ChessGameStatus::Active) {
+                $row['outcome'] = 'live';
+            } elseif ($game->status === ChessGameStatus::Aborted || ! in_array($game->result, ['1-0', '0-1', '1/2-1/2'], true)) {
+                $row['outcome'] = 'void';
+            } elseif ($game->end_reason === ChessEndReason::Forfeit) {
+                $winner = $game->result === '1-0' ? $white : $black;
+                $row['outcome'] = 'forfeit';
+                $row['showed'] = [$winner];
+                $row['points'] = self::boardPoint($winner);
+            } else {
+                $row['outcome'] = 'played';
+                $row['showed'] = [$white, $black];
+                $whitePoints = match ($game->result) {
+                    '1-0' => 2,
+                    '0-1' => 0,
+                    default => 1,
+                };
+                $row['points'] = $white === 'challenger'
+                    ? ['challenger' => $whitePoints, 'challenged' => 2 - $whitePoints]
+                    : ['challenger' => 2 - $whitePoints, 'challenged' => $whitePoints];
+            }
+
+            $results[] = $row;
+        }
+
+        return $results;
+    }
+
+    /**
+     * One won board (a win or a board forfeit) for `$side`, in half points.
+     *
+     * @return array{challenger: int, challenged: int}
+     */
+    private static function boardPoint(string $side): array
+    {
+        return $side === 'challenger' ? ['challenger' => 2, 'challenged' => 0] : ['challenger' => 0, 'challenged' => 2];
+    }
+
+    /**
+     * The team score in half points over the boards that have ended.
+     *
+     * @param  list<array{points: array{challenger: int, challenged: int}}>  $results
+     * @return array{challenger: int, challenged: int}
+     */
+    public static function score(array $results): array
+    {
+        return [
+            'challenger' => array_sum(array_map(fn (array $row): int => $row['points']['challenger'], $results)),
+            'challenged' => array_sum(array_map(fn (array $row): int => $row['points']['challenged'], $results)),
+        ];
+    }
+
+    /** `1½`, `½`, `2` from half points. */
+    public static function points(int $halfPoints): string
+    {
+        return ($halfPoints >= 2 || $halfPoints === 0 ? (string) intdiv($halfPoints, 2) : '').($halfPoints % 2 === 1 ? '½' : '');
+    }
+
+    /**
+     * Every locked team match whose start has passed, settled if all its
+     * boards have ended; returns how many got their result.
+     */
+    public function settleDue(): int
+    {
+        $settled = 0;
+        $due = SeriesMatch::query()->whereNotNull('boards')->where('status', SeriesStatus::Accepted)->whereNotNull('lineup_locked_at')
+            ->whereNotNull('start_at')->where('start_at', '<=', now())->orderBy('start_at')->get();
+
+        foreach ($due as $match) {
+            try {
+                $settled += $this->settle($match) === null ? 0 : 1;
+            } catch (\Throwable $e) {
+                report($e);
+            }
+        }
+
+        return $settled;
+    }
+
+    public function settleById(int $matchId): ?string
+    {
+        $match = SeriesMatch::query()->find($matchId);
+
+        return $match === null ? null : $this->settle($match);
+    }
+
+    /**
+     * The team result, once every board has ended, exactly once (the match
+     * row locked and read again; a decided match is no longer `accepted`).
+     * Returns `won`, `draw`, `forfeit` or `void`; null while a board is
+     * still open or the match is decided already.
+     *
+     * @return 'won'|'draw'|'forfeit'|'void'|null
+     */
+    public function settle(SeriesMatch $match): ?string
+    {
+        $outcome = DB::transaction(function () use ($match): ?array {
+            $locked = SeriesMatch::query()->lockForUpdate()->find($match->id);
+
+            if ($locked === null || ! $locked->isTeamMatch() || $locked->status !== SeriesStatus::Accepted || $locked->lineup_locked_at === null) {
+                return null;
+            }
+
+            $results = self::boardResults($locked);
+
+            if (array_filter($results, fn (array $row): bool => in_array($row['outcome'], ['pending', 'live'], true)) !== []) {
+                return null;
+            }
+
+            $showed = array_values(array_unique(array_merge(...array_map(fn (array $row): array => $row['showed'], $results))));
+
+            // A side that showed up at no board: the whole team match, decided below through the league's own path.
+            if (count($showed) < 2) {
+                return ['whole' => true, 'winner' => $showed[0] ?? 'none'];
+            }
+
+            $score = self::score($results);
+            $winner = match ($score['challenger'] <=> $score['challenged']) {
+                1 => 'challenger',
+                -1 => 'challenged',
+                default => 'none',
+            };
+
+            // The boards the league decided are attested with the team result, the played ones already were.
+            foreach ($results as $row) {
+                if ($row['game'] !== null && in_array($row['outcome'], ['forfeit', 'void'], true)) {
+                    $this->chains->attestChessGame($row['game']);
+                }
+            }
+
+            $locked->forceFill([
+                'status' => SeriesStatus::Resolved,
+                'resolution' => SeriesResolution::Admin,
+                'winner' => $winner,
+                'resolved_by_id' => null,
+                'finished_at' => now(),
+            ])->save();
+
+            return ['whole' => false, 'winner' => $winner];
+        });
+
+        if ($outcome === null) {
+            return null;
+        }
+
+        if (! $outcome['whole']) {
+            $this->series->broadcastChange($match);
+
+            return $outcome['winner'] === 'none' ? 'draw' : 'won';
+        }
+
+        $forfeit = $outcome['winner'] !== 'none';
+        $reason = $forfeit
+            ? 'A side made no first move on any board; the other side wins the team match by forfeit.'
+            : 'Neither side made a first move on any board.';
+
+        // As a missed lock: attested once with both lineups, unrated (NIP rev. 9.22, "Start and board forfeit").
+        $decided = $this->series->leagueClose($match, [
+            'resolution' => $forfeit ? SeriesResolution::Forfeit : SeriesResolution::Void,
+            'winner' => $outcome['winner'],
+            'games' => null,
+        ], $reason, null, fn (SeriesMatch $now): bool => $now->status === SeriesStatus::Accepted && $now->lineup_locked_at !== null);
+
+        if (! $decided) {
+            return null;
+        }
+
+        return $forfeit ? 'forfeit' : 'void';
     }
 
     /* ---------- Reservation --------------------------------------------------------------------------------------- */

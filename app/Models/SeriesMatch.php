@@ -108,6 +108,7 @@ use Illuminate\Support\Facades\DB;
  * @property-read SeriesReport|null $latestReport
  * @property-read TournamentMatch|null $tournamentMatch
  * @property-read Collection<int, SeriesMatchBoard> $boardPlayers
+ * @property-read Collection<int, ChessGame> $boardGames
  */
 #[Fillable([
     'number', 'game', 'mode', 'best_of', 'rated',
@@ -297,6 +298,16 @@ class SeriesMatch extends Model
     public function boardPlayers(): HasMany
     {
         return $this->hasMany(SeriesMatchBoard::class)->orderBy('side')->orderBy('board')->orderBy('id');
+    }
+
+    /**
+     * The games of a chess team match, one per board once started.
+     *
+     * @return HasMany<ChessGame, $this>
+     */
+    public function boardGames(): HasMany
+    {
+        return $this->hasMany(ChessGame::class)->orderBy('board');
     }
 
     /**

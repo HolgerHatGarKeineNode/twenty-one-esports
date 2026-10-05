@@ -22,6 +22,11 @@ use Livewire\Component;
  * Casual (before Block 0): casual Elo only (P7b), no league record; the
  * right card shows the casual stakes. An unknown number shows the "Match not found"
  * state of States.dc.html with a 404.
+ *
+ * A chess team match (plan "Schach Rapid und Clan", P5) shows its boards
+ * live instead of the flow of games and the score sheet
+ * (components/⚡team-match-boards), on a page with the websocket on, also for
+ * guests: anyone may watch.
  */
 new #[Layout('layouts::app', ['section' => 'matches'])] class extends Component {
     public int $number;
@@ -48,19 +53,26 @@ new #[Layout('layouts::app', ['section' => 'matches'])] class extends Component 
     {
         $match = $this->match;
         $locale = app()->getLocale();
-        $series = __('Series :number', ['number' => $match->label()]);
+        $series = $match->isTeamMatch() ? __('Team match :number', ['number' => $match->label()]) : __('Series :number', ['number' => $match->label()]);
         $title = $series.': '.$match->challenger_name.' vs '.$match->challenged_name;
         $view->title($title);
 
-        $description = __(':game :mode series, best of :best_of, between :challenger and :challenged in the TWENTY ONE esports league.', [
-            'game' => \App\Support\GameNames::game($match->game),
-            'mode' => $match->mode, 'best_of' => $match->best_of, 'challenger' => $match->challenger_name, 'challenged' => $match->challenged_name,
-        ]);
+        $description = $match->isTeamMatch()
+            ? __('Chess team match over :boards boards between :challenger and :challenged in the TWENTY ONE esports league.', ['boards' => $match->boards, 'challenger' => $match->challenger_name, 'challenged' => $match->challenged_name])
+            : __(':game :mode series, best of :best_of, between :challenger and :challenged in the TWENTY ONE esports league.', [
+                'game' => \App\Support\GameNames::game($match->game),
+                'mode' => $match->mode, 'best_of' => $match->best_of, 'challenger' => $match->challenger_name, 'challenged' => $match->challenged_name,
+            ]);
+
+        if ($match->isTeamMatch()) {
+            // The boards update live for every spectator (resources/js/teamMatchBoards.js).
+            $view->layoutData(['realtime' => true]);
+        }
 
         if ($match->status->hasResult()) {
             $description .= ' '.(in_array($match->winner, SeriesMatch::SIDES, true)
                 ? __('Result: :clan won.', ['clan' => $match->sideName((string) $match->winner)])
-                : __('Void · no winner'));
+                : ($match->isTeamMatch() && $match->resolution === \App\Enums\SeriesResolution::Admin ? __('Team draw · no bonus') : __('Void · no winner')));
         }
 
         app(PageMeta::class)
@@ -129,7 +141,12 @@ new #[Layout('layouts::app', ['section' => 'matches'])] class extends Component 
     $toAnswer = $match->status === SeriesStatus::Reported && $report !== null && $report->status === ReportStatus::Open && $mySide !== null && $mySide !== $report->side;
     $colors = ['challenger' => '#F7931A', 'challenged' => '#A78BFA'];
     $elo = SeriesPresenter::ratingFacts($match);
+    $team = $match->isTeamMatch();
     $banner = match (true) {
+        // A team match: its result from the boards, a draw is no void (plan "Schach Rapid und Clan", P5).
+        $team && $match->status->hasResult() && ! in_array($match->winner, SeriesMatch::SIDES, true) => [$match->resolution === \App\Enums\SeriesResolution::Admin ? __('Team draw · no bonus') : __('Void · no winner'), 'bg-well text-ink'],
+        $team && $match->status->hasResult() => [__(':clan won · :how', ['clan' => $match->sideName((string) $match->winner), 'how' => $match->resolution === \App\Enums\SeriesResolution::Forfeit ? __('Forfeit') : __('on board points')]), 'bg-win-tint text-win'],
+        $team => [SeriesPresenter::chip($match)['label'], 'bg-well text-ink-2'],
         $toAnswer => [__(':clan reported · your confirmation needed', ['clan' => $match->sideName($report->side)]), 'bg-btc-chip text-btc-hi'],
         $match->status === SeriesStatus::Reported && $report !== null => [__(':clan reported · waiting for :other', ['clan' => $match->sideName($report->side), 'other' => $match->sideName(SeriesMatch::otherSide($report->side))]), 'bg-btc-chip text-btc-hi'],
         $match->status === SeriesStatus::Disputed => [__('Disputed · an admin decides'), 'bg-loss-tint text-loss'],
@@ -142,7 +159,7 @@ new #[Layout('layouts::app', ['section' => 'matches'])] class extends Component 
 <div class="flex grow flex-col gap-6 px-4 pt-6 pb-10 lg:mx-auto lg:w-full lg:max-w-[1232px] lg:px-4 lg:pt-10" data-test="match-detail">
     <div class="flex flex-wrap items-center gap-x-5 gap-y-3">
         <a href="{{ \App\Support\GameNames::page($match->game) }}" class="shrink-0" aria-label="{{ \App\Support\GameNames::game($match->game) }}"><x-game-cover :game="$match->game" size="thumb" class="w-16 rounded-sm shadow-ring lg:w-24" data-test="match-game-cover" /></a>
-        <h1 class="m-0 font-display text-[28px] font-bold lg:text-[34px]">{{ __('Series :number', ['number' => $match->label()]) }}</h1>
+        <h1 class="m-0 font-display text-[28px] font-bold lg:text-[34px]">{{ $team ? __('Team match :number', ['number' => $match->label()]) : __('Series :number', ['number' => $match->label()]) }}</h1>
         <span class="text-[13px] text-ink-2">{{ \App\Support\GameNames::game($match->game) }} · {{ $match->challenger_name }} vs {{ $match->challenged_name }}</span>
         <button type="button" x-data="{ copied: false }" x-on:click="navigator.clipboard?.writeText(window.location.href); copied = true; setTimeout(() => copied = false, 1500)"
                 :aria-label="copied ? @js(__('Link copied')) : @js(__('Copy link'))" class="btn-w inline-flex size-11 cursor-pointer items-center justify-center rounded-md border border-line bg-well text-ink-2">
@@ -167,13 +184,20 @@ new #[Layout('layouts::app', ['section' => 'matches'])] class extends Component 
         </div>
     @endif
 
+    @if ($team)
+        {{-- The boards first: they are what a spectator came for; the facts follow. --}}
+        <livewire:team-match-boards :match="$match" :wire:key="'team-boards-'.$match->id" />
+    @endif
+
     <div class="grid grid-cols-1 gap-5 lg:grid-cols-2">
         <div class="flex flex-col rounded-lg bg-card px-4 py-2 lg:px-6">
             @foreach ([
                 [__('Challenge sent'), SeriesPresenter::time($match->created_at ?? now(), $viewer).($match->answered_at && $match->start_at ? ', '.__('accepted :time', ['time' => SeriesPresenter::time($match->answered_at, $viewer, 'H:i')]) : '')],
                 [__('Played'), $match->start_at ? SeriesPresenter::time($match->start_at, $viewer).($match->finished_at ? ' · '.__('result :time', ['time' => SeriesPresenter::time($match->finished_at, $viewer, 'H:i')]) : '') : __('not yet')],
-                [__('Format'), \App\Support\GameNames::game($match->game).' · '.$match->mode.' · BO'.$match->best_of],
-                [__('Lobby'), __('Hosted by :clan, lineups only', ['clan' => $match->challenger_name])],
+                [__('Format'), \App\Support\GameNames::game($match->game).' · '.$match->mode.' · '.($team ? trans_choice(':count board|:count boards', (int) $match->boards) : 'BO'.$match->best_of)],
+                $team
+                    ? [__('Lineup lock'), \App\Support\Chess\ChessTeamMatches::lockAt($match) === null ? __('not yet') : SeriesPresenter::time(\App\Support\Chess\ChessTeamMatches::lockAt($match), $viewer)]
+                    : [__('Lobby'), __('Hosted by :clan, lineups only', ['clan' => $match->challenger_name])],
             ] as [$key, $value])
                 <div class="grid min-h-11 grid-cols-[120px_minmax(0,1fr)] items-center gap-4 border-b border-hairline py-2 text-[13px] last:border-0 lg:grid-cols-[180px_minmax(0,1fr)]"><span class="text-ink-2">{{ $key }}</span><span>{{ $value }}</span></div>
             @endforeach
@@ -183,13 +207,14 @@ new #[Layout('layouts::app', ['section' => 'matches'])] class extends Component 
                 [__('Match kind'), $match->rated ? __('Rated') : __('Casual'), ''],
                 [__('Elo before'), $elo['before'].($elo['casual'] ? ' · '.__('casual Elo') : ''), 'text-ink-2'],
                 [__('At stake'), $elo['stake'].($elo['casual'] ? ' · '.__('casual Elo only, no rank') : ''), 'text-ink-2'],
-                [__('League record'), $match->rated ? __('after both captains confirm') : __('none for casual matches'), 'text-btc-hi'],
+                [__('League record'), $team ? ($match->rated ? __('one per board, when it ends') : __('none for friendlies')) : ($match->rated ? __('after both captains confirm') : __('none for casual matches')), 'text-btc-hi'],
             ] as [$key, $value, $class])
                 <div class="grid min-h-11 grid-cols-[120px_minmax(0,1fr)] items-center gap-4 border-b border-hairline py-2 text-[13px] last:border-0 lg:grid-cols-[180px_minmax(0,1fr)]"><span class="text-ink-2">{{ $key }}</span><span class="{{ $class }}">{{ $value }}</span></div>
             @endforeach
         </div>
     </div>
 
+    @unless ($team)
     <section aria-labelledby="flow-h" class="flex flex-col gap-3">
         <h2 id="flow-h" class="m-0 font-display text-xl font-bold">{{ __('Flow') }}</h2>
         <div class="flex flex-col gap-3 rounded-lg bg-card px-4 py-5 lg:px-6">
@@ -279,8 +304,10 @@ new #[Layout('layouts::app', ['section' => 'matches'])] class extends Component 
         </div>
     </section>
 
+    @endunless
+
     {{-- P47: a tip for the winners (NIP-57), each whose profile has a Lightning address; nothing otherwise --}}
-    @if ($match->status->hasResult())
+    @if ($match->status->hasResult() && ! $team)
         <livewire:zap-winner type="series" :subject="(string) $match->number" :wire:key="'zap-series-'.$match->number" />
     @endif
 

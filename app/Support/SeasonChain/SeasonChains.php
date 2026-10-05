@@ -211,10 +211,19 @@ final class SeasonChains
      * and no player signed a report or a response for it: the resolution is
      * `admin` and the content says so. When a player's final record (`64`)
      * exists already, it is referenced.
+     *
+     * A board of a chess team match (NIP rev. 9.22) is attested the same way
+     * with its board number, the challenge's `match` and lineups, and
+     * `challenger`/`challenged` by side, not by colour ({@see teamBoardTags()}).
+     * A board forfeit is `forfeit` without `elo` or block, and a board where
+     * nobody moved (aborted) is `void`; both only from the team result
+     * (ChessTeamMatches::settle()).
      */
     public function attestChessGame(ChessGame $game): ?SeasonAttestation
     {
-        if (! $game->rated || $game->status !== ChessGameStatus::Finished || ! in_array($game->result, ['1-0', '0-1', '1/2-1/2'], true)) {
+        $voidBoard = $game->series_match_id !== null && $game->status === ChessGameStatus::Aborted;
+
+        if (! $game->rated || (! $voidBoard && ($game->status !== ChessGameStatus::Finished || ! in_array($game->result, ['1-0', '0-1', '1/2-1/2'], true)))) {
             return null;
         }
 
@@ -227,25 +236,28 @@ final class SeasonChains
         }
 
         $season = Season::query()->whereKey($live->id)->lockForUpdate()->firstOrFail();
-        $existing = $season->attestations()->where(['source' => SeasonAttestation::CHESS, 'source_id' => $game->id, 'board' => 1])->first();
+        $board = $game->series_match_id === null ? 1 : (int) $game->board;
+        $existing = $season->attestations()->where(['source' => SeasonAttestation::CHESS, 'source_id' => $game->id, 'board' => $board])->first();
 
         if ($existing !== null) {
             return $existing;
         }
 
         $league = LeagueKey::required();
-        $game->loadMissing(['white', 'black', 'recordEvent', 'tournamentMatch']);
+        $game->loadMissing(['white', 'black', 'recordEvent', 'tournamentMatch', 'seriesMatch.challengeEvent', 'seriesMatch.answerEvent']);
         $attestedAt = $this->nextAttestationTime($season);
-        // Tournament games never mine (user, 2026-09-26: "die Chain gehört zur Season").
-        $candidate = $game->tournament_match_id === null ? $this->chessCandidate($game, $attestedAt) : null;
+        // Tournament games never mine (user, 2026-09-26: "die Chain gehört zur Season"), and neither does a
+        // board the league decided, a forfeit or a void (NIP rev. 9.22: no `elo`, no block).
+        $candidate = $game->tournament_match_id === null && ! $voidBoard && $game->end_reason !== ChessEndReason::Forfeit
+            ? $this->chessCandidate($game, $attestedAt) : null;
 
         $row = [
             'season_id' => $season->id,
             'source' => SeasonAttestation::CHESS,
             'source_id' => $game->id,
-            'board' => 1,
-            'match_number' => $game->number,
-            'label' => '#'.$game->number,
+            'board' => $board,
+            'match_number' => $game->matchNumber(),
+            'label' => $game->number(),
             'game' => 'chess',
             'mode' => $game->mode,
             'ladder_address' => $ladder,
@@ -271,12 +283,15 @@ final class SeasonChains
             $block = ['block', $verdict->mines() ? (string) $row['height'] : '', $tip['id']];
         }
 
-        $content = match ($game->end_reason) {
-            ChessEndReason::Director => 'Entered by the tournament director; not played on the league server and not confirmed by the players.',
-            ChessEndReason::Forfeit => 'Decided by forfeit: a player missed the first move or withdrew from the tournament; unrated.',
+        $content = match (true) {
+            $voidBoard => 'Void: neither player made a first move on this board of the team match; no board point for either side.',
+            $game->series_match_id !== null && $game->end_reason === ChessEndReason::Forfeit => 'Decided by forfeit: a player missed the first move on this board of the team match; unrated, one board point for the side that showed up.',
+            $game->end_reason === ChessEndReason::Director => 'Entered by the tournament director; not played on the league server and not confirmed by the players.',
+            $game->end_reason === ChessEndReason::Forfeit => 'Decided by forfeit: a player missed the first move or withdrew from the tournament; unrated.',
             default => 'Played on the league server, which checked every move; no signed report or response.',
         };
-        $event = $league->publish(self::ATTESTATION, $this->chessTags($game, $season, $ladder, $block), $content, $attestedAt->getTimestamp());
+        $tags = $game->seriesMatch !== null ? $this->teamBoardTags($game, $game->seriesMatch, $season, $ladder, $block) : $this->chessTags($game, $season, $ladder, $block);
+        $event = $league->publish(self::ATTESTATION, $tags, $content, $attestedAt->getTimestamp());
 
         return SeasonAttestation::query()->create($row + ['event_id' => $event->event_id, 'nostr_event_id' => $event->id]);
     }
@@ -291,13 +306,17 @@ final class SeasonChains
             return null;
         }
 
+        // A board of a team match: labelled `#<challenge>/<board>`, one challenge for all its boards.
+        $label = $game->number();
+        $match = $game->series_match_id === null ? 'chess:'.$game->id : 'series:'.$game->series_match_id;
+
         [$winner, $loser] = $game->result === '1-0' ? [$game->white->pubkey, $game->black->pubkey] : [$game->black->pubkey, $game->white->pubkey];
         $pin = GatePin::fromArray($game->gate_at_accept);
         $clans = $this->clans([$winner, $loser], $game->clans_at_accept);
 
         return new Candidate(
-            '#'.$game->number,
-            'chess:'.$game->id,
+            $label,
+            $match,
             'chess',
             'chess/'.$game->mode,
             $attestedAt,
@@ -384,6 +403,96 @@ final class SeasonChains
         }
 
         $tags[] = ['alt', "Esports league attestation: match #{$game->number}, chess {$game->mode} {$game->result}"];
+
+        return $tags;
+    }
+
+    /**
+     * The `2154` of one board of a chess team match (NIP rev. 9.22, "League
+     * Attestation", "Chess"): `e` to the challenge, the accepting answer and
+     * the game record; the ladder and both lineup `a` with their roles; the
+     * board's two players as roster entries by side with their lineup role;
+     * one `board` row (`*` for a void board, which has no result); `winner`
+     * by side; `elo` only for a rated result; the challenge's `match`.
+     *
+     * @param  list<string>|null  $block
+     * @return list<list<string>>
+     */
+    private function teamBoardTags(ChessGame $game, SeriesMatch $match, Season $season, string $ladder, ?array $block): array
+    {
+        $white = $game->white->pubkey;
+        $black = $game->black->pubkey;
+        $whiteSide = $game->board % 2 === 1 ? 'challenger' : 'challenged';
+        $bySide = $whiteSide === 'challenger' ? ['challenger' => $white, 'challenged' => $black] : ['challenger' => $black, 'challenged' => $white];
+        $void = $game->status === ChessGameStatus::Aborted;
+        $tags = [];
+
+        foreach ([$match->challengeEvent, $match->answerEvent, $game->recordEvent] as $event) {
+            if ($event !== null) {
+                $tags[] = ['e', $event->event_id, '', $event->pubkey];
+            }
+        }
+
+        $tags[] = ['a', $ladder, ''];
+        $tags[] = ['a', $match->challenger_lineup_address, '', 'challenger'];
+        $tags[] = ['a', $match->challenged_lineup_address, '', 'challenged'];
+
+        // The lineup role each player had at the accept (the pin's eligible players), `player` if the pin has none.
+        $roles = [];
+
+        foreach (GatePin::fromArray($match->gate_at_accept)->sides ?? [] as $entries) {
+            foreach ($entries as $entry) {
+                $roles[(string) $entry['pubkey']] = (string) $entry['role'];
+            }
+        }
+
+        foreach ($bySide as $side => $pubkey) {
+            $tags[] = ['p', $pubkey, '', $side, $roles[$pubkey] ?? 'player'];
+        }
+
+        $tags[] = ['board', (string) $game->board, $white, $black, $void ? '*' : (string) $game->result];
+        $tags[] = ['resolution', $void ? SeriesResolution::Void->value : ($game->end_reason === ChessEndReason::Forfeit ? Resolution::Forfeit : Resolution::Admin)->value];
+        $tags[] = ['winner', match (true) {
+            $void => 'none',
+            $game->result === '1/2-1/2' => 'draw',
+            $game->result === '1-0' => $whiteSide,
+            default => SeriesMatch::otherSide($whiteSide),
+        }];
+
+        $players = [$game->white_id => $white, $game->black_id => $black];
+        $changes = RatingChange::query()->with('rating')->where('source', RatingChange::CHESS)->where('source_id', $game->id)->orderBy('id')->get();
+
+        foreach ($changes as $change) {
+            $userId = $change->rating->user_id;
+
+            if ($userId !== null && isset($players[$userId])) {
+                $tags[] = ['elo', $players[$userId], (string) $change->before, (string) $change->after];
+            }
+        }
+
+        $previous = $season->attestations()->where('ladder_address', $ladder)->orderByDesc('id')->value('event_id');
+
+        if (is_string($previous)) {
+            $tags[] = ['prev', $previous];
+        }
+
+        $tags[] = ['match', (string) $match->number];
+
+        foreach (GatePin::fromArray($game->gate_at_accept)?->tags([$white, $black]) ?? [] as $tag) {
+            $tags[] = $tag;
+        }
+
+        foreach ($this->clans([$white, $black], $game->clans_at_accept) as $pubkey => $clan) {
+            if ($clan !== null) {
+                $tags[] = ['clan', $pubkey, $clan];
+            }
+        }
+
+        if ($block !== null) {
+            $tags[] = $block;
+        }
+
+        $tags[] = ['alt', "Esports league attestation: chess team match #{$match->number}, board {$game->board}, ".($void ? 'void' : (string) $game->result)];
 
         return $tags;
     }

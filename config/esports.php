@@ -511,13 +511,17 @@ return [
     | clans plays one rated team match per `rated_pair_days` (rolling;
     | friendlies are not limited). A challenge "now" starts `lock_minutes`
     | plus `esports.series.now_minutes` ahead, so both captains still have
-    | time to name their players before the lock.
+    | time to name their players before the lock. At the start every board
+    | starts on its own; the side to move has `first_move_seconds` from the
+    | start for the first move or loses that board by forfeit (P5, user
+    | 2026-10-05: 600 seconds, as tournament rapid).
     |
     */
 
     'team_matches' => [
         'lock_minutes' => 30,
         'rated_pair_days' => 7,
+        'first_move_seconds' => 600,
     ],
 
     /*

@@ -78,6 +78,7 @@ use Illuminate\Support\Carbon;
  * @property-read ChessGame|null $rematch
  * @property-read NostrEvent|null $recordEvent
  * @property-read TournamentMatch|null $tournamentMatch
+ * @property-read SeriesMatch|null $seriesMatch
  */
 #[Fillable(['number', 'mode', 'rated', 'gate_at_accept', 'clans_at_accept', 'white_id', 'black_id', 'status', 'result', 'end_reason', 'start_fen', 'fen', 'ply', 'initial_ms', 'increment_ms',
     'white_ms', 'black_ms', 'turn_started_ms', 'deadline_ms', 'draw_offer', 'rematch_offer', 'rematch_of_id', 'rematch_id', 'version', 'ended_at',
@@ -148,6 +149,27 @@ class ChessGame extends Model
     public function tournamentMatch(): BelongsTo
     {
         return $this->belongsTo(TournamentMatch::class);
+    }
+
+    /**
+     * The chess team match this game is a board of (NIP rev. 9.22).
+     *
+     * @return BelongsTo<SeriesMatch, $this>
+     */
+    public function seriesMatch(): BelongsTo
+    {
+        return $this->belongsTo(SeriesMatch::class);
+    }
+
+    /**
+     * A game inside an envelope: a tournament game (P18) or a board of a
+     * chess team match (plan "Schach Rapid und Clan", P5). Both have a
+     * first-move window that ends in a forfeit, and neither can be aborted
+     * or rematched by the players.
+     */
+    public function hasEnvelope(): bool
+    {
+        return $this->tournament_match_id !== null || $this->series_match_id !== null;
     }
 
     /**
@@ -297,8 +319,28 @@ class ChessGame extends Model
         return $this->ply >= 2;
     }
 
+    /**
+     * `#412`; a board of a team match carries the number of its challenge
+     * and the board (`#412/2`, as a board's block label), never one of its own.
+     */
     public function number(): string
     {
+        if ($this->series_match_id !== null) {
+            return '#'.$this->matchNumber().'/'.$this->board;
+        }
+
         return '#'.$this->number;
+    }
+
+    /** The league match number: the game's own, or for a team match board its challenge's. */
+    public function matchNumber(): ?int
+    {
+        if ($this->series_match_id === null) {
+            return $this->number;
+        }
+
+        return $this->relationLoaded('seriesMatch')
+            ? $this->seriesMatch?->number
+            : SeriesMatch::query()->whereKey($this->series_match_id)->value('number');
     }
 }

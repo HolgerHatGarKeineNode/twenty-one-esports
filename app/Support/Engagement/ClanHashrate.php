@@ -2,6 +2,7 @@
 
 namespace App\Support\Engagement;
 
+use App\Enums\SeriesResolution;
 use App\Models\Clan;
 use App\Models\Rating;
 use App\Models\RatingChange;
@@ -22,15 +23,16 @@ use Illuminate\Support\Facades\DB;
  *    League series gives each player of the counted roster the series
  *    result;
  * 2. a series won by a lineup adds the team-win bonus once to the lineup's
- *    clan;
+ *    clan, and so does a chess team match won on board points (NIP rev.
+ *    9.22) that has at least one board rated in the season; a team draw,
+ *    a whole-team forfeit or void and a friendly add none;
  * 3. only rated results count: results that moved a rating of the season's
  *    rated ladders. Casual games, void series and players without a clan
  *    earn nothing.
  *
  * "Last 7 days" is the same over the results recorded since then (from a
- * whole minute), counted in the same pass as the season. Chess
- * team matches over boards do not exist yet, so there is no chess team-win
- * bonus to count.
+ * whole minute), counted in the same pass as the season; a team match's
+ * bonus by the time of its team result.
  *
  * Cost (security gate P10, Low): the whole season is read, so a breakdown
  * is computed in one pass for both windows and cached for
@@ -116,7 +118,7 @@ final class ClanHashrate
                     $row['points'] += $weights->teamWinBonus;
                     $row['bonus'] += $weights->teamWinBonus;
                     $row['teamWins']++;
-                    $row['series'] += $weights->teamWinBonus;
+                    $row['series'] += $series ? $weights->teamWinBonus : 0;
                 } else {
                     $row['points'] += $points[$slot];
                     $row['series'] += $series ? $points[$slot] : 0;
@@ -127,8 +129,12 @@ final class ClanHashrate
             }
         };
 
+        // The chess team matches (NIP rev. 9.22) with a board rated in this season, for their team-win bonus below.
+        $teamMatchIds = [];
+
         foreach ($sources->where('source', RatingChange::CHESS)->pluck('source_id')->chunk(self::CHUNK) as $ids) {
-            $games = DB::table('chess_games')->whereIn('id', $ids->all())->get(['id', 'white_id', 'black_id', 'clans_at_accept']);
+            $games = DB::table('chess_games')->whereIn('id', $ids->all())->get(['id', 'white_id', 'black_id', 'clans_at_accept', 'series_match_id']);
+            $teamMatchIds = [...$teamMatchIds, ...$games->pluck('series_match_id')->filter()->all()];
             $pubkeys = DB::table('users')->whereIn('id', $games->pluck('white_id')->merge($games->pluck('black_id'))->filter()->unique()->values()->all())->pluck('pubkey', 'id');
 
             foreach ($games as $game) {
@@ -202,6 +208,24 @@ final class ClanHashrate
                     $lineupId = $match->winner === 'challenger' ? $match->challenger_lineup_id : $match->challenged_lineup_id;
                     $add($lineupId === null ? null : ($lineupClans[$lineupId] ?? null), null, 0, true, $isRecent);
                 }
+            }
+        }
+
+        // A team match won on board points adds the bonus once to the winning lineup's clan; its boards earned
+        // their players' points above, a board forfeit (unrated) none.
+        foreach (array_chunk(array_values(array_unique($teamMatchIds)), self::CHUNK) as $ids) {
+            $matches = DB::table('series_matches')->whereIn('id', $ids)->whereNotNull('boards')->where('rated', true)
+                ->where('resolution', SeriesResolution::Admin->value)->whereIn('winner', SeriesMatch::SIDES)
+                ->get(['id', 'winner', 'finished_at', 'challenger_lineup_id', 'challenged_lineup_id']);
+            $lineupClans = DB::table('lineups')->join('clans', 'clans.id', '=', 'lineups.clan_id')
+                ->whereIn('lineups.id', $matches->pluck('challenger_lineup_id')->merge($matches->pluck('challenged_lineup_id'))->filter()->unique()->values()->all())
+                ->get(['lineups.id', 'clans.owner_pubkey', 'clans.slug'])
+                ->mapWithKeys(fn (object $row): array => [$row->id => Clan::KIND.':'.$row->owner_pubkey.':'.$row->slug]);
+
+            foreach ($matches as $match) {
+                $lineupId = $match->winner === 'challenger' ? $match->challenger_lineup_id : $match->challenged_lineup_id;
+                $isRecent = $match->finished_at !== null && CarbonImmutable::parse($match->finished_at)->gte($since);
+                $add($lineupId === null ? null : ($lineupClans[$lineupId] ?? null), null, 0, false, $isRecent);
             }
         }
 
