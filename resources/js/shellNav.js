@@ -37,10 +37,17 @@ export function shellHeader() {
         focusTicket: 0,
 
         init() {
-            window.addEventListener('keydown', (event) => this.hotkey(event));
-            window.addEventListener('nav-sheet', (event) => event.detail !== 'hub' && this.closeHub(false));
-            window.addEventListener('matches-filter', (event) => this.followMatchesFilter(event.detail));
+            // Removed in destroy(): every wire:navigate swap brings a new header.
+            this.teardown = new AbortController();
+            const signal = this.teardown.signal;
+            window.addEventListener('keydown', (event) => this.hotkey(event), { signal });
+            window.addEventListener('nav-sheet', (event) => event.detail !== 'hub' && this.closeHub(false), { signal });
+            window.addEventListener('matches-filter', (event) => this.followMatchesFilter(event.detail), { signal });
             this.$nextTick(() => this.revealActiveChip());
+        },
+
+        destroy() {
+            this.teardown?.abort();
         },
 
         hotkey(event) {
@@ -188,7 +195,12 @@ export function shellSheet() {
         focusTicket: 0,
 
         init() {
-            window.addEventListener('nav-sheet', (event) => event.detail !== 'more' && this.close(false));
+            this.teardown = new AbortController();
+            window.addEventListener('nav-sheet', (event) => event.detail !== 'more' && this.close(false), { signal: this.teardown.signal });
+        },
+
+        destroy() {
+            this.teardown?.abort();
         },
 
         toggle(button) {

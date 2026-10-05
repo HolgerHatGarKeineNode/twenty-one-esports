@@ -7,6 +7,7 @@ import { casualClock } from './casualClock.js';
 import { signerGate } from './casualPlay.js';
 import { livePoll } from './livePoll.js';
 import { roomChat } from './roomChat.js';
+import { registerAlpine } from './registerAlpine.js';
 
 /** A change pushed for this series, or a clock edge, asks the server after this wait (several pushes make one sync). */
 const SYNC_DEBOUNCE_MS = 250;
@@ -174,7 +175,7 @@ export function lobbyPin(labels) {
     };
 }
 
-document.addEventListener('alpine:init', () => {
+registerAlpine(() => {
     window.Alpine.store('lobbyPin', { card: null, busy: false, error: '' });
     window.Alpine.data('lobbyPin', lobbyPin);
     window.Alpine.data('roomChat', roomChat);

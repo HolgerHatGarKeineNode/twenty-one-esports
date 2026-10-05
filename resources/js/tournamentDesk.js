@@ -5,7 +5,8 @@
  * the desk buttons elsewhere load the chat on demand (deskButton.js).
  */
 import { deskChat } from './deskChat.js';
+import { registerAlpine } from './registerAlpine.js';
 
-document.addEventListener('alpine:init', () => {
+registerAlpine(() => {
     window.Alpine.data('deskChat', deskChat);
 });

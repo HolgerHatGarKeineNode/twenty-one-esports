@@ -57,6 +57,7 @@ export function followsHere({ me = null, relays = [], labels = {}, lookingKey = 
         inviting: null,
         invitedLast: null,
         stopPresence: null,
+        observer: null,
 
         init() {
             if (!me) return;
@@ -70,17 +71,18 @@ export function followsHere({ me = null, relays = [], labels = {}, lookingKey = 
 
                 return;
             }
-            const observer = new IntersectionObserver((entries) => {
+            this.observer = new IntersectionObserver((entries) => {
                 if (entries.some((entry) => entry.isIntersecting)) {
-                    observer.disconnect();
+                    this.observer.disconnect();
                     this.read();
                 }
             }, { rootMargin: '200px' });
-            observer.observe(this.$el);
+            this.observer.observe(this.$el);
         },
 
         destroy() {
             this.stopPresence?.();
+            this.observer?.disconnect();
         },
 
         /** Whether this follow is online and looks for this lobby's blitz. */

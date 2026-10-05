@@ -82,5 +82,13 @@ document.addEventListener('alpine:init', () => {
             this.toasts.filter((toast) => toast.id === id).forEach((toast) => clearInterval(toast.ticker));
             this.toasts = this.toasts.filter((toast) => toast.id !== id);
         },
+
+        /** A wire:navigate swap takes the stack off the page: its timers go with it, and no countdown opens a game later. */
+        destroy() {
+            this.toasts.forEach((toast) => {
+                clearInterval(toast.ticker);
+                clearTimeout(toast.timer);
+            });
+        },
     }));
 });
