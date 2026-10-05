@@ -175,7 +175,7 @@ new #[Title('Chess settings')] #[Layout('layouts::app', ['scripts' => ['resource
             <section aria-labelledby="dc-h" class="flex flex-col rounded-lg bg-card px-6 py-5">
                 <h2 id="dc-h" class="m-0 mb-1 text-[15px] font-bold">{{ __('Daily chess') }}</h2>
                 @include('pages.settings.partials.switch', ['label' => __('Double-check daily moves'), 'hint' => __('one extra tap before a move is final'), 'on' => $settings->doubleCheck, 'action' => "toggle('doubleCheck')", 'test' => 'double-check'])
-                <a href="{{ route('settings.notifications') }}" wire:navigate class="inline-flex min-h-11 items-center self-start text-[13px] text-ink-2 underline decoration-edge underline-offset-4 hover:text-ink" data-test="chess-to-notifications">{{ __('Reminders before your move is due: Notifications') }}</a>
+                <a href="{{ route('settings.notifications') }}" class="inline-flex min-h-11 items-center self-start text-[13px] text-ink-2 underline decoration-edge underline-offset-4 hover:text-ink" data-test="chess-to-notifications">{{ __('Reminders before your move is due: Notifications') }}</a>
 
             </section>
         </div>

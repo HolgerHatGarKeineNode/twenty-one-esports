@@ -111,7 +111,7 @@ new class extends Component {
                 <li @class(['flex min-w-0 flex-col gap-1.5 rounded-md bg-raised px-3 py-2.5 text-[13px]', 'shadow-[inset_0_0_0_1px_#5A2A2E]' => $wait->needsAdmin])
                     wire:key="wait-{{ $wait->matchId }}" data-test="wait" data-state="{{ $wait->state }}" data-match="{{ $wait->matchId }}">
                     <span class="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1">
-                        <a href="{{ $wait->url }}" class="shrink-0 text-[11px] font-bold text-ink-3" wire:navigate>{{ $wait->label }}</a>
+                        <a href="{{ $wait->url }}" class="shrink-0 text-[11px] font-bold text-ink-3">{{ $wait->label }}</a>
                         <span class="min-w-0 grow [overflow-wrap:anywhere]">{{ $wait->sides[0] }} <span class="text-ink-3">{{ __('vs') }}</span> {{ $wait->sides[1] }}</span>
                         <span @class(['inline-flex h-6 shrink-0 items-center rounded-xs px-2 text-xs font-bold',
                             'bg-loss-tint text-loss' => $wait->needsAdmin,

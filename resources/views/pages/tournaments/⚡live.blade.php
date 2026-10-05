@@ -280,7 +280,7 @@ new #[Layout('layouts::app', ['section' => 'tournaments', 'realtime' => true, 's
                             @endphp
                             <article @class(['flex min-w-0 flex-col gap-3 rounded-lg bg-card px-4 py-4', $edge]) wire:key="ov-{{ $series->id }}" data-test="live-series" data-lane="{{ $lane }}">
                                 <header class="flex flex-wrap items-center justify-between gap-x-3 gap-y-1">
-                                    <a href="{{ route('matches.room', $series) }}" class="inline-flex min-h-6 items-center font-display text-[15px] font-bold text-ink tabular-nums underline decoration-edge underline-offset-4 hover:decoration-btc" wire:navigate aria-label="{{ __('Match room :label', ['label' => $series->label()]) }}">{{ $series->label() }}</a>
+                                    <a href="{{ route('matches.room', $series) }}" class="inline-flex min-h-6 items-center font-display text-[15px] font-bold text-ink tabular-nums underline decoration-edge underline-offset-4 hover:decoration-btc" aria-label="{{ __('Match room :label', ['label' => $series->label()]) }}">{{ $series->label() }}</a>
                                     <span class="inline-flex h-6 items-center rounded-xs px-2 text-xs font-bold {{ $chip }}" data-test="live-state">{{ $state }}</span>
                                 </header>
 

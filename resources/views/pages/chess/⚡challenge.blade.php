@@ -266,7 +266,7 @@ new #[Title('Challenge')] #[Layout('layouts::app', ['section' => 'chess'])] clas
                     <b class="text-btc-hi">{{ $openWithOpponent->challenger_id === $me->id ? __('You already challenged :name.', ['name' => $opponent->displayName()]) : __(':name already challenged you.', ['name' => $opponent->displayName()]) }}</b>
                     <span class="text-ink-2">{{ __('Open until :time.', ['time' => $openWithOpponent->expires_at->timezone(config('esports.preseason.display_timezone'))->isoFormat('lll')]) }}</span>
                 </div>
-                <a href="{{ route('me.correspondence') }}" wire:navigate data-test="open-challenge-link"
+                <a href="{{ route('me.correspondence') }}" data-test="open-challenge-link"
                    class="btn-p inline-flex h-[52px] items-center justify-center gap-2.5 rounded-md bg-btc px-5 text-[15px] font-bold text-on-btc hover:text-on-btc">
                     <x-icon name="shield-check" :size="18" />{{ $openWithOpponent->challenger_id === $me->id ? __('View or withdraw challenge') : __('Accept or decline challenge') }}
                 </a>

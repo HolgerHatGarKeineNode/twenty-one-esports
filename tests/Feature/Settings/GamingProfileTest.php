@@ -174,7 +174,7 @@ test('every settings page shows the same seven tabs, its own one active and name
         ->and(substr_count($nav[0], 'aria-current="page"'))->toBe(1)
         ->and(html_entity_decode(trim($active[1] ?? '')))->toBe($heading)
         ->and(html_entity_decode(trim($h1[1] ?? '')))->toBe($heading)
-        ->and(substr_count($nav[0], 'wire:navigate'))->toBe(7);
+        ->and(substr_count($nav[0], 'wire:navigate'))->toBe(0);
 })->with([
     ['gaming.edit', 'Gamer tags'],
     ['settings.account', 'Account'],
