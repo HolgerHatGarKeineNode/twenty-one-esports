@@ -230,6 +230,8 @@ final class GameChannels
             ],
             'avatarUrl' => route('avatars.generated', ['pubkey' => StreamChat::AVATAR_PLACEHOLDER, 'v' => 1], false),
             'avatarPlaceholder' => StreamChat::AVATAR_PLACEHOLDER,
+            // A NIP-27 mention of a league account links here (the browser puts the npub in for NPUB).
+            'playerUrl' => StreamChat::playerUrl(),
             'emojiRelays' => RelayPublisher::relayUrls([...RelayPublisher::relayUrls(config('esports.profile_relays', [])), ...$relays]),
             'locale' => app()->getLocale(),
             'labels' => [
@@ -237,6 +239,7 @@ final class GameChannels
                 'bot' => __('bot'),
                 'league' => __('league'),
                 'notPlayer' => __('not in the league'),
+                'quoted' => __('Quoted message'),
                 'mute' => __('Mute :name'),
                 'unmute' => __('Unmute :name'),
                 'mutedOne' => __('1 message from a muted account'),

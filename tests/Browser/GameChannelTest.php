@@ -4,6 +4,7 @@ use App\Models\ChessGame;
 use App\Models\Rating;
 use App\Models\User;
 use App\Support\GameChat\GameChannels;
+use App\Support\Nostr\NostrKeys;
 use Illuminate\Contracts\Process\InvokedProcess;
 use Illuminate\Support\Facades\File;
 use Illuminate\Support\Facades\Http;
@@ -501,6 +502,48 @@ test('a message sent in the chess chat is still there after a reload, next to th
         @unlink($seed);
     }
 });
+
+test('a mention of a league player opens the player page under the league name, anybody else\'s njump.me, and the bar says @name', function (int $width, int $height) {
+    $player = User::factory()->create(['name' => 'Pia Player']);
+    $outsider = new TestSigner;
+    $writer = new TestSigner;
+    $root = ['e', $this->channel, '', 'root'];
+    $outsiderNpub = NostrKeys::hexToNpub($outsider->pubkey);
+    [$relay, , $seed] = p21Relay([
+        $writer->sign(42, [$root, ['p', $player->pubkey]], 'gg nostr:'.$player->npub.' and nostr:'.$outsiderNpub, now()->getTimestamp() - 60),
+    ]);
+
+    try {
+        $page = p21Page(null, '/games/rocket-league', $width, $height);
+        $visible = '[...document.querySelectorAll("[data-test=game-chat-text] [data-test=chat-mention]")].filter((el) => el.checkVisibility())';
+        if ($width < 1280) {
+            // Below xl the chat is a bar first: its line names the mentioned player, not the code.
+            BrowserWait::until($page, '() => document.querySelector("[data-test=game-chat-preview]").innerText.includes("@Pia Player")', 5_000);
+            expect($page->evaluate('() => document.querySelector("[data-test=game-chat-preview]").innerText'))->not->toContain('nostr:');
+            $page->locator('[data-test=game-chat-toggle]')->click();
+        }
+        BrowserWait::until($page, '() => '.$visible.'.length === 2 && '.$visible.'[0].getAttribute("href").startsWith("/players/")', 5_000);
+        $page->evaluate('() => document.querySelector("[data-test=game-chat-text]").scrollIntoView({ block: "center" })');
+        Execution::instance()->wait(0.3);
+        $chips = $page->evaluate('() => { const list = document.querySelector("[data-test=game-chat-text]").closest("ol, ul").getBoundingClientRect(); return '.$visible.'.map((el) => { const box = el.getBoundingClientRect(); return { text: el.innerText.trim(), href: el.getAttribute("href"), target: el.getAttribute("target"), inside: box.left >= list.left && box.right <= list.right, height: Math.round(box.height) }; }); }');
+        fwrite(STDERR, "\n[p21 mentions {$width}x{$height}] ".json_encode($chips)."\n");
+        p21Shot($page, 'p21-mentions-'.$width);
+        [$scrollWidth, $clientWidth] = $page->evaluate(BrowserConsole::WIDTHS);
+
+        expect($chips[0])->toMatchArray(['text' => '@Pia Player', 'href' => '/players/'.$player->npub, 'target' => null, 'inside' => true])
+            ->and($chips[1])->toMatchArray(['href' => 'https://njump.me/'.$outsiderNpub, 'target' => '_blank', 'inside' => true])
+            ->and($chips[1]['text'])->toStartWith('@npub1')
+            ->and($chips[0]['height'])->toBeLessThanOrEqual(24)
+            ->and($scrollWidth)->toBeLessThanOrEqual($clientWidth)
+            ->and(p21Errors($page))->toBe([]);
+    } finally {
+        $relay->stop(1);
+        @unlink($seed);
+    }
+})->with([
+    'phone' => [390, 844],
+    'desktop' => [1440, 900],
+]);
 
 test('the auditor\'s 63 KB message renders bounded here too, and keeps the main thread under 200 ms', function () {
     $dir = sys_get_temp_dir().'/p21-img-'.getmypid().'-'.bin2hex(random_bytes(3));

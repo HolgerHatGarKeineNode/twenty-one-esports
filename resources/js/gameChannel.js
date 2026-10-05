@@ -16,7 +16,10 @@
  *   member, or a result in the league: NIP "Game channels"); how many other
  *   votes arrived is said, not added.
  * - Message text renders through the P24 stream chat's bounded tokenizer
- *   (streamChat.js) and its token partial, never as HTML.
+ *   (streamChat.js) and its token partial, never as HTML. A NIP-27 mention
+ *   (`nostr:npub…`) is an @name chip: the league lookup above names it and
+ *   says where it links, the player page for a league account, njump.me for
+ *   anybody else.
  * - Mutes are the viewer's own (localStorage and the account, ChatMute);
  *   the creator's kind 43/44 hide for everyone on this app.
  * - Guests read only.
@@ -28,7 +31,7 @@ import { knownCustomEmojis, loadUserCustomEmojis, pushRecentEmoji } from './emoj
 import { emojiPicker, emojiPopover } from './emojiPicker.js';
 import { ensureSigner } from './nostrSign.js';
 import { signerMessage, signTemplate } from './signing.js';
-import { botMark, displayRows, insertSorted, length, sendBlocker, tokenize } from './streamChat.js';
+import { NJUMP, botMark, displayRows, insertSorted, length, sendBlocker, tokenize } from './streamChat.js';
 
 const MUTES_KEY = 'esports.chat.mutes';
 /** Per channel id: the `created_at` of the newest item the viewer had in front of them (the chat open or the side column). */
@@ -279,7 +282,13 @@ export function gameChannel(config) {
             let messages = list.filter((item) => item.type === 'message').length;
             this.items = messages <= KEEP ? list : list.filter((item) => item.type !== 'message' || messages-- <= KEEP);
 
-            for (const item of added) this.wantPerson(item.pubkey, 'author');
+            for (const item of added) {
+                this.wantPerson(item.pubkey, 'author');
+                // A mentioned key is asked about like an author: its chip needs the name and the link.
+                for (const token of item.tokens ?? []) {
+                    if (token.type === 'mention') this.wantPerson(token.pubkey, 'author');
+                }
+            }
             this.markSeen();
             if (this.status !== 'live') return;
             if (follow || added.some((item) => item.pubkey === this.me)) {
@@ -522,6 +531,15 @@ export function gameChannel(config) {
             return (config.avatarUrl ?? '').replace(config.avatarPlaceholder ?? '0'.repeat(64), pubkey);
         },
 
+        /** A mention's link: the player page for a league account, njump.me for anybody else (or while unknown). */
+        mentionUrl(token) {
+            return this.people[token.pubkey] ? (config.playerUrl ?? '/players/NPUB').replace('NPUB', token.npub) : NJUMP + token.npub;
+        },
+
+        mentionExternal(token) {
+            return !this.people[token.pubkey];
+        },
+
         markOf(pubkey) {
             if (pubkey === config.creator) return 'league';
             if (botMark(pubkey, { bot: config.bot }) === 'bot') return 'bot';
@@ -625,7 +643,12 @@ export function gameChannel(config) {
         previewText(item) {
             if (item.type === 'poll') return t.asks + ' ' + (item.poll?.question ?? '');
 
-            return (item.tokens ?? []).map((token) => (token.type === 'emoji' ? ':' + token.value + ':' : token.value)).join('').replace(/\s+/g, ' ').trim();
+            return (item.tokens ?? []).map((token) => {
+                if (token.type === 'emoji') return ':' + token.value + ':';
+                if (token.type === 'mention') return '@' + this.nameOf(token.pubkey);
+
+                return token.type === 'ref' ? t.quoted : token.value;
+            }).join('').replace(/\s+/g, ' ').trim();
         },
 
         /** The bar's line while there is no message to show. */

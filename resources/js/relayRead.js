@@ -13,6 +13,10 @@
  * - Of the valid events the NEWEST per kind wins (NIP-01: highest
  *   created_at, then lowest id), not the first to arrive.
  *
+ * The chats (P24, P21) read other people's profiles through readProfiles():
+ * the usual relays first, then the outbox way (NIP-65) for whoever is still
+ * missing, with the same checks.
+ *
  * No DOM or Alpine import: tests/js/relayRead.test.mjs runs it in Node with a
  * fake WebSocket.
  */
@@ -129,6 +133,109 @@ export async function writeRelaysFor(pubkey, relays, options = {}) {
     const own = writeRelaysOf(newest(lists.flatMap((result) => result.events), pubkey, 10002));
 
     return own.length > 0 ? own : relayUrls(relays);
+}
+
+/**
+ * A relay a browser on an https page may be sent to by somebody else's
+ * relay list or hint: wss:// to a public host name, never localhost, a
+ * private or link-local address, or a `.local` name (a hostile list must not
+ * point every viewer's browser into their own network).
+ */
+export function publicRelay(url) {
+    let host;
+    try {
+        const parsed = new URL(url);
+        if (parsed.protocol !== 'wss:' || parsed.username || parsed.password) return false;
+        host = parsed.hostname.toLowerCase().replace(/^\[|\]$/g, '');
+    } catch {
+        return false;
+    }
+
+    return !(host === 'localhost' || host.endsWith('.localhost') || host.endsWith('.local') || host.endsWith('.internal')
+        || /^(127|10|0)\./.test(host) || /^192\.168\./.test(host) || /^169\.254\./.test(host) || /^172\.(1[6-9]|2\d|3[01])\./.test(host)
+        || /^100\.(6[4-9]|[7-9]\d|1[01]\d|12[0-7])\./.test(host)
+        || host.includes(':') || !host.includes('.'));
+}
+
+/**
+ * Where to look for the kind 0 of `pubkeys` that the usual relays did not
+ * have: per pubkey the first `perAuthor` write relays of its newest relay
+ * list (10002) among `lists`, none in `exclude` (already asked), at most
+ * `maxRelays` relays in all, each one `allow` accepts (publicRelay() on a
+ * live page). Anybody's relay list names anybody's relays, so the plan is
+ * bounded whatever the lists say.
+ *
+ * @returns {Map<string, string[]>} relay URL -> the pubkeys to ask it about
+ */
+export function outboxPlan(lists, pubkeys, { exclude = [], perAuthor = 3, maxRelays = 8, allow = () => true } = {}) {
+    const skip = new Set(exclude);
+    const plan = new Map();
+    for (const pubkey of new Set(pubkeys)) {
+        const relays = writeRelaysOf(newest(lists, pubkey, 10002)).filter((url) => !skip.has(url) && allow(url)).slice(0, perAuthor);
+        for (const url of relays) {
+            if (!plan.has(url)) {
+                if (plan.size >= maxRelays) continue;
+                plan.set(url, []);
+            }
+            plan.get(url).push(pubkey);
+        }
+    }
+
+    return plan;
+}
+
+/**
+ * The kind-0 profiles of `pubkeys`, found the outbox way when the usual
+ * relays do not have them:
+ *
+ * 1. kind 0 from `relays` (a chat's profile and chat relays, relay hints);
+ * 2. for whoever is still missing, their relay list (10002) from `indexers`
+ *    (purplepag.es and the like), then kind 0 from their write relays
+ *    (outboxPlan()).
+ *
+ * Every event is verified before it is kept (readRelay()). `settled` holds
+ * the pubkeys whose answer is final: found, or not found although every
+ * read that could have found them ended in a real EOSE. Anybody else may sit
+ * on a relay that did not answer, and is worth one more try later.
+ *
+ * @returns {Promise<{ events: object[], settled: Set<string> }>}
+ */
+export async function readProfiles(pubkeys, { relays = [], indexers = [], perAuthor = 3, maxRelays = 8, allow = () => true } = {}, options = {}) {
+    const authors = [...new Set(pubkeys)];
+    const usual = relayUrls(relays);
+    const first = usual.length > 0 ? await readRelays(usual, [{ kinds: [0], authors }], options) : [];
+    const events = first.flatMap((result) => result.events);
+    const found = (pubkey) => newest(events, pubkey, 0) !== null;
+    const settled = new Set(authors.filter(found));
+    const missing = authors.filter((pubkey) => !found(pubkey));
+    const firstAnswered = usual.length === 0 || first.some((result) => result.eose);
+    const lookups = relayUrls(indexers);
+
+    if (missing.length === 0 || lookups.length === 0) {
+        if (firstAnswered) missing.forEach((pubkey) => settled.add(pubkey));
+
+        return { events, settled };
+    }
+
+    const lists = await readRelays(lookups, [{ kinds: [10002], authors: missing }], options);
+    const listsAnswered = lists.some((result) => result.eose);
+    const plan = outboxPlan(lists.flatMap((result) => result.events), missing, { exclude: usual, perAuthor, maxRelays, allow });
+    const second = await Promise.all([...plan.entries()].map(([url, who]) => readRelay(url, [{ kinds: [0], authors: who }], options)));
+    events.push(...second.flatMap((result) => result.events));
+    const answered = new Set(second.filter((result) => result.eose).map((result) => result.url));
+
+    for (const pubkey of missing) {
+        if (found(pubkey)) {
+            settled.add(pubkey);
+            continue;
+        }
+        const asked = [...plan.entries()].filter(([, who]) => who.includes(pubkey)).map(([url]) => url);
+        if (firstAnswered && listsAnswered && (asked.length === 0 || asked.some((url) => answered.has(url)))) {
+            settled.add(pubkey);
+        }
+    }
+
+    return { events, settled };
 }
 
 /**

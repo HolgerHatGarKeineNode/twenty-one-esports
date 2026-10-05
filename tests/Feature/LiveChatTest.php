@@ -170,6 +170,23 @@ test('a guest\'s mute stays in her browser: the server refuses it', function () 
         ->and(ChatMute::query()->count())->toBe(0);
 });
 
+test('mention chips learn which pubkeys are league accounts: the pubkeys only, at most 100, throttled per address', function () {
+    $players = User::factory()->count(2)->create();
+    $outside = (new TestSigner)->pubkey;
+    $page = Livewire::test('pages::live');
+
+    $answer = $page->instance()->players([$players[0]->pubkey, $outside, 'npub1notahexkey', ['nested'], $players[1]->pubkey, $players[0]->pubkey]);
+    expect($answer)->toEqualCanonicalizing([$players[0]->pubkey, $players[1]->pubkey])
+        // A league account past the first 100 keys is not looked at.
+        ->and($page->instance()->players([...array_fill(0, 100, $outside), $players[0]->pubkey]))->toBe([])
+        ->and(StreamChat::current()?->config(null))->toMatchArray(['playerUrl' => '/players/NPUB', 'indexerRelays' => []]);
+
+    for ($call = 3; $call <= 30; $call++) {
+        $page->instance()->players([$outside]);
+    }
+    expect($page->instance()->players([$players[0]->pubkey]))->toBeNull();
+});
+
 test('the page survives its own poll with the chat on it', function () {
     Livewire::actingAs(User::factory()->create())->test('pages::live')
         ->call('$refresh')->assertOk()

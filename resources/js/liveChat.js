@@ -14,9 +14,19 @@
  *   what the reader sees. Every later arrival goes to its place by
  *   created_at, not to the end. The list follows new messages while the
  *   reader is at the bottom; scrolled up, it counts them in an "N new"
- *   button instead. Names and pictures come from kind 0 on the profile
- *   relays, cached on this device. Posting signs a kind 1311 with the
- *   viewer's signer (signing.js) and publishes it; guests only read.
+ *   button instead. Names and pictures come from kind 0 (readProfiles() in
+ *   relayRead.js): the profile relays, the chat relays and the relay hints
+ *   of `p` tags and nprofiles first; whoever is still missing is looked up
+ *   the outbox way (NIP-65: their 10002 from the indexers, then their write
+ *   relays). A read that did not end in EOSE is tried once more; a profile
+ *   nobody has is not asked again for PROFILE_MISS_MS. Found profiles are
+ *   cached on this device.
+ *   NIP-27 mentions (`nostr:npub…`) show as an @name chip: a league account
+ *   links to its player page, anybody else to njump.me. Which mentioned keys
+ *   are league accounts the page's `players()` says (pubkeys in, the league
+ *   accounts among them out; nothing else about them).
+ *   Posting signs a kind 1311 with the viewer's signer (signing.js) and
+ *   publishes it; guests only read.
  *   Mutes are the viewer's own, as in the game chat: localStorage plus the
  *   account (Livewire `setMuted`); a run of muted messages folds into one line.
  * - emojiPicker / emojiPopover (resources/js/emojiPicker.js, shared with
@@ -30,13 +40,25 @@ import { knownCustomEmojis, loadUserCustomEmojis, pushRecentEmoji } from './emoj
 import { emojiPicker, emojiPopover } from './emojiPicker.js';
 import { proxiedAvatar } from './imageProxy.js';
 import { ensureSigner } from './nostrSign.js';
-import { newest, readRelays } from './relayRead.js';
+import { newest, publicRelay, readProfiles, readRelays } from './relayRead.js';
 import { signerMessage, signTemplate } from './signing.js';
-import { botMark, boundProfiles, compareItems, displayRows, formatSats, insertSorted, isHttps, isStreamMessage, length, messageTemplate, newestPage, olderPage, parseZap, profileOf, sendBlocker, tokenize } from './streamChat.js';
+import { NJUMP, botMark, boundProfiles, compareItems, displayRows, formatSats, insertSorted, isHttps, isStreamMessage, length, messageTemplate, newestPage, olderPage, parseZap, profileOf, relayHints, sendBlocker, tokenize } from './streamChat.js';
 
 const MUTES_KEY = 'esports.chat.mutes';
 const PROFILES_KEY = 'esports.livechat.profiles';
 const PROFILE_TTL_MS = 6 * 60 * 60 * 1000;
+/** Pubkeys no relay had a profile for, with when: not asked again for PROFILE_MISS_MS. */
+const MISSES_KEY = 'esports.livechat.profileMisses';
+const PROFILE_MISS_MS = 30 * 60 * 1000;
+/** A profile read that did not end in EOSE is tried once more, this much later. */
+const PROFILE_RETRY_MS = 5000;
+/** Relay hints (p tags, nprofiles) kept per pubkey, pubkeys with hints kept, and hint relays added to one read. */
+const HINTS_PER_KEY = 3;
+const HINTED_KEYS = 500;
+const HINT_RELAYS = 6;
+/** Pubkeys one players() call asks about (the server takes at most 100). */
+const PLAYER_BATCH = 100;
+const HEX64 = /^[0-9a-f]{64}$/;
 /** Messages kept while the reader follows the bottom; scrolled up, nothing is dropped under her. */
 const KEEP = 400;
 /** Pixels from the bottom that still count as "at the bottom". */
@@ -67,6 +89,15 @@ function writeJson(key, value) {
     }
 }
 
+/** Pubkeys without a profile, asked within PROFILE_MISS_MS: pubkey -> when. */
+function freshMisses() {
+    const now = Date.now();
+    const stored = readJson(MISSES_KEY, {});
+
+    return Object.fromEntries(Object.entries(stored && typeof stored === 'object' ? stored : {})
+        .filter(([pubkey, at]) => HEX64.test(pubkey) && Number.isFinite(at) && now - at < PROFILE_MISS_MS && at <= now));
+}
+
 /** The cached profiles still fresh, each checked again: the stored copy is only as good as whoever wrote it. */
 function cachedProfiles() {
     const now = Date.now();
@@ -85,6 +116,8 @@ export function liveChat(config) {
         t,
         items: [],
         profiles: {},
+        // pubkey -> true for a league account, false for anybody else; only for mentioned keys
+        players: {},
         status: (config.relays ?? []).length === 0 ? 'off' : 'connecting',
         input: '',
         sending: false,
@@ -107,8 +140,18 @@ export function liveChat(config) {
             if (this.me) writeJson(MUTES_KEY, this.muted);
 
             this.profiles = cachedProfiles();
-            this.asked = new Set(Object.keys(this.profiles));
+            // In flight; found ones are in `profiles`, missing ones in `misses`.
+            this.asked = new Set();
             this.pending = new Set();
+            this.misses = freshMisses();
+            this.profileTries = new Map();
+            this.hints = new Map();
+            this.retryKeys = new Set();
+            // The component's own $wire, for calls made later from a timer.
+            this.wire = this.$wire;
+            this.playerQueue = new Set();
+            this.playerTries = new Set();
+            if (this.me) this.players = { [this.me]: true };
 
             this.fit = () => this.fitColumn();
             this.fitObserver = new ResizeObserver(this.fit);
@@ -162,6 +205,8 @@ export function liveChat(config) {
             clearTimeout(this.eoseTimer);
             clearTimeout(this.graceTimer);
             clearTimeout(this.profileTimer);
+            clearTimeout(this.retryTimer);
+            clearTimeout(this.playerTimer);
             this.subs?.forEach((sub) => sub.close());
             this.pool?.destroy();
         },
@@ -191,6 +236,7 @@ export function liveChat(config) {
         itemOf(event) {
             if (isStreamMessage(event, config.address)) {
                 if (event.content.trim() === '') return null;
+                this.notePHints(event);
 
                 return {
                     type: 'message',
@@ -212,7 +258,7 @@ export function liveChat(config) {
 
             if (this.status === 'connecting') {
                 if (!this.buffer.has(item.id)) this.buffer.set(item.id, item);
-                this.wantProfile(item.pubkey);
+                this.wantPeople(item);
 
                 return;
             }
@@ -234,7 +280,7 @@ export function liveChat(config) {
             if (!added) return;
             // The oldest went: the chat's start is no longer in the list.
             if (this.items.length <= before && this.older === 'end') this.older = 'idle';
-            this.wantProfile(item.pubkey);
+            this.wantPeople(item);
 
             if (!pinned && atEnd && !this.muted.includes(item.pubkey)) {
                 this.unseen += 1;
@@ -320,7 +366,7 @@ export function liveChat(config) {
                 if (items.length > 0) this.items = newestPage([...items, ...this.items], Infinity);
                 this.older = end ? 'end' : 'idle';
             });
-            items.forEach((item) => this.wantProfile(item.pubkey));
+            items.forEach((item) => this.wantPeople(item));
             // Still near the top (a short page): read on, but only while pages bring something.
             if (items.length > 0 && !end) this.afterRender(() => this.readOnIfNearTop());
         },
@@ -408,31 +454,151 @@ export function liveChat(config) {
 
         /* ---------- People ------------------------------------------------------------------- */
 
+        /** The author of an item and everybody it mentions: their profiles, and for mentions whether they play here. */
+        wantPeople(item) {
+            this.wantProfile(item.pubkey);
+            for (const token of item.tokens ?? []) {
+                if (token.type !== 'mention') continue;
+                this.addHints(token.pubkey, token.relays);
+                this.wantProfile(token.pubkey);
+                this.wantPlayer(token.pubkey);
+            }
+        },
+
+        /** The relay hints of a message's `p` tags (NIP-01 tag[2]), kept for the pubkey they name. */
+        notePHints(event) {
+            for (const tag of event.tags ?? []) {
+                if (Array.isArray(tag) && tag[0] === 'p' && typeof tag[2] === 'string' && tag[2] !== '') this.addHints(tag[1], [tag[2]]);
+            }
+        },
+
+        addHints(pubkey, relays) {
+            if (!HEX64.test(pubkey ?? '') || !Array.isArray(relays) || relays.length === 0) return;
+            if (!this.hints.has(pubkey) && this.hints.size >= HINTED_KEYS) return;
+            this.hints.set(pubkey, relayHints([...(this.hints.get(pubkey) ?? []), ...relays.filter((url) => this.allowRelay(url))], HINTS_PER_KEY));
+        },
+
+        /** On an https page only public wss relays (relayRead.js publicRelay()): hints and relay lists are anybody's. */
+        allowRelay(url) {
+            return window.location.protocol !== 'https:' || publicRelay(url);
+        },
+
         wantProfile(pubkey) {
-            if (this.asked.has(pubkey) || (config.profileRelays ?? []).length === 0) return;
+            if (!HEX64.test(pubkey ?? '') || this.profiles[pubkey] || this.asked.has(pubkey)) return;
+            if ((config.profileRelays ?? []).length === 0 && (config.relays ?? []).length === 0) return;
+            if (Date.now() - (this.misses[pubkey] ?? -Infinity) < PROFILE_MISS_MS) return;
             this.asked.add(pubkey);
             this.pending.add(pubkey);
             clearTimeout(this.profileTimer);
             this.profileTimer = setTimeout(() => this.loadProfiles(), 250);
         },
 
+        /**
+         * One batch of profiles (readProfiles()). Found: shown and cached.
+         * Not found although every relay that could have it answered: not
+         * asked again for PROFILE_MISS_MS. Not found after a read that did
+         * not end in EOSE: once more in PROFILE_RETRY_MS, then the same.
+         */
         async loadProfiles() {
             const authors = [...this.pending].slice(0, 50);
             authors.forEach((pubkey) => this.pending.delete(pubkey));
             if (this.pending.size > 0) this.profileTimer = setTimeout(() => this.loadProfiles(), 250);
             if (authors.length === 0) return;
 
-            const results = await readRelays(config.profileRelays, [{ kinds: [0], authors }]);
-            const events = results.flatMap((result) => result.events);
+            let events = [];
+            let settled = new Set();
+            try {
+                const hints = relayHints(authors.flatMap((pubkey) => this.hints.get(pubkey) ?? []), HINT_RELAYS);
+                ({ events, settled } = await readProfiles(authors, {
+                    relays: [...(config.profileRelays ?? []), ...(config.relays ?? []), ...hints],
+                    indexers: config.indexerRelays ?? [],
+                    allow: (url) => this.allowRelay(url),
+                }));
+            } catch (error) {
+                console.warn('[live chat] reading profiles failed', error);
+            }
+            if (this.destroyed) return;
+
             const store = cachedProfiles();
+            const misses = freshMisses();
             for (const pubkey of authors) {
+                this.asked.delete(pubkey);
                 const profile = profileOf(newest(events, pubkey, 0));
-                if (!profile) continue;
-                this.profiles[pubkey] = { ...profile, seen: Date.now() };
-                store[pubkey] = this.profiles[pubkey];
+                if (profile) {
+                    this.profiles[pubkey] = { ...profile, seen: Date.now() };
+                    store[pubkey] = this.profiles[pubkey];
+                    delete misses[pubkey];
+                } else if (settled.has(pubkey) || this.profileTries.has(pubkey)) {
+                    misses[pubkey] = Date.now();
+                } else {
+                    this.profileTries.set(pubkey, 1);
+                    this.retryKeys.add(pubkey);
+                }
             }
             // Newest first, at most 400 people and 256 KB: localStorage is shared with the rest of the site.
             writeJson(PROFILES_KEY, boundProfiles(store));
+            this.misses = Object.fromEntries(Object.entries(misses).sort(([, a], [, b]) => b - a).slice(0, 400));
+            writeJson(MISSES_KEY, this.misses);
+
+            if (this.retryKeys.size > 0 && !this.retryTimer) {
+                this.retryTimer = setTimeout(() => {
+                    this.retryTimer = null;
+                    const again = [...this.retryKeys];
+                    this.retryKeys.clear();
+                    again.forEach((pubkey) => this.wantProfile(pubkey));
+                }, PROFILE_RETRY_MS);
+            }
+        },
+
+        /** Queue a mentioned pubkey for the league's players() lookup. */
+        wantPlayer(pubkey) {
+            if (!HEX64.test(pubkey ?? '') || Object.hasOwn(this.players, pubkey) || this.playerQueue.has(pubkey) || !this.wire) return;
+            this.playerQueue.add(pubkey);
+            this.playerTimer ??= setTimeout(() => this.lookupPlayers(), 300);
+        },
+
+        /**
+         * Ask the league which of the queued pubkeys are league accounts. Only
+         * an answer says "no"; a call that got none (failed or throttled) asks
+         * once more a few seconds later and otherwise leaves the chip on njump.me.
+         */
+        async lookupPlayers() {
+            this.playerTimer = null;
+            const batch = [...this.playerQueue].slice(0, PLAYER_BATCH);
+            batch.forEach((pubkey) => this.playerQueue.delete(pubkey));
+            if (this.playerQueue.size > 0) this.playerTimer = setTimeout(() => this.lookupPlayers(), 1000);
+            if (batch.length === 0) return;
+
+            let answer = null;
+            try {
+                answer = await this.wire.players(batch);
+            } catch (error) {
+                console.warn('[live chat] player lookup failed', error);
+            }
+            if (this.destroyed) return;
+
+            if (!Array.isArray(answer)) {
+                for (const pubkey of batch) {
+                    if (this.playerTries.has(pubkey)) continue;
+                    this.playerTries.add(pubkey);
+                    this.playerQueue.add(pubkey);
+                }
+                if (this.playerQueue.size > 0) this.playerTimer ??= setTimeout(() => this.lookupPlayers(), PROFILE_RETRY_MS);
+
+                return;
+            }
+
+            const known = new Set(answer);
+            this.players = { ...this.players, ...Object.fromEntries(batch.map((pubkey) => [pubkey, known.has(pubkey)])) };
+        },
+
+        /** A mention's link: the player page for a league account, njump.me for anybody else (or while unknown). */
+        mentionUrl(token) {
+            return this.players[token.pubkey] === true ? (config.playerUrl ?? '/players/NPUB').replace('NPUB', token.npub) : NJUMP + token.npub;
+        },
+
+        mentionExternal(token) {
+            return this.players[token.pubkey] !== true;
         },
 
         nameOf(pubkey) {

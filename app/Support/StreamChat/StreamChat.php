@@ -138,6 +138,35 @@ final readonly class StreamChat
     }
 
     /**
+     * The player page of a mentioned league account, `NPUB` standing for its npub (the browser fills it in).
+     */
+    public static function playerUrl(): string
+    {
+        return route('players.show', ['npub' => 'NPUB'], false);
+    }
+
+    /**
+     * Which of these pubkeys (at most 100, hex only) are league accounts: a
+     * NIP-27 mention of one links to its player page, anybody else to
+     * njump.me. Only the pubkeys come back, nothing about the accounts; the
+     * player pages say as much already.
+     *
+     * @param  array<mixed>  $pubkeys
+     * @return list<string>
+     */
+    public static function players(array $pubkeys): array
+    {
+        $hex = array_values(array_unique(array_filter(array_slice($pubkeys, 0, 100), fn (mixed $key): bool => NostrKeys::isHexPubkey($key))));
+
+        if ($hex === []) {
+            return [];
+        }
+
+        // The asked keys that have an account, in the order asked.
+        return array_values(array_intersect($hex, User::query()->whereIn('pubkey', $hex)->pluck('pubkey')->all()));
+    }
+
+    /**
      * The config for liveChat() in the browser.
      *
      * @return array<string, mixed>
@@ -151,6 +180,9 @@ final readonly class StreamChat
             'relayHint' => $this->relays[0] ?? $this->stream->relayHint(),
             'relays' => $this->relays,
             'profileRelays' => $profileRelays,
+            // Where the relay lists (10002) of people the profile relays do not know are read (NIP-65 outbox).
+            'indexerRelays' => RelayPublisher::relayUrls(config('esports.stream_chat.indexer_relays', [])),
+            'playerUrl' => self::playerUrl(),
             // NIP-30 lists (10030, 30030) usually sit where the profile does.
             'emojiRelays' => RelayPublisher::relayUrls([...$profileRelays, ...$this->relays]),
             'bot' => self::botPubkey(),
@@ -183,6 +215,7 @@ final readonly class StreamChat
                 'wait' => __('One message every 2 seconds. Try again in a moment.'),
                 'notSent' => __('The message did not reach any relay. Please try again.'),
                 'someone' => __('Someone'),
+                'quoted' => __('Quoted message'),
                 'insert' => __('Insert :emoji'),
                 'yourEmoji' => __('Your emoji'),
                 'recent' => __('Recently used'),

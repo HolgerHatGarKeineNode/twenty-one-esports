@@ -7,13 +7,15 @@
  *   9735 signed by a known LNURL server, for the stream's recipient and
  *   LNURL, its zap request valid, the invoice amount equal to the requested
  *   one);
- * - how a message's text splits into text, links and NIP-30 custom emoji,
- *   within fixed bounds: a message from a relay is anybody's input, and one
+ * - how a message's text splits into text, links, NIP-30 custom emoji and
+ *   NIP-27 references (`nostr:` URIs of NIP-21, decoded per NIP-19: npub and
+ *   nprofile become `mention`s, note, nevent and naddr `ref`s; nsec and
+ *   anything that does not decode stay text), within fixed bounds: a message from a relay is anybody's input, and one
  *   63 KB event of `:a:` repeated with one emoji tag froze the tab for 7.2 s
  *   with 85 000 DOM nodes (security review of P24). So the text is clipped
  *   to MAX_CHARS code points before it is read, a message has at most
- *   MAX_TOKENS tokens and MAX_EMOJI images, and every URL is at most
- *   MAX_URL long;
+ *   MAX_TOKENS tokens, MAX_EMOJI images and MAX_REFS references, and every
+ *   URL is at most MAX_URL long;
  * - who gets the bot mark: only the configured bot key; a profile that says
  *   `bot: true` about itself gets its npub shown instead (it could be anyone);
  * - which `emoji` tags a text to be sent needs (from the final text, never
@@ -24,6 +26,7 @@
  * - the list's order (created_at, then id) and its pages: the newest page of
  *   several relays' answers, and what a page of older messages brings.
  */
+import { decode as decodeNip19, npubEncode } from 'nostr-tools/nip19';
 import { verifyEvent } from 'nostr-tools/pure';
 
 export const KIND_CHAT = 1311;
@@ -45,12 +48,31 @@ export const MAX_EMOJI_TAGS = 100;
 /** Longest URL taken from anybody's event (picture, emoji, link target). */
 export const MAX_URL = 2048;
 
+/** NIP-27 references (mentions and quoted events) one message renders; further ones stay text. */
+export const MAX_REFS = 10;
+
+/** Relay hints kept from one nprofile (they widen the profile read, so only a few). */
+export const MAX_HINTS = 3;
+
+/** Where a reference to someone outside the league opens (NIP-19 code in the path). */
+export const NJUMP = 'https://njump.me/';
+
 /** NIP-30: alphanumeric characters and underscores between colons. */
 const SHORTCODE = /:(\w+):/g;
 
 /** http(s) links; closing punctuation that ends a sentence is not part of them. */
 const LINK = /\bhttps?:\/\/[^\s<>"']+/gi;
 const LINK_TAIL = /[.,;:!?)\]}'"]+$/;
+
+/**
+ * NIP-21 URIs of profiles and events, lowercase bech32 only (the charset
+ * without 1, b, i, o). nsec is not matched: a secret pasted into a chat stays
+ * the text it is and is never decoded here.
+ */
+const NOSTR_URI = /\bnostr:((npub|nprofile|note|nevent|naddr)1[02-9ac-hj-np-z]+)/g;
+/** npub and note have a fixed length; a word glued to the end ("…s") is cut off and tried again. */
+const FIXED_LENGTH = 63;
+const HEX64 = /^[0-9a-f]{64}$/;
 
 /** A copy without verifyEvent()'s cached verdict (see nostrChat.js, verifiedAfresh). */
 function verifiedAfresh(event) {
@@ -200,41 +222,111 @@ function splitEmoji(text, emoji, tokens, budget) {
     if (last < text.length) tokens.push({ type: 'text', value: text.slice(last) });
 }
 
+/** At most `max` distinct wss:// relay URLs (a NIP-19 code's or a tag's hints), each at most 200 characters. */
+export function relayHints(relays, max = MAX_HINTS) {
+    return [...new Set((Array.isArray(relays) ? relays : []).filter((url) => typeof url === 'string' && url.length <= 200 && /^wss:\/\/[^\s/?#]+(\/[^\s]*)?$/i.test(url)))].slice(0, max);
+}
+
+/**
+ * The token a NIP-19 code stands for, or null when it does not decode to a
+ * well-formed profile or event reference:
+ * - `mention` { pubkey, npub, relays } for npub and nprofile;
+ * - `ref` { id | address, author, url } for note, nevent and naddr, `url`
+ *   its njump.me page.
+ * `value` is the code itself (what the text said, used when a token folds back into text).
+ */
+export function nostrToken(code) {
+    let decoded;
+    try {
+        decoded = decodeNip19(code);
+    } catch {
+        return null;
+    }
+
+    const { type, data } = decoded;
+    if (type === 'npub' || type === 'nprofile') {
+        const pubkey = type === 'npub' ? data : data?.pubkey;
+        if (!HEX64.test(pubkey ?? '')) return null;
+
+        return { type: 'mention', value: code, pubkey, npub: npubEncode(pubkey), relays: type === 'nprofile' ? relayHints(data.relays) : [] };
+    }
+
+    const url = NJUMP + code;
+    if (url.length > MAX_URL) return null;
+    if (type === 'note') {
+        return HEX64.test(data ?? '') ? { type: 'ref', value: code, id: data, author: null, url } : null;
+    }
+    if (type === 'nevent') {
+        if (!HEX64.test(data?.id ?? '')) return null;
+
+        return { type: 'ref', value: code, id: data.id, author: HEX64.test(data.author ?? '') ? data.author : null, url };
+    }
+    if (type === 'naddr') {
+        if (!HEX64.test(data?.pubkey ?? '') || !Number.isInteger(data.kind) || typeof data.identifier !== 'string') return null;
+
+        return { type: 'ref', value: code, address: `${data.kind}:${data.pubkey}:${data.identifier}`, author: data.pubkey, url };
+    }
+
+    return null;
+}
+
+/** Text with its `nostr:` references taken out (within budget.refs); the text between goes on to the emoji. */
+function splitNostr(text, emoji, tokens, budget) {
+    let last = 0;
+    for (const match of text.matchAll(NOSTR_URI)) {
+        if (budget.refs <= 0) break;
+        let code = match[1];
+        let token = nostrToken(code);
+        if (!token && (match[2] === 'npub' || match[2] === 'note') && code.length > FIXED_LENGTH) {
+            code = code.slice(0, FIXED_LENGTH);
+            token = nostrToken(code);
+        }
+        if (!token) continue;
+        if (match.index > last) splitEmoji(text.slice(last, match.index), emoji, tokens, budget);
+        tokens.push(token);
+        budget.refs -= 1;
+        last = match.index + 'nostr:'.length + code.length;
+    }
+    if (last < text.length) splitEmoji(text.slice(last), emoji, tokens, budget);
+}
+
 function tokenText(token) {
     if (token.type === 'emoji') return ':' + token.value + ':';
+    if (token.type === 'mention' || token.type === 'ref') return 'nostr:' + token.value;
 
     return token.type === 'link' ? token.url : token.value;
 }
 
 /**
  * A message's content as a list of tokens: `text`, `link` (http/https only;
- * the shown text is the URL without its scheme) and `emoji` (a shortcode the
- * message's own tags give an https image). Text stays text: the page renders
- * it with x-text, never as HTML.
+ * the shown text is the URL without its scheme), `emoji` (a shortcode the
+ * message's own tags give an https image), `mention` and `ref` (NIP-27
+ * `nostr:` references, nostrToken()). Text stays text: the page renders it
+ * with x-text, never as HTML.
  *
  * Bounded whatever comes in: the first `maxChars` code points only (a clipped
- * text ends in "…"), at most `maxEmoji` images, at most `maxTokens` tokens
- * (what is beyond folds into the last one as plain text), links of at most
- * MAX_URL characters.
+ * text ends in "…"), at most `maxEmoji` images and `maxRefs` references, at
+ * most `maxTokens` tokens (what is beyond folds into the last one as plain
+ * text), links of at most MAX_URL characters.
  *
- * @returns {Array<{ type: 'text'|'link'|'emoji', value: string, url?: string }>}
+ * @returns {Array<{ type: 'text'|'link'|'emoji'|'mention'|'ref', value: string, url?: string, pubkey?: string, npub?: string, relays?: string[], id?: string, address?: string, author?: string|null }>}
  */
-export function tokenize(content, tags = [], { maxChars = MAX_CHARS, maxTokens = MAX_TOKENS, maxEmoji = MAX_EMOJI } = {}) {
+export function tokenize(content, tags = [], { maxChars = MAX_CHARS, maxTokens = MAX_TOKENS, maxEmoji = MAX_EMOJI, maxRefs = MAX_REFS } = {}) {
     const { text: body, clipped } = clip(content, maxChars);
     const text = clipped ? body + '…' : body;
     const emoji = emojiMap(tags);
-    const budget = { emoji: maxEmoji };
+    const budget = { emoji: maxEmoji, refs: maxRefs };
     const tokens = [];
     let last = 0;
 
     for (const match of text.matchAll(LINK)) {
         const url = match[0].replace(LINK_TAIL, '');
         if (url.length > MAX_URL) continue;
-        if (match.index > last) splitEmoji(text.slice(last, match.index), emoji, tokens, budget);
+        if (match.index > last) splitNostr(text.slice(last, match.index), emoji, tokens, budget);
         tokens.push({ type: 'link', value: url.replace(/^https?:\/\//i, ''), url });
         last = match.index + url.length;
     }
-    if (last < text.length) splitEmoji(text.slice(last), emoji, tokens, budget);
+    if (last < text.length) splitNostr(text.slice(last), emoji, tokens, budget);
 
     // Neighbouring text pieces merge back into one.
     const merged = tokens.reduce((list, token) => {
@@ -242,7 +334,7 @@ export function tokenize(content, tags = [], { maxChars = MAX_CHARS, maxTokens =
         if (token.type === 'text' && previous?.type === 'text') {
             previous.value += token.value;
         } else {
-            list.push({ ...token });
+            list.push(token.relays ? { ...token, relays: [...token.relays] } : { ...token });
         }
 
         return list;

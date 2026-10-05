@@ -11,6 +11,7 @@ use App\Support\PageMeta;
 use App\Support\StreamChat\StreamChat;
 use App\Support\TwentyOne\LiveStatus;
 use Illuminate\Database\Eloquent\Collection;
+use Illuminate\Support\Facades\RateLimiter;
 use Livewire\Attributes\Computed;
 use Livewire\Attributes\Json;
 use Livewire\Attributes\Layout;
@@ -117,6 +118,29 @@ new #[Layout('layouts::app', ['scripts' => ['resources/js/liveChat.js']])] class
         }
 
         return true;
+    }
+
+    /**
+     * Which of these pubkeys (at most 100) are league accounts, for the
+     * chat's mention chips (StreamChat::players(): the pubkeys only). Null
+     * when this address asked more than 30 times in a minute; the chat then
+     * keeps the njump.me link.
+     *
+     * @param  array<mixed>  $pubkeys
+     * @return list<string>|null
+     */
+    #[Json]
+    public function players(array $pubkeys): ?array
+    {
+        $key = 'live-chat-players:'.request()->ip();
+
+        if (RateLimiter::tooManyAttempts($key, 30)) {
+            return null;
+        }
+
+        RateLimiter::hit($key, 60);
+
+        return StreamChat::players($pubkeys);
     }
 
     /**

@@ -6746,5 +6746,6 @@
     "Fixed prizes: :prizes sats": "Feste Preise: :prizes Sats",
     ":payable sats to split": ":payable Sats zu verteilen",
     "The check closes the pot (later payments go to the league reserve), publishes the tournament’s end on Nostr, reads the final places from the bracket and writes one payout per player. Nothing is paid yet.": "Die Prüfung schließt den Topf (spätere Zahlungen gehen in die Liga-Reserve), veröffentlicht das Turnierende auf Nostr, liest die Endplatzierungen aus dem Turnierbaum und legt eine Auszahlung pro Spieler an. Noch wird nichts bezahlt.",
-    "Total: :sats sats": "Summe: :sats Sats"
+    "Total: :sats sats": "Summe: :sats Sats",
+    "Quoted message": "Zitierte Nachricht"
 }
