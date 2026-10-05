@@ -517,7 +517,9 @@ return [
     | time to name their players before the lock. At the start every board
     | starts on its own; the side to move has `first_move_seconds` from the
     | start for the first move or loses that board by forfeit (P5, user
-    | 2026-10-05: 600 seconds, as tournament rapid).
+    | 2026-10-05: 600 seconds, as tournament rapid). A board the league
+    | starts late still has at least `late_start_floor_seconds` from its
+    | actual start (CEO decision 2026-10-05: max(start + 600 s, now + 60 s)).
     |
     */
 
@@ -525,6 +527,7 @@ return [
         'lock_minutes' => 30,
         'rated_pair_days' => 7,
         'first_move_seconds' => 600,
+        'late_start_floor_seconds' => 60,
     ],
 
     /*

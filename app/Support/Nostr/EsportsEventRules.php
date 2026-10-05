@@ -381,11 +381,13 @@ final class EsportsEventRules
             }
         }
 
-        // A chess team match (rev. 9.22) carries `boards` the registry allows and no `bo`; a series a `bo`.
+        // A chess team match (rev. 9.22) carries one `boards` the registry allows and no `bo`, no `zap` (rule 1 of
+        // "Chess team matches") and no `color` (the board decides the colours); a series a `bo`.
         $boards = $event->tag('boards');
 
         if ($boards !== null) {
-            if ($event->tagsNamed('bo') !== [] || ! $mode[2]->allowsBoards((int) $boards) || (string) (int) $boards !== $boards) {
+            if (count($event->tagsNamed('boards')) !== 1 || $event->tagsNamed('bo') !== [] || $event->tagsNamed('zap') !== [] || $event->tagsNamed('color') !== []
+                || ! $mode[2]->allowsBoards((int) $boards) || (string) (int) $boards !== $boards) {
                 return 'challenge_boards';
             }
         } elseif (! $mode[2]->allowsBestOf((int) $event->tag('bo')) || (string) (int) $event->tag('bo') !== $event->tag('bo')) {

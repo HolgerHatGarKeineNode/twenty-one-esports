@@ -17,6 +17,7 @@ use Illuminate\Support\Carbon;
  * @property int $series_match_id
  * @property string $side challenger|challenged
  * @property int|null $user_id null once the account is deleted
+ * @property string|null $pubkey the player's pubkey, written when named and at the lock; kept after an account deletion
  * @property int|null $board
  * @property int|null $rating the rapid rating the lock ordered by
  * @property string|null $rating_pool rated|casual|start: where that rating came from
@@ -26,7 +27,7 @@ use Illuminate\Support\Carbon;
  * @property-read SeriesMatch $seriesMatch
  * @property-read User|null $user
  */
-#[Fillable(['series_match_id', 'side', 'user_id', 'board', 'rating', 'rating_pool', 'rating_results'])]
+#[Fillable(['series_match_id', 'side', 'user_id', 'pubkey', 'board', 'rating', 'rating_pool', 'rating_results'])]
 class SeriesMatchBoard extends Model
 {
     protected function casts(): array
