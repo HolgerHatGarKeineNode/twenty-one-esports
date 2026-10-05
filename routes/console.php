@@ -602,7 +602,9 @@ Schedule::command('twentyone:stream-bot:gg')->everyMinute()->withoutOverlapping(
  * game and its kind 41 with the chat relays, republished daily so a relay
  * that lost them or a new chat relay gets them without a manual step. The
  * same ids every run (GameChannelsCommand::metadataTime()); without the
- * league key the run fails and publishes nothing. A board game's channel
+ * league key the run fails and publishes nothing; a relay that refuses
+ * (rate limit, a newer kind 41, a timeout) is logged and never fails it
+ * (user, 2026-10-05). A board game's channel
  * (rev. 9.15) only while it is switched on: the first run after that is
  * the first publish.
  */

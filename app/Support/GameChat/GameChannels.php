@@ -189,6 +189,20 @@ final class GameChannels
     }
 
     /**
+     * Where `esports:game-channels` publishes the kind 40 and 41: the chat
+     * relays first, then `esports.game_chat.publish_relays` (user,
+     * 2026-10-05: more relays), valid websocket URLs only, no duplicates.
+     *
+     * @return list<string>
+     */
+    public static function publishRelays(): array
+    {
+        $extra = array_filter(RelayPublisher::relayUrls(config('esports.game_chat.publish_relays', [])), fn (string $relay): bool => EventBuilder::isRelayUrl($relay));
+
+        return RelayPublisher::relayUrls([...self::relays(), ...$extra]);
+    }
+
+    /**
      * The config for gameChannel() in the browser (resources/js/gameChannel.js),
      * null when the game has no open channel or there is no creator.
      *
