@@ -1,16 +1,8 @@
 @import 'tailwindcss';
-@import '../../vendor/livewire/flux/dist/flux.css';
 
 @source '../views';
 @source '../../app/Support';
 @source '../../vendor/laravel/framework/src/Illuminate/Pagination/resources/views/*.blade.php';
-/*
- * No <flux:*> component renders here any more (performance plan P5): flux.css
- * itself adds Flux's and Flux Pro's stubs as sources, and their classes were
- * most of this stylesheet. The import stays for its tokens and base rules.
- */
-@source not '../../vendor/livewire/flux-pro/stubs';
-@source not '../../vendor/livewire/flux/stubs';
 
 @custom-variant dark (&:where(.dark, .dark *));
 
@@ -150,12 +142,7 @@
     --color-tmnf-deep: #115E59;
     --color-tmnf-deep-2: #134E4A;
 
-    /* Flux accent mapped onto the brand orange */
-    --color-accent: #F7931A;
-    --color-accent-content: #F7931A;
-    --color-accent-foreground: #17120A;
-
-    /* Flux draws its dark surfaces from zinc: map zinc onto the TWENTY ONE ramp */
+    /* zinc mapped onto the TWENTY ONE ramp, so a zinc utility stays on brand */
     --color-zinc-50: #FAFAFA;
     --color-zinc-100: #F5F5F5;
     --color-zinc-200: #E5E5E5;
@@ -276,20 +263,6 @@
     summary::-webkit-details-marker {
         display: none;
     }
-}
-
-[data-flux-field]:not(ui-radio, ui-checkbox) {
-    @apply grid gap-2;
-}
-
-[data-flux-label] {
-    @apply !mb-0 !leading-tight;
-}
-
-input:focus[data-flux-control],
-textarea:focus[data-flux-control],
-select:focus[data-flux-control] {
-    @apply outline-hidden ring-2 ring-accent ring-offset-2 ring-offset-accent-foreground;
 }
 
 /*
@@ -2575,9 +2548,9 @@ select:focus[data-flux-control] {
     }
 
     /*
-     * An item of the account menu (shell header, performance plan P5): the
-     * look Flux's menu item had (32 px row, 14 px medium, a raised row under
-     * the pointer and the keyboard focus), without Flux's script.
+     * An item of the account menu (shell header, performance plan P5): a
+     * 32 px row, 14 px medium, a raised row under the pointer and the
+     * keyboard focus.
      */
     .account-item {
         display: flex;

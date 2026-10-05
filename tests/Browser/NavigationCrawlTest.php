@@ -13,8 +13,8 @@ pest()->group('browser');
 | A crawler in the browser, one per role (guest, player, captain, organizer,
 | admin). It opens a page, reads every same-origin link a person can reach
 | there, and walks on breadth first. A link counts when it is visible, or
-| when it sits behind a visible opener: a Flux dropdown, the mobile menu or a
-| <details>. Depth 1 is every link outside <main> (header, menus, footer),
+| when it sits behind a visible opener: a shell panel or menu, the mobile
+| menu or a <details>. Depth 1 is every link outside <main> (header, menus, footer),
 | the chrome that is on every page; depth 2 is a link on such a page, and so
 | on. One URL per route is opened (the first one found). Every page is read
 | at 1440, 1024 and 375 px wide, each width its own walk: a link only the

@@ -54,7 +54,7 @@ function seoSkipReason(RouteDefinition $route): ?string
 
     return match (true) {
         str_starts_with($uri, 'horizon') => 'Horizon dashboard, behind the viewHorizon gate',
-        str_starts_with($uri, 'livewire-') || str_starts_with($uri, 'flux/') => 'framework asset (JS, CSS, flags, previews)',
+        str_starts_with($uri, 'livewire-') => 'framework asset (JS, CSS, previews)',
         str_starts_with($name, 'testing.') => 'fixture route of the test environment only',
         $uri === 'up' => 'health check',
         $uri === 'broadcasting/auth' => 'websocket channel authorization, not a page',

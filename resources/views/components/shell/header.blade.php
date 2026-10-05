@@ -176,8 +176,8 @@
             <livewire:notification-bell />
 
             {{--
-                The account menu: a menu button (WAI-ARIA pattern, shellHeader in resources/js/shellNav.js), no Flux
-                script on the page for it (performance plan P5). Enter, Space or ArrowDown open it on the first item,
+                The account menu: a menu button (WAI-ARIA pattern, shellHeader in resources/js/shellNav.js), no UI
+                library script on the page for it (performance plan P5). Enter, Space or ArrowDown open it on the first item,
                 ArrowUp on the last; arrows, Home and End move; Escape, Tab or a click outside close it.
             --}}
             <div class="relative hidden lg:block" x-on:click.outside="closeAccount(false)" x-on:keydown.escape="if (account) { $event.stopPropagation(); closeAccount() }" x-on:focusout="accountFocusOut($event)">

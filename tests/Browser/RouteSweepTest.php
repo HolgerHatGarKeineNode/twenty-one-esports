@@ -62,8 +62,8 @@ beforeEach(function () {
 */
 
 /**
- * URI prefixes that are vendor/asset/infra endpoints, not pages: Flux's
- * asset manager, Livewire's asset + file-preview routes (the hash prefix is
+ * URI prefixes that are vendor/asset/infra endpoints, not pages:
+ * Livewire's asset + file-preview routes (the hash prefix is
  * config-driven, hence the "starts with" check, not an exact route name),
  * the storage disk, the broadcasting auth endpoint (JSON, not a page), and
  * this app's own testing-only fixtures below (the positive-control tests
@@ -72,7 +72,7 @@ beforeEach(function () {
  *
  * @var list<string>
  */
-const SWEEP_VENDOR_PREFIXES = ['flux/', 'livewire-', 'storage/', 'broadcasting/', '__test/', 'horizon'];
+const SWEEP_VENDOR_PREFIXES = ['livewire-', 'storage/', 'broadcasting/', '__test/', 'horizon'];
 
 /**
  * Files for crawlers, not pages (P14): robots.txt and the sitemap XML, which
