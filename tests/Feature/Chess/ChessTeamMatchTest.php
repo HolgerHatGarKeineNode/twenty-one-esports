@@ -2,6 +2,7 @@
 
 use App\Enums\ClanRole;
 use App\Enums\LineupRole;
+use App\Enums\Platform;
 use App\Enums\ReportStatus;
 use App\Enums\SeriesResolution;
 use App\Enums\SeriesStatus;
@@ -17,6 +18,7 @@ use App\Models\Rating;
 use App\Models\SeasonAttestation;
 use App\Models\SeriesMatch;
 use App\Models\SeriesMatchBoard;
+use App\Models\SeriesQueueEntry;
 use App\Models\SeriesReport;
 use App\Models\User;
 use App\Support\Board\BoardGameService;
@@ -29,11 +31,16 @@ use App\Support\Chess\ChessTeamMatches;
 use App\Support\Nostr\EsportsEventRules;
 use App\Support\Nostr\SignedEvent;
 use App\Support\SeasonChain\TrustFacts;
+use App\Support\Series\CasualChallenges;
+use App\Support\Series\CasualInvites;
+use App\Support\Series\CasualMatches;
+use App\Support\Series\CasualQueue;
 use App\Support\Series\ChallengeDraft;
 use App\Support\Series\Ladders;
 use App\Support\Series\SeriesRuleViolation;
 use App\Support\Series\SeriesService;
 use Illuminate\Database\UniqueConstraintViolationException;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Queue;
 use Illuminate\Support\Facades\Schema;
 use Livewire\Livewire;
@@ -465,6 +472,8 @@ test('the challenge form offers a chess rapid lineup boards and friendly or rate
         ->assertSeeHtml('data-test="boards-3"')
         ->assertSee('Friendly')
         ->assertDontSeeHtml('data-test="series-invite-link"')
+        // Players of a team lineup out of the boards it is challenged to (2 by default), not out of a series team size.
+        ->assertSeeHtml('data-test="opponent-players-'.$b[0]->id.'">3 / 2<')
         ->call('pickOpponent', $b[0]->id)
         ->set('boards', 3)
         ->set('now', true)
@@ -491,7 +500,7 @@ test('a board game of a team match takes no match number of its own, a board exi
         ->and(MatchNumber::query()->count())->toBe($numbers)
         // A solo game still takes one.
         ->and(ChessGame::factory()->create()->number)->not->toBeNull()
-        ->and(fn () => ChessGame::factory()->create(['mode' => 'rapid', 'series_match_id' => $match->id, 'board' => 1]))
+        ->and(fn () => DB::transaction(fn () => ChessGame::factory()->create(['mode' => 'rapid', 'series_match_id' => $match->id, 'board' => 1])))
         ->toThrow(UniqueConstraintViolationException::class);
 
     // Refused in the model's creating hook, before any insert: the id needs no tournament match row.
@@ -532,4 +541,65 @@ test('the three team match migrations roll back and up again, and refuse to roll
     expect(Schema::hasColumns('series_matches', ['boards', 'lineup_locked_at']))->toBeTrue()
         ->and(Schema::hasColumns('series_match_boards', ['series_match_id', 'side', 'user_id', 'board', 'rating', 'rating_pool', 'rating_results']))->toBeTrue()
         ->and(Schema::hasColumns('chess_games', ['series_match_id', 'board']))->toBeTrue();
+});
+
+test('from the lock a named player is refused by the casual 1v1 queue, its pairing, its invites and a challenge accept', function () {
+    [$match, [$lineupA, $captainA], [$lineupB, $captainB]] = acceptedTeamMatch();
+    $named = array_slice(activeIds($lineupA), 0, 2);
+    $this->teamMatches->name($match, $captainA, $named);
+    $this->teamMatches->name($match, $captainB, array_slice(activeIds($lineupB), 0, 2));
+    $player = User::query()->findOrFail($named[1]);
+    // He shows he is looking for a casual Rocket League 1v1, so anyone may invite him.
+    $player->forceFill(['looking_to_play' => 'rocket-league/'.CasualMatches::mode()])->save();
+    [$inviter, $challenger, $searcher, $free] = User::factory()->count(4)->create();
+
+    // Sent before the lock: an invite to the player and a scheduled challenge of him.
+    $invite = app(CasualInvites::class)->invite($inviter, $player, 'rocket-league', Platform::Pc, true);
+    $times = [$match->start_at->copy()->addDay()->setTime(20, 0)->getTimestamp()];
+    $challenge = app(CasualChallenges::class)->challenge($challenger, $player, 'rocket-league', Platform::Pc, true, $times, $match->start_at->copy()->addDay()->setTime(12, 0)->getTimestamp());
+
+    travelToLock($match);
+    $this->teamMatches->lock($match);
+    // The invite is kept open across the jump to the lock (invites last minutes).
+    $invite->forceFill(['expires_at' => now()->addMinutes(5)])->save();
+
+    $reason = function (Closure $action): ?string {
+        try {
+            $action();
+        } catch (SeriesRuleViolation $violation) {
+            return $violation->reason;
+        }
+
+        return null;
+    };
+    $matches = SeriesMatch::query()->count();
+
+    expect(app(CasualMatches::class)->busyReason($player))->toBe(ChessTeamMatches::RESERVED)
+        ->and($reason(fn () => app(CasualQueue::class)->join($player, 'rocket-league', Platform::Pc)))->toBe(ChessTeamMatches::RESERVED)
+        ->and($reason(fn () => app(CasualInvites::class)->invite($free, $player, 'rocket-league', Platform::Pc, true)))->toBe(ChessTeamMatches::OTHER_RESERVED)
+        ->and($reason(fn () => app(CasualInvites::class)->accept($invite, $player, Platform::Pc, true)))->toBe(ChessTeamMatches::RESERVED)
+        ->and($reason(fn () => app(CasualChallenges::class)->accept($challenge, $player, $times[0], Platform::Pc, true)))->toBe(ChessTeamMatches::RESERVED);
+
+    // A search written before the lock (a race): the queue never pairs him, it drops his entry.
+    SeriesQueueEntry::query()->create(['user_id' => $player->id, 'game' => 'rocket-league', 'mode' => '1v1', 'platform' => 'pc', 'crossplay' => true, 'joined_at' => now()->subMinute()]);
+
+    expect(app(CasualQueue::class)->join($searcher, 'rocket-league', Platform::Pc))->toBeNull()
+        ->and(SeriesQueueEntry::query()->where('user_id', $player->id)->exists())->toBeFalse()
+        ->and(SeriesMatch::query()->count())->toBe($matches);
+});
+
+test('an accepted friendly of the same two clans in the window never blocks a rated team match', function () {
+    $a = teamLineup();
+    $b = teamLineup();
+    // A friendly of the two clans, played inside the seven days.
+    teamChallengeAndAccept($a, $b, rated: false)->forceFill(['status' => SeriesStatus::Resolved, 'resolution' => SeriesResolution::Admin, 'winner' => 'challenger', 'finished_at' => now()])->save();
+
+    expect(ChessTeamMatches::ratedPairBlocked($a[0]->id, $b[0]->id))->toBeFalse();
+
+    openSeason(['slug' => 'season-1']);
+    app()->bind(TrustFacts::class, TrustedFacts::class);
+    $rated = teamChallengeAndAccept($a, $b, rated: true);
+
+    expect($rated->rated)->toBeTrue()
+        ->and($rated->status)->toBe(SeriesStatus::Accepted);
 });

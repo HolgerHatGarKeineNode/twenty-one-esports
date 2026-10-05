@@ -24,6 +24,12 @@ return new class extends Migration
 {
     public function up(): void
     {
+        // Postgres (prod): the foreign keys lock series_matches and users briefly; wait at most 5 s for that,
+        // then fail the deploy instead of queueing their reads behind it (as files 1 and 3, review 2026-10-05).
+        if (DB::getDriverName() === 'pgsql') {
+            DB::statement("SET LOCAL lock_timeout = '5s'");
+        }
+
         Schema::create('series_match_boards', function (Blueprint $table) {
             $table->id();
             $table->foreignId('series_match_id')->constrained()->cascadeOnDelete();

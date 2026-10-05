@@ -195,8 +195,8 @@ final class BoardQueue
                 return $this->games->activeGameOf($user);
             }
 
-            // A cup match opened while this player searched (the casual lock): the search ends.
-            if (CupMatchNow::lockOf($user) !== null) {
+            // A cup match opened while this player searched (the casual lock), or his team match locked: the search ends.
+            if (CupMatchNow::lockReason($user) !== null) {
                 $entry->delete();
 
                 return null;
@@ -214,7 +214,7 @@ final class BoardQueue
                 ->get();
 
             foreach ($candidates as $candidate) {
-                if (CupMatchNow::lockOf($candidate->user) !== null) {
+                if (CupMatchNow::lockReason($candidate->user) !== null) {
                     $candidate->delete();
 
                     continue;

@@ -574,7 +574,7 @@ new #[Title('New challenge')] #[Layout('layouts::app', ['section' => 'clans'])] 
                                         'border-btc bg-btc-press' => $opponentId === $opp->id, 'border-transparent hover:bg-row-hover' => $opponentId !== $opp->id])>
                                 <x-clan-tag :clan="$opp->clan" size="sm" />
                                 <span class="truncate">{{ $opp->clan->name }}</span>
-                                <span class="text-ink-2 max-md:hidden">{{ $opp->activeCount() }} / {{ $opp->gameMode()->teamSize }}</span>
+                                <span class="text-ink-2 max-md:hidden" data-test="opponent-players-{{ $opp->id }}">{{ $team ? count($opp->activeSeats()).' / '.$this->boards : $opp->activeCount().' / '.$opp->gameMode()->teamSize }}</span>
                                 <span class="truncate text-ink-2 max-md:hidden">{{ $opp->clan->owner?->displayName() }}</span>
                                 <span @class(['text-xs', 'text-ink' => $row['state'] === 'ok', 'text-btc-hi' => $row['state'] !== 'ok'])>{{ $row['note'] }}</span>
                             </button>

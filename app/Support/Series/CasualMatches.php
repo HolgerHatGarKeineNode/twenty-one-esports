@@ -111,11 +111,8 @@ final class CasualMatches
             return 'already_playing';
         }
 
-        if (CupMatchNow::lockOf($user) !== null) {
-            return CupMatchNow::LOCKED;
-        }
-
-        return null;
+        // The casual lock, and a locked chess team match the player is named for.
+        return CupMatchNow::lockReason($user);
     }
 
     /**

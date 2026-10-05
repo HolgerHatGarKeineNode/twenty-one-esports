@@ -11,6 +11,7 @@ use App\Models\SeriesMatch;
 use App\Models\SeriesQueueEntry;
 use App\Models\User;
 use App\Support\Chess\Broadcasts;
+use App\Support\Chess\ChessTeamMatches;
 use App\Support\Moderation\SiteModeration;
 use App\Support\Notifications\CasualNotifications;
 use App\Support\Tournaments\CupMatchNow;
@@ -108,9 +109,9 @@ final class CasualInvites
         $this->matches->assertGame($game);
         $this->matches->assertMayPlay($inviter);
 
-        // The casual lock (user, 2026-10-03): the invitee's open cup match comes first.
-        if (CupMatchNow::lockOf($invitee) !== null) {
-            throw CasualMatches::refuse(CupMatchNow::OTHER_LOCKED, ['name' => $invitee->displayName()]);
+        // The casual lock (user, 2026-10-03): the invitee's open cup match comes first, as his locked team match.
+        if (($lock = CupMatchNow::otherLockReason($invitee)) !== null) {
+            throw CasualMatches::refuse($lock, ['name' => $invitee->displayName()]);
         }
 
         $previous = $this->outgoing($inviter);
@@ -215,7 +216,7 @@ final class CasualInvites
             }
 
             if (($busy = $this->matches->busyReason($invitee)) !== null) {
-                return $busy === CupMatchNow::LOCKED ? $busy : 'accept_while_playing';
+                return in_array($busy, [CupMatchNow::LOCKED, ChessTeamMatches::RESERVED], true) ? $busy : 'accept_while_playing';
             }
 
             if (! CasualMatches::compatible($invite->game, $invite->platform, $invite->crossplay, $platform, $crossplay)) {

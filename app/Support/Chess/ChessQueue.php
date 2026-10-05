@@ -164,8 +164,8 @@ final class ChessQueue
                 return $this->games->activeGameOf($user);
             }
 
-            // A cup match opened while this player searched (the casual lock): the search ends.
-            if (CupMatchNow::lockOf($user) !== null) {
+            // A cup match opened while this player searched (the casual lock), or his team match locked: the search ends.
+            if (CupMatchNow::lockReason($user) !== null) {
                 $entry->delete();
 
                 return null;
@@ -183,7 +183,7 @@ final class ChessQueue
 
             foreach ($candidates as $candidate) {
                 // In a casual 1v1 by now (P23): that player stops searching blitz.
-                if (CasualMatches::runningMatchOf($candidate->user) !== null || CupMatchNow::lockOf($candidate->user) !== null) {
+                if (CasualMatches::runningMatchOf($candidate->user) !== null || CupMatchNow::lockReason($candidate->user) !== null) {
                     $candidate->delete();
 
                     continue;
