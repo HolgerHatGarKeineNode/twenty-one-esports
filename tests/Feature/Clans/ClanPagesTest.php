@@ -206,7 +206,7 @@ test('another clan\'s page offers the challenge with both lineups picked, its ow
         ->assertDontSee('data-test="challenge-clan"', false);
 });
 
-test('a search on /clans loads the faces of the matching clans only, and of each player only what the avatar shows', function () {
+test('a search on /clans filters in the browser: a render with the search hides the other cards and loads each player only what the avatar shows', function () {
     $clans = Clan::factory()->count(5)->sequence(fn ($sequence) => ['name' => 'Clan '.chr(65 + $sequence->index)])->create();
     foreach ($clans as $clan) {
         foreach (User::factory()->count(2)->create() as $user) {
@@ -215,19 +215,21 @@ test('a search on /clans loads the faces of the matching clans only, and of each
     }
     $page = Livewire::test('pages::clans.index');
 
+    // The search is typed in the browser and goes along with the next request ($set without a roundtrip); a render
+    // with it set (that request, or a shared ?q= link) shows the same cards the browser shows.
     DB::flushQueryLog();
     DB::enableQueryLog();
-    $page->set('search', 'Clan C')->assertSee('Clan C')->assertDontSee('Clan D');
+    $page->set('search', 'Clan C')->assertOk();
     $users = collect(DB::getQueryLog())->filter(fn (array $query): bool => str_contains($query['query'], 'from "users" where "users"."id" in'));
     DB::disableQueryLog();
+    $html = $page->html();
 
-    // One users query for the faces: the three players of Clan C, seven columns, not the whole row.
-    // Eager loading writes integer keys into the SQL: `in (4, 9, 10)`.
-    preg_match('/"users"\."id" in \(([^)]*)\)/', (string) $users->first()['query'], $ids);
+    // One users query for the faces, seven columns, not the whole row.
     expect($users)->toHaveCount(1)
-        ->and(count(explode(',', $ids[1] ?? '')))->toBe(3)
         ->and($users->first()['query'])->toStartWith('select "id", "pubkey", "npub", "name", "picture", "avatar_path", "profile_checked_at" from "users"')
-        ->and($page->html())->toContain('3 players');
+        ->and($html)->toMatch('/<article(?![^>]*display: none)[^>]*data-test="clan-card" data-clan="'.preg_quote($clans[2]->slug, '/').'"/')
+        ->and($html)->toMatch('/<article[^>]*style="display: none;"[^>]*data-test="clan-card" data-clan="'.preg_quote($clans[3]->slug, '/').'"/')
+        ->and($html)->toContain('3 players');
 });
 
 test('/clans asks the same queries for one clan as for five', function () {

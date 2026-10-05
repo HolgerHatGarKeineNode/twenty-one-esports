@@ -105,12 +105,14 @@ test('a won series names the other side and its score, lights the card and takes
         ->and($moments)->not->toHaveKey($loser->clan_id)
         ->and(ClanPride::spotlight($moments))->toBe($winner->clan_id);
 
-    $this->get(route('clans.index'))->assertOk()
+    $html = $this->get(route('clans.index'))->assertOk()
         ->assertSeeInOrder(['data-test="clan-spotlight" data-clan="'.$winner->clan->slug.'"', __('Beat :opponent :score in :mode', ['opponent' => $loserClan->name, 'score' => '2:1', 'mode' => '3v3'])], false)
-        // The spotlight clan is not a second time in the grid; the loser is, unlit.
-        ->assertDontSee('data-test="clan-card" data-clan="'.$winner->clan->slug.'"', false)
-        ->assertSee('data-test="clan-card" data-clan="'.$loserClan->slug.'"', false)
-        ->assertDontSee('data-lit', false);
+        ->getContent();
+
+    // The spotlight clan is not a second time on screen: its grid card waits hidden for a search (the search filters
+    // in the browser, performance plan P7); the loser's card shows, unlit.
+    expect($html)->toMatch('/<article[^>]*style="display: none;"[^>]*data-test="clan-card" data-clan="'.preg_quote($winner->clan->slug, '/').'"/')
+        ->and($html)->toMatch('/<article(?![^>]*display: none)[^>]*data-test="clan-card" data-clan="'.preg_quote($loserClan->slug, '/').'"\s*>/');
 });
 
 test('a streak needs 3 wins in a row up to the last game, and the week\'s wins count only after joining', function () {

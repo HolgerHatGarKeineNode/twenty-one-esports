@@ -37,7 +37,8 @@ pest()->group('browser');
 /** Every card and the spotlight, scrolled into view one by one so lazy pictures load, then measured. */
 const CLAN_PRIDE_MEASURE = <<<'JS'
     async () => {
-        const boxes = [...document.querySelectorAll('[data-test=clan-spotlight], [data-test=clan-card]')];
+        // Shown boxes only: the spotlight clan's grid card waits hidden for a search (the search filters in the browser, performance plan P7).
+        const boxes = [...document.querySelectorAll('[data-test=clan-spotlight], [data-test=clan-card]')].filter((el) => el.offsetParent !== null);
         for (const box of boxes) {
             box.scrollIntoView({ block: 'center' });
             await Promise.all([...box.querySelectorAll('img')].map((img) => img.complete ? null : new Promise((done) => { img.addEventListener('load', done, { once: true }); img.addEventListener('error', done, { once: true }); setTimeout(done, 3000); })));
@@ -56,7 +57,7 @@ const CLAN_PRIDE_MEASURE = <<<'JS'
         });
         return {
             spotlight: [...document.querySelectorAll('[data-test=clan-spotlight]')].map(card),
-            cards: [...document.querySelectorAll('[data-test=clan-card]')].map(card),
+            cards: [...document.querySelectorAll('[data-test=clan-card]')].filter((el) => el.offsetParent !== null).map(card),
             empty: document.querySelector('[data-test=clans-empty]') !== null,
             lang: document.documentElement.lang,
         };
@@ -212,9 +213,9 @@ test('clan cards with marks, faces and proud moments at 0, 2 and 12 clans, 375 a
                     // Three columns at 1440, the grid's first row on one line.
                     ->and($width === 1440 ? count(array_unique(array_column(array_slice($m['cards'], 0, 3), 'y'))) : 1)->toBe(1);
 
-                // A search round trip: one card, no spotlight, a clean answer.
+                // A search (filtered in the browser since performance plan P7): one card shown, no spotlight.
                 $page->locator('#clan-q')->fill('genesis');
-                BrowserWait::until($page, '() => document.querySelectorAll("[data-test=clan-card]").length === 1 && document.querySelector("[data-test=clan-spotlight]") === null', 10_000);
+                BrowserWait::until($page, '() => [...document.querySelectorAll("[data-test=clan-card]")].filter((el) => el.offsetParent !== null).length === 1 && document.querySelector("[data-test=clan-spotlight]")?.offsetParent === null', 10_000);
             }
 
             expect($page->evaluate('() => window.__errors'))->toBe([])
