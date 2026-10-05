@@ -92,6 +92,7 @@ const NAV_PAGES = [
     'admin.settings' => ['roles' => ['admin'], 'max' => 2],
     // The next Blockfill and TMNF week and its approval: a page of the admin strip, like the other admin pages.
     'admin.league-weeks' => ['roles' => ['admin'], 'max' => 2],
+    'admin.moderation' => ['roles' => ['admin'], 'max' => 2],
     'admin.trust' => ['roles' => ['admin'], 'max' => 2],
     'admin.fair-play' => ['roles' => ['admin'], 'max' => 2],
     'admin.nip05' => ['roles' => ['admin'], 'max' => 2],
