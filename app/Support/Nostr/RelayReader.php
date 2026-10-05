@@ -120,6 +120,27 @@ class RelayReader
     }
 
     /**
+     * The checked events of each relay on its own, for a caller that must
+     * know WHICH relays were read to EOSE, not only how many (the league's
+     * mute list needs every relay of a quorum: App\Support\Moderation\LeagueMuteList).
+     * Each relay is read like in fetch(); the per-author cap is per relay.
+     *
+     * @param  list<array<string, mixed>>  $filters
+     * @param  list<string>  $relays
+     * @return array<string, list<SignedEvent>|null> relay => its events, null for a failed read
+     */
+    public function readEach(array $filters, array $relays, int $perAuthor = 1): array
+    {
+        $results = [];
+
+        foreach ($relays as $relay) {
+            $results[$relay] = $this->read($relay, $filters, [], $perAuthor);
+        }
+
+        return $results;
+    }
+
+    /**
      * NIP-11 `limitation.max_filters` of the relay, at most MAX_FILTERS, and
      * MAX_FILTERS when the document is missing or says nothing.
      *
