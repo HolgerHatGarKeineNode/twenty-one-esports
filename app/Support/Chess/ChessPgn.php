@@ -11,9 +11,14 @@ use App\Models\ChessMove;
  * the NIP-64 note (kind 64) the league signs when the game ends, which a
  * player may also post to their profile (NIP rev. 9.4).
  *
- * NIP-64 asks publishers for PGN "export format": the Seven Tag Roster first
- * and in order (Event, Site, Date, Round, White, Black, Result), movetext
- * lines of at most 80 characters, the result as the movetext terminator.
+ * NIP-64 asks publishers for PGN "export format" (PGN standard 3.2, 8.1,
+ * 8.2): the Seven Tag Roster first and in order (Event, Site, Date, Round,
+ * White, Black, Result), every further tag pair after it in ASCII order by
+ * tag name, one tag pair per line, one empty line before the movetext,
+ * movetext lines of fewer than 80 printing characters, the result as the
+ * movetext terminator. A tag value is one line without tabs (4.2), so a
+ * player name carrying a newline or tab from its Nostr profile is folded to
+ * single spaces.
  *
  * The tag values are frozen when the game starts (`pgn_headers`): a player
  * renaming their Nostr profile mid-game must not change the game's text, and
@@ -83,13 +88,8 @@ final class ChessPgn
 
         $headers['Result'] = $result;
 
-        foreach ($frozen as $key => $value) {
-            if (! array_key_exists($key, $headers)) {
-                $headers[$key] = $value;
-            }
-        }
-
-        $headers['Termination'] = match ($reason) {
+        $supplemental = array_diff_key($frozen, $headers);
+        $supplemental['Termination'] = match ($reason) {
             ChessEndReason::Timeout => 'time forfeit',
             ChessEndReason::Aborted, ChessEndReason::Abandoned, ChessEndReason::Forfeit => 'abandoned',
             ChessEndReason::Director => 'adjudication',
@@ -97,18 +97,47 @@ final class ChessPgn
             default => 'normal',
         };
 
+        // Export format: after the Seven Tag Roster, "any additional tag pairs appear in ASCII order by tag name".
+        ksort($supplemental, SORT_STRING);
+        $headers += $supplemental;
+
         $lines = array_map(
-            fn (string $key, string $value) => '['.$key.' "'.str_replace(['\\', '"'], ['\\\\', '\\"'], $value).'"]',
+            fn (string $key, string $value) => '['.$key.' "'.str_replace(['\\', '"'], ['\\\\', '\\"'], self::tagValue($value)).'"]',
             array_keys($headers),
             $headers,
         );
 
+        // Move numbers continue from the start position (FEN fields 2 and 6). A game whose
+        // first move is Black's opens with "N..." (export format, 8.2.2.2).
+        $fen = explode(' ', $game->start_fen ?? ChessGame::START_FEN);
+        $number = max(1, (int) ($fen[5] ?? 1));
+        $whiteToMove = ($fen[1] ?? 'w') !== 'b';
         $moves = [];
 
         foreach ($sans as $index => $san) {
-            $moves[] = ($index % 2 === 0 ? (intdiv($index, 2) + 1).'. ' : '').$san;
+            if ($whiteToMove) {
+                $moves[] = $number.'. '.$san;
+            } else {
+                $moves[] = ($index === 0 ? $number.'... ' : '').$san;
+                $number++;
+            }
+
+            $whiteToMove = ! $whiteToMove;
         }
 
-        return implode("\n", $lines)."\n\n".wordwrap(trim(implode(' ', $moves).' '.$result), 80)."\n";
+        // Export format: movetext lines have "less than 80 printing characters", so 79 at most.
+        return implode("\n", $lines)."\n\n".wordwrap(trim(implode(' ', $moves).' '.$result), 79)."\n";
+    }
+
+    /**
+     * A tag value as export format allows it: one line, no control
+     * characters (newline, tab, ...), whitespace runs folded to one space,
+     * `?` when nothing is left ("unknown" in the Seven Tag Roster).
+     */
+    private static function tagValue(string $value): string
+    {
+        $folded = trim((string) preg_replace('/[\p{Cc}\p{Zl}\p{Zp}\s]+/u', ' ', $value));
+
+        return $folded === '' ? '?' : $folded;
     }
 }
