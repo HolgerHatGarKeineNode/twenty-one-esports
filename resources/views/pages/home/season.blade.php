@@ -14,7 +14,7 @@
         <div class="flex flex-col"><dt>{{ __('Mined') }}</dt><dd class="m-0 font-display text-base font-bold text-ink tabular-nums">{{ $season['mined'] }} <span class="font-mono text-xs font-normal text-ink-2">{{ __('of :supply sats', ['supply' => $season['supply']]) }}</span></dd></div>
     </dl>
     <span class="flex shrink-0 items-center gap-4 max-sm:w-full">
-        <a href="{{ route('chess.lobby') }}" class="btn-p inline-flex h-11 items-center justify-center gap-2 rounded-md bg-btc px-5 text-[13px] font-bold text-on-btc hover:text-on-btc max-sm:grow"><x-icon name="pawn" :size="18" />{{ __('Play rated now') }}</a>
-        <a href="{{ route('mining') }}" class="inline-flex min-h-11 items-center text-[13px]" data-test="season-mining">{{ __('The chain') }}</a>
+        <a href="{{ route('chess.lobby') }}" @navigate(route('chess.lobby')) class="btn-p inline-flex h-11 items-center justify-center gap-2 rounded-md bg-btc px-5 text-[13px] font-bold text-on-btc hover:text-on-btc max-sm:grow"><x-icon name="pawn" :size="18" />{{ __('Play rated now') }}</a>
+        <a href="{{ route('mining') }}" @navigate(route('mining')) class="inline-flex min-h-11 items-center text-[13px]" data-test="season-mining">{{ __('The chain') }}</a>
     </span>
 </section>

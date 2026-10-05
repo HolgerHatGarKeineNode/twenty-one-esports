@@ -118,10 +118,10 @@ test('row 1 and the phone\'s More sheet link the mempool with how many matches o
     $html = $this->get('/rules')->assertOk()->getContent();
 
     expect($html)->toContain('aria-label="Mempool and chains"')
-        ->toMatch('/href="'.preg_quote(route('matches.index'), '/').'"\s+aria-label="Mempool, 6 matches waiting"[^>]*data-test="nav-mempool"/')
+        ->toMatch('/href="'.preg_quote(route('matches.index'), '/').'"(?:\s+wire:navigate)?\s+aria-label="Mempool, 6 matches waiting"[^>]*data-test="nav-mempool"/')
         ->toMatch('/data-test="mempool-count">6</')
-        ->toMatch('/href="'.preg_quote(route('mining'), '/').'"\s+aria-label="Season chain, Block 0 soon"[^>]*data-test="nav-mining"/')
-        ->toMatch('/href="'.preg_quote(route('matches.index', ['chain' => 'casual']), '/').'"\s+aria-label="Casual chain"[^>]*data-test="nav-casual"/')
+        ->toMatch('/href="'.preg_quote(route('mining'), '/').'"(?:\s+wire:navigate)?\s+aria-label="Season chain, Block 0 soon"[^>]*data-test="nav-mining"/')
+        ->toMatch('/href="'.preg_quote(route('matches.index', ['chain' => 'casual']), '/').'"(?:\s+wire:navigate)?\s+aria-label="Casual chain"[^>]*data-test="nav-casual"/')
         // The same three under Everywhere on phones, in the same order after Clans.
         ->and(str($html)->after('data-test="more-sheet"')->toString())->toMatch('/data-test="mobile-clans".*data-test="mobile-mempool".*data-test="mobile-season".*data-test="mobile-casual"/s')
         ->toMatch('/data-test="mobile-mempool-count">6</')

@@ -7,9 +7,12 @@
     `scripts` lists extra Vite entries a page needs (e.g. the chess board);
     `flush` drops the page-top spacing under the header, for the few designs
     that start full-bleed (the pre-launch home and its Block 0 bar).
+    `data-navigate-page` marks a page wire:navigate may swap into and out of;
+    a page without it loads in full both ways (App\Support\Navigation\Navigate,
+    resources/js/navigateGuard.js).
 --}}
 <!DOCTYPE html>
-<html lang="{{ str_replace('_', '-', app()->getLocale()) }}" class="dark">
+<html lang="{{ str_replace('_', '-', app()->getLocale()) }}" class="dark" @if (App\Support\Navigation\Navigate::here()) data-navigate-page @endif>
     <head>
         @include('partials.head', ['title' => $title, 'realtime' => $realtime, 'scripts' => $scripts])
         {{--

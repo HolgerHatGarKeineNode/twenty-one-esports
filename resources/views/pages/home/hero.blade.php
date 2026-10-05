@@ -46,7 +46,7 @@
     <div class="flex min-w-0 flex-col gap-3 lg:order-2 lg:gap-5">
         <div class="flex flex-col gap-1 lg:gap-3">
             <h2 id="hero-name" class="m-0 font-display text-[22px] leading-[1.15] font-bold break-words sm:text-3xl xl:text-[44px] xl:leading-[1.08]">
-                <a href="{{ $show }}" class="text-ink hover:text-btc-hi" data-test="hero-name">{{ $tournament->name }}</a>
+                <a href="{{ $show }}" @navigate($show) class="text-ink hover:text-btc-hi" data-test="hero-name">{{ $tournament->name }}</a>
             </h2>
 
             <p class="m-0 flex flex-wrap items-baseline gap-x-3 text-xs leading-[1.5] text-ink-2 lg:text-sm" data-test="hero-when">
@@ -75,7 +75,7 @@
             @for ($seat = 0; $seat < $open; $seat++)
                 <li class="hh-seat is-open">
                     @if ($seat === 0 && $cta === 'open')
-                        <a href="{{ $signup }}" class="flex size-full items-center justify-center text-ink-2 hover:text-btc-hi" aria-label="{{ __('Take your seat') }}" data-test="hero-open-seat"><x-icon name="user" :size="16" /></a>
+                        <a href="{{ $signup }}" @navigate($signup) class="flex size-full items-center justify-center text-ink-2 hover:text-btc-hi" aria-label="{{ __('Take your seat') }}" data-test="hero-open-seat"><x-icon name="user" :size="16" /></a>
                     @endif
                 </li>
             @endfor
@@ -87,17 +87,17 @@
         <div class="flex items-center gap-4">
             @switch($cta)
                 @case('open')
-                    <a href="{{ $signup }}" class="btn-p inline-flex min-h-12 shrink-0 items-center justify-center gap-2.5 rounded-md bg-btc px-6 font-display text-[15px] font-bold text-on-btc hover:text-on-btc" data-test="hero-cta">
+                    <a href="{{ $signup }}" @navigate($signup) class="btn-p inline-flex min-h-12 shrink-0 items-center justify-center gap-2.5 rounded-md bg-btc px-6 font-display text-[15px] font-bold text-on-btc hover:text-on-btc" data-test="hero-cta">
                         <x-icon name="tournaments" :size="20" />{{ __('Sign up') }}
                     </a>
                     @break
                 @case('entered')
-                    <a href="{{ $show }}" class="inline-flex min-h-12 shrink-0 items-center justify-center gap-2.5 rounded-md bg-win-tint px-6 font-display text-[15px] font-bold text-win shadow-ring-win hover:text-win" data-test="hero-cta">
+                    <a href="{{ $show }}" @navigate($show) class="inline-flex min-h-12 shrink-0 items-center justify-center gap-2.5 rounded-md bg-win-tint px-6 font-display text-[15px] font-bold text-win shadow-ring-win hover:text-win" data-test="hero-cta">
                         <x-icon name="check" :size="20" />{{ __('You’re in') }}
                     </a>
                     @break
                 @default
-                    <a href="{{ $show }}" class="btn-p inline-flex min-h-12 shrink-0 items-center justify-center gap-2.5 rounded-md bg-btc px-6 font-display text-[15px] font-bold text-on-btc hover:text-on-btc" data-test="hero-cta">
+                    <a href="{{ $show }}" @navigate($show) class="btn-p inline-flex min-h-12 shrink-0 items-center justify-center gap-2.5 rounded-md bg-btc px-6 font-display text-[15px] font-bold text-on-btc hover:text-on-btc" data-test="hero-cta">
                         <x-icon name="eye" :size="20" />{{ __('See the tournament') }}
                     </a>
             @endswitch
@@ -114,7 +114,7 @@
         @foreach ($more as $next)
             @php($nextTournament = $next['tournament'])
             <li>
-                <a href="{{ route('tournaments.show', $nextTournament) }}" class="grid grid-cols-[96px_minmax(0,1fr)] items-center gap-3 rounded-card bg-card p-2 pr-3 text-ink shadow-ring hover:bg-row-hover hover:text-ink" data-test="hero-more-cup">
+                <a href="{{ route('tournaments.show', $nextTournament) }}" @navigate(route('tournaments.show', $nextTournament)) class="grid grid-cols-[96px_minmax(0,1fr)] items-center gap-3 rounded-card bg-card p-2 pr-3 text-ink shadow-ring hover:bg-row-hover hover:text-ink" data-test="hero-more-cup">
                     <x-game-cover :game="$nextTournament->game" size="thumb" class="w-24 rounded-tag" />
                     <span class="flex min-w-0 flex-col gap-1">
                         <b class="truncate font-display text-sm">{{ $nextTournament->name }}</b>

@@ -52,7 +52,7 @@
         overflows. The search is a button that opens the search row under the header.
     --}}
     <div class="flex h-14 items-center gap-1 border-b border-hairline pr-2 pl-4 lg:h-16 lg:px-6 xl:gap-2 xl:px-8">
-        <a href="{{ route('home') }}" class="flex min-h-11 min-w-11 shrink-0 items-center gap-2.5 text-ink hover:text-ink" aria-label="{{ __('TWENTY ONE esports, home') }}" data-test="shell-home" @if (config('esports.navigate')) wire:navigate.hover @endif>
+        <a href="{{ route('home') }}" @navigate(route('home')) class="flex min-h-11 min-w-11 shrink-0 items-center gap-2.5 text-ink hover:text-ink" aria-label="{{ __('TWENTY ONE esports, home') }}" data-test="shell-home">
             <x-logo :size="32" class="shadow-none lg:hidden" />
             <x-logo :size="36" class="max-lg:hidden" />
             {{-- The word mark gives its room to the game tabs on desktop until the widest tier. --}}
@@ -70,7 +70,7 @@
         --}}
         <nav class="flex min-w-0 flex-1 snap-x snap-mandatory gap-2 overflow-x-auto px-1 [scrollbar-width:none] [mask-image:linear-gradient(90deg,#000_calc(100%-24px),transparent)] lg:hidden" aria-label="{{ __('Game titles') }}" id="game-chips" x-ref="chips">
             @foreach ($games as $game)
-                <a href="{{ $game['page'] }}" style="--game: {{ $game['colour'] }}" class="gchip" aria-label="{{ $game['short'] === $game['name'] ? $game['name'] : $game['short'].', '.$game['name'] }}" title="{{ $game['name'] }}"
+                <a href="{{ $game['page'] }}" @navigate($game['page']) style="--game: {{ $game['colour'] }}" class="gchip" aria-label="{{ $game['short'] === $game['name'] ? $game['name'] : $game['short'].', '.$game['name'] }}" title="{{ $game['name'] }}"
                    @if ($game['slug'] === $active['slug']) aria-current="{{ $onGamePage ? 'page' : 'true' }}" @endif
                    @if ($game['slug'] !== 'chess') data-test="mobile-{{ $game['slug'] }}" @endif>
                     {{-- Eager: the chips are the top bar of every phone page, above the fold by definition. --}}
@@ -86,7 +86,7 @@
 
         <nav class="hidden h-16 min-w-0 grow items-stretch gap-1 lg:ml-2 lg:flex xl:ml-4" aria-label="{{ __('Main navigation') }}" data-test="game-tabs">
             @foreach ($tabs as $index => $tab)
-                <a href="{{ $tab['page'] }}" style="--game: {{ $tab['colour'] }}"
+                <a href="{{ $tab['page'] }}" @navigate($tab['page']) style="--game: {{ $tab['colour'] }}"
                    @if ($tab['slug'] === $active['slug']) aria-current="{{ $onGamePage ? 'page' : 'true' }}" @endif
                    title="{{ $tab['name'] }}" class="gtab gtab-{{ $index }}" data-test="game-tab-{{ $tab['slug'] }}">
                     <x-game-cover :game="$tab['slug']" size="thumb" class="w-10 rounded-xs" />
@@ -102,14 +102,14 @@
             </button>
             <span class="grow"></span>
             {{-- Tournaments, cross-game like Clans and Season, with how many are open for sign-up now. --}}
-            <a href="{{ $tournaments['href'] }}" @if ($section === 'tournaments') aria-current="page" @endif class="nav-link self-center" data-test="nav-tournaments">
+            <a href="{{ $tournaments['href'] }}" @navigate($tournaments['href']) @if ($section === 'tournaments') aria-current="page" @endif class="nav-link self-center" data-test="nav-tournaments">
                 {{ $tournaments['label'] }}
                 @if ($tournaments['open'] > 0)
                     <span class="nav-count" data-test="tournaments-open"><span class="sr-only">, </span>{{ $tournaments['open'] }}<span class="sr-only"> {{ trans_choice('open for sign-up|open for sign-up', $tournaments['open']) }}</span></span>
                 @endif
             </a>
             @foreach ($community as $link)
-                <a href="{{ $link['href'] }}" @if ($section === $link['key']) aria-current="page" @endif class="nav-link self-center" data-test="nav-{{ $link['key'] }}">{{ $link['label'] }}</a>
+                <a href="{{ $link['href'] }}" @navigate($link['href']) @if ($section === $link['key']) aria-current="page" @endif class="nav-link self-center" data-test="nav-{{ $link['key'] }}">{{ $link['label'] }}</a>
             @endforeach
             {{--
                 The chain rail (plan "Mempool-Streifen", P4): the mempool of every game's matches with how many
@@ -120,7 +120,7 @@
             --}}
             <div role="group" aria-label="{{ __('Mempool and chains') }}" class="chain-rail self-center" data-test="chain-rail">
                 @foreach ($chain as $link)
-                    <a href="{{ $link['href'] }}" @if ($link['current']) aria-current="page" @endif aria-label="{{ $link['name'] }}" title="{{ $link['name'] }}"
+                    <a href="{{ $link['href'] }}" @navigate($link['href']) @if ($link['current']) aria-current="page" @endif aria-label="{{ $link['name'] }}" title="{{ $link['name'] }}"
                        class="chain-link chain-link--{{ $link['key'] }}" data-chain-key="{{ $link['key'] }}" data-test="nav-{{ $link['key'] }}">
                         <x-icon :name="$link['icon']" :size="16" class="chain-glyph" />
                         <span>{{ $link['label'] }}</span>
@@ -161,7 +161,7 @@
                     chain rail an English admin's row 1 with 12 open cases and 1234 waiting matches ran 35 px past its box
                     at 1280 px and 3 px at 1680 px (plan "Mempool-Streifen", P4).
                 --}}
-                <a href="{{ $admin['href'] }}" @if ($section === 'admin') aria-current="page" @endif class="nav-link hidden lg:flex" title="{{ __('Admin') }}" data-test="account-admin">
+                <a href="{{ $admin['href'] }}" @navigate($admin['href']) @if ($section === 'admin') aria-current="page" @endif class="nav-link hidden lg:flex" title="{{ __('Admin') }}" data-test="account-admin">
                     <x-icon name="shield-check" :size="18" class="text-ink-3" />
                     <span class="max-[120rem]:sr-only">{{ __('Admin') }}</span>
                     @if ($admin['count'] > 0)
@@ -206,7 +206,7 @@
                     </div>
                     <div class="-mx-[.3125rem] my-[.3125rem] h-px bg-white/20" role="separator"></div>
                     @foreach ($account as $link)
-                        <a href="{{ $link['href'] }}" role="menuitem" tabindex="-1" class="account-item" @if ($link['test']) data-test="{{ $link['test'] }}" @endif><x-icon :name="$link['icon']" :size="16" class="me-2 text-ink-3" />{{ $link['label'] }}@isset($link['count'])<span class="nav-count ms-auto">{{ $link['count'] }}</span>@endisset</a>
+                        <a href="{{ $link['href'] }}" @navigate($link['href']) role="menuitem" tabindex="-1" class="account-item" @if ($link['test']) data-test="{{ $link['test'] }}" @endif><x-icon :name="$link['icon']" :size="16" class="me-2 text-ink-3" />{{ $link['label'] }}@isset($link['count'])<span class="nav-count ms-auto">{{ $link['count'] }}</span>@endisset</a>
                     @endforeach
                     <div class="-mx-[.3125rem] my-[.3125rem] h-px bg-white/20" role="separator"></div>
                     {{-- Forget a mill remote signer first, so the next person on this browser does not inherit it. --}}
@@ -234,7 +234,7 @@
     <nav class="ctx hidden h-12 items-center gap-1 border-b border-hairline px-6 lg:flex xl:px-8" style="--game: {{ $active['colour'] }}" aria-label="{{ $active['name'] }}" data-test="context-bar" data-game="{{ $active['slug'] }}">
         <span class="ctx-name">{{ $active['name'] }}</span>
         @foreach ($active['actions'] as $link)
-            <a href="{{ $link['href'] }}" @if (\App\Support\Navigation\ShellNavigation::isCurrent($link)) aria-current="page" @endif class="ctx-link" data-test="ctx-{{ $link['key'] }}">
+            <a href="{{ $link['href'] }}" @navigate($link['href']) @if (\App\Support\Navigation\ShellNavigation::isCurrent($link)) aria-current="page" @endif class="ctx-link" data-test="ctx-{{ $link['key'] }}">
                 <x-icon :name="$link['icon']" :size="16" class="max-[90rem]:hidden" />
                 <span class="min-[90rem]:hidden">{{ $link['short'] }}</span><span class="max-[90rem]:hidden">{{ $link['label'] }}</span>
             </a>

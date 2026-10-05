@@ -258,29 +258,38 @@ test('a bunker login signs every later post of a game without a second pairing, 
     bunkerPost($page);
     bunkerPageClean($page);
 
-    // 3: after two Livewire navigations (away and back, no page load), on a
-    // CPU slowed down 6x: a late dock or bell refresh then lands after the
-    // navigation, the race resources/js/livewireDetached.js closes (at load
-    // ~20 it failed one full run in two, throttled every time without the fix).
+    // 3: after Livewire navigations on a CPU slowed down 6x: a late dock or bell
+    // refresh then lands after the navigation, the race
+    // resources/js/livewireDetached.js closes (at load ~20 it failed one full
+    // run in two, throttled every time without the fix). A game page loads in
+    // full both ways (P6b, resources/js/navigateGuard.js), so the swaps run
+    // between shell pages: home, /play and home again in one document; the
+    // next game is reached by a navigate that becomes a full load.
     BrowserThrottle::cpu($page, 6);
     $page->evaluate('() => { window.__sameDocument = true; Livewire.navigate("/"); }');
-    BrowserWait::until($page, '() => location.pathname === "/" && window.__sameDocument === true', 15_000);
+    BrowserWait::until($page, '() => location.pathname === "/" && document.readyState === "complete" && window.__sameDocument !== true && !!window.Livewire', 15_000);
+    // Again for the new document, in case the emulation did not carry over the load.
+    BrowserThrottle::cpu($page, 6);
+    $page->evaluate('() => { window.__sameDocument = true; Livewire.navigate("/play"); }');
+    BrowserWait::until($page, '() => location.pathname === "/play" && window.__sameDocument === true', 15_000);
+    $page->evaluate('() => Livewire.navigate("/")');
+    BrowserWait::until($page, '() => location.pathname === "/" && window.__sameDocument === true && !!document.querySelector("[data-test=shell-home]")', 15_000);
     $page->evaluate('() => Livewire.navigate('.json_encode($path(2)).')');
-    BrowserWait::until($page, '() => location.pathname === '.json_encode($path(2)).' && window.__sameDocument === true', 15_000);
+    BrowserWait::until($page, '() => location.pathname === '.json_encode($path(2)).' && document.readyState === "complete" && window.__sameDocument !== true', 15_000);
     bunkerWaitForPost($page);
     bunkerPost($page);
     bunkerPageClean($page);
     BrowserThrottle::cpu($page, 1);
 
     // 4: the relay goes away and comes back under the open page, whose remote
-    // signer is live since post 3 (the next game is reached by navigation, no
-    // reload: a reload would start a fresh client after the drop).
-    $page->evaluate('() => Livewire.navigate('.json_encode($path(3)).')');
-    BrowserWait::until($page, '() => location.pathname === '.json_encode($path(3)).' && window.__sameDocument === true', 15_000);
-    bunkerWaitForPost($page);
+    // signer is live since post 3; the next game then loads in full (a game
+    // page is never swapped in, P6b) and signs with the session it restores.
     $this->relay->stop(1);
     $this->relay = bunkerRelayStart($this->relayPort);
     Execution::instance()->wait(1.5);
+    $page->evaluate('() => { window.__sameDocument = true; Livewire.navigate('.json_encode($path(3)).'); }');
+    BrowserWait::until($page, '() => location.pathname === '.json_encode($path(3)).' && document.readyState === "complete" && window.__sameDocument !== true', 15_000);
+    bunkerWaitForPost($page);
     bunkerPost($page);
 
     $requests = bunkerRequests($this->bunkerLog);

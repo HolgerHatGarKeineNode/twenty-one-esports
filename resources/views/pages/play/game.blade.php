@@ -10,12 +10,12 @@
     $heading = 'h'.($level ?? 2);
 @endphp
 <li id="{{ $game['slug'] }}" class="grid grid-cols-1 gap-4 rounded-lg bg-card p-4 sm:grid-cols-[240px_minmax(0,1fr)] lg:grid-cols-[320px_minmax(0,1fr)] lg:gap-6 lg:p-5" style="--game: {{ $game['colour'] }}" data-test="play-game-{{ $game['slug'] }}">
-    <a href="{{ $game['page'] }}" class="block self-start">
+    <a href="{{ $game['page'] }}" @navigate($game['page']) class="block self-start">
         <x-game-cover :game="$game['slug']" size="card" class="w-full rounded-md border-b-[3px] border-(--game)" :loading="($eager ?? false) ? 'eager' : 'lazy'" />
     </a>
     <div class="flex min-w-0 flex-col gap-3">
         <div class="flex flex-wrap items-baseline gap-x-3 gap-y-1">
-            <{{ $heading }} class="m-0 font-display text-xl font-bold"><a href="{{ $game['page'] }}" class="text-ink hover:text-ink">{{ $game['name'] }}</a></{{ $heading }}>
+            <{{ $heading }} class="m-0 font-display text-xl font-bold"><a href="{{ $game['page'] }}" @navigate($game['page']) class="text-ink hover:text-ink">{{ $game['name'] }}</a></{{ $heading }}>
             @if ($game['played'])
                 <span class="text-xs text-ink-3">{{ __('You play this') }}</span>
             @endif

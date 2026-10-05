@@ -14,7 +14,7 @@
         <ul class="m-0 grid list-none grid-cols-1 gap-2 p-0 sm:grid-cols-2 lg:grid-cols-3">
             @foreach ($items as $item)
                 <li>
-                    <a href="{{ $item->href }}" aria-label="{{ $item->sentence }}"
+                    <a href="{{ $item->href }}" @navigate($item->href) aria-label="{{ $item->sentence }}"
                        @class(['flex min-h-14 items-center gap-3 rounded-card px-3 py-2 text-ink hover:text-ink', 'bg-btc-chip shadow-ring-btc' => $item->needsYou || $item->isLive(), 'bg-card shadow-ring' => ! $item->needsYou && ! $item->isLive()])
                        data-test="your-next-item" data-kind="{{ $item->kind }}">
                         @if ($item->face)

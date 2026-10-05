@@ -25,7 +25,7 @@
             @foreach ([[route('login', ['then' => 'play']), __('Log in with Nostr or Google')], [route('chess.lobby'), __('Play a casual chess game')], [route('clans.index'), __('Join a clan')]] as $index => [$href, $label])
                 <li class="flex shrink-0 items-center gap-2 text-[13px]">
                     <span aria-hidden="true" class="flex size-5 shrink-0 items-center justify-center rounded-xs bg-btc text-xs font-bold text-on-btc">{{ $index + 1 }}</span>
-                    <a href="{{ $href }}" class="inline-flex min-h-11 items-center text-ink underline decoration-edge underline-offset-4 hover:text-ink hover:decoration-btc lg:min-h-8">{{ $label }}</a>
+                    <a href="{{ $href }}" @navigate($href) class="inline-flex min-h-11 items-center text-ink underline decoration-edge underline-offset-4 hover:text-ink hover:decoration-btc lg:min-h-8">{{ $label }}</a>
                 </li>
             @endforeach
         </ol>

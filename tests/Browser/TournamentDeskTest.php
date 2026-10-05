@@ -241,9 +241,10 @@ test('the desk is open without a click: a player and the direction talk there, t
         BrowserWait::until($pageG, deskSees('them', 'We are on it, the game is paused', true), 10_000);
         expect($pageG->evaluate('() => window.__errors'))->toBe([]);
 
-        // Away with wire:navigate: the desk lets go of its page hooks (visibilitychange listener, observer).
-        $pageG->evaluate('() => { window.__desk = Alpine.$data(document.querySelector("[data-test=desk-chat]")); window.__deskAborted = () => window.__desk.teardown.signal.aborted; Livewire.navigate("/"); }');
-        BrowserWait::until($pageG, '() => location.pathname === "/" && document.querySelector("[data-test=desk-chat]") === null && window.__deskAborted() === true', 10_000);
+        // Away by a navigate: a game page loads in full both ways (P6b, resources/js/navigateGuard.js), so the desk and
+        // its page hooks go with the document instead of staying behind in a kept window.
+        $pageG->evaluate('() => { window.__sameDocument = true; Livewire.navigate("/"); }');
+        BrowserWait::until($pageG, '() => location.pathname === "/" && document.readyState === "complete" && window.__sameDocument !== true && document.querySelector("[data-test=desk-chat]") === null', 10_000);
         expect($pageG->evaluate('() => window.__errors'))->toBe([]);
 
         // A reload: the desk is open again, both messages there.

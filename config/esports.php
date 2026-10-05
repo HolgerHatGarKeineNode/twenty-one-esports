@@ -116,17 +116,24 @@ return [
 
     /*
     |--------------------------------------------------------------------------
-    | wire:navigate spike (performance plan P6)
+    | wire:navigate on the shell (performance plan P6b)
     |--------------------------------------------------------------------------
     |
-    | On: the two links between home and /play (the header logo and the game
-    | hub's "All games and modes") navigate with `wire:navigate.hover` instead
-    | of a full page load. A spike, not a rollout: off by default, measured by
-    | tests/Browser/NavigateSpikeTest.php against the same pages with it off.
+    | On: links between the shell's navigable pages (home, /play, the lists,
+    | the player's own pages and settings tabs; App\Support\Navigation\Navigate)
+    | swap the page in the kept window instead of loading it in full: the
+    | websocket stays up and the online presence no longer flickers per click.
+    | Game, board, room, lobby and chat pages load in full either way.
+    |
+    | On by default since P6b: ten navigations leave the listeners, Echo
+    | callbacks, intervals and components where one leaves them
+    | (tests/Browser/NavigateSpikeTest.php; numbers in the plan's
+    | p6b-ergebnis.md). ESPORTS_NAVIGATE=false is the kill switch: every link
+    | is a plain link again.
     |
     */
 
-    'navigate' => (bool) env('ESPORTS_NAVIGATE', false),
+    'navigate' => (bool) env('ESPORTS_NAVIGATE', true),
 
     /*
     |--------------------------------------------------------------------------
