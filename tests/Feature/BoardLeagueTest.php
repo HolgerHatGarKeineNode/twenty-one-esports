@@ -173,7 +173,7 @@ test('the searching lobby\'s poll answers without a render until something it sh
     $this->freezeSecond();
     [$a, $b] = User::factory()->count(2)->create();
     $lobby = Livewire::actingAs($a)->test('pages::board.lobby', ['board' => NineMensMorris::SLUG])
-        ->call('findOpponent')->assertSeeHtml('wire:poll.4s="poll"');
+        ->call('findOpponent')->assertSeeHtml('data-check-at=');
 
     $lobby->call('poll')->assertOk()->assertNoRedirect();
     expect($lobby->effects)->not->toHaveKey('html');
@@ -188,6 +188,37 @@ test('the searching lobby\'s poll answers without a render until something it sh
     $this->travel(61)->seconds();
     $lobby->call('poll')->assertOk();
     expect($lobby->effects)->toHaveKey('html');
+    $lobby->call('$refresh')->assertOk();
+});
+
+test('a waiting lobby asks the server when its range widens, its invite expires, or after 120 s, not every 4 s (performance plan P7)', function () {
+    $this->freezeSecond();
+    [$a, $b] = User::factory()->count(2)->create();
+    $lobby = Livewire::actingAs($a)->test('pages::board.lobby', ['board' => NineMensMorris::SLUG]);
+    $joined = now()->getTimestampMs();
+
+    // Idle: no moment to ask, no poll.
+    $lobby->assertDontSeeHtml('data-check-at=')->assertDontSeeHtml('wire:poll');
+
+    // Searching: the next widening of the range (every 30 s), half a second late.
+    $lobby->call('findOpponent')->assertSeeHtml('data-check-at="'.($joined + 30_500).'"')->assertDontSeeHtml('wire:poll');
+    expect($lobby->instance()->checkAt)->toBe($joined + 30_500);
+
+    // A poll that changes nothing skips its render and answers with the next moment instead.
+    $this->travel(31)->seconds();
+    $lobby->call('poll')->assertOk()->assertReturned($joined + 60_500);
+
+    // At the widest range the safety net is left: 120 s from now.
+    $this->travel(90)->seconds();
+    $lobby->call('poll')->assertOk()->assertReturned(now()->getTimestampMs() + 120_000);
+
+    // Waiting for an answer to an invite: its expiry when that comes before the net, and nothing once it is gone.
+    config(['esports.board_games.invite_seconds' => 60]);
+    $lobby->call('cancelSearch');
+    $b->forceFill(['looking_to_play' => NineMensMorris::SLUG.'/blitz'])->save();
+    $lobby->call('invite', $b->id)->assertSeeHtml('data-check-at="'.(now()->getTimestampMs() + 60_500).'"');
+    $lobby->call('withdrawInvite')->assertDontSeeHtml('data-check-at=');
+    $lobby->call('poll')->assertReturned(null);
     $lobby->call('$refresh')->assertOk();
 });
 

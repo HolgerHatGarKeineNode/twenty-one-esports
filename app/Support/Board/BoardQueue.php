@@ -27,8 +27,8 @@ use Illuminate\Support\Facades\DB;
  * waits (`esports.board_games.queue.range`, as chess).
  *
  * Pairing is tried when a player joins and whenever a waiting player's page
- * asks again (the searching lobby polls), so a widening range pairs without
- * anyone new joining. An open invite for this board game comes first: a
+ * asks again (the searching lobby asks when its range widens, nextWidening),
+ * so a widening range pairs without anyone new joining. An open invite for this board game comes first: a
  * player who searches while holding one is paired with its inviter.
  *
  * One intent at a time: searching here ends a search for chess, for another
@@ -159,6 +159,26 @@ final class BoardQueue
         $steps = intdiv($waited, max(1, (int) $config['every_seconds']));
 
         return min((int) $config['max'], (int) $config['initial'] + $steps * (int) $config['step']);
+    }
+
+    /**
+     * When this entry's range next opens, or null once it is at `max`. The
+     * searching lobby asks for a pairing then: nobody new has to join for a
+     * wider range to fit, so no push would announce it.
+     */
+    public function nextWidening(BoardQueueEntry $entry, ?CarbonInterface $now = null): ?CarbonInterface
+    {
+        $now ??= now();
+        $config = config('esports.board_games.queue.range');
+
+        if ($this->range($entry, $now) >= (int) $config['max']) {
+            return null;
+        }
+
+        $every = max(1, (int) $config['every_seconds']);
+        $waited = max(0, (int) $entry->joined_at->diffInSeconds($now));
+
+        return $entry->joined_at->copy()->addSeconds((intdiv($waited, $every) + 1) * $every);
     }
 
     /**
