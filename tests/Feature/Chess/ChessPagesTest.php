@@ -204,3 +204,17 @@ test('the challenge page marks players with an open challenge and offers no seco
         ->assertSeeHtml('data-test="send-challenge"')
         ->assertDontSeeHtml('data-test="open-challenge-notice"');
 });
+
+test('the challenge page\'s player search renders in its island, a pick renders the page (performance plan P7)', function () {
+    $me = User::factory()->create();
+    $other = User::factory()->create(['name' => 'Satoshi Searchable']);
+
+    $page = Livewire::actingAs($me)->test('pages::chess.challenge')
+        ->assertSeeHtml('FRAGMENT:type=island|name=players')
+        ->assertSeeHtml('x-on:click="$wire.pick('.$other->id.')"')
+        ->set('search', 'Searchable')->assertSee('Satoshi Searchable')
+        ->call('pick', $other->id)->assertSet('to', (string) $other->id)
+        ->call('$refresh')->assertOk();
+
+    expect($page->html())->toContain('aria-checked="true"');
+});

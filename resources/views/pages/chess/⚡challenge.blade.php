@@ -19,6 +19,11 @@ use Livewire\Component;
  * column and the Elo stakes of the design are left out. Blitz with a friend
  * stays in the lobby ("invite a friend who is online"); Rapid and Bullet are
  * "soon" as in the design.
+ *
+ * The player search sits in the island `players` (performance plan P7): a
+ * keystroke renders the list only, not the page. Picking a player renders
+ * the page ($wire.pick from Alpine carries no island), since the summary on
+ * the right names the opponent.
  */
 new #[Title('Challenge')] #[Layout('layouts::app', ['section' => 'chess'])] class extends Component {
     #[Url(as: 'q')]
@@ -137,7 +142,7 @@ new #[Title('Challenge')] #[Layout('layouts::app', ['section' => 'chess'])] clas
 @php
     $me = auth()->user();
     $opponent = $this->opponent;
-    $ratings = \App\Support\Rating\Ratings::forUsers([...$this->players->pluck('id')->all(), $opponent?->id], 'chess', 'correspondence', \App\Support\Rating\Ratings::headline(null, 'chess', 'correspondence')['pool']);
+    $ratings = \App\Support\Rating\Ratings::forUsers([$opponent?->id], 'chess', 'correspondence', \App\Support\Rating\Ratings::headline(null, 'chess', 'correspondence')['pool']);
     $hours = (int) config('esports.chess.challenge_hours');
     $colorLabel = ['random' => __('Random'), 'white' => __('White'), 'black' => __('Black')];
 @endphp
@@ -153,6 +158,10 @@ new #[Title('Challenge')] #[Layout('layouts::app', ['section' => 'chess'])] clas
             {{-- Opponent --}}
             <section aria-labelledby="op-h" class="flex flex-col gap-3 rounded-lg bg-card px-4 py-5 lg:px-6" x-data="{ online: [] }" x-init="window.esportsPresence?.subscribe((members) => online = members.map((m) => m.id))">
                 <span class="flex flex-wrap items-baseline justify-between gap-2"><h2 id="op-h" class="m-0 text-[15px] font-bold">{{ __('Opponent') }}</h2><span class="text-xs text-ink-2">{{ __('anyone, with or without a clan') }}</span></span>
+                @island(name: 'players', always: true)
+                @php($me = auth()->user())
+                @php($opponent = $this->opponent)
+                @php($ratings = \App\Support\Rating\Ratings::forUsers([...$this->players->pluck('id')->all(), $opponent?->id], 'chess', 'correspondence', \App\Support\Rating\Ratings::headline(null, 'chess', 'correspondence')['pool']))
                 <label for="player-search" class="sr-only">{{ __('Search players') }}</label>
                 <input id="player-search" type="search" wire:model.live.debounce.300ms="search" placeholder="{{ __('Search players') }}" autocomplete="off" data-test="player-search"
                        class="h-11 w-full rounded-lg border border-edge bg-ground px-3.5 text-sm text-ink placeholder:text-ink-3 lg:max-w-[360px]">
@@ -161,7 +170,7 @@ new #[Title('Challenge')] #[Layout('layouts::app', ['section' => 'chess'])] clas
                         <span>{{ __('Player') }}</span><span>{{ __('Daily') }}</span><span>{{ __('Tier') }}</span><span>{{ __('Games') }}</span><span>{{ __('Status') }}</span>
                     </div>
                     @forelse ($this->players as $player)
-                        <button type="button" role="radio" wire:key="p-{{ $player->id }}" wire:click="pick({{ $player->id }})" aria-checked="{{ $opponent?->is($player) ? 'true' : 'false' }}" data-test="pick-player"
+                        <button type="button" role="radio" wire:key="p-{{ $player->id }}" x-on:click="$wire.pick({{ $player->id }})" aria-checked="{{ $opponent?->is($player) ? 'true' : 'false' }}" data-test="pick-player"
                                 @class(['grid min-h-12 cursor-pointer grid-cols-[minmax(0,1fr)_auto] items-center gap-3 rounded-md border bg-transparent px-3 py-1.5 text-left text-[13px] text-ink md:grid-cols-[minmax(0,1fr)_70px_120px_60px_90px]',
                                     'border-btc bg-btc-press' => $opponent?->is($player), 'border-transparent hover:bg-row-hover' => ! $opponent?->is($player)])>
                             <span class="flex min-w-0 items-center gap-2">
@@ -185,6 +194,7 @@ new #[Title('Challenge')] #[Layout('layouts::app', ['section' => 'chess'])] clas
                 </div>
                 <p class="m-0 text-xs leading-normal text-ink-3">{{ __('Until Block 0 every game is casual: you can challenge anyone, no connection needed.') }}</p>
                 @error('to')<p class="m-0 text-[13px] text-loss" role="alert">{{ $message }}</p>@enderror
+                @endisland
             </section>
 
             {{-- Time control --}}
