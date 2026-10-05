@@ -10,9 +10,10 @@
  * error, so the caller's onerror fallback to the Blockpile still fires.
  *
  * Presets as in PHP: `avatar` (96 px square) up to 48 CSS px, `avatar-lg`
- * (192 px square) above.
+ * (192 px square) up to 96, `msg` above (sharp large pictures on a 2x screen).
  */
 const SMALL_MAX = 48;
+const MEDIUM_MAX = 96;
 
 let base;
 
@@ -44,7 +45,7 @@ export function proxiedAvatar(url, size = SMALL_MAX) {
         return url;
     }
 
-    return `${proxy}/${size <= SMALL_MAX ? 'avatar' : 'avatar-lg'}?src=${rawUrlEncode(url)}`;
+    return `${proxy}/${size <= SMALL_MAX ? 'avatar' : size <= MEDIUM_MAX ? 'avatar-lg' : 'msg'}?src=${rawUrlEncode(url)}`;
 }
 
 /**

@@ -44,6 +44,8 @@ test('with a proxy a foreign avatar comes through it, cut for its size, and keep
         ->toContain('data-fallback="'.route('avatars.generated', ['pubkey' => $player->pubkey, 'v' => 1]).'"')
         ->toContain('onerror="this.onerror=null;this.src=this.dataset.fallback;');
     expect($large)->toContain('src="'.IMAGE_PROXY_TEST_BASE.'/avatar-lg?src='.$encoded.'"');
+    $huge = (string) $this->blade('<x-avatar :user="$user" :size="128" />', ['user' => $player]);
+    expect($huge)->toContain('src="'.IMAGE_PROXY_TEST_BASE.'/msg?src='.$encoded.'"');
     // The browser sizes the late pictures itself (profiles.js): the store hands it the original.
     expect($player->avatarUrl())->toBe(IMAGE_PROXY_TEST_BASE.'/avatar?src='.$encoded)
         ->and($player->avatarSource())->toBe('https://example.com/max face.png?x=1&y=2');
