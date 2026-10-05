@@ -7,11 +7,12 @@
     A new settings page adds its tab here and nowhere else.
 
     The strip scrolls sideways on a narrow screen instead of widening the
-    page, and starts scrolled so the active tab is in view. Tabs are plain
-    links (a full load): the pages' own script entries, e.g. push.js, register
-    their Alpine components on alpine:init, which a wire:navigate swap never
-    fires again (2026-10-05: the push toggle went dead). The slot sits beside the heading (the chess page's
-    "Saved" status).
+    page, and starts scrolled so the active tab is in view. Tabs switch with
+    wire:navigate when App\Support\Navigation\Navigate allows it (P6b); the
+    pages' own script entries, e.g. push.js, register their Alpine components
+    at once when Alpine already runs (resources/js/registerAlpine.js; on
+    2026-10-05 the push toggle went dead after a tab switch). The slot sits
+    beside the heading (the chess page's "Saved" status).
 
     The heading steps down below 360 and 640 px so the longest one, the
     German „Benachrichtigungen“, stays one word on one line at 320 px (the
@@ -35,7 +36,7 @@
          x-data x-init="const active = $el.querySelector('[aria-current=page]'); if (active && $el.scrollWidth > $el.clientWidth) { $el.scrollLeft = active.offsetLeft - ($el.clientWidth - active.offsetWidth) / 2 }"
          class="relative flex max-w-full overflow-x-auto border-b border-hairline [scrollbar-width:thin]">
         @foreach ($tabs as $key => [$href, $label, $test])
-            <a href="{{ $href }}" data-test="{{ $test }}" @if ($key === $current) aria-current="page" @endif
+            <a href="{{ $href }}" @navigate($href) data-test="{{ $test }}" @if ($key === $current) aria-current="page" @endif
                @class([
                    'flex h-11 shrink-0 items-center px-3.5 text-[13px] whitespace-nowrap hover:text-ink',
                    'font-bold text-ink shadow-[inset_0_-2px_0_var(--color-btc)]' => $key === $current,

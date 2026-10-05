@@ -16,6 +16,7 @@ import { nextPieces, stateHash } from './engine.js';
 import { drawPreview, drawWell, SHOWN_ROWS } from './renderer.js';
 import { createReplayPlayer } from './replay-player.js';
 import { TICK_MS, formatTicks } from './ticker.js';
+import { registerAlpine } from '../registerAlpine.js';
 
 export const SPEEDS = Object.freeze([0.5, 1, 2, 4]);
 const FLASH_MS = 420;
@@ -51,7 +52,7 @@ export function tickAt(x, width, total, columnTicks) {
     return Math.max(0, Math.min(total, Math.round((x / width) * total)));
 }
 
-document.addEventListener('alpine:init', () => {
+registerAlpine(() => {
     window.Alpine.data('stackerReplay', (config) => {
         // Not reactive: the game changes sixty times a second and is drawn, not bound.
         const rt = { player: null, el: null, frame: 0, last: 0, carry: 0, flashUntil: 0, flashRows: 0, cell: 24, dragging: false, onKey: null, onResize: null };

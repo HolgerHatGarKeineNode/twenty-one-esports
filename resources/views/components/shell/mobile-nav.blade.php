@@ -65,7 +65,7 @@
             <section aria-label="{{ __('You') }}">
                 <h3 class="m-0 px-2 pt-2 pb-1 text-xs font-normal text-ink-3">{{ __('You') }}</h3>
                 <div class="flex items-center gap-2">
-                    <a href="{{ $profile['href'] }}" class="{{ $row }} grow" data-test="{{ $profile['mobileTest'] }}">
+                    <a href="{{ $profile['href'] }}" @navigate($profile['href']) class="{{ $row }} grow" data-test="{{ $profile['mobileTest'] }}">
                         <x-avatar :user="$user" :size="26" class="shrink-0" />
                         <span class="flex min-w-0 flex-col leading-tight">
                             <span class="truncate">{{ $user->displayName() }}</span>
@@ -83,7 +83,7 @@
                 <ul class="m-0 grid list-none grid-cols-2 gap-1 p-0">
                     @foreach ($accountLinks as $link)
                         <li class="min-w-0">
-                            <a href="{{ $link['href'] }}" class="{{ $row }}" @if ($link['mobileTest']) data-test="{{ $link['mobileTest'] }}" @endif>
+                            <a href="{{ $link['href'] }}" @navigate($link['href']) class="{{ $row }}" @if ($link['mobileTest']) data-test="{{ $link['mobileTest'] }}" @endif>
                                 <x-icon :name="$link['icon']" :size="18" class="text-ink-3" />
                                 <span class="min-w-0 leading-tight break-words">{{ $link['label'] }}</span>
                                 @isset($link['count'])<span class="nav-count ml-auto">{{ $link['count'] }}</span>@endisset
@@ -105,7 +105,7 @@
                 @foreach ($everywhere as $link)
                     <li class="min-w-0">
                         {{-- The chain rail's links keep their glyph colours here (app.css `.chain-link--*`, `.chain-glyph`). --}}
-                        <a href="{{ $link['href'] }}" @class([$row, 'chain-link--'.$link['key'] => isset($link['name'])]) @if ($link['current'] ?? $section === $link['key']) aria-current="page" @endif
+                        <a href="{{ $link['href'] }}" @navigate($link['href']) @class([$row, 'chain-link--'.$link['key'] => isset($link['name'])]) @if ($link['current'] ?? $section === $link['key']) aria-current="page" @endif
                            @isset($link['name']) aria-label="{{ $link['name'] }}" data-chain-key="{{ $link['key'] }}" @endisset data-test="{{ $link['test'] }}">
                             <x-icon :name="$link['icon']" :size="18" :class="isset($link['name']) ? 'chain-glyph' : 'text-ink-3'" />
                             {{-- The Block 0 tag goes under the label: next to it, "Season" broke into "Sea son" at 375 px. --}}
@@ -130,7 +130,7 @@
                 @endforeach
                 @if ($admin)
                     <li class="min-w-0">
-                        <a href="{{ $admin['href'] }}" class="{{ $row }}" data-test="mobile-admin">
+                        <a href="{{ $admin['href'] }}" @navigate($admin['href']) class="{{ $row }}" data-test="mobile-admin">
                             <x-icon name="shield-check" :size="18" class="text-ink-3" />
                             <span class="min-w-0 leading-tight">{{ __('Admin') }}</span>
                             @if ($admin['count'] > 0)
@@ -148,7 +148,7 @@
                 <ul class="m-0 grid list-none grid-cols-2 gap-1 p-0">
                     @foreach ($otherGames as $game)
                         <li class="min-w-0">
-                            <a href="{{ $game['page'] }}" class="{{ $row }}">
+                            <a href="{{ $game['page'] }}" @navigate($game['page']) class="{{ $row }}">
                                 <x-game-cover :game="$game['slug']" size="thumb" class="w-10 rounded-xs" />
                                 <span class="min-w-0 leading-tight break-words">{{ $game['name'] }}</span>
                             </a>
@@ -164,7 +164,7 @@
         <ul class="m-0 flex list-none p-0">
             @foreach ($tabs as $tab)
                 <li class="flex-auto">
-                    <a href="{{ $tab['href'] }}" class="tab" @if ($tab['current'] ?? $tab['href'] === $current) aria-current="page" @endif @if ($tab['name'] ?? null) aria-label="{{ $tab['name'] }}" @endif data-test="{{ $tab['test'] }}">
+                    <a href="{{ $tab['href'] }}" @navigate($tab['href']) class="tab" @if ($tab['current'] ?? $tab['href'] === $current) aria-current="page" @endif @if ($tab['name'] ?? null) aria-label="{{ $tab['name'] }}" @endif data-test="{{ $tab['test'] }}">
                         @if ($tab['dot'] ?? false)
                             <span class="relative flex"><x-icon :name="$tab['icon']" :size="22" /><span class="tab-dot" aria-hidden="true" data-test="tab-tournaments-dot"></span></span>
                         @else

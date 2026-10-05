@@ -5,6 +5,9 @@
  * and hands the subscription to Livewire. Turning it off unsubscribes this
  * browser only; other devices keep theirs.
  */
+
+import { registerAlpine } from './registerAlpine.js';
+
 function keyBytes(base64url) {
     const padded = base64url.replace(/-/g, '+').replace(/_/g, '/') + '='.repeat((4 - (base64url.length % 4)) % 4);
 
@@ -92,6 +95,6 @@ export function pushToggle(config) {
     };
 }
 
-document.addEventListener('alpine:init', () => {
+registerAlpine(() => {
     window.Alpine.data('pushToggle', pushToggle);
 });

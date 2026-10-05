@@ -224,7 +224,7 @@ test('the navigation links the list beside each game’s ladder and once in the 
         ->and($html)->toContain('data-test="mobile-strongest"')
         ->and(substr_count($html, 'href="'.route('ladder.strongest').'"'))->toBe(2)
         // The ctx link of the current page is marked.
-        ->and($html)->toMatch('/href="'.preg_quote(route('ladder.strongest'), '/').'"\s+aria-current="page"\s+class="ctx-link"/')
+        ->and($html)->toMatch('/href="'.preg_quote(route('ladder.strongest'), '/').'"(?:\s+wire:navigate)?\s+aria-current="page"\s+class="ctx-link"/')
         ->and($html)->toMatch('/aria-current="page"\s+data-test="mobile-strongest"/');
 });
 

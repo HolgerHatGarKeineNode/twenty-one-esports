@@ -50,7 +50,7 @@
                 <button type="button" class="hub-seg" x-on:click="kind = @js($key)" x-bind:aria-pressed="(kind === @js($key)).toString()" aria-pressed="{{ $key === 'all' ? 'true' : 'false' }}" data-test="hub-kind-{{ $key }}">{{ $label }}</button>
             @endforeach
         </div>
-        <a href="{{ route('play') }}" class="flex min-h-11 items-center text-[13px] font-bold lg:ml-auto" data-test="hub-all-games">{{ __('All games and modes') }}</a>
+        <a href="{{ route('play') }}" @navigate(route('play')) class="flex min-h-11 items-center text-[13px] font-bold lg:ml-auto" data-test="hub-all-games">{{ __('All games and modes') }}</a>
     </div>
 
     <div class="min-h-0 overflow-y-auto overscroll-contain px-4 pb-4 lg:px-6 lg:pb-6" x-ref="hubTiles">
@@ -59,7 +59,7 @@
             @foreach ($games as $game)
                 <li class="hub-card" style="--game: {{ $game['colour'] }}" data-name="{{ mb_strtolower($game['name'].' '.$game['short'].' '.$game['slug']) }}" data-kinds="{{ implode(' ', $game['kinds']) }}"
                     x-show="shows($el)" data-test="hub-game-{{ $game['slug'] }}">
-                    <a href="{{ $game['page'] }}" class="hub-tile-main" data-test="games-menu-{{ $game['slug'] }}">
+                    <a href="{{ $game['page'] }}" @navigate($game['page']) class="hub-tile-main" data-test="games-menu-{{ $game['slug'] }}">
                         <span class="hub-cover">
                             <x-game-cover :game="$game['slug']" size="card" class="w-full rounded-t-sm" />
                             @if ($game['played'])
@@ -79,7 +79,7 @@
                         {{-- The primary link spans the card's width; the others share two columns and wrap rather than truncate ("Spieler herausfordern" is wider than half a card). --}}
                         <ul class="m-0 grid list-none grid-cols-2 gap-1 p-0">
                             @foreach ($cardLinks as $link)
-                                <li @class(['flex min-w-0', 'col-span-2' => $link['primary'] ?? false])><a href="{{ $link['href'] }}" @class(['hub-action', 'hub-action-primary' => $link['primary'] ?? false]) @if ($link['test']) data-test="{{ $link['test'] }}" @endif><x-icon :name="$link['icon']" :size="14" class="shrink-0" /><span class="min-w-0">{{ $link['label'] }}</span></a></li>
+                                <li @class(['flex min-w-0', 'col-span-2' => $link['primary'] ?? false])><a href="{{ $link['href'] }}" @navigate($link['href']) @class(['hub-action', 'hub-action-primary' => $link['primary'] ?? false]) @if ($link['test']) data-test="{{ $link['test'] }}" @endif><x-icon :name="$link['icon']" :size="14" class="shrink-0" /><span class="min-w-0">{{ $link['label'] }}</span></a></li>
                             @endforeach
                         </ul>
                     @endif

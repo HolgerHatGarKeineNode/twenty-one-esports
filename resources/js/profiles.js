@@ -229,6 +229,9 @@ export function profileCardHost() {
         init() {
             const target = (event) => event.target instanceof Element ? event.target.closest('[data-player-card]') : null;
             const touchOnly = () => window.matchMedia('(hover: none)').matches;
+            // Removed in destroy(): a wire:navigate swap starts a new host, and a stale one would fetch every card again.
+            this.teardown = new AbortController();
+            const signal = this.teardown.signal;
 
             document.addEventListener('mouseover', (event) => {
                 const el = target(event);
@@ -241,7 +244,7 @@ export function profileCardHost() {
                 }
                 clearTimeout(this.openTimer);
                 this.openTimer = setTimeout(() => this.show(el, false), OPEN_DELAY_MS);
-            });
+            }, { signal });
 
             document.addEventListener('mouseout', (event) => {
                 const el = target(event);
@@ -250,7 +253,7 @@ export function profileCardHost() {
                 }
                 clearTimeout(this.openTimer);
                 this.leaveSoon();
-            });
+            }, { signal });
 
             document.addEventListener('keydown', (event) => {
                 const el = target(event);
@@ -258,7 +261,7 @@ export function profileCardHost() {
                     event.preventDefault();
                     this.show(el, touchOnly(), true);
                 }
-            });
+            }, { signal });
 
             document.addEventListener('click', (event) => {
                 const el = target(event);
@@ -266,7 +269,7 @@ export function profileCardHost() {
                     event.preventDefault();
                     this.show(el, true, true);
                 }
-            });
+            }, { signal });
 
             window.addEventListener('profiles-updated', (event) => {
                 const card = this.trigger?.dataset.pubkey;
@@ -282,15 +285,21 @@ export function profileCardHost() {
                         this.html = html;
                     });
                 }
-            });
+            }, { signal });
 
             window.addEventListener('scroll', () => {
                 if (this.open && ! this.sheet) {
                     this.close(false);
                 }
-            }, { passive: true });
+            }, { passive: true, signal });
 
             this.$store.profiles.scan();
+        },
+
+        destroy() {
+            this.teardown?.abort();
+            clearTimeout(this.openTimer);
+            clearTimeout(this.closeTimer);
         },
 
         async fetchCard(npub) {

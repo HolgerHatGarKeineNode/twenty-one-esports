@@ -10,10 +10,13 @@
     `playfield` marks a page played with on-screen controls (Blockfill): below
     lg the match dock and the floating live player stay away, so nothing
     covers the controls (players, 2026-10-05: "die Anzeige da unten … überdeckt
-    die Steuerung"). From lg they show as everywhere.
+    die Steuerung"). From lg they show as everywhere;
+    `data-navigate-page` marks a page wire:navigate may swap into and out of;
+    a page without it loads in full both ways (App\Support\Navigation\Navigate,
+    resources/js/navigateGuard.js).
 --}}
 <!DOCTYPE html>
-<html lang="{{ str_replace('_', '-', app()->getLocale()) }}" class="dark">
+<html lang="{{ str_replace('_', '-', app()->getLocale()) }}" class="dark" @if (App\Support\Navigation\Navigate::here()) data-navigate-page @endif>
     <head>
         @include('partials.head', ['title' => $title, 'realtime' => $realtime, 'scripts' => $scripts])
         {{--

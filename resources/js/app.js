@@ -5,6 +5,8 @@
  */
 
 import './toasts';
+// wire:navigate only between the shell's navigable pages; every other page loads in full (P6b).
+import './navigateGuard.js';
 
 import nostrLogin from './nostrLogin.js';
 import blockZeroCountdown from './blockZeroCountdown.js';

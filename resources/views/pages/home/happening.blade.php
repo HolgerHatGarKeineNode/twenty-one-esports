@@ -29,11 +29,11 @@
                     @endif
                     {{ trans_choice(':count live blitz board|:count live blitz boards', $live['blitz']) }}, {{ trans_choice(':count daily game|:count daily games', $live['daily']) }}
                 </span>
-                <a href="{{ route('games.index') }}" class="inline-flex min-h-11 shrink-0 items-center text-xs" data-test="home-live-games">{{ __('Watch all') }}</a>
+                <a href="{{ route('games.index') }}" @navigate(route('games.index')) class="inline-flex min-h-11 shrink-0 items-center text-xs" data-test="home-live-games">{{ __('Watch all') }}</a>
             </span>
 
             @if ($featured)
-                <a href="{{ route('games.show', $featured) }}" class="flex flex-col gap-2 text-ink hover:text-ink" data-test="featured-board"
+                <a href="{{ route('games.show', $featured) }}" @navigate(route('games.show', $featured)) class="flex flex-col gap-2 text-ink hover:text-ink" data-test="featured-board"
                    x-data="{ cells: window.chessBoardCells(@js($featured->fen), { noCoords: true }), boardLabel: @js(__('Live board of :number', ['number' => $featured->number()])) }">
                     <span class="flex min-w-0 items-center gap-2 text-[13px]"><x-avatar :user="$featured->black" :size="24" class="rounded-tag" /><b class="truncate">{{ $featured->black->displayName() }}</b></span>
                     <span class="mx-auto block w-full max-w-72"><x-chess.board /></span>
@@ -47,7 +47,7 @@
                     <ul class="m-0 list-none p-0">
                         @foreach ($others as $game)
                             <li class="border-t border-hairline">
-                                <a href="{{ route('games.show', $game) }}" class="flex min-h-11 items-center gap-1.5 py-1 text-[13px] text-ink hover:bg-row-hover hover:text-ink" data-test="live-board-row">
+                                <a href="{{ route('games.show', $game) }}" @navigate(route('games.show', $game)) class="flex min-h-11 items-center gap-1.5 py-1 text-[13px] text-ink hover:bg-row-hover hover:text-ink" data-test="live-board-row">
                                     <x-avatar :user="$game->white" :size="20" class="rounded-tag" /><span class="truncate">{{ $game->white->displayName() }}</span>
                                     <span class="shrink-0 text-ink-3">{{ __('vs') }}</span>
                                     <x-avatar :user="$game->black" :size="20" class="rounded-tag" /><span class="truncate">{{ $game->black->displayName() }}</span>
@@ -58,14 +58,14 @@
                 @endif
             @else
                 <p class="m-0 text-[13px] text-ink-2" data-test="live-empty">{{ __('No board is live right now. Start one.') }}</p>
-                <a href="{{ route('chess.lobby') }}" class="btn-s inline-flex h-11 items-center justify-center gap-2 rounded-md border border-edge text-[13px] text-ink hover:text-ink"><x-icon name="bolt" :size="16" />{{ __('Play blitz') }}</a>
+                <a href="{{ route('chess.lobby') }}" @navigate(route('chess.lobby')) class="btn-s inline-flex h-11 items-center justify-center gap-2 rounded-md border border-edge text-[13px] text-ink hover:text-ink"><x-icon name="bolt" :size="16" />{{ __('Play blitz') }}</a>
             @endif
         </div>
 
         <div class="flex min-w-0 flex-col gap-4 lg:col-span-7 lg:gap-5">
             @if ($streamLive)
                 {{-- The 24/7 stream (P20) while it is on air --}}
-                <a href="{{ route('live') }}" class="flex min-h-14 items-center gap-3 rounded-card bg-card px-4 py-3 text-ink shadow-ring hover:text-ink" data-test="home-stream">
+                <a href="{{ route('live') }}" @navigate(route('live')) class="flex min-h-14 items-center gap-3 rounded-card bg-card px-4 py-3 text-ink shadow-ring hover:text-ink" data-test="home-stream">
                     <x-live-badge as="span" class="flex" />
                     <b class="grow truncate text-[13px]">{{ $stream->title ?? __('The league stream is on air') }}</b>
                     <span class="text-xs text-ink-2">{{ __('Watch') }}</span>
@@ -73,7 +73,7 @@
             @endif
 
             @foreach ($running as $tournament)
-                <a href="{{ route('tournaments.show', $tournament) }}" class="grid grid-cols-[96px_minmax(0,1fr)_auto] items-center gap-3 rounded-card bg-btc-chip p-2 pr-4 text-ink shadow-ring-btc hover:text-ink" data-test="running-tournament">
+                <a href="{{ route('tournaments.show', $tournament) }}" @navigate(route('tournaments.show', $tournament)) class="grid grid-cols-[96px_minmax(0,1fr)_auto] items-center gap-3 rounded-card bg-btc-chip p-2 pr-4 text-ink shadow-ring-btc hover:text-ink" data-test="running-tournament">
                     <x-game-cover :game="$tournament->game" size="thumb" class="w-24 rounded-tag" />
                     <span class="flex min-w-0 flex-col">
                         <b class="truncate font-display text-sm">{{ $tournament->name }}</b>
@@ -92,7 +92,7 @@
                     <ul class="m-0 grid list-none grid-cols-1 gap-x-5 p-0 sm:grid-cols-2">
                         @foreach ($results as $result)
                             <li class="border-t border-hairline">
-                                <a href="{{ $result['href'] }}" class="grid min-h-14 grid-cols-[36px_minmax(0,1fr)] items-center gap-3 py-2 text-ink hover:bg-row-hover hover:text-ink" data-test="result">
+                                <a href="{{ $result['href'] }}" @navigate($result['href']) class="grid min-h-14 grid-cols-[36px_minmax(0,1fr)] items-center gap-3 py-2 text-ink hover:bg-row-hover hover:text-ink" data-test="result">
                                     @if ($result['face'])
                                         <x-avatar :user="$result['face']" :size="36" class="rounded-tag" />
                                     @elseif ($result['clan'])
@@ -127,7 +127,7 @@
                     <ul class="m-0 flex list-none flex-wrap gap-1.5 p-0" aria-label="{{ __('Newest players') }}">
                         @foreach ($newcomers['players'] as $newcomer)
                             <li>
-                                <a href="{{ route('players.show', $newcomer->npub) }}" class="block" title="{{ $newcomer->displayName() }}" data-test="newcomer">
+                                <a href="{{ route('players.show', $newcomer->npub) }}" @navigate(route('players.show', $newcomer->npub)) class="block" title="{{ $newcomer->displayName() }}" data-test="newcomer">
                                     <x-avatar :user="$newcomer" :size="40" class="rounded-tag" />
                                 </a>
                             </li>
@@ -138,7 +138,7 @@
                     <ul class="m-0 grid list-none grid-cols-1 gap-2 p-0 sm:grid-cols-2">
                         @foreach ($newcomers['clans'] as $clan)
                             <li>
-                                <a href="{{ route('clans.show', $clan) }}" class="grid min-h-11 grid-cols-[32px_minmax(0,1fr)] items-center gap-2.5 text-[13px] text-ink hover:text-ink" data-test="newcomer-clan">
+                                <a href="{{ route('clans.show', $clan) }}" @navigate(route('clans.show', $clan)) class="grid min-h-11 grid-cols-[32px_minmax(0,1fr)] items-center gap-2.5 text-[13px] text-ink hover:text-ink" data-test="newcomer-clan">
                                     @if ($clan->localLogoUrl())
                                         <x-clan-tag :clan="$clan" :tile="32" class="size-8 rounded-tag" />
                                     @else
@@ -154,8 +154,8 @@
                     </ul>
                 @endif
                 <span class="flex flex-wrap gap-2">
-                    <a href="{{ route('clans.create') }}" class="btn-s inline-flex h-11 items-center justify-center rounded-md border border-edge px-4 text-[13px] text-ink hover:text-ink">{{ __('Start a clan') }}</a>
-                    <a href="{{ route('clans.index') }}" class="btn-s inline-flex h-11 items-center justify-center rounded-md border border-edge px-4 text-[13px] text-ink hover:text-ink">{{ __('Join a clan') }}</a>
+                    <a href="{{ route('clans.create') }}" @navigate(route('clans.create')) class="btn-s inline-flex h-11 items-center justify-center rounded-md border border-edge px-4 text-[13px] text-ink hover:text-ink">{{ __('Start a clan') }}</a>
+                    <a href="{{ route('clans.index') }}" @navigate(route('clans.index')) class="btn-s inline-flex h-11 items-center justify-center rounded-md border border-edge px-4 text-[13px] text-ink hover:text-ink">{{ __('Join a clan') }}</a>
                 </span>
             </div>
         </div>

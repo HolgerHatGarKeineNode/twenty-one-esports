@@ -17,8 +17,9 @@ pest()->group('browser');
 | Every settings page at 375 and 1440 px: the one tab strip is there, its
 | active tab names the heading and sits inside the strip's visible part,
 | and neither the strip nor the page overflows. The gamer tag page saves and
-| removes a tag in the browser, the tabs switch with a full load, and the
-| German page fits a phone.
+| removes a tag in the browser, the tabs switch with wire:navigate (P6b) and
+| the notifications page's push toggle starts after it, and the German page
+| fits a phone.
 |
 | Collected on every page (the collector of NotificationDmPagesTest):
 | console.error, uncaught errors, rejected promises, and every response
@@ -167,7 +168,7 @@ test('every settings page has the same tabs, the active one names the heading an
         ->and($scrolled[1440])->each->toBeFalse();
 });
 
-test('a gamer tag is saved and removed in the browser, and the tabs switch with a full load that starts each page\'s own scripts', function () {
+test('a gamer tag is saved and removed in the browser, and the tabs switch with wire:navigate and start each page\'s own scripts', function () {
     $user = User::factory()->create(['locale' => 'en']);
 
     foreach ([375, 1440] as $width) {
@@ -196,21 +197,24 @@ test('a gamer tag is saved and removed in the browser, and the tabs switch with 
             ->and($page->evaluate('() => document.querySelector("[data-test=tag-input-ea]").value'))->toBe('');
         settingsClean($page);
 
-        // A full load (2026-10-05): a wire:navigate swap never ran the notifications page's push.js (its pushToggle
-        // registers on alpine:init), so the push toggle was dead with 7 console errors.
+        // wire:navigate (P6b): the document stays (the marker survives), the heading and the active tab change.
         $page->evaluate('() => { window.__sameDocument = true; }');
         $page->locator('[data-test=settings-account-tab]')->click();
         BrowserWait::until($page, '() => document.querySelector("[data-test=settings-heading]")?.innerText.trim() === "Account"', 10_000);
-        expect($page->evaluate('() => window.__sameDocument === true'))->toBeFalse();
-        settingsMeasure($page, 'account after a tab', $width, 'Account');
+        expect($page->evaluate('() => window.__sameDocument === true'))->toBeTrue();
+        settingsMeasure($page, 'account after wire:navigate', $width, 'Account');
 
+        // The notifications page's push.js registers its toggle at once in a running Alpine (resources/js/registerAlpine.js);
+        // on 2026-10-05 it waited for alpine:init, which a swap never fires: the toggle was dead, with 7 console errors.
         $page->locator('[data-test=settings-notifications-tab]')->click();
         BrowserWait::until($page, '() => document.querySelector("[data-test=settings-heading]")?.innerText.trim() === "Notifications"', 10_000);
+        BrowserWait::until($page, '() => typeof Alpine.$data(document.querySelector("[x-data^=pushToggle]"))?.toggle === "function"', 5_000);
+        expect($page->evaluate('() => window.__sameDocument === true'))->toBeTrue();
         settingsClean($page);
 
         $page->locator('[data-test=settings-badges-tab]')->click();
         BrowserWait::until($page, '() => document.querySelector("[data-test=settings-heading]")?.innerText.trim() === "Badges and sharing"', 10_000);
-        settingsMeasure($page, 'badges after a tab', $width, 'Badges and sharing');
+        settingsMeasure($page, 'badges after wire:navigate', $width, 'Badges and sharing');
         settingsClean($page);
     }
 });

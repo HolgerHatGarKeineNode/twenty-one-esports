@@ -15,6 +15,7 @@ use App\Support\Board\LiveGameGuard;
 use App\Support\Clans\ClanStats;
 use App\Support\Engagement\ClanHashrate;
 use App\Support\LatinFontPreloads;
+use App\Support\Navigation\Navigate;
 use App\Support\PageMeta;
 use App\Support\Prizes\WalletPrizePool;
 use App\Support\Rating\RatingSettings;
@@ -37,6 +38,7 @@ use Illuminate\Foundation\DevCommands;
 use Illuminate\Foundation\Http\Events\RequestHandled;
 use Illuminate\Http\Request;
 use Illuminate\Queue\Events\JobProcessing;
+use Illuminate\Support\Facades\Blade;
 use Illuminate\Support\Facades\Date;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Event;
@@ -178,6 +180,9 @@ class AppServiceProvider extends ServiceProvider
 
         // @fonts preloads the latin webfont files only; latin-ext loads when a page uses its glyphs (P5, F12).
         Vite::usePreloadTagAttributes(LatinFontPreloads::resolve(...));
+
+        // `<a href="…" @navigate($href)>`: wire:navigate only between the shell's navigable pages (performance plan P6b).
+        Blade::directive('navigate', fn (string $expression): string => '<?php echo \\'.Navigate::class.'::attribute('.$expression.'); ?>');
 
         // A request's memos (RequestMemo) end with its response.
         Event::listen(RequestHandled::class, fn (RequestHandled $event) => RequestMemo::close($event->request));

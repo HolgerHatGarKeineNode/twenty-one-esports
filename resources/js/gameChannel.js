@@ -32,6 +32,7 @@ import { emojiPicker, emojiPopover } from './emojiPicker.js';
 import { ensureSigner } from './nostrSign.js';
 import { signerMessage, signTemplate } from './signing.js';
 import { NJUMP, botMark, displayRows, insertSorted, length, sendBlocker, tokenize } from './streamChat.js';
+import { registerAlpine } from './registerAlpine.js';
 
 const MUTES_KEY = 'esports.chat.mutes';
 /** Per channel id: the `created_at` of the newest item the viewer had in front of them (the chat open or the side column). */
@@ -927,7 +928,7 @@ export function gameChannel(config) {
     };
 }
 
-document.addEventListener('alpine:init', () => {
+registerAlpine(() => {
     window.Alpine.data('gameChannel', gameChannel);
     window.Alpine.data('emojiPicker', emojiPicker);
     window.Alpine.data('emojiPopover', emojiPopover);

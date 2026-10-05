@@ -28,7 +28,7 @@
                 @if ($top['kind'] === 'ladder')
                 @php($ladder = $top['item'])
                 <li class="flex min-w-0 flex-col gap-2 rounded-card bg-card p-3 lg:p-4" data-test="ladder-top" data-game="{{ $ladder['game'] }}">
-                    <a href="{{ $ladder['href'] }}" class="grid grid-cols-[64px_minmax(0,1fr)] items-center gap-3 text-ink hover:text-ink">
+                    <a href="{{ $ladder['href'] }}" @navigate($ladder['href']) class="grid grid-cols-[64px_minmax(0,1fr)] items-center gap-3 text-ink hover:text-ink">
                         <x-game-cover :game="$ladder['game']" size="thumb" class="w-16 rounded-tag" />
                         <span class="flex min-w-0 flex-col">
                             <b class="truncate text-[13px]">{{ $ladder['name'] }}</b>
@@ -55,12 +55,12 @@
                             @endforeach
                         </ol>
                     @endif
-                    <a href="{{ $ladder['href'] }}" class="mt-auto inline-flex min-h-11 items-center text-xs">{{ __('Full ladder') }}</a>
+                    <a href="{{ $ladder['href'] }}" @navigate($ladder['href']) class="mt-auto inline-flex min-h-11 items-center text-xs">{{ __('Full ladder') }}</a>
                 </li>
                 @else
                 @php($score = $top['item'])
                 <li class="flex min-w-0 flex-col gap-2 rounded-card bg-card p-3 lg:p-4" data-test="score-top" data-game="{{ $score['game'] }}">
-                    <a href="{{ $score['href'] }}" class="grid grid-cols-[64px_minmax(0,1fr)] items-center gap-3 text-ink hover:text-ink">
+                    <a href="{{ $score['href'] }}" @navigate($score['href']) class="grid grid-cols-[64px_minmax(0,1fr)] items-center gap-3 text-ink hover:text-ink">
                         <x-game-cover :game="$score['game']" size="thumb" class="w-16 rounded-tag" />
                         <span class="flex min-w-0 flex-col">
                             <b class="truncate text-[13px]">{{ $score['name'] }}</b>
@@ -75,7 +75,7 @@
                                 <a href="{{ $score['play'] }}#join" class="inline-flex min-h-11 items-center font-bold" data-test="score-play">{{ __('How to join') }}</a>
                             @else
                                 {{ $score['weekly'] ? __('No verified run yet this week. Play the first one.') : __('No verified run yet. Play the first one.') }}
-                                <a href="{{ $score['play'] }}" class="inline-flex min-h-11 items-center font-bold" data-test="score-play">{{ __('Play') }}</a>
+                                <a href="{{ $score['play'] }}" @navigate($score['play']) class="inline-flex min-h-11 items-center font-bold" data-test="score-play">{{ __('Play') }}</a>
                             @endif
                         </p>
                     @else
@@ -90,7 +90,7 @@
                             @endforeach
                         </ol>
                     @endif
-                    <a href="{{ $score['href'] }}" class="mt-auto inline-flex min-h-11 items-center text-xs">{{ __('Full leaderboard') }}</a>
+                    <a href="{{ $score['href'] }}" @navigate($score['href']) class="mt-auto inline-flex min-h-11 items-center text-xs">{{ __('Full leaderboard') }}</a>
                 </li>
                 @endif
             @endforeach

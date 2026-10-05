@@ -12,6 +12,7 @@ import { boardKey } from './hotkeys.js';
 import { moveSound, playSound, sounds } from './sounds.js';
 import { positionsFrom, withHistory } from './moveHistory.js';
 import { displaySan, inputSan } from './sanNotation.js';
+import { registerAlpine } from './registerAlpine.js';
 
 const PIECE_NAMES = { k: 'king', q: 'queen', r: 'rook', b: 'bishop', n: 'knight', p: 'pawn' };
 const VS16 = '︎';
@@ -169,7 +170,7 @@ function chatNotice(text) {
 
 /* ---------- Game page ---------------------------------------------------------------------------------------- */
 
-document.addEventListener('alpine:init', () => {
+registerAlpine(() => {
     window.Alpine.data('gameChat', gameChat);
     window.Alpine.data('gamePost', gamePost);
     window.Alpine.data('dailyGame', (config) => dailyGame(config, boardCells, kingInCheck));

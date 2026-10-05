@@ -24,6 +24,8 @@
  * newest position follows the game again.
  */
 
+import { registerAlpine } from './registerAlpine.js';
+
 const SVG = 'http://www.w3.org/2000/svg';
 
 /** How long the page trusts the websocket alone before it asks the server. */
@@ -84,7 +86,7 @@ function svgElement(name, attributes) {
     return element;
 }
 
-document.addEventListener('alpine:init', () => {
+registerAlpine(() => {
     window.Alpine.data('boardGame', (config) => ({
         state: config.state,
         layout: config.layout,

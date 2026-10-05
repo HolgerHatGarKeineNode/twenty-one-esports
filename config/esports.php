@@ -116,6 +116,27 @@ return [
 
     /*
     |--------------------------------------------------------------------------
+    | wire:navigate on the shell (performance plan P6b)
+    |--------------------------------------------------------------------------
+    |
+    | On: links between the shell's navigable pages (home, /play, the lists,
+    | the player's own pages and settings tabs; App\Support\Navigation\Navigate)
+    | swap the page in the kept window instead of loading it in full: the
+    | websocket stays up and the online presence no longer flickers per click.
+    | Game, board, room, lobby and chat pages load in full either way.
+    |
+    | On by default since P6b: ten navigations leave the listeners, Echo
+    | callbacks, intervals and components where one leaves them
+    | (tests/Browser/NavigateSpikeTest.php; numbers in the plan's
+    | p6b-ergebnis.md). ESPORTS_NAVIGATE=false is the kill switch: every link
+    | is a plain link again.
+    |
+    */
+
+    'navigate' => (bool) env('ESPORTS_NAVIGATE', true),
+
+    /*
+    |--------------------------------------------------------------------------
     | NIP-05 names on the league's domain (P47)
     |--------------------------------------------------------------------------
     |

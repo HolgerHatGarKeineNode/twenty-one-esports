@@ -33,6 +33,7 @@ import { createSound, cuesFor, normalizeSound } from './sound.js';
 import { createTicker, formatTicks } from './ticker.js';
 // P5: the replay viewer shares this entry (and its engine and renderer) instead of a bundle of its own
 import './replay-page.js';
+import { registerAlpine } from '../registerAlpine.js';
 
 const COUNTDOWN_MS = 3000;
 /** Height of the touch panel above the tab bar (the spacer in the page matches it). */
@@ -120,7 +121,7 @@ function trace(config, event) {
     }
 }
 
-document.addEventListener('alpine:init', () => {
+registerAlpine(() => {
     window.Alpine.data('stackerGame', (config) => {
         // Not reactive: the engine state changes sixty times a second and is drawn, not bound.
         const rt = {

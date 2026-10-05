@@ -27,7 +27,7 @@
                 $daily = collect($game['actions'])->firstWhere('key', 'daily');
             @endphp
             <li class="hh-tile flex min-w-0 flex-col overflow-hidden rounded-card bg-card" style="--game: {{ $game['colour'] }}" data-test="play-tile" data-game="{{ $game['slug'] }}">
-                <a href="{{ $game['page'] }}" class="group flex flex-col text-ink hover:text-ink">
+                <a href="{{ $game['page'] }}" @navigate($game['page']) class="group flex flex-col text-ink hover:text-ink">
                     <x-game-cover :game="$game['slug']" size="card" :loading="$stage && $loop->index < 2 ? 'eager' : 'lazy'" class="w-full" />
                     <span class="flex min-w-0 flex-wrap items-center justify-between gap-x-2 gap-y-1 px-3 pt-3 lg:px-4">
                         <b class="min-w-0 font-display text-sm leading-[1.25] break-words group-hover:text-btc-hi lg:text-base">{{ $game['name'] }}</b>
@@ -37,11 +37,11 @@
                     </span>
                 </a>
                 <span class="mt-auto flex flex-wrap items-center gap-x-3 gap-y-1 p-3 lg:p-4">
-                    <a href="{{ $primary['href'] }}" class="btn-p inline-flex h-11 min-w-0 grow items-center justify-center gap-2 rounded-md bg-btc px-3 text-[13px] font-bold text-on-btc hover:text-on-btc" aria-label="{{ $primary['label'] }}, {{ $game['name'] }}" data-test="play-cta">
+                    <a href="{{ $primary['href'] }}" @navigate($primary['href']) class="btn-p inline-flex h-11 min-w-0 grow items-center justify-center gap-2 rounded-md bg-btc px-3 text-[13px] font-bold text-on-btc hover:text-on-btc" aria-label="{{ $primary['label'] }}, {{ $game['name'] }}" data-test="play-cta">
                         <x-icon :name="$primary['icon']" :size="16" class="shrink-0" /><span class="truncate sm:hidden">{{ $primary['short'] }}</span><span class="truncate max-sm:hidden">{{ $primary['label'] }}</span>
                     </a>
                     @if ($daily)
-                        <a href="{{ $daily['href'] }}" class="inline-flex min-h-11 items-center text-[13px] max-lg:hidden" data-test="play-daily">{{ $daily['short'] }}</a>
+                        <a href="{{ $daily['href'] }}" @navigate($daily['href']) class="inline-flex min-h-11 items-center text-[13px] max-lg:hidden" data-test="play-daily">{{ $daily['short'] }}</a>
                     @endif
                 </span>
             </li>

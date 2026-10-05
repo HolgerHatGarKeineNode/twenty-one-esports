@@ -91,8 +91,10 @@ export default function matchDock(config) {
                     this.measure();
                 }
             }, 1000));
-            window.addEventListener('resize', () => this.measure());
-            window.visualViewport?.addEventListener('resize', () => this.measure());
+            // Removed in destroy(), with the watch channels: a wire:navigate swap brings a new dock.
+            this.teardown = new AbortController();
+            window.addEventListener('resize', () => this.measure(), { signal: this.teardown.signal });
+            window.visualViewport?.addEventListener('resize', () => this.measure(), { signal: this.teardown.signal });
 
             // The player's channel and the slow poll come from the shell's one dispatcher (playerEvents.js, P3):
             // the batch reaches the dock, the cup badge and the bell in the same task, so they render in one request.
@@ -103,13 +105,18 @@ export default function matchDock(config) {
             });
             this.watchGames();
             if (!window.Echo && document.readyState !== 'complete') {
-                window.addEventListener('load', () => this.watchGames(), { once: true });
+                window.addEventListener('load', () => this.watchGames(), { once: true, signal: this.teardown.signal });
             }
         },
 
         destroy() {
             this.timers.forEach((timer) => clearInterval(timer));
+            clearTimeout(this.debounce);
             this.unsubscribe?.();
+            this.teardown?.abort();
+            // Stop listening, never leave: the next page's dock (or the page itself) may watch the same game.
+            this.listened.forEach((handler, id) => window.Echo?.channel('game.' + id + '.watch').stopListening('.game.updated', handler));
+            this.listened.clear();
         },
 
         /* ---------- open, close, fold ------------------------------------------------------------------- */

@@ -43,6 +43,7 @@ import { ensureSigner } from './nostrSign.js';
 import { newest, publicRelay, readProfiles, readRelays } from './relayRead.js';
 import { signerMessage, signTemplate } from './signing.js';
 import { NJUMP, botMark, boundProfiles, compareItems, displayRows, formatSats, insertSorted, isHttps, isStreamMessage, length, messageTemplate, newestPage, olderPage, parseZap, profileOf, relayHints, sendBlocker, tokenize } from './streamChat.js';
+import { registerAlpine } from './registerAlpine.js';
 
 const MUTES_KEY = 'esports.chat.mutes';
 const PROFILES_KEY = 'esports.livechat.profiles';
@@ -775,7 +776,7 @@ export function liveChat(config) {
     };
 }
 
-document.addEventListener('alpine:init', () => {
+registerAlpine(() => {
     window.Alpine.data('liveChat', liveChat);
     window.Alpine.data('emojiPicker', emojiPicker);
     window.Alpine.data('emojiPopover', emojiPopover);
