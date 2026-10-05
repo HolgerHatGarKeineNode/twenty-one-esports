@@ -44,7 +44,8 @@ final class SeriesEvents
             $tags[] = ['p', $pubkey];
         }
 
-        $tags[] = ['bo', (string) $match->best_of];
+        // Match size (NIP "Challenge"): `bo` for a series, `boards` and no `bo` for a chess team match (rule 11).
+        $tags[] = $match->isTeamMatch() ? ['boards', (string) $match->boards] : ['bo', (string) $match->best_of];
 
         foreach ($match->proposals as $start) {
             $tags[] = ['start', (string) $start];
@@ -52,7 +53,9 @@ final class SeriesEvents
 
         $tags[] = ['respond_by', (string) $match->respond_by->getTimestamp()];
         $tags[] = ['match', (string) $match->number];
-        $tags[] = ['alt', "Esports challenge: match #{$match->number}, best of {$match->best_of}, {$match->game} {$match->mode}"];
+        $tags[] = ['alt', $match->isTeamMatch()
+            ? "Esports challenge: match #{$match->number}, team match over {$match->boards} boards, {$match->game} {$match->mode}"
+            : "Esports challenge: match #{$match->number}, best of {$match->best_of}, {$match->game} {$match->mode}"];
 
         return self::template(self::CHALLENGE, $tags, (string) $match->message);
     }

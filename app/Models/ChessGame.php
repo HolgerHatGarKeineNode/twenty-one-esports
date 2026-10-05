@@ -58,6 +58,8 @@ use Illuminate\Support\Carbon;
  * @property int|null $reminded_ply
  * @property int|null $tournament_match_id the tournament match this game plays (P8b)
  * @property int|null $tournament_game 1 for the first game of that match, 2 for a replay after a knockout draw, …
+ * @property int|null $series_match_id the chess team match this game is a board of (NIP rev. 9.22); its number is the team match's
+ * @property int|null $board the board of that team match, 1..boards
  * @property int|null $white_gone_ms
  * @property int|null $black_gone_ms
  * @property Carbon|null $white_seen_at when White first opened the board of a tournament game (P18)
@@ -76,10 +78,11 @@ use Illuminate\Support\Carbon;
  * @property-read ChessGame|null $rematch
  * @property-read NostrEvent|null $recordEvent
  * @property-read TournamentMatch|null $tournamentMatch
+ * @property-read SeriesMatch|null $seriesMatch
  */
 #[Fillable(['number', 'mode', 'rated', 'gate_at_accept', 'clans_at_accept', 'white_id', 'black_id', 'status', 'result', 'end_reason', 'start_fen', 'fen', 'ply', 'initial_ms', 'increment_ms',
     'white_ms', 'black_ms', 'turn_started_ms', 'deadline_ms', 'draw_offer', 'rematch_offer', 'rematch_of_id', 'rematch_id', 'version', 'ended_at',
-    'pgn_headers', 'record_event_id', 'white_post_event_id', 'black_post_event_id', 'reminded_ply', 'white_gone_ms', 'black_gone_ms', 'white_notify', 'black_notify', 'white_remind', 'black_remind', 'tournament_match_id', 'tournament_game', 'ladder_address', 'white_seen_at', 'black_seen_at', 'first_move_seconds'])]
+    'pgn_headers', 'record_event_id', 'white_post_event_id', 'black_post_event_id', 'reminded_ply', 'white_gone_ms', 'black_gone_ms', 'white_notify', 'black_notify', 'white_remind', 'black_remind', 'tournament_match_id', 'tournament_game', 'ladder_address', 'white_seen_at', 'black_seen_at', 'first_move_seconds', 'series_match_id', 'board'])]
 class ChessGame extends Model
 {
     /** @use HasFactory<ChessGameFactory> */
@@ -98,7 +101,15 @@ class ChessGame extends Model
     protected static function booted(): void
     {
         static::creating(function (ChessGame $game): void {
-            $game->number ??= MatchNumber::query()->create(['user_id' => $game->white_id, 'used_at' => now()])->id;
+            // One envelope per game: a tournament match or a team match, never both (database review 2026-10-05).
+            if ($game->series_match_id !== null && $game->tournament_match_id !== null) {
+                throw new \LogicException('A chess game is a tournament game or a team match board, not both.');
+            }
+
+            // A team match board carries the number of its challenge (NIP rev. 9.22), never one of its own.
+            if ($game->series_match_id === null) {
+                $game->number ??= MatchNumber::query()->create(['user_id' => $game->white_id, 'used_at' => now()])->id;
+            }
         });
     }
 
@@ -138,6 +149,27 @@ class ChessGame extends Model
     public function tournamentMatch(): BelongsTo
     {
         return $this->belongsTo(TournamentMatch::class);
+    }
+
+    /**
+     * The chess team match this game is a board of (NIP rev. 9.22).
+     *
+     * @return BelongsTo<SeriesMatch, $this>
+     */
+    public function seriesMatch(): BelongsTo
+    {
+        return $this->belongsTo(SeriesMatch::class);
+    }
+
+    /**
+     * A game inside an envelope: a tournament game (P18) or a board of a
+     * chess team match (plan "Schach Rapid und Clan", P5). Both have a
+     * first-move window that ends in a forfeit, and neither can be aborted
+     * or rematched by the players.
+     */
+    public function hasEnvelope(): bool
+    {
+        return $this->tournament_match_id !== null || $this->series_match_id !== null;
     }
 
     /**
@@ -287,8 +319,28 @@ class ChessGame extends Model
         return $this->ply >= 2;
     }
 
+    /**
+     * `#412`; a board of a team match carries the number of its challenge
+     * and the board (`#412/2`, as a board's block label), never one of its own.
+     */
     public function number(): string
     {
+        if ($this->series_match_id !== null) {
+            return '#'.$this->matchNumber().'/'.$this->board;
+        }
+
         return '#'.$this->number;
+    }
+
+    /** The league match number: the game's own, or for a team match board its challenge's. */
+    public function matchNumber(): ?int
+    {
+        if ($this->series_match_id === null) {
+            return $this->number;
+        }
+
+        return $this->relationLoaded('seriesMatch')
+            ? $this->seriesMatch?->number
+            : SeriesMatch::query()->whereKey($this->series_match_id)->value('number');
     }
 }

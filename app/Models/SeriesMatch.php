@@ -15,6 +15,7 @@ use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Attributes\Hidden;
 use Illuminate\Database\Eloquent\Attributes\Scope;
 use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -92,6 +93,8 @@ use Illuminate\Support\Facades\DB;
  * @property Carbon|null $host_swapped_at the host handed the host seat to the guest before sharing; the lobby deadline runs from then
  * @property Carbon|null $reminded_at a scheduled casual 1v1 (P23 S4): the start reminder went out
  * @property Carbon|null $checkin_opened_at a scheduled casual 1v1: "check-in is open" went out
+ * @property int|null $boards a chess team match (NIP rev. 9.22): 2 or 3 boards; null for every series
+ * @property Carbon|null $lineup_locked_at a chess team match: when the league froze both board orders
  * @property array{ready_seconds?: int, lobby_minutes?: int, join_minutes?: int, contest_minutes?: int, report_minutes?: int, confirm_minutes?: int, checkin_before_minutes?: int, checkin_after_minutes?: int, scheduled_at?: int, queue?: array<string, array{platform: string, crossplay: bool}>}|null $casual the casual deadlines pinned at the pairing (a scheduled match: at the accept, with its agreed start), and each side's queue choice
  * @property Carbon|null $created_at
  * @property Carbon|null $updated_at
@@ -104,6 +107,8 @@ use Illuminate\Support\Facades\DB;
  * @property-read NostrEvent|null $answerEvent
  * @property-read SeriesReport|null $latestReport
  * @property-read TournamentMatch|null $tournamentMatch
+ * @property-read Collection<int, SeriesMatchBoard> $boardPlayers
+ * @property-read Collection<int, ChessGame> $boardGames
  */
 #[Fillable([
     'number', 'game', 'mode', 'best_of', 'rated',
@@ -117,6 +122,7 @@ use Illuminate\Support\Facades\DB;
     'deadlines', 'overdue_at',
     'origin', 'host_side', 'ready_by', 'ready_at_challenger', 'ready_at_challenged', 'lobby_shared_at', 'joined_at', 'noshow_contested_at', 'casual',
     'lobby_seen_at', 'host_swapped_at', 'reminded_at', 'checkin_opened_at',
+    'boards', 'lineup_locked_at',
 ])]
 #[Hidden(['lobby_name', 'lobby_password'])]
 class SeriesMatch extends Model
@@ -210,6 +216,8 @@ class SeriesMatch extends Model
             'host_swapped_at' => 'datetime',
             'reminded_at' => 'datetime',
             'checkin_opened_at' => 'datetime',
+            'boards' => 'integer',
+            'lineup_locked_at' => 'datetime',
         ];
     }
 
@@ -280,6 +288,36 @@ class SeriesMatch extends Model
     public function tournamentMatch(): BelongsTo
     {
         return $this->belongsTo(TournamentMatch::class);
+    }
+
+    /**
+     * The players named for a chess team match, per side; boards once locked.
+     *
+     * @return HasMany<SeriesMatchBoard, $this>
+     */
+    public function boardPlayers(): HasMany
+    {
+        return $this->hasMany(SeriesMatchBoard::class)->orderBy('side')->orderBy('board')->orderBy('id');
+    }
+
+    /**
+     * The games of a chess team match, one per board once started.
+     *
+     * @return HasMany<ChessGame, $this>
+     */
+    public function boardGames(): HasMany
+    {
+        return $this->hasMany(ChessGame::class)->orderBy('board');
+    }
+
+    /**
+     * A chess team match over 2 or 3 boards (NIP rev. 9.22): a challenge and
+     * answer like a series, but no report, response or score sheet; its
+     * result comes from the league's own board games (App\Support\Chess\ChessTeamMatches).
+     */
+    public function isTeamMatch(): bool
+    {
+        return $this->boards !== null;
     }
 
     /**

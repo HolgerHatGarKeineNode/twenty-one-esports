@@ -58,10 +58,27 @@ final class GameRecords
         // Fresh: the move that ended the game was stored after any earlier load of the relation.
         $game->load('moves');
         $pgn = ChessPgn::of($game);
-        $tags = $this->playerTags($game);
+        $match = $game->series_match_id === null ? null : $game->seriesMatch()->with('challengeEvent')->first();
 
-        if ($game->ladder_address !== null) {
-            $tags[] = ['a', $game->ladder_address, ''];
+        if ($match !== null) {
+            // A team match board (NIP rev. 9.22, "Game Record"): `e` to the challenge, the challenge's `a`
+            // (both lineups and the ladder) and the board; the players as in any record.
+            $tags = $match->challengeEvent === null ? [] : [['e', $match->challengeEvent->event_id, '', $match->challengeEvent->pubkey]];
+            $tags[] = ['a', $match->challenger_lineup_address, ''];
+            $tags[] = ['a', $match->challenged_lineup_address, ''];
+
+            if ($game->ladder_address !== null) {
+                $tags[] = ['a', $game->ladder_address, ''];
+            }
+
+            $tags[] = ['board', (string) $game->board];
+            array_push($tags, ...$this->playerTags($game));
+        } else {
+            $tags = $this->playerTags($game);
+
+            if ($game->ladder_address !== null) {
+                $tags[] = ['a', $game->ladder_address, ''];
+            }
         }
 
         $tags[] = ['alt', $this->alt($game, 'Chess game record')];

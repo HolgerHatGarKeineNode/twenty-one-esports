@@ -1266,9 +1266,10 @@ A clan team match is played in `rapid` only, on 2 or 3 boards at once, between t
    start (`2151`); the trust gate (gatekeepers: the two captains, see [Trust gate](#trust-gate)) and every
    player's clan are read and pinned then. A player who leaves the clan later still plays, and counts for the
    clan of the accept.
-2. **Friendly team matches.** A team match is a **friendly** when no rapid ladder is open, when a captain asks for
-   one, or when it is not the first rated team match of the two clans in the last seven days (league policy: one
-   rated team match per pair of clans a week; friendlies are not limited). A friendly is league data: no challenge,
+2. **Friendly team matches.** A team match is a **friendly** when no rapid ladder is open or when a captain asks
+   for one. League policy: one rated team match per pair of clans in seven days; a second rated challenge of the
+   same two clans inside that window is refused, and may be offered as a friendly instead (friendlies are not
+   limited). A friendly is league data: no challenge,
    answer or attestation is signed, its boards are casual games, and it earns no clan hashrate and no team win
    bonus.
 3. **Lineup lock.** Until 30 minutes before the start each captain names exactly `boards` players from the active

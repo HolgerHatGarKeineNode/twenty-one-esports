@@ -21,6 +21,7 @@ use App\Support\Nostr\RejectedEvent;
 use App\Support\Nostr\SignedEvent;
 use Illuminate\Database\UniqueConstraintViolationException;
 use Illuminate\Support\Facades\Queue;
+use Livewire\Livewire;
 use Tests\Support\TestSigner;
 
 beforeEach(function () {
@@ -317,4 +318,39 @@ test('P7e: a clan whose last member deletes the account ends as if they had left
         ->and(Lineup::query()->where('clan_id', $clan->id)->exists())->toBeFalse()
         ->and(ClanDeparture::query()->where('clan_id', $clan->id)->orderBy('id')->get()->map(fn (ClanDeparture $row) => [$row->user_id, $row->pubkey, $row->reason, $row->clan_name])->all())
         ->toBe([[null, $queenSigner->pubkey, 'deleted', 'Laser Eyes'], [null, $ownerSigner->pubkey, 'deleted', 'Laser Eyes']]);
+});
+
+test('the owner saves a chess rapid lineup for team matches, signed as <clan>/chess/rapid; blitz and daily have no lineup', function () {
+    [$owner, $ownerSigner] = player();
+    [$queen, $queenSigner] = player();
+    $clan = foundClan($owner, $ownerSigner);
+    joinClan($clan, $owner, $ownerSigner, $queen, $queenSigner);
+    $seats = [$owner->id => LineupRole::Captain, $queen->id => LineupRole::Player];
+
+    $templates = $this->clans->prepareLineup($owner, $clan, 'chess', 'rapid', $seats);
+    $lineup = $this->clans->saveLineup($owner, $clan, 'chess', 'rapid', $seats, $ownerSigner->signTemplates($templates));
+    $event = SignedEvent::fromInput(NostrEvent::query()->where('kind', Lineup::KIND)->sole()->payload());
+
+    expect($templates)->toHaveCount(1)
+        ->and($event->tag('d'))->toBe($clan->slug.'/chess/rapid')
+        ->and($event->tag('game'))->toBe('chess')
+        ->and($event->tag('mode'))->toBe('rapid')
+        ->and(app(EsportsEventRules::class)->check($event))->toBeNull()
+        // Two boards need two players: the lineup can take a challenge.
+        ->and($lineup->fresh()->isReady())->toBeTrue();
+
+    foreach (['blitz', 'correspondence'] as $mode) {
+        expect(fn () => $this->clans->prepareLineup($owner, $clan, 'chess', $mode, $seats))->toThrow(ClanRuleViolation::class, 'This game mode does not exist.');
+    }
+
+    // The clan page's builder opens for chess rapid, never for blitz.
+    Livewire::actingAs($owner)->test('pages::clans.manage', ['clan' => $clan])
+        ->assertSeeHtml('data-test="edit-lineup-chess-rapid"')
+        ->assertDontSeeHtml('data-test="edit-lineup-chess-blitz"')
+        ->call('editLineup', 'rapid', 'chess')
+        ->assertOk()
+        ->assertSee('Who plays the Chess rapid')
+        ->assertSee('A team match needs a player per board')
+        ->call('$refresh')->assertOk()
+        ->call('editLineup', 'blitz', 'chess')->assertForbidden();
 });

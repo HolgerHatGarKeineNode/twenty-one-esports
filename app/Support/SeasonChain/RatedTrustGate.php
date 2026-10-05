@@ -150,12 +150,13 @@ final class RatedTrustGate
      *
      * @return self::NOT_ENOUGH_ELIGIBLE|null
      */
-    public static function sidesRefusal(GatePin $pin, Lineup $a, Lineup $b): ?string
+    public static function sidesRefusal(GatePin $pin, Lineup $a, Lineup $b, ?int $needed = null): ?string
     {
         foreach ([$a, $b] as $lineup) {
             $eligible = array_filter($lineup->activeSeats(), fn ($seat): bool => $pin->isEligible($seat->user->pubkey));
 
-            if (count($eligible) < $lineup->gameMode()->teamSize) {
+            // `$needed`: a chess team match needs an eligible player for each of its boards, not the mode's team size of 1.
+            if (count($eligible) < ($needed ?? $lineup->gameMode()->teamSize)) {
                 return self::NOT_ENOUGH_ELIGIBLE;
             }
         }

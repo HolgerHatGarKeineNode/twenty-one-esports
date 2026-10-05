@@ -23,6 +23,7 @@ use App\Models\Tournament;
 use App\Models\TournamentMatch;
 use App\Models\User;
 use App\Support\Chess\Broadcasts;
+use App\Support\Chess\ChessTeamMatches;
 use App\Support\FairPlay\FairPlay;
 use App\Support\Navigation\ShellNavigation;
 use App\Support\Nostr\NostrKeys;
@@ -65,6 +66,12 @@ use Illuminate\Support\Facades\DB;
  * Never signed at all: the lobby, the live score per game (public, shown as
  * provisional), who played while the series runs, no-show reports, evidence
  * and admin decisions (the league attestation 2154 comes with P7).
+ *
+ * A chess TEAM MATCH (`boards`, NIP rev. 9.22) shares the challenge and the
+ * answer, and nothing after them: no lobby, score sheet, who played, no-show
+ * report, result report (2152) or response (2153), and none of the league's
+ * report deadlines. Its lineup, lock and result belong to
+ * App\Support\Chess\ChessTeamMatches ({@see assertNotTeamMatch()}).
  */
 final class SeriesService
 {
@@ -106,6 +113,10 @@ final class SeriesService
         $match = $plan['match'];
 
         $match = $this->persist($events, function (array $stored) use ($match): SeriesMatch {
+            if ($match->isTeamMatch()) {
+                $this->lockTeamPair($match);
+            }
+
             $claimed = MatchNumber::query()->whereKey($match->number)->whereNull('used_at')->update(['used_at' => now()]);
 
             if ($claimed !== 1) {
@@ -141,8 +152,10 @@ final class SeriesService
         }
 
         $mode = $this->games->mode($challenger->game, $challenger->mode);
+        // A chess team match over boards (NIP rev. 9.22): the mode has board counts instead of series lengths.
+        $team = $mode !== null && $mode->boards !== [];
 
-        if ($mode === null || $mode->bestOf === [] || $challenged->game !== $challenger->game || $challenged->mode !== $challenger->mode) {
+        if ($mode === null || ($mode->bestOf === [] && ! $team) || $challenged->game !== $challenger->game || $challenged->mode !== $challenger->mode) {
             throw new SeriesRuleViolation('mode_mismatch', __('Both lineups have to play the same game and mode.'));
         }
 
@@ -150,12 +163,21 @@ final class SeriesService
             throw new SeriesRuleViolation('same_clan', __('You cannot challenge your own clan.'));
         }
 
-        if (! $mode->allowsBestOf($draft->bestOf)) {
+        if ($team && ($draft->boards === null || ! $mode->allowsBoards($draft->boards))) {
+            throw new SeriesRuleViolation('boards_not_allowed', __('Pick 2 or 3 boards.'));
+        }
+
+        if (! $team && ! $mode->allowsBestOf($draft->bestOf)) {
             throw new SeriesRuleViolation('bo_not_allowed', __('This format is not allowed.'));
         }
 
         if (! $challenger->isReady() || ! $challenged->isReady()) {
             throw new SeriesRuleViolation('lineup_not_ready', __('Both lineups need enough active players.'));
+        }
+
+        // Every board needs a player on both sides (NIP: "Both lineups need at least `boards` active players").
+        if ($team && (count($challenger->activeSeats()) < $draft->boards || count($challenged->activeSeats()) < $draft->boards)) {
+            throw new SeriesRuleViolation('lineup_not_ready', __('Both lineups need at least :count active players for :count boards.', ['count' => $draft->boards]));
         }
 
         if ($this->openBetween($challenger, $challenged)) {
@@ -175,13 +197,25 @@ final class SeriesService
             }
         }
 
+        // One rated team match per pair of clans in a rolling week (user, 2026-10-05); friendlies are not limited.
+        if ($team && $draft->rated && ChessTeamMatches::ratedPairBlocked($challenger->id, $challenged->id)) {
+            throw ChessTeamMatches::pairLimitRefusal();
+        }
+
         ['proposals' => $proposals, 'message' => $message] = self::schedule($draft->proposals, $draft->respondBy, $draft->message);
+
+        // A team match is accepted before its lineup lock, so both captains can still name their players.
+        if ($team && $draft->respondBy > $proposals[0] - ChessTeamMatches::lockMinutes() * 60) {
+            throw new SeriesRuleViolation('respond_by', __('The reply deadline has to be at least :minutes minutes before the first suggested time: both captains name their players before the lineup lock.', ['minutes' => ChessTeamMatches::lockMinutes()]));
+        }
 
         $match = new SeriesMatch([
             'number' => $this->reserveNumber($author),
             'game' => $challenger->game,
             'mode' => $challenger->mode,
-            'best_of' => $draft->bestOf,
+            // series_matches.best_of is NOT NULL (database review 2026-10-05): a team match is one round of boards.
+            'best_of' => $team ? 1 : $draft->bestOf,
+            'boards' => $team ? $draft->boards : null,
             'rated' => $draft->rated,
             'challenger_lineup_id' => $challenger->id,
             'challenged_lineup_id' => $challenged->id,
@@ -274,6 +308,33 @@ final class SeriesService
             ->exists();
     }
 
+    /**
+     * Inside the challenge's transaction: both lineup rows locked in id
+     * order, then the open match and the rated pair limit read again, so two
+     * captains sending at once cannot both get through (database review
+     * 2026-10-05; on SQLite the lock is a no-op and the checks still run).
+     *
+     * @throws SeriesRuleViolation
+     */
+    private function lockTeamPair(SeriesMatch $match): void
+    {
+        $lineups = Lineup::query()->whereKey([$match->challenger_lineup_id, $match->challenged_lineup_id])->orderBy('id')->lockForUpdate()->get()->keyBy('id');
+        $challenger = $lineups->get($match->challenger_lineup_id);
+        $challenged = $lineups->get($match->challenged_lineup_id);
+
+        if ($challenger === null || $challenged === null) {
+            throw new SeriesRuleViolation('lineup_missing', __('This lineup does not exist.'));
+        }
+
+        if ($this->openBetween($challenger, $challenged)) {
+            throw new SeriesRuleViolation('already_open', __('There is already an open or running match between these two lineups.'));
+        }
+
+        if ($match->rated && ChessTeamMatches::ratedPairBlocked($challenger->id, $challenged->id)) {
+            throw ChessTeamMatches::pairLimitRefusal();
+        }
+    }
+
     /* ---------- Answer (2151): accept, decline, withdraw -------------------------------------------------------- */
 
     /**
@@ -349,7 +410,8 @@ final class SeriesService
         $refusal = $pin->refusal()
             ?? ($fresh->challengerLineup === null || $fresh->challengedLineup === null
                 ? RatedTrustGate::NOT_TRUSTED
-                : RatedTrustGate::sidesRefusal($pin, $fresh->challengerLineup, $fresh->challengedLineup));
+                // A team match needs a Trusted player for every board on each side (NIP rev. 9.22, "Lineup lock").
+                : RatedTrustGate::sidesRefusal($pin, $fresh->challengerLineup, $fresh->challengedLineup, $fresh->boards));
 
         if ($refusal !== null || $fresh->challengerLineup === null || $fresh->challengedLineup === null) {
             $refusal ??= RatedTrustGate::NOT_TRUSTED;
@@ -420,6 +482,10 @@ final class SeriesService
                 throw new SeriesRuleViolation('lineup_not_ready', __('Both lineups need enough active players.'));
             }
 
+            if ($match->isTeamMatch() && (count($match->challengerLineup->activeSeats()) < $match->boards || count($match->challengedLineup->activeSeats()) < $match->boards)) {
+                throw new SeriesRuleViolation('lineup_not_ready', __('Both lineups need at least :count active players for :count boards.', ['count' => $match->boards]));
+            }
+
             $refusal = $match->rated ? $this->trustGate->forAccept($match, $user) : null;
 
             if ($refusal !== null) {
@@ -470,6 +536,7 @@ final class SeriesService
     public function setLobby(SeriesMatch $match, User $user, string $name, string $password, ?string $region): void
     {
         $match = $this->fresh($match);
+        $this->assertNotTeamMatch($match);
 
         if ($match->captainSideOf($user) === null) {
             throw new SeriesRuleViolation('not_captain', __('Only a captain can change the lobby.'));
@@ -507,6 +574,7 @@ final class SeriesService
     public function saveLiveGame(SeriesMatch $match, User $user, int $index, ?int $challengerGoals, ?int $challengedGoals, ?string $winner): void
     {
         $match = $this->fresh($match);
+        $this->assertNotTeamMatch($match);
         $this->assertPlayersReport($match);
 
         if ($match->captainSideOf($user) === null) {
@@ -564,6 +632,7 @@ final class SeriesService
     public function setRoster(SeriesMatch $match, User $user, array $userIds): void
     {
         $match = $this->fresh($match);
+        $this->assertNotTeamMatch($match);
         $side = $match->captainSideOf($user);
 
         if ($side === null) {
@@ -718,6 +787,7 @@ final class SeriesService
     public function reportNoShow(SeriesMatch $match, User $user): void
     {
         $match = $this->fresh($match);
+        $this->assertNotTeamMatch($match);
         $this->assertPlayersReport($match);
         $side = $match->captainSideOf($user);
 
@@ -788,7 +858,7 @@ final class SeriesService
     {
         $match = $this->fresh($match);
 
-        if ($match->tournament_match_id === null || $match->isCasualPairing() || $match->status !== SeriesStatus::Accepted || $match->start_at === null
+        if ($match->tournament_match_id === null || $match->isCasualPairing() || $match->isTeamMatch() || $match->status !== SeriesStatus::Accepted || $match->start_at === null
             || $match->noshow_reported_at !== null || $match->overdue_at !== null || $match->currentGames() !== [] || $match->autoNoshowAt() === null
             || self::isDirectorEntered($match)) {
             return false;
@@ -932,6 +1002,7 @@ final class SeriesService
     private function reportPlan(SeriesMatch $match, User $user): array
     {
         $match = $this->fresh($match);
+        $this->assertNotTeamMatch($match);
         $this->assertPlayersReport($match);
         $side = $match->captainSideOf($user);
 
@@ -1073,6 +1144,7 @@ final class SeriesService
     private function responsePlan(SeriesMatch $match, User $user, string $status, string $reason): array
     {
         $match = $this->fresh($match);
+        $this->assertNotTeamMatch($match);
         $this->assertPlayersReport($match);
         $report = $match->latestReport;
 
@@ -1229,7 +1301,7 @@ final class SeriesService
      * changed, after the commit (App\Support\Chess\Broadcasts: a websocket
      * failure never undoes the change). Their match dock refreshes on it.
      */
-    private function broadcastChange(SeriesMatch $match): void
+    public function broadcastChange(SeriesMatch $match): void
     {
         $fresh = $match->fresh(['challengerLineup.clan', 'challengedLineup.clan']);
 
@@ -1301,6 +1373,20 @@ final class SeriesService
         }
     }
 
+    /**
+     * A chess team match (NIP rev. 9.22) has no lobby, score sheet, who
+     * played, no-show report, result report or response: its boards are
+     * played on the league's server, which knows every result.
+     *
+     * @throws SeriesRuleViolation
+     */
+    private function assertNotTeamMatch(SeriesMatch $match): void
+    {
+        if ($match->isTeamMatch()) {
+            throw new SeriesRuleViolation('team_match', __('A team match has no score sheet: its boards are played here, and the league counts them.'));
+        }
+    }
+
     public static function isDirectorEntered(SeriesMatch $match): bool
     {
         return $match->tournament_match_id !== null
@@ -1342,7 +1428,8 @@ final class SeriesService
      */
     public function markOverdue(SeriesMatch $match): bool
     {
-        if (self::isDirectorEntered($match)) {
+        // A team match has no report to wait for (NIP rev. 9.22): it never joins the admin queue as overdue.
+        if (self::isDirectorEntered($match) || $match->isTeamMatch()) {
             return false;
         }
 
@@ -1379,7 +1466,8 @@ final class SeriesService
         $match = $this->fresh($match);
         $due = $match->noshowForfeitAt();
 
-        if ($due === null || $due->isFuture() || $match->status !== SeriesStatus::Accepted || $match->currentGames() !== []
+        // A team match's no-shows are per board, on the league's own clock (P5), never a reported no-show.
+        if ($match->isTeamMatch() || $due === null || $due->isFuture() || $match->status !== SeriesStatus::Accepted || $match->currentGames() !== []
             || self::isDirectorEntered($match) || ! in_array($match->noshow_side, SeriesMatch::SIDES, true)) {
             return false;
         }
@@ -1405,7 +1493,8 @@ final class SeriesService
         $due = $match->responseDueAt();
         $report = $match->latestReport;
 
-        if ($due === null || $due->isFuture() || $report === null || self::isDirectorEntered($match)) {
+        // A team match has no report (NIP rev. 9.22): nothing to confirm.
+        if ($match->isTeamMatch() || $due === null || $due->isFuture() || $report === null || self::isDirectorEntered($match)) {
             return false;
         }
 
@@ -1739,14 +1828,19 @@ final class SeriesService
         foreach ($lineup->seats->filter(fn (LineupSeat $seat) => $lineup->isActingCaptain($seat->user)) as $seat) {
             $locale = $seat->user->locale ?? config('app.locale');
 
+            $replace = [
+                'mode' => $this->games->name($match->game).' '.$match->mode,
+                'bo' => $match->best_of,
+                'boards' => $match->boards,
+                'number' => $match->label(),
+                'time' => $match->respond_by->copy()->timezone($seat->user->timezone ?? config('esports.preseason.display_timezone'))->format('D H:i'),
+            ];
+
             $this->notifier->send($seat->user, NotificationKind::Challenge, new Notice(
                 __('New challenge from :clan', ['clan' => $match->challenger_name], $locale),
-                __(':mode, best of :bo, match :number. Answer by :time.', [
-                    'mode' => $this->games->name($match->game).' '.$match->mode,
-                    'bo' => $match->best_of,
-                    'number' => $match->label(),
-                    'time' => $match->respond_by->copy()->timezone($seat->user->timezone ?? config('esports.preseason.display_timezone'))->format('D H:i'),
-                ], $locale),
+                $match->isTeamMatch()
+                    ? __(':mode team match over :boards boards, match :number. Answer by :time.', $replace, $locale)
+                    : __(':mode, best of :bo, match :number. Answer by :time.', $replace, $locale),
                 route('matches.room', $match),
                 $match->number,
             ), sender: $match->createdBy);

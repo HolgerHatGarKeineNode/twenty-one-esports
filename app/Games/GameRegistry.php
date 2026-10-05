@@ -104,6 +104,34 @@ final class GameRegistry
     }
 
     /**
+     * The modes played as clan team matches over boards (NIP rev. 9.22:
+     * chess `rapid` only), per game: their lineups, challenges and match
+     * room sit beside the series games'.
+     *
+     * @return array<string, list<string>>
+     */
+    public function teamMatchModes(): array
+    {
+        $modes = [];
+
+        foreach ($this->games as $slug => $game) {
+            foreach ($game->modes() as $mode) {
+                if ($mode->boards !== []) {
+                    $modes[$slug][] = $mode->slug;
+                }
+            }
+        }
+
+        return $modes;
+    }
+
+    /** Whether this mode is played as a clan team match over boards. */
+    public function isTeamMatchMode(string $game, string $mode): bool
+    {
+        return ($this->mode($game, $mode)->boards ?? []) !== [];
+    }
+
+    /**
      * Whether a series of this game is scored in goals (Rocket League, EA
      * Sports FC) or in games won only (Age of Empires II): the report form,
      * the dispute and every page word the result by this. A game no longer

@@ -504,6 +504,31 @@ return [
 
     /*
     |--------------------------------------------------------------------------
+    | Chess team matches (plan "Schach Rapid und Clan", P4; NIP rev. 9.22)
+    |--------------------------------------------------------------------------
+    |
+    | App\Support\Chess\ChessTeamMatches. Each captain names the players until
+    | `lock_minutes` before the start; then the league orders the boards by
+    | rapid Elo, and a side without a lineup loses the whole team match by
+    | forfeit (user, 2026-10-05: 30 minutes, no automatic lineup). A pair of
+    | clans plays one rated team match per `rated_pair_days` (rolling;
+    | friendlies are not limited). A challenge "now" starts `lock_minutes`
+    | plus `esports.series.now_minutes` ahead, so both captains still have
+    | time to name their players before the lock. At the start every board
+    | starts on its own; the side to move has `first_move_seconds` from the
+    | start for the first move or loses that board by forfeit (P5, user
+    | 2026-10-05: 600 seconds, as tournament rapid).
+    |
+    */
+
+    'team_matches' => [
+        'lock_minutes' => 30,
+        'rated_pair_days' => 7,
+        'first_move_seconds' => 600,
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
     | Casual 1v1 without a clan (P23, App\Support\Series\CasualMatches)
     |--------------------------------------------------------------------------
     |

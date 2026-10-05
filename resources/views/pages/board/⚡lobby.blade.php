@@ -614,6 +614,9 @@ new #[Layout('layouts::app', ['realtime' => true, 'scripts' => ['resources/js/ga
                 'not_looking', 'rated_not_open' => $violation->getMessage(),
                 'cup_match_first' => __('Your cup match comes first.'),
                 'opponent_in_cup' => $violation->getMessage(),
+                // A locked chess team match reserves its players the same way (plan "Schach Rapid und Clan").
+                'team_match_first' => __('Your clan match comes first.'),
+                'opponent_in_team_match' => $violation->getMessage(),
                 default => __('That did not work, please try again.'),
             };
         }

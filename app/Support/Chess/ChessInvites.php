@@ -293,15 +293,15 @@ final class ChessInvites
             }
 
             // The casual lock (user, 2026-10-03): a cup match in a running round comes first; a cup invite is that match.
-            if ($invite->tournament_match_id === null && CupMatchNow::lockOf($invite->inviter) !== null) {
+            if ($invite->tournament_match_id === null && CupMatchNow::lockReason($invite->inviter) !== null) {
                 $invite->forceFill(['status' => ChessInviteStatus::Withdrawn])->save();
                 $this->announce($invite);
 
                 return 'opponent_playing';
             }
 
-            if ($invite->tournament_match_id === null && CupMatchNow::lockOf($invitee) !== null) {
-                return CupMatchNow::LOCKED;
+            if ($invite->tournament_match_id === null && ($lock = CupMatchNow::lockReason($invitee)) !== null) {
+                return $lock;
             }
 
             // Accepted before the game starts, so the start's withdrawal of

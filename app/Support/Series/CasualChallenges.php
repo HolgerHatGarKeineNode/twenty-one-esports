@@ -91,9 +91,9 @@ final class CasualChallenges
     {
         $match = $this->open($match, $user, 'challenged');
 
-        // The casual lock (user, 2026-10-03): an open cup match in a running round comes first.
-        if (CupMatchNow::lockOf($user) !== null) {
-            throw CasualMatches::refuse(CupMatchNow::LOCKED);
+        // The casual lock (user, 2026-10-03): an open cup match in a running round comes first, as a locked team match.
+        if (($lock = CupMatchNow::lockReason($user)) !== null) {
+            throw CasualMatches::refuse($lock);
         }
 
         if (! in_array($start, $match->proposals, true)) {

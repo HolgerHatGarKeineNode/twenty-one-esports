@@ -343,7 +343,7 @@ final class EsportsEventRules
     /**
      * Rule 11, the structure of a lineup challenge: one challenger and one
      * challenged lineup of the ladder's game and mode, one ladder, a `bo` the
-     * registry allows, one to three `start` after `created_at`, `respond_by`
+     * registry allows (a chess team match: `boards` and no `bo`), one to three `start` after `created_at`, `respond_by`
      * after `created_at` and within 7 days, a positive `match`.
      * Captaincy, clans, season window and the reserved number are league state
      * ({@see SeriesService}).
@@ -381,7 +381,14 @@ final class EsportsEventRules
             }
         }
 
-        if (! $mode[2]->allowsBestOf((int) $event->tag('bo')) || (string) (int) $event->tag('bo') !== $event->tag('bo')) {
+        // A chess team match (rev. 9.22) carries `boards` the registry allows and no `bo`; a series a `bo`.
+        $boards = $event->tag('boards');
+
+        if ($boards !== null) {
+            if ($event->tagsNamed('bo') !== [] || ! $mode[2]->allowsBoards((int) $boards) || (string) (int) $boards !== $boards) {
+                return 'challenge_boards';
+            }
+        } elseif (! $mode[2]->allowsBestOf((int) $event->tag('bo')) || (string) (int) $event->tag('bo') !== $event->tag('bo')) {
             return 'challenge_bo';
         }
 
@@ -616,7 +623,8 @@ final class EsportsEventRules
 
         $mode = $this->games->mode($d[0], $d[1]);
 
-        return $mode === null || $mode->bestOf === [] ? null : [$d[0], $d[1], $mode];
+        // A series mode (`bo`) or a chess team match mode (`boards`, rev. 9.22); a report on the latter still fails: it has no `bo`.
+        return $mode === null || ($mode->bestOf === [] && $mode->boards === []) ? null : [$d[0], $d[1], $mode];
     }
 
     private function gameRecord(SignedEvent $event): ?string

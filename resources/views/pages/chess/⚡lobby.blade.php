@@ -602,6 +602,9 @@ new #[Layout('layouts::app', ['section' => 'chess', 'realtime' => true, 'scripts
                 // The casual lock (user, 2026-10-03): the banner above links the cup match.
                 'cup_match_first' => __('Your cup match comes first.'),
                 'opponent_in_cup' => $violation->getMessage(),
+                // A locked chess team match reserves its players the same way (plan "Schach Rapid und Clan").
+                'team_match_first' => __('Your clan match comes first.'),
+                'opponent_in_team_match' => $violation->getMessage(),
                 'lost_race' => __('Someone else answered first. Please try again.'),
                 default => __('That did not work, please try again.'),
             };

@@ -47,7 +47,8 @@ class LineupFactory extends Factory
     {
         return $this->afterCreating(function (Lineup $lineup) use ($substitutes): void {
             $clan = $lineup->clan;
-            $size = $lineup->gameMode()->teamSize;
+            // The players a lineup needs to take a challenge: the team size, or the smallest board count of a chess team match lineup.
+            $size = $lineup->gameMode()->lineupMinimum();
 
             LineupSeat::query()->create(['lineup_id' => $lineup->id, 'user_id' => $clan->owner_id, 'role' => LineupRole::Captain, 'accepted_at' => now()]);
 

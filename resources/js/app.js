@@ -13,6 +13,7 @@ import blockZeroCountdown from './blockZeroCountdown.js';
 import { profileCardHost, profileStore } from './profiles.js';
 import { dropFailedBunker, forgetForeignSession } from './millAuth.js';
 import matchDock from './matchDock.js';
+import teamMatchBoards from './teamMatchBoards.js';
 import upcomingEvents from './upcomingEvents.js';
 import cupMatch from './cupMatch.js';
 import notificationBell from './notificationBell.js';
@@ -60,6 +61,8 @@ document.addEventListener('alpine:init', () => {
     window.Alpine.data('profileCardHost', profileCardHost);
     // The match dock of a logged-in player (P5f).
     window.Alpine.data('matchDock', matchDock);
+    // The boards and team score of a chess team match on its public page (plan "Schach Rapid und Clan", P5).
+    window.Alpine.data('teamMatchBoards', teamMatchBoards);
     // Open match rooms and registered tournaments on home, /matches, /tournaments and a game page.
     window.Alpine.data('upcomingEvents', upcomingEvents);
     // The player's open cup match: the header badge and the page banner (CupMatchNow).

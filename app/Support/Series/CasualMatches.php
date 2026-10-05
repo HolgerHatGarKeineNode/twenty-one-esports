@@ -14,6 +14,7 @@ use App\Models\User;
 use App\Support\Board\BoardGameService;
 use App\Support\Chess\Broadcasts;
 use App\Support\Chess\ChessGameService;
+use App\Support\Chess\ChessTeamMatches;
 use App\Support\Notifications\CasualNotifications;
 use App\Support\Settings\LeagueSettings;
 use App\Support\Tournaments\CupMatchNow;
@@ -110,11 +111,8 @@ final class CasualMatches
             return 'already_playing';
         }
 
-        if (CupMatchNow::lockOf($user) !== null) {
-            return CupMatchNow::LOCKED;
-        }
-
-        return null;
+        // The casual lock, and a locked chess team match the player is named for.
+        return CupMatchNow::lockReason($user);
     }
 
     /**
@@ -765,6 +763,8 @@ final class CasualMatches
             'already_playing' => __('Finish your current game first.'),
             CupMatchNow::LOCKED => __('Your cup match comes first.'),
             CupMatchNow::OTHER_LOCKED => __(':name is playing a cup match right now.', $replace),
+            ChessTeamMatches::RESERVED => __('Your clan match comes first.'),
+            ChessTeamMatches::OTHER_RESERVED => __(':name plays a clan match right now.', $replace),
             'invite_self' => __('You cannot invite yourself.'),
             'not_available' => __('This player cannot be invited right now.'),
             'not_looking' => __(':name is not looking for a game right now.', $replace),

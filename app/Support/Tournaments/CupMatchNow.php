@@ -8,6 +8,7 @@ use App\Models\SeriesMatch;
 use App\Models\TournamentMatch;
 use App\Models\TournamentParticipant;
 use App\Models\User;
+use App\Support\Chess\ChessTeamMatches;
 use Illuminate\Database\Eloquent\Builder;
 
 /**
@@ -63,6 +64,33 @@ final class CupMatchNow
     }
 
     /**
+     * Why this player may not start or accept anything casual now: the own
+     * cup match (`cup_match_first`) or the locked chess team match he is
+     * named for (`team_match_first`, ChessTeamMatches::reservationOf(), plan
+     * "Schach Rapid und Clan"); null when free. Every queue, pairing and
+     * accept that asks about one player asks this, so a team match
+     * reservation reaches every path the cup lock reaches.
+     */
+    public static function lockReason(User $user): ?string
+    {
+        if (self::lockOf($user) !== null) {
+            return self::LOCKED;
+        }
+
+        return ChessTeamMatches::reservationOf($user) !== null ? ChessTeamMatches::RESERVED : null;
+    }
+
+    /** The same, said about the other player (`opponent_in_cup`, `opponent_in_team_match`); null when free. */
+    public static function otherLockReason(User $other): ?string
+    {
+        return match (self::lockReason($other)) {
+            self::LOCKED => self::OTHER_LOCKED,
+            ChessTeamMatches::RESERVED => ChessTeamMatches::OTHER_RESERVED,
+            default => null,
+        };
+    }
+
+    /**
      * The open match that locks the player out of casual play, or null.
      */
     public static function lockOf(User $user): ?TournamentMatch
@@ -80,7 +108,9 @@ final class CupMatchNow
     /**
      * The refusal of a casual action: the player's own cup match comes
      * first (`cup_match_first`), or the other player's does
-     * (`opponent_in_cup`). Null when both are free to play.
+     * (`opponent_in_cup`). A locked chess team match reserves its players
+     * the same way (ChessTeamMatches::refusal(), `team_match_first`, plan
+     * "Schach Rapid und Clan", P4). Null when both are free to play.
      *
      * @return array{reason: string, message: string}|null
      */
@@ -94,7 +124,7 @@ final class CupMatchNow
             return ['reason' => self::OTHER_LOCKED, 'message' => (string) __(':name is playing a cup match right now.', ['name' => $other->displayName()])];
         }
 
-        return null;
+        return ChessTeamMatches::refusal($actor, $other);
     }
 
     /**

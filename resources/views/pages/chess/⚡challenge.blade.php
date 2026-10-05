@@ -70,6 +70,9 @@ new #[Title('Challenge')] #[Layout('layouts::app', ['section' => 'chess'])] clas
                 'challenge_open' => __('There is already an open challenge between the two of you.'),
                 'cup_match_first' => __('Your cup match comes first.'),
                 'opponent_in_cup' => $violation->getMessage(),
+                // A locked chess team match reserves its players the same way (plan "Schach Rapid und Clan").
+                'team_match_first' => __('Your clan match comes first.'),
+                'opponent_in_team_match' => $violation->getMessage(),
                 'challenge_limit' => __('You sent as many challenges as a day allows. Try again in :time.', [
                     'time' => now()->addSeconds(DailyChallenges::availableIn($this->user(), $opponent))->diffForHumans(syntax: CarbonInterface::DIFF_ABSOLUTE),
                 ]),

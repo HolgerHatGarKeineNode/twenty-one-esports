@@ -8,6 +8,7 @@ use App\Models\LineupSeat;
 use App\Models\SeriesInvite;
 use App\Models\SeriesMatch;
 use App\Models\User;
+use App\Support\Chess\ChessTeamMatches;
 use App\Support\Nostr\RejectedEvent;
 use App\Support\Rating\Ratings;
 use App\Support\SeasonChain\Opponents;
@@ -39,6 +40,12 @@ use Livewire\WithFileUploads;
  * line of the design is the "Casual until Block 0" line of States.dc.html.
  * Signed steps go through nostrAction (resources/js/nostrSign.js): for a
  * casual match every prepare returns no template and nothing is signed.
+ *
+ * A chess team match (`boards`, plan "Schach Rapid und Clan", P4) shares the
+ * head, the answer and the chat; after the accept its step 2 is the lineup
+ * (<livewire:team-lineup>), and the lobby, score sheet, who played, report
+ * and no-show of a series are left out: the league plays and counts its
+ * boards (SeriesService refuses them for a team match).
  */
 new #[Title('Match room')] #[Layout('layouts::app', ['section' => 'matches', 'scripts' => ['resources/js/matchRoom.js']])] class extends Component
 {
@@ -115,6 +122,11 @@ new #[Title('Match room')] #[Layout('layouts::app', ['section' => 'matches', 'sc
     public function sync(): void
     {
         $this->readSheet();
+
+        // A team match's lineup lives outside the match row: its step renders on every sync of the room.
+        if ($this->fresh()->isTeamMatch()) {
+            $this->dispatch('team-lineup-sync');
+        }
 
         if ($this->fingerprint() === $this->shown && now()->getTimestamp() - $this->renderedAt < self::RENDER_AT_LEAST) {
             $this->skipRender();
@@ -498,7 +510,8 @@ new #[Title('Match room')] #[Layout('layouts::app', ['section' => 'matches', 'sc
         $draft = null;
         $draftError = null;
 
-        if (in_array($match->status, [SeriesStatus::Accepted, SeriesStatus::Disputed], true)) {
+        // A team match has no report to draft (NIP rev. 9.22): the league counts its boards.
+        if (! $match->isTeamMatch() && in_array($match->status, [SeriesStatus::Accepted, SeriesStatus::Disputed], true)) {
             try {
                 $draft = $series->draftReport($match, $match->captainSideOf($user));
             } catch (SeriesRuleViolation $violation) {
@@ -681,6 +694,11 @@ new #[Title('Match room')] #[Layout('layouts::app', ['section' => 'matches', 'sc
         $match = $this->fresh();
         $edges = [$match->start_at, $match->noshowReportableAt()];
 
+        // A team match turns at its lineup lock.
+        if ($match->isTeamMatch()) {
+            $edges[] = ChessTeamMatches::lockAt($match);
+        }
+
         if ($match->isCasualPairing()) {
             array_push($edges, $match->casualLobbyDueAt(), $match->casualJoinDueAt(), $match->casualNextDeadline()['at'] ?? null);
         }
@@ -732,7 +750,9 @@ new #[Title('Match room')] #[Layout('layouts::app', ['section' => 'matches', 'sc
     $elo = SeriesPresenter::ratingFacts($m);
     // A tournament whose directors enter the results: the players report and accept nothing (P8b).
     $directorEntered = SeriesService::isDirectorEntered($m);
-    $editable = ! $directorEntered && $captainSide !== null && in_array($m->status, [SeriesStatus::Accepted, SeriesStatus::Disputed], true) && ! $m->start_at?->isFuture();
+    // A chess team match (P4): no sheet, report or no-show of a series; its lineup step replaces them.
+    $team = $m->isTeamMatch();
+    $editable = ! $team && ! $directorEntered && $captainSide !== null && in_array($m->status, [SeriesStatus::Accepted, SeriesStatus::Disputed], true) && ! $m->start_at?->isFuture();
     $toAnswer = ! $directorEntered && $m->status === SeriesStatus::Reported && $report?->status === ReportStatus::Open && $captainSide !== null && $captainSide !== $report->side;
     $playing = count(array_filter($this->sheet, fn ($g) => $g['winner'] !== null));
     $captainOf = fn (string $side) => $m->lineup($side)?->clan?->owner?->displayName() ?? '';
@@ -740,7 +760,7 @@ new #[Title('Match room')] #[Layout('layouts::app', ['section' => 'matches', 'sc
     $checks = ($report !== null && $report->status !== ReportStatus::Superseded ? 1 : 0) + ($m->status->hasResult() ? 1 : 0);
     $status = match ($m->status) {
         SeriesStatus::Open => [__('Waiting for an answer'), 'bg-btc-press text-btc-hi'],
-        SeriesStatus::Accepted => $m->start_at?->isFuture() ? [__('Starts :time', ['time' => SeriesPresenter::time($m->start_at, $viewer, 'D H:i')]), 'bg-well text-ink-2'] : [__('Score to submit'), 'bg-btc-press text-btc-hi'],
+        SeriesStatus::Accepted => $m->start_at?->isFuture() ? [__('Starts :time', ['time' => SeriesPresenter::time($m->start_at, $viewer, 'D H:i')]), 'bg-well text-ink-2'] : ($team ? [__('Boards playing'), 'bg-btc-press text-btc-hi'] : [__('Score to submit'), 'bg-btc-press text-btc-hi']),
         SeriesStatus::Reported => [__('Not confirmed yet'), 'bg-btc-press text-btc-hi'],
         SeriesStatus::Disputed => [__('Disputed'), 'bg-loss-tint text-loss'],
         SeriesStatus::Confirmed, SeriesStatus::Resolved => [__('Result saved'), 'bg-win-tint text-win'],
@@ -748,7 +768,7 @@ new #[Title('Match room')] #[Layout('layouts::app', ['section' => 'matches', 'sc
     };
     $sideColor = ['challenger' => '#F7931A', 'challenged' => '#3A3A42'];
     $sideInk = ['challenger' => 'text-on-btc', 'challenged' => 'text-ink'];
-    $seriesMeta = implode(', ', array_filter([
+    $seriesMeta = $team ? implode(', ', [trans_choice(':count board|:count boards', $m->boards), $m->mode, $m->rated ? __('Rated') : __('Friendly')]) : implode(', ', array_filter([
         'BO'.$m->best_of,
         $m->mode,
         ! $m->status->hasResult() && $games !== [] ? __('provisional') : null,
@@ -990,6 +1010,12 @@ new #[Title('Match room')] #[Layout('layouts::app', ['section' => 'matches', 'sc
             <span aria-hidden="true" class="{{ $dot(2) }}"></span>
             @include('pages.matches.partials.casual-steps')
         </div>
+    @elseif ($team && $m->status->isRunning())
+        {{-- A team match: the captains pick their players, hidden from each other until the lock. --}}
+        <div class="{{ $thread(2) }}" data-flow="2">
+            <span aria-hidden="true" class="{{ $dot(2) }}"></span>
+            <livewire:team-lineup :match="$m" :key="'team-lineup-'.$m->id" />
+        </div>
     @elseif (! $casual && $m->status->isRunning())
         <div class="{{ $thread(2) }}" data-flow="2">
             <span aria-hidden="true" class="{{ $dot(2) }}"></span>
@@ -1088,6 +1114,7 @@ new #[Title('Match room')] #[Layout('layouts::app', ['section' => 'matches', 'sc
         3. Play and enter the results: the sheet, and right under it the report and its state, in one card (user,
         2026-10-04: "Ergebnis melden ist auf einmal ganz wo anders zu finden, als die Ergebnisse, die man einträgt").
     --}}
+    @unless ($team)
     <div class="{{ $thread(3) }} flex flex-col gap-5" data-flow="3">
         <span aria-hidden="true" class="{{ $dot(3) }}"></span>
         <div class="flex flex-col rounded-lg bg-card">
@@ -1231,6 +1258,7 @@ new #[Title('Match room')] #[Layout('layouts::app', ['section' => 'matches', 'sc
                 <p class="m-0 text-xs leading-normal text-ink-2">{{ __('This list goes out with your result.') }}</p>
             </section>
     </div>
+    @endunless
     </div>
 
     {{--
@@ -1330,7 +1358,7 @@ new #[Title('Match room')] #[Layout('layouts::app', ['section' => 'matches', 'sc
 
     <div class="flex min-w-0 flex-col gap-5 lg:col-start-1 lg:row-start-2">
     {{-- 4. When something goes wrong: the no-show report and what a dispute means. A casual 1v1 has both in its steps. --}}
-    @if (! $casual && $m->status->isRunning())
+    @if (! $casual && ! $team && $m->status->isRunning())
         <div class="{{ $thread(4) }}" data-flow="4">
             <span aria-hidden="true" class="{{ $dot(4) }}"></span>
             <section aria-labelledby="problems-h" class="flex flex-col gap-3 rounded-lg bg-card px-4 py-5 lg:px-6" data-test="room-problems">
@@ -1360,14 +1388,14 @@ new #[Title('Match room')] #[Layout('layouts::app', ['section' => 'matches', 'sc
                 @foreach ([
                     [__('Challenge'), __(':from to :to, :time', ['from' => $m->created_by_id === $viewer->id ? __('you') : $m->challenger_name, 'to' => $m->challenged_name, 'time' => SeriesPresenter::time($m->created_at ?? now(), $viewer, 'D H:i')])],
                     [__('Start'), $m->start_at ? SeriesPresenter::time($m->start_at, $viewer, 'D H:i') : __('one of :n suggested times', ['n' => count($m->proposals)])],
-                    [__('Format'), \App\Support\GameNames::game($m->game).', '.$m->mode.', BO'.$m->best_of],
+                    [__('Format'), \App\Support\GameNames::game($m->game).', '.$m->mode.', '.($team ? trans_choice(':count board|:count boards', $m->boards) : 'BO'.$m->best_of)],
                     [__('Ladder'), $m->rated ? $m->mode : __('none, casual until Block 0')],
                 ] as [$key, $value])
                     <div class="grid min-h-11 grid-cols-[110px_minmax(0,1fr)] items-center gap-3 border-b border-hairline py-2 text-sm last:border-0 lg:grid-cols-[150px_minmax(0,1fr)]"><span class="text-ink-2">{{ $key }}</span><span class="[overflow-wrap:anywhere]">{{ $value }}</span></div>
                 @endforeach
             </div>
-            {{-- A casual 1v1 is never rated (CasualMatches): no Elo to show. --}}
-            @unless ($casual)
+            {{-- A casual 1v1 is never rated (CasualMatches): no Elo to show; a team match has no team Elo (NIP rev. 9.22). --}}
+            @unless ($casual || $team)
             <div class="flex flex-col rounded-lg bg-card px-4 py-2 lg:px-6">
                     @foreach ([[__('Elo before'), $elo['before'].($elo['casual'] ? ' · '.__('casual') : '')], [__('Expected'), $elo['expected']], [__('At stake'), $elo['stake']]] as [$key, $value])
                         <div class="grid min-h-11 grid-cols-[110px_minmax(0,1fr)] items-center gap-3 border-b border-hairline py-2 text-sm last:border-0 lg:grid-cols-[150px_minmax(0,1fr)]" data-test="elo-fact"><span class="text-ink-2">{{ $key }}</span><span class="text-ink-2">{{ $value }}</span></div>
