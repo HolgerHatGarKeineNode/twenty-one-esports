@@ -50,6 +50,15 @@ use Livewire\WithFileUploads;
  *
  * "Edit clan": the owner changes name, tag, description, logo and meetup
  * link with a new version of the clan event (same `d`, roster unchanged).
+ * The card opens and closes in the browser (x-show, performance plan P7):
+ * its fields hold the stored clan from mount on, and its tag check, meetup
+ * search and logo buttons sit in the island `edit-clan`, so they render the
+ * card only, not the whole page. Saving renders the page (new name and logo
+ * in the header) and dispatches `clan-edited`, which closes the card.
+ *
+ * The roster tabs (active, invited, former) switch in the browser too: all
+ * three lists are rendered, `tab` follows with `$wire.$set(..., false)` so
+ * the next render keeps the tab that is open.
  */
 new #[Layout('layouts::app', ['section' => 'clans'])] class extends Component
 {
@@ -72,6 +81,7 @@ new #[Layout('layouts::app', ['section' => 'clans'])] class extends Component
     /** @var array<int|string, string> user id => '' (not placed), captain, player or substitute */
     public array $picks = [];
 
+    /** The roster tab shown: active, invited or former (set in the browser, sent with the next request). */
     public string $tab = 'active';
 
     #[Locked]
@@ -85,10 +95,7 @@ new #[Layout('layouts::app', ['section' => 'clans'])] class extends Component
 
     public int $joinLinkHours = 168;
 
-    /** "Edit clan" (owner only): the card is open and holds these fields. */
-    #[Locked]
-    public bool $editingClan = false;
-
+    /** "Edit clan" (owner only): the card's fields, filled with the stored clan on mount. */
     public string $editName = '';
 
     public string $editClantag = '';
@@ -127,6 +134,10 @@ new #[Layout('layouts::app', ['section' => 'clans'])] class extends Component
         abort_unless($clan->isCaptain($this->user()), 403);
 
         $this->clanId = $clan->id;
+
+        if ($this->isOwner) {
+            $this->openEdit();
+        }
     }
 
     public function rendering(\Illuminate\View\View $view): void
@@ -146,13 +157,14 @@ new #[Layout('layouts::app', ['section' => 'clans'])] class extends Component
         return $this->clan->isOwner($this->user());
     }
 
-    public function pickTab(string $tab): void
+    public function updatedTab(): void
     {
-        $this->tab = in_array($tab, ['active', 'invited', 'former'], true) ? $tab : 'active';
+        $this->tab = in_array($this->tab, ['active', 'invited', 'former'], true) ? $this->tab : 'active';
     }
 
     /* ---------- Edit the clan (owner only) ---------- */
 
+    /** Load the stored clan into the edit card's fields (on mount, and on cancel). */
     public function openEdit(): void
     {
         abort_unless($this->isOwner, 403);
@@ -169,13 +181,12 @@ new #[Layout('layouts::app', ['section' => 'clans'])] class extends Component
         $this->editMeetupLongitude = $clan->meetup_longitude === null ? null : (float) $clan->meetup_longitude;
         $this->reset('logo', 'meetupQuery', 'editMeetupLogo');
         $this->resetErrorBag();
-        $this->editingClan = true;
     }
 
+    /** "Cancel" (and after a save): back to the stored clan; the browser closes the card. */
     public function cancelEdit(): void
     {
-        $this->reset('editingClan', 'logo', 'meetupQuery', 'editMeetupLogo');
-        $this->resetErrorBag();
+        $this->openEdit();
     }
 
     public function updatedEditClantag(): void
@@ -226,14 +237,14 @@ new #[Layout('layouts::app', ['section' => 'clans'])] class extends Component
     }
 
     /**
-     * Portal matches while the card is open; null when the portal is unreachable.
+     * Portal matches for the owner's search; null when the portal is unreachable.
      *
      * @return list<array<string, mixed>>|null
      */
     #[Computed]
     public function meetups(): ?array
     {
-        return $this->editingClan ? app(PortalMeetups::class)->search($this->meetupQuery) : [];
+        return $this->isOwner ? app(PortalMeetups::class)->search($this->meetupQuery) : [];
     }
 
     /**
@@ -272,7 +283,7 @@ new #[Layout('layouts::app', ['section' => 'clans'])] class extends Component
     #[Computed]
     public function editTagStatus(): ?string
     {
-        if (! $this->editingClan || $this->editClantag === '') {
+        if (! $this->isOwner || $this->editClantag === '') {
             return null;
         }
 
@@ -303,8 +314,9 @@ new #[Layout('layouts::app', ['section' => 'clans'])] class extends Component
         if ($edit['png'] !== null && $edit['draft']->picture === $this->clan->picture && $this->clan->event_id !== null
             && $edit['draft'] == $this->storedDraft()) {
             if ($logos->store($edit['png'])) {
-                $this->cancelEdit();
                 unset($this->clan);
+                $this->cancelEdit();
+                $this->dispatch('clan-edited');
             } else {
                 $this->addError('logo', __('The clan was saved, but the logo could not be stored. Please upload it again.'));
             }
@@ -352,6 +364,7 @@ new #[Layout('layouts::app', ['section' => 'clans'])] class extends Component
         }
 
         $this->cancelEdit();
+        $this->dispatch('clan-edited');
     }
 
     /**
@@ -362,7 +375,7 @@ new #[Layout('layouts::app', ['section' => 'clans'])] class extends Component
      */
     private function editDraft(ClanLogos $logos): ?array
     {
-        abort_unless($this->isOwner && $this->editingClan, 403);
+        abort_unless($this->isOwner, 403);
 
         $this->editClantag = strtoupper(trim($this->editClantag));
 
@@ -860,19 +873,23 @@ new #[Layout('layouts::app', ['section' => 'clans'])] class extends Component
     <p x-show="error" x-text="error" x-cloak class="m-0 text-[13px] text-loss" role="alert"></p>
 
     {{-- Edit clan: a new version of the clan event, same d, same roster (layout of ClanCreate.dc.html) --}}
+    {{-- Opens and closes in the browser; its own actions render the island only, a save renders the page and closes it (clan-edited). --}}
     <section id="edit-clan" aria-labelledby="edit-h" class="flex flex-col gap-3.5 rounded-lg bg-card px-4 py-5 lg:px-6" data-test="edit-clan"
-             x-data="{ uploading: false }" x-on:livewire-upload-start="uploading = true" x-on:livewire-upload-finish="uploading = false"
+             x-data="{ uploading: false, editOpen: false }" x-on:clan-edited.window="editOpen = false" x-on:livewire-upload-start="uploading = true" x-on:livewire-upload-finish="uploading = false"
              x-on:livewire-upload-error="uploading = false" x-on:livewire-upload-cancel="uploading = false">
         <span class="flex flex-wrap items-center justify-between gap-x-4 gap-y-2">
             <span class="flex flex-wrap items-baseline gap-x-4 gap-y-1"><h2 id="edit-h" class="m-0 text-[15px] font-bold">{{ __('Edit clan') }}</h2><span class="text-xs text-ink-3">{{ __('Name, tag, description, logo and meetup link') }}</span></span>
-            @if ($isOwner && ! $editingClan)
-                <button type="button" wire:click="openEdit" data-test="open-edit" class="btn-w inline-flex h-11 cursor-pointer items-center rounded-md border border-line bg-well px-4 text-[13px] text-ink">{{ __('Edit clan') }}</button>
+            @if ($isOwner)
+                <button type="button" x-show="! editOpen" x-on:click="editOpen = true" data-test="open-edit" class="btn-w inline-flex h-11 cursor-pointer items-center rounded-md border border-line bg-well px-4 text-[13px] text-ink">{{ __('Edit clan') }}</button>
             @endif
         </span>
-        @if (! $isOwner)
+        @island(name: 'edit-clan', always: true)
+        @php($clan = $this->clan)
+        @if (! $this->isOwner)
             <p class="m-0 text-[13px] text-ink-2">{{ __('Only the founder of :clan can edit it: the clan record is confirmed with their key.', ['clan' => $clan->name]) }}</p>
-        @elseif ($editingClan)
+        @else
             @php($editMeetups = $this->meetups)
+            <div class="flex flex-col gap-3.5" x-show="editOpen" x-cloak data-test="edit-card">
             <div class="grid grid-cols-1 gap-7 lg:grid-cols-[minmax(0,1fr)_260px]">
                 <div class="flex min-w-0 flex-col gap-[18px]">
                     <div class="grid grid-cols-1 gap-4 sm:grid-cols-[minmax(0,1fr)_200px]">
@@ -972,10 +989,12 @@ new #[Layout('layouts::app', ['section' => 'clans'])] class extends Component
                     <span x-show="! busy">{{ __('Save changes') }}</span>
                     <span x-show="busy" x-cloak>{{ __('Confirm in your signer…') }}</span>
                 </button>
-                <button type="button" wire:click="cancelEdit" x-bind:disabled="busy" class="min-h-11 cursor-pointer text-[13px] text-ink-2 hover:text-ink">{{ __('Cancel') }}</button>
+                <button type="button" wire:click="cancelEdit" x-on:click="editOpen = false" x-bind:disabled="busy" data-test="cancel-edit" class="min-h-11 cursor-pointer text-[13px] text-ink-2 hover:text-ink">{{ __('Cancel') }}</button>
                 <span class="basis-full text-xs leading-normal text-ink-2 sm:basis-auto">{{ __('You confirm a new clan record with your key. Members and lineups stay as they are.') }}</span>
             </div>
+            </div>
         @endif
+        @endisland
     </section>
 
     {{-- Invite a player: into the roster only --}}
@@ -1167,13 +1186,15 @@ new #[Layout('layouts::app', ['section' => 'clans'])] class extends Component
             <h2 class="m-0 pb-3 font-display text-lg font-bold">{{ __('Lineups & members') }}</h2>
             <span role="tablist" aria-label="{{ __('Filter') }}" class="flex gap-1">
                 @foreach (['active' => __('Active (:n)', ['n' => $members->count()]), 'invited' => __('Invited (:n)', ['n' => $pending->count()]), 'former' => __('Former (:n)', ['n' => $clan->departures->count()])] as $key => $label)
-                    <button type="button" role="tab" aria-selected="{{ $tab === $key ? 'true' : 'false' }}" wire:click="pickTab('{{ $key }}')"
+                    <button type="button" role="tab" aria-selected="{{ $tab === $key ? 'true' : 'false' }}" x-on:click="$wire.$set('tab', @js($key), false)" data-test="tab-{{ $key }}-button"
+                            x-bind:aria-selected="$wire.tab === @js($key) ? 'true' : 'false'" x-bind:class="{ 'border-btc text-ink': $wire.tab === @js($key), 'border-transparent text-ink-2': $wire.tab !== @js($key) }"
                             @class(['h-11 cursor-pointer border-b-2 px-3 text-[13px] lg:px-3.5', 'border-btc text-ink' => $tab === $key, 'border-transparent text-ink-2' => $tab !== $key])>{{ $label }}</button>
                 @endforeach
             </span>
         </div>
 
-        @if ($tab === 'active')
+        {{-- All three lists are rendered; the tab switches in the browser and goes along with the next request ($set without a roundtrip). --}}
+        <div class="contents" x-show="$wire.tab === 'active'" @style(['display: none' => $tab !== 'active']) data-test="tab-active">
             <div class="hidden grid-cols-[110px_minmax(0,1fr)_190px_100px_auto] gap-3 px-2 pt-1 text-xs text-ink-3 lg:grid"><span>{{ __('Lineup') }}</span><span>{{ __('Seats') }}</span><span>{{ __('Status') }}</span><span>Elo</span><span></span></div>
             @foreach ($seriesGames as $rowGame => $seriesGame)
             <div class="flex items-center gap-3 px-2 pt-3" data-test="lineups-{{ $rowGame }}">
@@ -1296,7 +1317,8 @@ new #[Layout('layouts::app', ['section' => 'clans'])] class extends Component
                     </span>
                 </div>
             @endif
-        @elseif ($tab === 'invited')
+        </div>
+        <div class="contents" x-show="$wire.tab === 'invited'" @style(['display: none' => $tab !== 'invited']) data-test="tab-invited">
             @forelse ($pending as $invite)
                 <div wire:key="iv-{{ $invite->id }}" class="grid min-h-[52px] grid-cols-[minmax(0,1fr)_auto] items-center gap-3 border-b border-hairline px-2 text-[13px]">
                     <span class="flex min-w-0 flex-col gap-0.5"><b class="truncate">{{ $invite->invitee->displayName() }}</b><span class="text-xs text-ink-3">{{ __('into the roster, sent :when', ['when' => $invite->created_at?->diffForHumans()]) }}</span></span>
@@ -1305,7 +1327,8 @@ new #[Layout('layouts::app', ['section' => 'clans'])] class extends Component
             @empty
                 <p class="m-0 py-4 text-[13px] text-ink-2">{{ __('No open invites.') }}</p>
             @endforelse
-        @else
+        </div>
+        <div class="contents" x-show="$wire.tab === 'former'" @style(['display: none' => $tab !== 'former']) data-test="tab-former">
             @forelse ($clan->departures->sortByDesc('left_at') as $departure)
                 <div wire:key="dp-{{ $departure->id }}" class="grid min-h-[52px] grid-cols-[minmax(0,1fr)_auto] items-center gap-3 border-b border-hairline px-2 text-[13px]">
                     <b class="truncate">{{ $departure->user?->displayName() ?? __('Deleted player') }}</b>
@@ -1314,6 +1337,6 @@ new #[Layout('layouts::app', ['section' => 'clans'])] class extends Component
             @empty
                 <p class="m-0 py-4 text-[13px] text-ink-2">{{ __('Nobody has left yet.') }}</p>
             @endforelse
-        @endif
+        </div>
     </section>
 </div>

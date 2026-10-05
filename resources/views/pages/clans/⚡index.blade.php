@@ -32,6 +32,10 @@ new #[Layout('layouts::app', ['section' => 'clans'])] class extends Component {
         app(\App\Support\PageMeta::class)->card(fn () => \App\Support\Cards\PageCard::page('clans'));
     }
 
+    /**
+     * The search: it filters the cards in the browser (performance plan P7, no roundtrip per keystroke) and
+     * follows with `$wire.$set(..., false)`, so a render and a shared `?q=` link start with the same cards hidden.
+     */
     #[Url(as: 'q', except: '')]
     public string $search = '';
 
@@ -72,20 +76,30 @@ new #[Layout('layouts::app', ['section' => 'clans'])] class extends Component {
     }
 
     /**
-     * The clans the search matches (name, tag or meetup city), by name, with their faces.
+     * Every clan, by name, with their faces: the search hides cards in the browser.
      *
      * @return Collection<int, Clan>
      */
     #[Computed]
     public function clans(): Collection
     {
+        return $this->directory->loadMissing(self::faces());
+    }
+
+    /**
+     * What the search looks in, lower case: name, tag and meetup city, one per line (a query never spans two).
+     */
+    public static function haystack(Clan $clan): string
+    {
+        return mb_strtolower($clan->name."\n".$clan->clantag."\n".$clan->meetup_city);
+    }
+
+    /** Whether the clan matches the search as it stands on the server (the first paint before Alpine starts). */
+    public function matches(Clan $clan): bool
+    {
         $search = mb_strtolower(trim($this->search));
 
-        $clans = $search === '' ? $this->directory : $this->directory->filter(fn (Clan $clan): bool => str_contains(mb_strtolower($clan->name), $search)
-            || str_contains(mb_strtolower($clan->clantag), $search)
-            || str_contains(mb_strtolower((string) $clan->meetup_city), $search))->values();
-
-        return $clans->loadMissing(self::faces());
+        return $search === '' || str_contains(self::haystack($clan), $search);
     }
 
     /**
@@ -99,11 +113,11 @@ new #[Layout('layouts::app', ['section' => 'clans'])] class extends Component {
         return app(ClanPride::class)->all();
     }
 
-    /** The clan shown large on top: the strongest moment, only while nobody searches. */
+    /** The clan shown large on top: the strongest moment, shown only while nobody searches (x-show). */
     #[Computed]
     public function spotlight(): ?Clan
     {
-        $id = trim($this->search) === '' ? ClanPride::spotlight($this->pride) : null;
+        $id = ClanPride::spotlight($this->pride);
 
         return $id === null ? null : $this->directory->firstWhere('id', $id)?->loadMissing(self::faces());
     }
@@ -278,13 +292,16 @@ new #[Layout('layouts::app', ['section' => 'clans'])] class extends Component {
     $live = $this->stats->seasonLive();
     $challenges = $this->challenges;
     $myClanId = $this->myClanId;
-    $grid = $spotlight === null ? $clans : $clans->reject(fn ($clan) => $clan->id === $spotlight->id)->values();
+    $searching = trim($search) !== '';
     $players = (int) $directory->sum('members_count');
     $meetups = $directory->filter(fn ($clan) => filled($clan->meetup_name))->count();
     $myClan = $myClanId === null ? null : $directory->firstWhere('id', $myClanId);
 @endphp
 
-<div class="flex grow flex-col gap-6 px-4 pb-6 lg:gap-8 lg:px-12 lg:pb-8">
+<div class="flex grow flex-col gap-6 px-4 pb-6 lg:gap-8 lg:px-12 lg:pb-8"
+     x-data="{ q: $wire.search, clans: @js($directory->mapWithKeys(fn ($clan) => [$clan->id => $this::haystack($clan)])->all()), spotlight: @js($spotlight?->id),
+               term() { return this.q.trim().toLowerCase() }, hit(id) { return this.clans[id].includes(this.term()) },
+               shown(id) { return this.hit(id) && (this.term() !== '' || id !== this.spotlight) }, get count() { return Object.keys(this.clans).filter((id) => this.shown(Number(id))).length } }">
     {{-- Header: the name, the league in one sentence, search and the way in. --}}
     <div class="flex flex-wrap items-end gap-x-4 gap-y-3 lg:flex-nowrap">
         <div class="flex min-w-0 flex-col gap-1">
@@ -302,7 +319,7 @@ new #[Layout('layouts::app', ['section' => 'clans'])] class extends Component {
             <label for="clan-q" class="sr-only">{{ __('Search clans') }}</label>
             <span class="relative order-3 flex w-full items-center lg:order-none lg:w-80">
                 <x-icon name="search" :size="16" class="pointer-events-none absolute left-3 text-ink-3" />
-                <input id="clan-q" type="search" wire:model.live.debounce.300ms="search" placeholder="{{ __('Clan, tag or meetup city') }}"
+                <input id="clan-q" type="search" x-model="q" x-on:input.debounce.300ms="$wire.$set('search', q, false)" data-test="clan-search" placeholder="{{ __('Clan, tag or meetup city') }}"
                        class="h-11 w-full rounded-md border border-edge bg-ground pr-3 pl-9 text-[13px] text-ink placeholder:text-ink-3">
             </span>
         @endif
@@ -319,7 +336,7 @@ new #[Layout('layouts::app', ['section' => 'clans'])] class extends Component {
     </div>
 
     @if ($spotlight)
-        <x-clans.spotlight :clan="$spotlight" :moments="$pride[$spotlight->id]" :challenge="$challenges[$spotlight->id] ?? null" :apply="$this->applyFor($spotlight)" :mine="$spotlight->id === $myClanId" wire:key="spot-{{ $spotlight->id }}" />
+        <x-clans.spotlight x-show="term() === ''" :style="$searching ? 'display: none' : null" :clan="$spotlight" :moments="$pride[$spotlight->id]" :challenge="$challenges[$spotlight->id] ?? null" :apply="$this->applyFor($spotlight)" :mine="$spotlight->id === $myClanId" wire:key="spot-{{ $spotlight->id }}" />
     @endif
 
     {{-- The season standings, top three each, once Block 0 is mined: pride with numbers, so above the cards. --}}
@@ -413,12 +430,12 @@ new #[Layout('layouts::app', ['section' => 'clans'])] class extends Component {
         <x-empty-state :heading="__('No clan yet')" :text="__('Start the first one: your tag, your players, your meetup city.')" class="rounded-card bg-card px-4 py-6 lg:px-6" data-test="clans-empty">
             <a href="{{ route('clans.create') }}" class="btn-p inline-flex h-11 items-center gap-2 rounded-md bg-btc px-5 text-sm font-bold text-on-btc hover:text-on-btc">{{ __('Start a clan') }}</a>
         </x-empty-state>
-    @elseif ($clans->isEmpty())
-        <p class="m-0 rounded-card bg-card px-4 py-6 text-center text-[13px] text-ink-2" data-test="clans-no-match">{{ __('No clan matches your search.') }}</p>
-    @elseif ($grid->isNotEmpty())
-        <section aria-label="{{ __('All clans') }}" class="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:gap-6 xl:grid-cols-3" data-test="clan-grid">
-            @foreach ($grid as $clan)
-                <x-clans.card :clan="$clan" :moment="$pride[$clan->id][0] ?? null" :challenge="$challenges[$clan->id] ?? null" :apply="$this->applyFor($clan)" :mine="$clan->id === $myClanId"
+    @else
+        @php($visible = $clans->filter(fn ($clan) => $this->matches($clan) && ($searching || $clan->id !== $spotlight?->id))->count())
+        <p class="m-0 rounded-card bg-card px-4 py-6 text-center text-[13px] text-ink-2" data-test="clans-no-match" x-show="count === 0 && term() !== ''" @style(['display: none' => ! ($visible === 0 && $searching)])>{{ __('No clan matches your search.') }}</p>
+        <section aria-label="{{ __('All clans') }}" class="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:gap-6 xl:grid-cols-3" data-test="clan-grid" x-show="count > 0" @style(['display: none' => $visible === 0])>
+            @foreach ($clans as $clan)
+                <x-clans.card x-show="shown({{ $clan->id }})" :style="$this->matches($clan) && ($searching || $clan->id !== $spotlight?->id) ? null : 'display: none'" :clan="$clan" :moment="$pride[$clan->id][0] ?? null" :challenge="$challenges[$clan->id] ?? null" :apply="$this->applyFor($clan)" :mine="$clan->id === $myClanId"
                               :numbers="$live ? ['rating' => $this->stats->clanRating($clan)['rating'], 'week' => $this->stats->hashrate($clan)['week']] : null"
                               :loading="$loop->index < 3 ? 'eager' : 'lazy'" wire:key="clan-{{ $clan->id }}" />
             @endforeach

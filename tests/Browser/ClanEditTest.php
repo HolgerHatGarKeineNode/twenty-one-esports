@@ -163,7 +163,8 @@ test('the owner uploads a logo, sees the preview, signs, and the logo shows on t
 
     // Desktop page, preview showing: sign and save.
     $page->locator('[data-test=save-edit]')->click();
-    BrowserWait::until($page, '() => document.querySelector("[data-test=logo-input]") === null && document.querySelector("#edit-clan") !== null', 15_000);
+    // Saved: the card closes (it stays in the page, hidden, performance plan P7).
+    BrowserWait::until($page, '() => document.querySelector("[data-test=edit-card]")?.offsetParent === null && document.querySelector("[data-test=open-edit]")?.offsetParent !== null', 15_000);
 
     $clan->refresh();
     $file = Storage::disk('public')->files(ClanLogos::DIRECTORY);

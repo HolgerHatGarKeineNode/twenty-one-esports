@@ -41,11 +41,15 @@ use Livewire\Component;
  * invite this player (BoardInvites), invites received are answered at the
  * top of the page.
  *
- * While searching or waiting for an answer the page asks the server every
- * few seconds (wire:poll): a widening range may pair, an invite may have
- * been accepted. A pairing also arrives by push (`board.game-started` on
- * the player's own channel, resources/js/boardLobby.js), which moves the
- * page to the board at once.
+ * A pairing arrives by push (`board.game-started` on the player's own
+ * channel, resources/js/boardLobby.js), which moves the page to the board at
+ * once; an answer to an invite too (`board.invite`). While searching or
+ * waiting for an answer the page asks the server itself only when that can
+ * change something nobody pushes (performance plan P7, F7, the chess
+ * lobby's pattern): when its search range widens, when its invite expires,
+ * and at the latest every SAFETY_NET_SECONDS as a net under a lost push
+ * (`data-check-at`, server ms). Without a websocket it asks every
+ * FALLBACK_SECONDS, as the page's wire:poll did before.
  *
  * Rated (P6): the Blitz panel's Casual/Rated choice, as in chess. Rated is
  * disabled with a badge and the reason behind "?" while the rated queue of
@@ -108,6 +112,12 @@ new #[Layout('layouts::app', ['realtime' => true, 'scripts' => ['resources/js/ga
 
     /** A poll renders at least every RENDER_AT_LEAST seconds, whatever the fingerprint says. */
     public const RENDER_AT_LEAST = 60;
+
+    /** With the websocket up, a waiting lobby asks at least this often (a push the server could not deliver). */
+    public const SAFETY_NET_SECONDS = 120;
+
+    /** Without a websocket, a waiting lobby asks this often (the old wire:poll.4s). */
+    public const FALLBACK_SECONDS = 4;
 
     /** Fingerprint of what the last render showed while waiting; an unchanged poll skips the render. */
     #[Locked]
@@ -253,10 +263,13 @@ new #[Layout('layouts::app', ['realtime' => true, 'scripts' => ['resources/js/ga
     }
 
     /**
-     * Asked every few seconds while searching or waiting for an answer: the
-     * widening range may pair now, or an invite may have been accepted.
+     * Asked while searching or waiting for an answer (data-check-at, or every
+     * FALLBACK_SECONDS without a websocket): the widening range may pair now,
+     * or an invite may have been accepted. Returns when to ask next (ms,
+     * server clock), null when there is nothing left to wait for: a poll that
+     * skips its render does not carry a new data-check-at.
      */
-    public function poll(): void
+    public function poll(): ?int
     {
         $this->attempt(function (User $user): void {
             $queue = app(BoardQueue::class);
@@ -270,6 +283,31 @@ new #[Layout('layouts::app', ['realtime' => true, 'scripts' => ['resources/js/ga
         if ($this->fingerprint() === $this->shown && now()->getTimestamp() - $this->renderedAt < self::RENDER_AT_LEAST) {
             $this->skipRender();
         }
+
+        unset($this->waiting, $this->checkAt);
+
+        return $this->checkAt;
+    }
+
+    /**
+     * When this lobby asks the server on its own (ms, server clock), or null
+     * while there is nothing to wait for: when a wider search range could
+     * now fit, when its invite expires, and at the latest SAFETY_NET_SECONDS
+     * from now.
+     */
+    #[Computed]
+    public function checkAt(): ?int
+    {
+        if (! $this->waiting) {
+            return null;
+        }
+
+        $now = now();
+        $net = (int) $now->copy()->addSeconds(self::SAFETY_NET_SECONDS)->getTimestampMs();
+        $due = $this->entry !== null ? app(BoardQueue::class)->nextWidening($this->entry, $now) : $this->outgoing?->expires_at;
+
+        // Half a second late, so the server's clock has passed that moment too.
+        return $due === null ? $net : min($net, (int) $due->getTimestampMs() + 500);
     }
 
     /**
@@ -580,7 +618,7 @@ new #[Layout('layouts::app', ['realtime' => true, 'scripts' => ['resources/js/ga
             };
         }
 
-        unset($this->entry, $this->outgoing, $this->incoming, $this->activeGame, $this->waiting, $this->searching);
+        unset($this->entry, $this->outgoing, $this->incoming, $this->activeGame, $this->waiting, $this->searching, $this->checkAt);
     }
 
     private function goTo(?BoardGame $game): void
@@ -599,8 +637,8 @@ new #[Layout('layouts::app', ['realtime' => true, 'scripts' => ['resources/js/ga
     $active = $this->activeGame;
 @endphp
 
-<div class="flex grow flex-col" @if ($this->waiting) wire:poll.4s="poll" @endif
-     x-data="boardLobby(@js(['userId' => $user?->id, 'lookingKey' => $slug.'/blitz', 'looking' => $user?->looking_to_play === $slug.'/blitz']))"
+<div class="flex grow flex-col" data-server-now="{{ now()->getTimestampMs() }}" @if ($this->waiting) data-check-at="{{ $this->checkAt }}" @endif
+     x-data="boardLobby(@js(['userId' => $user?->id, 'lookingKey' => $slug.'/blitz', 'looking' => $user?->looking_to_play === $slug.'/blitz', 'fallback' => $this::FALLBACK_SECONDS]))"
      data-test="board-lobby" data-game="{{ $slug }}">
     <div class="chat-rail-host flex flex-col gap-6 px-4 pb-8 lg:gap-8 lg:px-12 lg:pb-10">
         {{-- The title below lg, with the rating and the rules; from lg the header's context bar names the page and links the rules. --}}

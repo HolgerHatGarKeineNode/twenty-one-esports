@@ -224,7 +224,7 @@ test('regression (P7e): a former mate who deletes their account stays under the 
         ->and(TrustExclusion::query()->count())->toBe(0);
 
     // The clan's "Former" tab still renders the row, as a deleted player.
-    Livewire::actingAs($this->admin)->test('pages::clans.manage', ['clan' => $clan])->call('pickTab', 'former')->assertOk()->assertSee('Deleted player');
+    Livewire::actingAs($this->admin)->test('pages::clans.manage', ['clan' => $clan])->set('tab', 'former')->assertOk()->assertSee('Deleted player');
 });
 
 test('regression (P7e): a mate who deletes their account while still in the clan stays under the own-clan guard', function () {

@@ -7,10 +7,15 @@
  * flip: Livewire squashes identical queued calls, see chessLobby).
  *
  * A pairing and an answer to an invite arrive by push on the player's own
- * channel (`board.game-started`, `board.invite`); while searching or waiting
- * the Livewire component also asks on its own (wire:poll).
+ * channel (`board.game-started`, `board.invite`). While searching or waiting
+ * the page asks the server itself only when the root's data-check-at (server
+ * ms) says so: a wider range may fit now, the invite expires, or the slow
+ * net under a lost push (performance plan P7, F7: the chess lobby's
+ * pattern); every `fallback` seconds while the websocket is down; and once
+ * when the channel (re)subscribes, for a push sent while it was away.
  *
- * `config`: userId, lookingKey (`<slug>/blitz`), looking (stored state).
+ * `config`: userId, lookingKey (`<slug>/blitz`), looking (stored state),
+ * fallback (seconds between asks without a websocket).
  */
 export default function boardLobby(config) {
     return {
@@ -23,9 +28,21 @@ export default function boardLobby(config) {
         savedLooking: Boolean(config.looking),
         savingLooking: false,
         lookingFailed: false,
+        // Server clock minus this browser's, so data-check-at (server ms) is read right.
+        skew: 0,
+        // The data-check-at last read from the root, the moment to ask next, the moment last asked for.
+        shownCheckAt: 0,
+        dueAt: 0,
+        askedFor: 0,
+        askedAt: 0,
+        asking: false,
 
         init() {
-            this.ticker = setInterval(() => (this.now = Date.now()), 1000);
+            this.skew = Number(this.$root.dataset.serverNow || Date.now()) - Date.now();
+            this.ticker = setInterval(() => {
+                this.now = Date.now();
+                this.checkIfDue();
+            }, 1000);
 
             const pusher = window.Echo?.connector?.pusher;
             if (pusher) {
@@ -50,6 +67,51 @@ export default function boardLobby(config) {
                 const refresh = () => this.$wire.$refresh();
                 channel.listen('.board.game-started', started).listen('.board.invite', refresh);
                 this.stops.push(() => channel.stopListening('.board.game-started', started).stopListening('.board.invite', refresh));
+                // A push sent before this subscription (or while the socket was away) is lost: a waiting lobby asks once.
+                channel.subscribed?.(() => {
+                    if (this.checkAt()) this.ask();
+                });
+            }
+        },
+
+        /** The moment to ask next (server ms), 0 while the lobby waits for nothing; a new render's data-check-at wins. */
+        checkAt() {
+            const shown = Number(this.$root.dataset.checkAt || 0);
+            if (shown !== this.shownCheckAt) {
+                this.shownCheckAt = shown;
+                this.dueAt = shown;
+            }
+
+            return this.dueAt;
+        },
+
+        checkIfDue() {
+            const at = this.checkAt();
+            if (!at || this.asking) return;
+
+            if (this.connection !== 'connected') {
+                if (this.now - this.askedAt >= (config.fallback ?? 4) * 1000) this.ask();
+
+                return;
+            }
+            // Once per moment: a failed request does not turn into one per second.
+            if (at !== this.askedFor && this.now + this.skew >= at) {
+                this.askedFor = at;
+                this.ask();
+            }
+        },
+
+        /* poll() answers with the next moment: a poll that changed nothing skips its render and so the new data-check-at. */
+        async ask() {
+            this.asking = true;
+            this.askedAt = this.now;
+            try {
+                const next = await this.$wire.poll();
+                this.dueAt = typeof next === 'number' ? next : 0;
+            } catch {
+                // The next fallback tick or the net asks again.
+            } finally {
+                this.asking = false;
             }
         },
 
