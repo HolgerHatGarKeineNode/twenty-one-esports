@@ -116,6 +116,20 @@ return [
 
     /*
     |--------------------------------------------------------------------------
+    | wire:navigate spike (performance plan P6)
+    |--------------------------------------------------------------------------
+    |
+    | On: the two links between home and /play (the header logo and the game
+    | hub's "All games and modes") navigate with `wire:navigate.hover` instead
+    | of a full page load. A spike, not a rollout: off by default, measured by
+    | tests/Browser/NavigateSpikeTest.php against the same pages with it off.
+    |
+    */
+
+    'navigate' => (bool) env('ESPORTS_NAVIGATE', false),
+
+    /*
+    |--------------------------------------------------------------------------
     | NIP-05 names on the league's domain (P47)
     |--------------------------------------------------------------------------
     |

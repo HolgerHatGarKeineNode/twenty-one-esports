@@ -50,7 +50,7 @@
                 <button type="button" class="hub-seg" x-on:click="kind = @js($key)" x-bind:aria-pressed="(kind === @js($key)).toString()" aria-pressed="{{ $key === 'all' ? 'true' : 'false' }}" data-test="hub-kind-{{ $key }}">{{ $label }}</button>
             @endforeach
         </div>
-        <a href="{{ route('play') }}" class="flex min-h-11 items-center text-[13px] font-bold lg:ml-auto" data-test="hub-all-games">{{ __('All games and modes') }}</a>
+        <a href="{{ route('play') }}" class="flex min-h-11 items-center text-[13px] font-bold lg:ml-auto" data-test="hub-all-games" @if (config('esports.navigate')) wire:navigate.hover @endif>{{ __('All games and modes') }}</a>
     </div>
 
     <div class="min-h-0 overflow-y-auto overscroll-contain px-4 pb-4 lg:px-6 lg:pb-6" x-ref="hubTiles">

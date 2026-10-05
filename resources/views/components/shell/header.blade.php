@@ -52,7 +52,7 @@
         overflows. The search is a button that opens the search row under the header.
     --}}
     <div class="flex h-14 items-center gap-1 border-b border-hairline pr-2 pl-4 lg:h-16 lg:px-6 xl:gap-2 xl:px-8">
-        <a href="{{ route('home') }}" class="flex min-h-11 min-w-11 shrink-0 items-center gap-2.5 text-ink hover:text-ink" aria-label="{{ __('TWENTY ONE esports, home') }}">
+        <a href="{{ route('home') }}" class="flex min-h-11 min-w-11 shrink-0 items-center gap-2.5 text-ink hover:text-ink" aria-label="{{ __('TWENTY ONE esports, home') }}" data-test="shell-home" @if (config('esports.navigate')) wire:navigate.hover @endif>
             <x-logo :size="32" class="shadow-none lg:hidden" />
             <x-logo :size="36" class="max-lg:hidden" />
             {{-- The word mark gives its room to the game tabs on desktop until the widest tier. --}}
