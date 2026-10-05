@@ -1299,6 +1299,11 @@ return [
         'cooldown_ms' => 2000,
         // Messages per page: the newest ones when the page opens, then each older page scrolled up to.
         'history' => 50,
+        // Relay-list indexers (NIP-65 10002): where the chat looks up the write relays of a profile the
+        // profile and chat relays do not have. Tests set their own (empty by default).
+        'indexer_relays' => array_values(array_filter(array_map('trim', explode(',', env('APP_ENV') === 'testing'
+            ? (string) env('ESPORTS_STREAM_CHAT_INDEXERS', '')
+            : ((string) env('ESPORTS_STREAM_CHAT_INDEXERS') ?: 'wss://purplepag.es,wss://user.kindpag.es'))))),
     ],
 
     /*

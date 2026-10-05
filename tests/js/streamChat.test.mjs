@@ -5,9 +5,10 @@
  */
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
+import { naddrEncode, neventEncode, noteEncode, nprofileEncode, npubEncode, nsecEncode } from 'nostr-tools/nip19';
 import { finalizeEvent, generateSecretKey, getPublicKey } from 'nostr-tools/pure';
 import {
-    MAX_EMOJI, MAX_TOKENS, bolt11Msats, botMark, boundProfiles, clip, compareItems, displayRows, emojiTagsForContent, insertSorted, isHttps, isStreamMessage, messageTemplate, newestPage, olderPage, parseZap, profileOf, sendBlocker, tokenize,
+    MAX_EMOJI, MAX_REFS, MAX_TOKENS, nostrToken, relayHints, bolt11Msats, botMark, boundProfiles, clip, compareItems, displayRows, emojiTagsForContent, insertSorted, isHttps, isStreamMessage, messageTemplate, newestPage, olderPage, parseZap, profileOf, sendBlocker, tokenize,
 } from '../../resources/js/streamChat.js';
 import { emojisFromTags, groupEmojis, searchEmojis, setAddresses } from '../../resources/js/emoji.js';
 
@@ -316,4 +317,58 @@ test('a legacy signer counts only receipts from before its cutoff; a signer with
     assert.equal(parseZap(receipt, { ...options, until: { [signer]: receipt.created_at } }), null);
     assert.equal(parseZap(receipt, { ...options, until: { [signer]: receipt.created_at - 1 } }), null);
     assert.notEqual(parseZap(receipt, { ...options, until: { other: 1 } }), null);
+});
+
+test('NIP-27: nostr: profiles become mentions and events references; nsec, bad checksums and glued words stay text', () => {
+    const someone = getPublicKey(generateSecretKey());
+    const npub = npubEncode(someone);
+    const nprofile = nprofileEncode({ pubkey: someone, relays: ['wss://hint.example', 'ws://plain.example', 'javascript:alert(1)', 'wss://two.example', 'wss://three.example', 'wss://four.example'] });
+    const id = 'c'.repeat(64);
+    const note = noteEncode(id);
+    const nevent = neventEncode({ id, author: someone, relays: ['wss://r.example'] });
+    const naddr = naddrEncode({ kind: 30023, pubkey: someone, identifier: 'post', relays: [] });
+    const broken = npub.slice(0, -1) + (npub.endsWith('q') ? 'p' : 'q');
+    const nsec = nsecEncode(generateSecretKey());
+
+    assert.deepEqual(tokenize(`gg nostr:${npub}, see nostr:${note} and nostr:${nevent}!`), [
+        { type: 'text', value: 'gg ' },
+        { type: 'mention', value: npub, pubkey: someone, npub, relays: [] },
+        { type: 'text', value: ', see ' },
+        { type: 'ref', value: note, id, author: null, url: 'https://njump.me/' + note },
+        { type: 'text', value: ' and ' },
+        { type: 'ref', value: nevent, id, author: someone, url: 'https://njump.me/' + nevent },
+        { type: 'text', value: '!' },
+    ]);
+    // nprofile: the pubkey and at most three wss:// hints; naddr: its address.
+    const [mention] = tokenize(`nostr:${nprofile}`);
+    assert.deepEqual(mention, { type: 'mention', value: nprofile, pubkey: someone, npub, relays: ['wss://hint.example', 'wss://two.example', 'wss://three.example'] });
+    assert.equal(tokenize(`nostr:${naddr}`)[0].address, `30023:${someone}:post`);
+    // A word glued to a fixed-length code is cut off and stays text.
+    assert.deepEqual(tokenize(`nostr:${npub}s`).map((token) => token.type), ['mention', 'text']);
+    // Stays text: a secret key, a broken checksum, upper case, a bare npub, no word boundary, a truncated code.
+    for (const text of [`nostr:${nsec}`, `nostr:${broken}`, `nostr:${npub.toUpperCase()}`, npub, `xnostr:${npub}`, 'nostr:npub1qqqq']) {
+        assert.deepEqual(tokenize(text).map((token) => token.type), ['text'], text);
+    }
+    // A nostr: inside a link is part of the link.
+    assert.deepEqual(tokenize(`https://njump.me/nostr:${npub}`).map((token) => token.type), ['link']);
+    // Mixed with emoji and links, every kind keeps its place.
+    assert.deepEqual(tokenize(`:zap: nostr:${npub} https://e.example :zap:`, [['emoji', 'zap', 'https://img.example/zap.png']]).map((token) => token.type), ['emoji', 'text', 'mention', 'text', 'link', 'text', 'emoji']);
+});
+
+test('NIP-27 references are capped per message and fold back into text beyond the token cap', () => {
+    const npub = npubEncode(getPublicKey(generateSecretKey()));
+    const many = Array.from({ length: MAX_REFS + 5 }, () => `nostr:${npub}`).join(' ');
+    const tokens = tokenize(many, [], { maxChars: 10_000 });
+    assert.equal(tokens.filter((token) => token.type === 'mention').length, MAX_REFS);
+    assert.ok(tokens[tokens.length - 1].value.endsWith(`nostr:${npub}`));
+
+    const folded = tokenize(many, [], { maxChars: 10_000, maxTokens: 4 });
+    assert.equal(folded.length, 4);
+    assert.equal(folded[3].type, 'text');
+    // mention, ' ', mention, then the rest as one text: the fourth mention onwards in its NIP-21 form.
+    assert.deepEqual(folded.slice(0, 3).map((token) => token.type), ['mention', 'text', 'mention']);
+    assert.ok(folded[3].value.startsWith(` nostr:${npub} nostr:${npub}`));
+    // A reference whose njump URL would pass MAX_URL stays text.
+    assert.equal(nostrToken(neventEncode({ id: 'd'.repeat(64), relays: Array.from({ length: 40 }, (_, i) => `wss://relay-${i}.example.com/some/long/path`) })), null);
+    assert.deepEqual(relayHints(['wss://a.example', 'wss://a.example', 'wss://b.example/' + 'x'.repeat(300)]), ['wss://a.example']);
 });

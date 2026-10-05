@@ -7,7 +7,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { finalizeEvent, generateSecretKey, getPublicKey } from 'nostr-tools/pure';
-import { newest, publishToRelay, readProfileBadges, readRelay } from '../../resources/js/relayRead.js';
+import { newest, outboxPlan, publicRelay, publishToRelay, readProfileBadges, readProfiles, readRelay } from '../../resources/js/relayRead.js';
 
 const secret = generateSecretKey();
 const pubkey = getPublicKey(secret);
@@ -248,4 +248,91 @@ test('"Start a new list" never overrides a badge list that exists: still not rea
 
     assert.equal(result.read, false);
     assert.equal(result.relayList, 'none');
+});
+
+/**
+ * Relays for the chats' profile reads (readProfiles): each `relays[url]`
+ * holds events and says whether it ends with EOSE; a REQ gets the events its
+ * filter's kinds and authors match, and every REQ is recorded in `asked`.
+ */
+function profileSockets(relays, asked = []) {
+    return class ProfileSocket {
+        constructor(url) {
+            this.url = url;
+            this.relay = relays[url];
+            queueMicrotask(() => (this.relay ? this.onopen?.() : this.onerror?.({})));
+        }
+
+        send(text) {
+            const [, id, ...filters] = JSON.parse(text);
+            asked.push({ url: this.url, filters });
+            const reply = (data) => queueMicrotask(() => this.onmessage?.({ data: JSON.stringify(data) }));
+            for (const event of this.relay.events ?? []) {
+                if (filters.some((filter) => filter.kinds.includes(event.kind) && (!filter.authors || filter.authors.includes(event.pubkey)))) reply(['EVENT', id, event]);
+            }
+            if (this.relay.eose !== false) reply(['EOSE', id]);
+        }
+
+        close() {}
+    };
+}
+
+function profileOf(secretKey, name, createdAt = 1_700_000_000) {
+    return finalizeEvent({ kind: 0, tags: [], content: JSON.stringify({ name }), created_at: createdAt }, secretKey);
+}
+
+test('profiles: the usual relays first, then the outbox way (indexer 10002, write relays) for whoever is missing', async () => {
+    const [known, outside, nowhere] = [generateSecretKey(), generateSecretKey(), generateSecretKey()];
+    const outsideKey = getPublicKey(outside);
+    const nowhereKey = getPublicKey(nowhere);
+    const list = finalizeEvent({ kind: 10002, tags: [['r', 'wss://usual'], ['r', 'wss://home'], ['r', 'wss://inbox-only', 'read']], content: '', created_at: 1_700_000_000 }, outside);
+    // A forged copy of the right kind 0 on the outbox relay, served first: the real one still wins.
+    const forged = { ...profileOf(outside, 'Mallory', 1_700_000_100), sig: '0'.repeat(128) };
+    const asked = [];
+    const WebSocketImpl = profileSockets({
+        'wss://usual': { events: [profileOf(known, 'Known')] },
+        'wss://index': { events: [list] },
+        'wss://home': { events: [forged, profileOf(outside, 'Outside')] },
+    }, asked);
+
+    const { events, settled } = await readProfiles([getPublicKey(known), outsideKey, nowhereKey], { relays: ['wss://usual'], indexers: ['wss://index'] }, { WebSocketImpl, timeoutMs: 200 });
+
+    assert.deepEqual(events.map((event) => JSON.parse(event.content).name).sort(), ['Known', 'Outside']);
+    assert.deepEqual([...settled].sort(), [getPublicKey(known), outsideKey, nowhereKey].sort());
+    // The indexer is asked only about the missing ones; the write relay only about its own author, and the
+    // read-only relay and the already asked usual relay not at all.
+    assert.deepEqual(asked.find((req) => req.url === 'wss://index').filters[0].authors.sort(), [outsideKey, nowhereKey].sort());
+    assert.deepEqual(asked.filter((req) => req.url === 'wss://home').map((req) => req.filters[0].authors), [[outsideKey]]);
+    assert.equal(asked.filter((req) => req.url === 'wss://inbox-only').length, 0);
+    assert.equal(asked.filter((req) => req.url === 'wss://usual').length, 1);
+});
+
+test('profiles: a read without EOSE leaves the missing ones unsettled, so they are asked again', async () => {
+    const someone = generateSecretKey();
+    const key = getPublicKey(someone);
+    const list = finalizeEvent({ kind: 10002, tags: [['r', 'wss://home']], content: '', created_at: 1_700_000_000 }, someone);
+    const options = { timeoutMs: 100 };
+
+    const silentUsual = await readProfiles([key], { relays: ['wss://usual'] }, { ...options, WebSocketImpl: profileSockets({ 'wss://usual': { events: [], eose: false } }) });
+    assert.equal(silentUsual.settled.size, 0);
+
+    const silentIndexer = await readProfiles([key], { relays: ['wss://usual'], indexers: ['wss://index'] }, { ...options, WebSocketImpl: profileSockets({ 'wss://usual': { events: [] }, 'wss://index': { events: [list], eose: false } }) });
+    assert.equal(silentIndexer.settled.size, 0);
+
+    const silentHome = await readProfiles([key], { relays: ['wss://usual'], indexers: ['wss://index'] }, { ...options, WebSocketImpl: profileSockets({ 'wss://usual': { events: [] }, 'wss://index': { events: [list] }, 'wss://home': { events: [], eose: false } }) });
+    assert.equal(silentHome.settled.size, 0);
+
+    const allAnswered = await readProfiles([key], { relays: ['wss://usual'], indexers: ['wss://index'] }, { ...options, WebSocketImpl: profileSockets({ 'wss://usual': { events: [] }, 'wss://index': { events: [list] }, 'wss://home': { events: [] } }) });
+    assert.deepEqual([...allAnswered.settled], [key]);
+});
+
+test('the outbox plan is bounded whatever the relay lists say, and a live page goes to public wss relays only', () => {
+    const keys = Array.from({ length: 6 }, () => generateSecretKey());
+    const lists = keys.map((key, i) => finalizeEvent({ kind: 10002, tags: Array.from({ length: 10 }, (_, j) => ['r', `wss://r${i}-${j}.example`]), content: '', created_at: 1_700_000_000 }, key));
+    const plan = outboxPlan(lists, keys.map((key) => getPublicKey(key)), { perAuthor: 3, maxRelays: 8 });
+    assert.equal(plan.size, 8);
+    assert.ok([...plan.values()].every((who) => who.length === 1));
+
+    const hostile = finalizeEvent({ kind: 10002, tags: ['ws://plain.example', 'wss://localhost', 'wss://127.0.0.1:7777', 'wss://192.168.1.1', 'wss://10.0.0.8', 'wss://172.20.0.1', 'wss://[::1]', 'wss://printer.local', 'wss://user:pw@relay.example', 'wss://nos.lol', 'wss://relay.example/path'].map((url) => ['r', url]), content: '', created_at: 1_700_000_000 }, keys[0]);
+    assert.deepEqual([...outboxPlan([hostile], [getPublicKey(keys[0])], { perAuthor: 20, allow: publicRelay }).keys()], ['wss://nos.lol', 'wss://relay.example/path']);
 });

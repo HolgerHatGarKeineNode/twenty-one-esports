@@ -8,11 +8,11 @@ use Illuminate\Support\Facades\Process;
  * tests/js/streamChat.test.mjs under Node. It fails if any Node test fails or
  * is skipped.
  */
-test('stream chat: messages, zaps, emoji tags, send rules and muted runs', function () {
+test('stream chat: messages, zaps, emoji tags, NIP-27 references, send rules and muted runs', function () {
     $run = Process::path(base_path())
         ->timeout(60)
         ->run(['node', '--test', 'tests/js/streamChat.test.mjs']);
 
     expect($run->successful())->toBeTrue($run->output().$run->errorOutput())
-        ->and($run->output())->toContain('ℹ pass 22')->toContain('ℹ skipped 0');
+        ->and($run->output())->toContain('ℹ pass 24')->toContain('ℹ skipped 0');
 });

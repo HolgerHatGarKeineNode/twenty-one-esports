@@ -709,6 +709,85 @@ test('the newest page of three shuffled relays is drawn once at the bottom, olde
     'desktop' => [1440, 900],
 ]);
 
+/** Each mention and quote chip of the visible messages: its text, link, target, and its box against the list's. */
+const P24_CHIPS = <<<'JS'
+    () => {
+        const list = document.querySelector('[data-test=live-chat-list]').getBoundingClientRect();
+        return [...document.querySelectorAll('[data-test=chat-mention], [data-test=chat-ref]')].filter((el) => el.checkVisibility()).map((el) => {
+            const box = el.getBoundingClientRect();
+            return { type: el.dataset.test, text: el.innerText.trim(), href: el.getAttribute('href'), target: el.getAttribute('target'), left: Math.round(box.left - list.left), right: Math.round(list.right - box.right), height: Math.round(box.height) };
+        });
+    }
+    JS;
+
+test('mentions: a league player\'s chip opens the player page, anybody else\'s njump.me, a quoted note is a chip, and an author only his own relays know is found the outbox way', function (int $width, int $height) {
+    $bot = new TestSigner;
+    config(['esports.stream_bot.nsec' => $bot->secret]);
+    $player = User::factory()->create();
+    $playerKey = TestSigner::forBrowser($player);
+    $far = new TestSigner;
+    $now = now()->getTimestamp();
+    $root = ['a', $this->address, '', 'root'];
+    $quoted = NostrKeys::nevent(str_repeat('ab', 32), $far->pubkey, 1);
+
+    // The far author's profile sits only on his own write relay; the indexer has his relay list (NIP-65).
+    [$outbox, $outboxUrl, $outboxSeed] = p24StartRelay([$far->sign(0, [], (string) json_encode(['name' => 'Far Fritz']), $now - 3600)]);
+    [$indexer, $indexerUrl, $indexerSeed] = p24StartRelay([$far->sign(10002, [['r', $outboxUrl]], '', $now - 3600)]);
+    [$relay, $url, $seed] = p24Relay([
+        $playerKey->sign(0, [], (string) json_encode(['display_name' => 'Anna Relay']), $now - 3600),
+        $far->sign(1311, [$root], 'hello from my own relay', $now - 90),
+        $bot->sign(1311, [$root, ['p', $player->pubkey], ['p', $far->pubkey]], 'GG nostr:'.$player->npub.' and nostr:'.NostrKeys::hexToNpub($far->pubkey).', replay: nostr:'.$quoted, $now - 60),
+        // A code that does not decode stays text.
+        $bot->sign(1311, [$root], 'not a mention: nostr:npub1qqqqqqqq', $now - 30),
+    ]);
+    config(['esports.stream_chat.indexer_relays' => [$indexerUrl]]);
+
+    try {
+        $page = p24Page(null, $width, $height, touch: $width < 1024);
+        p24Live($page);
+        $page->evaluate('() => document.querySelector("[data-test=live-chat]").scrollIntoView({ block: "end" })');
+        // Every token carries every kind's element, the others hidden: only the visible ones count.
+        $mentions = '[...document.querySelectorAll("[data-test=chat-mention]")].filter((el) => el.checkVisibility())';
+        BrowserWait::until($page, '() => '.$mentions.'.map((el) => el.innerText).join() === "@Anna Relay,@Far Fritz"', 10_000);
+        // The player lookup answered (a Livewire roundtrip): the player's chip went from njump.me to the player page.
+        BrowserWait::until($page, '() => '.$mentions.'[0].getAttribute("href").startsWith("/players/")', 5_000);
+        Execution::instance()->wait(0.3);
+        $chips = $page->evaluate(P24_CHIPS);
+        fwrite(STDERR, "\n[p24 mentions {$width}x{$height}] ".json_encode($chips)."\n");
+        p24Shot($page, 'p24-mentions-'.$width);
+
+        expect(array_map(fn (array $chip): array => [$chip['type'], $chip['text'], $chip['href'], $chip['target']], $chips))->toBe([
+            ['chat-mention', '@Anna Relay', '/players/'.$player->npub, null],
+            ['chat-mention', '@Far Fritz', 'https://njump.me/'.NostrKeys::hexToNpub($far->pubkey), '_blank'],
+            ['chat-ref', 'Quoted message', 'https://njump.me/'.$quoted, '_blank'],
+        ])
+            // The far author's own name, from his write relay, on his message too.
+            ->and($page->evaluate('() => document.querySelector(\'[data-test=live-chat-message][data-pubkey="'.$far->pubkey.'"]\').innerText'))->toContain('Far Fritz')
+            ->and(array_slice($page->evaluate(P24_TEXTS), -1))->toBe(['not a mention: nostr:npub1qqqqqqqq'])
+            // The bot has no profile anywhere and every relay said so (EOSE): not asked again for a while.
+            ->and(array_keys($page->evaluate('() => JSON.parse(localStorage.getItem("esports.livechat.profileMisses") ?? "{}")')))->toBe([$bot->pubkey]);
+        [$scrollWidth, $clientWidth] = $page->evaluate(BrowserConsole::WIDTHS);
+        expect($scrollWidth)->toBeLessThanOrEqual($clientWidth);
+        foreach ($chips as $chip) {
+            // Inside the list on both sides, one line high.
+            expect($chip['left'])->toBeGreaterThanOrEqual(0)
+                ->and($chip['right'])->toBeGreaterThanOrEqual(0)
+                ->and($chip['height'])->toBeLessThanOrEqual(24);
+        }
+        expect(p24Errors($page))->toBe([]);
+    } finally {
+        foreach ([$relay, $indexer, $outbox] as $process) {
+            $process->stop(1);
+        }
+        @unlink($seed);
+        @unlink($indexerSeed);
+        @unlink($outboxSeed);
+    }
+})->with([
+    'phone' => [390, 844],
+    'desktop' => [1440, 900],
+]);
+
 test('the collector catches a thrown error and a broken image (positive control)', function () {
     [$relay, , $seed] = p24Relay([]);
 
