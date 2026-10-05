@@ -6,6 +6,7 @@ use App\Enums\BoardInviteStatus;
 use App\Enums\ChessInviteStatus;
 use App\Enums\ModerationAction;
 use App\Events\SiteModerationChanged;
+use App\Jobs\PublishLeagueMuteList;
 use App\Models\Admin;
 use App\Models\BoardChallenge;
 use App\Models\BoardInvite;
@@ -48,8 +49,11 @@ use Throwable;
  * Every step is a row of `pubkey_moderations` with the admin and the
  * reason; undo keeps the row and sets who lifted it. Undoing a ban lets the
  * key log in and be seen again; withdrawn entries and invites stay withdrawn.
- * Never public: no list, no label; the browser's list does not say mute or
- * ban. Admins and board members cannot be muted or banned.
+ * The keys themselves are public (user, 2026-10-05): after every change the
+ * league key publishes them as its NIP-51 mute list ({@see LeagueMuteList}).
+ * Reasons, admins and whether a key is muted or banned never leave the
+ * admin page; neither that list nor the browser's says mute or ban. Admins
+ * and board members cannot be muted or banned.
  */
 final class SiteModeration
 {
@@ -254,6 +258,13 @@ final class SiteModeration
         DB::afterCommit(function () use ($pubkey): void {
             Cache::forget(self::CACHE_KEY);
             Broadcasts::send(new SiteModerationChanged($pubkey, self::isHidden($pubkey)));
+
+            // The public mute list follows; a queue that cannot take the job never undoes the committed step.
+            try {
+                PublishLeagueMuteList::dispatch();
+            } catch (Throwable $exception) {
+                report($exception);
+            }
         });
     }
 

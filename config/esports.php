@@ -780,6 +780,11 @@ return [
 
     'league' => [
         'nsec' => env('ESPORTS_LEAGUE_NSEC'),
+
+        // The site's mutes and bans as the league key's public NIP-51 mute list (kind 10000,
+        // App\Support\Moderation\LeagueMuteList). Off until switched on: a kind 10000 replaces
+        // the key's whole mute list, including one a Nostr client wrote with private items.
+        'mute_list' => (bool) env('ESPORTS_PUBLISH_MUTE_LIST', false),
     ],
 
     /*
