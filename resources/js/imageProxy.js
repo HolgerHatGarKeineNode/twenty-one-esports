@@ -8,6 +8,9 @@
  * a foreign https URL (our uploads, the generated Blockpile), the URL comes
  * back unchanged. A proxy that refuses a picture (403/502) answers with an
  * error, so the caller's onerror fallback to the Blockpile still fires.
+ *
+ * Presets as in PHP: `avatar` (96 px square) up to 48 CSS px, `avatar-lg`
+ * (192 px square) above.
  */
 const SMALL_MAX = 48;
 
@@ -41,5 +44,16 @@ export function proxiedAvatar(url, size = SMALL_MAX) {
         return url;
     }
 
-    return `${proxy}/${size <= SMALL_MAX ? 'avatar' : 'msg'}?src=${encodeURIComponent(url)}`;
+    return `${proxy}/${size <= SMALL_MAX ? 'avatar' : 'avatar-lg'}?src=${rawUrlEncode(url)}`;
+}
+
+/**
+ * PHP's rawurlencode(): encodeURIComponent() leaves !'()* as they are, and the
+ * proxy caches by the exact src, so a differing spelling is a second cache entry.
+ *
+ * @param {string} value
+ * @returns {string}
+ */
+function rawUrlEncode(value) {
+    return encodeURIComponent(value).replace(/[!'()*]/g, (char) => '%' + char.charCodeAt(0).toString(16).toUpperCase());
 }

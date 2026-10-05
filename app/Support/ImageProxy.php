@@ -10,7 +10,7 @@ namespace App\Support;
  *
  * The proxy has fixed presets: `avatar` is a 96 px square, enough for a
  * picture drawn at up to 48 CSS px on a 2x screen. Larger pictures take
- * `msg` (scaled into 600 px) until group has a bigger square preset.
+ * `avatar-lg`, a 192 px square (sharp up to 96 CSS px on a 2x screen).
  * Without a configured proxy, and for anything that is not a foreign https
  * URL (our uploads, the generated Blockpile), the URL comes back unchanged.
  */
@@ -27,7 +27,7 @@ final class ImageProxy
             return $url;
         }
 
-        $preset = $size <= self::SMALL_MAX ? 'avatar' : 'msg';
+        $preset = $size <= self::SMALL_MAX ? 'avatar' : 'avatar-lg';
 
         return $base.'/'.$preset.'?src='.rawurlencode($url);
     }

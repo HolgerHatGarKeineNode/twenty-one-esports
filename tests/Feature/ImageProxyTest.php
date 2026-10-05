@@ -11,7 +11,7 @@ use App\Support\Seo\StructuredData;
 |--------------------------------------------------------------------------
 |
 | `esports.image_proxy_url` set: a kind-0 picture is served through the
-| proxy, the 96 px `avatar` cut up to 48 px and `msg` above. Empty: the
+| proxy, the 96 px `avatar` cut up to 48 px and the 192 px `avatar-lg` above. Empty: the
 | browser loads it from its own host, as before. Our uploads and the
 | generated Blockpile never go through it.
 |
@@ -43,7 +43,7 @@ test('with a proxy a foreign avatar comes through it, cut for its size, and keep
     expect($small)->toContain('src="'.IMAGE_PROXY_TEST_BASE.'/avatar?src='.$encoded.'"')
         ->toContain('data-fallback="'.route('avatars.generated', ['pubkey' => $player->pubkey, 'v' => 1]).'"')
         ->toContain('onerror="this.onerror=null;this.src=this.dataset.fallback;');
-    expect($large)->toContain('src="'.IMAGE_PROXY_TEST_BASE.'/msg?src='.$encoded.'"');
+    expect($large)->toContain('src="'.IMAGE_PROXY_TEST_BASE.'/avatar-lg?src='.$encoded.'"');
     // The browser sizes the late pictures itself (profiles.js): the store hands it the original.
     expect($player->avatarUrl())->toBe(IMAGE_PROXY_TEST_BASE.'/avatar?src='.$encoded)
         ->and($player->avatarSource())->toBe('https://example.com/max face.png?x=1&y=2');
