@@ -583,13 +583,14 @@ new #[Layout('layouts::app', ['section' => 'clans'])] class extends Component
 
     /**
      * Open the builder of one lineup; without a game, of the first series
-     * game of the registry (Rocket League).
+     * game of the registry (Rocket League). A chess lineup exists for team
+     * matches only, so only its `rapid` mode (NIP rev. 9.22).
      */
     public function editLineup(string $mode, ?string $game = null): void
     {
         $registry = app(GameRegistry::class);
         $game ??= array_key_first($registry->series());
-        abort_unless($this->isOwner && $game !== null && $registry->isSeries($game) && $registry->mode($game, $mode) !== null, 403);
+        abort_unless($this->isOwner && $game !== null && $registry->mode($game, $mode) !== null && ($registry->isSeries($game) || $registry->isTeamMatchMode($game, $mode)), 403);
 
         $lineup = $this->clan->lineups->first(fn (Lineup $lineup) => $lineup->game === $game && $lineup->mode === $mode);
         $this->picks = [];
@@ -824,9 +825,12 @@ new #[Layout('layouts::app', ['section' => 'clans'])] class extends Component
     // Every series game of the registry, the biggest mode first; the header and the Elo rows show the first game (Rocket League).
     $seriesGames = app(GameRegistry::class)->series();
     $leadGame = array_key_first($seriesGames);
-    $modesOf = fn (string $game): array => collect($seriesGames[$game]->modes())->sortByDesc('teamSize')->keys()->all();
+    // Below the series games: the team match modes (chess rapid, NIP rev. 9.22), whose lineups field team matches over boards.
+    $teamModes = array_diff_key(app(GameRegistry::class)->teamMatchModes(), $seriesGames);
+    $lineupGames = $seriesGames + array_combine(array_keys($teamModes), array_map(fn (string $slug) => app(GameRegistry::class)->get($slug), array_keys($teamModes)));
+    $modesOf = fn (string $game): array => $teamModes[$game] ?? collect($seriesGames[$game]->modes())->sortByDesc('teamSize')->keys()->all();
     $modes = $modesOf($leadGame);
-    $allLineups = $clan->lineups->filter(fn (Lineup $lineup) => isset($seriesGames[$lineup->game]));
+    $allLineups = $clan->lineups->filter(fn (Lineup $lineup) => isset($seriesGames[$lineup->game]) || in_array($lineup->mode, $teamModes[$lineup->game] ?? [], true));
     $lineups = $allLineups->where('game', $leadGame)->sortBy(fn (Lineup $lineup) => array_search($lineup->mode, $modes, true))->values();
     $lead = $lineups->first();
     $clanStats = app(ClanStats::class);
@@ -1196,21 +1200,23 @@ new #[Layout('layouts::app', ['section' => 'clans'])] class extends Component
         {{-- All three lists are rendered; the tab switches in the browser and goes along with the next request ($set without a roundtrip). --}}
         <div class="contents" x-show="$wire.tab === 'active'" @style(['display: none' => $tab !== 'active']) data-test="tab-active">
             <div class="hidden grid-cols-[110px_minmax(0,1fr)_190px_100px_auto] gap-3 px-2 pt-1 text-xs text-ink-3 lg:grid"><span>{{ __('Lineup') }}</span><span>{{ __('Seats') }}</span><span>{{ __('Status') }}</span><span>Elo</span><span></span></div>
-            @foreach ($seriesGames as $rowGame => $seriesGame)
+            @foreach ($lineupGames as $rowGame => $seriesGame)
             <div class="flex items-center gap-3 px-2 pt-3" data-test="lineups-{{ $rowGame }}">
                 <x-game-cover :game="$rowGame" size="thumb" class="w-16 rounded-sm" />
                 <b class="text-[13px]">{{ GameNames::game($rowGame) }}</b>
             </div>
             @foreach ($modesOf($rowGame) as $rowMode)
                 @php($lineup = $allLineups->first(fn (Lineup $lineup) => $lineup->game === $rowGame && $lineup->mode === $rowMode))
-                @php($stats = $lineup ? $clanStats->lineup($lineup) : null)
+                {{-- A chess team match lineup has no Elo of its own: its boards are rated solo games (NIP rev. 9.22). --}}
+                @php($teamRow = isset($teamModes[$rowGame]))
+                @php($stats = $lineup && ! $teamRow ? $clanStats->lineup($lineup) : null)
                 @php($needed = app(GameRegistry::class)->mode($rowGame, $rowMode)?->lineupMinimum() ?? 1)
                 @php($active = $lineup?->activeCount() ?? 0)
                 {{-- Test hooks keep the bare mode for the first game (edit-lineup-2v2), the others add the game. --}}
                 @php($rowKey = $rowGame === $leadGame ? $rowMode : $rowGame.'-'.$rowMode)
                 @php($isEditing = $editing === $rowMode && ($editingGame ?? $leadGame) === $rowGame)
                 <div wire:key="lu-{{ $rowGame }}-{{ $rowMode }}" class="tr grid min-h-[60px] grid-cols-[104px_minmax(0,1fr)] items-center gap-3 rounded-sm border-b border-hairline p-2 lg:grid-cols-[110px_minmax(0,1fr)_190px_100px_auto]">
-                    <span class="flex flex-col gap-0.5"><b class="text-[15px]">{{ $rowMode }}</b>@if ($lineup)<x-rank-badge :tier="$stats['tier']" :level="$stats['level']" class="font-normal" />@endif</span>
+                    <span class="flex flex-col gap-0.5"><b class="text-[15px]">{{ $rowMode }}</b>@if ($stats)<x-rank-badge :tier="$stats['tier']" :level="$stats['level']" class="font-normal" />@elseif ($teamRow)<span class="text-xs font-normal text-ink-2">{{ __('team matches, 2 or 3 boards') }}</span>@endif</span>
                     <span class="flex min-w-0 flex-wrap gap-2">
                         @foreach ($lineup?->activeSeats() ?? [] as $seat)
                             {{-- min-w-0 + truncate: a long display name (a real Nostr name, not
@@ -1228,7 +1234,7 @@ new #[Layout('layouts::app', ['section' => 'clans'])] class extends Component
                     <span data-test="lineup-status-{{ $rowKey }}" @class(['col-start-2 text-[13px] lg:col-start-auto', 'text-win' => $active >= $needed, 'text-btc-hi' => $active < $needed && $lineup, 'text-ink-3' => ! $lineup])>
                         {{ ! $lineup ? __('no lineup yet') : ($active >= $needed ? __('ready, :n of :m', ['n' => $active, 'm' => $needed]) : __('needs players, :n of :m', ['n' => $active, 'm' => $needed])) }}
                     </span>
-                    <b class="col-start-2 font-display text-[15px] lg:col-start-auto">{{ $lineup ? $stats['elo'] : '–' }}</b>
+                    <b class="col-start-2 font-display text-[15px] lg:col-start-auto">{{ $stats ? $stats['elo'] : '–' }}</b>
                     @if ($isOwner)
                         <span class="col-start-2 lg:col-start-auto">
                             @if (! $isEditing)
@@ -1261,7 +1267,9 @@ new #[Layout('layouts::app', ['section' => 'clans'])] class extends Component
                         </div>
                         @error('lineup')<p class="m-0 text-xs text-loss" role="alert">{{ $message }}</p>@enderror
                         @error('picks.*')<p class="m-0 text-xs text-loss" role="alert">{{ $message }}</p>@enderror
-                        <span class="text-xs leading-normal text-ink-3">{{ __('A :mode needs :m players, captain included, to take challenges. Subs come on top.', ['mode' => $rowMode, 'm' => $needed]) }}</span>
+                        <span class="text-xs leading-normal text-ink-3">{{ $teamRow
+                            ? __('A team match needs a player per board: :m for 2 boards, 3 for 3 boards. Before each match the captain picks who plays; the league orders the boards by rapid Elo.', ['m' => $needed])
+                            : __('A :mode needs :m players, captain included, to take challenges. Subs come on top.', ['mode' => $rowMode, 'm' => $needed]) }}</span>
                         <span class="flex flex-wrap justify-end gap-2.5">
                             <button type="button" wire:click="cancelLineup" class="btn-w inline-flex h-11 cursor-pointer items-center rounded-md border border-line bg-card px-4 text-[13px] text-ink">{{ __('Cancel') }}</button>
                             <button type="button" x-on:click="run('prepareLineup', 'saveLineup')" x-bind:disabled="busy" data-test="confirm-lineup"
@@ -1277,7 +1285,7 @@ new #[Layout('layouts::app', ['section' => 'clans'])] class extends Component
             <div class="hidden grid-cols-[minmax(0,1fr)_180px_160px_300px] gap-3 px-2 pt-4 text-xs text-ink-3 lg:grid"><span>{{ __('Player') }}</span><span>{{ __('Role in clan') }}</span><span>{{ __('Lineups') }}</span><span></span></div>
             @foreach ($members as $member)
                 @php($user = $member->user)
-                @php($seats = $allLineups->filter(fn (Lineup $lineup) => $lineup->seats->contains(fn (LineupSeat $seat) => $seat->user_id === $user->id && $seat->accepted_at !== null))->map(fn (Lineup $lineup) => ($lineup->game === $leadGame ? '' : $seriesGames[$lineup->game]->assets()->shortLabel.' ').$lineup->mode)->implode(', '))
+                @php($seats = $allLineups->filter(fn (Lineup $lineup) => $lineup->seats->contains(fn (LineupSeat $seat) => $seat->user_id === $user->id && $seat->accepted_at !== null))->map(fn (Lineup $lineup) => ($lineup->game === $leadGame ? '' : $lineupGames[$lineup->game]->assets()->shortLabel.' ').$lineup->mode)->implode(', '))
                 <div wire:key="mb-{{ $member->id }}" class="tr grid min-h-[52px] grid-cols-[minmax(0,1fr)_auto] items-center gap-3 rounded-sm border-b border-hairline px-2 py-1.5 text-[13px] lg:grid-cols-[minmax(0,1fr)_180px_160px_300px]">
                     <span class="flex min-w-0 flex-col gap-0.5">
                         <b class="truncate">{{ $user->displayName() }}@if ($user->is(auth()->user())) ({{ __('you') }})@endif</b>

@@ -20,6 +20,7 @@ use App\Models\TournamentMatch;
 use App\Models\User;
 use App\Support\Chess\Broadcasts;
 use App\Support\Chess\ChessGameService;
+use App\Support\Chess\ChessTeamMatches;
 use App\Support\Notifications\BoardNotifications;
 use App\Support\Rating\RatingService;
 use App\Support\SeasonChain\GatePin;
@@ -136,6 +137,11 @@ final class BoardGameService
             foreach ($tournamentMatchId === null ? [$white, $black] : [] as $player) {
                 if (CupMatchNow::lockOf($player) !== null) {
                     throw new BoardRuleViolation(CupMatchNow::LOCKED, __('Your cup match comes first.'));
+                }
+
+                // From the lineup lock a chess team match's players start no other game (plan "Schach Rapid und Clan", P4).
+                if (ChessTeamMatches::reservationOf($player) !== null) {
+                    throw new BoardRuleViolation(ChessTeamMatches::RESERVED, __('Your clan match comes first.'));
                 }
             }
 

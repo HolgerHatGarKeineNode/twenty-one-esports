@@ -8,6 +8,7 @@ use App\Models\SeriesMatch;
 use App\Models\TournamentMatch;
 use App\Models\TournamentParticipant;
 use App\Models\User;
+use App\Support\Chess\ChessTeamMatches;
 use Illuminate\Database\Eloquent\Builder;
 
 /**
@@ -80,7 +81,9 @@ final class CupMatchNow
     /**
      * The refusal of a casual action: the player's own cup match comes
      * first (`cup_match_first`), or the other player's does
-     * (`opponent_in_cup`). Null when both are free to play.
+     * (`opponent_in_cup`). A locked chess team match reserves its players
+     * the same way (ChessTeamMatches::refusal(), `team_match_first`, plan
+     * "Schach Rapid und Clan", P4). Null when both are free to play.
      *
      * @return array{reason: string, message: string}|null
      */
@@ -94,7 +97,7 @@ final class CupMatchNow
             return ['reason' => self::OTHER_LOCKED, 'message' => (string) __(':name is playing a cup match right now.', ['name' => $other->displayName()])];
         }
 
-        return null;
+        return ChessTeamMatches::refusal($actor, $other);
     }
 
     /**

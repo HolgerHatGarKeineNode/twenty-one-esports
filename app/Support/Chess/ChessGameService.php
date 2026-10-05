@@ -114,6 +114,11 @@ final class ChessGameService
                 if (CupMatchNow::lockOf($player) !== null) {
                     throw new ChessRuleViolation(CupMatchNow::LOCKED, __('Your cup match comes first.'));
                 }
+
+                // From the lineup lock a team match's players start no other game (plan "Schach Rapid und Clan", P4).
+                if (ChessTeamMatches::reservationOf($player) !== null) {
+                    throw new ChessRuleViolation(ChessTeamMatches::RESERVED, __('Your clan match comes first.'));
+                }
             }
 
             $now = $this->nowMs();

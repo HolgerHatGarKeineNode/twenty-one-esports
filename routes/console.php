@@ -16,6 +16,7 @@ use App\Models\StackerRun;
 use App\Support\Board\BoardGameService;
 use App\Support\Chess\ChessGameService;
 use App\Support\Chess\ChessSettings;
+use App\Support\Chess\ChessTeamMatches;
 use App\Support\Engagement\WeeklySlots;
 use App\Support\Moderation\LeagueMuteList;
 use App\Support\Moderation\MuteListUnreadable;
@@ -383,6 +384,21 @@ Artisan::command('series:expire-challenges', function (SeriesService $series) {
 })->purpose('Expire series challenges nobody answered in time');
 
 Schedule::command('series:expire-challenges')->everyMinute()->withoutOverlapping();
+
+/*
+ * Chess team matches (plan "Schach Rapid und Clan", P4; NIP rev. 9.22): the
+ * lineup lock 30 minutes before the start. Both sides named their players:
+ * the boards are ordered by rapid Elo and the players reserved. One side
+ * named nobody: it loses the team match by forfeit; neither side: void. Once
+ * per match (ChessTeamMatches::lock() reads the row again under its lock).
+ */
+Artisan::command('teammatches:tick', function (ChessTeamMatches $teamMatches) {
+    $done = $teamMatches->lockDue();
+
+    $this->info("Locked {$done['locked']} team match lineup(s), forfeited {$done['forfeited']}, voided {$done['voided']}.");
+})->purpose('Lock the lineups of chess team matches 30 minutes before the start');
+
+Schedule::command('teammatches:tick')->everyMinute()->withoutOverlapping()->onOneServer();
 
 /*
  * Tournaments (P8b): close sign-ups whose deadline passed (the draw commits

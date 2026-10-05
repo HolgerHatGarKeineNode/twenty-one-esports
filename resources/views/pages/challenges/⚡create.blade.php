@@ -6,6 +6,7 @@ use App\Games\GameRegistry;
 use App\Models\Lineup;
 use App\Models\SeriesMatch;
 use App\Models\User;
+use App\Support\Chess\ChessTeamMatches;
 use App\Support\Invites\InviteLinkRefused;
 use App\Support\Invites\InviteLinks;
 use App\Support\FairPlay\FairPlay;
@@ -36,6 +37,10 @@ use Livewire\Component;
  * Block 0 countdown (States.dc.html "Locked until Block 0"); Elo, tier,
  * trust and "can mine" columns of the design are left out until P7 has
  * them. The match number is reserved when the challenge is prepared.
+ *
+ * A chess `rapid` lineup challenges to a clan team match (NIP rev. 9.22,
+ * plan "Schach Rapid und Clan", P4): 2 or 3 boards instead of a series
+ * length, rated or friendly, and the reply due before the lineup lock.
  */
 new #[Title('New challenge')] #[Layout('layouts::app', ['section' => 'clans'])] class extends Component {
     #[Url(as: 'lineup', except: null)]
@@ -51,6 +56,9 @@ new #[Title('New challenge')] #[Layout('layouts::app', ['section' => 'clans'])] 
     public bool $rated = false;
 
     public int $bestOf = 3;
+
+    /** A chess team match: the number of boards, 2 or 3 (the challenger picks, user 2026-10-05). */
+    public int $boards = 2;
 
     public bool $now = false;
 
@@ -187,7 +195,13 @@ new #[Title('New challenge')] #[Layout('layouts::app', ['section' => 'clans'])] 
 
         $schedule = $this->schedule();
 
-        return $schedule === null ? null : new ChallengeDraft($this->lineupId, $this->opponentId, $this->bestOf, $this->rated, $schedule[0], $schedule[1]);
+        return $schedule === null ? null : new ChallengeDraft($this->lineupId, $this->opponentId, $this->bestOf, $this->rated, $schedule[0], $schedule[1], boards: $this->isTeamMatch() ? $this->boards : null);
+    }
+
+    /** The picked lineup plays clan team matches over boards (chess rapid). */
+    private function isTeamMatch(): bool
+    {
+        return $this->lineup !== null && app(GameRegistry::class)->isTeamMatchMode($this->lineup->game, $this->lineup->mode);
     }
 
     /**
@@ -208,6 +222,12 @@ new #[Title('New challenge')] #[Layout('layouts::app', ['section' => 'clans'])] 
 
         if ($this->rated) {
             $this->error = __('Invite links are for casual matches. Switch to casual to make one.');
+
+            return;
+        }
+
+        if ($this->isTeamMatch()) {
+            $this->error = __('A team match goes to a clan you pick. Invite links are for series.');
 
             return;
         }
@@ -245,9 +265,11 @@ new #[Title('New challenge')] #[Layout('layouts::app', ['section' => 'clans'])] 
         $zone = $this->zone();
 
         if ($this->now) {
-            $start = now()->addMinutes((int) config('esports.series.now_minutes', 10))->startOfMinute()->getTimestamp();
+            // A team match "now" leaves room for the lineup lock: the reply is due by the lock, the start after it.
+            $lock = $this->isTeamMatch() ? ChessTeamMatches::lockMinutes() : 0;
+            $start = now()->addMinutes((int) config('esports.series.now_minutes', 10) + $lock)->startOfMinute()->getTimestamp();
 
-            return [[$start], $start];
+            return [[$start], $start - $lock * 60];
         }
 
         $proposals = [];
@@ -286,7 +308,8 @@ new #[Title('New challenge')] #[Layout('layouts::app', ['section' => 'clans'])] 
 
     /**
      * The player's lineups of every series game they captain, in registry
-     * order, the biggest mode first.
+     * order, the biggest mode first; then the team match lineups (chess
+     * rapid).
      *
      * @return Collection<int, Lineup>
      */
@@ -300,11 +323,13 @@ new #[Title('New challenge')] #[Layout('layouts::app', ['section' => 'clans'])] 
             return collect();
         }
 
-        $games = array_keys(app(GameRegistry::class)->series());
+        $teamModes = app(GameRegistry::class)->teamMatchModes();
+        $games = array_values(array_unique([...array_keys(app(GameRegistry::class)->series()), ...array_keys($teamModes)]));
 
         return Lineup::query()->with(['clan', 'seats.user.clanMember'])
             ->where('clan_id', $clanId)->whereIn('game', $games)
             ->get()
+            ->filter(fn (Lineup $lineup) => app(GameRegistry::class)->isSeries($lineup->game) || in_array($lineup->mode, $teamModes[$lineup->game] ?? [], true))
             ->filter(fn (Lineup $lineup) => $lineup->isActingCaptain($user))
             ->sortBy([fn (Lineup $a, Lineup $b) => array_search($a->game, $games, true) <=> array_search($b->game, $games, true), fn (Lineup $a, Lineup $b) => $b->gameMode()->teamSize <=> $a->gameMode()->teamSize])
             ->values();
@@ -348,6 +373,8 @@ new #[Title('New challenge')] #[Layout('layouts::app', ['section' => 'clans'])] 
                 return match (true) {
                     $open !== null => ['lineup' => $lineup, 'state' => 'busy', 'note' => __(':number open', ['number' => $open->label()])],
                     ! $lineup->isReady() => ['lineup' => $lineup, 'state' => 'not_ready', 'note' => __('lineup not complete')],
+                    // A team match needs a player per board on both sides.
+                    $this->isTeamMatch() && count($lineup->activeSeats()) < $this->boards => ['lineup' => $lineup, 'state' => 'not_ready', 'note' => __('needs :n players', ['n' => $this->boards])],
                     default => ['lineup' => $lineup, 'state' => 'ok', 'note' => __('open for casual')],
                 };
             })
@@ -387,6 +414,12 @@ new #[Title('New challenge')] #[Layout('layouts::app', ['section' => 'clans'])] 
     $headGame = $lineup?->game ?? $mine->first()?->game ?? $game;
     $gameName = $headGame === null ? '' : GameNames::game($headGame);
     $bestOfs = $lineup?->gameMode()->bestOf ?? [3, 5];
+    // A chess rapid lineup challenges to a team match over boards (NIP rev. 9.22): boards instead of a series length, friendly instead of casual.
+    $team = $lineup !== null && $lineup->gameMode()->boards !== [];
+    $boardCounts = $team ? $lineup->gameMode()->boards : [];
+    $lockMinutes = ChessTeamMatches::lockMinutes();
+    $nowMinutes = (int) config('esports.series.now_minutes', 10) + ($team ? $lockMinutes : 0);
+    $casualLabel = $team ? __('Friendly') : __('Casual');
     $minutes = fn (int $bo): int => $lineup === null ? 0 : (int) (ceil(GameProfile::for($lineup->game, $lineup->mode)->slot($bo) / 5) * 5);
     // P57: a rated challenge needs the sender and a captain of the other lineup to list each other (RatedTrustGate::forChallenge).
     $captains = $rated && $ratedOpen && $picked !== null ? array_values(array_diff(app(SeriesService::class)->captainPubkeys($picked['lineup']), [$me->pubkey])) : [];
@@ -439,7 +472,7 @@ new #[Title('New challenge')] #[Layout('layouts::app', ['section' => 'clans'])] 
                             @switch($n)
                                 @case(1){{ $lineup ? GameNames::game($lineup->game).' '.$lineup->mode.', '.implode(', ', array_map(fn ($s) => $s->user->displayName(), $lineup->activeSeats())) : '' }}@break
                                 @case(2){{ $picked ? $picked['lineup']->clan->name : '' }}@break
-                                @case(3){{ ($rated ? __('Rated') : __('Casual')).', BO'.$bestOf }}@break
+                                @case(3){{ ($rated ? __('Rated') : $casualLabel).', '.($team ? trans_choice(':count board|:count boards', $boards) : 'BO'.$bestOf) }}@break
                                 @case(4){{ $now ? __('Challenge now') : trans_choice(':count suggestion|:count suggestions', count($times)) }}@break
                             @endswitch
                         </span>
@@ -457,11 +490,11 @@ new #[Title('New challenge')] #[Layout('layouts::app', ['section' => 'clans'])] 
                     <div role="radiogroup" aria-labelledby="type-h" class="grid grid-cols-2 gap-3">
                         <button type="button" role="radio" wire:click="$set('rated', false)" aria-checked="{{ $rated ? 'false' : 'true' }}" data-test="type-casual"
                                 @class([$choice, 'border-btc bg-btc-press' => ! $rated, 'border-line' => $rated])>
-                            <b class="font-display text-lg lg:text-xl">{{ __('Casual') }}</b><span class="text-xs leading-normal text-ink-2 lg:text-[13px]">{{ __('Just for fun. No rating change, no connection needed. Open to every clan.') }}</span>
+                            <b class="font-display text-lg lg:text-xl">{{ $casualLabel }}</b><span class="text-xs leading-normal text-ink-2 lg:text-[13px]">{{ $team ? __('Boards unrated, no Hashrate. Play as many as you like.') : __('Just for fun. No rating change, no connection needed. Open to every clan.') }}</span>
                         </button>
                         @if ($ratedOpen)
                             <button type="button" role="radio" wire:click="$set('rated', true)" aria-checked="{{ $rated ? 'true' : 'false' }}" @class([$choice, 'border-btc bg-btc-press' => $rated, 'border-line' => ! $rated])>
-                                <b class="font-display text-lg lg:text-xl">{{ __('Rated') }}</b><span class="text-xs leading-normal text-ink-2 lg:text-[13px]">{{ __('Counts for Elo and clan Hashrate, and a win can mine a block. Needs a connection with their captain.') }}</span>
+                                <b class="font-display text-lg lg:text-xl">{{ __('Rated') }}</b><span class="text-xs leading-normal text-ink-2 lg:text-[13px]">{{ $team ? __('Every board counts for rapid Elo and clan Hashrate. One rated team match per pair of clans a week. Needs a connection with their captain.') : __('Counts for Elo and clan Hashrate, and a win can mine a block. Needs a connection with their captain.') }}</span>
                             </button>
                         @else
                             <span role="radio" aria-checked="false" aria-disabled="true" class="{{ $choice }} cursor-not-allowed border-line opacity-60" data-test="type-rated-locked">
@@ -479,6 +512,16 @@ new #[Title('New challenge')] #[Layout('layouts::app', ['section' => 'clans'])] 
                             </span>
                         @endif
                     </div>
+                    @if ($team)
+                        <div class="mt-3 grid grid-cols-2 gap-3 lg:hidden" role="radiogroup" aria-label="{{ __('Boards') }}">
+                            @foreach ($boardCounts as $count)
+                                <button type="button" role="radio" wire:click="$set('boards', {{ $count }})" aria-checked="{{ $boards === $count ? 'true' : 'false' }}"
+                                        @class(['flex min-h-14 cursor-pointer flex-col justify-center rounded-lg border bg-ground px-5 text-left', 'border-btc bg-btc-press' => $boards === $count, 'border-line' => $boards !== $count])>
+                                    <b class="text-[15px]">{{ trans_choice(':count board|:count boards', $count) }}</b><span class="text-xs text-ink-2">{{ __(':n players per clan', ['n' => $count]) }}</span>
+                                </button>
+                            @endforeach
+                        </div>
+                    @endif
                     <div class="mt-3 grid grid-cols-2 gap-3 lg:hidden" role="radiogroup" aria-label="{{ __('Format') }}">
                         @foreach ($bestOfs as $bo)
                             <button type="button" role="radio" wire:click="$set('bestOf', {{ $bo }})" aria-checked="{{ $bestOf === $bo ? 'true' : 'false' }}"
@@ -544,7 +587,17 @@ new #[Title('New challenge')] #[Layout('layouts::app', ['section' => 'clans'])] 
 
                 {{-- Format --}}
                 <section aria-labelledby="fmt-h" class="{{ $card }} max-lg:hidden">
-                    <h2 id="fmt-h" class="m-0 pb-3 text-[15px] font-bold">{{ __('Format') }}</h2>
+                    <h2 id="fmt-h" class="m-0 pb-3 text-[15px] font-bold">{{ $team ? __('Boards') : __('Format') }}</h2>
+                    @if ($team)
+                        <div role="radiogroup" aria-labelledby="fmt-h" class="grid grid-cols-2 gap-3">
+                            @foreach ($boardCounts as $count)
+                                <button type="button" role="radio" wire:click="$set('boards', {{ $count }})" aria-checked="{{ $boards === $count ? 'true' : 'false' }}" data-test="boards-{{ $count }}"
+                                        @class([$choice, 'border-btc bg-btc-press' => $boards === $count, 'border-line' => $boards !== $count])>
+                                    <b class="font-display text-xl">{{ trans_choice(':count board|:count boards', $count) }}</b><span class="text-[13px] text-ink-2">{{ __(':n players per clan play rapid 10+5 at the same time, the boards ordered by rapid Elo', ['n' => $count]) }}</span>
+                                </button>
+                            @endforeach
+                        </div>
+                    @endif
                     <div role="radiogroup" aria-labelledby="fmt-h" class="grid grid-cols-2 gap-3">
                         @foreach ($bestOfs as $bo)
                             @php($text = $bo === 1 ? __('One game, about :minutes min', ['minutes' => $minutes($bo)]) : __('First to :wins games, up to :bo games, about :minutes min', ['wins' => intdiv($bo, 2) + 1, 'bo' => $bo, 'minutes' => $minutes($bo)]))
@@ -559,7 +612,7 @@ new #[Title('New challenge')] #[Layout('layouts::app', ['section' => 'clans'])] 
                 {{-- Suggested times --}}
                 <section aria-labelledby="times-h" class="{{ $card }} flex flex-col gap-3" :class="step === 4 ? '' : 'max-lg:hidden'">
                     <span class="flex flex-wrap items-baseline justify-between gap-2"><h2 id="times-h" class="m-0 text-[15px] font-bold">{{ __('Suggested times') }}</h2><span class="text-xs text-ink-2">{{ __('up to 3, :clan picks one', ['clan' => $picked['lineup']->clan->name ?? __('the other clan')]) }}</span></span>
-                    <label class="inline-flex min-h-11 cursor-pointer items-center gap-3 text-[13px]"><input type="checkbox" wire:model.live="now" class="size-4 accent-[#F7931A]" data-test="challenge-now"><span><b>{{ __('Challenge now') }}</b> <span class="text-ink-2">{{ __('start in :n minutes, they have until then to accept', ['n' => (int) config('esports.series.now_minutes', 10)]) }}</span></span></label>
+                    <label class="inline-flex min-h-11 cursor-pointer items-center gap-3 text-[13px]"><input type="checkbox" wire:model.live="now" class="size-4 accent-[#F7931A]" data-test="challenge-now"><span><b>{{ __('Challenge now') }}</b> <span class="text-ink-2">{{ $team ? __('start in :n minutes; they accept within :m minutes, then both captains pick their players', ['n' => $nowMinutes, 'm' => $nowMinutes - $lockMinutes]) : __('start in :n minutes, they have until then to accept', ['n' => $nowMinutes]) }}</span></span></label>
                     @unless ($now)
                         @foreach ($times as $index => $row)
                             <div wire:key="t-{{ $index }}" class="grid grid-cols-[64px_minmax(0,1fr)_100px_44px] items-center gap-2 lg:grid-cols-[100px_minmax(0,1fr)_140px_44px] lg:gap-3">
@@ -582,7 +635,7 @@ new #[Title('New challenge')] #[Layout('layouts::app', ['section' => 'clans'])] 
                             <input type="time" wire:model="replyTime" aria-label="{{ __('Reply by, hour') }}" class="h-11 min-w-0 rounded-lg border border-edge bg-ground px-3 text-sm text-ink">
                             <x-icon name="clock" :size="18" class="justify-self-center text-ink-2" />
                         </div>
-                        <p class="m-0 text-xs text-ink-2">{{ __('No reply by then and the challenge expires. The deadline has to be before the first suggested time.') }} {{ __('Times in :zone.', ['zone' => PreSeason::timezoneFor($me)]) }}</p>
+                        <p class="m-0 text-xs text-ink-2">{{ $team ? __('No reply by then and the challenge expires. The deadline has to be at least :minutes minutes before the first suggested time: the captains pick their players until then.', ['minutes' => $lockMinutes]) : __('No reply by then and the challenge expires. The deadline has to be before the first suggested time.') }} {{ __('Times in :zone.', ['zone' => PreSeason::timezoneFor($me)]) }}</p>
                     @endunless
                 </section>
             </div>
@@ -594,20 +647,20 @@ new #[Title('New challenge')] #[Layout('layouts::app', ['section' => 'clans'])] 
                     <span class="flex items-start gap-3">
                         <x-clan-tag :clan="$opp->clan" :tile="44" class="flex size-11 shrink-0 items-center justify-center rounded-md bg-btc-tint text-xs font-bold text-btc" />
                         <span class="flex min-w-0 grow flex-col gap-1"><b class="truncate text-[15px]">{{ $opp->clan->name }}, {{ $opp->mode }}</b><span class="text-xs text-ink-2">{{ __('captain :name', ['name' => $opp->clan->owner?->displayName() ?? '']) }}</span></span>
-                        <span class="inline-flex h-7 items-center rounded-sm bg-btc-chip px-2.5 text-xs font-bold text-btc-hi shadow-[inset_0_0_0_1px_#B9640A]">{{ $rated ? __('Rated') : __('Casual') }}</span>
+                        <span class="inline-flex h-7 items-center rounded-sm bg-btc-chip px-2.5 text-xs font-bold text-btc-hi shadow-[inset_0_0_0_1px_#B9640A]">{{ $rated ? __('Rated') : $casualLabel }}</span>
                     </span>
                 @else
                     <span class="text-[13px] text-ink-2">{{ __('Pick an opponent on the left.') }}</span>
                 @endif
                 <div class="flex flex-col">
                     @foreach ([
-                        [__('Match kind'), $rated ? __('Rated') : __('Casual')],
+                        [__('Match kind'), $rated ? __('Rated') : $casualLabel],
                         [__('Game title'), $lineup ? GameNames::game($lineup->game) : '–'],
                         [__('Lineup'), $lineup ? $lineup->clan->name.' '.$lineup->mode : '–'],
                         [__('Opponent'), $picked ? $picked['lineup']->clan->name.' '.$picked['lineup']->mode : '–'],
-                        [__('Format'), __('Best of :n', ['n' => $bestOf])],
-                        [__('Times'), $now ? __('now, in :n min', ['n' => (int) config('esports.series.now_minutes', 10)]) : trans_choice(':count suggestion|:count suggestions', count($times))],
-                        [__('Reply by'), $now ? __('before the start') : ($replyDate !== '' ? CarbonImmutable::parse($replyDate.' '.$replyTime)->locale(app()->getLocale())->translatedFormat('D M j, H:i') : '–')],
+                        [__('Format'), $team ? __('Team match, :boards', ['boards' => trans_choice(':count board|:count boards', $boards)]) : __('Best of :n', ['n' => $bestOf])],
+                        [__('Times'), $now ? __('now, in :n min', ['n' => $nowMinutes]) : trans_choice(':count suggestion|:count suggestions', count($times))],
+                        [__('Reply by'), $now ? ($team ? __('within :n min', ['n' => $nowMinutes - $lockMinutes]) : __('before the start')) : ($replyDate !== '' ? CarbonImmutable::parse($replyDate.' '.$replyTime)->locale(app()->getLocale())->translatedFormat('D M j, H:i') : '–')],
                         [__('At stake'), __('nothing, casual')],
                     ] as [$key, $value])
                         <div class="flex min-h-10 items-center justify-between gap-3 border-b border-hairline text-[13px]"><span class="text-ink-2">{{ $key }}</span><span class="text-right">{{ $value }}</span></div>
@@ -624,6 +677,7 @@ new #[Title('New challenge')] #[Layout('layouts::app', ['section' => 'clans'])] 
                 @if ($error)<p class="m-0 text-[13px] text-loss" role="alert" data-test="challenge-error">{{ $error }}</p>@endif
                 <p x-show="error" x-text="error" class="m-0 text-[13px] text-loss" role="alert"></p>
                 <span class="text-xs leading-normal text-ink-2">{{ __(':clan\'s captains see it right away. You can withdraw it while it\'s open.', ['clan' => $picked['lineup']->clan->name ?? __('The other clan')]) }}</span>
+                @unless ($team)
                 <div class="flex flex-col gap-2.5 border-t border-hairline pt-4" data-test="series-invite-link">
                     <b class="text-[13px]">{{ __('No opponent here yet?') }}</b>
                     <span class="text-xs leading-normal text-ink-2">{{ __('Invite by link: the first captain of a ready :mode lineup who opens it and accepts plays you, at one of your times.', ['mode' => $lineup?->mode ?? '']) }}</span>
@@ -632,6 +686,7 @@ new #[Title('New challenge')] #[Layout('layouts::app', ['section' => 'clans'])] 
                         <x-icon name="link" :size="16" />{{ __('Invite by link') }}
                     </button>
                 </div>
+                @endunless
                 <x-proof :rows="$rated ? [[__('Record'), __('challenge, kind 2150')], [__('Sent as'), $me->shortNpub().' ('.$me->displayName().')']] : [[__('Record'), __('a casual challenge stays with the league (no kind 2150)')], [__('Match number'), __('reserved when you send')], [__('Sent as'), $me->shortNpub().' ('.$me->displayName().')']]" />
             </aside>
         </div>

@@ -401,6 +401,12 @@ final class ClanService
             throw new ClanRuleViolation(__('This game mode does not exist.'));
         }
 
+        // A lineup fields series or team matches (NIP rev. 9.22: a chess lineup only `<clan>/chess/rapid`);
+        // a mode with neither, chess blitz or daily, is played solo and has no lineup.
+        if ($gameMode->bestOf === [] && $gameMode->boards === []) {
+            throw new ClanRuleViolation(__('This game mode does not exist.'));
+        }
+
         $members = ClanMember::query()->where('clan_id', $clan->id)->with('user')->get()->keyBy('user_id');
         $placed = [];
 
