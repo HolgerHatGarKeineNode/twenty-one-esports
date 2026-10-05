@@ -25,6 +25,11 @@ use Livewire\Component;
  * blocks what" (components/⚡tournament-waits, slice 5). Every destructive step
  * asks for a typed reason; every step lands in the moderation log, which
  * the page refreshes on `tournament-controlled`.
+ *
+ * The restart and call-off panels open and close in the browser (performance
+ * plan P7): their markup is always there, `x-show` follows `restarting` and
+ * `aborting`, which the buttons set with `$wire.$set(..., false)`; the value
+ * travels with the confirm, so the next render keeps the panel as it is.
  */
 new class extends Component {
     #[Locked]
@@ -55,12 +60,14 @@ new class extends Component {
 
     public string $disqualifyReason = '';
 
+    /** The round whose restart panel is open (set in the browser, sent with the confirm). */
     public ?int $restarting = null;
 
     public string $restartReason = '';
 
     public string $pauseReason = '';
 
+    /** The call-off panel is open (set in the browser, sent with the confirm). */
     public bool $aborting = false;
 
     public string $abortReason = '';
@@ -179,12 +186,6 @@ new class extends Component {
     {
         $this->attempt(fn (): string => app(TournamentControl::class)->resume($this->tournament, $this->user())
             ? __('Resumed. Every running deadline moved by the length of the pause.') : __('Nothing changed.'));
-    }
-
-    public function startRestart(int $roundId): void
-    {
-        $this->restarting = $roundId;
-        $this->restartReason = $this->error = '';
     }
 
     /**
@@ -342,13 +343,14 @@ new class extends Component {
                 <div class="flex flex-col gap-2 border-t border-hairline pt-3" wire:key="round-{{ $round->id }}" data-test="control-round">
                     <span class="flex flex-wrap items-center justify-between gap-2">
                         <h3 class="m-0 text-[13px] font-bold">{{ __('Round :round', ['round' => $round->number]) }}@if ($tournament->format === \App\Enums\TournamentFormat::TwoStage) <span class="font-normal text-ink-3">({{ $round->stage->number === 1 ? __('Group stage') : __('Final stage') }})</span>@endif</h3>
-                        @if ($running && ! $tournament->isDirectorMode() && $undecided->isNotEmpty())
-                            <x-button variant="quiet" wire:click="startRestart({{ $round->id }})" class="h-9 px-3" data-test="control-restart-{{ $round->number }}">{{ __('Restart round') }}</x-button>
+                        @if ($restartable = $running && ! $tournament->isDirectorMode() && $undecided->isNotEmpty())
+                            <x-button variant="quiet" x-on:click="$wire.$set('restarting', {{ $round->id }}, false); $wire.$set('restartReason', '', false)" class="h-9 px-3" data-test="control-restart-{{ $round->number }}">{{ __('Restart round') }}</x-button>
                         @endif
                     </span>
 
-                    @if ($restarting === $round->id)
-                        <form wire:submit="restart({{ $round->restarts }})" class="flex flex-col gap-2 rounded-md bg-ground p-3 shadow-ring" data-test="control-restart-form">
+                    @if ($restartable || $restarting === $round->id)
+                        <form wire:submit="restart({{ $round->restarts }})" class="flex flex-col gap-2 rounded-md bg-ground p-3 shadow-ring" data-test="control-restart-form"
+                              x-show="$wire.restarting === {{ $round->id }}" @style(['display: none' => $restarting !== $round->id])>
                             <span class="text-xs leading-normal text-ink-2">{{ __('Every undecided match of this round starts again: a series or game under way, also one reported but not confirmed, is voided and played anew. Decided results stay.') }}</span>
                             <label class="flex flex-col gap-1.5 text-xs text-ink-2">
                                 {{ __('Reason (the players read it)') }}
@@ -356,7 +358,7 @@ new class extends Component {
                             </label>
                             <span class="flex flex-wrap gap-2">
                                 <x-button type="submit" data-test="control-restart-confirm">{{ __('Restart round :round', ['round' => $round->number]) }}</x-button>
-                                <x-button variant="quiet" wire:click="$set('restarting', null)">{{ __('Cancel') }}</x-button>
+                                <x-button variant="quiet" x-on:click="$wire.$set('restarting', null, false)">{{ __('Cancel') }}</x-button>
                             </span>
                         </form>
                     @endif
@@ -492,8 +494,8 @@ new class extends Component {
 
     @if (in_array($status, [TournamentStatus::Signup, TournamentStatus::Drawing, TournamentStatus::Running], true))
         <div class="flex flex-col gap-2 border-t border-hairline pt-3" data-test="control-abort">
-            @if ($aborting)
-                <form wire:submit="abort" class="flex flex-col gap-2 rounded-md bg-ground p-3 shadow-[inset_0_0_0_1px_#5A2A2E]" data-test="control-abort-form">
+            <form wire:submit="abort" class="flex flex-col gap-2 rounded-md bg-ground p-3 shadow-[inset_0_0_0_1px_#5A2A2E]" data-test="control-abort-form"
+                  x-show="$wire.aborting" @style(['display: none' => ! $aborting])>
                     <span class="text-xs leading-normal text-ink-2">{{ __('Calling off ends the tournament for good: every series and game under way is voided, nothing is rated after it, and the league publishes a new version of the tournament that says it was called off.') }}</span>
                     <label class="flex flex-col gap-1.5 text-xs text-ink-2">
                         {{ __('Reason (the players read it)') }}
@@ -501,12 +503,10 @@ new class extends Component {
                     </label>
                     <span class="flex flex-wrap gap-2">
                         <x-button type="submit" data-test="control-abort-confirm">{{ __('Call off the tournament') }}</x-button>
-                        <x-button variant="quiet" wire:click="$set('aborting', false)">{{ __('Cancel') }}</x-button>
+                        <x-button variant="quiet" x-on:click="$wire.$set('aborting', false, false)">{{ __('Cancel') }}</x-button>
                     </span>
                 </form>
-            @else
-                <x-button variant="quiet" wire:click="$set('aborting', true)" class="self-start text-loss" data-test="control-abort-start">{{ __('Call off the tournament') }}</x-button>
-            @endif
+            <x-button variant="quiet" x-on:click="$wire.$set('aborting', true, false)" x-show="! $wire.aborting" :style="$aborting ? 'display: none' : null" class="self-start text-loss" data-test="control-abort-start">{{ __('Call off the tournament') }}</x-button>
         </div>
     @endif
 </section>

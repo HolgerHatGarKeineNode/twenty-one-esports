@@ -682,6 +682,29 @@ test('the control section is for admins and the organizer; a player cannot open 
     Livewire::actingAs($tournament->creator)->test('tournament-control', ['tournament' => $tournament])->assertOk()->assertSee('Tournament control');
 });
 
+test('the restart and call-off panels open in the browser and a render keeps them as they are (performance plan P7)', function () {
+    $tournament = ctlKnockout();
+    $admin = ctlAdmin();
+    $round = ctlMatch($tournament, 1, 1)->tournament_round_id;
+    $page = Livewire::actingAs($admin)->test('tournament-control', ['tournament' => $tournament]);
+
+    // Both panels are in the markup from the start, hidden; the buttons set their state without a request.
+    $page->assertSeeHtml('x-on:click="$wire.$set(\'aborting\', true, false)"')
+        ->assertSeeHtml("x-on:click=\"\$wire.\$set('restarting', {$round}, false); \$wire.\$set('restartReason', '', false)\"");
+    expect($page->html())->toMatch('/data-test="control-abort-form"\s+x-show="\$wire.aborting" style="display: none;"/')
+        ->and($page->html())->toMatch('/data-test="control-restart-form"\s+x-show="\$wire.restarting === '.$round.'" style="display: none;"/');
+
+    // The state arrives with the next request (here: a render): the panels stay open, the call-off button hides.
+    $page->set('aborting', true)->set('restarting', $round)->call('$refresh')->assertOk();
+    expect($page->html())->not->toMatch('/data-test="control-abort-form"\s+x-show="\$wire.aborting" style="display: none;"/')
+        ->and($page->html())->not->toMatch('/data-test="control-restart-form"\s+x-show="\$wire.restarting === '.$round.'" style="display: none;"/')
+        ->and($page->html())->toMatch('/style="display: none;?"[^>]*data-test="control-abort-start"/');
+
+    // The confirm carries the round: it restarts, and the panel closes.
+    $page->set('restartReason', 'Server outage during the round')->call('restart', 0)
+        ->assertSet('restarting', null)->assertSet('error', '')->assertDispatched('tournament-controlled');
+});
+
 test('the control section sets a result with a typed reason and survives a roundtrip', function () {
     $tournament = ctlKnockout(2);
     $admin = ctlAdmin();
