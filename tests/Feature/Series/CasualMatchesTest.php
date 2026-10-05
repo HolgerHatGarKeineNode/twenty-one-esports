@@ -313,3 +313,26 @@ test('a solo side shows its player\'s live name: a player who renamed is never s
     // The host's side is drawn at random: read it from the match.
     expect($match->fresh()->sideName($match->participantSideOf($host)))->toBe('Renamed Player');
 });
+
+test('the host confirms a guest who is in the lobby but forgot to say so, and the score can be sent either way', function () {
+    Event::fake([UserNotified::class]);
+    [$match, $host, $guest] = casualStarted('rocket-league');
+    $matches = app(CasualMatches::class);
+
+    expect(casualRefusal(fn () => $matches->markJoined($match, $host)))->toBe('no_lobby_yet');
+
+    // Before anyone confirmed the join, both already have the submit under the games (user, 2026-10-05: "kein Button da").
+    $this->actingAs($guest)->get(route('matches.room', $match))->assertOk()->assertSee('data-test="open-submit"', false);
+
+    $match = $matches->shareLobby($match, $host);
+    $this->actingAs($host)->get(route('matches.room', $match))->assertOk()
+        ->assertSee('data-test="casual-host-joined"', false)
+        ->assertSee('data-test="open-submit"', false);
+
+    $match = $matches->markJoined($match, $host);
+
+    expect($match->joined_at)->not->toBeNull()
+        ->and(casualAlerts())->not->toContain([$host->id, 'casual_opponent_joined']);
+
+    $this->actingAs($host)->get(route('matches.room', $match))->assertOk()->assertDontSee('data-test="casual-host-joined"', false);
+});

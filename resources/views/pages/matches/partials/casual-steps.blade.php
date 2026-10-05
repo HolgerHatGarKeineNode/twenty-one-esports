@@ -162,6 +162,10 @@
                     $isAoe => __('Waiting for :name to join your lobby.', ['name' => $otherName]),
                     default => __('Accept the friend request from :name and send the Play a Friend invite.', ['name' => $otherName]),
                 } }}</p>
+                @if ($m->lobby_shared_at !== null)
+                    {{-- The guest may be in and simply forgot to confirm: the host confirms for them (user, 2026-10-05). --}}
+                    <div><x-button variant="quiet" icon="check" wire:click="casualJoined" data-test="casual-host-joined">{{ __(':name is in my lobby', ['name' => $otherName]) }}</x-button></div>
+                @endif
             @elseif (! $iHost && $m->lobby_shared_at === null)
                 @unless ($sharesLobby)
                     <p class="m-0">{{ __('Waiting for :name to share their EA ID in the chat.', ['name' => $otherName]) }}</p>

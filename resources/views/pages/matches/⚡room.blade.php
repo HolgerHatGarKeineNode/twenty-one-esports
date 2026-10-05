@@ -765,8 +765,9 @@ new #[Title('Match room')] #[Layout('layouts::app', ['section' => 'matches', 'sc
         [__('Their OK'), $m->finished_at && $m->status->hasResult() ? SeriesPresenter::time($m->finished_at, $viewer, 'H:i') : '', $m->status === SeriesStatus::Disputed ? __('problem reported') : __('the other captain, 2 of 2'), $m->status->hasResult()],
     ];
     $lobbyPinned = ! $casual && $m->lobby_name !== null && $m->status->isRunning();
-    // The report action of a casual 1v1 waits until both are in (its steps lead until then), as the score bar always did.
-    $canSubmit = $editable && (! $casual || $m->joined_at !== null);
+    // Whoever can enter the games can submit them (user, 2026-10-05: "ich kann die Ergebnisse nicht melden! kein Button da"):
+    // a casual 1v1 played without both ticking "I'm in" had the score sheet but no submit button. The server never required it.
+    $canSubmit = $editable;
     // A 1v1 side is one player whose name is the side's name: the player chips under the versus would only repeat it.
     $showPlayers = collect(SeriesMatch::SIDES)->contains(fn (string $side): bool => count($rosters[$side]) !== 1 || $rosters[$side][0]['seat']->user->displayName() !== $m->sideName($side));
     /*
@@ -1410,8 +1411,9 @@ new #[Title('Match room')] #[Layout('layouts::app', ['section' => 'matches', 'sc
     </div>
     </div>
 
-    {{-- Sticky score bar (MobileMatchRoom); a casual 1v1 only once both are in, before that its steps carry the action. --}}
-    @if ($canSubmit)
+    {{-- Sticky score bar (MobileMatchRoom); a casual 1v1 only once both are in, before that its steps carry the action
+         (the bar would cover the lobby card at 375). The submit under the games is there either way. --}}
+    @if ($canSubmit && (! $casual || $m->joined_at !== null))
         {{-- Hidden while the report block under the sheet is on screen: one "Submit final score" in view, never two. --}}
         <div x-show="! reportInView" class="fixed inset-x-0 bottom-0 z-20 flex items-center gap-3 bg-bar px-4 py-3 shadow-[0_-1px_0_#2A2A30] lg:hidden" data-page-bar data-room-bar>
             <span class="flex min-w-0 flex-col"><b class="font-display text-[22px]">{{ $wins['challenger'] }}:{{ $wins['challenged'] }}</b><span class="line-clamp-2 text-[11px] text-ink-2 [overflow-wrap:anywhere]">{{ $wins['challenger'] === $wins['challenged'] ? __('level') : __(':clan lead the series', ['clan' => $m->sideName($wins['challenger'] > $wins['challenged'] ? 'challenger' : 'challenged')]) }}</span></span>

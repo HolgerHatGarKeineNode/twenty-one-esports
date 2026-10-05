@@ -1092,7 +1092,7 @@
     "takes the :piece": "schlägt :piece",
     "Tap Find opponent. We pair you with someone who is searching right now.": "Tipp auf Gegner finden. Wir paaren dich mit jemandem, der gerade sucht.",
     "Team": "Team",
-    "Team match": "Mannschafts\u00adkampf",
+    "Team match": "Mannschafts­kampf",
     "Team matches in progress": "Laufende Mannschaftskämpfe",
     "Team wins": "Teamsiege",
     "Team wins +5": "Teamsiege +5",
@@ -6781,5 +6781,6 @@
     "Ban": "Bannen",
     "Mute :name for me": ":name für mich stummschalten",
     "This player cannot be invited right now.": "Dieser Spieler kann gerade nicht eingeladen werden.",
-    "A player of this entry cannot take part.": "Ein Spieler dieser Anmeldung kann nicht teilnehmen."
+    "A player of this entry cannot take part.": "Ein Spieler dieser Anmeldung kann nicht teilnehmen.",
+    ":name is in my lobby": ":name ist in meiner Lobby"
 }

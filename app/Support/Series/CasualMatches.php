@@ -498,7 +498,9 @@ final class CasualMatches
     }
 
     /**
-     * The guest joined the host's lobby. Only the flag is stored.
+     * The guest joined the host's lobby. Only the flag is stored. The host may set it too, for a guest who is in
+     * but forgot to confirm (user, 2026-10-05: "auch der Gegner braucht den Button, dass der andere in der Lobby
+     * ist"); the host then needs no "joined your lobby" notice.
      *
      * @throws SeriesRuleViolation
      */
@@ -507,10 +509,6 @@ final class CasualMatches
         $match = $match->fresh() ?? $match;
         $side = $this->sideOf($match, $user);
         $this->assertStarted($match);
-
-        if ($side === $match->host_side) {
-            throw self::refuse('not_guest');
-        }
 
         if ($match->lobby_shared_at === null) {
             throw self::refuse('no_lobby_yet');
@@ -530,7 +528,10 @@ final class CasualMatches
             throw self::refuse($match->noshow_reported_at !== null ? 'noshow_pending' : 'changed');
         }
 
-        $this->notifications->opponentJoined($match);
+        if ($side !== $match->host_side) {
+            $this->notifications->opponentJoined($match);
+        }
+
         $this->announce($match);
 
         return $match;
