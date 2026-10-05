@@ -57,14 +57,16 @@ league wallet again, zaps to a tournament's `31923` go into its pot with receipt
 server key, and a sponsor's pledge can be marked paid outside the wallet; it replaces revision 9.1;
 **revision 9.20** (2026-10-04): the tournament desk, a NIP-17 group of a tournament's players and its
 direction, with the rumor tag `desk`; **revision 9.21** (2026-10-05): the league's public mute list, NIP-51
-kind `10000` signed by the league key, without a new kind). Not
+kind `10000` signed by the league key, without a new kind; **revision 9.22** (2026-10-05): chess rapid 10+5 with a
+ladder of its own, every ladder rated only once published, and clan team matches in rapid only, with the board
+order by rapid Elo, a lineup lock, board forfeits and friendly team matches, without a new kind or tag). Not
 submitted to
 `nostr-protocol/nips`. Kind
 numbers are checked against the official NIP index and other registries (see
 [Kind numbers and collision check](#kind-numbers-and-collision-check)); every example in this
 document is a real signed event that was published to and read back from local relays
 (`docs/plans/2026-09-25T1212-esports-v1-ladder/p1-relay-proof.md`, rounds 1 to 6). Revision 7 adds
-no example yet, and neither do revisions 8, 8.1, 9, 9.1, 9.2, 9.3, 9.5, 9.6, 9.7, 9.8, 9.9, 9.10, 9.11, 9.12, 9.13, 9.14, 9.15, 9.16, 9.18, 9.19, 9.20 and 9.21 (see [Open points](#open-points)).
+no example yet, and neither do revisions 8, 8.1, 9, 9.1, 9.2, 9.3, 9.5, 9.6, 9.7, 9.8, 9.9, 9.10, 9.11, 9.12, 9.13, 9.14, 9.15, 9.16, 9.18, 9.19, 9.20, 9.21 and 9.22 (see [Open points](#open-points)).
 Revision 9.10 needs none: it adds no event and no tag. Neither does revision 9.11: the league signs nothing new, and the zap
 request it describes is plain NIP-57. Nor does revision 9.12: a board game's tournament is an ordinary `31923` whose summary
 names the game and mode, and a board game has no ladder yet. Revision 9.13 does sign new events for the
@@ -74,6 +76,10 @@ attestation and block differ from a blitz one's only in `d`, `mode`, `time_contr
 Revision 9.15 adds two kind `40` of the shape revision 9.3 fixes; their ids for a test creator are the test vectors in
 [Game channels](#game-channels-rev-93), computed and not published. Revision 9.16 adds one more of that shape, with its
 test vector there, and a game whose events have the shape of the other series games'.
+Revision 9.22 adds a mode, not a shape, as revision 9.14 did: a rapid ladder, challenge, attestation and block differ
+from a blitz one's only in `d`, `mode`, `time_control` and the weight key. The team match example below
+([Chess: team match over boards](#chess-team-match-over-boards-correspondence-game)) stays as it was signed, a
+revision-3 match on the blitz ladder; under revision 9.22 the same events name the rapid ladder and lineup.
 Revision 9.4 prints two, made by the app's own code and read back from a local `nak serve` relay, not
 from the ndak test bed.
 
@@ -145,6 +151,42 @@ The rules marked "rev. 9.18" are a draft as well, written before the first Block
 season chain as **solo blocks**. They apply to every chain season whose genesis the league signs after adopting
 revision 9.18; a genesis without the `solo` tag has its defaults. No versus candidate, ladder, tag or rule changes: a
 genesis without a score game's `weight` signs exactly the tags it signed before.
+The rules marked "rev. 9.22" add chess rapid and move the clan team matches into it. The rapid ladder opens like a
+board game's correspondence ladder under revision 9.14: at Block 0 of a season the league releases after adopting
+revision 9.22, or in a season live then with the first parameter change after it, which signs a new version of every
+ladder; a genesis without a weight for `chess/rapid` mines nothing for it. From the day a league adopts revision 9.22
+it rates no game on a ladder whose first version it has not signed, whatever the game or mode. Team matches follow
+revision 9.22 for every challenge signed after the league adopts it; a team match accepted earlier is played and
+attested under the rules of its challenge. No blitz or correspondence chess ladder, no board game, Rocket League,
+EA Sports FC or Age of Empires II rule, ladder or event changes.
+
+### Changelog of revision 9.22 (2026-10-05)
+
+Rapid chess for the players for whom blitz is too fast, and the clan team matches, in rapid (user, 2026-10-05:
+„Blitz ist für viele zu schnell. Rapid gibt es glaube ich noch und den Clan Modus hast du noch nicht gebaut.“).
+No new kind and no new tag; checked against the app's tests, not on a public relay, and without printed examples.
+
+- **Chess rapid** ([Game registry](#game-registry)): mode `rapid`, `time_control` `600+5` (10 minutes, 5 seconds a
+  move), `rates` `player`, `variant` `standard`, ladder `d` `chess/rapid/<season>`. Its Elo is its own: every player
+  starts at the ladder's start rating, nothing is seeded from blitz, and a soft reset seeds rapid only from the rapid
+  ladder of the season before. Rapid is a live game like blitz: a player plays one live game at a time across blitz,
+  rapid, the board games and the casual 1v1.
+- **Every ladder opens with its first version.** The league rates a game, pins a ladder in a challenge or a
+  tournament and attests a result only on a ladder whose first `32152` version it has signed in the live season
+  (revision 9.13 said so for the board games only). Block 0 signs every ladder; a mode that joins a live season gets
+  its ladder with the next parameter change. Until then its games are casual. A tournament that re-derives its
+  ladder from its first publish time gets one only if that ladder had a version by then.
+- **Mining.** `chess/rapid` mines with its own weight inside the share and the daily limit of `chess`, which count
+  every chess mode together. The league's draft proposes a weight of 1.5, between blitz (1) and daily (2) (league
+  behaviour, no event); without a weight a rapid win mines nothing.
+- **Tournaments.** A tournament may be played in rapid, one game per match, with a first-move window of 600 seconds;
+  a forfeit after a missed first move is unrated, as in blitz.
+- **Team matches only in rapid** ([Chess team matches](#chess-team-matches-rev-922)): `boards` (2 or 3) belongs to
+  `rapid`; `blitz` and `correspondence` have no team match any more. A chess lineup is `<clan>/chess/rapid`. The
+  board order follows the players' rapid Elo at the lineup lock instead of an agreement of the captains, a side
+  without a lineup at the lock forfeits the whole match, a board whose player misses the first move is lost by
+  forfeit (unrated, one board point), and a team match is either rated or a friendly. Rated team matches of the
+  same two clans are limited to one a week.
 
 ### Changelog of revision 9.21 (2026-10-05)
 
@@ -1129,7 +1171,7 @@ it and returns non-matching events; see the relay proof).
 | `game` | `<slug>` | 32151, 32152; 2154 of a score window (rev. 9.18) | game identifier |
 | `mode` | `<slug>` | 32151, 32152; 2154 of a score window (rev. 9.18) | mode identifier |
 | `bo` | `<odd integer>` | 2150 | best-of length of the series (series games) |
-| `boards` | `<integer>` | 2150 | number of boards of a chess team match |
+| `boards` | `<integer>` | 2150 | number of boards of a chess team match (2 or 3; rev. 9.22: rapid only) |
 | `color` | `white` \| `black` | 2150 | the challenger's color in a solo chess game |
 | `board` | `<no>` | 64 | the board this game record belongs to (team match) |
 | `board` | `<no>`, `<white pubkey>`, `<black pubkey>`, `<result>` | 2154 | one chess game: board number (1 in a solo game), players, PGN result `1-0`, `0-1` or `1/2-1/2` |
@@ -1173,7 +1215,7 @@ it and returns non-matching events; see the relay proof).
 | `entered-by` | `<director pubkey>` | 2154 (rev. 7) | the tournament director whose entry decided this result, lower-case hex; see [Director results](#director-results-rev-7) |
 | `bolt11`, `preimage` | `<invoice>`; `<hex>` | 2157 (rev. 5) | the paid invoice and its preimage |
 | `rates` | `lineup` \| `player` | 32152 | what the ladder rates; absent means `lineup` |
-| `time_control` | `<PGN TimeControl>` | 32152 | e.g. `300+3` (5 minutes plus 3 seconds per move), `1/86400` (one move per day) |
+| `time_control` | `<PGN TimeControl>` | 32152 | e.g. `300+3` (5 minutes plus 3 seconds per move), `600+5` (rapid, rev. 9.22), `1/86400` (one move per day) |
 | `variant` | `<slug>` | 32152 | game variant, e.g. `standard` |
 | `rating` | `elo`, `<start rating>`, `<k-factor>`, `<scale>` | 32152 | rating system and parameters of this season, see [Rating](#rating) |
 | `tier` | `<name>`, `<minimum rating>` | 32152 | one row per rank tier, lowest first. Rev. 5: the 21 levels `bronze-1` ... `grand-champion-3`, see [Rank tiers](#rank-tiers-rev-5); earlier ladders carry five (`bronze` ... `diamond`) |
@@ -1196,22 +1238,59 @@ describes itself.
 
 | field | ladder | chess | Rocket League | EA Sports FC (rev. 8.2) | Age of Empires II (rev. 9.16) |
 |---|---|---|---|---|---|
-| game, mode | `game`, `mode` | `chess`: `blitz`, `correspondence` | `rocket-league`: `1v1`, `2v2`, `3v3` | `ea-sports-fc-26`, `ea-sports-fc-27`: `1v1`, `2v2`; ladder `d` e.g. `ea-sports-fc-26/1v1/<season>` | `age-of-empires-2`: `1v1`, `2v2`, `3v3`; ladder `d` e.g. `age-of-empires-2/1v1/<season>` |
+| game, mode | `game`, `mode` | `chess`: `blitz`, `rapid` (rev. 9.22), `correspondence` | `rocket-league`: `1v1`, `2v2`, `3v3` | `ea-sports-fc-26`, `ea-sports-fc-27`: `1v1`, `2v2`; ladder `d` e.g. `ea-sports-fc-26/1v1/<season>` | `age-of-empires-2`: `1v1`, `2v2`, `3v3`; ladder `d` e.g. `age-of-empires-2/1v1/<season>` |
 | rated entity | `rates` | `player`; there is no team rating | `lineup` for `2v2` and `3v3`; `player` for `1v1` (rev. 7.1, see [Rocket League 1v1](#rocket-league-1v1-rev-71)) | `player` for `1v1` (as Rocket League 1v1), `lineup` for `2v2` | as Rocket League |
-| time control | `time_control` | `300+3` (blitz 5+3), `1/86400` (correspondence, one move per day, in the PGN period form "moves/seconds") | none | none | none |
+| time control | `time_control` | `300+3` (blitz 5+3), `600+5` (rapid 10+5, rev. 9.22), `1/86400` (correspondence, one move per day, in the PGN period form "moves/seconds") | none | none | none |
 | variant | `variant` | `standard` | none | none | none |
 | rated | only rated modes have ladders | yes; casual games stay off the ladder and at most become a plain NIP-64 note | yes | yes | yes |
-| match size | | a solo game, or a clan team match over `boards` 2 or 3 whose boards are rated solo games | `bo` 3 or 5 | `bo` 1 or 3 | `bo` 1 or 3 |
-| team size | | a chess lineup (`<clan>/chess/<mode>`) needs at least `boards` active players | 1, 2, 3 | 1, 2 | 1, 2, 3 |
+| match size | | a solo game, or a clan team match over `boards` 2 or 3 whose boards are rated solo games; rev. 9.22: team matches in `rapid` only | `bo` 3 or 5 | `bo` 1 or 3 | `bo` 1 or 3 |
+| team size | | a chess lineup (`<clan>/chess/<mode>`) needs at least `boards` active players; rev. 9.22: only `<clan>/chess/rapid` | 1, 2, 3 | 1, 2 | 1, 2, 3 |
 | clan standing | | derived: clan rating off Nostr; clan hashrate recomputable (rev. 4) | `2v2`, `3v3`: the lineup's own Elo; `1v1` (rev. 7.1): the player's Elo; clan hashrate recomputable (rev. 4) | as Rocket League | as Rocket League |
 | draws | | yes, a game can end `1/2-1/2` | no | no; a game level after extra time is decided on penalties in the game and reported with its winner and points unknown | no |
 | result per game | | a game record (kind `64`), see [Game Record](#game-record-64-reused-from-nip-64) | `score` tags in the report (2152) | `score` tags in the report (2152), no flags | `score` tags in the report (2152) with the winner only: the game has no goals, so both point values are always left out; no flags |
-| moves on Nostr | | none: blitz and correspondence moves stay on the league server (rev. 9.4; before, correspondence moves were notes) | none | none | none |
+| moves on Nostr | | none: blitz, rapid and correspondence moves stay on the league server (rev. 9.4; before, correspondence moves were notes) | none | none | none |
 | chat | | game channel `Chess` (rev. 9.3) | `Rocket League` | `EA Sports FC 26`, `EA Sports FC 27` | `Age of Empires II: Definitive Edition` (rev. 9.16) |
 
 A chess lineup exists only to field team matches; it has no rating of its own. Casual (unrated)
 games never produce match-flow events and get no league record (rev. 9.4); a player may post the
 finished game to their own profile as a plain NIP-64 note.
+
+### Chess team matches (rev. 9.22)
+
+A clan team match is played in `rapid` only, on 2 or 3 boards at once, between two chess lineups
+(`<clan>/chess/rapid`). Each board is a solo game on the rapid player ladder; there is no team rating.
+
+1. **Challenge and answer.** An acting captain challenges with `boards` 2 or 3, the two lineup `a`, the ladder
+   `a` `chess/rapid/<season>`, one to three `start` or a start "now" (the league's own short lead time),
+   `respond_by` and no `zap`. Both lineups need at least `boards` active players. The other captain accepts one
+   start (`2151`); the trust gate (gatekeepers: the two captains, see [Trust gate](#trust-gate)) and every
+   player's clan are read and pinned then. A player who leaves the clan later still plays, and counts for the
+   clan of the accept.
+2. **Friendly team matches.** A team match is a **friendly** when no rapid ladder is open, when a captain asks for
+   one, or when it is not the first rated team match of the two clans in the last seven days (league policy: one
+   rated team match per pair of clans a week; friendlies are not limited). A friendly is league data: no challenge,
+   answer or attestation is signed, its boards are casual games, and it earns no clan hashrate and no team win
+   bonus.
+3. **Lineup lock.** Until 30 minutes before the start each captain names exactly `boards` players from the active
+   players of the lineup; in a rated team match only players who pass the trust gate on rank. The other side does
+   not see the choice before the lock. A side that has named no lineup at the lock **forfeits the whole team
+   match**: the league attests the challenge once, `resolution` `forfeit`, `winner` the other side, unrated (as a
+   whole-team no-show in [League Attestation](#league-attestation-2154)); if neither side named one, `void`.
+   Nobody is fielded by the league in place of a captain.
+4. **Board order.** At the lock the league orders each side's players by their rapid Elo, highest first: the
+   rating on the season's rated rapid ladder, else the casual rapid rating, else the start rating; a tie goes to
+   the player with more results on that ladder, then to the older account at the league. Board k is player k of
+   the challenger side against player k of the challenged side; the challenger side has White on odd boards and
+   Black on even boards. The captains choose who plays, never in which order.
+5. **Start and board forfeit.** All boards start together at the start. On each board the side to move has
+   600 seconds for the first move. A player who misses it loses the board by **forfeit**: the board attestation has
+   `resolution` `forfeit`, its `winner`, no `elo` and no block; it moves no rating, earns no clan hashrate, and
+   counts one board point for the side that showed up. A board where neither player moved is `void` and counts no
+   point for either side. A player held in another live game at the start counts as not having moved.
+6. **Team result.** Once every board has ended, the team result is the sum of board points (win 1, draw ½, loss
+   0, board forfeit 1 for the side that showed up): more points win the team match, equal points are a team draw.
+   Only a team win adds the team win bonus ([Clan hashrate](#clan-hashrate)); in a team draw each clan keeps the
+   hashrate of its own boards.
 
 ### Board games (rev. 9.12)
 
@@ -1507,7 +1586,9 @@ where the game has one, one to three `start`, `respond_by`, `alt`.
   game, because its boards are rated there.
 - **Colors (chess).** A solo game carries `color`, the challenger's color. In a team match the
   challenger side has White on odd boards and Black on even boards; which player sits on which board
-  is agreed by the captains before the start and becomes public with the game records.
+  is agreed by the captains before the start and becomes public with the game records. Rev. 9.22:
+  team matches are played in `rapid` only, and the league sets the board order by rapid Elo at the
+  lineup lock ([Chess team matches](#chess-team-matches-rev-922)).
 
 **Tournament matches are ordinary challenges** on the same ladder and are rated like any other,
 except that a match with a mix team is unrated (see [League Attestation](#league-attestation-2154)).
@@ -1725,7 +1806,11 @@ any other. The team result is derived from them: the sum of board points (win 1,
 the attestations that reference the challenge; the side with more points wins the match, equal
 points are a draw. The team result moves no rating. If not a single board was played (a whole team
 did not show up), the league attests the challenge once with the two lineups, `resolution`
-`forfeit` or `void`, `winner`, and neither `board` nor `elo`; that attestation is unrated. A board
+`forfeit` or `void`, `winner`, and neither `board` nor `elo`; that attestation is unrated. Rev. 9.22:
+a single board lost on a missed first move is attested as that board with `resolution` `forfeit`,
+its `winner` and no `elo`, unrated; it counts one board point in the team result. A board where
+neither player moved is attested `void` and counts none; a side without a lineup at the lock
+forfeits the whole match ([Chess team matches](#chess-team-matches-rev-922)). A board
 attestation's `challenger` and `challenged` are the players of that board by side, not by color.
 Each attestation references the challenge, the accepting answer and the game record, if it
 exists (no Result Response answers a chess game). Rev. 9.4: the record is the league's, signed when

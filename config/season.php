@@ -139,6 +139,13 @@ return [
     | shrinks them in proportion to make room (35/40/25 become 32/36/22 next
     | to 10), and the board saves that or not (plan: no silent redistribution).
     |
+    | chess_rapid_proposal: the weight of chess rapid (plan "Schach Rapid und
+    | Clan", P1), decided by the user on 2026-10-05. Rapid joined after the
+    | board's weights, so it mines only once the board fills it into the
+    | draft, or into a parameter change of a live season, which also opens
+    | its ladder there (NIP rev. 9.22). Until then rapid is casual in a live
+    | season. It counts in the chess share and daily limit.
+    |
     | age_of_empires_2_proposal: the same for Age of Empires II (plan "AoE2
     | und Trackmania", P1): a weight per mode as the other series games, its
     | own share and daily limit. These are DRAFT values nobody decided yet;
@@ -193,6 +200,13 @@ return [
             ],
             'share' => 10,
             'daily' => 5,
+        ],
+        // Chess rapid (plan "Schach Rapid und Clan", P1): weight 1.5, the user's decision of 2026-10-05, between blitz
+        // and daily. A mode of a game that mines already: no share or daily limit of its own (it counts in chess).
+        'chess_rapid_proposal' => [
+            'weights' => [
+                'chess/rapid' => 1500,
+            ],
         ],
         'pairlimit' => [1, 3],
         'subtree' => 90,

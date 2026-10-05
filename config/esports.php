@@ -638,7 +638,7 @@ return [
     */
 
     'tournaments' => [
-        'first_move_seconds' => ['blitz' => 600, 'correspondence' => 86400],
+        'first_move_seconds' => ['blitz' => 600, 'rapid' => 600, 'correspondence' => 86400],
         'first_move_restarts' => 1,
         'drawn_replays' => 2,
         'unanswered_report_hours' => 2,

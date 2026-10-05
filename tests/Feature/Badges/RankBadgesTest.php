@@ -135,6 +135,38 @@ test('no badge for a provisional player, without the badge key, or outside a liv
         ->and(NostrEvent::query()->whereIn('kind', [RankBadge::DEFINITION, RankBadge::AWARD])->count())->toBe(0);
 });
 
+test('chess rapid has its own badge beside blitz, naming the rapid ladder', function () {
+    [$user] = rankedPlayer(1110);
+    Rating::query()->create([
+        'pool' => Rating::RATED, 'season' => 'pre-season', 'game' => 'chess', 'mode' => 'rapid',
+        'subject' => 'user:'.$user->id, 'user_id' => $user->id, 'rating' => 1000, 'results' => 5,
+    ]);
+    $badges = app(RankBadges::class);
+
+    expect($badges->sync($user, 'chess', 'blitz'))->not->toBeNull()
+        ->and($badges->sync($user, 'chess', 'rapid'))->not->toBeNull();
+
+    [$blitz] = badgeEvents(RankBadge::DEFINITION, 'rank/chess/blitz/'.$user->pubkey);
+    [$rapid] = badgeEvents(RankBadge::DEFINITION, 'rank/chess/rapid/'.$user->pubkey);
+
+    expect(tagOf($blitz, 'name')[1])->toBe('Chess blitz · Platinum I')
+        ->and(tagOf($rapid, 'name')[1])->toBe('Chess rapid · Silver III')
+        ->and(tagOf($rapid, 'a')[1])->toBe('32152:'.$this->season->league_pubkey.':chess/rapid/pre-season')
+        ->and(badgeEvents(RankBadge::AWARD))->toHaveCount(2);
+});
+
+test('no rapid badge in a season whose Block 0 came before rapid, until its ladder is published', function () {
+    NostrEvent::query()->where(['kind' => 32152, 'd' => 'chess/rapid/pre-season'])->delete();
+    [$user] = rankedPlayer(1000, mode: 'rapid');
+
+    expect(app(RankBadges::class)->sync($user, 'chess', 'rapid'))->toBeNull()
+        ->and(badgeEvents(RankBadge::DEFINITION))->toBe([]);
+
+    publishLadders($this->season);
+
+    expect(app(RankBadges::class)->sync($user, 'chess', 'rapid'))->not->toBeNull();
+});
+
 test('a lineup ladder gives every active player of the lineup the lineup\'s tier', function () {
     $lineup = Lineup::factory()->mode('2v2')->ready()->create();
     Rating::query()->create([

@@ -23,7 +23,7 @@ use InvalidArgumentException;
  * longest (EA Sports FC extra time and penalties, Rocket League overtime).
  * Both are unmeasured assumptions: FC 10 min and 1.3, RL 5 min and 1.25,
  * AoE2 10 min and 1.5 (a game has no clock and runs long far more often
- * than it ends early), blitz 3 min and 1.0 (the clock bounds a game),
+ * than it ends early), blitz and rapid 3 min and 1.0 (the clock bounds a game),
  * daily chess 0 and 1.0.
  */
 final readonly class GameProfile
@@ -61,6 +61,8 @@ final readonly class GameProfile
             // Only what a tournament match can be played as (P8b DoD gate): one chess game per match
             // (no 2-game match yet), and the series lengths the game registry allows (Bo3, Bo5).
             'chess/blitz' => new self('blitz', $game, $mode, 'min', 14, 0, 3, 1, 1, [1], false, 'game', overhead: 3),
+            // Rapid 10+5 (plan "Schach Rapid und Clan", P1): 2 × (10 min + 40 moves × 5 s) ≈ 27 min a game, unmeasured.
+            'chess/rapid' => new self('rapid', $game, $mode, 'min', 27, 0, 3, 1, 1, [1], false, 'game', overhead: 3),
             'chess/correspondence' => new self('daily', $game, $mode, 'day', 30, 0, 1, 1, 1, [1], true, 'game'),
             // Board games (plan "Mühle und Dame", P5): one blitz game 5+3 per match, planned as blitz chess.
             'nine-mens-morris/blitz', 'checkers/blitz' => new self("{$game}/{$mode}", $game, $mode, 'min', 14, 0, 3, 1, 1, [1], false, 'game', overhead: 3),

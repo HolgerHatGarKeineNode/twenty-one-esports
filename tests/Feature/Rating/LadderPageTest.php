@@ -144,7 +144,7 @@ test('an empty open ladder invites the first game and shows no overview', functi
         ->assertSee('data-test="ladder-empty-play"', false)
         ->assertDontSee('data-test="ladder-overview"', false)
         ->assertSee('Block 0')
-        ->assertSee('not published yet');
+        ->assertSee('Ladder record');
 });
 
 test('the clan view of a player ladder ranks clans by the average of their three best members', function () {

@@ -145,7 +145,7 @@ test('a new ladder fills its form from the right with empty slots', function () 
 });
 
 test('once a season is live the ladder is the rated one, with its rank badge', function () {
-    Season::factory()->create();
+    openSeason();
     $player = User::factory()->create();
     playerStatsChess($player, [['win', 16], ['loss', -10]]);
     playerStatsChess($player, [['win', 40], ['win', 30], ['win', 25], ['win', 20], ['win', 15], ['win', 10]], Rating::RATED, 'pre-season');

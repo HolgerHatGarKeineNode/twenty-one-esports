@@ -13,6 +13,7 @@ use Carbon\CarbonImmutable;
 use Carbon\CarbonInterface;
 use Illuminate\Contracts\Http\Kernel as HttpKernel;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Vite;
 use Tests\Integration\Support\Stack;
@@ -166,9 +167,14 @@ expect()->extend('toBeOne', function () {
  * result is attested. The genesis is a real signed 2156, so block 1 can name
  * it. The real release path is tested in tests/Feature/SeasonChain.
  *
+ * Block 0 publishes the first version of every ladder, signed at the genesis
+ * time, and a ladder opens only with it (Ladders::address(), plan "Schach
+ * Rapid und Clan", P1). `$ladders = false` leaves them out: a season released
+ * before a game or mode joined, whose ladder opens later (publishLadders()).
+ *
  * @param  array<string, mixed>  $attributes
  */
-function openSeason(array $attributes = []): Season
+function openSeason(array $attributes = [], bool $ladders = true): Season
 {
     $league = new TestSigner;
     config(['esports.league.nsec' => $league->secret]);
@@ -177,6 +183,19 @@ function openSeason(array $attributes = []): Season
     $genesis = NostrEvent::fromSigned(SignedEvent::fromInput($league->sign(SeasonChains::GENESIS, [['season', $season->slug], ['alt', 'Season Genesis']], $season->genesis_message, $season->genesis_at->getTimestamp())));
     $season->genesis_event_id = $genesis->id;
     $season->save();
+
+    if ($ladders) {
+        $now = Carbon::getTestNow();
+        CarbonImmutable::setTestNow(CarbonImmutable::instance($season->genesis_at));
+        Carbon::setTestNow(CarbonImmutable::instance($season->genesis_at));
+
+        try {
+            publishLadders($season);
+        } finally {
+            CarbonImmutable::setTestNow($now);
+            Carbon::setTestNow($now);
+        }
+    }
 
     return $season;
 }

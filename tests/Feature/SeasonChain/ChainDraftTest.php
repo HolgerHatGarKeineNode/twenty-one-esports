@@ -143,6 +143,26 @@ test('Age of Empires II mines only once the board takes up its draft proposal: w
         ->and(ChainDraft::stored()['weights'])->toMatchArray(['age-of-empires-2/1v1' => 1000, 'age-of-empires-2/2v2' => 1000, 'age-of-empires-2/3v3' => 1000]);
 });
 
+test('chess rapid mines only once the board takes up its proposal: weight 1.5 in the chess share, the other shares unchanged', function () {
+    draftPage($this->board)
+        ->assertSee('data-test="chess-rapid-proposal"', false)
+        ->assertSee('Chess rapid does not mine in this draft. Proposal: weight 1.5')
+        ->assertSet('draftWeights.chess/rapid', '')
+        ->call('fillProposal', 'chess-rapid')
+        ->assertSet('draftWeights.chess/rapid', '1.5')
+        ->assertSet('draftWeights.chess/blitz', '1')
+        ->assertSet('draftShares', ['chess' => '35', 'rocket-league' => '40', 'ea-sports-fc' => '25', 'age-of-empires-2' => ''])
+        ->assertSee('The proposal for Chess rapid is filled in.')
+        ->tap(fn () => expect(ChainDraft::stored())->toBeNull())
+        ->call('saveDraft')
+        ->assertSet('draftError', '')
+        ->assertDontSee('data-test="chess-rapid-proposal"', false);
+
+    expect(ChainDraft::stored()['weights'])->toMatchArray(['chess/blitz' => 1000, 'chess/rapid' => 1500, 'chess/correspondence' => 2000])
+        ->and(ChainDraft::stored()['shares'])->toBe(['chess' => 35, 'rocket-league' => 40, 'ea-sports-fc' => 25])
+        ->and(ChainDraft::stored()['daily'])->toBe(['chess' => 5, 'rocket-league' => 5, 'ea-sports-fc' => 5]);
+});
+
 test('the page warns about what may be released: shares below 100 %, a game without rated play, a mode without a weight, and the estimator', function () {
     config(['esports.chess.rated_queue' => false]);
     saveChainDraft(['shares' => ['chess' => 30, 'rocket-league' => 40, 'ea-sports-fc' => 20], 'weights' => array_diff_key(ChainDraft::defaults()['weights'], ['rocket-league/1v1' => true])]);
@@ -154,11 +174,11 @@ test('the page warns about what may be released: shares below 100 %, a game with
         'Chess blitz has a weight, but its rated play is off, so its wins do not mine until it opens.',
         'Chess daily has a weight, but its rated play is off, so its wins do not mine until it opens.',
         // Age of Empires II mines only once the board takes up its draft proposal (ChainDraft::proposal()).
-        'No weight, so these do not mine: Rocket League 1v1, Age of Empires II: Definitive Edition 1v1, Age of Empires II: Definitive Edition 2v2, Age of Empires II: Definitive Edition 3v3.',
+        'No weight, so these do not mine: Chess rapid, Rocket League 1v1, Age of Empires II: Definitive Edition 1v1, Age of Empires II: Definitive Edition 2v2, Age of Empires II: Definitive Edition 3v3.',
         'At this rate most of the supply stays unmined.',
     ]);
 
-    draftPage($this->board)->assertSeeInOrder(['data-test="season-preview"', 'The shares add up to 90 %', 'No weight, so these do not mine: Rocket League 1v1, Age of Empires II'], false);
+    draftPage($this->board)->assertSeeInOrder(['data-test="season-preview"', 'The shares add up to 90 %', 'No weight, so these do not mine: Chess rapid, Rocket League 1v1, Age of Empires II'], false);
 });
 
 test('the preview is what Block 0 signs: the same genesis tags, the ladder values and the trust gate', function () {

@@ -88,6 +88,34 @@ test('a rated game on an open ladder uses the rated k-factors and leaves the cas
         ->and(ratingOf($newcomer))->toBeNull();
 });
 
+test('rated and casual rapid results move only rapid rows; the blitz rows of both players stay byte-equal', function () {
+    openLadders();
+    [$a, $b] = [User::factory()->create(), User::factory()->create()];
+
+    foreach ([[$a, 1234, 9], [$b, 1111, 6]] as [$user, $rating, $results]) {
+        seedRating($user, Rating::RATED, $rating, $results);
+        seedRating($user, Rating::CASUAL, $rating - 100, $results + 1);
+    }
+
+    $blitz = fn (): array => Rating::query()->where('mode', 'blitz')->orderBy('id')->get()->map->getAttributes()->all();
+    $before = $blitz();
+    $this->travel(1)->minutes();
+
+    $rated = ChessGame::factory()->state(['mode' => 'rapid'])->rated()->finished('1-0')->create(['white_id' => $a->id, 'black_id' => $b->id]);
+    $casual = resignedGame($a, $b, 'rapid');
+
+    expect($rated->ladder_address)->toEndWith(':chess/rapid/season-1')
+        ->and(app(RatingService::class)->applyChessGame($rated))->toBeTrue()
+        ->and($blitz())->toBe($before)
+        // Rapid starts at the start rating for everyone: no seed from blitz.
+        ->and(ratingOf($a, Rating::RATED, 'rapid')->only(['rating', 'results', 'season']))->toBe(['rating' => 1020, 'results' => 1, 'season' => 'season-1'])
+        ->and(ratingOf($b, Rating::RATED, 'rapid')->only(['rating', 'results']))->toBe(['rating' => 980, 'results' => 1])
+        ->and(ratingOf($a, Rating::CASUAL, 'rapid')->only(['rating', 'results']))->toBe(['rating' => 1020, 'results' => 1])
+        ->and(ratingOf($b, Rating::CASUAL, 'rapid')->only(['rating', 'results']))->toBe(['rating' => 980, 'results' => 1])
+        ->and(Rating::query()->whereNotIn('mode', ['blitz', 'rapid'])->count())->toBe(0)
+        ->and(RatingChange::query()->whereIn('source_id', [$rated->id, $casual->id])->where('source', RatingChange::CHESS)->with('rating')->get()->pluck('rating.mode')->unique()->values()->all())->toBe(['rapid']);
+});
+
 test('a casual result never reaches the rated ladder or a tier, even with the ladder open', function () {
     openLadders();
     [$a, $b] = [User::factory()->create(), User::factory()->create()];

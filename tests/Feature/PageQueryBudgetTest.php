@@ -200,7 +200,8 @@ function budgetLoad(string $uri): array
  */
 const PAGE_BUDGETS = [
     'rules' => [5, 36],
-    'home' => [29, 71],
+    // +1 (plan "Schach Rapid und Clan", P1): every ladder opens only once published, read in one query per request.
+    'home' => [30, 72],
     'play' => [3, 40],
     'tournaments.show' => [30, 82],
     'matches.room' => [null, 55],
@@ -210,7 +211,8 @@ const PAGE_BUDGETS = [
     'games.index' => [5, 36],
     'matches.index' => [38, 69],
     'scores.show' => [7, 38],
-    'dashboard' => [null, 66],
+    // +2 (plan "Schach Rapid und Clan", P1): the published-ladder read and the player's chess rapid rating.
+    'dashboard' => [null, 68],
 ];
 
 test('the hot routes stay within their total query budget, as a guest and as the active player, and load without a Livewire roundtrip', function () {

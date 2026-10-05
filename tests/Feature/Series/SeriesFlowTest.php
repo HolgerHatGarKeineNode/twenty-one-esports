@@ -19,6 +19,7 @@ use App\Support\Nostr\SignedEvent;
 use App\Support\Rating\RatingService;
 use App\Support\SeasonChain\TrustFacts;
 use App\Support\Series\ChallengeDraft;
+use App\Support\Series\Ladders;
 use App\Support\Series\SeriesRuleViolation;
 use App\Support\Series\SeriesService;
 use Illuminate\Support\Facades\DB;
@@ -339,8 +340,8 @@ test('a rated series signs 2150, 2151, 2152 and 2153 that pass the NIP rules, an
     $this->series->report($match, $captainA, seriesSigned($signerA, $this->series->prepareReport($match, $captainA)));
     $this->series->respond($match, $captainB, 'disputed', 'Game 4 went to overtime.', seriesSigned($signerB, $this->series->prepareResponse($match, $captainB, 'disputed', 'Game 4 went to overtime.')));
 
-    // Every event but the league's own genesis of the open season (openSeason()).
-    $events = NostrEvent::query()->where('kind', '!=', 2156)->orderBy('id')->get();
+    // Every event but the league's own genesis and ladders of the open season (openSeason()).
+    $events = NostrEvent::query()->whereNotIn('kind', [2156, Ladders::KIND])->orderBy('id')->get();
 
     expect($events->pluck('kind')->all())->toBe([2150, 2151, 2152, 2153])
         ->and($match->refresh()->challenge_event_id)->toBe($events[0]->id);
@@ -361,7 +362,8 @@ test('a rated series signs 2150, 2151, 2152 and 2153 that pass the NIP rules, an
         ->and($challenge->tag('bo'))->toBe('5')
         ->and($report->tagsNamed('score'))->toBe([['1', 'challenger', '3', '1'], ['2', 'challenged', '1', '3'], ['3', 'challenger', '2', '1'], ['4', 'challenger', '3', '2']])
         ->and(collect($report->tagsNamed('p'))->filter(fn ($p) => isset($p[2]))->count())->toBe(6);
-    Queue::assertPushed(PublishNostrEvent::class, 4);
+    // The four match-flow events, next to the ladders Block 0 published.
+    Queue::assertPushed(PublishNostrEvent::class, 4 + NostrEvent::query()->where('kind', Ladders::KIND)->count());
 });
 
 test('the lobby reaches the two lineups and no one else, in no response', function () {

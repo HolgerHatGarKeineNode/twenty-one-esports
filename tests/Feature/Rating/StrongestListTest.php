@@ -7,6 +7,7 @@ use App\Models\Season;
 use App\Models\SeriesMatch;
 use App\Models\User;
 use App\Support\Nostr\NostrKeys;
+use App\Support\Rating\GlobalRating;
 use App\Support\Rating\LadderBoard;
 use App\Support\Rating\StrongestList;
 use Illuminate\Support\Facades\Cache;
@@ -236,4 +237,30 @@ test('the German page reads German', function () {
         ->assertSee('Die stärksten Spieler')
         ->assertSee('1 Spieler in der Wertung')
         ->assertSee('4 weitere Spieler haben in dieser Season weniger als 5 gewertete Ergebnisse und sind noch nicht in der Wertung.');
+});
+
+test('chess rapid counts toward the Global Rating as its own ladder, its rows ranked against rapid only', function () {
+    openSeason(['slug' => 'season-1']);
+    [$both, $rapidOnly, $blitzOnly] = User::factory()->count(3)->create()->all();
+    p40Blitz($both, 'season-1', 1200, 5);
+    p40Blitz($blitzOnly, 'season-1', 1000, 5);
+
+    foreach ([[$both, 1100], [$rapidOnly, 900]] as [$user, $rating]) {
+        Rating::query()->create(['pool' => Rating::RATED, 'season' => 'season-1', 'game' => 'chess', 'mode' => 'rapid', 'subject' => 'user:'.$user->id,
+            'user_id' => $user->id, 'rating' => $rating, 'results' => 5, 'wins' => 3, 'draws' => 0, 'losses' => 2]);
+    }
+
+    $breakdown = LadderBoard::globalBreakdown('season-1');
+    $engine = GlobalRating::fromConfig();
+
+    expect($breakdown[$both->id]['games'])->toBe(['chess' => 10])
+        ->and($breakdown[$both->id]['weight'])->toBe(10)
+        // Each row against its own ladder: blitz [1200, 1000], rapid [1100, 900].
+        ->and($breakdown[$both->id]['rating'])->toBe($engine->compute([
+            ['weight' => 5, 'rating' => 1200, 'ladder' => [1200, 1000]],
+            ['weight' => 5, 'rating' => 1100, 'ladder' => [1100, 900]],
+        ]))
+        ->and($breakdown[$rapidOnly->id]['rating'])->toBe($engine->compute([['weight' => 5, 'rating' => 900, 'ladder' => [1100, 900]]]))
+        ->and(collect(StrongestList::current()->ranking()['ranked'])->pluck('user')->sort()->values()->all())
+        ->toBe(collect([$both->id, $rapidOnly->id, $blitzOnly->id])->sort()->values()->all());
 });

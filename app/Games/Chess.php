@@ -5,9 +5,10 @@ namespace App\Games;
 use App\Games\Contracts\Game;
 
 /**
- * Chess: blitz 5+3 and daily (one move per day), rated per player, plus clan
- * team matches over 2 or 3 boards whose boards are rated solo games
- * (NIP "Game registry"; there is no team Elo).
+ * Chess: blitz 5+3, rapid 10+5 and daily (one move per day), each rated per
+ * player on its own ladder, plus clan team matches over 2 or 3 boards in
+ * rapid only (user, 2026-10-05), whose boards are rated solo games on the
+ * rapid ladder (NIP "Game registry", rev. 9.22; there is no team Elo).
  *
  * The result of one game is its PGN result. A solo game reports one result,
  * a team match one result per board. Moves themselves are checked by the
@@ -35,8 +36,9 @@ final class Chess implements Game
     public function modes(): array
     {
         return [
-            'blitz' => new GameMode('blitz', 'Blitz 5+3', 1, [], [2, 3], 'player', true, '300+3'),
-            'correspondence' => new GameMode('correspondence', 'Daily', 1, [], [2, 3], 'player', true, '1/86400'),
+            'blitz' => new GameMode('blitz', 'Blitz 5+3', 1, [], [], 'player', true, '300+3'),
+            'rapid' => new GameMode('rapid', 'Rapid 10+5', 1, [], [2, 3], 'player', true, '600+5'),
+            'correspondence' => new GameMode('correspondence', 'Daily', 1, [], [], 'player', true, '1/86400'),
         ];
     }
 

@@ -40,13 +40,14 @@ final class ChainOverview
 {
     public function __construct(private SeasonChains $chains, private GameRegistry $games) {}
 
-    /** "Chess blitz", "Chess daily", "Rocket League 3v3", "EA Sports FC 27 1v1". */
+    /** "Chess blitz", "Chess rapid", "Chess daily", "Rocket League 3v3", "EA Sports FC 27 1v1". */
     public static function keyLabel(string $key): string
     {
         [$game, $mode] = array_pad(explode('/', $key, 2), 2, null);
 
         return match ($key) {
             'chess/blitz' => __('Chess blitz'),
+            'chess/rapid' => __('Chess rapid'),
             'chess/correspondence' => __('Chess daily'),
             // A board game's correspondence mode (plan "Mühle und Dame", P8), as the board game's pages name it.
             'nine-mens-morris/correspondence', 'checkers/correspondence' => __(':game correspondence', ['game' => __(app(GameRegistry::class)->name($game))]),

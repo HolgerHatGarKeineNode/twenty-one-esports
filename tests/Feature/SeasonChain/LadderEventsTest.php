@@ -27,7 +27,7 @@ function ladderTags(string $d): array
 }
 
 beforeEach(function () {
-    $this->season = openSeason();
+    $this->season = openSeason(ladders: false);
     $this->trust = new TestSigner;
     config(['esports.trust.nsec' => $this->trust->secret]);
 });
@@ -53,6 +53,11 @@ test('the first version of a chess ladder describes itself: registry values, rat
         ->and(collect($tags)->where(0, 'tier')->count())->toBe(21)
         ->and($tags)->toContain(['tier', 'bronze-1', '0'], ['tier', 'grand-champion-3', '1425'], ['provisional', '5', '40'], ['trust', $this->trust->pubkey, '50'], ['hashrate', '3', '2', '1', '5'], ['e', $this->season->genesisId(), ''])
         ->and(collect($tags)->where(0, 'standing')->all())->toBe([])
+        // Chess rapid (NIP rev. 9.22): its own ladder, 10+5.
+        ->and(array_slice(ladderTags('chess/rapid/pre-season'), 0, 8))->toBe([
+            ['d', 'chess/rapid/pre-season'], ['game', 'chess'], ['mode', 'rapid'], ['season', 'pre-season'],
+            ['starts', (string) $this->season->genesis_at->getTimestamp()], ['rates', 'player'], ['time_control', '600+5'], ['variant', 'standard'],
+        ])
         ->and(ladderTags('rocket-league/2v2/pre-season'))->toContain(['rates', 'lineup'])
         ->and(collect(ladderTags('rocket-league/2v2/pre-season'))->where(0, 'time_control')->all())->toBe([]);
 });
@@ -82,8 +87,8 @@ test('a parameter change republishes every ladder with the standings and the fro
     $tags = ladderTags('chess/blitz/pre-season');
 
     expect(NostrEvent::query()->where(['kind' => Ladders::KIND, 'd' => 'chess/blitz/pre-season'])->count())->toBe(2)
-        // Two versions of every ladder: chess 2, Rocket League 3, EA Sports FC 27 and 26 2 each, Age of Empires II 3.
-        ->and(NostrEvent::query()->where('kind', Ladders::KIND)->count())->toBe(24)
+        // Two versions of every ladder: chess 3 (blitz, rapid, daily), Rocket League 3, EA Sports FC 27 and 26 2 each, Age of Empires II 3.
+        ->and(NostrEvent::query()->where('kind', Ladders::KIND)->count())->toBe(26)
         ->and(NostrEvent::query()->where(['kind' => Ladders::KIND, 'd' => 'chess/blitz/pre-season'])->max('signed_at'))->toBeGreaterThan($first->signed_at)
         ->and($tags)->toContain(['rating', 'elo', '1000', '32', '400'], ['e', str_repeat('d', 64), ''], ['p', $alice->pubkey], ['p', $bob->pubkey])
         ->and(collect($tags)->where(0, 'standing')->values()->all())->toBe([

@@ -42,13 +42,36 @@ test('a Rocket League result breaking a series rule is refused', function (array
     ]], 'game_1_flag'],
 ]);
 
-test('chess accepts a solo result and a 2 or 3 board team match, and nothing else', function () {
+test('chess accepts a solo result and a 2 or 3 board team match in rapid, and nothing else', function () {
     $game = new Chess;
-    $blitz = $game->mode('blitz');
+    $rapid = $game->mode('rapid');
 
-    expect($game->validateResult($blitz, ['format' => 'solo', 'result' => '1/2-1/2']))->toBe([])
-        ->and($game->validateResult($blitz, ['format' => 'team', 'boards' => ['1-0', '1/2-1/2', '0-1']]))->toBe([])
-        ->and($game->validateResult($blitz, ['format' => 'solo', 'result' => '2-0']))->toBe(['result'])
-        ->and($game->validateResult($blitz, ['format' => 'team', 'boards' => ['1-0']]))->toBe(['boards_not_allowed'])
-        ->and($game->validateResult($blitz, ['format' => 'team', 'boards' => ['1-0', '*']]))->toBe(['board_2_result']);
+    expect($game->validateResult($rapid, ['format' => 'solo', 'result' => '1/2-1/2']))->toBe([])
+        ->and($game->validateResult($rapid, ['format' => 'team', 'boards' => ['1-0', '1/2-1/2', '0-1']]))->toBe([])
+        ->and($game->validateResult($rapid, ['format' => 'team', 'boards' => ['1-0', '0-1']]))->toBe([])
+        ->and($game->validateResult($rapid, ['format' => 'solo', 'result' => '2-0']))->toBe(['result'])
+        ->and($game->validateResult($rapid, ['format' => 'team', 'boards' => ['1-0']]))->toBe(['boards_not_allowed'])
+        ->and($game->validateResult($rapid, ['format' => 'team', 'boards' => ['1-0', '*']]))->toBe(['board_2_result']);
+});
+
+test('chess blitz and daily take a solo result only: team matches are played in rapid (user, 2026-10-05)', function (string $mode) {
+    $game = new Chess;
+
+    expect($game->validateResult($game->mode($mode), ['format' => 'solo', 'result' => '1-0']))->toBe([])
+        ->and($game->validateResult($game->mode($mode), ['format' => 'team', 'boards' => ['1-0', '0-1']]))->toBe(['boards_not_allowed'])
+        ->and($game->validateResult($game->mode($mode), ['format' => 'team', 'boards' => ['1-0', '1/2-1/2', '0-1']]))->toBe(['boards_not_allowed']);
+})->with(['blitz', 'correspondence']);
+
+test('chess rapid is 10+5 in the registry: PGN TimeControl 600+5, rated per player on its own ladder', function () {
+    $rapid = (new Chess)->mode('rapid');
+
+    expect($rapid)->not->toBeNull()
+        ->and($rapid->name)->toBe('Rapid 10+5')
+        ->and($rapid->timeControl)->toBe('600+5')
+        ->and($rapid->rates)->toBe('player')
+        ->and($rapid->teamSize)->toBe(1)
+        ->and($rapid->bestOf)->toBe([])
+        ->and($rapid->boards)->toBe([2, 3])
+        ->and($rapid->allowsDraws)->toBeTrue()
+        ->and(array_keys((new Chess)->modes()))->toBe(['blitz', 'rapid', 'correspondence']);
 });

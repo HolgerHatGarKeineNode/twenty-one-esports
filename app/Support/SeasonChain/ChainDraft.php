@@ -240,6 +240,7 @@ final class ChainDraft
     public const PROPOSALS = [
         'board-games' => 'season.chain.board_games_proposal',
         'age-of-empires-2' => 'season.chain.age_of_empires_2_proposal',
+        'chess-rapid' => 'season.chain.chess_rapid_proposal',
     ];
 
     /**
@@ -300,8 +301,15 @@ final class ChainDraft
             return null;
         }
 
-        /** @var array{weights: array<string, int>, share: int, daily: int} $proposal */
+        /** @var array{weights: array<string, int>, share?: int, daily?: int} $proposal */
         $proposal = isset(self::PROPOSALS[$which]) ? config(self::PROPOSALS[$which]) : self::SCORE_PROPOSAL;
+
+        // A mode of a game that mines already (chess rapid, plan "Schach Rapid und Clan", P1): only its weight, in the
+        // share and daily limit of its game; the shares stay as they are.
+        if (! isset($proposal['share'])) {
+            return self::modeProposal($proposal['weights'], $chain);
+        }
+
         $ofProposal = fn (string $game): bool => $which === 'board-games' ? $registry->isBoard($game) : $game === $which;
         $keys = [];
 
@@ -344,8 +352,30 @@ final class ChainDraft
         return [
             'weights' => $weights,
             'shares' => $shares + $newShares,
-            'daily' => array_fill_keys(array_keys($keys), (int) $proposal['daily']),
+            'daily' => array_fill_keys(array_keys($keys), (int) ($proposal['daily'] ?? 0)),
         ];
+    }
+
+    /**
+     * The proposal of a late mode of a game that mines already: the weight
+     * of each of its keys the registry has, or null while none is there or
+     * one of them has a weight already. The shares and daily limits are
+     * the chain's, unchanged.
+     *
+     * @param  array<string, int>  $proposed  `<game>/<mode>` => weight in thousandths
+     * @param  Chain  $chain
+     * @return array{weights: array<string, int>, shares: array<string, int>, daily: array<string, int>}|null
+     */
+    private static function modeProposal(array $proposed, array $chain): ?array
+    {
+        $known = array_merge(...array_values(self::table($chain)));
+        $weights = array_map(intval(...), array_intersect_key($proposed, array_flip($known)));
+
+        if ($weights === [] || array_intersect_key($chain['weights'], $weights) !== []) {
+            return null;
+        }
+
+        return ['weights' => $weights, 'shares' => $chain['shares'], 'daily' => $chain['daily']];
     }
 
     /**

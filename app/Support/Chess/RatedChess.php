@@ -5,6 +5,7 @@ namespace App\Support\Chess;
 use App\Models\ClanMember;
 use App\Models\User;
 use App\Support\FairPlay\FairPlay;
+use App\Support\GameNames;
 use App\Support\SeasonChain\GatePin;
 use App\Support\SeasonChain\RatedTrustGate;
 use App\Support\SeasonChain\Seasons;
@@ -34,7 +35,10 @@ final class RatedChess
     public function refusal(User $user, string $mode): ?string
     {
         if (! Ladders::isOpen('chess', $mode)) {
-            return Seasons::restMessage($user);
+            // A season live since before this mode joined (chess rapid, NIP rev. 9.22): its ladder opens with the board's next rule change.
+            return Seasons::live() !== null
+                ? __('Rated :game starts when the board adds it to the running season.', ['game' => GameNames::full('chess', $mode)])
+                : Seasons::restMessage($user);
         }
 
         if (! self::offered()) {

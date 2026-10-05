@@ -295,7 +295,7 @@ test('an aborted board game rates nothing', function () {
 /* ---------- Casual games never mine (P6 opened the ladders) ------------------------------------------------ */
 
 test('a casual board game mines nothing: no attestation and no rated Elo, while its season ladder is open and published (P6)', function () {
-    $season = openSeason();
+    $season = openSeason(ladders: false);
     $trust = new TestSigner;
     config(['esports.trust.nsec' => $trust->secret]);
 

@@ -25,6 +25,7 @@ use App\Support\SeasonChain\SeasonRelease;
 use App\Support\SeasonChain\SeasonReleaseRefused;
 use App\Support\SeasonChain\SeasonReview;
 use App\Support\SeasonChain\Seasons;
+use App\Support\Series\Ladders;
 use Carbon\CarbonImmutable;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
 use Illuminate\Database\Eloquent\Collection;
@@ -214,9 +215,40 @@ new #[Title('Seasons')] #[Layout('layouts::app', ['section' => 'admin'])] class 
             $this->draftDaily[$key] = (string) $blocks;
         }
 
-        $this->notice = $which === 'board-games'
-            ? __('The board games\' proposal is filled in. Check it and save the draft.')
-            : __('The proposal for :game is filled in. Check it and save the draft.', ['game' => ChainDraft::shareLabel($which)]);
+        $this->notice = match ($which) {
+            'board-games' => __('The board games\' proposal is filled in. Check it and save the draft.'),
+            'chess-rapid' => __('The proposal for :game is filled in. Check it and save the draft.', ['game' => ChainOverview::keyLabel('chess/rapid')]),
+            default => __('The proposal for :game is filled in. Check it and save the draft.', ['game' => ChainDraft::shareLabel($which)]),
+        };
+    }
+
+    /**
+     * Fill the weight of chess rapid (plan "Schach Rapid und Clan", P1, the
+     * user's decision of 2026-10-05) into the change form of a live season.
+     * Nothing is saved; a saved change signs a new version of every ladder,
+     * the first one of rapid included, and so opens it (NIP rev. 9.22).
+     */
+    public function fillRapidChange(): void
+    {
+        Gate::authorize('admin');
+
+        $current = $this->chain['in_force'];
+
+        if (! $current instanceof ConsensusParameters) {
+            return;
+        }
+
+        $proposal = ChainDraft::proposal('chess-rapid', ['weights' => $current->weights, 'groups' => $current->groups, 'shares' => $current->shares, 'daily' => $current->daily] + ChainDraft::current());
+
+        if ($proposal === null) {
+            return;
+        }
+
+        foreach ($proposal['weights'] as $key => $milli) {
+            $this->weights[$key] = SeasonRelease::factor($milli);
+        }
+
+        $this->notice = __('The proposal for :game is filled in. Check it and save the change.', ['game' => ChainOverview::keyLabel('chess/rapid')]);
     }
 
     /** Save the chain draft for Block 0 (board only, checked again in RatingSettings::saveDraft()), with its log row. */
@@ -939,6 +971,16 @@ new #[Title('Seasons')] #[Layout('layouts::app', ['section' => 'admin'])] class 
                             <span><button type="button" wire:click="fillProposal('age-of-empires-2')" class="inline-flex min-h-11 cursor-pointer items-center rounded-md border border-line bg-well px-4 text-[13px] font-bold text-ink hover:border-btc" data-test="fill-age-of-empires-2-proposal">{{ __('Fill in the proposal') }}</button></span>
                         </div>
                     @endif
+                    {{-- Chess rapid (plan "Schach Rapid und Clan", P1): the user's weight of 2026-10-05, filled in only by the board. --}}
+                    @if (! $draftLocked && ($proposal = ChainDraft::proposal('chess-rapid', $draftChain)) !== null)
+                        <div class="flex flex-col gap-2 rounded-md bg-ground p-3 shadow-ring" data-test="chess-rapid-proposal">
+                            <p class="m-0 text-xs text-ink-2">{{ __(':key does not mine in this draft. Proposal: weight :weight, in the chess share and daily limit. Nothing changes until you save the draft.', [
+                                'key' => ChainOverview::keyLabel('chess/rapid'),
+                                'weight' => SeasonRelease::factor((int) collect($proposal['weights'])->first()),
+                            ]) }}</p>
+                            <span><button type="button" wire:click="fillProposal('chess-rapid')" class="inline-flex min-h-11 cursor-pointer items-center rounded-md border border-line bg-well px-4 text-[13px] font-bold text-ink hover:border-btc" data-test="fill-chess-rapid-proposal">{{ __('Fill in the proposal') }}</button></span>
+                        </div>
+                    @endif
                     {{-- Score games (plan "AoE2 und Trackmania", P7): one solo block per window the league opens; draft values, only a proposal. --}}
                     @foreach (array_keys(app(GameRegistry::class)->scores()) as $scoreGame)
                         @if (! $draftLocked && ($proposal = ChainDraft::proposal($scoreGame, $draftChain)) !== null)
@@ -1170,6 +1212,16 @@ new #[Title('Seasons')] #[Layout('layouts::app', ['section' => 'admin'])] class 
                         <label class="flex flex-col gap-1 text-xs text-ink-2">{{ ChainOverview::keyLabel($key) }}<input type="text" inputmode="decimal" wire:model="weights.{{ $key }}" class="{{ $input }}" data-test="change-weight-{{ str_replace('/', '-', $key) }}"></label>
                     @endforeach
                 </fieldset>
+                {{-- Chess rapid (plan "Schach Rapid und Clan", P1): its ladder opens in a live season with the next saved change (NIP rev. 9.22). --}}
+                @if ($this->isBoard && ($weights['chess/rapid'] ?? null) === '' && ! Ladders::isOpen('chess', 'rapid'))
+                    <div class="flex flex-col gap-2 rounded-md bg-ground p-3 shadow-ring" data-test="chess-rapid-change-proposal">
+                        <p class="m-0 text-xs text-ink-2">{{ __(':key has no ladder in this season yet, so its games are casual. Proposal: weight :weight. The next saved change opens its ladder.', [
+                            'key' => ChainOverview::keyLabel('chess/rapid'),
+                            'weight' => SeasonRelease::factor((int) config('season.chain.chess_rapid_proposal.weights.chess/rapid', 1500)),
+                        ]) }}</p>
+                        <span><button type="button" wire:click="fillRapidChange" class="inline-flex min-h-11 cursor-pointer items-center rounded-md border border-line bg-well px-4 text-[13px] font-bold text-ink hover:border-btc" data-test="fill-chess-rapid-change">{{ __('Fill in the proposal') }}</button></span>
+                    </div>
+                @endif
                 <fieldset class="m-0 grid grid-cols-2 gap-3 border-0 p-0 lg:grid-cols-4" @disabled(! $this->isBoard)>
                     <legend class="mb-2 text-xs text-ink-2">{{ __('Share cap per era (1 to 100 %) and blocks per player a day (1 to 100)') }}</legend>
                     @foreach ($shares as $game => $value)

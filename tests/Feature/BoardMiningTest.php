@@ -58,6 +58,22 @@ beforeEach(function () {
 });
 
 /**
+ * A live season released before the board games joined: Block 0 published
+ * the ladder of every other game and mode, none of a board game. Both board
+ * games are switched on again afterwards.
+ */
+function seasonBeforeBoardGames(): Season
+{
+    config(['esports.board_games.games.'.NineMensMorris::SLUG.'.enabled' => false, 'esports.board_games.games.'.Checkers::SLUG.'.enabled' => false]);
+    app()->forgetInstance(GameRegistry::class);
+    $season = openSeason();
+    NineMensMorrisOn::play();
+    CheckersGame::play();
+
+    return $season;
+}
+
+/**
  * A live season whose genesis lets the board games mine: the defaults with
  * the board games' weights (nine men's morris 1.5, checkers 1), their group's
  * share and daily limit, and the values given.
@@ -173,7 +189,7 @@ test('the rated queue refuses while it is not offered or no season is live, and 
 });
 
 test('a switched-off board game has no ladder, and a switched-on one has the season\'s once the league published it', function () {
-    $season = openSeason();
+    $season = seasonBeforeBoardGames();
 
     // Live, but its ladder not published yet (a season released before the board games joined): closed.
     expect(Ladders::address(NineMensMorris::SLUG, 'blitz'))->toBeNull()
@@ -516,7 +532,7 @@ test('a rated board win credits the "for the clan" quest of both clan players; a
 });
 
 test('a board game\'s ladder is open at a moment only if the league had published it by then', function () {
-    $season = openSeason();
+    $season = seasonBeforeBoardGames();
     $this->travel(10)->minutes();
     $before = CarbonImmutable::now()->subMinute();
     publishLadders($season);
@@ -525,12 +541,12 @@ test('a board game\'s ladder is open at a moment only if the league had publishe
     expect($address)->not->toBeNull()
         ->and(Ladders::address(NineMensMorris::SLUG, 'blitz', $before))->toBeNull()
         ->and(Ladders::address(NineMensMorris::SLUG, 'blitz', CarbonImmutable::now()))->toBe($address)
-        // Chess is open from Block 0 on, published or not.
+        // Chess blitz is open from Block 0 on, which published it.
         ->and(Ladders::address('chess', 'blitz', $before))->not->toBeNull();
 });
 
 test('a lobby in a season live since before the board games joined says rated play starts with the board\'s rule change', function () {
-    openSeason();
+    seasonBeforeBoardGames();
     [$anna] = boardLobbyPlayer('Anna');
 
     expect(app(RatedBoard::class)->refusal($anna, Checkers::SLUG, 'blitz'))->toBe('Rated Checkers starts when the board adds it to the running season.');

@@ -242,7 +242,7 @@ test('switched off, a board game has no route and no place in the navigation', f
 
 test('from P6 a board game joins the chain: its ladder is published, it has a draft row, and a running season takes it in by a parameter change', function () {
     FixtureBoardGame::register();
-    $season = openSeason();
+    $season = openSeason(ladders: false);
     $trust = new TestSigner;
     config(['esports.trust.nsec' => $trust->secret]);
 

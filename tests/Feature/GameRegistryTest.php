@@ -16,8 +16,10 @@ test('the registry holds chess with its modes and Rocket League with three lineu
             '3v3' => [3, [3, 5], 'lineup'],
         ])
         ->and(array_map(fn ($mode) => [$mode->timeControl, $mode->boards, $mode->rates, $mode->lineupMinimum()], $chess->modes()))->toBe([
-            'blitz' => ['300+3', [2, 3], 'player', 2],
-            'correspondence' => ['1/86400', [2, 3], 'player', 2],
+            // Team matches only in rapid (user, 2026-10-05): blitz and daily have no boards, so a lineup needs one player.
+            'blitz' => ['300+3', [], 'player', 1],
+            'rapid' => ['600+5', [2, 3], 'player', 2],
+            'correspondence' => ['1/86400', [], 'player', 1],
         ]);
 });
 

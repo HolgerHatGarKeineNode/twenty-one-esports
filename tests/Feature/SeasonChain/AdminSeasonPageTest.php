@@ -6,10 +6,12 @@
  */
 
 use App\Models\Admin;
+use App\Models\NostrEvent;
 use App\Models\Season;
 use App\Models\SeasonParameterChange;
 use App\Models\User;
 use App\Support\Nostr\NostrKeys;
+use App\Support\Series\Ladders;
 use Illuminate\Support\Facades\Queue;
 use Livewire\Livewire;
 use Tests\Support\TestSigner;
@@ -74,6 +76,27 @@ test('in a live season a board admin changes a weight; the change is logged and 
         ->assertSee('More reward for Rocket League.');
 
     expect(SeasonParameterChange::query()->sole()->parameters)->toBe(['weights' => ['rocket-league/3v3' => 1500]]);
+});
+
+test('in a season live since before chess rapid, the change form proposes its weight, and the saved change opens its ladder', function () {
+    $season = openSeason();
+    NostrEvent::query()->where(['kind' => Ladders::KIND, 'd' => 'chess/rapid/'.$season->slug])->delete();
+
+    Livewire::actingAs($this->board)->test('pages::admin.season')
+        ->assertSee('data-test="chess-rapid-change-proposal"', false)
+        ->assertSee('Chess rapid has no ladder in this season yet, so its games are casual. Proposal: weight 1.5.')
+        ->assertSet('weights.chess/rapid', '')
+        ->call('fillRapidChange')
+        ->assertSet('weights.chess/rapid', '1.5')
+        ->assertSet('weights.chess/blitz', '1')
+        ->tap(fn () => expect(SeasonParameterChange::query()->count())->toBe(0))
+        ->set('reason', 'Rapid joins the season.')
+        ->call('saveChange')
+        ->assertSet('changeError', '')
+        ->assertDontSee('data-test="chess-rapid-change-proposal"', false);
+
+    expect(SeasonParameterChange::query()->sole()->parameters)->toBe(['weights' => ['chess/rapid' => 1500]])
+        ->and(Ladders::address('chess', 'rapid'))->toBe(Ladders::KIND.':'.$season->league_pubkey.':chess/rapid/'.$season->slug);
 });
 
 test('a malformed value is refused on the page and nothing is logged', function () {
