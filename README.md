@@ -12,7 +12,7 @@ also runs a 24/7 livestream that is announced on Nostr as a NIP-53 live event.
 
 ## Stack
 
-- **Backend:** PHP 8.3+, Laravel 13, Livewire 4, Flux UI (Pro), Laravel Reverb
+- **Backend:** PHP 8.3+, Laravel 13, Livewire 4, Laravel Reverb
 - **Frontend:** Tailwind CSS 4, Vite
 - **Nostr:** [`swentel/nostr-php`](https://github.com/nostrver-se/nostr-php) on the server, `nostr-tools` in the browser
 - **Tests:** Pest 5, Larastan, Pint
@@ -33,9 +33,6 @@ git clone https://github.com/HolgerHatGarKeineNode/twenty-one-esports.git
 ```
 
 ## Local setup
-
-Flux Pro needs a license. Put your Composer credentials in `auth.json`; the file is
-gitignored.
 
 ```bash
 cp .env.example .env

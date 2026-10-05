@@ -14,8 +14,8 @@ pest()->group('browser');
 |--------------------------------------------------------------------------
 |
 | The chip's menu is an Alpine menu button (shellHeader in
-| resources/js/shellNav.js), not Flux's: Flux Pro's script (83 KB) loaded on
-| every page for this one dropdown. It follows the WAI-ARIA menu button
+| resources/js/shellNav.js), with no UI library script on the page for this
+| one dropdown. It follows the WAI-ARIA menu button
 | pattern: Enter, Space or ArrowDown open it on the first item, ArrowUp on
 | the last, the arrows, Home and End move, Escape closes it and gives the
 | focus back to the chip, Tab and a click outside close it.
@@ -55,7 +55,7 @@ function accountMenuPage(User $user, int $width): mixed
 /** What has the focus: its data-test, else its text. */
 const ACCOUNT_MENU_FOCUS = '() => { const el = document.activeElement; return el?.dataset?.test || (el?.textContent || "").trim().replace(/\s+/g, " ") || el?.tagName; }';
 
-/** The menu element: the parent of the name row, in Flux's markup and in ours. */
+/** The menu element: the parent of the name row. */
 const ACCOUNT_MENU_OPEN = '() => { const menu = document.querySelector("[data-test=account-menu-name]")?.parentElement; return !! menu && menu.checkVisibility({ checkVisibilityCSS: true }); }';
 
 const ACCOUNT_MENU_BOXES = <<<'JS'

@@ -91,7 +91,7 @@ test('nostr login: the button lands on home, the chip shows the name and short n
     expect($chipText)->toContain($user->displayName())
         ->and($chip->getAttribute('title'))->toContain($user->displayName())->toContain($user->shortNpub());
 
-    // Log out: open the chip's dropdown, then the "Log out" menu item. Flux
+    // Log out: open the chip's dropdown, then the "Log out" menu item. The
     // menu items are ARIA menuitems, not buttons, even though the
     // underlying element is a <button type="submit">.
     $chip->click();

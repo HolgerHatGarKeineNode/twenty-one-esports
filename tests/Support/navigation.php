@@ -161,12 +161,12 @@ const NAV_NOT_PAGES = [
 const NAV_OPEN_EACH = ['tournaments.show'];
 
 /** Vendor and infrastructure prefixes, as in RouteSweepTest. */
-const NAV_VENDOR_PREFIXES = ['flux/', 'livewire-', 'storage/', 'broadcasting/', '__test/', 'horizon', 'up'];
+const NAV_VENDOR_PREFIXES = ['livewire-', 'storage/', 'broadcasting/', '__test/', 'horizon', 'up'];
 
 /**
  * Every link a person can reach on the page: visible, or behind a visible
  * opener (a shell panel with `data-nav-panel` and the buttons that control
- * it, a Flux dropdown, the mobile menu or search, a <details>). A GET
+ * it, the mobile menu or search, a <details>). A GET
  * form (the site search) counts as a link to its action, reachable when its
  * field is. `chrome` is true outside <main>.
  */
@@ -177,8 +177,6 @@ const NAV_LINKS_SCRIPT = <<<'JS'
             // A shell panel (the game hub, the phone's More sheet) opens from any visible button that controls it.
             const panel = a.closest('[data-nav-panel][id]');
             if (panel) return [...document.querySelectorAll(`[aria-controls="${panel.id}"]`)].some(visible) ? panel.id : null;
-            const drop = a.closest('ui-dropdown');
-            if (drop) return visible(drop.querySelector('button')) ? 'menu' : null;
             if (a.closest('#mobile-nav')) return visible(document.querySelector('[aria-controls=mobile-nav]')) ? 'mobile-menu' : null;
             if (a.closest('#mobile-search')) return visible(document.querySelector('[aria-controls=mobile-search]')) ? 'mobile-search' : null;
             const details = a.closest('details');
