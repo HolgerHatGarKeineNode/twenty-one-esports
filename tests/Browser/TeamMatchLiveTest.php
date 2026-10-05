@@ -145,7 +145,7 @@ test('a guest watches both boards of a team match: the clock runs and a move on 
         expect($boxes['overflow'][0])->toBeLessThanOrEqual($boxes['overflow'][1])
             ->and($boxes['boards'])->toHaveCount(2)
             ->and($boxes['score']['w'])->toBeLessThanOrEqual($boxes['viewport'])
-            ->and(collect($boxes['boards'])->every(fn (array $board): bool => $board['x'] >= 0 && $board['x'] + $board['w'] <= $boxes['viewport']))->toBeTrue()
+            ->and(collect($boxes['boards'])->every(fn (array $board): bool => $board['x'] >= 0 && $boxes['viewport'] >= $board['x'] + $board['w']))->toBeTrue()
             ->and(collect($boxes['minis'])->every(fn (array $mini): bool => abs($mini['w'] - $mini['h']) <= 1 && $mini['w'] >= 200))->toBeTrue()
             ->and(collect($boxes['links'])->every(fn (array $link): bool => $link['h'] >= 44))->toBeTrue();
     }

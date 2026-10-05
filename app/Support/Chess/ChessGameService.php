@@ -68,7 +68,8 @@ use Illuminate\Support\Facades\DB;
  *
  * Boards of a chess team match (plan "Schach Rapid und Clan", P5; NIP rev.
  * 9.22, "Start and board forfeit") follow the same first-move rule, with
- * `esports.team_matches.first_move_seconds` counted from the agreed start: a
+ * `esports.team_matches.first_move_seconds` counted from the agreed start
+ * (at least `late_start_floor_seconds` from a late actual start): a
  * side that misses it loses the board by forfeit (unrated; attested with the
  * team result, App\Support\Chess\ChessTeamMatches::settle()), both sides: the
  * board is void. Every end of a board asks its team match for the result.
@@ -152,9 +153,12 @@ final class ChessGameService
 
             $now = $this->nowMs();
             $firstMoveMs = $firstMoveSeconds !== null ? $firstMoveSeconds * 1000 : ($daily ? $initialMs : $this->firstMoveMs());
-            // A board's window runs from the agreed start, also when the tick comes a little late; a board
-            // started after that window would have closed (a league outage) gets the whole window from now.
-            $deadline = $firstMoveAt !== null && $firstMoveAt + $firstMoveMs > $now ? $firstMoveAt + $firstMoveMs : $now + $firstMoveMs;
+            // A board's window runs from the agreed start, also when the tick comes late, but never ends sooner than
+            // `late_start_floor_seconds` after the actual start, however late (CEO decision 2026-10-05: one rule, no
+            // jump back to a full window once the agreed one has passed).
+            $deadline = $firstMoveAt !== null
+                ? max($firstMoveAt + $firstMoveMs, $now + ChessTeamMatches::lateStartFloorSeconds() * 1000)
+                : $now + $firstMoveMs;
 
             $game = ChessGame::query()->create([
                 'mode' => $mode,

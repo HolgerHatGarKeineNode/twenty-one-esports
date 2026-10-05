@@ -58,6 +58,11 @@ final class ChessPgn
             $headers += ['SetUp' => '1', 'FEN' => $game->start_fen];
         }
 
+        // A board of a team match (NIP rev. 9.22): PGN 9.2.5 "Board", the board number in a team event.
+        if ($game->series_match_id !== null && $game->board !== null) {
+            $headers['Board'] = (string) $game->board;
+        }
+
         return $headers;
     }
 

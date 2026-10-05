@@ -89,6 +89,15 @@ final class ChessTeamMatches
         return max(1, (int) config('esports.team_matches.first_move_seconds', 600));
     }
 
+    /**
+     * The least first-move time a board started late still gets from its
+     * actual start (CEO decision 2026-10-05: 60 seconds).
+     */
+    public static function lateStartFloorSeconds(): int
+    {
+        return max(1, (int) config('esports.team_matches.late_start_floor_seconds', 60));
+    }
+
     /** When the lineups lock: `lock_minutes` before the agreed start; null before an accept. */
     public static function lockAt(SeriesMatch $match): ?CarbonInterface
     {
@@ -194,9 +203,11 @@ final class ChessTeamMatches
             }
 
             SeriesMatchBoard::query()->where('series_match_id', $locked->id)->where('side', $side)->delete();
+            $pubkeys = User::query()->whereIn('id', $ids)->pluck('pubkey', 'id');
 
+            // The pubkey with the pick: an account deleted before the lock still leaves the key its board is attested with.
             foreach ($ids as $userId) {
-                SeriesMatchBoard::query()->create(['series_match_id' => $locked->id, 'side' => $side, 'user_id' => $userId]);
+                SeriesMatchBoard::query()->create(['series_match_id' => $locked->id, 'side' => $side, 'user_id' => $userId, 'pubkey' => $pubkeys->get($userId)]);
             }
         });
 
@@ -356,8 +367,10 @@ final class ChessTeamMatches
 
         usort($rows, fn (array $a, array $b): int => self::compare($a, $b));
 
+        // The pubkey frozen with the board: a board whose account is deleted later is still attested by it.
         foreach ($rows as $index => $row) {
-            $row['pick']->update(['board' => $index + 1, 'rating' => $row['rating'], 'rating_pool' => $row['pool'], 'rating_results' => $row['results']]);
+            $row['pick']->update(['board' => $index + 1, 'pubkey' => $row['pick']->user->pubkey ?? $row['pick']->pubkey,
+                'rating' => $row['rating'], 'rating_pool' => $row['pool'], 'rating_results' => $row['results']]);
         }
     }
 
@@ -477,8 +490,10 @@ final class ChessTeamMatches
      * never meets a float. `outcome`: `pending` (not started), `live`,
      * `played` (a result over the board), `forfeit` (a missed first move;
      * `showed` is the side that won it) or `void` (nobody showed up).
+     * `pubkeys`: each side's key frozen with the board, also after its
+     * account was deleted.
      *
-     * @return list<array{board: int, white: string, players: array<string, User|null>, game: ChessGame|null, outcome: 'pending'|'live'|'played'|'forfeit'|'void', points: array{challenger: int, challenged: int}, showed: list<string>}>
+     * @return list<array{board: int, white: string, players: array<string, User|null>, pubkeys: array<string, string|null>, game: ChessGame|null, outcome: 'pending'|'live'|'played'|'forfeit'|'void', points: array{challenger: int, challenged: int}, showed: list<string>}>
      */
     public static function boardResults(SeriesMatch $match): array
     {
@@ -491,13 +506,15 @@ final class ChessTeamMatches
             $white = $board % 2 === 1 ? 'challenger' : 'challenged';
             $black = SeriesMatch::otherSide($white);
             $players = ['challenger' => null, 'challenged' => null];
+            $pubkeys = ['challenger' => null, 'challenged' => null];
 
             foreach ($seats->get($board) ?? [] as $seat) {
                 $players[$seat->side] = $seat->user;
+                $pubkeys[$seat->side] = $seat->user->pubkey ?? $seat->pubkey;
             }
 
             $game = $games->get($board);
-            $row = ['board' => $board, 'white' => $white, 'players' => $players, 'game' => $game, 'outcome' => 'pending', 'points' => ['challenger' => 0, 'challenged' => 0], 'showed' => []];
+            $row = ['board' => $board, 'white' => $white, 'players' => $players, 'pubkeys' => $pubkeys, 'game' => $game, 'outcome' => 'pending', 'points' => ['challenger' => 0, 'challenged' => 0], 'showed' => []];
 
             if ($game === null) {
                 // Never started because an account is gone: once the first-move window is over the other side
@@ -635,10 +652,18 @@ final class ChessTeamMatches
                 default => 'none',
             };
 
-            // The boards the league decided are attested with the team result, the played ones already were.
+            // The boards the league decided are attested with the team result, the played ones already were; a
+            // board that never started because an account is gone by the keys frozen with it, so the board
+            // attestations sum to this score (NIP rev. 9.22, "League Attestation", "Chess").
             foreach ($results as $row) {
-                if ($row['game'] !== null && in_array($row['outcome'], ['forfeit', 'void'], true)) {
+                if (! in_array($row['outcome'], ['forfeit', 'void'], true)) {
+                    continue;
+                }
+
+                if ($row['game'] !== null) {
                     $this->chains->attestChessGame($row['game']);
+                } else {
+                    $this->chains->attestUnstartedBoard($locked, $row['board'], $row['pubkeys'], $row['showed'][0] ?? null);
                 }
             }
 

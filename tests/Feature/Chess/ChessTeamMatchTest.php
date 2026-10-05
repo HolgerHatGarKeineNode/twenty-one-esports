@@ -8,6 +8,7 @@ use App\Enums\Platform;
 use App\Enums\ReportStatus;
 use App\Enums\SeriesResolution;
 use App\Enums\SeriesStatus;
+use App\Livewire\Actions\DeleteAccount;
 use App\Models\ChessGame;
 use App\Models\ChessQueueEntry;
 use App\Models\Clan;
@@ -384,6 +385,10 @@ test('a side without a lineup at the lock loses the whole team match by forfeit,
         ->and($event->tag('winner'))->toBe('challenger')
         ->and($event->tagsNamed('elo'))->toBe([])
         ->and($event->tagsNamed('board'))->toBe([])
+        // NIP "Draws, void and unrated attestations carry none": no block tag, no chain candidate.
+        ->and($event->tagsNamed('block'))->toBe([])
+        ->and($attestation->candidate)->toBeNull()
+        ->and($attestation->height)->toBeNull()
         ->and(Rating::query()->where('mode', 'rapid')->count())->toBe(0)
         // The reservation never starts for a decided match.
         ->and(ChessTeamMatches::reservationOf($captainA))->toBeNull()
@@ -513,11 +518,12 @@ test('a board game of a team match takes no match number of its own, a board exi
         ->toThrow(LogicException::class, 'not both');
 });
 
-test('the three team match migrations roll back and up again, and refuse to roll back while team data exists', function () {
+test('the four team match migrations roll back and up again, and refuse to roll back while team data exists', function () {
     $files = [
         'series' => require database_path('migrations/2026_10_05_135637_add_team_match_columns_to_series_matches_table.php'),
         'boards' => require database_path('migrations/2026_10_05_135638_create_series_match_boards_table.php'),
         'games' => require database_path('migrations/2026_10_05_135639_add_series_match_to_chess_games_table.php'),
+        'pubkey' => require database_path('migrations/2026_10_05_154141_add_pubkey_to_series_match_boards_table.php'),
     ];
     [$match, [$lineupA, $captainA]] = acceptedTeamMatch();
     $this->teamMatches->name($match, $captainA, array_slice(activeIds($lineupA), 0, 2));
@@ -527,8 +533,18 @@ test('the three team match migrations roll back and up again, and refuse to roll
     $board->delete();
     $files['games']->down();
 
+    // The pick carries the player's key; a row from before the column is filled from its user on the way up.
+    $named = SeriesMatchBoard::query()->with('user')->get();
+    expect($named->every(fn (SeriesMatchBoard $row): bool => $row->pubkey !== null && $row->pubkey === $row->user->pubkey))->toBeTrue()
+        ->and(fn () => $files['pubkey']->down())->toThrow(RuntimeException::class, 'Dropping `pubkey`');
+    // A row from before the column: drop it by hand (down() refuses), then up() fills it from the user.
+    Schema::table('series_match_boards', fn ($table) => $table->dropColumn('pubkey'));
+    $files['pubkey']->up();
+    expect(SeriesMatchBoard::query()->with('user')->get()->every(fn (SeriesMatchBoard $row): bool => $row->pubkey === $row->user->pubkey))->toBeTrue();
+
     expect(fn () => $files['boards']->down())->toThrow(RuntimeException::class, '2 team match lineup row(s) exist');
     SeriesMatchBoard::query()->delete();
+    $files['pubkey']->down();
     $files['boards']->down();
 
     expect(fn () => $files['series']->down())->toThrow(RuntimeException::class, '1 chess team match(es) exist');
@@ -541,10 +557,11 @@ test('the three team match migrations roll back and up again, and refuse to roll
 
     $files['series']->up();
     $files['boards']->up();
+    $files['pubkey']->up();
     $files['games']->up();
 
     expect(Schema::hasColumns('series_matches', ['boards', 'lineup_locked_at']))->toBeTrue()
-        ->and(Schema::hasColumns('series_match_boards', ['series_match_id', 'side', 'user_id', 'board', 'rating', 'rating_pool', 'rating_results']))->toBeTrue()
+        ->and(Schema::hasColumns('series_match_boards', ['series_match_id', 'side', 'user_id', 'pubkey', 'board', 'rating', 'rating_pool', 'rating_results']))->toBeTrue()
         ->and(Schema::hasColumns('chess_games', ['series_match_id', 'board']))->toBeTrue();
 });
 
@@ -837,7 +854,8 @@ test('a board where neither player moved is void and counts no point; the other 
         ->and($void->tag('resolution'))->toBe('void')
         ->and($void->tag('winner'))->toBe('none')
         ->and($void->tagsNamed('board')[0][3])->toBe('*')
-        ->and($void->tagsNamed('elo'))->toBe([]);
+        ->and($void->tagsNamed('elo'))->toBe([])
+        ->and($void->tagsNamed('block'))->toBe([]);
 });
 
 test('a side that made no first move on any board loses the whole team match by forfeit, attested once and unrated', function () {
@@ -857,6 +875,7 @@ test('a side that made no first move on any board loses the whole team match by 
 
     $attestation = SeasonAttestation::query()->where('source', SeasonAttestation::SERIES)->where('source_id', $match->id)->sole();
     $event = SignedEvent::fromInput(NostrEvent::query()->findOrFail($attestation->nostr_event_id)->payload());
+    $record = $games[1]->refresh()->load('recordEvent')->recordEvent;
 
     expect($match->status)->toBe(SeriesStatus::Resolved)
         ->and($match->resolution)->toBe(SeriesResolution::Forfeit)
@@ -865,6 +884,19 @@ test('a side that made no first move on any board loses the whole team match by 
         ->and($event->tag('resolution'))->toBe('forfeit')
         ->and($event->tagsNamed('elo'))->toBe([])
         ->and($event->tagsNamed('board'))->toBe([])
+        // NIP "Draws, void and unrated attestations carry none": no block tag, no chain candidate.
+        ->and($event->tagsNamed('block'))->toBe([])
+        ->and($attestation->candidate)->toBeNull()
+        ->and($attestation->height)->toBeNull()
+        // NIP "League Attestation": `e` for every event of the chain, the board records included. Board 1 has the
+        // league's record of 1. e4 (forfeit by Black); board 2 had no move and has none.
+        ->and($record)->not->toBeNull()
+        ->and($games[2]->refresh()->record_event_id)->toBeNull()
+        ->and($event->tagsNamed('e'))->toBe([
+            [$match->challengeEvent->event_id, '', $match->challengeEvent->pubkey],
+            [$match->answerEvent->event_id, '', $match->answerEvent->pubkey],
+            [$record->event_id, '', $record->pubkey],
+        ])
         // No board attestation: the whole team match is the one forfeit.
         ->and(SeasonAttestation::query()->where('source', SeasonAttestation::CHESS)->count())->toBe(0)
         ->and(app(ChessTeamMatches::class)->settle($match))->toBeNull();
@@ -931,6 +963,9 @@ test('a rated 2:1 team win adds the team bonus once, and every board is attested
             ['p', $challenged->pubkey, '', 'white'],
             ['p', $challenger->pubkey, '', 'black'],
         ])
+        // The record's PGN: the rapid Event (ChessModes, P3) and PGN 9.2.5 `Board`, in ASCII order after the roster.
+        ->and($record->content)->toContain('[Event "TWENTY ONE esports, rated rapid"]')
+        ->and($record->content)->toContain("[Result \"0-1\"]\n[Board \"2\"]\n[Termination")
         // No team result event: three board attestations and nothing for the series.
         ->and(SeasonAttestation::query()->where('source', SeasonAttestation::CHESS)->count())->toBe(3)
         ->and(SeasonAttestation::query()->where('source', SeasonAttestation::SERIES)->count())->toBe(0);
@@ -1003,4 +1038,249 @@ test('the team match page shows every board with its clocks and the team score, 
 
     $this->get(route('matches.show', $match))->assertOk()->assertSee('Live');
     $this->get(route('games.show', $games[1]))->assertOk()->assertSee('#'.$match->number.'/1');
+});
+
+/**
+ * The team score a reader derives from the signed board attestations alone
+ * (NIP rev. 9.22, "League Attestation", "Chess"): every `2154` with a `board`
+ * row that references the challenge, read from `winner`, in half points.
+ *
+ * @return array{challenger: int, challenged: int}
+ */
+function attestedTeamScore(SeriesMatch $match): array
+{
+    $score = ['challenger' => 0, 'challenged' => 0];
+    $challenge = $match->challengeEvent->event_id;
+
+    foreach (NostrEvent::query()->where('kind', 2154)->get() as $row) {
+        $event = SignedEvent::fromInput($row->payload());
+
+        if ($event->tagsNamed('board') === [] || ! in_array($challenge, collect($event->tagsNamed('e'))->pluck(0)->all(), true)) {
+            continue;
+        }
+
+        $winner = $event->tag('winner');
+
+        if ($winner === 'challenger' || $winner === 'challenged') {
+            $score[$winner] += 2;
+        } elseif ($winner === 'draw') {
+            $score['challenger']++;
+            $score['challenged']++;
+        }
+    }
+
+    return $score;
+}
+
+function teamSeat(SeriesMatch $match, string $side, int $board): SeriesMatchBoard
+{
+    return SeriesMatchBoard::query()->with('user')->where(['series_match_id' => $match->id, 'side' => $side, 'board' => $board])->sole();
+}
+
+test('a board whose player deleted the account is attested as a forfeit by the key frozen at the lock, so the board attestations add up to the team result and its bonus', function () {
+    ratedTeamSetup();
+    [$match, [$lineupA], [$lineupB]] = lockedTeamMatch(rated: true);
+    // Board 2: the challenged side has White.
+    $gone = teamSeat($match, 'challenged', 2)->user;
+    $goneKey = $gone->pubkey;
+    $stays = teamSeat($match, 'challenger', 2)->user;
+    app(DeleteAccount::class)($gone);
+
+    expect(teamSeat($match, 'challenged', 2)->user_id)->toBeNull()
+        ->and(teamSeat($match, 'challenged', 2)->pubkey)->toBe($goneKey);
+
+    $games = startedBoards($match);
+    expect(array_keys($games))->toBe([1]);
+
+    // Board 1: ½ : ½. Board 2 waits for the end of the first-move window.
+    drawBoard($games[1]);
+    expect($match->refresh()->status)->toBe(SeriesStatus::Accepted);
+
+    $this->travelTo($match->start_at->copy()->addSeconds(601));
+    expect(app(ChessTeamMatches::class)->settleDue())->toBe(1);
+
+    $match->refresh();
+    $row = SeasonAttestation::query()->where(['source' => SeasonAttestation::SERIES, 'source_id' => $match->id, 'board' => 2])->sole();
+    $event = SignedEvent::fromInput(NostrEvent::query()->findOrFail($row->nostr_event_id)->payload());
+    $hashrate = app(ClanHashrate::class)->breakdown('season-1');
+    $clanA = $lineupA->clan->address();
+    $clanB = $lineupB->clan->address();
+
+    expect($match->winner)->toBe('challenger')
+        ->and(ChessTeamMatches::score(ChessTeamMatches::boardResults($match)))->toBe(['challenger' => 3, 'challenged' => 1])
+        // What a reader sums from the signed board attestations is the league's score ...
+        ->and(attestedTeamScore($match))->toBe(['challenger' => 3, 'challenged' => 1])
+        // ... and the bonus decision follows it: a team win with a rated board (the draw).
+        ->and($hashrate[$clanA]['teamWins'])->toBe(1)
+        ->and($hashrate[$clanA]['bonus'])->toBe(5)
+        ->and($hashrate[$clanB]['bonus'] ?? 0)->toBe(0)
+        // The tag dump of the board that never started: the deleted player named by the frozen key.
+        ->and(array_slice($event->tags, 0, 10))->toBe([
+            ['e', $match->challengeEvent->event_id, '', $match->challengeEvent->pubkey],
+            ['e', $match->answerEvent->event_id, '', $match->answerEvent->pubkey],
+            ['a', Ladders::address('chess', 'rapid'), ''],
+            ['a', $match->challenger_lineup_address, '', 'challenger'],
+            ['a', $match->challenged_lineup_address, '', 'challenged'],
+            ['p', $stays->pubkey, '', 'challenger', 'player'],
+            ['p', $goneKey, '', 'challenged', 'player'],
+            ['board', '2', $goneKey, $stays->pubkey, '0-1'],
+            ['resolution', 'forfeit'],
+            ['winner', 'challenger'],
+        ])
+        ->and($event->tagsNamed('e'))->toHaveCount(2)
+        ->and($event->tagsNamed('elo'))->toBe([])
+        ->and($event->tagsNamed('block'))->toBe([])
+        ->and($event->tag('match'))->toBe((string) $match->number)
+        ->and($event->content)->toContain('deleted')
+        ->and($row->candidate)->toBeNull()
+        ->and($row->height)->toBeNull()
+        // Once: a second tick attests nothing more.
+        ->and(app(ChessTeamMatches::class)->settleDue())->toBe(0)
+        ->and(SeasonAttestation::query()->where('source', SeasonAttestation::SERIES)->count())->toBe(1);
+});
+
+test('a board whose two players both deleted their accounts is attested void with the result *, and counts for neither side', function () {
+    ratedTeamSetup();
+    [$match] = lockedTeamMatch(rated: true);
+    $keys = [teamSeat($match, 'challenged', 2)->pubkey, teamSeat($match, 'challenger', 2)->pubkey];
+    app(DeleteAccount::class)(teamSeat($match, 'challenged', 2)->user);
+    app(DeleteAccount::class)(teamSeat($match, 'challenger', 2)->user);
+
+    $games = startedBoards($match);
+    decideBoard($games[1], 'b');
+    $this->travelTo($match->start_at->copy()->addSeconds(601));
+    app(ChessTeamMatches::class)->settleDue();
+
+    $match->refresh();
+    $row = SeasonAttestation::query()->where(['source' => SeasonAttestation::SERIES, 'source_id' => $match->id, 'board' => 2])->sole();
+    $event = SignedEvent::fromInput(NostrEvent::query()->findOrFail($row->nostr_event_id)->payload());
+
+    expect($match->winner)->toBe('challenger')
+        ->and(attestedTeamScore($match))->toBe(ChessTeamMatches::score(ChessTeamMatches::boardResults($match)))
+        ->and(attestedTeamScore($match))->toBe(['challenger' => 2, 'challenged' => 0])
+        ->and($event->tagsNamed('board'))->toBe([['2', $keys[0], $keys[1], '*']])
+        ->and($event->tag('resolution'))->toBe('void')
+        ->and($event->tag('winner'))->toBe('none')
+        ->and($event->tagsNamed('elo'))->toBe([])
+        ->and($event->tagsNamed('block'))->toBe([]);
+});
+
+test('three board forfeits, two against one side and one against the other: 2:1 on board points, but with no rated board no team bonus', function () {
+    ratedTeamSetup();
+    [$match, [$lineupA], [$lineupB]] = lockedTeamMatch(rated: true, boards: 3);
+    $games = startedBoards($match);
+    $service = app(ChessGameService::class);
+
+    // Every Black opens its board and no White moves: boards 1 and 3 (the challenger's White) go to the challenged
+    // side, board 2 (the challenged White) to the challenger.
+    foreach ([1, 2, 3] as $board) {
+        $service->markPresent($games[$board], $games[$board]->black);
+    }
+
+    $this->travelTo($match->start_at->copy()->addSeconds(601));
+
+    foreach ([1, 2, 3] as $board) {
+        $service->checkClock($games[$board]->refresh());
+    }
+
+    $match->refresh();
+    $hashrate = app(ClanHashrate::class)->breakdown('season-1');
+
+    expect($match->status)->toBe(SeriesStatus::Resolved)
+        ->and($match->resolution)->toBe(SeriesResolution::Admin)
+        ->and($match->winner)->toBe('challenged')
+        ->and(ChessTeamMatches::score(ChessTeamMatches::boardResults($match)))->toBe(['challenger' => 2, 'challenged' => 4])
+        ->and(attestedTeamScore($match))->toBe(['challenger' => 2, 'challenged' => 4])
+        ->and(collect($games)->every(fn (ChessGame $game): bool => boardAttestation($game->refresh())?->tag('resolution') === 'forfeit'))->toBeTrue()
+        ->and(RatingChange::query()->where('source', RatingChange::CHESS)->count())->toBe(0)
+        // NIP "Clan hashrate", step 2: a team match counts for the bonus only if at least one board is a rated result.
+        ->and($hashrate[$lineupB->clan->address()]['bonus'] ?? 0)->toBe(0)
+        ->and($hashrate[$lineupB->clan->address()]['teamWins'] ?? 0)->toBe(0)
+        ->and($hashrate[$lineupA->clan->address()]['bonus'] ?? 0)->toBe(0);
+});
+
+test('a board started late keeps the agreed first-move deadline, but always at least 60 seconds from its actual start', function (int $late, int $left) {
+    [$match] = lockedTeamMatch();
+    $this->travelTo($match->start_at->copy()->addSeconds($late));
+    app(ChessTeamMatches::class)->startDue();
+    $game = ChessGame::query()->where('series_match_id', $match->id)->where('board', 1)->sole();
+
+    expect(intdiv($game->deadline_ms - now()->getTimestampMs(), 1000))->toBe($left)
+        ->and($game->deadline_ms)->toBe(max($match->start_at->getTimestampMs() + 600_000, now()->getTimestampMs() + 60_000));
+})->with([
+    'on time' => [0, 600],
+    '590 s late' => [590, 60],
+    '700 s late, after the whole window' => [700, 60],
+]);
+
+test('rule 11 refuses a team match 2150 with boards and bo, a board count the registry disallows, a non-canonical number, two boards, a zap, a color, or boards on the blitz ladder', function () {
+    ratedTeamSetup();
+    [$match, [, , $signer]] = acceptedTeamMatch(rated: true, boards: 2);
+    $challenge = SignedEvent::fromInput($match->challengeEvent->payload());
+    $rules = app(EsportsEventRules::class);
+    $boards = fn (string $value): Closure => fn (array $tags): array => array_map(fn (array $tag): array => $tag[0] === 'boards' ? ['boards', $value] : $tag, $tags);
+    $plus = fn (array ...$extra): Closure => fn (array $tags): array => [...$tags, ...$extra];
+    $blitz = fn (array $tags): array => array_map(fn (array $tag): array => $tag[0] === 'a'
+        ? ['a', str_replace(['/chess/rapid', ':chess/rapid/'], ['/chess/blitz', ':chess/blitz/'], $tag[1]), ...array_slice($tag, 2)]
+        : $tag, $tags);
+    $check = fn (Closure $edit): ?string => $rules->check(SignedEvent::fromInput($signer->sign(2150, $edit($challenge->tags), $challenge->content, $challenge->createdAt)));
+
+    expect($check(fn (array $tags): array => $tags))->toBeNull()
+        ->and($check($plus(['bo', '1'])))->toBe('challenge_boards')
+        ->and($check($boards('4')))->toBe('challenge_boards')
+        ->and($check($boards('1')))->toBe('challenge_boards')
+        ->and($check($boards('02')))->toBe('challenge_boards')
+        ->and($check($boards('2.0')))->toBe('challenge_boards')
+        ->and($check($plus(['boards', '3'])))->toBe('challenge_boards')
+        ->and($check($plus(['zap', $signer->pubkey, 'wss://relay.example', '1'])))->toBe('challenge_boards')
+        ->and($check($plus(['color', 'white'])))->toBe('challenge_boards')
+        // Blitz lost its team matches (rev. 9.22): ladder and lineups of blitz with `boards` are refused; blitz allows
+        // neither `boards` nor `bo`, so its ladder is no challenge ladder at all.
+        ->and($check($blitz))->toBe('challenge_ladder');
+});
+
+test('a board forfeit whose loser deletes the account before the team result is still attested, by the key frozen at the lock', function () {
+    ratedTeamSetup();
+    [$match] = lockedTeamMatch(rated: true);
+    $games = startedBoards($match);
+    $service = app(ChessGameService::class);
+
+    // Board 1: the challenger's White never moves, Black opened it. Board 2 is still being played (its clocks run
+    // from the second move, so it starts late enough not to flag).
+    $service->markPresent($games[1], $games[1]->black);
+    $this->travelTo($match->start_at->copy()->addSeconds(590));
+    playMoves($games[2], ['e2e4', 'e7e5']);
+    $this->travelTo($match->start_at->copy()->addSeconds(601));
+    $service->checkClock($games[1]->refresh());
+    $loserKey = $games[1]->white->pubkey;
+    $winnerKey = $games[1]->black->pubkey;
+
+    expect($games[1]->refresh()->end_reason)->toBe(ChessEndReason::Forfeit)
+        ->and(boardAttestation($games[1]))->toBeNull();
+
+    app(DeleteAccount::class)($games[1]->white);
+    $board2 = $games[2]->refresh()->load(['white', 'black']);
+    $service->resign($board2, $board2->white);
+    $event = boardAttestation($games[1]->refresh());
+
+    expect($match->refresh()->status)->toBe(SeriesStatus::Resolved)
+        ->and($games[1]->white_id)->toBeNull()
+        ->and($event?->tagsNamed('board'))->toBe([['1', $loserKey, $winnerKey, '0-1']])
+        ->and(collect($event->tagsNamed('p'))->pluck(0)->all())->toBe([$loserKey, $winnerKey])
+        ->and($event->tag('resolution'))->toBe('forfeit')
+        ->and(attestedTeamScore($match))->toBe(ChessTeamMatches::score(ChessTeamMatches::boardResults($match)));
+});
+
+test('the lock freezes each named player\'s pubkey with the board, also for a pick that has none yet', function () {
+    [$match, [$lineupA, $captainA], [$lineupB, $captainB]] = acceptedTeamMatch();
+    $this->teamMatches->name($match, $captainA, array_slice(activeIds($lineupA), 0, 2));
+    $this->teamMatches->name($match, $captainB, array_slice(activeIds($lineupB), 0, 2));
+    SeriesMatchBoard::query()->where('series_match_id', $match->id)->update(['pubkey' => null]);
+
+    travelToLock($match);
+    expect($this->teamMatches->lock($match))->toBe('locked');
+
+    $rows = SeriesMatchBoard::query()->with('user')->where('series_match_id', $match->id)->get();
+    expect($rows)->toHaveCount(4)
+        ->and($rows->every(fn (SeriesMatchBoard $row): bool => $row->board !== null && $row->pubkey === $row->user->pubkey))->toBeTrue();
 });
