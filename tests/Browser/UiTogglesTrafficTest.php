@@ -396,9 +396,11 @@ test('a searching board lobby asks when its range widens with the socket up, and
 
     if ($minute) {
         // Joined just before the page: the widenings at 30 and 60 s.
-        expect(count($withSocket))->toBeLessThanOrEqual(2)->and(count($withoutSocket))->toBeGreaterThanOrEqual(14);
+        expect(count($withSocket))->toBeGreaterThanOrEqual(1)->toBeLessThanOrEqual(2)->and(count($withoutSocket))->toBeGreaterThanOrEqual(14);
     } else {
-        // Widening every 6 s up to the widest range at 18 s: at most two asks in 12 s; without the socket one every 4 s.
-        expect(count($withSocket))->toBeLessThanOrEqual(2)->and(count($withoutSocket))->toBeGreaterThanOrEqual(3);
+        // Widening every 6 s up to the widest range at 18 s: one or two widening asks in the 12 s window (page start shifts
+        // it by about a second), never none: a lobby that never asks leaves a waiting player unpaired (reviewer 2026-10-05,
+        // D1). Without the socket one every 4 s, so at least two in the window.
+        expect(count($withSocket))->toBeGreaterThanOrEqual(1)->toBeLessThanOrEqual(2)->and(count($withoutSocket))->toBeGreaterThanOrEqual(2);
     }
 });

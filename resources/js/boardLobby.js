@@ -34,6 +34,7 @@ export default function boardLobby(config) {
         shownCheckAt: 0,
         dueAt: 0,
         askedFor: 0,
+        retryAfter: 0,
         askedAt: 0,
         asking: false,
 
@@ -94,8 +95,8 @@ export default function boardLobby(config) {
 
                 return;
             }
-            // Once per moment: a failed request does not turn into one per second.
-            if (at !== this.askedFor && this.now + this.skew >= at) {
+            // Once per moment: a failed request does not turn into one per second, it is retried after 10 s.
+            if (at !== this.askedFor && this.now + this.skew >= at && this.now >= this.retryAfter) {
                 this.askedFor = at;
                 this.ask();
             }
@@ -109,7 +110,9 @@ export default function boardLobby(config) {
                 const next = await this.$wire.poll();
                 this.dueAt = typeof next === 'number' ? next : 0;
             } catch {
-                // The next fallback tick or the net asks again.
+                // Without the socket the next fallback tick asks again; with it the same moment is asked for again in 10 s.
+                this.askedFor = null;
+                this.retryAfter = this.now + 10_000;
             } finally {
                 this.asking = false;
             }
