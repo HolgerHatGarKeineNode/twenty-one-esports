@@ -128,7 +128,7 @@ new #[Title('Moderation')] #[Layout('layouts::app', ['section' => 'admin'])] cla
 
 @php($input = 'h-11 w-full rounded-md border border-edge bg-ground px-3 text-[13px] text-ink')
 
-<x-admin.page active="moderation" :title="__('Moderation')" :lead="__('Keys muted for everyone or banned from the site. Nobody but admins sees this list.')" :notice="$notice ?: null" notice-test="moderation-notice" data-test="admin-moderation">
+<x-admin.page active="moderation" :title="__('Moderation')" :lead="__('Keys muted for everyone or banned from the site. Only admins see the reasons and who did it.')" :notice="$notice ?: null" notice-test="moderation-notice" data-test="admin-moderation">
     <x-admin.panel :title="__('Mute or ban a key')" :meta="__('also from the menu on any chat message')">
         <form wire:submit="add" class="flex flex-col gap-3" data-test="moderation-form">
             <x-player-picker id="moderation-key" wire:model="key" allow-npub :label="__('Player or npub')" :exclude="[(int) auth()->id()]" class="max-w-xl" />
@@ -145,6 +145,9 @@ new #[Title('Moderation')] #[Layout('layouts::app', ['section' => 'admin'])] cla
             <span class="flex flex-wrap gap-3">
                 <x-button type="submit" icon="shield-check" data-test="moderation-submit">{{ __('Save') }}</x-button>
             </span>
+            @if (config('esports.league.mute_list') === true)
+                <p class="m-0 text-xs text-ink-2" data-test="moderation-public-note">{{ __('The keys in force go out publicly as the league\'s Nostr mute list, without reasons and without saying mute or ban.') }}</p>
+            @endif
         </form>
     </x-admin.panel>
 

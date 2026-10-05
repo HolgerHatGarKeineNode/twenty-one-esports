@@ -56,14 +56,15 @@ tournaments without a new kind; **revision 9.19** (2026-10-02): every tournament
 league wallet again, zaps to a tournament's `31923` go into its pot with receipts by the league's LNURL
 server key, and a sponsor's pledge can be marked paid outside the wallet; it replaces revision 9.1;
 **revision 9.20** (2026-10-04): the tournament desk, a NIP-17 group of a tournament's players and its
-direction, with the rumor tag `desk`). Not
+direction, with the rumor tag `desk`; **revision 9.21** (2026-10-05): the league's public mute list, NIP-51
+kind `10000` signed by the league key, without a new kind). Not
 submitted to
 `nostr-protocol/nips`. Kind
 numbers are checked against the official NIP index and other registries (see
 [Kind numbers and collision check](#kind-numbers-and-collision-check)); every example in this
 document is a real signed event that was published to and read back from local relays
 (`docs/plans/2026-09-25T1212-esports-v1-ladder/p1-relay-proof.md`, rounds 1 to 6). Revision 7 adds
-no example yet, and neither do revisions 8, 8.1, 9, 9.1, 9.2, 9.3, 9.5, 9.6, 9.7, 9.8, 9.9, 9.10, 9.11, 9.12, 9.13, 9.14, 9.15, 9.16, 9.18, 9.19 and 9.20 (see [Open points](#open-points)).
+no example yet, and neither do revisions 8, 8.1, 9, 9.1, 9.2, 9.3, 9.5, 9.6, 9.7, 9.8, 9.9, 9.10, 9.11, 9.12, 9.13, 9.14, 9.15, 9.16, 9.18, 9.19, 9.20 and 9.21 (see [Open points](#open-points)).
 Revision 9.10 needs none: it adds no event and no tag. Neither does revision 9.11: the league signs nothing new, and the zap
 request it describes is plain NIP-57. Nor does revision 9.12: a board game's tournament is an ordinary `31923` whose summary
 names the game and mode, and a board game has no ladder yet. Revision 9.13 does sign new events for the
@@ -144,6 +145,23 @@ The rules marked "rev. 9.18" are a draft as well, written before the first Block
 season chain as **solo blocks**. They apply to every chain season whose genesis the league signs after adopting
 revision 9.18; a genesis without the `solo` tag has its defaults. No versus candidate, ladder, tag or rule changes: a
 genesis without a score game's `weight` signs exactly the tags it signed before.
+
+### Changelog of revision 9.21 (2026-10-05)
+
+The keys an admin muted or banned on the site go out as the league's mute list, so other clients can honour them
+(user, 2026-10-05). No new kind and no new tag; checked against the app's tests, not on a public relay.
+
+- **The league mute list**: NIP-51 kind `10000` by the league key, one public `p` per muted or banned key,
+  deduplicated. It never says why a key is listed, nor whether it was muted or banned. Admins, board members and the
+  league key are never listed by the league.
+- **Carried over onto the key's own list**: the league key is also a profile that clients write a mute list for.
+  Before each version the league reads the newest `10000` of its key from its relays (to `EOSE`, signatures checked,
+  newest `created_at` wins, ties to the lower id) and keeps that list's `content` (private items, never decrypted)
+  and every tag that is not one of its own `p` tags unchanged; its own `p` tags follow. A lift removes only a key the
+  league added. No relay answering the read means no new version.
+- **Every version is the full list**, at a later `created_at` than the newest list read; a version whose keys are
+  all lifted is signed too. A list that already holds the league's keys is not signed again; one that lost them (a
+  client wrote over it) gets them back with the next run.
 
 ### Changelog of revision 9.20 (2026-10-04)
 
@@ -1052,6 +1070,7 @@ no kind of their own; round 5 adds `2156` to `2158`):
 | `1111` | 22 | rev. 9.9: comment on a tournament (`31923`), a rated game's record (`64`) or a rated series' challenge (`2150`) | the player |
 | `7` | 25 | rev. 9.9: like (`+`) of the same | the player |
 | `31925` | 52 | rev. 9.9: RSVP to a tournament, `accepted` or `declined`; never a sign-up | the player |
+| `10000` | 51 | rev. 9.21: the league's mute list, one public `p` per key muted or banned on the site, no reasons, carried over onto the key's own list | league key |
 | `40`, `41` | 28 | rev. 9.3: a game channel with fixed fields and its metadata, one per game; rev. 9.15: the board games' too, while the league runs them (see [Game channels](#game-channels-rev-93)) | league key (the channel creator) |
 | `42` | 28 | rev. 9.3: a message in a game channel | anyone |
 | `43`, `44` | 28 | rev. 9.3: the creator's moderation of the game channels (hide a message, mute a pubkey) | league key |

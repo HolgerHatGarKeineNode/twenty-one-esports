@@ -780,6 +780,12 @@ return [
 
     'league' => [
         'nsec' => env('ESPORTS_LEAGUE_NSEC'),
+
+        // The site's mutes and bans as the league key's public NIP-51 mute list (kind 10000,
+        // App\Support\Moderation\LeagueMuteList), carried over onto the newest list a Nostr client
+        // wrote for the key (private part and foreign tags unchanged). ESPORTS_PUBLISH_MUTE_LIST=false
+        // is the kill switch: nothing is read, signed or published then.
+        'mute_list' => (bool) env('ESPORTS_PUBLISH_MUTE_LIST', true),
     ],
 
     /*
