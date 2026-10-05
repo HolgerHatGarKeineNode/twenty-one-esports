@@ -10,7 +10,8 @@ namespace App\Support;
  *
  * The proxy has fixed presets: `avatar` is a 96 px square, enough for a
  * picture drawn at up to 48 CSS px on a 2x screen. Larger pictures take
- * `msg` (scaled into 600 px) until group has a bigger square preset.
+ * `avatar-lg`, a 192 px square (sharp up to 96 CSS px on a 2x screen), the
+ * largest ones `msg`.
  * Without a configured proxy, and for anything that is not a foreign https
  * URL (our uploads, the generated Blockpile), the URL comes back unchanged.
  */
@@ -18,6 +19,9 @@ final class ImageProxy
 {
     /** The largest CSS size the 96 px `avatar` preset serves sharp on a 2x screen. */
     public const SMALL_MAX = 48;
+
+    /** Up to here the 192 px `avatar-lg`; larger pictures (player page, TV, champion) take `msg`, sharp on a 2x screen (user, 2026-10-05). */
+    public const MEDIUM_MAX = 96;
 
     public static function avatar(string $url, int $size = self::SMALL_MAX): string
     {
@@ -27,7 +31,7 @@ final class ImageProxy
             return $url;
         }
 
-        $preset = $size <= self::SMALL_MAX ? 'avatar' : 'msg';
+        $preset = $size <= self::SMALL_MAX ? 'avatar' : ($size <= self::MEDIUM_MAX ? 'avatar-lg' : 'msg');
 
         return $base.'/'.$preset.'?src='.rawurlencode($url);
     }
