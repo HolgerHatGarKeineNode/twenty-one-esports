@@ -197,7 +197,7 @@ new #[Layout('layouts::app', ['section' => 'clans'])] class extends Component {
             ->with(['challengerLineup.clan', 'challengedLineup.clan'])
             ->orderByRaw('start_at is null')->orderBy('start_at')->orderBy('id')
             ->limit(5)
-            ->get();
+            ->get()->tap(fn ($list) => \App\Support\Chess\ChessTeamMatches::preload($list));
     }
 
     /**

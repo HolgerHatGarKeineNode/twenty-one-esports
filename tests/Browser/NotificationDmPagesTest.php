@@ -238,7 +238,7 @@ test('the notification settings group the switches, show how far each reaches an
 
             expect($shape)->toBe([
                 'groups' => ['notify-group-correspondence', 'notify-group-play', 'notify-group-community', 'notify-group-league'],
-                'switches' => 25,
+                'switches' => 26, // team_match (plan Schach Rapid/Clan, P6) added one
                 'pageOnly' => [],
                 'reachDm' => 8,
             ])

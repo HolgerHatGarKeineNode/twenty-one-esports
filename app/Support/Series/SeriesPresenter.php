@@ -194,7 +194,7 @@ final class SeriesPresenter
             return ['challenger' => 0, 'challenged' => 0];
         }
 
-        return RequestMemo::remember('team-score.'.$match->id, fn (): array => ChessTeamMatches::score(ChessTeamMatches::boardResults($match)));
+        return RequestMemo::remember('team-score.'.$match->id, fn (): array => ChessTeamMatches::score(ChessTeamMatches::boardResults($match, preloaded: true)));
     }
 
     /**

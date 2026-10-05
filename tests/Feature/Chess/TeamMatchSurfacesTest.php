@@ -23,6 +23,7 @@ use App\Support\Series\SeriesService;
 use App\Support\StreamBot\StreamBotBuilders;
 use Carbon\CarbonImmutable;
 use Illuminate\Support\Facades\Broadcast;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Queue;
 use Livewire\Livewire;
 use Tests\Support\TestSigner;
@@ -308,4 +309,29 @@ test('the online list carries the rapid Elo, labelled', function () {
     $member = Broadcast::driver()->getChannels()['online']($user);
 
     expect($member['elo'])->toBe(1612)->and($member['eloMode'])->toBe('rapid');
+});
+
+test('list pages load the boards of all their team matches at once: the query count does not grow per team match', function () {
+    // Reviewer 2026-10-05: each team match row asked chess_games, series_match_boards and users on its own.
+    surfaceTeamMatch(start: true);
+    $count = function (string $url): int {
+        $this->get($url)->assertOk(); // warm the caches a new match fills once
+        app()->forgetScopedInstances();
+        DB::flushQueryLog();
+        DB::enableQueryLog();
+        $this->get($url)->assertOk();
+        $queries = count(DB::getQueryLog());
+        DB::disableQueryLog();
+        app()->forgetScopedInstances();
+
+        return $queries;
+    };
+    $urls = [route('matches.index', ['game' => 'team']), route('matches.index'), route('home')];
+    $one = array_map($count, $urls);
+
+    surfaceTeamMatch(start: true);
+    surfaceTeamMatch(start: true);
+    surfaceTeamMatch(start: true);
+
+    expect(array_map($count, $urls))->toBe($one);
 });

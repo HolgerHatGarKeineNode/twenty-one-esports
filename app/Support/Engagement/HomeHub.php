@@ -18,6 +18,7 @@ use App\Models\ScoreRun;
 use App\Models\SeriesMatch;
 use App\Models\Tournament;
 use App\Models\User;
+use App\Support\Chess\ChessTeamMatches;
 use App\Support\Dock\DockItem;
 use App\Support\Dock\OpenMatches;
 use App\Support\GameNames;
@@ -145,7 +146,7 @@ final class HomeHub
         return SeriesMatch::query()->whereNotNull('boards')->whereNotNull('lineup_locked_at')
             ->where('status', SeriesStatus::Accepted)->where('start_at', '<=', now())
             ->with(['challengerLineup.clan', 'challengedLineup.clan'])
-            ->orderByDesc('start_at')->limit(2)->get();
+            ->orderByDesc('start_at')->limit(2)->get()->tap(fn ($list) => ChessTeamMatches::preload($list));
     }
 
     /**
@@ -176,7 +177,7 @@ final class HomeHub
             ->where(fn ($query) => $query->whereIn('winner', SeriesMatch::SIDES)
                 ->orWhere(fn ($query) => $query->whereNotNull('boards')->where('winner', 'none')->whereNull('resolution_reason')->where('resolution', SeriesResolution::Admin)))
             ->with(['challengerLineup.clan', 'challengedLineup.clan'])
-            ->latest('finished_at')->latest('id')->limit(self::RESULTS)->get()
+            ->latest('finished_at')->latest('id')->limit(self::RESULTS)->get()->tap(fn ($list) => ChessTeamMatches::preload($list))
             ->map(function (SeriesMatch $match): array {
                 $draw = ! in_array($match->winner, SeriesMatch::SIDES, true);
                 $side = $draw ? 'challenger' : (string) $match->winner;

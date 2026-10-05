@@ -334,8 +334,8 @@ new #[Layout('layouts::app', ['section' => 'matches'])] class extends Component 
         $perPage = 20;
         $page = $this->getPage();
         $take = $page * $perPage;
-        $series = ! $this->listsSeries() ? collect() : $this->filtered(SeriesMatch::query()->with(['latestReport', 'challengerLineup.clan', 'challengedLineup.clan']), $this->status)->latest()->limit($take)->get();
-        $chess = $this->listsChess($this->status) ? $this->filteredChess(ChessGame::query()->with(['white', 'black']), $this->status)->latest()->limit($take)->get() : collect();
+        $series = ! $this->listsSeries() ? collect() : $this->filtered(SeriesMatch::query()->with(['latestReport', 'challengerLineup.clan', 'challengedLineup.clan']), $this->status)->latest()->limit($take)->get()->tap(fn ($list) => \App\Support\Chess\ChessTeamMatches::preload($list));
+        $chess = $this->listsChess($this->status) ? $this->filteredChess(ChessGame::query()->with(['white', 'black', 'seriesMatch:id,number']), $this->status)->latest()->limit($take)->get() : collect();
         $boards = $this->listsBoards($this->status) ? $this->filteredBoards(BoardGame::query()->with(['white', 'black']), $this->status)->latest()->limit($take)->get() : collect();
         $state = (string) $this->runState($this->status);
         $runs = collect([

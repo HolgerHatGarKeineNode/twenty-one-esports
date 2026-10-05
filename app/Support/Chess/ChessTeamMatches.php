@@ -508,6 +508,22 @@ final class ChessTeamMatches
     /* ---------- Team result --------------------------------------------------------------------------------------- */
 
     /**
+     * Loads the boards and seats of every locked team match in a list in three queries, so a list page (/matches,
+     * the strip, home, a clan page) does not ask three per row (reviewer 2026-10-05: N+1 on /matches).
+     *
+     * @param  iterable<SeriesMatch>  $matches
+     */
+    public static function preload(iterable $matches): void
+    {
+        $team = collect($matches)->filter(fn (SeriesMatch $match): bool => $match->isTeamMatch() && $match->lineup_locked_at !== null
+            && ! ($match->relationLoaded('boardGames') && $match->relationLoaded('boardPlayers')))->values();
+
+        if ($team->isNotEmpty()) {
+            (new \Illuminate\Database\Eloquent\Collection($team->all()))->load(['boardGames', 'boardPlayers.user']);
+        }
+    }
+
+    /**
      * Each board as it stands: its two players by side, its game, and what
      * it counts. Points are half points (a win 2, a draw 1), so a score
      * never meets a float. `outcome`: `pending` (not started), `live`,
@@ -518,10 +534,14 @@ final class ChessTeamMatches
      *
      * @return list<array{board: int, white: string, players: array<string, User|null>, pubkeys: array<string, string|null>, game: ChessGame|null, outcome: 'pending'|'live'|'played'|'forfeit'|'void', points: array{challenger: int, challenged: int}, showed: list<string>}>
      */
-    public static function boardResults(SeriesMatch $match): array
+    public static function boardResults(SeriesMatch $match, bool $preloaded = false): array
     {
-        $games = ChessGame::query()->where('series_match_id', $match->id)->get()->keyBy('board');
-        $seats = SeriesMatchBoard::query()->with('user')->where('series_match_id', $match->id)->whereNotNull('board')->get()->groupBy('board');
+        // A list page preloads boards and seats for all its team matches at once (preload()); the result logic always reads fresh.
+        $usePreloaded = $preloaded && $match->relationLoaded('boardGames') && $match->relationLoaded('boardPlayers');
+        $games = $usePreloaded ? $match->boardGames->keyBy('board')
+            : ChessGame::query()->where('series_match_id', $match->id)->get()->keyBy('board');
+        $seats = $usePreloaded ? $match->boardPlayers->whereNotNull('board')->groupBy('board')
+            : SeriesMatchBoard::query()->with('user')->where('series_match_id', $match->id)->whereNotNull('board')->get()->groupBy('board');
         $windowOver = $match->start_at !== null && $match->start_at->copy()->addSeconds(self::firstMoveSeconds())->isPast();
         $results = [];
 

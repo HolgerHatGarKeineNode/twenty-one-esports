@@ -13,6 +13,7 @@ use App\Models\SeasonAttestation;
 use App\Models\SeriesMatch;
 use App\Models\StackerRun;
 use App\Models\User;
+use App\Support\Chess\ChessTeamMatches;
 use App\Support\SeasonChain\Seasons;
 use App\Support\Series\SeriesPresenter;
 use Carbon\CarbonInterface;
@@ -84,9 +85,9 @@ final class MempoolStrip
         /** @var list<array{kind: string, model: SeriesMatch|ChessGame|BoardGame|StackerRun|ScoreRun, at: int}> $finished */
         $finished = [
             ...self::onChain(SeriesMatch::query(), $chain)->with($sides)->whereIn('status', [SeriesStatus::Confirmed, SeriesStatus::Resolved])
-                ->orderByDesc('finished_at')->limit(self::SIDE)->get()
+                ->orderByDesc('finished_at')->limit(self::SIDE)->get()->tap(fn ($list) => ChessTeamMatches::preload($list))
                 ->map(fn (SeriesMatch $match): array => self::item('series', $match, $match->finished_at))->all(),
-            ...self::onChain(ChessGame::query(), $chain)->with($players)->where('status', ChessGameStatus::Finished)
+            ...self::onChain(ChessGame::query(), $chain)->with([...$players, 'seriesMatch:id,number'])->where('status', ChessGameStatus::Finished)
                 ->orderByDesc('ended_at')->limit(self::SIDE)->get()
                 ->map(fn (ChessGame $game): array => self::item('chess', $game, $game->ended_at))->all(),
             ...($boards === [] ? [] : self::onChain(BoardGame::query(), $chain)->with($players)->whereIn('game', $boards)->where('status', BoardGameStatus::Finished)
@@ -97,9 +98,9 @@ final class MempoolStrip
 
         $running = [
             ...self::onChain(SeriesMatch::query(), $chain)->with(['latestReport', ...$sides])->whereIn('status', self::WAITING_SERIES)
-                ->orderBy('start_at')->limit(self::SIDE)->get()
+                ->orderBy('start_at')->limit(self::SIDE)->get()->tap(fn ($list) => ChessTeamMatches::preload($list))
                 ->map(fn (SeriesMatch $match): array => self::item('series', $match, $match->start_at ?? $match->created_at))->all(),
-            ...self::onChain(ChessGame::query(), $chain)->with($players)->where('status', ChessGameStatus::Active)
+            ...self::onChain(ChessGame::query(), $chain)->with([...$players, 'seriesMatch:id,number'])->where('status', ChessGameStatus::Active)
                 ->orderByDesc('updated_at')->limit(self::SIDE)->get()
                 ->map(fn (ChessGame $game): array => self::item('chess', $game, $game->updated_at))->all(),
             ...($boards === [] ? [] : self::onChain(BoardGame::query(), $chain)->with($players)->whereIn('game', $boards)->where('status', BoardGameStatus::Active)
