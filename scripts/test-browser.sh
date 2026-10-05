@@ -231,7 +231,7 @@ npm run build
 
 SHARD_FILES=(
     "tests/Browser/BoardLeagueTest.php#!two~players~meet|a~guest~watching"
-    "tests/Browser/LivePlayerTest.php#=badge~fits~the~shell~at~320 tests/Browser/BoardCorrespondenceTest.php tests/Browser/NavigateRaceTest.php tests/Browser/NavigateSpikeTest.php tests/Browser/LadderDefaultTest.php tests/Browser/CasualLobbyCardTest.php tests/Browser/ClanRosterTest.php"
+    "tests/Browser/LivePlayerTest.php#=badge~fits~the~shell~at~320 tests/Browser/BoardCorrespondenceTest.php tests/Browser/NavigateRaceTest.php tests/Browser/NavigateSpikeTest.php tests/Browser/NavigateDeploySkewTest.php tests/Browser/LadderDefaultTest.php tests/Browser/CasualLobbyCardTest.php tests/Browser/ClanRosterTest.php"
     "tests/Browser/LiveChatTest.php tests/Browser/BunkerSessionTest.php tests/Browser/GameChannelTest.php tests/Browser/NineMensMorrisTest.php tests/Browser/MeHubTest.php tests/Browser/LivewireTrafficTest.php"
     "tests/Browser/AoeLobbyTest.php tests/Browser/BlitzGameTest.php tests/Browser/EngagementTest.php tests/Browser/ClanPrideTest.php tests/Browser/GamePageTest.php tests/Browser/TournamentChooserTest.php tests/Browser/ClanApplicationsTest.php"
     "tests/Browser/LivePlayerTest.php#!badge~fits~the~shell~at~320 tests/Browser/NostrInvitesZapsTest.php tests/Browser/BlockfillShellTest.php tests/Browser/GameCoversTest.php tests/Browser/OpponentRatedTest.php tests/Browser/PlayerStatsTest.php"

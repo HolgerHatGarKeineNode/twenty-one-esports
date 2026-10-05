@@ -75,6 +75,10 @@
 
 @fonts
 
+{{-- The build marker (reviewer gate P6b, 2026-10-05): same URI, the build's manifest hash as query. Livewire reloads a
+     tab whose next wire:navigate brings another hash, before the new build's entries run next to the old ones. First of
+     the assets on purpose: the reload is scheduled before Livewire appends the new entries. --}}
+<script src="{{ asset('navigate-build.js') }}?v={{ \Illuminate\Support\Facades\Vite::manifestHash() ?? 'dev' }}" data-navigate-track></script>
 @vite(['resources/css/app.css', 'resources/js/app.js'])
 {{-- Profiles of the players on the page and the player card (P10a, resources/js/profiles.js). --}}
 <meta name="profile-loader" content="{{ json_encode([

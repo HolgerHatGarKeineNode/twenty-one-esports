@@ -16,9 +16,18 @@ window.Pusher = Pusher;
  * Loaded on every page of a logged-in player (partials/head.blade.php) and on
  * the realtime pages guests may watch; never elsewhere for guests.
  */
+/*
+ * Once per document: a tab opened before a deploy gets the new build's entry
+ * injected by wire:navigate next to the running one (reviewer gate P6b,
+ * 2026-10-05: a second Echo, a second socket, every alert twice). The layout's
+ * build marker reloads such a tab; this keeps the second run inert meanwhile.
+ */
+const alreadyBooted = window.__esportsEchoBooted === true;
+window.__esportsEchoBooted = true;
+
 const meta = document.querySelector('meta[name="reverb"]');
 
-if (meta) {
+if (meta && !alreadyBooted) {
     const reverb = JSON.parse(meta.content);
 
     window.Echo = new Echo({
@@ -41,7 +50,7 @@ if (meta) {
  */
 const presenceUser = document.querySelector('meta[name="presence-user"]');
 
-window.esportsPresence = {
+window.esportsPresence = alreadyBooted ? window.esportsPresence : {
     members: [],
     ready: false,
     listeners: new Set(),
@@ -68,7 +77,7 @@ window.esportsPresence = {
  */
 const LEAVE_GRACE_MS = 5000;
 
-if (window.Echo && presenceUser) {
+if (!alreadyBooted && window.Echo && presenceUser) {
     const presence = window.esportsPresence;
     const leaving = new Map();
 
@@ -101,6 +110,10 @@ if (window.Echo && presenceUser) {
 }
 
 // Notifications on every logged-in page (P5c): toast, sound, tab title, desktop notification.
-startAlerts();
+if (!alreadyBooted) {
+    startAlerts();
+}
 // While a page is visible, no push or DM is sent; the bell and the toast reach the player (App\Support\Notifications\OnSite).
-startOnSitePing();
+if (!alreadyBooted) {
+    startOnSitePing();
+}
