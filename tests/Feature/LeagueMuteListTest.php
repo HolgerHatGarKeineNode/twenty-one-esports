@@ -352,7 +352,10 @@ test('on unless switched off, and the hourly reconcile runs only while it is on'
 
     $event = collect(app(Schedule::class)->events())->first(fn ($event): bool => str_contains((string) $event->command, 'esports:mute-list'));
 
-    expect($default)->toBeTrue()
+    // Off by default until the relay-quorum fix (security gate 2026-10-05, F1): a read with the outbox relays down
+    // could sign over an empty base and wipe the key's private list.
+    config(['esports.league.mute_list' => true]);
+    expect($default)->toBeFalse()
         ->and($killed)->toBeFalse()
         ->and($event)->not->toBeNull()
         ->and($event->expression)->toBe('0 * * * *')
