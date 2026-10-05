@@ -152,10 +152,16 @@ The keys an admin muted or banned on the site go out as the league's mute list, 
 (user, 2026-10-05). No new kind and no new tag; checked against the app's tests, not on a public relay.
 
 - **The league mute list**: NIP-51 kind `10000` by the league key, one public `p` per muted or banned key,
-  deduplicated, `content` empty (no private items). It never says why a key is listed, nor whether it was muted or
-  banned. Admins, board members and the league key are never listed.
-- **Every version is the full list**, signed after every change at a later `created_at` than the one before; an
-  empty list is signed too, so lifting the last mute replaces the previous list.
+  deduplicated. It never says why a key is listed, nor whether it was muted or banned. Admins, board members and the
+  league key are never listed by the league.
+- **Carried over onto the key's own list**: the league key is also a profile that clients write a mute list for.
+  Before each version the league reads the newest `10000` of its key from its relays (to `EOSE`, signatures checked,
+  newest `created_at` wins, ties to the lower id) and keeps that list's `content` (private items, never decrypted)
+  and every tag that is not one of its own `p` tags unchanged; its own `p` tags follow. A lift removes only a key the
+  league added. No relay answering the read means no new version.
+- **Every version is the full list**, at a later `created_at` than the newest list read; a version whose keys are
+  all lifted is signed too. A list that already holds the league's keys is not signed again; one that lost them (a
+  client wrote over it) gets them back with the next run.
 
 ### Changelog of revision 9.20 (2026-10-04)
 
@@ -1064,7 +1070,7 @@ no kind of their own; round 5 adds `2156` to `2158`):
 | `1111` | 22 | rev. 9.9: comment on a tournament (`31923`), a rated game's record (`64`) or a rated series' challenge (`2150`) | the player |
 | `7` | 25 | rev. 9.9: like (`+`) of the same | the player |
 | `31925` | 52 | rev. 9.9: RSVP to a tournament, `accepted` or `declined`; never a sign-up | the player |
-| `10000` | 51 | rev. 9.21: the league's mute list, one public `p` per key muted or banned on the site, no reasons | league key |
+| `10000` | 51 | rev. 9.21: the league's mute list, one public `p` per key muted or banned on the site, no reasons, carried over onto the key's own list | league key |
 | `40`, `41` | 28 | rev. 9.3: a game channel with fixed fields and its metadata, one per game; rev. 9.15: the board games' too, while the league runs them (see [Game channels](#game-channels-rev-93)) | league key (the channel creator) |
 | `42` | 28 | rev. 9.3: a message in a game channel | anyone |
 | `43`, `44` | 28 | rev. 9.3: the creator's moderation of the game channels (hide a message, mute a pubkey) | league key |

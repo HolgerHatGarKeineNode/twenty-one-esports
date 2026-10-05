@@ -17,6 +17,8 @@ use App\Support\Board\BoardGameService;
 use App\Support\Chess\ChessGameService;
 use App\Support\Chess\ChessSettings;
 use App\Support\Engagement\WeeklySlots;
+use App\Support\Moderation\LeagueMuteList;
+use App\Support\Moderation\MuteListUnreadable;
 use App\Support\Nostr\NostrKeys;
 use App\Support\Nostr\RelayPublisher;
 use App\Support\Nostr\SignedEvent;
@@ -41,6 +43,7 @@ use App\Support\Tournaments\TournamentScheduler;
 use App\Support\Tournaments\TournamentSignups;
 use Illuminate\Foundation\Inspiring;
 use Illuminate\Support\Facades\Artisan;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Schedule;
 use Livewire\Features\SupportFileUploads\FileUploadConfiguration;
 use swentel\nostr\Event\Event;
@@ -327,6 +330,36 @@ Artisan::command('nostr:republish', function (RelayPublisher $publisher) {
 })->purpose('Send signed events again to relays that have not accepted them yet');
 
 Schedule::command('nostr:republish')->everyFiveMinutes()->withoutOverlapping();
+
+/*
+ * The league's public mute list (NIP-51 kind 10000, LeagueMuteList): read
+ * the newest list from the league relays and republish it with the site's
+ * keys when the relays lack them (a client edit that dropped them, a version
+ * no relay took). Every change of a moderation runs it at once; this hourly
+ * run reconciles the rest. A read no relay answered signs nothing and is
+ * logged, never reported as a failed run. Nothing runs while
+ * ESPORTS_PUBLISH_MUTE_LIST=false.
+ */
+Artisan::command('esports:mute-list', function (LeagueMuteList $list) {
+    if (config('esports.league.mute_list') !== true) {
+        $this->info('The league mute list is switched off (ESPORTS_PUBLISH_MUTE_LIST=false).');
+
+        return;
+    }
+
+    try {
+        $event = $list->publish();
+    } catch (MuteListUnreadable $exception) {
+        Log::warning('League mute list: no relay answered the read, nothing was signed');
+        $this->warn($exception->getMessage());
+
+        return;
+    }
+
+    $this->info($event === null ? 'The relays hold the current list; nothing was signed.' : "Signed and queued version {$event->event_id}.");
+})->purpose('Republish the league mute list (NIP-51 kind 10000) when the relays lack the site\'s keys');
+
+Schedule::command('esports:mute-list')->hourly()->withoutOverlapping()->onOneServer()->when(fn (): bool => config('esports.league.mute_list') === true);
 
 /*
  * Series challenges (P6a) whose reply deadline passed end as expired (NIP
