@@ -55,12 +55,14 @@ final class ChessModes
         return $locale === null ? GameNames::mode('chess', $mode) : __(app(GameRegistry::class)->mode('chess', $mode)->name ?? $mode, [], $locale);
     }
 
-    /** The name without its clock: "Rapid", "Blitz", "Daily" (translated, in `$locale` if given). */
+    /**
+     * The translated name without its clock: "Rapid", "Blitz", "Daily"
+     * ("Rapid", "Blitz", "Fernschach" in German), the first word of label(),
+     * so a tile and a chip say what the panel says (de "Rapid 10+5").
+     */
     public static function short(string $mode, ?string $locale = null): string
     {
-        $name = app(GameRegistry::class)->mode('chess', $mode)->name ?? $mode;
-
-        return __(ucfirst(explode(' ', $name)[0]), [], $locale);
+        return explode(' ', self::label($mode, $locale))[0];
     }
 
     /** The clock as players write it ("10+5", "5+3"), or null for daily. */

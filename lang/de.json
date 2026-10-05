@@ -6851,5 +6851,6 @@
     "Rated chess is not open yet, so chess wins do not mine. Its rewards apply from the day rated chess opens.": "Gewertetes Schach ist noch nicht offen, Schachsiege minen also nicht. Seine Belohnungen gelten ab dem Tag, an dem gewertetes Schach öffnet.",
     "the live queue paired you, the game starts": "die Live-Warteschlange hat dich gepaart, die Partie beginnt",
     "Live invite": "Live-Einladung",
-    "Searching": "Sucht"
+    "Searching": "Sucht",
+    "One :mode game: up to :minutes min, including pairing. :break min between rounds.": "Eine Partie :mode: bis zu :minutes Min. inklusive Paarung. :break Min. zwischen den Runden."
 }

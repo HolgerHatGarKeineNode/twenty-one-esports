@@ -146,8 +146,14 @@ test('every way to play is in the first viewport, and each tile does its job at 
 
         // The tile row and each tile: in the first viewport, above the chrome at the bottom.
         lobbyAboveFloor($page, '[data-test=play-grid]', "grid {$width}");
-        foreach (['play-rapid', 'play-blitz', 'play-daily', 'play-challenge', 'play-invite', 'play-tournaments', 'play-team'] as $tile) {
+        foreach (['play-rapid', 'play-blitz', 'play-daily', 'play-challenge', 'play-invite', 'play-tournaments'] as $tile) {
             lobbyAboveFloor($page, "[data-test={$tile}]", "{$tile} {$width}");
+        }
+        // The Team match teaser (not playable yet) shows only in the wide grid: a fourth row of tiles pushed "Find opponent" under the tab bar.
+        if ($width >= 1024) {
+            lobbyAboveFloor($page, '[data-test=play-team]', "play-team {$width}");
+        } else {
+            expect($page->evaluate('() => document.querySelector("[data-test=play-team]").checkVisibility()'))->toBeFalse();
         }
         // No tile cuts its words: every visible line of a tile fits its box.
         expect($page->evaluate(LOBBY_CUT))->toBe([], "cut tile text at {$width}");

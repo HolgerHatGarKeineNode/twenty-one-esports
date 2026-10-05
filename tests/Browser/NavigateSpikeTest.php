@@ -504,7 +504,7 @@ test('at 390 px over the tab bar, and for a guest, the walk leaves nothing behin
         $page->evaluate('() => { window.__kept = true; }');
         $results['phone'] = navigateWalk($page, [
             ['[data-test=tab-matches]', '/matches'],
-            ['[data-test=tab-ladder]', '/ladder/chess/blitz'],
+            ['[data-test=tab-ladder]', '/ladder/chess/rapid'],
             ['[data-test=tab-tournaments]', '/tournaments'],
             ['[data-test=shell-home]', '/'],
         ], 3, true);

@@ -44,15 +44,16 @@
 
 <section aria-labelledby="play-h" class="@container flex flex-col gap-2 lg:gap-3" data-test="play"
          x-data="{ stage: @js($busy ? 'quick' : null), help: false, rated: false, either: false, refusals: @js($ratedRefusals) }"
-         x-init="if (stage === null && @js($liveModes).includes(location.hash.slice(1))) { liveMode = location.hash.slice(1); stage = 'quick' }"
+         {{-- The search's own mode comes in here, never in the page's x-data: a changed root x-data restarts chessLobby and drops its notification question. --}}
+         x-init="if (@js($entry?->mode) !== null) liveMode = @js($entry?->mode); if (stage === null && @js($liveModes).includes(location.hash.slice(1))) { liveMode = location.hash.slice(1); stage = 'quick' }"
          x-effect="if (refusals[liveMode] !== null) rated = false">
     <h2 id="play-h" class="sr-only">{{ __('Ways to play') }}</h2>
 
     {{-- Columns by the section's own width (2026-10-03): from xl the game chat's side column takes 392 px, and six tiles below 72rem cut their words. --}}
-    {{-- Rapid first and two columns wide (user, 2026-10-05): 2 columns below a 48rem section, 4 from there, so seven tiles fill whole rows. --}}
+    {{-- Rapid first (user, 2026-10-05). Below a 48rem section 2 columns of six tiles, three rows as before rapid (the Team match teaser, not playable yet, waits for the wider grid: a fourth row pushed "Find opponent" and the invite under the tab bar at 375 x 667); from 48rem 4 columns, Rapid two wide, seven tiles in two rows. --}}
     <ul role="list" class="m-0 grid list-none grid-cols-2 gap-2 p-0 @3xl:grid-cols-4 lg:gap-3" data-test="play-grid">
         @foreach ($liveModes as $liveMode)
-            <li @class(['col-span-2' => $loop->first])>
+            <li @class(['@3xl:col-span-2' => $loop->first])>
                 <x-chess.lobby-tile :label="ChessModes::short($liveMode)" :variant="$loop->first ? 'primary' : 'default'" data-test="play-{{ $liveMode }}" data-mode="{{ $liveMode }}"
                                     x-on:click="if (stage === 'quick' && liveMode === '{{ $liveMode }}') { stage = null } else { liveMode = '{{ $liveMode }}'; stage = 'quick' }"
                                     x-bind:aria-expanded="(stage === 'quick' && liveMode === '{{ $liveMode }}').toString()"
@@ -72,20 +73,7 @@
                 </x-chess.lobby-tile>
             </li>
         @endforeach
-        <li>
-            <x-chess.lobby-tile :label="__('Daily chess')" icon="calendar" :href="route('chess.challenge')" data-test="play-daily"
-                                :count="$yourMove" :count-label="trans_choice(':count game waits for your move|:count games wait for your move', $yourMove)">
-                <x-slot:meta>
-                    @if ($yourMove > 0)
-                        {{ __('Your move') }}
-                    @elseif ($this->dailyGames->isNotEmpty())
-                        {{ trans_choice(':count game running|:count games running', $this->dailyGames->count()) }}
-                    @else
-                        {{ __('1 move a day') }}
-                    @endif
-                </x-slot:meta>
-            </x-chess.lobby-tile>
-        </li>
+        {{-- Challenge and Invite share a row: both labels take two lines below 48rem, and two such rows pushed the invite under the tab bar at 375 x 667. --}}
         <li>
             @auth
                 {{-- A live blitz game with someone online now: the invite buttons are in the online list. --}}
@@ -107,6 +95,20 @@
             </x-chess.lobby-tile>
         </li>
         <li>
+            <x-chess.lobby-tile :label="__('Daily chess')" icon="calendar" :href="route('chess.challenge')" data-test="play-daily"
+                                :count="$yourMove" :count-label="trans_choice(':count game waits for your move|:count games wait for your move', $yourMove)">
+                <x-slot:meta>
+                    @if ($yourMove > 0)
+                        {{ __('Your move') }}
+                    @elseif ($this->dailyGames->isNotEmpty())
+                        {{ trans_choice(':count game running|:count games running', $this->dailyGames->count()) }}
+                    @else
+                        {{ __('1 move a day') }}
+                    @endif
+                </x-slot:meta>
+            </x-chess.lobby-tile>
+        </li>
+        <li>
             <x-chess.lobby-tile :label="__('Tournaments')" icon="trophy" :href="$next ? route('tournaments.show', $next) : route('tournaments.index')" data-test="play-tournaments">
                 <x-slot:meta>
                     @if ($next)
@@ -120,7 +122,7 @@
                 @endif
             </x-chess.lobby-tile>
         </li>
-        <li>
+        <li class="@max-3xl:hidden">
             <x-chess.lobby-tile :label="__('Team match')" icon="clans" variant="muted" data-test="play-team">
                 <x-slot:meta><span class="{{ $tag }} bg-raised text-ink-2" data-test="play-team-soon">{{ __('Soon') }}</span></x-slot:meta>
                 <x-slot:detail>{{ __('Clan against clan') }}</x-slot:detail>
@@ -229,13 +231,17 @@
                     <span aria-hidden="true">?</span><span class="sr-only">{{ __('How live chess works') }}</span>
                 </button>
             </div>
-            {{-- "Either" (user, 2026-10-05): every live mode, the first fitting opponent wins. --}}
-            <label class="flex min-h-11 cursor-pointer items-center gap-2.5 rounded-md px-3 text-[13px] shadow-ring has-checked:shadow-ring-btc" data-test="either-option">
-                <input type="checkbox" x-model="either" class="size-4 shrink-0 accent-btc" data-test="either">
-                <span class="flex min-w-0 flex-col leading-4"><b>{{ __('Either') }}</b><span class="text-[11px] text-ink-2">{{ __(':modes, whichever pairs first', ['modes' => implode(__(' or '), array_map(ChessModes::short(...), $liveModes))]) }}</span></span>
-            </label>
+            {{--
+                "Either" (user, 2026-10-05): every live mode, the first fitting opponent wins. Below lg it takes the range
+                box's place beside "Find opponent" (the range is behind "?"): a row of its own pushed the button under
+                the tab bar at 375 x 667 (tests/Browser/ChessLobbyTest.php).
+            --}}
             <div class="flex gap-2 lg:contents">
-                <span class="flex min-h-12 shrink-0 flex-col justify-center rounded-md px-3 shadow-ring lg:min-h-11" data-test="blitz-range">
+                <label class="flex min-h-12 shrink-0 cursor-pointer items-center gap-2.5 rounded-md px-3 text-[13px] shadow-ring has-checked:shadow-ring-btc lg:min-h-11" data-test="either-option">
+                    <input type="checkbox" x-model="either" class="size-4 shrink-0 accent-btc" data-test="either">
+                    <span class="flex min-w-0 flex-col leading-4"><b>{{ __('Either') }}</b><span class="text-[11px] text-ink-2 lg:hidden">{{ implode(' / ', array_map(ChessModes::short(...), $liveModes)) }}</span><span class="text-[11px] text-ink-2 max-lg:hidden">{{ __(':modes, whichever pairs first', ['modes' => implode(__(' or '), array_map(ChessModes::short(...), $liveModes))]) }}</span></span>
+                </label>
+                <span class="flex min-h-12 shrink-0 flex-col justify-center rounded-md px-3 shadow-ring max-lg:hidden lg:min-h-11" data-test="blitz-range">
                     <span class="sr-only">{{ __('Opponent strength') }}:</span>
                     <b class="text-[15px] leading-5">±{{ $range['initial'] }}</b>
                     <span class="text-[11px] leading-4 text-ink-2">{{ __('around :rating', ['rating' => $rating]) }}</span>

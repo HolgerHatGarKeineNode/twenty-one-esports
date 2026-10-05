@@ -625,7 +625,7 @@ new #[Layout('layouts::app', ['section' => 'chess', 'realtime' => true, 'scripts
     $active = $this->activeGame;
 @endphp
 
-<div class="flex grow flex-col" x-data="chessLobby(@js(['userId' => $user?->id, 'poll' => max(30, (int) config('esports.chess.lobby_poll_seconds')), 'liveMode' => $entry?->mode ?? ChessModes::DEFAULT]))" data-server-now="{{ (int) now()->getTimestampMs() }}" data-looking="{{ $user?->looking_to_play === 'chess/blitz' ? 'true' : 'false' }}">
+<div class="flex grow flex-col" x-data="chessLobby(@js(['userId' => $user?->id, 'poll' => max(30, (int) config('esports.chess.lobby_poll_seconds')), 'liveMode' => ChessModes::DEFAULT]))" data-server-now="{{ (int) now()->getTimestampMs() }}" data-looking="{{ $user?->looking_to_play === 'chess/blitz' ? 'true' : 'false' }}">
     <div class="chat-rail-host flex flex-col gap-6 px-4 pb-8 lg:gap-8 lg:px-12 lg:pb-10">
         {{-- An open cup match comes first (CupMatchNow; user, 2026-10-03): above the title, and the casual lock says why a search is refused. --}}
         @auth

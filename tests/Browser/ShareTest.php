@@ -382,7 +382,7 @@ test('P46: every moment offers its own post where it happens, shows the note fir
     expect(shareSigns($page))->toBe(0)
         ->and($preview['doc'][0])->toBeLessThanOrEqual($preview['doc'][1])
         ->and($preview['spill'])->toBe([])
-        ->and($page->evaluate('() => document.querySelector("[data-test=game-win-share] [data-test=share-preview-text]").innerText'))->toStartWith('Blitzpartie gegen pillpusher bei TWENTY ONE Esports gewonnen.')
+        ->and($page->evaluate('() => document.querySelector("[data-test=game-win-share] [data-test=share-preview-text]").innerText'))->toStartWith('Partie Blitz 5+3 gegen pillpusher bei TWENTY ONE Esports gewonnen.')
         ->and($page->evaluate('() => document.querySelector("[data-test=game-win-share] [data-test=share-preview-mentions]").innerText'))->toContain('pillpusher');
 
     // Cancel signs nothing; opening again and "Sign and post" signs once.

@@ -195,7 +195,7 @@ test('the hub spends its width on one card grid and does not scroll with the 5 g
         expect($page->evaluate('() => [...document.querySelectorAll("#game-hub [data-test^=hub-game-]")].map((el) => el.dataset.test.replace("hub-game-", "") + (el.querySelector("[data-test=hub-yours]") ? "*" : ""))'))
             ->toBe([...['rocket-league*', 'chess*', 'ea-sports-fc-27', 'ea-sports-fc-26'], ...($count === 5 ? ['age-of-empires-2'] : [])])
             ->and($page->evaluate('() => ["chess", "rocket-league"].map((slug) => document.querySelector(`[data-test=hub-game-${slug}] .hub-action`).innerText.trim())'))
-            ->toBe(['Play blitz', 'Challenge a clan']);
+            ->toBe(['Play live', 'Challenge a clan']);
     }
 
     app()->forgetInstance(GameRegistry::class);

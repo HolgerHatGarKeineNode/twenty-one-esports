@@ -133,13 +133,14 @@ test('rapid is the first tile with the searching counts, and "either" pairs with
 
         $page = rapidPage($anna, $width, $height);
 
-        // Rapid first, twice as wide; both counts are the queue's.
+        // Rapid first (from a 48rem grid twice as wide), Blitz beside it; both counts are the queue's.
         $grid = rapidBox($page, '[data-test=play-grid]', "grid {$width}");
         $rapid = rapidBox($page, '[data-test=play-rapid]', "rapid tile {$width}");
         $blitz = rapidBox($page, '[data-test=play-blitz]', "blitz tile {$width}");
         expect($rapid['left'])->toBe($grid['left'])
-            ->and($rapid['top'])->toBeLessThanOrEqual($blitz['top'])
-            ->and($rapid['width'])->toBeGreaterThan($blitz['width'] * 1.8)
+            ->and($rapid['top'])->toBe($blitz['top'])
+            ->and($rapid['right'])->toBeLessThan($blitz['left'])
+            ->and($width < 1024 || $rapid['width'] > $blitz['width'] * 1.8)->toBeTrue()
             ->and($rapid['bottom'])->toBeLessThanOrEqual($height)
             ->and($page->evaluate('() => document.querySelector("[data-test=play-rapid-searching]").textContent.trim()'))->toBe('2')
             ->and($page->evaluate('() => document.querySelector("[data-test=play-blitz-searching]").textContent.trim()'))->toBe('1');
