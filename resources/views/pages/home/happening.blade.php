@@ -58,7 +58,7 @@
                 @endif
             @else
                 <p class="m-0 text-[13px] text-ink-2" data-test="live-empty">{{ __('No board is live right now. Start one.') }}</p>
-                <a href="{{ route('chess.lobby') }}" @navigate(route('chess.lobby')) class="btn-s inline-flex h-11 items-center justify-center gap-2 rounded-md border border-edge text-[13px] text-ink hover:text-ink"><x-icon name="bolt" :size="16" />{{ __('Play blitz') }}</a>
+                <a href="{{ route('chess.lobby') }}" @navigate(route('chess.lobby')) class="btn-s inline-flex h-11 items-center justify-center gap-2 rounded-md border border-edge text-[13px] text-ink hover:text-ink"><x-icon name="bolt" :size="16" />{{ __('Play live') }}</a>
             @endif
         </div>
 

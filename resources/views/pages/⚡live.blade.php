@@ -325,8 +325,8 @@ new #[Layout('layouts::app', ['scripts' => ['resources/js/liveChat.js']])] class
                     </span>
                     @if ($this->games->isEmpty())
                         <p class="m-0 text-[13px] leading-5 text-ink-2">
-                            {{ $this->status->live ? __('No game running. Start a blitz game and it is on the stream.') : __('No game running right now.') }}
-                            <a href="{{ route('chess.lobby') }}">{{ __('Play blitz') }}</a>
+                            {{ $this->status->live ? __('No game running. Start a live game and it is on the stream.') : __('No game running right now.') }}
+                            <a href="{{ route('chess.lobby') }}">{{ __('Play live') }}</a>
                         </p>
                     @else
                         <ul class="m-0 flex list-none flex-col p-0">

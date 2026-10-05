@@ -26,6 +26,7 @@ use App\Models\Rating;
 use App\Models\Tournament;
 use App\Models\User;
 use App\Support\Badges\BadgeCopy;
+use App\Support\Cards\PageCard;
 use App\Support\Cards\PageCardFacts;
 use App\Support\Cards\SharePosts;
 use App\Support\Chess\ChessModes;
@@ -39,6 +40,7 @@ use App\Support\SeasonChain\ChainOverview;
 use App\Support\Seo\Sitemap;
 use App\Support\TwentyOne\Stream\StreamStats;
 use App\Support\TwentyOne\Stream\StreamTexts;
+use Illuminate\Support\Facades\Blade;
 use Illuminate\Support\Facades\Http;
 use Livewire\Livewire;
 
@@ -130,6 +132,11 @@ test('the dock and the notifications name the game\'s and the invite\'s mode', f
         expect($item?->title)->toBe(ChessModes::short($mode))
             ->and($item?->sentence)->toStartWith(ChessModes::short($mode).' ');
 
+        // The panel the dock opens names the game's mode too (reviewer 2026-10-05: "Blitz 10+5, casual" for a rapid game).
+        $panel = Blade::render('<x-match-dock.panel :item="$item" :now-ms="$n" :viewer="$p" />', ['item' => $item, 'n' => (int) now()->getTimestampMs(), 'p' => $game->white]);
+        expect($panel)->toContain(e(__(':mode, casual', ['mode' => ChessModes::label($mode)])))
+            ->when($mode !== 'blitz', fn ($html) => $html->not->toContain('Blitz'));
+
         $invite = ChessInvite::query()->create(['inviter_id' => User::factory()->create()->id, 'invitee_id' => User::factory()->create()->id, 'mode' => $mode,
             'status' => ChessInviteStatus::Pending, 'expires_at' => now()->addMinutes(2)]);
         $dock = app(OpenMatches::class)->for($invite->invitee)->firstWhere('key', 'invite-'.$invite->id);
@@ -170,6 +177,9 @@ test('navigation opens the default ladder; the ladder page, the rules and the si
 test('OG card, share post, structured data, PGN and the record name the mode', function () {
     foreach (ChessModes::live() as $mode) {
         $game = surfaceGame($mode, ['status' => ChessGameStatus::Finished, 'result' => '1-0', 'end_reason' => ChessEndReason::Resignation, 'ended_at' => now(), 'ply' => 2]);
+
+        // The line drawn on the OG card, not only its facts (reviewer 2026-10-05: a mutant naming blitz stayed green).
+        expect((fn () => $this->gameKind())->call(PageCard::game($game)))->toBe(__('Casual :mode', ['mode' => ChessModes::label($mode)]));
 
         expect(PageCardFacts::game($game)['mode'])->toBe($mode)
             ->and(ChessPgn::headersFor($game)['Event'])->toBe('TWENTY ONE esports, casual '.$mode)

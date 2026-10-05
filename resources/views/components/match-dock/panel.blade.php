@@ -58,7 +58,7 @@
                     <span class="flex min-w-0 items-center gap-2 text-sm font-bold"><span class="truncate">{{ $item->name }}</span>
                         <x-clan-tag :clan="$item->face?->clanMember?->clan" size="sm" compact />
                     </span>
-                    <span class="text-xs text-ink-2">{{ $item->kind === 'daily' ? __('Daily chess, casual') : __('Blitz :control, casual', ['control' => intdiv($model->initial_ms, 60_000).'+'.intdiv($model->increment_ms, 1000)]) }}</span>
+                    <span class="text-xs text-ink-2">{{ $item->kind === 'daily' ? __('Daily chess, casual') : __($model->rated ? ':mode, rated' : ':mode, casual', ['mode' => \App\Support\Chess\ChessModes::label($model->mode)]) }}</span>
                 </span>
             </div>
             <div class="flex items-start gap-4">

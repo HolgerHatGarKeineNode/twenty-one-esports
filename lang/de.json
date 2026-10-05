@@ -6895,5 +6895,8 @@
     "needs :n players": "braucht :n Spieler",
     "start in :n minutes; they accept within :m minutes, then both captains pick their players": "Start in :n Minuten; sie nehmen binnen :m Minuten an, dann wählen beide Captains ihre Spieler",
     "team matches, 2 or 3 boards": "Mannschaftskämpfe, 2 oder 3 Bretter",
-    "within :n min": "binnen :n Min."
+    "within :n min": "binnen :n Min.",
+    ":mode, casual": ":mode, casual",
+    ":mode, rated": ":mode, gewertet",
+    "No game running. Start a live game and it is on the stream.": "Keine Partie läuft. Starte eine Live-Partie, dann ist sie im Stream."
 }
