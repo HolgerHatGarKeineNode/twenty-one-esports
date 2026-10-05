@@ -16,10 +16,8 @@ use App\Support\Tournaments\TournamentRuleViolation;
 use App\Support\Wallet\WalletSetup;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Support\Facades\Gate;
-use Illuminate\Support\Facades\RateLimiter;
 use Livewire\Attributes\Computed;
 use Livewire\Attributes\Layout;
-use Livewire\Attributes\Locked;
 use Livewire\Attributes\Title;
 use Livewire\Attributes\Url;
 use Livewire\Component;
@@ -38,14 +36,12 @@ use Livewire\Component;
  * invoice expired unclear needs a look into the wallet and a "Release".
  *
  * Every pot is booked in the league wallet (user, 2026-10-02): the panel
- * shows what came into the pot and what its account still holds, apart from
- * what sponsors paid outside the wallet (never in it, never paid out from
- * it), and the league wallet's balance on "Read balance now". Fail closed:
- * without the league wallet nothing is approved or paid, a pot short of its
- * fixed prizes is not approved, and the approval and every payment check the
- * wallet's balance against the other pots (PayoutApproval, PayoutRunner).
- * A pot approved before the league wallet took over still pays from its own
- * wallet.
+ * shows the pot as set, apart from what sponsors paid outside the wallet
+ * (never in it, never paid out from it). Fail closed: without the league
+ * wallet nothing is approved or paid. The wallet's balance is never read
+ * (user, 2026-10-05): a wallet short of sats refuses the payment, which
+ * stays retryable (PayoutRunner). A pot approved before the league wallet
+ * took over still pays from its own wallet.
  */
 new #[Title('Payouts')] #[Layout('layouts::app', ['section' => 'admin'])] class extends Component {
     #[Url(as: 'tournament')]
@@ -55,10 +51,6 @@ new #[Title('Payouts')] #[Layout('layouts::app', ['section' => 'admin'])] class 
 
     /** A payment was started here: the panel polls until nothing is paying any more. */
     public bool $watching = false;
-
-    /** The league wallet's balance at the last "Read balance now"; null = not read on this page. */
-    #[Locked]
-    public ?int $walletSats = null;
 
     public function mount(): void
     {
@@ -93,27 +85,6 @@ new #[Title('Payouts')] #[Layout('layouts::app', ['section' => 'admin'])] class 
     public function payouts(): Collection
     {
         return $this->tournament === null ? new Collection : $this->tournament->payouts()->with(['participant', 'event'])->get();
-    }
-
-    /** Read the league wallet's balance now (once every 10 s per admin). */
-    public function readBalance(): void
-    {
-        Gate::authorize('admin');
-        $this->notice = '';
-        $key = 'league-wallet-read:'.auth()->id();
-
-        if (RateLimiter::tooManyAttempts($key, 1)) {
-            $this->addError('payouts', __('Read a moment ago. Wait :seconds s and try again.', ['seconds' => RateLimiter::availableIn($key)]));
-
-            return;
-        }
-
-        RateLimiter::hit($key, 10);
-        $this->walletSats = PayoutApproval::walletBalance();
-
-        if ($this->walletSats === null) {
-            $this->addError('payouts', __('The league wallet did not tell its balance. Try again in a moment.'));
-        }
     }
 
     public function approve(PayoutApproval $approval): void
@@ -275,7 +246,6 @@ new #[Title('Payouts')] #[Layout('layouts::app', ['section' => 'admin'])] class 
                     @else
                         {{ $payingHere ? __('Paid from the league wallet.') : __('The league wallet is not connected, so nothing can be paid out.') }}
                         <span data-test="pot-ledger">{{ __('The pot as set: :pot sats, paid out by share. If the league wallet holds less, top it up.', ['pot' => $sats((int) $pool)]) }}</span>
-                        @if ($walletSats !== null)<span data-test="league-balance">{{ __('League wallet: :sats sats.', ['sats' => $sats($walletSats)]) }}</span>@endif
                     @endif
                 </p>
                 <p class="m-0 text-[13px] text-ink-2">
@@ -286,9 +256,6 @@ new #[Title('Payouts')] #[Layout('layouts::app', ['section' => 'admin'])] class 
                     @endif
                     @if ($tournament->payouts_approved_at) · {{ __('checked :date', ['date' => $tournament->payouts_approved_at->format('Y-m-d H:i')]) }}@endif
                 </p>
-                @if ($tournament->payouts_approved_at === null)
-                    <div><x-button variant="quiet" wire:click="readBalance" wire:loading.attr="disabled" data-test="payouts-read-balance">{{ __('Read balance now') }}</x-button></div>
-                @endif
             </div>
 
             @error('payouts')<p class="m-0 text-[13px] text-loss" role="alert" data-test="payouts-error">{{ $message }}</p>@enderror

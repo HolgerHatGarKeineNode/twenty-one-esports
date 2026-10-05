@@ -4,7 +4,6 @@ namespace App\Support\Payouts;
 
 use App\Enums\PayoutStatus;
 use App\Models\SeasonPayout;
-use App\Models\Tournament;
 use App\Models\TournamentPayout;
 use App\Models\User;
 use App\Support\FairPlay\AccountLinks;
@@ -12,7 +11,6 @@ use App\Support\FairPlay\FairPlay;
 use App\Support\Lightning\Bolt11;
 use App\Support\Lightning\LightningAddress;
 use App\Support\Lightning\LightningAddressFailure;
-use App\Support\Prizes\PrizePool;
 use App\Support\SeasonChain\LeagueKey;
 use App\Support\SeasonChain\SeasonSettlement;
 use App\Support\Wallet\Ledger;
@@ -35,16 +33,13 @@ use Illuminate\Support\Str;
  *
  * The league wallet is shared by every pot (user, 2026-10-02), so every
  * payment from it runs under ONE lock over the league wallet (security gate
- * on 8a171405, F1): the balance read, the check ({@see covered()}), the
- * payment and its booking happen as one step, never interleaved with another
- * payout's on any worker. The check: the balance, less what the wallet holds
- * for the other tournament pots and less the payments still in flight, must
- * cover the amount and its fee allowance (the 1 % reserve, at least 10
- * sats); a tournament payout must not exceed what its own account still
- * holds. Otherwise nothing is sent: the payout fails as
- * `insufficient_balance` (retryable), waits as `balance_unread` when the
- * wallet did not tell, or as `wallet_busy` when the lock stayed taken (the
- * schedule continues it).
+ * on 8a171405, F1): the payment and its booking happen as one step, never
+ * interleaved with another payout's on any worker; while the lock stays
+ * taken the payout waits as `wallet_busy` (the schedule continues it).
+ * Nothing reads the wallet's balance before a payment (user, 2026-10-05:
+ * the pot as set is paid, for tournament and season payouts alike): a
+ * wallet short of sats refuses the payment itself, which fails as
+ * `insufficient_balance` and stays retryable until someone tops it up.
  *
  * Three guards, each enough against a double click or a retried job:
  *
@@ -204,58 +199,6 @@ final class PayoutRunner
         return ! ($payout instanceof TournamentPayout && $payout->tournament->hasOwnWallet());
     }
 
-    /**
-     * Whether the league wallet may pay this payout now, read under the
-     * spend lock: `null` when it does not tell its balance; else whether the
-     * balance, less what it holds for the other tournament pots (all of them
-     * for a season payout, whose sats are the reserve's) and less the other
-     * payments in flight, covers the amount and its fee allowance, and (a
-     * tournament payout) the pot's own account still holds the amount.
-     */
-    private function covered(TournamentPayout|SeasonPayout $payout): ?bool
-    {
-        // A tournament prize is paid from the pot as set (user, 2026-10-04, explicit approval): no balance gate; a
-        // wallet short of sats fails the payment, which stays retryable until someone tops the wallet up.
-        if ($payout instanceof TournamentPayout) {
-            return true;
-        }
-
-        $balance = PayoutApproval::walletBalance();
-
-        if ($balance === null) {
-            return null;
-        }
-
-        $ledger = app(Ledger::class);
-        $needed = $payout->amount_sats + PrizePool::feeReserve($payout->amount_sats);
-        $available = $balance - self::inFlight($payout);
-
-        // A season payout (the reserve's sats): never what the wallet keeps for the tournament pots.
-        return $needed <= $available - $ledger->heldForTournaments();
-    }
-
-    /**
-     * Other payouts from the league wallet whose payment may have left
-     * without being booked yet (`paying` with an invoice stored): their
-     * amounts and fee allowances, which a balance read may not show yet.
-     */
-    private static function inFlight(TournamentPayout|SeasonPayout $payout): int
-    {
-        $sum = 0;
-
-        foreach ([TournamentPayout::query()->whereHas('tournament', fn ($query) => $query->where('pot_source', '!=', Tournament::POT_WALLET)), SeasonPayout::query()] as $query) {
-            $rows = $query->where('status', PayoutStatus::Paying)->whereNotNull('payment_hash')
-                ->when($payout::class === $query->getModel()::class, fn ($same) => $same->whereKeyNot($payout->id))
-                ->pluck('amount_sats');
-
-            foreach ($rows as $amount) {
-                $sum += (int) $amount + PrizePool::feeReserve((int) $amount);
-            }
-        }
-
-        return $sum;
-    }
-
     /** `Tournament` or `Season`, for the log. */
     private static function kind(TournamentPayout|SeasonPayout $payout): string
     {
@@ -380,7 +323,7 @@ final class PayoutRunner
             return;
         }
 
-        // The shared league wallet: balance read, check, payment and booking as one step under one lock (gate F1).
+        // The shared league wallet: payment and booking as one step under one lock (gate F1).
         $lock = Cache::lock(self::SPEND_LOCK, (int) config('esports.wallet.payout_lease_seconds', 180));
 
         try {
@@ -392,19 +335,6 @@ final class PayoutRunner
         }
 
         try {
-            if (($covered = $this->covered($payout)) !== true) {
-                if ($covered === null) {
-                    $this->note($payout, 'balance_unread');
-
-                    return;
-                }
-
-                Log::warning(self::kind($payout).' payout not covered by the league wallet', ['payout' => $payout->id]);
-                $payout::query()->whereKey($payout->id)->where('status', PayoutStatus::Paying)->update(['status' => PayoutStatus::Failed, 'reason' => 'insufficient_balance']);
-
-                return;
-            }
-
             $this->send($payout, $wallet, $bolt11);
         } finally {
             $lock->release();

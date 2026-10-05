@@ -6,8 +6,8 @@ use App\Support\Lightning\Bolt11;
 
 /**
  * The league wallet's receive-only NIP-47 connection (`esports.wallet.nwc_receive_uri`):
- * invoices for the pots, their lookup, and the balance for the daily
- * reconciliation. It cannot pay: there is no method for it, and the
+ * invoices for the pots and their lookup; it never reads the wallet's
+ * balance (user, 2026-10-05). It cannot pay: there is no method for it, and the
  * connection it holds should have no `pay_invoice` permission in the wallet
  * either. Null without a valid URI (fail closed: no invoice is made).
  */
@@ -21,8 +21,8 @@ final class ReceivingWallet
     }
 
     /**
-     * A tournament's own wallet (P9 scope addition): only its balance is read
-     * through this; paying from it goes through the payout side only.
+     * A receive-only connection from its URI; paying always goes through the
+     * payout side only.
      */
     public static function fromUri(#[\SensitiveParameter] mixed $uri): ?self
     {
@@ -116,19 +116,5 @@ final class ReceivingWallet
         }
 
         return is_array($methods) ? array_values(array_filter($methods, is_string(...))) : null;
-    }
-
-    /**
-     * @throws NwcError
-     */
-    public function balanceSats(): int
-    {
-        $balance = $this->client->request('get_balance', [], 15.0)['balance'] ?? null;
-
-        if (! is_int($balance)) {
-            throw new NwcError('OTHER', 'no balance');
-        }
-
-        return intdiv($balance, 1000);
     }
 }

@@ -281,10 +281,6 @@ test('an unreadable league wallet does not block the approval, in either mode', 
     $percent = finishedPoolTournament($wallet, 40_000, 2);
     app(FakeNwcTransport::class)->offline[$wallet->pubkey] = true;
 
-    // Reading the balance by hand still reports that the wallet did not answer: information, not a gate.
-    Livewire::actingAs(anAdmin())->test('pages::admin.payouts', ['tournamentId' => $fixed->id])
-        ->call('readBalance')->assertHasErrors('payouts');
-
     foreach ([$fixed, $percent] as $tournament) {
         app(PayoutApproval::class)->approve($tournament, anAdmin());
 

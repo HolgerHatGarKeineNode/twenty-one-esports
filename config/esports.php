@@ -878,8 +878,9 @@ return [
     | connections, both `nostr+walletconnect://...` URIs in `.env` only:
     |
     | - `nwc_uri` can pay, with a budget limit set in the wallet;
-    | - `nwc_receive_uri` only receives: `make_invoice`, `lookup_invoice`,
-    |   `get_balance` for zaps into the reserve through `pool@<host>`.
+    | - `nwc_receive_uri` only receives: `make_invoice`, `lookup_invoice`
+    |   for zaps into the reserve through `pool@<host>`. The wallet's balance
+    |   is never read (user, 2026-10-05).
     |
     | Fail closed: without a connection nothing is attempted; the pages say
     | so. The secrets never reach a log, an exception, a response, a Livewire
