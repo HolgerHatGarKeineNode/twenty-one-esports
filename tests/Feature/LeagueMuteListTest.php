@@ -15,12 +15,14 @@ use App\Support\Nostr\NostrKeys;
 use App\Support\Nostr\RelayReader;
 use App\Support\Nostr\SignedEvent;
 use Illuminate\Console\Scheduling\Schedule;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Process;
 use Illuminate\Support\Facades\Queue;
 use Illuminate\Support\Sleep;
 use Livewire\Livewire;
 use Tests\Support\TestSigner;
+use Tests\TestCase;
 
 /*
  * The league's public mute list (user, 2026-10-05): every key muted or
@@ -32,22 +34,74 @@ use Tests\Support\TestSigner;
  * MiniRelay or unreachable ports; never a public relay.
  */
 
-/** Stands in for the relays' answer to the read of the newest list. */
+/**
+ * Stands in for the relays' answers, relay by relay: every relay that is
+ * not down holds the league key's relay list and `events` (or its own list
+ * in `held`); only the kinds asked for come back.
+ */
 final class FakeMuteListRelays extends RelayReader
 {
-    /** @var list<SignedEvent> */
+    /** @var list<SignedEvent> the mute list every answering relay holds */
     public array $events = [];
 
-    public int $answered = 1;
+    /** @var array<string, list<SignedEvent>> a relay's own mute list instead of `events` */
+    public array $held = [];
+
+    /** The league key's NIP-65 relay list, on every answering relay. */
+    public ?SignedEvent $relayList = null;
+
+    /** @var array<string, true> relays whose read fails */
+    public array $down = [];
+
+    /** @var (Closure(int, self): void)|null runs before each read, with the read's number */
+    public ?Closure $beforeRead = null;
 
     public int $reads = 0;
 
-    public function fetchCounted(array $filters, ?array $relays = null, array $known = [], int $perAuthor = 1, ?float $until = null): array
+    /** @var list<list<string>> the relays of each read */
+    public array $asked = [];
+
+    public function readEach(array $filters, array $relays, int $perAuthor = 1): array
     {
         $this->reads++;
+        $this->asked[] = $relays;
 
-        return ['events' => $this->events, 'answered' => $this->answered];
+        if ($this->beforeRead !== null) {
+            ($this->beforeRead)($this->reads, $this);
+        }
+
+        $kinds = array_merge(...array_map(fn (array $filter): array => $filter['kinds'], $filters));
+        $answers = [];
+
+        foreach ($relays as $relay) {
+            $events = [...($this->held[$relay] ?? $this->events), ...($this->relayList === null ? [] : [$this->relayList])];
+            $answers[$relay] = isset($this->down[$relay]) ? null : array_values(array_filter($events, fn (SignedEvent $event): bool => in_array($event->kind, $kinds, true)));
+        }
+
+        return $answers;
     }
+}
+
+/**
+ * The league key's NIP-65 relay list.
+ *
+ * @param  list<list<string>>  $relays  `r` tags
+ */
+function leagueRelayList(TestSigner $league, array $relays): SignedEvent
+{
+    return SignedEvent::fromInput($league->sign(10002, $relays, '', now()->getTimestamp() - 86400));
+}
+
+/**
+ * The league relays as in production, and the key's relay list as measured
+ * there on 2026-10-05: nos.lol, relay.primal.net, nostr.mom. From production
+ * damus answers 403 and nos.lol does not connect, so the quorum is primal and
+ * nostr.mom. Only the fake reader sees these URLs; nothing connects.
+ */
+function productionRelays(TestCase $test): void
+{
+    config(['esports.relays' => ['wss://relay.primal.net', 'wss://nostr.mom', 'wss://relay.damus.io', 'wss://nos.lol', 'wss://relay.snort.social']]);
+    $test->relays->relayList = leagueRelayList($test->league, [['r', 'wss://nos.lol/'], ['r', 'wss://relay.primal.net/'], ['r', 'wss://nostr.mom/']]);
 }
 
 function muteListAdmin(): User
@@ -100,6 +154,7 @@ beforeEach(function () {
     $this->relays = new FakeMuteListRelays;
     app()->instance(RelayReader::class, $this->relays);
     config(['esports.league.nsec' => $this->league->secret, 'esports.league.mute_list' => true, 'esports.relays' => ['ws://127.0.0.1:9']]);
+    $this->relays->relayList = leagueRelayList($this->league, [['r', 'ws://127.0.0.1:9']]);
 });
 
 test('a mute queues the list; the list carries the client\'s content and foreign tags over unchanged and adds the key', function () {
@@ -183,7 +238,7 @@ test('a client\'s public p for a key the site once moderated and lifted survives
 test('no relay answers the read: nothing is signed, the job fails for a retry, the hourly run only warns', function () {
     Queue::fake();
     Log::spy();
-    $this->relays->answered = 0;
+    $this->relays->down = ['ws://127.0.0.1:9' => true];
     $target = (new TestSigner)->pubkey;
 
     app(SiteModeration::class)->mute(muteListAdmin(), $target, 'spam spam');
@@ -194,7 +249,7 @@ test('no relay answers the read: nothing is signed, the job fails for a retry, t
     expect(NostrEvent::query()->count())->toBe(0)
         ->and(SiteModeration::isHidden($target))->toBeTrue();
     Queue::assertNotPushed(PublishNostrEvent::class);
-    Log::shouldHaveReceived('warning')->withArgs(fn (string $message): bool => str_contains($message, 'no relay answered'))->once();
+    Log::shouldHaveReceived('warning')->withArgs(fn (string $message, array $context = []): bool => str_contains($message, 'quorum was not read') && str_contains((string) ($context['reason'] ?? ''), 'relay list (NIP-65 kind 10002) could not be read'))->once();
 });
 
 test('a new version is dated after the newest relay version, also one of this second or one from the future', function () {
@@ -274,8 +329,10 @@ test('no list anywhere: the site\'s keys with empty content, and an unchanged li
     app(SiteModeration::class)->mute(muteListAdmin(), $target, 'spam spam');
 
     $event = app(LeagueMuteList::class)->publish();
+    // Dated a year back, not now: a client list the quorum missed (stale relay list) still wins (re-gate 2026-10-05, L1).
     expect(muteListTags($event))->toBe([['p', $target]])
-        ->and($event->payload()['content'])->toBe('');
+        ->and($event->payload()['content'])->toBe('')
+        ->and($event->signed_at)->toBe(now()->getTimestamp() - LeagueMuteList::BACKDATE_LIMIT);
 
     relaysHold($this->relays, $event);
     expect(app(LeagueMuteList::class)->publish())->toBeNull()
@@ -344,6 +401,7 @@ test('on unless switched off, and the hourly reconcile runs only while it is on'
 
     try {
         $default = (require config_path('esports.php'))['league']['mute_list'];
+        $unreachable = (require config_path('esports.php'))['league']['mute_list_unreachable'];
         putenv('ESPORTS_PUBLISH_MUTE_LIST=false');
         $killed = (require config_path('esports.php'))['league']['mute_list'];
     } finally {
@@ -352,10 +410,10 @@ test('on unless switched off, and the hourly reconcile runs only while it is on'
 
     $event = collect(app(Schedule::class)->events())->first(fn ($event): bool => str_contains((string) $event->command, 'esports:mute-list'));
 
-    // Off by default until the relay-quorum fix (security gate 2026-10-05, F1): a read with the outbox relays down
-    // could sign over an empty base and wipe the key's private list.
+    // On by default again since the relay quorum guards the read (security gate 2026-10-05, F1); false is the kill switch.
     config(['esports.league.mute_list' => true]);
-    expect($default)->toBeFalse()
+    expect($default)->toBeTrue()
+        ->and($unreachable)->toBe(['wss://nos.lol', 'wss://relay.damus.io'])
         ->and($killed)->toBeFalse()
         ->and($event)->not->toBeNull()
         ->and($event->expression)->toBe('0 * * * *')
@@ -370,11 +428,13 @@ test('over a real websocket: the client list is read from the relay and carried 
     $foreign = (new TestSigner)->pubkey;
     $amethyst = amethystList($this->league, now()->getTimestamp() - 3600, $foreign);
     $port = (int) Process::run(['php', '-r', '$s = stream_socket_server("tcp://127.0.0.1:0"); echo explode(":", stream_socket_get_name($s, false))[1];'])->output();
-    $seed = tempnam(sys_get_temp_dir(), 'mute-list-relay');
-    file_put_contents($seed, json_encode([$amethyst]));
-    $relay = Process::path(base_path())->start(['php', 'tests/Support/mini-relay.php', (string) $port, $seed]);
     $good = 'ws://127.0.0.1:'.$port;
     $dead = 'ws://127.0.0.1:9';
+    // The key's relay list names only the good relay as a write relay: the dead one is read, but not the quorum.
+    $relayList = $this->league->sign(10002, [['r', $good.'/'], ['r', $dead, 'read']], '', now()->getTimestamp() - 86400);
+    $seed = tempnam(sys_get_temp_dir(), 'mute-list-relay');
+    file_put_contents($seed, json_encode([$amethyst, $relayList]));
+    $relay = Process::path(base_path())->start(['php', 'tests/Support/mini-relay.php', (string) $port, $seed]);
 
     try {
         for ($i = 0; $i < 50 && ! @fsockopen('127.0.0.1', $port); $i++) {
@@ -421,3 +481,176 @@ test('the moderation page says the keys go out publicly as the league mute list,
     app()->setLocale('de');
     expect(__($note))->toStartWith('Die geltenden Schlüssel');
 });
+
+/*
+ * Security gate 2026-10-05: the quorum (F1), the kill switch in
+ * nostr:republish (F2) and a client's own `p` for a key the site moderates
+ * (F3). The private part is 604 characters, like the live Amethyst list.
+ */
+
+test('F1: a quorum relay is down while another relay answers empty: nothing is signed, on the first run and with a stored version', function () {
+    Queue::fake();
+    productionRelays($this);
+    $private = str_repeat('Q', 604);
+    $this->relays->held = ['wss://relay.primal.net' => [SignedEvent::fromInput(amethystList($this->league, now()->getTimestamp() - 86400, (new TestSigner)->pubkey, $private))]];
+    $this->relays->down = ['wss://relay.primal.net' => true];
+    $admin = muteListAdmin();
+
+    // First run: nostr.mom and snort answer EOSE with nothing, the relay holding the client list fails.
+    app(SiteModeration::class)->mute($admin, (new TestSigner)->pubkey, 'spam spam');
+    // Refused on the read itself, before any re-read (that one is a second, separate guard).
+    expect(fn () => app(LeagueMuteList::class)->publish())->toThrow(MuteListUnreadable::class, 'did not answer the read of the league mute list (wss://relay.primal.net)');
+    expect(NostrEvent::query()->count())->toBe(0)
+        ->and($this->relays->reads)->toBe(1);
+
+    // Later: a stored version exists, a client wrote a newer one to the outbox, and the outbox (nostr.mom) fails.
+    $this->relays->down = [];
+    $this->relays->events = [];
+    $first = app(LeagueMuteList::class)->publish();
+    expect($first->payload()['content'])->toBe($private);
+
+    $this->travel(10)->minutes();
+    $edited = SignedEvent::fromInput(amethystList($this->league, now()->getTimestamp(), (new TestSigner)->pubkey, 'V2-private-NEW'));
+    $this->relays->held = ['wss://relay.primal.net' => [$edited], 'wss://nostr.mom' => [$edited], 'wss://relay.snort.social' => [SignedEvent::fromInput($first->payload())]];
+    $this->relays->down = ['wss://nostr.mom' => true];
+    $this->travel(5)->minutes();
+    app(SiteModeration::class)->ban($admin, (new TestSigner)->pubkey, 'scam links');
+
+    expect(fn () => app(LeagueMuteList::class)->publish())->toThrow(MuteListUnreadable::class, 'wss://nostr.mom')
+        ->and(NostrEvent::query()->where('kind', 10000)->count())->toBe(1);
+});
+
+test('F1: the quorum answers: the 604-character private part is carried byte for byte, dated one second after the base, damus and nos.lol never read', function () {
+    Queue::fake();
+    productionRelays($this);
+    $private = 'Ag'.substr(str_repeat(base64_encode(random_bytes(48)), 13), 0, 602);
+    $amethyst = $this->league->sign(10000, [['client', 'Amethyst']], $private, now()->getTimestamp() - 86400);
+    $this->relays->held = ['wss://relay.primal.net' => [SignedEvent::fromInput($amethyst)], 'wss://nostr.mom' => [SignedEvent::fromInput($amethyst)], 'wss://relay.snort.social' => []];
+    $target = (new TestSigner)->pubkey;
+
+    app(SiteModeration::class)->mute(muteListAdmin(), $target, 'spam spam');
+    $event = app(LeagueMuteList::class)->publish();
+
+    expect(strlen($private))->toBe(604)
+        ->and($event->payload()['content'])->toBe($private)
+        ->and(muteListTags($event))->toBe([['client', 'Amethyst'], ['p', $target]])
+        ->and($event->payload()['created_at'])->toBe($amethyst['created_at'] + 1)
+        ->and($this->relays->asked)->toBe([
+            ['wss://relay.primal.net', 'wss://nostr.mom', 'wss://relay.snort.social'],
+            ['wss://relay.primal.net', 'wss://nostr.mom'],
+        ]);
+});
+
+test('F1: no quorum without the key\'s relay list, or when none of its write relays is a readable league relay', function (?array $relayTags) {
+    Queue::fake();
+    productionRelays($this);
+    $this->relays->relayList = $relayTags === null ? null : leagueRelayList($this->league, $relayTags);
+
+    app(SiteModeration::class)->mute(muteListAdmin(), (new TestSigner)->pubkey, 'spam spam');
+
+    expect(fn () => app(LeagueMuteList::class)->publish())->toThrow(MuteListUnreadable::class)
+        ->and(NostrEvent::query()->count())->toBe(0);
+})->with([
+    'no relay list' => [null],
+    'read relays only' => [[['r', 'wss://relay.primal.net', 'read'], ['r', 'wss://nostr.mom', 'read']]],
+    'write relays unreachable from production or not league relays' => [[['r', 'wss://nos.lol'], ['r', 'wss://relay.damus.io', 'write'], ['r', 'wss://relay.example.com']]],
+]);
+
+test('F1: a quorum relay that fails only the re-read before signing, or a newer list in between, aborts the run', function () {
+    Queue::fake();
+    productionRelays($this);
+    $amethyst = SignedEvent::fromInput(amethystList($this->league, now()->getTimestamp() - 3600, (new TestSigner)->pubkey));
+    $this->relays->events = [$amethyst];
+    app(SiteModeration::class)->mute(muteListAdmin(), (new TestSigner)->pubkey, 'spam spam');
+
+    $this->relays->beforeRead = function (int $read, FakeMuteListRelays $relays): void {
+        $relays->down = $read === 2 ? ['wss://nostr.mom' => true] : [];
+    };
+    expect(fn () => app(LeagueMuteList::class)->publish())->toThrow(MuteListUnreadable::class, 're-read');
+
+    // A client edit lands on one quorum relay between the read and the signature.
+    $edited = SignedEvent::fromInput(amethystList($this->league, now()->getTimestamp() - 60, (new TestSigner)->pubkey, 'edited+meanwhile=='));
+    $this->relays->reads = 0;
+    $this->relays->down = [];
+    $this->relays->beforeRead = function (int $read, FakeMuteListRelays $relays) use ($edited): void {
+        $relays->held = $read === 2 ? ['wss://nostr.mom' => [$edited]] : [];
+    };
+    expect(fn () => app(LeagueMuteList::class)->publish())->toThrow(MuteListUnreadable::class, $edited->id)
+        ->and(NostrEvent::query()->count())->toBe(0);
+
+    // The next run takes the edit as its base.
+    $this->relays->beforeRead = null;
+    $this->relays->events = [$edited];
+    $this->relays->held = [];
+    $event = app(LeagueMuteList::class)->publish();
+
+    expect($event->payload()['content'])->toBe('edited+meanwhile==')
+        ->and($event->signed_at)->toBe($edited->createdAt + 1);
+});
+
+test('F1: a base older than the backdate limit is dated at the clock minus that limit, so strfry still takes it', function () {
+    Queue::fake();
+    $ancient = amethystList($this->league, now()->getTimestamp() - 2 * LeagueMuteList::BACKDATE_LIMIT, (new TestSigner)->pubkey);
+    relaysHold($this->relays, $ancient);
+
+    app(SiteModeration::class)->mute(muteListAdmin(), (new TestSigner)->pubkey, 'spam spam');
+    $event = app(LeagueMuteList::class)->publish();
+
+    expect($event->signed_at)->toBe(now()->getTimestamp() - LeagueMuteList::BACKDATE_LIMIT)
+        ->and($event->payload()['content'])->toBe($ancient['content']);
+});
+
+test('F2: switched off, nostr:republish leaves the league\'s mute list home and still sends everything else', function () {
+    config(['esports.relays' => ['ws://127.0.0.1:9']]);
+    foreach ([[10000, [['p', (new TestSigner)->pubkey]]], [0, []]] as [$kind, $tags]) {
+        NostrEvent::fromSigned(SignedEvent::fromInput($this->league->sign($kind, $tags, $kind === 0 ? '{}' : '')))->forceFill(['queued_at' => now()])->save();
+    }
+    $this->travel(2)->hours();
+
+    config(['esports.league.mute_list' => false]);
+    $this->artisan('nostr:republish')->expectsOutput('Republished 1 event(s).')->assertSuccessful();
+    expect(RelayDelivery::query()->pluck('nostr_event_id')->map(fn (int $id): int => NostrEvent::query()->findOrFail($id)->kind)->all())->toBe([0]);
+
+    // Without the league key it cannot tell whose list it is: only the league signs kind 10000, so none goes out.
+    config(['esports.league.nsec' => null]);
+    $this->artisan('nostr:republish')->expectsOutput('Republished 1 event(s).')->assertSuccessful();
+
+    config(['esports.league.mute_list' => true, 'esports.league.nsec' => $this->league->secret]);
+    $this->artisan('nostr:republish')->expectsOutput('Republished 2 event(s).')->assertSuccessful();
+});
+
+test('F3: a client\'s own p (hint, petname) for a key the site mutes stays verbatim through the mute and the lift', function (array $clientTag) {
+    Queue::fake();
+    Sleep::fake(syncWithCarbon: true);
+    $key = $clientTag[1];
+    $other = (new TestSigner)->pubkey;
+    $client = $this->league->sign(10000, [$clientTag, ['client', 'Amethyst']], 'priv', now()->getTimestamp() - 3600);
+    relaysHold($this->relays, $client);
+    $admin = muteListAdmin();
+    $moderation = app(SiteModeration::class);
+
+    $row = $moderation->mute($admin, $key, 'spam spam');
+    $moderation->mute($admin, $other, 'flooding');
+    $muted = app(LeagueMuteList::class)->publish();
+    $record = DB::table('league_mute_list_versions')->where('nostr_event_id', $muted->id)->sole();
+
+    expect(muteListTags($muted))->toBe([$clientTag, ['client', 'Amethyst'], ['p', $other]])
+        ->and(json_decode($record->site_keys, true))->toBe([$other])
+        ->and(json_decode($record->client_keys, true))->toBe([$key]);
+
+    relaysHold($this->relays, $muted);
+    $this->travel(5)->seconds();
+    $moderation->lift($admin, $row->id);
+
+    // The client still lists the key itself: the lift changes nothing, so nothing is signed.
+    expect(app(LeagueMuteList::class)->publish())->toBeNull();
+
+    $moderation->lift($admin, PubkeyModeration::query()->where('pubkey', $other)->sole()->id);
+    $lifted = app(LeagueMuteList::class)->publish();
+
+    expect(muteListTags($lifted))->toBe([$clientTag, ['client', 'Amethyst']])
+        ->and($lifted->payload()['content'])->toBe('priv');
+})->with([
+    'with hint and petname' => [['p', (new TestSigner)->pubkey, 'wss://hint.example/', 'petname']],
+    'bare, like the site writes it' => [['p', (new TestSigner)->pubkey]],
+]);

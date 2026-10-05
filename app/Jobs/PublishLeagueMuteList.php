@@ -12,9 +12,10 @@ use Illuminate\Foundation\Queue\Queueable;
  * an admin muted, banned or let a key back (SiteModeration). While a run is
  * queued, further changes coalesce into it (unique until it starts); it
  * reads the table when it runs, so it signs the state after all of them.
- * Dispatched after the commit. Tried again on a failure of its own: no
- * relay answered the read of the newest list (MuteListUnreadable, fail
- * closed), the writer's lock, the database. Relay refusals of the publish
+ * Dispatched after the commit. Tried again on a failure of its own: the
+ * relay quorum did not answer the read of the newest list, or the list
+ * changed right before signing (MuteListUnreadable, fail closed), the
+ * writer's lock, the database. Relay refusals of the publish
  * never fail it (PublishNostrEvent records them, `nostr:republish` retries),
  * and the hourly `esports:mute-list` run reconciles whatever is left.
  */

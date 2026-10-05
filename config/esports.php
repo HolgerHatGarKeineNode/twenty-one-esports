@@ -783,10 +783,16 @@ return [
 
         // The site's mutes and bans as the league key's public NIP-51 mute list (kind 10000,
         // App\Support\Moderation\LeagueMuteList), carried over onto the newest list a Nostr client
-        // wrote for the key (private part and foreign tags unchanged). ESPORTS_PUBLISH_MUTE_LIST=false
-        // is the kill switch. Off by default until the relay-quorum fix (security gate 2026-10-05, F1): a read
-        // with the key's outbox relays down could sign over an empty base and wipe the private list.
-        'mute_list' => (bool) env('ESPORTS_PUBLISH_MUTE_LIST', false),
+        // wrote for the key (private part and foreign tags unchanged). On by default; nothing is signed
+        // unless every write relay of the key's NIP-65 relay list among the league relays answered the read
+        // (the quorum, security gate 2026-10-05, F1). ESPORTS_PUBLISH_MUTE_LIST=false is the kill switch:
+        // nothing is read or signed, and `nostr:republish` stops sending the stored versions as well.
+        'mute_list' => (bool) env('ESPORTS_PUBLISH_MUTE_LIST', true),
+
+        // League relays the mute list writer neither reads nor counts towards its quorum: measured
+        // unreachable from production on 2026-09-26 (relay.damus.io answers 403, nos.lol does not
+        // connect). Comma-separated in ESPORTS_MUTE_LIST_UNREACHABLE; empty string for none.
+        'mute_list_unreachable' => array_values(array_filter(array_map('trim', explode(',', (string) env('ESPORTS_MUTE_LIST_UNREACHABLE', 'wss://nos.lol,wss://relay.damus.io'))))),
     ],
 
     /*

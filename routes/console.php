@@ -30,6 +30,7 @@ use App\Support\Notifications\NotificationDm;
 use App\Support\Notifications\WebPush;
 use App\Support\Scores\ScoreLeaderboards;
 use App\Support\Scores\ScoreServers;
+use App\Support\SeasonChain\LeagueKey;
 use App\Support\SeasonChain\TrustJob;
 use App\Support\SeasonChain\TrustJobRefused;
 use App\Support\Series\CasualScheduler;
@@ -278,7 +279,10 @@ Artisan::command('esports:notification-profile', function (RelayPublisher $publi
  * and that some configured relay has not accepted yet are sent again to
  * exactly those relays, and so is the current version of every replaceable
  * and addressable event of any age (tournaments, profile, ladders). Gift wraps are
- * left alone; a late notification is worth less than none.
+ * left alone; a late notification is worth less than none. The league's mute
+ * list (kind 10000) is left alone while ESPORTS_PUBLISH_MUTE_LIST=false: the
+ * kill switch stops every send of it, and once it is back on, the writer
+ * reads the relays and queues its versions itself (LeagueMuteList).
  */
 Artisan::command('nostr:republish', function (RelayPublisher $publisher) {
     $relays = config('esports.relays', []);
@@ -288,11 +292,17 @@ Artisan::command('nostr:republish', function (RelayPublisher $publisher) {
         return;
     }
 
+    // Kill switch off: no version of the league's mute list goes out (only the league key signs kind 10000).
+    $muteListOff = config('esports.league.mute_list') !== true;
+    $leaguePubkey = $muteListOff ? LeagueKey::fromConfig()?->pubkey() : null;
+    $withoutMuteList = fn ($query) => $query->whereNot(fn ($muteList) => $muteList->where('kind', LeagueMuteList::KIND)->when($leaguePubkey !== null, fn ($own) => $own->where('pubkey', $leaguePubkey)));
+
     // Only events that were queued for the relays (flag or a delivery attempt): a stored-only
     // event never goes out, and a tournament consent (22150) never, whatever its rows say.
     $events = NostrEvent::query()
         ->where(fn ($query) => $query->whereNotNull('queued_at')->orWhereHas('deliveries'))
         ->whereNotIn('kind', [1059, TournamentSignups::CONSENT])
+        ->when($muteListOff, $withoutMuteList)
         ->whereBetween('created_at', [now()->subDay(), now()->subMinute()])
         ->with('deliveries')
         ->oldest('id')
@@ -308,6 +318,7 @@ Artisan::command('nostr:republish', function (RelayPublisher $publisher) {
         ->whereNotNull('queued_at')
         ->where(fn ($query) => $query->whereIn('kind', [0, 3])->orWhereBetween('kind', [10000, 19999])->orWhereBetween('kind', [30000, 39999]))
         ->whereNotIn('kind', [1059, TournamentSignups::CONSENT])
+        ->when($muteListOff, $withoutMuteList)
         ->where('created_at', '<', now()->subMinute())
         ->whereNotIn('id', $events->pluck('id'))
         ->with('deliveries')
@@ -336,7 +347,8 @@ Schedule::command('nostr:republish')->everyFiveMinutes()->withoutOverlapping();
  * the newest list from the league relays and republish it with the site's
  * keys when the relays lack them (a client edit that dropped them, a version
  * no relay took). Every change of a moderation runs it at once; this hourly
- * run reconciles the rest. A read no relay answered signs nothing and is
+ * run reconciles the rest. A read the relay quorum did not answer (the
+ * write relays of the league key's NIP-65 list) signs nothing and is
  * logged, never reported as a failed run. Nothing runs while
  * ESPORTS_PUBLISH_MUTE_LIST=false.
  */
@@ -350,7 +362,7 @@ Artisan::command('esports:mute-list', function (LeagueMuteList $list) {
     try {
         $event = $list->publish();
     } catch (MuteListUnreadable $exception) {
-        Log::warning('League mute list: no relay answered the read, nothing was signed');
+        Log::warning('League mute list: the relay quorum was not read, nothing was signed', ['reason' => $exception->getMessage()]);
         $this->warn($exception->getMessage());
 
         return;
