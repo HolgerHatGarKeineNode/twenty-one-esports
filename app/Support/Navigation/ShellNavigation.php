@@ -542,6 +542,8 @@ final class ShellNavigation
 
         if (in_array($slug, $series, true)) {
             return array_values(array_filter([
+                // Rocket League leads with its tournaments and prizes (user, 2026-10-07: one game bar, no second tab row on the page).
+                $slug === 'rocket-league' ? [...self::link('prizes', route('tournaments.index', ['game' => $slug]), __('Tournaments & prizes'), 'trophy', null, null, __('Prizes')), 'accent' => true] : null,
                 self::link('play', GameNames::page($slug), __('Overview'), 'trophy', null, null, __('Play'), 'play'),
                 self::link('matches', $matches, __('Matches'), 'matches', null, null, null, 'matches'),
                 $user ? self::link('challenge', route('challenges.create', $firstSeries ? [] : ['game' => $slug]), __('Challenge a clan'), 'send',

@@ -113,8 +113,7 @@ test('the band without an open or a finished prize tournament says so, and a for
     expect($html)->toContain('data-test="next-tournament-empty"')
         ->toContain('data-test="prize-watch"')
         ->toContain('data-test="prize-last-empty"')
-        ->not->toContain('data-test="start-tile-paid"')
-        ->not->toContain('data-test="section-tab-pot"');
+        ->not->toContain('data-test="start-tile-paid"');
 
     tournamentTwo(PayoutStatus::Forwarded);
     $html = (string) $this->get(route('games.rocket-league'))->assertOk()->getContent();
@@ -147,8 +146,9 @@ test('four start tiles, Tournaments & prizes first and the only orange one; the 
         ->and(preg_match('/\bbg-btc\b/', $tiles[0][2]))->toBe(1)
         ->and($tiles[0][1])->toBe($filtered)
         ->and(between($html, 'data-tile="tournaments"', '</a>'))->toContain("23\u{00A0}310 sats won")->toContain('Champion: Industrie_KPI')
-        ->and($html)->toContain('<a href="'.$filtered.'" class="inline-flex min-h-11')
-        ->and(between($html, 'data-test="game-sections"', '</nav>'))->toContain('data-test="section-tab-tournaments"')
+        // The game bar leads with Tournaments & prizes, accented, to this game's list; no second tab row on the page.
+        ->and($html)->toMatch('#<a href="'.preg_quote($filtered, '#').'"[^>]*class="ctx-link ctx-link-accent" data-test="ctx-prizes"#')
+        ->and($html)->not->toContain('data-test="game-sections"')
         // The tabs and tiles come right under the head, before the body.
         ->and(strpos($html, 'data-test="game-start"'))->toBeGreaterThan(strpos($html, '</header>'))
         ->and(strpos($html, 'data-test="start-tiles"'))->toBeLessThan(strpos($html, 'data-test="prize-band"'));
@@ -162,7 +162,7 @@ test('only Rocket League gets the new layout: the other series games keep the po
 
     expect($html)->toContain('data-test="game-next-tournament"')
         ->not->toContain('data-test="game-start"')
-        ->not->toContain('data-test="game-sections"')
+        ->not->toContain('data-test="ctx-prizes"')
         ->not->toContain('data-test="start-tiles"')
         ->not->toContain('data-test="prize-band"')
         ->toContain('href="'.route('tournaments.index').'" class');

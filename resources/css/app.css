@@ -2722,6 +2722,12 @@
         white-space: nowrap;
     }
 
+    /* A game's lead entry (Rocket League: tournaments and prizes), in the brand orange. */
+    .ctx-link-accent {
+        color: var(--color-btc-hi);
+        font-weight: 700;
+    }
+
     .ctx-link {
         display: flex;
         align-items: center;

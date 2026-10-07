@@ -420,7 +420,6 @@ new #[Layout('layouts::app', ['section' => 'matches', 'scripts' => ['resources/j
     {{-- The tabs and the four start tiles, Tournaments & prizes first (START_LAYOUT games, plan "RL-Startseite"). --}}
     @if ($prizes !== null)
         <div class="flex flex-col gap-4 px-4 pb-6 lg:px-12 lg:pb-8" data-test="game-start">
-            <x-games.tabs :game="$slug" :pot-sats="$prizes['paid']" :casual="$casual" />
             <x-games.start-tiles :game="$slug" :paid-sats="$prizes['paid']" :champion="isset($prizes['podium'][0]) ? implode(', ', $prizes['podium'][0]['names']) : null"
                                  :next="$this->nextTournament" :searching="$pulse['searching']" :play-href="$casualOn ? '#casual' : route('challenges.create', ['game' => $slug])"
                                  :ladder="$ladder" :latest="collect($cards)->firstWhere('state', 'final')['match'] ?? null" />

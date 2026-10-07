@@ -64,13 +64,13 @@ const RL_START_MEASURE = <<<'JS'
             overflow: document.documentElement.scrollWidth - document.documentElement.clientWidth,
             start: one('[data-test=game-start]'), band: one('[data-test=prize-band]'), chat: one('[data-test=game-chat]'),
             tiles: [...document.querySelectorAll('[data-test=start-tile]')].map((el) => ({ tile: el.dataset.tile, ...box(el) })),
-            tabs: inside('[data-test=section-tab-tournaments], [data-test=section-tab]').map((el) => ({ tab: el.innerText.trim().replace(/\s+/g, ' '), ...box(el) })),
+            tabs: [...document.querySelectorAll('[data-test=ctx-prizes]')].map((el) => ({ tab: el.innerText.trim().replace(/\s+/g, ' '), ...box(el) })),
             cards: ['next-tournament-empty', 'next-tournament', 'prize-last', 'prize-cups'].map((t) => ({ card: t, box: one('[data-test=' + t + ']') })).filter((c) => c.box !== null),
             buttons: inside('a.btn-p, a.btn-s, a.btn-w, button, [data-test=start-tile], [data-test=section-tab], [data-test=section-tab-tournaments]').map((el) => ({ el: label(el), ...box(el) })),
             low: inside('a.btn-p, a.btn-s, a.btn-w, button, [data-test=start-tile], [data-test=section-tab], [data-test=section-tab-tournaments], [data-test=prize-last-name]').filter((el) => el.getBoundingClientRect().height < 44).map(label),
             cut: inside('*').filter((el) => !(el instanceof SVGElement) && el.clientWidth > 0 && el.scrollWidth > el.clientWidth + 1).map(label),
             wrapped: inside('a.btn-p, a.btn-s, a.btn-w, button').filter((el) => el.getBoundingClientRect().height > 46).map(label),
-            first: { tile: firstScreen('[data-tile=tournaments]'), tab: firstScreen('[data-test=section-tab-tournaments]'), all: firstScreen('[data-test=prize-band-all]') },
+            first: { tile: firstScreen('[data-tile=tournaments]'), tab: firstScreen('[data-test=ctx-prizes]'), all: firstScreen('[data-test=prize-band-all]') },
             order: [...document.querySelectorAll('[data-test=start-tile]')].map((el) => el.dataset.tile),
         };
     }
@@ -173,7 +173,7 @@ test('the Rocket League page at 390, 1024, 1280 and 1440: nothing squeezed, cut 
         }
 
         if ($width === 1440) {
-            expect($m['first']['tab'])->toBeTrue("{$label}: tab in the first screen")
+            expect($m['first']['tab'])->toBeTrue("{$label}: the accented Tournaments & prizes entry in the game bar")
                 ->and($m['first']['all'])->toBeTrue("{$label}: All Rocket League tournaments in the first screen");
         }
 
