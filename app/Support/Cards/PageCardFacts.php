@@ -528,12 +528,15 @@ final class PageCardFacts
     public static function boardLobby(string $game, bool $daily): array
     {
         return Cache::remember('page-card:board:'.$game.':'.($daily ? 'daily' : 'live'), now()->addSeconds(self::COUNTS_TTL), function () use ($game, $daily): array {
-            $mode = $daily ? BoardGame::CORRESPONDENCE : 'blitz';
+            // The lobby of a board game without blitz (all three since 2026-10-07) counts its correspondence games.
+            $live = ! $daily && app(GameRegistry::class)->mode($game, 'blitz') !== null;
+            $mode = $live ? 'blitz' : BoardGame::CORRESPONDENCE;
             $games = fn () => BoardGame::query()->where(['game' => $game, 'mode' => $mode]);
 
             return [
                 'game' => $game,
                 'daily' => $daily,
+                'live' => $live,
                 'cover' => ($cover = app(GameRegistry::class)->coverPath($game)) === null ? null : basename($cover),
                 'running' => $games()->where('status', BoardGameStatus::Active)->count(),
                 'played' => $games()->where('status', BoardGameStatus::Finished)->count(),

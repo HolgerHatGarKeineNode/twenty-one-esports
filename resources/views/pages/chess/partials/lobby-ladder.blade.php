@@ -2,7 +2,8 @@
     A ladder's top five in a lobby, from the view the ladder page opens on
     (rated once it has a result, casual before), and the way to the whole
     ladder. A board game's lobby includes it with `ladderGame` (its slug)
-    and shows its blitz ladder; the chess lobby passes `ladderMode` and
+    and its lobby mode as `ladderMode` (correspondence for the board games
+    since 2026-10-07, named by the game's mode name); the chess lobby passes `ladderMode` and
     `ladderModes` (plan "Schach Rapid und Clan": rapid first, blitz and daily
     by the switch, Livewire showLadder()).
 --}}
@@ -12,7 +13,8 @@
     $ladderModes ??= [];
     $top = $this->ladderTop;
     $rated = $top['pool'] === 'rated';
-    $ladderName = $ladderModes === [] ? null : \App\Support\Chess\ChessModes::short($ladderMode);
+    $ladderName = $ladderModes !== [] ? \App\Support\Chess\ChessModes::short($ladderMode)
+        : ($ladderMode === 'blitz' ? null : \App\Support\GameNames::mode($ladderGame, $ladderMode));
 @endphp
 
 <section aria-labelledby="ladder-card-h" class="flex flex-col gap-3 rounded-lg bg-card px-4 py-4 lg:col-span-3 lg:px-5 xl:max-2xl:col-span-12" data-test="lobby-ladder" data-pool="{{ $top['pool'] }}" data-mode="{{ $ladderMode }}">

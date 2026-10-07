@@ -6,8 +6,9 @@ use App\Support\Board\BlockliRules;
 use App\Support\Board\BoardRules;
 
 /**
- * Blockli, a race with blocks on 9 x 9 (Quoridor-type rules), blitz 5+3 or
- * one move a day, played on the board game core. Registered through
+ * Blockli, a race with blocks on 9 x 9 (Quoridor-type rules), correspondence
+ * only (one move a day; blitz dropped 2026-10-07, fast modes are chess only),
+ * played on the board game core. Registered through
  * `config('esports.board_games.games.blockli')`, off until
  * ESPORTS_BOARD_GAME_BLOCKLI switches it on; the rules are
  * {@see BlockliRules}.
@@ -36,7 +37,6 @@ final class Blockli extends BoardGame
     public function modes(): array
     {
         return [
-            'blitz' => new GameMode('blitz', 'Blitz 5+3', 1, [], [], 'player', true, '300+3'),
             // Correspondence: one move per day, as for the other board games; the rules end every game.
             'correspondence' => new GameMode('correspondence', 'Correspondence', 1, [], [], 'player', true, '1/86400'),
         ];
@@ -55,7 +55,8 @@ final class Blockli extends BoardGame
     /**
      * The first move is an advantage (DerCaddy's open point 5; user,
      * 2026-10-07): a tournament pairing plays twice with the colours swapped,
-     * and at 1:1 a blitz game with drawn colours decides.
+     * and at 1:1 a third game with drawn colours decides, in the tournament's
+     * mode (correspondence: the game has no other mode since 2026-10-07).
      */
     public function playsTwoLegs(): bool
     {

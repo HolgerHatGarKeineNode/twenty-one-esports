@@ -41,8 +41,15 @@ final class GameNames
     /** "Blitz 5+3", "Daily" (translated), "1v1"; the slug of an unregistered mode. */
     public static function mode(string $game, string $mode): string
     {
-        return __(app(GameRegistry::class)->mode($game, $mode)->name ?? $mode);
+        return __(app(GameRegistry::class)->mode($game, $mode)->name ?? self::RETIRED_MODES[$mode] ?? $mode);
     }
+
+    /**
+     * The names of modes a game no longer offers, so the records of games
+     * played in them keep their name: the board games' blitz, dropped on
+     * 2026-10-07 (user: correspondence only, fast modes are for chess).
+     */
+    private const RETIRED_MODES = ['blitz' => 'Blitz 5+3'];
 
     /** "Chess Blitz 5+3", "EA Sports FC 27 1v1". */
     public static function full(string $game, string $mode): string

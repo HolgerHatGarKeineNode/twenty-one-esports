@@ -512,10 +512,14 @@ final class ShellNavigation
 
         if ($game->kind() === GameKind::Board) {
             return array_values(array_filter([
-                self::link('play', GameNames::page($slug), __('Play blitz'), 'bolt', null, null, __('Play'), 'play'),
-                // Correspondence (P8): one move a day, on its own page, for a board game that has the mode.
+                // Without blitz (user, 2026-10-07: the board games are correspondence only) the game page is where
+                // correspondence is played, and no second link leads there.
+                $game->mode('blitz') !== null
+                    ? self::link('play', GameNames::page($slug), __('Play blitz'), 'bolt', null, null, __('Play'), 'play')
+                    : self::link('play', GameNames::page($slug), __('Play correspondence'), 'calendar', null, null, __('Play'), 'play'),
+                // Correspondence (P8): one move a day, on its own page, for a board game that has the mode next to blitz.
                 // Only while the page is routed: a route table cached with the switch off has none, and every page would answer 500.
-                $game->mode('correspondence') !== null && Route::has('board.correspondence') ? self::link('daily', route('board.correspondence', $slug), __('Correspondence'), 'calendar') : null,
+                $game->mode('blitz') !== null && $game->mode('correspondence') !== null && Route::has('board.correspondence') ? self::link('daily', route('board.correspondence', $slug), __('Correspondence'), 'calendar') : null,
                 self::link('ladder', route('ladder.show', [$slug, array_key_first($game->modes())]), __('Ladder'), 'ladder', null, null, null, 'ladder'),
                 self::link('rules', route('rules').'#'.$slug, __('Rules'), 'shield-check'),
                 self::strongest(),

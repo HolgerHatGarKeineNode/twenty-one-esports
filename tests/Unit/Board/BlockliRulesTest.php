@@ -106,16 +106,15 @@ function blockliVectors(): array
 
 /* ---------- The game --------------------------------------------------------------------------------------- */
 
-test('Blockli is a board game played as blitz 5+3 or one move a day, one player a side, draws possible, on these rules', function () {
+test('Blockli is a board game played one move a day only, one player a side, draws possible, on these rules', function () {
     $game = new Blockli;
-    $mode = $game->mode('blitz');
+    $mode = $game->mode('correspondence');
 
     expect($game->slug())->toBe('blockli')
         ->and($game->kind())->toBe(GameKind::Board)
         ->and($game->rules())->toBeInstanceOf(BlockliRules::class)
-        ->and(array_keys($game->modes()))->toBe(['blitz', 'correspondence'])
-        ->and($game->mode('correspondence')?->timeControl)->toBe('1/86400')
-        ->and($mode?->timeControl)->toBe('300+3')
+        ->and(array_keys($game->modes()))->toBe(['correspondence'])
+        ->and($mode?->timeControl)->toBe('1/86400')
         ->and($mode?->teamSize)->toBe(1)
         ->and($mode?->allowsDraws)->toBeTrue()
         ->and($game->validateResult($mode, ['result' => '1/2-1/2']))->toBe([])

@@ -81,14 +81,15 @@ test('the board lobby has the chess lobby\'s sections in the chess lobby\'s orde
     // The chat sits right under the play row since 2026-10-04 (a bar on the phone, the side column from 1280 px).
     $expected = ['title', 'play', 'chat', 'next tournament', 'cups', 'your games', 'live', 'online', 'ladder', ...($signedIn ? ['follows'] : [])];
 
-    expect($board)->toBe($expected)
+    // The board games run no casual cup since 2026-10-07 (correspondence only): the same order without it.
+    expect($board)->toBe(array_values(array_diff($expected, ['cups'])))
         ->and($chess)->toBe($expected);
 })->with(['guest' => [false], 'player' => [true]]);
 
 test('the board lobby\'s online list is the presence channel\'s, with its own "Looking to play" switch, never a stored flag passed off as online', function () {
     [$me, $away] = User::factory()->count(2)->create();
     // Looking, but nobody knows whether they are online: the old lobby listed them anyway.
-    $away->forceFill(['name' => 'Offline Olga', 'looking_to_play' => NineMensMorris::SLUG.'/blitz'])->save();
+    $away->forceFill(['name' => 'Offline Olga', 'looking_to_play' => NineMensMorris::SLUG.'/correspondence'])->save();
 
     $this->get(route('board.lobby', NineMensMorris::SLUG))->assertOk()
         ->assertSeeHtml('data-test="online-now"')
@@ -107,7 +108,7 @@ test('the board lobby\'s online list is the presence channel\'s, with its own "L
     // The switch saves the wanted state and answers with the stored one; off declines the open invites.
     $page = Livewire::actingAs($me)->test('pages::board.lobby', ['board' => NineMensMorris::SLUG]);
     expect($page->instance()->setLookingToPlay(true))->toBeTrue()
-        ->and($me->refresh()->looking_to_play)->toBe(NineMensMorris::SLUG.'/blitz');
+        ->and($me->refresh()->looking_to_play)->toBe(NineMensMorris::SLUG.'/correspondence');
 
     $invite = app(BoardInvites::class)->invite($away, $me, NineMensMorris::SLUG);
     expect($page->instance()->setLookingToPlay(false))->toBeFalse()
@@ -117,7 +118,7 @@ test('the board lobby\'s online list is the presence channel\'s, with its own "L
 
 test('the invited row is marked for the inviter until the invite expires', function () {
     [$me, $bert] = User::factory()->count(2)->create();
-    $bert->forceFill(['looking_to_play' => NineMensMorris::SLUG.'/blitz'])->save();
+    $bert->forceFill(['looking_to_play' => NineMensMorris::SLUG.'/correspondence'])->save();
 
     $page = Livewire::actingAs($me)->test('pages::board.lobby', ['board' => NineMensMorris::SLUG])
         ->call('invite', $bert->id)
@@ -138,8 +139,9 @@ test('the board lobby asks the same number of queries for 1, 3, 5 and 25 live ga
 
         for ($i = 0; $i < $n; $i++) {
             [$white, $black] = User::factory()->count(2)->create();
-            $service->start(NineMensMorris::SLUG, $white, $black);
-            Rating::query()->create(['pool' => Rating::CASUAL, 'season' => '', 'game' => NineMensMorris::SLUG, 'mode' => 'blitz', 'subject' => 'user:'.$white->id, 'user_id' => $white->id, 'rating' => 1000 + $i, 'results' => 1]);
+            // A live game left from before the board games' blitz was dropped (2026-10-07): the list still shows it.
+            $service->start(NineMensMorris::SLUG, $white, $black)->forceFill(['mode' => 'blitz', 'deadline_ms' => null])->save();
+            Rating::query()->create(['pool' => Rating::CASUAL, 'season' => '', 'game' => NineMensMorris::SLUG, 'mode' => 'correspondence', 'subject' => 'user:'.$white->id, 'user_id' => $white->id, 'rating' => 1000 + $i, 'results' => 1]);
             $service->start(NineMensMorris::SLUG, $me, User::factory()->create(), BoardGame::CORRESPONDENCE);
         }
 
@@ -176,7 +178,7 @@ test('every game page heads its casual cups as tournaments, with the explainer a
     // The head sits above the rows, and no line of it talks about money.
     expect(strpos($html, 'data-test="cup-head"'))->toBeLessThan(strpos($html, 'data-test="cup-mention"'))
         ->and(strtolower(strip_tags(substr($html, strpos($html, 'data-test="cup-head"'), 2000))))->not->toContain('fee');
-})->with(['chess lobby', 'board lobby', 'series game page']);
+})->with(['chess lobby', 'series game page']);
 
 test('with the cups switched off or no league key, the game pages promise no cup, though cups are still open', function (string $page, string $switch) {
     lobbyCups();
@@ -199,7 +201,9 @@ test('the German game pages say it in German', function () {
 
     $html = $this->withSession(['locale' => 'de'])->get(route('board.lobby', NineMensMorris::SLUG))->assertOk()->getContent();
 
-    expect($html)->toContain('Casual Cups')->toContain('Turniere')->toContain('Nächster Cup startet in')->toContain('Alle Casual Cups')->toContain('sucht: Mühle');
+    // No casual cup for a board game since 2026-10-07: its lobby names correspondence, never blitz.
+    expect($html)->toContain('Turniere')->toContain('sucht: Mühle')->toContain('Fernpartie')
+        ->not->toContain('Nächster Cup startet in')->not->toContain('Blitz spielen')->not->toContain('Blitz 5+3 ·');
 });
 
 test('with the board games switched off the lobby is a 404, and the chess lobby keeps its cup head', function () {

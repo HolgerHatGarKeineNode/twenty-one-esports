@@ -64,7 +64,8 @@ final readonly class GameProfile
             // Rapid 10+5 (plan "Schach Rapid und Clan", P1): 2 × (10 min + 40 moves × 5 s) ≈ 27 min a game, unmeasured.
             'chess/rapid' => new self('rapid', $game, $mode, 'min', 27, 0, 3, 1, 1, [1], false, 'game', overhead: 3),
             'chess/correspondence' => new self('daily', $game, $mode, 'day', 30, 0, 1, 1, 1, [1], true, 'game'),
-            // Board games (plan "Mühle und Dame", P5): one blitz game 5+3 per match, planned as blitz chess.
+            // Board games (plan "Mühle und Dame", P5): one blitz game 5+3 per match, planned as blitz chess. No game offers
+            // blitz since 2026-10-07 (user: correspondence only); kept so tournaments made before still plan and render.
             'nine-mens-morris/blitz', 'checkers/blitz' => new self("{$game}/{$mode}", $game, $mode, 'min', 14, 0, 3, 1, 1, [1], false, 'game', overhead: 3),
             // Blockli plays each pairing twice with the colours swapped (plan "Blockli", P4): two games a slot.
             'blockli/blitz' => new self("{$game}/{$mode}", $game, $mode, 'min', 14, 0, 3, 2, 2, [2], false, 'game', overhead: 3),

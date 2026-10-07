@@ -301,7 +301,7 @@ class PrideSlides
             'loserRef' => StreamImages::avatarRef($loser),
             // "Blitz chess", "Daily chess"; "Checkers blitz 5+3" for a board game: the pride note writes it in lower case.
             'mode' => $chess ? ($result->isCorrespondence() ? 'Daily chess' : ucfirst(ChessModes::word($result->mode)).' chess')
-                : $this->games->name($result->game).' '.mb_strtolower($this->games->mode($result->game, $result->mode)->name ?? $result->mode),
+                : $this->games->name($result->game).' '.mb_strtolower($this->games->mode($result->game, $result->mode)->name ?? ($result->mode === 'blitz' ? 'Blitz 5+3' : $result->mode)),
             'delta' => $this->delta($source, $result->id, 'user:'.$winner->id, Rating::CASUAL),
             'ratedDelta' => $this->delta($source, $result->id, 'user:'.$winner->id, Rating::RATED),
             'block' => $this->minedBlock($chess ? SeasonAttestation::CHESS : SeasonAttestation::BOARD, $result->id),

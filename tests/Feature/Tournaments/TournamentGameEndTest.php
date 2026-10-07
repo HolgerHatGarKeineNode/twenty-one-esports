@@ -198,8 +198,8 @@ test('a player whose last Swiss or round-robin match is done is told the matches
 test('a finished tournament board game shows the tournament panel and no next opponent', function () {
     NineMensMorrisOn::play();
     $tournament = Tournament::factory()->create([
-        'game' => NineMensMorris::SLUG, 'mode' => 'blitz', 'format' => TournamentFormat::SingleElimination,
-        'options' => FormatOptions::fromArray([], GameProfile::for(NineMensMorris::SLUG, 'blitz'))->toArray(),
+        'game' => NineMensMorris::SLUG, 'mode' => 'correspondence', 'format' => TournamentFormat::SingleElimination,
+        'options' => FormatOptions::fromArray([], GameProfile::for(NineMensMorris::SLUG, 'correspondence'))->toArray(),
         'capacity' => 4, 'results_mode' => TournamentResultsMode::Players, 'status' => TournamentStatus::Running,
         'slug' => 'board-end-'.fake()->unique()->numberBetween(1, 1_000_000), 'ladder_address' => null,
     ]);

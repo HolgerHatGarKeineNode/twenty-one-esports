@@ -354,9 +354,8 @@ final class RulesPage
             'title' => __('Checkers'),
             'lead' => __('German rules on 8 × 8: men step diagonally forward, kings fly.'),
             'facts' => [
-                [__('Time control'), __('Blitz 5+3')],
-                [__('First move'), self::seconds((int) config('esports.board_games.first_move_seconds'))],
-                [__('Correspondence'), __('1 move a day')],
+                // Correspondence only (user, 2026-10-07: fast modes are for chess).
+                [__('Time control'), __('1 move a day')],
             ],
             'items' => [
                 __('White moves first. Men step one square diagonally forward and capture forward and backward.'),
@@ -393,9 +392,8 @@ final class RulesPage
             'game' => Blockli::SLUG,
             'lead' => __('A race on 9 × 9: bring your pawn to the far side first, and block the other pawn\'s way.'),
             'facts' => [
-                [__('Time control'), __('Blitz 5+3')],
-                [__('First move'), self::seconds((int) config('esports.board_games.first_move_seconds'))],
-                [__('Correspondence'), __('1 move a day')],
+                // Correspondence only (user, 2026-10-07: fast modes are for chess).
+                [__('Time control'), __('1 move a day')],
             ],
             'items' => [
                 __('White starts on e1 and wins on rank 9, Black starts on e9 and wins on rank 1. White moves first.'),
@@ -405,6 +403,7 @@ final class RulesPage
                 __('Tap a marked square to move. For a block tap a groove, or Set a block: it shows where it lands. Tap it again or press Confirm; Rotate turns it.'),
                 __('A draw by agreement, by the same position with the same side to move for the third time, or after :moves moves of each side without a new block. These draw rules are the league\'s, the published rules have none.', ['moves' => intdiv(BlockliRules::QUIET_PLY_LIMIT, 2)]),
                 __('Squares are named as in chess, a1 in White\'s bottom left corner. A pawn move reads e2, a block e3h or e3v after the square left below its middle.'),
+                self::correspondence(),
             ],
         ]];
     }
@@ -424,13 +423,12 @@ final class RulesPage
         return [[
             'id' => 'nine-mens-morris',
             'title' => GameNames::game(NineMensMorris::SLUG),
-            'lead' => __('Nine men\'s morris, blitz 5+3 live. The server checks every move.'),
+            'lead' => __('Nine men\'s morris, one move a day. The server checks every move.'),
             'facts' => [
                 [__('Men per side'), (string) NineMensMorrisRules::MEN],
                 [__('Flying with'), (string) NineMensMorrisRules::FLYING_MEN],
                 [__('Moves each without a mill to a draw'), (string) intdiv(NineMensMorrisRules::QUIET_PLY_LIMIT, 2)],
-                [__('First move'), self::seconds((int) config('esports.board_games.first_move_seconds'))],
-                [__('Correspondence'), __('1 move a day')],
+                [__('Time control'), __('1 move a day')],
             ],
             'items' => [
                 __('White places first. Each side places its :men men one by one on empty points, then moves a man along a line to a neighbouring empty point.', ['men' => NineMensMorrisRules::MEN]),

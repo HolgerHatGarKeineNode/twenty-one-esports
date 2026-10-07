@@ -7008,5 +7008,12 @@
     "Tournaments & prizes": "Turniere & Preise",
     "you asked to be told: a new tournament of a game you follow opened for sign-up": "du wolltest es wissen: ein neues Turnier eines Spiels, dem du folgst, ist zur Anmeldung offen",
     "Prizes": "Preise",
-    "A draw by agreement, by the same position with the same side to move for the third time, or after :moves moves of each side without a new block. These draw rules are the league's, the published rules have none.": "Remis durch Einigung, bei derselben Stellung mit derselben Seite am Zug zum dritten Mal oder nach :moves Zügen je Seite ohne neuen Block. Diese Remisregeln sind die der Liga, die veröffentlichten Regeln kennen keine."
+    "A draw by agreement, by the same position with the same side to move for the third time, or after :moves moves of each side without a new block. These draw rules are the league's, the published rules have none.": "Remis durch Einigung, bei derselben Stellung mit derselben Seite am Zug zum dritten Mal oder nach :moves Zügen je Seite ohne neuen Block. Diese Remisregeln sind die der Liga, die veröffentlichten Regeln kennen keine.",
+    "1 move a day · Casual · colours drawn at random": "1 Zug pro Tag · Casual · Farben werden ausgelost",
+    "Play :game against Bitcoiners, one move a day: challenge a player, invite someone online and climb the ladder. The server checks every move.": ":game gegen Bitcoiner, ein Zug pro Tag: Spieler herausfordern, jemanden einladen, der gerade online ist, und in der Ladder aufsteigen. Der Server prüft jeden Zug.",
+    "Play correspondence": "Fernpartie spielen",
+    "One move a day on a board right here in the browser: challenge a player, move when it suits you and climb the ladder.": "Ein Zug pro Tag am Brett direkt im Browser: Spieler herausfordern, ziehen, wann es passt, und die Ladder hochklettern.",
+    "Nine men's morris, one move a day. The server checks every move.": "Mühle, ein Zug pro Tag. Der Server prüft jeden Zug.",
+    "Invite :name to a game, one move a day": ":name zu einer Partie einladen, ein Zug pro Tag",
+    "This invite is for a mode the game no longer offers. Ask for a new link.": "Diese Einladung gilt für einen Modus, den das Spiel nicht mehr anbietet. Frag nach einem neuen Link."
 }

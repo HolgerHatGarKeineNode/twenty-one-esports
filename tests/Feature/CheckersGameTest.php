@@ -50,9 +50,10 @@ test('checkers is a board game registered only with the board game switch and it
         ->and($registry->isBoard('checkers'))->toBeTrue()
         ->and($checkers->name())->toBe('Checkers')
         ->and(__('Checkers', [], 'de'))->toBe('Dame')
-        ->and($checkers->mode('blitz')?->timeControl)->toBe('300+3')
-        ->and($checkers->validateResult($checkers->mode('blitz'), ['result' => '1/2-1/2']))->toBe([])
-        ->and($checkers->validateResult($checkers->mode('blitz'), ['result' => '2-0']))->toBe(['result']);
+        ->and(array_keys($checkers->modes()))->toBe(['correspondence'])
+        ->and($checkers->mode('correspondence')?->timeControl)->toBe('1/86400')
+        ->and($checkers->validateResult($checkers->mode('correspondence'), ['result' => '1/2-1/2']))->toBe([])
+        ->and($checkers->validateResult($checkers->mode('correspondence'), ['result' => '2-0']))->toBe(['result']);
 
     config(['esports.board_games.games.checkers.enabled' => false]);
     app()->forgetInstance(GameRegistry::class);

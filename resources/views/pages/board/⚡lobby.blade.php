@@ -34,7 +34,10 @@ use Livewire\Component;
 
 /*
  * The lobby of one board game next to chess (plan "Mühle und Dame", P5):
- * nine men's morris or checkers, blitz 5+3, casual.
+ * nine men's morris, checkers or Blockli, one move a day (the user dropped
+ * their blitz on 2026-10-07; a board game with a blitz mode, as the test
+ * fixture, still gets the Blitz tile and queue). The lobby's live parts
+ * play the game's lobby mode (App\Games\BoardGame::lobbyMode()).
  *
  * The board game's own services on the chess lobby's page: "Find opponent"
  * joins the board game's queue (BoardQueue), "Looking to play" lets others
@@ -134,11 +137,22 @@ new #[Layout('layouts::app', ['realtime' => true, 'scripts' => ['resources/js/ga
         $this->slug = $board;
     }
 
+    /** The mode of the lobby's invite, "Looking to play", rating and ladder (blitz while offered, else correspondence). */
+    #[Computed]
+    public function lobbyMode(): string
+    {
+        $definition = app(GameRegistry::class)->find($this->slug);
+
+        return $definition instanceof \App\Games\BoardGame ? $definition->lobbyMode() : BoardGame::CORRESPONDENCE;
+    }
+
     public function rendering(\Illuminate\View\View $view): void
     {
         $name = GameNames::game($this->slug);
         $view->title($name);
-        app(PageMeta::class)->describe($name, __('Play :game blitz 5+3 live against Bitcoiners: find an opponent, invite a player and climb the casual ladder. The server checks every move.', ['game' => $name]))
+        app(PageMeta::class)->describe($name, $this->lobbyMode === 'blitz'
+            ? __('Play :game blitz 5+3 live against Bitcoiners: find an opponent, invite a player and climb the casual ladder. The server checks every move.', ['game' => $name])
+            : __('Play :game against Bitcoiners, one move a day: challenge a player, invite someone online and climb the ladder. The server checks every move.', ['game' => $name]))
             ->card(fn () => \App\Support\Cards\PageCard::page('board.'.$this->slug));
 
         // Only a waiting lobby polls; an idle one does not pay for the fingerprint's queries.
@@ -331,7 +345,7 @@ new #[Layout('layouts::app', ['realtime' => true, 'scripts' => ['resources/js/ga
 
     public function invite(int $userId): void
     {
-        $this->attempt(fn (User $user) => $this->goTo(app(BoardInvites::class)->invite($user, User::query()->findOrFail($userId), $this->slug)->boardGame));
+        $this->attempt(fn (User $user) => $this->goTo(app(BoardInvites::class)->invite($user, User::query()->findOrFail($userId), $this->slug, $this->lobbyMode)->boardGame));
     }
 
     public function withdrawInvite(): void
@@ -368,7 +382,7 @@ new #[Layout('layouts::app', ['realtime' => true, 'scripts' => ['resources/js/ga
             return false;
         }
 
-        $mine = $this->slug.'/blitz';
+        $mine = $this->slug.'/'.$this->lobbyMode;
         $previous = $user->looking_to_play;
         $wanted = $looking ? $mine : ($previous === $mine ? null : $previous);
 
@@ -476,7 +490,7 @@ new #[Layout('layouts::app', ['realtime' => true, 'scripts' => ['resources/js/ga
     }
 
     /**
-     * The blitz ladder's top five, from the view the ladder page opens on:
+     * The lobby mode's ladder top five, from the view the ladder page opens on:
      * rated once it has a result, casual before (as the chess lobby).
      *
      * @return array{pool: string, rows: Collection<int, Rating>}
@@ -484,9 +498,9 @@ new #[Layout('layouts::app', ['realtime' => true, 'scripts' => ['resources/js/ga
     #[Computed]
     public function ladderTop(): array
     {
-        $season = Ratings::season(Rating::RATED, $this->slug, 'blitz');
+        $season = Ratings::season(Rating::RATED, $this->slug, $this->lobbyMode);
         $top = fn (string $pool, string $season): Collection => Rating::query()
-            ->where(['pool' => $pool, 'season' => $season, 'game' => $this->slug, 'mode' => 'blitz'])
+            ->where(['pool' => $pool, 'season' => $season, 'game' => $this->slug, 'mode' => $this->lobbyMode])
             ->where('results', '>', 0)->whereNotNull('user_id')->with('user')
             ->orderByDesc('rating')->orderByDesc('results')->orderBy('id')->limit(5)->get();
 
@@ -641,7 +655,7 @@ new #[Layout('layouts::app', ['realtime' => true, 'scripts' => ['resources/js/ga
 @endphp
 
 <div class="flex grow flex-col" data-server-now="{{ now()->getTimestampMs() }}" @if ($this->waiting) data-check-at="{{ $this->checkAt }}" @endif
-     x-data="boardLobby(@js(['userId' => $user?->id, 'lookingKey' => $slug.'/blitz', 'looking' => $user?->looking_to_play === $slug.'/blitz', 'fallback' => $this::FALLBACK_SECONDS]))"
+     x-data="boardLobby(@js(['userId' => $user?->id, 'lookingKey' => $slug.'/'.$this->lobbyMode, 'looking' => $user?->looking_to_play === $slug.'/'.$this->lobbyMode, 'fallback' => $this::FALLBACK_SECONDS]))"
      data-test="board-lobby" data-game="{{ $slug }}">
     <div class="chat-rail-host flex flex-col gap-6 px-4 pb-8 lg:gap-8 lg:px-12 lg:pb-10">
         {{-- The title below lg, with the rating and the rules; from lg the header's context bar names the page and links the rules. --}}
@@ -651,7 +665,7 @@ new #[Layout('layouts::app', ['realtime' => true, 'scripts' => ['resources/js/ga
                 <x-game-credit :game="$slug" />
             </div>
             <span class="flex items-baseline gap-3 text-[13px]">
-                @auth<x-rating :rating="Ratings::headline($user->id, $slug, 'blitz')" :label="__('Blitz')" class="text-ink-2" data-test="lobby-rating" />@endauth
+                @auth<x-rating :rating="Ratings::headline($user->id, $slug, $this->lobbyMode)" :label="$this->lobbyMode === 'blitz' ? __('Blitz') : __('Correspondence')" class="text-ink-2" data-test="lobby-rating" />@endauth
                 <a href="{{ route('rules') }}#{{ $slug }}" class="inline-flex min-h-11 items-center text-ink underline decoration-edge underline-offset-4 hover:decoration-btc" data-test="lobby-rules">{{ __('Rules') }}</a>
             </span>
         </div>
@@ -670,7 +684,7 @@ new #[Layout('layouts::app', ['realtime' => true, 'scripts' => ['resources/js/ga
                             <x-player-link :user="$invite->inviter" class="shrink-0"><x-avatar :user="$invite->inviter" :size="40" class="rounded-md" /></x-player-link>
                             <span class="flex min-w-0 flex-col gap-0.5">
                                 <b class="truncate text-[15px]">{{ __(':name invites you', ['name' => $invite->inviter->displayName()]) }}</b>
-                                <span class="text-xs text-ink-2">{{ __('Blitz 5+3 · Casual · colours drawn at random') }}</span>
+                                <span class="text-xs text-ink-2">{{ $invite->mode === BoardGame::CORRESPONDENCE ? __('1 move a day · Casual · colours drawn at random') : __('Blitz 5+3 · Casual · colours drawn at random') }}</span>
                             </span>
                         </span>
                         <span class="grid grid-cols-2 gap-2 lg:flex">
@@ -699,7 +713,7 @@ new #[Layout('layouts::app', ['realtime' => true, 'scripts' => ['resources/js/ga
         <div class="grid grid-cols-1 gap-4 lg:grid-cols-12 lg:items-start lg:gap-5">
             @include('pages.board.partials.lobby-games', ['user' => $user, 'active' => $active, 'name' => $name])
             @include('pages.board.partials.lobby-live', ['user' => $user, 'active' => $active, 'name' => $name])
-            @include('pages.chess.partials.lobby-ladder', ['ladderGame' => $slug])
+            @include('pages.chess.partials.lobby-ladder', ['ladderGame' => $slug, 'ladderMode' => $this->lobbyMode])
         </div>
 
         {{-- Plan brettspiel-chat-und-follows, P2: who of the player's Nostr follows plays here, to invite or challenge, as in chess --}}

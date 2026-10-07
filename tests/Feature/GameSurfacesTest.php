@@ -309,8 +309,9 @@ test('a player who played a board game last still sees it at the end of Play now
     preg_match_all('#data-test="hub-game-([a-z0-9-]+)"#', $html, $hub);
     $tiles = gameSurfacesAttribute($html, ['play-tile']);
 
-    expect(array_slice($tiles, -3))->toBe([NineMensMorris::SLUG, Checkers::SLUG, Blockli::SLUG])
-        ->and(array_slice($hub[1], -3))->toBe([NineMensMorris::SLUG, Checkers::SLUG, Blockli::SLUG]);
+    // Blockli right after TMNF, then nine men's morris and checkers (user, 2026-10-07).
+    expect(array_slice($tiles, -3))->toBe([Blockli::SLUG, NineMensMorris::SLUG, Checkers::SLUG])
+        ->and(array_slice($hub[1], -3))->toBe([Blockli::SLUG, NineMensMorris::SLUG, Checkers::SLUG]);
 });
 
 test('the invite chooser lists the games in the registry order', function () {
@@ -322,11 +323,11 @@ test('the invite chooser lists the games in the registry order', function () {
 });
 
 test('the casual cups to come are grouped in the registry order', function () {
-    // Opened in the order the env list names the games: Checkers and Nine Men's Morris before chess.
-    foreach ([Checkers::SLUG, NineMensMorris::SLUG, 'rocket-league', 'chess'] as $game) {
+    // Opened in the order the env list names the games: AoE2 and Rocket League before chess (the board games run no cup since 2026-10-07).
+    foreach (['age-of-empires-2', 'rocket-league', 'chess'] as $game) {
         Tournament::factory()->signup()->create(['game' => $game, 'mode' => CasualCups::setup($game)['mode'], 'cup_series' => $game.'-eu', 'cup_number' => 1, 'starts_at' => now()->addDay()]);
     }
-    config(['esports.casual_cups.enabled' => [Checkers::SLUG, NineMensMorris::SLUG, 'rocket-league', 'chess']]);
+    config(['esports.casual_cups.enabled' => ['age-of-empires-2', 'rocket-league', 'chess']]);
 
     gameSurfacesInOrder(array_column(app(CupBoard::class)->groups(), 'game'), 'the cup board');
 });

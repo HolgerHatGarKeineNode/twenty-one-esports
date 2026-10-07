@@ -65,8 +65,8 @@ function boardScene(?int $viewers = null): array
 function boardStreamTournamentWon(string $game): array
 {
     $tournament = Tournament::factory()->create([
-        'name' => 'Brett Cup', 'game' => $game, 'mode' => 'blitz', 'format' => TournamentFormat::SingleElimination,
-        'options' => FormatOptions::fromArray([], GameProfile::for($game, 'blitz'))->toArray(),
+        'name' => 'Brett Cup', 'game' => $game, 'mode' => 'correspondence', 'format' => TournamentFormat::SingleElimination,
+        'options' => FormatOptions::fromArray([], GameProfile::for($game, 'correspondence'))->toArray(),
         'capacity' => 2, 'results_mode' => TournamentResultsMode::Players, 'status' => TournamentStatus::Running,
         'slug' => 'brett-cup-'.fake()->unique()->numberBetween(1, 1_000_000), 'ladder_address' => null,
     ]);
@@ -110,7 +110,9 @@ test('without a running board game the scene is the teaser: both start positions
     expect(app(BoardScene::class)->state())->toBe(BoardScene::IDLE)
         ->and($data['board'])->toBeNull()
         ->and(array_column($data['boards'], 'name'))->toBe(["Nine Men's Morris", 'Checkers'])
-        ->and($svg)->toContain('>Board games</text>', 'Nine Men&#039;s Morris', '>Checkers</text>', '5+3, right in the browser.', 'Find an opponent in seconds.')
+        ->and($svg)->toContain('>Board games</text>', 'Nine Men&#039;s Morris', '>Checkers</text>', '1 move a day, right in the browser.', 'Pick a player and send a challenge.')
+        // Correspondence only since 2026-10-07: no blitz, no clock, no queue on the scene.
+        ->and($svg)->not->toContain('Blitz')->not->toContain('5+3')->not->toContain('Find an opponent')
         // The morris board starts empty (24 points, 16 lines), checkers with twelve men a side.
         ->and(substr_count($svg, 'data-piece="w"'))->toBe(12)
         ->and(substr_count($svg, 'data-piece="b"'))->toBe(12)
@@ -118,7 +120,7 @@ test('without a running board game the scene is the teaser: both start positions
         ->and($svg)->not->toContain('data-unit="mode"');
 });
 
-test('a running board game is on the scene: players, clocks, the mode, the position and the last move', function () {
+test('a running board game is on the scene: players, the time left for the move, the mode, the position and the last move, and no blitz', function () {
     NineMensMorrisOn::play();
     CheckersGame::play();
     $service = app(BoardGameService::class);
@@ -132,25 +134,28 @@ test('a running board game is on the scene: players, clocks, the mode, the posit
     [$data, $svg] = boardScene(21);
 
     expect(app(BoardScene::class)->state())->toBe(BoardScene::LIVE)
-        ->and($data['board'])->toMatchArray(['game' => "Nine Men's Morris", 'mode' => "Nine Men's Morris · Blitz 5+3, casual", 'last' => ['g7']])
+        ->and($data['board'])->toMatchArray(['game' => "Nine Men's Morris", 'mode' => "Nine Men's Morris · Daily, casual", 'daily' => true, 'last' => ['g7']])
         ->and($data['board']['white'])->toMatchArray(['name' => 'Anna <script>alert(1)</script>', 'toMove' => false])
         ->and($data['board']['black'])->toMatchArray(['name' => 'Bert', 'toMove' => true])
-        ->and($data['board']['black']['clockMs'])->toBeGreaterThan(290_000)->toBeLessThanOrEqual(300_000)
-        ->and($svg)->toContain('>Nine Men&#039;s Morris · Blitz 5+3, casual</text>', 'Anna &lt;script', '>Bert</text>', 'watching')
-        ->and($svg)->not->toContain('<script>')
+        // The side to move has its day for the move (h:mm on the scene), the other side no clock.
+        ->and($data['board']['black']['clockMs'])->toBeGreaterThan(86_300_000)->toBeLessThanOrEqual(86_400_000)
+        ->and($svg)->toContain('>Nine Men&#039;s Morris · Daily, casual</text>', 'Anna &lt;script', '>Bert</text>', 'watching', '>1 move a day</text>')
+        ->and(substr_count($svg, 'data-unit="clock"'))->toBe(2)
+        ->and($svg)->not->toContain('<script>')->not->toContain('Blitz')->not->toContain('5+3')
         ->and(substr_count($svg, 'data-piece="w"'))->toBe(2)
         ->and(substr_count($svg, 'data-piece="b"'))->toBe(1)
         // The last move's point is marked.
         ->and($svg)->toContain('fill="#F7931A" fill-opacity="0.3"')
         ->and($svg)->not->toContain('Board games</text>');
 
-    // A checkers game started later waits: the scene keeps the oldest live game.
-    $service->start(Checkers::SLUG, User::factory()->create(), User::factory()->create());
-    expect(boardScene()[0]['board']['game'])->toBe("Nine Men's Morris");
-
-    // Its end brings the next one (or the teaser) on the next poll.
-    $service->resign($game->refresh(), $bert);
+    // A correspondence game started later has the latest turn: the scene shows the game moved in last.
+    $this->travel(5)->seconds();
+    $checkers = $service->start(Checkers::SLUG, User::factory()->create(), User::factory()->create());
     expect(boardScene()[0]['board']['game'])->toBe('Checkers');
+
+    // Its end brings the other one back (or the teaser) on the next poll.
+    $service->resign($checkers->refresh(), $checkers->white);
+    expect(boardScene()[0]['board']['game'])->toBe("Nine Men's Morris");
 });
 
 test('a crowned checkers piece carries its ring on the scene', function () {
@@ -252,7 +257,7 @@ test('a board game win is the latest win when it is later than the latest chess 
 
     $win = app(PrideSlides::class)->read()['win'];
 
-    expect($win)->toMatchArray(['gameId' => $board->id, 'winner' => 'Kim', 'loser' => 'Lou', 'mode' => 'Checkers blitz 5+3', 'tournament' => null, 'url' => route('board.show', $board)]);
+    expect($win)->toMatchArray(['gameId' => $board->id, 'winner' => 'Kim', 'loser' => 'Lou', 'mode' => 'Checkers correspondence', 'tournament' => null, 'url' => route('board.show', $board)]);
 
     // A later chess win takes the slide back.
     $chess = ChessGame::factory()->finished('0-1')->create(['ended_at' => now()->addMinute()]);
@@ -283,7 +288,7 @@ test('the pride note of a board game win links the game and passes the stream bo
     $note = app(PrideNotes::class)->compose(1, 0);
 
     expect($note)->not->toBeNull()
-        ->and($note['body'])->toContain('nostr:npub1', 'Lou 1', '(checkers blitz 5+3)', route('board.show', $board))
+        ->and($note['body'])->toContain('nostr:npub1', 'Lou 1', '(checkers correspondence)', route('board.show', $board))
         ->and(StreamBotCopy::violations($note['body'], $note['tags']))->toBe([])
         ->and(collect($note['tags'])->where(0, 't')->all())->toBe([]);
 });
@@ -343,7 +348,7 @@ test('a tournament whose name cleans to nothing keeps the plain win note', funct
 
     $note = app(PrideNotes::class)->compose(1, 0);
 
-    expect($note['body'])->toContain('takes the win over', '(checkers blitz 5+3)', route('tournaments.show', $tournament))
+    expect($note['body'])->toContain('takes the win over', '(checkers correspondence)', route('tournaments.show', $tournament))
         ->not->toContain(' wins ')
         ->and(StreamBotCopy::violations($note['body'], $note['tags']))->toBe([]);
 });

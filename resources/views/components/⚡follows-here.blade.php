@@ -141,7 +141,8 @@ new class extends Component {
     {
         return match ($this->context) {
             'chess' => 'chess/blitz',
-            'board' => $this->subject.'/blitz',
+            // A board game's lobby mode: correspondence for all three since 2026-10-07 (BoardGame::lobbyMode()).
+            'board' => $this->subject.'/'.(($game = app(\App\Games\GameRegistry::class)->find($this->subject)) instanceof \App\Games\BoardGame ? $game->lobbyMode() : 'blitz'),
             default => null,
         };
     }
@@ -266,7 +267,7 @@ new class extends Component {
                                     its aria-label, so the name keeps its room in a three-column row (German "Einladen" + "Herausfordern").
                                 --}}
                                 <template x-if="canInvite() && looks({{ $player->id }}) && ! invitedBlitz({{ $player->id }})">
-                                    <button type="button" class="{{ $button }}" x-on:click="inviteBlitz({{ $player->id }})" x-bind:disabled="inviting !== null" data-test="follows-here-invite" aria-label="{{ __('Invite :name to blitz 5+3', ['name' => $player->displayName()]) }}" title="{{ __('Invite :name to blitz 5+3', ['name' => $player->displayName()]) }}">
+                                    <button type="button" class="{{ $button }}" x-on:click="inviteBlitz({{ $player->id }})" x-bind:disabled="inviting !== null" data-test="follows-here-invite" aria-label="{{ $inviteLabel = str_ends_with($lookingKey, '/blitz') ? __('Invite :name to blitz 5+3', ['name' => $player->displayName()]) : __('Invite :name to a game, one move a day', ['name' => $player->displayName()]) }}" title="{{ $inviteLabel }}">
                                         <x-icon name="bolt" :size="16" class="shrink-0" /><span class="max-sm:sr-only">{{ __('Invite') }}</span>
                                     </button>
                                 </template>

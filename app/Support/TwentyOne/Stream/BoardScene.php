@@ -72,7 +72,9 @@ class BoardScene
 
     /**
      * The board game the scene shows: the oldest live one of a board game
-     * that is switched on; null when none runs (or none is switched on).
+     * that is switched on, else the correspondence game moved in last (the
+     * board games are correspondence only since 2026-10-07, so that is the
+     * usual case); null when none runs (or none is switched on).
      */
     public function liveGame(): ?BoardGame
     {
@@ -82,8 +84,10 @@ class BoardScene
             return null;
         }
 
-        return BoardGame::query()->where('status', BoardGameStatus::Active)->whereIn('game', $slugs)
-            ->with(['white', 'black'])->oldest('id')->first();
+        $active = fn () => BoardGame::query()->where('status', BoardGameStatus::Active)->whereIn('game', $slugs)->with(['white', 'black']);
+
+        return $active()->where('mode', '!=', BoardGame::CORRESPONDENCE)->oldest('id')->first()
+            ?? $active()->where('mode', BoardGame::CORRESPONDENCE)->orderByDesc('turn_started_ms')->orderByDesc('id')->first();
     }
 
     /**
@@ -137,15 +141,21 @@ class BoardScene
     private function live(BoardGame $game, BoardRules $rules, int $nowMs): array
     {
         $clocks = $this->boards->clocks($game, $nowMs);
-        $toMove = $game->isActive() && $game->clocksRunning() ? $game->turn : null;
+        // A correspondence game's side to move is the one whose day runs (as SceneSource reads a daily chess game).
+        $toMove = $game->isActive() && ($game->isCorrespondence() ? $game->deadline_ms !== null : $game->clocksRunning()) ? $game->turn : null;
         $last = $game->ply > 0 ? $game->moves()->where('ply', $game->ply)->first() : null;
         $name = $this->credited($game->game);
-        $mode = $this->games->mode($game->game, $game->mode)->name ?? $game->mode;
+        $daily = $game->isCorrespondence();
+        // A correspondence game is "Daily" on the stream (its waiting side says "1 move a day"), never a mode name that reads
+        // as a clock; "Blockli by DerCaddy · 1 move a day, casual" ran past the 552 px of the mode line.
+        $mode = $daily ? 'Daily' : ($this->games->mode($game->game, $game->mode)->name ?? ($game->mode === 'blitz' ? 'Blitz 5+3' : $game->mode));
 
         return [
             'game' => $name,
-            // Sentence case like the chess arena's mode line (RotationKit::modeLabel()): "Checkers · Blitz 5+3, casual".
+            // Sentence case like the chess arena's mode line (RotationKit::modeLabel()): "Checkers · Daily, casual".
             'mode' => $name.' · '.$mode.($game->rated ? '' : ', casual'),
+            // A correspondence game: the side to move shows the time left for its move (h:mm), the other side no clock.
+            'daily' => $daily,
             'white' => $this->side($game->white, $clocks['w'], $toMove === 'w'),
             'black' => $this->side($game->black, $clocks['b'], $toMove === 'b'),
             // The rules' view and the last move's points; the scene scales them with drawing().

@@ -6,7 +6,8 @@
     (BoardRules::view()) scaled by BoardScene::drawing(), so the view knows no game.
 
     Data contract (BoardScene::data()):
-      $board     array{game: string, mode: string, e.g. "Checkers · Blitz 5+3, casual",
+      $board     array{game: string, mode: string, e.g. "Checkers · Daily, casual", daily?: bool (correspondence:
+                   the side to move shows the h:mm left for its move, the other side "1 move a day" in place of a clock),
                    white: array{name: string, clockMs: int, toMove: bool, avatar: ?string},
                    black: array{name: string, clockMs: int, toMove: bool, avatar: ?string},
                    view: array (BoardRules::view()), last: list<string> (point ids of the last move)}|null
@@ -45,6 +46,8 @@
                 'colour' => $colour, 'avatar' => $p['avatar'] ?? null, 'nx' => $nx,
                 'name' => K::name($p['name'] ?? '', $fallback, $size, 1208 - $nx), 'nameSize' => $size, 'nameY' => round($y + $pad + 10 + $size * 0.8, 1),
                 'clock' => K::clock((int) ($p['clockMs'] ?? 0), $nx, $active ? 64 : 44, 1208 - $nx),
+                // Correspondence: no clock for the side that waits, its day starts with its turn.
+                'noClock' => ! empty($live['daily']) && ! $active,
                 'clockY' => $y + $pad + $d - 2,
             ];
             $y += $h + 16;
@@ -62,13 +65,13 @@
             $names[] = K::fit($entry['name'] ?? '', K::DISPLAY, 40, 600);
         }
         $rule = 258 + 52 * max(0, count($names) - 1) + 38;
-        // COPY-CHECK: both board games are blitz 5+3 (App\Games\NineMensMorris, Checkers modes()), played on the
-        // board page in the browser; the lobby pairs from its casual queue ("Find opponent", board.lobby) and every
-        // board game has its own casual ladder (ladder.show, plan P5).
+        // COPY-CHECK: the board games are correspondence only since 2026-10-07 (App\Games\NineMensMorris, Checkers,
+        // Blockli modes()), played on the board page in the browser; a game starts by a challenge (board.correspondence)
+        // and every board game has its own ladder (ladder.show, plan P5).
         $facts = [
-            ['Blitz', '5+3, right in the browser.'],
-            ['Casual', 'Find an opponent in seconds.'],
-            ['Ladder', 'Climb its own casual ladder.'],
+            ['Daily', '1 move a day, right in the browser.'],
+            ['Challenge', 'Pick a player and send a challenge.'],
+            ['Ladder', 'Climb its own ladder.'],
         ];
     }
 @endphp
@@ -107,7 +110,11 @@
     'fUnit' => 'face-'.$i, 'fRing' => $blk['active'] ? '#F7931A' : '#17120A'])
 <circle data-unit="side-{{ $i }}" cx="{{ 704 + $blk['d'] - 12 }}" cy="{{ $blk['faceY'] + $blk['d'] - 12 }}" r="{{ $blk['active'] ? 20 : 16 }}" fill="{{ BS::PIECE_FILL[$blk['colour']] }}" stroke="#17120A" stroke-width="3"/>
 <text data-unit="name-{{ $i }}" data-box="{{ $blk['nx'] - 1 }} {{ $blk['y'] }} 1209 {{ $blk['clockY'] - $blk['clock']['size'] * 0.75 - 4 }}" x="{{ $blk['nx'] }}" y="{{ $blk['nameY'] }}" font-family="{{ $blk['name']['font'] }}" font-weight="800" font-size="{{ $blk['nameSize'] }}" fill="{{ $blk['active'] ? '#FFFFFF' : '#17120A' }}">{{ $blk['name']['text'] }}</text>
+@if ($blk['noClock'])
+<text data-unit="clock" x="{{ $blk['nx'] }}" y="{{ $blk['clockY'] }}" font-family="JetBrains Mono" font-weight="700" font-size="28" fill="#17120A">1 move a day</text>
+@else
 @include('stream.rotation.partials.clock', ['c' => $blk['clock'], 'y' => $blk['clockY'], 'fill' => $blk['active'] ? ($blk['low'] ? '#F87171' : '#F7931A') : '#17120A'])
+@endif
 @endforeach
 <use href="#mark-dark" xlink:href="#mark-dark" x="680" y="624" width="48" height="48"/>
 <text x="744" y="657" font-family="JetBrains Mono" font-weight="700" font-size="24" fill="#17120A">esports.einundzwanzig.space</text>

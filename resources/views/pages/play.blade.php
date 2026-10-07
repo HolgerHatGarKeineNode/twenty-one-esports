@@ -45,7 +45,7 @@
                     <li id="board-games" class="flex scroll-mt-24 flex-col gap-3" data-test="play-board-games">
                         <div class="flex max-w-[68ch] flex-col gap-1">
                             <h2 class="m-0 font-display text-xl font-bold">{{ __('Board games') }}</h2>
-                            <p class="m-0 text-[13px] leading-normal text-ink-2">{{ __('Blitz 5+3 on a board right here in the browser: find an opponent in seconds and climb a casual ladder.') }}</p>
+                            <p class="m-0 text-[13px] leading-normal text-ink-2">{{ __('One move a day on a board right here in the browser: challenge a player, move when it suits you and climb the ladder.') }}</p>
                         </div>
                         <ul class="m-0 flex list-none flex-col gap-4 p-0">
                             @foreach ($boards as $board)

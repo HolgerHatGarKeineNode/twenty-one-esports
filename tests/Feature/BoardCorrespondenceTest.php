@@ -50,6 +50,7 @@ use Illuminate\Support\Facades\Bus;
 use Illuminate\Support\Facades\Queue;
 use Livewire\Livewire;
 use Tests\Support\CheckersGame;
+use Tests\Support\FixtureBoardGame;
 use Tests\Support\NineMensMorrisOn;
 use Tests\Support\TrustedFacts;
 
@@ -75,15 +76,16 @@ function correspondencePlayer(): User
 }
 
 /**
- * A live season whose genesis lets the board games mine, correspondence at
- * three times nine men's morris blitz, with its ladders published.
+ * A live season whose genesis lets the board games mine, correspondence (their
+ * only mode since 2026-10-07) at 3 for nine men's morris and 2 for checkers,
+ * with its ladders published.
  */
 function correspondenceSeason(): Season
 {
     $defaults = ChainDraft::defaults();
 
     $season = openSeason(['parameters' => [
-        'weights' => [...$defaults['weights'], 'nine-mens-morris/blitz' => 1000, 'nine-mens-morris/correspondence' => 3000, 'checkers/blitz' => 1000, 'checkers/correspondence' => 2000],
+        'weights' => [...$defaults['weights'], 'nine-mens-morris/correspondence' => 3000, 'checkers/correspondence' => 2000],
         'groups' => $defaults['groups'],
         'shares' => ['chess' => 30, 'rocket-league' => 35, 'ea-sports-fc' => 25, 'board-games' => 10],
         'daily' => [...$defaults['daily'], 'board-games' => 5],
@@ -142,8 +144,9 @@ test('a challenge starts a casual correspondence game with the chosen colours an
         // Not accepted twice.
         ->and(correspondenceRefusal(fn () => $challenges->accept($challenge, $bert)))->toBe('challenge_closed');
 
-    // No live game: both still play blitz (queue, live game) next to it, and any number of correspondence games.
-    $live = app(BoardGameService::class)->start(NineMensMorris::SLUG, $anna, $bert);
+    // No live game: both still play a live board game (the test fixture's blitz) next to it, and any number of correspondence games.
+    FixtureBoardGame::play();
+    $live = app(BoardGameService::class)->start(FixtureBoardGame::SLUG, $anna, $bert);
     expect($live->mode)->toBe('blitz')
         ->and(app(BoardGameService::class)->activeGameOf($anna)?->id)->toBe($live->id)
         ->and(correspondenceGame($anna, $bert)->mode)->toBe(BoardGame::CORRESPONDENCE);
@@ -364,8 +367,11 @@ test('a correspondence game keeps nobody out of the live queue', function () {
     [$anna, $bert, $cleo] = [correspondencePlayer(), correspondencePlayer(), correspondencePlayer()];
     correspondenceGame($anna, $bert);
 
-    expect(app(BoardQueue::class)->join($anna, Checkers::SLUG))->toBeNull()
-        ->and(app(BoardQueue::class)->join($cleo, Checkers::SLUG)?->mode)->toBe('blitz');
+    // The live queue is a blitz board game's (the test fixture's): the real board games are correspondence only.
+    FixtureBoardGame::play();
+
+    expect(app(BoardQueue::class)->join($anna, FixtureBoardGame::SLUG))->toBeNull()
+        ->and(app(BoardQueue::class)->join($cleo, FixtureBoardGame::SLUG)?->mode)->toBe('blitz');
 });
 
 /* ---------- Tournaments (as daily chess) -------------------------------------------------------------------- */

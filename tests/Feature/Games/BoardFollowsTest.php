@@ -229,10 +229,10 @@ test('a tap in the pick list keeps its order, and a linked player heads it from 
     expect(boardPickOrder($page->html()))->toBe($linked ? $before : boardPickOrder($page->html()));
 })->with(['from a link' => [true], 'without a link' => [false]]);
 
-test('the correspondence page offers blitz as chess\'s challenge page does: the lobby\'s "Online now"', function () {
+test('the correspondence page of a correspondence-only board game offers no blitz (user, 2026-10-07)', function () {
     $this->actingAs(User::factory()->create())->get(route('board.correspondence', NineMensMorris::SLUG))->assertOk()
-        ->assertSeeHtml('href="'.route('board.lobby', NineMensMorris::SLUG).'#online-now"')
-        ->assertSee('Blitz 5+3 now: invite a player who is looking to play');
+        ->assertDontSeeHtml('data-test="correspondence-blitz"')
+        ->assertDontSee('Blitz 5+3 now: invite a player who is looking to play');
 });
 
 test('the German board lobby follows and correspondence form say it in German', function () {
@@ -247,5 +247,5 @@ test('the German board lobby follows and correspondence form say it in German', 
 
     $this->actingAs($me)->withSession(['locale' => 'de'])->get(route('board.correspondence', ['board' => NineMensMorris::SLUG, 'to' => 'npub1notakey']))->assertOk()
         ->assertSee('Das ist keine npub. Wähle deinen Gegner aus der Liste.')
-        ->assertSee('Jetzt Blitz 5+3: lade jemanden ein, der eine Partie sucht');
+        ->assertDontSee('Jetzt Blitz 5+3: lade jemanden ein, der eine Partie sucht');
 });

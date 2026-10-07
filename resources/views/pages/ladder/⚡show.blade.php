@@ -50,7 +50,14 @@ new #[Layout('layouts::app', ['section' => 'ladder'])] class extends Component
 
     public function mount(string $game, string $mode): void
     {
-        abort_if(app(GameRegistry::class)->mode($game, $mode) === null, 404);
+        $registry = app(GameRegistry::class);
+
+        // The board games' blitz (dropped 2026-10-07, user: correspondence only): an old link lands on the game's correspondence ladder.
+        if ($mode === 'blitz' && $registry->isBoard($game) && $registry->mode($game, $mode) === null && $registry->mode($game, 'correspondence') !== null) {
+            throw new \Illuminate\Http\Exceptions\HttpResponseException(redirect()->route('ladder.show', [$game, 'correspondence'], 301));
+        }
+
+        abort_if($registry->mode($game, $mode) === null, 404);
         // A score game (plan "AoE2 und Trackmania", P4) has no Elo ladder: its points ladder is on its leaderboards' page.
         abort_if(app(GameRegistry::class)->isScore($game), 404);
 

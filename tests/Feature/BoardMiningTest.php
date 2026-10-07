@@ -27,6 +27,7 @@ use App\Models\RatingChange;
 use App\Models\Season;
 use App\Models\SeasonAttestation;
 use App\Models\User;
+use App\Support\Board\BoardChallenges;
 use App\Support\Board\BoardGameService;
 use App\Support\Board\BoardQueue;
 use App\Support\Board\BoardRuleViolation;
@@ -85,7 +86,7 @@ function boardMiningSeason(array $parameters = []): Season
     $defaults = ChainDraft::defaults();
 
     $season = openSeason(['parameters' => [
-        'weights' => [...$defaults['weights'], 'nine-mens-morris/blitz' => 1500, 'checkers/blitz' => 1000],
+        'weights' => [...$defaults['weights'], 'nine-mens-morris/correspondence' => 1500, 'checkers/correspondence' => 1000],
         'groups' => $defaults['groups'],
         'shares' => ['chess' => 30, 'rocket-league' => 35, 'ea-sports-fc' => 25, 'board-games' => 10],
         'daily' => [...$defaults['daily'], 'board-games' => 5],
@@ -122,30 +123,36 @@ function whiteWinsAfterOneMove(BoardGame $game): BoardGame
 
 /* ---------- The rated queue ---------------------------------------------------------------------------------- */
 
-test('the rated queue pairs two rated searches with the gate and clans pinned; casual and rated searches never pair', function () {
+test('a rated correspondence challenge starts a rated game with the gate pinned; a board game has no queue to search rated in', function () {
     boardMiningSeason();
     [$anna, $bert, $cleo] = User::factory()->count(3)->create();
-    $queue = app(BoardQueue::class);
+    $challenges = app(BoardChallenges::class);
 
-    expect($queue->join($anna, NineMensMorris::SLUG, rated: true))->toBeNull()
-        // A casual search waits beside a rated one: the two never pair.
-        ->and($queue->join($cleo, NineMensMorris::SLUG))->toBeNull()
-        ->and(BoardQueueEntry::query()->where('user_id', $anna->id)->value('rated'))->toBeTrue();
+    // Correspondence only since 2026-10-07: no live queue, casual or rated.
+    try {
+        app(BoardQueue::class)->join($cleo, NineMensMorris::SLUG, rated: true);
+        $refused = null;
+    } catch (BoardRuleViolation $violation) {
+        $refused = $violation->reason;
+    }
 
-    $game = $queue->join($bert, NineMensMorris::SLUG, rated: true);
+    expect($refused)->toBe('unknown_game')
+        ->and(BoardQueueEntry::query()->count())->toBe(0);
+
+    $game = $challenges->accept($challenges->challenge($anna, $bert, NineMensMorris::SLUG, rated: true), $bert);
 
     expect($game)->toBeInstanceOf(BoardGame::class)
+        ->and($game->mode)->toBe('correspondence')
         ->and($game->rated)->toBeTrue()
         ->and($game->number)->toBeInt()
-        ->and($game->ladder_address)->toBe(Ladders::address(NineMensMorris::SLUG, 'blitz'))
+        ->and($game->ladder_address)->toBe(Ladders::address(NineMensMorris::SLUG, 'correspondence'))
         ->and($game->gate_at_accept['players'])->toHaveKeys([$anna->pubkey, $bert->pubkey])
-        ->and([$game->white_id, $game->black_id])->toEqualCanonicalizing([$anna->id, $bert->id])
-        ->and(BoardQueueEntry::query()->where('user_id', $cleo->id)->exists())->toBeTrue();
+        ->and([$game->white_id, $game->black_id])->toEqualCanonicalizing([$anna->id, $bert->id]);
 });
 
-test('the rated queue refuses while it is not offered or no season is live, and pairs nobody the gate turns away', function () {
+test('a rated challenge is refused while rated play is not offered or no season is live, and for a pair the gate turns away', function () {
     [$anna, $bert] = User::factory()->count(2)->create();
-    $queue = app(BoardQueue::class);
+    $challenges = app(BoardChallenges::class);
     $refusal = function (Closure $join): ?string {
         try {
             $join();
@@ -157,13 +164,13 @@ test('the rated queue refuses while it is not offered or no season is live, and 
     };
 
     // Before Block 0 there is no ladder.
-    expect(Ladders::address(Checkers::SLUG, 'blitz'))->toBeNull()
-        ->and($refusal(fn () => $queue->join($anna, Checkers::SLUG, rated: true)))->toBe('rated_not_open');
+    expect(Ladders::address(Checkers::SLUG, 'correspondence'))->toBeNull()
+        ->and($refusal(fn () => $challenges->challenge($anna, $bert, Checkers::SLUG, rated: true)))->toBe('rated_unavailable');
 
     boardMiningSeason();
     config(['esports.board_games.rated_queue' => false]);
-    expect($refusal(fn () => $queue->join($anna, Checkers::SLUG, rated: true)))->toBe('rated_not_open')
-        ->and(ChainOverview::mines('checkers/blitz'))->toBeFalse();
+    expect($refusal(fn () => $challenges->challenge($anna, $bert, Checkers::SLUG, rated: true)))->toBe('rated_unavailable')
+        ->and(ChainOverview::mines('checkers/correspondence'))->toBeFalse();
 
     // Offered, but the two do not list each other: both wait, no game.
     config(['esports.board_games.rated_queue' => true]);
@@ -180,31 +187,30 @@ test('the rated queue refuses while it is not offered or no season is live, and 
         }
     });
 
-    $queue = app(BoardQueue::class);
+    $challenges = app(BoardChallenges::class);
 
-    expect($queue->join($anna, Checkers::SLUG, rated: true))->toBeNull()
-        ->and($queue->join($bert, Checkers::SLUG, rated: true))->toBeNull()
+    expect($refusal(fn () => $challenges->challenge($anna, $bert, Checkers::SLUG, rated: true)))->toBe('rated_pair')
         ->and(BoardGame::query()->count())->toBe(0)
-        ->and(ChainOverview::mines('checkers/blitz'))->toBeTrue();
+        ->and(ChainOverview::mines('checkers/correspondence'))->toBeTrue();
 });
 
 test('a switched-off board game has no ladder, and a switched-on one has the season\'s once the league published it', function () {
     $season = seasonBeforeBoardGames();
 
     // Live, but its ladder not published yet (a season released before the board games joined): closed.
-    expect(Ladders::address(NineMensMorris::SLUG, 'blitz'))->toBeNull()
+    expect(Ladders::address(NineMensMorris::SLUG, 'correspondence'))->toBeNull()
         ->and(Ladders::address('chess', 'blitz'))->not->toBeNull();
 
     publishLadders($season);
 
-    expect(Ladders::address(NineMensMorris::SLUG, 'blitz'))->toBe(Ladders::KIND.':'.$season->league_pubkey.':nine-mens-morris/blitz/'.$season->slug);
+    expect(Ladders::address(NineMensMorris::SLUG, 'correspondence'))->toBe(Ladders::KIND.':'.$season->league_pubkey.':nine-mens-morris/correspondence/'.$season->slug);
 
     config(['esports.board_games.games.checkers.enabled' => false]);
     app()->forgetInstance(GameRegistry::class);
 
-    expect(Ladders::address(Checkers::SLUG, 'blitz'))->toBeNull()
-        ->and(ChainOverview::mines('checkers/blitz'))->toBeFalse()
-        ->and(Ladders::address(NineMensMorris::SLUG, 'blitz'))->not->toBeNull();
+    expect(Ladders::address(Checkers::SLUG, 'correspondence'))->toBeNull()
+        ->and(ChainOverview::mines('checkers/correspondence'))->toBeFalse()
+        ->and(Ladders::address(NineMensMorris::SLUG, 'correspondence'))->not->toBeNull();
 });
 
 /* ---------- A win mines ------------------------------------------------------------------------------------- */
@@ -229,11 +235,11 @@ test('a rated win of nine men\'s morris is rated, attested and mines a block wit
         ->and(Rating::query()->where(['pool' => Rating::RATED, 'game' => NineMensMorris::SLUG, 'user_id' => $anna->id])->value('rating'))->toBe(1020)
         ->and(Rating::query()->where(['pool' => Rating::RATED, 'game' => 'chess'])->count())->toBe(0)
         ->and($attestation->only(['source', 'source_id', 'height', 'rule', 'game', 'mode', 'match_number']))
-        ->toBe(['source' => SeasonAttestation::BOARD, 'source_id' => $game->id, 'height' => 1, 'rule' => null, 'game' => NineMensMorris::SLUG, 'mode' => 'blitz', 'match_number' => $game->number])
+        ->toBe(['source' => SeasonAttestation::BOARD, 'source_id' => $game->id, 'height' => 1, 'rule' => null, 'game' => NineMensMorris::SLUG, 'mode' => 'correspondence', 'match_number' => $game->number])
         // The configured weight (1.5), not chess's: the reward per player of era 1 at 1500 thousandths.
         ->and($attestation->reward_per_player)->toBe($parameters->rewardPerPlayer(1500, 1))
         ->and($attestation->reward_per_player)->toBeGreaterThan($parameters->rewardPerPlayer(1000, 1))
-        ->and($attestation->candidate['weight_key'])->toBe('nine-mens-morris/blitz')
+        ->and($attestation->candidate['weight_key'])->toBe('nine-mens-morris/correspondence')
         ->and($tags)->toContain(
             ['a', $game->ladder_address, ''],
             ['p', $anna->pubkey, '', 'challenger'],
@@ -345,8 +351,8 @@ test('chess keeps its weights and shares: the config, the default draft and a se
         // The board games are in the draft as a group, without a weight: they do not mine until the board says so.
         ->and($defaults['groups'])->toBe(['ea-sports-fc' => ['ea-sports-fc-26', 'ea-sports-fc-27'], 'board-games' => ['nine-mens-morris', 'checkers']])
         // Correspondence (P8) is a mode of each board game with its own weight row.
-        ->and(ChainDraft::table($defaults)['board-games'])->toBe(['nine-mens-morris/blitz', 'nine-mens-morris/correspondence', 'checkers/blitz', 'checkers/correspondence'])
-        ->and($season->genesis->weightFor('nine-mens-morris/blitz'))->toBe(0);
+        ->and(ChainDraft::table($defaults)['board-games'])->toBe(['nine-mens-morris/correspondence', 'checkers/correspondence'])
+        ->and($season->genesis->weightFor('nine-mens-morris/correspondence'))->toBe(0);
 
     $proposal = ChainDraft::boardGamesProposal($defaults);
 
@@ -357,8 +363,8 @@ test('the board games\' proposal shrinks the other shares in proportion to exact
     $defaults = ChainDraft::defaults();
 
     expect(ChainDraft::boardGamesProposal($defaults))->toBe([
-        // Correspondence (P8) proposed at twice blitz, as chess daily.
-        'weights' => ['nine-mens-morris/blitz' => 1000, 'nine-mens-morris/correspondence' => 2000, 'checkers/blitz' => 1000, 'checkers/correspondence' => 2000],
+        // Correspondence (P8) proposed at twice blitz, as chess daily; their only mode since 2026-10-07.
+        'weights' => ['nine-mens-morris/correspondence' => 2000, 'checkers/correspondence' => 2000],
         'shares' => ['chess' => 32, 'rocket-league' => 36, 'ea-sports-fc' => 22, 'board-games' => 10],
         'daily' => ['board-games' => 5],
     ])
@@ -366,7 +372,7 @@ test('the board games\' proposal shrinks the other shares in proportion to exact
         ->and(ChainDraft::boardGamesProposal([...$defaults, 'shares' => ['chess' => 30, 'rocket-league' => 30, 'ea-sports-fc' => 20]])['shares'])
         ->toBe(['chess' => 30, 'rocket-league' => 30, 'ea-sports-fc' => 20, 'board-games' => 10])
         // Mining already: no proposal.
-        ->and(ChainDraft::boardGamesProposal([...$defaults, 'weights' => [...$defaults['weights'], 'checkers/blitz' => 500]]))->toBeNull();
+        ->and(ChainDraft::boardGamesProposal([...$defaults, 'weights' => [...$defaults['weights'], 'checkers/correspondence' => 500]]))->toBeNull();
 
     // Switched off: no row, no group, no proposal.
     config(['esports.board_games.enabled' => false]);
@@ -394,49 +400,54 @@ function boardLobbyList(User $player, TestSigner $signer, User $opponent): void
     test()->travel(1)->seconds();
 }
 
-test('the lobby offers no rated search while the rated queue is off, and refuses one', function () {
+test('the lobby of a correspondence-only board game offers no search, casual or rated, and a search call starts nothing', function () {
     boardMiningSeason();
-    config(['esports.board_games.rated_queue' => false]);
     [$anna] = boardLobbyPlayer('Anna');
 
-    // As in the chess lobby: Rated is there but disabled, with the reason behind "?" (P5 of plan mempool-streifen).
     Livewire::actingAs($anna)->test('pages::board.lobby', ['board' => Checkers::SLUG])
-        ->assertSee('data-test="game-kind" data-rated-open="false"', false)
-        ->assertSeeHtml('data-test="kind-rated-badge"')
-        ->assertSee('Rated Checkers is not open yet. Games are casual for now.')
-        ->assertSee('data-test="find-opponent"', false)
-        ->call('findOpponent', true)
-        ->assertSet('error', 'Rated Checkers is not open yet. Games are casual for now.');
+        ->assertDontSee('data-test="game-kind"', false)
+        ->assertDontSee('data-test="find-opponent"', false)
+        ->assertDontSee('data-test="play-blitz"', false)
+        ->assertSee('data-test="play-correspondence"', false)
+        ->call('findOpponent')
+        ->assertNotSet('error', '');
 
     expect(BoardQueueEntry::query()->count())->toBe(0);
 });
 
-test('the lobby\'s rated search: closed with the reason for a player who lists nobody back, open for two who list each other, who are paired rated', function () {
+test('a rated challenge: closed with the reason for a pair that does not list each other, open for two who do, who play rated', function () {
     boardMiningSeason();
     [$anna, $annaSigner] = boardLobbyPlayer('Anna');
     [$bert, $bertSigner] = boardLobbyPlayer('Bert');
+    // Trusted both, connected only where the two list each other (the real lists, as the trust job reads them).
+    app()->bind(TrustFacts::class, fn () => new class implements TrustFacts
+    {
+        public function available(): bool
+        {
+            return true;
+        }
 
-    Livewire::actingAs($anna)->test('pages::board.lobby', ['board' => NineMensMorris::SLUG])
-        ->assertSee('data-rated-open="false"', false)
-        ->assertSee('Rated play needs a player you list each other with.');
+        public function at(array $players, array $gatekeepers): array
+        {
+            [$a, $b] = User::query()->whereIn('pubkey', $gatekeepers)->get()->all() + [null, null];
+
+            return ['trust' => array_fill_keys($players, 100), 'anchors' => [], 'connected' => $a !== null && $b !== null && app(Opponents::class)->listEachOther($a, $b)];
+        }
+    });
+    $challenges = app(BoardChallenges::class);
+
+    expect($challenges->ratedRefusal($anna, $bert, NineMensMorris::SLUG)['reason'] ?? null)->toBe('rated_pair');
 
     boardLobbyList($anna, $annaSigner, $bert);
     boardLobbyList($bert, $bertSigner, $anna);
 
-    Livewire::actingAs($anna)->test('pages::board.lobby', ['board' => NineMensMorris::SLUG])
-        ->assertSee('data-rated-open="true"', false)
-        ->call('findOpponent', true)
-        ->assertSet('error', '')
-        ->assertSee('data-rated="true"', false);
+    expect($challenges->ratedRefusal($anna, $bert, NineMensMorris::SLUG))->toBeNull();
+    $game = $challenges->accept($challenges->challenge($anna, $bert, NineMensMorris::SLUG, rated: true), $bert);
 
-    Livewire::actingAs($bert)->test('pages::board.lobby', ['board' => NineMensMorris::SLUG])
-        ->call('findOpponent', true)
-        ->assertRedirect(route('board.show', BoardGame::query()->sole()));
-
-    expect(BoardGame::query()->sole()->rated)->toBeTrue();
+    expect($game->rated)->toBeTrue()->and($game->mode)->toBe('correspondence');
 });
 
-test('P57 in the board lobby: searching rated beside players it does not list each other with says so in counts and offers casual', function () {
+test('P57 for the board games: a rated challenge between players who do not list each other is refused by the gate, between two who do it is open', function () {
     boardMiningSeason();
     [$anna, $annaSigner] = boardLobbyPlayer('Anna');
     [$bert, $bertSigner] = boardLobbyPlayer('Bert');
@@ -460,18 +471,12 @@ test('P57 in the board lobby: searching rated beside players it does not list ea
             return ['trust' => array_fill_keys($players, 100), 'anchors' => [], 'connected' => $a !== null && $b !== null && app(Opponents::class)->listEachOther($a, $b)];
         }
     });
-    app(BoardQueue::class)->join($cleo, Checkers::SLUG, rated: true);
+    // The board games have no queue since 2026-10-07: a rated challenge says why the pair cannot play rated, by the gate.
+    $challenges = app(BoardChallenges::class);
 
-    $page = Livewire::actingAs($anna)->test('pages::board.lobby', ['board' => Checkers::SLUG])
-        ->call('findOpponent', true)
-        ->assertSee('data-test="needs-mutual"', false)
-        ->assertSee('1 other player searches rated right now, but you do not list each other, so the queue cannot pair you.')
-        ->assertSee('1 player in the queue lists you.')
-        ->assertDontSee('Cleo');
-
-    $page->call('searchCasualInstead')->assertSee('data-rated="false"', false);
-
-    expect(BoardQueueEntry::query()->where('user_id', $anna->id)->value('rated'))->toBeFalse();
+    expect($challenges->ratedRefusal($cleo, $anna, Checkers::SLUG)['reason'] ?? null)->toBe('rated_pair')
+        ->and($challenges->ratedRefusal($anna, $bert, Checkers::SLUG))->toBeNull()
+        ->and(BoardQueueEntry::query()->count())->toBe(0);
 });
 
 /* ---------- Fair play: linked accounts ---------------------------------------------------------------------- */
@@ -536,23 +541,21 @@ test('a board game\'s ladder is open at a moment only if the league had publishe
     $this->travel(10)->minutes();
     $before = CarbonImmutable::now()->subMinute();
     publishLadders($season);
-    $address = Ladders::address(NineMensMorris::SLUG, 'blitz');
+    $address = Ladders::address(NineMensMorris::SLUG, 'correspondence');
 
     expect($address)->not->toBeNull()
-        ->and(Ladders::address(NineMensMorris::SLUG, 'blitz', $before))->toBeNull()
-        ->and(Ladders::address(NineMensMorris::SLUG, 'blitz', CarbonImmutable::now()))->toBe($address)
+        ->and(Ladders::address(NineMensMorris::SLUG, 'correspondence', $before))->toBeNull()
+        ->and(Ladders::address(NineMensMorris::SLUG, 'correspondence', CarbonImmutable::now()))->toBe($address)
         // Chess blitz is open from Block 0 on, which published it.
         ->and(Ladders::address('chess', 'blitz', $before))->not->toBeNull();
 });
 
-test('a lobby in a season live since before the board games joined says rated play starts with the board\'s rule change', function () {
+test('a season live since before the board games joined says rated play starts with the board\'s rule change', function () {
     seasonBeforeBoardGames();
     [$anna] = boardLobbyPlayer('Anna');
 
-    expect(app(RatedBoard::class)->refusal($anna, Checkers::SLUG, 'blitz'))->toBe('Rated Checkers starts when the board adds it to the running season.');
-
-    Livewire::actingAs($anna)->test('pages::board.lobby', ['board' => Checkers::SLUG])
-        ->assertSee('data-rated-open="false"', false)
-        ->assertSee('Rated Checkers starts when the board adds it to the running season.')
-        ->assertDontSee('Casual until Block 0');
+    expect(app(RatedBoard::class)->refusal($anna, Checkers::SLUG, 'correspondence'))->toBe('Rated Checkers starts when the board adds it to the running season.')
+        // A rated challenge says the same.
+        ->and(app(BoardChallenges::class)->ratedRefusal($anna, User::factory()->create(), Checkers::SLUG))
+        ->toBe(['reason' => 'rated_unavailable', 'message' => 'Rated Checkers starts when the board adds it to the running season.']);
 });

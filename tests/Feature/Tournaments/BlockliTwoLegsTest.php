@@ -20,6 +20,8 @@ use App\Support\Tournaments\TournamentRunner;
 use Illuminate\Support\Facades\Queue;
 use Illuminate\Support\Lottery;
 use Tests\Support\BlockliOn;
+use Tests\Support\CheckersGame;
+use Tests\Support\NineMensMorrisOn;
 
 /*
 |--------------------------------------------------------------------------
@@ -29,7 +31,8 @@ use Tests\Support\BlockliOn;
 | The first move is an advantage, so a tournament or cup pairing plays two
 | games, the second with the colours swapped. The points decide (a win 1, a
 | draw ½); level points are a draw where the format allows one (round
-| robin, Swiss), else a blitz game with colours drawn by lot decides.
+| robin, Swiss), else a third game with colours drawn by lot decides, in the
+| tournament's mode (correspondence: Blockli has no other since 2026-10-07).
 |
 */
 
@@ -45,8 +48,8 @@ afterEach(function () {
 function blockliTournament(TournamentFormat $format = TournamentFormat::SingleElimination): Tournament
 {
     $tournament = Tournament::factory()->create([
-        'game' => 'blockli', 'mode' => 'blitz', 'format' => $format,
-        'options' => FormatOptions::fromArray([], GameProfile::for('blockli', 'blitz'))->toArray(),
+        'game' => 'blockli', 'mode' => 'correspondence', 'format' => $format,
+        'options' => FormatOptions::fromArray([], GameProfile::for('blockli', 'correspondence'))->toArray(),
         'capacity' => 2, 'results_mode' => TournamentResultsMode::Players, 'status' => TournamentStatus::Running,
         'slug' => 'blockli-legs-'.fake()->unique()->numberBetween(1, 1_000_000),
     ]);
@@ -112,7 +115,7 @@ test('a knockout pairing plays two games with the colours swapped; 2–0 decides
         ->and($tournament->refresh()->status)->toBe(TournamentStatus::Finished);
 });
 
-test('at 1:1 a blitz decider with colours drawn by lot decides the knockout pairing', function (bool $lot, int $whiteSlot) {
+test('at 1:1 a correspondence decider with colours drawn by lot decides the knockout pairing', function (bool $lot, int $whiteSlot) {
     $lot ? Lottery::alwaysWin() : Lottery::alwaysLose();
     $tournament = blockliTournament();
     blockliLose($tournament, 1);
@@ -120,7 +123,7 @@ test('at 1:1 a blitz decider with colours drawn by lot decides the knockout pair
     $decider = blockliLive($tournament);
 
     expect($decider->tournament_game)->toBe(3)
-        ->and($decider->mode)->toBe('blitz')
+        ->and($decider->mode)->toBe('correspondence')
         ->and($decider->white_id)->toBe(blockliSlotUser($tournament, $whiteSlot))
         ->and(blockliMatch($tournament)->result)->toBeNull();
 
@@ -165,30 +168,32 @@ test('in a round robin 1:1 is a draw: no decider', function () {
         ->and($match->result['games_won'])->toEqual([1.0, 1.0]);
 });
 
-test('Blockli has a casual cup slot of its own with two games a pairing, and the time plan counts both', function () {
-    config(['esports.casual_cups.enabled' => ['blockli']]);
-    $setup = CasualCups::setup('blockli');
+test('the board games run no casual cup (correspondence only, user 2026-10-07), even listed in ESPORTS_CASUAL_CUP_GAMES', function () {
+    NineMensMorrisOn::play();
+    CheckersGame::play();
+    BlockliOn::play();
+    config(['esports.casual_cups.enabled' => ['chess', 'blockli', 'nine-mens-morris', 'checkers']]);
 
-    expect(CasualCups::enabledGames())->toContain('blockli')
-        ->and($setup['best_of'])->toBe(2)
-        ->and($setup['final_best_of'])->toBe(2)
-        ->and(GameProfile::for('blockli', 'blitz')->slot(2))->toBe(2 * GameProfile::for('checkers', 'blitz')->slot(1));
+    expect(CasualCups::enabledGames())->toBe(['chess'])
+        ->and(config('esports.casual_cups.games'))->not->toHaveKeys(['blockli', 'nine-mens-morris', 'checkers'])
+        // A Blockli tournament still plays two games a pairing, one move a day.
+        ->and(GameProfile::for('blockli', 'correspondence')->unit)->toBe('day');
 });
 
-test('the Blockli lobby pairs from its queue and by invite, as nine men\'s morris and checkers do', function () {
-    [$a, $b, $c] = User::factory()->count(3)->create();
+test('the Blockli lobby has no queue, and an invite to a player looking to play starts a correspondence game', function () {
+    [$a, $c] = User::factory()->count(2)->create();
 
-    Livewire\Livewire::actingAs($a)->test('pages::board.lobby', ['board' => 'blockli'])->call('findOpponent')->assertSeeHtml('data-test="lobby-searching"');
-    Livewire\Livewire::actingAs($b)->test('pages::board.lobby', ['board' => 'blockli'])->call('findOpponent')
-        ->assertRedirect(route('board.show', BoardGame::query()->sole()));
+    Livewire\Livewire::actingAs($a)->test('pages::board.lobby', ['board' => 'blockli'])
+        ->assertDontSeeHtml('data-test="play-blitz"')
+        ->call('findOpponent')->assertDontSeeHtml('data-test="lobby-searching"');
 
-    expect(BoardGame::query()->sole()->game)->toBe('blockli');
+    expect(BoardGame::query()->count())->toBe(0);
 
-    app(BoardGameService::class)->resign(BoardGame::query()->sole(), $a);
-    $a->forceFill(['looking_to_play' => 'blockli/blitz'])->save();
+    $a->forceFill(['looking_to_play' => 'blockli/correspondence'])->save();
     $invite = app(BoardInvites::class)->invite($c, $a, 'blockli');
     app(BoardInvites::class)->accept($invite, $a);
+    $game = BoardGame::query()->findOrFail($invite->refresh()->board_game_id);
 
-    expect($invite->refresh()->board_game_id)->not->toBeNull()
-        ->and(BoardGame::query()->findOrFail($invite->board_game_id)->game)->toBe('blockli');
+    expect($game->game)->toBe('blockli')
+        ->and($game->mode)->toBe('correspondence');
 });

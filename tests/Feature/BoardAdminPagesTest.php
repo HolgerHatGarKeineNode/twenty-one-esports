@@ -36,8 +36,10 @@ test('switched off, no admin page offers a board game; switched on, the weekly e
     NineMensMorrisOn::play();
     CheckersGame::play();
 
-    expect(array_keys(Livewire::actingAs(boardPagesAdmin())->test('pages::admin.events')->instance()->ladders))->toContain('nine-mens-morris/blitz', 'checkers/blitz', 'chess/blitz')
-        ->and(TournamentGames::find('checkers/blitz'))->toBe(['checkers', 'blitz'])
+    expect(array_keys(Livewire::actingAs(boardPagesAdmin())->test('pages::admin.events')->instance()->ladders))->toContain('nine-mens-morris/correspondence', 'checkers/correspondence', 'chess/blitz')->not->toContain('nine-mens-morris/blitz')->not->toContain('checkers/blitz')
+        ->and(TournamentGames::find('checkers/correspondence'))->toBe(['checkers', 'correspondence'])
+        // Correspondence only since 2026-10-07: no blitz tournament of a board game.
+        ->and(TournamentGames::find('checkers/blitz'))->toBeNull()
         ->and(array_column(TournamentGames::grouped(), 'slug'))->toContain('nine-mens-morris', 'checkers');
 
     Livewire::actingAs(boardPagesAdmin())->test('pages::admin.tournament-create')
@@ -51,17 +53,17 @@ test('a weekly event can be set for a board game', function () {
 
     Livewire::actingAs(boardPagesAdmin())->test('pages::admin.events')
         ->set('title', 'Dame-Abend')
-        ->set('ladder', 'checkers/blitz')
+        ->set('ladder', 'checkers/correspondence')
         ->call('add')
         ->assertHasNoErrors();
 
-    expect(WeeklySlot::query()->sole()->only(['game', 'mode']))->toBe(['game' => 'checkers', 'mode' => 'blitz']);
+    expect(WeeklySlot::query()->sole()->only(['game', 'mode']))->toBe(['game' => 'checkers', 'mode' => 'correspondence']);
 });
 
 test('a format that cannot run says why in board game words, never as a series', function () {
     CheckersGame::play();
     $estimator = new Estimator;
-    $board = GameProfile::for('checkers', 'blitz');
+    $board = GameProfile::for('checkers', 'correspondence');
 
     expect($estimator->disabledReason(TournamentFormat::FreeForAll, $board, 8))->toBe('Needs 3 or more players in one match. A board game is always one player against one.')
         ->and($estimator->disabledReason(TournamentFormat::Leaderboard, $board, 8))->toBe('Needs a game with a score or time you play alone, like a time trial. Board games are won against an opponent.')

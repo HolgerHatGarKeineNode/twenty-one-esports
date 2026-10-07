@@ -96,8 +96,8 @@ test('a casual chess game has no banner and keeps its rating and plain first-mov
 test('a tournament board game and a tournament series room open with the banner', function () {
     NineMensMorrisOn::play();
     $board = Tournament::factory()->create([
-        'game' => NineMensMorris::SLUG, 'mode' => 'blitz', 'format' => TournamentFormat::SingleElimination,
-        'options' => FormatOptions::fromArray([], GameProfile::for(NineMensMorris::SLUG, 'blitz'))->toArray(),
+        'game' => NineMensMorris::SLUG, 'mode' => 'correspondence', 'format' => TournamentFormat::SingleElimination,
+        'options' => FormatOptions::fromArray([], GameProfile::for(NineMensMorris::SLUG, 'correspondence'))->toArray(),
         'capacity' => 4, 'results_mode' => TournamentResultsMode::Players, 'status' => TournamentStatus::Running,
         'slug' => 'board-banner-'.fake()->unique()->numberBetween(1, 1_000_000), 'ladder_address' => null,
     ]);

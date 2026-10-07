@@ -45,7 +45,7 @@ function morrisViolation(Closure $action): ?string
     return null;
 }
 
-test('nine men\'s morris is registered only with both board game switches on, as a blitz 5+3 board game named Mühle in German', function () {
+test('nine men\'s morris is registered only with both board game switches on, as a correspondence-only board game named Mühle in German', function () {
     expect(app(GameRegistry::class)->find(NineMensMorris::SLUG))->toBeNull();
 
     $registry = NineMensMorrisOn::play();
@@ -54,7 +54,8 @@ test('nine men\'s morris is registered only with both board game switches on, as
     expect($game)->toBeInstanceOf(NineMensMorris::class)
         ->and($game->kind())->toBe(GameKind::Board)
         ->and($game->rules())->toBeInstanceOf(NineMensMorrisRules::class)
-        ->and($game->mode('blitz')?->timeControl)->toBe('300+3')
+        ->and(array_keys($game->modes()))->toBe(['correspondence'])
+        ->and($game->mode('correspondence')?->timeControl)->toBe('1/86400')
         ->and(array_keys($registry->boards()))->toBe([NineMensMorris::SLUG])
         ->and($registry->isSeries(NineMensMorris::SLUG))->toBeFalse()
         ->and($game->name())->toBe("Nine Men's Morris")
@@ -73,8 +74,10 @@ test('a whole game through the core: a mill takes a man, a mill without its remo
     $game = $games->start(NineMensMorris::SLUG, $white, $black);
 
     expect($game->position)->toBe('........................ w 9 9 0')
-        ->and($game->initial_ms)->toBe(300_000)
-        ->and($game->increment_ms)->toBe(3_000);
+        // Correspondence, the only mode since 2026-10-07: one move a day, no increment.
+        ->and($game->mode)->toBe('correspondence')
+        ->and($game->initial_ms)->toBe(86_400_000)
+        ->and($game->increment_ms)->toBe(0);
 
     $game = playMorris($game, array_slice(NineMensMorrisOn::BLOCKING_GAME, 0, 16));
 
@@ -127,7 +130,7 @@ test('the rules page explains nine men\'s morris only while it is switched on, w
 
     $this->get(route('rules'))->assertOk()
         ->assertSee('id="nine-mens-morris"', false)
-        ->assertSee("Nine men's morris, blitz 5+3 live.")
+        ->assertSee("Nine men's morris, one move a day.")
         ->assertSee('Closing two mills at once removes one man.')
         ->assertSee('50 moves each without a mill');
 });

@@ -216,11 +216,11 @@ test('with the board games switched off no climb, rank-up or block of theirs rea
     config(['esports.badges.nsec' => (new TestSigner)->secret]);
     $user = User::factory()->create(['name' => 'Checkerist']);
     prideRating($user, [40], game: 'checkers');
-    $rating = Rating::query()->create(['pool' => Rating::RATED, 'season' => $season->slug, 'game' => 'checkers', 'mode' => 'blitz', 'subject' => 'user:'.$user->id, 'user_id' => $user->id, 'rating' => 1010, 'results' => 5, 'wins' => 4]);
-    app(RankBadges::class)->sync($user, 'checkers', 'blitz');
+    $rating = Rating::query()->create(['pool' => Rating::RATED, 'season' => $season->slug, 'game' => 'checkers', 'mode' => 'correspondence', 'subject' => 'user:'.$user->id, 'user_id' => $user->id, 'rating' => 1010, 'results' => 5, 'wins' => 4]);
+    app(RankBadges::class)->sync($user, 'checkers', 'correspondence');
     $rating->forceFill(['rating' => 1061, 'results' => 9, 'wins' => 7])->save();
-    app(RankBadges::class)->sync($user, 'checkers', 'blitz');
-    shareBlock($season, 1, $user, User::factory()->create())->forceFill(['source' => SeasonAttestation::BOARD, 'game' => 'checkers', 'mode' => 'blitz'])->save();
+    app(RankBadges::class)->sync($user, 'checkers', 'correspondence');
+    shareBlock($season, 1, $user, User::factory()->create())->forceFill(['source' => SeasonAttestation::BOARD, 'game' => 'checkers', 'mode' => 'correspondence'])->save();
     $on = app(PrideSlides::class)->read();
     config(['esports.board_games.enabled' => false]);
     app()->forgetInstance(GameRegistry::class);

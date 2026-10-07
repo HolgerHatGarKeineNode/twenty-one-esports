@@ -350,7 +350,8 @@ final class TournamentMatchMaker
         }
 
         // Slot 0 has White; a knockout replay after a draw swaps the colours, a restart keeps them. Two legs
-        // (plan "Blockli", P4): the second leg swaps them too; the first decider after 1:1 draws them by lot, in blitz.
+        // (plan "Blockli", P4): the second leg swaps them too; the first decider after 1:1 draws them by lot, in the
+        // tournament's own mode (user, 2026-10-07: the board games are correspondence only, so no blitz decider).
         $last = $match->boardGame !== null && ! $match->isReplaced($match->boardGame->id) ? $match->boardGame : null;
         $swap = $last !== null && ($last->status === BoardGameStatus::Aborted ? $last->white_id !== $first->id : $last->white_id === $first->id);
         $mode = $tournament->mode;
@@ -358,7 +359,6 @@ final class TournamentMatchMaker
         $finished = TournamentRunner::playsTwoLegs($tournament->game) ? TournamentRunner::finishedBoardGames($match)->count() : 0;
 
         if ($finished >= 2) {
-            $mode = 'blitz';
             $swap = $last?->status === BoardGameStatus::Finished && $finished === 2
                 ? Lottery::odds(1, 2)->winner(fn (): bool => true)->loser(fn (): bool => false)->choose()
                 : $swap;

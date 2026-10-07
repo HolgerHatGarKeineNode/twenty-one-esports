@@ -109,6 +109,7 @@ test('the casual cups board gives every open cup game its row under its weekday,
     config(['esports.league.nsec' => (new TestSigner)->secret]);
     NineMensMorrisOn::play();
     CheckersGame::play();
+    // Listed, the board games still open no cup (correspondence only since 2026-10-07).
     config(['esports.casual_cups.enabled' => ['chess', 'rocket-league', 'ea-sports-fc-26', 'ea-sports-fc-27', 'age-of-empires-2', 'nine-mens-morris', 'checkers']]);
     foreach (CasualCups::enabledGames() as $game) {
         foreach (array_keys(CasualCups::regions()) as $region) {
@@ -119,14 +120,13 @@ test('the casual cups board gives every open cup game its row under its weekday,
     $svg = seriesScene('d2', app(TournamentSlides::class)->all((int) now()->getTimestampMs()));
     $text = seriesSceneText($svg);
 
-    expect(substr_count($svg, 'data-unit="cup-game-'))->toBe(7)
-        ->and($text)->toContain('Friday', 'Saturday', 'Sunday', 'EA Sports FC 26', 'Rocket League', "Nine Men's Morris", 'Age of Empires II', 'EU · 0 / 4 signed up', 'US · 0 / 4 signed up')
+    expect(substr_count($svg, 'data-unit="cup-game-'))->toBe(5)
+        ->and($text)->toContain('Friday', 'Saturday', 'Sunday', 'EA Sports FC 26', 'Rocket League', 'Age of Empires II', 'EU · 0 / 4 signed up', 'US · 0 / 4 signed up')
+        ->and($text)->not->toContain("Nine Men's Morris")->not->toContain('Checkers')->not->toContain('Blockli')
         // The Age of Empires II cups are one lobby match (P10) that opens small like every cup, and the pitch says so.
         ->and($text)->toContain('One per region. Age of Empires II: one 2 h diplomacy lobby, 2 to 8, wins shared.')->not->toContain('0 / 40 signed up')
-        // Sunday: Checkers in the afternoon, then Age of Empires II at its evening slot, on each region's clock.
-        ->and(strpos($text, 'Sunday'))->toBeLessThan(strpos($text, 'Checkers'))
-        ->and(strpos($text, 'Checkers'))->toBeLessThan(strrpos($text, 'Age of Empires II'))
-        ->and(substr($text, strpos($text, 'Checkers') - 8, 5))->toBe('15:00')
+        // Sunday: Age of Empires II at its evening slot, on each region's clock.
+        ->and(strpos($text, 'Sunday'))->toBeLessThan(strrpos($text, 'Age of Empires II'))
         ->and(substr($text, strrpos($text, 'Age of Empires II') - 8, 5))->toBe('20:00')
         ->and($text)->not->toContain('Definitive');
 });

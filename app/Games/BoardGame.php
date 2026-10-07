@@ -34,6 +34,18 @@ abstract class BoardGame implements Game
     }
 
     /**
+     * The mode the lobby's live ways to play use ("Looking to play", the
+     * invite from "Online now") and its rating and ladder show: blitz while
+     * the game offers it, else correspondence (user, 2026-10-07: nine men's
+     * morris, checkers and Blockli are correspondence only, fast modes are
+     * for chess).
+     */
+    public function lobbyMode(): string
+    {
+        return $this->mode('blitz') !== null ? 'blitz' : 'correspondence';
+    }
+
+    /**
      * The game's rules, which the board game core (App\Support\Board\BoardGameService)
      * asks about every move (P2).
      *

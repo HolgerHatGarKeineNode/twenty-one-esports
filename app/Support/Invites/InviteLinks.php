@@ -570,6 +570,12 @@ final class InviteLinks
     {
         $inviter = $link->inviter;
         $mode = (string) $link->option('mode', 'blitz');
+
+        // A link made for a mode the game no longer offers (the board games' blitz, dropped 2026-10-07) starts nothing.
+        if ($this->registry->mode((string) $link->option('game'), $mode) === null) {
+            throw new InviteLinkRefused('board_mode_gone', __('This invite is for a mode the game no longer offers. Ask for a new link.'));
+        }
+
         $inviterWhite = match ($mode === BoardGame::CORRESPONDENCE ? (string) $link->option('color', 'random') : 'random') {
             'white' => true,
             'black' => false,

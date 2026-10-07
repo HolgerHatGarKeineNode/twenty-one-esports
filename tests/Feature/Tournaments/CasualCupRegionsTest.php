@@ -96,8 +96,8 @@ function splitMigration(): void
 test('a game\'s slot stays put on each region\'s own clock across both daylight saving changes', function (string $region, string $notBefore, string $slot, string $game = 'chess') {
     expect(regionSlot($region, $notBefore, $game))->toBe($slot);
 })->with([
-    // Checkers (Sunday 15:00) on the very Sunday Europe goes back: 15:00 is already winter time.
-    'checkers EU on the change day' => ['eu', '2026-10-24 00:00', 'Sun 2026-10-25 15:00 CET = 2026-10-25 14:00 UTC', 'checkers'],
+    // AoE2 (Sunday 20:00) on the very Sunday Europe goes back: 20:00 is already winter time.
+    'AoE2 EU on the change day' => ['eu', '2026-10-24 00:00', 'Sun 2026-10-25 20:00 CET = 2026-10-25 19:00 UTC', 'age-of-empires-2'],
     // FC 27 (Friday 20:00) in New York the Friday before the US changes, and the Friday after.
     'FC 27 US before its change' => ['us', '2026-10-26 00:00', 'Fri 2026-10-30 20:00 EDT = 2026-10-31 00:00 UTC', 'ea-sports-fc-27'],
     'FC 27 US after its change' => ['us', '2026-10-31 01:00', 'Fri 2026-11-06 20:00 EST = 2026-11-07 01:00 UTC', 'ea-sports-fc-27'],
@@ -145,7 +145,8 @@ test('every game opens its EU and US cups at its own slot, the same local time o
     $this->travelTo(CarbonImmutable::parse('2026-09-30 21:00', 'UTC'));
     $starts = [];
 
-    foreach (['ea-sports-fc-26', 'ea-sports-fc-27', 'nine-mens-morris', 'rocket-league', 'chess', 'checkers', 'age-of-empires-2'] as $game) {
+    // No board game: they run no cup since 2026-10-07 (correspondence only).
+    foreach (['ea-sports-fc-26', 'ea-sports-fc-27', 'rocket-league', 'chess', 'age-of-empires-2'] as $game) {
         foreach (['eu', 'us'] as $region) {
             $cup = app(CasualCups::class)->ensure($game, $region);
             $starts[] = "{$game} {$region}: ".$cup->starts_at->setTimezone(CasualCups::regions()[$region]['timezone'])->format('D Y-m-d H:i T').' = '.$cup->starts_at->utc()->format('Y-m-d H:i').' UTC';
@@ -157,14 +158,10 @@ test('every game opens its EU and US cups at its own slot, the same local time o
         'ea-sports-fc-26 us: Fri 2026-10-02 18:00 EDT = 2026-10-02 22:00 UTC',
         'ea-sports-fc-27 eu: Fri 2026-10-09 20:00 CEST = 2026-10-09 18:00 UTC',
         'ea-sports-fc-27 us: Fri 2026-10-02 20:00 EDT = 2026-10-03 00:00 UTC',
-        'nine-mens-morris eu: Sat 2026-10-03 15:00 CEST = 2026-10-03 13:00 UTC',
-        'nine-mens-morris us: Sat 2026-10-03 15:00 EDT = 2026-10-03 19:00 UTC',
         'rocket-league eu: Sat 2026-10-03 20:00 CEST = 2026-10-03 18:00 UTC',
         'rocket-league us: Sat 2026-10-03 20:00 EDT = 2026-10-04 00:00 UTC',
         'chess eu: Sat 2026-10-03 20:00 CEST = 2026-10-03 18:00 UTC',
         'chess us: Sat 2026-10-03 20:00 EDT = 2026-10-04 00:00 UTC',
-        'checkers eu: Sun 2026-10-04 15:00 CEST = 2026-10-04 13:00 UTC',
-        'checkers us: Sun 2026-10-04 15:00 EDT = 2026-10-04 19:00 UTC',
         'age-of-empires-2 eu: Sun 2026-10-04 20:00 CEST = 2026-10-04 18:00 UTC',
         'age-of-empires-2 us: Sun 2026-10-04 20:00 EDT = 2026-10-05 00:00 UTC',
     ]);
@@ -338,9 +335,10 @@ test('the migration keeps a cup with players on its start when that is a slot, a
 });
 
 test('the slot migration moves every empty cup to its game\'s slot, republishes it without a notice, keeps cups with players and runs once', function () {
-    // As on 30 September 2026: all 14 cups open for Saturday 3 October 20:00 on their region's clock; three have players.
+    // As on 30 September 2026, without the board games (no cup since 2026-10-07): 10 cups open for Saturday 3 October 20:00
+    // on their region's clock; three have players.
     $this->travelTo(CarbonImmutable::parse('2026-09-30 21:00', 'UTC'));
-    $games = ['chess', 'rocket-league', 'ea-sports-fc-26', 'ea-sports-fc-27', 'age-of-empires-2', 'nine-mens-morris', 'checkers'];
+    $games = ['chess', 'rocket-league', 'ea-sports-fc-26', 'ea-sports-fc-27', 'age-of-empires-2'];
     $cups = [];
 
     foreach ($games as $game) {
@@ -388,10 +386,6 @@ test('the slot migration moves every empty cup to its game\'s slot, republishes 
         'ea-sports-fc-27-us' => 'Fri 2026-10-02 20:00 EDT',
         'age-of-empires-2-eu' => 'Sun 2026-10-04 20:00 CEST',
         'age-of-empires-2-us' => 'Sun 2026-10-04 20:00 EDT',
-        'nine-mens-morris-eu' => 'Sat 2026-10-03 15:00 CEST',
-        'nine-mens-morris-us' => 'Sat 2026-10-03 15:00 EDT',
-        'checkers-eu' => 'Sun 2026-10-04 15:00 CEST',
-        'checkers-us' => 'Sun 2026-10-04 15:00 EDT',
     ]);
 
     // One new version of each moved cup's 31923 with the new start; the cups with players and the one on its slot keep theirs.
@@ -404,7 +398,7 @@ test('the slot migration moves every empty cup to its game\'s slot, republishes 
 
     // Nobody signed up for a moved cup, so nobody is told; one log line per moved cup.
     expect(DB::table('notifications')->count())->toBe($notifications);
-    Log::shouldHaveReceived('info')->with('Casual cup moved to its game slot', Mockery::type('array'))->times(10);
+    Log::shouldHaveReceived('info')->with('Casual cup moved to its game slot', Mockery::type('array'))->times(6);
 
     // A second run moves nothing.
     $state = Tournament::query()->orderBy('id')->get(['id', 'starts_at', 'signup_closes_at', 'event_id'])->toArray();

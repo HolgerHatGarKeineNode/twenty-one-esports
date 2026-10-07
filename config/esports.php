@@ -218,11 +218,12 @@ return [
     | The order games are shown in everywhere (GameRegistry::ordered): the
     | `first` slugs in this order, then every other game as registered, then
     | the `last` slugs. User 2026-10-01: Blockfill third, Nine Men's Morris
-    | and Checkers at the very end.
+    | and Checkers at the very end. User 2026-10-07: Blockli right after
+    | TMNF (the last registered game), before Nine Men's Morris and Checkers.
     */
     'game_order' => [
         'first' => ['chess', 'rocket-league', 'blockfill'],
-        'last' => ['nine-mens-morris', 'checkers', 'blockli'],
+        'last' => ['blockli', 'nine-mens-morris', 'checkers'],
     ],
 
     'games' => [
@@ -701,7 +702,7 @@ return [
     | games: the mode each series plays, its name, the series lengths
     | (finals = grand final) and its weekly `slot` (user, 2026-09-30: the
     | cups spread over the weekend, Friday evening to Sunday, the two FC
-    | games on Friday, the board games in the afternoon, chess and Rocket
+    | games on Friday, chess and Rocket
     | League on Saturday evening, AoE2 on Sunday evening). slot: the cups'
     | default for a game without one of its own.
     |
@@ -754,7 +755,7 @@ return [
     */
 
     'casual_cups' => [
-        'enabled' => array_values(array_filter(array_map('trim', explode(',', (string) env('ESPORTS_CASUAL_CUP_GAMES', 'chess,rocket-league,ea-sports-fc-26,ea-sports-fc-27,age-of-empires-2,nine-mens-morris,checkers,blockli'))))),
+        'enabled' => array_values(array_filter(array_map('trim', explode(',', (string) env('ESPORTS_CASUAL_CUP_GAMES', 'chess,rocket-league,ea-sports-fc-26,ea-sports-fc-27,age-of-empires-2'))))),
         'games' => [
             // Rapid 10+5 since plan "Schach Rapid und Clan", P2 (user, 2026-10-05); a cup already made keeps its `mode`.
             'chess' => ['name' => 'Chess', 'mode' => 'rapid', 'best_of' => 1, 'final_best_of' => 1, 'slot' => ['weekday' => 'saturday', 'time' => '20:00']],
@@ -762,11 +763,8 @@ return [
             'ea-sports-fc-26' => ['name' => 'EA FC 26', 'mode' => '1v1', 'best_of' => 1, 'final_best_of' => 3, 'slot' => ['weekday' => 'friday', 'time' => '18:00']],
             'ea-sports-fc-27' => ['name' => 'EA FC 27', 'mode' => '1v1', 'best_of' => 1, 'final_best_of' => 3, 'slot' => ['weekday' => 'friday', 'time' => '20:00']],
             'age-of-empires-2' => ['name' => 'AoE2', 'mode' => '1v1', 'best_of' => 1, 'final_best_of' => 3, 'slot' => ['weekday' => 'sunday', 'time' => '20:00']],
-            // Board games (plan "Mühle und Dame", P5): a cup runs only while the board game is switched on.
-            'nine-mens-morris' => ['name' => "Nine Men's Morris", 'mode' => 'blitz', 'best_of' => 1, 'final_best_of' => 1, 'slot' => ['weekday' => 'saturday', 'time' => '15:00']],
-            'checkers' => ['name' => 'Checkers', 'mode' => 'blitz', 'best_of' => 1, 'final_best_of' => 1, 'slot' => ['weekday' => 'sunday', 'time' => '15:00']],
-            // Blockli (plan "Blockli", P4): each pairing two games with the colours swapped, at 1:1 a blitz decider.
-            'blockli' => ['name' => 'Blockli', 'mode' => 'blitz', 'best_of' => 2, 'final_best_of' => 2, 'slot' => ['weekday' => 'saturday', 'time' => '17:00']],
+            // No board game (user, 2026-10-07): nine men's morris, checkers and Blockli are correspondence only,
+            // and a cup is a live evening; a slug listed in ESPORTS_CASUAL_CUP_GAMES without an entry here runs no cup.
         ],
         'slot' => ['weekday' => 'saturday', 'time' => '20:00'],
         'sizes' => [4, 8, 16],

@@ -14,6 +14,7 @@
 |
 */
 
+use App\Games\Blockli;
 use App\Games\Checkers;
 use App\Games\NineMensMorris;
 use App\Models\ChessGame;
@@ -21,6 +22,7 @@ use App\Models\User;
 use App\Support\Board\BoardGameService;
 use App\Support\Navigation\ShellNavigation;
 use Illuminate\Support\Facades\Queue;
+use Tests\Support\BlockliOn;
 use Tests\Support\CheckersGame;
 use Tests\Support\NineMensMorrisOn;
 
@@ -103,13 +105,17 @@ test('home and the phone game chips put the board games at the end; the desktop 
         ->and(array_column(ShellNavigation::current()->games(), 'slug'))->toBe(['chess', 'rocket-league', 'ea-sports-fc-27', 'ea-sports-fc-26', 'age-of-empires-2', 'nine-mens-morris', 'checkers']);
 });
 
-test('the board game tiles on home link their correspondence games next to "Play blitz", like chess', function () {
+test('the board game tiles on home play correspondence: "Play correspondence" is the one button, no blitz, no second link (user, 2026-10-07)', function () {
     NineMensMorrisOn::play();
     CheckersGame::play();
+    BlockliOn::play();
 
     $html = $this->actingAs(User::factory()->create())->withSession(['locale' => 'de'])->get(route('home'))->assertOk()->getContent();
 
-    foreach ([NineMensMorris::SLUG, Checkers::SLUG] as $slug) {
-        expect($html)->toMatch('~data-game="'.$slug.'".*?<a href="'.preg_quote(route('board.correspondence', $slug), '~').'"[^>]*data-test="play-daily">Fernpartie</a>~s');
+    foreach ([NineMensMorris::SLUG, Checkers::SLUG, Blockli::SLUG] as $slug) {
+        expect(preg_match('~data-game="'.$slug.'".*?</li>~s', $html, $tile))->toBe(1)
+            ->and($tile[0])->toContain('Fernpartie spielen')
+            ->and($tile[0])->not->toContain('data-test="play-daily"')
+            ->and($tile[0])->not->toContain('Blitz');
     }
 });

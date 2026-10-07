@@ -56,11 +56,11 @@ beforeEach(function () {
 function boardCorrectionFinal(): array
 {
     $tournament = Tournament::factory()->create([
-        'game' => Checkers::SLUG, 'mode' => 'blitz', 'format' => TournamentFormat::SingleElimination,
-        'options' => FormatOptions::fromArray([], GameProfile::for(Checkers::SLUG, 'blitz'))->toArray(),
+        'game' => Checkers::SLUG, 'mode' => 'correspondence', 'format' => TournamentFormat::SingleElimination,
+        'options' => FormatOptions::fromArray([], GameProfile::for(Checkers::SLUG, 'correspondence'))->toArray(),
         'capacity' => 2, 'results_mode' => TournamentResultsMode::Players, 'status' => TournamentStatus::Running,
         'slug' => 'board-correction-'.fake()->unique()->numberBetween(1, 1_000_000),
-        'ladder_address' => Ladders::address(Checkers::SLUG, 'blitz'),
+        'ladder_address' => Ladders::address(Checkers::SLUG, 'correspondence'),
     ]);
 
     foreach (range(1, 2) as $index) {
@@ -95,7 +95,7 @@ function boardCorrectionAdmin(): User
 
 function boardCorrectionRating(?User $user, string $pool = Rating::RATED): int
 {
-    return (int) Rating::query()->where(['pool' => $pool, 'game' => Checkers::SLUG, 'mode' => 'blitz', 'user_id' => $user?->id])->value('rating');
+    return (int) Rating::query()->where(['pool' => $pool, 'game' => Checkers::SLUG, 'mode' => 'correspondence', 'user_id' => $user?->id])->value('rating');
 }
 
 test('a corrected winner of a rated board game is re-rated delta only, exactly once, and the old rows stay as the audit trail', function () {

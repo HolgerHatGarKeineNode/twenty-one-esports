@@ -59,12 +59,12 @@ beforeEach(function () {
 function hangsBoardTournament(string $game, TournamentFormat $format = TournamentFormat::SingleElimination, int $n = 2): Tournament
 {
     $tournament = Tournament::factory()->create([
-        'game' => $game, 'mode' => 'blitz', 'format' => $format,
-        'options' => FormatOptions::fromArray([], GameProfile::for($game, 'blitz'))->toArray(),
+        'game' => $game, 'mode' => 'correspondence', 'format' => $format,
+        'options' => FormatOptions::fromArray([], GameProfile::for($game, 'correspondence'))->toArray(),
         'capacity' => $n, 'results_mode' => TournamentResultsMode::Players, 'status' => TournamentStatus::Running,
         'slug' => 'board-hangs-'.fake()->unique()->numberBetween(1, 1_000_000),
         // Frozen as a publish would freeze it: the open ladder, or none (unrated).
-        'ladder_address' => Ladders::address($game, 'blitz'),
+        'ladder_address' => Ladders::address($game, 'correspondence'),
     ]);
 
     foreach (range(1, $n) as $index) {

@@ -43,5 +43,5 @@
         @endif
     </div>
 
-    <x-lobby.online-now :user="$user" :looking-key="$slug.'/blitz'" :looking-tag="__('looking: :game', ['game' => $name])" :can-invite="! $active" :show-elo="false" />
+    <x-lobby.online-now :user="$user" :looking-key="$slug.'/'.$this->lobbyMode" :looking-tag="__('looking: :game', ['game' => $name])" :can-invite="! $active" :show-elo="false" />
 </section>

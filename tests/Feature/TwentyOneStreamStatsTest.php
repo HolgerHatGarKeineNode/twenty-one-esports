@@ -175,11 +175,12 @@ test('every game reaches the stream: its ladders (the season ladder first, a lin
     $alice = User::factory()->create(['name' => 'Alice']);
     casualRating($alice, 'blitz', 1300, 4);
     casualRating($alice, 'blitz', 1050, 2, pool: Rating::RATED)->forceFill(['season' => $season->slug])->save();
-    casualRating(null, 'blitz', 1111, 3)->forceFill(['game' => 'checkers'])->save();
+    // Checkers is correspondence only since 2026-10-07: its ladder on the stream is the correspondence one.
+    casualRating(null, 'correspondence', 1111, 3)->forceFill(['game' => 'checkers'])->save();
     $lineup = Lineup::factory()->create(['clan_id' => Clan::factory()->create(['name' => 'Rocket <Pack>'])->id]);
     Rating::query()->create(['pool' => Rating::CASUAL, 'season' => '', 'game' => 'rocket-league', 'mode' => '3v3', 'subject' => 'lineup:'.$lineup->id, 'lineup_id' => $lineup->id, 'rating' => 1020, 'results' => 1, 'wins' => 1]);
     ChessGame::factory()->finished()->create();
-    BoardGame::query()->create(['game' => 'checkers', 'mode' => 'blitz', 'white_id' => $alice->id, 'black_id' => User::factory()->create()->id, 'status' => 'finished', 'result' => '1-0',
+    BoardGame::query()->create(['game' => 'checkers', 'mode' => 'correspondence', 'white_id' => $alice->id, 'black_id' => User::factory()->create()->id, 'status' => 'finished', 'result' => '1-0',
         'position' => '-', 'turn' => 'w', 'ply' => 9, 'initial_ms' => 300000, 'increment_ms' => 3000, 'white_ms' => 1, 'black_ms' => 1, 'turn_started_ms' => 0, 'ended_at' => now()]);
     SeriesMatch::factory()->create(['status' => SeriesStatus::Confirmed, 'winner' => 'challenger', 'finished_at' => now()]);
     // Two accounts of one person played each other: the league voided it.
@@ -191,13 +192,14 @@ test('every game reaches the stream: its ladders (the season ladder first, a lin
 
     expect($stats['gamesPlayed'])->toBe(3)
         ->and($stats['gamesToday'])->toBe(3)
-        ->and($boards->keys()->all())->toBe(['chess/blitz', 'rocket-league/3v3', 'checkers/blitz'])
+        ->and($boards->keys()->all())->toBe(['chess/blitz', 'rocket-league/3v3', 'checkers/correspondence'])
         // The season ladder has rows, so it is the one shown.
         ->and($boards['chess/blitz']['pool'])->toBe(Rating::RATED)
         ->and(array_column($boards['chess/blitz']['rows'], 'elo'))->toBe([1050])
         ->and($boards['rocket-league/3v3']['rows'][0])->toMatchArray(['name' => 'Rocket <Pack>', 'tag' => $lineup->clan->clantag, 'avatarRef' => null])
-        ->and($boards['checkers/blitz'])->toMatchArray(['gameName' => 'Checkers', 'modeName' => 'Blitz 5+3', 'pool' => Rating::CASUAL])
-        ->and($c3)->toContain('Chess Blitz 5+3', 'Rocket League 3v3', 'Checkers Blitz 5+3', 'Rocket &lt;Pack&gt;', '>season<')
+        ->and($boards['checkers/correspondence'])->toMatchArray(['gameName' => 'Checkers', 'modeName' => 'Correspondence', 'pool' => Rating::CASUAL])
+        ->and($c3)->toContain('Chess Blitz 5+3', 'Rocket League 3v3', 'Rocket &lt;Pack&gt;', '>season<')
+        ->and($c3)->not->toContain('Checkers Blitz')
         ->and($c3)->not->toContain('<Pack>');
 });
 

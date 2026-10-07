@@ -16,7 +16,6 @@ use App\Enums\TournamentFormat;
 use App\Enums\TournamentResultsMode;
 use App\Enums\TournamentStatus;
 use App\Games\Checkers;
-use App\Games\GameRegistry;
 use App\Games\NineMensMorris;
 use App\Models\BoardGame;
 use App\Models\BoardQueueEntry;
@@ -53,6 +52,7 @@ use Carbon\CarbonImmutable;
 use Illuminate\Support\Facades\Queue;
 use Livewire\Livewire;
 use Tests\Support\CheckersGame;
+use Tests\Support\FixtureBoardGame;
 use Tests\Support\NineMensMorrisOn;
 use Tests\Support\TestSigner;
 
@@ -79,8 +79,8 @@ function boardLeagueRefusal(Closure $action): ?string
 function runningBoardTournament(string $game, int $n, TournamentFormat $format = TournamentFormat::SingleElimination): Tournament
 {
     $tournament = Tournament::factory()->create([
-        'game' => $game, 'mode' => 'blitz', 'format' => $format,
-        'options' => FormatOptions::fromArray([], GameProfile::for($game, 'blitz'))->toArray(),
+        'game' => $game, 'mode' => 'correspondence', 'format' => $format,
+        'options' => FormatOptions::fromArray([], GameProfile::for($game, 'correspondence'))->toArray(),
         'capacity' => $n, 'results_mode' => TournamentResultsMode::Players, 'status' => TournamentStatus::Running,
         'slug' => 'board-cup-'.fake()->unique()->numberBetween(1, 1_000_000), 'ladder_address' => null,
     ]);
@@ -99,23 +99,25 @@ function runningBoardTournament(string $game, int $n, TournamentFormat $format =
 /* ---------- Queue and invites ------------------------------------------------------------------------------- */
 
 test('two players who search the same board game are paired into a board game of it, and nobody else is', function () {
+    // The live queue is a blitz board game's (the test fixture's); the real board games are correspondence only.
+    FixtureBoardGame::play();
     [$a, $b, $c] = User::factory()->count(3)->create();
     $queue = app(BoardQueue::class);
     ChessQueueEntry::query()->create(['user_id' => $a->id, 'mode' => 'blitz', 'rated' => false, 'rating' => 1000, 'joined_at' => now()]);
 
-    expect($queue->join($a, NineMensMorris::SLUG))->toBeNull()
+    expect($queue->join($a, FixtureBoardGame::SLUG))->toBeNull()
         // One intent at a time: searching here ended the chess search.
         ->and(ChessQueueEntry::query()->count())->toBe(0)
-        // Another board game's queue never pairs with this one.
-        ->and($queue->join($c, Checkers::SLUG))->toBeNull();
+        // A correspondence-only board game has no queue (user, 2026-10-07).
+        ->and(boardLeagueRefusal(fn () => $queue->join($c, Checkers::SLUG)))->toBe('unknown_game');
 
-    $game = $queue->join($b, NineMensMorris::SLUG);
+    $game = $queue->join($b, FixtureBoardGame::SLUG);
 
     expect($game)->toBeInstanceOf(BoardGame::class)
-        ->and($game->game)->toBe(NineMensMorris::SLUG)
+        ->and($game->game)->toBe(FixtureBoardGame::SLUG)
         ->and($game->status)->toBe(BoardGameStatus::Active)
         ->and([$game->white_id, $game->black_id])->toEqualCanonicalizing([$a->id, $b->id])
-        ->and(BoardQueueEntry::query()->pluck('user_id')->all())->toBe([$c->id])
+        ->and(BoardQueueEntry::query()->count())->toBe(0)
         ->and(ChessGame::query()->count())->toBe(0);
 });
 
@@ -125,7 +127,7 @@ test('an invite to a player looking to play starts a board game on accept, and a
 
     expect(boardLeagueRefusal(fn () => $invites->invite($inviter, $invitee, Checkers::SLUG)))->toBe('not_looking');
 
-    $invitee->forceFill(['looking_to_play' => 'checkers/blitz'])->save();
+    $invitee->forceFill(['looking_to_play' => 'checkers/correspondence'])->save();
     $invite = $invites->invite($inviter, $invitee, Checkers::SLUG);
 
     expect($invite->status)->toBe(BoardInviteStatus::Pending)
@@ -135,17 +137,19 @@ test('an invite to a player looking to play starts a board game on accept, and a
     $game = $invites->accept($invite, $invitee);
 
     expect($game->game)->toBe(Checkers::SLUG)
+        ->and($game->mode)->toBe('correspondence')
         ->and([$game->white_id, $game->black_id])->toEqualCanonicalizing([$inviter->id, $invitee->id])
         ->and($invite->refresh()->status)->toBe(BoardInviteStatus::Accepted)
         ->and($invite->board_game_id)->toBe($game->id);
 });
 
 test('an invite to a player who searches the same board game starts the game at once', function () {
+    FixtureBoardGame::play();
     [$inviter, $invitee] = User::factory()->count(2)->create();
-    $invitee->forceFill(['looking_to_play' => 'nine-mens-morris/blitz'])->save();
-    app(BoardQueue::class)->join($invitee, NineMensMorris::SLUG);
+    $invitee->forceFill(['looking_to_play' => FixtureBoardGame::SLUG.'/blitz'])->save();
+    app(BoardQueue::class)->join($invitee, FixtureBoardGame::SLUG);
 
-    $invite = app(BoardInvites::class)->invite($inviter, $invitee, NineMensMorris::SLUG);
+    $invite = app(BoardInvites::class)->invite($inviter, $invitee, FixtureBoardGame::SLUG);
 
     expect($invite->board_game_id)->not->toBeNull()
         ->and(BoardGame::query()->sole()->id)->toBe($invite->board_game_id)
@@ -153,36 +157,37 @@ test('an invite to a player who searches the same board game starts the game at 
 });
 
 test('the lobby finds an opponent and moves both players to the board', function () {
+    FixtureBoardGame::play();
     [$a, $b] = User::factory()->count(2)->create();
 
-    Livewire::actingAs($a)->test('pages::board.lobby', ['board' => NineMensMorris::SLUG])
+    Livewire::actingAs($a)->test('pages::board.lobby', ['board' => FixtureBoardGame::SLUG])
         ->call('findOpponent')
         ->assertSeeHtml('data-test="lobby-searching"')
         ->assertNoRedirect();
 
-    Livewire::actingAs($b)->test('pages::board.lobby', ['board' => NineMensMorris::SLUG])
+    Livewire::actingAs($b)->test('pages::board.lobby', ['board' => FixtureBoardGame::SLUG])
         ->call('findOpponent')
         ->assertRedirect(route('board.show', BoardGame::query()->sole()));
 
-    Livewire::actingAs($a)->test('pages::board.lobby', ['board' => NineMensMorris::SLUG])
+    Livewire::actingAs($a)->test('pages::board.lobby', ['board' => FixtureBoardGame::SLUG])
         ->call('poll')
         ->assertRedirect(route('board.show', BoardGame::query()->sole()));
 });
 
 test('the searching lobby\'s poll answers without a render until something it shows changed (performance plan P3)', function () {
     $this->freezeSecond();
+    FixtureBoardGame::play();
     [$a, $b] = User::factory()->count(2)->create();
-    $lobby = Livewire::actingAs($a)->test('pages::board.lobby', ['board' => NineMensMorris::SLUG])
+    $lobby = Livewire::actingAs($a)->test('pages::board.lobby', ['board' => FixtureBoardGame::SLUG])
         ->call('findOpponent')->assertSeeHtml('data-check-at=');
 
     $lobby->call('poll')->assertOk()->assertNoRedirect();
     expect($lobby->effects)->not->toHaveKey('html');
 
-    // Another player starts searching (another board game's count would not change): the Blitz tile's count moves.
-    app(BoardQueue::class)->join($b, Checkers::SLUG);
+    // Another board game's correspondence game starts: nothing this page shows changed.
+    app(BoardGameService::class)->start(Checkers::SLUG, $b, User::factory()->create());
     $lobby->call('poll')->assertOk();
     expect($lobby->effects)->not->toHaveKey('html');
-    app(BoardQueue::class)->leave($b);
 
     // The rest of the page still renders once a minute.
     $this->travel(61)->seconds();
@@ -193,8 +198,9 @@ test('the searching lobby\'s poll answers without a render until something it sh
 
 test('a waiting lobby asks the server when its range widens, its invite expires, or after 120 s, not every 4 s (performance plan P7)', function () {
     $this->freezeSecond();
+    FixtureBoardGame::play();
     [$a, $b] = User::factory()->count(2)->create();
-    $lobby = Livewire::actingAs($a)->test('pages::board.lobby', ['board' => NineMensMorris::SLUG]);
+    $lobby = Livewire::actingAs($a)->test('pages::board.lobby', ['board' => FixtureBoardGame::SLUG]);
     $joined = now()->getTimestampMs();
 
     // Idle: no moment to ask, no poll.
@@ -215,7 +221,7 @@ test('a waiting lobby asks the server when its range widens, its invite expires,
     // Waiting for an answer to an invite: its expiry when that comes before the net, and nothing once it is gone.
     config(['esports.board_games.invite_seconds' => 60]);
     $lobby->call('cancelSearch');
-    $b->forceFill(['looking_to_play' => NineMensMorris::SLUG.'/blitz'])->save();
+    $b->forceFill(['looking_to_play' => FixtureBoardGame::SLUG.'/blitz'])->save();
     $lobby->call('invite', $b->id)->assertSeeHtml('data-check-at="'.(now()->getTimestampMs() + 60_500).'"');
     $lobby->call('withdrawInvite')->assertDontSeeHtml('data-check-at=');
     $lobby->call('poll')->assertReturned(null);
@@ -225,8 +231,10 @@ test('a waiting lobby asks the server when its range widens, its invite expires,
 /* ---------- One live game at a time ------------------------------------------------------------------------- */
 
 test('one live game at a time: a board game keeps chess out, and live chess keeps the board games out', function () {
+    // A live board game is a blitz one (the test fixture's): the real board games are correspondence only and never live.
+    FixtureBoardGame::play();
     [$a, $b, $c, $d] = User::factory()->count(4)->create();
-    $board = app(BoardGameService::class)->start(NineMensMorris::SLUG, $a, $b);
+    $board = app(BoardGameService::class)->start(FixtureBoardGame::SLUG, $a, $b);
 
     // Chess, unchanged, refuses a board player in its queue and never starts a live game with one.
     expect(boardLeagueRefusal(fn () => app(ChessQueue::class)->join($a)))->toBe('already_playing')
@@ -239,9 +247,9 @@ test('one live game at a time: a board game keeps chess out, and live chess keep
 
     $chess = app(ChessGameService::class)->start($c, $d);
 
-    expect(boardLeagueRefusal(fn () => app(BoardQueue::class)->join($c, Checkers::SLUG)))->toBe('playing_elsewhere')
-        ->and(boardLeagueRefusal(fn () => app(BoardGameService::class)->start(Checkers::SLUG, $d, User::factory()->create())))->toBe('playing_elsewhere')
-        ->and(boardLeagueRefusal(fn () => app(BoardQueue::class)->join($a, Checkers::SLUG)))->toBe('already_playing')
+    expect(boardLeagueRefusal(fn () => app(BoardQueue::class)->join($c, FixtureBoardGame::SLUG)))->toBe('playing_elsewhere')
+        ->and(boardLeagueRefusal(fn () => app(BoardGameService::class)->start(FixtureBoardGame::SLUG, $d, User::factory()->create())))->toBe('playing_elsewhere')
+        ->and(boardLeagueRefusal(fn () => app(BoardQueue::class)->join($a, FixtureBoardGame::SLUG)))->toBe('already_playing')
         ->and(BoardGame::query()->count())->toBe(1);
 
     // Over, and both are free again.
@@ -249,7 +257,7 @@ test('one live game at a time: a board game keeps chess out, and live chess keep
     app(ChessGameService::class)->abort($chess->refresh(), $c);
 
     expect(app(ChessQueue::class)->join($a))->toBeNull()
-        ->and(app(BoardQueue::class)->join($c, Checkers::SLUG))->toBeNull();
+        ->and(app(BoardQueue::class)->join($c, FixtureBoardGame::SLUG))->toBeNull();
 });
 
 /* ---------- Elo --------------------------------------------------------------------------------------------- */
@@ -300,14 +308,15 @@ test('a casual board game mines nothing: no attestation and no rated Elo, while 
     config(['esports.trust.nsec' => $trust->secret]);
 
     // Live, but not published yet: a board game's ladder opens with its first version.
-    expect(Ladders::isOpen(NineMensMorris::SLUG, 'blitz'))->toBeFalse();
+    expect(Ladders::isOpen(NineMensMorris::SLUG, 'correspondence'))->toBeFalse();
 
     app(LadderEvents::class)->publish($season, LeagueKey::required(), $trust->pubkey);
 
-    expect(Ladders::isOpen(NineMensMorris::SLUG, 'blitz'))->toBeTrue()
-        ->and(Ladders::isOpen(Checkers::SLUG, 'blitz'))->toBeTrue()
-        ->and(NostrEvent::query()->where(['kind' => Ladders::KIND, 'd' => NineMensMorris::SLUG.'/blitz/'.$season->slug])->count())->toBe(1)
-        ->and(NostrEvent::query()->where(['kind' => Ladders::KIND, 'd' => Checkers::SLUG.'/blitz/'.$season->slug])->count())->toBe(1)
+    expect(Ladders::isOpen(NineMensMorris::SLUG, 'correspondence'))->toBeTrue()
+        ->and(Ladders::isOpen(Checkers::SLUG, 'correspondence'))->toBeTrue()
+        ->and(Ladders::isOpen(Checkers::SLUG, 'blitz'))->toBeFalse()
+        ->and(NostrEvent::query()->where(['kind' => Ladders::KIND, 'd' => NineMensMorris::SLUG.'/correspondence/'.$season->slug])->count())->toBe(1)
+        ->and(NostrEvent::query()->where(['kind' => Ladders::KIND, 'd' => Checkers::SLUG.'/correspondence/'.$season->slug])->count())->toBe(1)
         ->and(NostrEvent::query()->where(['kind' => Ladders::KIND, 'd' => 'chess/blitz/'.$season->slug])->count())->toBe(1);
 
     $events = NostrEvent::query()->count();
@@ -369,15 +378,16 @@ test('a drawn board game in a knockout is replayed with the colours swapped', fu
         ->and([$replay->white_id, $replay->black_id])->toBe([$first->black_id, $first->white_id]);
 });
 
-test('a board game cup opens only while its board game is on, and "Play your cup match" starts its board game', function () {
+test('a board game opens no casual cup (correspondence only, user 2026-10-07), and "Play your cup match" of a board game cup starts its board game', function () {
     config(['esports.league.nsec' => (new TestSigner)->secret, 'esports.casual_cups.enabled' => ['chess', NineMensMorris::SLUG, Checkers::SLUG]]);
     $this->travelTo(CarbonImmutable::parse('2026-10-05 10:00:00', 'UTC'));
 
-    expect(CasualCups::enabledGames())->toBe(['chess', NineMensMorris::SLUG, Checkers::SLUG])
-        ->and(GameProfile::for(NineMensMorris::SLUG, 'blitz')->isBoard())->toBeTrue()
+    expect(CasualCups::enabledGames())->toBe(['chess'])
+        ->and(GameProfile::for(NineMensMorris::SLUG, 'correspondence')->isBoard())->toBeTrue()
         ->and(GameProfile::for('chess', 'blitz')->isBoard())->toBeFalse();
 
-    $cup = runningCup(4, game: NineMensMorris::SLUG);
+    // A board game cup made by hand still plays on the board game core.
+    $cup = runningCup(4, game: NineMensMorris::SLUG, mode: 'correspondence');
     cupTick();
     $match = openCupMatches($cup)->first();
     [$white, $black] = matchPlayers($match);
@@ -394,17 +404,12 @@ test('a board game cup opens only while its board game is on, and "Play your cup
         ->and(ChessGame::query()->count())->toBe(0)
         // The cup page leads to the board game, not to a chess game.
         ->and(Livewire::actingAs($white)->test('pages::tournaments.show', ['tournament' => $cup])->assertSeeHtml('data-test="now-hero" data-state="play"')->assertSee(route('board.show', $game), false))->not->toBeNull();
-
-    // Switched off, its cups stop opening.
-    config(['esports.board_games.games.checkers.enabled' => false]);
-    app()->forgetInstance(GameRegistry::class);
-    expect(CasualCups::enabledGames())->toBe(['chess', NineMensMorris::SLUG]);
 });
 
 test('a board game cup match nobody started is started by the league at the auto slot', function () {
     config(['esports.league.nsec' => (new TestSigner)->secret, 'esports.casual_cups.enabled' => [NineMensMorris::SLUG]]);
     $this->travelTo(CarbonImmutable::parse('2026-10-05 10:00:00', 'UTC'));
-    $cup = runningCup(4, game: NineMensMorris::SLUG);
+    $cup = runningCup(4, game: NineMensMorris::SLUG, mode: 'correspondence');
     cupTick();
     $match = openCupMatches($cup)->first();
 
@@ -419,9 +424,9 @@ test('a board game cup match nobody started is started by the league at the auto
 
 test('the match dock carries a live board game and a board invite, and leaves out the board game on screen', function () {
     [$player, $opponent, $inviter] = User::factory()->count(3)->create();
-    $game = app(BoardGameService::class)->start(NineMensMorris::SLUG, $player, $opponent);
+    $game = app(BoardGameService::class)->start(NineMensMorris::SLUG, $player, $opponent, 'correspondence');
     $inviter->forceFill(['looking_to_play' => null])->save();
-    $opponent->forceFill(['looking_to_play' => 'checkers/blitz'])->save();
+    $opponent->forceFill(['looking_to_play' => 'checkers/correspondence'])->save();
     $invite = app(BoardInvites::class)->invite($inviter, $opponent, Checkers::SLUG);
 
     $mine = app(OpenMatches::class)->for($player);
@@ -446,7 +451,9 @@ test('the board games have their own lobby, ladder and context bar while on', fu
     // Casual only until P6: no Rated choice, no note about a rated ladder; a finished game fills it.
     [$winner, $loser] = User::factory()->count(2)->create();
     app(BoardGameService::class)->resign(app(BoardGameService::class)->start(Checkers::SLUG, $winner, $loser), $loser);
-    $this->get(route('ladder.show', [Checkers::SLUG, 'blitz']))->assertOk()
+    // The old blitz ladder's address leads to the correspondence ladder (blitz dropped 2026-10-07).
+    $this->get(route('ladder.show', [Checkers::SLUG, 'blitz']))->assertRedirect(route('ladder.show', [Checkers::SLUG, 'correspondence']))->assertStatus(301);
+    $this->get(route('ladder.show', [Checkers::SLUG, 'correspondence']))->assertOk()
         ->assertDontSee('data-test="pool-rated"', false)
         ->assertDontSee('data-test="ladder-rated-note"', false)
         ->assertSee($winner->displayName());

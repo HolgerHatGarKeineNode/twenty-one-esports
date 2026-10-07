@@ -4,7 +4,9 @@
     its panel in place under the row, Correspondence (chess: Daily chess)
     and Tournaments lead into their flow, "Challenge a player" goes to the
     online list. A search or an invite waiting for its answer shows its card
-    there whatever the tile. Alpine `stage` is the open panel ('blitz' |
+    there whatever the tile. A board game without a blitz mode (all three
+    since the user dropped blitz on 2026-10-07) has no Blitz tile and no
+    panel: Correspondence is its orange tile, the invite plays one move a day. Alpine `stage` is the open panel ('blitz' |
     null), `rated` the Casual/Rated choice sent with "Find opponent".
 
     Rated is selectable only while the board games' rated queue is offered
@@ -26,6 +28,8 @@
     $searching = $this->searching;
     $correspondence = $this->correspondence;
     $hasCorrespondence = app(GameRegistry::class)->mode($slug, BoardGame::CORRESPONDENCE) !== null;
+    $hasBlitz = app(GameRegistry::class)->mode($slug, 'blitz') !== null;
+    $tiles = (int) $hasBlitz + (int) $hasCorrespondence + 2;
     $waitingThere = $correspondence['challenges'] + $correspondence['yourMove'];
     // A soft hyphen: "Correspondence" is wider than a phone's tile, and Chrome on Linux has no hyphenation of its own
     // (measured at 375 px: it broke as "Correspondenc / e"). German "Fernpartie" fits.
@@ -41,7 +45,8 @@
          x-init="if (stage === null && location.hash === '#blitz') stage = 'blitz'">
     <h2 id="play-h" class="sr-only">{{ __('Ways to play') }}</h2>
 
-    <ul role="list" @class(['m-0 grid list-none grid-cols-2 gap-2 p-0 lg:gap-3', 'lg:grid-cols-4' => $hasCorrespondence, 'lg:grid-cols-3' => ! $hasCorrespondence]) data-test="play-grid">
+    <ul role="list" @class(['m-0 grid list-none grid-cols-2 gap-2 p-0 lg:gap-3', 'lg:grid-cols-4' => $tiles === 4, 'lg:grid-cols-3' => $tiles === 3, 'lg:grid-cols-2' => $tiles === 2]) data-test="play-grid">
+        @if ($hasBlitz)
         <li>
             <x-chess.lobby-tile :label="__('Blitz')" variant="primary" data-test="play-blitz"
                                 x-on:click="stage = stage === 'blitz' ? null : 'blitz'" x-bind:aria-expanded="(stage === 'blitz').toString()"
@@ -56,9 +61,11 @@
                 </x-slot:meta>
             </x-chess.lobby-tile>
         </li>
+        @endif
         @if ($hasCorrespondence)
-            <li>
-                <x-chess.lobby-tile :label="$correspondenceLabel" icon="calendar" :href="route('board.correspondence', $slug)" data-test="play-correspondence"
+            {{-- Without blitz the one orange tile, across both columns below lg so the row of three keeps no hole. --}}
+            <li @class(['max-lg:col-span-2' => ! $hasBlitz])>
+                <x-chess.lobby-tile :label="$correspondenceLabel" icon="calendar" :href="route('board.correspondence', $slug)" data-test="play-correspondence" :variant="$hasBlitz ? 'default' : 'primary'"
                                     :count="$waitingThere" :count-label="trans_choice(':count challenge to answer|:count challenges to answer', $correspondence['challenges']).', '.trans_choice('your move in :count game|your move in :count games', $correspondence['yourMove'])">
                     <x-slot:meta>
                         @if ($correspondence['yourMove'] > 0)
@@ -141,12 +148,12 @@
         {{-- Waiting for the invited player's answer. --}}
         <div id="lobby-waiting" class="flex flex-col gap-3.5 rounded-lg bg-card p-5 shadow-ring-btc" data-test="lobby-invited">
             <span class="flex items-center gap-3"><span aria-hidden="true" class="block size-5 shrink-0 animate-spin rounded-full border-2 border-line border-t-btc motion-reduce:animate-none"></span><b class="min-w-0 text-base wrap-anywhere" data-test="waiting-name">{{ __('Waiting for :name', ['name' => $outgoing->invitee->displayName()]) }}</b></span>
-            <p class="m-0 text-[13px] text-ink-2">{{ __('Blitz 5+3 · Casual · colours drawn at random') }}</p>
+            <p class="m-0 text-[13px] text-ink-2">{{ $outgoing->mode === BoardGame::CORRESPONDENCE ? __('1 move a day · Casual · colours drawn at random') : __('Blitz 5+3 · Casual · colours drawn at random') }}</p>
             <span class="flex gap-2.5">
                 <button type="button" wire:click="withdrawInvite" class="inline-flex h-11 cursor-pointer items-center justify-center rounded-md border border-[#5A2A2E] bg-transparent px-4 text-[13px] text-loss" data-test="withdraw-invite">{{ __('Withdraw') }}</button>
             </span>
         </div>
-    @else
+    @elseif ($hasBlitz)
         {{-- Quick play: kind, range, one call to action; the explanations behind "?". --}}
         <div id="lobby-blitz" role="region" aria-label="{{ __('Blitz 5+3') }}" x-show="stage === 'blitz'" x-cloak
              x-transition:enter="transition duration-200 ease-out motion-reduce:transition-none" x-transition:enter-start="opacity-0 -translate-y-1"

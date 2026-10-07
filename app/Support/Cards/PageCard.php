@@ -1258,11 +1258,12 @@ final class PageCard
             $after = $this->c->paragraph($credit, 'mono', self::MIN, self::M, $after + 12, 500, 1, Canvas::INK_3, 1.3);
         }
 
-        $line = $f['daily'] ? __('One move a day, a reminder before your deadline. The server checks every move.') : __('Blitz 5+3 live against Bitcoiners. The server checks every move.');
+        $live = (bool) ($f['live'] ?? ! $f['daily']);
+        $line = $live ? __('Blitz 5+3 live against Bitcoiners. The server checks every move.') : __('One move a day, a reminder before your deadline. The server checks every move.');
         $this->c->paragraph($line, 'mono', self::MIN, self::M, $after + 16, 500, 3, Canvas::INK_2, 1.3);
         $running = (int) $f['running'];
         $this->figures([
-            [$this->figureLabel($f['daily'] ? 'daily-games' : 'live-games', $running), (string) $running],
+            [$this->figureLabel($live ? 'live-games' : 'daily-games', $running), (string) $running],
             [$this->figureLabel('games-played', (int) $f['played']), (string) $f['played']],
         ], self::M, 440, 352);
     }

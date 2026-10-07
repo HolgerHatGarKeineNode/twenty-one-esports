@@ -99,16 +99,20 @@ final class BoardGameService
      * A rated game comes with the trust gate the league pinned at the pairing
      * (RatedBoard, P6); without one the game is casual.
      *
+     * Without a mode the game plays its lobby mode (BoardGame::lobbyMode():
+     * correspondence for the board games since 2026-10-07).
+     *
      * @throws BoardRuleViolation for a game that is no switched-on board game,
      *                            a mode without a clock, or a player already in a live game
      */
-    public function start(string $slug, User $white, User $black, string $mode = 'blitz', ?int $tournamentMatchId = null, ?int $tournamentGame = null, ?int $firstMoveSeconds = null, ?GatePin $ratedGate = null): BoardGame
+    public function start(string $slug, User $white, User $black, ?string $mode = null, ?int $tournamentMatchId = null, ?int $tournamentGame = null, ?int $firstMoveSeconds = null, ?GatePin $ratedGate = null): BoardGame
     {
         if ($white->is($black)) {
             throw new BoardRuleViolation('same_player');
         }
 
         $definition = $this->definition($slug);
+        $mode ??= $definition->lobbyMode();
         [$initialMs, $incrementMs] = $this->timeControl($definition, $mode);
         $daily = $mode === BoardGame::CORRESPONDENCE;
         $rules = $definition->rules();

@@ -58,7 +58,7 @@ final class BoardInvites
      *
      * @throws BoardRuleViolation
      */
-    public function invite(User $inviter, User $invitee, string $slug, string $mode = 'blitz'): BoardInvite
+    public function invite(User $inviter, User $invitee, string $slug, ?string $mode = null): BoardInvite
     {
         if ($inviter->is($invitee)) {
             throw new BoardRuleViolation('invite_self');
@@ -70,6 +70,8 @@ final class BoardInvites
         }
 
         $definition = $this->registry->find($slug);
+        // Without a mode the invite plays the game's lobby mode (correspondence for the board games since 2026-10-07).
+        $mode ??= $definition instanceof BoardGameDefinition ? $definition->lobbyMode() : '';
 
         if (! $definition instanceof BoardGameDefinition || $definition->mode($mode) === null) {
             throw new BoardRuleViolation('unknown_game');

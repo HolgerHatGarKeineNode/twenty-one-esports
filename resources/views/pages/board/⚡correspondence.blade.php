@@ -511,10 +511,13 @@ new #[Layout('layouts::app')] class extends Component {
                     <x-icon name="shield-check" :size="18" class="shrink-0" /><span class="min-w-0 text-center wrap-anywhere">{{ $opponent ? __('Challenge :name', ['name' => $opponent->displayName()]) : __('Send challenge') }}</span>
                 </button>
                 <span class="text-xs leading-normal text-ink-2">{{ __('The other player has :hours h to accept. You can withdraw the challenge while it is open.', ['hours' => $hours]) }}</span>
-                {{-- As chess's challenge page offers blitz with a friend: the lobby's "Online now", where a player who looks for a game can be invited. --}}
+                {{-- As chess's challenge page offers blitz with a friend: the lobby's "Online now", where a player who looks for a game can be invited.
+                     Only for a board game with blitz (none since 2026-10-07: the invite there is a correspondence game as this challenge). --}}
+                @if (app(\App\Games\GameRegistry::class)->mode($slug, 'blitz') !== null)
                 <a href="{{ route('board.lobby', $slug) }}#online-now" class="inline-flex min-h-11 items-center gap-1.5 self-start text-[13px] text-ink underline decoration-edge underline-offset-4 hover:decoration-btc" data-test="correspondence-blitz">
                     <x-icon name="bolt" :size="14" class="shrink-0" />{{ __('Blitz 5+3 now: invite a player who is looking to play') }}
                 </a>
+                @endif
             </section>
         </div>
     @endguest
