@@ -74,6 +74,8 @@ const RL_START_MEASURE = <<<'JS'
             wrapped: inside('a.btn-p, a.btn-s, a.btn-w, button').filter((el) => el.getBoundingClientRect().height > 46).map(label),
             first: { tile: firstScreen('[data-tile=tournaments]'), tab: firstScreen('[data-test=ctx-prizes]'), all: firstScreen('[data-test=prize-band-all]') },
             order: [...document.querySelectorAll('[data-test=start-tile]')].map((el) => el.dataset.tile),
+            // Words running into the next box (de "Herausforderungen" in the pulse at 1280): an inline text wider than its own cell.
+            spill: [...document.querySelectorAll('[data-test=game-pulse] li span')].filter((el) => el.scrollWidth > el.parentElement.clientWidth + 1).map(label),
             // Squeezed text (user, 2026-10-07: widths cramped beside the chat): a sentence of more than 6 words wrapped into a box under 240 px wide and over 60 px high.
             squeezed: [...document.querySelectorAll('main p, main h2, main h3')].filter((el) => el.checkVisibility() && el.innerText.trim().split(/\s+/).length > 6 && el.getBoundingClientRect().width < 240 && el.getBoundingClientRect().height > 60).map(label),
         };
@@ -244,6 +246,7 @@ test('as an admin in German, the longest copy and the extra Create tournament bu
 
         expect($m['overflow'])->toBe(0, "{$label}: sideways overflow")
             ->and($m['squeezed'])->toBe([], "{$label}: squeezed text")
+            ->and($m['spill'])->toBe([], "{$label}: a word spills into the next cell")
             ->and($m['cut'])->toBe([], "{$label}: text wider than its box")
             ->and($m['wrapped'])->toBe([], "{$label}: a button wraps");
     }

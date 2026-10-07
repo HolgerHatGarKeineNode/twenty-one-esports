@@ -19,7 +19,7 @@
                     @if ($live && $count > 0)<span class="size-2 shrink-0 animate-live rounded-full bg-btc" aria-hidden="true"></span>@endif
                     <b @class(['font-display text-lg leading-none tabular-nums lg:text-2xl', 'text-ink-3' => $count === 0])>{{ $count }}</b>
                 </span>
-                <span class="text-[11px] leading-tight text-ink-2 lg:text-xs">{{ $text }}</span>
+                <span class="text-[11px] leading-tight text-ink-2 hyphens-auto [overflow-wrap:anywhere] lg:text-xs">{{ $text }}</span>
             </a>
         </li>
     @endforeach
