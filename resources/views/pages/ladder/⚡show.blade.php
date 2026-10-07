@@ -241,7 +241,9 @@ new #[Layout('layouts::app', ['section' => 'ladder'])] class extends Component
             <a href="{{ \App\Support\GameNames::page($game) }}" class="shrink-0" aria-label="{{ $gameName }}"><x-game-cover :game="$game" size="thumb" class="w-24 rounded-md shadow-ring lg:w-32" data-test="ladder-game-cover" /></a>
             <div class="flex min-w-0 flex-col gap-2">
                 <h1 class="m-0 flex flex-wrap items-baseline gap-x-3 font-display text-[26px] font-bold lg:text-[34px]">
-                    {{ $gameName }} {{ $modeName }}
+                    {{-- A soft hyphen: "Correspondence" (the board games' only ladder since 2026-10-07) is wider than a phone's
+                         title at 26 px (measured at 390: 274 px in a 246 px box), and Chrome on Linux has no hyphenation of its own. --}}
+                    {{ $gameName }} {{ str_replace('Correspondence', "Correspon\u{00AD}dence", $modeName) }}
                     <span class="font-sans text-xs font-normal text-ink-2">{{ __('Ladder') }}</span>
                 </h1>
                 @if ($context !== null)

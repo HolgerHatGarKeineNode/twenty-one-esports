@@ -367,11 +367,12 @@ test('the board lobby has the chess lobby\'s arrangement, shows who is online an
         shellShot($page, "parity-board-waiting-{$width}");
     }
 
-    // Bert accepts: both land on the board of a correspondence game, one move a day (no blitz since 2026-10-07).
+    // Bert accepts: he lands on the board of a correspondence game, one move a day (no blitz since 2026-10-07). A
+    // correspondence game pulls nobody off the page (BoardGameService::start): Anna's lobby drops its waiting card by push
+    // and lists the game under "Your games".
     $bertPage->evaluate('() => document.querySelector("[data-test=accept-invite]").click()');
-    foreach ([$bertPage, $page] as $landing) {
-        BrowserWait::until($landing, '() => location.pathname.startsWith("/board/") && document.querySelector("[data-test=board-game]") !== null', 15_000);
-    }
+    BrowserWait::until($bertPage, '() => location.pathname.startsWith("/board/") && document.querySelector("[data-test=board-game]") !== null', 15_000);
+    BrowserWait::until($page, '() => document.querySelector("[data-test=lobby-invited]") === null && document.querySelector("[data-test=lobby-correspondence-game]") !== null', 15_000);
     $accepted = BoardGame::query()->where('game', NineMensMorris::SLUG)->whereIn('white_id', [$anna->id, $bert->id])->whereIn('black_id', [$anna->id, $bert->id])->sole();
     expect($accepted->mode)->toBe('correspondence');
 

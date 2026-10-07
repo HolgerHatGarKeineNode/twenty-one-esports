@@ -1257,7 +1257,8 @@ new #[Title('Seasons')] #[Layout('layouts::app', ['section' => 'admin'])] class 
                 <div class="flex flex-col gap-1 border-b border-hairline py-2.5 text-[13px] last:border-0">
                     <span class="flex flex-wrap gap-x-3"><b>{{ $date($change->effective_at) }}</b><span class="text-ink-2">{{ __('by :name', ['name' => $change->changedBy?->displayName() ?? substr($change->changed_by_pubkey, 0, 8)]) }}</span></span>
                     <span class="text-ink-2">{{ $change->reason }}</span>
-                    <span class="text-xs text-ink-3">{{ collect($change->parameters)->map(fn ($value, $name) => $name.': '.json_encode($value))->implode(' · ') }}</span>
+                    {{-- A weight key is one long token ("nine-mens-morris/correspondence", 2026-10-07): it may break anywhere on a phone. --}}
+                    <span class="text-xs wrap-anywhere text-ink-3">{{ collect($change->parameters)->map(fn ($value, $name) => $name.': '.json_encode($value))->implode(' · ') }}</span>
                 </div>
             @empty
                 <x-admin.empty :text="__('No change since Block 0.')" />
