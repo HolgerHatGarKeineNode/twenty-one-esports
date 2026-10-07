@@ -434,13 +434,13 @@ new #[Layout('layouts::app', ['section' => 'matches', 'scripts' => ['resources/j
     --}}
     <div class="flex grow flex-col gap-6 px-4 pb-8 lg:grid lg:grid-cols-12 lg:grid-rows-[auto_auto_auto_1fr] lg:items-start lg:gap-x-6 lg:gap-y-5 lg:px-12 lg:pb-10">
         {{-- Invite a friend: the join link of the player's clan (series are played by clan lineups). --}}
-        {{-- Beside the chat column (xl) a page narrower than 56rem has no room for a third column: invite, next step and clans move under the main column, invite and clans side by side (user, 2026-10-07: squeezed widths; the side column was 243 px at 1280). --}}
+        {{-- Beside the chat column (xl) a page narrower than 56rem has no room for a third column: invite, next step and clans take the full width (user, 2026-10-07: squeezed widths; the side column was 243 px at 1280). --}}
         {{--
             With it, the global chat of the game (P21; 2026-10-03 "weiter oben"): right under the head and the
             invite (which keeps its first-viewport place on phones, InvitePlacementTest), in the right column from
             lg, and from xl the page's side column (.chat-rail).
         --}}
-        <div class="flex min-w-0 flex-col gap-4 lg:col-span-4 lg:col-start-9 lg:row-start-1 xl:@max-4xl:col-span-6 xl:@max-4xl:col-start-1 xl:@max-4xl:row-start-auto">
+        <div class="flex min-w-0 flex-col gap-4 lg:col-span-4 lg:col-start-9 lg:row-start-1 xl:@max-4xl:col-span-12 xl:@max-4xl:col-start-1 xl:@max-4xl:row-start-auto">
             <livewire:invite-link :game="$slug" place="game" />
             @if (\App\Support\GameChat\GameChannels::has($slug))
                 <div class="chat-rail"><livewire:game-channel :game="$slug" :wire:key="'game-channel-'.$slug" /></div>
@@ -558,7 +558,7 @@ new #[Layout('layouts::app', ['section' => 'matches', 'scripts' => ['resources/j
             <livewire:follows-here context="series" :subject="$slug" :wire:key="'follows-here-'.$slug" />
         </div>
 
-        <div class="flex min-w-0 flex-col gap-4 lg:col-span-4 lg:col-start-9 lg:row-start-3 xl:@max-4xl:col-span-6 xl:@max-4xl:col-start-7 xl:@max-4xl:row-start-auto">
+        <div class="flex min-w-0 flex-col gap-4 lg:col-span-4 lg:col-start-9 lg:row-start-3 xl:@max-4xl:col-span-12 xl:@max-4xl:col-start-1 xl:@max-4xl:row-start-auto">
             {{-- The clans of this game and the clan Hashrate (P26) --}}
             <section id="game-clans" aria-labelledby="gc-h" class="flex scroll-mt-24 flex-col gap-4 rounded-lg bg-card px-4 py-4 lg:px-5" data-test="game-clans">
                 <span class="flex flex-wrap items-center justify-between gap-x-3">
