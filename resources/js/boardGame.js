@@ -506,6 +506,8 @@ registerAlpine(() => {
 
         hoverBlock(event) {
             if (event && event.pointerType !== 'mouse') return;
+            // A mouse that only moved over the board (after clicking "Set a block") gets the mouse hint too.
+            if (event) this.pointerType = 'mouse';
             if (!this.blockMode || !this.canMove) return;
             const shown = this.preview ? this.preview.crossing + this.preview.dir : '';
             const at = event ? this.boardPoint(event) : null;

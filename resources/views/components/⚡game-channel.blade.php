@@ -121,8 +121,11 @@ new class extends Component
         @if ($chat)
             <span x-show="! open && unread > 0" x-cloak class="inline-flex h-6 min-w-6 shrink-0 items-center justify-center rounded-tag bg-btc px-1.5 text-xs font-bold text-on-btc tabular-nums xl:hidden" data-test="game-chat-unread" x-text="unreadBadge"></span>
         @endif
-        {{-- In the side column the composer's line says it ("Public on Nostr, visible in every client."); the title keeps the width. --}}
+        {{-- In the side column the composer's line says it ("Public on Nostr, visible in every client."); the title keeps the width.
+             A game without a channel yet (Blockli at its start) has nothing public on Nostr: no badge, and its line keeps the width. --}}
+        @if ($chat)
         <span @class(['relative z-10 inline-flex h-6 shrink-0 items-center gap-1.5 self-start rounded-tag px-2 text-[11px] text-ink-2 shadow-ring', 'max-xl:hidden max-sm:hidden xl:hidden' => $chat !== null]) @if ($chat) :class="{ 'max-xl:hidden': ! open }" @endif title="{{ __('NIP-28 channel and NIP-88 polls on the chat relays') }}"><x-icon name="link" :size="12" />{{ __('Public on Nostr') }}</span>
+        @endif
         @if ($chat)
             <x-icon name="chevron-down" :size="18" class="shrink-0 text-ink-2 transition-transform duration-200 ease-out motion-reduce:transition-none xl:hidden" x-bind:class="open ? 'rotate-180' : ''" />
             {{-- The whole bar opens and closes the chat below xl; from xl the chat is always open and this is gone. --}}

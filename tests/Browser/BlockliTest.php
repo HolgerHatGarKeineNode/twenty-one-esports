@@ -1,8 +1,10 @@
 <?php
 
 use App\Enums\BoardGameStatus;
+use App\Models\Admin;
 use App\Models\User;
 use App\Support\Board\BoardGameService;
+use Illuminate\Support\Facades\File;
 use Illuminate\Support\Facades\Http;
 use Pest\Browser\Playwright\Page;
 use Pest\Browser\Support\ComputeUrl;
@@ -243,3 +245,104 @@ test('while a block is shown, the buttons are at least 44 px high and Confirm is
     'phone 390 (touch)' => [390, 844, true],
     'desktop 1440 (mouse)' => [1440, 900, false],
 ]);
+
+/*
+| P6: the Blockli pages measured as an admin in German (and English for the
+| shots) at six widths: the board page while it is the admin's move with a
+| block shown, the lobby (the game's page) and the Blockli card on /play.
+*/
+
+/** Overflow, cut text, squeezed sentences, words spilling out of their cell, low buttons; inside `main`. */
+const BLOCKLI_MEASURE = <<<'JS'
+    () => {
+        const main = document.querySelector('main') ?? document.body;
+        const visible = (el) => el.checkVisibility();
+        const label = (el) => (el.dataset.test ?? el.tagName.toLowerCase()) + ' "' + (el.innerText || el.getAttribute('aria-label') || '').trim().replace(/\s+/g, ' ').slice(0, 40) + '"';
+        // Screen-reader-only text (sr-only, a 1 px box) is no visible text.
+        const all = [...main.querySelectorAll('*')].filter((el) => !(el instanceof SVGElement) && visible(el) && el.getBoundingClientRect().width > 1);
+        const scrolls = (el) => ['auto', 'scroll', 'hidden', 'clip'].includes(getComputedStyle(el).overflowX);
+        return {
+            overflow: document.documentElement.scrollWidth - document.documentElement.clientWidth,
+            // Text wider than its own box (truncate with an ellipsis is deliberate and not counted).
+            cut: all.filter((el) => el.children.length === 0 && el.clientWidth > 0 && el.scrollWidth > el.clientWidth + 1 && getComputedStyle(el).textOverflow !== 'ellipsis').map((el) => label(el) + ' ' + el.scrollWidth + '>' + el.clientWidth + ' in ' + (el.parentElement?.dataset.test ?? el.parentElement?.className ?? '')),
+            // A sentence of more than 6 words wrapped into a box under 240 px wide and over 60 px high (user, 2026-10-07).
+            // The whole page: the game chat beside main squeezed its line once.
+            squeezed: [...document.querySelectorAll('p, h1, h2, h3, li, dd, header span')].filter((el) => visible(el) && el.innerText.trim().split(/\s+/).length > 6 && el.getBoundingClientRect().width < 240 && el.getBoundingClientRect().height > 60).map(label),
+            // A word running out of its cell into the next one: a text leaf whose right edge passes its parent's.
+            spill: all.filter((el) => el.children.length === 0 && el.innerText?.trim() && el.parentElement && !scrolls(el.parentElement) && getComputedStyle(el).position !== 'absolute'
+                && el.getBoundingClientRect().right > el.parentElement.getBoundingClientRect().right + 1).map(label),
+            low: [...main.querySelectorAll('button, a.btn-p, a.btn-s, a.btn-w')].filter((el) => visible(el) && el.getBoundingClientRect().height < 44).map((el) => label(el) + ' ' + el.getBoundingClientRect().height.toFixed(1) + ' px, parent ' + el.parentElement.getBoundingClientRect().height.toFixed(1) + ' ' + getComputedStyle(el.parentElement.parentElement).display + '/' + getComputedStyle(el.parentElement.parentElement).flexDirection),
+            // From lg the lobby names the game in the header's context bar, outside main.
+            credit: [...document.querySelectorAll('[data-game-credit="blockli"]')].filter(visible).length,
+        };
+    }
+    JS;
+
+function blockliShot(Page $page, string $name): void
+{
+    $dir = getenv('BLOCKLI_SHOTS');
+
+    if (! is_string($dir) || $dir === '') {
+        return;
+    }
+
+    File::ensureDirectoryExists($dir);
+    $page->screenshot(false, $name);
+    File::move(base_path('tests/Browser/Screenshots/'.$name.'.png'), $dir.'/'.$name.'.png');
+}
+
+test('as an admin in German the board page, the lobby and the /play card squeeze, cut and spill nothing at six widths; buttons 44 px; quiet console and network', function () {
+    $admin = User::factory()->withPubkey(str_repeat('ad', 32))->create();
+    Admin::query()->create(['pubkey' => $admin->pubkey]);
+    $game = BlockliOn::setUp(app(BoardGameService::class)->start('blockli', $admin, User::factory()->create()), 'e7 e3 10 10 w - 0');
+    $rows = [];
+
+    foreach ([[390, 844], [1024, 768], [1280, 800], [1440, 900], [1600, 900], [1920, 1080]] as [$width, $height]) {
+        foreach (['de', 'en'] as $lang) {
+            if ($lang === 'en' && ! in_array($width, [390, 1440], true)) {
+                continue;
+            }
+
+            $pages = [
+                'board' => [route('board.show', ['boardGame' => $game, 'lang' => $lang], false), '[data-test=board-game]'],
+                'lobby' => [route('board.lobby', ['board' => 'blockli', 'lang' => $lang], false), '[data-test=board-lobby]'],
+                'play' => [route('play', ['lang' => $lang], false), '[data-test=play-game-blockli]'],
+            ];
+
+            foreach ($pages as $name => [$to, $ready]) {
+                $page = blockliPage($admin, $to, $width, $height, false);
+                BrowserWait::until($page, '() => document.readyState === "complete" && window.Livewire !== undefined && document.querySelector('.json_encode($ready).') !== null', 10_000);
+
+                if ($name === 'board') {
+                    BrowserWait::until($page, '() => Alpine.$data(document.querySelector("[data-test=board-game]"))?.canMove', 10_000);
+                    $page->locator('[data-test=mode-block]')->click();
+                    blockliHover($page, 'c4/d5', -30);
+                }
+
+                if ($name === 'play') {
+                    $page->evaluate('() => document.querySelector("[data-test=play-game-blockli]").scrollIntoView({ block: "center" })');
+                }
+
+                $m = $page->evaluate(BLOCKLI_MEASURE);
+                $label = "{$name} {$lang} {$width}";
+                $rows[] = sprintf('%-6s %s %4d  overflow %d  cut %d  squeezed %d  spill %d  low %d  credit %d', $name, $lang, $width, $m['overflow'], count($m['cut']), count($m['squeezed']), count($m['spill']), count($m['low']), $m['credit']);
+
+                if (in_array($width, [390, 1440], true)) {
+                    blockliShot($page, "blockli-{$name}-{$lang}-{$width}");
+                }
+
+                expect($m['overflow'])->toBeLessThanOrEqual(0, "{$label}: sideways overflow")
+                    ->and($m['cut'])->toBe([], "{$label}: cut text")
+                    ->and($m['squeezed'])->toBe([], "{$label}: squeezed text")
+                    ->and($m['spill'])->toBe([], "{$label}: spilled words")
+                    ->and($m['low'])->toBe([], "{$label}: buttons under 44 px")
+                    ->and($m['credit'])->toBeGreaterThanOrEqual(1, "{$label}: credit")
+                    ->and($page->evaluate('() => window.__errors'))->toBe([], "{$label}: console")
+                    ->and($page->evaluate(BrowserConsole::BAD_RESPONSES))->toBe([], "{$label}: responses");
+                $page->close();
+            }
+        }
+    }
+
+    fwrite(STDERR, PHP_EOL.implode(PHP_EOL, $rows).PHP_EOL);
+});

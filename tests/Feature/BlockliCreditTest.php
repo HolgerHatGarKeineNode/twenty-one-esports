@@ -143,3 +143,8 @@ test('the lobby and the board page answer a Livewire roundtrip', function () {
     Livewire\Livewire::actingAs($player)->test('pages::board.lobby', ['board' => 'blockli'])->call('$refresh')->assertOk()->assertSee('by DerCaddy');
     Livewire\Livewire::actingAs($player)->test('pages::board.show', ['boardGame' => $game])->call('$refresh')->assertOk()->assertSee('by DerCaddy');
 });
+
+test('the Blockli chat box (no channel yet) answers a roundtrip and claims nothing public on Nostr', function () {
+    Livewire\Livewire::test('game-channel', ['game' => 'blockli'])->call('$refresh')->assertOk()
+        ->assertSeeHtml('data-test="game-chat-off"')->assertDontSee('Public on Nostr');
+});
