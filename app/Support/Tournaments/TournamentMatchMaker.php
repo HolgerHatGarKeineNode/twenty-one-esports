@@ -334,7 +334,7 @@ final class TournamentMatchMaker
             $game === null, $match->isReplaced($game->id) => true,
             $game->status === BoardGameStatus::Aborted => TournamentRunner::abortedBoardGames($match) <= TournamentRunner::firstMoveRestarts(),
             // Two legs (plan "Blockli", P4): a finished game of an undecided match calls the next leg or the decider.
-            $game->status === BoardGameStatus::Finished && TournamentRunner::playsTwoLegs($match) => $match->result === null,
+            $game->status === BoardGameStatus::Finished && TournamentRunner::playsTwoLegs($game->game) => $match->result === null,
             $game->status === BoardGameStatus::Finished && $game->result === '1/2-1/2' && ! TournamentRunner::allowsDraw($match) => TournamentRunner::drawnBoardGames($match) <= TournamentRunner::drawnReplays($match->tournament),
             default => false,
         };
@@ -355,7 +355,7 @@ final class TournamentMatchMaker
         $swap = $last !== null && ($last->status === BoardGameStatus::Aborted ? $last->white_id !== $first->id : $last->white_id === $first->id);
         $mode = $tournament->mode;
 
-        $finished = TournamentRunner::playsTwoLegs($match) ? TournamentRunner::finishedBoardGames($match)->count() : 0;
+        $finished = TournamentRunner::playsTwoLegs($tournament->game) ? TournamentRunner::finishedBoardGames($match)->count() : 0;
 
         if ($finished >= 2) {
             $mode = 'blitz';

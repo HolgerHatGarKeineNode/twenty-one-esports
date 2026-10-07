@@ -485,7 +485,7 @@ final class TournamentRunner
             return;
         }
 
-        if (self::playsTwoLegs($match)) {
+        if (self::playsTwoLegs($game->game)) {
             $this->twoLegsFinished($match);
             $this->sync($match->tournament);
 
@@ -544,10 +544,14 @@ final class TournamentRunner
         $this->sync($match->tournament);
     }
 
-    /** Whether the match's board game plays each pairing as two games with the colours swapped (plan "Blockli", P4). */
-    public static function playsTwoLegs(TournamentMatch $match): bool
+    /**
+     * Whether a board game plays each tournament pairing as two games with the
+     * colours swapped (plan "Blockli", P4). Takes the slug, so a caller never
+     * has to load the match's tournament for it.
+     */
+    public static function playsTwoLegs(string $slug): bool
     {
-        $game = app(GameRegistry::class)->find($match->tournament->game);
+        $game = app(GameRegistry::class)->find($slug);
 
         return $game instanceof BoardGameDefinition && $game->playsTwoLegs();
     }
