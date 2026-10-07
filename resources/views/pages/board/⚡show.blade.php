@@ -246,9 +246,7 @@ new #[Layout('layouts::app', ['realtime' => true, 'scripts' => ['resources/js/bo
             </div>
             {{-- The lobby of this board game (P5): the next opponent, the ladder. --}}
             <a href="{{ route('board.lobby', $boardGame->game) }}" class="text-[13px] text-ink-2 underline decoration-edge underline-offset-4 hover:text-ink hover:decoration-btc" data-test="board-lobby-link">{{ __('Lobby') }}</a>
-            @if ($boardGame->isCorrespondence())
-                <a href="{{ route('board.correspondence', $boardGame->game) }}" class="text-[13px] text-ink-2 underline decoration-edge underline-offset-4 hover:text-ink hover:decoration-btc" data-test="board-correspondence-link">{{ __('Correspondence games') }}</a>
-            @endif
+            {{-- No separate "Correspondence games" link: board games are correspondence only, the lobby is that page (2026-10-08; it pushed the board below the fold at 1440). --}}
             <span class="grow"></span>
             <span role="status" class="flex h-[34px] items-center gap-2 rounded-md px-3 text-[13px]"
                   :class="connection === 'connected' ? 'bg-[#122016] text-win' : 'bg-[#241D10] text-btc-hi'">
