@@ -16,6 +16,7 @@ import matchDock from './matchDock.js';
 import teamMatchBoards from './teamMatchBoards.js';
 import upcomingEvents from './upcomingEvents.js';
 import cupMatch from './cupMatch.js';
+import meetupMap from './meetupMap.js';
 import notificationBell from './notificationBell.js';
 import boardLobby from './boardLobby.js';
 import playerPicker from './playerPicker.js';
@@ -67,6 +68,8 @@ document.addEventListener('alpine:init', () => {
     window.Alpine.data('upcomingEvents', upcomingEvents);
     // The player's open cup match: the header badge and the page banner (CupMatchNow).
     window.Alpine.data('cupMatch', cupMatch);
+    // The meetup map on /clans: labels step aside instead of covering each other.
+    window.Alpine.data('meetupMap', meetupMap);
     // The bell's panel and its renders; one dispatcher feeds the dock, the badge and the bell (playerEvents.js).
     window.Alpine.data('notificationBell', notificationBell);
     // The player picker combobox, <x-player-picker>.

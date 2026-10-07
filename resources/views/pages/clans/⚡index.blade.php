@@ -471,14 +471,16 @@ new #[Layout('layouts::app', ['section' => 'clans'])] class extends Component {
             <span class="text-xs text-ink-3">{{ __('Clans by meetup city, from the EINUNDZWANZIG portal') }}</span>
         </span>
         <div role="img" aria-label="{{ trans_choice('Map placeholder with :count clan at its meetup city|Map placeholder with :count clans at their meetup cities', count($this->pins)) }}"
+             x-data="meetupMap" data-test="meetup-map"
              class="relative h-[168px] overflow-hidden rounded-md bg-ground [background-image:radial-gradient(#26262C_1.2px,transparent_1.2px)] [background-size:12px_12px]">
+            {{-- Dots stay on their city; meetupMap.js moves a label that would cover another dot or label (user, 2026-10-07). --}}
             @foreach ($this->pins as $pin)
-                <span class="absolute flex items-center gap-2" style="left: {{ $pin['x'] }}; top: {{ $pin['y'] }}">
-                    <span class="block size-3 rounded-full bg-btc shadow-[0_0_0_4px_rgba(247,147,26,.25)]"></span>
-                    <span class="flex items-center gap-1.5 rounded-sm bg-card px-1.5 py-0.5 text-xs">@if ($pin['clan']->localLogoUrl())<x-clan-tag :clan="$pin['clan']" :tile="16" class="block size-4 shrink-0 rounded-xs" aria-hidden="true" />@endif<b>{{ $pin['tag'] }}</b> <span class="hidden text-ink-2 sm:inline">{{ $pin['city'] }}</span></span>
+                <span class="absolute block size-3" style="left: {{ $pin['x'] }}; top: {{ $pin['y'] }}" data-pin>
+                    <span class="block size-3 rounded-full bg-btc shadow-[0_0_0_4px_rgba(247,147,26,.25)]" data-pin-dot></span>
+                    <span class="absolute top-[-4px] left-5 flex items-center gap-1.5 rounded-sm bg-card px-1.5 py-0.5 text-xs whitespace-nowrap" data-pin-label>@if ($pin['clan']->localLogoUrl())<x-clan-tag :clan="$pin['clan']" :tile="16" class="block size-4 shrink-0 rounded-xs" aria-hidden="true" />@endif<b>{{ $pin['tag'] }}</b> <span class="hidden text-ink-2 sm:inline">{{ $pin['city'] }}</span></span>
                 </span>
             @endforeach
-            <span class="absolute right-3 bottom-2.5 hidden text-[11px] text-ink-3 sm:block">{{ __('Map placeholder: coordinates come from the portal meetup') }}</span>
+            <span class="absolute right-3 bottom-2.5 hidden text-[11px] text-ink-3 sm:block" data-map-note>{{ __('Map placeholder: coordinates come from the portal meetup') }}</span>
         </div>
     </section>
     @endif
