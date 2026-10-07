@@ -238,9 +238,9 @@ test('the notification settings group the switches, show how far each reaches an
 
             expect($shape)->toBe([
                 'groups' => ['notify-group-correspondence', 'notify-group-play', 'notify-group-community', 'notify-group-league'],
-                'switches' => 26, // team_match (plan Schach Rapid/Clan, P6) added one
+                'switches' => 27, // team_match (plan Schach Rapid/Clan, P6) and new_tournament (plan RL-Startseite) added one each
                 'pageOnly' => [],
-                'reachDm' => 8,
+                'reachDm' => 9, // new_tournament reaches by DM too
             ])
                 ->and($page->evaluate(DM_PAGES_CLIPPED, '[data-test=notify-about]'))->toBe([])
                 ->and($page->evaluate(DM_PAGES_CLIPPED, '#notifications'))->toBe([]);

@@ -227,7 +227,7 @@ test('row 2 follows the game of the page, and a page of every game keeps the gam
     shellOpen($page, route('games.rocket-league', absolute: false), $problems);
     $rl = $page->evaluate($state);
     expect($rl)->toMatchArray(['game' => 'rocket-league', 'current' => 'game-tab-rocket-league', 'how' => 'page'])
-        ->and($rl['links'])->toBe(['ctx-play', 'ctx-matches', 'ctx-challenge', 'ctx-ladder', 'ctx-strongest']);
+        ->and($rl['links'])->toBe(['ctx-prizes', 'ctx-play', 'ctx-matches', 'ctx-challenge', 'ctx-ladder', 'ctx-strongest']);
     shellShot($page, 'shell-player-1280-rocket-league');
 
     shellOpen($page, '/clans', $problems);

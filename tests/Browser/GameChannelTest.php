@@ -415,7 +415,7 @@ test('the chat sits right under the head at 375, a bar opened in place, and in a
 })->with([
     'chess' => ['/chess', 'chess', '[data-test=play]', []],
     // A series page: the invite keeps its first-screen place between the head (with "Play now") and the chat.
-    'rocket league' => ['/games/rocket-league', 'rocket-league', '[data-test=game-cta]', ['game-page-challenge', 'game-pulse', 'invite-module']],
+    'rocket league' => ['/games/rocket-league', 'rocket-league', '[data-test=game-cta]', ['game-page-challenge', 'game-pulse', 'game-start', 'invite-module']],
 ]);
 
 test('TMNF and Blockfill have their chat too: a bar after the hero or the game at 375, the side column at 1440', function (string $game, string $path, string $after) {

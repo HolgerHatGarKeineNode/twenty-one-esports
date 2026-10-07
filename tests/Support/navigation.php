@@ -159,7 +159,8 @@ const NAV_NOT_PAGES = [
  *
  * @var list<string>
  */
-const NAV_OPEN_EACH = ['tournaments.show'];
+// tournaments.index: Rocket League's game bar links the list filtered to its game (plan "RL-Startseite"); the unfiltered list must open too.
+const NAV_OPEN_EACH = ['tournaments.show', 'tournaments.index'];
 
 /** Vendor and infrastructure prefixes, as in RouteSweepTest. */
 const NAV_VENDOR_PREFIXES = ['livewire-', 'storage/', 'broadcasting/', '__test/', 'horizon', 'up'];
