@@ -4,6 +4,7 @@ namespace App\Support\Board;
 
 use App\Enums\BoardInviteStatus;
 use App\Enums\TournamentStatus;
+use App\Events\BoardGameStarted;
 use App\Events\BoardInviteChanged;
 use App\Games\BoardGame as BoardGameDefinition;
 use App\Games\GameRegistry;
@@ -290,7 +291,17 @@ final class BoardInvites
             return $game;
         });
 
-        return $result instanceof BoardGame ? $result : throw new BoardRuleViolation($result);
+        if (! $result instanceof BoardGame) {
+            throw new BoardRuleViolation($result);
+        }
+
+        // A correspondence game pulls nobody off their page (BoardGameService::start), but an accepted invite takes
+        // the inviter to the board too: they invited and are waiting (user, 2026-10-08). The invitee goes there anyway.
+        if ($result->isCorrespondence() && $result->tournament_match_id === null) {
+            Broadcasts::send(new BoardGameStarted($result->id, route('board.show', $result), [$invite->inviter_id]));
+        }
+
+        return $result;
     }
 
     /**

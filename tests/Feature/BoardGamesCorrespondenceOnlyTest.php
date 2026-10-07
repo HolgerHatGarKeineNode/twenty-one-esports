@@ -1,6 +1,7 @@
 <?php
 
 use App\Enums\TournamentStatus;
+use App\Events\BoardGameStarted;
 use App\Games\Blockli;
 use App\Games\Checkers;
 use App\Games\GameRegistry;
@@ -9,6 +10,7 @@ use App\Games\TrackmaniaNationsForever;
 use App\Models\Tournament;
 use App\Models\TournamentSignup;
 use App\Models\User;
+use App\Support\Board\BoardInvites;
 use App\Support\GameNames;
 use App\Support\Invites\InviteGames;
 use App\Support\Navigation\ShellNavigation;
@@ -16,6 +18,7 @@ use App\Support\Nostr\NostrKeys;
 use App\Support\Tournaments\CasualCups;
 use App\Support\Tournaments\TournamentGames;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\Queue;
 use Tests\Support\BlockliOn;
 use Tests\Support\CheckersGame;
@@ -192,4 +195,19 @@ test('the cancel command refuses to run without an admin to log the call-off und
     $this->artisan('esports:cancel-board-blitz-cups', ['--actor' => User::factory()->create()->pubkey])->assertFailed();
     expect($cup->refresh()->status)->toBe(TournamentStatus::Signup)
         ->and(CasualCups::enabledGames())->not->toContain(Blockli::SLUG);
+});
+
+test('an accepted correspondence invite takes the inviter to the board too, and only the inviter gets the extra pull', function () {
+    // User, 2026-10-08: "Ja, beide zum Brett" - the invitee goes there by its own redirect.
+    BlockliOn::play();
+    Event::fake([BoardGameStarted::class]);
+    [$inviter, $invitee] = User::factory()->count(2)->create();
+    $invitee->forceFill(['looking_to_play' => Blockli::SLUG.'/correspondence'])->save();
+
+    $invites = app(BoardInvites::class);
+    $game = $invites->accept($invites->invite($inviter, $invitee, Blockli::SLUG), $invitee);
+
+    expect($game->mode)->toBe('correspondence');
+    Event::assertDispatched(BoardGameStarted::class, fn ($event) => $event->gameId === $game->id && $event->userIds === [$inviter->id] && $event->url === route('board.show', $game));
+    Event::assertDispatchedTimes(BoardGameStarted::class, 1);
 });
