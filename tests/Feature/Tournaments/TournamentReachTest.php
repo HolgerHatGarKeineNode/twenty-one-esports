@@ -65,11 +65,12 @@ test('a game page without an open tournament says so and leads on; only admins a
     openFor('rocket-league', '3v3', ['status' => TournamentStatus::Draft, 'name' => 'Draft Cup']);
     openFor('rocket-league', '3v3', ['name' => 'Closed Cup', 'signup_closes_at' => now()->subMinute()]);
 
-    foreach (['/games/rocket-league', '/chess'] as $url) {
+    // Rocket League leads to its own tournaments (plan "RL-Startseite": the prize band's button), chess to every tournament.
+    foreach (['/games/rocket-league' => route('tournaments.index', ['game' => 'rocket-league']), '/chess' => route('tournaments.index')] as $url => $all) {
         $this->get($url)->assertOk()
             ->assertSeeHtml('data-test="next-tournament-empty"')
             ->assertDontSeeHtml('data-test="next-tournament"')
-            ->assertSeeHtml('href="'.route('tournaments.index').'" class')
+            ->assertSeeHtml('href="'.e($all).'" class')
             ->assertDontSeeHtml('data-test="next-tournament-create"')
             ->assertDontSee('Draft Cup')
             ->assertDontSee('Closed Cup');

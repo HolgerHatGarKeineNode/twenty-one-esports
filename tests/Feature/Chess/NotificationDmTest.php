@@ -72,7 +72,8 @@ test('a player who never chose gets a DM for a challenge, one who switched DMs o
 test('the default and an explicit on cover the same kinds: only those that need the player while away', function () {
     $fresh = User::factory()->create();
     $on = User::factory()->create(['chess_settings' => ['dm' => true]]);
-    $needed = ['challenge', 'reminder', 'clan_join_request', 'tournament_news', 'casual_challenge', 'block0', 'season_payout', 'opponent_request'];
+    // new_tournament (plan "RL-Startseite", P2): asked for, like block0.
+    $needed = ['challenge', 'reminder', 'clan_join_request', 'tournament_news', 'casual_challenge', 'block0', 'season_payout', 'opponent_request', 'new_tournament'];
 
     expect(collect(ChessSettings::triggers())->filter(fn (string $trigger) => $fresh->chessSettings()->dmFor($trigger))->values()->all())->toBe($needed)
         ->and(collect(ChessSettings::triggers())->filter(fn (string $trigger) => $on->chessSettings()->dmFor($trigger))->values()->all())->toBe($needed);

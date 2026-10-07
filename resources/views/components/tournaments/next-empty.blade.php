@@ -5,6 +5,10 @@
     says so and leads on, to every tournament and, for admins and
     organizers (gate `create-tournaments`), to a new one. The counterpart of
     <x-tournaments.next-card> at the same place on the page.
+
+    A slot replaces the "All tournaments" button: the prize band (plan
+    "RL-Startseite", P2) puts "Notify me of new <game> tournaments" there,
+    with its own primary button to this game's tournaments right under it.
 --}}
 <section aria-labelledby="{{ $headingId }}" {{ $attributes->class('flex flex-col gap-3 rounded-lg bg-card px-4 py-4 sm:flex-row sm:items-center sm:justify-between sm:gap-6 lg:px-6') }} data-test="next-tournament-empty">
     <div class="flex min-w-0 flex-col gap-1">
@@ -15,6 +19,10 @@
         @can('create-tournaments')
             <x-button :href="route('admin.tournaments.create')" data-test="next-tournament-create">{{ __('Create tournament') }}</x-button>
         @endcan
-        <x-button variant="quiet" :href="route('tournaments.index')" data-test="next-tournament-all">{{ __('All tournaments') }}</x-button>
+        @if ($slot->isEmpty())
+            <x-button variant="quiet" :href="route('tournaments.index')" data-test="next-tournament-all">{{ __('All tournaments') }}</x-button>
+        @else
+            {{ $slot }}
+        @endif
     </div>
 </section>

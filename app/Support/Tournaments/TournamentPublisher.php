@@ -5,6 +5,7 @@ namespace App\Support\Tournaments;
 use App\Enums\TournamentStatus;
 use App\Games\GameRegistry;
 use App\Games\ScoreGame;
+use App\Jobs\NotifyTournamentWatchers;
 use App\Jobs\PublishTournamentCalendar;
 use App\Models\NostrEvent;
 use App\Models\Tournament;
@@ -107,6 +108,11 @@ final class TournamentPublisher
             $locked->save();
 
             PublishTournamentCalendar::dispatch();
+
+            // The players who asked to hear of new tournaments of this game (plan "RL-Startseite", P2); never a cup.
+            if (! $locked->isCasualCup()) {
+                NotifyTournamentWatchers::dispatch($locked->id);
+            }
 
             return $locked;
         });

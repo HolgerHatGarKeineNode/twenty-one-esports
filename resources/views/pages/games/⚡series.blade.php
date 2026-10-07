@@ -7,11 +7,13 @@ use App\Models\Lineup;
 use App\Models\Rating;
 use App\Models\SeriesMatch;
 use App\Models\Tournament;
+use App\Models\TournamentWatch;
 use App\Models\User;
 use App\Support\Clans\ClanStats;
 use App\Support\Games\GameLanding;
 use App\Support\GameNames;
 use App\Support\PageMeta;
+use App\Support\Prizes\PrizePool;
 use App\Support\Rating\Ratings;
 use Illuminate\Support\Collection;
 use Livewire\Attributes\Computed;
@@ -50,10 +52,24 @@ use Livewire\Component;
  *    three first steps ticked), the clans and "what a series is worth"
  *    behind a disclosure. Below lg the same parts in DOM order.
  *  - No text runs wider than ~68ch; the Elo arithmetic sits in <details>.
+ *
+ * Plan "RL-Startseite" (artboard "Gewählt · Mischung"; a player in the chat,
+ * 2026-10-05: "Ich habe auf der RL Seite nach den "Preisen" gesucht"), for
+ * the games in START_LAYOUT only (user, 2026-10-05: "Erst nur Rocket
+ * League"): under the head the page's tabs with "Tournaments & prizes" in
+ * orange and four start tiles, that one first (x-games.start-tiles); at the
+ * head of the main column the prize band instead of the bare poster
+ * (x-tournaments.prize-band): the next tournament or "Notify me of new
+ * <game> tournaments" (TournamentWatch), the last prize tournament with its
+ * pot and podium, the casual cups as "no prize, Elo only", and one primary
+ * button to this game's tournaments. Every other game keeps its page.
  */
 new #[Layout('layouts::app', ['section' => 'matches', 'scripts' => ['resources/js/gameChannel.js']])] class extends Component
 {
     public string $slug = '';
+
+    /** The games whose page opens with the tabs, the start tiles and the prize band (plan "RL-Startseite"). */
+    public const START_LAYOUT = ['rocket-league'];
 
     /** Match cards on the page at most (four below sm). */
     public const MATCH_CARDS = 6;
@@ -121,6 +137,54 @@ new #[Layout('layouts::app', ['section' => 'matches', 'scripts' => ['resources/j
     public function nextTournament(): ?Tournament
     {
         return app(GameLanding::class)->nextTournament($this->slug);
+    }
+
+    /**
+     * What the prize band and the start tiles show (START_LAYOUT games only,
+     * else null): the game's last finished prize tournament with its pot,
+     * what was paid out of it and its podium, the prizes paid out in this
+     * game, and whether the viewer asked to hear of new tournaments (null
+     * for a guest).
+     *
+     * @return array{last: Tournament|null, lastPot: int|null, lastPaid: int, podium: list<array{place: int, names: list<string>}>, paid: int, watching: bool|null}|null
+     */
+    #[Computed]
+    public function prizes(): ?array
+    {
+        if (! in_array($this->slug, self::START_LAYOUT, true)) {
+            return null;
+        }
+
+        $landing = app(GameLanding::class);
+        $last = $landing->lastFinishedTournament($this->slug);
+        $user = auth()->user();
+
+        return [
+            'last' => $last,
+            'lastPot' => $last === null ? null : app(PrizePool::class)->shownPotSats($last),
+            'lastPaid' => $last === null ? 0 : PrizePool::paidSats($last),
+            'podium' => $last === null ? [] : $landing->podium($last),
+            'paid' => $landing->paidSats($this->slug),
+            'watching' => $user instanceof User ? TournamentWatch::query()->where('user_id', $user->id)->where('game', $this->slug)->exists() : null,
+        ];
+    }
+
+    /** "Notify me of new <game> tournaments", or stop it (the prize band; a START_LAYOUT game, a signed-in player). */
+    public function toggleTournamentWatch(): void
+    {
+        $user = auth()->user();
+
+        if (! $user instanceof User || ! in_array($this->slug, self::START_LAYOUT, true)) {
+            return;
+        }
+
+        $deleted = TournamentWatch::query()->where('user_id', $user->id)->where('game', $this->slug)->delete();
+
+        if ($deleted === 0) {
+            TournamentWatch::query()->firstOrCreate(['user_id' => $user->id, 'game' => $this->slug]);
+        }
+
+        unset($this->prizes);
     }
 
     /**
@@ -312,6 +376,7 @@ new #[Layout('layouts::app', ['section' => 'matches', 'scripts' => ['resources/j
     $ladder = $this->ladder;
     $clans = $this->clans;
     $h2 = 'm-0 font-display text-lg leading-tight font-bold lg:text-xl';
+    $prizes = $this->prizes;
 @endphp
 
 <div class="chat-rail-host flex grow flex-col xl:[--chat-rail-own:0px] xl:[--chat-rail-top:2rem]" data-test="game-page" data-game="{{ $slug }}" style="--game: {{ $colour }}">
@@ -352,6 +417,16 @@ new #[Layout('layouts::app', ['section' => 'matches', 'scripts' => ['resources/j
         <x-games.pulse :items="$pulseItems" :label="__('Right now in :game', ['game' => $gameName])" class="col-span-2 -mx-2 sm:col-span-1 sm:col-start-2 lg:-mx-3" />
     </header>
 
+    {{-- The tabs and the four start tiles, Tournaments & prizes first (START_LAYOUT games, plan "RL-Startseite"). --}}
+    @if ($prizes !== null)
+        <div class="flex flex-col gap-4 px-4 pb-6 lg:px-12 lg:pb-8" data-test="game-start">
+            <x-games.tabs :game="$slug" :pot-sats="$prizes['paid']" :casual="$casual" />
+            <x-games.start-tiles :game="$slug" :paid-sats="$prizes['paid']" :champion="isset($prizes['podium'][0]) ? implode(', ', $prizes['podium'][0]['names']) : null"
+                                 :next="$this->nextTournament" :searching="$pulse['searching']" :play-href="$casualOn ? '#casual' : route('challenges.create', ['game' => $slug])"
+                                 :ladder="$ladder" :latest="collect($cards)->firstWhere('state', 'final')['match'] ?? null" />
+        </div>
+    @endif
+
     {{--
         The body. Below lg one column in DOM order: invite, your next step, then the main parts, then clans and
         the Elo arithmetic. From lg two columns: the main parts span every row on the left (8 of 12); the right
@@ -384,6 +459,13 @@ new #[Layout('layouts::app', ['section' => 'matches', 'scripts' => ['resources/j
                 view of it; TournamentReachTest). At the head of the main column its poster is at most 8 of 12 wide,
                 so its name no longer outranks the page's own. Cups stay a side mention under it.
             --}}
+            @if ($prizes !== null)
+                <div class="flex flex-col gap-2">
+                    <x-tournaments.prize-band :game="$slug" :next="$this->nextTournament" :last="$prizes['last']" :last-pot="$prizes['lastPot']" :last-paid="$prizes['lastPaid']"
+                                              :podium="$prizes['podium']" :watching="$prizes['watching']" />
+                    <div id="game-cups" class="scroll-mt-24"><x-tournaments.cup-mentions :game="$slug" titled class="mt-4" /></div>
+                </div>
+            @else
             <div class="flex flex-col gap-2" data-test="game-next-tournament">
                 @if ($this->nextTournament)
                     <x-tournaments.poster :tournament="$this->nextTournament" heading-id="game-next-h" />
@@ -392,6 +474,7 @@ new #[Layout('layouts::app', ['section' => 'matches', 'scripts' => ['resources/j
                 @endif
                 <x-tournaments.cup-mentions :game="$slug" titled class="mt-4" />
             </div>
+            @endif
 
             {{-- Matches (P26): live, next, latest, with faces and scores. --}}
             <section id="game-matches" aria-labelledby="gm-h" class="flex scroll-mt-24 flex-col gap-3" data-test="game-matches">

@@ -3,6 +3,7 @@
 namespace App\Support\Games;
 
 use App\Enums\ChessGameStatus;
+use App\Enums\PayoutStatus;
 use App\Enums\SeriesStatus;
 use App\Enums\TournamentStatus;
 use App\Models\ChessGame;
@@ -13,10 +14,13 @@ use App\Models\Rating;
 use App\Models\SeriesMatch;
 use App\Models\SeriesQueueEntry;
 use App\Models\Tournament;
+use App\Models\TournamentPayout;
 use App\Models\User;
 use App\Support\Dock\OpenMatches;
 use App\Support\Rating\Ratings;
 use App\Support\Series\Ladders;
+use App\Support\Tournaments\TournamentChampionMoment;
+use Illuminate\Support\Facades\Cache;
 
 /**
  * What a game's landing page (P56, `games/{slug}` and the chess lobby) shows
@@ -34,8 +38,13 @@ use App\Support\Series\Ladders;
  * - `steps`: which of the three first steps the viewer has done.
  * - `nextTournament`: the game's special tournament whose sign-up closes
  *   next (never a casual cup; those stay a side mention).
+ * - `lastFinishedTournament`, `podium`, `paidSats`: the game's prizes as
+ *   they were won (plan "RL-Startseite", P2): its last finished special
+ *   tournament with a prize pot and that tournament's places 1 to 3, and
+ *   the prizes paid out over its finished tournaments (PrizePool::paidSats
+ *   summed; a prize passed on to the next pot is not paid).
  *
- * Every number is a count of rows; nothing is estimated.
+ * Every number is a count or a sum of rows; nothing is estimated.
  */
 final class GameLanding
 {
@@ -157,6 +166,43 @@ final class GameLanding
     {
         return Tournament::query()->special()->where('game', $game)->where('status', TournamentStatus::Signup)->where('signup_closes_at', '>', now())
             ->orderBy('signup_closes_at')->first();
+    }
+
+    /** The game's last finished special tournament with a prize pot (never a casual cup, which has none). */
+    public function lastFinishedTournament(string $game): ?Tournament
+    {
+        return Tournament::query()->special()->exceptLeagueWeeks()->where('game', $game)->where('status', TournamentStatus::Finished)
+            ->whereIn('pot_source', [Tournament::POT_LEAGUE, Tournament::POT_WALLET])
+            ->orderByDesc('starts_at')->orderByDesc('id')->first();
+    }
+
+    /**
+     * Places 1 to 3 of a finished tournament by name, ties kept
+     * (TournamentChampionMoment); empty when no place 1 can be read. A
+     * finished tournament's places do not change, so they are kept for a day
+     * per version of the tournament instead of reading its bracket on every
+     * visit of the game page.
+     *
+     * @return list<array{place: int, names: list<string>}>
+     */
+    public function podium(Tournament $tournament): array
+    {
+        $key = 'game-landing:podium:'.$tournament->id.':'.$tournament->updated_at?->getTimestamp();
+
+        /** @var list<array{place: int, names: list<string>}> */
+        return Cache::remember($key, now()->addDay(), function () use ($tournament): array {
+            $moment = TournamentChampionMoment::of($tournament, null);
+
+            return array_map(fn (array $row): array => ['place' => $row['place'], 'names' => array_column($row['entries'], 'name')], $moment['podium'] ?? []);
+        });
+    }
+
+    /** The prizes paid out over the game's finished tournaments, in sats. */
+    public function paidSats(string $game): int
+    {
+        return (int) TournamentPayout::query()->where('status', PayoutStatus::Paid)
+            ->whereHas('tournament', fn ($query) => $query->where('game', $game)->where('status', TournamentStatus::Finished))
+            ->sum('amount_sats');
     }
 
     /** Ladder entries (players or lineups) with at least one result in this game, any mode or pool. */

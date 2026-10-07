@@ -49,6 +49,7 @@ enum NotificationKind: string
     case LeagueWeekApproval = 'league_week_approval';
     case LeagueAlert = 'league_alert';
     case TeamMatch = 'team_match';
+    case NewTournament = 'new_tournament';
 
     /**
      * The page follows the link on its own after a short, cancellable
@@ -121,6 +122,8 @@ enum NotificationKind: string
      * |                          | or draw failed; once per tournament, check and hour)                        |                |                  |
      * | team_match               | TeamMatchNotifications (chess team match: lineup lock with the board order, | minutes        | push             |
      * |                          | lock missed, a board started, the result)                                   |                |                  |
+     * | new_tournament           | NotifyTournamentWatchers (asked for: a new tournament of a game opened for  | days           | push, DM         |
+     * |                          | sign-up; once per tournament, never a casual cup)                           |                |                  |
      *
      * (1) Never a DM (user decision 2026-09-30: "IMMER sinnlos"). A push at
      * most once per game and hour, and not while the player is at the board
@@ -129,7 +132,7 @@ enum NotificationKind: string
      */
     public function dmAllowed(): bool
     {
-        return in_array($this, [self::Challenge, self::Reminder, self::ClanJoinRequest, self::TournamentNews, self::CasualChallenge, self::BlockZero, self::SeasonPayout, self::OpponentRequest], true);
+        return in_array($this, [self::Challenge, self::Reminder, self::ClanJoinRequest, self::TournamentNews, self::CasualChallenge, self::BlockZero, self::SeasonPayout, self::OpponentRequest, self::NewTournament], true);
     }
 
     /**
@@ -170,7 +173,7 @@ enum NotificationKind: string
             self::Challenge, self::GameStarted, self::YourMove, self::Reminder, self::OpponentResigned, self::GameOver => 'correspondence',
             self::InviteAccepted, self::CasualLobbyShared, self::CasualNoShow, self::CasualReport, self::CasualResult,
             self::CasualChallenge, self::CasualChallengeAnswer, self::CasualReminder, self::CasualCheckIn => 'play',
-            self::ClanJoinRequest, self::ClanJoinAnswer, self::InviteLinkTaken, self::TournamentEntryRemoved, self::TournamentNews, self::CupGameNow, self::TournamentReminder, self::TeamMatch => 'community',
+            self::ClanJoinRequest, self::ClanJoinAnswer, self::InviteLinkTaken, self::TournamentEntryRemoved, self::TournamentNews, self::CupGameNow, self::TournamentReminder, self::TeamMatch, self::NewTournament => 'community',
             self::BlockZero, self::SeasonPayout, self::OpponentRequest => 'league',
         };
     }
@@ -224,7 +227,7 @@ enum NotificationKind: string
             self::MatchFound, self::Invite, self::InviteAccepted, self::Challenge, self::YourMove, self::Reminder, self::ClanJoinRequest, self::InviteLinkTaken,
             self::CasualMatchFound, self::CasualInvite, self::CasualLobbyShared, self::CasualNoShow, self::CasualReport,
             self::CasualChallenge, self::CasualReminder, self::CasualCheckIn, self::TournamentReminder, self::OpponentRequest, self::CupGameNow, self::LeagueWeekApproval, self::LeagueAlert, self::TeamMatch => 'challenge',
-            self::ClanJoinAnswer, self::TournamentEntryRemoved, self::TournamentNews, self::CasualResult, self::CasualOpponentJoined, self::CasualChallengeAnswer, self::BlockZero, self::SeasonPayout => 'confirmed',
+            self::ClanJoinAnswer, self::TournamentEntryRemoved, self::TournamentNews, self::CasualResult, self::CasualOpponentJoined, self::CasualChallengeAnswer, self::BlockZero, self::SeasonPayout, self::NewTournament => 'confirmed',
             self::GameStarted, self::OpponentResigned => 'success',
             self::GameOver => 'confirmed',
         };
@@ -285,6 +288,7 @@ enum NotificationKind: string
             self::OpponentRequest => ['Opponent request', 'a player added you as an opponent; accept or decline'],
             self::LeagueWeekApproval => ['League week approval', 'admins only: a Blockfill or TMNF week waits for your approval'],
             self::LeagueAlert => ['League alert', 'admins only: a tournament could not be closed or drawn'],
+            self::NewTournament => ['New tournament', 'you asked to be told: a new tournament of a game you follow opened for sign-up'],
             self::TeamMatch => ['Clan team match', 'your clan team match locked its lineups with your board, missed the lock, started your board or ended'],
         };
     }
