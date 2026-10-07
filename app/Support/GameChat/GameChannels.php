@@ -68,6 +68,8 @@ final class GameChannels
         // its own switch registers it (has()).
         'tmnf' => 'TrackMania Nations Forever',
         'blockfill' => 'Blockfill',
+        // 2026-10-07 (plan "Blockli"): DerCaddy's board game, like the other board games only while switched on (has()).
+        'blockli' => 'Blockli',
     ];
 
     /** Games that exist only behind a switch: their channel is open only while the registry has them. */

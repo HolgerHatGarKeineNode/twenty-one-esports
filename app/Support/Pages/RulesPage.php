@@ -403,7 +403,7 @@ final class RulesPage
                 __('The pawn steps one square up, down, left or right, never through a block. Facing the other pawn, it jumps straight over it; with a block or the edge behind that pawn, it steps beside it instead.'),
                 __('A block is two squares long and lies in the groove between squares. It may not overlap or cross another block, and it may not cut either pawn off from its goal.'),
                 __('Tap a marked square to move. For a block tap a groove, or Set a block: it shows where it lands. Tap it again or press Confirm; Rotate turns it.'),
-                __('A draw by agreement, by the same position with the same side to move for the third time, or after :moves moves of each side without a new block.', ['moves' => intdiv(BlockliRules::QUIET_PLY_LIMIT, 2)]),
+                __('A draw by agreement, by the same position with the same side to move for the third time, or after :moves moves of each side without a new block. These draw rules are the league\'s, the published rules have none.', ['moves' => intdiv(BlockliRules::QUIET_PLY_LIMIT, 2)]),
                 __('Squares are named as in chess, a1 in White\'s bottom left corner. A pawn move reads e2, a block e3h or e3v after the square left below its middle.'),
             ],
         ]];

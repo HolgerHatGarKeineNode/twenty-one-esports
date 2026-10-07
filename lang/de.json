@@ -5479,7 +5479,6 @@
     "vertical": "senkrecht",
     "Enter sets it, R turns it.": "Enter setzt ihn, R dreht ihn.",
     ":legs, decider :decider": ":legs, Entscheidungspartie :decider",
-    "A draw by agreement, by the same position with the same side to move for the third time, or after :moves moves of each side without a new block.": "Remis durch Einigung, bei derselben Stellung mit derselben Seite am Zug zum dritten Mal oder nach :moves Zügen je Seite ohne neuen Block.",
     "Squares are named as in chess, a1 in White's bottom left corner. A pawn move reads e2, a block e3h or e3v after the square left below its middle.": "Die Felder heißen wie beim Schach, a1 unten links bei Weiß. Ein Figurenzug heißt e2, ein Block e3h oder e3v nach dem Feld links unter seiner Mitte.",
     "No pieces left": "Keine Steine mehr",
     "Same position three times": "Dreimal dieselbe Stellung",
@@ -7008,5 +7007,6 @@
     "The league opens them on its own, for EU and US evenings. You play for casual Elo, not for sats.": "Die Liga öffnet sie selbst, für EU- und US-Abende. Du spielst um Casual-Elo, nicht um Sats.",
     "Tournaments & prizes": "Turniere & Preise",
     "you asked to be told: a new tournament of a game you follow opened for sign-up": "du wolltest es wissen: ein neues Turnier eines Spiels, dem du folgst, ist zur Anmeldung offen",
-    "Prizes": "Preise"
+    "Prizes": "Preise",
+    "A draw by agreement, by the same position with the same side to move for the third time, or after :moves moves of each side without a new block. These draw rules are the league's, the published rules have none.": "Remis durch Einigung, bei derselben Stellung mit derselben Seite am Zug zum dritten Mal oder nach :moves Zügen je Seite ohne neuen Block. Diese Remisregeln sind die der Liga, die veröffentlichten Regeln kennen keine."
 }

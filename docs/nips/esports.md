@@ -165,6 +165,9 @@ solo games, attestations and blocks do not change. The rule that a ladder rates 
 applies to every game and mode; it changes nothing for a ladder that is already signed. No other board game, Rocket
 League, EA Sports FC or Age of Empires II rule, ladder or event changes.
 
+The rules marked "rev. 9.23" add one game channel, `blockli` (Blockli, a board game by DerCaddy), on the terms of
+revision 9.3 and like the other board games only while the league runs it. Nothing else changes.
+
 ### Changelog of revision 9.22 (2026-10-05)
 
 Rapid chess for the players for whom blitz is too fast, and the clan team matches, in rapid (user, 2026-10-05:

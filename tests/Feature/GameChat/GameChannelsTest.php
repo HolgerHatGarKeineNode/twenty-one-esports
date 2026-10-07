@@ -53,8 +53,8 @@ test('each game has its own channel, fixed by the creator, and the league key si
     $ids = array_map(fn (string $game): ?string => GameChannels::channelId($game), array_keys(GameChannels::GAMES));
     $signed = SignedEvent::fromInput($league->sign(40, [], GameChannels::createContent('rocket-league'), GameChannels::CREATED_AT));
 
-    expect(array_keys(GameChannels::GAMES))->toBe(['chess', 'rocket-league', 'ea-sports-fc-26', 'ea-sports-fc-27', 'nine-mens-morris', 'checkers', 'age-of-empires-2', 'tmnf', 'blockfill'])
-        ->and(array_unique($ids))->toHaveCount(9)
+    expect(array_keys(GameChannels::GAMES))->toBe(['chess', 'rocket-league', 'ea-sports-fc-26', 'ea-sports-fc-27', 'nine-mens-morris', 'checkers', 'age-of-empires-2', 'tmnf', 'blockfill', 'blockli'])
+        ->and(array_unique($ids))->toHaveCount(10)
         ->and($ids)->each->toMatch('/^[0-9a-f]{64}$/')
         ->and(GameChannels::channelId('rocket-league'))->toBe($signed?->id)
         ->and($signed?->hasValidSignature())->toBeTrue()
@@ -97,6 +97,7 @@ test('the board games add two channels and change none of the four: every id of 
         // TMNF and Blockfill (2026-10-03), each equal to nostr-tools' getEventHash.
         'tmnf' => '7b93615bc0584b65c91ad7a6f43045378397b94df0f5a905f1ccdac3ac1611a3',
         'blockfill' => '2eb506f4d95521318d9d03e071ce7f9bf50abd1ceb92d136d9c842ce4a51b5ca',
+        'blockli' => '8aa1cd62b3934c12a38d9290add22b4e686dcd8c1c4704b762d67af26b71069d',
     ];
     $ids = fn (): array => array_combine(array_keys(GameChannels::GAMES), array_map(GameChannels::channelId(...), array_keys(GameChannels::GAMES)));
 
@@ -450,7 +451,7 @@ test('the command signs a board game\'s channel only while the board game is swi
     // Both on: seven channels, each signed with exactly its id (TMNF and Blockfill stay off here).
     CheckersGame::play();
     [$events, $output] = gameChannelsDryRun();
-    expect($creates($events))->toBe(array_map(GameChannels::channelId(...), array_values(array_diff(array_keys(GameChannels::GAMES), ['tmnf', 'blockfill']))))
+    expect($creates($events))->toBe(array_map(GameChannels::channelId(...), array_values(array_diff(array_keys(GameChannels::GAMES), ['tmnf', 'blockfill', 'blockli']))))
         ->and($events)->toHaveCount(14)
         ->and(collect($events)->every(fn (array $event): bool => SignedEvent::fromInput($event)?->hasValidSignature() === true))->toBeTrue()
         ->and($output)->not->toContain('nine-mens-morris: switched off')->not->toContain('checkers: switched off');
