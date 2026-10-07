@@ -1042,7 +1042,7 @@ new #[Layout('layouts::app', ['section' => 'clans'])] class extends Component
         <label class="flex min-h-11 cursor-pointer items-center justify-between gap-4 rounded-md bg-well px-3 py-2" data-test="applications-switch">
             <span class="flex min-w-0 flex-col gap-0.5"><b class="text-[13px]">{{ __('Applications open') }}</b><span class="text-xs leading-normal text-ink-2">{{ $clan->applications_open ? __('Players can apply on the clan page and in the clan list.') : __('Nobody can apply right now. Join links still work.') }}</span></span>
             <input type="checkbox" role="switch" @checked($clan->applications_open) wire:click="toggleApplications" data-test="applications-open"
-                   class="h-6 w-11 shrink-0 cursor-pointer appearance-none rounded-full bg-raised transition-colors before:block before:size-5 before:translate-x-0.5 before:rounded-full before:bg-ink-2 before:transition-transform checked:bg-btc checked:before:translate-x-[22px] checked:before:bg-on-btc motion-reduce:transition-none motion-reduce:before:transition-none">
+                   class="h-6 w-11 shrink-0 cursor-pointer appearance-none rounded-full bg-raised transition-colors before:mt-0.5 before:block before:size-5 before:translate-x-0.5 before:rounded-full before:bg-ink-2 before:transition-transform checked:bg-btc checked:before:translate-x-[22px] checked:before:bg-on-btc motion-reduce:transition-none motion-reduce:before:transition-none">
         </label>
         @error('joinRequests')<p class="m-0 text-xs text-loss" role="alert">{{ $message }}</p>@enderror
         <p class="m-0 text-xs text-ink-2" x-show="dmNote" x-text="dmNote" x-cloak role="status" data-test="decline-dm-note"></p>

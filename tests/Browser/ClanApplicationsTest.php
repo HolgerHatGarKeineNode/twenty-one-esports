@@ -246,3 +246,37 @@ test('apply from the clan page: a NIP-17 gift wrap to the captain\'s DM inbox, n
         ->and($request->decided_by_id)->toBe($captain->id);
     caClean($manage, 'manage');
 });
+
+test('the "Applications open" switch: the knob sits centred in its track, on and off, de 390 and 1440', function () {
+    // User, 2026-10-07: "Design Deffekt bei Toogles!" (the knob sat at the top of the track).
+    ['clan' => $clan, 'captain' => $captain] = caClan($this->relayUrl);
+    $knob = <<<'JS'
+        () => {
+            const el = document.querySelector('[data-test=applications-open]');
+            const track = el.getBoundingClientRect();
+            const before = getComputedStyle(el, '::before');
+            // Tailwind 4 moves with the `translate` property, not `transform`.
+            const [tx = 0, ty = 0] = before.translate === 'none' ? [] : before.translate.split(' ').map(parseFloat);
+            const top = parseFloat(before.marginTop) + ty;
+            const left = parseFloat(before.marginLeft) + tx;
+            const size = parseFloat(before.height);
+            return { on: el.checked, top, bottom: track.height - top - size, left, right: track.width - left - parseFloat(before.width) };
+        }
+        JS;
+
+    foreach ([390, 1440] as $width) {
+        $page = caPage($captain, route('clans.manage', $clan, absolute: false), $width, 'de');
+        foreach ([0, 1] as $round) {
+            $k = $page->evaluate($knob);
+            $label = "{$width} ".($k['on'] ? 'on' : 'off');
+            expect(abs($k['top'] - $k['bottom']))->toBeLessThanOrEqual(0.5, "{$label}: vertical ".json_encode($k))
+                ->and(min($k['left'], $k['right']))->toBeGreaterThanOrEqual(1.5, "{$label}: horizontal ".json_encode($k));
+            if ($round === 0) {
+                $page->locator('[data-test=applications-open]')->click();
+                BrowserWait::until($page, '() => !document.querySelector("[data-test=applications-open]").closest("[wire\\\\:id]")?.hasAttribute("wire:loading")', 5_000);
+                usleep(400_000);
+            }
+        }
+        caClean($page, "{$width}");
+    }
+});
