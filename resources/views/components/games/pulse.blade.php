@@ -14,7 +14,7 @@
     @foreach ($items as [$key, $count, $text, $href, $live])
         <li class="min-w-0">
             <a href="{{ $href }}" data-test="game-pulse-{{ $key }}" data-count="{{ $count }}"
-               class="flex h-full min-h-14 flex-col justify-start gap-0.5 rounded-md px-2 py-1.5 text-ink hover:bg-row-hover hover:text-ink lg:px-3">
+               class="flex h-full min-h-12 flex-col justify-start gap-0 rounded-md px-2 py-0.5 text-ink hover:bg-row-hover hover:text-ink lg:min-h-14 lg:gap-0.5 lg:px-3 lg:py-1.5">
                 <span class="flex items-center gap-1.5">
                     @if ($live && $count > 0)<span class="size-2 shrink-0 animate-live rounded-full bg-btc" aria-hidden="true"></span>@endif
                     <b @class(['font-display text-lg leading-none tabular-nums lg:text-2xl', 'text-ink-3' => $count === 0])>{{ $count }}</b>
