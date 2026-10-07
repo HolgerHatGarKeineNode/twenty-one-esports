@@ -93,6 +93,10 @@
 <circle data-piece="{{ $pc['side'] }}{{ $pc['king'] ? 'k' : '' }}" cx="{{ $pc['x'] }}" cy="{{ $pc['y'] }}" r="{{ round($dr['radius'] * 0.92, 2) }}" fill="{{ BS::PIECE_FILL[$pc['side']] ?? '#F4F4F5' }}" stroke="{{ BS::PIECE_STROKE[$pc['side']] ?? '#A1A1AA' }}" stroke-width="{{ round(max(1.5, $dr['radius'] * 0.08), 2) }}"/>
 @if ($pc['king'])<circle cx="{{ $pc['x'] }}" cy="{{ $pc['y'] }}" r="{{ round($dr['radius'] * 0.45, 2) }}" fill="none" stroke="#F7931A" stroke-width="{{ round(max(1.5, $dr['radius'] * 0.1), 2) }}"/>@endif
 @endforeach
+{{-- Blockli: blocks as bars on the board, and in each side's tray the blocks it has left. --}}
+@foreach ($dr['bars'] as $bar)
+<rect data-bar="{{ $bar['side'] }}:{{ $bar['kind'] }}" x="{{ $bar['x'] }}" y="{{ $bar['y'] }}" width="{{ $bar['w'] }}" height="{{ $bar['h'] }}" rx="{{ $bar['r'] }}" fill="{{ BS::PIECE_FILL[$bar['side']] ?? '#F4F4F5' }}" stroke="{{ BS::PIECE_STROKE[$bar['side']] ?? '#A1A1AA' }}" stroke-width="{{ round(max(1, $bar['r'] * 0.24), 2) }}"/>
+@endforeach
 </g>
 @endforeach
 @if ($live)

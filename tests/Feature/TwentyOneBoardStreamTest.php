@@ -37,6 +37,7 @@ use App\Support\TwentyOne\Stream\SceneSource;
 use App\Support\TwentyOne\Stream\StreamStats;
 use Illuminate\Support\Facades\Queue;
 use Illuminate\Support\Facades\Schema;
+use Tests\Support\BlockliOn;
 use Tests\Support\CheckersGame;
 use Tests\Support\NineMensMorrisOn;
 
@@ -165,6 +166,31 @@ test('a crowned checkers piece carries its ring on the scene', function () {
         // 32 dark cells, no lines.
         ->and(substr_count($svg, 'fill="#3F3F46"'))->toBe(32)
         ->and(substr_count($svg, '<line '))->toBe(0)
+        ->and($game->id)->toBeInt();
+});
+
+test('a running Blockli game shows its blocks as bars, the blocks each side has left in its tray, and the credit (plan "Blockli", P5)', function () {
+    BlockliOn::play();
+    // White's pawn on e2, Black's on e8; White set e3h, Black c6v: nine blocks left each.
+    $game = BlockliOn::setUp(app(BoardGameService::class)->start('blockli', User::factory()->create(), User::factory()->create()), 'e2 e8 9 9 w e3hw,c6vb 0');
+
+    [$data, $svg] = boardScene();
+    $drawing = BoardScene::drawing($data['board']['view'], [], 48, 88, 544);
+    $scale = 544 / 1020;
+
+    expect($data['board']['mode'])->toStartWith('Blockli by DerCaddy · ')
+        // Two pawns as plain discs: no king ring.
+        ->and(substr_count($svg, 'data-piece="w"'))->toBe(1)
+        ->and(substr_count($svg, 'data-piece="b"'))->toBe(1)
+        ->and(substr_count($svg, 'data-piece="wk"') + substr_count($svg, 'data-piece="bk"'))->toBe(0)
+        // The blocks on the board as bars, and the trays: nine blocks left a side.
+        ->and(substr_count($svg, 'data-bar="w:block-h"'))->toBe(1)
+        ->and(substr_count($svg, 'data-bar="b:block-v"'))->toBe(1)
+        ->and(substr_count($svg, 'data-bar="w:spare"'))->toBe(9)
+        ->and(substr_count($svg, 'data-bar="b:spare"'))->toBe(9)
+        // A block spans two cells and the groove (80 + 20 + 80 view units), centred in the square with the trays.
+        ->and(collect($drawing['bars'])->firstWhere('kind', 'block-h')['w'])->toEqualWithDelta(180 * $scale, 0.02)
+        ->and($drawing['cells'][0][0])->toBeGreaterThan(48.0)
         ->and($game->id)->toBeInt();
 });
 

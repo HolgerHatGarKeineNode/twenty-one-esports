@@ -20,7 +20,7 @@ final class BadgeCopy
             'chess/rapid' => __('Chess rapid'),
             'chess/correspondence' => __('Chess daily'),
             // A board game's correspondence mode (plan "Mühle und Dame", P8).
-            'nine-mens-morris/correspondence', 'checkers/correspondence' => __(':game correspondence', ['game' => __(app(GameRegistry::class)->name($game))]),
+            'nine-mens-morris/correspondence', 'checkers/correspondence', 'blockli/correspondence' => __(':game correspondence', ['game' => __(app(GameRegistry::class)->name($game))]),
             default => app(GameRegistry::class)->name($game).' '.$mode,
         };
     }
