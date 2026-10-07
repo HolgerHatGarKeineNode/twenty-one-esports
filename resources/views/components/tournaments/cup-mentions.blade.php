@@ -73,7 +73,7 @@
             <x-tournaments.cup-hall :winner="$cupWinner" :next="$cupNext" :empty="$cupGroups === []" />
         @elseif ($cupTitled)
             {{-- Side by side only when the column is wide enough, not the window: beside the game chat a 1280 window leaves ~520 px (explainer was one word a line). --}}
-            <div class="flex flex-col gap-2 @2xl:flex-row @2xl:items-end @2xl:justify-between @2xl:gap-6" data-test="cup-head">
+            <div class="flex flex-col gap-2 @3xl:flex-row @3xl:items-end @3xl:justify-between @3xl:gap-6" data-test="cup-head">
                 <div class="flex min-w-0 flex-col gap-1">
                     <div class="flex flex-wrap items-center gap-x-3 gap-y-1">
                         <h2 id="cup-game-h" class="m-0 text-[15px] font-bold">{{ __('Casual cups') }}</h2>

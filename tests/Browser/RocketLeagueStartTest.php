@@ -74,8 +74,8 @@ const RL_START_MEASURE = <<<'JS'
             wrapped: inside('a.btn-p, a.btn-s, a.btn-w, button').filter((el) => el.getBoundingClientRect().height > 46).map(label),
             first: { tile: firstScreen('[data-tile=tournaments]'), tab: firstScreen('[data-test=ctx-prizes]'), all: firstScreen('[data-test=prize-band-all]') },
             order: [...document.querySelectorAll('[data-test=start-tile]')].map((el) => el.dataset.tile),
-            // Squeezed text (user, 2026-10-07: widths cramped beside the chat): a sentence of more than 6 words in a box under 160 px.
-            squeezed: [...document.querySelectorAll('main p, main h2, main h3')].filter((el) => el.checkVisibility() && el.innerText.trim().split(/\s+/).length > 6 && el.getBoundingClientRect().width < 160).map(label),
+            // Squeezed text (user, 2026-10-07: widths cramped beside the chat): a sentence of more than 6 words wrapped into a box under 240 px wide and over 60 px high.
+            squeezed: [...document.querySelectorAll('main p, main h2, main h3')].filter((el) => el.checkVisibility() && el.innerText.trim().split(/\s+/).length > 6 && el.getBoundingClientRect().width < 240 && el.getBoundingClientRect().height > 60).map(label),
         };
     }
     JS;

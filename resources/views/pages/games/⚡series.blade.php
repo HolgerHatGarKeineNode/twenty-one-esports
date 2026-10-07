@@ -379,7 +379,7 @@ new #[Layout('layouts::app', ['section' => 'matches', 'scripts' => ['resources/j
     $prizes = $this->prizes;
 @endphp
 
-<div class="chat-rail-host flex grow flex-col xl:[--chat-rail-own:0px] xl:[--chat-rail-top:2rem]" data-test="game-page" data-game="{{ $slug }}" style="--game: {{ $colour }}">
+<div class="chat-rail-host @container flex grow flex-col xl:[--chat-rail-own:0px] xl:[--chat-rail-top:2rem]" data-test="game-page" data-game="{{ $slug }}" style="--game: {{ $colour }}">
     {{-- An open cup match comes first, whatever its game (CupMatchNow; user, 2026-10-03). --}}
     @auth
         <livewire:cup-match variant="banner" frame="block px-4 pt-4 lg:px-12" wire:key="cup-banner-game" />
@@ -434,12 +434,13 @@ new #[Layout('layouts::app', ['section' => 'matches', 'scripts' => ['resources/j
     --}}
     <div class="flex grow flex-col gap-6 px-4 pb-8 lg:grid lg:grid-cols-12 lg:grid-rows-[auto_auto_auto_1fr] lg:items-start lg:gap-x-6 lg:gap-y-5 lg:px-12 lg:pb-10">
         {{-- Invite a friend: the join link of the player's clan (series are played by clan lineups). --}}
+        {{-- Beside the chat column (xl) a page narrower than 56rem has no room for a third column: invite, next step and clans move under the main column, invite and clans side by side (user, 2026-10-07: squeezed widths; the side column was 243 px at 1280). --}}
         {{--
             With it, the global chat of the game (P21; 2026-10-03 "weiter oben"): right under the head and the
             invite (which keeps its first-viewport place on phones, InvitePlacementTest), in the right column from
             lg, and from xl the page's side column (.chat-rail).
         --}}
-        <div class="flex min-w-0 flex-col gap-4 lg:col-span-4 lg:col-start-9 lg:row-start-1">
+        <div class="flex min-w-0 flex-col gap-4 lg:col-span-4 lg:col-start-9 lg:row-start-1 xl:@max-4xl:col-span-6 xl:@max-4xl:col-start-1 xl:@max-4xl:row-start-auto">
             <livewire:invite-link :game="$slug" place="game" />
             @if (\App\Support\GameChat\GameChannels::has($slug))
                 <div class="chat-rail"><livewire:game-channel :game="$slug" :wire:key="'game-channel-'.$slug" /></div>
@@ -449,10 +450,10 @@ new #[Layout('layouts::app', ['section' => 'matches', 'scripts' => ['resources/j
         {{-- A player's next step on this game; a guest has the league's "New here?" steps in the header and "Log in to play" above. --}}
         @auth
         <x-games.next-step :game="$slug" :steps="$this->steps" :standing="$this->standing" :play-href="$casualOn ? '#casual' : route('challenges.create', ['game' => $slug])"
-                           class="lg:col-span-4 lg:col-start-9 lg:row-start-2" />
+                           class="lg:col-span-4 lg:col-start-9 lg:row-start-2 xl:@max-4xl:col-span-12 xl:@max-4xl:col-start-1 xl:@max-4xl:row-start-auto" />
         @endauth
 
-        <div class="flex min-w-0 flex-col gap-8 lg:col-span-8 lg:col-start-1 lg:row-span-4 lg:row-start-1">
+        <div class="flex min-w-0 flex-col gap-8 lg:col-span-8 lg:col-start-1 lg:row-span-4 lg:row-start-1 xl:@max-4xl:col-span-12 xl:@max-4xl:row-span-1">
             {{--
                 The game's next tournament open for sign-up, near the top (user, 2026-09-28: every game page lacked a
                 view of it; TournamentReachTest). At the head of the main column its poster is at most 8 of 12 wide,
@@ -557,7 +558,7 @@ new #[Layout('layouts::app', ['section' => 'matches', 'scripts' => ['resources/j
             <livewire:follows-here context="series" :subject="$slug" :wire:key="'follows-here-'.$slug" />
         </div>
 
-        <div class="flex min-w-0 flex-col gap-4 lg:col-span-4 lg:col-start-9 lg:row-start-3">
+        <div class="flex min-w-0 flex-col gap-4 lg:col-span-4 lg:col-start-9 lg:row-start-3 xl:@max-4xl:col-span-6 xl:@max-4xl:col-start-7 xl:@max-4xl:row-start-auto">
             {{-- The clans of this game and the clan Hashrate (P26) --}}
             <section id="game-clans" aria-labelledby="gc-h" class="flex scroll-mt-24 flex-col gap-4 rounded-lg bg-card px-4 py-4 lg:px-5" data-test="game-clans">
                 <span class="flex flex-wrap items-center justify-between gap-x-3">
