@@ -67,6 +67,57 @@ function pieceRadius(points) {
     return Number.isFinite(closest) ? closest * 0.36 : 20;
 }
 
+/**
+ * Pieces drawn as bars instead of discs (Blockli): a block on the board spans two squares and the
+ * groove between them; a handle is a short bar, a block in a tray a shorter one. `length` is
+ * `board` for a full block, else a multiple of the piece radius.
+ */
+const BARS = {
+    'block-h': { horizontal: true, length: 'board' },
+    'block-v': { horizontal: false, length: 'board' },
+    'handle-h': { horizontal: true, length: 2.2 },
+    'handle-v': { horizontal: false, length: 2.2 },
+    spare: { horizontal: false, length: 1.5 },
+};
+
+/**
+ * How long and thick a block is: two cells and the groove between them long, a little thinner than
+ * the groove. Read from the layout's cells, so the board still knows no game; null on a board whose
+ * cells have no grooves between them (checkers), where no piece is a bar.
+ */
+/** The second part of a block's path under the block input: its direction. */
+const BLOCK_DIRECTIONS = ['h', 'v'];
+
+const GEOMETRY = new WeakMap();
+
+/**
+ * For the block input, once per layout: the area of the cells and grooves, the point at each cell's
+ * middle (its square) and the other points on that area (the crossings).
+ */
+function geometryOf(layout) {
+    if (GEOMETRY.has(layout)) return GEOMETRY.get(layout);
+    const cells = layout.cells;
+    const box = { left: Math.min(...cells.map((c) => c.x)), right: Math.max(...cells.map((c) => c.x + c.size)), top: Math.min(...cells.map((c) => c.y)), bottom: Math.max(...cells.map((c) => c.y + c.size)) };
+    const inside = (at) => at.x >= box.left && at.x <= box.right && at.y >= box.top && at.y <= box.bottom;
+    const middles = new Set(cells.map((c) => c.x + c.size / 2 + ',' + (c.y + c.size / 2)));
+    const geometry = {
+        inside,
+        squareOf: new Map(layout.points.filter((p) => middles.has(p.x + ',' + p.y)).map((p) => [p.x + ',' + p.y, p.id])),
+        crossings: layout.points.filter((p) => inside(p) && !middles.has(p.x + ',' + p.y)),
+    };
+    GEOMETRY.set(layout, geometry);
+
+    return geometry;
+}
+
+export function barSize(cells) {
+    if (cells.length < 2) return null;
+    const size = cells[0].size;
+    const pitch = Math.min(...cells.map((cell) => Math.abs(cell.x - cells[0].x)).filter((dx) => dx > 0));
+
+    return Number.isFinite(pitch) && pitch > size ? { length: pitch + size, thickness: (pitch - size) * 0.8 } : null;
+}
+
 function watchConnection(onChange) {
     const pusher = window.Echo?.connector?.pusher;
     if (!pusher) {
@@ -93,9 +144,15 @@ registerAlpine(() => {
         color: config.color,
         t: config.labels,
         radius: pieceRadius(config.layout.points),
+        bar: barSize(config.layout.cells),
         receivedAt: performance.now(),
         now: performance.now(),
         clicks: [],
+        // The block input (Blockli): set-a-block mode, the block shown before it is set, the last pointer.
+        blockMode: false,
+        preview: null,
+        pointerType: 'touch',
+        lastTap: null,
         pending: false,
         error: '',
         confirmResign: false,
@@ -131,6 +188,18 @@ registerAlpine(() => {
                 channel.listen('.board.updated', (update) => this.receive(update));
                 // Anything that happened between rendering the page and subscribing.
                 channel.subscribed?.(() => this.resync());
+            }
+
+            // The block input (Blockli): a mouse shows the block it points at before the click sets it.
+            if (this.layout.input === 'blocks' && this.$refs.board) {
+                const board = this.$refs.board;
+                board.addEventListener('pointerdown', (event) => (this.pointerType = event.pointerType));
+                // Where the finger really was: on touch screens the browser moves a click onto the nearest
+                // clickable point (a crossing), which would decide the direction of the block for the player.
+                board.addEventListener('pointerup', (event) => (this.lastTap = { clientX: event.clientX, clientY: event.clientY, at: performance.now() }));
+                board.addEventListener('pointermove', (event) => this.hoverBlock(event));
+                // A finger leaves the board after every tap: only a mouse leaving takes the block shown away.
+                board.addEventListener('pointerleave', (event) => event.pointerType === 'mouse' && this.hoverBlock(null));
             }
 
             this.render();
@@ -176,6 +245,7 @@ registerAlpine(() => {
 
         browseKey(event) {
             if (event.target.closest?.('input, textarea, select')) return;
+            if (this.layout.input === 'blocks' && this.blockKey(event)) return;
             const steps = { ArrowLeft: this.shownPly - 1, ArrowRight: this.shownPly + 1, Home: 0, End: this.state.moves.length };
             if (!(event.key in steps)) return;
             event.preventDefault();
@@ -189,6 +259,7 @@ registerAlpine(() => {
 
         /** The points a click may go to next: the start of a move, or the next step of one begun. */
         get targets() {
+            if (this.layout.input === 'blocks') return this.blockTargets;
             if (!this.canMove) return [];
             const next = new Set(candidates(this.state.legal, this.clicks).map((option) => option.path[this.clicks.length]));
             next.delete(undefined);
@@ -227,14 +298,31 @@ registerAlpine(() => {
                 group.append(svgElement('circle', { cx: point.x, cy: point.y, r, fill: 'transparent' }));
                 if (last.has(point.id)) group.append(svgElement('circle', { cx: point.x, cy: point.y, r: r * 1.12, fill: 'rgba(247, 147, 26, 0.18)' }));
                 group.append(svgElement('circle', { cx: point.x, cy: point.y, r: Math.max(3, r * 0.14), fill: '#71717A' }));
-                if (piece) {
+                const bar = piece && this.bar ? BARS[piece.kind] : null;
+                if (bar) {
+                    const full = bar.length === 'board';
+                    const long = full ? this.bar.length : r * bar.length;
+                    const thick = full ? this.bar.thickness : this.bar.thickness * 0.8;
+                    const [width, height] = bar.horizontal ? [long, thick] : [thick, long];
+                    group.append(svgElement('rect', { x: point.x - width / 2, y: point.y - height / 2, width, height, rx: thick / 2, fill: PIECE_FILL[piece.side], stroke: PIECE_STROKE[piece.side], 'stroke-width': Math.max(1.5, thick * 0.12) }));
+                } else if (piece) {
                     group.append(svgElement('circle', { cx: point.x, cy: point.y, r: r * 0.92, fill: PIECE_FILL[piece.side], stroke: PIECE_STROKE[piece.side], 'stroke-width': Math.max(2, r * 0.08) }));
-                    if (piece.kind !== 'man') group.append(svgElement('circle', { cx: point.x, cy: point.y, r: r * 0.45, fill: 'none', stroke: '#F7931A', 'stroke-width': Math.max(2, r * 0.1) }));
+                    if (piece.kind === 'king') group.append(svgElement('circle', { cx: point.x, cy: point.y, r: r * 0.45, fill: 'none', stroke: '#F7931A', 'stroke-width': Math.max(2, r * 0.1) }));
                 }
                 if (clicked) group.append(svgElement('circle', { cx: point.x, cy: point.y, r: r * 1.02, fill: 'none', stroke: '#F7931A', 'stroke-width': Math.max(3, r * 0.12) }));
                 if (targets.has(point.id) && !clicked) group.append(svgElement('circle', { cx: point.x, cy: point.y, r: Math.max(5, r * 0.26), fill: 'rgba(247, 147, 26, 0.75)' }));
                 svg.append(group);
             });
+
+            // The block input: the block shown at its crossing, orange if it may be set, red if not.
+            if (this.layout.input === 'blocks') {
+                svg.style.cursor = this.blockMode && this.canMove ? 'crosshair' : '';
+                const at = this.blockMode && this.preview && this.bar ? this.layout.points.find((point) => point.id === this.preview.crossing) : null;
+                if (at) {
+                    const [width, height] = this.preview.dir === 'h' ? [this.bar.length, this.bar.thickness] : [this.bar.thickness, this.bar.length];
+                    svg.append(svgElement('rect', { x: at.x - width / 2, y: at.y - height / 2, width, height, rx: this.bar.thickness / 2, fill: this.preview.move ? 'rgba(247, 147, 26, 0.9)' : 'rgba(239, 68, 68, 0.8)', 'pointer-events': 'none', 'data-preview': this.preview.move ? 'legal' : 'illegal' }));
+                }
+            }
         },
 
         pointLabel(id, piece) {
@@ -242,6 +330,7 @@ registerAlpine(() => {
         },
 
         pick(event) {
+            if (this.layout.input === 'blocks') return this.tapBlocks(event);
             const point = event.target.closest?.('[data-point]')?.dataset.point;
             if (point) this.click(point);
         },
@@ -251,6 +340,12 @@ registerAlpine(() => {
             const point = event.target.closest?.('[data-point]')?.dataset.point;
             if (!point) return;
             event.preventDefault();
+            if (this.layout.input === 'blocks') {
+                const move = this.pawnMoves.get(point);
+                if (move) this.send(move);
+
+                return;
+            }
             this.click(point);
         },
 
@@ -288,6 +383,8 @@ registerAlpine(() => {
 
         async send(move) {
             this.clicks = [];
+            this.blockMode = false;
+            this.preview = null;
             this.pending = true;
             this.render();
             try {
@@ -296,6 +393,174 @@ registerAlpine(() => {
                 this.pending = false;
                 this.render();
             }
+        },
+
+        /* ---- the block input (Blockli) ---------------------------------------------------------------- */
+        // A layout with `input: 'blocks'` plays as the Blockli prototype: one tap on a target square moves
+        // the pawn; a tap in a groove, or anywhere after "Set a block", shows a block at the nearest
+        // crossing, lying along the groove nearest to the tap; a second tap on that crossing or "Set" sets
+        // it, "Rotate" turns it. With a mouse the block follows the pointer and a click sets it. The board
+        // still knows no rules: a block is one of the legal moves the server sent (path [crossing, h|v]),
+        // anything else shows red and cannot be set.
+
+        /** The legal pawn moves by their target square. */
+        get pawnMoves() {
+            const moves = new Map();
+            if (this.canMove) this.state.legal.forEach((option) => !BLOCK_DIRECTIONS.includes(option.path[1]) && moves.set(option.path[option.path.length - 1], option.move));
+
+            return moves;
+        },
+
+        /** The legal blocks by crossing and direction (`e3/f4 h`). */
+        get blockMoves() {
+            const moves = new Map();
+            if (this.canMove) this.state.legal.forEach((option) => BLOCK_DIRECTIONS.includes(option.path[1]) && moves.set(option.path[0] + ' ' + option.path[1], option.move));
+
+            return moves;
+        },
+
+        get blockTargets() {
+            return this.blockMode ? [] : [...this.pawnMoves.keys()];
+        },
+
+        get canSetBlocks() {
+            return this.blockMoves.size > 0;
+        },
+
+        /** The blocks the player has left: the spares of their side in the tray. */
+        get blocksLeft() {
+            return Object.values(this.state.pieces).filter((piece) => piece.kind === 'spare' && piece.side === this.color).length;
+        },
+
+        get blockHint() {
+            if (!this.blockMode || !this.canMove) return '';
+            const mouse = this.pointerType === 'mouse';
+            if (!this.preview) return mouse ? this.t.blocks.point : this.t.blocks.tap;
+            if (!this.preview.move) return this.t.blocks.illegal;
+
+            return mouse ? this.t.blocks.click : this.t.blocks.confirm;
+        },
+
+        setBlockMode(on) {
+            this.blockMode = on && this.canMove && this.canSetBlocks;
+            this.preview = null;
+            this.error = '';
+            this.render();
+        },
+
+        rotateBlock() {
+            if (!this.preview) return;
+            this.showBlock(this.preview.crossing, this.preview.dir === 'h' ? 'v' : 'h', true);
+            this.render();
+        },
+
+        setBlock() {
+            if (!this.preview || !this.canMove) return;
+            if (this.preview.move) return this.send(this.preview.move);
+            this.error = this.t.blocks.illegal;
+            this.render();
+        },
+
+        tapBlocks(event) {
+            if (!this.canMove) return;
+            this.error = '';
+            const tap = this.lastTap && performance.now() - this.lastTap.at < 1000 ? this.lastTap : event;
+            this.lastTap = null;
+            const at = this.boardPoint(tap);
+            if (!at) return;
+
+            if (!this.blockMode) {
+                const square = this.squareAt(at);
+                const move = square === null ? null : this.pawnMoves.get(square);
+                if (move) return this.send(move);
+                // A tap in a groove asks for a block right there.
+                if (square === null && this.onBoard(at) && this.canSetBlocks) {
+                    this.blockMode = true;
+                    this.showBlockAt(at);
+                }
+                this.render();
+
+                return;
+            }
+
+            if (!this.onBoard(at)) return;
+            // A second tap on the crossing shown sets its block, turned or not; a mouse click sets what it shows.
+            const same = this.preview?.crossing === this.nearestCrossing(at).id;
+            if (same && this.pointerType !== 'mouse') return this.setBlock();
+            if (!same) this.showBlockAt(at);
+            if (this.pointerType === 'mouse') return this.setBlock();
+            this.render();
+        },
+
+        hoverBlock(event) {
+            if (event && event.pointerType !== 'mouse') return;
+            if (!this.blockMode || !this.canMove) return;
+            const shown = this.preview ? this.preview.crossing + this.preview.dir : '';
+            const at = event ? this.boardPoint(event) : null;
+            if (at && this.onBoard(at)) this.showBlockAt(at);
+            else this.preview = null;
+            if ((this.preview ? this.preview.crossing + this.preview.dir : '') !== shown) this.render();
+        },
+
+        blockKey(event) {
+            if (!this.blockMode) return false;
+            if (event.key === 'Escape') this.setBlockMode(false);
+            else if (event.key === 'r' || event.key === 'R') this.rotateBlock();
+            else return false;
+            event.preventDefault();
+
+            return true;
+        },
+
+        /** Shows a block; `turned` marks one the player rotated, which keeps its direction on that crossing. */
+        showBlock(crossing, dir, turned = false) {
+            this.preview = { crossing, dir, turned, move: this.blockMoves.get(crossing + ' ' + dir) ?? null };
+        },
+
+        /** Shows the block at the crossing nearest to a board position, along the groove the position lies in. */
+        showBlockAt(at) {
+            const crossing = this.nearestCrossing(at);
+            if (this.preview?.turned && this.preview.crossing === crossing.id) return;
+            this.showBlock(crossing.id, Math.abs(at.x - crossing.x) >= Math.abs(at.y - crossing.y) ? 'h' : 'v');
+        },
+
+        /** Where a pointer (an event, or a tap noted from one) lies in board units; Black's board is turned. */
+        boardPoint(event) {
+            const svg = this.$refs.board;
+            if (!svg) return null;
+            const box = svg.getBoundingClientRect();
+            const { width, height } = this.layout;
+            const scale = Math.min(box.width / width, box.height / height);
+            let x = (event.clientX - box.left - (box.width - width * scale) / 2) / scale;
+            let y = (event.clientY - box.top - (box.height - height * scale) / 2) / scale;
+            const style = getComputedStyle(svg);
+            if (style.rotate === '180deg' || style.transform.startsWith('matrix(-1, 0, 0, -1')) [x, y] = [width - x, height - y];
+
+            return { x, y };
+        },
+
+        /** The square of the cell under a board position, null in a groove or off the cells. */
+        squareAt(at) {
+            const cell = this.layout.cells.find((c) => at.x >= c.x && at.x <= c.x + c.size && at.y >= c.y && at.y <= c.y + c.size);
+
+            return cell ? (geometryOf(this.layout).squareOf.get(cell.x + cell.size / 2 + ',' + (cell.y + cell.size / 2)) ?? null) : null;
+        },
+
+        /** Whether a board position lies on the cells and the grooves between them (not in a tray). */
+        onBoard(at) {
+            return geometryOf(this.layout).inside(at);
+        },
+
+        /** The crossing nearest to a board position. */
+        nearestCrossing(at) {
+            let nearest = null;
+            let distance = Infinity;
+            geometryOf(this.layout).crossings.forEach((point) => {
+                const d = Math.hypot(point.x - at.x, point.y - at.y);
+                if (d < distance) [nearest, distance] = [point, d];
+            });
+
+            return nearest;
         },
 
         /* ---- clocks and status ---------------------------------------------------------------------- */
@@ -408,6 +673,11 @@ registerAlpine(() => {
             this.lastSyncAt = this.receivedAt;
             this.now = this.receivedAt;
             if (changed) this.clicks = [];
+            // The block input: a block shown is checked against the new legal moves; off the move none is shown.
+            if (changed && this.layout.input === 'blocks') {
+                if (!this.canMove) [this.blockMode, this.preview] = [false, null];
+                else if (this.preview) this.showBlock(this.preview.crossing, this.preview.dir, this.preview.turned);
+            }
             if (this.state.status !== 'active') this.confirmResign = false;
             this.syncPolling();
             this.render();

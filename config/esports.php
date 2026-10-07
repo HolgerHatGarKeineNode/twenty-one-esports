@@ -1,6 +1,7 @@
 <?php
 
 use App\Games\AgeOfEmpires2;
+use App\Games\Blockli;
 use App\Games\Checkers;
 use App\Games\Chess;
 use App\Games\EaSportsFc26;
@@ -281,6 +282,7 @@ return [
         'games' => [
             'nine-mens-morris' => ['enabled' => (bool) env('ESPORTS_BOARD_GAME_NINE_MENS_MORRIS', false), 'class' => NineMensMorris::class],
             'checkers' => ['enabled' => (bool) env('ESPORTS_BOARD_GAME_CHECKERS', false), 'class' => Checkers::class],
+            'blockli' => ['enabled' => (bool) env('ESPORTS_BOARD_GAME_BLOCKLI', false), 'class' => Blockli::class],
         ],
     ],
 

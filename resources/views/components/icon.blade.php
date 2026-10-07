@@ -85,6 +85,8 @@
         'store-switch' => '<path d="M10 3H7a4 4 0 0 0-4 4v10a4 4 0 0 0 4 4h3zM14 3h3a4 4 0 0 1 4 4v10a4 4 0 0 1-4 4h-3z"></path><circle cx="6.5" cy="8" r="1.3"></circle><circle cx="17.5" cy="14" r="1.3"></circle>',
         'store-steam' => '<circle cx="12" cy="12" r="9"></circle><circle cx="15" cy="9" r="2.5"></circle><circle cx="9" cy="15.5" r="1.8"></circle><path d="m10.4 14.3 2.8-3.4M3.5 13.5l4 1.3"></path>',
         'store-epic' => '<path d="M5 3h14v14l-7 4-7-4z"></path><path d="M14.5 7.5h-5v7h5M9.5 11h4"></path>',
+        // Blockli: four squares and a block in the groove between them.
+        'blockli' => '<rect x="3" y="3" width="7" height="7" rx="1.5"></rect><rect x="14" y="3" width="7" height="7" rx="1.5"></rect><rect x="3" y="16" width="7" height="5" rx="1.5"></rect><rect x="14" y="16" width="7" height="5" rx="1.5"></rect><path d="M3 13h18" stroke-width="2.5"></path>',
         // A like on Nostr (P48, NIP-25).
         'heart' => '<path d="M20.8 4.6a5.5 5.5 0 0 0-7.8 0L12 5.7l-1-1.1a5.5 5.5 0 0 0-7.8 7.8L12 21.2l8.8-8.8a5.5 5.5 0 0 0 0-7.8z"></path>',
         default => throw new InvalidArgumentException("Unknown icon [{$name}]."),

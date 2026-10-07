@@ -21,7 +21,7 @@ abstract class BoardGame implements Game
      * `nine-mens-morris`, never `mill` (resources/js/millAuth.js is the
      * nostr-mill login; a game named "mill" would mix up search and names).
      */
-    public const RESERVED_SLUGS = ['nine-mens-morris', 'checkers'];
+    public const RESERVED_SLUGS = ['nine-mens-morris', 'checkers', 'blockli'];
 
     final public function kind(): GameKind
     {

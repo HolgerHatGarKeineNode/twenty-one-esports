@@ -4,11 +4,13 @@ namespace App\Support\Pages;
 
 use App\Enums\TournamentFormat;
 use App\Games\Blockfill;
+use App\Games\Blockli;
 use App\Games\GameMode;
 use App\Games\GameRegistry;
 use App\Games\NineMensMorris;
 use App\Games\TrackmaniaNationsForever;
 use App\Models\Tournament;
+use App\Support\Board\BlockliRules;
 use App\Support\Board\CheckersRules;
 use App\Support\Board\NineMensMorrisRules;
 use App\Support\Chess\ChessModes;
@@ -69,6 +71,7 @@ final class RulesPage
             // Nine Men's Morris and Checkers last, as on every surface (user 2026-10-03).
             ...self::nineMensMorris(),
             ...self::checkers(),
+            ...self::blockli(),
             self::tournaments(),
             self::cups(),
             self::prizes(),
@@ -367,6 +370,39 @@ final class RulesPage
                 __('Squares are named as in chess, a1 in White\'s bottom left corner. A step reads c3-d4, a capture c3xe5xc7.'),
                 self::correspondence(),
                 __('Every game ends: men only step forward and every capture takes pieces off, so the quiet moves above run out.'),
+            ],
+        ]];
+    }
+
+    /**
+     * Blockli, a race with blocks on 9 x 9 (Quoridor-type rules), only while
+     * it is switched on: the rules of BlockliRules, its numbers read from there.
+     *
+     * @return list<Section>
+     */
+    private static function blockli(): array
+    {
+        if (app(GameRegistry::class)->find(Blockli::SLUG) === null) {
+            return [];
+        }
+
+        return [[
+            'id' => Blockli::SLUG,
+            'title' => GameNames::game(Blockli::SLUG),
+            'lead' => __('A race on 9 × 9: bring your pawn to the far side first, and block the other pawn\'s way.'),
+            'facts' => [
+                [__('Time control'), __('Blitz 5+3')],
+                [__('First move'), self::seconds((int) config('esports.board_games.first_move_seconds'))],
+                [__('Correspondence'), __('1 move a day')],
+            ],
+            'items' => [
+                __('White starts on e1 and wins on rank 9, Black starts on e9 and wins on rank 1. White moves first.'),
+                __('Each turn you either move your pawn or set one of your :blocks blocks.', ['blocks' => BlockliRules::BLOCKS]),
+                __('The pawn steps one square up, down, left or right, never through a block. Facing the other pawn, it jumps straight over it; with a block or the edge behind that pawn, it steps beside it instead.'),
+                __('A block is two squares long and lies in the groove between squares. It may not overlap or cross another block, and it may not cut either pawn off from its goal.'),
+                __('Tap a marked square to move. For a block tap a groove, or Set a block: it shows where it lands. Tap it again or press Confirm; Rotate turns it.'),
+                __('A draw by agreement, by the same position with the same side to move for the third time, or after :moves moves of each side without a new block.', ['moves' => intdiv(BlockliRules::QUIET_PLY_LIMIT, 2)]),
+                __('Squares are named as in chess, a1 in White\'s bottom left corner. A pawn move reads e2, a block e3h or e3v after the square left below its middle.'),
             ],
         ]];
     }

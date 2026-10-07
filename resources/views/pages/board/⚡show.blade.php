@@ -212,6 +212,9 @@ new #[Layout('layouts::app', ['realtime' => true, 'scripts' => ['resources/js/bo
                     'not_a_player' => __('Only the two players can do that.'), 'too_late_to_abort' => __('Both sides have moved, the game can no longer be aborted.'),
                     'tournament_game' => __('A tournament game cannot be aborted.'),
                     'default' => __('That did not work. The board shows the server\'s state.')],
+                // The block input (Blockli).
+                'blocks' => ['tap' => __('Tap a groove: the block shows where it lands.'), 'point' => __('Point at a groove: the block follows.'),
+                    'confirm' => __('Tap the block again or press Confirm.'), 'click' => __('Click to set the block.'), 'illegal' => __('No block fits here.')],
             ],
         ];
     }
@@ -261,11 +264,32 @@ new #[Layout('layouts::app', ['realtime' => true, 'scripts' => ['resources/js/bo
                      x-on:click="pick($event)" x-on:keydown="pickKey($event)"
                      role="group" aria-label="{{ __('Game board') }}"
                      x-bind:class="color === 'b' ? 'rotate-180' : ''"
-                     class="block aspect-square w-full touch-manipulation rounded-lg bg-well select-none" data-test="board"></svg>
+                     style="aspect-ratio: {{ $config['layout']['width'] ?? 1 }} / {{ $config['layout']['height'] ?? 1 }}"
+                     class="block w-full touch-manipulation rounded-lg bg-well select-none" data-test="board"></svg>
                 <div class="flex items-center justify-between gap-3 rounded-lg bg-card px-3 py-2" data-test="player-bottom">
                     <span class="min-w-0 truncate text-sm" x-text="sideName(bottomSide)"></span>
                     <span role="timer" class="shrink-0 font-display text-2xl font-bold whitespace-nowrap tabular-nums" :class="state.clock.running === bottomSide ? 'text-btc-hi' : 'text-ink-2'" x-text="clock(bottomSide)" data-test="clock-bottom"></span>
                 </div>
+                {{-- The block input (Blockli): move, or set a block shown first, as in the Blockli prototype. --}}
+                <template x-if="layout.input === 'blocks' && color && state.status === 'active'">
+                    <div class="flex flex-col gap-2" data-test="block-input">
+                        <div class="grid grid-cols-2 gap-2" role="group" aria-label="{{ __('Move or set a block') }}">
+                            <button type="button" class="inline-flex h-11 cursor-pointer items-center justify-center rounded-md px-[18px] text-[13px]"
+                                    :class="blockMode ? 'btn-w border border-line bg-well text-ink' : 'border border-btc bg-btc-press font-bold text-btc-hi'"
+                                    :aria-pressed="blockMode ? 'false' : 'true'" x-on:click="setBlockMode(false)" data-test="mode-move">{{ __('Move the pawn') }}</button>
+                            <button type="button" class="inline-flex h-11 cursor-pointer items-center justify-center gap-2 rounded-md px-[18px] text-[13px] disabled:cursor-default disabled:opacity-50"
+                                    :class="blockMode ? 'border border-btc bg-btc-press font-bold text-btc-hi' : 'btn-w border border-line bg-well text-ink'"
+                                    :aria-pressed="blockMode ? 'true' : 'false'" :disabled="!myTurn || !canSetBlocks" x-on:click="setBlockMode(true)" data-test="mode-block">
+                                {{ __('Set a block') }} <span class="tabular-nums" x-text="blocksLeft"></span>
+                            </button>
+                        </div>
+                        <div class="grid grid-cols-2 gap-2" x-show="blockMode">
+                            <x-button variant="quiet" x-bind:disabled="!preview" x-on:click="rotateBlock()" data-test="rotate-block">{{ __('Rotate') }}</x-button>
+                            <x-button x-bind:disabled="!preview || !preview.move" x-on:click="setBlock()" data-test="set-block">{{ __('Confirm') }}</x-button>
+                        </div>
+                        <p class="m-0 text-[13px] text-ink-2" aria-live="polite" x-show="blockHint" x-text="blockHint" data-test="block-hint"></p>
+                    </div>
+                </template>
             </div>
 
             {{-- Status, actions, moves --}}

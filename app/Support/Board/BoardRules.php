@@ -64,7 +64,10 @@ interface BoardRules
      * The point ids a player clicks, in order, to make this move. Among the
      * legal moves of one position no path is the beginning of another (a
      * capture chain that can go on is no legal move yet), so the board knows
-     * a move is complete when its path is.
+     * a move is complete when its path is. A game whose view asks for the
+     * block input (`input` = `blocks`, Blockli) differs: its board finds a
+     * block by its crossing and direction, the path `[crossing, h|v]`, and
+     * a pawn move by the last point of its path.
      *
      * @return list<string>
      */
@@ -108,9 +111,12 @@ interface BoardRules
      * What the board shows, in the units of a `width` x `height` SVG view
      * box: the lines and cells drawn under the pieces, the points a player
      * can click (with their id) and the piece on each occupied point.
+     * `input`, if set, asks the board for another way of clicking than path
+     * by path: `blocks` (Blockli) moves the pawn with one tap on its target
+     * and shows a block at the crossing nearest to a tap, to be confirmed.
      *
      * @param  TPosition  $position
-     * @return array{width: int, height: int, lines: list<array{0: int, 1: int, 2: int, 3: int}>, cells: list<array{x: int, y: int, size: int}>, points: list<array{id: string, x: int, y: int}>, pieces: array<string, array{side: 'w'|'b', kind: string}>}
+     * @return array{width: int, height: int, lines: list<array{0: int, 1: int, 2: int, 3: int}>, cells: list<array{x: int, y: int, size: int}>, points: list<array{id: string, x: int, y: int}>, pieces: array<string, array{side: 'w'|'b', kind: string}>, input?: 'blocks'}
      */
     public function view(mixed $position): array;
 }
