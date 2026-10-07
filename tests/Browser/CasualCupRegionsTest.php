@@ -259,7 +259,8 @@ test('by start orders the game groups by their earliest cup and the rows by star
         ->and($page->evaluate('() => window.__errors'))->toBe([]);
 });
 
-test('the game filter of the cup board stays inside the window with seven games, from 640 to 1920 px in English and German', function () {
+test('the game filter of the cup board stays inside the window with every cup game, from 640 to 1920 px in English and German', function () {
+    // The board games run no cup since 2026-10-07 (correspondence only): five games, the board games listed in vain.
     NineMensMorrisOn::play();
     CheckersGame::play();
     config(['esports.casual_cups.enabled' => ['chess', 'rocket-league', 'ea-sports-fc-26', 'ea-sports-fc-27', 'age-of-empires-2', 'nine-mens-morris', 'checkers']]);
@@ -299,7 +300,7 @@ test('the game filter of the cup board stays inside the window with seven games,
 
     foreach ($measured as $at => $state) {
         expect([$at, $state['overflow'], $state['past'], $state['clipped']])->toBe([$at, 0, 0, []])
-            ->and(count($state['names']))->toBe(7);
+            ->and(count($state['names']))->toBe(5);
 
         // Label in name (WCAG 2.5.3): every name starts with the text its button shows.
         foreach ($state['names'] as $index => $name) {

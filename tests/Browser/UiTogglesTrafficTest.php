@@ -4,7 +4,6 @@ use App\Enums\InviteStatus;
 use App\Enums\TournamentFormat;
 use App\Enums\TournamentResultsMode;
 use App\Enums\TournamentStatus;
-use App\Games\NineMensMorris;
 use App\Models\Admin;
 use App\Models\Clan;
 use App\Models\ClanInvite;
@@ -25,8 +24,8 @@ use Pest\Browser\Support\ComputeUrl;
 use Tests\Support\BrowserConsole;
 use Tests\Support\BrowserLogin;
 use Tests\Support\BrowserWait;
+use Tests\Support\FixtureBoardGame;
 use Tests\Support\LivewireTraffic;
-use Tests\Support\NineMensMorrisOn;
 
 pest()->group('browser');
 
@@ -346,7 +345,8 @@ test('toggles and searches cost no page render, keep their state through a rende
 });
 
 test('a searching board lobby asks when its range widens with the socket up, and every 4 s without one (performance plan P7, F7)', function () {
-    NineMensMorrisOn::play();
+    // The live queue is a blitz board game's (the test fixture's): the real board games are correspondence only since 2026-10-07.
+    FixtureBoardGame::play();
     $minute = getenv('UI_TOGGLES_LOBBY_MINUTE') === '1';
     $windowMs = $minute ? 60_000 : 12_000;
 
@@ -355,13 +355,13 @@ test('a searching board lobby asks when its range widens with the socket up, and
     }
 
     $player = User::factory()->create(['name' => 'Morris Waiting']);
-    app(BoardQueue::class)->join($player, NineMensMorris::SLUG);
+    app(BoardQueue::class)->join($player, FixtureBoardGame::SLUG);
 
     $webpage = visit(BrowserLogin::url($player));
     $page = $webpage->page();
     $page->context()->addInitScript(BrowserConsole::COLLECTOR);
     $page->context()->addInitScript(TOGGLES_REAL_COUNTER);
-    $page->goto(ComputeUrl::from(route('board.lobby', ['board' => NineMensMorris::SLUG])));
+    $page->goto(ComputeUrl::from(route('board.lobby', ['board' => FixtureBoardGame::SLUG])));
     BrowserWait::until($page, '() => document.readyState === "complete" && typeof window.Livewire !== "undefined"', 15_000);
     BrowserWait::until($page, '() => window.Echo?.connector?.pusher?.connection?.state === "connected"', 15_000);
     BrowserWait::until($page, '() => document.querySelector("[data-test=lobby-searching]") !== null', 10_000);

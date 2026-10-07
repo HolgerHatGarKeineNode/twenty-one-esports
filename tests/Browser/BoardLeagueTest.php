@@ -91,36 +91,28 @@ function boardLeagueBox(Page $page, string $selector): ?array
     return $page->evaluate('() => { const e = document.querySelector('.json_encode($selector).'); if (! e) return null; const r = e.getBoundingClientRect(); return { top: Math.round(r.top), bottom: Math.round(r.bottom), left: Math.round(r.left), right: Math.round(r.right) }; }');
 }
 
-test('two players meet in a board game lobby and land on the board; lobby, board and ladder measured clean', function (int $width, int $height, string $locale) {
+test('a board game lobby offers correspondence and no blitz; a correspondence game\'s board and the ladder measured clean', function (int $width, int $height, string $locale) {
     expect(config('broadcasting.default'))->toBe('reverb', 'Run this through `composer test:browser`, which starts Reverb.');
 
     [$anna, $bert] = User::factory()->count(2)->create();
     $lobby = route('board.lobby', NineMensMorris::SLUG, false);
     $title = $locale === 'de' ? 'Mühle' : "Nine Men's Morris";
-    $find = $locale === 'de' ? 'Gegner finden' : 'Find opponent';
 
+    // Correspondence only since 2026-10-07: no Blitz tile, no "Find opponent"; Correspondence is the orange tile.
     $first = boardLeaguePage($anna, $lobby, $width, $height, $locale);
     expect($first->evaluate('() => document.querySelector("[data-test=board-lobby] h1").innerText'))->toBe($title)
-        ->and($first->evaluate('() => document.querySelector("[data-test=find-opponent-button]").textContent.trim()'))->toBe($find);
+        ->and($first->evaluate('() => [!! document.querySelector("[data-test=play-blitz]"), !! document.querySelector("[data-test=find-opponent-button]"), !! document.querySelector("[data-test=play-correspondence]")]'))->toBe([false, false, true]);
     $lobbyBeforeSearch = boardLeagueMeasure($first);
     shellShot($first, "board-lobby-{$locale}-{$width}");
 
-    // As in the chess lobby, the Blitz tile opens the panel with "Find opponent" (P5 of plan mempool-streifen).
-    $first->locator('[data-test=play-blitz]')->click();
-    $first->locator('[data-test=find-opponent-button]')->click();
-    BrowserWait::until($first, '() => document.querySelector("[data-test=lobby-searching]") !== null', 10_000);
-
-    $second = boardLeaguePage($bert, $lobby, $width, $height, $locale);
-    $second->locator('[data-test=play-blitz]')->click();
-    $second->locator('[data-test=find-opponent-button]')->click();
+    $game = app(BoardGameService::class)->start(NineMensMorris::SLUG, $anna, $bert);
+    expect($game->mode)->toBe('correspondence');
+    $first->goto(ComputeUrl::from(route('board.show', $game, false)));
+    $second = boardLeaguePage($bert, route('board.show', $game, false), $width, $height, $locale);
 
     foreach ([$second, $first] as $page) {
         BrowserWait::until($page, '() => location.pathname.startsWith("/board/") && document.querySelector("[data-test=board-game]") !== null', 15_000);
     }
-
-    $game = BoardGame::query()->sole();
-    expect($game->game)->toBe(NineMensMorris::SLUG)
-        ->and([$game->white_id, $game->black_id])->toEqualCanonicalizing([$anna->id, $bert->id]);
 
     $measured = ['lobby' => $lobbyBeforeSearch];
 
@@ -136,7 +128,7 @@ test('two players meet in a board game lobby and land on the board; lobby, board
     shellShot($first, "board-game-{$locale}-{$width}");
 
     // The board game's ladder, as the lobby links it.
-    $second->goto(ComputeUrl::from(route('ladder.show', [Checkers::SLUG, 'blitz'], false)));
+    $second->goto(ComputeUrl::from(route('ladder.show', [Checkers::SLUG, 'correspondence'], false)));
     BrowserWait::until($second, '() => document.readyState === "complete"', 10_000);
     $measured['ladder'] = boardLeagueMeasure($second);
     shellShot($second, "board-ladder-{$locale}-{$width}");
@@ -179,7 +171,7 @@ test('a guest watching a board game at 1440 x 900 sees both player cards under t
     $watch = boardLeagueMeasure($guest);
 
     $guest->goto(ComputeUrl::from(route('board.lobby', Checkers::SLUG, false)));
-    BrowserWait::until($guest, '() => document.querySelector("[data-test=lobby-login]") !== null', 10_000);
+    BrowserWait::until($guest, '() => document.querySelector("[data-test=play-challenge]")?.getAttribute("href")?.includes("/login") === true', 10_000);
     $lobby = boardLeagueMeasure($guest);
     shellShot($guest, "board-lobby-guest-{$locale}-1440");
 
@@ -309,7 +301,7 @@ const BOARD_PARITY_ROWS = <<<'JS'
     })
     JS;
 
-test('the board lobby has the chess lobby\'s arrangement, shows who is online and invites them; the cup head reads as tournaments', function (int $width, int $height, string $locale) {
+test('the board lobby has the chess lobby\'s arrangement, shows who is online and invites them into a correspondence game; chess\'s cup head reads as tournaments', function (int $width, int $height, string $locale) {
     expect(config('broadcasting.default'))->toBe('reverb', 'Run this through `composer test:browser`, which starts Reverb.');
 
     config(['esports.league.nsec' => (new TestSigner)->secret, 'esports.casual_cups.enabled' => ['chess', NineMensMorris::SLUG]]);
@@ -318,7 +310,7 @@ test('the board lobby has the chess lobby\'s arrangement, shows who is online an
     $anna = User::factory()->create(['name' => 'Anna']);
     $bert = User::factory()->create(['name' => $long]);
     $cleo = User::factory()->create(['name' => 'Cleo', 'looking_to_play' => 'chess/blitz']);
-    $dora = User::factory()->create(['name' => 'Dora', 'looking_to_play' => NineMensMorris::SLUG.'/blitz']);
+    $dora = User::factory()->create(['name' => 'Dora', 'looking_to_play' => NineMensMorris::SLUG.'/correspondence']);
     app(BoardGameService::class)->start(NineMensMorris::SLUG, User::factory()->create(['name' => 'Wei']), User::factory()->create(['name' => 'Len']));
     $board = route('board.lobby', NineMensMorris::SLUG, false);
 
@@ -332,7 +324,8 @@ test('the board lobby has the chess lobby\'s arrangement, shows who is online an
     $pages = [];
     foreach (['chess' => route('chess.lobby', [], false), 'board' => $board] as $which => $path) {
         $pages[$which] = $page = boardLeaguePage($anna, $path, $width, $height, $locale);
-        BrowserWait::until($page, '() => window.Alpine && document.fonts.status === "loaded" && document.querySelector("[data-test=cup-head]") !== null && document.querySelectorAll("[data-test=online-player]").length >= 2', 10_000);
+        // The board games run no casual cup since 2026-10-07: only chess's lobby has the cup head.
+        BrowserWait::until($page, '() => window.Alpine && document.fonts.status === "loaded" && ('.($which === 'board' ? 'true' : 'document.querySelector("[data-test=cup-head]") !== null').') && document.querySelectorAll("[data-test=online-player]").length >= 2', 10_000);
         $measured[$which] = ['sections' => $page->evaluate(BOARD_PARITY_SECTIONS), 'cut' => $page->evaluate(BOARD_PARITY_CUT), 'split' => $page->evaluate(BOARD_PARITY_SPLIT)] + boardLeagueMeasure($page);
         if ($locale === 'en') {
             shellShot($page, "parity-{$which}-{$width}");
@@ -374,6 +367,14 @@ test('the board lobby has the chess lobby\'s arrangement, shows who is online an
         shellShot($page, "parity-board-waiting-{$width}");
     }
 
+    // Bert accepts: both land on the board of a correspondence game, one move a day (no blitz since 2026-10-07).
+    $bertPage->evaluate('() => document.querySelector("[data-test=accept-invite]").click()');
+    foreach ([$bertPage, $page] as $landing) {
+        BrowserWait::until($landing, '() => location.pathname.startsWith("/board/") && document.querySelector("[data-test=board-game]") !== null', 15_000);
+    }
+    $accepted = BoardGame::query()->where('game', NineMensMorris::SLUG)->whereIn('white_id', [$anna->id, $bert->id])->whereIn('black_id', [$anna->id, $bert->id])->sole();
+    expect($accepted->mode)->toBe('correspondence');
+
     fwrite(STDERR, "board parity {$locale} {$width}x{$height}: ".json_encode(compact('measured', 'online', 'rows', 'waiting')).PHP_EOL);
 
     $order = fn (array $rows): array => array_column($rows, 0);
@@ -386,7 +387,7 @@ test('the board lobby has the chess lobby\'s arrangement, shows who is online an
     // The game chat (2026-10-03, "weiter oben"): right under the way to play below xl; from xl the side column beside all.
     [$expected, $order] = boardLeagueChatOrder($expected, $width, $order);
 
-    expect($order($measured['board']['sections']))->toBe($expected)
+    expect($order($measured['board']['sections']))->toBe(array_values(array_diff($expected, ['cups'])))
         ->and($order($measured['chess']['sections']))->toBe($expected)
         ->and($online['tag'])->toBe($locale === 'de' ? 'sucht: Mühle' : "looking: Nine Men's Morris")
         ->and($online['tile'])->toBe($online['count'])
@@ -493,7 +494,7 @@ test('each board game chat sits in chess\'s slot and holds long names, long word
     $names = ['Satoshinakamotohalfinneyadambackszabonick', 'Donaudampfschifffahrtsgesellschaftskapitän', 'Anna'];
     foreach ($keys as $i => $key) {
         $user = User::factory()->create(['name' => $names[$i], 'pubkey' => $key->pubkey]);
-        Rating::query()->create(['pool' => 'casual', 'season' => '', 'game' => NineMensMorris::SLUG, 'mode' => 'blitz', 'subject' => 'user:'.$user->id, 'user_id' => $user->id, 'rating' => 1016, 'results' => 1, 'wins' => 1, 'draws' => 0, 'losses' => 0]);
+        Rating::query()->create(['pool' => 'casual', 'season' => '', 'game' => NineMensMorris::SLUG, 'mode' => 'correspondence', 'subject' => 'user:'.$user->id, 'user_id' => $user->id, 'rating' => 1016, 'results' => 1, 'wins' => 1, 'draws' => 0, 'losses' => 0]);
     }
     $outsiders = [new TestSigner, new TestSigner];
     $texts = [str_repeat('Mühle', 56), 'https://esports.einundzwanzig.space/games/nine-mens-morris/correspondence?from='.str_repeat('x', 180), 'gg, rematch at 21:00?', 'Who plays the flying phase better, with three men left?'];
@@ -548,7 +549,8 @@ test('each board game chat sits in chess\'s slot and holds long names, long word
         fwrite(STDERR, 'board chat '.$locale.' '.$width.' '.($signedIn ? 'player' : 'guest').': '.json_encode(compact('sections', 'filled', 'after', 'collected')).PHP_EOL);
 
         [$expected, $order] = boardLeagueChatOrder([...($width >= 1024 ? ['play', 'next', 'cups', 'games', 'live', 'ladder', 'online'] : ['title', 'play', 'next', 'cups', 'games', 'live', 'online', 'ladder']), ...($signedIn ? ['follows'] : [])], $width, fn (array $rows): array => array_column($rows, 0));
-        expect($order($sections['board']))->toBe($expected)
+        // No casual cup for a board game since 2026-10-07.
+        expect($order($sections['board']))->toBe(array_values(array_diff($expected, ['cups'])))
             ->and($order($sections['chess']))->toBe($expected)
             ->and($filled['heading'])->toBe($locale === 'de' ? 'Mühle-Chat' : "Nine Men's Morris chat")
             ->and($signedIn ? $filled['guest'] : str_replace("\n", ' ', (string) $filled['guest']))->toBe($signedIn ? null : ($locale === 'de' ? 'Zum Chatten anmelden Mitlesen kann jeder.' : 'Log in to chat Reading is open to everyone.'))

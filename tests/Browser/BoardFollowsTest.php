@@ -191,7 +191,7 @@ const BOARD_FOLLOWS_ROWS = <<<'JS'
     }
     JS;
 
-test('the board lobby lists your follows as chess does, with who is online, the blitz invite and the correspondence challenge', function (int $width, int $height, string $locale) {
+test('the board lobby lists your follows as chess does, with who is online, the invite (one move a day) and the correspondence challenge', function (int $width, int $height, string $locale) {
     expect(config('broadcasting.default'))->toBe('reverb', 'Run this through `composer test:browser`, which starts Reverb.');
 
     $long = 'Satoshinakamotohalfinneyadambackszabonick';
@@ -199,7 +199,7 @@ test('the board lobby lists your follows as chess does, with who is online, the 
     $signer = TestSigner::forBrowser($anna);
     $anna->refresh();
     // Bert: first in her list, a name without a break, online and looking for nine men's morris from the moment he joins.
-    $bert = User::factory()->create(['name' => $long, 'looking_to_play' => NineMensMorris::SLUG.'/blitz']);
+    $bert = User::factory()->create(['name' => $long, 'looking_to_play' => NineMensMorris::SLUG.'/correspondence']);
     // 24 more: every other one in a clan, one clan with a long name.
     $more = collect(range(1, 24))->map(function (int $i): User {
         if ($i % 2 === 1) {
@@ -219,7 +219,7 @@ test('the board lobby lists your follows as chess does, with who is online, the 
     // What the channel would carry for the other 24 (routes/channels.php): online, every third looking for nine men's morris.
     $members = $more->values()->map(fn (User $user, int $i): array => [
         'id' => $user->id, 'name' => $user->displayName(), 'avatar' => null, 'generated' => PlayerProfile::generatedAvatarUrl($user->pubkey),
-        'npub' => $user->npub, 'pubkey' => $user->pubkey, 'looking' => $i % 3 === 0 ? NineMensMorris::SLUG.'/blitz' : null, 'elo' => 1000, 'provisional' => true,
+        'npub' => $user->npub, 'pubkey' => $user->pubkey, 'looking' => $i % 3 === 0 ? NineMensMorris::SLUG.'/correspondence' : null, 'elo' => 1000, 'provisional' => true,
     ])->all();
     $inject = '() => window.esportsPresence.set([...window.esportsPresence.members.filter((m) => ! '.json_encode(array_column($members, 'id')).'.includes(m.id)), ...'.json_encode($members).'])';
 
@@ -311,7 +311,7 @@ test('the board lobby lists your follows as chess does, with who is online, the 
                 ->and($row['name'] === $long ? $row['width'] >= 48 && ! $row['whole'] : $row['whole'])->toBeTrue($label);
         }
 
-        // Bert and every third of the others look for nine men's morris: the board lobby's tag and blitz invite; chess's lobby says they are online.
+        // Bert and every third of the others look for nine men's morris: the board lobby's tag and invite; chess's lobby says they are online.
         $lookingRows = array_values(array_filter($list['rows'], fn (array $row): bool => $row['looking'] !== null));
         if ($where === 'chess') {
             expect($lookingRows)->toBe([], $where)
@@ -386,7 +386,7 @@ test('in a live game the follow row offers no blitz invite, as "Online now" offe
     $anna = User::factory()->create(['name' => 'Anna']);
     $signer = TestSigner::forBrowser($anna);
     $anna->refresh();
-    $key = $lobby === 'chess' ? 'chess/blitz' : NineMensMorris::SLUG.'/blitz';
+    $key = $lobby === 'chess' ? 'chess/blitz' : NineMensMorris::SLUG.'/correspondence';
     $friend = User::factory()->create(['name' => $lobby === 'chess' ? 'Carl' : 'Dora', 'looking_to_play' => $key]);
     $at = now()->getTimestamp() - 600;
     boardFollowsSend($this->relayUrl, $signer->sign(10002, [['r', $this->relayUrl]], '', $at));
@@ -394,7 +394,8 @@ test('in a live game the follow row offers no blitz invite, as "Online now" offe
 
     // Anna's live game, of the lobby's own kind.
     $rival = User::factory()->create(['name' => 'Rival']);
-    $lobby === 'chess' ? app(ChessGameService::class)->start($anna, $rival) : app(BoardGameService::class)->start(NineMensMorris::SLUG, $anna, $rival);
+    // A live board game is one left from before the board games' blitz was dropped (2026-10-07): correspondence is never live.
+    $lobby === 'chess' ? app(ChessGameService::class)->start($anna, $rival) : app(BoardGameService::class)->start(NineMensMorris::SLUG, $anna, $rival)->forceFill(['mode' => 'blitz', 'deadline_ms' => null])->save();
     $path = $lobby === 'chess' ? route('chess.lobby', [], false) : route('board.lobby', NineMensMorris::SLUG, false);
 
     $friendPage = boardFollowsPage($friend, $path, 375, 667, 'en');

@@ -121,9 +121,9 @@ test('an admin changes a league setting and goes back to the default, at 375 and
 test('an admin switches a game\'s automatic casual cups off and on, at 375 and 1440 px, with a clean console', function () {
     $admin = User::factory()->create(['name' => 'satsjaeger']);
     Admin::query()->create(['pubkey' => $admin->pubkey]);
-    config(['esports.casual_cups.enabled' => ['chess', 'checkers']]);
+    config(['esports.casual_cups.enabled' => ['chess', 'rocket-league']]);
     $clean = ['overflow' => 0, 'small' => [], 'outside' => [], 'clipped' => [], 'fields' => count(LeagueSettings::definitions())];
-    $select = '#setting-esports-casual_cups-games-checkers-auto';
+    $select = '#setting-esports-casual_cups-games-rocket-league-auto';
 
     foreach ([[375, 812], [1440, 900]] as $round => [$width, $height]) {
         $page = leagueSettingsPage($admin, $width, $height);
@@ -140,8 +140,8 @@ test('an admin switches a game\'s automatic casual cups off and on, at 375 and 1
 
         expect($before)->toBe($round === 0 ? 'on' : 'off')
             ->and(leagueSettingsGeometry($page))->toBe($clean, "saved at {$width}px")
-            ->and($row)->toContain('Automatic cups: Checkers')->toContain($round === 0 ? 'On → Off' : 'Off → On')
-            ->and(LeagueSettings::get('esports.casual_cups.games.checkers.auto'))->toBe($round === 0 ? 'off' : 'on')
+            ->and($row)->toContain('Automatic cups: Rocket League')->toContain($round === 0 ? 'On → Off' : 'Off → On')
+            ->and(LeagueSettings::get('esports.casual_cups.games.rocket-league.auto'))->toBe($round === 0 ? 'off' : 'on')
             ->and($page->evaluate('() => window.__errors'))->toBe([], "console at {$width}px")
             ->and($page->evaluate(BrowserConsole::BAD_RESPONSES))->toBe([], "answers at {$width}px");
     }

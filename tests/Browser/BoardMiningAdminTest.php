@@ -92,7 +92,7 @@ test('the board fills in the board games\' proposal on the chain draft and saves
     config(['esports.board' => [NostrKeys::hexToNpub($board->pubkey)]]);
 
     $page = boardMiningAdminPage($board, $width, $height, $locale);
-    $before = boardMiningAdminMeasure($page, ['draft-row-board-games', 'draft-share-board-games', 'draft-daily-board-games', 'draft-weight-nine-mens-morris-blitz', 'draft-weight-checkers-blitz', 'board-games-proposal', 'fill-board-games-proposal', 'save-draft']);
+    $before = boardMiningAdminMeasure($page, ['draft-row-board-games', 'draft-share-board-games', 'draft-daily-board-games', 'draft-weight-nine-mens-morris-correspondence', 'draft-weight-checkers-correspondence', 'board-games-proposal', 'fill-board-games-proposal', 'save-draft']);
     $label = (string) $page->evaluate('() => document.querySelector("[data-test=draft-row-board-games] th").innerText.trim()');
     shellShot($page, "board-mining-draft-{$locale}-{$width}");
 
@@ -111,7 +111,7 @@ test('the board fills in the board games\' proposal on the chain draft and saves
         ->and($filled)->toBe(['32', '36', '22', '10'])
         ->and($proposalGone)->toBeTrue()
         ->and(ChainDraft::stored()['shares'])->toBe(['chess' => 32, 'rocket-league' => 36, 'ea-sports-fc' => 22, 'board-games' => 10])
-        ->and(ChainDraft::stored()['weights'])->toMatchArray(['chess/blitz' => 1000, 'chess/correspondence' => 2000, 'nine-mens-morris/blitz' => 1000, 'checkers/blitz' => 1000]);
+        ->and(ChainDraft::stored()['weights'])->toMatchArray(['chess/blitz' => 1000, 'chess/correspondence' => 2000, 'nine-mens-morris/correspondence' => 2000, 'checkers/correspondence' => 2000]);
 
     foreach (['before' => $before, 'after' => $after] as $where => $m) {
         expect($m['lang'])->toBe($locale, $where)
@@ -147,20 +147,20 @@ test('in a live season the board adds the board games by a rule change, clean at
     openSeason();
 
     $page = boardMiningAdminPage($board, $width, $height, $locale);
-    $page->locator('[data-test=change-weight-nine-mens-morris-blitz]')->fill('1');
-    $page->locator('[data-test=change-weight-checkers-blitz]')->fill('1');
+    $page->locator('[data-test=change-weight-nine-mens-morris-correspondence]')->fill('1');
+    $page->locator('[data-test=change-weight-checkers-correspondence]')->fill('1');
     $page->locator('[data-test=change-share-chess]')->fill('30');
     $page->locator('[data-test=change-share-board-games]')->fill('5');
     $page->locator('[data-test=change-daily-board-games]')->fill('3');
     $page->locator('[data-test=change-reason]')->fill('Board games mine from today.');
     $page->locator('[data-test=save-change]')->click();
     BrowserWait::until($page, '() => document.body.innerText.includes("Board games mine from today.")', 10_000);
-    $m = boardMiningAdminMeasure($page, ['season-change', 'change-weight-nine-mens-morris-blitz', 'change-share-board-games', 'change-daily-board-games', 'save-change']);
+    $m = boardMiningAdminMeasure($page, ['season-change', 'change-weight-nine-mens-morris-correspondence', 'change-share-board-games', 'change-daily-board-games', 'save-change']);
 
     fwrite(STDERR, "board mining change {$locale} {$width}x{$height}: ".json_encode($m).PHP_EOL);
 
     expect(SeasonParameterChange::query()->sole()->parameters)->toBe([
-        'weights' => ['nine-mens-morris/blitz' => 1000, 'checkers/blitz' => 1000],
+        'weights' => ['nine-mens-morris/correspondence' => 1000, 'checkers/correspondence' => 1000],
         'shares' => ['chess' => 30, 'board-games' => 5],
         'daily' => ['board-games' => 3],
     ])
@@ -179,7 +179,7 @@ test('in a live season the board adds the board games by a rule change, clean at
     'desktop 1440, de' => [1440, 900, 'de'],
 ]);
 
-test('two players who list each other find a rated nine men\'s morris game from the lobby and land on the board; the lobby is clean', function (int $width, int $height, string $locale) {
+test('two players who list each other play a rated nine men\'s morris game by a rated correspondence challenge and land on the board; the pages are clean', function (int $width, int $height, string $locale) {
     expect(config('broadcasting.default'))->toBe('reverb', 'Run this through `composer test:browser`, which starts Reverb.');
 
     config(['esports.board_games.rated_queue' => true]);
@@ -195,43 +195,37 @@ test('two players who list each other find a rated nine men\'s morris game from 
         $this->travel(1)->seconds();
     }
 
-    $lobby = route('board.lobby', NineMensMorris::SLUG, false);
+    // Correspondence only since 2026-10-07: rated play is a rated challenge on the correspondence page, with the opponent picked.
     $first = visit(BrowserLogin::url($anna))->page();
     $first->context()->addInitScript(BrowserConsole::COLLECTOR);
     $first->setViewportSize($width, $height);
     $first->goto(ComputeUrl::from(route('locale.switch', $locale, false)));
-    $first->goto(ComputeUrl::from($lobby));
-    // As in the chess lobby (P5 of plan mempool-streifen): the Blitz tile opens the panel, Rated is its second option.
-    BrowserWait::until($first, '() => document.querySelector("[data-test=game-kind]")?.dataset.ratedOpen === "true"', 10_000);
-    $first->locator('[data-test=play-blitz]')->click();
-    $first->locator('[data-test=kind-rated]')->click();
-    $offered = boardMiningAdminMeasure($first, ['find-opponent', 'kind-rated', 'find-opponent-button']);
-    shellShot($first, "board-rated-lobby-{$locale}-{$width}");
+    $first->goto(ComputeUrl::from(route('board.correspondence', ['board' => NineMensMorris::SLUG, 'to' => $bert->npub], false)));
+    BrowserWait::until($first, '() => { const r = document.querySelector("[data-test=type-rated]"); return r !== null && ! r.disabled; }', 10_000);
+    $first->locator('[data-test=type-rated]')->click();
+    $offered = boardMiningAdminMeasure($first, ['correspondence-challenge', 'type-rated', 'send-challenge']);
+    shellShot($first, "board-rated-challenge-{$locale}-{$width}");
 
-    $first->locator('[data-test=find-opponent-button]')->click();
-    BrowserWait::until($first, '() => document.querySelector("[data-test=lobby-searching]")?.dataset.rated === "true"', 10_000);
-    $searching = boardMiningAdminMeasure($first, ['lobby-searching']);
+    $first->locator('[data-test=send-challenge]')->click();
+    BrowserWait::until($first, '() => document.querySelector("[data-test=outgoing-challenge]") !== null', 10_000);
+    $searching = boardMiningAdminMeasure($first, ['outgoing-challenge']);
 
     $second = visit(BrowserLogin::url($bert))->page();
     $second->context()->addInitScript(BrowserConsole::COLLECTOR);
     $second->setViewportSize($width, $height);
     $second->goto(ComputeUrl::from(route('locale.switch', $locale, false)));
-    $second->goto(ComputeUrl::from($lobby));
-    BrowserWait::until($second, '() => document.querySelector("[data-test=game-kind]")?.dataset.ratedOpen === "true"', 10_000);
-    $second->locator('[data-test=play-blitz]')->click();
-    $second->locator('[data-test=kind-rated]')->click();
-    $second->locator('[data-test=find-opponent-button]')->click();
-
-    foreach ([$second, $first] as $page) {
-        BrowserWait::until($page, '() => location.pathname.startsWith("/board/") && document.querySelector("[data-test=board-game]") !== null', 15_000);
-    }
+    $second->goto(ComputeUrl::from(route('board.correspondence', NineMensMorris::SLUG, false)));
+    BrowserWait::until($second, '() => document.querySelector("[data-test=accept-challenge]") !== null', 10_000);
+    $second->locator('[data-test=accept-challenge]')->click();
+    BrowserWait::until($second, '() => location.pathname.startsWith("/board/") && document.querySelector("[data-test=board-game]") !== null', 15_000);
 
     $board = boardMiningAdminMeasure($second, ['board-game']);
     $game = BoardGame::query()->sole();
 
-    fwrite(STDERR, "board rated lobby {$locale} {$width}x{$height}: ".json_encode(compact('offered', 'searching', 'board')).PHP_EOL);
+    fwrite(STDERR, "board rated challenge {$locale} {$width}x{$height}: ".json_encode(compact('offered', 'searching', 'board')).PHP_EOL);
 
     expect($game->rated)->toBeTrue()
+        ->and($game->mode)->toBe('correspondence')
         ->and($game->ladder_address)->not->toBeNull()
         ->and([$game->white_id, $game->black_id])->toEqualCanonicalizing([$anna->id, $bert->id]);
 
