@@ -2948,6 +2948,26 @@
     }
 }
 
+/*
+ * The poster in a game page's prize band (<x-tournaments.prize-band>, a container): beside the game chat the band is
+ * narrower than the window says (520 px at 1280, plan "RL-Startseite"), so the band's width decides, not the window's.
+ * Below 48rem the poster stacks cover over text, its seats stay 8 to a row and its name stays at the phone size; 16
+ * seats in a 330 px column were 17 px each and cut their "take your seat" icon (measured at 1024).
+ */
+@container (width < 48rem) {
+    [data-test="prize-band"] [data-test="next-tournament"] {
+        grid-template-columns: minmax(0, 1fr);
+    }
+
+    [data-test="prize-band"] .hh-seats.is-wide {
+        grid-template-columns: repeat(8, minmax(0, 1fr));
+    }
+
+    [data-test="prize-band"] [data-test="next-tournament"] h2 {
+        font-size: 26px;
+    }
+}
+
 .hh-seat {
     position: relative;
     display: block;

@@ -114,6 +114,28 @@ function inviteShot(Page $page, string $name): void
 }
 
 /**
+ * Rocket League's page opens on its tabs and start tiles (plan "RL-Startseite", user 2026-10-05: Tournaments &
+ * prizes first): on a phone the first viewport holds the Tournaments tile instead of the invite, which follows the
+ * tiles; from lg the invite keeps its first-viewport place in the right column.
+ */
+function rocketLeagueFirstViewport(Page $page, int $width, string $label): void
+{
+    if ($width >= 1024) {
+        inviteInFirstViewport($page, $label);
+
+        return;
+    }
+
+    $tile = $page->evaluate(INVITE_BOX, '[data-tile=tournaments]');
+    $floor = $page->evaluate(INVITE_FLOOR);
+    fwrite(STDERR, "\n[invite] {$label}: tournaments tile ".json_encode($tile + ['floor' => $floor])."\n");
+
+    expect($tile['top'])->toBeGreaterThanOrEqual(0, $label)
+        ->and($tile['bottom'])->toBeLessThanOrEqual($floor, "{$label}: the Tournaments tile in the first viewport")
+        ->and($page->evaluate('() => document.querySelector("[data-test=invite-module]") !== null'))->toBeTrue("{$label}: the invite is on the page");
+}
+
+/**
  * The module's box, measured and written down, and asserted inside the first viewport.
  *
  * @return array{top: int, bottom: int, left: int, right: int, vh: int, vw: int}
@@ -206,7 +228,7 @@ test('the invite sits in the first viewport of /chess at 375 and 1440 px and mak
         // A series game page: the captain's join link, at the top.
         $page = invitePage($captain, route('games.rocket-league', absolute: false), $width, $height);
         BrowserWait::until($page, '() => document.querySelector("[data-test=invite-module][data-state=clan]") !== null', 10_000);
-        inviteInFirstViewport($page, "rocket league invite {$width}x{$height}");
+        rocketLeagueFirstViewport($page, $width, "rocket league invite {$width}x{$height}");
         inviteShot($page, "rocket-league-{$width}");
         inviteClean($page, "rocket league {$width}");
 
@@ -240,7 +262,7 @@ test('the invite sits in the first viewport of /chess at 375 and 1440 px and mak
     // A guest's game page carries the most chrome (the "New here?" strip and the tab bar): the invite still fits.
     $page = invitePage(null, route('games.rocket-league', ['lang' => 'en'], false), 375, 667);
     BrowserWait::until($page, '() => document.querySelector("[data-test=invite-module][data-state=guest]") !== null', 10_000);
-    inviteInFirstViewport($page, 'rocket league guest 375x667');
+    rocketLeagueFirstViewport($page, 375, 'rocket league guest 375x667');
     inviteClean($page, 'rocket league guest 375');
 });
 

@@ -23,7 +23,7 @@
 @php
     $gameName = \App\Support\GameNames::game((string) $game);
     $sats = fn (int $value): string => \App\Support\Cards\ShareCard::sats($value);
-    $tile = 'flex min-h-36 min-w-0 flex-col gap-1.5 rounded-lg p-4 text-[13px] leading-snug break-words';
+    $tile = 'flex min-h-32 min-w-0 flex-col gap-1 rounded-lg p-3 text-[13px] leading-snug break-words @xl:min-h-36 @xl:gap-1.5 @xl:p-4';
     $plain = $tile.' bg-card text-ink shadow-ring hover:bg-row-hover hover:text-ink';
     $label = 'text-xs font-bold tracking-wide uppercase';
 @endphp
@@ -34,9 +34,9 @@
             <a href="{{ route('tournaments.index', ['game' => $game]) }}" class="{{ $tile }} w-full bg-btc text-on-btc hover:text-on-btc" data-test="start-tile" data-tile="tournaments">
                 <span class="{{ $label }} inline-flex items-center gap-1.5"><x-icon name="trophy" :size="14" />{{ __('Tournaments & prizes') }}</span>
                 @if ($paidSats > 0)
-                    <b class="font-display text-xl leading-tight font-bold tabular-nums" data-test="start-tile-paid">{{ __(':sats sats won', ['sats' => $sats($paidSats)]) }}</b>
+                    <b class="font-display text-lg leading-tight font-bold @xl:text-xl tabular-nums" data-test="start-tile-paid">{{ __(':sats sats won', ['sats' => $sats($paidSats)]) }}</b>
                 @else
-                    <b class="font-display text-xl leading-tight font-bold">{{ __('Play for sats') }}</b>
+                    <b class="font-display text-lg leading-tight font-bold @xl:text-xl">{{ __('Play for sats') }}</b>
                 @endif
                 @if ($champion !== null)
                     <span data-test="start-tile-champion">{{ __('Champion: :name', ['name' => $champion]) }}</span>
@@ -49,7 +49,7 @@
         <li class="flex min-w-0">
             <a href="{{ $playHref }}" class="{{ $plain }} w-full" data-test="start-tile" data-tile="play">
                 <span class="{{ $label }} text-ink-2">{{ __('Play') }}</span>
-                <b class="font-display text-xl leading-tight font-bold">{{ __('Casual 1v1') }}</b>
+                <b class="font-display text-lg leading-tight font-bold @xl:text-xl">{{ __('Casual 1v1') }}</b>
                 <span class="text-ink-2">{{ __('No clan needed, moves your casual Elo.') }}</span>
                 <span class="mt-auto font-bold text-btc">{{ trans_choice(':count searching now|:count searching now', $searching) }}</span>
             </a>
@@ -84,7 +84,7 @@
                 <a href="{{ route('matches.show', $latest) }}" class="{{ $plain }} w-full" data-test="start-tile" data-tile="latest">
                     <span class="{{ $label }} text-ink-2">{{ __('Latest match') }}</span>
                     <span class="font-bold">{{ $latest->sideName('challenger') }}</span>
-                    <b class="font-display text-xl leading-tight font-bold tabular-nums">{{ $wins['challenger'] }} : {{ $wins['challenged'] }}</b>
+                    <b class="font-display text-lg leading-tight font-bold @xl:text-xl tabular-nums">{{ $wins['challenger'] }} : {{ $wins['challenged'] }}</b>
                     <span class="font-bold">{{ $latest->sideName('challenged') }}</span>
                     <span class="mt-auto text-ink-2">{{ $latest->finished_at?->diffForHumans() }}</span>
                 </a>

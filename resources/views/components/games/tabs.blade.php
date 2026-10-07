@@ -6,6 +6,9 @@
     orange and leads to this game's tournaments (`/tournaments?game=`), with
     the prizes won so far as a chip; the others jump to the page's own
     sections. They wrap instead of scrolling sideways, so no label is cut.
+    Not on a phone: there the start tiles right under them lead to the same
+    places, and two rows of tabs pushed the Tournaments tile out of a
+    375 × 667 first screen (InvitePlacementTest).
 
     `potSats`: the prizes won in this game (GameLanding::paidSats), no chip
     when 0. `casual`: the game offers the casual 1v1 (CasualLobby::offers).
@@ -20,7 +23,7 @@
     ]);
 @endphp
 
-<nav aria-label="{{ __('Sections of the page') }}" {{ $attributes }} data-test="game-sections">
+<nav aria-label="{{ __('Sections of the page') }}" {{ $attributes->class('max-sm:hidden') }} data-test="game-sections">
     <ul class="m-0 flex list-none flex-wrap gap-2 p-0">
         <li class="flex">
             <a href="{{ route('tournaments.index', ['game' => $game]) }}" class="{{ $tab }} bg-btc text-on-btc hover:text-on-btc" data-test="section-tab-tournaments">
