@@ -65,7 +65,9 @@ final readonly class GameProfile
             'chess/rapid' => new self('rapid', $game, $mode, 'min', 27, 0, 3, 1, 1, [1], false, 'game', overhead: 3),
             'chess/correspondence' => new self('daily', $game, $mode, 'day', 30, 0, 1, 1, 1, [1], true, 'game'),
             // Board games (plan "Mühle und Dame", P5): one blitz game 5+3 per match, planned as blitz chess.
-            'nine-mens-morris/blitz', 'checkers/blitz', 'blockli/blitz' => new self("{$game}/{$mode}", $game, $mode, 'min', 14, 0, 3, 1, 1, [1], false, 'game', overhead: 3),
+            'nine-mens-morris/blitz', 'checkers/blitz' => new self("{$game}/{$mode}", $game, $mode, 'min', 14, 0, 3, 1, 1, [1], false, 'game', overhead: 3),
+            // Blockli plays each pairing twice with the colours swapped (plan "Blockli", P4): two games a slot.
+            'blockli/blitz' => new self("{$game}/{$mode}", $game, $mode, 'min', 14, 0, 3, 2, 2, [2], false, 'game', overhead: 3),
             // Their correspondence mode (P8): one game per match, planned as daily chess.
             'nine-mens-morris/correspondence', 'checkers/correspondence', 'blockli/correspondence' => new self("{$game}/{$mode}", $game, $mode, 'day', 30, 0, 1, 1, 1, [1], true, 'game'),
             'rocket-league/1v1' => new self('rl1', $game, $mode, 'min', 8, 5, 5, 3, 5, [3, 5], false, 'series', 1, 5, 1.25),

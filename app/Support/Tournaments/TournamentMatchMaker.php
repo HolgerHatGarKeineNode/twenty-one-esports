@@ -33,6 +33,7 @@ use App\Support\Series\CasualMatches;
 use App\Support\Series\SeriesEvents;
 use Illuminate\Database\UniqueConstraintViolationException;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Lottery;
 
 /**
  * Tournament matches are played as normal matches (NIP: "Tournament matches
@@ -332,6 +333,8 @@ final class TournamentMatchMaker
         return match (true) {
             $game === null, $match->isReplaced($game->id) => true,
             $game->status === BoardGameStatus::Aborted => TournamentRunner::abortedBoardGames($match) <= TournamentRunner::firstMoveRestarts(),
+            // Two legs (plan "Blockli", P4): a finished game of an undecided match calls the next leg or the decider.
+            $game->status === BoardGameStatus::Finished && TournamentRunner::playsTwoLegs($match) => $match->result === null,
             $game->status === BoardGameStatus::Finished && $game->result === '1/2-1/2' && ! TournamentRunner::allowsDraw($match) => TournamentRunner::drawnBoardGames($match) <= TournamentRunner::drawnReplays($match->tournament),
             default => false,
         };
@@ -346,14 +349,26 @@ final class TournamentMatchMaker
             return null;
         }
 
-        // Slot 0 has White; a knockout replay after a draw swaps the colours, a restart keeps them.
+        // Slot 0 has White; a knockout replay after a draw swaps the colours, a restart keeps them. Two legs
+        // (plan "Blockli", P4): the second leg swaps them too; the first decider after 1:1 draws them by lot, in blitz.
         $last = $match->boardGame !== null && ! $match->isReplaced($match->boardGame->id) ? $match->boardGame : null;
         $swap = $last !== null && ($last->status === BoardGameStatus::Aborted ? $last->white_id !== $first->id : $last->white_id === $first->id);
+        $mode = $tournament->mode;
+
+        $finished = TournamentRunner::playsTwoLegs($match) ? TournamentRunner::finishedBoardGames($match)->count() : 0;
+
+        if ($finished >= 2) {
+            $mode = 'blitz';
+            $swap = $last?->status === BoardGameStatus::Finished && $finished === 2
+                ? Lottery::odds(1, 2)->winner(fn (): bool => true)->loser(fn (): bool => false)->choose()
+                : $swap;
+        }
+
         [$white, $black] = $swap ? [$second, $first] : [$first, $second];
 
         try {
             // Rated as a tournament chess game is (P6): the frozen ladder still open and the trust gate passing at the pairing.
-            $game = $this->boards->start($tournament->game, $white, $black, $tournament->mode, $match->id,
+            $game = $this->boards->start($tournament->game, $white, $black, $mode, $match->id,
                 BoardGame::query()->where('tournament_match_id', $match->id)->count() + 1, TournamentDeadlines::checkinSeconds($tournament),
                 $this->chessPin($tournament, $white, $black));
         } catch (BoardRuleViolation) {

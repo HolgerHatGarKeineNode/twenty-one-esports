@@ -11,6 +11,7 @@ use App\Enums\SeriesStatus;
 use App\Enums\TournamentFormat;
 use App\Enums\TournamentStatus;
 use App\Events\TournamentChanged;
+use App\Games\BoardGame as BoardGameDefinition;
 use App\Games\GameRegistry;
 use App\Models\BoardGame;
 use App\Models\ChessGame;
@@ -484,6 +485,13 @@ final class TournamentRunner
             return;
         }
 
+        if (self::playsTwoLegs($match)) {
+            $this->twoLegsFinished($match);
+            $this->sync($match->tournament);
+
+            return;
+        }
+
         $whiteSlot = in_array((int) $game->white_id, $match->slots[0]->participant?->memberIds() ?? [], true) ? 0 : 1;
 
         if ($game->result === '1/2-1/2' && ! self::allowsDraw($match)) {
@@ -534,6 +542,97 @@ final class TournamentRunner
         }
 
         $this->sync($match->tournament);
+    }
+
+    /** Whether the match's board game plays each pairing as two games with the colours swapped (plan "Blockli", P4). */
+    public static function playsTwoLegs(TournamentMatch $match): bool
+    {
+        $game = app(GameRegistry::class)->find($match->tournament->game);
+
+        return $game instanceof BoardGameDefinition && $game->playsTwoLegs();
+    }
+
+    /**
+     * The finished board games of a match in the order they were played
+     * (since the league last voided or superseded its games): the two legs,
+     * then any deciding games.
+     *
+     * @return Collection<int, BoardGame>
+     */
+    public static function finishedBoardGames(TournamentMatch $match): Collection
+    {
+        return BoardGame::query()->where('tournament_match_id', $match->id)->where('id', '>', (int) $match->replaced_through)
+            ->where('status', BoardGameStatus::Finished)->orderBy('id')->get();
+    }
+
+    /**
+     * A game of a two-leg pairing ended (plan "Blockli", P4). After both legs
+     * the points decide (a win 1, a draw ½ each); level points are a draw
+     * where the format allows one, else a blitz game with drawn colours
+     * decides ({@see TournamentMatchMaker::startBoardGame()}). A drawn decider
+     * is replayed with the colours swapped up to `drawn_replays` times, then
+     * the higher seed advances. Until then the match stays open and the next
+     * run starts the next game.
+     */
+    private function twoLegsFinished(TournamentMatch $match): void
+    {
+        $games = self::finishedBoardGames($match);
+
+        if ($games->count() < 2) {
+            return;
+        }
+
+        $points = [0.0, 0.0];
+
+        foreach ($games->take(2) as $leg) {
+            $whiteSlot = in_array((int) $leg->white_id, $match->slots[0]->participant?->memberIds() ?? [], true) ? 0 : 1;
+            [$white, $black] = match ($leg->result) {
+                '1-0' => [1.0, 0.0],
+                '0-1' => [0.0, 1.0],
+                default => [0.5, 0.5],
+            };
+            $points[$whiteSlot] += $white;
+            $points[1 - $whiteSlot] += $black;
+        }
+
+        $label = fn (array $score): string => self::points($score[0]).'–'.self::points($score[1]);
+
+        if ($points[0] !== $points[1] || self::allowsDraw($match)) {
+            $winner = $points[0] === $points[1] ? null : ($points[0] > $points[1] ? 0 : 1);
+            $this->store($match, ['winner' => $winner, 'games_won' => $points, 'points' => [], 'forfeit' => false, 'decided' => 'legs', 'label' => $label($points), 'by' => 'players']);
+
+            return;
+        }
+
+        $deciders = $games->slice(2)->values();
+        $last = $deciders->last();
+
+        if ($last === null) {
+            return;
+        }
+
+        if ($last->result === '1/2-1/2') {
+            if ($deciders->where('result', '1/2-1/2')->count() > self::drawnReplays($match->tournament)) {
+                $this->store($match, $this->seedDecision($match, 'seed'));
+            }
+
+            return;
+        }
+
+        $whiteSlot = in_array((int) $last->white_id, $match->slots[0]->participant?->memberIds() ?? [], true) ? 0 : 1;
+        $winner = $last->result === '1-0' ? $whiteSlot : 1 - $whiteSlot;
+
+        $this->store($match, ['winner' => $winner, 'games_won' => $points, 'points' => [], 'forfeit' => false, 'decided' => 'decider',
+            'label' => __(':legs, decider :decider', ['legs' => $label($points), 'decider' => self::chessLabel($winner)]), 'by' => 'players']);
+    }
+
+    /** "1", "½", "1½": a score of whole and half points. */
+    private static function points(float $points): string
+    {
+        $whole = (int) floor($points);
+        $half = $points - $whole >= 0.5;
+
+        return $whole === 0 && $half ? '½' : $whole.($half ? '½' : '');
     }
 
     /** Knockout draws of a board game match so far (since the league last voided or superseded its games). */

@@ -62,7 +62,7 @@ test('every registered game names its kind, and no board game is registered whil
 
 test('the board game slugs are reserved: nine men\'s morris is never "mill"', function () {
     expect(array_keys(config('esports.board_games.games')))->toBe(BoardGame::RESERVED_SLUGS)
-        ->and(BoardGame::RESERVED_SLUGS)->toBe(['nine-mens-morris', 'checkers'])
+        ->and(BoardGame::RESERVED_SLUGS)->toBe(['nine-mens-morris', 'checkers', 'blockli'])
         ->and(BoardGame::RESERVED_SLUGS)->not->toContain('mill')
         ->and(app(GameRegistry::class)->find('mill'))->toBeNull();
 });
@@ -214,7 +214,8 @@ test('a tournament plays only a board game with a profile: nine men\'s morris an
         expect($profile->isBoard())->toBeTrue()
             ->and($profile->isChess())->toBeFalse()
             ->and($profile->isSeries())->toBeFalse()
-            ->and($profile->bestOfOptions)->toBe([1]);
+            // Blockli plays a pairing twice with the colours swapped (plan "Blockli", P4).
+            ->and($profile->bestOfOptions)->toBe($slug === 'blockli' ? [2] : [1]);
     }
 
     // Switched off, a board game's cup does not open; chess's does.

@@ -222,7 +222,7 @@ return [
     */
     'game_order' => [
         'first' => ['chess', 'rocket-league', 'blockfill'],
-        'last' => ['nine-mens-morris', 'checkers'],
+        'last' => ['nine-mens-morris', 'checkers', 'blockli'],
     ],
 
     'games' => [
@@ -754,7 +754,7 @@ return [
     */
 
     'casual_cups' => [
-        'enabled' => array_values(array_filter(array_map('trim', explode(',', (string) env('ESPORTS_CASUAL_CUP_GAMES', 'chess,rocket-league,ea-sports-fc-26,ea-sports-fc-27,age-of-empires-2,nine-mens-morris,checkers'))))),
+        'enabled' => array_values(array_filter(array_map('trim', explode(',', (string) env('ESPORTS_CASUAL_CUP_GAMES', 'chess,rocket-league,ea-sports-fc-26,ea-sports-fc-27,age-of-empires-2,nine-mens-morris,checkers,blockli'))))),
         'games' => [
             // Rapid 10+5 since plan "Schach Rapid und Clan", P2 (user, 2026-10-05); a cup already made keeps its `mode`.
             'chess' => ['name' => 'Chess', 'mode' => 'rapid', 'best_of' => 1, 'final_best_of' => 1, 'slot' => ['weekday' => 'saturday', 'time' => '20:00']],
@@ -765,6 +765,8 @@ return [
             // Board games (plan "Mühle und Dame", P5): a cup runs only while the board game is switched on.
             'nine-mens-morris' => ['name' => "Nine Men's Morris", 'mode' => 'blitz', 'best_of' => 1, 'final_best_of' => 1, 'slot' => ['weekday' => 'saturday', 'time' => '15:00']],
             'checkers' => ['name' => 'Checkers', 'mode' => 'blitz', 'best_of' => 1, 'final_best_of' => 1, 'slot' => ['weekday' => 'sunday', 'time' => '15:00']],
+            // Blockli (plan "Blockli", P4): each pairing two games with the colours swapped, at 1:1 a blitz decider.
+            'blockli' => ['name' => 'Blockli', 'mode' => 'blitz', 'best_of' => 2, 'final_best_of' => 2, 'slot' => ['weekday' => 'saturday', 'time' => '17:00']],
         ],
         'slot' => ['weekday' => 'saturday', 'time' => '20:00'],
         'sizes' => [4, 8, 16],

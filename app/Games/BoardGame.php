@@ -41,6 +41,16 @@ abstract class BoardGame implements Game
      */
     abstract public function rules(): BoardRules;
 
+    /**
+     * Whether a tournament or cup pairing plays two games with the colours
+     * swapped (plan "Blockli", P4): for a game where the first move is an
+     * advantage. False plays one game, as nine men's morris and checkers do.
+     */
+    public function playsTwoLegs(): bool
+    {
+        return false;
+    }
+
     /** The credit line of the game's config entry (`credit`), null without one (plan "Blockli", P3). */
     private ?string $credit = null;
 

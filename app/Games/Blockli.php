@@ -52,6 +52,16 @@ final class Blockli extends BoardGame
         return in_array($result['result'] ?? null, self::RESULTS, true) ? [] : ['result'];
     }
 
+    /**
+     * The first move is an advantage (DerCaddy's open point 5; user,
+     * 2026-10-07): a tournament pairing plays twice with the colours swapped,
+     * and at 1:1 a blitz game with drawn colours decides.
+     */
+    public function playsTwoLegs(): bool
+    {
+        return true;
+    }
+
     public function assets(): GameAssets
     {
         return new GameAssets('blockli', 'var(--color-edge)', 'var(--color-line)', 'Blockli', new GameCover('blockli'), $this->credit(), $this->creditUrl());
