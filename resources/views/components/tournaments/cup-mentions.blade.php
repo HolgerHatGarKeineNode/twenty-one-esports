@@ -66,13 +66,14 @@
 @endphp
 
 @if ($cupGroups !== [] || $cupHall)
-    <div {{ $attributes->class('flex flex-col gap-3') }} data-test="cup-mentions"
+    <div {{ $attributes->class(['flex flex-col gap-3', '@container' => $cupTitled]) }} data-test="cup-mentions"
          @if ($cupFilters) x-data="cupBoard()" x-effect="apply()" wire:ignore @endif
          @if ($heading) role="region" aria-labelledby="cup-board-h" id="casual-cups" @elseif ($cupTitled) role="region" aria-labelledby="cup-game-h" @endif>
         @if ($cupHall)
             <x-tournaments.cup-hall :winner="$cupWinner" :next="$cupNext" :empty="$cupGroups === []" />
         @elseif ($cupTitled)
-            <div class="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between sm:gap-6" data-test="cup-head">
+            {{-- Side by side only when the column is wide enough, not the window: beside the game chat a 1280 window leaves ~520 px (explainer was one word a line). --}}
+            <div class="flex flex-col gap-2 @2xl:flex-row @2xl:items-end @2xl:justify-between @2xl:gap-6" data-test="cup-head">
                 <div class="flex min-w-0 flex-col gap-1">
                     <div class="flex flex-wrap items-center gap-x-3 gap-y-1">
                         <h2 id="cup-game-h" class="m-0 text-[15px] font-bold">{{ __('Casual cups') }}</h2>

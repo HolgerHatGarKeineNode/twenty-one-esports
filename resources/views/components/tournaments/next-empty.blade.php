@@ -9,11 +9,11 @@
     A slot replaces the "All tournaments" button: the prize band (plan
     "RL-Startseite", P2) puts "Notify me of new <game> tournaments" there,
     with its own primary button to this game's tournaments right under it.
-    `fluid`: text and actions stand side by side only when the enclosing
-    container (the band, `@container`) is wide enough, not the window: beside
-    the game chat the column is narrow on a wide window.
+    `fluid` (the prize band): text above the actions, always. Beside the game
+    chat the band is narrow, and an admin's "Create tournament" next to the
+    watch button squeezed the text to one word a line (user, 2026-10-07).
 --}}
-<section aria-labelledby="{{ $headingId }}" {{ $attributes->class($fluid ? 'flex flex-col gap-3 rounded-lg bg-card px-4 py-4 @2xl:flex-row @2xl:items-center @2xl:justify-between @2xl:gap-6 lg:px-6' : 'flex flex-col gap-3 rounded-lg bg-card px-4 py-4 sm:flex-row sm:items-center sm:justify-between sm:gap-6 lg:px-6') }} data-test="next-tournament-empty">
+<section aria-labelledby="{{ $headingId }}" {{ $attributes->class($fluid ? 'flex flex-col gap-3 rounded-lg bg-card px-4 py-4 lg:px-6' : 'flex flex-col gap-3 rounded-lg bg-card px-4 py-4 sm:flex-row sm:items-center sm:justify-between sm:gap-6 lg:px-6') }} data-test="next-tournament-empty">
     <div class="flex min-w-0 flex-col gap-1">
         <h2 id="{{ $headingId }}" class="m-0 text-[15px] font-bold">{{ __('Next tournament') }}</h2>
         <p class="m-0 text-[13px] leading-normal text-ink-2">{{ __('No :game tournament is open for sign-up right now.', ['game' => \App\Support\GameNames::game((string) $game)]) }}</p>

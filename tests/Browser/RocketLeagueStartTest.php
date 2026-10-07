@@ -3,9 +3,11 @@
 use App\Enums\PayoutStatus;
 use App\Enums\TournamentFormat;
 use App\Enums\TournamentStatus;
+use App\Models\Admin;
 use App\Models\Tournament;
 use App\Models\TournamentPayout;
 use App\Models\User;
+use App\Support\Tournaments\CasualCups;
 use Illuminate\Support\Facades\File;
 use Illuminate\Support\Facades\Http;
 use Pest\Browser\Playwright\Page;
@@ -72,6 +74,8 @@ const RL_START_MEASURE = <<<'JS'
             wrapped: inside('a.btn-p, a.btn-s, a.btn-w, button').filter((el) => el.getBoundingClientRect().height > 46).map(label),
             first: { tile: firstScreen('[data-tile=tournaments]'), tab: firstScreen('[data-test=ctx-prizes]'), all: firstScreen('[data-test=prize-band-all]') },
             order: [...document.querySelectorAll('[data-test=start-tile]')].map((el) => el.dataset.tile),
+            // Squeezed text (user, 2026-10-07: widths cramped beside the chat): a sentence of more than 6 words in a box under 160 px.
+            squeezed: [...document.querySelectorAll('main p, main h2, main h3')].filter((el) => el.checkVisibility() && el.innerText.trim().split(/\s+/).length > 6 && el.getBoundingClientRect().width < 160).map(label),
         };
     }
     JS;
@@ -109,9 +113,9 @@ function rlStartWorld(): void
     }
 }
 
-function rlStartPage(User $user, int $width, int $height): Page
+function rlStartPage(User $user, int $width, int $height, string $lang = 'en'): Page
 {
-    $to = route('games.rocket-league', ['lang' => 'en'], false);
+    $to = route('games.rocket-league', ['lang' => $lang], false);
     $page = visit(route('testing.login', ['user' => $user, 'to' => route('robots', absolute: false)]))->page();
     $page->context()->addInitScript(RL_START_COLLECTOR);
     $page->setViewportSize($width, $height);
@@ -172,6 +176,8 @@ test('the Rocket League page at 390, 1024, 1280 and 1440: nothing squeezed, cut 
             }
         }
 
+        expect($m['squeezed'])->toBe([], "{$label}: squeezed text");
+
         if ($width === 1440) {
             expect($m['first']['tab'])->toBeTrue("{$label}: the accented Tournaments & prizes entry in the game bar")
                 ->and($m['first']['all'])->toBeTrue("{$label}: All Rocket League tournaments in the first screen");
@@ -219,4 +225,26 @@ test('the collector sees a thrown error, a console error and a failed response (
     BrowserWait::until($page, '() => performance.getEntries().some((e) => e.name.endsWith("/__rl-start-missing.png") && e.responseStatus === 404)', 5_000);
 
     expect(implode("\n", $page->evaluate(RL_START_BAD_RESPONSES)))->toMatch('#^404 http://\S+/__rl-start-missing\.png$#m');
+});
+
+test('as an admin in German, the longest copy and the extra Create tournament button squeeze nothing beside the chat', function () {
+    // User, 2026-10-07: "Nächstes Turnier" one word a line next to Create tournament + watch, and the cup explainer squeezed; the player/English run missed both.
+    rlStartWorld();
+    $admin = User::factory()->withPubkey(str_repeat('ad', 32))->create();
+    Admin::query()->create(['pubkey' => $admin->pubkey]);
+    // Rocket League's casual cups, so the cup head (explainer + countdown) renders as on prod.
+    foreach (array_keys(CasualCups::regions()) as $region) {
+        app(CasualCups::class)->ensure('rocket-league', $region);
+    }
+
+    // 1600 and 1920 too: the band crosses 42rem there (680 px at 1600), where the old row layout squeezed the text.
+    foreach ([[390, 844], [1024, 768], [1280, 800], [1440, 900], [1600, 900], [1920, 1080]] as [$width, $height]) {
+        $m = rlStartPage($admin, $width, $height, 'de')->evaluate(RL_START_MEASURE);
+        $label = "admin de {$width}x{$height}";
+
+        expect($m['overflow'])->toBe(0, "{$label}: sideways overflow")
+            ->and($m['squeezed'])->toBe([], "{$label}: squeezed text")
+            ->and($m['cut'])->toBe([], "{$label}: text wider than its box")
+            ->and($m['wrapped'])->toBe([], "{$label}: a button wraps");
+    }
 });
