@@ -80,13 +80,11 @@ const BARS = {
     spare: { horizontal: false, length: 1.5 },
 };
 
-/**
- * How long and thick a block is: two cells and the groove between them long, a little thinner than
- * the groove. Read from the layout's cells, so the board still knows no game; null on a board whose
- * cells have no grooves between them (checkers), where no piece is a bar.
- */
 /** The second part of a block's path under the block input: its direction. */
 const BLOCK_DIRECTIONS = ['h', 'v'];
+
+/** The arrow keys of the block input: one crossing in this direction, in board units as seen by White. */
+const BLOCK_KEY_STEPS = { ArrowLeft: [-1, 0], ArrowRight: [1, 0], ArrowUp: [0, -1], ArrowDown: [0, 1] };
 
 const GEOMETRY = new WeakMap();
 
@@ -110,6 +108,11 @@ function geometryOf(layout) {
     return geometry;
 }
 
+/**
+ * How long and thick a block is: two cells and the groove between them long, a little thinner than
+ * the groove. Read from the layout's cells, so the board still knows no game; null on a board whose
+ * cells have no grooves between them (checkers), where no piece is a bar.
+ */
 export function barSize(cells) {
     if (cells.length < 2) return null;
     const size = cells[0].size;
@@ -434,6 +437,13 @@ registerAlpine(() => {
 
         get blockHint() {
             if (!this.blockMode || !this.canMove) return '';
+            if (this.pointerType === 'keyboard') {
+                if (!this.preview) return this.t.blocks.keys;
+                const direction = this.preview.dir === 'h' ? this.t.blocks.horizontal : this.t.blocks.vertical;
+                const where = this.t.blocks.at.replace(':crossing', this.preview.crossing).replace(':direction', direction);
+
+                return where + ' ' + (this.preview.move ? this.t.blocks.enter : this.t.blocks.illegal);
+            }
             const mouse = this.pointerType === 'mouse';
             if (!this.preview) return mouse ? this.t.blocks.point : this.t.blocks.tap;
             if (!this.preview.move) return this.t.blocks.illegal;
@@ -441,7 +451,9 @@ registerAlpine(() => {
             return mouse ? this.t.blocks.click : this.t.blocks.confirm;
         },
 
-        setBlockMode(on) {
+        /** `event` is the button's click: one from a key (detail 0) switches the hint to the keys. */
+        setBlockMode(on, event = null) {
+            if (event && event.detail === 0) this.pointerType = 'keyboard';
             this.blockMode = on && this.canMove && this.canSetBlocks;
             this.preview = null;
             this.error = '';
@@ -502,14 +514,62 @@ registerAlpine(() => {
             if ((this.preview ? this.preview.crossing + this.preview.dir : '') !== shown) this.render();
         },
 
+        /**
+         * Keys while setting a block: the arrows move it from crossing to crossing (as the board is seen, also
+         * on Black's turned board), R turns it, Enter sets it, Escape leaves the mode. Enter on the Rotate or
+         * Move button keeps doing what that button says.
+         */
         blockKey(event) {
-            if (!this.blockMode) return false;
-            if (event.key === 'Escape') this.setBlockMode(false);
-            else if (event.key === 'r' || event.key === 'R') this.rotateBlock();
-            else return false;
+            if (!this.blockMode || !this.canMove) return false;
+            const step = BLOCK_KEY_STEPS[event.key];
+            if (event.key === 'Escape') {
+                this.setBlockMode(false);
+            } else if (event.key === 'r' || event.key === 'R') {
+                this.pointerType = 'keyboard';
+                if (this.preview) this.rotateBlock();
+                else this.moveBlock([0, 0]);
+            } else if (step) {
+                this.pointerType = 'keyboard';
+                this.moveBlock(this.color === 'b' ? [-step[0], -step[1]] : step);
+            } else if (event.key === 'Enter' && this.preview && !event.target.closest?.('[data-test="rotate-block"], [data-test="mode-move"]')) {
+                this.pointerType = 'keyboard';
+                this.setBlock();
+            } else {
+                return false;
+            }
             event.preventDefault();
 
             return true;
+        },
+
+        /** Moves the block shown to the next crossing in a direction ([dx, dy] in board units); the first key shows it in the middle. */
+        moveBlock([dx, dy]) {
+            if (!this.preview) {
+                this.showBlock(this.centreCrossing().id, 'h');
+                this.render();
+
+                return;
+            }
+            const from = this.layout.points.find((point) => point.id === this.preview.crossing);
+            let next = null;
+            let distance = Infinity;
+            geometryOf(this.layout).crossings.forEach((point) => {
+                const along = (point.x - from.x) * dx + (point.y - from.y) * dy;
+                const across = Math.abs((point.x - from.x) * dy) + Math.abs((point.y - from.y) * dx);
+                if (along > 0 && across < 1 && along < distance) [next, distance] = [point, along];
+            });
+            if (next) this.showBlock(next.id, this.preview.dir, this.preview.turned);
+            this.render();
+        },
+
+        /** The crossing nearest to the middle of the cells. */
+        centreCrossing() {
+            const cells = this.layout.cells;
+            const size = cells[0].size;
+            const xs = cells.map((cell) => cell.x);
+            const ys = cells.map((cell) => cell.y);
+
+            return this.nearestCrossing({ x: (Math.min(...xs) + Math.max(...xs) + size) / 2, y: (Math.min(...ys) + Math.max(...ys) + size) / 2 });
         },
 
         /** Shows a block; `turned` marks one the player rotated, which keeps its direction on that crossing. */

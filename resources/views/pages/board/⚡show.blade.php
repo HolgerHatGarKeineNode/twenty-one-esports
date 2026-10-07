@@ -214,7 +214,10 @@ new #[Layout('layouts::app', ['realtime' => true, 'scripts' => ['resources/js/bo
                     'default' => __('That did not work. The board shows the server\'s state.')],
                 // The block input (Blockli).
                 'blocks' => ['tap' => __('Tap a groove: the block shows where it lands.'), 'point' => __('Point at a groove: the block follows.'),
-                    'confirm' => __('Tap the block again or press Confirm.'), 'click' => __('Click to set the block.'), 'illegal' => __('No block fits here.')],
+                    'confirm' => __('Tap the block again or press Confirm.'), 'click' => __('Click to set the block.'), 'illegal' => __('No block fits here.'),
+                    'keys' => __('Arrow keys move the block, R turns it, Enter sets it, Escape cancels.'),
+                    'at' => __('Block at :crossing, :direction.'), 'horizontal' => __('horizontal'), 'vertical' => __('vertical'),
+                    'enter' => __('Enter sets it, R turns it.')],
             ],
         ];
     }
@@ -279,7 +282,7 @@ new #[Layout('layouts::app', ['realtime' => true, 'scripts' => ['resources/js/bo
                                     :aria-pressed="blockMode ? 'false' : 'true'" x-on:click="setBlockMode(false)" data-test="mode-move">{{ __('Move the pawn') }}</button>
                             <button type="button" class="inline-flex h-11 cursor-pointer items-center justify-center gap-2 rounded-md px-[18px] text-[13px] disabled:cursor-default disabled:opacity-50"
                                     :class="blockMode ? 'border border-btc bg-btc-press font-bold text-btc-hi' : 'btn-w border border-line bg-well text-ink'"
-                                    :aria-pressed="blockMode ? 'true' : 'false'" :disabled="!myTurn || !canSetBlocks" x-on:click="setBlockMode(true)" data-test="mode-block">
+                                    :aria-pressed="blockMode ? 'true' : 'false'" :disabled="!myTurn || !canSetBlocks" x-on:click="setBlockMode(true, $event)" aria-keyshortcuts="ArrowUp ArrowDown ArrowLeft ArrowRight R Enter Escape" data-test="mode-block">
                                 {{ __('Set a block') }} <span class="tabular-nums" x-text="blocksLeft"></span>
                             </button>
                         </div>
@@ -287,7 +290,8 @@ new #[Layout('layouts::app', ['realtime' => true, 'scripts' => ['resources/js/bo
                             <x-button variant="quiet" x-bind:disabled="!preview" x-on:click="rotateBlock()" data-test="rotate-block">{{ __('Rotate') }}</x-button>
                             <x-button x-bind:disabled="!preview || !preview.move" x-on:click="setBlock()" data-test="set-block">{{ __('Confirm') }}</x-button>
                         </div>
-                        <p class="m-0 text-[13px] text-ink-2" aria-live="polite" x-show="blockHint" x-text="blockHint" data-test="block-hint"></p>
+                        {{-- Always in the page, so a screen reader hears each new hint (the keys say where the block is). --}}
+                        <p class="m-0 text-[13px] text-ink-2" role="status" aria-live="polite" x-text="blockHint" data-test="block-hint"></p>
                     </div>
                 </template>
             </div>
