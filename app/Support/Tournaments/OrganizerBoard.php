@@ -38,11 +38,12 @@ final class OrganizerBoard
     /**
      * @return array{open: list<Card>, progress: list<Card>, past: list<Card>}
      */
-    public function groups(?int $except = null, ?string $viewerZone = null): array
+    public function groups(?int $except = null, ?string $viewerZone = null, ?string $game = null): array
     {
         $tournaments = Tournament::query()->special()->exceptLeagueWeeks()
             ->where('status', '!=', TournamentStatus::Draft)
             ->when($except !== null, fn ($query) => $query->whereKeyNot($except))
+            ->when($game !== null, fn ($query) => $query->where('game', $game))
             ->orderByRaw("case status when 'signup' then 0 when 'drawing' then 1 when 'running' then 1 else 2 end")
             ->orderByDesc('starts_at')->orderByDesc('id')
             ->limit(self::LIMIT)->get();

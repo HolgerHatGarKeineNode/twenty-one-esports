@@ -11,6 +11,7 @@ use Illuminate\Database\Eloquent\Collection;
 use Livewire\Attributes\Computed;
 use Livewire\Attributes\Layout;
 use Livewire\Attributes\Title;
+use Livewire\Attributes\Url;
 use Livewire\Component;
 
 /*
@@ -25,12 +26,29 @@ use Livewire\Component;
  * prize pot carry its chip (P9, <x-prize-chip>); the artboard's line
  * "rated tournament games mine blocks" is outdated (user, 2026-09-26:
  * tournaments never mine).
+ *
+ * `?game=<slug>` narrows every part to one game (plan "RL-Startseite", P1:
+ * a game page leads to its own tournaments, not the global list); a chip
+ * with the game's name leads back to every game. An unknown slug is no
+ * filter. The canonical URL stays the unfiltered list (LocalizedUrls keeps
+ * no `game`).
  */
 new #[Title('Tournaments')] #[Layout('layouts::app', ['section' => 'tournaments'])] class extends Component {
+    /** The game the list is narrowed to; '' or an unknown slug = every game. */
+    #[Url(except: '')]
+    public string $game = '';
+
     public function rendering(\Illuminate\View\View $view): void
     {
         app(PageMeta::class)->describe(__('Tournaments'), __(':games tournaments of the TWENTY ONE esports league: open sign-ups, running brackets and results, with a draw from a Bitcoin block anyone can re-check.', ['games' => implode(', ', array_map(fn (string $game): string => \App\Support\GameNames::game($game), array_keys(app(\App\Games\GameRegistry::class)->all())))]));
         app(\App\Support\PageMeta::class)->card(fn () => \App\Support\Cards\PageCard::page('tournaments'));
+    }
+
+    /** The filter's game when it names one the league runs, else null (every game). */
+    #[Computed]
+    public function gameFilter(): ?string
+    {
+        return array_key_exists($this->game, app(\App\Games\GameRegistry::class)->all()) ? $this->game : null;
     }
 
     /**
@@ -41,6 +59,7 @@ new #[Title('Tournaments')] #[Layout('layouts::app', ['section' => 'tournaments'
     {
         // Blockfill's weekly boards (plan "Blockfill", P6) live on the game's own pages.
         return Tournament::query()->where('status', '!=', TournamentStatus::Draft)->exceptLeagueWeeks()
+            ->when($this->gameFilter !== null, fn ($query) => $query->where('game', $this->gameFilter))
             ->orderByRaw("case status when 'signup' then 0 when 'drawing' then 1 when 'running' then 2 else 3 end")
             ->orderByDesc('starts_at')->limit(100)->get();
     }
@@ -49,6 +68,7 @@ new #[Title('Tournaments')] #[Layout('layouts::app', ['section' => 'tournaments'
     public function next(): ?Tournament
     {
         return Tournament::query()->special()->where('status', TournamentStatus::Signup)->where('signup_closes_at', '>', now())
+            ->when($this->gameFilter !== null, fn ($query) => $query->where('game', $this->gameFilter))
             ->orderBy('signup_closes_at')->first();
     }
 
@@ -58,12 +78,13 @@ new #[Title('Tournaments')] #[Layout('layouts::app', ['section' => 'tournaments'
     #[Computed]
     public function organizers(): array
     {
-        return app(OrganizerBoard::class)->groups(viewerZone: auth()->user()?->timezone);
+        return app(OrganizerBoard::class)->groups(viewerZone: auth()->user()?->timezone, game: $this->gameFilter);
     }
 }; ?>
 
 @php
     $live = Seasons::isLive();
+    $filter = $this->gameFilter;
     // Label, count, icon, fill: one status bar instead of three number tiles (P53). The colours mark state, never alone:
     // every segment has its icon, word and count in the legend.
     $counts = [
@@ -107,6 +128,13 @@ new #[Title('Tournaments')] #[Layout('layouts::app', ['section' => 'tournaments'
                 ? __('Tournament matches are normal challenges and count for Elo. They never mine season blocks; mix teams play without Elo.')
                 : __('Sign-ups are open. Until Block 0 every tournament match is casual and moves the casual Elo.') }}
         </p>
+        @if ($filter !== null)
+            <a href="{{ route('tournaments.index') }}" class="inline-flex min-h-11 items-center gap-2 self-start rounded-tag bg-btc-chip px-3 text-[13px] font-bold whitespace-nowrap text-btc-hi hover:text-btc-hi lg:self-center"
+               aria-label="{{ __(':game only. Show every game', ['game' => \App\Support\GameNames::game($filter)]) }}" data-test="tournaments-game-filter" data-game="{{ $filter }}">
+                {{ \App\Support\GameNames::game($filter) }}
+                <x-icon name="close" :size="14" />
+            </a>
+        @endif
         @can('create-tournaments')
             <div class="flex flex-wrap gap-2 lg:ml-auto lg:shrink-0 lg:self-center">
                 <x-button :href="route('admin.tournaments.create')" class="whitespace-nowrap" data-test="index-new-tournament">+ {{ __('New tournament') }}</x-button>
@@ -160,7 +188,7 @@ new #[Title('Tournaments')] #[Layout('layouts::app', ['section' => 'tournaments'
         </ul>
     </section>
 
-    <x-tournaments.cup-mentions heading filters />
+    <x-tournaments.cup-mentions heading filters :game="$filter" />
 
     @if ($listed->isNotEmpty())
     <section aria-labelledby="all-h" class="flex flex-col gap-3 rounded-lg bg-card px-4 py-5 lg:px-6">
