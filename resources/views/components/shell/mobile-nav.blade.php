@@ -150,7 +150,7 @@
                         <li class="min-w-0">
                             <a href="{{ $game['page'] }}" @navigate($game['page']) class="{{ $row }}">
                                 <x-game-cover :game="$game['slug']" size="thumb" class="w-10 rounded-xs" />
-                                <span class="min-w-0 leading-tight break-words">{{ $game['name'] }}</span>
+                                <span class="flex min-w-0 flex-col"><span class="leading-tight break-words">{{ $game['name'] }}</span><x-game-credit :game="$game['slug']" :link="false" /></span>
                             </a>
                         </li>
                     @endforeach

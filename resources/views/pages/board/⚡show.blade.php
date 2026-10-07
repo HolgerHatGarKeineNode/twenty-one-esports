@@ -240,7 +240,10 @@ new #[Layout('layouts::app', ['realtime' => true, 'scripts' => ['resources/js/bo
 
         {{-- Title row --}}
         <div class="flex flex-wrap items-center gap-x-4 gap-y-2">
-            <h1 class="m-0 font-display text-[22px] font-bold lg:text-[28px]">{{ GameNames::game($boardGame->game) }}</h1>
+            <div class="min-w-0">
+                <h1 class="m-0 font-display text-[22px] font-bold lg:text-[28px]">{{ GameNames::game($boardGame->game) }}</h1>
+                <x-game-credit :game="$boardGame->game" />
+            </div>
             {{-- The lobby of this board game (P5): the next opponent, the ladder. --}}
             <a href="{{ route('board.lobby', $boardGame->game) }}" class="text-[13px] text-ink-2 underline decoration-edge underline-offset-4 hover:text-ink hover:decoration-btc" data-test="board-lobby-link">{{ __('Lobby') }}</a>
             @if ($boardGame->isCorrespondence())

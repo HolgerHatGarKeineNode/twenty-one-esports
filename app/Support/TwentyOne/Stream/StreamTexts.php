@@ -65,7 +65,8 @@ final class StreamTexts
     private static function general(): array
     {
         $registry = app(GameRegistry::class);
-        $names = array_values(array_map(fn ($game): string => GameTitle::short($game->name()), $registry->all()));
+        // A game a community developer made carries its credit (plan "Blockli", P3): "Blockli by DerCaddy".
+        $names = array_values(array_map(fn ($game): string => GameTitle::short($game->name()).($game->assets()->credit === null ? '' : ' '.$game->assets()->credit), $registry->all()));
         $url = (string) config('twentyone.stream.scene.url');
         $offer = self::listed($names);
         $summary = 'TWENTY ONE Esports, the esports arm of EINUNDZWANZIG: '.$offer.'. Ladders, weekly highscores and tournaments for Bitcoiners. Play at '.$url.'. Login via Nostr.';

@@ -229,7 +229,7 @@ class AppServiceProvider extends ServiceProvider
                 continue;
             }
 
-            $games[] = $game;
+            $games[] = $game->credited($entry['credit'] ?? null, $entry['credit_url'] ?? null);
         }
 
         return $games;

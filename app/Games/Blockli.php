@@ -54,6 +54,6 @@ final class Blockli extends BoardGame
 
     public function assets(): GameAssets
     {
-        return new GameAssets('blockli', 'var(--color-edge)', 'var(--color-line)', 'Blockli', new GameCover('blockli'));
+        return new GameAssets('blockli', 'var(--color-edge)', 'var(--color-line)', 'Blockli', new GameCover('blockli'), $this->credit(), $this->creditUrl());
     }
 }

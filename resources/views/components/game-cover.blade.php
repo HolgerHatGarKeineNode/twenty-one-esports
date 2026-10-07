@@ -17,6 +17,9 @@
     $registry = app(\App\Games\GameRegistry::class);
     $cover = $registry->cover((string) $game);
     $name = \App\Support\GameNames::game((string) $game);
+    // The alt text carries the credit of a community game (plan "Blockli", P3): "Blockli cover by DerCaddy".
+    $credit = \App\Support\GameNames::credit((string) $game);
+    $alt = __(':game cover', ['game' => $name]).($credit === null ? '' : ' '.$credit);
     $sizes = match ($size) {
         'thumb' => '96px',
         'header' => '(min-width: 1024px) 480px, 100vw',
@@ -31,11 +34,11 @@
         <source type="image/webp" srcset="{{ $srcset('webp') }}" sizes="{{ $sizes }}">
         <img src="{{ asset($cover->path($cover->smallest(), 'jpg')) }}" srcset="{{ $srcset('jpg') }}" sizes="{{ $sizes }}"
              width="{{ $cover->smallest() }}" height="{{ (int) round($cover->smallest() * 9 / 16) }}"
-             alt="{{ __(':game cover', ['game' => $name]) }}" loading="{{ $loading === 'eager' ? 'eager' : 'lazy' }}" decoding="async" @if ($loading === 'eager') fetchpriority="high" @endif
+             alt="{{ $alt }}" loading="{{ $loading === 'eager' ? 'eager' : 'lazy' }}" decoding="async" @if ($loading === 'eager') fetchpriority="high" @endif
              class="block size-full object-contain">
     </picture>
 @else
-    <span role="img" aria-label="{{ __(':game cover', ['game' => $name]) }}" data-game-cover-fallback
+    <span role="img" aria-label="{{ $alt }}" data-game-cover-fallback
           {{ $attributes->class('flex aspect-video shrink-0 items-center justify-center overflow-hidden bg-well text-ink-3') }}>
         @if ($size === 'thumb')
             <x-icon name="trophy" :size="16" />

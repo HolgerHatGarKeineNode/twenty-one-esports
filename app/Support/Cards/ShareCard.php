@@ -406,7 +406,7 @@ final class ShareCard
             $this->c->rect($x, $y + $row, $w, 4, $this->c->mix($from, $to, $row / $h));
         }
 
-        $name = GameNames::game((string) $this->facts['game']);
+        $name = GameNames::credited((string) $this->facts['game']);
         $size = $this->c->fitSize($name, 'display', [64, 52, 40], $w - 64);
         $this->c->text($name, 'display', $size, $x + 32, $y + $h - 36, Canvas::INK);
     }
@@ -426,7 +426,7 @@ final class ShareCard
     private function inviteLine(): string
     {
         $f = $this->facts;
-        $game = $f['lobby'] ? GameNames::game((string) $f['game']) : GameNames::full((string) $f['game'], (string) $f['mode']);
+        $game = $f['lobby'] ? GameNames::credited((string) $f['game']) : GameNames::fullCredited((string) $f['game'], (string) $f['mode']);
         $format = $f['lobby'] ? __('One lobby match') : TournamentFormat::from((string) $f['format'])->label();
 
         return __(':game, :format. Starts :date.', ['game' => $game, 'format' => $format, 'date' => $f['starts']]);

@@ -20,6 +20,24 @@ final class GameNames
         return __(app(GameRegistry::class)->name($game));
     }
 
+    /** The credit line of a game ("by DerCaddy", from its config entry), null for a game without one or not registered. */
+    public static function credit(string $game): ?string
+    {
+        return app(GameRegistry::class)->find($game)?->assets()->credit;
+    }
+
+    /**
+     * The name with its credit for text without markup (share posts, stream
+     * texts, the drawn cards, alt text, structured data): "Blockli by
+     * DerCaddy"; the plain name for a game without a credit.
+     */
+    public static function credited(string $game): string
+    {
+        $credit = self::credit($game);
+
+        return $credit === null ? self::game($game) : self::game($game).' '.$credit;
+    }
+
     /** "Blitz 5+3", "Daily" (translated), "1v1"; the slug of an unregistered mode. */
     public static function mode(string $game, string $mode): string
     {
@@ -30,6 +48,14 @@ final class GameNames
     public static function full(string $game, string $mode): string
     {
         return self::game($game).' '.self::mode($game, $mode);
+    }
+
+    /** full() with the credit after it, for text without markup: "Blockli Blitz 5+3 by DerCaddy". */
+    public static function fullCredited(string $game, string $mode): string
+    {
+        $credit = self::credit($game);
+
+        return self::full($game, $mode).($credit === null ? '' : ' '.$credit);
     }
 
     /**

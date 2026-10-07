@@ -233,6 +233,7 @@
     {{-- Row 2 (from lg): the context bar of the active game. Icons and full labels from 90rem; short labels below (German ran 69 px past 1280 with full labels). --}}
     <nav class="ctx hidden h-12 items-center gap-1 border-b border-hairline px-6 lg:flex xl:px-8" style="--game: {{ $active['colour'] }}" aria-label="{{ $active['name'] }}" data-test="context-bar" data-game="{{ $active['slug'] }}">
         <span class="ctx-name">{{ $active['name'] }}</span>
+        <x-game-credit :game="$active['slug']" class="-ms-2 me-3 whitespace-nowrap" />
         @foreach ($active['actions'] as $link)
             <a href="{{ $link['href'] }}" @navigate($link['href']) @if (\App\Support\Navigation\ShellNavigation::isCurrent($link)) aria-current="page" @endif @class(['ctx-link', 'ctx-link-accent' => $link['accent'] ?? false]) data-test="ctx-{{ $link['key'] }}">
                 <x-icon :name="$link['icon']" :size="16" class="max-[90rem]:hidden" />

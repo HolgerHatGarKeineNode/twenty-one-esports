@@ -73,6 +73,7 @@
                             <b class="max-w-full shrink-0 truncate text-sm font-bold text-ink" title="{{ $game['name'] }}" data-test="hub-title">{{ $title }}@if ($title !== $game['name'])<span class="sr-only">{{ \Illuminate\Support\Str::after($game['name'], $title) }}</span>@endif</b>
                             <small class="min-w-0 truncate text-xs text-ink-3 max-sm:max-w-full sm:flex-1">{{ $game['formats'] }}</small>
                         </span>
+                        <x-game-credit :game="$game['slug']" :link="false" class="mt-0.5" />
                     </a>
                     @php($cardLinks = $links($game))
                     @if ($cardLinks !== [])

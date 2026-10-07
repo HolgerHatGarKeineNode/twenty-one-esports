@@ -106,7 +106,7 @@ class BoardScene
         foreach ($this->games->boards() as $definition) {
             if ($definition instanceof BoardGameDefinition) {
                 $start = $definition->rules();
-                $boards[] = ['name' => $definition->name(), 'view' => $start->view($start->start()), 'last' => []];
+                $boards[] = ['name' => $this->credited($definition->slug()), 'view' => $start->view($start->start()), 'last' => []];
             }
         }
 
@@ -122,7 +122,7 @@ class BoardScene
         $clocks = $this->boards->clocks($game, $nowMs);
         $toMove = $game->isActive() && $game->clocksRunning() ? $game->turn : null;
         $last = $game->ply > 0 ? $game->moves()->where('ply', $game->ply)->first() : null;
-        $name = $this->games->name($game->game);
+        $name = $this->credited($game->game);
         $mode = $this->games->mode($game->game, $game->mode)->name ?? $game->mode;
 
         return [
@@ -135,6 +135,14 @@ class BoardScene
             'view' => $rules->view($rules->deserialize($game->position)),
             'last' => $last === null ? [] : $rules->path($last->move),
         ];
+    }
+
+    /** The name with its credit (plan "Blockli", P3): "Blockli by DerCaddy"; the plain name for a game without one. */
+    private function credited(string $slug): string
+    {
+        $credit = $this->games->find($slug)?->assets()->credit;
+
+        return $this->games->name($slug).($credit === null ? '' : ' '.$credit);
     }
 
     /**

@@ -230,7 +230,7 @@ class SceneSource
             'a5', 'c5' => ['qrSvg' => $this->qr('lnurl'), 'stats' => $stats, 'backdrop' => $brand],
             'c4' => ['siteQrSvg' => $this->qr('site'), 'stats' => $stats, 'backdrop' => $brand],
             // The games with a daily mode: chess, and the board games that are switched on (plan "Mühle und Dame", P8).
-            'b3' => ['stats' => $stats, 'dailyGames' => ['Chess', ...array_values(array_map(fn ($game): string => $game->name(), $this->games->boards()))], 'dailyGame' => ($daily = collect($games)->first(fn (ChessGame $game): bool => $game->isCorrespondence() && $game->isActive())) === null ? null : $this->card($daily, $nowMs), 'backdrop' => $this->images->backdrop(StreamImages::CHESS)],
+            'b3' => ['stats' => $stats, 'dailyGames' => ['Chess', ...array_values(array_map(fn ($game): string => $game->name().($game->assets()->credit === null ? '' : ' '.$game->assets()->credit), $this->games->boards()))], 'dailyGame' => ($daily = collect($games)->first(fn (ChessGame $game): bool => $game->isCorrespondence() && $game->isActive())) === null ? null : $this->card($daily, $nowMs), 'backdrop' => $this->images->backdrop(StreamImages::CHESS)],
             default => ['stats' => $stats, 'backdrop' => $brand],
         };
     }

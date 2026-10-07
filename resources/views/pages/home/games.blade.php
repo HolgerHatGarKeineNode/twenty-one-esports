@@ -30,7 +30,7 @@
                 <a href="{{ $game['page'] }}" @navigate($game['page']) class="group flex flex-col text-ink hover:text-ink">
                     <x-game-cover :game="$game['slug']" size="card" :loading="$stage && $loop->index < 2 ? 'eager' : 'lazy'" class="w-full" />
                     <span class="flex min-w-0 flex-wrap items-center justify-between gap-x-2 gap-y-1 px-3 pt-3 lg:px-4">
-                        <b class="min-w-0 font-display text-sm leading-[1.25] break-words group-hover:text-btc-hi lg:text-base">{{ $game['name'] }}</b>
+                        <span class="flex min-w-0 flex-col"><b class="min-w-0 font-display text-sm leading-[1.25] break-words group-hover:text-btc-hi lg:text-base">{{ $game['name'] }}</b><x-game-credit :game="$game['slug']" :link="false" /></span>
                         @if ($game['slug'] === 'chess' && $liveChess > 0)
                             <span class="flex shrink-0 items-center gap-1.5 text-xs text-win" data-test="play-live"><span class="size-2 animate-live rounded-full bg-win" aria-hidden="true"></span>{{ __(':count live', ['count' => $liveChess]) }}</span>
                         @endif

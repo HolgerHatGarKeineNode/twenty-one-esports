@@ -224,7 +224,7 @@ final class PageCard
     /** Everything the card shows: a change is a new file and a new `v`. */
     public function fingerprint(): string
     {
-        return substr(hash('sha256', (string) json_encode([self::LAYOUT, $this->type, $this->key, App::getLocale(), $this->facts, config('app.url'), ...$this->coverVersions()])), 0, 16);
+        return substr(hash('sha256', (string) json_encode([self::LAYOUT, $this->type, $this->key, App::getLocale(), $this->facts, config('app.url'), ...$this->coverVersions(), ...$this->credits()])), 0, 16);
     }
 
     /**
@@ -239,6 +239,19 @@ final class PageCard
         $slugs = array_filter([$this->facts['game'] ?? null, $this->facts['board']['game'] ?? null, $this->facts['next']['game'] ?? null], 'is_string');
 
         return array_values(array_filter(array_map(fn (string $slug): ?string => $games->coverVersion($slug), array_unique($slugs))));
+    }
+
+    /**
+     * The credit lines of the card's games (plan "Blockli", P3), so a changed
+     * `credit` in the config is a new card, not the old one from the cache.
+     *
+     * @return list<string>
+     */
+    private function credits(): array
+    {
+        $slugs = array_filter([$this->facts['game'] ?? null, $this->facts['board']['game'] ?? null, $this->facts['next']['game'] ?? null], 'is_string');
+
+        return array_values(array_filter(array_map(fn (string $slug): ?string => GameNames::credit($slug), array_unique($slugs))));
     }
 
     public function url(): string
@@ -266,7 +279,7 @@ final class PageCard
                 '1-0' => __(':name won', ['name' => $this->sideName('white')]),
                 '0-1' => __(':name won', ['name' => $this->sideName('black')]),
                 default => $this->gameHeadline(),
-            }.'. '.$this->sideName('white').' '.__('(white)').', '.$this->sideName('black').' '.__('(black)').'. '.GameNames::game((string) $f['game']).'.',
+            }.'. '.$this->sideName('white').' '.__('(white)').', '.$this->sideName('black').' '.__('(black)').'. '.GameNames::credited((string) $f['game']).'.',
             'leaderboard' => $this->leaderboardTitle($f).'. '.$this->leaderboardStatus().'.',
             default => $this->pageTitle().'.',
         };
@@ -1102,7 +1115,7 @@ final class PageCard
         $headline = $this->gameHeadline();
         $headSize = $this->c->fitSize($headline, 'display', [40, 34, 30, 28], self::RIGHT - $tx);
         $this->c->text($this->c->fit($headline, 'display', $headSize, self::RIGHT - $tx), 'display', $headSize, $tx, $y + 50, $f['status'] === 'active' ? self::LIVE : Canvas::INK);
-        $this->c->text($this->c->fit(GameNames::game((string) $f['game']), 'mono', self::MIN, self::RIGHT - $tx), 'mono', self::MIN, $tx, $y + 92, Canvas::INK_3);
+        $this->c->text($this->c->fit(GameNames::credited((string) $f['game']), 'mono', self::MIN, self::RIGHT - $tx), 'mono', self::MIN, $tx, $y + 92, Canvas::INK_3);
 
         // The full width of the column: rated or casual, the mode and the state when that fits, else the state alone.
         $detail = $this->boardDetail();
@@ -1238,6 +1251,13 @@ final class PageCard
         $title = $f['daily'] ? __(':game correspondence', ['game' => $game]) : $game;
         $size = $this->c->fitSize($title, 'display', [56, 48, 40], 500);
         $after = $this->c->paragraph($title, 'display', $size, self::M, 48 + $size, 500, 2, Canvas::INK, 1.12);
+        // The credit under the name (plan "Blockli", P3): "by DerCaddy".
+        $credit = GameNames::credit((string) $f['game']);
+
+        if ($credit !== null) {
+            $after = $this->c->paragraph($credit, 'mono', self::MIN, self::M, $after + 12, 500, 1, Canvas::INK_3, 1.3);
+        }
+
         $line = $f['daily'] ? __('One move a day, a reminder before your deadline. The server checks every move.') : __('Blitz 5+3 live against Bitcoiners. The server checks every move.');
         $this->c->paragraph($line, 'mono', self::MIN, self::M, $after + 16, 500, 3, Canvas::INK_2, 1.3);
         $running = (int) $f['running'];
@@ -1461,8 +1481,8 @@ final class PageCard
             str_starts_with($this->key, 'hub.') => GameNames::game(substr($this->key, 4)),
             $this->key === 'blockfill' => 'Blockfill',
             $this->key === 'blockfill-replays' => __('Blockfill replays'),
-            str_starts_with($this->key, 'board.') => GameNames::game(substr($this->key, 6)),
-            str_starts_with($this->key, 'board-daily.') => __(':game correspondence', ['game' => GameNames::game(substr($this->key, 12))]),
+            str_starts_with($this->key, 'board.') => GameNames::credited(substr($this->key, 6)),
+            str_starts_with($this->key, 'board-daily.') => __(':game correspondence', ['game' => GameNames::credited(substr($this->key, 12))]),
             str_starts_with($this->key, 'scores.') => __(':game leaderboards', ['game' => GameNames::game(substr($this->key, 7))]),
             default => 'TWENTY ONE esports',
         };

@@ -40,4 +40,32 @@ abstract class BoardGame implements Game
      * @return BoardRules<mixed>
      */
     abstract public function rules(): BoardRules;
+
+    /** The credit line of the game's config entry (`credit`), null without one (plan "Blockli", P3). */
+    private ?string $credit = null;
+
+    /** Where the credit links to (`credit_url`), null for a credit without a link. */
+    private ?string $creditUrl = null;
+
+    /**
+     * Takes the credit from the game's config entry when the registry builds
+     * it (AppServiceProvider::boardGames()); a blank value is no credit.
+     */
+    public function credited(?string $credit, ?string $creditUrl = null): static
+    {
+        $this->credit = trim((string) $credit) === '' ? null : trim((string) $credit);
+        $this->creditUrl = trim((string) $creditUrl) === '' ? null : trim((string) $creditUrl);
+
+        return $this;
+    }
+
+    public function credit(): ?string
+    {
+        return $this->credit;
+    }
+
+    public function creditUrl(): ?string
+    {
+        return $this->credit === null ? null : $this->creditUrl;
+    }
 }

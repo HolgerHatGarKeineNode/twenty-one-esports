@@ -646,7 +646,10 @@ new #[Layout('layouts::app', ['realtime' => true, 'scripts' => ['resources/js/ga
     <div class="chat-rail-host flex flex-col gap-6 px-4 pb-8 lg:gap-8 lg:px-12 lg:pb-10">
         {{-- The title below lg, with the rating and the rules; from lg the header's context bar names the page and links the rules. --}}
         <div class="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1 lg:hidden" data-test="lobby-title">
-            <h1 class="m-0 font-display text-2xl leading-tight font-bold">{{ $name }}</h1>
+            <div class="min-w-0">
+                <h1 class="m-0 font-display text-2xl leading-tight font-bold">{{ $name }}</h1>
+                <x-game-credit :game="$slug" />
+            </div>
             <span class="flex items-baseline gap-3 text-[13px]">
                 @auth<x-rating :rating="Ratings::headline($user->id, $slug, 'blitz')" :label="__('Blitz')" class="text-ink-2" data-test="lobby-rating" />@endauth
                 <a href="{{ route('rules') }}#{{ $slug }}" class="inline-flex min-h-11 items-center text-ink underline decoration-edge underline-offset-4 hover:decoration-btc" data-test="lobby-rules">{{ __('Rules') }}</a>

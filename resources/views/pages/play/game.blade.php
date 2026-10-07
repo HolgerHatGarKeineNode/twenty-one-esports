@@ -16,6 +16,7 @@
     <div class="flex min-w-0 flex-col gap-3">
         <div class="flex flex-wrap items-baseline gap-x-3 gap-y-1">
             <{{ $heading }} class="m-0 font-display text-xl font-bold"><a href="{{ $game['page'] }}" @navigate($game['page']) class="text-ink hover:text-ink">{{ $game['name'] }}</a></{{ $heading }}>
+            <x-game-credit :game="$game['slug']" />
             @if ($game['played'])
                 <span class="text-xs text-ink-3">{{ __('You play this') }}</span>
             @endif

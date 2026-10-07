@@ -25,6 +25,7 @@
         <x-doc-page :sections="array_map(fn ($s) => [$s['id'], $s['title']], $sections)" :nav-label="__('Rules sections')">
             @foreach ($sections as $section)
                 <x-doc-section :id="$section['id']" :title="$section['title']">
+                    @isset($section['game'])<x-game-credit :game="$section['game']" class="-mt-2" />@endisset
                     <p class="m-0 max-w-[68ch] text-[15px] leading-relaxed">{{ $section['lead'] }}</p>
 
                     @if (! empty($section['facts']))
@@ -50,7 +51,7 @@
                                     @foreach ($section['table']['rows'] as $rowIndex => $row)
                                         <tr>
                                             @foreach ($row as $index => $cell)
-                                                @if ($index === 0)<th scope="row" class="border-b border-hairline py-2.5 pr-4 font-bold">@if (isset($section['table']['covers'][$rowIndex]))<span class="flex items-center gap-2.5"><x-game-cover :game="$section['table']['covers'][$rowIndex]" size="thumb" class="w-12 rounded-xs" data-test="rules-table-cover" />{{ $cell }}</span>@else{{ $cell }}@endif</th>@else<td class="border-b border-hairline py-2.5 pr-4 text-ink-2">{{ $cell }}</td>@endif
+                                                @if ($index === 0)<th scope="row" class="border-b border-hairline py-2.5 pr-4 font-bold">@if (isset($section['table']['covers'][$rowIndex]))<span class="flex items-center gap-2.5"><x-game-cover :game="$section['table']['covers'][$rowIndex]" size="thumb" class="w-12 rounded-xs" data-test="rules-table-cover" /><span class="flex flex-col">{{ $cell }}<x-game-credit :game="$section['table']['covers'][$rowIndex]" class="font-normal" /></span></span>@else{{ $cell }}@endif</th>@else<td class="border-b border-hairline py-2.5 pr-4 text-ink-2">{{ $cell }}</td>@endif
                                             @endforeach
                                         </tr>
                                     @endforeach

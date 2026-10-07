@@ -282,7 +282,10 @@ return [
         'games' => [
             'nine-mens-morris' => ['enabled' => (bool) env('ESPORTS_BOARD_GAME_NINE_MENS_MORRIS', false), 'class' => NineMensMorris::class],
             'checkers' => ['enabled' => (bool) env('ESPORTS_BOARD_GAME_CHECKERS', false), 'class' => Checkers::class],
-            'blockli' => ['enabled' => (bool) env('ESPORTS_BOARD_GAME_BLOCKLI', false), 'class' => Blockli::class],
+            // Blockli by DerCaddy (plan "Blockli", P3): `credit` is shown under the game's name wherever it
+            // appears; `credit_url` makes it a link (a profile or website, none yet).
+            'blockli' => ['enabled' => (bool) env('ESPORTS_BOARD_GAME_BLOCKLI', false), 'class' => Blockli::class,
+                'credit' => env('ESPORTS_BOARD_GAME_BLOCKLI_CREDIT', 'by DerCaddy'), 'credit_url' => env('ESPORTS_BOARD_GAME_BLOCKLI_CREDIT_URL')],
         ],
     ],
 

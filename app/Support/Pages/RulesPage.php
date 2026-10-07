@@ -47,7 +47,7 @@ use Illuminate\Support\Facades\Route;
  * as short sentences), `table` (head and rows) and `links` (label and URL
  * into the pages where the rule applies).
  *
- * @phpstan-type Section array{id: string, title: string, lead: string, facts?: list<array{0: string, 1: string}>, items?: list<string>, table?: array{head: list<string>, rows: list<list<string>>, covers?: list<string>}, links?: list<array{0: string, 1: string}>}
+ * @phpstan-type Section array{id: string, title: string, game?: string, lead: string, facts?: list<array{0: string, 1: string}>, items?: list<string>, table?: array{head: list<string>, rows: list<list<string>>, covers?: list<string>}, links?: list<array{0: string, 1: string}>}
  */
 final class RulesPage
 {
@@ -389,6 +389,8 @@ final class RulesPage
         return [[
             'id' => Blockli::SLUG,
             'title' => GameNames::game(Blockli::SLUG),
+            // The credit under the title (plan "Blockli", P3).
+            'game' => Blockli::SLUG,
             'lead' => __('A race on 9 × 9: bring your pawn to the far side first, and block the other pawn\'s way.'),
             'facts' => [
                 [__('Time control'), __('Blitz 5+3')],
