@@ -243,6 +243,19 @@ new class extends Component {
                 <span class="{{ $tag }} font-bold text-btc-hi" data-test="hyper-lobby-count">{{ __(':taken/:seats seats', ['taken' => $mine->takenSeats->count(), 'seats' => $mine->seats]) }}</span>
             </div>
 
+            {{-- The table's actions come first: on a phone two stacked clan sides would push them below the fold. --}}
+            <div class="flex flex-wrap items-center gap-2">
+                @if ($creator)
+                    <x-button variant="primary" wire:click="fillWithBots" icon="play" class="h-12 px-5 text-[15px]" data-test="hyper-lobby-fill">{{ __('Fill with bots and start') }}</x-button>
+                @endif
+                {{-- A component attribute compiles {{ }}, not directives: the link goes in through Js::from, never @js. --}}
+                <span x-data="{ copied: false }" class="inline-flex">
+                    <x-button variant="secondary" icon="link" class="h-12" data-test="hyper-lobby-invite" x-on:click="navigator.clipboard?.writeText({{ \Illuminate\Support\Js::from(route('hyper.table', $mine)) }}).then(() => { copied = true; setTimeout(() => copied = false, 1500) })">
+                        <span x-text="copied ? @js(__('Link copied')) : @js(__('Copy invite link'))">{{ __('Copy invite link') }}</span>
+                    </x-button>
+                </span>
+                <x-button variant="quiet" wire:click="leave" class="h-12" data-test="hyper-lobby-leave">{{ $creator ? __('Close table') : __('Leave table') }}</x-button>
+            </div>
             @if ($mine->isTeamTable())
                 {{-- Clan against clan: two sides, the seats alternating between them --}}
                 <div class="grid gap-3 md:grid-cols-[1fr_auto_1fr] md:items-stretch" data-test="hyper-lobby-sides">
@@ -268,18 +281,6 @@ new class extends Component {
                 </ul>
             @endif
 
-            <div class="flex flex-wrap items-center gap-2">
-                @if ($creator)
-                    <x-button variant="primary" wire:click="fillWithBots" icon="play" class="h-12 px-5 text-[15px]" data-test="hyper-lobby-fill">{{ __('Fill with bots and start') }}</x-button>
-                @endif
-                {{-- A component attribute compiles {{ }}, not directives: the link goes in through Js::from, never @js. --}}
-                <span x-data="{ copied: false }" class="inline-flex">
-                    <x-button variant="secondary" icon="link" class="h-12" data-test="hyper-lobby-invite" x-on:click="navigator.clipboard?.writeText({{ \Illuminate\Support\Js::from(route('hyper.table', $mine)) }}).then(() => { copied = true; setTimeout(() => copied = false, 1500) })">
-                        <span x-text="copied ? @js(__('Link copied')) : @js(__('Copy invite link'))">{{ __('Copy invite link') }}</span>
-                    </x-button>
-                </span>
-                <x-button variant="quiet" wire:click="leave" class="h-12" data-test="hyper-lobby-leave">{{ $creator ? __('Close table') : __('Leave table') }}</x-button>
-            </div>
             <fieldset class="m-0 flex flex-col gap-2 border-0 p-0">
                 <legend class="mb-2 text-xs font-bold tracking-[0.12em] text-ink-2 uppercase">{{ __('Your faction') }}</legend>
                 <div class="grid grid-cols-4 gap-2 sm:grid-cols-7" role="group">

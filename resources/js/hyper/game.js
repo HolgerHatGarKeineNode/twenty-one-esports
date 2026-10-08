@@ -399,13 +399,20 @@ async function banner(title, sub = '', hold = 1100, por = '', ring = 'var(--btc)
     await gsap().to('#banner .bx', { opacity: 0, y: -24, duration: 0.3, ease: 'power2.in' }).then();
     bn.hidden = true;
 }
-/** A big moment waits for the player: a click on it, Enter or Space. `data-wait` says it is waiting. */
+/**
+ * A big moment waits for the player: a click on it, Enter or Space. `data-wait` says it is waiting. Nobody is held
+ * hostage by it, though: a spectator, or a player whose own turn clock already runs on the server, moves on by
+ * itself after TAP_GRACE_MS (the caption has been readable for its minimum time before this wait starts).
+ */
+const TAP_GRACE_MS = 6000;
 function tapToContinue(el) {
     el.dataset.wait = '1';
+    const grace = !playing() || (isMe(live.seat) && !G.over);
 
     return new Promise((done) => {
         const stop = new AbortController();
         const go = (e) => { if (e.type === 'keydown' && !['Enter', ' ', 'ArrowRight'].includes(e.key)) return; e.preventDefault?.(); e.stopPropagation?.(); stop.abort(); el.dataset.wait = '0'; done(); };
+        if (grace) { const timer = setTimeout(() => go({ type: 'timeout' }), TAP_GRACE_MS); stop.signal.addEventListener('abort', () => clearTimeout(timer)); }
         el.addEventListener('pointerdown', go, { signal: stop.signal });
         addEventListener('keydown', go, { capture: true, signal: stop.signal });
     });
