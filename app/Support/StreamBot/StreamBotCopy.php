@@ -165,29 +165,32 @@ final class StreamBotCopy
         // wording never follows itself. A tournament note always names its start (TournamentNotes finds a moved one by it).
         'tournament_note_open' => [
             ['🏆 New tournament: :name', '🎮 :game · starts :starts', '💰 :pot sats in the pot', '👉 Sign up: :url'],
-            ['📣 Sign-up is open: :name', '🗓️ :game, starts :starts', '💰 :pot sats up for grabs', '👉 Join in: :url'],
-            ['⚔️ :name is taking sign-ups', '🎮 :game · starts :starts', '💰 Pot: :pot sats', '👉 Grab a place: :url'],
+            ['🏆 :name starts :starts. Sign up: :url'],
+            ['Worth a seat: :name starts :starts.', '🎮 :game', '💰 :pot sats in the pot', '👉 :url'],
         ],
         'tournament_note_running' => [
             ['🏆 Tournament on now: :name', '🎮 :game · started :starts', '💰 :pot sats in the pot', '👉 Follow it: :url'],
-            ['🔴 :name is under way', '🎮 :game · started :starts', '💰 :pot sats in the pot', '👉 Watch the bracket: :url'],
+            ['🔴 :name is under way. Follow it: :url'],
+            ['It is moving: :name started :starts.', '🎮 :game', '👉 Watch the bracket: :url'],
         ],
         'tournament_note_finished' => [
             ['🏆 Tournament: :name', '🎮 :game · played :starts', '💰 :pot sats in the pot', '👉 Bracket and results: :url'],
-            ['🏁 :name is decided', '🎮 :game · played :starts', '💰 :pot sats in the pot', '👉 See how it went: :url'],
+            ['🏁 :name is decided. See how it went: :url'],
+            ['That one is over: :name, played :starts.', '🎮 :game', '👉 :url'],
         ],
         // Free-places reminders on the same profile (FreePlaceNotes, P49), while sign-up is open and
         // places are left; the `nostr:naddr1…` follows after a blank line here too.
         'tournament_note_places' => [
             ['🪑 :free of :places places left: :name', '🎮 :game · starts :starts', '⏳ Sign-up closes in :left', '👉 Grab a place: :url'],
-            ['⏳ :left left to join :name', '🪑 :free of :places places still free', '🎮 :game · starts :starts', '👉 Sign up: :url'],
-            ['🙋 Still room in :name: :free of :places places', '🗓️ :game · starts :starts', '⏳ Sign-up closes in :left', '👉 :url'],
+            ['🪑 :name still has :free places. Sign up: :url'],
+            ['Room left in :name, :free of :places, closes in :left.', '🎮 :game · starts :starts', '👉 :url'],
         ],
         // Blockfill's week notes on the same profile (BlockfillNotes, plan "Blockfill", P6): a week once it is open,
         // its winner and top 3 once it is finished; the week's `nostr:naddr1…` follows after a blank line once published.
         'blockfill_note_week' => [
             ['🧱 A new Blockfill week is open: :name', '⏱️ Mine :blocks blocks as fast as you can, your best ranked run of the week counts', '🗓️ Until :ends', '👉 Play: :url'],
-            ['⛏️ :name starts now, the board is empty', '🧱 :blocks blocks against the clock, only your best ranked run counts', '🗓️ Open until :ends', '👉 Start mining: :url'],
+            ['⛏️ :name is open until :ends. Play: :url'],
+            ['Fresh board: :name runs until :ends.', '🧱 :blocks blocks, best run counts', '👉 :url'],
         ],
         'blockfill_note_winner' => [
             ['🏆 :name goes to :winner in :time', '🧱 Top 3: :podium', '🔁 A new week is on, every run starts from zero', '👉 All weeks: :url'],
@@ -196,8 +199,8 @@ final class StreamBotCopy
         // A verified run that took the running week's first place; `:gap` is empty for the week's first one.
         'blockfill_note_top' => [
             ['🥇 New first place in :name: :player', '⏱️ :time:gap', '🗓️ The week runs until :ends', '👉 Beat it: :url'],
-            ['⚡ :player takes the lead in :name', '⏱️ :time:gap', '🗓️ Open until :ends', '👉 Your turn: :url'],
-            ['🧱 Top of the board in :name: :player', '⏱️ :time:gap', '🗓️ Still time until :ends', '👉 Try to beat it: :url'],
+            ['🥇 :player leads :name. Beat it: :url'],
+            ['New name on top of :name: :player.', '⏱️ :time:gap', '👉 :url'],
         ],
         // Several first places since the bot's last one (a burst) in one note: `:count` of them, the leader now and
         // the others who held the top meanwhile (`:others` null, so left out, when the leader only beat themself).
@@ -228,14 +231,15 @@ final class StreamBotCopy
         // the prize only once it is paid out; the `nostr:naddr1…` and the rendered champion slide follow after blank lines.
         'champion_note' => [
             ['🏆 :winner wins :name (:game)', '🎉 Congratulations, champion!', '⚡ :prize sats prize paid out', '👉 Bracket and results: :url'],
-            ['🏆 :winner wins :name (:game)', '🎉 GG and congrats on the title', '⚡ :prize sats won', '👉 See how it went: :url'],
-            ['🏆 :winner wins :name (:game)', '👏 Well played, and congratulations', '⚡ :prize sats paid out to the champion', '👉 All the results: :url'],
+            ['🏆 :winner takes :name. 👉 :url'],
+            ['That title is settled: :winner wins :name.', '🎮 :game', '⚡ :prize sats paid out to the champion', '👉 :url'],
         ],
         // Pride notes on the same profile (PrideNotes): players named for what they did, tagged; the
         // rendered slide follows after a blank line. Written by the kommunikator (2026-09-28).
         'pride_note_win' => [
             ['⚡ :winner takes the win over :loser (:mode)', '📈 :elo', '👉 Watch the game: :url'],
-            ['🏆 :winner beats :loser in :mode', '📈 :elo', '🎉 Well played to both', '👉 Watch it back: :url'],
+            ['🏆 :winner beats :loser. Watch it: :url'],
+            ['Nice one: :winner beat :loser in :mode.', '📈 :elo', '👉 :url'],
         ],
         'pride_note_climbers' => [
             ['🚀 Biggest gainers of the last :days days', ':players', '👉 See the ladder: :url'],
@@ -243,7 +247,8 @@ final class StreamBotCopy
         ],
         'pride_note_signups' => [
             ['🙌 Welcome aboard: :players', '📝 :count new sign-ups', '❓ Who joins next?', '👉 :url'],
-            ['📝 :count new players just signed up', '🙌 :players', '❓ Who is next?', '👉 :url'],
+            ['📝 :players just signed up. 👉 :url'],
+            ['New faces: :players.', '📝 :count sign-ups', '👉 :url'],
         ],
         'pride_note_prizes' => [
             ['💰 :pot sats in the pot for :name', '🥇 :places', '🎁 :sponsors', '👉 :url'],

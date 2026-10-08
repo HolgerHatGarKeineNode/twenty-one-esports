@@ -40,6 +40,7 @@ beforeEach(function () {
         'esports.stream_bot.nsec' => $this->botKey->secret,
         'esports.stream_bot.pride_notes.image_dir' => $this->dir,
         'esports.stream_bot.profile_limits' => [],
+        'esports.stream_bot.profile_gap_minutes' => 0,
         'esports.relays' => ['wss://league.test'],
         'twentyone.stream.relays' => ['wss://one.test', 'wss://two.test'],
     ]);

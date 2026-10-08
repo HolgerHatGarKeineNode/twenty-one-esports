@@ -36,8 +36,77 @@ final class ProfileNotes
         }
 
         $last = BotPost::query()->where('note_type', $type)->whereNotNull('variant')->whereNotNull('event')->orderByDesc('id')->value('variant');
+        $next = $last === null ? 0 : ((int) $last + 1) % $variants;
+        // Variant index modulo 3 is the shape (card, short, aside). A different
+        // type must not repeat the shape the profile just used.
+        $lastAny = BotPost::query()->whereNotNull('note_type')->whereNotNull('variant')->whereNotNull('event')->orderByDesc('id')->value('variant');
 
-        return $last === null ? 0 : ((int) $last + 1) % $variants;
+        if ($lastAny !== null && ($next % 3) === ((int) $lastAny % 3)) {
+            return ($next + 1) % $variants;
+        }
+
+        return $next;
+    }
+
+    /**
+     * Why the profile may not take another note now, null when it may.
+     * Unreadable quiet hours stay quiet. A gap of 0 is no shared brake.
+     */
+    public static function hold(CarbonImmutable $now): ?string
+    {
+        if (StreamBot::quietAt($now) !== false) {
+            return 'quiet hours';
+        }
+
+        $gap = max(0, (int) config('esports.stream_bot.profile_gap_minutes', 35));
+
+        if ($gap === 0) {
+            return null;
+        }
+
+        $last = BotPost::query()->where('kind', 1)->whereNotNull('published_at')->latest('published_at')->value('published_at');
+
+        if ($last !== null && CarbonImmutable::parse($last)->utc()->greaterThan($now->subMinutes($gap))) {
+            return 'the profile waits '.$gap.' minutes after its last note';
+        }
+
+        return null;
+    }
+
+    /** Whether `$subjectType` already delivered a kind-1 note for this subject today (Berlin). */
+    public static function subjectSpokeToday(string $subjectType, int $subjectId, CarbonImmutable $now): bool
+    {
+        $start = $now->setTimezone(self::timezone())->startOfDay()->utc();
+
+        return BotPost::query()
+            ->where('subject_type', $subjectType)
+            ->where('subject_id', $subjectId)
+            ->where('kind', 1)
+            ->whereNotNull('published_at')
+            ->where('published_at', '>=', $start)
+            ->exists();
+    }
+
+    /**
+     * Pubkeys already tagged on a delivered note of `$noteType`.
+     *
+     * @return list<string>
+     */
+    public static function announcedPubkeys(string $noteType): array
+    {
+        $keys = [];
+
+        foreach (BotPost::query()->where('note_type', $noteType)->whereNotNull('published_at')->whereNotNull('event')->pluck('event') as $event) {
+            $tags = json_decode((string) $event, true)['tags'] ?? [];
+
+            foreach (is_array($tags) ? $tags : [] as $tag) {
+                if (is_array($tag) && ($tag[0] ?? null) === 'p' && is_string($tag[1] ?? null) && $tag[1] !== '') {
+                    $keys[$tag[1]] = true;
+                }
+            }
+        }
+
+        return array_keys($keys);
     }
 
     /**

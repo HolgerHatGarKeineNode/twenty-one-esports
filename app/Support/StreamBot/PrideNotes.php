@@ -87,6 +87,12 @@ class PrideNotes
         $lines = [];
 
         foreach ($this->due($now) as $type => $day) {
+            if (($hold = ProfileNotes::hold($now)) !== null) {
+                $lines[] = 'held: '.$hold;
+
+                break;
+            }
+
             try {
                 $lines[] = $this->post($key, $type, $day, $relays, $now);
             } catch (Throwable $e) {
@@ -323,8 +329,15 @@ class PrideNotes
     private function signupValues(array $signups, \Closure $mention): ?array
     {
         $players = [];
+        $announced = array_flip(ProfileNotes::announcedPubkeys('pride_signups'));
 
         foreach ($signups as $signup) {
+            $pubkey = is_array($signup['ref'] ?? null) ? (string) ($signup['ref']['pubkey'] ?? '') : '';
+
+            if ($pubkey !== '' && isset($announced[$pubkey])) {
+                continue;
+            }
+
             $who = $mention($signup['ref'] ?? null);
 
             if ($who !== null && ! in_array($who, $players, true)) {
@@ -380,6 +393,12 @@ class PrideNotes
 
             if ($note === null) {
                 return $name.': nothing to show';
+            }
+
+            $potId = $note['slide']['prizes']['id'] ?? null;
+
+            if ($name === 'prizes' && is_int($potId) && ProfileNotes::subjectSpokeToday(BotPost::SUBJECT_TOURNAMENT, $potId, $now)) {
+                return $name.': pot already named today';
             }
 
             if (in_array($this->lastBody($type), $note['bodies'], true)) {

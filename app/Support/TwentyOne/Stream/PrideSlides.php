@@ -608,6 +608,7 @@ class PrideSlides
         $timezone = (string) config('twentyone.stream.stats.timezone', 'Europe/Berlin');
 
         return [
+            'id' => $tournament->id,
             'name' => PublicName::clean($tournament->name),
             'game' => GameTitle::of($tournament->game),
             'mode' => $this->games->mode($tournament->game, $tournament->mode)->name ?? $tournament->mode,

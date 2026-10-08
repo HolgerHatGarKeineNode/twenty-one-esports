@@ -240,10 +240,9 @@ test('the note tags the player (nostr:npub1… and p), names the time, the gap t
     // The week's second first-place note takes the type's second wording (ProfileNotes).
     expect($note->kind)->toBe(1)
         ->and($note->content)->toBe(
-            '⚡ '.topNoteNpub('Ben')." takes the lead in Blockfill Week 41, 2026\n"
+            'New name on top of Blockfill Week 41, 2026: '.topNoteNpub('Ben').".\n"
             ."⏱️ 0:50.000, 1.666 s faster than the first place before\n"
-            ."🗓️ Open until Mon, 12 Oct 2026, 12:00 AM CEST\n"
-            .'👉 Your turn: '.route('stacker.play')."\n\nnostr:".$naddr)
+            .'👉 '.route('stacker.play')."\n\nnostr:".$naddr)
         ->and(route('stacker.play'))->toEndWith('/blockfill')
         ->and(StreamBotCopy::violations($text, $note->tags))->toBe([])
         ->and($note->tags)->toBe([['p', User::query()->where('name', 'Ben')->sole()->pubkey], ['q', $week->address(), app(TournamentNotes::class)->relayHint() ?? '']])
@@ -339,7 +338,7 @@ test('a player without a valid Nostr key is named plainly, with no p tag', funct
     $note = topNotes($this->relays)[0];
     [$text] = explode("\n\nnostr:", $note->content, 2);
 
-    expect($text)->toStartWith("🥇 New first place in Blockfill Week 41, 2026: Ada\n")
+    expect($text)->toStartWith('🥇 Ada leads Blockfill Week 41, 2026.')
         ->and($text)->not->toContain('nostr:')
         ->and($note->tagsNamed('p'))->toBe([])
         ->and(StreamBotCopy::violations($text, $note->tags))->toBe([]);

@@ -259,6 +259,15 @@ class StreamBot
      */
     public function isQuiet(CarbonImmutable $now): ?bool
     {
+        return self::quietAt($now);
+    }
+
+    /**
+     * true inside the quiet hours, false outside or without any, null when
+     * the setting cannot be read. Shared with the profile notes.
+     */
+    public static function quietAt(CarbonImmutable $now): ?bool
+    {
         $setting = trim((string) config('esports.stream_bot.quiet_hours'));
 
         if ($setting === '') {
@@ -278,7 +287,7 @@ class StreamBot
         $from = $fromHour * 60 + $fromMinute;
         $to = $toHour * 60 + $toMinute;
 
-        $local = $now->setTimezone($this->timezone());
+        $local = $now->setTimezone((string) config('esports.stream_bot.timezone', 'Europe/Berlin'));
         $minute = $local->hour * 60 + $local->minute;
 
         if ($from === $to) {

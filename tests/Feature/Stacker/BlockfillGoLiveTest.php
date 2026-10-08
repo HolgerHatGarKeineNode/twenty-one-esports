@@ -69,6 +69,7 @@ beforeEach(function () {
     $this->travelTo(CarbonImmutable::parse('2026-10-07 12:00:00'));
     // The admins approved the weeks around now (the approval itself: LeagueWeekApprovalTest).
     leagueWeeksApproved(Blockfill::SLUG);
+    config(['esports.stream_bot.profile_gap_minutes' => 0]);
 });
 
 /** A verified run of `$user` with `$ticks`, handed in at `$at`, through the real verdict job. */
@@ -287,7 +288,7 @@ test('the bot announces a new week once, and after the week its winner with the 
     $this->artisan('blockfill:weeks')->assertSuccessful();
     $this->artisan('twentyone:stream-bot:blockfill')->assertSuccessful();
     $this->artisan('twentyone:stream-bot:blockfill')->assertSuccessful();
-    $winner = collect($relays->sent)->first(fn (SignedEvent $event): bool => str_contains($event->content, 'goes to'));
+    $winner = collect($relays->sent)->first(fn (SignedEvent $event): bool => str_contains($event->content, 'Top 3:') || str_contains($event->content, 'Podium:'));
 
     foreach ([$open, $winner] as $note) {
         expect($note->kind)->toBe(1)
@@ -299,7 +300,7 @@ test('the bot announces a new week once, and after the week its winner with the 
     }
 
     expect($open->content)->toContain('Blockfill Week 41, 2026')->toContain(route('stacker.play'))
-        ->and($winner->content)->toStartWith('🏆 Blockfill Week 41, 2026 goes to '.$npub('Ada').' in ')
+        ->and($winner->content)->toContain($npub('Ada'))->toContain('Blockfill Week 41, 2026')
         ->and($winner->content)->toContain('1. '.$npub('Ada').' ')->toContain('2. '.$npub('Ben').' ')->toContain('3. '.$npub('Cy').' ')
         ->and($winner->content)->not->toContain($npub('Dee'))->not->toContain('Dee')->not->toContain('Ada ')
         // One p tag per player, the winner once although named twice.
@@ -316,7 +317,7 @@ test('a winner note names a podium entry whose account is gone plainly and tags 
     goLiveFinish($week);
     TournamentParticipant::query()->where(['tournament_id' => $week->id, 'user_id' => $users['Cy']->id])->update(['user_id' => null]);
     $this->artisan('twentyone:stream-bot:blockfill')->assertSuccessful();
-    $winner = collect($relays->sent)->first(fn (SignedEvent $event): bool => str_contains($event->content, 'goes to'));
+    $winner = collect($relays->sent)->first(fn (SignedEvent $event): bool => str_contains($event->content, 'Top 3:') || str_contains($event->content, 'Podium:'));
     [$text] = explode("\n\nnostr:", $winner->content, 2);
 
     expect($text)->toContain('3. Cy ')->toContain('2. nostr:'.NostrKeys::hexToNpub($users['Ben']->pubkey).' ')

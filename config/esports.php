@@ -1225,6 +1225,8 @@ return [
         'jitter_minutes' => 5,
         'alone_minutes' => 45,
         'daily_cap' => 24,
+        // One kind-1 note on the bot profile across every type. 0 turns the shared brake off.
+        'profile_gap_minutes' => 35,
         'builder_gap' => 4,
         'repeat_hours' => 12,
         // A failed post (no relay accepted) is tried again after this long.
@@ -1255,7 +1257,8 @@ return [
             'image_dir' => storage_path('app/stream/pride'),
             'slots' => [
                 'climbers' => ['time' => '12:00', 'timezone' => 'Europe/Berlin'],
-                'signups' => ['time' => '13:00', 'timezone' => 'America/New_York'],
+                // 09:00 New York ends before the 19:00 Berlin win slot, in both summer and winter offsets.
+                'signups' => ['time' => '09:00', 'timezone' => 'America/New_York'],
                 'win' => ['time' => '19:00', 'timezone' => 'Europe/Berlin'],
                 'prizes' => ['time' => '19:00', 'timezone' => 'America/New_York'],
             ],
@@ -1267,7 +1270,7 @@ return [
         'champion_notes' => [
             'enabled' => (bool) env('ESPORTS_STREAM_BOT_CHAMPION_NOTES', true),
             'days' => 5,
-            'per_run' => 3,
+            'per_run' => 1,
             'retry_minutes' => 10,
         ],
         // The GG in the stream chat the moment a tournament is decided (twentyone:stream-bot:gg, ChampionChat): once per
@@ -1311,6 +1314,7 @@ return [
         'profile_limits' => [
             'tournament' => ['cooldown_minutes' => 60, 'daily_cap' => 6],
             'free_places' => ['cooldown_minutes' => 60, 'daily_cap' => 6],
+            'champion' => ['cooldown_minutes' => 60, 'daily_cap' => 8],
             'blockfill_top' => ['cooldown_minutes' => 0, 'daily_cap' => 3],
             'tmnf_top' => ['cooldown_minutes' => 0, 'daily_cap' => 3],
         ],

@@ -41,6 +41,7 @@ beforeEach(function () {
         ],
         // The pacing of the profile notes (ProfileVarietyTest) is not what this file tests.
         'esports.stream_bot.profile_limits' => [],
+        'esports.stream_bot.profile_gap_minutes' => 0,
         'twentyone.stream.relays' => ['wss://one.test', 'wss://two.test'],
     ]);
 

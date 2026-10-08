@@ -91,6 +91,12 @@ class ChampionNotes
         $lines = [];
 
         foreach ($this->due($now) as $tournament) {
+            if (($hold = ProfileNotes::hold($now)) !== null) {
+                $lines[] = 'held: '.$hold;
+
+                break;
+            }
+
             try {
                 $lines[] = $this->post($key, $tournament, $relays, $now);
             } catch (Throwable $e) {
@@ -113,7 +119,7 @@ class ChampionNotes
      */
     public function due(CarbonImmutable $now): array
     {
-        $limit = min(max(0, (int) config('esports.stream_bot.champion_notes.per_run', 3)), ProfileNotes::allowance(self::NOTE_TYPE, $now));
+        $limit = min(max(0, (int) config('esports.stream_bot.champion_notes.per_run', 1)), ProfileNotes::allowance(self::NOTE_TYPE, $now));
 
         if ($limit <= 0) {
             return [];
@@ -143,7 +149,8 @@ class ChampionNotes
         foreach ($candidates as $tournament) {
             $finished = TournamentLiveSlides::finishedAt($tournament);
 
-            if ($finished !== null && $finished->gte($since) && $this->champions->of($tournament) !== null) {
+            if ($finished !== null && $finished->gte($since) && $this->champions->of($tournament) !== null
+                && ! ProfileNotes::subjectSpokeToday(BotPost::SUBJECT_FREE_PLACES, $tournament->id, $now)) {
                 $due[] = ['tournament' => $tournament, 'finished' => $finished->getTimestamp()];
             }
         }

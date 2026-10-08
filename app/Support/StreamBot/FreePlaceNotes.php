@@ -80,6 +80,12 @@ class FreePlaceNotes
         $lines = [];
 
         foreach ($this->due($now) as $due) {
+            if (($hold = ProfileNotes::hold($now)) !== null) {
+                $lines[] = 'held: '.$hold;
+
+                break;
+            }
+
             try {
                 $lines[] = $this->post($key, $due, $relays, $now);
             } catch (Throwable $e) {
@@ -134,7 +140,7 @@ class FreePlaceNotes
             $places = $this->signups->places($tournament);
             $free = $places['places'] - $places['taken'];
 
-            if ($free <= 0 || $this->taken($tournament, $slot, $now)) {
+            if ($free <= 0 || $this->taken($tournament, $slot, $now) || ProfileNotes::subjectSpokeToday('tournament_champion', $tournament->id, $now)) {
                 continue;
             }
 

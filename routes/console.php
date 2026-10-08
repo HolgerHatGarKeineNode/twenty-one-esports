@@ -629,8 +629,16 @@ Schedule::command('wallet:sync')->everyMinute()->withoutOverlapping();
 Schedule::command('twentyone:stream-bot')->everyMinute()->withoutOverlapping()->onOneServer();
 
 /*
+ * Profile notes share one brake (ProfileNotes::hold): one kind-1 note every
+ * profile_gap_minutes, quiet when the chat is quiet. Champions and pride run
+ * first, so a fresh win takes the slot ahead of a signup reminder.
+ */
+Schedule::command('twentyone:stream-bot:champions')->everyFiveMinutes()->withoutOverlapping()->onOneServer();
+Schedule::command('twentyone:stream-bot:pride')->everyFiveMinutes()->withoutOverlapping()->onOneServer();
+
+/*
  * The same bot posts a note on its own profile for every published tournament
- * (the backlog too), a few per run, each exactly once. Same flag and key.
+ * (the backlog too), one per open slot of the shared brake. Same flag and key.
  */
 Schedule::command('twentyone:stream-bot:tournaments')->everyFiveMinutes()->withoutOverlapping()->onOneServer();
 
@@ -638,23 +646,9 @@ Schedule::command('twentyone:stream-bot:tournaments')->everyFiveMinutes()->witho
  * While a published tournament is open for sign-up and has free places, the
  * same bot names them at fixed slots before sign-up closes (P49: specials at
  * 7 d, 3 d, 24 h, 3 h, casual cups at 24 h, 3 h), never within an hour of the
- * close, a few per run. Same flag and key.
+ * close, and not on a day that already carried that tournament's champion note.
  */
 Schedule::command('twentyone:stream-bot:free-places')->everyFiveMinutes()->withoutOverlapping()->onOneServer();
-
-/*
- * Pride notes on the same profile: the dynamic stream slides (latest win,
- * climbers, sign-ups, the biggest pot's prizes) with their players tagged,
- * each type at most once a day in its EU or US slot, only when it changed.
- */
-Schedule::command('twentyone:stream-bot:pride')->everyFiveMinutes()->withoutOverlapping()->onOneServer();
-
-/*
- * The champion of every newly finished tournament (special or casual cup,
- * finished within five days) on the same profile, once, with its champion
- * slide and the winner tagged. Same flag and key.
- */
-Schedule::command('twentyone:stream-bot:champions')->everyFiveMinutes()->withoutOverlapping()->onOneServer();
 
 /*
  * The GG in the stream chat the moment a tournament is decided (ChampionChat):

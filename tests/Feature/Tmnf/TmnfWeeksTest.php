@@ -59,6 +59,7 @@ beforeEach(function () {
     $this->travelTo(CarbonImmutable::parse('2026-10-07 12:00:00'));
     // The admins approved the weeks on A01-Race (the approval itself: LeagueWeekApprovalTest).
     leagueWeeksApproved(TrackmaniaNationsForever::SLUG);
+    config(['esports.stream_bot.profile_gap_minutes' => 0]);
 });
 
 /** Ends the week as the score kind does: past its window and review time. */
@@ -220,7 +221,7 @@ test('the bot posts the week with its track, then its winner and top 3, each pla
     $open = $relays->sent[0];
     tmnfWeekOver($week);
     $this->artisan('twentyone:stream-bot:tmnf')->assertSuccessful();
-    $winner = collect($relays->sent)->first(fn (SignedEvent $event): bool => str_contains($event->content, 'goes to'));
+    $winner = collect($relays->sent)->first(fn (SignedEvent $event): bool => str_contains($event->content, 'Top 3:') || str_contains($event->content, 'Podium:'));
 
     foreach ([$open, $winner] as $note) {
         expect(StreamBotCopy::violations($note->content, $note->tags))->toBe([])
@@ -230,7 +231,7 @@ test('the bot posts the week with its track, then its winner and top 3, each pla
     }
 
     expect($open->content)->toContain('TMNF Week 41, 2026')->toContain('Track A01-Race')->toContain(route('tournaments.show', $week))
-        ->and($winner->content)->toStartWith('🏆 TMNF Week 41, 2026 goes to '.$npub('Ada').' in 0:25.100 on A01-Race')
+        ->and($winner->content)->toContain($npub('Ada'))->toContain('0:25.100')->toContain('A01-Race')
         ->and($winner->content)->toContain('2. '.$npub('Ben').' ')->toContain('3. '.$npub('Cy').' ')->not->toContain($npub('Dee'))
         ->and($winner->tagsNamed('p'))->toBe([[$users['Ada']->pubkey], [$users['Ben']->pubkey], [$users['Cy']->pubkey]])
         ->and(BotPost::query()->where('subject_type', TmnfNotes::SUBJECT)->whereNotNull('published_at')->count())->toBeGreaterThanOrEqual(2);

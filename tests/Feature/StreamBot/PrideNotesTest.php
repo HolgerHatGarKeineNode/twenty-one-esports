@@ -1,6 +1,7 @@
 <?php
 
 use App\Enums\SeriesStatus;
+use App\Enums\TournamentStatus;
 use App\Models\BotPost;
 use App\Models\ChessGame;
 use App\Models\Clan;
@@ -9,6 +10,7 @@ use App\Models\Rating;
 use App\Models\RatingChange;
 use App\Models\SeriesMatch;
 use App\Models\Tournament;
+use App\Models\TournamentSignup;
 use App\Models\User;
 use App\Support\Nostr\NostrKeys;
 use App\Support\Nostr\SignedEvent;
@@ -37,6 +39,7 @@ beforeEach(function () {
         'esports.stream_bot.nsec' => $this->botKey->secret,
         'esports.stream_bot.pride_notes.image_dir' => $this->dir,
         'twentyone.stream.relays' => ['wss://one.test', 'wss://two.test'],
+        'esports.stream_bot.profile_gap_minutes' => 0,
     ]);
 
     $this->published = [];
@@ -123,6 +126,30 @@ test('a note no relay took is sent again later as the same event', function () {
         ->and(array_unique(array_map(fn (SignedEvent $event): string => $event->id, $this->published)))->toHaveCount(1);
 });
 
+test('a signup note names only people it has not announced before', function () {
+    $this->travelTo(Carbon::parse('2026-09-26 13:30:00', 'UTC'));
+    $first = User::factory()->create(['name' => 'Ada']);
+    $second = User::factory()->create(['name' => 'Ben']);
+    $cup = openTournament(['name' => 'Signup Cup', 'starts_at' => now()->addDays(6)]);
+    $cup->forceFill(['signup_closes_at' => now()->addDays(5), 'status' => TournamentStatus::Signup])->save();
+    TournamentSignup::query()->create(['tournament_id' => $cup->id, 'user_id' => $first->id, 'name' => 'Ada', 'members' => [$first->id]]);
+
+    app(PrideNotes::class)->run(now()->toImmutable());
+
+    $ada = 'nostr:'.NostrKeys::hexToNpub($first->pubkey);
+
+    expect($this->published)->toHaveCount(1)
+        ->and($this->published[0]->content)->toContain($ada);
+
+    $this->travelTo(Carbon::parse('2026-09-27 13:30:00', 'UTC'));
+    TournamentSignup::query()->create(['tournament_id' => $cup->id, 'user_id' => $second->id, 'name' => 'Ben', 'members' => [$second->id]]);
+    app(PrideNotes::class)->run(now()->toImmutable());
+
+    expect($this->published)->toHaveCount(2)
+        ->and($this->published[1]->content)->toContain('nostr:'.NostrKeys::hexToNpub($second->pubkey))
+        ->and($this->published[1]->content)->not->toContain($ada);
+});
+
 test('outside every slot, or with the flag off, nothing is posted; a dry run posts nothing either', function () {
     ChessGame::factory()->finished('1-0')->create(['white_id' => $this->winner, 'black_id' => $this->loser, 'ended_at' => now()]);
 
@@ -132,7 +159,8 @@ test('outside every slot, or with the flag off, nothing is posted; a dry run pos
 
     $this->travelTo(Carbon::parse('2026-09-26 17:30:00', 'UTC'));
     Artisan::call('twentyone:stream-bot:pride', ['--dry-run' => true]);
-    expect(Artisan::output())->toContain('--- win, tags: 1', 'open slots now: win, signups', 'Nothing was signed, sent or stored');
+    expect(Artisan::output())->toContain('--- win, tags: 1', 'open slots now: win.', 'Nothing was signed, sent or stored')
+        ->and(Artisan::output())->not->toContain('open slots now: win, signups');
 
     config(['esports.stream_bot.pride_notes.enabled' => false]);
     expect(app(PrideNotes::class)->run(now()->toImmutable()))->toContain('pride_notes.enabled is off')

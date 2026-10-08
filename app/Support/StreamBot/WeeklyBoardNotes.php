@@ -170,6 +170,12 @@ abstract class WeeklyBoardNotes
         $lines = [];
 
         foreach ($this->due($now) as $due) {
+            if (($hold = ProfileNotes::hold($now)) !== null) {
+                $lines[] = 'held: '.$hold;
+
+                break;
+            }
+
             try {
                 $lines[] = $this->post($key, $due['week'], $due['slot'], $relays, $now);
             } catch (Throwable $e) {

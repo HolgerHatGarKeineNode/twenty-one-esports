@@ -128,6 +128,12 @@ class TournamentNotes
         }
 
         foreach ($this->due($now) as $tournament) {
+            if (($hold = ProfileNotes::hold($now)) !== null) {
+                $lines[] = 'held: '.$hold;
+
+                break;
+            }
+
             try {
                 $lines[] = $this->post($key, $tournament, $relays, $now);
             } catch (Throwable $e) {

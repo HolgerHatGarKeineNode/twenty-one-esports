@@ -150,6 +150,32 @@ test('tournament notes stop at the daily cap of the Berlin day; the rest go out 
     expect(varietyNotes($this->sent, BotPost::SUBJECT_TOURNAMENT))->toHaveCount(8);
 });
 
+test('the profile stays quiet at night and posts at most one note until the shared gap passes', function () {
+    config([
+        'esports.stream_bot.quiet_hours' => '23-07',
+        'esports.stream_bot.profile_gap_minutes' => 35,
+        'esports.stream_bot.profile_limits.tournament' => ['cooldown_minutes' => 0, 'daily_cap' => 0],
+    ]);
+    openTournament(['name' => 'Night Cup']);
+
+    varietyTick('twentyone:stream-bot:tournaments', '2026-09-26 22:30:00');
+
+    expect(varietyNotes($this->sent, BotPost::SUBJECT_TOURNAMENT))->toHaveCount(0)
+        ->and(Artisan::output())->toContain('quiet hours');
+
+    config(['esports.stream_bot.quiet_hours' => null]);
+    openTournament(['name' => 'Gap Cup']);
+    varietyTick('twentyone:stream-bot:tournaments', '2026-09-26 06:00:00');
+    varietyTick('twentyone:stream-bot:tournaments', '2026-09-26 06:20:00');
+
+    expect(varietyNotes($this->sent, BotPost::SUBJECT_TOURNAMENT))->toHaveCount(1)
+        ->and(Artisan::output())->toContain('profile waits');
+
+    varietyTick('twentyone:stream-bot:tournaments', '2026-09-26 06:36:00');
+
+    expect(varietyNotes($this->sent, BotPost::SUBJECT_TOURNAMENT))->toHaveCount(2);
+});
+
 test('free-places reminders keep their cooldown and rotate their wording', function () {
     config(['esports.stream_bot.free_places' => [
         'special_slots_hours' => [168, 72, 24, 3], 'cup_slots_hours' => [24, 3], 'stop_before_close_minutes' => 60, 'per_run' => 3, 'retry_minutes' => 10,
