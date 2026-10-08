@@ -310,6 +310,13 @@ final class HyperTexts
         'Music',
         'Muted: :what. Switch them on again at the top right.',
         'Connection lost. Reconnecting …',
+        // P3: rematch and replay.
+        'Rematch asked',
+        'Accept the rematch',
+        'Waiting for :names',
+        'Pause',
+        'Again',
+        'Play',
     ];
 
     /**

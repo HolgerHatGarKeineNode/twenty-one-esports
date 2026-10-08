@@ -452,3 +452,18 @@ body.spectator #treasury, body.spectator #hand, body.spectator #main-btn, body.s
     #emotes { top: 60px; right: 8px; }
 }
 @media (prefers-reduced-motion: reduce) { #boot .ring { animation: none; } }
+
+/* ---------- Replay (P3): the bar replaces the turn buttons; every hand is open ---------- */
+body.replay #cta, body.replay #emote-btn { display: none !important; }
+#replay-bar { left: 50%; bottom: 16px; transform: translateX(-50%); width: min(760px, calc(100% - 32px)); display: flex; flex-wrap: wrap; align-items: center; gap: 8px 10px; padding: 8px 12px; }
+#replay-bar .big { min-height: 48px; padding: 0 20px; flex: 0 0 auto; }
+#replay-bar .rp-scrub { flex: 1 1 160px; min-width: 0; display: flex; align-items: center; min-height: 44px; }
+#replay-bar input[type=range] { width: 100%; accent-color: var(--btc); }
+#rp-ply { font: 800 12px var(--font-display); font-variant-numeric: tabular-nums; color: var(--ink-2); white-space: nowrap; }
+.pl .meta .cards { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--btc-hi); }
+#rematch-note:empty { display: none; }
+@media (width < 820px) {
+    #replay-bar { bottom: 8px; width: calc(100% - 16px); padding: 6px 8px; gap: 6px; }
+    #replay-bar .big { flex: 0 0 auto; min-height: 44px; padding: 0 14px; }
+    #replay-bar .rp-scrub { flex-basis: 100%; order: 5; }
+}

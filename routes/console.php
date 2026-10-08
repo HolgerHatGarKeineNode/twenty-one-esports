@@ -20,6 +20,7 @@ use App\Support\Chess\ChessGameService;
 use App\Support\Chess\ChessSettings;
 use App\Support\Chess\ChessTeamMatches;
 use App\Support\Engagement\WeeklySlots;
+use App\Support\Hyper\HyperLobby;
 use App\Support\Hyper\HyperMatches;
 use App\Support\Moderation\LeagueMuteList;
 use App\Support\Moderation\MuteListUnreadable;
@@ -117,7 +118,7 @@ Schedule::command('board:check-clocks')->everyTenSeconds()->withoutOverlapping()
  * player's turn ends (`end_turn`, placed troops stay), an overdue bot turn is played. Only the server clock
  * decides, so running it often is harmless; with the switch off there are no matches to find.
  */
-Artisan::command('hyper:check-clocks', function (HyperMatches $matches) {
+Artisan::command('hyper:check-clocks', function (HyperMatches $matches, HyperLobby $lobby) {
     $due = HyperMatch::query()
         ->where('status', HyperMatchStatus::Active)
         ->where('deadline_ms', '<=', (int) now()->getTimestampMs())
@@ -132,8 +133,16 @@ Artisan::command('hyper:check-clocks', function (HyperMatches $matches) {
         }
     }
 
-    $this->info("Checked {$due->count()} match(es).");
-})->purpose('End Hyperbitcoinization turns whose time ran out');
+    // Live lobby tables whose wait is over: bots take the free seats and the match starts (plan "Hyperbitcoinization", P3).
+    try {
+        $filled = $lobby->fillDue();
+    } catch (Throwable $e) {
+        report($e);
+        $filled = 0;
+    }
+
+    $this->info("Checked {$due->count()} match(es), started {$filled} table(s).");
+})->purpose('End Hyperbitcoinization turns whose time ran out, and fill live lobby tables whose wait is over');
 
 Schedule::command('hyper:check-clocks')->everyTenSeconds()->withoutOverlapping();
 

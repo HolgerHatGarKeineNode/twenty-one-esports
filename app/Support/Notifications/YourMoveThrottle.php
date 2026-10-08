@@ -4,6 +4,8 @@ namespace App\Support\Notifications;
 
 use App\Models\BoardGame;
 use App\Models\ChessGame;
+use App\Models\HyperAction;
+use App\Models\HyperMatch;
 use App\Models\User;
 use Illuminate\Support\Facades\Cache;
 
@@ -22,18 +24,23 @@ use Illuminate\Support\Facades\Cache;
  *   first one claims it (atomic Cache::add), later ones stay in the app.
  *   A lost cache entry costs one extra notice, never a missing one.
  *
- * Moves alternate in every game we host (ChessRules, BoardRules), so the
- * player's own previous move is the one before the move just played.
+ * Moves alternate in every two-sided game we host (ChessRules, BoardRules),
+ * so the player's own previous move is the one before the move just played.
+ * A Hyperbitcoinization match (plan "Hyperbitcoinization", P3) has many
+ * actions per turn and bots that answer at once: there the player's own
+ * latest action in the match counts.
  */
 final class YourMoveThrottle
 {
-    public function allowsRemote(User $user, ChessGame|BoardGame $game): bool
+    public function allowsRemote(User $user, ChessGame|BoardGame|HyperMatch $game): bool
     {
         $atBoard = max(0, (int) config('esports.notifications.your_move.at_board_minutes'));
         $perGame = max(0, (int) config('esports.notifications.your_move.per_game_minutes'));
 
         if ($atBoard > 0) {
-            $ownMove = $game->moves()->where('ply', $game->ply - 1)->first();
+            $ownMove = $game instanceof HyperMatch
+                ? $game->actions()->reorder('ply', 'desc')->where('source', HyperAction::PLAYER)->where('seat', $game->seatOf($user)?->seat)->first()
+                : $game->moves()->where('ply', $game->ply - 1)->first();
 
             if ($ownMove?->created_at !== null && $ownMove->created_at->gt(now()->subMinutes($atBoard))) {
                 return false;
@@ -44,7 +51,11 @@ final class YourMoveThrottle
             return true;
         }
 
-        $key = 'your-move-remote:'.($game instanceof ChessGame ? 'chess' : 'board').':'.$game->id.':'.$user->id;
+        $key = 'your-move-remote:'.match (true) {
+            $game instanceof ChessGame => 'chess',
+            $game instanceof HyperMatch => 'hyper',
+            default => 'board',
+        }.':'.$game->id.':'.$user->id;
 
         return Cache::add($key, true, now()->addMinutes($perGame));
     }

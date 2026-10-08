@@ -8,7 +8,7 @@ use App\Games\Contracts\Game;
  * Hyperbitcoinization, the league's own strategy game (plan "Hyperbitcoinization"): Risk with currency
  * spaces for 2 to 6 seats on the server's rules core (App\Support\Hyper). Registered only while
  * `esports.hyper.enabled` is on (AppServiceProvider), so the registry knows it from P2 on; the league's
- * surfaces (lists, navigation, sitemap, stream, cover) take it up in P6, the lobby in P3.
+ * surfaces (lists, navigation, sitemap, stream, cover) take it up in P6; the lobby is on its own page (P3).
  *
  * A match is no two-sided result: it ends with a place per seat. Its kind is its own (GameKind::Strategy),
  * so no switch that serves chess, a series, a board game or a score game takes it for one of those.
@@ -35,8 +35,9 @@ final class Hyperbitcoinization implements Game
     public function modes(): array
     {
         return [
-            // Live with a 90-second turn (P2); correspondence follows in P3.
+            // Live with a 90-second turn (P2), correspondence with a day per turn (P3).
             'live' => new GameMode('live', 'Live', 1, [], [], 'player', false),
+            'correspondence' => new GameMode('correspondence', 'Correspondence', 1, [], [], 'player', false),
         ];
     }
 

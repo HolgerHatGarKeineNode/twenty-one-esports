@@ -5,6 +5,9 @@
     (HyperMatches::snapshot()) is in the page as JSON (#hyper-snapshot), the rest of the page's config (endpoints,
     texts, chat, clips) in #hyper-config (HyperMatchController::show()).
 
+    The replay of a finished match (P3, HyperMatchController::replay()) is this page with `config.replay`: the same
+    table, read-only, every hand open, and a bar to play, pause, step, change the pace and scrub through the plies.
+
     Order matters: three.js, GSAP, d3 and the map geometry are classic scripts at the end of the body; the Vite entry
     is a module and runs after them.
 --}}
@@ -24,13 +27,14 @@
     @if (filled($reverb['key'] ?? null))
         <meta name="reverb" content="{{ json_encode(['key' => $reverb['key'], 'host' => $reverb['options']['host'] ?? request()->getHost(), 'port' => (int) ($reverb['options']['port'] ?? 443), 'scheme' => $reverb['options']['scheme'] ?? 'https']) }}">
     @endif
-    <title>{{ __('Hyperbitcoinization · Round :round', ['round' => $snapshot['round']]) }} – TWENTY ONE esports</title>
+    @php($replay = isset($config['replay']))
+    <title>{{ $replay ? __('Hyperbitcoinization · Replay') : __('Hyperbitcoinization · Round :round', ['round' => $snapshot['round']]) }} – TWENTY ONE esports</title>
     <link rel="icon" href="/favicon.ico" sizes="any">
     <link rel="icon" href="/favicon.svg" type="image/svg+xml">
     @fonts
     @vite(['resources/css/hyper.css', 'resources/js/hyper/match.js'])
 </head>
-<body data-test="hyper-match" data-match="{{ $snapshot['id'] }}" data-me="{{ $snapshot['me'] ?? '' }}" @class(['spectator' => $snapshot['me'] === null])>
+<body data-test="hyper-match" data-match="{{ $snapshot['id'] }}" data-me="{{ $snapshot['me'] ?? '' }}" @if ($replay) data-replay="1" @endif @class(['spectator' => $snapshot['me'] === null, 'replay' => $replay])>
 
 <div id="boot" role="status" aria-label="{{ __('Loading') }}">
     <div class="boot-box">
@@ -121,6 +125,16 @@
     <button class="big" id="main-btn" type="button" title="{{ __('Next (space)') }}" data-test="hyper-main"><span id="main-t">{{ __('Next step') }}</span><svg id="main-i"><use href="#i-move"/></svg></button>
 </div>
 
+@if ($replay)
+    <div class="hud frame shadowed" id="replay-bar" role="group" aria-label="{{ __('Replay') }}" data-test="hyper-replay-bar">
+        <button class="big" id="rp-play" type="button" data-test="hyper-replay-play" aria-label="{{ __('Play') }}"><svg><use href="#i-move"/></svg><span id="rp-play-t">{{ __('Play') }}</span></button>
+        <button class="ghost" id="rp-step" type="button" data-test="hyper-replay-step" title="{{ __('One step') }}"><svg><use href="#i-check"/></svg>{{ __('Step') }}</button>
+        <div class="speed" id="rp-speed" role="group" aria-label="{{ __('Replay pace') }}"><button type="button" data-s="1" class="on">1×</button><button type="button" data-s="3">3×</button><button type="button" data-s="20">{{ __('Instant') }}</button></div>
+        <label class="rp-scrub"><span class="sr">{{ __('Jump to a move') }}</span><input id="rp-scrub" type="range" min="0" max="{{ $config['replay']['last'] }}" value="0" data-test="hyper-replay-scrub"></label>
+        <output id="rp-ply" data-test="hyper-replay-ply">0 / {{ $config['replay']['last'] }}</output>
+    </div>
+@endif
+
 <aside class="hud frame shadowed" id="legend" aria-label="{{ __('Currency spaces') }}"></aside>
 <aside class="hud frame shadowed" id="ticker" aria-label="{{ __('Chronicle') }}" aria-live="polite"></aside>
 
@@ -184,9 +198,16 @@
         <p class="muted" id="end-sub">–</p>
         <p class="end-loot" id="end-loot" data-test="hyper-end-loot"></p>
         <div class="row-btn" style="justify-content:center">
-            <a class="big" id="again-btn" href="{{ $back }}">{{ __('Another match') }}</a>
+            @if (! $replay && $snapshot['me'] !== null)
+                <button class="big" id="rematch-btn" type="button" data-test="hyper-rematch"><svg><use href="#i-dice"/></svg><span id="rematch-t">{{ __('Rematch') }}</span></button>
+            @endif
+            <a @class(['ghost' => ! $replay && $snapshot['me'] !== null, 'big' => $replay || $snapshot['me'] === null]) id="again-btn" href="{{ $back }}">{{ __('Another match') }}</a>
+            @unless ($replay)
+                <a class="ghost" id="replay-link" href="{{ $config['urls']['replay'] }}" target="_blank" rel="noopener" data-test="hyper-replay-link">{{ __('Watch the replay') }}</a>
+            @endunless
             <button class="ghost" id="end-map" type="button">{{ __('Look at the map') }}</button>
         </div>
+        <p class="muted" id="rematch-note" aria-live="polite" data-test="hyper-rematch-note"></p>
     </div>
 </div>
 

@@ -6,6 +6,7 @@ use App\Enums\BoardGameStatus;
 use App\Enums\BoardInviteStatus;
 use App\Enums\ChessGameStatus;
 use App\Enums\ChessInviteStatus;
+use App\Enums\HyperMatchStatus;
 use App\Enums\InviteStatus;
 use App\Enums\ReportStatus;
 use App\Enums\SeriesStatus;
@@ -18,6 +19,7 @@ use App\Models\ChessGame;
 use App\Models\ChessInvite;
 use App\Models\Clan;
 use App\Models\ClanInvite;
+use App\Models\HyperMatch;
 use App\Models\Lineup;
 use App\Models\LineupSeat;
 use App\Models\SeriesInvite;
@@ -88,6 +90,7 @@ final class OpenMatches
         return self::order(collect([
             ...$this->games($user, $excludeGame, $nowMs),
             ...$this->boardGames($user, $excludeBoard, $nowMs),
+            ...$this->hyperMatches($user, $nowMs),
             ...$this->boardInvites($user),
             ...$this->boardChallenges($user),
             ...$this->blitzInvites($user),
@@ -475,6 +478,60 @@ final class OpenMatches
             tick: $left === null ? null : ['endsAt' => $deadline, 'format' => 'hm', 'total' => max(1, $game->initial_ms), 'redUnder' => self::DAILY_RED_MS],
             model: $game,
         );
+    }
+
+    /**
+     * The player's Hyperbitcoinization correspondence matches (plan
+     * "Hyperbitcoinization", P3), as a daily game: "your turn" with the time
+     * left for it needs the player, another seat's turn waits. A seat a bot
+     * took over is no longer the player's to move. Live matches have no tab:
+     * their players are at the table (a tab of its own).
+     *
+     * @return list<DockItem>
+     */
+    private function hyperMatches(User $user, int $nowMs): array
+    {
+        if (! Route::has('hyper.match')) {
+            return [];
+        }
+
+        $matches = HyperMatch::query()->where('status', HyperMatchStatus::Active)->where('mode', HyperMatch::CORRESPONDENCE)
+            ->whereHas('seats', fn (Builder $seats): Builder => $seats->where('user_id', $user->id)->where('bot', false))
+            ->with('seats')->latest('id')->limit(self::KIND_LIMIT)->get();
+
+        return array_values($matches->map(function (HyperMatch $match) use ($user, $nowMs): DockItem {
+            $mine = $match->seatOf($user)?->seat === $match->current_seat;
+            $deadline = $match->deadline_ms;
+            $round = (int) ($match->state['round'] ?? 1);
+            $title = self::text('Hyperbitcoinization correspondence');
+            $name = self::text('Round :round · :seats seats', ['round' => $round, 'seats' => $match->seats->count()]);
+            $left = $mine && $deadline !== null ? self::format($deadline - $nowMs, 'hm') : null;
+            $state = $mine ? self::text('Your turn') : self::text('Their turn');
+
+            return new DockItem(
+                key: 'hyper-'.$match->id,
+                kind: 'hyper',
+                group: $mine ? 'need' : 'wait',
+                phase: $mine ? 'your_move' : 'their_move',
+                needsYou: $mine,
+                name: $name,
+                face: null,
+                tag: 'HB',
+                number: '',
+                href: route('hyper.match', $match),
+                title: $title,
+                state: $state,
+                trailing: $left ?? $name,
+                line: __(':game, :state', ['game' => $title, 'state' => mb_strtolower($state)]),
+                sentence: $left === null
+                    ? __(':game, :state', ['game' => $title, 'state' => mb_strtolower($state)])
+                    : __(':game, :state, :left left', ['game' => $title, 'state' => mb_strtolower($state), 'left' => $left]),
+                action: $mine ? self::text('Play') : null,
+                deadlineMs: $deadline,
+                tick: $left === null ? null : ['endsAt' => (int) $deadline, 'format' => 'hm', 'total' => (int) config('esports.hyper.correspondence_hours', 24) * 3_600_000, 'redUnder' => self::DAILY_RED_MS],
+                model: $match,
+            );
+        })->all());
     }
 
     /**

@@ -1684,6 +1684,10 @@ return [
     | throttle per player and match. bot_round_cap: a match only bots still
     | play ends at the end of this round by the limit's ranking (the
     | simulator cuts a game at round 200; a rare bot game never ends).
+    | correspondence_hours (P3): a correspondence turn's time; when it runs
+    | out a bot plays that turn for the seat. lobby_fill_seconds (P3): a live
+    | table in the lobby waits this long, then bots take its free seats and
+    | the match starts (correspondence tables wait for their creator).
     |
     */
 
@@ -1694,6 +1698,8 @@ return [
         'stickers_per_minute' => 3,
         'clips_per_turn' => 1,
         'bot_round_cap' => 200,
+        'correspondence_hours' => 24,
+        'lobby_fill_seconds' => 120,
     ],
 
 ];

@@ -10,6 +10,11 @@
  * batch the page loads the snapshot again, so the table always ends where the server is.
  *
  * Spectators (`me` null) see the same table, read-only. Bot turns play no soundboard clips (audio.js).
+ *
+ * The replay (P3, `config.replay`, driven by replay.js) is a spectator's table whose plies come from the
+ * replayed log instead of the server's push: every hand is open in the roster, jump() puts the table at
+ * any ply. After a match the end screen offers a rematch (P3): each yes and the new match's url arrive as
+ * `hyper.rematch` (onRematch()), and the page goes to the new match.
  */
 import { ADJ, CARDS, FACTIONS, HOW, OCEANS, PIN_AT, SEA, SWISS_ZOOM, TDEF, ZONES, ZT } from './data.js';
 import { applyEvent, banksOf, defenseBonus, fromSnapshot, odds, territoriesOf, units, zoneOwner } from './mirror.js';
@@ -1012,7 +1017,7 @@ export function render() {
 
         return `<div class="pl frame shadowed ${x.seat === G.cur && !G.over ? 'cur' : ''} ${x.out ? 'out' : ''} ${isMe(x.seat) ? 'me' : ''}" data-seat="${x.seat}" style="--pc:${colorOf(x.seat)}"><div class="shield">${POR(porOf(x.seat), colorOf(x.seat))}${dot}</div>
         <div class="nm"><span>${esc(nameOf(x.seat))}</span><em>${esc(t(':count terr.', { count: n }))}</em></div><div class="seg">${bankSeg(bk)}</div>
-        <div class="meta"><span>${esc(bk === 1 ? t('1 bank') : t(':count banks', { count: bk }))} · ${fmt(x.sats)} ₿</span><span>${esc(x.handCount === 1 ? t('1 card') : t(':count cards', { count: x.handCount }))}</span></div></div>`;
+        <div class="meta"><span>${esc(bk === 1 ? t('1 bank') : t(':count banks', { count: bk }))} · ${fmt(x.sats)} ₿</span>${openHand(x)}</div></div>`;
     }).join('');
     $('#legend').innerHTML = `<div class="lg-head"><h5>${esc(t('Currency spaces'))}</h5><div class="lg-seg" role="group" aria-label="${esc(t('Map view (key M)'))}"><button type="button" data-mode="zone" class="${UI.mode === 'zone' ? 'on' : ''}">${esc(t('Spaces'))}</button><button type="button" data-mode="owner" class="${UI.mode === 'owner' ? 'on' : ''}">${esc(t('Owners'))}</button></div></div>` + Object.entries(ZONES).map(([z, v]) => {
         const o = zoneOwner(G, z);
@@ -1029,6 +1034,16 @@ export function render() {
     document.body.dataset.phase = G.phase;
     document.body.dataset.turn = myTurn() ? 'mine' : 'other';
     document.body.dataset.idle = idle() ? '1' : '0';
+}
+/** A seat's cards in the roster: their names in a replay (every hand is open there), else how many. */
+function openHand(x) {
+    if (CFG?.replay && Array.isArray(x.hand)) {
+        const names = x.hand.map((c) => t(CARDS[c]?.name ?? c));
+
+        return `<span class="cards" data-test="hyper-replay-hand" data-seat="${x.seat}" title="${esc(names.join(', '))}">${esc(names.length ? names.join(', ') : t(':count cards', { count: 0 }))}</span>`;
+    }
+
+    return `<span>${esc(x.handCount === 1 ? t('1 card') : t(':count cards', { count: x.handCount }))}</span>`;
 }
 let handKey = '';
 function renderHand() {
@@ -1070,7 +1085,9 @@ function updateClock() {
     const ring = el.querySelector('.ring-on');
     ring.style.strokeDashoffset = String(100 - share * 100);
     ring.style.stroke = colorOf(live.seat);
-    el.querySelector('b').textContent = String(Math.ceil(left / 1000));
+    // A correspondence turn has hours: "23h", then minutes, the last 100 seconds in seconds.
+    const secs = Math.ceil(left / 1000);
+    el.querySelector('b').textContent = secs >= 3600 ? `${Math.floor(secs / 3600)}h` : secs > 100 ? `${Math.ceil(secs / 60)}m` : String(secs);
     el.classList.toggle('low', left < 15000);
     el.dataset.left = String(Math.ceil(left / 1000));
     el.title = t('Time left for :name', { name: nameOf(live.seat) });
@@ -1122,6 +1139,14 @@ function bindControls() {
     $('#help-btn').onclick = () => { $('#help').hidden = false; gsap().from('#help .panel', { y: 20, opacity: 0, duration: 0.25 }); };
     $('#help-close').onclick = () => { $('#help').hidden = true; };
     $('#end-map').onclick = () => { $('#end').hidden = true; };
+    const rematch = $('#rematch-btn');
+    if (rematch) {
+        rematch.onclick = async () => {
+            rematch.disabled = true;
+            const r = await NET.post(CFG.urls.rematch);
+            if (r.ok && r.data) onRematch(r.data); else { rematch.disabled = false; refused(r); }
+        };
+    }
     const leave = $('#leave-btn');
     if (leave) {
         leave.onclick = async () => {
@@ -1154,6 +1179,30 @@ function bindControls() {
     addEventListener('pointerdown', () => { if (ctx()) startMusic(); }, { once: true, capture: true });
 }
 
+/**
+ * `hyper.rematch` and the rematch endpoint's answer: who said yes, who is still asked, and once everybody
+ * did, the new match, where this page goes.
+ */
+function onRematch(p) {
+    if (p.url) { window.location.assign(p.url); return; }
+    const btn = $('#rematch-btn'); const note = $('#rematch-note');
+    if (!btn || !note) return;
+    const mine = ME !== null && (p.ready ?? []).includes(ME);
+    btn.disabled = mine;
+    $('#rematch-t').textContent = mine ? t('Rematch asked') : t('Accept the rematch');
+    note.textContent = (p.waiting ?? []).length ? t('Waiting for :names', { names: p.waiting.map((s) => nameOf(s)).join(', ') }) : '';
+}
+/** The replay jumps: the table as at this snapshot's ply, nothing queued, no end screen until it ends again. */
+function jump(s) {
+    queue.length = 0;
+    clearTimeout(settleTimer);
+    sync.reset(s.ply);
+    latest = s;
+    ended = false;
+    $('#end').hidden = true;
+    applySnapshot(s);
+}
+
 /* ================= The page's surface for match.js, chat and emotes ================= */
 export function seatRect(index) {
     const el = document.querySelector(`#roster .pl[data-seat="${index}"] .shield`);
@@ -1161,7 +1210,8 @@ export function seatRect(index) {
     return el ? el.getBoundingClientRect() : null;
 }
 export const game = {
-    onUpdated, onHand, catchUp, toast, render, seatRect, act,
+    onUpdated, onHand, catchUp, toast, render, seatRect, act, onRematch, jump,
+    setSpeed(n) { UI.speed = n; },
     setConnected(seats) { connected.clear(); seats.forEach((s) => connected.add(s)); render(); },
     seatName: (i) => (G ? nameOf(i) : ''),
     seatColor: (i) => (G ? colorOf(i) : '#f7931a'),

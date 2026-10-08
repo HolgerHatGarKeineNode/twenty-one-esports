@@ -2,11 +2,14 @@
 
 namespace App\Support\Players;
 
+use App\Enums\HyperMatchStatus;
 use App\Enums\PayoutStatus;
 use App\Enums\TournamentStatus;
 use App\Games\GameRegistry;
+use App\Games\Hyperbitcoinization;
 use App\Models\Clan;
 use App\Models\ClanDeparture;
+use App\Models\HyperSeat;
 use App\Models\Lineup;
 use App\Models\Rating;
 use App\Models\RatingChange;
@@ -122,10 +125,11 @@ final class PlayerStats
     /**
      * Everything this player has a standing in, game by game in the
      * registry's order: the ladder cards of a versus game (ladders()), the
-     * cards of a score game (PlayerScores). A game registered later shows
+     * cards of a score game (PlayerScores), and the Hyperbitcoinization card
+     * (hyper()). A game registered later shows
      * here with no change to the page; a game the player never played has no card.
      *
-     * @return list<array{kind: 'ladder', game: string, ladder: Ladder}|array{kind: 'score', game: string, score: array<string, mixed>}>
+     * @return list<array{kind: 'ladder', game: string, ladder: Ladder}|array{kind: 'score', game: string, score: array<string, mixed>}|array{kind: 'hyper', game: string, hyper: array{sats: float, matches: int, wins: int}}>
      */
     public function games(): array
     {
@@ -133,12 +137,35 @@ final class PlayerStats
         $cards = [
             ...array_map(fn (array $ladder): array => ['kind' => 'ladder', 'game' => $ladder['game'], 'ladder' => $ladder], $this->ladders()),
             ...array_map(fn (array $score): array => ['kind' => 'score', 'game' => $score['game'], 'score' => $score], (new PlayerScores($this->user))->cards()),
+            ...array_map(fn (array $hyper): array => ['kind' => 'hyper', 'game' => Hyperbitcoinization::SLUG, 'hyper' => $hyper], $this->hyper()),
         ];
 
         // A stable sort: within a game the cards keep the order of their own list (modes, then lineups).
         usort($cards, fn (array $a, array $b): int => ($order[$a['game']] ?? PHP_INT_MAX) <=> ($order[$b['game']] ?? PHP_INT_MAX));
 
         return $cards;
+    }
+
+    /**
+     * The Hyperbitcoinization card (plan "Hyperbitcoinization", P3): the sats this player collected as loot
+     * in finished matches ("gesammelte Sats", game points only: no money, no payout), how many they played
+     * and won. One aggregate query; no card while the game is switched off or never finished here.
+     *
+     * @return list<array{sats: float, matches: int, wins: int}>
+     */
+    public function hyper(): array
+    {
+        if (app(GameRegistry::class)->find(Hyperbitcoinization::SLUG) === null) {
+            return [];
+        }
+
+        $row = HyperSeat::query()->where('user_id', $this->user->id)
+            ->whereHas('match', fn ($match) => $match->where('status', HyperMatchStatus::Finished))
+            ->selectRaw('count(*) as matches, coalesce(sum(loot), 0) as sats, sum(case when place = 1 then 1 else 0 end) as wins')
+            ->toBase()->first();
+        $matches = (int) ($row->matches ?? 0);
+
+        return $matches === 0 ? [] : [['sats' => round((float) $row->sats, 1), 'matches' => $matches, 'wins' => (int) $row->wins]];
     }
 
     /**
