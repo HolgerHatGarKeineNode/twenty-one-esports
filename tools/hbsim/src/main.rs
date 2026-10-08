@@ -1,46 +1,61 @@
 //! Headless balance simulator for Hyperbitcoinization.
 //! A faithful port of the browser game's rules and bot logic (index.html: newGame, dealFair,
 //! beginTurn, botTurn, battleRound, conquest, playCard, endTurn, checkWin), without rendering.
+//! The PHP rules core (app/Support/Hyper) plays the same games for the same seed; `parity` proves it.
+//!
+//! Usage (release build: `cargo build --release`, at most 8 threads on the workstation):
+//!   hbsim <games> <threads>                      the experiment plan below (fair deal, limit 20)
+//!   hbsim <games> <threads> gate [limit]          balance gate: value-balanced deal + SEAT_COMP, 2-6 players
+//!   hbsim <games> <threads> tune [limit]          grid search for the seat compensation per player count
+//!   hbsim <games> <threads> luck|terr [limit]     start luck per side / start advantage per territory
+//!   hbsim parity <first-seed> <count> <players> [limit]
+//!       one line per game, seeds first-seed .. first-seed+count-1, as the game page sets a game up:
+//!       seed players limit winner(-1 = cut at round 200) rounds by_limit board(fnv32) loot(fnv32)
+//!   hbsim rng <seed> <count>                      raw generator outputs (test vectors for the PHP port)
+//! Map and balance values come from the game page: node export.mjs <index.html> map.json && node maprs.mjs map.json
 mod map;
 mod values;
 use map::*;
-use values::T_VALUE;
+use values::{SEAT_COMP_LIMIT, SEAT_COMP_OPEN, T_VALUE};
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
 use std::time::Instant;
 
-/* ---------- RNG: xoshiro256++ ---------- */
-struct Rng([u64; 4]);
+/* ---------- RNG: xoshiro128++ (32-bit state, so PHP can replay it with masked integer arithmetic) ---------- */
+struct Rng([u32; 4]);
 impl Rng {
-    fn new(seed: u64) -> Self {
+    /// Seeded from a u32 by splitmix32.
+    fn new(seed: u32) -> Self {
         let mut z = seed;
-        let mut s = [0u64; 4];
+        let mut s = [0u32; 4];
         for x in s.iter_mut() {
-            z = z.wrapping_add(0x9E3779B97F4A7C15);
+            z = z.wrapping_add(0x9E3779B9);
             let mut v = z;
-            v = (v ^ (v >> 30)).wrapping_mul(0xBF58476D1CE4E5B9);
-            v = (v ^ (v >> 27)).wrapping_mul(0x94D049BB133111EB);
-            *x = v ^ (v >> 31);
+            v = (v ^ (v >> 16)).wrapping_mul(0x85EBCA6B);
+            v = (v ^ (v >> 13)).wrapping_mul(0xC2B2AE35);
+            *x = v ^ (v >> 16);
         }
         Rng(s)
     }
     #[inline]
-    fn next(&mut self) -> u64 {
+    fn next(&mut self) -> u32 {
         let s = &mut self.0;
-        let r = s[0].wrapping_add(s[3]).rotate_left(23).wrapping_add(s[0]);
-        let t = s[1] << 17;
+        let r = s[0].wrapping_add(s[3]).rotate_left(7).wrapping_add(s[0]);
+        let t = s[1] << 9;
         s[2] ^= s[0];
         s[3] ^= s[1];
         s[1] ^= s[2];
         s[0] ^= s[3];
         s[2] ^= t;
-        s[3] = s[3].rotate_left(45);
+        s[3] = s[3].rotate_left(11);
         r
     }
+    /// A float in [0, 1) from the top 24 bits: exact in every double arithmetic.
     #[inline]
-    fn f(&mut self) -> f64 { (self.next() >> 11) as f64 * (1.0 / (1u64 << 53) as f64) }
+    fn f(&mut self) -> f64 { (self.next() >> 8) as f64 / 16_777_216.0 }
+    /// 0 .. n-1 by multiply-shift (the product stays below 2^38 for every n the game uses).
     #[inline]
-    fn below(&mut self, n: usize) -> usize { ((self.next() >> 32) * n as u64 >> 32) as usize }
+    fn below(&mut self, n: usize) -> usize { ((self.next() as u64 * n as u64) >> 32) as usize }
     #[inline]
     fn die(&mut self) -> i32 { 1 + self.below(6) as i32 }
     fn shuffle<T>(&mut self, a: &mut [T]) {
@@ -62,7 +77,7 @@ const ZONE_RUBEL: usize = 5; const ZONE_YUAN: usize = 6; const ZONE_YEN: usize =
 struct Terr { owner: i8, pleb: i32, maxi: i32, asic: i32, shield: i8 }
 
 #[derive(Clone, Default)]
-struct Player { fiat: f64, sats: f64, loot: f64, hand: Vec<Card>, out: bool, conquered: i32, free: i32, dip: bool }
+struct Player { fiat: f64, sats: f64, loot: f64, hand: Vec<Card>, out: bool, conquered: i32, free: i32, dip: bool, yuan: u32 }
 
 #[derive(Clone, Copy)]
 pub struct Cfg { balanced: bool, players: usize, fair: bool, seatcomp: f64, limit: u32, neutral_seats: usize, max_round: u32 }
@@ -89,7 +104,8 @@ impl Game {
     fn new(cfg: Cfg, rng: &mut Rng) -> Game {
         let n = cfg.players;
         let terr = if cfg.balanced { Self::deal_balanced(n, cfg.neutral_seats, rng) } else if cfg.fair { Self::deal_fair(n, cfg.neutral_seats, rng) } else { Self::deal_random(n, cfg.neutral_seats, rng) };
-        let mut g = Game { t: terr, p: vec![Player::default(); n], cur: 0, round: 1, deck: Self::new_deck(rng), inflation: false, inflation_next: false, over: false, winner: -1, by_limit: false, cfg };
+        // The deck is shuffled after the start plebs are placed, in the game page's order of draws.
+        let mut g = Game { t: terr, p: vec![Player::default(); n], cur: 0, round: 1, deck: Vec::new(), inflation: false, inflation_next: false, over: false, winner: -1, by_limit: false, cfg };
         let seats = n + cfg.neutral_seats;
         for seat in 0..seats {
             // Neutral seats of the duel rule are stored as owner = -(seat+10) during the deal, then turned neutral.
@@ -101,6 +117,7 @@ impl Game {
             for k in 0..extra { let id = mine[k % mine.len()]; g.t[id].pleb += 1; }
         }
         for t in g.t.iter_mut() { if t.owner < -5 { t.owner = -1; } }
+        g.deck = Self::new_deck(rng);
         g
     }
     fn tag_of(i: usize, n: usize) -> i8 { if i < n { i as i8 } else { -(i as i8) - 10 } }
@@ -161,7 +178,8 @@ impl Game {
             let complete = (0..NZ).any(|z| { let mut o: i8 = -100; let mut ok = true; for i in 0..NT { if T_ZONE[i] == z { if o == -100 { o = t[i].owner; } else if t[i].owner != o { ok = false; break; } } } ok && o >= 0 });
             if !complete { return t; }
         }
-        Self::deal_fair(n, neutral, rng)
+        // As the game page: after 200 tries every territory goes round-robin to the players, no neutral side.
+        Self::deal_random(n, 0, rng)
     }
     fn pleb_cost(&self, pid: usize) -> f64 {
         let mut c = 1.0; if self.inflation { c *= 1.5; } if self.has_zone(pid, ZONE_EURO) { c *= 0.8; } if self.p[pid].dip { c *= 0.5; } r2(c)
@@ -317,7 +335,14 @@ impl Game {
         if self.p[pid].sats >= 3.0 { self.p[pid].sats = r1(self.p[pid].sats - 3.0); self.t[front].asic += 1; }
         let free = self.p[pid].free; self.t[front].pleb += free; self.p[pid].free = 0;
         let mut guard = 80;
-        loop { let c = self.pleb_cost(pid); if !(self.p[pid].fiat + 1e-9 >= c) || guard == 0 { break; } guard -= 1; self.p[pid].fiat = r2(self.p[pid].fiat - c); self.t[front].pleb += 1; }
+        // Plebs one at a time through the same purchase a human makes, so the Yuan bonus (every 3rd pleb free)
+        // counts for bots too. The game page's bot bought around placeOn() and never got it.
+        let yuan = self.has_zone(pid, ZONE_YUAN);
+        loop {
+            let c = self.pleb_cost(pid); if !(self.p[pid].fiat + 1e-9 >= c) || guard == 0 { break; } guard -= 1;
+            self.p[pid].fiat = r2(self.p[pid].fiat - c); self.t[front].pleb += 1;
+            if yuan { self.p[pid].yuan += 1; if self.p[pid].yuan % 3 == 0 { self.t[front].pleb += 1; } }
+        }
         // Attacks: best scored option, fight until won or the odds turn.
         for _ in 0..14 {
             if self.over { return; }
@@ -335,7 +360,13 @@ impl Game {
             let prev = self.own(to);
             let (mut an, mut won);
             loop { let r = self.battle_round(from, to, rng); an = r.0; won = r.1; if won || !(self.u(from) > 2) || !(self.u(from) > self.u(to)) { break; } }
-            if won { let mv = an.max(((self.u(from) - 1) as f64 * 0.8).floor() as i32); self.conquest(from, to, prev, mv); }
+            if won {
+                // As a human conquers: the dice move in, then the rest of the bot's 80 % if the game goes on
+                // (the page's bot moved all at once; only the last board of a finished game differs).
+                let mv = an.max(((self.u(from) - 1) as f64 * 0.8).floor() as i32);
+                self.conquest(from, to, prev, an);
+                if !self.over && mv > an { self.move_units(from, to, mv - an); }
+            }
         }
         if self.over { return; }
         // Fortify: the biggest inner stack moves to the front.
@@ -406,7 +437,7 @@ fn run(cfg: Cfg, games: u64, threads: usize, seed: u64) -> (Stats, f64) {
     let handles: Vec<_> = (0..threads).map(|k| {
         let counter = counter.clone();
         std::thread::spawn(move || {
-            let mut rng = Rng::new(seed ^ (k as u64 + 1).wrapping_mul(0xA24BAED4963EE407));
+            let mut rng = Rng::new((seed ^ (k as u64 + 1).wrapping_mul(0xA24BAED4963EE407) >> 16) as u32);
             let mut st = Stats::new(cfg.players);
             while counter.fetch_add(1, Ordering::Relaxed) < games { let g = Game::new(cfg, &mut rng); st.add(&g.play(&mut rng)); }
             st
@@ -435,12 +466,67 @@ fn report(label: &str, cfg: Cfg, st: &Stats, secs: f64, zones: bool) {
     }
 }
 
+/// A game as the game page sets it up: value-balanced deal, a neutral side in the duel, SEAT_COMP by limit.
+fn page_cfg(players: usize, limit: u32) -> Cfg {
+    let table = if limit > 0 { SEAT_COMP_LIMIT } else { SEAT_COMP_OPEN };
+    Cfg { balanced: true, players, fair: true, seatcomp: table[players - 2], limit, neutral_seats: if players == 2 { 1 } else { 0 }, max_round: 200 }
+}
+
+/// FNV-1a over the bytes of a string: a short fingerprint both cores compute the same way.
+fn fnv32(s: &str) -> u32 {
+    let mut h: u32 = 0x811C9DC5;
+    for b in s.bytes() { h ^= b as u32; h = h.wrapping_mul(0x0100_0193); }
+    h
+}
+
+/// One line per seed, compared line by line with the PHP core (tests/Unit/Hyper/ParityTest.php).
+fn parity(first: u32, count: u32, players: usize, limit: u32) {
+    for k in 0..count {
+        let seed = first.wrapping_add(k);
+        let mut rng = Rng::new(seed);
+        let mut g = Game::new(page_cfg(players, limit), &mut rng);
+        g.begin_turn();
+        while !g.over && g.round <= g.cfg.max_round { g.bot_turn(&mut rng); if g.over { break; } g.begin_turn(); }
+        let board: String = g.t.iter().map(|t| format!("{},{},{},{};", t.owner, t.pleb, t.maxi, t.asic)).collect();
+        let loot: String = g.p.iter().map(|p| format!("{};", (p.loot * 10.0).round() as i64)).collect();
+        println!("{} {} {} {} {} {} {:08x} {:08x}", seed, players, limit, if g.over { g.winner } else { -1 }, g.round, g.by_limit as u8, fnv32(&board), fnv32(&loot));
+    }
+}
+
 fn main() {
     let args: Vec<String> = std::env::args().collect();
+    if args.get(1).map(|s| s.as_str()) == Some("parity") {
+        let num = |i: usize, d: u32| args.get(i).and_then(|s| s.parse().ok()).unwrap_or(d);
+        let players = num(4, 4) as usize;
+        if !(2..=6).contains(&players) { eprintln!("players must be 2..6"); std::process::exit(2); }
+        parity(num(2, 1), num(3, 25), players, num(5, 0));
+        return;
+    }
+    if args.get(1).map(|s| s.as_str()) == Some("rng") {
+        // Raw generator outputs for a seed: the PHP generator's test vectors.
+        let seed: u32 = args.get(2).and_then(|s| s.parse().ok()).unwrap_or(1);
+        let count: u32 = args.get(3).and_then(|s| s.parse().ok()).unwrap_or(8);
+        let mut rng = Rng::new(seed);
+        let out: Vec<String> = (0..count).map(|_| rng.next().to_string()).collect();
+        println!("{}", out.join(" "));
+        return;
+    }
     let games: u64 = args.get(1).and_then(|s| s.parse().ok()).unwrap_or(100_000);
     let threads: usize = args.get(2).and_then(|s| s.parse().ok()).unwrap_or(8);
     let limit: u32 = args.get(4).and_then(|s| s.parse().ok()).unwrap_or(20);
     let base = Cfg { balanced: false, players: 4, fair: true, seatcomp: 0.0, limit, neutral_seats: 0, max_round: 200 };
+    if args.get(3).map(|s| s.as_str()) == Some("gate") {
+        // The balance gate: every seat within 2 pp of the fair share, without a limit (the default) and with 20.
+        let limits: Vec<u32> = match args.get(4).and_then(|s| s.parse().ok()) { Some(l) => vec![l], None => vec![0, 20] };
+        for l in limits {
+            for players in 2..=6usize {
+                let cfg = page_cfg(players, l);
+                let (st, secs) = run(cfg, games, threads, 0x6A7E + players as u64 * 31 + l as u64);
+                report(&format!("{players}P limit {l} comp +{:.1}/seat{}", cfg.seatcomp, if players == 2 { " +neutral" } else { "" }), cfg, &st, secs, false);
+            }
+        }
+        return;
+    }
     if args.get(3).map(|s| s.as_str()) == Some("luck") {
         for (players, comp) in [(4usize, 4.0), (6, 1.0)] {
             for balanced in [false, true] {

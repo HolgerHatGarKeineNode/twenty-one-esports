@@ -1,5 +1,7 @@
+// Writes src/map.rs and src/values.rs from map.json (see export.mjs): node maprs.mjs map.json
 import fs from 'node:fs';
 const d = JSON.parse(fs.readFileSync(process.argv[2], 'utf8'));
+const f64 = (v) => (Number.isInteger(v) ? v.toFixed(1) : String(v));
 let s = '// Generated from the game page by maprs.mjs. Do not edit.\n';
 s += `pub const NT: usize = ${d.terr.length};\npub const NZ: usize = ${d.zones.length};\n`;
 s += `pub const ZONE_KEYS: [&str; NZ] = [${d.zones.map((z) => `"${z.key}"`).join(', ')}];\n`;
@@ -9,4 +11,13 @@ s += `pub const T_BANK: [bool; NT] = [${d.terr.map((t) => t.bank).join(', ')}];\
 s += `pub const T_MINE: [bool; NT] = [${d.terr.map((t) => t.mine).join(', ')}];\n`;
 s += `pub const T_ID: [&str; NT] = [${d.terr.map((t) => `"${t.id}"`).join(', ')}];\n`;
 s += `pub const ADJ: [&[usize]; NT] = [${d.terr.map((t) => `&[${t.adj.join(', ')}]`).join(', ')}];\n`;
-fs.mkdirSync('src', { recursive: true }); fs.writeFileSync('src/map.rs', s); console.log('map.rs ok');
+fs.mkdirSync('src', { recursive: true }); fs.writeFileSync('src/map.rs', s);
+let v = '// Generated from the game page by maprs.mjs. Do not edit.\n';
+v += '// Start value per territory (START_VALUE): start-holder win rate minus fair share (4 players, pp).\n';
+v += '// Zuerich never starts owned (a one-territory currency space), so it has no value.\n';
+v += `pub const T_VALUE: [f64; crate::map::NT] = [${d.terr.map((t) => f64(t.value)).join(', ')}];\n`;
+v += '// Seat compensation (SEAT_COMP): extra start plebs per later seat, index = players - 2.\n';
+v += `pub const SEAT_COMP_OPEN: [f64; 5] = [${d.seatComp.open.map(f64).join(', ')}];\n`;
+v += `pub const SEAT_COMP_LIMIT: [f64; 5] = [${d.seatComp.limit.map(f64).join(', ')}];\n`;
+fs.writeFileSync('src/values.rs', v);
+console.log('map.rs and values.rs ok');

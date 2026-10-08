@@ -1,0 +1,7 @@
+{
+    "note": "Overrides SEAT_COMP of the game page. Retuned 2026-10-08 with `hbsim 40000 8 tune 0|20` after the switch to xoshiro128++ and the parity fixes; the page's values (open 12/7/5/2/1.5, limit 11.5/7/4/0.5/1) put 2P, 3P and 4P beyond 2 pp. Keys are player counts.",
+    "seatComp": {
+        "open": { "2": 9.5, "3": 6, "4": 4.5, "5": 2, "6": 1.5 },
+        "limit": { "2": 9.5, "3": 6, "4": 4, "5": 1.5, "6": 1 }
+    }
+}
