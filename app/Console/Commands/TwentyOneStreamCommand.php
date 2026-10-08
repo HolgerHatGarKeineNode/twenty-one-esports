@@ -9,6 +9,7 @@ use App\Support\TwentyOne\Stream\Backoff;
 use App\Support\TwentyOne\Stream\BlockfillSlides;
 use App\Support\TwentyOne\Stream\BoardScene;
 use App\Support\TwentyOne\Stream\ChildEnvironment;
+use App\Support\TwentyOne\Stream\DetachedPublish;
 use App\Support\TwentyOne\Stream\EncoderRun;
 use App\Support\TwentyOne\Stream\FfmpegCommands;
 use App\Support\TwentyOne\Stream\ModeMachine;
@@ -29,7 +30,6 @@ use App\Support\TwentyOne\Stream\TournamentSlides;
 use App\Support\TwentyOne\Stream\TvSlides;
 use App\Support\TwentyOne\Stream\ViewerFeed;
 use App\Support\TwentyOne\TwentyOneSigner;
-use Closure;
 use Illuminate\Console\Attributes\Description;
 use Illuminate\Console\Attributes\Signature;
 use Illuminate\Console\Command;
@@ -57,14 +57,16 @@ use Throwable;
  * first segment, then the old one stops). A crashed encoder restarts with
  * backoff.
  *
- * The stream is announced as a NIP-53 kind-30311 event: `live` only while the
- * playlist is fresh (so a dead encoder ages out in clients by itself), with
- * the game in title and summary while the scene shows one. SIGTERM/SIGINT
- * (every deploy restarts the daemon) publishes nothing: the `live` event
- * stays, NIP-53 lets clients treat it as ended after an hour without update,
- * and the next start continues the same session (StreamSession: the same
- * `starts`, so zap.stream keeps showing the chat). A permanent stop is
- * `twentyone:stream:end`, which publishes `ended` and clears the session.
+ * The stream is announced as a NIP-53 kind-30311 event beside the encoder,
+ * not inside its loop (DetachedPublish): a hung name lookup or connect must
+ * not starve ffmpeg. `live` only while the playlist is fresh (so a dead
+ * encoder ages out in clients by itself), with the game in title and summary
+ * while the scene shows one. SIGTERM/SIGINT (every deploy restarts the
+ * daemon) publishes nothing: the `live` event stays, NIP-53 lets clients
+ * treat it as ended after an hour without update, and the next start
+ * continues the same session (StreamSession: the same `starts`, so zap.stream
+ * keeps showing the chat). A permanent stop is `twentyone:stream:end`, which
+ * publishes `ended` and clears the session.
  *
  * Viewers are counted from nginx's playlist access log, sent as syslog
  * datagrams to a unix socket this process binds (ViewerSocket, config
@@ -81,7 +83,7 @@ use Throwable;
 #[Signature('twentyone:stream
     {--relays= : Comma-separated relay URLs, instead of twentyone.stream.relays}
     {--no-publish : Run the HLS loop without any Nostr event}
-    {--stop-after= : Stop after this many seconds, exactly as on SIGTERM (local checks)}
+    {--stop-after= : Stop after this many seconds (local checks). Unlike SIGTERM, waits up to 1 s to log a publish already in flight}
     {--clear : Remove the public playlist and all segments before starting, instead of continuing them}')]
 #[Description('Run the TWENTY ONE 24/7 HLS loop and announce it as a NIP-53 live event')]
 class TwentyOneStreamCommand extends Command
@@ -115,6 +117,12 @@ class TwentyOneStreamCommand extends Command
     private const ASSUMED_TRACK_SECONDS = 180;
 
     private bool $stopping = false;
+
+    /** Set by the signal trap. A signal must not wait out an in-flight publish. */
+    private bool $signaled = false;
+
+    /** The relay publish running beside this loop, if any. */
+    private ?DetachedPublish $delivery = null;
 
     private ?TwentyOneSigner $signer = null;
 
@@ -166,7 +174,7 @@ class TwentyOneStreamCommand extends Command
     /**
      * Execute the console command.
      */
-    public function handle(EventBuilder $builder, RelayPublisher $publisher, SceneSource $source, StreamStats $counts, TournamentSlides $slides): int
+    public function handle(EventBuilder $builder, SceneSource $source, StreamStats $counts, TournamentSlides $slides): int
     {
         $prepared = (string) config('twentyone.stream.prepared');
         $hlsDir = rtrim((string) config('twentyone.stream.hls_dir'), '/');
@@ -181,8 +189,13 @@ class TwentyOneStreamCommand extends Command
             return self::FAILURE;
         }
 
+        $this->signaled = false;
+        $this->delivery?->stop();
+        $this->delivery = new DetachedPublish;
+
         $this->trap([SIGTERM, SIGINT], function (int $signal): void {
             $this->log('received signal '.$signal.', stopping');
+            $this->signaled = true;
             $this->stopping = true;
         });
 
@@ -234,7 +247,7 @@ class TwentyOneStreamCommand extends Command
         }
 
         try {
-            $this->supervise($builder, $publisher, $source, $counts, $slides, $public, $hlsDir, $prepared);
+            $this->supervise($builder, $source, $counts, $slides, $public, $hlsDir, $prepared);
         } finally {
             // Also after an exception: the encoders stop.
             $this->shutdown($public);
@@ -243,7 +256,7 @@ class TwentyOneStreamCommand extends Command
         return self::SUCCESS;
     }
 
-    private function supervise(EventBuilder $builder, RelayPublisher $publisher, SceneSource $source, StreamStats $counts, TournamentSlides $slides, PublicPlaylist $public, string $hlsDir, string $prepared): void
+    private function supervise(EventBuilder $builder, SceneSource $source, StreamStats $counts, TournamentSlides $slides, PublicPlaylist $public, string $hlsDir, string $prepared): void
     {
         $renderer = SceneRenderer::fromConfig();
         $boardScene = app(BoardScene::class);
@@ -529,10 +542,14 @@ class TwentyOneStreamCommand extends Command
             // A playlist kept from before this start is fresh after a quick
             // restart (and rewritten when trimmed), but says nothing about
             // whether an encoder of this process works: only its segments count.
-            if ($this->signer !== null && $public->hasSegmentOf($this->runIds) && $this->isFresh($public->path()) && $schedule->due($announced, time())) {
+            // The relay send runs in a child. Reap it, then maybe start the next.
+            // Neither call waits on a relay, so a hung connect cannot starve ffmpeg.
+            $this->collectPublish();
+
+            if (! $this->stopping && $this->signer !== null && $this->delivery !== null && ! $this->delivery->running()
+                && $public->hasSegmentOf($this->runIds) && $this->isFresh($public->path()) && $schedule->due($announced, time())) {
                 $this->startedAt ??= $this->resumedStarts ?? time();
-                // A SIGTERM during this publish aborts it.
-                $this->publish($builder, $publisher, 'live', $published, $this->publishTimeout(), fn (): bool => $this->stopping, $viewerCount);
+                $this->startPublish($builder, 'live', $published, $this->publishTimeout(), $viewerCount);
                 $schedule->published($announced, time());
             }
 
@@ -560,6 +577,7 @@ class TwentyOneStreamCommand extends Command
         }
 
         $this->pending = $this->active = null;
+        $this->stopPublish(! $this->signaled);
         $this->viewers?->close();
         $this->viewers = null;
         $this->log('stopped, keeping '.count($public->state()->window).' segments in the public playlist');
@@ -1061,13 +1079,15 @@ class TwentyOneStreamCommand extends Command
     }
 
     /**
+     * Hand the signed `live` event to a child and return. The encoder loop
+     * does not wait for the relays; {@see collectPublish()} logs the result.
+     *
      * @param  array{title: string, summary: string, image?: string}  $texts  `image` replaces the configured picture
-     * @param  (Closure(): bool)|null  $abort
      * @param  int|null  $viewers  `current_participants`, left out when null
      */
-    private function publish(EventBuilder $builder, RelayPublisher $publisher, string $status, array $texts, float $timeoutSeconds, ?Closure $abort = null, ?int $viewers = null): void
+    private function startPublish(EventBuilder $builder, string $status, array $texts, float $timeoutSeconds, ?int $viewers = null): void
     {
-        assert($this->signer !== null && $this->startedAt !== null);
+        assert($this->signer !== null && $this->startedAt !== null && $this->delivery !== null);
 
         /** @var array{d: string, title: string, summary: string, image: string, t?: list<string>} $stream */
         $stream = [...config('twentyone.stream.event'), ...$texts];
@@ -1085,14 +1105,37 @@ class TwentyOneStreamCommand extends Command
         $event = $this->signer->sign($unsigned);
         $this->lastCreatedAt = $createdAt;
 
-        $results = $publisher->publish($event, $this->relays, $timeoutSeconds, $abort);
-        $summary = collect($results)->map(fn ($result): string => $result->relay.' '.($result->accepted ? 'ok' : 'failed: '.$result->message));
-        $accepted = collect($results)->where('accepted', true)->count();
+        try {
+            $this->delivery->start($event, $this->relays, $timeoutSeconds, $status, $this->startedAt);
+            $this->log('announcing kind 30311 starts='.$this->startedAt.', not waiting on relays');
+        } catch (Throwable $e) {
+            $this->log('publish not started, encoder continues: '.$this->describe($e));
+        }
+    }
 
-        // Only an accepted `live` keeps the session resumable.
-        if ($status === 'live' && $accepted > 0 && $this->session !== null) {
+    /**
+     * Log a child that has finished, and record the session only when a relay
+     * accepted the `live` event. A still-running child is left alone.
+     */
+    private function collectPublish(): void
+    {
+        $result = $this->delivery?->reap();
+
+        if ($result === null) {
+            return;
+        }
+
+        if ($result['abandoned']) {
+            $this->log('publish abandoned ('.$result['summary'].'), encoder kept running');
+
+            return;
+        }
+
+        // Only an accepted `live` keeps the session resumable. The child never
+        // writes the session file, so a restart cannot announce a new `starts`.
+        if ($result['status'] === 'live' && $result['accepted'] > 0 && $this->session !== null) {
             try {
-                $this->session->recordLive($this->startedAt, $createdAt);
+                $this->session->recordLive($result['starts'], $result['created_at']);
             } catch (Throwable $e) {
                 $this->log('session not recorded: '.$this->describe($e));
             }
@@ -1100,14 +1143,36 @@ class TwentyOneStreamCommand extends Command
 
         $this->log(sprintf(
             'published kind 30311 status=%s starts=%d id=%s created_at=%d to %d/%d relays (%s)',
-            $status,
-            $this->startedAt,
-            $event['id'],
-            $event['created_at'],
-            $accepted,
-            count($results),
-            $summary->implode('; '),
+            $result['status'],
+            $result['starts'],
+            $result['id'],
+            $result['created_at'],
+            $result['accepted'],
+            $result['total'],
+            $result['summary'],
         ));
+    }
+
+    /**
+     * Stop the relay child. A clean `--stop-after` waits up to a second so a
+     * publish that already finished can be logged; a signal does not wait.
+     */
+    private function stopPublish(bool $wait): void
+    {
+        if ($this->delivery === null) {
+            return;
+        }
+
+        if ($wait) {
+            $deadline = microtime(true) + 1.0;
+
+            while ($this->delivery->running() && microtime(true) < $deadline) {
+                usleep(20_000);
+            }
+        }
+
+        $this->collectPublish();
+        $this->delivery->stop();
     }
 
     /**

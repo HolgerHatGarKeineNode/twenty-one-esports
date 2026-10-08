@@ -50,6 +50,30 @@ test('on stop the stream publishes no ended event, stops ffmpeg and keeps the pl
         ->and(substr_count($output, 'ffmpeg started'))->toBe(1);
 });
 
+test('a relay that does not answer does not stop the encoder', function () {
+    File::put(config('twentyone.stream.prepared'), 'fake');
+    fakeEncoder($this->dir);
+    $silent = stream_socket_server('tcp://127.0.0.1:0');
+    config(['twentyone.nostr.publish_timeout_seconds' => 8]);
+
+    $startedAt = microtime(true);
+    $exitCode = Artisan::call('twentyone:stream', [
+        '--relays' => 'ws://'.stream_socket_get_name($silent, false),
+        '--stop-after' => 1.2,
+    ]);
+    $elapsed = microtime(true) - $startedAt;
+    $output = Artisan::output();
+    fclose($silent);
+
+    expect($exitCode)->toBe(0)
+        ->and($elapsed)->toBeLessThan(3.0)
+        ->and($output)->toContain('announcing kind 30311')
+        ->and($output)->toContain('not waiting on relays')
+        ->and($output)->not->toContain('status=ended')
+        ->and($output)->not->toContain('wrote no segment')
+        ->and($output)->toContain('ffmpeg started');
+});
+
 test('a restart serves the kept playlist, with all its files, until the new encoder has a segment', function () {
     File::put(config('twentyone.stream.prepared'), 'fake');
     $hlsDir = config('twentyone.stream.hls_dir');

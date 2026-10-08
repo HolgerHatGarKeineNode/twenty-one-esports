@@ -51,6 +51,7 @@ test('the playlist has a constant header and a map at the start and after every 
         '#EXT-X-MEDIA-SEQUENCE:0',
         '#EXT-X-DISCONTINUITY-SEQUENCE:0',
         '#EXT-X-INDEPENDENT-SEGMENTS',
+        '#EXT-X-START:TIME-OFFSET=-24,PRECISE=NO',
         '#EXT-X-MAP:URI="loop/aaa-init.mp4"',
         '#EXTINF:6.000000,', 'loop/aaa-seg-000000000.m4s',
         '#EXTINF:6.000000,', 'loop/aaa-seg-000000001.m4s',

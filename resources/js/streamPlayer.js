@@ -87,9 +87,9 @@ export class StreamPlayer {
             this.engine = 'hls.js';
             this.video.dataset.engine = 'hls.js';
             const hls = new Hls({
-                // Three segments behind the edge: 18 s of room for a slow network, no endless buffer.
-                liveSyncDurationCount: 3,
-                maxBufferLength: 20,
+                // Four segments behind the edge: 24 s of room for one late piece, still inside the 36 s playlist window.
+                liveSyncDurationCount: 4,
+                maxBufferLength: 30,
                 backBufferLength: 12,
                 manifestLoadingMaxRetry: 1,
                 levelLoadingMaxRetry: 2,

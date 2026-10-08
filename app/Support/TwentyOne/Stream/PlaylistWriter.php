@@ -93,6 +93,8 @@ final class PlaylistWriter
             '#EXT-X-MEDIA-SEQUENCE:'.$state->mediaSequence,
             '#EXT-X-DISCONTINUITY-SEQUENCE:'.$state->discontinuitySequence,
             '#EXT-X-INDEPENDENT-SEGMENTS',
+            // Native players (Safari) ignore the hls.js live-sync setting. Start 24 s before the edge, same cushion.
+            '#EXT-X-START:TIME-OFFSET=-24,PRECISE=NO',
         ];
 
         foreach ($state->window as $index => $segment) {

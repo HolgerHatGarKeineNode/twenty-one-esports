@@ -9,8 +9,8 @@ namespace App\Support\TwentyOne\Stream;
  * (clients treat an old `live` as ended), and on a change of title/summary,
  * cover (StreamCover) or viewer count, but such a change at most once per
  * `textChangeSeconds`, so players renaming themselves (or viewers coming and
- * going) cannot make the platform key publish at will (each publish also
- * blocks the supervisor loop up to the publish timeout).
+ * going) cannot make the platform key publish at will. The send itself runs
+ * in a child process; this schedule only decides when one is started.
  * `ended` is not scheduled here: it always goes out at once.
  */
 final class PublishSchedule
