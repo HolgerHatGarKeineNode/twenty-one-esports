@@ -8,7 +8,6 @@ use App\Events\HyperRematchUpdated;
 use App\Events\HyperTableStarted;
 use App\Jobs\FillHyperTable;
 use App\Models\HyperMatch;
-use App\Models\HyperSeat;
 use App\Models\HyperTable;
 use App\Models\HyperTableSeat;
 use App\Models\User;
@@ -54,6 +53,8 @@ final class HyperLobby
         $this->checkFaction($faction);
 
         $table = DB::transaction(function () use ($creator, $seats, $mode, $limit, $faction): HyperTable {
+            // Two tabs opening or joining at once: one at a time per player.
+            User::query()->whereKey($creator->id)->lockForUpdate()->first();
             $this->refuseSeatedElsewhere($creator);
             $live = $mode === HyperMatch::LIVE;
             $table = HyperTable::query()->create([
@@ -97,6 +98,7 @@ final class HyperLobby
                 throw new HyperRuleViolation('already_seated', 'You sit at this table already.');
             }
 
+            User::query()->whereKey($user->id)->lockForUpdate()->first();
             $this->refuseSeatedElsewhere($user);
 
             $free = array_values(array_diff(range(0, $table->seats - 1), $table->takenSeats->pluck('seat')->all()));
@@ -226,7 +228,7 @@ final class HyperLobby
                 ]);
 
                 foreach ($locked->seats as $seat) {
-                    $player = $seat->user_id !== null && ($seat->seat === $mine->seat || ! in_array($seat->takeover, [HyperSeat::TAKEOVER_LEFT, HyperSeat::TAKEOVER_FORFEIT], true));
+                    $player = $seat->user_id !== null && ($seat->seat === $mine->seat || ! $seat->bot);
                     HyperTableSeat::query()->create([
                         'hyper_table_id' => $table->id,
                         'seat' => $seat->seat,

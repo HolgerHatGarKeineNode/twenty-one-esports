@@ -478,7 +478,11 @@ final class HyperMatches
         $seat = (int) $match->current_seat;
         $state = $game->toArray();
 
-        if ($match->isCorrespondence() && $game->phase() === 'buy' && $state['placed'] === [] && $state['pending_move'] === null) {
+        // Untouched: the seat has not acted this turn at all (a played card counts, though it places nothing).
+        $last = $match->actions()->reorder('ply', 'desc')->first(['seat', 'source']);
+        $touched = $last !== null && $last->source === HyperAction::PLAYER && (int) $last->seat === $seat;
+
+        if ($match->isCorrespondence() && ! $touched && $game->phase() === 'buy' && $state['placed'] === [] && $state['pending_move'] === null) {
             try {
                 $turn = HyperBot::playTurn($game);
 

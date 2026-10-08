@@ -147,6 +147,19 @@ test('a correspondence turn the player had begun ends as live when its day runs 
     expect($match->refresh()->actions()->where('source', HyperAction::TIMER)->pluck('action')->all())->toBe([['type' => 'end_turn']]);
 });
 
+test('a correspondence turn the player acted in and took back still counts as begun: its day runs out into an end of turn', function () {
+    $anna = hyperPushPlayer();
+    $match = hyperCorrespondence($anna);
+    $mine = app(HyperMatches::class)->snapshot($match, $anna)['legal']['deploy'][0];
+    $this->actingAs($anna)->postJson(route('hyper.act', $match), ['action' => ['type' => 'deploy', 'territory' => $mine, 'unit' => 'pleb', 'qty' => 1], 'ply' => 1])->assertOk();
+    $this->actingAs($anna)->postJson(route('hyper.act', $match), ['action' => ['type' => 'undo'], 'ply' => 2])->assertOk();
+
+    $this->travel(24 * 3600 + 1)->seconds();
+    $this->artisan('hyper:check-clocks')->assertSuccessful();
+
+    expect($match->refresh()->actions()->where('source', HyperAction::TIMER)->pluck('action')->all())->toBe([['type' => 'end_turn']]);
+});
+
 test('the match dock lists a correspondence match: the player to move is needed, the others wait; a live match has no tab', function () {
     [$anna, $bert] = [hyperPushPlayer(), hyperPushPlayer()];
     $match = hyperCorrespondence($anna, $bert);

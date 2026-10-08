@@ -5,6 +5,7 @@ use App\Events\HyperLobbyUpdated;
 use App\Events\HyperRematchUpdated;
 use App\Events\HyperTableStarted;
 use App\Models\HyperMatch;
+use App\Models\HyperSeat;
 use App\Models\HyperTable;
 use App\Models\User;
 use App\Support\Hyper\HyperGame;
@@ -194,4 +195,16 @@ test('a rematch with bots only and a player who left starts right away for the o
         ->and($new->seats->pluck('user_id')->all())->toBe([$anna->id, null, null])
         ->and($new->seats->pluck('bot')->all())->toBe([false, true, true])
         ->and(array_column(HyperGame::fromArray($new->state)->toArray()['seats'], 'faction'))->toBe(['bitcoiner', 'fed', $old->seats[2]->faction]);
+});
+
+test('a rematch seats a player a bot took over for missed turns as a bot, so nobody waits for them', function () {
+    [$anna, $bert] = User::factory()->count(2)->create();
+    $old = HyperOn::versus($anna, $bert);
+    $old->seats()->where('seat', 1)->update(['bot' => true, 'takeover' => HyperSeat::TAKEOVER_TIMEOUTS]);
+    $old->refresh()->forceFill(['status' => HyperMatchStatus::Finished, 'current_seat' => null, 'deadline_ms' => null])->save();
+
+    $answer = $this->actingAs($anna)->postJson(route('hyper.rematch', $old))->assertOk();
+
+    expect($answer->json('url'))->not->toBeNull()
+        ->and(HyperMatch::query()->whereKeyNot($old->id)->latest('id')->firstOrFail()->seats->pluck('bot')->all())->toBe([false, true]);
 });
