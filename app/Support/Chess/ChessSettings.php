@@ -5,6 +5,7 @@ namespace App\Support\Chess;
 use App\Enums\NotificationKind;
 use App\Models\BoardGame;
 use App\Models\ChessGame;
+use App\Models\HyperMatch;
 
 /**
  * A player's chess and notification preferences (ChessSettings.dc.html),
@@ -153,7 +154,7 @@ final readonly class ChessSettings
      *
      * @return list<'push'|'dm'>
      */
-    public function remoteChannels(NotificationKind $kind, ChessGame|BoardGame|null $game = null): array
+    public function remoteChannels(NotificationKind $kind, ChessGame|BoardGame|HyperMatch|null $game = null): array
     {
         if (! $this->wants($kind->value)) {
             return [];

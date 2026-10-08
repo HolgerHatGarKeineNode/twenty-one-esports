@@ -4,10 +4,13 @@ namespace App\Http\Controllers;
 
 use App\Enums\HyperMatchStatus;
 use App\Models\HyperMatch;
+use App\Models\HyperTable;
 use App\Models\User;
 use App\Support\Hyper\HyperEmotes;
 use App\Support\Hyper\HyperGame;
+use App\Support\Hyper\HyperLobby;
 use App\Support\Hyper\HyperMatches;
+use App\Support\Hyper\HyperReplay;
 use App\Support\Hyper\HyperRuleViolation;
 use App\Support\Hyper\HyperTableChat;
 use App\Support\Hyper\HyperTexts;
@@ -18,6 +21,7 @@ use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Validation\Rule;
+use RuntimeException;
 
 /**
  * A Hyperbitcoinization match over JSON (plan "Hyperbitcoinization", P2; routes/hyper.php, only registered
@@ -33,16 +37,18 @@ use Illuminate\Validation\Rule;
 class HyperMatchController extends Controller
 {
     /** Refusals of a viewer who has no say at this seat. */
-    private const FORBIDDEN = ['not_seated', 'seat_taken_over', 'already_left'];
+    private const FORBIDDEN = ['not_seated', 'seat_taken_over', 'already_left', 'no_rematch'];
 
     /** Refusals because the match is not where the client thought it was. */
     private const CONFLICT = ['out_of_sync', 'turn_timed_out', 'game_over'];
 
     /**
-     * The start page in the league's shell until the lobby comes (P3): the title art, the quick start against
-     * bots (it opens the match in a new tab) and the viewer's running matches.
+     * The start page in the league's shell: the lobby (P3, the Livewire component `hyper-lobby`: open tables,
+     * a new table, seats and factions, bots), the quick start against bots (it opens the match in a new tab)
+     * and the viewer's running matches. `tables/{table}` is a table's own link: the same page with that
+     * table first, how a player invites a friend.
      */
-    public function index(Request $request): View
+    public function index(Request $request, ?HyperTable $table = null): View
     {
         $viewer = $this->viewer($request);
         $running = $viewer === null ? collect() : HyperMatch::query()
@@ -55,6 +61,7 @@ class HyperMatchController extends Controller
 
         return view('pages.hyper.index', [
             'viewer' => $viewer,
+            'focus' => $table?->ulid,
             'running' => $running,
             'factions' => array_keys(HyperGame::FACTIONS),
             'limits' => HyperGame::LIMITS,
@@ -80,6 +87,8 @@ class HyperMatchController extends Controller
                     'act' => route('hyper.act', $match, false),
                     'emote' => route('hyper.emote', $match, false),
                     'leave' => route('hyper.leave', $match, false),
+                    'rematch' => route('hyper.rematch', $match, false),
+                    'replay' => route('hyper.replay', $match, false),
                 ],
                 'assets' => '/hyper/',
                 'locale' => app()->getLocale(),
@@ -89,6 +98,68 @@ class HyperMatchController extends Controller
                 'chat' => HyperTableChat::config($match, $viewer),
             ],
         ]);
+    }
+
+    /**
+     * The replay of a finished match (P3), full-screen on the match page's table, read-only: rebuilt from the
+     * seed and the action log (HyperReplay), every hand open. The page asks for the plies and the state at a
+     * ply (replayData(), replayState()); the snapshot in the page is the table after the setup.
+     */
+    public function replay(HyperMatch $match, HyperMatches $matches): View
+    {
+        $replay = $this->replayOf($match, 0);
+
+        return view('hyper.match', [
+            'snapshot' => $replay->snapshot($matches->snapshot($match, null)),
+            'back' => route('hyper.index', absolute: false),
+            'config' => [
+                'urls' => [
+                    'snapshot' => route('hyper.replay.state', $match, false),
+                    'events' => route('hyper.replay.data', $match, false),
+                ],
+                'replay' => ['data' => route('hyper.replay.data', $match, false), 'state' => route('hyper.replay.state', $match, false), 'last' => $match->ply],
+                'assets' => '/hyper/',
+                'locale' => app()->getLocale(),
+                'csrf' => csrf_token(),
+                'texts' => HyperTexts::dictionary(),
+                'clips' => HyperEmotes::clips(),
+                // The match's table chat, read as a guest reads it: the replay writes nothing.
+                'chat' => HyperTableChat::config($match, null),
+            ],
+        ]);
+    }
+
+    /**
+     * Every ply of a finished match with its events, replayed: `{ply, plies: [{ply, seat, source, events}]}`.
+     */
+    public function replayData(HyperMatch $match): JsonResponse
+    {
+        $replay = $this->replayOf($match);
+
+        return response()->json(['ply' => $replay->ply(), 'plies' => $replay->plies()]);
+    }
+
+    /**
+     * The table of a finished match at `?ply=<n>` (default the end), replayed: the match page's snapshot.
+     */
+    public function replayState(Request $request, HyperMatch $match, HyperMatches $matches): JsonResponse
+    {
+        $ply = min($match->ply, max(0, (int) $request->query('ply', (string) $match->ply)));
+
+        return response()->json($this->replayOf($match, $ply)->snapshot($matches->snapshot($match, null)));
+    }
+
+    /**
+     * The player says yes to a rematch of this finished match (HyperLobby::rematch()): `{table, ready,
+     * waiting, url}`, the url once everybody said yes and the new match began.
+     */
+    public function rematch(Request $request, HyperMatch $match, HyperLobby $lobby): JsonResponse
+    {
+        return $this->refusing(function () use ($request, $match, $lobby): JsonResponse {
+            ['table' => $table] = $lobby->rematch($match, $this->user($request));
+
+            return response()->json($lobby->rematchPayload($table));
+        });
     }
 
     /**
@@ -214,9 +285,26 @@ class HyperMatchController extends Controller
             'turn_timed_out' => __('Your turn ran out.'),
             'game_over' => __('The match is over.'),
             'emote_throttled' => __('Not so fast. Try again in :seconds s.', ['seconds' => $retry]),
+            'no_rematch' => __('A rematch follows a finished match of yours.'),
             'unknown_emote' => __('Unknown emote.'),
             default => __('That is not allowed right now.'),
         };
+    }
+
+    /**
+     * The replay of a finished match up to `upTo`; a running match, or one whose log does not replay, is no
+     * replay (404; the second is reported, it would be a defect).
+     */
+    private function replayOf(HyperMatch $match, ?int $upTo = null): HyperReplay
+    {
+        abort_if($match->status !== HyperMatchStatus::Finished, 404);
+
+        try {
+            return new HyperReplay($match, $upTo);
+        } catch (RuntimeException $exception) {
+            report($exception);
+            abort(404);
+        }
     }
 
     private function viewer(Request $request): ?User

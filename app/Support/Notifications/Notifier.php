@@ -9,6 +9,7 @@ use App\Jobs\SendWebPush;
 use App\Models\BoardGame;
 use App\Models\ChatMute;
 use App\Models\ChessGame;
+use App\Models\HyperMatch;
 use App\Models\NotificationDigestItem;
 use App\Models\User;
 use App\Notifications\LeagueNotification;
@@ -57,7 +58,7 @@ final class Notifier
     /**
      * @return list<'push'|'dm'|'digest'> the remote channels it went out on ('digest': a DM that waits for the daily digest)
      */
-    public function send(User $user, NotificationKind $kind, Notice $notice, ChessGame|BoardGame|null $game = null, bool $remote = true, ?User $sender = null): array
+    public function send(User $user, NotificationKind $kind, Notice $notice, ChessGame|BoardGame|HyperMatch|null $game = null, bool $remote = true, ?User $sender = null): array
     {
         $settings = $user->chessSettings();
         $trigger = $kind->value;

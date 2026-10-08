@@ -4,6 +4,7 @@ namespace App\Enums;
 
 use App\Models\BoardGame;
 use App\Models\ChessGame;
+use App\Models\HyperMatch;
 
 /**
  * Every event the league tells a player about (P5c). Adding a case here is
@@ -140,7 +141,7 @@ enum NotificationKind: string
      * and correspondence games decides by the game; without one it stays on
      * the page.
      */
-    public function pushAllowed(ChessGame|BoardGame|null $game = null): bool
+    public function pushAllowed(ChessGame|BoardGame|HyperMatch|null $game = null): bool
     {
         return match (true) {
             $this->pageOnly() => false,

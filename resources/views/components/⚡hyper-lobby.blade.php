@@ -1,0 +1,359 @@
+<?php
+
+use App\Models\HyperMatch;
+use App\Models\HyperTable;
+use App\Models\HyperTableSeat;
+use App\Models\User;
+use App\Support\Hyper\HyperGame;
+use App\Support\Hyper\HyperLobby;
+use App\Support\Hyper\HyperRuleViolation;
+use Illuminate\Database\Eloquent\Collection;
+use Livewire\Attributes\Computed;
+use Livewire\Attributes\Locked;
+use Livewire\Component;
+
+/*
+ * The Hyperbitcoinization lobby on /hyperbitcoinization (plan "Hyperbitcoinization", P3), over
+ * App\Support\Hyper\HyperLobby: a new table (seats 2 to 6, live or correspondence, no round limit or 20),
+ * the player's own table (seats, a faction per seat that nobody else at the table has, the table's link to
+ * invite a friend, bots for the free seats, getting up), the match it became, and the open tables to join.
+ *
+ * A full table starts at once; the match opens in a new tab (resources/js/hyperLobby.js: right after the
+ * click that filled it, or by push for the other players), and the "Open match" button stays for a tab the
+ * browser blocked. Every change re-renders every open lobby (`hyper.lobby`). `focus`: the table whose link
+ * was opened (HyperMatchController::index), shown first.
+ */
+new class extends Component {
+    /** Seconds between asks without a websocket (resources/js/hyperLobby.js). */
+    public const FALLBACK_SECONDS = 10;
+
+    /** How long the match a table became stays on top of the lobby. */
+    public const STARTED_MINUTES = 30;
+
+    /** The round limits a table offers: none, or 20 for an evening. */
+    public const LIMITS = [0, 20];
+
+    #[Locked]
+    public ?string $focus = null;
+
+    public int $seats = 4;
+
+    public string $mode = HyperMatch::LIVE;
+
+    public int $limit = 0;
+
+    public ?string $error = null;
+
+    public function openTable(HyperLobby $lobby): void
+    {
+        $this->act(fn (User $me): HyperTable => $lobby->open($me, max(2, min(6, $this->seats)), $this->mode, in_array($this->limit, self::LIMITS, true) ? $this->limit : 0));
+    }
+
+    public function join(string $table, HyperLobby $lobby): void
+    {
+        $this->act(fn (User $me): HyperTable => $lobby->join($this->table($table), $me));
+    }
+
+    /** `''` = drawn at the start. */
+    public function pick(string $faction, HyperLobby $lobby): void
+    {
+        $this->act(fn (User $me): HyperTable => $lobby->pick($this->ownTable(), $me, $faction === '' ? null : $faction));
+    }
+
+    public function fillWithBots(HyperLobby $lobby): void
+    {
+        $this->act(fn (User $me): HyperTable => $lobby->fillBots($this->ownTable(), $me));
+    }
+
+    public function leave(HyperLobby $lobby): void
+    {
+        $this->act(fn (User $me): HyperTable => $lobby->leave($this->ownTable(), $me));
+    }
+
+    /**
+     * The open tables, the focused one first, the viewer's own left out (it has its own card).
+     *
+     * @return Collection<int, HyperTable>
+     */
+    #[Computed]
+    public function tables(): Collection
+    {
+        $mine = $this->mine?->id;
+
+        return app(HyperLobby::class)->openTables()
+            ->reject(fn (HyperTable $table): bool => $table->id === $mine)
+            ->sortBy(fn (HyperTable $table): int => $table->ulid === $this->focus ? 0 : 1)
+            ->values();
+    }
+
+    #[Computed]
+    public function mine(): ?HyperTable
+    {
+        $me = $this->viewer();
+
+        return $me === null ? null : app(HyperLobby::class)->tableOf($me)?->load('takenSeats.user');
+    }
+
+    /**
+     * The viewer's lobby table that became a match in the last half hour, while the match runs.
+     */
+    #[Computed]
+    public function started(): ?HyperTable
+    {
+        $me = $this->viewer();
+
+        return $me === null ? null : HyperTable::query()->where('status', HyperTable::STARTED)->whereNull('rematch_of')
+            ->where('started_at', '>=', now()->subMinutes(self::STARTED_MINUTES))
+            ->whereHas('takenSeats', fn ($seats) => $seats->where('user_id', $me->id))
+            ->whereHas('match', fn ($match) => $match->where('status', 'active'))
+            ->with('match')->latest('started_at')->first();
+    }
+
+    /**
+     * Runs a lobby change for the signed-in viewer; a refusal becomes the line under the cards. A table
+     * that started opens its match in a new tab (hyperLobby.js listens for `hyper-open`).
+     *
+     * @param  Closure(User): HyperTable  $change
+     */
+    private function act(Closure $change): void
+    {
+        $me = $this->viewer();
+
+        if ($me === null) {
+            $this->redirectRoute('login');
+
+            return;
+        }
+
+        $this->error = null;
+
+        try {
+            $table = $change($me);
+        } catch (HyperRuleViolation $refusal) {
+            $this->error = $this->message($refusal->reason);
+
+            return;
+        }
+
+        unset($this->mine, $this->tables, $this->started);
+
+        if ($table->status === HyperTable::STARTED && $table->hyper_match_id !== null) {
+            $this->dispatch('hyper-open', url: route('hyper.match', HyperMatch::query()->findOrFail($table->hyper_match_id)));
+        }
+    }
+
+    private function message(string $reason): string
+    {
+        return match ($reason) {
+            'table_closed' => __('This table is closed.'),
+            'table_full' => __('This table is full.'),
+            'faction_taken' => __('Somebody at this table plays that faction.'),
+            'already_seated' => __('You sit at this table already.'),
+            'seated_elsewhere' => __('You wait at another table already.'),
+            'not_creator' => __('Only who opened the table adds bots.'),
+            'not_seated' => __('You do not sit at this table.'),
+            default => __('That is not allowed right now.'),
+        };
+    }
+
+    private function table(string $ulid): HyperTable
+    {
+        return HyperTable::query()->where('ulid', $ulid)->first() ?? throw new HyperRuleViolation('table_closed', 'No such table.');
+    }
+
+    private function ownTable(): HyperTable
+    {
+        return $this->mine ?? throw new HyperRuleViolation('not_seated', 'No table of yours.');
+    }
+
+    private function viewer(): ?User
+    {
+        $user = auth()->user();
+
+        return $user instanceof User ? $user : null;
+    }
+}; ?>
+
+@php
+    $viewer = auth()->user();
+    $mine = $this->mine;
+    $started = $this->started;
+    $tables = $this->tables;
+    $labels = ['bitcoiner' => 'Bitcoiner', 'fed' => 'Fed', 'ezb' => __('ECB'), 'goldbug' => 'Goldbug', 'shitcoiner' => 'Shitcoiner', 'nocoiner' => 'Nocoiner'];
+    $portrait = HyperGame::FACTIONS;
+    $chip = 'flex min-h-11 cursor-pointer items-center justify-center gap-2 rounded-md bg-well px-3 text-[13px] font-bold text-ink-2 shadow-ring aria-pressed:bg-btc-chip aria-pressed:text-ink aria-pressed:shadow-[inset_0_0_0_1px_var(--color-btc)] disabled:cursor-not-allowed disabled:opacity-40';
+    $tag = 'inline-flex h-6 items-center rounded-tag bg-ground/70 px-2 text-xs whitespace-nowrap text-ink-2 shadow-ring';
+    $modeLabel = fn (string $mode): string => $mode === HyperMatch::CORRESPONDENCE ? __('Correspondence · :hours h', ['hours' => (int) config('esports.hyper.correspondence_hours', 24)]) : __('Live · :seconds s', ['seconds' => (int) config('esports.hyper.turn_seconds', 90)]);
+    $limitLabel = fn (int $limit): string => $limit === 0 ? __('No round limit') : __(':rounds rounds', ['rounds' => $limit]);
+@endphp
+<div class="flex flex-col gap-4" data-test="hyper-lobby"
+     x-data="hyperLobby(@js(['userId' => $viewer?->id, 'fallback' => $this::FALLBACK_SECONDS]))"
+     x-on:hyper-open.window="open($event.detail.url)">
+
+    @if ($started)
+        <section class="flex flex-wrap items-center gap-3 rounded-lg bg-btc-chip p-4 shadow-[inset_0_0_0_1px_var(--color-btc)]" data-test="hyper-lobby-started" wire:key="started-{{ $started->ulid }}">
+            <span class="flex min-w-0 grow flex-col">
+                <b class="text-sm">{{ __('Your match is on') }}</b>
+                <span class="text-xs text-ink-2">{{ $modeLabel($started->mode) }}</span>
+            </span>
+            <x-button variant="primary" :href="route('hyper.match', $started->match)" target="_blank" icon="expand" class="h-12 px-6 text-[15px]" data-test="hyper-lobby-open-match">{{ __('Open match') }}</x-button>
+        </section>
+    @endif
+
+    @if ($viewer === null)
+        <div class="flex flex-wrap items-center gap-3">
+            <x-button variant="primary" :href="route('login')" class="h-12 px-6 text-[15px]" data-test="hyper-login">{{ __('Log in to play') }}</x-button>
+        </div>
+    @elseif ($mine)
+        {{-- The viewer's own table: seats, factions, invite, bots, getting up --}}
+        @php
+            $own = $mine->seatOf($viewer);
+            $creator = (int) $mine->created_by === (int) $viewer->id;
+            $taken = $mine->takenSeats->keyBy('seat');
+            $others = $mine->takenSeats->reject(fn (HyperTableSeat $seat): bool => $seat->id === $own?->id)->pluck('faction')->filter()->all();
+        @endphp
+        <section class="flex flex-col gap-4 rounded-lg bg-card p-4 shadow-ring" aria-labelledby="hl-mine-h" data-test="hyper-lobby-mine" data-table="{{ $mine->ulid }}" wire:key="mine-{{ $mine->ulid }}">
+            <div class="flex flex-wrap items-center gap-2">
+                <h2 id="hl-mine-h" class="m-0 mr-1 font-display text-lg font-bold">{{ __('Your table') }}</h2>
+                <span class="{{ $tag }}">{{ $modeLabel($mine->mode) }}</span>
+                <span class="{{ $tag }}">{{ $limitLabel($mine->round_limit) }}</span>
+                <span class="{{ $tag }} font-bold text-btc-hi" data-test="hyper-lobby-count">{{ __(':taken/:seats seats', ['taken' => $mine->takenSeats->count(), 'seats' => $mine->seats]) }}</span>
+            </div>
+
+            <ul class="m-0 grid list-none grid-cols-2 gap-2 p-0 sm:grid-cols-3 lg:grid-cols-6" aria-label="{{ __('Seats') }}">
+                @foreach (range(0, $mine->seats - 1) as $index)
+                    @php($seat = $taken->get($index))
+                    <li wire:key="mine-seat-{{ $index }}" @class(['flex min-h-14 min-w-0 items-center gap-2 rounded-md p-2', 'bg-well shadow-ring' => $seat !== null, 'border border-dashed border-line text-ink-3' => $seat === null]) data-test="hyper-lobby-seat" data-seat="{{ $index }}" data-faction="{{ $seat?->faction }}">
+                        @if ($seat === null)
+                            <span class="text-xs">{{ __('Free seat') }}</span>
+                        @else
+                            @if ($seat->faction)
+                                <img src="/hyper/art/por-{{ $portrait[$seat->faction] }}.jpg?v=1" alt="" width="32" height="32" class="size-8 shrink-0 rounded-full object-cover shadow-ring" loading="lazy">
+                            @elseif ($seat->user)
+                                <x-avatar :user="$seat->user" :size="32" class="shrink-0" />
+                            @else
+                                <span class="grid size-8 shrink-0 place-items-center rounded-full bg-ground text-base" aria-hidden="true">🤖</span>
+                            @endif
+                            <span class="flex min-w-0 flex-col">
+                                <b class="truncate text-xs">{{ $seat->user?->displayName() ?? __('Bot') }}</b>
+                                <span class="truncate text-[11px] text-ink-2">{{ $seat->faction ? $labels[$seat->faction] : __('Random') }}</span>
+                            </span>
+                        @endif
+                    </li>
+                @endforeach
+            </ul>
+
+
+            <div class="flex flex-wrap items-center gap-2">
+                @if ($creator)
+                    <x-button variant="primary" wire:click="fillWithBots" icon="play" class="h-12 px-5 text-[15px]" data-test="hyper-lobby-fill">{{ __('Fill with bots and start') }}</x-button>
+                @endif
+                {{-- A component attribute compiles {{ }}, not directives: the link goes in through Js::from, never @js. --}}
+                <span x-data="{ copied: false }" class="inline-flex">
+                    <x-button variant="secondary" icon="link" class="h-12" data-test="hyper-lobby-invite" x-on:click="navigator.clipboard?.writeText({{ \Illuminate\Support\Js::from(route('hyper.table', $mine)) }}).then(() => { copied = true; setTimeout(() => copied = false, 1500) })">
+                        <span x-text="copied ? @js(__('Link copied')) : @js(__('Copy invite link'))">{{ __('Copy invite link') }}</span>
+                    </x-button>
+                </span>
+                <x-button variant="quiet" wire:click="leave" class="h-12" data-test="hyper-lobby-leave">{{ $creator ? __('Close table') : __('Leave table') }}</x-button>
+            </div>
+            <fieldset class="m-0 flex flex-col gap-2 border-0 p-0">
+                <legend class="mb-2 text-xs font-bold tracking-[0.12em] text-ink-2 uppercase">{{ __('Your faction') }}</legend>
+                <div class="grid grid-cols-4 gap-2 sm:grid-cols-7" role="group">
+                    @foreach (array_keys($portrait) as $faction)
+                        <button type="button" wire:click="pick('{{ $faction }}')" aria-pressed="{{ $own?->faction === $faction ? 'true' : 'false' }}" @disabled(in_array($faction, $others, true))
+                                class="{{ $chip }} min-h-[68px] flex-col gap-1 px-1 text-[10px]" data-test="hyper-lobby-faction" data-faction="{{ $faction }}">
+                            <img src="/hyper/art/por-{{ $portrait[$faction] }}.jpg?v=1" alt="" width="36" height="36" class="size-9 rounded-full object-cover shadow-ring" loading="lazy">
+                            <span class="max-w-full truncate">{{ $labels[$faction] }}</span>
+                        </button>
+                    @endforeach
+                    <button type="button" wire:click="pick('')" aria-pressed="{{ $own?->faction === null ? 'true' : 'false' }}" class="{{ $chip }} min-h-[68px] flex-col gap-1 px-1 text-[10px]" data-test="hyper-lobby-faction" data-faction="">
+                        <span class="grid size-9 place-items-center rounded-full bg-ground text-lg shadow-ring" aria-hidden="true">🎲</span>
+                        <span>{{ __('Random') }}</span>
+                    </button>
+                </div>
+            </fieldset>
+
+            @if ($mine->mode === HyperMatch::LIVE && $mine->fill_at !== null)
+                <p class="m-0 text-xs text-ink-2" data-test="hyper-lobby-autofill">{{ __('Bots fill the free seats :time.', ['time' => $mine->fill_at->diffForHumans()]) }}</p>
+            @endif
+        </section>
+    @else
+        {{-- A new table --}}
+        <form wire:submit="openTable" class="flex flex-col gap-4" data-test="hyper-lobby-new">
+            <div class="flex flex-wrap gap-x-6 gap-y-4">
+                <fieldset class="m-0 flex flex-col gap-2 border-0 p-0">
+                    <legend class="mb-2 text-xs font-bold tracking-[0.12em] text-ink-2 uppercase">{{ __('Seats') }}</legend>
+                    <div class="flex gap-1.5" role="group">
+                        @foreach (range(2, 6) as $count)
+                            <button type="button" wire:click="$set('seats', {{ $count }})" aria-pressed="{{ $seats === $count ? 'true' : 'false' }}" class="{{ $chip }} min-w-11" data-test="hyper-lobby-seats" data-seats="{{ $count }}">{{ $count }}</button>
+                        @endforeach
+                    </div>
+                </fieldset>
+                <fieldset class="m-0 flex flex-col gap-2 border-0 p-0">
+                    <legend class="mb-2 text-xs font-bold tracking-[0.12em] text-ink-2 uppercase">{{ __('Mode') }}</legend>
+                    <div class="flex gap-1.5" role="group">
+                        <button type="button" wire:click="$set('mode', 'live')" aria-pressed="{{ $mode === 'live' ? 'true' : 'false' }}" class="{{ $chip }}" data-test="hyper-lobby-mode" data-mode="live">{{ __('Live') }}</button>
+                        <button type="button" wire:click="$set('mode', 'correspondence')" aria-pressed="{{ $mode === 'correspondence' ? 'true' : 'false' }}" class="{{ $chip }}" data-test="hyper-lobby-mode" data-mode="correspondence">{{ __('Correspondence') }}</button>
+                    </div>
+                </fieldset>
+                <fieldset class="m-0 flex flex-col gap-2 border-0 p-0">
+                    <legend class="mb-2 text-xs font-bold tracking-[0.12em] text-ink-2 uppercase">{{ __('Round limit') }}</legend>
+                    <div class="flex gap-1.5" role="group">
+                        @foreach ($this::LIMITS as $option)
+                            <button type="button" wire:click="$set('limit', {{ $option }})" aria-pressed="{{ $limit === $option ? 'true' : 'false' }}" class="{{ $chip }} min-w-11" data-test="hyper-lobby-limit" data-limit="{{ $option }}">{{ $option === 0 ? '∞' : $option }}</button>
+                        @endforeach
+                    </div>
+                </fieldset>
+            </div>
+            <div class="flex flex-wrap items-center gap-3">
+                <button type="submit" class="btn-p inline-flex min-h-12 cursor-pointer items-center justify-center gap-2.5 rounded-md bg-btc px-6 font-display text-[15px] font-bold text-on-btc" data-test="hyper-lobby-open">
+                    <x-icon name="flag" :size="18" />{{ __('Open a table') }}
+                </button>
+                <span class="text-xs text-ink-2">{{ $mode === HyperMatch::LIVE ? __('Bots take free seats after :minutes min.', ['minutes' => max(1, (int) round((int) config('esports.hyper.lobby_fill_seconds', 120) / 60))]) : __('One turn a day.') }}</span>
+            </div>
+        </form>
+    @endif
+
+    @if ($error)
+        <p class="m-0 text-[13px] text-loss" role="alert" data-test="hyper-lobby-error">{{ $error }}</p>
+    @endif
+
+    {{-- The open tables --}}
+    <section class="flex flex-col gap-3" aria-labelledby="hl-open-h" data-test="hyper-lobby-tables">
+        <h2 id="hl-open-h" class="m-0 font-display text-xl font-bold">{{ __('Open tables') }}</h2>
+        @if ($tables->isEmpty())
+            <p class="m-0 rounded-lg bg-card px-4 py-4 text-[13px] text-ink-2 shadow-ring" data-test="hyper-lobby-empty">{{ __('No open table. Open one above.') }}</p>
+        @else
+            <ul class="m-0 grid list-none gap-3 p-0 md:grid-cols-2 xl:grid-cols-3">
+                @foreach ($tables as $table)
+                    @php($bySeat = $table->takenSeats->keyBy('seat'))
+                    <li wire:key="table-{{ $table->ulid }}" @class(['flex min-w-0 flex-col gap-3 rounded-lg bg-card p-3 shadow-ring', 'shadow-[inset_0_0_0_1px_var(--color-btc)]' => $table->ulid === $focus]) data-test="hyper-lobby-table" data-table="{{ $table->ulid }}">
+                        <div class="flex flex-wrap items-center gap-1.5">
+                            <b class="mr-1 min-w-0 truncate text-sm">{{ __(':name’s table', ['name' => $table->creator?->displayName() ?? __('A player')]) }}</b>
+                            <span class="{{ $tag }}">{{ $modeLabel($table->mode) }}</span>
+                            <span class="{{ $tag }}">{{ $table->round_limit === 0 ? '∞' : __(':rounds rounds', ['rounds' => $table->round_limit]) }}</span>
+                        </div>
+                        <div class="flex items-center gap-3">
+                            <span class="flex min-w-0 grow -space-x-1.5" aria-label="{{ __(':taken/:seats seats', ['taken' => $table->takenSeats->count(), 'seats' => $table->seats]) }}">
+                                @foreach (range(0, $table->seats - 1) as $index)
+                                    @php($seat = $bySeat->get($index))
+                                    @if ($seat?->faction)
+                                        <img src="/hyper/art/por-{{ $portrait[$seat->faction] }}.jpg?v=1" alt="{{ $labels[$seat->faction] }}" title="{{ $seat->user?->displayName() }}" width="32" height="32" class="size-8 shrink-0 rounded-full object-cover shadow-[0_0_0_2px_var(--color-card)]" loading="lazy">
+                                    @elseif ($seat?->user)
+                                        <x-avatar :user="$seat->user" :size="32" class="shrink-0 shadow-[0_0_0_2px_var(--color-card)]" />
+                                    @else
+                                        <span class="size-8 shrink-0 rounded-full border border-dashed border-line bg-ground" aria-hidden="true"></span>
+                                    @endif
+                                @endforeach
+                            </span>
+                            <span class="shrink-0 text-xs font-bold text-ink-2">{{ $table->takenSeats->count() }}/{{ $table->seats }}</span>
+                            @if ($viewer !== null && $mine === null)
+                                <x-button variant="primary" wire:click="join('{{ $table->ulid }}')" class="shrink-0" data-test="hyper-lobby-join">{{ __('Join') }}</x-button>
+                            @endif
+                        </div>
+                    </li>
+                @endforeach
+            </ul>
+        @endif
+    </section>
+</div>

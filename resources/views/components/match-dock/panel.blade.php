@@ -28,6 +28,7 @@
             default => __('Open match room'),
         },
         $model instanceof \App\Models\Tournament => __('Open tournament'),
+        $model instanceof \App\Models\HyperMatch => $item->needsYou ? __('Play your turn') : __('Open match'),
         default => __('Answer'),
     };
 @endphp

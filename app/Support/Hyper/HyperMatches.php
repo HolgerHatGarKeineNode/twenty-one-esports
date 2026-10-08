@@ -15,6 +15,7 @@ use App\Models\User;
 use App\Support\Chess\Broadcasts;
 use App\Support\GameChat\GameChannels;
 use App\Support\Nostr\PlayerProfile;
+use App\Support\Notifications\HyperNotifications;
 use Closure;
 use Illuminate\Support\Facades\DB;
 use InvalidArgumentException;
@@ -38,8 +39,12 @@ use InvalidArgumentException;
  * row a bot takes over a casual seat; a player who leaves is replaced by a bot as well (casual; in a rated
  * match it is marked as a forfeit). The end writes every seat's place and loot.
  *
- * Not yet here (later phases): the lobby and "one live game at a time" (P3), correspondence (P3), teams
- * (P4), rated play (P5).
+ * A correspondence match (P3) has `esports.hyper.correspondence_hours` per turn instead; a turn that runs
+ * out there is played by a bot for the seat (the whole turn when the player had not begun it, else it ends
+ * as live), and the seat whose turn starts is notified (HyperNotifications; never a bot seat, never a
+ * spectator). The lobby is HyperLobby.
+ *
+ * Not yet here (later phases): teams (P4), rated play (P5).
  */
 final class HyperMatches
 {
@@ -52,15 +57,20 @@ final class HyperMatches
     /* ---------- Start --------------------------------------------------------------------------------------- */
 
     /**
-     * A live match that starts at once, seats in the given order: a player (`user`) or a bot (`bot` true,
-     * no user). A faction left out is drawn from the factions nobody chose; every faction once per match.
+     * A match that starts at once, seats in the given order: a player (`user`) or a bot (`bot` true, no
+     * user). A faction left out is drawn from the factions nobody chose; every faction once per match.
+     * `mode`: HyperMatch::LIVE (a turn of `turn_seconds`) or ::CORRESPONDENCE (`correspondence_hours`).
      *
      * @param  list<array{user?: User|null, bot?: bool, faction?: string|null}>  $seats
      *
-     * @throws InvalidArgumentException for 2 > seats > 6, a seat without player and bot, a player twice, an unknown or doubled faction
+     * @throws InvalidArgumentException for 2 > seats > 6, a seat without player and bot, a player twice, an unknown or doubled faction, an unknown mode
      */
-    public function create(array $seats, int $limit = 0, ?int $seed = null, ?User $creator = null): HyperMatch
+    public function create(array $seats, int $limit = 0, ?int $seed = null, ?User $creator = null, string $mode = HyperMatch::LIVE): HyperMatch
     {
+        if (! in_array($mode, [HyperMatch::LIVE, HyperMatch::CORRESPONDENCE], true)) {
+            throw new InvalidArgumentException('A match is live or correspondence.');
+        }
+
         if (count($seats) < 2 || count($seats) > 6) {
             throw new InvalidArgumentException('A match has 2 to 6 seats.');
         }
@@ -90,9 +100,9 @@ final class HyperMatches
         $step = HyperGame::start($specs, $limit, $seed);
         $now = $this->nowMs();
 
-        $match = DB::transaction(function () use ($seats, $specs, $step, $limit, $seed, $creator, $now): HyperMatch {
+        $match = DB::transaction(function () use ($seats, $specs, $step, $limit, $seed, $creator, $now, $mode): HyperMatch {
             $match = HyperMatch::query()->create([
-                'mode' => HyperMatch::LIVE,
+                'mode' => $mode,
                 'status' => HyperMatchStatus::Active,
                 'seed' => $seed,
                 'round_limit' => $limit,
@@ -101,7 +111,7 @@ final class HyperMatches
                 'ply' => 0,
                 'current_seat' => $step->game->currentSeat(),
                 'turn_started_ms' => $now,
-                'deadline_ms' => $now + $this->turnMs(),
+                'deadline_ms' => $now + $this->turnMs($mode),
                 'created_by' => $creator?->id,
             ]);
 
@@ -322,7 +332,7 @@ final class HyperMatches
             'round' => $game->round(),
             'seat' => $match->current_seat,
             'phase' => $game->phase(),
-            'turn_seconds' => intdiv($this->turnMs(), 1000),
+            'turn_seconds' => intdiv($this->turnMs($match->mode), 1000),
             'turn_started_ms' => $match->turn_started_ms,
             'deadline_ms' => $match->deadline_ms,
             'server_ms' => $this->nowMs(),
@@ -425,6 +435,10 @@ final class HyperMatches
      * Ends the turn of a seat whose deadline has passed; true if it did. A timed-out player's seat goes to
      * a bot after `takeover_timeouts` in a row (casual only). An overdue bot turn is left to PlayHyperBots,
      * which change() sends.
+     *
+     * In a correspondence match a bot plays the overdue turn for the player (source `timer`, the bot's
+     * actions): the whole turn when the player had not begun it (still recruiting, nothing placed, no
+     * conquest waiting), else the turn ends as live, because the bot only plays a turn from its start.
      */
     private function expire(HyperMatch $match): bool
     {
@@ -438,8 +452,8 @@ final class HyperMatches
             return false;
         }
 
-        $step = $this->game($match)->apply($seat->seat, ['type' => 'end_turn']);
-        $after = $step->game;
+        $overdue = $this->overdueTurn($match);
+        $after = $overdue->game;
         $seat->timeouts++;
 
         // A bot takes over a casual seat that let its turns run out too often in a row.
@@ -449,9 +463,37 @@ final class HyperMatches
         }
 
         $seat->save();
-        $this->store($match, $seat->seat, HyperAction::TIMER, [['action' => ['type' => 'end_turn'], 'events' => $step->events]], $after);
+        $this->store($match, $seat->seat, HyperAction::TIMER, $overdue->actions, $after);
 
         return true;
+    }
+
+    /**
+     * What the server does for a seat whose turn ran out: `end_turn` (live; or a correspondence turn the
+     * player had begun), or in correspondence a bot's whole turn for an untouched one.
+     */
+    private function overdueTurn(HyperMatch $match): HyperStep
+    {
+        $game = $this->game($match);
+        $seat = (int) $match->current_seat;
+        $state = $game->toArray();
+
+        if ($match->isCorrespondence() && $game->phase() === 'buy' && $state['placed'] === [] && $state['pending_move'] === null) {
+            try {
+                $turn = HyperBot::playTurn($game);
+
+                // The bot played this seat's turn, and nothing beyond it.
+                if ($turn->actions !== [] && ($turn->game->currentSeat() !== $seat || $turn->game->isOver())) {
+                    return $turn;
+                }
+            } catch (HyperRuleViolation $violation) {
+                report($violation);
+            }
+        }
+
+        $step = $game->apply($seat, ['type' => 'end_turn']);
+
+        return new HyperStep($step->game, $step->events, [['action' => ['type' => 'end_turn'], 'events' => $step->events]]);
     }
 
     /**
@@ -487,7 +529,7 @@ final class HyperMatches
             $this->finish($match, $after);
         } elseif (in_array('turn_started', array_column($events, 'type'), true)) {
             $match->turn_started_ms = $now;
-            $match->deadline_ms = $now + $this->turnMs();
+            $match->deadline_ms = $now + $this->turnMs($match->mode);
             $this->afterTurnChange($match);
         }
 
@@ -550,7 +592,8 @@ final class HyperMatches
     }
 
     /**
-     * A new turn began: its clock check is due at its deadline.
+     * A new turn began: its clock check is due at its deadline, and in a correspondence match the player
+     * whose turn it is hears about it (a bot seat or a seat its player left never does).
      */
     private function afterTurnChange(HyperMatch $match): void
     {
@@ -561,6 +604,16 @@ final class HyperMatches
         // Whole seconds, rounded up plus one: a queue's delay is second-precise, and an early check does nothing.
         $seconds = (int) ceil(max(0, $match->deadline_ms - $this->nowMs()) / 1000) + 1;
         CheckHyperClock::dispatch($match->id)->delay(now()->addSeconds($seconds));
+
+        if (! $match->isCorrespondence()) {
+            return;
+        }
+
+        $seat = $match->seats->firstWhere('seat', $match->current_seat);
+
+        if ($seat instanceof HyperSeat && ! $seat->bot && $seat->left_at === null && $seat->user_id !== null) {
+            app(HyperNotifications::class)->yourMove($match, $seat);
+        }
     }
 
     /**
@@ -662,9 +715,11 @@ final class HyperMatches
         return $match->seats->firstWhere('seat', $match->current_seat) ?? throw new HyperRuleViolation('bad_seat', 'No seat to move.');
     }
 
-    private function turnMs(): int
+    private function turnMs(string $mode): int
     {
-        return (int) config('esports.hyper.turn_seconds', 90) * 1000;
+        return $mode === HyperMatch::CORRESPONDENCE
+            ? (int) config('esports.hyper.correspondence_hours', 24) * 3_600_000
+            : (int) config('esports.hyper.turn_seconds', 90) * 1000;
     }
 
     private function nowMs(): int

@@ -9,6 +9,9 @@
  * and the presence `.here`), anybody else on the public `.watch`. Whenever the socket (re)connects or the
  * channel is subscribed, and when the tab becomes visible again, the page asks for the events it missed
  * (game.catchUp()); PlySync drops what it has seen. Without a websocket it asks every few seconds.
+ *
+ * A replay (P3, `config.replay`) listens to nothing: replay.js feeds the table from the replayed log. After a
+ * match `hyper.rematch` says who accepted a rematch, and where the new match is once it started.
  */
 import './arena.js';
 import Echo from 'laravel-echo';
@@ -18,6 +21,7 @@ import { createNet } from './net.js';
 import { startGame } from './game.js';
 import { startChat } from './chat.js';
 import { startEmotes } from './emotes.js';
+import { replayNet, startReplay } from './replay.js';
 
 const $ = (s) => document.querySelector(s);
 const config = JSON.parse($('#hyper-config').textContent);
@@ -25,7 +29,11 @@ config.snapshot = JSON.parse($('#hyper-snapshot').textContent);
 setTexts(config.texts, config.locale);
 window.hyperT = (key) => t(key);
 
-const net = createNet(config.csrf);
+const replaying = Boolean(config.replay);
+const http = createNet(config.csrf);
+// The replay's position: the plies fed so far, and the ply the table shows (game.js asks for its snapshot).
+const cursor = { fed: 0, plies: [], playing: false, shown: () => game.state().syncPly ?? 0 };
+const net = replaying ? replayNet(http, config, cursor) : http;
 const game = startGame(config, net);
 let live = false;
 const emotes = startEmotes(config, net, game, { live: () => live });
@@ -39,7 +47,7 @@ $('#chat-btn').addEventListener('click', () => { chat.toggle(); $('#emotes').hid
 $('#chat-close').addEventListener('click', () => chat.close());
 window.hyperChat = chat;
 
-const meta = document.querySelector('meta[name="reverb"]');
+const meta = replaying ? null : document.querySelector('meta[name="reverb"]');
 const id = config.snapshot.id;
 const me = config.snapshot.me;
 
@@ -59,7 +67,8 @@ if (meta) {
 
     const table = me !== null ? echo.private(`hyper.${id}`) : echo.channel(`hyper.${id}.watch`);
     table.listen('.hyper.updated', (payload) => game.onUpdated(payload))
-        .listen('.hyper.emote', (payload) => emotes.show(payload));
+        .listen('.hyper.emote', (payload) => emotes.show(payload))
+        .listen('.hyper.rematch', (payload) => game.onRematch(payload));
     // Subscribed: whatever happened between rendering the page and now is fetched once.
     table.subscribed(() => { live = true; document.body.dataset.live = '1'; game.catchUp(); });
 
@@ -84,17 +93,30 @@ if (meta) {
             game.toast(t('Connection lost. Reconnecting …'));
         }
     });
-} else {
+} else if (!replaying) {
     // No websocket here: ask for news every few seconds.
     setInterval(() => game.catchUp(), 4000);
 }
 
 document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') game.catchUp(); });
 
-// The table is drawn: the loading screen goes.
-const boot = $('#boot');
-if (boot) {
-    boot.classList.add('done');
-    setTimeout(() => boot.remove(), 600);
+// The table is drawn: the loading screen goes (a replay once its plies are here).
+function ready() {
+    const boot = $('#boot');
+    if (boot) {
+        boot.classList.add('done');
+        setTimeout(() => boot.remove(), 600);
+    }
+    document.body.dataset.ready = '1';
 }
-document.body.dataset.ready = '1';
+
+if (replaying) {
+    document.body.dataset.live = '1';
+    http.get(config.replay.data).then((r) => {
+        cursor.plies = r.ok && Array.isArray(r.data?.plies) ? r.data.plies : [];
+        window.hyperReplay = startReplay(config, http, game, cursor);
+        ready();
+    });
+} else {
+    ready();
+}

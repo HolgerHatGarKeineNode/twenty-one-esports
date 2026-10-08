@@ -19,6 +19,7 @@ import cupMatch from './cupMatch.js';
 import meetupMap from './meetupMap.js';
 import notificationBell from './notificationBell.js';
 import boardLobby from './boardLobby.js';
+import hyperLobby from './hyperLobby.js';
 import playerPicker from './playerPicker.js';
 import { firstSteps, shellHeader, shellSheet } from './shellNav.js';
 import { livePlayer, liveStage } from './livePlayer.js';
@@ -57,6 +58,7 @@ document.addEventListener('alpine:init', () => {
     window.Alpine.data('blockZeroCountdown', blockZeroCountdown);
     // A board game's lobby (pages/board/⚡lobby): online list and "Looking to play", as chessLobby.
     window.Alpine.data('boardLobby', boardLobby);
+    window.Alpine.data('hyperLobby', hyperLobby);
     // Nostr profiles of the players on a page, and the player card (P10a).
     window.Alpine.store('profiles', profileStore());
     window.Alpine.data('profileCardHost', profileCardHost);

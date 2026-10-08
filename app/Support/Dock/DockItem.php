@@ -3,6 +3,7 @@
 namespace App\Support\Dock;
 
 use App\Games\GameRegistry;
+use App\Games\Hyperbitcoinization;
 use App\Models\BoardChallenge;
 use App\Models\BoardGame;
 use App\Models\BoardInvite;
@@ -11,6 +12,7 @@ use App\Models\ChessGame;
 use App\Models\ChessInvite;
 use App\Models\Clan;
 use App\Models\ClanInvite;
+use App\Models\HyperMatch;
 use App\Models\SeriesInvite;
 use App\Models\SeriesMatch;
 use App\Models\Tournament;
@@ -31,7 +33,7 @@ use App\Models\User;
 final readonly class DockItem
 {
     /**
-     * @param  'blitz'|'daily'|'series'|'blitz_invite'|'daily_challenge'|'clan_invite'|'casual_invite'|'board'|'board_invite'|'tournament'  $kind
+     * @param  'blitz'|'daily'|'series'|'blitz_invite'|'daily_challenge'|'clan_invite'|'casual_invite'|'board'|'board_invite'|'tournament'|'hyper'  $kind
      * @param  'live'|'need'|'wait'  $group
      * @param  'your_move'|'their_move'|'answer'|'invite'|'starts'|'live'|'accept'|'waiting'|'dispute'|'ready'|'scheduled'|'checkin'  $phase
      * @param  array{endsAt: int, format: 'clock'|'hm', total: int, redUnder: int}|null  $tick
@@ -56,7 +58,7 @@ final readonly class DockItem
         public ?string $action,
         public ?int $deadlineMs,
         public ?array $tick,
-        public ChessGame|SeriesMatch|ChessInvite|ChessChallenge|ClanInvite|SeriesInvite|BoardGame|BoardInvite|BoardChallenge|Tournament $model,
+        public ChessGame|SeriesMatch|ChessInvite|ChessChallenge|ClanInvite|SeriesInvite|BoardGame|BoardInvite|BoardChallenge|Tournament|HyperMatch $model,
         public ?Clan $clan = null,
         public ?string $withdraw = null,
     ) {}
@@ -86,9 +88,13 @@ final readonly class DockItem
         return mb_substr($short ?? 'RL', 0, 2);
     }
 
-    /** The game slug of a series, a casual invite or a tournament; null for chess and board items. */
+    /** The game slug of a series, a casual invite, a tournament or a Hyperbitcoinization match; null for chess and board items. */
     public function game(): ?string
     {
+        if ($this->model instanceof HyperMatch) {
+            return Hyperbitcoinization::SLUG;
+        }
+
         return $this->model instanceof SeriesMatch || $this->model instanceof SeriesInvite || $this->model instanceof Tournament ? $this->model->game : null;
     }
 

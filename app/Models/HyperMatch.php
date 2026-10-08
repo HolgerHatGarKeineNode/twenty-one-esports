@@ -108,6 +108,11 @@ class HyperMatch extends Model
         return $this->belongsTo(User::class, 'created_by');
     }
 
+    public function isCorrespondence(): bool
+    {
+        return $this->mode === self::CORRESPONDENCE;
+    }
+
     public function isActive(): bool
     {
         return $this->status === HyperMatchStatus::Active;
