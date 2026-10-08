@@ -2,15 +2,20 @@
 
 namespace App\Http\Controllers;
 
+use App\Enums\HyperMatchStatus;
 use App\Models\HyperMatch;
 use App\Models\User;
 use App\Support\Hyper\HyperEmotes;
 use App\Support\Hyper\HyperGame;
 use App\Support\Hyper\HyperMatches;
 use App\Support\Hyper\HyperRuleViolation;
+use App\Support\Hyper\HyperTableChat;
+use App\Support\Hyper\HyperTexts;
 use Closure;
 use Illuminate\Contracts\View\View;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\JsonResponse;
+use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Validation\Rule;
 
@@ -34,11 +39,67 @@ class HyperMatchController extends Controller
     private const CONFLICT = ['out_of_sync', 'turn_timed_out', 'game_over'];
 
     /**
-     * The match page. Part b of P2 replaces this view; the snapshot is in the page as JSON.
+     * The start page in the league's shell until the lobby comes (P3): the title art, the quick start against
+     * bots (it opens the match in a new tab) and the viewer's running matches.
+     */
+    public function index(Request $request): View
+    {
+        $viewer = $this->viewer($request);
+        $running = $viewer === null ? collect() : HyperMatch::query()
+            ->where('status', HyperMatchStatus::Active)
+            ->whereHas('seats', fn (Builder $seats): Builder => $seats->where('user_id', $viewer->id)->whereNull('left_at')->where('bot', false))
+            ->with('seats')
+            ->latest('id')
+            ->limit(10)
+            ->get();
+
+        return view('pages.hyper.index', [
+            'viewer' => $viewer,
+            'running' => $running,
+            'factions' => array_keys(HyperGame::FACTIONS),
+            'limits' => HyperGame::LIMITS,
+        ]);
+    }
+
+    /**
+     * The match page, full-screen in its own document (resources/views/hyper/match.blade.php): the snapshot as
+     * JSON, and what the page's script needs besides (endpoints, texts in the viewer's language, the soundboard
+     * clips, the table chat).
      */
     public function show(Request $request, HyperMatch $match, HyperMatches $matches): View
     {
-        return view('hyper.match', ['snapshot' => $matches->snapshot($match, $this->viewer($request))]);
+        $viewer = $this->viewer($request);
+
+        return view('hyper.match', [
+            'snapshot' => $matches->snapshot($match, $viewer),
+            'back' => route('hyper.index', absolute: false),
+            'config' => [
+                'urls' => [
+                    'snapshot' => route('hyper.snapshot', $match, false),
+                    'events' => route('hyper.events', $match, false),
+                    'act' => route('hyper.act', $match, false),
+                    'emote' => route('hyper.emote', $match, false),
+                    'leave' => route('hyper.leave', $match, false),
+                ],
+                'assets' => '/hyper/',
+                'locale' => app()->getLocale(),
+                'csrf' => csrf_token(),
+                'texts' => HyperTexts::dictionary(),
+                'clips' => HyperEmotes::clips(),
+                'chat' => HyperTableChat::config($match, $viewer),
+            ],
+        ]);
+    }
+
+    /**
+     * Names and avatars of the league accounts among `?keys=<hex>,<hex>` (at most 100): how the table chat
+     * names a spectator who writes (HyperTableChat::people()).
+     */
+    public function people(Request $request): JsonResponse
+    {
+        $keys = explode(',', (string) $request->query('keys', ''));
+
+        return response()->json((object) HyperTableChat::people(array_slice($keys, 0, 100)));
     }
 
     public function snapshot(Request $request, HyperMatch $match, HyperMatches $matches): JsonResponse
@@ -98,9 +159,10 @@ class HyperMatchController extends Controller
 
     /**
      * A live match of the player and `bots` bots (1 to 5) until the lobby comes (P3): the player sits
-     * first with the faction they chose (or a random one), the bots take the others.
+     * first with the faction they chose (or a random one), the bots take the others. A JSON request gets
+     * `{id, url}`; the start page's form (posted into a new tab) is sent on to the match.
      */
-    public function quick(Request $request, HyperMatches $matches): JsonResponse
+    public function quick(Request $request, HyperMatches $matches): JsonResponse|RedirectResponse
     {
         $data = $request->validate([
             'bots' => ['required', 'integer', 'min:1', 'max:5'],
@@ -110,6 +172,10 @@ class HyperMatchController extends Controller
         $user = $this->user($request);
         $seats = [['user' => $user, 'faction' => $data['faction'] ?? null], ...array_fill(0, (int) $data['bots'], ['bot' => true])];
         $match = $matches->create($seats, (int) ($data['limit'] ?? 0), creator: $user);
+
+        if (! $request->expectsJson()) {
+            return redirect()->route('hyper.match', $match);
+        }
 
         return response()->json(['id' => $match->ulid, 'url' => route('hyper.match', $match)], 201);
     }

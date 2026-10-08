@@ -20,6 +20,9 @@ export default defineConfig({
                 'resources/js/gameChannel.js',
                 'resources/js/stacker/page.js',
                 'resources/js/tournamentTv.js',
+                // Hyperbitcoinization's full-screen match page (plan "Hyperbitcoinization", P2): its own stylesheet and script.
+                'resources/css/hyper.css',
+                'resources/js/hyper/match.js',
             ],
             refresh: true,
             fonts: [
@@ -34,6 +37,13 @@ export default defineConfig({
                     weights: [400, 500, 700],
                     variable: '--font-face-mono',
                     subsets: ['latin', 'latin-ext'],
+                }),
+                // The Hyperbitcoinization table's UI type (resources/css/hyper.css). Not preloaded: no other page uses it.
+                google('Chakra Petch', {
+                    weights: [500, 600, 700],
+                    variable: '--font-face-ui',
+                    subsets: ['latin', 'latin-ext'],
+                    preload: false,
                 }),
             ],
         }),
