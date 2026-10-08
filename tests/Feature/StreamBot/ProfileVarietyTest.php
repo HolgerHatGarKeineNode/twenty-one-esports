@@ -40,6 +40,8 @@ beforeEach(function () {
         'esports.stream_bot.enabled' => true,
         'esports.stream_bot.nsec' => (new TestSigner)->secret,
         'twentyone.stream.relays' => ['wss://one.test'],
+        // This file tests per-type pacing. The shared four-hour brake is the next test.
+        'esports.stream_bot.profile_gap_minutes' => 0,
     ]);
 
     $this->sent = [];
@@ -153,7 +155,7 @@ test('tournament notes stop at the daily cap of the Berlin day; the rest go out 
 test('the profile stays quiet at night and posts at most one note until the shared gap passes', function () {
     config([
         'esports.stream_bot.quiet_hours' => '23-07',
-        'esports.stream_bot.profile_gap_minutes' => 35,
+        'esports.stream_bot.profile_gap_minutes' => 240,
         'esports.stream_bot.profile_limits.tournament' => ['cooldown_minutes' => 0, 'daily_cap' => 0],
     ]);
     openTournament(['name' => 'Night Cup']);
@@ -166,12 +168,12 @@ test('the profile stays quiet at night and posts at most one note until the shar
     config(['esports.stream_bot.quiet_hours' => null]);
     openTournament(['name' => 'Gap Cup']);
     varietyTick('twentyone:stream-bot:tournaments', '2026-09-26 06:00:00');
-    varietyTick('twentyone:stream-bot:tournaments', '2026-09-26 06:20:00');
+    varietyTick('twentyone:stream-bot:tournaments', '2026-09-26 08:00:00');
 
     expect(varietyNotes($this->sent, BotPost::SUBJECT_TOURNAMENT))->toHaveCount(1)
         ->and(Artisan::output())->toContain('profile waits');
 
-    varietyTick('twentyone:stream-bot:tournaments', '2026-09-26 06:36:00');
+    varietyTick('twentyone:stream-bot:tournaments', '2026-09-26 10:01:00');
 
     expect(varietyNotes($this->sent, BotPost::SUBJECT_TOURNAMENT))->toHaveCount(2);
 });

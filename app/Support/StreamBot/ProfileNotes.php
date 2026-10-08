@@ -58,7 +58,7 @@ final class ProfileNotes
             return 'quiet hours';
         }
 
-        $gap = max(0, (int) config('esports.stream_bot.profile_gap_minutes', 35));
+        $gap = max(0, (int) config('esports.stream_bot.profile_gap_minutes', 240));
 
         if ($gap === 0) {
             return null;

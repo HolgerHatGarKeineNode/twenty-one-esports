@@ -1225,8 +1225,8 @@ return [
         'jitter_minutes' => 5,
         'alone_minutes' => 45,
         'daily_cap' => 24,
-        // One kind-1 note on the bot profile across every type. 0 turns the shared brake off.
-        'profile_gap_minutes' => 35,
+        // One kind-1 note on the bot profile across every type: four hours, about four notes on a waking day. 0 turns the shared brake off.
+        'profile_gap_minutes' => 240,
         'builder_gap' => 4,
         'repeat_hours' => 12,
         // A failed post (no relay accepted) is tried again after this long.
