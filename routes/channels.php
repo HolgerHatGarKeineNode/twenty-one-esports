@@ -52,10 +52,11 @@ Broadcast::channel('hyper.{match}', function (User $user, HyperMatch $match) {
 });
 
 /*
- * One seat's secrets (its cards, App\Events\HyperHandUpdated): only that seat's player.
+ * One seat's secrets (its cards, App\Events\HyperHandUpdated): only that seat's player, and only while they
+ * still play it (not after leaving or a bot takeover).
  */
 Broadcast::channel('hyper.{match}.seat.{seat}', function (User $user, HyperMatch $match, string $seat) {
-    return $match->seatOf($user)?->seat === (int) $seat;
+    return $match->handSeatOf($user) === (int) $seat;
 });
 
 /*

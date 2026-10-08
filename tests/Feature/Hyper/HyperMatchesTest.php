@@ -256,6 +256,10 @@ test('a player who leaves is replaced by a bot, which finishes the turn', functi
         ->and($match->current_seat)->toBe(1);
     $this->actingAs($anna)->postJson(route('hyper.leave', $match))->assertForbidden()->assertJsonPath('reason', 'already_left');
     hyperAct($anna, $match, ['type' => 'end_turn'])->assertForbidden()->assertJsonPath('reason', 'seat_taken_over');
+    expect(app(HyperMatches::class)->snapshot($match, $anna)['state']['seats'][0]['hand'])->toBeNull()
+        ->and(app(HyperMatches::class)->eventsSince($match, $anna, 0)['actions'])->not->toBeEmpty()
+        ->and($match->handSeatOf($anna))->toBeNull()
+        ->and($match->handSeatOf($bert))->toBe(1);
 });
 
 test('emotes reach the table, three stickers a minute and one clip a turn per player', function () {

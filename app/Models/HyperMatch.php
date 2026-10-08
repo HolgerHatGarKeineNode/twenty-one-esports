@@ -114,6 +114,17 @@ class HyperMatch extends Model
     }
 
     /**
+     * The seat whose hidden cards this user may see: their own seat while they still play it. A player who
+     * left or was taken over by a bot sees the table like a spectator, so the bot's hand does not leak to them.
+     */
+    public function handSeatOf(?User $user): ?int
+    {
+        $seat = $this->seatOf($user);
+
+        return $seat !== null && $seat->left_at === null && ! $seat->bot ? $seat->seat : null;
+    }
+
+    /**
      * The seat this user plays, null for everyone else (spectators, guests).
      */
     public function seatOf(?User $user): ?HyperSeat

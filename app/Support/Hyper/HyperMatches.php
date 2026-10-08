@@ -331,7 +331,7 @@ final class HyperMatches
             'me' => $me?->seat,
             'map' => ['territories' => HyperMap::IDS, 'zones' => HyperMap::ZONE_KEYS],
             'seats' => $match->seats->map(fn (HyperSeat $seat): array => $this->seatView($seat))->all(),
-            'state' => (new HyperView($me?->seat, $over))->state($match->state),
+            'state' => (new HyperView($match->handSeatOf($viewer), $over))->state($match->state),
             'legal' => $myTurn ? $game->legal() : null,
             'chat' => ['channel' => GameChannels::matchChannelId($match->ulid)],
         ];
@@ -345,7 +345,7 @@ final class HyperMatches
      */
     public function eventsSince(HyperMatch $match, ?User $viewer, int $afterPly, int $limit = 500): array
     {
-        $view = new HyperView($match->seatOf($viewer)?->seat, ! $match->isActive());
+        $view = new HyperView($match->handSeatOf($viewer), ! $match->isActive());
         $actions = $match->actions()->where('ply', '>', $afterPly)->limit($limit)->get();
 
         return [
@@ -584,7 +584,7 @@ final class HyperMatches
             $hand = $hands[$seat->seat] ?? [];
             $secrets = HyperView::secretsOf($seat->seat, $events, $over);
 
-            if ($seat->user_id !== null && ($secrets !== [] || $hand !== ($handsBefore[$seat->seat] ?? []))) {
+            if ($seat->user_id !== null && $seat->left_at === null && ! $seat->bot && ($secrets !== [] || $hand !== ($handsBefore[$seat->seat] ?? []))) {
                 Broadcasts::send(new HyperHandUpdated($match->ulid, $seat->seat, $match->ply, $hand, $secrets));
             }
         }

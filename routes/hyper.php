@@ -16,8 +16,8 @@ Route::prefix('hyperbitcoinization')->name('hyper.')->group(function () {
     // The table chat's names (league accounts only); public like the game channels' lookup.
     Route::get('people', [HyperMatchController::class, 'people'])->middleware('throttle:60,1')->name('people');
     Route::get('m/{match}', [HyperMatchController::class, 'show'])->whereUlid('match')->name('match');
-    Route::get('m/{match}/snapshot', [HyperMatchController::class, 'snapshot'])->whereUlid('match')->name('snapshot');
-    Route::get('m/{match}/events', [HyperMatchController::class, 'events'])->whereUlid('match')->name('events');
+    Route::get('m/{match}/snapshot', [HyperMatchController::class, 'snapshot'])->whereUlid('match')->middleware('throttle:120,1')->name('snapshot');
+    Route::get('m/{match}/events', [HyperMatchController::class, 'events'])->whereUlid('match')->middleware('throttle:120,1')->name('events');
 
     Route::middleware('auth')->group(function () {
         Route::post('matches', [HyperMatchController::class, 'quick'])->middleware('throttle:10,1')->name('quick');
