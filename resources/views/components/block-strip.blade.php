@@ -31,6 +31,7 @@
     it links only to a block /mining shows.
 --}}
 @php
+    use App\Support\GameNames;
     $knight = '<svg class="bs-logo" viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" fill-rule="evenodd" d="M17 18C17.5 12 17 6.5 12.5 4L11.5 2L10 4.2C8 5.2 6 7.8 4.6 10.2C4.3 10.9 4.7 11.7 5.4 11.9L6.4 12.3C7.1 12.5 7.9 12.2 8.3 11.6L9.6 10.6C10.3 10.3 10.8 10.4 11.2 10.8C9.4 12.8 8 15 7.6 18ZM9.9 6.2a.9 .9 0 1 0 .01 0ZM5 19.5h14V22H5z"></path></svg>';
     $groups = [['fin', $finished], ['run', $running]];
     $all = [...$finished, ...$running];
@@ -76,14 +77,22 @@
                                 @if ($block['state'] === 'live')
                                     <span class="bs-fill" aria-hidden="true"></span>
                                 @endif
-                                <span class="bs-r1">@if ($block['game'] === 'chess'){!! $knight !!}@else<x-icon :name="$block['icon']" :size="16" class="bs-logo" />@endif{{ $block['mode'] }}</span>
+                                {{-- The game by name first (user, 2026-10-08: the mini icon and the mode did not say which game it was). The names
+                                     under the cube already show who played, so a finished or next cube's third line is the mode and its last the time;
+                                     a running one keeps whose turn it is and puts the mode beside its live dot (the fill says it runs). --}}
+                                @php($running = $block['state'] === 'live')
+                                <span class="bs-r1" data-test="strip-game-name">{{ GameNames::cube($block['slug']) }}</span>
                                 <span @class(['bs-score', 'bs-score--word' => $block['word']])>{{ $block['score'] }}</span>
-                                <span class="bs-who">{{ $block['who'] }}</span>
+                                @if ($running)
+                                    <span class="bs-who">{{ $block['who'] }}</span>
+                                @else
+                                    <span class="bs-who bs-mode" data-test="strip-mode">{{ $block['mode'] }}</span>
+                                @endif
                                 <span class="bs-when">
                                     @if ($block['dot'])
                                         <span class="bs-dot" aria-hidden="true"></span>
                                     @endif
-                                    {{ $block['when'] }}
+                                    @if ($running)<span class="bs-mode" data-test="strip-mode">{{ $block['mode'] }}</span>@else{{ $block['when'] }}@endif
                                 </span>
                             </a>
                             <span class="bs-cap" aria-hidden="true">

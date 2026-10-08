@@ -448,7 +448,8 @@ final class MempoolLayout
             'ink' => $dark ? self::ON_CUBE : '#FFFFFF',
             'inkSoft' => $dark ? self::ON_CUBE : self::MUTED,
             'icon' => (string) ($item['icon'] ?? ''),
-            'mode' => $ghost ? '' : K::fit((string) ($item['mode'] ?? ''), K::MONO, 18, self::W - 62),
+            // The game by name beside its logo (user, 2026-10-08: logo and mode alone did not say which game it was).
+            'mode' => $ghost ? '' : K::fit(K::clean((string) ($item['cubeName'] ?? $item['mode'] ?? '')), K::MONO, 18, self::W - 62),
             'score' => $score,
             'scoreSize' => $scoreSize,
             'when' => $ghost ? '' : K::fit((string) ($item['when'] ?? ''), K::MONO, 16, $whenMax),
@@ -510,7 +511,7 @@ final class MempoolLayout
         }
 
         if (count($sides) === 1) {
-            // A highscore attempt (ScoreAttempts): one player, the game's name under them; nobody was beaten.
+            // A highscore attempt (ScoreAttempts): one player, the mode under them ("40 blocks"; the game's name is on the cube now); nobody was beaten.
             $name = K::name((string) ($sides[0]['name'] ?? ''), 'Player', 22, $max);
 
             return [
@@ -518,7 +519,7 @@ final class MempoolLayout
                 'vs' => null,
                 'extra' => [],
                 'line1' => ['text' => $name['text'], 'font' => $name['font'], 'size' => 22],
-                'line2' => ['text' => K::fit(K::clean((string) ($item['name'] ?? '')), K::MONO, 18, $max), 'ink' => self::MUTED, 'size' => 18],
+                'line2' => ['text' => K::fit(K::clean((string) ($item['mode'] ?? '')), K::MONO, 18, $max), 'ink' => self::MUTED, 'size' => 18],
             ];
         }
 

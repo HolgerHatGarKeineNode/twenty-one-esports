@@ -13,6 +13,7 @@ use App\Models\SeasonBlockVoid;
 use App\Models\SeriesMatch;
 use App\Models\StackerRun;
 use App\Models\User;
+use App\Support\GameNames;
 use App\Support\Matches\MempoolStrip;
 use App\Support\Stacker\BlockfillWeeks;
 use Illuminate\Support\Facades\File;
@@ -48,7 +49,7 @@ const MEMPOOL_CUTS = <<<'JS'
     () => {
         const cut = (el) => el.scrollWidth > el.clientWidth + 1;
         const out = [];
-        document.querySelectorAll('[data-test=block-strip] .bs-stamp, [data-test=block-strip] .bs-stamp-text, [data-test=block-strip] .bs-note, [data-test=block-strip] .bs-when, [data-test=block-strip] .bs-r1, [data-test=block-strip] .bs-num, [data-test=block-strip] .bs-score, [data-test=board-row]').forEach((el) => {
+        document.querySelectorAll('[data-test=block-strip] .bs-stamp, [data-test=block-strip] .bs-stamp-text, [data-test=block-strip] .bs-note, [data-test=block-strip] .bs-when, [data-test=block-strip] .bs-r1, [data-test=block-strip] .bs-mode, [data-test=block-strip] .bs-num, [data-test=block-strip] .bs-score, [data-test=board-row]').forEach((el) => {
             if (cut(el)) { out.push(el.className + ': ' + el.innerText.replace(/\s+/g, ' ') + ' (' + el.scrollWidth + ' > ' + el.clientWidth + ')'); }
         });
         return out;
@@ -121,7 +122,12 @@ test('/matches keeps the mempool strip and the table whole at 320, 375 and 1280 
 
             [$scroll, $client] = $page->evaluate(BrowserConsole::WIDTHS);
             expect($scroll)->toBeLessThanOrEqual($client, "{$where}: the page scrolls sideways ({$scroll} > {$client})")
-                ->and($page->evaluate(MEMPOOL_CUTS))->toBe([], "{$where}: cut text");
+                ->and($page->evaluate(MEMPOOL_CUTS))->toBe([], "{$where}: cut text")
+                // User, 2026-10-08: every cube names its game in words, not only by a mini icon.
+                ->and($page->evaluate('() => [...document.querySelectorAll("[data-test=block-strip] a.bs-cube")].filter((cube) => (cube.querySelector("[data-test=strip-game-name]")?.innerText.trim() ?? "").length < 3).length'))->toBe(0, "{$where}: a cube without its game's name");
+            app()->setLocale($locale);
+            expect($page->evaluate('() => [...new Set([...document.querySelectorAll("[data-test=strip-game-name]")].map((el) => el.innerText.trim()))]'))
+                ->toContain(GameNames::cube('chess'), GameNames::cube(NineMensMorris::SLUG));
 
             if (is_string($shots) && $shots !== '') {
                 File::ensureDirectoryExists($shots);

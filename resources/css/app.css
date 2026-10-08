@@ -823,10 +823,10 @@
         text-overflow: ellipsis;
     }
 
+    /* The game's name, the cube's first word (user, 2026-10-08): a size up from the cube's 11 px. */
     .bs-r1 {
-        display: flex;
-        align-items: center;
-        gap: 6px;
+        display: block;
+        font-size: 12px;
         font-weight: 700;
     }
 
@@ -861,6 +861,15 @@
 
     .bs-who {
         font-weight: 700;
+    }
+
+    .bs-mode {
+        font-weight: 400;
+    }
+
+    /* 13 letters ("Rocket League") at 11 px fill the 88 px of a phone's cube; 12 px ran 6 px over. */
+    .bs--sm .bs-r1 {
+        font-size: 11px;
     }
 
     .bs-when {
@@ -1354,6 +1363,10 @@
     .bs--auto a.bs-cube {
         padding: 8px 6px;
         row-gap: 2px;
+    }
+
+    .bs--auto .bs-r1 {
+        font-size: 11px;
     }
 
     .bs--auto .bs-stamp {

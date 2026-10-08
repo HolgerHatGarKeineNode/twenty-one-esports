@@ -20,6 +20,29 @@ final class GameNames
         return __(app(GameRegistry::class)->name($game));
     }
 
+    /** The longest name a mempool cube's first line holds (96 px at 11 px mono, 88 px on phones). */
+    public const CUBE_NAME_MAX = 13;
+
+    /**
+     * The name a mempool cube shows (user, 2026-10-08: the mini icon and the
+     * mode alone did not say which game it was): the translated name while it
+     * fits ("Schach", "Rocket League", "Mühle", "Blockli"), otherwise the
+     * game's short label plus a trailing edition number ("AoE2", "TMNF",
+     * "FC 26").
+     */
+    public static function cube(string $game): string
+    {
+        $name = self::game($game);
+
+        if (mb_strlen($name) <= self::CUBE_NAME_MAX) {
+            return $name;
+        }
+
+        $short = app(GameRegistry::class)->find($game)?->assets()->shortLabel ?? $name;
+
+        return preg_match('/\s(\d+)$/', $name, $edition) === 1 && ! str_ends_with($short, $edition[1]) ? $short.' '.$edition[1] : $short;
+    }
+
     /** The credit line of a game ("by DerCaddy", from its config entry), null for a game without one or not registered. */
     public static function credit(string $game): ?string
     {
