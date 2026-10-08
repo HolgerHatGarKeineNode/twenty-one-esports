@@ -29,6 +29,8 @@
             <group>browser</group>
             <group>relay</group>
             <group>integration</group>
+            <!-- Hyperbitcoinization: builds tools/hbsim (cargo) and replays 6,000 games; on demand only. -->
+            <group>hbsim-parity</group>
         </exclude>
     </groups>
     <source>
