@@ -18,13 +18,17 @@ const constant = (name) => {
 const startValue = constant('START_VALUE');
 // balance.json beside this script overrides the page's seat compensation after a retune (the page stays the template).
 const override = new URL('./balance.json', import.meta.url);
-const seatComp = fs.existsSync(override) ? JSON.parse(fs.readFileSync(override, 'utf8')).seatComp : constant('SEAT_COMP');
+const balance = fs.existsSync(override) ? JSON.parse(fs.readFileSync(override, 'utf8')) : {};
+const seatComp = balance.seatComp ?? constant('SEAT_COMP');
+// Team games (P4) exist only on the server: their compensation lives in balance.json alone (2v2 = 4, 3v3 = 6 seats).
+const teamComp = balance.teamComp ?? { open: {}, limit: {} };
 const idx = Object.fromEntries(d.T.map((t, i) => [t.id, i]));
 const zones = Object.keys(d.ZONES);
 const out = {
   zones: zones.map((z) => ({ key: z, name: d.ZONES[z].name, bank: d.ZONES[z].bank, sats: d.ZONES[z].sats })),
   terr: d.T.map((t) => ({ id: t.id, name: t.name, zone: zones.indexOf(t.zone), bank: t.bank, mine: t.mine, value: startValue[t.id] ?? 0, adj: d.ADJ[t.id].map((n) => idx[n]) })),
   seatComp: { open: [2, 3, 4, 5, 6].map((n) => seatComp.open[n] ?? 0), limit: [2, 3, 4, 5, 6].map((n) => seatComp.limit[n] ?? 0) },
+  teamComp: { open: [4, 6].map((n) => teamComp.open[n] ?? 0), limit: [4, 6].map((n) => teamComp.limit[n] ?? 0) },
 };
 fs.writeFileSync(process.argv[3], JSON.stringify(out));
 console.log(out.terr.length, 'territories', out.zones.length, 'zones', out.terr.filter((t) => t.bank).length, 'banks', out.terr.filter((t) => t.mine).length, 'mines');

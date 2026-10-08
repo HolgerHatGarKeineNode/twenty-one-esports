@@ -22,6 +22,7 @@ import { setTexts, t } from './i18n.js';
 import { createNet } from './net.js';
 import { startGame } from './game.js';
 import { startChat } from './chat.js';
+import { startTeamChat } from './teamChat.js';
 import { startEmotes } from './emotes.js';
 import { replayNet, startReplay } from './replay.js';
 import { startStats } from './stats.js';
@@ -56,6 +57,24 @@ const chat = startChat(config.chat, {
 $('#chat-btn').addEventListener('click', () => { chat.toggle(); $('#emotes').hidden = true; });
 $('#chat-close').addEventListener('click', () => chat.close());
 window.hyperChat = chat;
+
+// A team match (P4): the team's private chat as a second tab of the drawer, for a player of the team only.
+if (config.teamChat) {
+    const teamBadge = $('#team-unread');
+    const teamChat = startTeamChat(config.teamChat, { http, onUnread: (n) => { teamBadge.hidden = n === 0; teamBadge.textContent = n > 99 ? '99+' : String(n); } });
+    const tabs = { table: $('#tab-table'), team: $('#tab-team') };
+    const select = (which) => {
+        tabs.table.setAttribute('aria-selected', String(which === 'table'));
+        tabs.team.setAttribute('aria-selected', String(which === 'team'));
+        $('#table-pane').hidden = which !== 'table';
+        $('#chat-h').textContent = which === 'team' ? t('Team chat') : t('Table chat');
+        $('#chat-sub').textContent = which === 'team' ? t('Private, encrypted for your team') : t('Public on Nostr');
+        if (which === 'team') teamChat.show(); else teamChat.hide();
+    };
+    tabs.table.addEventListener('click', () => select('table'));
+    tabs.team.addEventListener('click', () => select('team'));
+    window.hyperTeamChat = { ...teamChat, open: () => { chat.open(); select('team'); } };
+}
 
 const meta = replaying ? null : document.querySelector('meta[name="reverb"]');
 const id = config.snapshot.id;

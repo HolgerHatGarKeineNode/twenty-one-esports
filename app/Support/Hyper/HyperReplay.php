@@ -43,7 +43,7 @@ final class HyperReplay
     public function __construct(private HyperMatch $match, ?int $upTo = null, ?Closure $observe = null)
     {
         $match->loadMissing('seats');
-        $specs = array_values($match->seats->map(fn (HyperSeat $seat): array => ['faction' => $seat->faction, 'bot' => $seat->bot && $seat->takeover === null])->all());
+        $specs = array_values($match->seats->map(fn (HyperSeat $seat): array => ['faction' => $seat->faction, 'bot' => $seat->bot && $seat->takeover === null, 'team' => $seat->team])->all());
         $step = HyperGame::start($specs, $match->round_limit, $match->seed);
         $this->game = $step->game;
         $this->plies[] = ['ply' => 0, 'seat' => $step->game->currentSeat(), 'source' => HyperAction::SERVER, 'events' => $step->events];

@@ -1,53 +1,62 @@
 /**
- * The timing of Hyperbitcoinization's end-of-match statistics (plan "Hyperbitcoinization", P3b,
- * resources/js/hyper/statsPlan.js): 30 to 60 seconds whatever the number of moments, the pages in order while it
- * plays, and skipping or turning a page by hand ends the autoplay. Run by tests/Feature/Hyper/HyperStatsTest.php;
- * runnable alone with `node --test tests/js/hyperStats.test.mjs`.
+ * The pacing of Hyperbitcoinization's end-of-match statistics (plan "Hyperbitcoinization", P3b, reworked in P4,
+ * resources/js/hyper/statsPlan.js): no page turns without input, Next first finishes a running animation, the
+ * animations are calm, and Skip all ends it. Run by tests/Feature/Hyper/HyperStatsTest.php; runnable alone with
+ * `node --test tests/js/hyperStats.test.mjs`.
  */
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { MAX_MS, MIN_MS, Sequence, sequencePlan } from '../../resources/js/hyper/statsPlan.js';
+import { COUNT_MS, LINE_MS, SCENE_MS, Sequence, readableMs } from '../../resources/js/hyper/statsPlan.js';
 
-test('the sequence runs 30 to 60 seconds for 0 to 11 moments, charts and tiles first', () => {
-    for (let moments = 0; moments <= 11; moments++) {
-        const plan = sequencePlan(moments);
-        const total = plan.reduce((a, b) => a + b, 0);
-        assert.equal(plan.length, moments + 2);
-        assert.ok(total >= MIN_MS && total <= MAX_MS, `${moments} moments: ${total} ms`);
-        assert.ok(plan.every((ms) => ms >= 3200), `${moments} moments: every page stays at least 3.2 s`);
-    }
+test('no page turns without input, however long the page stays and once its animation is over', () => {
+    const seq = new Sequence(5);
+    seq.begin(0);
+    seq.finished();
+    // Nothing in the plan reads a clock: the page stays put until next() is called.
+    assert.equal(seq.index, 0);
+    assert.equal(typeof seq.at, 'undefined', 'no time-driven page lookup is left');
+    assert.equal(typeof seq.play, 'undefined', 'no autoplay is left');
+    assert.equal(seq.index, 0);
+    assert.equal(seq.ready, true);
 });
 
-test('while it plays the pages come in order, and after the last one it stops there', () => {
-    const seq = new Sequence(sequencePlan(3));
-    seq.play();
-    const [charts, tiles, first] = seq.plan;
-    assert.equal(seq.at(0), 0);
-    assert.equal(seq.at(charts - 1), 0);
-    assert.equal(seq.at(charts), 1);
-    assert.equal(seq.at(charts + tiles + first / 2), 2);
-    assert.equal(seq.auto, true);
-    assert.equal(seq.at(seq.total + 1), 4);
-    assert.equal(seq.auto, false);
+test('Next during an animation finishes it and stays; the next Next turns the page', () => {
+    const seq = new Sequence(3);
+    seq.begin(0);
+    assert.deepEqual(seq.next(), { action: 'finish', index: 0 });
+    assert.equal(seq.index, 0);
+    assert.deepEqual(seq.next(), { action: 'show', index: 1 });
+    assert.equal(seq.ready, false, 'the new page animates first');
+    seq.finished();
+    assert.deepEqual(seq.next(), { action: 'show', index: 2 });
+    seq.finished();
+    assert.deepEqual(seq.next(), { action: 'end', index: 2 });
+    assert.equal(seq.index, 2);
 });
 
-test('skipping ends the autoplay at once; time passing turns no page afterwards', () => {
-    const seq = new Sequence(sequencePlan(5));
-    seq.play();
-    assert.equal(seq.at(seq.plan[0] + 10), 1);
+test('Skip all ends it: Next does nothing afterwards', () => {
+    const seq = new Sequence(4);
+    seq.begin(1);
+    seq.finished();
     seq.skip();
-    assert.equal(seq.auto, false);
-    assert.equal(seq.at(seq.total - 1), 1);
+    assert.deepEqual(seq.next(), { action: 'none', index: 1 });
+    assert.equal(seq.index, 1);
 });
 
-test('a page turned by hand ends the autoplay and is browsable both ways; out of range stays put', () => {
-    const seq = new Sequence(sequencePlan(2));
-    seq.play();
+test('pages are browsable by hand both ways; out of range stays put', () => {
+    const seq = new Sequence(4);
     assert.equal(seq.go(3), 3);
-    assert.equal(seq.auto, false);
-    assert.equal(seq.at(0), 3);
     assert.equal(seq.go(2), 2);
     assert.equal(seq.go(4), 2);
     assert.equal(seq.go(-1), 2);
     assert.equal(seq.go(0), 0);
+});
+
+test('the animations are calm and a caption stays readable', () => {
+    assert.ok(LINE_MS >= 2500, 'a line draws for 2.5 s at least');
+    assert.ok(COUNT_MS >= 1500, 'a number counts up for 1.5 s at least');
+    assert.ok(SCENE_MS >= 1500);
+    assert.equal(readableMs('GG'), 3000);
+    assert.equal(readableMs('x'.repeat(100)), 6000);
+    assert.equal(readableMs(''), 3000);
 });

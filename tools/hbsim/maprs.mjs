@@ -19,5 +19,8 @@ v += `pub const T_VALUE: [f64; crate::map::NT] = [${d.terr.map((t) => f64(t.valu
 v += '// Seat compensation (SEAT_COMP): extra start plebs per later seat, index = players - 2.\n';
 v += `pub const SEAT_COMP_OPEN: [f64; 5] = [${d.seatComp.open.map(f64).join(', ')}];\n`;
 v += `pub const SEAT_COMP_LIMIT: [f64; 5] = [${d.seatComp.limit.map(f64).join(', ')}];\n`;
+v += '// Team games (P4), two teams seated alternately: index 0 = 4 seats (2v2), 1 = 6 seats (3v3).\n';
+v += `pub const TEAM_COMP_OPEN: [f64; 2] = [${d.teamComp.open.map(f64).join(', ')}];\n`;
+v += `pub const TEAM_COMP_LIMIT: [f64; 2] = [${d.teamComp.limit.map(f64).join(', ')}];\n`;
 fs.writeFileSync('src/values.rs', v);
 console.log('map.rs and values.rs ok');

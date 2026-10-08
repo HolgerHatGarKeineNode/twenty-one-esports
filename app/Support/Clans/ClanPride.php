@@ -4,12 +4,14 @@ namespace App\Support\Clans;
 
 use App\Enums\ChessEndReason;
 use App\Enums\ChessGameStatus;
+use App\Enums\HyperMatchStatus;
 use App\Enums\SeriesResolution;
 use App\Enums\SeriesStatus;
 use App\Enums\TournamentStatus;
 use App\Models\ChessGame;
 use App\Models\Clan;
 use App\Models\ClanMember;
+use App\Models\HyperMatch;
 use App\Models\Lineup;
 use App\Models\SeriesMatch;
 use App\Models\Tournament;
@@ -34,6 +36,11 @@ use Illuminate\Support\Facades\Cache;
  *   finished chess games (last {@see self::DAYS} days) were all wins.
  * - `wins`: games its players won since they joined, in the last 7 days:
  *   chess wins plus won series.
+ * - `hyper`: the clan's latest won Hyperbitcoinization clan match (plan
+ *   "Hyperbitcoinization", P4) of the last {@see self::DAYS} days against
+ *   another clan: the other clan's tag and name, as it played (a clan linked
+ *   to a meetup as that meetup), and the size (2v2, 3v3). Only while the
+ *   game is switched on (`esports.hyper.enabled`).
  * - `joined`: players who joined in the last 7 days; `founded` instead when
  *   the clan itself is that new (with its player count).
  *
@@ -65,7 +72,7 @@ final class ClanPride
     private const GAMES = 2000;
 
     /** @var array<string, int> */
-    private const WEIGHT = ['tournament' => 100, 'series' => 60, 'streak' => 50, 'wins' => 30, 'joined' => 25, 'founded' => 20];
+    private const WEIGHT = ['tournament' => 100, 'series' => 60, 'hyper' => 55, 'streak' => 50, 'wins' => 30, 'joined' => 25, 'founded' => 20];
 
     public function __construct(private TournamentPlacements $placements) {}
 
@@ -127,6 +134,10 @@ final class ClanPride
         $this->tournaments($byUser, $lineupClan, $add);
         $weekly = $this->series($lineupClan, $byUser, $add);
         $this->chess($byUser, $weekly, $add);
+
+        if (config('esports.hyper.enabled')) {
+            $this->hyper($add);
+        }
 
         foreach ($weekly as $clanId => $won) {
             $add($clanId, 'wins', $won['at'], ['count' => $won['count']]);
@@ -313,6 +324,40 @@ final class ClanPride
                 $member = $byUser[$userId];
                 $add($member->clan_id, 'streak', $streak['at'], ['player' => $member->user->displayName(), 'count' => $streak['run'], 'weight' => self::WEIGHT['streak'] + min(9, $streak['run'])]);
             }
+        }
+    }
+
+    /**
+     * The latest won Hyperbitcoinization clan match per clan (P4), against another clan.
+     */
+    private function hyper(\Closure $add): void
+    {
+        $matches = HyperMatch::query()
+            ->where('status', HyperMatchStatus::Finished)
+            ->whereNotNull('team_clans')->whereNotNull('winner_seat')
+            ->where('ended_at', '>=', now()->subDays(self::DAYS))
+            ->with('seats:id,hyper_match_id,seat,team')
+            ->latest('ended_at')->limit(200)
+            ->get(['id', 'team_clans', 'winner_seat', 'ended_at']);
+        $clans = Clan::query()->whereIn('id', $matches->pluck('team_clans')->flatten()->filter()->unique())->get()->keyBy('id');
+        $seen = [];
+
+        foreach ($matches as $match) {
+            $team = $match->seats->firstWhere('seat', $match->winner_seat)?->team;
+            $winner = $team === null ? null : ($match->team_clans[$team] ?? null);
+            $loser = $team === null ? null : $clans->get($match->team_clans[1 - $team] ?? 0);
+
+            if ($winner === null || $loser === null || isset($seen[$winner]) || ! $clans->has($winner)) {
+                continue;
+            }
+
+            $seen[$winner] = true;
+            $size = intdiv($match->seats->count(), 2);
+            $add((int) $winner, 'hyper', $match->ended_at ?? now(), [
+                'opponent' => filled($loser->meetup_name) ? (string) $loser->meetup_name : $loser->name,
+                'opponent_tag' => $loser->clantag,
+                'size' => $size.'v'.$size,
+            ]);
         }
     }
 }

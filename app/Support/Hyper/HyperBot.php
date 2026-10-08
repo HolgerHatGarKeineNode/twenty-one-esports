@@ -8,6 +8,10 @@ namespace App\Support\Hyper;
  * lasts), up to 14 attacks on the best-scored neighbour until won or the odds turn, and one fortify
  * move of the biggest inner stack towards the front. It fills empty seats and takes over for a player
  * who left. tools/hbsim plays the same bot (ParityTest).
+ *
+ * In a team game (P4) a teammate's territory counts as friendly everywhere the bot asks "foreign?": the
+ * front borders an opponent or neutral land, attacks skip teammates, and the inner stack may fortify into a
+ * teammate's territory. Without teams that is the seat itself, so the bot plays as before.
  */
 final class HyperBot
 {
@@ -211,7 +215,7 @@ final class HyperBot
                 $asic = $this->game->asicsOn($from) > 0;
 
                 foreach (HyperMap::ADJ[$from] as $to) {
-                    if ($this->game->ownerOf($to) === $this->seat) {
+                    if ($this->game->allied($this->game->ownerOf($to), $this->seat)) {
                         continue;
                     }
 
@@ -280,7 +284,7 @@ final class HyperBot
     private function bordersForeign(int $t): bool
     {
         foreach (HyperMap::ADJ[$t] as $n) {
-            if ($this->game->ownerOf($n) !== $this->seat) {
+            if (! $this->game->allied($this->game->ownerOf($n), $this->seat)) {
                 return true;
             }
         }

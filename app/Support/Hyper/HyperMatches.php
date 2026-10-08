@@ -44,7 +44,9 @@ use InvalidArgumentException;
  * as live), and the seat whose turn starts is notified (HyperNotifications; never a bot seat, never a
  * spectator). The lobby is HyperLobby.
  *
- * Not yet here (later phases): teams (P4), rated play (P5).
+ * A team match (P4) gives every seat a `team` (0 or 1, seated alternately by the lobby) and keeps each
+ * team's clan (`team_clans`); the rules core plays the teams, and the end gives every seat of the winning
+ * team place 1. Not yet here: rated play (P5).
  */
 final class HyperMatches
 {
@@ -60,13 +62,20 @@ final class HyperMatches
      * A match that starts at once, seats in the given order: a player (`user`) or a bot (`bot` true, no
      * user). A faction left out is drawn from the factions nobody chose; every faction once per match.
      * `mode`: HyperMatch::LIVE (a turn of `turn_seconds`) or ::CORRESPONDENCE (`correspondence_hours`).
+     * `teamClans`: a team match, the clan of team 0 and team 1 (null for a side of bots); every seat then
+     * names its `team`.
      *
-     * @param  list<array{user?: User|null, bot?: bool, faction?: string|null}>  $seats
+     * @param  list<array{user?: User|null, bot?: bool, faction?: string|null, team?: int|null}>  $seats
+     * @param  list<int|null>|null  $teamClans
      *
-     * @throws InvalidArgumentException for 2 > seats > 6, a seat without player and bot, a player twice, an unknown or doubled faction, an unknown mode
+     * @throws InvalidArgumentException for 2 > seats > 6, a seat without player and bot, a player twice, an unknown or doubled faction, an unknown mode, teams on some seats only
      */
-    public function create(array $seats, int $limit = 0, ?int $seed = null, ?User $creator = null, string $mode = HyperMatch::LIVE): HyperMatch
+    public function create(array $seats, int $limit = 0, ?int $seed = null, ?User $creator = null, string $mode = HyperMatch::LIVE, ?array $teamClans = null): HyperMatch
     {
+        if (($teamClans !== null) !== array_any($seats, fn (array $seat): bool => isset($seat['team']))) {
+            throw new InvalidArgumentException('A team match names the teams\' clans and every seat\'s team.');
+        }
+
         if (! in_array($mode, [HyperMatch::LIVE, HyperMatch::CORRESPONDENCE], true)) {
             throw new InvalidArgumentException('A match is live or correspondence.');
         }
@@ -93,19 +102,20 @@ final class HyperMatches
                 throw new InvalidArgumentException('A seat is a player or a bot.');
             }
 
-            $specs[] = ['faction' => $seat['faction'] ?? array_shift($free), 'bot' => $bot];
+            $specs[] = ['faction' => $seat['faction'] ?? array_shift($free), 'bot' => $bot, ...(isset($seat['team']) ? ['team' => $seat['team']] : [])];
         }
 
         $seed ??= random_int(0, 0xFFFFFFFF);
         $step = HyperGame::start($specs, $limit, $seed);
         $now = $this->nowMs();
 
-        $match = DB::transaction(function () use ($seats, $specs, $step, $limit, $seed, $creator, $now, $mode): HyperMatch {
+        $match = DB::transaction(function () use ($seats, $specs, $step, $limit, $seed, $creator, $now, $mode, $teamClans): HyperMatch {
             $match = HyperMatch::query()->create([
                 'mode' => $mode,
                 'status' => HyperMatchStatus::Active,
                 'seed' => $seed,
                 'round_limit' => $limit,
+                'team_clans' => $teamClans,
                 'rated' => false,
                 'state' => $step->game->toArray(),
                 'ply' => 0,
@@ -122,6 +132,7 @@ final class HyperMatches
                     'user_id' => ($seats[$index]['user'] ?? null)?->id,
                     'faction' => $spec['faction'],
                     'bot' => $spec['bot'],
+                    'team' => $spec['team'] ?? null,
                 ]);
             }
 
@@ -332,6 +343,8 @@ final class HyperMatches
             'round' => $game->round(),
             'seat' => $match->current_seat,
             'phase' => $game->phase(),
+            'teams' => $match->isTeamMatch() ? HyperTeams::sides($match->team_clans) : null,
+            'winner_team' => $match->isTeamMatch() && $match->winner_seat !== null ? $match->seats->firstWhere('seat', $match->winner_seat)?->team : null,
             'turn_seconds' => intdiv($this->turnMs($match->mode), 1000),
             'turn_started_ms' => $match->turn_started_ms,
             'deadline_ms' => $match->deadline_ms,
@@ -340,7 +353,8 @@ final class HyperMatches
             'end_reason' => $match->end_reason?->value,
             'me' => $me?->seat,
             'map' => ['territories' => HyperMap::IDS, 'zones' => HyperMap::ZONE_KEYS],
-            'seats' => $match->seats->map(fn (HyperSeat $seat): array => $this->seatView($seat))->all(),
+            // A team match names a seat's Nostr key only to that seat's team: opponents and spectators never get a team's keys.
+            'seats' => $match->seats->map(fn (HyperSeat $seat): array => $this->seatView($seat, $match->isTeamMatch() && ($me === null || $me->team !== $seat->team)))->all(),
             'state' => (new HyperView($match->handSeatOf($viewer), $over))->state($match->state),
             'legal' => $myTurn ? $game->legal() : null,
             'chat' => ['channel' => GameChannels::matchChannelId($match->ulid)],
@@ -568,11 +582,22 @@ final class HyperMatches
         $loot = $game->loot();
 
         // standings() lists the seats still in, best first: the winner alone after a conquest, all of them at the limit.
-        foreach ($game->standings() as $rank => $index) {
+        $ranking = $game->standings();
+        $offset = 0;
+
+        // A team match: every seat of the winning team shares place 1 (out or not), the others follow.
+        if ($game->winnerTeam() !== null) {
+            $winners = $match->seats->filter(fn (HyperSeat $seat): bool => $seat->team === $game->winnerTeam());
+            $winners->each(fn (HyperSeat $seat) => $seat->place = 1);
+            $ranking = array_values(array_filter($ranking, fn (int $index): bool => ! $winners->contains('seat', $index)));
+            $offset = $winners->count();
+        }
+
+        foreach ($ranking as $rank => $index) {
             $seat = $match->seats->firstWhere('seat', $index);
 
             if ($seat instanceof HyperSeat && $seat->place === null) {
-                $seat->place = $rank + 1;
+                $seat->place = $offset + $rank + 1;
             }
         }
 
@@ -679,20 +704,21 @@ final class HyperMatches
     /**
      * @return array<string, mixed>
      */
-    private function seatView(HyperSeat $seat): array
+    private function seatView(HyperSeat $seat, bool $hideKey = false): array
     {
         $user = $seat->user;
 
         return [
             'seat' => $seat->seat,
             'faction' => $seat->faction,
+            'team' => $seat->team,
             'bot' => $seat->bot,
             'takeover' => $seat->takeover,
             'left' => $seat->left_at !== null,
             'user_id' => $user?->id,
             'name' => $user?->displayName(),
-            'pubkey' => $user?->pubkey,
-            'avatar' => $user === null ? null : ($user->avatarUrl() ?? PlayerProfile::generatedAvatarUrl($user->pubkey)),
+            'pubkey' => $hideKey ? null : $user?->pubkey,
+            'avatar' => $user === null ? null : ($user->avatarUrl() ?? ($hideKey ? null : PlayerProfile::generatedAvatarUrl($user->pubkey))),
             // Who is at the table right now comes from the presence channel `hyper.{ulid}.here`, not from here.
             'connected' => null,
             'place' => $seat->place,

@@ -2,7 +2,10 @@
 
 namespace Tests\Support;
 
+use App\Enums\ClanRole;
 use App\Games\GameRegistry;
+use App\Models\Clan;
+use App\Models\ClanMember;
 use App\Models\HyperMatch;
 use App\Models\User;
 use App\Support\Hyper\HyperGame;
@@ -64,6 +67,54 @@ final class HyperOn
         $state['placed'] = [];
         $state['seats'][0] = [...$state['seats'][0], 'hand' => ['attack51'], 'free_plebs' => 0];
         $state['seats'][1] = [...$state['seats'][1], 'hand' => ['pizza']];
+        $match->forceFill(['state' => HyperGame::fromArray($state)->toArray(), 'current_seat' => 0])->save();
+
+        return $match->refresh();
+    }
+
+    /**
+     * A player in a clan: the clan's owner when it has none yet, else a member.
+     */
+    public static function inClan(User $user, Clan $clan): User
+    {
+        ClanMember::query()->updateOrCreate(['user_id' => $user->id], ['clan_id' => $clan->id, 'role' => ClanRole::Member, 'joined_at' => now()]);
+
+        return $user;
+    }
+
+    /**
+     * A live 2v2 team match (P4): `$a` and `$c` for clan `$red` (team 0, seats 0 and 2), `$b` and `$d` for
+     * clan `$blue` (team 1, seats 1 and 3); a null player is a bot of that team.
+     */
+    public static function teams(Clan $red, Clan $blue, ?User $a, ?User $b, ?User $c = null, ?User $d = null, ?int $seed = 7): HyperMatch
+    {
+        $seat = fn (?User $user, string $faction, int $team): array => $user === null ? ['bot' => true, 'faction' => $faction, 'team' => $team] : ['user' => $user, 'faction' => $faction, 'team' => $team];
+
+        return app(HyperMatches::class)->create([
+            $seat($a, 'bitcoiner', 0), $seat($b, 'fed', 1), $seat($c, 'ezb', 0), $seat($d, 'goldbug', 1),
+        ], seed: $seed, creator: $a, teamClans: [$red->id, $blue->id]);
+    }
+
+    /**
+     * A team match one card from its end: team 0 (seats 0, 2) holds every territory but Mexico, which seat 1
+     * holds with one pleb (seat 3 is out); seat 0 has a 51%-Attacke in hand in its attack phase
+     * (`play_card attack51 mexiko` wins it for team 0, seat 2 still in).
+     */
+    public static function teamEndgame(HyperMatch $match): HyperMatch
+    {
+        $state = HyperGame::fromArray($match->state)->toArray();
+
+        foreach (HyperMap::IDS as $index => $id) {
+            $state['territories'][$id] = ['owner' => $index % 3 === 0 ? 2 : 0, 'pleb' => 2, 'maxi' => 0, 'asic' => 0, 'shield' => null];
+        }
+
+        $state['territories']['mexiko'] = ['owner' => 1, 'pleb' => 1, 'maxi' => 0, 'asic' => 0, 'shield' => null];
+        $state['territories']['ny'] = ['owner' => 0, 'pleb' => 6, 'maxi' => 0, 'asic' => 0, 'shield' => null];
+        $state['seat'] = 0;
+        $state['phase'] = 'attack';
+        $state['placed'] = [];
+        $state['seats'][0] = [...$state['seats'][0], 'hand' => ['attack51'], 'free_plebs' => 0];
+        $state['seats'][3] = [...$state['seats'][3], 'out' => true];
         $match->forceFill(['state' => HyperGame::fromArray($state)->toArray(), 'current_seat' => 0])->save();
 
         return $match->refresh();

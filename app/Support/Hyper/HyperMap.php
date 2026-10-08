@@ -53,4 +53,7 @@ final class HyperMap
 
     /** @var array{open: array<int, float>, limit: array<int, float>} extra start plebs per later seat, by player count */
     public const array SEAT_COMP = ['open' => [2 => 9.5, 3 => 6.0, 4 => 4.5, 5 => 2.0, 6 => 1.5], 'limit' => [2 => 9.5, 3 => 6.0, 4 => 4.0, 5 => 1.5, 6 => 1.0]];
+
+    /** @var array{open: array<int, float>, limit: array<int, float>} the same for two teams seated alternately: 4 seats (2v2), 6 seats (3v3) */
+    public const array TEAM_SEAT_COMP = ['open' => [4 => 4.0, 6 => 1.0], 'limit' => [4 => 4.0, 6 => 1.0]];
 }

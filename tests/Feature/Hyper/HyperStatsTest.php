@@ -300,9 +300,9 @@ test('the endpoint answers for a finished match only, from the cache once comput
     }
 });
 
-test('the sequence runs 30 to 60 s, can be skipped and browsed by hand (Node)', function () {
+test('no statistics page turns without input, Next finishes an animation first, and Skip all ends it (Node)', function () {
     $run = Process::path(base_path())->timeout(60)->run(['node', '--test', 'tests/js/hyperStats.test.mjs']);
 
     expect($run->successful())->toBeTrue($run->output().$run->errorOutput())
-        ->and($run->output())->toContain('ℹ pass 4')->toContain('ℹ skipped 0');
+        ->and($run->output())->toContain('ℹ pass 5')->toContain('ℹ skipped 0');
 });

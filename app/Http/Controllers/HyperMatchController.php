@@ -14,6 +14,7 @@ use App\Support\Hyper\HyperReplay;
 use App\Support\Hyper\HyperRuleViolation;
 use App\Support\Hyper\HyperStats;
 use App\Support\Hyper\HyperTableChat;
+use App\Support\Hyper\HyperTeamChat;
 use App\Support\Hyper\HyperTexts;
 use Closure;
 use Illuminate\Contracts\View\View;
@@ -39,7 +40,7 @@ use RuntimeException;
 class HyperMatchController extends Controller
 {
     /** Refusals of a viewer who has no say at this seat. */
-    private const FORBIDDEN = ['not_seated', 'seat_taken_over', 'already_left', 'no_rematch'];
+    private const FORBIDDEN = ['not_seated', 'seat_taken_over', 'already_left', 'no_rematch', 'not_teammate'];
 
     /** Refusals because the match is not where the client thought it was. */
     private const CONFLICT = ['out_of_sync', 'turn_timed_out', 'game_over'];
@@ -99,8 +100,35 @@ class HyperMatchController extends Controller
                 'texts' => HyperTexts::dictionary(),
                 'clips' => HyperEmotes::clips(),
                 'chat' => HyperTableChat::config($match, $viewer),
+                // The team chat (P4): only its url; the members come from team() for a player of the team.
+                'teamChat' => $this->teamChatConfig($match, $viewer),
             ],
         ]);
+    }
+
+    /**
+     * The team chat's members for a player of the team (HyperTeamChat::members()): `{match, since, relays,
+     * lookupRelays, members}`. Anybody else is refused (403 `not_teammate`); a match without teams has none (404).
+     */
+    public function team(Request $request, HyperMatch $match): JsonResponse
+    {
+        try {
+            return response()->json(HyperTeamChat::members($match, $this->user($request)));
+        } catch (HyperRuleViolation $violation) {
+            abort_if($violation->reason === 'no_teams', 404);
+
+            return response()->json(['reason' => $violation->reason, 'message' => __('Only your team reads this chat.')], 403);
+        }
+    }
+
+    /**
+     * @return array{url: string}|null
+     */
+    private function teamChatConfig(HyperMatch $match, ?User $viewer): ?array
+    {
+        $seat = $match->isTeamMatch() ? $match->seatOf($viewer) : null;
+
+        return $seat === null || $seat->left_at !== null ? null : ['url' => route('hyper.team', $match, false)];
     }
 
     /**

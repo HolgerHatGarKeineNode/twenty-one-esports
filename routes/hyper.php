@@ -7,7 +7,7 @@ use Illuminate\Support\Facades\Route;
  * Hyperbitcoinization (plan "Hyperbitcoinization", P2/P3): a match's page, its snapshot and event catch-up
  * (players, spectators and guests alike), and for a seated player the actions, emotes, leaving and the
  * rematch; the lobby (a table's own link invites a friend), the quick start against bots, the replay of a
- * finished match, and the table chat's name lookup.
+ * finished match, the table chat's name lookup, and for a player of a team match its team chat's members.
  * Loaded by routes/web.php only while `esports.hyper.enabled` is on, so with the switch off none of these
  * routes exists. A cached route table keeps the switch as it was when it was cached: flipping it needs the
  * deploy's `optimize`.
@@ -33,5 +33,7 @@ Route::prefix('hyperbitcoinization')->name('hyper.')->group(function () {
         Route::post('m/{match}/emote', [HyperMatchController::class, 'emote'])->whereUlid('match')->name('emote');
         Route::post('m/{match}/leave', [HyperMatchController::class, 'leave'])->whereUlid('match')->name('leave');
         Route::post('m/{match}/rematch', [HyperMatchController::class, 'rematch'])->whereUlid('match')->middleware('throttle:20,1')->name('rematch');
+        // The team chat's members (P4): answered only to a player of the team.
+        Route::get('m/{match}/team', [HyperMatchController::class, 'team'])->whereUlid('match')->middleware('throttle:60,1')->name('team');
     });
 });

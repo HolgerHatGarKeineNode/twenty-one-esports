@@ -35,9 +35,18 @@ use InvalidArgumentException;
  *   moved {seat, from, to, count, kind: conquest|fortify} · card_played {seat, card, target, effect}
  *   card_drawn {seat, card} · fiat_interest {seat, amount} · fiat_decayed {seat, amount}
  *   player_eliminated {seat, by, cards} · round_started {round, inflation} · turn_ended {seat}
- *   game_won {seat, by_limit, round, standings, loot}
+ *   game_won {seat, by_limit, round, standings, loot; in a team game also team}
  *
- * @phpstan-type Seat array{faction: string, bot: bool, fiat: float, sats: float, loot: float, hand: list<string>, out: bool, conquered: int, free: int, dip: bool, yuan: int, moves: int}
+ * Teams (P4): a seat may carry a `team` (every seat or none; at least two teams). Teammates never attack
+ * each other, and no card that hits an opponent (51 % attack, scam, lost keys, not your keys) hits a
+ * teammate. The fortify move may go from an own territory into a neighbouring teammate's: the troops join
+ * the teammate's territory, which stays the teammate's. Currency spaces, income and elimination stay per
+ * seat. A team wins when it is the only one left, or at the round limit by the most central banks of its
+ * seats together (then territories, then units); `winner` is then the team's best seat by standings(). A
+ * team game takes its start compensation from HyperMap::TEAM_SEAT_COMP. Without teams every seat is its
+ * own team, and the game plays exactly as before.
+ *
+ * @phpstan-type Seat array{faction: string, bot: bool, fiat: float, sats: float, loot: float, hand: list<string>, out: bool, conquered: int, free: int, dip: bool, yuan: int, moves: int, team: int|null}
  * @phpstan-type Placement array{territory: int, kind: string, count: int, cost: float}
  */
 final class HyperGame
@@ -105,6 +114,8 @@ final class HyperGame
 
     private ?int $winner = null;
 
+    private ?int $winnerTeam = null;
+
     /** @var list<string> */
     private array $deck = [];
 
@@ -146,9 +157,9 @@ final class HyperGame
     /**
      * A new game as the page sets it up: a value-balanced deal (a neutral third side in the duel), 14
      * start plebs per side plus the seat compensation for later seats, a shuffled deck, and the first
-     * turn begun. Seats play in the given order.
+     * turn begun. Seats play in the given order; `team` on every seat (or none) makes a team game.
      *
-     * @param  list<array{faction: string, bot?: bool}>  $seats
+     * @param  list<array{faction: string, bot?: bool, team?: int|null}>  $seats
      */
     public static function start(array $seats, int $limit, int $seed): HyperStep
     {
@@ -168,15 +179,23 @@ final class HyperGame
             throw new InvalidArgumentException('Every seat plays its own faction of '.implode(', ', array_keys(self::FACTIONS)).'.');
         }
 
+        $teams = array_map(fn (array $seat): ?int => $seat['team'] ?? null, $seats);
+        $teamed = array_filter($teams, fn (?int $team): bool => $team !== null);
+
+        if ($teamed !== [] && (count($teamed) !== $n || count(array_unique($teamed)) < 2 || min($teamed) < 0)) {
+            throw new InvalidArgumentException('A team game gives every seat a team (0 or more), and has two teams at least.');
+        }
+
         $game = new self(HyperRng::seeded($seed), $seed, $limit);
 
-        foreach ($seats as $seat) {
-            $game->seats[] = new HyperSeat($seat['faction'], $seat['bot'] ?? false);
+        foreach ($seats as $index => $seat) {
+            $game->seats[] = new HyperSeat($seat['faction'], $seat['bot'] ?? false, team: $teams[$index]);
         }
 
         $neutralSides = $n === 2 ? 1 : 0;
         $game->dealFair($n, $neutralSides);
-        $comp = HyperMap::SEAT_COMP[$limit > 0 ? 'limit' : 'open'][$n];
+        $table = $limit > 0 ? 'limit' : 'open';
+        $comp = $teamed !== [] && isset(HyperMap::TEAM_SEAT_COMP[$table][$n]) ? HyperMap::TEAM_SEAT_COMP[$table][$n] : HyperMap::SEAT_COMP[$table][$n];
 
         for ($side = 0; $side < $n + $neutralSides; $side++) {
             $tag = self::sideTag($side, $n);
@@ -257,6 +276,35 @@ final class HyperGame
     public function wonByLimit(): bool
     {
         return $this->byLimit;
+    }
+
+    /**
+     * The winning team of a team game, or null (no team game, or not over).
+     */
+    public function winnerTeam(): ?int
+    {
+        return $this->winnerTeam;
+    }
+
+    public function isTeamGame(): bool
+    {
+        return $this->seats[0]->team !== null;
+    }
+
+    /**
+     * A seat's team; without teams every seat is its own.
+     */
+    public function teamOf(int $seat): int
+    {
+        return $this->seats[$seat]->team ?? $seat;
+    }
+
+    /**
+     * Whether two owners (seat indexes; null or negative = neutral) are the same seat or teammates.
+     */
+    public function allied(?int $a, ?int $b): bool
+    {
+        return $a !== null && $b !== null && $a >= 0 && $b >= 0 && $this->teamOf($a) === $this->teamOf($b);
     }
 
     public function seatCount(): int
@@ -424,11 +472,12 @@ final class HyperGame
         $seat = $this->cur;
         $owner = $this->owner[$t];
 
+        // Teammates are no targets of a card that hits an opponent.
         return match (self::CARDS[$card] ?? null) {
-            'enemyAdj' => $owner !== $seat && $this->units($t) <= 3 && $this->bordersSeat($t, $seat),
+            'enemyAdj' => ! $this->allied($owner, $seat) && $this->units($t) <= 3 && $this->bordersSeat($t, $seat),
             'own' => $owner === $seat,
-            'enemyBank' => $owner !== $seat && $owner >= 0 && HyperMap::BANK[$t],
-            'enemyOne' => $owner !== $seat && $owner >= 0 && $this->units($t) === 1,
+            'enemyBank' => ! $this->allied($owner, $seat) && $owner >= 0 && HyperMap::BANK[$t],
+            'enemyOne' => ! $this->allied($owner, $seat) && $owner >= 0 && $this->units($t) === 1,
             default => false,
         };
     }
@@ -523,19 +572,19 @@ final class HyperGame
     }
 
     /**
-     * @return list<int> neighbours of `from` the seat to move may attack
+     * @return list<int> neighbours of `from` the seat to move may attack: neither its own nor a teammate's
      */
     public function attackTargets(int $from): array
     {
-        return array_values(array_filter(HyperMap::ADJ[$from], fn (int $to): bool => $this->owner[$to] !== $this->owner[$from]));
+        return array_values(array_filter(HyperMap::ADJ[$from], fn (int $to): bool => ! $this->allied($this->owner[$to], $this->owner[$from])));
     }
 
     /**
-     * @return list<int> own neighbours of `from`
+     * @return list<int> neighbours of `from` its troops may move to: own, or a teammate's
      */
     public function fortifyTargets(int $from): array
     {
-        return array_values(array_filter(HyperMap::ADJ[$from], fn (int $to): bool => $this->owner[$to] === $this->owner[$from]));
+        return array_values(array_filter(HyperMap::ADJ[$from], fn (int $to): bool => $this->allied($this->owner[$to], $this->owner[$from])));
     }
 
     /**
@@ -585,10 +634,11 @@ final class HyperGame
             'fortified' => $this->fortified,
             'over' => $this->over,
             'winner' => $this->winner,
+            'winner_team' => $this->winnerTeam,
             'by_limit' => $this->byLimit,
             'rng' => $this->rng->state(),
             'deck' => $this->deck,
-            'seats' => array_map(fn (HyperSeat $s): array => ['faction' => $s->faction, 'bot' => $s->bot, 'fiat' => $s->fiat, 'sats' => $s->sats, 'loot' => $s->loot, 'hand' => $s->hand, 'out' => $s->out, 'conquered' => $s->conquered, 'free_plebs' => $s->free, 'dip' => $s->dip, 'yuan' => $s->yuan, 'moves' => $s->moves], $this->seats),
+            'seats' => array_map(fn (HyperSeat $s): array => ['faction' => $s->faction, 'bot' => $s->bot, 'fiat' => $s->fiat, 'sats' => $s->sats, 'loot' => $s->loot, 'hand' => $s->hand, 'out' => $s->out, 'conquered' => $s->conquered, 'free_plebs' => $s->free, 'dip' => $s->dip, 'yuan' => $s->yuan, 'moves' => $s->moves, 'team' => $s->team], $this->seats),
             'territories' => $territories,
             'placed' => array_map(fn (array $p): array => ['territory' => HyperMap::IDS[$p['territory']], 'kind' => $p['kind'], 'count' => $p['count'], 'cost' => $p['cost']], $this->placed),
             'pending_move' => $this->pending === null ? null : ['from' => HyperMap::IDS[$this->pending['from']], 'to' => HyperMap::IDS[$this->pending['to']]],
@@ -657,6 +707,7 @@ final class HyperGame
         $game->over = $bool($data['over'] ?? null, 'over');
         $game->byLimit = $bool($data['by_limit'] ?? null, 'by_limit');
         $game->winner = ($data['winner'] ?? null) === null ? null : $int($data['winner'], 'winner');
+        $game->winnerTeam = ($data['winner_team'] ?? null) === null ? null : $int($data['winner_team'], 'winner_team');
         $game->deck = $cards($data['deck'] ?? null, 'deck');
         $seats = $data['seats'] ?? null;
 
@@ -669,7 +720,7 @@ final class HyperGame
                 throw new InvalidArgumentException('A seat has no known faction.');
             }
 
-            $game->seats[] = new HyperSeat((string) $s['faction'], $bool($s['bot'] ?? null, 'bot'), $float($s['fiat'] ?? null, 'fiat'), $float($s['sats'] ?? null, 'sats'), $float($s['loot'] ?? null, 'loot'), $cards($s['hand'] ?? null, 'hand'), $bool($s['out'] ?? null, 'out'), $int($s['conquered'] ?? null, 'conquered'), $int($s['free_plebs'] ?? null, 'free_plebs'), $bool($s['dip'] ?? null, 'dip'), $int($s['yuan'] ?? null, 'yuan'), $int($s['moves'] ?? null, 'moves'));
+            $game->seats[] = new HyperSeat((string) $s['faction'], $bool($s['bot'] ?? null, 'bot'), $float($s['fiat'] ?? null, 'fiat'), $float($s['sats'] ?? null, 'sats'), $float($s['loot'] ?? null, 'loot'), $cards($s['hand'] ?? null, 'hand'), $bool($s['out'] ?? null, 'out'), $int($s['conquered'] ?? null, 'conquered'), $int($s['free_plebs'] ?? null, 'free_plebs'), $bool($s['dip'] ?? null, 'dip'), $int($s['yuan'] ?? null, 'yuan'), $int($s['moves'] ?? null, 'moves'), ($s['team'] ?? null) === null ? null : $int($s['team'], 'team'));
         }
 
         $territories = $data['territories'] ?? null;
@@ -707,6 +758,12 @@ final class HyperGame
 
         if ($game->cur < 0 || $game->cur >= count($game->seats)) {
             throw new InvalidArgumentException('State field seat is out of range.');
+        }
+
+        $teams = array_map(fn (HyperSeat $seat): ?int => $seat->team, $game->seats);
+
+        if (in_array(null, $teams, true) && array_filter($teams, fn (?int $team): bool => $team !== null) !== []) {
+            throw new InvalidArgumentException('State field team is set on some seats only.');
         }
 
         return $game;
@@ -920,6 +977,10 @@ final class HyperGame
             throw new HyperRuleViolation('own_territory', 'That territory is already yours.');
         }
 
+        if ($this->allied($this->owner[$to], $this->cur)) {
+            throw new HyperRuleViolation('teammate_territory', 'Teammates do not attack each other.');
+        }
+
         do {
             $previous = $this->owner[$to];
             [$an, $won] = $this->battleRound($from, $to);
@@ -972,11 +1033,16 @@ final class HyperGame
         }
 
         $from = $this->ownTerritory($action['from'] ?? null);
-        $to = $this->ownTerritory($action['to'] ?? null);
+        $to = self::territoryIndex($action['to'] ?? null);
         $count = $action['count'] ?? null;
 
+        // Into an own territory, or across a shared border into a teammate's (it stays the teammate's).
+        if (! $this->allied($this->owner[$to], $this->cur)) {
+            throw new HyperRuleViolation('not_your_territory', HyperMap::IDS[$to].' is neither yours nor a teammate\'s.');
+        }
+
         if (! in_array($to, HyperMap::ADJ[$from], true)) {
-            throw new HyperRuleViolation('not_adjacent', 'Troops move only into a neighbouring own territory.');
+            throw new HyperRuleViolation('not_adjacent', 'Troops move only into a neighbouring own or teammate\'s territory.');
         }
 
         if (! is_int($count) || $count < 1 || $count > $this->units($from) - 1) {
@@ -1068,7 +1134,7 @@ final class HyperGame
                 $rich = null;
 
                 foreach ($this->seats as $i => $other) {
-                    if ($i !== $seat && ! $other->out && ($rich === null || $other->sats > $this->seats[$rich]->sats)) {
+                    if (! $this->allied($i, $seat) && ! $other->out && ($rich === null || $other->sats > $this->seats[$rich]->sats)) {
                         $rich = $i;
                     }
                 }
@@ -1276,6 +1342,10 @@ final class HyperGame
     {
         $alive = array_values(array_filter(array_keys($this->seats), fn (int $s): bool => ! $this->seats[$s]->out));
 
+        if ($this->isTeamGame()) {
+            return $this->checkTeamWin($final, $alive);
+        }
+
         if (count($alive) === 1) {
             $winner = $alive[0];
         } elseif ($final && count($alive) > 1) {
@@ -1289,6 +1359,46 @@ final class HyperGame
         $this->winner = $winner;
         $this->pending = null;
         $this->emit('game_won', ['seat' => $winner, 'by_limit' => $this->byLimit, 'round' => $this->round, 'standings' => $this->standings(), 'loot' => $this->loot()]);
+
+        return true;
+    }
+
+    /**
+     * A team game's end: the only team left, or at the limit the team whose seats hold the most central banks
+     * together (then territories, then units; a tie goes to the team whose best seat ranks first). The winner
+     * seat is the team's best seat by standings().
+     *
+     * @param  list<int>  $alive
+     */
+    private function checkTeamWin(bool $final, array $alive): bool
+    {
+        $teams = array_values(array_unique(array_map(fn (int $s): int => $this->teamOf($s), $alive)));
+
+        if (count($teams) === 1) {
+            $team = $teams[0];
+        } elseif ($final && count($teams) > 1) {
+            $score = [];
+
+            foreach ($this->standings() as $s) {
+                $t = $this->teamOf($s);
+                $score[$t] ??= [0, 0, 0];
+                $score[$t] = [$score[$t][0] + $this->banksOf($s), $score[$t][1] + count($this->territoriesOf($s)), $score[$t][2] + $this->unitsOf($s)];
+            }
+
+            // Stable: equal teams keep the order of their best seat in standings().
+            $ranked = array_keys($score);
+            usort($ranked, fn (int $a, int $b): int => $score[$b] <=> $score[$a]);
+            $team = $ranked[0];
+            $this->byLimit = true;
+        } else {
+            return false;
+        }
+
+        $this->over = true;
+        $this->winnerTeam = $team;
+        $this->winner = array_values(array_filter($this->standings(), fn (int $s): bool => $this->teamOf($s) === $team))[0];
+        $this->pending = null;
+        $this->emit('game_won', ['seat' => $this->winner, 'team' => $team, 'by_limit' => $this->byLimit, 'round' => $this->round, 'standings' => $this->standings(), 'loot' => $this->loot()]);
 
         return true;
     }

@@ -83,11 +83,17 @@ function hyperTerritory(HyperGame $game, string $id): array
 
 /**
  * One line of tools/hbsim's `parity` mode for the same game: a whole bot game from the page's setup,
- * fingerprinted by FNV-1a over the last board and the loot per seat.
+ * fingerprinted by FNV-1a over the last board and the loot per seat. With `teams` > 0, seat s plays for
+ * team s % teams (the lobby's alternating order) and the line ends in ` t<teams>`.
  */
-function hyperParityLine(int $seed, int $players, int $limit): string
+function hyperParityLine(int $seed, int $players, int $limit, int $teams = 0): string
 {
     $seats = array_map(fn (string $faction): array => ['faction' => $faction, 'bot' => true], array_slice(array_keys(HyperGame::FACTIONS), 0, $players));
+
+    if ($teams > 0) {
+        $seats = array_map(fn (array $seat, int $index): array => [...$seat, 'team' => $index % $teams], $seats, array_keys($seats));
+    }
+
     $game = HyperBot::playGame(HyperGame::start($seats, $limit, $seed)->game)->game;
     $fnv = function (string $text): int {
         $hash = 0x811C9DC5;
@@ -101,5 +107,5 @@ function hyperParityLine(int $seed, int $players, int $limit): string
     $board = implode('', array_map(fn (array $t): string => ($t['owner'] ?? -1).",{$t['pleb']},{$t['maxi']},{$t['asic']};", $game->toArray()['territories']));
     $loot = implode('', array_map(fn (float $loot): string => (int) round($loot * 10).';', $game->loot()));
 
-    return sprintf('%d %d %d %d %d %d %08x %08x', $seed, $players, $limit, $game->isOver() ? $game->winner() : -1, $game->round(), $game->wonByLimit() ? 1 : 0, $fnv($board), $fnv($loot));
+    return sprintf('%d %d %d %d %d %d %08x %08x', $seed, $players, $limit, $game->isOver() ? $game->winner() : -1, $game->round(), $game->wonByLimit() ? 1 : 0, $fnv($board), $fnv($loot)).($teams > 0 ? " t{$teams}" : '');
 }

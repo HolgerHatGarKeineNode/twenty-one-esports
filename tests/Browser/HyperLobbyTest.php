@@ -1,6 +1,7 @@
 <?php
 
 use App\Models\Admin;
+use App\Models\Clan;
 use App\Models\HyperMatch;
 use App\Models\HyperTable;
 use App\Models\User;
@@ -9,12 +10,15 @@ use App\Support\Hyper\HyperStats;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\File;
 use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Facades\Process;
 use Pest\Browser\Playwright\Page;
 use Pest\Browser\Support\ComputeUrl;
 use Tests\Support\BrowserConsole;
 use Tests\Support\BrowserLogin;
 use Tests\Support\BrowserWait;
 use Tests\Support\HyperOn;
+use Tests\Support\TestSigner;
+use Tests\Support\WaitForPort;
 
 pest()->group('browser');
 
@@ -48,12 +52,17 @@ beforeEach(function () {
     HyperOn::play();
 });
 
+/** Taps a caption that waits for the player (`#banner[data-wait="1"]`), every 250 ms; off with `window.__noTap`. */
+const HYPER_TAP_BANNERS = 'setInterval(() => { if (window.__noTap) return; const b = document.querySelector("#banner[data-wait=\\"1\\"]"); if (b) b.dispatchEvent(new PointerEvent("pointerdown", { bubbles: true })); }, 250);';
+
 function lobbyPage(User $user, string $path, int $width = 1440, int $height = 900): Page
 {
     $page = visit(BrowserLogin::url($user))->page();
     $page->context()->addInitScript(BrowserConsole::COLLECTOR);
     // A new tab is recorded instead of opened; the cinematics and sounds of the table stay off.
     $page->context()->addInitScript('window.__opened = []; window.open = (url) => { window.__opened.push(String(url)); return null; };');
+    // A big moment's caption waits for a tap (P4): the test taps it as a player would, once it asks.
+    $page->context()->addInitScript(HYPER_TAP_BANNERS);
     $page->context()->addInitScript('try { localStorage.setItem("hb-settings", '.json_encode((string) json_encode(['scenes' => false, 'music' => false, 'fx' => false, 'board' => false, 'speed' => 20])).'); } catch (e) {}');
     $page->goto(ComputeUrl::from(route('locale.switch', 'de', false)));
     $page->setViewportSize($width, $height);
@@ -259,7 +268,7 @@ test('a finished match replays to its end, every hand open, and jumps back; the 
     lobbyControl($page);
 });
 
-test('after a finished match the statistics play by themselves, can be skipped, and every page is reachable; every page measured', function () {
+test('after a finished match the statistics wait on every page for Next, can be skipped, and every page is reachable; every page measured', function () {
     config(['esports.hyper.bot_round_cap' => 2]);
     $anna = User::factory()->create();
     Admin::query()->create(['pubkey' => $anna->pubkey]);
@@ -289,24 +298,35 @@ test('after a finished match the statistics play by themselves, can be skipped, 
 
     $page = lobbyPage($anna, route('hyper.match', $match, false), 1600, 900);
 
-    // The page opened on a finished match: after the end screen the sequence plays by itself, charts first.
-    BrowserWait::until($page, '() => { const s = window.hyperStats.state(); return s.open && s.auto && s.page === "charts"; }', 10_000);
+    // The page opened on a finished match: after the end screen the statistics open on the charts, the lines
+    // draw, and only then the Next button shows (P4 pacing: no page turns by itself).
+    BrowserWait::until($page, '() => { const s = window.hyperStats.state(); return s.open && s.page === "charts"; }', 10_000);
     $plan = $page->evaluate('() => window.hyperStats.state()');
     expect($plan['pages'])->toHaveCount(13)
-        ->and($plan['total'])->toBeGreaterThanOrEqual(30_000)
-        ->and($plan['total'])->toBeLessThanOrEqual(60_000)
+        ->and($plan['ready'])->toBeFalse()
+        ->and($page->evaluate('() => document.querySelector("[data-test=hyper-stats-next]").hidden'))->toBeTrue()
         ->and($page->evaluate('() => document.querySelectorAll("#st-chart .st-line").length'))->toBe(3);
-    BrowserWait::until($page, '() => window.hyperStats.state().page === "leaders"', 16_000);
+    // The lines draw for 2.6 s at least: not ready after 2 s, ready by 4 s.
+    $page->evaluate('() => new Promise((done) => setTimeout(done, 2000))');
+    expect($page->evaluate('() => window.hyperStats.state().ready'))->toBeFalse();
+    BrowserWait::until($page, '() => window.hyperStats.state().ready && !document.querySelector("[data-test=hyper-stats-next]").hidden', 3_000);
+    // Waiting turns no page.
+    $page->evaluate('() => new Promise((done) => setTimeout(done, 4000))');
+    expect($page->evaluate('() => window.hyperStats.state().page'))->toBe('charts');
+    $page->locator('[data-test=hyper-stats-next]')->click();
+    BrowserWait::until($page, '() => window.hyperStats.state().page === "leaders"', 3_000);
+    // Next (here Enter) while the numbers count up finishes them at once and stays; the next Enter turns the page.
+    $page->locator('#st-page')->press('Enter');
+    expect($page->evaluate('() => window.hyperStats.state()'))->toMatchArray(['page' => 'leaders', 'ready' => true]);
 
     // Skipped: the end screen is back, its buttons are free to click.
     $page->locator('[data-test=hyper-stats-skip]')->click();
     BrowserWait::until($page, '() => document.querySelector("[data-test=hyper-stats]").hidden', 3_000);
-    expect($page->evaluate('() => { const b = document.querySelector("#again-btn").getBoundingClientRect(); return document.elementFromPoint(b.x + b.width / 2, b.y + b.height / 2)?.closest("#again-btn") !== null; }'))->toBeTrue()
-        ->and($page->evaluate('() => window.hyperStats.state().auto'))->toBeFalse();
+    expect($page->evaluate('() => { const b = document.querySelector("#again-btn").getBoundingClientRect(); return document.elementFromPoint(b.x + b.width / 2, b.y + b.height / 2)?.closest("#again-btn") !== null; }'))->toBeTrue();
 
-    // Opened again from the end screen: browsing, no autoplay; the tabs reach the leaders and the moments.
+    // Opened again from the end screen; the tabs reach the leaders and the moments.
     $page->locator('[data-test=hyper-stats-open]')->click();
-    BrowserWait::until($page, '() => { const s = window.hyperStats.state(); return s.open && !s.auto && s.page === "charts"; }', 3_000);
+    BrowserWait::until($page, '() => { const s = window.hyperStats.state(); return s.open && s.page === "charts"; }', 3_000);
     $page->locator('[data-test=hyper-stats-tab]:nth-child(2)')->click();
     BrowserWait::until($page, '() => window.hyperStats.state().page === "leaders" && document.querySelectorAll("[data-leader]").length === 5', 3_000);
     $page->locator('[data-test=hyper-stats-tab]:nth-child(3)')->click();
@@ -359,11 +379,13 @@ test('after a finished match the statistics play by themselves, can be skipped, 
 
         foreach (range(0, 12) as $index) {
             if ($index > 0) {
+                // A click on the page finishes its animation; then Next turns it.
+                $page->evaluate('() => { if (!window.hyperStats.state().ready) window.hyperStats.next(); }');
                 $page->locator('[data-test=hyper-stats-next]')->click();
                 BrowserWait::until($page, '() => window.hyperStats.state().index === '.$index, 3_000);
             }
-            // The scene's sprite and texts settle (0.7 s), the chart lines draw (2.4 s from their start).
-            $page->evaluate('() => new Promise((done) => setTimeout(done, '.($index === 0 ? 2900 : 900).'))');
+            // Measured with the page's animation over (a finished one is the page as it stays).
+            $page->evaluate('() => { if (!window.hyperStats.state().ready) window.hyperStats.next(); return new Promise((done) => setTimeout(done, 400)); }');
             $rows[] = $page->evaluate($measure);
             $shot($width.'-'.str_replace(':', '-', (string) $rows[array_key_last($rows)]['page']));
         }
@@ -398,4 +420,212 @@ test('after a finished match the statistics play by themselves, can be skipped, 
 
     expect(lobbyErrors($page))->toBe([]);
     lobbyControl($page);
+});
+
+/** A drawer or panel's numbers at one size: overflow, clipped texts, and the boxes that must stay on screen. */
+function teamMeasure(Page $page, int $width, int $height, string $root, array $boxes): array
+{
+    $page->setViewportSize($width, $height);
+    $page->evaluate('() => new Promise((done) => setTimeout(done, 400))');
+    $selectors = json_encode($boxes);
+
+    return $page->evaluate(<<<JS
+        () => {
+            const de = document.documentElement;
+            const box = (el) => { if (!el || el.offsetParent === null) return null; const r = el.getBoundingClientRect(); return [Math.round(r.left), Math.round(r.top), Math.round(r.right), Math.round(r.bottom)]; };
+            const texts = [...document.querySelectorAll('{$root} b, {$root} span, {$root} button, {$root} h2, {$root} h3, {$root} small, {$root} p, {$root} input, {$root} li')]
+                .filter((el) => el.offsetParent !== null && el.scrollWidth > el.clientWidth + 1);
+            const cut = (el) => (el.dataset.test || el.id || el.className || el.tagName) + ': ' + (el.innerText || el.value || '').trim().slice(0, 40);
+            const boxes = Object.fromEntries(Object.entries({$selectors}).map(([name, sel]) => [name, box(document.querySelector(sel))]));
+            const outside = Object.entries(boxes).filter(([, b]) => b && (b[0] < 0 || b[1] < 0 || b[2] > innerWidth || b[3] > innerHeight)).map(([n]) => n);
+            return {
+                size: innerWidth + 'x' + innerHeight,
+                scroll: [de.scrollWidth, de.clientWidth],
+                clipped: texts.filter((el) => getComputedStyle(el).textOverflow !== 'ellipsis').map(cut),
+                ellipsised: texts.filter((el) => getComputedStyle(el).textOverflow === 'ellipsis').map(cut),
+                boxes,
+                outside,
+            };
+        }
+        JS);
+}
+
+test('a clan table seats two clans on two sides and starts a team match; the team chat reaches the teammate and never the opponent; the team pages measured', function () {
+    expect(config('broadcasting.default'))->toBe('reverb', 'Run this through scripts/test-browser.sh, which starts Reverb.');
+    config(['esports.hyper.lobby_fill_seconds' => 600, 'esports.game_chat.creator' => (new TestSigner)->pubkey]);
+
+    // The in-memory relay for the chats (tests/Support/MiniRelay.php).
+    $seed = (string) tempnam(sys_get_temp_dir(), 'hyper-seed');
+    file_put_contents($seed, '[]');
+    $port = (int) Process::run(['php', '-r', '$s = stream_socket_server("tcp://127.0.0.1:0"); echo explode(":", stream_socket_get_name($s, false))[1];'])->output();
+    $relay = Process::path(base_path())->start(['php', 'tests/Support/mini-relay.php', (string) $port, $seed]);
+    WaitForPort::open('127.0.0.1', $port);
+    config(['esports.chat.relays' => ['ws://127.0.0.1:'.$port], 'esports.profile_relays' => []]);
+
+    try {
+        [$anna, $carl, $bert] = User::factory()->count(3)->create();
+        foreach ([$anna, $carl, $bert] as $user) {
+            TestSigner::forBrowser($user);
+        }
+        Admin::query()->create(['pubkey' => $anna->fresh()->pubkey]);
+        $red = Clan::factory()->create(['owner_id' => $anna->id, 'name' => 'Red Pill Rebels', 'clantag' => 'RED']);
+        $blue = Clan::factory()->create(['owner_id' => $bert->id, 'name' => 'Blue Clan', 'clantag' => 'BLU', 'meetup_name' => 'Einundzwanzig Kassel', 'meetup_city' => 'Kassel']);
+        HyperOn::inClan($carl, $red);
+        [$anna, $carl, $bert] = [$anna->fresh(), $carl->fresh(), $bert->fresh()];
+        $index = route('hyper.index', absolute: false);
+        $annas = lobbyPage($anna, $index);
+        $carls = lobbyPage($carl, $index);
+        $berts = lobbyPage($bert, $index);
+        $rows = [];
+
+        // Anna opens a clan table, 2v2: her clan takes side 0.
+        $annas->locator('[data-test=hyper-lobby-format-option][data-format=clans]')->click();
+        BrowserWait::until($annas, '() => document.querySelector("[data-test=hyper-lobby-format-option][data-format=clans]").getAttribute("aria-pressed") === "true"', 8_000);
+        $annas->locator('[data-test=hyper-lobby-open]')->click();
+        BrowserWait::until($annas, '() => !!document.querySelector("[data-test=hyper-lobby-sides]")', 8_000);
+
+        // Bert's clan plays as its meetup and takes side 1; Carl joins his clan on side 0.
+        BrowserWait::until($berts, '() => !!document.querySelector("[data-test=hyper-lobby-table] [data-test=hyper-lobby-join]")', 12_000);
+        expect($berts->evaluate('() => document.querySelector("[data-test=hyper-lobby-table-sides]")?.innerText'))->toContain('Red Pill Rebels');
+        $berts->locator('[data-test=hyper-lobby-join]')->click();
+        BrowserWait::until($berts, '() => !!document.querySelector("[data-test=hyper-lobby-mine]")', 8_000);
+        BrowserWait::until($carls, '() => !!document.querySelector("[data-test=hyper-lobby-table] [data-test=hyper-lobby-join]")', 12_000);
+        $carls->locator('[data-test=hyper-lobby-join]')->click();
+        BrowserWait::until($annas, '() => document.querySelector("[data-test=hyper-lobby-count]")?.innerText.startsWith("3/4")', 12_000);
+
+        $sides = $annas->evaluate('() => [...document.querySelectorAll("[data-test=hyper-lobby-side]")].map((s) => ({ side: s.dataset.side, text: s.innerText, seats: [...s.querySelectorAll("[data-test=hyper-lobby-seat]")].map((x) => x.dataset.seat) }))');
+        expect($sides[0]['text'])->toContain('Red Pill Rebels')->toContain($anna->displayName())->toContain($carl->displayName())
+            ->and($sides[1]['text'])->toContain('Einundzwanzig Kassel')->toContain('Kassel')->toContain($bert->displayName())
+            ->and(array_column($sides, 'seats'))->toBe([['0', '2'], ['1', '3']]);
+
+        foreach ([[390, 844], [1440, 900]] as [$width, $height]) {
+            $rows[] = ['state' => 'clan table', ...lobbyMeasure($annas, $width, $height, '[data-test=hyper-lobby-fill]')];
+        }
+        $annas->setViewportSize(1440, 900);
+
+        // A bot takes Bert's free seat and plays for his side; the match opens for all three.
+        $annas->locator('[data-test=hyper-lobby-fill]')->click();
+        BrowserWait::until($annas, '() => window.__opened.length === 1', 10_000);
+        $match = HyperTable::query()->latest('id')->firstOrFail()->match()->with('seats')->firstOrFail();
+        expect($match->seats->pluck('team')->all())->toBe([0, 1, 0, 1])
+            ->and($match->seats->pluck('user_id')->all())->toBe([$anna->id, $bert->id, $carl->id, null])
+            ->and($match->team_clans)->toBe([$red->id, $blue->id]);
+
+        // The three match pages, each with its own signer.
+        $path = route('hyper.match', $match, false);
+        foreach ([[$annas, $anna], [$carls, $carl], [$berts, $bert]] as [$page, $user]) {
+            $page->context()->addInitScript(TestSigner::browserStub($user));
+            $page->goto(ComputeUrl::from($path));
+            BrowserWait::until($page, '() => document.body.dataset.ready === "1" && document.body.dataset.live === "1"', 15_000);
+        }
+        $guest = visit(BrowserLogin::LANDING)->page();
+        $guest->context()->addInitScript(BrowserConsole::COLLECTOR);
+        $guest->goto(ComputeUrl::from($path));
+        BrowserWait::until($guest, '() => document.body.dataset.ready === "1"', 15_000);
+
+        // The roster shows both sides under their clan.
+        expect($annas->evaluate('() => [...document.querySelectorAll("[data-test=hyper-roster-team]")].map((g) => g.querySelector(".team-head b").innerText)'))->toBe(['Red Pill Rebels', 'Einundzwanzig Kassel'])
+            // Only a player of a team match gets the team tab; the spectator's page has neither tab nor team url.
+            ->and($guest->evaluate('() => !!document.querySelector("[data-test=hyper-chat-tab-team]")'))->toBeFalse()
+            ->and($guest->evaluate('() => JSON.parse(document.querySelector("#hyper-config").textContent).teamChat'))->toBeNull()
+            // Bert's page never carries Anna's or Carl's key.
+            ->and($berts->evaluate('() => document.documentElement.outerHTML'))->not->toContain($anna->pubkey)->not->toContain($carl->pubkey);
+
+        // Anna writes to her team: Carl reads it, Bert's team tab never shows it.
+        foreach ([$annas, $carls, $berts] as $page) {
+            $page->evaluate('() => window.hyperTeamChat.open()');
+            BrowserWait::until($page, '() => document.querySelector("[data-test=hyper-team-chat]").dataset.status === "live"', 10_000);
+        }
+        expect($annas->evaluate('() => window.hyperTeamChat.members()'))->toEqualCanonicalizing([$anna->pubkey, $carl->pubkey])
+            ->and($berts->evaluate('() => window.hyperTeamChat.members()'))->toBe([$bert->pubkey]);
+
+        $annas->locator('[data-test=hyper-team-input]')->fill('flank via Mexiko');
+        $annas->locator('[data-test=hyper-team-send]')->click();
+        BrowserWait::until($carls, '() => [...document.querySelectorAll("[data-test=hyper-team-text]")].some((p) => p.innerText === "flank via Mexiko")', 10_000);
+        expect($carls->evaluate('() => document.querySelector("[data-test=hyper-team-message] .cm-name").innerText'))->toBe($anna->displayName());
+
+        // Bert writes to his side (a bot: nobody else reads it); then his page is checked for Anna's message.
+        $berts->locator('[data-test=hyper-team-input]')->fill('gm Kassel');
+        $berts->locator('[data-test=hyper-team-send]')->click();
+        BrowserWait::until($berts, '() => [...document.querySelectorAll("[data-test=hyper-team-text]")].some((p) => p.innerText === "gm Kassel")', 10_000);
+        $berts->evaluate('() => new Promise((done) => setTimeout(done, 1500))');
+        expect($berts->evaluate('() => document.body.innerText'))->not->toContain('flank via Mexiko')
+            ->and($carls->evaluate('() => document.body.innerText'))->not->toContain('gm Kassel');
+
+        // On the relay: every wrap of Anna's message is addressed to Anna or Carl, none to Bert.
+        $wraps = $berts->evaluate('(url) => new Promise((done) => { const ws = new WebSocket(url); const seen = []; ws.onopen = () => ws.send(JSON.stringify(["REQ", "w", { kinds: [1059] }])); ws.onmessage = (m) => { const d = JSON.parse(m.data); if (d[0] === "EVENT") seen.push(d[2].tags.filter((t) => t[0] === "p").map((t) => t[1])[0]); if (d[0] === "EOSE") { ws.close(); done(seen); } }; })', 'ws://127.0.0.1:'.$port);
+        $counts = array_count_values($wraps);
+        expect($counts[$carl->pubkey] ?? 0)->toBe(1)
+            ->and($counts[$anna->pubkey] ?? 0)->toBe(1)
+            ->and($counts[$bert->pubkey] ?? 0)->toBe(1, 'only Bert\'s own copy of his message');
+
+        foreach ([[390, 844], [1440, 900]] as [$width, $height]) {
+            $rows[] = ['state' => 'team chat', ...teamMeasure($annas, $width, $height, '#chat', ['tabs' => '.chat-tabs', 'input' => '#team-input', 'send' => '[data-test=hyper-team-send]', 'drawer' => '#chat'])];
+            $annas->evaluate('() => window.hyperChat.close()');
+            $rows[] = ['state' => 'team roster', ...teamMeasure($annas, $width, $height, '#roster', ['roster' => '#roster'])];
+            $annas->evaluate('() => window.hyperTeamChat.open()');
+        }
+
+        foreach ([$annas, $carls, $berts, $guest] as $page) {
+            expect(lobbyErrors($page))->toBe([]);
+        }
+        lobbyControl($berts);
+
+        // The team end: a finished team match with every team moment, its pages measured at 1600 and 390.
+        config(['esports.hyper.bot_round_cap' => 3]);
+        $matches = app(HyperMatches::class);
+        $over = HyperOn::teams($red, $blue, $anna, null, $carl, null, seed: 9);
+        $matches->leave($over, $carl);
+        $matches->leave($over->refresh(), $anna);
+        $over = HyperMatch::query()->findOrFail($over->id);
+        expect($over->isActive())->toBeFalse();
+        $stats = HyperStats::compute($over);
+        $won = $stats['teams'][0]['won'] ? 0 : 1;
+        $stats['moments'] = [
+            ['key' => 'team_win', 'round' => $stats['rounds'], 'team' => $won, 'seat' => $stats['teams'][$won]['seats'][0], 'seats' => $stats['teams'][$won]['seats'], 'mvp' => $stats['teams'][$won]['mvp'], 'by_limit' => true],
+            ['key' => 'clan_bank', 'round' => 1, 'team' => 0, 'seat' => 0, 'territory' => 'ny', 'loser' => 1],
+            ['key' => 'clan_zone', 'round' => 2, 'team' => 1, 'zone' => 'afro', 'seats' => [1, 3]],
+            ['key' => 'clan_knockout', 'round' => 3, 'team' => 0, 'seat' => 2, 'victim' => 3, 'victim_team' => 1],
+        ];
+        Cache::put('hyper:stats:v'.HyperStats::VERSION.':'.$over->ulid, $stats, 600);
+        $annas->evaluate('() => { localStorage.removeItem("hb-stats-seen"); }');
+        $annas->goto(ComputeUrl::from(route('hyper.match', $over, false)));
+        BrowserWait::until($annas, '() => { const s = window.hyperStats?.state(); return s && s.open && s.page === "charts"; }', 15_000);
+        expect($annas->evaluate('() => window.hyperStats.state().pages'))->toBe(['charts', 'leaders', 'teams', 'moment:team_win', 'moment:clan_bank', 'moment:clan_zone', 'moment:clan_knockout'])
+            ->and($annas->evaluate('() => document.querySelector("[data-test=hyper-end-team]").innerText'))->toContain($stats['teams'][$won]['team'] === 0 ? 'Red Pill Rebels' : 'Einundzwanzig Kassel');
+
+        $scenes = [];
+        foreach ([[1600, 900], [390, 844]] as [$width, $height]) {
+            $annas->setViewportSize($width, $height);
+            $annas->evaluate('() => document.querySelector("[data-test=hyper-stats-tab][data-page=teams]").click()');
+            foreach (['teams', 'moment:team_win', 'moment:clan_bank', 'moment:clan_zone', 'moment:clan_knockout'] as $k => $want) {
+                if ($k > 0) {
+                    $annas->evaluate('() => { if (!window.hyperStats.state().ready) window.hyperStats.next(); window.hyperStats.next(); }');
+                }
+                BrowserWait::until($annas, '() => window.hyperStats.state().page === '.json_encode($want), 3_000);
+                $annas->evaluate('() => { if (!window.hyperStats.state().ready) window.hyperStats.next(); }');
+                $scenes[] = ['state' => $want, ...teamMeasure($annas, $width, $height, '#stats', ['page' => '#st-page', 'next' => '#st-next', 'skip' => '#st-skip', 'crest' => '.sc-crest', 'art' => '.sc-art', 'text' => '.sc-txt'])];
+                $scenes[array_key_last($scenes)]['inner'] = $annas->evaluate('() => { const p = document.querySelector("#st-page"); return [p.scrollWidth, p.clientWidth, p.scrollHeight, p.clientHeight]; }');
+                $scenes[array_key_last($scenes)]['logos'] = $annas->evaluate('() => document.querySelectorAll("#st-page .tm-logo").length');
+            }
+        }
+
+        fwrite(STDERR, "\nhyper teams measured: ".json_encode([...$rows, ...$scenes], JSON_UNESCAPED_UNICODE)."\n");
+
+        foreach ([...$rows, ...$scenes] as $row) {
+            $where = $row['state'].' '.$row['size'];
+            expect($row['scroll'][0])->toBe($row['scroll'][1], $where)
+                ->and($row['clipped'])->toBe([], $where)
+                ->and($row['outside'] ?? [])->toBe([], $where);
+        }
+        foreach ($scenes as $row) {
+            expect($row['logos'])->toBeGreaterThanOrEqual(1, $row['state'])
+                ->and($row['inner'][0])->toBeLessThanOrEqual($row['inner'][1], $row['state'].' '.$row['size']);
+        }
+
+        expect(lobbyErrors($annas))->toBe([]);
+    } finally {
+        $relay->stop();
+        @unlink($seed);
+    }
 });
