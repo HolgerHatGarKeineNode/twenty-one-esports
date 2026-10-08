@@ -73,7 +73,11 @@ if (meta) {
     table.subscribed(() => { live = true; document.body.dataset.live = '1'; game.catchUp(); });
 
     if (me !== null) {
-        echo.private(`hyper.${id}.seat.${me}`).listen('.hyper.hand', (payload) => game.onHand(payload));
+        // A seat its player left or a bot took over keeps its cards from them (routes/channels.php).
+        const mySeat = (config.snapshot.seats || []).find((seat) => seat.seat === me);
+        if (mySeat && !mySeat.left && !mySeat.bot) {
+            echo.private(`hyper.${id}.seat.${me}`).listen('.hyper.hand', (payload) => game.onHand(payload));
+        }
         let here = [];
         const set = () => game.setConnected(here.map((member) => member.seat));
         echo.join(`hyper.${id}.here`)
