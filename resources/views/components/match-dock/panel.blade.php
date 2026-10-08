@@ -126,7 +126,7 @@
             </div>
         @endif
 
-        <a href="{{ $item->href }}" @class(['w-full', 'dk-cta' => $item->needsYou, 'dk-sec' => ! $item->needsYou]) data-test="dock-panel-cta">{{ $cta }}</a>
+        <a href="{{ $item->href }}" @if ($model instanceof \App\Models\HyperMatch) target="_blank" rel="noopener" @endif @class(['w-full', 'dk-cta' => $item->needsYou, 'dk-sec' => ! $item->needsYou]) data-test="dock-panel-cta">{{ $cta }}</a>
         @if ($item->withdraw)
             <a href="{{ $item->withdraw }}" class="-mt-2 inline-flex min-h-11 items-center justify-center text-xs text-ink-2 hover:text-ink">{{ __('Can’t make it? Pull out') }}</a>
         @endif
