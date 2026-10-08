@@ -10,6 +10,8 @@
  * channel is subscribed, and when the tab becomes visible again, the page asks for the events it missed
  * (game.catchUp()); PlySync drops what it has seen. Without a websocket it asks every few seconds.
  *
+ * After the end screen the statistics play (stats.js, P3b).
+ *
  * A replay (P3, `config.replay`) listens to nothing: replay.js feeds the table from the replayed log. After a
  * match `hyper.rematch` says who accepted a rematch, and where the new match is once it started.
  */
@@ -22,6 +24,7 @@ import { startGame } from './game.js';
 import { startChat } from './chat.js';
 import { startEmotes } from './emotes.js';
 import { replayNet, startReplay } from './replay.js';
+import { startStats } from './stats.js';
 
 const $ = (s) => document.querySelector(s);
 const config = JSON.parse($('#hyper-config').textContent);
@@ -37,6 +40,13 @@ const net = replaying ? replayNet(http, config, cursor) : http;
 const game = startGame(config, net);
 let live = false;
 const emotes = startEmotes(config, net, game, { live: () => live });
+// The end-of-match statistics after the end screen, on the match page and at the end of the replay.
+const stats = startStats(config, http, game);
+game.onEnd((quiet) => stats.ended(quiet));
+game.onJump(() => stats.close());
+// A page opened on a finished match showed its end screen before the hook was set.
+if (game.state().over) stats.ended(true);
+window.hyperStats = stats;
 
 const badge = $('#chat-unread');
 const chat = startChat(config.chat, {

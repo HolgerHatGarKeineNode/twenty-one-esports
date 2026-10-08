@@ -12,6 +12,7 @@ use App\Support\Hyper\HyperLobby;
 use App\Support\Hyper\HyperMatches;
 use App\Support\Hyper\HyperReplay;
 use App\Support\Hyper\HyperRuleViolation;
+use App\Support\Hyper\HyperStats;
 use App\Support\Hyper\HyperTableChat;
 use App\Support\Hyper\HyperTexts;
 use Closure;
@@ -20,6 +21,7 @@ use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Http\Response;
 use Illuminate\Validation\Rule;
 use RuntimeException;
 
@@ -89,6 +91,7 @@ class HyperMatchController extends Controller
                     'leave' => route('hyper.leave', $match, false),
                     'rematch' => route('hyper.rematch', $match, false),
                     'replay' => route('hyper.replay', $match, false),
+                    'stats' => route('hyper.stats', $match, false),
                 ],
                 'assets' => '/hyper/',
                 'locale' => app()->getLocale(),
@@ -116,6 +119,7 @@ class HyperMatchController extends Controller
                 'urls' => [
                     'snapshot' => route('hyper.replay.state', $match, false),
                     'events' => route('hyper.replay.data', $match, false),
+                    'stats' => route('hyper.stats', $match, false),
                 ],
                 'replay' => ['data' => route('hyper.replay.data', $match, false), 'state' => route('hyper.replay.state', $match, false), 'last' => $match->ply],
                 'assets' => '/hyper/',
@@ -147,6 +151,25 @@ class HyperMatchController extends Controller
         $ply = min($match->ply, max(0, (int) $request->query('ply', (string) $match->ply)));
 
         return response()->json($this->replayOf($match, $ply)->snapshot($matches->snapshot($match, null)));
+    }
+
+    /**
+     * The end-of-match statistics of a finished match (HyperStats: charts per seat over the rounds, leaderboards,
+     * turning points, moments), computed from the replay and cached per match. A running match has none (404),
+     * like the replay. A finished match whose log does not replay has none either: reported (it would be a defect),
+     * answered 204, and the page shows no statistics instead of a broken sequence.
+     */
+    public function stats(HyperMatch $match): JsonResponse|Response
+    {
+        abort_if($match->status !== HyperMatchStatus::Finished, 404);
+
+        try {
+            return response()->json(HyperStats::of($match));
+        } catch (RuntimeException $exception) {
+            report($exception);
+
+            return response()->noContent();
+        }
     }
 
     /**

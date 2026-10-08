@@ -205,9 +205,28 @@
             @unless ($replay)
                 <a class="ghost" id="replay-link" href="{{ $config['urls']['replay'] }}" target="_blank" rel="noopener" data-test="hyper-replay-link">{{ __('Watch the replay') }}</a>
             @endunless
+            <button class="ghost" id="stats-btn" type="button" hidden data-test="hyper-stats-open">{{ __('Match statistics') }}</button>
             <button class="ghost" id="end-map" type="button">{{ __('Look at the map') }}</button>
         </div>
         <p class="muted" id="rematch-note" aria-live="polite" data-test="hyper-rematch-note"></p>
+    </div>
+</div>
+
+{{-- The end-of-match statistics (P3b, resources/js/hyper/stats.js): charts, leaderboards, a scene per moment. --}}
+<div class="overlay" id="stats" hidden data-test="hyper-stats" role="dialog" aria-modal="true" aria-labelledby="stats-h">
+    <div class="st-box frame shadowed">
+        <header class="st-head">
+            <h2 id="stats-h">{{ __('Match statistics') }}</h2>
+            <nav class="st-tabs" id="st-tabs" role="tablist" aria-label="{{ __('Match statistics') }}"></nav>
+            <button class="ghost" id="st-skip" type="button" data-test="hyper-stats-skip">{{ __('Skip') }}</button>
+        </header>
+        <div class="st-progress" aria-hidden="true"><i id="st-bar"></i></div>
+        <div class="st-page" id="st-page" aria-live="polite"></div>
+        <div class="st-foot">
+            <button class="ghost" id="st-prev" type="button" aria-label="{{ __('Previous') }}" data-test="hyper-stats-prev"><svg><use href="#i-back"/></svg></button>
+            <output id="st-count">1 / 1</output>
+            <button class="ghost" id="st-next" type="button" aria-label="{{ __('Next') }}" data-test="hyper-stats-next"><svg><use href="#i-move"/></svg></button>
+        </div>
     </div>
 </div>
 

@@ -55,7 +55,7 @@ const TICKER = [];
 /** The last plies whose events were shown, in order: a ply twice would be an animation shown twice. */
 const SHOWN = [];
 const UI = { scenes: true, unit: 'pleb', qty: '1', from: null, card: null, mode: 'owner', speed: 1, busy: false, hover: null };
-const hooks = { onEmote: null };
+const hooks = { onEmote: null, onEnd: null, onJump: null };
 
 /* ================= World geometry ================= */
 let T = [];
@@ -885,13 +885,15 @@ async function showEnd(winner, byLimit, round, loot, quiet) {
     ended = true;
     const f = fac(winner); const iWon = isMe(winner); const iLost = ME !== null && !iWon;
     const terr = territoriesOf(G, winner).length; const banks = banksOf(G, winner);
-    $('#end-art').style.backgroundImage = `url(${A}art/${iLost ? 'lose' : f.por === 'you' ? 'win' : 'win-' + f.por}.jpg?v=1)`;
+    // A defeat shows the viewer's own faction beaten (P3b art), a win or a spectator's view the winner's finale.
+    const mine = porOf(ME);
+    $('#end-art').style.backgroundImage = `url(${A}art/${iLost ? (mine === 'you' ? 'lose' : 'lose-' + mine) : f.por === 'you' ? 'win' : 'win-' + f.por}.jpg?v=1)`;
     $('#end-h').innerHTML = iWon
         ? (f.por === 'you' ? t('You made the :name happen!', { name: '<b>Hyperbitcoinization</b>' }) : t('You win as :side!', { side: b(t(f.side)) }))
         : t(':name wins', { name: b(nameOf(winner)) });
     $('#end-sub').textContent = `${t(f.win[1])} ${byLimit ? t('Round limit: :banks central banks, :territories territories', { banks, territories: terr }) : t('Everyone else is out')}, ${t('round :round', { round })}.`;
-    const mine = ME !== null ? loot[ME] ?? G.seats[ME]?.loot ?? 0 : null;
-    $('#end-loot').innerHTML = mine === null ? '' : `<img src="${A}art/ico-sats.webp?v=1" alt=""> ${t(':sats M sats loot, credited to you', { sats: b('+' + fmt(mine)) })}`;
+    const myLoot = ME !== null ? loot[ME] ?? G.seats[ME]?.loot ?? 0 : null;
+    $('#end-loot').innerHTML = myLoot === null ? '' : `<img src="${A}art/ico-sats.webp?v=1" alt=""> ${t(':sats M sats loot, credited to you', { sats: b('+' + fmt(myLoot)) })}`;
     $('#end').dataset.result = iWon ? 'win' : iLost ? 'defeat' : 'watch';
     if (!quiet) {
         clip(iLost ? 'lose' : 'win');
@@ -900,6 +902,8 @@ async function showEnd(winner, byLimit, round, loot, quiet) {
     }
     $('#end').hidden = false;
     if (!REDUCED) gsap().from('#end .panel', { scale: 0.8, opacity: 0, duration: 0.4, ease: 'back.out(2)' });
+    // The end-of-match statistics (stats.js) follow the end screen.
+    hooks.onEnd?.(quiet);
 }
 
 /* ================= Intents ================= */
@@ -1200,6 +1204,7 @@ function jump(s) {
     latest = s;
     ended = false;
     $('#end').hidden = true;
+    hooks.onJump?.();
     applySnapshot(s);
 }
 
@@ -1215,6 +1220,10 @@ export const game = {
     setConnected(seats) { connected.clear(); seats.forEach((s) => connected.add(s)); render(); },
     seatName: (i) => (G ? nameOf(i) : ''),
     seatColor: (i) => (G ? colorOf(i) : '#f7931a'),
+    isBot: (i) => (G ? isBot(i) : false),
+    /** stats.js: called when the end screen is up (`quiet` when the page opened on a finished match), and when the replay jumps. */
+    onEnd(fn) { hooks.onEnd = fn; },
+    onJump(fn) { hooks.onJump = fn; },
     me: () => ME,
     playing: () => !!G && playing(),
     /** Where the page stands, for the browser tests and a look in the console. */

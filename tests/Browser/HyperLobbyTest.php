@@ -5,6 +5,9 @@ use App\Models\HyperMatch;
 use App\Models\HyperTable;
 use App\Models\User;
 use App\Support\Hyper\HyperMatches;
+use App\Support\Hyper\HyperStats;
+use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\File;
 use Illuminate\Support\Facades\Http;
 use Pest\Browser\Playwright\Page;
 use Pest\Browser\Support\ComputeUrl;
@@ -251,6 +254,147 @@ test('a finished match replays to its end, every hand open, and jumps back; the 
             ->and($row['clipped'])->toBe([], $row['size'])
             ->and($row['hands'])->toBe(3, $row['size']);
     }
+
+    expect(lobbyErrors($page))->toBe([]);
+    lobbyControl($page);
+});
+
+test('after a finished match the statistics play by themselves, can be skipped, and every page is reachable; every page measured', function () {
+    config(['esports.hyper.bot_round_cap' => 2]);
+    $anna = User::factory()->create();
+    Admin::query()->create(['pubkey' => $anna->pubkey]);
+    $matches = app(HyperMatches::class);
+    $match = $matches->create([['user' => $anna, 'faction' => 'bitcoiner'], ['bot' => true], ['bot' => true]], seed: 5, creator: $anna);
+    $matches->leave($match, $anna);
+    $match = HyperMatch::query()->findOrFail($match->id);
+    expect($match->isActive())->toBeFalse();
+
+    // The numbers are the match's own; every moment is added, so that each scene is shown and measured (the
+    // moments themselves are triggered in tests/Feature/Hyper/HyperStatsTest.php).
+    $stats = HyperStats::compute($match);
+    $stats['moments'] = [
+        ['key' => 'finale', 'round' => $stats['rounds'], 'seat' => 1, 'faction' => $stats['factions'][1], 'by_limit' => true],
+        ['key' => 'first_bank', 'round' => 1, 'seat' => 1, 'territory' => 'ny', 'loser' => 0],
+        ['key' => 'zone', 'round' => 2, 'seat' => 2, 'zone' => 'afro'],
+        ['key' => 'comeback', 'round' => 2, 'seat' => 1, 'zone' => 'ozean'],
+        ['key' => 'perfect_dice', 'round' => 1, 'seat' => 0, 'territory' => 'zuerich'],
+        ['key' => 'knockout', 'round' => 2, 'seat' => 1, 'victim' => 0],
+        ['key' => 'lost_keys', 'round' => 1, 'seat' => 2, 'victim' => 1, 'sats' => 12.3],
+        ['key' => 'salvador_lost', 'round' => 1, 'seat' => 0],
+        ['key' => 'pizza', 'round' => 2, 'seat' => 2],
+        ['key' => 'attack51', 'round' => 2, 'seat' => 1, 'territory' => 'suedostasien'],
+        ['key' => 'bitcoin_dead', 'round' => 2, 'seat' => 1],
+    ];
+    Cache::put('hyper:stats:v'.HyperStats::VERSION.':'.$match->ulid, $stats, 600);
+
+    $page = lobbyPage($anna, route('hyper.match', $match, false), 1600, 900);
+
+    // The page opened on a finished match: after the end screen the sequence plays by itself, charts first.
+    BrowserWait::until($page, '() => { const s = window.hyperStats.state(); return s.open && s.auto && s.page === "charts"; }', 10_000);
+    $plan = $page->evaluate('() => window.hyperStats.state()');
+    expect($plan['pages'])->toHaveCount(13)
+        ->and($plan['total'])->toBeGreaterThanOrEqual(30_000)
+        ->and($plan['total'])->toBeLessThanOrEqual(60_000)
+        ->and($page->evaluate('() => document.querySelectorAll("#st-chart .st-line").length'))->toBe(3);
+    BrowserWait::until($page, '() => window.hyperStats.state().page === "leaders"', 16_000);
+
+    // Skipped: the end screen is back, its buttons are free to click.
+    $page->locator('[data-test=hyper-stats-skip]')->click();
+    BrowserWait::until($page, '() => document.querySelector("[data-test=hyper-stats]").hidden', 3_000);
+    expect($page->evaluate('() => { const b = document.querySelector("#again-btn").getBoundingClientRect(); return document.elementFromPoint(b.x + b.width / 2, b.y + b.height / 2)?.closest("#again-btn") !== null; }'))->toBeTrue()
+        ->and($page->evaluate('() => window.hyperStats.state().auto'))->toBeFalse();
+
+    // Opened again from the end screen: browsing, no autoplay; the tabs reach the leaders and the moments.
+    $page->locator('[data-test=hyper-stats-open]')->click();
+    BrowserWait::until($page, '() => { const s = window.hyperStats.state(); return s.open && !s.auto && s.page === "charts"; }', 3_000);
+    $page->locator('[data-test=hyper-stats-tab]:nth-child(2)')->click();
+    BrowserWait::until($page, '() => window.hyperStats.state().page === "leaders" && document.querySelectorAll("[data-leader]").length === 5', 3_000);
+    $page->locator('[data-test=hyper-stats-tab]:nth-child(3)')->click();
+    BrowserWait::until($page, '() => window.hyperStats.state().page === "moment:finale"', 3_000);
+    $page->locator('[data-test=hyper-stats-tab]:nth-child(1)')->click();
+    BrowserWait::until($page, '() => window.hyperStats.state().page === "charts"', 3_000);
+
+    $measure = <<<'JS'
+        () => {
+            const de = document.documentElement;
+            const page = document.querySelector('#st-page');
+            const box = (el) => { if (!el || el.offsetParent === null) return null; const r = el.getBoundingClientRect(); return r.width && r.height ? { x: Math.round(r.x), y: Math.round(r.y), r: Math.round(r.right), b: Math.round(r.bottom) } : null; };
+            const hit = (a, b) => a && b && a.x < b.r - 1 && b.x < a.r - 1 && a.y < b.b - 1 && b.y < a.b - 1;
+            const boxes = { chart: box(document.querySelector('#st-chart svg')), skip: box(document.querySelector('#st-skip')), tabs: box(document.querySelector('#st-tabs')), foot: box(document.querySelector('.st-foot')), art: box(document.querySelector('.sc-art')), text: box(document.querySelector('.sc-txt')) };
+            const texts = [...document.querySelectorAll('#stats h2, #stats h3, #stats p, #stats small, #stats b, #stats .chip, #stats button, #stats .st-who, #stats output')]
+                .filter((el) => el.offsetParent !== null && el.scrollWidth > el.clientWidth + 1);
+            const cut = (el) => (el.id || el.className || el.tagName) + ': ' + el.innerText.trim().slice(0, 40);
+            const outside = Object.entries(boxes).filter(([, r]) => r && (r.x < 0 || r.y < 0 || r.r > innerWidth || r.b > innerHeight)).map(([n]) => n);
+            const overlaps = [['art', 'text'], ['chart', 'skip'], ['tabs', 'skip'], ['chart', 'foot']].filter(([a, b]) => hit(boxes[a], boxes[b])).map((p) => p.join('×'));
+            return {
+                page: window.hyperStats.state().page,
+                size: innerWidth + 'x' + innerHeight,
+                scroll: [de.scrollWidth, de.clientWidth],
+                inner: [page.scrollWidth, page.clientWidth, page.scrollHeight, page.clientHeight],
+                clipped: texts.filter((el) => getComputedStyle(el).textOverflow !== 'ellipsis').map(cut),
+                ellipsised: texts.filter((el) => getComputedStyle(el).textOverflow === 'ellipsis').map(cut),
+                overlaps,
+                outside,
+                chart: boxes.chart,
+                skip: boxes.skip,
+            };
+        }
+        JS;
+    $rows = [];
+    // Pictures for the report, only when HYPER_SHOTS names a directory.
+    $shot = function (string $name) use ($page): void {
+        $dir = getenv('HYPER_SHOTS');
+
+        if (is_string($dir) && $dir !== '') {
+            File::ensureDirectoryExists($dir);
+            $page->screenshot(false, 'hyper-stats-'.$name);
+            File::move(base_path('tests/Browser/Screenshots/hyper-stats-'.$name.'.png'), $dir.'/hyper-stats-'.$name.'.png');
+        }
+    };
+
+    foreach ([[1600, 900], [390, 844]] as [$width, $height]) {
+        $page->setViewportSize($width, $height);
+        $page->locator('[data-test=hyper-stats-tab]:nth-child(1)')->click();
+        BrowserWait::until($page, '() => window.hyperStats.state().page === "charts"', 3_000);
+
+        foreach (range(0, 12) as $index) {
+            if ($index > 0) {
+                $page->locator('[data-test=hyper-stats-next]')->click();
+                BrowserWait::until($page, '() => window.hyperStats.state().index === '.$index, 3_000);
+            }
+            // The scene's sprite and texts settle (0.7 s), the chart lines draw (2.4 s from their start).
+            $page->evaluate('() => new Promise((done) => setTimeout(done, '.($index === 0 ? 2900 : 900).'))');
+            $rows[] = $page->evaluate($measure);
+            $shot($width.'-'.str_replace(':', '-', (string) $rows[array_key_last($rows)]['page']));
+        }
+    }
+
+    fwrite(STDERR, "\nhyper stats measured: ".json_encode($rows, JSON_UNESCAPED_UNICODE)."\n");
+
+    expect(array_column($rows, 'page'))->toBe([...$plan['pages'], ...$plan['pages']]);
+
+    foreach ($rows as $row) {
+        $where = $row['page'].' '.$row['size'];
+        expect($row['scroll'][0])->toBe($row['scroll'][1], $where)
+            ->and($row['inner'][0])->toBeLessThanOrEqual($row['inner'][1], $where)
+            ->and($row['clipped'])->toBe([], $where)
+            ->and($row['overlaps'])->toBe([], $where)
+            ->and($row['outside'])->toBe([], $where)
+            ->and($row['skip'])->not->toBeNull($where);
+
+        if ($row['page'] === 'charts') {
+            expect($row['chart'])->not->toBeNull($where);
+        }
+
+        if (str_starts_with($row['page'], 'moment:')) {
+            // A scene fits its page: nothing to scroll.
+            expect($row['inner'][2])->toBeLessThanOrEqual($row['inner'][3] + 1, $where);
+        }
+    }
+
+    // Escape closes it, as Skip does.
+    $page->locator('#st-skip')->press('Escape');
+    BrowserWait::until($page, '() => document.querySelector("[data-test=hyper-stats]").hidden', 3_000);
 
     expect(lobbyErrors($page))->toBe([]);
     lobbyControl($page);

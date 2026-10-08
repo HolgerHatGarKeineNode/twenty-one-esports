@@ -23,6 +23,8 @@ Route::prefix('hyperbitcoinization')->name('hyper.')->group(function () {
     Route::get('matches/{match}/replay', [HyperMatchController::class, 'replay'])->whereUlid('match')->name('replay');
     // Each answer replays the match from its seed: throttled like the other computed reads.
     Route::get('matches/{match}/replay/data', [HyperMatchController::class, 'replayData'])->whereUlid('match')->middleware('throttle:60,1')->name('replay.data');
+    // The end-of-match statistics: replayed once, then cached per match.
+    Route::get('matches/{match}/stats', [HyperMatchController::class, 'stats'])->whereUlid('match')->middleware('throttle:60,1')->name('stats');
     Route::get('matches/{match}/replay/state', [HyperMatchController::class, 'replayState'])->whereUlid('match')->middleware('throttle:120,1')->name('replay.state');
 
     Route::middleware('auth')->group(function () {
