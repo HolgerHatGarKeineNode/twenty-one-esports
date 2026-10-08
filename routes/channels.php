@@ -2,6 +2,7 @@
 
 use App\Models\BoardGame;
 use App\Models\ChessGame;
+use App\Models\HyperMatch;
 use App\Models\User;
 use App\Support\Chess\ChessModes;
 use App\Support\Nostr\PlayerProfile;
@@ -39,6 +40,32 @@ Broadcast::channel('game.{game}.players', function (User $user, ChessGame $game)
  */
 Broadcast::channel('board.{boardGame}', function (User $user, BoardGame $boardGame) {
     return $boardGame->colorOf($user) !== null;
+});
+
+/*
+ * A Hyperbitcoinization match's player channel (plan "Hyperbitcoinization", P2), by its ulid: the seated
+ * players, a seat a bot took over included (its player may still watch). Spectators listen on the public
+ * `hyper.{ulid}.watch` channel instead (App\Events\HyperMatchUpdated and HyperEmoteSent send both).
+ */
+Broadcast::channel('hyper.{match}', function (User $user, HyperMatch $match) {
+    return $match->seatOf($user) !== null;
+});
+
+/*
+ * One seat's secrets (its cards, App\Events\HyperHandUpdated): only that seat's player.
+ */
+Broadcast::channel('hyper.{match}.seat.{seat}', function (User $user, HyperMatch $match, string $seat) {
+    return $match->seatOf($user)?->seat === (int) $seat;
+});
+
+/*
+ * Who of the seated players is at the table now: the page shows a seat as connected while its player is
+ * here. A member shares its seat and name with the other players.
+ */
+Broadcast::channel('hyper.{match}.here', function (User $user, HyperMatch $match) {
+    $seat = $match->seatOf($user);
+
+    return $seat === null ? false : ['id' => $user->id, 'seat' => $seat->seat, 'name' => $user->displayName()];
 });
 
 /*

@@ -11,6 +11,7 @@ use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Route;
 use swentel\nostr\Encryption\Nip44;
 use Symfony\Component\Mime\MimeTypes;
+use Tests\Support\HyperOn;
 use Tests\Support\LiveStreamFixture;
 use Tests\Support\TestSigner;
 
@@ -54,6 +55,19 @@ Route::prefix('__test')->name('testing.')->group(function () {
 
         return redirect((string) $request->query('to', '/'));
     })->name('login');
+
+    // Hyperbitcoinization (plan "Hyperbitcoinization", P2): a live match of `user` (seat 0) against `opponent`
+    // (seat 1) and `?bots=` bots (0 to 4), or with `?endgame=1` one action from its end (Tests\Support\HyperOn).
+    // Answers {id, path}; the page itself exists only while `esports.hyper.enabled` is on.
+    Route::get('hyper/{user}/vs/{opponent}', function (Request $request, User $user, User $opponent) {
+        abort_unless(app()->environment('testing'), 404);
+
+        $match = $request->boolean('endgame')
+            ? HyperOn::endgame($user, $opponent)
+            : HyperOn::versus($user, $opponent, min(4, max(0, (int) $request->query('bots', '0'))), null);
+
+        return response()->json(['id' => $match->ulid, 'path' => '/hyperbitcoinization/m/'.$match->ulid]);
+    })->name('hyper');
 
     // Signs whatever event draft the browser's stubbed window.nostr posts,
     // using the same signer tests/Feature/Auth/NostrLoginTest.php trusts

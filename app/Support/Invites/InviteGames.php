@@ -59,7 +59,13 @@ final class InviteGames
                 GameKind::Board => ['kind' => 'board', 'modes' => array_values(array_filter(self::BOARD_MODES, fn (string $mode): bool => $game->mode($mode) !== null))],
                 GameKind::Series => ['kind' => 'series', 'modes' => []],
                 GameKind::Score => ['kind' => 'score', 'modes' => []],
+                // Hyperbitcoinization invites come with its lobby (plan "Hyperbitcoinization", P3).
+                GameKind::Strategy => null,
             };
+
+            if ($entry === null) {
+                continue;
+            }
 
             // A board game without a mode a link can start has nothing to invite to.
             if ($entry['kind'] === 'board' && $entry['modes'] === []) {

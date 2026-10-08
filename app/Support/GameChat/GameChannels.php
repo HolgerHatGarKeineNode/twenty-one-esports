@@ -43,6 +43,10 @@ use swentel\nostr\Sign\Sign;
  * it. Its id is fixed all the same, so switching it on later opens exactly
  * the channel computed here. TMNF and Blockfill (2026-10-03) follow the same
  * terms behind their own switches (`esports.tmnf`, `esports.blockfill`).
+ *
+ * A Hyperbitcoinization match has its own table chat on the same terms,
+ * fixed by the match's public id (matchCreateEvent(), plan
+ * "Hyperbitcoinization", P2).
  */
 final class GameChannels
 {
@@ -154,6 +158,54 @@ final class GameChannels
     public static function channelId(string $game): ?string
     {
         return self::createEvent($game)['id'] ?? null;
+    }
+
+    /**
+     * The kind-40 content of a Hyperbitcoinization match's table chat (plan "Hyperbitcoinization", P2):
+     * one channel per match, players and spectators in it together (user, 2026-10-08). Fixed by the
+     * match's public id (its ulid) and never changed, like a game's.
+     */
+    public static function matchContent(string $match): string
+    {
+        return (string) json_encode([
+            'name' => 'TWENTY ONE esports · Hyperbitcoinization · '.$match,
+            'about' => 'The table chat of a Hyperbitcoinization match in the TWENTY ONE esports league: players and spectators.',
+        ], JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
+    }
+
+    /**
+     * The unsigned kind 40 of a match's table chat, with its id: on the same terms as a game's channel
+     * (the creator, CREATED_AT, no tags), so every server and client computes it from the creator and the
+     * match's public id alone, before the kind 40 is on any relay.
+     *
+     * @return array{id: string, pubkey: string, created_at: int, kind: int, tags: list<list<string>>, content: string}|null
+     */
+    public static function matchCreateEvent(string $match, ?string $creator = null): ?array
+    {
+        $creator ??= self::creator();
+
+        if (trim($match) === '' || ! NostrKeys::isHexPubkey($creator)) {
+            return null;
+        }
+
+        $content = self::matchContent($match);
+        $event = (new Event)->setKind(40)->setTags([])->setContent($content)->setCreatedAt(self::CREATED_AT);
+        $event->setPublicKey($creator);
+
+        return [
+            'id' => hash('sha256', (string) Sign::serializeEvent($event)),
+            'pubkey' => $creator,
+            'created_at' => self::CREATED_AT,
+            'kind' => 40,
+            'tags' => [],
+            'content' => $content,
+        ];
+    }
+
+    /** The table chat id of a match (hex), null without a creator. */
+    public static function matchChannelId(string $match): ?string
+    {
+        return self::matchCreateEvent($match)['id'] ?? null;
     }
 
     /**
