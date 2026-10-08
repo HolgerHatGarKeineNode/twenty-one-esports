@@ -1,0 +1,96 @@
+{
+ "model": "google/gemini-3-pro-image",
+ "style": "",
+ "assets": [
+  {
+   "id": "medal-finale",
+   "aspect": "1:1",
+   "prompt": "A grand golden victory trophy cup with two handles, a glowing orange gemstone set in its front, laurel wreath engraving, on a small black marble base. Isolated game asset, centered, complete and not cropped, stylized semi-realistic modern AAA video game 3D render, crisp edges, soft studio light, on a perfectly flat solid pure magenta background (#FF00FF), no shadow, no ground plane. No text, no letters, no numbers, no logos, no watermark."
+  },
+  {
+   "id": "medal-first-bank",
+   "aspect": "1:1",
+   "prompt": "A heavy bronze medal on a short orange ribbon, its face embossed with a classical marble bank facade with columns that is cracking and crumbling. Isolated game asset, centered, complete and not cropped, stylized semi-realistic modern AAA video game 3D render, crisp edges, soft studio light, on a perfectly flat solid pure magenta background (#FF00FF), no shadow, no ground plane. No text, no letters, no numbers, no logos, no watermark."
+  },
+  {
+   "id": "medal-zone",
+   "aspect": "1:1",
+   "prompt": "A shiny silver and gold medal shaped like a small globe with one continent glowing orange, hanging from a dark blue ribbon. Isolated game asset, centered, complete and not cropped, stylized semi-realistic modern AAA video game 3D render, crisp edges, soft studio light, on a perfectly flat solid pure magenta background (#FF00FF), no shadow, no ground plane. No text, no letters, no numbers, no logos, no watermark."
+  },
+  {
+   "id": "medal-comeback",
+   "aspect": "1:1",
+   "prompt": "A gold medal with a fiery orange phoenix rising from ashes embossed on it, flames licking around the rim, on a red ribbon. Isolated game asset, centered, complete and not cropped, stylized semi-realistic modern AAA video game 3D render, crisp edges, soft studio light, on a perfectly flat solid pure magenta background (#FF00FF), no shadow, no ground plane. No text, no letters, no numbers, no logos, no watermark."
+  },
+  {
+   "id": "medal-dice",
+   "aspect": "1:1",
+   "prompt": "Three glossy orange gaming dice tumbling in mid air, each showing six pips facing the viewer, sparkles and a golden glow around them. Isolated game asset, centered, complete and not cropped, stylized semi-realistic modern AAA video game 3D render, crisp edges, soft studio light, on a perfectly flat solid pure magenta background (#FF00FF), no shadow, no ground plane. No text, no letters, no numbers, no logos, no watermark."
+  },
+  {
+   "id": "medal-knockout",
+   "aspect": "1:1",
+   "prompt": "Two crossed golden swords behind a cracked steel shield with an orange star in the middle, an epic knockout badge. Isolated game asset, centered, complete and not cropped, stylized semi-realistic modern AAA video game 3D render, crisp edges, soft studio light, on a perfectly flat solid pure magenta background (#FF00FF), no shadow, no ground plane. No text, no letters, no numbers, no logos, no watermark."
+  },
+  {
+   "id": "meme-keys",
+   "aspect": "1:1",
+   "prompt": "A small hardware crypto wallet device and a ring of old brass keys falling into a dark sewer drain grate, comedic, a tiny puff of dust. Isolated game asset, centered, complete and not cropped, stylized semi-realistic modern AAA video game 3D render, crisp edges, soft studio light, on a perfectly flat solid pure magenta background (#FF00FF), no shadow, no ground plane. No text, no letters, no numbers, no logos, no watermark."
+  },
+  {
+   "id": "meme-salvador",
+   "aspect": "1:1",
+   "prompt": "A large shiny gold coin spinning on its edge in mid air above a small smoking cartoon volcano, comedic suspense. Isolated game asset, centered, complete and not cropped, stylized semi-realistic modern AAA video game 3D render, crisp edges, soft studio light, on a perfectly flat solid pure magenta background (#FF00FF), no shadow, no ground plane. No text, no letters, no numbers, no logos, no watermark."
+  },
+  {
+   "id": "meme-pizza",
+   "aspect": "1:1",
+   "prompt": "Two large steaming pepperoni pizzas stacked in open cardboard boxes with a single shiny gold coin resting on top, comedic, appetizing. Isolated game asset, centered, complete and not cropped, stylized semi-realistic modern AAA video game 3D render, crisp edges, soft studio light, on a perfectly flat solid pure magenta background (#FF00FF), no shadow, no ground plane. No text, no letters, no numbers, no logos, no watermark."
+  },
+  {
+   "id": "meme-51",
+   "aspect": "1:1",
+   "prompt": "On a solid saturated pure magenta (#FF00FF) background filling the whole image edge to edge: a menacing red glowing server rack tower of mining machines with a red pie chart hologram above it, more than half of the pie glowing red, ominous. Isolated game asset, centered, complete and not cropped, stylized semi-realistic modern AAA video game 3D render, crisp edges, soft studio light, on a perfectly flat solid pure magenta background (#FF00FF), no shadow, no ground plane. No text, no letters, no numbers, no logos, no watermark."
+  },
+  {
+   "id": "fx-coin",
+   "aspect": "1:1",
+   "prompt": "A single shiny gold coin seen slightly from the side, with a glowing orange lightning bolt engraved on its face, sparkle highlight. Isolated game asset, centered, complete and not cropped, stylized semi-realistic modern AAA video game 3D render, crisp edges, soft studio light, on a perfectly flat solid pure magenta background (#FF00FF), no shadow, no ground plane. No text, no letters, no numbers, no logos, no watermark."
+  },
+  {
+   "id": "plate-stats",
+   "aspect": "16:9",
+   "prompt": "A dark futuristic war room with a huge empty curved holographic wall glowing faint orange, a round strategy table with a dim world map hologram in the foreground, soft haze. Cinematic matte painting backdrop for a video game statistics screen, wide view, dark and calm in the centre so charts and text stay readable, deep navy and charcoal tones with subtle Bitcoin-orange accents, atmospheric depth, modern AAA video game environment art, semi-realistic. No people, no text, no letters, no logos, no watermark."
+  },
+  {
+   "id": "plate-stage",
+   "aspect": "16:9",
+   "prompt": "An empty grand award stage with a single dramatic spotlight cone from above onto a round podium, dark velvet curtains at the sides, floating golden dust particles, deep blue darkness around. Cinematic matte painting backdrop for a video game statistics screen, wide view, dark and calm in the centre so charts and text stay readable, deep navy and charcoal tones with subtle Bitcoin-orange accents, atmospheric depth, modern AAA video game environment art, semi-realistic. No people, no text, no letters, no logos, no watermark."
+  },
+  {
+   "id": "lose-fed",
+   "aspect": "16:9",
+   "prompt": "Defeat scene: a smug silver-haired central banker in a dark green suit sits slumped on the floor of an empty money printing factory, the printing presses broken and silent, worthless green banknotes drifting down like autumn leaves, melancholic and comedic. Modern AAA video game splash art, cinematic semi-realistic digital painting, dramatic Bitcoin-orange and steel-blue lighting, highly detailed, original fictional characters, no real persons. No text, no letters, no logos, no watermark."
+  },
+  {
+   "id": "lose-ezb",
+   "aspect": "16:9",
+   "prompt": "Defeat scene: a European central bank technocrat woman in a navy suit with auburn hair in a bun stares at a shattered holographic chart crashing red, her red rubber stamp broken in two on the desk, rain on the window behind her, melancholic and comedic. Modern AAA video game splash art, cinematic semi-realistic digital painting, dramatic Bitcoin-orange and steel-blue lighting, highly detailed, original fictional characters, no real persons. No text, no letters, no logos, no watermark."
+  },
+  {
+   "id": "lose-goldbug",
+   "aspect": "16:9",
+   "prompt": "Defeat scene: a rugged bearded gold prospector in a miner's helmet sits alone in an empty dusty vault, holding a single small gold bar, cobwebs everywhere, a dim headlamp beam, melancholic and comedic. Modern AAA video game splash art, cinematic semi-realistic digital painting, dramatic Bitcoin-orange and steel-blue lighting, highly detailed, original fictional characters, no real persons. No text, no letters, no logos, no watermark."
+  },
+  {
+   "id": "lose-shit",
+   "aspect": "16:9",
+   "prompt": "Defeat scene: a flashy crypto shill in a neon pink suit and LED sunglasses sits in the smoking wreck of a crashed pink cartoon rocket in a desert, glitter and broken coins scattered around, comedic. No signs, no billboards, no writing anywhere in the scene. Modern AAA video game splash art, cinematic semi-realistic digital painting, dramatic Bitcoin-orange and steel-blue lighting, highly detailed, original fictional characters, no real persons. No text, no letters, no logos, no watermark."
+  },
+  {
+   "id": "lose-no",
+   "aspect": "16:9",
+   "prompt": "Defeat scene: a grumpy man in a beige cardigan and thick glasses stands in the rain with a wet blank newspaper without any headline or print, a giant plain glowing orange disc without any symbol rising like a sun behind him, his face in disbelief, comedic. Modern AAA video game splash art, cinematic semi-realistic digital painting, dramatic Bitcoin-orange and steel-blue lighting, highly detailed, original fictional characters, no real persons. No text, no letters, no logos, no watermark. No symbols on any coin, no writing anywhere."
+  }
+ ]
+}

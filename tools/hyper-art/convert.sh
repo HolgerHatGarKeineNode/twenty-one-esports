@@ -18,4 +18,13 @@ for f in $G/bank-*.png $G/unit-*.png; do
   magick "$f" -fuzz 22% -transparent '#ff00ff' -channel A -morphology Erode Disk:1.2 -blur 0x0.6 +channel \
     \( +clone -alpha extract \) -compose copy-opacity -composite -trim +repage -resize 1024x1024\> -quality 88 "$A/$(basename "${f%.png}").webp"
 done
+# End-of-match statistics (manifest-stats.json): plates and defeat poses as JPG, medals and sprites keyed by hue (key.py).
+for f in $G/plate-*.png $G/lose-*.png; do conv "$f" "-resize 1600x -quality 80" "$A/$(basename "${f%.png}").jpg"; done
+for f in $G/medal-*.png $G/meme-*.png $G/fx-*.png; do
+  [ -f "$f" ] || continue
+  o="$A/$(basename "${f%.png}").webp"
+  python3 "$(dirname "$0")/key.py" "$f" "$o" && magick "$o" -resize 480x480\> -quality 86 "$o"
+done
+# Gold and orange sprites keep a pink cast from the magenta background: their spill turns gold.
+for n in medal-finale medal-dice meme-salvador; do [ -f "$A/$n.webp" ] && python3 "$(dirname "$0")/despill.py" "$A/$n.webp" "$A/$n.webp"; done
 ls "$A" | wc -l; du -sh "$A" | cut -f1

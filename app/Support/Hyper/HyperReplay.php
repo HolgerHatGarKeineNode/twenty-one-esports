@@ -5,6 +5,7 @@ namespace App\Support\Hyper;
 use App\Models\HyperAction;
 use App\Models\HyperMatch;
 use App\Models\HyperSeat;
+use Closure;
 use RuntimeException;
 
 /**
@@ -31,11 +32,15 @@ final class HyperReplay
     private int $ply = 0;
 
     /**
-     * Replays the match up to `upTo` (all of it by default).
+     * Replays the match up to `upTo` (all of it by default). `observe` sees every ply as it is replayed: the
+     * game before it, the game after it and the ply with its events (the setup as ply 0, with no game before);
+     * HyperStats reads the match's course this way instead of replaying it a second time.
+     *
+     * @param  (Closure(?HyperGame, HyperGame, array{ply: int, seat: int, source: string, events: list<array<string, mixed>>}): void)|null  $observe
      *
      * @throws RuntimeException when the log does not replay (a match whose state was written by hand)
      */
-    public function __construct(private HyperMatch $match, ?int $upTo = null)
+    public function __construct(private HyperMatch $match, ?int $upTo = null, ?Closure $observe = null)
     {
         $match->loadMissing('seats');
         $specs = array_values($match->seats->map(fn (HyperSeat $seat): array => ['faction' => $seat->faction, 'bot' => $seat->bot && $seat->takeover === null])->all());
@@ -43,12 +48,17 @@ final class HyperReplay
         $this->game = $step->game;
         $this->plies[] = ['ply' => 0, 'seat' => $step->game->currentSeat(), 'source' => HyperAction::SERVER, 'events' => $step->events];
 
+        if ($observe !== null) {
+            $observe(null, $this->game, $this->plies[0]);
+        }
+
         foreach ($match->actions()->where('ply', '>', 0)->when($upTo !== null, fn ($query) => $query->where('ply', '<=', $upTo))->get() as $action) {
             if ($action->ply !== $this->ply + 1) {
                 throw new RuntimeException("Ply {$action->ply} follows ply {$this->ply}.");
             }
 
             $events = [];
+            $before = $this->game;
 
             if (($action->action['type'] ?? null) === 'round_limit') {
                 $this->game = HyperGame::fromArray([...$this->game->toArray(), 'limit' => (int) $action->action['round']]);
@@ -65,6 +75,10 @@ final class HyperReplay
 
             $this->ply = $action->ply;
             $this->plies[] = ['ply' => $action->ply, 'seat' => $action->seat, 'source' => $action->source, 'events' => $events];
+
+            if ($observe !== null) {
+                $observe($before, $this->game, $this->plies[count($this->plies) - 1]);
+            }
         }
 
         if ($upTo === null || $upTo >= $match->ply) {
