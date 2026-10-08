@@ -5,3 +5,6 @@ pub const T_VALUE: [f64; crate::map::NT] = [-0.31, -0.49, -0.21, -1.45, -0.75, 0
 // Seat compensation (SEAT_COMP): extra start plebs per later seat, index = players - 2.
 pub const SEAT_COMP_OPEN: [f64; 5] = [9.5, 6.0, 4.5, 2.0, 1.5];
 pub const SEAT_COMP_LIMIT: [f64; 5] = [9.5, 6.0, 4.0, 1.5, 1.0];
+// Team games (P4), two teams seated alternately: index 0 = 4 seats (2v2), 1 = 6 seats (3v3).
+pub const TEAM_COMP_OPEN: [f64; 2] = [4.0, 1.0];
+pub const TEAM_COMP_LIMIT: [f64; 2] = [4.0, 1.0];

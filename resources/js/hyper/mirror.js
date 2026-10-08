@@ -33,6 +33,8 @@ export function fromSnapshot(snapshot) {
         return {
             seat: index,
             faction: seat.faction ?? info.faction,
+            // A team match (P4): the seat's side, 0 or 1; null without teams.
+            team: info.team ?? seat.team ?? null,
             bot: info.bot ?? seat.bot ?? false,
             takeover: info.takeover ?? null,
             left: info.left ?? false,

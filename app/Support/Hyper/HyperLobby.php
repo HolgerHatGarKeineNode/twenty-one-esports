@@ -33,9 +33,16 @@ use Illuminate\Support\Facades\DB;
  *   left are bots, every other player says yes first (`ready`). The table's players hear each yes on the
  *   old match's channels (HyperRematchUpdated), and the url once it starts.
  *
+ * - A clan table (P4, `clans`): 4 or 6 seats in two sides seated alternately (seats 0, 2, 4 and 1, 3, 5),
+ *   each side one clan (HyperTeams: a clan linked to a meetup plays as that meetup). The creator's clan
+ *   takes side 0; the first player of another clan sets side 1. Only members of a side's clan sit there;
+ *   bots fill free seats of either side and play for it. When the last player of side 1 gets up, the side
+ *   is open for any other clan again.
+ *
  * A player waits at one lobby table at a time. Refusals are HyperRuleViolations: `table_closed`,
  * `table_full`, `faction_taken`, `already_seated`, `seated_elsewhere`, `not_seated`, `not_creator`,
- * `no_rematch` (the match is not over, or the user did not play it).
+ * `no_rematch` (the match is not over, or the user did not play it), and at a clan table `no_clan` (the
+ * player is in no clan), `not_your_clan` (both sides belong to other clans), `side_full`.
  */
 final class HyperLobby
 {
@@ -44,15 +51,20 @@ final class HyperLobby
     /**
      * @throws HyperRuleViolation `seated_elsewhere`, `bad_table`, `faction_taken`
      */
-    public function open(User $creator, int $seats, string $mode, int $limit, ?string $faction = null): HyperTable
+    public function open(User $creator, int $seats, string $mode, int $limit, ?string $faction = null, bool $clans = false): HyperTable
     {
         if ($seats < 2 || $seats > 6 || ! in_array($mode, [HyperMatch::LIVE, HyperMatch::CORRESPONDENCE], true) || ! in_array($limit, HyperGame::LIMITS, true)) {
             throw new HyperRuleViolation('bad_table', 'A table has 2 to 6 seats, a mode and a known round limit.');
         }
 
-        $this->checkFaction($faction);
+        if ($clans && ! in_array($seats, HyperTeams::SEATS, true)) {
+            throw new HyperRuleViolation('bad_table', 'A clan table has 4 or 6 seats.');
+        }
 
-        $table = DB::transaction(function () use ($creator, $seats, $mode, $limit, $faction): HyperTable {
+        $this->checkFaction($faction);
+        $clan = $clans ? (HyperTeams::clanOf($creator) ?? throw new HyperRuleViolation('no_clan', 'A clan table needs a clan.')) : null;
+
+        $table = DB::transaction(function () use ($creator, $seats, $mode, $limit, $faction, $clan): HyperTable {
             // Two tabs opening or joining at once: one at a time per player.
             User::query()->whereKey($creator->id)->lockForUpdate()->first();
             $this->refuseSeatedElsewhere($creator);
@@ -61,6 +73,7 @@ final class HyperLobby
                 'mode' => $mode,
                 'seats' => $seats,
                 'round_limit' => $limit,
+                'team_clans' => $clan === null ? null : [$clan->id, null],
                 'status' => HyperTable::OPEN,
                 'created_by' => $creator->id,
                 'fill_at' => $live ? now()->addSeconds($this->fillSeconds()) : null,
@@ -107,6 +120,10 @@ final class HyperLobby
                 throw new HyperRuleViolation('table_full', 'Every seat is taken.');
             }
 
+            if ($table->isTeamTable()) {
+                $free = $this->freeOnSide($table, $user, $free);
+            }
+
             $this->refuseTakenFaction($table, $faction, null);
             HyperTableSeat::query()->create(['hyper_table_id' => $table->id, 'seat' => min($free), 'user_id' => $user->id, 'faction' => $faction, 'ready' => true]);
         });
@@ -147,6 +164,12 @@ final class HyperLobby
             }
 
             $seat->delete();
+
+            // Side 1 without a player is open for any other clan again.
+            if ($table->isTeamTable() && ! $table->takenSeats->contains(fn (HyperTableSeat $other): bool => $other->id !== $seat->id && $other->user_id !== null && HyperTable::sideOf($other->seat) === 1)) {
+                $table->team_clans = [$table->team_clans[0] ?? null, null];
+                $table->save();
+            }
         });
     }
 
@@ -222,6 +245,7 @@ final class HyperLobby
                     'mode' => $locked->mode,
                     'seats' => $locked->seats->count(),
                     'round_limit' => $locked->round_limit,
+                    'team_clans' => $locked->team_clans,
                     'status' => HyperTable::OPEN,
                     'created_by' => $user->id,
                     'rematch_of' => $locked->id,
@@ -360,10 +384,11 @@ final class HyperLobby
     private function start(HyperTable $table): void
     {
         $table->load('takenSeats.user');
+        $team = fn (HyperTableSeat $seat): array => $table->isTeamTable() ? ['team' => HyperTable::sideOf($seat->seat)] : [];
         $seats = array_values($table->takenSeats->map(fn (HyperTableSeat $seat): array => $seat->bot || $seat->user === null
-            ? ['bot' => true, 'faction' => $seat->faction]
-            : ['user' => $seat->user, 'faction' => $seat->faction])->all());
-        $match = $this->matches->create($seats, $table->round_limit, creator: $table->creator()->first(), mode: $table->mode);
+            ? ['bot' => true, 'faction' => $seat->faction, ...$team($seat)]
+            : ['user' => $seat->user, 'faction' => $seat->faction, ...$team($seat)])->all());
+        $match = $this->matches->create($seats, $table->round_limit, creator: $table->creator()->first(), mode: $table->mode, teamClans: $table->team_clans);
 
         $table->forceFill(['status' => HyperTable::STARTED, 'hyper_match_id' => $match->id, 'started_at' => now(), 'fill_at' => null])->save();
         $players = array_values(array_filter($table->takenSeats->map(fn (HyperTableSeat $seat): ?int => $seat->bot ? null : $seat->user_id)->all()));
@@ -376,6 +401,39 @@ final class HyperLobby
     private function announce(): void
     {
         Broadcasts::send(new HyperLobbyUpdated);
+    }
+
+    /**
+     * The free seats of the side the user's clan plays at this clan table: side 0 for the creator's clan;
+     * side 1 for the clan already there, or for any other clan while side 1 has none (which sets it).
+     *
+     * @param  list<int>  $free
+     * @return non-empty-list<int>
+     *
+     * @throws HyperRuleViolation `no_clan`, `not_your_clan`, `side_full`
+     */
+    private function freeOnSide(HyperTable $table, User $user, array $free): array
+    {
+        $clan = HyperTeams::clanOf($user) ?? throw new HyperRuleViolation('no_clan', 'A clan table takes clan members only.');
+        [$first, $second] = [$table->team_clans[0] ?? null, $table->team_clans[1] ?? null];
+
+        $side = match (true) {
+            $clan->id === $first => 0,
+            $second === null || $clan->id === $second => 1,
+            default => throw new HyperRuleViolation('not_your_clan', 'Both sides of this table belong to other clans.'),
+        };
+        $mine = array_values(array_filter($free, fn (int $seat): bool => HyperTable::sideOf($seat) === $side));
+
+        if ($mine === []) {
+            throw new HyperRuleViolation('side_full', 'Your clan\'s side is full.');
+        }
+
+        if ($side === 1 && $second === null) {
+            $table->team_clans = [$first, $clan->id];
+            $table->save();
+        }
+
+        return $mine;
     }
 
     private function refuseSeatedElsewhere(User $user): void

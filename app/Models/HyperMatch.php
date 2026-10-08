@@ -25,6 +25,7 @@ use Illuminate\Support\Carbon;
  * @property HyperMatchStatus $status
  * @property int $seed 32-bit unsigned seed of the rules core
  * @property int $round_limit 0 = none
+ * @property list<int|null>|null $team_clans a team match (P4): the clan of team 0 and team 1, null without teams
  * @property bool $rated
  * @property array<string, mixed> $state HyperGame::toArray() after the last action
  * @property int $ply number of actions played
@@ -41,7 +42,7 @@ use Illuminate\Support\Carbon;
  * @property-read Collection<int, HyperAction> $actions
  * @property-read User|null $creator
  */
-#[Fillable(['mode', 'status', 'seed', 'round_limit', 'rated', 'state', 'ply', 'current_seat', 'turn_started_ms', 'deadline_ms', 'winner_seat', 'end_reason', 'created_by', 'ended_at'])]
+#[Fillable(['mode', 'status', 'seed', 'round_limit', 'team_clans', 'rated', 'state', 'ply', 'current_seat', 'turn_started_ms', 'deadline_ms', 'winner_seat', 'end_reason', 'created_by', 'ended_at'])]
 class HyperMatch extends Model
 {
     /** @use HasFactory<HyperMatchFactory> */
@@ -60,6 +61,7 @@ class HyperMatch extends Model
             'end_reason' => HyperEndReason::class,
             'seed' => 'integer',
             'round_limit' => 'integer',
+            'team_clans' => 'array',
             'rated' => 'boolean',
             'state' => 'array',
             'ply' => 'integer',
@@ -106,6 +108,11 @@ class HyperMatch extends Model
     public function creator(): BelongsTo
     {
         return $this->belongsTo(User::class, 'created_by');
+    }
+
+    public function isTeamMatch(): bool
+    {
+        return $this->team_clans !== null;
     }
 
     public function isCorrespondence(): bool

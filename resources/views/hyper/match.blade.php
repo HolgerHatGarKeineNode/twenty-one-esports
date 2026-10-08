@@ -140,7 +140,7 @@
 
 <div id="tip" class="frame shadowed" role="tooltip"></div>
 <div id="flash"></div>
-<div id="banner" hidden><div class="bx"><div class="bp" id="banner-p"></div><div class="bt" id="banner-t"></div><div class="bs" id="banner-s"></div></div></div>
+<div id="banner" hidden data-test="hyper-banner"><div class="bx"><div class="bp" id="banner-p"></div><div class="bt" id="banner-t"></div><div class="bs" id="banner-s"></div></div><button class="ghost bh-tap" type="button" data-test="hyper-banner-continue">{{ __('Tap to continue') }}</button></div>
 <div id="emote-layer" aria-live="polite"></div>
 
 <div id="battle" hidden role="dialog" aria-modal="true" aria-labelledby="battle-h" data-test="hyper-battle">
@@ -194,6 +194,7 @@
 
 <div class="overlay" id="end" hidden data-test="hyper-end"><div class="end-art" id="end-art"></div>
     <div class="panel frame" role="dialog" aria-modal="true" aria-labelledby="end-h" style="text-align:center">
+        <div class="end-team" id="end-team" hidden data-test="hyper-end-team"></div>
         <h2 id="end-h">–</h2>
         <p class="muted" id="end-sub">–</p>
         <p class="end-loot" id="end-loot" data-test="hyper-end-loot"></p>
@@ -212,20 +213,21 @@
     </div>
 </div>
 
-{{-- The end-of-match statistics (P3b, resources/js/hyper/stats.js): charts, leaderboards, a scene per moment. --}}
+{{-- The end-of-match statistics (P3b, resources/js/hyper/stats.js): charts, leaderboards, teams (P4), a scene per moment. --}}
 <div class="overlay" id="stats" hidden data-test="hyper-stats" role="dialog" aria-modal="true" aria-labelledby="stats-h">
     <div class="st-box frame shadowed">
         <header class="st-head">
             <h2 id="stats-h">{{ __('Match statistics') }}</h2>
             <nav class="st-tabs" id="st-tabs" role="tablist" aria-label="{{ __('Match statistics') }}"></nav>
-            <button class="ghost" id="st-skip" type="button" data-test="hyper-stats-skip">{{ __('Skip') }}</button>
+            <button class="ghost" id="st-skip" type="button" data-test="hyper-stats-skip">{{ __('Skip all') }}</button>
         </header>
         <div class="st-progress" aria-hidden="true"><i id="st-bar"></i></div>
         <div class="st-page" id="st-page" aria-live="polite"></div>
         <div class="st-foot">
             <button class="ghost" id="st-prev" type="button" aria-label="{{ __('Previous') }}" data-test="hyper-stats-prev"><svg><use href="#i-back"/></svg></button>
             <output id="st-count">1 / 1</output>
-            <button class="ghost" id="st-next" type="button" aria-label="{{ __('Next') }}" data-test="hyper-stats-next"><svg><use href="#i-move"/></svg></button>
+            {{-- Shows once the page's animation is over (stats.js): no page turns by itself. --}}
+            <button class="big" id="st-next" type="button" data-test="hyper-stats-next" hidden><span>{{ __('Next step') }}</span><svg><use href="#i-move"/></svg></button>
         </div>
     </div>
 </div>
@@ -238,12 +240,29 @@
     <p id="emote-note" aria-live="polite"></p>
 </div>
 
+@php($team = $config['teamChat'] ?? null)
 <aside id="chat" class="frame shadowed" hidden data-test="hyper-chat" aria-labelledby="chat-h">
-    <header><h2 id="chat-h">{{ __('Table chat') }}</h2><small>{{ __('Public on Nostr') }}</small><button class="icon-btn" id="chat-close" type="button" aria-label="{{ __('Close the chat') }}"><svg viewBox="0 0 24 24"><use href="#i-close"/></svg></button></header>
-    <p id="chat-off" hidden data-test="hyper-chat-off">{{ __('The table chat is off here: no chat channel or relay is set up.') }}</p>
-    <ol id="chat-list" role="log" aria-label="{{ __('Chat messages') }}" data-test="hyper-chat-list"></ol>
-    <form id="chat-form" autocomplete="off"><label class="sr" for="chat-input">{{ __('Message') }}</label><input id="chat-input" type="text" enterkeyhint="send" placeholder="{{ __('Write to the table …') }}" data-test="hyper-chat-input"><button class="ghost" type="submit" data-test="hyper-chat-send">{{ __('Send') }}</button></form>
-    <p id="chat-note" aria-live="polite"></p>
+    <header><h2 id="chat-h">{{ __('Table chat') }}</h2><small id="chat-sub">{{ __('Public on Nostr') }}</small><button class="icon-btn" id="chat-close" type="button" aria-label="{{ __('Close the chat') }}"><svg viewBox="0 0 24 24"><use href="#i-close"/></svg></button></header>
+    @if ($team)
+        {{-- A team match (P4): the public table chat and the team's private one, as two tabs. --}}
+        <div class="chat-tabs" role="tablist" aria-label="{{ __('Chats') }}">
+            <button type="button" role="tab" id="tab-table" aria-selected="true" aria-controls="table-pane" data-test="hyper-chat-tab-table">{{ __('Table') }}</button>
+            <button type="button" role="tab" id="tab-team" aria-selected="false" aria-controls="team-pane" data-test="hyper-chat-tab-team">{{ __('Team') }}<span class="badge" id="team-unread" hidden>0</span></button>
+        </div>
+    @endif
+    <div id="table-pane" class="chat-pane" role="tabpanel" aria-labelledby="{{ $team ? 'tab-table' : 'chat-h' }}">
+        <p id="chat-off" hidden data-test="hyper-chat-off">{{ __('The table chat is off here: no chat channel or relay is set up.') }}</p>
+        <ol id="chat-list" role="log" aria-label="{{ __('Chat messages') }}" data-test="hyper-chat-list"></ol>
+        <form id="chat-form" autocomplete="off"><label class="sr" for="chat-input">{{ __('Message') }}</label><input id="chat-input" type="text" enterkeyhint="send" placeholder="{{ __('Write to the table …') }}" data-test="hyper-chat-input"><button class="ghost" type="submit" data-test="hyper-chat-send">{{ __('Send') }}</button></form>
+        <p id="chat-note" aria-live="polite"></p>
+    </div>
+    @if ($team)
+        <div id="team-pane" class="chat-pane" role="tabpanel" aria-labelledby="tab-team" hidden data-test="hyper-team-chat">
+            <ol id="team-list" role="log" aria-label="{{ __('Team messages') }}" data-test="hyper-team-list"></ol>
+            <form id="team-form" autocomplete="off"><label class="sr" for="team-input">{{ __('Message to your team') }}</label><input id="team-input" type="text" enterkeyhint="send" placeholder="{{ __('Write to your team …') }}" data-test="hyper-team-input"><button class="ghost" type="submit" data-test="hyper-team-send">{{ __('Send') }}</button></form>
+            <p id="team-note" aria-live="polite" data-test="hyper-team-note"></p>
+        </div>
+    @endif
 </aside>
 
 <script type="application/json" id="hyper-snapshot">@json($snapshot)</script>

@@ -20,6 +20,7 @@ import { ADJ, CARDS, FACTIONS, HOW, OCEANS, PIN_AT, SEA, SWISS_ZOOM, TDEF, ZONES
 import { applyEvent, banksOf, defenseBonus, fromSnapshot, odds, territoriesOf, units, zoneOwner } from './mirror.js';
 import { PlySync } from './sync.js';
 import { fmt, t } from './i18n.js';
+import { readableMs } from './statsPlan.js';
 import { AUD, clip, ctx, hoverTick, setAudioHooks, setIntensity, sfx, startMusic } from './audio.js';
 
 const REDUCED = matchMedia('(prefers-reduced-motion: reduce)').matches;
@@ -90,6 +91,16 @@ function nameOf(i) {
     return s.userId !== null && s.bot ? t(':name (bot)', { name: base }) : base;
 }
 const mySeat = () => (ME === null ? null : seat(ME));
+/** A team match (P4): the two sides with their clans (HyperTeams), from the snapshot; null without teams. */
+const sides = () => CFG?.snapshot?.teams ?? null;
+const teamOf = (i) => seat(i)?.team ?? null;
+const clanName = (team) => sides()?.[team]?.name ?? t('Team :number', { number: (team ?? 0) + 1 });
+function clanLogo(team, size = 28) {
+    const side = sides()?.[team];
+    if (side?.logo) return `<img class="clan-logo" src="${esc(side.logo)}" alt="" width="${size}" height="${size}" style="width:${size}px;height:${size}px" data-clan-logo>`;
+
+    return `<span class="clan-logo clan-tag" style="width:${size}px;height:${size}px">${esc(side?.tag ?? '🤖')}</span>`;
+}
 const playing = () => ME !== null && !!mySeat() && !mySeat().bot && !mySeat().left;
 const myTurn = () => playing() && !G.over && G.cur === ME;
 const idle = () => !running && queue.length === 0 && !UI.busy && S && S.ply === sync.ply && G.ply === S.ply;
@@ -353,7 +364,12 @@ function territoryPulse(id) {
 }
 const POR = (k, ring = 'var(--btc)') => `<span class="pimg" style="--ring:${ring}"><img src="${A}art/por-${k}.jpg?v=1" alt="" decoding="async"></span>`;
 /** Banners of the seat to move hold longer for a human's own moves; a bot turn runs at the chosen pace. */
-async function banner(title, sub = '', hold = 1100, por = '', ring = 'var(--btc)', fast = false) {
+/**
+ * A caption over the table. Pacing (P4, user direction 2026-10-09): it stays at least readableMs() of its text
+ * (3 s, or 60 ms per character), whatever the pace of the other seats; a big moment (`big`: a bank falls, a space
+ * is complete, a knockout, a card, the end) then waits for a click, Enter or Space ("Tap to continue").
+ */
+async function banner(title, sub = '', hold = 1100, por = '', ring = 'var(--btc)', fast = false, big = false) {
     $('#banner-p').innerHTML = por ? POR(por, ring) : '';
     const fit = () => {
         const tEl = $('#banner-t'); const box = document.querySelector('#banner .bx'); const narrow = innerWidth < 820;
@@ -366,16 +382,33 @@ async function banner(title, sub = '', hold = 1100, por = '', ring = 'var(--btc)
         while (ss > 9 && sb.scrollWidth > room) { ss -= 1; sb.style.fontSize = ss + 'px'; }
     };
     hold = !fast ? Math.max(1700, hold * 1.8) : UI.speed === 1 ? Math.max(1100, hold * 1.6) : hold;
+    // Never faster than readable, at any pace of the other seats.
+    hold = Math.max(hold, readableMs(`${title} ${sub}`));
     const bn = $('#banner'); $('#banner-t').textContent = title; $('#banner-s').textContent = sub; bn.hidden = false;
+    bn.dataset.wait = '0';
     fit();
     sfx.whoosh();
-    if (REDUCED) { await sleep(Math.min(hold, 900)); bn.hidden = true; return; }
+    if (REDUCED) { await sleep(hold); if (big) await tapToContinue(bn); bn.hidden = true; return; }
     const tl = gsap().timeline();
     tl.fromTo('#banner .bx', { scaleX: 0.2, opacity: 0, y: 0 }, { scaleX: 1, opacity: 1, duration: 0.3, ease: 'expo.out' })
         .fromTo('#banner .bt', { scale: 1.5, opacity: 0 }, { scale: 1, opacity: 1, duration: 0.45, ease: 'expo.out' }, '<')
-        .fromTo('#banner .bp', { y: 40, scale: 0.5, opacity: 0 }, { y: 0, scale: 1, opacity: 1, duration: 0.55, ease: 'back.out(2.2)' }, '<')
-        .to('#banner .bx', { opacity: 0, y: -24, duration: 0.3, ease: 'power2.in' }, `+=${hold / 1000}`);
-    await tl.then(); bn.hidden = true;
+        .fromTo('#banner .bp', { y: 40, scale: 0.5, opacity: 0 }, { y: 0, scale: 1, opacity: 1, duration: 0.55, ease: 'back.out(2.2)' }, '<');
+    await tl.then();
+    await sleep(hold);
+    if (big) await tapToContinue(bn);
+    await gsap().to('#banner .bx', { opacity: 0, y: -24, duration: 0.3, ease: 'power2.in' }).then();
+    bn.hidden = true;
+}
+/** A big moment waits for the player: a click on it, Enter or Space. `data-wait` says it is waiting. */
+function tapToContinue(el) {
+    el.dataset.wait = '1';
+
+    return new Promise((done) => {
+        const stop = new AbortController();
+        const go = (e) => { if (e.type === 'keydown' && !['Enter', ' ', 'ArrowRight'].includes(e.key)) return; e.preventDefault?.(); e.stopPropagation?.(); stop.abort(); el.dataset.wait = '0'; done(); };
+        el.addEventListener('pointerdown', go, { signal: stop.signal });
+        addEventListener('keydown', go, { capture: true, signal: stop.signal });
+    });
 }
 function tickNum(el, to) {
     const from = parseFloat(el.dataset.v ?? '0') || 0; el.dataset.v = to;
@@ -400,9 +433,11 @@ function arrow(fromId, toId, color = '#ffb54d', speed = 1) {
 let toastUntil = 0;
 function toast(text) {
     $('#instruct-t').innerHTML = b(text);
-    toastUntil = Date.now() + 4000;
+    // Readable (P4): 4 s, longer for a long text.
+    const stay = Math.max(4000, readableMs(String(text).replace(/<[^>]*>/g, '')));
+    toastUntil = Date.now() + stay;
     if (!REDUCED) gsap().fromTo('#instruct', { x: -8 }, { x: 0, duration: 0.4, ease: 'elastic.out(1,0.3)' });
-    clearTimeout(toast.timer); toast.timer = setTimeout(() => { toastUntil = 0; renderInstruct(); }, 4000);
+    clearTimeout(toast.timer); toast.timer = setTimeout(() => { toastUntil = 0; renderInstruct(); }, stay);
 }
 function log(text, hot = false, who = null) {
     TICKER.unshift({ text, hot, who });
@@ -584,12 +619,15 @@ async function cinematic(card, o) {
     $('#ev').hidden = false; $('#ev-h').textContent = t(c.name); $('#ev-t').textContent = t(c.text); $('#ev-j').textContent = t(c.joke); $('#ev-pic').style.backgroundImage = `url(${A}art/card-${card}.jpg?v=1)`;
     bt.hidden = false; setIntensity(1);
     await stageReady(window.Arena.eventKey(card, o));
-    const stop = new AbortController();
-    const skipped = new Promise((r) => bt.addEventListener('pointerdown', r, { signal: stop.signal }));
     const scene = window.Arena.event($('#arena3d'), card, o);
     if (!REDUCED) { gsap().fromTo('#ev', { y: 60, opacity: 0 }, { y: 0, opacity: 1, duration: 0.6, ease: 'power3.out' }); gsap().fromTo('#ev-pic', { scale: 1.06 }, { scale: 1, duration: 1.4, ease: 'power2.out' }); }
-    await (scene ? Promise.race([scene, skipped]) : sleep(700));
-    stop.abort(); window.Arena.close(); bt.hidden = true; bt.classList.remove('cine'); $('#ev').hidden = true; setIntensity(0);
+    // Readable (P4): the card's texts stay at least readableMs() of them, then the scene waits for a tap.
+    await sleep(readableMs(`${t(c.name)} ${t(c.text)} ${t(c.joke)}`));
+    $('#battle .cine-hint').textContent = t('Tap to continue');
+    await tapToContinue(bt);
+    $('#battle .cine-hint').textContent = t('Tap to skip');
+    if (scene) scene.catch?.(() => {});
+    window.Arena.close(); bt.hidden = true; bt.classList.remove('cine'); $('#ev').hidden = true; setIntensity(0);
 }
 function dealAnim() {
     const cards = $$('#hand .card'); const last = cards[cards.length - 1];
@@ -752,7 +790,7 @@ async function showEvent(e, ctxB, next) {
             applyEvent(G, e); UI.from = null; UI.card = null;
             log(t(':name: +:fiat fiat, +:sats M sats', { name: nameOf(e.seat), fiat: fmt(e.fiat), sats: fmt(e.sats) }), false, e.seat);
             render();
-            if (isMe(e.seat) && playing()) { clip('turn'); sfx.horn(); await banner(t('Your turn'), t('+:fiat fiat · +:sats M sats', { fiat: fmt(e.fiat), sats: fmt(e.sats) }), 650, porOf(e.seat), colorOf(e.seat)); } else if (sp < 20) await banner(nameOf(e.seat), t('is on the move'), 320 / sp, porOf(e.seat), colorOf(e.seat), true);
+            if (isMe(e.seat) && playing()) { clip('turn'); sfx.horn(); await banner(t('Your turn'), t('+:fiat fiat · +:sats M sats', { fiat: fmt(e.fiat), sats: fmt(e.sats) }), 650, porOf(e.seat), colorOf(e.seat)); } else if (sp === 1) await banner(nameOf(e.seat), t('is on the move'), 320, porOf(e.seat), colorOf(e.seat), true);
             break;
         }
         case 'placed': {
@@ -791,14 +829,14 @@ async function showEvent(e, ctxB, next) {
             floatNum(e.territory, '+1 ₿', '#ffb54d'); sfx.coin();
             clip(e.territory === 'frankfurt' ? 'ezb' : e.territory === 'ny' ? 'fed' : 'bank');
             log(t(':name topples the :bank.', { name: nameOf(e.seat), bank: t(z.bank) }), true, e.seat);
-            if (sp < 20 || isMe(e.seat)) { flash(); sfx.sting(); await banner(t('Central bank toppled'), t(':bank · +1 M sats', { bank: t(z.bank) }), isBot(e.seat) ? 600 / sp : 900, porOf(e.seat), colorOf(e.seat), !isMe(e.seat)); }
+            if (sp < 20 || isMe(e.seat)) { flash(); sfx.sting(); await banner(t('Central bank toppled'), t(':bank · +1 M sats', { bank: t(z.bank) }), isBot(e.seat) ? 600 / sp : 900, porOf(e.seat), colorOf(e.seat), !isMe(e.seat), true); }
             break;
         }
         case 'zone_completed': {
             const z = ZONES[e.zone];
             clip('zone');
             log(t(':name holds all of :zone.', { name: nameOf(e.seat), zone: t(z.name) }), true, e.seat);
-            if (sp < 20 || isMe(e.seat)) { flash(); sfx.sting(); await banner(t('Orange pill'), t(':zone complete · +:sats sats per turn', { zone: t(z.name), sats: fmt(z.sats) }), isBot(e.seat) ? 600 / sp : 900, porOf(e.seat), colorOf(e.seat), !isMe(e.seat)); }
+            if (sp < 20 || isMe(e.seat)) { flash(); sfx.sting(); await banner(t('Orange pill'), t(':zone complete · +:sats sats per turn', { zone: t(z.name), sats: fmt(z.sats) }), isBot(e.seat) ? 600 / sp : 900, porOf(e.seat), colorOf(e.seat), !isMe(e.seat), true); }
             break;
         }
         case 'loot_gained':
@@ -831,7 +869,7 @@ async function showEvent(e, ctxB, next) {
             applyEvent(G, e); clip('out');
             log(t(':name is out.', { name: nameOf(e.seat) }), true, e.seat);
             render();
-            if (!G.over || isMe(e.seat)) await banner(isMe(e.seat) ? t('You are out') : t(':name is out', { name: nameOf(e.seat) }), t('One fiat faction fewer'), 900, porOf(e.seat), colorOf(e.seat), !isMe(e.seat));
+            if (!G.over || isMe(e.seat)) await banner(isMe(e.seat) ? t('You are out') : t(':name is out', { name: nameOf(e.seat) }), t('One fiat faction fewer'), 900, porOf(e.seat), colorOf(e.seat), !isMe(e.seat), true);
             break;
         case 'round_started':
             applyEvent(G, e); render();
@@ -860,7 +898,7 @@ async function showCard(e, ctxB, next) {
     clip('card:' + e.card); sfx.flip(); sfx.power();
     const zone = e.target ? BY[e.target].zone : null;
     if (human && UI.scenes && WEBGL && window.Arena && ctxB.speed < 20) await cinematic(e.card, { up: !!e.effect?.up, zone });
-    else if (human || ctxB.speed < 20) await banner(t(c.name), t(c.text), isBot(e.seat) ? 450 / ctxB.speed : 700, '', 'var(--btc)', !isMe(e.seat));
+    else if (human || ctxB.speed < 20) await banner(t(c.name), t(c.text), isBot(e.seat) ? 450 / ctxB.speed : 700, '', 'var(--btc)', !isMe(e.seat), true);
     applyEvent(G, e);
     const effect = e.effect ?? {};
     let sub = t(c.joke);
@@ -883,7 +921,10 @@ async function showCard(e, ctxB, next) {
 async function showEnd(winner, byLimit, round, loot, quiet) {
     if (ended) return;
     ended = true;
-    const f = fac(winner); const iWon = isMe(winner); const iLost = ME !== null && !iWon;
+    // A team match (P4): the team wins together, every player of it is a winner.
+    const team = sides() ? teamOf(winner) : null;
+    const teamWon = team !== null && mySeat()?.team === team;
+    const f = fac(winner); const iWon = team !== null ? teamWon : isMe(winner); const iLost = ME !== null && !iWon;
     const terr = territoriesOf(G, winner).length; const banks = banksOf(G, winner);
     // A defeat shows the viewer's own faction beaten (P3b art), a win or a spectator's view the winner's finale.
     const mine = porOf(ME);
@@ -891,14 +932,21 @@ async function showEnd(winner, byLimit, round, loot, quiet) {
     $('#end-h').innerHTML = iWon
         ? (f.por === 'you' ? t('You made the :name happen!', { name: '<b>Hyperbitcoinization</b>' }) : t('You win as :side!', { side: b(t(f.side)) }))
         : t(':name wins', { name: b(nameOf(winner)) });
+    // Under the winning clan's logo, every player of the team named.
+    $('#end-team').hidden = team === null;
+    if (team !== null) {
+        $('#end-h').innerHTML = teamWon ? t('Your team wins!') : t(':clan wins', { clan: b(clanName(team)) });
+        $('#end-team').innerHTML = `${clanLogo(team, 72)}<div><b>${esc(clanName(team))}</b><span>${esc(G.seats.filter((x) => x.team === team).map((x) => nameOf(x.seat)).join(' · '))}</span></div>`;
+        $('#end').dataset.result = teamWon ? 'win' : ME !== null ? 'defeat' : 'watch';
+    }
     $('#end-sub').textContent = `${t(f.win[1])} ${byLimit ? t('Round limit: :banks central banks, :territories territories', { banks, territories: terr }) : t('Everyone else is out')}, ${t('round :round', { round })}.`;
     const myLoot = ME !== null ? loot[ME] ?? G.seats[ME]?.loot ?? 0 : null;
     $('#end-loot').innerHTML = myLoot === null ? '' : `<img src="${A}art/ico-sats.webp?v=1" alt=""> ${t(':sats M sats loot, credited to you', { sats: b('+' + fmt(myLoot)) })}`;
-    $('#end').dataset.result = iWon ? 'win' : iLost ? 'defeat' : 'watch';
+    if (team === null) $('#end').dataset.result = iWon ? 'win' : iLost ? 'defeat' : 'watch';
     if (!quiet) {
         clip(iLost ? 'lose' : 'win');
         if (iWon) { sfx.fanfare(); territoriesOf(G, winner).forEach((id, i) => setTimeout(() => burst(id, '#ffb54d', 10, true), i * 60)); } else sfx.gong();
-        await banner(t(f.win[0]), iWon ? (byLimit ? t('The most central banks') : t('Everyone else is out')) : t(':name wins', { name: nameOf(winner) }), 1400, f.por, f.color);
+        await banner(t(f.win[0]), iWon ? (byLimit ? t('The most central banks') : t('Everyone else is out')) : t(':name wins', { name: nameOf(winner) }), 1400, f.por, f.color, false, true);
     }
     $('#end').hidden = false;
     if (!REDUCED) gsap().from('#end .panel', { scale: 0.8, opacity: 0, duration: 0.4, ease: 'back.out(2)' });
@@ -1015,14 +1063,18 @@ export function render() {
     $('#main-btn').disabled = !mainOk;
     $('#main-t').textContent = G.over ? t('Match over') : !myTurn() ? t(':name moves', { name: nameOf(G.cur) }) : G.phase === 'buy' ? t('To the attack') : G.phase === 'attack' ? t('End attack') : t('End turn');
     $('#main-i').innerHTML = `<use href="#${G.phase === 'fortify' ? 'i-check' : G.phase === 'buy' ? 'i-sword' : 'i-move'}"/>`;
-    $('#roster').innerHTML = G.seats.map((x) => {
+    const seatCard = (x) => {
         const n = territoriesOf(G, x.seat).length; const bk = banksOf(G, x.seat);
         const dot = x.userId !== null && !x.bot ? `<i class="dot ${connected.has(x.seat) ? 'on' : ''}" title="${esc(connected.has(x.seat) ? t('at the table') : t('away'))}"></i>` : '';
 
         return `<div class="pl frame shadowed ${x.seat === G.cur && !G.over ? 'cur' : ''} ${x.out ? 'out' : ''} ${isMe(x.seat) ? 'me' : ''}" data-seat="${x.seat}" style="--pc:${colorOf(x.seat)}"><div class="shield">${POR(porOf(x.seat), colorOf(x.seat))}${dot}</div>
         <div class="nm"><span>${esc(nameOf(x.seat))}</span><em>${esc(t(':count terr.', { count: n }))}</em></div><div class="seg">${bankSeg(bk)}</div>
         <div class="meta"><span>${esc(bk === 1 ? t('1 bank') : t(':count banks', { count: bk }))} · ${fmt(x.sats)} ₿</span>${openHand(x)}</div></div>`;
-    }).join('');
+    };
+    // A team match (P4): the seats grouped under their clan, its logo and name first.
+    $('#roster').innerHTML = sides()
+        ? [0, 1].map((team) => `<div class="team-group" data-team="${team}" data-test="hyper-roster-team"><div class="team-head frame shadowed ${G.over && teamOf(G.winner) === team ? 'won' : ''} ${mySeat()?.team === team ? 'mine' : ''}">${clanLogo(team)}<b>${esc(clanName(team))}</b>${G.over && teamOf(G.winner) === team ? '<i aria-hidden="true">★</i>' : ''}</div>${G.seats.filter((x) => x.team === team).map(seatCard).join('')}</div>`).join('')
+        : G.seats.map(seatCard).join('');
     $('#legend').innerHTML = `<div class="lg-head"><h5>${esc(t('Currency spaces'))}</h5><div class="lg-seg" role="group" aria-label="${esc(t('Map view (key M)'))}"><button type="button" data-mode="zone" class="${UI.mode === 'zone' ? 'on' : ''}">${esc(t('Spaces'))}</button><button type="button" data-mode="owner" class="${UI.mode === 'owner' ? 'on' : ''}">${esc(t('Owners'))}</button></div></div>` + Object.entries(ZONES).map(([z, v]) => {
         const o = zoneOwner(G, z);
         const bar = ZT[z].map((id) => { const w = G.terr[id].owner; return w === null ? '<i></i>' : `<i class="${isMe(w) ? 'me' : ''}" style="background:${colorOf(w)}"></i>`; }).join('');
@@ -1165,7 +1217,9 @@ function bindControls() {
     addEventListener('keydown', (e) => {
         if (e.ctrlKey || e.metaKey || e.altKey || e.target.closest('input, textarea, #chat, #emotes')) return;
         const k = e.key.toLowerCase(); const press = (sel) => { const x = $(sel); if (x && !x.disabled && x.offsetParent !== null) { e.preventDefault(); x.click(); return true; } return false; };
-        if (visible('#battle') && $('#battle').classList.contains('cine')) { e.preventDefault(); $('#battle').dispatchEvent(new PointerEvent('pointerdown')); return; }
+        if (visible('#battle') && $('#battle').classList.contains('cine')) { e.preventDefault(); return; }
+        // A caption on screen: its keys are its own (tapToContinue), nothing behind it moves.
+        if (visible('#banner')) return;
         if (visible('#battle')) { if (k === 'w' || k === ' ' || k === 'enter') press('#roll-btn'); else if (k === 'e') press('#blitz-btn'); else if (k === 'escape') press('#retreat-btn') || press('#skip-btn'); else if (k === 's') press('#skip-btn'); return; }
         if (visible('#move')) { const r = $('#move-range'); if (k === 'enter' || k === ' ') press('#move-ok'); else if (k === 'arrowleft' || k === 'arrowright') { e.preventDefault(); r.value = +r.value + (k === 'arrowright' ? 1 : -1); r.dispatchEvent(new Event('input')); } return; }
         if (visible('#help')) { if (k === 'escape' || k === 'enter' || k === 'h') press('#help-close'); return; }

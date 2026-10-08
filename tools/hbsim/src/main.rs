@@ -8,15 +8,18 @@
 //!   hbsim <games> <threads> gate [limit]          balance gate: value-balanced deal + SEAT_COMP, 2-6 players
 //!   hbsim <games> <threads> tune [limit]          grid search for the seat compensation per player count
 //!   hbsim <games> <threads> luck|terr [limit]     start luck per side / start advantage per territory
-//!   hbsim parity <first-seed> <count> <players> [limit]
+//!   hbsim <games> <threads> teamgate [limit]      team balance gate: 2v2 and 3v3 seated A B A B, team win rates
+//!   hbsim <games> <threads> teamtune [limit]      grid search for the team seat compensation (TEAM_COMP_*)
+//!   hbsim parity <first-seed> <count> <players> [limit] [teams]
 //!       one line per game, seeds first-seed .. first-seed+count-1, as the game page sets a game up:
-//!       seed players limit winner(-1 = cut at round 200) rounds by_limit board(fnv32) loot(fnv32)
+//!       seed players limit winner(-1 = cut at round 200) rounds by_limit board(fnv32) loot(fnv32) [t<teams>]
+//!       With teams > 0 seat s plays for team s % teams (the server's alternating seat order).
 //!   hbsim rng <seed> <count>                      raw generator outputs (test vectors for the PHP port)
 //! Map and balance values come from the game page: node export.mjs <index.html> map.json && node maprs.mjs map.json
 mod map;
 mod values;
 use map::*;
-use values::{SEAT_COMP_LIMIT, SEAT_COMP_OPEN, T_VALUE};
+use values::{SEAT_COMP_LIMIT, SEAT_COMP_OPEN, TEAM_COMP_LIMIT, TEAM_COMP_OPEN, T_VALUE};
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
 use std::time::Instant;
@@ -80,7 +83,8 @@ struct Terr { owner: i8, pleb: i32, maxi: i32, asic: i32, shield: i8 }
 struct Player { fiat: f64, sats: f64, loot: f64, hand: Vec<Card>, out: bool, conquered: i32, free: i32, dip: bool, yuan: u32 }
 
 #[derive(Clone, Copy)]
-pub struct Cfg { balanced: bool, players: usize, fair: bool, seatcomp: f64, limit: u32, neutral_seats: usize, max_round: u32 }
+/// `teams`: 0 = every seat for itself; otherwise seat s plays for team s % teams (P4).
+pub struct Cfg { balanced: bool, players: usize, fair: bool, seatcomp: f64, limit: u32, neutral_seats: usize, max_round: u32, teams: usize }
 
 struct Game { t: [Terr; NT], p: Vec<Player>, cur: usize, round: u32, deck: Vec<Card>, inflation: bool, inflation_next: bool, over: bool, winner: i8, by_limit: bool, cfg: Cfg }
 
@@ -96,6 +100,10 @@ impl Game {
         if o < 0 { -1 } else { o }
     }
     #[inline] fn has_zone(&self, pid: usize, z: usize) -> bool { self.zone_owner(z) == pid as i8 }
+    /// A seat's team; without teams the seat itself.
+    #[inline] fn team(&self, pid: usize) -> usize { if self.cfg.teams > 0 { pid % self.cfg.teams } else { pid } }
+    /// Owner `o` (negative = neutral) is seat `pid` or its teammate.
+    #[inline] fn ally(&self, o: i8, pid: usize) -> bool { o >= 0 && self.team(o as usize) == self.team(pid) }
     fn banks_of(&self, pid: usize) -> usize { self.mine_of(pid).filter(|&i| T_BANK[i]).count() }
     fn units_of(&self, pid: usize) -> i32 { self.mine_of(pid).map(|i| self.u(i)).sum() }
 
@@ -241,9 +249,34 @@ impl Game {
     }
     fn check_win(&mut self, fin: bool) -> bool {
         let alive: Vec<usize> = (0..self.p.len()).filter(|&i| !self.p[i].out).collect();
+        if self.cfg.teams > 0 { return self.check_team_win(fin, &alive); }
         if alive.len() == 1 { self.over = true; self.winner = alive[0] as i8; return true; }
         if fin && alive.len() > 1 { self.over = true; self.winner = self.standings_winner() as i8; self.by_limit = true; return true; }
         false
+    }
+
+    /// Team game (P4): the only team left, or at the limit the team with the most banks, then territories,
+    /// then units (summed over its seats; a tie to the team whose best seat ranks first). The winner seat is
+    /// the team's best seat in the standings.
+    fn check_team_win(&mut self, fin: bool, alive: &[usize]) -> bool {
+        let one_team = alive.iter().all(|&s| self.team(s) == self.team(alive[0]));
+        if !one_team && !fin { return false; }
+        let mut ranked: Vec<usize> = alive.to_vec();
+        ranked.sort_by(|&a, &b| self.banks_of(b).cmp(&self.banks_of(a)).then(self.mine_of(b).count().cmp(&self.mine_of(a).count())).then(self.units_of(b).cmp(&self.units_of(a))));
+        let mut teams: Vec<(usize, [i64; 3])> = Vec::new();
+        for &s in &ranked {
+            let t = self.team(s);
+            let add = [self.banks_of(s) as i64, self.mine_of(s).count() as i64, self.units_of(s) as i64];
+            match teams.iter_mut().find(|e| e.0 == t) { Some(e) => { for k in 0..3 { e.1[k] += add[k]; } } None => teams.push((t, add)) }
+        }
+        let team = if teams.len() == 1 { teams[0].0 } else if fin && teams.len() > 1 {
+            teams.sort_by(|a, b| b.1.cmp(&a.1));
+            self.by_limit = true;
+            teams[0].0
+        } else { return false; };
+        self.over = true;
+        self.winner = *ranked.iter().find(|&&s| self.team(s) == team).unwrap() as i8;
+        true
     }
 
     fn begin_turn(&mut self) {
@@ -267,10 +300,10 @@ impl Game {
     fn card_target_ok(&self, c: Card, id: usize) -> bool {
         let pid = self.cur as i8; let o = self.own(id);
         match c {
-            Card::Attack51 => o != pid && self.u(id) <= 3 && ADJ[id].iter().any(|&n| self.own(n) == pid),
+            Card::Attack51 => !self.ally(o, pid as usize) && self.u(id) <= 3 && ADJ[id].iter().any(|&n| self.own(n) == pid),
             Card::Diamond => o == pid,
-            Card::Scam => o != pid && o >= 0 && T_BANK[id],
-            Card::NoKeys => o != pid && o >= 0 && self.u(id) == 1,
+            Card::Scam => !self.ally(o, pid as usize) && o >= 0 && T_BANK[id],
+            Card::NoKeys => !self.ally(o, pid as usize) && o >= 0 && self.u(id) == 1,
             _ => false,
         }
     }
@@ -290,7 +323,7 @@ impl Game {
             }
             Card::Keys => {
                 let mut rich: Option<usize> = None;
-                for i in 0..self.p.len() { if i != pid && !self.p[i].out && rich.map_or(true, |r| self.p[i].sats > self.p[r].sats) { rich = Some(i); } }
+                for i in 0..self.p.len() { if !self.ally(i as i8, pid) && !self.p[i].out && rich.map_or(true, |r| self.p[i].sats > self.p[r].sats) { rich = Some(i); } }
                 if let Some(r) = rich { let l = r1(self.p[r].sats * 0.3); self.p[r].sats = r1(self.p[r].sats - l); }
             }
             Card::Diamond => { self.t[target.unwrap()].shield = pid as i8; }
@@ -331,7 +364,7 @@ impl Game {
         let gz = goal.unwrap_or(usize::MAX);
         let mut front: Option<usize> = None;
         for i in self.mine_of(pid) {
-            if !ADJ[i].iter().any(|&n| self.own(n) != pid as i8) { continue; }
+            if !ADJ[i].iter().any(|&n| !self.ally(self.own(n), pid)) { continue; }
             front = match front { None => Some(i), Some(f) => { let (ga, gb) = ((T_ZONE[i] == gz) as i32, (T_ZONE[f] == gz) as i32); if ga > gb || (ga == gb && self.u(i) > self.u(f)) { Some(i) } else { Some(f) } } };
         }
         let front = match front.or_else(|| self.mine_of(pid).next()) { Some(f) => f, None => { self.end_turn(rng); return; } };
@@ -354,7 +387,7 @@ impl Game {
                 if self.own(from) != pid as i8 || self.u(from) < 3 { continue; }
                 let asic = self.t[from].asic > 0;
                 for &to in ADJ[from] {
-                    if self.own(to) == pid as i8 { continue; }
+                    if self.ally(self.own(to), pid) { continue; }
                     let score = self.u(from) as f64 - self.u(to) as f64 * 1.4 - self.def_bonus(to, asic) as f64 + if T_ZONE[to] == gz { 2.0 } else { 0.0 } + if T_BANK[to] { 1.5 } else { 0.0 };
                     if score > 1.0 && best.map_or(true, |b| score > b.0) { best = Some((score, from, to)); }
                 }
@@ -374,9 +407,9 @@ impl Game {
         if self.over { return; }
         // Fortify: the biggest inner stack moves to the front.
         let mut inner: Option<usize> = None;
-        for i in self.mine_of(pid) { if self.u(i) > 1 && ADJ[i].iter().all(|&n| self.own(n) == pid as i8) && inner.map_or(true, |b| self.u(i) > self.u(b)) { inner = Some(i); } }
+        for i in self.mine_of(pid) { if self.u(i) > 1 && ADJ[i].iter().all(|&n| self.ally(self.own(n), pid)) && inner.map_or(true, |b| self.u(i) > self.u(b)) { inner = Some(i); } }
         if let Some(i) = inner {
-            let to = ADJ[i].iter().copied().find(|&n| ADJ[n].iter().any(|&m| self.own(m) != pid as i8)).unwrap_or(ADJ[i][0]);
+            let to = ADJ[i].iter().copied().find(|&n| ADJ[n].iter().any(|&m| !self.ally(self.own(m), pid))).unwrap_or(ADJ[i][0]);
             let k = self.u(i) - 1; self.move_units(i, to, k);
         }
         self.end_turn(rng);
@@ -469,10 +502,31 @@ fn report(label: &str, cfg: Cfg, st: &Stats, secs: f64, zones: bool) {
     }
 }
 
+/// Team win rates: team k wins when the winner seat s has s % teams == k (cut games count for nobody).
+fn report_teams(label: &str, st: &Stats, secs: f64, teams: usize) {
+    let n = st.n as f64;
+    let wins: Vec<u64> = (0..teams).map(|k| st.seat_wins.iter().enumerate().filter(|(s, _)| s % teams == k).map(|(_, w)| w).sum()).collect();
+    let fair = 1.0 / teams as f64;
+    let ci = 1.96 * (fair * (1.0 - fair) / n).sqrt() * 100.0;
+    let worst = wins.iter().map(|&w| ((w as f64 / n) - fair).abs() * 100.0).fold(0.0, f64::max);
+    let shown: Vec<String> = wins.iter().map(|&w| format!("{:.2}", w as f64 / n * 100.0)).collect();
+    let seats: Vec<String> = st.seat_wins.iter().map(|&w| format!("{:.1}", w as f64 / n * 100.0)).collect();
+    println!("{label:<30} n={:>8} {:>6.0}k games/s  teams% [{}]  fair {:.1}±{:.2}  worstΔ {:.2}pp  seats% [{}]  rounds {:.1}  limit {:.0}%  timeout {:.2}%",
+        st.n, n / secs / 1000.0, shown.join(" "), fair * 100.0, ci, worst, seats.join(" "), st.rounds as f64 / n, st.by_limit as f64 / n * 100.0, st.timeouts as f64 / n * 100.0);
+}
+
 /// A game as the game page sets it up: value-balanced deal, a neutral side in the duel, SEAT_COMP by limit.
 fn page_cfg(players: usize, limit: u32) -> Cfg {
     let table = if limit > 0 { SEAT_COMP_LIMIT } else { SEAT_COMP_OPEN };
-    Cfg { balanced: true, players, fair: true, seatcomp: table[players - 2], limit, neutral_seats: if players == 2 { 1 } else { 0 }, max_round: 200 }
+    Cfg { balanced: true, players, fair: true, seatcomp: table[players - 2], limit, neutral_seats: if players == 2 { 1 } else { 0 }, max_round: 200, teams: 0 }
+}
+
+/// A team game as the server sets it up (P4): `teams` teams seated alternately, TEAM_COMP for 4 and 6 seats
+/// (the FFA table for any other seat count, as HyperGame::start()).
+fn team_cfg(players: usize, limit: u32, teams: usize) -> Cfg {
+    let table = if limit > 0 { TEAM_COMP_LIMIT } else { TEAM_COMP_OPEN };
+    let comp = match players { 4 => table[0], 6 => table[1], _ => page_cfg(players, limit).seatcomp };
+    Cfg { teams, seatcomp: comp, ..page_cfg(players, limit) }
 }
 
 /// FNV-1a over the bytes of a string: a short fingerprint both cores compute the same way.
@@ -483,16 +537,18 @@ fn fnv32(s: &str) -> u32 {
 }
 
 /// One line per seed, compared line by line with the PHP core (tests/Unit/Hyper/ParityTest.php).
-fn parity(first: u32, count: u32, players: usize, limit: u32) {
+fn parity(first: u32, count: u32, players: usize, limit: u32, teams: usize) {
     for k in 0..count {
         let seed = first.wrapping_add(k);
         let mut rng = Rng::new(seed);
-        let mut g = Game::new(page_cfg(players, limit), &mut rng);
+        let cfg = if teams > 0 { team_cfg(players, limit, teams) } else { page_cfg(players, limit) };
+        let mut g = Game::new(cfg, &mut rng);
         g.begin_turn();
         while !g.over && g.round <= g.cfg.max_round { g.bot_turn(&mut rng); if g.over { break; } g.begin_turn(); }
         let board: String = g.t.iter().map(|t| format!("{},{},{},{};", t.owner, t.pleb, t.maxi, t.asic)).collect();
         let loot: String = g.p.iter().map(|p| format!("{};", (p.loot * 10.0).round() as i64)).collect();
-        println!("{} {} {} {} {} {} {:08x} {:08x}", seed, players, limit, if g.over { g.winner } else { -1 }, g.round, g.by_limit as u8, fnv32(&board), fnv32(&loot));
+        let suffix = if teams > 0 { format!(" t{teams}") } else { String::new() };
+        println!("{} {} {} {} {} {} {:08x} {:08x}{}", seed, players, limit, if g.over { g.winner } else { -1 }, g.round, g.by_limit as u8, fnv32(&board), fnv32(&loot), suffix);
     }
 }
 
@@ -502,7 +558,9 @@ fn main() {
         let num = |i: usize, d: u32| args.get(i).and_then(|s| s.parse().ok()).unwrap_or(d);
         let players = num(4, 4) as usize;
         if !(2..=6).contains(&players) { eprintln!("players must be 2..6"); std::process::exit(2); }
-        parity(num(2, 1), num(3, 25), players, num(5, 0));
+        let teams = num(6, 0) as usize;
+        if teams == 1 || teams > players { eprintln!("teams must be 0 or 2..players"); std::process::exit(2); }
+        parity(num(2, 1), num(3, 25), players, num(5, 0), teams);
         return;
     }
     if args.get(1).map(|s| s.as_str()) == Some("rng") {
@@ -517,7 +575,38 @@ fn main() {
     let games: u64 = args.get(1).and_then(|s| s.parse().ok()).unwrap_or(100_000);
     let threads: usize = args.get(2).and_then(|s| s.parse().ok()).unwrap_or(8);
     let limit: u32 = args.get(4).and_then(|s| s.parse().ok()).unwrap_or(20);
-    let base = Cfg { balanced: false, players: 4, fair: true, seatcomp: 0.0, limit, neutral_seats: 0, max_round: 200 };
+    let base = Cfg { balanced: false, players: 4, fair: true, seatcomp: 0.0, limit, neutral_seats: 0, max_round: 200, teams: 0 };
+    if args.get(3).map(|s| s.as_str()) == Some("teamgate") {
+        // The team gate (P4): team A (seats 0, 2, 4) and team B (1, 3, 5) within 2 pp of 50 %, 2v2 and 3v3.
+        let limits: Vec<u32> = match args.get(4).and_then(|s| s.parse().ok()) { Some(l) => vec![l], None => vec![0, 20] };
+        for l in limits {
+            for players in [4usize, 6] {
+                let cfg = team_cfg(players, l, 2);
+                let (st, secs) = run(cfg, games, threads, 0x7EA4 + players as u64 * 31 + l as u64);
+                report_teams(&format!("{}v{} limit {l} comp +{:.1}/seat", players / 2, players / 2, cfg.seatcomp), &st, secs, 2);
+            }
+        }
+        return;
+    }
+    if args.get(3).map(|s| s.as_str()) == Some("teamtune") {
+        // Grid search per team size: the per-seat compensation that brings team A closest to 50 %.
+        for players in [4usize, 6] {
+            let mut best = (f64::MAX, 0.0);
+            for step in 0..=24 {
+                let comp = step as f64 * 0.5;
+                let cfg = Cfg { seatcomp: comp, ..team_cfg(players, limit, 2) };
+                let (st, _) = run(cfg, games, threads, 0x7C0 + step as u64 * 7 + players as u64);
+                let a: u64 = st.seat_wins.iter().step_by(2).sum();
+                let dev = ((a as f64 / st.n as f64) - 0.5).abs() * 100.0;
+                println!("    {}v{} comp +{comp:.1}: team A {:.2}%", players / 2, players / 2, a as f64 / st.n as f64 * 100.0);
+                if dev < best.0 { best = (dev, comp); }
+            }
+            let cfg = Cfg { seatcomp: best.1, ..team_cfg(players, limit, 2) };
+            let (st, secs) = run(cfg, games * 4, threads, 0x7BEE + players as u64);
+            report_teams(&format!("{}v{} best +{:.1}/seat", players / 2, players / 2, best.1), &st, secs, 2);
+        }
+        return;
+    }
     if args.get(3).map(|s| s.as_str()) == Some("gate") {
         // The balance gate: every seat within 2 pp of the fair share, without a limit (the default) and with 20.
         let limits: Vec<u32> = match args.get(4).and_then(|s| s.parse().ok()) { Some(l) => vec![l], None => vec![0, 20] };

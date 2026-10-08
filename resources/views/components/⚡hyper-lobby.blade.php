@@ -7,6 +7,7 @@ use App\Models\User;
 use App\Support\Hyper\HyperGame;
 use App\Support\Hyper\HyperLobby;
 use App\Support\Hyper\HyperRuleViolation;
+use App\Support\Hyper\HyperTeams;
 use Illuminate\Database\Eloquent\Collection;
 use Livewire\Attributes\Computed;
 use Livewire\Attributes\Locked;
@@ -22,6 +23,10 @@ use Livewire\Component;
  * click that filled it, or by push for the other players), and the "Open match" button stays for a tab the
  * browser blocked. Every change re-renders every open lobby (`hyper.lobby`). `focus`: the table whose link
  * was opened (HyperMatchController::index), shown first.
+ *
+ * Format (P4): everyone for themselves, or clan against clan (`clans`, 4 or 6 seats): the table shows two
+ * sides, each with its clan's logo and name (a clan linked to a meetup shows as that meetup, HyperTeams),
+ * the seats alternating between them.
  */
 new class extends Component {
     /** Seconds between asks without a websocket (resources/js/hyperLobby.js). */
@@ -42,11 +47,22 @@ new class extends Component {
 
     public int $limit = 0;
 
+    /** Clan against clan (P4) instead of everyone for themselves. */
+    public bool $clans = false;
+
     public ?string $error = null;
 
     public function openTable(HyperLobby $lobby): void
     {
-        $this->act(fn (User $me): HyperTable => $lobby->open($me, max(2, min(6, $this->seats)), $this->mode, in_array($this->limit, self::LIMITS, true) ? $this->limit : 0));
+        $this->act(fn (User $me): HyperTable => $lobby->open($me, max(2, min(6, $this->seats)), $this->mode, in_array($this->limit, self::LIMITS, true) ? $this->limit : 0, clans: $this->clans));
+    }
+
+    /** Clan tables seat 2v2 or 3v3: switching the format moves an odd seat count to the next team size. */
+    public function updatedClans(): void
+    {
+        if ($this->clans && ! in_array($this->seats, HyperTeams::SEATS, true)) {
+            $this->seats = $this->seats <= 4 ? 4 : 6;
+        }
     }
 
     public function join(string $table, HyperLobby $lobby): void
@@ -152,6 +168,10 @@ new class extends Component {
             'seated_elsewhere' => __('You wait at another table already.'),
             'not_creator' => __('Only who opened the table adds bots.'),
             'not_seated' => __('You do not sit at this table.'),
+            'no_clan' => __('Clan tables are for clan members. Join or found a clan first.'),
+            'not_your_clan' => __('Both sides of this table belong to other clans.'),
+            'side_full' => __('Your clan’s side is full.'),
+            'bad_table' => __('A clan table has 4 or 6 seats.'),
             default => __('That is not allowed right now.'),
         };
     }
@@ -217,32 +237,36 @@ new class extends Component {
                 <h2 id="hl-mine-h" class="m-0 mr-1 font-display text-lg font-bold">{{ __('Your table') }}</h2>
                 <span class="{{ $tag }}">{{ $modeLabel($mine->mode) }}</span>
                 <span class="{{ $tag }}">{{ $limitLabel($mine->round_limit) }}</span>
+                @if ($mine->isTeamTable())
+                    <span class="{{ $tag }} font-bold text-ink" data-test="hyper-lobby-format">{{ __('Clan vs clan · :size', ['size' => intdiv($mine->seats, 2).'v'.intdiv($mine->seats, 2)]) }}</span>
+                @endif
                 <span class="{{ $tag }} font-bold text-btc-hi" data-test="hyper-lobby-count">{{ __(':taken/:seats seats', ['taken' => $mine->takenSeats->count(), 'seats' => $mine->seats]) }}</span>
             </div>
 
-            <ul class="m-0 grid list-none grid-cols-2 gap-2 p-0 sm:grid-cols-3 lg:grid-cols-6" aria-label="{{ __('Seats') }}">
-                @foreach (range(0, $mine->seats - 1) as $index)
-                    @php($seat = $taken->get($index))
-                    <li wire:key="mine-seat-{{ $index }}" @class(['flex min-h-14 min-w-0 items-center gap-2 rounded-md p-2', 'bg-well shadow-ring' => $seat !== null, 'border border-dashed border-line text-ink-3' => $seat === null]) data-test="hyper-lobby-seat" data-seat="{{ $index }}" data-faction="{{ $seat?->faction }}">
-                        @if ($seat === null)
-                            <span class="text-xs">{{ __('Free seat') }}</span>
-                        @else
-                            @if ($seat->faction)
-                                <img src="/hyper/art/por-{{ $portrait[$seat->faction] }}.jpg?v=1" alt="" width="32" height="32" class="size-8 shrink-0 rounded-full object-cover shadow-ring" loading="lazy">
-                            @elseif ($seat->user)
-                                <x-avatar :user="$seat->user" :size="32" class="shrink-0" />
-                            @else
-                                <span class="grid size-8 shrink-0 place-items-center rounded-full bg-ground text-base" aria-hidden="true">🤖</span>
-                            @endif
-                            <span class="flex min-w-0 flex-col">
-                                <b class="truncate text-xs">{{ $seat->user?->displayName() ?? __('Bot') }}</b>
-                                <span class="truncate text-[11px] text-ink-2">{{ $seat->faction ? $labels[$seat->faction] : __('Random') }}</span>
-                            </span>
+            @if ($mine->isTeamTable())
+                {{-- Clan against clan: two sides, the seats alternating between them --}}
+                <div class="grid gap-3 md:grid-cols-[1fr_auto_1fr] md:items-stretch" data-test="hyper-lobby-sides">
+                    @foreach (HyperTeams::sides($mine->team_clans) as $side)
+                        @if ($side['side'] === 1)
+                            <span class="self-center justify-self-center font-display text-sm font-bold tracking-[0.2em] text-ink-3 uppercase" aria-hidden="true">{{ __('vs') }}</span>
                         @endif
-                    </li>
-                @endforeach
-            </ul>
-
+                        <section class="flex min-w-0 flex-col gap-2 rounded-md bg-well p-3 shadow-ring" data-test="hyper-lobby-side" data-side="{{ $side['side'] }}" aria-label="{{ $side['name'] }}">
+                            @include('pages.hyper.partials.side-head', ['side' => $side, 'open' => $side['clan_id'] === null])
+                            <ul class="m-0 grid list-none grid-cols-1 gap-2 p-0 min-[420px]:grid-cols-3" aria-label="{{ __('Seats') }}">
+                                @foreach (range($side['side'], $mine->seats - 1, 2) as $index)
+                                    @include('pages.hyper.partials.lobby-seat', ['seat' => $taken->get($index), 'index' => $index])
+                                @endforeach
+                            </ul>
+                        </section>
+                    @endforeach
+                </div>
+            @else
+                <ul class="m-0 grid list-none grid-cols-2 gap-2 p-0 sm:grid-cols-3 lg:grid-cols-6" aria-label="{{ __('Seats') }}">
+                    @foreach (range(0, $mine->seats - 1) as $index)
+                        @include('pages.hyper.partials.lobby-seat', ['seat' => $taken->get($index), 'index' => $index])
+                    @endforeach
+                </ul>
+            @endif
 
             <div class="flex flex-wrap items-center gap-2">
                 @if ($creator)
@@ -282,10 +306,17 @@ new class extends Component {
         <form wire:submit="openTable" class="flex flex-col gap-4" data-test="hyper-lobby-new">
             <div class="flex flex-wrap gap-x-6 gap-y-4">
                 <fieldset class="m-0 flex flex-col gap-2 border-0 p-0">
+                    <legend class="mb-2 text-xs font-bold tracking-[0.12em] text-ink-2 uppercase">{{ __('Format') }}</legend>
+                    <div class="flex gap-1.5" role="group">
+                        <button type="button" wire:click="$set('clans', false)" aria-pressed="{{ $clans ? 'false' : 'true' }}" class="{{ $chip }}" data-test="hyper-lobby-format-option" data-format="ffa">{{ __('Everyone for themselves') }}</button>
+                        <button type="button" wire:click="$set('clans', true)" aria-pressed="{{ $clans ? 'true' : 'false' }}" class="{{ $chip }}" data-test="hyper-lobby-format-option" data-format="clans">{{ __('Clan vs clan') }}</button>
+                    </div>
+                </fieldset>
+                <fieldset class="m-0 flex flex-col gap-2 border-0 p-0">
                     <legend class="mb-2 text-xs font-bold tracking-[0.12em] text-ink-2 uppercase">{{ __('Seats') }}</legend>
                     <div class="flex gap-1.5" role="group">
-                        @foreach (range(2, 6) as $count)
-                            <button type="button" wire:click="$set('seats', {{ $count }})" aria-pressed="{{ $seats === $count ? 'true' : 'false' }}" class="{{ $chip }} min-w-11" data-test="hyper-lobby-seats" data-seats="{{ $count }}">{{ $count }}</button>
+                        @foreach ($clans ? HyperTeams::SEATS : range(2, 6) as $count)
+                            <button type="button" wire:click="$set('seats', {{ $count }})" aria-pressed="{{ $seats === $count ? 'true' : 'false' }}" class="{{ $chip }} min-w-11" data-test="hyper-lobby-seats" data-seats="{{ $count }}">{{ $clans ? intdiv($count, 2).'v'.intdiv($count, 2) : $count }}</button>
                         @endforeach
                     </div>
                 </fieldset>
@@ -310,6 +341,9 @@ new class extends Component {
                     <x-icon name="flag" :size="18" />{{ __('Open a table') }}
                 </button>
                 <span class="text-xs text-ink-2">{{ $mode === HyperMatch::LIVE ? __('Bots take free seats after :minutes min.', ['minutes' => max(1, (int) round((int) config('esports.hyper.lobby_fill_seconds', 120) / 60))]) : __('One turn a day.') }}</span>
+                @if ($clans)
+                    <span class="basis-full text-xs text-ink-2">{{ __('Your clan takes one side; the first player of another clan takes the other. A clan linked to a meetup plays as that meetup.') }}</span>
+                @endif
             </div>
         </form>
     @endif
@@ -328,6 +362,14 @@ new class extends Component {
                 @foreach ($tables as $table)
                     @php($bySeat = $table->takenSeats->keyBy('seat'))
                     <li wire:key="table-{{ $table->ulid }}" @class(['flex min-w-0 flex-col gap-3 rounded-lg bg-card p-3 shadow-ring', 'shadow-[inset_0_0_0_1px_var(--color-btc)]' => $table->ulid === $focus]) data-test="hyper-lobby-table" data-table="{{ $table->ulid }}">
+                        @if ($table->isTeamTable())
+                            @php($sides = HyperTeams::sides($table->team_clans))
+                            <div class="grid grid-cols-[1fr_auto_1fr] items-center gap-2" data-test="hyper-lobby-table-sides">
+                                @include('pages.hyper.partials.side-head', ['side' => $sides[0], 'small' => true])
+                                <span class="text-[11px] font-bold tracking-[0.2em] text-ink-3 uppercase" aria-hidden="true">{{ __('vs') }}</span>
+                                @include('pages.hyper.partials.side-head', ['side' => $sides[1], 'small' => true, 'open' => $table->team_clans[1] === null])
+                            </div>
+                        @endif
                         <div class="flex flex-wrap items-center gap-1.5">
                             <b class="mr-1 min-w-0 truncate text-sm">{{ __(':name’s table', ['name' => $table->creator?->displayName() ?? __('A player')]) }}</b>
                             <span class="{{ $tag }}">{{ $modeLabel($table->mode) }}</span>

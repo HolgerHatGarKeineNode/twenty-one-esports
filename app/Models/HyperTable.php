@@ -21,6 +21,7 @@ use Illuminate\Support\Carbon;
  * @property string $mode HyperMatch::LIVE or ::CORRESPONDENCE
  * @property int $seats 2 to 6
  * @property int $round_limit 0 = none
+ * @property list<int|null>|null $team_clans a clan table (P4): the clan of side 0 and side 1 (seats alternate), null for a table of single players
  * @property string $status open|started|cancelled
  * @property int|null $created_by
  * @property int|null $hyper_match_id the match once started
@@ -33,7 +34,7 @@ use Illuminate\Support\Carbon;
  * @property-read User|null $creator
  * @property-read HyperMatch|null $match
  */
-#[Fillable(['mode', 'seats', 'round_limit', 'status', 'created_by', 'hyper_match_id', 'rematch_of', 'fill_at', 'started_at'])]
+#[Fillable(['mode', 'seats', 'round_limit', 'team_clans', 'status', 'created_by', 'hyper_match_id', 'rematch_of', 'fill_at', 'started_at'])]
 class HyperTable extends Model
 {
     use HasUlids;
@@ -49,6 +50,7 @@ class HyperTable extends Model
         return [
             'seats' => 'integer',
             'round_limit' => 'integer',
+            'team_clans' => 'array',
             'fill_at' => 'datetime',
             'started_at' => 'datetime',
         ];
@@ -103,6 +105,22 @@ class HyperTable extends Model
         }
 
         return $this->takenSeats->first(fn (HyperTableSeat $seat): bool => $seat->user_id !== null && (int) $seat->user_id === (int) $user->id);
+    }
+
+    /**
+     * A clan table (P4): two sides seated alternately, each side one clan.
+     */
+    public function isTeamTable(): bool
+    {
+        return $this->team_clans !== null;
+    }
+
+    /**
+     * The side of a seat at a clan table: 0 for seats 0, 2, 4; 1 for seats 1, 3, 5.
+     */
+    public static function sideOf(int $seat): int
+    {
+        return $seat % 2;
     }
 
     public function freeSeats(): int

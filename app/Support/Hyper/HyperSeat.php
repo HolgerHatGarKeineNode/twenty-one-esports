@@ -26,13 +26,14 @@ final class HyperSeat
         public bool $dip = false,
         public int $yuan = 0,
         public int $moves = 0,
+        public ?int $team = null,
     ) {}
 
     /**
-     * @return array{faction: string, bot: bool, fiat: float, sats: float, loot: float, hand: list<string>, out: bool, conquered: int, free: int, dip: bool, yuan: int, moves: int}
+     * @return array{faction: string, bot: bool, fiat: float, sats: float, loot: float, hand: list<string>, out: bool, conquered: int, free: int, dip: bool, yuan: int, moves: int, team: int|null}
      */
     public function toArray(): array
     {
-        return ['faction' => $this->faction, 'bot' => $this->bot, 'fiat' => $this->fiat, 'sats' => $this->sats, 'loot' => $this->loot, 'hand' => $this->hand, 'out' => $this->out, 'conquered' => $this->conquered, 'free' => $this->free, 'dip' => $this->dip, 'yuan' => $this->yuan, 'moves' => $this->moves];
+        return ['faction' => $this->faction, 'bot' => $this->bot, 'fiat' => $this->fiat, 'sats' => $this->sats, 'loot' => $this->loot, 'hand' => $this->hand, 'out' => $this->out, 'conquered' => $this->conquered, 'free' => $this->free, 'dip' => $this->dip, 'yuan' => $this->yuan, 'moves' => $this->moves, 'team' => $this->team];
     }
 }

@@ -445,6 +445,7 @@ class StreamStats
                 default => ($player === '' ? 'Place ' : 'took place ').$place.' in '.$tournament,
             },
             'series' => 'Beat '.PublicName::clean((string) ($moment['opponent'] ?? '')).' '.str_replace(':', '-', (string) ($moment['score'] ?? '')),
+            'hyper' => 'Beat '.PublicName::clean((string) ($moment['opponent'] ?? '')).' in Hyperbitcoinization '.PublicName::clean((string) ($moment['size'] ?? '')),
             'streak' => $player.' won '.$count.' in a row',
             'wins' => $count.' '.($count === 1 ? 'win' : 'wins').' this week',
             'joined' => $count.' new '.($count === 1 ? 'player' : 'players').' this week',

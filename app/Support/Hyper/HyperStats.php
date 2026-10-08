@@ -25,12 +25,18 @@ use RuntimeException;
  *   Keys hits the richest), `salvador_lost` (the El Salvador coin flip lost), `pizza` (Pizza Day), `attack51`,
  *   and `bitcoin_dead` when the Nocoiner wins.
  *
+ * - A team match (P4) adds `teams`: per team its seats, whether it won, conquests, loot, battles and banks at the
+ *   end, and its MVP (most conquests over the match, then most loot). Its moments speak of the clans: `team_win`
+ *   (the winning team with its MVP), `clan_bank` (the first central bank a team topples), `clan_zone` (the first
+ *   currency space a team's seats hold together), `clan_knockout` (the first seat a team throws out); the seat
+ *   versions of these three (`first_bank`, `zone`, `knockout`) are left out there.
+ *
  * A finished match never changes, so the result is cached per match (not stored); VERSION is in the key, a
  * change to the computation bumps it.
  */
 final class HyperStats
 {
-    public const int VERSION = 1;
+    public const int VERSION = 2;
 
     private const int CACHE_DAYS = 30;
 
@@ -38,7 +44,7 @@ final class HyperStats
     public const array SERIES = ['territories', 'units', 'banks', 'fiat', 'loot'];
 
     /** @var list<string> the moment keys, pride first, in the order the scenes play */
-    public const array MOMENTS = ['finale', 'first_bank', 'zone', 'comeback', 'perfect_dice', 'knockout', 'lost_keys', 'salvador_lost', 'pizza', 'attack51', 'bitcoin_dead'];
+    public const array MOMENTS = ['team_win', 'clan_bank', 'clan_zone', 'clan_knockout', 'finale', 'first_bank', 'zone', 'comeback', 'perfect_dice', 'knockout', 'lost_keys', 'salvador_lost', 'pizza', 'attack51', 'bitcoin_dead'];
 
     /**
      * The statistics of a finished match, cached.
@@ -101,6 +107,11 @@ final class HyperStats
     /** @var array<int, array{round: int, zone: string}> the first time a seat held land in one currency space only */
     private array $lastRegion = [];
 
+    /** @var array<int, int> conquests per seat over the whole match */
+    private array $conquests = [];
+
+    private bool $teams = false;
+
     /**
      * One replayed ply (HyperReplay's observer): the game before it (null for the setup), after it, and its events.
      * Fed in order and closed with result(); compute() does both for a stored match.
@@ -111,6 +122,7 @@ final class HyperStats
     {
         if ($before === null) {
             $this->round = $after->round();
+            $this->teams = $after->isTeamGame();
             $this->sample($after, 0);
 
             return;
@@ -151,18 +163,25 @@ final class HyperStats
                     break;
                 case 'bank_fallen':
                     $loser = $previous[$event['territory']] ?? null;
-                    $this->moment('first_bank', ['seat' => $seat, 'territory' => $event['territory'], 'loser' => $loser]);
+                    $this->teams
+                        ? $this->moment('clan_bank', ['seat' => $seat, 'team' => $after->teamOf((int) $seat), 'territory' => $event['territory'], 'loser' => $loser])
+                        : $this->moment('first_bank', ['seat' => $seat, 'territory' => $event['territory'], 'loser' => $loser]);
 
                     if ($loser !== null) {
                         $this->turningPoints[] = ['round' => $this->round, 'type' => 'bank_fallen', 'seat' => $seat, 'loser' => $loser, 'territory' => $event['territory']];
                     }
                     break;
                 case 'zone_completed':
-                    $this->moment('zone', ['seat' => $seat, 'zone' => $event['zone']]);
+                    if (! $this->teams) {
+                        $this->moment('zone', ['seat' => $seat, 'zone' => $event['zone']]);
+                    }
+
                     $this->turningPoints[] = ['round' => $this->round, 'type' => 'zone_completed', 'seat' => $seat, 'zone' => $event['zone']];
                     break;
                 case 'player_eliminated':
-                    $this->moment('knockout', ['seat' => $event['by'], 'victim' => $seat]);
+                    $this->teams
+                        ? $this->moment('clan_knockout', ['seat' => $event['by'], 'team' => $after->teamOf((int) $event['by']), 'victim' => $seat, 'victim_team' => $after->teamOf((int) $seat)])
+                        : $this->moment('knockout', ['seat' => $event['by'], 'victim' => $seat]);
                     $this->turningPoints[] = ['round' => $this->round, 'type' => 'player_eliminated', 'seat' => $event['by'], 'loser' => $seat];
                     break;
                 case 'card_played':
@@ -183,6 +202,32 @@ final class HyperStats
 
         if ($this->round > 1) {
             $this->regions($after);
+        }
+
+        if ($this->teams && ! isset($this->moments['clan_zone'])) {
+            $this->teamZones($after);
+        }
+    }
+
+    /**
+     * The first currency space all of whose territories the seats of one team hold together.
+     */
+    private function teamZones(HyperGame $game): void
+    {
+        foreach (HyperMap::ZONE_TERRITORIES as $zone => $territories) {
+            $owners = array_map(fn (int $t): ?int => $game->ownerOf($t), $territories);
+
+            if (in_array(null, $owners, true)) {
+                continue;
+            }
+
+            $teams = array_unique(array_map(fn (?int $owner): int => $game->teamOf((int) $owner), $owners));
+
+            if (count($teams) === 1) {
+                $this->moment('clan_zone', ['team' => $teams[0], 'zone' => HyperMap::ZONE_KEYS[$zone], 'seats' => array_values(array_unique(array_map('intval', $owners)))]);
+
+                return;
+            }
         }
     }
 
@@ -211,6 +256,8 @@ final class HyperStats
 
     private function conquered(int $seat): void
     {
+        $this->conquests[$seat] = ($this->conquests[$seat] ?? 0) + 1;
+
         $this->run[$seat] = ($this->run[$seat] ?? 0) + 1;
 
         if ($this->run[$seat] > $this->bestRun['value']) {
@@ -303,6 +350,13 @@ final class HyperStats
             }
         }
 
+        $teams = $this->teams ? $this->teamTable($game, $seats, $loot) : null;
+
+        if ($teams !== null && $game->winnerTeam() !== null) {
+            $won = $teams[$game->winnerTeam()];
+            $this->moments['team_win'] = ['key' => 'team_win', 'round' => $this->round, 'team' => $won['team'], 'seat' => $winner, 'seats' => $won['seats'], 'mvp' => $won['mvp'], 'by_limit' => $game->wonByLimit()];
+        }
+
         $series = [];
 
         foreach (self::SERIES as $name) {
@@ -323,9 +377,44 @@ final class HyperStats
                 'loot' => $this->top($loot),
                 'unlucky' => $unlucky,
             ],
+            'teams' => $teams === null ? null : array_values($teams),
             'turning_points' => $this->turningPoints,
             'moments' => array_values(array_filter(array_map(fn (string $key): ?array => $this->moments[$key] ?? null, self::MOMENTS))),
         ];
+    }
+
+    /**
+     * Per team: its seats, the win, its sums, and its MVP (most conquests over the match, then most loot; the
+     * first seat of equals).
+     *
+     * @param  list<int>  $seats
+     * @param  list<float>  $loot
+     * @return array<int, array{team: int, seats: list<int>, won: bool, conquests: int, loot: float, battles: int, banks: int, mvp: array{seat: int, conquests: int, loot: float}}>
+     */
+    private function teamTable(HyperGame $game, array $seats, array $loot): array
+    {
+        $table = [];
+
+        foreach ($seats as $seat) {
+            $team = $game->teamOf($seat);
+            $row = $table[$team] ?? ['team' => $team, 'seats' => [], 'won' => $game->winnerTeam() === $team, 'conquests' => 0, 'loot' => 0.0, 'battles' => 0, 'banks' => 0, 'mvp' => null];
+            $row['seats'][] = $seat;
+            $row['conquests'] += $this->conquests[$seat] ?? 0;
+            $row['loot'] = round($row['loot'] + $loot[$seat], 1);
+            $row['battles'] += $this->battles[$seat] ?? 0;
+            $row['banks'] += $game->banksOf($seat);
+            $mine = ['seat' => $seat, 'conquests' => $this->conquests[$seat] ?? 0, 'loot' => $loot[$seat]];
+
+            if ($row['mvp'] === null || [$mine['conquests'], $mine['loot']] > [$row['mvp']['conquests'], $row['mvp']['loot']]) {
+                $row['mvp'] = $mine;
+            }
+
+            $table[$team] = $row;
+        }
+
+        ksort($table);
+
+        return $table;
     }
 
     /**

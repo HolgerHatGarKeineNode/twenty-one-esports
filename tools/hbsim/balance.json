@@ -3,5 +3,10 @@
     "seatComp": {
         "open": { "2": 9.5, "3": 6, "4": 4.5, "5": 2, "6": 1.5 },
         "limit": { "2": 9.5, "3": 6, "4": 4, "5": 1.5, "6": 1 }
+    },
+    "teamNote": "Team games (P4): extra start plebs per later seat for two teams seated alternately (A B A B), keys 4 = 2v2 and 6 = 3v3. Tuned with `hbsim <games> <threads> teamtune [limit]`, gated with `teamgate`.",
+    "teamComp": {
+        "open": { "4": 4, "6": 1 },
+        "limit": { "4": 4, "6": 1 }
     }
 }

@@ -61,6 +61,8 @@ function hyperPage(?User $user, string $path, int $width = 1440, int $height = 9
     $page = visit($user ? BrowserLogin::url($user) : BrowserLogin::LANDING)->page();
     $page->context()->addInitScript(BrowserConsole::COLLECTOR);
     $page->context()->addInitScript('try { localStorage.setItem("hb-settings", '.json_encode((string) json_encode($settings)).'); } catch (e) {}');
+    // A big moment's caption waits for a tap (P4): the test taps it as a player would, once it asks.
+    $page->context()->addInitScript('setInterval(() => { const b = document.querySelector("#banner[data-wait=\\"1\\"]"); if (b) b.dispatchEvent(new PointerEvent("pointerdown", { bubbles: true })); }, 250);');
 
     if ($user) {
         $page->context()->addInitScript(TestSigner::browserStub($user));

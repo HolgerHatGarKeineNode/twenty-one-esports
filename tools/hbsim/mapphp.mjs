@@ -6,7 +6,7 @@ const str = (s) => `'${String(s).replace(/\\/g, '\\\\').replace(/'/g, "\\'")}'`;
 const float = (v) => (Number.isInteger(v) ? v.toFixed(1) : String(v));
 const list = (a, f = String) => `[${a.map(f).join(', ')}]`;
 const zoneTerr = d.zones.map((_, z) => d.terr.map((t, i) => (t.zone === z ? i : -1)).filter((i) => i >= 0));
-const comp = (a) => `[${a.map((v, k) => `${k + 2} => ${float(v)}`).join(', ')}]`;
+const comp = (a, seats = [2, 3, 4, 5, 6]) => `[${a.map((v, k) => `${seats[k]} => ${float(v)}`).join(', ')}]`;
 const php = `<?php
 
 namespace App\\Support\\Hyper;
@@ -62,6 +62,9 @@ final class HyperMap
 
     /** @var array{open: array<int, float>, limit: array<int, float>} extra start plebs per later seat, by player count */
     public const array SEAT_COMP = ['open' => ${comp(d.seatComp.open)}, 'limit' => ${comp(d.seatComp.limit)}];
+
+    /** @var array{open: array<int, float>, limit: array<int, float>} the same for two teams seated alternately: 4 seats (2v2), 6 seats (3v3) */
+    public const array TEAM_SEAT_COMP = ['open' => ${comp(d.teamComp.open, [4, 6])}, 'limit' => ${comp(d.teamComp.limit, [4, 6])}];
 }
 `;
 fs.writeFileSync(process.argv[3], php);
