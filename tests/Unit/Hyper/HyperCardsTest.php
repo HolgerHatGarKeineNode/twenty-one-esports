@@ -47,14 +47,19 @@ it('51%-Attacke: takes a neighbour of at most 3 units without dice, from the str
         ->and(hyperEvents($events, 'territory_conquered'))->toHaveCount(1);
 });
 
-it('51%-Attacke: a lone neighbour takes it without leaving home', function (): void {
-    ['game' => $game] = hyperPlay('attack51', 'mexiko', ['territories' => ['ny' => [0, 1]]]);
+it('51%-Attacke: a lone neighbour takes it without leaving home, and a loser without land is out', function (): void {
+    $step = hyperPosition([
+        'territories' => ['ny' => [0, 1], 'texas' => [0, 1], 'irland' => [1, 3], 'mexiko' => [2, 1]],
+        'seats' => [0 => ['hand' => ['attack51']], 2 => ['hand' => ['pizza']]],
+    ])->apply(0, ['type' => 'play_card', 'card' => 'attack51', 'target' => 'mexiko']);
+    ['game' => $game, 'events' => $events] = ['game' => $step->game, 'events' => $step->events];
 
     expect(hyperTerritory($game, 'mexiko'))->toMatchArray(['owner' => 0, 'pleb' => 1])
         ->and(hyperTerritory($game, 'texas')['pleb'])->toBe(1)
         ->and($game->seatAt(0)['conquered'])->toBe(1)
-        // As on the page: this branch does not check whether the loser is out.
-        ->and($game->seatAt(2)['out'])->toBeFalse();
+        ->and($game->seatAt(2)['out'])->toBeTrue()
+        ->and($game->seatAt(0)['hand'])->toBe(['pizza'])
+        ->and(hyperEvents($events, 'player_eliminated'))->toBe([['type' => 'player_eliminated', 'seat' => 2, 'by' => 0, 'cards' => 1]]);
 });
 
 it('Lost Keys: the richest rival loses 30 % of his sats', function (): void {

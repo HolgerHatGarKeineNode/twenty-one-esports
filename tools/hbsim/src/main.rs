@@ -222,14 +222,17 @@ impl Game {
         if self.u(to) == 0 { self.t[to].pleb = 1; Self::lose(&mut self.t[from], 1); }
         self.p[pid].conquered += 1;
         if T_BANK[to] { self.p[pid].sats = r1(self.p[pid].sats + 1.0); self.p[pid].loot = r1(self.p[pid].loot + 1.0); }
-        if prev >= 0 {
-            let v = prev as usize;
-            if self.mine_of(v).next().is_none() {
-                self.p[v].out = true;
-                let h = std::mem::take(&mut self.p[v].hand); self.p[pid].hand.extend(h); self.p[pid].hand.truncate(7);
-            }
-        }
+        self.knock_out_if_landless(prev, pid);
         self.check_win(false);
+    }
+    /// A seat that lost its last territory to `by` is out; its hand goes to the conqueror (up to 7 cards).
+    fn knock_out_if_landless(&mut self, prev: i8, by: usize) {
+        if prev < 0 { return; }
+        let v = prev as usize;
+        if self.mine_of(v).next().is_none() {
+            self.p[v].out = true;
+            let h = std::mem::take(&mut self.p[v].hand); self.p[by].hand.extend(h); self.p[by].hand.truncate(7);
+        }
     }
     fn standings_winner(&self) -> usize {
         let mut alive: Vec<usize> = (0..self.p.len()).filter(|&i| !self.p[i].out).collect();
@@ -283,7 +286,7 @@ impl Game {
                 for &n in ADJ[tg] { if self.own(n) == pid as i8 && src.map_or(true, |s| self.u(n) > self.u(s)) { src = Some(n); } }
                 self.t[tg].pleb = 0; self.t[tg].maxi = 0; self.t[tg].asic = 0;
                 let s = src.unwrap();
-                if self.u(s) > 1 { self.conquest(s, tg, prev, 1); } else { self.t[tg] = Terr { owner: pid as i8, pleb: 1, maxi: 0, asic: 0, shield: -1 }; self.p[pid].conquered += 1; }
+                if self.u(s) > 1 { self.conquest(s, tg, prev, 1); } else { self.t[tg] = Terr { owner: pid as i8, pleb: 1, maxi: 0, asic: 0, shield: -1 }; self.p[pid].conquered += 1; self.knock_out_if_landless(prev, pid); }
             }
             Card::Keys => {
                 let mut rich: Option<usize> = None;

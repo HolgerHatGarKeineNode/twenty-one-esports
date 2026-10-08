@@ -1056,11 +1056,12 @@ final class HyperGame
                 if ($this->units($source) > 1) {
                     $conquest = [$source, $target, $previous];
                 } else {
-                    // A lone unit takes it without leaving home: the page does not check the loser here.
+                    // A lone unit takes it without leaving home; a loser without land is out as after a conquest.
                     $this->owner[$target] = $seat;
                     $this->pleb[$target] = 1;
                     $this->shield[$target] = -1;
                     $this->seats[$seat]->conquered++;
+                    $this->knockOutIfLandless($previous, $seat);
                 }
                 break;
             case 'keys':
@@ -1373,16 +1374,25 @@ final class HyperGame
             $this->emit('zone_completed', ['seat' => $seat, 'zone' => HyperMap::ZONE_KEYS[HyperMap::ZONE[$to]]]);
         }
 
-        if ($previous >= 0 && $this->territoriesOf($previous) === []) {
-            $this->seats[$previous]->out = true;
-            $cards = count($this->seats[$previous]->hand);
-            $hand = array_slice([...$this->seats[$seat]->hand, ...$this->seats[$previous]->hand], 0, self::HAND_MAX);
-            $this->seats[$previous]->hand = [];
-            $this->seats[$seat]->hand = $hand;
-            $this->emit('player_eliminated', ['seat' => $previous, 'by' => $seat, 'cards' => $cards]);
+        $this->knockOutIfLandless($previous, $seat);
+        $this->checkWin(false);
+    }
+
+    /**
+     * A seat that lost its last territory to `by` is out; its hand goes to the conqueror (up to 7 cards).
+     */
+    private function knockOutIfLandless(int $previous, int $by): void
+    {
+        if ($previous < 0 || $this->territoriesOf($previous) !== []) {
+            return;
         }
 
-        $this->checkWin(false);
+        $this->seats[$previous]->out = true;
+        $cards = count($this->seats[$previous]->hand);
+        $hand = array_slice([...$this->seats[$by]->hand, ...$this->seats[$previous]->hand], 0, self::HAND_MAX);
+        $this->seats[$previous]->hand = [];
+        $this->seats[$by]->hand = $hand;
+        $this->emit('player_eliminated', ['seat' => $previous, 'by' => $by, 'cards' => $cards]);
     }
 
     /**
