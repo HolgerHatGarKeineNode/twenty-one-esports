@@ -1,0 +1,123 @@
+{
+ "model": "google/gemini-3-pro-image",
+ "style": "",
+ "assets": [
+  {
+   "id": "por-you",
+   "aspect": "1:1",
+   "prompt": "A determined young Bitcoin rebel in a sleek orange techwear hooded jacket with glowing orange seam lights, a small gold Bitcoin pendant, short messy brown hair, confident smirk. Modern AAA video game character splash art, stylized semi-realistic 3D render, head and shoulders, three-quarter view, cinematic lighting with a warm Bitcoin-orange key light and a cool steel-blue rim light, deep navy background with soft bokeh, highly detailed, sharp focus, original fictional character. No text, no letters, no logos, no watermark, no frame, no border."
+  },
+  {
+   "id": "por-fed",
+   "aspect": "1:1",
+   "prompt": "An imposing smug central banker in a tailored dark green suit, slicked silver hair, gold-rimmed glasses, fanning a stack of dollar bills, a glowing money printer silhouette behind him. Modern AAA video game character splash art, stylized semi-realistic 3D render, head and shoulders, three-quarter view, cinematic lighting with a warm Bitcoin-orange key light and a cool steel-blue rim light, deep navy background with soft bokeh, highly detailed, sharp focus, original fictional character. No text, no letters, no logos, no watermark, no frame, no border."
+  },
+  {
+   "id": "por-ezb",
+   "aspect": "1:1",
+   "prompt": "A cold European central bank technocrat woman in a sharp navy suit, auburn hair in a tight bun, smart glasses reflecting blue holographic charts, holding a red rubber stamp. Modern AAA video game character splash art, stylized semi-realistic 3D render, head and shoulders, three-quarter view, cinematic lighting with a warm Bitcoin-orange key light and a cool steel-blue rim light, deep navy background with soft bokeh, highly detailed, sharp focus, original fictional character. No text, no letters, no logos, no watermark, no frame, no border."
+  },
+  {
+   "id": "por-goldbug",
+   "aspect": "1:1",
+   "prompt": "A rugged bearded gold bug prospector in a gold-plated tactical vest and a miner's helmet with headlamp, proudly holding a shiny gold bar. Modern AAA video game character splash art, stylized semi-realistic 3D render, head and shoulders, three-quarter view, cinematic lighting with a warm Bitcoin-orange key light and a cool steel-blue rim light, deep navy background with soft bokeh, highly detailed, sharp focus, original fictional character. No text, no letters, no logos, no watermark, no frame, no border."
+  },
+  {
+   "id": "por-shit",
+   "aspect": "1:1",
+   "prompt": "A flashy grinning crypto shill in a neon pink suit with LED sunglasses, holding a smartphone that shows a rocket emoji, one gold tooth, comedic. Modern AAA video game character splash art, stylized semi-realistic 3D render, head and shoulders, three-quarter view, cinematic lighting with a warm Bitcoin-orange key light and a cool steel-blue rim light, deep navy background with soft bokeh, highly detailed, sharp focus, original fictional character. No text, no letters, no logos, no watermark, no frame, no border."
+  },
+  {
+   "id": "por-no",
+   "aspect": "1:1",
+   "prompt": "A skeptical grumpy man in a beige cardigan with thick glasses, frowning at a tablet that shows a red crashing chart, comedic. Modern AAA video game character splash art, stylized semi-realistic 3D render, head and shoulders, three-quarter view, cinematic lighting with a warm Bitcoin-orange key light and a cool steel-blue rim light, deep navy background with soft bokeh, highly detailed, sharp focus, original fictional character. No text, no letters, no logos, no watermark, no frame, no border."
+  },
+  {
+   "id": "por-pleb",
+   "aspect": "1:1",
+   "prompt": "A tired young office worker in a grey hoodie and green cap clutching a crumpled paper dollar bill, weary eyes. Modern AAA video game character splash art, stylized semi-realistic 3D render, head and shoulders, three-quarter view, cinematic lighting with a warm Bitcoin-orange key light and a cool steel-blue rim light, deep navy background with soft bokeh, highly detailed, sharp focus, original fictional character. No text, no letters, no logos, no watermark, no frame, no border."
+  },
+  {
+   "id": "por-maxi",
+   "aspect": "1:1",
+   "prompt": "A bearded Bitcoin maximalist in an orange tactical hoodie with intense glowing red laser beams shooting from his eyes, determined. Modern AAA video game character splash art, stylized semi-realistic 3D render, head and shoulders, three-quarter view, cinematic lighting with a warm Bitcoin-orange key light and a cool steel-blue rim light, deep navy background with soft bokeh, highly detailed, sharp focus, original fictional character. No text, no letters, no logos, no watermark, no frame, no border."
+  },
+  {
+   "id": "por-asic",
+   "aspect": "1:1",
+   "prompt": "A compact armored bitcoin mining robot head and shoulders, twin spinning cooling fans as eyes, glowing orange LED grille mouth, lightning-bolt antenna, steel-blue armor plates. Modern AAA video game character splash art, stylized semi-realistic 3D render, head and shoulders, three-quarter view, cinematic lighting with a warm Bitcoin-orange key light and a cool steel-blue rim light, deep navy background with soft bokeh, highly detailed, sharp focus, original fictional character. No text, no letters, no logos, no watermark, no frame, no border."
+  },
+  {
+   "id": "card-brrrr",
+   "aspect": "3:4",
+   "prompt": "A colossal money printing machine roaring inside a futuristic central bank vault, a storm of green banknotes flying, red warning lights. Modern AAA video game event illustration, cinematic semi-realistic digital art, dramatic orange and steel-blue lighting, deep navy shadows, highly detailed. No text, no letters, no logos, no watermark, no border."
+  },
+  {
+   "id": "card-attack51",
+   "aspect": "3:4",
+   "prompt": "Lightning strikes a vast field of glowing bitcoin mining rigs at night, orange sparks, a giant holographic 51 percent gauge in the sky without digits. Modern AAA video game event illustration, cinematic semi-realistic digital art, dramatic orange and steel-blue lighting, deep navy shadows, highly detailed. No text, no letters, no logos, no watermark, no border."
+  },
+  {
+   "id": "card-keys",
+   "aspect": "3:4",
+   "prompt": "A hardware wallet and a torn paper seed phrase falling into a swirling digital void, golden coins dissolving into pixels. Modern AAA video game event illustration, cinematic semi-realistic digital art, dramatic orange and steel-blue lighting, deep navy shadows, highly detailed. No text, no letters, no logos, no watermark, no border."
+  },
+  {
+   "id": "card-diamond",
+   "aspect": "3:4",
+   "prompt": "Two hands made of glowing diamond crystal gripping an orange bitcoin coin, brilliant refractions, dark background. Modern AAA video game event illustration, cinematic semi-realistic digital art, dramatic orange and steel-blue lighting, deep navy shadows, highly detailed. No text, no letters, no logos, no watermark, no border."
+  },
+  {
+   "id": "card-salvador",
+   "aspect": "3:4",
+   "prompt": "A giant golden bitcoin coin flipping above a volcano powering a geothermal mining plant, palm trees, sunset. Modern AAA video game event illustration, cinematic semi-realistic digital art, dramatic orange and steel-blue lighting, deep navy shadows, highly detailed. No text, no letters, no logos, no watermark, no border."
+  },
+  {
+   "id": "card-scam",
+   "aspect": "3:4",
+   "prompt": "A private jet taking off from the rooftop of a modern glass central bank tower at dusk, trailing banknotes. Modern AAA video game event illustration, cinematic semi-realistic digital art, dramatic orange and steel-blue lighting, deep navy shadows, highly detailed. No text, no letters, no logos, no watermark, no border."
+  },
+  {
+   "id": "card-pizza",
+   "aspect": "3:4",
+   "prompt": "Two steaming pepperoni pizzas on a desk next to a glowing pile of golden bitcoin coins and an old 2010 computer. Modern AAA video game event illustration, cinematic semi-realistic digital art, dramatic orange and steel-blue lighting, deep navy shadows, highly detailed. No text, no letters, no logos, no watermark, no border."
+  },
+  {
+   "id": "card-lagarde",
+   "aspect": "3:4",
+   "prompt": "A glowing purple crystal ball on a sleek desk in a European central bank office full of holographic charts, fog. Modern AAA video game event illustration, cinematic semi-realistic digital art, dramatic orange and steel-blue lighting, deep navy shadows, highly detailed. No text, no letters, no logos, no watermark, no border."
+  },
+  {
+   "id": "card-dip",
+   "aspect": "3:4",
+   "prompt": "A huge red market candle crashing into a city street while a gloved hand catches falling orange bitcoin coins. Modern AAA video game event illustration, cinematic semi-realistic digital art, dramatic orange and steel-blue lighting, deep navy shadows, highly detailed. No text, no letters, no logos, no watermark, no border."
+  },
+  {
+   "id": "card-nokeys",
+   "aspect": "3:4",
+   "prompt": "A gust of wind blowing banknotes and coins out of an open exchange vault into a grey stormy sky. Modern AAA video game event illustration, cinematic semi-realistic digital art, dramatic orange and steel-blue lighting, deep navy shadows, highly detailed. No text, no letters, no logos, no watermark, no border."
+  },
+  {
+   "id": "key-title",
+   "aspect": "16:9",
+   "prompt": "Epic cinematic key art for a strategy game called Bitcoin versus the central banks: a colossal glowing orange bitcoin coin rising over a dark futuristic city, marble central bank buildings cracking and leaking paper money, dramatic stormy sky, embers and light rays. Modern AAA video game title screen art, semi-realistic. No text, no letters, no logos, no watermark."
+  },
+  {
+   "id": "tex-panel",
+   "aspect": "1:1",
+   "model": "google/gemini-3-pro-image",
+   "prompt": "A seamless tileable square texture of dark navy blue carbon fiber weave with a very faint fine orange grid, evenly lit, flat, top-down, video game UI material. No text, no border, no vignette."
+  },
+  {
+   "id": "tex-metal",
+   "aspect": "1:1",
+   "model": "google/gemini-3.1-flash-image",
+   "prompt": "Seamless tileable texture of dark brushed gunmetal with fine scratches, evenly lit, flat, top-down, for a video game UI. No text, no border, no vignette."
+  },
+  {
+   "id": "ui-banner",
+   "aspect": "21:9",
+   "prompt": "A wide horizontal sci-fi video game announcement banner plate made of dark gunmetal and carbon, glowing orange edge lights and small rivets, the center is a large empty dark area for text, isolated on pure black background. No text, no letters, no logos, no watermark."
+  }
+ ]
+}

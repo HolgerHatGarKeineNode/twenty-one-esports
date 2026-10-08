@@ -1,0 +1,12 @@
+import fs from 'node:fs';
+const d = JSON.parse(fs.readFileSync(process.argv[2], 'utf8'));
+let s = '// Generated from the game page by maprs.mjs. Do not edit.\n';
+s += `pub const NT: usize = ${d.terr.length};\npub const NZ: usize = ${d.zones.length};\n`;
+s += `pub const ZONE_KEYS: [&str; NZ] = [${d.zones.map((z) => `"${z.key}"`).join(', ')}];\n`;
+s += `pub const ZONE_SATS: [f64; NZ] = [${d.zones.map((z) => z.sats.toFixed(1)).join(', ')}];\n`;
+s += `pub const T_ZONE: [usize; NT] = [${d.terr.map((t) => t.zone).join(', ')}];\n`;
+s += `pub const T_BANK: [bool; NT] = [${d.terr.map((t) => t.bank).join(', ')}];\n`;
+s += `pub const T_MINE: [bool; NT] = [${d.terr.map((t) => t.mine).join(', ')}];\n`;
+s += `pub const T_ID: [&str; NT] = [${d.terr.map((t) => `"${t.id}"`).join(', ')}];\n`;
+s += `pub const ADJ: [&[usize]; NT] = [${d.terr.map((t) => `&[${t.adj.join(', ')}]`).join(', ')}];\n`;
+fs.mkdirSync('src', { recursive: true }); fs.writeFileSync('src/map.rs', s); console.log('map.rs ok');

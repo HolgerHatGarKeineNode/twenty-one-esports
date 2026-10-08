@@ -1,0 +1,136 @@
+{
+ "model": "google/gemini-3-pro-image",
+ "style": "",
+ "assets": [
+  {
+   "id": "bd-dollar",
+   "aspect": "21:9",
+   "prompt": "A New York style financial district skyline at golden dusk, glass skyscrapers, a monumental neoclassical central bank building with columns in the middle distance, steam rising, warm light against blue shadows. Cinematic matte painting backdrop for a 3D strategy game battle stage, ultra wide panoramic view, the horizon at about 45 percent of the image height, an empty open ground area across the bottom fifth, atmospheric depth and haze, modern AAA video game environment art, semi-realistic, highly detailed. No people, no text, no letters, no logos, no watermark."
+  },
+  {
+   "id": "bd-euro",
+   "aspect": "21:9",
+   "prompt": "A Frankfurt style river skyline at blue hour, a twin glass tower central bank headquarters, modern office towers, a bridge, cold blue light with orange city lights. Cinematic matte painting backdrop for a 3D strategy game battle stage, ultra wide panoramic view, the horizon at about 45 percent of the image height, an empty open ground area across the bottom fifth, atmospheric depth and haze, modern AAA video game environment art, semi-realistic, highly detailed. No people, no text, no letters, no logos, no watermark."
+  },
+  {
+   "id": "bd-pound",
+   "aspect": "21:9",
+   "prompt": "A foggy London style skyline on a rainy evening, a classical bank building with columns, a gothic clock tower silhouette, wet reflective streets, gas lamps. Cinematic matte painting backdrop for a 3D strategy game battle stage, ultra wide panoramic view, the horizon at about 45 percent of the image height, an empty open ground area across the bottom fifth, atmospheric depth and haze, modern AAA video game environment art, semi-realistic, highly detailed. No people, no text, no letters, no logos, no watermark."
+  },
+  {
+   "id": "bd-swiss",
+   "aspect": "21:9",
+   "prompt": "Snowy Swiss Alps at a clear cold evening, a fortified bank vault carved into a mountain face with a huge round steel vault door glowing gold, pine forest. Cinematic matte painting backdrop for a 3D strategy game battle stage, ultra wide panoramic view, the horizon at about 45 percent of the image height, an empty open ground area across the bottom fifth, atmospheric depth and haze, modern AAA video game environment art, semi-realistic, highly detailed. No people, no text, no letters, no logos, no watermark."
+  },
+  {
+   "id": "bd-rubel",
+   "aspect": "21:9",
+   "prompt": "A snowy winter city at twilight with colourful onion domes and a stern stone bank building, falling snow, frozen river, warm windows. Cinematic matte painting backdrop for a 3D strategy game battle stage, ultra wide panoramic view, the horizon at about 45 percent of the image height, an empty open ground area across the bottom fifth, atmospheric depth and haze, modern AAA video game environment art, semi-realistic, highly detailed. No people, no text, no letters, no logos, no watermark."
+  },
+  {
+   "id": "bd-yuan",
+   "aspect": "21:9",
+   "prompt": "A Shanghai Bund style skyline at night with neon towers and a misty river, red lanterns, a massive stone bank building with a dome. Cinematic matte painting backdrop for a 3D strategy game battle stage, ultra wide panoramic view, the horizon at about 45 percent of the image height, an empty open ground area across the bottom fifth, atmospheric depth and haze, modern AAA video game environment art, semi-realistic, highly detailed. No people, no text, no letters, no logos, no watermark."
+  },
+  {
+   "id": "bd-yen",
+   "aspect": "21:9",
+   "prompt": "A Tokyo style skyline at dawn with cherry blossom trees, a snowy volcano mountain in the distance, a modern central bank building, soft pink light. Cinematic matte painting backdrop for a 3D strategy game battle stage, ultra wide panoramic view, the horizon at about 45 percent of the image height, an empty open ground area across the bottom fifth, atmospheric depth and haze, modern AAA video game environment art, semi-realistic, highly detailed. No people, no text, no letters, no logos, no watermark."
+  },
+  {
+   "id": "bd-afro",
+   "aspect": "21:9",
+   "prompt": "An African savanna at golden hour with baobab trees and acacias, a modern pan-African central bank building in the distance, warm dust in the air. Cinematic matte painting backdrop for a 3D strategy game battle stage, ultra wide panoramic view, the horizon at about 45 percent of the image height, an empty open ground area across the bottom fifth, atmospheric depth and haze, modern AAA video game environment art, semi-realistic, highly detailed. No people, no text, no letters, no logos, no watermark."
+  },
+  {
+   "id": "bd-sa",
+   "aspect": "21:9",
+   "prompt": "A South American tropical jungle at sunset with a smoking volcano powering a geothermal bitcoin mining plant with glowing orange racks, palm trees. Cinematic matte painting backdrop for a 3D strategy game battle stage, ultra wide panoramic view, the horizon at about 45 percent of the image height, an empty open ground area across the bottom fifth, atmospheric depth and haze, modern AAA video game environment art, semi-realistic, highly detailed. No people, no text, no letters, no logos, no watermark."
+  },
+  {
+   "id": "bd-ozean",
+   "aspect": "21:9",
+   "prompt": "A sunny harbour coastline with a white sail-shaped opera house silhouette, a bank tower, turquoise water, a few clouds. Cinematic matte painting backdrop for a 3D strategy game battle stage, ultra wide panoramic view, the horizon at about 45 percent of the image height, an empty open ground area across the bottom fifth, atmospheric depth and haze, modern AAA video game environment art, semi-realistic, highly detailed. No people, no text, no letters, no logos, no watermark."
+  },
+  {
+   "id": "bd-mine",
+   "aspect": "21:9",
+   "prompt": "A vast bitcoin mining data center hall at night, endless rows of glowing orange mining racks, cables, industrial haze and cooling fans. Cinematic matte painting backdrop for a 3D strategy game battle stage, ultra wide panoramic view, the horizon at about 45 percent of the image height, an empty open ground area across the bottom fifth, atmospheric depth and haze, modern AAA video game environment art, semi-realistic, highly detailed. No people, no text, no letters, no logos, no watermark."
+  },
+  {
+   "id": "bank-dollar",
+   "aspect": "1:1",
+   "prompt": "A neoclassical central bank building of white marble with tall columns and a pediment, bronze doors, an eagle relief, a flag on top. Isolated game asset: a single monumental building, front three-quarter view, centered, complete and not cropped, stylized semi-realistic modern AAA video game 3D render, crisp edges, soft studio light, on a perfectly flat solid pure magenta background (#FF00FF), no shadow on the background, no ground plane. No text, no letters, no logos, no watermark."
+  },
+  {
+   "id": "bank-euro",
+   "aspect": "1:1",
+   "prompt": "A sleek modern twin glass tower central bank headquarters with a large euro-style star ring sculpture in front. Isolated game asset: a single monumental building, front three-quarter view, centered, complete and not cropped, stylized semi-realistic modern AAA video game 3D render, crisp edges, soft studio light, on a perfectly flat solid pure magenta background (#FF00FF), no shadow on the background, no ground plane. No text, no letters, no logos, no watermark."
+  },
+  {
+   "id": "bank-pound",
+   "aspect": "1:1",
+   "prompt": "A classical London style bank building with Corinthian columns and a domed rotunda, sandstone, a flag on top. Isolated game asset: a single monumental building, front three-quarter view, centered, complete and not cropped, stylized semi-realistic modern AAA video game 3D render, crisp edges, soft studio light, on a perfectly flat solid pure magenta background (#FF00FF), no shadow on the background, no ground plane. No text, no letters, no logos, no watermark."
+  },
+  {
+   "id": "bank-swiss",
+   "aspect": "1:1",
+   "prompt": "A massive round steel bank vault door set in a granite mountain wall, with gold bars stacked in front. Isolated game asset: a single monumental building, front three-quarter view, centered, complete and not cropped, stylized semi-realistic modern AAA video game 3D render, crisp edges, soft studio light, on a perfectly flat solid pure magenta background (#FF00FF), no shadow on the background, no ground plane. No text, no letters, no logos, no watermark."
+  },
+  {
+   "id": "bank-rubel",
+   "aspect": "1:1",
+   "prompt": "A stern stone central bank building with a colourful onion dome on top and red brick details. Isolated game asset: a single monumental building, front three-quarter view, centered, complete and not cropped, stylized semi-realistic modern AAA video game 3D render, crisp edges, soft studio light, on a perfectly flat solid pure magenta background (#FF00FF), no shadow on the background, no ground plane. No text, no letters, no logos, no watermark."
+  },
+  {
+   "id": "bank-yuan",
+   "aspect": "1:1",
+   "prompt": "A grand central bank building in Chinese style with red columns, layered curved roofs and golden ornaments. Isolated game asset: a single monumental building, front three-quarter view, centered, complete and not cropped, stylized semi-realistic modern AAA video game 3D render, crisp edges, soft studio light, on a perfectly flat solid pure magenta background (#FF00FF), no shadow on the background, no ground plane. No text, no letters, no logos, no watermark."
+  },
+  {
+   "id": "bank-yen",
+   "aspect": "1:1",
+   "prompt": "A modern Japanese central bank building of white stone with a torii gate in front and cherry blossom trees. Isolated game asset: a single monumental building, front three-quarter view, centered, complete and not cropped, stylized semi-realistic modern AAA video game 3D render, crisp edges, soft studio light, on a perfectly flat solid pure magenta background (#FF00FF), no shadow on the background, no ground plane. No text, no letters, no logos, no watermark."
+  },
+  {
+   "id": "bank-afro",
+   "aspect": "1:1",
+   "prompt": "A modern African central bank building with warm terracotta walls, geometric patterns and a golden dome. Isolated game asset: a single monumental building, front three-quarter view, centered, complete and not cropped, stylized semi-realistic modern AAA video game 3D render, crisp edges, soft studio light, on a perfectly flat solid pure magenta background (#FF00FF), no shadow on the background, no ground plane. No text, no letters, no logos, no watermark."
+  },
+  {
+   "id": "bank-sa",
+   "aspect": "1:1",
+   "prompt": "A colonial style Latin American central bank building with yellow walls, white columns and palm trees beside it. Isolated game asset: a single monumental building, front three-quarter view, centered, complete and not cropped, stylized semi-realistic modern AAA video game 3D render, crisp edges, soft studio light, on a perfectly flat solid pure magenta background (#FF00FF), no shadow on the background, no ground plane. No text, no letters, no logos, no watermark."
+  },
+  {
+   "id": "bank-ozean",
+   "aspect": "1:1",
+   "prompt": "A modern harbour bank tower with white sail-like curved roof shapes. Isolated game asset: a single monumental building, front three-quarter view, centered, complete and not cropped, stylized semi-realistic modern AAA video game 3D render, crisp edges, soft studio light, on a perfectly flat solid pure magenta background (#FF00FF), no shadow on the background, no ground plane. No text, no letters, no logos, no watermark."
+  },
+  {
+   "id": "bank-mine",
+   "aspect": "1:1",
+   "prompt": "A large industrial bitcoin mining container stack with glowing orange vents and cooling fans. Isolated game asset: a single monumental building, front three-quarter view, centered, complete and not cropped, stylized semi-realistic modern AAA video game 3D render, crisp edges, soft studio light, on a perfectly flat solid pure magenta background (#FF00FF), no shadow on the background, no ground plane. No text, no letters, no logos, no watermark."
+  },
+  {
+   "id": "unit-pleb",
+   "aspect": "2:3",
+   "prompt": "A tired young office worker in a grey hoodie and green cap holding a crumpled paper dollar bill. Isolated game character sprite: full body standing, front three-quarter view, centered, complete from head to feet, stylized semi-realistic modern AAA video game 3D render, crisp edges, on a perfectly flat solid pure magenta background (#FF00FF), no shadow, no ground. No text, no letters, no logos, no watermark."
+  },
+  {
+   "id": "unit-maxi",
+   "aspect": "2:3",
+   "prompt": "A bearded Bitcoin maximalist in an orange tactical hoodie and cargo pants with glowing red laser eyes, fists clenched. Isolated game character sprite: full body standing, front three-quarter view, centered, complete from head to feet, stylized semi-realistic modern AAA video game 3D render, crisp edges, on a perfectly flat solid pure magenta background (#FF00FF), no shadow, no ground. No text, no letters, no logos, no watermark."
+  },
+  {
+   "id": "unit-asic",
+   "aspect": "2:3",
+   "prompt": "A compact armored bitcoin mining robot on short legs, twin cooling fans as eyes, glowing orange LED grille, lightning-bolt antenna, steel-blue armor. Isolated game character sprite: full body standing, front three-quarter view, centered, complete from head to feet, stylized semi-realistic modern AAA video game 3D render, crisp edges, on a perfectly flat solid pure magenta background (#FF00FF), no shadow, no ground. No text, no letters, no logos, no watermark."
+  },
+  {
+   "id": "note",
+   "aspect": "16:9",
+   "prompt": "A fictional banknote design filling the whole frame edge to edge, front view, flat, no background visible, ornate guilloche patterns, a generic engraved portrait of a stern banker in an oval on the left, the large word FIAT and the number 1000000 printed on it, green and grey ink, high detail, modern AAA game prop texture. No other text."
+  }
+ ]
+}

@@ -1,0 +1,81 @@
+{
+ "model": "google/gemini-3-pro-image",
+ "style": "",
+ "assets": [
+  {
+   "id": "map-sea",
+   "aspect": "1:1",
+   "prompt": "Deep dark navy blue ocean seen from high above, subtle soft wave patterns and faint glowing cyan currents, very dark overall. Seamless tileable square texture, evenly lit, flat, top-down, no vignette, no border, no text, for a modern AAA strategy game."
+  },
+  {
+   "id": "map-land",
+   "aspect": "1:1",
+   "prompt": "Stylized satellite terrain relief in neutral grey tones: mountains ridges, valleys, rivers and plains with soft hillshading, medium brightness, low contrast, colourless grey so it can be tinted. Seamless tileable square texture, evenly lit, flat, top-down, no vignette, no border, no text, for a modern AAA strategy game."
+  },
+  {
+   "id": "dice-orange",
+   "aspect": "1:1",
+   "prompt": "Glossy translucent Bitcoin-orange resin surface with tiny suspended golden flakes and subtle depth, like a premium casino die material. Seamless tileable square texture, evenly lit, flat, top-down, no vignette, no border, no text, for a modern AAA strategy game."
+  },
+  {
+   "id": "dice-white",
+   "aspect": "1:1",
+   "prompt": "Polished pearl white ivory resin surface with very subtle marbling, like a premium casino die material. Seamless tileable square texture, evenly lit, flat, top-down, no vignette, no border, no text, for a modern AAA strategy game."
+  },
+  {
+   "id": "btn-primary",
+   "aspect": "21:9",
+   "prompt": "A wide horizontal sci-fi game UI button plate, glowing Bitcoin-orange brushed metal face with bevelled angled corners and a thin bright edge highlight, the face is plain and empty for a label. Isolated game asset, centered, complete and not cropped, stylized semi-realistic modern AAA video game render, crisp edges, soft studio light, on a perfectly flat solid pure magenta background (#FF00FF), no shadow. No text, no letters, no watermark."
+  },
+  {
+   "id": "btn-secondary",
+   "aspect": "21:9",
+   "prompt": "A wide horizontal sci-fi game UI button plate, dark gunmetal carbon face with bevelled angled corners and a thin steel-blue edge highlight, the face is plain and empty for a label. Isolated game asset, centered, complete and not cropped, stylized semi-realistic modern AAA video game render, crisp edges, soft studio light, on a perfectly flat solid pure magenta background (#FF00FF), no shadow. No text, no letters, no watermark."
+  },
+  {
+   "id": "frame-card",
+   "aspect": "3:4",
+   "prompt": "An ornate sci-fi trading card frame border made of dark gunmetal with glowing orange edge lights and small rivets, the whole inner area of the card is empty and filled with pure magenta (#FF00FF) like the background. Isolated game asset, centered, complete and not cropped, stylized semi-realistic modern AAA video game render, crisp edges, soft studio light, on a perfectly flat solid pure magenta background (#FF00FF), no shadow. No text, no letters, no watermark."
+  },
+  {
+   "id": "card-back",
+   "aspect": "3:4",
+   "prompt": "The back side of a premium sci-fi trading card: dark navy carbon with an embossed glowing orange Bitcoin coin emblem in the center, fine circuit line patterns, gunmetal border. Fills the whole frame. No text, no letters."
+  },
+  {
+   "id": "ph-recruit",
+   "aspect": "1:1",
+   "prompt": "Game UI icon: a raised fist holding a small orange flag, stylized embossed metal badge with orange glow. Isolated game asset, centered, complete and not cropped, stylized semi-realistic modern AAA video game render, crisp edges, soft studio light, on a perfectly flat solid pure magenta background (#FF00FF), no shadow. No text, no letters, no watermark."
+  },
+  {
+   "id": "ph-attack",
+   "aspect": "1:1",
+   "prompt": "Game UI icon: two crossed glowing orange lightning swords, stylized embossed metal badge. Isolated game asset, centered, complete and not cropped, stylized semi-realistic modern AAA video game render, crisp edges, soft studio light, on a perfectly flat solid pure magenta background (#FF00FF), no shadow. No text, no letters, no watermark."
+  },
+  {
+   "id": "ph-fortify",
+   "aspect": "1:1",
+   "prompt": "Game UI icon: a steel shield with an orange Bitcoin symbol and an arrow curving around it, stylized embossed metal badge. Isolated game asset, centered, complete and not cropped, stylized semi-realistic modern AAA video game render, crisp edges, soft studio light, on a perfectly flat solid pure magenta background (#FF00FF), no shadow. No text, no letters, no watermark."
+  },
+  {
+   "id": "win",
+   "aspect": "16:9",
+   "prompt": "Victory scene: a triumphant young Bitcoin rebel in an orange techwear hoodie stands on top of a toppled marble central bank building, raising a glowing orange flag with a Bitcoin coin emblem, a giant glowing Bitcoin sun rising behind, golden confetti and coins raining, cheering crowd silhouettes. Modern AAA video game splash art, cinematic semi-realistic digital painting, dramatic Bitcoin-orange and steel-blue lighting, highly detailed. No text, no letters, no logos, no watermark."
+  },
+  {
+   "id": "lose",
+   "aspect": "16:9",
+   "prompt": "Defeat scene: a lonely young Bitcoin rebel in an orange hoodie kneels in the rain in a grey city street at night, paper money falling like snow, a colossal money printing machine towers in the background with green warning lights. Melancholic. Modern AAA video game splash art, cinematic semi-realistic digital painting, dramatic Bitcoin-orange and steel-blue lighting, highly detailed. No text, no letters, no logos, no watermark."
+  },
+  {
+   "id": "hud-plate",
+   "aspect": "21:9",
+   "prompt": "A wide horizontal sci-fi HUD top bar plate of dark gunmetal and carbon with thin orange light strips along the bottom edge and angled ends, plain and empty. Isolated game asset, centered, complete and not cropped, stylized semi-realistic modern AAA video game render, crisp edges, soft studio light, on a perfectly flat solid pure magenta background (#FF00FF), no shadow. No text, no letters, no watermark."
+  },
+  {
+   "id": "map-frame",
+   "aspect": "21:9",
+   "prompt": "A cinematic wide dark vignette frame for a strategy game world map: dark gunmetal ornamental corner brackets with tiny orange lights in the four corners only, everything else is pure magenta (#FF00FF). Isolated game asset, centered, complete and not cropped, stylized semi-realistic modern AAA video game render, crisp edges, soft studio light, on a perfectly flat solid pure magenta background (#FF00FF), no shadow. No text, no letters, no watermark."
+  }
+ ]
+}

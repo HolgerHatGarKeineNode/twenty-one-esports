@@ -1,0 +1,66 @@
+{
+ "model": "google/gemini-3-pro-image",
+ "style": "",
+ "assets": [
+  {
+   "id": "fall-fed",
+   "aspect": "1:1",
+   "prompt": "A chunky green and chrome money printing machine with spinning rollers, green banknotes shooting out of its top, slightly cartoonish, tilted three-quarter view. Isolated game asset, centered, complete and not cropped, stylized semi-realistic modern AAA video game 3D render, crisp edges, soft studio light, on a perfectly flat solid pure magenta background (#FF00FF), no shadow, no ground plane. No text, no letters, no watermark."
+  },
+  {
+   "id": "fall-ezb",
+   "aspect": "1:1",
+   "prompt": "A giant red and gold rubber stamp with a ring of small gold stars on its side, wooden handle, three-quarter view. Isolated game asset, centered, complete and not cropped, stylized semi-realistic modern AAA video game 3D render, crisp edges, soft studio light, on a perfectly flat solid pure magenta background (#FF00FF), no shadow, no ground plane. No text, no letters, no watermark."
+  },
+  {
+   "id": "fall-goldbug",
+   "aspect": "1:1",
+   "prompt": "A huge shiny solid gold bar ingot with bevelled edges and a sparkling glint, three-quarter view. Isolated game asset, centered, complete and not cropped, stylized semi-realistic modern AAA video game 3D render, crisp edges, soft studio light, on a perfectly flat solid pure magenta background (#FF00FF), no shadow, no ground plane. No text, no letters, no watermark."
+  },
+  {
+   "id": "fall-shit",
+   "aspect": "1:1",
+   "prompt": "A cartoonish hot pink toy rocket with flames from its engine and a smiling dog face painted on its nose cone, tilted diagonally, comedic. Isolated game asset, centered, complete and not cropped, stylized semi-realistic modern AAA video game 3D render, crisp edges, soft studio light, on a perfectly flat solid pure green background (#00FF00), no shadow, no ground plane. No text, no letters, no watermark."
+  },
+  {
+   "id": "fall-no",
+   "aspect": "1:1",
+   "prompt": "A grey stone tombstone with the letters RIP engraved, a small wilting flower in front, slightly cracked, three-quarter view, comedic. Isolated game asset, centered, complete and not cropped, stylized semi-realistic modern AAA video game 3D render, crisp edges, soft studio light, on a perfectly flat solid pure magenta background (#FF00FF), no shadow, no ground plane. no watermark."
+  },
+  {
+   "id": "rubble-marble-plain",
+   "aspect": "1:1",
+   "prompt": "A large collapsed pile of broken white marble columns, pediment fragments and rubble from a destroyed neoclassical bank, a few scattered paper banknotes, dust. Isolated game asset, centered, complete and not cropped, stylized semi-realistic modern AAA video game 3D render, crisp edges, soft studio light, on a perfectly flat solid pure magenta background (#FF00FF), no shadow, no ground plane. No text, no letters, no watermark."
+  },
+  {
+   "id": "rubble-modern-plain",
+   "aspect": "1:1",
+   "prompt": "A large collapsed pile of broken glass panels, twisted steel beams and concrete chunks from a destroyed modern bank tower, a few scattered paper banknotes, dust. Isolated game asset, centered, complete and not cropped, stylized semi-realistic modern AAA video game 3D render, crisp edges, soft studio light, on a perfectly flat solid pure magenta background (#FF00FF), no shadow, no ground plane. No text, no letters, no watermark."
+  },
+  {
+   "id": "win-fed",
+   "aspect": "16:9",
+   "prompt": "A smug silver-haired central banker in a dark green suit and gold-rimmed glasses stands on a balcony of a gigantic money printing factory, arms spread, green banknotes raining over a city, printing presses roaring behind him with green lights. Modern AAA video game victory splash art, cinematic semi-realistic digital painting, comedic meme energy, dramatic lighting, highly detailed, original fictional characters. No text, no letters, no logos, no watermark."
+  },
+  {
+   "id": "win-ezb",
+   "aspect": "16:9",
+   "prompt": "A cool European central bank technocrat woman in a navy suit with auburn hair in a bun slams a giant red rubber stamp onto a glowing map of Europe, holographic blue charts and gold stars swirling around her, confident smile. Modern AAA video game victory splash art, cinematic semi-realistic digital painting, comedic meme energy, dramatic lighting, highly detailed, original fictional characters. No text, no letters, no logos, no watermark."
+  },
+  {
+   "id": "win-goldbug",
+   "aspect": "16:9",
+   "prompt": "A rugged bearded gold bug prospector in gold-plated armor and miner's helmet lounges smugly on a mountain of gold bars inside a vast vault, raising a gold bar like a trophy, gold coins raining, 'I told you so' expression. Modern AAA video game victory splash art, cinematic semi-realistic digital painting, comedic meme energy, dramatic lighting, highly detailed, original fictional characters. No text, no letters, no logos, no watermark."
+  },
+  {
+   "id": "win-shit",
+   "aspect": "16:9",
+   "prompt": "A flashy grinning crypto shill in a neon pink suit and LED sunglasses rides a pink cartoon rocket towards a giant cartoon moon, confetti and glittering random coins with dog and frog faces spinning around, absurd and comedic. Modern AAA video game victory splash art, cinematic semi-realistic digital painting, comedic meme energy, dramatic lighting, highly detailed, original fictional characters. No text, no letters, no logos, no watermark."
+  },
+  {
+   "id": "win-no",
+   "aspect": "16:9",
+   "prompt": "A grumpy man in a beige cardigan and thick glasses stands triumphantly at a tiny comedic funeral in the rain, holding a newspaper, next to a tombstone with a cracked orange coin on it, the coin is visibly still glowing and alive behind him, absurd meme humor. Modern AAA video game victory splash art, cinematic semi-realistic digital painting, comedic meme energy, dramatic lighting, highly detailed, original fictional characters. No text, no letters, no logos, no watermark."
+  }
+ ]
+}

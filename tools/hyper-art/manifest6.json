@@ -1,0 +1,56 @@
+{
+ "model": "google/gemini-3-pro-image",
+ "style": "",
+ "assets": [
+  {
+   "id": "bd-ev-brrrr",
+   "aspect": "21:9",
+   "prompt": "The inside of a colossal central bank printing hall, endless rows of roaring money printing presses, green banknotes swirling in the air, red warning lights, steam. Cinematic matte painting backdrop for a 3D strategy game event stage, ultra wide panoramic view, the horizon at about 45 percent of the image height, an empty open ground area across the bottom fifth, atmospheric depth, modern AAA video game environment art, semi-realistic, highly detailed. No people, no text, no letters, no logos, no watermark."
+  },
+  {
+   "id": "bd-ev-attack51",
+   "aspect": "21:9",
+   "prompt": "A stormy night over a vast field of bitcoin mining containers in the desert, violent lightning bolts in purple clouds, orange glowing vents. Cinematic matte painting backdrop for a 3D strategy game event stage, ultra wide panoramic view, the horizon at about 45 percent of the image height, an empty open ground area across the bottom fifth, atmospheric depth, modern AAA video game environment art, semi-realistic, highly detailed. No people, no text, no letters, no logos, no watermark."
+  },
+  {
+   "id": "bd-ev-keys",
+   "aspect": "21:9",
+   "prompt": "A dark cosmic void with a swirling black hole accretion disk glowing orange, scattered floating digital fragments, cold blue starfield. Cinematic matte painting backdrop for a 3D strategy game event stage, ultra wide panoramic view, the horizon at about 45 percent of the image height, an empty open ground area across the bottom fifth, atmospheric depth, modern AAA video game environment art, semi-realistic, highly detailed. No people, no text, no letters, no logos, no watermark."
+  },
+  {
+   "id": "bd-ev-diamond",
+   "aspect": "21:9",
+   "prompt": "A glittering crystal cave full of huge diamond formations lit by warm orange light, sparkling refractions, deep blue shadows. Cinematic matte painting backdrop for a 3D strategy game event stage, ultra wide panoramic view, the horizon at about 45 percent of the image height, an empty open ground area across the bottom fifth, atmospheric depth, modern AAA video game environment art, semi-realistic, highly detailed. No people, no text, no letters, no logos, no watermark."
+  },
+  {
+   "id": "bd-ev-salvador",
+   "aspect": "21:9",
+   "prompt": "A tropical coastline at golden hour with a steaming volcano and a geothermal plant, palm trees, surf, glowing orange sunset clouds. Cinematic matte painting backdrop for a 3D strategy game event stage, ultra wide panoramic view, the horizon at about 45 percent of the image height, an empty open ground area across the bottom fifth, atmospheric depth, modern AAA video game environment art, semi-realistic, highly detailed. No people, no text, no letters, no logos, no watermark."
+  },
+  {
+   "id": "bd-ev-pizza",
+   "aspect": "21:9",
+   "prompt": "A cozy retro computer room from 2010 at night, old CRT monitors glowing, pizza boxes stacked, warm lamp light, a window to a rainy city. Cinematic matte painting backdrop for a 3D strategy game event stage, ultra wide panoramic view, the horizon at about 45 percent of the image height, an empty open ground area across the bottom fifth, atmospheric depth, modern AAA video game environment art, semi-realistic, highly detailed. No people, no text, no letters, no logos, no watermark."
+  },
+  {
+   "id": "bd-ev-lagarde",
+   "aspect": "21:9",
+   "prompt": "A misty fortune-teller tent inside a modern European bank office, purple fog, holographic charts floating, a glowing crystal ball glow in the distance. Cinematic matte painting backdrop for a 3D strategy game event stage, ultra wide panoramic view, the horizon at about 45 percent of the image height, an empty open ground area across the bottom fifth, atmospheric depth, modern AAA video game environment art, semi-realistic, highly detailed. No people, no text, no letters, no logos, no watermark."
+  },
+  {
+   "id": "bd-ev-dip",
+   "aspect": "21:9",
+   "prompt": "A crashing neon financial district at night, giant red falling chart candles projected on skyscrapers, panic red lights, wet streets. Cinematic matte painting backdrop for a 3D strategy game event stage, ultra wide panoramic view, the horizon at about 45 percent of the image height, an empty open ground area across the bottom fifth, atmospheric depth, modern AAA video game environment art, semi-realistic, highly detailed. No people, no text, no letters, no logos, no watermark."
+  },
+  {
+   "id": "rubble-marble",
+   "aspect": "1:1",
+   "prompt": "A large collapsed pile of broken white marble columns, pediment fragments and rubble from a destroyed neoclassical bank, scattered paper banknotes and a cracked golden Bitcoin coin on top, dust. Isolated game asset, centered, complete and not cropped, stylized semi-realistic modern AAA video game 3D render, crisp edges, soft studio light, on a perfectly flat solid pure magenta background (#FF00FF), no shadow, no ground plane. No text, no letters, no watermark."
+  },
+  {
+   "id": "rubble-modern",
+   "aspect": "1:1",
+   "prompt": "A large collapsed pile of broken glass panels, twisted steel beams and concrete chunks from a destroyed modern bank tower, scattered paper banknotes and a cracked golden Bitcoin coin on top, dust. Isolated game asset, centered, complete and not cropped, stylized semi-realistic modern AAA video game 3D render, crisp edges, soft studio light, on a perfectly flat solid pure magenta background (#FF00FF), no shadow, no ground plane. No text, no letters, no watermark."
+  }
+ ]
+}

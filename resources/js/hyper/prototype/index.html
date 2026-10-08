@@ -1,0 +1,2132 @@
+<meta charset="utf-8">
+<title>Hyperbitcoinization</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Unbounded:wght@500;700;900&family=Chakra+Petch:wght@500;600;700&family=JetBrains+Mono:wght@400;700&display=swap">
+<style>
+/*
+  Layout: the plebs' "Global Finance" world as a full-bleed canvas board; a command-centre HUD with chamfered,
+  trimmed panels floats over it. Battles get their own screen with 3D dice. Bitcoin orange marks "you".
+*/
+:root {
+    color-scheme: dark;
+    --ocean-3: #040b1d;
+    --panel: linear-gradient(180deg, rgba(22, 36, 72, 0.80), rgba(9, 17, 38, 0.90)), url(art/tex-panel.jpg?v=1) center / 240px;
+    --trim: rgba(255, 181, 77, 0.55);
+    --line: rgba(132, 168, 230, 0.24);
+    --ink: #eef3ff;
+    --ink-2: #b1bedb;
+    --ink-3: #7584aa;
+    --btc: #f7931a;
+    --btc-hi: #ffb54d;
+    --btc-deep: #a85500;
+    --fiat: #7fe0a6;
+    --loss: #ff5d73;
+    --cut: 12px;
+    --font-display: "Unbounded", "Arial Black", system-ui, sans-serif;
+    --font-ui: "Chakra Petch", "Segoe UI", system-ui, sans-serif;
+    --font-mono: "JetBrains Mono", ui-monospace, Menlo, monospace;
+}
+* { box-sizing: border-box; }
+[hidden] { display: none !important; }
+html, body { height: 100%; overflow: hidden; }
+body { background: var(--ocean-3); color: var(--ink); font: 500 14px/1.45 var(--font-ui); margin: 0; user-select: none; -webkit-user-select: none; }
+button { font: inherit; color: inherit; cursor: pointer; border: 0; background: none; }
+button:focus-visible { outline: 2px solid var(--btc-hi); outline-offset: 3px; }
+.sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
+
+/* ---------- Board ---------- */
+#world { position: fixed; inset: 0; background: radial-gradient(ellipse 80% 70% at 50% 45%, #0d2347, #071430 55%, var(--ocean-3)); }
+#board, #map { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
+#map { touch-action: none; }
+.hit { visibility: hidden; pointer-events: all; cursor: pointer; }
+#hover { fill: rgba(255, 255, 255, 0.16); stroke: rgba(255, 255, 255, 0.85); stroke-width: 1.6; pointer-events: none; }
+.pin { cursor: pointer; }
+.pin .shadow { fill: rgba(0, 0, 0, 0.45); }
+.pin .disc { stroke: rgba(0, 0, 0, 0.6); stroke-width: 1.5; }
+.pin .num { font: 900 15px var(--font-display); text-anchor: middle; pointer-events: none; fill: #fff; }
+.pin .badge { fill: #0a1226; stroke-width: 2.2; }
+.pin .tok { filter: drop-shadow(0 2px 2px rgba(0, 0, 0, 0.7)); pointer-events: none; }
+.pin .elite { font: 700 8px var(--font-mono); pointer-events: none; paint-order: stroke; stroke: rgba(0, 0, 0, 0.85); stroke-width: 2.2px; fill: #ffd7a0; }
+.target-ring { fill: none; stroke: var(--btc-hi); stroke-width: 2.5; pointer-events: none; }
+.sel-ring { fill: none; stroke: #fff; stroke-width: 2.5; stroke-dasharray: 4 3; pointer-events: none; }
+.arrow { fill: none; stroke-width: 5; stroke-linecap: round; pointer-events: none; }
+.float-num { font: 900 18px var(--font-display); paint-order: stroke; stroke: rgba(0, 0, 0, 0.75); stroke-width: 3.5px; text-anchor: middle; pointer-events: none; }
+
+/* ---------- Frames: chamfered command-centre panels ---------- */
+.frame { position: relative; background: var(--panel); clip-path: polygon(var(--cut) 0, 100% 0, 100% calc(100% - var(--cut)), calc(100% - var(--cut)) 100%, 0 100%, 0 var(--cut)); }
+.frame::before { content: ""; position: absolute; inset: 0; pointer-events: none; background:
+    linear-gradient(135deg, var(--trim) 0 2px, transparent 2px) top left / 24px 24px no-repeat,
+    linear-gradient(-45deg, var(--trim) 0 2px, transparent 2px) bottom right / 24px 24px no-repeat,
+    linear-gradient(90deg, transparent, rgba(255, 181, 77, 0.35), transparent) top / 100% 1px no-repeat,
+    repeating-linear-gradient(60deg, rgba(255, 255, 255, 0.018) 0 2px, transparent 2px 9px); }
+.frame::after { content: ""; position: absolute; inset: 1px; pointer-events: none; clip-path: inherit; box-shadow: inset 0 0 0 1px var(--line), inset 0 0 30px rgba(0, 0, 0, 0.35); }
+.hud { position: fixed; z-index: 5; }
+.shadowed { filter: drop-shadow(0 14px 30px rgba(0, 0, 0, 0.5)); }
+
+#topbar { top: 12px; left: 14px; right: 14px; display: flex; align-items: flex-start; gap: 12px; pointer-events: none; }
+#topbar > * { pointer-events: auto; }
+.logo { display: flex; flex-direction: column; padding: 9px 16px; }
+.logo b { font: 900 17px/1 var(--font-display); letter-spacing: 0.02em; }
+.logo b i { font-style: normal; color: var(--btc); }
+.logo small { color: var(--ink-3); font-size: 10px; letter-spacing: 0.18em; text-transform: uppercase; margin-top: 4px; }
+.grow { flex: 1; }
+#stepper { display: flex; flex-direction: column; align-items: center; gap: 6px; }
+.steps { display: flex; gap: 2px; padding: 5px; }
+.step { position: relative; display: flex; align-items: center; gap: 8px; padding: 8px 16px; color: var(--ink-3); font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; font-size: 12px; white-space: nowrap; clip-path: polygon(10px 0, 100% 0, calc(100% - 10px) 100%, 0 100%); background: rgba(255, 255, 255, 0.03); transition: background 0.3s, color 0.3s; }
+.step svg { width: 16px; height: 16px; }
+.step .phi { width: 26px; height: 26px; margin: -6px 0; object-fit: contain; filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.7)); }
+.step:not(.on) .phi { filter: grayscale(0.7) brightness(0.8); }
+.step.on { color: #1b0f00; background: linear-gradient(180deg, var(--btc-hi), var(--btc)); }
+.step.done { color: var(--ink-2); background: rgba(255, 181, 77, 0.1); }
+#instruct { display: flex; align-items: center; gap: 10px; padding: 8px 18px; font-size: 14px; font-weight: 600; max-width: min(640px, 92vw); }
+#instruct svg { width: 18px; height: 18px; flex-shrink: 0; color: var(--btc-hi); }
+#instruct b { color: var(--btc-hi); }
+.tools { display: flex; gap: 6px; padding: 7px; }
+.icon-btn { width: 38px; height: 38px; display: grid; place-items: center; background: rgba(255, 255, 255, 0.05); clip-path: polygon(7px 0, 100% 0, 100% calc(100% - 7px), calc(100% - 7px) 100%, 0 100%, 0 7px); }
+.icon-btn:hover { background: rgba(255, 181, 77, 0.18); }
+.icon-btn[aria-pressed="false"] { opacity: 0.4; }
+.icon-btn svg { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+.vol { display: flex; align-items: center; padding: 0 6px; }
+.vol input { width: 74px; accent-color: var(--btc); }
+
+#roster { left: 14px; top: 92px; width: 236px; display: flex; flex-direction: column; gap: 6px; }
+.pl { display: grid; grid-template-columns: 44px minmax(0, 1fr); gap: 4px 10px; align-items: center; padding: 9px 12px 9px 10px; --cut: 9px; transition: transform 0.25s; }
+.pl.cur { transform: translateX(8px); }
+.pl.cur::after { box-shadow: inset 0 0 0 2px var(--pc), inset 0 0 26px color-mix(in srgb, var(--pc) 35%, transparent); }
+.pl.out { opacity: 0.35; filter: grayscale(1); }
+.shield { grid-row: span 2; width: 48px; height: 48px; transition: transform 0.25s; }
+.pl.cur .shield { transform: scale(1.08); }
+.pimg { display: block; width: 100%; height: 100%; border-radius: 50%; overflow: hidden; background: #0a1226; box-shadow: 0 0 0 2px #050a18, 0 0 0 4px var(--ring), 0 0 18px color-mix(in srgb, var(--ring) 55%, transparent), 0 6px 14px rgba(0, 0, 0, 0.6); }
+.pimg img { display: block; width: 100%; height: 100%; object-fit: cover; }
+.pl .nm { font-weight: 700; display: flex; gap: 6px; align-items: baseline; min-width: 0; }
+.pl .nm em { font-style: normal; color: var(--ink-3); font-size: 11px; font-weight: 600; white-space: nowrap; margin-left: auto; }
+.pl .nm span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.seg { display: grid; grid-template-columns: repeat(21, 1fr); gap: 1.5px; height: 8px; }
+.seg i { background: rgba(255, 255, 255, 0.08); }
+.seg i.on { background: linear-gradient(180deg, var(--btc-hi), var(--btc)); box-shadow: 0 0 6px rgba(247, 147, 26, 0.6); }
+.pl .meta { grid-column: 2; display: flex; justify-content: space-between; color: var(--ink-3); font: 600 10.5px var(--font-mono); }
+
+#treasury { left: 14px; bottom: 14px; width: 340px; padding: 13px; display: flex; flex-direction: column; gap: 10px; }
+.wallet { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.coin { position: relative; display: grid; grid-template-columns: 34px minmax(0, 1fr); gap: 0 9px; align-items: center; padding: 9px 10px; background: rgba(255, 255, 255, 0.045); clip-path: polygon(8px 0, 100% 0, 100% calc(100% - 8px), calc(100% - 8px) 100%, 0 100%, 0 8px); }
+.coin svg, .coin .cimg { grid-row: span 2; width: 38px; height: 38px; }
+.coin small { font-size: 10px; color: var(--ink-3); letter-spacing: 0.12em; text-transform: uppercase; font-weight: 700; display: flex; justify-content: space-between; }
+.coin small em { font-style: normal; font-family: var(--font-mono); letter-spacing: 0; }
+.coin.fiat small em { color: var(--loss); }
+.coin.sats small em { color: var(--btc-hi); }
+.coin b { font: 900 24px/1.05 var(--font-display); font-variant-numeric: tabular-nums; display: inline-block; }
+.coin.fiat b { color: var(--fiat); }
+.coin.sats b { color: var(--btc); text-shadow: 0 0 18px rgba(247, 147, 26, 0.45); }
+.goal { display: grid; grid-template-columns: auto 1fr auto; gap: 8px; align-items: center; font: 700 11px var(--font-mono); color: var(--ink-2); }
+.goal .seg { height: 10px; }
+.recruit { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px; }
+.unit { position: relative; display: flex; flex-direction: column; align-items: center; gap: 1px; padding: 8px 4px 7px; background: rgba(255, 255, 255, 0.045); clip-path: polygon(8px 0, 100% 0, 100% calc(100% - 8px), calc(100% - 8px) 100%, 0 100%, 0 8px); transition: transform 0.15s, background 0.15s; }
+.unit:hover:not(:disabled) { transform: translateY(-2px); background: rgba(255, 255, 255, 0.09); }
+.unit.on { background: linear-gradient(180deg, rgba(247, 147, 26, 0.32), rgba(247, 147, 26, 0.1)); box-shadow: inset 0 0 0 2px var(--btc); }
+.unit:disabled { opacity: 0.35; cursor: not-allowed; }
+.unit .up { width: 58px; height: 58px; display: block; transition: transform 0.2s; }
+.unit:hover:not(:disabled) .up, .unit.on .up { transform: scale(1.07); }
+.unit b { font-size: 12.5px; }
+.unit small { font: 700 10.5px var(--font-mono); color: var(--btc-hi); }
+.unit .why { font: 600 9.5px var(--font-ui); color: var(--ink-3); text-align: center; line-height: 1.15; }
+.qty { display: flex; gap: 4px; margin-top: 6px; }
+.qty button { flex: 1; height: 30px; background: rgba(255, 255, 255, 0.05); font-weight: 700; font-size: 12px; clip-path: polygon(6px 0, 100% 0, calc(100% - 6px) 100%, 0 100%); }
+.qty button.on { background: rgba(247, 147, 26, 0.28); color: var(--btc-hi); }
+.free { font-weight: 700; color: var(--btc-hi); font-size: 12.5px; text-align: center; margin-bottom: 6px; }
+
+#cta { right: 16px; bottom: 16px; display: flex; flex-direction: column; align-items: flex-end; gap: 8px; }
+.big { position: relative; overflow: hidden; display: inline-flex; align-items: center; justify-content: center; gap: 12px; min-height: 60px; padding: 0 28px; font: 900 15px var(--font-display); letter-spacing: 0.03em; color: #1b0f00; text-transform: uppercase;
+    background: url(art/btn-primary.webp?v=1) center / 100% 100% no-repeat, linear-gradient(180deg, #ffd08a, var(--btc-hi) 30%, var(--btc) 62%, var(--btc-deep)); background-blend-mode: soft-light, normal; text-shadow: 0 1px 0 rgba(255, 220, 160, 0.6); clip-path: polygon(14px 0, 100% 0, 100% calc(100% - 14px), calc(100% - 14px) 100%, 0 100%, 0 14px); filter: drop-shadow(0 8px 22px rgba(247, 147, 26, 0.45)); transition: transform 0.12s; }
+.big:active:not(:disabled) { transform: translateY(2px) scale(0.98); }
+.big svg { width: 20px; height: 20px; }
+.big::after { content: ""; position: absolute; inset: 0; background: linear-gradient(110deg, transparent 30%, rgba(255, 255, 255, 0.6) 50%, transparent 70%); transform: translateX(-120%); animation: sweep 3.2s ease-in-out infinite; }
+@keyframes sweep { 0%, 60% { transform: translateX(-120%); } 100% { transform: translateX(120%); } }
+.big:disabled { filter: grayscale(0.85) brightness(0.55); cursor: not-allowed; }
+.big:disabled::after { display: none; }
+.ghost { display: inline-flex; align-items: center; gap: 8px; min-height: 44px; padding: 0 18px; font-weight: 700; background: url(art/btn-secondary.webp?v=1) center / 100% 100% no-repeat, rgba(16, 28, 58, 0.92); box-shadow: inset 0 0 0 1px var(--line); clip-path: polygon(10px 0, 100% 0, 100% calc(100% - 10px), calc(100% - 10px) 100%, 0 100%, 0 10px); }
+.ghost svg { width: 18px; height: 18px; }
+.ghost:hover:not(:disabled) { background: rgba(40, 56, 100, 0.95); }
+.ghost:disabled { opacity: 0.4; cursor: not-allowed; }
+.speed { display: flex; gap: 2px; padding: 4px; }
+.speed button { padding: 6px 11px; font-weight: 700; font-size: 12px; color: var(--ink-2); clip-path: polygon(6px 0, 100% 0, calc(100% - 6px) 100%, 0 100%); }
+.speed button.on { background: rgba(247, 147, 26, 0.25); color: var(--btc-hi); }
+
+#hand { left: 50%; bottom: 10px; height: 0; width: 0; }
+.card { position: absolute; bottom: -122px; left: 0; width: 150px; height: 214px; margin-left: -75px; padding: 16px 12px 12px; display: flex; flex-direction: column; gap: 5px; cursor: pointer; transform-origin: 50% 140%; text-align: left;
+    background: radial-gradient(circle at 50% 30%, #3e2a0c, #191326 60%, #0a1024); border-radius: 12px; box-shadow: 0 0 0 2px #6a4410, 0 0 0 4px #1a1206, 0 14px 30px rgba(0, 0, 0, 0.6), inset 0 0 0 1px rgba(255, 210, 140, 0.35); }
+.card::before { content: ""; position: absolute; inset: -16px -15px; background: url(art/frame-card.webp?v=1) center / 100% 100% no-repeat; pointer-events: none; z-index: 2; }
+.cback { position: absolute; inset: 0; z-index: 3; border-radius: 10px; background: url(art/card-back.jpg?v=1) center / cover no-repeat; }
+.card .ct { font: 900 11px/1.15 var(--font-display); color: var(--btc-hi); text-align: center; }
+.card .art.pic { background: center / cover no-repeat; color: transparent; text-shadow: none; box-shadow: inset 0 0 0 1px rgba(255, 181, 77, 0.6); }
+.card .art { height: 84px; display: grid; place-items: center; border-radius: 8px; background: radial-gradient(circle at 50% 40%, rgba(247, 147, 26, 0.5), rgba(247, 147, 26, 0.05) 70%); box-shadow: inset 0 0 0 1px rgba(255, 181, 77, 0.35); font: 900 24px var(--font-display); color: #fff; text-shadow: 0 0 14px rgba(247, 147, 26, 0.9); }
+.card .ce { font-size: 10.5px; line-height: 1.25; color: var(--ink); }
+.card .cj { margin-top: auto; font-size: 9.5px; font-style: italic; color: var(--ink-3); line-height: 1.2; }
+.card.arm { box-shadow: 0 0 0 2px #fff, 0 0 0 5px var(--btc), 0 0 40px rgba(247, 147, 26, 0.8); }
+
+#tip { position: fixed; z-index: 8; pointer-events: none; padding: 10px 13px; min-width: 210px; font-size: 12.5px; opacity: 0; transition: opacity 0.12s; --cut: 9px; }
+#tip h4 { margin: 0 0 2px; font: 700 13px var(--font-display); }
+#tip .z { font-size: 11px; font-weight: 700; letter-spacing: 0.05em; margin-bottom: 4px; }
+#tip .row { display: flex; justify-content: space-between; gap: 12px; color: var(--ink-2); }
+#tip .row b { color: var(--ink); text-align: right; }
+
+.coin .cimg { object-fit: contain; flex-shrink: 0; filter: drop-shadow(0 3px 4px rgba(0, 0, 0, 0.6)); }
+#legend { right: 16px; top: 92px; width: 240px; padding: 10px 10px 8px; display: flex; flex-direction: column; gap: 2px; }
+.lg-head { display: flex; flex-direction: column; align-items: stretch; gap: 6px; margin: 0 2px 6px; }
+.lg-head h5 { margin: 0; font: 800 12px var(--font-display); letter-spacing: 0.06em; color: #fff; text-transform: uppercase; }
+.lg-seg { display: flex; padding: 2px; border-radius: 6px; background: rgba(0, 0, 0, 0.45); box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.08); }
+.lg-seg button { flex: 1; padding: 4px 8px; border: 0; border-radius: 4px; background: none; color: var(--ink-2); font: 700 10.5px var(--font-ui); cursor: pointer; }
+.lg-seg button.on { background: linear-gradient(180deg, var(--btc-hi), var(--btc-deep)); color: #1a0d00; }
+.zr { position: relative; display: grid; grid-template-columns: 34px minmax(0, 1fr) auto; grid-template-rows: auto auto; column-gap: 8px; row-gap: 3px; align-items: center; padding: 4px 6px 5px 4px; border-radius: 8px; transition: background 0.2s; }
+.zr:hover { background: rgba(255, 255, 255, 0.06); }
+.zr.held { background: linear-gradient(90deg, color-mix(in srgb, var(--hc) 30%, transparent), transparent 85%); }
+.zr .em { grid-row: span 2; position: relative; width: 34px; height: 34px; }
+.zr .em img { width: 100%; height: 100%; object-fit: contain; filter: drop-shadow(0 2px 3px rgba(0, 0, 0, 0.6)); }
+.zr .em .pimg { position: absolute; right: -5px; bottom: -4px; width: 19px; height: 19px; box-shadow: 0 0 0 1.5px #050a18, 0 0 0 3px var(--ring); }
+.zr b { overflow: hidden; font: 700 12.5px var(--font-ui); color: var(--ink); white-space: nowrap; text-overflow: ellipsis; }
+.zr .rw { grid-row: span 2; display: flex; align-items: center; gap: 3px; font: 800 14px var(--font-display); color: var(--btc-hi); }
+.zr .rw img { width: 20px; height: 20px; }
+.zr .bar { display: flex; gap: 2px; height: 6px; }
+.zr .bar i { flex: 1; border-radius: 2px; background: rgba(255, 255, 255, 0.12); }
+.zr .bar i.me { box-shadow: 0 0 6px var(--btc); }
+.zr .bn { display: none; grid-column: 2 / 4; font-size: 11.5px; line-height: 1.3; color: var(--ink-2); }
+.zr:hover .bn { display: block; }
+#ticker { right: 16px; top: 500px; width: 240px; max-height: max(0px, calc(100vh - var(--tk-top, 500px) - 150px)); overflow: hidden; display: flex; flex-direction: column; gap: 6px; padding: 10px; }
+#ticker h5 { margin: 0 2px 2px; font: 800 12px var(--font-display); letter-spacing: 0.06em; color: #fff; text-transform: uppercase; }
+#ticker .ln { display: grid; grid-template-columns: 24px minmax(0, 1fr); gap: 8px; align-items: start; font-size: 12px; line-height: 1.3; color: var(--ink-2); }
+#ticker .ln .pimg { width: 24px; height: 24px; box-shadow: 0 0 0 1.5px #050a18, 0 0 0 3px var(--ring); }
+#ticker .ln.hot { color: #fff; font-weight: 700; }
+#ticker .ln:nth-child(n + 5) { opacity: 0.55; }
+@media (height < 860px) { #ticker { display: none; } }
+
+/* ---------- Battle screen ---------- */
+#battle { position: fixed; inset: 0; z-index: 20; background: #02040c; overflow: hidden; }
+#battle.cine .army, #battle.cine .b-dock, #battle.cine #felt, #battle.cine .bh { display: none; }
+.ev { position: absolute; left: 50%; bottom: 60px; transform: translateX(-50%); width: min(780px, calc(100% - 24px)); display: grid; grid-template-columns: 270px minmax(0, 1fr); gap: 20px; padding: 14px; --cut: 16px; }
+.ev-pic { aspect-ratio: 3 / 4; background: center / cover no-repeat #0a1226; box-shadow: 0 0 0 2px #050a18, 0 0 0 4px var(--btc), 0 0 30px rgba(247, 147, 26, 0.35); clip-path: polygon(12px 0, 100% 0, 100% calc(100% - 12px), calc(100% - 12px) 100%, 0 100%, 0 12px); }
+.ev-txt { display: flex; flex-direction: column; gap: 10px; padding: 8px 4px; }
+.ev-txt small { font: 700 11px var(--font-ui); letter-spacing: 0.4em; text-transform: uppercase; color: var(--btc-hi); }
+.ev h3 { margin: 0; font: 900 clamp(22px, 3vw, 34px)/1.08 var(--font-display); color: #fff; text-shadow: 0 0 24px rgba(247, 147, 26, 0.5); }
+.ev p { margin: 0; font-size: 16px; line-height: 1.45; color: var(--ink); }
+.ev em { margin-top: auto; font-size: 13.5px; color: var(--ink-2); }
+@media (width < 820px) { .ev { grid-template-columns: 1fr; bottom: 46px; gap: 10px; } .ev-pic { aspect-ratio: 16 / 9; } .ev p { font-size: 14px; } }
+#battle.cine .bh h2 { font-size: clamp(26px, 5vw, 52px); }
+#battle.cine .cine-hint { display: block; }
+.cine-hint { display: none; position: absolute; left: 50%; bottom: 22px; transform: translateX(-50%); white-space: nowrap; font: 700 12px var(--font-ui); letter-spacing: 0.2em; text-transform: uppercase; color: rgba(255, 255, 255, 0.7); }
+#battle.spectate #roll-btn, #battle.spectate #blitz-btn, #battle.spectate #retreat-btn { display: none; }
+#battle.loading .army, #battle.loading .b-dock, #battle.loading .bh, #battle.loading .ev, #battle.loading .cine-hint, #battle.loading #arena3d { visibility: hidden; }
+.b-load { position: absolute; inset: 0; z-index: 5; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 12px; background: radial-gradient(ellipse at center, #10224a, #030914 70%); font: 700 15px var(--font-ui); letter-spacing: 0.12em; text-transform: uppercase; color: var(--ink); }
+.b-load .ring { width: 64px; height: 64px; border-radius: 50%; border: 4px solid rgba(247, 147, 26, 0.18); border-top-color: var(--btc); animation: spin 0.9s linear infinite; box-shadow: 0 0 30px rgba(247, 147, 26, 0.35); }
+.b-load span { font: 700 13px var(--font-mono); color: var(--btc-hi); letter-spacing: 0; }
+.b-load .bar { width: min(320px, 70vw); height: 6px; background: rgba(255, 255, 255, 0.08); border-radius: 3px; overflow: hidden; }
+.b-load .bar i { display: block; height: 100%; width: 0; background: linear-gradient(90deg, var(--btc-deep), var(--btc-hi)); transition: width 0.2s; }
+@keyframes spin { to { transform: rotate(360deg); } }
+#arena3d { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
+.b-vig { position: absolute; inset: 0; pointer-events: none; background: radial-gradient(ellipse at 50% 45%, transparent 50%, rgba(0, 0, 0, 0.6)), linear-gradient(180deg, rgba(0, 0, 0, 0.45), transparent 22%, transparent 62%, rgba(0, 0, 0, 0.7)); }
+#battle .bh { position: absolute; top: 16px; left: 50%; transform: translateX(-50%); width: min(92vw, 820px); }
+#battle .bh .meme { display: inline-block; margin-top: 8px; padding: 5px 14px; font: 700 13px var(--font-ui); background: rgba(4, 10, 24, 0.78); clip-path: polygon(8px 0, 100% 0, calc(100% - 8px) 100%, 0 100%); }
+#battle .army { position: absolute; top: 44%; transform: translateY(-50%); width: 196px; }
+#b-att { left: 18px; } #b-def { right: 18px; }
+#battle .felt { position: absolute; left: 50%; top: 44%; transform: translate(-50%, -50%); width: min(44vw, 400px); }
+.b-dock { position: absolute; left: 50%; bottom: 14px; transform: translateX(-50%); width: min(780px, calc(100% - 24px)); display: flex; flex-direction: column; gap: 9px; }
+.b-result { display: flex; justify-content: center; flex-wrap: wrap; gap: 8px; min-height: 34px; }
+.b-result span { font: 900 15px var(--font-display); padding: 6px 14px; background: rgba(4, 10, 24, 0.85); clip-path: polygon(8px 0, 100% 0, calc(100% - 8px) 100%, 0 100%); }
+.b-result .w { color: var(--btc-hi); box-shadow: inset 0 -3px 0 var(--btc); }
+.b-result .l { color: #9cc7ff; box-shadow: inset 0 -3px 0 #57a6ff; }
+#b-mods { display: grid; grid-template-columns: 1fr 1fr; gap: 2px 22px; padding: 10px 16px; font: 600 12px var(--font-ui); --cut: 10px; }
+#b-mods h6 { margin: 0 0 3px; font: 700 10px var(--font-display); letter-spacing: 0.1em; color: var(--btc-hi); }
+#b-mods > div > div { display: flex; justify-content: space-between; gap: 10px; color: var(--ink-2); }
+#b-mods b { font-family: var(--font-mono); }
+#b-mods .p { color: var(--fiat); } #b-mods .n { color: var(--loss); } #b-mods .z { color: var(--ink-3); }
+.arena { position: relative; width: min(900px, 100%); display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.25fr) minmax(0, 1fr); gap: 14px; align-items: center; }
+.bh { grid-column: 1 / -1; text-align: center; }
+.bh small { font: 700 11px var(--font-ui); letter-spacing: 0.4em; color: var(--btc-hi); text-transform: uppercase; }
+.bh h2 { margin: 2px 0 0; font: 900 clamp(20px, 3.6vw, 36px)/1.05 var(--font-display); text-shadow: 0 0 30px rgba(247, 147, 26, 0.5); }
+.army { text-align: center; }
+.army-body { padding: 62px 12px 16px; --cut: 16px; }
+.army .shield { position: relative; z-index: 2; }
+.army .shield { width: 120px; height: 120px; margin: 0 auto -56px; }
+.army h3 { margin: 0; font: 700 15px var(--font-display); overflow-wrap: anywhere; }
+.army .who { color: var(--ink-3); font-size: 12px; font-weight: 700; }
+.army .cnt { font: 900 46px/1 var(--font-display); margin-top: 6px; }
+.army .troops { display: flex; flex-wrap: wrap; gap: 2px; justify-content: center; min-height: 18px; margin-top: 6px; }
+.army .troops i { width: 9px; height: 13px; background: var(--pc); clip-path: polygon(50% 0, 100% 30%, 80% 100%, 20% 100%, 0 30%); opacity: 0.85; }
+.army .mods { font: 700 11.5px var(--font-mono); color: var(--btc-hi); min-height: 18px; margin-top: 4px; }
+.felt { position: relative; aspect-ratio: 1.15; border-radius: 50%; background: radial-gradient(circle at 50% 40%, #1d4b3a, #0f2b22 60%, #071811); box-shadow: inset 0 0 0 6px #3a2408, inset 0 0 0 9px #6a4410, inset 0 0 60px rgba(0, 0, 0, 0.7), 0 20px 50px rgba(0, 0, 0, 0.6); display: flex; flex-direction: column; justify-content: center; align-items: center; gap: 14px; perspective: 700px; }
+.felt .lane { display: flex; gap: 14px; min-height: 60px; }
+.felt .vsmark { font: 900 16px var(--font-display); color: rgba(255, 255, 255, 0.3); letter-spacing: 0.3em; }
+.die3d { position: relative; width: 52px; height: 52px; transform-style: preserve-3d; }
+.die3d .f { position: absolute; inset: 0; border-radius: 9px; display: grid; grid-template: repeat(3, 1fr) / repeat(3, 1fr); padding: 7px; backface-visibility: hidden; }
+.die3d.a .f { background: radial-gradient(circle at 35% 30%, #ffd59a, #f7931a 55%, #a85500); box-shadow: inset 0 0 0 2px rgba(255, 255, 255, 0.25), inset 0 -4px 8px rgba(0, 0, 0, 0.35); }
+.die3d.d .f { background: radial-gradient(circle at 35% 30%, #ffffff, #d5def0 55%, #8a99bd); box-shadow: inset 0 0 0 2px rgba(255, 255, 255, 0.5), inset 0 -4px 8px rgba(0, 0, 0, 0.3); }
+.die3d .f i { width: 9px; height: 9px; border-radius: 50%; place-self: center; background: radial-gradient(circle at 35% 30%, #4a2a05, #1a0d00); box-shadow: inset 0 1px 1px rgba(0, 0, 0, 0.6); }
+.die3d.d .f i { background: radial-gradient(circle at 35% 30%, #3a4f86, #0b1530); }
+.dw { position: relative; width: 52px; height: 52px; perspective: 600px; }
+.dw.lost .f { filter: grayscale(0.85) brightness(0.42); }
+.dw .mod { position: absolute; top: -12px; right: -14px; z-index: 3; font: 900 11px var(--font-display); background: #fff; color: #1b0f00; border-radius: 10px; padding: 2px 6px; box-shadow: 0 2px 6px rgba(0,0,0,.5); }
+.tug { grid-column: 1 / -1; display: grid; grid-template-columns: auto 1fr auto; gap: 10px; align-items: center; font: 700 12px var(--font-mono); color: var(--ink-2); }
+.tug .bar { position: relative; height: 14px; background: var(--dc, #57a6ff); clip-path: polygon(7px 0, 100% 0, calc(100% - 7px) 100%, 0 100%); overflow: hidden; }
+.tug .bar i { position: absolute; inset: 0 auto 0 0; background: linear-gradient(90deg, var(--btc-deep), var(--btc), var(--btc-hi)); }
+.tug .bar b { position: absolute; inset: 0; display: grid; place-items: center; font: 900 10px var(--font-display); color: #fff; text-shadow: 0 1px 2px #000; }
+.bbtns { grid-column: 1 / -1; display: flex; flex-wrap: wrap; gap: 10px; justify-content: center; }
+
+/* ---------- Dialogs ---------- */
+.title-profile { display: flex; align-items: center; justify-content: center; gap: 6px; font-size: 13px; color: var(--ink-2); }
+.title-profile:empty { display: none; }
+.title-profile img { width: 22px; height: 22px; }
+.title-profile b { color: var(--btc-hi); }
+.end-loot { display: flex; align-items: center; justify-content: center; gap: 6px; margin: 4px 0 14px; color: var(--ink); }
+.end-loot img { width: 26px; height: 26px; }
+.end-loot b { color: var(--btc-hi); }
+.end-art { position: absolute; inset: 0; background: center / cover no-repeat; }
+.end-art::after { content: ""; position: absolute; inset: 0; background: linear-gradient(180deg, transparent 40%, rgba(2, 6, 16, 0.85)); }
+#end { align-items: end; padding-bottom: 6vh; }
+#end .panel { position: relative; }
+.overlay { position: fixed; inset: 0; z-index: 21; display: grid; place-items: center; padding: 16px; background: rgba(2, 6, 16, 0.6); }
+.panel { width: min(560px, 100%); max-height: calc(100% - 24px); overflow-y: auto; padding: 24px; --cut: 18px; }
+.panel h2 { margin: 0 0 4px; font: 900 22px/1.15 var(--font-display); text-wrap: balance; }
+.panel h2 b { color: var(--btc); }
+.muted { color: var(--ink-2); margin: 0; }
+.keys { display: flex; flex-wrap: wrap; gap: 6px 14px; margin-top: 12px; font-size: 12.5px; color: var(--ink-2); }
+kbd { display: inline-block; min-width: 22px; padding: 1px 6px; margin-right: 3px; font: 700 11px var(--font-mono); color: var(--ink); text-align: center; background: rgba(255, 255, 255, 0.08); border-radius: 4px; box-shadow: inset 0 -2px 0 rgba(0, 0, 0, 0.4); }
+.row-btn { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 16px; }
+input[type=range] { width: 100%; accent-color: var(--btc); height: 30px; }
+.move-num { font: 900 46px var(--font-display); text-align: center; color: var(--btc-hi); }
+
+#banner { position: fixed; inset: 0; z-index: 30; display: grid; place-items: center; pointer-events: none; }
+#banner .bp { position: absolute; left: 50%; top: 0; width: clamp(64px, 11vw, 110px); height: clamp(64px, 11vw, 110px); transform: translate(-50%, -78%); }
+#banner .bp:empty { display: none; }
+#banner .bx { position: relative; width: min(880px, 94vw); aspect-ratio: 1600 / 577; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 6px; --bw: min(880px, 94vw); padding: 0 calc(var(--bw) * 0.19); text-align: center; background: url(art/ui-banner.webp?v=1) center / 100% 100% no-repeat; filter: drop-shadow(0 18px 30px rgba(0, 0, 0, 0.6)); }
+#banner .bt { max-width: 100%; font: 900 52px/1.05 var(--font-display); white-space: nowrap; letter-spacing: 0.02em; color: #fff; text-shadow: 0 0 30px rgba(247, 147, 26, 0.85), 0 6px 0 rgba(0, 0, 0, 0.35); }
+#banner .bs { max-width: 100%; padding: 3px 12px; white-space: nowrap; font: 700 clamp(11px, 1.7vw, 16px) var(--font-ui); color: #ffd08a; background: rgba(0, 0, 0, 0.72); border-radius: 4px; text-shadow: 0 1px 2px #000; letter-spacing: 0.1em; text-transform: uppercase; }
+#flash { position: fixed; inset: 0; z-index: 25; pointer-events: none; background: radial-gradient(circle, rgba(255, 190, 90, 0.4), transparent 60%); opacity: 0; }
+
+/* ---------- Title ---------- */
+#title { position: fixed; inset: 0; z-index: 40; display: grid; place-items: center; padding: 16px; background: #030914 url(art/key-title.jpg?v=1) center / cover no-repeat; overflow-y: auto; }
+#title #globe { display: none; }
+#globe, #title-fx { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; }
+#title::before { content: ""; position: absolute; inset: 0; background: linear-gradient(180deg, rgba(3, 9, 20, 0.92) 0%, rgba(3, 9, 20, 0.55) 42%, rgba(3, 9, 20, 0.05) 70%, rgba(3, 9, 20, 0.5) 100%); pointer-events: none; z-index: 1; }
+#title { grid-template-columns: minmax(0, 1fr); }
+.title-box { position: relative; z-index: 2; text-align: center; max-width: 980px; width: 100%; display: flex; flex-direction: column; align-items: center; gap: 18px; margin-top: -8vh; }
+.kicker { font: 700 12px var(--font-ui); letter-spacing: 0.4em; color: var(--btc-hi); text-transform: uppercase; }
+.title-logo { font: 900 clamp(26px, 5.4vw, 78px)/0.95 var(--font-display); white-space: nowrap; letter-spacing: 0.01em; text-shadow: 0 0 40px rgba(0, 0, 0, 0.9), 0 0 60px rgba(247, 147, 26, 0.25); perspective: 600px; }
+.title-logo span { display: inline-block; }
+.title-logo .b { color: var(--btc); text-shadow: 0 0 34px rgba(247, 147, 26, 0.9); }
+.tagline { font-size: clamp(14px, 2vw, 18px); color: var(--ink-2); max-width: 54ch; margin: 0; text-wrap: balance; text-shadow: 0 2px 12px #000; }
+.how { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; width: 100%; text-align: left; }
+.how > div { padding: 13px; --cut: 10px; }
+.how b { display: flex; align-items: center; gap: 8px; font: 700 13px var(--font-display); margin-bottom: 4px; }
+.how b span { display: grid; place-items: center; width: 24px; height: 24px; background: var(--btc); color: #1b0f00; font-size: 11px; flex-shrink: 0; clip-path: polygon(50% 0, 100% 25%, 100% 75%, 50% 100%, 0 75%, 0 25%); }
+.how p { margin: 0; font-size: 12.5px; color: var(--ink-2); line-height: 1.4; }
+.credit { font-size: 11.5px; color: var(--ink-2); padding: 4px 10px; background: rgba(3, 9, 20, 0.7); }
+.setup { display: flex; flex-wrap: wrap; gap: 10px; justify-content: center; align-items: center; }
+.fac { flex: 1 1 100%; min-width: 0; max-width: 560px; display: flex; flex-wrap: wrap; justify-content: center; gap: 6px; padding: 8px 10px; }
+.fac > span { width: 100%; text-align: center; color: var(--ink-2); font-size: 12px; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; }
+.fac button { display: flex; flex-direction: column; align-items: center; gap: 4px; width: 64px; padding: 4px 0; border-radius: 8px; color: var(--ink-2); font: 700 10.5px var(--font-ui); }
+.fac button .pimg { width: 44px; height: 44px; transition: transform 0.2s; }
+.fac button .dice { display: grid; place-items: center; width: 44px; height: 44px; border-radius: 50%; background: #0a1226; box-shadow: 0 0 0 2px #050a18, 0 0 0 4px #6f7c99; font-size: 22px; }
+.fac button:hover .pimg, .fac button.on .pimg { transform: scale(1.1); }
+.fac button.on { background: rgba(247, 147, 26, 0.18); color: #fff; }
+@media (width < 520px) { .setup #play-btn { flex: 1 1 100%; } .setup .opp { flex: 1 1 100%; justify-content: center; } #title-logo { font-size: 5.9vw; } }
+@media (width < 520px) { .fac button { width: 50px; font-size: 9.5px; } .fac button .pimg, .fac button .dice { width: 36px; height: 36px; } }
+.opp { display: flex; align-items: center; gap: 4px; padding: 6px 6px 6px 14px; }
+.opp > span { color: var(--ink-2); font-size: 12px; font-weight: 700; margin-right: 6px; }
+.opp button { min-width: 42px; height: 42px; font-weight: 700; color: var(--ink-2); clip-path: polygon(7px 0, 100% 0, calc(100% - 7px) 100%, 0 100%); }
+.opp button.on { background: rgba(247, 147, 26, 0.28); color: var(--btc-hi); }
+
+@media (width < 1180px) { #legend, #ticker { display: none; } }
+@media (width < 820px) {
+    #roster { top: 182px; left: 8px; width: auto; flex-direction: row; gap: 4px; }
+    .pl { grid-template-columns: 34px; padding: 4px; }
+    .pl .nm, .pl .seg, .pl .meta { display: none; }
+    .pl .shield { width: 38px; height: 38px; grid-row: auto; }
+    .pl.cur { transform: translateY(-3px); }
+    #topbar { top: 6px; left: 8px; right: 8px; flex-wrap: wrap; gap: 6px; }
+    .logo, .vol { display: none; }
+    #stepper { order: 3; width: 100%; }
+    .step { padding: 7px 9px; font-size: 10.5px; gap: 5px; }
+    .step svg, .step .phi { display: none; }
+    #instruct { font-size: 12.5px; padding: 7px 12px; }
+    #treasury { left: 8px; right: 8px; bottom: 78px; width: auto; padding: 9px; gap: 7px; }
+    .coin b { font-size: 19px; }
+    .coin svg, .coin .cimg { width: 28px; height: 28px; }
+    .coin { grid-template-columns: 26px minmax(0, 1fr); }
+    .unit .why { display: none; }
+    .unit .up { width: 40px; height: 40px; }
+    #cta { right: 8px; bottom: 8px; left: 8px; flex-direction: row; align-items: stretch; justify-content: flex-end; }
+    #cta .speed { display: none !important; }
+    .big { min-height: 58px; flex: 1; padding: 0 12px; font-size: 13px; }
+    #hand { bottom: 310px; }
+    .card { width: 110px; height: 156px; margin-left: -55px; padding: 11px 8px 8px; }
+    .card::before { inset: -12px -11px; }
+    .card .ce { font-size: 9.5px; }
+    .card .art { height: 56px; }
+    .how { grid-template-columns: 1fr 1fr; }
+    .arena { grid-template-columns: 1fr 1fr; }
+    .felt { grid-column: 1 / -1; order: 3; aspect-ratio: 1.6; }
+    .army .shield { width: 70px; height: 70px; }
+    .army .cnt { font-size: 34px; }
+}
+@media (width < 820px) {
+    #battle .army { top: 100px; transform: none; width: calc(50% - 14px); }
+    #b-att { left: 8px; } #b-def { right: 8px; }
+    #battle .army .shield { width: 54px; height: 54px; margin: 0 auto -24px; }
+    #battle .army-body { padding: 28px 8px 8px; }
+    #battle .army .cnt { font-size: 28px; } #battle .army .troops, #battle .army .mods { display: none; }
+    #battle .bh { top: 8px; } #battle .bh h2 { font-size: 22px; } #battle .bh .meme { font-size: 11.5px; }
+    #b-mods { grid-template-columns: 1fr; font-size: 11px; padding: 8px 12px; }
+    #b-mods > div:nth-child(2) h6 { margin-top: 6px; }
+    .b-dock { bottom: 8px; gap: 6px; }
+    .bbtns { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+    .bbtns .big { grid-column: 1 / -1; min-height: 50px; }
+    .bbtns .ghost { justify-content: center; padding: 0 8px; font-size: 13px; }
+    #b-mods > div > div:has(b.z) { display: none; }
+}
+@media (width < 820px) {
+    #banner .bx { aspect-ratio: 1600 / 900; padding: 0 calc(var(--bw) * 0.13); }
+    #banner .bt { text-wrap: balance; text-align: center; }
+    #banner .bp { width: 64px; height: 64px; transform: translate(-50%, -104%); }
+}
+@media (prefers-reduced-motion: reduce) { .big::after { animation: none; } .pl, .unit, .step { transition: none; } }
+</style>
+
+<div id="world">
+    <canvas id="board" aria-hidden="true"></canvas>
+    <svg id="map" viewBox="0 0 1600 860" preserveAspectRatio="xMidYMid meet" aria-label="Weltkarte: 40 Gebiete in 10 Währungsräumen">
+        <g id="viewport"></g>
+    </svg>
+</div>
+
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+    <symbol id="i-plus" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" fill="none"/></symbol>
+    <symbol id="i-sword" viewBox="0 0 24 24"><path d="M14.5 17.5L3 6V3h3l11.5 11.5M13 19l6-6M16 16l4 4M19 21l2-2" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" fill="none"/></symbol>
+    <symbol id="i-move" viewBox="0 0 24 24"><path d="M5 12h14M13 6l6 6-6 6" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" fill="none"/></symbol>
+    <symbol id="i-check" viewBox="0 0 24 24"><path d="M5 12l5 5L20 7" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" fill="none"/></symbol>
+    <symbol id="i-bolt" viewBox="0 0 24 24"><path d="M13 2L4 14h7l-1 8 9-12h-7z" fill="currentColor"/></symbol>
+    <symbol id="i-back" viewBox="0 0 24 24"><path d="M9 14L4 9l5-5M4 9h11a5 5 0 010 10h-3" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" fill="none"/></symbol>
+    <symbol id="i-dice" viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="4" fill="none" stroke="currentColor" stroke-width="2"/><circle cx="8" cy="8" r="1.6" fill="currentColor"/><circle cx="16" cy="16" r="1.6" fill="currentColor"/><circle cx="12" cy="12" r="1.6" fill="currentColor"/></symbol>
+    <symbol id="i-info" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9" fill="none" stroke="currentColor" stroke-width="2"/><path d="M12 11v6M12 7.5v.5" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"/></symbol>
+</svg>
+
+<header class="hud" id="topbar">
+    <div class="logo frame shadowed"><b>HYPER<i>₿</i>ITCOINIZATION</b><small id="round-lbl">Runde 1</small></div>
+    <span class="grow"></span>
+    <div id="stepper">
+        <div class="steps frame shadowed" role="list" aria-label="Phasen eines Zugs">
+            <div class="step" data-ph="buy" role="listitem"><img class="phi" src="art/ph-recruit.webp?v=1" alt="">Rekrutieren</div>
+            <div class="step" data-ph="attack" role="listitem"><img class="phi" src="art/ph-attack.webp?v=1" alt="">Angreifen</div>
+            <div class="step" data-ph="fortify" role="listitem"><img class="phi" src="art/ph-fortify.webp?v=1" alt="">Verlegen</div>
+        </div>
+        <div id="instruct" class="frame shadowed" aria-live="polite"><svg><use href="#i-info"/></svg><span id="instruct-t">–</span></div>
+    </div>
+    <span class="grow"></span>
+    <div class="tools frame shadowed">
+        <button class="icon-btn" id="mode-btn" type="button" title="Kartenansicht: Währungsräume oder Besitz (M)" aria-label="Kartenansicht wechseln"><svg viewBox="0 0 24 24"><path d="M3 6l6-3 6 3 6-3v15l-6 3-6-3-6 3z"/><path d="M9 3v15M15 6v15"/></svg></button>
+        <button class="icon-btn" id="zoom-in" type="button" aria-label="Hineinzoomen"><svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="M11 8v6M8 11h6M21 21l-4.5-4.5"/></svg></button>
+        <button class="icon-btn" id="zoom-out" type="button" aria-label="Herauszoomen"><svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="M8 11h6M21 21l-4.5-4.5"/></svg></button>
+        <button class="icon-btn" id="scenes-btn" type="button" aria-pressed="true" aria-label="Kinoszenen (3D-Schlachten und Kartenszenen)" title="Kinoszenen an/aus (K)"><svg viewBox="0 0 24 24"><rect x="3" y="6" width="18" height="13" rx="2"/><path d="M3 10h18M7 6l2 4M12 6l2 4M17 6l2 4"/></svg></button>
+        <button class="icon-btn" id="music-btn" type="button" aria-pressed="true" aria-label="Musik"><svg viewBox="0 0 24 24"><path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/></svg></button>
+        <button class="icon-btn" id="sound-btn" type="button" aria-pressed="true" aria-label="Effekte (Würfel, Klicks, Explosionen)" title="Effekte an/aus"><svg viewBox="0 0 24 24"><path d="M11 5L6 9H2v6h4l5 4z"/><path d="M15.5 8.5a5 5 0 010 7M19 5a10 10 0 010 14"/></svg></button>
+        <button class="icon-btn" id="board-btn" type="button" aria-pressed="true" aria-label="Soundboard-Clips" title="Soundboard-Clips an/aus"><svg viewBox="0 0 24 24"><path d="M3 10v4h3l7 5V5L6 10z"/><path d="M17 9l4-2M17 15l4 2M17 12h5"/></svg></button>
+        <label class="vol" for="vol"><span class="sr">Lautstärke</span><input id="vol" type="range" min="0" max="100" value="80"></label>
+        <button class="icon-btn" id="help-btn" type="button" aria-label="So wird gespielt"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M9.5 9a2.5 2.5 0 015 .5c0 1.7-2.5 2-2.5 4M12 17h.01"/></svg></button>
+    </div>
+</header>
+
+<aside class="hud" id="roster" aria-label="Spieler"></aside>
+
+<section class="hud frame shadowed" id="treasury" aria-label="Deine Kasse">
+    <div class="wallet">
+        <div class="coin fiat"><img class="cimg" src="art/ico-fiat.webp?v=1" alt=""><small>Fiat <em>−15 %</em></small><b id="fiat">0</b></div>
+        <div class="coin sats"><img class="cimg" src="art/ico-sats.webp?v=1" alt=""><small>Mio. Sats <em>+3 %</em></small><b id="sats">0</b></div>
+    </div>
+    <div class="goal"><span>BANKEN</span><div class="seg" id="goal-seg"></div><span id="goal-num">0</span></div>
+    <div id="recruit-ui">
+        <div class="free" id="free-lbl" hidden></div>
+        <div class="recruit">
+            <button class="unit on" type="button" data-unit="pleb"><span class="up" data-por="pleb"></span><b>Fiat-Pleb</b><small id="pleb-cost">1 Fiat</small><span class="why">Masse statt Klasse</span></button>
+            <button class="unit" type="button" data-unit="maxi"><span class="up" data-por="maxi"></span><b>Bitcoin-Maxi</b><small>2 Sats</small><span class="why">HODL: +1 Verteidigung</span></button>
+            <button class="unit" type="button" data-unit="asic"><span class="up" data-por="asic"></span><b>ASIC-Rig</b><small>3 Sats</small><span class="why">+1 Angriff, knackt Banken</span></button>
+        </div>
+        <div class="qty" role="group" aria-label="Menge pro Klick"><button type="button" data-q="1" class="on">×1</button><button type="button" data-q="3">×3</button><button type="button" data-q="5">×5</button><button type="button" data-q="max">Max</button></div>
+    </div>
+</section>
+
+<div class="hud" id="hand" aria-label="Deine Ereigniskarten"></div>
+
+<div class="hud" id="cta">
+    <div class="speed frame shadowed" id="speed" role="group" aria-label="Tempo der Bots"><button type="button" data-s="1" class="on">Bots 1×</button><button type="button" data-s="3">3×</button><button type="button" data-s="20">Sofort</button></div>
+    <button class="ghost" id="undo-btn" type="button" hidden><svg><use href="#i-back"/></svg>Rückgängig</button>
+    <button class="big" id="main-btn" type="button" title="Weiter (Leertaste)"><span id="main-t">Weiter</span><svg id="main-i"><use href="#i-move"/></svg></button>
+</div>
+
+<aside class="hud frame shadowed" id="legend" aria-label="Währungsräume"></aside>
+<aside class="hud frame shadowed" id="ticker" aria-label="Ticker" aria-live="polite"></aside>
+
+<div id="tip" class="frame shadowed" role="tooltip"></div>
+<div id="flash"></div>
+<div id="banner" hidden><div class="bx"><div class="bp" id="banner-p"></div><div class="bt" id="banner-t"></div><div class="bs" id="banner-s"></div></div></div>
+
+<div id="battle" hidden role="dialog" aria-modal="true" aria-labelledby="battle-h">
+    <canvas id="arena3d" aria-hidden="true"></canvas>
+    <div class="b-vig"></div>
+    <div class="cine-hint">Tippen zum Überspringen</div>
+    <div class="b-load" id="b-load" hidden><div class="ring"></div><b>Schlachtfeld wird vorbereitet</b><span id="b-load-p">0 %</span><div class="bar"><i id="b-load-bar"></i></div></div>
+    <div class="ev frame shadowed" id="ev" hidden><div class="ev-pic" id="ev-pic"></div><div class="ev-txt"><small>Ereigniskarte</small><h3 id="ev-h">–</h3><p id="ev-t">–</p><em id="ev-j">–</em></div></div>
+    <div class="bh"><small id="b-kicker">Schlacht um</small><h2 id="battle-h">–</h2><div class="meme" id="b-meme"></div></div>
+    <div class="army" id="b-att"></div>
+    <div class="army" id="b-def"></div>
+    <div class="felt" id="felt" hidden><div class="lane" id="dice-a"></div><div class="vsmark">VS</div><div class="lane" id="dice-d"></div></div>
+    <div class="b-dock">
+        <div class="b-result" id="b-result" aria-live="polite"></div>
+        <div class="frame" id="b-mods"></div>
+        <div class="tug"><span>Angriff</span><div class="bar" id="tug"><i id="odds-bar" style="width:50%"></i><b id="odds-n">–</b></div><span>Abwehr</span></div>
+        <div class="bbtns">
+            <button class="big" id="roll-btn" type="button" title="Würfeln (W)"><svg><use href="#i-dice"/></svg>Würfeln</button>
+            <button class="ghost" id="blitz-btn" type="button" title="Bis zur Eroberung (E)"><svg><use href="#i-bolt"/></svg>Bis zur Eroberung</button>
+            <button class="ghost" id="retreat-btn" type="button" title="Rückzug (Esc)"><svg><use href="#i-back"/></svg>Rückzug</button>
+            <button class="ghost" id="skip-btn" type="button" hidden><svg><use href="#i-bolt"/></svg>Überspringen</button>
+        </div>
+    </div>
+</div>
+
+<div class="overlay" id="move" hidden>
+    <div class="panel frame" role="dialog" aria-modal="true" aria-labelledby="move-h">
+        <h2 id="move-h">Truppen nachziehen</h2>
+        <p class="muted" id="move-sub">–</p>
+        <div class="move-num" id="move-n">1</div>
+        <label class="sr" for="move-range">Anzahl</label>
+        <input type="range" id="move-range" min="1" max="1" value="1">
+        <div class="row-btn"><button class="big" id="move-ok" type="button"><svg><use href="#i-check"/></svg>Bestätigen</button></div>
+    </div>
+</div>
+
+<div class="overlay" id="help" hidden>
+    <div class="panel frame" role="dialog" aria-modal="true" aria-labelledby="help-h" style="width:min(780px,100%)">
+        <h2 id="help-h">So wird gespielt</h2>
+        <div class="how" style="margin-top:12px" id="help-how"></div>
+        <div class="keys" aria-label="Tastenkürzel"><span><kbd>Leertaste</kbd> weiter</span><span><kbd>W</kbd> würfeln</span><span><kbd>E</kbd> bis zur Eroberung</span><span><kbd>Esc</kbd> Rückzug / abbrechen</span><span><kbd>Z</kbd> rückgängig</span><span><kbd>1</kbd><kbd>3</kbd><kbd>5</kbd><kbd>0</kbd> Menge</span><span><kbd>M</kbd> Kartenansicht</span><span><kbd>K</kbd> Kinoszenen</span><span><kbd>H</kbd> Hilfe</span></div>
+        <p class="muted" style="margin-top:12px">Zentralbanken (Säulen) verteidigen mit +1, außer ein ASIC-Rig greift mit an. Die Schweiz ist ein Tresor: immer +1. Ein Maxi im Gebiet gibt +1. Wer in einem Zug erobert, zieht am Zugende eine Ereigniskarte. Gestrichelte Linien sind Seewege.</p>
+        <div class="row-btn"><button class="big" id="help-close" type="button"><svg><use href="#i-check"/></svg>Verstanden</button></div>
+    </div>
+</div>
+
+<div class="overlay" id="end" hidden><div class="end-art" id="end-art"></div>
+    <div class="panel frame" role="dialog" aria-modal="true" aria-labelledby="end-h" style="text-align:center">
+        <h2 id="end-h">–</h2>
+        <p class="muted" id="end-sub">–</p>
+        <p class="end-loot" id="end-loot"></p>
+        <div class="row-btn" style="justify-content:center"><button class="big" id="again-btn" type="button">Noch eine Partie</button></div>
+    </div>
+</div>
+
+<div id="title">
+    <canvas id="globe"></canvas>
+    <canvas id="title-fx"></canvas>
+    <div class="title-box">
+        <div class="kicker">EINUNDZWANZIG esports präsentiert</div>
+        <div class="title-logo" id="title-logo" aria-label="Hyperbitcoinization"></div>
+        <p class="tagline">Die Welt ist ein Währungsraum. Stürze die Zentralbanken, lass dein Fiat nicht verrotten und wirf alle anderen raus. Die Sats sind deine <b style="color:var(--btc-hi)">Beute</b>.</p>
+        <div class="how" id="title-how"></div>
+        <div class="setup">
+            <div class="fac frame" role="radiogroup" aria-label="Deine Fraktion" id="fac-pick"></div>
+            <div class="opp frame lim" role="group" aria-label="Rundenlimit"><span>Runden</span><button type="button" data-l="12">12</button><button type="button" data-l="20">20</button><button type="button" data-l="30">30</button><button type="button" data-l="0" class="on">∞</button></div>
+            <div class="opp frame" role="group" aria-label="Anzahl Gegner"><span>Gegner</span><button type="button" data-o="1">1</button><button type="button" data-o="2">2</button><button type="button" data-o="3" class="on">3</button><button type="button" data-o="4">4</button><button type="button" data-o="5">5</button></div>
+            <button class="big" id="play-btn" type="button"><svg><use href="#i-sword"/></svg>Partie starten</button>
+        </div>
+        <div class="title-profile" id="title-profile"></div>
+        <div class="credit">Gegner: Bots · Karte und Spielidee: die Plebs von EINUNDZWANZIG · Sounds: einundzwanzig.space/soundboard</div>
+    </div>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.5/gsap.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/d3/7.9.0/d3.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script src="mapdata.js?v=6"></script>
+<script src="arena.js?v=25"></script>
+<script>
+'use strict';
+const REDUCED = matchMedia('(prefers-reduced-motion: reduce)').matches;
+const $ = (s) => document.querySelector(s);
+const $$ = (s) => [...document.querySelectorAll(s)];
+const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+const fmt = (n) => (Math.round(n * 10) / 10).toLocaleString('de-DE', { maximumFractionDigits: 1 });
+const r2 = (n) => Math.round(n * 100) / 100;
+const r1 = (n) => Math.round(n * 10) / 10;
+
+/* ================= World data (the plebs' ten currency spaces) ================= */
+const ZONES = {
+    dollar: { name: 'Dollar-Raum', bank: 'Fed', color: '#2f62d8', sats: 2, bonus: '+25 % Fiat-Einkommen' },
+    sa: { name: 'Südamerika-Bund', bank: 'Banco Central do Brasil', color: '#3c9c40', sats: 1, bonus: '+2 Fiat pro Zug' },
+    pound: { name: 'Pound Zone', bank: 'Bank of England', color: '#7b45d6', sats: 0.5, bonus: '10 % Zinsen statt Inflation' },
+    euro: { name: 'Euro-Block', bank: 'EZB', color: '#2d8bd6', sats: 1.5, bonus: 'Plebs 20 % billiger' },
+    swiss: { name: 'Swiss Refuge', bank: 'SNB', color: '#d63a3a', sats: 0.5, bonus: 'Tresor: immer +1 Verteidigung' },
+    rubel: { name: 'Rubel-Festung', bank: 'Bank of Russia', color: '#e07b22', sats: 2, bonus: '+1 Verteidigung im ganzen Raum' },
+    yuan: { name: 'Yuan-Sphäre', bank: 'PBoC', color: '#c42a2a', sats: 3, bonus: 'Jeder 3. Pleb gratis' },
+    yen: { name: 'Yen-Realm', bank: 'BoJ', color: '#e6c22c', sats: 0.5, bonus: 'Dein Fiat verfällt nicht' },
+    afro: { name: 'Afro-Union', bank: 'Afrikanische Zentralbank', color: '#17a39a', sats: 3, bonus: '+2 Gratis-Plebs pro Zug' },
+    ozean: { name: 'Australien & Ozeanien', bank: 'RBA', color: '#9b3fc6', sats: 1, bonus: '+1 Verteidigung im ganzen Raum' },
+};
+const TDEF = [
+    ['alaska', 'Alaska', 'dollar'], ['kanada', 'Kanada', 'dollar'], ['westk', 'Westküste', 'dollar'], ['texas', 'Texas', 'dollar', 'm'], ['ny', 'New York', 'dollar', 'b'], ['mexiko', 'Mexiko', 'dollar'],
+    ['kolumbien', 'Kolumbien', 'sa'], ['brasilia', 'Brasília', 'sa', 'b'], ['paraguay', 'Paraguay', 'sa', 'm'], ['argentinien', 'Argentinien', 'sa'],
+    ['island', 'Island', 'pound', 'm'], ['irland', 'Irland', 'pound'], ['london', 'London', 'pound', 'b'],
+    ['skandi', 'Skandinavien', 'euro'], ['frankfurt', 'Frankfurt', 'euro', 'b'], ['westeuropa', 'Westeuropa', 'euro'], ['osteuropa', 'Osteuropa', 'euro'], ['mittelmeer', 'Mittelmeer', 'euro'],
+    ['zuerich', 'Zürich', 'swiss', 'b'],
+    ['moskau', 'Moskau', 'rubel', 'b'], ['sibirien', 'Westsibirien', 'rubel'], ['jakutien', 'Jakutien', 'rubel'], ['kamtschatka', 'Fernost', 'rubel'], ['kasach', 'Kasachstan', 'rubel', 'm'], ['zentralasien', 'Zentralasien', 'rubel'],
+    ['mongolei', 'Mongolei', 'yuan'], ['mandschurei', 'Mandschurei', 'yuan'], ['peking', 'Peking', 'yuan', 'b'], ['xinjiang', 'Xinjiang', 'yuan'], ['tibet', 'Tibet', 'yuan'], ['shanghai', 'Shanghai', 'yuan'],
+    ['suedostasien', 'Indochina', 'yuan'], ['myanmar', 'Myanmar', 'yuan'], ['indien', 'Indien', 'yuan'], ['pakistan', 'Pakistan', 'yuan'],
+    ['tokio', 'Tokio', 'yen', 'b'], ['seoul', 'Seoul', 'yen'],
+    ['kairo', 'Kairo', 'afro', 'b'], ['libyen', 'Libyen', 'afro'], ['nahost', 'Arabien', 'afro'], ['persien', 'Persien', 'afro'], ['maghreb', 'Maghreb', 'afro'], ['sahel', 'Sahel', 'afro'],
+    ['nigeria', 'Westafrika', 'afro'], ['horn', 'Horn von Afrika', 'afro', 'm'], ['kenia', 'Ostafrika', 'afro'], ['kongo', 'Kongo', 'afro'], ['sambesi', 'Sambesi', 'afro'], ['suedafrika', 'Südafrika', 'afro'],
+    ['indonesien', 'Indonesien', 'ozean'], ['perth', 'Perth', 'ozean'], ['sydney', 'Sydney', 'ozean', 'b'], ['neuseeland', 'Neuseeland', 'ozean'],
+];
+const ADJ_LIST = {
+    alaska: ['kanada', 'westk', 'kamtschatka'], kanada: ['westk', 'texas', 'ny', 'island'], westk: ['texas', 'mexiko'], texas: ['ny', 'mexiko'], ny: ['mexiko', 'irland'],
+    mexiko: ['kolumbien'], kolumbien: ['brasilia', 'paraguay', 'argentinien'], brasilia: ['paraguay', 'argentinien', 'nigeria'], paraguay: ['argentinien'],
+    island: ['irland', 'london', 'skandi'], irland: ['london', 'westeuropa'], london: ['skandi', 'frankfurt', 'westeuropa'],
+    skandi: ['frankfurt', 'osteuropa', 'moskau'], frankfurt: ['osteuropa', 'westeuropa', 'zuerich', 'mittelmeer'], westeuropa: ['zuerich', 'mittelmeer', 'maghreb'],
+    zuerich: ['mittelmeer'], osteuropa: ['mittelmeer', 'moskau'], mittelmeer: ['moskau', 'nahost', 'persien', 'kairo', 'libyen', 'maghreb'],
+    moskau: ['sibirien', 'kasach', 'persien'], sibirien: ['jakutien', 'kasach', 'mongolei'], jakutien: ['kamtschatka', 'mongolei', 'mandschurei'],
+    kamtschatka: ['mandschurei', 'tokio', 'seoul'], kasach: ['zentralasien', 'xinjiang'], zentralasien: ['xinjiang', 'persien'],
+    mongolei: ['mandschurei', 'peking', 'xinjiang'], mandschurei: ['peking', 'seoul'], peking: ['tibet', 'shanghai', 'seoul'],
+    xinjiang: ['tibet', 'pakistan'], tibet: ['shanghai', 'suedostasien', 'myanmar', 'indien'], shanghai: ['suedostasien', 'tokio'],
+    suedostasien: ['myanmar', 'indonesien'], myanmar: ['indien'], indien: ['pakistan'], pakistan: ['persien'], persien: ['nahost'], tokio: ['seoul'],
+    nahost: ['kairo', 'horn'], kairo: ['libyen', 'sahel', 'kongo', 'horn', 'kenia'], libyen: ['maghreb', 'sahel'], maghreb: ['sahel'],
+    sahel: ['nigeria', 'kongo'], nigeria: ['kongo'], kongo: ['kenia', 'sambesi'], horn: ['kenia'], kenia: ['sambesi'], sambesi: ['suedafrika'], suedafrika: ['perth'],
+    indonesien: ['perth', 'sydney'], perth: ['sydney'], sydney: ['neuseeland'],
+};
+const SEA = new Set(['ny|irland', 'brasilia|nigeria', 'kanada|island', 'island|irland', 'island|london', 'island|skandi', 'alaska|kamtschatka', 'shanghai|tokio', 'kamtschatka|tokio', 'suedafrika|perth', 'mittelmeer|kairo', 'mittelmeer|libyen', 'mittelmeer|maghreb', 'westeuropa|maghreb', 'indonesien|perth', 'indonesien|sydney', 'sydney|neuseeland', 'nahost|horn', 'suedostasien|indonesien', 'irland|westeuropa', 'london|westeuropa', 'london|skandi', 'london|frankfurt', 'tokio|seoul', 'peking|seoul'].map((k) => k.split('|').sort().join('|')));
+const PIN_AT = { irland: [756, 213], london: [796, 202], frankfurt: [854, 220], westeuropa: [786, 272], mittelmeer: [890, 272], osteuropa: [912, 218], skandi: [868, 150], island: [736, 152], kanada: [470, 190], alaska: [262, 170], indonesien: [1360, 470], neuseeland: [1494, 700], seoul: [1312, 282], tokio: [1366, 300], kamtschatka: [1330, 170], ny: [478, 276], texas: [412, 292], kolumbien: [478, 460] };
+const BANK_LONLAT = { ny: [-74, 40.7], brasilia: [-47.9, -15.8], london: [-0.1, 51.5], frankfurt: [8.7, 50.1], zuerich: [8.5, 47.4], moskau: [37.6, 55.8], peking: [116.4, 39.9], tokio: [139.7, 35.7], kairo: [31.2, 30], sydney: [151.2, -33.9] };
+// Switzerland is a few pixels wide on a world map: drawn as an enlarged vault (×SWISS_ZOOM around its centre).
+const SWISS_ZOOM = 3.2;
+
+const T = TDEF.map(([id, name, zone, f = '']) => {
+    const m = window.HB_MAP.terr[id];
+    const [x, y] = PIN_AT[id] ?? [m.cx, m.cy];
+    return { id, name, zone, bank: f.includes('b'), mine: f.includes('m'), x, y, cx: m.cx, cy: m.cy, d: m.d, path: new Path2D(m.d) };
+});
+const BY = Object.fromEntries(T.map((t) => [t.id, t]));
+const ADJ = Object.fromEntries(T.map((t) => [t.id, new Set()]));
+Object.entries(ADJ_LIST).forEach(([a, list]) => list.forEach((b) => { ADJ[a].add(b); ADJ[b].add(a); }));
+const ZT = Object.fromEntries(Object.keys(ZONES).map((z) => [z, T.filter((t) => t.zone === z).map((t) => t.id)]));
+const SWISS_T = `translate(${BY.zuerich.cx},${BY.zuerich.cy}) scale(${SWISS_ZOOM}) translate(${-BY.zuerich.cx},${-BY.zuerich.cy})`;
+BY.zuerich.x = BY.zuerich.cx; BY.zuerich.y = BY.zuerich.cy;
+
+// Six sides, six players at most. Each brings its own meme for the moment it topples a bank and wins the game.
+const FACTIONS = [
+    { por: 'you', side: 'Bitcoiner', name: 'Bitcoin-Bot', emb: '₿', color: '#f7931a', tag: 'GESTÜRZT', win: ['HYPERBITCOINIZATION', 'Fiat ist Geschichte.'] },
+    { por: 'fed', side: 'Fed', name: 'Fed-Bot', emb: '$', color: '#43d17a', tag: 'BRRRR!', win: ['MONEY PRINTER GO BRRR', 'Die Druckerpresse läuft heiß. Für immer.'] },
+    { por: 'ezb', side: 'EZB', name: 'EZB-Bot', emb: '€', color: '#57a6ff', tag: 'WHATEVER IT TAKES', win: ['WHATEVER IT TAKES', 'Europa ist jetzt ein Formular in dreifacher Ausfertigung.'] },
+    { por: 'goldbug', side: 'Goldbug', name: 'Goldbug', emb: 'Au', color: '#a98bff', tag: 'GOLD GEWINNT', win: ['HAB ICH DOCH GESAGT', 'Gold seit 5000 Jahren. Und jetzt auch hier.'] },
+    { por: 'shit', side: 'Shitcoiner', name: 'Shitcoiner', emb: '◊', color: '#ff5fb0', tag: 'TO THE MOON', win: ['WEN LAMBO? JETZT!', 'Neuer Token, neues Glück. Der Chart zeigt nach oben. Noch.'] },
+    { por: 'no', side: 'Nocoiner', name: 'Nocoiner', emb: '∅', color: '#d7deee', tag: 'BITCOIN IST TOT', win: ['BITCOIN IST TOT', 'Zum 475. Mal. Diesmal aber wirklich.'] },
+];
+
+/* ================= Audio: soundboard clips, synthesized effects, a real music sequencer ================= */
+/* Every clip of the EINUNDZWANZIG soundboard, in themed pools; each pool is a shuffled bag, so nothing repeats before the bag is empty. */
+const POOLS = {"start":["maurice_duedueduedueduem","heyheyhey","gruppe_komm-in-die-gruppe","kinski"],"turn":["heyheyhey","maurice_duedueduedueduem","fussball_nun-zu-den-fakten","maurice_sehr-kluge-frage","nordwolle_hier-oben-alter","nordwolle_zack-zack-fertig","kellner_ich-denke-ja","90-minuten-hardcore","ich-haett-bock","gruppe_bester-mann-markus","nordwolle_verstehste","fussball_wichtig-fuer-mich"],"conquer":["gruppe_das-geilste","maurice_all-time-high","gruppe_brudi","fussball_ich-lach-mich-tot","nordwolle_zack-zack-fertig","dennis-traum","gigi-pos","fussball_klar-und-deutlich","kellner_abholen-diesen-dissidenten","rothbard","proletopia","fussball_absolut-reines-gewissen"],"bank":["niko_niko-job-ezb","hosp_der-markt-crasht","politik_sonneborn-unfaehig-kriminell","politik_criminals_twice","politik_eu-kommission","schnabl-cbdc","politik_freiheit-stirbt-zentimeterweise","panzerknacker_keine-schutzmechanismen-mehr","niko_niko-passiert","panzerknacker_selten-so-viel-scheisse-gelesen"],"ezb":["niko_niko-ezb-gedicht","niko_niko-job-ezb","politik_sonneborn-zur-EU","politik_sonneborn-nichtdenleyen"],"fed":["hosp_der-markt-crasht","schnabl-cbdc","politik_fake-schnabl"],"zone":["rabbithole","saylor-nosecondbest","gruppe_ich-habs-geschafft","became-personal","nordwolle_die-welt-verbessern","panzerknacker_dezentralisierung","maurice_all-time-high"],"fail":["panzerknacker_so-eine-scheisse","fussball_was-hier-ablaeuft","fussball_scheissdreck","fussball_absolute-frechheit","fussball_nicht-nachzuvollziehen","fussball_woran-hat-et-jelegen","kinski_ist-das-zu-fassen","kinski_so-bescheuert","panzerknacker_bullshit","panzerknacker_bullenscheisse","niko_niko-tag-verderben","hast-du-gase-eingeatmet","politik_was-isn-jetzt-scho-wieda-passiert","fussball_scheiss-der-immer-gelabert-wird"],"swiss":["fussball_respektlos-ohne-ende","politik_ehrenwort","fussball_nachweis-meiner-unschuld","fussball_keine-weitere-diskussion"],"hodl":["fussball_keine-weitere-diskussion","kinski_auf-deinen-platz-zurueckverweisen","saylor-nosecondbest","fussball_respektlos-ohne-ende"],"held":["fussball_respektlos-ohne-ende","kinski_auf-deinen-platz-zurueckverweisen","kinski_mach-doch-deinen-scheiss","kinski_kannste-deine-eigene-scheisse-fressen","fussball_absolut-reines-gewissen","politik_vdb-sosindwirnicht","nordwolle_hoert-euch-mal-selber-zu","panzerknacker_auch-das-ist-bullshit","fussball_klar-und-deutlich","fussball_alles-bla-bla-bla"],"lost":["panzerknacker_dann-ist-das-zeug-weg","fussball_kampagne-gegen-mich","fussball_kann-ich-nicht-mehr-hoeren","nordwolle_ich-krieg-einen-zuviel","du-bist-so-alleine","fussball_warum-die-schaerfe-reinkommt","herr-turm-impulsiv","panzerknacker_so-eine-scheisse","kinski_ein-wahnsinniger"],"low":["fussball_tiefpunkt","du-bist-so-alleine","fussball_ich-habe-fertig"],"out":["kinski_schafft-den-weg-hier","politik_sonneborn-danke-chef","kinski_mach-deine-eigenen-sachen"],"inflation":["niko_niko-inflationsziel","kellner_preisanstieg","politik_scholz-doppel-wumms","politik_sofort-unverzueglich","panzerknacker_bitcoin-kostet","nordwolle_planer-bezahl-ich"],"maxi":["saylor-nosecondbest","rothbard","gigi-pos","ole-sekte","panzerknacker_pass-mal-auf"],"asic":["niko_niko-schuh-mining","panzerknacker_stromgeschwindigkeit","nordwolle_stromschnellen","panzerknacker_wie-das-teil-funktioniert"],"hit":["fussball_ich-lach-mich-tot","nordwolle_zack-zack-fertig","kellner_ich-denke-ja","gruppe_bester-mann-markus","dennis-traum","maurice_sehr-kluge-frage"],"ath":["maurice_all-time-high","gruppe_das-geilste"],"crash":["hosp_der-markt-crasht","fussball_ich-habe-fertig"],"win":["gruppe_ich-habs-geschafft","maurice_outro","maurice_all-time-high"],"lose":["fussball_ich-habe-fertig","politik_kurz-ichwillnichtmehr","fussball_tiefpunkt"],"card:brrrr":["politik_scholz-doppel-wumms","niko_niko-gaga-sein","niko_niko-inflationsziel"],"card:attack51":["kellner_abholen-diesen-dissidenten","sunny_was-fuer-eine-dummheit","panzerknacker_pass-mal-auf"],"card:keys":["panzerknacker_dann-ist-das-zeug-weg","alltagsgeschichten"],"card:diamond":["fussball_keine-weitere-diskussion","saylor-nosecondbest"],"card:salvador":["gruppe_komm-in-die-gruppe","gruppe_trading"],"card:scam":["politik_strache-bsoffene-gschicht","politik_ehrenwort","politik_strache-entschuldigung"],"card:pizza":["ich-haett-bock","fussball_drei-weizenbier"],"card:lagarde":["ich-muss-nachdenken","politik_die-duemmsten-fragen","politik_ich-verstehe-diese-fragen","politik_ein-teil-dieser-antworten"],"card:dip":["panzerknacker_investment","gruppe_trading","internet-bucks"],"card:nokeys":["politik_ehrenwort","alltagsgeschichten","panzerknacker_dann-ist-das-zeug-weg"],"f:Fed-Bot":["hosp_der-markt-crasht","politik_fake-schnabl","schnabl-cbdc","politik_sicherheit-vs-buergerrecht"],"f:EZB-Bot":["niko_niko-ezb-gedicht","politik_eu-trilog","politik_sonneborn-zur-EU","politik_baerbock-360","politik_eu-kommission","niko_niko-gaga-sein"],"f:Goldbug":["panzerknacker_alternative-zu-gold","panzerknacker_was-soll-mir-das-bringen","panzerknacker_investment","panzerknacker_bitcoin-kostet"],"f:Shitcoiner":["hosp_iota","wassup-my-iota-community","sunny_smart-contract-auf-cardano","sunny_fast-tangle-management-system-physics","sunny_versprechen-versprechen","sunny_noch-n-jahr","sunny_hashtag-dezentral","sunny_irgendwas-mal-bringen","fussball_cyberhornets"],"f:Nocoiner":["politik_kurz-mittag-gegessen","nordwolle_kann-man-doch-verstehen","cerca-wette","nordwolle_die-zehnte-datingapp","politik_vertrauensvorschuss","politik_spritze-innen-arm","nordwolle_verwalter","politik_kurz-ichwillnichtmehr","fussball_freunde-der-sonne"]};
+POOLS.price = POOLS.inflation;
+const PRIO = { start: 5, win: 5, lose: 5, out: 4, bank: 4, ezb: 4, fed: 4, zone: 4, ath: 4, crash: 4, conquer: 3, lost: 3, inflation: 3, price: 3, swiss: 3, hodl: 3, held: 3, low: 3, turn: 2, fail: 2, maxi: 2, asic: 2, hit: 1 };
+const AUD = { board: true, curPrio: 0, curName: '', fx: true, music: true, vol: 0.8, ctx: null, cur: null, cache: {}, master: null, sfxBus: null, musicBus: null, verb: null, seq: null, intensity: 0 };
+// Audio starts only after the first touch: a context created before that stays locked on some browsers (iOS Safari).
+let touched = false;
+['pointerdown', 'keydown'].forEach((ev) => addEventListener(ev, () => { touched = true; if (AUD.ctx && AUD.ctx.state === 'suspended') AUD.ctx.resume(); }, { capture: true }));
+function ctx() {
+    if (!AUD.ctx && !touched) return null;
+    if (!AUD.ctx) {
+        try {
+            const c = new (window.AudioContext || window.webkitAudioContext)();
+            AUD.ctx = c;
+            AUD.master = c.createGain(); AUD.master.gain.value = AUD.vol;
+            const comp = c.createDynamicsCompressor(); comp.threshold.value = -16; comp.ratio.value = 4;
+            AUD.master.connect(comp); comp.connect(c.destination);
+            AUD.sfxBus = c.createGain(); AUD.sfxBus.gain.value = 0.9; AUD.sfxBus.connect(AUD.master);
+            AUD.musicBus = c.createGain(); AUD.musicBus.gain.value = AUD.music ? 0.42 : 0; AUD.musicBus.connect(AUD.master);
+            // Generated reverb: a short noise tail.
+            const len = c.sampleRate * 2.2; const ir = c.createBuffer(2, len, c.sampleRate);
+            for (let ch = 0; ch < 2; ch++) { const d = ir.getChannelData(ch); for (let i = 0; i < len; i++) d[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / len, 2.6); }
+            AUD.verb = c.createConvolver(); AUD.verb.buffer = ir; const vg = c.createGain(); vg.gain.value = 0.32; AUD.verb.connect(vg); vg.connect(AUD.master);
+        } catch (e) { return null; }
+    }
+    if (AUD.ctx.state === 'suspended') AUD.ctx.resume();
+    return AUD.ctx;
+}
+/*
+ * Rotation with memory: every play is remembered (also across games, in this browser). A pool hands out the clip
+ * that has rested longest and never one of the last RECENT plays; if a small pool has nothing rested, it borrows
+ * from the pools of the same mood. So all 132 clips come round before any one repeats.
+ */
+const RECENT = 30;
+const MOOD = {
+    good: ['conquer', 'zone', 'ath', 'hit', 'win', 'maxi', 'asic', 'hodl', 'held', 'swiss', 'card:diamond', 'card:attack51'],
+    bad: ['fail', 'lost', 'low', 'crash', 'lose', 'out'],
+    money: ['inflation', 'price', 'bank', 'ezb', 'fed', 'card:brrrr', 'card:scam', 'card:nokeys', 'card:keys', 'card:dip', 'card:salvador', 'card:pizza', 'card:lagarde'],
+    turn: ['turn', 'start'],
+    bots: Object.keys(POOLS).filter((k) => k.startsWith('f:')),
+};
+const moodOf = (pool) => Object.keys(MOOD).find((m) => MOOD[m].includes(pool)) ?? 'good';
+const HIST = (() => { try { return JSON.parse(localStorage.getItem('hb-clip-history')) ?? { n: 0, last: {} }; } catch (e) { return { n: 0, last: {} }; } })();
+let lastClip = '';
+function remember(name) {
+    HIST.n++; HIST.last[name] = HIST.n; lastClip = name;
+    try { localStorage.setItem('hb-clip-history', JSON.stringify(HIST)); } catch (e) { /* memory only for this visit */ }
+}
+function pick(pool) {
+    const age = (name) => (HIST.last[name] === undefined ? Infinity : HIST.n - HIST.last[name]);
+    const rested = (list) => list.filter((n) => age(n) >= RECENT);
+    let cands = rested(POOLS[pool]);
+    if (!cands.length) cands = rested([...new Set(MOOD[moodOf(pool)].flatMap((k) => POOLS[k] ?? []))]);
+    if (!cands.length) cands = POOLS[pool].filter((n) => n !== lastClip);
+    if (!cands.length) cands = POOLS[pool];
+    // Never played first (random among them), then the one that rested longest.
+    const fresh = cands.filter((n) => age(n) === Infinity);
+    return fresh.length ? fresh[Math.floor(Math.random() * fresh.length)] : cands.sort((a, b) => age(b) - age(a))[0];
+}
+// A clip always plays to its end, unless something more important happens (a conquest beats a turn horn).
+function clip(pool, prio) {
+    if (!AUD.board || !POOLS[pool]) return;
+    prio = prio ?? PRIO[pool] ?? (pool.startsWith('card:') ? 3 : 1);
+    if (botTurnNow() && prio < 5) return;
+    if (AUD.cur && !AUD.cur.paused && !AUD.cur.ended && prio <= AUD.curPrio) return;
+    // Small moments stay quiet for a while after a clip, so the soundboard never chatters.
+    if (prio <= 2 && performance.now() - (AUD.endedAt ?? -1e9) < 6000) return;
+    const name = pick(pool); remember(name);
+    try {
+        if (AUD.cur) AUD.cur.pause();
+        const a = new Audio('s/' + name + '.mp3'); a.volume = Math.min(1, AUD.vol * 1.1);
+        AUD.cur = a; AUD.curPrio = prio; AUD.curName = name;
+        duck(true); a.onended = () => { duck(false); AUD.curPrio = 0; AUD.endedAt = performance.now(); };
+        a.play().catch(() => duck(false));
+    } catch (e) { /* silence is fine */ }
+}
+function duck(on) { if (AUD.musicBus && AUD.music) AUD.musicBus.gain.setTargetAtTime(on ? 0.12 : 0.42, AUD.ctx.currentTime, on ? 0.08 : 0.5); }
+function env(g, t, a, peak, d, sustain = 0.0001) { g.gain.cancelScheduledValues(t); g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(peak, t + a); g.gain.exponentialRampToValueAtTime(Math.max(0.0001, sustain), t + a + d); }
+function osc(type, freq, t, dur, vol, bus, { slide = 0, verb = 0, attack = 0.005, detune = 0, filter = 0 } = {}) {
+    const c = AUD.ctx; if (!c) return;
+    const o = c.createOscillator(); const g = c.createGain(); o.type = type; o.frequency.setValueAtTime(freq, t); o.detune.value = detune;
+    if (slide) o.frequency.exponentialRampToValueAtTime(Math.max(20, freq + slide), t + dur);
+    env(g, t, attack, vol, dur);
+    let node = o;
+    if (filter) { const f = c.createBiquadFilter(); f.type = 'lowpass'; f.frequency.value = filter; o.connect(f); node = f; }
+    node.connect(g); g.connect(bus);
+    if (verb) { const s = c.createGain(); s.gain.value = verb; g.connect(s); s.connect(AUD.verb); }
+    o.start(t); o.stop(t + attack + dur + 0.05);
+}
+function noise(t, dur, vol, bus, { type = 'bandpass', freq = 1800, q = 0.8, verb = 0 } = {}) {
+    const c = AUD.ctx; if (!c) return;
+    const n = Math.floor(c.sampleRate * dur); const b = c.createBuffer(1, n, c.sampleRate); const d = b.getChannelData(0);
+    for (let i = 0; i < n; i++) d[i] = Math.random() * 2 - 1;
+    const s = c.createBufferSource(); s.buffer = b; const f = c.createBiquadFilter(); f.type = type; f.frequency.value = freq; f.Q.value = q;
+    const g = c.createGain(); env(g, t, 0.002, vol, dur);
+    s.connect(f); f.connect(g); g.connect(bus);
+    if (verb) { const sg = c.createGain(); sg.gain.value = verb; g.connect(sg); sg.connect(AUD.verb); }
+    s.start(t); s.stop(t + dur + 0.02);
+}
+let lastHover = 0;
+// Bot turns play no soundboard clips, only your own moves do; effects still sound (user, 2026-10-08).
+const botTurnNow = () => !!(typeof G !== 'undefined' && G && !G.over && G.players[G.cur]?.bot && document.getElementById('title').hidden);
+const sfx = new Proxy({
+    hover: (t) => osc('sine', 1700, t, 0.035, 0.05, AUD.sfxBus),
+    click: (t) => { osc('triangle', 900, t, 0.05, 0.22, AUD.sfxBus, { slide: 300 }); noise(t, 0.02, 0.12, AUD.sfxBus, { freq: 4000 }); },
+    select: (t) => { osc('square', 660, t, 0.06, 0.08, AUD.sfxBus, { filter: 2400 }); osc('square', 990, t + 0.05, 0.08, 0.08, AUD.sfxBus, { filter: 2400 }); },
+    lock: (t) => { [880, 1175, 1568].forEach((f, i) => osc('triangle', f, t + i * 0.045, 0.09, 0.12, AUD.sfxBus, { verb: 0.2 })); },
+    error: (t) => { osc('sawtooth', 160, t, 0.12, 0.12, AUD.sfxBus, { filter: 900 }); osc('sawtooth', 120, t + 0.1, 0.16, 0.12, AUD.sfxBus, { filter: 900 }); },
+    place: (t) => { osc('sine', 180, t, 0.16, 0.5, AUD.sfxBus, { slide: -90 }); noise(t, 0.08, 0.25, AUD.sfxBus, { freq: 700 }); osc('triangle', 1400, t + 0.03, 0.08, 0.08, AUD.sfxBus); },
+    coin: (t) => { osc('sine', 1568, t, 0.1, 0.18, AUD.sfxBus, { verb: 0.25 }); osc('sine', 2093, t + 0.07, 0.18, 0.16, AUD.sfxBus, { verb: 0.25 }); },
+    power: (t) => { osc('sawtooth', 220, t, 0.45, 0.16, AUD.sfxBus, { slide: 660, filter: 2600, verb: 0.3 }); noise(t, 0.4, 0.08, AUD.sfxBus, { type: 'highpass', freq: 3000 }); },
+    shake: (t) => { for (let i = 0; i < 9; i++) noise(t + i * 0.045, 0.035, 0.22, AUD.sfxBus, { freq: 2200 + Math.random() * 1600, q: 2 }); },
+    land: (t) => { osc('sine', 140, t, 0.09, 0.35, AUD.sfxBus, { slide: -60 }); noise(t, 0.05, 0.25, AUD.sfxBus, { freq: 1200 }); },
+    clash: (t) => { noise(t, 0.25, 0.35, AUD.sfxBus, { type: 'highpass', freq: 2500, verb: 0.4 }); osc('square', 1250, t, 0.12, 0.06, AUD.sfxBus, { slide: -500 }); },
+    boom: (t) => { osc('sine', 110, t, 0.8, 0.9, AUD.sfxBus, { slide: -75 }); noise(t, 0.6, 0.5, AUD.sfxBus, { type: 'lowpass', freq: 500, verb: 0.5 }); },
+    whoosh: (t) => noise(t, 0.35, 0.18, AUD.sfxBus, { type: 'bandpass', freq: 900, q: 0.6, verb: 0.2 }),
+    flip: (t) => { noise(t, 0.06, 0.2, AUD.sfxBus, { freq: 3000 }); noise(t + 0.08, 0.05, 0.15, AUD.sfxBus, { freq: 2200 }); },
+    sting: (t) => { [392, 494, 587, 784].forEach((f, i) => osc('sawtooth', f, t + i * 0.06, 0.5, 0.07, AUD.sfxBus, { filter: 3000, verb: 0.45 })); },
+    horn: (t) => { [220, 330, 440].forEach((f) => osc('sawtooth', f, t, 0.9, 0.08, AUD.sfxBus, { attack: 0.06, filter: 1600, verb: 0.5 })); },
+    gong: (t) => { [98, 196, 294, 415].forEach((f, i) => osc('sine', f, t, 1.6 - i * 0.2, 0.22 / (i + 1), AUD.sfxBus, { verb: 0.6 })); },
+    inflate: (t) => osc('sawtooth', 600, t, 0.7, 0.12, AUD.sfxBus, { slide: -480, filter: 1800, verb: 0.3 }),
+    paper: (t) => { for (let i = 0; i < 14; i++) noise(t + i * 0.035 + Math.random() * 0.02, 0.05, 0.12, AUD.sfxBus, { freq: 2500 + Math.random() * 3000, q: 1.2 }); osc('triangle', 300, t, 0.25, 0.1, AUD.sfxBus, { slide: 500 }); },
+    laser: (t) => { osc('sawtooth', 1800, t, 0.4, 0.12, AUD.sfxBus, { slide: -1500, filter: 4000, verb: 0.3 }); osc('square', 2400, t, 0.3, 0.05, AUD.sfxBus, { slide: -2000 }); },
+    fall: (t) => osc('sine', 1400, t, 0.7, 0.12, AUD.sfxBus, { slide: -1200, verb: 0.3 }),
+    fanfare: (t) => [523, 659, 784, 1047, 1319].forEach((f, i) => osc('sawtooth', f, t + i * 0.11, 0.55, 0.09, AUD.sfxBus, { filter: 3200, verb: 0.5 })),
+}, { get: (o, k) => (...a) => { const c = AUD.fx && ctx(); if (!c || !o[k]) return; try { o[k](c.currentTime + 0.005, ...a); } catch (e) { /* ignore */ } } });
+
+addEventListener('arena-land', () => sfx.land());
+addEventListener('arena-paper', () => sfx.paper());
+addEventListener('arena-laser', () => sfx.laser());
+addEventListener('arena-up', () => sfx.power());
+addEventListener('arena-down', () => sfx.inflate());
+addEventListener('arena-fall', () => sfx.fall());
+addEventListener('arena-impact', () => { sfx.boom(); sfx.coin(); sfx.paper(); });
+
+/*
+ * Generative ambient score for long strategy sessions, built on two documented practices:
+ * - Eno's Music for Airports: short fragments in loops of incommensurable length (~23.5 s, ~25.9 s, ~29.9 s), so the
+ *   combination practically never repeats; ambient music "must accommodate many levels of listening attention without
+ *   enforcing one" (reverbmachine.com/blog/deconstructing-brian-eno-music-for-airports).
+ * - Vertical layering against fatigue over hour-long play: an always-on bed of pads, an intensity layer faded in by the
+ *   game state, dynamics and breathing room instead of a constant wall (gamedeveloper.com/audio/soundscapes-what-sound-does-to-games-and-brains).
+ * So: long modal chords (no dominant tension) with slow crossfades, a drone, bell fragments from the minor pentatonic
+ * on co-prime loop periods with rests, a key change every few minutes, and a soft pulse only in battle.
+ */
+const mtof = (m) => 440 * Math.pow(2, (m - 69) / 12);
+const AMB = {
+    timer: 0, key: 0, nextChord: 0, chord: 0, nextKey: 0, pulseNext: 0, pulseStep: 0, rest: 0,
+    // D dorian/aeolian palette: [bass root, pad voicing]; neighbours share tones, so every move is smooth.
+    chords: [
+        [38, [57, 60, 64, 65]],   // Dm9
+        [34, [53, 57, 58, 62]],   // Bbmaj7
+        [41, [57, 60, 64, 67]],   // Fmaj9
+        [36, [55, 60, 62, 64]],   // Cadd9
+        [43, [55, 58, 62, 65]],   // Gm9 (no root)
+        [45, [55, 57, 60, 64]],   // Am7
+    ],
+    moves: { 0: [1, 2, 4, 5], 1: [0, 2, 3], 2: [0, 1, 3, 5], 3: [2, 4, 0], 4: [0, 1, 5], 5: [0, 2, 4] },
+    keys: [0, 5, -2, 3],
+    // Bell fragments: [period in seconds, [[offset, midi], ...]], periods not multiples of one another.
+    loops: [[19.7, [[0, 69], [2.3, 72]]], [23.5, [[0, 74], [1.6, 65]]], [29.9, [[0, 67]]], [34.3, [[0, 60], [3.1, 62], [5.4, 69]]]],
+    loopNext: [], history: [], mood: null,
+};
+// One pad voice: two detuned saws, a slow-breathing lowpass, long attack and release.
+/*
+ * The score follows the game: the phase sets the tension (attack = darker, faster chords, sparser bells), your standing
+ * sets the colour (ahead = major chords and a brighter filter, behind = minor chords and a deeper drone). Changes land on
+ * the next chord boundary, never as a cut.
+ */
+const MAJOR = new Set([1, 2, 3]); // Bbmaj7, Fmaj9, Cadd9; the rest are minor
+function musicMood() {
+    if (typeof G === 'undefined' || !G || G.over || !document.getElementById('title').hidden) return { tense: false, standing: 'even' };
+    const me = G.players.find((p) => !p.bot); if (!me) return { tense: false, standing: 'even' };
+    const score = (p) => p.sats + mineOf(p.id).length * 0.3;
+    const rivals = G.players.filter((p) => p.bot && !p.out); const best = rivals.length ? Math.max(...rivals.map(score)) : 0;
+    const mine = score(me);
+    return { tense: !P().bot && G.phase === 'attack', standing: me.out ? 'behind' : mine >= best * 1.1 ? 'ahead' : mine < best * 0.75 ? 'behind' : 'even' };
+}
+function nextChord(from, mood) {
+    const opts = AMB.moves[from].map((i) => {
+        let w = 1; const major = MAJOR.has(i);
+        if (mood.tense) w *= major ? 0.4 : 3;
+        if (mood.standing === 'ahead') w *= major ? 2.5 : 0.6;
+        if (mood.standing === 'behind') w *= major ? 0.4 : 2.5;
+        return [i, w];
+    });
+    let r = Math.random() * opts.reduce((a, [, w]) => a + w, 0);
+    for (const [i, w] of opts) { r -= w; if (r <= 0) return i; }
+    return opts[0][0];
+}
+function padNote(m, t, dur, vol, bright = 1) {
+    const c = AUD.ctx; const f = c.createBiquadFilter(); f.type = 'lowpass'; f.Q.value = 0.4;
+    f.frequency.setValueAtTime(500, t); f.frequency.linearRampToValueAtTime((1100 + Math.random() * 500) * bright, t + dur * 0.5); f.frequency.linearRampToValueAtTime(600, t + dur + 5);
+    const g = c.createGain(); g.gain.setValueAtTime(0.0001, t); g.gain.linearRampToValueAtTime(vol, t + 3.5); g.gain.setValueAtTime(vol, t + dur); g.gain.linearRampToValueAtTime(0.0001, t + dur + 6);
+    [-7, 7].forEach((det) => { const o = c.createOscillator(); o.type = 'sawtooth'; o.frequency.value = mtof(m); o.detune.value = det + (Math.random() - 0.5) * 4; o.connect(f); o.start(t); o.stop(t + dur + 6.2); });
+    f.connect(g); g.connect(AUD.musicBus); const s = c.createGain(); s.gain.value = 0.7; g.connect(s); s.connect(AUD.verb);
+}
+function droneNote(m, t, dur) {
+    const c = AUD.ctx; const o = c.createOscillator(); o.type = 'triangle'; o.frequency.value = mtof(m);
+    const g = c.createGain(); g.gain.setValueAtTime(0.0001, t); g.gain.linearRampToValueAtTime(0.12, t + 4); g.gain.setValueAtTime(0.12, t + dur); g.gain.linearRampToValueAtTime(0.0001, t + dur + 5);
+    o.connect(g); g.connect(AUD.musicBus); o.start(t); o.stop(t + dur + 5.2);
+}
+// A soft bell: a sine and a quiet octave, long decay, mostly reverb.
+function bellNote(m, t, vol = 0.05) {
+    const c = AUD.ctx; const g = c.createGain(); g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(vol, t + 0.02); g.gain.exponentialRampToValueAtTime(0.0001, t + 5);
+    [[1, 1], [2, 0.18], [3.01, 0.05]].forEach(([mul, amp]) => { const o = c.createOscillator(); o.type = 'sine'; o.frequency.value = mtof(m) * mul; const a = c.createGain(); a.gain.value = amp; o.connect(a); a.connect(g); o.start(t); o.stop(t + 5.1); });
+    g.connect(AUD.musicBus); const s = c.createGain(); s.gain.value = 1.2; g.connect(s); s.connect(AUD.verb);
+}
+function ambientTick() {
+    const c = AUD.ctx; const now = c.currentTime; const ahead = now + 1.2;
+    if (!AUD.music) return;
+    // Key change every three to four minutes, always on a chord boundary.
+    if (now >= AMB.nextKey) { AMB.key = AMB.keys[(AMB.keys.indexOf(AMB.key) + 1) % AMB.keys.length]; AMB.nextKey = now + 180 + Math.random() * 60; }
+    if (AMB.nextChord < ahead) {
+        const mood = musicMood(); AMB.mood = mood;
+        const t = Math.max(AMB.nextChord, now + 0.05); const dur = mood.tense ? 10 + Math.random() * 4 : 12 + Math.random() * 8;
+        const [root, voicing] = AMB.chords[AMB.chord];
+        const bright = mood.tense ? 0.6 : mood.standing === 'ahead' ? 1.35 : mood.standing === 'behind' ? 0.75 : 1;
+        // Breathing room: now and then only the drone holds the chord.
+        const breathe = !mood.tense && Math.random() < 0.15;
+        if (!breathe) voicing.forEach((m, i) => padNote(m + AMB.key, t + i * 0.25, dur, 0.031, bright));
+        droneNote(root + AMB.key - (mood.standing === 'behind' ? 12 : 0), t, dur);
+        AMB.history.push(AMB.chord); if (AMB.history.length > 50) AMB.history.shift();
+        AMB.chord = nextChord(AMB.chord, mood);
+        AMB.nextChord = t + dur;
+    }
+    AMB.loops.forEach(([period, notes], i) => {
+        if (AMB.loopNext[i] === undefined) AMB.loopNext[i] = now + 4 + i * 3.7;
+        if (AMB.loopNext[i] < ahead) {
+            const t = AMB.loopNext[i];
+            const mood = AMB.mood ?? { tense: false, standing: 'even' }; const lift = mood.standing === 'ahead' && Math.random() < 0.5 ? 12 : 0;
+            if (Math.random() > (mood.tense ? 0.45 : 0.22)) notes.forEach(([off, m]) => bellNote(m + AMB.key + lift, t + off, 0.035 + Math.random() * 0.02));
+            AMB.loopNext[i] = t + period;
+        }
+    });
+    // Intensity layer: a slow heartbeat and a filtered arpeggio, only while a battle is on.
+    if (AUD.intensity > 0.5) {
+        const beat = 60 / 76;
+        if (AMB.pulseNext < now) AMB.pulseNext = now + 0.05;
+        while (AMB.pulseNext < ahead) {
+            const t = AMB.pulseNext; const s = AMB.pulseStep++ % 8;
+            if (s % 2 === 0) osc('sine', 62, t, 0.45, 0.22, AUD.musicBus, { slide: -22 });
+            const [, voicing] = AMB.chords[AMB.chord]; osc('triangle', mtof(voicing[s % voicing.length] + 12 + AMB.key), t, 0.35, 0.02, AUD.musicBus, { filter: 1800, verb: 0.4 });
+            AMB.pulseNext += beat / 2;
+        }
+    }
+}
+function startMusic() {
+    const c = ctx(); if (!c || AMB.timer) return;
+    AMB.nextChord = c.currentTime + 0.2; AMB.nextKey = c.currentTime + 180;
+    AMB.timer = setInterval(ambientTick, 250);
+}
+function setIntensity(v) { AUD.intensity = v; }
+// Every button clicks; hovering ticks quietly.
+document.addEventListener('pointerdown', (e) => { if (e.target.closest('button, input[type=range]')) sfx.click(); }, true);
+document.addEventListener('pointerover', (e) => { const b = e.target.closest('button:not(:disabled)'); if (b && performance.now() - lastHover > 70) { lastHover = performance.now(); sfx.hover(); } }, true);
+
+/* ================= Painted art (generated for this game, OpenRouter / Gemini image) ================= */
+const POR = (k, ring = 'var(--btc)') => `<span class="pimg" style="--ring:${ring}"><img src="art/por-${k}.jpg?v=1" alt="" decoding="async"></span>`;
+
+/* ================= Cards ================= */
+const CARDS = {
+    brrrr: { name: 'Notenpresse', art: 'BRRR', text: '+8 Gratis-Plebs. Nächste Runde zahlen alle 50 % mehr pro Pleb.', joke: 'Jerome hat neue Tinte bestellt.', target: null },
+    attack51: { name: '51%-Attacke', art: '51%', text: 'Nimm ein Nachbargebiet mit höchstens 3 Einheiten ohne Würfeln.', joke: 'Genug Hashrate für neue Regeln.', target: 'enemyAdj' },
+    keys: { name: 'Lost Keys', art: 'SEED?', text: 'Der reichste Gegner verliert 30 % seiner Sats.', joke: 'Die Seed lag im Altpapier.', target: null },
+    diamond: { name: 'Diamond Hands', art: '◆', text: 'Ein eigenes Gebiet verteidigt bis zu deinem nächsten Zug mit +1.', joke: 'Niemand verkauft hier.', target: 'own' },
+    salvador: { name: 'El-Salvador-Move', art: '±25', text: 'Münzwurf: deine Sats +25 % oder −25 %.', joke: 'Nicht in die App schauen.', target: null },
+    scam: { name: 'Exit Scam', art: '✈', text: 'Eine feindliche Zentralbank verliert 2 Einheiten.', joke: 'Gouverneur samt Gold in Dubai.', target: 'enemyBank' },
+    pizza: { name: 'Pizza-Tag', art: '10K', text: 'Du verlierst 10 % deiner Sats, bekommst aber 3 Gratis-Plebs.', joke: '10.000 BTC für zwei Pizzen. Lecker.', target: null },
+    lagarde: { name: 'Lagardes Glaskugel', art: '◎', text: '+3 Fiat und ein Blick auf die nächste Karte.', joke: 'Sieht professionell aus.', target: null },
+    dip: { name: 'Buy the Dip', art: '↘', text: 'Plebs kosten in diesem Zug die Hälfte.', joke: 'Alles im Angebot.', target: null },
+    nokeys: { name: 'Not Your Keys', art: '∅', text: 'Ein feindliches Gebiet mit genau 1 Einheit wird neutral.', joke: 'Die Putzfrau war gründlich.', target: 'enemyOne' },
+};
+
+/* ================= State ================= */
+let G = null;
+const UI = { scenes: true, unit: 'pleb', qty: '1', from: null, card: null, mode: 'owner', speed: 1, busy: false, placed: [], hover: null };
+function shuffle(a) { for (let i = a.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [a[i], a[j]] = [a[j], a[i]]; } return a; }
+function newDeck() { return shuffle(Object.keys(CARDS).flatMap((k) => [k, k])); }
+// The old deal: every territory round-robin, so banks, mines and the odd territory land by luck.
+function dealRandom(n) {
+    const terr = {};
+    shuffle(T.map((t) => t.id)).forEach((id, i) => { terr[id] = { owner: i % n, pleb: 1, maxi: 0, asic: 0, shield: -1 }; });
+    return terr;
+}
+// How much more often a side wins when it starts with this territory (percentage points, 4 players,
+// 200 000 simulated games, scratchpad sim/hbsim terr). Secluded South America and Oceania start strong,
+// open Russia and China weak.
+const START_VALUE = { alaska: -0.31, argentinien: 7.01, brasilia: 6.7, frankfurt: -0.96, horn: -0.07, indien: -1.75, indonesien: 3.44, irland: 0.21, island: -1.2, jakutien: -3.13, kairo: 0.43, kamtschatka: -2.2, kanada: -0.49, kasach: -4.9, kenia: 0.34, kolumbien: 6.02, kongo: 0.2, libyen: 0.06, london: -1.08, maghreb: 0.03, mandschurei: -1.88, mexiko: 0.51, mittelmeer: 0.08, mongolei: -1.88, moskau: -3.49, myanmar: -1.59, nahost: -0.02, neuseeland: 5.21, nigeria: 0.75, ny: -0.75, osteuropa: 0.56, pakistan: -1.73, paraguay: 7.63, peking: -2.62, persien: -0.18, perth: 2.89, sahel: 0.15, sambesi: 0.29, seoul: -0.21, shanghai: -1.78, sibirien: -3.26, skandi: 0.35, suedafrika: 0.5, suedostasien: -1.33, sydney: 4.07, texas: -1.45, tibet: -1.81, tokio: -2.38, westeuropa: 0.58, westk: -0.21, xinjiang: -2.17, zentralasien: -3.23 };
+// Seat compensation per player count: extra starting plebs for each later seat (sim/hbsim tune, balanced deal),
+// measured once without a round limit (the default) and once with the limit of 20.
+const SEAT_COMP = { open: { 2: 12, 3: 7, 4: 5, 5: 2, 6: 1.5 }, limit: { 2: 11.5, 3: 7, 4: 4, 5: 0.5, 6: 1 } };
+// A value-balanced deal: banks, mines and plain land are dealt separately, in rounds of one per side;
+// each round the strongest remaining territory goes to the side with the lowest start value so far.
+// What does not divide stays neutral, and so does a one-territory currency space (Zuerich).
+// A duel deals a third, neutral side as in two-player Risk.
+function dealFair(n, neutral = 0) {
+    const sides = n + neutral; const tag = (k) => (k < n ? k : -1 - k);
+    const solo = (id) => ZT[BY[id].zone].length === 1;
+    for (let attempt = 0; attempt < 200; attempt++) {
+        const terr = {}; const totals = Array(sides).fill(0);
+        T.filter((t) => solo(t.id)).forEach((t) => { terr[t.id] = { owner: null, pleb: 2, maxi: 0, asic: 0, shield: -1 }; });
+        [(t) => t.bank, (t) => t.mine, (t) => !t.bank && !t.mine].forEach((cls) => {
+            const list = shuffle(T.filter((t) => !solo(t.id) && cls(t)).map((t) => t.id)).sort((a, b) => (START_VALUE[b] ?? 0) - (START_VALUE[a] ?? 0));
+            const even = list.length - (list.length % sides);
+            list.slice(even).forEach((id) => { terr[id] = { owner: null, pleb: 2, maxi: 0, asic: 0, shield: -1 }; });
+            for (let k = 0; k < even; k += sides) {
+                const order = shuffle([...Array(sides).keys()]).sort((a, b) => totals[a] - totals[b]);
+                list.slice(k, k + sides).forEach((id, j) => { const side = order[j]; totals[side] += START_VALUE[id] ?? 0; terr[id] = { owner: tag(side), pleb: 1, maxi: 0, asic: 0, shield: -1 }; });
+            }
+        });
+        const complete = Object.keys(ZONES).some((z) => { const o = terr[ZT[z][0]].owner; return o !== null && o >= 0 && ZT[z].every((id) => terr[id].owner === o); });
+        if (!complete) return terr;
+    }
+    return dealRandom(n);
+}
+function newGame(opponents, mine = 'you') {
+    // You play the chosen side; the bots take the others in their usual order.
+    if (mine === 'random') mine = FACTIONS[Math.floor(Math.random() * FACTIONS.length)].por;
+    const order = [FACTIONS.find((f) => f.por === mine) ?? FACTIONS[0], ...FACTIONS.filter((f) => f.por !== mine)];
+    const players = order.slice(0, opponents + 1).map((f, i) => ({ id: i, ...f, name: i === 0 ? 'Du' : f.name, bot: i > 0, fiat: 0, sats: 0, loot: 0, hand: [], out: false, conquered: 0, freePlebs: 0, dip: false, yuan: 0, moves: 0 }));
+    const neutral = players.length === 2 ? 1 : 0;
+    const terr = window.HB_FAIR === false ? dealRandom(players.length) : dealFair(players.length, neutral);
+    // Every side gets 14 plebs; later seats get SEAT_COMP more each, the duel's neutral side the base 14.
+    const comp = SEAT_COMP[(window.HB_LIMIT ?? roundLimit) ? 'limit' : 'open'][players.length] ?? 0;
+    const sideIds = [...players.map((p) => p.id), ...Array.from({ length: neutral }, (_, k) => -1 - (players.length + k))];
+    sideIds.forEach((sid, seat) => { const mine = shuffle(T.filter((t) => terr[t.id].owner === sid).map((t) => t.id)); const extra = 14 + (sid >= 0 ? Math.round(comp * seat) : 0); for (let k = 0; k < extra && mine.length; k++) terr[mine[k % mine.length]].pleb++; });
+    Object.values(terr).forEach((t) => { if (t.owner !== null && t.owner < 0) t.owner = null; });
+    G = { players, terr, cur: 0, round: 1, limit: window.HB_LIMIT ?? roundLimit, phase: 'buy', deck: newDeck(), inflation: 0, inflationNext: 0, fortified: false, over: false, log: [] };
+    Object.assign(UI, { from: null, card: null, busy: false, placed: [] });
+    ['#battle', '#move', '#end', '#help'].forEach((s) => { $(s).hidden = true; });
+}
+const P = () => G.players[G.cur];
+const U = (id) => { const t = G.terr[id]; return t.pleb + t.maxi + t.asic; };
+const own = (id) => G.terr[id].owner;
+const mineOf = (pid) => T.filter((t) => own(t.id) === pid).map((t) => t.id);
+const zoneOwner = (z) => { const o = own(ZT[z][0]); return o !== null && ZT[z].every((id) => own(id) === o) ? o : null; };
+const hasZone = (pid, z) => zoneOwner(z) === pid;
+function plebCost(p) { let c = 1; if (G.inflation) c *= 1.5; if (hasZone(p.id, 'euro')) c *= 0.8; if (p.dip) c *= 0.5; return r2(c); }
+function log(t, hot = false) { G.log.unshift({ t, hot }); G.log.length = Math.min(G.log.length, 30); renderTicker(); }
+
+/* ================= Board: one canvas raster, moved by the zoom (no SVG repaint per frame) ================= */
+const board = $('#board'); const bctx = board.getContext('2d');
+const RES = Math.min(2.5, Math.max(1.5, devicePixelRatio * 1.25));
+const base = document.createElement('canvas'); base.width = 1600 * RES; base.height = 860 * RES; const g0 = base.getContext('2d');
+const PATHS = { neutral: new Path2D(HB_MAP.neutral), borders: new Path2D(HB_MAP.borders), sphere: new Path2D(HB_MAP.sphere), grat: new Path2D(HB_MAP.graticule) };
+const landPath = new Path2D(); landPath.addPath(PATHS.neutral); T.forEach((t) => landPath.addPath(t.path));
+const TER = { land: null, sea: null, ocean: null };
+// The painted ocean, tiled: loaded once, then the base map redraws with it.
+(() => { const i = new Image(); i.onload = () => { const c = document.createElement('canvas'); c.width = c.height = 400; c.getContext('2d').drawImage(i, 0, 0, 400, 400); TER.ocean = c.getContext('2d').createPattern(c, 'repeat'); if (G) renderBase(true); }; i.src = 'art/map-sea.jpg?v=1'; })();
+let zt = d3.zoomIdentity; let fitMode = 'meet'; let baseKey = '';
+// Returns hex again, so a shaded colour can be shaded a second time (the map dims the political fill).
+const shade = (hex, f) => { const n = parseInt(hex.slice(1), 16); const ch = (s) => Math.max(0, Math.min(255, Math.round(((n >> s) & 255) * f))); return '#' + [ch(16), ch(8), ch(0)].map((v) => v.toString(16).padStart(2, '0')).join(''); };
+function viewMatrix() {
+    const w = board.clientWidth; const h = board.clientHeight;
+    const s = (fitMode === 'slice' ? Math.max : Math.min)(w / 1600, h / 860);
+    return { s, ox: (w - 1600 * s) / 2, oy: (h - 860 * s) / 2, w, h };
+}
+function drawBoard() {
+    const dpr = devicePixelRatio || 1; const v = viewMatrix();
+    if (board.width !== Math.round(v.w * dpr) || board.height !== Math.round(v.h * dpr)) { board.width = Math.round(v.w * dpr); board.height = Math.round(v.h * dpr); }
+    bctx.setTransform(1, 0, 0, 1, 0, 0); bctx.clearRect(0, 0, board.width, board.height);
+    bctx.setTransform(dpr * v.s * zt.k, 0, 0, dpr * v.s * zt.k, dpr * (v.ox + v.s * zt.x), dpr * (v.oy + v.s * zt.y));
+    bctx.imageSmoothingQuality = 'high';
+    bctx.drawImage(base, 0, 0, 1600, 860);
+}
+function highlightState() {
+    const p = G ? P() : null; const st = {};
+    if (!G || p.bot || G.over || !$('#title').hidden) return st;
+    T.forEach((t) => {
+        const o = own(t.id); let glow = false;
+        if (UI.card) glow = cardTargetOk(UI.card, t.id);
+        else if (G.phase === 'buy') glow = o === p.id;
+        else if (G.phase === 'attack') glow = UI.from ? (t.id === UI.from || (ADJ[UI.from].has(t.id) && o !== p.id)) : (o === p.id && U(t.id) > 1 && [...ADJ[t.id]].some((n) => own(n) !== p.id));
+        else if (G.phase === 'fortify' && !G.fortified) glow = UI.from ? (t.id === UI.from || (ADJ[UI.from].has(t.id) && o === p.id)) : (o === p.id && U(t.id) > 1 && [...ADJ[t.id]].some((n) => own(n) === p.id));
+        else glow = true;
+        st[t.id] = glow ? 1 : 0;
+    });
+    return st;
+}
+// Political colours: your land in full Bitcoin orange, everyone else a little muted, so yours stands out.
+function ownerFill(o) { if (o === null) return '#4a5470'; const pl = G.players[o]; return pl.bot ? shade(pl.color, 0.95) : shade(pl.color, 1.08); }
+function renderBase(force = false) {
+    if (!G) return;
+    const hl = highlightState();
+    const key = UI.mode + '|' + T.map((t) => (own(t.id) ?? 'n') + (hl[t.id] ?? 2) + (G.terr[t.id].shield !== -1 ? 's' : '')).join('') + (TER.land ? 'T' : '');
+    if (!force && key === baseKey) return;
+    baseKey = key; lastHl = hl;
+    g0.setTransform(RES, 0, 0, RES, 0, 0); g0.clearRect(0, 0, 1600, 860);
+    drawScene(g0, hl);
+    if (zt.k > 1.05) crisp(); else drawBoard();
+}
+let lastHl = {};
+// After a zoom settles: the scene once more as vectors at screen resolution, sharp at every zoom level.
+function crisp() {
+    const dpr = devicePixelRatio || 1; const v = viewMatrix();
+    if (board.width !== Math.round(v.w * dpr) || board.height !== Math.round(v.h * dpr)) { board.width = Math.round(v.w * dpr); board.height = Math.round(v.h * dpr); }
+    bctx.setTransform(1, 0, 0, 1, 0, 0); bctx.clearRect(0, 0, board.width, board.height);
+    bctx.setTransform(dpr * v.s * zt.k, 0, 0, dpr * v.s * zt.k, dpr * (v.ox + v.s * zt.x), dpr * (v.oy + v.s * zt.y));
+    drawScene(bctx, lastHl);
+}
+function drawScene(g, hl) {
+    const og = g.createRadialGradient(800, 380, 80, 800, 430, 900); og.addColorStop(0, '#143569'); og.addColorStop(0.6, '#0a1d42'); og.addColorStop(1, '#05112a');
+    g.fillStyle = og; g.fill(PATHS.sphere);
+    if (TER.sea) { g.save(); g.clip(PATHS.sphere); g.globalAlpha = 0.33; g.globalCompositeOperation = 'soft-light'; g.drawImage(TER.sea, 0, 0, 1600, 860); g.restore(); }
+    if (TER.ocean) { g.save(); g.clip(PATHS.sphere); g.globalAlpha = 0.3; g.globalCompositeOperation = 'screen'; g.fillStyle = TER.ocean; g.fillRect(0, 0, 1600, 860); g.restore(); }
+    g.strokeStyle = 'rgba(120,160,230,0.11)'; g.lineWidth = 0.7; g.stroke(PATHS.grat);
+    g.strokeStyle = 'rgba(120,170,255,0.3)'; g.lineWidth = 1.2; g.stroke(PATHS.sphere);
+    g.font = 'italic 600 13px "Chakra Petch", sans-serif'; g.fillStyle = 'rgba(150,190,255,0.42)'; g.textAlign = 'center';
+    HB_MAP.oceans.forEach(([n, x, y]) => { g.save(); g.letterSpacing = '4px'; g.fillText(n, x, y); g.restore(); });
+    // Raised land: a soft shadow under every coast.
+    g.save(); g.translate(2, 7); g.filter = 'blur(4px)'; g.fillStyle = 'rgba(1,4,12,0.8)'; g.fill(landPath); g.restore();
+    g.fillStyle = '#26324f'; g.fill(PATHS.neutral);
+    T.forEach((t) => {
+        if (t.id === 'zuerich') return;
+        const o = own(t.id); const col = UI.mode === 'owner' ? ownerFill(o) : ZONES[t.zone].color;
+        // In the political view an enemy must keep its colour even when not selectable: dim gently.
+        const h = hl[t.id]; g.fillStyle = h === 0 ? shade(col, UI.mode === 'owner' ? 0.8 : 0.62) : h === 1 ? shade(col, 1.12) : col; g.fill(t.path);
+    });
+    if (TER.land) { g.save(); g.clip(landPath); g.globalCompositeOperation = 'overlay'; g.globalAlpha = 0.62; g.drawImage(TER.land, 0, 0, 1600, 860); g.restore(); }
+    const sh = g.createLinearGradient(0, 0, 0, 860); sh.addColorStop(0, 'rgba(255,255,255,0.10)'); sh.addColorStop(1, 'rgba(0,0,0,0.16)');
+    g.save(); g.clip(landPath); g.fillStyle = sh; g.fillRect(0, 0, 1600, 860); g.restore();
+    g.strokeStyle = 'rgba(4,10,24,0.35)'; g.lineWidth = 0.45; g.stroke(PATHS.borders);
+    T.forEach((t) => { if (t.id !== 'zuerich') { g.strokeStyle = 'rgba(4,10,24,0.9)'; g.lineWidth = 0.9; g.stroke(t.path); } });
+    // Political view: the currency space shows as a thin inner band in its colour.
+    if (UI.mode === 'owner') T.forEach((t) => { if (t.id === 'zuerich') return; g.save(); g.clip(t.path); g.strokeStyle = ZONES[t.zone].color; g.lineWidth = 3.2; g.globalAlpha = 0.9; g.stroke(t.path); g.restore(); });
+    // Your land: a white edge and an orange glow, readable at a glance in both views.
+    const meId = G.players.find((x) => !x.bot)?.id ?? -1;
+    T.forEach((t) => { if (t.id === 'zuerich' || own(t.id) !== meId) return; g.save(); g.shadowColor = 'rgba(255,170,60,0.95)'; g.shadowBlur = 9; g.strokeStyle = '#ffffff'; g.lineWidth = 1.5; g.stroke(t.path); g.restore(); });
+    // Zone view: an inner band in the owner's colour.
+    if (UI.mode === 'zone') T.forEach((t) => { if (t.id === 'zuerich') return; const o = own(t.id); g.save(); g.clip(t.path); g.strokeStyle = o === null ? '#5b6680' : G.players[o].color; g.lineWidth = 6; g.globalAlpha = 0.95; g.stroke(t.path); g.restore(); });
+    // Sea routes.
+    g.save(); g.setLineDash([5, 6]); g.strokeStyle = 'rgba(170,205,255,0.55)'; g.lineWidth = 1.3;
+    const seen = new Set();
+    Object.entries(ADJ).forEach(([a, set]) => set.forEach((b) => {
+        const k = [a, b].sort().join('|'); if (seen.has(k) || !SEA.has(k)) return; seen.add(k);
+        const A = BY[a]; const B = BY[b]; g.beginPath();
+        if (k === 'alaska|kamtschatka') { g.moveTo(A.x, A.y); g.quadraticCurveTo(150, 120, 40, 130); g.moveTo(1560, 130); g.quadraticCurveTo(1450, 120, BY.kamtschatka.x, BY.kamtschatka.y); }
+        else { const mx = (A.x + B.x) / 2; const my = (A.y + B.y) / 2 - Math.hypot(A.x - B.x, A.y - B.y) * 0.18; g.moveTo(A.x, A.y); g.quadraticCurveTo(mx, my, B.x, B.y); }
+        g.stroke();
+    }));
+    g.restore();
+    // Zone plates with the central bank, like the plebs' map.
+    const PLATE_AT = { dollar: [215, 300], sa: [640, 650], pound: [640, 228], euro: [622, 172], swiss: [660, 300], rubel: [1150, 118], yuan: [1135, 462], yen: [1452, 222], afro: [680, 470], ozean: [1395, 700] };
+    Object.entries(ZONES).forEach(([z, v]) => {
+        const [x, y] = PLATE_AT[z]; const w = Math.max(v.name.length * 7.6, v.bank.length * 5.4) + 30;
+        g.save(); g.translate(x, y);
+        g.beginPath(); g.moveTo(-w / 2 + 7, -15); g.lineTo(w / 2, -15); g.lineTo(w / 2, 8); g.lineTo(w / 2 - 7, 15); g.lineTo(-w / 2, 15); g.lineTo(-w / 2, -8); g.closePath();
+        g.fillStyle = 'rgba(5,12,28,0.78)'; g.fill(); g.strokeStyle = v.color; g.lineWidth = 1.4; g.stroke();
+        const o = zoneOwner(z); if (o !== null) { g.fillStyle = G.players[o].color; g.fillRect(-w / 2, -15, 4, 30); }
+        g.fillStyle = '#fff'; g.font = '700 9px Unbounded, sans-serif'; g.textAlign = 'center'; g.fillText(v.name.toUpperCase(), 0, -2);
+        g.fillStyle = 'rgba(255,255,255,0.75)'; g.font = '600 8px "Chakra Petch", sans-serif'; g.fillText(v.bank, 0, 10);
+        g.restore();
+    });
+    // Switzerland: the enlarged vault, flag-red with a white cross.
+    const z = BY.zuerich; const zo = own('zuerich'); const zh = hl.zuerich;
+    g.save(); g.translate(z.cx, z.cy); g.scale(SWISS_ZOOM, SWISS_ZOOM); g.translate(-z.cx, -z.cy);
+    g.shadowColor = 'rgba(0,0,0,0.7)'; g.shadowBlur = 3; g.shadowOffsetY = 1;
+    const zcol = UI.mode === 'owner' ? ownerFill(zo) : '#d63a3a';
+    g.fillStyle = zh === 0 ? shade(zcol, 0.62) : zh === 1 ? shade(zcol, 1.12) : zcol; g.fill(z.path);
+    g.shadowColor = 'transparent';
+    g.lineWidth = 1.6 / SWISS_ZOOM * 2.2; g.strokeStyle = UI.mode === 'owner' ? '#d63a3a' : zo === null ? '#5b6680' : G.players[zo].color; g.stroke(z.path);
+    if (zo === meId) { g.lineWidth = 1.2 / SWISS_ZOOM * 2.2; g.strokeStyle = '#fff'; g.shadowColor = 'rgba(255,170,60,0.95)'; g.shadowBlur = 6; g.stroke(z.path); g.shadowColor = 'transparent'; }
+    g.lineWidth = 0.5 / SWISS_ZOOM * 2; g.strokeStyle = '#fff'; g.stroke(z.path);
+    g.restore();
+    g.fillStyle = '#fff'; const cxs = z.cx + 9; const cys = z.cy - 2; g.fillRect(cxs - 1.4, cys - 4, 2.8, 8); g.fillRect(cxs - 4, cys - 1.4, 8, 2.8);
+}
+function loadImage(src) { return new Promise((ok, no) => { const i = new Image(); i.onload = () => ok(i); i.onerror = no; i.src = src; }); }
+async function buildTerrain() {
+    try {
+        const img = await loadImage('earth.jpg');
+        const sw = img.width; const sh = img.height;
+        const src = document.createElement('canvas'); src.width = sw; src.height = sh; const sg = src.getContext('2d'); sg.drawImage(img, 0, 0);
+        const px = sg.getImageData(0, 0, sw, sh).data;
+        const W = 1200; const H = 645; const k = 1600 / W;
+        const proj = d3.geoNaturalEarth1().scale(HB_MAP.proj.scale).translate(HB_MAP.proj.translate);
+        const landC = document.createElement('canvas'); landC.width = W; landC.height = H; const lg = landC.getContext('2d'); const li = lg.createImageData(W, H);
+        const seaC = document.createElement('canvas'); seaC.width = W; seaC.height = H; const seg = seaC.getContext('2d'); const si = seg.createImageData(W, H);
+        for (let y = 0; y < H; y++) {
+            for (let x = 0; x < W; x++) {
+                const ll = proj.invert([x * k, y * k]); if (!ll || !isFinite(ll[0])) continue;
+                const [lon, lat] = ll; if (lat > 90 || lat < -90 || lon < -180 || lon > 180) continue;
+                const sx = Math.min(sw - 1, Math.floor((lon + 180) / 360 * sw)); const sy = Math.min(sh - 1, Math.floor((90 - lat) / 180 * sh));
+                const o = (sy * sw + sx) * 4; const d = (y * W + x) * 4; const r = px[o]; const gg = px[o + 1]; const b = px[o + 2];
+                const lum = Math.min(255, Math.max(0, (0.3 * r + 0.59 * gg + 0.11 * b - 70) * 1.8 + 128));
+                li.data[d] = lum; li.data[d + 1] = lum; li.data[d + 2] = lum; li.data[d + 3] = 255;
+                si.data[d] = r * 0.6; si.data[d + 1] = gg * 0.8; si.data[d + 2] = Math.min(255, b * 1.25); si.data[d + 3] = 255;
+            }
+        }
+        lg.putImageData(li, 0, 0); seg.putImageData(si, 0, 0);
+        TER.land = landC; TER.sea = seaC; renderBase(true);
+    } catch (e) { /* the board works without terrain */ }
+}
+
+/* SVG overlay: hit areas (invisible), hover outline, pins, effects. */
+const svg = d3.select('#map'); const vp = d3.select('#viewport');
+function buildOverlay() {
+    vp.selectAll('*').remove();
+    const hits = vp.append('g');
+    // Switzerland last, so its enlarged vault sits above its neighbours' hit areas.
+    [...T.filter((t) => t.id !== 'zuerich'), BY.zuerich].forEach((t) => {
+        const p = hits.append('path').attr('class', 'hit').attr('d', t.d).attr('id', 'hit-' + t.id)
+            .on('click', () => onTerr(t.id)).on('mousemove', (e) => showTip(t.id, e)).on('mouseenter', () => hoverOn(t.id)).on('mouseleave', hoverOff);
+        if (t.id === 'zuerich') p.attr('transform', SWISS_T);
+    });
+    vp.append('path').attr('id', 'hover');
+    vp.append('g').attr('id', 'arrows');
+    const pins = vp.append('g').attr('id', 'pins');
+    T.forEach((t) => {
+        const g = pins.append('g').attr('class', 'pin').attr('id', 'pin-' + t.id).attr('transform', `translate(${t.x},${t.y})`)
+            .on('click', () => onTerr(t.id)).on('mousemove', (e) => showTip(t.id, e)).on('mouseenter', () => hoverOn(t.id)).on('mouseleave', hoverOff);
+        g.append('circle').attr('class', 'target-ring').attr('r', 17).attr('opacity', 0);
+        g.append('circle').attr('class', 'sel-ring').attr('r', 19).attr('opacity', 0);
+        const s = g.append('g').attr('class', 'pin-body');
+        s.append('ellipse').attr('class', 'shadow').attr('cx', 1).attr('cy', 15).attr('rx', 12).attr('ry', 3);
+        s.append('circle').attr('class', 'disc').attr('r', 13);
+        s.append('image').attr('class', 'tok').attr('x', -16).attr('y', -16).attr('width', 32).attr('height', 32);
+        s.append('circle').attr('class', 'badge').attr('cx', 13).attr('cy', 10).attr('r', 11);
+        s.append('text').attr('class', 'num').attr('x', 13).attr('y', 15.3);
+        if (t.bank) s.append('path').attr('d', 'M-5,-17 h10 M-4,-18 v-4 M-1.3,-18 v-4 M1.3,-18 v-4 M4,-18 v-4 M-6,-22 l6,-3 l6,3z').attr('stroke', '#fff').attr('stroke-width', 1.3).attr('fill', 'rgba(0,0,0,.5)');
+        if (t.mine) s.append('path').attr('d', 'M13,-14 l-5,7 h4 l-2,6 l6,-8 h-4 l2,-5z').attr('fill', '#ffb54d').attr('stroke', '#2a1500').attr('stroke-width', 0.7);
+        s.append('text').attr('class', 'elite').attr('y', 28).attr('text-anchor', 'middle');
+    });
+    vp.append('g').attr('id', 'fx');
+}
+function hoverOn(id) {
+    if (!G || !$('#title').hidden) return;
+    UI.hover = id; const t = BY[id];
+    d3.select('#hover').attr('d', t.d).attr('transform', id === 'zuerich' ? SWISS_T : null).attr('stroke-width', id === 'zuerich' ? 0.5 : 1.6);
+    if (performance.now() - lastHover > 60) { lastHover = performance.now(); sfx.hover(); }
+}
+function hoverOff() { UI.hover = null; d3.select('#hover').attr('d', null); hideTip(); }
+
+let crispTimer = 0;
+const zoom = d3.zoom().scaleExtent([1, 6]).translateExtent([[-200, -100], [1800, 960]]).on('zoom', (e) => {
+    zt = e.transform; vp.attr('transform', zt); drawBoard(); scalePins();
+    clearTimeout(crispTimer); crispTimer = setTimeout(() => { if (zt.k > 1.05) crisp(); }, 140);
+});
+svg.call(zoom).on('dblclick.zoom', null);
+let pinK = 0;
+function scalePins() {
+    const v = viewMatrix(); const screen = v.s * zt.k;
+    const k = Math.round(Math.min(1.5, Math.max(0.5, 0.85 / screen)) * 50) / 50;
+    if (k === pinK) return; pinK = k;
+    d3.selectAll('.pin-body').attr('transform', `scale(${k})`);
+}
+function fitMap() { fitMode = innerWidth / innerHeight < 1.2 ? 'slice' : 'meet'; svg.attr('preserveAspectRatio', fitMode === 'slice' ? 'xMidYMid slice' : 'xMidYMid meet'); pinK = 0; drawBoard(); scalePins(); }
+addEventListener('resize', fitMap);
+$('#zoom-in').onclick = () => svg.transition().duration(350).call(zoom.scaleBy, 1.6);
+$('#zoom-out').onclick = () => svg.transition().duration(350).call(zoom.scaleBy, 1 / 1.6);
+
+function renderPins() {
+    const p = P();
+    T.forEach((t) => {
+        const o = own(t.id); const tt = G.terr[t.id];
+        const col = o === null ? '#5b6680' : G.players[o].color;
+        const pin = d3.select('#pin-' + t.id);
+        const mine = o !== null && !G.players[o].bot;
+        pin.select('.tok').attr('href', o === null ? null : `art/tok-${G.players[o].por}.webp?v=1`);
+        pin.select('.badge').attr('stroke', col);
+        pin.select('.disc').attr('opacity', o === null ? 1 : 0).attr('fill', col).attr('stroke', tt.shield !== -1 ? '#9cf' : mine ? '#fff' : 'rgba(0,0,0,.6)').attr('stroke-width', tt.shield !== -1 ? 3 : mine ? 2.6 : 1.5);
+        pin.select('.num').text(U(t.id));
+        pin.select('.elite').text((tt.maxi ? `${tt.maxi}M ` : '') + (tt.asic ? `${tt.asic}A` : ''));
+        const ring = pin.select('.target-ring');
+        const isTarget = !p.bot && !G.over && ((G.phase === 'attack' && UI.from && ADJ[UI.from].has(t.id) && o !== p.id) || (G.phase === 'fortify' && UI.from && !G.fortified && ADJ[UI.from].has(t.id) && o === p.id) || (UI.card && cardTargetOk(UI.card, t.id)));
+        const was = ring.attr('data-on') === '1';
+        if (isTarget !== was) {
+            ring.attr('data-on', isTarget ? '1' : '0'); gsap.killTweensOf(ring.node());
+            if (isTarget && !REDUCED) { ring.attr('opacity', 1).attr('r', 15); gsap.to(ring.node(), { attr: { r: 26 }, opacity: 0, duration: 1.1, repeat: -1, ease: 'power2.out' }); }
+            else ring.attr('opacity', 0);
+        }
+        pin.select('.sel-ring').attr('opacity', t.id === UI.from ? 1 : 0);
+    });
+}
+
+/* ================= Tooltip ================= */
+const oddsCache = new Map();
+function tipOdds(id) {
+    const p = P(); if (!G || p.bot || G.phase !== 'attack' || !UI.from || !ADJ[UI.from].has(id) || own(id) === p.id) return '';
+    const key = [UI.from, id, U(UI.from), U(id), G.terr[UI.from].asic, defBonus(id, G.terr[UI.from].asic > 0)].join('|');
+    if (!oddsCache.has(key)) oddsCache.set(key, odds(UI.from, id, 400));
+    const o = Math.round(oddsCache.get(key) * 100);
+    return `<div class="row" style="margin-top:4px"><span>Siegchance aus ${esc(BY[UI.from].name)}</span><b style="color:${o >= 60 ? 'var(--fiat)' : o >= 35 ? 'var(--btc-hi)' : 'var(--loss)'}">${o} %</b></div>`;
+}
+function showTip(id, e) {
+    if (!G || !$('#title').hidden) return;
+    const t = BY[id]; const tt = G.terr[id]; const o = own(id); const z = ZONES[t.zone]; const zo = zoneOwner(t.zone);
+    const tip = $('#tip');
+    tip.innerHTML = `<h4>${esc(t.name)}</h4><div class="z" style="color:${z.color}">${esc(z.name)}${t.bank ? ' · ' + esc(z.bank) : ''}${t.mine ? ' · Mining' : ''}</div>
+        <div class="row"><span>Besitzer</span><b style="color:${o === null ? '#aaa' : G.players[o].color}">${o === null ? 'neutral' : esc(G.players[o].name)}</b></div>
+        <div class="row"><span>Truppen</span><b>${tt.pleb} Plebs${tt.maxi ? ', ' + tt.maxi + ' Maxi' : ''}${tt.asic ? ', ' + tt.asic + ' ASIC' : ''}</b></div>
+        <div class="row"><span>Verteidigung</span><b>+${defBonus(id, false)}</b></div>
+        <div class="row"><span>Raum komplett</span><b>${zo === null ? 'nein' : esc(G.players[zo].name)}</b></div>
+        <div class="row"><span>Raum-Bonus</span><b>${fmt(z.sats)} Sats/Zug · ${esc(z.bonus)}</b></div>${tipOdds(id)}`;
+    tip.style.opacity = 1;
+    tip.style.left = Math.min(innerWidth - 270, e.clientX + 18) + 'px'; tip.style.top = Math.min(innerHeight - 210, e.clientY + 18) + 'px';
+}
+function hideTip() { $('#tip').style.opacity = 0; }
+
+/* ================= Juice ================= */
+function shake(power = 6) { if (REDUCED) return; gsap.fromTo('#world', { x: 0, y: 0 }, { x: () => (Math.random() - 0.5) * power, y: () => (Math.random() - 0.5) * power, duration: 0.05, repeat: 5, yoyo: true, ease: 'none', onComplete: () => gsap.set('#world', { x: 0, y: 0 }) }); }
+function flash(alpha = 1) { if (REDUCED) return; gsap.fromTo('#flash', { opacity: 0.85 * alpha }, { opacity: 0, duration: 0.5, ease: 'power2.out' }); }
+function floatNum(id, text, color = '#ff5d73') {
+    const t = BY[id];
+    const n = d3.select('#fx').append('text').attr('class', 'float-num').attr('x', t.x).attr('y', t.y - 18).attr('fill', color).text(text);
+    gsap.to(n.node(), { attr: { y: t.y - 62 }, opacity: 0, duration: REDUCED ? 0.4 : 1.2, ease: 'power2.out', onComplete: () => n.remove() });
+}
+function burst(id, color = '#ffb54d', count = 18, coin = false) {
+    if (REDUCED) return;
+    const t = BY[id]; const fx = d3.select('#fx');
+    const ring = fx.append('circle').attr('cx', t.x).attr('cy', t.y).attr('r', 6).attr('fill', 'none').attr('stroke', color).attr('stroke-width', 4);
+    gsap.to(ring.node(), { attr: { r: 80, 'stroke-width': 0 }, opacity: 0, duration: 0.8, ease: 'power3.out', onComplete: () => ring.remove() });
+    for (let i = 0; i < count; i++) {
+        const a = (Math.PI * 2 * i) / count + Math.random() * 0.4; const r = 30 + Math.random() * 55;
+        const el = coin ? fx.append('text').attr('x', t.x).attr('y', t.y).attr('text-anchor', 'middle').attr('font-size', 14).attr('font-weight', 900).attr('fill', color).text('₿')
+            : fx.append('circle').attr('cx', t.x).attr('cy', t.y).attr('r', 2 + Math.random() * 2.5).attr('fill', color);
+        const ax = coin ? 'x' : 'cx'; const ay = coin ? 'y' : 'cy';
+        gsap.to(el.node(), { attr: { [ax]: t.x + Math.cos(a) * r, [ay]: t.y + Math.sin(a) * r + (coin ? 22 : 0) }, opacity: 0, duration: 0.7 + Math.random() * 0.5, ease: 'power2.out', onComplete: () => el.remove() });
+    }
+}
+function territoryPulse(id) {
+    if (REDUCED) return;
+    const t = BY[id];
+    const glow = d3.select('#fx').append('path').attr('d', t.d).attr('transform', id === 'zuerich' ? SWISS_T : null).attr('fill', '#fff').attr('opacity', 0.55);
+    gsap.to(glow.node(), { opacity: 0, duration: 0.7, ease: 'power2.out', onComplete: () => glow.remove() });
+    const pin = $('#pin-' + id); if (pin) gsap.fromTo(pin, { scale: 1.7, transformOrigin: 'center center' }, { scale: 1, duration: 0.55, ease: 'back.out(3)' });
+}
+async function banner(title, sub = '', hold = 1100, por = '', ring = 'var(--btc)') {
+    $('#banner-p').innerHTML = por ? POR(por, ring) : '';
+    // One line, always: the title shrinks until it fits the plate's window.
+    const fit = () => {
+        const t = $('#banner-t'); const box = document.querySelector('#banner .bx'); const narrow = innerWidth < 820;
+        const room = box.offsetWidth * (narrow ? 0.74 : 0.6);
+        // Wide screens: one line. Narrow screens: at most two balanced lines, broken only between words.
+        t.style.whiteSpace = narrow ? 'normal' : 'nowrap';
+        let fs = narrow ? 30 : Math.min(52, box.offsetWidth * 0.075); t.style.fontSize = fs + 'px';
+        const longest = () => Math.max(...t.textContent.split(' ').map((w) => { const sp = document.createElement('span'); sp.style.cssText = `font:900 ${fs}px var(--font-display);white-space:nowrap;position:absolute;visibility:hidden`; sp.textContent = w; document.body.appendChild(sp); const x = sp.offsetWidth; sp.remove(); return x; }));
+        while (fs > 14 && (narrow ? (t.offsetHeight > fs * 1.05 * 2.2 || longest() > room) : t.scrollWidth > room)) { fs -= 1; t.style.fontSize = fs + 'px'; }
+        const sb = $('#banner-s'); let ss = narrow ? 13 : 16; sb.style.fontSize = ss + 'px';
+        while (ss > 9 && sb.scrollWidth > room) { ss -= 1; sb.style.fontSize = ss + 'px'; }
+    };
+    hold = !botTurnNow() ? Math.max(1700, hold * 1.8) : UI.speed === 1 ? Math.max(1100, hold * 1.6) : hold;
+    const b = $('#banner'); $('#banner-t').textContent = title; $('#banner-s').textContent = sub; b.hidden = false;
+    // Measured synchronously: a deferred frame does not run in a background tab and left the title at full size.
+    fit();
+    sfx.whoosh();
+    if (REDUCED) { await sleep(Math.min(hold, 900)); b.hidden = true; return; }
+    const tl = gsap.timeline();
+    tl.fromTo('#banner .bx', { scaleX: 0.2, opacity: 0, y: 0 }, { scaleX: 1, opacity: 1, duration: 0.3, ease: 'expo.out' })
+        .fromTo('#banner .bt', { scale: 1.5, opacity: 0 }, { scale: 1, opacity: 1, duration: 0.45, ease: 'expo.out' }, '<')
+        .fromTo('#banner .bp', { y: 40, scale: 0.5, opacity: 0 }, { y: 0, scale: 1, opacity: 1, duration: 0.55, ease: 'back.out(2.2)' }, '<')
+        .to('#banner .bx', { opacity: 0, y: -24, duration: 0.3, ease: 'power2.in' }, `+=${hold / 1000}`);
+    await tl.then(); b.hidden = true;
+}
+function tickNum(el, to) {
+    const from = parseFloat(el.dataset.v ?? '0') || 0; el.dataset.v = to;
+    if (from === to) { el.textContent = fmt(to); return; }
+    const obj = { v: from };
+    gsap.to(obj, { v: to, duration: REDUCED ? 0 : 0.6, ease: 'power2.out', onUpdate: () => { el.textContent = fmt(obj.v); } });
+    if (!REDUCED) gsap.fromTo(el, { scale: to > from ? 1.3 : 0.85 }, { scale: 1, duration: 0.45, ease: 'back.out(3)' });
+    if (to > from && el.id === 'sats') sfx.coin();
+}
+function arrow(fromId, toId, color = '#ffb54d') {
+    const A = BY[fromId]; const B = BY[toId];
+    const mx = (A.x + B.x) / 2; const my = (A.y + B.y) / 2 - Math.hypot(A.x - B.x, A.y - B.y) * 0.25;
+    const p = d3.select('#arrows').append('path').attr('class', 'arrow').attr('stroke', color).attr('d', `M${A.x},${A.y} Q${mx},${my} ${B.x},${B.y}`);
+    const len = p.node().getTotalLength();
+    p.attr('stroke-dasharray', len).attr('stroke-dashoffset', len);
+    gsap.to(p.node(), { attr: { 'stroke-dashoffset': 0 }, duration: 0.35 / UI.speed, ease: 'power2.out' });
+    if (UI.speed < 20) sfx.whoosh();
+    return () => gsap.to(p.node(), { opacity: 0, duration: 0.3, onComplete: () => p.remove() });
+}
+
+/* ================= Turn flow ================= */
+async function beginTurn() {
+    const p = P();
+    p.conquered = 0; p.dip = false; p.moves = 0; G.fortified = false; G.phase = 'buy'; UI.from = null; UI.card = null; UI.placed = [];
+    Object.values(G.terr).forEach((t) => { if (t.shield === p.id) t.shield = -1; });
+    const mine = mineOf(p.id);
+    let fiat = Math.max(3, Math.floor(mine.length / 3)) + 2 * mine.filter((id) => BY[id].bank).length;
+    if (hasZone(p.id, 'dollar')) fiat = Math.round(fiat * 1.25);
+    if (hasZone(p.id, 'sa')) fiat += 2;
+    let sats = 0.5 * mine.filter((id) => BY[id].mine).length;
+    Object.keys(ZONES).forEach((z) => { if (hasZone(p.id, z)) sats += ZONES[z].sats; });
+    const growth = p.sats * 0.03;
+    p.fiat = r2(p.fiat + fiat); p.sats = r1(p.sats + sats + growth); p.loot = r1(p.loot + sats + growth);
+    if (hasZone(p.id, 'afro')) p.freePlebs += 2;
+    log(`${p.name}: +${fmt(fiat)} Fiat, +${fmt(sats + growth)} Mio. Sats`);
+    setIntensity(0);
+    render();
+    if (checkWin()) return;
+    if (!p.bot) { clip('turn'); sfx.horn(); await banner('Du bist dran', `+${fmt(fiat)} Fiat · +${fmt(sats + growth)} Mio. Sats`, 650, p.por, p.color); render(); }
+    else { if (UI.speed < 20 && Math.random() < 0.45) clip('f:' + p.name, 1); if (UI.speed < 20) await banner(p.name, 'ist am Zug', 320 / UI.speed, p.por, p.color); botTurn(); }
+}
+async function endTurn() {
+    const p = P();
+    if (!p.bot) sfx.gong();
+    if (p.fiat > 0) {
+        if (hasZone(p.id, 'pound')) { p.fiat = r2(p.fiat * 1.1); log(`${p.name} kassiert Zinsen in London.`); }
+        else if (!hasZone(p.id, 'yen')) {
+            const lost = r2(p.fiat * 0.15); p.fiat = r2(p.fiat - lost);
+            if (lost >= 0.3 && !p.bot) { clip('inflation'); sfx.inflate(); render(); await banner('Inflation', `−${fmt(lost)} Fiat verpufft`, 650, 'pleb', '#7fe0a6'); }
+        }
+    }
+    if (p.conquered > 0 && p.hand.length < 5) {
+        if (!G.deck.length) G.deck = newDeck();
+        p.hand.push(G.deck.shift());
+        if (!p.bot) { sfx.flip(); render(); dealAnim(); await sleep(500); }
+    }
+    let next = G.cur;
+    do { next = (next + 1) % G.players.length; } while (G.players[next].out);
+    if (next <= G.cur && G.limit && G.round >= G.limit && checkWin(true)) return;
+    if (next <= G.cur) { G.round++; G.inflation = G.inflationNext; G.inflationNext = 0; if (G.inflation) { clip('price'); log('Notenpresse wirkt: Plebs kosten 50 % mehr.', true); } }
+    G.cur = next;
+    beginTurn();
+}
+// Won on the map, as in Risk: the last side standing wins. Live sessions set a round limit; when it is
+// reached at the end of a round, the most central banks win, then the most territories, then the most units.
+const banksOf = (pid) => mineOf(pid).filter((id) => BY[id].bank).length;
+const unitsOf = (pid) => mineOf(pid).reduce((a, id) => a + U(id), 0);
+function standings() { return G.players.filter((p) => !p.out).sort((a, b) => banksOf(b.id) - banksOf(a.id) || mineOf(b.id).length - mineOf(a.id).length || unitsOf(b.id) - unitsOf(a.id)); }
+function checkWin(final = false) {
+    const alive = G.players.filter((p) => !p.out);
+    const byLimit = final && alive.length > 1;
+    const w = alive.length === 1 ? alive[0] : byLimit ? standings()[0] : null;
+    if (!w) return false;
+    G.over = true; UI.busy = false; UI.from = null; UI.card = null;
+    // The game is over the moment someone wins: close any open battle or dialog, stop all dice.
+    if (!$('#battle').hidden) { if (BT.three) Arena.close(); $('#battle').hidden = true; }
+    $('#move').hidden = true; setIntensity(0);
+    render();
+    const human = !w.bot;
+    $('#end-art').style.backgroundImage = `url(art/${w.por === 'you' ? 'win' : 'win-' + w.por}.jpg?v=1)`;
+    $('#end-h').innerHTML = human ? (w.por === 'you' ? 'Du hast die <b>Hyperbitcoinization</b> geschafft!' : `Du gewinnst als <b>${esc(w.side)}</b>!`) : `${esc(w.name)} gewinnt`;
+    $('#end-sub').textContent = `${w.win[1]} ${byLimit ? `Rundenlimit: ${banksOf(w.id)} Zentralbanken, ${mineOf(w.id).length} Gebiete` : 'Alle anderen sind raus'}, Runde ${G.round}.`;
+    // The sats are the loot: what you collected this game is credited to your profile, win or lose.
+    const me = G.players.find((x) => !x.bot);
+    if (me) { const prof = loadProfile(); prof.sats = r1(prof.sats + me.loot); prof.games++; if (human) prof.wins++; saveProfile(prof); $('#end-loot').innerHTML = `<img src="art/ico-sats.webp?v=1" alt=""> <b>+${fmt(me.loot)} Mio. Sats</b> gesammelt · gutgeschrieben, jetzt <b>${fmt(prof.sats)}</b> insgesamt`; }
+    clip(human ? 'win' : 'lose'); if (human) { sfx.fanfare(); mineOf(w.id).forEach((id, i) => setTimeout(() => burst(id, '#ffb54d', 10, true), i * 60)); } else sfx.gong();
+    banner(w.win[0], human ? (byLimit ? 'Die meisten Zentralbanken' : 'Alle anderen sind raus') : `${w.name} gewinnt`, 1400, w.por, w.color).then(() => { $('#end').hidden = false; gsap.from('#end .panel', { scale: 0.8, opacity: 0, duration: 0.4, ease: 'back.out(2)' }); });
+    return true;
+}
+
+/* ================= Actions ================= */
+function placeOn(id) {
+    const p = P(); if (own(id) !== p.id) return;
+    const t = G.terr[id]; let n = 0;
+    const want = UI.qty === 'max' ? 999 : +UI.qty;
+    if (p.freePlebs > 0) { const k = Math.min(want, p.freePlebs); p.freePlebs -= k; t.pleb += k; n = k; UI.placed.push({ id, kind: 'free', k }); }
+    else if (UI.unit === 'pleb') {
+        for (let i = 0; i < want; i++) {
+            const c = plebCost(p); if (p.fiat + 1e-9 < c) break;
+            p.fiat = r2(p.fiat - c); t.pleb++; n++; UI.placed.push({ id, kind: 'pleb', cost: c });
+            if (hasZone(p.id, 'yuan')) { p.yuan++; if (p.yuan % 3 === 0) { t.pleb++; n++; UI.placed.push({ id, kind: 'yuanfree' }); } }
+        }
+        if (!n) { sfx.error(); return toast('Zu wenig Fiat. Weiter zum Angriff.'); }
+    } else {
+        const cost = UI.unit === 'maxi' ? 2 : 3;
+        for (let i = 0; i < Math.min(want, 5); i++) { if (p.sats + 1e-9 < cost) break; p.sats = r1(p.sats - cost); t[UI.unit]++; n++; UI.placed.push({ id, kind: UI.unit, cost }); }
+        if (!n) { sfx.error(); return toast('Zu wenig Sats.'); }
+        clip(UI.unit); sfx.power();
+    }
+    sfx.place(); floatNum(id, '+' + n, '#7fe0a6'); territoryPulse(id); render();
+}
+function undo() {
+    const p = P(); const last = UI.placed.pop(); if (!last) return;
+    const t = G.terr[last.id];
+    if (last.kind === 'free') { t.pleb -= last.k; p.freePlebs += last.k; }
+    else if (last.kind === 'pleb') { t.pleb--; p.fiat = r2(p.fiat + last.cost); }
+    else if (last.kind === 'yuanfree') { t.pleb--; p.yuan--; return undo(); }
+    else { t[last.kind]--; p.sats = r1(p.sats + last.cost); }
+    render();
+}
+function roll(n) { return Array.from({ length: n }, () => 1 + Math.floor(Math.random() * 6)).sort((a, b) => b - a); }
+function defBonus(id, attackerAsic) {
+    const t = BY[id]; const tt = G.terr[id]; let b = 0;
+    if (t.bank && !attackerAsic) b++;
+    if (tt.maxi > 0) b++;
+    if (t.zone === 'swiss') b++;
+    if (tt.owner !== null && ['rubel', 'ozean'].includes(t.zone) && hasZone(tt.owner, t.zone)) b++;
+    if (tt.shield !== -1) b++;
+    return b;
+}
+function lose(t, n) { for (let i = 0; i < n; i++) { if (t.pleb > 0) t.pleb--; else if (t.asic > 0) t.asic--; else if (t.maxi > 0) t.maxi--; } }
+function battleRound(from, to) {
+    const A = G.terr[from]; const D = G.terr[to];
+    const an = Math.min(3, U(from) - 1); const dn = Math.min(2, U(to));
+    const ar = roll(an); const dr = roll(dn);
+    const asic = A.asic > 0; const bonus = defBonus(to, asic);
+    const am = ar.map((v, i) => v + (asic && i === 0 ? 1 : 0)); const dm = dr.map((v, i) => v + (i === 0 ? bonus : 0));
+    let aL = 0; let dL = 0;
+    for (let i = 0; i < Math.min(an, dn); i++) { if (am[i] > dm[i]) dL++; else aL++; }
+    lose(A, aL); lose(D, dL);
+    return { ar, dr, am, dm, aL, dL, an, dn, won: U(to) === 0 };
+}
+function odds(from, to, sims = 500) {
+    const asic = G.terr[from].asic > 0; const b = defBonus(to, asic); let wins = 0;
+    for (let s = 0; s < sims; s++) {
+        let au = U(from); let du = U(to);
+        while (au > 1 && du > 0) {
+            const an = Math.min(3, au - 1); const dn = Math.min(2, du);
+            const ar = roll(an); const dr = roll(dn); if (asic) ar[0]++; dr[0] += b;
+            for (let i = 0; i < Math.min(an, dn); i++) { if (ar[i] > dr[i]) du--; else au--; }
+        }
+        if (du === 0) wins++;
+    }
+    return wins / sims;
+}
+function moveUnits(from, to, n) {
+    const A = G.terr[from]; const B = G.terr[to]; let left = Math.min(n, U(from) - 1);
+    for (const k of ['pleb', 'asic', 'maxi']) { const m = Math.min(A[k], left); A[k] -= m; B[k] += m; left -= m; }
+}
+async function conquest(from, to, prevOwner, move) {
+    const p = P(); const t = BY[to]; const D = G.terr[to];
+    D.owner = p.id; D.shield = -1; D.pleb = 0; D.maxi = 0; D.asic = 0;
+    moveUnits(from, to, Math.max(1, move));
+    if (U(to) === 0) { D.pleb = 1; lose(G.terr[from], 1); }
+    p.conquered++;
+    territoryPulse(to); burst(to, p.color, t.bank ? 28 : 16, t.bank); shake(t.bank ? 10 : 5); sfx.boom();
+    const victim = prevOwner !== null ? G.players[prevOwner] : null;
+    let sound = 'conquer'; let big = null;
+    if (t.bank) { p.sats = r1(p.sats + 1); p.loot = r1(p.loot + 1); sound = t.id === 'frankfurt' ? 'ezb' : t.id === 'ny' ? 'fed' : 'bank'; big = ['Zentralbank gestürzt', `${ZONES[t.zone].bank} · +1 Mio. Sats`]; floatNum(to, '+1 ₿', '#ffb54d'); sfx.coin(); }
+    if (hasZone(p.id, t.zone)) { sound = 'zone'; big = ['Orange Pill', `${ZONES[t.zone].name} komplett · +${fmt(ZONES[t.zone].sats)} Sats pro Zug`]; }
+    log(`${p.name} erobert ${t.name}${t.bank ? ' und stürzt die ' + ZONES[t.zone].bank : ''}.`, !!big);
+    if (victim && !victim.bot && p.bot) clip(Math.random() < 0.5 ? 'f:' + p.name : 'lost', 3);
+    else if (!p.bot || big) clip(sound);
+    if (victim && mineOf(victim.id).length === 0) {
+        victim.out = true; p.hand.push(...victim.hand.splice(0)); p.hand = p.hand.slice(0, 7);
+        log(`${victim.name} ist raus.`, true); clip('out'); big = [`${victim.name} ist raus`, 'Eine Fiat-Fraktion weniger'];
+    } else if (victim && !victim.bot && mineOf(victim.id).length === 3) clip('low');
+    render();
+    if (checkWin()) return;
+    if (big && (!p.bot || UI.speed < 20)) { flash(); sfx.sting(); await banner(big[0], big[1], p.bot ? 600 / UI.speed : 900, p.por, p.color); }
+}
+
+/* ================= Battle screen with 3D dice ================= */
+const BT = { from: null, to: null };
+const PIPS = { 1: [5], 2: [1, 9], 3: [1, 5, 9], 4: [1, 3, 7, 9], 5: [1, 3, 5, 7, 9], 6: [1, 3, 4, 6, 7, 9] };
+// Face n sits at this rotation; showing it means rotating the cube by the inverse.
+const FACE_T = { 1: 'rotateY(0deg)', 2: 'rotateY(90deg)', 3: 'rotateX(90deg)', 4: 'rotateX(-90deg)', 5: 'rotateY(-90deg)', 6: 'rotateY(180deg)' };
+const SHOW = { 1: [0, 0], 2: [0, -90], 3: [-90, 0], 4: [90, 0], 5: [0, 90], 6: [0, 180] };
+function dieHtml(cls) {
+    const faces = [1, 2, 3, 4, 5, 6].map((n) => `<div class="f" style="transform:${FACE_T[n]} translateZ(26px)">${Array.from({ length: 9 }, (_, i) => PIPS[n].includes(i + 1) ? '<i></i>' : '<span></span>').join('')}</div>`).join('');
+    return `<div class="dw"><div class="die3d ${cls}">${faces}</div></div>`;
+}
+function armyHtml(pl, id, mods, side) {
+    const col = pl ? pl.color : '#5b6680'; const n = U(id);
+    // The portrait sits outside the clipped frame, so it can break out over the top edge.
+    return `<div class="shield" style="--pc:${col}">${POR(pl ? pl.por : 'pleb', col)}</div><div class="army-body frame shadowed"><h3>${esc(BY[id].name)}</h3><div class="who">${side} · ${pl ? esc(pl.name) : 'neutral'}</div>
+        <div class="cnt" data-cnt="${id}">${n}</div><div class="troops" data-troops="${id}" style="--pc:${col}">${'<i></i>'.repeat(Math.min(n, 30))}</div><div class="mods">${mods}</div></div>`;
+}
+// The battle's modifiers in one table, like Hearts of Iron: every bonus with its source.
+function modHtml(from, to) {
+    const A = G.terr[from]; const D = G.terr[to]; const t = BY[to]; const asic = A.asic > 0;
+    const row = (label, val, cls) => `<div><span>${esc(label)}</span><b class="${cls}">${esc(val)}</b></div>`;
+    const att = [row('Angriffswürfel', String(Math.min(3, U(from) - 1)), 'z')];
+    if (asic) att.push(row('ASIC-Rig: höchster Wurf', '+1', 'p'));
+    if (asic && t.bank) att.push(row('ASIC knackt die Zentralbank', 'Bank +0', 'p'));
+    if (!asic) att.push(row('Kein ASIC-Rig dabei', '±0', 'z'));
+    const def = [row('Abwehrwürfel', String(Math.min(2, U(to))), 'z')];
+    if (t.bank && !asic) def.push(row(`Zentralbank (${ZONES[t.zone].bank})`, '+1', 'n'));
+    if (D.maxi > 0) def.push(row('Bitcoin-Maxi: HODL', '+1', 'n'));
+    if (t.zone === 'swiss') def.push(row('Tresor Schweiz', '+1', 'n'));
+    if (D.owner !== null && ['rubel', 'ozean'].includes(t.zone) && hasZone(D.owner, t.zone)) def.push(row(`${ZONES[t.zone].name} komplett`, '+1', 'n'));
+    if (D.shield !== -1) def.push(row('Diamond Hands', '+1', 'n'));
+    def.push(row('Gleichstand gewinnt', 'Abwehr', 'z'));
+    return `<div><h6>ANGRIFF</h6>${att.join('')}</div><div><h6>ABWEHR</h6>${def.join('')}</div>`;
+}
+// A bot attacks you: the battle plays out on the 3D stage, you watch (or skip).
+async function watchBattle(from, to) {
+    await openBattle(from, to, true); BT.skip = false;
+    $('#skip-btn').onclick = () => { BT.skip = true; };
+    await sleep(UI.speed > 1 ? 400 : 900);
+    let r;
+    do { r = battleRound(from, to); if (!BT.skip) await animateDice(r, UI.speed > 1); } while (!r.won && U(from) > 2 && U(from) > U(to) && !G.over);
+    if (!BT.skip && BT.three) { if (r.won) await Arena.finale(P().color, P().por, P().tag); else { clip('held'); await sleep(900); } }
+    if (BT.three) Arena.close(); $('#battle').hidden = true; $('#battle').classList.remove('spectate'); setIntensity(0);
+    return r;
+}
+// Until a stage's art is in memory, the battle screen shows a loader instead of a half-empty scene.
+async function stageReady(key) {
+    if (!window.Arena || !UI.scenes || Arena.isReady(key)) return;
+    const b = $('#battle'); b.classList.add('loading'); $('#b-load').hidden = false; $('#b-load-p').textContent = '0 %'; $('#b-load-bar').style.width = '0';
+    await Arena.prepare(key, (p) => { $('#b-load-p').textContent = Math.round(p * 100) + ' %'; $('#b-load-bar').style.width = Math.round(p * 100) + '%'; });
+    b.classList.remove('loading'); $('#b-load').hidden = true;
+}
+async function openBattle(from, to, spectate = false) {
+    if (G.over) return;
+    $('#battle').classList.toggle('spectate', spectate); $('#battle').classList.remove('cine'); $('#skip-btn').hidden = !spectate;
+    BT.from = from; BT.to = to;
+    const p = P(); const dOwner = own(to); const dp = dOwner === null ? null : G.players[dOwner];
+    const asic = G.terr[from].asic > 0; const b = defBonus(to, asic);
+    $('#battle-h').textContent = BY[to].name;
+    $('#b-att').innerHTML = armyHtml(p, from, asic ? 'ASIC +1 auf den höchsten Würfel' : '', 'Angriff');
+    $('#b-def').innerHTML = armyHtml(dp, to, b ? `+${b} auf den höchsten Würfel` : 'kein Bonus', 'Abwehr');
+    $('#tug').style.setProperty('--dc', dp ? dp.color : '#5b6680');
+    $('#dice-a').innerHTML = ''; $('#dice-d').innerHTML = ''; $('#b-result').innerHTML = '';
+    const th = window.Arena ? Arena.themeFor(BY[from].zone, BY[to].zone, BY[to].mine, BY[to].zone === 'swiss') : null;
+    $('#b-kicker').textContent = spectate ? `${p.name} greift dich an · ${th?.title ?? 'Schlacht um'}` : th?.title ? `${th.title} · Schlacht um` : 'Schlacht um';
+    $('#b-meme').textContent = th ? th.theme.meme : '';
+    $('#b-mods').innerHTML = modHtml(from, to);
+    updateOdds();
+    $('#battle').hidden = false; setIntensity(1); sfx.lock();
+    if (th) await stageReady(th.key);
+    BT.three = !!(th && UI.scenes && Arena.open($('#arena3d'), { theme: th.theme, att: { units: { ...G.terr[from] }, color: p.color, por: p.por }, def: { units: { ...G.terr[to] }, color: dp ? dp.color : '#8a93a8', por: dp ? dp.por : null } }));
+    $('#felt').hidden = BT.three;
+    if (!REDUCED) {
+        gsap.fromTo('#b-att', { x: -160, opacity: 0 }, { x: 0, opacity: 1, duration: 0.45, ease: 'power3.out' });
+        gsap.fromTo('#b-def', { x: 160, opacity: 0 }, { x: 0, opacity: 1, duration: 0.45, ease: 'power3.out' });
+        gsap.fromTo('#battle .bh', { y: -30, opacity: 0 }, { y: 0, opacity: 1, duration: 0.4 });
+        gsap.fromTo('.b-dock', { y: 40, opacity: 0 }, { y: 0, opacity: 1, duration: 0.45, ease: 'power3.out' });
+        gsap.fromTo('#arena3d', { scale: 1.25, opacity: 0 }, { scale: 1, opacity: 1, duration: 0.8, ease: 'power3.out' });
+    }
+}
+function updateOdds() {
+    const o = odds(BT.from, BT.to);
+    $('#odds-n').textContent = `${Math.round(o * 100)} % Siegchance`;
+    gsap.to('#odds-bar', { width: Math.round(o * 100) + '%', duration: 0.5, ease: 'power2.out' });
+    const can = U(BT.from) > 1; $('#roll-btn').disabled = !can; $('#blitz-btn').disabled = !can;
+}
+function pairHtml(r) {
+    const n = Math.min(r.an, r.dn); const out = [];
+    for (let i = 0; i < n; i++) {
+        const a = r.ar[i] + (r.am[i] !== r.ar[i] ? `+${r.am[i] - r.ar[i]}` : ''); const d = r.dr[i] + (r.dm[i] !== r.dr[i] ? `+${r.dm[i] - r.dr[i]}` : '');
+        out.push(r.am[i] > r.dm[i] ? `<span class="w">${a} ▶ ${d}</span>` : `<span class="l">${a} ◀ ${d}</span>`);
+    }
+    return out.join('');
+}
+function updateCounts(r) {
+    if (r.aL) floatNum(BT.from, '−' + r.aL);
+    if (r.dL) floatNum(BT.to, '−' + r.dL);
+    ['from', 'to'].forEach((k) => {
+        const id = BT[k]; const el = document.querySelector(`[data-cnt="${id}"]`); const tr = document.querySelector(`[data-troops="${id}"]`);
+        if (el) { el.textContent = U(id); gsap.fromTo(el, { scale: 1.4, color: '#ff5d73' }, { scale: 1, color: '#eef3ff', duration: 0.45 }); }
+        if (tr) tr.innerHTML = '<i></i>'.repeat(Math.min(U(id), 30));
+    });
+    render();
+}
+async function animateDice(r, fast = false) {
+    if (!BT.three) return animateDiceFlat(r, fast);
+    sfx.shake();
+    await Arena.throw(r.ar, r.dr, fast);
+    const n = Math.min(r.an, r.dn);
+    Arena.charge(r.dL >= r.aL ? 'a' : 'd');
+    for (let i = 0; i < n; i++) { Arena.dimDice(r.am[i] > r.dm[i] ? r.an + i : i); sfx.clash(); if (!fast) await sleep(120); }
+    $('#b-result').innerHTML = pairHtml(r);
+    if (!REDUCED) gsap.from('#b-result span', { y: 14, opacity: 0, scale: 1.3, duration: 0.3, stagger: 0.08, ease: 'back.out(3)' });
+    if (r.dL && !r.won) { Arena.casualties('d', r.dL); Arena.inflation(r.dL); if (G.terr[BT.from].maxi > 0) Arena.laser(); }
+    if (r.aL) Arena.casualties('a', r.aL);
+    if (r.dL >= 2) { Arena.candle(true); if (!fast && Math.random() < 0.45) clip('hit'); }
+    else if (r.aL >= 2) Arena.candle(false);
+    updateCounts(r);
+    await sleep(fast ? 350 : 1100);
+}
+async function animateDiceFlat(r, fast = false) {
+    const lane = (vals, mods, cls, el) => { el.innerHTML = vals.map(() => dieHtml(cls)).join(''); return [...el.children].map((w, i) => ({ w, d: w.firstElementChild, v: vals[i], m: mods[i] })); };
+    const A = lane(r.ar, r.am, 'a', $('#dice-a')); const D = lane(r.dr, r.dm, 'd', $('#dice-d'));
+    const all = [...A, ...D];
+    sfx.shake();
+    if (!REDUCED) {
+        await Promise.all(all.map(({ d, v }, i) => {
+            const [rx, ry] = SHOW[v];
+            const spins = fast ? 1 : 2;
+            return gsap.fromTo(d, { y: -120, rotationX: gsap.utils.random(-720, 720), rotationY: gsap.utils.random(-720, 720), scale: 0.5 },
+                { y: 0, scale: 1, rotationX: rx + 360 * spins, rotationY: ry + 360 * spins, duration: fast ? 0.45 : 0.85, delay: i * 0.05, ease: 'bounce.out', onComplete: () => sfx.land() }).then();
+        }));
+    } else all.forEach(({ d, v }) => { const [rx, ry] = SHOW[v]; d.style.transform = `rotateX(${rx}deg) rotateY(${ry}deg)`; });
+    all.forEach(({ w, v, m }) => { if (m !== v) w.insertAdjacentHTML('beforeend', `<span class="mod">+${m - v}</span>`); });
+    await sleep(fast ? 60 : 160);
+    const n = Math.min(r.an, r.dn);
+    for (let i = 0; i < n; i++) {
+        const aWin = r.am[i] > r.dm[i];
+        (aWin ? D[i] : A[i]).w.classList.add('lost'); sfx.clash();
+        gsap.fromTo((aWin ? A[i] : D[i]).w, { scale: 1.3 }, { scale: 1, duration: 0.35, ease: 'back.out(3)' });
+        if (!fast) await sleep(140);
+    }
+    if (r.aL) floatNum(BT.from, '−' + r.aL);
+    if (r.dL) floatNum(BT.to, '−' + r.dL);
+    ['from', 'to'].forEach((k) => {
+        const id = BT[k]; const el = document.querySelector(`[data-cnt="${id}"]`); const tr = document.querySelector(`[data-troops="${id}"]`);
+        if (el) { el.textContent = U(id); gsap.fromTo(el, { scale: 1.4, color: '#ff5d73' }, { scale: 1, color: '#eef3ff', duration: 0.45 }); }
+        if (tr) tr.innerHTML = '<i></i>'.repeat(Math.min(U(id), 30));
+    });
+    if (r.aL || r.dL) shake(3);
+    render();
+}
+async function doRoll(blitz = false) {
+    if (UI.busy || $('#battle').classList.contains('loading')) return; UI.busy = true;
+    $('#roll-btn').disabled = true; $('#blitz-btn').disabled = true;
+    let r;
+    do {
+        const prev = own(BT.to);
+        if (G.over) break;
+        r = battleRound(BT.from, BT.to);
+        await animateDice(r, blitz);
+        if (G.over) break;
+        if (r.won) {
+            await sleep(300);
+            if (BT.three) await Arena.finale(P().color, P().por, P().tag);
+            if (!REDUCED) await gsap.to('#battle', { opacity: 0, duration: 0.25 }).then();
+            $('#battle').hidden = true; gsap.set('#battle', { opacity: 1 }); setIntensity(0); if (BT.three) Arena.close();
+            await conquest(BT.from, BT.to, prev, r.an);
+            UI.busy = false;
+            if (G.over) return;
+            if (U(BT.from) > 1) openMove(BT.from, BT.to, 'conquest');
+            UI.from = U(BT.to) > 1 ? BT.to : null; render();
+            return;
+        }
+        if (blitz) await sleep(REDUCED ? 60 : 160);
+    } while (blitz && U(BT.from) > 1 && !G.over);
+    if (G.over) { UI.busy = false; return; }
+    if (r.dL === 0 && r.aL > 0) clip(BY[BT.to].zone === 'swiss' ? 'swiss' : G.terr[BT.to].maxi ? 'hodl' : 'fail');
+    UI.busy = false; updateOdds();
+    if (U(BT.from) <= 1) { await sleep(600); closeBattle(); }
+}
+function closeBattle() { if (BT.three) Arena.close(); $('#battle').hidden = true; setIntensity(0); UI.from = null; render(); }
+$('#roll-btn').onclick = () => doRoll(false);
+$('#blitz-btn').onclick = () => doRoll(true);
+$('#retreat-btn').onclick = () => closeBattle();
+
+const MV = { from: null, to: null, kind: null };
+function openMove(from, to, kind) {
+    MV.from = from; MV.to = to; MV.kind = kind;
+    const max = U(from) - 1; const r = $('#move-range');
+    r.min = kind === 'conquest' ? 0 : 1; r.max = max; r.value = max;
+    $('#move-h').textContent = kind === 'conquest' ? 'Truppen nachziehen' : 'Truppen verlegen';
+    $('#move-sub').textContent = `Von ${BY[from].name} nach ${BY[to].name}. Eine Einheit bleibt immer zurück.`;
+    $('#move-n').textContent = max;
+    $('#move').hidden = false; sfx.select();
+    gsap.fromTo('#move .panel', { y: 30, opacity: 0 }, { y: 0, opacity: 1, duration: 0.25, ease: 'power2.out' });
+}
+$('#move-range').oninput = (e) => { $('#move-n').textContent = e.target.value; sfx.hover(); };
+$('#move-ok').onclick = () => {
+    const n = +$('#move-range').value;
+    if (n > 0) { moveUnits(MV.from, MV.to, n); floatNum(MV.to, '+' + n, '#7fe0a6'); sfx.place(); territoryPulse(MV.to); if (MV.kind === 'fortify') arrow(MV.from, MV.to, P().color)(); }
+    if (MV.kind === 'fortify') { P().moves++; if (P().moves >= (hasZone(P().id, 'sa') ? 2 : 1)) G.fortified = true; log(`${P().name} verlegt ${n} Einheiten nach ${BY[MV.to].name}.`); }
+    $('#move').hidden = true;
+    UI.from = MV.kind === 'conquest' && U(MV.to) > 1 ? MV.to : null;
+    render();
+};
+
+/* ================= Clicks on the map ================= */
+function onTerr(id) {
+    if (!G || G.over || P().bot || UI.busy || !$('#title').hidden) return;
+    const p = P();
+    if (UI.card) { const c = UI.card; if (!cardTargetOk(c, id)) { sfx.error(); return toast('Dieses Ziel passt nicht zur Karte.'); } UI.card = null; playCard(c, id); return; }
+    if (G.phase === 'buy') { if (own(id) !== p.id) { sfx.error(); return toast('Setze Truppen auf deine eigenen, leuchtenden Gebiete.'); } return placeOn(id); }
+    if (G.phase === 'attack') {
+        if (own(id) === p.id) {
+            if (U(id) < 2) { sfx.error(); return toast('Zum Angreifen braucht ein Gebiet mindestens 2 Einheiten.'); }
+            UI.from = UI.from === id ? null : id; sfx.select(); return render();
+        }
+        if (!UI.from) { sfx.error(); return toast('Wähle zuerst dein Angriffsgebiet (leuchtend).'); }
+        if (!ADJ[UI.from].has(id)) { sfx.error(); return toast('Nur Nachbargebiete angreifen. Gestrichelt sind Seewege.'); }
+        return openBattle(UI.from, id);
+    }
+    if (G.phase === 'fortify') {
+        if (G.fortified) { sfx.error(); return toast('Diesen Zug schon verlegt. Beende den Zug.'); }
+        if (own(id) !== p.id) { sfx.error(); return; }
+        if (!UI.from) { if (U(id) < 2) { sfx.error(); return toast('Dort steht nur 1 Einheit.'); } UI.from = id; sfx.select(); return render(); }
+        if (id === UI.from) { UI.from = null; return render(); }
+        if (!ADJ[UI.from].has(id)) { if (U(id) > 1) { UI.from = id; sfx.select(); return render(); } sfx.error(); return toast('Nur in ein benachbartes eigenes Gebiet.'); }
+        return openMove(UI.from, id, 'fortify');
+    }
+}
+
+/* ================= Cards ================= */
+function cardTargetOk(c, id) {
+    const p = P(); const o = own(id);
+    switch (CARDS[c].target) {
+        case 'enemyAdj': return o !== p.id && U(id) <= 3 && [...ADJ[id]].some((n) => own(n) === p.id);
+        case 'own': return o === p.id;
+        case 'enemyBank': return o !== p.id && o !== null && BY[id].bank;
+        case 'enemyOne': return o !== p.id && o !== null && U(id) === 1;
+        default: return false;
+    }
+}
+// An event card plays as a short 3D scene on the battle stage; a tap skips it.
+async function cinematic(c, o) {
+    const b = $('#battle'); const card = CARDS[c];
+    b.classList.add('cine'); b.classList.remove('spectate');
+    $('#b-kicker').textContent = 'Ereigniskarte'; $('#battle-h').textContent = card.name; $('#b-meme').textContent = card.text;
+    $('#ev').hidden = false; $('#ev-h').textContent = card.name; $('#ev-t').textContent = card.text; $('#ev-j').textContent = card.joke; $('#ev-pic').style.backgroundImage = `url(art/card-${c}.jpg?v=1)`;
+    b.hidden = false; setIntensity(1);
+    await stageReady(Arena.eventKey(c, o));
+    const stop = new AbortController();
+    const skipped = new Promise((r) => b.addEventListener('pointerdown', r, { signal: stop.signal }));
+    const scene = Arena.event($('#arena3d'), c, o);
+    if (!REDUCED) { gsap.fromTo('#ev', { y: 60, opacity: 0 }, { y: 0, opacity: 1, duration: 0.6, ease: 'power3.out' }); gsap.fromTo('#ev-pic', { scale: 1.06 }, { scale: 1, duration: 1.4, ease: 'power2.out' }); }
+    await (scene ? Promise.race([scene, skipped]) : sleep(700));
+    stop.abort(); Arena.close(); b.hidden = true; b.classList.remove('cine'); $('#ev').hidden = true; setIntensity(0);
+}
+async function playCard(c, target = null) {
+    const p = P(); const idx = p.hand.indexOf(c); if (idx < 0) return;
+    const card = CARDS[c]; p.hand.splice(idx, 1);
+    let sub = card.joke;
+    clip('card:' + c); sfx.flip(); sfx.power();
+    const fate = Math.random() < 0.5;
+    if (!p.bot && window.Arena && UI.scenes) await cinematic(c, { up: fate, zone: target ? BY[target].zone : null });
+    else if (!p.bot || UI.speed < 20) await banner(card.name, card.text, p.bot ? 450 / UI.speed : 700);
+    switch (c) {
+        case 'brrrr': p.freePlebs += 8; G.inflationNext = 1; sub = '+8 Gratis-Plebs · nächste Runde Inflation'; break;
+        case 'attack51': {
+            const prev = own(target);
+            const src = [...ADJ[target]].filter((n) => own(n) === p.id).sort((a, b) => U(b) - U(a))[0];
+            G.terr[target].pleb = 0; G.terr[target].maxi = 0; G.terr[target].asic = 0;
+            if (U(src) > 1) await conquest(src, target, prev, 1); else { G.terr[target] = { owner: p.id, pleb: 1, maxi: 0, asic: 0, shield: -1 }; p.conquered++; territoryPulse(target); }
+            sub = `${BY[target].name} übernommen`; break;
+        }
+        case 'keys': { const rich = G.players.filter((x) => x.id !== p.id && !x.out).sort((a, b) => b.sats - a.sats)[0]; if (rich) { const l = r1(rich.sats * 0.3); rich.sats = r1(rich.sats - l); sub = `${rich.name} verliert ${fmt(l)} Mio. Sats`; } break; }
+        case 'diamond': G.terr[target].shield = p.id; territoryPulse(target); sub = `${BY[target].name} hält mit +1`; break;
+        case 'salvador': { const up = fate; p.sats = r1(p.sats * (up ? 1.25 : 0.75)); sub = up ? 'Kurs +25 %. To the moon!' : 'Kurs −25 %. Autsch.'; clip(up ? 'ath' : 'crash'); break; }
+        case 'scam': lose(G.terr[target], Math.min(2, U(target) - 1)); floatNum(target, '−2'); burst(target, '#ff5d73', 12); sub = `${BY[target].name} geplündert`; break;
+        case 'pizza': p.sats = r1(p.sats * 0.9); p.freePlebs += 3; break;
+        case 'lagarde': p.fiat += 3; if (!G.deck.length) G.deck = newDeck(); sub = `Nächste Karte: ${CARDS[G.deck[0]].name}`; break;
+        case 'dip': p.dip = true; break;
+        case 'nokeys': { const prev = G.players[own(target)]; G.terr[target].owner = null; territoryPulse(target); if (mineOf(prev.id).length === 0) { prev.out = true; clip('out'); } sub = `${BY[target].name} wird neutral`; break; }
+    }
+    log(`${p.name} spielt ${card.name}: ${sub}`, true);
+    if (!checkWin()) render();
+}
+function dealAnim() {
+    const cards = $$('#hand .card'); const last = cards[cards.length - 1];
+    if (!last || REDUCED) return;
+    // The card arrives face down, then turns over.
+    const back = document.createElement('div'); back.className = 'cback'; last.appendChild(back);
+    gsap.timeline().from(last, { y: -320, x: 260, rotation: 40, opacity: 0, duration: 0.6, ease: 'back.out(1.4)' })
+        .to(last, { scaleX: 0, duration: 0.14, ease: 'power2.in', onComplete: () => back.remove() }, '+=0.15')
+        .to(last, { scaleX: 1, duration: 0.18, ease: 'power2.out' });
+}
+
+/* ================= Bots ================= */
+async function botTurn() {
+    if (G.over) return;
+    const p = P(); const wait = (ms) => sleep(ms / UI.speed);
+    for (const c of [...p.hand]) {
+        if (G.over) return;
+        let t = null;
+        if (['attack51', 'nokeys'].includes(c)) t = T.find((x) => cardTargetOk(c, x.id))?.id;
+        else if (c === 'scam') t = T.find((x) => cardTargetOk(c, x.id) && U(x.id) > 2)?.id;
+        else if (c === 'diamond') t = mineOf(p.id).find((id) => BY[id].bank) ?? null;
+        if (CARDS[c].target && !t) continue;
+        if ((c === 'salvador' && p.sats > 8) || (c === 'pizza' && p.sats > 12)) continue;
+        await playCard(c, t); await wait(200);
+    }
+    if (G.over) return;
+    const share = (z) => ZT[z].filter((id) => own(id) === p.id).length / ZT[z].length;
+    const goal = Object.keys(ZONES).filter((z) => !hasZone(p.id, z)).sort((a, b) => share(b) - share(a) || ZONES[b].sats - ZONES[a].sats)[0];
+    const front = mineOf(p.id).filter((id) => [...ADJ[id]].some((n) => own(n) !== p.id)).sort((a, b) => (BY[b].zone === goal) - (BY[a].zone === goal) || U(b) - U(a))[0] ?? mineOf(p.id)[0];
+    if (!front) return endTurn();
+    let placed = 0;
+    if (p.sats >= 3) { p.sats = r1(p.sats - 3); G.terr[front].asic++; placed++; }
+    while (p.freePlebs > 0) { G.terr[front].pleb++; p.freePlebs--; placed++; }
+    let guard = 80;
+    while (p.fiat + 1e-9 >= plebCost(p) && guard--) { p.fiat = r2(p.fiat - plebCost(p)); G.terr[front].pleb++; placed++; }
+    if (placed) { floatNum(front, '+' + placed, '#7fe0a6'); territoryPulse(front); if (UI.speed < 20) sfx.place(); }
+    G.phase = 'attack'; render(); await wait(420);
+    let watched = 0;
+    for (let step = 0; step < 14 && !G.over; step++) {
+        const opts = [];
+        mineOf(p.id).forEach((from) => {
+            if (U(from) < 3) return;
+            ADJ[from].forEach((to) => {
+                if (own(to) === p.id) return;
+                const score = U(from) - U(to) * 1.4 - defBonus(to, G.terr[from].asic > 0) + (BY[to].zone === goal ? 2 : 0) + (BY[to].bank ? 1.5 : 0);
+                if (score > 1) opts.push({ from, to, score });
+            });
+        });
+        if (!opts.length) break;
+        opts.sort((a, b) => b.score - a.score);
+        const o = opts[0];
+        const fade = UI.speed < 20 ? arrow(o.from, o.to, p.color) : () => {};
+        await wait(360);
+        let r; const prev = own(o.to);
+        const watch = UI.scenes && UI.speed < 20 && prev !== null && !G.players[prev].bot && watched < 2;
+        if (watch) { watched++; fade(); r = await watchBattle(o.from, o.to); }
+        else do { r = battleRound(o.from, o.to); } while (!r.won && U(o.from) > 2 && U(o.from) > U(o.to));
+        if (G.over) return;
+        if (UI.speed < 20) { sfx.shake(); if (r.aL) floatNum(o.from, '−' + r.aL); }
+        if (r.won) await conquest(o.from, o.to, prev, Math.max(r.an, Math.floor((U(o.from) - 1) * 0.8)));
+        else { render(); if (!watch && prev !== null && !G.players[prev].bot && UI.speed < 20) clip('held'); }
+        fade(); await wait(280);
+    }
+    if (G.over) return;
+    G.phase = 'fortify';
+    const inner = mineOf(p.id).filter((id) => U(id) > 1 && [...ADJ[id]].every((n) => own(n) === p.id)).sort((a, b) => U(b) - U(a))[0];
+    if (inner) { const to = [...ADJ[inner]].find((n) => [...ADJ[n]].some((m) => own(m) !== p.id)) ?? [...ADJ[inner]][0]; moveUnits(inner, to, U(inner) - 1); }
+    render(); await wait(280);
+    endTurn();
+}
+
+/* ================= HUD ================= */
+function toast(t) { $('#instruct-t').innerHTML = `<b>${esc(t)}</b>`; if (!REDUCED) gsap.fromTo('#instruct', { x: -8 }, { x: 0, duration: 0.4, ease: 'elastic.out(1,0.3)' }); clearTimeout(toast.t); toast.t = setTimeout(renderInstruct, 4000); }
+function renderInstruct() {
+    if (!G) return;
+    const p = P(); let h;
+    if (G.over) h = 'Partie vorbei.';
+    else if (p.bot) h = `<b>${esc(p.name)}</b> ist am Zug …`;
+    else if (UI.card) h = `<b>${esc(CARDS[UI.card].name)}</b>: tippe ein leuchtendes Ziel. Nochmal auf die Karte tippen bricht ab.`;
+    else if (G.phase === 'buy') h = p.freePlebs > 0 ? `Setze <b>${p.freePlebs} Gratis-Plebs</b> auf deine leuchtenden Gebiete.` : `Truppe wählen, dann deine <b>leuchtenden Gebiete</b> antippen.`;
+    else if (G.phase === 'attack') h = UI.from ? `Angriff aus <b>${esc(BY[UI.from].name)}</b>: tippe ein pulsierendes Ziel.` : 'Tippe ein leuchtendes Gebiet als <b>Angreifer</b>.';
+    else h = G.fortified ? 'Verlegt. Jetzt <b>Zug beenden</b>.' : UI.from ? 'Tippe ein pulsierendes <b>eigenes</b> Nachbargebiet.' : 'Einmal <b>verlegen</b>: Start antippen, dann Ziel.';
+    $('#instruct-t').innerHTML = h;
+}
+function renderTicker() {
+    if (!G) return;
+    // The acting player is the one whose name opens the line; their portrait stands beside it.
+    const who = (t) => G.players.find((x) => t.startsWith(x.name + ' ') || t.startsWith(x.name + ':'));
+    $('#ticker').innerHTML = '<h5>Chronik</h5>' + G.log.slice(0, 7).map((l) => { const x = who(l.t); return `<div class="ln ${l.hot ? 'hot' : ''}">${x ? POR(x.por, x.color) : '<span></span>'}<span>${esc(l.t)}</span></div>`; }).join('');
+}
+const bankSeg = (n) => Array.from({ length: 10 }, (_, i) => `<i class="${i < n ? 'on' : ''}"></i>`).join('');
+const segHtml = (v) => Array.from({ length: 21 }, (_, i) => `<i class="${i < Math.floor(v) ? 'on' : ''}"></i>`).join('');
+let lastPhase = '';
+function render() {
+    if (!G) return;
+    const p = P(); const human = !p.bot;
+    renderBase(); renderPins();
+    $('#round-lbl').textContent = `Runde ${G.round}${G.inflation ? ' · Inflation!' : ''}`;
+    const order = ['buy', 'attack', 'fortify']; const j = order.indexOf(G.phase);
+    $$('.step').forEach((s) => { const i = order.indexOf(s.dataset.ph); s.classList.toggle('on', i === j); s.classList.toggle('done', i < j); });
+    if (lastPhase !== G.phase + G.cur) { if (lastPhase && human) sfx.sting(); lastPhase = G.phase + G.cur; if (!REDUCED) gsap.fromTo('.step.on', { scale: 1.12 }, { scale: 1, duration: 0.4, ease: 'back.out(3)' }); }
+    const me = G.players.find((x) => !x.bot) ?? p;
+    tickNum($('#fiat'), me.fiat); tickNum($('#sats'), me.sats);
+    $('#goal-seg').innerHTML = bankSeg(banksOf(me.id));
+    $('#goal-num').textContent = `${banksOf(me.id)}/10`;
+    $('#pleb-cost').textContent = `${fmt(plebCost(me))} Fiat`;
+    $('#recruit-ui').style.display = human && G.phase === 'buy' && !G.over ? '' : 'none';
+    $('#free-lbl').hidden = !(human && p.freePlebs > 0); $('#free-lbl').textContent = `${p.freePlebs} Gratis-Plebs zu setzen`;
+    $$('.unit').forEach((u) => { u.classList.toggle('on', u.dataset.unit === UI.unit); const broke = u.dataset.unit === 'pleb' ? me.fiat < plebCost(me) : me.sats < (u.dataset.unit === 'maxi' ? 2 : 3); u.disabled = broke && p.freePlebs === 0; });
+    $$('.qty button').forEach((b) => b.classList.toggle('on', b.dataset.q === UI.qty));
+    $('#undo-btn').hidden = !(human && G.phase === 'buy' && UI.placed.length);
+    $('#main-btn').disabled = !human || G.over || UI.busy;
+    $('#main-t').textContent = G.over ? 'Partie vorbei' : !human ? `${p.name} zieht` : G.phase === 'buy' ? 'Zum Angriff' : G.phase === 'attack' ? 'Angriff beenden' : 'Zug beenden';
+    $('#main-i').innerHTML = `<use href="#${G.phase === 'fortify' ? 'i-check' : G.phase === 'buy' ? 'i-sword' : 'i-move'}"/>`;
+    $('#roster').innerHTML = G.players.map((x) => `<div class="pl frame shadowed ${x.id === G.cur ? 'cur' : ''} ${x.out ? 'out' : ''}" style="--pc:${x.color}"><div class="shield">${POR(x.por, x.color)}</div>
+        <div class="nm"><span>${esc(x.name)}</span><em>${mineOf(x.id).length} Geb.</em></div><div class="seg">${bankSeg(banksOf(x.id))}</div>
+        <div class="meta"><span>${banksOf(x.id)} ${banksOf(x.id) === 1 ? 'Bank' : 'Banken'} · ${fmt(x.sats)} ₿</span><span>${x.hand.length} Karten</span></div></div>`).join('');
+    $('#legend').innerHTML = `<div class="lg-head"><h5>Währungsräume</h5><div class="lg-seg" role="group" aria-label="Kartenansicht (Taste M)"><button type="button" data-mode="zone" class="${UI.mode === 'zone' ? 'on' : ''}">Räume</button><button type="button" data-mode="owner" class="${UI.mode === 'owner' ? 'on' : ''}">Besitz</button></div></div>` + Object.entries(ZONES).map(([z, v]) => {
+        const o = zoneOwner(z); const h = o !== null ? G.players[o] : null;
+        const bar = ZT[z].map((id) => { const w = own(id); return w === null ? '<i></i>' : `<i class="${G.players[w].bot ? '' : 'me'}" style="background:${G.players[w].color}"></i>`; }).join('');
+        return `<div class="zr ${h ? 'held' : ''}" style="--hc:${h ? h.color : 'transparent'}" title="${esc(v.name)}: ganz erobern bringt ${fmt(v.sats)} Mio. Sats pro Zug"><div class="em"><img src="art/zone-${z}.webp?v=1" alt="">${h ? POR(h.por, h.color) : ''}</div><b>${esc(v.name)}</b><div class="rw">+${fmt(v.sats)}<img src="art/ico-sats.webp?v=1" alt="Mio. Sats"></div><div class="bar">${bar}</div><div class="bn">${esc(v.bonus)}${z === 'swiss' ? '' : ''}</div></div>`;
+    }).join('');
+    // The chronicle starts right below the region list, whatever its height.
+    const tkTop = $('#legend').offsetTop + $('#legend').offsetHeight + 10; $('#ticker').style.top = tkTop + 'px'; $('#ticker').style.setProperty('--tk-top', tkTop + 'px');
+    $$('#legend .lg-seg button').forEach((btn) => { btn.onclick = () => { if (UI.mode !== btn.dataset.mode) $('#mode-btn').click(); }; });
+    renderHand(); renderInstruct();
+}
+let handKey = '';
+function renderHand() {
+    const me = G.players.find((x) => !x.bot) ?? P();
+    const key = me.hand.join(',') + '|' + UI.card + '|' + innerWidth;
+    if (key === handKey) return; handKey = key;
+    const hand = $('#hand'); const n = me.hand.length;
+    hand.innerHTML = '';
+    me.hand.forEach((c, i) => {
+        const card = CARDS[c]; const el = document.createElement('button');
+        el.type = 'button'; el.className = 'card' + (UI.card === c ? ' arm' : '');
+        el.innerHTML = `<div class="ct">${esc(card.name)}</div><div class="art pic" style="background-image:url(art/card-${c}.jpg?v=1)">${esc(card.art)}</div><div class="ce">${esc(card.text)}</div><div class="cj">${esc(card.joke)}</div>`;
+        const mid = (n - 1) / 2; const rot = (i - mid) * 7; const x = (i - mid) * (innerWidth < 820 ? 62 : 84); const y = Math.abs(i - mid) * 8;
+        gsap.set(el, { x, y, rotation: rot });
+        el.onmouseenter = () => { gsap.to(el, { y: y - 118, rotation: 0, scale: 1.12, zIndex: 10, duration: 0.22 }); sfx.flip(); };
+        el.onmouseleave = () => gsap.to(el, { y, rotation: rot, scale: 1, zIndex: 1, duration: 0.25 });
+        el.onclick = () => {
+            if (P() !== me || G.over || UI.busy) { sfx.error(); return toast('Karten spielst du in deinem Zug.'); }
+            if (card.target) { UI.card = UI.card === c ? null : c; sfx.select(); render(); } else playCard(c);
+        };
+        el.setAttribute('aria-label', `${card.name}: ${card.text}`);
+        hand.appendChild(el);
+    });
+}
+
+/* ================= Controls ================= */
+$('#main-btn').onclick = () => {
+    const p = P(); if (p.bot || UI.busy || G.over) return;
+    if (G.phase === 'buy') { if (p.freePlebs > 0) { sfx.error(); return toast('Erst die Gratis-Plebs setzen.'); } G.phase = 'attack'; UI.from = null; UI.placed = []; render(); return; }
+    if (G.phase === 'attack') { G.phase = 'fortify'; UI.from = null; render(); return; }
+    endTurn();
+};
+const SETTINGS_KEY = 'hb-settings';
+function saveSettings() { try { localStorage.setItem(SETTINGS_KEY, JSON.stringify({ vol: AUD.vol, music: AUD.music, fx: AUD.fx, board: AUD.board, speed: UI.speed, mode: UI.mode, faction, roundLimit, scenes: UI.scenes, opponents })); } catch (e) { /* only for this visit */ } }
+function loadSettings() {
+    let st = null; try { st = JSON.parse(localStorage.getItem(SETTINGS_KEY)); } catch (e) { st = null; }
+    if (!st) return;
+    // Until v9 one button muted clips and effects together; an old 'muted' meant: no clips. Keep the effects.
+    if (st.board === undefined && st.fx === false) { st.board = false; st.fx = true; }
+    if (typeof st.vol === 'number') { AUD.vol = st.vol; $('#vol').value = Math.round(st.vol * 100); }
+    if (typeof st.music === 'boolean') { AUD.music = st.music; $('#music-btn').setAttribute('aria-pressed', st.music); }
+    if (typeof st.fx === 'boolean') { AUD.fx = st.fx; $('#sound-btn').setAttribute('aria-pressed', st.fx); }
+    if (typeof st.board === 'boolean') { AUD.board = st.board; $('#board-btn').setAttribute('aria-pressed', st.board); }
+    if ([1, 3, 20].includes(st.speed)) { UI.speed = st.speed; $$('#speed button').forEach((x) => x.classList.toggle('on', +x.dataset.s === st.speed)); }
+    if (['owner', 'zone'].includes(st.mode)) UI.mode = st.mode;
+    if (typeof st.scenes === 'boolean') { UI.scenes = st.scenes; $('#scenes-btn').setAttribute('aria-pressed', st.scenes); }
+    if ([0, 12, 20, 30].includes(st.roundLimit)) roundLimit = st.roundLimit;
+    if (st.faction && (st.faction === 'random' || FACTIONS.some((f) => f.por === st.faction))) faction = st.faction;
+    if (st.opponents >= 1 && st.opponents <= 5) { opponents = st.opponents; $$('.opp:not(.lim) button').forEach((x) => x.classList.toggle('on', +x.dataset.o === opponents)); }
+}
+$('#scenes-btn').onclick = (e) => { UI.scenes = !UI.scenes; e.currentTarget.setAttribute('aria-pressed', UI.scenes); toast(UI.scenes ? 'Kinoszenen an' : 'Kinoszenen aus: Schlachten und Karten laufen schnell'); saveSettings(); };
+$('#undo-btn').onclick = undo;
+$$('.unit').forEach((u) => u.onclick = () => { UI.unit = u.dataset.unit; sfx.select(); render(); });
+$$('.qty button').forEach((b) => b.onclick = () => { UI.qty = b.dataset.q; render(); });
+$$('#speed button').forEach((b) => b.onclick = () => { UI.speed = +b.dataset.s; $$('#speed button').forEach((x) => x.classList.toggle('on', x === b)); saveSettings(); });
+$('#mode-btn').onclick = () => { UI.mode = UI.mode === 'zone' ? 'owner' : 'zone'; render(); saveSettings(); };
+// Keyboard: every frequent action has a key; the help screen lists them.
+const visible = (sel) => !$(sel).hidden;
+addEventListener('keydown', (e) => {
+    if (e.ctrlKey || e.metaKey || e.altKey || e.target.closest('input')) return;
+    const k = e.key.toLowerCase(); const press = (sel) => { const b = $(sel); if (b && !b.disabled && b.offsetParent !== null) { e.preventDefault(); b.click(); return true; } return false; };
+    if (visible('#title')) { if (k === 'enter' || k === ' ') press('#play-btn'); return; }
+    if (visible('#battle') && $('#battle').classList.contains('cine')) { e.preventDefault(); $('#battle').dispatchEvent(new PointerEvent('pointerdown')); return; }
+    if (visible('#battle')) { if (k === 'w' || k === ' ' || k === 'enter') press('#roll-btn'); else if (k === 'e') press('#blitz-btn'); else if (k === 'escape') press('#retreat-btn') || press('#skip-btn'); else if (k === 's') press('#skip-btn'); return; }
+    if (visible('#move')) { const r = $('#move-range'); if (k === 'enter' || k === ' ') press('#move-ok'); else if (k === 'arrowleft' || k === 'arrowright') { e.preventDefault(); r.value = +r.value + (k === 'arrowright' ? 1 : -1); r.dispatchEvent(new Event('input')); } return; }
+    if (visible('#help')) { if (k === 'escape' || k === 'enter' || k === 'h') press('#help-close'); return; }
+    if (visible('#end')) { if (k === 'enter') press('#again-btn'); return; }
+    if (k === 'm') $('#mode-btn').click();
+    else if (k === 'k') $('#scenes-btn').click();
+    else if (k === 'h') $('#help-btn').click();
+    else if (k === ' ' || k === 'enter') press('#main-btn');
+    else if (k === 'z' || k === 'backspace') press('#undo-btn');
+    else if (['1', '3', '5', '0'].includes(k)) press(`.qty [data-q="${k === '0' ? 'max' : k}"]`);
+    else if (k === 'escape' && G) { UI.card = null; UI.from = null; render(); }
+});
+$('#sound-btn').onclick = (e) => { AUD.fx = !AUD.fx; e.currentTarget.setAttribute('aria-pressed', AUD.fx); if (AUD.fx) sfx.coin(); toast(AUD.fx ? 'Effekte an' : 'Effekte aus (Würfel, Klicks, Explosionen)'); saveSettings(); };
+$('#board-btn').onclick = (e) => { AUD.board = !AUD.board; e.currentTarget.setAttribute('aria-pressed', AUD.board); if (!AUD.board && AUD.cur) AUD.cur.pause(); toast(AUD.board ? 'Soundboard-Clips an' : 'Soundboard-Clips aus, Effekte bleiben'); saveSettings(); };
+$('#music-btn').onclick = (e) => { AUD.music = !AUD.music; e.currentTarget.setAttribute('aria-pressed', AUD.music); if (AUD.musicBus) AUD.musicBus.gain.setTargetAtTime(AUD.music ? 0.42 : 0, AUD.ctx.currentTime, 0.3); if (!AUD.music) fadeIntro(400); saveSettings(); };
+$('#vol').oninput = (e) => { AUD.vol = e.target.value / 100; if (AUD.master) AUD.master.gain.setTargetAtTime(AUD.vol, AUD.ctx.currentTime, 0.05); if (INTRO.a) INTRO.a.volume = Math.min(1, AUD.vol * 0.9); saveSettings(); };
+const HOW = [
+    ['1', 'Rekrutieren', 'Fiat kommt aus Gebieten und Zentralbanken. Kauf Plebs und setze sie. Übriges Fiat frisst die Inflation.'],
+    ['2', 'Angreifen', 'Leuchtendes Gebiet antippen, dann ein pulsierendes Nachbarland. Du siehst die Siegchance vor dem Wurf.'],
+    ['3', 'Verlegen', 'Einmal pro Zug Truppen ins benachbarte eigene Gebiet schieben, dann Zug beenden.'],
+    ['₿', 'Gewinnen', 'Wirf alle raus – oder halte beim Rundenlimit die meisten Zentralbanken. Sats sind Beute: sie kaufen Maxis und ASICs und landen in deinem Profil.'],
+];
+const howHtml = HOW.map(([n, h, t]) => `<div class="frame"><b><span>${n}</span>${h}</b><p>${t}</p></div>`).join('');
+$('#title-how').innerHTML = howHtml; $('#help-how').innerHTML = howHtml;
+$('#help-btn').onclick = () => { $('#help').hidden = false; gsap.from('#help .panel', { y: 20, opacity: 0, duration: 0.25 }); };
+$('#help-close').onclick = () => { $('#help').hidden = true; };
+const PROFILE_KEY = 'hb-profile';
+function loadProfile() { try { return { sats: 0, games: 0, wins: 0, ...JSON.parse(localStorage.getItem(PROFILE_KEY) || '{}') }; } catch { return { sats: 0, games: 0, wins: 0 }; } }
+function saveProfile(p) { try { localStorage.setItem(PROFILE_KEY, JSON.stringify(p)); } catch { /* the profile is a convenience */ } renderProfile(); }
+function renderProfile() { const p = loadProfile(); const el = $('#title-profile'); if (el) el.innerHTML = p.games ? `<img src="art/ico-sats.webp?v=1" alt=""> <b>${fmt(p.sats)} Mio. Sats</b> gesammelt · ${p.games} Partien · ${p.wins} Siege` : ''; }
+let opponents = 3;
+let roundLimit = 0;
+let faction = 'you';
+function renderFactionPick() {
+    $('#fac-pick').innerHTML = '<span>Deine Fraktion</span>' + FACTIONS.map((f) => `<button type="button" role="radio" aria-checked="${faction === f.por}" class="${faction === f.por ? 'on' : ''}" data-f="${f.por}">${POR(f.por, f.color)}${esc(f.side)}</button>`).join('')
+        + `<button type="button" role="radio" aria-checked="${faction === 'random'}" class="${faction === 'random' ? 'on' : ''}" data-f="random"><span class="dice">🎲</span>Zufall</button>`;
+    $$('#fac-pick button').forEach((b) => { b.onclick = () => { faction = b.dataset.f; renderFactionPick(); saveSettings(); }; });
+}
+$$('.opp:not(.lim) button').forEach((b) => b.onclick = () => { opponents = +b.dataset.o; $$('.opp:not(.lim) button').forEach((x) => x.classList.toggle('on', x === b)); saveSettings(); });
+$('#again-btn').onclick = () => { $('#end').hidden = true; showTitle(); armIntro(); };
+
+/* ================= Title: three.js globe in the plebs' colours ================= */
+const Globe = (() => {
+    const canvas = $('#globe'); let renderer = null; let raf = 0; let scene; let camera; let earth; let group; const travellers = [];
+    function texture(earthImg) {
+        const W = 2048; const H = 1024; const c = document.createElement('canvas'); c.width = W; c.height = H; const g = c.getContext('2d');
+        const grad = g.createLinearGradient(0, 0, 0, H); grad.addColorStop(0, '#0b2350'); grad.addColorStop(0.5, '#0d2b5e'); grad.addColorStop(1, '#081a3c');
+        g.fillStyle = grad; g.fillRect(0, 0, W, H);
+        if (earthImg) { g.globalAlpha = 0.45; g.drawImage(earthImg, 0, 0, W, H); g.globalAlpha = 1; }
+        g.strokeStyle = 'rgba(140,180,255,0.10)'; g.lineWidth = 1;
+        for (let lon = -180; lon <= 180; lon += 20) { const x = (lon + 180) / 360 * W; g.beginPath(); g.moveTo(x, 0); g.lineTo(x, H); g.stroke(); }
+        for (let lat = -80; lat <= 80; lat += 20) { const y = (90 - lat) / 180 * H; g.beginPath(); g.moveTo(0, y); g.lineTo(W, y); g.stroke(); }
+        const draw = (polys, fill) => {
+            g.fillStyle = fill; g.beginPath();
+            polys.forEach((poly) => poly.forEach((ring) => { ring.forEach(([lo, la], i) => { const x = (lo + 180) / 360 * W; const y = (90 - la) / 180 * H; i ? g.lineTo(x, y) : g.moveTo(x, y); }); g.closePath(); }));
+            g.fill('evenodd'); g.strokeStyle = 'rgba(2,6,16,0.75)'; g.lineWidth = 1.4; g.stroke();
+        };
+        g.globalAlpha = 0.95;
+        draw(HB_MAP.globeNeutral, '#2a3754');
+        Object.entries(HB_MAP.globe).forEach(([id, polys]) => draw(polys, ZONES[BY[id].zone].color));
+        g.globalAlpha = 1;
+        if (earthImg) { g.globalCompositeOperation = 'overlay'; g.globalAlpha = 0.32; g.drawImage(earthImg, 0, 0, W, H); g.globalCompositeOperation = 'source-over'; g.globalAlpha = 1; }
+        const tex = new THREE.CanvasTexture(c); tex.anisotropy = 4; return tex;
+    }
+    const v3 = (lon, lat, r) => { const phi = (90 - lat) * Math.PI / 180; const th = (lon + 180) * Math.PI / 180; return new THREE.Vector3(-r * Math.sin(phi) * Math.cos(th), r * Math.cos(phi), r * Math.sin(phi) * Math.sin(th)); };
+    function init() {
+        if (!window.THREE) return false;
+        try { renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: true }); } catch (e) { return false; }
+        renderer.setPixelRatio(Math.min(2, devicePixelRatio));
+        scene = new THREE.Scene(); camera = new THREE.PerspectiveCamera(35, 1, 0.1, 100); camera.position.set(0, 0.35, 4.1);
+        group = new THREE.Group(); group.rotation.z = 0.28; group.position.y = -1.15; scene.add(group);
+        const mat = new THREE.MeshPhongMaterial({ map: texture(null), shininess: 18, specular: new THREE.Color('#3a5a9a') });
+        earth = new THREE.Mesh(new THREE.SphereGeometry(1.25, 96, 96), mat);
+        group.add(earth);
+        loadImage('earth.jpg').then((img) => { mat.map = texture(img); mat.needsUpdate = true; }).catch(() => {});
+        new THREE.TextureLoader().load('relief.jpg', (tex) => { mat.bumpMap = tex; mat.bumpScale = 0.035; mat.needsUpdate = true; });
+        const atm = new THREE.Mesh(new THREE.SphereGeometry(1.25 * 1.12, 64, 64), new THREE.ShaderMaterial({
+            vertexShader: 'varying vec3 vN; void main(){ vN = normalize(normalMatrix * normal); gl_Position = projectionMatrix * modelViewMatrix * vec4(position,1.0); }',
+            fragmentShader: 'varying vec3 vN; void main(){ float i = pow(0.66 - dot(vN, vec3(0.0,0.0,1.0)), 4.0); gl_FragColor = vec4(1.0,0.6,0.2,1.0) * i * 0.9; }',
+            blending: THREE.AdditiveBlending, side: THREE.BackSide, transparent: true, depthWrite: false,
+        }));
+        atm.position.y = -1.15; scene.add(atm);
+        scene.add(new THREE.AmbientLight(0x8899cc, 0.55));
+        const sun = new THREE.DirectionalLight(0xfff1dd, 1.1); sun.position.set(-3, 2, 4); scene.add(sun);
+        const rim = new THREE.DirectionalLight(0xff9a3a, 0.6); rim.position.set(3, -1, -2); scene.add(rim);
+        const banks = Object.entries(BANK_LONLAT);
+        banks.forEach(([, [lo, la]]) => {
+            const m = new THREE.Mesh(new THREE.SphereGeometry(0.022, 12, 12), new THREE.MeshBasicMaterial({ color: 0xffb54d })); m.position.copy(v3(lo, la, 1.26)); earth.add(m);
+            const beam = new THREE.Mesh(new THREE.CylinderGeometry(0.004, 0.004, 0.22, 6), new THREE.MeshBasicMaterial({ color: 0xffb54d, transparent: true, opacity: 0.6 }));
+            beam.position.copy(v3(lo, la, 1.37)); beam.lookAt(new THREE.Vector3(0, 0, 0)); beam.rotateX(Math.PI / 2); earth.add(beam);
+        });
+        for (let i = 0; i < 9; i++) {
+            const a = banks[i % banks.length][1]; const b = banks[(i * 3 + 4) % banks.length][1];
+            const p0 = v3(a[0], a[1], 1.26); const p2 = v3(b[0], b[1], 1.26);
+            const mid = p0.clone().add(p2).multiplyScalar(0.5); mid.setLength(1.26 + p0.distanceTo(p2) * 0.45);
+            const curve = new THREE.QuadraticBezierCurve3(p0, mid, p2);
+            earth.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints(curve.getPoints(64)), new THREE.LineBasicMaterial({ color: 0xf7931a, transparent: true, opacity: 0.35 })));
+            const dot = new THREE.Mesh(new THREE.SphereGeometry(0.018, 10, 10), new THREE.MeshBasicMaterial({ color: 0xffe2b0 }));
+            earth.add(dot); travellers.push({ curve, dot, t: Math.random(), v: 0.0025 + Math.random() * 0.003 });
+        }
+        const sg = new THREE.BufferGeometry(); const pos = [];
+        for (let i = 0; i < 1400; i++) { const v = new THREE.Vector3(Math.random() - 0.5, Math.random() - 0.5, Math.random() - 0.5).normalize().multiplyScalar(20 + Math.random() * 20); pos.push(v.x, v.y, v.z); }
+        sg.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+        scene.add(new THREE.Points(sg, new THREE.PointsMaterial({ color: 0xbfd2ff, size: 0.06, transparent: true, opacity: 0.8 })));
+        size(); addEventListener('resize', size);
+        return true;
+    }
+    function size() { if (!renderer) return; const w = innerWidth; const h = innerHeight; renderer.setSize(w, h, false); camera.aspect = w / h; camera.position.z = w < 820 ? 6.2 : 4.1; camera.updateProjectionMatrix(); }
+    function frame() {
+        earth.rotation.y += REDUCED ? 0 : 0.0016;
+        travellers.forEach((tr) => { tr.t = (tr.t + tr.v) % 1; tr.dot.position.copy(tr.curve.getPoint(tr.t)); });
+        renderer.render(scene, camera); raf = requestAnimationFrame(frame);
+    }
+    return {
+        start() { if (!renderer && !init()) return; earth.rotation.y = -1.9; cancelAnimationFrame(raf); frame(); },
+        async dive() { if (!renderer || REDUCED) return; await gsap.to(camera.position, { z: 1.6, y: -0.9, duration: 0.9, ease: 'power3.in', onUpdate: () => camera.updateProjectionMatrix() }).then(); },
+        stop() { cancelAnimationFrame(raf); if (camera) camera.position.set(0, 0.35, innerWidth < 820 ? 6.2 : 4.1); },
+    };
+})();
+const coinFx = (() => {
+    const c = $('#title-fx'); const g = c.getContext('2d'); let raf = 0; let parts = [];
+    const size = () => { c.width = innerWidth * devicePixelRatio; c.height = innerHeight * devicePixelRatio; };
+    const spawn = () => ({ x: Math.random() * c.width, y: c.height + 20, v: 0.3 + Math.random() * 0.9, s: (8 + Math.random() * 12) * devicePixelRatio, a: 0.08 + Math.random() * 0.22, r: Math.random() * 6 });
+    function frame() {
+        g.clearRect(0, 0, c.width, c.height);
+        if (parts.length < 28) parts.push(spawn());
+        parts.forEach((p) => { p.y -= p.v * devicePixelRatio; p.r += 0.01; g.save(); g.globalAlpha = p.a; g.translate(p.x, p.y); g.rotate(Math.sin(p.r) * 0.4); g.fillStyle = '#f7931a'; g.font = `900 ${p.s}px Unbounded, sans-serif`; g.fillText('₿', 0, 0); g.restore(); });
+        parts = parts.filter((p) => p.y > -40); raf = requestAnimationFrame(frame);
+    }
+    return { start() { size(); if (!REDUCED) { cancelAnimationFrame(raf); frame(); } addEventListener('resize', size); }, stop() { cancelAnimationFrame(raf); } };
+})();
+function showTitle() {
+    const t = $('#title'); t.hidden = false; gsap.set(t, { opacity: 1 });
+    const word = 'HYPERBITCOINIZATION';
+    $('#title-logo').innerHTML = word.split('').map((ch, i) => `<span class="${i === 5 ? 'b' : ''}">${i === 5 ? '₿' : ch}</span>`).join('');
+    Globe.start(); coinFx.start();
+    if (!REDUCED) {
+        gsap.from('#title-logo span', { y: 60, opacity: 0, rotationX: -90, duration: 0.7, ease: 'back.out(2)', stagger: 0.035 });
+        gsap.from(['.kicker', '.tagline', '#title-how > div', '.setup', '.credit'], { opacity: 0, y: 18, duration: 0.5, stagger: 0.07, delay: 0.5 });
+        gsap.to('#title-logo .b', { textShadow: '0 0 60px rgba(247,147,26,1)', repeat: -1, yoyo: true, duration: 1.2 });
+    }
+}
+// The first touch anywhere on the title starts the music: browsers allow sound only after a gesture.
+// The title plays the EINUNDZWANZIG song (browsers allow sound only after the first touch); it fades when the game starts.
+const INTRO = { a: null };
+function playIntro() {
+    if (INTRO.a || !AUD.music) return;
+    try { const a = new Audio('m/einundzwanzig-song.mp3?v=1'); a.volume = Math.min(1, AUD.vol * 0.9); a.play().catch(() => {}); INTRO.a = a; } catch (e) { /* no song, no problem */ }
+}
+function fadeIntro(ms = 2500) {
+    const a = INTRO.a; if (!a) return; INTRO.a = null; const v0 = a.volume; const t0 = performance.now();
+    const step = () => { const p = Math.min(1, (performance.now() - t0) / ms); a.volume = v0 * (1 - p); if (p < 1) requestAnimationFrame(step); else a.pause(); };
+    step();
+}
+function armIntro() { $('#title').addEventListener('pointerdown', () => { ctx(); playIntro(); }, { once: true }); }
+armIntro();
+
+async function start() {
+    const hadIntro = !!INTRO.a; fadeIntro(2600); ctx(); setTimeout(startMusic, hadIntro ? 2400 : 0); if (!hadIntro) clip('start'); sfx.fanfare();
+    newGame(opponents, faction); renderTicker();
+    $('#play-btn').disabled = true;
+    gsap.to('.title-box', { opacity: 0, y: -30, duration: REDUCED ? 0 : 0.4 });
+    await Globe.dive();
+    await gsap.to('#title', { opacity: 0, duration: REDUCED ? 0 : 0.45 }).then();
+    $('#title').hidden = true; $('#play-btn').disabled = false; gsap.set('.title-box', { opacity: 1, y: 0 });
+    Globe.stop(); coinFx.stop();
+    fitMap(); svg.call(zoom.transform, d3.zoomIdentity);
+    baseKey = ''; render(); scalePins();
+    if (!REDUCED) {
+        gsap.from('#board', { scale: 1.2, opacity: 0, duration: 0.9, ease: 'power3.out' });
+        gsap.from('.pin', { scale: 0, transformOrigin: 'center center', duration: 0.4, ease: 'back.out(3)', stagger: { each: 0.012, from: 'random' }, delay: 0.5 });
+        gsap.from(['#roster', '#treasury', '#cta', '#topbar', '#legend', '#ticker'], { opacity: 0, y: 20, duration: 0.5, stagger: 0.08, delay: 0.5 });
+    }
+    log('Die Hyperbitcoinization beginnt. Fiat verrottet, Sats bleiben.', true);
+    const muted = [!AUD.fx && 'Effekte', !AUD.board && 'Soundboard', !AUD.music && 'Musik'].filter(Boolean);
+    if (muted.length) setTimeout(() => toast(`Stumm: ${muted.join(', ')}. Oben rechts wieder einschalten.`), 2500);
+    await sleep(900);
+    beginTurn();
+}
+$('#play-btn').onclick = start;
+
+$$('.up[data-por]').forEach((el) => { el.innerHTML = POR(el.dataset.por, el.dataset.por === 'pleb' ? '#7fe0a6' : el.dataset.por === 'maxi' ? '#f7931a' : '#6f8fc4'); });
+loadSettings();
+renderFactionPick();
+$$('.lim button').forEach((b) => { b.classList.toggle('on', +b.dataset.l === roundLimit); b.onclick = () => { roundLimit = +b.dataset.l; $$('.lim button').forEach((x) => x.classList.toggle('on', x === b)); saveSettings(); }; });
+renderProfile();
+buildOverlay();
+fitMap();
+newGame(3);
+G.players.forEach((p) => { p.bot = true; });
+render();
+buildTerrain();
+showTitle();
+// While the title is up, fetch every battle stage in the background.
+setTimeout(() => { if (window.Arena) Arena.preloadAll(); }, 1500);
+</script>

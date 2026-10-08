@@ -1,0 +1,136 @@
+{
+ "model": "google/gemini-3-pro-image",
+ "style": "",
+ "assets": [
+  {
+   "id": "sol-you",
+   "aspect": "2:3",
+   "prompt": "A Bitcoin rebel foot soldier in an orange techwear hoodie and light armor with glowing orange seams, carrying a small round shield with a Bitcoin symbol. Isolated game character sprite: full body standing, front three-quarter view, centered, complete from head to feet, stylized semi-realistic modern AAA video game 3D render, crisp edges, on a perfectly flat solid pure magenta background (#FF00FF), no shadow, no ground. No text, no letters, no logos, no watermark."
+  },
+  {
+   "id": "sol-fed",
+   "aspect": "2:3",
+   "prompt": "A central bank enforcer in a dark green tactical suit with a gold dollar-sign armband, carrying a riot shield. Isolated game character sprite: full body standing, front three-quarter view, centered, complete from head to feet, stylized semi-realistic modern AAA video game 3D render, crisp edges, on a perfectly flat solid pure magenta background (#FF00FF), no shadow, no ground. No text, no letters, no logos, no watermark."
+  },
+  {
+   "id": "sol-ezb",
+   "aspect": "2:3",
+   "prompt": "A European central bank enforcer in a navy blue tactical uniform with small gold star patches, carrying a baton shaped like a rubber stamp. Isolated game character sprite: full body standing, front three-quarter view, centered, complete from head to feet, stylized semi-realistic modern AAA video game 3D render, crisp edges, on a perfectly flat solid pure magenta background (#FF00FF), no shadow, no ground. No text, no letters, no logos, no watermark."
+  },
+  {
+   "id": "sol-goldbug",
+   "aspect": "2:3",
+   "prompt": "A gold bug militia miner in gold-plated armor and a miner's helmet with headlamp, carrying a pickaxe. Isolated game character sprite: full body standing, front three-quarter view, centered, complete from head to feet, stylized semi-realistic modern AAA video game 3D render, crisp edges, on a perfectly flat solid pure magenta background (#FF00FF), no shadow, no ground. No text, no letters, no logos, no watermark."
+  },
+  {
+   "id": "sol-shit",
+   "aspect": "2:3",
+   "prompt": "A shitcoin promoter soldier in a neon pink jacket with an LED visor, carrying a megaphone, comedic. Isolated game character sprite: full body standing, front three-quarter view, centered, complete from head to feet, stylized semi-realistic modern AAA video game 3D render, crisp edges, on a perfectly flat solid pure magenta background (#FF00FF), no shadow, no ground. No text, no letters, no logos, no watermark."
+  },
+  {
+   "id": "sol-no",
+   "aspect": "2:3",
+   "prompt": "A nocoiner clerk soldier in a beige cardigan wearing a folded newspaper hat, carrying a clipboard, comedic. Isolated game character sprite: full body standing, front three-quarter view, centered, complete from head to feet, stylized semi-realistic modern AAA video game 3D render, crisp edges, on a perfectly flat solid pure magenta background (#FF00FF), no shadow, no ground. No text, no letters, no logos, no watermark."
+  },
+  {
+   "id": "tok-you",
+   "aspect": "1:1",
+   "prompt": "A premium round board game token shaped like a thick coin, three-quarter top view, polished metal with a bright Bitcoin-orange rim, an embossed Bitcoin B symbol in the center, glossy enamel, bevelled edge. Isolated game asset, centered, complete and not cropped, stylized semi-realistic modern AAA video game 3D render, crisp edges, soft studio light, on a perfectly flat solid pure magenta background (#FF00FF), no shadow, no ground. No text, no letters, no watermark."
+  },
+  {
+   "id": "tok-fed",
+   "aspect": "1:1",
+   "prompt": "A premium round board game token shaped like a thick coin, three-quarter top view, polished metal with a emerald green rim, an embossed dollar sign in the center, glossy enamel, bevelled edge. Isolated game asset, centered, complete and not cropped, stylized semi-realistic modern AAA video game 3D render, crisp edges, soft studio light, on a perfectly flat solid pure magenta background (#FF00FF), no shadow, no ground. No text, no letters, no watermark."
+  },
+  {
+   "id": "tok-ezb",
+   "aspect": "1:1",
+   "prompt": "A premium round board game token shaped like a thick coin, three-quarter top view, polished metal with a royal blue rim, an embossed euro sign with a small ring of stars in the center, glossy enamel, bevelled edge. Isolated game asset, centered, complete and not cropped, stylized semi-realistic modern AAA video game 3D render, crisp edges, soft studio light, on a perfectly flat solid pure magenta background (#FF00FF), no shadow, no ground. No text, no letters, no watermark."
+  },
+  {
+   "id": "tok-goldbug",
+   "aspect": "1:1",
+   "prompt": "A premium round board game token shaped like a thick coin, three-quarter top view, polished metal with a violet rim, an embossed gold bar in the center, glossy enamel, bevelled edge. Isolated game asset, centered, complete and not cropped, stylized semi-realistic modern AAA video game 3D render, crisp edges, soft studio light, on a perfectly flat solid pure magenta background (#FF00FF), no shadow, no ground. No text, no letters, no watermark."
+  },
+  {
+   "id": "tok-shit",
+   "aspect": "1:1",
+   "prompt": "A premium round board game token shaped like a thick coin, three-quarter top view, polished metal with a hot pink rim, an embossed rocket in the center, glossy enamel, bevelled edge. Isolated game asset, centered, complete and not cropped, stylized semi-realistic modern AAA video game 3D render, crisp edges, soft studio light, on a perfectly flat solid pure magenta background (#FF00FF), no shadow, no ground. No text, no letters, no watermark."
+  },
+  {
+   "id": "tok-no",
+   "aspect": "1:1",
+   "prompt": "A premium round board game token shaped like a thick coin, three-quarter top view, polished metal with a silver grey rim, an embossed crossed-out coin in the center, glossy enamel, bevelled edge. Isolated game asset, centered, complete and not cropped, stylized semi-realistic modern AAA video game 3D render, crisp edges, soft studio light, on a perfectly flat solid pure magenta background (#FF00FF), no shadow, no ground. No text, no letters, no watermark."
+  },
+  {
+   "id": "zone-dollar",
+   "aspect": "1:1",
+   "prompt": "A circular emblem badge for a strategy game currency region, enamel and brushed metal, showing a bald eagle clutching a dollar sign, rich colours, bevelled rim, modern AAA game UI icon. Isolated game asset, centered, complete and not cropped, stylized semi-realistic modern AAA video game 3D render, crisp edges, soft studio light, on a perfectly flat solid pure magenta background (#FF00FF), no shadow, no ground. No text, no letters, no watermark."
+  },
+  {
+   "id": "zone-sa",
+   "aspect": "1:1",
+   "prompt": "A circular emblem badge for a strategy game currency region, enamel and brushed metal, showing a smoking volcano with a condor, rich colours, bevelled rim, modern AAA game UI icon. Isolated game asset, centered, complete and not cropped, stylized semi-realistic modern AAA video game 3D render, crisp edges, soft studio light, on a perfectly flat solid pure magenta background (#FF00FF), no shadow, no ground. No text, no letters, no watermark."
+  },
+  {
+   "id": "zone-pound",
+   "aspect": "1:1",
+   "prompt": "A circular emblem badge for a strategy game currency region, enamel and brushed metal, showing a crowned lion, rich colours, bevelled rim, modern AAA game UI icon. Isolated game asset, centered, complete and not cropped, stylized semi-realistic modern AAA video game 3D render, crisp edges, soft studio light, on a perfectly flat solid pure magenta background (#FF00FF), no shadow, no ground. No text, no letters, no watermark."
+  },
+  {
+   "id": "zone-euro",
+   "aspect": "1:1",
+   "prompt": "A circular emblem badge for a strategy game currency region, enamel and brushed metal, showing a ring of golden stars, rich colours, bevelled rim, modern AAA game UI icon. Isolated game asset, centered, complete and not cropped, stylized semi-realistic modern AAA video game 3D render, crisp edges, soft studio light, on a perfectly flat solid pure magenta background (#FF00FF), no shadow, no ground. No text, no letters, no watermark."
+  },
+  {
+   "id": "zone-swiss",
+   "aspect": "1:1",
+   "prompt": "A circular emblem badge for a strategy game currency region, enamel and brushed metal, showing a round vault door with a white cross, rich colours, bevelled rim, modern AAA game UI icon. Isolated game asset, centered, complete and not cropped, stylized semi-realistic modern AAA video game 3D render, crisp edges, soft studio light, on a perfectly flat solid pure magenta background (#FF00FF), no shadow, no ground. No text, no letters, no watermark."
+  },
+  {
+   "id": "zone-rubel",
+   "aspect": "1:1",
+   "prompt": "A circular emblem badge for a strategy game currency region, enamel and brushed metal, showing a bear in front of an onion dome, rich colours, bevelled rim, modern AAA game UI icon. Isolated game asset, centered, complete and not cropped, stylized semi-realistic modern AAA video game 3D render, crisp edges, soft studio light, on a perfectly flat solid pure magenta background (#FF00FF), no shadow, no ground. No text, no letters, no watermark."
+  },
+  {
+   "id": "zone-yuan",
+   "aspect": "1:1",
+   "prompt": "A circular emblem badge for a strategy game currency region, enamel and brushed metal, showing a coiled golden dragon, rich colours, bevelled rim, modern AAA game UI icon. Isolated game asset, centered, complete and not cropped, stylized semi-realistic modern AAA video game 3D render, crisp edges, soft studio light, on a perfectly flat solid pure magenta background (#FF00FF), no shadow, no ground. No text, no letters, no watermark."
+  },
+  {
+   "id": "zone-yen",
+   "aspect": "1:1",
+   "prompt": "A circular emblem badge for a strategy game currency region, enamel and brushed metal, showing a rising sun behind a red torii gate, rich colours, bevelled rim, modern AAA game UI icon. Isolated game asset, centered, complete and not cropped, stylized semi-realistic modern AAA video game 3D render, crisp edges, soft studio light, on a perfectly flat solid pure magenta background (#FF00FF), no shadow, no ground. No text, no letters, no watermark."
+  },
+  {
+   "id": "zone-afro",
+   "aspect": "1:1",
+   "prompt": "A circular emblem badge for a strategy game currency region, enamel and brushed metal, showing a baobab tree under a large sun, rich colours, bevelled rim, modern AAA game UI icon. Isolated game asset, centered, complete and not cropped, stylized semi-realistic modern AAA video game 3D render, crisp edges, soft studio light, on a perfectly flat solid pure magenta background (#FF00FF), no shadow, no ground. No text, no letters, no watermark."
+  },
+  {
+   "id": "zone-ozean",
+   "aspect": "1:1",
+   "prompt": "A circular emblem badge for a strategy game currency region, enamel and brushed metal, showing a kangaroo over an ocean wave, rich colours, bevelled rim, modern AAA game UI icon. Isolated game asset, centered, complete and not cropped, stylized semi-realistic modern AAA video game 3D render, crisp edges, soft studio light, on a perfectly flat solid pure magenta background (#FF00FF), no shadow, no ground. No text, no letters, no watermark."
+  },
+  {
+   "id": "candle-up",
+   "aspect": "2:3",
+   "prompt": "A huge glowing orange trading-chart candlestick with a thin wick on top and bottom, translucent emissive glass with inner light, vertical. Isolated game asset, centered, complete and not cropped, stylized semi-realistic modern AAA video game 3D render, crisp edges, soft studio light, on a perfectly flat solid pure magenta background (#FF00FF), no shadow, no ground. No text, no letters, no watermark."
+  },
+  {
+   "id": "candle-down",
+   "aspect": "2:3",
+   "prompt": "A huge glowing red trading-chart candlestick with a thin wick on top and bottom, cracked translucent glass with inner light, vertical. Isolated game asset, centered, complete and not cropped, stylized semi-realistic modern AAA video game 3D render, crisp edges, soft studio light, on a perfectly flat solid pure magenta background (#FF00FF), no shadow, no ground. No text, no letters, no watermark."
+  },
+  {
+   "id": "ico-fiat",
+   "aspect": "1:1",
+   "prompt": "A game currency icon: a neat stack of green paper dollar bills with a paper band, slightly worn. Isolated game asset, centered, complete and not cropped, stylized semi-realistic modern AAA video game 3D render, crisp edges, soft studio light, on a perfectly flat solid pure magenta background (#FF00FF), no shadow, no ground. No text, no letters, no watermark."
+  },
+  {
+   "id": "ico-sats",
+   "aspect": "1:1",
+   "prompt": "A game currency icon: a shiny glowing orange Bitcoin coin standing slightly tilted, metallic rim, emissive glow. Isolated game asset, centered, complete and not cropped, stylized semi-realistic modern AAA video game 3D render, crisp edges, soft studio light, on a perfectly flat solid pure magenta background (#FF00FF), no shadow, no ground. No text, no letters, no watermark."
+  }
+ ]
+}
