@@ -7015,5 +7015,14 @@
     "One move a day on a board right here in the browser: challenge a player, move when it suits you and climb the ladder.": "Ein Zug pro Tag am Brett direkt im Browser: Spieler herausfordern, ziehen, wann es passt, und die Ladder hochklettern.",
     "Nine men's morris, one move a day. The server checks every move.": "Mühle, ein Zug pro Tag. Der Server prüft jeden Zug.",
     "Invite :name to a game, one move a day": ":name zu einer Partie einladen, ein Zug pro Tag",
-    "This invite is for a mode the game no longer offers. Ask for a new link.": "Diese Einladung gilt für einen Modus, den das Spiel nicht mehr anbietet. Frag nach einem neuen Link."
+    "This invite is for a mode the game no longer offers. Ask for a new link.": "Diese Einladung gilt für einen Modus, den das Spiel nicht mehr anbietet. Frag nach einem neuen Link.",
+    "You do not play in this match.": "Du spielst in dieser Partie nicht mit.",
+    "A bot plays your seat now.": "Ein Bot spielt jetzt deinen Platz.",
+    "You left this match.": "Du hast diese Partie verlassen.",
+    "The match moved on. Loading the current state.": "Die Partie ist weiter. Der aktuelle Stand wird geladen.",
+    "Your turn ran out.": "Deine Zugzeit ist abgelaufen.",
+    "The match is over.": "Die Partie ist vorbei.",
+    "Not so fast. Try again in :seconds s.": "Nicht so schnell. Versuch es in :seconds s noch einmal.",
+    "Unknown emote.": "Unbekanntes Emote.",
+    "That is not allowed right now.": "Das geht gerade nicht."
 }

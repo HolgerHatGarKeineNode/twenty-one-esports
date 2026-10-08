@@ -6,6 +6,7 @@ use App\Games\Blockfill;
 use App\Games\BoardGame;
 use App\Games\Contracts\Game;
 use App\Games\GameRegistry;
+use App\Games\Hyperbitcoinization;
 use App\Games\ScoreDemo;
 use App\Games\ScoreGame;
 use App\Games\TrackmaniaNationsForever;
@@ -60,6 +61,8 @@ class AppServiceProvider extends ServiceProvider
             ...array_map(fn (string $class): Game => $this->app->make($class), config('esports.games', [])),
             ...$this->boardGames(),
             ...$this->scoreGames(),
+            // Hyperbitcoinization (plan "Hyperbitcoinization", P2): only while its switch is on.
+            ...(config('esports.hyper.enabled') ? [$this->app->make(Hyperbitcoinization::class)] : []),
         ], (array) config('esports.game_order.first', []), (array) config('esports.game_order.last', []))));
 
         // The stream daemon keeps one bounded map of data URIs (StreamImages).

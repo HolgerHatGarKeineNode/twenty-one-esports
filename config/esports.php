@@ -1664,4 +1664,32 @@ return [
         'reminder_hours' => 24,
     ],
 
+    /*
+    |--------------------------------------------------------------------------
+    | Hyperbitcoinization (plan "Hyperbitcoinization", P2)
+    |--------------------------------------------------------------------------
+    |
+    | The league's own strategy game: Risk with currency spaces for 2 to 6
+    | seats, played on the server's rules core (App\Support\Hyper) and run by
+    | App\Support\Hyper\HyperMatches. enabled: the switch (`ESPORTS_HYPER`,
+    | off by default); off, the routes in routes/hyper.php are not registered
+    | and the registry does not know the game. turn_seconds: a live turn's
+    | time; when it runs out the server ends the turn (placed troops stay).
+    | takeover_timeouts: after this many timed-out turns in a row a bot takes
+    | over a casual seat. stickers_per_minute / clips_per_turn: the emote
+    | throttle per player and match. bot_round_cap: a match only bots still
+    | play ends at the end of this round by the limit's ranking (the
+    | simulator cuts a game at round 200; a rare bot game never ends).
+    |
+    */
+
+    'hyper' => [
+        'enabled' => (bool) env('ESPORTS_HYPER', false),
+        'turn_seconds' => 90,
+        'takeover_timeouts' => 3,
+        'stickers_per_minute' => 3,
+        'clips_per_turn' => 1,
+        'bot_round_cap' => 200,
+    ],
+
 ];

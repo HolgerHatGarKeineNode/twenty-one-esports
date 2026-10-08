@@ -19,7 +19,7 @@ final class HyperBot
         $turn = new self($game);
         $turn->play();
 
-        return new HyperStep($turn->game, $turn->events);
+        return new HyperStep($turn->game, $turn->events, $turn->actions);
     }
 
     /**
@@ -42,6 +42,9 @@ final class HyperBot
     /** @var list<array<string, mixed>> */
     private array $events = [];
 
+    /** @var list<array{action: array<string, mixed>, events: list<array<string, mixed>>}> */
+    private array $actions = [];
+
     private readonly int $seat;
 
     private function __construct(private HyperGame $game)
@@ -60,6 +63,7 @@ final class HyperBot
         $step = $this->game->apply($this->seat, $action);
         $this->game = $step->game;
         array_push($this->events, ...$step->events);
+        $this->actions[] = ['action' => $action, 'events' => $step->events];
 
         return $step->events;
     }

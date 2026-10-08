@@ -21,6 +21,11 @@ namespace App\Games;
  *   sums points per place. Every switch that serves chess, the series or the
  *   board games leaves it out.
  *
+ * - Strategy: Hyperbitcoinization (plan "Hyperbitcoinization", P2), 2 to 6
+ *   seats on the server's own rules core (App\Support\Hyper), a place per
+ *   seat instead of a two-sided result. Registered only behind its switch;
+ *   until its surfaces come (P6) every switch leaves it out.
+ *
  * A further kind is one more case here plus its answer at each switch.
  */
 enum GameKind: string
@@ -29,4 +34,5 @@ enum GameKind: string
     case Series = 'series';
     case Board = 'board';
     case Score = 'score';
+    case Strategy = 'strategy';
 }

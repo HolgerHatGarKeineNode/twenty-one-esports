@@ -2,6 +2,7 @@
 
 use App\Enums\BoardGameStatus;
 use App\Enums\ChessGameStatus;
+use App\Enums\HyperMatchStatus;
 use App\Games\Blockfill;
 use App\Games\GameRegistry;
 use App\Games\TrackmaniaNationsForever;
@@ -9,6 +10,7 @@ use App\Jobs\NotifyBlockZero;
 use App\Models\BellNotification;
 use App\Models\BoardGame;
 use App\Models\ChessGame;
+use App\Models\HyperMatch;
 use App\Models\NostrEvent;
 use App\Models\ScoreRun;
 use App\Models\ScoreServer;
@@ -18,6 +20,7 @@ use App\Support\Chess\ChessGameService;
 use App\Support\Chess\ChessSettings;
 use App\Support\Chess\ChessTeamMatches;
 use App\Support\Engagement\WeeklySlots;
+use App\Support\Hyper\HyperMatches;
 use App\Support\Moderation\LeagueMuteList;
 use App\Support\Moderation\MuteListUnreadable;
 use App\Support\Nostr\NostrKeys;
@@ -107,6 +110,32 @@ Artisan::command('board:check-clocks', function (BoardGameService $games) {
 })->purpose('End live board games whose clock ran out');
 
 Schedule::command('board:check-clocks')->everyTenSeconds()->withoutOverlapping();
+
+/*
+ * The same safety net for Hyperbitcoinization matches (plan "Hyperbitcoinization", P2): every active match
+ * whose turn deadline passed is checked, in case the delayed App\Jobs\CheckHyperClock did not run. A
+ * player's turn ends (`end_turn`, placed troops stay), an overdue bot turn is played. Only the server clock
+ * decides, so running it often is harmless; with the switch off there are no matches to find.
+ */
+Artisan::command('hyper:check-clocks', function (HyperMatches $matches) {
+    $due = HyperMatch::query()
+        ->where('status', HyperMatchStatus::Active)
+        ->where('deadline_ms', '<=', (int) now()->getTimestampMs())
+        ->get();
+
+    // Each match on its own: one that throws is reported and the others still move on.
+    foreach ($due as $match) {
+        try {
+            $matches->checkClock($match);
+        } catch (Throwable $e) {
+            report($e);
+        }
+    }
+
+    $this->info("Checked {$due->count()} match(es).");
+})->purpose('End Hyperbitcoinization turns whose time ran out');
+
+Schedule::command('hyper:check-clocks')->everyTenSeconds()->withoutOverlapping();
 
 /*
  * Correspondence board game deadline reminders (plan "Mühle und Dame", P8),
