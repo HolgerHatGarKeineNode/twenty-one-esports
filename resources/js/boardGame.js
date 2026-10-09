@@ -215,7 +215,16 @@ registerAlpine(() => {
 
             this.render();
 
-            this.onResize = () => this.fitBoard();
+            // Only another width fits anew (a turned phone, a resized window). A phone's browser shows and hides its
+            // address bar while scrolling and fires `resize` with another height each time: a board that followed it
+            // changed the page's height, which moved the bar again, and the board jumped between two sizes (players,
+            // 2026-10-09). The keyboard of the chat input changes only the height too.
+            let fittedWidth = innerWidth;
+            this.onResize = () => {
+                if (innerWidth === fittedWidth && matchMedia('(width < 64rem)').matches) return;
+                fittedWidth = innerWidth;
+                this.fitBoard();
+            };
             addEventListener('resize', this.onResize);
             this.$watch('state.status', () => this.$nextTick(() => this.fitBoard()));
             this.$nextTick(() => this.fitBoard());

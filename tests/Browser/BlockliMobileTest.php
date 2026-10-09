@@ -97,6 +97,33 @@ test('the board, the pawn/block switch and Confirm fit the first phone screen ab
     'phone 360' => [360, 740],
 ]);
 
+test('the board keeps its size while the phone browser shows and hides its address bar', function () {
+    // Players: "the board size keeps jumping between two sizes" (2026-10-09). Chrome on Android shows and hides its
+    // address bar while scrolling and fires `resize` each time with another innerHeight; a board that followed it
+    // changed the page's height, which moved the bar again. Same width, other height: the board stays.
+    [$anna, $bert] = User::factory()->count(2)->create();
+    $game = BlockliOn::setUp(app(BoardGameService::class)->start('blockli', $anna, $bert), 'e7 e3 10 10 w - 0');
+    $page = blockliPhone($anna, route('board.show', $game, false), 390, 844);
+    BrowserWait::until($page, '() => window.Alpine && Alpine.$data(document.querySelector("[data-test=board-game]"))?.canMove', 10_000);
+    $box = '() => { const r = document.querySelector("[data-test=board]").getBoundingClientRect(); return [Math.round(r.width), Math.round(r.height)]; }';
+    $before = $page->evaluate($box);
+    $sizes = [];
+
+    foreach ([788, 900, 760, 844] as $height) {
+        $page->setViewportSize(390, $height);
+        $page->evaluate('() => new Promise((r) => setTimeout(r, 200))');
+        $sizes[$height] = $page->evaluate($box);
+    }
+
+    // Turning the phone (another width) still fits the board anew.
+    $page->setViewportSize(360, 740);
+    $page->evaluate('() => new Promise((r) => setTimeout(r, 200))');
+
+    expect(array_values(array_unique(array_map('json_encode', $sizes))))->toBe([json_encode($before)])
+        ->and($page->evaluate($box))->not->toBe($before)
+        ->and($page->evaluate('() => window.__errors'))->toBe([]);
+});
+
 /*
 | P4: the board page (with the players' chat) and the lobby of every board game, measured as an admin in German at
 | 390, 768, 1440 and 1920: no sideways overflow, no cut text, buttons at least 44 px, quiet console and network.
