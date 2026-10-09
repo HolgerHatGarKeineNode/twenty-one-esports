@@ -1689,6 +1689,24 @@ return [
     | table in the lobby waits this long, then bots take its free seats and
     | the match starts (correspondence tables wait for their creator).
     |
+    | Season, tournaments and cups (P5, App\Support\Hyper\HyperSeason): a
+    | match is rated when every seat is a player at the start and a chain
+    | season is live; leaving or `takeover_timeouts` timed-out turns in a row
+    | is then a forfeit (a bot plays the seat on, the player takes the last
+    | place). season_points: the points of a rated free-for-all match per
+    | number of seats (3 to 6), place 1 first; a forfeit scores 0. A match of
+    | two seats is a 1v1 and a clan match a team match: both are rated by Elo
+    | (`season.rating`). tournament_tables: the table sizes a tournament's
+    | free-for-all heats may have. publish: whether the league signs and
+    | publishes the result of a rated or tournament match and its spectator
+    | poll on Nostr (`ESPORTS_HYPER_PUBLISH`, off by default; it needs the
+    | league key as well). poll_days: how long the spectator poll's
+    | `endsAt` lies after the start, per mode (the page closes it when the
+    | match ends). cups: the weekly weekend cup (`ESPORTS_HYPER_CUPS`, off by
+    | default; it needs the league key): sign-up until `weekday` `time` in the
+    | league's zone, then free-for-all tables of `table` seats whose best
+    | `advance` move on, unrated, bots fill a table that is short.
+    |
     */
 
     'hyper' => [
@@ -1700,6 +1718,24 @@ return [
         'bot_round_cap' => 200,
         'correspondence_hours' => 24,
         'lobby_fill_seconds' => 120,
+        'season_points' => [
+            3 => [6, 3, 1],
+            4 => [8, 5, 3, 1],
+            5 => [10, 7, 5, 3, 1],
+            6 => [12, 9, 7, 5, 3, 1],
+        ],
+        'tournament_tables' => [3, 6],
+        'publish' => (bool) env('ESPORTS_HYPER_PUBLISH', false),
+        'poll_days' => ['live' => 7, 'correspondence' => 60],
+        'cups' => [
+            'enabled' => (bool) env('ESPORTS_HYPER_CUPS', false),
+            'weekday' => 'saturday',
+            'time' => '18:00',
+            'mode' => 'live',
+            'table' => 4,
+            'advance' => 1,
+            'capacity' => 32,
+        ],
     ],
 
 ];

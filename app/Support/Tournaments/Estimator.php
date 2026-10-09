@@ -275,6 +275,9 @@ final class Estimator
             $lobbyGame && $profile->teamSize > 1 => 'Lobby tournaments are played one player each: pick the 1v1 mode.',
             $lobbyGame && $format !== TournamentFormat::FreeForAll => 'This game plays its tournaments as one lobby match of up to 8 players.',
             $lobbyGame => $n < Lobbies::minEntries($profile->game) ? 'Needs at least 3 players.' : null,
+            // Hyperbitcoinization (plan "Hyperbitcoinization", P5): free-for-all tables whose best move on, or a 1v1 knockout.
+            $profile->isHyper() && ! in_array($format, [TournamentFormat::FreeForAll, TournamentFormat::SingleElimination], true) => 'Hyperbitcoinization tournaments are played as free-for-all tables or as a 1v1 knockout.',
+            $profile->isHyper() && $format === TournamentFormat::FreeForAll => $n < 3 ? 'Needs at least 3 players.' : null,
             // A score game (plan "AoE2 und Trackmania", P4) runs only as a leaderboard: nobody plays against anyone.
             $profile->isScore() && $format !== TournamentFormat::Leaderboard => 'Needs players who meet in a match. In a score game everyone plays alone for the best value.',
             $format === TournamentFormat::Leaderboard && $profile->isScore() => $n < 2 ? 'Needs at least 2 players.' : null,

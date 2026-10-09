@@ -3,14 +3,25 @@
 namespace Tests\Support;
 
 use App\Enums\ClanRole;
+use App\Enums\TournamentFormat;
+use App\Enums\TournamentResultsMode;
+use App\Enums\TournamentStatus;
 use App\Games\GameRegistry;
+use App\Games\Hyperbitcoinization;
 use App\Models\Clan;
 use App\Models\ClanMember;
 use App\Models\HyperMatch;
+use App\Models\Tournament;
+use App\Models\TournamentParticipant;
 use App\Models\User;
+use App\Support\Hyper\HyperCups;
 use App\Support\Hyper\HyperGame;
 use App\Support\Hyper\HyperMap;
 use App\Support\Hyper\HyperMatches;
+use App\Support\Tournaments\FormatOptions;
+use App\Support\Tournaments\GameProfile;
+use App\Support\Tournaments\TournamentBrackets;
+use App\Support\Tournaments\TournamentRunner;
 use Illuminate\Support\Facades\Route;
 
 /**
@@ -70,6 +81,92 @@ final class HyperOn
         $match->forceFill(['state' => HyperGame::fromArray($state)->toArray(), 'current_seat' => 0])->save();
 
         return $match->refresh();
+    }
+
+    /**
+     * Any match one card from its end (P5): seat `$winner` (a player) holds every territory but Mexico, which seat
+     * `$runnerUp` holds with one pleb, in its attack phase with a 51%-Attacke in hand (`play_card attack51 mexiko`
+     * ends it, see finish()); every other seat is out already, with the place `$out` gives it (seat => place), as
+     * the knock-outs before would have left them.
+     *
+     * @param  array<int, int>  $out
+     */
+    public static function ending(HyperMatch $match, int $winner, int $runnerUp, array $out = []): HyperMatch
+    {
+        $state = HyperGame::fromArray($match->state)->toArray();
+
+        foreach (HyperMap::IDS as $id) {
+            $state['territories'][$id] = ['owner' => $winner, 'pleb' => 2, 'maxi' => 0, 'asic' => 0, 'shield' => null];
+        }
+
+        $state['territories']['mexiko'] = ['owner' => $runnerUp, 'pleb' => 1, 'maxi' => 0, 'asic' => 0, 'shield' => null];
+        $state['territories']['ny']['pleb'] = 6;
+        $state['seat'] = $winner;
+        $state['phase'] = 'attack';
+        $state['placed'] = [];
+        $state['pending_move'] = null;
+        $state['seats'][$winner] = [...$state['seats'][$winner], 'hand' => ['attack51'], 'free_plebs' => 0];
+
+        foreach ($out as $seat => $place) {
+            $state['seats'][$seat] = [...$state['seats'][$seat], 'out' => true];
+            $match->seats->firstWhere('seat', $seat)?->forceFill(['place' => $place])->save();
+        }
+
+        $match->forceFill(['state' => HyperGame::fromArray($state)->toArray(), 'current_seat' => $winner])->save();
+
+        return $match->refresh();
+    }
+
+    /** Ends a match prepared by ending(): its winner plays the 51%-Attacke on Mexico. */
+    public static function finish(HyperMatch $match, User $winner): HyperMatch
+    {
+        app(HyperMatches::class)->act($match, $winner, ['type' => 'play_card', 'card' => 'attack51', 'target' => 'mexiko']);
+
+        return $match->refresh()->load('seats');
+    }
+
+    /**
+     * A running players-mode Hyperbitcoinization tournament of `$n` players (P5), bracket stored and synced, so its
+     * first tables are started. `hyper_cup` in `$options` makes it a weekend cup (HyperCups).
+     *
+     * @param  array<string, mixed>  $options
+     */
+    public static function tournament(int $n, TournamentFormat $format, array $options = [], string $mode = 'live'): Tournament
+    {
+        $profile = GameProfile::for(Hyperbitcoinization::SLUG, $mode);
+        $tournament = Tournament::factory()->create([
+            'game' => Hyperbitcoinization::SLUG, 'mode' => $mode, 'format' => $format,
+            'options' => [...FormatOptions::fromArray($options, $profile)->toArray(), ...array_intersect_key($options, [HyperCups::OPTION => true])],
+            'capacity' => $n, 'results_mode' => TournamentResultsMode::Players, 'status' => TournamentStatus::Running,
+            'slug' => 'hyper-cup-'.fake()->unique()->numberBetween(1, 1_000_000), 'ladder_address' => null,
+        ]);
+
+        foreach (range(1, $n) as $index) {
+            $user = User::factory()->create();
+            TournamentParticipant::query()->create(['tournament_id' => $tournament->id, 'user_id' => $user->id, 'name' => "Player {$index}", 'rating' => 1500 - 10 * $index, 'members' => [$user->id]]);
+        }
+
+        app(TournamentBrackets::class)->generate($tournament, str_repeat('ab', 32));
+        app(TournamentRunner::class)->sync($tournament);
+
+        return $tournament->refresh();
+    }
+
+    /**
+     * Ends a match: the seats in `$order` (seat indexes, best first) take places 1, 2, …; the first is a player.
+     *
+     * @param  list<int>  $order
+     */
+    public static function finishTable(HyperMatch $match, array $order): HyperMatch
+    {
+        $winner = $match->load('seats.user')->seats->firstWhere('seat', $order[0])?->user ?? throw new \LogicException('The winner is a player.');
+        $out = [];
+
+        foreach (array_slice($order, 2) as $index => $seat) {
+            $out[$seat] = $index + 3;
+        }
+
+        return self::finish(self::ending($match, winner: $order[0], runnerUp: $order[1], out: $out), $winner);
     }
 
     /**

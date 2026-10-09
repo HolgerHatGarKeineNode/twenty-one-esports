@@ -25,6 +25,13 @@
                         <li class="rounded-tag bg-ground/70 px-2 py-1 shadow-ring">{{ __('Topple central banks') }}</li>
                         <li class="rounded-tag bg-ground/70 px-2 py-1 shadow-ring">{{ __(':seconds s per turn', ['seconds' => (int) config('esports.hyper.turn_seconds', 90)]) }}</li>
                     </ul>
+                    {{-- The season ladder and the weekend cup (P5). --}}
+                    <nav class="flex flex-wrap gap-2" aria-label="{{ __('Season and cups') }}">
+                        <a href="{{ route('hyper.ladder') }}" class="inline-flex min-h-11 items-center gap-2 rounded-md bg-ground/80 px-3 text-[13px] font-bold text-ink shadow-ring hover:text-ink" data-test="hyper-index-ladder"><x-icon name="trophy" :size="16" class="text-btc" />{{ __('Season ladder') }}</a>
+                        @if ($cup !== null)
+                            <a href="{{ route('tournaments.show', $cup) }}" class="inline-flex min-h-11 items-center gap-2 rounded-md bg-ground/80 px-3 text-[13px] font-bold text-ink shadow-ring hover:text-ink" data-test="hyper-index-cup"><x-icon name="trophy" :size="16" class="text-btc" />{{ $cup->name }}</a>
+                        @endif
+                    </nav>
                 </div>
 
                 <livewire:hyper-lobby :focus="$focus" />

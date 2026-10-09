@@ -6,6 +6,7 @@ use App\Enums\BoardEndReason;
 use App\Enums\BoardGameStatus;
 use App\Enums\ChessEndReason;
 use App\Enums\ChessGameStatus;
+use App\Enums\HyperMatchStatus;
 use App\Enums\SeriesResolution;
 use App\Enums\SeriesStatus;
 use App\Enums\TournamentFormat;
@@ -15,6 +16,8 @@ use App\Games\BoardGame as BoardGameDefinition;
 use App\Games\GameRegistry;
 use App\Models\BoardGame;
 use App\Models\ChessGame;
+use App\Models\HyperMatch;
+use App\Models\HyperSeat;
 use App\Models\SeriesMatch;
 use App\Models\Tournament;
 use App\Models\TournamentMatch;
@@ -24,6 +27,7 @@ use App\Models\TournamentRound;
 use App\Models\TournamentStage;
 use App\Models\User;
 use App\Support\Chess\Broadcasts;
+use App\Support\Hyper\HyperCups;
 use App\Support\Rating\RatingService;
 use App\Support\SeasonChain\SeasonChains;
 use App\Support\Series\SeriesService;
@@ -522,6 +526,70 @@ final class TournamentRunner
         ]);
 
         $this->sync($match->tournament);
+    }
+
+    /**
+     * A tournament's Hyperbitcoinization match ended (plan "Hyperbitcoinization", P5; HyperMatches, after its
+     * commit): the places of its seats are the match's result, per slot, closed up among the entries (a cup's bots
+     * hold places too, but no slot). A table of two is a 1v1 with a winner; a larger table a heat whose best move on
+     * (Advancement). Stored in either results mode, since the league's server played it; a match already decided
+     * (a director's result, a correction) or one the league voided since is left alone.
+     */
+    public function hyperMatchFinished(int $hyperMatchId): void
+    {
+        $played = HyperMatch::query()->with('seats.user', 'tournamentMatch.tournament', 'tournamentMatch.slots.participant')->find($hyperMatchId);
+        $match = $played?->tournamentMatch;
+
+        if ($played === null || $match === null || $match->result !== null || $played->status !== HyperMatchStatus::Finished || $match->isReplaced($played->id)) {
+            return;
+        }
+
+        $places = [];
+
+        foreach ($match->slots as $slot) {
+            $members = $slot->participant?->memberIds() ?? [];
+            $seat = $played->seats->first(fn (HyperSeat $seat): bool => $seat->user_id !== null && in_array((int) $seat->user_id, $members, true));
+            $places[$slot->slot] = $seat->place ?? PHP_INT_MAX;
+        }
+
+        ksort($places);
+        $ranks = [];
+
+        foreach ($places as $slot => $place) {
+            // Competition ranking among the entries: a shared place stays shared.
+            $ranks[$slot] = 1 + count(array_filter($places, fn (int $other): bool => $other < $place));
+        }
+
+        $winners = array_keys(array_filter($ranks, fn (int $rank): bool => $rank === 1));
+        $winner = count($winners) === 1 ? $winners[0] : null;
+        $names = array_map(fn (int $slot): string => (string) ($match->slots->firstWhere('slot', $slot)->participant->name ?? ''), $winners);
+        $forfeit = $played->seats->contains(fn (HyperSeat $seat): bool => $seat->takeover === HyperSeat::TAKEOVER_FORFEIT && $seat->user_id !== null);
+        $result = [
+            'winner' => $winner,
+            'games_won' => [],
+            'points' => [],
+            'forfeit' => $forfeit,
+            // Worded at render time in the viewer's language (LobbyResults::describe()); `label` stays English for the logs.
+            'lobby_label' => count($winners) > 1 ? 'shared' : 'single',
+            'winner_names' => $names,
+            'label' => (count($winners) > 1 ? 'Shared place 1: ' : 'Place 1: ').implode(', ', $names),
+            'by' => 'players',
+            'hyper' => $played->ulid,
+        ];
+
+        if (count($ranks) === 2 && $winner !== null) {
+            $result['games_won'] = $winner === 0 ? [1.0, 0.0] : [0.0, 1.0];
+        } else {
+            $result['ranks'] = array_values($ranks);
+        }
+
+        $this->store($match, $result);
+        $this->sync($match->tournament);
+
+        // The cup's winner badge (HyperCups::wins()) reads a new champion at once.
+        if ($match->tournament->refresh()->status === TournamentStatus::Finished && HyperCups::isCup($match->tournament)) {
+            HyperCups::forgetWins();
+        }
     }
 
     /**

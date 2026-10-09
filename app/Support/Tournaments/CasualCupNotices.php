@@ -7,6 +7,7 @@ use App\Models\BoardGame;
 use App\Models\BoardInvite;
 use App\Models\ChessGame;
 use App\Models\ChessInvite;
+use App\Models\HyperMatch;
 use App\Models\SeriesMatch;
 use App\Models\Tournament;
 use App\Models\TournamentMatch;
@@ -267,6 +268,35 @@ final class CasualCupNotices
                 // The "opponent found" sound: a game whose first-move window runs (user, 2026-10-03).
                 'matchFound',
             ), $game instanceof ChessGame ? $game : null);
+        }
+    }
+
+    /**
+     * A tournament's Hyperbitcoinization match started (plan "Hyperbitcoinization", P5): every player seated in it,
+     * wherever they are, with the way to the table (it opens in a new tab from the tournament page).
+     */
+    public function hyperMatchStarted(Tournament $tournament, HyperMatch $match): void
+    {
+        $match->loadMissing('seats.user');
+        $count = $match->seats->count();
+
+        foreach ($match->seats as $seat) {
+            $player = $seat->bot ? null : $seat->user;
+
+            if ($player === null) {
+                continue;
+            }
+
+            $locale = $this->locale($player);
+
+            $this->notifier->send($player, NotificationKind::CupGameNow, new Notice(
+                __(':tournament: your game is on', ['tournament' => $tournament->name], $locale),
+                __('Your Hyperbitcoinization table of :count is live. Take your turn in time.', ['count' => $count], $locale),
+                route('hyper.match', $match),
+                null,
+                __('Play now', [], $locale),
+                'matchFound',
+            ));
         }
     }
 

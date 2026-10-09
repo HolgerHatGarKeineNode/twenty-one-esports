@@ -4,18 +4,23 @@ namespace App\Http\Controllers;
 
 use App\Enums\HyperMatchStatus;
 use App\Models\HyperMatch;
+use App\Models\HyperRating;
 use App\Models\HyperTable;
 use App\Models\User;
+use App\Support\Hyper\HyperCups;
 use App\Support\Hyper\HyperEmotes;
 use App\Support\Hyper\HyperGame;
 use App\Support\Hyper\HyperLobby;
 use App\Support\Hyper\HyperMatches;
+use App\Support\Hyper\HyperPoll;
 use App\Support\Hyper\HyperReplay;
 use App\Support\Hyper\HyperRuleViolation;
+use App\Support\Hyper\HyperSeason;
 use App\Support\Hyper\HyperStats;
 use App\Support\Hyper\HyperTableChat;
 use App\Support\Hyper\HyperTeamChat;
 use App\Support\Hyper\HyperTexts;
+use App\Support\Rating\RatingSettings;
 use Closure;
 use Illuminate\Contracts\View\View;
 use Illuminate\Database\Eloquent\Builder;
@@ -68,6 +73,33 @@ class HyperMatchController extends Controller
             'running' => $running,
             'factions' => array_keys(HyperGame::FACTIONS),
             'limits' => HyperGame::LIMITS,
+            'cup' => HyperCups::current(),
+        ]);
+    }
+
+    /**
+     * The season ladder in the league's shell (P5, HyperSeason): `?board=ffa` (default) the free-for-all points,
+     * `duel` the 1v1 Elo, `team` the team Elo, of the live season; before Block 0 and between seasons the page says
+     * when rated play starts. The viewer's own season stands above the table, the weekend cup's winners wear a badge.
+     */
+    public function ladder(Request $request, HyperSeason $season): View
+    {
+        $board = in_array($request->query('board'), HyperSeason::KINDS, true) ? (string) $request->query('board') : HyperSeason::FFA;
+        $slug = HyperSeason::seasonFor();
+        $viewer = $this->viewer($request);
+
+        return view('pages.hyper.ladder', [
+            'board' => $board,
+            'season' => $slug,
+            'rows' => $slug === null ? [] : ($board === HyperSeason::FFA
+                ? $season->ffaStandings($slug)
+                : $season->eloStandings($slug, $board)->values()->map(fn (HyperRating $rating, int $index): array => [
+                    'rank' => $index + 1, 'user' => $rating->user, 'rating' => $rating->rating, 'results' => $rating->results, 'wins' => $rating->wins, 'losses' => $rating->losses,
+                ])->all()),
+            'mine' => $slug === null || $viewer === null ? null : $season->summaryOf($viewer, $slug),
+            'cupWins' => HyperCups::wins(),
+            'cup' => HyperCups::current(),
+            'start' => (int) RatingSettings::inForce()['rating']['start'],
         ]);
     }
 
@@ -102,6 +134,8 @@ class HyperMatchController extends Controller
                 'chat' => HyperTableChat::config($match, $viewer),
                 // The team chat (P4): only its url; the members come from team() for a player of the team.
                 'teamChat' => $this->teamChatConfig($match, $viewer),
+                // The spectators' "Who wins?" (P5): a spectator of a rated or tournament match only, never a player.
+                'poll' => HyperPoll::config($match, $viewer),
             ],
         ]);
     }

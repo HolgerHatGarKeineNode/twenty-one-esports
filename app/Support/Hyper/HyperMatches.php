@@ -17,6 +17,7 @@ use App\Support\GameChat\GameChannels;
 use App\Support\Nostr\PlayerProfile;
 use App\Support\Notifications\HyperNotifications;
 use App\Support\StreamChat\StreamChat;
+use App\Support\Tournaments\TournamentRunner;
 use Closure;
 use Illuminate\Support\Facades\DB;
 use InvalidArgumentException;
@@ -40,6 +41,14 @@ use InvalidArgumentException;
  * row a bot takes over a casual seat; a player who leaves is replaced by a bot as well (casual; in a rated
  * match it is marked as a forfeit). The end writes every seat's place and loot.
  *
+ * A rated match (P5, HyperSeason) is one whose every seat is a player at the start, begun in a live chain
+ * season; a tournament match is rated on the same terms, a cup match never. In it no bot plays for a player:
+ * an overdue correspondence turn ends as a live one does, and `takeover_timeouts` timed-out turns in a row are a
+ * forfeit like leaving (a bot plays the seat on for the others, the player takes the last place). The end
+ * writes the season entry (HyperSeason::record()) in the same transaction, and after the commit reports a
+ * tournament match's places (TournamentRunner::hyperMatchFinished()) and, behind `esports.hyper.publish`, has
+ * the league sign the result (HyperPublisher).
+ *
  * A correspondence match (P3) has `esports.hyper.correspondence_hours` per turn instead; a turn that runs
  * out there is played by a bot for the seat (the whole turn when the player had not begun it, else it ends
  * as live), and the seat whose turn starts is notified (HyperNotifications; never a bot seat, never a
@@ -47,7 +56,7 @@ use InvalidArgumentException;
  *
  * A team match (P4) gives every seat a `team` (0 or 1, seated alternately by the lobby) and keeps each
  * team's clan (`team_clans`); the rules core plays the teams, and the end gives every seat of the winning
- * team place 1. Not yet here: rated play (P5).
+ * team place 1.
  */
 final class HyperMatches
 {
@@ -64,14 +73,16 @@ final class HyperMatches
      * user). A faction left out is drawn from the factions nobody chose; every faction once per match.
      * `mode`: HyperMatch::LIVE (a turn of `turn_seconds`) or ::CORRESPONDENCE (`correspondence_hours`).
      * `teamClans`: a team match, the clan of team 0 and team 1 (null for a side of bots); every seat then
-     * names its `team`.
+     * names its `team`. `rated` (P5): null or true rates the match when every seat is a player and a chain
+     * season is live (HyperSeason::seasonFor()), false never (a cup). `tournamentMatch`: the tournament match
+     * it plays, whose places it reports at the end.
      *
      * @param  list<array{user?: User|null, bot?: bool, faction?: string|null, team?: int|null}>  $seats
      * @param  list<int|null>|null  $teamClans
      *
      * @throws InvalidArgumentException for 2 > seats > 6, a seat without player and bot, a player twice, an unknown or doubled faction, an unknown mode, teams on some seats only
      */
-    public function create(array $seats, int $limit = 0, ?int $seed = null, ?User $creator = null, string $mode = HyperMatch::LIVE, ?array $teamClans = null): HyperMatch
+    public function create(array $seats, int $limit = 0, ?int $seed = null, ?User $creator = null, string $mode = HyperMatch::LIVE, ?array $teamClans = null, ?bool $rated = null, ?int $tournamentMatch = null): HyperMatch
     {
         if (($teamClans !== null) !== array_any($seats, fn (array $seat): bool => isset($seat['team']))) {
             throw new InvalidArgumentException('A team match names the teams\' clans and every seat\'s team.');
@@ -109,15 +120,19 @@ final class HyperMatches
         $seed ??= random_int(0, 0xFFFFFFFF);
         $step = HyperGame::start($specs, $limit, $seed);
         $now = $this->nowMs();
+        // Only a match without bots counts in the season (user, 2026-10-08), and only inside one.
+        $season = $rated !== false && ! array_any($specs, fn (array $spec): bool => $spec['bot']) ? HyperSeason::seasonFor() : null;
 
-        $match = DB::transaction(function () use ($seats, $specs, $step, $limit, $seed, $creator, $now, $mode, $teamClans): HyperMatch {
+        $match = DB::transaction(function () use ($seats, $specs, $step, $limit, $seed, $creator, $now, $mode, $teamClans, $season, $tournamentMatch): HyperMatch {
             $match = HyperMatch::query()->create([
                 'mode' => $mode,
                 'status' => HyperMatchStatus::Active,
                 'seed' => $seed,
                 'round_limit' => $limit,
                 'team_clans' => $teamClans,
-                'rated' => false,
+                'rated' => $season !== null,
+                'season' => $season,
+                'tournament_match_id' => $tournamentMatch,
                 'state' => $step->game->toArray(),
                 'ply' => 0,
                 'current_seat' => $step->game->currentSeat(),
@@ -152,6 +167,12 @@ final class HyperMatches
 
             if ($specs[$step->game->currentSeat()]['bot']) {
                 PlayHyperBots::dispatch($match->id, 0);
+            }
+
+            // The spectators' "Who wins?" of a rated or tournament match (P5), signed by the league after the commit.
+            if ($match->rated || $match->tournament_match_id !== null) {
+                $id = $match->id;
+                DB::afterCommit(fn () => app(HyperPublisher::class)->poll($id));
             }
 
             return $match;
@@ -471,9 +492,12 @@ final class HyperMatches
         $after = $overdue->game;
         $seat->timeouts++;
 
-        // A bot takes over a casual seat that let its turns run out too often in a row.
-        if (! $match->rated && $seat->timeouts >= (int) config('esports.hyper.takeover_timeouts', 3)) {
-            $seat->forceFill(['bot' => true, 'takeover' => HyperSeat::TAKEOVER_TIMEOUTS]);
+        // A bot takes over a seat that let its turns run out too often in a row: in a casual match it plays for the
+        // player, in a rated one the player has forfeited (P5) and the bot only plays on for the others.
+        if ($seat->timeouts >= (int) config('esports.hyper.takeover_timeouts', 3)) {
+            $seat->forceFill($match->rated
+                ? ['bot' => true, 'takeover' => HyperSeat::TAKEOVER_FORFEIT, 'left_at' => now()]
+                : ['bot' => true, 'takeover' => HyperSeat::TAKEOVER_TIMEOUTS]);
             $after = $after->withBot($seat->seat);
         }
 
@@ -497,7 +521,8 @@ final class HyperMatches
         $last = $match->actions()->reorder('ply', 'desc')->first(['seat', 'source']);
         $touched = $last !== null && $last->source === HyperAction::PLAYER && (int) $last->seat === $seat;
 
-        if ($match->isCorrespondence() && ! $touched && $game->phase() === 'buy' && $state['placed'] === [] && $state['pending_move'] === null) {
+        // Never in a rated match (P5): a bot's turn would count as the player's play.
+        if ($match->isCorrespondence() && ! $match->rated && ! $touched && $game->phase() === 'buy' && $state['placed'] === [] && $state['pending_move'] === null) {
             try {
                 $turn = HyperBot::playTurn($game);
 
@@ -606,6 +631,11 @@ final class HyperMatches
             }
         }
 
+        // A rated match (P5): whoever forfeited takes the last place, whatever the bot did with the seat.
+        if ($match->rated) {
+            HyperSeason::placeForfeits($match);
+        }
+
         foreach ($match->seats as $seat) {
             $seat->loot = $loot[$seat->seat] ?? 0.0;
             $seat->save();
@@ -619,6 +649,18 @@ final class HyperMatches
             'deadline_ms' => null,
             'ended_at' => now(),
         ]);
+
+        app(HyperSeason::class)->record($match);
+        $id = $match->id;
+
+        // After the commit, never part of it: the bracket moves on, and the league signs the result.
+        if ($match->tournament_match_id !== null) {
+            DB::afterCommit(fn () => app(TournamentRunner::class)->hyperMatchFinished($id));
+        }
+
+        if ($match->rated || $match->tournament_match_id !== null) {
+            DB::afterCommit(fn () => app(HyperPublisher::class)->result($id));
+        }
     }
 
     /**

@@ -235,7 +235,10 @@ final class TournamentGameEnd
     {
         $stage = $match->round->stage;
 
-        return in_array($stage->format, [TournamentFormat::SingleElimination, TournamentFormat::DoubleElimination], true)
+        // Free-for-all heats whose best move on (Hyperbitcoinization, P5) knock out too; a lobby's one round does not.
+        $heats = $stage->format === TournamentFormat::FreeForAll && ! Lobbies::isLobby($match->tournament);
+
+        return (in_array($stage->format, [TournamentFormat::SingleElimination, TournamentFormat::DoubleElimination], true) || $heats)
             && $stage->number === (int) TournamentStage::query()->where('tournament_id', $match->tournament_id)->max('number');
     }
 

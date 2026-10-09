@@ -102,7 +102,8 @@ test('the table chat names league accounts by their league name and nobody else'
 
     $this->getJson(route('hyper.people', ['keys' => $anna->pubkey.','.$stranger.',nonsense']))
         ->assertOk()
-        ->assertExactJson([$anna->pubkey => ['name' => $anna->displayName(), 'avatar' => $anna->avatarUrl() ?? PlayerProfile::generatedAvatarUrl($anna->pubkey)]]);
+        // `counts` (P5): whether the account's vote in the spectators' poll counts; a fresh account's does not.
+        ->assertExactJson([$anna->pubkey => ['name' => $anna->displayName(), 'avatar' => $anna->avatarUrl() ?? PlayerProfile::generatedAvatarUrl($anna->pubkey), 'counts' => false]]);
 });
 
 test('every text of the game page is a key the scripts use and has a German translation', function () {

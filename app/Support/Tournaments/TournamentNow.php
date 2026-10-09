@@ -4,10 +4,12 @@ namespace App\Support\Tournaments;
 
 use App\Enums\BoardGameStatus;
 use App\Enums\ChessGameStatus;
+use App\Enums\HyperMatchStatus;
 use App\Enums\TournamentFormat;
 use App\Enums\TournamentStatus;
 use App\Models\BoardGame;
 use App\Models\ChessGame;
+use App\Models\HyperMatch;
 use App\Models\SeriesMatch;
 use App\Models\Tournament;
 use App\Models\TournamentMatch;
@@ -60,13 +62,13 @@ final class TournamentNow
 
     /**
      * @param  array<string, mixed>|null  $cup  the show page's cupMatch()
-     * @return array{state: string, title: string, context: string|null, line: string|null, action: array{label: string, href?: string, wire?: string, icon: string}|null, until: CarbonInterface|null, round: array{number: int, total: int, playing: int}|null, others: string|null, paused: bool, boards: list<array{label: string, url: string}>, lobby: array{name: string|null, password: string|null, chat: bool}|null, live: int, me: User|null, opponent: User|null, game: string}|null
+     * @return array{state: string, title: string, context: string|null, line: string|null, action: array{label: string, href?: string, wire?: string, icon: string, target?: string}|null, until: CarbonInterface|null, round: array{number: int, total: int, playing: int}|null, others: string|null, paused: bool, boards: list<array{label: string, url: string, target?: string}>, lobby: array{name: string|null, password: string|null, chat: bool}|null, live: int, me: User|null, opponent: User|null, game: string}|null
      */
     public static function of(Tournament $tournament, ?User $viewer, ?array $cup = null, ?TournamentMatch $lobby = null): ?array
     {
         $now = self::resolve($tournament, $viewer, $cup, $lobby);
 
-        /** @var array{state: string, title: string, context: string|null, line: string|null, action: array{label: string, href?: string, wire?: string, icon: string}|null, until: CarbonInterface|null, round: array{number: int, total: int, playing: int}|null, others: string|null, paused: bool, boards: list<array{label: string, url: string}>, lobby: array{name: string|null, password: string|null, chat: bool}|null, live: int, me: User|null, opponent: User|null, game: string}|null */
+        /** @var array{state: string, title: string, context: string|null, line: string|null, action: array{label: string, href?: string, wire?: string, icon: string, target?: string}|null, until: CarbonInterface|null, round: array{number: int, total: int, playing: int}|null, others: string|null, paused: bool, boards: list<array{label: string, url: string, target?: string}>, lobby: array{name: string|null, password: string|null, chat: bool}|null, live: int, me: User|null, opponent: User|null, game: string}|null */
         return $now === null ? null : [...self::DEFAULTS, 'paused' => $tournament->status === TournamentStatus::Running && $tournament->isPaused(), 'game' => $tournament->game, ...$now];
     }
 
@@ -98,7 +100,7 @@ final class TournamentNow
         // The match with a live game first (a round robin keeps every round open at once), else the earliest round.
         $match = $cup['match'] ?? TournamentMatch::query()->where('tournament_id', $tournament->id)->where('status', 'ready')->whereNull('result')->whereNull('lobby')
             ->where('bracket', '!=', 'bye')->whereHas('slots', fn ($query) => $query->where('tournament_participant_id', $participant->id))
-            ->with(['round', 'slots.participant', 'chessGame', 'boardGame', 'seriesMatch'])->get()
+            ->with(['round', 'slots.participant', 'chessGame', 'boardGame', 'seriesMatch', 'hyperMatch'])->get()
             ->sortBy(fn (TournamentMatch $open): array => [self::liveGame($tournament, $open) === null ? 1 : 0, $open->round->number, $open->id])->first();
 
         if ($match instanceof TournamentMatch) {
@@ -109,11 +111,13 @@ final class TournamentNow
     }
 
     /** The match's live game here, if any. */
-    private static function liveGame(Tournament $tournament, TournamentMatch $match): ChessGame|BoardGame|null
+    private static function liveGame(Tournament $tournament, TournamentMatch $match): ChessGame|BoardGame|HyperMatch|null
     {
         $profile = $tournament->profile();
 
         return match (true) {
+            // Hyperbitcoinization (P5): the table the league started for the match.
+            $profile->isHyper() => $match->hyperMatch?->status === HyperMatchStatus::Active ? $match->hyperMatch : null,
             $profile->isBoard() => $match->boardGame?->status === BoardGameStatus::Active ? $match->boardGame : null,
             $profile->isChess() => $match->chessGame?->status === ChessGameStatus::Active ? $match->chessGame : null,
             default => null,
@@ -153,6 +157,13 @@ final class TournamentNow
         $profile = $tournament->profile();
         $face = ['opponent' => $opponent?->user_id === null ? null : User::query()->find($opponent->user_id)];
         $game = self::liveGame($tournament, $match);
+
+        // A Hyperbitcoinization table (P5) opens in a new tab, as every match of it does (user, 2026-10-08).
+        if ($game instanceof HyperMatch) {
+            return [...$face, 'state' => 'play', 'title' => (string) __('Play now'), 'context' => (string) __('Round :number · table of :count', ['number' => $match->round->number, 'count' => $match->slots->count()]),
+                'line' => (string) __('Your table is live and your turn time runs.'),
+                'action' => ['label' => (string) __('Go to your table'), 'href' => route('hyper.match', $game), 'icon' => 'pawn', 'target' => '_blank']];
+        }
 
         if ($game !== null) {
             $url = $game instanceof BoardGame ? route('board.show', $game) : route('games.show', ['game' => $game]);
@@ -310,6 +321,14 @@ final class TournamentNow
             foreach ($games->take(self::BOARDS - count($boards)) as $game) {
                 $boards[] = ['label' => (string) __(':white against :black', ['white' => $game->white->displayName(), 'black' => $game->black->displayName()]), 'url' => route($route, [$param => $game])];
             }
+        }
+
+        // Hyperbitcoinization tables (P5): each opens in a new tab.
+        $tables = HyperMatch::query()->whereIn('tournament_match_id', $matches)->where('status', HyperMatchStatus::Active)->withCount('seats')->orderBy('id')->get();
+        $live += $tables->count();
+
+        foreach ($tables->take(self::BOARDS - count($boards)) as $table) {
+            $boards[] = ['label' => (string) __('Table of :count', ['count' => $table->seats_count]), 'url' => route('hyper.match', $table), 'target' => '_blank'];
         }
 
         $live += SeriesMatch::query()->whereIn('tournament_match_id', $matches)->get()->filter(fn (SeriesMatch $series): bool => $series->status->isRunning())->count();

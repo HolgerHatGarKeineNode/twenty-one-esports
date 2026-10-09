@@ -59,7 +59,10 @@ server key, and a sponsor's pledge can be marked paid outside the wallet; it rep
 direction, with the rumor tag `desk`; **revision 9.21** (2026-10-05): the league's public mute list, NIP-51
 kind `10000` signed by the league key, without a new kind; **revision 9.22** (2026-10-05): chess rapid 10+5 with a
 ladder of its own, every ladder rated only once published, and clan team matches in rapid only, with the board
-order by rapid Elo, a lineup lock, board forfeits and friendly team matches, without a new kind or tag). Not
+order by rapid Elo, a lineup lock, board forfeits and friendly team matches, without a new kind or tag; **revision
+9.24** (2026-10-09, draft): Hyperbitcoinization, the league's own strategy game of 2 to 6 seats, with its table chat,
+reactions, team chat and spectator poll on existing kinds, a season of its own (free-for-all points, 1v1 and team Elo)
+outside the ladders, and its result as a `2154` of its own shape, without a new kind). Not
 submitted to
 `nostr-protocol/nips`. Kind
 numbers are checked against the official NIP index and other registries (see
@@ -167,6 +170,38 @@ League, EA Sports FC or Age of Empires II rule, ladder or event changes.
 
 The rules marked "rev. 9.23" add one game channel, `blockli` (Blockli, a board game by DerCaddy), on the terms of
 revision 9.3 and like the other board games only while the league runs it. Nothing else changes.
+
+The rules marked "rev. 9.24" are a draft: they add Hyperbitcoinization, which no league runs yet (its switch is off). It
+has no ladder event and no block, so no existing ladder, attestation, block, consensus rule or season parameter
+changes; a validator of the other games' `2154` skips a `2154` whose `game` is `hyperbitcoinization`. They apply to
+every Hyperbitcoinization match that starts after the league adopts revision 9.24, and to every tournament of it whose
+first `31923` version the league signs after that.
+
+### Changelog of revision 9.24 (2026-10-09, draft)
+
+Hyperbitcoinization, the league's own strategy game (Risk with currency spaces, 2 to 6 seats, teams by clan), in the
+season and in tournaments (plan "Hyperbitcoinization", user 2026-10-08: „Season-Wertung: FFA nach Platzierung,
+Clan/Meetup und 1v1 mit Elo; nur Partien ohne Bots"). No new kind and no new tag outside the new `2154` shape below;
+checked against the app's tests, not on a public relay, and without printed signed examples (the two ids below are
+computed test vectors). Everything the league signs for it is off by default (its own switch on top of the game's).
+
+- **The game** ([Hyperbitcoinization](#hyperbitcoinization-rev-924-draft)): `game` `hyperbitcoinization`, modes `live`
+  (90 seconds a turn) and `correspondence` (24 hours a turn); moves stay on the league server, as chess moves do.
+- **Table chat**: a NIP-28 channel per match whose kind `40` has fixed fields (the creator, `created_at`
+  `1790553600`, no tags, a content naming the match's public id), so its id is computed, never looked up; players and
+  spectators write in it. Reactions are NIP-25 kind `7` with the channel as root `e`.
+- **Team chat**: NIP-17 between the players of one team of a clan match, the rumor tagged
+  `["match", "hyper:<match id>"]`, as a match room's.
+- **Spectator poll**: "Who wins?", a NIP-88 kind `1068` in the table chat, fixed by the match alone (its id is computed
+  like the channel's), for a rated or tournament match; spectators vote, players never count, and it closes when the
+  match ends.
+- **Season, outside the ladders**: a match is rated when every seat is a player at its start and a chain season is
+  live. A free-for-all scores points by place, a 1v1 and a clan match move an Elo of their own (`duel`, `team`) with the
+  season's rating values. Leaving or timing out is a forfeit: last place, 0 points, a loss. There is no `32152` for
+  Hyperbitcoinization, and its results mine nothing.
+- **The result**: a `2154` without a ladder and a block, with `format`, `place`, `forfeit`, `points` or `elo` rows.
+- **Tournaments and cups**: free-for-all tables of 3 to 6 whose best move on, or a 1v1 knockout, each table one
+  match on the league server; a weekly weekend cup is unrated and bots fill its short tables.
 
 ### Changelog of revision 9.22 (2026-10-05)
 
@@ -1063,7 +1098,7 @@ by this NIP.
 | `2151` | regular | Challenge Answer | the challenged side (`accepted`, `declined`) or the challenger side (`withdrawn`): an acting captain, or the player in a solo game |
 | `2152` | regular | Result Report | acting captain of either lineup |
 | `2153` | regular | Result Response | acting captain of the lineup that did **not** author the report (series only: a chess game has none, see [Game Record](#game-record-64-reused-from-nip-64)) |
-| `2154` | regular | League Attestation | league key |
+| `2154` | regular | League Attestation; rev. 9.24 (draft): also a Hyperbitcoinization result, of its own shape | league key |
 | `2155` | regular | Tournament Draw (optional) | league key |
 | `64` | regular | Game Record, **reused from NIP-64** (chess) | league key (the record, rev. 9.4; before, a player); a player of the game (their own post of it, rev. 9.4) |
 | `12150` | replaceable | Clan Membership | the player |
@@ -1126,6 +1161,9 @@ no kind of their own; round 5 adds `2156` to `2158`):
 | `42` | 28 | rev. 9.3: a message in a game channel | anyone |
 | `43`, `44` | 28 | rev. 9.3: the creator's moderation of the game channels (hide a message, mute a pubkey) | league key |
 | `1068`, `1018` | 88 | rev. 9.3: a poll in a game channel and a vote on it; shown and counted for members and players with a result in the league only | anyone |
+| `40`, `42`, `7` | 28, 25 | rev. 9.24 (draft): a Hyperbitcoinization match's table chat (its kind `40` computed, never signed), its messages and reactions | anyone (the channel's creator is the league key) |
+| `1068`, `1018` | 88 | rev. 9.24 (draft): a Hyperbitcoinization match's spectator poll "Who wins?" and a spectator's vote | league key (the poll); a spectator (the vote) |
+| `14` in `13` in `1059` | 17, 59 | rev. 9.24 (draft): a Hyperbitcoinization team chat, `match` `hyper:<match id>` | a player of the team |
 
 ## Identifiers
 
@@ -1451,6 +1489,83 @@ tournament). A 1v1 **team win** (clan hashrate step 2) needs a lineup side that 
 
 A `rocket-league/1v1` ladder whose first version was signed with `rates` `lineup` keeps it for its
 season (frozen parameter). On such a ladder a player side is never rated: its matches are casual.
+
+### Hyperbitcoinization (rev. 9.24, draft)
+
+The league's own strategy game: Risk with currency spaces instead of continents, 2 to 6 seats, every seat a player or a
+bot, teams of a clan against another clan (2v2, 3v3). Played on the league server only; no move, card or dice roll is
+an event. A match has a public id (a ULID, `<match id>` below) and a seed; its replay is the seed and the server's
+action log, which stay off Nostr.
+
+| field | value |
+|---|---|
+| game, mode | `hyperbitcoinization`: `live` (90 seconds a turn), `correspondence` (24 hours a turn) |
+| ladder | none: no `32152`, no `rates`, no tier, no block; the season is the league's own table (below) |
+| result | one `2154` of its own shape (below), for a rated or tournament match only |
+| chat | a table chat per match (NIP-28), a team chat per team of a clan match (NIP-17) |
+
+**Table chat.** A NIP-28 channel per match, on the terms of the game channels ([Game channels](#game-channels-rev-93)):
+the same creator, `created_at` `1790553600`, no tags, and the content
+`{"name":"TWENTY ONE esports · Hyperbitcoinization · <match id>","about":"The table chat of a Hyperbitcoinization match in the TWENTY ONE esports league: players and spectators."}`,
+keys in this order. Its id is computed from the creator's pubkey and the match id; the league signs no kind `40` or `41`
+for it, and the app reads and writes it on the chat relays. Players and spectators write in the same channel (kind `42`,
+as in a game channel). A reaction is a NIP-25 kind `7` with `["e", <channel id>, <relay>, "root"]`, the message as the
+last `e`, its author as `p`, `["k", "42"]` and one of six emoji as content; a pubkey counts once per message and emoji.
+Test vector (computed, equal to nostr-tools' `getEventHash` on 2026-10-09): creator `aaaa…aaaa` (64 × `a`), match id
+`01K74R2X7YQ0Z8D6P4M3N2B1C0`: channel id `b724a470ed82a8fd8ced9ad7e6c09588c4f3b146a8ce35a679d4e8af4c8ea131`.
+
+**Team chat.** A clan match's team writes NIP-17 as a match room does: one kind `14` rumor with `p` for every teammate
+and `["match", "hyper:<match id>"]`, sealed (`13`) and gift-wrapped (`1059`) with NIP-44 for every teammate and once for
+the author, sent to the chat relays and each recipient's DM relays (`10050`). A reader shows a rumor only when its
+author and every `p` are players of the reader's team in that match; the league tells only a player of the team who the
+team is. Opponents and spectators never get a wrap.
+
+**Spectator poll.** For a rated or tournament match only: a NIP-88 kind `1068` with the content `Who wins?`, the table
+chat's root `e` (`["e", <channel id>, "", "root"]`, an empty relay hint), one `option` per seat in seat order
+(`s<seat>`, label `Seat <seat + 1> · <faction>`, the faction one of `Bitcoiner`, `Fed`, `ECB`, `Goldbug`,
+`Shitcoiner`, `Nocoiner`) or in a clan match one per team (`t0` `Team 1`, `t1` `Team 2`), `["polltype",
+"singlechoice"]` and `endsAt` = the match's start plus 7 days (`live`) or 60 days (`correspondence`), and the match's
+start as `created_at`; no `relay` tags. Every field follows from the match, so its id is computed like the channel's
+and a vote can name it before the poll is on a relay; the league signs it with the league key at the start when the
+league key is the channel creator and its switch is on. A label never names a player (a name can change, the poll
+cannot); clients show the names beside it. A vote is a kind `1018` with the poll's `e` and one `response`. Counted as in
+a game channel's poll (one vote per pubkey, the newest; only pubkeys that **count**), with two more rules: a vote of a
+player of the match never counts, and the poll **closes when the match ends**: a vote whose `created_at` is after the
+end is not counted, whatever `endsAt` says. Test vector: the match above with four seats (Bitcoiner, Fed, ECB,
+Goldbug), live, `created_at` `1791496800`: poll id `70f61499bede51bad60a0a5560c3cb9474fd346ea6dbfbe8d8a341ce16036506`.
+
+**Season.** A match is **rated** when every seat is a player at its start and a chain season is live then; it counts in
+that season only. A match with a bot is casual, and so is every match before Block 0 and between seasons. A clan match
+is a **team** match, a match of two seats a **duel** (1v1), every other one a **free-for-all** (3 to 6 seats).
+
+- **Free-for-all: points by place.** 3 seats `6 3 1`, 4 seats `8 5 3 1`, 5 seats `10 7 5 3 1`, 6 seats
+  `12 9 7 5 3 1` (place 1 first). The season table sums them per player; ties go to more wins (place 1), then fewer
+  matches, then whoever reached the sum first.
+- **1v1 and team: Elo**, one rating per player and season for `duel` and one for `team`, with the season's `rating`
+  values (start, k, provisional k and count, scale) and the rounding of [Rating](#rating). A team's rating is the
+  average of its players' ratings; the expected score is the team's; each player moves by their own k-factor and the
+  team's score (1 won, 0 lost). There is no daily pair limit.
+- **Forfeit.** A player of a rated match who leaves it, or lets 3 turns in a row run out, forfeits: a bot plays the
+  seat on for the others, and the player takes the **last place** (several forfeits: the earliest last), scores
+  **0 points**, and in a 1v1 or team match **loses** (score 0) whatever the side did. In a rated match no bot plays a
+  turn for a player: a correspondence turn that runs out ends instead.
+
+**The result (`2154`).** At the end of a rated or tournament match the league signs one `2154` with `created_at` the
+end. Tags, in this order: `["game", "hyperbitcoinization"]`, `["mode", "live" | "correspondence"]`, `["format", "ffa" |
+"duel" | "team"]`, `["hyper", "<match id>"]`, `["season", "<slug>"]` (rated only), one `["place", "<pubkey>",
+"<place>", "<faction>", "<team>"]` per seat in seat order (a bot's pubkey is empty, `team` empty without teams; a clan
+match's winning team shares place 1), one `["forfeit", "<pubkey>"]` per forfeited player, `["points", "<pubkey>",
+"<n>"]` per player of a rated free-for-all, `["elo", "<pubkey>", "<before>", "<after>"]` per player of a rated 1v1 or
+team match, the table chat's `["e", <channel id>, "", "root"]`, a tournament match's `["a", "31923:<league
+pubkey>:<d>", ""]`, and `alt`. The content states a forfeit's public reason, else it is empty. No ladder `a`, no
+`challenger`/`challenged`, no `block`: the result mines nothing, and the consensus rules do not read it. The season
+table of a client is the sum of these rows of one `season`.
+
+**Tournaments.** A Hyperbitcoinization tournament is an ordinary `31923` and is played as free-for-all tables of 3 to 6
+whose best move on until one final table, or as a 1v1 knockout. Every table is one match the league starts on its
+server with every entry of the table seated, in the tournament's mode, rated on the season's terms; its places, closed up
+among the entries, are the table's result. A clan bracket (2v2, 3v3) is not played yet. The league's **weekend cup**
+is a tournament of this kind: free-for-all tables, unrated, and bots fill a table that is short of players.
 
 ## Events
 

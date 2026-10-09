@@ -473,6 +473,22 @@ body.spectator #treasury, body.spectator #hand, body.spectator #main-btn, body.s
 .emote-bubble { position: absolute; transform: translate(-50%, -100%); white-space: nowrap; padding: 8px 14px; filter: drop-shadow(0 8px 16px rgba(0, 0, 0, 0.55)); }
 .emote-bubble.clip { padding: 7px 12px; border-radius: 8px; background: rgba(9, 17, 38, 0.92); box-shadow: inset 0 0 0 1px var(--pc, var(--btc)); font: 700 12px var(--font-ui); color: var(--ink); }
 
+/* ---------- Spectator poll "Who wins?" (P5) ---------- */
+#poll { position: fixed; z-index: 16; top: 70px; right: 14px; width: min(340px, calc(100% - 16px)); max-height: calc(100% - 90px); overflow-y: auto; display: flex; flex-direction: column; gap: 10px; padding: 14px; }
+#poll header { display: flex; align-items: center; justify-content: space-between; }
+#poll h2 { margin: 0; font: 800 13px var(--font-display); letter-spacing: 0.05em; text-transform: uppercase; }
+#poll-options { margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 6px; }
+.poll-option { position: relative; width: 100%; min-height: 44px; display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 8px; padding: 6px 10px 10px; text-align: left; font-size: 13px; color: var(--ink); background: rgba(255, 255, 255, 0.04); border-radius: 6px; }
+.poll-option:hover:not(:disabled) { background: rgba(255, 181, 77, 0.16); }
+.poll-option.mine { box-shadow: inset 0 0 0 1px var(--btc); }
+.poll-option:disabled { cursor: default; }
+.po-label { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 700; }
+.po-count { font-size: 12px; color: var(--ink-2); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.po-bar { position: absolute; left: 10px; right: 10px; bottom: 4px; height: 3px; border-radius: 2px; background: rgba(255, 255, 255, 0.08); }
+.po-bar i { display: block; height: 100%; border-radius: 2px; background: var(--btc); }
+#poll-total { margin: 0; font-size: 12px; color: var(--ink-2); }
+#poll-note { margin: 0; min-height: 17px; font-size: 12px; color: var(--ink-3); }
+
 /* ---------- Loading screen ---------- */
 #boot { position: fixed; inset: 0; z-index: 60; display: grid; place-items: center; background: #030914 url(/hyper/art/key-title.jpg?v=1) center / cover no-repeat; transition: opacity 0.5s; }
 #boot::before { content: ""; position: absolute; inset: 0; background: linear-gradient(180deg, rgba(3, 9, 20, 0.92), rgba(3, 9, 20, 0.45) 55%, rgba(3, 9, 20, 0.75)); }
@@ -487,7 +503,7 @@ body.spectator #treasury, body.spectator #hand, body.spectator #main-btn, body.s
 @media (width < 820px) {
     #zoom-in, #zoom-out { display: none; }
     #turn-clock { width: 40px; height: 40px; }
-    #emotes { top: 60px; right: 8px; }
+    #emotes, #poll { top: 60px; right: 8px; }
 }
 @media (prefers-reduced-motion: reduce) { #boot .ring { animation: none; } }
 

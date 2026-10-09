@@ -26,6 +26,7 @@ import { startTeamChat } from './teamChat.js';
 import { startEmotes } from './emotes.js';
 import { replayNet, startReplay } from './replay.js';
 import { startStats } from './stats.js';
+import { startPoll } from './poll.js';
 
 const $ = (s) => document.querySelector(s);
 const config = JSON.parse($('#hyper-config').textContent);
@@ -43,7 +44,9 @@ let live = false;
 const emotes = startEmotes(config, net, game, { live: () => live });
 // The end-of-match statistics after the end screen, on the match page and at the end of the replay.
 const stats = startStats(config, http, game);
-game.onEnd((quiet) => stats.ended(quiet));
+// The spectators' "Who wins?" (P5): a spectator of a rated or tournament match only; it closes with the match.
+const poll = config.poll ? startPoll(config.poll, config.chat) : null;
+game.onEnd((quiet) => { poll?.end(); stats.ended(quiet); });
 game.onJump(() => stats.close());
 // A page opened on a finished match showed its end screen before the hook was set.
 if (game.state().over) stats.ended(true);
@@ -56,6 +59,11 @@ const chat = startChat(config.chat, {
 });
 $('#chat-btn').addEventListener('click', () => { chat.toggle(); $('#emotes').hidden = true; });
 $('#chat-close').addEventListener('click', () => chat.close());
+if (poll) {
+    $('#poll-btn').addEventListener('click', () => { poll.toggle(); $('#emotes').hidden = true; });
+    $('#poll-close').addEventListener('click', () => poll.close());
+    window.hyperPoll = poll;
+}
 window.hyperChat = chat;
 
 // A team match (P4): the team's private chat as a second tab of the drawer, for a player of the team only.

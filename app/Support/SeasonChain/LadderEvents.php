@@ -2,6 +2,8 @@
 
 namespace App\Support\SeasonChain;
 
+use App\Games\Contracts\Game;
+use App\Games\GameKind;
 use App\Games\GameRegistry;
 use App\Models\Lineup;
 use App\Models\NostrEvent;
@@ -57,8 +59,9 @@ final class LadderEvents
         $events = [];
 
         // Every game of the registry, the board games that are switched on included (plan "Mühle und Dame", P6); no
-        // score game: it has no Elo ladder (plan "AoE2 und Trackmania", P4).
-        foreach ($this->games->versus() as $game) {
+        // score game: it has no Elo ladder (plan "AoE2 und Trackmania", P4); no Hyperbitcoinization either: its season
+        // is its own table of points and Elo, with no ladder event (plan "Hyperbitcoinization", P5, NIP rev. 9.24).
+        foreach ($this->ladderGames() as $game) {
             foreach ($game->modes() as $mode) {
                 $events[] = $this->publishOne($season, $league, $trustKey, $game->slug(), $mode->slug, $content);
             }
@@ -79,7 +82,7 @@ final class LadderEvents
     {
         $events = [];
 
-        foreach ($this->games->versus() as $game) {
+        foreach ($this->ladderGames() as $game) {
             foreach ($game->modes() as $mode) {
                 $latest = NostrEvent::query()->where(['kind' => Ladders::KIND, 'pubkey' => $league->pubkey(), 'd' => $game->slug().'/'.$mode->slug.'/'.$season->slug])
                     ->orderByDesc('signed_at')->orderByDesc('id')->first();
@@ -93,6 +96,16 @@ final class LadderEvents
         }
 
         return $events;
+    }
+
+    /**
+     * The games with a ladder event: every versus game but a strategy game (Hyperbitcoinization).
+     *
+     * @return array<string, Game>
+     */
+    private function ladderGames(): array
+    {
+        return array_filter($this->games->versus(), fn (Game $game): bool => $game->kind() !== GameKind::Strategy);
     }
 
     private function publishOne(Season $season, LeagueKey $league, string $trustKey, string $game, string $mode, string $content, ?int $ends = null): NostrEvent
