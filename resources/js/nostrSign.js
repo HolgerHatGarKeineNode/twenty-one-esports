@@ -25,6 +25,21 @@ const DEFAULT_MESSAGES = {
     failed: 'That did not work. Please try again.',
 };
 
+/**
+ * A signer without a click (chats that start on their own): a browser extension hangs `window.nostr` on the page
+ * after it loaded (nos2x, Alby: an injected script), so a check at Alpine's start found none and the chat asked for
+ * "Open chat" although the extension was there (user, 2026-10-09). Waits up to `ms` for it, then puts a paired remote
+ * signer back without a dialog (restoreSigner). Never pairs anew, never opens a dialog.
+ */
+export async function awaitSigner(ms = 3000) {
+    const ready = () => typeof window.nostr?.signEvent === 'function';
+    for (let waited = 0; !ready() && waited < ms; waited += 100) {
+        await new Promise((resolve) => setTimeout(resolve, 100));
+    }
+
+    return ready() || (await restoreSigner());
+}
+
 export async function ensureSigner() {
     if (hasNostrExtension() || typeof window.nostr?.signEvent === 'function') {
         return true;

@@ -28,7 +28,7 @@ import { entryFor, loadCache, saveCache } from './chatCache.js';
 import { isExpired } from './lobbyCards.js';
 import { extraInboxRelays, lookupInboxes, relaysFor } from './dmInbox.js';
 import { canEncrypt, chatSince, gameMessages, isUntagged, unwrapMessage, wrapMessage } from './nostrChat.js';
-import { ensureSigner } from './nostrSign.js';
+import { awaitSigner, ensureSigner } from './nostrSign.js';
 
 const MUTES_KEY = 'esports.chat.mutes';
 
@@ -71,8 +71,24 @@ export function gameChat(config) {
                 this.status = 'no-relays';
             } else if (window.nostr && canEncrypt(window.nostr)) {
                 this.start();
+            } else if (window.nostr) {
+                this.status = 'no-nip44';
             } else {
-                this.status = window.nostr ? 'no-nip44' : 'needs-signer';
+                this.startWhenSignerArrives();
+            }
+        },
+
+        /** An extension's window.nostr arrives after the page; a paired remote signer comes back without a dialog. */
+        async startWhenSignerArrives() {
+            this.status = 'starting';
+            const found = await awaitSigner();
+            if (this.closed || this.status !== 'starting') return;
+            if (!found) {
+                this.status = 'needs-signer';
+            } else if (canEncrypt(window.nostr)) {
+                this.start();
+            } else {
+                this.status = 'no-nip44';
             }
         },
 

@@ -42,11 +42,12 @@ beforeEach(function () {
     BlockliOn::play();
 });
 
-function boardChatPage(User $user, string $to): Page
+/** `$lateMs`: the signer arrives that long after the page, as a browser extension's injected window.nostr does. */
+function boardChatPage(User $user, string $to, int $lateMs = 0): Page
 {
     $page = visit(BrowserLogin::url($user))->page();
     $page->context()->addInitScript(BrowserConsole::COLLECTOR);
-    $page->context()->addInitScript(TestSigner::browserStub($user));
+    $page->context()->addInitScript($lateMs > 0 ? 'setTimeout(() => { '.TestSigner::browserStub($user).' }, '.$lateMs.');' : TestSigner::browserStub($user));
     $page->setViewportSize(1440, 900);
     $page->goto(ComputeUrl::from($to));
 
@@ -65,7 +66,7 @@ function boardChatSend(Page $page, string $text): void
     BrowserWait::until($page, '() => document.querySelector("#chatin").value === ""', 1_500);
 }
 
-test('two Blockli players chat through a relay, tagged with the board game, and on a phone in the bottom sheet', function () {
+test('two Blockli players chat through a relay without a click, even with a late extension, tagged with the board game, and on a phone in the bottom sheet', function () {
     $port = (int) Process::run(['php', '-r', '$s = stream_socket_server("tcp://127.0.0.1:0"); echo explode(":", stream_socket_get_name($s, false))[1];'])->output();
     $relay = Process::path(base_path())->start(['php', 'tests/Support/mini-relay.php', (string) $port]);
 
@@ -79,11 +80,14 @@ test('two Blockli players chat through a relay, tagged with the board game, and 
         $game = app(BoardGameService::class)->start('blockli', $anna, $bert);
         $path = route('board.show', $game, false);
         $pageA = boardChatPage($anna, $path);
-        $pageB = boardChatPage($bert, $path);
+        // Bert's extension hangs window.nostr on the page late: the chat starts by itself, no "Open chat" (user, 2026-10-09).
+        $pageB = boardChatPage($bert, $path, 800);
 
         foreach ([$pageA, $pageB] as $page) {
             BrowserWait::until($page, '() => window.Alpine && Alpine.$data(document.querySelector("[data-test=chat]"))?.status === "live"', 10_000);
         }
+
+        expect($pageB->evaluate('() => document.querySelector("[data-test=chat-connect]")?.checkVisibility() ?? false'))->toBeFalse();
 
         boardChatSend($pageA, 'gl hf');
         BrowserWait::until($pageB, boardChatSees('them', 'gl hf'), 10_000);
