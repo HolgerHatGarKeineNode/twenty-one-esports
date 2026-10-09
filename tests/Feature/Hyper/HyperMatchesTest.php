@@ -94,7 +94,7 @@ test('a player starts a match against bots, acts through the rules core, and the
     $match->refresh();
     expect($answer->json('snapshot.seat'))->toBe(0)
         ->and($match->current_seat)->toBe(0)
-        ->and($match->actions()->where('source', HyperAction::BOT)->distinct()->pluck('seat')->sort()->values()->all())->toBe([1, 2])
+        ->and($match->actions()->reorder()->where('source', HyperAction::BOT)->distinct()->pluck('seat')->sort()->values()->all())->toBe([1, 2])
         ->and($match->actions()->where('source', HyperAction::PLAYER)->count())->toBe(2)
         ->and(HyperGame::fromArray($match->state)->round())->toBe(2);
     // A player's turn and each bot turn reach the table, on the players' and the spectators' channel.
