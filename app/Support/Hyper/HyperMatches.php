@@ -16,6 +16,7 @@ use App\Support\Chess\Broadcasts;
 use App\Support\GameChat\GameChannels;
 use App\Support\Nostr\PlayerProfile;
 use App\Support\Notifications\HyperNotifications;
+use App\Support\StreamChat\StreamChat;
 use Closure;
 use Illuminate\Support\Facades\DB;
 use InvalidArgumentException;
@@ -722,7 +723,7 @@ final class HyperMatches
             'user_id' => $user?->id,
             'name' => $user?->displayName(),
             'pubkey' => $hideKey ? null : $user?->pubkey,
-            'avatar' => $user === null ? null : ($user->avatarUrl() ?? ($hideKey ? null : PlayerProfile::generatedAvatarUrl($user->pubkey))),
+            'avatar' => $user === null ? null : ($user->avatarUrl() ?? ($hideKey ? route('avatars.generated', ['pubkey' => StreamChat::AVATAR_PLACEHOLDER, 'v' => 1], false) : PlayerProfile::generatedAvatarUrl($user->pubkey))),
             // Who is at the table right now comes from the presence channel `hyper.{ulid}.here`, not from here.
             'connected' => null,
             'place' => $seat->place,

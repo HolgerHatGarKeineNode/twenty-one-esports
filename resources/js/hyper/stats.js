@@ -380,8 +380,9 @@ export function startStats(config, net, game) {
     page.addEventListener('click', (e) => { if (!seq.ready && !e.target.closest('button')) advance(); });
     if (openBtn) openBtn.addEventListener('click', () => open());
     addEventListener('keydown', (e) => {
-        if (root.hidden) return;
-        const onButton = e.target?.closest?.('button') && e.target !== next;
+        if (root.hidden || e.target?.closest?.('input, textarea, select, [contenteditable]')) return;
+        // A focused button (Next included) turns Enter and Space into its own click: advancing here too would skip a page.
+        const onButton = !!e.target?.closest?.('button');
         if (e.key === 'Escape') { e.preventDefault(); close(); } else if (e.key === 'ArrowRight' || ((e.key === 'Enter' || e.key === ' ') && !onButton)) { e.preventDefault(); e.stopPropagation(); advance(); } else if (e.key === 'ArrowLeft') turn(index - 1);
     }, { capture: true });
     addEventListener('resize', () => { if (!root.hidden && pages[index] === 'charts') drawCharts(); });

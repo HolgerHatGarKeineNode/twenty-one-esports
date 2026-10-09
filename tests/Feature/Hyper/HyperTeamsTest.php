@@ -177,6 +177,10 @@ test('the match page and its snapshot never show a team\'s Nostr keys to the oth
         ->and($keys($bert))->toBe([null, $bert->pubkey, null, $dora->pubkey])
         ->and($keys($spectator))->toBe([null, null, null, null])
         ->and($keys(null))->toBe([null, null, null, null]);
+    // A hidden key still leaves a face: the placeholder avatar, not nothing (which the afterplay drew as a bot).
+    $avatars = array_column(app(HyperMatches::class)->snapshot($match->fresh(), $anna)['seats'], 'avatar');
+    expect($avatars[1])->not->toBeNull()->not->toContain($bert->pubkey)
+        ->and($avatars[3])->not->toBeNull()->not->toContain($dora->pubkey);
 
     $page = $this->actingAs($bert)->get(route('hyper.match', $match))->assertOk()->getContent();
 

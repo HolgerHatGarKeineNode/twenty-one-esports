@@ -407,12 +407,18 @@ async function banner(title, sub = '', hold = 1100, por = '', ring = 'var(--btc)
 const TAP_GRACE_MS = 6000;
 function tapToContinue(el) {
     el.dataset.wait = '1';
-    const grace = !playing() || (isMe(live.seat) && !G.over);
+    const grace = () => !playing() || (isMe(live.seat) && !G.over);
 
     return new Promise((done) => {
         const stop = new AbortController();
-        const go = (e) => { if (e.type === 'keydown' && !['Enter', ' ', 'ArrowRight'].includes(e.key)) return; e.preventDefault?.(); e.stopPropagation?.(); stop.abort(); el.dataset.wait = '0'; done(); };
-        if (grace) { const timer = setTimeout(() => go({ type: 'timeout' }), TAP_GRACE_MS); stop.signal.addEventListener('abort', () => clearTimeout(timer)); }
+        const go = (e) => {
+            if (e.type === 'keydown' && (!['Enter', ' ', 'ArrowRight'].includes(e.key) || e.target?.closest?.('input, textarea, select, [contenteditable]'))) return;
+            e.preventDefault?.(); e.stopPropagation?.(); stop.abort(); el.dataset.wait = '0'; done();
+        };
+        // The grace may start later: the server can hand this player the turn while the moment is still waiting.
+        let since = null;
+        const watch = setInterval(() => { if (!grace()) { since = null; return; } since ??= Date.now(); if (Date.now() - since >= TAP_GRACE_MS) go({ type: 'timeout' }); }, 250);
+        stop.signal.addEventListener('abort', () => clearInterval(watch));
         el.addEventListener('pointerdown', go, { signal: stop.signal });
         addEventListener('keydown', go, { capture: true, signal: stop.signal });
     });
