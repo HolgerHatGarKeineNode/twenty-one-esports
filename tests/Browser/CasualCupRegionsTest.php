@@ -42,10 +42,25 @@ beforeEach(function () {
     app(CasualCups::class)->tick();
 });
 
+/**
+ * The browser's clock follows the server's travelled one (Monday 5 October 2026 from beforeEach) and keeps running.
+ * Without it the page's countdowns count to the cups' real start on the real clock: the FC 26 EU cup starts Friday
+ * 9 October 18:00 Berlin, and from then on its countdown hit zero on load, "countdown-zero" hid the sign-up button
+ * (resources/views/components/tournaments/cup-hall.blade.php, x-show="! started") and the head test measured a
+ * button of height 0 (CUP_HEAD_STATE cta, "0 >= 44", from 16:00 UTC on 2026-10-09).
+ */
+function cupRegionsClock(): string
+{
+    $offset = now()->getTimestampMs() - (int) floor(microtime(true) * 1000);
+
+    return '(() => { const RealDate = Date; const offset = '.$offset.'; window.Date = class extends RealDate { constructor(...args) { args.length ? super(...args) : super(RealDate.now() + offset); } static now() { return RealDate.now() + offset; } }; })();';
+}
+
 function cupRegionsPage(string $path, int $width, int $height, string $ready): Page
 {
     $page = visit('/robots.txt')->withTimezone('America/New_York')->page();
     $page->context()->addInitScript(BrowserConsole::COLLECTOR);
+    $page->context()->addInitScript(cupRegionsClock());
     $page->setViewportSize($width, $height);
     $page->goto(ComputeUrl::from($path));
     BrowserWait::until($page, '() => window.Alpine && document.querySelector("'.$ready.'") !== null && document.fonts.status === "loaded"', 10_000);
