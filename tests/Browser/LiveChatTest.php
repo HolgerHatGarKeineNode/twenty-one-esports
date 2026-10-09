@@ -346,9 +346,12 @@ test('the auditor\'s 63 KB message renders bounded and keeps the main thread und
         $measured = $page->evaluate('() => { const li = document.querySelector("[data-test=live-chat-message]").closest("li"); return { longTasks: window.__long, frames: window.__frames, nodes: li.querySelectorAll("*").length, images: [...li.querySelectorAll("[data-test=live-chat-emoji-img]")].filter((i) => i.checkVisibility()).length, chars: [...li.querySelector("[data-test=live-chat-text]").innerText].length, allNodes: document.querySelectorAll("*").length }; }');
         fwrite(STDERR, "\n[p24 payload] ".json_encode($measured)."\n");
 
+        // Long animation frames only exist above 50 ms: on a fast machine the chat produces none, and that is within the
+        // budget (measured 2026-10-09: no frame at all, the test demanded one). The message still has to have rendered
+        // (images and nodes below), so "none" cannot mean "nothing happened".
         $chatFrames = array_values(array_filter($measured['frames'], fn (array $frame): bool => $frame['chat']));
-        expect($chatFrames)->not->toBeEmpty()
-            ->and(max(array_column($chatFrames, 'duration')))->toBeLessThan(200)
+        $slowestChatFrame = $chatFrames === [] ? 0 : max(array_column($chatFrames, 'duration'));
+        expect($slowestChatFrame)->toBeLessThan(200)
             ->and($measured['images'])->toBe(20)
             ->and($measured['nodes'])->toBeLessThan(400)
             ->and($measured['chars'])->toBeLessThanOrEqual(4 * 280 + 1)
