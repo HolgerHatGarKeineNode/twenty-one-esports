@@ -57,13 +57,20 @@ const presenceUser = document.querySelector('meta[name="presence-user"]');
  * lobby's server-rendered list of everyone looking right now (seed(), components/lobby/online-now; after it a member
  * missing from it is not looking), each `.presence.looking` push, and a member's data at their own join. The online
  * list reads the members with it applied.
+ *
+ * Each of the three carries the server time it was read at (`at`, `lookingAt`), and the newest wins, not the last one
+ * heard (P6): a player who reloads and switches at once sends a push that can arrive BEFORE their rejoin, whose data
+ * was read before the switch; heard last, it put the old state back for good (OnlineLookingTest, 1 in 4 runs).
+ * Without a time (an older server) a source counts as the newest, as before.
  */
 window.esportsPresence = alreadyBooted ? window.esportsPresence : {
     members: [],
     ready: false,
     listeners: new Set(),
+    // id => { looking, at }
     known: new Map(),
     seeded: false,
+    seedAt: -Infinity,
 
     subscribe(listener) {
         this.listeners.add(listener);
@@ -78,31 +85,40 @@ window.esportsPresence = alreadyBooted ? window.esportsPresence : {
         this.listeners.forEach((listener) => listener(this.members, this.ready));
     },
 
-    /** The member with the newest known "looking". */
+    /** The member with the newest known "looking": what was learned or seeded, unless the member's own data is newer. */
     fresh(member) {
-        if (this.known.has(member.id)) {
-            return { ...member, looking: this.known.get(member.id) };
-        }
+        const known = this.known.get(member.id) ?? (this.seeded ? { looking: null, at: this.seedAt } : null);
+        const own = { looking: member.looking ?? null, at: member.lookingAt ?? -Infinity };
 
-        return this.seeded ? { ...member, looking: null } : member;
+        return known === null || own.at > known.at ? member : { ...member, looking: known.looking };
     },
 
-    /** A lobby's list of everyone looking now ({ userId: key }): newer than any member's data from before it. */
-    seed(looking) {
-        this.known = new Map(Object.entries(looking ?? {}).map(([id, key]) => [Number(id), key]));
+    /** A lobby's list of everyone looking at server time `at` ({ userId: key }): newer than anything read before it. */
+    seed(looking, at = -Infinity) {
+        const known = new Map(Object.entries(looking ?? {}).map(([id, key]) => [Number(id), { looking: key, at }]));
+        this.known.forEach((state, id) => {
+            if (state.at > at) known.set(id, state);
+        });
+        this.known = known;
+        this.seedAt = at;
         this.seeded = true;
         if (this.ready) this.set(this.members);
     },
 
-    /** A newer state of one member: their own join, or a push. */
-    learn(id, looking) {
-        this.known.set(id, looking ?? null);
+    /** A state of one member read at server time `at` (their own join, or a push): kept unless a newer one is known. */
+    learn(id, looking, at) {
+        const known = this.known.get(id)?.at ?? (this.seeded ? this.seedAt : -Infinity);
+        if (at === undefined || at === null) {
+            this.known.set(id, { looking: looking ?? null, at: known });
+        } else if (at >= known) {
+            this.known.set(id, { looking: looking ?? null, at });
+        }
     },
 };
 
 // A lobby that rendered before this module ran left its list here.
 if (!alreadyBooted && window.esportsPresenceSeed) {
-    window.esportsPresence.seed(window.esportsPresenceSeed);
+    window.esportsPresence.seed(window.esportsPresenceSeed.looking, window.esportsPresenceSeed.at);
     delete window.esportsPresenceSeed;
 }
 
@@ -131,7 +147,7 @@ if (!alreadyBooted && window.Echo && presenceUser) {
         })
         .joining((member) => {
             cancelLeave(member.id);
-            presence.learn(member.id, member.looking);
+            presence.learn(member.id, member.looking, member.lookingAt);
             presence.set([...presence.members.filter((m) => m.id !== member.id), member]);
         })
         .leaving((member) => {
@@ -144,8 +160,8 @@ if (!alreadyBooted && window.Echo && presenceUser) {
                 }, LEAVE_GRACE_MS),
             );
         })
-        .listen('.presence.looking', ({ id, looking }) => {
-            presence.learn(id, looking);
+        .listen('.presence.looking', ({ id, looking, at }) => {
+            presence.learn(id, looking, at);
             presence.set(presence.members);
         });
 }

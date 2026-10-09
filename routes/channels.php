@@ -89,6 +89,11 @@ Broadcast::channel('pong.{match}', function (User $user, PongMatch $match) {
 Broadcast::channel('online', function (User $user) {
     // The rapid Elo, the lobby's default mode and the clans' (plan "Schach Rapid und Clan", P6); the list labels it.
     $rapid = Ratings::headline($user->id, 'chess', ChessModes::DEFAULT);
+    // "Looking to play" read fresh, stamped with a server time taken BEFORE the read (plan "Proof of Pong", P6): a
+    // switch saved after it carries a later stamp (LookingToPlayChanged::$at), so a page that hears the switch before
+    // this join keeps the switch (resources/js/echo.js). The user the request loaded may be older than the stamp.
+    $lookingAt = round(microtime(true) * 1000, 3);
+    $looking = User::query()->whereKey($user->id)->value('looking_to_play');
 
     return [
         'id' => $user->id,
@@ -98,7 +103,8 @@ Broadcast::channel('online', function (User $user) {
         'generated' => PlayerProfile::generatedAvatarUrl($user->pubkey),
         'npub' => $user->npub,
         'pubkey' => $user->pubkey,
-        'looking' => $user->looking_to_play,
+        'looking' => $looking,
+        'lookingAt' => $lookingAt,
         // Rapid Elo as of joining: casual before Block 0, rated after (P7b).
         'elo' => $rapid['rating'],
         'eloMode' => ChessModes::DEFAULT,
