@@ -3,7 +3,7 @@
         { "id": "turm", "name": "Markus Turm", "tagline": "Stamps every ball.", "skin": ["#9ca3af", "#e11d2e", "dots"], "goal": ["herr-turm-impulsiv"], "win": ["herr-turm-impulsiv"] },
         { "id": "saylor", "name": "Michael Saylor", "tagline": "Buys every ball, never sells one.", "skin": ["#f7931a", "#ff2a2a", "laser"], "goal": ["saylor-nosecondbest"], "win": ["saylor-nosecondbest"] },
         { "id": "satoshi", "name": "Satoshi", "tagline": "Plays once, then disappears.", "skin": ["#1f2430", "#f7931a", "solid"], "goal": [], "win": [] },
-        { "id": "gigi", "name": "Gigi", "tagline": "Reads the rally like a whitepaper.", "skin": ["#f28c28", "#3b2a1a", "stripes"], "goal": ["gigi-pos"], "win": ["gigi-pos"] },
+        { "id": "gigi", "name": "Gigi", "tagline": "Plays in a full green-screen suit.", "skin": ["#22c55e", "#14532d", "stripes"], "goal": ["gigi-pos"], "win": ["gigi-pos"] },
         { "id": "markus", "name": "Best Man Markus", "tagline": "Best man in the group.", "skin": ["#15171d", "#f7931a", "solid"], "goal": ["gruppe_bester-mann-markus"], "win": ["gruppe_bester-mann-markus", "gruppe_das-geilste"] },
         { "id": "niko", "name": "Niko", "tagline": "Explains the ECB between two rallies.", "skin": ["#1e3a8a", "#e5e7eb", "pinstripe"], "goal": ["niko_niko-passiert", "niko_niko-schuh-mining"], "win": ["niko_niko-gaga-sein"] },
         { "id": "dorsey", "name": "Jack Dorsey", "tagline": "Zaps the ball across the net.", "skin": ["#7c3aed", "#c4b5fd", "chevron"], "goal": [], "win": [] },
@@ -17,14 +17,14 @@
         { "id": "panzerknacker", "name": "Panzerknacker", "tagline": "Cracks every defence.", "skin": ["#dc2626", "#f5f5f5", "stripes"], "goal": ["panzerknacker_pass-mal-auf"], "win": ["panzerknacker_dezentralisierung"] },
         { "id": "nordwolle", "name": "Nordwolle", "tagline": "Zack, zack, done.", "skin": ["#a8a29e", "#f97316", "knit"], "goal": ["nordwolle_zack-zack-fertig"], "win": ["nordwolle_hier-oben-alter"] },
         { "id": "sunny", "name": "Sunny", "tagline": "Promises a new chain every season.", "skin": ["#fde047", "#ec4899", "rainbow"], "goal": ["sunny_was-fuer-eine-dummheit"], "win": ["sunny_hashtag-dezentral"] },
-        { "id": "ghosty", "name": "Ghosty", "tagline": "Pays gas on every hit.", "skin": ["#93c5fd", "#8b5cf6", "dots"], "goal": ["hast-du-gase-eingeatmet"], "win": ["hast-du-gase-eingeatmet"] },
-        { "id": "maurice", "name": "Maurice", "tagline": "All-time high on every point.", "skin": ["#ec4899", "#22d3ee", "chevron"], "goal": ["maurice_all-time-high"], "win": ["maurice_outro"] },
+        { "id": "ghosty", "name": "Ghosty", "tagline": "Heavyweight Ethereum fanboy, pays gas on every hit.", "skin": ["#93c5fd", "#8b5cf6", "dots"], "goal": ["hast-du-gase-eingeatmet"], "win": ["hast-du-gase-eingeatmet"] },
+        { "id": "maurice", "name": "Maurice", "tagline": "Maurice Höffgen, explains macro and Bitcoin.", "skin": ["#ec4899", "#22d3ee", "chevron"], "goal": ["maurice_all-time-high"], "win": ["maurice_outro"] },
         { "id": "kellner", "name": "Kellner", "tagline": "Serves the ball to your table.", "skin": ["#111827", "#f5f5f5", "pinstripe"], "goal": ["kellner_ich-denke-ja"], "win": ["kellner_abholen-diesen-dissidenten"] },
         { "id": "hosp", "name": "Hosp", "tagline": "Hosp or top!", "skin": ["#f97316", "#dc2626", "plaid"], "goal": ["hosp_der-markt-crasht"], "win": ["hosp_der-markt-crasht"] },
         { "id": "trainer", "name": "Coach Legend", "tagline": "Comments every goal.", "skin": ["#1d4ed8", "#f5f5f5", "stripes"], "goal": ["fussball_klar-und-deutlich"], "win": ["fussball_ich-lach-mich-tot"] },
         { "id": "dennis", "name": "Dennis", "tagline": "Dreams of the perfect rally.", "skin": ["#e0f2fe", "#a78bfa", "dots"], "goal": ["dennis-traum"], "win": ["dennis-traum"] },
         { "id": "ole", "name": "Ole", "tagline": "Invites you to the orange flock.", "skin": ["#f97316", "#fdba74", "solid"], "goal": ["ole-sekte"], "win": ["ole-sekte"] },
-        { "id": "cerca", "name": "Cerca", "tagline": "Bets on every rally.", "skin": ["#16a34a", "#f5f5f5", "stripes"], "goal": ["cerca-wette"], "win": ["cerca-wette"] }
+        { "id": "cerca", "name": "Cerca", "tagline": "Cheese, chocolate, cuckoo clock and a pocket knife.", "skin": ["#dc2626", "#f5f5f5", "stripes"], "goal": ["cerca-wette"], "win": ["cerca-wette"] }
     ],
     "bots": [
         { "id": "nocoiner", "level": 1, "name": "Nocoiner Uncle", "tagline": "Thinks Bitcoin is a fad.", "skin": ["#a8a29e", "#57534e", "plaid"], "goal": ["nordwolle_kann-man-doch-verstehen", "nordwolle_verwalter"], "win": ["fussball_freunde-der-sonne"], "arena": "studio" },

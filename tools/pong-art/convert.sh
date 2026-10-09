@@ -9,7 +9,9 @@ mkdir -p "$A"
 T=$(mktemp -d); trap 'rm -rf "$T"' EXIT
 for d in "$@"; do for f in "$d"/*.png; do [ -f "$f" ] && ln -sf "$(realpath "$f")" "$T/$(basename "$f")"; done; done
 rm -f "$T"/por-nocoiner.table.png
-key() { python3 "$K" "$1" "$T/k.webp" && magick "$T/k.webp" -resize "$2" -quality "$3" "$4"; }
+# A purple part inside a figure keyed away with the magenta stays (key.py `enclosed`): Ghosty's Ethereum logo.
+mode() { case "$(basename "$1")" in win-ghosty.png) echo enclosed ;; esac; }
+key() { python3 "$K" "$1" "$T/k.webp" "$(mode "$1")" && magick "$T/k.webp" -resize "$2" -quality "$3" "$4"; }
 for f in "$T"/por-*.png; do key "$f" '320x320>' 84 "$A/$(basename "${f%.png}").webp"; done
 for f in "$T"/win-*.png; do key "$f" '720x720>' 82 "$A/$(basename "${f%.png}").webp"; done
 for f in "$T"/ev-*.png; do key "$f" '320x320>' 86 "$A/$(basename "${f%.png}").webp"; done
