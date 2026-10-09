@@ -823,7 +823,7 @@ final class TournamentRunner
         $decided = false;
         $matches = TournamentMatch::query()->where('tournament_id', $tournament->id)->where('status', 'ready')
             ->where('bracket', '!=', 'bye')->whereNull('result')
-            ->with(['round.stage', 'slots.participant', 'seriesMatch', 'chessGame', 'boardGame'])->orderBy('id')->get();
+            ->with(['round.stage', 'slots.participant', 'seriesMatch', 'chessGame', 'boardGame', 'hyperMatch'])->orderBy('id')->get();
 
         foreach ($matches as $match) {
             // A lobby (P10) with at most one entry left that is not out: the league decides it (LobbyResults).
@@ -855,6 +855,11 @@ final class TournamentRunner
             }
 
             if ($match->boardGame !== null && $match->boardGame->status === BoardGameStatus::Active && ! $match->isReplaced($match->boardGame->id)) {
+                continue;
+            }
+
+            // A running Hyperbitcoinization table: TournamentControl::forfeitUnderWay() voids it first, or it decides itself.
+            if ($match->hyperMatch !== null && $match->hyperMatch->isActive() && ! $match->isReplaced($match->hyperMatch->id)) {
                 continue;
             }
 

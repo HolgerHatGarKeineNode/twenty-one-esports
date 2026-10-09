@@ -21,6 +21,7 @@ use App\Support\Tournaments\FormatOptions;
 use App\Support\Tournaments\GameProfile;
 use App\Support\Tournaments\TournamentBrackets;
 use App\Support\Tournaments\TournamentControl;
+use App\Support\Tournaments\TournamentMatchMaker;
 use App\Support\Tournaments\TournamentRunner;
 use App\Support\Tournaments\TournamentWaits;
 use Illuminate\Support\Facades\Event;
@@ -54,18 +55,20 @@ function hyperTableOf(TournamentMatch $match): ?HyperMatch
 }
 
 /** A running 2v2 clan bracket of two clans of two (the tables start at once: nobody to name). */
-function hyperDeskClans(): Tournament
+function hyperDeskClans(int $clans = 2, int $players = 2): Tournament
 {
     $profile = GameProfile::for(Hyperbitcoinization::SLUG, 'live');
     $tournament = Tournament::factory()->create([
         'game' => Hyperbitcoinization::SLUG, 'mode' => 'live', 'format' => TournamentFormat::SingleElimination,
         'options' => FormatOptions::fromArray(['teamSize' => 2], $profile)->toArray(),
-        'capacity' => 2, 'results_mode' => TournamentResultsMode::Players, 'status' => TournamentStatus::Running,
+        'capacity' => $clans, 'results_mode' => TournamentResultsMode::Players, 'status' => TournamentStatus::Running,
         'slug' => 'hyper-desk-'.fake()->unique()->numberBetween(1, 1_000_000), 'ladder_address' => null,
     ]);
 
-    foreach (range(0, 1) as $index) {
-        $players = User::factory()->count(2)->create()->values()->all();
+    $size = $players;
+
+    foreach (range(0, $clans - 1) as $index) {
+        $players = User::factory()->count($size)->create()->values()->all();
         $clan = Clan::factory()->create(['owner_id' => $players[0]->id]);
         array_map(fn (User $player): User => HyperOn::inClan($player, $clan), $players);
         TournamentParticipant::query()->create([
@@ -300,4 +303,57 @@ test('restarting the round of a table that finished but never reached the bracke
     $this->travel(31)->seconds();
     $this->artisan('hyper:check-clocks')->expectsOutputToContain('reported 0 tournament table(s)')->assertSuccessful();
     expect($match->refresh()->result)->toBeNull();
+});
+
+test('disqualifying an entry voids its running table: the forfeit decides the match, and the table no longer counts', function () {
+    openSeason(ladders: false);
+    $admin = hyperDeskAdmin();
+    $tournament = HyperOn::tournament(2, TournamentFormat::SingleElimination);
+    $match = TournamentMatch::query()->where('tournament_id', $tournament->id)->where('bracket', '!=', 'bye')->sole();
+    $table = hyperTableOf($match);
+    $participant = TournamentParticipant::query()->where('tournament_id', $tournament->id)->orderBy('id')->first();
+
+    expect($table->rated)->toBeTrue();
+
+    app(TournamentControl::class)->disqualify($tournament, $admin, $participant->id, 'Cheating confirmed');
+
+    expectHyperVoided($table, $match);
+    expect($match->refresh()->result['decided'] ?? null)->toBe('disqualified');
+});
+
+test('disqualifying a clan voids its running team table', function () {
+    openSeason(ladders: false);
+    $admin = hyperDeskAdmin();
+    $tournament = hyperDeskClans();
+    $match = TournamentMatch::query()->where('tournament_id', $tournament->id)->where('bracket', '!=', 'bye')->sole();
+    $table = hyperTableOf($match);
+    $participant = TournamentParticipant::query()->where('tournament_id', $tournament->id)->orderBy('id')->first();
+
+    app(TournamentControl::class)->disqualify($tournament, $admin, $participant->id, 'Cheating confirmed');
+
+    expectHyperVoided($table, $match);
+    expect($match->refresh()->result['decided'] ?? null)->toBe('disqualified');
+});
+
+test('a corrected result that puts another clan into the final gives its captain a fresh window to name the team', function () {
+    $admin = hyperDeskAdmin();
+    $tournament = hyperDeskClans(clans: 4, players: 3);
+    $control = app(TournamentControl::class);
+    [$first, $second] = TournamentMatch::query()->where('tournament_id', $tournament->id)->where('bracket', '!=', 'bye')->orderBy('id')->get()->all();
+    $control->setResult($tournament, $admin, $first->id, ['noshow' => 0], 'Semi one decided');
+    $control->setResult($tournament->refresh(), $admin, $second->id, ['noshow' => 0], 'Semi two decided');
+    $final = TournamentMatch::query()->where('tournament_id', $tournament->id)->where('bracket', '!=', 'bye')->orderByDesc('id')->first();
+
+    $this->travel(11)->minutes();
+    app(TournamentMatchMaker::class)->startReady($tournament->refresh());
+    $old = hyperTableOf($final->refresh());
+    expect($old)->not->toBeNull();
+
+    $this->travel(30)->minutes();
+    $control->setResult($tournament->refresh(), $admin, $first->id, ['noshow' => 1], 'Semi one was the other way round');
+
+    expectHyperVoided($old, $final);
+    // No new table at once: the new finalist's captain gets the naming window first.
+    expect(hyperTableOf($final->refresh())?->id === $old->id || hyperTableOf($final) === null)->toBeTrue()
+        ->and($final->refresh()->lineups['since'] ?? null)->toBeGreaterThanOrEqual(now()->getTimestamp() - 5);
 });

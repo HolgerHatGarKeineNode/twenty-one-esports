@@ -469,6 +469,11 @@ final class TournamentControl
                 if ($match->pairing !== null) {
                     $match->forceFill(['pairing' => null])->save();
                 }
+
+                // A Hyperbitcoinization clan table: the new side's captain gets a fresh window to name its players.
+                if ($match->lineups !== null) {
+                    $match->forceFill(['lineups' => null])->save();
+                }
             }
         } while ($moved);
 
@@ -699,14 +704,15 @@ final class TournamentControl
         $forfeited = [];
         $matches = TournamentMatch::query()->where('tournament_id', $tournament->id)->whereNull('result')->where('bracket', '!=', 'bye')
             ->whereHas('slots', fn ($slot) => $slot->where('tournament_participant_id', $participant->id))
-            ->with(['slots.participant', 'seriesMatch', 'chessGame', 'boardGame'])->get();
+            ->with(['slots.participant', 'seriesMatch', 'chessGame', 'boardGame', 'hyperMatch'])->get();
 
         foreach ($matches as $match) {
             $series = $this->current($match, $match->seriesMatch);
             $game = $this->current($match, $match->chessGame);
             $board = $match->boardGame !== null && ! $match->isReplaced($match->boardGame->id) ? $match->boardGame : null;
+            $hyper = $match->hyperMatch !== null && ! $match->isReplaced($match->hyperMatch->id) && $match->hyperMatch->isActive() ? $match->hyperMatch : null;
             $running = ($series !== null && $series->status->isRunning()) || ($game !== null && $game->status === ChessGameStatus::Active)
-                || ($board !== null && $board->status === BoardGameStatus::Active);
+                || ($board !== null && $board->status === BoardGameStatus::Active) || $hyper !== null;
 
             if (! $running || count($match->slots) !== 2) {
                 continue;
@@ -714,6 +720,10 @@ final class TournamentControl
 
             // Both sides out (disqualified together): no winner here, TournamentRunner::forfeitWithdrawn() decides it.
             if (($match->slots[0]->participant?->isDisqualified() ?? false) && ($match->slots[1]->participant?->isDisqualified() ?? false)) {
+                if ($hyper !== null) {
+                    $this->voidHyper($match, finishedToo: false);
+                }
+
                 continue;
             }
 
@@ -726,7 +736,7 @@ final class TournamentControl
                 'decided' => 'disqualified',
                 'label' => __('forfeit'),
                 'by' => 'league',
-                'number' => $series->number ?? $game->number,
+                'number' => $series->number ?? $game?->number,
             ]);
 
             if ($series !== null) {
@@ -745,6 +755,9 @@ final class TournamentControl
             } elseif ($board !== null) {
                 // A board game (P5) ends unrated; the forfeit stored here decides the match.
                 $this->voidBoard($match);
+            } elseif ($hyper !== null) {
+                // A Hyperbitcoinization table ends voided and unrated; the forfeit stored here decides the match.
+                $this->voidHyper($match, finishedToo: false);
             }
 
             $forfeited[] = $this->label($match);
