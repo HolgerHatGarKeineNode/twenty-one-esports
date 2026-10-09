@@ -37,7 +37,7 @@ test('who a moment waits for: a multiplayer table never waits for a click, a bat
     $run = Process::path(base_path())->timeout(60)->run(['node', '--test', 'tests/js/hyperPace.test.mjs']);
 
     expect($run->successful())->toBeTrue($run->output().$run->errorOutput())
-        ->and($run->output())->toContain('ℹ pass 5')->toContain('ℹ fail 0');
+        ->and($run->output())->toContain('ℹ pass 6')->toContain('ℹ fail 0');
 });
 
 test('soundboard emotes muted league-wide: no table offers a clip, the server sends none, stickers stay', function () {

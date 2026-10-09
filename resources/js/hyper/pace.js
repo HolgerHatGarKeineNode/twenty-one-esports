@@ -24,3 +24,11 @@ export const movesOnByItself = ({ seats, playing, myTurnRuns }) => isMultiplayer
 
 /** A battle between two non-human sides (a neutral territory has no seat): no animation. */
 export const quietBattle = (seats, attacker, defender) => !isHumanSeat(seats?.[attacker]) && !isHumanSeat(defender === null || defender === undefined ? null : seats?.[defender]);
+
+/**
+ * How far a page may fall behind the server (user 2026-10-09: every browser at the table in sync). The table's
+ * events reach every page at once over Reverb; each page shows them at its own pace, so a page that is more than
+ * MAX_LAG_MS behind lands the rest at once. A replay plays at its own pace and never lags.
+ */
+export const MAX_LAG_MS = 5000;
+export const lagging = (arrivedAt, now, replay = false) => !replay && arrivedAt !== undefined && now - arrivedAt > MAX_LAG_MS;

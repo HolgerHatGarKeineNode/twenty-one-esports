@@ -55,7 +55,21 @@ test('a turn whose clock already runs: the other seats\' events land at once, no
     const { readFileSync } = await import('node:fs');
     const game = readFileSync(new URL('../../resources/js/hyper/game.js', import.meta.url), 'utf8');
 
-    assert.match(game, /rushing = !isMe\(ctxB\.seat\) && myClockRuns\(\);\n\s+ctxB\.speed = isMe\(ctxB\.seat\) \? 1 : rushing \? 20 :/);
+    assert.match(game, /rushing = !isMe\(ctxB\.seat\) && \(myClockRuns\(\)[^\n]*\n\s+ctxB\.speed = isMe\(ctxB\.seat\) \? 1 : rushing \? 20 :/);
     assert.match(game, /async function banner\(.*\) \{\n\s+if \(rushing\) return;/);
     assert.match(game, /shownSource = null;\n\s+rushing = false;/);
+});
+
+test('a page more than 5 s behind the server lands the rest at once; a replay never lags', async () => {
+    const { MAX_LAG_MS, lagging } = await import('../../resources/js/hyper/pace.js');
+    const { readFileSync } = await import('node:fs');
+    const game = readFileSync(new URL('../../resources/js/hyper/game.js', import.meta.url), 'utf8');
+
+    assert.equal(MAX_LAG_MS, 5000);
+    assert.equal(lagging(0, 4999), false);
+    assert.equal(lagging(0, 5001), true);
+    assert.equal(lagging(0, 60000, true), false);
+    assert.equal(lagging(undefined, 60000), false);
+    assert.match(game, /batch\.at \?\?= Date\.now\(\);/);
+    assert.match(game, /rushing = !isMe\(ctxB\.seat\) && \(myClockRuns\(\) \|\| lagging\(batch\.at, Date\.now\(\), !!CFG\?\.replay\)\);/);
 });

@@ -21,7 +21,7 @@ import { applyEvent, banksOf, defenseBonus, fromSnapshot, odds, territoriesOf, u
 import { PlySync } from './sync.js';
 import { fmt, t } from './i18n.js';
 import { readableMs } from './statsPlan.js';
-import { movesOnByItself, quietBattle, tapGraceMs } from './pace.js';
+import { lagging, movesOnByItself, quietBattle, tapGraceMs } from './pace.js';
 import { AUD, ctx, cue, hoverTick, setAudioHooks, setIntensity, sfx, startMusic } from './audio.js';
 import { readSettings, writeSettings } from './sounds.js';
 
@@ -663,6 +663,7 @@ function dealAnim() {
 
 /* ================= Events from the server, one batch at a time ================= */
 function enqueue(batch) {
+    batch.at ??= Date.now();
     queue.push(batch);
     clearTimeout(settleTimer);
     if (!running) runQueue();
@@ -764,7 +765,7 @@ async function animateBatch(batch) {
         ctxB.seat = e.type === 'turn_started' ? e.seat : (e.seat ?? ctxB.seat);
         // Another seat's events: at the chosen pace, faster while catching up, and at least 3× once the server
         // already gave this player the turn (their 90 s run while the page still shows the bots).
-        rushing = !isMe(ctxB.seat) && myClockRuns();
+        rushing = !isMe(ctxB.seat) && (myClockRuns() || lagging(batch.at, Date.now(), !!CFG?.replay));
         ctxB.speed = isMe(ctxB.seat) ? 1 : rushing ? 20 : Math.max(UI.speed, batch.fast ? 3 : 1);
         if (e.type === 'dice_rolled') {
             const run = [e];
