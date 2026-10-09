@@ -259,7 +259,9 @@
 <div id="emotes" class="frame shadowed" hidden data-test="hyper-emotes" role="dialog" aria-labelledby="emotes-h">
     <header><h2 id="emotes-h">{{ __('Emotes') }}</h2><button class="icon-btn" id="emote-close" type="button" aria-label="{{ __('Close') }}"><svg viewBox="0 0 24 24"><use href="#i-close"/></svg></button></header>
     <div id="emote-stickers"></div>
+    @if (! empty($config['clips']))
     <input id="emote-filter" type="search" placeholder="{{ __('Find a soundboard clip') }}" aria-label="{{ __('Find a soundboard clip') }}">
+    @endif
     <div id="emote-clips" role="list"></div>
     <p id="emote-note" aria-live="polite"></p>
 </div>

@@ -21,7 +21,8 @@ import { applyEvent, banksOf, defenseBonus, fromSnapshot, odds, territoriesOf, u
 import { PlySync } from './sync.js';
 import { fmt, t } from './i18n.js';
 import { readableMs } from './statsPlan.js';
-import { AUD, clip, ctx, hoverTick, setAudioHooks, setIntensity, sfx, startMusic } from './audio.js';
+import { AUD, ctx, cue, hoverTick, setAudioHooks, setIntensity, sfx, startMusic } from './audio.js';
+import { readSettings, writeSettings } from './sounds.js';
 
 const REDUCED = matchMedia('(prefers-reduced-motion: reduce)').matches;
 const $ = (s) => document.querySelector(s);
@@ -575,7 +576,7 @@ async function animateDice(r, fast = false) {
         const won = r.defender_units === 0;
         if (r.defender_losses && !won) { window.Arena.casualties('d', r.defender_losses); window.Arena.inflation(r.defender_losses); if (G.terr[r.from].maxi > 0) window.Arena.laser(); }
         if (r.attacker_losses) window.Arena.casualties('a', r.attacker_losses);
-        if (r.defender_losses >= 2) { window.Arena.candle(true); if (!fast && Math.random() < 0.45) clip('hit'); } else if (r.attacker_losses >= 2) window.Arena.candle(false);
+        if (r.defender_losses >= 2) { window.Arena.candle(true); if (!fast && Math.random() < 0.45) cue('battle.hit'); } else if (r.attacker_losses >= 2) window.Arena.candle(false);
         applyEvent(G, r); updateCounts(r);
         await sleep(fast ? 350 : 1100);
 
@@ -743,9 +744,12 @@ function onHand(p) {
     if (p.ply <= G.ply && Array.isArray(p.hand)) { G.seats[ME].hand = [...p.hand]; G.seats[ME].handCount = p.hand.length; renderHand(); }
 }
 
+/** The source of the batch on show (`bot` for a turn the server played for a seat): no soundboard clips then (sounds.js). */
+let shownSource = null;
 async function animateBatch(batch) {
     const events = batch.events ?? [];
     const ctxB = { seat: batch.seat ?? events.find((e) => e.seat !== undefined)?.seat ?? G.cur, speed: 1, watched: 0, source: batch.source };
+    shownSource = batch.source ?? null;
     for (let i = 0; i < events.length; i++) {
         const e = events[i];
         ctxB.seat = e.type === 'turn_started' ? e.seat : (e.seat ?? ctxB.seat);
@@ -760,6 +764,7 @@ async function animateBatch(batch) {
         }
         await showEvent(e, ctxB, events[i + 1]);
     }
+    shownSource = null;
 }
 const wait = (ctxB, ms) => (ctxB.speed >= 20 ? Promise.resolve() : sleep(ms / ctxB.speed));
 async function showDice(run, next, ctxB) {
@@ -770,7 +775,7 @@ async function showDice(run, next, ctxB) {
         if (!conquers) {
             if (G.over) return;
             const last = run[run.length - 1];
-            if (last.defender_losses === 0 && last.attacker_losses > 0) clip(BY[first.to].zone === 'swiss' ? 'swiss' : G.terr[first.to].maxi ? 'hodl' : 'fail');
+            if (last.defender_losses === 0 && last.attacker_losses > 0) cue(BY[first.to].zone === 'swiss' ? 'battle.repelled.swiss' : G.terr[first.to].maxi ? 'battle.repelled.maxi' : 'battle.repelled');
             updateOdds();
             if (units(G, first.from) <= 1) { await sleep(600); closeBattle(); render(); }
         }
@@ -784,7 +789,7 @@ async function showDice(run, next, ctxB) {
         $('#skip-btn').onclick = () => { BT.skip = true; };
         await sleep(ctxB.speed > 1 ? 400 : 900);
         for (const r of run) { if (BT.skip) { applyEvent(G, r); continue; } await animateDice(r, ctxB.speed > 1); }
-        if (!BT.skip && BT.three) { if (conquers) await window.Arena.finale(colorOf(attacker), porOf(attacker), t(fac(attacker).tag)); else { clip('held'); await sleep(900); } }
+        if (!BT.skip && BT.three) { if (conquers) await window.Arena.finale(colorOf(attacker), porOf(attacker), t(fac(attacker).tag)); else { cue('battle.held'); await sleep(900); } }
         closeBattle(); render();
 
         return;
@@ -795,7 +800,7 @@ async function showDice(run, next, ctxB) {
     for (const r of run) { applyEvent(G, r); lost += r.attacker_losses; }
     if (ctxB.speed < 20) { sfx.shake(); if (lost) floatNum(first.from, '−' + lost); }
     render();
-    if (!conquers && isMe(defender) && ctxB.speed < 20) clip('held');
+    if (!conquers && isMe(defender) && ctxB.speed < 20) cue('battle.held');
     fade(); await wait(ctxB, 280);
 }
 async function showEvent(e, ctxB, next) {
@@ -805,13 +810,13 @@ async function showEvent(e, ctxB, next) {
             applyEvent(G, e); UI.from = null; UI.card = null;
             log(t(':name: +:fiat fiat, +:sats M sats', { name: nameOf(e.seat), fiat: fmt(e.fiat), sats: fmt(e.sats) }), false, e.seat);
             render();
-            if (isMe(e.seat) && playing()) { clip('turn'); sfx.horn(); await banner(t('Your turn'), t('+:fiat fiat · +:sats M sats', { fiat: fmt(e.fiat), sats: fmt(e.sats) }), 650, porOf(e.seat), colorOf(e.seat)); } else if (sp === 1) await banner(nameOf(e.seat), t('is on the move'), 320, porOf(e.seat), colorOf(e.seat), true);
+            if (isMe(e.seat) && playing()) { cue('turn.mine'); await banner(t('Your turn'), t('+:fiat fiat · +:sats M sats', { fiat: fmt(e.fiat), sats: fmt(e.sats) }), 650, porOf(e.seat), colorOf(e.seat)); } else if (sp === 1) await banner(nameOf(e.seat), t('is on the move'), 320, porOf(e.seat), colorOf(e.seat), true);
             break;
         }
         case 'placed': {
             applyEvent(G, e);
             if (sp < 20) { floatNum(e.territory, '+' + (e.count + (e.bonus ?? 0)), '#7fe0a6'); territoryPulse(e.territory); sfx.place(); }
-            if (isMe(e.seat) && (e.unit === 'maxi' || e.unit === 'asic')) { clip(e.unit); sfx.power(); }
+            if (isMe(e.seat) && (e.unit === 'maxi' || e.unit === 'asic')) cue('unit.' + e.unit);
             render(); await wait(ctxB, isMe(e.seat) ? 0 : 160);
             break;
         }
@@ -832,24 +837,24 @@ async function showEvent(e, ctxB, next) {
             const x = BY[e.territory];
             if (sp < 20) { territoryPulse(e.territory); burst(e.territory, colorOf(e.seat), x.bank ? 28 : 16, x.bank); shake(x.bank ? 10 : 5); sfx.boom(); }
             log(t(':name conquers :territory.', { name: nameOf(e.seat), territory: tn(e.territory) }), x.bank, e.seat);
-            if (isMe(e.previous_owner) && !isMe(e.seat)) clip('lost', 3);
-            else if (!isBot(e.seat)) clip('conquer');
-            if (ME !== null && e.previous_owner === ME && territoriesOf(G, ME).length === 3) clip('low');
+            if (isMe(e.previous_owner) && !isMe(e.seat)) cue('territory.lost');
+            else if (!isBot(e.seat)) cue('territory.conquered');
+            if (ME !== null && e.previous_owner === ME && territoriesOf(G, ME).length === 3) cue('territory.low');
             if (isMe(e.seat)) UI.from = units(G, e.territory) > 1 ? e.territory : null;
             render(); await wait(ctxB, 200);
             break;
         }
         case 'bank_fallen': {
             const z = ZONES[e.zone];
-            floatNum(e.territory, '+1 ₿', '#ffb54d'); sfx.coin();
-            clip(e.territory === 'frankfurt' ? 'ezb' : e.territory === 'ny' ? 'fed' : 'bank');
+            floatNum(e.territory, '+1 ₿', '#ffb54d');
+            cue(e.territory === 'frankfurt' ? 'bank.ezb' : e.territory === 'ny' ? 'bank.fed' : 'bank.fallen');
             log(t(':name topples the :bank.', { name: nameOf(e.seat), bank: t(z.bank) }), true, e.seat);
             if (sp < 20 || isMe(e.seat)) { flash(); sfx.sting(); await banner(t('Central bank toppled'), t(':bank · +1 M sats', { bank: t(z.bank) }), isBot(e.seat) ? 600 / sp : 900, porOf(e.seat), colorOf(e.seat), !isMe(e.seat), true); }
             break;
         }
         case 'zone_completed': {
             const z = ZONES[e.zone];
-            clip('zone');
+            cue('zone.completed');
             log(t(':name holds all of :zone.', { name: nameOf(e.seat), zone: t(z.name) }), true, e.seat);
             if (sp < 20 || isMe(e.seat)) { flash(); sfx.sting(); await banner(t('Orange pill'), t(':zone complete · +:sats sats per turn', { zone: t(z.name), sats: fmt(z.sats) }), isBot(e.seat) ? 600 / sp : 900, porOf(e.seat), colorOf(e.seat), !isMe(e.seat), true); }
             break;
@@ -878,17 +883,17 @@ async function showEvent(e, ctxB, next) {
             break;
         case 'fiat_decayed':
             applyEvent(G, e); render();
-            if (isMe(e.seat) && e.amount >= 0.3) { clip('inflation'); sfx.inflate(); await banner(t('Inflation'), t('−:fiat fiat gone up in smoke', { fiat: fmt(e.amount) }), 650, 'pleb', '#7fe0a6'); }
+            if (isMe(e.seat) && e.amount >= 0.3) { cue('inflation.mine'); await banner(t('Inflation'), t('−:fiat fiat gone up in smoke', { fiat: fmt(e.amount) }), 650, 'pleb', '#7fe0a6'); }
             break;
         case 'player_eliminated':
-            applyEvent(G, e); clip('out');
+            applyEvent(G, e); cue('player.out');
             log(t(':name is out.', { name: nameOf(e.seat) }), true, e.seat);
             render();
             if (!G.over || isMe(e.seat)) await banner(isMe(e.seat) ? t('You are out') : t(':name is out', { name: nameOf(e.seat) }), t('One fiat faction fewer'), 900, porOf(e.seat), colorOf(e.seat), !isMe(e.seat), true);
             break;
         case 'round_started':
             applyEvent(G, e); render();
-            if (e.inflation) { clip('price'); log(t('The money printer kicks in: plebs cost 50 % more.'), true); }
+            if (e.inflation) { cue('price.up'); log(t('The money printer kicks in: plebs cost 50 % more.'), true); }
             break;
         case 'turn_ended':
             if (isMe(e.seat)) {
@@ -910,7 +915,7 @@ async function showEvent(e, ctxB, next) {
 async function showCard(e, ctxB, next) {
     const c = CARDS[e.card]; if (!c) { applyEvent(G, e); return; }
     const human = !isBot(e.seat);
-    clip('card:' + e.card); sfx.flip(); sfx.power();
+    cue('card.' + e.card);
     const zone = e.target ? BY[e.target].zone : null;
     if (human && UI.scenes && WEBGL && window.Arena && ctxB.speed < 20) await cinematic(e.card, { up: !!e.effect?.up, zone });
     else if (human || ctxB.speed < 20) await banner(t(c.name), t(c.text), isBot(e.seat) ? 450 / ctxB.speed : 700, '', 'var(--btc)', !isMe(e.seat), true);
@@ -922,7 +927,7 @@ async function showCard(e, ctxB, next) {
         case 'attack51': sub = t(':territory taken over', { territory: tn(e.target) }); if (next?.type !== 'territory_conquered') territoryPulse(e.target); break;
         case 'keys': if (effect.victim !== undefined) sub = t(':name loses :sats M sats', { name: nameOf(effect.victim), sats: fmt(effect.sats_lost ?? 0) }); break;
         case 'diamond': territoryPulse(e.target); sub = t(':territory holds with +1', { territory: tn(e.target) }); break;
-        case 'salvador': sub = effect.up ? t('Price +25 %. To the moon!') : t('Price −25 %. Ouch.'); clip(effect.up ? 'ath' : 'crash'); break;
+        case 'salvador': sub = effect.up ? t('Price +25 %. To the moon!') : t('Price −25 %. Ouch.'); cue(effect.up ? 'card.salvador.up' : 'card.salvador.down'); break;
         case 'scam': floatNum(e.target, '−' + (effect.units_lost ?? 2)); burst(e.target, '#ff5d73', 12); sub = t(':territory plundered', { territory: tn(e.target) }); break;
         case 'lagarde': if (effect.next_card && CARDS[effect.next_card]) sub = t('Next card: :card', { card: t(CARDS[effect.next_card].name) }); break;
         case 'nokeys': territoryPulse(e.target); sub = t(':territory turns neutral', { territory: tn(e.target) }); break;
@@ -975,8 +980,8 @@ async function showEnd(winner, byLimit, round, loot, quiet) {
     // A win or loot is a moment to share (P6, App\Support\Hyper\HyperMoments): the link opens the lobby's moments.
     $('#share-link')?.toggleAttribute('hidden', !(iWon || (myLoot ?? 0) > 0));
     if (!quiet) {
-        clip(iLost ? 'lose' : 'win');
-        if (iWon) { sfx.fanfare(); territoriesOf(G, winner).forEach((id, i) => setTimeout(() => burst(id, '#ffb54d', 10, true), i * 60)); } else sfx.gong();
+        cue(iLost ? 'game.lost' : iWon ? 'game.won' : 'game.over');
+        if (iWon) { territoriesOf(G, winner).forEach((id, i) => setTimeout(() => burst(id, '#ffb54d', 10, true), i * 60)); }
         await banner(t(f.win[0]), iWon ? (byLimit ? t('The most central banks') : t('Everyone else is out')) : t(':name wins', { name: nameOf(winner) }), 1400, f.por, f.color, false, true);
     }
     $('#end').hidden = false;
@@ -1181,15 +1186,14 @@ function updateClock() {
 }
 
 /* ================= Settings and controls ================= */
-function saveSettings() { try { localStorage.setItem(SETTINGS_KEY, JSON.stringify({ vol: AUD.vol, music: AUD.music, fx: AUD.fx, board: AUD.board, speed: UI.speed, mode: UI.mode, scenes: UI.scenes })); } catch (e) { /* only for this visit */ } }
+function storage() { try { return window.localStorage; } catch (e) { return null; } }
+function saveSettings() { writeSettings(storage(), { vol: AUD.vol, music: AUD.music, fx: AUD.fx, board: AUD.board, speed: UI.speed, mode: UI.mode, scenes: UI.scenes }, SETTINGS_KEY); }
 function loadSettings() {
-    let st = null; try { st = JSON.parse(localStorage.getItem(SETTINGS_KEY)); } catch (e) { st = null; }
-    if (!st) return;
-    if (st.board === undefined && st.fx === false) { st.board = false; st.fx = true; }
-    if (typeof st.vol === 'number') { AUD.vol = st.vol; $('#vol').value = Math.round(st.vol * 100); }
-    if (typeof st.music === 'boolean') { AUD.music = st.music; $('#music-btn').setAttribute('aria-pressed', st.music); }
-    if (typeof st.fx === 'boolean') { AUD.fx = st.fx; $('#sound-btn').setAttribute('aria-pressed', st.fx); }
-    if (typeof st.board === 'boolean') { AUD.board = st.board; $('#board-btn').setAttribute('aria-pressed', st.board); }
+    const st = readSettings(storage(), SETTINGS_KEY);
+    AUD.vol = st.vol; $('#vol').value = Math.round(st.vol * 100);
+    AUD.music = st.music; $('#music-btn').setAttribute('aria-pressed', st.music);
+    AUD.fx = st.fx; $('#sound-btn').setAttribute('aria-pressed', st.fx);
+    AUD.board = st.board; $('#board-btn').setAttribute('aria-pressed', st.board);
     if ([1, 3, 20].includes(st.speed)) { UI.speed = st.speed; $$('#speed button').forEach((x) => x.classList.toggle('on', +x.dataset.s === st.speed)); }
     if (['owner', 'zone'].includes(st.mode)) UI.mode = st.mode;
     if (typeof st.scenes === 'boolean') { UI.scenes = st.scenes; $('#scenes-btn').setAttribute('aria-pressed', st.scenes); }
@@ -1355,7 +1359,7 @@ export function startGame(config, net) {
     sync = new PlySync(config.snapshot.ply);
     setAudioHooks({
         assets: A,
-        botTurn: () => !!G && !G.over && isBot(G.cur),
+        botTurn: () => !!G && !G.over && (isBot(G.cur) || shownSource === 'bot'),
         musicMood: () => {
             if (!G || G.over || ME === null) return { tense: false, standing: 'even' };
             const score = (x) => x.sats + territoriesOf(G, x.seat).length * 0.3;

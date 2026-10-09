@@ -44,6 +44,8 @@ class SceneSource
     /** @var array<string, string> QR name => SVG file content, read once */
     private array $qrCodes = [];
 
+    private ?HyperScene $hyper = null;
+
     public function __construct(
         private ChessGameService $chess,
         private GameRegistry $games,
@@ -144,6 +146,11 @@ class SceneSource
         // The board games next to chess (plan "Mühle und Dame", P7): a live board game, else the teaser.
         if ($scene === RotationPlanner::BOARD_SCENE) {
             return ($this->board ??= app(BoardScene::class))->data($nowMs, $stats);
+        }
+
+        // A running Hyperbitcoinization match (plan "Hyperbitcoinization", P6): `$gameId` is the match's id in its slot.
+        if ($scene === HyperScene::SCENE) {
+            return ($this->hyper ??= app(HyperScene::class))->data($gameId, $nowMs, $stats);
         }
 
         // Blockfill's week (plan "Blockfill", P6): its top 5 and its leader's chain, over its own blurred cover.

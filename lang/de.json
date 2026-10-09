@@ -7634,5 +7634,8 @@
     "You won against :count": "Sieg gegen :count",
     ":sats M sats loot": ":sats M Sats Beute",
     "Post the loot": "Beute posten",
-    "The Hyperbitcoinization season ladder of the TWENTY ONE esports league: free-for-all points by place, 1v1 and team Elo, rated matches without bots only.": "Die Hyperbitcoinization-Season-Ladder der TWENTY ONE Esports-Liga: Punkte nach Platz jeder gegen jeden, Elo für 1v1 und Teams, nur gewertete Partien ohne Bots."
+    "The Hyperbitcoinization season ladder of the TWENTY ONE esports league: free-for-all points by place, 1v1 and team Elo, rated matches without bots only.": "Die Hyperbitcoinization-Season-Ladder der TWENTY ONE Esports-Liga: Punkte nach Platz jeder gegen jeden, Elo für 1v1 und Teams, nur gewertete Partien ohne Bots.",
+    "Soundboard emotes": "Soundboard-Emotes",
+    "On: players at a Hyperbitcoinization table may send soundboard clips. Off: no table offers a clip; stickers stay. Applies at once.": "An: Spieler an einem Hyperbitcoinization-Tisch dürfen Soundboard-Clips senden. Aus: Kein Tisch bietet einen Clip an; Sticker bleiben. Gilt sofort.",
+    "Soundboard emotes are switched off.": "Soundboard-Emotes sind ausgeschaltet."
 }

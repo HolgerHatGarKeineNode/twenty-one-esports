@@ -78,6 +78,15 @@ use App\Games\TrackmaniaNationsForever;
  * next one waits MOMENT_COOLDOWN_SECONDS. That keeps Blockfill at one
  * teaser slot a round plus a moment at most every five minutes. A Blockfill
  * slot ends at once when the week is no longer running or the switch is off.
+ *
+ * A running Hyperbitcoinization match (plan "Hyperbitcoinization", P6) has its own slide, HYPER_SCENE (h1,
+ * HyperScene), as the caller reports the running matches (HyperScene::entries(): id and whether it is tense):
+ * one match a round, right after the board slot, the matches taking turns from round to round. It stands
+ * `hyperMinSeconds` (60) and, while the match is tense when that time is up (a close duel, a central bank that
+ * just fell), HYPER_EXTEND_SECONDS more at a time, never past `hyperMaxSeconds` (180) from its start. One slot a
+ * round of at most `hyperMaxSeconds` is the bound that keeps it from crowding out the other games: the match,
+ * the gallery, the board games and the teasers of the round still come. It ends at once when its match ends or
+ * the game is switched off (then no match is reported); never while a tournament runs or a champion moment shows.
  */
 final class RotationPlanner
 {
@@ -96,6 +105,15 @@ final class RotationPlanner
 
     /** The scene of BOARD. */
     public const BOARD_SCENE = 'd5';
+
+    /** A running Hyperbitcoinization match (HyperScene). */
+    public const HYPER = 'hyper';
+
+    /** The scene of HYPER. */
+    public const HYPER_SCENE = HyperScene::SCENE;
+
+    /** A tense Hyperbitcoinization match stands this much longer at a time, up to `hyperMaxSeconds` in all. */
+    public const HYPER_EXTEND_SECONDS = 20;
 
     /** Without a live board game, the board teaser comes every this many rounds. */
     public const BOARD_IDLE_EVERY = 3;
@@ -160,6 +178,7 @@ final class RotationPlanner
         'd5' => 'stream.rotation.d5-board', 'd6' => 'stream.rotation.d6-spotlight',
         'e5' => 'stream.rotation.e5-block', 'e6' => 'stream.rotation.e6-strongest', 'e7' => 'stream.rotation.e7-rank-up', 'e8' => 'stream.rotation.e8-streak', 'e9' => 'stream.rotation.e9-payouts',
         'm1' => 'stream.rotation.m1-mempool',
+        'h1' => 'stream.rotation.h1-hyper',
         'f1' => 'stream.rotation.f1-blockfill',
         'f2' => 'stream.rotation.f2-board', 'f3' => 'stream.rotation.f3-fresh', 'f4' => 'stream.rotation.f4-moment', 'f5' => 'stream.rotation.f5-play',
         'g1' => 'stream.rotation.g1-tmnf',
@@ -269,6 +288,15 @@ final class RotationPlanner
     /** Rounds that took a slot of BLOCKFILL_ROUND (the three take turns by it). */
     private int $blockfillTurn = 0;
 
+    /** @var list<array{id: int, tense: bool}> the running Hyperbitcoinization matches, as the last call to at() reported them */
+    private array $hyper = [];
+
+    /** Rounds that took a Hyperbitcoinization match (the matches take turns by it). */
+    private int $hyperTurn = 0;
+
+    /** When the Hyperbitcoinization slot on show started (its hold counts from there). */
+    private float $hyperSince = 0.0;
+
     /** The key of the last new #1 shown, and when. */
     private ?string $lastMoment = null;
 
@@ -287,6 +315,8 @@ final class RotationPlanner
         private bool $tmnf = false,
         private float $runningSeconds = 90,
         private float $championSeconds = 120,
+        private float $hyperMinSeconds = 60,
+        private float $hyperMaxSeconds = 180,
     ) {}
 
     public static function fromConfig(float $loopSeconds): self
@@ -304,6 +334,8 @@ final class RotationPlanner
             app(GameRegistry::class)->find(TrackmaniaNationsForever::SLUG) !== null,
             (float) config('twentyone.stream.rotation.running_tournament_seconds', 90),
             (float) config('twentyone.stream.rotation.champion_moment_seconds', 120),
+            (float) config('twentyone.stream.rotation.hyper_min_seconds', 60),
+            (float) config('twentyone.stream.rotation.hyper_max_seconds', 180),
         );
     }
 
@@ -342,12 +374,14 @@ final class RotationPlanner
      * @param  list<array{id: int, phase: string, fomo: bool, takeover?: bool, parts?: list<int>, moment?: bool}>  $live  the tournaments past sign-up (TournamentLiveSlides::entries()), in turn order
      * @param  string  $blockfillWeek  BlockfillSlides::OFF, IDLE, EMPTY or RUNNING
      * @param  string|null  $blockfillMoment  the key of a new #1 of the last minutes (BlockfillSlides::state())
-     * @return array{kind: string, scene: string|null, gameId: int|null, tournamentId: int|null, until: float}
+     * @param  list<array{id: int, tense: bool}>  $hyper  the running Hyperbitcoinization matches (HyperScene::entries()), in turn order
+     * @return array{kind: string, scene: string|null, gameId: int|null, tournamentId: int|null, until: float} `gameId` is the Hyperbitcoinization match's id for HYPER
      */
-    public function at(float $now, array $games, array $tournaments = [], string $boards = BoardScene::OFF, array $live = [], string $blockfillWeek = BlockfillSlides::OFF, ?string $blockfillMoment = null): array
+    public function at(float $now, array $games, array $tournaments = [], string $boards = BoardScene::OFF, array $live = [], string $blockfillWeek = BlockfillSlides::OFF, ?string $blockfillMoment = null, array $hyper = []): array
     {
         $ids = array_column($games, 'id');
         $this->boards = $boards;
+        $this->hyper = $hyper;
         $this->blockfillWeek = $blockfillWeek;
         $this->tournamentKeys = [];
         $this->running = [];
@@ -376,6 +410,8 @@ final class RotationPlanner
         // One list for the turns: past sign-up first, then the upcoming ones.
         $tournaments = array_keys($this->tournamentKeys);
 
+        $this->holdTenseHyper($now);
+
         if ($this->slot === null || $now >= $this->slot['until'] || $this->endsEarly($ids, $tournaments)) {
             $this->advance($now, $games, $tournaments, $blockfillMoment);
         }
@@ -383,6 +419,24 @@ final class RotationPlanner
         assert($this->slot !== null);
 
         return $this->slot;
+    }
+
+    /**
+     * A Hyperbitcoinization slot whose time is up stands HYPER_EXTEND_SECONDS longer while its match is tense,
+     * up to `hyperMaxSeconds` from its start.
+     */
+    private function holdTenseHyper(float $now): void
+    {
+        if ($this->slot === null || $this->slot['kind'] !== self::HYPER || $now < $this->slot['until']) {
+            return;
+        }
+
+        $entry = collect($this->hyper)->firstWhere('id', $this->slot['gameId']);
+        $last = $this->hyperSince + max($this->hyperMinSeconds, $this->hyperMaxSeconds);
+
+        if (($entry['tense'] ?? false) && $now < $last) {
+            $this->slot['until'] = min($last, $now + self::HYPER_EXTEND_SECONDS);
+        }
     }
 
     /**
@@ -412,6 +466,8 @@ final class RotationPlanner
             self::TOURNAMENT => ! in_array($this->slotTournament, $tournaments, true),
             // The week ended, or the switch went off.
             self::BLOCKFILL => ! $this->blockfillApplies((string) $this->slot['scene']),
+            // The match ended, or the game was switched off.
+            self::HYPER => ! in_array($this->slot['gameId'], array_column($this->hyper, 'id'), true),
             default => false,
         };
     }
@@ -500,9 +556,9 @@ final class RotationPlanner
             if ($this->idleRounds++ % max(1, $this->loopEvery) === 0) {
                 $this->queue = [['kind' => self::LOOP]];
             } elseif ($tournaments !== []) {
-                $this->queue = [...$this->board(), ...$this->tournamentSlides($this->nextLook(), $tournaments), ...$this->everyRound(), ...$this->blockfillRound(), ['kind' => self::TEASER]];
+                $this->queue = [...$this->board(), ...$this->hyperRound(), ...$this->tournamentSlides($this->nextLook(), $tournaments), ...$this->everyRound(), ...$this->blockfillRound(), ['kind' => self::TEASER]];
             } else {
-                $this->queue = [...$this->board(), ...$this->everyRound(), ...$this->blockfillRound(), ...$teasers];
+                $this->queue = [...$this->board(), ...$this->hyperRound(), ...$this->everyRound(), ...$this->blockfillRound(), ...$teasers];
             }
 
             return;
@@ -516,6 +572,7 @@ final class RotationPlanner
             // Skipped when fewer than two games are on show by then (slotFor()).
             ['kind' => self::GALLERY, 'look' => $look],
             ...$this->board(),
+            ...$this->hyperRound(),
             ...($tournaments === [] ? [] : $this->tournamentSlides($look, $tournaments)),
             ...$this->everyRound(),
             ...$this->blockfillRound(),
@@ -618,6 +675,20 @@ final class RotationPlanner
         return $this->boards === BoardScene::LIVE || $turn % self::BOARD_IDLE_EVERY === 0 ? [['kind' => self::BOARD]] : [];
     }
 
+    /**
+     * This round's Hyperbitcoinization slot: the next running match in turn, none while none runs.
+     *
+     * @return list<array{kind: string, gameId: int}>
+     */
+    private function hyperRound(): array
+    {
+        if ($this->hyper === []) {
+            return [];
+        }
+
+        return [['kind' => self::HYPER, 'gameId' => $this->hyper[$this->hyperTurn++ % count($this->hyper)]['id']]];
+    }
+
     private function nextLook(): string
     {
         return self::LOOKS[$this->lookRounds++ % count(self::LOOKS)];
@@ -688,6 +759,15 @@ final class RotationPlanner
 
                 // The week ended or the switch went off since the round was planned: skipped.
                 return $this->blockfillApplies($scene) ? $this->slot(self::BLOCKFILL, $scene, null, $start + $this->teaserSeconds) : null;
+            case self::HYPER:
+                // Ended (or switched off) since the round was planned: skipped.
+                if (! in_array($entry['gameId'] ?? null, array_column($this->hyper, 'id'), true)) {
+                    return null;
+                }
+
+                $this->hyperSince = $start;
+
+                return $this->slot(self::HYPER, self::HYPER_SCENE, $entry['gameId'], $start + max(1.0, $this->hyperMinSeconds));
             case self::BOARD:
                 // Switched off since the round was planned: skipped.
                 return $this->boards === BoardScene::OFF ? null

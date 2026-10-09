@@ -28,6 +28,7 @@ use App\Support\Stacker\NodeVerifier;
 use App\Support\Stacker\StackerRuns;
 use App\Support\Stacker\Verifier;
 use App\Support\Tournaments\TournamentPrizePool;
+use App\Support\TwentyOne\Stream\HyperScene;
 use App\Support\TwentyOne\Stream\StreamImages;
 use App\Support\Wallet\NwcTransport;
 use App\Support\Wallet\WebsocketNwcTransport;
@@ -67,6 +68,8 @@ class AppServiceProvider extends ServiceProvider
 
         // The stream daemon keeps one bounded map of data URIs (StreamImages).
         $this->app->singleton(StreamImages::class);
+        // ... and one HyperScene: its chronicle's pacing lives in it.
+        $this->app->singleton(HyperScene::class);
 
         // One PageMeta per request, kept on the request itself: a scoped
         // binding is only reset by Octane and queue workers, so in HTTP tests

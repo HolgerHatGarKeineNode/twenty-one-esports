@@ -218,6 +218,10 @@ return [
             'running_tournament_seconds' => (int) env('TWENTYONE_STREAM_RUNNING_TOURNAMENT_SECONDS', 90),
             // A tournament just decided: its champion slide (tx6) holds the stream alone this long, once (RotationPlanner, 2026-10-03).
             'champion_moment_seconds' => (int) env('TWENTYONE_STREAM_CHAMPION_MOMENT_SECONDS', 120),
+            // A running Hyperbitcoinization match (h1, HyperScene): its slide stands this long, and while the match is tense
+            // (a close duel, a central bank that just fell) up to the max; one match a round (RotationPlanner, plan P6).
+            'hyper_min_seconds' => 60,
+            'hyper_max_seconds' => 180,
             // A Blockfill run that took first place this many minutes ago still gets its moment slide (f4, BlockfillSlides).
             'blockfill_moment_minutes' => 10,
             // A finished tournament keeps its champion, podium and final bracket on the stream this long after its last result (TournamentLiveSlides): five days (2026-10-03).

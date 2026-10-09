@@ -6,6 +6,7 @@ use App\Events\HyperEmoteSent;
 use App\Models\HyperMatch;
 use App\Models\User;
 use App\Support\Chess\Broadcasts;
+use App\Support\Settings\LeagueSettings;
 use Illuminate\Support\Facades\RateLimiter;
 
 /**
@@ -15,6 +16,9 @@ use Illuminate\Support\Facades\RateLimiter;
  * stickers a minute and `esports.hyper.clips_per_turn` clips per turn.
  *
  * The clips are the soundboard's files the game page ships (`public/hyper/s/*.mp3`), named by basename.
+ * Soundboard emotes can be muted for every table at once (P6): LeagueSettings `esports.hyper.emote_clips`
+ * on /admin/settings, on by default. Off, no table offers a clip and the server sends none (`clips_muted`);
+ * stickers stay. Each viewer mutes the clips they hear on the page itself (resources/js/hyper/sounds.js).
  */
 final class HyperEmotes
 {
@@ -24,6 +28,9 @@ final class HyperEmotes
     public const STICKER = 'sticker';
 
     public const CLIP = 'clip';
+
+    /** The league-wide switch of soundboard emotes (LeagueSettings, `on` or `off`). */
+    public const CLIPS_SETTING = 'esports.hyper.emote_clips';
 
     /**
      * The soundboard clip ids, from the files the page plays.
@@ -35,12 +42,28 @@ final class HyperEmotes
         return array_map(fn (string $file): string => basename($file, '.mp3'), glob(public_path('hyper/s/*.mp3')) ?: []);
     }
 
+    /** Whether players may send soundboard clips at all (CLIPS_SETTING); anything but `off` is on. */
+    public static function clipsOn(): bool
+    {
+        return LeagueSettings::get(self::CLIPS_SETTING) !== 'off';
+    }
+
+    /**
+     * The clips a table offers now: every clip while soundboard emotes are on, none while they are muted.
+     *
+     * @return list<string>
+     */
+    public static function offered(): array
+    {
+        return self::clipsOn() ? self::clips() : [];
+    }
+
     /**
      * Sends an emote to the table.
      *
      * @return array{seat: int, kind: string, emote: string}
      *
-     * @throws HyperRuleViolation `not_seated`, `unknown_emote`, or `emote_throttled` (the seconds to wait in the message)
+     * @throws HyperRuleViolation `not_seated`, `unknown_emote`, `clips_muted` (soundboard emotes off league-wide), or `emote_throttled` (the seconds to wait in the message)
      */
     public function send(HyperMatch $match, User $user, string $emote): array
     {
@@ -56,6 +79,10 @@ final class HyperEmotes
             in_array($emote, self::clips(), true) => self::CLIP,
             default => throw new HyperRuleViolation('unknown_emote', 'No such sticker or clip.'),
         };
+
+        if ($kind === self::CLIP && ! self::clipsOn()) {
+            throw new HyperRuleViolation('clips_muted', 'Soundboard emotes are muted.');
+        }
 
         [$key, $max, $decay] = $kind === self::STICKER
             ? ["hyper-sticker:{$match->id}:{$user->id}", (int) config('esports.hyper.stickers_per_minute', 3), 60]

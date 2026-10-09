@@ -1,0 +1,21 @@
+{
+ "model": "google/gemini-3-pro-image",
+ "style": "",
+ "assets": [
+  {
+   "id": "stream-plate",
+   "aspect": "16:9",
+   "prompt": "A dark modern strategy war room seen from slightly above: a long command table with a glowing holographic world map in deep navy and orange light, faint grid lines, small gold coins and paper banknotes at the table edges, screens glowing softly in the dark background, cinematic volumetric haze, mostly dark and calm so text can sit on top of it, the left two thirds and the bottom are especially dark and quiet. Modern AAA video game key art, painterly but clean. No people, no faces, no text, no letters, no numbers, no logos, no watermark."
+  },
+  {
+   "id": "stream-ribbon",
+   "aspect": "21:9",
+   "prompt": "A wide flat horizontal video game header plate made of dark gunmetal with a thin glowing orange edge line along the top and bottom, small brass rivets at both ends, slightly angled cut corners, the whole middle is an empty smooth dark area for text, isolated on a perfectly flat solid pure magenta background (#FF00FF), no shadow. No text, no letters, no numbers, no logos, no watermark."
+  },
+  {
+   "id": "stream-clash",
+   "aspect": "1:1",
+   "prompt": "A game icon: two crossed swords over a small cracking marble temple facade with columns and a completely blank, smooth frieze without any inscription, an orange glow and sparks from the cracks, stylized semi-realistic modern AAA video game 3D render, centered, complete and not cropped, crisp edges, on a perfectly flat solid pure magenta background (#FF00FF), no shadow, no ground plane. Absolutely no text, no inscription, no letters, no runes, no symbols, no numbers, no logos, no watermark."
+  }
+ ]
+}

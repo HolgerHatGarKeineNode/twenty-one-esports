@@ -3,12 +3,14 @@
  * sounds): soundboard clips in themed pools, synthesized effects, and a generative ambient score.
  *
  * - Clips rotate with memory (localStorage `hb-clip-history`): never one of the last 30 plays.
- * - Bot turns play no soundboard clips (user, 2026-10-08), effects still sound; only priority 5 (win, lose)
- *   comes through. The page tells which turn it is through setTurnInfo().
+ * - Which event plays what, and whether a clip may play, is configuration (sounds.js): bot turns play no
+ *   soundboard clips (user, 2026-10-08), effects still sound; only priority 5 (win, lose) comes through. The page
+ *   tells whether a bot's turn is on show through setAudioHooks({ botTurn }).
  * - Audio starts only after the first touch: a context created before stays locked on some browsers.
  * - Three switches, kept in `hb-settings`: effects, soundboard, music.
  */
 import { POOLS, PRIO } from './data.js';
+import { clipAllowed, decide } from './sounds.js';
 
 export const AUD = { board: true, curPrio: 0, curName: '', fx: true, music: true, vol: 0.8, ctx: null, cur: null, master: null, sfxBus: null, musicBus: null, verb: null, intensity: 0, endedAt: -1e9 };
 
@@ -92,14 +94,21 @@ function playFile(name, prio) {
 
 /** A clip from a pool. It plays to its end unless something more important comes (a conquest beats a turn horn). */
 export function clip(pool, prio) {
-    if (!AUD.board || !POOLS[pool]) return;
+    if (!POOLS[pool]) return;
     prio = prio ?? PRIO[pool] ?? (pool.startsWith('card:') ? 3 : 1);
-    if (isBotTurn() && prio < 5) return;
+    if (!clipAllowed(prio, { board: AUD.board, botTurn: isBotTurn() })) return;
     if (AUD.cur && !AUD.cur.paused && !AUD.cur.ended && prio <= AUD.curPrio) return;
     // Small moments stay quiet for a while after a clip, so the soundboard never chatters.
     if (prio <= 2 && performance.now() - AUD.endedAt < 6000) return;
     const name = pick(pool); remember(name);
     playFile(name, prio);
+}
+
+/** An event of the game (sounds.js SOUNDS): its clip, if one may play now, and its effects. */
+export function cue(event) {
+    const { clip: pool, prio, fx } = decide(event, { board: AUD.board, fx: AUD.fx, botTurn: isBotTurn() });
+    if (pool) clip(pool, prio);
+    fx.forEach((name) => sfx[name]());
 }
 
 /** A soundboard clip a player sent as an emote: plays unless the soundboard is muted, over anything but a 5. */

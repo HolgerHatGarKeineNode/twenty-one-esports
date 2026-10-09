@@ -12,6 +12,7 @@ use App\Support\TwentyOne\Stream\ChildEnvironment;
 use App\Support\TwentyOne\Stream\DetachedPublish;
 use App\Support\TwentyOne\Stream\EncoderRun;
 use App\Support\TwentyOne\Stream\FfmpegCommands;
+use App\Support\TwentyOne\Stream\HyperScene;
 use App\Support\TwentyOne\Stream\ModeMachine;
 use App\Support\TwentyOne\Stream\MusicPlaylist;
 use App\Support\TwentyOne\Stream\MusicTimeline;
@@ -260,6 +261,7 @@ class TwentyOneStreamCommand extends Command
     {
         $renderer = SceneRenderer::fromConfig();
         $boardScene = app(BoardScene::class);
+        $hyperScene = app(HyperScene::class);
         // Games that ended within this window stay on show with their result.
         $hysteresis = (int) config('twentyone.stream.scene.hysteresis_seconds', 60);
         // The planner decides scene or loop; the machine only keeps a failed scene off.
@@ -289,6 +291,10 @@ class TwentyOneStreamCommand extends Command
         // The board games next to chess (BoardScene::state()), read after the games; `off` while either read fails.
         $boards = BoardScene::OFF;
         $boardPollFailing = false;
+        // The running Hyperbitcoinization matches (HyperScene::entries()); none while the read fails.
+        /** @var list<array{id: int, tense: bool}> $hyper */
+        $hyper = [];
+        $hyperPollFailing = false;
         // Blockfill's week (BlockfillSlides::state()): `off` while the read fails, so no slide of the set shows.
         $blockfillSlides = app(BlockfillSlides::class);
         $blockfill = ['week' => BlockfillSlides::OFF, 'moment' => null];
@@ -367,6 +373,23 @@ class TwentyOneStreamCommand extends Command
                     $boards = BoardScene::OFF;
                 }
 
+                // Hyperbitcoinization on its own, like the board games: a failing read only drops its slide. Logged once per series.
+                try {
+                    $hyper = $pollFailures === 0 ? $hyperScene->entries((int) ($now * 1000)) : [];
+
+                    if ($hyperPollFailing && $pollFailures === 0) {
+                        $this->log('hyper poll recovered');
+                        $hyperPollFailing = false;
+                    }
+                } catch (Throwable $e) {
+                    if (! $hyperPollFailing) {
+                        $this->log('hyper poll failed, showing no Hyperbitcoinization slide: '.$this->describe($e));
+                        $hyperPollFailing = true;
+                    }
+
+                    $hyper = [];
+                }
+
                 // Blockfill's week on its own, like the board games: a failing read only drops its slides. Logged once per series.
                 try {
                     $blockfill = $pollFailures === 0 ? $blockfillSlides->state() : ['week' => BlockfillSlides::OFF, 'moment' => null];
@@ -395,7 +418,7 @@ class TwentyOneStreamCommand extends Command
                     $this->advanceCover($cover, $source, $tournaments, $sceneGames, $sceneMore, $stats, $now);
                 }
 
-                $slot = $planner->at($now, array_map(fn (ChessGame $game): array => ['id' => $game->id, 'blitz' => ! $game->isCorrespondence()], $sceneGames), TournamentSlides::featured($tournaments), $boards, TournamentLiveSlides::entries($liveFrames, $tournaments, (int) ($now * 1000), (int) config('twentyone.stream.rotation.champion_moment_seconds', 120)), $blockfill['week'], $blockfill['moment']);
+                $slot = $planner->at($now, array_map(fn (ChessGame $game): array => ['id' => $game->id, 'blitz' => ! $game->isCorrespondence()], $sceneGames), TournamentSlides::featured($tournaments), $boards, TournamentLiveSlides::entries($liveFrames, $tournaments, (int) ($now * 1000), (int) config('twentyone.stream.rotation.champion_moment_seconds', 120)), $blockfill['week'], $blockfill['moment'], $hyper);
                 $modes->tick($slot['kind'] !== RotationPlanner::LOOP, (int) $now);
 
                 if ($slot['scene'] !== null) {
