@@ -442,7 +442,7 @@ final class RulesPage
             'facts' => [
                 [__('Points to win'), (string) $points],
                 [__('Lead needed'), (string) $winBy],
-                [__('Meme event'), __('all :events in every :count rallies', ['events' => count(PongRules::EVENTS), 'count' => (int) ($c['event_block_rallies'] ?? 21)])],
+                [__('Meme events in every :count rallies', ['count' => (int) ($c['event_block_rallies'] ?? 21)]), (string) count(PongRules::EVENTS)],
                 [__('Invite open'), self::seconds((int) ($c['invite_seconds'] ?? 120))],
                 [__('Back in time'), self::seconds((int) ($c['forfeit_seconds'] ?? 30))],
             ],
