@@ -5,6 +5,8 @@ namespace App\Support\GameChat;
 use App\Games\Blockfill;
 use App\Games\BoardGame;
 use App\Games\GameRegistry;
+use App\Games\Hyperbitcoinization;
+use App\Games\ProofOfPong;
 use App\Games\TrackmaniaNationsForever;
 use App\Models\LineupSeat;
 use App\Models\Rating;
@@ -42,7 +44,9 @@ use swentel\nostr\Sign\Sign;
  * a switched-off board game shows no chat and the command signs nothing for
  * it. Its id is fixed all the same, so switching it on later opens exactly
  * the channel computed here. TMNF and Blockfill (2026-10-03) follow the same
- * terms behind their own switches (`esports.tmnf`, `esports.blockfill`).
+ * terms behind their own switches (`esports.tmnf`, `esports.blockfill`), and
+ * so do Hyperbitcoinization and Proof of Pong (2026-10-09, `esports.hyper`,
+ * `esports.pong`).
  *
  * A Hyperbitcoinization match has its own table chat on the same terms,
  * fixed by the match's public id (matchCreateEvent(), plan
@@ -74,15 +78,20 @@ final class GameChannels
         'blockfill' => 'Blockfill',
         // 2026-10-07 (plan "Blockli"): DerCaddy's board game, like the other board games only while switched on (has()).
         'blockli' => 'Blockli',
+        // 2026-10-09 (plan "Proof of Pong", P5; user: "Hyperbitcoinization fehlt noch ein Chat an der rechten Seite wie bei
+        // den anderen Spielen auch! Das selbe gilt auch für Pong."): the league's own games, each only while its switch
+        // registers it (has()). A Hyperbitcoinization match keeps its own table chat beside it (matchCreateEvent()).
+        'hyperbitcoinization' => 'Hyperbitcoinization',
+        'proof-of-pong' => 'Proof of Pong',
     ];
 
     /** Games that exist only behind a switch: their channel is open only while the registry has them. */
-    private const SWITCHED = [...BoardGame::RESERVED_SLUGS, TrackmaniaNationsForever::SLUG, Blockfill::SLUG];
+    private const SWITCHED = [...BoardGame::RESERVED_SLUGS, TrackmaniaNationsForever::SLUG, Blockfill::SLUG, Hyperbitcoinization::SLUG, ProofOfPong::SLUG];
 
     /**
      * Whether the game's channel is open: shown on its page and published. A
-     * board game's, TMNF's and Blockfill's only while it is switched on (the
-     * registry has it); the others always.
+     * board game's, TMNF's, Blockfill's, Hyperbitcoinization's and Proof of
+     * Pong's only while it is switched on (the registry has it); the others always.
      */
     public static function has(string $game): bool
     {

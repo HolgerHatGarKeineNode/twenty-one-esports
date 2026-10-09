@@ -20,7 +20,9 @@ use Illuminate\Support\Facades\Process;
 use Livewire\Livewire;
 use Tests\Support\BlockfillOn;
 use Tests\Support\CheckersGame;
+use Tests\Support\HyperOn;
 use Tests\Support\NineMensMorrisOn;
+use Tests\Support\PongOn;
 use Tests\Support\TestSigner;
 use Tests\Support\WaitForPort;
 
@@ -53,8 +55,8 @@ test('each game has its own channel, fixed by the creator, and the league key si
     $ids = array_map(fn (string $game): ?string => GameChannels::channelId($game), array_keys(GameChannels::GAMES));
     $signed = SignedEvent::fromInput($league->sign(40, [], GameChannels::createContent('rocket-league'), GameChannels::CREATED_AT));
 
-    expect(array_keys(GameChannels::GAMES))->toBe(['chess', 'rocket-league', 'ea-sports-fc-26', 'ea-sports-fc-27', 'nine-mens-morris', 'checkers', 'age-of-empires-2', 'tmnf', 'blockfill', 'blockli'])
-        ->and(array_unique($ids))->toHaveCount(10)
+    expect(array_keys(GameChannels::GAMES))->toBe(['chess', 'rocket-league', 'ea-sports-fc-26', 'ea-sports-fc-27', 'nine-mens-morris', 'checkers', 'age-of-empires-2', 'tmnf', 'blockfill', 'blockli', 'hyperbitcoinization', 'proof-of-pong'])
+        ->and(array_unique($ids))->toHaveCount(12)
         ->and($ids)->each->toMatch('/^[0-9a-f]{64}$/')
         ->and(GameChannels::channelId('rocket-league'))->toBe($signed?->id)
         ->and($signed?->hasValidSignature())->toBeTrue()
@@ -98,6 +100,9 @@ test('the board games add two channels and change none of the four: every id of 
         'tmnf' => '7b93615bc0584b65c91ad7a6f43045378397b94df0f5a905f1ccdac3ac1611a3',
         'blockfill' => '2eb506f4d95521318d9d03e071ce7f9bf50abd1ceb92d136d9c842ce4a51b5ca',
         'blockli' => '8aa1cd62b3934c12a38d9290add22b4e686dcd8c1c4704b762d67af26b71069d',
+        // Hyperbitcoinization and Proof of Pong (2026-10-09, plan "Proof of Pong", P5), each equal to nostr-tools' getEventHash.
+        'hyperbitcoinization' => 'f19ac294a4d935b12feee8567ef63c32e77b341b5e7eb406b6a6d837e9848257',
+        'proof-of-pong' => 'baef46e9f787ba9457b4c3611c45d992c47367712a5bbce4210b9faa3400c98c',
     ];
     $ids = fn (): array => array_combine(array_keys(GameChannels::GAMES), array_map(GameChannels::channelId(...), array_keys(GameChannels::GAMES)));
 
@@ -451,7 +456,7 @@ test('the command signs a board game\'s channel only while the board game is swi
     // Both on: seven channels, each signed with exactly its id (TMNF and Blockfill stay off here).
     CheckersGame::play();
     [$events, $output] = gameChannelsDryRun();
-    expect($creates($events))->toBe(array_map(GameChannels::channelId(...), array_values(array_diff(array_keys(GameChannels::GAMES), ['tmnf', 'blockfill', 'blockli']))))
+    expect($creates($events))->toBe(array_map(GameChannels::channelId(...), array_values(array_diff(array_keys(GameChannels::GAMES), ['tmnf', 'blockfill', 'blockli', 'hyperbitcoinization', 'proof-of-pong']))))
         ->and($events)->toHaveCount(14)
         ->and(collect($events)->every(fn (array $event): bool => SignedEvent::fromInput($event)?->hasValidSignature() === true))->toBeTrue()
         ->and($output)->not->toContain('nine-mens-morris: switched off')->not->toContain('checkers: switched off');
@@ -489,16 +494,53 @@ test('TMNF and Blockfill have their own channels, fixed like the others, open an
         ->and(GameChannels::channelId('blockfill'))->toBe('2eb506f4d95521318d9d03e071ce7f9bf50abd1ceb92d136d9c842ce4a51b5ca');
 });
 
+test('Hyperbitcoinization and Proof of Pong have their own channels, open and published only while their switch is on', function () {
+    $league = new TestSigner;
+    config(['esports.league.nsec' => $league->secret, 'esports.game_chat.creator' => null, 'esports.chat.relays' => ['ws://127.0.0.1:7777']]);
+    $hyper = GameChannels::channelId('hyperbitcoinization');
+    $pong = GameChannels::channelId('proof-of-pong');
+
+    // Off (as the test app boots): the ids are fixed all the same, the channels closed, not signed and not on a page.
+    expect($hyper)->toMatch('/^[0-9a-f]{64}$/')->and($pong)->toMatch('/^[0-9a-f]{64}$/')->and($hyper)->not->toBe($pong)
+        ->and(GameChannels::has('hyperbitcoinization'))->toBeFalse()
+        ->and(GameChannels::has('proof-of-pong'))->toBeFalse()
+        ->and(GameChannels::config('proof-of-pong', null))->toBeNull()
+        // A match's table chat is another channel than the game's.
+        ->and(GameChannels::matchChannelId('01JABCDEFGHJKMNPQRSTVWXYZ0'))->not->toBe($hyper);
+    [, $output] = gameChannelsDryRun();
+    expect($output)->toContain('hyperbitcoinization: switched off, nothing signed')->toContain('proof-of-pong: switched off, nothing signed')
+        ->and($output)->not->toContain((string) $hyper)->not->toContain((string) $pong);
+
+    HyperOn::play();
+    PongOn::play();
+    [$events] = gameChannelsDryRun();
+    $signed = collect($events)->where('kind', 40)->keyBy('id');
+
+    expect(GameChannels::open())->toContain('hyperbitcoinization', 'proof-of-pong')
+        ->and(GameChannels::config('proof-of-pong', null)['channel'] ?? null)->toBe($pong)
+        ->and($signed->get($hyper)['content'] ?? null)->toBe('{"name":"TWENTY ONE esports · Hyperbitcoinization","about":"The global chat of Hyperbitcoinization in the TWENTY ONE esports league: talk and vote."}')
+        ->and($signed->get($pong)['content'] ?? null)->toBe('{"name":"TWENTY ONE esports · Proof of Pong","about":"The global chat of Proof of Pong in the TWENTY ONE esports league: talk and vote."}')
+        ->and(SignedEvent::fromInput($signed->get($hyper))?->hasValidSignature())->toBeTrue()
+        ->and(SignedEvent::fromInput($signed->get($pong))?->hasValidSignature())->toBeTrue()
+        ->and(collect($events)->where('kind', 41)->map(fn (array $event): string => $event['tags'][0][1])->values()->all())->toContain($hyper, $pong);
+
+    // On their pages the chat follows the hero with the way to play, as on every game page (a bar below xl, the side column from xl).
+    $this->get('/hyperbitcoinization')->assertOk()->assertSeeInOrder(['id="hyper-h"', 'data-test="hyper-lobby"', 'class="chat-rail"', 'data-test="game-chat" data-game="hyperbitcoinization" data-channel="'.$hyper.'"'], false);
+    $this->get('/proof-of-pong')->assertOk()->assertSeeInOrder(['id="pong-h"', 'data-test="pong-play-bot"', 'class="chat-rail"', 'data-test="game-chat" data-game="proof-of-pong" data-channel="'.$pong.'"', 'data-test="pong-lobby"'], false);
+});
+
 test('every game in the registry has its chat on its page, every switch on', function () {
     NineMensMorrisOn::play();
     CheckersGame::play();
     tmnfOn();
     BlockfillOn::play();
+    HyperOn::play();
+    PongOn::play();
     config(['esports.game_chat.creator' => (new TestSigner)->pubkey, 'esports.chat.relays' => ['ws://127.0.0.1:7777']]);
     $games = array_keys(app(GameRegistry::class)->all());
 
-    // Every kind of game is in the run: chess, a series game, a board game and both score games.
-    expect($games)->toContain('chess', 'rocket-league', 'nine-mens-morris', 'checkers', 'tmnf', 'blockfill');
+    // Every kind of game is in the run: chess, a series game, a board game, both score games and the league's own two.
+    expect($games)->toContain('chess', 'rocket-league', 'nine-mens-morris', 'checkers', 'tmnf', 'blockfill', 'hyperbitcoinization', 'proof-of-pong');
 
     foreach ($games as $game) {
         $page = GameNames::page($game);

@@ -7,6 +7,7 @@ use App\Models\Rating;
 use App\Models\User;
 use App\Support\GameChat\GameChannels;
 use App\Support\Nostr\NostrKeys;
+use App\Support\Nostr\RelayReader;
 use Illuminate\Contracts\Process\InvokedProcess;
 use Illuminate\Support\Facades\File;
 use Illuminate\Support\Facades\Http;
@@ -18,6 +19,8 @@ use Tests\Support\BlockfillOn;
 use Tests\Support\BrowserConsole;
 use Tests\Support\BrowserLogin;
 use Tests\Support\BrowserWait;
+use Tests\Support\HyperOn;
+use Tests\Support\PongOn;
 use Tests\Support\TestSigner;
 use Tests\Support\WaitForPort;
 
@@ -458,6 +461,184 @@ test('TMNF and Blockfill have their chat too: a bar after the hero or the game a
     'tmnf' => ['tmnf', '/scores/tmnf', '[data-test=tmnf-hero]'],
     'blockfill' => ['blockfill', '/blockfill', '[data-test=stacker]'],
 ]);
+
+/*
+| The league's own games (plan "Proof of Pong", P5; user, 2026-10-09: "Hyperbitcoinization fehlt noch ein Chat an
+| der rechten Seite wie bei den anderen Spielen auch! Das selbe gilt auch für Pong."): the Hyperbitcoinization start
+| page and the Proof of Pong lobby carry their game's channel like every other game page, a bar right under the hero
+| below xl and the side column from xl.
+*/
+
+/** The page of a game whose chat P5 added, its own game switched on: slug, path, the hero the bar follows, its primary action. */
+function p5Game(string $game): array
+{
+    $game === 'hyperbitcoinization' ? HyperOn::play() : PongOn::play();
+
+    return $game === 'hyperbitcoinization'
+        ? ['/hyperbitcoinization', 'section[aria-labelledby=hyper-h]', '[data-test=hyper-lobby-open]']
+        : ['/proof-of-pong', 'section[aria-labelledby=pong-h]', '[data-test=pong-play-bot]'];
+}
+
+test('Hyperbitcoinization and Proof of Pong have their chat: a message posted on the page reaches a second viewer in the game\'s own channel, a bar under the hero at 390, the side column at 1440 and 1920', function (string $game, string $other) {
+    [$path, $hero] = p5Game($game);
+    [$anna, $bert] = User::factory()->count(2)->create();
+    TestSigner::forBrowser($anna);
+    TestSigner::forBrowser($bert);
+    $outsider = new TestSigner;
+    $channel = (string) GameChannels::channelId($game);
+    $now = now()->getTimestamp();
+    [$relay, $url, $seed] = p21Relay([
+        $outsider->sign(42, [['e', $channel, '', 'root']], 'anyone up for a game?', $now - 120),
+        // The other game's channel never shows here.
+        $outsider->sign(42, [['e', (string) GameChannels::channelId($other), '', 'root']], 'wrong channel', $now - 60),
+    ]);
+
+    try {
+        $pageA = p21Page($anna, $path);
+        $pageB = p21Page($bert, $path);
+
+        // Positive control: the collector catches a thrown error and a 500; then it starts empty.
+        $pageA->evaluate('() => { setTimeout(() => { throw new Error("probe-throw"); }); return fetch("/__test/server-error"); }');
+        BrowserWait::until($pageA, '() => window.__errors.some((e) => e.includes("probe-throw")) && window.__errors.some((e) => e.startsWith("500 ")) && performance.getEntries().some((e) => e.name.includes("/__test/server-error") && e.responseStatus === 500)', 5_000);
+        $pageA->evaluate('() => { window.__errors = []; performance.clearResourceTimings(); }');
+
+        expect($pageA->evaluate('() => document.querySelector("[data-test=game-chat]").dataset.channel'))->toBe($channel)
+            ->and($pageB->evaluate(P21_TEXTS))->toBe(['anyone up for a game?']);
+
+        // Anna writes on her page; Bert's shows it under her league name, without a reload.
+        $pageA->locator('#game-chat-input')->fill('gg, rematch in five?');
+        $pageA->locator('[data-test=game-chat-send]')->click();
+        BrowserWait::until($pageA, '() => document.querySelector("#game-chat-input").value === ""', 5_000);
+        BrowserWait::until($pageB, '() => [...document.querySelectorAll("[data-test=game-chat-message]")].some((el) => el.innerText.includes('.json_encode($anna->displayName()).') && el.innerText.includes("rematch in five"))', 10_000);
+
+        // On the relay it is Anna's kind 42 in this game's channel, and in no other.
+        $stored = app(RelayReader::class)->fetch([['kinds' => [42], 'authors' => [$anna->pubkey]]], [$url], perAuthor: 10);
+        expect(collect($stored)->map(fn ($event): array => [$event->content, $event->tags[0][1] ?? null])->all())->toBe([['gg, rematch in five?', $channel]]);
+
+        // Bert's page at 390: the bar right after the hero, small, with the newest message.
+        $pageB->setViewportSize(390, 844);
+        $pageB->evaluate('() => scrollTo(0, 0)');
+        Execution::instance()->wait(0.4);
+        $phone = $pageB->evaluate('(hero) => { const chat = document.querySelector("[data-test=game-chat]"); const rail = chat.closest(".chat-rail"); return { after: rail.previousElementSibling?.matches(hero) === true, height: Math.round(chat.getBoundingClientRect().height), toggle: Math.round(chat.querySelector("[data-test=game-chat-toggle]").getBoundingClientRect().height), preview: chat.querySelector("[data-test=game-chat-preview]").innerText, overflow: document.documentElement.scrollWidth - document.documentElement.clientWidth }; }', $hero);
+
+        $rails = [];
+        foreach ([[1440, 900], [1920, 1080]] as [$width, $height]) {
+            $pageB->setViewportSize($width, $height);
+            $pageB->evaluate('() => scrollTo(0, 0)');
+            Execution::instance()->wait(0.4);
+            $rails[$width] = $pageB->evaluate(P21_RAIL);
+        }
+        fwrite(STDERR, "\n[p5 chat] {$game}: ".json_encode(compact('phone', 'rails'))."\n");
+
+        expect($phone)->toBe(['after' => true, 'height' => $phone['height'], 'toggle' => $phone['toggle'], 'preview' => $phone['preview'], 'overflow' => 0])
+            ->and($phone['height'])->toBeLessThanOrEqual(96)
+            ->and($phone['toggle'])->toBeGreaterThanOrEqual(44)
+            ->and($phone['preview'])->toContain('rematch in five');
+
+        foreach ($rails as $width => $m) {
+            expect($m['position'])->toBe('sticky', "{$game} {$width}")
+                ->and($m['toggle'])->toBeFalse()
+                ->and($m['chat']['left'])->toBeGreaterThanOrEqual($m['contentRight'] + 24, "{$game} {$width}")
+                ->and($m['chat']['right'])->toBeLessThanOrEqual($m['vw'] - 24)
+                ->and($m['chat']['width'])->toBe($width >= 1536 ? 400 : 360)
+                ->and($m['chat']['top'])->toBeGreaterThanOrEqual($m['header'])
+                ->and($m['chat']['bottom'])->toBeLessThanOrEqual($m['vh'])
+                ->and($m['messages'])->toBe(2)
+                ->and($m['composer'])->not->toBeNull()
+                ->and($m['scrollers'])->toBe([])
+                ->and($m['overflow'])->toBe(0, "{$game} {$width}");
+        }
+
+        expect(p21Errors($pageA))->toBe([])->and(p21Errors($pageB))->toBe([]);
+    } finally {
+        $relay->stop(1);
+        @unlink($seed);
+    }
+})->with([
+    'hyperbitcoinization' => ['hyperbitcoinization', 'proof-of-pong'],
+    'proof of pong' => ['proof-of-pong', 'hyperbitcoinization'],
+]);
+
+/**
+ * The page under the chat at one size: document overflow, texts cut off (wider than their box without an ellipsis, or
+ * running past a clipping ancestor such as the hero), the page's buttons and controls under 44 px (the chat's own
+ * composer is the same component on every game page and measured there), the primary action's bottom.
+ */
+const P5_MEASURE = <<<'JS'
+    (primary) => {
+        const host = document.querySelector('.chat-rail-host');
+        const visible = (el) => el.checkVisibility() && el.getBoundingClientRect().width > 0 && ! el.closest('.sr-only');
+        const label = (el) => (el.dataset.test || el.tagName.toLowerCase()) + ': ' + (el.innerText || el.getAttribute('aria-label') || '').trim().slice(0, 40);
+        const clipper = (el) => { for (let p = el.parentElement; p && p !== host; p = p.parentElement) { const s = getComputedStyle(p); if (s.overflowX !== 'visible') return p; } return null; };
+        const cut = [];
+        for (const el of host.querySelectorAll('h1, h2, h3, b, span, a, button, p, label, li')) {
+            if (! visible(el) || el.closest('[data-test=game-chat-list]')) continue;
+            if (el.scrollWidth > el.clientWidth + 1 && getComputedStyle(el).textOverflow !== 'ellipsis' && getComputedStyle(el).overflowX !== 'visible') cut.push('narrow ' + label(el));
+            const box = clipper(el);
+            if (box && el.children.length === 0 && el.innerText.trim() !== '') { const r = el.getBoundingClientRect(); const b = box.getBoundingClientRect(); if (r.right > b.right + 1 || r.left < b.left - 1) cut.push('clipped ' + label(el)); }
+        }
+        const small = [...host.querySelectorAll('button, [role=button], input[type=range], input[type=submit], select, textarea, input[type=text]')]
+            .filter((el) => visible(el) && ! el.closest('.chat-rail')).map((el) => ({ el, r: el.getBoundingClientRect() })).filter(({ r }) => r.height < 44).map(({ el, r }) => label(el) + ' ' + Math.round(r.width) + 'x' + Math.round(r.height));
+        const action = document.querySelector(primary);
+        const chat = document.querySelector('[data-test=game-chat]').getBoundingClientRect();
+        return {
+            size: innerWidth + 'x' + innerHeight, overflow: document.documentElement.scrollWidth - document.documentElement.clientWidth,
+            cut, small, primaryBottom: action ? Math.round(action.getBoundingClientRect().bottom + scrollY) : null,
+            chat: [Math.round(chat.left), Math.round(chat.top + scrollY), Math.round(chat.width), Math.round(chat.height)],
+            lang: document.documentElement.lang,
+        };
+    }
+    JS;
+
+test('measured as an admin in German at 390, 768, 1440 and 1920: the page beside or above its chat has no overflow, nothing cut off or squeezed, controls of 44 px', function (string $game) {
+    [$path, , $primary] = p5Game($game);
+    $admin = User::factory()->create(['name' => 'Anna Admin']);
+    Admin::query()->create(['pubkey' => $admin->pubkey]);
+    TestSigner::forBrowser($admin);
+    $outsider = new TestSigner;
+    [$relay, , $seed] = p21Relay([$outsider->sign(42, [['e', (string) GameChannels::channelId($game), '', 'root']], 'Wer spielt heute Abend eine Runde mit? Ich bin ab 21 Uhr online und suche Gegner.', now()->getTimestamp() - 60)]);
+
+    try {
+        $page = visit(BrowserLogin::url($admin), ['ignoreHTTPSErrors' => true])->page();
+        $page->context()->addInitScript(BrowserConsole::COLLECTOR);
+        $page->context()->addInitScript(TestSigner::browserStub($admin));
+        $page->context()->addInitScript('try { localStorage.setItem("hb-settings", JSON.stringify({ music: false })); } catch (e) {}');
+        $page->goto(ComputeUrl::from(route('locale.switch', 'de', false)));
+        $page->setViewportSize(1440, 900);
+        $page->goto(ComputeUrl::from($path));
+        BrowserWait::until($page, '() => window.Alpine !== undefined && Alpine.$data(document.querySelector("[data-test=game-chat]"))?.items.length === 1 && document.fonts.status === "loaded"', 10_000);
+
+        $rows = [];
+        foreach ([[390, 844], [768, 1024], [1440, 900], [1920, 1080]] as [$width, $height]) {
+            $page->setViewportSize($width, $height);
+            $page->evaluate('() => scrollTo(0, 0)');
+            Execution::instance()->wait(0.4);
+            $rows[$width] = $page->evaluate(P5_MEASURE, $primary);
+            p21Shot($page, "p5-{$game}-de-{$width}");
+        }
+        fwrite(STDERR, "\n[p5 measure] {$game}: ".json_encode($rows)."\n");
+
+        foreach ($rows as $width => $row) {
+            expect($row['lang'])->toBe('de')
+                ->and($row['overflow'])->toBe(0, "{$game} {$width}")
+                ->and($row['cut'])->toBe([], "{$game} {$width}")
+                ->and($row['small'])->toBe([], "{$game} {$width}");
+        }
+
+        // The primary action keeps its first-screen place where it had one: Hyperbitcoinization's "Create table" at 390 x 844.
+        if ($game === 'hyperbitcoinization') {
+            expect($rows[390]['primaryBottom'])->toBeLessThanOrEqual(844);
+        }
+
+        expect(p21Errors($page))->toBe([]);
+        // Positive control: the collector on this page catches a thrown error.
+        $page->evaluate('() => { setTimeout(() => { throw new Error("probe-throw"); }); }');
+        BrowserWait::until($page, '() => window.__errors.some((e) => e.includes("probe-throw"))', 5_000);
+    } finally {
+        $relay->stop(1);
+        @unlink($seed);
+    }
+})->with(['hyperbitcoinization', 'proof-of-pong']);
 
 /*
 | Site-wide mute (user, 2026-10-05: "globales Muten für alle im Chat"): an

@@ -1,7 +1,8 @@
 {{--
     Hyperbitcoinization's start page in the league's shell (plan "Hyperbitcoinization", P2/P3): the title art over
     the lobby (components/⚡hyper-lobby: a new table or the player's own, then the open tables; a table's own link
-    `tables/{ulid}` shows that table first), the quick start against bots, and the viewer's running matches. The
+    `tables/{ulid}` shows that table first), the game's chat (P5 of plan "Proof of Pong": a bar below the lobby, from
+    xl the side column), the quick start against bots, and the viewer's running matches. The
     quick start is a plain form: posting into a new tab is no popup a browser could block
     (HyperMatchController::quick() sends it on). Every match opens in a new tab.
 --}}
@@ -13,8 +14,8 @@
         ->card(fn () => \App\Support\Cards\PageCard::page('hyper'));
     $chip = 'flex min-h-11 cursor-pointer items-center justify-center gap-2 rounded-md bg-well font-bold text-ink-2 shadow-ring has-[:checked]:bg-btc-chip has-[:checked]:text-ink has-[:checked]:shadow-[inset_0_0_0_1px_var(--color-btc)] has-[:focus-visible]:outline-2 has-[:focus-visible]:outline-btc';
 @endphp
-<x-layouts::app :title="'Hyperbitcoinization'">
-    <div class="flex flex-col gap-6 px-4 pb-10 lg:gap-8 lg:px-12 lg:pb-12" data-test="hyper-index">
+<x-layouts::app :title="'Hyperbitcoinization'" :scripts="['resources/js/gameChannel.js']">
+    <div class="chat-rail-host flex flex-col gap-6 px-4 pb-10 lg:gap-8 lg:px-12 lg:pb-12" data-test="hyper-index">
         {{--
             The start page's theme (user, 2026-10-09: "soll schon hier spielen und steuerbar sein, wie bei Blockfill"):
             it starts on load where the browser allows sound, otherwise on the first tap or key; a switch and a volume of
@@ -83,6 +84,9 @@
                 <livewire:hyper-lobby :focus="$focus" />
             </div>
         </section>
+
+        {{-- The game's public chat (plan "Proof of Pong", P5), right under the lobby as on every game page: a bar below xl, from xl the side column (.chat-rail). --}}
+        <div class="chat-rail"><livewire:game-channel :game="\App\Games\Hyperbitcoinization::SLUG" wire:key="game-channel-hyperbitcoinization" /></div>
 
         @if ($viewer !== null)
             {{-- Straight into a live match against bots, no table: the P2 quick start, into a new tab --}}

@@ -4,15 +4,16 @@
     (P3, pong/partials/figures; resources/js/pong/picker.js keeps the pick in the browser). The form opens the game in a new
     tab, full-screen (PongController::bot()); a guest logs in first and lands in the game. Under it the live 1v1 (P2,
     components/⚡pong-lobby): who is online and looking to play, invites, the running match. Indexed with its own link
-    preview since P4, with the Elo ladder one link away and the viewer's latest win to share.
+    preview since P4, with the Elo ladder one link away and the viewer's latest win to share. Since P5 the game's chat
+    sits between the way to play and the live 1v1: a bar below xl, from xl the side column.
 --}}
 @php
     app(\App\Support\PageMeta::class)->describe('Proof of Pong', __('Proof of Pong, the arcade game of the TWENTY ONE esports league: classic Pong to 21 in Bitcoin meme culture. Play a bot or a live 1v1 for Elo, with meme events every 21st rally.'))
         ->card(fn () => \App\Support\Cards\PageCard::page('pong'));
     $chip = 'flex cursor-pointer items-center gap-3 rounded-md bg-well p-2 pr-3 text-left text-ink-2 shadow-ring transition-colors has-[:checked]:bg-btc-chip has-[:checked]:text-ink has-[:checked]:shadow-[inset_0_0_0_2px_var(--color-btc)] has-[:focus-visible]:outline-2 has-[:focus-visible]:outline-btc';
 @endphp
-<x-layouts::app :title="'Proof of Pong'" :scripts="['resources/css/pong-picker.css', 'resources/js/pong/picker.js']">
-    <div class="flex flex-col gap-6 px-4 pb-10 lg:gap-8 lg:px-12 lg:pb-12" data-test="pong-index">
+<x-layouts::app :title="'Proof of Pong'" :scripts="['resources/css/pong-picker.css', 'resources/js/pong/picker.js', 'resources/js/gameChannel.js']">
+    <div class="chat-rail-host flex flex-col gap-6 px-4 pb-10 lg:gap-8 lg:px-12 lg:pb-12" data-test="pong-index">
         <section class="relative isolate flex flex-col overflow-hidden rounded-lg bg-card shadow-ring" aria-labelledby="pong-h">
             <img src="/pong/art/key-title.webp" alt="" width="1600" height="900" class="aspect-[16/7] max-h-[360px] w-full object-cover object-top sm:aspect-[16/5]" data-test="pong-key-art">
             <div class="flex flex-col gap-6 p-5 sm:p-8">
@@ -56,6 +57,9 @@
                 </form>
             </div>
         </section>
+
+        {{-- The game's public chat (P5), right under the way to play as on every game page: a bar below xl, from xl the side column (.chat-rail). --}}
+        <div class="chat-rail"><livewire:game-channel :game="\App\Games\ProofOfPong::SLUG" wire:key="game-channel-proof-of-pong" /></div>
 
         <livewire:pong-lobby />
 
