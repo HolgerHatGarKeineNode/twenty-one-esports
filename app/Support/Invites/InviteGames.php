@@ -61,6 +61,8 @@ final class InviteGames
                 GameKind::Score => ['kind' => 'score', 'modes' => []],
                 // Hyperbitcoinization invites come with its lobby (plan "Hyperbitcoinization", P3).
                 GameKind::Strategy => null,
+                // Proof of Pong invites come with its live 1v1 (plan "Proof of Pong", P2).
+                GameKind::Arcade => null,
             };
 
             if ($entry === null) {

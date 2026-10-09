@@ -1750,4 +1750,29 @@ return [
         ],
     ],
 
+    /*
+    |--------------------------------------------------------------------------
+    | Proof of Pong (plan "Proof of Pong", P1)
+    |--------------------------------------------------------------------------
+    |
+    | Classic Pong in Bitcoin meme culture, against a bot for now (P2 adds live
+    | 1v1). enabled: the switch (`ESPORTS_PONG`, off by default); off, the
+    | routes in routes/pong.php are not registered and the registry does not
+    | know the game. points_to_win: a game ends at this score, but only with a
+    | lead of win_by (at 20:20 it goes on until one side is two points ahead).
+    | event_every_rallies: every this many rallies one rally is a meme event
+    | (Halving, Brrr, Pizza Day, Difficulty Adjustment), the same for both
+    | sides and drawn from the game's seed (App\Support\Pong\PongRules).
+    | The physics and the bot have no settings: the browser runs the same
+    | simulation and must agree with the server tick for tick.
+    |
+    */
+
+    'pong' => [
+        'enabled' => (bool) env('ESPORTS_PONG', false),
+        'points_to_win' => 21,
+        'win_by' => 2,
+        'event_every_rallies' => 21,
+    ],
+
 ];

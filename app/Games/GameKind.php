@@ -26,6 +26,11 @@ namespace App\Games;
  *   seat instead of a two-sided result. Registered only behind its switch;
  *   until its surfaces come (P6) every switch leaves it out.
  *
+ * - Arcade: Proof of Pong (plan "Proof of Pong", P1), a real-time duel to 21
+ *   points on a deterministic physics core both the server and the browser
+ *   run (App\Support\Pong). Registered only behind its switch; until its
+ *   surfaces come (P4) every switch leaves it out.
+ *
  * A further kind is one more case here plus its answer at each switch.
  */
 enum GameKind: string
@@ -35,4 +40,5 @@ enum GameKind: string
     case Board = 'board';
     case Score = 'score';
     case Strategy = 'strategy';
+    case Arcade = 'arcade';
 }

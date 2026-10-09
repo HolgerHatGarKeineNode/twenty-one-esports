@@ -7,6 +7,7 @@ use App\Games\BoardGame;
 use App\Games\Contracts\Game;
 use App\Games\GameRegistry;
 use App\Games\Hyperbitcoinization;
+use App\Games\ProofOfPong;
 use App\Games\ScoreDemo;
 use App\Games\ScoreGame;
 use App\Games\TrackmaniaNationsForever;
@@ -64,6 +65,8 @@ class AppServiceProvider extends ServiceProvider
             ...$this->scoreGames(),
             // Hyperbitcoinization (plan "Hyperbitcoinization", P2): only while its switch is on.
             ...(config('esports.hyper.enabled') ? [$this->app->make(Hyperbitcoinization::class)] : []),
+            // Proof of Pong (plan "Proof of Pong", P1): only while its switch is on.
+            ...(config('esports.pong.enabled') ? [$this->app->make(ProofOfPong::class)] : []),
         ], (array) config('esports.game_order.first', []), (array) config('esports.game_order.last', []))));
 
         // The stream daemon keeps one bounded map of data URIs (StreamImages).
