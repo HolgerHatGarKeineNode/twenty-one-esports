@@ -50,17 +50,18 @@ class PongMatchFactory extends Factory
     }
 
     /**
-     * Over: side `$winner` won with `$score` (left, right).
+     * Over: side `$winner` won with `$score` (left, right). The winner is read from the sides the match is finally
+     * made with (a closure, resolved after `create([...])`'s attributes), not from the definition's own new users.
      *
      * @param  array{int, int}  $score
      */
     public function finished(int $winner = 0, array $score = [21, 15], PongEndReason $reason = PongEndReason::Score): static
     {
-        return $this->state(fn (array $attributes): array => [
+        return $this->state(fn (): array => [
             'status' => PongMatchStatus::Finished,
             'score_left' => $score[0],
             'score_right' => $score[1],
-            'winner_id' => $winner === 0 ? $attributes['left_id'] : $attributes['right_id'],
+            'winner_id' => fn (array $attributes): int => $winner === 0 ? $attributes['left_id'] : $attributes['right_id'],
             'end_reason' => $reason,
             'started_at' => now()->subMinutes(5),
             'ended_at' => now(),

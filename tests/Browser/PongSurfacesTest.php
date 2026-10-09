@@ -130,7 +130,7 @@ test('every Proof of Pong surface as an admin in German at 390, 768, 1440 and 19
     $carl = User::factory()->create(['name' => 'Carl Pleb']);
 
     // Anna won a live match as Saylor, stands on the Elo ladder, and Carl invited her to the next one.
-    PongMatch::factory()->finished(0, [21, 19])->create(['left_id' => $anna->id, 'right_id' => $bert->id, 'winner_id' => $anna->id, 'state' => [
+    PongMatch::factory()->finished(0, [21, 19])->create(['left_id' => $anna->id, 'right_id' => $bert->id, 'state' => [
         'ref' => null, 'speed' => 1, 'seen' => [null, null], 'rematch' => [false, false], 'next' => null, 'version' => 9, 'figures' => ['saylor', 'lagarde'],
     ]]);
     PongRating::query()->create(['user_id' => $anna->id, 'rating' => 1016, 'results' => 1, 'wins' => 1, 'losses' => 0]);

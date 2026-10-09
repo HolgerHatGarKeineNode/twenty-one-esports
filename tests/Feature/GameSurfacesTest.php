@@ -120,7 +120,7 @@ function gameSurfacesPlayer(): User
 
         // Proof of Pong (plan "Proof of Pong", P4) keeps no Rating either: a finished live match and its own Elo.
         if ($game->kind() === GameKind::Arcade) {
-            PongMatch::factory()->finished(0, [21, 17])->create(['left_id' => $player->id, 'right_id' => User::factory()->create()->id, 'winner_id' => $player->id, 'state' => [
+            PongMatch::factory()->finished(0, [21, 17])->create(['left_id' => $player->id, 'right_id' => User::factory()->create()->id, 'state' => [
                 'ref' => null, 'speed' => 1, 'seen' => [null, null], 'rematch' => [false, false], 'next' => null, 'version' => 9, 'figures' => ['saylor', null],
             ]]);
             PongRating::query()->create(['user_id' => $player->id, 'rating' => 1016, 'results' => 1, 'wins' => 1, 'losses' => 0]);

@@ -66,7 +66,7 @@ function pongStreamResult(int $minutesAgo = 5, array $score = [21, 17], array $f
     $leftUser = User::factory()->create(['name' => $left]);
 
     return PongMatch::factory()->finished(0, $score)->create([
-        'left_id' => $leftUser->id, 'right_id' => User::factory()->create(['name' => $right])->id, 'winner_id' => $leftUser->id,
+        'left_id' => $leftUser->id, 'right_id' => User::factory()->create(['name' => $right])->id,
         'started_at' => now()->subMinutes($minutesAgo + 6), 'ended_at' => now()->subMinutes($minutesAgo),
         'left_rating_before' => 1000, 'left_rating_after' => 1016, 'right_rating_before' => 1000, 'right_rating_after' => 984,
         'state' => ['ref' => null, 'speed' => 1, 'seen' => [null, null], 'rematch' => [false, false], 'next' => null, 'version' => 9, 'figures' => $figures],

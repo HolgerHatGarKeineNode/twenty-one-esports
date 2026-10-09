@@ -316,3 +316,18 @@ test('a match page shows its two players the live match and anybody else its sco
         ->and($config['snapshot']['status'])->toBe('finished')
         ->and($config['snapshot']['winner'])->toBe(1);
 });
+
+test('a finished match from the factory is won by the side it names, among the players it was given', function () {
+    [$anna, $bert] = User::factory()->count(2)->create();
+    $users = User::query()->count();
+
+    $rightWon = PongMatch::factory()->finished(1, [17, 21])->create(['left_id' => $anna->id, 'right_id' => $bert->id]);
+    $leftWon = PongMatch::factory()->finished(0)->create(['left_id' => $anna->id, 'right_id' => $bert->id]);
+
+    expect($rightWon->winner_id)->toBe($bert->id)
+        ->and($leftWon->winner_id)->toBe($anna->id)
+        ->and(User::query()->count())->toBe($users);
+
+    $ownPlayers = PongMatch::factory()->finished(1)->create();
+    expect($ownPlayers->winner_id)->toBe($ownPlayers->right_id);
+});
