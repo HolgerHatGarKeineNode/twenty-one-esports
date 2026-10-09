@@ -114,32 +114,51 @@ test('soundboard emotes muted league-wide: the emote panel offers stickers only,
         ->and(hyperSoundErrors($page))->toBe([]);
 });
 
-test('the start page plays its theme from the first tap, the button turns it off and the match page keeps that choice', function () {
+test('the start page plays its theme with a music switch and a volume as on Blockfill, kept for the next visit', function () {
     $anna = User::factory()->create();
     $page = visit(BrowserLogin::url($anna))->page();
     $page->context()->addInitScript(BrowserConsole::COLLECTOR);
     $page->setViewportSize(390, 844);
     $page->goto(ComputeUrl::from(route('hyper.index', [], false)));
     BrowserWait::until($page, '() => document.readyState === "complete" && window.Alpine !== undefined', 10_000);
-    $music = '() => Alpine.$data(document.querySelector("[data-test=hyper-index-music]")).playing';
+    $state = '() => { const d = Alpine.$data(document.querySelector("[data-test=hyper-index-sound]")); return { on: d.on, playing: d.playing, volume: d.volume, gain: d.audio ? Math.round(d.audio.volume * 100) / 100 : null, paused: d.audio ? d.audio.paused : null, loop: d.audio ? d.audio.loop : null }; }';
 
-    expect($page->evaluate($music))->toBeFalse();
-
-    // A first tap anywhere (not the button) starts the theme.
+    // On load where the browser lets it, else from the first tap anywhere but the controls.
     $page->locator('#hyper-h')->click();
-    BrowserWait::until($page, $music, 5_000);
-    expect($page->evaluate('() => { const a = Alpine.$data(document.querySelector("[data-test=hyper-index-music]")).audio; return [a.paused, a.loop, a.src.includes("/hyper/m/")]; }'))->toBe([false, true, true]);
+    BrowserWait::until($page, '() => Alpine.$data(document.querySelector("[data-test=hyper-index-sound]")).playing', 5_000);
+    expect($page->evaluate($state))->toMatchArray(['on' => true, 'playing' => true, 'volume' => 50, 'paused' => false, 'loop' => true]);
 
-    // The button stops it and stores the game's music switch as off; on the next visit a tap stays silent.
+    // The volume: 80 % is louder than 50 %, the audio follows at once and the value is kept.
+    $before = $page->evaluate($state)['gain'];
+    $page->evaluate('() => { const r = document.querySelector("[data-test=hyper-index-volume]"); r.value = 80; r.dispatchEvent(new Event("input", { bubbles: true })); }');
+    $louder = $page->evaluate($state);
+    expect($louder['volume'])->toBe(80)->and($louder['gain'])->toBeGreaterThan($before);
+
+    // The switch turns it off; the next visit stays silent after a tap, with the volume where it was.
     $page->locator('[data-test=hyper-index-music]')->click();
-    BrowserWait::until($page, '() => !Alpine.$data(document.querySelector("[data-test=hyper-index-music]")).playing', 3_000);
-    expect($page->evaluate('() => JSON.parse(localStorage.getItem("hb-settings")).music'))->toBeFalse();
+    BrowserWait::until($page, '() => !Alpine.$data(document.querySelector("[data-test=hyper-index-sound]")).playing', 3_000);
+    expect($page->evaluate('() => JSON.parse(localStorage.getItem("hb-settings"))'))->toMatchArray(['music' => false, 'startVolume' => 80]);
     $page->reload();
     BrowserWait::until($page, '() => document.readyState === "complete" && window.Alpine !== undefined', 10_000);
     $page->locator('#hyper-h')->click();
     $page->evaluate('() => new Promise((r) => setTimeout(r, 500))');
 
-    expect($page->evaluate($music))->toBeFalse()
+    if (is_string($dir = getenv('HYPER_SHOTS')) && $dir !== '') {
+        foreach ([[390, 844], [1440, 900]] as [$w, $h]) {
+            $page->setViewportSize($w, $h);
+            $page->screenshot(false, "hyper-start-{$w}");
+            \Illuminate\Support\Facades\File::ensureDirectoryExists($dir);
+            \Illuminate\Support\Facades\File::move(base_path("tests/Browser/Screenshots/hyper-start-{$w}.png"), "{$dir}/hyper-start-{$w}.png");
+        }
+        $page->setViewportSize(390, 844);
+    }
+
+    $box = $page->evaluate('() => { const r = document.querySelector("[data-test=hyper-index-sound]").getBoundingClientRect(); return [Math.round(r.right), Math.round(r.height), document.documentElement.scrollWidth - document.documentElement.clientWidth]; }');
+
+    expect($page->evaluate($state))->toMatchArray(['on' => false, 'playing' => false, 'volume' => 80])
+        ->and($box[0])->toBeLessThanOrEqual(390)
+        ->and($box[1])->toBeGreaterThanOrEqual(44)
+        ->and($box[2])->toBeLessThanOrEqual(0)
         ->and($page->evaluate('() => window.__errors'))->toBe([])
         ->and($page->evaluate(BrowserConsole::BAD_RESPONSES))->toBe([]);
 });
