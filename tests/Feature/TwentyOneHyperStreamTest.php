@@ -175,7 +175,12 @@ test('the rotation gets the running matches with a player, live first, and none 
     $botsOnly->seats()->update(['user_id' => null, 'bot' => true]);
     hyperStreamMatch($anna, $bert)->forceFill(['status' => HyperMatchStatus::Finished, 'ended_at' => now()])->save();
 
+    $daily->forceFill(['turn_started_ms' => now()->getTimestampMs()])->save();
     expect(array_column(app(HyperScene::class)->entries((int) now()->getTimestampMs()), 'id'))->toBe([$live->id, $daily->id]);
+
+    // A correspondence match nobody moved in for half an hour leaves the rotation; a live one stays however slow.
+    $later = (int) now()->addMinutes(HyperScene::CORRESPONDENCE_FRESH_MINUTES + 1)->getTimestampMs();
+    expect(array_column(app(HyperScene::class)->entries($later), 'id'))->toBe([$live->id]);
 
     // Switched off while they run: gone from the rotation, and the slide shows no match.
     config(['esports.hyper.enabled' => false]);

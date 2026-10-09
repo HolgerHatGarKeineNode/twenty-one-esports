@@ -56,6 +56,9 @@ class HyperScene
     /** Running matches the rotation takes turns with. */
     public const MAX_MATCHES = 6;
 
+    /** A correspondence match is on the stream only while someone moved this recently: a day-long turn is no show. */
+    public const CORRESPONDENCE_FRESH_MINUTES = 30;
+
     /** The factions' colours (resources/js/hyper/data.js FACTIONS). */
     public const COLORS = ['bitcoiner' => '#F7931A', 'fed' => '#43D17A', 'ezb' => '#57A6FF', 'goldbug' => '#A98BFF', 'shitcoiner' => '#FF5FB0', 'nocoiner' => '#D7DEEE'];
 
@@ -78,7 +81,7 @@ class HyperScene
 
     /**
      * The running matches the rotation shows, in turn order: live ones oldest first, then correspondence ones
-     * moved in last first; none while the game is off.
+     * moved in within CORRESPONDENCE_FRESH_MINUTES, last moved first; none while the game is off.
      *
      * @return list<array{id: int, tense: bool}>
      */
@@ -90,6 +93,8 @@ class HyperScene
 
         $matches = HyperMatch::query()->where('status', HyperMatchStatus::Active)
             ->whereHas('seats', fn ($seats) => $seats->whereNotNull('user_id'))
+            ->where(fn ($query) => $query->where('mode', HyperMatch::LIVE)
+                ->orWhere('turn_started_ms', '>=', $nowMs - self::CORRESPONDENCE_FRESH_MINUTES * 60_000))
             ->with('seats')
             ->orderByRaw('case when mode = ? then 0 else 1 end', [HyperMatch::LIVE])
             ->orderByRaw('case when mode = ? then id else 0 end', [HyperMatch::LIVE])
