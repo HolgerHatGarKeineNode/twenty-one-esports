@@ -403,9 +403,14 @@ test('a push renders once, the fallback poll comes back without a socket, a hidd
     fwrite(STDERR, "\n[livewire-pushes] ".json_encode(array_map(fn (array $w): array => ['requests' => $w['requests'], 'received' => $w['received'], 'labels' => $w['labels'], 'at' => $w['at']], $seen))."\n");
 
     expect($roomErrors)->toBe([])->and($showErrors)->toBe([])->and($homeErrors)->toBe([])->and($liveErrors)->toBe([])
-        // A push: one request, which carries the room's sync.
-        ->and($seen['room push']['requests'])->toBe(1)
+        // A push renders the room once: one sync, with the dock's and badge's renders. The ready prompt asks on the push
+        // at once (casualWatch), the room after its 250 ms batch: on the virtual clock the two share a request only when
+        // the test's next call comes within Livewire's real 5 ms buffer, which a loaded run misses (measured 2026-10-09:
+        // 2 requests at 63000 and 63250 virtual ms). A browser sends two; both are counted, neither twice.
+        ->and($seen['room push']['requests'])->toBeLessThanOrEqual(2)
         ->and(trafficCount($seen['room push'], 'pages::matches.room:sync'))->toBe(1)
+        ->and(trafficCount($seen['room push'], 'match-dock:$refresh'))->toBe(1)
+        ->and(trafficCount($seen['room push'], 'casual-ready:check'))->toBe(1)
         // No socket: every 30 s; hidden: nothing from the room or anything else; back: one catch-up.
         ->and(trafficCount($seen['room no socket'], 'pages::matches.room:sync'))->toBe(2)
         ->and($seen['room hidden']['requests'])->toBe(0)

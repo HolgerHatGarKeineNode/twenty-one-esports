@@ -56,7 +56,21 @@ final class LivewireTraffic
             return originalFetch(...args);
         };
 
+        // Actions called and not yet answered, from the moment of the call: a request is only built after Livewire's
+        // real 5 ms buffer, which a loaded machine stretches past the settle's first sleep (measured 2026-10-09: a
+        // push's refreshLive missing from its window). Deferred actions wait for a later one and are not counted.
+        let actions = 0;
+
         document.addEventListener('livewire:init', () => {
+            Livewire.interceptAction(({ action, onFinish, onCancel, onFailure }) => {
+                let done = false;
+                const finish = () => { if (! done) { done = true; actions--; } };
+                actions++;
+                onFinish(finish);
+                onCancel(finish);
+                onFailure(finish);
+                queueMicrotask(() => { if (action.isDeferred()) finish(); });
+            });
             Livewire.interceptRequest(({ request, onSend, onResponse, onSuccess, onError, onFailure, onFinish }) => {
                 const record = { at: virtualNow, what: '', sent: 0, received: 0, status: null };
                 open.add(record);
@@ -76,7 +90,7 @@ final class LivewireTraffic
         // The requests this instant started are answered before the next timer fires.
         const settle = async () => {
             await sleep(12);
-            for (let waited = 0; open.size > 0 && waited < 5000; waited += 10) await sleep(10);
+            for (let waited = 0; (open.size > 0 || actions > 0) && waited < 5000; waited += 10) await sleep(10);
             await sleep(4);
         };
 
@@ -117,7 +131,7 @@ final class LivewireTraffic
                 };
             },
             resetOther() { Object.keys(other).forEach((key) => delete other[key]); },
-            pending: () => open.size,
+            pending: () => open.size + Math.max(0, actions),
             hasLivewire: () => typeof window.Livewire !== 'undefined' && typeof window.Alpine !== 'undefined',
         };
     })();

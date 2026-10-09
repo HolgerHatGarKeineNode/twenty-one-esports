@@ -19,8 +19,8 @@ use function Amp\Websocket\Client\connect;
  * refuses to launch another on it and drops launch `args`; a `channel` it passes on. So on() closes Pest's connection
  * (and its browser) and opens a new one asking for CHANNEL, which scripts/link-host-chromium.sh points at the host's
  * Chromium with SwiftShader's switches. The next visit() initialises Playwright on the new connection. off() swaps
- * back to a plain connection, so a file that runs later in the same process gets the browser it always had. The file using it also has its own shard in
- * scripts/test-browser.sh, so the normal run never shares a process with it.
+ * back to a plain connection, so a file that runs later in the same process gets the browser it always had. The file using it also runs in pest
+ * processes of its own in scripts/test-browser.sh (split entries after two shards that end early), so the normal run never shares a process with it.
  *
  * Use: `beforeEach(fn () => BrowserWebGL::on())` and `afterAll(fn () => BrowserWebGL::off())`.
  */

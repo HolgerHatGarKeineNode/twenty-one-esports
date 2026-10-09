@@ -177,7 +177,9 @@ test('frame times of the arena at 1440x900 are recorded for each quality tier', 
     $page->locator('[data-test=pong-start-btn]')->click();
     BrowserWait::until($page, '() => window.pongGame.state().phase === "play"', 10_000);
     $page->evaluate('() => { window.pongFrames.length = 0; }');
-    usleep(5_000_000);
+    // A number of frames, not a stretch of time: SwiftShader under a full parallel run drew 10 in the 5 s this used to
+    // wait (measured 2026-10-09), which said more about the machine's load than about the arena.
+    BrowserWait::until($page, '() => window.pongFrames.length >= 30', 30_000);
 
     $frames = $page->evaluate('() => window.pongFrames.slice()');
     $state = $page->evaluate('() => window.pongGame.state()');

@@ -230,9 +230,6 @@ esports_sweep_stale_playwright_servers
 npm run build
 
 SHARD_FILES=(
-    # Proof of Pong's three.js arena (P3) on its own: it relaunches Chromium with software WebGL
-    # (tests/Support/BrowserWebGL.php), and SwiftShader frames are slow, so it neither slows nor touches another file.
-    "tests/Browser/PongArenaTest.php"
     "tests/Browser/BoardLeagueTest.php#!two~players~meet|a~guest~watching"
     "tests/Browser/LivePlayerTest.php#=badge~fits~the~shell~at~320 tests/Browser/BoardCorrespondenceTest.php tests/Browser/NavigateRaceTest.php tests/Browser/NavigateSpikeTest.php tests/Browser/NavigateDeploySkewTest.php tests/Browser/LadderDefaultTest.php tests/Browser/CasualLobbyCardTest.php tests/Browser/ClanRosterTest.php"
     "tests/Browser/LiveChatTest.php tests/Browser/BunkerSessionTest.php tests/Browser/GameChannelTest.php tests/Browser/NineMensMorrisTest.php tests/Browser/MeHubTest.php tests/Browser/LivewireTrafficTest.php tests/Browser/HyperSurfacesTest.php tests/Browser/PongBotTest.php tests/Browser/PongLiveTest.php tests/Browser/OnlineLookingTest.php tests/Browser/PongSurfacesTest.php"
@@ -244,8 +241,13 @@ SHARD_FILES=(
     "tests/Browser/SeasonChainTest.php tests/Browser/ChatAndDailyTest.php tests/Browser/StackerSoundTest.php tests/Browser/ChessCorrespondenceQuietTest.php tests/Browser/ClanEditTest.php tests/Browser/TournamentHonestDurationTest.php tests/Browser/CupFindabilityTest.php"
     "tests/Browser/ShellNavigationWidthsTest.php tests/Browser/NostrBarTest.php tests/Browser/SettingsTabsTest.php tests/Browser/ChessLobbyTest.php tests/Browser/ChessRapidLobbyTest.php tests/Browser/OpponentRequestsTest.php tests/Browser/LeagueSettingsAdminTest.php tests/Browser/LeagueWeeksAdminTest.php"
     "tests/Browser/ShareTest.php tests/Browser/TournamentTvTest.php tests/Browser/BoardFindabilityTest.php tests/Browser/InvitePlacementTest.php tests/Browser/TournamentEditTest.php tests/Browser/BlockfillReplayTest.php tests/Browser/BlockfillShareTest.php tests/Browser/ScoreMiningAdminTest.php"
-    "tests/Browser/LiveCountTest.php tests/Browser/StackerTest.php tests/Browser/BoardMiningAdminTest.php tests/Browser/StrongestListTest.php tests/Browser/MempoolStripTest.php tests/Browser/InviteContextTest.php tests/Browser/TournamentGameBannerTest.php tests/Browser/ChampionMomentTest.php"
-    "tests/Browser/NavigationCrawlStaffTest.php tests/Browser/BodylessResponseFramingTest.php tests/Browser/BoardFollowsTest.php tests/Browser/TournamentControlTest.php tests/Browser/TournamentLiveTest.php tests/Browser/BlockfillWeekTest.php tests/Browser/ClanLogoTest.php tests/Browser/ClanMeetupMapTest.php tests/Browser/TmnfWeekTest.php"
+    "tests/Browser/LiveCountTest.php tests/Browser/StackerTest.php tests/Browser/BoardMiningAdminTest.php tests/Browser/StrongestListTest.php tests/Browser/MempoolStripTest.php tests/Browser/InviteContextTest.php tests/Browser/TournamentGameBannerTest.php tests/Browser/ChampionMomentTest.php tests/Browser/PongArenaTest.php#!frame~times"
+    # Proof of Pong's three.js arena (P3) relaunches Chromium with software WebGL (tests/Support/BrowserWebGL.php):
+    # SwiftShader draws on the CPU, several cores for a minute and a half. As a shard of its own it ran in the first
+    # 90 s, when all shards start at once, and its frame-time test drew 10 frames in 5 s there (measured 2026-10-09,
+    # a full run: 6-90 s of 417). Its two halves now run each in a pest process of its own after a shard that ends
+    # early (both ended at 261 and 268 s), when six shards are left, and still end before the longest one.
+    "tests/Browser/NavigationCrawlStaffTest.php tests/Browser/BodylessResponseFramingTest.php tests/Browser/BoardFollowsTest.php tests/Browser/TournamentControlTest.php tests/Browser/TournamentLiveTest.php tests/Browser/BlockfillWeekTest.php tests/Browser/ClanLogoTest.php tests/Browser/ClanMeetupMapTest.php tests/Browser/TmnfWeekTest.php tests/Browser/PongArenaTest.php#=frame~times"
     "tests/Browser/NavigationCrawlTest.php tests/Browser/CasualCupRegionsTest.php tests/Browser/HomeHubTest.php tests/Browser/NotificationsTest.php tests/Browser/SeriesResultTest.php tests/Browser/ShellStickyHeaderTest.php tests/Browser/TournamentGameEndTest.php tests/Browser/TournamentNowTest.php tests/Browser/GameEndBoardVisibleTest.php tests/Browser/TournamentDeskTest.php"
     "tests/Browser/BlockliTest.php tests/Browser/BoardGamesCorrespondenceOnlyTest.php tests/Browser/MatchRoomFlowTest.php tests/Browser/PlayerPrideTest.php tests/Browser/RenderScopeTest.php tests/Browser/UiTogglesTrafficTest.php tests/Browser/TeamLineupTest.php tests/Browser/TeamMatchLiveTest.php tests/Browser/TeamMatchSurfacesTest.php"
 )
