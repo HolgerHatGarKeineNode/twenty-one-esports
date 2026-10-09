@@ -27,17 +27,9 @@
         $loserName = K::fit(K::clean($l['name'] ?? ''), K::DISPLAY, 20, 340);
         $loserFigure = ($l['figure'] ?? null) === null ? '' : K::fit('as '.K::clean($l['figure']), K::MONO, 16, 340);
         $score = (int) ($w['points'] ?? 0).':'.(int) ($l['points'] ?? 0);
-        $elo = function (?array $e): string {
-            if ($e === null) {
-                return '';
-            }
-            $d = $e['after'] - $e['before'];
-
-            // The stream's fonts have no arrow and no minus sign: ASCII only.
-            return 'Elo '.$e['after'].' ('.($d >= 0 ? '+' : '-').abs($d).')';
-        };
-        $winnerElo = $elo($w['elo'] ?? null);
-        $loserElo = $elo($l['elo'] ?? null);
+        // No closure in a stream view (it leaks on every render without the CLI opcache): PongScene words the change.
+        $winnerElo = \App\Support\TwentyOne\Stream\PongScene::eloLine($w['elo'] ?? null);
+        $loserElo = \App\Support\TwentyOne\Stream\PongScene::eloLine($l['elo'] ?? null);
         $ago = $result['ago'] ?? null;
         $when = $ago === null ? '' : ($ago < 1 ? 'just now' : ($ago < 60 ? $ago.' min ago' : intdiv($ago, 60).' h ago'));
         $how = ['resign' => 'by resignation', 'forfeit' => 'by forfeit'][$result['reason'] ?? ''] ?? null;

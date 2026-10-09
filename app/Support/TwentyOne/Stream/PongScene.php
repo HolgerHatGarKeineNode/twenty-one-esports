@@ -123,6 +123,22 @@ final class PongScene
         ];
     }
 
+    /**
+     * "Elo 1016 (+16)", empty without a change. ASCII only: the stream's fonts have no arrow and no minus sign.
+     *
+     * @param  array{before: int, after: int}|null  $elo
+     */
+    public static function eloLine(?array $elo): string
+    {
+        if ($elo === null) {
+            return '';
+        }
+
+        $delta = $elo['after'] - $elo['before'];
+
+        return 'Elo '.$elo['after'].' ('.($delta >= 0 ? '+' : '-').abs($delta).')';
+    }
+
     /** A picture as a data URI, read once; null when it is missing. */
     private function file(string $path, string $mime): ?string
     {
