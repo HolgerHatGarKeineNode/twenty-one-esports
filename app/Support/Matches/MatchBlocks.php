@@ -7,11 +7,13 @@ use App\Enums\ChessGameStatus;
 use App\Enums\HyperMatchStatus;
 use App\Games\GameRegistry;
 use App\Games\Hyperbitcoinization;
+use App\Games\ProofOfPong;
 use App\Models\BoardGame;
 use App\Models\ChessGame;
 use App\Models\Clan;
 use App\Models\HyperMatch;
 use App\Models\HyperSeat;
+use App\Models\PongMatch;
 use App\Models\User;
 use App\Support\GameNames;
 use App\Support\Hyper\HyperNames;
@@ -221,6 +223,39 @@ final class MatchBlocks
             casual: ! $match->rated,
             dot: ! $finished && ! $daily,
             word: true,
+            newest: $newest,
+            blank: true,
+        );
+    }
+
+    /**
+     * A finished live Proof of Pong match (plan "Proof of Pong", P2): one block with its winner alone and the score,
+     * winner's points first. Opens the full-screen match in a new tab. It mines no block (its Elo is its own), so it
+     * carries no chain stamp and looks casual. Only called while its route is there (MempoolStrip::pong()).
+     *
+     * @return array<string, mixed>
+     */
+    public static function pong(PongMatch $match, bool $newest = false): array
+    {
+        $winner = $match->winner;
+        $name = $winner?->displayName() ?? '–';
+        [$left, $right] = $match->score();
+        $score = $match->winner_id === $match->right_id ? $right.':'.$left : $left.':'.$right;
+        $game = GameNames::game(ProofOfPong::SLUG);
+        $mode = GameNames::mode(ProofOfPong::SLUG, 'live');
+
+        return self::shape(
+            key: 'pong-'.$match->id,
+            number: '',
+            slug: ProofOfPong::SLUG,
+            mode: $mode,
+            score: $score,
+            who: $name,
+            when: $match->ended_at?->diffForHumans(['short' => true]) ?? '',
+            sides: [['name' => $name, 'user' => $winner, 'clan' => null, 'won' => true]],
+            href: route('pong.match', $match),
+            aria: implode(', ', [$game.' '.$mode, $score.' '.$name]),
+            casual: true,
             newest: $newest,
             blank: true,
         );

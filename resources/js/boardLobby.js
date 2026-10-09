@@ -15,7 +15,10 @@
  * when the channel (re)subscribes, for a push sent while it was away.
  *
  * `config`: userId, lookingKey (`<slug>/blitz`), looking (stored state),
- * fallback (seconds between asks without a websocket).
+ * fallback (seconds between asks without a websocket). Proof of Pong's lobby
+ * (components/⚡pong-lobby, plan "Proof of Pong", P2) uses it too, with its
+ * own `events` ({ started, invite }) and `newTab`: its match opens in a tab of
+ * its own where the browser lets a push open one, else in this one.
  */
 export default function boardLobby(config) {
     return {
@@ -61,13 +64,19 @@ export default function boardLobby(config) {
 
             if (window.Echo) {
                 const channel = window.Echo.private('App.Models.User.' + config.userId);
+                const events = { started: '.board.game-started', invite: '.board.invite', ...(config.events ?? {}) };
                 const started = ({ url }) => {
                     window.esportsAlerts?.leavingTo(url);
+                    if (config.newTab && window.open(url, '_blank')) {
+                        this.$wire.$refresh();
+
+                        return;
+                    }
                     window.location.assign(url);
                 };
                 const refresh = () => this.$wire.$refresh();
-                channel.listen('.board.game-started', started).listen('.board.invite', refresh);
-                this.stops.push(() => channel.stopListening('.board.game-started', started).stopListening('.board.invite', refresh));
+                channel.listen(events.started, started).listen(events.invite, refresh);
+                this.stops.push(() => channel.stopListening(events.started, started).stopListening(events.invite, refresh));
                 // A push sent before this subscription (or while the socket was away) is lost: a waiting lobby asks once.
                 channel.subscribed?.(() => {
                     if (this.checkAt()) this.ask();

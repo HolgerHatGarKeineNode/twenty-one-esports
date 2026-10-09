@@ -3,6 +3,7 @@
 use App\Models\BoardGame;
 use App\Models\ChessGame;
 use App\Models\HyperMatch;
+use App\Models\PongMatch;
 use App\Models\User;
 use App\Support\Chess\ChessModes;
 use App\Support\Nostr\PlayerProfile;
@@ -67,6 +68,17 @@ Broadcast::channel('hyper.{match}.here', function (User $user, HyperMatch $match
     $seat = $match->seatOf($user);
 
     return $seat === null ? false : ['id' => $user->id, 'seat' => $seat->seat, 'name' => $user->displayName()];
+});
+
+/*
+ * A live Proof of Pong match (plan "Proof of Pong", P2): its two players only. The referee's snapshots come here
+ * (App\Events\PongMatchUpdated), the pages stream their paddles to each other as client events (whisper), and
+ * presence tells each page when the other player is gone. A member shares its side and name.
+ */
+Broadcast::channel('pong.{match}', function (User $user, PongMatch $match) {
+    $side = $match->sideOf($user);
+
+    return $side === null ? false : ['id' => $user->id, 'side' => $side, 'name' => $user->displayName()];
 });
 
 /*

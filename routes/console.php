@@ -33,6 +33,7 @@ use App\Support\Notifications\ChessNotifications;
 use App\Support\Notifications\DmDigest;
 use App\Support\Notifications\NotificationDm;
 use App\Support\Notifications\WebPush;
+use App\Support\Pong\PongMatches;
 use App\Support\Scores\ScoreLeaderboards;
 use App\Support\Scores\ScoreServers;
 use App\Support\SeasonChain\LeagueKey;
@@ -164,6 +165,18 @@ Artisan::command('hyper:check-clocks', function (HyperMatches $matches, HyperLob
 })->purpose('End Hyperbitcoinization turns whose time ran out, fill live lobby tables whose wait is over, close rematch offers that ran out, and report tournament tables again');
 
 Schedule::command('hyper:check-clocks')->everyTenSeconds()->withoutOverlapping();
+
+/*
+ * Proof of Pong's live matches (plan "Proof of Pong", P2): the referee's clock for the matches nobody's page asks about
+ * right now. A match not started within a minute is aborted, a player gone for 30 seconds loses, a contact nobody
+ * reported in time counts as a miss (PongMatches::sweep()). Only the server clock decides, so running it often is
+ * harmless; with the switch off there are no matches to find.
+ */
+Artisan::command('pong:check-clocks', function (PongMatches $matches) {
+    $this->info('Moved '.$matches->sweep().' match(es).');
+})->purpose('Abort Proof of Pong matches that never started, end those a player left, and decide contacts nobody reported');
+
+Schedule::command('pong:check-clocks')->everyTenSeconds()->withoutOverlapping()->when(fn (): bool => (bool) config('esports.pong.enabled'));
 
 /*
  * Correspondence board game deadline reminders (plan "Mühle und Dame", P8),

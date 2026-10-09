@@ -7680,5 +7680,21 @@
     "Move with the mouse or W/S and the arrow keys.": "Steuern mit der Maus oder mit W/S und den Pfeiltasten.",
     "Drag your thumb left and right.": "Zieh den Daumen nach links und rechts.",
     "Start game": "Spiel starten",
-    "New game": "Neues Spiel"
+    "New game": "Neues Spiel",
+    "Match aborted": "Match abgebrochen",
+    "by resignation": "durch Aufgabe",
+    "by forfeit": "kampflos",
+    "Elo :before → :after (:delta)": "Elo :before → :after (:delta)",
+    "Waiting for :name …": "Warte auf :name …",
+    ":name is gone": ":name ist weg",
+    "Proof of Pong · :left vs :right": "Proof of Pong · :left gegen :right",
+    "The match starts as soon as both of you are here.": "Das Match beginnt, sobald ihr beide da seid.",
+    "The match is paused. Back within 30 seconds, it goes on; otherwise the absent player loses.": "Das Match ist pausiert. Wer innerhalb von 30 Sekunden zurück ist, spielt weiter; sonst verliert, wer fehlt.",
+    "Finish your Proof of Pong match first.": "Beende zuerst dein Proof-of-Pong-Match.",
+    "You are in another live game. One live game at a time: finish it first.": "Du bist in einem anderen Live-Spiel. Ein Live-Spiel nach dem anderen: Beende es zuerst.",
+    "Live 1v1": "Live 1v1",
+    "Your Elo": "Deine Elo",
+    "Turn on \"Looking to play\", invite a player who is looking, and play live to 21. The server checks every hit; a live match moves your Proof of Pong Elo.": "Schalte „Sucht Partie“ ein, lade jemanden ein, der auch sucht, und spielt live bis 21. Der Server prüft jeden Treffer; ein Live-Match bewegt deine Proof-of-Pong-Elo.",
+    "Your match against :name is on.": "Dein Match gegen :name läuft.",
+    "Proof of Pong · live to :points · sides drawn at random": "Proof of Pong · live bis :points · Seiten werden ausgelost"
 }

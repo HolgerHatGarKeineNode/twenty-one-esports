@@ -140,6 +140,36 @@ final class PongPhysics
     }
 
     /**
+     * Whether a ball that crossed side `$side`'s face in this tick meets that side's paddle (centre `$paddle`, half
+     * length `$half`): its centre within the half length plus its radius.
+     *
+     * @param  array{int, int, int, int, int}  $ball  the ball after the tick's move
+     */
+    public static function meets(array $ball, int $paddle, int $half): bool
+    {
+        return abs($ball[1] - $paddle) <= $half + $ball[4];
+    }
+
+    /**
+     * A ball that met side `$side`'s paddle (meets()), sent back: mirrored off the face (its front edge ends as far
+     * in front of it as it went past it), at `$speed` along x and at an angle that grows with the distance from the
+     * paddle's centre. PongRally and the live referee (PongReferee) both hit with it.
+     *
+     * @param  array{int, int, int, int, int}  $ball  the ball after the tick's move
+     * @return array{int, int, int, int, int}
+     */
+    public static function bounce(array $ball, int $side, int $paddle, int $half, int $speed): array
+    {
+        [$x, $y, , , $r] = $ball;
+        $reach = $half + $r;
+        $face = self::faceX($side);
+        $x = $side === 0 ? 2 * ($face + $r) - $x : 2 * ($face - $r) - $x;
+        $vy = self::floorDiv(($y - $paddle) * $speed * self::ANGLE_NUM, $reach * self::ANGLE_DEN);
+
+        return [$x, $y, $side === 0 ? $speed : -$speed, $vy, $r];
+    }
+
+    /**
      * A ball's speed along x after its `$hits`-th hit, from a rally's base speed.
      */
     public static function speedAfter(int $hits, int $base, int $speedup, int $max): int

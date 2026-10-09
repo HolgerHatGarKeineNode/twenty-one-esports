@@ -26,6 +26,8 @@ export default defineConfig({
                 // Proof of Pong's full-screen game page (plan "Proof of Pong", P1): its own stylesheet and script.
                 'resources/css/pong.css',
                 'resources/js/pong/game.js',
+                // A live match (P2): the same page with the referee's netcode.
+                'resources/js/pong/live.js',
             ],
             refresh: true,
             fonts: [

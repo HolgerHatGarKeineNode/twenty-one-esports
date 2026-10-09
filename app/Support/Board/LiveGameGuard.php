@@ -6,6 +6,7 @@ use App\Enums\BoardGameStatus;
 use App\Models\BoardGame;
 use App\Models\ChessGame;
 use App\Models\ChessQueueEntry;
+use App\Models\PongMatch;
 use App\Support\Chess\ChessRuleViolation;
 
 /**
@@ -23,6 +24,11 @@ use App\Support\Chess\ChessRuleViolation;
  * - a player in a live board game does not join the blitz queue.
  *
  * A correspondence board game (P8) is no live game and blocks neither.
+ *
+ * Proof of Pong (plan "Proof of Pong", P2) answers on the same two rows: a
+ * player in a running live match (waiting for both players or in play) gets
+ * no live chess game and does not join the blitz queue, while its switch is
+ * on. Its own invites ask the other way round (PongInvites::busy()).
  *
  * A board game that starts takes its players out of the chess queue
  * (BoardGameService::start()), so a waiting chess player is never paired
@@ -45,13 +51,22 @@ final class LiveGameGuard
     /**
      * @param  list<int|null>  $userIds
      *
-     * @throws ChessRuleViolation when one of them plays a live board game
+     * @throws ChessRuleViolation when one of them plays a live board game or a Proof of Pong match
      */
     private static function refuseBusy(array $userIds): void
     {
         $userIds = array_values(array_filter($userIds, fn (?int $id): bool => $id !== null));
 
-        if (! config('esports.board_games.enabled') || $userIds === []) {
+        if ($userIds === []) {
+            return;
+        }
+
+        if (config('esports.pong.enabled') && PongMatch::query()->running()
+            ->where(fn ($query) => $query->whereIn('left_id', $userIds)->orWhereIn('right_id', $userIds))->exists()) {
+            throw new ChessRuleViolation('already_playing', __('Finish your Proof of Pong match first.'));
+        }
+
+        if (! config('esports.board_games.enabled')) {
             return;
         }
 

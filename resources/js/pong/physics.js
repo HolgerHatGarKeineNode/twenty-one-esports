@@ -78,6 +78,19 @@ export function predict(ball, side) {
 
 export const speedAfter = (hits, base, speedup, max) => Math.min(base + hits * speedup, max);
 
+/** Whether a ball that crossed a face in this tick meets the paddle there, as PongPhysics::meets(). */
+export const meets = (ball, paddle, half) => Math.abs(ball[1] - paddle) <= half + ball[4];
+
+/** A ball that met side `side`'s paddle, sent back, as PongPhysics::bounce(). */
+export function bounce(ball, side, paddle, half, speed) {
+    const [x, y, , , r] = ball;
+    const reach = half + r;
+    const face = faceX(side);
+    const vy = floorDiv((y - paddle) * speed * ANGLE_NUM, reach * ANGLE_DEN);
+
+    return [side === 0 ? 2 * (face + r) - x : 2 * (face - r) - x, y, side === 0 ? speed : -speed, vy, r];
+}
+
 /**
  * A served rally, as `new PongRally(seed, event, speeds)`.
  *
@@ -117,23 +130,14 @@ function advance(rally, index, ball) {
     const side = ball[2] < 0 ? 0 : 1;
     const before = approaches(ball, side);
     const moved = move(ball);
-    let [x] = moved;
-    const [, y, , , r] = moved;
+    const [x, y] = moved;
 
-    if (before && crossed(moved, side)) {
-        const reach = rally.half + r;
-        const offset = y - rally.paddles[side];
+    if (before && crossed(moved, side) && meets(moved, rally.paddles[side], rally.half)) {
+        rally.hits[index]++;
+        const hit = bounce(moved, side, rally.paddles[side], rally.half, speedAfter(rally.hits[index], rally.base, rally.speedup, rally.max));
+        rally.events.push(['hit', rally.tick, side, index, y, hit[3]]);
 
-        if (Math.abs(offset) <= reach) {
-            rally.hits[index]++;
-            const speed = speedAfter(rally.hits[index], rally.base, rally.speedup, rally.max);
-            const face = faceX(side);
-            x = side === 0 ? 2 * (face + r) - x : 2 * (face - r) - x;
-            const vy = floorDiv(offset * speed * ANGLE_NUM, reach * ANGLE_DEN);
-            rally.events.push(['hit', rally.tick, side, index, y, vy]);
-
-            return [x, y, side === 0 ? speed : -speed, vy, r];
-        }
+        return hit;
     }
 
     if (x <= 0 || x >= WIDTH) {

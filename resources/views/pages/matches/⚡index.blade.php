@@ -3,6 +3,7 @@
 use App\Enums\BoardGameStatus;
 use App\Enums\ChessGameStatus;
 use App\Enums\HyperMatchStatus;
+use App\Enums\PongMatchStatus;
 use App\Enums\SeriesStatus;
 use App\Games\Blockfill;
 use App\Games\GameKind;
@@ -12,6 +13,7 @@ use App\Models\BoardGame;
 use App\Models\ChessGame;
 use App\Models\Clan;
 use App\Models\HyperMatch;
+use App\Models\PongMatch;
 use App\Models\ScoreRun;
 use App\Models\SeriesMatch;
 use App\Models\StackerRun;
@@ -47,7 +49,9 @@ use Livewire\WithPagination;
  * "to confirm", a verified one is "done"; they are unrated, so the season
  * chain has none. Hyperbitcoinization matches (plan "Hyperbitcoinization",
  * P6) share strip and table while the game is on: live or done, each opening
- * its full-screen page in a new tab.
+ * its full-screen page in a new tab. So do finished live Proof of Pong matches
+ * (plan "Proof of Pong", P2): one row each, the winner alone, never on the
+ * season chain.
  */
 new #[Layout('layouts::app', ['section' => 'matches'])] class extends Component {
     public function rendering(\Illuminate\View\View $view): void
@@ -294,6 +298,29 @@ new #[Layout('layouts::app', ['section' => 'matches'])] class extends Component 
     }
 
     /**
+     * Whether Proof of Pong matches (plan "Proof of Pong", P2) can show under these filters: while the game is on and
+     * routed, under "all" or its own filter, only "done" (a running match is not listed), never on the season chain.
+     */
+    private function listsPong(string $status): bool
+    {
+        return MempoolStrip::pong() && $this->chain !== 'season' && in_array($this->game, ['all', \App\Games\ProofOfPong::SLUG], true) && in_array($status, ['all', 'done'], true);
+    }
+
+    /**
+     * One row per finished match, its winner alone; the clan filter keeps the winners of that clan.
+     *
+     * @param  Builder<PongMatch>  $query
+     * @return Builder<PongMatch>
+     */
+    private function filteredPong(Builder $query): Builder
+    {
+        $clan = $this->selectedClan;
+
+        return $query->where('status', PongMatchStatus::Finished)->whereNotNull('winner_id')
+            ->when($clan !== null, fn (Builder $query) => $query->whereHas('winner.clanMember', fn (Builder $query) => $query->where('clan_id', $clan->id)));
+    }
+
+    /**
      * The attempt state (ScoreAttempts) a status filter stands for; null when
      * no attempt shows under it: attempts only wait "to confirm" or are
      * "done", and they never sit on the season chain.
@@ -354,10 +381,10 @@ new #[Layout('layouts::app', ['section' => 'matches'])] class extends Component 
     /**
      * Rows of the table, newest first: `series` rows carry a SeriesMatch,
      * `chess` rows a ChessGame, `board` rows a BoardGame, `hyper` rows a
-     * HyperMatch, `run` rows a highscore attempt (a StackerRun of Blockfill
+     * HyperMatch, `pong` rows a PongMatch, `run` rows a highscore attempt (a StackerRun of Blockfill
      * or a ScoreRun) and its link.
      *
-     * @return LengthAwarePaginator<int, array{type: 'series'|'chess'|'board'|'hyper'|'run', model: SeriesMatch|ChessGame|BoardGame|HyperMatch|StackerRun|ScoreRun, href?: string}>
+     * @return LengthAwarePaginator<int, array{type: 'series'|'chess'|'board'|'hyper'|'pong'|'run', model: SeriesMatch|ChessGame|BoardGame|HyperMatch|PongMatch|StackerRun|ScoreRun, href?: string}>
      */
     #[Computed]
     public function matches(): LengthAwarePaginator
@@ -369,6 +396,7 @@ new #[Layout('layouts::app', ['section' => 'matches'])] class extends Component 
         $chess = $this->listsChess($this->status) ? $this->filteredChess(ChessGame::query()->with(['white', 'black', 'seriesMatch:id,number']), $this->status)->latest()->limit($take)->get() : collect();
         $boards = $this->listsBoards($this->status) ? $this->filteredBoards(BoardGame::query()->with(['white', 'black']), $this->status)->latest()->limit($take)->get() : collect();
         $hyper = $this->listsHyper($this->status) ? $this->filteredHyper(HyperMatch::query()->with('seats.user'), $this->status)->latest()->limit($take)->get()->tap(fn ($list) => HyperTeams::preload($list)) : collect();
+        $pong = $this->listsPong($this->status) ? $this->filteredPong(PongMatch::query()->with('winner'))->latest()->limit($take)->get() : collect();
         $state = (string) $this->runState($this->status);
         $runs = collect([
             ...($this->listsStacker($this->status) ? ScoreAttempts::stacker($state, $this->selectedClan)->with('user')->latest()->limit($take)->get()->all() : []),
@@ -378,12 +406,14 @@ new #[Layout('layouts::app', ['section' => 'matches'])] class extends Component 
             + ($this->listsChess($this->status) ? $this->filteredChess(ChessGame::query(), $this->status)->count() : 0)
             + ($this->listsBoards($this->status) ? $this->filteredBoards(BoardGame::query(), $this->status)->count() : 0)
             + ($this->listsHyper($this->status) ? $this->filteredHyper(HyperMatch::query(), $this->status)->count() : 0)
+            + ($this->listsPong($this->status) ? $this->filteredPong(PongMatch::query())->count() : 0)
             + $this->runCount($this->status);
 
         $rows = $series->map(fn (SeriesMatch $match) => ['type' => 'series', 'model' => $match])
             ->concat($chess->map(fn (ChessGame $game) => ['type' => 'chess', 'model' => $game]))
             ->concat($boards->map(fn (BoardGame $game) => ['type' => 'board', 'model' => $game]))
             ->concat($hyper->map(fn (HyperMatch $match) => ['type' => 'hyper', 'model' => $match]))
+            ->concat($pong->map(fn (PongMatch $match) => ['type' => 'pong', 'model' => $match]))
             ->concat($runs->map(fn (StackerRun|ScoreRun $run) => ['type' => 'run', 'model' => $run]))
             ->sortByDesc(fn (array $row) => $row['model']->created_at)
             ->values()
@@ -412,6 +442,7 @@ new #[Layout('layouts::app', ['section' => 'matches'])] class extends Component 
                     + ($this->listsChess($status) ? $this->filteredChess(ChessGame::query(), $status)->count() : 0)
                     + ($this->listsBoards($status) ? $this->filteredBoards(BoardGame::query(), $status)->count() : 0)
                     + ($this->listsHyper($status) ? $this->filteredHyper(HyperMatch::query(), $status)->count() : 0)
+                    + ($this->listsPong($status) ? $this->filteredPong(PongMatch::query())->count() : 0)
                     + $this->runCount($status);
             }
         }
@@ -559,6 +590,10 @@ new #[Layout('layouts::app', ['section' => 'matches'])] class extends Component 
                     @include('pages.matches.partials.hyper-row', ['hyperMatch' => $row['model'], 'viewer' => $viewer])
                     @continue
                 @endif
+                @if ($row['type'] === 'pong')
+                    @include('pages.matches.partials.pong-row', ['pongMatch' => $row['model'], 'viewer' => $viewer])
+                    @continue
+                @endif
                 @if ($row['type'] === 'run')
                     @include('pages.matches.partials.score-row', ['run' => $row['model'], 'href' => $row['href']])
                     @continue
@@ -601,7 +636,7 @@ new #[Layout('layouts::app', ['section' => 'matches'])] class extends Component 
                         <x-empty-state :heading="__('No runs yet')" :text="__('The first run opens the list.')">
                             <x-button :href="GameNames::page($game)">{{ __('Play :game', ['game' => GameNames::game($game)]) }}</x-button>
                         </x-empty-state>
-                    @elseif ($game === \App\Games\Hyperbitcoinization::SLUG)
+                    @elseif ($game === \App\Games\Hyperbitcoinization::SLUG || $game === \App\Games\ProofOfPong::SLUG)
                         <x-empty-state :heading="__('No matches yet')" :text="__('The first match opens the list.')">
                             <x-button :href="GameNames::page($game)">{{ __('Play :game', ['game' => GameNames::game($game)]) }}</x-button>
                         </x-empty-state>

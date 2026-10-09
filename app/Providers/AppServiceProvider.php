@@ -176,6 +176,10 @@ class AppServiceProvider extends ServiceProvider
             Limit::perMinute((int) config('esports.blockfill.submits_per_ip_per_minute'))->by('stacker-submit-net:'.StackerRuns::network($request->ip())),
         ]);
 
+        // Proof of Pong's live referee (plan "Proof of Pong", P2): a page reports its contacts and asks every two seconds.
+        RateLimiter::for('pong-live', fn (Request $request): Limit => Limit::perMinute((int) config('esports.pong.reports_per_minute', 600))
+            ->by('pong-live:'.$request->user()?->getAuthIdentifier()));
+
         RateLimiter::for('profiles', fn (Request $request): Limit => Limit::perMinute((int) config('esports.profiles.throttle_per_minute'))
             ->by($request->user()?->getAuthIdentifier() ?? $request->ip()));
 

@@ -46,11 +46,11 @@ final class PongRally
 
     public readonly int $points;
 
-    private readonly int $base;
+    public readonly int $base;
 
-    private readonly int $speedup;
+    public readonly int $speedup;
 
-    private readonly int $max;
+    public readonly int $max;
 
     /**
      * @param  array{int, int}  $speeds  each side's paddle speed in units per tick
@@ -123,23 +123,14 @@ final class PongRally
         $side = $ball[2] < 0 ? 0 : 1;
         $before = PongPhysics::approaches($ball, $side);
         $ball = PongPhysics::move($ball);
-        [$x, $y, , , $r] = $ball;
+        [$x, $y] = $ball;
 
-        if ($before && PongPhysics::crossed($ball, $side)) {
-            $reach = $this->half + $r;
-            $offset = $y - $this->paddles[$side];
+        if ($before && PongPhysics::crossed($ball, $side) && PongPhysics::meets($ball, $this->paddles[$side], $this->half)) {
+            $this->hits[$index]++;
+            $ball = PongPhysics::bounce($ball, $side, $this->paddles[$side], $this->half, $this->speedAfter($index));
+            $this->events[] = ['hit', $this->tick, $side, $index, $y, $ball[3]];
 
-            if (abs($offset) <= $reach) {
-                $this->hits[$index]++;
-                $speed = PongPhysics::speedAfter($this->hits[$index], $this->base, $this->speedup, $this->max);
-                $face = PongPhysics::faceX($side);
-                // Mirrored off the face: the ball's front edge ends as far in front of it as it went past it.
-                $x = $side === 0 ? 2 * ($face + $r) - $x : 2 * ($face - $r) - $x;
-                $vy = PongPhysics::floorDiv($offset * $speed * PongPhysics::ANGLE_NUM, $reach * PongPhysics::ANGLE_DEN);
-                $this->events[] = ['hit', $this->tick, $side, $index, $y, $vy];
-
-                return [$x, $y, $side === 0 ? $speed : -$speed, $vy, $r];
-            }
+            return $ball;
         }
 
         if ($x <= 0 || $x >= PongPhysics::WIDTH) {
@@ -150,6 +141,14 @@ final class PongRally
         }
 
         return $ball;
+    }
+
+    /**
+     * Ball `$index`'s speed along x after the hit it just made.
+     */
+    public function speedAfter(int $index): int
+    {
+        return PongPhysics::speedAfter($this->hits[$index], $this->base, $this->speedup, $this->max);
     }
 
     /**

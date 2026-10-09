@@ -2,7 +2,8 @@
     Proof of Pong's start page in the league's shell (plan "Proof of Pong", P1): the game in short and a game against
     a bot, the level picked from the four (Nocoiner Uncle to Madame Brrr Lagarde). The form opens the game in a new
     tab, full-screen (PongController::bot()); a guest logs in first and lands in the game. Not indexed until the
-    league's surfaces take the game up (P4).
+    league's surfaces take the game up (P4). Under it the live 1v1 (P2, components/⚡pong-lobby): who is online and
+    looking to play, invites, the running match.
 --}}
 @php
     $chip = 'flex min-h-11 cursor-pointer items-center justify-center gap-2 rounded-md bg-well font-bold text-ink-2 shadow-ring has-[:checked]:bg-btc-chip has-[:checked]:text-ink has-[:checked]:shadow-[inset_0_0_0_1px_var(--color-btc)] has-[:focus-visible]:outline-2 has-[:focus-visible]:outline-btc';
@@ -43,5 +44,7 @@
                 </div>
             </form>
         </section>
+
+        <livewire:pong-lobby />
     </div>
 </x-layouts::app>

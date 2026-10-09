@@ -65,3 +65,8 @@ button, a.btn { font: inherit; }
     .hint-touch { display: block; }
     .hint-desktop { display: none; }
 }
+
+/* A live match (P2): the resign flag asks twice; a disabled button waits for the opponent. */
+.hud .resign { border: 0; cursor: pointer; }
+.hud .resign[data-confirm] { color: #140b00; background: var(--pong-btc); }
+.btn:disabled { cursor: default; opacity: 0.7; }

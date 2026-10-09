@@ -1766,6 +1766,16 @@ return [
     | The physics and the bot have no settings: the browser runs the same
     | simulation and must agree with the server tick for tick.
     |
+    | Live 1v1 (P2, App\Support\Pong\PongMatches): rated: whether a live
+    | match moves the players' Proof of Pong Elo (permanent, no season,
+    | `season.casual` values). invite_seconds: how long an invite stays open.
+    | start_seconds: a match nobody served within this long (both players on
+    | the page) is aborted. away_seconds: a player whose page has not been
+    | heard from for this long counts as gone and the match pauses;
+    | forfeit_seconds: gone this long, they lose. live_speed: game ticks per
+    | 1/60 s on the server's clock (1; the browser test plays faster).
+    | reports_per_minute: a player's requests to the referee per minute.
+    |
     */
 
     'pong' => [
@@ -1773,6 +1783,13 @@ return [
         'points_to_win' => 21,
         'win_by' => 2,
         'event_every_rallies' => 21,
+        'rated' => true,
+        'invite_seconds' => 120,
+        'start_seconds' => 60,
+        'away_seconds' => 5,
+        'forfeit_seconds' => 30,
+        'live_speed' => 1,
+        'reports_per_minute' => 600,
     ],
 
 ];

@@ -86,12 +86,18 @@ test('a logged-in player gets the full-screen game page with seed, level, rules 
 test('every text of the pages is a key the scripts use and has a German translation', function () {
     PongOn::play();
     $keys = [];
+    $live = [];
     foreach (glob(resource_path('js/pong/*.js')) ?: [] as $file) {
         preg_match_all("/(?<![\\w.$])t\\(\\s*'((?:[^'\\\\]|\\\\.)*)'/", (string) file_get_contents($file), $found);
-        array_push($keys, ...$found[1]);
+        // The live match (P2) has texts of its own: its page carries PongController::LIVE_TEXTS.
+        if (basename($file) === 'live.js') {
+            array_push($live, ...$found[1]);
+        } else {
+            array_push($keys, ...$found[1]);
+        }
     }
     $blade = [];
-    foreach ([resource_path('views/pong/match.blade.php'), resource_path('views/pages/pong/index.blade.php')] as $file) {
+    foreach ([resource_path('views/pong/match.blade.php'), resource_path('views/pong/live.blade.php'), resource_path('views/pages/pong/index.blade.php'), resource_path('views/components/⚡pong-lobby.blade.php'), resource_path('views/pages/matches/partials/pong-row.blade.php')] as $file) {
         preg_match_all("/__\\(\\s*'((?:[^'\\\\]|\\\\.)*)'/", (string) file_get_contents($file), $found);
         array_push($blade, ...$found[1]);
     }
@@ -99,7 +105,8 @@ test('every text of the pages is a key the scripts use and has a German translat
     $names = array_column(PongBot::LEVELS, 'name');
 
     expect(array_values(array_unique($keys)))->toEqualCanonicalizing(PongController::TEXTS)
-        ->and(array_values(array_diff([...PongController::TEXTS, ...$blade, ...$names], array_keys($german))))->toBe([]);
+        ->and(array_values(array_unique([...$keys, ...$live])))->toEqualCanonicalizing(PongController::LIVE_TEXTS)
+        ->and(array_values(array_diff([...PongController::LIVE_TEXTS, ...$blade, ...$names], array_keys($german))))->toBe([]);
 
     app()->setLocale('de');
     $this->actingAs(User::factory()->create())->get(route('pong.bot', ['level' => 1]))->assertOk()
