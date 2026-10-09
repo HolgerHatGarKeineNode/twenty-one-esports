@@ -129,6 +129,10 @@ if (config('esports.blockfill.enabled')) {
 if (config('esports.hyper.enabled')) {
     require __DIR__.'/hyper.php';
 }
+// Proof of Pong (plan "Proof of Pong", P1): no route at all while the switch is off.
+if (config('esports.pong.enabled')) {
+    require __DIR__.'/pong.php';
+}
 // The 24/7 stream (P20): the big player, what is on it, the zap QR code. nginx serves the HLS files under /live/, not /live.
 Route::livewire('live', 'pages::live')->name('live');
 // Its status for the page's poller (P20b): JSON, public, no session. Not under /live/, which nginx serves from hls_dir.

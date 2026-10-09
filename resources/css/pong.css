@@ -1,0 +1,67 @@
+/*
+ * Proof of Pong's full-screen game page (plan "Proof of Pong", P1; resources/views/pong/match.blade.php): plain CSS,
+ * no shell. The page never scrolls: the HUD on top, the field fitted into the rest by resources/js/pong/game.js
+ * (refitted only when the width changes, never for a phone's address bar or keyboard).
+ */
+:root {
+    --pong-bg: #05070f;
+    --pong-ink: #f4f1ea;
+    --pong-ink-2: #a9adbd;
+    --pong-btc: #f7931a;
+    --pong-bot: #a78bfa;
+    --pong-card: rgb(14 18 32 / 0.92);
+    --font-display: var(--font-face-display, "Unbounded"), "Arial Black", system-ui, sans-serif;
+    --font-mono: var(--font-face-mono, "JetBrains Mono"), ui-monospace, Menlo, monospace;
+}
+
+[hidden] { display: none !important; }
+* { box-sizing: border-box; }
+html, body { margin: 0; height: 100%; overflow: hidden; background: var(--pong-bg); color: var(--pong-ink); }
+body { font: 500 14px/1.4 system-ui, sans-serif; user-select: none; -webkit-user-select: none; touch-action: none; overscroll-behavior: none; }
+button, a.btn { font: inherit; }
+
+.hud { position: fixed; inset: 0 0 auto; height: 56px; display: grid; grid-template-columns: 1fr auto 1fr; align-items: center; gap: 8px; padding: 0 12px; padding-top: env(safe-area-inset-top); }
+.hud .side { display: flex; align-items: center; gap: 10px; min-width: 0; }
+.hud .side.bot { justify-content: flex-end; }
+.hud .name { font-weight: 700; font-size: 13px; color: var(--pong-ink-2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.hud .score { font: 800 26px/1 var(--font-display); min-width: 2ch; text-align: center; }
+.hud .me .score { color: var(--pong-btc); text-shadow: 0 0 14px rgb(247 147 26 / 0.6); }
+.hud .bot .score { color: var(--pong-bot); text-shadow: 0 0 14px rgb(167 139 250 / 0.6); }
+.hud .mid { display: flex; flex-direction: column; align-items: center; gap: 2px; }
+.hud .title { font: 800 11px/1 var(--font-display); letter-spacing: 0.2em; white-space: nowrap; }
+.hud .title b { color: var(--pong-btc); }
+.hud .rally { font: 500 11px/1 var(--font-mono); color: var(--pong-ink-2); white-space: nowrap; }
+.hud .leave { display: grid; place-items: center; width: 36px; height: 36px; border-radius: 8px; color: var(--pong-ink-2); text-decoration: none; background: rgb(255 255 255 / 0.06); flex: none; }
+.hud .leave:hover, .hud .leave:focus-visible { color: var(--pong-ink); }
+
+#stage { position: fixed; left: 0; right: 0; top: 56px; display: grid; place-items: center; }
+#field { position: relative; border-radius: 10px; box-shadow: 0 0 0 1px rgb(247 147 26 / 0.35), 0 0 40px rgb(247 147 26 / 0.12); overflow: hidden; background: #070b18; }
+#field canvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
+
+.overlay { position: absolute; inset: 0; display: grid; place-items: center; padding: 16px; background: rgb(3 5 12 / 0.55); }
+.card { max-width: min(420px, 100%); display: flex; flex-direction: column; align-items: center; gap: 10px; padding: 20px; border-radius: 12px; background: var(--pong-card); box-shadow: 0 0 0 1px rgb(255 255 255 / 0.08); text-align: center; }
+.card h2 { margin: 0; font: 800 clamp(18px, 4.5vw, 26px)/1.1 var(--font-display); }
+.card p { margin: 0; color: var(--pong-ink-2); }
+.card .big { font: 800 40px/1 var(--font-display); }
+.card .actions { display: flex; flex-wrap: wrap; justify-content: center; gap: 8px; margin-top: 6px; }
+.btn { display: inline-flex; align-items: center; justify-content: center; min-height: 44px; padding: 0 18px; border-radius: 8px; border: 0; cursor: pointer; font-weight: 700; text-decoration: none; color: var(--pong-ink); background: rgb(255 255 255 / 0.08); }
+.btn.primary { background: var(--pong-btc); color: #140b00; }
+
+.banner { position: absolute; left: 50%; top: 18%; transform: translateX(-50%); max-width: calc(100% - 24px); padding: 10px 16px; border-radius: 10px; background: var(--pong-card); box-shadow: 0 0 0 1px var(--pong-btc), 0 0 30px rgb(247 147 26 / 0.35); text-align: center; pointer-events: none; }
+.banner small { display: block; font: 700 10px/1 var(--font-mono); letter-spacing: 0.2em; text-transform: uppercase; color: var(--pong-btc); }
+.banner b { display: block; margin-top: 4px; font: 800 18px/1.1 var(--font-display); }
+.banner span { display: block; margin-top: 2px; font-size: 12px; color: var(--pong-ink-2); }
+.toast { position: absolute; left: 50%; bottom: 12%; transform: translateX(-50%); padding: 6px 12px; border-radius: 999px; background: var(--pong-card); font-weight: 700; white-space: nowrap; pointer-events: none; }
+
+@media (width < 480px) {
+    .hud { grid-template-columns: 1fr auto 1fr; padding: 0 8px; }
+    .hud .title { font-size: 9px; letter-spacing: 0.12em; }
+    .hud .score { font-size: 22px; }
+}
+
+/* The start card names the controls of the device in hand. */
+.hint-touch { display: none; }
+@media (pointer: coarse) {
+    .hint-touch { display: block; }
+    .hint-desktop { display: none; }
+}

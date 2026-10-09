@@ -23,6 +23,9 @@ export default defineConfig({
                 // Hyperbitcoinization's full-screen match page (plan "Hyperbitcoinization", P2): its own stylesheet and script.
                 'resources/css/hyper.css',
                 'resources/js/hyper/match.js',
+                // Proof of Pong's full-screen game page (plan "Proof of Pong", P1): its own stylesheet and script.
+                'resources/css/pong.css',
+                'resources/js/pong/game.js',
             ],
             refresh: true,
             fonts: [
