@@ -14,10 +14,20 @@ use InvalidArgumentException;
  * - halving: the ball is half as big, and its goal counts twice;
  * - brrr: the ball is half as fast again (serve, speed-up and top speed);
  * - pizza: two balls at once, served to both sides, each goal counts;
- * - difficulty: both paddles are a third shorter.
+ * - difficulty: both paddles are a third shorter;
+ * - tax (Steuern sind Raub, P7): the tax office's block patrols the centre line, the ball bounces off it;
+ * - controls (Kapitalverkehrskontrolle, P7): a border wall across the centre with a wandering gap; a ball that hits
+ *   the wall goes back to the side that played it;
+ * - few (Few understand, P7): the ball is invisible in the middle third of the field (only drawn so, the physics is
+ *   a plain rally's);
+ * - pow (Proof of Work, P7): each hit makes the hitting side's paddle longer, up to a cap, for the rally;
+ * - arbeitsamt (Arbeitsamt – Bitte warten, P7): each time the ball crosses the centre line it waits a second in
+ *   the queue, then goes on unchanged.
  *
- * Each event lasts its one rally. Their order is drawn from the game's seed (four different events, then the
- * next four), and each rally's serve from its own seed (rallySeed()), so a rally is replayable on its own.
+ * The obstacles and the queue are PongPhysics::step(), the paddles' length PongPhysics::halfOf().
+ *
+ * Each event lasts its one rally. Their order is drawn from the game's seed (all nine events in a shuffled round,
+ * then the next round), and each rally's serve from its own seed (rallySeed()), so a rally is replayable on its own.
  * The RNG is Hyperbitcoinization's (xoshiro128++), mirrored by resources/js/pong/rng.js.
  */
 final readonly class PongRules
@@ -30,7 +40,17 @@ final readonly class PongRules
 
     public const string DIFFICULTY = 'difficulty';
 
-    public const array EVENTS = [self::HALVING, self::BRRR, self::PIZZA, self::DIFFICULTY];
+    public const string TAX = 'tax';
+
+    public const string CONTROLS = 'controls';
+
+    public const string FEW = 'few';
+
+    public const string POW = 'pow';
+
+    public const string ARBEITSAMT = 'arbeitsamt';
+
+    public const array EVENTS = [self::HALVING, self::BRRR, self::PIZZA, self::DIFFICULTY, self::TAX, self::CONTROLS, self::FEW, self::POW, self::ARBEITSAMT];
 
     /** Mixed into the game's seed for the order of events, so it does not repeat the first rally's draws. */
     private const int EVENT_SALT = 0x504F4E47;
@@ -82,12 +102,14 @@ final readonly class PongRules
         $rng = HyperRng::seeded(($seed ^ self::EVENT_SALT) & self::MASK);
         $order = [];
 
-        // Four events per round of draws, each round its own shuffle.
-        for ($round = 0; $round <= intdiv($index, 4); $round++) {
+        $count = count(self::EVENTS);
+
+        // Every event once per round of draws, each round its own shuffle.
+        for ($round = 0; $round <= intdiv($index, $count); $round++) {
             $order = $rng->shuffle(self::EVENTS);
         }
 
-        return $order[$index % 4];
+        return $order[$index % $count];
     }
 
     /**

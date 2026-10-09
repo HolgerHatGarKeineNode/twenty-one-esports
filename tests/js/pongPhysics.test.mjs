@@ -10,7 +10,7 @@ import { test } from 'node:test';
 import { seeded } from '../../resources/js/pong/rng.js';
 import { createRally, rallyToArray, stepRally } from '../../resources/js/pong/physics.js';
 import { botSpeed, createBot } from '../../resources/js/pong/bot.js';
-import { DEFAULT_RULES, eventOf, playBots, rallySeed } from '../../resources/js/pong/rules.js';
+import { DEFAULT_RULES, EVENTS, eventOf, playBots, rallySeed } from '../../resources/js/pong/rules.js';
 
 const golden = JSON.parse(readFileSync(new URL('../Fixtures/pong/golden.json', import.meta.url), 'utf8'));
 
@@ -53,6 +53,7 @@ test('whole games between two bots end with the server\'s score, rallies, ticks 
 test('the fixture is worth comparing: hits, goals and every event are in it', () => {
     const kinds = new Set(golden.rallies.flatMap((r) => r.result.events.map((e) => e[0])));
     assert.ok(kinds.has('hit') && kinds.has('goal') && !kinds.has('void'));
-    assert.deepEqual(new Set(golden.rallies.map((r) => r.event)), new Set([null, 'halving', 'brrr', 'pizza', 'difficulty']));
+    assert.deepEqual(new Set(golden.rallies.map((r) => r.event)), new Set([null, ...EVENTS]));
+    assert.equal(EVENTS.length, 9);
     assert.ok(golden.games.every((g) => g.result.winner !== null));
 });

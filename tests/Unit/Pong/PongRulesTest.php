@@ -63,21 +63,24 @@ it('takes its targets from the config', function () {
         ->and($rules->toArray())->toBe(['points_to_win' => 11, 'win_by' => 2, 'event_every_rallies' => 5]);
 });
 
-it('makes every 21st rally a meme event, all four in each round of four, drawn from the seed', function () {
+it('makes every 21st rally a meme event, all nine in each round of nine, drawn from the seed', function () {
     $rules = new PongRules;
+    $count = count(PongRules::EVENTS);
+
+    expect($count)->toBe(9);
 
     foreach ([1, 7, 99, 4294967295] as $seed) {
-        $events = array_map(fn (int $k): ?string => $rules->eventOf($seed, 21 * $k), range(1, 8));
+        $events = array_map(fn (int $k): ?string => $rules->eventOf($seed, 21 * $k), range(1, 2 * $count));
 
-        expect(array_slice($events, 0, 4))->toEqualCanonicalizing(PongRules::EVENTS)
-            ->and(array_slice($events, 4, 4))->toEqualCanonicalizing(PongRules::EVENTS)
+        expect(array_slice($events, 0, $count))->toEqualCanonicalizing(PongRules::EVENTS)
+            ->and(array_slice($events, $count, $count))->toEqualCanonicalizing(PongRules::EVENTS)
             ->and($rules->eventOf($seed, 20))->toBeNull()
             ->and($rules->eventOf($seed, 22))->toBeNull()
             ->and($rules->eventOf($seed, 0))->toBeNull();
     }
 
     // Another seed, another order (one of these four differs from seed 1's).
-    $orders = array_map(fn (int $seed): array => array_map(fn (int $k): ?string => $rules->eventOf($seed, 21 * $k), range(1, 4)), [1, 2, 3, 4]);
+    $orders = array_map(fn (int $seed): array => array_map(fn (int $k): ?string => $rules->eventOf($seed, 21 * $k), range(1, $count)), [1, 2, 3, 4]);
     expect(array_unique(array_map('json_encode', $orders)))->not->toHaveCount(1);
 });
 
@@ -107,6 +110,82 @@ it('gives each event its effect on that one rally, the same for both paddles', f
     expect(array_count_values(array_column($rally->events, 0))['goal'])->toBe(2)
         ->and($game->goal(1, (new PongRally(1, PongRules::HALVING, [1, 1]))->points))->toBeFalse()
         ->and($game->score)->toBe([0, 2]);
+});
+
+it('gives the five P7 events their effect: tax block and border wall send the ball back, the queue holds it, Proof of Work grows the paddle', function () {
+    $speeds = [PongPhysics::PLAYER_SPEED, PongPhysics::PLAYER_SPEED];
+    $centre = PongPhysics::CENTRE;
+
+    // A ball running right at the centre line, its front edge a tick before the obstacle's band.
+    $at = fn (string $event, int $y): array => [$centre - PongPhysics::bandHalf($event) - PongPhysics::BALL_RADIUS - 500, $y, 1000, 0, PongPhysics::BALL_RADIUS];
+
+    foreach ([PongRules::TAX, PongRules::CONTROLS] as $event) {
+        $tick = 37;
+        $patrol = PongPhysics::patrol($event, 5, $tick);
+        // Tax: the block's middle stops the ball. Controls: the gap's middle lets it through, a wall far from it stops it.
+        [$stopped, $through] = $event === PongRules::TAX
+            ? [$patrol, $patrol > PongPhysics::HEIGHT / 2 ? 2000 : PongPhysics::HEIGHT - 2000]
+            : [$patrol > PongPhysics::HEIGHT / 2 ? 2000 : PongPhysics::HEIGHT - 2000, $patrol];
+        $back = PongPhysics::step($at($event, $stopped), $tick, $event, 5);
+        $on = PongPhysics::step($at($event, $through), $tick, $event, 5);
+
+        expect($back[2])->toBe(-1000, $event)
+            ->and($back[0] + PongPhysics::BALL_RADIUS)->toBeLessThanOrEqual($centre - PongPhysics::bandHalf($event))
+            ->and($on)->toBe(PongPhysics::move($at($event, $through)), $event)
+            // The same ball in a plain rally runs on.
+            ->and(PongPhysics::step($at($event, $stopped), $tick, null, 5))->toBe(PongPhysics::move($at($event, $stopped)));
+    }
+
+    // Both obstacles patrol: they are elsewhere a second later, and stay on the field.
+    foreach ([PongRules::TAX, PongRules::CONTROLS] as $event) {
+        $ys = array_map(fn (int $t): int => PongPhysics::patrol($event, 99, $t), range(0, 600, 60));
+        expect(count(array_unique($ys)))->toBeGreaterThan(5)
+            ->and(min($ys))->toBeGreaterThanOrEqual(0)
+            ->and(max($ys))->toBeLessThanOrEqual(PongPhysics::HEIGHT);
+    }
+
+    // Arbeitsamt: crossing the centre line, the ball waits QUEUE_TICKS and then goes on unchanged.
+    $ball = [$centre - 400, 30000, 1000, 300, PongPhysics::BALL_RADIUS];
+    $waiting = PongPhysics::step($ball, 1, PongRules::ARBEITSAMT, 5);
+    expect($waiting)->toBe([...PongPhysics::move($ball), PongPhysics::QUEUE_TICKS]);
+    $held = $waiting;
+
+    for ($tick = 2; $tick <= PongPhysics::QUEUE_TICKS + 1; $tick++) {
+        $held = PongPhysics::step($held, $tick, PongRules::ARBEITSAMT, 5);
+        expect(array_slice($held, 0, 5))->toBe(array_slice($waiting, 0, 5));
+    }
+
+    expect($held)->toBe(PongPhysics::move($ball))
+        ->and(PongPhysics::step($held, 99, PongRules::ARBEITSAMT, 5))->toBe(PongPhysics::move($held));
+
+    // Arbeitsamt in a rally: the serve starts on the centre line (no crossing, the plain path); a returned ball that
+    // crosses it reaches the far face QUEUE_TICKS later than in a plain rally, at the same height.
+    $plain = new PongRally(5, null, $speeds);
+    $queue = new PongRally(5, PongRules::ARBEITSAMT, $speeds);
+    $side = $plain->balls[0][2] < 0 ? 0 : 1;
+    $returned = [20000, 40000, 1300, 700, PongPhysics::BALL_RADIUS];
+    [$plainTicks, $plainY] = PongPhysics::predict($returned, 1);
+    expect($queue->balls)->toBe($plain->balls)
+        ->and(PongPhysics::predict($queue->balls[0], $side, PongRules::ARBEITSAMT, 5))->toBe(PongPhysics::predict($plain->balls[0], $side))
+        ->and(PongPhysics::predict($returned, 1, PongRules::ARBEITSAMT, 5))->toBe([$plainTicks + PongPhysics::QUEUE_TICKS, $plainY]);
+
+    // Few understand changes nothing in the physics: the same rally as a plain one.
+    $few = pongRally(12, PongRules::FEW, 2, 3);
+    expect($few->events)->toBe(pongRally(12, null, 2, 3)->events);
+
+    // Proof of Work: every hit of a side makes its own paddle longer, up to the cap; the other side keeps its length.
+    $pow = new PongRally(5, PongRules::POW, $speeds);
+    expect($pow->halfOf(0))->toBe(PongPhysics::PADDLE_HALF);
+    $pow->sideHits = [3, 0];
+    expect($pow->halfOf(0))->toBe(PongPhysics::PADDLE_HALF + 3 * PongPhysics::POW_GROW)
+        ->and($pow->halfOf(1))->toBe(PongPhysics::PADDLE_HALF);
+    $pow->sideHits = [40, 0];
+    expect($pow->halfOf(0))->toBe(PongPhysics::POW_MAX_HALF);
+
+    $grown = pongRally(77, PongRules::POW, 4, 4);
+    $hits = array_count_values(array_map(fn (array $e): int => $e[2], array_filter($grown->events, fn (array $e): bool => $e[0] === 'hit')));
+    expect($grown->sideHits)->toBe([$hits[0] ?? 0, $hits[1] ?? 0])
+        ->and(max($grown->sideHits))->toBeGreaterThan(0);
 });
 
 it('knows the ball\'s path from a hit to the paddle face: the predicted tick and height are the ones the rally reaches', function () {
@@ -193,6 +272,33 @@ it('has four bot levels whose return rate rises from the Nocoiner uncle to Madam
         ->and(array_keys(PongBot::LEVELS))->toBe([1, 2, 3, 4])
         ->and(PongBot::LEVELS[4]['name'])->toBe('Madame Brrr Lagarde');
 });
+
+it('lets the four bot levels play every P7 event, still measurably ordered and almost never into the tick cap', function (string $event) {
+    $rates = [];
+    $voids = 0;
+
+    foreach ([1, 2, 3, 4] as $level) {
+        $returns = 0;
+        $misses = 0;
+
+        foreach (range(1, 100) as $number) {
+            $rally = pongRally(PongRules::rallySeed(777, $number), $event, 3, $level);
+            $voids += in_array('void', array_column($rally->events, 0), true) ? 1 : 0;
+            $returns += count(array_filter($rally->events, fn (array $e): bool => $e[0] === 'hit' && $e[2] === 1));
+            $misses += count(array_filter($rally->events, fn (array $e): bool => $e[0] === 'goal' && $e[2] === 0));
+        }
+
+        $rates[$level] = round($returns / ($returns + $misses), 3);
+    }
+
+    fwrite(STDERR, "Pong bot return rates ({$event}): ".json_encode($rates)." voids {$voids}/400".PHP_EOL);
+
+    // The Arbeitsamt's queue makes a long rally longer: two bots of levels 3 and 4 may reach the two minutes.
+    expect($voids)->toBeLessThanOrEqual(4)
+        ->and($rates[1])->toBeLessThan($rates[2] - 0.05)
+        ->and($rates[2])->toBeLessThan($rates[3] - 0.05)
+        ->and($rates[3])->toBeLessThan($rates[4] - 0.05);
+})->with([PongRules::TAX, PongRules::CONTROLS, PongRules::FEW, PongRules::POW, PongRules::ARBEITSAMT]);
 
 it('accepts a result only as a score a game can end with', function () {
     $pong = new ProofOfPong;

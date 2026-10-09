@@ -1,14 +1,15 @@
 /**
  * Proof of Pong's rules and a game as a row of rallies (plan "Proof of Pong", P1), the server's
  * App\Support\Pong\PongRules and PongGame: a game to `points_to_win`, `win_by` ahead, and every
- * `event_every_rallies`-th rally a meme event (Halving, Brrr, Pizza Day, Difficulty Adjustment) in an order drawn
+ * `event_every_rallies`-th rally a meme event (Halving, Brrr, Pizza Day, Difficulty Adjustment, and since P7 Steuern
+ * sind Raub, Kapitalverkehrskontrolle, Few understand, Proof of Work, Arbeitsamt) in an order drawn
  * from the game's seed, the same for both sides.
  */
 import { seeded } from './rng.js';
-import { BRRR, DIFFICULTY, HALVING, PIZZA, createRally, stepRally } from './physics.js';
+import { ARBEITSAMT, BRRR, CONTROLS, DIFFICULTY, FEW, HALVING, PIZZA, POW, TAX, createRally, stepRally } from './physics.js';
 import { botSpeed, createBot } from './bot.js';
 
-export const EVENTS = [HALVING, BRRR, PIZZA, DIFFICULTY];
+export const EVENTS = [HALVING, BRRR, PIZZA, DIFFICULTY, TAX, CONTROLS, FEW, POW, ARBEITSAMT];
 export const DEFAULT_RULES = { points_to_win: 21, win_by: 2, event_every_rallies: 21 };
 
 const EVENT_SALT = 0x504f4e47;
@@ -23,9 +24,9 @@ export function eventOf(rules, seed, rally) {
     const index = Math.floor(rally / rules.event_every_rallies) - 1;
     const rng = seeded(((seed ^ EVENT_SALT) >>> 0));
     let order = [];
-    for (let round = 0; round <= Math.floor(index / 4); round++) order = rng.shuffle(EVENTS);
+    for (let round = 0; round <= Math.floor(index / EVENTS.length); round++) order = rng.shuffle(EVENTS);
 
-    return order[index % 4];
+    return order[index % EVENTS.length];
 }
 
 /** The winning side, or null. */

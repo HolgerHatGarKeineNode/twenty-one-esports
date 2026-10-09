@@ -16,7 +16,7 @@
 import { botSpeed, createBot } from './bot.js';
 import './picker.js';
 import { createStage, readConfig, readSettings } from './page.js';
-import { HEIGHT, PADDLE_HALF, PLAYER_SPEED, TICKS_PER_SECOND, stepRally } from './physics.js';
+import { HEIGHT, PADDLE_HALF, PLAYER_SPEED, TICKS_PER_SECOND, rallyHalf, stepRally } from './physics.js';
 import { createGame, rallySeed } from './rules.js';
 import { createShow } from './show.js';
 
@@ -139,7 +139,7 @@ function boot() {
     };
 
     const idle = { balls: [], alive: [], paddles: [HEIGHT >> 1, HEIGHT >> 1], half: PADDLE_HALF, event: null };
-    const view = () => (rally ? { balls: rally.balls, alive: rally.alive, paddles: rally.paddles, half: rally.half, event: phase === 'point' ? null : rally.event } : idle);
+    const view = () => (rally ? { balls: rally.balls, alive: rally.alive, paddles: rally.paddles, half: rally.half, halves: [rallyHalf(rally, 0), rallyHalf(rally, 1)], event: phase === 'point' ? null : rally.event, seed: rally.seed, tick: rally.tick } : idle);
 
     let last = performance.now();
     let acc = 0;

@@ -11,11 +11,12 @@ use InvalidArgumentException;
  *
  * - reaction: how many ticks after a ball turned towards it the bot starts to move;
  * - speed: how fast its paddle moves, in units per tick;
- * - error: how far off its aim is at most, drawn once per approaching ball; beyond the paddle's reach it misses.
+ * - error: how far off its aim is at most, drawn once per approaching ball; beyond the paddle's reach it misses (in
+ *   Proof of Work it grows with the bot's paddle).
  *
- * It reads the ball's exact path (PongPhysics::predict()), aims at that point plus its error and returns to the
- * middle while no ball comes. Its draws come from its own RNG per rally and side, so a bot plays a rally the same
- * way on the server and in the browser.
+ * It reads the ball's exact path (PongPhysics::predict(), obstacles and queue included), aims at that point plus its
+ * error and returns to the middle while no ball comes. Its draws come from its own RNG per rally and side, so a bot
+ * plays a rally the same way on the server and in the browser.
  */
 final class PongBot
 {
@@ -67,7 +68,9 @@ final class PongBot
         $level = self::LEVELS[$this->level];
         $next = null;
 
-        // The ball that reaches its face first. A ball's path only changes at a hit, so each is worked out once.
+        // The ball that reaches its face first. A ball's path only changes at a hit, so each is worked out once: an
+        // obstacle that sends it back turns it away from this face (predict() gives null), and it comes back only
+        // after the other side hit it.
         foreach ($rally->balls as $index => $ball) {
             if (! $rally->alive[$index] || ! PongPhysics::approaches($ball, $this->side)) {
                 continue;
@@ -76,7 +79,7 @@ final class PongBot
             $key = $index * 1000 + $rally->hits[$index];
 
             if (! array_key_exists($key, $this->paths)) {
-                $path = PongPhysics::predict($ball, $this->side);
+                $path = PongPhysics::predict($ball, $this->side, $rally->event, $rally->seed, $rally->tick);
                 $this->paths[$key] = $path === null ? null : [$rally->tick + $path[0], $path[1]];
             }
 
@@ -97,7 +100,9 @@ final class PongBot
 
         if ($key !== $this->key) {
             $this->key = $key;
-            $this->aim = $y + $this->rng->below(2 * $level['error'] + 1) - $level['error'];
+            // Proof of Work grows the paddle; the aim's error grows with it, so a level misses as often as it would.
+            $error = $rally->event === PongRules::POW ? intdiv($level['error'] * $rally->halfOf($this->side), PongPhysics::PADDLE_HALF) : $level['error'];
+            $this->aim = $y + $this->rng->below(2 * $error + 1) - $error;
             $this->ready = $rally->tick + $level['reaction'];
         }
 

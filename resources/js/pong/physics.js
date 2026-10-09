@@ -4,7 +4,7 @@
  * stays below 2^31 and every division is floorDiv(), so a double here and a 64-bit integer there agree exactly.
  * tests/js/pongPhysics.test.mjs plays the server's golden rallies (tests/fixtures/pong-golden.json) against it.
  *
- * A ball is [x, y, vx, vy, r]. x runs from side 0's goal line (0) to side 1's (WIDTH), y from the top wall (0) to the
+ * A ball is [x, y, vx, vy, r] (a sixth element while it waits in the Arbeitsamt's queue). x runs from side 0's goal line (0) to side 1's (WIDTH), y from the top wall (0) to the
  * bottom wall (HEIGHT). The log of a rally has a line per serve, hit, goal and a rally that hit the tick cap:
  * ['serve', tick, ball, x, y, vx, vy], ['hit', tick, side, ball, y, vy], ['goal', tick, scorer, ball], ['void', tick].
  */
@@ -24,11 +24,26 @@ export const ANGLE_NUM = 4;
 export const ANGLE_DEN = 5;
 export const PLAYER_SPEED = 2400;
 export const RALLY_TICK_CAP = 7200;
+export const CENTRE = 80000;
+export const TAX_HALF_X = 2000;
+export const TAX_HALF_Y = 10000;
+export const TAX_SPEED = 450;
+export const WALL_HALF_X = 1200;
+export const GAP_HALF = 15000;
+export const GAP_SPEED = 300;
+export const QUEUE_TICKS = 60;
+export const POW_GROW = 1500;
+export const POW_MAX_HALF = 18000;
 
 export const HALVING = 'halving';
 export const BRRR = 'brrr';
 export const PIZZA = 'pizza';
 export const DIFFICULTY = 'difficulty';
+export const TAX = 'tax';
+export const CONTROLS = 'controls';
+export const FEW = 'few';
+export const POW = 'pow';
+export const ARBEITSAMT = 'arbeitsamt';
 
 /** Floor division of two integers, as PongPhysics::floorDiv(). */
 export const floorDiv = (a, b) => Math.floor(a / b);
@@ -51,6 +66,62 @@ export function move(ball) {
     return [x, y, vx, vy, r];
 }
 
+/** Half the width of an event's obstacle on the centre line, as PongPhysics::bandHalf(). */
+export const bandHalf = (event) => (event === TAX ? TAX_HALF_X : WALL_HALF_X);
+
+/** The centre y of the tax block or the wall's gap at `tick`, as PongPhysics::patrol(). */
+export function patrol(event, seed, tick) {
+    const [half, speed] = event === TAX ? [TAX_HALF_Y, TAX_SPEED] : [GAP_HALF, GAP_SPEED];
+    const span = HEIGHT - 2 * half;
+    const u = (tick * speed + (seed % (2 * span))) % (2 * span);
+
+    return half + (u <= span ? u : 2 * span - u);
+}
+
+/** Whether the obstacle stops a ball at height `y` at `tick`, as PongPhysics::blocked(). */
+export function blocked(event, seed, tick, y, r) {
+    const centre = patrol(event, seed, tick);
+
+    return event === TAX ? Math.abs(y - centre) <= TAX_HALF_Y + r : Math.abs(y - centre) > GAP_HALF - r;
+}
+
+/** A paddle's half length after its side's `hits` hits, as PongPhysics::halfOf(). */
+export function halfOf(event, hits) {
+    if (event === DIFFICULTY) return floorDiv(PADDLE_HALF * 2, 3);
+    if (event === POW) return Math.min(PADDLE_HALF + hits * POW_GROW, POW_MAX_HALF);
+
+    return PADDLE_HALF;
+}
+
+/**
+ * The ball one tick on in a rally of `event` (seed `seed`), arriving at tick `tick`, as PongPhysics::step(): move()
+ * plus the tax block, the border wall and the Arbeitsamt's queue (a sixth element counts the ticks left to wait).
+ */
+export function step(ball, tick, event, seed) {
+    if (event === ARBEITSAMT) {
+        if (ball.length > 5) {
+            const left = ball[5] - 1;
+
+            return left > 0 ? [ball[0], ball[1], ball[2], ball[3], ball[4], left] : [ball[0], ball[1], ball[2], ball[3], ball[4]];
+        }
+
+        const moved = move(ball);
+        if ((ball[0] < CENTRE && moved[0] >= CENTRE) || (ball[0] > CENTRE && moved[0] <= CENTRE)) return [...moved, QUEUE_TICKS];
+
+        return moved;
+    }
+
+    if (event !== TAX && event !== CONTROLS) return move(ball);
+
+    const moved = move(ball);
+    const [x, y, vx, vy, r] = moved;
+    const face = vx > 0 ? CENTRE - bandHalf(event) : CENTRE + bandHalf(event);
+    const enters = vx > 0 ? ball[0] + r < face && x + r >= face : ball[0] - r > face && x - r <= face;
+    if (!enters || !blocked(event, seed, tick, y, r)) return moved;
+
+    return [vx > 0 ? 2 * (face - r) - x : 2 * (face + r) - x, y, -vx, vy, r];
+}
+
 export const faceX = (side) => (side === 0 ? PADDLE_X : WIDTH - PADDLE_X);
 
 /** Whether the ball runs towards `side` and has not yet passed its paddle's face. */
@@ -63,14 +134,18 @@ export function approaches(ball, side) {
 /** Whether the ball's front edge is at or past `side`'s paddle face. */
 export const crossed = (ball, side) => (side === 0 ? ball[0] - ball[4] <= PADDLE_X : ball[0] + ball[4] >= WIDTH - PADDLE_X);
 
-/** [ticks, y] until the ball reaches `side`'s face untouched, or null when it does not run towards it. */
-export function predict(ball, side) {
+/**
+ * [ticks, y] until the ball reaches `side`'s face untouched, or null when it does not run towards it or an event's
+ * obstacle sends it back first; `tick` is the tick the ball stands at.
+ */
+export function predict(ball, side, event = null, seed = 0, tick = 0) {
     if (!approaches(ball, side)) return null;
 
     let b = ball;
     for (let ticks = 1; ticks <= RALLY_TICK_CAP; ticks++) {
-        b = move(b);
+        b = step(b, tick + ticks, event, seed);
         if (crossed(b, side)) return [ticks, b[1]];
+        if (!approaches(b, side)) return null;
     }
 
     return null;
@@ -102,11 +177,11 @@ export function createRally(seed, event, speeds) {
     const brrr = event === BRRR;
     const rally = {
         seed, event, speeds,
-        tick: 0, balls: [], alive: [], hits: [], paddles: [HEIGHT >> 1, HEIGHT >> 1], events: [], goals: [], over: false,
+        tick: 0, balls: [], alive: [], hits: [], sideHits: [0, 0], paddles: [HEIGHT >> 1, HEIGHT >> 1], events: [], goals: [], over: false,
         base: brrr ? floorDiv(BASE_SPEED * 3, 2) : BASE_SPEED,
         speedup: brrr ? floorDiv(SPEEDUP * 3, 2) : SPEEDUP,
         max: brrr ? floorDiv(MAX_SPEED * 3, 2) : MAX_SPEED,
-        half: event === DIFFICULTY ? floorDiv(PADDLE_HALF * 2, 3) : PADDLE_HALF,
+        half: halfOf(event, 0),
         points: event === HALVING ? 2 : 1,
     };
     const radius = event === HALVING ? floorDiv(BALL_RADIUS, 2) : BALL_RADIUS;
@@ -126,15 +201,20 @@ export function createRally(seed, event, speeds) {
     return rally;
 }
 
+/** Side `side`'s paddle half length now, as PongRally::halfOf(). */
+export const rallyHalf = (rally, side) => halfOf(rally.event, rally.sideHits[side]);
+
 function advance(rally, index, ball) {
     const side = ball[2] < 0 ? 0 : 1;
     const before = approaches(ball, side);
-    const moved = move(ball);
+    const moved = step(ball, rally.tick, rally.event, rally.seed);
     const [x, y] = moved;
+    const half = rallyHalf(rally, side);
 
-    if (before && crossed(moved, side) && meets(moved, rally.paddles[side], rally.half)) {
+    if (before && crossed(moved, side) && meets(moved, rally.paddles[side], half)) {
         rally.hits[index]++;
-        const hit = bounce(moved, side, rally.paddles[side], rally.half, speedAfter(rally.hits[index], rally.base, rally.speedup, rally.max));
+        rally.sideHits[side]++;
+        const hit = bounce(moved, side, rally.paddles[side], half, speedAfter(rally.hits[index], rally.base, rally.speedup, rally.max));
         rally.events.push(['hit', rally.tick, side, index, y, hit[3]]);
 
         return hit;
@@ -158,8 +238,9 @@ export function stepRally(rally, targets) {
 
     for (const side of [0, 1]) {
         const speed = rally.speeds[side];
+        const half = rallyHalf(rally, side);
         const delta = Math.max(-speed, Math.min(speed, targets[side] - rally.paddles[side]));
-        rally.paddles[side] = Math.max(rally.half, Math.min(HEIGHT - rally.half, rally.paddles[side] + delta));
+        rally.paddles[side] = Math.max(half, Math.min(HEIGHT - half, rally.paddles[side] + delta));
     }
 
     rally.balls.forEach((ball, index) => {

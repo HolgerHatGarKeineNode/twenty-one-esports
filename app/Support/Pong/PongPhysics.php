@@ -52,6 +52,31 @@ final class PongPhysics
     /** A rally longer than two minutes ends without a point (only two bots that never miss get there). */
     public const int RALLY_TICK_CAP = 7200;
 
+    /** The centre line, where the P7 events put their obstacles and the Arbeitsamt its queue. */
+    public const int CENTRE = 80000;
+
+    /** Steuern sind Raub: the tax office's block, half its width and height, and how fast it patrols (per tick). */
+    public const int TAX_HALF_X = 2000;
+
+    public const int TAX_HALF_Y = 10000;
+
+    public const int TAX_SPEED = 450;
+
+    /** Kapitalverkehrskontrolle: the border wall's half thickness, half its gap and how fast the gap wanders. */
+    public const int WALL_HALF_X = 1200;
+
+    public const int GAP_HALF = 15000;
+
+    public const int GAP_SPEED = 300;
+
+    /** Arbeitsamt: a ball that crosses the centre line waits this many ticks (one second) in the queue. */
+    public const int QUEUE_TICKS = 60;
+
+    /** Proof of Work: each own hit makes the paddle this much longer (half length), up to POW_MAX_HALF. */
+    public const int POW_GROW = 1500;
+
+    public const int POW_MAX_HALF = 18000;
+
     /**
      * Floor division, as JavaScript's Math.floor(a / b) gives it (PHP's intdiv() rounds towards zero).
      */
@@ -65,8 +90,8 @@ final class PongPhysics
     /**
      * The ball one tick on: the velocity added, mirrored off the top or bottom wall it crossed.
      *
-     * @param  array{int, int, int, int, int}  $ball  [x, y, vx, vy, r]
-     * @return array{int, int, int, int, int}
+     * @param  array{0: int, 1: int, 2: int, 3: int, 4: int, 5?: int}  $ball  [x, y, vx, vy, r]
+     * @return array{0: int, 1: int, 2: int, 3: int, 4: int, 5?: int}
      */
     public static function move(array $ball): array
     {
@@ -86,6 +111,99 @@ final class PongPhysics
     }
 
     /**
+     * The ball one tick on in a rally of `$event` (seed `$seed`), arriving at tick `$tick`: move() plus the field of
+     * the P7 events, all of them functions of the rally's seed and tick only, so the path between two paddle contacts
+     * is still known from the ball and the tick alone.
+     *
+     * - Steuern sind Raub / Kapitalverkehrskontrolle: a ball whose front edge enters the obstacle's band on the centre
+     *   line in this tick is mirrored back off it where it is blocked (the tax block; the wall outside its gap). A
+     *   ball inside the band (the serve starts there) is never stopped.
+     * - Arbeitsamt: a ball that crosses the centre line in this tick stops there for QUEUE_TICKS (a sixth element
+     *   counts the ticks left), then goes on unchanged.
+     *
+     * @param  array{0: int, 1: int, 2: int, 3: int, 4: int, 5?: int}  $ball  [x, y, vx, vy, r] or, waiting in the queue, [x, y, vx, vy, r, ticks left]
+     * @return array{0: int, 1: int, 2: int, 3: int, 4: int, 5?: int}
+     */
+    public static function step(array $ball, int $tick, ?string $event, int $seed): array
+    {
+        if ($event === PongRules::ARBEITSAMT) {
+            if (isset($ball[5])) {
+                $left = $ball[5] - 1;
+
+                return $left > 0 ? [$ball[0], $ball[1], $ball[2], $ball[3], $ball[4], $left] : [$ball[0], $ball[1], $ball[2], $ball[3], $ball[4]];
+            }
+
+            $moved = self::move($ball);
+            $centre = self::CENTRE;
+
+            if (($ball[0] < $centre && $moved[0] >= $centre) || ($ball[0] > $centre && $moved[0] <= $centre)) {
+                return [...$moved, self::QUEUE_TICKS];
+            }
+
+            return $moved;
+        }
+
+        if ($event !== PongRules::TAX && $event !== PongRules::CONTROLS) {
+            return self::move($ball);
+        }
+
+        $moved = self::move($ball);
+        [$x, $y, $vx, $vy, $r] = $moved;
+        $face = $vx > 0 ? self::CENTRE - self::bandHalf($event) : self::CENTRE + self::bandHalf($event);
+        $enters = $vx > 0 ? $face > $ball[0] + $r && $x + $r >= $face : $face < $ball[0] - $r && $x - $r <= $face;
+
+        if (! $enters || ! self::blocked($event, $seed, $tick, $y, $r)) {
+            return $moved;
+        }
+
+        return [$vx > 0 ? 2 * ($face - $r) - $x : 2 * ($face + $r) - $x, $y, -$vx, $vy, $r];
+    }
+
+    /** Half the width of an event's obstacle on the centre line. */
+    public static function bandHalf(string $event): int
+    {
+        return $event === PongRules::TAX ? self::TAX_HALF_X : self::WALL_HALF_X;
+    }
+
+    /**
+     * The centre y of an event's moving part at tick `$tick`: the tax block, or the border wall's gap. It patrols
+     * between the walls at a constant speed, from a start drawn from the rally's seed.
+     */
+    public static function patrol(string $event, int $seed, int $tick): int
+    {
+        [$half, $speed] = $event === PongRules::TAX ? [self::TAX_HALF_Y, self::TAX_SPEED] : [self::GAP_HALF, self::GAP_SPEED];
+        $span = self::HEIGHT - 2 * $half;
+        $u = ($tick * $speed + $seed % (2 * $span)) % (2 * $span);
+
+        return $half + ($u <= $span ? $u : 2 * $span - $u);
+    }
+
+    /**
+     * Whether a ball at height `$y` (radius `$r`) is stopped by the event's obstacle at tick `$tick`: it touches the
+     * tax block, or it is not wholly inside the wall's gap.
+     */
+    public static function blocked(string $event, int $seed, int $tick, int $y, int $r): bool
+    {
+        $centre = self::patrol($event, $seed, $tick);
+
+        return $event === PongRules::TAX
+            ? abs($y - $centre) <= self::TAX_HALF_Y + $r
+            : abs($y - $centre) > self::GAP_HALF - $r;
+    }
+
+    /**
+     * A paddle's half length in a rally of `$event` after its side's `$hits` hits (Proof of Work grows it).
+     */
+    public static function halfOf(?string $event, int $hits): int
+    {
+        return match ($event) {
+            PongRules::DIFFICULTY => intdiv(self::PADDLE_HALF * 2, 3),
+            PongRules::POW => min(self::PADDLE_HALF + $hits * self::POW_GROW, self::POW_MAX_HALF),
+            default => self::PADDLE_HALF,
+        };
+    }
+
+    /**
      * The x of side `$side`'s paddle face.
      */
     public static function faceX(int $side): int
@@ -96,7 +214,7 @@ final class PongPhysics
     /**
      * Whether the ball runs towards side `$side` and has not yet passed its paddle's face.
      *
-     * @param  array{int, int, int, int, int}  $ball
+     * @param  array{0: int, 1: int, 2: int, 3: int, 4: int, 5?: int}  $ball
      */
     public static function approaches(array $ball, int $side): bool
     {
@@ -107,22 +225,27 @@ final class PongPhysics
 
     /**
      * Where and when the ball reaches side `$side`'s paddle face if nothing touches it: the number of ticks and the
-     * ball's y in that tick (the tick in which a hit is decided). Null when it does not run towards that side.
+     * ball's y in that tick (the tick in which a hit is decided). Null when it does not run towards that side, or an
+     * event's obstacle sends it back before (step(); `$tick` is the tick the ball stands at).
      *
-     * @param  array{int, int, int, int, int}  $ball
+     * @param  array{0: int, 1: int, 2: int, 3: int, 4: int, 5?: int}  $ball
      * @return array{int, int}|null [ticks, y]
      */
-    public static function predict(array $ball, int $side): ?array
+    public static function predict(array $ball, int $side, ?string $event = null, int $seed = 0, int $tick = 0): ?array
     {
         if (! self::approaches($ball, $side)) {
             return null;
         }
 
         for ($ticks = 1; $ticks <= self::RALLY_TICK_CAP; $ticks++) {
-            $ball = self::move($ball);
+            $ball = self::step($ball, $tick + $ticks, $event, $seed);
 
             if (self::crossed($ball, $side)) {
                 return [$ticks, $ball[1]];
+            }
+
+            if (! self::approaches($ball, $side)) {
+                return null;
             }
         }
 
@@ -132,7 +255,7 @@ final class PongPhysics
     /**
      * Whether the ball's front edge is at or past side `$side`'s paddle face.
      *
-     * @param  array{int, int, int, int, int}  $ball
+     * @param  array{0: int, 1: int, 2: int, 3: int, 4: int, 5?: int}  $ball
      */
     public static function crossed(array $ball, int $side): bool
     {
@@ -143,7 +266,7 @@ final class PongPhysics
      * Whether a ball that crossed side `$side`'s face in this tick meets that side's paddle (centre `$paddle`, half
      * length `$half`): its centre within the half length plus its radius.
      *
-     * @param  array{int, int, int, int, int}  $ball  the ball after the tick's move
+     * @param  array{0: int, 1: int, 2: int, 3: int, 4: int, 5?: int}  $ball  the ball after the tick's move
      */
     public static function meets(array $ball, int $paddle, int $half): bool
     {
@@ -155,8 +278,8 @@ final class PongPhysics
      * in front of it as it went past it), at `$speed` along x and at an angle that grows with the distance from the
      * paddle's centre. PongRally and the live referee (PongReferee) both hit with it.
      *
-     * @param  array{int, int, int, int, int}  $ball  the ball after the tick's move
-     * @return array{int, int, int, int, int}
+     * @param  array{0: int, 1: int, 2: int, 3: int, 4: int, 5?: int}  $ball  the ball after the tick's move
+     * @return array{0: int, 1: int, 2: int, 3: int, 4: int, 5?: int}
      */
     public static function bounce(array $ball, int $side, int $paddle, int $half, int $speed): array
     {

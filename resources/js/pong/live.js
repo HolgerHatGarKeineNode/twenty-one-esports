@@ -23,7 +23,7 @@ import Pusher from 'pusher-js';
 import { createNet } from '../hyper/net.js';
 import { botSpeed, createBot } from './bot.js';
 import { createStage, readConfig, readSettings } from './page.js';
-import { HEIGHT, PADDLE_HALF, PLAYER_SPEED, RALLY_TICK_CAP, TICKS_PER_SECOND, WIDTH, approaches, bounce, createRally, crossed, meets, move, speedAfter } from './physics.js';
+import { HEIGHT, PADDLE_HALF, PLAYER_SPEED, RALLY_TICK_CAP, TICKS_PER_SECOND, WIDTH, approaches, bounce, createRally, crossed, halfOf, meets, speedAfter, step } from './physics.js';
 import { storedFigure } from './picker.js';
 import { rallySeed } from './rules.js';
 import { createShow } from './show.js';
@@ -102,6 +102,8 @@ function startRally(ref) {
         g: Number.isFinite(g) ? g : 0,
         paddle: me === null ? HEIGHT >> 1 : ref.paddles[me][0],
         paddleTick: 0,
+        // This player's hits in the rally (Proof of Work grows the paddle with them), from the referee on a re-sync.
+        myHits: me === null ? 0 : (ref.sideHits?.[me] ?? 0),
         history: new Map(),
         pending: {},
         bot: settings.autoplay && me !== null ? createBot(settings.autoplay, me, rallySeed(snap.seed, ref.rally)) : null,
@@ -123,17 +125,26 @@ function view(r) {
         balls: r.balls.map((ball) => ball.b),
         alive: r.balls.map((ball) => ball.state === 'live' || ball.state === 'flying'),
         hits: r.balls.map((ball) => ball.hits),
+        sideHits: me === 1 ? [0, r.myHits] : [r.myHits, 0],
         paddles,
-        half: r.serve.half,
+        half: myHalf(r),
+        event: r.serve.event,
+        seed: r.serve.seed,
     };
 }
+
+/** This player's paddle half length now (Proof of Work grows it with each own hit). */
+const myHalf = (r) => halfOf(r.serve.event, r.myHits);
+
+/** A ball one tick on, arriving at `tick`, in this rally's field (obstacles, queue). */
+const stepIn = (r, b, tick) => step(b, tick, r.serve.event, r.serve.seed);
 
 /** This player's paddle in tick n: moved once per tick towards the wanted position, at most its speed. */
 function paddleAt(r, n) {
     while (r.paddleTick < n) {
         const want = r.bot ? r.bot.target(view(r)) : input.target(r.paddle);
         const delta = Math.max(-r.speed, Math.min(r.speed, want - r.paddle));
-        r.paddle = Math.max(r.serve.half, Math.min(HEIGHT - r.serve.half, r.paddle + delta));
+        r.paddle = Math.max(myHalf(r), Math.min(HEIGHT - myHalf(r), r.paddle + delta));
         r.paddleTick++;
         r.history.set(r.paddleTick, r.paddle);
     }
@@ -142,10 +153,10 @@ function paddleAt(r, n) {
 }
 
 /** The side a live ball runs towards, and whether its next tick crosses that side's face. */
-function nextContact(ball) {
+function nextContact(r, ball) {
     const side = ball.b[2] < 0 ? 0 : 1;
 
-    return { side, crosses: approaches(ball.b, side) && crossed(move(ball.b), side) };
+    return { side, crosses: approaches(ball.b, side) && crossed(stepIn(r, ball.b, ball.t + 1), side) };
 }
 
 function report(r, index, tick, kind, y) {
@@ -173,17 +184,19 @@ function advance(r, index, to) {
 
     while (ball.t < to) {
         if (ball.state === 'live') {
-            const { side, crosses } = nextContact(ball);
+            const { side, crosses } = nextContact(r, ball);
             const tick = ball.t + 1;
-            const moved = move(ball.b);
+            const moved = stepIn(r, ball.b, tick);
 
             if (crosses) {
                 if (side !== me) return;
 
                 const y = paddleAt(r, tick);
-                if (meets(moved, y, r.serve.half)) {
+                const half = myHalf(r);
+                if (meets(moved, y, half)) {
                     ball.hits++;
-                    ball.b = bounce(moved, side, y, r.serve.half, speedAfter(ball.hits, r.serve.base, r.serve.speedup, r.serve.max));
+                    r.myHits++;
+                    ball.b = bounce(moved, side, y, half, speedAfter(ball.hits, r.serve.base, r.serve.speedup, r.serve.max));
                     report(r, index, tick, 'hit', y);
                 } else {
                     ball.b = moved;
@@ -200,7 +213,7 @@ function advance(r, index, to) {
         }
 
         if (ball.state === 'flying') {
-            ball.b = move(ball.b);
+            ball.b = stepIn(r, ball.b, ball.t + 1);
             ball.t++;
             if (out(ball.b)) ball.state = 'out';
             continue;
@@ -235,7 +248,7 @@ function run(r) {
         // This player's contacts of tick n first, so two balls at both faces in one tick cannot hold both pages.
         r.balls.forEach((ball, index) => {
             if (ball.state !== 'live' || ball.t !== r.g || r.pending[index]?.t === n) return;
-            const { side, crosses } = nextContact(ball);
+            const { side, crosses } = nextContact(r, ball);
             if (!crosses) return;
             if (side === me) advance(r, index, n);
             else held = true;
@@ -406,11 +419,14 @@ function phase(now) {
 /** The field from this player's side: they are always side 0 (left, or at the bottom upright). */
 function draw(r) {
     const flip = me === 1;
-    const balls = r.balls.map((ball) => (flip ? [WIDTH - ball.b[0], ball.b[1], -ball.b[2], ball.b[3], ball.b[4]] : ball.b));
+    const balls = r.balls.map((ball) => (flip ? [WIDTH - ball.b[0], ball.b[1], -ball.b[2], ball.b[3], ...ball.b.slice(4)] : ball.b));
     const alive = r.balls.map((ball) => ball.state !== 'out');
     const mine = me === null ? r.ref.paddles[0][0] : r.paddle;
     const theirs = me === null ? r.ref.paddles[1][0] : oppShown;
-    theShow.frame({ balls, alive, paddles: [mine, theirs], half: r.serve.half, event: r.ref.event });
+    const halves = r.ref.halves ?? [r.serve.half, r.serve.half];
+    const myShownHalf = me === null ? halves[0] : myHalf(r);
+    const theirHalf = me === null ? halves[1] : halves[opp];
+    theShow.frame({ balls, alive, paddles: [mine, theirs], half: r.serve.half, halves: [myShownHalf, theirHalf], event: r.ref.event, seed: r.serve.seed, tick: r.g, flip });
 }
 
 function frame() {

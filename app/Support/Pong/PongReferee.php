@@ -7,14 +7,19 @@ namespace App\Support\Pong;
  * Server prüft"): it keeps the rally in play as each ball's last checked state and decides every paddle contact from
  * the defending player's report, so a client can bend nothing but its own paddle.
  *
- * Between two contacts a ball's path depends on nothing but the ball (PongPhysics::move()), so the referee knows, for
- * each ball, the tick in which it next crosses a paddle's face and where it is then. Only the DEFENDING side reports
+ * Between two contacts a ball's path depends on nothing but the ball and the tick (PongPhysics::step(): the walls, and
+ * the obstacles and the queue of the P7 events, all from the rally's seed), so the referee knows, for each ball, the
+ * tick in which it next crosses a paddle's face, which face, and where it is then. A ball that an obstacle sends back
+ * meets the face of the side that played it, and that side defends it. Only the DEFENDING side reports
  * that crossing: `hit` with its paddle's centre, or `goal` (it missed). A hit counts only if
  *
  * - the paddle lies on the field (its centre within the paddle's half length of the walls),
- * - the paddle could get there from the last position the referee accepted for that side (the rally's centre at
- *   tick 0, then each accepted hit) at the player's top speed (PongPhysics::PLAYER_SPEED per tick), and
- * - it meets the ball in that tick (PongPhysics::meets()), exactly as PongRally decides a hit.
+ * - the paddle could get there at the player's top speed (PongPhysics::PLAYER_SPEED per tick) from the positions the
+ *   referee accepted for that side nearest in time before AND after the contact (the rally's centre at tick 0, then
+ *   each accepted hit): two balls at one face may be reported out of tick order, so a later contact can already be
+ *   accepted, and the budget is the tick distance either way, never negative, and
+ * - it meets the ball in that tick (PongPhysics::meets()), exactly as PongRally decides a hit, with the side's paddle
+ *   length then (PongPhysics::halfOf(): Proof of Work grows it with that side's accepted hits).
  *
  * Anything else is a goal for the attacker. A report from the attacking side changes nothing (nobody can report a goal
  * for themselves); a report for a contact already decided is answered as it was (idempotent by ball and tick); a
@@ -57,11 +62,17 @@ final class PongReferee
     /** Unix ms of the rally's tick 0. */
     public int $servedAt;
 
-    /** @var list<array{b: array{int, int, int, int, int}, t: int, hits: int, state: string, goal: array{int, int, int}|null}> goal: [tick it falls, scorer, contact tick] */
+    /** @var list<array{b: array{0: int, 1: int, 2: int, 3: int, 4: int, 5?: int}, t: int, hits: int, state: string, goal: array{int, int, int}|null}> goal: [tick it falls, scorer, contact tick] */
     public array $balls = [];
 
-    /** @var array{array{int, int}, array{int, int}} each side's last accepted paddle centre and its tick */
+    /** @var array{int, int} each side's accepted hits in the rally in play (Proof of Work) */
+    public array $sideHits = [0, 0];
+
+    /** @var array{array{int, int}, array{int, int}} each side's accepted paddle centre with the latest tick, and that tick */
     public array $paddles;
+
+    /** @var array{list<array{int, int}>, list<array{int, int}>} per side, every accepted paddle centre of the rally and its tick */
+    public array $samples = [[], []];
 
     /** @var array{int, int} the score at this rally's serve */
     public array $scoreBefore;
@@ -109,18 +120,22 @@ final class PongReferee
         $referee->servedAt = (int) $state['servedAt'];
         $referee->balls = $state['balls'];
         $referee->paddles = $state['paddles'];
+        // A state stored before the samples has only the latest position per side.
+        $referee->samples = $state['samples'] ?? [[$state['paddles'][0]], [$state['paddles'][1]]];
         $referee->scoreBefore = $state['scoreBefore'];
         $referee->score = $state['score'];
         $referee->winner = $state['winner'];
         $referee->pausedAt = $state['pausedAt'];
         $referee->version = (int) $state['version'];
+        // A state stored before P7 has no hits per side; no rally then grew a paddle.
+        $referee->sideHits = $state['sideHits'] ?? [0, 0];
         $referee->serve = $referee->rallyOf($referee->rally);
 
         return $referee;
     }
 
     /**
-     * @return array{rally: int, event: string|null, servedAt: int, balls: list<array<string, mixed>>, paddles: array{array{int, int}, array{int, int}}, scoreBefore: array{int, int}, score: array{int, int}, winner: int|null, pausedAt: int|null, version: int, half: int, points: int}
+     * @return array{rally: int, event: string|null, servedAt: int, balls: list<array<string, mixed>>, paddles: array{array{int, int}, array{int, int}}, samples: array{list<array{int, int}>, list<array{int, int}>}, sideHits: array{int, int}, scoreBefore: array{int, int}, score: array{int, int}, winner: int|null, pausedAt: int|null, version: int, half: int, halves: array{int, int}, points: int}
      */
     public function toArray(): array
     {
@@ -130,6 +145,8 @@ final class PongReferee
             'servedAt' => $this->servedAt,
             'balls' => $this->balls,
             'paddles' => $this->paddles,
+            'samples' => $this->samples,
+            'sideHits' => $this->sideHits,
             'scoreBefore' => $this->scoreBefore,
             'score' => $this->score,
             'winner' => $this->winner,
@@ -137,6 +154,7 @@ final class PongReferee
             'version' => $this->version,
             // Read by the page only (the serve decides them): the paddles' half length and a goal's points.
             'half' => $this->serve->half,
+            'halves' => [$this->halfOf(0), $this->halfOf(1)],
             'points' => $this->serve->points,
         ];
     }
@@ -165,11 +183,17 @@ final class PongReferee
         return $this->servedAt + $this->ms($tick);
     }
 
+    /** Side `$side`'s paddle half length in the rally in play, after its accepted hits. */
+    public function halfOf(int $side): int
+    {
+        return PongPhysics::halfOf($this->event, $this->sideHits[$side]);
+    }
+
     /**
      * Ball `$index`'s next contact: the defending side, the tick in which it crosses that side's face and the ball
      * then (before any hit). Null for a ball no longer in play, or one whose contact would come after the tick cap.
      *
-     * @return array{side: int, tick: int, ball: array{int, int, int, int, int}}|null
+     * @return array{side: int, tick: int, ball: array{0: int, 1: int, 2: int, 3: int, 4: int, 5?: int}}|null
      */
     public function contact(int $index): ?array
     {
@@ -180,14 +204,16 @@ final class PongReferee
         }
 
         $ball = $entry['b'];
-        $side = $ball[2] < 0 ? 0 : 1;
-
-        if (! PongPhysics::approaches($ball, $side)) {
-            return null;
-        }
 
         for ($tick = $entry['t'] + 1; $tick <= PongPhysics::RALLY_TICK_CAP; $tick++) {
-            $ball = PongPhysics::move($ball);
+            // The side it runs towards before this tick's step (an obstacle may turn it, as in PongRally).
+            $side = $ball[2] < 0 ? 0 : 1;
+
+            if (! PongPhysics::approaches($ball, $side)) {
+                return null;
+            }
+
+            $ball = PongPhysics::step($ball, $tick, $this->event, $this->serve->seed);
 
             if (PongPhysics::crossed($ball, $side)) {
                 return ['side' => $side, 'tick' => $tick, 'ball' => $ball];
@@ -251,8 +277,13 @@ final class PongReferee
 
         $hits = $entry['hits'] + 1;
         $speed = PongPhysics::speedAfter($hits, $this->serve->base, $this->serve->speedup, $this->serve->max);
-        $this->balls[$index] = ['b' => PongPhysics::bounce($contact['ball'], $side, $paddle, $this->serve->half, $speed), 't' => $tick, 'hits' => $hits, 'state' => self::LIVE, 'goal' => null];
-        $this->paddles = $side === 0 ? [[$paddle, $tick], $this->paddles[1]] : [$this->paddles[0], [$paddle, $tick]];
+        $this->balls[$index] = ['b' => PongPhysics::bounce($contact['ball'], $side, $paddle, $this->halfOf($side), $speed), 't' => $tick, 'hits' => $hits, 'state' => self::LIVE, 'goal' => null];
+        $this->sideHits = $side === 0 ? [$this->sideHits[0] + 1, $this->sideHits[1]] : [$this->sideHits[0], $this->sideHits[1] + 1];
+        $this->samples = $side === 0 ? [[...$this->samples[0], [$paddle, $tick]], $this->samples[1]] : [$this->samples[0], [...$this->samples[1], [$paddle, $tick]]];
+
+        if ($tick >= $this->paddles[$side][1]) {
+            $this->paddles = $side === 0 ? [[$paddle, $tick], $this->paddles[1]] : [$this->paddles[0], [$paddle, $tick]];
+        }
         $this->fresh[] = ['hit', $this->rally, $tick, $side, $index, $paddle, $contact['ball'][1]];
         $this->settle();
 
@@ -260,22 +291,50 @@ final class PongReferee
     }
 
     /**
-     * Why a claimed hit does not count, or null: off the field, out of reach since the last accepted position, or
-     * not meeting the ball.
+     * Why a claimed hit does not count, or null: off the field, out of reach from the accepted positions nearest in
+     * time before and after the contact, or not meeting the ball.
      *
-     * @param  array{side: int, tick: int, ball: array{int, int, int, int, int}}  $contact
+     * @param  array{side: int, tick: int, ball: array{0: int, 1: int, 2: int, 3: int, 4: int, 5?: int}}  $contact
      */
     public function refusal(int $side, int $paddle, array $contact): ?string
     {
-        $half = $this->serve->half;
-        [$last, $at] = $this->paddles[$side];
+        $half = $this->halfOf($side);
 
         return match (true) {
             $paddle < $half || $paddle > PongPhysics::HEIGHT - $half => 'range',
-            abs($paddle - $last) > PongPhysics::PLAYER_SPEED * ($contact['tick'] - $at) => 'speed',
+            ! $this->reachable($side, $paddle, $contact['tick']) => 'speed',
             ! PongPhysics::meets($contact['ball'], $paddle, $half) => 'geometry',
             default => null,
         };
+    }
+
+    /**
+     * Whether side `$side`'s paddle can be at `$paddle` in tick `$tick`, given the accepted positions nearest in time
+     * before and after it (the latest position `paddles` counts as one, so a state from before the samples is judged
+     * as it was).
+     */
+    private function reachable(int $side, int $paddle, int $tick): bool
+    {
+        $before = null;
+        $after = null;
+
+        foreach ([...$this->samples[$side], $this->paddles[$side]] as $sample) {
+            if ($sample[1] <= $tick && ($before === null || $sample[1] > $before[1])) {
+                $before = $sample;
+            }
+
+            if ($sample[1] >= $tick && ($after === null || $sample[1] < $after[1])) {
+                $after = $sample;
+            }
+        }
+
+        foreach ([$before, $after] as $sample) {
+            if ($sample !== null && abs($paddle - $sample[0]) > PongPhysics::PLAYER_SPEED * abs($tick - $sample[1])) {
+                return false;
+            }
+        }
+
+        return true;
     }
 
     /**
@@ -353,7 +412,7 @@ final class PongReferee
      * A contact the defender missed (or that did not count): the ball goes on to the goal line, and the attacker
      * scores there, unless the tick cap comes first.
      *
-     * @param  array{side: int, tick: int, ball: array{int, int, int, int, int}}  $contact
+     * @param  array{side: int, tick: int, ball: array{0: int, 1: int, 2: int, 3: int, 4: int, 5?: int}}  $contact
      */
     private function miss(int $index, array $contact, string $reason, ?int $paddle = null): void
     {
@@ -361,8 +420,8 @@ final class PongReferee
         $tick = $contact['tick'];
 
         while ($ball[0] > 0 && $ball[0] < PongPhysics::WIDTH) {
-            $ball = PongPhysics::move($ball);
             $tick++;
+            $ball = PongPhysics::step($ball, $tick, $this->event, $this->serve->seed);
         }
 
         $scorer = 1 - $contact['side'];
@@ -430,6 +489,8 @@ final class PongReferee
         $this->event = $this->serve->event;
         $this->servedAt = $servedAt;
         $this->paddles = [[PongPhysics::HEIGHT >> 1, 0], [PongPhysics::HEIGHT >> 1, 0]];
+        $this->samples = [[$this->paddles[0]], [$this->paddles[1]]];
+        $this->sideHits = [0, 0];
         $this->balls = array_map(fn (array $ball): array => ['b' => $ball, 't' => 0, 'hits' => 0, 'state' => self::LIVE, 'goal' => null], $this->serve->balls);
         $this->fresh[] = ['serve', $number, $servedAt, $this->event];
         $this->version++;

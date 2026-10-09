@@ -15,15 +15,16 @@ use App\Support\Pong\PongRules;
  * the inputs in the same file. Rewrite it with `PONG_GOLDEN_WRITE=1` after a deliberate change of the rules.
  *
  * - rng: the first draws of a few seeds;
- * - rallies: 50 rallies between two bots, every event and level pair, each from its game seed and number;
- * - events: the event of every 21st rally for a few seeds;
+ * - rallies: 50 rallies between two bots, every event (five each) and level pair, each from its game seed and number;
+ * - events: the event of every 21st rally for a few seeds (two rounds of all nine);
  * - games: whole games between two bot levels (PongGame::bots()).
  */
 final class PongGolden
 {
     public const string PATH = 'tests/Fixtures/pong/golden.json';
 
-    private const array RALLY_EVENTS = [null, PongRules::HALVING, PongRules::BRRR, PongRules::PIZZA, PongRules::DIFFICULTY];
+    /** Plain, the four P3 events and the five of P7: five rallies each. */
+    private const array RALLY_EVENTS = [null, PongRules::HALVING, PongRules::BRRR, PongRules::PIZZA, PongRules::DIFFICULTY, PongRules::TAX, PongRules::CONTROLS, PongRules::FEW, PongRules::POW, PongRules::ARBEITSAMT];
 
     /**
      * @return array<string, mixed>
@@ -43,7 +44,7 @@ final class PongGolden
         foreach (range(0, 49) as $i) {
             $seed = ($i * 2654435761 + 12345) & 0xFFFFFFFF;
             $number = 1 + $i * 7;
-            $event = self::RALLY_EVENTS[$i % 5];
+            $event = self::RALLY_EVENTS[$i % count(self::RALLY_EVENTS)];
             $levels = [1 + $i % 4, 1 + intdiv($i, 4) % 4];
             $rallySeed = PongRules::rallySeed($seed, $number);
             $rally = new PongRally($rallySeed, $event, [PongBot::speed($levels[0]), PongBot::speed($levels[1])]);
@@ -59,7 +60,7 @@ final class PongGolden
         $events = [];
 
         foreach ([7, 99, 4294967295] as $seed) {
-            $events[] = ['seed' => $seed, 'events' => array_map(fn (int $k): ?string => $rules->eventOf($seed, 21 * $k), range(1, 12))];
+            $events[] = ['seed' => $seed, 'events' => array_map(fn (int $k): ?string => $rules->eventOf($seed, 21 * $k), range(1, 18))];
         }
 
         $games = [];

@@ -9,7 +9,8 @@ use App\Support\Hyper\HyperRng;
  * resources/js/pong/physics.js (createRally/stepRally). Built from the rally's seed and its event; step() moves it
  * one tick with each side's paddle target, so the rally depends on nothing but those targets.
  *
- * A tick: both paddles move towards their target (at most their speed), then every ball moves (PongPhysics::move()),
+ * A tick: both paddles move towards their target (at most their speed), then every ball moves (PongPhysics::step(),
+ * which is PongPhysics::move() plus the obstacles and the queue of the P7 events),
  * then a ball whose front edge reached a paddle's face in this tick either hits (its centre within the paddle's half
  * length plus its radius) or goes on to the goal line, where it scores for the other side.
  *
@@ -22,7 +23,7 @@ final class PongRally
 {
     public int $tick = 0;
 
-    /** @var list<array{int, int, int, int, int}> [x, y, vx, vy, r] */
+    /** @var list<array{0: int, 1: int, 2: int, 3: int, 4: int, 5?: int}> [x, y, vx, vy, r], a sixth element while it waits in the Arbeitsamt's queue */
     public array $balls = [];
 
     /** @var array<int, bool> per ball, in serve order */
@@ -30,6 +31,9 @@ final class PongRally
 
     /** @var array<int, int> hits per ball, in serve order */
     public array $hits = [];
+
+    /** @var array{int, int} hits per side (Proof of Work grows a paddle with them) */
+    public array $sideHits = [0, 0];
 
     /** @var array{int, int} paddle centres, y */
     public array $paddles = [PongPhysics::HEIGHT >> 1, PongPhysics::HEIGHT >> 1];
@@ -61,7 +65,7 @@ final class PongRally
         $this->base = $brrr ? intdiv(PongPhysics::BASE_SPEED * 3, 2) : PongPhysics::BASE_SPEED;
         $this->speedup = $brrr ? intdiv(PongPhysics::SPEEDUP * 3, 2) : PongPhysics::SPEEDUP;
         $this->max = $brrr ? intdiv(PongPhysics::MAX_SPEED * 3, 2) : PongPhysics::MAX_SPEED;
-        $this->half = $event === PongRules::DIFFICULTY ? intdiv(PongPhysics::PADDLE_HALF * 2, 3) : PongPhysics::PADDLE_HALF;
+        $this->half = PongPhysics::halfOf($event, 0);
         $this->points = $event === PongRules::HALVING ? 2 : 1;
         $radius = $event === PongRules::HALVING ? intdiv(PongPhysics::BALL_RADIUS, 2) : PongPhysics::BALL_RADIUS;
 
@@ -94,8 +98,9 @@ final class PongRally
         $this->tick++;
 
         foreach ([0, 1] as $side) {
+            $half = $this->halfOf($side);
             $delta = max(-$this->speeds[$side], min($this->speeds[$side], $targets[$side] - $this->paddles[$side]));
-            $this->paddles[$side] = max($this->half, min(PongPhysics::HEIGHT - $this->half, $this->paddles[$side] + $delta));
+            $this->paddles[$side] = max($half, min(PongPhysics::HEIGHT - $half, $this->paddles[$side] + $delta));
         }
 
         foreach ($this->balls as $index => $ball) {
@@ -115,19 +120,29 @@ final class PongRally
     }
 
     /**
-     * @param  array{int, int, int, int, int}  $ball
-     * @return array{int, int, int, int, int}
+     * Side `$side`'s paddle half length now (only Proof of Work changes it during a rally).
+     */
+    public function halfOf(int $side): int
+    {
+        return PongPhysics::halfOf($this->event, $this->sideHits[$side]);
+    }
+
+    /**
+     * @param  array{0: int, 1: int, 2: int, 3: int, 4: int, 5?: int}  $ball
+     * @return array{0: int, 1: int, 2: int, 3: int, 4: int, 5?: int}
      */
     private function advance(int $index, array $ball): array
     {
         $side = $ball[2] < 0 ? 0 : 1;
         $before = PongPhysics::approaches($ball, $side);
-        $ball = PongPhysics::move($ball);
+        $ball = PongPhysics::step($ball, $this->tick, $this->event, $this->seed);
         [$x, $y] = $ball;
+        $half = $this->halfOf($side);
 
-        if ($before && PongPhysics::crossed($ball, $side) && PongPhysics::meets($ball, $this->paddles[$side], $this->half)) {
+        if ($before && PongPhysics::crossed($ball, $side) && PongPhysics::meets($ball, $this->paddles[$side], $half)) {
             $this->hits[$index]++;
-            $ball = PongPhysics::bounce($ball, $side, $this->paddles[$side], $this->half, $this->speedAfter($index));
+            $this->sideHits[$side]++;
+            $ball = PongPhysics::bounce($ball, $side, $this->paddles[$side], $half, $this->speedAfter($index));
             $this->events[] = ['hit', $this->tick, $side, $index, $y, $ball[3]];
 
             return $ball;
@@ -154,7 +169,7 @@ final class PongRally
     /**
      * The rally's state, as resources/js/pong/physics.js writes it (golden fixtures, the page's test seam).
      *
-     * @return array{tick: int, balls: list<array{int, int, int, int, int}>, alive: array<int, bool>, paddles: array{int, int}, events: list<array<int, int|string>>, over: bool}
+     * @return array{tick: int, balls: list<array{0: int, 1: int, 2: int, 3: int, 4: int, 5?: int}>, alive: array<int, bool>, paddles: array{int, int}, events: list<array<int, int|string>>, over: bool}
      */
     public function toArray(): array
     {

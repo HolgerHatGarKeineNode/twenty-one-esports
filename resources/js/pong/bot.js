@@ -5,7 +5,7 @@
  * returns to the middle while no ball comes.
  */
 import { seeded } from './rng.js';
-import { HEIGHT, approaches, predict } from './physics.js';
+import { HEIGHT, PADDLE_HALF, POW, approaches, floorDiv, halfOf, predict } from './physics.js';
 
 export const LEVELS = {
     1: { name: 'Nocoiner Uncle', reaction: 20, speed: 520, error: 20000 },
@@ -46,7 +46,7 @@ export function createBot(level, side, rallySeed) {
 
                 const k = index * 1000 + rally.hits[index];
                 if (!paths.has(k)) {
-                    const path = predict(ball, side);
+                    const path = predict(ball, side, rally.event ?? null, rally.seed ?? 0, rally.tick);
                     paths.set(k, path === null ? null : [rally.tick + path[0], path[1]]);
                 }
 
@@ -62,7 +62,9 @@ export function createBot(level, side, rallySeed) {
 
             if (next[0] !== key) {
                 key = next[0];
-                aim = next[2] + rng.below(2 * config.error + 1) - config.error;
+                // Proof of Work: the aim's error grows with the bot's paddle, as PongBot.
+                const error = rally.event === POW ? floorDiv(config.error * halfOf(POW, rally.sideHits[side]), PADDLE_HALF) : config.error;
+                aim = next[2] + rng.below(2 * error + 1) - error;
                 ready = rally.tick + config.reaction;
             }
 
