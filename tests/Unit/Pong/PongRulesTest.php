@@ -10,7 +10,7 @@ use App\Support\Pong\PongRules;
 
 /*
 | Proof of Pong's rules core (plan "Proof of Pong", P1): a game to 21 with two points ahead at 20:20, the meme
-| event of every 21st rally (the same for both sides, from the seed), what each event does to its rally, the ball's
+| events of every block of 21 rallies (all nine, each on its own rally, the same for both sides, from the seed), what each event does to its rally, the ball's
 | path between two hits, and four bot levels that return measurably differently.
 */
 
@@ -54,34 +54,55 @@ it('ends a game at 21 only with two points ahead, and goes on after 20:20 until 
 });
 
 it('takes its targets from the config', function () {
-    $rules = PongRules::fromConfig(['points_to_win' => 11, 'win_by' => 2, 'event_every_rallies' => 5]);
+    $rules = PongRules::fromConfig(['points_to_win' => 11, 'win_by' => 2, 'event_block_rallies' => 12]);
+    $block = array_map(fn (int $rally): ?string => $rules->eventOf(3, $rally), range(1, 12));
 
     expect($rules->winner([11, 9]))->toBe(0)
         ->and($rules->winner([11, 10]))->toBeNull()
-        ->and($rules->eventOf(3, 4))->toBeNull()
-        ->and($rules->eventOf(3, 5))->toBeIn(PongRules::EVENTS)
-        ->and($rules->toArray())->toBe(['points_to_win' => 11, 'win_by' => 2, 'event_every_rallies' => 5]);
+        ->and(array_values(array_filter($block)))->toEqualCanonicalizing(PongRules::EVENTS)
+        ->and(array_filter($block, fn (?string $event): bool => $event === null))->toHaveCount(3)
+        ->and($rules->toArray())->toBe(['points_to_win' => 11, 'win_by' => 2, 'event_block_rallies' => 12]);
 });
 
-it('makes every 21st rally a meme event, all nine in each round of nine, drawn from the seed', function () {
+it('plays all nine events in every block of 21 rallies, each on its own rally, drawn from the seed', function () {
     $rules = new PongRules;
     $count = count(PongRules::EVENTS);
 
-    expect($count)->toBe(9);
+    expect($count)->toBe(9)
+        ->and($rules->eventOf(1, 0))->toBeNull();
 
-    foreach ([1, 7, 99, 4294967295] as $seed) {
-        $events = array_map(fn (int $k): ?string => $rules->eventOf($seed, 21 * $k), range(1, 2 * $count));
+    foreach ([1, 7, 99, 21, 4294967295, ...range(1000, 1199)] as $seed) {
+        $previous = null;
 
-        expect(array_slice($events, 0, $count))->toEqualCanonicalizing(PongRules::EVENTS)
-            ->and(array_slice($events, $count, $count))->toEqualCanonicalizing(PongRules::EVENTS)
-            ->and($rules->eventOf($seed, 20))->toBeNull()
-            ->and($rules->eventOf($seed, 22))->toBeNull()
-            ->and($rules->eventOf($seed, 0))->toBeNull();
+        foreach (range(0, 5) as $block) {
+            $rallies = range(21 * $block + 1, 21 * $block + 21);
+            $events = array_map(fn (int $rally): ?string => $rules->eventOf($seed, $rally), $rallies);
+            $played = array_values(array_filter($events));
+
+            // All nine once, twelve plain rallies, never two in one (one event per rally by construction).
+            expect($played)->toEqualCanonicalizing(PongRules::EVENTS)
+                ->and(count($events) - count($played))->toBe(12);
+
+            // No event twice in a row across the seam of two blocks.
+            expect($played[0])->not->toBe($previous);
+            $previous = $played[$count - 1];
+        }
     }
 
-    // Another seed, another order (one of these four differs from seed 1's).
-    $orders = array_map(fn (int $seed): array => array_map(fn (int $k): ?string => $rules->eventOf($seed, 21 * $k), range(1, $count)), [1, 2, 3, 4]);
-    expect(array_unique(array_map('json_encode', $orders)))->not->toHaveCount(1);
+    // Another seed, other rallies and another order.
+    $blocks = array_map(fn (int $seed): string => json_encode(array_map(fn (int $rally): ?string => $rules->eventOf($seed, $rally), range(1, 21))), [1, 2, 3, 4]);
+    expect(array_unique($blocks))->toHaveCount(4);
+});
+
+it('makes every rally an event when the block is one rally (the browser test seam), never one twice in a row', function () {
+    $rules = new PongRules(eventBlock: 1);
+    $events = array_map(fn (int $rally): ?string => $rules->eventOf(5, $rally), range(1, 60));
+
+    expect(array_filter($events, fn (?string $event): bool => $event === null))->toBe([]);
+
+    foreach (array_slice($events, 1, null, true) as $i => $event) {
+        expect($event)->not->toBe($events[$i - 1]);
+    }
 });
 
 it('gives each event its effect on that one rally, the same for both paddles', function () {

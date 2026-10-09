@@ -21,6 +21,7 @@ use App\Support\FairPlay\FairPlay;
 use App\Support\GameNames;
 use App\Support\Hyper\HyperGame;
 use App\Support\Hyper\HyperMap;
+use App\Support\Pong\PongRules;
 use App\Support\PreSeason;
 use App\Support\Prizes\PrizePool;
 use App\Support\Rating\RatingSettings;
@@ -441,7 +442,7 @@ final class RulesPage
             'facts' => [
                 [__('Points to win'), (string) $points],
                 [__('Lead needed'), (string) $winBy],
-                [__('Meme event'), __('every :count rallies', ['count' => (int) ($c['event_every_rallies'] ?? 21)])],
+                [__('Meme events in every :count rallies', ['count' => (int) ($c['event_block_rallies'] ?? 21)]), (string) count(PongRules::EVENTS)],
                 [__('Invite open'), self::seconds((int) ($c['invite_seconds'] ?? 120))],
                 [__('Back in time'), self::seconds((int) ($c['forfeit_seconds'] ?? 30))],
             ],

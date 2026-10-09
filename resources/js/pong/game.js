@@ -4,13 +4,13 @@
  * second and hands each frame to the arena (arena.js) to draw. The player is side 0 (left, or at the bottom on a
  * phone held upright), the bot side 1.
  *
- * A rally goes: an announced meme event (every 21st rally), a short countdown, play, then a pause on the point.
+ * A rally goes: an announced meme event (all nine in every block of 21 rallies), a short countdown, play, then a pause on the point.
  * Goals count as they fall, so a Pizza Day rally can end the game with its first ball.
  *
  * The field and the player's input are page.js's (shared with the live match, live.js).
  *
  * Settings (localStorage `pong-settings`, the browser test's handle): `speed` runs the clock faster (1 = real time),
- * `autoplay` lets a bot of that level play the player's paddle, `eventEvery` makes every n-th rally an event. With both, a game is the one PongGame::bots() plays
+ * `autoplay` lets a bot of that level play the player's paddle, `eventEvery` sets the block of rallies that holds the events (1: every rally an event). With both, a game is the one PongGame::bots() plays
  * for the same seed and levels, tick for tick.
  */
 import { botSpeed, createBot } from './bot.js';
@@ -33,7 +33,7 @@ function boot() {
     const { arena, portrait: isPortrait, input } = createStage();
     const show = createShow({ arena, settings, t, castTexts: config.castTexts, figures: [config.figure, config.botFigure], arenaName: config.arena });
 
-    const game = createGame(config.seed, settings.eventEvery ? { ...config.rules, event_every_rallies: settings.eventEvery } : config.rules);
+    const game = createGame(config.seed, settings.eventEvery ? { ...config.rules, event_block_rallies: settings.eventEvery } : config.rules);
     const speeds = [settings.autoplay ? botSpeed(settings.autoplay) : PLAYER_SPEED, botSpeed(config.level)];
     let phase = 'ready';
     let wait = 0;

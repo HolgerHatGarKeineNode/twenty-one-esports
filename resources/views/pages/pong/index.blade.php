@@ -11,7 +11,7 @@
     (P5) follows the play section: a bar below xl, from xl the side column.
 --}}
 @php
-    app(\App\Support\PageMeta::class)->describe('Proof of Pong', __('Proof of Pong, the arcade game of the TWENTY ONE esports league: classic Pong to 21 in Bitcoin meme culture. Play a bot or a live 1v1 for Elo, with meme events every 21st rally.'))
+    app(\App\Support\PageMeta::class)->describe('Proof of Pong', __('Proof of Pong, the arcade game of the TWENTY ONE esports league: classic Pong to 21 in Bitcoin meme culture. Play a bot or a live 1v1 for Elo, with all nine meme events in every 21 rallies.'))
         ->card(fn () => \App\Support\Cards\PageCard::page('pong'));
     $firstBot = $bots[0];
     $segment = 'flex min-h-11 cursor-pointer items-center justify-center gap-2 rounded-md px-3 text-[14px] font-bold transition-colors';
@@ -90,7 +90,7 @@
         <section class="flex flex-col gap-4 rounded-lg bg-card px-5 py-4 shadow-ring sm:flex-row sm:items-center sm:justify-between" aria-labelledby="pong-about-h" data-test="pong-about">
             <h2 id="pong-about-h" class="sr-only">{{ __('The game in short') }}</h2>
             <span class="flex min-w-0 flex-col gap-3">
-                <p class="m-0 max-w-[60ch] text-[14px] text-ink-2">{{ __('Classic Pong with a Bitcoin twist: first to 21 points, and every 21st rally a meme event for both sides.') }}</p>
+                <p class="m-0 max-w-[60ch] text-[14px] text-ink-2">{{ __('Classic Pong with a Bitcoin twist: first to 21 points, and all nine meme events in every 21 rallies, the same for both sides.') }}</p>
                 <ul class="m-0 flex list-none flex-wrap gap-2 p-0 text-xs text-ink-2" aria-label="{{ __('The game in short') }}">
                     <li class="rounded-tag bg-well px-2 py-1 shadow-ring">{{ __('First to :points', ['points' => $rules->pointsToWin]) }}</li>
                     <li class="rounded-tag bg-well px-2 py-1 shadow-ring">{{ __('Two points ahead') }}</li>
