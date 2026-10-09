@@ -20,6 +20,7 @@ use App\Support\GameNames;
 use App\Support\Hyper\HyperLobby;
 use App\Support\Hyper\HyperMatches;
 use App\Support\Hyper\HyperMoments;
+use App\Support\Matches\MempoolStrip;
 use App\Support\Tournaments\TournamentControl;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
@@ -357,4 +358,21 @@ test('the strip and /matches ask the same number of queries for one and four fin
     $seed(3);
 
     expect($count())->toBe($one);
+});
+
+test('the mempool shows a table\'s players on its cube, never a table only bots play (user 2026-10-09)', function () {
+    HyperOn::play();
+    $anna = User::factory()->create(['name' => 'Anna Mempool']);
+    // Anna on seat 2 behind two bots: the cube still leads with her.
+    $match = app(HyperMatches::class)->create([['bot' => true, 'faction' => 'fed'], ['bot' => true, 'faction' => 'ezb'], ['user' => $anna, 'faction' => 'bitcoiner']], seed: 5, creator: $anna);
+    $botsOnly = app(HyperMatches::class)->create([['bot' => true, 'faction' => 'fed'], ['bot' => true, 'faction' => 'goldbug']], seed: 6);
+
+    $strip = MempoolStrip::build(null);
+    $running = collect($strip['running']);
+
+    // The bots-only table plays out at once (sync queue); it stays out of either side.
+    expect($botsOnly->refresh()->status)->toBe(HyperMatchStatus::Finished)
+        ->and(collect($strip['finished'])->pluck('key')->all())->not->toContain('hyper-'.$botsOnly->id)
+        ->and($running->pluck('key')->all())->toContain('hyper-'.$match->id)
+        ->and(str($running->firstWhere('key', 'hyper-'.$match->id)['sides'][0]['name'])->startsWith('Anna Mempool'))->toBeTrue();
 });

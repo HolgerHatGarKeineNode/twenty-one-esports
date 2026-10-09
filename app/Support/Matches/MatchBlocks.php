@@ -170,7 +170,9 @@ final class MatchBlocks
     {
         $finished = $match->status === HyperMatchStatus::Finished;
         $round = (int) ($match->state['round'] ?? 1);
+        // The players' seats lead the cube, the bots that fill a table follow (user 2026-10-09: no bots in the mempool).
         $seats = HyperNames::ordered($match);
+        usort($seats, fn (HyperSeat $a, HyperSeat $b): int => ($a->user_id === null) <=> ($b->user_id === null));
         $daily = $match->isCorrespondence();
         $mode = $daily ? __('Daily game') : GameNames::mode(Hyperbitcoinization::SLUG, $match->mode);
         $toMove = collect($seats)->firstWhere('seat', $match->current_seat);

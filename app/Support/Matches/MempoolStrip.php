@@ -102,7 +102,7 @@ final class MempoolStrip
             ...($boards === [] ? [] : self::onChain(BoardGame::query(), $chain)->with($players)->whereIn('game', $boards)->where('status', BoardGameStatus::Finished)
                 ->orderByDesc('ended_at')->limit(self::SIDE)->get()
                 ->map(fn (BoardGame $game): array => self::item('board', $game, $game->ended_at))->all()),
-            ...(! $hyper ? [] : self::onChain(HyperMatch::query(), $chain)->with('seats.user')->where('status', HyperMatchStatus::Finished)
+            ...(! $hyper ? [] : self::onChain(HyperMatch::query(), $chain)->whereHas('seats', fn ($seats) => $seats->whereNotNull('user_id'))->with('seats.user')->where('status', HyperMatchStatus::Finished)
                 ->orderByDesc('ended_at')->limit(self::SIDE)->get()->tap(fn ($list) => HyperTeams::preload($list))
                 ->map(fn (HyperMatch $match): array => self::item('hyper', $match, $match->ended_at))->all()),
             ...($runs ? self::attempts('done', $runsPerSide) : []),
@@ -118,7 +118,7 @@ final class MempoolStrip
             ...($boards === [] ? [] : self::onChain(BoardGame::query(), $chain)->with($players)->whereIn('game', $boards)->where('status', BoardGameStatus::Active)
                 ->orderByDesc('updated_at')->limit(self::SIDE)->get()
                 ->map(fn (BoardGame $game): array => self::item('board', $game, $game->updated_at))->all()),
-            ...(! $hyper ? [] : self::onChain(HyperMatch::query(), $chain)->with('seats.user')->where('status', HyperMatchStatus::Active)
+            ...(! $hyper ? [] : self::onChain(HyperMatch::query(), $chain)->whereHas('seats', fn ($seats) => $seats->whereNotNull('user_id'))->with('seats.user')->where('status', HyperMatchStatus::Active)
                 ->orderByDesc('updated_at')->limit(self::SIDE)->get()->tap(fn ($list) => HyperTeams::preload($list))
                 ->map(fn (HyperMatch $match): array => self::item('hyper', $match, $match->updated_at))->all()),
             ...($runs ? self::attempts('waiting', $runsPerSide) : []),
@@ -163,7 +163,7 @@ final class MempoolStrip
             ->when($boards !== [], fn ($query) => $query->selectSub(BoardGame::query()->whereIn('game', $boards)->where('status', BoardGameStatus::Active)->selectRaw('count(*)'), 'boards'))
             ->when(ScoreAttempts::blockfill(), fn ($query) => $query->selectSub(ScoreAttempts::stacker('waiting')->selectRaw('count(*)'), 'stacker'))
             ->when($scores !== [], fn ($query) => $query->selectSub(ScoreAttempts::scores($scores, 'waiting')->selectRaw('count(*)'), 'scores'))
-            ->when(self::hyper(), fn ($query) => $query->selectSub(HyperMatch::query()->where('status', HyperMatchStatus::Active)->selectRaw('count(*)'), 'hyper'))
+            ->when(self::hyper(), fn ($query) => $query->selectSub(HyperMatch::query()->where('status', HyperMatchStatus::Active)->whereHas('seats', fn ($seats) => $seats->whereNotNull('user_id'))->selectRaw('count(*)'), 'hyper'))
             ->first();
 
         return array_sum(array_map('intval', (array) $counts));
