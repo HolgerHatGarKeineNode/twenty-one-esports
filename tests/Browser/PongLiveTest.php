@@ -5,6 +5,7 @@ use App\Models\PongMatch;
 use App\Models\User;
 use App\Support\Pong\PongGame;
 use App\Support\Pong\PongMatches;
+use App\Support\Pong\PongRules;
 use Illuminate\Support\Facades\File;
 use Illuminate\Support\Facades\Http;
 use Pest\Browser\Playwright\Page;
