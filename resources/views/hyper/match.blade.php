@@ -112,6 +112,10 @@
             <button class="icon-btn" id="poll-btn" type="button" aria-label="{{ __('Who wins?') }}" title="{{ __('Who wins?') }}" data-test="hyper-poll-open"><svg viewBox="0 0 24 24"><path d="M4 20V10M10 20V4M16 20v-7M22 20H2"/></svg></button>
         @endif
         <button class="icon-btn" id="chat-btn" type="button" aria-label="{{ __('Table chat') }}" title="{{ __('Table chat') }}" data-test="hyper-chat-open"><svg viewBox="0 0 24 24"><path d="M21 12a8 8 0 01-11.6 7.1L4 20l1-4.6A8 8 0 1121 12z"/></svg><span class="badge" id="chat-unread" hidden>0</span></button>
+        @if ($snapshot['me'] !== null && $snapshot['status'] === 'active')
+            {{-- Leaving in plain sight (user 2026-10-09: it hid in the help dialog); the first click asks, the second leaves. --}}
+            <button class="icon-btn" id="leave-btn" type="button" aria-label="{{ __('Leave the match') }}" title="{{ __('Leave the match') }}" data-test="hyper-leave"><svg viewBox="0 0 24 24"><path d="M14 4h5v16h-5"/><path d="M10 8l-4 4 4 4M6 12h10"/></svg></button>
+        @endif
         <button class="icon-btn" id="help-btn" type="button" aria-label="{{ __('How to play') }}"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M9.5 9a2.5 2.5 0 015 .5c0 1.7-2.5 2-2.5 4M12 17h.01"/></svg></button>
     </div>
 </header>
@@ -203,9 +207,6 @@
         <p class="muted" style="margin-top:12px">{{ __('Central banks (columns) defend with +1 unless an ASIC rig attacks along. Switzerland is a vault: always +1. A maxi in the territory gives +1. Whoever conquers in a turn draws an event card at the end of it. Dashed lines are sea routes. A turn has :seconds seconds.', ['seconds' => $snapshot['turn_seconds']]) }}</p>
         <div class="row-btn">
             <button class="big" id="help-close" type="button"><svg><use href="#i-check"/></svg>{{ __('Got it') }}</button>
-            @if ($snapshot['me'] !== null && $snapshot['status'] === 'active')
-                <button class="ghost" id="leave-btn" type="button" data-test="hyper-leave"><svg><use href="#i-back"/></svg><span>{{ __('Leave the match') }}</span></button>
-            @endif
         </div>
     </div>
 </div>

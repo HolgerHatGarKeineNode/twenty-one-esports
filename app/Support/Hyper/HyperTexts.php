@@ -309,7 +309,7 @@ final class HyperTexts
         'Effects off (dice, clicks, explosions)',
         'Soundboard clips on',
         'Soundboard clips off, effects stay',
-        'Really leave? A bot takes over.',
+        'Really leave? Click again: a bot takes over.',
         'You left. A bot plays your seat now.',
         'The Hyperbitcoinization begins. Fiat rots, sats stay.',
         'Effects',

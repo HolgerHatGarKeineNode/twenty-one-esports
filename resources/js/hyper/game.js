@@ -21,6 +21,7 @@ import { applyEvent, banksOf, defenseBonus, fromSnapshot, odds, territoriesOf, u
 import { PlySync } from './sync.js';
 import { fmt, t } from './i18n.js';
 import { readableMs } from './statsPlan.js';
+import { movesOnByItself, quietBattle, tapGraceMs } from './pace.js';
 import { AUD, ctx, cue, hoverTick, setAudioHooks, setIntensity, sfx, startMusic } from './audio.js';
 import { readSettings, writeSettings } from './sounds.js';
 
@@ -402,13 +403,13 @@ async function banner(title, sub = '', hold = 1100, por = '', ring = 'var(--btc)
 }
 /**
  * A big moment waits for the player: a click on it, Enter or Space. `data-wait` says it is waiting. Nobody is held
- * hostage by it, though: a spectator, or a player whose own turn clock already runs on the server, moves on by
- * itself after TAP_GRACE_MS (the caption has been readable for its minimum time before this wait starts).
+ * hostage by it, though (pace.js): at a multiplayer table every moment moves on by itself after a short wait (user
+ * 2026-10-09: else one player's page holds everyone up); elsewhere a spectator, or a player whose own turn clock
+ * already runs on the server, after TAP_GRACE_MS. The caption has been readable for its minimum time before this.
  */
-const TAP_GRACE_MS = 6000;
 function tapToContinue(el) {
     el.dataset.wait = '1';
-    const grace = () => !playing() || (isMe(live.seat) && !G.over);
+    const grace = () => movesOnByItself({ seats: G.seats, playing: playing(), myTurnRuns: isMe(live.seat) && !G.over });
 
     return new Promise((done) => {
         const stop = new AbortController();
@@ -418,7 +419,7 @@ function tapToContinue(el) {
         };
         // The grace may start later: the server can hand this player the turn while the moment is still waiting.
         let since = null;
-        const watch = setInterval(() => { if (!grace()) { since = null; return; } since ??= Date.now(); if (Date.now() - since >= TAP_GRACE_MS) go({ type: 'timeout' }); }, 250);
+        const watch = setInterval(() => { if (!grace()) { since = null; return; } since ??= Date.now(); if (Date.now() - since >= tapGraceMs(G.seats)) go({ type: 'timeout' }); }, 250);
         stop.signal.addEventListener('abort', () => clearInterval(watch));
         el.addEventListener('pointerdown', go, { signal: stop.signal });
         addEventListener('keydown', go, { capture: true, signal: stop.signal });
@@ -794,6 +795,14 @@ async function showDice(run, next, ctxB) {
 
         return;
     }
+    // No human fights on either side (pace.js, user 2026-10-09): the battle and its conquest run without animation.
+    if (quietBattle(G.seats, attacker, defender)) {
+        for (const r of run) applyEvent(G, r);
+        if (conquers) ctxB.quiet = next;
+        render();
+
+        return;
+    }
     const fade = ctxB.speed < 20 ? arrow(first.from, first.to, colorOf(attacker), ctxB.speed) : () => {};
     await wait(ctxB, 360);
     let lost = 0;
@@ -835,13 +844,15 @@ async function showEvent(e, ctxB, next) {
             }
             applyEvent(G, e);
             const x = BY[e.territory];
-            if (sp < 20) { territoryPulse(e.territory); burst(e.territory, colorOf(e.seat), x.bank ? 28 : 16, x.bank); shake(x.bank ? 10 : 5); sfx.boom(); }
+            const quiet = ctxB.quiet === e;
+            if (quiet) ctxB.quiet = null;
+            if (sp < 20 && !quiet) { territoryPulse(e.territory); burst(e.territory, colorOf(e.seat), x.bank ? 28 : 16, x.bank); shake(x.bank ? 10 : 5); sfx.boom(); }
             log(t(':name conquers :territory.', { name: nameOf(e.seat), territory: tn(e.territory) }), x.bank, e.seat);
             if (isMe(e.previous_owner) && !isMe(e.seat)) cue('territory.lost');
             else if (!isBot(e.seat)) cue('territory.conquered');
             if (ME !== null && e.previous_owner === ME && territoriesOf(G, ME).length === 3) cue('territory.low');
             if (isMe(e.seat)) UI.from = units(G, e.territory) > 1 ? e.territory : null;
-            render(); await wait(ctxB, 200);
+            render(); if (!quiet) await wait(ctxB, 200);
             break;
         }
         case 'bank_fallen': {
@@ -1254,9 +1265,13 @@ function bindControls() {
     const leave = $('#leave-btn');
     if (leave) {
         leave.onclick = async () => {
-            if (leave.dataset.armed !== '1') { leave.dataset.armed = '1'; leave.querySelector('span').textContent = t('Really leave? A bot takes over.'); return; }
+            // The first click asks (for 6 s), the second leaves.
+            if (leave.dataset.armed !== '1') {
+                leave.dataset.armed = '1'; leave.classList.add('armed'); toast(t('Really leave? Click again: a bot takes over.'));
+                setTimeout(() => { leave.dataset.armed = '0'; leave.classList.remove('armed'); }, 6000);
+                return;
+            }
             const r = await NET.post(CFG.urls.leave);
-            $('#help').hidden = true;
             if (r.ok && r.data?.snapshot) { keepSnapshot(r.data.snapshot); await catchUp(); settle(); toast(t('You left. A bot plays your seat now.')); } else refused(r);
         };
     }
