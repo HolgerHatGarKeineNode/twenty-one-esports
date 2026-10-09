@@ -4,6 +4,7 @@ use App\Enums\HyperMatchStatus;
 use App\Events\HyperLobbyUpdated;
 use App\Events\HyperRematchUpdated;
 use App\Events\HyperTableStarted;
+use App\Models\Admin;
 use App\Models\HyperMatch;
 use App\Models\HyperSeat;
 use App\Models\HyperTable;
@@ -12,6 +13,8 @@ use App\Support\Hyper\HyperGame;
 use App\Support\Hyper\HyperLobby;
 use App\Support\Hyper\HyperMatches;
 use App\Support\Hyper\HyperRuleViolation;
+use App\Support\Nostr\NostrKeys;
+use App\Support\Settings\LeagueSettings;
 use Illuminate\Support\Facades\Event;
 use Livewire\Livewire;
 use Tests\Support\HyperOn;
@@ -270,4 +273,25 @@ test('the lobby offers "Friendly match (unrated)" and every table shows Rated or
 
     $this->get(route('hyper.match', $match))->assertOk()->assertSee('data-test="hyper-rated" data-rated="0"', false)->assertSee(__('Unrated'));
     $this->get(route('hyper.match', $rated))->assertOk()->assertSee('data-test="hyper-rated" data-rated="1"', false)->assertSee(__('Rated'));
+});
+
+test('a live table waits 5 minutes for players by default; an admin sets the wait on /admin/settings for the tables that open next', function () {
+    $admin = User::factory()->create();
+    Admin::query()->create(['pubkey' => $admin->pubkey]);
+    config(['esports.board' => [NostrKeys::hexToNpub($admin->pubkey)]]);
+    [$anna, $bert] = User::factory()->count(2)->create();
+    $this->freezeTime();
+    $lobby = app(HyperLobby::class);
+
+    $five = $lobby->open($anna, 4, HyperMatch::LIVE, 0);
+
+    expect(LeagueSettings::definitions())->toHaveKey('esports.hyper.lobby_fill_seconds')
+        ->and($five->fill_at->getTimestamp())->toBe(now()->addSeconds(300)->getTimestamp());
+
+    LeagueSettings::save($admin, ['esports.hyper.lobby_fill_seconds' => 600]);
+    LeagueSettings::forget();
+    $ten = $lobby->open($bert, 4, HyperMatch::LIVE, 0);
+
+    expect($ten->fill_at->getTimestamp())->toBe(now()->addSeconds(600)->getTimestamp())
+        ->and($five->refresh()->fill_at->getTimestamp())->toBe(now()->addSeconds(300)->getTimestamp());
 });

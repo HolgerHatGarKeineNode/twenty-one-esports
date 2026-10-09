@@ -12,6 +12,7 @@ use App\Models\HyperTable;
 use App\Models\HyperTableSeat;
 use App\Models\User;
 use App\Support\Chess\Broadcasts;
+use App\Support\Settings\LeagueSettings;
 use Carbon\CarbonInterface;
 use Closure;
 use Illuminate\Database\Eloquent\Collection;
@@ -594,6 +595,6 @@ final class HyperLobby
 
     private function fillSeconds(): int
     {
-        return max(1, (int) config('esports.hyper.lobby_fill_seconds', 120));
+        return max(1, (int) LeagueSettings::get('esports.hyper.lobby_fill_seconds'));
     }
 }

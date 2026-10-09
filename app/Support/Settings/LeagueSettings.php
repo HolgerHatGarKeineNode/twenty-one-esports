@@ -103,7 +103,10 @@ final class LeagueSettings
         // Soundboard emotes at every Hyperbitcoinization table (P6): one switch for all tables, on by default, listed
         // while the game is switched on (HyperEmotes).
         $hyper = (bool) config('esports.hyper.enabled') ? [HyperEmotes::CLIPS_SETTING => self::toggle('hyper', __('Soundboard emotes'),
-            __('On: players at a Hyperbitcoinization table may send soundboard clips. Off: no table offers a clip; stickers stay. Applies at once.'), 'on')] : [];
+            __('On: players at a Hyperbitcoinization table may send soundboard clips. Off: no table offers a clip; stickers stay. Applies at once.'), 'on'),
+            // How long a live lobby table waits for players before bots take its free seats (user 2026-10-09: 2 min was too short).
+            'esports.hyper.lobby_fill_seconds' => self::int('hyper', __('Bots fill a live table after (seconds)'), 30, 1800,
+                __('A live table in the lobby waits this long for players, then bots take its free seats and the match starts. 300 = 5 minutes. A table gets its wait when it opens: open tables keep theirs.'), newOnly: true)] : [];
 
         // One start day and time per cup game (user, 2026-09-30), the same local time on each region's clock.
         foreach ((array) config('esports.casual_cups.games', []) as $game => $setup) {

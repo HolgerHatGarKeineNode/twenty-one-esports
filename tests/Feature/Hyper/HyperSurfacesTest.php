@@ -326,8 +326,8 @@ test('the lobby counts down to the bots taking the free seats, every second, and
     $html = $this->actingAs($anna)->get(route('hyper.index'))->assertOk()->getContent();
     preg_match('#data-test="hyper-lobby-autofill" data-seconds="(\d+)"#', $html, $seconds);
 
-    expect((int) $seconds[1])->toBeGreaterThan(100)->toBeLessThanOrEqual(120)
-        ->and($html)->toContain('setInterval(', 'Bots fill the free seats in 2:00.')
+    expect((int) $seconds[1])->toBe(300)
+        ->and($html)->toContain('setInterval(', 'Bots fill the free seats in 5:00.')
         ->and($html)->not->toContain('@js(')
         ->and(substr_count($html, 'grid grid-cols-3 gap-2 min-[480px]:grid-cols-4 sm:grid-cols-7'))->toBe(2);
 });

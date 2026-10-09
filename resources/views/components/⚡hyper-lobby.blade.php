@@ -9,6 +9,7 @@ use App\Support\Hyper\HyperLobby;
 use App\Support\Hyper\HyperRuleViolation;
 use App\Support\Hyper\HyperSeason;
 use App\Support\Hyper\HyperTeams;
+use App\Support\Settings\LeagueSettings;
 use Illuminate\Database\Eloquent\Collection;
 use Livewire\Attributes\Computed;
 use Livewire\Attributes\Locked;
@@ -371,7 +372,7 @@ new class extends Component {
                 <button type="submit" class="btn-p inline-flex min-h-12 cursor-pointer items-center justify-center gap-2.5 rounded-md bg-btc px-6 font-display text-[15px] font-bold text-on-btc" data-test="hyper-lobby-open">
                     <x-icon name="flag" :size="18" />{{ __('Open a table') }}
                 </button>
-                <span class="text-xs text-ink-2">{{ $mode === HyperMatch::LIVE ? __('Bots take free seats after :minutes min.', ['minutes' => max(1, (int) round((int) config('esports.hyper.lobby_fill_seconds', 120) / 60))]) : __('One turn a day.') }}</span>
+                <span class="text-xs text-ink-2">{{ $mode === HyperMatch::LIVE ? __('Bots take free seats after :minutes min.', ['minutes' => max(1, (int) round((int) LeagueSettings::get('esports.hyper.lobby_fill_seconds') / 60))]) : __('One turn a day.') }}</span>
                 <span class="basis-full text-xs text-ink-2" data-test="hyper-lobby-rating-note">{{ $friendly ? __('A friendly match is never rated.') : ($seasonLive ? __('Rated in the season when no bot plays.') : __('No season is live: matches are unrated.')) }}</span>
                 @if ($clans)
                     <span class="basis-full text-xs text-ink-2">{{ __('Your clan takes one side; the first player of another clan takes the other. A clan linked to a meetup plays as that meetup.') }}</span>

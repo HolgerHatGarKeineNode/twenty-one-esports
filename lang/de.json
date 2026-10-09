@@ -7635,6 +7635,8 @@
     ":sats M sats loot": ":sats M Sats Beute",
     "Post the loot": "Beute posten",
     "The Hyperbitcoinization season ladder of the TWENTY ONE esports league: free-for-all points by place, 1v1 and team Elo, rated matches without bots only.": "Die Hyperbitcoinization-Season-Ladder der TWENTY ONE Esports-Liga: Punkte nach Platz jeder gegen jeden, Elo für 1v1 und Teams, nur gewertete Partien ohne Bots.",
+    "Bots fill a live table after (seconds)": "Bots füllen einen Live-Tisch nach (Sekunden)",
+    "A live table in the lobby waits this long for players, then bots take its free seats and the match starts. 300 = 5 minutes. A table gets its wait when it opens: open tables keep theirs.": "Ein Live-Tisch in der Lobby wartet so lange auf Spieler, dann besetzen Bots die freien Plätze und die Partie beginnt. 300 = 5 Minuten. Ein Tisch bekommt seine Wartezeit beim Öffnen: offene Tische behalten ihre.",
     "Soundboard emotes": "Soundboard-Emotes",
     "On: players at a Hyperbitcoinization table may send soundboard clips. Off: no table offers a clip; stickers stay. Applies at once.": "An: Spieler an einem Hyperbitcoinization-Tisch dürfen Soundboard-Clips senden. Aus: Kein Tisch bietet einen Clip an; Sticker bleiben. Gilt sofort.",
     "Soundboard emotes are switched off.": "Soundboard-Emotes sind ausgeschaltet."

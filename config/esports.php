@@ -1686,7 +1686,7 @@ return [
     | simulator cuts a game at round 200; a rare bot game never ends).
     | correspondence_hours (P3): a correspondence turn's time; when it runs
     | out a bot plays that turn for the seat. lobby_fill_seconds (P3): a live
-    | table in the lobby waits this long, then bots take its free seats and
+    | table in the lobby waits this long (5 min; /admin/settings, user 2026-10-09), then bots take its free seats and
     | the match starts (correspondence tables wait for their creator).
     |
     | Season, tournaments and cups (P5, App\Support\Hyper\HyperSeason): a
@@ -1726,7 +1726,7 @@ return [
         'clips_per_turn' => 1,
         'bot_round_cap' => 200,
         'correspondence_hours' => 24,
-        'lobby_fill_seconds' => 120,
+        'lobby_fill_seconds' => 300,
         // P6: how long after the end a rematch can be asked and started, by mode; then it closes for everybody.
         'rematch_minutes' => ['live' => 10, 'correspondence' => 3 * 24 * 60],
         'season_points' => [
