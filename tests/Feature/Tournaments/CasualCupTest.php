@@ -75,7 +75,7 @@ test('two ticks open exactly one chess cup per region, published by the league l
         ->and(NostrEvent::query()->findOrFail($cup->event_id)->kind)->toBe(Tournament::CALENDAR_EVENT);
 });
 
-test('a game whose automatic cups an admin switched off opens no new cup; its cups in sign-up and running play on', function () {
+test('a game whose automatic cups an admin switched off opens no new cup, calls off its empty cup and never extends one; running cups play on', function () {
     $admin = User::factory()->create();
     Admin::query()->create(['pubkey' => $admin->pubkey]);
     $running = runningCup(4);
@@ -87,24 +87,18 @@ test('a game whose automatic cups an admin switched off opens no new cup; its cu
         ->and(TournamentRound::query()->whereNotNull('window_ends_at')->sole()->stage->tournament_id)->toBe($running->id)
         ->and(Tournament::query()->where('cup_series', 'chess-us')->exists())->toBeFalse();
 
-    // On for one tick: the US cup opens; off again, it stays in sign-up.
+    // On for one tick: the US cup opens; off again and nobody signed up, the next tick calls it off (prod
+    // 2026-10-09: an empty EA FC 26 cup was extended by a week although its automatic cups were off).
     LeagueSettings::save($admin, ['esports.casual_cups.games.chess.auto' => 'on']);
     cupTick();
     $signup = Tournament::query()->where('cup_open_series', 'chess-us')->firstOrFail();
     LeagueSettings::save($admin, ['esports.casual_cups.games.chess.auto' => 'off']);
     cupTick();
-
-    expect($signup->refresh()->status)->toBe(TournamentStatus::Signup);
-
-    // Nobody signs up: extended once, then called off, as before; no next cup opens a day later.
-    $this->travelTo($signup->signup_closes_at);
-    cupTick();
-    $this->travelTo($signup->refresh()->signup_closes_at);
-    cupTick();
     $this->travel(25)->hours();
     cupTick();
 
     expect($signup->refresh()->status)->toBe(TournamentStatus::Cancelled)
+        ->and($signup->cup_extended_at)->toBeNull()
         ->and(Tournament::query()->where('cup_series', 'chess-us')->count())->toBe(1)
         ->and(Tournament::query()->where('cup_open_series', 'chess-us')->exists())->toBeFalse();
 
@@ -238,6 +232,22 @@ test('at the close six players start the cup, a lone player extends sign-up once
 
     expect($lone->refresh()->status)->toBe(TournamentStatus::Cancelled)
         ->and($lone->cup_open_series)->toBeNull()
+        ->and(NostrEvent::query()->findOrFail($lone->event_id)->payload()['tags'][1][1])->toStartWith('Called off: ');
+});
+
+test('switched off, a cup short of players at its close is called off instead of extended, and its player hears of it', function () {
+    $admin = User::factory()->create();
+    Admin::query()->create(['pubkey' => $admin->pubkey]);
+    cupTick();
+    $lone = openCup();
+    cupSignups($lone, 1);
+    LeagueSettings::save($admin, ['esports.casual_cups.games.chess.auto' => 'off']);
+
+    $this->travelTo($lone->signup_closes_at);
+    cupTick();
+
+    expect($lone->refresh()->status)->toBe(TournamentStatus::Cancelled)
+        ->and($lone->cup_extended_at)->toBeNull()
         ->and(NostrEvent::query()->findOrFail($lone->event_id)->payload()['tags'][1][1])->toStartWith('Called off: ');
 });
 

@@ -210,6 +210,8 @@ test('a US cup with three players plays its evening at 20:00 New York at its clo
 
 test('a US cup with a lone player is extended to its game\'s next US slot, across the US clock change', function () {
     // FC 27 (Friday 20:00), opened Tuesday 27 October: its slot is Friday 30 October, still daylight time in New York.
+    // Its automatic cups are on: a game switched off calls such a cup off instead (CasualCupTest).
+    config(['esports.casual_cups.enabled' => ['chess', 'ea-sports-fc-27']]);
     $this->travelTo(CarbonImmutable::parse('2026-10-27 12:00', 'UTC'));
     $cup = app(CasualCups::class)->ensure('ea-sports-fc-27', 'us');
     cupSignups($cup, 1);

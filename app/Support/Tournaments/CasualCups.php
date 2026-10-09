@@ -111,9 +111,10 @@ final class CasualCups
      * registry's display order (Nine Men's Morris and Checkers last). A
      * game's automatic cups are switched on or off on /admin/settings
      * (user 2026-10-03; LeagueSettings, the env list
-     * ESPORTS_CASUAL_CUP_GAMES is the default): off, no new cup opens, and
-     * the cups already open or running play to their end, as tick() moves
-     * them without asking this list. A board game (plan "Mühle und Dame",
+     * ESPORTS_CASUAL_CUP_GAMES is the default): off, no new cup opens, a cup
+     * in sign-up nobody joined is called off, and one short of players at
+     * its close is called off instead of extended (user 2026-10-09); cups
+     * with enough players play to their end. A board game (plan "Mühle und Dame",
      * P5) runs its cups only while it is switched on (in the registry).
      *
      * @return list<string>
@@ -716,6 +717,14 @@ final class CasualCups
     private function settleSignup(Tournament $cup): ?string
     {
         $signedUp = $this->signedUp($cup);
+        // Automatic cups switched off on /admin/settings (user 2026-10-09: "Das muss mit AUS dann auch aus gehen"):
+        // a cup nobody signed up for is called off at once, and one short of players at its close is called off
+        // instead of extended; a cup with enough players still plays.
+        $switchedOff = ! in_array((string) $cup->game, self::enabledGames(), true);
+
+        if ($switchedOff && $signedUp === 0) {
+            return $this->cancel($cup, beforeClose: true) ? 'cancelled' : null;
+        }
 
         if ($cup->signup_closes_at?->isFuture() && $this->grow($cup, $signedUp)) {
             return 'grown';
@@ -753,7 +762,7 @@ final class CasualCups
             return 'evenings';
         }
 
-        if ($cup->cup_extended_at === null) {
+        if ($cup->cup_extended_at === null && ! $switchedOff) {
             return $this->extend($cup) ? 'extended' : null;
         }
 
@@ -1094,15 +1103,16 @@ final class CasualCups
      * Call off a cup with too few players after its extension: its number
      * goes back to the series and its players are told.
      */
-    private function cancel(Tournament $cup): bool
+    private function cancel(Tournament $cup, bool $beforeClose = false): bool
     {
         $players = array_values(array_unique(TournamentSignup::query()->where('tournament_id', $cup->id)->active()->get()
             ->flatMap(fn (TournamentSignup $signup): array => $signup->members)->map(intval(...))->all()));
 
-        $cancelled = DB::transaction(function () use ($cup): bool {
+        $cancelled = DB::transaction(function () use ($cup, $beforeClose): bool {
             $locked = Tournament::query()->with('event')->lockForUpdate()->findOrFail($cup->id);
 
-            if ($locked->status !== TournamentStatus::Signup || $locked->signup_closes_at?->isFuture()) {
+            // Before its close only an empty cup of a game switched off (settleSignup): nobody is in it.
+            if ($locked->status !== TournamentStatus::Signup || (! $beforeClose && $locked->signup_closes_at?->isFuture())) {
                 return false;
             }
 
