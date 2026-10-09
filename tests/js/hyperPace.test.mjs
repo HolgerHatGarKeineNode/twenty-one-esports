@@ -50,3 +50,12 @@ test('the game page asks these rules: every big moment\'s wait and every battle 
     assert.match(game, /if \(quietBattle\(G\.seats, attacker, defender\)\) \{/);
     assert.doesNotMatch(game, /const TAP_GRACE_MS/);
 });
+
+test('a turn whose clock already runs: the other seats\' events land at once, no banner holds the player up', async () => {
+    const { readFileSync } = await import('node:fs');
+    const game = readFileSync(new URL('../../resources/js/hyper/game.js', import.meta.url), 'utf8');
+
+    assert.match(game, /rushing = !isMe\(ctxB\.seat\) && myClockRuns\(\);\n\s+ctxB\.speed = isMe\(ctxB\.seat\) \? 1 : rushing \? 20 :/);
+    assert.match(game, /async function banner\(.*\) \{\n\s+if \(rushing\) return;/);
+    assert.match(game, /shownSource = null;\n\s+rushing = false;/);
+});

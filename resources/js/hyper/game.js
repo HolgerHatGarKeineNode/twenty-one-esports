@@ -104,6 +104,13 @@ function clanLogo(team, size = 28) {
     return `<span class="clan-logo clan-tag" style="width:${size}px;height:${size}px">${esc(side?.tag ?? '🤖')}</span>`;
 }
 const playing = () => ME !== null && !!mySeat() && !mySeat().bot && !mySeat().left;
+/** The server already gave this player the turn and its clock runs, while the page may still show earlier seats. */
+const myClockRuns = () => playing() && isMe(live.seat) && !G.over;
+/**
+ * Catching up to a turn whose clock already runs (user 2026-10-09: the 90 s ran out while the page still played the
+ * bots' moves): the other seats' events land at once, without arrows, banners or scenes, so the player can move.
+ */
+let rushing = false;
 const myTurn = () => playing() && !G.over && G.cur === ME;
 const idle = () => !running && queue.length === 0 && !UI.busy && S && S.ply === sync.ply && G.ply === S.ply;
 /** What the server allows right now: the snapshot's `legal`, only while the page shows exactly that snapshot. */
@@ -372,6 +379,7 @@ const POR = (k, ring = 'var(--btc)') => `<span class="pimg" style="--ring:${ring
  * is complete, a knockout, a card, the end) then waits for a click, Enter or Space ("Tap to continue").
  */
 async function banner(title, sub = '', hold = 1100, por = '', ring = 'var(--btc)', fast = false, big = false) {
+    if (rushing) return;
     $('#banner-p').innerHTML = por ? POR(por, ring) : '';
     const fit = () => {
         const tEl = $('#banner-t'); const box = document.querySelector('#banner .bx'); const narrow = innerWidth < 820;
@@ -756,7 +764,8 @@ async function animateBatch(batch) {
         ctxB.seat = e.type === 'turn_started' ? e.seat : (e.seat ?? ctxB.seat);
         // Another seat's events: at the chosen pace, faster while catching up, and at least 3× once the server
         // already gave this player the turn (their 90 s run while the page still shows the bots).
-        ctxB.speed = isMe(ctxB.seat) ? 1 : Math.max(UI.speed, batch.fast ? 3 : 1, playing() && isMe(live.seat) && !G.over ? 3 : 1);
+        rushing = !isMe(ctxB.seat) && myClockRuns();
+        ctxB.speed = isMe(ctxB.seat) ? 1 : rushing ? 20 : Math.max(UI.speed, batch.fast ? 3 : 1);
         if (e.type === 'dice_rolled') {
             const run = [e];
             while (events[i + 1]?.type === 'dice_rolled' && events[i + 1].from === e.from && events[i + 1].to === e.to) run.push(events[++i]);
@@ -766,6 +775,7 @@ async function animateBatch(batch) {
         await showEvent(e, ctxB, events[i + 1]);
     }
     shownSource = null;
+    rushing = false;
 }
 const wait = (ctxB, ms) => (ctxB.speed >= 20 ? Promise.resolve() : sleep(ms / ctxB.speed));
 async function showDice(run, next, ctxB) {
