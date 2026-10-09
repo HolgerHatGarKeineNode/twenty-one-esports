@@ -111,12 +111,12 @@ function pongLiveMatch(int $seed): array
 test('two players play live to the end over Reverb: both pages and the server end with PongGame::bots()\' score, and the console stays clean', function () {
     expect(config('broadcasting.default'))->toBe('reverb', 'Run this through scripts/test-browser.sh, which starts Reverb.');
 
-    // Seed 2, levels 3 and 2: 21:12 over 32 rallies, rally 21 a Pizza Day (two balls at once).
-    $expected = PongGame::bots(2, [3, 2]);
-    expect($expected['score'])->toBe([21, 12])
+    // Seed 29, levels 3 and 2: 21:15 over 35 rallies, rally 21 a Pizza Day (two balls at once).
+    $expected = PongGame::bots(29, [3, 2]);
+    expect($expected['score'])->toBe([21, 15])
         ->and($expected['events'])->toBe([[21, 'pizza']]);
 
-    [$match] = pongLiveMatch(2);
+    [$match] = pongLiveMatch(29);
     $phone = pongLivePage($match->left, $match, 390, 844, 3, 'hosp');
     $desktop = pongLivePage($match->right, $match, 1440, 900, 2, 'saylor');
 
@@ -160,8 +160,8 @@ test('two players play live to the end over Reverb: both pages and the server en
         ->and($phone->evaluate('() => window.pongLive.state().score'))->toBe($expected['score'])
         ->and($desktop->evaluate('() => window.pongLive.state().score'))->toBe($expected['score'])
         // Each page shows its own points first: the phone plays left, the desktop right.
-        ->and($phone->evaluate('() => document.querySelector("[data-test=pong-end-score]").textContent'))->toBe('21 : 12')
-        ->and($desktop->evaluate('() => document.querySelector("[data-test=pong-end-score]").textContent'))->toBe('12 : 21')
+        ->and($phone->evaluate('() => document.querySelector("[data-test=pong-end-score]").textContent'))->toBe('21 : 15')
+        ->and($desktop->evaluate('() => document.querySelector("[data-test=pong-end-score]").textContent'))->toBe('15 : 21')
         ->and($phone->evaluate('() => document.body.dataset.result'))->toBe('win')
         ->and($desktop->evaluate('() => document.body.dataset.result'))->toBe('loss')
         // The rating change of a rated match, on the end card.
