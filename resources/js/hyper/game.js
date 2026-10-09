@@ -282,7 +282,7 @@ function buildOverlay() {
         s.append('text').attr('class', 'elite').attr('y', 28).attr('text-anchor', 'middle');
     });
     vp.append('g').attr('id', 'fx');
-    zoom = d3.zoom().scaleExtent([1, 6]).translateExtent([[-200, -100], [1800, 960]]).on('zoom', (e) => {
+    zoom = d3.zoom().scaleExtent([1, 6]).translateExtent([[-200, -100], [1800, 960]]).constrain(panConstrain).on('start', panBounds).on('zoom', (e) => {
         zt = e.transform; vp.attr('transform', zt); drawBoard(); scalePins();
         clearTimeout(crispTimer); crispTimer = setTimeout(() => { if (zt.k > 1.05) crisp(); }, 140);
     });
@@ -301,7 +301,32 @@ function scalePins() {
     if (k === pinK) return; pinK = k;
     window.d3.selectAll('.pin-body').attr('transform', `scale(${k})`);
 }
-function fitMap() { fitMode = innerWidth / innerHeight < 1.2 ? 'slice' : 'meet'; svg.attr('preserveAspectRatio', fitMode === 'slice' ? 'xMidYMid slice' : 'xMidYMid meet'); pinK = 0; drawBoard(); scalePins(); }
+/**
+ * How far the map pans. The zoom's extent is the part of the map the screen shows: a phone cuts the map to its
+ * height (`slice`), so most of its width lies off screen, and the default extent (the whole viewBox) let a swipe
+ * reach only the middle (user 2026-10-09). On a phone the map moves until its edge clears the bars by a margin in
+ * screen pixels, whatever the zoom: the top bar and roster above, the treasury and buttons below, measured at each
+ * gesture since they change with the turn. Wider screens keep the margin they had, in map units.
+ */
+let PAN = null;
+function panBounds() {
+    if (!zoom) return;
+    const v = viewMatrix(); const px = (n) => n / v.s;
+    zoom.extent([[px(-v.ox), px(-v.oy)], [px(v.w - v.ox), px(v.h - v.oy)]]);
+    PAN = null;
+    if (!matchMedia('(width < 820px)').matches) return;
+    const rects = (sel) => $$(sel).filter((el) => !el.hidden && getComputedStyle(el).display !== 'none').map((el) => el.getBoundingClientRect()).filter((r) => r.width && r.height);
+    PAN = { s: v.s, x: 16, top: Math.max(0, ...rects('#topbar, #roster').map((r) => r.bottom)) + 12, bottom: Math.max(0, ...rects('#cta, #treasury').map((r) => v.h - r.top)) + 12 };
+}
+/** d3's own constraint, with the phone's margins turned from screen pixels into map units at this zoom. */
+function panConstrain(transform, extent, translateExtent) {
+    const e = PAN ? (() => { const u = (n) => n / (PAN.s * transform.k); return [[-u(PAN.x), -u(PAN.top)], [1600 + u(PAN.x), 860 + u(PAN.bottom)]]; })() : translateExtent;
+    const dx0 = transform.invertX(extent[0][0]) - e[0][0]; const dx1 = transform.invertX(extent[1][0]) - e[1][0];
+    const dy0 = transform.invertY(extent[0][1]) - e[0][1]; const dy1 = transform.invertY(extent[1][1]) - e[1][1];
+
+    return transform.translate(dx1 > dx0 ? (dx0 + dx1) / 2 : Math.min(0, dx0) || Math.max(0, dx1), dy1 > dy0 ? (dy0 + dy1) / 2 : Math.min(0, dy0) || Math.max(0, dy1));
+}
+function fitMap() { fitMode = innerWidth / innerHeight < 1.2 ? 'slice' : 'meet'; svg.attr('preserveAspectRatio', fitMode === 'slice' ? 'xMidYMid slice' : 'xMidYMid meet'); pinK = 0; panBounds(); drawBoard(); scalePins(); }
 
 function renderPins() {
     const L = legalNow();
