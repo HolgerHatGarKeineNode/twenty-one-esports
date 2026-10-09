@@ -255,10 +255,18 @@ function ambientTick() {
         }
     }
 }
+/**
+ * Starts the ambient music, or brings its level back to the switch (0 when off): true once the audio runs. Safe to call
+ * on every gesture (user 2026-10-09: the music only came after switching it off and on again).
+ */
 export function startMusic() {
-    const c = ctx(); if (!c || AMB.timer) return;
+    const c = ctx(); if (!c) return false;
+    if (AUD.musicBus) AUD.musicBus.gain.setTargetAtTime(AUD.music ? 0.42 : 0, c.currentTime, 0.3);
+    if (AMB.timer) return c.state === 'running';
     AMB.nextChord = c.currentTime + 0.2; AMB.nextKey = c.currentTime + 180;
     AMB.timer = setInterval(ambientTick, 250);
+
+    return c.state === 'running';
 }
 export function setIntensity(v) { AUD.intensity = v; }
 

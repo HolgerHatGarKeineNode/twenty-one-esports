@@ -86,7 +86,7 @@ test('bots fill both sides, and the team match plays two teams with the clans of
     ['red' => $red, 'blue' => $blue, 'anna' => $anna, 'bert' => $bert] = hyperClans();
     $lobby = app(HyperLobby::class);
 
-    $table = $lobby->join($lobby->open($anna, 4, HyperMatch::LIVE, 20, clans: true), $bert);
+    $table = $lobby->join($lobby->open($anna, 4, HyperMatch::LIVE, 20, clans: true, bots: true), $bert);
     $table = $lobby->fillBots($table, $anna);
     $match = $table->match()->with('seats')->firstOrFail();
     $game = HyperGame::fromArray($match->state);

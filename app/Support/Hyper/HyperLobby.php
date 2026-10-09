@@ -30,8 +30,9 @@ use Throwable;
  *   starts without bots in a live season (HyperMatches::create()).
  * - join() / pick() / leave(): a player takes the first free seat, chooses a faction nobody at the table has
  *   (or none: drawn at the start), or gets up again. The creator getting up closes the table.
- * - fillBots(): the creator gives every free seat to a bot. A live table does so by itself
- *   `esports.hyper.lobby_fill_seconds` after it opened (FillHyperTable, and the `hyper:check-clocks` sweep).
+ * - fillBots(): the creator gives every free seat to a bot, only at a table opened with bots (`bots`, off by
+ *   default, user 2026-10-09). A live table with bots does so by itself `esports.hyper.lobby_fill_seconds` after it
+ *   opened (FillHyperTable, and the `hyper:check-clocks` sweep); a table without waits until every seat is taken.
  * - A full table starts at once, seats in their order; its players hear it on their own channel
  *   (HyperTableStarted), and the lobby opens the match in a new tab.
  * - rematch(): after a match, the same lineup at a new table with a new seed; bots and seats whose player
@@ -58,7 +59,7 @@ final class HyperLobby
     /**
      * @throws HyperRuleViolation `seated_elsewhere`, `bad_table`, `faction_taken`
      */
-    public function open(User $creator, int $seats, string $mode, int $limit, ?string $faction = null, bool $clans = false, bool $friendly = false): HyperTable
+    public function open(User $creator, int $seats, string $mode, int $limit, ?string $faction = null, bool $clans = false, bool $friendly = false, bool $bots = false): HyperTable
     {
         if ($seats < 2 || $seats > 6 || ! in_array($mode, [HyperMatch::LIVE, HyperMatch::CORRESPONDENCE], true) || ! in_array($limit, HyperGame::LIMITS, true)) {
             throw new HyperRuleViolation('bad_table', 'A table has 2 to 6 seats, a mode and a known round limit.');
@@ -71,7 +72,7 @@ final class HyperLobby
         $this->checkFaction($faction);
         $clan = $clans ? (HyperTeams::clanOf($creator) ?? throw new HyperRuleViolation('no_clan', 'A clan table needs a clan.')) : null;
 
-        $table = DB::transaction(function () use ($creator, $seats, $mode, $limit, $faction, $clan, $friendly): HyperTable {
+        $table = DB::transaction(function () use ($creator, $seats, $mode, $limit, $faction, $clan, $friendly, $bots): HyperTable {
             // Two tabs opening or joining at once: one at a time per player.
             User::query()->whereKey($creator->id)->lockForUpdate()->first();
             $this->refuseSeatedElsewhere($creator);
@@ -82,13 +83,14 @@ final class HyperLobby
                 'round_limit' => $limit,
                 'team_clans' => $clan === null ? null : [$clan->id, null],
                 'friendly' => $friendly,
+                'bots' => $bots,
                 'status' => HyperTable::OPEN,
                 'created_by' => $creator->id,
-                'fill_at' => $live ? now()->addSeconds($this->fillSeconds()) : null,
+                'fill_at' => $live && $bots ? now()->addSeconds($this->fillSeconds()) : null,
             ]);
             HyperTableSeat::query()->create(['hyper_table_id' => $table->id, 'seat' => 0, 'user_id' => $creator->id, 'faction' => $faction, 'ready' => true]);
 
-            if ($live) {
+            if ($live && $bots) {
                 FillHyperTable::dispatch($table->id)->delay(now()->addSeconds($this->fillSeconds() + 1));
             }
 
@@ -184,13 +186,17 @@ final class HyperLobby
     /**
      * The creator gives every free seat to a bot, and the table starts.
      *
-     * @throws HyperRuleViolation `table_closed`, `not_creator`
+     * @throws HyperRuleViolation `table_closed`, `not_creator`, `no_bots`
      */
     public function fillBots(HyperTable $table, User $user): HyperTable
     {
         return $this->change($table, function (HyperTable $table) use ($user): void {
             if ((int) $table->created_by !== (int) $user->id) {
                 throw new HyperRuleViolation('not_creator', 'Only who set the table up fills it with bots.');
+            }
+
+            if (! $table->bots) {
+                throw new HyperRuleViolation('no_bots', 'This table waits for players: no bots.');
             }
 
             $this->seatBots($table);

@@ -179,7 +179,7 @@ test('the lobby at 390 and 1440, German and English: faction labels whole, the b
     config(['esports.hyper.lobby_fill_seconds' => 600]);
     $anna = User::factory()->create(['name' => 'Anna Admin']);
     Admin::query()->create(['pubkey' => $anna->pubkey]);
-    app(HyperLobby::class)->open($anna, 4, HyperMatch::LIVE, 0);
+    app(HyperLobby::class)->open($anna, 4, HyperMatch::LIVE, 0, bots: true);
     $rows = [];
 
     foreach (['de', 'en'] as $locale) {

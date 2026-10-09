@@ -23,6 +23,7 @@ use Illuminate\Support\Carbon;
  * @property int $round_limit 0 = none
  * @property list<int|null>|null $team_clans a clan table (P4): the clan of side 0 and side 1 (seats alternate), null for a table of single players
  * @property bool $friendly a friendly match (P5c): its match is never rated
+ * @property bool $bots its free seats go to bots after the wait, or on its creator's word (off by default)
  * @property string $status open|started|cancelled
  * @property string|null $closed a rematch table closed without a match (P6): `declined` or `expired`
  * @property int|null $closed_by who declined it
@@ -39,7 +40,7 @@ use Illuminate\Support\Carbon;
  * @property-read HyperMatch|null $previousMatch
  * @property-read HyperMatch|null $match
  */
-#[Fillable(['mode', 'seats', 'round_limit', 'team_clans', 'friendly', 'status', 'closed', 'closed_by', 'created_by', 'hyper_match_id', 'rematch_of', 'fill_at', 'started_at'])]
+#[Fillable(['mode', 'seats', 'round_limit', 'team_clans', 'friendly', 'bots', 'status', 'closed', 'closed_by', 'created_by', 'hyper_match_id', 'rematch_of', 'fill_at', 'started_at'])]
 class HyperTable extends Model
 {
     use HasUlids;
@@ -63,6 +64,7 @@ class HyperTable extends Model
             'round_limit' => 'integer',
             'team_clans' => 'array',
             'friendly' => 'boolean',
+            'bots' => 'boolean',
             'fill_at' => 'datetime',
             'started_at' => 'datetime',
         ];

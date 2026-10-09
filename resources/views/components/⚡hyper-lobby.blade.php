@@ -58,11 +58,14 @@ new class extends Component {
     /** A friendly match (P5c): never rated, even without bots in a live season. */
     public bool $friendly = false;
 
+    /** Bots take the free seats (after the wait, or on the creator's word); off by default (user 2026-10-09). */
+    public bool $bots = false;
+
     public ?string $error = null;
 
     public function openTable(HyperLobby $lobby): void
     {
-        $this->act(fn (User $me): HyperTable => $lobby->open($me, max(2, min(6, $this->seats)), $this->mode, in_array($this->limit, self::LIMITS, true) ? $this->limit : 0, clans: $this->clans, friendly: $this->friendly));
+        $this->act(fn (User $me): HyperTable => $lobby->open($me, max(2, min(6, $this->seats)), $this->mode, in_array($this->limit, self::LIMITS, true) ? $this->limit : 0, clans: $this->clans, friendly: $this->friendly, bots: $this->bots));
     }
 
     /** Clan tables seat 2v2 or 3v3: switching the format moves an odd seat count to the next team size. */
@@ -262,7 +265,7 @@ new class extends Component {
 
             {{-- The table's actions come first: on a phone two stacked clan sides would push them below the fold. --}}
             <div class="flex flex-wrap items-center gap-2">
-                @if ($creator)
+                @if ($creator && $mine->bots)
                     <x-button variant="primary" wire:click="fillWithBots" icon="play" class="h-12 px-5 text-[15px]" data-test="hyper-lobby-fill">{{ __('Fill with bots and start') }}</x-button>
                 @endif
                 {{-- A component attribute compiles {{ }}, not directives: the link goes in through Js::from, never @js. --}}
@@ -367,12 +370,24 @@ new class extends Component {
                         </button>
                     </div>
                 </fieldset>
+                <fieldset class="m-0 flex flex-col gap-2 border-0 p-0">
+                    <legend class="mb-2 text-xs font-bold tracking-[0.12em] text-ink-2 uppercase">{{ __('Bots') }}</legend>
+                    <div class="flex gap-1.5" role="group">
+                        <button type="button" wire:click="$toggle('bots')" aria-pressed="{{ $bots ? 'true' : 'false' }}" class="{{ $chip }}" data-test="hyper-lobby-bots">
+                            <span @class(['grid size-4 place-items-center rounded-xs text-[11px] shadow-ring', 'bg-btc text-on-btc' => $bots, 'bg-ground' => ! $bots]) aria-hidden="true">{{ $bots ? '✓' : '' }}</span>{{ __('Fill free seats with bots') }}
+                        </button>
+                    </div>
+                </fieldset>
             </div>
             <div class="flex flex-wrap items-center gap-3">
                 <button type="submit" class="btn-p inline-flex min-h-12 cursor-pointer items-center justify-center gap-2.5 rounded-md bg-btc px-6 font-display text-[15px] font-bold text-on-btc" data-test="hyper-lobby-open">
                     <x-icon name="flag" :size="18" />{{ __('Open a table') }}
                 </button>
-                <span class="text-xs text-ink-2">{{ $mode === HyperMatch::LIVE ? __('Bots take free seats after :minutes min.', ['minutes' => max(1, (int) round((int) LeagueSettings::get('esports.hyper.lobby_fill_seconds') / 60))]) : __('One turn a day.') }}</span>
+                <span class="text-xs text-ink-2" data-test="hyper-lobby-bots-note">{{ match (true) {
+                    ! $bots => __('The table starts once every seat is taken.'),
+                    $mode === HyperMatch::LIVE => __('Bots take free seats after :minutes min.', ['minutes' => max(1, (int) round((int) LeagueSettings::get('esports.hyper.lobby_fill_seconds') / 60))]),
+                    default => __('You fill free seats with bots when you like.'),
+                } }}{{ $mode === HyperMatch::LIVE ? '' : ' '.__('One turn a day.') }}</span>
                 <span class="basis-full text-xs text-ink-2" data-test="hyper-lobby-rating-note">{{ $friendly ? __('A friendly match is never rated.') : ($seasonLive ? __('Rated in the season when no bot plays.') : __('No season is live: matches are unrated.')) }}</span>
                 @if ($clans)
                     <span class="basis-full text-xs text-ink-2">{{ __('Your clan takes one side; the first player of another clan takes the other. A clan linked to a meetup plays as that meetup.') }}</span>

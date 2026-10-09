@@ -1307,8 +1307,10 @@ function bindControls() {
         else if (k === 'escape' && G) { UI.card = null; UI.from = null; render(); }
     });
     addEventListener('resize', () => { fitMap(); handKey = ''; render(); });
-    // Music starts with the first touch: browsers allow sound only after a gesture.
-    addEventListener('pointerdown', () => { if (ctx()) startMusic(); }, { once: true, capture: true });
+    // Music starts with a gesture (browsers allow sound only after one): every touch or key tries, until it runs.
+    const kick = () => { if (startMusic()) { removeEventListener('pointerdown', kick, true); removeEventListener('keydown', kick, true); } };
+    addEventListener('pointerdown', kick, true);
+    addEventListener('keydown', kick, true);
 }
 
 /**

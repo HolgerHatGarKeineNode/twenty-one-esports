@@ -147,6 +147,13 @@ test('two players join a table, pick factions, bots fill it, and the match opens
     $annas->locator($friendly)->click();
     BrowserWait::until($annas, '() => document.querySelector("'.$friendly.'").getAttribute("aria-pressed") === "false"', 8_000);
 
+    // Bots fill free seats only when chosen (off by default, user 2026-10-09).
+    $bots = '[data-test=hyper-lobby-bots]';
+    expect($annas->evaluate('() => document.querySelector("'.$bots.'").getAttribute("aria-pressed")'))->toBe('false')
+        ->and($annas->evaluate('() => document.querySelector("'.$bots.'").innerText.trim()'))->toBe('Freie Plätze mit Bots auffüllen');
+    $annas->locator($bots)->click();
+    BrowserWait::until($annas, '() => document.querySelector("'.$bots.'").getAttribute("aria-pressed") === "true"', 8_000);
+
     // Anna opens a table of four; Bert's lobby shows it without a reload (hyper.lobby over Reverb).
     $annas->locator('[data-test=hyper-lobby-seats][data-seats="4"]')->click();
     $annas->locator('[data-test=hyper-lobby-open]')->click();
@@ -497,6 +504,8 @@ test('a clan table seats two clans on two sides and starts a team match; the tea
         // Anna opens a clan table, 2v2: her clan takes side 0.
         $annas->locator('[data-test=hyper-lobby-format-option][data-format=clans]')->click();
         BrowserWait::until($annas, '() => document.querySelector("[data-test=hyper-lobby-format-option][data-format=clans]").getAttribute("aria-pressed") === "true"', 8_000);
+        $annas->locator('[data-test=hyper-lobby-bots]')->click();
+        BrowserWait::until($annas, '() => document.querySelector("[data-test=hyper-lobby-bots]").getAttribute("aria-pressed") === "true"', 8_000);
         $annas->locator('[data-test=hyper-lobby-open]')->click();
         BrowserWait::until($annas, '() => !!document.querySelector("[data-test=hyper-lobby-sides]")', 8_000);
 

@@ -43,7 +43,7 @@ test('two players sit at a table with factions nobody else has; the bots fill it
     [$anna, $bert, $carl] = User::factory()->count(3)->create();
     $lobby = app(HyperLobby::class);
 
-    $table = $lobby->open($anna, 4, HyperMatch::LIVE, 20, 'fed');
+    $table = $lobby->open($anna, 4, HyperMatch::LIVE, 20, 'fed', bots: true);
     $table = $lobby->join($table, $bert);
     $lobby->pick($table, $bert, 'goldbug');
 
@@ -86,8 +86,8 @@ test('a live table gets bots for its free seats once its wait is over; a corresp
     config(['esports.hyper.lobby_fill_seconds' => 120]);
     [$anna, $bert] = User::factory()->count(2)->create();
     $lobby = app(HyperLobby::class);
-    $live = $lobby->open($anna, 3, HyperMatch::LIVE, 0);
-    $daily = $lobby->open($bert, 3, HyperMatch::CORRESPONDENCE, 0);
+    $live = $lobby->open($anna, 3, HyperMatch::LIVE, 0, bots: true);
+    $daily = $lobby->open($bert, 3, HyperMatch::CORRESPONDENCE, 0, bots: true);
 
     $this->travel(119)->seconds();
     $this->artisan('hyper:check-clocks')->assertSuccessful();
@@ -283,15 +283,39 @@ test('a live table waits 5 minutes for players by default; an admin sets the wai
     $this->freezeTime();
     $lobby = app(HyperLobby::class);
 
-    $five = $lobby->open($anna, 4, HyperMatch::LIVE, 0);
+    $five = $lobby->open($anna, 4, HyperMatch::LIVE, 0, bots: true);
 
     expect(LeagueSettings::definitions())->toHaveKey('esports.hyper.lobby_fill_seconds')
         ->and($five->fill_at->getTimestamp())->toBe(now()->addSeconds(300)->getTimestamp());
 
     LeagueSettings::save($admin, ['esports.hyper.lobby_fill_seconds' => 600]);
     LeagueSettings::forget();
-    $ten = $lobby->open($bert, 4, HyperMatch::LIVE, 0);
+    $ten = $lobby->open($bert, 4, HyperMatch::LIVE, 0, bots: true);
 
     expect($ten->fill_at->getTimestamp())->toBe(now()->addSeconds(600)->getTimestamp())
         ->and($five->refresh()->fill_at->getTimestamp())->toBe(now()->addSeconds(300)->getTimestamp());
+});
+
+test('a table opened without bots (the default) waits for players: no countdown, no fill, it starts once every seat is taken', function () {
+    [$anna, $bert, $carl] = User::factory()->count(3)->create();
+    $lobby = app(HyperLobby::class);
+    $table = $lobby->open($anna, 3, HyperMatch::LIVE, 0);
+
+    expect($table->bots)->toBeFalse()
+        ->and($table->fill_at)->toBeNull()
+        ->and(fn () => $lobby->fillBots($table, $anna))->toThrow(HyperRuleViolation::class, 'This table waits for players: no bots.');
+
+    $this->travel(30)->minutes();
+    $this->artisan('hyper:check-clocks')->assertSuccessful();
+    expect($table->refresh()->status)->toBe(HyperTable::OPEN);
+
+    $this->actingAs($anna)->get(route('hyper.index'))->assertOk()
+        ->assertDontSee('data-test="hyper-lobby-fill"', false)
+        ->assertDontSee('data-test="hyper-lobby-autofill"', false);
+
+    $lobby->join($table, $bert);
+    $table = $lobby->join($table->refresh(), $carl);
+
+    expect($table->refresh()->status)->toBe(HyperTable::STARTED)
+        ->and($table->match->seats->pluck('bot')->unique()->all())->toBe([false]);
 });

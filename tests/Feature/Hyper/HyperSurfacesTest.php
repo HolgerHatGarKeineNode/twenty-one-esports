@@ -322,7 +322,7 @@ test('the lobby counts down to the bots taking the free seats, every second, and
     // Frozen: under a loaded parallel run a second could pass between opening the table and rendering it.
     $this->freezeTime();
     $anna = User::factory()->create();
-    app(HyperLobby::class)->open($anna, 4, HyperMatch::LIVE, 0);
+    app(HyperLobby::class)->open($anna, 4, HyperMatch::LIVE, 0, bots: true);
 
     $html = $this->actingAs($anna)->get(route('hyper.index'))->assertOk()->getContent();
     preg_match('#data-test="hyper-lobby-autofill" data-seconds="(\d+)"#', $html, $seconds);
