@@ -341,13 +341,16 @@ export function startStats(config, net, game) {
         const art = `${A}art/${def.art}.webp?v=1`;
         // A clan's moment: its logo beside the medal and its players' avatars under the line.
         const crest = def.team ? `<div class="sc-crest" data-test="hyper-stats-crest">${logoHtml(mo.team, 88)}</div>` : '';
+        // A player's moment shows their Nostr profile picture beside the medal (user 2026-10-09); a bot has none.
+        const faceUrl = !def.team && mo.seat !== undefined && mo.seat !== null ? avatarOf(mo.seat) : null;
+        const face = faceUrl ? `<div class="sc-crest sc-face" data-test="hyper-stats-face"><img class="tm-logo" src="${esc(faceUrl)}" alt="" width="88" height="88" style="--c:${esc(color(mo.seat))}"></div>` : '';
         const teamSeats = def.team ? (data.teams?.find((row) => row.team === mo.team)?.seats ?? []) : [];
         const chips = [mo.seat !== undefined && mo.seat !== null ? `<span class="chip who" style="--c:${esc(color(mo.seat))}">${esc(n(mo.seat))}</span>` : '', `<span class="chip">${esc(t('Round :round', { round: mo.round }))}</span>`, def.joke ? `<span class="chip joke">${esc(def.joke())}</span>` : ''].join('');
         page.innerHTML = `<section class="st-scene" data-moment="${esc(mo.key)}" data-kind="${def.kind}" data-test="hyper-stats-moment" style="--c:${esc(color(mo.seat))}">
             <div class="sc-bg" style="background-image:url(${bg})"></div>
             <div class="sc-fx" aria-hidden="true"></div>
-            <div class="sc-arts">${crest}<img class="sc-art" src="${art}" alt=""></div>
-            <div class="sc-txt"><small>${esc(def.kind === 'pride' ? (def.team ? t('Clan pride') : t('Pride moment')) : t('Meme moment'))}</small><h3>${esc(def.title(mo, n, tn, clan))}</h3><p>${esc(def.line(mo, n, tn, clan))}</p>${teamSeats.length ? faces(teamSeats) : ''}<div class="sc-chips">${chips}</div></div>
+            <div class="sc-arts">${crest}${face}<img class="sc-art" src="${art}" alt=""></div>
+            <div class="sc-txt"><small>${esc(def.kind === 'pride' ? (def.team ? t('Clan highlight') : t('Highlight')) : t('Meme moment'))}</small><h3>${esc(def.title(mo, n, tn, clan))}</h3><p>${esc(def.line(mo, n, tn, clan))}</p>${teamSeats.length ? faces(teamSeats) : ''}<div class="sc-chips">${chips}</div></div>
         </section>`;
         if (human(mo.seat)) { if (def.kind === 'pride') sfx.fanfare(); else sfx.sting(); }
         if (REDUCED) return 0;

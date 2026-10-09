@@ -372,6 +372,8 @@ function territoryPulse(id) {
     const pin = $('#pin-' + id); if (pin) gsap().fromTo(pin, { scale: 1.7, transformOrigin: 'center center' }, { scale: 1, duration: 0.55, ease: 'back.out(3)' });
 }
 const POR = (k, ring = 'var(--btc)') => `<span class="pimg" style="--ring:${ring}"><img src="${A}art/por-${k}.jpg?v=1" alt="" decoding="async"></span>`;
+/** A player's Nostr profile picture in the same ring (user 2026-10-09: the roster shows the players, the factions show in the ring). */
+const FACE = (url, ring) => `<span class="pimg face" style="--ring:${ring}"><img src="${esc(url)}" alt="" decoding="async" data-test="hyper-roster-face"></span>`;
 /** Banners of the seat to move hold longer for a human's own moves; a bot turn runs at the chosen pace. */
 /**
  * A caption over the table. Pacing (P4, user direction 2026-10-09): it stays at least readableMs() of its text
@@ -1125,7 +1127,7 @@ export function render() {
         const n = territoriesOf(G, x.seat).length; const bk = banksOf(G, x.seat);
         const dot = x.userId !== null && !x.bot ? `<i class="dot ${connected.has(x.seat) ? 'on' : ''}" title="${esc(connected.has(x.seat) ? t('at the table') : t('away'))}"></i>` : '';
 
-        return `<div class="pl frame shadowed ${x.seat === G.cur && !G.over ? 'cur' : ''} ${x.out ? 'out' : ''} ${isMe(x.seat) ? 'me' : ''}" data-seat="${x.seat}" style="--pc:${colorOf(x.seat)}"><div class="shield">${POR(porOf(x.seat), colorOf(x.seat))}${dot}</div>
+        return `<div class="pl frame shadowed ${x.seat === G.cur && !G.over ? 'cur' : ''} ${x.out ? 'out' : ''} ${isMe(x.seat) ? 'me' : ''}" data-seat="${x.seat}" style="--pc:${colorOf(x.seat)}"><div class="shield">${x.userId !== null && x.avatar ? FACE(x.avatar, colorOf(x.seat)) : POR(porOf(x.seat), colorOf(x.seat))}${dot}</div>
         <div class="nm"><span>${esc(nameOf(x.seat))}</span><em>${esc(t(':count terr.', { count: n }))}</em></div><div class="seg">${bankSeg(bk)}</div>
         <div class="meta"><span>${esc(bk === 1 ? t('1 bank') : t(':count banks', { count: bk }))} · ${fmt(x.sats)} ₿</span>${openHand(x)}</div></div>`;
     };

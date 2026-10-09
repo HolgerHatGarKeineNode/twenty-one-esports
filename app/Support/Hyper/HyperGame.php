@@ -53,8 +53,8 @@ final class HyperGame
 {
     public const int VERSION = 1;
 
-    /** @var list<int> round limits the page offers; 0 = none (the default) */
-    public const array LIMITS = [0, 12, 20, 30];
+    /** @var list<int> round limits a match may have; 0 = none (the default). The lobby offers 21 (user 2026-10-09: a Bitcoin number); 20 stays for matches that have it. */
+    public const array LIMITS = [0, 12, 20, 21, 30];
 
     /** @var array<string, string> faction => portrait key of the page's art */
     public const array FACTIONS = ['bitcoiner' => 'you', 'fed' => 'fed', 'ezb' => 'ezb', 'goldbug' => 'goldbug', 'shitcoiner' => 'shit', 'nocoiner' => 'no'];

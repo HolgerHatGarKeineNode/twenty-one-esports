@@ -166,10 +166,10 @@ test('every surface shows the game at 390 and 1440 as an admin in German: no ove
         }
     }
 
-    expect($links)->toHaveCount(4) // 3 rows, 1 cube: only the won match is a block (user 2026-10-09)
+    expect($links)->toHaveCount(2) // 1 row, 1 cube: only the won match is listed (user 2026-10-09)
         ->and(array_unique(array_column($links, 0)))->toBe(['_blank'])
         ->and($links)->toContain(['_blank', route('hyper.match', $done)])
-        ->and($german)->toContain('Runde')
+        ->and($german)->toContain('Sieger')->not->toContain('Runde')
         ->and(array_filter($errors))->toBe([]);
 
     surfaceControl($page);

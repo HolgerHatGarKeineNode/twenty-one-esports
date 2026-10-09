@@ -41,7 +41,7 @@ new class extends Component {
     public const STARTED_MINUTES = 30;
 
     /** The round limits a table offers: none, or 20 for an evening. */
-    public const LIMITS = [0, 20];
+    public const LIMITS = [0, 21];
 
     #[Locked]
     public ?string $focus = null;

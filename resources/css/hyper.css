@@ -594,6 +594,7 @@ button.chip.on { color: #1b0f00; background: var(--btc-hi); box-shadow: none; }
 .sc-fx { position: absolute; inset: 0; pointer-events: none; overflow: hidden; }
 .sc-arts { position: relative; align-self: center; display: flex; align-items: center; justify-content: center; gap: clamp(10px, 3vw, 28px); min-height: 0; max-width: 100%; }
 .sc-crest .tm-logo { width: clamp(64px, 12vw, 120px); height: clamp(64px, 12vw, 120px); }
+.sc-face .tm-logo { border-radius: 50%; box-shadow: 0 0 0 3px var(--c), 0 8px 22px rgba(0, 0, 0, 0.6); }
 .sc-art { position: relative; align-self: center; width: auto; height: auto; max-width: min(60%, 280px); max-height: min(38vh, 320px); min-height: 0; object-fit: contain; filter: drop-shadow(0 0 28px color-mix(in srgb, var(--c) 55%, transparent)) drop-shadow(0 10px 18px rgba(0, 0, 0, 0.7)); }
 .sc-txt { position: relative; display: grid; justify-items: center; gap: 6px; max-width: 760px; }
 .sc-txt small { color: var(--btc-hi); font-size: 11px; font-weight: 800; letter-spacing: 0.22em; text-transform: uppercase; }

@@ -88,7 +88,7 @@ test('home\'s ladder card shows the season\'s free-for-all leaders by points', f
     $this->get(route('home'))->assertSeeInOrder(['Ada Points', '6 pts', 'Ben Points', '3 pts', 'Cid Points', '1 pts']);
 });
 
-test('/matches lists finished, live and correspondence matches, filters them, and every row and the won match’s cube open a new tab', function () {
+test('/matches lists a match once a player won it, the winner alone, never a running one; row and cube open a new tab (user 2026-10-09)', function () {
     HyperOn::play();
     ['done' => $done, 'live' => $live, 'daily' => $daily] = hyperSurfaceMatches();
 
@@ -96,8 +96,12 @@ test('/matches lists finished, live and correspondence matches, filters them, an
     preg_match_all('#<a href="([^"]+)" target="_blank" wire:key="h-\d+" data-test="hyper-row"#', $all, $rows);
     $cubes = array_map(fn (string $cube): string => preg_match('#<a href="([^"]+)"\s+target="_blank"#', $cube, $link) === 1 ? $link[1] : 'no new tab', array_slice(explode('data-test="strip-cube" data-game="hyperbitcoinization"', $all), 1));
 
-    expect($rows[1])->toEqualCanonicalizing([route('hyper.match', $done), route('hyper.match', $live), route('hyper.match', $daily)])
-        ->and($cubes)->toBe([route('hyper.match', $done)]) // the strip: only the won match (user 2026-10-09)
+    preg_match('#data-test="hyper-row".*?</a>#s', $all, $row);
+
+    expect($rows[1])->toBe([route('hyper.match', $done)])
+        ->and($cubes)->toBe([route('hyper.match', $done)])
+        ->and($row[0])->toContain('Anna Surface')->toContain('Winner')->not->toContain('Bert Surface')->not->toContain('Round ')
+        ->and([$live->status, $daily->status])->toBe([HyperMatchStatus::Active, HyperMatchStatus::Active])
         ->and($all)->toContain('data-test="game-hyperbitcoinization"');
 
     // Its own filter: only its matches, and "done" keeps the finished one.

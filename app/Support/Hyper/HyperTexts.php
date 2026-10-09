@@ -374,7 +374,7 @@ final class HyperTexts
         'Unluckiest roller',
         ':pips pips against the odds',
         ':count dice',
-        'Pride moment',
+        'Highlight',
         'Meme moment',
         // Team matches (P4): team chat, clan sides, team pages and the pacing's buttons.
         'Team :number',
@@ -405,7 +405,7 @@ final class HyperTexts
         'Conquests',
         'Loot',
         'vs',
-        'Clan pride',
+        'Clan highlight',
         'Only your team reads this. Plan your next move.',
         'Only your team reads this chat.',
         'The team chat is off here: no chat relay is set up.',

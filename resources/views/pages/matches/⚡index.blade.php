@@ -285,15 +285,12 @@ new #[Layout('layouts::app', ['section' => 'matches'])] class extends Component 
     private function filteredHyper(Builder $query, string $status): Builder
     {
         $clan = $this->selectedClan;
-        $statuses = match ($status) {
-            'live' => [HyperMatchStatus::Active],
-            'done' => [HyperMatchStatus::Finished, HyperMatchStatus::Aborted],
-            default => null,
-        };
-
+        // One row per match a player won, once it is over (user 2026-10-09): no running match, no bot's win.
         return MempoolStrip::onChain($query, $this->chain)
-            ->when($clan !== null, fn (Builder $query) => $query->whereHas('seats.user.clanMember', fn (Builder $query) => $query->where('clan_id', $clan->id)))
-            ->when($statuses !== null, fn (Builder $query) => $query->whereIn('status', $statuses));
+            ->where('status', HyperMatchStatus::Finished)
+            ->whereHas('seats', fn (Builder $seats) => $seats->where('place', 1)->whereNotNull('user_id')->where('bot', false))
+            ->when(! in_array($status, ['all', 'done'], true), fn (Builder $query) => $query->whereRaw('1 = 0'))
+            ->when($clan !== null, fn (Builder $query) => $query->whereHas('seats.user.clanMember', fn (Builder $query) => $query->where('clan_id', $clan->id)));
     }
 
     /**
