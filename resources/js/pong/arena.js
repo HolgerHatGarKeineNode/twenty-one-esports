@@ -391,13 +391,19 @@ function create3D(canvas, options) {
     const wx = (fx) => fx / 1000 - FW / 2;
     const wy = (fy) => FH / 2 - fy / 1000;
 
-    // The arena's plate far below the glass: the environment, dimmed so it never fights the ball.
+    // The arena's plate far below the glass: the environment you play in (P6: it showed almost black, under a dark
+    // glass, a blue-grey tint and a heavy blur). Lightly dimmed and darkened only at the screen's rim (in the texture);
+    // the glass keeps a darker band along the walls and the goals, where the paddles and the bounces are. It drifts a
+    // little against the ball (parallax), and turns with the field on an upright phone so its picture is not cropped
+    // to a dark middle strip.
     const PLATE_Z = -140;
-    const plateMat = new THREE.MeshBasicMaterial({ color: 0x8a90b0, transparent: true, opacity: 0 });
+    const plateMat = new THREE.MeshBasicMaterial({ color: 0xc8ccd8, transparent: true, opacity: 0 });
     const plate = new THREE.Mesh(new THREE.PlaneGeometry(1, 1), plateMat);
     plate.position.z = PLATE_Z;
     scene.add(plate);
     let plateAspect = 16 / 9;
+    const parallax = { x: 0, y: 0 };
+    const PARALLAX = 0.045;
 
     // The glass field: a painted texture (grid, middle line, centre circle, both goals in the figures' colours).
     const fieldCanvas = document.createElement('canvas');
@@ -513,7 +519,13 @@ function create3D(canvas, options) {
         const w = fieldCanvas.width;
         const h = fieldCanvas.height;
         g.clearRect(0, 0, w, h);
-        g.fillStyle = 'rgba(5, 8, 20, 0.74)';
+        // Tinted glass: the arena shows through the middle, a darker band along the walls and goals keeps the ball and
+        // the paddles readable where they meet the edge.
+        const glassTint = g.createRadialGradient(w / 2, h / 2, h * 0.2, w / 2, h / 2, w * 0.62);
+        glassTint.addColorStop(0, 'rgba(5, 8, 20, 0.44)');
+        glassTint.addColorStop(0.7, 'rgba(5, 8, 20, 0.54)');
+        glassTint.addColorStop(1, 'rgba(5, 8, 20, 0.66)');
+        g.fillStyle = glassTint;
         g.fillRect(0, 0, w, h);
         // Both goals glow faintly in their figure's colour.
         figures.forEach((f, side) => {
@@ -576,13 +588,16 @@ function create3D(canvas, options) {
         camera.position.set((W / 2 - cx) * k + dx, (cy - H / 2) * k + dy, distance);
         camera.lookAt(camera.position.x, camera.position.y, 0);
 
-        // The plate covers the whole view at its depth, cropped to its own aspect ratio, with room for a shake.
+        // The plate covers the whole view at its depth, cropped to its own aspect ratio, with room for a shake and the
+        // parallax; upright it lies turned like the field, so its long side runs along the screen's.
         const depth = distance - PLATE_Z;
-        const ph = 2 * depth * Math.tan((FOV * Math.PI) / 360) * 1.12;
-        const pw = ph * camera.aspect;
+        const vh = 2 * depth * Math.tan((FOV * Math.PI) / 360) * 1.12;
+        const vw = vh * camera.aspect;
+        const [pw, ph] = portrait ? [vh, vw] : [vw, vh];
+        plate.rotation.z = portrait ? Math.PI / 2 : 0;
         plate.scale.set(pw, ph, 1);
-        plate.position.x = camera.position.x - dx;
-        plate.position.y = camera.position.y - dy;
+        plate.position.x = camera.position.x - dx + parallax.x;
+        plate.position.y = camera.position.y - dy + parallax.y;
         const map = plateMat.map;
         if (map) {
             const ratio = pw / ph;
@@ -699,13 +714,21 @@ function create3D(canvas, options) {
             img.onload = () => {
                 plateAspect = img.width / img.height;
                 const small = document.createElement('canvas');
-                small.width = 240;
-                small.height = Math.round(240 / plateAspect);
+                small.width = 640;
+                small.height = Math.round(640 / plateAspect);
                 small.getContext('2d').drawImage(img, 0, 0, small.width, small.height);
-                const texture = canvasTexture(THREE, 960, Math.round(960 / plateAspect), (g, w, h) => {
+                const texture = canvasTexture(THREE, 1280, Math.round(1280 / plateAspect), (g, w, h) => {
                     g.imageSmoothingQuality = 'high';
-                    g.filter = 'blur(6px) saturate(1.25)';
-                    g.drawImage(small, -8, -8, w + 16, h + 16);
+                    // A soft focus, not a smear: the arena stays recognisable, its painted lines no second field.
+                    g.filter = 'blur(2.5px) saturate(1.15)';
+                    g.drawImage(small, -4, -4, w + 8, h + 8);
+                    g.filter = 'none';
+                    // Darker only at the rim of the screen.
+                    const rim = g.createRadialGradient(w / 2, h / 2, Math.min(w, h) * 0.38, w / 2, h / 2, Math.hypot(w, h) / 2);
+                    rim.addColorStop(0, 'rgba(4, 6, 13, 0)');
+                    rim.addColorStop(1, 'rgba(4, 6, 13, 0.7)');
+                    g.fillStyle = rim;
+                    g.fillRect(0, 0, w, h);
                 });
                 plateMat.map = texture;
                 plateMat.needsUpdate = true;
@@ -882,6 +905,16 @@ function create3D(canvas, options) {
             }
 
             flashMat.opacity = Math.max(0, flashMat.opacity - dt * 0.8);
+            // The plate drifts a little against the first ball, slowly; still without motion.
+            const lead = rally.balls[0];
+            let [tx, ty] = [0, 0];
+            if (motion && lead && rally.alive[0]) {
+                const [sx, sy] = portrait ? [-wy(lead[1]), wx(lead[0])] : [wx(lead[0]), wy(lead[1])];
+                [tx, ty] = [-sx * PARALLAX, -sy * PARALLAX];
+            }
+            const ease = Math.min(1, dt * 1.5);
+            parallax.x += (tx - parallax.x) * ease;
+            parallax.y += (ty - parallax.y) * ease;
             let dx = 0;
             let dy = 0;
             if (shake > 0) {
