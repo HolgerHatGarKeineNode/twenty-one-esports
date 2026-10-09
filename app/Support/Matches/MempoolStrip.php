@@ -4,10 +4,13 @@ namespace App\Support\Matches;
 
 use App\Enums\BoardGameStatus;
 use App\Enums\ChessGameStatus;
+use App\Enums\HyperMatchStatus;
 use App\Enums\SeriesStatus;
 use App\Games\GameRegistry;
+use App\Games\Hyperbitcoinization;
 use App\Models\BoardGame;
 use App\Models\ChessGame;
+use App\Models\HyperMatch;
 use App\Models\ScoreRun;
 use App\Models\SeasonAttestation;
 use App\Models\SeriesMatch;
@@ -39,6 +42,10 @@ use Illuminate\Support\Facades\Route;
  * the ones switched on, and a route table cached with the switch off has no
  * board page to link. A fixed number of queries for any number of matches
  * (tests/Feature/Matches/MempoolStripTest.php).
+ *
+ * Hyperbitcoinization matches (plan "Hyperbitcoinization", P6) while the game is on and routed ({@see hyper()}):
+ * finished ones on the left, running ones (live and correspondence) on the right; their cubes open the full-screen
+ * match in a new tab. They never mine, so they carry no chain stamp.
  *
  * `chain` narrows the strip to one side of the league (plan
  * "Mempool-Streifen", P4): `season` keeps the rated matches, whose wins
@@ -79,10 +86,11 @@ final class MempoolStrip
         $runs = $runs && $chain !== 'season';
         $runsPerSide = max(0, min(self::SIDE, $runsPerSide));
         $boards = self::boardSlugs();
+        $hyper = self::hyper();
         $sides = ['challengerLineup.clan', 'challengedLineup.clan'];
         $players = ['white', 'black'];
 
-        /** @var list<array{kind: string, model: SeriesMatch|ChessGame|BoardGame|StackerRun|ScoreRun, at: int}> $finished */
+        /** @var list<array{kind: string, model: SeriesMatch|ChessGame|BoardGame|StackerRun|ScoreRun|HyperMatch, at: int}> $finished */
         $finished = [
             ...self::onChain(SeriesMatch::query(), $chain)->with($sides)->whereIn('status', [SeriesStatus::Confirmed, SeriesStatus::Resolved])
                 ->orderByDesc('finished_at')->limit(self::SIDE)->get()->tap(fn ($list) => ChessTeamMatches::preload($list))
@@ -93,6 +101,9 @@ final class MempoolStrip
             ...($boards === [] ? [] : self::onChain(BoardGame::query(), $chain)->with($players)->whereIn('game', $boards)->where('status', BoardGameStatus::Finished)
                 ->orderByDesc('ended_at')->limit(self::SIDE)->get()
                 ->map(fn (BoardGame $game): array => self::item('board', $game, $game->ended_at))->all()),
+            ...(! $hyper ? [] : self::onChain(HyperMatch::query(), $chain)->with('seats.user')->where('status', HyperMatchStatus::Finished)
+                ->orderByDesc('ended_at')->limit(self::SIDE)->get()
+                ->map(fn (HyperMatch $match): array => self::item('hyper', $match, $match->ended_at))->all()),
             ...($runs ? self::attempts('done', $runsPerSide) : []),
         ];
 
@@ -106,6 +117,9 @@ final class MempoolStrip
             ...($boards === [] ? [] : self::onChain(BoardGame::query(), $chain)->with($players)->whereIn('game', $boards)->where('status', BoardGameStatus::Active)
                 ->orderByDesc('updated_at')->limit(self::SIDE)->get()
                 ->map(fn (BoardGame $game): array => self::item('board', $game, $game->updated_at))->all()),
+            ...(! $hyper ? [] : self::onChain(HyperMatch::query(), $chain)->with('seats.user')->where('status', HyperMatchStatus::Active)
+                ->orderByDesc('updated_at')->limit(self::SIDE)->get()
+                ->map(fn (HyperMatch $match): array => self::item('hyper', $match, $match->updated_at))->all()),
             ...($runs ? self::attempts('waiting', $runsPerSide) : []),
         ];
 
@@ -148,6 +162,7 @@ final class MempoolStrip
             ->when($boards !== [], fn ($query) => $query->selectSub(BoardGame::query()->whereIn('game', $boards)->where('status', BoardGameStatus::Active)->selectRaw('count(*)'), 'boards'))
             ->when(ScoreAttempts::blockfill(), fn ($query) => $query->selectSub(ScoreAttempts::stacker('waiting')->selectRaw('count(*)'), 'stacker'))
             ->when($scores !== [], fn ($query) => $query->selectSub(ScoreAttempts::scores($scores, 'waiting')->selectRaw('count(*)'), 'scores'))
+            ->when(self::hyper(), fn ($query) => $query->selectSub(HyperMatch::query()->where('status', HyperMatchStatus::Active)->selectRaw('count(*)'), 'hyper'))
             ->first();
 
         return array_sum(array_map('intval', (array) $counts));
@@ -182,10 +197,19 @@ final class MempoolStrip
     }
 
     /**
+     * Whether the strip and the table show Hyperbitcoinization matches (plan "Hyperbitcoinization", P6): while the
+     * game is switched on and its match page is routed.
+     */
+    public static function hyper(): bool
+    {
+        return app(GameRegistry::class)->find(Hyperbitcoinization::SLUG) !== null && Route::has('hyper.match');
+    }
+
+    /**
      * The latest highscore attempts in a state across every score game, at
      * most `$limit` of them (ScoreAttempts::latest() limits per source).
      *
-     * @return list<array{kind: string, model: SeriesMatch|ChessGame|BoardGame|StackerRun|ScoreRun, at: int}>
+     * @return list<array{kind: string, model: SeriesMatch|ChessGame|BoardGame|StackerRun|ScoreRun|HyperMatch, at: int}>
      */
     private static function attempts(string $state, int $limit): array
     {
@@ -200,9 +224,9 @@ final class MempoolStrip
     }
 
     /**
-     * @return array{kind: string, model: SeriesMatch|ChessGame|BoardGame|StackerRun|ScoreRun, at: int}
+     * @return array{kind: string, model: SeriesMatch|ChessGame|BoardGame|StackerRun|ScoreRun|HyperMatch, at: int}
      */
-    private static function item(string $kind, SeriesMatch|ChessGame|BoardGame|StackerRun|ScoreRun $model, ?CarbonInterface $at): array
+    private static function item(string $kind, SeriesMatch|ChessGame|BoardGame|StackerRun|ScoreRun|HyperMatch $model, ?CarbonInterface $at): array
     {
         return ['kind' => $kind, 'model' => $model, 'at' => $at?->getTimestamp() ?? 0];
     }
@@ -210,7 +234,7 @@ final class MempoolStrip
     /**
      * The finished rated matches, by attestation source.
      *
-     * @param  list<array{kind: string, model: SeriesMatch|ChessGame|BoardGame|StackerRun|ScoreRun, at: int}>  $items
+     * @param  list<array{kind: string, model: SeriesMatch|ChessGame|BoardGame|StackerRun|ScoreRun|HyperMatch, at: int}>  $items
      * @return array<string, list<int>>
      */
     private static function ratedIds(array $items): array
@@ -218,8 +242,8 @@ final class MempoolStrip
         $ids = [SeasonAttestation::SERIES => [], SeasonAttestation::CHESS => [], SeasonAttestation::BOARD => []];
 
         foreach ($items as $item) {
-            // A highscore attempt is never rated: it mines no block.
-            if (! $item['model'] instanceof StackerRun && ! $item['model'] instanceof ScoreRun && $item['model']->rated) {
+            // A highscore attempt is never rated: it mines no block; neither does a Hyperbitcoinization match (LadderEvents).
+            if (! $item['model'] instanceof StackerRun && ! $item['model'] instanceof ScoreRun && ! $item['model'] instanceof HyperMatch && $item['model']->rated) {
                 $ids[$item['kind']][] = $item['model']->id;
             }
         }
@@ -228,7 +252,7 @@ final class MempoolStrip
     }
 
     /**
-     * @param  array{kind: string, model: SeriesMatch|ChessGame|BoardGame|StackerRun|ScoreRun, at: int}  $item
+     * @param  array{kind: string, model: SeriesMatch|ChessGame|BoardGame|StackerRun|ScoreRun|HyperMatch, at: int}  $item
      * @param  array<string, array{state: 'mined'|'void'|'none', height: int|null, href: string|null, text: string, note: string|null, reason: string|null, title: string, spoken: string}>  $stamps
      * @param  array<string, string>  $links  where each highscore attempt links (ScoreAttempts::links())
      * @return array<string, mixed>
@@ -239,6 +263,10 @@ final class MempoolStrip
 
         if ($model instanceof StackerRun || $model instanceof ScoreRun) {
             return ScoreAttempts::block($model, $links[ScoreAttempts::key($model)], $newest);
+        }
+
+        if ($model instanceof HyperMatch) {
+            return MatchBlocks::hyper($model, $newest);
         }
 
         $chain = $stamps[$item['kind'].':'.$model->id] ?? null;

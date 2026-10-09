@@ -7,11 +7,13 @@ use App\Models\HyperMatch;
 use App\Models\HyperRating;
 use App\Models\HyperTable;
 use App\Models\User;
+use App\Support\Cards\PageCard;
 use App\Support\Hyper\HyperCups;
 use App\Support\Hyper\HyperEmotes;
 use App\Support\Hyper\HyperGame;
 use App\Support\Hyper\HyperLobby;
 use App\Support\Hyper\HyperMatches;
+use App\Support\Hyper\HyperMoments;
 use App\Support\Hyper\HyperPoll;
 use App\Support\Hyper\HyperReplay;
 use App\Support\Hyper\HyperRuleViolation;
@@ -30,6 +32,7 @@ use Illuminate\Http\Request;
 use Illuminate\Http\Response;
 use Illuminate\Validation\Rule;
 use RuntimeException;
+use Throwable;
 
 /**
  * A Hyperbitcoinization match over JSON (plan "Hyperbitcoinization", P2; routes/hyper.php, only registered
@@ -74,6 +77,8 @@ class HyperMatchController extends Controller
             'factions' => array_keys(HyperGame::FACTIONS),
             'limits' => HyperGame::LIMITS,
             'cup' => HyperCups::current(),
+            // The viewer's latest wins and loot to share (P6, HyperMoments).
+            'moments' => $viewer === null ? [] : HyperMoments::latest($viewer),
         ]);
     }
 
@@ -113,6 +118,7 @@ class HyperMatchController extends Controller
         $viewer = $this->viewer($request);
 
         return view('hyper.match', [
+            'preview' => $this->preview($match, false),
             'snapshot' => $matches->snapshot($match, $viewer),
             'back' => route('hyper.index', absolute: false),
             'config' => [
@@ -123,6 +129,7 @@ class HyperMatchController extends Controller
                     'emote' => route('hyper.emote', $match, false),
                     'leave' => route('hyper.leave', $match, false),
                     'rematch' => route('hyper.rematch', $match, false),
+                    'rematchDecline' => route('hyper.rematch.decline', $match, false),
                     'replay' => route('hyper.replay', $match, false),
                     'stats' => route('hyper.stats', $match, false),
                 ],
@@ -136,6 +143,8 @@ class HyperMatchController extends Controller
                 'teamChat' => $this->teamChatConfig($match, $viewer),
                 // The spectators' "Who wins?" (P5): a spectator of a rated or tournament match only, never a player.
                 'poll' => HyperPoll::config($match, $viewer),
+                // The rematch as it stands (P6): asked, declined or run out, and when the offer ends.
+                'rematch' => app(HyperLobby::class)->rematchState($match),
             ],
         ]);
     }
@@ -175,6 +184,7 @@ class HyperMatchController extends Controller
         $replay = $this->replayOf($match, 0);
 
         return view('hyper.match', [
+            'preview' => $this->preview($match, true),
             'snapshot' => $replay->snapshot($matches->snapshot($match, null)),
             'back' => route('hyper.index', absolute: false),
             'config' => [
@@ -235,6 +245,31 @@ class HyperMatchController extends Controller
     }
 
     /**
+     * The link preview of a match and its replay (P6): the match's card (PageCard::hyper(), the result once over),
+     * its title and a line. The page stays out of search (noindex); a preview that fails to build is reported and
+     * the page shows none, never an error.
+     *
+     * @return array{title: string, description: string, image: string, alt: string}|null
+     */
+    private function preview(HyperMatch $match, bool $replay): ?array
+    {
+        try {
+            $card = PageCard::hyper($match);
+
+            return [
+                'title' => $replay ? __('Hyperbitcoinization · Replay') : 'Hyperbitcoinization',
+                'description' => $card->alt(),
+                'image' => $card->url(),
+                'alt' => $card->alt(),
+            ];
+        } catch (Throwable $exception) {
+            report($exception);
+
+            return null;
+        }
+    }
+
+    /**
      * The player says yes to a rematch of this finished match (HyperLobby::rematch()): `{table, ready,
      * waiting, url}`, the url once everybody said yes and the new match began.
      */
@@ -243,7 +278,18 @@ class HyperMatchController extends Controller
         return $this->refusing(function () use ($request, $match, $lobby): JsonResponse {
             ['table' => $table] = $lobby->rematch($match, $this->user($request));
 
-            return response()->json($lobby->rematchPayload($table));
+            return response()->json($lobby->rematchPayload($table, $match));
+        });
+    }
+
+    /**
+     * The player says no to a rematch of this finished match (HyperLobby::declineRematch(), P6): it closes for every
+     * player; the answer is the rematch state every end screen hears.
+     */
+    public function declineRematch(Request $request, HyperMatch $match, HyperLobby $lobby): JsonResponse
+    {
+        return $this->refusing(function () use ($request, $match, $lobby): JsonResponse {
+            return response()->json($lobby->rematchPayload($lobby->declineRematch($match, $this->user($request)), $match));
         });
     }
 
@@ -371,6 +417,7 @@ class HyperMatchController extends Controller
             'game_over' => __('The match is over.'),
             'emote_throttled' => __('Not so fast. Try again in :seconds s.', ['seconds' => $retry]),
             'no_rematch' => __('A rematch follows a finished match of yours.'),
+            'rematch_expired' => __('The rematch offer has run out.'),
             'unknown_emote' => __('Unknown emote.'),
             default => __('That is not allowed right now.'),
         };

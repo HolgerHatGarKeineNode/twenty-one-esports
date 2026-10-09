@@ -29,6 +29,20 @@
     @endif
     @php($replay = isset($config['replay']))
     <title>{{ $replay ? __('Hyperbitcoinization · Replay') : __('Hyperbitcoinization · Round :round', ['round' => $snapshot['round']]) }} – TWENTY ONE esports</title>
+    {{-- The link preview (P6, HyperMatchController::preview()): the match's card, the result once over. --}}
+    @if ($preview ?? null)
+        <meta property="og:site_name" content="TWENTY ONE esports">
+        <meta property="og:type" content="website">
+        <meta property="og:title" content="{{ $preview['title'] }}">
+        <meta property="og:description" content="{{ $preview['description'] }}">
+        <meta property="og:image" content="{{ $preview['image'] }}">
+        <meta property="og:image:type" content="image/png">
+        <meta property="og:image:width" content="{{ \App\Support\Cards\PageCard::WIDTH }}">
+        <meta property="og:image:height" content="{{ \App\Support\Cards\PageCard::HEIGHT }}">
+        <meta property="og:image:alt" content="{{ $preview['alt'] }}">
+        <meta name="twitter:card" content="summary_large_image">
+        <meta name="twitter:image" content="{{ $preview['image'] }}">
+    @endif
     <link rel="icon" href="/favicon.ico" sizes="any">
     <link rel="icon" href="/favicon.svg" type="image/svg+xml">
     @fonts
@@ -205,12 +219,18 @@
         <div class="row-btn" style="justify-content:center">
             @if (! $replay && $snapshot['me'] !== null)
                 <button class="big" id="rematch-btn" type="button" data-test="hyper-rematch"><svg><use href="#i-dice"/></svg><span id="rematch-t">{{ __('Rematch') }}</span></button>
+                {{-- P6: any player says no; the rematch closes for everybody (game.js shows it once somebody asked). --}}
+                <button class="ghost" id="rematch-decline" type="button" hidden data-test="hyper-rematch-decline">{{ __('Decline the rematch') }}</button>
             @endif
             <a @class(['ghost' => ! $replay && $snapshot['me'] !== null, 'big' => $replay || $snapshot['me'] === null]) id="again-btn" href="{{ $back }}">{{ __('Another match') }}</a>
             @unless ($replay)
                 <a class="ghost" id="replay-link" href="{{ $config['urls']['replay'] }}" target="_blank" rel="noopener" data-test="hyper-replay-link">{{ __('Watch the replay') }}</a>
             @endunless
             <button class="ghost" id="stats-btn" type="button" hidden data-test="hyper-stats-open">{{ __('Match statistics') }}</button>
+            @if (! $replay && $snapshot['me'] !== null)
+                {{-- A win or loot (P6): posted from the lobby page's moments, in a new tab (game.js shows it). --}}
+                <a class="ghost" id="share-link" href="{{ route('hyper.index') }}#hyper-moments" target="_blank" rel="noopener" hidden data-test="hyper-share-link">{{ __('Share it') }}</a>
+            @endif
             <button class="ghost" id="end-map" type="button">{{ __('Look at the map') }}</button>
         </div>
         <p class="muted" id="rematch-note" aria-live="polite" data-test="hyper-rematch-note"></p>

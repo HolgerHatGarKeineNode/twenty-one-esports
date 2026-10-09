@@ -135,6 +135,17 @@ final class Sitemap
                 continue;
             }
 
+            // Hyperbitcoinization (plan "Hyperbitcoinization", P6): its lobby and its own season ladder, while routed;
+            // no Rating ladder and no single match (a match page is full-screen and noindex, as board games list none).
+            if ($game->kind() === GameKind::Strategy) {
+                if (Route::has('hyper.index') && Route::has('hyper.ladder')) {
+                    $urls[] = route('hyper.index');
+                    $urls[] = route('hyper.ladder');
+                }
+
+                continue;
+            }
+
             foreach ($game->modes() as $mode) {
                 $urls[] = route('ladder.show', [$game->slug(), $mode->slug]);
             }

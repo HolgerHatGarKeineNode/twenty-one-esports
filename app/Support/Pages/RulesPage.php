@@ -7,6 +7,7 @@ use App\Games\Blockfill;
 use App\Games\Blockli;
 use App\Games\GameMode;
 use App\Games\GameRegistry;
+use App\Games\Hyperbitcoinization;
 use App\Games\NineMensMorris;
 use App\Games\TrackmaniaNationsForever;
 use App\Models\Tournament;
@@ -17,6 +18,8 @@ use App\Support\Chess\ChessModes;
 use App\Support\Chess\ChessTeamMatches;
 use App\Support\FairPlay\FairPlay;
 use App\Support\GameNames;
+use App\Support\Hyper\HyperGame;
+use App\Support\Hyper\HyperMap;
 use App\Support\PreSeason;
 use App\Support\Prizes\PrizePool;
 use App\Support\Rating\RatingSettings;
@@ -65,6 +68,7 @@ final class RulesPage
             self::teamMatches(),
             self::series(),
             ...self::ageOfEmpires2(),
+            ...self::hyperbitcoinization(),
             ...self::blockfill(),
             ...self::tmnf(),
             ...self::scoreGames(),
@@ -334,6 +338,80 @@ final class RulesPage
             ],
             'links' => [[__('Clans'), route('clans.index')], [__('Matches'), route('matches.index', ['game' => 'team'])]],
         ];
+    }
+
+    /**
+     * Hyperbitcoinization (plan "Hyperbitcoinization", P6), only while it is switched on: the goal, the three phases of
+     * a turn, the units, the event cards, teams and the season, every number read from the rules core
+     * (HyperGame, HyperMap) and `esports.hyper`. The full help is in the match (the ? button, key H).
+     *
+     * @return list<Section>
+     */
+    private static function hyperbitcoinization(): array
+    {
+        if (app(GameRegistry::class)->find(Hyperbitcoinization::SLUG) === null) {
+            return [];
+        }
+
+        $c = (array) config('esports.hyper');
+        $points = [];
+
+        foreach ((array) ($c['season_points'] ?? []) as $seats => $row) {
+            $points[] = [trans_choice(':count player|:count players', (int) $seats), implode(' · ', array_map(intval(...), (array) $row))];
+        }
+
+        $cards = array_map(fn (array $card): string => $card[0].': '.$card[1], [
+            [__('Money Printer'), __('+8 free plebs. Next round everyone pays 50 % more per pleb.')],
+            [__('51% Attack'), __('Take a neighbouring territory with at most 3 units without rolling.')],
+            ['Lost Keys', __('The richest opponent loses 30 % of their sats.')],
+            ['Diamond Hands', __('One of your territories defends with +1 until your next turn.')],
+            [__('El Salvador Move'), __('Coin flip: your sats +25 % or −25 %.')],
+            ['Exit Scam', __('An enemy central bank loses 2 units.')],
+            [__('Pizza Day'), __('You lose 10 % of your sats but get 3 free plebs.')],
+            [__('Lagarde’s Crystal Ball'), __('+3 fiat and a look at the next card.')],
+            ['Buy the Dip', __('Plebs cost half this turn.')],
+            ['Not Your Keys', __('An enemy territory with exactly 1 unit turns neutral.')],
+        ]);
+
+        return [[
+            'id' => Hyperbitcoinization::SLUG,
+            'title' => GameNames::game(Hyperbitcoinization::SLUG),
+            'game' => Hyperbitcoinization::SLUG,
+            'lead' => __('Risk with currency spaces: topple the central banks, take the map, collect sats as loot. Sats are game points, nobody pays anything.'),
+            'facts' => [
+                [__('Players'), '2–6'],
+                [__('Territories'), (string) HyperMap::COUNT],
+                [__('Currency spaces'), (string) count(HyperMap::ZONE_KEYS)],
+                [__('Factions'), (string) count(HyperGame::FACTIONS)],
+                [__('Live turn'), self::seconds((int) ($c['turn_seconds'] ?? 90))],
+                [__('Correspondence turn'), self::minutes(60 * (int) ($c['correspondence_hours'] ?? 24))],
+            ],
+            'table' => [
+                'head' => [__('Phase'), __('What you do')],
+                'rows' => [
+                    [__('Recruit'), __('Fiat comes from territories and central banks. Buy plebs and place them. Leftover fiat is eaten by inflation.')],
+                    [__('Attack'), __('Tap a glowing territory, then a pulsing neighbour. You see the odds before the roll.')],
+                    [__('Fortify'), __('Move troops once per turn into a neighbouring territory of yours, then end the turn.')],
+                    [__('How to win'), __('Knock everyone out, or hold the most central banks at the round limit. Sats are loot: they buy maxis and ASICs and are credited to you.')],
+                ],
+            ],
+            'items' => [
+                __('Units: a Fiat pleb costs 1 fiat (more in inflation), a Bitcoin maxi :maxi M sats and adds 1 to the defence, an ASIC rig :asic M sats and adds 1 to the attack and cracks a central bank\'s defence.', ['maxi' => HyperGame::UNIT_SATS['maxi'], 'asic' => HyperGame::UNIT_SATS['asic']]),
+                __('A central bank defends with +1, Swiss territory always. Holding a whole currency space gives its bonus: more fiat, cheaper plebs or more defence.'),
+                __('Event cards (up to :max in hand): :cards.', ['max' => HyperGame::HAND_MAX, 'cards' => implode('; ', $cards)]),
+                __('The six factions (Bitcoiner, Fed, ECB, Goldbug, Shitcoiner, Nocoiner) play by the same rules; later seats start with a few extra plebs, so every seat wins about as often.'),
+                __('Clan against clan: 2v2 or 3v3, seats alternate between the clans. Teammates never attack each other; the last team standing, or the team with the most central banks at the round limit, wins.'),
+                __('In a live season a match without bots is rated unless it was opened as a friendly match. Everyone for themselves scores points by place, 1v1 and team matches move the season Elo.'),
+                __('Leaving a rated match, or letting :count turns in a row run out, forfeits it: a bot plays the seat on, you take the last place, 0 points, and your Elo counts it as a loss.', ['count' => (int) ($c['takeover_timeouts'] ?? 3)]),
+                __('In a match the ? button (key H) explains every control.'),
+            ],
+            'links' => [[__('Open the lobby'), route('hyper.index')], [__('Season ladder'), route('hyper.ladder')]],
+        ], [
+            'id' => Hyperbitcoinization::SLUG.'-points',
+            'title' => __('Hyperbitcoinization season points'),
+            'lead' => __('Points of a rated match of everyone for themselves, by place.'),
+            'table' => ['head' => [__('Table'), __('Places 1, 2, 3 …')], 'rows' => $points],
+        ]];
     }
 
     /**

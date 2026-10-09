@@ -7,7 +7,7 @@
 --}}
 <li wire:key="hyper-card" class="flex min-w-0 flex-col gap-3 rounded-card bg-card p-4" data-test="player-hyper" data-game="hyperbitcoinization">
     <a href="{{ \Illuminate\Support\Facades\Route::has('hyper.index') ? route('hyper.index') : url('hyperbitcoinization') }}" class="grid min-h-11 grid-cols-[48px_minmax(0,1fr)] items-center gap-3 text-ink hover:text-ink">
-        <img src="/hyper/art/key-title.jpg?v=1" alt="" width="48" height="27" class="aspect-video w-12 rounded-tag object-cover" loading="lazy">
+        <x-game-cover :game="\App\Games\Hyperbitcoinization::SLUG" size="thumb" class="w-12 rounded-tag" />
         <span class="flex min-w-0 flex-col">
             <b class="truncate text-[13px]">Hyperbitcoinization</b>
             <span class="truncate text-xs text-ink-3">{{ trans_choice(':count finished match|:count finished matches', $hyper['matches']) }}</span>

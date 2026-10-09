@@ -332,7 +332,11 @@ input[type=range] { width: 100%; accent-color: var(--btc); height: 30px; }
     .pl .shield { width: 38px; height: 38px; grid-row: auto; }
     .pl.cur { transform: translateY(-3px); }
     #topbar { top: 6px; left: 8px; right: 8px; flex-wrap: wrap; gap: 6px; }
-    .logo, .vol { display: none; }
+    .vol { display: none; }
+    /* The wordmark gives way on a phone; the round and the Rated/Unrated chip stay (P6). */
+    .logo { padding: 4px 8px; }
+    .logo b { display: none; }
+    .logo small { margin-top: 0; font-size: 9.5px; letter-spacing: 0.08em; }
     #stepper { order: 3; width: 100%; }
     .step { padding: 7px 9px; font-size: 10.5px; gap: 5px; }
     .step svg, .step .phi { display: none; }

@@ -11,6 +11,7 @@ use App\Support\Rating\EloRating;
 use App\Support\Rating\NipMath;
 use App\Support\SeasonChain\Seasons;
 use Illuminate\Support\Collection;
+use Illuminate\Support\Facades\DB;
 
 /**
  * Hyperbitcoinization in the season (plan "Hyperbitcoinization", P5, Ansatz 11; user 2026-10-08: "FFA nach
@@ -128,8 +129,7 @@ final class HyperSeason
      */
     private function rate(HyperMatch $match, string $kind): void
     {
-        $sides = $match->seats->filter(fn (HyperSeat $seat): bool => $seat->user_id !== null)
-            ->groupBy(fn (HyperSeat $seat): int => $kind === HyperRating::TEAM ? (int) $seat->team : $seat->seat);
+        $sides = self::sides($match, $kind);
 
         if ($sides->count() !== 2) {
             return;
@@ -187,6 +187,144 @@ final class HyperSeason
                 ])->save();
             }
         }
+    }
+
+    /**
+     * The two sides of a 1v1 or team match, as rate() and correct() read them: a team match's teams, else each seat,
+     * by their key (team 0 before team 1, seat 0 before seat 1), the players' seats only.
+     *
+     * @return Collection<int, Collection<int, HyperSeat>>
+     */
+    public static function sides(HyperMatch $match, string $kind): Collection
+    {
+        return $match->seats->filter(fn (HyperSeat $seat): bool => $seat->user_id !== null)
+            ->sortBy('seat')
+            ->toBase()
+            ->groupBy(fn (HyperSeat $seat): int => $kind === HyperRating::TEAM ? (int) $seat->team : $seat->seat)
+            ->sortKeys()->values();
+    }
+
+    /* ---------- Correction (P6) ----------------------------------------------------------------------------- */
+
+    /**
+     * What correct() would do to the Elo of a finished rated 1v1 or team match whose result the league corrects
+     * (TournamentControl): `winner` the side (0 or 1, sides()) that won now, null for a forfeit or void, which moves
+     * no Elo. Per side the average delta of its players: `reverted` what the match moved, `applied` what the
+     * corrected outcome moves (null for none). Null when nothing would change: a casual or free-for-all match, a
+     * season that is no longer live, no rating changes, or the same outcome again (fail closed).
+     *
+     * @return array{reverted: array{0: int, 1: int}, applied: array{0: int, 1: int}|null}|null
+     */
+    public function correction(HyperMatch $match, ?int $winner): ?array
+    {
+        return $this->correctable($match, $winner)['effect'] ?? null;
+    }
+
+    /**
+     * Corrects the Elo of a finished rated 1v1 or team match, as RatingService::correct() does for the other games:
+     * delta only, no replay. Each player's old delta is taken off their rating as it stands now, and the corrected
+     * delta, computed from the ratings and result counts the match was first rated with, is added; wins and losses
+     * follow. The change row keeps the corrected score and delta (one row per rating and match); a forfeit or void
+     * (`winner` null) deletes it, so the match moves no Elo. The tournament's moderation log keeps both effects.
+     * Same return as correction(); null when nothing changed.
+     *
+     * @return array{reverted: array{0: int, 1: int}, applied: array{0: int, 1: int}|null}|null
+     */
+    public function correct(HyperMatch $match, ?int $winner): ?array
+    {
+        return DB::transaction(function () use ($match, $winner): ?array {
+            $plan = $this->correctable($match, $winner, lock: true);
+
+            if ($plan === null) {
+                return null;
+            }
+
+            foreach ($plan['rows'] as ['change' => $change, 'rating' => $rating, 'score' => $score, 'delta' => $delta]) {
+                $wonBefore = $change->score === 1.0;
+                $rating->rating = $rating->rating - $change->delta + ($delta ?? 0);
+                $rating->wins -= $wonBefore ? 1 : 0;
+                $rating->losses -= $wonBefore ? 0 : 1;
+
+                if ($score === null) {
+                    $rating->results--;
+                    $change->delete();
+                } else {
+                    $rating->wins += $score === 1.0 ? 1 : 0;
+                    $rating->losses += $score === 1.0 ? 0 : 1;
+                    $change->forceFill(['score' => $score, 'delta' => $delta, 'after' => $change->before + $delta])->save();
+                }
+
+                $rating->save();
+            }
+
+            return $plan['effect'];
+        }, 3);
+    }
+
+    /**
+     * The plan of a correction: each player's change row and rating, their corrected score (null: none) and delta,
+     * and the effect per side. Null when nothing is to correct (see correction()).
+     *
+     * @return array{rows: list<array{change: HyperRatingChange, rating: HyperRating, score: float|null, delta: int|null, side: int}>, effect: array{reverted: array{0: int, 1: int}, applied: array{0: int, 1: int}|null}}|null
+     */
+    private function correctable(HyperMatch $match, ?int $winner, bool $lock = false): ?array
+    {
+        $match->loadMissing('seats');
+        $kind = self::kindOf($match);
+
+        if (! $match->rated || $match->season === null || $match->season !== self::seasonFor() || $kind === self::FFA || ($winner !== null && ! in_array($winner, [0, 1], true))) {
+            return null;
+        }
+
+        $sides = self::sides($match, $kind);
+        $changes = HyperRatingChange::query()->where('hyper_match_id', $match->id)
+            ->whereHas('rating', fn ($rating) => $rating->where(['season' => $match->season, 'kind' => $kind]))
+            ->with('rating')->when($lock, fn ($query) => $query->lockForUpdate())->get()
+            ->keyBy(fn (HyperRatingChange $change): int => $change->rating->user_id);
+
+        if ($sides->count() !== 2 || $changes->isEmpty()) {
+            return null;
+        }
+
+        $ratings = $lock
+            ? HyperRating::query()->whereKey($changes->pluck('hyper_rating_id')->all())->orderBy('id')->lockForUpdate()->get()->keyBy('id')
+            : $changes->mapWithKeys(fn (HyperRatingChange $change): array => [$change->hyper_rating_id => $change->rating]);
+        $engine = EloRating::fromConfig('rating');
+        // The expected score as the match was rated: from each side's average rating before it.
+        $before = $sides->map(fn (Collection $side): float => (float) $side->avg(fn (HyperSeat $seat): int => $changes->get($seat->user_id)->before ?? $engine->start));
+        $expected = [$engine->expectedScore((int) round($before[0]), (int) round($before[1]))];
+        $expected[] = 1.0 - $expected[0];
+        $rows = [];
+        $moved = false;
+
+        foreach ($sides as $index => $side) {
+            foreach ($side as $seat) {
+                $change = $changes->get($seat->user_id);
+
+                if ($change === null) {
+                    continue;
+                }
+
+                $score = $winner === null ? null : (self::forfeited($seat) ? 0.0 : ($winner === $index ? 1.0 : 0.0));
+                $delta = $score === null ? null : NipMath::round($engine->kFactor($change->results_before) * ($score - $expected[$index]));
+                $moved = $moved || $score !== $change->score || $delta !== $change->delta;
+                $rows[] = ['change' => $change, 'rating' => $ratings[$change->hyper_rating_id], 'score' => $score, 'delta' => $delta, 'side' => $index];
+            }
+        }
+
+        if (! $moved) {
+            return null;
+        }
+
+        $average = fn (int $side, string $key): int => (int) round(collect($rows)->where('side', $side)->avg(fn (array $row): int => $key === 'old' ? $row['change']->delta : (int) $row['delta']) ?? 0);
+
+        return [
+            'rows' => $rows,
+            'effect' => [
+                'reverted' => [$average(0, 'old'), $average(1, 'old')],
+                'applied' => $winner === null ? null : [$average(0, 'new'), $average(1, 'new')],
+            ],
+        ];
     }
 
     /* ---------- Standings ---------------------------------------------------------------------------------- */

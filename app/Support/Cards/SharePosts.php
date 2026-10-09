@@ -5,9 +5,12 @@ namespace App\Support\Cards;
 use App\Enums\ChessGameStatus;
 use App\Enums\ReportStatus;
 use App\Enums\TournamentStatus;
+use App\Games\GameRegistry;
+use App\Games\Hyperbitcoinization;
 use App\Games\ScoreMetric;
 use App\Jobs\PublishNostrEvent;
 use App\Models\ChessGame;
+use App\Models\HyperMatch;
 use App\Models\NostrEvent;
 use App\Models\RankBadgeVersion;
 use App\Models\Season;
@@ -18,6 +21,7 @@ use App\Models\User;
 use App\Support\Badges\BadgeCopy;
 use App\Support\Chess\ChessModes;
 use App\Support\Chess\ChessTeamMatches;
+use App\Support\Hyper\HyperMoments;
 use App\Support\Invites\InviteLinkRefused;
 use App\Support\Invites\InviteLinks;
 use App\Support\Nostr\NostrKeys;
@@ -33,6 +37,7 @@ use App\Support\Tournaments\TournamentSignups;
 use Carbon\CarbonImmutable;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\RateLimiter;
+use Illuminate\Support\Facades\Route;
 
 /**
  * The share button (P11, NIP "Share posts", rev. 8; P46, rev. 9.7): a kind 1
@@ -57,7 +62,10 @@ use Illuminate\Support\Facades\RateLimiter;
  * - a Blockfill moment (a verified run that is a personal best, a new first
  *   place of its week or holds the player's week place,
  *   {@see BlockfillMoments}), with its own share card and the moment's page
- *   as the link, last.
+ *   as the link, last;
+ * - a Hyperbitcoinization moment (a clan win, a win, the sats collected in a
+ *   finished match, {@see HyperMoments}), with the match's page card and the
+ *   match as the link; it mentions nobody (no profile is tied to a seat).
  *
  * At most `esports.badges.shares_per_hour` per player: the league relays carry them.
  */
@@ -68,7 +76,7 @@ final class SharePosts
     public const FORMAT = 'wide';
 
     /** The moments a share post can be about. */
-    public const TYPES = ['rank-up', 'block', 'tournament', 'wrapped', 'game', 'series', 'signup', 'blockfill', 'tmnf'];
+    public const TYPES = ['rank-up', 'block', 'tournament', 'wrapped', 'game', 'series', 'signup', 'blockfill', 'tmnf', 'hyper'];
 
     /** Opponents one post mentions at most: a team of five, never a whole bracket. */
     public const MAX_MENTIONS = 5;
@@ -89,6 +97,7 @@ final class SharePosts
             'signup' => $this->signup($user, $id),
             'blockfill' => $this->blockfill($user, $id),
             'tmnf' => $this->tmnf($user, $id),
+            'hyper' => $this->hyper($user, $id),
             default => null,
         };
 
@@ -287,6 +296,41 @@ final class SharePosts
             dimensions: ShareCard::FORMATS[self::FORMAT],
             storyPath: $card->path('story'),
             link: self::absolute(route('stacker.moment', $run->id, false)),
+        );
+    }
+
+    /* ---------- A Hyperbitcoinization moment --------------------------------------------------------------------- */
+
+    /**
+     * The player's own finished Hyperbitcoinization match that is a moment (HyperMoments): the match's page card
+     * (the result), the match as the link. Only while the game is on and its page routed.
+     */
+    private function hyper(User $user, string $ulid): ?SharePost
+    {
+        if (app(GameRegistry::class)->find(Hyperbitcoinization::SLUG) === null || ! Route::has('hyper.match')) {
+            return null;
+        }
+
+        $match = HyperMatch::query()->where('ulid', strtolower($ulid))->first();
+        $moment = $match === null ? null : HyperMoments::of($match, $user);
+
+        if ($match === null || $moment === null) {
+            return null;
+        }
+
+        $sats = rtrim(rtrim(number_format($moment['sats'], 1, '.', ''), '0'), '.');
+
+        return new SharePost(
+            type: 'hyper',
+            sentence: match ($moment['kind']) {
+                'team' => __('Won a :size clan match of Hyperbitcoinization with :team on TWENTY ONE Esports.', ['size' => $moment['size'], 'team' => (string) $moment['team']]),
+                'win' => trans_choice('Won a Hyperbitcoinization match against :count opponent on TWENTY ONE Esports, :sats M sats of loot.|Won a Hyperbitcoinization match against :count opponents on TWENTY ONE Esports, :sats M sats of loot.', $moment['opponents'], ['sats' => $sats]),
+                default => __('Collected :sats M sats of loot in a Hyperbitcoinization match on TWENTY ONE Esports.', ['sats' => $sats]),
+            },
+            cardUrl: PageCard::hyper($match)->url(),
+            dimensions: [PageCard::WIDTH, PageCard::HEIGHT],
+            storyPath: null,
+            link: self::absolute(route('hyper.match', $match, false)),
         );
     }
 

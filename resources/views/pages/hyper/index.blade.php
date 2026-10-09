@@ -8,6 +8,9 @@
 @php
     $labels = ['bitcoiner' => 'Bitcoiner', 'fed' => 'Fed', 'ezb' => __('ECB'), 'goldbug' => 'Goldbug', 'shitcoiner' => 'Shitcoiner', 'nocoiner' => 'Nocoiner'];
     $portrait = \App\Support\Hyper\HyperGame::FACTIONS;
+    // Indexed, with its own link preview (P6): the cover, the game in one line, running and played matches.
+    app(\App\Support\PageMeta::class)->describe('Hyperbitcoinization', __('Hyperbitcoinization, the strategy game of the TWENTY ONE esports league: Risk with currency spaces for 2 to 6 players, live or by correspondence, alone or clan against clan. Topple the central banks, collect sats as loot.'))
+        ->card(fn () => \App\Support\Cards\PageCard::page('hyper'));
     $chip = 'flex min-h-11 cursor-pointer items-center justify-center gap-2 rounded-md bg-well font-bold text-ink-2 shadow-ring has-[:checked]:bg-btc-chip has-[:checked]:text-ink has-[:checked]:shadow-[inset_0_0_0_1px_var(--color-btc)] has-[:focus-visible]:outline-2 has-[:focus-visible]:outline-btc';
 @endphp
 <x-layouts::app :title="'Hyperbitcoinization'">
@@ -46,15 +49,15 @@
                     @csrf
                     <fieldset class="m-0 flex flex-col gap-2 border-0 p-0">
                         <legend class="mb-2 text-xs font-bold tracking-[0.12em] text-ink-2 uppercase">{{ __('Your faction') }}</legend>
-                        <div class="grid grid-cols-4 gap-2 sm:grid-cols-7">
+                        <div class="grid grid-cols-3 gap-2 min-[480px]:grid-cols-4 sm:grid-cols-7">
                             @foreach ($factions as $faction)
-                                <label class="{{ $chip }} min-h-[76px] flex-col gap-1 px-1 text-[10px]">
+                                <label class="{{ $chip }} min-h-[76px] flex-col gap-1 px-1 text-[11px]">
                                     <input type="radio" name="faction" value="{{ $faction }}" class="sr-only" @checked(old('faction', 'bitcoiner') === $faction)>
                                     <img src="/hyper/art/por-{{ $portrait[$faction] }}.jpg?v=1" alt="" width="40" height="40" class="size-10 rounded-full object-cover shadow-ring" loading="lazy">
                                     <span class="max-w-full truncate">{{ $labels[$faction] }}</span>
                                 </label>
                             @endforeach
-                            <label class="{{ $chip }} min-h-[76px] flex-col gap-1 px-1 text-[10px]">
+                            <label class="{{ $chip }} min-h-[76px] flex-col gap-1 px-1 text-[11px]">
                                 <input type="radio" name="faction" value="" class="sr-only" @checked(old('faction') === '')>
                                 <span class="grid size-10 place-items-center rounded-full bg-ground text-xl shadow-ring" aria-hidden="true">🎲</span>
                                 <span>{{ __('Random') }}</span>
@@ -89,6 +92,30 @@
                         <span class="text-xs text-ink-2">{{ __('Opens in a new tab, full-screen.') }}</span>
                     </div>
                 </form>
+            </section>
+        @endif
+
+        @if ($moments !== [])
+            {{-- The viewer's latest wins and loot (P6, HyperMoments): each one to post on Nostr or to save as the match's card. --}}
+            <section id="hyper-moments" class="flex scroll-mt-24 flex-col gap-3" aria-labelledby="hyper-moments-h" data-test="hyper-moments">
+                <h2 id="hyper-moments-h" class="m-0 font-display text-xl font-bold">{{ __('Your moments') }}</h2>
+                <ul class="m-0 grid list-none gap-3 p-0 lg:grid-cols-2">
+                    @foreach ($moments as ['match' => $match, 'moment' => $moment])
+                        @php
+                            $sats = rtrim(rtrim(number_format($moment['sats'], 1, '.', ''), '0'), '.');
+                        @endphp
+                        <li class="flex min-w-0 flex-col gap-3 rounded-lg bg-card p-3 shadow-ring" data-test="hyper-moment" data-kind="{{ $moment['kind'] }}" wire:key="moment-{{ $match->ulid }}">
+                            <a href="{{ route('hyper.match', $match) }}" target="_blank" class="flex min-w-0 items-center gap-3 text-ink hover:text-ink">
+                                <x-game-cover :game="\App\Games\Hyperbitcoinization::SLUG" size="thumb" class="w-16 shrink-0 rounded-tag" />
+                                <span class="flex min-w-0 flex-col gap-0.5">
+                                    <b class="truncate text-sm">{{ match ($moment['kind']) { 'team' => __(':team wins the :size', ['team' => (string) $moment['team'], 'size' => $moment['size']]), 'win' => __('You won against :count', ['count' => $moment['opponents']]), default => __(':sats M sats loot', ['sats' => '+'.$sats]) } }}</b>
+                                    <span class="truncate text-xs text-ink-2">{{ ($match->isCorrespondence() ? __('Correspondence') : __('Live')).' · '.__('Round :round', ['round' => (int) ($match->state['round'] ?? 1)]).' · '.$match->ended_at?->diffForHumans() }}</span>
+                                </span>
+                            </a>
+                            <livewire:share-button type="hyper" :moment="$match->ulid" :label="$moment['kind'] === 'sats' ? __('Post the loot') : __('Post the win')" :wire:key="'hyper-share-'.$match->ulid" />
+                        </li>
+                    @endforeach
+                </ul>
             </section>
         @endif
 

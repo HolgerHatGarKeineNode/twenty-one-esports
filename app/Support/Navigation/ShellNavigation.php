@@ -8,6 +8,7 @@ use App\Games\Blockfill;
 use App\Games\Contracts\Game;
 use App\Games\GameKind;
 use App\Games\GameRegistry;
+use App\Games\Hyperbitcoinization;
 use App\Models\BoardGame;
 use App\Models\ChessGame;
 use App\Models\ClanInvite;
@@ -213,6 +214,8 @@ final class ShellNavigation
             $name === 'scores.show' => $known($route->parameter('game')),
             // Blockfill's game page (plan "Blockfill", P6): its own context bar, never the one of the game opened last.
             $name === 'stacker.play', $name === 'stacker.replay', $name === 'stacker.replays', $name === 'stacker.moment' => $known(Blockfill::SLUG),
+            // Hyperbitcoinization's lobby and season ladder (P6); its match pages have no shell.
+            str_starts_with($name, 'hyper.') => $known(Hyperbitcoinization::SLUG),
             // The match list files board games too (plan "Mempool-Streifen", P2), but a board game's filter keeps row 2
             // on the game opened last: a board game's context bar has no Matches link, its games are in its lobby.
             $name === 'matches.index' => $this->registry->isBoard((string) $request->query('game')) ? null : $known($request->query('game')),
@@ -538,6 +541,17 @@ final class ShellNavigation
             ]));
         }
 
+        // Hyperbitcoinization (plan "Hyperbitcoinization", P6): its lobby, its matches in the list, its own season
+        // ladder (FFA points and Elo, never the Rating ladder of ladder.show) and its rules. Only while routed.
+        if ($game->kind() === GameKind::Strategy && Route::has('hyper.index') && Route::has('hyper.ladder')) {
+            return [
+                self::link('play', route('hyper.index'), __('Play'), 'bolt', null, null, __('Play'), 'play'),
+                self::link('matches', $matches, __('Matches'), 'matches', null, null, null, 'matches'),
+                [...self::link('ladder', route('hyper.ladder'), __('Season ladder'), 'ladder', null, null, __('Ladder'), 'ladder'), 'routes' => ['hyper.ladder']],
+                self::link('rules', route('rules').'#'.$slug, __('Rules'), 'shield-check'),
+            ];
+        }
+
         // A score game (plan "AoE2 und Trackmania", P4): its leaderboards and points ladder on one page; no matches,
         // no challenge, no Elo ladder.
         if ($game->kind() === GameKind::Score) {
@@ -600,6 +614,15 @@ final class ShellNavigation
 
             foreach ($boards as $game => $at) {
                 $last[(string) $game] = (string) $at;
+            }
+        }
+
+        // Hyperbitcoinization (P6): the seats the viewer took, one query.
+        if ($this->registry->find(Hyperbitcoinization::SLUG) !== null) {
+            $hyper = DB::table('hyper_seats')->where('user_id', $user->id)->max('created_at');
+
+            if ($hyper !== null) {
+                $last[Hyperbitcoinization::SLUG] = (string) $hyper;
             }
         }
 

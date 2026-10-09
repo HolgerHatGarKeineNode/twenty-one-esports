@@ -24,6 +24,8 @@ use Illuminate\Support\Carbon;
  * @property list<int|null>|null $team_clans a clan table (P4): the clan of side 0 and side 1 (seats alternate), null for a table of single players
  * @property bool $friendly a friendly match (P5c): its match is never rated
  * @property string $status open|started|cancelled
+ * @property string|null $closed a rematch table closed without a match (P6): `declined` or `expired`
+ * @property int|null $closed_by who declined it
  * @property int|null $created_by
  * @property int|null $hyper_match_id the match once started
  * @property int|null $rematch_of
@@ -33,9 +35,11 @@ use Illuminate\Support\Carbon;
  * @property Carbon|null $updated_at
  * @property-read Collection<int, HyperTableSeat> $takenSeats
  * @property-read User|null $creator
+ * @property-read User|null $closer
+ * @property-read HyperMatch|null $previousMatch
  * @property-read HyperMatch|null $match
  */
-#[Fillable(['mode', 'seats', 'round_limit', 'team_clans', 'friendly', 'status', 'created_by', 'hyper_match_id', 'rematch_of', 'fill_at', 'started_at'])]
+#[Fillable(['mode', 'seats', 'round_limit', 'team_clans', 'friendly', 'status', 'closed', 'closed_by', 'created_by', 'hyper_match_id', 'rematch_of', 'fill_at', 'started_at'])]
 class HyperTable extends Model
 {
     use HasUlids;
@@ -45,6 +49,12 @@ class HyperTable extends Model
     public const STARTED = 'started';
 
     public const CANCELLED = 'cancelled';
+
+    /** A rematch a player said no to (P6). */
+    public const DECLINED = 'declined';
+
+    /** A rematch nobody started in time (P6). */
+    public const EXPIRED = 'expired';
 
     protected function casts(): array
     {
@@ -85,6 +95,26 @@ class HyperTable extends Model
     public function creator(): BelongsTo
     {
         return $this->belongsTo(User::class, 'created_by');
+    }
+
+    /**
+     * Who declined a rematch (P6).
+     *
+     * @return BelongsTo<User, $this>
+     */
+    public function closer(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'closed_by');
+    }
+
+    /**
+     * The finished match a rematch table follows.
+     *
+     * @return BelongsTo<HyperMatch, $this>
+     */
+    public function previousMatch(): BelongsTo
+    {
+        return $this->belongsTo(HyperMatch::class, 'rematch_of');
     }
 
     /**

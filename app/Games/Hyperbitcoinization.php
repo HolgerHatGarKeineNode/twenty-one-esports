@@ -8,7 +8,7 @@ use App\Games\Contracts\Game;
  * Hyperbitcoinization, the league's own strategy game (plan "Hyperbitcoinization"): Risk with currency
  * spaces for 2 to 6 seats on the server's rules core (App\Support\Hyper). Registered only while
  * `esports.hyper.enabled` is on (AppServiceProvider), so the registry knows it from P2 on; the league's
- * surfaces (lists, navigation, sitemap, stream, cover) take it up in P6; the lobby is on its own page (P3).
+ * surfaces (lists, navigation, sitemap, rules, share cards, cover) take it up in P6; the lobby is on its own page (P3).
  *
  * A match is no two-sided result: it ends with a place per seat. Its kind is its own (GameKind::Strategy),
  * so no switch that serves chess, a series, a board game or a score game takes it for one of those.
@@ -67,6 +67,7 @@ final class Hyperbitcoinization implements Game
 
     public function assets(): GameAssets
     {
-        return new GameAssets('flag', 'var(--color-btc)', 'var(--color-btc-deep)', 'Hyper');
+        // The cover is the title art (public/hyper/art/key-title.jpg) cut to 16:9 (P6).
+        return new GameAssets('flag', 'var(--color-btc)', 'var(--color-btc-deep)', 'Hyper', new GameCover(self::SLUG));
     }
 }

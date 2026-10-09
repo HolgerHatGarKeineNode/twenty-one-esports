@@ -4,12 +4,14 @@ namespace App\Support\Tournaments;
 
 use App\Enums\BoardGameStatus;
 use App\Enums\ChessGameStatus;
+use App\Enums\HyperMatchStatus;
 use App\Enums\NotificationKind;
 use App\Enums\SeriesResolution;
 use App\Enums\TournamentStatus;
 use App\Events\TournamentChanged;
 use App\Models\BoardGame;
 use App\Models\ChessGame;
+use App\Models\HyperMatch;
 use App\Models\SeriesMatch;
 use App\Models\Tournament;
 use App\Models\TournamentMatch;
@@ -26,6 +28,7 @@ use App\Support\Chess\Broadcasts;
 use App\Support\Chess\ChessGameService;
 use App\Support\Chess\ChessRuleViolation;
 use App\Support\Hyper\HyperMatches;
+use App\Support\Hyper\HyperSeason;
 use App\Support\Notifications\Notice;
 use App\Support\Notifications\Notifier;
 use App\Support\Rating\RatingService;
@@ -52,7 +55,9 @@ use Illuminate\Support\Facades\RateLimiter;
  *    without `elo` like the league's other decisions. A correction of a
  *    played result that moved rated Elo reverts that Elo and rates the
  *    corrected outcome ({@see RatingService::correct()}, delta only); a
- *    corrected forfeit reverts it and rates nothing. Casual Elo, a closed
+ *    corrected forfeit reverts it and rates nothing. A finished rated
+ *    Hyperbitcoinization 1v1 or team match is corrected the same way in its
+ *    own season Elo ({@see HyperSeason::correct()}). Casual Elo, a closed
  *    season and a result that moved no Elo stay as they are. The old
  *    attestation stays as it was (the NIP defines no rating correction in
  *    V1); the log records the Elo effect. The bracket then re-flows ({@see propagate()}): a later
@@ -100,6 +105,7 @@ final class TournamentControl
         private RatingService $ratings,
         private BoardGameService $boards,
         private HyperMatches $hyper,
+        private HyperSeason $hyperSeason,
     ) {}
 
     /* ---------- 1. Results ------------------------------------------------------------------------------------ */
@@ -164,6 +170,12 @@ final class TournamentControl
             // A played result that moved rated Elo: revert it, rate the correction (inside this transaction).
             [$played, $score, $swap] = $this->eloSubject($match, $series, $game ?? $board, $result);
             $elo = self::inSlotOrder($played === null ? null : $this->ratings->correct($played, $score), $swap);
+
+            // A finished rated Hyperbitcoinization 1v1 or team match (P6): its season Elo, corrected the same way.
+            if ($played === null) {
+                [$played, $side, $swap] = $this->hyperEloSubject($match, $result);
+                $elo = self::inSlotOrder($played === null ? null : $this->hyperSeason->correct($played, $side), $swap);
+            }
             // A correction of a correction with the same outcome moves nothing new; the Elo stays corrected.
             $standing = $elo ?? ($played !== null && ($previous['winner'] ?? false) === $result['winner'] && (bool) ($previous['forfeit'] ?? false) === (bool) $result['forfeit'] ? ($previous['elo'] ?? null) : null);
             $stored = $result + ['by' => 'control', 'unrated' => $standing === null, 'reason' => $reason]
@@ -253,7 +265,13 @@ final class TournamentControl
 
         [$played, $score, $swap] = $this->eloSubject($match, $this->current($match, $match->seriesMatch), $this->current($match, $match->chessGame) ?? $this->current($match, $match->boardGame), $result);
 
-        return self::inSlotOrder($played === null ? null : $this->ratings->correction($played, $score), $swap);
+        if ($played === null) {
+            [$hyper, $side, $swap] = $this->hyperEloSubject($match, $result);
+
+            return self::inSlotOrder($hyper === null ? null : $this->hyperSeason->correction($hyper, $side), $swap);
+        }
+
+        return self::inSlotOrder($this->ratings->correction($played, $score), $swap);
     }
 
     /**
@@ -317,6 +335,44 @@ final class TournamentControl
             $winner === $whiteSlot => 1.0,
             default => 0.0,
         }, $whiteSlot === 1];
+    }
+
+    /**
+     * The finished rated Hyperbitcoinization match (plan "Hyperbitcoinization", P6) whose season Elo a result set
+     * here corrects, the side that won now (HyperSeason::sides(), null for a forfeit or a result without a
+     * winner: no Elo), and whether side 0 sits in the second slot. No subject for a running, voided, replaced or
+     * casual match, or when the sides cannot be told from the slots (fail closed: no Elo moves).
+     *
+     * @param  array<string, mixed>  $result
+     * @return array{0: HyperMatch|null, 1: int|null, 2: bool}
+     */
+    private function hyperEloSubject(TournamentMatch $match, array $result): array
+    {
+        $played = $match->hyperMatch()->with('seats')->first();
+
+        if ($played === null || $match->isReplaced($played->id) || $played->status !== HyperMatchStatus::Finished || ! $played->rated) {
+            return [null, null, false];
+        }
+
+        $sides = HyperSeason::sides($played, HyperSeason::kindOf($played));
+        $first = $match->slots[0]->participant?->memberIds() ?? [];
+        $second = $match->slots[1]->participant?->memberIds() ?? [];
+        $side0 = $sides->get(0)?->pluck('user_id')->map(intval(...))->all() ?? [];
+        $slot = match (true) {
+            $side0 === [] => null,
+            array_intersect($side0, $first) !== [] && array_intersect($side0, $second) === [] => 0,
+            array_intersect($side0, $second) !== [] && array_intersect($side0, $first) === [] => 1,
+            default => null,
+        };
+
+        if ($slot === null) {
+            return [null, null, false];
+        }
+
+        $winner = $result['winner'];
+        $side = (bool) ($result['forfeit'] ?? false) || ! is_int($winner) ? null : ($winner === $slot ? 0 : 1);
+
+        return [$played, $side, $slot === 1];
     }
 
     /**

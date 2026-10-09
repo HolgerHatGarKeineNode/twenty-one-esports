@@ -27,9 +27,16 @@
                 @php
                     $scoreGame = $registry->get($game['slug']);
                     // A score game (plan "AoE2 und Trackmania", P4): no Elo ladder, a value per player and points per place.
-                    $facts = $scoreGame instanceof \App\Games\ScoreGame
-                        ? [$scoreGame->metric($mode)->lowerIsBetter() ? __('Time attack, the fastest time wins') : __('Highscore, the highest score wins'), __('points per place')]
-                        : [$mode->rates === 'player' ? __('Player ladder') : __('Clan lineup')];
+                    $facts = match (true) {
+                        $scoreGame instanceof \App\Games\ScoreGame => [$scoreGame->metric($mode)->lowerIsBetter() ? __('Time attack, the fastest time wins') : __('Highscore, the highest score wins'), __('points per place')],
+                        // Hyperbitcoinization (P6): the turn time, 2 to 6 seats, its own season ladder.
+                        $scoreGame->kind() === \App\Games\GameKind::Strategy => [
+                            $mode->slug === \App\Models\HyperMatch::CORRESPONDENCE ? __(':hours h per turn', ['hours' => (int) config('esports.hyper.correspondence_hours', 24)]) : __(':seconds s per turn', ['seconds' => (int) config('esports.hyper.turn_seconds', 90)]),
+                            __('2 to 6 players'),
+                            __('season points and Elo'),
+                        ],
+                        default => [$mode->rates === 'player' ? __('Player ladder') : __('Clan lineup')],
+                    };
                     if ($mode->bestOf !== []) {
                         $facts[] = __('best of :list', ['list' => implode(' / ', $mode->bestOf)]);
                     }

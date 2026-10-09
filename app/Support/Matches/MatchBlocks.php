@@ -4,12 +4,17 @@ namespace App\Support\Matches;
 
 use App\Enums\BoardGameStatus;
 use App\Enums\ChessGameStatus;
+use App\Enums\HyperMatchStatus;
 use App\Games\GameRegistry;
+use App\Games\Hyperbitcoinization;
 use App\Models\BoardGame;
 use App\Models\ChessGame;
 use App\Models\Clan;
+use App\Models\HyperMatch;
+use App\Models\HyperSeat;
 use App\Models\User;
 use App\Support\GameNames;
+use App\Support\Hyper\HyperNames;
 use Carbon\CarbonInterface;
 
 /**
@@ -46,7 +51,8 @@ final class MatchBlocks
      * @param  list<array{name: string, user: User|null, clan: Clan|null, won: bool}>  $sides
      * @param  'fin'|'live'|'next'  $state
      * @param  array{state: 'mined'|'void'|'none', height: int|null, href: string|null, text: string, note: string|null, reason: string|null, title: string, spoken: string}|null  $chain
-     * @return array{key: string, number: string, slug: string, game: string, icon: string, mode: string, score: string, word: bool, who: string, when: string, sides: list<array{name: string, user: User|null, clan: Clan|null, won: bool}>, href: string, aria: string, level: string, casual: bool, state: string, dot: bool, newest: bool, chain: array{state: 'mined'|'void'|'none', height: int|null, href: string|null, text: string, note: string|null, reason: string|null, title: string, spoken: string}|null}
+     *                                                                                                                                                                                     `blank`: the cube opens its match in a new tab (a Hyperbitcoinization match is a full-screen page of its own).
+     * @return array{key: string, number: string, slug: string, game: string, icon: string, mode: string, score: string, word: bool, who: string, when: string, sides: list<array{name: string, user: User|null, clan: Clan|null, won: bool}>, href: string, aria: string, level: string, casual: bool, state: string, dot: bool, newest: bool, chain: array{state: 'mined'|'void'|'none', height: int|null, href: string|null, text: string, note: string|null, reason: string|null, title: string, spoken: string}|null, blank: bool}
      */
     public static function shape(
         string $key,
@@ -66,6 +72,7 @@ final class MatchBlocks
         bool $word = false,
         bool $newest = false,
         ?array $chain = null,
+        bool $blank = false,
     ): array {
         return [
             'key' => $key,
@@ -87,6 +94,7 @@ final class MatchBlocks
             'dot' => $dot,
             'newest' => $newest,
             'chain' => $chain,
+            'blank' => $blank,
         ];
     }
 
@@ -147,6 +155,67 @@ final class MatchBlocks
             newest: $newest,
             chain: $chain,
             expectedPly: 60,
+        );
+    }
+
+    /**
+     * A Hyperbitcoinization match (plan "Hyperbitcoinization", P6), 2 to 6 seats: the round as its score, the
+     * winner (a team's name in a team match) or whose turn it is, and under the cube the first two seats by place
+     * with "+N" for the rest. Opens the full-screen match in a new tab. It mines no block (LadderEvents), so it
+     * carries no chain stamp. Only called while its route is there (MempoolStrip checks Route::has('hyper.match')).
+     *
+     * @return array<string, mixed>
+     */
+    public static function hyper(HyperMatch $match, bool $newest = false): array
+    {
+        $finished = $match->status === HyperMatchStatus::Finished;
+        $round = (int) ($match->state['round'] ?? 1);
+        $seats = HyperNames::ordered($match);
+        $daily = $match->isCorrespondence();
+        $mode = $daily ? __('Daily game') : GameNames::mode(Hyperbitcoinization::SLUG, $match->mode);
+        $toMove = collect($seats)->firstWhere('seat', $match->current_seat);
+        $winner = $finished ? HyperNames::winner($match) : null;
+        $who = match (true) {
+            $finished => $winner ?? '–',
+            $toMove !== null => __(":name's turn", ['name' => HyperNames::seat($toMove)]),
+            default => '',
+        };
+        $score = __('round :n', ['n' => $round]);
+        $more = max(0, count($seats) - 2);
+        $sides = array_map(fn (HyperSeat $seat, int $index): array => [
+            'name' => HyperNames::seat($seat).($index === 1 && $more > 0 ? ' +'.$more : ''),
+            'user' => $seat->user,
+            'clan' => null,
+            'won' => $finished && $seat->place === 1,
+        ], array_slice($seats, 0, 2), [0, 1]);
+        $game = GameNames::game(Hyperbitcoinization::SLUG);
+
+        return self::shape(
+            key: 'hyper-'.$match->id,
+            number: '',
+            slug: Hyperbitcoinization::SLUG,
+            mode: $mode,
+            score: $score,
+            who: $who,
+            when: match (true) {
+                $finished => $match->ended_at?->diffForHumans(['short' => true]) ?? '',
+                $daily => __('running'),
+                default => __('live'),
+            },
+            sides: array_slice($sides, 0, 2),
+            href: route('hyper.match', $match),
+            aria: implode(', ', array_filter([
+                $game.' '.$mode,
+                $finished ? $score.' '.$who : $who,
+                implode(', ', array_map(HyperNames::seat(...), $seats)),
+            ], fn (string $part): bool => $part !== '')),
+            state: $finished ? 'fin' : 'live',
+            level: $finished ? '100%' : (int) round(min(1, $round / 20) * 100).'%',
+            casual: ! $match->rated,
+            dot: ! $finished && ! $daily,
+            word: true,
+            newest: $newest,
+            blank: true,
         );
     }
 

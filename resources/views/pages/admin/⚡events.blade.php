@@ -53,6 +53,11 @@ new #[Title('Weekly events')] #[Layout('layouts::app', ['section' => 'admin'])] 
         // Every game of the registry, the board games that are switched on included (plan "Mühle und Dame", P6); no score
         // game, which has no Elo ladder (plan "AoE2 und Trackmania", P4).
         foreach (app(GameRegistry::class)->versus() as $game) {
+            // Hyperbitcoinization (P6) keeps its season in its own tables: no Rating ladder an event could point at.
+            if ($game->kind() === \App\Games\GameKind::Strategy) {
+                continue;
+            }
+
             foreach ($game->modes() as $mode) {
                 $ladders[$game->slug().'/'.$mode->slug] = __($game->name()).' · '.__($mode->name);
             }

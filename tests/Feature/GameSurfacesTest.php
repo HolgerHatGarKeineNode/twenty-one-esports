@@ -4,7 +4,9 @@ use App\Enums\BoardEndReason;
 use App\Games\Blockfill;
 use App\Games\Blockli;
 use App\Games\Checkers;
+use App\Games\GameKind;
 use App\Games\GameRegistry;
+use App\Games\Hyperbitcoinization;
 use App\Games\NineMensMorris;
 use App\Games\ScoreGame;
 use App\Games\TrackmaniaNationsForever;
@@ -25,6 +27,7 @@ use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Route;
 use Tests\Support\FakeGame;
 use Tests\Support\FakeScoreGame;
+use Tests\Support\HyperOn;
 
 /*
 |--------------------------------------------------------------------------
@@ -37,7 +40,8 @@ use Tests\Support\FakeScoreGame;
 | missing from a surface that kept its own list: /matches, home and the
 | player page. This guard turns every switch on (board games, Blockfill,
 | TrackMania Nations Forever, the score demo), registers a made-up versus
-| game and a made-up score game next to the real ones, and asserts that each
+| game and a made-up score game next to the real ones (Hyperbitcoinization
+| among them since its P6), and asserts that each
 | game shows on each surface.
 | A surface that hard-codes its games misses at least the made-up ones and
 | fails here, naming the surface and the games it lost.
@@ -63,11 +67,12 @@ beforeEach(function () {
         'esports.blockfill.enabled' => true,
         'esports.score_games.demo' => true,
         'esports.tmnf.enabled' => true,
+        'esports.hyper.enabled' => true,
     ]);
     app()->forgetInstance(GameRegistry::class);
 
     // As routes/web.php routes them when the switches are on at boot (the test app boots with them off).
-    foreach (['board.show' => 'board.php', 'stacker.runs.issue' => 'stacker.php', 'scores.show' => 'score.php'] as $name => $file) {
+    foreach (['board.show' => 'board.php', 'stacker.runs.issue' => 'stacker.php', 'scores.show' => 'score.php', 'hyper.index' => 'hyper.php'] as $name => $file) {
         if (! Route::has($name)) {
             Route::middleware('web')->group(base_path('routes/'.$file));
         }
@@ -87,7 +92,8 @@ beforeEach(function () {
 
 /**
  * A player with one result in every registered game: a casual rating in the
- * first mode of a versus game, a verified attempt in the first mode of a score game.
+ * first mode of a versus game, a verified attempt in the first mode of a score game,
+ * a finished Hyperbitcoinization match.
  */
 function gameSurfacesPlayer(): User
 {
@@ -95,6 +101,13 @@ function gameSurfacesPlayer(): User
 
     foreach (app(GameRegistry::class)->all() as $slug => $game) {
         $mode = (string) array_key_first($game->modes());
+
+        // Hyperbitcoinization (plan "Hyperbitcoinization", P6) keeps no Rating: a finished match puts it on the page.
+        if ($game->kind() === GameKind::Strategy) {
+            HyperOn::finishTable(HyperOn::versus($player, User::factory()->create()), [0, 1]);
+
+            continue;
+        }
 
         if ($game instanceof ScoreGame) {
             ScoreRun::query()->create([
@@ -177,7 +190,7 @@ test('the registry under test holds every kind of game, the made-up ones include
     $registry = app(GameRegistry::class);
 
     // Not a surface: proof that the switches above took, so a guard below cannot pass over an empty registry.
-    expect(array_keys($registry->all()))->toContain('chess', 'rocket-league', NineMensMorris::SLUG, Checkers::SLUG, Blockli::SLUG, Blockfill::SLUG, TrackmaniaNationsForever::SLUG, 'score-demo', 'fake-arena', FakeScoreGame::SLUG)
+    expect(array_keys($registry->all()))->toContain('chess', 'rocket-league', NineMensMorris::SLUG, Checkers::SLUG, Blockli::SLUG, Blockfill::SLUG, TrackmaniaNationsForever::SLUG, Hyperbitcoinization::SLUG, 'score-demo', 'fake-arena', FakeScoreGame::SLUG)
         ->and($registry->scores())->toHaveKeys([Blockfill::SLUG, TrackmaniaNationsForever::SLUG, 'score-demo', FakeScoreGame::SLUG]);
 });
 
@@ -186,7 +199,7 @@ test('the player page shows every game the player has a result in', function () 
 
     $html = $this->get(route('players.show', $player->npub))->assertOk()->getContent();
 
-    expect(gameSurfacesMissing(gameSurfacesAttribute($html, ['player-ladder', 'player-score'])))->toBe([]);
+    expect(gameSurfacesMissing(gameSurfacesAttribute($html, ['player-ladder', 'player-score', 'player-hyper'])))->toBe([]);
     gameSurfacesInOrder(gameSurfacesAttribute($html, ['player-ladder']), 'the player page ladders');
     gameSurfacesInOrder(gameSurfacesAttribute($html, ['player-score']), 'the player page highscores');
 });

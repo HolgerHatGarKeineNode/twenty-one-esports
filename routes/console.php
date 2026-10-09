@@ -118,7 +118,8 @@ Schedule::command('board:check-clocks')->everyTenSeconds()->withoutOverlapping()
  * whose turn deadline passed is checked, in case the delayed App\Jobs\CheckHyperClock did not run. A
  * player's turn ends (`end_turn`, placed troops stay), an overdue bot turn is played. Only the server clock
  * decides, so running it often is harmless; with the switch off there are no matches to find. It also reports a
- * finished tournament table again whose places never reached the bracket (P5c), so a failed report stalls nothing.
+ * finished tournament table again whose places never reached the bracket (P5c), so a failed report stalls nothing,
+ * and closes rematch offers that ran out (P6).
  */
 Artisan::command('hyper:check-clocks', function (HyperMatches $matches, HyperLobby $lobby, TournamentRunner $runner) {
     $due = HyperMatch::query()
@@ -143,6 +144,14 @@ Artisan::command('hyper:check-clocks', function (HyperMatches $matches, HyperLob
         $filled = 0;
     }
 
+    // Rematch offers that ran out close for everybody (P6).
+    try {
+        $expired = $lobby->closeExpiredRematches();
+    } catch (Throwable $e) {
+        report($e);
+        $expired = 0;
+    }
+
     // A tournament table whose places never reached its bracket (the report after the commit failed): reported again (P5c).
     try {
         $reported = $runner->reportUnreportedHyperMatches();
@@ -151,8 +160,8 @@ Artisan::command('hyper:check-clocks', function (HyperMatches $matches, HyperLob
         $reported = 0;
     }
 
-    $this->info("Checked {$due->count()} match(es), started {$filled} table(s), reported {$reported} tournament table(s).");
-})->purpose('End Hyperbitcoinization turns whose time ran out, fill live lobby tables whose wait is over, and report tournament tables again');
+    $this->info("Checked {$due->count()} match(es), started {$filled} table(s), closed {$expired} rematch(es), reported {$reported} tournament table(s).");
+})->purpose('End Hyperbitcoinization turns whose time ran out, fill live lobby tables whose wait is over, close rematch offers that ran out, and report tournament tables again');
 
 Schedule::command('hyper:check-clocks')->everyTenSeconds()->withoutOverlapping();
 

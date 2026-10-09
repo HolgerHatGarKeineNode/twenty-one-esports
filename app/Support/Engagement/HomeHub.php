@@ -8,11 +8,14 @@ use App\Enums\SeriesStatus;
 use App\Enums\TournamentFormat;
 use App\Enums\TournamentStatus;
 use App\Games\Blockfill;
+use App\Games\GameKind;
 use App\Games\GameRegistry;
+use App\Games\Hyperbitcoinization;
 use App\Games\ScoreGame;
 use App\Games\TrackmaniaNationsForever;
 use App\Models\ChessGame;
 use App\Models\Clan;
+use App\Models\ClanMember;
 use App\Models\Rating;
 use App\Models\ScoreRun;
 use App\Models\SeriesMatch;
@@ -22,6 +25,7 @@ use App\Support\Chess\ChessTeamMatches;
 use App\Support\Dock\DockItem;
 use App\Support\Dock\OpenMatches;
 use App\Support\GameNames;
+use App\Support\Hyper\HyperSeason;
 use App\Support\Rating\Ratings;
 use App\Support\Scores\ScoreRuns;
 use App\Support\Scores\ScoreStanding;
@@ -56,7 +60,7 @@ use Throwable;
  * @phpstan-type Seat array{user: User|null, clan: Clan|null, name: string, you: bool}
  * @phpstan-type Cup array{tournament: Tournament, cta: string, places: array{taken: int, places: int, lineups: int, solos: int}, open: int, seats: list<Seat>, pot: array<string, mixed>|null, startsIn: array{ms: int, text: string}|null}
  * @phpstan-type Result array{kind: string, at: CarbonInterface|null, href: string, winner: string, loser: string, face: User|null, clan: Clan|null, draw: bool, game: string}
- * @phpstan-type Ladder array{game: string, mode: string, name: string, pool: string, href: string, rows: list<array{place: int, rating: int, name: string, user: User|null, clan: Clan|null}>}
+ * @phpstan-type Ladder array{game: string, mode: string, name: string, pool: string, href: string, rows: list<array{place: int, rating: int|string, name: string, user: User|null, clan: Clan|null}>}
  * @phpstan-type ScoreBoard array{game: string, mode: string, name: string, weekly: bool, board: string|null, href: string, play: string, rows: list<array{place: int, value: string, name: string, user: User}>}
  */
 final class HomeHub
@@ -274,17 +278,24 @@ final class HomeHub
         $registry = app(GameRegistry::class);
         $ladders = [];
 
-        // No score game (plan "AoE2 und Trackmania", P4): it has no Elo ladder.
+        // No score game (plan "AoE2 und Trackmania", P4): it has no Elo ladder. Hyperbitcoinization (P6) has its own
+        // season ladder (hyperLadder()), never a Rating one.
         foreach ($registry->versus() as $game) {
             $mode = array_key_first($game->modes());
+
+            if ($game->kind() === GameKind::Strategy) {
+                continue;
+            }
 
             if ($mode !== null) {
                 $ladders[] = ['game' => $game->slug(), 'mode' => (string) $mode, 'season' => Ratings::season(Rating::RATED, $game->slug(), (string) $mode)];
             }
         }
 
+        $hyper = $this->hyperLadder();
+
         if ($ladders === []) {
-            return [];
+            return $hyper;
         }
 
         $ranked = Rating::query()
@@ -304,7 +315,7 @@ final class HomeHub
             ->orderBy('place')->get()
             ->groupBy(fn (Rating $row): string => $row->game.'|'.$row->mode.'|'.$row->pool);
 
-        return array_map(function (array $ladder) use ($rows): array {
+        return [...array_map(function (array $ladder) use ($rows): array {
             $key = $ladder['game'].'|'.$ladder['mode'].'|';
             $rated = $rows->get($key.Rating::RATED);
             $pool = $rated !== null && $rated->isNotEmpty() ? Rating::RATED : Rating::CASUAL;
@@ -323,7 +334,41 @@ final class HomeHub
                     'clan' => $row->lineup->clan ?? $row->user?->clanMember?->clan,
                 ])->all()),
             ];
-        }, $ladders);
+        }, $ladders), ...$hyper];
+    }
+
+    /**
+     * Hyperbitcoinization's card in the ladder grid (plan "Hyperbitcoinization", P6): the top three of the live
+     * season's free-for-all points (HyperSeason), its own ladder page as the link. Empty rows outside a season;
+     * no card while the game is off or its page is not routed. `rating` is the points with their unit ("12 pts").
+     *
+     * @return list<Ladder>
+     */
+    private function hyperLadder(): array
+    {
+        if (app(GameRegistry::class)->find(Hyperbitcoinization::SLUG) === null || ! Route::has('hyper.ladder')) {
+            return [];
+        }
+
+        $season = HyperSeason::seasonFor();
+        $top = $season === null ? [] : array_slice(app(HyperSeason::class)->ffaStandings($season, 3), 0, 3);
+        $members = $top === [] ? collect() : ClanMember::query()->whereIn('user_id', array_map(fn (array $row): int => $row['user']->id, $top))->with('clan')->get()->keyBy('user_id');
+
+        return [[
+            'game' => Hyperbitcoinization::SLUG,
+            'mode' => 'season',
+            'name' => __('Hyperbitcoinization season'),
+            // The ladder counts rated matches only.
+            'pool' => Rating::RATED,
+            'href' => route('hyper.ladder'),
+            'rows' => array_map(fn (array $row): array => [
+                'place' => $row['rank'],
+                'rating' => (string) __(':points pts', ['points' => $row['points']]),
+                'name' => $row['user']->displayName(),
+                'user' => $row['user'],
+                'clan' => $members->get($row['user']->id)?->clan,
+            ], $top),
+        ]];
     }
 
     /**

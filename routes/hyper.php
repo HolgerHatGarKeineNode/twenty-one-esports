@@ -35,6 +35,8 @@ Route::prefix('hyperbitcoinization')->name('hyper.')->group(function () {
         Route::post('m/{match}/emote', [HyperMatchController::class, 'emote'])->whereUlid('match')->name('emote');
         Route::post('m/{match}/leave', [HyperMatchController::class, 'leave'])->whereUlid('match')->name('leave');
         Route::post('m/{match}/rematch', [HyperMatchController::class, 'rematch'])->whereUlid('match')->middleware('throttle:20,1')->name('rematch');
+        // P6: any player says no to the rematch; it closes for everybody.
+        Route::post('m/{match}/rematch/decline', [HyperMatchController::class, 'declineRematch'])->whereUlid('match')->middleware('throttle:20,1')->name('rematch.decline');
         // The team chat's members (P4): answered only to a player of the team.
         Route::get('m/{match}/team', [HyperMatchController::class, 'team'])->whereUlid('match')->middleware('throttle:60,1')->name('team');
     });
