@@ -8,24 +8,44 @@
  * The player's paddle follows the pointer (mouse, or a thumb dragged anywhere on the page) or the keys: W/S and the
  * arrows (left/right as well on an upright field).
  */
-import { createArena, fieldYAt } from './arena.js';
+import { autoQuality, createArena, fieldYAt } from './arena.js';
 import { HEIGHT } from './physics.js';
 
 export const KEY_STEP = 1800;
 
 /**
  * The page's saved settings (localStorage `pong-settings`, the browser test's handle): `speed` runs the clock of a game
- * against a bot faster (1 = real time), `autoplay` lets a bot of that level play the player's paddle.
+ * against a bot faster (1 = real time), `autoplay` lets a bot of that level play the player's paddle, `quality` is the
+ * arena's tier (auto, high, medium, low), `motion` false turns the moving effects off as the system's reduced motion
+ * does.
  */
 export function readSettings() {
+    const reduced = matchMedia('(prefers-reduced-motion: reduce)').matches;
     try {
         const stored = JSON.parse(localStorage.getItem('pong-settings') || '{}');
         const speed = Number(stored.speed);
         const autoplay = Number(stored.autoplay);
 
-        return { speed: Number.isFinite(speed) && speed > 0 ? Math.min(speed, 200) : 1, autoplay: [1, 2, 3, 4].includes(autoplay) ? autoplay : null };
+        return {
+            speed: Number.isFinite(speed) && speed > 0 ? Math.min(speed, 200) : 1,
+            autoplay: [1, 2, 3, 4].includes(autoplay) ? autoplay : null,
+            quality: ['high', 'medium', 'low'].includes(stored.quality) ? stored.quality : 'auto',
+            motion: typeof stored.motion === 'boolean' ? stored.motion : !reduced,
+            force2d: stored.force2d === true,
+        };
     } catch {
-        return { speed: 1, autoplay: null };
+        return { speed: 1, autoplay: null, quality: 'auto', motion: !reduced, force2d: false };
+    }
+}
+
+/** Saves one of the settings above, keeping the others. */
+export function writeSetting(key, value) {
+    try {
+        const stored = JSON.parse(localStorage.getItem('pong-settings') || '{}');
+        stored[key] = value;
+        localStorage.setItem('pong-settings', JSON.stringify(stored));
+    } catch {
+        // Held for this visit only.
     }
 }
 
@@ -52,7 +72,13 @@ export function createStage() {
     const $ = (id) => document.getElementById(id);
     const field = $('field');
     const stage = $('stage');
-    const arena = createArena($('arena'));
+    const settings = readSettings();
+    const arena = createArena($('arena'), $('arena3d'), { motion: settings.motion, force2d: settings.force2d });
+    // A software renderer (SwiftShader, llvmpipe) draws on the CPU: `auto` starts it on the lowest tier.
+    const software = /swiftshader|llvmpipe|software/i.test(arena.gpu ?? '');
+    arena.setQuality(settings.quality === 'auto' ? (software ? 'low' : autoQuality()) : settings.quality);
+    document.body.classList.toggle('gl', arena.kind === 'webgl');
+    if (arena.kind !== 'webgl') $('arena3d')?.remove();
     const keys = { up: false, down: false };
     let target = HEIGHT >> 1;
     let portrait = false;
@@ -79,7 +105,8 @@ export function createStage() {
         field.style.width = `${w}px`;
         field.style.height = `${h}px`;
         box = { w, h };
-        arena.resize(w, h, portrait);
+        const r = field.getBoundingClientRect();
+        arena.resize({ W: innerWidth, H: innerHeight, field: { x: r.left, y: r.top, w, h }, portrait });
         document.body.dataset.portrait = portrait ? '1' : '0';
     };
     fit();
@@ -107,6 +134,7 @@ export function createStage() {
 
     return {
         arena,
+        settings,
         portrait: () => portrait,
         input: {
             target(current) {

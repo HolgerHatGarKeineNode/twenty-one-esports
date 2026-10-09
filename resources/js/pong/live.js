@@ -22,9 +22,11 @@ import Echo from 'laravel-echo';
 import Pusher from 'pusher-js';
 import { createNet } from '../hyper/net.js';
 import { botSpeed, createBot } from './bot.js';
-import { createStage, eventText, readConfig, readSettings } from './page.js';
+import { createStage, readConfig, readSettings } from './page.js';
 import { HEIGHT, PADDLE_HALF, PLAYER_SPEED, RALLY_TICK_CAP, TICKS_PER_SECOND, WIDTH, approaches, bounce, createRally, crossed, meets, move, speedAfter } from './physics.js';
+import { storedFigure } from './picker.js';
 import { rallySeed } from './rules.js';
+import { createShow } from './show.js';
 
 const ANNOUNCE_TICKS = 110;
 const SERVE_TICKS = 50;
@@ -38,7 +40,7 @@ const $ = (id) => document.getElementById(id);
 const http = createNet(config.csrf);
 const me = config.me;
 const opp = me === null ? 1 : 1 - me;
-const { arena, portrait: isPortrait, input } = createStage();
+const { arena, settings: stageSettings, portrait: isPortrait, input } = createStage();
 
 let snap = null;
 let applied = 0;
@@ -52,6 +54,29 @@ let opponentHere = null;
 let lastScore = null;
 let channel = null;
 const reported = new Set();
+
+/* ---------- The show (P3): figures, effects, sound ----------------------------------------------------------- */
+
+/** The figures as this page shows them: the viewer's side first (they always play side 0 on screen). */
+const shownFigures = (figures) => (me === 1 ? [figures[1], figures[0]] : [figures[0], figures[1]]);
+const theShow = createShow({ arena, settings: stageSettings, t, castTexts: config.castTexts, figures: shownFigures(config.snapshot.figures ?? [null, null]), arenaName: config.arena });
+let figuresShown = JSON.stringify(config.snapshot.figures ?? null);
+let announced = 0;
+let served = 0;
+let ended = false;
+let figureSent = null;
+
+/** The player's pick goes to the referee while the match has not had its first point. */
+async function sendFigure(id) {
+    if (me === null || !id || figureSent === id) return;
+    const s = snap;
+    if (!s || !(s.status === 'waiting' || (s.status === 'active' && s.score[0] === 0 && s.score[1] === 0))) return;
+    if ((s.figures ?? [])[me] === id) return;
+    figureSent = id;
+    const response = await http.post(config.urls.figure, { figure: id });
+    if (response.ok && response.data) apply(response.data);
+}
+document.addEventListener('pong-figure', (event) => sendFigure(event.detail.id));
 
 const serverNow = () => Date.now() + skew;
 const msOf = (ticks, speed) => (ticks * 1000) / (TICKS_PER_SECOND * speed);
@@ -236,11 +261,21 @@ function apply(next) {
     applied = next.version;
     snap = next;
 
+    const figures = JSON.stringify(next.figures ?? null);
+    if (figures !== figuresShown) {
+        figuresShown = figures;
+        theShow.setFigures(shownFigures(next.figures ?? [null, null]));
+    }
+
     const ref = next.ref;
     if (ref) {
         if (!rally || ref.rally > rally.number) {
             if (rally && rally.balls.some((ball) => ball.state === 'flying')) previous = rally;
             rally = startRally(ref);
+            if (ref.rally > served) {
+                served = ref.rally;
+                theShow.serve(ref.rally);
+            }
         } else if (ref.rally === rally.number) {
             rally.ref = ref;
             ref.balls.forEach((server, index) => {
@@ -289,8 +324,13 @@ function show() {
     if (lastScore && me !== null && s.status === 'active') {
         const won = s.score[me] - lastScore[me];
         const lost = s.score[opp] - lastScore[opp];
-        if (won > 0) flash(t('Point for you'));
-        else if (lost > 0) flash(t('Point for :name', { name: config.names[opp] }));
+        if (won > 0) {
+            flash(t('Point for you'));
+            theShow.goal(0, won);
+        } else if (lost > 0) {
+            flash(t('Point for :name', { name: config.names[opp] }));
+            theShow.goal(1, lost);
+        }
     }
     lastScore = [...s.score];
 
@@ -321,6 +361,11 @@ function end(s) {
         $('end-rating').textContent = t('Elo :before → :after (:delta)', { before: rating[0], after: rating[1], delta: delta >= 0 ? `+${delta}` : String(delta) });
     }
     document.body.dataset.result = s.status === 'aborted' ? 'aborted' : (won ? 'win' : 'loss');
+    if (!ended) {
+        ended = true;
+        const shownWinner = s.winner === null ? null : (me === 1 ? 1 - s.winner : s.winner);
+        theShow.end(s.status === 'aborted' ? null : shownWinner, me === null ? null : won);
+    }
 
     const rematch = $('rematch');
     rematch.hidden = me === null || s.status !== 'finished';
@@ -341,12 +386,10 @@ function phase(now) {
     if (until > 0) {
         const serveMs = msOf(SERVE_TICKS, snap.speed);
         if (rally.ref.event && until > serveMs) {
-            const [name, text] = eventText(t, rally.ref.event);
-            banner.querySelector('small').textContent = t('Meme event');
-            banner.querySelector('b').textContent = name;
-            banner.querySelector('span').textContent = text;
-            banner.dataset.event = rally.ref.event;
-            banner.hidden = false;
+            if (announced !== rally.number) {
+                announced = rally.number;
+                theShow.announce(rally.ref.event, until - serveMs, rally.number);
+            }
 
             return 'announce';
         }
@@ -367,7 +410,7 @@ function draw(r) {
     const alive = r.balls.map((ball) => ball.state !== 'out');
     const mine = me === null ? r.ref.paddles[0][0] : r.paddle;
     const theirs = me === null ? r.ref.paddles[1][0] : oppShown;
-    arena.render({ balls, alive, paddles: [mine, theirs], half: r.serve.half });
+    theShow.frame({ balls, alive, paddles: [mine, theirs], half: r.serve.half, event: r.ref.event });
 }
 
 function frame() {
@@ -384,7 +427,7 @@ function frame() {
     if (previous) draw(previous);
     else if (rally) draw(rally);
     // Before the first serve: the field with both paddles in the middle.
-    else arena.render({ balls: [], alive: [], paddles: [HEIGHT >> 1, HEIGHT >> 1], half: PADDLE_HALF });
+    else theShow.frame({ balls: [], alive: [], paddles: [HEIGHT >> 1, HEIGHT >> 1], half: PADDLE_HALF, event: null });
     if (!toast.hidden && performance.now() > toastUntil) toast.hidden = true;
     document.body.dataset.phase = current;
     requestAnimationFrame(frame);
@@ -472,7 +515,7 @@ document.addEventListener('visibilitychange', () => { if (document.visibilitySta
 
 apply(config.snapshot);
 skew = config.snapshot.now - Date.now();
-if (me !== null) sync();
+if (me !== null) sync().then(() => sendFigure(document.querySelector('#waiting [data-pong-picker]')?.dataset.picked ?? storedFigure()));
 requestAnimationFrame(frame);
 
 // The browser test's handle: where the match stands, in the server's orientation (side 0 first).
@@ -480,7 +523,9 @@ window.pongLive = {
     state: () => ({
         status: snap?.status, score: snap ? [...snap.score] : null, me, version: applied, winner: snap?.winner ?? null,
         rally: rally?.number ?? null, tick: rally?.g ?? null, away: snap?.away ?? null, opponentHere, portrait: isPortrait(), renderer: arena.kind,
+        figures: snap?.figures ?? null, shown: theShow.figures().map((f) => f.id),
     }),
 };
+window.pongShow = theShow;
 document.body.dataset.renderer = arena.kind;
 document.body.dataset.ready = '1';

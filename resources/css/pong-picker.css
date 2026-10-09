@@ -1,0 +1,45 @@
+/*
+ * Proof of Pong's figure picker (plan "Proof of Pong", P3; resources/views/pong/partials/figures.blade.php), on the
+ * lobby (league shell) and on the cards over the field (resources/css/pong.css imports it). Plain CSS so both pages
+ * share it: a character-select grid of portraits, the picked one large beside its name and tagline.
+ */
+.pp { margin: 0; padding: 0; border: 0; min-width: 0; display: grid; grid-template-columns: minmax(0, 1fr); gap: 12px; }
+.pp-legend { padding: 0; margin-bottom: 4px; font-size: 13px; font-weight: 700; color: var(--pp-ink-2, #a9adbd); }
+.pp-pick { display: flex; align-items: center; gap: 16px; min-width: 0; }
+.pp-pick-img { width: 120px; height: 120px; flex: none; object-fit: contain; filter: drop-shadow(0 8px 18px rgb(0 0 0 / 0.5)); }
+.pp-pick-text { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.pp-pick-name { font: 800 clamp(20px, 4vw, 28px)/1.1 var(--font-display, "Unbounded"), system-ui, sans-serif; color: var(--pp-ink, #f4f1ea); }
+.pp-pick-tagline { font-size: 14px; line-height: 1.4; color: var(--pp-ink-2, #a9adbd); }
+.pp-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(56px, 1fr)); gap: 8px; }
+.pp-face { position: relative; display: block; aspect-ratio: 1; min-height: 44px; border-radius: 12px; cursor: pointer; overflow: hidden;
+    background: radial-gradient(circle at 50% 35%, rgb(255 255 255 / 0.10), rgb(255 255 255 / 0.02) 70%); box-shadow: inset 0 0 0 1px rgb(255 255 255 / 0.08);
+    transition: box-shadow 160ms ease-out, background-color 160ms ease-out; }
+.pp-face img { position: absolute; inset: 4% 4% 0; width: 92%; height: 96%; object-fit: contain; object-position: bottom; transition: transform 180ms ease-out; }
+.pp-radio { position: absolute; opacity: 0; width: 1px; height: 1px; pointer-events: none; }
+.pp-face:hover { background-color: rgb(247 147 26 / 0.10); }
+.pp-face:hover img { transform: scale(1.06); }
+.pp-face:has(:checked) { background-color: rgb(247 147 26 / 0.18); box-shadow: inset 0 0 0 2px #f7931a, 0 0 18px rgb(247 147 26 / 0.35); }
+.pp-face:has(:checked) img { transform: scale(1.1); }
+.pp-face:has(:focus-visible) { outline: 2px solid #f7931a; outline-offset: 2px; }
+
+/* The lobby: a roster wall of five by five; from a tablet on, the picked figure stands beside it. */
+.pp:not(.pp-compact) .pp-grid { grid-template-columns: repeat(5, minmax(0, 1fr)); max-width: 560px; }
+@media (width >= 768px) {
+    .pp:not(.pp-compact) { grid-template-columns: 200px minmax(0, 1fr); align-items: start; column-gap: 24px; }
+    .pp:not(.pp-compact) .pp-legend { grid-column: 1 / -1; }
+    .pp:not(.pp-compact) .pp-pick { flex-direction: column; align-items: flex-start; gap: 12px; }
+    .pp:not(.pp-compact) .pp-pick-img { width: 200px; height: 200px; }
+}
+
+/* The small version on a card over the field: a row of name and portrait, a grid that scrolls if the card is short. */
+.pp-compact { gap: 8px; width: 100%; text-align: left; }
+.pp-compact .pp-legend { margin-bottom: 0; }
+.pp-compact .pp-pick { gap: 10px; }
+.pp-compact .pp-pick-img { width: 64px; height: 64px; }
+.pp-compact .pp-pick-name { font-size: 17px; }
+.pp-compact .pp-pick-tagline { font-size: 13px; }
+.pp-compact .pp-grid { grid-template-columns: repeat(auto-fill, minmax(46px, 1fr)); gap: 6px; max-height: var(--pp-max, 212px); overflow-y: auto; padding: 2px; overscroll-behavior: contain; }
+
+@media (prefers-reduced-motion: reduce) {
+    .pp-face, .pp-face img { transition: none; }
+}

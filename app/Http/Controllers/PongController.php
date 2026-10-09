@@ -5,7 +5,7 @@ namespace App\Http\Controllers;
 use App\Models\PongInvite;
 use App\Models\PongMatch;
 use App\Models\User;
-use App\Support\Pong\PongBot;
+use App\Support\Pong\PongCast;
 use App\Support\Pong\PongInvites;
 use App\Support\Pong\PongMatches;
 use App\Support\Pong\PongPhysics;
@@ -46,34 +46,48 @@ class PongController extends Controller
     public function index(): View
     {
         return view('pages.pong.index', [
-            'levels' => PongBot::LEVELS,
+            'bots' => PongCast::bots(),
+            'figures' => PongCast::players(),
             'rules' => PongRules::fromConfig((array) config('esports.pong')),
         ]);
     }
 
     /**
-     * A game against bot level `level` (1 to 4, default 1). `seed` replays a game (the browser test's handle); without
-     * it every game draws its own.
+     * A game against a bot: `bot` names it (the cast's bots, App\Support\Pong\PongCast), else `level` (1 to 4, default
+     * 1) picks that level's own. `figure` is the player's paddle from the lobby; without it the page shows the
+     * browser's last pick. `seed` replays a game (the browser test's handle); without it every game draws its own.
      */
     public function bot(Request $request): View
     {
         $data = $request->validate([
             'level' => ['sometimes', 'integer', 'between:1,4'],
+            'bot' => ['sometimes', 'string', 'in:'.implode(',', PongCast::botIds())],
+            'figure' => ['sometimes', 'string', 'in:'.implode(',', PongCast::playerIds())],
             'seed' => ['sometimes', 'integer', 'between:0,4294967295'],
         ]);
-        $level = (int) ($data['level'] ?? 1);
+        $bot = PongCast::bot($data['bot'] ?? null, (int) ($data['level'] ?? 1));
+        $level = $bot['level'];
         $seed = isset($data['seed']) ? (int) $data['seed'] : random_int(0, 0xFFFFFFFF);
+        $figure = $data['figure'] ?? null;
+        $arena = collect(PongCast::data()['bots'])->firstWhere('id', $bot['id'])['arena'] ?? 'studio';
 
         return view('pong.match', [
+            'figures' => PongCast::players(),
             'config' => [
                 'seed' => $seed,
                 'level' => $level,
-                'bot' => __(PongBot::LEVELS[$level]['name']),
+                'bot' => $bot['name'],
+                'botTagline' => $bot['tagline'],
+                'botFigure' => $bot['id'],
+                'figure' => $figure ?? PongCast::playerIds()[0],
+                'figurePicked' => $figure,
+                'arena' => $arena,
                 'rules' => PongRules::fromConfig((array) config('esports.pong'))->toArray(),
                 'texts' => array_combine(self::TEXTS, array_map(fn (string $key): string => __($key), self::TEXTS)),
+                'castTexts' => PongCast::texts(),
                 'urls' => [
                     'lobby' => route('pong.index', absolute: false),
-                    'again' => route('pong.bot', ['level' => $level], false),
+                    'again' => route('pong.bot', array_filter(['bot' => $bot['id'], 'figure' => $figure]), false),
                 ],
             ],
         ]);
@@ -89,10 +103,13 @@ class PongController extends Controller
         $me = $match->sideOf($viewer instanceof User ? $viewer : null);
         $names = [$match->left?->displayName() ?? '?', $match->right?->displayName() ?? '?'];
 
+        $arenas = PongCast::data()['arenas'];
+
         return view('pong.live', [
             'match' => $match,
             'me' => $me,
             'names' => $names,
+            'figures' => PongCast::players(),
             'config' => [
                 'id' => $match->ulid,
                 'me' => $me,
@@ -100,9 +117,12 @@ class PongController extends Controller
                 'csrf' => csrf_token(),
                 'snapshot' => $matches->snapshot($match, $viewer instanceof User ? $viewer : null),
                 'texts' => array_combine(self::LIVE_TEXTS, array_map(fn (string $key): string => __($key), self::LIVE_TEXTS)),
+                'castTexts' => PongCast::texts(),
+                'arena' => $arenas[$match->seed % count($arenas)],
                 'urls' => [
                     'lobby' => route('pong.index', absolute: false),
                     'sync' => route('pong.sync', $match, false),
+                    'figure' => route('pong.figure', $match, false),
                     'report' => route('pong.report', $match, false),
                     'resign' => route('pong.resign', $match, false),
                     'rematch' => route('pong.rematch', $match, false),
@@ -143,6 +163,17 @@ class PongController extends Controller
         ]);
 
         return response()->json($answer);
+    }
+
+    /** A player's figure for the match (P3): one of the cast's players, before the first point. */
+    public function figure(Request $request, PongMatch $match, PongMatches $matches): JsonResponse
+    {
+        $this->player($request, $match);
+        $data = $request->validate([
+            'figure' => ['required', 'string', 'in:'.implode(',', PongCast::playerIds())],
+        ]);
+
+        return response()->json($matches->figure($match, $request->user(), $data['figure']));
     }
 
     public function resign(Request $request, PongMatch $match, PongMatches $matches): JsonResponse

@@ -230,6 +230,9 @@ esports_sweep_stale_playwright_servers
 npm run build
 
 SHARD_FILES=(
+    # Proof of Pong's three.js arena (P3) on its own: it relaunches Chromium with software WebGL
+    # (tests/Support/BrowserWebGL.php), and SwiftShader frames are slow, so it neither slows nor touches another file.
+    "tests/Browser/PongArenaTest.php"
     "tests/Browser/BoardLeagueTest.php#!two~players~meet|a~guest~watching"
     "tests/Browser/LivePlayerTest.php#=badge~fits~the~shell~at~320 tests/Browser/BoardCorrespondenceTest.php tests/Browser/NavigateRaceTest.php tests/Browser/NavigateSpikeTest.php tests/Browser/NavigateDeploySkewTest.php tests/Browser/LadderDefaultTest.php tests/Browser/CasualLobbyCardTest.php tests/Browser/ClanRosterTest.php"
     "tests/Browser/LiveChatTest.php tests/Browser/BunkerSessionTest.php tests/Browser/GameChannelTest.php tests/Browser/NineMensMorrisTest.php tests/Browser/MeHubTest.php tests/Browser/LivewireTrafficTest.php tests/Browser/HyperSurfacesTest.php tests/Browser/PongBotTest.php tests/Browser/PongLiveTest.php"

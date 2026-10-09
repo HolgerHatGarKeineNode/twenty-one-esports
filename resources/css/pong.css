@@ -1,62 +1,190 @@
 /*
- * Proof of Pong's full-screen game page (plan "Proof of Pong", P1; resources/views/pong/match.blade.php): plain CSS,
- * no shell. The page never scrolls: the HUD on top, the field fitted into the rest by resources/js/pong/game.js
- * (refitted only when the width changes, never for a phone's address bar or keyboard).
+ * Proof of Pong's full-screen game pages (plan "Proof of Pong", P1/P2, the AAA dress P3; resources/views/pong/match
+ * and live.blade.php): plain CSS, no shell. The page never scrolls: the HUD on top, the field fitted into the rest
+ * by resources/js/pong/page.js (refitted only when the width changes, never for a phone's address bar or keyboard).
+ *
+ * With WebGL the arena is a full-screen canvas behind everything (body.gl); the field box stays where the game is and
+ * carries the overlays: a meme event's takeover (#banner), the announcer's ticker line, the goal celebration
+ * (#cheer, from the scorer's side), the start and end cards. Without WebGL the 2D canvas sits inside the field.
+ *
+ * Colour: night ground, Bitcoin orange for the player and every primary action, ice cyan for the announcer; each
+ * figure brings its own colour (--ring, --tone, --side-0/1). Type: Unbounded for scores, names and events, the
+ * system face for everything small.
  */
+@import './pong-picker.css';
+
 :root {
-    --pong-bg: #05070f;
+    --pong-bg: #04060d;
     --pong-ink: #f4f1ea;
     --pong-ink-2: #a9adbd;
+    --pong-ink-3: #7c8296;
     --pong-btc: #f7931a;
+    --pong-ice: #00b4cf;
     --pong-bot: #a78bfa;
-    --pong-card: rgb(14 18 32 / 0.92);
+    --pong-card: rgb(10 14 28 / 0.9);
+    --pong-line: rgb(255 255 255 / 0.08);
+    --hud-h: 56px;
     --font-display: var(--font-face-display, "Unbounded"), "Arial Black", system-ui, sans-serif;
     --font-mono: var(--font-face-mono, "JetBrains Mono"), ui-monospace, Menlo, monospace;
+    --ease-out: cubic-bezier(0.2, 0.8, 0.2, 1);
+    --ease-pop: cubic-bezier(0.2, 1.5, 0.4, 1);
 }
 
 [hidden] { display: none !important; }
 * { box-sizing: border-box; }
 html, body { margin: 0; height: 100%; overflow: hidden; background: var(--pong-bg); color: var(--pong-ink); }
 body { font: 500 14px/1.4 system-ui, sans-serif; user-select: none; -webkit-user-select: none; touch-action: none; overscroll-behavior: none; }
-button, a.btn { font: inherit; }
+button, a.btn, select { font: inherit; }
 
-.hud { position: fixed; inset: 0 0 auto; height: 56px; display: grid; grid-template-columns: 1fr auto 1fr; align-items: center; gap: 8px; padding: 0 12px; padding-top: env(safe-area-inset-top); }
-.hud .side { display: flex; align-items: center; gap: 10px; min-width: 0; }
+/* The three.js arena: full-screen, behind the HUD and the field. */
+.arena3d { position: fixed; left: 0; top: 0; z-index: 0; display: block; }
+body.gl #arena { display: none; }
+
+/* ---------- HUD ---------------------------------------------------------------------------------------------- */
+
+.hud { position: fixed; inset: 0 0 auto; z-index: 2; height: var(--hud-h); display: grid; grid-template-columns: 1fr auto 1fr; align-items: center; gap: 8px; padding: 0 12px; padding-top: env(safe-area-inset-top);
+    background: linear-gradient(to bottom, rgb(4 6 13 / 0.92), rgb(4 6 13 / 0.6)); }
+.hud .side { display: flex; align-items: center; gap: 8px; min-width: 0; }
 .hud .side.bot { justify-content: flex-end; }
-.hud .name { font-weight: 700; font-size: 13px; color: var(--pong-ink-2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.hud .score { font: 800 26px/1 var(--font-display); min-width: 2ch; text-align: center; }
-.hud .me .score { color: var(--pong-btc); text-shadow: 0 0 14px rgb(247 147 26 / 0.6); }
-.hud .bot .score { color: var(--pong-bot); text-shadow: 0 0 14px rgb(167 139 250 / 0.6); }
-.hud .mid { display: flex; flex-direction: column; align-items: center; gap: 2px; }
-.hud .title { font: 800 11px/1 var(--font-display); letter-spacing: 0.2em; white-space: nowrap; }
+.hud .face { width: 44px; height: 44px; flex: none; border-radius: 12px; object-fit: contain; object-position: center bottom;
+    background: radial-gradient(circle at 50% 30%, rgb(255 255 255 / 0.14), rgb(255 255 255 / 0.03) 70%); box-shadow: inset 0 0 0 2px var(--ring, var(--pong-btc)), 0 0 14px color-mix(in srgb, var(--ring, var(--pong-btc)) 45%, transparent); }
+.hud .who { display: flex; flex-direction: column; min-width: 0; line-height: 1.2; }
+.hud .side.bot .who { align-items: flex-end; text-align: right; }
+.hud .name { font-weight: 700; font-size: 13px; color: var(--pong-ink); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%; }
+.hud .fig { font-size: 12px; color: var(--pong-ink-2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%; }
+.hud .score { font: 800 28px/1 var(--font-display); min-width: 2ch; text-align: center; font-variant-numeric: tabular-nums; }
+.hud .me .score { color: var(--side-0, var(--pong-btc)); text-shadow: 0 0 14px color-mix(in srgb, var(--side-0, var(--pong-btc)) 60%, transparent); }
+.hud .bot .score { color: var(--side-1, var(--pong-bot)); text-shadow: 0 0 14px color-mix(in srgb, var(--side-1, var(--pong-bot)) 60%, transparent); }
+.hud .score.pop { animation: score-pop 420ms var(--ease-pop); }
+@keyframes score-pop { 0% { transform: scale(1); } 35% { transform: scale(1.55); filter: brightness(1.6); } 100% { transform: scale(1); } }
+.hud .mid { display: flex; align-items: center; gap: 8px; }
+.hud .mid-text { display: flex; flex-direction: column; align-items: center; gap: 4px; }
+.hud .title { font: 800 12px/1 var(--font-display); letter-spacing: 0.08em; white-space: nowrap; }
 .hud .title b { color: var(--pong-btc); }
-.hud .rally { font: 500 11px/1 var(--font-mono); color: var(--pong-ink-2); white-space: nowrap; }
-.hud .leave { display: grid; place-items: center; width: 36px; height: 36px; border-radius: 8px; color: var(--pong-ink-2); text-decoration: none; background: rgb(255 255 255 / 0.06); flex: none; }
-.hud .leave:hover, .hud .leave:focus-visible { color: var(--pong-ink); }
+.hud .rally { font: 500 12px/1 var(--font-mono); color: var(--pong-ink-2); white-space: nowrap; }
+.hud .leave { display: grid; place-items: center; width: 44px; height: 44px; flex: none; border: 0; border-radius: 10px; color: var(--pong-ink-2); text-decoration: none; background: rgb(255 255 255 / 0.06); cursor: pointer; }
+.hud .leave:hover, .hud .leave:focus-visible { color: var(--pong-ink); background: rgb(255 255 255 / 0.12); }
+.hud .leave:focus-visible, .btn:focus-visible, .settings :focus-visible { outline: 2px solid var(--pong-btc); outline-offset: 2px; }
 
-#stage { position: fixed; left: 0; right: 0; top: 56px; display: grid; place-items: center; }
-#field { position: relative; border-radius: 10px; box-shadow: 0 0 0 1px rgb(247 147 26 / 0.35), 0 0 40px rgb(247 147 26 / 0.12); overflow: hidden; background: #070b18; }
+/* ---------- The field ---------------------------------------------------------------------------------------- */
+
+#stage { position: fixed; left: 0; right: 0; top: var(--hud-h); z-index: 1; display: grid; place-items: center; }
+#field { position: relative; border-radius: 10px; box-shadow: 0 0 0 1px rgb(247 147 26 / 0.35), 0 0 40px rgb(247 147 26 / 0.12); overflow: hidden; background: #070b18; container-type: size; }
+body.gl #field { background: transparent; box-shadow: none; border-radius: 0; }
 #field canvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
 
-.overlay { position: absolute; inset: 0; display: grid; place-items: center; padding: 16px; background: rgb(3 5 12 / 0.55); }
-.card { max-width: min(420px, 100%); display: flex; flex-direction: column; align-items: center; gap: 10px; padding: 20px; border-radius: 12px; background: var(--pong-card); box-shadow: 0 0 0 1px rgb(255 255 255 / 0.08); text-align: center; }
-.card h2 { margin: 0; font: 800 clamp(18px, 4.5vw, 26px)/1.1 var(--font-display); }
+.overlay { position: absolute; inset: 0; display: grid; place-items: center; padding: 16px; background: rgb(3 5 12 / 0.6); }
+.card { max-width: min(420px, 100%); max-height: 100%; overflow: auto; display: flex; flex-direction: column; align-items: center; gap: 12px; padding: 24px; border-radius: 16px; background: var(--pong-card); box-shadow: 0 0 0 1px var(--pong-line), 0 24px 60px rgb(0 0 0 / 0.5); text-align: center; touch-action: pan-y; }
+.card.wide { max-width: min(560px, 100%); }
+.card h2 { margin: 0; font: 800 clamp(20px, 4.5vw, 28px)/1.15 var(--font-display); }
 .card p { margin: 0; color: var(--pong-ink-2); }
-.card .big { font: 800 40px/1 var(--font-display); }
-.card .actions { display: flex; flex-wrap: wrap; justify-content: center; gap: 8px; margin-top: 6px; }
-.btn { display: inline-flex; align-items: center; justify-content: center; min-height: 44px; padding: 0 18px; border-radius: 8px; border: 0; cursor: pointer; font-weight: 700; text-decoration: none; color: var(--pong-ink); background: rgb(255 255 255 / 0.08); }
-.btn.primary { background: var(--pong-btc); color: #140b00; }
+.card .big { font: 800 48px/1 var(--font-display); font-variant-numeric: tabular-nums; }
+.card .actions { display: flex; flex-wrap: wrap; justify-content: center; gap: 8px; margin-top: 4px; }
+.btn { display: inline-flex; align-items: center; justify-content: center; min-height: 44px; padding: 0 20px; border-radius: 10px; border: 0; cursor: pointer; font-weight: 700; text-decoration: none; color: var(--pong-ink); background: rgb(255 255 255 / 0.08); }
+.btn:hover { background: rgb(255 255 255 / 0.14); }
+.btn.primary { background: var(--pong-btc); color: #140b00; box-shadow: 0 0 24px rgb(247 147 26 / 0.35); }
+.btn.primary:hover { background: #ffa53a; }
+.btn:disabled { cursor: default; opacity: 0.7; }
+.card .pp { --pp-ink: var(--pong-ink); --pp-ink-2: var(--pong-ink-2); }
+/* 25 figures: five rows of five on a phone, three rows of nine where the card is wide. */
+.card .pp-compact .pp-grid { grid-template-columns: repeat(var(--pp-cols, 5), minmax(0, 1fr)); }
+@container (min-width: 600px) { .card .pp-compact { --pp-cols: 9; } }
+@container (min-height: 600px) { .card .pp-compact { --pp-max: 400px; } }
+@container (max-height: 700px) {
+    .card { padding: 16px; gap: 10px; }
+    .card.wide > p:not([class]) { display: none; }
+}
+.card .pp-grid { touch-action: pan-y; }
 
-.banner { position: absolute; left: 50%; top: 18%; transform: translateX(-50%); max-width: calc(100% - 24px); padding: 10px 16px; border-radius: 10px; background: var(--pong-card); box-shadow: 0 0 0 1px var(--pong-btc), 0 0 30px rgb(247 147 26 / 0.35); text-align: center; pointer-events: none; }
-.banner small { display: block; font: 700 10px/1 var(--font-mono); letter-spacing: 0.2em; text-transform: uppercase; color: var(--pong-btc); }
-.banner b { display: block; margin-top: 4px; font: 800 18px/1.1 var(--font-display); }
-.banner span { display: block; margin-top: 2px; font-size: 12px; color: var(--pong-ink-2); }
-.toast { position: absolute; left: 50%; bottom: 12%; transform: translateX(-50%); padding: 6px 12px; border-radius: 999px; background: var(--pong-card); font-weight: 700; white-space: nowrap; pointer-events: none; }
+/* The end card: the winner's pose stands on the card. */
+.card.end { padding-top: 16px; }
+.end-pose { width: clamp(120px, 34cqmin, 260px); height: auto; aspect-ratio: 1; object-fit: contain; margin: -8px 0 -16px; filter: drop-shadow(0 0 28px color-mix(in srgb, var(--tone, var(--pong-btc)) 55%, transparent)); }
+.end-ticker { font: 700 14px/1.3 var(--font-display); color: var(--pong-ice) !important; }
 
+/* A short field (a phone lying, a low window): the cards shrink to what matters. */
+@container (max-height: 460px) {
+    .overlay { padding: 8px; }
+    .card { gap: 8px; padding: 12px 16px; }
+    .card h2 { font-size: 18px; }
+    .card .big { font-size: 34px; }
+    .card .pp-compact { --pp-max: 100px; --pp-cols: 9; }
+    .card .pp-compact .pp-pick-img { width: 44px; height: 44px; }
+    .card .pp-compact .pp-pick-tagline, .card .hint-desktop, .card .hint-touch, .card.wide > p { display: none !important; }
+    .end-pose { width: clamp(80px, 30cqh, 140px); margin: -4px 0 -8px; }
+}
+
+/* ---------- A meme event takes the field over ------------------------------------------------------------------ */
+
+.banner { --ev: var(--pong-ice); position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px; padding: 16px; text-align: center; pointer-events: none;
+    background: radial-gradient(ellipse at center, color-mix(in srgb, var(--ev) 26%, transparent), transparent 62%); }
+.banner[data-event=halving] { --ev: #67e8f9; }
+.banner[data-event=brrr] { --ev: #22c55e; }
+.banner[data-event=pizza] { --ev: #fb923c; }
+.banner[data-event=difficulty] { --ev: #ef4444; }
+.banner img { width: clamp(88px, 30cqmin, 200px); height: auto; aspect-ratio: 1; object-fit: contain; filter: drop-shadow(0 0 30px color-mix(in srgb, var(--ev) 70%, transparent)); }
+.banner small { display: block; font-size: 13px; font-weight: 700; color: var(--ev); }
+.banner b { display: block; font: 800 clamp(26px, 9cqmin, 56px)/1.05 var(--font-display); text-shadow: 0 0 24px color-mix(in srgb, var(--ev) 80%, transparent), 0 2px 0 rgb(0 0 0 / 0.6); }
+.banner span { display: block; max-width: 36ch; font-size: 15px; color: var(--pong-ink); text-shadow: 0 1px 2px rgb(0 0 0 / 0.8); }
+.banner.in img { animation: event-icon 560ms var(--ease-pop) both; }
+.banner.in small, .banner.in b, .banner.in span { animation: rise 320ms var(--ease-out) 140ms both; }
+@keyframes event-icon { 0% { transform: scale(0.3) rotate(-24deg); opacity: 0; } 60% { transform: scale(1.12) rotate(4deg); opacity: 1; } 100% { transform: scale(1) rotate(0); } }
+@keyframes rise { from { transform: translateY(12px); opacity: 0; } to { transform: none; opacity: 1; } }
+
+/* The announcer's line of the ticker, now and then on a serve. */
+.ticker { position: absolute; left: 50%; top: 10%; transform: translateX(-50%); max-width: calc(100% - 32px); padding: 8px 16px; border-radius: 10px; background: rgb(4 6 13 / 0.78);
+    box-shadow: inset 3px 0 0 var(--pong-ice); font: 700 14px/1.3 var(--font-display); color: var(--pong-ice); text-align: center; pointer-events: none; }
+.ticker.in { animation: ticker 2600ms var(--ease-out) both; }
+@keyframes ticker { 0% { opacity: 0; transform: translate(-50%, -8px); } 10%, 85% { opacity: 1; transform: translate(-50%, 0); } 100% { opacity: 0; } }
+
+.toast { position: absolute; left: 50%; bottom: 12%; transform: translateX(-50%); padding: 8px 12px; border-radius: 10px; background: var(--pong-card); font-weight: 700; white-space: nowrap; pointer-events: none; }
+
+/* ---------- The goal celebration: the scorer's pose from their side ----------------------------------------- */
+
+.cheer { --tone: var(--pong-btc); position: absolute; bottom: 0; left: 0; height: min(80%, 440px); display: flex; align-items: flex-end; gap: 0; cursor: pointer; }
+.cheer[data-side="1"] { left: auto; right: 0; flex-direction: row-reverse; }
+.cheer img { height: 100%; width: auto; aspect-ratio: 1; object-fit: contain; filter: drop-shadow(0 0 26px color-mix(in srgb, var(--tone) 60%, transparent)) drop-shadow(0 10px 18px rgb(0 0 0 / 0.6)); }
+.cheer-text { display: flex; flex-direction: column; gap: 0; padding-bottom: 12%; margin-left: -8%; }
+.cheer[data-side="1"] .cheer-text { margin: 0 -8% 0 0; align-items: flex-end; text-align: right; }
+.cheer-text b { font: 800 clamp(14px, 3.4cqmin, 22px)/1.1 var(--font-display); text-shadow: 0 2px 6px rgb(0 0 0 / 0.9); white-space: nowrap; }
+.cheer-text span { font: 800 clamp(36px, 12cqmin, 80px)/1 var(--font-display); color: var(--tone); text-shadow: 0 0 24px color-mix(in srgb, var(--tone) 70%, transparent), 0 3px 0 rgb(0 0 0 / 0.7); }
+.cheer.in { animation: cheer-l 2200ms var(--ease-out) both; }
+.cheer.in[data-side="1"] { animation-name: cheer-r; }
+@keyframes cheer-l { 0% { transform: translateX(-35%); opacity: 0; } 12% { transform: none; opacity: 1; } 82% { opacity: 1; } 100% { opacity: 0; transform: translateX(-6%); } }
+@keyframes cheer-r { 0% { transform: translateX(35%); opacity: 0; } 12% { transform: none; opacity: 1; } 82% { opacity: 1; } 100% { opacity: 0; transform: translateX(6%); } }
+/* Upright: the player's side is the bottom, the opponent's the top. */
+body[data-portrait="1"] .cheer { height: min(40%, 360px); }
+body[data-portrait="1"] .cheer[data-side="1"] { top: 0; bottom: auto; align-items: flex-start; }
+body[data-portrait="1"] .cheer[data-side="1"] .cheer-text { padding: 12% 0 0; }
+body[data-portrait="1"] .cheer.in { animation-name: cheer-b; }
+body[data-portrait="1"] .cheer.in[data-side="1"] { animation-name: cheer-t; }
+@keyframes cheer-b { 0% { transform: translateY(35%); opacity: 0; } 12% { transform: none; opacity: 1; } 82% { opacity: 1; } 100% { opacity: 0; } }
+@keyframes cheer-t { 0% { transform: translateY(-35%); opacity: 0; } 12% { transform: none; opacity: 1; } 82% { opacity: 1; } 100% { opacity: 0; } }
+
+/* ---------- Settings ----------------------------------------------------------------------------------------- */
+
+.settings { position: fixed; z-index: 3; top: calc(var(--hud-h) + 8px); right: 12px; width: min(300px, calc(100vw - 24px)); display: flex; flex-direction: column; gap: 4px; padding: 12px 16px 16px; border-radius: 16px; background: var(--pong-card); box-shadow: 0 0 0 1px var(--pong-line), 0 24px 60px rgb(0 0 0 / 0.6); }
+.settings-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.settings h2 { margin: 0; font: 800 15px/1.2 var(--font-display); }
+.settings .leave { display: grid; place-items: center; width: 44px; height: 44px; border: 0; border-radius: 10px; color: var(--pong-ink-2); background: transparent; cursor: pointer; }
+.settings .row { display: flex; align-items: center; gap: 12px; min-height: 44px; cursor: pointer; }
+.settings .row.range, .settings .row.select { justify-content: space-between; }
+.settings input[type=checkbox] { width: 20px; height: 20px; accent-color: var(--pong-btc); }
+.settings input[type=range] { width: 150px; accent-color: var(--pong-btc); }
+.settings select { min-height: 36px; padding: 0 8px; border-radius: 8px; border: 0; color: var(--pong-ink); background: rgb(255 255 255 / 0.1); }
+
+/* ---------- Small screens ------------------------------------------------------------------------------------ */
+
+@media (width < 640px) {
+    .hud { gap: 4px; padding: 0 8px; }
+    .hud .side { gap: 6px; }
+    .hud .title { display: none; }
+    .hud .fig { display: none; }
+    .hud .face { width: 36px; height: 36px; border-radius: 10px; }
+    .hud .score { font-size: 24px; }
+    .hud .leave { width: 40px; height: 40px; }
+}
 @media (width < 480px) {
-    .hud { grid-template-columns: 1fr auto 1fr; padding: 0 8px; }
-    .hud .title { font-size: 9px; letter-spacing: 0.12em; }
-    .hud .score { font-size: 22px; }
+    .hud .who, .hud .mid-text { display: none; }
 }
 
 /* The start card names the controls of the device in hand. */
@@ -66,7 +194,11 @@ button, a.btn { font: inherit; }
     .hint-desktop { display: none; }
 }
 
-/* A live match (P2): the resign flag asks twice; a disabled button waits for the opponent. */
-.hud .resign { border: 0; cursor: pointer; }
+/* A live match (P2): the resign flag asks twice. */
 .hud .resign[data-confirm] { color: #140b00; background: var(--pong-btc); }
-.btn:disabled { cursor: default; opacity: 0.7; }
+
+/* Reduced motion (the system's or the setting's): nothing slides, pops or flies. */
+body.still .hud .score.pop, body.still .banner.in img, body.still .banner.in small, body.still .banner.in b, body.still .banner.in span { animation: none; }
+body.still .cheer.in { animation: cheer-still 2200ms linear both; }
+body.still .ticker.in { animation: none; }
+@keyframes cheer-still { 0%, 92% { opacity: 1; } 100% { opacity: 0; } }

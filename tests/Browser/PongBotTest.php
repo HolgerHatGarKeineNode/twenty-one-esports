@@ -1,7 +1,7 @@
 <?php
 
 use App\Models\User;
-use App\Support\Pong\PongBot;
+use App\Support\Pong\PongCast;
 use App\Support\Pong\PongGame;
 use App\Support\Pong\PongRules;
 use Illuminate\Support\Facades\File;
@@ -25,7 +25,7 @@ pest()->group('browser');
 | server's PongGame::bots() plays for the same seed and levels: the page must end with exactly that score. The field
 | lies fully in the window without scrolling or overflow, keeps its size when only the height changes (a phone's
 | address bar), and the console and the answers stay clean, proved by a positive control. Headless Chromium has no
-| WebGL, so this measures the 2D arena; the three.js arena is unmeasured here.
+| WebGL, so this measures the 2D fallback; the three.js arena is measured in tests/Browser/PongArenaTest.php.
 |
 */
 
@@ -104,7 +104,7 @@ test('a bot game plays to its end with the server\'s score, the field fits the w
         ->and($before['overflow'])->toBe(0)
         // The field's long side follows the window's: 16:9 lying, 9:16 upright.
         ->and($width < $height ? $before['field']['h'] > $before['field']['w'] : $before['field']['w'] > $before['field']['h'])->toBeTrue()
-        ->and($page->evaluate('() => document.querySelector("[data-test=pong-bot-name]").textContent'))->toBe(PongBot::LEVELS[$level]['name']);
+        ->and($page->evaluate('() => document.querySelector("[data-test=pong-bot-name]").textContent'))->toBe(PongCast::bot(null, $level)['name']);
 
     pongShot($page, "pong-{$width}-start");
     $page->locator('[data-test=pong-start-btn]')->click();
@@ -149,7 +149,7 @@ test('a bot game plays to its end with the server\'s score, the field fits the w
     'desktop 1440x900' => [1440, 900, 7, 2, 3],
 ]);
 
-test('the lobby shows the four bot levels without overflow or cut labels, and its form leads into the game', function (int $width, int $height) {
+test('the lobby shows the five bots and the 25 figures without overflow or cut labels, and its form leads into the game', function (int $width, int $height) {
     $page = visit(BrowserLogin::url(User::factory()->create()))->page();
     $page->context()->addInitScript(BrowserConsole::COLLECTOR);
     $page->setViewportSize($width, $height);
@@ -157,18 +157,25 @@ test('the lobby shows the four bot levels without overflow or cut labels, and it
     BrowserWait::until($page, '() => document.readyState === "complete" && !!document.querySelector("[data-test=pong-play-form]")', 10_000);
     pongShot($page, "pong-{$width}-lobby");
 
-    $labels = $page->evaluate('() => [1, 2, 3, 4].map((n) => { const el = document.querySelector(`[data-test=pong-level-${n}]`); return { text: el.innerText.trim(), cut: [...el.querySelectorAll("span")].some((s) => s.scrollWidth > s.clientWidth + 1) }; })');
+    $bots = array_column(PongCast::bots(), 'id');
+    $labels = $page->evaluate('(ids) => ids.map((id) => { const el = document.querySelector(`[data-test=pong-bot-${id}]`); return { text: el.innerText.trim(), cut: [...el.querySelectorAll("span")].some((s) => s.scrollWidth > s.clientWidth + 1) }; })', $bots);
+    $faces = $page->evaluate('() => [...document.querySelectorAll("[data-test=pong-picker] .pp-face")].map((el) => { const r = el.getBoundingClientRect(); return Math.round(Math.min(r.width, r.height)); })');
 
-    expect(array_column($labels, 'cut'))->toBe([false, false, false, false])
-        ->and(array_map(fn (array $label): string => strtok($label['text'], "\n"), $labels))->toBe(array_column(PongBot::LEVELS, 'name'));
+    expect(array_column($labels, 'cut'))->toBe(array_fill(0, 5, false))
+        ->and(collect($labels)->zip(PongCast::bots())->every(fn ($pair): bool => str_starts_with($pair[0]['text'], $pair[1]['name'])))->toBeTrue()
+        ->and(count($faces))->toBe(25)
+        // Every portrait is a target of at least 44 px.
+        ->and(min($faces))->toBeGreaterThanOrEqual(44);
 
     [$scroll, $client] = $page->evaluate(BrowserConsole::WIDTHS);
     expect($scroll)->toBeLessThanOrEqual($client);
 
-    // Level 3 picked: the form's address is the game against the Goldbug.
-    $page->locator('[data-test=pong-level-3]')->click();
+    // The Goldbug and Saylor picked: the form's address is that game with that figure.
+    $page->locator('[data-test=pong-bot-schiff]')->click();
+    $page->locator('[data-test=pong-figure-saylor]')->click();
     expect($page->evaluate('() => { const f = document.querySelector("[data-test=pong-play-form]"); return f.action + "?" + new URLSearchParams(new FormData(f)).toString(); }'))
-        ->toEndWith('/proof-of-pong/bot?level=3')
+        ->toEndWith('/proof-of-pong/bot?figure=saylor&bot=schiff')
+        ->and($page->evaluate('() => document.querySelector("[data-test=pong-picked-name]").textContent'))->toBe('Michael Saylor')
         ->and([...$page->evaluate('() => window.__errors ?? ["collector missing"]'), ...$page->evaluate(BrowserConsole::BAD_RESPONSES)])->toBe([]);
 })->with([
     'phone 390x844' => [390, 844],

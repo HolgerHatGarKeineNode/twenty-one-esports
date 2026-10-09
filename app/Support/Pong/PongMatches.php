@@ -47,6 +47,8 @@ final class PongMatches
                 'rematch' => [false, false],
                 'next' => null,
                 'version' => 1,
+                // The players' figures (P3, PongCast), by side; a rematch keeps each player's, sides swapped.
+                'figures' => $rematchOf === null ? [null, null] : array_reverse(self::figuresOf($rematchOf)),
             ],
             'log' => [],
             'rated' => PongRatings::offered(),
@@ -181,6 +183,45 @@ final class PongMatches
     }
 
     /**
+     * A player picks their figure (P3, the cast of App\Support\Pong\PongCast) for this match: before it starts or
+     * while nobody has scored yet. Both pages show both picks. An id that is not one of the cast's players changes
+     * nothing.
+     *
+     * @return array<string, mixed>
+     */
+    public function figure(PongMatch $match, User $user, string $figure): array
+    {
+        return $this->locked($match, function (PongMatch $match) use ($user, $figure): bool {
+            $side = $match->sideOf($user);
+            $open = $match->status === PongMatchStatus::Waiting
+                || ($match->status === PongMatchStatus::Active && $match->score() === [0, 0]);
+
+            if ($side === null || ! $open || ! PongCast::isPlayer($figure) || self::figuresOf($match)[$side] === $figure) {
+                return false;
+            }
+
+            $state = $match->state;
+            $state['figures'] = self::figuresOf($match);
+            $state['figures'][$side] = $figure;
+            $match->state = $state;
+
+            return true;
+        }, $user);
+    }
+
+    /**
+     * The match's figures by side (null: not picked); a match from before P3 has none.
+     *
+     * @return array{0: ?string, 1: ?string}
+     */
+    public static function figuresOf(PongMatch $match): array
+    {
+        $figures = $match->state['figures'] ?? [null, null];
+
+        return [$figures[0] ?? null, $figures[1] ?? null];
+    }
+
+    /**
      * Every match that waits or plays, on the server's clock: for those nobody asks about (pong:check-clocks).
      *
      * @return int how many changed
@@ -240,6 +281,7 @@ final class PongMatches
                 [$match->right_rating_before, $match->right_rating_after],
             ],
             'rematch' => $state['rematch'],
+            'figures' => self::figuresOf($match),
             'next' => $state['next'] === null ? null : route('pong.match', ['match' => $state['next']]),
         ];
     }

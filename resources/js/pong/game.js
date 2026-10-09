@@ -14,9 +14,11 @@
  * for the same seed and levels, tick for tick.
  */
 import { botSpeed, createBot } from './bot.js';
-import { createStage, eventText as eventTextOf, readConfig, readSettings } from './page.js';
+import './picker.js';
+import { createStage, readConfig, readSettings } from './page.js';
 import { HEIGHT, PADDLE_HALF, PLAYER_SPEED, TICKS_PER_SECOND, stepRally } from './physics.js';
 import { createGame, rallySeed } from './rules.js';
+import { createShow } from './show.js';
 
 const ANNOUNCE_TICKS = 110;
 const SERVE_TICKS = 50;
@@ -26,9 +28,9 @@ const TICK_MS = 1000 / TICKS_PER_SECOND;
 function boot() {
     const { config, t } = readConfig();
     const settings = readSettings();
-    const eventText = (event) => eventTextOf(t, event);
     const $ = (id) => document.getElementById(id);
     const { arena, portrait: isPortrait, input } = createStage();
+    const show = createShow({ arena, settings, t, castTexts: config.castTexts, figures: [config.figure, config.botFigure], arenaName: config.arena });
 
     const game = createGame(config.seed, config.rules);
     const speeds = [settings.autoplay ? botSpeed(settings.autoplay) : PLAYER_SPEED, botSpeed(config.level)];
@@ -59,18 +61,14 @@ function boot() {
         showScore();
         const event = rally.event;
         if (event) {
-            const [name, text] = eventText(event);
-            banner.querySelector('small').textContent = t('Meme event');
-            banner.querySelector('b').textContent = name;
-            banner.querySelector('span').textContent = text;
-            banner.hidden = false;
-            banner.dataset.event = event;
+            show.announce(event, (ANNOUNCE_TICKS * TICK_MS) / settings.speed, game.rally);
             phase = 'announce';
             wait = ANNOUNCE_TICKS;
         } else {
             phase = 'serve';
             wait = SERVE_TICKS;
         }
+        show.serve(game.rally);
         toast.hidden = true;
     };
 
@@ -83,6 +81,7 @@ function boot() {
         $('end-score').textContent = `${game.score[0]} : ${game.score[1]}`;
         $('end').hidden = false;
         document.body.dataset.result = won ? 'win' : 'loss';
+        show.end(game.winner, won);
     };
 
     const playerTarget = () => (bots[0] ? bots[0].target(rally) : input.target(rally.paddles[0]));
@@ -124,6 +123,7 @@ function boot() {
             lastScorer = scorer;
             const won = game.goal(scorer, rally.points);
             showScore();
+            show.goal(scorer, rally.points);
             toast.textContent = scorer === 0 ? t('Point for you') : t('Point for :name', { name: config.bot });
             toast.hidden = false;
             if (won) {
@@ -138,7 +138,8 @@ function boot() {
         }
     };
 
-    const view = () => (rally ? { balls: rally.balls, alive: rally.alive, paddles: rally.paddles, half: rally.half } : null);
+    const idle = { balls: [], alive: [], paddles: [HEIGHT >> 1, HEIGHT >> 1], half: PADDLE_HALF, event: null };
+    const view = () => (rally ? { balls: rally.balls, alive: rally.alive, paddles: rally.paddles, half: rally.half, event: phase === 'point' ? null : rally.event } : idle);
 
     let last = performance.now();
     let acc = 0;
@@ -155,8 +156,7 @@ function boot() {
                 if (phase === 'over') break;
             }
         }
-        const v = view();
-        if (v) arena.render(v);
+        show.frame(view());
         document.body.dataset.phase = phase;
         requestAnimationFrame(frame);
     };
@@ -168,14 +168,27 @@ function boot() {
     };
     $('start-btn').addEventListener('click', start);
 
-    // A frame before the start: the field with both paddles in the middle and the first ball waiting.
-    arena.render({ balls: [], alive: [], paddles: [HEIGHT >> 1, HEIGHT >> 1], half: PADDLE_HALF });
+    // The figure picked on the start card plays the player's paddle (resources/js/pong/picker.js keeps the pick).
+    document.addEventListener('pong-figure', (event) => {
+        if (phase !== 'ready') return;
+        show.setFigures([event.detail.id, config.botFigure]);
+        const again = document.querySelector('[data-test=pong-again]');
+        if (again) {
+            const url = new URL(again.href, location.href);
+            url.searchParams.set('figure', event.detail.id);
+            again.href = url.pathname + url.search;
+        }
+    });
+
+    const picked = document.querySelector('#start [data-pong-picker]')?.dataset.picked;
+    if (picked) show.setFigures([picked, config.botFigure]);
     showScore();
     requestAnimationFrame(frame);
 
-    // The browser test's handle: where the game stands.
+    // The browser test's handles: where the game stands, and the show (to stage a moment for a picture).
+    window.pongShow = show;
     window.pongGame = {
-        state: () => ({ phase, score: [...game.score], rally: game.rally, winner: game.winner, ticks, lastScorer, renderer: arena.kind, portrait: isPortrait() }),
+        state: () => ({ phase, score: [...game.score], rally: game.rally, winner: game.winner, ticks, lastScorer, renderer: arena.kind, quality: arena.quality, gpu: arena.gpu ?? null, draws: arena.stats ? arena.stats() : null, figures: show.figures().map((f) => f.id), portrait: isPortrait() }),
     };
     document.body.dataset.renderer = arena.kind;
     document.body.dataset.ready = '1';

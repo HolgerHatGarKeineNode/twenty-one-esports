@@ -18,6 +18,7 @@ use App\Http\Controllers\PongController;
 use App\Models\User;
 use App\Support\Invites\InviteGames;
 use App\Support\Pong\PongBot;
+use App\Support\Pong\PongCast;
 use Illuminate\Support\Facades\Route;
 use Tests\Support\PongOn;
 
@@ -47,13 +48,14 @@ test('switched on, the registry knows the game as its own kind, and no invite or
         ->and(app(InviteGames::class)->all())->not->toHaveKey(ProofOfPong::SLUG);
 });
 
-test('the lobby offers the four bot levels and opens the game in a new tab', function () {
+test('the lobby offers the five bots and every figure, and opens the game in a new tab', function () {
     PongOn::play();
 
     $this->get(route('pong.index'))->assertOk()
         ->assertSee('data-test="pong-play-form"', false)
         ->assertSee('target="_blank"', false)
-        ->assertSeeInOrder(['Nocoiner Uncle', 'Shitcoiner', 'Goldbug', 'Madame Brrr Lagarde'])
+        ->assertSeeInOrder(['Nocoiner Uncle', 'Shitcoiner', 'Goldbug Peter Schiff', 'Madame CBDC Schnabel', 'Madame Brrr Lagarde'])
+        ->assertSeeInOrder(array_map(fn (string $id): string => 'data-test="pong-figure-'.$id.'"', PongCast::playerIds()), false)
         ->assertSee(route('pong.bot'), false);
 });
 
@@ -97,7 +99,7 @@ test('every text of the pages is a key the scripts use and has a German translat
         }
     }
     $blade = [];
-    foreach ([resource_path('views/pong/match.blade.php'), resource_path('views/pong/live.blade.php'), resource_path('views/pages/pong/index.blade.php'), resource_path('views/components/⚡pong-lobby.blade.php'), resource_path('views/pages/matches/partials/pong-row.blade.php')] as $file) {
+    foreach ([resource_path('views/pong/match.blade.php'), resource_path('views/pong/live.blade.php'), resource_path('views/pages/pong/index.blade.php'), resource_path('views/components/⚡pong-lobby.blade.php'), resource_path('views/pages/matches/partials/pong-row.blade.php'), resource_path('views/pong/partials/figures.blade.php'), resource_path('views/pong/partials/settings.blade.php'), resource_path('views/pong/partials/settings-button.blade.php')] as $file) {
         preg_match_all("/__\\(\\s*'((?:[^'\\\\]|\\\\.)*)'/", (string) file_get_contents($file), $found);
         array_push($blade, ...$found[1]);
     }
@@ -106,7 +108,7 @@ test('every text of the pages is a key the scripts use and has a German translat
 
     expect(array_values(array_unique($keys)))->toEqualCanonicalizing(PongController::TEXTS)
         ->and(array_values(array_unique([...$keys, ...$live])))->toEqualCanonicalizing(PongController::LIVE_TEXTS)
-        ->and(array_values(array_diff([...PongController::LIVE_TEXTS, ...$blade, ...$names], array_keys($german))))->toBe([]);
+        ->and(array_values(array_diff([...PongController::LIVE_TEXTS, ...$blade, ...$names, ...array_keys(PongCast::texts())], array_keys($german))))->toBe([]);
 
     app()->setLocale('de');
     $this->actingAs(User::factory()->create())->get(route('pong.bot', ['level' => 1]))->assertOk()

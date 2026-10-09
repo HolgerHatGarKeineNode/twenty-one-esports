@@ -51,11 +51,11 @@ beforeEach(function () {
 /**
  * A player's match page, its paddle played by a bot of `$autoplay`.
  */
-function pongLivePage(User $user, PongMatch $match, int $width, int $height, int $autoplay): Page
+function pongLivePage(User $user, PongMatch $match, int $width, int $height, int $autoplay, ?string $figure = null): Page
 {
     $page = visit(BrowserLogin::url($user))->page();
     $page->context()->addInitScript(BrowserConsole::COLLECTOR);
-    $page->context()->addInitScript('try { localStorage.setItem("pong-settings", '.json_encode((string) json_encode(['autoplay' => $autoplay])).'); } catch (e) {}');
+    $page->context()->addInitScript('try { localStorage.setItem("pong-settings", '.json_encode((string) json_encode(['autoplay' => $autoplay])).'); '.($figure === null ? '' : 'localStorage.setItem("pong-figure", '.json_encode($figure).'); ').'} catch (e) {}');
     $page->setViewportSize($width, $height);
     $page->goto(ComputeUrl::from(route('pong.match', $match, false)));
     BrowserWait::until($page, '() => document.body.dataset.ready === "1" && document.body.dataset.live === "1"', 15_000);
@@ -117,8 +117,8 @@ test('two players play live to the end over Reverb: both pages and the server en
         ->and($expected['events'])->toBe([[21, 'pizza']]);
 
     [$match] = pongLiveMatch(2);
-    $phone = pongLivePage($match->left, $match, 390, 844, 3);
-    $desktop = pongLivePage($match->right, $match, 1440, 900, 2);
+    $phone = pongLivePage($match->left, $match, 390, 844, 3, 'hosp');
+    $desktop = pongLivePage($match->right, $match, 1440, 900, 2, 'saylor');
 
     // Both there: the match starts; the phone plays upright, the desktop lying, each field inside its window.
     BrowserWait::until($phone, '() => window.pongLive.state().status === "active"', 10_000);
@@ -135,6 +135,15 @@ test('two players play live to the end over Reverb: both pages and the server en
     }
     expect($phone->evaluate('() => window.pongLive.state().me'))->toBe(0)
         ->and($desktop->evaluate('() => window.pongLive.state().me'))->toBe(1);
+
+    // Each player's figure (P3, picked in the lobby) reaches the referee, and both pages show both: their own first.
+    foreach ([$phone, $desktop] as $page) {
+        BrowserWait::until($page, '() => JSON.stringify(window.pongLive.state().figures) === JSON.stringify(["hosp", "saylor"])', 10_000);
+    }
+    $faces = '() => [document.querySelector("[data-test=pong-face-me]").getAttribute("src"), document.querySelector("[data-test=pong-face-opponent]").getAttribute("src")]';
+    expect($phone->evaluate($faces))->toBe(['/pong/art/por-hosp.webp', '/pong/art/por-saylor.webp'])
+        ->and($desktop->evaluate($faces))->toBe(['/pong/art/por-saylor.webp', '/pong/art/por-hosp.webp'])
+        ->and($desktop->evaluate('() => window.pongLive.state().shown'))->toBe(['saylor', 'hosp']);
 
     BrowserWait::until($phone, '() => window.pongLive.state().rally >= 3', 30_000);
     pongLiveShot($phone, 'pong-live-390-play');

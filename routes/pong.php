@@ -20,6 +20,7 @@ Route::prefix('proof-of-pong')->name('pong.')->group(function () {
         Route::get('bot', [PongController::class, 'bot'])->name('bot');
         Route::post('m/{match}/sync', [PongController::class, 'sync'])->whereUlid('match')->middleware('throttle:pong-live')->name('sync');
         Route::post('m/{match}/report', [PongController::class, 'report'])->whereUlid('match')->middleware('throttle:pong-live')->name('report');
+        Route::post('m/{match}/figure', [PongController::class, 'figure'])->whereUlid('match')->middleware('throttle:20,1')->name('figure');
         Route::post('m/{match}/resign', [PongController::class, 'resign'])->whereUlid('match')->middleware('throttle:20,1')->name('resign');
         Route::post('m/{match}/rematch', [PongController::class, 'rematch'])->whereUlid('match')->middleware('throttle:20,1')->name('rematch');
         Route::post('invites/{invite}/accept', [PongController::class, 'accept'])->whereNumber('invite')->middleware('throttle:20,1')->name('accept');

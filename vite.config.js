@@ -28,6 +28,9 @@ export default defineConfig({
                 'resources/js/pong/game.js',
                 // A live match (P2): the same page with the referee's netcode.
                 'resources/js/pong/live.js',
+                // The lobby's figure picker (P3), in the league's shell.
+                'resources/css/pong-picker.css',
+                'resources/js/pong/picker.js',
             ],
             refresh: true,
             fonts: [
