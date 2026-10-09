@@ -21,6 +21,7 @@ use App\Support\Tournaments\TournamentRunner;
 use Closure;
 use Illuminate\Support\Facades\DB;
 use InvalidArgumentException;
+use Throwable;
 
 /**
  * Every change to a Hyperbitcoinization match goes through here (plan "Hyperbitcoinization", P2), and the
@@ -339,6 +340,56 @@ final class HyperMatches
         });
     }
 
+    /**
+     * The league voids a tournament match that no longer counts (P5c, TournamentControl: a restarted round, a
+     * tournament called off, a corrected result that changed the table's entrants). The match ends at once as
+     * `aborted` / `voided`: no winner, no places, unrated and in no season, so it writes no points and no Elo, and
+     * reports nothing to the bracket. Open pages hear it like any other change (`hyper.updated`, after commit).
+     * Returns false for a match that was over already (it ended on its own a moment ago).
+     *
+     * @throws InvalidArgumentException for a match that plays no tournament match
+     */
+    public function void(HyperMatch $match): bool
+    {
+        if ($match->tournament_match_id === null) {
+            throw new InvalidArgumentException('Only a tournament match is voided by the league.');
+        }
+
+        $plyBefore = 0;
+        $handsBefore = [];
+
+        $locked = DB::transaction(function () use ($match, &$plyBefore, &$handsBefore): ?HyperMatch {
+            $locked = HyperMatch::query()->lockForUpdate()->findOrFail($match->id);
+
+            if (! $locked->isActive()) {
+                return null;
+            }
+
+            $locked->load('seats');
+            $plyBefore = $locked->ply;
+            $handsBefore = $this->hands($this->game($locked));
+            $locked->forceFill([
+                'status' => HyperMatchStatus::Aborted,
+                'end_reason' => HyperEndReason::Voided,
+                'rated' => false,
+                'season' => null,
+                'current_seat' => null,
+                'deadline_ms' => null,
+                'ended_at' => now(),
+            ])->save();
+
+            return $locked;
+        });
+
+        if ($locked === null) {
+            return false;
+        }
+
+        $this->announce($locked, $plyBefore, $handsBefore);
+
+        return true;
+    }
+
     /* ---------- Reading ------------------------------------------------------------------------------------- */
 
     /**
@@ -373,6 +424,8 @@ final class HyperMatches
             'server_ms' => $this->nowMs(),
             'winner' => $match->winner_seat,
             'end_reason' => $match->end_reason?->value,
+            // Unix seconds of the end (P5c): the spectator poll counts no vote signed after it, on a live page too.
+            'ended_at' => $match->ended_at?->getTimestamp(),
             'me' => $me?->seat,
             'map' => ['territories' => HyperMap::IDS, 'zones' => HyperMap::ZONE_KEYS],
             // A team match names a seat's Nostr key only to that seat's team: opponents and spectators never get a team's keys.
@@ -653,9 +706,17 @@ final class HyperMatches
         app(HyperSeason::class)->record($match);
         $id = $match->id;
 
-        // After the commit, never part of it: the bracket moves on, and the league signs the result.
+        // After the commit, never part of it: the bracket moves on, and the league signs the result. A bracket that
+        // fails to move is reported, never the player's request that ended the match; `hyper:check-clocks` reports
+        // the table again (TournamentRunner::reportUnreportedHyperMatches()).
         if ($match->tournament_match_id !== null) {
-            DB::afterCommit(fn () => app(TournamentRunner::class)->hyperMatchFinished($id));
+            DB::afterCommit(function () use ($id): void {
+                try {
+                    app(TournamentRunner::class)->hyperMatchFinished($id);
+                } catch (Throwable $exception) {
+                    report($exception);
+                }
+            });
         }
 
         if ($match->rated || $match->tournament_match_id !== null) {

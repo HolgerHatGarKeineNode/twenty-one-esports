@@ -46,7 +46,9 @@ const emotes = startEmotes(config, net, game, { live: () => live });
 const stats = startStats(config, http, game);
 // The spectators' "Who wins?" (P5): a spectator of a rated or tournament match only; it closes with the match.
 const poll = config.poll ? startPoll(config.poll, config.chat) : null;
-game.onEnd((quiet) => { poll?.end(); stats.ended(quiet); });
+game.onEnd((quiet, info) => { poll?.end(); if (!info?.voided) stats.ended(quiet); });
+// The server's end time re-counts the poll: a vote signed after it never counts (P5c).
+game.onEndedAt((at) => poll?.end(at));
 game.onJump(() => stats.close());
 // A page opened on a finished match showed its end screen before the hook was set.
 if (game.state().over) stats.ended(true);

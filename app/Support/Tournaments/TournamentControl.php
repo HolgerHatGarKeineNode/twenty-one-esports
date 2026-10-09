@@ -25,6 +25,7 @@ use App\Support\Board\BoardRuleViolation;
 use App\Support\Chess\Broadcasts;
 use App\Support\Chess\ChessGameService;
 use App\Support\Chess\ChessRuleViolation;
+use App\Support\Hyper\HyperMatches;
 use App\Support\Notifications\Notice;
 use App\Support\Notifications\Notifier;
 use App\Support\Rating\RatingService;
@@ -98,6 +99,7 @@ final class TournamentControl
         private Notifier $notifier,
         private RatingService $ratings,
         private BoardGameService $boards,
+        private HyperMatches $hyper,
     ) {}
 
     /* ---------- 1. Results ------------------------------------------------------------------------------------ */
@@ -187,6 +189,8 @@ final class TournamentControl
             $this->closeWithResult($match, $series, $game, $stored, $reason, $actor);
             // A board game still being played (plan "Mühle und Dame", P5) is voided: the league's result stands.
             $this->voidBoard($match);
+            // So is a Hyperbitcoinization table still being played (plan "Hyperbitcoinization", P5c).
+            $this->voidHyper($match, finishedToo: false);
             [$voided, $held] = $this->propagate($locked, $match->id, $before, $actor);
 
             if ($locked->status === TournamentStatus::Finished) {
@@ -442,7 +446,7 @@ final class TournamentControl
             $state = Advancement::resolve($this->brackets->load($tournament), $this->brackets->results($tournament), $tournament->formatOptions());
             $moved = false;
             $matches = TournamentMatch::query()->where('tournament_id', $tournament->id)->where('bracket', '!=', 'bye')
-                ->whereKeyNot($changedId)->with(['seriesMatch', 'chessGame', 'round'])->orderBy('id')->get();
+                ->whereKeyNot($changedId)->with(['seriesMatch', 'chessGame', 'boardGame', 'hyperMatch', 'round'])->orderBy('id')->get();
 
             foreach ($matches as $match) {
                 if (self::ids($before[$match->id] ?? []) === self::ids($state[$match->key]['entrants'] ?? [])) {
@@ -474,7 +478,8 @@ final class TournamentControl
     /**
      * Set a played result aside: the match waits until someone sets its
      * result or restarts its round. The old series or game stays as it was
-     * (rated, attested) and no longer counts here.
+     * (rated, attested) and no longer counts here; a Hyperbitcoinization
+     * table (P5c) as well, so the restart seats a new one.
      */
     private function hold(TournamentMatch $match, User $actor): void
     {
@@ -487,7 +492,7 @@ final class TournamentControl
                 'user_id' => $actor->id,
                 'name' => $actor->displayName(),
             ],
-            'replaced_through' => max((int) $match->replaced_through, (int) ($match->seriesMatch->id ?? $match->chessGame->id ?? $match->boardGame?->id)),
+            'replaced_through' => max((int) $match->replaced_through, (int) ($match->seriesMatch->id ?? $match->chessGame->id ?? $match->boardGame->id ?? $match->hyperMatch?->id)),
         ])->save();
     }
 
@@ -521,7 +526,34 @@ final class TournamentControl
             return true;
         }
 
-        return $this->voidBoard($match);
+        return $this->voidBoard($match) || $this->voidHyper($match, finishedToo: true);
+    }
+
+    /**
+     * Supersede the Hyperbitcoinization table of a match (plan "Hyperbitcoinization", P5c): one still being played
+     * is voided (HyperMatches::void(): unrated, no season entry, its open pages see it end), and `replaced_through`
+     * covers it, so the match seats a new table once it may start again (TournamentMatchMaker::needsHyperMatch())
+     * and a late report of the old one is ignored (TournamentRunner::hyperMatchFinished()). `finishedToo`: a table
+     * that already ended without its places counting here (a match whose result is unset: held, or its report
+     * failed) is superseded as well; a restart then plays a new one. True if a table was superseded.
+     */
+    private function voidHyper(TournamentMatch $match, bool $finishedToo): bool
+    {
+        $played = $match->hyperMatch()->first();
+
+        if ($played === null || $match->isReplaced($played->id) || (! $played->isActive() && ! $finishedToo)) {
+            return false;
+        }
+
+        if ($played->isActive()) {
+            // False when it ended on its own a moment ago: superseded all the same.
+            $this->hyper->void($played);
+        }
+
+        $match->forceFill(['replaced_through' => max((int) $match->replaced_through, $played->id)])->save();
+        $match->unsetRelation('hyperMatch');
+
+        return true;
     }
 
     /**

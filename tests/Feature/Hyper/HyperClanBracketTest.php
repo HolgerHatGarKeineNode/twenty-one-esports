@@ -109,6 +109,7 @@ test('a clan bracket is offered as a 2v2 or 3v3 knockout only, and its clans ent
 });
 
 test('the chooser offers players, clan 2v2 and clan 3v3, and picking a clan size picks the knockout', function () {
+    config(['esports.hyper.tournaments' => true]);
     $admin = User::factory()->create();
     Admin::query()->create(['pubkey' => $admin->pubkey]);
 

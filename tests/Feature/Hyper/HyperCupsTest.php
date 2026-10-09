@@ -3,19 +3,23 @@
 use App\Enums\TournamentFormat;
 use App\Enums\TournamentStatus;
 use App\Games\Hyperbitcoinization;
+use App\Models\Admin;
 use App\Models\HyperMatch;
 use App\Models\Tournament;
+use App\Models\User;
 use App\Support\Hyper\HyperCups;
 use App\Support\LeagueTime;
+use App\Support\Settings\LeagueSettings;
 use App\Support\Tournaments\TournamentScheduler;
 use Carbon\CarbonImmutable;
 use Illuminate\Support\Facades\Queue;
+use Livewire\Livewire;
 use Tests\Support\HyperOn;
 use Tests\Support\TestSigner;
 
 /*
 | Hyperbitcoinization's weekend cup (plan "Hyperbitcoinization", P5): the tournament clock opens one at a time behind
-| its own switch and the league key; its tables are unrated and bots fill them up to the table size; the final's winner
+| the game's automatic-cups toggle on /admin/settings (P5c, off by default) and the league key; its tables are unrated and bots fill them up to the table size; the final's winner
 | wears the cup badge on the ladder and the profile.
 */
 
@@ -24,15 +28,29 @@ beforeEach(function () {
     HyperOn::play();
 });
 
-test('with its switch on and the league key set, the tournament clock opens one weekend cup at a time; off, none', function () {
+test('switched on with the game\'s automatic-cups toggle on /admin/settings (off by default) and the league key set, the tournament clock opens one weekend cup at a time; off, none', function () {
     Queue::fake();
     config(['esports.league.nsec' => (new TestSigner)->secret]);
     $this->travelTo(CarbonImmutable::parse('2026-10-07 12:00', LeagueTime::zone()));
+    $admin = User::factory()->create();
+    Admin::query()->create(['pubkey' => $admin->pubkey]);
+
+    // Off by default: no env switch of its own any more.
+    expect(config('esports.hyper.cups'))->not->toHaveKey('enabled')
+        ->and(LeagueSettings::get(HyperCups::SETTING))->toBe('off')
+        ->and(HyperCups::enabled())->toBeFalse();
 
     app(TournamentScheduler::class)->tick();
     expect(Tournament::query()->count())->toBe(0);
 
-    config(['esports.hyper.cups.enabled' => true]);
+    Livewire::actingAs($admin)->test('pages::admin.settings')
+        ->assertSee('Automatic cups: Hyperbitcoinization')
+        ->assertSet('form.esports-hyper-cups-auto', 'off')
+        ->set('form.esports-hyper-cups-auto', 'on')
+        ->call('save')
+        ->assertHasNoErrors();
+
+    expect(HyperCups::enabled())->toBeTrue();
     app(TournamentScheduler::class)->tick();
     app(TournamentScheduler::class)->tick();
     $cup = Tournament::query()->sole();

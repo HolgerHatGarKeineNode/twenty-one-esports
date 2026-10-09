@@ -16,7 +16,9 @@ use App\Support\Tournaments\Estimator;
 use App\Support\Tournaments\FormatOptions;
 use App\Support\Tournaments\GameProfile;
 use App\Support\Tournaments\TournamentChampion;
+use App\Support\Tournaments\TournamentEditor;
 use App\Support\Tournaments\TournamentGames;
+use App\Support\Tournaments\TournamentRuleViolation;
 use Livewire\Livewire;
 use Tests\Support\HyperOn;
 use Tests\Support\TestSigner;
@@ -149,6 +151,7 @@ test('Block 0 signs no season ladder for Hyperbitcoinization, while it does for 
 });
 
 test('the tournament chooser offers Hyperbitcoinization with its table size and how many move on', function () {
+    config(['esports.hyper.tournaments' => true]);
     $admin = User::factory()->create();
     Admin::query()->create(['pubkey' => $admin->pubkey]);
 
@@ -179,4 +182,41 @@ test('the tournament chooser offers Hyperbitcoinization with its table size and 
     Livewire::actingAs($admin)->test('pages::admin.tournament-edit', ['tournament' => $tournament])
         ->assertSee('data-test="hyper-heatSize"', false)
         ->assertSee('data-test="hyper-heatAdvance"', false);
+});
+
+test('Hyperbitcoinization tournaments are offered only while ESPORTS_HYPER_TOURNAMENTS is on (off by default); one that exists keeps its game', function () {
+    $admin = User::factory()->create();
+    Admin::query()->create(['pubkey' => $admin->pubkey]);
+    $key = TournamentGames::keyOf(Hyperbitcoinization::SLUG, 'live');
+
+    expect(config('esports.hyper.tournaments'))->toBeFalse()
+        ->and(array_column(TournamentGames::grouped(), 'slug'))->not->toContain(Hyperbitcoinization::SLUG)
+        ->and(TournamentGames::offers($key))->toBeFalse()
+        // The game it has now stays: an existing tournament's chooser still shows it.
+        ->and(array_column(TournamentGames::grouped($key), 'slug'))->toContain(Hyperbitcoinization::SLUG);
+
+    Livewire::actingAs($admin)->test('pages::admin.tournament-create')
+        ->assertDontSee('data-test="game-row-hyperbitcoinization"', false)
+        ->call('pickGame', $key)
+        ->assertSet('game', 'blitz')
+        ->set('game', $key)
+        ->set('name', 'Sneaky Hyper')
+        ->call('create')
+        ->assertHasErrors('game');
+
+    expect(Tournament::query()->where('game', Hyperbitcoinization::SLUG)->exists())->toBeFalse();
+
+    // An existing tournament is never turned into one either.
+    $chess = Tournament::factory()->create(['status' => TournamentStatus::Draft]);
+    expect(fn () => app(TournamentEditor::class)->update($chess, $chess->creator, ['game' => Hyperbitcoinization::SLUG, 'mode' => 'live']))
+        ->toThrow(TournamentRuleViolation::class);
+
+    config(['esports.hyper.tournaments' => true]);
+
+    expect(array_column(TournamentGames::grouped(), 'slug'))->toContain(Hyperbitcoinization::SLUG)
+        ->and(TournamentGames::offers($key))->toBeTrue();
+    Livewire::actingAs($admin)->test('pages::admin.tournament-create')
+        ->assertSee('data-test="game-row-hyperbitcoinization"', false)
+        ->call('pickGame', $key)
+        ->assertSet('game', $key);
 });

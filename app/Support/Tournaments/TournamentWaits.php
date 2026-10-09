@@ -102,9 +102,20 @@ final class TournamentWaits
     {
         $slots = $match->slots;
 
+        // A Hyperbitcoinization match (P5) waits on nobody's report: the league's server ends it. Held after a
+        // correction (P5c), it waits for the desk like any other game; a free-for-all table has no two sides to
+        // set a result for, so its round is restarted.
+        if ($tournament->profile()->isHyper()) {
+            if ($match->held === null || count($slots) < 2 || $slots->contains(fn (TournamentMatchSlot $slot): bool => $slot->participant === null)) {
+                return null;
+            }
+
+            return (new WaitBuilder($tournament, $match))->make('held', since: self::stamp($match->held['at'] ?? null),
+                consequence: count($slots) === 2 ? 'Set its result or restart its round' : 'Restart its round', needsAdmin: true);
+        }
+
         // A score leaderboard's board is no duel, even with two entries (plan "AoE2 und Trackmania", P4); a lobby (P10) neither.
-        // A Hyperbitcoinization match (P5) waits on nobody's report: the league's server ends it.
-        if ($tournament->profile()->isScore() || $tournament->profile()->isUnknown() || $tournament->profile()->isHyper() || $match->lobby !== null || count($slots) !== 2 || $slots->contains(fn (TournamentMatchSlot $slot): bool => $slot->participant === null)) {
+        if ($tournament->profile()->isScore() || $tournament->profile()->isUnknown() || $match->lobby !== null || count($slots) !== 2 || $slots->contains(fn (TournamentMatchSlot $slot): bool => $slot->participant === null)) {
             return null;
         }
 

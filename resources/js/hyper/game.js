@@ -56,7 +56,7 @@ const TICKER = [];
 /** The last plies whose events were shown, in order: a ply twice would be an animation shown twice. */
 const SHOWN = [];
 const UI = { scenes: true, unit: 'pleb', qty: '1', from: null, card: null, mode: 'owner', speed: 1, busy: false, hover: null };
-const hooks = { onEmote: null, onEnd: null, onJump: null };
+const hooks = { onEmote: null, onEnd: null, onJump: null, onEndedAt: null };
 
 /* ================= World geometry ================= */
 let T = [];
@@ -704,6 +704,8 @@ function applySnapshot(s) {
     if (pending && myTurn() && $('#move').hidden && !BT.open) openMove(pending.from, pending.to, 'conquest', 0, pending.max);
     if (!pending && MV.kind === 'conquest' && !$('#move').hidden) closeMove();
     if (G.over && !ended) showEnd(G.winner, G.byLimit, G.round, G.seats.map((x) => x.loot), true);
+    // The server's end time (P5c): the spectator poll drops every vote signed after it, also on a live page.
+    if (G.over && G.endedAt !== null) hooks.onEndedAt?.(G.endedAt);
 }
 /** After a reconnect, a truncated broadcast or a gap: the plies the page missed, animated quickly. */
 function catchUp() {
@@ -934,6 +936,20 @@ async function showCard(e, ctxB, next) {
 async function showEnd(winner, byLimit, round, loot, quiet) {
     if (ended) return;
     ended = true;
+    // Voided by the league (P5c): no winner, nothing rated; the end screen says so and nothing else follows.
+    if (G.voided) {
+        $('#end-art').style.backgroundImage = '';
+        $('#end-team').hidden = true;
+        $('#end-h').textContent = t('Match voided');
+        $('#end-sub').textContent = t('The league voided this tournament match. It counts nowhere and is not rated.');
+        $('#end-loot').innerHTML = '';
+        $('#end').dataset.result = 'voided';
+        ['#rematch-btn', '#replay-link', '#stats-btn'].forEach((sel) => $(sel)?.setAttribute('hidden', ''));
+        $('#end').hidden = false;
+        hooks.onEnd?.(quiet, { voided: true });
+
+        return;
+    }
     // A team match (P4): the team wins together, every player of it is a winner.
     const team = sides() ? teamOf(winner) : null;
     const teamWon = team !== null && mySeat()?.team === team;
@@ -1290,6 +1306,7 @@ export const game = {
     isBot: (i) => (G ? isBot(i) : false),
     /** stats.js: called when the end screen is up (`quiet` when the page opened on a finished match), and when the replay jumps. */
     onEnd(fn) { hooks.onEnd = fn; },
+    onEndedAt(fn) { hooks.onEndedAt = fn; },
     onJump(fn) { hooks.onJump = fn; },
     me: () => ME,
     playing: () => !!G && playing(),

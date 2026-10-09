@@ -22,6 +22,7 @@ use Illuminate\Support\Carbon;
  * @property int $seats 2 to 6
  * @property int $round_limit 0 = none
  * @property list<int|null>|null $team_clans a clan table (P4): the clan of side 0 and side 1 (seats alternate), null for a table of single players
+ * @property bool $friendly a friendly match (P5c): its match is never rated
  * @property string $status open|started|cancelled
  * @property int|null $created_by
  * @property int|null $hyper_match_id the match once started
@@ -34,7 +35,7 @@ use Illuminate\Support\Carbon;
  * @property-read User|null $creator
  * @property-read HyperMatch|null $match
  */
-#[Fillable(['mode', 'seats', 'round_limit', 'team_clans', 'status', 'created_by', 'hyper_match_id', 'rematch_of', 'fill_at', 'started_at'])]
+#[Fillable(['mode', 'seats', 'round_limit', 'team_clans', 'friendly', 'status', 'created_by', 'hyper_match_id', 'rematch_of', 'fill_at', 'started_at'])]
 class HyperTable extends Model
 {
     use HasUlids;
@@ -51,6 +52,7 @@ class HyperTable extends Model
             'seats' => 'integer',
             'round_limit' => 'integer',
             'team_clans' => 'array',
+            'friendly' => 'boolean',
             'fill_at' => 'datetime',
             'started_at' => 'datetime',
         ];

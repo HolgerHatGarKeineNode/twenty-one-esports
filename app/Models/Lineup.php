@@ -5,8 +5,11 @@ namespace App\Models;
 use App\Enums\LineupRole;
 use App\Games\GameMode;
 use App\Games\GameRegistry;
+use App\Games\Hyperbitcoinization;
 use Database\Factories\LineupFactory;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
+use Illuminate\Database\Eloquent\Attributes\Scope;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -55,6 +58,19 @@ class Lineup extends Model
     public function seats(): HasMany
     {
         return $this->hasMany(LineupSeat::class);
+    }
+
+    /**
+     * The lineups a clan set up itself: never the mirror of a Hyperbitcoinization clan bracket's entry (plan
+     * "Hyperbitcoinization", P5b, HyperTournamentTeams::lineup()), which seats every member, is never signed or
+     * published, and so is no lineup of the clan on any page, count or Nostr event.
+     *
+     * @param  Builder<Lineup>  $query
+     */
+    #[Scope]
+    protected function setUpByClan(Builder $query): void
+    {
+        $query->where('game', '!=', Hyperbitcoinization::SLUG);
     }
 
     public function d(): string

@@ -111,6 +111,9 @@ function lobbyMeasure(Page $page, int $width, int $height, string $primary): arr
                 clipped: texts.filter((el) => getComputedStyle(el).textOverflow !== 'ellipsis').map(cut),
                 ellipsised: texts.filter((el) => getComputedStyle(el).textOverflow === 'ellipsis').map(cut),
                 primary: box(document.querySelector('{$primary}')),
+                // The friendly-match toggle of a new table (P5c) and its note, or the own table's Rated/Unrated chip.
+                friendly: box(document.querySelector('[data-test=hyper-lobby-friendly]')),
+                rated: box(document.querySelector('[data-test=hyper-lobby-mine] [data-test=hyper-lobby-rated]')),
                 fold: innerHeight,
             };
         }
@@ -133,11 +136,24 @@ test('two players join a table, pick factions, bots fill it, and the match opens
     }
     $annas->setViewportSize(1440, 900);
 
+    // The friendly-match toggle (P5c): pressed, its note says so; pressed again, the table stays rated.
+    $friendly = '[data-test=hyper-lobby-friendly]';
+    expect($annas->evaluate('() => document.querySelector("'.$friendly.'").innerText.trim()'))->toBe('Freundschaftsspiel (ungewertet)');
+    $annas->locator($friendly)->click();
+    BrowserWait::until($annas, '() => document.querySelector("'.$friendly.'").getAttribute("aria-pressed") === "true"', 8_000);
+    expect($annas->evaluate('() => document.querySelector("[data-test=hyper-lobby-rating-note]").innerText.trim()'))->toBe('Ein Freundschaftsspiel wird nie gewertet.');
+    $rows[] = ['state' => 'new table, friendly', ...lobbyMeasure($annas, 390, 844, '[data-test=hyper-lobby-open]')];
+    $annas->setViewportSize(1440, 900);
+    $annas->locator($friendly)->click();
+    BrowserWait::until($annas, '() => document.querySelector("'.$friendly.'").getAttribute("aria-pressed") === "false"', 8_000);
+
     // Anna opens a table of four; Bert's lobby shows it without a reload (hyper.lobby over Reverb).
     $annas->locator('[data-test=hyper-lobby-seats][data-seats="4"]')->click();
     $annas->locator('[data-test=hyper-lobby-open]')->click();
     BrowserWait::until($annas, '() => !!document.querySelector("[data-test=hyper-lobby-mine]")', 8_000);
     BrowserWait::until($berts, '() => !!document.querySelector("[data-test=hyper-lobby-table] [data-test=hyper-lobby-join]")', 12_000);
+    expect(HyperTable::query()->latest('id')->value('friendly'))->toBeFalse()
+        ->and($berts->evaluate('() => document.querySelector("[data-test=hyper-lobby-table] [data-test=hyper-lobby-rated]")?.innerText.trim()'))->not->toBeNull();
 
     $berts->locator('[data-test=hyper-lobby-join]')->click();
     BrowserWait::until($berts, '() => !!document.querySelector("[data-test=hyper-lobby-mine]")', 8_000);

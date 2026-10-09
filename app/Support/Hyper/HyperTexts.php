@@ -53,6 +53,8 @@ final class HyperTexts
         'Log in to write in the table chat.',
         ':count votes',
         'Closed: the match is over.',
+        'Match voided',
+        'The league voided this tournament match. It counts nowhere and is not rated.',
         'Log in to vote.',
         'One vote per account, public on Nostr. Spectators only.',
         'The vote did not reach any relay. Please try again.',

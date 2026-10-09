@@ -45,6 +45,7 @@ use App\Support\Stacker\StackerRuns;
 use App\Support\Tmnf\TmnfWeeks;
 use App\Support\Tournaments\TournamentDraws;
 use App\Support\Tournaments\TournamentPreflight;
+use App\Support\Tournaments\TournamentRunner;
 use App\Support\Tournaments\TournamentScheduler;
 use App\Support\Tournaments\TournamentSignups;
 use Illuminate\Foundation\Inspiring;
@@ -116,9 +117,10 @@ Schedule::command('board:check-clocks')->everyTenSeconds()->withoutOverlapping()
  * The same safety net for Hyperbitcoinization matches (plan "Hyperbitcoinization", P2): every active match
  * whose turn deadline passed is checked, in case the delayed App\Jobs\CheckHyperClock did not run. A
  * player's turn ends (`end_turn`, placed troops stay), an overdue bot turn is played. Only the server clock
- * decides, so running it often is harmless; with the switch off there are no matches to find.
+ * decides, so running it often is harmless; with the switch off there are no matches to find. It also reports a
+ * finished tournament table again whose places never reached the bracket (P5c), so a failed report stalls nothing.
  */
-Artisan::command('hyper:check-clocks', function (HyperMatches $matches, HyperLobby $lobby) {
+Artisan::command('hyper:check-clocks', function (HyperMatches $matches, HyperLobby $lobby, TournamentRunner $runner) {
     $due = HyperMatch::query()
         ->where('status', HyperMatchStatus::Active)
         ->where('deadline_ms', '<=', (int) now()->getTimestampMs())
@@ -141,8 +143,16 @@ Artisan::command('hyper:check-clocks', function (HyperMatches $matches, HyperLob
         $filled = 0;
     }
 
-    $this->info("Checked {$due->count()} match(es), started {$filled} table(s).");
-})->purpose('End Hyperbitcoinization turns whose time ran out, and fill live lobby tables whose wait is over');
+    // A tournament table whose places never reached its bracket (the report after the commit failed): reported again (P5c).
+    try {
+        $reported = $runner->reportUnreportedHyperMatches();
+    } catch (Throwable $e) {
+        report($e);
+        $reported = 0;
+    }
+
+    $this->info("Checked {$due->count()} match(es), started {$filled} table(s), reported {$reported} tournament table(s).");
+})->purpose('End Hyperbitcoinization turns whose time ran out, fill live lobby tables whose wait is over, and report tournament tables again');
 
 Schedule::command('hyper:check-clocks')->everyTenSeconds()->withoutOverlapping();
 

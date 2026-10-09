@@ -6,7 +6,8 @@
  * Votes (kind 1018) are signed by the viewer's own signer and sent to the chat relays, as the game channels' polls
  * are (channelChat.js: parseVote, addVote, tally, voteTemplate). Counted are league accounts that count in the
  * game channels (members, players with a result: the people lookup's `counts`), never a seat of this match. The
- * poll closes when the match ends: a vote signed after the end is not counted, and nobody votes any more.
+ * poll closes when the match ends: a vote signed after the server's end time is not counted (also on a page that was
+ * open when it ended: the book is counted again, P5c), and nobody votes any more.
  *
  * The panel opens on a click and stays until it is closed (no auto-advance, user 2026-10-09).
  */
@@ -29,6 +30,8 @@ export function startPoll(config, chat) {
     const asked = new Set();
     const queue = new Set();
     const book = new Map();
+    // Every valid vote received, so the book can be counted again once the server's end time is known.
+    const seen = [];
     const me = config.me ?? null;
     const relays = chat?.relays ?? [];
     let closedAt = Number.isSafeInteger(config.closedAt) ? config.closedAt : null;
@@ -104,6 +107,7 @@ export function startPoll(config, chat) {
     function receive(event) {
         const parsed = parseVote(event);
         if (!parsed || parsed.poll !== config.id || players.has(parsed.pubkey)) return;
+        if (seen.length < 4000) seen.push(parsed);
         const outcome = addVote(book, parsed, new Map([[config.id, poll()]]));
         if (outcome === 'added' || outcome === 'replaced') { wantPerson(parsed.pubkey); render(); }
     }
@@ -145,7 +149,21 @@ export function startPoll(config, chat) {
         open() { panel.hidden = false; render(); },
         close() { panel.hidden = true; },
         toggle() { if (panel.hidden) this.open(); else this.close(); },
-        /** The match ended on this page: no more votes, none signed after now counts. */
-        end(at = Math.floor(Date.now() / 1000)) { closedAt ??= at; render(); },
+        /**
+         * The match ended on this page: no more votes. Without `at` it closes now (the end screen); with the
+         * server's end time (`ended_at`, P5c) that time decides, and the book is counted again from every vote
+         * received, so a vote signed after the end no longer counts and the vote it replaced counts again.
+         */
+        end(at) {
+            if (Number.isSafeInteger(at)) {
+                closedAt = at;
+                book.clear();
+                const polls = new Map([[config.id, poll()]]);
+                seen.forEach((vote) => addVote(book, vote, polls));
+            } else {
+                closedAt ??= Math.floor(Date.now() / 1000);
+            }
+            render();
+        },
     };
 }

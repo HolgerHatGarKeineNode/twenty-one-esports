@@ -215,7 +215,8 @@ abstract class TournamentFormatChooser extends Component
 
     public function pickGame(string $key): void
     {
-        if (TournamentGames::find($key) === null) {
+        // Hyperbitcoinization only while its tournaments are switched on (P5c); the game it has now stays pickable.
+        if (! TournamentGames::offers($key, $this->game)) {
             return;
         }
 

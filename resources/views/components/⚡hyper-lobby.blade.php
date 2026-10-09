@@ -7,6 +7,7 @@ use App\Models\User;
 use App\Support\Hyper\HyperGame;
 use App\Support\Hyper\HyperLobby;
 use App\Support\Hyper\HyperRuleViolation;
+use App\Support\Hyper\HyperSeason;
 use App\Support\Hyper\HyperTeams;
 use Illuminate\Database\Eloquent\Collection;
 use Livewire\Attributes\Computed;
@@ -27,6 +28,9 @@ use Livewire\Component;
  * Format (P4): everyone for themselves, or clan against clan (`clans`, 4 or 6 seats): the table shows two
  * sides, each with its clan's logo and name (a clan linked to a meetup shows as that meetup, HyperTeams),
  * the seats alternating between them.
+ *
+ * Rating (P5c, user 2026-10-09): a new table may be a friendly match (`friendly`), never rated; any other table
+ * is rated when its match starts without bots in a live season. Every table shows "Rated" or "Unrated".
  */
 new class extends Component {
     /** Seconds between asks without a websocket (resources/js/hyperLobby.js). */
@@ -50,11 +54,14 @@ new class extends Component {
     /** Clan against clan (P4) instead of everyone for themselves. */
     public bool $clans = false;
 
+    /** A friendly match (P5c): never rated, even without bots in a live season. */
+    public bool $friendly = false;
+
     public ?string $error = null;
 
     public function openTable(HyperLobby $lobby): void
     {
-        $this->act(fn (User $me): HyperTable => $lobby->open($me, max(2, min(6, $this->seats)), $this->mode, in_array($this->limit, self::LIMITS, true) ? $this->limit : 0, clans: $this->clans));
+        $this->act(fn (User $me): HyperTable => $lobby->open($me, max(2, min(6, $this->seats)), $this->mode, in_array($this->limit, self::LIMITS, true) ? $this->limit : 0, clans: $this->clans, friendly: $this->friendly));
     }
 
     /** Clan tables seat 2v2 or 3v3: switching the format moves an odd seat count to the next team size. */
@@ -205,6 +212,11 @@ new class extends Component {
     $tag = 'inline-flex h-6 items-center rounded-tag bg-ground/70 px-2 text-xs whitespace-nowrap text-ink-2 shadow-ring';
     $modeLabel = fn (string $mode): string => $mode === HyperMatch::CORRESPONDENCE ? __('Correspondence · :hours h', ['hours' => (int) config('esports.hyper.correspondence_hours', 24)]) : __('Live · :seconds s', ['seconds' => (int) config('esports.hyper.turn_seconds', 90)]);
     $limitLabel = fn (int $limit): string => $limit === 0 ? __('No round limit') : __(':rounds rounds', ['rounds' => $limit]);
+    // Rated once it starts without bots, in a live season, unless it is a friendly match (P5c).
+    $seasonLive = HyperSeason::seasonFor() !== null;
+    $ratedTag = fn (HyperTable $table): string => ! $table->friendly && $seasonLive
+        ? '<span class="'.$tag.' font-bold text-ink" data-test="hyper-lobby-rated" data-rated="1">'.e(__('Rated')).'</span>'
+        : '<span class="'.$tag.'" data-test="hyper-lobby-rated" data-rated="0">'.e(__('Unrated')).'</span>';
 @endphp
 <div class="flex flex-col gap-4" data-test="hyper-lobby"
      x-data="hyperLobby(@js(['userId' => $viewer?->id, 'fallback' => $this::FALLBACK_SECONDS]))"
@@ -237,6 +249,7 @@ new class extends Component {
                 <h2 id="hl-mine-h" class="m-0 mr-1 font-display text-lg font-bold">{{ __('Your table') }}</h2>
                 <span class="{{ $tag }}">{{ $modeLabel($mine->mode) }}</span>
                 <span class="{{ $tag }}">{{ $limitLabel($mine->round_limit) }}</span>
+                {!! $ratedTag($mine) !!}
                 @if ($mine->isTeamTable())
                     <span class="{{ $tag }} font-bold text-ink" data-test="hyper-lobby-format">{{ __('Clan vs clan · :size', ['size' => intdiv($mine->seats, 2).'v'.intdiv($mine->seats, 2)]) }}</span>
                 @endif
@@ -336,12 +349,21 @@ new class extends Component {
                         @endforeach
                     </div>
                 </fieldset>
+                <fieldset class="m-0 flex flex-col gap-2 border-0 p-0">
+                    <legend class="mb-2 text-xs font-bold tracking-[0.12em] text-ink-2 uppercase">{{ __('Season rating') }}</legend>
+                    <div class="flex gap-1.5" role="group">
+                        <button type="button" wire:click="$toggle('friendly')" aria-pressed="{{ $friendly ? 'true' : 'false' }}" class="{{ $chip }}" data-test="hyper-lobby-friendly">
+                            <span @class(['grid size-4 place-items-center rounded-xs text-[11px] shadow-ring', 'bg-btc text-on-btc' => $friendly, 'bg-ground' => ! $friendly]) aria-hidden="true">{{ $friendly ? '✓' : '' }}</span>{{ __('Friendly match (unrated)') }}
+                        </button>
+                    </div>
+                </fieldset>
             </div>
             <div class="flex flex-wrap items-center gap-3">
                 <button type="submit" class="btn-p inline-flex min-h-12 cursor-pointer items-center justify-center gap-2.5 rounded-md bg-btc px-6 font-display text-[15px] font-bold text-on-btc" data-test="hyper-lobby-open">
                     <x-icon name="flag" :size="18" />{{ __('Open a table') }}
                 </button>
                 <span class="text-xs text-ink-2">{{ $mode === HyperMatch::LIVE ? __('Bots take free seats after :minutes min.', ['minutes' => max(1, (int) round((int) config('esports.hyper.lobby_fill_seconds', 120) / 60))]) : __('One turn a day.') }}</span>
+                <span class="basis-full text-xs text-ink-2" data-test="hyper-lobby-rating-note">{{ $friendly ? __('A friendly match is never rated.') : ($seasonLive ? __('Rated in the season when no bot plays.') : __('No season is live: matches are unrated.')) }}</span>
                 @if ($clans)
                     <span class="basis-full text-xs text-ink-2">{{ __('Your clan takes one side; the first player of another clan takes the other. A clan linked to a meetup plays as that meetup.') }}</span>
                 @endif
@@ -375,6 +397,7 @@ new class extends Component {
                             <b class="mr-1 min-w-0 truncate text-sm">{{ __(':name’s table', ['name' => $table->creator?->displayName() ?? __('A player')]) }}</b>
                             <span class="{{ $tag }}">{{ $modeLabel($table->mode) }}</span>
                             <span class="{{ $tag }}">{{ $table->round_limit === 0 ? '∞' : __(':rounds rounds', ['rounds' => $table->round_limit]) }}</span>
+                            {!! $ratedTag($table) !!}
                         </div>
                         <div class="flex items-center gap-3">
                             <span class="flex min-w-0 grow -space-x-1.5" aria-label="{{ __(':taken/:seats seats', ['taken' => $table->takenSeats->count(), 'seats' => $table->seats]) }}">

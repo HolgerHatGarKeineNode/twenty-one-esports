@@ -79,9 +79,10 @@ new #[Title('New tournament')] #[Layout('layouts::app', ['section' => 'admin'])]
             ...$this->deadlineRules(),
         ]);
 
-        // Only a game the chooser offers (TournamentGames): an unknown key, or Blockfill's set by hand, is refused,
+        // Only a game the chooser offers (TournamentGames): an unknown key, Blockfill's set by hand, or Hyperbitcoinization while its
+        // tournaments are off (P5c) is refused,
         // never replaced by the default game.
-        if (TournamentGames::find($this->game) === null) {
+        if (! TournamentGames::offers($this->game)) {
             $this->addError('game', __('Pick a game from the list.'));
 
             return;

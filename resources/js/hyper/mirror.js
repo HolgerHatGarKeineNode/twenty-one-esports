@@ -66,7 +66,10 @@ export function fromSnapshot(snapshot) {
         inflation: !!state.inflation,
         inflationNext: !!state.inflation_next,
         fortified: !!state.fortified,
-        over: snapshot.status === 'finished' || !!state.over,
+        // Finished, or voided by the league (P5c, `aborted`): either way the match is over.
+        over: (snapshot.status !== undefined && snapshot.status !== 'active') || !!state.over,
+        voided: snapshot.end_reason === 'voided',
+        endedAt: Number.isSafeInteger(snapshot.ended_at) ? snapshot.ended_at : null,
         winner: snapshot.winner ?? state.winner ?? null,
         byLimit: !!state.by_limit,
         limit: snapshot.limit ?? state.limit ?? 0,

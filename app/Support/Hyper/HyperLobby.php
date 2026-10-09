@@ -22,7 +22,9 @@ use Illuminate\Support\Facades\DB;
  * table row locked for update (the board lobby's pattern), and the lobby hears about it after commit on the
  * public `hyper.lobby` channel (HyperLobbyUpdated, no data: the page renders again).
  *
- * - open(): a player sets a table up (seats, live or correspondence, round limit) and takes its first seat.
+ * - open(): a player sets a table up (seats, live or correspondence, round limit, a friendly match) and takes its
+ *   first seat. A friendly match (P5c, user 2026-10-09) is never rated; any other table's match is rated when it
+ *   starts without bots in a live season (HyperMatches::create()).
  * - join() / pick() / leave(): a player takes the first free seat, chooses a faction nobody at the table has
  *   (or none: drawn at the start), or gets up again. The creator getting up closes the table.
  * - fillBots(): the creator gives every free seat to a bot. A live table does so by itself
@@ -31,7 +33,8 @@ use Illuminate\Support\Facades\DB;
  *   (HyperTableStarted), and the lobby opens the match in a new tab.
  * - rematch(): after a match, the same lineup at a new table with a new seed; bots and seats whose player
  *   left are bots, every other player says yes first (`ready`). The table's players hear each yes on the
- *   old match's channels (HyperRematchUpdated), and the url once it starts.
+ *   old match's channels (HyperRematchUpdated), and the url once it starts. It inherits the old match's rating:
+ *   a rematch of an unrated match is a friendly match.
  *
  * - A clan table (P4, `clans`): 4 or 6 seats in two sides seated alternately (seats 0, 2, 4 and 1, 3, 5),
  *   each side one clan (HyperTeams: a clan linked to a meetup plays as that meetup). The creator's clan
@@ -51,7 +54,7 @@ final class HyperLobby
     /**
      * @throws HyperRuleViolation `seated_elsewhere`, `bad_table`, `faction_taken`
      */
-    public function open(User $creator, int $seats, string $mode, int $limit, ?string $faction = null, bool $clans = false): HyperTable
+    public function open(User $creator, int $seats, string $mode, int $limit, ?string $faction = null, bool $clans = false, bool $friendly = false): HyperTable
     {
         if ($seats < 2 || $seats > 6 || ! in_array($mode, [HyperMatch::LIVE, HyperMatch::CORRESPONDENCE], true) || ! in_array($limit, HyperGame::LIMITS, true)) {
             throw new HyperRuleViolation('bad_table', 'A table has 2 to 6 seats, a mode and a known round limit.');
@@ -64,7 +67,7 @@ final class HyperLobby
         $this->checkFaction($faction);
         $clan = $clans ? (HyperTeams::clanOf($creator) ?? throw new HyperRuleViolation('no_clan', 'A clan table needs a clan.')) : null;
 
-        $table = DB::transaction(function () use ($creator, $seats, $mode, $limit, $faction, $clan): HyperTable {
+        $table = DB::transaction(function () use ($creator, $seats, $mode, $limit, $faction, $clan, $friendly): HyperTable {
             // Two tabs opening or joining at once: one at a time per player.
             User::query()->whereKey($creator->id)->lockForUpdate()->first();
             $this->refuseSeatedElsewhere($creator);
@@ -74,6 +77,7 @@ final class HyperLobby
                 'seats' => $seats,
                 'round_limit' => $limit,
                 'team_clans' => $clan === null ? null : [$clan->id, null],
+                'friendly' => $friendly,
                 'status' => HyperTable::OPEN,
                 'created_by' => $creator->id,
                 'fill_at' => $live ? now()->addSeconds($this->fillSeconds()) : null,
@@ -246,6 +250,7 @@ final class HyperLobby
                     'seats' => $locked->seats->count(),
                     'round_limit' => $locked->round_limit,
                     'team_clans' => $locked->team_clans,
+                    'friendly' => ! $locked->rated,
                     'status' => HyperTable::OPEN,
                     'created_by' => $user->id,
                     'rematch_of' => $locked->id,
@@ -388,7 +393,7 @@ final class HyperLobby
         $seats = array_values($table->takenSeats->map(fn (HyperTableSeat $seat): array => $seat->bot || $seat->user === null
             ? ['bot' => true, 'faction' => $seat->faction, ...$team($seat)]
             : ['user' => $seat->user, 'faction' => $seat->faction, ...$team($seat)])->all());
-        $match = $this->matches->create($seats, $table->round_limit, creator: $table->creator()->first(), mode: $table->mode, teamClans: $table->team_clans);
+        $match = $this->matches->create($seats, $table->round_limit, creator: $table->creator()->first(), mode: $table->mode, teamClans: $table->team_clans, rated: $table->friendly ? false : null);
 
         $table->forceFill(['status' => HyperTable::STARTED, 'hyper_match_id' => $match->id, 'started_at' => now(), 'fill_at' => null])->save();
         $players = array_values(array_filter($table->takenSeats->map(fn (HyperTableSeat $seat): ?int => $seat->bot ? null : $seat->user_id)->all()));

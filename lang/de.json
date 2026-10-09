@@ -7576,5 +7576,14 @@
     ":name still names their team. The table starts at :time at the latest.": ":name benennt noch sein Team. Der Tisch startet spätestens um :time.",
     "Stay here: this page tells you as soon as your table starts.": "Bleib hier: Diese Seite sagt dir Bescheid, sobald dein Tisch startet.",
     "Confirm team": "Team bestätigen",
-    ":picked of :size picked": ":picked von :size gewählt"
+    ":picked of :size picked": ":picked von :size gewählt",
+    "Restart its round": "Starte seine Runde neu",
+    "Match voided": "Partie annulliert",
+    "The league voided this tournament match. It counts nowhere and is not rated.": "Die Liga hat diese Turnierpartie annulliert. Sie zählt nirgends und ist ungewertet.",
+    "Season rating": "Season-Wertung",
+    "Friendly match (unrated)": "Freundschaftsspiel (ungewertet)",
+    "A friendly match is never rated.": "Ein Freundschaftsspiel wird nie gewertet.",
+    "Rated in the season when no bot plays.": "In der Season gewertet, wenn kein Bot mitspielt.",
+    "No season is live: matches are unrated.": "Keine Season läuft: Partien sind ungewertet.",
+    "On: the league opens the next Hyperbitcoinization weekend cup on its own. Off: no new cup opens; a cup in sign-up or running plays to its end.": "An: Die Liga eröffnet den nächsten Hyperbitcoinization-Wochenend-Cup selbst. Aus: Es öffnet kein neuer Cup; ein Cup in der Anmeldung oder im Lauf spielt zu Ende."
 }

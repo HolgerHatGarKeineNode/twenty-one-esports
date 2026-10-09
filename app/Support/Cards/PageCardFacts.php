@@ -309,7 +309,8 @@ final class PageCardFacts
             'logo' => $logo !== null && Storage::disk('public')->exists($logo) ? $logo : null,
             'members' => $members->count(),
             'faces' => array_values($members->take(6)->map(fn (ClanMember $member): array => self::person($member->user))->all()),
-            'lineups' => $clan->lineups()->count(),
+            // The lineups the clan set up: never a Hyperbitcoinization clan bracket's mirror (P5b).
+            'lineups' => $clan->lineups()->setUpByClan()->count(),
         ];
     }
 

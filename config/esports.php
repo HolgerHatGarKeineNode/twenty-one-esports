@@ -1696,7 +1696,11 @@ return [
     | place). season_points: the points of a rated free-for-all match per
     | number of seats (3 to 6), place 1 first; a forfeit scores 0. A match of
     | two seats is a 1v1 and a clan match a team match: both are rated by Elo
-    | (`season.rating`). tournament_tables: the table sizes a tournament's
+    | (`season.rating`). tournaments: whether organizers may make
+    | Hyperbitcoinization tournaments, every format and clan brackets
+    | (`ESPORTS_HYPER_TOURNAMENTS`, off by default, user 2026-10-09: "Turniere
+    | erstmal nicht"); off, the format chooser does not offer the game, and
+    | tournaments that exist play on. tournament_tables: the table sizes a tournament's
     | free-for-all heats may have. tournament_lineup_minutes (P5b): how long a
     | clan bracket's match waits for its clans to name their players, per
     | mode; then the league seats the players each clan entered first.
@@ -1705,8 +1709,10 @@ return [
     | poll on Nostr (`ESPORTS_HYPER_PUBLISH`, off by default; it needs the
     | league key as well). poll_days: how long the spectator poll's
     | `endsAt` lies after the start, per mode (the page closes it when the
-    | match ends). cups: the weekly weekend cup (`ESPORTS_HYPER_CUPS`, off by
-    | default; it needs the league key): sign-up until `weekday` `time` in the
+    | match ends). cups: the weekly weekend cup, switched on or off on
+    | /admin/settings with the other games' automatic cups (LeagueSettings key
+    | `esports.hyper.cups.auto`, off by default; it needs the league key as
+    | well): sign-up until `weekday` `time` in the
     | league's zone, then free-for-all tables of `table` seats whose best
     | `advance` move on, unrated, bots fill a table that is short.
     |
@@ -1727,12 +1733,12 @@ return [
             5 => [10, 7, 5, 3, 1],
             6 => [12, 9, 7, 5, 3, 1],
         ],
+        'tournaments' => (bool) env('ESPORTS_HYPER_TOURNAMENTS', false),
         'tournament_tables' => [3, 6],
         'tournament_lineup_minutes' => ['live' => 10, 'correspondence' => 1440],
         'publish' => (bool) env('ESPORTS_HYPER_PUBLISH', false),
         'poll_days' => ['live' => 7, 'correspondence' => 60],
         'cups' => [
-            'enabled' => (bool) env('ESPORTS_HYPER_CUPS', false),
             'weekday' => 'saturday',
             'time' => '18:00',
             'mode' => 'live',

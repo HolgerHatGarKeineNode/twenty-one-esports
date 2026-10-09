@@ -37,6 +37,7 @@ use App\Support\Tournaments\Engine\Swiss;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Gate;
+use Throwable;
 
 /**
  * A running tournament (P8b): results come in, the P8a engine moves the
@@ -598,6 +599,36 @@ final class TournamentRunner
         if ($match->tournament->refresh()->status === TournamentStatus::Finished && HyperCups::isCup($match->tournament)) {
             HyperCups::forgetWins();
         }
+    }
+
+    /**
+     * The sweep's second chance for the bracket (plan "Hyperbitcoinization", P5c; `hyper:check-clocks`): every
+     * finished tournament table whose places did not reach its match (the report after the commit failed) is
+     * reported again. Only tables that ended `$graceSeconds` ago or more, so the report of the request that ended
+     * one is not raced; only a running tournament's match with no result, not held, and not superseded by the
+     * league. Each table on its own: one that fails is reported and the others still move. Returns how many it
+     * reported.
+     */
+    public function reportUnreportedHyperMatches(int $graceSeconds = 30): int
+    {
+        $due = HyperMatch::query()->where('status', HyperMatchStatus::Finished)->whereNotNull('tournament_match_id')
+            ->where('ended_at', '<=', now()->subSeconds($graceSeconds))
+            ->whereHas('tournamentMatch', fn ($match) => $match->whereNull('result')->whereNull('held')
+                ->where(fn ($replaced) => $replaced->whereNull('replaced_through')->orWhereColumn('tournament_matches.replaced_through', '<', 'hyper_matches.id'))
+                ->whereHas('tournament', fn ($tournament) => $tournament->where('status', TournamentStatus::Running)))
+            ->orderBy('id')->pluck('id');
+        $reported = 0;
+
+        foreach ($due as $id) {
+            try {
+                $this->hyperMatchFinished((int) $id);
+                $reported++;
+            } catch (Throwable $exception) {
+                report($exception);
+            }
+        }
+
+        return $reported;
     }
 
     /**

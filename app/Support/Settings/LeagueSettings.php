@@ -5,6 +5,7 @@ namespace App\Support\Settings;
 use App\Models\LeagueSettingChange;
 use App\Models\User;
 use App\Support\Board;
+use App\Support\Hyper\HyperCups;
 use Illuminate\Database\Eloquent\Collection as EloquentCollection;
 use Illuminate\Database\QueryException;
 use Illuminate\Support\Facades\DB;
@@ -88,6 +89,13 @@ final class LeagueSettings
             $name = (string) (((array) $setup)['name'] ?? $game);
             $cupAuto["esports.casual_cups.games.{$game}.auto"] = self::toggle('casual_cups', __('Automatic cups: :game', ['game' => $name]), $autoHelp,
                 in_array($game, array_map(strval(...), (array) config('esports.casual_cups.enabled', [])), true) ? 'on' : 'off');
+        }
+
+        // Hyperbitcoinization's weekend cup (plan "Hyperbitcoinization", P5c, user 2026-10-09): off by default, and only
+        // listed while the game is switched on (HyperCups; one cup for every region, so no slot of its own here).
+        if ((bool) config('esports.hyper.enabled')) {
+            $cupAuto[HyperCups::SETTING] = self::toggle('casual_cups', __('Automatic cups: :game', ['game' => 'Hyperbitcoinization']),
+                __('On: the league opens the next Hyperbitcoinization weekend cup on its own. Off: no new cup opens; a cup in sign-up or running plays to its end.'), 'off');
         }
 
         // One start day and time per cup game (user, 2026-09-30), the same local time on each region's clock.

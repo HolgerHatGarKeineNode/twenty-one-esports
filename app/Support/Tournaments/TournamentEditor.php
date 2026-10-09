@@ -6,6 +6,7 @@ use App\Enums\TournamentFormat;
 use App\Enums\TournamentResultsMode;
 use App\Enums\TournamentStatus;
 use App\Games\GameRegistry;
+use App\Games\Hyperbitcoinization;
 use App\Models\Lineup;
 use App\Models\Tournament;
 use App\Models\TournamentSignup;
@@ -286,6 +287,11 @@ final class TournamentEditor
         }
 
         if ((isset($diff['game']) || isset($diff['mode'])) && TournamentGames::keyOf($changes['game'] ?? $tournament->game, $changes['mode'] ?? $tournament->mode) === null) {
+            throw new TournamentRuleViolation('game', __('Pick a game and mode the league runs tournaments in.'));
+        }
+
+        // Hyperbitcoinization tournaments only while they are switched on (P5c): no tournament becomes one.
+        if (isset($diff['game']) && ($changes['game'] ?? null) === Hyperbitcoinization::SLUG && ! TournamentGames::hyperOffered()) {
             throw new TournamentRuleViolation('game', __('Pick a game and mode the league runs tournaments in.'));
         }
     }

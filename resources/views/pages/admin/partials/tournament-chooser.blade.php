@@ -194,7 +194,7 @@
             <span class="flex flex-col gap-1.5">
                 <span id="game-l" class="text-xs text-ink-2">{{ __('Game, mode') }}</span>
                 {{-- One row per registered game with a tournament profile (TournamentGames): its cover, its name and one button per mode. --}}
-                @foreach (\App\Support\Tournaments\TournamentGames::grouped() as $gameRow)
+                @foreach (\App\Support\Tournaments\TournamentGames::grouped($this->game) as $gameRow)
                     <span class="flex items-center gap-2" wire:key="game-row-{{ $gameRow['slug'] }}" data-test="game-row-{{ $gameRow['slug'] }}">
                         <span class="flex w-[104px] shrink-0 items-center gap-2 text-xs text-ink-3">
                             <x-game-cover :game="$gameRow['slug']" size="thumb" class="w-10 rounded-xs" />

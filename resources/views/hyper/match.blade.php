@@ -64,7 +64,7 @@
 </svg>
 
 <header class="hud" id="topbar">
-    <div class="logo frame shadowed"><b>HYPER<i>₿</i>ITCOINIZATION</b><small id="round-lbl">{{ __('Round :round', ['round' => $snapshot['round']]) }}</small></div>
+    <div class="logo frame shadowed"><b>HYPER<i>₿</i>ITCOINIZATION</b><span class="logo-row"><small id="round-lbl">{{ __('Round :round', ['round' => $snapshot['round']]) }}</small>@unless ($replay)<small class="rated-chip" data-test="hyper-rated" data-rated="{{ $snapshot['rated'] ? '1' : '0' }}">{{ $snapshot['rated'] ? __('Rated') : __('Unrated') }}</small>@endunless</span></div>
     <span class="grow"></span>
     <div id="stepper">
         <div class="stepper-row">

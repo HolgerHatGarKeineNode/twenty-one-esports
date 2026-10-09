@@ -62,7 +62,8 @@ final class GameLanding
             'live' => (int) ($series->live ?? 0),
             'open' => (int) ($series->open ?? 0),
             'searching' => SeriesQueueEntry::query()->where('game', $game)->count(),
-            'clans' => Lineup::query()->where('game', $game)->distinct()->count('clan_id'),
+            // The lineups clans set up: never a Hyperbitcoinization clan bracket's mirror (P5b).
+            'clans' => Lineup::query()->setUpByClan()->where('game', $game)->distinct()->count('clan_id'),
             'ranked' => $this->ranked($game),
         ];
     }

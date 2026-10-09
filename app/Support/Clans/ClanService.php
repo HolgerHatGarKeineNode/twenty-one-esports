@@ -588,7 +588,8 @@ final class ClanService
         $templates = [$this->clanTemplate($clan, $listing)];
         $lineups = [];
 
-        $seated = Lineup::query()->where('clan_id', $clan->id)
+        // Never a Hyperbitcoinization clan bracket's mirror (P5b): it is no lineup of the clan and is never signed.
+        $seated = Lineup::query()->setUpByClan()->where('clan_id', $clan->id)
             ->whereHas('seats', fn ($query) => $query->where('user_id', $member->id))
             ->with('seats.user')->orderBy('id')->get();
 

@@ -208,3 +208,66 @@ test('a rematch seats a player a bot took over for missed turns as a bot, so nob
     expect($answer->json('url'))->not->toBeNull()
         ->and(HyperMatch::query()->whereKeyNot($old->id)->latest('id')->firstOrFail()->seats->pluck('bot')->all())->toBe([false, true]);
 });
+
+test('a friendly match is never rated; any other bot-free table in a live season is, and a rematch keeps the old match\'s rating', function () {
+    openSeason(ladders: false);
+    [$anna, $bert, $carl, $dora] = User::factory()->count(4)->create();
+    $lobby = app(HyperLobby::class);
+
+    $friendly = $lobby->open($anna, 2, HyperMatch::LIVE, 0, friendly: true);
+    $friendlyMatch = $lobby->join($friendly, $bert)->match()->firstOrFail();
+    $rated = $lobby->open($carl, 2, HyperMatch::LIVE, 0);
+    $ratedMatch = $lobby->join($rated, $dora)->match()->firstOrFail();
+
+    expect($friendly->refresh()->friendly)->toBeTrue()
+        ->and($friendlyMatch->rated)->toBeFalse()
+        ->and($friendlyMatch->season)->toBeNull()
+        ->and($rated->refresh()->friendly)->toBeFalse()
+        ->and($ratedMatch->rated)->toBeTrue();
+
+    // A rematch inherits: the friendly one stays friendly, the rated one stays rated.
+    foreach ([$friendlyMatch, $ratedMatch] as $old) {
+        $old->forceFill(['status' => HyperMatchStatus::Finished, 'current_seat' => null, 'deadline_ms' => null])->save();
+    }
+
+    $lobby->rematch($friendlyMatch, $anna);
+    $friendlyAgain = $lobby->rematch($friendlyMatch, $bert)['match'];
+    $lobby->rematch($ratedMatch, $carl);
+    $ratedAgain = $lobby->rematch($ratedMatch, $dora)['match'];
+
+    expect($friendlyAgain->rated)->toBeFalse()
+        ->and(HyperTable::query()->where('rematch_of', $friendlyMatch->id)->value('friendly'))->toBeTrue()
+        ->and($ratedAgain->rated)->toBeTrue()
+        ->and(HyperTable::query()->where('rematch_of', $ratedMatch->id)->value('friendly'))->toBeFalse();
+});
+
+test('the lobby offers "Friendly match (unrated)" and every table shows Rated or Unrated; the match page header says it too', function () {
+    $this->withoutVite();
+    openSeason(ladders: false);
+    [$anna, $bert, $carl] = User::factory()->count(3)->create();
+
+    Livewire::actingAs($anna)->test('hyper-lobby')
+        ->assertSee('data-test="hyper-lobby-friendly"', false)
+        ->assertSee(__('Friendly match (unrated)'))
+        ->assertSee(__('Rated in the season when no bot plays.'))
+        ->toggle('friendly')
+        ->assertSeeHtml('aria-pressed="true" class=')
+        ->assertSee(__('A friendly match is never rated.'))
+        ->call('$set', 'seats', 2)
+        ->call('openTable')
+        ->assertSee('data-test="hyper-lobby-rated" data-rated="0"', false);
+
+    $table = HyperTable::query()->sole();
+    expect($table->friendly)->toBeTrue();
+
+    // Bert sees Anna's friendly table as unrated, Anna sees Carl's new table as rated.
+    Livewire::actingAs($bert)->test('hyper-lobby')->assertSee('data-test="hyper-lobby-rated" data-rated="0"', false);
+    app(HyperLobby::class)->open($carl, 3, HyperMatch::LIVE, 0);
+    Livewire::actingAs($anna)->test('hyper-lobby')->assertSee('data-test="hyper-lobby-rated" data-rated="1"', false);
+
+    $match = app(HyperLobby::class)->join($table, $bert)->match()->firstOrFail();
+    $rated = HyperOn::versus(User::factory()->create(), User::factory()->create());
+
+    $this->get(route('hyper.match', $match))->assertOk()->assertSee('data-test="hyper-rated" data-rated="0"', false)->assertSee(__('Unrated'));
+    $this->get(route('hyper.match', $rated))->assertOk()->assertSee('data-test="hyper-rated" data-rated="1"', false)->assertSee(__('Rated'));
+});

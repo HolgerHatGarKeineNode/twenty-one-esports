@@ -10,6 +10,7 @@ use App\Models\Tournament;
 use App\Models\User;
 use App\Support\LeagueTime;
 use App\Support\SeasonChain\LeagueKey;
+use App\Support\Settings\LeagueSettings;
 use App\Support\Tournaments\FormatOptions;
 use App\Support\Tournaments\GameProfile;
 use App\Support\Tournaments\TournamentChampion;
@@ -21,7 +22,8 @@ use Throwable;
 
 /**
  * Hyperbitcoinization's weekend cup (plan "Hyperbitcoinization", P5): a light casual cup on the tournament flow,
- * nothing of its own beyond opening it. Behind `esports.hyper.cups.enabled` (off by default) and the league key.
+ * nothing of its own beyond opening it. Switched on or off on /admin/settings with the other games' automatic cups
+ * (LeagueSettings `esports.hyper.cups.auto`, off by default, user 2026-10-09), and only with the league key.
  *
  * - **Opening** ({@see tick()}, every minute from the tournament clock): while no cup is open, the next one,
  *   "Hyperbitcoinization Weekend Cup #n", is published for sign-up (TournamentPublisher::openSignup()) until the
@@ -40,13 +42,16 @@ final class HyperCups
 {
     public const OPTION = 'hyper_cup';
 
+    /** The cup's switch on /admin/settings (LeagueSettings, a toggle, `off` by default). */
+    public const SETTING = 'esports.hyper.cups.auto';
+
     private const WINS_CACHE = 'hyper-cups:wins';
 
     public function __construct(private TournamentPublisher $publisher) {}
 
     public static function enabled(): bool
     {
-        return (bool) config('esports.hyper.enabled') && (bool) config('esports.hyper.cups.enabled');
+        return (bool) config('esports.hyper.enabled') && LeagueSettings::get(self::SETTING) === 'on';
     }
 
     public static function isCup(Tournament $tournament): bool

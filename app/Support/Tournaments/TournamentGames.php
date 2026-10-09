@@ -4,6 +4,7 @@ namespace App\Support\Tournaments;
 
 use App\Games\Blockfill;
 use App\Games\GameRegistry;
+use App\Games\Hyperbitcoinization;
 use InvalidArgumentException;
 
 /**
@@ -15,6 +16,12 @@ use InvalidArgumentException;
  * Never Blockfill (plan "Blockfill", P6): its only boards are the weeks the
  * league opens itself (BlockfillWeeks), which take its runs; a tournament an
  * organizer made of it would never get one.
+ *
+ * Hyperbitcoinization (plan "Hyperbitcoinization", P5c) only while
+ * `esports.hyper.tournaments` is on (off by default, user 2026-10-09): off,
+ * the chooser does not offer it ({@see grouped()}, {@see offers()}) and no
+ * tournament is made of it; one that exists keeps its key ({@see all()}), so
+ * its pages and edits still read its game.
  */
 final class TournamentGames
 {
@@ -43,16 +50,40 @@ final class TournamentGames
     }
 
     /**
-     * The chooser's rows: one per game, its modes as [key, label].
+     * Whether organizers may make Hyperbitcoinization tournaments (`esports.hyper.tournaments`).
+     */
+    public static function hyperOffered(): bool
+    {
+        return (bool) config('esports.hyper.tournaments');
+    }
+
+    /**
+     * Whether the chooser offers this profile key for a new tournament: a known key, and Hyperbitcoinization only
+     * while its tournaments are switched on. `$current`: the key the tournament has now, which stays offered.
+     */
+    public static function offers(string $key, ?string $current = null): bool
+    {
+        $found = self::find($key);
+
+        return $found !== null && ($key === $current || $found[0] !== Hyperbitcoinization::SLUG || self::hyperOffered());
+    }
+
+    /**
+     * The chooser's rows: one per game, its modes as [key, label]; only what {@see offers()} (the key the
+     * tournament has now, `$current`, included).
      *
      * @return list<array{slug: string, name: string, options: list<array{0: string, 1: string}>}>
      */
-    public static function grouped(): array
+    public static function grouped(?string $current = null): array
     {
         $registry = app(GameRegistry::class);
         $rows = [];
 
         foreach (self::all() as $key => [$game, $mode]) {
+            if (! self::offers($key, $current)) {
+                continue;
+            }
+
             $rows[$game] ??= ['slug' => $game, 'name' => __($registry->get($game)->name()), 'options' => []];
             $rows[$game]['options'][] = [$key, __((string) $registry->mode($game, $mode)?->name)];
         }
