@@ -5,6 +5,7 @@ namespace Tests\Support;
 use App\Support\Hyper\HyperRng;
 use App\Support\Pong\PongBot;
 use App\Support\Pong\PongGame;
+use App\Support\Pong\PongPhysics;
 use App\Support\Pong\PongRally;
 use App\Support\Pong\PongRules;
 
@@ -17,7 +18,8 @@ use App\Support\Pong\PongRules;
  * - rng: the first draws of a few seeds;
  * - rallies: 50 rallies between two bots, every event (five each) and level pair, each from its game seed and number;
  * - events: the event of every rally of the first three blocks of 21 for a few seeds (P8: all nine per block);
- * - games: whole games between two bot levels (PongGame::bots()).
+ * - games: whole games between two bot levels (PongGame::bots());
+ * - pow: Proof of Work's paddle half per number of own hits, past its cap (P8: the cap checked in both languages).
  */
 final class PongGolden
 {
@@ -70,7 +72,15 @@ final class PongGolden
             $games[] = ['seed' => $seed, 'levels' => $levels, 'result' => PongGame::bots($seed, $levels, $rules)];
         }
 
-        return ['rng' => $rng, 'rallies' => $rallies, 'events' => $events, 'games' => $games];
+        $pow = new PongRally(5, PongRules::POW, [PongBot::speed(1), PongBot::speed(1)]);
+        $halves = [];
+
+        foreach ([0, 1, 2, 5, 6, 7, 12, 40] as $hits) {
+            $pow->sideHits = [$hits, 0];
+            $halves[] = ['hits' => $hits, 'half' => $pow->halfOf(0), 'other' => $pow->halfOf(1)];
+        }
+
+        return ['rng' => $rng, 'rallies' => $rallies, 'events' => $events, 'games' => $games, 'pow' => ['grow' => PongPhysics::POW_GROW, 'max' => PongPhysics::POW_MAX_HALF, 'halves' => $halves]];
     }
 
     public static function encode(mixed $data): string

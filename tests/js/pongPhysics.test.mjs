@@ -8,7 +8,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { test } from 'node:test';
 import { seeded } from '../../resources/js/pong/rng.js';
-import { createRally, rallyToArray, stepRally } from '../../resources/js/pong/physics.js';
+import { PADDLE_HALF, POW, POW_GROW, POW_MAX_HALF, createRally, rallyHalf, rallyToArray, stepRally } from '../../resources/js/pong/physics.js';
 import { botSpeed, createBot } from '../../resources/js/pong/bot.js';
 import { DEFAULT_RULES, EVENTS, eventOf, playBots, rallySeed } from '../../resources/js/pong/rules.js';
 
@@ -52,6 +52,22 @@ test('the events of every rally of three blocks of 21, all nine in each block', 
 test('whole games between two bots end with the server\'s score, rallies, ticks and goals', () => {
     for (const { seed, levels, result } of golden.games) {
         assert.deepEqual(playBots(seed, levels), result, `seed ${seed}, levels ${levels}`);
+    }
+});
+
+test('Proof of Work grows a paddle per own hit up to the server\'s cap, the other paddle unchanged', () => {
+    assert.equal(POW_GROW, golden.pow.grow);
+    assert.equal(POW_MAX_HALF, golden.pow.max);
+    const rally = createRally(5, POW, [botSpeed(1), botSpeed(1)]);
+    for (const { hits, half, other } of golden.pow.halves) {
+        rally.sideHits = [hits, 0];
+        assert.deepEqual([rallyHalf(rally, 0), rallyHalf(rally, 1)], [half, other], `${hits} hits`);
+    }
+    // The cap is reached and held: never longer than POW_MAX_HALF, however many hits.
+    assert.ok(golden.pow.halves.some((h) => h.half === POW_MAX_HALF && h.hits * POW_GROW + PADDLE_HALF > POW_MAX_HALF));
+    for (let hits = 0; hits <= 200; hits++) {
+        rally.sideHits = [hits, hits];
+        assert.equal(rallyHalf(rally, 0), Math.min(PADDLE_HALF + hits * POW_GROW, POW_MAX_HALF));
     }
 });
 
