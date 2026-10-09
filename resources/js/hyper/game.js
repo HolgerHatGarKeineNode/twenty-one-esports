@@ -21,7 +21,7 @@ import { applyEvent, banksOf, defenseBonus, fromSnapshot, odds, territoriesOf, u
 import { PlySync } from './sync.js';
 import { fmt, t } from './i18n.js';
 import { readableMs } from './statsPlan.js';
-import { lagging, movesOnByItself, quietBattle, tapGraceMs } from './pace.js';
+import { isMultiplayer, lagging, movesOnByItself, quietBattle, tapGraceMs } from './pace.js';
 import { AUD, ctx, cue, hoverTick, setAudioHooks, setIntensity, sfx, startMusic } from './audio.js';
 import { readSettings, writeSettings } from './sounds.js';
 
@@ -111,6 +111,18 @@ const myClockRuns = () => playing() && isMe(live.seat) && !G.over;
  * bots' moves): the other seats' events land at once, without arrows, banners or scenes, so the player can move.
  */
 let rushing = false;
+/** The batch on show: when it reached the page, and whose events they are. */
+let shownBatch = null;
+/** Whether the page is behind while it shows another seat's events: then nothing on screen holds it up. */
+const behind = () => shownBatch !== null && ((!isMe(shownBatch.seat) && myClockRuns()) || lagging(shownBatch.at, Date.now(), !!CFG?.replay, document.hidden));
+/** A caption's hold, cut short once the page falls behind (the 3 s bound holds during a caption too). */
+async function holdUnlessBehind(ms) {
+    const end = Date.now() + ms;
+    while (Date.now() < end) {
+        if (behind()) return;
+        await sleep(Math.min(100, end - Date.now()));
+    }
+}
 const myTurn = () => playing() && !G.over && G.cur === ME;
 const idle = () => !running && queue.length === 0 && !UI.busy && S && S.ply === sync.ply && G.ply === S.ply;
 /** What the server allows right now: the snapshot's `legal`, only while the page shows exactly that snapshot. */
@@ -380,8 +392,17 @@ const FACE = (url, ring) => `<span class="pimg face" style="--ring:${ring}"><img
  * (3 s, or 60 ms per character), whatever the pace of the other seats; a big moment (`big`: a bank falls, a space
  * is complete, a knockout, a card, the end) then waits for a click, Enter or Space ("Tap to continue").
  */
+let bannerToken = 0;
 async function banner(title, sub = '', hold = 1100, por = '', ring = 'var(--btc)', fast = false, big = false) {
     if (rushing) return;
+    const token = ++bannerToken;
+    const run = showBanner(token, title, sub, hold, por, ring, fast, big);
+    // At a multiplayer table a caption shows while the moves go on: only a big moment holds the page (user 2026-10-09:
+    // every page in sync). A newer caption takes the banner over.
+    if (!big && isMultiplayer(G.seats)) return;
+    await run;
+}
+async function showBanner(token, title, sub = '', hold = 1100, por = '', ring = 'var(--btc)', fast = false, big = false) {
     $('#banner-p').innerHTML = por ? POR(por, ring) : '';
     const fit = () => {
         const tEl = $('#banner-t'); const box = document.querySelector('#banner .bx'); const narrow = innerWidth < 820;
@@ -400,16 +421,16 @@ async function banner(title, sub = '', hold = 1100, por = '', ring = 'var(--btc)
     bn.dataset.wait = '0';
     fit();
     sfx.whoosh();
-    if (REDUCED) { await sleep(hold); if (big) await tapToContinue(bn); bn.hidden = true; return; }
+    if (REDUCED) { await holdUnlessBehind(hold); if (big) await tapToContinue(bn); if (token === bannerToken) bn.hidden = true; return; }
     const tl = gsap().timeline();
     tl.fromTo('#banner .bx', { scaleX: 0.2, opacity: 0, y: 0 }, { scaleX: 1, opacity: 1, duration: 0.3, ease: 'expo.out' })
         .fromTo('#banner .bt', { scale: 1.5, opacity: 0 }, { scale: 1, opacity: 1, duration: 0.45, ease: 'expo.out' }, '<')
         .fromTo('#banner .bp', { y: 40, scale: 0.5, opacity: 0 }, { y: 0, scale: 1, opacity: 1, duration: 0.55, ease: 'back.out(2.2)' }, '<');
     await tl.then();
-    await sleep(hold);
+    await holdUnlessBehind(hold);
     if (big) await tapToContinue(bn);
-    await gsap().to('#banner .bx', { opacity: 0, y: -24, duration: 0.3, ease: 'power2.in' }).then();
-    bn.hidden = true;
+    if (token === bannerToken) await gsap().to('#banner .bx', { opacity: 0, y: -24, duration: 0.3, ease: 'power2.in' }).then();
+    if (token === bannerToken) bn.hidden = true;
 }
 /**
  * A big moment waits for the player: a click on it, Enter or Space. `data-wait` says it is waiting. Nobody is held
@@ -429,7 +450,7 @@ function tapToContinue(el) {
         };
         // The grace may start later: the server can hand this player the turn while the moment is still waiting.
         let since = null;
-        const watch = setInterval(() => { if (!grace()) { since = null; return; } since ??= Date.now(); if (Date.now() - since >= tapGraceMs(G.seats)) go({ type: 'timeout' }); }, 250);
+        const watch = setInterval(() => { if (behind()) { go({ type: 'timeout' }); return; } if (!grace()) { since = null; return; } since ??= Date.now(); if (Date.now() - since >= tapGraceMs(G.seats)) go({ type: 'timeout' }); }, 250);
         stop.signal.addEventListener('abort', () => clearInterval(watch));
         el.addEventListener('pointerdown', go, { signal: stop.signal });
         addEventListener('keydown', go, { capture: true, signal: stop.signal });
@@ -727,6 +748,8 @@ function catchUp() {
         for (let guard = 0; guard < 6; guard++) {
             const r = await NET.get(`${CFG.urls.events}?after=${sync.ply}`);
             if (!r.ok || !r.data) break;
+            // Who moves now: a page catching up learns that its own clock runs (and lands the rest at once).
+            if (r.data.seat !== undefined) { live.seat = r.data.seat; live.deadline = r.data.deadline_ms ?? null; }
             if (r.data.ply - sync.ply > CATCHUP_MAX) {
                 const s = await NET.get(CFG.urls.snapshot);
                 if (s.ok && s.data) { queue.length = 0; sync.reset(s.data.ply); latest = s.data; if (!running) settle(); }
@@ -767,8 +790,9 @@ async function animateBatch(batch) {
         ctxB.seat = e.type === 'turn_started' ? e.seat : (e.seat ?? ctxB.seat);
         // Another seat's events: at the chosen pace, faster while catching up, and at least 3× once the server
         // already gave this player the turn (their 90 s run while the page still shows the bots).
-        rushing = !isMe(ctxB.seat) && (myClockRuns() || lagging(batch.at, Date.now(), !!CFG?.replay));
-        ctxB.speed = isMe(ctxB.seat) ? 1 : rushing ? 20 : Math.max(UI.speed, batch.fast ? 3 : 1);
+        shownBatch = { at: batch.at, seat: ctxB.seat };
+        rushing = behind();
+        ctxB.speed = rushing ? 20 : isMe(ctxB.seat) ? 1 : Math.max(UI.speed, batch.fast ? 3 : 1);
         if (e.type === 'dice_rolled') {
             const run = [e];
             while (events[i + 1]?.type === 'dice_rolled' && events[i + 1].from === e.from && events[i + 1].to === e.to) run.push(events[++i]);
@@ -779,6 +803,8 @@ async function animateBatch(batch) {
     }
     shownSource = null;
     rushing = false;
+    shownBatch = null;
+    if (renderOwed) render();
 }
 const wait = (ctxB, ms) => (ctxB.speed >= 20 ? Promise.resolve() : sleep(ms / ctxB.speed));
 async function showDice(run, next, ctxB) {
@@ -801,9 +827,10 @@ async function showDice(run, next, ctxB) {
         ctxB.watched++;
         await openBattle(first.from, first.to, true);
         $('#skip-btn').onclick = () => { BT.skip = true; };
-        await sleep(ctxB.speed > 1 ? 400 : 900);
-        for (const r of run) { if (BT.skip) { applyEvent(G, r); continue; } await animateDice(r, ctxB.speed > 1); }
-        if (!BT.skip && BT.three) { if (conquers) await window.Arena.finale(colorOf(attacker), porOf(attacker), t(fac(attacker).tag)); else { cue('battle.held'); await sleep(900); } }
+        await holdUnlessBehind(ctxB.speed > 1 ? 400 : 900);
+        // The defender watches their battle, but never past the 3 s bound: behind, the rest lands at once.
+        for (const r of run) { if (BT.skip || behind()) { applyEvent(G, r); continue; } await animateDice(r, ctxB.speed > 1); }
+        if (!BT.skip && !behind() && BT.three) { if (conquers) await window.Arena.finale(colorOf(attacker), porOf(attacker), t(fac(attacker).tag)); else { cue('battle.held'); await sleep(900); } }
         closeBattle(); render();
 
         return;
@@ -832,7 +859,7 @@ async function showEvent(e, ctxB, next) {
             applyEvent(G, e); UI.from = null; UI.card = null;
             log(t(':name: +:fiat fiat, +:sats M sats', { name: nameOf(e.seat), fiat: fmt(e.fiat), sats: fmt(e.sats) }), false, e.seat);
             render();
-            if (isMe(e.seat) && playing()) { cue('turn.mine'); await banner(t('Your turn'), t('+:fiat fiat · +:sats M sats', { fiat: fmt(e.fiat), sats: fmt(e.sats) }), 650, porOf(e.seat), colorOf(e.seat)); } else if (sp === 1) await banner(nameOf(e.seat), t('is on the move'), 320, porOf(e.seat), colorOf(e.seat), true);
+            if (isMe(e.seat) && playing()) { cue('turn.mine'); /* not awaited: the player may move while it shows */ banner(t('Your turn'), t('+:fiat fiat · +:sats M sats', { fiat: fmt(e.fiat), sats: fmt(e.sats) }), 650, porOf(e.seat), colorOf(e.seat)); } else if (sp === 1) await banner(nameOf(e.seat), t('is on the move'), 320, porOf(e.seat), colorOf(e.seat), true);
             break;
         }
         case 'placed': {
@@ -1097,7 +1124,11 @@ function renderTicker() {
 }
 const bankSeg = (n) => Array.from({ length: 10 }, (_, i) => `<i class="${i < n ? 'on' : ''}"></i>`).join('');
 let lastPhase = '';
+let renderOwed = false;
 export function render() {
+    // Catching up, the table is drawn once at the end of the batch, not after every event (a long bot turn drew it dozens of times).
+    if (rushing) { renderOwed = true; return; }
+    renderOwed = false;
     if (!G) return;
     const L = legalNow();
     renderBase(); renderPins();
@@ -1295,7 +1326,7 @@ function bindControls() {
         const k = e.key.toLowerCase(); const press = (sel) => { const x = $(sel); if (x && !x.disabled && x.offsetParent !== null) { e.preventDefault(); x.click(); return true; } return false; };
         if (visible('#battle') && $('#battle').classList.contains('cine')) { e.preventDefault(); return; }
         // A caption on screen: its keys are its own (tapToContinue), nothing behind it moves.
-        if (visible('#banner')) return;
+        if (visible('#banner') && $('#banner').dataset.wait === '1') return;
         if (visible('#battle')) { if (k === 'w' || k === ' ' || k === 'enter') press('#roll-btn'); else if (k === 'e') press('#blitz-btn'); else if (k === 'escape') press('#retreat-btn') || press('#skip-btn'); else if (k === 's') press('#skip-btn'); return; }
         if (visible('#move')) { const r = $('#move-range'); if (k === 'enter' || k === ' ') press('#move-ok'); else if (k === 'arrowleft' || k === 'arrowright') { e.preventDefault(); r.value = +r.value + (k === 'arrowright' ? 1 : -1); r.dispatchEvent(new Event('input')); } return; }
         if (visible('#help')) { if (k === 'escape' || k === 'enter' || k === 'h') press('#help-close'); return; }

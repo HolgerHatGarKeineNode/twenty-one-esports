@@ -55,21 +55,26 @@ test('a turn whose clock already runs: the other seats\' events land at once, no
     const { readFileSync } = await import('node:fs');
     const game = readFileSync(new URL('../../resources/js/hyper/game.js', import.meta.url), 'utf8');
 
-    assert.match(game, /rushing = !isMe\(ctxB\.seat\) && \(myClockRuns\(\)[^\n]*\n\s+ctxB\.speed = isMe\(ctxB\.seat\) \? 1 : rushing \? 20 :/);
+    assert.match(game, /rushing = behind\(\);\n\s+ctxB\.speed = rushing \? 20 : isMe\(ctxB\.seat\) \? 1 :/);
     assert.match(game, /async function banner\(.*\) \{\n\s+if \(rushing\) return;/);
     assert.match(game, /shownSource = null;\n\s+rushing = false;/);
 });
 
-test('a page more than 5 s behind the server lands the rest at once; a replay never lags', async () => {
+test('a page more than 3 s behind the server, or in a hidden tab, lands the rest at once; a replay never lags', async () => {
     const { MAX_LAG_MS, lagging } = await import('../../resources/js/hyper/pace.js');
     const { readFileSync } = await import('node:fs');
     const game = readFileSync(new URL('../../resources/js/hyper/game.js', import.meta.url), 'utf8');
 
-    assert.equal(MAX_LAG_MS, 5000);
-    assert.equal(lagging(0, 4999), false);
-    assert.equal(lagging(0, 5001), true);
+    assert.equal(MAX_LAG_MS, 3000);
+    assert.equal(lagging(0, 2999), false);
+    assert.equal(lagging(0, 3001), true);
+    assert.equal(lagging(0, 10, false, true), true);
+    assert.equal(lagging(0, 10, true, true), false);
     assert.equal(lagging(0, 60000, true), false);
     assert.equal(lagging(undefined, 60000), false);
     assert.match(game, /batch\.at \?\?= Date\.now\(\);/);
-    assert.match(game, /rushing = !isMe\(ctxB\.seat\) && \(myClockRuns\(\) \|\| lagging\(batch\.at, Date\.now\(\), !!CFG\?\.replay\)\);/);
+    assert.match(game, /const behind = \(\) => shownBatch !== null && \(\(!isMe\(shownBatch\.seat\) && myClockRuns\(\)\) \|\| lagging\(shownBatch\.at, Date\.now\(\), !!CFG\?\.replay, document\.hidden\)\);/);
+    assert.match(game, /shownBatch = \{ at: batch\.at, seat: ctxB\.seat \};\n\s+rushing = behind\(\);/);
+    assert.match(game, /await tl\.then\(\);\n\s+await holdUnlessBehind\(hold\);/);
+    assert.match(game, /if \(behind\(\)\) \{ go\(\{ type: 'timeout' \}\); return; \}/);
 });

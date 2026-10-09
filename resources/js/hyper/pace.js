@@ -13,7 +13,7 @@ export const isMultiplayer = (seats) => (seats ?? []).filter(isHumanSeat).length
 
 /** The wait after a big moment was readable: short at a multiplayer table, longer elsewhere (a click ends it sooner). */
 export const TAP_GRACE_MS = 6000;
-export const MULTIPLAYER_GRACE_MS = 1500;
+export const MULTIPLAYER_GRACE_MS = 0;
 export const tapGraceMs = (seats) => (isMultiplayer(seats) ? MULTIPLAYER_GRACE_MS : TAP_GRACE_MS);
 
 /**
@@ -28,7 +28,8 @@ export const quietBattle = (seats, attacker, defender) => !isHumanSeat(seats?.[a
 /**
  * How far a page may fall behind the server (user 2026-10-09: every browser at the table in sync). The table's
  * events reach every page at once over Reverb; each page shows them at its own pace, so a page that is more than
- * MAX_LAG_MS behind lands the rest at once. A replay plays at its own pace and never lags.
+ * MAX_LAG_MS behind lands the rest at once, and so does a page in a hidden tab (nobody watches it, and the
+ * browser throttles its timers: it would come back minutes behind). A replay plays at its own pace and never lags.
  */
-export const MAX_LAG_MS = 5000;
-export const lagging = (arrivedAt, now, replay = false) => !replay && arrivedAt !== undefined && now - arrivedAt > MAX_LAG_MS;
+export const MAX_LAG_MS = 3000;
+export const lagging = (arrivedAt, now, replay = false, hidden = false) => !replay && (hidden || (arrivedAt !== undefined && now - arrivedAt > MAX_LAG_MS));

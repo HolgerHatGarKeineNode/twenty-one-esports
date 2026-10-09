@@ -460,6 +460,9 @@ final class HyperMatches
 
         return [
             'ply' => $match->ply,
+            // Who moves now and until when: a page catching up learns that its own clock runs (user 2026-10-09).
+            'seat' => $match->current_seat,
+            'deadline_ms' => $match->deadline_ms,
             'actions' => array_values($actions->map(fn (HyperAction $action): array => [
                 'ply' => $action->ply,
                 'seat' => $action->seat,
