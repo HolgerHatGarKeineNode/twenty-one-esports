@@ -277,3 +277,41 @@ test('an invite from the online list, accepted, puts both players on the full-sc
         ->and($inviter->evaluate('() => window.pongLive.state().me'))->toBe($match->sideOf($anna))
         ->and(pongLiveErrors($inviter))->toBe([]);
 });
+
+test('after a deploy that changes the rules, an open match page reloads itself once between two rallies and plays on with the new code', function () {
+    expect(config('broadcasting.default'))->toBe('reverb', 'Run this through scripts/test-browser.sh, which starts Reverb.');
+
+    [$match] = pongLiveMatch(13);
+    $loads = 'try { sessionStorage.setItem("loads", String(Number(sessionStorage.getItem("loads") || 0) + 1)); addEventListener("pagehide", () => sessionStorage.setItem("hidden-phase", document.body.dataset.phase || "")); } catch (e) {}';
+    $phone = visit(BrowserLogin::url($match->left))->page();
+    $phone->context()->addInitScript($loads);
+    $phone->context()->addInitScript(BrowserConsole::COLLECTOR);
+    $phone->context()->addInitScript('try { localStorage.setItem("pong-settings", '.json_encode((string) json_encode(['autoplay' => 3])).'); } catch (e) {}');
+    $phone->setViewportSize(390, 844);
+    $phone->goto(ComputeUrl::from(route('pong.match', $match, false)));
+    BrowserWait::until($phone, '() => document.body.dataset.ready === "1" && document.body.dataset.live === "1"', 15_000);
+    $desktop = pongLivePage($match->right, $match, 1440, 900, 2);
+    BrowserWait::until($phone, '() => window.pongLive.state().rally >= 2', 30_000);
+
+    $before = (new PongRules)->version();
+    expect($phone->evaluate('() => window.pongLive.state().rules'))->toBe($before)
+        ->and($phone->evaluate('() => sessionStorage.getItem("loads")'))->toBe('1');
+
+    // The deploy: the server now plays other rules, so every snapshot names another version.
+    config(['esports.pong.event_block_rallies' => 22]);
+    $after = PongRules::fromConfig((array) config('esports.pong'))->version();
+    expect($after)->not->toBe($before);
+
+    // The phone reloads once, not in the middle of a rally, and comes back with the new version and the match on.
+    BrowserWait::until($phone, '() => document.body.dataset.ready === "1" && window.pongLive?.state().rules === '.json_encode($after), 20_000);
+    BrowserWait::until($phone, '() => window.pongLive.state().status === "active"', 10_000);
+    usleep(3_000_000);
+
+    expect($phone->evaluate('() => sessionStorage.getItem("loads")'))->toBe('2')
+        ->and($phone->evaluate('() => sessionStorage.getItem("hidden-phase")'))->not->toBe('play')
+        ->and($phone->evaluate('() => window.pongLive.state().status'))->toBe('active')
+        ->and(pongLiveErrors($phone))->toBe([]);
+
+    // The desktop page reloads as well, once.
+    BrowserWait::until($desktop, '() => document.body.dataset.ready === "1" && window.pongLive?.state().rules === '.json_encode($after), 20_000);
+});

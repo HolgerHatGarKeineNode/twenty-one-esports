@@ -61,6 +61,19 @@ final readonly class PongRules
 
     private const int MASK = 0xFFFFFFFF;
 
+    /**
+     * The code both sides compute a rally with: the server's rules and physics and the browser's mirror of them. Any
+     * change to one of these files is a new version() (P8: a match tab opened before a deploy reloads itself).
+     */
+    public const array CODE = [
+        'app/Support/Pong/PongRules.php',
+        'app/Support/Pong/PongPhysics.php',
+        'app/Support/Pong/PongRally.php',
+        'resources/js/pong/rules.js',
+        'resources/js/pong/physics.js',
+        'resources/js/pong/rng.js',
+    ];
+
     public function __construct(
         public int $pointsToWin = ProofOfPong::POINTS_TO_WIN,
         public int $winBy = ProofOfPong::WIN_BY,
@@ -91,6 +104,24 @@ final readonly class PongRules
     public function toArray(): array
     {
         return ['points_to_win' => $this->pointsToWin, 'win_by' => $this->winBy, 'event_block_rallies' => $this->eventBlock];
+    }
+
+    /**
+     * A short fingerprint of these rules and of the code that plays them (CODE), carried by every live snapshot: a page
+     * whose snapshot at load had another one runs older code than the server and reloads itself between two rallies
+     * (resources/js/pong/live.js), instead of computing rallies the referee no longer agrees with. A file that cannot
+     * be read counts as empty, so the fingerprint stays stable rather than failing the snapshot.
+     */
+    public function version(): string
+    {
+        /** @var array<string, string> $versions once per process and rule set */
+        static $versions = [];
+        $rules = json_encode($this->toArray(), JSON_THROW_ON_ERROR);
+
+        return $versions[$rules] ??= substr(hash('sha256', $rules.'|'.implode('|', array_map(
+            fn (string $file): string => is_file(base_path($file)) ? (string) hash_file('sha256', base_path($file)) : '',
+            self::CODE,
+        ))), 0, 16);
     }
 
     /**

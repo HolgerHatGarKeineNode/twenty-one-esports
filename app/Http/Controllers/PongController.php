@@ -50,6 +50,7 @@ class PongController extends Controller
     public const array LIVE_TEXTS = [
         ...self::TEXTS, 'Match aborted', 'by resignation', 'by forfeit', 'Elo :before → :after (:delta)', 'Waiting for :name …',
         'Accept rematch', 'Rematch', 'Reconnecting …', ':name is gone', 'Click again to resign',
+        'The game was updated: please reload the page.',
     ];
 
     public function index(Request $request): View

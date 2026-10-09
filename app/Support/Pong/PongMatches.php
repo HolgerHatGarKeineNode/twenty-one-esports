@@ -313,6 +313,8 @@ final class PongMatches
             'rematch' => $state['rematch'],
             'figures' => self::figuresOf($match),
             'next' => $state['next'] === null ? null : route('pong.match', ['match' => $state['next']]),
+            // The rules and code the referee plays with (P8): a page loaded with another one reloads itself.
+            'rules' => $this->rules()->version(),
         ];
     }
 

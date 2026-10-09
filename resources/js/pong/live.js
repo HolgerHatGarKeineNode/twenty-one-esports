@@ -14,6 +14,11 @@
  * - The page asks the server every two seconds (its heartbeat), at once when the opponent leaves or comes back, and
  *   when it becomes visible again; without a websocket it asks more often for the snapshots it cannot hear.
  *
+ * Deploy skew (P8): every snapshot names the rules and code the referee plays with (`rules`, PongRules::version()).
+ * A page whose first snapshot named another one runs older code than the server: it reloads itself once, between two
+ * rallies (not while a rally is in play), instead of computing rallies the referee no longer agrees with; if the reload
+ * still brings the old code (a cache), it says so instead of reloading again.
+ *
  * The rally is stepped tick by tick as PongRally steps it (paddles first, then the balls), and the score is always the
  * server's. With `pong-settings` autoplay (the browser test's handle) a bot plays this page's paddle exactly as in
  * PongGame::bots(), so two autoplaying pages end with the score PongGame::bots() gives for the seed and both levels.
@@ -268,11 +273,34 @@ function run(r) {
     }
 }
 
+/* The rules and code this page was loaded with, and whether the server has moved on since (deploy skew). */
+const loadedRules = config.snapshot?.rules ?? null;
+let staleRules = null;
+const RELOAD_KEY = `pong-rules-reload:${config.id}`;
+
+/** Between two rallies: reload once for a server running other rules; a second time only says so. */
+function reloadForRules(current) {
+    if (staleRules === null || current === 'play') return;
+    let tried = null;
+    try { tried = sessionStorage.getItem(RELOAD_KEY); } catch { /* no storage: reload anyway, once per page */ }
+    if (tried === staleRules) {
+        flash(t('The game was updated: please reload the page.'));
+        staleRules = null;
+
+        return;
+    }
+    try { sessionStorage.setItem(RELOAD_KEY, staleRules); } catch { /* the guard holds for this page only */ }
+    staleRules = null;
+    document.body.dataset.reloading = '1';
+    location.reload();
+}
+
 /** A newer snapshot of the server: the truth for score, state and the rally. */
 function apply(next) {
     if (!next || next.version < applied) return;
     applied = next.version;
     snap = next;
+    if (loadedRules !== null && next.rules && next.rules !== loadedRules && next.status !== 'finished') staleRules = next.rules;
 
     const figures = JSON.stringify(next.figures ?? null);
     if (figures !== figuresShown) {
@@ -446,6 +474,7 @@ function frame() {
     else theShow.frame({ balls: [], alive: [], paddles: [HEIGHT >> 1, HEIGHT >> 1], half: PADDLE_HALF, event: null });
     if (!toast.hidden && performance.now() > toastUntil) toast.hidden = true;
     document.body.dataset.phase = current;
+    reloadForRules(current);
     requestAnimationFrame(frame);
 }
 
@@ -539,7 +568,7 @@ window.pongLive = {
     state: () => ({
         status: snap?.status, score: snap ? [...snap.score] : null, me, version: applied, winner: snap?.winner ?? null,
         rally: rally?.number ?? null, tick: rally?.g ?? null, away: snap?.away ?? null, opponentHere, portrait: isPortrait(), renderer: arena.kind,
-        figures: snap?.figures ?? null, shown: theShow.figures().map((f) => f.id),
+        figures: snap?.figures ?? null, shown: theShow.figures().map((f) => f.id), rules: loadedRules,
     }),
 };
 window.pongShow = theShow;

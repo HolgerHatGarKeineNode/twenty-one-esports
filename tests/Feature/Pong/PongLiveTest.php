@@ -368,3 +368,22 @@ test('a finished match from the factory is won by the side it names, among the p
     $ownPlayers = PongMatch::factory()->finished(1)->create();
     expect($ownPlayers->winner_id)->toBe($ownPlayers->right_id);
 });
+
+test('every snapshot names the rules version, which follows the rules and fingerprints the code both sides play with', function () {
+    PongOn::play();
+    $match = PongMatch::factory()->create();
+    $version = (new PongRules)->version();
+
+    expect(app(PongMatches::class)->snapshot($match, $match->left)['rules'])->toBe($version)
+        ->and($version)->toMatch('/^[0-9a-f]{16}$/')
+        ->and((new PongRules(eventBlock: 22))->version())->not->toBe($version)
+        ->and((new PongRules(pointsToWin: 11))->version())->not->toBe($version);
+
+    // Every file of the fingerprint is there: a renamed one would drop out of it without a word.
+    foreach (PongRules::CODE as $file) {
+        expect(base_path($file))->toBeFile();
+    }
+
+    // The match page carries it in its first snapshot, the reference a page compares later snapshots with.
+    $this->actingAs($match->left)->get(route('pong.match', $match))->assertOk()->assertSee('"rules":"'.$version.'"', false);
+});
