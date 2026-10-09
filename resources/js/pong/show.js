@@ -95,7 +95,8 @@ export function createShow({ arena, settings, t, castTexts, figures: ids, arenaN
                 }
                 previous[index] = view.alive[index] ? [...ball] : null;
             });
-            queue(view.event === ARBEITSAMT && view.balls.some((ball, index) => view.alive[index] && ball.length > 5));
+            const waiting = view.event === ARBEITSAMT ? view.balls.find((ball, index) => view.alive[index] && ball.length > 5) : undefined;
+            queue(!!waiting, waiting?.[1]);
         }
         arena.render(view);
         adapt(now);
@@ -117,8 +118,12 @@ export function createShow({ arena, settings, t, castTexts, figures: ids, arenaN
 
     let queued = false;
 
-    /** The stamp and the waiting number while a ball waits; Markus Turm's line when he plays. */
-    function queue(waiting) {
+    /**
+     * The stamp and the waiting number while a ball waits; Markus Turm's line when he plays. The box never covers the
+     * waiting ball (P8, review): lying, the ball waits on the vertical centre line, so the box goes to the other half
+     * of that line; upright, the centre line is horizontal and the box sits above it.
+     */
+    function queue(waiting, ballY) {
         const box = $('queue');
         if (!box || waiting === queued) return;
         queued = waiting;
@@ -127,6 +132,8 @@ export function createShow({ arena, settings, t, castTexts, figures: ids, arenaN
 
             return;
         }
+        const upright = document.body.dataset.portrait === '1';
+        box.dataset.at = upright || ballY > HEIGHT / 2 ? 'top' : 'bottom';
         box.querySelector('b').textContent = t('Stamped');
         box.querySelector('span').textContent = t('Your waiting number: :n', { n: 21 });
         const turm = figures.some((f) => f.id === 'turm');

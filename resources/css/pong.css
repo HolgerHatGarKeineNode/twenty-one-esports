@@ -147,6 +147,9 @@ body.gl #field { background: transparent; box-shadow: none; border-radius: 0; }
 .queue span { font-weight: 700; font-size: clamp(13px, 3.4cqmin, 18px); white-space: nowrap; }
 .queue small { font-size: 13px; color: #fda4af; }
 .queue.in { animation: stamp 420ms var(--ease-pop) both; }
+/* P8: off the waiting ball, on the other half of the centre line (show.js queue()). */
+.queue[data-at=top] { top: 25%; }
+.queue[data-at=bottom] { top: 75%; }
 @keyframes stamp { 0% { transform: translate(-50%, -50%) scale(2.2) rotate(-14deg); opacity: 0; } 55% { transform: translate(-50%, -50%) scale(0.92) rotate(-6deg); opacity: 1; } 100% { transform: translate(-50%, -50%) scale(1) rotate(-6deg); } }
 .toast { position: absolute; left: 50%; bottom: 12%; transform: translateX(-50%); padding: 8px 12px; border-radius: 10px; background: var(--pong-card); font-weight: 700; white-space: nowrap; pointer-events: none; }
 

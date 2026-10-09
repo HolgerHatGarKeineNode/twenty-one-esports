@@ -318,6 +318,28 @@ test('pictures of the arena for the report: lobby, match, meme event, goal, end'
     'desktop 1440x900' => [1440, 900],
 ]);
 
+/**
+ * Whether the Arbeitsamt's stamp box covers the waiting ball (P8, review): the ball's centre on screen, from its field
+ * position (lying: x across, y down; upright: y across, x down), with its radius and a margin of 6 px, against the
+ * box at rest.
+ */
+const PONG_QUEUE_CLEAR = <<<'JS'
+    () => {
+        const at = window.pongGame.state().waitingAt;
+        const q = document.querySelector('[data-test=pong-queue]');
+        if (!at || !q.checkVisibility()) return null;
+        // The box where it rests: the stamp's 420 ms landing animation (scaled up and fading in) left out.
+        q.style.animation = 'none';
+        const f = document.querySelector('[data-test=pong-field]').getBoundingClientRect();
+        const upright = document.body.dataset.portrait === '1';
+        const x = f.left + (upright ? at[1] / 90000 : at[0] / 160000) * f.width;
+        const y = f.top + (upright ? at[0] / 160000 : at[1] / 90000) * f.height;
+        const r = (1200 / 90000) * (upright ? f.width : f.height) + 6;
+        const b = q.getBoundingClientRect();
+        return { ball: [Math.round(x), Math.round(y)], box: [Math.round(b.left), Math.round(b.top), Math.round(b.right), Math.round(b.bottom)], covered: x + r > b.left && x - r < b.right && y + r > b.top && y - r < b.bottom };
+    }
+    JS;
+
 /** Rally 1 of each seed is that P7 event when every rally is one (PongRules::eventOf(), `eventEvery` 1). */
 const PONG_P7_SEEDS = ['tax' => 7, 'controls' => 6, 'few' => 1, 'pow' => 15, 'arbeitsamt' => 5];
 
@@ -363,7 +385,8 @@ test('the five P7 meme events take the field over in a real game', function () {
             'few' => BrowserWait::until($page, '() => { const s = window.pongGame.state(); return s.phase !== "play" || s.drawn.balls[0] === true; }', 10_000),
             'pow' => expect(max($state['halves']))->toBe(9000 + 1500 * max($state['sideHits'])),
             'arbeitsamt' => expect($page->evaluate('() => [...document.querySelectorAll("[data-test=pong-queue] b, [data-test=pong-queue] span, [data-test=pong-queue] small")].map((e) => e.textContent)'))
-                ->toBe([__('Stamped', [], 'de'), __('Your waiting number: :n', ['n' => 21], 'de'), __('Markus Turm knows his way around here.', [], 'de')]),
+                ->toBe([__('Stamped', [], 'de'), __('Your waiting number: :n', ['n' => 21], 'de'), __('Markus Turm knows his way around here.', [], 'de')])
+                ->and($page->evaluate(PONG_QUEUE_CLEAR)['covered'])->toBeFalse(),
         };
 
         expect([...$page->evaluate('() => window.__errors ?? ["collector missing"]'), ...$page->evaluate(BrowserConsole::BAD_RESPONSES)])->toBe([], $event);
@@ -379,6 +402,8 @@ test('measurements of the five P7 events at five sizes for the report: in the wi
 
     foreach (array_keys(PONG_P7_SEEDS) as $event) {
         $page = pongP7Moment($event, $width, $height);
+        // At once, while the ball still waits (it waits half a second at speed 2).
+        $clear = $event === 'arbeitsamt' ? $page->evaluate(PONG_QUEUE_CLEAR) : null;
         $page->evaluate('() => { const q = document.getElementById("queue"); if (q) q.style.animation = "none"; }');
         $fit = $page->evaluate(<<<'JS'
             () => {
@@ -407,6 +432,8 @@ test('measurements of the five P7 events at five sizes for the report: in the wi
                 ->and($fit['queue']['top'])->toBeGreaterThanOrEqual($fit['field']['top'])
                 ->and($fit['queue']['bottom'])->toBeLessThanOrEqual($fit['field']['bottom'])
                 ->and($fit['queueOverflow'])->toBeLessThanOrEqual(0);
+            fwrite(STDERR, "pong p7 {$width}x{$height} queue vs ball: ".json_encode($clear).PHP_EOL);
+            expect($clear['covered'])->toBeFalse();
         }
         expect([...$page->evaluate('() => window.__errors ?? ["collector missing"]'), ...$page->evaluate(BrowserConsole::BAD_RESPONSES)])->toBe([], $event);
 
