@@ -1,6 +1,6 @@
 {{--
     The settings of a Proof of Pong page (plan "Proof of Pong", P3), opened by the gear in the HUD: volume, effects,
-    voices (the soundboard clips), music (resources/js/pong/sound.js, localStorage `pong-sound`), the arena's quality
+    voices (the soundboard clips), music and its own volume (resources/js/pong/sound.js, localStorage `pong-sound`), the arena's quality
     and motion (resources/js/pong/page.js, `pong-settings`). The game runs on while it is open.
 --}}
 <div class="settings" id="settings" hidden role="dialog" aria-labelledby="settings-h" data-test="pong-settings">
@@ -13,7 +13,8 @@
     <label class="row range"><span>{{ __('Volume') }}</span><input type="range" name="vol" min="0" max="100" step="5"></label>
     <label class="row"><input type="checkbox" name="fx"><span>{{ __('Effects') }}</span></label>
     <label class="row"><input type="checkbox" name="board"><span>{{ __('Voices') }}</span></label>
-    <label class="row"><input type="checkbox" name="music"><span>{{ __('Music') }}</span></label>
+    <label class="row"><input type="checkbox" name="music" data-test="pong-setting-music"><span>{{ __('Music') }}</span></label>
+    <label class="row range"><span>{{ __('Volume: :channel', ['channel' => __('Music')]) }}</span><input type="range" name="musicVol" min="0" max="100" step="5" data-test="pong-setting-music-volume"></label>
     <label class="row"><input type="checkbox" name="motion" data-test="pong-setting-motion"><span>{{ __('Motion effects') }}</span></label>
     <label class="row select"><span>{{ __('Quality') }}</span>
         <select name="quality" data-test="pong-setting-quality">

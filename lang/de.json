@@ -7834,5 +7834,7 @@
     "At the centre line the ball draws a number and waits a second.": "An der Mittellinie zieht der Ball eine Nummer und wartet eine Sekunde.",
     "Stamped": "Gestempelt",
     "Your waiting number: :n": "Ihre Wartenummer: :n",
-    "Markus Turm knows his way around here.": "Markus Turm kennt sich hier aus."
+    "Markus Turm knows his way around here.": "Markus Turm kennt sich hier aus.",
+    ":a, :b and :c": ":a, :b und :c",
+    "The background music is Blockfill's shuffled MIDI playlist; every track with its author and license is listed under Music.": "Die Hintergrundmusik ist die gemischte MIDI-Playlist aus Blockfill; alle Stücke mit Urheber und Lizenz stehen unter Musik."
 }

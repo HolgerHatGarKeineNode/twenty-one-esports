@@ -2,7 +2,7 @@
 
 /*
 |--------------------------------------------------------------------------
-| The games' MIDI background music (Blockfill, Hyperbitcoinization)
+| The games' MIDI background music (Blockfill, Hyperbitcoinization, Proof of Pong)
 |--------------------------------------------------------------------------
 |
 | The MIDI reader, the voices, the shuffled playlist and the player under Node (tests/js/midiParse.test.mjs,
@@ -16,6 +16,7 @@ use App\Support\Pages\RulesPage;
 use Illuminate\Support\Facades\Process;
 use Tests\Support\BlockfillOn;
 use Tests\Support\HyperOn;
+use Tests\Support\PongOn;
 
 test('the MIDI reader parses the ten tracks, the fixtures and hand-built files, broken ones throw, every note has a voice (Node)', function () {
     $run = Process::path(base_path())->timeout(60)->run(['node', '--test', 'tests/js/midiParse.test.mjs']);
@@ -69,4 +70,15 @@ test('the credits name only the games that are on, and stay off the page while b
 
     HyperOn::play();
     expect($lead())->toStartWith('The background music of Blockfill and Hyperbitcoinization:');
+
+    PongOn::play();
+    expect($lead())->toStartWith('The background music of Blockfill, Hyperbitcoinization and Proof of Pong:');
+});
+
+test('the Proof of Pong rules name its music and point to the credits', function () {
+    PongOn::play();
+    $pong = collect(RulesPage::sections())->firstWhere('id', 'proof-of-pong');
+
+    expect($pong['items'])->toContain('The background music is Blockfill\'s shuffled MIDI playlist; every track with its author and license is listed under Music.')
+        ->and(collect(RulesPage::sections())->firstWhere('id', 'music')['lead'])->toStartWith('The background music of Proof of Pong:');
 });

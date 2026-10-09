@@ -122,6 +122,7 @@
     </div>
     @include('pong.partials.settings')
 </main>
+@include('pong.partials.now-playing')
 
 <script type="application/json" id="pong-config">@json($config)</script>
 <script src="/hyper/vendor/three.min.js"></script>

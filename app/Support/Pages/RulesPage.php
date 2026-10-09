@@ -466,6 +466,7 @@ final class RulesPage
                 __('The server checks every hit. A player gone for more than :time loses the match.', ['time' => self::seconds((int) ($c['forfeit_seconds'] ?? 30))]),
                 __('A live match between two players moves both players\' Elo. Games against a bot are practice and count for nothing.'),
                 __('Proof of Pong mines no block and has no season: its Elo ladder is permanent.'),
+                __('The background music is Blockfill\'s shuffled MIDI playlist; every track with its author and license is listed under Music.'),
             ],
             // Only while routed: a route table cached with the switch off has neither page.
             'links' => Route::has('pong.index') && Route::has('pong.ladder') ? [[__('Open the lobby'), route('pong.index')], [__('Elo ladder'), route('pong.ladder')]] : [],
@@ -940,10 +941,10 @@ final class RulesPage
     }
 
     /**
-     * The background music of Blockfill and Hyperbitcoinization: every track of
+     * The background music of Blockfill, Hyperbitcoinization and Proof of Pong: every track of
      * public/music/midi/manifest.json with its author and license, and a link to
      * its source (CC-BY and OGA-BY require the credit). Only the games that are
-     * on are named; nothing while both are off or without tracks.
+     * on are named; nothing while all are off or without tracks.
      *
      * @return list<Section>
      */
@@ -957,7 +958,7 @@ final class RulesPage
         ));
 
         $names = array_keys(array_filter(
-            ['Blockfill' => Blockfill::SLUG, 'Hyperbitcoinization' => Hyperbitcoinization::SLUG],
+            ['Blockfill' => Blockfill::SLUG, 'Hyperbitcoinization' => Hyperbitcoinization::SLUG, 'Proof of Pong' => ProofOfPong::SLUG],
             fn (string $slug): bool => app(GameRegistry::class)->find($slug) !== null,
         ));
 
@@ -969,7 +970,11 @@ final class RulesPage
             'id' => 'music',
             'title' => __('Music'),
             'lead' => __('The background music of :games: free tracks from OpenGameArt.org, played by the game\'s own synthesizer.', [
-                'games' => count($names) === 2 ? __(':a and :b', ['a' => $names[0], 'b' => $names[1]]) : $names[0],
+                'games' => match (count($names)) {
+                    1 => $names[0],
+                    2 => __(':a and :b', ['a' => $names[0], 'b' => $names[1]]),
+                    default => __(':a, :b and :c', ['a' => $names[0], 'b' => $names[1], 'c' => $names[2]]),
+                },
             ]),
             'table' => [
                 'head' => [__('Track'), __('Author'), __('License'), __('Style')],

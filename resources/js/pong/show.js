@@ -284,6 +284,7 @@ export function createShow({ arena, settings, t, castTexts, figures: ids, arenaN
         const field = (name) => panel.querySelector(`[name=${name}]`);
         field('vol').value = String(Math.round(sound.vol * 100));
         ['fx', 'board', 'music'].forEach((key) => { field(key).checked = sound[key]; });
+        field('musicVol').value = String(Math.round(sound.musicVol * 100));
         field('quality').value = settings.quality;
         field('motion').checked = motion;
 
@@ -293,6 +294,7 @@ export function createShow({ arena, settings, t, castTexts, figures: ids, arenaN
         });
         panel.querySelector('[data-close]').addEventListener('click', closeSettings);
         field('vol').addEventListener('input', (e) => setSound('vol', Number(e.target.value) / 100));
+        field('musicVol').addEventListener('input', (e) => setSound('musicVol', Number(e.target.value) / 100));
         ['fx', 'board', 'music'].forEach((key) => field(key).addEventListener('change', (e) => setSound(key, e.target.checked)));
         field('quality').addEventListener('change', (e) => {
             settings.quality = e.target.value;
@@ -310,6 +312,20 @@ export function createShow({ arena, settings, t, castTexts, figures: ids, arenaN
     }
     document.body.classList.toggle('still', !motion);
     document.body.dataset.quality = arena.quality;
+
+    // The credit of the MIDI track that plays (CC-BY and OGA-BY require it), gone when the music stops (P8).
+    addEventListener('midi-track', (e) => {
+        const track = e.detail;
+        const line = $('now-playing');
+        if (!line) return;
+        line.hidden = !track;
+        if (!track) return;
+        const link = $('now-playing-title');
+        link.textContent = track.title;
+        if (track.source) link.href = track.source;
+        else link.removeAttribute('href');
+        $('now-playing-by').textContent = `– ${track.author} (${track.license})`;
+    });
 
     return {
         frame,

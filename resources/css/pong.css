@@ -183,6 +183,11 @@ body[data-portrait="1"] .cheer.in[data-side="1"] { animation-name: cheer-t; }
 .settings input[type=checkbox] { width: 20px; height: 20px; accent-color: var(--pong-btc); }
 .settings input[type=range] { width: 150px; accent-color: var(--pong-btc); }
 .settings select { min-height: 36px; padding: 0 8px; border-radius: 8px; border: 0; color: var(--pong-ink); background: rgb(255 255 255 / 0.1); }
+/* The music's credit line (P8), in the 20 px strip page.js keeps free under the stage. */
+.now-playing { position: fixed; z-index: 2; left: 8px; right: 8px; bottom: 2px; margin: 0; font: 500 11px/16px var(--font-mono); color: var(--pong-ink-3); text-align: center; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; pointer-events: none; }
+.now-playing[hidden] { display: none; }
+.now-playing a { color: var(--pong-ink-2); text-decoration: underline; text-underline-offset: 3px; pointer-events: auto; }
+.now-playing a:hover { color: var(--pong-btc); }
 
 /* ---------- Small screens ------------------------------------------------------------------------------------ */
 

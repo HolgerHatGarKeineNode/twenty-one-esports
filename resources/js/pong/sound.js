@@ -1,11 +1,17 @@
 /**
  * Proof of Pong's sound (plan "Proof of Pong", P3) on Hyperbitcoinization's audio engine (resources/js/hyper/audio.js):
- * the same context, buses, ambient score and soundboard files (public/hyper/s); the figures' voices are only those
+ * the same context, buses, music (P8: the MIDI playlist, below) and soundboard files (public/hyper/s); the figures' voices are only those
  * clips (resources/js/pong/cast.json), never anything else. On top a few synthesized sounds of the game itself: the
  * paddle's blip (higher with each hit of the rally), the wall, the goal, the ratchet of a Difficulty Adjustment, the
  * printer of Brrr.
  *
- * Four switches like Hyper's, kept in localStorage `pong-sound`: volume, effects, voices (soundboard), music.
+ * Four switches like Hyper's, kept in localStorage `pong-sound`: volume, effects, voices (soundboard), music; and (P8) the
+ * music's own volume `musicVol` (0..1) as on Blockfill.
+ *
+ * The music (P8) is Blockfill's shuffled MIDI playlist (resources/js/midi/player.js, public/music/midi/manifest.json) on
+ * the audio engine's music bus: it starts on the first gesture where the browser blocks autoplay, ducks under every
+ * snippet (audio.js duck()), stops while the page is hidden, and falls back to the ambient score without tracks. Each
+ * track is announced as a `midi-track` event, shown by show.js as the "now playing" credit line.
  *
  * The voices (P7) come from the snippet library (resources/js/sounds/snips.js, public/sounds/snips): each occasion of
  * the game (a hit, a goal, a goal against, a streak, each meme event, the win, the loss) draws without repetition from
@@ -14,7 +20,7 @@
  * kind of occasion (voices.js VOICE_RULES), lets a hit speak only now and then, and lets only a more important moment cut a
  * snippet short. Until the manifest has loaded (or when it cannot), a figure falls back to its cast clips (voice()).
  */
-import { AUD, ctx, emoteClip, playUrl, sfx, startMusic } from '../hyper/audio.js';
+import { AUD, ctx, emoteClip, musicLevel, playUrl, setAudioHooks, sfx, startMusic, stopMusic } from '../hyper/audio.js';
 import { readSettings, writeSettings } from '../hyper/sounds.js';
 import { createSnips, personsOf } from '../sounds/snips.js';
 import { EXCLUDE, OCCASIONS, OWN_WEIGHT, VOICE_RULES, voiceAllowed } from './voices.js';
@@ -24,17 +30,30 @@ const QUIET_MS = 3500;
 
 export const settings = readSettings(globalThis.localStorage, KEY);
 
+setAudioHooks({ playlist: true });
+
 function apply() {
     AUD.vol = settings.vol;
     AUD.fx = settings.fx;
     AUD.board = settings.board;
     AUD.music = settings.music;
+    AUD.musicVol = settings.musicVol;
     if (AUD.master) AUD.master.gain.value = settings.vol;
-    if (AUD.ctx) startMusic();
+    if (!AUD.ctx) return;
+    if (settings.music) startMusic();
+    else {
+        AUD.musicBus?.gain.setTargetAtTime(musicLevel(), AUD.ctx.currentTime, 0.3);
+        stopMusic();
+    }
 }
 apply();
 
-/** Changes a switch (`vol`, `fx`, `board`, `music`) and keeps it. */
+/** The music's state for the browser test (pongGame.state().music): switch, volume, ducked, the bus's gain now. */
+export function musicState() {
+    return { on: AUD.music, vol: AUD.musicVol, ducked: AUD.ducked, gain: AUD.musicBus ? Math.round(AUD.musicBus.gain.value * 1000) / 1000 : null };
+}
+
+/** Changes a switch (`vol`, `fx`, `board`, `music`, `musicVol`) and keeps it. */
 export function set(key, value) {
     settings[key] = value;
     writeSettings(globalThis.localStorage, settings, KEY);

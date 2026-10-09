@@ -8,6 +8,7 @@
 | The soundboard cut into snippets (tools/sound-snips/cut.py, public/sounds/snips): every file of the manifest is
 | there and between 0.5 and 4.6 seconds, every occasion of Pong has a pool, a draw never repeats the last snippet and
 | deals a whole pool before repeating, a figure's own snippets come with their weight (tests/js/snips.test.mjs).
+| P8: the background music, Blockfill's MIDI playlist, and its ducking under the snippets (tests/js/pongMusic.test.mjs).
 |
 */
 
@@ -18,6 +19,13 @@ test('the snippet library has its files and every occasion of Pong draws without
 
     expect($run->successful())->toBeTrue($run->output().$run->errorOutput())
         ->and($run->output())->toContain('ℹ pass 7')->toContain('ℹ fail 0');
+});
+
+test('the music is the shuffled MIDI playlist without a track twice in a row, and ducks under a snippet (Node)', function () {
+    $run = Process::path(base_path())->timeout(60)->run(['node', '--test', 'tests/js/pongMusic.test.mjs']);
+
+    expect($run->successful())->toBeTrue($run->output().$run->errorOutput())
+        ->and($run->output())->toContain('ℹ pass 3')->toContain('ℹ fail 0');
 });
 
 test('the manifest lists only files of the snippet folder, each snippet once', function () {

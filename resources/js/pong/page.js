@@ -97,8 +97,10 @@ export function createStage() {
     const fit = () => {
         fittedWidth = innerWidth;
         const top = 56;
+        // The strip under the stage keeps the music's credit line (#now-playing, P8) off the field.
+        const credit = 20;
         const availW = innerWidth - 16;
-        const availH = innerHeight - top - 12;
+        const availH = innerHeight - top - credit - 12;
         portrait = innerWidth < innerHeight;
         const ratio = portrait ? 9 / 16 : 16 / 9;
         let w = Math.min(availW, availH * ratio);
@@ -109,7 +111,7 @@ export function createStage() {
         }
         w = Math.floor(w);
         h = Math.floor(h);
-        stage.style.height = `${innerHeight - top}px`;
+        stage.style.height = `${innerHeight - top - credit}px`;
         field.style.width = `${w}px`;
         field.style.height = `${h}px`;
         box = { w, h };

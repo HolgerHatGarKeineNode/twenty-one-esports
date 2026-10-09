@@ -19,6 +19,7 @@ import { createStage, readConfig, readSettings } from './page.js';
 import { HEIGHT, PADDLE_HALF, PLAYER_SPEED, TICKS_PER_SECOND, rallyHalf, stepRally } from './physics.js';
 import { createGame, rallySeed } from './rules.js';
 import { createShow } from './show.js';
+import { musicState } from './sound.js';
 
 const ANNOUNCE_TICKS = 110;
 const SERVE_TICKS = 50;
@@ -188,7 +189,7 @@ function boot() {
     // The browser test's handles: where the game stands, and the show (to stage a moment for a picture).
     window.pongShow = show;
     window.pongGame = {
-        state: () => ({ phase, score: [...game.score], rally: game.rally, winner: game.winner, ticks, event: rally?.event ?? null, halves: rally ? [rallyHalf(rally, 0), rallyHalf(rally, 1)] : null, waiting: rally ? rally.balls.some((ball) => ball.length > 5) : false, sideHits: rally ? [...rally.sideHits] : null, lastScorer, renderer: arena.kind, quality: arena.quality, gpu: arena.gpu ?? null, draws: arena.stats ? arena.stats() : null, drawn: arena.drawn ? arena.drawn() : null, figures: show.figures().map((f) => f.id), portrait: isPortrait() }),
+        state: () => ({ phase, score: [...game.score], rally: game.rally, winner: game.winner, ticks, event: rally?.event ?? null, halves: rally ? [rallyHalf(rally, 0), rallyHalf(rally, 1)] : null, waiting: rally ? rally.balls.some((ball) => ball.length > 5) : false, sideHits: rally ? [...rally.sideHits] : null, lastScorer, renderer: arena.kind, quality: arena.quality, gpu: arena.gpu ?? null, draws: arena.stats ? arena.stats() : null, drawn: arena.drawn ? arena.drawn() : null, figures: show.figures().map((f) => f.id), portrait: isPortrait(), music: musicState() }),
     };
     document.body.dataset.renderer = arena.kind;
     document.body.dataset.ready = '1';
