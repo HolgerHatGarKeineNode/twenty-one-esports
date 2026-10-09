@@ -33,6 +33,7 @@ import { createSound, cuesFor, normalizeSound } from './sound.js';
 import { createTicker, formatTicks } from './ticker.js';
 // P5: the replay viewer shares this entry (and its engine and renderer) instead of a bundle of its own
 import './replay-page.js';
+import { createMidiPlayer } from '../midi/player.js';
 import { registerAlpine } from '../registerAlpine.js';
 
 const COUNTDOWN_MS = 3000;
@@ -152,6 +153,7 @@ registerAlpine(() => {
             sound: null,
             wire: null,
             onGesture: null,
+            onTrack: null,
             saveSound: 0,
         };
         const initialSound = normalizeSound(config.signedIn ? config.sound : (readStored(STORE_SOUND) ?? config.sound));
@@ -177,6 +179,8 @@ registerAlpine(() => {
             rankedBest: config.best,
             allTimeBest: config.allTimeBest,
             sound: initialSound,
+            // the MIDI track that plays now ({title, author, license, source}), for its credit line; null: none
+            nowPlaying: null,
 
             init() {
                 trace(config, 'init');
@@ -201,10 +205,16 @@ registerAlpine(() => {
                 rt.onBlur = () => rt.session?.releaseAll();
                 rt.onResize = () => this.layout();
                 // the browser lets a page sound only after a gesture: the first press unlocks it
-                rt.sound = createSound({ settings: this.sound });
+                // the MIDI playlist (public/music/midi/manifest.json) is the music when it has tracks, else the chiptune loops;
+                // level 0.2: the tracks measured -35.3 to -38.9 dBFS RMS at music 50, the loops -38.3 (2026-10-09)
+                rt.sound = createSound({ settings: this.sound, midi: (ctx, output) => createMidiPlayer({ ctx, output, level: 0.2 }) });
                 rt.onGesture = () => rt.sound.unlock();
                 window.addEventListener('pointerdown', rt.onGesture, true);
                 window.addEventListener('keydown', rt.onGesture, true);
+                rt.onTrack = (event) => {
+                    this.nowPlaying = event.detail;
+                };
+                window.addEventListener('midi-track', rt.onTrack);
                 this.$watch('mode', () => this.scene());
                 this.$watch('lines', () => this.scene());
                 this.$watch('kind', () => this.scene());
@@ -228,6 +238,7 @@ registerAlpine(() => {
                 cancelAnimationFrame(rt.frame);
                 this.unlisten(rt);
                 clearTimeout(rt.saveSound);
+                window.removeEventListener('midi-track', rt.onTrack);
                 rt.sound?.destroy();
                 if (window.__stacker?.owner === this) {
                     delete window.__stacker;

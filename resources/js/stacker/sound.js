@@ -22,6 +22,10 @@
  * - The music is scheduled ahead on the audio clock: a timer every
  *   INTERVAL_MS queues the notes of the next LOOKAHEAD seconds. Nothing runs
  *   per frame, and with the music off the timer is not running at all.
+ * - With a MIDI player handed in (`midi`, resources/js/midi/player.js) and
+ *   tracks in its manifest, the shuffled MIDI playlist is the music, on the
+ *   same music bus (switch, volume, hidden tab); without tracks, or when none
+ *   loads, the chiptune loops play as before.
  *
  * `env` is the browser (window) unless a test hands in a stand-in.
  */
@@ -125,9 +129,10 @@ function level(volume, ceiling) {
 }
 
 /**
- * @param {{settings?: object, env?: object}} [options]
+ * @param {{settings?: object, env?: object, midi?: (ctx: AudioContext, output: AudioNode) => object}} [options]
+ *     `midi` makes the MIDI player once the context exists (resources/js/midi/player.js createMidiPlayer).
  */
-export function createSound({ settings, env = globalThis } = {}) {
+export function createSound({ settings, env = globalThis, midi = null } = {}) {
     let current = normalizeSound(settings);
     let scene = { mode: 'idle', kind: 'practice', remaining: 40, goal: 40 };
     let ctx = null;
@@ -137,6 +142,10 @@ export function createSound({ settings, env = globalThis } = {}) {
     let unlocked = false;
     let timer = null;
     let seq = null;
+    // the MIDI playlist: 'none' (no player or no tracks: the chiptune loops play), 'idle', 'starting', 'playing'
+    let player = null;
+    let playlist = 'none';
+    let musicRun = 0;
     const last = {};
     let voices = [];
     const panners = new Map();
@@ -191,6 +200,15 @@ export function createSound({ settings, env = globalThis } = {}) {
             data[i] = Math.random() * 2 - 1;
         }
         waves = { pulse25: pulseWave(0.25), pulse12: pulseWave(0.125) };
+        if (midi) {
+            try {
+                player = midi(ctx, buses.music);
+                playlist = 'idle';
+            } catch {
+                // no MIDI player in this browser: the loops are the music
+                player = null;
+            }
+        }
 
         return true;
     }
@@ -537,7 +555,7 @@ export function createSound({ settings, env = globalThis } = {}) {
         stats.maxMs = Math.max(stats.maxMs, spent);
     }
 
-    function startMusic() {
+    function startLoops() {
         if (timer !== null) {
             return;
         }
@@ -546,12 +564,48 @@ export function createSound({ settings, env = globalThis } = {}) {
         timer = env.setInterval(schedule, INTERVAL_MS);
     }
 
+    /** The MIDI playlist if it has tracks, else the chiptune loops. */
+    function startMusic() {
+        if (timer !== null || playlist === 'starting' || playlist === 'playing') {
+            return;
+        }
+        if (playlist === 'none') {
+            startLoops();
+
+            return;
+        }
+        playlist = 'starting';
+        const run = ++musicRun;
+        const fallBack = () => {
+            if (run !== musicRun) {
+                return;
+            }
+            // nothing to play (no manifest, no tracks, no file that loads): the loops, for the rest of the visit
+            playlist = 'none';
+            if (ctx && musicAudible() && !hidden()) {
+                startLoops();
+            }
+        };
+        player.start().then((ok) => {
+            if (ok && run === musicRun) {
+                playlist = 'playing';
+            } else if (!ok) {
+                fallBack();
+            }
+        }, fallBack);
+    }
+
     function stopMusic() {
         if (timer !== null) {
             env.clearInterval(timer);
             timer = null;
         }
         seq = null;
+        musicRun++;
+        if (player && playlist !== 'none') {
+            player.stop();
+            playlist = 'idle';
+        }
     }
 
     /** Brings the context and the music in line with the settings and the tab. */
@@ -655,6 +709,8 @@ export function createSound({ settings, env = globalThis } = {}) {
                 piece: seq ? seq.id : null,
                 loop: seq ? seq.loop : 0,
                 scheduling: timer !== null,
+                playlist,
+                midi: player ? player.debug() : null,
                 scene,
                 stats: { ...stats },
             };
@@ -662,6 +718,8 @@ export function createSound({ settings, env = globalThis } = {}) {
 
         destroy() {
             stopMusic();
+            player = null;
+            playlist = 'none';
             if (ctx && ctx.state !== 'closed') {
                 ctx.close().catch(() => {});
             }

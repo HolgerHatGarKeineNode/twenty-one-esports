@@ -119,6 +119,8 @@
         <button class="icon-btn" id="help-btn" type="button" aria-label="{{ __('How to play') }}"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M9.5 9a2.5 2.5 0 015 .5c0 1.7-2.5 2-2.5 4M12 17h.01"/></svg></button>
     </div>
 </header>
+{{-- The credit of the MIDI track that plays (resources/js/midi/player.js, `midi-track`): CC-BY and OGA-BY tracks require it. Filled by game.js. --}}
+<p class="hud" id="now-playing" data-test="hyper-now-playing" hidden><span>{{ __('Playing now') }}:</span> <a id="now-playing-title" rel="noopener" target="_blank"></a> <span id="now-playing-by"></span></p>
 
 <aside class="hud" id="roster" aria-label="{{ __('Players') }}"></aside>
 

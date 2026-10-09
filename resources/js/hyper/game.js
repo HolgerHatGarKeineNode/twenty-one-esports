@@ -22,7 +22,7 @@ import { PlySync } from './sync.js';
 import { fmt, t } from './i18n.js';
 import { readableMs } from './statsPlan.js';
 import { isMultiplayer, lagging, movesOnByItself, quietBattle, tapGraceMs } from './pace.js';
-import { AUD, ctx, cue, hoverTick, setAudioHooks, setIntensity, sfx, startMusic } from './audio.js';
+import { AUD, ctx, cue, hoverTick, setAudioHooks, setIntensity, sfx, startMusic, stopMusic } from './audio.js';
 import { readSettings, writeSettings } from './sounds.js';
 
 const REDUCED = matchMedia('(prefers-reduced-motion: reduce)').matches;
@@ -1305,7 +1305,7 @@ function bindControls() {
     $('#scenes-btn').onclick = (e) => { UI.scenes = !UI.scenes; e.currentTarget.setAttribute('aria-pressed', UI.scenes); toast(UI.scenes ? t('Cinematics on') : t('Cinematics off: battles and cards run fast')); saveSettings(); };
     $('#sound-btn').onclick = (e) => { AUD.fx = !AUD.fx; e.currentTarget.setAttribute('aria-pressed', AUD.fx); if (AUD.fx) sfx.coin(); toast(AUD.fx ? t('Effects on') : t('Effects off (dice, clicks, explosions)')); saveSettings(); };
     $('#board-btn').onclick = (e) => { AUD.board = !AUD.board; e.currentTarget.setAttribute('aria-pressed', AUD.board); if (!AUD.board && AUD.cur) AUD.cur.pause(); toast(AUD.board ? t('Soundboard clips on') : t('Soundboard clips off, effects stay')); saveSettings(); };
-    $('#music-btn').onclick = (e) => { AUD.music = !AUD.music; e.currentTarget.setAttribute('aria-pressed', AUD.music); if (AUD.musicBus) AUD.musicBus.gain.setTargetAtTime(AUD.music ? 0.42 : 0, AUD.ctx.currentTime, 0.3); if (AUD.music) startMusic(); saveSettings(); };
+    $('#music-btn').onclick = (e) => { AUD.music = !AUD.music; e.currentTarget.setAttribute('aria-pressed', AUD.music); if (AUD.musicBus) AUD.musicBus.gain.setTargetAtTime(AUD.music ? 0.42 : 0, AUD.ctx.currentTime, 0.3); if (AUD.music) startMusic(); else stopMusic(); saveSettings(); };
     $('#vol').oninput = (e) => { AUD.vol = e.target.value / 100; if (AUD.master) AUD.master.gain.setTargetAtTime(AUD.vol, AUD.ctx.currentTime, 0.05); saveSettings(); };
     $('#help-btn').onclick = () => { $('#help').hidden = false; gsap().from('#help .panel', { y: 20, opacity: 0, duration: 0.25 }); };
     $('#help-close').onclick = () => { $('#help').hidden = true; };
@@ -1365,6 +1365,15 @@ function bindControls() {
         else if (k === 'escape' && G) { UI.card = null; UI.from = null; render(); }
     });
     addEventListener('resize', () => { fitMap(); handKey = ''; render(); });
+    // The credit of the MIDI track that plays (CC-BY and OGA-BY require it), gone when the music stops.
+    addEventListener('midi-track', (e) => {
+        const track = e.detail; const line = $('#now-playing'); if (!line) return;
+        line.hidden = !track;
+        if (!track) return;
+        const link = $('#now-playing-title'); link.textContent = track.title;
+        if (track.source) link.href = track.source; else link.removeAttribute('href');
+        $('#now-playing-by').textContent = `– ${track.author} (${track.license})`;
+    });
     // Music starts with a gesture (browsers allow sound only after one): every touch or key tries, until it runs.
     const kick = () => { if (startMusic()) { removeEventListener('pointerdown', kick, true); removeEventListener('keydown', kick, true); } };
     addEventListener('pointerdown', kick, true);
@@ -1445,6 +1454,8 @@ export function startGame(config, net) {
     sync = new PlySync(config.snapshot.ply);
     setAudioHooks({
         assets: A,
+        // the match plays the MIDI playlist when it has tracks (Proof of Pong, on the same engine, keeps the ambient score)
+        playlist: true,
         botTurn: () => !!G && !G.over && (isBot(G.cur) || shownSource === 'bot'),
         musicMood: () => {
             if (!G || G.over || ME === null) return { tense: false, standing: 'even' };

@@ -27,6 +27,13 @@ pest()->group('browser');
 | 3. With music on, the AudioContext is made only by a click; the music then
 |    plays on the audio clock (the scheduler's own timing is measured for
 |    30 s and reported), a hidden tab suspends it, a shown tab resumes it.
+|    Measured on the chiptune loops: the MIDI manifest is answered empty, so
+|    the fallback is what plays.
+| 4. With tracks in public/music/midi/manifest.json the MIDI playlist is the
+|    music: a click starts it (window.__midi counts the notes it schedules)
+|    and its credit line shows title, author and license, linked to the
+|    source, inside the viewport at 375 and 1440; the music switch and a
+|    hidden tab stop it, switching on starts it again.
 |
 | Every AudioContext the page makes is counted by an init script, and the
 | console, uncaught errors and answers >= 400 stay empty, with a positive
@@ -62,6 +69,14 @@ const STACKER_AUDIO_COUNTER = <<<'JS'
             }
         };
     }
+    JS;
+
+/** Answers the MIDI manifest with no tracks: the page plays its chiptune loops. */
+const STACKER_NO_MIDI_TRACKS = <<<'JS'
+    const fetchBeforeMidi = window.fetch;
+    window.fetch = (input, ...rest) => String(input && input.url ? input.url : input).includes('/music/midi/manifest.json')
+        ? Promise.resolve(new Response('{"tracks":[]}', { headers: { 'Content-Type': 'application/json' } }))
+        : fetchBeforeMidi(input, ...rest);
     JS;
 
 function soundPage(?User $user, int $width, int $height, string $locale = 'en'): Page
@@ -216,6 +231,7 @@ test('switches and volumes survive a reload: a guest\'s in this browser, a playe
 
 test('with music on, only a click makes the AudioContext; the music runs on the audio clock for 30 s at low cost and stops in a hidden tab', function () {
     $page = soundPage(null, 1440, 900);
+    $page->context()->addInitScript(STACKER_NO_MIDI_TRACKS);
     $page->evaluate('() => localStorage.setItem("blockfill.sound", JSON.stringify({ effects: 70, music: 60, effectsOn: true, musicOn: true }))');
     $page->reload();
     BrowserWait::until($page, '() => window.__stacker !== undefined && window.__stacker.sound() !== null', 10_000);
@@ -230,6 +246,9 @@ test('with music on, only a click makes the AudioContext; the music runs on the 
     BrowserWait::until($page, '() => window.__stacker.sound().state === "running" && window.__stacker.sound().scheduling', 5_000);
     $unlocked = $page->evaluate('() => window.__stacker.sound()');
     expect($page->evaluate('() => window.__audioContexts'))->toBeGreaterThanOrEqual(1)
+        // no MIDI tracks: the loops are the fallback, and the MIDI player scheduled nothing
+        ->and($unlocked['playlist'])->toBe('none')
+        ->and($page->evaluate('() => window.__midi.scheduled'))->toBe(0)
         ->and($unlocked['piece'])->toBe('stay-humble')
         ->and($unlocked['stats']['contexts'])->toBe(1);
 
@@ -277,3 +296,78 @@ test('with music on, only a click makes the AudioContext; the music runs on the 
 
     soundPositiveControl($page);
 });
+
+test('with MIDI tracks in the manifest, a click starts the shuffled playlist with its credit line; the music switch and a hidden tab stop it', function (int $width, int $height) {
+    $page = soundPage(null, $width, $height);
+    $page->evaluate('() => localStorage.setItem("blockfill.sound", JSON.stringify({ effects: 70, music: 60, effectsOn: true, musicOn: true }))');
+    $page->reload();
+    BrowserWait::until($page, '() => window.__stacker !== undefined && window.__stacker.sound() !== null', 10_000);
+
+    // nothing before a gesture: no context, so no MIDI player either
+    expect($page->evaluate('() => window.__audioContexts'))->toBe(0)
+        ->and($page->evaluate('() => window.__midi === undefined'))->toBeTrue();
+
+    $page->locator('[data-test=stacker] h1')->click();
+    BrowserWait::until($page, '() => window.__midi.playing && window.__midi.scheduled > 20', 8_000);
+    $playing = $page->evaluate('() => ({ sound: window.__stacker.sound(), track: window.__midi.track, tracks: window.__midi.tracks })');
+    fwrite(STDERR, 'blockfill midi: '.json_encode($playing['sound']['midi']).PHP_EOL);
+
+    expect($playing['sound']['playlist'])->toBe('playing')
+        // the chiptune loops are not running beside it
+        ->and($playing['sound']['scheduling'])->toBeFalse()
+        ->and($playing['tracks'])->toBe(10)
+        ->and($playing['track'])->toBeIn(['Airport Attack', 'Chase!', 'Elegy for the Summer of 4096', 'Fun is Infinite at AGM', 'Neon Flames', 'Punch Your Way Through', 'The Journey Continues', 'Gods of Trance', 'Happy Sunset', 'Quantum 2'])
+        // a read-only view: a page script cannot set the counter
+        ->and($page->evaluate('() => { try { window.__midi.scheduled = -1; } catch (e) {} return window.__midi.scheduled; }'))->toBeGreaterThan(20);
+
+    // the credit of the track that plays: shown once, inside the viewport, title linked to its source
+    BrowserWait::until($page, '() => [...document.querySelectorAll("[data-test=now-playing]")].some((el) => el.offsetParent !== null)', 3_000);
+    $credit = $page->evaluate(<<<'JS'
+        () => {
+            const shown = [...document.querySelectorAll('[data-test=now-playing]')].filter((el) => el.offsetParent !== null);
+            const r = shown[0].getBoundingClientRect();
+            const link = shown[0].querySelector('[data-test=now-playing-title]');
+            return { shown: shown.length, left: Math.round(r.left), right: Math.round(r.right), height: Math.round(r.height), text: shown[0].innerText.trim(), title: link.textContent, href: link.getAttribute('href') };
+        }
+        JS);
+    [$scrollWidth, $clientWidth] = $page->evaluate(BrowserConsole::WIDTHS);
+    fwrite(STDERR, "blockfill credit {$width}: ".json_encode($credit).PHP_EOL);
+    expect($credit['shown'])->toBe(1)
+        ->and($credit['title'])->toBe($playing['track'])
+        ->and($credit['href'])->toStartWith('https://opengameart.org/content/')
+        ->and($credit['text'])->toStartWith('Playing now: '.$playing['track'].' – ')
+        ->and($credit['left'])->toBeGreaterThanOrEqual(0)
+        ->and($credit['right'])->toBeLessThanOrEqual($width)
+        ->and($credit['height'])->toBeLessThanOrEqual(20)
+        ->and($scrollWidth)->toBeLessThanOrEqual($clientWidth);
+    shellShot($page, "stacker-now-playing-{$width}");
+
+    // the music switch off: the playlist stops, nothing more is scheduled, the credit goes
+    $page->locator('[data-test=sound]:visible [data-test=sound-music-toggle]')->click();
+    BrowserWait::until($page, '() => !window.__midi.playing && ![...document.querySelectorAll("[data-test=now-playing]")].some((el) => el.offsetParent !== null)', 3_000);
+    $stopped = $page->evaluate('() => window.__midi.scheduled');
+    $page->evaluate('() => new Promise((resolve) => setTimeout(resolve, 1000))');
+    expect($page->evaluate('() => window.__midi.scheduled'))->toBe($stopped)
+        ->and($page->evaluate('() => window.__stacker.sound()'))->toMatchArray(['playlist' => 'idle', 'scheduling' => false]);
+
+    // on again: it plays on
+    $page->locator('[data-test=sound]:visible [data-test=sound-music-toggle]')->click();
+    BrowserWait::until($page, '() => window.__midi.playing && window.__midi.scheduled > '.$stopped, 5_000);
+
+    // a hidden tab stops it, a shown one starts it again
+    $page->evaluate('() => { Object.defineProperty(document, "hidden", { configurable: true, get: () => true }); document.dispatchEvent(new Event("visibilitychange")); }');
+    BrowserWait::until($page, '() => !window.__midi.playing', 3_000);
+    $hidden = $page->evaluate('() => window.__midi.scheduled');
+    $page->evaluate('() => new Promise((resolve) => setTimeout(resolve, 1000))');
+    expect($page->evaluate('() => window.__midi.scheduled'))->toBe($hidden);
+    $page->evaluate('() => { Object.defineProperty(document, "hidden", { configurable: true, get: () => false }); document.dispatchEvent(new Event("visibilitychange")); }');
+    BrowserWait::until($page, '() => window.__midi.playing && window.__midi.scheduled > '.$hidden, 5_000);
+
+    expect($page->evaluate('() => window.__errors'))->toBe([])
+        ->and($page->evaluate(BrowserConsole::BAD_RESPONSES))->toBe([]);
+
+    soundPositiveControl($page);
+})->with([
+    'phone 375' => [375, 812],
+    'desktop 1440' => [1440, 900],
+]);

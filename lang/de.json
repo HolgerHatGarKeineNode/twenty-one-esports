@@ -7812,5 +7812,10 @@
     "Your match is live.": "Dein Match läuft.",
     "Your match is ready. Open it before the check-in ends, or it counts as a loss.": "Dein Match ist bereit. Öffne es vor Ende des Check-ins, sonst zählt es als Niederlage.",
     "every :count rallies": "alle :count Ballwechsel",
-    "live 1v1 or a bot": "live 1v1 oder gegen einen Bot"
+    "live 1v1 or a bot": "live 1v1 oder gegen einen Bot",
+    "Playing now": "Läuft gerade",
+    "Author": "Autor",
+    "License": "Lizenz",
+    "Style": "Stil",
+    "The background music of :games: free tracks from OpenGameArt.org, played by the game's own synthesizer.": "Die Hintergrundmusik von :games: freie Stücke von OpenGameArt.org, gespielt vom eigenen Synthesizer des Spiels."
 }

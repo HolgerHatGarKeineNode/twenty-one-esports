@@ -1,0 +1,85 @@
+{
+    "_readme": "Background music of Blockfill and Hyperbitcoinization, all tracks in one shuffled playlist, synthesised in the browser from the MIDI (resources/js/midi/player.js). To add a track: put the .mid file (Standard MIDI File, format 0 or 1, General MIDI programs, drums on channel 10) into this folder and add an entry to \"tracks\" below; no code change. Only plain file names ending in .mid or .midi are read. Fill author, license and source: the games show them as the now-playing credit and the rules page lists them (CC-BY and OGA-BY require it). Add the row to LICENSES.md too. An empty list brings back each game's own music.",
+    "tracks": [
+        {
+            "file": "airport-attack.mid",
+            "title": "Airport Attack",
+            "author": "northivanastan",
+            "license": "CC0",
+            "source": "https://opengameart.org/content/airport-attack",
+            "genre": "synthwave"
+        },
+        {
+            "file": "chase.mid",
+            "title": "Chase!",
+            "author": "Wolfgang_",
+            "license": "CC0",
+            "source": "https://opengameart.org/content/chase",
+            "genre": "synthwave"
+        },
+        {
+            "file": "elegy-for-the-summer-of-4096.mid",
+            "title": "Elegy for the Summer of 4096",
+            "author": "Aureolus_Omicron",
+            "license": "CC-BY 4.0, OGA-BY 3.0",
+            "source": "https://opengameart.org/content/elegy-for-the-summer-of-4096",
+            "genre": "synthwave"
+        },
+        {
+            "file": "fun-is-infinite-at-agm.mid",
+            "title": "Fun is Infinite at AGM",
+            "author": "northivanastan",
+            "license": "CC0",
+            "source": "https://opengameart.org/content/fun-is-infinite-at-agm",
+            "genre": "synthwave"
+        },
+        {
+            "file": "neon-flames.mid",
+            "title": "Neon Flames",
+            "author": "northivanastan",
+            "license": "CC0",
+            "source": "https://opengameart.org/content/neon-flames",
+            "genre": "synthwave"
+        },
+        {
+            "file": "punch-your-way-through.mid",
+            "title": "Punch Your Way Through",
+            "author": "northivanastan",
+            "license": "CC0",
+            "source": "https://opengameart.org/content/punch-your-way-through",
+            "genre": "synthwave"
+        },
+        {
+            "file": "the-journey-continues.mid",
+            "title": "The Journey Continues",
+            "author": "northivanastan",
+            "license": "CC0",
+            "source": "https://opengameart.org/content/the-journey-continues",
+            "genre": "synthwave"
+        },
+        {
+            "file": "gods-of-trance.mid",
+            "title": "Gods of Trance",
+            "author": "northivanastan",
+            "license": "CC0",
+            "source": "https://opengameart.org/content/gods-of-trance",
+            "genre": "trance"
+        },
+        {
+            "file": "happy-sunset.mid",
+            "title": "Happy Sunset",
+            "author": "kenliten",
+            "license": "CC-BY 4.0",
+            "source": "https://opengameart.org/content/happy-sunset",
+            "genre": "trance"
+        },
+        {
+            "file": "quantum-2.mid",
+            "title": "Quantum 2",
+            "author": "northivanastan",
+            "license": "CC0",
+            "source": "https://opengameart.org/content/quantum-2",
+            "genre": "trance"
+        }
+    ]
+}

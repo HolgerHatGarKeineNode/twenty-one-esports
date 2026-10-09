@@ -94,6 +94,13 @@ button:focus-visible { outline: 2px solid var(--btc-hi); outline-offset: 3px; }
 .icon-btn svg { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
 .vol { display: flex; align-items: center; padding: 0 6px; }
 .vol input { width: 74px; accent-color: var(--btc); }
+/* The credit of the playing MIDI track: under the tools, left of the legend column; on phones under the roster. */
+#now-playing { top: 106px; right: 14px; max-width: min(420px, 70vw); margin: 0; padding: 3px 8px; overflow: hidden; font-size: 11px; line-height: 1.4; color: var(--ink-3); white-space: nowrap; text-overflow: ellipsis; background: rgba(8, 12, 24, 0.6); }
+#now-playing[hidden] { display: none; }
+#now-playing a { color: var(--ink-2); text-decoration: underline; text-underline-offset: 3px; }
+#now-playing a:hover { color: var(--ink); }
+@media (width >= 1180px) { #now-playing { right: 264px; } }
+@media (width < 820px) { #now-playing { top: 236px; left: 8px; right: auto; max-width: calc(100vw - 16px); } }
 
 #roster { left: 14px; top: 92px; width: 236px; display: flex; flex-direction: column; gap: 6px; }
 /* A team match (P4): the seats under their clan; the end screen names the winning clan. */

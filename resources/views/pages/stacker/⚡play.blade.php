@@ -219,7 +219,10 @@ new #[Layout('layouts::app', ['scripts' => ['resources/js/stacker/page.js', 'res
                 </ul>
             </div>
 
-            @include('pages.stacker.partials.sound-control', ['class' => 'hidden lg:flex'])
+            <div class="hidden min-w-0 lg:flex lg:flex-col lg:items-end lg:gap-1">
+                @include('pages.stacker.partials.sound-control', ['class' => 'flex'])
+                @include('pages.stacker.partials.now-playing', ['class' => 'max-w-[420px]'])
+            </div>
         </div>
 
         {{-- Beside the chat column (xl) the keyboard panel goes under the game until 120rem, so the well keeps its size. --}}
@@ -318,6 +321,7 @@ new #[Layout('layouts::app', ['scripts' => ['resources/js/stacker/page.js', 'res
                 </div>
 
                 @include('pages.stacker.partials.sound-control', ['class' => 'flex lg:hidden'])
+                @include('pages.stacker.partials.now-playing', ['class' => 'lg:hidden -mt-3 text-center'])
 
                 {{-- Touch controls: practice on a phone or tablet --}}
                 {{--

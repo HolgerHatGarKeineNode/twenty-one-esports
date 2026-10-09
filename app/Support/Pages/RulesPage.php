@@ -83,6 +83,7 @@ final class RulesPage
             self::prizes(),
             self::fairPlay(),
             self::chat(),
+            ...self::music(),
         ];
     }
 
@@ -931,5 +932,48 @@ final class RulesPage
             ],
             'links' => [[__('Live'), route('live')]],
         ];
+    }
+
+    /**
+     * The background music of Blockfill and Hyperbitcoinization: every track of
+     * public/music/midi/manifest.json with its author and license, and a link to
+     * its source (CC-BY and OGA-BY require the credit). Only the games that are
+     * on are named; nothing while both are off or without tracks.
+     *
+     * @return list<Section>
+     */
+    private static function music(): array
+    {
+        $path = public_path('music/midi/manifest.json');
+        $manifest = is_file($path) ? json_decode((string) file_get_contents($path), true) : null;
+        $tracks = array_values(array_filter(
+            is_array($manifest) && is_array($manifest['tracks'] ?? null) ? $manifest['tracks'] : [],
+            fn (mixed $track): bool => is_array($track) && is_string($track['title'] ?? null) && is_string($track['author'] ?? null) && is_string($track['license'] ?? null),
+        ));
+
+        $names = array_keys(array_filter(
+            ['Blockfill' => Blockfill::SLUG, 'Hyperbitcoinization' => Hyperbitcoinization::SLUG],
+            fn (string $slug): bool => app(GameRegistry::class)->find($slug) !== null,
+        ));
+
+        if ($tracks === [] || $names === []) {
+            return [];
+        }
+
+        return [[
+            'id' => 'music',
+            'title' => __('Music'),
+            'lead' => __('The background music of :games: free tracks from OpenGameArt.org, played by the game\'s own synthesizer.', [
+                'games' => count($names) === 2 ? __(':a and :b', ['a' => $names[0], 'b' => $names[1]]) : $names[0],
+            ]),
+            'table' => [
+                'head' => [__('Track'), __('Author'), __('License'), __('Style')],
+                'rows' => array_map(fn (array $track): array => [$track['title'], $track['author'], $track['license'], ucfirst((string) ($track['genre'] ?? ''))], $tracks),
+            ],
+            'links' => array_values(array_map(
+                fn (array $track): array => [$track['title'], $track['source']],
+                array_filter($tracks, fn (array $track): bool => is_string($track['source'] ?? null) && str_starts_with($track['source'], 'https://')),
+            )),
+        ]];
     }
 }

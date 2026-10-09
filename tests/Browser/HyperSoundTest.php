@@ -24,7 +24,8 @@ pest()->group('browser');
 |
 | The viewer's switches and volume on the match page (resources/js/hyper/sounds.js): set, kept over a reload in
 | `hb-settings`, a broken store read as the defaults without an error; the league-wide switch of soundboard
-| emotes takes the clips out of the emote panel. Every page carries BrowserConsole's collector (console errors,
+| emotes takes the clips out of the emote panel. With music on, the match plays the MIDI playlist
+| (public/music/midi/manifest.json) after the first gesture and the music switch stops it. Every page carries BrowserConsole's collector (console errors,
 | uncaught errors, answers >= 400), proved by a positive control.
 |
 */
@@ -163,3 +164,68 @@ test('the start page plays its theme with a music switch and a volume as on Bloc
         ->and($page->evaluate('() => window.__errors'))->toBe([])
         ->and($page->evaluate(BrowserConsole::BAD_RESPONSES))->toBe([]);
 });
+
+test('with music on, the match plays the MIDI playlist after the first gesture with its credit line, and the music switch stops it', function (int $width, int $height) {
+    [$anna, $bert] = User::factory()->count(2)->create();
+    $match = HyperOn::versus($anna, $bert, bots: 1);
+    $page = hyperSoundPage($anna, route('hyper.match', $match, false), null);
+    $page->setViewportSize($width, $height);
+
+    // music on by default, but nothing sounds before a gesture
+    expect($page->evaluate('() => document.querySelector("#music-btn").getAttribute("aria-pressed")'))->toBe('true')
+        ->and($page->evaluate('() => window.__midi === undefined || window.__midi.scheduled === 0'))->toBeTrue();
+
+    // a key press that does nothing in the game is the gesture
+    $page->locator('body')->press('Shift');
+    BrowserWait::until($page, '() => window.__midi !== undefined && window.__midi.playing && window.__midi.scheduled > 20', 10_000);
+    $track = $page->evaluate('() => window.__midi.track');
+    expect($page->evaluate('() => window.__midi.tracks'))->toBe(10)
+        ->and($track)->toBeIn(['Airport Attack', 'Chase!', 'Elegy for the Summer of 4096', 'Fun is Infinite at AGM', 'Neon Flames', 'Punch Your Way Through', 'The Journey Continues', 'Gods of Trance', 'Happy Sunset', 'Quantum 2']);
+
+    // the credit line: under the tools, inside the viewport, over no other HUD element
+    BrowserWait::until($page, '() => !document.querySelector("#now-playing").hidden', 3_000);
+    $credit = $page->evaluate(<<<'JS'
+        () => {
+            const box = (el) => { const r = el.getBoundingClientRect(); return { left: Math.round(r.left), right: Math.round(r.right), top: Math.round(r.top), bottom: Math.round(r.bottom) }; };
+            const line = document.querySelector('#now-playing');
+            const hit = (a, b) => a.left < b.right && b.left < a.right && a.top < b.bottom && b.top < a.bottom;
+            const mine = box(line);
+            const covered = [...document.querySelectorAll('.hud > *, .hud .frame')].filter((el) => el !== line && !line.contains(el) && !el.contains(line) && el.offsetParent !== null).filter((el) => hit(box(el), mine)).map((el) => el.id || el.className);
+            return { ...mine, text: line.innerText.trim(), href: document.querySelector('#now-playing-title').getAttribute('href'), covered };
+        }
+        JS);
+    [$scrollWidth, $clientWidth] = $page->evaluate(BrowserConsole::WIDTHS);
+    fwrite(STDERR, "hyper credit {$width}: ".json_encode($credit).PHP_EOL);
+    expect($credit['text'])->toStartWith('Playing now: '.$track.' – ')
+        ->and($credit['href'])->toStartWith('https://opengameart.org/content/')
+        ->and($credit['left'])->toBeGreaterThanOrEqual(0)
+        ->and($credit['right'])->toBeLessThanOrEqual($width)
+        ->and($credit['covered'])->toBe([])
+        ->and($scrollWidth)->toBeLessThanOrEqual($clientWidth);
+    shellShot($page, "hyper-now-playing-{$width}");
+
+    // the switch off: the playlist stops, nothing more is scheduled, the credit goes, the choice is kept
+    $page->locator('#music-btn')->click();
+    BrowserWait::until($page, '() => !window.__midi.playing && document.querySelector("#now-playing").hidden', 3_000);
+    $stopped = $page->evaluate('() => window.__midi.scheduled');
+    $page->evaluate('() => new Promise((r) => setTimeout(r, 1000))');
+    expect($page->evaluate('() => window.__midi.scheduled'))->toBe($stopped)
+        ->and(json_decode((string) $page->evaluate('() => localStorage.getItem("hb-settings")'), true))->toMatchArray(['music' => false]);
+
+    // on again: it plays on
+    $page->locator('#music-btn')->click();
+    BrowserWait::until($page, '() => window.__midi.playing && window.__midi.scheduled > '.$stopped, 5_000);
+
+    // a hidden page stops it
+    $page->evaluate('() => { Object.defineProperty(document, "hidden", { configurable: true, get: () => true }); document.dispatchEvent(new Event("visibilitychange")); }');
+    BrowserWait::until($page, '() => !window.__midi.playing', 3_000);
+
+    expect(hyperSoundErrors($page))->toBe([]);
+
+    $page->evaluate('() => { setTimeout(() => { throw new Error("hyper-midi-probe"); }, 0); }');
+    BrowserWait::until($page, '() => (window.__errors ?? []).some((e) => String(e).includes("hyper-midi-probe"))', 5_000);
+})->with([
+    'phone 390' => [390, 844],
+    'tablet 1024' => [1024, 768],
+    'desktop 1440' => [1440, 900],
+]);

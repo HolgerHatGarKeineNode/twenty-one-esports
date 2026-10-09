@@ -8,7 +8,12 @@
  *   tells whether a bot's turn is on show through setAudioHooks({ botTurn }).
  * - Audio starts only after the first touch: a context created before stays locked on some browsers.
  * - Three switches, kept in `hb-settings`: effects, soundboard, music.
+ * - On a page that asks for it (setAudioHooks({ playlist: true }): the match page) the music is the shuffled MIDI
+ *   playlist (resources/js/midi/player.js, public/music/midi/manifest.json) on the music bus, so the switch, the
+ *   volume and the ducking under clips apply; it stops while the page is hidden. Without tracks, or when none
+ *   loads, and on every other page, the generative ambient score below plays instead.
  */
+import { createMidiPlayer } from '../midi/player.js';
 import { POOLS, PRIO } from './data.js';
 import { clipAllowed, decide } from './sounds.js';
 
@@ -17,10 +22,12 @@ export const AUD = { board: true, curPrio: 0, curName: '', fx: true, music: true
 let base = '/hyper/';
 let isBotTurn = () => false;
 let mood = () => ({ tense: false, standing: 'even' });
+let withPlaylist = false;
 
-/** Where the clips are, whether the seat to move is a bot, and how the game stands (for the score). */
-export function setAudioHooks({ assets, botTurn, musicMood }) {
+/** Where the clips are, whether the seat to move is a bot, how the game stands (for the score), and whether the MIDI playlist may be the music. */
+export function setAudioHooks({ assets, botTurn, musicMood, playlist }) {
     if (assets) base = assets;
+    if (typeof playlist === 'boolean') withPlaylist = playlist;
     if (botTurn) isBotTurn = botTurn;
     if (musicMood) mood = musicMood;
 }
@@ -255,19 +262,47 @@ function ambientTick() {
         }
     }
 }
+function startAmbient() {
+    const c = AUD.ctx; if (!c || AMB.timer) return;
+    AMB.nextChord = c.currentTime + 0.2; AMB.nextKey = c.currentTime + 180;
+    AMB.timer = setInterval(ambientTick, 250);
+}
+
+/* The MIDI playlist: 'idle', 'starting', 'playing', or 'none' (no tracks: the ambient score is the music). */
+const MIDI = { player: null, state: 'idle', run: 0 };
+function playMusic() {
+    if (!withPlaylist || MIDI.state === 'none') { startAmbient(); return; }
+    if (MIDI.state !== 'idle' || !AUD.music || document.hidden) return;
+    if (!MIDI.player) {
+        // level 0.17: the tracks measured -29.8 to -31.3 dBFS RMS at volume 80, the ambient score -30.5 (2026-10-09)
+        try { MIDI.player = createMidiPlayer({ ctx: AUD.ctx, output: AUD.musicBus, level: 0.17 }); } catch (e) { MIDI.state = 'none'; startAmbient(); return; }
+    }
+    MIDI.state = 'starting';
+    const run = ++MIDI.run;
+    const fallBack = () => { if (run !== MIDI.run) return; MIDI.state = 'none'; startAmbient(); };
+    MIDI.player.start().then((ok) => { if (ok && run === MIDI.run) MIDI.state = 'playing'; else if (!ok) fallBack(); }, fallBack);
+}
+
 /**
- * Starts the ambient music, or brings its level back to the switch (0 when off): true once the audio runs. Safe to call
- * on every gesture (user 2026-10-09: the music only came after switching it off and on again).
+ * Starts the music (the MIDI playlist, else the ambient score), or brings its level back to the switch (0 when off):
+ * true once the audio runs. Safe to call on every gesture (user 2026-10-09: the music only came after switching it
+ * off and on again).
  */
 export function startMusic() {
     const c = ctx(); if (!c) return false;
     if (AUD.musicBus) AUD.musicBus.gain.setTargetAtTime(AUD.music ? 0.42 : 0, c.currentTime, 0.3);
-    if (AMB.timer) return c.state === 'running';
-    AMB.nextChord = c.currentTime + 0.2; AMB.nextKey = c.currentTime + 180;
-    AMB.timer = setInterval(ambientTick, 250);
+    playMusic();
 
     return c.state === 'running';
 }
+
+/** The switch went off or the page went away: the playlist fades out and stops (the ambient score mutes itself). */
+export function stopMusic() {
+    MIDI.run++;
+    if (MIDI.player && MIDI.state !== 'none') { MIDI.player.stop(); MIDI.state = 'idle'; }
+}
+document.addEventListener('visibilitychange', () => { if (document.hidden) stopMusic(); else if (AUD.ctx && AUD.music) startMusic(); });
+addEventListener('pagehide', stopMusic);
 export function setIntensity(v) { AUD.intensity = v; }
 
 /** Every button clicks; hovering ticks quietly. */
