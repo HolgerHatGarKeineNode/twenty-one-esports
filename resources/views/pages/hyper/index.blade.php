@@ -64,13 +64,13 @@
                         @endif
                     </nav>
                     {{-- Music as on Blockfill: a switch with its icon and a volume of ten steps. --}}
-                    <div class="flex w-full max-w-[340px] items-center gap-2 rounded-md bg-ground/80 p-1 pr-3 shadow-ring" role="group" aria-label="{{ __('Music') }}" data-test="hyper-index-sound">
+                    <div class="flex min-w-[150px] flex-1 items-center gap-2 rounded-md bg-ground/80 p-1 pr-3 shadow-ring sm:max-w-[340px]" role="group" aria-label="{{ __('Music') }}" data-test="hyper-index-sound">
                         <button type="button" x-on:click="toggle()" x-bind:aria-pressed="on ? 'true' : 'false'"
-                                class="inline-flex h-11 min-w-11 shrink-0 cursor-pointer items-center justify-center gap-2 rounded-md border px-3 text-[13px] font-bold"
+                                class="inline-flex h-11 min-w-11 shrink-0 cursor-pointer items-center justify-center gap-2 rounded-md border px-2.5 text-[13px] font-bold sm:px-3"
                                 x-bind:class="on ? 'border-btc-ring bg-btc-chip text-btc' : 'border-line text-ink-3 hover:text-ink-2'" data-test="hyper-index-music">
                             <span x-show="on" class="inline-flex"><x-icon name="music" :size="18" /></span>
                             <span x-show="! on" x-cloak class="inline-flex"><x-icon name="music-off" :size="18" /></span>
-                            <span>{{ __('Music') }}</span>
+                            <span class="sr-only sm:not-sr-only">{{ __('Music') }}</span>
                         </button>
                         <input type="range" min="0" max="100" step="10" class="blockfill-volume h-11 w-full min-w-0"
                                x-bind:value="volume" x-on:input="setVolume($event.target.value)"
