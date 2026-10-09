@@ -181,3 +181,50 @@ test('a match nobody opened is called off and started again with the sides swapp
         ->and($pairing->refresh()->result)->toMatchArray(['by' => 'league'])
         ->and($tournament->refresh()->status)->toBe(TournamentStatus::Finished);
 });
+
+test('a result that failed to reach the bracket is reported again by pong:check-clocks, a finished match and a called-off one', function () {
+    config(['esports.tournaments.first_move_restarts' => 0]);
+    $broken = fn () => app()->bind(TournamentRunner::class, fn () => throw new RuntimeException('bracket unreachable'));
+    $mended = fn () => app()->offsetUnset(TournamentRunner::class);
+
+    // Played to the end while the bracket cannot be written: the match is over, the pairing still open.
+    $tournament = pongTournament(2);
+    $played = PongMatch::query()->sole();
+    $matches = app(PongMatches::class);
+    $matches->sync($played, $played->left);
+    $matches->sync($played, $played->right);
+    $broken();
+    PongLive::play($played->refresh(), [4, 1]);
+    $mended();
+    $pairing = TournamentMatch::query()->findOrFail($played->tournament_match_id);
+
+    expect($played->refresh()->status)->toBe(PongMatchStatus::Finished)->and($pairing->refresh()->result)->toBeNull();
+
+    // Not within the grace the ending request has for its own report, then once.
+    $this->artisan('pong:check-clocks')->assertSuccessful();
+    expect($pairing->refresh()->result)->toBeNull();
+
+    $this->travel(31)->seconds();
+    $this->artisan('pong:check-clocks')->assertSuccessful();
+
+    expect($pairing->refresh()->result)->toMatchArray(['pong' => $played->ulid, 'by' => 'players', 'forfeit' => false])
+        ->and($tournament->refresh()->status)->toBe(TournamentStatus::Finished);
+
+    // Called off (nobody opened it) while the bracket cannot be written: the double no-show rule decides on the sweep.
+    $other = pongTournament(2, checkinMinutes: 1);
+    $noShow = PongMatch::query()->where('id', '>', $played->id)->sole();
+    $broken();
+    $this->travel(65)->seconds();
+    $matches->sweep();
+    $mended();
+    $otherPairing = TournamentMatch::query()->findOrFail($noShow->tournament_match_id);
+
+    expect($noShow->refresh()->status)->toBe(PongMatchStatus::Aborted)->and($otherPairing->refresh()->result)->toBeNull();
+
+    $this->travel(31)->seconds();
+    $this->artisan('pong:check-clocks')->assertSuccessful();
+
+    expect($otherPairing->refresh()->result)->toMatchArray(['by' => 'league'])
+        ->and($other->refresh()->status)->toBe(TournamentStatus::Finished)
+        ->and(PongMatch::query()->count())->toBe(2);
+});

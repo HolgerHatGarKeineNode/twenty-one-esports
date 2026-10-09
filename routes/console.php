@@ -172,9 +172,19 @@ Schedule::command('hyper:check-clocks')->everyTenSeconds()->withoutOverlapping()
  * reported in time counts as a miss (PongMatches::sweep()). Only the server clock decides, so running it often is
  * harmless; with the switch off there are no matches to find.
  */
-Artisan::command('pong:check-clocks', function (PongMatches $matches) {
-    $this->info('Moved '.$matches->sweep().' match(es).');
-})->purpose('Abort Proof of Pong matches that never started, end those a player left, and decide contacts nobody reported');
+Artisan::command('pong:check-clocks', function (PongMatches $matches, TournamentRunner $runner) {
+    $moved = $matches->sweep();
+
+    // A tournament match whose result never reached its bracket (the report after the commit failed): reported again (P6).
+    try {
+        $reported = $runner->reportUnreportedPongMatches();
+    } catch (Throwable $e) {
+        report($e);
+        $reported = 0;
+    }
+
+    $this->info("Moved {$moved} match(es), reported {$reported} tournament match(es).");
+})->purpose('Abort Proof of Pong matches that never started, end those a player left, decide contacts nobody reported, and report tournament matches again');
 
 Schedule::command('pong:check-clocks')->everyTenSeconds()->withoutOverlapping()->when(fn (): bool => (bool) config('esports.pong.enabled'));
 

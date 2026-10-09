@@ -696,6 +696,39 @@ final class TournamentRunner
     }
 
     /**
+     * The sweep's second chance for a Proof of Pong pairing (plan "Proof of Pong", P6; `pong:check-clocks`), as
+     * {@see reportUnreportedHyperMatches()} is for a table: every tournament match that was won or called off but
+     * whose report after the commit failed is reported again. Only matches that ended `$graceSeconds` ago or more,
+     * so the ending request's own report is not raced; only the newest match of its pairing (a called-off one that
+     * was started again is reported already), of a running tournament, with no result, not held, and not superseded
+     * by the league. Each on its own: one that fails is reported and the others still move. Returns how many it
+     * reported.
+     */
+    public function reportUnreportedPongMatches(int $graceSeconds = 30): int
+    {
+        $due = PongMatch::query()->whereIn('status', [PongMatchStatus::Finished, PongMatchStatus::Aborted])->whereNotNull('tournament_match_id')
+            ->where('ended_at', '<=', now()->subSeconds($graceSeconds))
+            ->whereNotExists(fn ($newer) => $newer->from('pong_matches as newer')
+                ->whereColumn('newer.tournament_match_id', 'pong_matches.tournament_match_id')->whereColumn('newer.id', '>', 'pong_matches.id'))
+            ->whereHas('tournamentMatch', fn ($match) => $match->whereNull('result')->whereNull('held')
+                ->where(fn ($replaced) => $replaced->whereNull('replaced_through')->orWhereColumn('tournament_matches.replaced_through', '<', 'pong_matches.id'))
+                ->whereHas('tournament', fn ($tournament) => $tournament->where('status', TournamentStatus::Running)))
+            ->orderBy('id')->get(['id', 'status']);
+        $reported = 0;
+
+        foreach ($due as $played) {
+            try {
+                $played->status === PongMatchStatus::Finished ? $this->pongMatchFinished($played->id) : $this->pongMatchAborted($played->id);
+                $reported++;
+            } catch (Throwable $exception) {
+                report($exception);
+            }
+        }
+
+        return $reported;
+    }
+
+    /**
      * White missed the first move of a tournament board game: it is started
      * again `first_move_restarts` times, then the double no-show rule decides.
      */

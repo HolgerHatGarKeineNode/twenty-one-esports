@@ -344,8 +344,8 @@ final class PongMatches
 
     /**
      * A tournament's match is over (P4): its winner, or that it was called off, goes back to the bracket. A failure
-     * is reported and not retried (there is no second report yet, as Hyperbitcoinization's sweep has): the
-     * tournament's desk then sets the result by hand.
+     * is reported, never the player's request; `pong:check-clocks` reports it again
+     * (TournamentRunner::reportUnreportedPongMatches()).
      */
     private function reportToTournament(PongMatch $match): void
     {
