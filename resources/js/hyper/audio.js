@@ -2,7 +2,9 @@
  * The game page's sound (plan "Hyperbitcoinization", P2; the prototype v21's audio, unchanged in how it
  * sounds): soundboard clips in themed pools, synthesized effects, and a generative ambient score.
  *
- * - Clips rotate with memory (localStorage `hb-clip-history`): never one of the last 30 plays.
+ * - On the match page the pools draw from the snippet library (P8, voices.js, public/sounds/snips): short cuts of the
+ *   soundboard, every pool a deck dealt without repetition. Before it is loaded, and elsewhere, whole clips rotate with
+ *   memory (localStorage `hb-clip-history`): never one of the last 30 plays. Emotes stay whole clips (public/hyper/s).
  * - Which event plays what, and whether a clip may play, is configuration (sounds.js): bot turns play no
  *   soundboard clips (user, 2026-10-08), effects still sound; only priority 5 (win, lose) comes through. The page
  *   tells whether a bot's turn is on show through setAudioHooks({ botTurn }).
@@ -15,19 +17,25 @@
  */
 import { createMidiPlayer } from '../midi/player.js';
 import { POOLS, PRIO } from './data.js';
-import { clipAllowed, decide } from './sounds.js';
+import { createSnips } from '../sounds/snips.js';
+import { clipAllowed, decide, musicGain } from './sounds.js';
+import { OCCASIONS } from './voices.js';
 
-export const AUD = { board: true, curPrio: 0, curName: '', fx: true, music: true, vol: 0.8, ctx: null, cur: null, master: null, sfxBus: null, musicBus: null, verb: null, intensity: 0, endedAt: -1e9 };
+export const AUD = { board: true, curPrio: 0, curName: '', fx: true, music: true, musicVol: 1, ducked: false, vol: 0.8, ctx: null, cur: null, master: null, sfxBus: null, musicBus: null, verb: null, intensity: 0, endedAt: -1e9 };
 
 let base = '/hyper/';
 let isBotTurn = () => false;
 let mood = () => ({ tense: false, standing: 'even' });
 let withPlaylist = false;
 
-/** Where the clips are, whether the seat to move is a bot, how the game stands (for the score), and whether the MIDI playlist may be the music. */
-export function setAudioHooks({ assets, botTurn, musicMood, playlist }) {
+/**
+ * Where the clips are, whether the seat to move is a bot, how the game stands (for the score), whether the MIDI playlist
+ * may be the music, and whether the pools draw from the snippet library (`snips`, the match page).
+ */
+export function setAudioHooks({ assets, botTurn, musicMood, playlist, snips }) {
     if (assets) base = assets;
     if (typeof playlist === 'boolean') withPlaylist = playlist;
+    if (snips === true) loadLibrary();
     if (botTurn) isBotTurn = botTurn;
     if (musicMood) mood = musicMood;
 }
@@ -45,7 +53,7 @@ export function ctx() {
             const comp = c.createDynamicsCompressor(); comp.threshold.value = -16; comp.ratio.value = 4;
             AUD.master.connect(comp); comp.connect(c.destination);
             AUD.sfxBus = c.createGain(); AUD.sfxBus.gain.value = 0.9; AUD.sfxBus.connect(AUD.master);
-            AUD.musicBus = c.createGain(); AUD.musicBus.gain.value = AUD.music ? 0.42 : 0; AUD.musicBus.connect(AUD.master);
+            AUD.musicBus = c.createGain(); AUD.musicBus.gain.value = musicLevel(); AUD.musicBus.connect(AUD.master);
             // Generated reverb: a short noise tail.
             const len = c.sampleRate * 2.2; const ir = c.createBuffer(2, len, c.sampleRate);
             for (let ch = 0; ch < 2; ch++) { const d = ir.getChannelData(ch); for (let i = 0; i < len; i++) d[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / len, 2.6); }
@@ -89,6 +97,21 @@ function pick(pool) {
     return fresh.length ? fresh[Math.floor(Math.random() * fresh.length)] : cands.sort((a, b) => age(b) - age(a))[0];
 }
 
+/*
+ * The snippet library (P8): once its manifest is loaded, a pool draws from every snippet tagged for it (voices.js
+ * OCCASIONS) without repetition, each pool a shuffled deck dealt to the end (sounds/snips.js). Until then, or when the
+ * manifest cannot be read, the rotation above plays the whole clips.
+ */
+let library = null;
+function loadLibrary() {
+    if (library !== null || !globalThis.fetch) return;
+    library = false;
+    fetch('/sounds/snips/manifest.json')
+        .then((response) => (response.ok ? response.json() : null))
+        .then((manifest) => { if (manifest?.snips?.length) library = createSnips(manifest, { occasions: OCCASIONS }); })
+        .catch(() => {});
+}
+
 function playFile(name, prio) {
     playUrl(base + 's/' + name + '.mp3', prio, name);
 }
@@ -112,6 +135,8 @@ export function clip(pool, prio) {
     if (AUD.cur && !AUD.cur.paused && !AUD.cur.ended && prio <= AUD.curPrio) return;
     // Small moments stay quiet for a while after a clip, so the soundboard never chatters.
     if (prio <= 2 && performance.now() - AUD.endedAt < 6000) return;
+    const snip = library ? library.draw(pool) : null;
+    if (snip) { playUrl(library.url(snip), prio, snip.id); document.body.dataset.clip = snip.id; return; }
     const name = pick(pool); remember(name);
     playFile(name, prio);
 }
@@ -130,7 +155,9 @@ export function emoteClip(name) {
     playFile(name, 4);
 }
 
-export function duck(on) { if (AUD.musicBus && AUD.music) AUD.musicBus.gain.setTargetAtTime(on ? 0.12 : 0.42, AUD.ctx.currentTime, on ? 0.08 : 0.5); }
+/** The music bus's level now: the switch, the music volume, and whether a voice is ducking it (sounds.js musicGain()). */
+export function musicLevel() { return musicGain({ music: AUD.music, musicVol: AUD.musicVol, ducked: AUD.ducked }); }
+export function duck(on) { AUD.ducked = on; if (AUD.musicBus && AUD.music) AUD.musicBus.gain.setTargetAtTime(musicLevel(), AUD.ctx.currentTime, on ? 0.08 : 0.5); }
 function env(g, t, a, peak, d, sustain = 0.0001) { g.gain.cancelScheduledValues(t); g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(peak, t + a); g.gain.exponentialRampToValueAtTime(Math.max(0.0001, sustain), t + a + d); }
 function osc(type, freq, t, dur, vol, bus, { slide = 0, verb = 0, attack = 0.005, detune = 0, filter = 0 } = {}) {
     const c = AUD.ctx; if (!c) return;
@@ -295,7 +322,7 @@ function playMusic() {
  */
 export function startMusic() {
     const c = ctx(); if (!c) return false;
-    if (AUD.musicBus) AUD.musicBus.gain.setTargetAtTime(AUD.music ? 0.42 : 0, c.currentTime, 0.3);
+    if (AUD.musicBus) AUD.musicBus.gain.setTargetAtTime(musicLevel(), c.currentTime, 0.3);
     playMusic();
 
     return c.state === 'running';

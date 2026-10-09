@@ -1462,8 +1462,9 @@ export function startGame(config, net) {
     sync = new PlySync(config.snapshot.ply);
     setAudioHooks({
         assets: A,
-        // the match plays the MIDI playlist when it has tracks (Proof of Pong, on the same engine, keeps the ambient score)
+        // the match plays the MIDI playlist when it has tracks, and its pools draw from the snippet library (P8)
         playlist: true,
+        snips: true,
         botTurn: () => !!G && !G.over && (isBot(G.cur) || shownSource === 'bot'),
         musicMood: () => {
             if (!G || G.over || ME === null) return { tense: false, standing: 'even' };

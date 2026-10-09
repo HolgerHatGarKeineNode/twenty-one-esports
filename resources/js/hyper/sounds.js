@@ -89,8 +89,25 @@ export function decide(event, state) {
     };
 }
 
-/** The defaults: everything on, 80 % volume. */
-export const DEFAULT_SETTINGS = { vol: 0.8, music: true, fx: true, board: true };
+/** The music bus's level: full, and ducked while a voice speaks (audio.js duck()). */
+export const MUSIC_FULL = 0.42;
+export const MUSIC_DUCKED = 0.12;
+
+/**
+ * The music bus's gain: 0 with the music off, else full or ducked, scaled by the music volume (0..1; Proof of Pong's
+ * slider, 1 where a game has none).
+ *
+ * @param {{ music: boolean, musicVol?: number, ducked?: boolean }} state
+ */
+export function musicGain({ music, musicVol = 1, ducked = false }) {
+    if (!music) return 0;
+    const vol = Number.isFinite(musicVol) ? Math.min(1, Math.max(0, musicVol)) : 1;
+
+    return (ducked ? MUSIC_DUCKED : MUSIC_FULL) * vol;
+}
+
+/** The defaults: everything on, 80 % volume, the music at its full level (musicVol: Proof of Pong's music slider). */
+export const DEFAULT_SETTINGS = { vol: 0.8, music: true, fx: true, board: true, musicVol: 1 };
 
 /**
  * The viewer's sound settings from storage, each value checked; anything unreadable is the default. An old
@@ -107,6 +124,7 @@ export function readSettings(storage, key = 'hb-settings') {
     if (st.board === undefined && st.fx === false) { st.board = false; st.fx = true; }
     const out = { ...DEFAULT_SETTINGS };
     if (typeof st.vol === 'number' && Number.isFinite(st.vol)) out.vol = Math.min(1, Math.max(0, st.vol));
+    if (typeof st.musicVol === 'number' && Number.isFinite(st.musicVol)) out.musicVol = Math.min(1, Math.max(0, st.musicVol));
     for (const k of ['music', 'fx', 'board']) if (typeof st[k] === 'boolean') out[k] = st[k];
 
     return { ...st, ...out };

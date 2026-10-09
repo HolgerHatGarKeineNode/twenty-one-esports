@@ -5,7 +5,8 @@
 | Hyperbitcoinization's sound as configuration (plan "Hyperbitcoinization", P6)
 |--------------------------------------------------------------------------
 |
-| The page's sound map and the viewer's switches under Node (tests/js/hyperSounds.test.mjs), and the
+| The page's sound map and the viewer's switches under Node (tests/js/hyperSounds.test.mjs), the pools drawn
+| from the snippet library (P8 of "Proof of Pong", tests/js/hyperVoices.test.mjs), and the
 | league-wide switch of soundboard emotes (HyperEmotes::CLIPS_SETTING on /admin/settings): off, no table
 | offers a clip and the server sends none; stickers stay.
 |
@@ -31,6 +32,13 @@ test('every sound mapping, the bot-turn rule, the switches and the stored settin
 
     expect($run->successful())->toBeTrue($run->output().$run->errorOutput())
         ->and($run->output())->toContain('ℹ pass 7')->toContain('ℹ fail 0')->toContain('ℹ skipped 0');
+});
+
+test('every soundboard pool draws from the snippet library without repeats, bot turns stay without clips (Node)', function () {
+    $run = Process::path(base_path())->timeout(60)->run(['node', '--test', 'tests/js/hyperVoices.test.mjs']);
+
+    expect($run->successful())->toBeTrue($run->output().$run->errorOutput())
+        ->and($run->output())->toContain('ℹ pass 6')->toContain('ℹ fail 0');
 });
 
 test('who a moment waits for: a multiplayer table never waits for a click, a battle without a human runs without animation (Node)', function () {
