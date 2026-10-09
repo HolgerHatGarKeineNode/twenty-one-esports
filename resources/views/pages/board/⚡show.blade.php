@@ -310,7 +310,7 @@ new #[Layout('layouts::app', ['realtime' => true, 'scripts' => ['resources/js/bo
     {{-- A tournament game says so first, above everything else (user, 2026-10-03). --}}
     <x-tournaments.game-banner :banner="$boardGame->tournament_match_id !== null ? TournamentGameEnd::banner($boardGame) : null" class="mx-auto mb-4 w-full max-w-[1000px] lg:mb-5" />
 
-    <div wire:ignore x-data="boardGame(@js($config))" x-on:keydown.window="browseKey($event)" class="mx-auto flex w-full max-w-[1000px] flex-col gap-2 lg:gap-5" data-test="board-game" data-mode="{{ $boardGame->mode }}">
+    <div wire:ignore x-data="boardGame(@js($config))" x-on:keydown.window="browseKey($event)" @class(["mx-auto flex w-full max-w-[1000px] flex-col gap-2 lg:gap-5", "min-[87.5rem]:max-w-[1360px]" => $chat]) data-test="board-game" data-mode="{{ $boardGame->mode }}">
 
         {{-- Title row --}}
         <div class="flex flex-wrap items-center gap-x-4 gap-y-2">
@@ -331,7 +331,9 @@ new #[Layout('layouts::app', ['realtime' => true, 'scripts' => ['resources/js/bo
             <span class="flex h-7 items-center rounded-md bg-btc-press px-3 text-xs font-bold text-btc-hi max-lg:w-full lg:h-[34px] lg:px-3.5 lg:text-[13px]" :class="hasDock ? 'max-lg:hidden' : ''" x-text="statusLine" data-test="status-line"></span>
         </div>
 
-        <div @class(['grid grid-cols-1 gap-3 lg:gap-7', $boardColumn])>
+        {{-- As daily chess (P2, user: "bei Schach hat das geklappt"): from lg the side column and the chat end with the
+             board, its moves scroll inside; from 87.5rem the chat is a third column as tall as the board. --}}
+        <div @class(['grid grid-cols-1 gap-3 lg:gap-x-7 lg:gap-y-5', $boardColumn, 'min-[87.5rem]:grid-cols-[minmax(0,560px)_380px_minmax(0,1fr)]' => $chat])>
             {{-- The board: the rules describe it, the script draws it --}}
             {{-- On a phone both players share one row above the board (P2): the board gets the height. --}}
             <div class="grid min-w-0 grid-cols-2 gap-2 lg:flex lg:flex-col lg:gap-3">
@@ -353,7 +355,7 @@ new #[Layout('layouts::app', ['realtime' => true, 'scripts' => ['resources/js/bo
             </div>
 
             {{-- Status, actions, moves --}}
-            <div class="flex min-w-0 flex-col gap-3">
+            <div @class(['flex min-w-0 flex-col gap-3', 'min-[87.5rem]:h-0 min-[87.5rem]:min-h-full' => $chat])>
                 {{-- The block input (Blockli): move, or set a block shown first, as in the Blockli prototype. On a phone a bar
                      fixed above the chat sheet, as daily chess's bottom bar (P2); on a desktop the head of this column, beside
                      the board, so the board column needs no room for it: the switch and Confirm never need a scroll. --}}
@@ -369,13 +371,13 @@ new #[Layout('layouts::app', ['realtime' => true, 'scripts' => ['resources/js/bo
                                 {{ __('Set a block') }} <span class="tabular-nums" x-text="blocksLeft"></span>
                             </button>
                         </div>
-                        <div class="grid grid-cols-2 gap-2 max-lg:order-3 max-lg:gap-1" :class="blockMode ? '' : 'invisible'">
+                        <div class="grid grid-cols-2 gap-2 max-lg:order-3 max-lg:gap-1" :class="blockMode ? '' : 'max-lg:invisible lg:hidden'">
                             <x-button variant="quiet" x-bind:disabled="!preview" x-on:click="rotateBlock()" data-test="rotate-block">{{ __('Rotate') }}</x-button>
                             <x-button x-bind:disabled="!preview || !preview.move" x-on:click="setBlock()" data-test="set-block">{{ __('Confirm') }}</x-button>
                         </div>
                         {{-- Always in the page, so a screen reader hears each new hint (the keys say where the block is). --}}
                         {{-- On a phone the line also says whose move it is while no block is shown (the status chip gives way to the bar). --}}
-                        <p class="m-0 min-h-5 text-[13px] text-ink-2 max-lg:order-1 max-lg:truncate max-lg:text-xs" role="status" aria-live="polite" data-test="block-hint"><span x-text="blockHint"></span><span class="lg:hidden" x-show="!blockHint" x-text="statusLine"></span></p>
+                        <p class="m-0 text-[13px] text-ink-2 max-lg:order-1 max-lg:truncate max-lg:text-xs" role="status" aria-live="polite" data-test="block-hint"><span x-text="blockHint"></span><span class="lg:hidden" x-show="!blockHint" x-text="statusLine"></span></p>
                     </div>
                 </template>
                 @if ($boardGame->tournament_match_id !== null)
@@ -432,7 +434,7 @@ new #[Layout('layouts::app', ['realtime' => true, 'scripts' => ['resources/js/bo
                     </div>
                 </template>
 
-                <div class="flex flex-col gap-2 rounded-lg bg-card p-4">
+                <div class="flex min-h-0 flex-col gap-2 rounded-lg bg-card p-4 lg:max-h-60 min-[87.5rem]:max-h-none min-[87.5rem]:shrink">
                     <div class="flex items-center justify-between gap-2">
                         <h2 class="m-0 text-sm font-bold">{{ __('Moves') }}</h2>
                         {{-- Browse the game (P8): start, back, forward, newest; the arrow keys do the same. --}}
@@ -447,7 +449,7 @@ new #[Layout('layouts::app', ['realtime' => true, 'scripts' => ['resources/js/bo
                         <span x-text="@js(__('Showing move :n of :total')).replace(':n', shownPly).replace(':total', state.moves.length)"></span>
                         <button type="button" class="cursor-pointer text-ink underline decoration-edge underline-offset-4" x-on:click="browse(state.moves.length)" data-test="history-back-to-game">{{ __('Back to the game') }}</button>
                     </p>
-                    <ol class="m-0 flex list-none flex-wrap gap-x-1 gap-y-1 p-0 text-[13px] tabular-nums" data-test="moves">
+                    <ol class="m-0 flex min-h-0 list-none flex-wrap content-start gap-x-1 gap-y-1 overflow-y-auto p-0 text-[13px] tabular-nums" data-test="moves">
                         <template x-for="m in state.moves" :key="m.ply">
                             <li><button type="button" x-on:click="browse(m.ply)" :aria-current="shownPly === m.ply ? 'step' : null" data-test="move"
                                         class="cursor-pointer rounded-sm px-1.5 py-0.5 text-ink" :class="shownPly === m.ply ? 'bg-btc-press text-btc-hi' : 'hover:bg-row-hover'"><span class="text-ink-3" x-text="m.ply + '.'"></span> <span x-text="m.notation"></span></button></li>
@@ -455,11 +457,13 @@ new #[Layout('layouts::app', ['realtime' => true, 'scripts' => ['resources/js/bo
                     </ol>
                 </div>
 
-                {{-- The players' chat (P1): a panel from lg, the bottom sheet on a phone. --}}
-                @if ($chat)
-                    @include('pages.games.partials.chat', ['chat' => $chat, 'panelClass' => 'lg:h-[400px]'])
-                @endif
             </div>
+
+            {{-- The players' chat (P1), placed as on daily chess: under both columns from lg, its own column as tall as the
+                 board from 87.5rem; the bottom sheet on a phone. --}}
+            @if ($chat)
+                @include('pages.games.partials.chat', ['chat' => $chat, 'panelClass' => 'lg:col-span-2 lg:h-[400px] min-[87.5rem]:col-span-1 min-[87.5rem]:col-start-3 min-[87.5rem]:row-start-1 min-[87.5rem]:h-0 min-[87.5rem]:min-h-full'])
+            @endif
         </div>
     </div>
 </div>

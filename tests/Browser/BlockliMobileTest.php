@@ -3,6 +3,7 @@
 use App\Models\Admin;
 use App\Models\User;
 use App\Support\Board\BoardGameService;
+use Illuminate\Support\Facades\File;
 use Illuminate\Support\Facades\Http;
 use Pest\Browser\Playwright\Page;
 use Pest\Browser\Support\ComputeUrl;
@@ -57,7 +58,7 @@ const BLOCKLI_FOLD = <<<'JS'
     const sheet = box('[data-test=chat-sheet-toggle]');
     return {
         tabbar: parseFloat(getComputedStyle(document.body).paddingBottom) || 0, height: innerHeight, width: innerWidth, sheet: sheet ? sheet.top : innerHeight,
-        board: box('[data-test=board]'), dock: box('[data-test=block-input]'), modeMove: box('[data-test=mode-move]'), modeBlock: box('[data-test=mode-block]'),
+        board: box('[data-test=board]'), chatPanel: box('[data-test=chat-panel]'), chatInput: box('#chatin'), moves: box('[data-test=moves]'), side: Math.round(Math.max(...[...document.querySelector('[data-test=board-game] .grid > div:nth-child(2)').children].filter((el) => el.checkVisibility()).map((el) => el.getBoundingClientRect().bottom))), dock: box('[data-test=block-input]'), modeMove: box('[data-test=mode-move]'), modeBlock: box('[data-test=mode-block]'),
         rotate: box('[data-test=rotate-block]'), confirm: box('[data-test=set-block]'), top: box('[data-test=player-top]'), bottomCard: box('[data-test=player-bottom]'),
         overflow: document.documentElement.scrollWidth - document.documentElement.clientWidth,
         // The narrowest field on the drawn board: the step between two neighbouring squares' points (a1, b1, ...).
@@ -156,8 +157,9 @@ test('as an admin in German the board page with its chat and the lobby of every 
 });
 
 /*
-| Desktop too (user, 2026-10-09: "hier muss ich immer noch scrollen bei Desktop?"): from lg the board column is as
-| wide as the window's height allows, so the lower player card, the switch and Confirm end inside the first screen.
+| Desktop too (user, 2026-10-09: "hier muss ich immer noch scrollen bei Desktop?", "bei Schach hat das geklappt"):
+| from lg the board column is as wide as the window's height allows, the switch and Confirm head the side column, and
+| the chat ends with the board (from 87.5rem its own column, as on daily chess), its input in the first screen.
 */
 
 test('on a desktop the board, the lower player card, the switch and Confirm fit the first screen', function (int $width, int $height) {
@@ -171,9 +173,21 @@ test('on a desktop the board, the lower player card, the switch and Confirm fit 
     $before = $page->evaluate(BLOCKLI_FOLD);
     $page->locator('[data-test=mode-block]')->click();
     $m = $page->evaluate(BLOCKLI_FOLD);
-    fwrite(STDERR, PHP_EOL."desktop {$width}x{$height} ".json_encode(['board' => $m['board'], 'card' => $m['bottomCard'], 'confirm' => $m['confirm'], 'field' => $m['field']]).PHP_EOL);
+    fwrite(STDERR, PHP_EOL."desktop {$width}x{$height} ".json_encode(['board' => $m['board'], 'card' => $m['bottomCard'], 'confirm' => $m['confirm'], 'chat' => $m['chatPanel'], 'side' => $m['side'], 'field' => $m['field']]).PHP_EOL);
+
+    if (is_string($dir = getenv('BLOCKLI_SHOTS')) && $dir !== '') {
+        $page->screenshot(false, "blockli-desktop-{$width}");
+        File::ensureDirectoryExists($dir);
+        File::move(base_path("tests/Browser/Screenshots/blockli-desktop-{$width}.png"), "{$dir}/blockli-desktop-{$width}.png");
+    }
 
     expect($m['bottomCard']['bottom'])->toBeLessThanOrEqual($height, 'lower player card inside the first screen')
+        // The side column ends with the board; from 87.5rem the chat is its own column ending with it too (daily chess),
+        // below that it stands under both columns, 400 px tall.
+        ->and($m['side'])->toBeLessThanOrEqual($m['bottomCard']['bottom'] + 1, 'side column ends with the board')
+        ->and($width >= 1400 ? $m['chatPanel']['bottom'] : $m['chatPanel']['top'])->toBe($width >= 1400 ? $m['bottomCard']['bottom'] : $m['chatPanel']['top'])
+        ->and($width >= 1400 ? $m['chatPanel']['top'] < $m['board']['top'] : $m['chatPanel']['top'] > $m['bottomCard']['bottom'])->toBeTrue('chat beside the board from 1400, under it below')
+        ->and($m['chatPanel']['h'])->toBeGreaterThanOrEqual(400, 'the chat keeps room for messages')
         ->and($m['confirm']['bottom'])->toBeLessThanOrEqual($height, 'Confirm inside the first screen')
         ->and($m['modeBlock']['bottom'])->toBeLessThanOrEqual($height)
         // The switch to block mode does not move the board.

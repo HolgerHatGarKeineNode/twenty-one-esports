@@ -263,7 +263,9 @@ registerAlpine(() => {
             }
             board.style.maxWidth = '';
             page.style.paddingBottom = '';
-            grid.style.gridTemplateColumns = 'minmax(0, ' + Math.min(560, Math.max(300, width)) + 'px) minmax(0, 1fr)';
+            // From 87.5rem the players' chat is a third column (the page's grid classes).
+            const third = this.$root.querySelector('[data-test=chat-panel]') && matchMedia('(width >= 87.5rem)').matches ? ' 380px' : '';
+            grid.style.gridTemplateColumns = 'minmax(0, ' + Math.min(560, Math.max(300, width)) + 'px)' + third + ' minmax(0, 1fr)';
         },
 
         /* ---- the board ------------------------------------------------------------------------------ */
