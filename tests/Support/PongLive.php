@@ -20,14 +20,26 @@ final class PongLive
     /**
      * A match between two new players, started (both synced once).
      *
+     * @param  list<int>  $plainRallies
      * @return array{PongMatch, User, User}
      */
-    public static function started(): array
+    public static function started(array $plainRallies = []): array
     {
         $left = User::factory()->create();
         $right = User::factory()->create();
         $matches = app(PongMatches::class);
-        $match = $matches->create($left, $right);
+        $rules = PongRules::fromConfig((array) config('esports.pong'));
+
+        // A test that judges single contacts asks for rallies without a meme event (since P10 nine of every 21
+        // rallies carry one, e.g. Pizza Day's two balls): draw matches until those rallies are plain.
+        do {
+            $match = $matches->create($left, $right);
+            $plain = collect($plainRallies)->every(fn (int $rally): bool => $rules->eventOf($match->seed, $rally) === null);
+
+            if (! $plain) {
+                $match->delete();
+            }
+        } while (! $plain);
         $matches->sync($match, $left);
         $matches->sync($match, $right);
 

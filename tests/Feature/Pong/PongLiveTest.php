@@ -124,7 +124,7 @@ test('the lobby component renders and survives a roundtrip, with and without a r
 
 test('a fake hit is a goal for the attacker: a paddle beside the ball (geometry) and one that jumped faster than a paddle moves (speed)', function () {
     PongOn::play();
-    [$match, $left, $right] = PongLive::started();
+    [$match, $left, $right] = PongLive::started(plainRallies: [1, 2]);
     $players = [$left, $right];
 
     // Geometry: on the field and reachable, but more than half a paddle plus the ball's radius from the ball.
