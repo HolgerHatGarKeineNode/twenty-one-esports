@@ -115,6 +115,8 @@ pest()->extend(TestCase::class)
     // A 204 leaves the in-process server with a Content-Length of 0 (Tests\Support\BrowserBodylessFraming):
     // framed as chunked it ends in a late "0\r\n\r\n" that breaks the page's next fetch on the same socket.
     ->beforeEach(function (): void {
+        // The in-process app server never reaches the real network either (same rule as the default suite above).
+        Http::preventStrayRequests();
         Vite::useHotFile(storage_path('framework/testing/vite-hot-disabled-for-browser-tests'));
         BrowserAssets::use();
         app(HttpKernel::class)->pushMiddleware(BrowserBodylessFraming::class);
