@@ -28,7 +28,7 @@
                 @if ($top['kind'] === 'ladder')
                 @php($ladder = $top['item'])
                 <li class="flex min-w-0 flex-col gap-2 rounded-card bg-card p-3 lg:p-4" data-test="ladder-top" data-game="{{ $ladder['game'] }}">
-                    <a href="{{ $ladder['href'] }}" @navigate($ladder['href']) class="grid grid-cols-[64px_minmax(0,1fr)] items-center gap-3 text-ink hover:text-ink">
+                    <a href="{{ $ladder['href'] }}" @navigate($ladder['href']) class="grid min-h-11 grid-cols-[64px_minmax(0,1fr)] items-center gap-3 text-ink hover:text-ink">
                         <x-game-cover :game="$ladder['game']" size="thumb" class="w-16 rounded-tag" />
                         <span class="flex min-w-0 flex-col">
                             <b class="truncate text-[13px]">{{ $ladder['name'] }}</b>

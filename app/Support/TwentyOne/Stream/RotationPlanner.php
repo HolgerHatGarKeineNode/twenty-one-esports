@@ -87,6 +87,11 @@ use App\Games\TrackmaniaNationsForever;
  * round of at most `hyperMaxSeconds` is the bound that keeps it from crowding out the other games: the match,
  * the gallery, the board games and the teasers of the round still come. It ends at once when its match ends or
  * the game is switched off (then no match is reported); never while a tournament runs or a champion moment shows.
+ *
+ * A won Proof of Pong match of the last day (plan "Proof of Pong", P4) has its result slide, PONG_SCENE (p1,
+ * PongScene), right after the Hyperbitcoinization slot: one result a round for `pongSeconds` (20), the recent results
+ * taking turns from round to round (no live gameplay on the stream: the encoder takes no live frame rate). None
+ * while no match was won within the day or the switch is off.
  */
 final class RotationPlanner
 {
@@ -114,6 +119,12 @@ final class RotationPlanner
 
     /** A tense Hyperbitcoinization match stands this much longer at a time, up to `hyperMaxSeconds` in all. */
     public const HYPER_EXTEND_SECONDS = 20;
+
+    /** A won Proof of Pong match (PongScene). */
+    public const PONG = 'pong';
+
+    /** The scene of PONG. */
+    public const PONG_SCENE = PongScene::SCENE;
 
     /** Without a live board game, the board teaser comes every this many rounds. */
     public const BOARD_IDLE_EVERY = 3;
@@ -179,6 +190,7 @@ final class RotationPlanner
         'e5' => 'stream.rotation.e5-block', 'e6' => 'stream.rotation.e6-strongest', 'e7' => 'stream.rotation.e7-rank-up', 'e8' => 'stream.rotation.e8-streak', 'e9' => 'stream.rotation.e9-payouts',
         'm1' => 'stream.rotation.m1-mempool',
         'h1' => 'stream.rotation.h1-hyper',
+        'p1' => 'stream.rotation.p1-pong',
         'f1' => 'stream.rotation.f1-blockfill',
         'f2' => 'stream.rotation.f2-board', 'f3' => 'stream.rotation.f3-fresh', 'f4' => 'stream.rotation.f4-moment', 'f5' => 'stream.rotation.f5-play',
         'g1' => 'stream.rotation.g1-tmnf',
@@ -297,6 +309,12 @@ final class RotationPlanner
     /** When the Hyperbitcoinization slot on show started (its hold counts from there). */
     private float $hyperSince = 0.0;
 
+    /** @var list<array{id: int}> the recent won Proof of Pong matches, as the last call to at() reported them */
+    private array $pong = [];
+
+    /** Rounds that took a Proof of Pong result (the results take turns by it). */
+    private int $pongTurn = 0;
+
     /** The key of the last new #1 shown, and when. */
     private ?string $lastMoment = null;
 
@@ -317,6 +335,7 @@ final class RotationPlanner
         private float $championSeconds = 120,
         private float $hyperMinSeconds = 60,
         private float $hyperMaxSeconds = 180,
+        private float $pongSeconds = 20,
     ) {}
 
     public static function fromConfig(float $loopSeconds): self
@@ -336,6 +355,7 @@ final class RotationPlanner
             (float) config('twentyone.stream.rotation.champion_moment_seconds', 120),
             (float) config('twentyone.stream.rotation.hyper_min_seconds', 60),
             (float) config('twentyone.stream.rotation.hyper_max_seconds', 180),
+            (float) config('twentyone.stream.rotation.pong_seconds', 20),
         );
     }
 
@@ -375,13 +395,15 @@ final class RotationPlanner
      * @param  string  $blockfillWeek  BlockfillSlides::OFF, IDLE, EMPTY or RUNNING
      * @param  string|null  $blockfillMoment  the key of a new #1 of the last minutes (BlockfillSlides::state())
      * @param  list<array{id: int, tense: bool}>  $hyper  the running Hyperbitcoinization matches (HyperScene::entries()), in turn order
-     * @return array{kind: string, scene: string|null, gameId: int|null, tournamentId: int|null, until: float} `gameId` is the Hyperbitcoinization match's id for HYPER
+     * @param  list<array{id: int}>  $pong  the recent won Proof of Pong matches (PongScene::entries()), in turn order
+     * @return array{kind: string, scene: string|null, gameId: int|null, tournamentId: int|null, until: float} `gameId` is the Hyperbitcoinization match's id for HYPER, the Proof of Pong match's for PONG
      */
-    public function at(float $now, array $games, array $tournaments = [], string $boards = BoardScene::OFF, array $live = [], string $blockfillWeek = BlockfillSlides::OFF, ?string $blockfillMoment = null, array $hyper = []): array
+    public function at(float $now, array $games, array $tournaments = [], string $boards = BoardScene::OFF, array $live = [], string $blockfillWeek = BlockfillSlides::OFF, ?string $blockfillMoment = null, array $hyper = [], array $pong = []): array
     {
         $ids = array_column($games, 'id');
         $this->boards = $boards;
         $this->hyper = $hyper;
+        $this->pong = $pong;
         $this->blockfillWeek = $blockfillWeek;
         $this->tournamentKeys = [];
         $this->running = [];
@@ -468,6 +490,7 @@ final class RotationPlanner
             self::BLOCKFILL => ! $this->blockfillApplies((string) $this->slot['scene']),
             // The match ended, or the game was switched off.
             self::HYPER => ! in_array($this->slot['gameId'], array_column($this->hyper, 'id'), true),
+            self::PONG => ! in_array($this->slot['gameId'], array_column($this->pong, 'id'), true),
             default => false,
         };
     }
@@ -556,9 +579,9 @@ final class RotationPlanner
             if ($this->idleRounds++ % max(1, $this->loopEvery) === 0) {
                 $this->queue = [['kind' => self::LOOP]];
             } elseif ($tournaments !== []) {
-                $this->queue = [...$this->board(), ...$this->hyperRound(), ...$this->tournamentSlides($this->nextLook(), $tournaments), ...$this->everyRound(), ...$this->blockfillRound(), ['kind' => self::TEASER]];
+                $this->queue = [...$this->board(), ...$this->hyperRound(), ...$this->pongRound(), ...$this->tournamentSlides($this->nextLook(), $tournaments), ...$this->everyRound(), ...$this->blockfillRound(), ['kind' => self::TEASER]];
             } else {
-                $this->queue = [...$this->board(), ...$this->hyperRound(), ...$this->everyRound(), ...$this->blockfillRound(), ...$teasers];
+                $this->queue = [...$this->board(), ...$this->hyperRound(), ...$this->pongRound(), ...$this->everyRound(), ...$this->blockfillRound(), ...$teasers];
             }
 
             return;
@@ -573,6 +596,7 @@ final class RotationPlanner
             ['kind' => self::GALLERY, 'look' => $look],
             ...$this->board(),
             ...$this->hyperRound(),
+            ...$this->pongRound(),
             ...($tournaments === [] ? [] : $this->tournamentSlides($look, $tournaments)),
             ...$this->everyRound(),
             ...$this->blockfillRound(),
@@ -689,6 +713,20 @@ final class RotationPlanner
         return [['kind' => self::HYPER, 'gameId' => $this->hyper[$this->hyperTurn++ % count($this->hyper)]['id']]];
     }
 
+    /**
+     * This round's Proof of Pong slot: the next recent result in turn, none without one.
+     *
+     * @return list<array{kind: string, gameId: int}>
+     */
+    private function pongRound(): array
+    {
+        if ($this->pong === []) {
+            return [];
+        }
+
+        return [['kind' => self::PONG, 'gameId' => $this->pong[$this->pongTurn++ % count($this->pong)]['id']]];
+    }
+
     private function nextLook(): string
     {
         return self::LOOKS[$this->lookRounds++ % count(self::LOOKS)];
@@ -768,6 +806,13 @@ final class RotationPlanner
                 $this->hyperSince = $start;
 
                 return $this->slot(self::HYPER, self::HYPER_SCENE, $entry['gameId'], $start + max(1.0, $this->hyperMinSeconds));
+            case self::PONG:
+                // Ended (or switched off) since the round was planned: skipped.
+                if (! in_array($entry['gameId'] ?? null, array_column($this->pong, 'id'), true)) {
+                    return null;
+                }
+
+                return $this->slot(self::PONG, self::PONG_SCENE, $entry['gameId'], $start + max(1.0, $this->pongSeconds));
             case self::BOARD:
                 // Switched off since the round was planned: skipped.
                 return $this->boards === BoardScene::OFF ? null

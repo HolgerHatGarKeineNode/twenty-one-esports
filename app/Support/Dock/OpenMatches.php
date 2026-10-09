@@ -8,9 +8,11 @@ use App\Enums\ChessGameStatus;
 use App\Enums\ChessInviteStatus;
 use App\Enums\HyperMatchStatus;
 use App\Enums\InviteStatus;
+use App\Enums\PongMatchStatus;
 use App\Enums\ReportStatus;
 use App\Enums\SeriesStatus;
 use App\Games\GameRegistry;
+use App\Games\ProofOfPong;
 use App\Models\BoardChallenge;
 use App\Models\BoardGame;
 use App\Models\BoardInvite;
@@ -22,6 +24,7 @@ use App\Models\ClanInvite;
 use App\Models\HyperMatch;
 use App\Models\Lineup;
 use App\Models\LineupSeat;
+use App\Models\PongInvite;
 use App\Models\SeriesInvite;
 use App\Models\SeriesMatch;
 use App\Models\SeriesMatchBoard;
@@ -29,6 +32,7 @@ use App\Models\User;
 use App\Support\Chess\ChessModes;
 use App\Support\Chess\ChessTeamMatches;
 use App\Support\GameNames;
+use App\Support\Pong\PongMatches;
 use App\Support\RequestMemo;
 use App\Support\Series\CasualInvites;
 use App\Support\Series\SeriesPresenter;
@@ -91,7 +95,9 @@ final class OpenMatches
             ...$this->games($user, $excludeGame, $nowMs),
             ...$this->boardGames($user, $excludeBoard, $nowMs),
             ...$this->hyperMatches($user, $nowMs),
+            ...$this->pongMatches($user),
             ...$this->boardInvites($user),
+            ...$this->pongInvites($user),
             ...$this->boardChallenges($user),
             ...$this->blitzInvites($user),
             ...$this->dailyChallenges($user),
@@ -530,6 +536,102 @@ final class OpenMatches
                 deadlineMs: $deadline,
                 tick: $left === null ? null : ['endsAt' => (int) $deadline, 'format' => 'hm', 'total' => (int) config('esports.hyper.correspondence_hours', 24) * 3_600_000, 'redUnder' => self::DAILY_RED_MS],
                 model: $match,
+            );
+        })->all());
+    }
+
+    /**
+     * The player's live Proof of Pong match (plan "Proof of Pong", P4): waiting for both players or in play, as a
+     * live tab that leads to the match (a tab of its own). One at most: a player plays one live game at a time.
+     *
+     * @return list<DockItem>
+     */
+    private function pongMatches(User $user): array
+    {
+        if (app(GameRegistry::class)->find(ProofOfPong::SLUG) === null || ! Route::has('pong.match')) {
+            return [];
+        }
+
+        $match = PongMatches::activeMatchOf($user);
+
+        if ($match === null) {
+            return [];
+        }
+
+        $side = (int) $match->sideOf($user);
+        $opponent = $match->player(1 - $side);
+        $name = $opponent?->displayName() ?? '';
+        $title = GameNames::game(ProofOfPong::SLUG);
+        $waiting = $match->status === PongMatchStatus::Waiting;
+        $score = $match->score()[$side].':'.$match->score()[1 - $side];
+        $state = $waiting ? __('Starting') : __('Live');
+
+        return [new DockItem(
+            key: 'pong-'.$match->id,
+            kind: 'pong',
+            group: 'live',
+            phase: 'live',
+            needsYou: true,
+            name: $name,
+            face: $opponent,
+            tag: null,
+            number: '',
+            href: route('pong.match', $match),
+            title: $title,
+            state: $state,
+            trailing: $waiting ? __('Open it') : $score,
+            line: __(':game, :state', ['game' => $title, 'state' => mb_strtolower($state)]),
+            sentence: $waiting
+                ? __(':game against :name starts once you both opened it', ['game' => $title, 'name' => $name])
+                : __(':game against :name, live, :score', ['game' => $title, 'name' => $name, 'score' => $score]),
+            action: __('Open match'),
+            deadlineMs: null,
+            tick: null,
+            model: $match,
+        )];
+    }
+
+    /**
+     * Invites to a live Proof of Pong match this player has to answer (plan "Proof of Pong", P4), as a board game's
+     * invite: they lead to the lobby, where Accept opens the match.
+     *
+     * @return list<DockItem>
+     */
+    private function pongInvites(User $user): array
+    {
+        if (app(GameRegistry::class)->find(ProofOfPong::SLUG) === null || ! Route::has('pong.index')) {
+            return [];
+        }
+
+        $invites = PongInvite::query()->where('invitee_id', $user->id)->where('status', BoardInviteStatus::Pending)
+            ->where('expires_at', '>', now())->with('inviter')->latest('id')->limit(self::KIND_LIMIT)->get();
+
+        return array_values($invites->map(function (PongInvite $invite): DockItem {
+            $endsAt = (int) $invite->expires_at->getTimestampMs();
+            $name = $invite->inviter->displayName();
+            $title = GameNames::game(ProofOfPong::SLUG);
+            $total = (int) $invite->expires_at->diffInMilliseconds($invite->created_at ?? now(), true);
+
+            return new DockItem(
+                key: 'pong-invite-'.$invite->id,
+                kind: 'pong_invite',
+                group: 'need',
+                phase: 'answer',
+                needsYou: true,
+                name: $name,
+                face: $invite->inviter,
+                tag: null,
+                number: '',
+                href: route('pong.index').'#pong-live-h',
+                title: __(':game invite', ['game' => $title]),
+                state: __('Answer'),
+                trailing: self::format($endsAt - (int) now()->getTimestampMs(), 'clock'),
+                line: __(':game invite, answer now', ['game' => $title]),
+                sentence: __(':name invites you to a game of :game', ['name' => $name, 'game' => $title]),
+                action: __('Answer'),
+                deadlineMs: $endsAt,
+                tick: ['endsAt' => $endsAt, 'format' => 'clock', 'total' => max(1, $total), 'redUnder' => self::BLITZ_RED_MS],
+                model: $invite,
             );
         })->all());
     }

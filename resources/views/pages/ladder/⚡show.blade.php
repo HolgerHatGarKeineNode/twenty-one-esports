@@ -68,6 +68,13 @@ new #[Layout('layouts::app', ['section' => 'ladder'])] class extends Component
             throw new \Illuminate\Http\Exceptions\HttpResponseException(redirect()->route('hyper.ladder', status: 301));
         }
 
+        // Proof of Pong (plan "Proof of Pong", P4) has its own Elo ladder (PongLadder), no Rating ladder.
+        if ($registry->find($game)?->kind() === \App\Games\GameKind::Arcade) {
+            abort_unless(\Illuminate\Support\Facades\Route::has('pong.ladder'), 404);
+
+            throw new \Illuminate\Http\Exceptions\HttpResponseException(redirect()->route('pong.ladder', status: 301));
+        }
+
         $this->game = $game;
         $this->mode = $mode;
         $this->pool = in_array($this->pool, [Rating::RATED, Rating::CASUAL], true) ? $this->pool : '';

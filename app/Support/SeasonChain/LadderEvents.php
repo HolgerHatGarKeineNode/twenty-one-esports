@@ -99,13 +99,14 @@ final class LadderEvents
     }
 
     /**
-     * The games with a ladder event: every versus game but a strategy game (Hyperbitcoinization).
+     * The games with a ladder event: every versus game but a strategy game (Hyperbitcoinization) and an arcade game
+     * (Proof of Pong, whose permanent Elo is no season ladder).
      *
      * @return array<string, Game>
      */
     private function ladderGames(): array
     {
-        return array_filter($this->games->versus(), fn (Game $game): bool => $game->kind() !== GameKind::Strategy);
+        return array_filter($this->games->versus(), fn (Game $game): bool => ! in_array($game->kind(), [GameKind::Strategy, GameKind::Arcade], true));
     }
 
     private function publishOne(Season $season, LeagueKey $league, string $trustKey, string $game, string $mode, string $content, ?int $ends = null): NostrEvent

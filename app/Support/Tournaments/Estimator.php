@@ -285,6 +285,8 @@ final class Estimator
             $format === TournamentFormat::Leaderboard && $profile->isScore() => $n < 2 ? 'Needs at least 2 players.' : null,
             $format === TournamentFormat::FreeForAll => match (true) {
                 $profile->isChess() => 'Needs 3 or more players in one match. Chess is always one player against one.',
+                // Proof of Pong (plan "Proof of Pong", P4).
+                $profile->isPong() => 'Needs 3 or more players in one match. Proof of Pong is always one player against one.',
                 // Nine men's morris and checkers (plan "Mühle und Dame", P6).
                 $profile->isBoard() => 'Needs 3 or more players in one match. A board game is always one player against one.',
                 default => 'Needs 3 or more players in one match. A series is always one side against the other.',
@@ -292,6 +294,7 @@ final class Estimator
             $format === TournamentFormat::Leaderboard => match (true) {
                 $profile->isChess() => 'Needs a game with a score or time you play alone, like a time trial. Chess games are won against an opponent.',
                 $profile->isBoard() => 'Needs a game with a score or time you play alone, like a time trial. Board games are won against an opponent.',
+                $profile->isPong() => 'Needs a game with a score or time you play alone, like a time trial. Proof of Pong is won against an opponent.',
                 default => 'Needs a game with a score or time you play alone, like a time trial. A series is won against another side.',
             },
             $format === TournamentFormat::Swiss && $n < 4 => 'Needs at least 4 players.',

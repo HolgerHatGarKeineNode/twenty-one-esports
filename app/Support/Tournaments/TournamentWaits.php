@@ -105,7 +105,8 @@ final class TournamentWaits
         // A Hyperbitcoinization match (P5) waits on nobody's report: the league's server ends it. Held after a
         // correction (P5c), it waits for the desk like any other game; a free-for-all table has no two sides to
         // set a result for, so its round is restarted.
-        if ($tournament->profile()->isHyper()) {
+        // Proof of Pong (plan "Proof of Pong", P4) the same: the league's server ends its match.
+        if ($tournament->profile()->isHyper() || $tournament->profile()->isPong()) {
             if ($match->held === null || count($slots) < 2 || $slots->contains(fn (TournamentMatchSlot $slot): bool => $slot->participant === null)) {
                 return null;
             }

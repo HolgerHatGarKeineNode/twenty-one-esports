@@ -8,6 +8,7 @@ use App\Models\BoardInvite;
 use App\Models\ChessGame;
 use App\Models\ChessInvite;
 use App\Models\HyperMatch;
+use App\Models\PongMatch;
 use App\Models\SeriesMatch;
 use App\Models\Tournament;
 use App\Models\TournamentMatch;
@@ -293,6 +294,32 @@ final class CasualCupNotices
                 __(':tournament: your game is on', ['tournament' => $tournament->name], $locale),
                 __('Your Hyperbitcoinization table of :count is live. Take your turn in time.', ['count' => $count], $locale),
                 route('hyper.match', $match),
+                null,
+                __('Play now', [], $locale),
+                'matchFound',
+            ));
+        }
+    }
+
+    /**
+     * A tournament's live Proof of Pong match started (plan "Proof of Pong", P4): both players, wherever they are, with
+     * the way to the match (it opens in a tab of its own). Whoever has not opened it by the end of the check-in loses.
+     */
+    public function pongMatchStarted(Tournament $tournament, PongMatch $match): void
+    {
+        $match->loadMissing(['left', 'right']);
+
+        foreach ([[$match->left, $match->right], [$match->right, $match->left]] as [$player, $opponent]) {
+            if ($player === null) {
+                continue;
+            }
+
+            $locale = $this->locale($player);
+
+            $this->notifier->send($player, NotificationKind::CupGameNow, new Notice(
+                __(':tournament: your game is on', ['tournament' => $tournament->name], $locale),
+                __('Your Proof of Pong match against :name is live. Open it in time.', ['name' => $opponent?->displayName() ?? ''], $locale),
+                route('pong.match', $match),
                 null,
                 __('Play now', [], $locale),
                 'matchFound',

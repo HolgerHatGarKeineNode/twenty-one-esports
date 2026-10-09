@@ -146,6 +146,17 @@ final class Sitemap
                 continue;
             }
 
+            // Proof of Pong (plan "Proof of Pong", P4): its lobby and its own Elo ladder, while routed; no Rating ladder
+            // and no single match (a match page is full-screen and noindex).
+            if ($game->kind() === GameKind::Arcade) {
+                if (Route::has('pong.index') && Route::has('pong.ladder')) {
+                    $urls[] = route('pong.index');
+                    $urls[] = route('pong.ladder');
+                }
+
+                continue;
+            }
+
             foreach ($game->modes() as $mode) {
                 $urls[] = route('ladder.show', [$game->slug(), $mode->slug]);
             }

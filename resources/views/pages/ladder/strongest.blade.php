@@ -35,10 +35,10 @@
 
     // The ladders behind the list: every game's first mode, as on the home page; a score game has no Elo ladder.
     $ladders = [];
-    // Hyperbitcoinization (P6) has no Rating ladder and no Global Rating share: its season ladder is its own page.
+    // Hyperbitcoinization (P6) and Proof of Pong (P4) have no Rating ladder and no Global Rating share: their ladders are their own pages.
     foreach ($registry->versus() as $game) {
         $mode = array_key_first($game->modes());
-        if ($mode !== null && $game->kind() !== \App\Games\GameKind::Strategy) {
+        if ($mode !== null && ! in_array($game->kind(), [\App\Games\GameKind::Strategy, \App\Games\GameKind::Arcade], true)) {
             $ladders[] = ['game' => $game->slug(), 'name' => GameNames::full($game->slug(), (string) $mode), 'href' => route('ladder.show', [$game->slug(), $mode])];
         }
     }

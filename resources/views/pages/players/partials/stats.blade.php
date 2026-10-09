@@ -48,6 +48,10 @@
                             @include('pages.players.partials.hyper-card', ['hyper' => $card['hyper']])
                             @continue
                         @endif
+                        @if ($card['kind'] === 'pong')
+                            @include('pages.players.partials.pong-card', ['pong' => $card['pong']])
+                            @continue
+                        @endif
                         @php
                             $ladder = $card['ladder'];
                             $rating = $ladder['rating'];

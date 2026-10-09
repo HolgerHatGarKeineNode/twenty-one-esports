@@ -11,6 +11,7 @@ use App\Models\Rating;
 use App\Models\SeriesQueueEntry;
 use App\Models\User;
 use App\Support\Chess\ChessGameService;
+use App\Support\Pong\PongMatches;
 use App\Support\Rating\Ratings;
 use App\Support\Series\CasualInvites;
 use App\Support\Series\CasualMatches;
@@ -105,7 +106,8 @@ final class BoardQueue
 
     /**
      * One live game at a time across games: a live board game, a live chess
-     * game or a running casual 1v1 keeps a player from searching or inviting.
+     * game, a running casual 1v1 or a Proof of Pong match (plan "Proof of
+     * Pong", P4) keeps a player from searching or inviting.
      *
      * @throws BoardRuleViolation
      */
@@ -115,7 +117,7 @@ final class BoardQueue
             throw new BoardRuleViolation('already_playing');
         }
 
-        if (app(ChessGameService::class)->activeGameOf($user) !== null || CasualMatches::runningMatchOf($user) !== null) {
+        if (app(ChessGameService::class)->activeGameOf($user) !== null || CasualMatches::runningMatchOf($user) !== null || PongMatches::runningMatchOf($user) !== null) {
             throw new BoardRuleViolation('playing_elsewhere');
         }
     }

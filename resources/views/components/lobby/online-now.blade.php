@@ -25,13 +25,24 @@
     a player who looks for this lobby's game; every other row had nothing but the
     profile link (plan "Blockli-Optimierung", P3: "only opens profiles"), so it
     gets "Challenge", that page with the player picked (`?to=<id>`).
+
+    Who is looking right now (plan "Proof of Pong", P4): a member's data on the presence channel is what they had when
+    they joined it, so a player who switched before the viewer joined showed as they were at their join. The block
+    hands the presence (window.esportsPresence.seed(), resources/js/echo.js) the list of everyone looking as this page
+    renders it, once (wire:ignore: a later render of the lobby never sends an older list); pushes after it keep it
+    current. The newest switches first, at most 200. Only in a page's first render: a Livewire roundtrip (a lazy lobby
+    among them) sends no list, so it can neither send an older one nor clear the known ones.
 --}}
 @php
     $lookingTag ??= __('looking: Blitz 5+3');
     $on = $user?->looking_to_play === $lookingKey;
+    $lookingNow = $user === null || \Livewire\Livewire::isLivewireRequest() ? null : \App\Models\User::query()->whereNotNull('looking_to_play')->latest('updated_at')->limit(200)->pluck('looking_to_play', 'id')->all();
 @endphp
 
 <div id="online-now" {{ $attributes->class('flex scroll-mt-4 flex-col gap-2') }} data-test="online-now">
+    @if ($lookingNow !== null)
+        <span hidden wire:ignore x-init="window.esportsPresence ? window.esportsPresence.seed({{ \Illuminate\Support\Js::from((object) $lookingNow) }}) : (window.esportsPresenceSeed = {{ \Illuminate\Support\Js::from((object) $lookingNow) }})" data-test="online-looking-now"></span>
+    @endif
     <span class="flex flex-wrap items-center justify-between gap-x-3 gap-y-2">
         <h3 id="online-h" tabindex="-1" class="m-0 flex items-center gap-2 text-[15px] font-bold"><span class="size-2 rounded-full bg-win" aria-hidden="true"></span>{{ __('Online now') }} <b class="text-ink-2" x-show="connection === 'connected'" x-text="others.length" data-test="online-count"></b></h3>
         @if ($user)

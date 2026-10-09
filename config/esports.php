@@ -1776,6 +1776,13 @@ return [
     | 1/60 s on the server's clock (1; the browser test plays faster).
     | reports_per_minute: a player's requests to the referee per minute.
     |
+    | Tournaments (P4, App\Support\Tournaments): `tournaments` offers Proof of
+    | Pong in the tournament chooser (off by default, ESPORTS_PONG_TOURNAMENTS);
+    | off, no tournament is made of it, one that exists keeps its game. Each
+    | pairing is one live match the league starts for both players; whoever is
+    | there wins it when the other has not opened it within the tournament's
+    | check-in (TournamentDeadlines::checkinSeconds()).
+    |
     */
 
     'pong' => [
@@ -1790,6 +1797,7 @@ return [
         'forfeit_seconds' => 30,
         'live_speed' => 1,
         'reports_per_minute' => 600,
+        'tournaments' => (bool) env('ESPORTS_PONG_TOURNAMENTS', false),
     ],
 
 ];

@@ -198,8 +198,8 @@ new #[Layout('layouts::app', ['section' => 'tournaments', 'realtime' => true, 's
     $live = in_array($tournament->status, [TournamentStatus::Signup, TournamentStatus::Drawing, TournamentStatus::Running], true);
     $running = $tournament->status === TournamentStatus::Running;
     $profile = $tournament->profile();
-    // Chess, board games and leaderboards have no series: no check-in, no series deadlines.
-    $hasSeries = ! ($profile->isChess() || $profile->isBoard() || $profile->isScore());
+    // Chess, board games, Proof of Pong and leaderboards have no series: no check-in, no series deadlines.
+    $hasSeries = ! ($profile->isChess() || $profile->isBoard() || $profile->isPong() || $profile->isScore());
     $statusLabel = match ($tournament->status) {
         TournamentStatus::Draft => __('Draft'),
         TournamentStatus::Signup => __('Sign-up open'),

@@ -9,6 +9,7 @@ use App\Games\GameMode;
 use App\Games\GameRegistry;
 use App\Games\Hyperbitcoinization;
 use App\Games\NineMensMorris;
+use App\Games\ProofOfPong;
 use App\Games\TrackmaniaNationsForever;
 use App\Models\Tournament;
 use App\Support\Board\BlockliRules;
@@ -69,6 +70,7 @@ final class RulesPage
             self::series(),
             ...self::ageOfEmpires2(),
             ...self::hyperbitcoinization(),
+            ...self::proofOfPong(),
             ...self::blockfill(),
             ...self::tmnf(),
             ...self::scoreGames(),
@@ -411,6 +413,56 @@ final class RulesPage
             'title' => __('Hyperbitcoinization season points'),
             'lead' => __('Points of a rated match of everyone for themselves, by place.'),
             'table' => ['head' => [__('Table'), __('Places 1, 2, 3 …')], 'rows' => $points],
+        ]];
+    }
+
+    /**
+     * Proof of Pong (plan "Proof of Pong", P4), only while it is switched on: the scoring, the meme events, live 1v1
+     * and its Elo, every number read from `esports.pong`.
+     *
+     * @return list<Section>
+     */
+    private static function proofOfPong(): array
+    {
+        if (app(GameRegistry::class)->find(ProofOfPong::SLUG) === null) {
+            return [];
+        }
+
+        $c = (array) config('esports.pong');
+        $points = (int) ($c['points_to_win'] ?? ProofOfPong::POINTS_TO_WIN);
+        $winBy = (int) ($c['win_by'] ?? ProofOfPong::WIN_BY);
+
+        return [[
+            'id' => ProofOfPong::SLUG,
+            'title' => GameNames::game(ProofOfPong::SLUG),
+            'game' => ProofOfPong::SLUG,
+            'lead' => __('Classic Pong in Bitcoin meme culture: pick a figure as your paddle and play a bot or a live 1v1 for Elo.'),
+            'facts' => [
+                [__('Points to win'), (string) $points],
+                [__('Lead needed'), (string) $winBy],
+                [__('Meme event'), __('every :count rallies', ['count' => (int) ($c['event_every_rallies'] ?? 21)])],
+                [__('Invite open'), self::seconds((int) ($c['invite_seconds'] ?? 120))],
+                [__('Back in time'), self::seconds((int) ($c['forfeit_seconds'] ?? 30))],
+            ],
+            'table' => [
+                'head' => [__('Meme event'), __('What happens')],
+                'rows' => [
+                    [__('Halving'), __('The ball is half the size, its point counts double.')],
+                    [__('Brrr'), __('The ball flies faster.')],
+                    [__('Pizza Day'), __('Two balls at once.')],
+                    [__('Difficulty Adjustment'), __('Both paddles are shorter.')],
+                ],
+            ],
+            'items' => [
+                __('A game goes to :points points. At :tie all it goes on until one side is :lead points ahead.', ['points' => $points, 'tie' => $points - 1, 'lead' => $winBy]),
+                __('A meme event is announced and the same for both sides; it never decides by chance.'),
+                __('Invite a player who is looking to play. The match starts once both of you opened it; nobody served within :time, it is called off.', ['time' => self::seconds((int) ($c['start_seconds'] ?? 60))]),
+                __('The server checks every hit. A player gone for more than :time loses the match.', ['time' => self::seconds((int) ($c['forfeit_seconds'] ?? 30))]),
+                __('A live match between two players moves both players\' Elo. Games against a bot are practice and count for nothing.'),
+                __('Proof of Pong mines no block and has no season: its Elo ladder is permanent.'),
+            ],
+            // Only while routed: a route table cached with the switch off has neither page.
+            'links' => Route::has('pong.index') && Route::has('pong.ladder') ? [[__('Open the lobby'), route('pong.index')], [__('Elo ladder'), route('pong.ladder')]] : [],
         ]];
     }
 

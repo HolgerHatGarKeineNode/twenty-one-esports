@@ -290,8 +290,9 @@ final class TournamentEditor
             throw new TournamentRuleViolation('game', __('Pick a game and mode the league runs tournaments in.'));
         }
 
-        // Hyperbitcoinization tournaments only while they are switched on (P5c): no tournament becomes one.
-        if (isset($diff['game']) && ($changes['game'] ?? null) === Hyperbitcoinization::SLUG && ! TournamentGames::hyperOffered()) {
+        // Hyperbitcoinization (P5c) and Proof of Pong tournaments (plan "Proof of Pong", P4) only while they are switched on:
+        // no tournament becomes one.
+        if (isset($diff['game']) && ! TournamentGames::gameOffered((string) ($changes['game'] ?? ''))) {
             throw new TournamentRuleViolation('game', __('Pick a game and mode the league runs tournaments in.'));
         }
     }

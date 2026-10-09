@@ -3,16 +3,19 @@
 namespace App\Support\Cards;
 
 use App\Enums\ChessGameStatus;
+use App\Enums\PongMatchStatus;
 use App\Enums\ReportStatus;
 use App\Enums\TournamentStatus;
 use App\Games\GameRegistry;
 use App\Games\Hyperbitcoinization;
+use App\Games\ProofOfPong;
 use App\Games\ScoreMetric;
 use App\Jobs\PublishNostrEvent;
 use App\Models\ChessGame;
 use App\Models\HyperMatch;
 use App\Models\HyperTable;
 use App\Models\NostrEvent;
+use App\Models\PongMatch;
 use App\Models\RankBadgeVersion;
 use App\Models\Season;
 use App\Models\SeasonAttestation;
@@ -68,7 +71,9 @@ use Illuminate\Support\Facades\Route;
  *   finished match, {@see HyperMoments}), with the match's page card and the
  *   match as the link; it mentions nobody (no profile is tied to a seat);
  * - an invite to the player's own open Hyperbitcoinization correspondence table (user 2026-10-09; a live
- *   table fills within minutes, a note would come too late), with the lobby's card and the table's link.
+ *   table fills within minutes, a note would come too late), with the lobby's card and the table's link;
+ * - a won live Proof of Pong match (plan "Proof of Pong", P4), with the match's page card and the match as the
+ *   link; it mentions nobody.
  *
  * At most `esports.badges.shares_per_hour` per player: the league relays carry them.
  */
@@ -79,7 +84,7 @@ final class SharePosts
     public const FORMAT = 'wide';
 
     /** The moments a share post can be about. */
-    public const TYPES = ['rank-up', 'block', 'tournament', 'wrapped', 'game', 'series', 'signup', 'blockfill', 'tmnf', 'hyper', 'hyper-table'];
+    public const TYPES = ['rank-up', 'block', 'tournament', 'wrapped', 'game', 'series', 'signup', 'blockfill', 'tmnf', 'hyper', 'hyper-table', 'pong'];
 
     /** Opponents one post mentions at most: a team of five, never a whole bracket. */
     public const MAX_MENTIONS = 5;
@@ -102,6 +107,7 @@ final class SharePosts
             'tmnf' => $this->tmnf($user, $id),
             'hyper' => $this->hyper($user, $id),
             'hyper-table' => $this->hyperTable($user, $id),
+            'pong' => $this->pong($user, $id),
             default => null,
         };
 
@@ -360,6 +366,34 @@ final class SharePosts
             dimensions: [PageCard::WIDTH, PageCard::HEIGHT],
             storyPath: null,
             link: self::absolute(route('hyper.table', $table, false)),
+        );
+    }
+
+    /* ---------- A Proof of Pong moment ------------------------------------------------------------------------- */
+
+    /**
+     * The player's own won live Proof of Pong match (plan "Proof of Pong", P4): the match's page card (the result),
+     * the match as the link. No opponent is mentioned. Only while the game is on and its page routed.
+     */
+    private function pong(User $user, string $ulid): ?SharePost
+    {
+        if (app(GameRegistry::class)->find(ProofOfPong::SLUG) === null || ! Route::has('pong.match')) {
+            return null;
+        }
+
+        $match = PongMatch::query()->where('ulid', strtolower($ulid))->first();
+
+        if ($match === null || $match->status !== PongMatchStatus::Finished || $match->winner_id !== $user->id) {
+            return null;
+        }
+
+        return new SharePost(
+            type: 'pong',
+            sentence: __('Won a Proof of Pong match :score on TWENTY ONE Esports.', ['score' => max($match->score()).':'.min($match->score())]),
+            cardUrl: PageCard::pong($match)->url(),
+            dimensions: [PageCard::WIDTH, PageCard::HEIGHT],
+            storyPath: null,
+            link: self::absolute(route('pong.match', $match, false)),
         );
     }
 

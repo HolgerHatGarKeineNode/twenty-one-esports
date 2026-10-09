@@ -34,6 +34,7 @@ use Illuminate\Support\Carbon;
  * @property int|null $winner_id
  * @property PongEndReason|null $end_reason
  * @property int|null $rematch_of_id
+ * @property int|null $tournament_match_id the tournament match it plays (P4), whose winner it decides
  * @property int|null $left_rating_before
  * @property int|null $left_rating_after
  * @property int|null $right_rating_before
@@ -45,8 +46,9 @@ use Illuminate\Support\Carbon;
  * @property-read User|null $left
  * @property-read User|null $right
  * @property-read User|null $winner
+ * @property-read TournamentMatch|null $tournamentMatch
  */
-#[Fillable(['left_id', 'right_id', 'seed', 'status', 'score_left', 'score_right', 'state', 'log', 'rated', 'winner_id', 'end_reason', 'rematch_of_id', 'left_rating_before', 'left_rating_after', 'right_rating_before', 'right_rating_after', 'started_at', 'ended_at'])]
+#[Fillable(['left_id', 'right_id', 'seed', 'status', 'score_left', 'score_right', 'state', 'log', 'rated', 'winner_id', 'end_reason', 'rematch_of_id', 'tournament_match_id', 'left_rating_before', 'left_rating_after', 'right_rating_before', 'right_rating_after', 'started_at', 'ended_at'])]
 class PongMatch extends Model
 {
     /** @use HasFactory<PongMatchFactory> */
@@ -65,6 +67,8 @@ class PongMatch extends Model
             'state' => 'array',
             'log' => 'array',
             'rated' => 'boolean',
+            'winner_id' => 'integer',
+            'tournament_match_id' => 'integer',
             'left_rating_before' => 'integer',
             'left_rating_after' => 'integer',
             'right_rating_before' => 'integer',
@@ -109,6 +113,14 @@ class PongMatch extends Model
     public function winner(): BelongsTo
     {
         return $this->belongsTo(User::class, 'winner_id');
+    }
+
+    /**
+     * @return BelongsTo<TournamentMatch, $this>
+     */
+    public function tournamentMatch(): BelongsTo
+    {
+        return $this->belongsTo(TournamentMatch::class);
     }
 
     /** The side this player plays (0 left, 1 right), or null for anybody else. */

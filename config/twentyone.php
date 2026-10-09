@@ -222,6 +222,10 @@ return [
             // (a close duel, a central bank that just fell) up to the max; one match a round (RotationPlanner, plan P6).
             'hyper_min_seconds' => 60,
             'hyper_max_seconds' => 180,
+            // A won Proof of Pong match of the last `pong_recent_hours` (p1, PongScene): its result slide stands this long, one
+            // result a round (RotationPlanner, plan "Proof of Pong", P4). No live gameplay: the encoder takes no live frame rate.
+            'pong_seconds' => 20,
+            'pong_recent_hours' => 24,
             // A Blockfill run that took first place this many minutes ago still gets its moment slide (f4, BlockfillSlides).
             'blockfill_moment_minutes' => 10,
             // A finished tournament keeps its champion, podium and final bracket on the stream this long after its last result (TournamentLiveSlides): five days (2026-10-03).

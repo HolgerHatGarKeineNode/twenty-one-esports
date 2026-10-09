@@ -28,7 +28,10 @@ use App\Support\Chess\ChessRuleViolation;
  * Proof of Pong (plan "Proof of Pong", P2) answers on the same two rows: a
  * player in a running live match (waiting for both players or in play) gets
  * no live chess game and does not join the blitz queue, while its switch is
- * on. Its own invites ask the other way round (PongInvites::busy()).
+ * on. Its own invites ask the other way round (PongInvites::busy()), and the
+ * board games ask it before a live game starts or a search begins (P4,
+ * PongMatches::runningMatchOf() in BoardGameService::start() and
+ * BoardQueue::assertFree()).
  *
  * A board game that starts takes its players out of the chess queue
  * (BoardGameService::start()), so a waiting chess player is never paired

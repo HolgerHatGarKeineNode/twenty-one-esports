@@ -193,8 +193,8 @@ final class TournamentView
     {
         $result = $match->result;
         $winner = $result['winner'] ?? null;
-        // One game per match (chess, and the board games of plan "Mühle und Dame", P5): 1, ½, 0.
-        $chess = $this->tournament->profile()->isChess() || $this->tournament->profile()->isBoard();
+        // One game per match (chess, the board games of plan "Mühle und Dame", P5, Proof of Pong, plan "Proof of Pong", P4): 1, ½, 0.
+        $chess = $this->tournament->profile()->isChess() || $this->tournament->profile()->isBoard() || $this->tournament->profile()->isPong();
         $sides = [];
 
         foreach ($match->slots as $slot) {

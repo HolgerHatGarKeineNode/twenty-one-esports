@@ -7,6 +7,8 @@ use App\Enums\BoardGameStatus;
 use App\Enums\ChessEndReason;
 use App\Enums\ChessGameStatus;
 use App\Enums\HyperMatchStatus;
+use App\Enums\PongEndReason;
+use App\Enums\PongMatchStatus;
 use App\Enums\SeriesResolution;
 use App\Enums\SeriesStatus;
 use App\Enums\TournamentFormat;
@@ -19,6 +21,7 @@ use App\Models\BoardGame;
 use App\Models\ChessGame;
 use App\Models\HyperMatch;
 use App\Models\HyperSeat;
+use App\Models\PongMatch;
 use App\Models\SeriesMatch;
 use App\Models\Tournament;
 use App\Models\TournamentMatch;
@@ -600,6 +603,66 @@ final class TournamentRunner
         if ($match->tournament->refresh()->status === TournamentStatus::Finished && HyperCups::isCup($match->tournament)) {
             HyperCups::forgetWins();
         }
+    }
+
+    /**
+     * A tournament's live Proof of Pong match ended (plan "Proof of Pong", P4; PongMatches, after its commit): its
+     * winner wins the pairing, in either results mode, since the league's server played it. A forfeit (a player who
+     * never opened it, or left for too long) is stored as one. A match already decided (a director's result, a
+     * correction) or one the league replaced since is left alone.
+     */
+    public function pongMatchFinished(int $pongMatchId): void
+    {
+        $played = PongMatch::query()->with('tournamentMatch.tournament', 'tournamentMatch.slots.participant')->find($pongMatchId);
+        $match = $played?->tournamentMatch;
+
+        if ($played === null || $match === null || $match->result !== null || $played->status !== PongMatchStatus::Finished || $played->winner_id === null || $match->isReplaced($played->id)) {
+            return;
+        }
+
+        $winner = in_array((int) $played->winner_id, $match->slots[0]->participant?->memberIds() ?? [], true) ? 0 : 1;
+        $forfeit = $played->end_reason === PongEndReason::Forfeit;
+        [$own, $other] = [max($played->score()), min($played->score())];
+
+        $this->store($match, [
+            'winner' => $winner,
+            'games_won' => $winner === 0 ? [1.0, 0.0] : [0.0, 1.0],
+            'points' => [],
+            'forfeit' => $forfeit,
+            'label' => $forfeit ? __('forfeit') : $own.':'.$other,
+            'by' => 'players',
+            'pong' => $played->ulid,
+        ]);
+
+        $this->sync($match->tournament);
+    }
+
+    /**
+     * A tournament's live Proof of Pong match was called off before anyone won it (plan "Proof of Pong", P4): neither
+     * player opened it in time, or both left. It is started again `first_move_restarts` times, as a chess game whose
+     * first move nobody made, then the double no-show rule decides.
+     */
+    public function pongMatchAborted(int $pongMatchId): void
+    {
+        $played = PongMatch::query()->with('tournamentMatch.tournament', 'tournamentMatch.round.stage', 'tournamentMatch.slots.participant')->find($pongMatchId);
+        $match = $played?->tournamentMatch;
+
+        if ($played === null || $match === null || $match->result !== null || $played->status !== PongMatchStatus::Aborted || $match->isReplaced($played->id)) {
+            return;
+        }
+
+        if (self::abortedPongMatches($match) > self::firstMoveRestarts()) {
+            $this->store($match, $this->doubleNoShow($match));
+        }
+
+        $this->sync($match->tournament);
+    }
+
+    /** The Proof of Pong matches of this tournament match called off before anyone won (P4). */
+    public static function abortedPongMatches(TournamentMatch $match): int
+    {
+        return PongMatch::query()->where('tournament_match_id', $match->id)->where('id', '>', (int) $match->replaced_through)
+            ->where('status', PongMatchStatus::Aborted)->count();
     }
 
     /**
@@ -1261,7 +1324,8 @@ final class TournamentRunner
             throw new TournamentRuleViolation('lobby', __('A lobby has places, not a winner. Enter them on its lobby card on the tournament page.'));
         }
 
-        return $tournament->profile()->isChess() || $tournament->profile()->isBoard() ? $this->chessInput($match, $input) : $this->seriesInput($tournament, $match, $input);
+        // One game per match (a board game, a Proof of Pong match, plan "Proof of Pong", P4): entered as chess's.
+        return $tournament->profile()->isChess() || $tournament->profile()->isBoard() || $tournament->profile()->isPong() ? $this->chessInput($match, $input) : $this->seriesInput($tournament, $match, $input);
     }
 
     /**

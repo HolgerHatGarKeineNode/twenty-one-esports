@@ -50,10 +50,20 @@ if (meta && !alreadyBooted) {
  */
 const presenceUser = document.querySelector('meta[name="presence-user"]');
 
+/*
+ * "Looking to play" (plan "Proof of Pong", P4): a member's data on the channel is what they had when they JOINED
+ * it, so a player who switched later showed to everyone who joined after that as they were at their join, until
+ * their next page load (measured: tests/Browser/OnlineLookingTest.php). `known` holds what is known to be newer: a
+ * lobby's server-rendered list of everyone looking right now (seed(), components/lobby/online-now; after it a member
+ * missing from it is not looking), each `.presence.looking` push, and a member's data at their own join. The online
+ * list reads the members with it applied.
+ */
 window.esportsPresence = alreadyBooted ? window.esportsPresence : {
     members: [],
     ready: false,
     listeners: new Set(),
+    known: new Map(),
+    seeded: false,
 
     subscribe(listener) {
         this.listeners.add(listener);
@@ -63,11 +73,38 @@ window.esportsPresence = alreadyBooted ? window.esportsPresence : {
     },
 
     set(members) {
-        this.members = members;
+        this.members = members.map((m) => this.fresh(m));
         this.ready = true;
         this.listeners.forEach((listener) => listener(this.members, this.ready));
     },
+
+    /** The member with the newest known "looking". */
+    fresh(member) {
+        if (this.known.has(member.id)) {
+            return { ...member, looking: this.known.get(member.id) };
+        }
+
+        return this.seeded ? { ...member, looking: null } : member;
+    },
+
+    /** A lobby's list of everyone looking now ({ userId: key }): newer than any member's data from before it. */
+    seed(looking) {
+        this.known = new Map(Object.entries(looking ?? {}).map(([id, key]) => [Number(id), key]));
+        this.seeded = true;
+        if (this.ready) this.set(this.members);
+    },
+
+    /** A newer state of one member: their own join, or a push. */
+    learn(id, looking) {
+        this.known.set(id, looking ?? null);
+    },
 };
+
+// A lobby that rendered before this module ran left its list here.
+if (!alreadyBooted && window.esportsPresenceSeed) {
+    window.esportsPresence.seed(window.esportsPresenceSeed);
+    delete window.esportsPresenceSeed;
+}
 
 /*
  * A player's page load closes their websocket, so Reverb sends `leaving` and,
@@ -94,6 +131,7 @@ if (!alreadyBooted && window.Echo && presenceUser) {
         })
         .joining((member) => {
             cancelLeave(member.id);
+            presence.learn(member.id, member.looking);
             presence.set([...presence.members.filter((m) => m.id !== member.id), member]);
         })
         .leaving((member) => {
@@ -106,7 +144,10 @@ if (!alreadyBooted && window.Echo && presenceUser) {
                 }, LEAVE_GRACE_MS),
             );
         })
-        .listen('.presence.looking', ({ id, looking }) => presence.set(presence.members.map((m) => (m.id === id ? { ...m, looking } : m))));
+        .listen('.presence.looking', ({ id, looking }) => {
+            presence.learn(id, looking);
+            presence.set(presence.members);
+        });
 }
 
 // Notifications on every logged-in page (P5c): toast, sound, tab title, desktop notification.

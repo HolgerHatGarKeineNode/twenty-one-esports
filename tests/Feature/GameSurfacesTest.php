@@ -8,17 +8,25 @@ use App\Games\GameKind;
 use App\Games\GameRegistry;
 use App\Games\Hyperbitcoinization;
 use App\Games\NineMensMorris;
+use App\Games\ProofOfPong;
 use App\Games\ScoreGame;
 use App\Games\TrackmaniaNationsForever;
 use App\Models\BoardGame;
+use App\Models\PongMatch;
+use App\Models\PongRating;
 use App\Models\Rating;
 use App\Models\ScoreRun;
 use App\Models\Tournament;
 use App\Models\User;
+use App\Support\Cards\PageCard;
+use App\Support\Cards\SharePosts;
+use App\Support\Cards\ShareRefused;
 use App\Support\Tournaments\CasualCups;
 use App\Support\Tournaments\CupBoard;
+use App\Support\Tournaments\TournamentGames;
 use App\Support\TwentyOne\Stream\MempoolLayout;
 use App\Support\TwentyOne\Stream\MempoolSlides;
+use App\Support\TwentyOne\Stream\PongScene;
 use App\Support\TwentyOne\Stream\RotationPlanner;
 use App\Support\TwentyOne\Stream\SceneRenderer;
 use App\Support\TwentyOne\Stream\SceneSource;
@@ -41,7 +49,7 @@ use Tests\Support\HyperOn;
 | player page. This guard turns every switch on (board games, Blockfill,
 | TrackMania Nations Forever, the score demo), registers a made-up versus
 | game and a made-up score game next to the real ones (Hyperbitcoinization
-| among them since its P6), and asserts that each
+| among them since its P6, Proof of Pong since its P4), and asserts that each
 | game shows on each surface.
 | A surface that hard-codes its games misses at least the made-up ones and
 | fails here, naming the surface and the games it lost.
@@ -68,11 +76,12 @@ beforeEach(function () {
         'esports.score_games.demo' => true,
         'esports.tmnf.enabled' => true,
         'esports.hyper.enabled' => true,
+        'esports.pong.enabled' => true,
     ]);
     app()->forgetInstance(GameRegistry::class);
 
     // As routes/web.php routes them when the switches are on at boot (the test app boots with them off).
-    foreach (['board.show' => 'board.php', 'stacker.runs.issue' => 'stacker.php', 'scores.show' => 'score.php', 'hyper.index' => 'hyper.php'] as $name => $file) {
+    foreach (['board.show' => 'board.php', 'stacker.runs.issue' => 'stacker.php', 'scores.show' => 'score.php', 'hyper.index' => 'hyper.php', 'pong.index' => 'pong.php'] as $name => $file) {
         if (! Route::has($name)) {
             Route::middleware('web')->group(base_path('routes/'.$file));
         }
@@ -93,7 +102,7 @@ beforeEach(function () {
 /**
  * A player with one result in every registered game: a casual rating in the
  * first mode of a versus game, a verified attempt in the first mode of a score game,
- * a finished Hyperbitcoinization match.
+ * a finished Hyperbitcoinization match, a finished live Proof of Pong match with its Elo.
  */
 function gameSurfacesPlayer(): User
 {
@@ -105,6 +114,16 @@ function gameSurfacesPlayer(): User
         // Hyperbitcoinization (plan "Hyperbitcoinization", P6) keeps no Rating: a finished match puts it on the page.
         if ($game->kind() === GameKind::Strategy) {
             HyperOn::finishTable(HyperOn::versus($player, User::factory()->create()), [0, 1]);
+
+            continue;
+        }
+
+        // Proof of Pong (plan "Proof of Pong", P4) keeps no Rating either: a finished live match and its own Elo.
+        if ($game->kind() === GameKind::Arcade) {
+            PongMatch::factory()->finished(0, [21, 17])->create(['left_id' => $player->id, 'right_id' => User::factory()->create()->id, 'winner_id' => $player->id, 'state' => [
+                'ref' => null, 'speed' => 1, 'seen' => [null, null], 'rematch' => [false, false], 'next' => null, 'version' => 9, 'figures' => ['saylor', null],
+            ]]);
+            PongRating::query()->create(['user_id' => $player->id, 'rating' => 1016, 'results' => 1, 'wins' => 1, 'losses' => 0]);
 
             continue;
         }
@@ -190,7 +209,7 @@ test('the registry under test holds every kind of game, the made-up ones include
     $registry = app(GameRegistry::class);
 
     // Not a surface: proof that the switches above took, so a guard below cannot pass over an empty registry.
-    expect(array_keys($registry->all()))->toContain('chess', 'rocket-league', NineMensMorris::SLUG, Checkers::SLUG, Blockli::SLUG, Blockfill::SLUG, TrackmaniaNationsForever::SLUG, Hyperbitcoinization::SLUG, 'score-demo', 'fake-arena', FakeScoreGame::SLUG)
+    expect(array_keys($registry->all()))->toContain('chess', 'rocket-league', NineMensMorris::SLUG, Checkers::SLUG, Blockli::SLUG, Blockfill::SLUG, TrackmaniaNationsForever::SLUG, Hyperbitcoinization::SLUG, ProofOfPong::SLUG, 'score-demo', 'fake-arena', FakeScoreGame::SLUG)
         ->and($registry->scores())->toHaveKeys([Blockfill::SLUG, TrackmaniaNationsForever::SLUG, 'score-demo', FakeScoreGame::SLUG]);
 });
 
@@ -199,7 +218,7 @@ test('the player page shows every game the player has a result in', function () 
 
     $html = $this->get(route('players.show', $player->npub))->assertOk()->getContent();
 
-    expect(gameSurfacesMissing(gameSurfacesAttribute($html, ['player-ladder', 'player-score', 'player-hyper'])))->toBe([]);
+    expect(gameSurfacesMissing(gameSurfacesAttribute($html, ['player-ladder', 'player-score', 'player-hyper', 'player-pong'])))->toBe([]);
     gameSurfacesInOrder(gameSurfacesAttribute($html, ['player-ladder']), 'the player page ladders');
     gameSurfacesInOrder(gameSurfacesAttribute($html, ['player-score']), 'the player page highscores');
 });
@@ -368,3 +387,61 @@ test('the surfaces left out are about one game by design and still exist', funct
     expect(Route::has($route))->toBeTrue()
         ->and($reason)->not->toBeEmpty();
 })->with(array_map(fn (string $route, string $reason): array => [$route, $reason], array_keys(GAME_SURFACES_EXEMPT), GAME_SURFACES_EXEMPT));
+
+test('Proof of Pong is on every surface, each leading to its own pages and never to a Rating ladder or the chess lobby', function () {
+    $player = gameSurfacesPlayer();
+    $match = PongMatch::query()->where('left_id', $player->id)->sole();
+    $lobby = route('pong.index');
+    $ladder = route('pong.ladder');
+
+    // Home: the play tile leads to the lobby, the ladder grid's card to the Elo ladder with the player on it.
+    $home = $this->get(route('home'))->assertOk()->getContent();
+    $tile = (string) str($home)->after('data-test="play-tile" data-game="'.ProofOfPong::SLUG.'"')->before('</li>');
+    $card = (string) str($home)->after('data-test="ladder-top" data-game="'.ProofOfPong::SLUG.'"')->before('</li>');
+    expect($tile)->toContain('href="'.$lobby.'"')->not->toContain(route('chess.lobby'))
+        ->and($card)->toContain('href="'.$ladder.'"', 'Every Game Pleb', '1016')
+        ->and($home)->toContain('data-test="hub-game-'.ProofOfPong::SLUG.'"');
+
+    // The player page: Elo, the record and the figure picked.
+    $this->get(route('players.show', $player->npub))->assertOk()
+        ->assertSee('data-test="player-pong"', false)->assertSeeInOrder(['data-test="player-pong-elo"', '1016'], false)
+        ->assertSee(__('Plays as :name', ['name' => 'Michael Saylor']));
+
+    // /play: the lobby and the Elo ladder; the match list files the match under its filter.
+    $play = (string) str($this->get(route('play'))->assertOk()->getContent())->after('data-test="play-game-'.ProofOfPong::SLUG.'"')->before('</li>');
+    expect($play)->toContain('href="'.$lobby.'"', 'href="'.$ladder.'"');
+    $this->get(route('matches.index', ['game' => ProofOfPong::SLUG]))->assertOk()->assertSee('data-test="pong-row"', false)->assertSee(route('pong.match', $match), false);
+
+    // The ladder: its own page, and the league's ladder URL of the game leads there.
+    $this->get($ladder)->assertOk()->assertSee('data-test="pong-ladder-row"', false)->assertSee('Every Game Pleb');
+    $this->get(route('ladder.show', [ProofOfPong::SLUG, 'live']))->assertRedirect($ladder)->assertStatus(301);
+
+    // Rules, sitemap, and the link previews of the lobby, the ladder and a match.
+    $this->get(route('rules'))->assertOk()->assertSee('data-test="doc-section-'.ProofOfPong::SLUG.'"', false);
+    $sitemap = $this->get(route('sitemap.section', ['pages', 1]))->assertOk()->getContent();
+    expect($sitemap)->toContain('<loc>'.$lobby.'</loc>', '<loc>'.$ladder.'</loc>');
+    $this->get($lobby)->assertOk()->assertSee('/page/page/pong.png', false);
+    $this->get($ladder)->assertOk()->assertSee('/page/page/pong-ladder.png', false);
+    $this->get(route('pong.match', $match))->assertOk()->assertSee('/page/pong/'.$match->ulid.'.png', false);
+
+    foreach ([PageCard::pong($match), PageCard::page('pong'), PageCard::page('pong-ladder')] as $preview) {
+        expect(substr($preview->render(), 1, 3))->toBe('PNG')
+            ->and(PageCard::resolve($preview->type, $preview->key)?->fingerprint())->toBe($preview->fingerprint());
+    }
+
+    // Share: the winner posts the win with the match's card, the loser has nothing to post.
+    $post = app(SharePosts::class)->post($player, 'pong', $match->ulid);
+    expect($post->sentence)->toContain('21:17')->and($post->cardUrl)->toContain('/page/pong/'.$match->ulid.'.png');
+    expect(fn () => app(SharePosts::class)->post($match->right, 'pong', $match->ulid))->toThrow(ShareRefused::class);
+
+    // The stream: a won match of the last day takes its own result slide in the rotation, the winner on it.
+    $match->forceFill(['ended_at' => now()->subMinutes(5), 'started_at' => now()->subMinutes(11)])->save();
+    $slide = SceneRenderer::fromConfig()->svg([...app(SceneSource::class)->rotation(PongScene::SCENE, $match->id, [], 0, 0, []), 'viewers' => null], RotationPlanner::VIEWS[PongScene::SCENE]);
+    expect(app(PongScene::class)->entries())->toBe([['id' => $match->id]])
+        ->and($slide)->toContain('>Every Game Pleb<', '>21:17<', '>as Michael Saylor<');
+
+    // Tournaments: offered in the chooser once its own switch is on.
+    expect(array_column(TournamentGames::grouped(), 'slug'))->not->toContain(ProofOfPong::SLUG);
+    config(['esports.pong.tournaments' => true]);
+    expect(array_column(TournamentGames::grouped(), 'slug'))->toContain(ProofOfPong::SLUG);
+});

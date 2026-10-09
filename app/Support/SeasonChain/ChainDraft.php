@@ -192,8 +192,9 @@ final class ChainDraft
         // score games that are switched on: their windows mine one solo block each (plan "AoE2 und Trackmania", P7). A
         // row without a weight does not mine; the score games start that way and come in only through their proposal.
         foreach (app(GameRegistry::class)->all() as $game) {
-            // Hyperbitcoinization (plan "Hyperbitcoinization", P6) mines no block (LadderEvents leaves it out): no row.
-            if ($game->kind() === GameKind::Strategy) {
+            // Hyperbitcoinization (plan "Hyperbitcoinization", P6) and Proof of Pong (plan "Proof of Pong", P4) mine no
+            // block (LadderEvents leaves them out): no row.
+            if ($game->kind() === GameKind::Strategy || $game->kind() === GameKind::Arcade) {
                 continue;
             }
 

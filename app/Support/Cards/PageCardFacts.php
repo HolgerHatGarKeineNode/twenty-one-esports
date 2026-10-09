@@ -6,6 +6,7 @@ use App\Enums\BoardGameStatus;
 use App\Enums\ChessGameStatus;
 use App\Enums\HyperMatchStatus;
 use App\Enums\PayoutStatus;
+use App\Enums\PongMatchStatus;
 use App\Enums\SeriesResolution;
 use App\Enums\SeriesStatus;
 use App\Enums\TournamentFormat;
@@ -13,6 +14,7 @@ use App\Enums\TournamentStatus;
 use App\Games\Blockfill;
 use App\Games\GameRegistry;
 use App\Games\Hyperbitcoinization;
+use App\Games\ProofOfPong;
 use App\Models\BoardGame;
 use App\Models\ChessGame;
 use App\Models\ChessMove;
@@ -21,6 +23,7 @@ use App\Models\ClanMember;
 use App\Models\HyperMatch;
 use App\Models\HyperSeat;
 use App\Models\Lineup;
+use App\Models\PongMatch;
 use App\Models\Rating;
 use App\Models\SeasonAttestation;
 use App\Models\SeriesMatch;
@@ -36,6 +39,8 @@ use App\Support\Hyper\HyperSeason;
 use App\Support\Payouts\TournamentPlacements;
 use App\Support\Players\PlayerStats;
 use App\Support\Players\RecentResults;
+use App\Support\Pong\PongLadder;
+use App\Support\Pong\PongMatches;
 use App\Support\Prizes\PrizePool;
 use App\Support\Rating\RankTiers;
 use App\Support\Rating\Ratings;
@@ -618,6 +623,64 @@ final class PageCardFacts
                 ...self::person($row['user']),
                 'line' => __(':points pts', ['points' => $row['points']]),
             ], array_slice($rows, 0, self::FACES)),
+        ];
+    }
+
+    /* ---------- Proof of Pong ---------------------------------------------------------------------------------- */
+
+    /**
+     * A live Proof of Pong match (plan "Proof of Pong", P4): its state, the score and both players with the figure
+     * they picked (its id; the card names it in its own language). A deleted account has no face.
+     *
+     * @return array<string, mixed>
+     */
+    public static function pong(PongMatch $match): array
+    {
+        $figures = PongMatches::figuresOf($match);
+
+        return [
+            'game' => ProofOfPong::SLUG,
+            'status' => $match->status->value,
+            'score' => $match->score(),
+            'winner' => $match->winner_id === null ? null : ($match->winner_id === $match->left_id ? 0 : 1),
+            'reason' => $match->end_reason?->value,
+            'rated' => $match->rated,
+            'sides' => array_map(fn (?User $user, ?string $figure): array => [
+                ...($user instanceof User ? self::person($user) : ['name' => __('Deleted account'), 'pubkey' => null, 'avatar_path' => null]),
+                'figure' => $figure,
+            ], [$match->left, $match->right], $figures),
+        ];
+    }
+
+    /**
+     * Proof of Pong's start page: live matches running now and matches played.
+     *
+     * @return array<string, mixed>
+     */
+    public static function pongPage(): array
+    {
+        return Cache::remember('page-card:pong', now()->addSeconds(self::COUNTS_TTL), fn (): array => [
+            'game' => ProofOfPong::SLUG,
+            'running' => PongMatch::query()->where('status', PongMatchStatus::Active)->count(),
+            'played' => PongMatch::query()->where('status', PongMatchStatus::Finished)->count(),
+        ]);
+    }
+
+    /**
+     * Proof of Pong's Elo ladder: the first three by Elo.
+     *
+     * @return array<string, mixed>
+     */
+    public static function pongLadder(): array
+    {
+        return [
+            'game' => ProofOfPong::SLUG,
+            'entries' => PongLadder::entries(),
+            'top' => array_map(fn (array $row): array => [
+                'place' => $row['rank'],
+                ...self::person($row['user']),
+                'line' => __(':rating Elo', ['rating' => $row['rating']]),
+            ], PongLadder::standings(self::FACES)),
         ];
     }
 

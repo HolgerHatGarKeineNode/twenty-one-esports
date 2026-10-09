@@ -232,7 +232,7 @@ new class extends Component {
     @foreach ($this->incoming as $invite)
         <div wire:key="pong-invite-{{ $invite->id }}" class="flex flex-col gap-3 rounded-lg bg-well p-3 shadow-ring-btc lg:flex-row lg:items-center lg:px-4" data-test="pong-incoming-invite">
             <span class="flex min-w-0 grow items-center gap-3">
-                <x-player-link :user="$invite->inviter" class="shrink-0"><x-avatar :user="$invite->inviter" :size="40" class="rounded-md" /></x-player-link>
+                <x-player-link :user="$invite->inviter" class="flex min-h-11 min-w-11 shrink-0 items-center"><x-avatar :user="$invite->inviter" :size="40" class="rounded-md" /></x-player-link>
                 <span class="flex min-w-0 flex-col gap-0.5">
                     <b class="truncate text-[15px]">{{ __(':name invites you', ['name' => $invite->inviter->displayName()]) }}</b>
                     <span class="text-xs text-ink-2">{{ __('Proof of Pong · live to :points · sides drawn at random', ['points' => (int) config('esports.pong.points_to_win', 21)]) }}</span>

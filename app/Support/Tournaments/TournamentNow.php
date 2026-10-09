@@ -5,13 +5,16 @@ namespace App\Support\Tournaments;
 use App\Enums\BoardGameStatus;
 use App\Enums\ChessGameStatus;
 use App\Enums\HyperMatchStatus;
+use App\Enums\PongMatchStatus;
 use App\Enums\TournamentFormat;
 use App\Enums\TournamentStatus;
 use App\Games\Hyperbitcoinization;
+use App\Games\ProofOfPong;
 use App\Models\BoardGame;
 use App\Models\ChessGame;
 use App\Models\HyperMatch;
 use App\Models\Lineup;
+use App\Models\PongMatch;
 use App\Models\SeriesMatch;
 use App\Models\Tournament;
 use App\Models\TournamentMatch;
@@ -105,7 +108,7 @@ final class TournamentNow
         // The match with a live game first (a round robin keeps every round open at once), else the earliest round.
         $match = $cup['match'] ?? TournamentMatch::query()->where('tournament_id', $tournament->id)->where('status', 'ready')->whereNull('result')->whereNull('lobby')
             ->where('bracket', '!=', 'bye')->whereHas('slots', fn ($query) => $query->where('tournament_participant_id', $participant->id))
-            ->with(['round', 'slots.participant', 'chessGame', 'boardGame', 'seriesMatch', 'hyperMatch'])->get()
+            ->with(['round', 'slots.participant', 'chessGame', 'boardGame', 'seriesMatch', 'hyperMatch', 'pongMatch'])->get()
             ->sortBy(fn (TournamentMatch $open): array => [self::liveGame($tournament, $open) === null ? 1 : 0, $open->round->number, $open->id])->first();
 
         if ($match instanceof TournamentMatch) {
@@ -116,13 +119,15 @@ final class TournamentNow
     }
 
     /** The match's live game here, if any. */
-    private static function liveGame(Tournament $tournament, TournamentMatch $match): ChessGame|BoardGame|HyperMatch|null
+    private static function liveGame(Tournament $tournament, TournamentMatch $match): ChessGame|BoardGame|HyperMatch|PongMatch|null
     {
         $profile = $tournament->profile();
 
         return match (true) {
             // Hyperbitcoinization (P5): the table the league started for the match.
             $profile->isHyper() => $match->hyperMatch?->status === HyperMatchStatus::Active ? $match->hyperMatch : null,
+            // Proof of Pong (plan "Proof of Pong", P4): the live match, waiting for its players or in play.
+            $profile->isPong() => $match->pongMatch !== null && ! $match->pongMatch->isOver() ? $match->pongMatch : null,
             $profile->isBoard() => $match->boardGame?->status === BoardGameStatus::Active ? $match->boardGame : null,
             $profile->isChess() => $match->chessGame?->status === ChessGameStatus::Active ? $match->chessGame : null,
             default => null,
@@ -162,6 +167,13 @@ final class TournamentNow
         $profile = $tournament->profile();
         $face = ['opponent' => $opponent?->user_id === null ? null : User::query()->find($opponent->user_id)];
         $game = self::liveGame($tournament, $match);
+
+        // A Proof of Pong match (plan "Proof of Pong", P4) opens in a tab of its own, full-screen.
+        if ($game instanceof PongMatch) {
+            return [...$face, 'state' => 'play', 'title' => (string) __('Play now'), 'context' => $context,
+                'line' => (string) ($game->status === PongMatchStatus::Waiting ? __('Your match is ready. Open it before the check-in ends, or it counts as a loss.') : __('Your match is live.')),
+                'action' => ['label' => (string) __('Go to your match'), 'href' => route('pong.match', $game), 'icon' => 'play', 'target' => '_blank']];
+        }
 
         // A Hyperbitcoinization table (P5) opens in a new tab, as every match of it does (user, 2026-10-08).
         if ($game instanceof HyperMatch) {
@@ -386,6 +398,15 @@ final class TournamentNow
 
         foreach ($tables->take(self::BOARDS - count($boards)) as $table) {
             $boards[] = ['label' => (string) __('Table of :count', ['count' => $table->seats_count]), 'url' => route('hyper.match', $table), 'target' => '_blank'];
+        }
+
+        // Proof of Pong matches (plan "Proof of Pong", P4), each in a tab of its own; asked only of its own tournaments.
+        $pong = $tournament->game !== ProofOfPong::SLUG || ! Route::has('pong.match') ? collect()
+            : PongMatch::query()->whereIn('tournament_match_id', $matches)->where('status', PongMatchStatus::Active)->with(['left', 'right'])->orderBy('id')->get();
+        $live += $pong->count();
+
+        foreach ($pong->take(self::BOARDS - count($boards)) as $played) {
+            $boards[] = ['label' => (string) __(':white against :black', ['white' => $played->left?->displayName() ?? '?', 'black' => $played->right?->displayName() ?? '?']), 'url' => route('pong.match', $played), 'target' => '_blank'];
         }
 
         $live += SeriesMatch::query()->whereIn('tournament_match_id', $matches)->get()->filter(fn (SeriesMatch $series): bool => $series->status->isRunning())->count();

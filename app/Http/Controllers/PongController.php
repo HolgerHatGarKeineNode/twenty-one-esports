@@ -2,19 +2,24 @@
 
 namespace App\Http\Controllers;
 
+use App\Enums\PongMatchStatus;
 use App\Models\PongInvite;
 use App\Models\PongMatch;
 use App\Models\User;
+use App\Support\Cards\PageCard;
 use App\Support\Pong\PongCast;
 use App\Support\Pong\PongInvites;
+use App\Support\Pong\PongLadder;
 use App\Support\Pong\PongMatches;
 use App\Support\Pong\PongPhysics;
 use App\Support\Pong\PongRules;
 use App\Support\Pong\PongRuleViolation;
+use App\Support\Rating\EloRating;
 use Illuminate\Contracts\View\View;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Throwable;
 
 /**
  * Proof of Pong's pages (plan "Proof of Pong", P1; routes/pong.php, only registered while `esports.pong.enabled` is
@@ -43,12 +48,31 @@ class PongController extends Controller
         'Accept rematch', 'Rematch', 'Reconnecting …', ':name is gone', 'Click again to resign',
     ];
 
-    public function index(): View
+    public function index(Request $request): View
     {
+        $viewer = $request->user();
+
         return view('pages.pong.index', [
             'bots' => PongCast::bots(),
             'figures' => PongCast::players(),
             'rules' => PongRules::fromConfig((array) config('esports.pong')),
+            // The viewer's latest won live match, to share (P4, SharePosts `pong`).
+            'lastWin' => $viewer instanceof User ? PongMatch::query()->where('status', PongMatchStatus::Finished)->where('winner_id', $viewer->id)->with(['left', 'right'])->latest('id')->first() : null,
+        ]);
+    }
+
+    /**
+     * The Elo ladder in the league's shell (P4, PongLadder): every player with a rated live match, by Elo; the
+     * viewer's own place above the table.
+     */
+    public function ladder(Request $request): View
+    {
+        $viewer = $request->user();
+
+        return view('pages.pong.ladder', [
+            'rows' => PongLadder::standings(),
+            'mine' => $viewer instanceof User ? PongLadder::card($viewer) : null,
+            'start' => EloRating::fromConfig('casual')->start,
         ]);
     }
 
@@ -110,6 +134,7 @@ class PongController extends Controller
             'me' => $me,
             'names' => $names,
             'figures' => PongCast::players(),
+            'preview' => $this->preview($match),
             'config' => [
                 'id' => $match->ulid,
                 'me' => $me,
@@ -129,6 +154,25 @@ class PongController extends Controller
                 ],
             ],
         ]);
+    }
+
+    /**
+     * The link preview of a match (P4): its card (PageCard::pong(), the score, live or final), a title and a line.
+     * The page stays out of search (noindex); a preview that fails to build is reported and left out.
+     *
+     * @return array{title: string, description: string, image: string, alt: string}|null
+     */
+    private function preview(PongMatch $match): ?array
+    {
+        try {
+            $card = PageCard::pong($match);
+
+            return ['title' => 'Proof of Pong', 'description' => $card->alt(), 'image' => $card->url(), 'alt' => $card->alt()];
+        } catch (Throwable $exception) {
+            report($exception);
+
+            return null;
+        }
     }
 
     /** A player's page is here (its heartbeat): the snapshot, and the referee's clock moves on. */

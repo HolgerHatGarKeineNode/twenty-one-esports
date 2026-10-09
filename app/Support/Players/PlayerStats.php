@@ -7,6 +7,7 @@ use App\Enums\PayoutStatus;
 use App\Enums\TournamentStatus;
 use App\Games\GameRegistry;
 use App\Games\Hyperbitcoinization;
+use App\Games\ProofOfPong;
 use App\Models\Clan;
 use App\Models\ClanDeparture;
 use App\Models\HyperSeat;
@@ -22,6 +23,7 @@ use App\Support\Badges\BadgeCopy;
 use App\Support\GameNames;
 use App\Support\Hyper\HyperCups;
 use App\Support\Payouts\TournamentPlacements;
+use App\Support\Pong\PongLadder;
 use App\Support\Rating\Ratings;
 use App\Support\Series\Ladders;
 use Carbon\CarbonInterface;
@@ -126,11 +128,11 @@ final class PlayerStats
     /**
      * Everything this player has a standing in, game by game in the
      * registry's order: the ladder cards of a versus game (ladders()), the
-     * cards of a score game (PlayerScores), and the Hyperbitcoinization card
-     * (hyper()). A game registered later shows
+     * cards of a score game (PlayerScores), the Hyperbitcoinization card
+     * (hyper()) and the Proof of Pong card (pong()). A game registered later shows
      * here with no change to the page; a game the player never played has no card.
      *
-     * @return list<array{kind: 'ladder', game: string, ladder: Ladder}|array{kind: 'score', game: string, score: array<string, mixed>}|array{kind: 'hyper', game: string, hyper: array{sats: float, matches: int, wins: int}}>
+     * @return list<array{kind: 'ladder', game: string, ladder: Ladder}|array{kind: 'score', game: string, score: array<string, mixed>}|array{kind: 'hyper', game: string, hyper: array{sats: float, matches: int, wins: int}}|array{kind: 'pong', game: string, pong: array<string, mixed>}>
      */
     public function games(): array
     {
@@ -139,6 +141,7 @@ final class PlayerStats
             ...array_map(fn (array $ladder): array => ['kind' => 'ladder', 'game' => $ladder['game'], 'ladder' => $ladder], $this->ladders()),
             ...array_map(fn (array $score): array => ['kind' => 'score', 'game' => $score['game'], 'score' => $score], (new PlayerScores($this->user))->cards()),
             ...array_map(fn (array $hyper): array => ['kind' => 'hyper', 'game' => Hyperbitcoinization::SLUG, 'hyper' => $hyper], $this->hyper()),
+            ...array_map(fn (array $pong): array => ['kind' => 'pong', 'game' => ProofOfPong::SLUG, 'pong' => $pong], $this->pong()),
         ];
 
         // A stable sort: within a game the cards keep the order of their own list (modes, then lineups).
@@ -168,6 +171,23 @@ final class PlayerStats
 
         // P5: the weekend cups won, the winner badge on the card.
         return $matches === 0 ? [] : [['sats' => round((float) $row->sats, 1), 'matches' => $matches, 'wins' => (int) $row->wins, 'cups' => HyperCups::winsOf($this->user)]];
+    }
+
+    /**
+     * The Proof of Pong card (plan "Proof of Pong", P4, PongLadder::card()): Elo, place, wins and losses of the
+     * finished live matches and the figure picked most. No card while the game is switched off or never finished here.
+     *
+     * @return list<array<string, mixed>>
+     */
+    public function pong(): array
+    {
+        if (app(GameRegistry::class)->find(ProofOfPong::SLUG) === null) {
+            return [];
+        }
+
+        $card = PongLadder::card($this->user);
+
+        return $card === null ? [] : [$card];
     }
 
     /**

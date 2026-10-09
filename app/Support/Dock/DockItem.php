@@ -4,6 +4,7 @@ namespace App\Support\Dock;
 
 use App\Games\GameRegistry;
 use App\Games\Hyperbitcoinization;
+use App\Games\ProofOfPong;
 use App\Models\BoardChallenge;
 use App\Models\BoardGame;
 use App\Models\BoardInvite;
@@ -13,6 +14,8 @@ use App\Models\ChessInvite;
 use App\Models\Clan;
 use App\Models\ClanInvite;
 use App\Models\HyperMatch;
+use App\Models\PongInvite;
+use App\Models\PongMatch;
 use App\Models\SeriesInvite;
 use App\Models\SeriesMatch;
 use App\Models\Tournament;
@@ -33,7 +36,7 @@ use App\Models\User;
 final readonly class DockItem
 {
     /**
-     * @param  'blitz'|'daily'|'series'|'blitz_invite'|'daily_challenge'|'clan_invite'|'casual_invite'|'board'|'board_invite'|'tournament'|'hyper'  $kind
+     * @param  'blitz'|'daily'|'series'|'blitz_invite'|'daily_challenge'|'clan_invite'|'casual_invite'|'board'|'board_invite'|'tournament'|'hyper'|'pong'|'pong_invite'  $kind
      * @param  'live'|'need'|'wait'  $group
      * @param  'your_move'|'their_move'|'answer'|'invite'|'starts'|'live'|'accept'|'waiting'|'dispute'|'ready'|'scheduled'|'checkin'  $phase
      * @param  array{endsAt: int, format: 'clock'|'hm', total: int, redUnder: int}|null  $tick
@@ -58,7 +61,7 @@ final readonly class DockItem
         public ?string $action,
         public ?int $deadlineMs,
         public ?array $tick,
-        public ChessGame|SeriesMatch|ChessInvite|ChessChallenge|ClanInvite|SeriesInvite|BoardGame|BoardInvite|BoardChallenge|Tournament|HyperMatch $model,
+        public ChessGame|SeriesMatch|ChessInvite|ChessChallenge|ClanInvite|SeriesInvite|BoardGame|BoardInvite|BoardChallenge|Tournament|HyperMatch|PongMatch|PongInvite $model,
         public ?Clan $clan = null,
         public ?string $withdraw = null,
     ) {}
@@ -69,12 +72,17 @@ final readonly class DockItem
     }
 
     /**
-     * The icon of a board game item (plan "Mühle und Dame", P5): the board
-     * game's own, next to chess's; null for every other item.
+     * The icon of a board game item (plan "Mühle und Dame", P5) or a Proof of
+     * Pong item: the game's own, next to chess's; null for every other item.
      */
     public function boardIcon(): ?string
     {
-        $game = $this->model instanceof BoardGame || $this->model instanceof BoardInvite || $this->model instanceof BoardChallenge ? $this->model->game : null;
+        $game = match (true) {
+            $this->model instanceof BoardGame, $this->model instanceof BoardInvite, $this->model instanceof BoardChallenge => $this->model->game,
+            // Proof of Pong (plan "Proof of Pong", P4): its own icon, as a board game's.
+            $this->model instanceof PongMatch, $this->model instanceof PongInvite => ProofOfPong::SLUG,
+            default => null,
+        };
 
         return $game === null ? null : (app(GameRegistry::class)->find($game)?->assets()->icon ?? 'grid');
     }

@@ -5,6 +5,7 @@ namespace App\Support;
 use App\Games\Blockfill;
 use App\Games\GameRegistry;
 use App\Games\Hyperbitcoinization;
+use App\Games\ProofOfPong;
 use Illuminate\Support\Facades\Route;
 
 /**
@@ -93,12 +94,17 @@ final class GameNames
      * The page of a game: the chess lobby, the overview of a series game, the
      * lobby of a board game (plan "Mühle und Dame", P5) or the leaderboards of
      * a score game (plan "AoE2 und Trackmania", P4), Hyperbitcoinization's lobby
-     * (plan "Hyperbitcoinization", P6), never the chess lobby for either.
+     * (plan "Hyperbitcoinization", P6) or Proof of Pong's (plan "Proof of Pong",
+     * P4), never the chess lobby for either.
      */
     public static function page(string $game): string
     {
         if ($game === Hyperbitcoinization::SLUG && app(GameRegistry::class)->find($game) !== null) {
             return Route::has('hyper.index') ? route('hyper.index') : route('play');
+        }
+
+        if ($game === ProofOfPong::SLUG && app(GameRegistry::class)->find($game) !== null) {
+            return Route::has('pong.index') ? route('pong.index') : route('play');
         }
 
         // A route table cached before the switch went on has no lobby yet: the list of all games then.

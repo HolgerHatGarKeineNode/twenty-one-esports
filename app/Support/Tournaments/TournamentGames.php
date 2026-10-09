@@ -5,6 +5,7 @@ namespace App\Support\Tournaments;
 use App\Games\Blockfill;
 use App\Games\GameRegistry;
 use App\Games\Hyperbitcoinization;
+use App\Games\ProofOfPong;
 use InvalidArgumentException;
 
 /**
@@ -21,7 +22,8 @@ use InvalidArgumentException;
  * `esports.hyper.tournaments` is on (off by default, user 2026-10-09): off,
  * the chooser does not offer it ({@see grouped()}, {@see offers()}) and no
  * tournament is made of it; one that exists keeps its key ({@see all()}), so
- * its pages and edits still read its game.
+ * its pages and edits still read its game. Proof of Pong (plan "Proof of
+ * Pong", P4) the same way, behind `esports.pong.tournaments`.
  */
 final class TournamentGames
 {
@@ -58,14 +60,35 @@ final class TournamentGames
     }
 
     /**
-     * Whether the chooser offers this profile key for a new tournament: a known key, and Hyperbitcoinization only
-     * while its tournaments are switched on. `$current`: the key the tournament has now, which stays offered.
+     * Whether organizers may make Proof of Pong tournaments (`esports.pong.tournaments`).
+     */
+    public static function pongOffered(): bool
+    {
+        return (bool) config('esports.pong.tournaments');
+    }
+
+    /**
+     * Whether a game behind its own tournament switch may be picked for a tournament now: Hyperbitcoinization and
+     * Proof of Pong only while theirs is on; every other game always.
+     */
+    public static function gameOffered(string $game): bool
+    {
+        return match ($game) {
+            Hyperbitcoinization::SLUG => self::hyperOffered(),
+            ProofOfPong::SLUG => self::pongOffered(),
+            default => true,
+        };
+    }
+
+    /**
+     * Whether the chooser offers this profile key for a new tournament: a known key, and Hyperbitcoinization and Proof
+     * of Pong only while their tournaments are switched on. `$current`: the key the tournament has now, which stays offered.
      */
     public static function offers(string $key, ?string $current = null): bool
     {
         $found = self::find($key);
 
-        return $found !== null && ($key === $current || $found[0] !== Hyperbitcoinization::SLUG || self::hyperOffered());
+        return $found !== null && ($key === $current || self::gameOffered($found[0]));
     }
 
     /**

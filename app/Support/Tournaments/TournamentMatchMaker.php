@@ -5,10 +5,12 @@ namespace App\Support\Tournaments;
 use App\Enums\BoardGameStatus;
 use App\Enums\ChessGameStatus;
 use App\Enums\LineupRole;
+use App\Enums\PongMatchStatus;
 use App\Enums\SeriesResolution;
 use App\Enums\SeriesStatus;
 use App\Enums\TournamentFormat;
 use App\Enums\TournamentStatus;
+use App\Events\PongMatchStarted;
 use App\Games\GameRegistry;
 use App\Models\BoardGame;
 use App\Models\ChessGame;
@@ -16,6 +18,7 @@ use App\Models\HyperMatch;
 use App\Models\Lineup;
 use App\Models\LineupSeat;
 use App\Models\MatchNumber;
+use App\Models\PongMatch;
 use App\Models\SeriesMatch;
 use App\Models\Tournament;
 use App\Models\TournamentMatch;
@@ -24,12 +27,15 @@ use App\Models\TournamentRound;
 use App\Models\User;
 use App\Support\Board\BoardGameService;
 use App\Support\Board\BoardRuleViolation;
+use App\Support\Chess\Broadcasts;
 use App\Support\Chess\ChessGameService;
 use App\Support\Chess\ChessRuleViolation;
 use App\Support\Chess\RatedChess;
 use App\Support\Hyper\HyperCups;
 use App\Support\Hyper\HyperMatches;
 use App\Support\Hyper\HyperTournamentTeams;
+use App\Support\Pong\PongInvites;
+use App\Support\Pong\PongMatches;
 use App\Support\SeasonChain\GatePin;
 use App\Support\SeasonChain\LeagueKey;
 use App\Support\SeasonChain\RatedTrustGate;
@@ -120,7 +126,7 @@ final class TournamentMatchMaker
         // A held match (P18) waits for an organizer's or admin's decision.
         $matches = TournamentMatch::query()->where('tournament_id', $tournament->id)->where('status', 'ready')
             ->where('bracket', '!=', 'bye')->whereNull('result')->whereNull('held')
-            ->with(['round.stage', 'slots.participant', 'seriesMatch', 'chessGame', 'boardGame', 'hyperMatch'])->orderBy('id')->get();
+            ->with(['round.stage', 'slots.participant', 'seriesMatch', 'chessGame', 'boardGame', 'hyperMatch', 'pongMatch'])->orderBy('id')->get();
         $current = TournamentRunner::currentRound($tournament);
 
         foreach ($matches as $match) {
@@ -236,6 +242,14 @@ final class TournamentMatchMaker
             TournamentRound::query()->whereKey($match->tournament_round_id)->whereNull('started_at')->update(['started_at' => now()]);
 
             return ! self::needsHyperMatch($match) || $this->startHyperMatch($tournament, $match) !== null;
+        }
+
+        // Proof of Pong (plan "Proof of Pong", P4): one live match on the league's server for the pairing, started at once
+        // in either results mode; both players are told and sent to it, its winner comes back at its end.
+        if ($tournament->profile()->isPong()) {
+            TournamentRound::query()->whereKey($match->tournament_round_id)->whereNull('started_at')->update(['started_at' => now()]);
+
+            return ! self::needsPongMatch($match) || $this->startPongMatch($tournament, $match, $a, $b) !== null;
         }
 
         // A lobby (P10, Lobbies): its players meet in the game's lobby the league named at the draw, and report its
@@ -370,6 +384,49 @@ final class TournamentMatchMaker
         $played = $match->hyperMatch;
 
         return $played === null || $match->isReplaced($played->id);
+    }
+
+    /**
+     * A Proof of Pong tournament match needs a (new) match when it has none, when its last one was called off before
+     * anyone won it (started again `first_move_restarts` times, TournamentRunner::pongMatchAborted()), or when the
+     * league voided or superseded it.
+     */
+    public static function needsPongMatch(TournamentMatch $match): bool
+    {
+        $played = $match->pongMatch;
+
+        return match (true) {
+            $played === null, $match->isReplaced($played->id) => true,
+            $played->status === PongMatchStatus::Aborted => TournamentRunner::abortedPongMatches($match) <= TournamentRunner::firstMoveRestarts(),
+            default => false,
+        };
+    }
+
+    /**
+     * One live Proof of Pong match for a tournament match (plan "Proof of Pong", P4): slot 0's player on the left, a
+     * restart swaps the sides; it waits for both players as long as the tournament's check-in. Both are told on every
+     * channel and their open lobby opens it. Null when a player is gone or busy in another live game (the next run
+     * tries again).
+     */
+    private function startPongMatch(Tournament $tournament, TournamentMatch $match, TournamentParticipant $a, TournamentParticipant $b): ?PongMatch
+    {
+        $first = User::query()->find($a->memberIds()[0] ?? 0);
+        $second = User::query()->find($b->memberIds()[0] ?? 0);
+
+        if ($first === null || $second === null || PongInvites::busy($first) !== null || PongInvites::busy($second) !== null) {
+            return null;
+        }
+
+        $last = $match->pongMatch !== null && ! $match->isReplaced($match->pongMatch->id) ? $match->pongMatch : null;
+        [$left, $right] = $last !== null && $last->left_id === $first->id ? [$second, $first] : [$first, $second];
+        $played = app(PongMatches::class)->create($left, $right, tournamentMatchId: $match->id, startSeconds: TournamentDeadlines::checkinSeconds($tournament));
+
+        DB::afterCommit(function () use ($tournament, $played): void {
+            Broadcasts::send(new PongMatchStarted($played->ulid, route('pong.match', $played), [(int) $played->left_id, (int) $played->right_id]));
+            $this->cupNotices->pongMatchStarted($tournament, $played);
+        });
+
+        return $played;
     }
 
     /**

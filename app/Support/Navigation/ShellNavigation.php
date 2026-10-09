@@ -9,6 +9,7 @@ use App\Games\Contracts\Game;
 use App\Games\GameKind;
 use App\Games\GameRegistry;
 use App\Games\Hyperbitcoinization;
+use App\Games\ProofOfPong;
 use App\Models\BoardGame;
 use App\Models\ChessGame;
 use App\Models\ClanInvite;
@@ -216,6 +217,8 @@ final class ShellNavigation
             $name === 'stacker.play', $name === 'stacker.replay', $name === 'stacker.replays', $name === 'stacker.moment' => $known(Blockfill::SLUG),
             // Hyperbitcoinization's lobby and season ladder (P6); its match pages have no shell.
             str_starts_with($name, 'hyper.') => $known(Hyperbitcoinization::SLUG),
+            // Proof of Pong's lobby and Elo ladder (plan "Proof of Pong", P4); its match pages have no shell.
+            str_starts_with($name, 'pong.') => $known(ProofOfPong::SLUG),
             // The match list files board games too (plan "Mempool-Streifen", P2), but a board game's filter keeps row 2
             // on the game opened last: a board game's context bar has no Matches link, its games are in its lobby.
             $name === 'matches.index' => $this->registry->isBoard((string) $request->query('game')) ? null : $known($request->query('game')),
@@ -552,6 +555,17 @@ final class ShellNavigation
             ];
         }
 
+        // Proof of Pong (plan "Proof of Pong", P4): its lobby, its matches in the list, its own Elo ladder (never the
+        // Rating ladder of ladder.show) and its rules. Only while routed.
+        if ($game->kind() === GameKind::Arcade && Route::has('pong.index') && Route::has('pong.ladder')) {
+            return [
+                self::link('play', route('pong.index'), __('Play'), 'bolt', null, null, __('Play'), 'play'),
+                self::link('matches', $matches, __('Matches'), 'matches', null, null, null, 'matches'),
+                [...self::link('ladder', route('pong.ladder'), __('Ladder'), 'ladder', null, null, null, 'ladder'), 'routes' => ['pong.ladder']],
+                self::link('rules', route('rules').'#'.$slug, __('Rules'), 'shield-check'),
+            ];
+        }
+
         // A score game (plan "AoE2 und Trackmania", P4): its leaderboards and points ladder on one page; no matches,
         // no challenge, no Elo ladder.
         if ($game->kind() === GameKind::Score) {
@@ -623,6 +637,15 @@ final class ShellNavigation
 
             if ($hyper !== null) {
                 $last[Hyperbitcoinization::SLUG] = (string) $hyper;
+            }
+        }
+
+        // Proof of Pong (P4): the live matches the viewer played, one query.
+        if ($this->registry->find(ProofOfPong::SLUG) !== null) {
+            $pong = DB::table('pong_matches')->where(fn ($query) => $query->where('left_id', $user->id)->orWhere('right_id', $user->id))->max('created_at');
+
+            if ($pong !== null) {
+                $last[ProofOfPong::SLUG] = (string) $pong;
             }
         }
 

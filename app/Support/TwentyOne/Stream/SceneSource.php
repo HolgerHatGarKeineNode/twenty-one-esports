@@ -46,6 +46,8 @@ class SceneSource
 
     private ?HyperScene $hyper = null;
 
+    private ?PongScene $pong = null;
+
     public function __construct(
         private ChessGameService $chess,
         private GameRegistry $games,
@@ -151,6 +153,11 @@ class SceneSource
         // A running Hyperbitcoinization match (plan "Hyperbitcoinization", P6): `$gameId` is the match's id in its slot.
         if ($scene === HyperScene::SCENE) {
             return ($this->hyper ??= app(HyperScene::class))->data($gameId, $nowMs, $stats);
+        }
+
+        // A live Proof of Pong match (plan "Proof of Pong", P4): `$gameId` is the match's id in its slot.
+        if ($scene === PongScene::SCENE) {
+            return ($this->pong ??= app(PongScene::class))->data($gameId);
         }
 
         // Blockfill's week (plan "Blockfill", P6): its top 5 and its leader's chain, over its own blurred cover.

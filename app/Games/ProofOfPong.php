@@ -8,7 +8,7 @@ use App\Games\Contracts\Game;
  * Proof of Pong, the league's own arcade game (plan "Proof of Pong"): classic Pong to 21 points in Bitcoin meme
  * culture, on a deterministic physics core the server and the browser both run (App\Support\Pong). Registered only
  * while `esports.pong.enabled` is on (AppServiceProvider); P1 plays against a bot, P2 adds live 1v1 with Elo, and
- * the league's surfaces take it up in P4.
+ * the league's surfaces (lists, ladder, sitemap, rules, share cards, stream, tournaments) take it up in P4.
  *
  * A game is a two-sided result in points (21:17, or 23:21 after 20:20). Its kind is its own (GameKind::Arcade), so
  * no switch that serves chess, a series, a board game, a score game or Hyperbitcoinization takes it for one of those.
@@ -82,7 +82,7 @@ final class ProofOfPong implements Game
 
     public function assets(): GameAssets
     {
-        // No cover yet: the art comes with P3.
-        return new GameAssets('play', 'var(--color-btc)', 'var(--color-btc-deep)', 'Pong');
+        // The cover is the title art (public/pong/art/key-title) cut to 16:9 (P4).
+        return new GameAssets('play', 'var(--color-btc)', 'var(--color-btc-deep)', 'Pong', new GameCover(self::SLUG));
     }
 }

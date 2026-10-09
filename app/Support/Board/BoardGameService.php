@@ -22,6 +22,7 @@ use App\Support\Chess\Broadcasts;
 use App\Support\Chess\ChessGameService;
 use App\Support\Chess\ChessTeamMatches;
 use App\Support\Notifications\BoardNotifications;
+use App\Support\Pong\PongMatches;
 use App\Support\Rating\RatingService;
 use App\Support\SeasonChain\GatePin;
 use App\Support\SeasonChain\SeasonChains;
@@ -131,8 +132,9 @@ final class BoardGameService
                     throw new BoardRuleViolation('already_playing', "{$player->id} already plays a live board game.");
                 }
 
-                // One live game at a time across games (P5): live chess and a running casual 1v1 count too.
-                if (app(ChessGameService::class)->activeGameOf($player) !== null || CasualMatches::runningMatchOf($player) !== null) {
+                // One live game at a time across games (P5): live chess, a running casual 1v1 and a Proof of Pong match
+                // (plan "Proof of Pong", P4) count too.
+                if (app(ChessGameService::class)->activeGameOf($player) !== null || CasualMatches::runningMatchOf($player) !== null || PongMatches::runningMatchOf($player) !== null) {
                     throw new BoardRuleViolation('playing_elsewhere', "{$player->id} already plays a live game of another kind.");
                 }
             }

@@ -27,8 +27,9 @@ use Illuminate\Support\Carbon;
  * higher seed after the last drawn replay), with `forfeit`, `double_loss`
  * and `decided` (`withdrawn`, `noshow`, `seed`). The normal match it is played as is
  * {@see seriesMatch()} (Rocket League) or {@see chessGame()} (chess), or
- * {@see boardGame()} for a board game other than chess (plan "Mühle und Dame", P5), or {@see hyperMatch()}
- * for Hyperbitcoinization (plan "Hyperbitcoinization", P5).
+ * {@see boardGame()} for a board game other than chess (plan "Mühle und Dame", P5), {@see hyperMatch()}
+ * for Hyperbitcoinization (plan "Hyperbitcoinization", P5), or {@see pongMatch()} for Proof of Pong (plan "Proof of
+ * Pong", P4).
  *
  * @property int $id
  * @property int $tournament_id
@@ -57,6 +58,7 @@ use Illuminate\Support\Carbon;
  * @property-read ChessGame|null $chessGame
  * @property-read BoardGame|null $boardGame
  * @property-read HyperMatch|null $hyperMatch
+ * @property-read PongMatch|null $pongMatch
  */
 #[Fillable(['tournament_id', 'tournament_round_id', 'key', 'group', 'bracket', 'position', 'if_needed', 'status', 'result', 'pairing', 'held', 'replaced_through', 'schedule', 'lobby', 'lobby_password', 'lobby_report', 'lineups'])]
 #[Hidden(['lobby_password', 'lobby_report'])]
@@ -122,6 +124,17 @@ class TournamentMatch extends Model
     public function hyperMatch(): HasOne
     {
         return $this->hasOne(HyperMatch::class)->latestOfMany();
+    }
+
+    /**
+     * The latest live Proof of Pong match of this tournament match (plan "Proof of Pong", P4): its winner decides the
+     * match (TournamentRunner::pongMatchFinished()); one called off before its start is played again.
+     *
+     * @return HasOne<PongMatch, $this>
+     */
+    public function pongMatch(): HasOne
+    {
+        return $this->hasOne(PongMatch::class)->latestOfMany();
     }
 
     /**

@@ -10,8 +10,8 @@
  * CupMatchNow::for() (memoised per request) instead of finding it again.
  *
  * Reasons: `notification` (alerts.js raises `esports-notification` for every
- * one), `game` (a chess or board game started), `invite` (a chess, board or
- * series invite changed), `series` (SeriesMatchChanged), `poll` (the slow
+ * one), `game` (a chess or board game or a Proof of Pong match started),
+ * `invite` (a chess, board, Proof of Pong or series invite changed), `series` (SeriesMatchChanged), `poll` (the slow
  * fallback: livePoll.js, every `poll` seconds without a live websocket,
  * every `pollWithSocket` seconds with one, never in a hidden tab).
  *
@@ -26,8 +26,10 @@ export const BATCH_MS = 250;
 const CHANNEL_EVENTS = {
     '.chess.game-started': 'game',
     '.board.game-started': 'game',
+    '.pong.match-started': 'game',
     '.chess.invite': 'invite',
     '.board.invite': 'invite',
+    '.pong.invite': 'invite',
     '.series.invite': 'invite',
     '.series.changed': 'series',
 };

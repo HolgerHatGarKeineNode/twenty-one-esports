@@ -11,6 +11,7 @@ use App\Games\Blockfill;
 use App\Games\GameKind;
 use App\Games\GameRegistry;
 use App\Games\Hyperbitcoinization;
+use App\Games\ProofOfPong;
 use App\Games\ScoreGame;
 use App\Games\TrackmaniaNationsForever;
 use App\Models\ChessGame;
@@ -26,6 +27,7 @@ use App\Support\Dock\DockItem;
 use App\Support\Dock\OpenMatches;
 use App\Support\GameNames;
 use App\Support\Hyper\HyperSeason;
+use App\Support\Pong\PongLadder;
 use App\Support\Rating\Ratings;
 use App\Support\Scores\ScoreRuns;
 use App\Support\Scores\ScoreStanding;
@@ -279,11 +281,11 @@ final class HomeHub
         $ladders = [];
 
         // No score game (plan "AoE2 und Trackmania", P4): it has no Elo ladder. Hyperbitcoinization (P6) has its own
-        // season ladder (hyperLadder()), never a Rating one.
+        // season ladder (hyperLadder()), Proof of Pong its own Elo ladder (pongLadder()), never a Rating one.
         foreach ($registry->versus() as $game) {
             $mode = array_key_first($game->modes());
 
-            if ($game->kind() === GameKind::Strategy) {
+            if ($game->kind() === GameKind::Strategy || $game->kind() === GameKind::Arcade) {
                 continue;
             }
 
@@ -292,7 +294,7 @@ final class HomeHub
             }
         }
 
-        $hyper = $this->hyperLadder();
+        $hyper = [...$this->hyperLadder(), ...$this->pongLadder()];
 
         if ($ladders === []) {
             return $hyper;
@@ -364,6 +366,38 @@ final class HomeHub
             'rows' => array_map(fn (array $row): array => [
                 'place' => $row['rank'],
                 'rating' => (string) __(':points pts', ['points' => $row['points']]),
+                'name' => $row['user']->displayName(),
+                'user' => $row['user'],
+                'clan' => $members->get($row['user']->id)?->clan,
+            ], $top),
+        ]];
+    }
+
+    /**
+     * Proof of Pong's card in the ladder grid (plan "Proof of Pong", P4): the top three of its permanent Elo
+     * (PongLadder), its own ladder page as the link. No card while the game is off or its page is not routed.
+     *
+     * @return list<Ladder>
+     */
+    private function pongLadder(): array
+    {
+        if (app(GameRegistry::class)->find(ProofOfPong::SLUG) === null || ! Route::has('pong.ladder')) {
+            return [];
+        }
+
+        $top = PongLadder::standings(3);
+        $members = $top === [] ? collect() : ClanMember::query()->whereIn('user_id', array_map(fn (array $row): int => $row['user']->id, $top))->with('clan')->get()->keyBy('user_id');
+
+        return [[
+            'game' => ProofOfPong::SLUG,
+            'mode' => 'live',
+            'name' => GameNames::game(ProofOfPong::SLUG),
+            // One permanent Elo, moved by live matches between two players: casual, as the league counts it.
+            'pool' => Rating::CASUAL,
+            'href' => route('pong.ladder'),
+            'rows' => array_map(fn (array $row): array => [
+                'place' => $row['rank'],
+                'rating' => $row['rating'],
                 'name' => $row['user']->displayName(),
                 'user' => $row['user'],
                 'clan' => $members->get($row['user']->id)?->clan,

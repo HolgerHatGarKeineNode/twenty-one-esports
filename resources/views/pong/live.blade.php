@@ -30,6 +30,20 @@
         <meta name="reverb" content="{{ json_encode(['key' => $reverb['key'], 'host' => $reverb['options']['host'] ?? request()->getHost(), 'port' => (int) ($reverb['options']['port'] ?? 443), 'scheme' => $reverb['options']['scheme'] ?? 'https']) }}">
     @endif
     <title>{{ __('Proof of Pong · :left vs :right', ['left' => $names[0], 'right' => $names[1]]) }} – TWENTY ONE esports</title>
+    {{-- The link preview (P4, PongController::preview()): the match's card, the score live or final. --}}
+    @if ($preview ?? null)
+        <meta property="og:site_name" content="TWENTY ONE esports">
+        <meta property="og:type" content="website">
+        <meta property="og:title" content="{{ $preview['title'] }}">
+        <meta property="og:description" content="{{ $preview['description'] }}">
+        <meta property="og:image" content="{{ $preview['image'] }}">
+        <meta property="og:image:type" content="image/png">
+        <meta property="og:image:width" content="{{ \App\Support\Cards\PageCard::WIDTH }}">
+        <meta property="og:image:height" content="{{ \App\Support\Cards\PageCard::HEIGHT }}">
+        <meta property="og:image:alt" content="{{ $preview['alt'] }}">
+        <meta name="twitter:card" content="summary_large_image">
+        <meta name="twitter:image" content="{{ $preview['image'] }}">
+    @endif
     <link rel="icon" href="/favicon.ico" sizes="any">
     <link rel="icon" href="/favicon.svg" type="image/svg+xml">
     @fonts

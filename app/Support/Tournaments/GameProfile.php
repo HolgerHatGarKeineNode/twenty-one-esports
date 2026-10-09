@@ -32,7 +32,7 @@ final readonly class GameProfile
      * @param  string  $key  opaque id of the profile in the chooser (`blitz`, `rl3`, `ea-sports-fc-27/1v1`)
      * @param  'min'|'day'  $unit
      * @param  list<int>  $bestOfOptions
-     * @param  'game'|'series'|'score'|'hyper'|'none'  $what
+     * @param  'game'|'series'|'score'|'hyper'|'pong'|'none'  $what
      */
     public function __construct(
         public string $key,
@@ -84,6 +84,9 @@ final readonly class GameProfile
             // find the tab; correspondence like daily chess, a turn a day.
             'hyperbitcoinization/live' => new self("{$game}/{$mode}", $game, $mode, 'min', 60, 0, 5, 1, 1, [1], false, 'hyper', overhead: 5, longPlay: 1.5),
             'hyperbitcoinization/correspondence' => new self("{$game}/{$mode}", $game, $mode, 'day', 30, 0, 1, 1, 1, [1], true, 'hyper'),
+            // Proof of Pong (plan "Proof of Pong", P4): one live match to 21 per pairing, the league starts it. Planned at
+            // 8 min a game (unmeasured with people) and 3 min to open it.
+            'proof-of-pong/live' => new self("{$game}/{$mode}", $game, $mode, 'min', 8, 0, 3, 1, 1, [1], false, 'pong', overhead: 3),
             default => self::score($game, $mode) ?? throw new InvalidArgumentException("No tournament profile for [{$game}/{$mode}]."),
         };
     }
@@ -167,6 +170,15 @@ final readonly class GameProfile
     public function isHyper(): bool
     {
         return $this->what === 'hyper';
+    }
+
+    /**
+     * A match is one live Proof of Pong match (plan "Proof of Pong", P4) the league starts on its server
+     * (PongMatches); its winner decides the pairing, there is no draw.
+     */
+    public function isPong(): bool
+    {
+        return $this->what === 'pong';
     }
 
     /**

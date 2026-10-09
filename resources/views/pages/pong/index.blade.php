@@ -2,11 +2,13 @@
     Proof of Pong's start page in the league's shell (plan "Proof of Pong", P1): the game in short and a game against
     a bot, picked from the cast's five (Nocoiner Uncle to Madame Brrr Lagarde, the end boss), with the player's figure
     (P3, pong/partials/figures; resources/js/pong/picker.js keeps the pick in the browser). The form opens the game in a new
-    tab, full-screen (PongController::bot()); a guest logs in first and lands in the game. Not indexed until the
-    league's surfaces take the game up (P4). Under it the live 1v1 (P2, components/⚡pong-lobby): who is online and
-    looking to play, invites, the running match.
+    tab, full-screen (PongController::bot()); a guest logs in first and lands in the game. Under it the live 1v1 (P2,
+    components/⚡pong-lobby): who is online and looking to play, invites, the running match. Indexed with its own link
+    preview since P4, with the Elo ladder one link away and the viewer's latest win to share.
 --}}
 @php
+    app(\App\Support\PageMeta::class)->describe('Proof of Pong', __('Proof of Pong, the arcade game of the TWENTY ONE esports league: classic Pong to 21 in Bitcoin meme culture. Play a bot or a live 1v1 for Elo, with meme events every 21st rally.'))
+        ->card(fn () => \App\Support\Cards\PageCard::page('pong'));
     $chip = 'flex cursor-pointer items-center gap-3 rounded-md bg-well p-2 pr-3 text-left text-ink-2 shadow-ring transition-colors has-[:checked]:bg-btc-chip has-[:checked]:text-ink has-[:checked]:shadow-[inset_0_0_0_2px_var(--color-btc)] has-[:focus-visible]:outline-2 has-[:focus-visible]:outline-btc';
 @endphp
 <x-layouts::app :title="'Proof of Pong'" :scripts="['resources/css/pong-picker.css', 'resources/js/pong/picker.js']">
@@ -17,11 +19,14 @@
                 <div class="flex flex-col gap-3">
                     <h1 id="pong-h" class="sr-only">Proof of Pong</h1>
                     <p class="m-0 max-w-[60ch] text-[15px] text-ink-2">{{ __('Classic Pong with a Bitcoin twist: first to 21 points, and every 21st rally a meme event for both sides.') }}</p>
-                    <ul class="m-0 flex list-none flex-wrap gap-2 p-0 text-xs text-ink-2" aria-label="{{ __('The game in short') }}">
-                        <li class="rounded-tag bg-ground/70 px-2 py-1 shadow-ring">{{ __('First to :points', ['points' => $rules->pointsToWin]) }}</li>
-                        <li class="rounded-tag bg-ground/70 px-2 py-1 shadow-ring">{{ __('Two points ahead') }}</li>
-                        <li class="rounded-tag bg-ground/70 px-2 py-1 shadow-ring">{{ __('Halving, Brrr, Pizza Day') }}</li>
-                    </ul>
+                    <div class="flex flex-wrap items-center gap-x-4 gap-y-2">
+                        <ul class="m-0 flex list-none flex-wrap gap-2 p-0 text-xs text-ink-2" aria-label="{{ __('The game in short') }}">
+                            <li class="rounded-tag bg-ground/70 px-2 py-1 shadow-ring">{{ __('First to :points', ['points' => $rules->pointsToWin]) }}</li>
+                            <li class="rounded-tag bg-ground/70 px-2 py-1 shadow-ring">{{ __('Two points ahead') }}</li>
+                            <li class="rounded-tag bg-ground/70 px-2 py-1 shadow-ring">{{ __('Halving, Brrr, Pizza Day') }}</li>
+                        </ul>
+                        <a href="{{ route('pong.ladder') }}" class="inline-flex min-h-11 items-center gap-2 rounded-md bg-ground/80 px-3 text-[13px] font-bold text-ink shadow-ring hover:text-ink" data-test="pong-ladder-link"><x-icon name="ladder" :size="16" />{{ __('Elo ladder') }}</a>
+                    </div>
                 </div>
 
                 <form method="get" action="{{ route('pong.bot') }}" target="_blank" class="grid gap-8 lg:grid-cols-[minmax(0,3fr)_minmax(0,2fr)] lg:gap-10" data-test="pong-play-form">
@@ -53,5 +58,17 @@
         </section>
 
         <livewire:pong-lobby />
+
+        @if ($lastWin !== null)
+            {{-- The viewer's latest won live match (P4): a moment to post on Nostr (SharePosts `pong`). --}}
+            <section aria-labelledby="pong-win-h" class="flex flex-wrap items-center gap-x-4 gap-y-3 rounded-lg bg-card px-4 py-4 shadow-ring lg:px-6" data-test="pong-last-win">
+                <x-game-cover :game="\App\Games\ProofOfPong::SLUG" size="thumb" class="w-16 shrink-0 rounded-tag" />
+                <span class="flex min-w-0 grow flex-col gap-0.5">
+                    <h2 id="pong-win-h" class="m-0 text-[15px] font-bold">{{ __('Your latest win') }}</h2>
+                    <span class="text-[13px] text-ink-2">{{ __(':score against :name', ['score' => max($lastWin->score()).':'.min($lastWin->score()), 'name' => $lastWin->player(1 - (int) $lastWin->sideOf(auth()->user()))?->displayName() ?? __('Deleted account')]) }}</span>
+                </span>
+                <livewire:share-button type="pong" :moment="$lastWin->ulid" :label="__('Post the win')" :wire:key="'pong-share-'.$lastWin->ulid" />
+            </section>
+        @endif
     </div>
 </x-layouts::app>

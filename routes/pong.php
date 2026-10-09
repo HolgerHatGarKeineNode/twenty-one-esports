@@ -4,7 +4,7 @@ use App\Http\Controllers\PongController;
 use Illuminate\Support\Facades\Route;
 
 /*
- * Proof of Pong (plan "Proof of Pong", P1/P2): the lobby in the league's shell (for everybody), a game against a bot
+ * Proof of Pong (plan "Proof of Pong", P1/P2/P4): the lobby and the Elo ladder in the league's shell (for everybody), a game against a bot
  * on its own full-screen page for a logged-in player, and the live 1v1 matches (P2): a match's full-screen page (its
  * score for anybody who is not playing it), the referee's endpoints for its two players (`pong-live`, per player)
  * and the lobby's accept of an invite. A game against a bot runs in the browser and stores nothing; a live match is
@@ -14,6 +14,8 @@ use Illuminate\Support\Facades\Route;
  */
 Route::prefix('proof-of-pong')->name('pong.')->group(function () {
     Route::get('/', [PongController::class, 'index'])->name('index');
+    // The Elo ladder (P4), for everybody.
+    Route::get('ladder', [PongController::class, 'ladder'])->name('ladder');
     Route::get('m/{match}', [PongController::class, 'match'])->whereUlid('match')->name('match');
 
     Route::middleware('auth')->group(function () {

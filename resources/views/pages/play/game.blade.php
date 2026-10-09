@@ -35,6 +35,12 @@
                             __('2 to 6 players'),
                             __('season points and Elo'),
                         ],
+                        // Proof of Pong (P4): first to 21, live 1v1 or a bot, its own Elo ladder.
+                        $scoreGame->kind() === \App\Games\GameKind::Arcade => [
+                            __('First to :points', ['points' => (int) config('esports.pong.points_to_win', 21)]),
+                            __('live 1v1 or a bot'),
+                            __('Elo ladder'),
+                        ],
                         default => [$mode->rates === 'player' ? __('Player ladder') : __('Clan lineup')],
                     };
                     if ($mode->bestOf !== []) {

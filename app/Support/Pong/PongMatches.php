@@ -8,6 +8,7 @@ use App\Events\PongMatchUpdated;
 use App\Models\PongMatch;
 use App\Models\User;
 use App\Support\Chess\Broadcasts;
+use App\Support\Tournaments\TournamentRunner;
 use Illuminate\Support\Facades\DB;
 use Throwable;
 
@@ -24,6 +25,10 @@ use Throwable;
  *
  * Each change is pushed to both pages as a snapshot (PongMatchUpdated); a finished rated match moves both players'
  * Elo in the same transaction (PongRatings).
+ *
+ * A tournament's match (P4, TournamentMatchMaker) waits for its players as long as the tournament's check-in
+ * (`startMs` in its state): whoever is there by then wins it by forfeit, nobody there calls it off. Once it is over
+ * (after the commit) its result goes back to the bracket (TournamentRunner::pongMatchFinished(), ::pongMatchAborted()).
  */
 final class PongMatches
 {
@@ -31,9 +36,10 @@ final class PongMatches
 
     /**
      * A new match: `$left` plays side 0, `$right` side 1. Whoever opens it is the caller's business (an accepted
-     * invite tells the inviter, PongInvites::accept(); a rematch moves both pages).
+     * invite tells the inviter, PongInvites::accept(); a rematch moves both pages; a tournament tells both players).
+     * `$tournamentMatchId` and `$startSeconds`: the tournament match it plays and how long it waits for its players.
      */
-    public function create(User $left, User $right, ?PongMatch $rematchOf = null): PongMatch
+    public function create(User $left, User $right, ?PongMatch $rematchOf = null, ?int $tournamentMatchId = null, ?int $startSeconds = null): PongMatch
     {
         $match = PongMatch::query()->create([
             'left_id' => $left->id,
@@ -49,10 +55,13 @@ final class PongMatches
                 'version' => 1,
                 // The players' figures (P3, PongCast), by side; a rematch keeps each player's, sides swapped.
                 'figures' => $rematchOf === null ? [null, null] : array_reverse(self::figuresOf($rematchOf)),
+                // A tournament's match waits for its players as long as its check-in (P4); null: `start_seconds`.
+                'startMs' => $startSeconds === null ? null : max(1, $startSeconds) * 1000,
             ],
             'log' => [],
             'rated' => PongRatings::offered(),
             'rematch_of_id' => $rematchOf?->id,
+            'tournament_match_id' => $tournamentMatchId,
         ]);
 
         return $match;
@@ -64,6 +73,15 @@ final class PongMatches
     public static function activeMatchOf(User $user): ?PongMatch
     {
         return PongMatch::query()->running()->playedBy($user)->latest('id')->first();
+    }
+
+    /**
+     * The match this player waits for or plays while the game is switched on, else null: what the other games ask
+     * before a live game of theirs starts (BoardGameService::start(), BoardQueue::assertFree(), LiveGameGuard).
+     */
+    public static function runningMatchOf(User $user): ?PongMatch
+    {
+        return config('esports.pong.enabled') ? self::activeMatchOf($user) : null;
     }
 
     /**
@@ -272,7 +290,7 @@ final class PongMatches
             'away' => $away,
             'awaySince' => $away === null ? null : $state['seen'][$away],
             'forfeitMs' => self::forfeitMs(),
-            'startBy' => $match->created_at === null ? null : $match->created_at->getTimestampMs() + self::startMs(),
+            'startBy' => $match->created_at === null ? null : $match->created_at->getTimestampMs() + self::startMsOf($match),
             'winner' => $match->winner_id === null ? null : ($match->winner_id === $match->left_id ? 0 : 1),
             'endReason' => $match->end_reason?->value,
             'rated' => $match->rated,
@@ -294,10 +312,12 @@ final class PongMatches
      */
     private function locked(PongMatch $match, callable $change, ?User $viewer = null): array
     {
-        $fresh = DB::transaction(function () use ($match, $change): PongMatch {
+        $ended = false;
+        $fresh = DB::transaction(function () use ($match, $change, &$ended): PongMatch {
             $fresh = PongMatch::query()->lockForUpdate()->findOrFail($match->id);
             $now = self::now();
             $seenBefore = $fresh->state['seen'];
+            $wasOver = $fresh->isOver();
 
             if ($change($fresh, $now)) {
                 $state = $fresh->state;
@@ -310,10 +330,31 @@ final class PongMatches
                 $fresh->save();
             }
 
+            $ended = ! $wasOver && $fresh->isOver();
+
             return $fresh;
         });
 
+        if ($ended && $fresh->tournament_match_id !== null) {
+            $this->reportToTournament($fresh);
+        }
+
         return $this->snapshot($fresh, $viewer);
+    }
+
+    /**
+     * A tournament's match is over (P4): its winner, or that it was called off, goes back to the bracket. A failure
+     * is reported and not retried (there is no second report yet, as Hyperbitcoinization's sweep has): the
+     * tournament's desk then sets the result by hand.
+     */
+    private function reportToTournament(PongMatch $match): void
+    {
+        try {
+            $runner = app(TournamentRunner::class);
+            $match->status === PongMatchStatus::Finished ? $runner->pongMatchFinished($match->id) : $runner->pongMatchAborted($match->id);
+        } catch (Throwable $exception) {
+            report($exception);
+        }
     }
 
     /**
@@ -334,7 +375,18 @@ final class PongMatches
                 return true;
             }
 
-            if ($match->created_at !== null && $now > $match->created_at->getTimestampMs() + self::startMs()) {
+            if ($match->created_at !== null && $now > $match->created_at->getTimestampMs() + self::startMsOf($match)) {
+                $present = array_keys(array_filter($state['seen'], fn (?int $seen): bool => $seen !== null));
+
+                // A tournament's match (P4): the player who is there wins it, the one who never came loses by forfeit.
+                if ($match->tournament_match_id !== null && count($present) === 1) {
+                    // Never played: no Elo moves.
+                    $match->rated = false;
+                    $this->finish($match, $present[0], PongEndReason::Forfeit);
+
+                    return true;
+                }
+
                 $this->end($match, null, PongEndReason::Abort);
 
                 return true;
@@ -463,5 +515,13 @@ final class PongMatches
     private static function startMs(): int
     {
         return (int) round((float) config('esports.pong.start_seconds', 60) * 1000);
+    }
+
+    /** How long this match waits for its players: a tournament's its check-in, every other `start_seconds`. */
+    private static function startMsOf(PongMatch $match): int
+    {
+        $own = $match->state['startMs'] ?? null;
+
+        return is_int($own) && $own > 0 ? $own : self::startMs();
     }
 }

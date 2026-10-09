@@ -7,12 +7,14 @@ use App\Games\Blockfill;
 use App\Games\BoardGame as BoardGameDefinition;
 use App\Games\GameRegistry;
 use App\Games\Hyperbitcoinization;
+use App\Games\ProofOfPong;
 use App\Games\ScoreMetric;
 use App\Games\TrackmaniaNationsForever;
 use App\Models\BoardGame;
 use App\Models\ChessGame;
 use App\Models\Clan;
 use App\Models\HyperMatch;
+use App\Models\PongMatch;
 use App\Models\SeriesMatch;
 use App\Models\Tournament;
 use App\Models\User;
@@ -20,6 +22,7 @@ use App\Support\Badges\BadgeCopy;
 use App\Support\Chess\ChessModes;
 use App\Support\GameNames;
 use App\Support\Nostr\NostrKeys;
+use App\Support\Pong\PongCast;
 use App\Support\Rating\RankTiers;
 use Illuminate\Support\Facades\App;
 use Illuminate\Support\Facades\Storage;
@@ -51,7 +54,7 @@ final class PageCard
 
     public const HEIGHT = 630;
 
-    public const TYPES = ['game', 'tournament', 'player', 'clan', 'series', 'ladder', 'board', 'leaderboard', 'hyper', 'page'];
+    public const TYPES = ['game', 'tournament', 'player', 'clan', 'series', 'ladder', 'board', 'leaderboard', 'hyper', 'pong', 'page'];
 
     /**
      * The fixed pages with a card of their own (type `page`); next to them a
@@ -59,7 +62,8 @@ final class PageCard
      * (`board.<game>`) and correspondence page (`board-daily.<game>`), a
      * score game's page (`scores.<game>`), Blockfill (`blockfill`) and its
      * replays (`blockfill-replays`), Hyperbitcoinization's start page
-     * (`hyper`) and season ladder (`hyper-ladder`).
+     * (`hyper`) and season ladder (`hyper-ladder`), Proof of Pong's start
+     * page (`pong`) and Elo ladder (`pong-ladder`).
      */
     public const PAGES = ['home', 'login', 'clans', 'matches', 'games', 'chess', 'tournaments', 'play', 'rules', 'protocol', 'mining', 'live', 'strongest'];
 
@@ -133,6 +137,12 @@ final class PageCard
         return new self('hyper', $match->ulid, PageCardFacts::hyper($match));
     }
 
+    /** A live Proof of Pong match (plan "Proof of Pong", P4): the score, live or final. */
+    public static function pong(PongMatch $match): self
+    {
+        return new self('pong', $match->ulid, PageCardFacts::pong($match));
+    }
+
     /** A score leaderboard (`tournaments/<id>/scores`), a Blockfill week among them. */
     public static function leaderboard(Tournament $tournament): self
     {
@@ -150,6 +160,8 @@ final class PageCard
             $page === 'blockfill-replays' => PageCardFacts::blockfillReplays(),
             $page === 'hyper' => PageCardFacts::hyperPage(),
             $page === 'hyper-ladder' => PageCardFacts::hyperLadder(),
+            $page === 'pong' => PageCardFacts::pongPage(),
+            $page === 'pong-ladder' => PageCardFacts::pongLadder(),
             str_starts_with($page, 'hub.') => PageCardFacts::hub(substr($page, 4)),
             str_starts_with($page, 'board.') => PageCardFacts::boardLobby(substr($page, 6), false),
             str_starts_with($page, 'board-daily.') => PageCardFacts::boardLobby(substr($page, 12), true),
@@ -180,6 +192,7 @@ final class PageCard
                 ? self::leaderboard($tournament) : null,
             // A ULID in lower case, as the match's URL writes it; only while the game is on.
             'hyper' => app(GameRegistry::class)->find(Hyperbitcoinization::SLUG) !== null && ($match = HyperMatch::query()->where('ulid', $key)->first()) !== null ? self::hyper($match) : null,
+            'pong' => app(GameRegistry::class)->find(ProofOfPong::SLUG) !== null && ($match = PongMatch::query()->where('ulid', $key)->first()) !== null ? self::pong($match) : null,
             'page' => self::isPage($key) ? self::page($key) : null,
             default => null,
         };
@@ -195,6 +208,7 @@ final class PageCard
             in_array($key, self::PAGES, true) => true,
             $key === 'blockfill', $key === 'blockfill-replays' => $games->find(Blockfill::SLUG) !== null,
             $key === 'hyper', $key === 'hyper-ladder' => $games->find(Hyperbitcoinization::SLUG) !== null,
+            $key === 'pong', $key === 'pong-ladder' => $games->find(ProofOfPong::SLUG) !== null,
             str_starts_with($key, 'hub.') => $games->isSeries($slug),
             str_starts_with($key, 'board.') => $games->isBoard($slug),
             str_starts_with($key, 'board-daily.') => $games->isBoard($slug) && $games->mode($slug, BoardGame::CORRESPONDENCE) !== null,
@@ -296,6 +310,7 @@ final class PageCard
             }.'. '.$this->sideName('white').' '.__('(white)').', '.$this->sideName('black').' '.__('(black)').'. '.GameNames::credited((string) $f['game']).'.',
             'leaderboard' => $this->leaderboardTitle($f).'. '.$this->leaderboardStatus().'.',
             'hyper' => $this->hyperTitle().'. '.$this->hyperLine().'.',
+            'pong' => $this->pongTitle().'. '.$f['sides'][0]['name'].' '.$f['score'][0].':'.$f['score'][1].' '.$f['sides'][1]['name'].'.',
             default => $this->pageTitle().'.',
         };
     }
@@ -316,6 +331,7 @@ final class PageCard
             'board' => $this->drawBoard(),
             'leaderboard' => $this->drawLeaderboard(),
             'hyper' => $this->drawHyper(),
+            'pong' => $this->drawPong(),
             default => match (true) {
                 $this->key === 'mining' => $this->drawMining(),
                 $this->key === 'live' => $this->drawLive(),
@@ -324,6 +340,8 @@ final class PageCard
                 $this->key === 'blockfill-replays' => $this->drawBlockfillReplays(),
                 $this->key === 'hyper' => $this->drawHyperPage(),
                 $this->key === 'hyper-ladder' => $this->drawHyperLadder(),
+                $this->key === 'pong' => $this->drawPongPage(),
+                $this->key === 'pong-ladder' => $this->drawPongLadder(),
                 str_starts_with($this->key, 'hub.') => $this->drawHub(),
                 str_starts_with($this->key, 'board.'), str_starts_with($this->key, 'board-daily.') => $this->drawBoardLobby(),
                 str_starts_with($this->key, 'scores.') => $this->drawScoreGame(),
@@ -1405,6 +1423,90 @@ final class PageCard
         $this->podium(self::rows($f['top']), __('No rated match yet. The first one opens the ladder.'), (int) max(0, $after - 150));
     }
 
+    /* ---------- Proof of Pong ---------------------------------------------------------------------------------- */
+
+    /**
+     * A live match (plan "Proof of Pong", P4): who won (or that it is live), both players with their figure, the
+     * score between them in the orange block.
+     */
+    private function drawPong(): void
+    {
+        $f = $this->facts;
+        $cover = app(GameRegistry::class)->coverPath(ProofOfPong::SLUG);
+
+        if ($cover !== null) {
+            $this->c->cover($cover, 856, 48, 280, 132);
+        }
+
+        $title = $this->pongTitle();
+        $size = $this->c->fitSize($title, 'display', [48, 40, 34], 740);
+        $this->c->text($this->c->fit($title, 'display', $size, 740), 'display', $size, self::M, 48 + $size, $f['status'] === 'active' ? self::LIVE : Canvas::INK);
+        $line = implode(' · ', array_filter([GameNames::mode(ProofOfPong::SLUG, 'live'), $f['rated'] ? __('rated') : __('casual'), match ($f['reason']) {
+            'resign' => __('by resignation'),
+            'forfeit' => __('by forfeit'),
+            default => null,
+        }]));
+        $this->c->text($this->c->fit($line, 'mono', self::MIN, 760), 'mono', self::MIN, self::M, 48 + $size + 48, Canvas::INK_2);
+
+        $names = array_column(PongCast::players(), 'name', 'id');
+        $size = 128;
+
+        foreach (self::rows($f['sides']) as $side => $player) {
+            $cx = $side === 0 ? 260 : self::WIDTH - 260;
+            $this->c->avatar($this->drawable($player), (int) round($cx - $size / 2), 236, $size);
+            $this->textCenter((string) $player['name'], 'mono-bold', self::MIN, $cx, 420, $f['winner'] === $side ? self::WIN : Canvas::INK, 380);
+            $figure = $player['figure'] ?? null;
+            $this->textCenter(is_string($figure) && isset($names[$figure]) ? $names[$figure] : '', 'mono', self::MIN, $cx, 460, Canvas::INK_2, 380);
+        }
+
+        $score = $f['score'][0].':'.$f['score'][1];
+        $this->c->rect(self::WIDTH / 2 - 130, 250, 260, 120, Canvas::ORANGE);
+        $this->textCenter($score, 'display', 64, self::WIDTH / 2, 334, self::DARK, 240);
+    }
+
+    private function pongTitle(): string
+    {
+        $f = $this->facts;
+        $winner = $f['winner'] === null ? null : ($f['sides'][$f['winner']]['name'] ?? null);
+
+        return match ($f['status']) {
+            'finished' => $winner !== null ? __(':name wins', ['name' => $winner]) : 'Proof of Pong',
+            'aborted' => __('Match aborted'),
+            default => __('Live: :score', ['score' => $f['score'][0].':'.$f['score'][1]]),
+        };
+    }
+
+    /** The start page: the cover, the name, the game in one line, running and played matches. */
+    private function drawPongPage(): void
+    {
+        $f = $this->facts;
+        $this->gameCover(ProofOfPong::SLUG);
+        $after = $this->c->paragraph('Proof of Pong', 'display', 48, self::M, 48 + 48, 510, 1, Canvas::INK, 1.12);
+        $this->c->paragraph(__('Classic Pong to 21 in Bitcoin meme culture. Bots and live 1v1 for Elo.'), 'mono', self::MIN, self::M, $after + 16, 500, 3, Canvas::INK_2, 1.3);
+        $this->figures([
+            [trans_choice('match running|matches running', (int) $f['running']), (string) $f['running']],
+            [trans_choice('match played|matches played', (int) $f['played']), (string) $f['played']],
+        ], self::M, 440, 352);
+    }
+
+    /** The Elo ladder: the first three. */
+    private function drawPongLadder(): void
+    {
+        $f = $this->facts;
+        $cover = app(GameRegistry::class)->coverPath(ProofOfPong::SLUG);
+
+        if ($cover !== null) {
+            $this->c->cover($cover, 856, 48, 280, 132);
+        }
+
+        $title = __('Proof of Pong ladder');
+        $size = $this->c->fitSize($title, 'display', [48, 40, 34], 740);
+        $after = $this->c->paragraph($title, 'display', $size, self::M, 48 + $size, 740, 2, Canvas::INK, 1.1);
+        $this->c->text(trans_choice(':count entry|:count entries', (int) $f['entries']), 'mono', self::MIN, self::M, (int) $after - 4, Canvas::INK_2);
+
+        $this->podium(self::rows($f['top']), __('No rated match yet. The first one opens the ladder.'), (int) max(0, $after - 150));
+    }
+
     /* ---------- Season chain ----------------------------------------------------------------------------------- */
 
     private function drawMining(): void
@@ -1611,6 +1713,8 @@ final class PageCard
             $this->key === 'blockfill-replays' => __('Blockfill replays'),
             $this->key === 'hyper' => 'Hyperbitcoinization',
             $this->key === 'hyper-ladder' => __('Hyperbitcoinization season ladder'),
+            $this->key === 'pong' => 'Proof of Pong',
+            $this->key === 'pong-ladder' => __('Proof of Pong ladder'),
             str_starts_with($this->key, 'board.') => GameNames::credited(substr($this->key, 6)),
             str_starts_with($this->key, 'board-daily.') => __(':game correspondence', ['game' => GameNames::credited(substr($this->key, 12))]),
             str_starts_with($this->key, 'scores.') => __(':game leaderboards', ['game' => GameNames::game(substr($this->key, 7))]),

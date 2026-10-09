@@ -17,6 +17,7 @@ use App\Support\TwentyOne\Stream\ModeMachine;
 use App\Support\TwentyOne\Stream\MusicPlaylist;
 use App\Support\TwentyOne\Stream\MusicTimeline;
 use App\Support\TwentyOne\Stream\PlaylistWriter;
+use App\Support\TwentyOne\Stream\PongScene;
 use App\Support\TwentyOne\Stream\PublicPlaylist;
 use App\Support\TwentyOne\Stream\PublishSchedule;
 use App\Support\TwentyOne\Stream\RotationPlanner;
@@ -262,6 +263,7 @@ class TwentyOneStreamCommand extends Command
         $renderer = SceneRenderer::fromConfig();
         $boardScene = app(BoardScene::class);
         $hyperScene = app(HyperScene::class);
+        $pongScene = app(PongScene::class);
         // Games that ended within this window stay on show with their result.
         $hysteresis = (int) config('twentyone.stream.scene.hysteresis_seconds', 60);
         // The planner decides scene or loop; the machine only keeps a failed scene off.
@@ -295,6 +297,10 @@ class TwentyOneStreamCommand extends Command
         /** @var list<array{id: int, tense: bool}> $hyper */
         $hyper = [];
         $hyperPollFailing = false;
+        // The recent won Proof of Pong matches (PongScene::entries()); none while the read fails.
+        /** @var list<array{id: int}> $pong */
+        $pong = [];
+        $pongPollFailing = false;
         // Blockfill's week (BlockfillSlides::state()): `off` while the read fails, so no slide of the set shows.
         $blockfillSlides = app(BlockfillSlides::class);
         $blockfill = ['week' => BlockfillSlides::OFF, 'moment' => null];
@@ -390,6 +396,23 @@ class TwentyOneStreamCommand extends Command
                     $hyper = [];
                 }
 
+                // Proof of Pong on its own, like Hyperbitcoinization: a failing read only drops its slide. Logged once per series.
+                try {
+                    $pong = $pollFailures === 0 ? $pongScene->entries() : [];
+
+                    if ($pongPollFailing && $pollFailures === 0) {
+                        $this->log('pong poll recovered');
+                        $pongPollFailing = false;
+                    }
+                } catch (Throwable $e) {
+                    if (! $pongPollFailing) {
+                        $this->log('pong poll failed, showing no Proof of Pong slide: '.$this->describe($e));
+                        $pongPollFailing = true;
+                    }
+
+                    $pong = [];
+                }
+
                 // Blockfill's week on its own, like the board games: a failing read only drops its slides. Logged once per series.
                 try {
                     $blockfill = $pollFailures === 0 ? $blockfillSlides->state() : ['week' => BlockfillSlides::OFF, 'moment' => null];
@@ -418,7 +441,7 @@ class TwentyOneStreamCommand extends Command
                     $this->advanceCover($cover, $source, $tournaments, $sceneGames, $sceneMore, $stats, $now);
                 }
 
-                $slot = $planner->at($now, array_map(fn (ChessGame $game): array => ['id' => $game->id, 'blitz' => ! $game->isCorrespondence()], $sceneGames), TournamentSlides::featured($tournaments), $boards, TournamentLiveSlides::entries($liveFrames, $tournaments, (int) ($now * 1000), (int) config('twentyone.stream.rotation.champion_moment_seconds', 120)), $blockfill['week'], $blockfill['moment'], $hyper);
+                $slot = $planner->at($now, array_map(fn (ChessGame $game): array => ['id' => $game->id, 'blitz' => ! $game->isCorrespondence()], $sceneGames), TournamentSlides::featured($tournaments), $boards, TournamentLiveSlides::entries($liveFrames, $tournaments, (int) ($now * 1000), (int) config('twentyone.stream.rotation.champion_moment_seconds', 120)), $blockfill['week'], $blockfill['moment'], $hyper, $pong);
                 $modes->tick($slot['kind'] !== RotationPlanner::LOOP, (int) $now);
 
                 if ($slot['scene'] !== null) {
