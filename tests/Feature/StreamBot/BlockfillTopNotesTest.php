@@ -75,6 +75,8 @@ function topNoteRelays(): object
         'esports.stream_bot.enabled' => true,
         'esports.stream_bot.nsec' => (new TestSigner)->secret,
         'twentyone.stream.relays' => ['wss://one.test'],
+        // The shared profile brake (four hours since b80beef0) is ProfileVarietyTest's; here only `top_minutes` paces.
+        'esports.stream_bot.profile_gap_minutes' => 0,
     ]);
 
     return $relays;
