@@ -507,6 +507,19 @@ body.spectator #treasury, body.spectator #hand, body.spectator #main-btn, body.s
 #boot small { font: 700 12px var(--font-ui); letter-spacing: 0.3em; text-transform: uppercase; color: var(--btc-hi); }
 
 @media (width < 520px) { #chat { width: 100%; } }
+/* A wide screen docks the open chat beside the table (user 2026-10-09: it covered the buttons): everything on the right moves left. */
+@media (width >= 1100px) {
+    body.chat-open { --chat-w: 380px; }
+    body.chat-open #board, body.chat-open #map { width: calc(100% - var(--chat-w)); }
+    body.chat-open #topbar { right: calc(14px + var(--chat-w)); }
+    body.chat-open #cta, body.chat-open #legend, body.chat-open #ticker { right: calc(16px + var(--chat-w)); }
+    body.chat-open #emotes, body.chat-open #poll { right: calc(14px + var(--chat-w)); }
+    body.chat-open #topbar .tools { flex-wrap: wrap; justify-content: flex-end; min-width: 0; flex-shrink: 1; }
+}
+@media (1100px <= width < 1760px) {
+    /* The tools wrap to two rows beside the docked chat: the legend starts below them. */
+    body.chat-open #legend { top: 140px; }
+}
 @media (width < 820px) {
     #zoom-in, #zoom-out { display: none; }
     #turn-clock { width: 40px; height: 40px; }

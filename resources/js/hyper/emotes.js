@@ -97,7 +97,7 @@ export function startEmotes(config, net, game, { live = () => true } = {}) {
         const q = e.target.value.trim().toLowerCase();
         clips.querySelectorAll('button').forEach((b) => { b.hidden = q !== '' && !b.textContent.toLowerCase().includes(q); });
     });
-    $('#emote-btn')?.addEventListener('click', () => { panel.hidden = !panel.hidden; if (!panel.hidden) $('#chat').hidden = true; });
+    $('#emote-btn')?.addEventListener('click', () => { panel.hidden = !panel.hidden; if (!panel.hidden && !$('#chat').hidden) $('#chat-close')?.click(); });
     $('#emote-close')?.addEventListener('click', () => { panel.hidden = true; });
 
     return { show };

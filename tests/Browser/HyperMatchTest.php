@@ -241,9 +241,24 @@ test('players and a spectator talk in the table chat over Nostr, and a reaction 
             BrowserWait::until($page, '() => [...document.querySelectorAll("[data-test=hyper-chat-text]")].some((p) => p.innerText === "gm table")', 10_000);
         }
 
-        // Bert reacts with 🔥; everyone sees the count under Anna's message.
+        // Bert reacts with 🔥; everyone sees the count under Anna's message. The picker opens in view (user 2026-10-09).
         $pages[1]->evaluate('() => document.querySelector("[data-test=hyper-chat-message] [data-test=hyper-chat-react]").click()');
+        BrowserWait::until($pages[1], '() => { const p = document.querySelector(".cm-picker")?.getBoundingClientRect(); const l = document.querySelector("#chat-list").getBoundingClientRect(); return !!p && p.bottom <= l.bottom + 1 && p.top >= l.top - 1; }', 5_000);
         $pages[1]->evaluate('() => document.querySelector(".cm-picker [data-emoji=\"🔥\"]").click()');
+
+        // A wide screen docks the open chat beside the table: no button or panel of the table lies under it, and the
+        // wrapped tools stay above the legend (user 2026-10-09).
+        $docked = [];
+        $stack = [];
+        foreach ([[1440, 900], [1920, 1080]] as [$width, $height]) {
+            $pages[1]->setViewportSize($width, $height);
+            usleep(400_000);
+            $docked[$width] = $pages[1]->evaluate('() => { const c = document.querySelector("#chat").getBoundingClientRect(); return [...document.querySelectorAll("#topbar .tools button, #legend, #cta button, #ticker, #topbar .icon-btn")].filter((e) => e.offsetParent !== null && !e.closest("#chat")).map((e) => [e.id || e.className, Math.round(e.getBoundingClientRect().right), Math.round(c.left)]).filter(([, right, left]) => right > left); }');
+            $stack[$width] = $pages[1]->evaluate('() => { const t = document.querySelector("#topbar .tools").getBoundingClientRect(); const l = document.querySelector("#legend"); return l && l.offsetParent !== null ? Math.round(l.getBoundingClientRect().top - t.bottom) : 0; }');
+        }
+        fwrite(STDERR, "\nchat docked overlaps: ".json_encode($docked).' legend below tools by: '.json_encode($stack)."\n");
+        expect($docked)->toBe([1440 => [], 1920 => []])
+            ->and(min($stack))->toBeGreaterThanOrEqual(0);
 
         foreach ($pages as $page) {
             BrowserWait::until($page, '() => document.querySelector("[data-test=hyper-chat-reaction][data-emoji=\"🔥\"]")?.innerText === "🔥 1"', 10_000);

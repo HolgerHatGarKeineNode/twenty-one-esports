@@ -151,8 +151,12 @@ export function startChat(config, { seats = [], onUnread = () => {} } = {}) {
             picker.appendChild(btn);
         });
         anchor.after(picker);
+        // The last message's picker would sit below the fold: bring it into view (user 2026-10-09).
+        picker.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
     }
     function closePicker() { picker?.remove(); picker = null; }
+    /** On a wide screen the open chat docks beside the table: the map and the HUD make room (hyper.css `chat-open`). */
+    function docked(on) { document.body.classList.toggle('chat-open', on); dispatchEvent(new Event('resize')); }
     document.addEventListener('pointerdown', (e) => { if (picker && !picker.contains(e.target)) closePicker(); });
 
     function row(item) {
@@ -281,8 +285,8 @@ export function startChat(config, { seats = [], onUnread = () => {} } = {}) {
     renderAll();
 
     return {
-        open() { drawer.hidden = false; unread = 0; onUnread(0); list.dataset.follow = '1'; renderAll(); if (me && !off) input.focus({ preventScroll: true }); },
-        close() { drawer.hidden = true; closePicker(); },
+        open() { drawer.hidden = false; docked(true); unread = 0; onUnread(0); list.dataset.follow = '1'; renderAll(); if (me && !off) input.focus({ preventScroll: true }); },
+        close() { drawer.hidden = true; docked(false); closePicker(); },
         toggle() { if (drawer.hidden) this.open(); else this.close(); },
         status: () => drawer.dataset.status,
     };
