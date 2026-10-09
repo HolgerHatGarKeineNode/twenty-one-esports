@@ -316,7 +316,8 @@ new #[Layout('layouts::app', ['section' => 'matches'])] class extends Component 
     {
         $clan = $this->selectedClan;
 
-        return $query->where('status', PongMatchStatus::Finished)->whereNotNull('winner_id')
+        // Only a match that was played: a win without a start (a tournament no-show) is no game.
+        return $query->where('status', PongMatchStatus::Finished)->whereNotNull('winner_id')->whereNotNull('started_at')
             ->when($clan !== null, fn (Builder $query) => $query->whereHas('winner.clanMember', fn (Builder $query) => $query->where('clan_id', $clan->id)));
     }
 

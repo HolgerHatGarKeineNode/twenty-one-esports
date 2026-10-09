@@ -113,7 +113,7 @@ final class MempoolStrip
             ...(! $hyper ? [] : self::onChain(HyperMatch::query(), $chain)->whereHas('seats', fn ($seats) => $seats->where('place', 1)->whereNotNull('user_id')->where('bot', false))->with('seats.user')->where('status', HyperMatchStatus::Finished)
                 ->orderByDesc('ended_at')->limit(self::SIDE)->get()->tap(fn ($list) => HyperTeams::preload($list))
                 ->map(fn (HyperMatch $match): array => self::item('hyper', $match, $match->ended_at))->all()),
-            ...(! $pong ? [] : PongMatch::query()->with('winner')->where('status', PongMatchStatus::Finished)->whereNotNull('winner_id')
+            ...(! $pong ? [] : PongMatch::query()->with('winner')->where('status', PongMatchStatus::Finished)->whereNotNull('winner_id')->whereNotNull('started_at')
                 ->orderByDesc('ended_at')->limit(self::SIDE)->get()
                 ->map(fn (PongMatch $match): array => self::item('pong', $match, $match->ended_at))->all()),
             ...($runs ? self::attempts('done', $runsPerSide) : []),

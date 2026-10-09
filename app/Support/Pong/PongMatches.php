@@ -160,6 +160,14 @@ final class PongMatches
                 return false;
             }
 
+            // Never started (nobody served yet): called off, no winner, no Elo, no list entry (review 2026-10-10:
+            // resigning an unopened match paid the other side a win without a game).
+            if ($match->started_at === null) {
+                $this->end($match, null, PongEndReason::Abort);
+
+                return true;
+            }
+
             $this->finish($match, 1 - $side, PongEndReason::Resign);
 
             return true;
@@ -191,6 +199,10 @@ final class PongMatches
 
                 if (! $busy) {
                     $state['next'] = $this->create($left, $right, $match)->ulid;
+                } else {
+                    // One of them is in another match now: both offers lapse, either may offer again later
+                    // (review 2026-10-10: the flags stayed set and every further click was refused).
+                    $state['rematch'] = [false, false];
                 }
             }
 

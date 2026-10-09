@@ -303,6 +303,43 @@ test('a rematch both players want starts a new match with the sides swapped', fu
         ->and($rematch->status)->toBe(PongMatchStatus::Waiting);
 });
 
+test('resigning a match nobody started calls it off: no winner, no Elo, no entry in the mempool or on /matches', function () {
+    // Review 2026-10-10: it paid the other side a win and Elo for a game never played (win-trading without play).
+    PongOn::play();
+    [$left, $right] = User::factory()->count(2)->create();
+    $match = app(PongMatches::class)->create($left, $right);
+
+    $this->actingAs($left)->postJson(route('pong.resign', $match))->assertOk()->assertJsonPath('status', 'aborted');
+
+    expect($match->refresh()->status)->toBe(PongMatchStatus::Aborted)
+        ->and($match->winner_id)->toBeNull()
+        ->and($match->end_reason)->toBe(PongEndReason::Abort)
+        ->and(PongRating::query()->count())->toBe(0)
+        ->and(collect(MempoolStrip::build()['finished'] ?? [])->where('kind', 'pong'))->toHaveCount(0);
+
+    // Even a finished match without a start (as a tournament no-show) stays off the lists.
+    PongMatch::factory()->finished()->create(['started_at' => null]);
+    $this->get(route('matches.index'))->assertOk()->assertDontSee('data-test="pong-row"', false);
+});
+
+test('a rematch while one of them is already in another match lapses for both, and either may offer again later', function () {
+    PongOn::play();
+    [$match, $left, $right] = PongLive::started();
+    $matches = app(PongMatches::class);
+    $matches->resign($match, $right);
+    $other = $matches->create($left, User::factory()->create());
+
+    $this->actingAs($left)->postJson(route('pong.rematch', $match))->assertOk();
+    $this->actingAs($right)->postJson(route('pong.rematch', $match))->assertOk()->assertJsonPath('rematch', [false, false])->assertJsonPath('next', null);
+
+    // The other match is over: a new offer works again.
+    $matches->resign($other, $left);
+    $this->actingAs($left)->postJson(route('pong.rematch', $match))->assertOk()->assertJsonPath('rematch', [true, false]);
+    $next = $this->actingAs($right)->postJson(route('pong.rematch', $match))->assertOk()->json('next');
+
+    expect($next)->not->toBeNull();
+});
+
 test('a match page shows its two players the live match and anybody else its score', function () {
     PongOn::play();
     [$match, $left] = PongLive::started();
