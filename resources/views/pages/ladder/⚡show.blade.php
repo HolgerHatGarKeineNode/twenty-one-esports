@@ -61,6 +61,13 @@ new #[Layout('layouts::app', ['section' => 'ladder'])] class extends Component
         // A score game (plan "AoE2 und Trackmania", P4) has no Elo ladder: its points ladder is on its leaderboards' page.
         abort_if(app(GameRegistry::class)->isScore($game), 404);
 
+        // Hyperbitcoinization (plan "Hyperbitcoinization", P6) has its own season ladder (FFA points and Elo), no Rating ladder.
+        if ($registry->find($game)?->kind() === \App\Games\GameKind::Strategy) {
+            abort_unless(\Illuminate\Support\Facades\Route::has('hyper.ladder'), 404);
+
+            throw new \Illuminate\Http\Exceptions\HttpResponseException(redirect()->route('hyper.ladder', status: 301));
+        }
+
         $this->game = $game;
         $this->mode = $mode;
         $this->pool = in_array($this->pool, [Rating::RATED, Rating::CASUAL], true) ? $this->pool : '';

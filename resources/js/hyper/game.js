@@ -944,7 +944,7 @@ async function showEnd(winner, byLimit, round, loot, quiet) {
         $('#end-sub').textContent = t('The league voided this tournament match. It counts nowhere and is not rated.');
         $('#end-loot').innerHTML = '';
         $('#end').dataset.result = 'voided';
-        ['#rematch-btn', '#replay-link', '#stats-btn'].forEach((sel) => $(sel)?.setAttribute('hidden', ''));
+        ['#rematch-btn', '#replay-link', '#stats-btn', '#share-link'].forEach((sel) => $(sel)?.setAttribute('hidden', ''));
         $('#end').hidden = false;
         hooks.onEnd?.(quiet, { voided: true });
 
@@ -972,6 +972,8 @@ async function showEnd(winner, byLimit, round, loot, quiet) {
     const myLoot = ME !== null ? loot[ME] ?? G.seats[ME]?.loot ?? 0 : null;
     $('#end-loot').innerHTML = myLoot === null ? '' : `<img src="${A}art/ico-sats.webp?v=1" alt=""> ${t(':sats M sats loot, credited to you', { sats: b('+' + fmt(myLoot)) })}`;
     if (team === null) $('#end').dataset.result = iWon ? 'win' : iLost ? 'defeat' : 'watch';
+    // A win or loot is a moment to share (P6, App\Support\Hyper\HyperMoments): the link opens the lobby's moments.
+    $('#share-link')?.toggleAttribute('hidden', !(iWon || (myLoot ?? 0) > 0));
     if (!quiet) {
         clip(iLost ? 'lose' : 'win');
         if (iWon) { sfx.fanfare(); territoriesOf(G, winner).forEach((id, i) => setTimeout(() => burst(id, '#ffb54d', 10, true), i * 60)); } else sfx.gong();
@@ -1229,8 +1231,21 @@ function bindControls() {
         rematch.onclick = async () => {
             rematch.disabled = true;
             const r = await NET.post(CFG.urls.rematch);
-            if (r.ok && r.data) onRematch(r.data); else { rematch.disabled = false; refused(r); }
+            if (r.ok && r.data) onRematch(r.data);
+            else if (r.data?.reason === 'rematch_expired') onRematch({ closed: 'expired' });
+            else { rematch.disabled = false; refused(r); }
         };
+        const decline = $('#rematch-decline');
+        if (decline) {
+            decline.onclick = async () => {
+                decline.disabled = true;
+                const r = await NET.post(CFG.urls.rematchDecline);
+                decline.disabled = false;
+                if (r.ok && r.data) onRematch(r.data); else refused(r);
+            };
+        }
+        // The rematch as it stood when the page loaded (P6): never a jump to a rematch that started meanwhile.
+        if (CFG.rematch) onRematch(CFG.rematch, true);
     }
     const leave = $('#leave-btn');
     if (leave) {
@@ -1270,14 +1285,34 @@ function bindControls() {
  * `hyper.rematch` and the rematch endpoint's answer: who said yes, who is still asked, and once everybody
  * did, the new match, where this page goes.
  */
-function onRematch(p) {
-    if (p.url) { window.location.assign(p.url); return; }
-    const btn = $('#rematch-btn'); const note = $('#rematch-note');
+let rematchTimer = 0;
+function onRematch(p, onLoad = false) {
+    if (p.url && !onLoad) { window.location.assign(p.url); return; }
+    const btn = $('#rematch-btn'); const note = $('#rematch-note'); const no = $('#rematch-decline');
     if (!btn || !note) return;
+    clearTimeout(rematchTimer);
+    // Closed (P6): declined by a player, run out, or started before this page loaded. The end screen says so and stays.
+    if (p.closed || p.url) {
+        btn.disabled = true; btn.hidden = true;
+        if (no) no.hidden = true;
+        note.textContent = p.url ? t('The rematch started.') : p.closed === 'declined' ? t(':name declined the rematch.', { name: p.by ?? '' }) : t('The rematch offer has run out.');
+        return;
+    }
     const mine = ME !== null && (p.ready ?? []).includes(ME);
+    btn.hidden = false;
     btn.disabled = mine;
-    $('#rematch-t').textContent = mine ? t('Rematch asked') : t('Accept the rematch');
-    note.textContent = (p.waiting ?? []).length ? t('Waiting for :names', { names: p.waiting.map((s) => nameOf(s)).join(', ') }) : '';
+    // Something to decline once somebody asked.
+    if (no) no.hidden = !p.table;
+    $('#rematch-t').textContent = mine ? t('Rematch asked') : p.table ? t('Accept the rematch') : t('Rematch');
+    const waiting = (p.waiting ?? []).length ? t('Waiting for :names', { names: p.waiting.map((s) => nameOf(s)).join(', ') }) : '';
+    let until = '';
+    if (p.ends_ms) {
+        const far = p.ends_ms - Date.now() > 20 * 3600 * 1000;
+        until = t('Open until :time.', { time: new Date(p.ends_ms).toLocaleString(CFG.locale, far ? { weekday: 'short', hour: '2-digit', minute: '2-digit' } : { hour: '2-digit', minute: '2-digit' }) });
+        // The offer runs out on this page's clock too; the sweep closes an asked table besides and says so.
+        rematchTimer = setTimeout(() => onRematch({ ...p, closed: 'expired' }), Math.max(0, p.ends_ms - Date.now()));
+    }
+    note.textContent = [waiting, until].filter(Boolean).join(' ');
 }
 /** The replay jumps: the table as at this snapshot's ply, nothing queued, no end screen until it ends again. */
 function jump(s) {

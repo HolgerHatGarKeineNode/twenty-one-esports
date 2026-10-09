@@ -321,6 +321,12 @@ final class HyperTexts
         'Rematch asked',
         'Accept the rematch',
         'Waiting for :names',
+        // P6: a rematch declined or run out.
+        'Rematch',
+        'The rematch started.',
+        ':name declined the rematch.',
+        'The rematch offer has run out.',
+        'Open until :time.',
         'Pause',
         'Again',
         'Play',

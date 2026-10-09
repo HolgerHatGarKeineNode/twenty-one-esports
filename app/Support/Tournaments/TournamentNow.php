@@ -7,6 +7,7 @@ use App\Enums\ChessGameStatus;
 use App\Enums\HyperMatchStatus;
 use App\Enums\TournamentFormat;
 use App\Enums\TournamentStatus;
+use App\Games\Hyperbitcoinization;
 use App\Models\BoardGame;
 use App\Models\ChessGame;
 use App\Models\HyperMatch;
@@ -21,6 +22,7 @@ use App\Support\Hyper\HyperTournamentTeams;
 use App\Support\Payouts\TournamentPlacements;
 use App\Support\Series\CasualMatches;
 use Carbon\CarbonInterface;
+use Illuminate\Support\Facades\Route;
 
 /**
  * "What to do now" at the very top of a running tournament page (user,
@@ -376,8 +378,10 @@ final class TournamentNow
             }
         }
 
-        // Hyperbitcoinization tables (P5): each opens in a new tab.
-        $tables = HyperMatch::query()->whereIn('tournament_match_id', $matches)->where('status', HyperMatchStatus::Active)->withCount('seats')->orderBy('id')->get();
+        // Hyperbitcoinization tables (P5): each opens in a new tab. Asked only of its own tournaments while routed (P6): every
+        // other tournament page stays within its query budget, with the game off too.
+        $tables = $tournament->game !== Hyperbitcoinization::SLUG || ! Route::has('hyper.match') ? collect()
+            : HyperMatch::query()->whereIn('tournament_match_id', $matches)->where('status', HyperMatchStatus::Active)->withCount('seats')->orderBy('id')->get();
         $live += $tables->count();
 
         foreach ($tables->take(self::BOARDS - count($boards)) as $table) {

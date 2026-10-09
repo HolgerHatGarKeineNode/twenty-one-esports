@@ -209,6 +209,9 @@ new class extends Component {
     $labels = ['bitcoiner' => 'Bitcoiner', 'fed' => 'Fed', 'ezb' => __('ECB'), 'goldbug' => 'Goldbug', 'shitcoiner' => 'Shitcoiner', 'nocoiner' => 'Nocoiner'];
     $portrait = HyperGame::FACTIONS;
     $chip = 'flex min-h-11 cursor-pointer items-center justify-center gap-2 rounded-md bg-well px-3 text-[13px] font-bold text-ink-2 shadow-ring aria-pressed:bg-btc-chip aria-pressed:text-ink aria-pressed:shadow-[inset_0_0_0_1px_var(--color-btc)] disabled:cursor-not-allowed disabled:opacity-40';
+    // The faction picker's chips: narrow padding and small type of their own, never the chip's px-3 / 13 px beside them
+    // (both in one class list let the 13 px win; measured at 390 px, P6: "Shitcoiner" cut to 66 of 78 px).
+    $factionChip = str_replace(['px-3 ', 'text-[13px] '], '', $chip);
     $tag = 'inline-flex h-6 items-center rounded-tag bg-ground/70 px-2 text-xs whitespace-nowrap text-ink-2 shadow-ring';
     $modeLabel = fn (string $mode): string => $mode === HyperMatch::CORRESPONDENCE ? __('Correspondence · :hours h', ['hours' => (int) config('esports.hyper.correspondence_hours', 24)]) : __('Live · :seconds s', ['seconds' => (int) config('esports.hyper.turn_seconds', 90)]);
     $limitLabel = fn (int $limit): string => $limit === 0 ? __('No round limit') : __(':rounds rounds', ['rounds' => $limit]);
@@ -296,15 +299,15 @@ new class extends Component {
 
             <fieldset class="m-0 flex flex-col gap-2 border-0 p-0">
                 <legend class="mb-2 text-xs font-bold tracking-[0.12em] text-ink-2 uppercase">{{ __('Your faction') }}</legend>
-                <div class="grid grid-cols-4 gap-2 sm:grid-cols-7" role="group">
+                <div class="grid grid-cols-3 gap-2 min-[480px]:grid-cols-4 sm:grid-cols-7" role="group">
                     @foreach (array_keys($portrait) as $faction)
                         <button type="button" wire:click="pick('{{ $faction }}')" aria-pressed="{{ $own?->faction === $faction ? 'true' : 'false' }}" @disabled(in_array($faction, $others, true))
-                                class="{{ $chip }} min-h-[68px] flex-col gap-1 px-1 text-[10px]" data-test="hyper-lobby-faction" data-faction="{{ $faction }}">
+                                class="{{ $factionChip }} min-h-[68px] flex-col gap-1 px-1 text-[11px]" data-test="hyper-lobby-faction" data-faction="{{ $faction }}">
                             <img src="/hyper/art/por-{{ $portrait[$faction] }}.jpg?v=1" alt="" width="36" height="36" class="size-9 rounded-full object-cover shadow-ring" loading="lazy">
                             <span class="max-w-full truncate">{{ $labels[$faction] }}</span>
                         </button>
                     @endforeach
-                    <button type="button" wire:click="pick('')" aria-pressed="{{ $own?->faction === null ? 'true' : 'false' }}" class="{{ $chip }} min-h-[68px] flex-col gap-1 px-1 text-[10px]" data-test="hyper-lobby-faction" data-faction="">
+                    <button type="button" wire:click="pick('')" aria-pressed="{{ $own?->faction === null ? 'true' : 'false' }}" class="{{ $factionChip }} min-h-[68px] flex-col gap-1 px-1 text-[11px]" data-test="hyper-lobby-faction" data-faction="">
                         <span class="grid size-9 place-items-center rounded-full bg-ground text-lg shadow-ring" aria-hidden="true">🎲</span>
                         <span>{{ __('Random') }}</span>
                     </button>
@@ -312,7 +315,13 @@ new class extends Component {
             </fieldset>
 
             @if ($mine->mode === HyperMatch::LIVE && $mine->fill_at !== null)
-                <p class="m-0 text-xs text-ink-2" data-test="hyper-lobby-autofill">{{ __('Bots fill the free seats :time.', ['time' => $mine->fill_at->diffForHumans()]) }}</p>
+                {{-- A countdown that ticks every second (P6): the seconds left as the server sees them, counted on the page's clock. --}}
+                @php($fillIn = max(0, $mine->fill_at->getTimestamp() - now()->getTimestamp()))
+                <p class="m-0 text-[13px] font-bold text-ink-2 tabular-nums" data-test="hyper-lobby-autofill" data-seconds="{{ $fillIn }}" wire:key="autofill-{{ $mine->fill_at->getTimestamp() }}"
+                   x-data="{ end: Date.now() + {{ $fillIn }} * 1000, left: {{ $fillIn }}, timer: null, clock(s) { return Math.floor(s / 60) + ':' + String(s % 60).padStart(2, '0'); } }"
+                   x-init="timer = setInterval(() => { left = Math.max(0, Math.ceil((end - Date.now()) / 1000)); if (left === 0) clearInterval(timer); }, 1000)"
+                   x-on:remove="clearInterval(timer)"
+                   x-text="left > 0 ? @js(__('Bots fill the free seats in :time.')).replace(':time', clock(left)) : @js(__('Bots take the free seats now …'))">{{ $fillIn > 0 ? __('Bots fill the free seats in :time.', ['time' => intdiv($fillIn, 60).':'.str_pad((string) ($fillIn % 60), 2, '0', STR_PAD_LEFT)]) : __('Bots take the free seats now …') }}</p>
             @endif
         </section>
     @else

@@ -205,8 +205,11 @@ export function startStats(config, net, game) {
 
         return () => { cancelAnimationFrame(raf); paint(1); };
     }
-    /** A text with its number as a counting span: `:count battles` with count 5. */
-    const counted = (text, value) => esc(text).replace('\u0001', `<span class="st-num" data-to="${esc(value)}">${esc(fmt(value))}</span>`);
+    /**
+     * A text with its number as a counting span: `:count battles` with count 5. One inline run, so a flex chip's gap
+     * never adds to the text's own space ("23  battles", P6).
+     */
+    const counted = (text, value) => `<span>${esc(text).replace('\u0001', `<span class="st-num" data-to="${esc(value)}">${esc(fmt(value))}</span>`)}</span>`;
     const N = '\u0001';
 
     function renderCharts() {

@@ -13,6 +13,7 @@ use App\Enums\TournamentFormat;
 use App\Enums\TournamentStatus;
 use App\Events\TournamentChanged;
 use App\Games\BoardGame as BoardGameDefinition;
+use App\Games\GameKind;
 use App\Games\GameRegistry;
 use App\Models\BoardGame;
 use App\Models\ChessGame;
@@ -1339,8 +1340,12 @@ final class TournamentRunner
         }
 
         $mode = $this->games->mode($tournament->game, $tournament->mode);
+        // A Hyperbitcoinization table (P6) is one match with places, never a series: the desk names its winner, one
+        // game (its validateResult() reads places, so a series of games would never pass it).
+        $table = $this->games->find($tournament->game)?->kind() === GameKind::Strategy;
+        $invalid = $table ? count($games) !== 1 : $mode !== null && $this->games->get($tournament->game)->validateResult($mode, ['bo' => $bestOf, 'games' => $games]) !== [];
 
-        if ($games === [] || $mode === null || $this->games->get($tournament->game)->validateResult($mode, ['bo' => $bestOf, 'games' => $games]) !== []) {
+        if ($games === [] || $mode === null || $invalid) {
             throw new TournamentRuleViolation('series_invalid', __('The series is not finished: one side needs :wins game wins in a best of :bo.', ['wins' => intdiv($bestOf, 2) + 1, 'bo' => $bestOf]));
         }
 

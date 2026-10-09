@@ -226,12 +226,21 @@ final class HyperMatches
      * Plays every bot turn in a row from `expectedPly` on, each in its own transaction and broadcast, until
      * a player is to move or the match is over. Does nothing when the match moved on since (another job,
      * a player) or the seat to move is no bot.
+     *
+     * At most `maxTurns` bot turns (P6, PlayHyperBots plays a long bots-only chain in parts): returns the ply to
+     * go on from when it stopped there with a bot still to move, else null.
      */
-    public function playBots(HyperMatch $match, int $expectedPly): void
+    public function playBots(HyperMatch $match, int $expectedPly, int $maxTurns = PHP_INT_MAX): ?int
     {
         $ply = $expectedPly;
+        $turns = 0;
 
         while ($ply !== null) {
+            if ($turns >= $maxTurns) {
+                return $ply;
+            }
+
+            $turns++;
             $played = null;
 
             try {
@@ -247,7 +256,7 @@ final class HyperMatches
                 }, chainBots: false);
             } catch (HyperRuleViolation $violation) {
                 if ($violation->reason === 'game_over') {
-                    return;
+                    return null;
                 }
 
                 if ($violation->reason !== 'turn_timed_out') {
@@ -261,6 +270,8 @@ final class HyperMatches
 
             $ply = $played !== null && $match->isActive() && $this->seatToMove($match)->bot ? $played : null;
         }
+
+        return null;
     }
 
     /**

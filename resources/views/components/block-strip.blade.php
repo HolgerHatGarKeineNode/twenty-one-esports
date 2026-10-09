@@ -70,7 +70,7 @@
                                     <span class="bs-tag">{{ __('casual') }}</span>
                                 @endif
                             </span>
-                            <a href="{{ $block['href'] }}"
+                            <a href="{{ $block['href'] }}" @if ($block['blank'] ?? false) target="_blank" @endif
                                @class(['bs-cube', 'g-'.$block['game'], 'is-'.$block['state'], 'is-casual' => $block['casual'], 'is-mined' => ($block['chain']['state'] ?? null) === 'mined'])
                                style="--lvl: {{ $block['level'] }}"
                                aria-label="{{ $block['aria'] }}">

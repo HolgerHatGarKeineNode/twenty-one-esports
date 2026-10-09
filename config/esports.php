@@ -1727,6 +1727,8 @@ return [
         'bot_round_cap' => 200,
         'correspondence_hours' => 24,
         'lobby_fill_seconds' => 120,
+        // P6: how long after the end a rematch can be asked and started, by mode; then it closes for everybody.
+        'rematch_minutes' => ['live' => 10, 'correspondence' => 3 * 24 * 60],
         'season_points' => [
             3 => [6, 3, 1],
             4 => [8, 5, 3, 1],

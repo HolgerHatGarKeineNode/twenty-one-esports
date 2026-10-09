@@ -6,11 +6,13 @@ use App\Enums\TournamentFormat;
 use App\Games\Blockfill;
 use App\Games\BoardGame as BoardGameDefinition;
 use App\Games\GameRegistry;
+use App\Games\Hyperbitcoinization;
 use App\Games\ScoreMetric;
 use App\Games\TrackmaniaNationsForever;
 use App\Models\BoardGame;
 use App\Models\ChessGame;
 use App\Models\Clan;
+use App\Models\HyperMatch;
 use App\Models\SeriesMatch;
 use App\Models\Tournament;
 use App\Models\User;
@@ -49,14 +51,15 @@ final class PageCard
 
     public const HEIGHT = 630;
 
-    public const TYPES = ['game', 'tournament', 'player', 'clan', 'series', 'ladder', 'board', 'leaderboard', 'page'];
+    public const TYPES = ['game', 'tournament', 'player', 'clan', 'series', 'ladder', 'board', 'leaderboard', 'hyper', 'page'];
 
     /**
      * The fixed pages with a card of their own (type `page`); next to them a
      * series game's hub (`hub.<game>`), a board game's lobby
      * (`board.<game>`) and correspondence page (`board-daily.<game>`), a
      * score game's page (`scores.<game>`), Blockfill (`blockfill`) and its
-     * replays (`blockfill-replays`).
+     * replays (`blockfill-replays`), Hyperbitcoinization's start page
+     * (`hyper`) and season ladder (`hyper-ladder`).
      */
     public const PAGES = ['home', 'login', 'clans', 'matches', 'games', 'chess', 'tournaments', 'play', 'rules', 'protocol', 'mining', 'live', 'strongest'];
 
@@ -124,6 +127,12 @@ final class PageCard
         return new self('board', (string) $game->id, PageCardFacts::board($game));
     }
 
+    /** A Hyperbitcoinization match, its page and its replay (plan "Hyperbitcoinization", P6): the result once over. */
+    public static function hyper(HyperMatch $match): self
+    {
+        return new self('hyper', $match->ulid, PageCardFacts::hyper($match));
+    }
+
     /** A score leaderboard (`tournaments/<id>/scores`), a Blockfill week among them. */
     public static function leaderboard(Tournament $tournament): self
     {
@@ -139,6 +148,8 @@ final class PageCard
             $page === 'strongest' => PageCardFacts::strongest(),
             $page === 'blockfill' => PageCardFacts::blockfill(),
             $page === 'blockfill-replays' => PageCardFacts::blockfillReplays(),
+            $page === 'hyper' => PageCardFacts::hyperPage(),
+            $page === 'hyper-ladder' => PageCardFacts::hyperLadder(),
             str_starts_with($page, 'hub.') => PageCardFacts::hub(substr($page, 4)),
             str_starts_with($page, 'board.') => PageCardFacts::boardLobby(substr($page, 6), false),
             str_starts_with($page, 'board-daily.') => PageCardFacts::boardLobby(substr($page, 12), true),
@@ -167,6 +178,8 @@ final class PageCard
             'board' => ctype_digit($key) && ($board = BoardGame::query()->find((int) $key)) !== null && app(GameRegistry::class)->isBoard($board->game) ? self::boardGame($board) : null,
             'leaderboard' => ctype_digit($key) && ($tournament = Tournament::query()->find((int) $key)) !== null && self::hasPublicLeaderboard($tournament)
                 ? self::leaderboard($tournament) : null,
+            // A ULID in lower case, as the match's URL writes it; only while the game is on.
+            'hyper' => app(GameRegistry::class)->find(Hyperbitcoinization::SLUG) !== null && ($match = HyperMatch::query()->where('ulid', $key)->first()) !== null ? self::hyper($match) : null,
             'page' => self::isPage($key) ? self::page($key) : null,
             default => null,
         };
@@ -181,6 +194,7 @@ final class PageCard
         return match (true) {
             in_array($key, self::PAGES, true) => true,
             $key === 'blockfill', $key === 'blockfill-replays' => $games->find(Blockfill::SLUG) !== null,
+            $key === 'hyper', $key === 'hyper-ladder' => $games->find(Hyperbitcoinization::SLUG) !== null,
             str_starts_with($key, 'hub.') => $games->isSeries($slug),
             str_starts_with($key, 'board.') => $games->isBoard($slug),
             str_starts_with($key, 'board-daily.') => $games->isBoard($slug) && $games->mode($slug, BoardGame::CORRESPONDENCE) !== null,
@@ -281,6 +295,7 @@ final class PageCard
                 default => $this->gameHeadline(),
             }.'. '.$this->sideName('white').' '.__('(white)').', '.$this->sideName('black').' '.__('(black)').'. '.GameNames::credited((string) $f['game']).'.',
             'leaderboard' => $this->leaderboardTitle($f).'. '.$this->leaderboardStatus().'.',
+            'hyper' => $this->hyperTitle().'. '.$this->hyperLine().'.',
             default => $this->pageTitle().'.',
         };
     }
@@ -300,12 +315,15 @@ final class PageCard
             'ladder' => $this->drawLadder(),
             'board' => $this->drawBoard(),
             'leaderboard' => $this->drawLeaderboard(),
+            'hyper' => $this->drawHyper(),
             default => match (true) {
                 $this->key === 'mining' => $this->drawMining(),
                 $this->key === 'live' => $this->drawLive(),
                 $this->key === 'strongest' => $this->drawStrongest(),
                 $this->key === 'blockfill' => $this->drawBlockfill(),
                 $this->key === 'blockfill-replays' => $this->drawBlockfillReplays(),
+                $this->key === 'hyper' => $this->drawHyperPage(),
+                $this->key === 'hyper-ladder' => $this->drawHyperLadder(),
                 str_starts_with($this->key, 'hub.') => $this->drawHub(),
                 str_starts_with($this->key, 'board.'), str_starts_with($this->key, 'board-daily.') => $this->drawBoardLobby(),
                 str_starts_with($this->key, 'scores.') => $this->drawScoreGame(),
@@ -1278,6 +1296,115 @@ final class PageCard
         }
     }
 
+    /* ---------- Hyperbitcoinization ---------------------------------------------------------------------------- */
+
+    /**
+     * A match (plan "Hyperbitcoinization", P6): who won (or the round it is in), the format below, and the first
+     * three as a podium, by place with their loot once over, else the first seats with their faction.
+     */
+    private function drawHyper(): void
+    {
+        $f = $this->facts;
+        $cover = app(GameRegistry::class)->coverPath(Hyperbitcoinization::SLUG);
+
+        if ($cover !== null) {
+            $this->c->cover($cover, 856, 48, 280, 132);
+        }
+
+        $title = $this->hyperTitle();
+        $size = $this->c->fitSize($title, 'display', [48, 40, 34], 740);
+        $this->c->text($this->c->fit($title, 'display', $size, 740), 'display', $size, self::M, 48 + $size, $f['status'] === 'active' ? self::LIVE : Canvas::INK);
+        $this->c->text($this->c->fit($this->hyperLine(), 'mono', self::MIN, 760), 'mono', self::MIN, self::M, 48 + $size + 48, Canvas::INK_2);
+
+        if ($f['status'] === 'finished') {
+            $this->podium(self::rows($f['top']), __('No seats yet.'));
+
+            return;
+        }
+
+        $this->hyperSeats(self::rows($f['top']));
+    }
+
+    /**
+     * The seats of a running (or voided) match side by side, no places: a face (a bot's faction tag), the name
+     * and the faction under it, 2 to 6 across the card.
+     *
+     * @param  list<array<array-key, mixed>>  $seats
+     */
+    private function hyperSeats(array $seats): void
+    {
+        $count = max(1, count($seats));
+        $column = (int) floor((self::WIDTH - 2 * self::M) / $count);
+        $size = min(112, $column - 40);
+
+        foreach ($seats as $index => $seat) {
+            $cx = self::M + $column * $index + $column / 2;
+            $x = (int) round($cx - $size / 2);
+
+            if (($seat['pubkey'] ?? null) === null) {
+                $this->clanTile((string) ($seat['tag'] ?? '?'), null, $x, 228, $size);
+            } else {
+                $this->c->avatar($this->drawable($seat), $x, 228, $size);
+            }
+
+            $this->textCenter((string) $seat['name'], 'mono-bold', self::MIN, $cx, 406, Canvas::INK, $column - 16);
+            $this->textCenter((string) ($seat['line'] ?? ''), 'mono', self::MIN, $cx, 446, Canvas::INK_2, $column - 16);
+        }
+    }
+
+    private function hyperTitle(): string
+    {
+        $f = $this->facts;
+
+        return match ($f['status']) {
+            'finished' => $f['winner'] !== null ? __(':name wins', ['name' => $f['winner']]) : 'Hyperbitcoinization',
+            'aborted' => __('Match voided'),
+            default => __('Live: round :round', ['round' => $f['round']]),
+        };
+    }
+
+    /** "Live · 4 seats · round 14": the mode, size and length of a match (the cover beside it names the game). */
+    private function hyperLine(): string
+    {
+        $f = $this->facts;
+        $size = $f['team'] ? intdiv((int) $f['seats'], 2).'v'.intdiv((int) $f['seats'], 2) : trans_choice(':count seat|:count seats', (int) $f['seats']);
+
+        return implode(' · ', [GameNames::mode(Hyperbitcoinization::SLUG, (string) $f['mode']), $size, __('round :n', ['n' => $f['round']])]);
+    }
+
+    /** The start page: the cover, the name, the game in one line, running and played matches. */
+    private function drawHyperPage(): void
+    {
+        $f = $this->facts;
+        $this->gameCover(Hyperbitcoinization::SLUG);
+        $size = $this->c->fitSize('Hyperbitcoinization', 'display', [48, 40, 34, 30], 510);
+        $after = $this->c->paragraph('Hyperbitcoinization', 'display', $size, self::M, 48 + $size, 510, 1, Canvas::INK, 1.12);
+        $this->c->paragraph(__('Risk with currency spaces, 2 to 6 players. Topple central banks, loot sats.'), 'mono', self::MIN, self::M, $after + 16, 500, 3, Canvas::INK_2, 1.3);
+        $this->figures([
+            [trans_choice('match running|matches running', (int) $f['running']), (string) $f['running']],
+            [trans_choice('match played|matches played', (int) $f['played']), (string) $f['played']],
+        ], self::M, 440, 352);
+    }
+
+    /** The season ladder: the first three by free-for-all points. */
+    private function drawHyperLadder(): void
+    {
+        $f = $this->facts;
+        $cover = app(GameRegistry::class)->coverPath(Hyperbitcoinization::SLUG);
+
+        if ($cover !== null) {
+            $this->c->cover($cover, 856, 48, 280, 132);
+        }
+
+        $title = __('Hyperbitcoinization season ladder');
+        $size = $this->c->fitSize($title, 'display', [48, 40, 34], 740);
+        $after = $this->c->paragraph($title, 'display', $size, self::M, 48 + $size, 740, 2, Canvas::INK, 1.1);
+        $sub = $f['season'] === null ? __('Rated play starts with the season.') : trans_choice(':count entry|:count entries', (int) $f['entries']);
+        $this->c->text($sub, 'mono', self::MIN, self::M, (int) $after - 4, Canvas::INK_2);
+
+        $this->podium(self::rows($f['top']), __('No rated match yet. The first one opens the ladder.'), (int) max(0, $after - 150));
+    }
+
     /* ---------- Season chain ----------------------------------------------------------------------------------- */
 
     private function drawMining(): void
@@ -1482,6 +1609,8 @@ final class PageCard
             str_starts_with($this->key, 'hub.') => GameNames::game(substr($this->key, 4)),
             $this->key === 'blockfill' => 'Blockfill',
             $this->key === 'blockfill-replays' => __('Blockfill replays'),
+            $this->key === 'hyper' => 'Hyperbitcoinization',
+            $this->key === 'hyper-ladder' => __('Hyperbitcoinization season ladder'),
             str_starts_with($this->key, 'board.') => GameNames::credited(substr($this->key, 6)),
             str_starts_with($this->key, 'board-daily.') => __(':game correspondence', ['game' => GameNames::credited(substr($this->key, 12))]),
             str_starts_with($this->key, 'scores.') => __(':game leaderboards', ['game' => GameNames::game(substr($this->key, 7))]),

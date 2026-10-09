@@ -4,6 +4,7 @@ namespace App\Support\Cards;
 
 use App\Enums\BoardGameStatus;
 use App\Enums\ChessGameStatus;
+use App\Enums\HyperMatchStatus;
 use App\Enums\PayoutStatus;
 use App\Enums\SeriesResolution;
 use App\Enums\SeriesStatus;
@@ -11,11 +12,14 @@ use App\Enums\TournamentFormat;
 use App\Enums\TournamentStatus;
 use App\Games\Blockfill;
 use App\Games\GameRegistry;
+use App\Games\Hyperbitcoinization;
 use App\Models\BoardGame;
 use App\Models\ChessGame;
 use App\Models\ChessMove;
 use App\Models\Clan;
 use App\Models\ClanMember;
+use App\Models\HyperMatch;
+use App\Models\HyperSeat;
 use App\Models\Lineup;
 use App\Models\Rating;
 use App\Models\SeasonAttestation;
@@ -27,6 +31,8 @@ use App\Models\User;
 use App\Support\Chess\ChessTeamMatches;
 use App\Support\Clans\ClanLogos;
 use App\Support\GameNames;
+use App\Support\Hyper\HyperNames;
+use App\Support\Hyper\HyperSeason;
 use App\Support\Payouts\TournamentPlacements;
 use App\Support\Players\PlayerStats;
 use App\Support\Players\RecentResults;
@@ -543,6 +549,76 @@ final class PageCardFacts
                 'played' => $games()->where('status', BoardGameStatus::Finished)->count(),
             ];
         });
+    }
+
+    /* ---------- Hyperbitcoinization ---------------------------------------------------------------------------- */
+
+    /**
+     * A Hyperbitcoinization match (plan "Hyperbitcoinization", P6), its page and its replay: the state, the round,
+     * the seats; finished, the first three by place with their loot, else every seat with its faction.
+     * A player shows their face, a bot its faction's tag.
+     *
+     * @return array<string, mixed>
+     */
+    public static function hyper(HyperMatch $match): array
+    {
+        $seats = HyperNames::ordered($match);
+        $finished = $match->status === HyperMatchStatus::Finished;
+
+        return [
+            'game' => Hyperbitcoinization::SLUG,
+            'status' => $match->status->value,
+            'mode' => $match->mode,
+            'round' => (int) ($match->state['round'] ?? 1),
+            'seats' => count($seats),
+            'team' => $match->isTeamMatch(),
+            'rated' => $match->rated,
+            'winner' => $finished ? HyperNames::winner($match) : null,
+            // Finished: the first three by place; running or voided: every seat in seat order, no places.
+            'top' => array_map(fn (HyperSeat $seat, int $index): array => [
+                'place' => $finished ? (int) ($seat->place ?? $index + 1) : $index + 1,
+                ...($seat->user instanceof User ? self::person($seat->user) : ['name' => HyperNames::seat($seat), 'pubkey' => null, 'avatar_path' => null]),
+                'tag' => $seat->user instanceof User ? null : strtoupper(mb_substr(HyperNames::faction($seat->faction), 0, 3)),
+                'logo' => null,
+                'line' => $finished ? __(':sats M sats', ['sats' => rtrim(rtrim(number_format((float) $seat->loot, 1, '.', ''), '0'), '.')]) : HyperNames::faction($seat->faction),
+            ], $finished ? array_slice($seats, 0, self::FACES) : $seats, array_keys($finished ? array_slice($seats, 0, self::FACES) : $seats)),
+        ];
+    }
+
+    /**
+     * Hyperbitcoinization's start page: matches running now and matches played.
+     *
+     * @return array<string, mixed>
+     */
+    public static function hyperPage(): array
+    {
+        return Cache::remember('page-card:hyper', now()->addSeconds(self::COUNTS_TTL), fn (): array => [
+            'game' => Hyperbitcoinization::SLUG,
+            'running' => HyperMatch::query()->where('status', HyperMatchStatus::Active)->count(),
+            'played' => HyperMatch::query()->where('status', HyperMatchStatus::Finished)->count(),
+        ]);
+    }
+
+    /**
+     * Hyperbitcoinization's season ladder: the live season's first three by free-for-all points.
+     *
+     * @return array<string, mixed>
+     */
+    public static function hyperLadder(): array
+    {
+        $season = HyperSeason::seasonFor();
+        $rows = $season === null ? [] : app(HyperSeason::class)->ffaStandings($season, 200);
+
+        return [
+            'game' => Hyperbitcoinization::SLUG,
+            'season' => $season,
+            'entries' => count($rows),
+            'top' => array_map(fn (array $row): array => [
+                'place' => $row['rank'],
+                ...self::person($row['user']),
+                'line' => __(':points pts', ['points' => $row['points']]),
+            ], array_slice($rows, 0, self::FACES)),
+        ];
     }
 
     /* ---------- Score games ------------------------------------------------------------------------------------ */

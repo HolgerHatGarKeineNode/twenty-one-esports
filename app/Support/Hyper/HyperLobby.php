@@ -12,9 +12,11 @@ use App\Models\HyperTable;
 use App\Models\HyperTableSeat;
 use App\Models\User;
 use App\Support\Chess\Broadcasts;
+use Carbon\CarbonInterface;
 use Closure;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Support\Facades\DB;
+use Throwable;
 
 /**
  * The Hyperbitcoinization lobby (plan "Hyperbitcoinization", P3): tables of 2 to 6 seats that wait for
@@ -34,7 +36,8 @@ use Illuminate\Support\Facades\DB;
  * - rematch(): after a match, the same lineup at a new table with a new seed; bots and seats whose player
  *   left are bots, every other player says yes first (`ready`). The table's players hear each yes on the
  *   old match's channels (HyperRematchUpdated), and the url once it starts. It inherits the old match's rating:
- *   a rematch of an unrated match is a friendly match.
+ *   a rematch of an unrated match is a friendly match. Any player may decline it (declineRematch(), P6): it closes
+ *   for everybody. The offer runs out `esports.hyper.rematch_minutes` after the end (closeExpiredRematches()).
  *
  * - A clan table (P4, `clans`): 4 or 6 seats in two sides seated alternately (seats 0, 2, 4 and 1, 3, 5),
  *   each side one clan (HyperTeams: a clan linked to a meetup plays as that meetup). The creator's clan
@@ -229,11 +232,12 @@ final class HyperLobby
      *
      * @return array{table: HyperTable, match: HyperMatch|null}
      *
-     * @throws HyperRuleViolation `no_rematch`
+     * @throws HyperRuleViolation `no_rematch`, `rematch_expired`
      */
     public function rematch(HyperMatch $old, User $user): array
     {
-        $table = DB::transaction(function () use ($old, $user): HyperTable {
+        $expired = false;
+        $table = DB::transaction(function () use ($old, $user, &$expired): ?HyperTable {
             $locked = HyperMatch::query()->lockForUpdate()->findOrFail($old->id);
             $locked->load('seats');
             $mine = $locked->seatOf($user);
@@ -243,6 +247,19 @@ final class HyperLobby
             }
 
             $table = HyperTable::query()->where('rematch_of', $locked->id)->lockForUpdate()->first();
+
+            // The offer runs out (P6): no new table after the window, and an open one closes for everybody (committed,
+            // then refused below).
+            if ($table?->isOpen() !== false && self::rematchExpired($locked)) {
+                $expired = true;
+
+                if ($table !== null) {
+                    $this->closeRematch($table, HyperTable::EXPIRED, null);
+                    Broadcasts::send(new HyperRematchUpdated($locked->ulid, $this->rematchPayload($table, $locked)));
+                }
+
+                return $table;
+            }
 
             if ($table === null) {
                 $table = HyperTable::query()->create([
@@ -284,10 +301,14 @@ final class HyperLobby
                 }
             }
 
-            Broadcasts::send(new HyperRematchUpdated($locked->ulid, $this->rematchPayload($table)));
+            Broadcasts::send(new HyperRematchUpdated($locked->ulid, $this->rematchPayload($table, $locked)));
 
             return $table;
         });
+
+        if ($expired || $table === null) {
+            throw new HyperRuleViolation('rematch_expired', 'The rematch offer ran out.');
+        }
 
         $table->refresh()->load('takenSeats', 'match');
 
@@ -295,24 +316,133 @@ final class HyperLobby
     }
 
     /**
-     * What `hyper.rematch` carries and the rematch endpoint answers: who said yes (seat indexes), who is
-     * still asked, and the new match's url once it started.
+     * A player of a finished match says no to a rematch (P6): the rematch closes for everybody, whether somebody
+     * asked already or not (a closed table keeps `rematch_of`, so nobody opens another), and every end screen of
+     * the old match hears who declined. A rematch that started or closed already stays as it is.
      *
-     * @return array{table: string, ready: list<int>, waiting: list<int>, url: string|null}
+     * @throws HyperRuleViolation `no_rematch`
      */
-    public function rematchPayload(HyperTable $table): array
+    public function declineRematch(HyperMatch $old, User $user): HyperTable
     {
-        $table->loadMissing('takenSeats');
-        $humans = $table->takenSeats->filter(fn (HyperTableSeat $seat): bool => ! $seat->bot);
+        return DB::transaction(function () use ($old, $user): HyperTable {
+            $locked = HyperMatch::query()->lockForUpdate()->findOrFail($old->id);
+            $locked->load('seats');
+
+            if ($locked->status !== HyperMatchStatus::Finished || $locked->seatOf($user) === null) {
+                throw new HyperRuleViolation('no_rematch', 'Only a player of a finished match declines its rematch.');
+            }
+
+            $table = HyperTable::query()->where('rematch_of', $locked->id)->lockForUpdate()->first()
+                ?? HyperTable::query()->create([
+                    'mode' => $locked->mode, 'seats' => $locked->seats->count(), 'round_limit' => $locked->round_limit, 'team_clans' => $locked->team_clans,
+                    'friendly' => ! $locked->rated, 'status' => HyperTable::OPEN, 'created_by' => $user->id, 'rematch_of' => $locked->id,
+                ]);
+
+            if ($table->isOpen()) {
+                $this->closeRematch($table, HyperTable::DECLINED, $user);
+                Broadcasts::send(new HyperRematchUpdated($locked->ulid, $this->rematchPayload($table, $locked)));
+            }
+
+            return $table;
+        });
+    }
+
+    /**
+     * Every open rematch table whose offer ran out closes (the `hyper:check-clocks` sweep), and the old match's end
+     * screens hear it. Each on its own: one that fails is reported, the others still close. Returns how many closed.
+     */
+    public function closeExpiredRematches(): int
+    {
+        $closed = 0;
+
+        foreach (HyperTable::query()->where('status', HyperTable::OPEN)->whereNotNull('rematch_of')->with('previousMatch')->get() as $table) {
+            if ($table->previousMatch === null || ! self::rematchExpired($table->previousMatch)) {
+                continue;
+            }
+
+            try {
+                $closed += DB::transaction(function () use ($table): int {
+                    $locked = HyperTable::query()->lockForUpdate()->find($table->id);
+
+                    if ($locked === null || ! $locked->isOpen()) {
+                        return 0;
+                    }
+
+                    $this->closeRematch($locked, HyperTable::EXPIRED, null);
+                    Broadcasts::send(new HyperRematchUpdated($table->previousMatch->ulid, $this->rematchPayload($locked, $table->previousMatch)));
+
+                    return 1;
+                });
+            } catch (Throwable $exception) {
+                report($exception);
+            }
+        }
+
+        return $closed;
+    }
+
+    /**
+     * When the rematch offer of a finished match runs out: `esports.hyper.rematch_minutes` of its mode after its
+     * end (10 minutes live, 3 days by correspondence). Null for a match that is not over.
+     */
+    public static function rematchEndsAt(HyperMatch $match): ?CarbonInterface
+    {
+        $minutes = (int) (config('esports.hyper.rematch_minutes.'.$match->mode) ?? config('esports.hyper.rematch_minutes.live', 10));
+
+        return $match->ended_at?->copy()->addMinutes($minutes);
+    }
+
+    public static function rematchExpired(HyperMatch $match): bool
+    {
+        $ends = self::rematchEndsAt($match);
+
+        return $ends !== null && $ends->isPast();
+    }
+
+    private function closeRematch(HyperTable $table, string $why, ?User $by): void
+    {
+        $table->forceFill(['status' => HyperTable::CANCELLED, 'closed' => $why, 'closed_by' => $by?->id])->save();
+    }
+
+    /**
+     * What `hyper.rematch` carries and the rematch endpoint answers: who said yes (seat indexes), who is
+     * still asked, and the new match's url once it started; since P6 also whether it closed without a match
+     * (`closed`: declined or expired, `by` who declined) and when the offer runs out (`ends_ms`).
+     *
+     * @return array{table: string|null, ready: list<int>, waiting: list<int>, url: string|null, closed: string|null, by: string|null, ends_ms: int|null}
+     */
+    public function rematchPayload(?HyperTable $table, HyperMatch $old): array
+    {
+        $table?->loadMissing('takenSeats', 'closer');
+        $humans = $table === null ? collect() : $table->takenSeats->filter(fn (HyperTableSeat $seat): bool => ! $seat->bot);
+        $closed = $table->closed ?? ($table === null && self::rematchExpired($old) ? HyperTable::EXPIRED : null);
 
         return [
-            'table' => $table->ulid,
+            'table' => $table?->ulid,
             'ready' => array_values($humans->filter(fn (HyperTableSeat $seat): bool => $seat->ready)->pluck('seat')->all()),
             'waiting' => array_values($humans->reject(fn (HyperTableSeat $seat): bool => $seat->ready)->pluck('seat')->all()),
-            'url' => $table->status === HyperTable::STARTED && $table->hyper_match_id !== null
+            'url' => $table !== null && $table->status === HyperTable::STARTED && $table->hyper_match_id !== null
                 ? route('hyper.match', HyperMatch::query()->findOrFail($table->hyper_match_id))
                 : null,
+            'closed' => $closed,
+            'by' => $closed === HyperTable::DECLINED ? ($table?->closer?->displayName() ?? (string) __('A player')) : null,
+            'ends_ms' => self::rematchEndsAt($old)?->getTimestampMs(),
         ];
+    }
+
+    /**
+     * The rematch state of a finished match for its page on load (P6), so a reload shows a decline or an expired
+     * offer as the push did; null while the match runs.
+     *
+     * @return array{table: string|null, ready: list<int>, waiting: list<int>, url: string|null, closed: string|null, by: string|null, ends_ms: int|null}|null
+     */
+    public function rematchState(HyperMatch $match): ?array
+    {
+        if ($match->status !== HyperMatchStatus::Finished) {
+            return null;
+        }
+
+        return $this->rematchPayload(HyperTable::query()->where('rematch_of', $match->id)->first(), $match);
     }
 
     /**

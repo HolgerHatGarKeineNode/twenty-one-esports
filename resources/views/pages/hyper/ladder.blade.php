@@ -10,6 +10,9 @@
     $points = (array) config('esports.hyper.season_points', []);
     $elo = $board !== 'ffa';
     $grid = 'grid grid-cols-[28px_minmax(0,1fr)_56px] gap-3 lg:grid-cols-[40px_minmax(0,1fr)_96px_96px_64px]';
+    // Indexed, with its own link preview (P6): the season's first three by free-for-all points.
+    app(\App\Support\PageMeta::class)->describe(__('Hyperbitcoinization ladder'), __('The Hyperbitcoinization season ladder of the TWENTY ONE esports league: free-for-all points by place, 1v1 and team Elo, rated matches without bots only.'))
+        ->card(fn () => \App\Support\Cards\PageCard::page('hyper-ladder'));
 @endphp
 <x-layouts::app :title="__('Hyperbitcoinization ladder')">
     <div class="flex grow flex-col gap-4 px-4 pb-8 lg:gap-6 lg:px-12" data-test="hyper-ladder">
