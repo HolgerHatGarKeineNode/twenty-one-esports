@@ -76,7 +76,7 @@ function pongRefereeGame(int $seed, array $levels, int $maxRallies = 500, PongRu
  */
 function pongEventReferee(string $event, int $from = 1, ?Closure $accept = null): PongReferee
 {
-    $rules = new PongRules(eventEvery: 1);
+    $rules = new PongRules(eventBlock: 1);
 
     for ($seed = $from; $seed < $from + 5000; $seed++) {
         if ($rules->eventOf($seed, 1) === $event) {
@@ -222,11 +222,11 @@ it('decides a contact nobody reported as a miss once the grace is over, and neve
 });
 
 it('agrees with PongGame::bots() when every rally is a meme event, all nine of them included', function (int $seed, int $left, int $right) {
-    $rules = new PongRules(eventEvery: 1);
+    $rules = new PongRules(eventBlock: 1);
     $expected = PongGame::bots($seed, [$left, $right], $rules);
     ['referee' => $referee] = pongRefereeGame($seed, [$left, $right], 500, $rules);
 
-    expect(array_unique(array_column($expected['events'], 1)))->toEqualCanonicalizing(PongRules::EVENTS)
+    expect(array_values(array_unique(array_column($expected['events'], 1))))->toEqualCanonicalizing(PongRules::EVENTS)
         ->and($referee->score)->toBe($expected['score'])
         ->and($referee->winner)->toBe($expected['winner'])
         ->and($referee->rally)->toBe($expected['rallies']);
@@ -295,7 +295,7 @@ it('judges two contacts of one side reported out of tick order without a negativ
 
 it('accepts two balls at one face reported in ball order, the later contact first, in a Pizza Day and a P7 rally', function (string $event) {
     // Two balls at the same side's face a few ticks apart; the page reports them in ball order, not tick order.
-    $rules = new PongRules(eventEvery: 1);
+    $rules = new PongRules(eventBlock: 1);
     $seed = 1;
 
     while ($rules->eventOf($seed, 1) !== $event) {

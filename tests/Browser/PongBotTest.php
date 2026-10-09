@@ -89,7 +89,7 @@ JS;
 test('a bot game plays to its end with the server\'s score, the field fits the window, and the console stays clean', function (int $width, int $height, int $seed, int $auto, int $level) {
     $expected = PongGame::bots($seed, [$auto, $level]);
     expect($expected['winner'])->not->toBeNull()
-        ->and((new PongRules)->eventOf($seed, 21))->not->toBeNull();
+        ->and(array_values(array_filter(array_map(fn (int $rally): ?string => (new PongRules)->eventOf($seed, $rally), range(1, 21)))))->toEqualCanonicalizing(PongRules::EVENTS);
 
     $page = pongPage(User::factory()->create(), route('pong.bot', ['level' => $level, 'seed' => $seed], false), $width, $height, ['speed' => 100, 'autoplay' => $auto]);
 
@@ -110,7 +110,7 @@ test('a bot game plays to its end with the server\'s score, the field fits the w
     $page->locator('[data-test=pong-start-btn]')->click();
     BrowserWait::until($page, '() => window.pongGame.state().phase === "play" && window.pongGame.state().ticks > 400', 20_000);
     pongShot($page, "pong-{$width}-play");
-    // The meme event of rally 21 is announced on the way.
+    // The first block's nine meme events are announced on the way.
     BrowserWait::until($page, '() => window.pongGame.state().rally >= 21 || window.pongGame.state().phase === "over"', 60_000);
     BrowserWait::until($page, '() => window.pongGame.state().phase === "over"', 60_000);
 

@@ -93,7 +93,7 @@ test('a logged-in player gets the full-screen game page with seed, level, rules 
     expect($config['seed'])->toBe(4242)
         ->and($config['level'])->toBe(4)
         ->and($config['bot'])->toBe('Madame Brrr Lagarde')
-        ->and($config['rules'])->toBe(['points_to_win' => 21, 'win_by' => 2, 'event_every_rallies' => 21])
+        ->and($config['rules'])->toBe(['points_to_win' => 21, 'win_by' => 2, 'event_block_rallies' => 21])
         ->and(array_keys($config['texts']))->toBe(PongController::TEXTS);
 
     // Without a seed every game draws its own; a level out of range is refused.
