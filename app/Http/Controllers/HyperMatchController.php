@@ -137,7 +137,7 @@ class HyperMatchController extends Controller
                 'locale' => app()->getLocale(),
                 'csrf' => csrf_token(),
                 'texts' => HyperTexts::dictionary(),
-                'clips' => HyperEmotes::clips(),
+                'clips' => HyperEmotes::offered(),
                 'chat' => HyperTableChat::config($match, $viewer),
                 // The team chat (P4): only its url; the members come from team() for a player of the team.
                 'teamChat' => $this->teamChatConfig($match, $viewer),
@@ -198,7 +198,7 @@ class HyperMatchController extends Controller
                 'locale' => app()->getLocale(),
                 'csrf' => csrf_token(),
                 'texts' => HyperTexts::dictionary(),
-                'clips' => HyperEmotes::clips(),
+                'clips' => HyperEmotes::offered(),
                 // The match's table chat, read as a guest reads it: the replay writes nothing.
                 'chat' => HyperTableChat::config($match, null),
             ],
@@ -419,6 +419,7 @@ class HyperMatchController extends Controller
             'no_rematch' => __('A rematch follows a finished match of yours.'),
             'rematch_expired' => __('The rematch offer has run out.'),
             'unknown_emote' => __('Unknown emote.'),
+            'clips_muted' => __('Soundboard emotes are switched off.'),
             default => __('That is not allowed right now.'),
         };
     }

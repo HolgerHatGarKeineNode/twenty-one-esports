@@ -6,6 +6,7 @@ use App\Models\LeagueSettingChange;
 use App\Models\User;
 use App\Support\Board;
 use App\Support\Hyper\HyperCups;
+use App\Support\Hyper\HyperEmotes;
 use Illuminate\Database\Eloquent\Collection as EloquentCollection;
 use Illuminate\Database\QueryException;
 use Illuminate\Support\Facades\DB;
@@ -68,6 +69,7 @@ final class LeagueSettings
             'chess' => __('Chess queue'),
             'stream_bot' => __('Stream bot: free places'),
             'estimator' => __('Season estimator'),
+            'hyper' => 'Hyperbitcoinization',
         ];
     }
 
@@ -97,6 +99,11 @@ final class LeagueSettings
             $cupAuto[HyperCups::SETTING] = self::toggle('casual_cups', __('Automatic cups: :game', ['game' => 'Hyperbitcoinization']),
                 __('On: the league opens the next Hyperbitcoinization weekend cup on its own. Off: no new cup opens; a cup in sign-up or running plays to its end.'), 'off');
         }
+
+        // Soundboard emotes at every Hyperbitcoinization table (P6): one switch for all tables, on by default, listed
+        // while the game is switched on (HyperEmotes).
+        $hyper = (bool) config('esports.hyper.enabled') ? [HyperEmotes::CLIPS_SETTING => self::toggle('hyper', __('Soundboard emotes'),
+            __('On: players at a Hyperbitcoinization table may send soundboard clips. Off: no table offers a clip; stickers stay. Applies at once.'), 'on')] : [];
 
         // One start day and time per cup game (user, 2026-09-30), the same local time on each region's clock.
         foreach ((array) config('esports.casual_cups.games', []) as $game => $setup) {
@@ -132,6 +139,8 @@ final class LeagueSettings
             'esports.stream_bot.free_places.cup_slots_hours' => self::ints('stream_bot', __('Casual cups: hours before sign-up closes'), 1, 720, [1, 6], __('One “places free” note per slot, separated by commas. Applies from the next run; a slot already posted is not posted again.')),
             'esports.stream_bot.free_places.stop_before_close_minutes' => self::int('stream_bot', __('No note in the last minutes before the close'), 0, 1440, __('Applies from the next run.')),
             'esports.stream_bot.free_places.per_run' => self::int('stream_bot', __('Notes per run at most'), 0, 10, __('0 pauses the notes. Applies from the next run.')),
+
+            ...$hyper,
 
             'season.estimator.window_days' => self::int('estimator', __('Forecast window (days)'), 7, 365, __('The estimator on the season page counts valid blocks per week over this many days. A forecast only; nothing signed changes.')),
         ];
