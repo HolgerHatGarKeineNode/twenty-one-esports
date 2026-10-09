@@ -5,6 +5,7 @@ use App\Models\User;
 use App\Support\Hyper\HyperEmotes;
 use App\Support\Nostr\NostrKeys;
 use App\Support\Settings\LeagueSettings;
+use Illuminate\Support\Facades\File;
 use Illuminate\Support\Facades\Http;
 use Pest\Browser\Playwright\Page;
 use Pest\Browser\Support\ComputeUrl;
@@ -147,8 +148,8 @@ test('the start page plays its theme with a music switch and a volume as on Bloc
         foreach ([[390, 844], [1440, 900]] as [$w, $h]) {
             $page->setViewportSize($w, $h);
             $page->screenshot(false, "hyper-start-{$w}");
-            \Illuminate\Support\Facades\File::ensureDirectoryExists($dir);
-            \Illuminate\Support\Facades\File::move(base_path("tests/Browser/Screenshots/hyper-start-{$w}.png"), "{$dir}/hyper-start-{$w}.png");
+            File::ensureDirectoryExists($dir);
+            File::move(base_path("tests/Browser/Screenshots/hyper-start-{$w}.png"), "{$dir}/hyper-start-{$w}.png");
         }
         $page->setViewportSize(390, 844);
     }
