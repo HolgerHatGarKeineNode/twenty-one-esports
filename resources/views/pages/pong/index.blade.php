@@ -14,14 +14,14 @@
 @endphp
 <x-layouts::app :title="'Proof of Pong'" :scripts="['resources/css/pong-picker.css', 'resources/js/pong/picker.js', 'resources/js/gameChannel.js']">
     <div class="chat-rail-host flex flex-col gap-6 px-4 pb-10 lg:gap-8 lg:px-12 lg:pb-12" data-test="pong-index">
-        <section class="relative isolate flex flex-col overflow-hidden rounded-lg bg-card shadow-ring" aria-labelledby="pong-h">
-            <img src="/pong/art/key-title.webp" alt="" width="1600" height="900" class="aspect-[16/7] max-h-[360px] w-full object-cover object-top sm:aspect-[16/5]" data-test="pong-key-art">
-            <div class="flex flex-col gap-6 p-5 sm:p-8">
+        <section class="relative isolate flex flex-col overflow-clip rounded-lg bg-card shadow-ring" aria-labelledby="pong-h">
+            <img src="/pong/art/key-title.webp" alt="" width="1600" height="900" class="aspect-[16/7] max-h-[360px] w-full object-cover object-top sm:aspect-[16/5] [@media(max-height:32rem)]:max-h-24" data-test="pong-key-art">
+            <div class="flex flex-col gap-6 p-5 sm:p-8 [@media(max-height:32rem)]:gap-4 [@media(max-height:32rem)]:py-4">
                 <div class="flex flex-col gap-3">
                     <h1 id="pong-h" class="sr-only">Proof of Pong</h1>
-                    <p class="m-0 max-w-[60ch] text-[15px] text-ink-2">{{ __('Classic Pong with a Bitcoin twist: first to 21 points, and every 21st rally a meme event for both sides.') }}</p>
+                    <p class="m-0 max-w-[60ch] text-[15px] text-ink-2 [@media(max-height:32rem)]:hidden">{{ __('Classic Pong with a Bitcoin twist: first to 21 points, and every 21st rally a meme event for both sides.') }}</p>
                     <div class="flex flex-wrap items-center gap-x-4 gap-y-2">
-                        <ul class="m-0 flex list-none flex-wrap gap-2 p-0 text-xs text-ink-2" aria-label="{{ __('The game in short') }}">
+                        <ul class="m-0 flex list-none flex-wrap gap-2 p-0 text-xs text-ink-2 [@media(max-height:32rem)]:hidden" aria-label="{{ __('The game in short') }}">
                             <li class="rounded-tag bg-ground/70 px-2 py-1 shadow-ring">{{ __('First to :points', ['points' => $rules->pointsToWin]) }}</li>
                             <li class="rounded-tag bg-ground/70 px-2 py-1 shadow-ring">{{ __('Two points ahead') }}</li>
                             <li class="rounded-tag bg-ground/70 px-2 py-1 shadow-ring">{{ __('Halving, Brrr, Pizza Day') }}</li>
@@ -47,13 +47,14 @@
                                 </label>
                             @endforeach
                         </fieldset>
-                        <div class="flex flex-col gap-2">
-                            <button type="submit" class="btn-p inline-flex min-h-12 cursor-pointer items-center justify-center gap-2.5 rounded-md bg-btc px-6 font-display text-[15px] font-bold text-on-btc" data-test="pong-play-bot">
-                                <x-icon name="play" :size="18" />{{ __('Play vs bot') }}
-                            </button>
-                            <span class="text-xs text-ink-2">{{ auth()->check() ? __('Opens in a new tab, full-screen.') : __('You log in first, then the game opens in a new tab.') }}</span>
-                        </div>
                     </div>
+                    {{-- The primary action stays in the first screen (P6): it sticks above the tab bar (the window's edge from lg) while the picker runs on below it, its note follows it. --}}
+                    <div class="sticky bottom-[calc(var(--tabbar-h)+0.75rem)] z-10 self-start lg:col-start-2">
+                        <button type="submit" class="btn-p inline-flex min-h-12 cursor-pointer items-center justify-center gap-2.5 rounded-md bg-btc px-6 font-display text-[15px] font-bold text-on-btc shadow-[0_6px_20px_rgb(0_0_0/0.55)]" data-test="pong-play-bot">
+                            <x-icon name="play" :size="18" />{{ __('Play vs bot') }}
+                        </button>
+                    </div>
+                    <span class="-mt-6 text-xs text-ink-2 lg:col-start-2 lg:-mt-8">{{ auth()->check() ? __('Opens in a new tab, full-screen.') : __('You log in first, then the game opens in a new tab.') }}</span>
                 </form>
             </div>
         </section>
