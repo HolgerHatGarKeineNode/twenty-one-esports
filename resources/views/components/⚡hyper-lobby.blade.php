@@ -268,6 +268,10 @@ new class extends Component {
                 @if ($creator && $mine->bots)
                     <x-button variant="primary" wire:click="fillWithBots" icon="play" class="h-12 px-5 text-[15px]" data-test="hyper-lobby-fill">{{ __('Fill with bots and start') }}</x-button>
                 @endif
+                @if ($creator && $mine->mode === HyperMatch::CORRESPONDENCE)
+                    {{-- A correspondence table may wait days: its creator can invite on Nostr (a kind 1 on their profile). --}}
+                    <livewire:share-button type="hyper-table" :moment="$mine->ulid" :label="__('Post the invite on Nostr')" :downloads="false" :wire:key="'hyper-table-share-'.$mine->ulid" />
+                @endif
                 {{-- A component attribute compiles {{ }}, not directives: the link goes in through Js::from, never @js. --}}
                 <span x-data="{ copied: false }" class="inline-flex">
                     <x-button variant="secondary" icon="link" class="h-12" data-test="hyper-lobby-invite" x-on:click="navigator.clipboard?.writeText({{ \Illuminate\Support\Js::from(route('hyper.table', $mine)) }}).then(() => { copied = true; setTimeout(() => copied = false, 1500) })">

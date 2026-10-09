@@ -387,3 +387,22 @@ test('the mempool gets one block per match a player won, with the winner alone; 
         ->and($running->status)->toBe(HyperMatchStatus::Active)
         ->and($botWon->id)->not->toBe($won->id);
 });
+
+test('the creator of an open correspondence table posts its invite on Nostr; a live table, someone else\'s or a started one, no (user 2026-10-09)', function () {
+    HyperOn::play();
+    [$anna, $bert] = User::factory()->count(2)->create();
+    $lobby = app(HyperLobby::class);
+    $posts = app(SharePosts::class);
+    $daily = $lobby->open($anna, 3, HyperMatch::CORRESPONDENCE, 0);
+    $live = $lobby->open($bert, 3, HyperMatch::LIVE, 0);
+
+    $invite = $posts->prepare($anna, 'hyper-table', $daily->ulid);
+
+    expect($invite['kind'])->toBe(1)
+        ->and($invite['content'])->toContain('2 free seats')->toContain(route('hyper.table', $daily))->not->toContain('#')
+        ->and(fn () => $posts->prepare($bert, 'hyper-table', $daily->ulid))->toThrow(ShareRefused::class)
+        ->and(fn () => $posts->prepare($bert, 'hyper-table', $live->ulid))->toThrow(ShareRefused::class);
+
+    $this->actingAs($anna)->get(route('hyper.index'))->assertOk()->assertSee('Post the invite on Nostr');
+    $this->actingAs($bert)->get(route('hyper.index'))->assertOk()->assertDontSee('Post the invite on Nostr');
+});

@@ -11,6 +11,7 @@ use App\Games\ScoreMetric;
 use App\Jobs\PublishNostrEvent;
 use App\Models\ChessGame;
 use App\Models\HyperMatch;
+use App\Models\HyperTable;
 use App\Models\NostrEvent;
 use App\Models\RankBadgeVersion;
 use App\Models\Season;
@@ -65,7 +66,9 @@ use Illuminate\Support\Facades\Route;
  *   as the link, last;
  * - a Hyperbitcoinization moment (a clan win, a win, the sats collected in a
  *   finished match, {@see HyperMoments}), with the match's page card and the
- *   match as the link; it mentions nobody (no profile is tied to a seat).
+ *   match as the link; it mentions nobody (no profile is tied to a seat);
+ * - an invite to the player's own open Hyperbitcoinization correspondence table (user 2026-10-09; a live
+ *   table fills within minutes, a note would come too late), with the lobby's card and the table's link.
  *
  * At most `esports.badges.shares_per_hour` per player: the league relays carry them.
  */
@@ -76,7 +79,7 @@ final class SharePosts
     public const FORMAT = 'wide';
 
     /** The moments a share post can be about. */
-    public const TYPES = ['rank-up', 'block', 'tournament', 'wrapped', 'game', 'series', 'signup', 'blockfill', 'tmnf', 'hyper'];
+    public const TYPES = ['rank-up', 'block', 'tournament', 'wrapped', 'game', 'series', 'signup', 'blockfill', 'tmnf', 'hyper', 'hyper-table'];
 
     /** Opponents one post mentions at most: a team of five, never a whole bracket. */
     public const MAX_MENTIONS = 5;
@@ -98,6 +101,7 @@ final class SharePosts
             'blockfill' => $this->blockfill($user, $id),
             'tmnf' => $this->tmnf($user, $id),
             'hyper' => $this->hyper($user, $id),
+            'hyper-table' => $this->hyperTable($user, $id),
             default => null,
         };
 
@@ -331,6 +335,31 @@ final class SharePosts
             dimensions: [PageCard::WIDTH, PageCard::HEIGHT],
             storyPath: null,
             link: self::absolute(route('hyper.match', $match, false)),
+        );
+    }
+
+    /**
+     * The player's own open correspondence table: an invite to take a seat.
+     */
+    private function hyperTable(User $user, string $ulid): ?SharePost
+    {
+        if (app(GameRegistry::class)->find(Hyperbitcoinization::SLUG) === null || ! Route::has('hyper.table')) {
+            return null;
+        }
+
+        $table = HyperTable::query()->withCount('takenSeats')->where('ulid', strtolower($ulid))->first();
+
+        if ($table === null || (int) $table->created_by !== (int) $user->id || $table->status !== HyperTable::OPEN || $table->mode !== HyperMatch::CORRESPONDENCE) {
+            return null;
+        }
+
+        return new SharePost(
+            type: 'hyper-table',
+            sentence: trans_choice('My Hyperbitcoinization table on TWENTY ONE Esports has :count free seat: one move a day, take a seat.|My Hyperbitcoinization table on TWENTY ONE Esports has :count free seats: one move a day, take a seat.', max(1, $table->seats - $table->taken_seats_count)),
+            cardUrl: PageCard::page('hyper')->url(),
+            dimensions: [PageCard::WIDTH, PageCard::HEIGHT],
+            storyPath: null,
+            link: self::absolute(route('hyper.table', $table, false)),
         );
     }
 
