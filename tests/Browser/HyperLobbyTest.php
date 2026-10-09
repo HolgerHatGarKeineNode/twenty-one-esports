@@ -55,7 +55,7 @@ beforeEach(function () {
 /** Taps a caption that waits for the player (`#banner[data-wait="1"]`), every 250 ms; off with `window.__noTap`. */
 const HYPER_TAP_BANNERS = 'setInterval(() => { if (window.__noTap) return; const b = document.querySelector("#banner[data-wait=\\"1\\"]"); if (b) b.dispatchEvent(new PointerEvent("pointerdown", { bubbles: true })); }, 250);';
 
-function lobbyPage(User $user, string $path, int $width = 1440, int $height = 900): Page
+function hyperLobbyPage(User $user, string $path, int $width = 1440, int $height = 900): Page
 {
     $page = visit(BrowserLogin::url($user))->page();
     $page->context()->addInitScript(BrowserConsole::COLLECTOR);
@@ -127,8 +127,8 @@ test('two players join a table, pick factions, bots fill it, and the match opens
     [$anna, $bert] = User::factory()->count(2)->create();
     Admin::query()->create(['pubkey' => $anna->pubkey]);
     $index = route('hyper.index', absolute: false);
-    $annas = lobbyPage($anna, $index);
-    $berts = lobbyPage($bert, $index);
+    $annas = hyperLobbyPage($anna, $index);
+    $berts = hyperLobbyPage($bert, $index);
     $rows = [];
 
     foreach ([[390, 844], [1440, 900], [1920, 1080]] as [$width, $height]) {
@@ -223,7 +223,7 @@ test('a finished match replays to its end, every hand open, and jumps back; the 
     expect($match->isActive())->toBeFalse();
     $last = $match->ply;
 
-    $page = lobbyPage($anna, route('hyper.replay', $match, false));
+    $page = hyperLobbyPage($anna, route('hyper.replay', $match, false));
     $rows = [];
     $measure = <<<'JS'
         () => {
@@ -312,7 +312,7 @@ test('after a finished match the statistics wait on every page for Next, can be 
     ];
     Cache::put('hyper:stats:v'.HyperStats::VERSION.':'.$match->ulid, $stats, 600);
 
-    $page = lobbyPage($anna, route('hyper.match', $match, false), 1600, 900);
+    $page = hyperLobbyPage($anna, route('hyper.match', $match, false), 1600, 900);
 
     // The page opened on a finished match: after the end screen the statistics open on the charts, the lines
     // draw, and only then the Next button shows (P4 pacing: no page turns by itself).
@@ -489,9 +489,9 @@ test('a clan table seats two clans on two sides and starts a team match; the tea
         HyperOn::inClan($carl, $red);
         [$anna, $carl, $bert] = [$anna->fresh(), $carl->fresh(), $bert->fresh()];
         $index = route('hyper.index', absolute: false);
-        $annas = lobbyPage($anna, $index);
-        $carls = lobbyPage($carl, $index);
-        $berts = lobbyPage($bert, $index);
+        $annas = hyperLobbyPage($anna, $index);
+        $carls = hyperLobbyPage($carl, $index);
+        $berts = hyperLobbyPage($bert, $index);
         $rows = [];
 
         // Anna opens a clan table, 2v2: her clan takes side 0.
