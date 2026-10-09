@@ -149,7 +149,7 @@ test('a bot game plays to its end with the server\'s score, the field fits the w
     'desktop 1440x900' => [1440, 900, 7, 2, 3],
 ]);
 
-test('the lobby shows the five bots and the 25 figures without overflow or cut labels, and its form leads into the game', function (int $width, int $height) {
+test('the lobby shows the five bots and, opened, the 25 figures without overflow or cut labels, and its form leads into the game', function (int $width, int $height) {
     $page = visit(BrowserLogin::url(User::factory()->create()))->page();
     $page->context()->addInitScript(BrowserConsole::COLLECTOR);
     $page->setViewportSize($width, $height);
@@ -157,12 +157,19 @@ test('the lobby shows the five bots and the 25 figures without overflow or cut l
     BrowserWait::until($page, '() => document.readyState === "complete" && !!document.querySelector("[data-test=pong-play-form]")', 10_000);
     pongShot($page, "pong-{$width}-lobby");
 
+    // The bots are a row of portraits (P9), each named by its picture; the line under the row names the picked one.
     $bots = array_column(PongCast::bots(), 'id');
-    $labels = $page->evaluate('(ids) => ids.map((id) => { const el = document.querySelector(`[data-test=pong-bot-${id}]`); return { text: el.innerText.trim(), cut: [...el.querySelectorAll("span")].some((s) => s.scrollWidth > s.clientWidth + 1) }; })', $bots);
+    $labels = $page->evaluate('(ids) => ids.map((id) => { const el = document.querySelector(`[data-test=pong-bot-${id}]`); const r = el.getBoundingClientRect(); return { name: el.querySelector("img").alt, size: Math.round(Math.min(r.width, r.height)) }; })', $bots);
+    $detail = '() => [...document.querySelectorAll("[data-test=pong-bot-detail]")].filter((el) => el.checkVisibility()).map((el) => ({ text: el.innerText.trim(), cut: [...el.querySelectorAll("span, b")].some((s) => s.scrollWidth > s.clientWidth + 1) }))';
+    // The roster opens over the page on a click on the figure's bar.
+    $page->locator('[data-test=pong-figure-open]')->click();
     $faces = $page->evaluate('() => [...document.querySelectorAll("[data-test=pong-picker] .pp-face")].map((el) => { const r = el.getBoundingClientRect(); return Math.round(Math.min(r.width, r.height)); })');
 
-    expect(array_column($labels, 'cut'))->toBe(array_fill(0, 5, false))
-        ->and(collect($labels)->zip(PongCast::bots())->every(fn ($pair): bool => str_starts_with($pair[0]['text'], $pair[1]['name'])))->toBeTrue()
+    expect(array_column($labels, 'name'))->toBe(array_column(PongCast::bots(), 'name'))
+        ->and(min(array_column($labels, 'size')))->toBeGreaterThanOrEqual(44)
+        ->and($shown = $page->evaluate($detail))->toHaveCount(1)
+        ->and($shown[0]['cut'])->toBeFalse()
+        ->and($shown[0]['text'])->toStartWith(PongCast::bots()[0]['name'])
         ->and(count($faces))->toBe(25)
         // Every portrait is a target of at least 44 px.
         ->and(min($faces))->toBeGreaterThanOrEqual(44);
@@ -170,12 +177,15 @@ test('the lobby shows the five bots and the 25 figures without overflow or cut l
     [$scroll, $client] = $page->evaluate(BrowserConsole::WIDTHS);
     expect($scroll)->toBeLessThanOrEqual($client);
 
-    // The Goldbug and Saylor picked: the form's address is that game with that figure.
-    $page->locator('[data-test=pong-bot-schiff]')->click();
+    // Saylor and the Goldbug picked: the form's address is that game with that figure, and the line names the Goldbug.
     $page->locator('[data-test=pong-figure-saylor]')->click();
+    $page->locator('[data-test=pong-bot-schiff]')->click();
+    // Alpine shows the picked bot's line on its next flush.
+    BrowserWait::until($page, '() => [...document.querySelectorAll("[data-test=pong-bot-detail]")].some((el) => el.checkVisibility() && el.innerText.startsWith('.json_encode(PongCast::bot('schiff')['name']).'))', 5_000);
     expect($page->evaluate('() => { const f = document.querySelector("[data-test=pong-play-form]"); return f.action + "?" + new URLSearchParams(new FormData(f)).toString(); }'))
         ->toEndWith('/proof-of-pong/bot?figure=saylor&bot=schiff')
         ->and($page->evaluate('() => document.querySelector("[data-test=pong-picked-name]").textContent'))->toBe('Michael Saylor')
+        ->and($page->evaluate($detail)[0]['text'])->toStartWith(PongCast::bot('schiff')['name'])
         ->and([...$page->evaluate('() => window.__errors ?? ["collector missing"]'), ...$page->evaluate(BrowserConsole::BAD_RESPONSES)])->toBe([]);
 })->with([
     'phone 390x844' => [390, 844],

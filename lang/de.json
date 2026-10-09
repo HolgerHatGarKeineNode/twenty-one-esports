@@ -7696,9 +7696,7 @@
     "You are in another live game. One live game at a time: finish it first.": "Du bist in einem anderen Live-Spiel. Ein Live-Spiel nach dem anderen: Beende es zuerst.",
     "Live 1v1": "Live 1v1",
     "Your Elo": "Deine Elo",
-    "Turn on \"Looking to play\", invite a player who is looking, and play live to 21. The server checks every hit; a live match moves your Proof of Pong Elo.": "Schalte „Sucht Partie“ ein, lade jemanden ein, der auch sucht, und spielt live bis 21. Der Server prüft jeden Treffer; ein Live-Match bewegt deine Proof-of-Pong-Elo.",
     "Your match against :name is on.": "Dein Match gegen :name läuft.",
-    "Proof of Pong · live to :points · sides drawn at random": "Proof of Pong · live bis :points · Seiten werden ausgelost",
     "Your paddle": "Dein Schläger",
     "Sound and display": "Ton und Anzeige",
     "Voices": "Stimmen",
@@ -7817,5 +7815,12 @@
     "Author": "Autor",
     "License": "Lizenz",
     "Style": "Stil",
-    "The background music of :games: free tracks from OpenGameArt.org, played by the game's own synthesizer.": "Die Hintergrundmusik von :games: freie Stücke von OpenGameArt.org, gespielt vom eigenen Synthesizer des Spiels."
+    "The background music of :games: free tracks from OpenGameArt.org, played by the game's own synthesizer.": "Die Hintergrundmusik von :games: freie Stücke von OpenGameArt.org, gespielt vom eigenen Synthesizer des Spiels.",
+    "Vs bot": "Gegen den Bot",
+    "Right away, no Elo": "Sofort, ohne Elo",
+    "Change figure": "Figur wechseln",
+    "Live to :points, sides drawn at random": "Live bis :points, Seiten werden ausgelost",
+    "Nobody else is online. Turn on \"Looking to play\" so others can invite you, or play the bot.": "Sonst ist gerade niemand online. Schalte „Sucht Partie“ an, damit man dich einladen kann, oder spiel gegen den Bot.",
+    "Live to 21 against real players, for Elo.": "Live bis 21 gegen echte Leute, um Elo.",
+    "Nobody else is online. Whoever comes can invite you; until then, play the bot.": "Sonst ist gerade niemand online. Wer dazukommt, kann dich einladen. Bis dahin spiel gegen den Bot."
 }

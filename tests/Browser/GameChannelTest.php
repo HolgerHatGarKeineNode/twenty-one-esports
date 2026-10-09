@@ -567,7 +567,9 @@ test('Hyperbitcoinization and Proof of Pong have their chat: a message posted on
 const P5_MEASURE = <<<'JS'
     (primary) => {
         const host = document.querySelector('.chat-rail-host');
-        const visible = (el) => el.checkVisibility() && el.getBoundingClientRect().width > 0 && ! el.closest('.sr-only');
+        // Visually hidden: .sr-only, or a breakpoint's sr-only (max-md:sr-only) on the element or an ancestor.
+        const hidden = (el) => { for (let p = el; p && p !== host; p = p.parentElement) { const s = getComputedStyle(p); if (s.position === 'absolute' && s.width === '1px' && s.height === '1px' && s.overflow === 'hidden') return true; } return false; };
+        const visible = (el) => el.checkVisibility() && el.getBoundingClientRect().width > 0 && ! el.closest('.sr-only') && ! hidden(el);
         const label = (el) => (el.dataset.test || el.tagName.toLowerCase()) + ': ' + (el.innerText || el.getAttribute('aria-label') || '').trim().slice(0, 40);
         const clipper = (el) => { for (let p = el.parentElement; p && p !== host; p = p.parentElement) { const s = getComputedStyle(p); if (s.overflowX !== 'visible') return p; } return null; };
         const cut = [];

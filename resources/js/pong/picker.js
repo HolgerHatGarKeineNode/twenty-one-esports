@@ -5,7 +5,7 @@
  *
  * The script keeps the last pick in localStorage `pong-figure` (and restores it where the page has not picked one
  * itself, data-fixed), shows the picked figure's name and tagline, and tells the page (`pong-figure` event on the
- * document, detail { id }).
+ * document, detail { id }). On the lobby it closes the roster that opens over the page after a pick.
  */
 const KEY = 'pong-figure';
 
@@ -41,6 +41,26 @@ function attach(picker) {
     if (checked) {
         checked.checked = true;
         show(checked, !!restore);
+    }
+
+    // The lobby's roster opens over the page (P9): a pick by pointer, Escape or a click outside closes it; arrow keys
+    // move through it without closing it.
+    const more = picker.querySelector('[data-pp-more]');
+    if (more) {
+        const close = (focus) => {
+            if (!more.open) return;
+            more.open = false;
+            if (focus) more.querySelector('summary')?.focus();
+        };
+        more.addEventListener('click', (event) => {
+            if (event.detail > 0 && event.target.closest('.pp-face')) setTimeout(() => close(true));
+        });
+        more.addEventListener('keydown', (event) => {
+            if (event.key === 'Escape') close(true);
+        });
+        document.addEventListener('click', (event) => {
+            if (!more.contains(event.target)) close(false);
+        });
     }
 
     radios.forEach((radio) => radio.addEventListener('change', () => {

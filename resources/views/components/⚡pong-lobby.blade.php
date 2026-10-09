@@ -205,40 +205,45 @@ new class extends Component {
     $active = $this->activeMatch;
     $rating = $this->rating;
     $checkAt = $this->checkAt;
+    $looking = $user?->looking_to_play === PongInvites::LOOKING;
 @endphp
 
-<section class="flex flex-col gap-4 rounded-lg bg-card p-5 shadow-ring sm:p-8" aria-labelledby="pong-live-h" data-test="pong-lobby"
+<section class="@container flex flex-col gap-4 rounded-lg bg-card p-5 shadow-ring" aria-labelledby="pong-live-h" data-test="pong-lobby"
          data-server-now="{{ now()->getTimestampMs() }}" @if ($checkAt !== null) data-check-at="{{ $checkAt }}" @endif
          x-data="boardLobby(@js(['userId' => $user?->id, 'lookingKey' => PongInvites::LOOKING, 'looking' => $user?->looking_to_play === PongInvites::LOOKING, 'fallback' => $this::FALLBACK_SECONDS, 'events' => ['started' => '.pong.match-started', 'invite' => '.pong.invite'], 'newTab' => true]))">
-    <div class="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
-        <h2 id="pong-live-h" class="m-0 font-display text-xl font-bold">{{ __('Live 1v1') }}</h2>
-        @if ($rating !== null)
-            <span class="text-[13px] text-ink-2" data-test="pong-rating">{{ __('Your Elo') }} <b class="text-ink">{{ $rating['rating'] }}</b>@if ($rating['provisional']) · {{ __('provisional') }}@endif</span>
-        @endif
+    {{-- The card's head carries its state: Looking to play is the switch others see (P9: in the first screen on a phone, too). --}}
+    <div class="flex flex-col gap-2">
+        <span class="flex flex-wrap items-center justify-between gap-x-4 gap-y-2">
+            {{-- Below md the segmented control above names the card. --}}
+            <h2 id="pong-live-h" class="m-0 scroll-mt-24 font-display text-xl font-bold max-md:sr-only">{{ __('Live 1v1') }}</h2>
+            @if ($user)
+                <x-lobby.looking-toggle :on="$user->looking_to_play === PongInvites::LOOKING" />
+            @endif
+        </span>
+        <p class="m-0 text-[13px] text-ink-2">{{ __('Live to 21 against real players, for Elo.') }}@if ($rating !== null) <span class="whitespace-nowrap" data-test="pong-rating">{{ __('Your Elo') }} <b class="text-ink">{{ $rating['rating'] }}</b>@if ($rating['provisional']) ({{ __('provisional') }})@endif</span>@endif</p>
     </div>
-    <p class="m-0 max-w-[60ch] text-[13px] text-ink-2">{{ __('Turn on "Looking to play", invite a player who is looking, and play live to 21. The server checks every hit; a live match moves your Proof of Pong Elo.') }}</p>
 
     @if ($error)
         <p role="alert" class="m-0 rounded-lg bg-loss-tint px-4 py-3 text-[13px] text-loss" data-test="pong-lobby-error">{{ $error }}</p>
     @endif
 
     @if ($active !== null)
-        <div class="flex flex-col gap-3 rounded-lg bg-well p-3 shadow-ring-btc sm:flex-row sm:items-center sm:px-4" data-test="pong-active-match">
+        <div class="flex flex-col gap-3 rounded-lg bg-well p-3 shadow-ring-btc @xl:flex-row @xl:items-center @xl:px-4" data-test="pong-active-match">
             <b class="grow text-[15px]">{{ __('Your match against :name is on.', ['name' => ($active->left_id === $user?->id ? $active->right : $active->left)?->displayName() ?? '?']) }}</b>
             <x-button :href="route('pong.match', $active)" target="_blank" icon="play" data-test="pong-open-match">{{ __('Open match') }}</x-button>
         </div>
     @endif
 
     @foreach ($this->incoming as $invite)
-        <div wire:key="pong-invite-{{ $invite->id }}" class="flex flex-col gap-3 rounded-lg bg-well p-3 shadow-ring-btc lg:flex-row lg:items-center lg:px-4" data-test="pong-incoming-invite">
+        <div wire:key="pong-invite-{{ $invite->id }}" class="flex flex-col gap-3 rounded-lg bg-well p-3 shadow-ring-btc @xl:flex-row @xl:items-center @xl:px-4" data-test="pong-incoming-invite">
             <span class="flex min-w-0 grow items-center gap-3">
                 <x-player-link :user="$invite->inviter" class="flex min-h-11 min-w-11 shrink-0 items-center"><x-avatar :user="$invite->inviter" :size="40" class="rounded-md" /></x-player-link>
                 <span class="flex min-w-0 flex-col gap-0.5">
                     <b class="truncate text-[15px]">{{ __(':name invites you', ['name' => $invite->inviter->displayName()]) }}</b>
-                    <span class="text-xs text-ink-2">{{ __('Proof of Pong · live to :points · sides drawn at random', ['points' => (int) config('esports.pong.points_to_win', 21)]) }}</span>
+                    <span class="text-xs text-ink-2">{{ __('Live to :points, sides drawn at random', ['points' => (int) config('esports.pong.points_to_win', 21)]) }}</span>
                 </span>
             </span>
-            <span class="grid grid-cols-2 gap-2 lg:flex">
+            <span class="grid grid-cols-2 gap-2 @xl:flex">
                 <x-button variant="quiet" wire:click="declineInvite({{ $invite->id }})" data-test="pong-decline-invite">{{ __('Decline') }}</x-button>
                 {{-- A form, so the match opens in a new tab as the game against a bot does. --}}
                 <form method="post" action="{{ route('pong.accept', $invite) }}" target="_blank" class="contents" x-on:submit="setTimeout(() => $wire.$refresh(), 800)">
@@ -249,5 +254,11 @@ new class extends Component {
         </div>
     @endforeach
 
-    <x-lobby.online-now :user="$user" :looking-key="PongInvites::LOOKING" :looking-tag="__('looking: :game', ['game' => 'Proof of Pong'])" :can-invite="$active === null" :show-elo="false" />
+    <x-lobby.online-now :user="$user" :looking-key="PongInvites::LOOKING" :looking-tag="__('looking: :game', ['game' => 'Proof of Pong'])" :can-invite="$active === null" :show-elo="false" list-class="max-h-40" :toggle="false">
+        {{-- Nobody else here: what to do next, following the switch in the card's head. --}}
+        <x-slot:empty>
+            <span x-show="looking" @if (! $looking) style="display: none" @endif>{{ __('Nobody else is online. Whoever comes can invite you; until then, play the bot.') }}</span>
+            <span x-show="! looking" @if ($looking) style="display: none" @endif>{{ __('Nobody else is online. Turn on "Looking to play" so others can invite you, or play the bot.') }}</span>
+        </x-slot:empty>
+    </x-lobby.online-now>
 </section>

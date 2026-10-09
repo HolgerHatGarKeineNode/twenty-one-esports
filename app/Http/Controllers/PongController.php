@@ -57,6 +57,8 @@ class PongController extends Controller
             'figures' => PongCast::players(),
             'rules' => PongRules::fromConfig((array) config('esports.pong')),
             // The viewer's latest won live match, to share (P4, SharePosts `pong`).
+            // The phone's segmented control starts on the live 1v1 when something waits there for the viewer (P9).
+            'liveFirst' => $viewer instanceof User && ($viewer->looking_to_play === PongInvites::LOOKING || app(PongInvites::class)->incoming($viewer)->isNotEmpty() || PongMatches::activeMatchOf($viewer) !== null),
             'lastWin' => $viewer instanceof User ? PongMatch::query()->where('status', PongMatchStatus::Finished)->where('winner_id', $viewer->id)->with(['left', 'right'])->latest('id')->first() : null,
         ]);
     }

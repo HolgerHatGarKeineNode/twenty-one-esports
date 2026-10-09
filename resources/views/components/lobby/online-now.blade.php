@@ -1,4 +1,4 @@
-@props(['user' => null, 'lookingKey' => 'chess/blitz', 'lookingTag' => null, 'canInvite' => true, 'showElo' => true, 'inviteMode' => null, 'challengeUrl' => null])
+@props(['user' => null, 'lookingKey' => 'chess/blitz', 'lookingTag' => null, 'canInvite' => true, 'showElo' => true, 'inviteMode' => null, 'challengeUrl' => null, 'emptyText' => null, 'listClass' => 'max-h-80', 'toggle' => true])
 
 {{--
     "Online now" of a game lobby: everyone on the presence channel `online`
@@ -21,6 +21,10 @@
     chess rapid only, labelled (routes/channels.php), so a board game lobby hides it.
     `inviteMode`: an Alpine expression passed as invite(id, mode) (the chess
     lobby's `liveMode`: rapid or blitz); null = invite(id).
+    `emptyText` (or the slot `empty`, which may follow the switch): what the list says when nobody else is online (null:
+    the general sentence); `listClass`: the list's
+    height cap; `toggle`: false where the lobby shows the switch (components/lobby/looking-toggle) itself, as Proof
+    of Pong's lobby does in its card's head (P9).
     `challengeUrl`: a board game's correspondence page. Invite shows only next to
     a player who looks for this lobby's game; every other row had nothing but the
     profile link (plan "Blockli-Optimierung", P3: "only opens profiles"), so it
@@ -48,14 +52,8 @@
     @endif
     <span class="flex flex-wrap items-center justify-between gap-x-3 gap-y-2">
         <h3 id="online-h" tabindex="-1" class="m-0 flex items-center gap-2 text-[15px] font-bold"><span class="size-2 rounded-full bg-win" aria-hidden="true"></span>{{ __('Online now') }} <b class="text-ink-2" x-show="connection === 'connected'" x-text="others.length" data-test="online-count"></b></h3>
-        @if ($user)
-            {{-- The page's own state (the lobby's `looking`): a Livewire render never touches it. --}}
-            <button type="button" wire:ignore x-on:click="toggleLooking()" role="switch" aria-checked="{{ $on ? 'true' : 'false' }}" x-bind:aria-checked="looking ? 'true' : 'false'" data-test="looking-toggle"
-                    class="flex h-11 cursor-pointer items-center gap-2.5 rounded-md border border-line bg-well px-3 text-[13px] text-ink">
-                <span class="relative h-5 w-9 shrink-0 rounded-full transition-colors motion-reduce:transition-none" x-bind:class="looking ? 'bg-btc' : 'bg-raised shadow-ring'"><span class="absolute top-0.5 size-4 rounded-full bg-ink transition-all motion-reduce:transition-none" x-bind:class="looking ? 'left-[18px]' : 'left-0.5'"></span></span>
-                {{ __('Looking to play') }}
-                <b class="min-w-7 text-left" x-bind:class="looking ? 'text-win' : 'text-ink-2'" x-text="looking ? @js(__('On')) : @js(__('Off'))" data-test="looking-state">{{ $on ? __('On') : __('Off') }}</b>
-            </button>
+        @if ($user && $toggle)
+            <x-lobby.looking-toggle :on="$on" />
         @endif
     </span>
     @if ($user)
@@ -65,8 +63,8 @@
         <p class="m-0 text-[13px] text-ink-2">{{ __('Log in to see who is online and to invite a friend.') }}</p>
     @else
         <p class="m-0 text-[13px] text-ink-2" x-show="connection !== 'connected'">{{ __('The online list needs the live connection. Connecting …') }}</p>
-        <p class="m-0 text-[13px] text-ink-2" x-show="connection === 'connected' && others.length === 0" data-test="online-empty">{{ __('Nobody else is online right now.') }}</p>
-        <ul class="m-0 flex max-h-80 list-none flex-col overflow-y-auto p-0" x-show="others.length > 0">
+        <p class="m-0 text-[13px] text-ink-2" x-show="connection === 'connected' && others.length === 0" data-test="online-empty">{{ $empty ?? $emptyText ?? __('Nobody else is online right now.') }}</p>
+        <ul class="m-0 flex {{ $listClass }} list-none flex-col overflow-y-auto p-0" x-show="others.length > 0">
             <template x-for="m in others" :key="m.id">
                 {{--
                     The name always keeps its room (review of P5, 2026-09-30: next to the tag and Invite it shrank to

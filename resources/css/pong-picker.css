@@ -22,13 +22,46 @@
 .pp-face:has(:checked) img { transform: scale(1.1); }
 .pp-face:has(:focus-visible) { outline: 2px solid #f7931a; outline-offset: 2px; }
 
-/* The lobby: a roster wall of five by five; from a tablet on, the picked figure stands beside it. */
-.pp:not(.pp-compact) .pp-grid { grid-template-columns: repeat(5, minmax(0, 1fr)); max-width: 560px; }
-@media (width >= 768px) {
-    .pp:not(.pp-compact) { grid-template-columns: 200px minmax(0, 1fr); align-items: start; column-gap: 24px; }
-    .pp:not(.pp-compact) .pp-legend { grid-column: 1 / -1; }
-    .pp:not(.pp-compact) .pp-pick { flex-direction: column; align-items: flex-start; gap: 12px; }
-    .pp:not(.pp-compact) .pp-pick-img { width: 200px; height: 200px; }
+/*
+ * The lobby's bar (P9): the picked figure in one row under the title banner, its head breaking into the banner, and
+ * "Change figure" opening the roster over the page (a <details>, so it never lengthens the page and works without
+ * script; picker.js closes it after a pick and on Escape or a click outside).
+ */
+.pp-lobby { display: block; width: 100%; }
+.pp-more { position: relative; }
+.pp-sum { display: flex; align-items: center; gap: 16px; min-height: 44px; padding: 0 0 12px; cursor: pointer; list-style: none; border-radius: 8px; }
+.pp-sum::-webkit-details-marker { display: none; }
+.pp-sum:focus-visible { outline: 2px solid var(--color-btc-hi, #f9b25f); outline-offset: 4px; }
+.pp-lobby .pp-pick { flex: 1 1 auto; gap: 12px; }
+.pp-lobby .pp-pick-img { width: 72px; height: 72px; margin-top: -28px; align-self: flex-end; }
+.pp-lobby .pp-pick-text { gap: 2px; padding-top: 8px; }
+.pp-lobby .pp-pick-label { font-size: 12px; color: var(--color-ink-3, #8b8b90); }
+.pp-lobby .pp-pick-name { font-size: 18px; }
+.pp-lobby .pp-pick-tagline { font-size: 13px; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.pp-more-btn { display: inline-flex; flex: none; align-items: center; gap: 8px; min-height: 44px; padding: 0 12px; border-radius: 6px;
+    font-size: 13px; font-weight: 700; color: var(--color-ink, #fff); background: var(--color-well, #1a1a1e); box-shadow: inset 0 0 0 1px var(--color-line, #2a2a30);
+    transition: background-color 160ms ease-out; }
+.pp-more-short { display: none; }
+.pp-more-btn svg { transition: transform 160ms ease-out; }
+.pp-more[open] .pp-more-btn svg { transform: rotate(180deg); }
+.pp-sum:hover .pp-more-btn, .pp-more[open] .pp-more-btn { background: var(--color-raised, #1e1e24); }
+.pp-pop { position: absolute; z-index: 40; top: calc(100% - 4px); right: 0; width: min(22rem, calc(100vw - 2rem)); padding: 12px; border-radius: 12px;
+    background: var(--color-card, #121215); box-shadow: inset 0 0 0 1px var(--color-line, #2a2a30), 0 16px 40px rgb(0 0 0 / 0.6); }
+.pp-pop .pp-grid { grid-template-columns: repeat(5, minmax(0, 1fr)); }
+.pp-more[open] .pp-pop { animation: pp-pop-in 160ms ease-out; }
+@keyframes pp-pop-in { from { opacity: 0; transform: translateY(-4px); } }
+@media (width < 640px) {
+    .pp-sum { gap: 12px; }
+    .pp-lobby .pp-pick-img { width: 56px; height: 56px; margin-top: -16px; }
+    .pp-lobby .pp-pick-name { font-size: 16px; }
+    .pp-lobby .pp-pick-tagline { -webkit-line-clamp: 1; }
+    .pp-more-long { display: none; }
+    .pp-more-short { display: inline; }
+}
+/* A small phone: the bar is the trigger anyway, so its button keeps only the chevron and the name its room. */
+@media (width < 400px) {
+    .pp-more-btn { width: 44px; padding: 0; justify-content: center; }
+    .pp-more-short { display: none; }
 }
 
 /* The small version on a card over the field: a row of name and portrait, a grid that scrolls if the card is short. */
@@ -41,5 +74,6 @@
 .pp-compact .pp-grid { grid-template-columns: repeat(auto-fill, minmax(46px, 1fr)); gap: 6px; max-height: var(--pp-max, 212px); overflow-y: auto; padding: 2px; overscroll-behavior: contain; }
 
 @media (prefers-reduced-motion: reduce) {
-    .pp-face, .pp-face img { transition: none; }
+    .pp-face, .pp-face img, .pp-more-btn, .pp-more-btn svg { transition: none; }
+    .pp-more[open] .pp-pop { animation: none; }
 }

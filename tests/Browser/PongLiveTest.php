@@ -239,6 +239,8 @@ test('an invite from the online list, accepted, puts both players on the full-sc
     $inviter = $lobby($anna, 1440, 900);
     $invitee = $lobby($bert, 390, 844);
     BrowserWait::until($inviter, '() => document.querySelectorAll("[data-test=online-player]").length === 1', 15_000);
+    // On his phone nothing waits for Bert yet: the lobby opens on the bot (P9); the live 1v1 is one tap away.
+    $invitee->locator('[data-test=pong-way-live]')->click();
     $invitee->locator('[data-test=looking-toggle]')->click();
     BrowserWait::until($invitee, '() => document.querySelector("[data-test=looking-state]").textContent.trim() === "On"', 8_000);
     BrowserWait::until($inviter, '() => !!document.querySelector("[data-test=online-player] [data-test=invite]")', 15_000);
