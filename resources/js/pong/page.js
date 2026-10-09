@@ -17,7 +17,8 @@ export const KEY_STEP = 1800;
  * The page's saved settings (localStorage `pong-settings`, the browser test's handle): `speed` runs the clock of a game
  * against a bot faster (1 = real time), `autoplay` lets a bot of that level play the player's paddle, `quality` is the
  * arena's tier (auto, high, medium, low), `motion` false turns the moving effects off as the system's reduced motion
- * does.
+ * does, `eventEvery` makes every n-th rally of a game against a bot a meme event (the P7 browser test's seam: a game
+ * against a bot is the browser's own and stored nowhere).
  */
 export function readSettings() {
     const reduced = matchMedia('(prefers-reduced-motion: reduce)').matches;
@@ -25,6 +26,7 @@ export function readSettings() {
         const stored = JSON.parse(localStorage.getItem('pong-settings') || '{}');
         const speed = Number(stored.speed);
         const autoplay = Number(stored.autoplay);
+        const eventEvery = Number(stored.eventEvery);
 
         return {
             speed: Number.isFinite(speed) && speed > 0 ? Math.min(speed, 200) : 1,
@@ -32,9 +34,10 @@ export function readSettings() {
             quality: ['high', 'medium', 'low'].includes(stored.quality) ? stored.quality : 'auto',
             motion: typeof stored.motion === 'boolean' ? stored.motion : !reduced,
             force2d: stored.force2d === true,
+            eventEvery: Number.isInteger(eventEvery) && eventEvery >= 1 && eventEvery <= 100 ? eventEvery : null,
         };
     } catch {
-        return { speed: 1, autoplay: null, quality: 'auto', motion: !reduced, force2d: false };
+        return { speed: 1, autoplay: null, quality: 'auto', motion: !reduced, force2d: false, eventEvery: null };
     }
 }
 
@@ -62,6 +65,11 @@ export const eventText = (t, event) => ({
     brrr: [t('Brrr'), t('The ball flies faster.')],
     pizza: [t('Pizza Day'), t('Two balls at once.')],
     difficulty: [t('Difficulty Adjustment'), t('Both paddles are shorter.')],
+    tax: [t('Taxation is Theft'), t('A tax office patrols the centre line; the ball bounces off it.')],
+    controls: [t('Capital Controls'), t('A border wall with a moving gap; hit the wall and the ball comes back.')],
+    few: [t('Few understand'), t('The ball is invisible in the middle of the field.')],
+    pow: [t('Proof of Work'), t('Each of your hits makes your paddle longer.')],
+    arbeitsamt: [t('Job Centre – Please wait'), t('At the centre line the ball draws a number and waits a second.')],
 })[event];
 
 /**

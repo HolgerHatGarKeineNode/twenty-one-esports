@@ -6,16 +6,19 @@
  * - The figures (resources/js/pong/cast.json) in the HUD, on the paddles and in the goal celebration: the scorer's
  *   victory pose slides in from their side for at most 2.5 s, never over the middle of the field, gone on a click.
  * - A meme event takes the field over while it is announced: its icon, its name and line, its staging in the arena.
+ *   The Arbeitsamt stamps a waiting ball with its number ("Ihre Wartenummer: 21"), with a line for Markus Turm when
+ *   he plays; a ball bouncing off the tax block or the border wall sparks there instead of at a paddle.
  * - Sound (sound.js): blips, the goal, the event's sound, the figures' clips; the settings panel (gear in the HUD)
  *   for volume, effects, voices, music, the arena's quality and motion.
  * - Frame times: kept for the browser test (`window.pongFrames`) and, with quality `auto`, a slow device steps down
  *   a tier (high, medium, low) instead of stuttering.
  */
 import { autoQuality } from './arena.js';
-import { COMMENTATOR, TICKER, eventIcon, figure, neon, oneOf, portrait as portraitOf, pose } from './cast.js';
+import { TICKER, eventIcon, figure, neon, oneOf, portrait as portraitOf, pose } from './cast.js';
 import { eventText, writeSetting } from './page.js';
-import { HEIGHT, WIDTH } from './physics.js';
-import { play, set as setSound, settings as sound, voice } from './sound.js';
+import { ARBEITSAMT, CONTROLS, HEIGHT, TAX, WIDTH } from './physics.js';
+import { EVENTS } from './rules.js';
+import { play, say, set as setSound, settings as sound } from './sound.js';
 
 const CHEER_MS = 2200;
 const FRAME_KEEP = 600;
@@ -29,6 +32,11 @@ export function createShow({ arena, settings, t, castTexts, figures: ids, arenaN
     let cheerTimer = 0;
     let bannerTimer = 0;
     let goals = 0;
+    // The score as the goals came (display sides), the side on a run and its length, the deepest deficit per side.
+    const tally = [0, 0];
+    const deficit = [0, 0];
+    let run = 0;
+    let runner = null;
 
     /* ---------- Figures ---------- */
 
@@ -53,7 +61,7 @@ export function createShow({ arena, settings, t, castTexts, figures: ids, arenaN
     }
     showFigures();
     arena.setArena(arenaName);
-    ['halving', 'brrr', 'pizza', 'difficulty'].forEach((event) => { new Image().src = eventIcon(event); });
+    EVENTS.forEach((event) => { new Image().src = eventIcon(event); });
 
     /* ---------- Frames: hits, walls, frame times ---------- */
 
@@ -71,10 +79,15 @@ export function createShow({ arena, settings, t, castTexts, figures: ids, arenaN
             view.balls.forEach((ball, index) => {
                 const last = previous[index];
                 if (last && view.alive[index] && Math.abs(last[0] - ball[0]) < 12000) {
-                    if (Math.sign(last[2]) !== Math.sign(ball[2]) && ball[2] !== 0) {
+                    if (Math.sign(last[2]) !== Math.sign(ball[2]) && ball[2] !== 0 && (view.event === TAX || view.event === CONTROLS) && Math.abs(ball[0] - WIDTH / 2) < WIDTH / 8) {
+                        // Off the tax block or the border wall, not a paddle.
+                        arena.wall(ball[0], ball[1]);
+                        play.block();
+                    } else if (Math.sign(last[2]) !== Math.sign(ball[2]) && ball[2] !== 0) {
                         const side = ball[2] > 0 ? 0 : 1;
                         arena.hit(side, ball[0], ball[1]);
                         play.hit(Math.round(Math.hypot(ball[2], ball[3]) / 120), side);
+                        say('hit', figures[side]);
                     } else if (Math.sign(last[3]) !== Math.sign(ball[3]) && ball[3] !== 0) {
                         arena.wall(ball[0], ball[1]);
                         play.wall();
@@ -82,6 +95,7 @@ export function createShow({ arena, settings, t, castTexts, figures: ids, arenaN
                 }
                 previous[index] = view.alive[index] ? [...ball] : null;
             });
+            queue(view.event === ARBEITSAMT && view.balls.some((ball, index) => view.alive[index] && ball.length > 5));
         }
         arena.render(view);
         adapt(now);
@@ -97,6 +111,34 @@ export function createShow({ arena, settings, t, castTexts, figures: ids, arenaN
             if (next) arena.setQuality(next);
         }
         document.body.dataset.quality = arena.quality;
+    }
+
+    /* ---------- The Arbeitsamt's queue ---------- */
+
+    let queued = false;
+
+    /** The stamp and the waiting number while a ball waits; Markus Turm's line when he plays. */
+    function queue(waiting) {
+        const box = $('queue');
+        if (!box || waiting === queued) return;
+        queued = waiting;
+        if (!waiting) {
+            box.hidden = true;
+
+            return;
+        }
+        box.querySelector('b').textContent = t('Stamped');
+        box.querySelector('span').textContent = t('Your waiting number: :n', { n: 21 });
+        const turm = figures.some((f) => f.id === 'turm');
+        const line = box.querySelector('small');
+        line.textContent = turm ? t('Markus Turm knows his way around here.') : '';
+        line.hidden = !turm;
+        box.hidden = false;
+        box.classList.remove('in');
+        void box.offsetWidth;
+        box.classList.add('in');
+        play.stamp();
+        if (turm) say('turm', figures.find((f) => f.id === 'turm'));
     }
 
     /* ---------- Moments ---------- */
@@ -126,7 +168,7 @@ export function createShow({ arena, settings, t, castTexts, figures: ids, arenaN
         clearTimeout(bannerTimer);
         bannerTimer = setTimeout(() => { if (banner.dataset.event === event) banner.hidden = true; }, ms);
         play[({ difficulty: 'ratchet' })[event] ?? event]?.();
-        voice(COMMENTATOR[event], seed);
+        say(`event:${event}`);
     }
 
     function serve(rally) {
@@ -152,13 +194,22 @@ export function createShow({ arena, settings, t, castTexts, figures: ids, arenaN
      */
     function goal(scorer, points = 1) {
         goals++;
+        tally[scorer] += points;
+        run = runner === scorer ? run + 1 : 1;
+        runner = scorer;
         const conceding = scorer === 0 ? WIDTH : 0;
         const ball = previous.filter(Boolean).sort((a, b) => Math.abs(a[0] - conceding) - Math.abs(b[0] - conceding))[0];
         arena.goal(scorer, ball ? ball[1] : HEIGHT / 2);
         play.goal(scorer === 0);
         pop(scorer === 0 ? 'me' : 'opponent');
         cheer(scorer, points);
-        voice(figures[scorer].goal, goals);
+        // Three in a row, or a goal back to within one after trailing by three or more: the streak's voice.
+        const comeback = deficit[scorer] >= 3 && tally[1 - scorer] - tally[scorer] <= 1;
+        if (comeback) deficit[scorer] = 0;
+        deficit[1 - scorer] = Math.max(deficit[1 - scorer], tally[scorer] - tally[1 - scorer]);
+        if (run === 3 || comeback) say('streak', figures[scorer]);
+        else if (scorer === 0) say('goal', figures[0]);
+        else say('conceded', figures[0]);
     }
 
     function pop(which) {
@@ -214,8 +265,8 @@ export function createShow({ arena, settings, t, castTexts, figures: ids, arenaN
         if (line) line.textContent = label(oneOf(TICKER, goals));
         if (winner === null) return;
         play.fanfare();
-        if (mine === false) voice(COMMENTATOR.lose, goals, true);
-        else voice(figures[winner].win, goals, true);
+        if (mine === false) say('lose', figures[0]);
+        else say('win', figures[winner]);
     }
 
     /* ---------- Settings panel ---------- */

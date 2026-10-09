@@ -14,9 +14,14 @@
  * Quality tiers: `high` (bloom, every particle), `medium` (glow planes instead of bloom, fewer particles, pixel ratio
  * 1.5), `low` (pixel ratio 1, few particles). `auto` picks by device and steps down once the frames run slow.
  * Reduced motion (`motion: false`) turns off shake, particles, trail and the note rain.
+ *
+ * The P7 events are drawn from the frame alone (its event, the rally's seed and tick, physics.js patrol()): the tax
+ * office's block and the border wall on the centre line where the physics has them, the fog of Few understand over
+ * the middle third with the ball hidden under it, a Proof of Work paddle's length per side (`halves`), and a ball
+ * waiting in the Arbeitsamt's queue (a sixth element) greyed out.
  */
 import { neon } from './cast.js';
-import { HEIGHT, PADDLE_DEPTH, PADDLE_X, WIDTH } from './physics.js';
+import { CONTROLS, FEW, GAP_HALF, HEIGHT, PADDLE_DEPTH, PADDLE_X, TAX, TAX_HALF_X, TAX_HALF_Y, WALL_HALF_X, WIDTH, patrol } from './physics.js';
 
 const ORANGE = 0xf7931a;
 
@@ -43,6 +48,36 @@ export function fieldYAt(px, py, w, h, portrait) {
     return Math.round(portrait ? (px / w) * HEIGHT : (py / h) * HEIGHT);
 }
 
+/** A side's paddle half length in a frame: Proof of Work's per side, else the rally's. */
+const halfIn = (view, side) => view.halves?.[side] ?? view.half;
+
+/**
+ * The obstacles of a frame on the centre line as field rectangles [x0, y0, x1, y1] and their kind: the tax block,
+ * or the border wall's two parts around its gap. Empty for every other event.
+ */
+export function obstaclesOf(view) {
+    if (!view || view.seed === undefined || view.tick === undefined) return [];
+    const mid = WIDTH / 2;
+    if (view.event === TAX) {
+        const y = patrol(TAX, view.seed, view.tick);
+
+        return [{ kind: 'tax', rect: [mid - TAX_HALF_X, y - TAX_HALF_Y, mid + TAX_HALF_X, y + TAX_HALF_Y] }];
+    }
+    if (view.event === CONTROLS) {
+        const gap = patrol(CONTROLS, view.seed, view.tick);
+
+        return [
+            { kind: 'wall', rect: [mid - WALL_HALF_X, 0, mid + WALL_HALF_X, gap - GAP_HALF] },
+            { kind: 'wall', rect: [mid - WALL_HALF_X, gap + GAP_HALF, mid + WALL_HALF_X, HEIGHT] },
+        ].filter((o) => o.rect[3] - o.rect[1] > 0);
+    }
+
+    return [];
+}
+
+/** Whether a ball is hidden in this frame: Few understand hides it in the middle third. */
+export const hiddenBall = (view, ball) => view?.event === FEW && ball[0] > WIDTH / 3 && ball[0] < (2 * WIDTH) / 3;
+
 const NOOP_FX = { hit() {}, wall() {}, goal() {}, event() {}, setFigures() {}, setArena() {}, setQuality() {}, setMotion() {} };
 
 function create2D(canvas) {
@@ -52,6 +87,7 @@ function create2D(canvas) {
     let portrait = false;
     let dpr = 1;
     let colours = ['#f7931a', '#a78bfa'];
+    let drawn = { obstacles: 0, fog: false, balls: [] };
 
     const rect = (fx0, fy0, fx1, fy1) => {
         const [ax, ay] = toScreen(fx0, fy0, w, h, portrait);
@@ -64,6 +100,8 @@ function create2D(canvas) {
         ...NOOP_FX,
         kind: '2d',
         quality: 'low',
+        /** What the last frame drew of the P7 events (the browser test's handle). */
+        drawn: () => drawn,
         setFigures(figures) {
             colours = figures.map((f) => neon(f));
         },
@@ -96,11 +134,31 @@ function create2D(canvas) {
             ctx.stroke();
             ctx.setLineDash([]);
 
+            // The P7 events: the fog over the middle third, the tax block and the border wall.
+            drawn = { obstacles: obstaclesOf(view).length, fog: view.event === FEW, balls: view.balls.map((ball, index) => !!view.alive[index] && !hiddenBall(view, ball)) };
+            if (view.event === FEW) {
+                const [x, y, rw, rh] = rect(WIDTH / 3, 0, (2 * WIDTH) / 3, HEIGHT);
+                ctx.fillStyle = 'rgba(76, 29, 149, 0.55)';
+                ctx.fillRect(x, y, rw, rh);
+            }
+            obstaclesOf(view).forEach(({ kind, rect: r }) => {
+                const [x, y, rw, rh] = rect(...r);
+                ctx.shadowColor = kind === 'tax' ? '#ef4444' : '#f97316';
+                ctx.shadowBlur = 16;
+                ctx.fillStyle = kind === 'tax' ? '#6b7280' : '#a8a29e';
+                ctx.fillRect(x, y, rw, rh);
+                ctx.shadowBlur = 0;
+                ctx.strokeStyle = kind === 'tax' ? '#ef4444' : '#f97316';
+                ctx.lineWidth = 2;
+                ctx.strokeRect(x + 1, y + 1, rw - 2, rh - 2);
+            });
+
             // Paddles: the face at PADDLE_X, drawn PADDLE_DEPTH thick behind it.
             [0, 1].forEach((side) => {
                 const y = view.paddles[side];
+                const half = halfIn(view, side);
                 const [fx0, fx1] = side === 0 ? [PADDLE_X - PADDLE_DEPTH, PADDLE_X] : [WIDTH - PADDLE_X, WIDTH - PADDLE_X + PADDLE_DEPTH];
-                const [x, yy, rw, rh] = rect(fx0, y - view.half, fx1, y + view.half);
+                const [x, yy, rw, rh] = rect(fx0, y - half, fx1, y + half);
                 ctx.shadowColor = colours[side];
                 ctx.shadowBlur = 18;
                 ctx.fillStyle = colours[side];
@@ -111,12 +169,13 @@ function create2D(canvas) {
 
             // Balls, with a glow.
             view.balls.forEach((ball, index) => {
-                if (!view.alive[index]) return;
+                if (!view.alive[index] || hiddenBall(view, ball)) return;
                 const [x, y] = toScreen(ball[0], ball[1], w, h, portrait);
                 const r = (ball[4] / HEIGHT) * (portrait ? w : h);
-                ctx.shadowColor = '#f7931a';
+                const waiting = ball.length > 5;
+                ctx.shadowColor = waiting ? '#ef4444' : '#f7931a';
                 ctx.shadowBlur = 24;
-                ctx.fillStyle = '#fff4e0';
+                ctx.fillStyle = waiting ? '#d1d5db' : '#fff4e0';
                 ctx.beginPath();
                 ctx.arc(x, y, Math.max(r, 2), 0, Math.PI * 2);
                 ctx.fill();
@@ -495,6 +554,26 @@ function create3D(canvas, options) {
     const note = Array.from({ length: NOTE_MAX }, () => ({ x: 0, y: 0, z: 0, r: 0, s: 0, v: 0 }));
     const dummy = new THREE.Object3D();
 
+    // The P7 events: the tax office's block, the border wall's two parts, Few understand's fog over the middle third.
+    const obstacleMat = (colour, edge) => new THREE.MeshStandardMaterial({ color: colour, emissive: edge, emissiveIntensity: 0.55, roughness: 0.7, metalness: 0.1 });
+    const unitBox = new THREE.BoxGeometry(1, 1, 1);
+    const taxBlock = new THREE.Mesh(unitBox, obstacleMat(0x6b7280, 0x7f1d1d));
+    const taxHalo = glowPlane(0xef4444, 0.7);
+    const wallParts = [0, 1].map(() => {
+        const mesh = new THREE.Mesh(unitBox, obstacleMat(0xa8a29e, 0x7c2d12));
+        const halo = glowPlane(0xf97316, 0.55);
+        root.add(halo, mesh);
+
+        return { mesh, halo };
+    });
+    root.add(taxHalo, taxBlock);
+    const fog = new THREE.Mesh(new THREE.PlaneGeometry(FW / 3, FH), new THREE.MeshBasicMaterial({ map: glowTex, color: 0x6d28d9, transparent: true, opacity: 0, depthWrite: false }));
+    fog.position.z = 3.2;
+    root.add(fog);
+    const fogCore = new THREE.Mesh(new THREE.PlaneGeometry(FW / 3, FH), new THREE.MeshBasicMaterial({ color: 0x1e1036, transparent: true, opacity: 0, depthWrite: false }));
+    fogCore.position.z = 3.1;
+    root.add(fogCore);
+
     // The Halving's cut: a blade of light across the field.
     const slash = glowPlane(0x67e8f9, 1);
     slash.visible = false;
@@ -678,6 +757,8 @@ function create3D(canvas, options) {
         kind: 'webgl',
         gpu,
         get quality() { return tierName; },
+        /** What the last frame drew of the P7 events (the browser test's handle). */
+        drawn: () => ({ obstacles: [taxBlock, ...wallParts.map((part) => part.mesh)].filter((mesh) => mesh.visible).length, fog: fog.visible, balls: balls.map((b) => b.mesh.visible) }),
         /** Draw calls and triangles of the last frame (bloom passes included). */
         stats: () => ({ calls: renderer.info.render.calls, triangles: renderer.info.render.triangles }),
         setQuality(name) {
@@ -771,7 +852,7 @@ function create3D(canvas, options) {
         /** A meme event's staging on the field, for `ms` milliseconds (the announcement). */
         event(name, ms) {
             eventFx = { name, t: 0, ms: Math.max(600, ms) };
-            const colours = { halving: '#67e8f9', brrr: '#22c55e', pizza: '#fb923c', difficulty: '#ef4444' };
+            const colours = { halving: '#67e8f9', brrr: '#22c55e', pizza: '#fb923c', difficulty: '#ef4444', tax: '#ef4444', controls: '#f97316', few: '#8b5cf6', pow: '#facc15', arbeitsamt: '#e11d48' };
             flashColour.set(colours[name] ?? '#ffffff');
             flashMat.color.copy(flashColour);
             flashMat.opacity = 0.28;
@@ -785,16 +866,18 @@ function create3D(canvas, options) {
             time += dt;
             const rally = state ?? { balls: [], alive: [], paddles: [HEIGHT >> 1, HEIGHT >> 1], half: 9000, event: null };
 
-            // Paddles: a Difficulty Adjustment shortens them in ratchet steps, not at once.
+            // Paddles: a Difficulty Adjustment shortens them in ratchet steps, not at once; Proof of Work grows each
+            // side's on its own the same way.
             [0, 1].forEach((side) => {
                 const p = paddles[side];
                 const x = side === 0 ? PADDLE_X - PADDLE_DEPTH / 2 : WIDTH - PADDLE_X + PADDLE_DEPTH / 2;
-                const wanted = (2 * rally.half) / 1000;
+                const wanted = (2 * halfIn(rally, side)) / 1000;
                 if (p.len === undefined) p.len = wanted;
                 if (Math.abs(p.len - wanted) > 0.01) {
                     p.step = (p.step ?? 0) + dt;
                     if (p.step > 0.07) {
                         p.step = 0;
+                        if (wanted > p.len) p.pulse = 1;
                         p.len += Math.sign(wanted - p.len) * Math.min(Math.abs(wanted - p.len), 0.6);
                     }
                 }
@@ -811,7 +894,7 @@ function create3D(canvas, options) {
             let lit = false;
             balls.forEach((b, index) => {
                 const ball = rally.balls[index];
-                const on = !!ball && rally.alive[index];
+                const on = !!ball && rally.alive[index] && !hiddenBall(rally, ball);
                 b.mesh.visible = b.halo.visible = on;
                 const trail = trails[index];
                 if (!on) {
@@ -831,6 +914,10 @@ function create3D(canvas, options) {
                 const y = wy(ball[1]);
                 b.mesh.position.set(x, y, r + 0.4);
                 b.mesh.scale.setScalar(r);
+                // Waiting in the Arbeitsamt's queue: grey, its glow red.
+                const waiting = ball.length > 5;
+                b.material.emissiveIntensity = waiting ? 0.05 : 0.4;
+                b.halo.material.color.set(waiting ? 0xef4444 : ORANGE);
                 // It rolls: a turn about the axis across its path, as far as it moved.
                 const speed = Math.hypot(ball[2], ball[3]) / 1000;
                 b.mesh.rotation.y += (ball[2] > 0 ? 1 : -1) * speed * dt * 4;
@@ -885,6 +972,27 @@ function create3D(canvas, options) {
                 [pos, tint, size, alpha].forEach((a) => { a.needsUpdate = true; });
             });
             ballLight.intensity = lit ? 1.6 : 0;
+
+            // The P7 events' field: obstacles where the physics has them, the fog over the middle third.
+            const obstacles = obstaclesOf(rally);
+            const place = (mesh, halo, [x0, y0, x1, y1], depth) => {
+                mesh.position.set(wx((x0 + x1) / 2), wy((y0 + y1) / 2), depth / 2);
+                mesh.scale.set((x1 - x0) / 1000, (y1 - y0) / 1000, depth);
+                halo.position.set(mesh.position.x, mesh.position.y, 0.1);
+                halo.scale.set((x1 - x0) / 1000 + 8, (y1 - y0) / 1000 + 8, 1);
+            };
+            const tax = obstacles.find((o) => o.kind === 'tax');
+            taxBlock.visible = taxHalo.visible = !!tax;
+            if (tax) place(taxBlock, taxHalo, tax.rect, 3.4);
+            const wallsShown = obstacles.filter((o) => o.kind === 'wall');
+            wallParts.forEach((part, i) => {
+                part.mesh.visible = part.halo.visible = !!wallsShown[i];
+                if (wallsShown[i]) place(part.mesh, part.halo, wallsShown[i].rect, 2.6);
+            });
+            const fogOn = rally.event === FEW ? 1 : 0;
+            fog.material.opacity += (fogOn * 0.9 - fog.material.opacity) * Math.min(1, dt * 4);
+            fogCore.material.opacity = fog.material.opacity * 0.75;
+            fog.visible = fogCore.visible = fog.material.opacity > 0.01;
 
             stepSparks(dt);
             stepNotes(dt, rally.event === 'brrr' || eventFx?.name === 'brrr');

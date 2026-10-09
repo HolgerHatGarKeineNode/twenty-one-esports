@@ -10,7 +10,7 @@
  * The field and the player's input are page.js's (shared with the live match, live.js).
  *
  * Settings (localStorage `pong-settings`, the browser test's handle): `speed` runs the clock faster (1 = real time),
- * `autoplay` lets a bot of that level play the player's paddle. With both, a game is the one PongGame::bots() plays
+ * `autoplay` lets a bot of that level play the player's paddle, `eventEvery` makes every n-th rally an event. With both, a game is the one PongGame::bots() plays
  * for the same seed and levels, tick for tick.
  */
 import { botSpeed, createBot } from './bot.js';
@@ -32,7 +32,7 @@ function boot() {
     const { arena, portrait: isPortrait, input } = createStage();
     const show = createShow({ arena, settings, t, castTexts: config.castTexts, figures: [config.figure, config.botFigure], arenaName: config.arena });
 
-    const game = createGame(config.seed, config.rules);
+    const game = createGame(config.seed, settings.eventEvery ? { ...config.rules, event_every_rallies: settings.eventEvery } : config.rules);
     const speeds = [settings.autoplay ? botSpeed(settings.autoplay) : PLAYER_SPEED, botSpeed(config.level)];
     let phase = 'ready';
     let wait = 0;
@@ -188,7 +188,7 @@ function boot() {
     // The browser test's handles: where the game stands, and the show (to stage a moment for a picture).
     window.pongShow = show;
     window.pongGame = {
-        state: () => ({ phase, score: [...game.score], rally: game.rally, winner: game.winner, ticks, lastScorer, renderer: arena.kind, quality: arena.quality, gpu: arena.gpu ?? null, draws: arena.stats ? arena.stats() : null, figures: show.figures().map((f) => f.id), portrait: isPortrait() }),
+        state: () => ({ phase, score: [...game.score], rally: game.rally, winner: game.winner, ticks, event: rally?.event ?? null, halves: rally ? [rallyHalf(rally, 0), rallyHalf(rally, 1)] : null, waiting: rally ? rally.balls.some((ball) => ball.length > 5) : false, sideHits: rally ? [...rally.sideHits] : null, lastScorer, renderer: arena.kind, quality: arena.quality, gpu: arena.gpu ?? null, draws: arena.stats ? arena.stats() : null, drawn: arena.drawn ? arena.drawn() : null, figures: show.figures().map((f) => f.id), portrait: isPortrait() }),
     };
     document.body.dataset.renderer = arena.kind;
     document.body.dataset.ready = '1';

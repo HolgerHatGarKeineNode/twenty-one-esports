@@ -452,6 +452,11 @@ final class RulesPage
                     [__('Brrr'), __('The ball flies faster.')],
                     [__('Pizza Day'), __('Two balls at once.')],
                     [__('Difficulty Adjustment'), __('Both paddles are shorter.')],
+                    [__('Taxation is Theft'), __('A tax office patrols the centre line; the ball bounces off it.')],
+                    [__('Capital Controls'), __('A border wall with a moving gap; hit the wall and the ball comes back.')],
+                    [__('Few understand'), __('The ball is invisible in the middle of the field.')],
+                    [__('Proof of Work'), __('Each of your hits makes your paddle longer.')],
+                    [__('Job Centre – Please wait'), __('At the centre line the ball draws a number and waits a second.')],
                 ],
             ],
             'items' => [

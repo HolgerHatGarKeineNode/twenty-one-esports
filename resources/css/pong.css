@@ -121,6 +121,11 @@ body.gl #field { background: transparent; box-shadow: none; border-radius: 0; }
 .banner[data-event=brrr] { --ev: #22c55e; }
 .banner[data-event=pizza] { --ev: #fb923c; }
 .banner[data-event=difficulty] { --ev: #ef4444; }
+.banner[data-event=tax] { --ev: #ef4444; }
+.banner[data-event=controls] { --ev: #f97316; }
+.banner[data-event=few] { --ev: #a78bfa; }
+.banner[data-event=pow] { --ev: #facc15; }
+.banner[data-event=arbeitsamt] { --ev: #fb7185; }
 .banner img { width: clamp(88px, 30cqmin, 200px); height: auto; aspect-ratio: 1; object-fit: contain; filter: drop-shadow(0 0 30px color-mix(in srgb, var(--ev) 70%, transparent)); }
 .banner small { display: block; font-size: 13px; font-weight: 700; color: var(--ev); }
 .banner b { display: block; font: 800 clamp(26px, 9cqmin, 56px)/1.05 var(--font-display); text-shadow: 0 0 24px color-mix(in srgb, var(--ev) 80%, transparent), 0 2px 0 rgb(0 0 0 / 0.6); }
@@ -136,6 +141,13 @@ body.gl #field { background: transparent; box-shadow: none; border-radius: 0; }
 .ticker.in { animation: ticker 2600ms var(--ease-out) both; }
 @keyframes ticker { 0% { opacity: 0; transform: translate(-50%, -8px); } 10%, 85% { opacity: 1; transform: translate(-50%, 0); } 100% { opacity: 0; } }
 
+/* The Arbeitsamt's queue (P7): a rubber stamp over the centre line while the ball waits, its number, Markus Turm's line. */
+.queue { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); display: flex; flex-direction: column; align-items: center; gap: 4px; max-width: calc(100% - 24px); padding: 10px 16px; border: 3px solid #e11d48; border-radius: 10px; background: rgb(4 6 13 / 0.72); color: var(--pong-ink); text-align: center; pointer-events: none; }
+.queue b { font: 800 clamp(18px, 6cqmin, 34px)/1 var(--font-display); color: #fb7185; letter-spacing: 0.08em; text-transform: uppercase; }
+.queue span { font-weight: 700; font-size: clamp(13px, 3.4cqmin, 18px); white-space: nowrap; }
+.queue small { font-size: 13px; color: #fda4af; }
+.queue.in { animation: stamp 420ms var(--ease-pop) both; }
+@keyframes stamp { 0% { transform: translate(-50%, -50%) scale(2.2) rotate(-14deg); opacity: 0; } 55% { transform: translate(-50%, -50%) scale(0.92) rotate(-6deg); opacity: 1; } 100% { transform: translate(-50%, -50%) scale(1) rotate(-6deg); } }
 .toast { position: absolute; left: 50%; bottom: 12%; transform: translateX(-50%); padding: 8px 12px; border-radius: 10px; background: var(--pong-card); font-weight: 700; white-space: nowrap; pointer-events: none; }
 
 /* ---------- The goal celebration: the scorer's pose from their side ----------------------------------------- */
@@ -200,5 +212,5 @@ body[data-portrait="1"] .cheer.in[data-side="1"] { animation-name: cheer-t; }
 /* Reduced motion (the system's or the setting's): nothing slides, pops or flies. */
 body.still .hud .score.pop, body.still .banner.in img, body.still .banner.in small, body.still .banner.in b, body.still .banner.in span { animation: none; }
 body.still .cheer.in { animation: cheer-still 2200ms linear both; }
-body.still .ticker.in { animation: none; }
+body.still .ticker.in, body.still .queue.in { animation: none; }
 @keyframes cheer-still { 0%, 92% { opacity: 1; } 100% { opacity: 0; } }

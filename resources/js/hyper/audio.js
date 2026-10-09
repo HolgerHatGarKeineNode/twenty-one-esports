@@ -90,9 +90,14 @@ function pick(pool) {
 }
 
 function playFile(name, prio) {
+    playUrl(base + 's/' + name + '.mp3', prio, name);
+}
+
+/** Any voice file on the clip channel (P7: a snippet of public/sounds/snips): stops the clip playing, ducks the music. */
+export function playUrl(url, prio, name = url) {
     try {
         if (AUD.cur) AUD.cur.pause();
-        const a = new Audio(base + 's/' + name + '.mp3'); a.volume = Math.min(1, AUD.vol * 1.1);
+        const a = new Audio(url); a.volume = Math.min(1, AUD.vol * 1.1);
         AUD.cur = a; AUD.curPrio = prio; AUD.curName = name;
         duck(true); a.onended = () => { duck(false); AUD.curPrio = 0; AUD.endedAt = performance.now(); };
         a.play().catch(() => duck(false));

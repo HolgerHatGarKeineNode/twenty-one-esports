@@ -29,6 +29,10 @@ pest()->group('browser');
 | asserted here. Every figure of the cast has its portrait and pose, and a goal shows the scorer's pose for at
 | most 2.5 s without covering the middle of the field.
 |
+| The five meme events of P7 run in a real game (`eventEvery` 1: rally 1 of the seed is the event): the tax block
+| and the border wall drawn where the physics has them, the ball hidden under Few understand's fog, Proof of Work's
+| paddles growing with their hits, the Arbeitsamt's stamp with the waiting number and Markus Turm's line.
+|
 */
 
 beforeEach(function () {
@@ -285,17 +289,17 @@ test('pictures of the arena for the report: lobby, match, meme event, goal, end'
     $page->evaluate('() => { document.getElementById("cheer").style.animation = "none"; }');
     arenaShot($page, "shot-{$width}-goal");
 
-    // The events in a real game: rally 21 of seed 1 is a Pizza Day (two pizza balls), of seed 9 a Difficulty
+    // The events in a real game: rally 21 of seed 29 is a Pizza Day (two pizza balls), of seed 4 a Difficulty
     // Adjustment (the paddles shrink in ratchet steps).
     $page->close();
-    $page = arenaPage('/proof-of-pong/bot?bot=shitcoiner&figure=lutze&seed=1', $width, $height, ['autoplay' => 2, 'speed' => 6, 'quality' => 'high']);
+    $page = arenaPage('/proof-of-pong/bot?bot=shitcoiner&figure=lutze&seed=29', $width, $height, ['autoplay' => 2, 'speed' => 6, 'quality' => 'high']);
     $page->locator('[data-test=pong-start-btn]')->click();
     BrowserWait::until($page, '() => window.pongGame.state().rally === 21 && window.pongGame.state().phase === "play" && window.pongGame.state().ticks > 0', 120_000);
     usleep(400_000);
     arenaShot($page, "shot-{$width}-event-pizza");
 
     $page->close();
-    $page = arenaPage('/proof-of-pong/bot?bot=schiff&figure=oma&seed=9', $width, $height, ['autoplay' => 2, 'speed' => 6, 'quality' => 'high']);
+    $page = arenaPage('/proof-of-pong/bot?bot=schiff&figure=oma&seed=4', $width, $height, ['autoplay' => 2, 'speed' => 6, 'quality' => 'high']);
     $page->locator('[data-test=pong-start-btn]')->click();
     BrowserWait::until($page, '() => window.pongGame.state().rally === 21 && window.pongGame.state().phase === "announce"', 120_000);
     usleep(250_000);
@@ -312,4 +316,112 @@ test('pictures of the arena for the report: lobby, match, meme event, goal, end'
 })->with([
     'phone 390x844' => [390, 844],
     'desktop 1440x900' => [1440, 900],
+]);
+
+/** Rally 1 of each seed is that P7 event when every rally is one (PongRules::eventOf(), `eventEvery` 1). */
+const PONG_P7_SEEDS = ['tax' => 7, 'controls' => 6, 'few' => 1, 'pow' => 15, 'arbeitsamt' => 5];
+
+/** The German name of each P7 event on its banner. */
+const PONG_P7_NAMES = ['tax' => 'Taxation is Theft', 'controls' => 'Capital Controls', 'few' => 'Few understand', 'pow' => 'Proof of Work', 'arbeitsamt' => 'Job Centre – Please wait'];
+
+/**
+ * A game against a bot whose rally 1 is P7 event `$event`, played to the moment that shows it: its banner during the
+ * announcement, then in play the obstacle drawn, the ball hidden under the fog, a paddle grown by its hits, or the
+ * queue's stamp. Returns the page there.
+ */
+function pongP7Moment(string $event, int $width, int $height): Page
+{
+    $figure = $event === 'arbeitsamt' ? 'turm' : 'saylor';
+    $page = arenaPage('/proof-of-pong/bot?bot=schiff&figure='.$figure.'&seed='.PONG_P7_SEEDS[$event], $width, $height, ['autoplay' => 3, 'eventEvery' => 1, 'speed' => 2]);
+    $page->locator('[data-test=pong-start-btn]')->click();
+    BrowserWait::until($page, '() => window.pongGame.state().phase === "announce"', 10_000);
+    $banner = $page->evaluate('() => { const b = document.querySelector("[data-test=pong-banner]"); return { shown: b.checkVisibility(), event: b.dataset.event, name: b.querySelector("b").textContent, icon: b.querySelector("img").getAttribute("src") }; }');
+    expect($banner)->toBe(['shown' => true, 'event' => $event, 'name' => __(PONG_P7_NAMES[$event], [], 'de'), 'icon' => "/pong/art/ev-{$event}.webp"]);
+    BrowserWait::until($page, '() => document.querySelector("[data-test=pong-banner] img").naturalWidth > 0', 5_000);
+
+    $moment = match ($event) {
+        'tax', 'controls' => '() => { const s = window.pongGame.state(); return s.phase === "play" && s.ticks > 60 && s.drawn.obstacles > 0; }',
+        'few' => '() => { const s = window.pongGame.state(); return s.phase === "play" && s.drawn.fog && s.drawn.balls[0] === false; }',
+        'pow' => '() => { const s = window.pongGame.state(); return s.phase === "play" && Math.max(...s.halves) >= 12000; }',
+        'arbeitsamt' => '() => window.pongGame.state().waiting && document.querySelector("[data-test=pong-queue]").checkVisibility()',
+    };
+    BrowserWait::until($page, $moment, 30_000);
+
+    return $page;
+}
+
+test('the five P7 meme events take the field over in a real game', function () {
+    foreach (array_keys(PONG_P7_SEEDS) as $event) {
+        $page = pongP7Moment($event, 1440, 900);
+        $state = $page->evaluate('() => window.pongGame.state()');
+
+        expect($state['renderer'])->toBe('webgl')->and($state['event'])->toBe($event);
+
+        match ($event) {
+            'tax' => expect($state['drawn']['obstacles'])->toBe(1),
+            'controls' => expect($state['drawn']['obstacles'])->toBeGreaterThanOrEqual(1),
+            'few' => BrowserWait::until($page, '() => { const s = window.pongGame.state(); return s.phase !== "play" || s.drawn.balls[0] === true; }', 10_000),
+            'pow' => expect(max($state['halves']))->toBe(9000 + 1500 * max($state['sideHits'])),
+            'arbeitsamt' => expect($page->evaluate('() => [...document.querySelectorAll("[data-test=pong-queue] b, [data-test=pong-queue] span, [data-test=pong-queue] small")].map((e) => e.textContent)'))
+                ->toBe([__('Stamped', [], 'de'), __('Your waiting number: :n', ['n' => 21], 'de'), __('Markus Turm knows his way around here.', [], 'de')]),
+        };
+
+        expect([...$page->evaluate('() => window.__errors ?? ["collector missing"]'), ...$page->evaluate(BrowserConsole::BAD_RESPONSES)])->toBe([], $event);
+        $page->close();
+    }
+});
+
+test('measurements of the five P7 events at five sizes for the report: in the window, console clean', function (int $width, int $height) {
+    $dir = getenv('PONG_SHOTS');
+    if (! is_string($dir) || $dir === '') {
+        $this->markTestSkipped('PONG_SHOTS names no directory.');
+    }
+
+    foreach (array_keys(PONG_P7_SEEDS) as $event) {
+        $page = pongP7Moment($event, $width, $height);
+        $page->evaluate('() => { const q = document.getElementById("queue"); if (q) q.style.animation = "none"; }');
+        $fit = $page->evaluate(<<<'JS'
+            () => {
+                const box = (el) => { const r = el.getBoundingClientRect(); return { top: Math.round(r.top), left: Math.round(r.left), right: Math.round(r.right), bottom: Math.round(r.bottom) }; };
+                const queue = document.querySelector('[data-test=pong-queue]');
+                return {
+                    field: box(document.querySelector('[data-test=pong-field]')),
+                    queue: queue.checkVisibility() ? box(queue) : null,
+                    queueOverflow: queue.checkVisibility() ? queue.scrollWidth - queue.clientWidth : 0,
+                    scrollY: document.documentElement.scrollHeight - innerHeight,
+                    overflow: document.documentElement.scrollWidth - document.documentElement.clientWidth,
+                    renderer: window.pongGame.state().renderer,
+                    drawn: window.pongGame.state().drawn,
+                };
+            }
+            JS);
+        arenaShot($page, "p7-{$width}x{$height}-{$event}");
+        fwrite(STDERR, "pong p7 {$width}x{$height} {$event}: ".json_encode($fit).PHP_EOL);
+
+        expect($fit['renderer'])->toBe('webgl')
+            ->and($fit['scrollY'])->toBeLessThanOrEqual(0)
+            ->and($fit['overflow'])->toBe(0);
+        if ($fit['queue'] !== null) {
+            expect($fit['queue']['left'])->toBeGreaterThanOrEqual($fit['field']['left'])
+                ->and($fit['queue']['right'])->toBeLessThanOrEqual($fit['field']['right'])
+                ->and($fit['queue']['top'])->toBeGreaterThanOrEqual($fit['field']['top'])
+                ->and($fit['queue']['bottom'])->toBeLessThanOrEqual($fit['field']['bottom'])
+                ->and($fit['queueOverflow'])->toBeLessThanOrEqual(0);
+        }
+        expect([...$page->evaluate('() => window.__errors ?? ["collector missing"]'), ...$page->evaluate(BrowserConsole::BAD_RESPONSES)])->toBe([], $event);
+
+        if ($event === 'arbeitsamt') {
+            // Positive control: a thrown error and a broken image are seen.
+            $page->evaluate('() => { setTimeout(() => { throw new Error("p7 positive control"); }); const img = new Image(); img.src = "/p7-positive-control-missing.png"; document.body.append(img); }');
+            BrowserWait::until($page, '() => (window.__errors || []).some((e) => e.includes("p7 positive control"))', 5_000);
+            BrowserWait::until($page, '() => performance.getEntries().some((e) => e.name.includes("p7-positive-control-missing") && e.responseStatus === 404)', 5_000);
+        }
+        $page->close();
+    }
+})->with([
+    'phone upright 390x844' => [390, 844],
+    'small phone upright 360x740' => [360, 740],
+    'phone lying 844x390' => [844, 390],
+    'desktop 1440x900' => [1440, 900],
+    'desktop 1920x1080' => [1920, 1080],
 ]);

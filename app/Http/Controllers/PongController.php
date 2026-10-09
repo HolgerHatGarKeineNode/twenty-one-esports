@@ -39,7 +39,11 @@ class PongController extends Controller
     public const array TEXTS = [
         'Rally :n', 'Meme event', 'Halving', 'The ball is half the size, its point counts double.', 'Brrr', 'The ball flies faster.',
         'Pizza Day', 'Two balls at once.', 'Difficulty Adjustment', 'Both paddles are shorter.', 'Point for you', 'Point for :name',
-        'You win!', ':name wins',
+        'You win!', ':name wins', 'Taxation is Theft', 'A tax office patrols the centre line; the ball bounces off it.', 'Capital Controls',
+        'A border wall with a moving gap; hit the wall and the ball comes back.', 'Few understand',
+        'The ball is invisible in the middle of the field.', 'Proof of Work', 'Each of your hits makes your paddle longer.',
+        'Job Centre – Please wait', 'At the centre line the ball draws a number and waits a second.', 'Stamped',
+        'Your waiting number: :n', 'Markus Turm knows his way around here.',
     ];
 
     /** The live match page's texts (resources/js/pong/live.js t()). */

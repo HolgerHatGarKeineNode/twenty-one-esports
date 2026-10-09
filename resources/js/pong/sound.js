@@ -5,11 +5,19 @@
  * paddle's blip (higher with each hit of the rally), the wall, the goal, the ratchet of a Difficulty Adjustment, the
  * printer of Brrr.
  *
- * Four switches like Hyper's, kept in localStorage `pong-sound`: volume, effects, voices (soundboard), music. Voices
- * never chatter: a clip waits until the last one has ended and a few seconds passed, except at the end of a game.
+ * Four switches like Hyper's, kept in localStorage `pong-sound`: volume, effects, voices (soundboard), music.
+ *
+ * The voices (P7) come from the snippet library (resources/js/sounds/snips.js, public/sounds/snips): each occasion of
+ * the game (a hit, a goal, a goal against, a streak, each meme event, the win, the loss) draws without repetition from
+ * every snippet tagged for it, a figure's own snippets first with the weight OWN_WEIGHT. Kinski and the politicians'
+ * clips stay out (plan, Besetzung: "Nicht gewählt"). Voices never chatter: say() keeps a gap after the last snippet per
+ * kind of occasion (voices.js VOICE_RULES), lets a hit speak only now and then, and lets only a more important moment cut a
+ * snippet short. Until the manifest has loaded (or when it cannot), a figure falls back to its cast clips (voice()).
  */
-import { AUD, ctx, emoteClip, sfx, startMusic } from '../hyper/audio.js';
+import { AUD, ctx, emoteClip, playUrl, sfx, startMusic } from '../hyper/audio.js';
 import { readSettings, writeSettings } from '../hyper/sounds.js';
+import { createSnips, personsOf } from '../sounds/snips.js';
+import { EXCLUDE, OCCASIONS, OWN_WEIGHT, VOICE_RULES, voiceAllowed } from './voices.js';
 
 const KEY = 'pong-sound';
 const QUIET_MS = 3500;
@@ -125,6 +133,34 @@ export const play = {
     fanfare() {
         sfx.fanfare();
     },
+    /** The tax block or the border wall: a dull thud. */
+    block() {
+        if (AUD.ctx) tone('square', 110, now(), 0.09, 0.1, { slide: -40, filter: 900 });
+    },
+    /** The Arbeitsamt's rubber stamp: a thump and a short ding of the ticket machine. */
+    stamp() {
+        const at = now();
+        if (!AUD.ctx) return;
+        click(at, 0.9, 380);
+        tone('sine', 1320, at + 0.12, 0.16, 0.07);
+    },
+    tax() {
+        sfx.coin();
+    },
+    controls() {
+        if (AUD.ctx) tone('sawtooth', 160, now(), 0.35, 0.06, { slide: -60, filter: 800 });
+    },
+    few() {
+        sfx.laser();
+    },
+    pow() {
+        const at = now();
+        if (!AUD.ctx) return;
+        for (let i = 0; i < 4; i++) click(at + i * 0.11, 0.6, 1600 + i * 200);
+    },
+    arbeitsamt() {
+        play.stamp();
+    },
 };
 
 let lastVoiceAt = -1e9;
@@ -139,6 +175,48 @@ export function voice(clips, seed, force = false) {
     if (!force && (busy || performance.now() - Math.max(AUD.endedAt, lastVoiceAt) < QUIET_MS)) return false;
     lastVoiceAt = performance.now();
     emoteClip(clips[Math.abs(seed) % clips.length]);
+
+    return true;
+}
+
+/* ---------- Voices from the snippet library (P7) ---------- */
+
+let library = null;
+let lastSnipAt = -1e9;
+
+/** The library, loaded once; null until it is there (and for good if it cannot be read). */
+function loadLibrary() {
+    if (library !== null || !globalThis.fetch) return;
+    library = false;
+    fetch('/sounds/snips/manifest.json')
+        .then((response) => (response.ok ? response.json() : null))
+        .then((manifest) => {
+            if (manifest?.snips?.length) library = createSnips(manifest, { occasions: OCCASIONS, exclude: EXCLUDE, ownWeight: OWN_WEIGHT, ownAnyTag: ['goal', 'win', 'turm'] });
+        })
+        .catch(() => {});
+}
+loadLibrary();
+
+/**
+ * A voice for `occasion` from the library, the figure's own snippets preferred (its cast clips name its speakers).
+ * Without the library a figure's goal or win falls back to its cast clips; true when something plays.
+ */
+export function say(occasion, figure = null) {
+    const clips = figure ? [...(figure.goal ?? []), ...(figure.win ?? [])] : [];
+    if (!library) {
+        if (!figure) return false;
+        const fallback = occasion === 'win' || occasion === 'lose' ? figure.win : figure.goal;
+
+        return voice(fallback, Math.floor(performance.now()), occasion === 'win' || occasion === 'lose');
+    }
+    const busy = !!(AUD.cur && !AUD.cur.paused && !AUD.cur.ended);
+    const sinceLast = performance.now() - Math.max(AUD.endedAt, lastSnipAt);
+    if (!voiceAllowed(occasion, { board: AUD.board, busy, curPrio: AUD.curPrio, sinceLast, roll: Math.random() })) return false;
+    const snip = library.draw(occasion, clips.length ? personsOf(clips, library.snips) : []);
+    if (!snip) return false;
+    lastSnipAt = performance.now();
+    playUrl(library.url(snip), VOICE_RULES[occasion.split(':')[0]].prio, snip.id);
+    document.body.dataset.voice = snip.id;
 
     return true;
 }
