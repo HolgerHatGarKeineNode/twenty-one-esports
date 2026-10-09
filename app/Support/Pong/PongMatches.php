@@ -70,6 +70,18 @@ final class PongMatches
     /**
      * The match this player waits for or plays, if any (one live game at a time).
      */
+    /**
+     * Locks the players' rows, in id order, for the rest of the running transaction (P8, review): two starts that would
+     * put one player into two matches at once (two invites accepted at the same moment, an accept and a rematch) wait
+     * for each other, so the second sees the first's match in busy(). The id order keeps two such locks from
+     * deadlocking each other.
+     */
+    public static function lockPlayers(User ...$users): void
+    {
+        User::query()->whereKey(collect($users)->pluck('id')->unique()->sort()->values()->all())
+            ->orderBy('id')->lockForUpdate()->pluck('id');
+    }
+
     public static function activeMatchOf(User $user): ?PongMatch
     {
         return PongMatch::query()->running()->playedBy($user)->latest('id')->first();
@@ -194,6 +206,11 @@ final class PongMatches
             if ($state['rematch'] === [true, true]) {
                 $left = $match->right;
                 $right = $match->left;
+
+                if ($left !== null && $right !== null) {
+                    self::lockPlayers($left, $right);
+                }
+
                 $busy = $left === null || $right === null
                     || PongInvites::busy($left) !== null || PongInvites::busy($right) !== null;
 

@@ -28,6 +28,8 @@ use App\Support\Pong\PongPhysics;
 use App\Support\Pong\PongReferee;
 use App\Support\Pong\PongRules;
 use App\Support\Pong\PongRuleViolation;
+use Illuminate\Database\Events\QueryExecuted;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\Route;
 use Livewire\Livewire;
@@ -386,4 +388,76 @@ test('every snapshot names the rules version, which follows the rules and finger
 
     // The match page carries it in its first snapshot, the reference a page compares later snapshots with.
     $this->actingAs($match->left)->get(route('pong.match', $match))->assertOk()->assertSee('"rules":"'.$version.'"', false);
+});
+
+/** The users-row locks a callback takes: the ids of each `users … order by id` select (PongMatches::lockPlayers()), then a refusal's reason. */
+function pongPlayerLocks(Closure $run): array
+{
+    $locks = [];
+    DB::listen(function (QueryExecuted $query) use (&$locks): void {
+        // whereKey() writes integer ids into the SQL itself.
+        if (preg_match('/^select "id" from "users" where "users"\."id" in \(([\d, ]+)\) order by "id" asc/', $query->sql, $ids) === 1) {
+            $locks[] = array_map('intval', explode(', ', $ids[1]));
+        }
+    });
+
+    try {
+        $run();
+    } catch (PongRuleViolation $violation) {
+        $locks[] = $violation->reason;
+    }
+
+    return $locks;
+}
+
+test('accepting locks both players in id order before the check, so one player never ends up in two matches', function () {
+    // Review 2026-10-10: accept() checked busy() without a per-player lock (a race on Postgres).
+    PongOn::play();
+    Event::fake([PongMatchStarted::class]);
+    $invitee = User::factory()->create(['looking_to_play' => PongInvites::LOOKING]);
+    [$first, $second] = User::factory()->count(2)->create();
+    $invites = app(PongInvites::class);
+    $one = $invites->invite($first, $invitee);
+    $two = $invites->invite($second, $invitee);
+
+    $locks = pongPlayerLocks(fn () => $invites->accept($one, $invitee));
+    $refused = pongPlayerLocks(fn () => $invites->accept($two, $invitee));
+
+    expect($locks)->toBe([[min($first->id, $invitee->id), max($first->id, $invitee->id)]])
+        ->and($refused)->toBe([[min($second->id, $invitee->id), max($second->id, $invitee->id)], 'already_playing'])
+        ->and(PongMatch::query()->count())->toBe(1);
+});
+
+test('a rematch both want locks both players in id order before it checks whether either is busy', function () {
+    PongOn::play();
+    [$match, $left, $right] = PongLive::started();
+    $matches = app(PongMatches::class);
+    $matches->resign($match, $right);
+    $matches->rematch($match, $left);
+
+    $locks = pongPlayerLocks(fn () => $matches->rematch($match->refresh(), $right));
+
+    expect($locks)->toBe([[min($left->id, $right->id), max($left->id, $right->id)]])
+        ->and(PongMatch::query()->count())->toBe(2);
+});
+
+test('inviting is throttled per player: the seventh invite within a minute is refused with a visible message', function () {
+    PongOn::play();
+    $inviter = User::factory()->create();
+    $lobby = Livewire::actingAs($inviter)->test('pong-lobby');
+
+    foreach (range(1, 6) as $n) {
+        $lobby->call('invite', User::factory()->create(['looking_to_play' => PongInvites::LOOKING])->id)->assertSet('error', '');
+    }
+
+    $lobby->call('invite', User::factory()->create(['looking_to_play' => PongInvites::LOOKING])->id)
+        ->assertSee('Too many invites in a short time: try again in')
+        ->assertSee('data-test="pong-lobby-error"', false);
+
+    expect(PongInvite::query()->count())->toBe(6);
+
+    // Another player is not affected; a minute later the inviter may invite again.
+    Livewire::actingAs(User::factory()->create())->test('pong-lobby')->call('invite', User::factory()->create(['looking_to_play' => PongInvites::LOOKING])->id)->assertSet('error', '');
+    $this->travel(61)->seconds();
+    $lobby->call('invite', User::factory()->create(['looking_to_play' => PongInvites::LOOKING])->id)->assertSet('error', '');
 });

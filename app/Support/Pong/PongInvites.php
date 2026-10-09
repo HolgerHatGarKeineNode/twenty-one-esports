@@ -29,7 +29,9 @@ use Illuminate\Support\Facades\DB;
  * - one live game at a time (busy()): nobody in a running Proof of Pong match, a live chess or board game or a casual
  *   1v1 invites or accepts (BoardQueue::assertFree's rule, plus Proof of Pong). An inviter who plays by the time the
  *   invite is accepted cannot start it any more, so it is withdrawn (`opponent_playing`);
- * - accepting starts the match with the sides drawn (PongMatches::create()), which opens it for both players.
+ * - accepting starts the match with the sides drawn (PongMatches::create()), which opens it for both players; both
+ *   players' rows are locked first (PongMatches::lockPlayers()), so two accepts at once cannot give one player two
+ *   matches.
  */
 final class PongInvites
 {
@@ -124,6 +126,9 @@ final class PongInvites
             if ($invite->invitee_id !== $invitee->id || ! $invite->isOpen()) {
                 return 'invite_closed';
             }
+
+            // Both players locked before they are checked: a second start for either waits and then sees this match.
+            PongMatches::lockPlayers($invite->inviter, $invitee);
 
             if (self::busy($invite->inviter) !== null) {
                 $invite->forceFill(['status' => BoardInviteStatus::Withdrawn])->save();

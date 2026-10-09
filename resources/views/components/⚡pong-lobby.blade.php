@@ -10,6 +10,7 @@ use App\Support\Pong\PongMatches;
 use App\Support\Pong\PongRatings;
 use App\Support\Pong\PongRuleViolation;
 use Illuminate\Support\Collection;
+use Illuminate\Support\Facades\RateLimiter;
 use Livewire\Attributes\Computed;
 use Livewire\Attributes\Locked;
 use Livewire\Attributes\Renderless;
@@ -27,6 +28,9 @@ use Livewire\Component;
  * the component. While an invite waits for an answer the lobby asks the server itself when it expires and at the
  * latest every SAFETY_NET_SECONDS (data-check-at, the board lobby's pattern); without a websocket every
  * FALLBACK_SECONDS.
+ *
+ * Invites are throttled per player (P8, review): at most INVITES_PER_MINUTE a minute, then the card says how long to
+ * wait; withdrawing, declining and accepting are not counted.
  */
 new class extends Component {
     public string $error = '';
@@ -41,6 +45,8 @@ new class extends Component {
     public const SAFETY_NET_SECONDS = 120;
 
     public const FALLBACK_SECONDS = 4;
+
+    public const INVITES_PER_MINUTE = 6;
 
     public function mount(): void
     {
@@ -83,7 +89,16 @@ new class extends Component {
 
     public function invite(int $userId): void
     {
-        $this->attempt(fn (User $user) => app(PongInvites::class)->invite($user, User::query()->findOrFail($userId)));
+        $this->attempt(function (User $user) use ($userId): void {
+            $key = 'pong-invite:'.$user->id;
+
+            if (RateLimiter::tooManyAttempts($key, self::INVITES_PER_MINUTE)) {
+                throw new PongRuleViolation('too_many_invites', __('Too many invites in a short time: try again in :seconds s.', ['seconds' => RateLimiter::availableIn($key)]));
+            }
+
+            RateLimiter::hit($key, 60);
+            app(PongInvites::class)->invite($user, User::query()->findOrFail($userId));
+        });
     }
 
     public function withdrawInvite(): void
@@ -194,7 +209,7 @@ new class extends Component {
             'invite_closed' => __('That invite is no longer open.'),
             'opponent_playing' => __('That player is already in another live game, so the invite is closed.'),
             'invite_self' => __('You cannot invite yourself.'),
-            'not_looking' => $text,
+            'not_looking', 'too_many_invites' => $text,
             default => __('That did not work, please try again.'),
         };
     }
