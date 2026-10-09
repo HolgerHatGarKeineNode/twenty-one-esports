@@ -25,8 +25,8 @@ class PlayHyperBots implements ShouldQueue
      */
     public const TURNS_PER_RUN = 50;
 
-    /** Seconds a run may take: 50 bot turns, each a transaction and a broadcast, take a few seconds. */
-    public int $timeout = 120;
+    /** Seconds a run may take: 50 bot turns take a few seconds; below the queues' `retry_after` (90), so a slow run is never reserved twice. */
+    public int $timeout = 80;
 
     /** A run that failed is tried again; the sweep (`hyper:check-clocks`) sends a lost chain again besides. */
     public int $tries = 3;

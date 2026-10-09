@@ -17,6 +17,7 @@ use App\Models\SeriesMatch;
 use App\Models\StackerRun;
 use App\Models\User;
 use App\Support\Chess\ChessTeamMatches;
+use App\Support\Hyper\HyperTeams;
 use App\Support\SeasonChain\Seasons;
 use App\Support\Series\SeriesPresenter;
 use Carbon\CarbonInterface;
@@ -102,7 +103,7 @@ final class MempoolStrip
                 ->orderByDesc('ended_at')->limit(self::SIDE)->get()
                 ->map(fn (BoardGame $game): array => self::item('board', $game, $game->ended_at))->all()),
             ...(! $hyper ? [] : self::onChain(HyperMatch::query(), $chain)->with('seats.user')->where('status', HyperMatchStatus::Finished)
-                ->orderByDesc('ended_at')->limit(self::SIDE)->get()
+                ->orderByDesc('ended_at')->limit(self::SIDE)->get()->tap(fn ($list) => HyperTeams::preload($list))
                 ->map(fn (HyperMatch $match): array => self::item('hyper', $match, $match->ended_at))->all()),
             ...($runs ? self::attempts('done', $runsPerSide) : []),
         ];
@@ -118,7 +119,7 @@ final class MempoolStrip
                 ->orderByDesc('updated_at')->limit(self::SIDE)->get()
                 ->map(fn (BoardGame $game): array => self::item('board', $game, $game->updated_at))->all()),
             ...(! $hyper ? [] : self::onChain(HyperMatch::query(), $chain)->with('seats.user')->where('status', HyperMatchStatus::Active)
-                ->orderByDesc('updated_at')->limit(self::SIDE)->get()
+                ->orderByDesc('updated_at')->limit(self::SIDE)->get()->tap(fn ($list) => HyperTeams::preload($list))
                 ->map(fn (HyperMatch $match): array => self::item('hyper', $match, $match->updated_at))->all()),
             ...($runs ? self::attempts('waiting', $runsPerSide) : []),
         ];

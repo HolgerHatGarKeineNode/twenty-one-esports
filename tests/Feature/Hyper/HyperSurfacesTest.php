@@ -21,6 +21,8 @@ use App\Support\Hyper\HyperLobby;
 use App\Support\Hyper\HyperMatches;
 use App\Support\Hyper\HyperMoments;
 use App\Support\Tournaments\TournamentControl;
+use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Queue;
 use Illuminate\Support\Facades\Storage;
 use Tests\Support\HyperOn;
@@ -279,7 +281,7 @@ test('a long bot chain plays in runs of TURNS_PER_RUN turns, each run sending th
     expect($match->status)->toBe(HyperMatchStatus::Active)
         ->and($turns)->toBe(PlayHyperBots::TURNS_PER_RUN);
     Queue::assertPushed(PlayHyperBots::class, fn (PlayHyperBots $job): bool => $job->matchId === $match->id && $job->ply === $match->ply);
-    expect((new PlayHyperBots(1, 0))->timeout)->toBe(120)->and((new PlayHyperBots(1, 0))->tries)->toBe(3);
+    expect((new PlayHyperBots(1, 0))->timeout)->toBe(80)->toBeLessThan(config('queue.connections.redis.retry_after'))->and((new PlayHyperBots(1, 0))->tries)->toBe(3);
 });
 
 test('correcting a finished rated 1v1 tournament match reverts its season Elo and rates the corrected winner; a forfeit only reverts', function () {
@@ -326,4 +328,31 @@ test('the lobby counts down to the bots taking the free seats, every second, and
         ->and($html)->toContain('setInterval(', 'Bots fill the free seats in 2:00.')
         ->and($html)->not->toContain('@js(')
         ->and(substr_count($html, 'grid grid-cols-3 gap-2 min-[480px]:grid-cols-4 sm:grid-cols-7'))->toBe(2);
+});
+
+test('the strip and /matches ask the same number of queries for one and four finished clan matches', function () {
+    HyperOn::play();
+    $seed = function (int $count): void {
+        foreach (range(1, $count) as $i) {
+            $match = HyperOn::teams(Clan::factory()->create(), Clan::factory()->create(), User::factory()->create(), User::factory()->create());
+            $match->forceFill(['status' => HyperMatchStatus::Finished, 'ended_at' => now()->subSeconds($i)])->save();
+            $match->seats()->where('team', 0)->update(['place' => 1]);
+            $match->seats()->where('team', 1)->update(['place' => 2]);
+        }
+    };
+    $count = function (): int {
+        Cache::flush();
+        DB::flushQueryLog();
+        DB::enableQueryLog();
+        $this->get(route('matches.index'))->assertOk();
+        DB::disableQueryLog();
+
+        return count(DB::getQueryLog());
+    };
+
+    $seed(1);
+    $one = $count();
+    $seed(3);
+
+    expect($count())->toBe($one);
 });

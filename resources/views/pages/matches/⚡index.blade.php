@@ -16,6 +16,7 @@ use App\Models\ScoreRun;
 use App\Models\SeriesMatch;
 use App\Models\StackerRun;
 use App\Support\GameNames;
+use App\Support\Hyper\HyperTeams;
 use App\Support\Matches\MempoolStrip;
 use App\Support\Matches\ScoreAttempts;
 use App\Support\PageMeta;
@@ -370,7 +371,7 @@ new #[Layout('layouts::app', ['section' => 'matches'])] class extends Component 
         $series = ! $this->listsSeries() ? collect() : $this->filtered(SeriesMatch::query()->with(['latestReport', 'challengerLineup.clan', 'challengedLineup.clan']), $this->status)->latest()->limit($take)->get()->tap(fn ($list) => \App\Support\Chess\ChessTeamMatches::preload($list));
         $chess = $this->listsChess($this->status) ? $this->filteredChess(ChessGame::query()->with(['white', 'black', 'seriesMatch:id,number']), $this->status)->latest()->limit($take)->get() : collect();
         $boards = $this->listsBoards($this->status) ? $this->filteredBoards(BoardGame::query()->with(['white', 'black']), $this->status)->latest()->limit($take)->get() : collect();
-        $hyper = $this->listsHyper($this->status) ? $this->filteredHyper(HyperMatch::query()->with('seats.user'), $this->status)->latest()->limit($take)->get() : collect();
+        $hyper = $this->listsHyper($this->status) ? $this->filteredHyper(HyperMatch::query()->with('seats.user'), $this->status)->latest()->limit($take)->get()->tap(fn ($list) => HyperTeams::preload($list)) : collect();
         $state = (string) $this->runState($this->status);
         $runs = collect([
             ...($this->listsStacker($this->status) ? ScoreAttempts::stacker($state, $this->selectedClan)->with('user')->latest()->limit($take)->get()->all() : []),

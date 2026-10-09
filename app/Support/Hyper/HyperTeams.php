@@ -3,7 +3,9 @@
 namespace App\Support\Hyper;
 
 use App\Models\Clan;
+use App\Models\HyperMatch;
 use App\Models\User;
+use Illuminate\Support\Collection;
 
 /**
  * Who a Hyperbitcoinization team is (plan "Hyperbitcoinization", P4). There is one team source: the
@@ -31,18 +33,51 @@ final class HyperTeams
     /**
      * Both sides of a clan table or team match, side 0 first.
      *
+     * `$clans`: the clans by id when a list loaded them already (preload()); else one query here.
+     *
      * @param  list<int|null>|null  $teamClans
+     * @param  Collection<int, Clan>|null  $clans
      * @return list<array{side: int, clan_id: int|null, name: string, tag: string|null, meetup: bool, city: string|null, logo: string|null, url: string|null}>
      */
-    public static function sides(?array $teamClans): array
+    public static function sides(?array $teamClans, ?Collection $clans = null): array
     {
         if ($teamClans === null) {
             return [];
         }
 
-        $clans = Clan::query()->whereIn('id', array_filter($teamClans))->get()->keyBy('id');
+        $clans ??= Clan::query()->whereIn('id', array_filter($teamClans))->get()->keyBy('id');
 
         return array_map(fn (int $side): array => self::side($side, $clans->get($teamClans[$side] ?? 0)), [0, 1]);
+    }
+
+    /**
+     * Loads the clans of every team match in a list in one query and keeps them on each match (relation
+     * `teamClans`, keyed by id), so a list (the strip, /matches) does not ask one per row (reviewer 2026-10-09).
+     *
+     * @param  iterable<HyperMatch>  $matches
+     */
+    public static function preload(iterable $matches): void
+    {
+        $team = collect($matches)->filter(fn (HyperMatch $match): bool => $match->isTeamMatch() && ! $match->relationLoaded('teamClans'))->values();
+
+        if ($team->isEmpty()) {
+            return;
+        }
+
+        $ids = $team->flatMap(fn (HyperMatch $match): array => array_filter($match->team_clans ?? []))->unique()->values()->all();
+        $clans = Clan::query()->whereIn('id', $ids)->get()->keyBy('id');
+
+        $team->each(fn (HyperMatch $match) => $match->setRelation('teamClans', $clans->only(array_filter($match->team_clans ?? []))));
+    }
+
+    /**
+     * The clans preload() kept on a match, or null.
+     *
+     * @return Collection<int, Clan>|null
+     */
+    public static function preloaded(HyperMatch $match): ?Collection
+    {
+        return $match->relationLoaded('teamClans') ? $match->getRelation('teamClans') : null;
     }
 
     /**

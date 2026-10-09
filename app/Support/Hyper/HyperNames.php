@@ -44,7 +44,7 @@ final class HyperNames
         }
 
         if ($match->isTeamMatch()) {
-            return HyperTeams::sides($match->team_clans)[(int) $first->team]['name'] ?? self::seat($first);
+            return HyperTeams::sides($match->team_clans, HyperTeams::preloaded($match))[(int) $first->team]['name'] ?? self::seat($first);
         }
 
         return self::seat($first);
