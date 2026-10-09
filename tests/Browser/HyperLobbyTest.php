@@ -5,6 +5,7 @@ use App\Models\Clan;
 use App\Models\HyperMatch;
 use App\Models\HyperTable;
 use App\Models\User;
+use App\Support\Hyper\HyperLobby;
 use App\Support\Hyper\HyperMatches;
 use App\Support\Hyper\HyperStats;
 use Illuminate\Support\Facades\Cache;
@@ -653,4 +654,26 @@ test('a clan table seats two clans on two sides and starts a team match; the tea
         $relay->stop();
         @unlink($seed);
     }
+});
+
+test('the own correspondence table: Post the invite, Copy the link and Close the table stand on one line at 390 and 1440 (user 2026-10-09)', function () {
+    $anna = User::factory()->create();
+    app(HyperLobby::class)->open($anna, 3, HyperMatch::CORRESPONDENCE, 0);
+    $page = hyperLobbyPage($anna, route('hyper.index', absolute: false));
+    $rows = [];
+
+    foreach ([[390, 844], [1440, 900]] as [$width, $height]) {
+        $page->setViewportSize($width, $height);
+        usleep(300_000);
+        $rows[$width] = $page->evaluate('() => ["[data-test=share-post]", "[data-test=hyper-lobby-invite]", "[data-test=hyper-lobby-leave]"].map((s) => { const r = document.querySelector(s)?.getBoundingClientRect(); return r ? [Math.round(r.top), Math.round(r.height)] : null; })');
+    }
+
+    fwrite(STDERR, "\nlobby buttons (top, height): ".json_encode($rows)."\n");
+
+    foreach ($rows as $width => $buttons) {
+        expect($buttons)->not->toContain(null)
+            ->and(array_unique(array_column($buttons, 1)))->toHaveCount(1, "heights at {$width}");
+    }
+    // On a wide screen all three share one line.
+    expect(array_unique(array_column($rows[1440], 0)))->toHaveCount(1);
 });

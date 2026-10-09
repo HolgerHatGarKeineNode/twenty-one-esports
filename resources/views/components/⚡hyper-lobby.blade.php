@@ -264,13 +264,16 @@ new class extends Component {
             </div>
 
             {{-- The table's actions come first: on a phone two stacked clan sides would push them below the fold. --}}
-            <div class="flex flex-wrap items-center gap-2">
+            {{-- items-start: the share button's column grows a note under it after posting; the buttons stay on one line. --}}
+            <div class="flex flex-wrap items-start gap-2">
                 @if ($creator && $mine->bots)
                     <x-button variant="primary" wire:click="fillWithBots" icon="play" class="h-12 px-5 text-[15px]" data-test="hyper-lobby-fill">{{ __('Fill with bots and start') }}</x-button>
                 @endif
                 @if ($creator && $mine->mode === HyperMatch::CORRESPONDENCE)
                     {{-- A correspondence table may wait days: its creator can invite on Nostr (a kind 1 on their profile). --}}
-                    <livewire:share-button type="hyper-table" :moment="$mine->ulid" :label="__('Post the invite on Nostr')" :downloads="false" :wire:key="'hyper-table-share-'.$mine->ulid" />
+                    <div class="[&_[data-test=share-post]]:h-12 [&_[data-test=share-post]]:px-5 [&_[data-test=share-post]]:text-[15px]" data-test="hyper-lobby-share">
+                        <livewire:share-button type="hyper-table" :moment="$mine->ulid" :label="__('Post the invite on Nostr')" :downloads="false" :wire:key="'hyper-table-share-'.$mine->ulid" />
+                    </div>
                 @endif
                 {{-- A component attribute compiles {{ }}, not directives: the link goes in through Js::from, never @js. --}}
                 <span x-data="{ copied: false }" class="inline-flex">
