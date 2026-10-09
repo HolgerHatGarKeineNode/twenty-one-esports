@@ -115,7 +115,8 @@ function lobbyMeasure(Page $page, int $width, int $height, string $primary): arr
                 // The friendly-match toggle of a new table (P5c) and its note, or the own table's Rated/Unrated chip.
                 friendly: box(document.querySelector('[data-test=hyper-lobby-friendly]')),
                 rated: box(document.querySelector('[data-test=hyper-lobby-mine] [data-test=hyper-lobby-rated]')),
-                fold: innerHeight,
+                // The first screen ends above the app's tab bar below lg: body's padding-bottom is the bar (resources/css/app.css).
+                fold: innerHeight - parseFloat(getComputedStyle(document.body).paddingBottom || '0'),
             };
         }
         JS);
@@ -212,7 +213,7 @@ test('two players join a table, pick factions, bots fill it, and the match opens
             ->and($row['primary'])->not->toBeNull($where);
     }
 
-    // Above the fold at every size: the primary action of a new table.
+    // Above the fold at every size, above the tab bar on a phone: the primary action of a new table.
     foreach (array_filter($rows, fn (array $row): bool => $row['state'] === 'new table') as $row) {
         expect($row['primary'][3])->toBeLessThanOrEqual($row['fold'], $row['size']);
     }

@@ -22,7 +22,7 @@
             ten steps as on Blockfill (pages/stacker/partials/sound-control), kept with the game's music switch
             (`hb-settings.music`, which the match page reads too) and `hb-settings.startVolume`. It stops when the page goes.
         --}}
-        <section class="relative isolate overflow-hidden rounded-lg bg-card shadow-ring" aria-labelledby="hyper-h"
+        <section class="relative isolate overflow-clip rounded-lg bg-card shadow-ring" aria-labelledby="hyper-h"
                  x-data="{
                      on: true, volume: 50, playing: false, audio: null,
                      init() {
@@ -46,7 +46,7 @@
                  }">
             <img src="/hyper/art/key-title.jpg?v=1" alt="" width="1600" height="900" class="absolute inset-0 -z-10 size-full object-cover object-[50%_35%]" fetchpriority="high">
             <div class="absolute inset-0 -z-10 bg-[linear-gradient(180deg,rgb(3_9_20/0.35),rgb(3_9_20/0.55)_45%,rgb(3_9_20/0.92))] lg:bg-[linear-gradient(90deg,rgb(3_9_20/0.94),rgb(3_9_20/0.72)_48%,rgb(3_9_20/0.15))]"></div>
-            <div class="flex max-w-[960px] flex-col gap-5 p-5 pt-28 sm:p-8 sm:pt-40 lg:pt-10">
+            <div class="flex max-w-[960px] flex-col gap-4 p-5 pt-8 sm:gap-5 sm:p-8 sm:pt-40 lg:pt-10 [@media(max-height:32rem)]:pt-6">
                 <div class="flex flex-col gap-2">
                     <span class="text-[11px] font-bold tracking-[0.3em] text-btc-hi uppercase">TWENTY ONE esports</span>
                     <h1 id="hyper-h" class="m-0 font-display text-[clamp(14px,4.9vw,40px)] leading-none font-extrabold whitespace-nowrap">HYPER<span class="text-btc">₿</span>ITCOINIZATION</h1>

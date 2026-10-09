@@ -386,10 +386,13 @@ new class extends Component {
                     </div>
                 </fieldset>
             </div>
-            <div class="flex flex-wrap items-center gap-3">
-                <button type="submit" class="btn-p inline-flex min-h-12 cursor-pointer items-center justify-center gap-2.5 rounded-md bg-btc px-6 font-display text-[15px] font-bold text-on-btc" data-test="hyper-lobby-open">
+            {{-- Below lg the action stays above the tab bar while the form runs on below the screen (a small or lying phone, P6 of plan "Proof of Pong"); its notes follow it. --}}
+            <div class="z-10 self-start max-lg:sticky max-lg:bottom-[calc(var(--tabbar-h)+0.75rem)]">
+                <button type="submit" class="btn-p inline-flex min-h-12 cursor-pointer items-center justify-center gap-2.5 rounded-md bg-btc px-6 font-display text-[15px] font-bold text-on-btc max-lg:shadow-[0_6px_20px_rgb(0_0_0/0.55)]" data-test="hyper-lobby-open">
                     <x-icon name="flag" :size="18" />{{ __('Open a table') }}
                 </button>
+            </div>
+            <div class="-mt-1 flex flex-wrap items-center gap-x-3 gap-y-2">
                 <span class="text-xs text-ink-2" data-test="hyper-lobby-bots-note">{{ match (true) {
                     ! $bots => __('The table starts once every seat is taken.'),
                     $mode === HyperMatch::LIVE => __('Bots take free seats after :minutes min.', ['minutes' => max(1, (int) round((int) LeagueSettings::get('esports.hyper.lobby_fill_seconds') / 60))]),
