@@ -20,6 +20,7 @@ use App\Models\TournamentPayout;
 use App\Models\User;
 use App\Support\Badges\BadgeCopy;
 use App\Support\GameNames;
+use App\Support\Hyper\HyperCups;
 use App\Support\Payouts\TournamentPlacements;
 use App\Support\Rating\Ratings;
 use App\Support\Series\Ladders;
@@ -165,7 +166,8 @@ final class PlayerStats
             ->toBase()->first();
         $matches = (int) ($row->matches ?? 0);
 
-        return $matches === 0 ? [] : [['sats' => round((float) $row->sats, 1), 'matches' => $matches, 'wins' => (int) $row->wins]];
+        // P5: the weekend cups won, the winner badge on the card.
+        return $matches === 0 ? [] : [['sats' => round((float) $row->sats, 1), 'matches' => $matches, 'wins' => (int) $row->wins, 'cups' => HyperCups::winsOf($this->user)]];
     }
 
     /**

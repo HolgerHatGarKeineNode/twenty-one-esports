@@ -12,6 +12,7 @@ use App\Enums\TournamentStatus;
 use App\Games\GameRegistry;
 use App\Models\BoardGame;
 use App\Models\ChessGame;
+use App\Models\HyperMatch;
 use App\Models\Lineup;
 use App\Models\LineupSeat;
 use App\Models\MatchNumber;
@@ -26,6 +27,8 @@ use App\Support\Board\BoardRuleViolation;
 use App\Support\Chess\ChessGameService;
 use App\Support\Chess\ChessRuleViolation;
 use App\Support\Chess\RatedChess;
+use App\Support\Hyper\HyperCups;
+use App\Support\Hyper\HyperMatches;
 use App\Support\SeasonChain\GatePin;
 use App\Support\SeasonChain\LeagueKey;
 use App\Support\SeasonChain\RatedTrustGate;
@@ -34,6 +37,7 @@ use App\Support\Series\SeriesEvents;
 use Illuminate\Database\UniqueConstraintViolationException;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Lottery;
+use InvalidArgumentException;
 
 /**
  * Tournament matches are played as normal matches (NIP: "Tournament matches
@@ -68,6 +72,9 @@ use Illuminate\Support\Lottery;
  * Chess in director mode is played over the board: no game is started; the
  * finished game record is written when the round closes (TournamentRunner).
  *
+ * Hyperbitcoinization (plan "Hyperbitcoinization", P5) is always played on the league's server, in either results
+ * mode: every table starts as soon as its entries are known, rated on the season's terms (HyperMatches).
+ *
  * A casual cup's match (P25, CasualCups) waits for its round's window and
  * then for its players ("Play your cup match", startInvited()) or the auto
  * slot on the window's last evening; a replay or restart follows at once.
@@ -80,6 +87,7 @@ final class TournamentMatchMaker
         private GameRegistry $games,
         private CasualCupNotices $cupNotices,
         private BoardGameService $boards,
+        private HyperMatches $hyper,
     ) {}
 
     /**
@@ -111,7 +119,7 @@ final class TournamentMatchMaker
         // A held match (P18) waits for an organizer's or admin's decision.
         $matches = TournamentMatch::query()->where('tournament_id', $tournament->id)->where('status', 'ready')
             ->where('bracket', '!=', 'bye')->whereNull('result')->whereNull('held')
-            ->with(['round.stage', 'slots.participant', 'seriesMatch', 'chessGame', 'boardGame'])->orderBy('id')->get();
+            ->with(['round.stage', 'slots.participant', 'seriesMatch', 'chessGame', 'boardGame', 'hyperMatch'])->orderBy('id')->get();
         $current = TournamentRunner::currentRound($tournament);
 
         foreach ($matches as $match) {
@@ -215,6 +223,18 @@ final class TournamentMatchMaker
 
         if ($a === null || $b === null || self::waitsForEarlierRound($tournament, $match)) {
             return false;
+        }
+
+        // Hyperbitcoinization (plan "Hyperbitcoinization", P5): a free-for-all table or a 1v1, one match on the league's
+        // server with every entry of the table seated, started at once; its places come back at its end.
+        if ($tournament->profile()->isHyper()) {
+            if ($match->slots->contains(fn ($slot): bool => $slot->participant === null)) {
+                return false;
+            }
+
+            TournamentRound::query()->whereKey($match->tournament_round_id)->whereNull('started_at')->update(['started_at' => now()]);
+
+            return ! self::needsHyperMatch($match) || $this->startHyperMatch($tournament, $match) !== null;
         }
 
         // A lobby (P10, Lobbies): its players meet in the game's lobby the league named at the draw, and report its
@@ -338,6 +358,61 @@ final class TournamentMatchMaker
             $game->status === BoardGameStatus::Finished && $game->result === '1/2-1/2' && ! TournamentRunner::allowsDraw($match) => TournamentRunner::drawnBoardGames($match) <= TournamentRunner::drawnReplays($match->tournament),
             default => false,
         };
+    }
+
+    /**
+     * A Hyperbitcoinization tournament match needs a (new) match when it has none, or when the league voided or
+     * superseded its last one (P18).
+     */
+    public static function needsHyperMatch(TournamentMatch $match): bool
+    {
+        $played = $match->hyperMatch;
+
+        return $played === null || $match->isReplaced($played->id);
+    }
+
+    /**
+     * One Hyperbitcoinization match for a tournament match (P5): each entry's player in slot order, factions drawn,
+     * in the tournament's mode (live or correspondence). Rated on the season's terms (every seat a player, a live
+     * season); a Hyperbitcoinization cup (HyperCups) is never rated, and bots fill its table up to the table size.
+     * Null when a slot has no player any more.
+     */
+    private function startHyperMatch(Tournament $tournament, TournamentMatch $match): ?HyperMatch
+    {
+        $seats = [];
+
+        foreach ($match->slots->sortBy('slot') as $slot) {
+            $user = User::query()->find($slot->participant?->memberIds()[0] ?? 0);
+
+            if ($user === null) {
+                return null;
+            }
+
+            $seats[] = ['user' => $user];
+        }
+
+        $cup = HyperCups::isCup($tournament);
+
+        if ($cup) {
+            $table = min(6, max(count($seats), $tournament->formatOptions()->heatSize));
+
+            while (count($seats) < $table) {
+                $seats[] = ['bot' => true];
+            }
+        }
+
+        try {
+            $played = $this->hyper->create($seats, mode: $tournament->mode, rated: $cup ? false : null, tournamentMatch: $match->id);
+        } catch (InvalidArgumentException $invalid) {
+            report($invalid);
+
+            return null;
+        }
+
+        // A tournament match may start while its players are away: they are told on every channel (as a cup game is).
+        $this->cupNotices->hyperMatchStarted($tournament, $played);
+
+        return $played;
     }
 
     private function startBoardGame(Tournament $tournament, TournamentMatch $match, TournamentParticipant $a, TournamentParticipant $b, ?User $acceptedBy = null): ?BoardGame

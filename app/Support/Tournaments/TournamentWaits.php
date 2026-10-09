@@ -103,7 +103,8 @@ final class TournamentWaits
         $slots = $match->slots;
 
         // A score leaderboard's board is no duel, even with two entries (plan "AoE2 und Trackmania", P4); a lobby (P10) neither.
-        if ($tournament->profile()->isScore() || $tournament->profile()->isUnknown() || $match->lobby !== null || count($slots) !== 2 || $slots->contains(fn (TournamentMatchSlot $slot): bool => $slot->participant === null)) {
+        // A Hyperbitcoinization match (P5) waits on nobody's report: the league's server ends it.
+        if ($tournament->profile()->isScore() || $tournament->profile()->isUnknown() || $tournament->profile()->isHyper() || $match->lobby !== null || count($slots) !== 2 || $slots->contains(fn (TournamentMatchSlot $slot): bool => $slot->participant === null)) {
             return null;
         }
 

@@ -144,7 +144,7 @@
         @if ($now['boards'] !== [])
             <ul class="m-0 flex list-none flex-wrap gap-2 p-0" data-test="now-boards">
                 @foreach ($now['boards'] as $board)
-                    <li class="min-w-0"><a href="{{ $board['url'] }}" class="btn-w inline-flex min-h-11 max-w-full items-center gap-2 rounded-md border border-line bg-well px-3 text-[13px] text-ink hover:text-ink" data-test="now-board"><x-icon name="pawn" :size="14" class="shrink-0 text-btc" /><span class="min-w-0 truncate">{{ $board['label'] }}</span></a></li>
+                    <li class="min-w-0"><a href="{{ $board['url'] }}" @if (isset($board['target'])) target="{{ $board['target'] }}" rel="noopener" @endif class="btn-w inline-flex min-h-11 max-w-full items-center gap-2 rounded-md border border-line bg-well px-3 text-[13px] text-ink hover:text-ink" data-test="now-board"><x-icon name="pawn" :size="14" class="shrink-0 text-btc" /><span class="min-w-0 truncate">{{ $board['label'] }}</span></a></li>
                 @endforeach
             </ul>
         @endif
@@ -153,7 +153,7 @@
     @if ($action !== null || ($desk ?? null))
         <div class="flex min-w-0 flex-col gap-2 lg:items-end">
             @if (isset($action['href']))
-                <a href="{{ $action['href'] }}" class="btn-p inline-flex min-h-16 w-full items-center justify-center gap-3 rounded-md bg-btc px-8 text-lg font-bold text-on-btc hover:text-on-btc lg:min-w-[300px]" data-test="now-action">
+                <a href="{{ $action['href'] }}" @if (isset($action['target'])) target="{{ $action['target'] }}" rel="noopener" @endif class="btn-p inline-flex min-h-16 w-full items-center justify-center gap-3 rounded-md bg-btc px-8 text-lg font-bold text-on-btc hover:text-on-btc lg:min-w-[300px]" data-test="now-action">
                     <x-icon :name="$action['icon']" :size="22" />{{ $action['label'] }}
                 </a>
             @elseif ($action !== null)

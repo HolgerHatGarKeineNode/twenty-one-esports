@@ -6,14 +6,16 @@ use Illuminate\Support\Facades\Route;
 /*
  * Hyperbitcoinization (plan "Hyperbitcoinization", P2/P3): a match's page, its snapshot and event catch-up
  * (players, spectators and guests alike), and for a seated player the actions, emotes, leaving and the
- * rematch; the lobby (a table's own link invites a friend), the quick start against bots, the replay of a
- * finished match, the table chat's name lookup, and for a player of a team match its team chat's members.
+ * rematch; the lobby (a table's own link invites a friend), the season ladder (P5), the quick start against bots,
+ * the replay of a finished match, the table chat's name lookup, and for a player of a team match its team chat's members.
  * Loaded by routes/web.php only while `esports.hyper.enabled` is on, so with the switch off none of these
  * routes exists. A cached route table keeps the switch as it was when it was cached: flipping it needs the
  * deploy's `optimize`.
  */
 Route::prefix('hyperbitcoinization')->name('hyper.')->group(function () {
     Route::get('/', [HyperMatchController::class, 'index'])->name('index');
+    // The season ladder (P5): free-for-all points, 1v1 Elo and team Elo of the live season.
+    Route::get('ladder', [HyperMatchController::class, 'ladder'])->name('ladder');
     // The table chat's names (league accounts only); public like the game channels' lookup.
     Route::get('people', [HyperMatchController::class, 'people'])->middleware('throttle:60,1')->name('people');
     Route::get('m/{match}', [HyperMatchController::class, 'show'])->whereUlid('match')->name('match');

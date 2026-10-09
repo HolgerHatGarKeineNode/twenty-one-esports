@@ -32,7 +32,7 @@ final readonly class GameProfile
      * @param  string  $key  opaque id of the profile in the chooser (`blitz`, `rl3`, `ea-sports-fc-27/1v1`)
      * @param  'min'|'day'  $unit
      * @param  list<int>  $bestOfOptions
-     * @param  'game'|'series'|'score'|'none'  $what
+     * @param  'game'|'series'|'score'|'hyper'|'none'  $what
      */
     public function __construct(
         public string $key,
@@ -79,6 +79,11 @@ final readonly class GameProfile
             'ea-sports-fc-26/2v2', 'ea-sports-fc-27/2v2' => new self("{$game}/{$mode}", $game, $mode, 'min', 15, 5, 5, 1, 3, [1, 3], false, 'series', 2, 10, 1.3),
             // Age of Empires II: planned at about 21 min a game (the median of a small sample, plan "AoE2 und Trackmania"), Bo1 rounds and a Bo3 final.
             'age-of-empires-2/1v1', 'age-of-empires-2/2v2', 'age-of-empires-2/3v3' => new self("{$game}/{$mode}", $game, $mode, 'min', 21, 5, 5, 1, 3, [1, 3], false, 'series', (int) $mode[0], 10, 1.5),
+            // Hyperbitcoinization (plan "Hyperbitcoinization", P5): one match per table, the league starts it. Live planned at
+            // 60 min (about 18 rounds of 90 s turns at 4 seats, simulator mean 17.6 rounds; unmeasured with people), 5 min to
+            // find the tab; correspondence like daily chess, a turn a day.
+            'hyperbitcoinization/live' => new self("{$game}/{$mode}", $game, $mode, 'min', 60, 0, 5, 1, 1, [1], false, 'hyper', overhead: 5, longPlay: 1.5),
+            'hyperbitcoinization/correspondence' => new self("{$game}/{$mode}", $game, $mode, 'day', 30, 0, 1, 1, 1, [1], true, 'hyper'),
             default => self::score($game, $mode) ?? throw new InvalidArgumentException("No tournament profile for [{$game}/{$mode}]."),
         };
     }
@@ -153,6 +158,15 @@ final readonly class GameProfile
     public function isBoard(): bool
     {
         return in_array($this->game, BoardGame::RESERVED_SLUGS, true);
+    }
+
+    /**
+     * A match is a Hyperbitcoinization match (plan "Hyperbitcoinization", P5): a free-for-all table of 3 to 6
+     * players or a 1v1, started and decided on the league's server (HyperMatches), never a two-sided game record.
+     */
+    public function isHyper(): bool
+    {
+        return $this->what === 'hyper';
     }
 
     /**

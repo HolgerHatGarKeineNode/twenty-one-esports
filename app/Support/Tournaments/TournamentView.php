@@ -231,7 +231,8 @@ final class TournamentView
             'status' => $match->status,
             'sides' => $sides,
             // A lobby's result (P10) is worded in the viewer's language, not the one it was entered in.
-            'label' => $match->lobby !== null && is_array($result) ? LobbyResults::describe($result) : ($result['label'] ?? null),
+            // A lobby's, and a Hyperbitcoinization table's (P5, `lobby_label`), in the viewer's language.
+            'label' => ($match->lobby !== null || isset($result['lobby_label'])) && is_array($result) ? LobbyResults::describe($result) : ($result['label'] ?? null),
             'number' => $match->seriesMatch !== null ? $match->seriesMatch->number : $match->chessGame?->number,
             'href' => $match->seriesMatch !== null
                 ? route('matches.show', $match->seriesMatch)

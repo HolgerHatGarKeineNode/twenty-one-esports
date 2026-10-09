@@ -49,16 +49,17 @@ final class HyperTableChat
     }
 
     /**
-     * Name and avatar of the league accounts among these pubkeys (at most 100): how the table chat names
-     * whoever writes, as the game channels do. Only what the league shows anyway; never a gamer tag.
+     * Name, avatar and vote weight of the league accounts among these pubkeys (at most 100): how the table chat
+     * names whoever writes, as the game channels do, and whether a vote in the spectators' poll counts (P5,
+     * HyperPoll: `counts`, as in a game channel's poll). Only what the league shows anyway; never a gamer tag.
      *
      * @param  array<mixed>  $pubkeys
-     * @return array<string, array{name: string, avatar: string}>
+     * @return array<string, array{name: string, avatar: string, counts: bool}>
      */
     public static function people(array $pubkeys): array
     {
         return array_map(
-            fn (array $player): array => ['name' => $player['name'], 'avatar' => $player['avatar']],
+            fn (array $player): array => ['name' => $player['name'], 'avatar' => $player['avatar'], 'counts' => $player['counts']],
             GameChannels::players($pubkeys),
         );
     }

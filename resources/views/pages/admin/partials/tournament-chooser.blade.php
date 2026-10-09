@@ -406,6 +406,25 @@
                         </div>
                     @endif
 
+                    @if ($format === TournamentFormat::FreeForAll && $profile->isHyper())
+                        {{-- Hyperbitcoinization (P5): the table size and how many of each table move on. --}}
+                        @foreach ([['heatSize', __('Players per table'), range(...\App\Support\Tournaments\FormatOptions::hyperTables()), $options->heatSize],
+                                   ['heatAdvance', __('Move on per table'), range(1, max(1, $options->heatSize - 1)), $options->heatAdvance]] as [$key, $label, $choices, $current])
+                            <div class="{{ $optionRow }}" wire:key="hyper-{{ $key }}">
+                                <span class="flex flex-col items-start gap-2">
+                                    <span id="hy-{{ $key }}" class="text-[13px] font-bold">{{ $label }}</span>
+                                    <span role="radiogroup" aria-labelledby="hy-{{ $key }}" class="flex gap-1 rounded-md border border-edge bg-ground p-[3px]" data-test="hyper-{{ $key }}">
+                                        @foreach ($choices as $value)
+                                            <button type="button" role="radio" aria-checked="{{ $current === $value ? 'true' : 'false' }}" wire:click="option('{{ $key }}', {{ $value }})" wire:key="hy-{{ $key }}-{{ $value }}"
+                                                    @class(['min-h-[38px] min-w-11 cursor-pointer rounded-sm border-0 px-3 text-[13px] font-bold', 'bg-raised text-btc' => $current === $value, 'bg-transparent text-ink-2' => $current !== $value])>{{ $value }}</button>
+                                        @endforeach
+                                    </span>
+                                </span>
+                                <span class="{{ $help }}">{{ $key === 'heatSize' ? __('Every table is one match on the league server; the last table is the final.') : __('The best of each table play the next round, by their place.') }}</span>
+                            </div>
+                        @endforeach
+                    @endif
+
                     @if ($format === TournamentFormat::RoundRobin)
                         <div class="{{ $optionRow }}">
                             <span class="flex flex-col items-start gap-2">

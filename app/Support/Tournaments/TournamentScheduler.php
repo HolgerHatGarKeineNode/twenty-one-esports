@@ -6,6 +6,7 @@ use App\Enums\SeriesStatus;
 use App\Enums\TournamentResultsMode;
 use App\Enums\TournamentStatus;
 use App\Models\SeriesMatch;
+use App\Support\Hyper\HyperCups;
 use App\Support\Series\SeriesService;
 use Carbon\CarbonImmutable;
 use Closure;
@@ -21,6 +22,7 @@ use Throwable;
  * 0. The league's casual cups (P25, CasualCups): open the next cup of each
  *    enabled game, settle cup sign-ups, open cup rounds and decide what is
  *    past a round's deadline.
+ * 0b. Hyperbitcoinization's weekend cup (plan "Hyperbitcoinization", P5, HyperCups): open the next one.
  * 1. Sign-ups, draws and brackets: TournamentDraws::advanceDue() (closes
  *    sign-ups, draws from the Bitcoin block, syncs running tournaments and
  *    starts their ready matches). `tournaments:advance` runs only this step.
@@ -53,15 +55,16 @@ final class TournamentScheduler
 
     public const STALE_AFTER_SECONDS = 300;
 
-    public function __construct(private TournamentDraws $draws, private SeriesService $series, private CasualCups $cups, private TournamentReminders $reminders, private LobbyResults $lobbies, private LobbySwitch $lobbySwitch) {}
+    public function __construct(private TournamentDraws $draws, private SeriesService $series, private CasualCups $cups, private TournamentReminders $reminders, private LobbyResults $lobbies, private LobbySwitch $lobbySwitch, private HyperCups $hyperCups) {}
 
     /**
-     * @return array{cups: array{opened: int, grown: int, extended: int, evenings: int, cancelled: int, rounds: int, decided: int}, closed: int, drawn: int, noshows: int, forfeited: int, overdue: int, confirmed: int, reminded: int, lobbies: array{overdue: int, closed: int, pruned: int}, healed?: int}
+     * @return array{cups: array{opened: int, grown: int, extended: int, evenings: int, cancelled: int, rounds: int, decided: int}, hyper_cups: int, closed: int, drawn: int, noshows: int, forfeited: int, overdue: int, confirmed: int, reminded: int, lobbies: array{overdue: int, closed: int, pruned: int}, healed?: int}
      */
     public function tick(): array
     {
         $cups = $this->cups->tick();
-        $done = ['cups' => $cups, ...$this->draws->advanceDue()];
+        $hyperCups = $this->hyperCups->tick() === null ? 0 : 1;
+        $done = ['cups' => $cups, 'hyper_cups' => $hyperCups, ...$this->draws->advanceDue()];
 
         // Lobby check-in: one side in, the other not after `auto_noshow_minutes` = the league reports the no-show.
         // Nobody in after that plus the response time = double no-show.

@@ -93,6 +93,10 @@
         @if ($snapshot['me'] !== null)
             <button class="icon-btn" id="emote-btn" type="button" aria-label="{{ __('Emotes and soundboard') }}" title="{{ __('Emotes and soundboard') }}" data-test="hyper-emote-open"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M8.5 14.5a4.5 4.5 0 007 0M9 9.5h.01M15 9.5h.01"/></svg></button>
         @endif
+        @if (! empty($config['poll']))
+            {{-- The spectators' "Who wins?" (P5, HyperPoll): opens on a click, never by itself. --}}
+            <button class="icon-btn" id="poll-btn" type="button" aria-label="{{ __('Who wins?') }}" title="{{ __('Who wins?') }}" data-test="hyper-poll-open"><svg viewBox="0 0 24 24"><path d="M4 20V10M10 20V4M16 20v-7M22 20H2"/></svg></button>
+        @endif
         <button class="icon-btn" id="chat-btn" type="button" aria-label="{{ __('Table chat') }}" title="{{ __('Table chat') }}" data-test="hyper-chat-open"><svg viewBox="0 0 24 24"><path d="M21 12a8 8 0 01-11.6 7.1L4 20l1-4.6A8 8 0 1121 12z"/></svg><span class="badge" id="chat-unread" hidden>0</span></button>
         <button class="icon-btn" id="help-btn" type="button" aria-label="{{ __('How to play') }}"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M9.5 9a2.5 2.5 0 015 .5c0 1.7-2.5 2-2.5 4M12 17h.01"/></svg></button>
     </div>
@@ -239,6 +243,15 @@
     <div id="emote-clips" role="list"></div>
     <p id="emote-note" aria-live="polite"></p>
 </div>
+
+@if (! empty($config['poll']))
+    <section id="poll" class="frame shadowed" hidden data-test="hyper-poll" aria-labelledby="poll-h">
+        <header><h2 id="poll-h">{{ __('Who wins?') }}</h2><button class="icon-btn" id="poll-close" type="button" aria-label="{{ __('Close') }}"><svg viewBox="0 0 24 24"><use href="#i-close"/></svg></button></header>
+        <ol id="poll-options" aria-label="{{ __('Answers') }}"></ol>
+        <p id="poll-total" data-test="hyper-poll-total"></p>
+        <p id="poll-note" aria-live="polite" data-test="hyper-poll-note"></p>
+    </section>
+@endif
 
 @php($team = $config['teamChat'] ?? null)
 <aside id="chat" class="frame shadowed" hidden data-test="hyper-chat" aria-labelledby="chat-h">

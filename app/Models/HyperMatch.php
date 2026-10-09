@@ -26,7 +26,11 @@ use Illuminate\Support\Carbon;
  * @property int $seed 32-bit unsigned seed of the rules core
  * @property int $round_limit 0 = none
  * @property list<int|null>|null $team_clans a team match (P4): the clan of team 0 and team 1, null without teams
- * @property bool $rated
+ * @property bool $rated every seat a player at the start, in a live season (P5): the result counts in `season`
+ * @property string|null $season the chain season a rated match counts in (P5)
+ * @property int|null $tournament_match_id the tournament match it plays (P5)
+ * @property string|null $poll_event_id the spectator poll the league signed (P5, HyperPublisher)
+ * @property string|null $result_event_id the result the league signed (P5, HyperPublisher)
  * @property array<string, mixed> $state HyperGame::toArray() after the last action
  * @property int $ply number of actions played
  * @property int|null $current_seat the seat to move, null once over
@@ -41,8 +45,9 @@ use Illuminate\Support\Carbon;
  * @property-read Collection<int, HyperSeat> $seats
  * @property-read Collection<int, HyperAction> $actions
  * @property-read User|null $creator
+ * @property-read TournamentMatch|null $tournamentMatch
  */
-#[Fillable(['mode', 'status', 'seed', 'round_limit', 'team_clans', 'rated', 'state', 'ply', 'current_seat', 'turn_started_ms', 'deadline_ms', 'winner_seat', 'end_reason', 'created_by', 'ended_at'])]
+#[Fillable(['mode', 'status', 'seed', 'round_limit', 'team_clans', 'rated', 'season', 'tournament_match_id', 'poll_event_id', 'result_event_id', 'state', 'ply', 'current_seat', 'turn_started_ms', 'deadline_ms', 'winner_seat', 'end_reason', 'created_by', 'ended_at'])]
 class HyperMatch extends Model
 {
     /** @use HasFactory<HyperMatchFactory> */
@@ -62,6 +67,7 @@ class HyperMatch extends Model
             'seed' => 'integer',
             'round_limit' => 'integer',
             'team_clans' => 'array',
+            'tournament_match_id' => 'integer',
             'rated' => 'boolean',
             'state' => 'array',
             'ply' => 'integer',
@@ -108,6 +114,14 @@ class HyperMatch extends Model
     public function creator(): BelongsTo
     {
         return $this->belongsTo(User::class, 'created_by');
+    }
+
+    /**
+     * @return BelongsTo<TournamentMatch, $this>
+     */
+    public function tournamentMatch(): BelongsTo
+    {
+        return $this->belongsTo(TournamentMatch::class);
     }
 
     public function isTeamMatch(): bool

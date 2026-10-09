@@ -119,12 +119,25 @@ final readonly class FormatOptions
             groupStage: $groupStage,
             finalStage: $finalStage,
             // A lobby game's lobbies are the game's (P10): stored or submitted heat values are not read.
-            heatSize: $forced ? $defaults->heatSize : $int('heatSize', 4, 3, 16),
-            heatAdvance: $forced ? $defaults->heatAdvance : $int('heatAdvance', 2, 1, 8),
+            // Hyperbitcoinization's tables (P5) seat `esports.hyper.tournament_tables` players, and at least one of a table drops out.
+            heatSize: $forced ? $defaults->heatSize : ($profile->isHyper() ? $int('heatSize', 4, ...self::hyperTables()) : $int('heatSize', 4, 3, 16)),
+            heatAdvance: $forced ? $defaults->heatAdvance : ($profile->isHyper() ? min($int('heatAdvance', 2, 1, 8), $int('heatSize', 4, ...self::hyperTables()) - 1) : $int('heatAdvance', 2, 1, 8)),
             // Not forced: what is stored; a tournament stored without it has heats, never lobbies.
             // A game that plays no lobbies never has lobby minutes, whatever is stored (re-audit P10, R9b).
             lobbyMinutes: $defaults->lobbyMinutes === 0 ? 0 : ($forced ? $defaults->lobbyMinutes : $int('lobbyMinutes', 0, 0, 10_000)),
         );
+    }
+
+    /**
+     * The smallest and largest table of a Hyperbitcoinization free-for-all (P5), `esports.hyper.tournament_tables`.
+     *
+     * @return array{0: int, 1: int}
+     */
+    public static function hyperTables(): array
+    {
+        [$min, $max] = array_map(intval(...), (array) config('esports.hyper.tournament_tables', [3, 6])) + [3, 6];
+
+        return [max(2, min($min, 6)), max(2, min($max, 6))];
     }
 
     /**

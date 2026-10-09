@@ -27,7 +27,8 @@ use Illuminate\Support\Carbon;
  * higher seed after the last drawn replay), with `forfeit`, `double_loss`
  * and `decided` (`withdrawn`, `noshow`, `seed`). The normal match it is played as is
  * {@see seriesMatch()} (Rocket League) or {@see chessGame()} (chess), or
- * {@see boardGame()} for a board game other than chess (plan "Mühle und Dame", P5).
+ * {@see boardGame()} for a board game other than chess (plan "Mühle und Dame", P5), or {@see hyperMatch()}
+ * for Hyperbitcoinization (plan "Hyperbitcoinization", P5).
  *
  * @property int $id
  * @property int $tournament_id
@@ -107,6 +108,18 @@ class TournamentMatch extends Model
     public function boardGame(): HasOne
     {
         return $this->hasOne(BoardGame::class)->latestOfMany();
+    }
+
+    /**
+     * The latest Hyperbitcoinization match of this tournament match (plan "Hyperbitcoinization", P5): a heat of 2
+     * to 6 seats or a 1v1, started by the league (TournamentMatchMaker), its places reported back
+     * (TournamentRunner::hyperMatchFinished()).
+     *
+     * @return HasOne<HyperMatch, $this>
+     */
+    public function hyperMatch(): HasOne
+    {
+        return $this->hasOne(HyperMatch::class)->latestOfMany();
     }
 
     /**

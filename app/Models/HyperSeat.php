@@ -25,6 +25,7 @@ use Illuminate\Support\Carbon;
  * @property bool $bot
  * @property int|null $team
  * @property int|null $place 1 = winner, set when the seat is out or the match is over
+ * @property int|null $points the season points of a seat of a rated free-for-all match (P5, HyperSeason)
  * @property float $loot
  * @property int $timeouts timed-out turns in a row
  * @property string|null $takeover left|timeouts|forfeit
@@ -34,7 +35,7 @@ use Illuminate\Support\Carbon;
  * @property-read HyperMatch $match
  * @property-read User|null $user
  */
-#[Fillable(['hyper_match_id', 'seat', 'user_id', 'faction', 'bot', 'team', 'place', 'loot', 'timeouts', 'takeover', 'left_at'])]
+#[Fillable(['hyper_match_id', 'seat', 'user_id', 'faction', 'bot', 'team', 'place', 'points', 'loot', 'timeouts', 'takeover', 'left_at'])]
 class HyperSeat extends Model
 {
     /** @use HasFactory<HyperSeatFactory> */
@@ -53,6 +54,7 @@ class HyperSeat extends Model
             'bot' => 'boolean',
             'team' => 'integer',
             'place' => 'integer',
+            'points' => 'integer',
             'loot' => 'float',
             'timeouts' => 'integer',
             'left_at' => 'datetime',

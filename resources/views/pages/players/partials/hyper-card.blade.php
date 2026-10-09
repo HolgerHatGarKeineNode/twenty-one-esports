@@ -3,7 +3,7 @@
     collected as loot in finished matches, game points only (no money, nothing paid out), with the matches
     played and won. A card of the ladder grid in partials/stats, shaped like the cards next to it.
 
-    $hyper: array{sats: float, matches: int, wins: int}
+    $hyper: array{sats: float, matches: int, wins: int, cups?: int} (`cups`: weekend cups won, P5, the winner badge)
 --}}
 <li wire:key="hyper-card" class="flex min-w-0 flex-col gap-3 rounded-card bg-card p-4" data-test="player-hyper" data-game="hyperbitcoinization">
     <a href="{{ \Illuminate\Support\Facades\Route::has('hyper.index') ? route('hyper.index') : url('hyperbitcoinization') }}" class="grid min-h-11 grid-cols-[48px_minmax(0,1fr)] items-center gap-3 text-ink hover:text-ink">
@@ -18,5 +18,10 @@
         <span class="text-xs text-ink-3">{{ __('M sats collected') }}</span>
         <span class="ml-auto text-xs text-ink-3" data-test="player-hyper-wins">{{ trans_choice(':count win|:count wins', $hyper['wins']) }}</span>
     </span>
+    @if (($hyper['cups'] ?? 0) > 0)
+        <span class="inline-flex h-7 items-center gap-1.5 self-start rounded-tag bg-btc-chip px-2.5 text-xs font-bold text-btc-hi" data-test="player-hyper-cups">
+            <x-icon name="trophy" :size="14" />{{ trans_choice('Weekend Cup winner|Weekend Cup winner ×:count', $hyper['cups']) }}
+        </span>
+    @endif
     <span class="text-xs text-ink-3">{{ __('Loot from the matches. Game points, no money.') }}</span>
 </li>
