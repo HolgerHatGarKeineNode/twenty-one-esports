@@ -97,7 +97,8 @@ test('with publishing on, the league signs the poll at the start and the result 
     config(['esports.game_chat.creator' => null]);
     [$anna, $bert] = User::factory()->count(2)->create();
 
-    // Off: a rated match signs nothing.
+    // Off (on by default since 2026-10-09): a rated match signs nothing.
+    config(['esports.hyper.publish' => false]);
     HyperOn::finish(HyperOn::ending(HyperOn::versus($anna, $bert), winner: 0, runnerUp: 1), $anna);
     expect(NostrEvent::query()->whereIn('kind', [1068, 2154])->count())->toBe(0);
 
@@ -122,4 +123,8 @@ test('with publishing on, the league signs the poll at the start and the result 
         ->and(collect($tags)->where(0, 'elo')->values()->all())->toBe([['elo', $anna->pubkey, '1020', '1038'], ['elo', $bert->pubkey, '980', '962']])
         ->and(collect($tags)->firstWhere(0, 'e'))->toBe(['e', GameChannels::matchChannelId($match->ulid), '', 'root'])
         ->and($result->content)->toBe('Forfeit: a player left the match or let their turns run out.');
+});
+
+test('publishing is on by default', function () {
+    expect(config('esports.hyper.publish'))->toBeTrue();
 });

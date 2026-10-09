@@ -1706,7 +1706,7 @@ return [
     | mode; then the league seats the players each clan entered first.
     | publish: whether the league signs and
     | publishes the result of a rated or tournament match and its spectator
-    | poll on Nostr (`ESPORTS_HYPER_PUBLISH`, off by default; it needs the
+    | poll on Nostr (`ESPORTS_HYPER_PUBLISH`, on by default; it needs the
     | league key as well). poll_days: how long the spectator poll's
     | `endsAt` lies after the start, per mode (the page closes it when the
     | match ends). cups: the weekly weekend cup, switched on or off on
@@ -1736,7 +1736,7 @@ return [
         'tournaments' => (bool) env('ESPORTS_HYPER_TOURNAMENTS', false),
         'tournament_tables' => [3, 6],
         'tournament_lineup_minutes' => ['live' => 10, 'correspondence' => 1440],
-        'publish' => (bool) env('ESPORTS_HYPER_PUBLISH', false),
+        'publish' => (bool) env('ESPORTS_HYPER_PUBLISH', true),
         'poll_days' => ['live' => 7, 'correspondence' => 60],
         'cups' => [
             'weekday' => 'saturday',
