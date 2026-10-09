@@ -113,3 +113,33 @@ test('soundboard emotes muted league-wide: the emote panel offers stickers only,
         ->and($page->evaluate('() => document.querySelector("#emote-filter") === null'))->toBeTrue()
         ->and(hyperSoundErrors($page))->toBe([]);
 });
+
+test('the start page plays its theme from the first tap, the button turns it off and the match page keeps that choice', function () {
+    $anna = User::factory()->create();
+    $page = visit(BrowserLogin::url($anna))->page();
+    $page->context()->addInitScript(BrowserConsole::COLLECTOR);
+    $page->setViewportSize(390, 844);
+    $page->goto(ComputeUrl::from(route('hyper.index', [], false)));
+    BrowserWait::until($page, '() => document.readyState === "complete" && window.Alpine !== undefined', 10_000);
+    $music = '() => Alpine.$data(document.querySelector("[data-test=hyper-index-music]")).playing';
+
+    expect($page->evaluate($music))->toBeFalse();
+
+    // A first tap anywhere (not the button) starts the theme.
+    $page->locator('#hyper-h')->click();
+    BrowserWait::until($page, $music, 5_000);
+    expect($page->evaluate('() => { const a = Alpine.$data(document.querySelector("[data-test=hyper-index-music]")).audio; return [a.paused, a.loop, a.src.includes("/hyper/m/")]; }'))->toBe([false, true, true]);
+
+    // The button stops it and stores the game's music switch as off; on the next visit a tap stays silent.
+    $page->locator('[data-test=hyper-index-music]')->click();
+    BrowserWait::until($page, '() => !Alpine.$data(document.querySelector("[data-test=hyper-index-music]")).playing', 3_000);
+    expect($page->evaluate('() => JSON.parse(localStorage.getItem("hb-settings")).music'))->toBeFalse();
+    $page->reload();
+    BrowserWait::until($page, '() => document.readyState === "complete" && window.Alpine !== undefined', 10_000);
+    $page->locator('#hyper-h')->click();
+    $page->evaluate('() => new Promise((r) => setTimeout(r, 500))');
+
+    expect($page->evaluate($music))->toBeFalse()
+        ->and($page->evaluate('() => window.__errors'))->toBe([])
+        ->and($page->evaluate(BrowserConsole::BAD_RESPONSES))->toBe([]);
+});

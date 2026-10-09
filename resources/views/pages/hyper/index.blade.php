@@ -15,7 +15,37 @@
 @endphp
 <x-layouts::app :title="'Hyperbitcoinization'">
     <div class="flex flex-col gap-6 px-4 pb-10 lg:gap-8 lg:px-12 lg:pb-12" data-test="hyper-index">
-        <section class="relative isolate overflow-hidden rounded-lg bg-card shadow-ring" aria-labelledby="hyper-h">
+        {{--
+            The start page's theme (user, 2026-10-09): loops from the first tap or key, since a browser plays no sound
+            before a gesture; the button turns it off and on, and the choice is the game's own music switch
+            (`hb-settings.music`, the match page reads the same). It stops when the page goes.
+        --}}
+        <section class="relative isolate overflow-hidden rounded-lg bg-card shadow-ring" aria-labelledby="hyper-h"
+                 x-data="{
+                     playing: false, wanted: true, audio: null,
+                     init() {
+                         try { this.wanted = JSON.parse(localStorage.getItem('hb-settings') || '{}').music !== false; } catch (e) {}
+                         const first = (event) => { if (! event.target.closest('[data-test=hyper-index-music]') && this.wanted) this.play(); };
+                         addEventListener('pointerdown', first, { once: true, capture: true });
+                         addEventListener('keydown', first, { once: true, capture: true });
+                         addEventListener('pagehide', () => this.audio?.pause());
+                         document.addEventListener('livewire:navigating', () => this.audio?.pause());
+                     },
+                     play() {
+                         this.audio ??= Object.assign(new Audio('/hyper/m/6af9906cf895bf9784f61751e7502d98251601e93ccffeea5223c6755a4803d2.mp3?v=1'), { loop: true, volume: 0.35 });
+                         this.audio.play().then(() => { this.playing = true; }).catch(() => {});
+                     },
+                     toggle() {
+                         this.wanted = ! this.playing;
+                         try { const s = JSON.parse(localStorage.getItem('hb-settings') || '{}'); s.music = this.wanted; localStorage.setItem('hb-settings', JSON.stringify(s)); } catch (e) {}
+                         if (this.wanted) { this.play(); } else { this.audio?.pause(); this.playing = false; }
+                     },
+                 }">
+            <button type="button" x-on:click="toggle()" :aria-pressed="playing ? 'true' : 'false'" :aria-label="playing ? @js(__('Music off')) : @js(__('Music on'))" title="{{ __('Music') }}"
+                    class="absolute top-3 right-3 z-10 inline-flex size-11 cursor-pointer items-center justify-center rounded-md bg-ground/80 text-ink shadow-ring hover:text-btc" data-test="hyper-index-music">
+                <x-icon name="music" :size="18" x-show="playing" />
+                <x-icon name="music-off" :size="18" x-show="! playing" />
+            </button>
             <img src="/hyper/art/key-title.jpg?v=1" alt="" width="1600" height="900" class="absolute inset-0 -z-10 size-full object-cover object-[50%_35%]" fetchpriority="high">
             <div class="absolute inset-0 -z-10 bg-[linear-gradient(180deg,rgb(3_9_20/0.35),rgb(3_9_20/0.55)_45%,rgb(3_9_20/0.92))] lg:bg-[linear-gradient(90deg,rgb(3_9_20/0.94),rgb(3_9_20/0.72)_48%,rgb(3_9_20/0.15))]"></div>
             <div class="flex max-w-[960px] flex-col gap-5 p-5 pt-28 sm:p-8 sm:pt-40 lg:pt-10">
