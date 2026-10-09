@@ -1098,7 +1098,7 @@ by this NIP.
 | `2151` | regular | Challenge Answer | the challenged side (`accepted`, `declined`) or the challenger side (`withdrawn`): an acting captain, or the player in a solo game |
 | `2152` | regular | Result Report | acting captain of either lineup |
 | `2153` | regular | Result Response | acting captain of the lineup that did **not** author the report (series only: a chess game has none, see [Game Record](#game-record-64-reused-from-nip-64)) |
-| `2154` | regular | League Attestation; rev. 9.24 (draft): also a Hyperbitcoinization result, of its own shape | league key |
+| `2154` | regular | League Attestation | league key; rev. 9.24 (draft): also a Hyperbitcoinization result, of its own shape |
 | `2155` | regular | Tournament Draw (optional) | league key |
 | `64` | regular | Game Record, **reused from NIP-64** (chess) | league key (the record, rev. 9.4; before, a player); a player of the game (their own post of it, rev. 9.4) |
 | `12150` | replaceable | Clan Membership | the player |
