@@ -48,6 +48,12 @@ export function fieldYAt(px, py, w, h, portrait) {
     return Math.round(portrait ? (px / w) * HEIGHT : (py / h) * HEIGHT);
 }
 
+/** The obstacles' colours, 2D and three.js: the tax office red, the border wall brick orange, each with a light edge. */
+const OBSTACLE = {
+    tax: { fill: '#dc2626', edge: '#fecaca', body: 0xb91c1c, edgeHex: 0xfee2e2 },
+    wall: { fill: '#ea580c', edge: '#fed7aa', body: 0xc2410c, edgeHex: 0xffedd5 },
+};
+
 /** A side's paddle half length in a frame: Proof of Work's per side, else the rally's. */
 const halfIn = (view, side) => view.halves?.[side] ?? view.half;
 
@@ -143,12 +149,13 @@ function create2D(canvas) {
             }
             obstaclesOf(view).forEach(({ kind, rect: r }) => {
                 const [x, y, rw, rh] = rect(...r);
+                // Solid colour and a light edge (P8, review: grey read pale on the dark glass).
                 ctx.shadowColor = kind === 'tax' ? '#ef4444' : '#f97316';
-                ctx.shadowBlur = 16;
-                ctx.fillStyle = kind === 'tax' ? '#6b7280' : '#a8a29e';
+                ctx.shadowBlur = 10;
+                ctx.fillStyle = OBSTACLE[kind].fill;
                 ctx.fillRect(x, y, rw, rh);
                 ctx.shadowBlur = 0;
-                ctx.strokeStyle = kind === 'tax' ? '#ef4444' : '#f97316';
+                ctx.strokeStyle = OBSTACLE[kind].edge;
                 ctx.lineWidth = 2;
                 ctx.strokeRect(x + 1, y + 1, rw - 2, rh - 2);
             });
@@ -555,13 +562,22 @@ function create3D(canvas, options) {
     const dummy = new THREE.Object3D();
 
     // The P7 events: the tax office's block, the border wall's two parts, Few understand's fog over the middle third.
-    const obstacleMat = (colour, edge) => new THREE.MeshStandardMaterial({ color: colour, emissive: edge, emissiveIntensity: 0.55, roughness: 0.7, metalness: 0.1 });
+    // P8 (review: grey under bloom read pale): solid saturated bodies with a faint glow of their own, a light edge
+    // drawn on top, and a weaker halo, so the bloom brightens the edge and not the whole block into a wash.
+    const obstacleMat = (kind) => new THREE.MeshStandardMaterial({ color: OBSTACLE[kind].body, emissive: OBSTACLE[kind].body, emissiveIntensity: 0.28, roughness: 0.55, metalness: 0.05 });
     const unitBox = new THREE.BoxGeometry(1, 1, 1);
-    const taxBlock = new THREE.Mesh(unitBox, obstacleMat(0x6b7280, 0x7f1d1d));
-    const taxHalo = glowPlane(0xef4444, 0.7);
+    const unitEdges = new THREE.EdgesGeometry(unitBox);
+    const obstacle = (kind) => {
+        const mesh = new THREE.Mesh(unitBox, obstacleMat(kind));
+        mesh.add(new THREE.LineSegments(unitEdges, new THREE.LineBasicMaterial({ color: OBSTACLE[kind].edgeHex })));
+
+        return mesh;
+    };
+    const taxBlock = obstacle('tax');
+    const taxHalo = glowPlane(0xef4444, 0.35);
     const wallParts = [0, 1].map(() => {
-        const mesh = new THREE.Mesh(unitBox, obstacleMat(0xa8a29e, 0x7c2d12));
-        const halo = glowPlane(0xf97316, 0.55);
+        const mesh = obstacle('wall');
+        const halo = glowPlane(0xf97316, 0.3);
         root.add(halo, mesh);
 
         return { mesh, halo };
