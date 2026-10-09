@@ -97,9 +97,14 @@ REAL_BIN=$(unwrap "$CHROMIUM_BIN")
 # fourteenth route, and stopped doing so the moment these flags were in place. On bare metal the
 # flags would throw away real hardware acceleration, so the detection decides — the same call
 # Fedora's own chromium.conf makes for the same reason.
+#
+# `systemd-detect-virt` prints "none" AND exits 1 on bare metal, so `$(… || echo none)` captured
+# "none\nnone", never equal to "none": the GPU-off flags were on everywhere. The exit code alone
+# is not read either way; only the printed name decides (empty when the tool is missing).
 LAUNCH_FLAGS=""
+VIRT=$(systemd-detect-virt 2>/dev/null || true)
 
-if [ "$(systemd-detect-virt 2>/dev/null || echo none)" != "none" ]; then
+if [ -n "$VIRT" ] && [ "$VIRT" != "none" ]; then
     LAUNCH_FLAGS="--disable-gpu --disable-software-rasterizer --disable-dev-shm-usage"
 fi
 
@@ -159,6 +164,6 @@ if [ "$REAL_BIN" != "$(readlink -f "$CHROMIUM_BIN")" ]; then
     echo "link-host-chromium: unwrapped the distro launcher at $CHROMIUM_BIN"
 fi
 
-if [ -n "$LAUNCH_FLAGS" ]; then
-    echo "link-host-chromium: virtualised host ($(systemd-detect-virt)), launching with $LAUNCH_FLAGS"
+if [ -n "$VIRT" ] && [ "$VIRT" != "none" ]; then
+    echo "link-host-chromium: virtualised host ($VIRT), launching with $LAUNCH_FLAGS"
 fi
