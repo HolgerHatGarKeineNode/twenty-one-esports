@@ -350,10 +350,15 @@ new #[Layout('layouts::app', ['realtime' => true, 'scripts' => ['resources/js/bo
                     <span class="max-w-full min-w-0 truncate text-xs leading-4 lg:text-sm lg:leading-normal"><span class="lg:hidden" x-text="t.names[bottomSide]"></span><span class="max-lg:hidden" x-text="sideName(bottomSide)"></span></span>
                     <span class="flex shrink-0 items-baseline gap-1.5"><span class="text-[11px] text-ink-3 lg:hidden" x-text="bottomSide === 'w' ? t.white : t.black"></span><span role="timer" class="shrink-0 font-display text-lg font-bold max-lg:leading-6 lg:text-2xl whitespace-nowrap tabular-nums" :class="state.clock.running === bottomSide ? 'text-btc-hi' : 'text-ink-2'" x-text="clock(bottomSide)" data-test="clock-bottom"></span></span>
                 </div>
+            </div>
+
+            {{-- Status, actions, moves --}}
+            <div class="flex min-w-0 flex-col gap-3">
                 {{-- The block input (Blockli): move, or set a block shown first, as in the Blockli prototype. On a phone a bar
-                     fixed above the chat sheet, as daily chess's bottom bar (P2): the switch and Confirm never need a scroll. --}}
+                     fixed above the chat sheet, as daily chess's bottom bar (P2); on a desktop the head of this column, beside
+                     the board, so the board column needs no room for it: the switch and Confirm never need a scroll. --}}
                 <template x-if="layout.input === 'blocks' && color && state.status === 'active'">
-                    <div class="col-span-2 flex flex-col gap-2 max-lg:fixed max-lg:inset-x-0 max-lg:bottom-[72px] max-lg:z-20 max-lg:gap-1 max-lg:border-t max-lg:border-line max-lg:bg-bar max-lg:px-4 max-lg:pt-1 max-lg:pb-1.5 max-lg:shadow-[0_-16px_32px_rgba(10,10,11,.8)]" x-ref="dock" data-page-bar data-test="block-input">
+                    <div class="flex flex-col gap-2 max-lg:fixed max-lg:inset-x-0 max-lg:bottom-[72px] max-lg:z-20 max-lg:gap-1 max-lg:border-t max-lg:border-line max-lg:bg-bar max-lg:px-4 max-lg:pt-1 max-lg:pb-1.5 max-lg:shadow-[0_-16px_32px_rgba(10,10,11,.8)]" x-ref="dock" data-page-bar data-test="block-input">
                         <div class="grid grid-cols-2 gap-2 max-lg:order-2 max-lg:gap-1" role="group" aria-label="{{ __('Move or set a block') }}">
                             <button type="button" class="inline-flex h-11 cursor-pointer items-center justify-center rounded-md px-[18px] text-[13px]"
                                     :class="blockMode ? 'btn-w border border-line bg-well text-ink' : 'border border-btc bg-btc-press font-bold text-btc-hi'"
@@ -364,19 +369,15 @@ new #[Layout('layouts::app', ['realtime' => true, 'scripts' => ['resources/js/bo
                                 {{ __('Set a block') }} <span class="tabular-nums" x-text="blocksLeft"></span>
                             </button>
                         </div>
-                        <div class="grid grid-cols-2 gap-2 max-lg:order-3 max-lg:gap-1" :class="blockMode ? '' : 'max-lg:invisible lg:hidden'">
+                        <div class="grid grid-cols-2 gap-2 max-lg:order-3 max-lg:gap-1" :class="blockMode ? '' : 'invisible'">
                             <x-button variant="quiet" x-bind:disabled="!preview" x-on:click="rotateBlock()" data-test="rotate-block">{{ __('Rotate') }}</x-button>
                             <x-button x-bind:disabled="!preview || !preview.move" x-on:click="setBlock()" data-test="set-block">{{ __('Confirm') }}</x-button>
                         </div>
                         {{-- Always in the page, so a screen reader hears each new hint (the keys say where the block is). --}}
                         {{-- On a phone the line also says whose move it is while no block is shown (the status chip gives way to the bar). --}}
-                        <p class="m-0 text-[13px] text-ink-2 max-lg:order-1 max-lg:truncate max-lg:text-xs" role="status" aria-live="polite" data-test="block-hint"><span x-text="blockHint"></span><span class="lg:hidden" x-show="!blockHint" x-text="statusLine"></span></p>
+                        <p class="m-0 min-h-5 text-[13px] text-ink-2 max-lg:order-1 max-lg:truncate max-lg:text-xs" role="status" aria-live="polite" data-test="block-hint"><span x-text="blockHint"></span><span class="lg:hidden" x-show="!blockHint" x-text="statusLine"></span></p>
                     </div>
                 </template>
-            </div>
-
-            {{-- Status, actions, moves --}}
-            <div class="flex min-w-0 flex-col gap-3">
                 @if ($boardGame->tournament_match_id !== null)
                     {{-- A tournament game ends at the first-move deadline by the league's decision: the countdown leads, the rule stays under it. --}}
                     <div class="flex flex-col gap-1 rounded-lg bg-btc-tint px-4 py-3 shadow-[inset_0_0_0_1px_var(--color-btc)]" role="status" x-show="firstMoveLine" data-test="first-move">

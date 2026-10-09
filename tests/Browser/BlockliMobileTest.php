@@ -154,3 +154,38 @@ test('as an admin in German the board page with its chat and the lobby of every 
 
     fwrite(STDERR, PHP_EOL.implode(PHP_EOL, $rows).PHP_EOL);
 });
+
+/*
+| Desktop too (user, 2026-10-09: "hier muss ich immer noch scrollen bei Desktop?"): from lg the board column is as
+| wide as the window's height allows, so the lower player card, the switch and Confirm end inside the first screen.
+*/
+
+test('on a desktop the board, the lower player card, the switch and Confirm fit the first screen', function (int $width, int $height) {
+    [$anna, $bert] = User::factory()->count(2)->create();
+    $game = BlockliOn::setUp(app(BoardGameService::class)->start('blockli', $anna, $bert), 'e7 e3 10 10 w - 0');
+    $page = visit(BrowserLogin::url($anna))->page();
+    $page->context()->addInitScript(BrowserConsole::COLLECTOR);
+    $page->setViewportSize($width, $height);
+    $page->goto(ComputeUrl::from(route('board.show', $game, false)));
+    BrowserWait::until($page, '() => window.Alpine && Alpine.$data(document.querySelector("[data-test=board-game]"))?.canMove', 10_000);
+    $before = $page->evaluate(BLOCKLI_FOLD);
+    $page->locator('[data-test=mode-block]')->click();
+    $m = $page->evaluate(BLOCKLI_FOLD);
+    fwrite(STDERR, PHP_EOL."desktop {$width}x{$height} ".json_encode(['board' => $m['board'], 'card' => $m['bottomCard'], 'confirm' => $m['confirm'], 'field' => $m['field']]).PHP_EOL);
+
+    expect($m['bottomCard']['bottom'])->toBeLessThanOrEqual($height, 'lower player card inside the first screen')
+        ->and($m['confirm']['bottom'])->toBeLessThanOrEqual($height, 'Confirm inside the first screen')
+        ->and($m['modeBlock']['bottom'])->toBeLessThanOrEqual($height)
+        // The switch to block mode does not move the board.
+        ->and($m['board'])->toBe($before['board'])
+        ->and($m['field'])->toBeGreaterThanOrEqual(28)
+        ->and($m['overflow'])->toBeLessThanOrEqual(0)
+        ->and($page->evaluate('() => window.__errors'))->toBe([])
+        ->and($page->evaluate(BrowserConsole::BAD_RESPONSES))->toBe([]);
+})->with([
+    'the user\'s 1893x929' => [1893, 929],
+    '1440x900' => [1440, 900],
+    '1280x720' => [1280, 720],
+    '1024x768' => [1024, 768],
+    '1920x1080' => [1920, 1080],
+]);

@@ -26,7 +26,8 @@
  * The players chat as on a chess game's page (plan "Blockli-Optimierung",
  * P1: gameChat, NIP-17). On a phone the board fits the first screen (P2,
  * fitBoard): as wide as the height left between its top and what sits under
- * it: Blockli's bar, the chat sheet and the app's tab bar.
+ * it: Blockli's bar, the chat sheet and the app's tab bar; on a desktop the
+ * window, with the lower player card under the board.
  */
 
 import { gameChat } from './gameChat.js';
@@ -227,32 +228,42 @@ registerAlpine(() => {
         },
 
         /**
-         * Below lg the whole board fits the first screen: its width follows the height left under its top, after the
-         * lower player card, the tab bar, Blockli's bar (with its Rotate/Confirm row, kept in place) and the chat sheet. The page
-         * gets room at its bottom for both fixed bars.
+         * The whole board and what belongs under it fit the first screen, on every width (P2; on a desktop since the
+         * user's 1893x929, where Confirm sat at 1098 px). The edge to end above: on a phone the bars fixed to the bottom
+         * (Blockli's bar, the chat sheet, the app's tab bar), on a desktop the window. Under the board count the parts
+         * of its column that are not fixed (the lower player card; Blockli's bar heads the other column from lg). A phone narrows the board;
+         * a desktop narrows the board's grid column, so the cards and the bar go with it and the right column widens.
          */
         fitBoard() {
             const board = this.$refs.board;
-            const page = this.$root.closest('[data-test=board-page]') ?? this.$root;
             if (!board) return;
-            if (!matchMedia('(width < 64rem)').matches) {
-                board.style.maxWidth = '';
-                page.style.paddingBottom = '';
+            const column = board.parentElement;
+            const grid = column.parentElement;
+            const page = this.$root.closest('[data-test=board-page]') ?? this.$root;
+            const phone = matchMedia('(width < 64rem)').matches;
+            const shown = (el) => !!el && el.checkVisibility() && el.getBoundingClientRect().height > 0;
+            const fixed = (el) => getComputedStyle(el).position === 'fixed';
+            const tabbar = parseFloat(getComputedStyle(document.body).paddingBottom) || 0;
+            const sheet = document.querySelector('[data-test=chat-sheet-toggle]')?.closest('section');
+            const dock = this.$refs.dock;
+            let edge = innerHeight - tabbar;
+            if (shown(sheet) && fixed(sheet)) edge = Math.min(edge, sheet.getBoundingClientRect().top);
+            if (shown(dock) && fixed(dock)) edge = Math.min(edge, dock.getBoundingClientRect().top);
+            const drawn = board.getBoundingClientRect();
+            const under = Math.max(drawn.bottom, ...[...column.children].filter((el) => shown(el) && !fixed(el)).map((el) => el.getBoundingClientRect().bottom)) - drawn.bottom;
+            // The first screen: the board's place on the page, whatever was scrolled.
+            const room = edge - (drawn.top + scrollY) - under - (phone ? 8 : 16);
+            const width = Math.round(room * (drawn.width / drawn.height));
+            if (phone) {
+                grid.style.gridTemplateColumns = '';
+                board.style.maxWidth = Math.max(200, width) + 'px';
+                page.style.paddingBottom = (shown(sheet) ? 72 : 0) + (shown(dock) ? dock.offsetHeight : 0) + 24 + 'px';
 
                 return;
             }
-            const sheet = document.querySelector('[data-test=chat-sheet-toggle]') ? 72 : 0;
-            const dock = this.$refs.dock?.offsetHeight ?? 0;
-            // The players share a row above the board on a phone; a card under the board would count too.
-            const lower = this.$root.querySelector('[data-test=player-bottom]');
-            const card = lower && lower.getBoundingClientRect().top > board.getBoundingClientRect().top ? lower.offsetHeight + 8 : 0;
-            // The app's tab bar owns the bottom edge below lg (body padding, app.css): both bars sit on it.
-            const tabbar = parseFloat(getComputedStyle(document.body).paddingBottom) || 0;
-            const top = board.getBoundingClientRect().top + scrollY;
-            const room = innerHeight - tabbar - top - card - sheet - dock - 8;
-            const drawn = board.getBoundingClientRect();
-            board.style.maxWidth = Math.round(Math.max(200, room * (drawn.width / drawn.height))) + 'px';
-            page.style.paddingBottom = sheet + dock + 24 + 'px';
+            board.style.maxWidth = '';
+            page.style.paddingBottom = '';
+            grid.style.gridTemplateColumns = 'minmax(0, ' + Math.min(560, Math.max(300, width)) + 'px) minmax(0, 1fr)';
         },
 
         /* ---- the board ------------------------------------------------------------------------------ */
