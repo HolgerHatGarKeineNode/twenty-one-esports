@@ -318,6 +318,8 @@ test('correcting a finished rated 1v1 tournament match reverts its season Elo an
 
 test('the lobby counts down to the bots taking the free seats, every second, and the faction labels have room on a phone', function () {
     HyperOn::play();
+    // Frozen: under a loaded parallel run a second could pass between opening the table and rendering it.
+    $this->freezeTime();
     $anna = User::factory()->create();
     app(HyperLobby::class)->open($anna, 4, HyperMatch::LIVE, 0);
 

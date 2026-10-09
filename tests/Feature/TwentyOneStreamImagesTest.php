@@ -470,6 +470,8 @@ test('every person on a scene has an avatar, a clan its logo, every scene its ba
             'e5' => $brandBackdrop, 'e6' => $brandBackdrop, 'e7' => $brandBackdrop, 'e8' => $brandBackdrop, 'e9' => $brandBackdrop,
             // The mempool slide (plan "Stream-Slides", P7): the brand.
             'm1' => $brandBackdrop,
+            // A running Hyperbitcoinization match over its own game, the brand while no backdrop of it is built.
+            'h1' => $images->backdrop('hyperbitcoinization') ?? $brandBackdrop,
             // Blockfill's week (plan "Blockfill", P6), switched off here: the brand.
             'f1' => $brandBackdrop,
             // Blockfill's slide set (BlockfillSlides), switched off here as well: the brand.

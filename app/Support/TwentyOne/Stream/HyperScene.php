@@ -92,7 +92,9 @@ class HyperScene
         }
 
         $matches = HyperMatch::query()->where('status', HyperMatchStatus::Active)
-            ->whereHas('seats', fn ($seats) => $seats->whereNotNull('user_id'))
+            // A human still at the table, as HyperMatches::capBotsOnly() reads it: a seat that left or was taken over keeps
+            // its user_id but plays as a bot (reviewer 2026-10-09).
+            ->whereHas('seats', fn ($seats) => $seats->whereNotNull('user_id')->where('bot', false))
             ->where(fn ($query) => $query->where('mode', HyperMatch::LIVE)
                 ->orWhere('turn_started_ms', '>=', $nowMs - self::CORRESPONDENCE_FRESH_MINUTES * 60_000))
             ->with('seats')

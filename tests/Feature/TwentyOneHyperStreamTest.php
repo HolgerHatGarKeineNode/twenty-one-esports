@@ -173,6 +173,9 @@ test('the rotation gets the running matches with a player, live first, and none 
     // A bots-only table and a finished match are no show.
     $botsOnly = hyperStreamMatch($anna, $bert);
     $botsOnly->seats()->update(['user_id' => null, 'bot' => true]);
+    // Its humans left or let their turns run out: they keep their user_id, a bot plays their seats.
+    $takenOver = hyperStreamMatch($anna, $bert);
+    $takenOver->seats()->whereNotNull('user_id')->update(['bot' => true, 'takeover' => 'left', 'left_at' => now()]);
     hyperStreamMatch($anna, $bert)->forceFill(['status' => HyperMatchStatus::Finished, 'ended_at' => now()])->save();
 
     $daily->forceFill(['turn_started_ms' => now()->getTimestampMs()])->save();
