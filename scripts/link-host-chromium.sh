@@ -90,23 +90,22 @@ unwrap() {
 
 REAL_BIN=$(unwrap "$CHROMIUM_BIN")
 
-# FLAGS THIS HOST NEEDS, AND ONLY THIS HOST. A virtual machine has no GPU. Without
+# THE PLAIN BROWSER HAS NO GPU, ON EVERY HOST. A virtual machine has none anyway: without
 # `--disable-gpu` Chromium still starts a GPU process, falls back to SwiftShader and takes the
-# renderer down with it: measured 2026-09-11 in a Qubes AppVM, where
+# renderer down with it (measured 2026-09-11 in a Qubes AppVM, where
 # `tests/Browser/Dashboard/DarkWorldRoutesTest.php` died with a bare `Page crashed` at the
-# fourteenth route, and stopped doing so the moment these flags were in place. On bare metal the
-# flags would throw away real hardware acceleration, so the detection decides — the same call
-# Fedora's own chromium.conf makes for the same reason.
+# fourteenth route, and stopped doing so the moment these flags were in place).
 #
-# `systemd-detect-virt` prints "none" AND exits 1 on bare metal, so `$(… || echo none)` captured
-# "none\nnone", never equal to "none": the GPU-off flags were on everywhere. The exit code alone
-# is not read either way; only the printed name decides (empty when the tool is missing).
-LAUNCH_FLAGS=""
+# On bare metal the flags were meant to be off, but the detection never said so: `systemd-detect-virt`
+# prints "none" AND exits 1 there, so `$(… || echo none)` captured "none\nnone" and every host got
+# them. The suite grew up on that: with the GPU on (measured 2026-10-09, this workstation, a full
+# run) the plain browser has WebGL, Proof of Pong's pages draw the three.js arena where
+# tests/Browser/PongBotTest.php measures the 2D fallback (2 tests red). So the flags stay on
+# everywhere, on purpose now: the plain browser
+# is the no-WebGL, host-independent one, and WebGL is the opt-in channel below
+# (tests/Support/BrowserWebGL.php). The detection is only reported.
+LAUNCH_FLAGS="--disable-gpu --disable-software-rasterizer --disable-dev-shm-usage"
 VIRT=$(systemd-detect-virt 2>/dev/null || true)
-
-if [ -n "$VIRT" ] && [ "$VIRT" != "none" ]; then
-    LAUNCH_FLAGS="--disable-gpu --disable-software-rasterizer --disable-dev-shm-usage"
-fi
 
 # Opt-in extras for one run, e.g. the TV soak test's forced GC:
 # CHROMIUM_EXTRA_FLAGS="--js-flags=--expose-gc --enable-precise-memory-info". Every run rewrites
@@ -164,6 +163,4 @@ if [ "$REAL_BIN" != "$(readlink -f "$CHROMIUM_BIN")" ]; then
     echo "link-host-chromium: unwrapped the distro launcher at $CHROMIUM_BIN"
 fi
 
-if [ -n "$VIRT" ] && [ "$VIRT" != "none" ]; then
-    echo "link-host-chromium: virtualised host ($VIRT), launching with $LAUNCH_FLAGS"
-fi
+echo "link-host-chromium: host ${VIRT:-unknown} (systemd-detect-virt), plain browser launches with $LAUNCH_FLAGS"
