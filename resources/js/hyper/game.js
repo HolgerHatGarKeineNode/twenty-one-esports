@@ -57,6 +57,8 @@ let catching = null;
 const TICKER = [];
 /** The last plies whose events were shown, in order: a ply twice would be an animation shown twice. */
 const SHOWN = [];
+/** Per batch shown: when it reached the page, when the page began it, when its last event at the normal pace began and ended (null: it all landed at once) and when it ended. The browser tests hold pace.js's bound against it. */
+const PACED = [];
 const UI = { scenes: true, unit: 'pleb', qty: '1', from: null, card: null, mode: 'owner', speed: 1, busy: false, hover: null };
 const hooks = { onEmote: null, onEnd: null, onJump: null, onEndedAt: null };
 
@@ -810,6 +812,8 @@ async function animateBatch(batch) {
     const events = batch.events ?? [];
     const ctxB = { seat: batch.seat ?? events.find((e) => e.seat !== undefined)?.seat ?? G.cur, speed: 1, watched: 0, source: batch.source };
     shownSource = batch.source ?? null;
+    const began = Date.now();
+    let slowAt = null; let slowEnd = null;
     for (let i = 0; i < events.length; i++) {
         const e = events[i];
         ctxB.seat = e.type === 'turn_started' ? e.seat : (e.seat ?? ctxB.seat);
@@ -818,14 +822,18 @@ async function animateBatch(batch) {
         shownBatch = { at: batch.at, seat: ctxB.seat };
         rushing = behind();
         ctxB.speed = rushing ? 20 : isMe(ctxB.seat) ? 1 : Math.max(UI.speed, batch.fast ? 3 : 1);
+        if (!rushing) slowAt = Date.now();
         if (e.type === 'dice_rolled') {
             const run = [e];
             while (events[i + 1]?.type === 'dice_rolled' && events[i + 1].from === e.from && events[i + 1].to === e.to) run.push(events[++i]);
             await showDice(run, events[i + 1], ctxB);
+            if (!rushing) slowEnd = Date.now();
             continue;
         }
         await showEvent(e, ctxB, events[i + 1]);
+        if (!rushing) slowEnd = Date.now();
     }
+    PACED.push({ to: batch.to, at: batch.at, began, slowAt, slowEnd, end: Date.now() }); if (PACED.length > 200) PACED.shift();
     shownSource = null;
     rushing = false;
     shownBatch = null;
@@ -1445,7 +1453,7 @@ export const game = {
     me: () => ME,
     playing: () => !!G && playing(),
     /** Where the page stands, for the browser tests and a look in the console. */
-    state: () => ({ ply: G?.ply ?? null, syncPly: sync?.ply ?? null, snapshotPly: S?.ply ?? null, round: G?.round, phase: G?.phase, cur: G?.cur, me: ME, over: G?.over, idle: G ? idle() : false, running, queued: queue.length, legal: G ? legalNow() : null, battle: BT.open, moveOpen: !$('#move').hidden, shown: [...SHOWN] }),
+    state: () => ({ ply: G?.ply ?? null, syncPly: sync?.ply ?? null, snapshotPly: S?.ply ?? null, round: G?.round, phase: G?.phase, cur: G?.cur, me: ME, over: G?.over, idle: G ? idle() : false, running, queued: queue.length, legal: G ? legalNow() : null, battle: BT.open, moveOpen: !$('#move').hidden, shown: [...SHOWN], paced: PACED.map((p) => ({ ...p })) }),
 };
 
 export function startGame(config, net) {
