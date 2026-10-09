@@ -1,6 +1,7 @@
 <?php
 
 use App\Games\Checkers;
+use App\Games\NineMensMorris;
 use App\Models\ChatMute;
 use App\Models\User;
 use App\Support\Board\BoardGameService;
@@ -18,7 +19,7 @@ use Tests\Support\BlockliOn;
 */
 
 beforeEach(function () {
-    config(['esports.board_games.games.'.Checkers::SLUG.'.enabled' => true]);
+    config(['esports.board_games.games.'.Checkers::SLUG.'.enabled' => true, 'esports.board_games.games.'.NineMensMorris::SLUG.'.enabled' => true]);
     BlockliOn::play();
 });
 
@@ -37,7 +38,7 @@ test('both players of every board game get the chat, tagged with the board game,
     $this->actingAs($anna)->get(route('board.show', $game))->assertOk()->assertSee('data-test="chat"', false)->assertSee('data-test="chat-sheet-toggle"', false);
     $this->actingAs($carla)->get(route('board.show', $game))->assertOk()->assertDontSee('data-test="chat"', false);
     Livewire::actingAs($anna)->test('pages::board.show', ['boardGame' => $game])->call('$refresh')->assertOk();
-})->with(['blockli', Checkers::SLUG]);
+})->with(['blockli', Checkers::SLUG, NineMensMorris::SLUG]);
 
 test('a player mutes the opponent on the account, a spectator cannot', function () {
     [$anna, $bert, $carla] = User::factory()->count(3)->create();
