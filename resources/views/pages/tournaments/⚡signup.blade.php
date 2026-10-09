@@ -8,6 +8,7 @@ use App\Models\Tournament;
 use App\Models\TournamentSignup;
 use App\Models\User;
 use App\Support\GameNames;
+use App\Support\Hyper\HyperTournamentTeams;
 use App\Support\Invites\InviteLinks;
 use App\Support\Nostr\RejectedEvent;
 use App\Support\Nostr\SignerMessages;
@@ -54,6 +55,15 @@ new #[Layout('layouts::app', ['section' => 'tournaments'])] class extends Compon
         abort_if($tournament->isLeagueWeek(), 404);
 
         $this->tournament = $tournament;
+
+        // A Hyperbitcoinization clan bracket (P5b): the clan is the team, so its captain enters a mirror of the clan.
+        $clan = auth()->user()?->clanMember?->clan;
+
+        if ($clan !== null && $tournament->isSignupOpen() && HyperTournamentTeams::isClanBracket($tournament)
+            && ($clan->owner_id === auth()->id() || $clan->isCaptain(auth()->user()))) {
+            HyperTournamentTeams::lineup($clan, $tournament->mode);
+        }
+
         $first = $this->lineups->first();
 
         if ($first !== null) {
@@ -223,6 +233,8 @@ new #[Layout('layouts::app', ['section' => 'tournaments'])] class extends Compon
     $tournament = $this->tournament;
     $me = auth()->user();
     $teams = $tournament->profile()->entersTeams();
+    // A Hyperbitcoinization clan bracket (P5b): clans only, no solo pool.
+    $clanBracket = HyperTournamentTeams::isClanBracket($tournament);
     $open = $tournament->isSignupOpen();
     $entry = $this->entry;
     $landing = new \App\Support\Tournaments\TournamentLanding($tournament, $me);
@@ -351,7 +363,7 @@ new #[Layout('layouts::app', ['section' => 'tournaments'])] class extends Compon
                     @include('pages.tournaments.partials.own-copy-tick', ['tournament' => $tournament])
 
                     <div class="flex flex-col gap-3 rounded-md bg-ground p-4 shadow-ring-hairline" data-test="lineup-entry">
-                        <h2 class="m-0 text-[15px] font-bold">{{ __('Bring your lineup') }}</h2>
+                        <h2 class="m-0 text-[15px] font-bold">{{ $clanBracket ? __('Bring your clan') : __('Bring your lineup') }}</h2>
                         <label class="flex flex-col gap-1.5 text-xs text-ink-2">
                             {{ __('Lineup') }}
                             <select class="h-11 rounded-md border border-line bg-well px-3 text-[13px] text-ink" x-on:change="$wire.pickLineup(Number($event.target.value))">
@@ -385,6 +397,17 @@ new #[Layout('layouts::app', ['section' => 'tournaments'])] class extends Compon
                     </div>
                 @endif
 
+                @if ($clanBracket)
+                    @unless ($lineup)
+                        <div class="flex flex-col gap-2 rounded-md bg-ground p-4 shadow-ring-hairline" data-test="clans-only">
+                            <h2 class="m-0 text-[15px] font-bold">{{ __('Clans play this tournament') }}</h2>
+                            <p class="m-0 text-[13px] leading-normal text-ink-2">{{ $me->clanMember ? __('Clans enter this tournament as teams. Ask your clan\'s captain to sign the clan up.') : __('Clans enter this tournament as teams. Join a clan or start one to play.') }}</p>
+                            @unless ($me->clanMember)
+                                <a href="{{ route('clans.index') }}" class="inline-flex min-h-11 items-center gap-1.5 self-start text-[13px]">{{ __('Find a clan') }}<x-icon name="next" :size="16" /></a>
+                            @endunless
+                        </div>
+                    @endunless
+                @else
                 <div class="flex flex-col gap-3 rounded-md bg-ground p-4 shadow-ring-hairline" data-test="solo-entry">
                     <h2 class="m-0 text-[15px] font-bold">{{ $teams ? __('You play solo, we draw you into a mix team.') : __('Take your seat') }}</h2>
                     @if ($lineup)
@@ -408,6 +431,7 @@ new #[Layout('layouts::app', ['section' => 'tournaments'])] class extends Compon
                             : __('Seeding is by Elo when registration closes; equal Elo goes to whoever signed up first.') }}
                     </p>
                 </div>
+                @endif
                 <p class="m-0 text-xs leading-normal text-ink-3">{{ __('You sign with your Nostr key; the league keeps the signature as your consent and never publishes it. By registering you accept the tournament rules. You can pull out until registration closes.') }}</p>
             @endif
 

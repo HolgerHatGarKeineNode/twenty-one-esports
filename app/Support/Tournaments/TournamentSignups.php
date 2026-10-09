@@ -84,6 +84,11 @@ final class TournamentSignups
         $this->assertNoneBanned([$user->id]);
         $this->assertNotEntered($tournament, [$user->id]);
 
+        // A Hyperbitcoinization clan bracket (P5b) has no solo pool: its teams are clans, never mix teams.
+        if ($tournament->profile()->isHyper() && $tournament->profile()->entersTeams()) {
+            throw new TournamentRuleViolation('clans_only', __('Clans enter this tournament as teams. Ask your clan\'s captain to sign the clan up.'));
+        }
+
         if ($tournament->profile()->entersTeams()) {
             $clanId = ClanMember::query()->where('user_id', $user->id)->value('clan_id');
             $clanEntered = $clanId !== null && $this->active($tournament)->whereNotNull('lineup_id')

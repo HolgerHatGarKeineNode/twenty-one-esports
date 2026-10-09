@@ -389,11 +389,18 @@ class Tournament extends Model
     }
 
     /**
-     * Players per team: the mode's team size (1 for chess and RL 1v1).
+     * Players per team: the mode's team size (1 for chess and RL 1v1); a Hyperbitcoinization clan bracket's from
+     * its options (P5b, FormatOptions::$teamSize).
      */
     public function teamSize(): int
     {
-        return $this->profile()->entersTeams() ? (int) app(GameRegistry::class)->mode($this->game, $this->mode)?->teamSize : 1;
+        $profile = $this->profile();
+
+        if ($profile->isHyper()) {
+            return $profile->teamSize;
+        }
+
+        return $profile->entersTeams() ? (int) app(GameRegistry::class)->mode($this->game, $this->mode)?->teamSize : 1;
     }
 
     /**
@@ -611,7 +618,10 @@ class Tournament extends Model
         $times = $this->times ?? [];
 
         // A game switched off since keeps its tournaments readable (a stand-in that plans and starts nothing).
-        return GameProfile::ofTournament($this->game, $this->mode)->withTimes($times['game'] ?? null, $times['setup'] ?? null, $times['break'] ?? null);
+        $profile = GameProfile::ofTournament($this->game, $this->mode)->withTimes($times['game'] ?? null, $times['setup'] ?? null, $times['break'] ?? null);
+
+        // A Hyperbitcoinization clan bracket (P5b): its team size is an option of the tournament, not of the mode.
+        return $profile->isHyper() ? $profile->withTeamSize(FormatOptions::hyperTeamSize($this->options)) : $profile;
     }
 
     public function formatOptions(): FormatOptions

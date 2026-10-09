@@ -47,6 +47,7 @@ use Illuminate\Support\Carbon;
  * @property array<string, mixed>|null $lobby a lobby tournament's lobby (P10, App\Support\Tournaments\Lobbies): its settings as fixed at the draw, `name` and `report_by`
  * @property string|null $lobby_password the lobby's password, encrypted at rest, for its players and the directors only
  * @property array<string, mixed>|null $lobby_report the reports of a lobby until it is decided (LobbyResults::currentReport(), ::earlierReports()): the one waiting for a director, and every earlier one with its end screen; private, never serialized
+ * @property array{since?: int, sides?: array<int, array{members: list<int>, by: int|null, at: int}>}|null $lineups who each clan of a Hyperbitcoinization clan bracket plays in this match (P5b, HyperTournamentTeams): since when the match waits, and per slot the players, who named them and when
  * @property Carbon|null $created_at
  * @property Carbon|null $updated_at
  * @property-read TournamentRound $round
@@ -55,15 +56,16 @@ use Illuminate\Support\Carbon;
  * @property-read SeriesMatch|null $seriesMatch
  * @property-read ChessGame|null $chessGame
  * @property-read BoardGame|null $boardGame
+ * @property-read HyperMatch|null $hyperMatch
  */
-#[Fillable(['tournament_id', 'tournament_round_id', 'key', 'group', 'bracket', 'position', 'if_needed', 'status', 'result', 'pairing', 'held', 'replaced_through', 'schedule', 'lobby', 'lobby_password', 'lobby_report'])]
+#[Fillable(['tournament_id', 'tournament_round_id', 'key', 'group', 'bracket', 'position', 'if_needed', 'status', 'result', 'pairing', 'held', 'replaced_through', 'schedule', 'lobby', 'lobby_password', 'lobby_report', 'lineups'])]
 #[Hidden(['lobby_password', 'lobby_report'])]
 class TournamentMatch extends Model
 {
     protected function casts(): array
     {
         return ['group' => 'integer', 'position' => 'integer', 'if_needed' => 'boolean', 'result' => 'array', 'pairing' => 'array', 'held' => 'array', 'replaced_through' => 'integer', 'schedule' => 'array',
-            'lobby' => 'array', 'lobby_password' => 'encrypted', 'lobby_report' => 'array'];
+            'lobby' => 'array', 'lobby_password' => 'encrypted', 'lobby_report' => 'array', 'lineups' => 'array'];
     }
 
     /**

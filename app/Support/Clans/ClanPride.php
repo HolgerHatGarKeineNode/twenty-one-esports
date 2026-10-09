@@ -336,14 +336,16 @@ final class ClanPride
             ->where('status', HyperMatchStatus::Finished)
             ->whereNotNull('team_clans')->whereNotNull('winner_seat')
             ->where('ended_at', '>=', now()->subDays(self::DAYS))
-            ->with('seats:id,hyper_match_id,seat,team')
+            ->with('seats:id,hyper_match_id,seat,team,place')
             ->latest('ended_at')->limit(200)
             ->get(['id', 'team_clans', 'winner_seat', 'ended_at']);
         $clans = Clan::query()->whereIn('id', $matches->pluck('team_clans')->flatten()->filter()->unique())->get()->keyBy('id');
         $seen = [];
 
         foreach ($matches as $match) {
-            $team = $match->seats->firstWhere('seat', $match->winner_seat)?->team;
+            // The team holding place 1, not the winning seat's: a team whose every player forfeited loses even when its
+            // bots won on (P5b), and the places say so (HyperSeason::placeForfeits()).
+            $team = $match->seats->firstWhere('place', 1)?->team;
             $winner = $team === null ? null : ($match->team_clans[$team] ?? null);
             $loser = $team === null ? null : $clans->get($match->team_clans[1 - $team] ?? 0);
 

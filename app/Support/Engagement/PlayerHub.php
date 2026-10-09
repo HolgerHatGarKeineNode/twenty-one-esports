@@ -7,6 +7,7 @@ use App\Enums\InviteStatus;
 use App\Enums\SeriesStatus;
 use App\Enums\TournamentStatus;
 use App\Games\GameRegistry;
+use App\Games\Hyperbitcoinization;
 use App\Models\ChessGame;
 use App\Models\Clan;
 use App\Models\ClanInvite;
@@ -345,7 +346,8 @@ final class PlayerHub
         return [
             'clan' => $clan,
             'captain' => $clan->isCaptain($this->user),
-            'lineups' => $clan->lineups()->with(['seats' => fn ($query) => $query->whereNotNull('accepted_at')->with('user')])->orderBy('game')->orderBy('mode')->get()
+            // A Hyperbitcoinization clan bracket's entry (P5b) mirrors the clan: no lineup the clan set up.
+            'lineups' => $clan->lineups()->where('game', '!=', Hyperbitcoinization::SLUG)->with(['seats' => fn ($query) => $query->whereNotNull('accepted_at')->with('user')])->orderBy('game')->orderBy('mode')->get()
                 ->sortBy(fn (Lineup $lineup): int => in_array($lineup->id, $mine, true) ? 0 : 1)->values(),
             'invite' => null,
         ];

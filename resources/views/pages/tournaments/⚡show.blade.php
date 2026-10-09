@@ -16,6 +16,7 @@ use App\Support\Board\BoardInvites;
 use App\Support\Board\BoardRuleViolation;
 use App\Support\Chess\ChessInvites;
 use App\Support\Chess\ChessRuleViolation;
+use App\Support\Hyper\HyperTournamentTeams;
 use App\Support\LeagueTime;
 use App\Support\PageMeta;
 use App\Support\Seo\LocalizedUrls;
@@ -277,6 +278,37 @@ new #[Layout('layouts::app', ['section' => 'tournaments', 'realtime' => true, 's
         }
 
         unset($this->cupMatch, $this->now);
+    }
+
+    /**
+     * A Hyperbitcoinization clan bracket (P5b): the viewer, a captain, names who plays the match for the clan.
+     *
+     * @param  list<int>  $userIds
+     */
+    public function nameHyperLineup(int $matchId, array $userIds): void
+    {
+        $user = auth()->user();
+
+        if (! $user instanceof User) {
+            $this->redirectRoute('login');
+
+            return;
+        }
+
+        $this->cupError = '';
+        $match = TournamentMatch::query()->where('tournament_id', $this->tournament->id)->find($matchId);
+
+        try {
+            if ($match === null) {
+                throw new TournamentRuleViolation('lineup_closed', __('This match takes no lineup any more.'));
+            }
+
+            app(HyperTournamentTeams::class)->name($this->tournament, $match, $user, array_values(array_map(intval(...), $userIds)));
+        } catch (TournamentRuleViolation $violation) {
+            $this->cupError = $violation->getMessage();
+        }
+
+        unset($this->now);
     }
 
     public function playCupMatch(): void

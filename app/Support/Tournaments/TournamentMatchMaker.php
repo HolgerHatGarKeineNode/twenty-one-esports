@@ -29,6 +29,7 @@ use App\Support\Chess\ChessRuleViolation;
 use App\Support\Chess\RatedChess;
 use App\Support\Hyper\HyperCups;
 use App\Support\Hyper\HyperMatches;
+use App\Support\Hyper\HyperTournamentTeams;
 use App\Support\SeasonChain\GatePin;
 use App\Support\SeasonChain\LeagueKey;
 use App\Support\SeasonChain\RatedTrustGate;
@@ -375,10 +376,18 @@ final class TournamentMatchMaker
      * One Hyperbitcoinization match for a tournament match (P5): each entry's player in slot order, factions drawn,
      * in the tournament's mode (live or correspondence). Rated on the season's terms (every seat a player, a live
      * season); a Hyperbitcoinization cup (HyperCups) is never rated, and bots fill its table up to the table size.
-     * Null when a slot has no player any more.
+     * A clan bracket (P5b) seats the two clans' named players as a team match (HyperTournamentTeams::seating()).
+     * Null when a slot has no player any more, or a clan still has time to name its players.
      */
     private function startHyperMatch(Tournament $tournament, TournamentMatch $match): ?HyperMatch
     {
+        // A clan bracket (P5b): a team table of the two clans' named players, A B A B, once both are known.
+        if (HyperTournamentTeams::isClanBracket($tournament)) {
+            $seating = HyperTournamentTeams::seating($tournament, $match);
+
+            return $seating === null ? null : $this->createHyperMatch($tournament, $match, $seating['seats'], $seating['clans']);
+        }
+
         $seats = [];
 
         foreach ($match->slots->sortBy('slot') as $slot) {
@@ -401,8 +410,17 @@ final class TournamentMatchMaker
             }
         }
 
+        return $this->createHyperMatch($tournament, $match, $seats, null, $cup ? false : null);
+    }
+
+    /**
+     * @param  list<array{user?: User, bot?: bool, team?: int}>  $seats
+     * @param  list<int|null>|null  $teamClans
+     */
+    private function createHyperMatch(Tournament $tournament, TournamentMatch $match, array $seats, ?array $teamClans, ?bool $rated = null): ?HyperMatch
+    {
         try {
-            $played = $this->hyper->create($seats, mode: $tournament->mode, rated: $cup ? false : null, tournamentMatch: $match->id);
+            $played = $this->hyper->create($seats, mode: $tournament->mode, teamClans: $teamClans, rated: $rated, tournamentMatch: $match->id);
         } catch (InvalidArgumentException $invalid) {
             report($invalid);
 

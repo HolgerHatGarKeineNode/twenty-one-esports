@@ -124,11 +124,18 @@ final class TournamentEditor
             unset($diff['director_ids']);
             $old = $locked->only(array_keys($diff));
             $oldLadder = $locked->ladder_address;
+            $oldTeamSize = $locked->teamSize();
 
             $locked->forceFill(array_intersect_key($changes, $diff));
 
             // The options of the (new) game's profile: anything it does not offer falls back to its default.
             $locked->options = FormatOptions::fromArray($locked->options, $locked->profile())->toArray();
+
+            // A Hyperbitcoinization clan bracket (P5b): its entries were made for one team size, another would leave them unfit.
+            if ($locked->profile()->isHyper() && $locked->teamSize() !== $oldTeamSize
+                && TournamentSignup::query()->where('tournament_id', $locked->id)->active()->exists()) {
+                throw new TournamentRuleViolation('team_size_entered', __('Players or clans have signed up already. The team size stays as it is.'));
+            }
 
             if ($gameChanged && $locked->event_id !== null) {
                 $locked->ladder_address = Ladders::address($game, $mode, $locked->published_at?->toImmutable());

@@ -1697,7 +1697,10 @@ return [
     | number of seats (3 to 6), place 1 first; a forfeit scores 0. A match of
     | two seats is a 1v1 and a clan match a team match: both are rated by Elo
     | (`season.rating`). tournament_tables: the table sizes a tournament's
-    | free-for-all heats may have. publish: whether the league signs and
+    | free-for-all heats may have. tournament_lineup_minutes (P5b): how long a
+    | clan bracket's match waits for its clans to name their players, per
+    | mode; then the league seats the players each clan entered first.
+    | publish: whether the league signs and
     | publishes the result of a rated or tournament match and its spectator
     | poll on Nostr (`ESPORTS_HYPER_PUBLISH`, off by default; it needs the
     | league key as well). poll_days: how long the spectator poll's
@@ -1725,6 +1728,7 @@ return [
             6 => [12, 9, 7, 5, 3, 1],
         ],
         'tournament_tables' => [3, 6],
+        'tournament_lineup_minutes' => ['live' => 10, 'correspondence' => 1440],
         'publish' => (bool) env('ESPORTS_HYPER_PUBLISH', false),
         'poll_days' => ['live' => 7, 'correspondence' => 60],
         'cups' => [

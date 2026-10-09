@@ -4,6 +4,7 @@ namespace App\Support\Nostr;
 
 use App\Enums\ChessGameStatus;
 use App\Games\GameRegistry;
+use App\Games\Hyperbitcoinization;
 use App\Models\ChessGame;
 use App\Models\Clan;
 use App\Models\LineupSeat;
@@ -74,6 +75,8 @@ final readonly class PlayerProfile
                 ->count(),
             seriesGames: array_values(array_map(fn (string $game): string => app(GameRegistry::class)->name($game),
                 LineupSeat::query()->where('user_id', $user->id)->join('lineups', 'lineups.id', '=', 'lineup_seats.lineup_id')
+                    // A Hyperbitcoinization clan bracket's entry (P5b) mirrors the clan: it says nothing about the series a player plays.
+                    ->where('lineups.game', '!=', Hyperbitcoinization::SLUG)
                     ->distinct()->orderBy('lineups.game')->pluck('lineups.game')->all())),
         );
     }

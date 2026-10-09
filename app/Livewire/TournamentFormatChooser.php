@@ -98,7 +98,10 @@ abstract class TournamentFormatChooser extends Component
         [$game, $mode] = TournamentGames::find($this->game) ?? ['chess', 'blitz'];
         $number = fn (string $value): ?float => is_numeric($value) && (float) $value >= 0 && (float) $value <= 1000 ? (float) $value : null;
 
-        return GameProfile::for($game, $mode)->withTimes($number($this->gameLength), $number($this->setup), $number($this->break));
+        $profile = GameProfile::for($game, $mode)->withTimes($number($this->gameLength), $number($this->setup), $number($this->break));
+
+        // Hyperbitcoinization (plan "Hyperbitcoinization", P5b): a clan bracket's team size is one of its options.
+        return $profile->isHyper() ? $profile->withTeamSize(FormatOptions::hyperTeamSize($this->options)) : $profile;
     }
 
     public function count(): int
@@ -305,6 +308,11 @@ abstract class TournamentFormatChooser extends Component
     {
         if (array_key_exists($key, FormatOptions::defaults($this->profile())->toArray())) {
             $this->options = FormatOptions::fromArray([...$this->options, $key => $value], $this->profile())->toArray();
+        }
+
+        // A Hyperbitcoinization clan bracket (P5b) is played only as a knockout: picking 2v2 or 3v3 picks it too.
+        if ($key === 'teamSize' && $this->profile()->entersTeams()) {
+            $this->selected = TournamentFormat::SingleElimination->value;
         }
 
         $this->changed();

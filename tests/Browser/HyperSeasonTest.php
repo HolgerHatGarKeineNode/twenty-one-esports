@@ -1,9 +1,20 @@
 <?php
 
 use App\Enums\TournamentFormat;
+use App\Enums\TournamentResultsMode;
+use App\Enums\TournamentStatus;
+use App\Games\Hyperbitcoinization;
 use App\Models\Admin;
+use App\Models\Clan;
 use App\Models\HyperMatch;
+use App\Models\Tournament;
+use App\Models\TournamentParticipant;
 use App\Models\User;
+use App\Support\Hyper\HyperTournamentTeams;
+use App\Support\Tournaments\FormatOptions;
+use App\Support\Tournaments\GameProfile;
+use App\Support\Tournaments\TournamentBrackets;
+use App\Support\Tournaments\TournamentRunner;
 use Illuminate\Support\Facades\Http;
 use Pest\Browser\Playwright\Page;
 use Pest\Browser\Support\ComputeUrl;
@@ -26,6 +37,9 @@ pest()->group('browser');
 | table with the poll open are measured as an admin in German at 390 and 1440 px (overflow, clipped texts, the
 | primary action above the fold); every page carries BrowserConsole's collector (console errors, uncaught errors,
 | answers >= 400), proved by a positive control. The numbers go to STDERR for the report.
+|
+| A clan bracket (P5b): the captain of a clan that entered a substitute names the two players on the tournament page,
+| and the table that starts then opens in a new tab; the page is measured before and after.
 |
 */
 
@@ -160,4 +174,79 @@ test('a tournament table opens from the tournament page in a new tab, and a spec
     // The positive control: the collector on the table sees a thrown error and a failed answer.
     $watch->evaluate('() => { setTimeout(() => { throw new Error("hyper p5 positive control"); }); fetch("/hyperbitcoinization/m/0"); }');
     BrowserWait::until($watch, '() => window.__errors.some((e) => e.includes("hyper p5 positive control")) && window.__errors.some((e) => e.startsWith("404 "))', 5_000);
+});
+
+test('a clan captain names the team on the tournament page, and the team table then opens in a new tab; pages measured', function () {
+    openSeason(ladders: false);
+    $profile = GameProfile::for(Hyperbitcoinization::SLUG, 'live');
+    $tournament = Tournament::factory()->create([
+        'name' => 'Clan-Nacht', 'game' => Hyperbitcoinization::SLUG, 'mode' => 'live', 'format' => TournamentFormat::SingleElimination,
+        'options' => FormatOptions::fromArray(['teamSize' => 2], $profile)->toArray(), 'capacity' => 2,
+        'results_mode' => TournamentResultsMode::Players, 'status' => TournamentStatus::Running, 'slug' => 'hyper-clan-night', 'ladder_address' => null,
+    ]);
+    $clans = [];
+
+    foreach ([['Orange Pill Squad', 3], ['Block 21', 2]] as $index => [$name, $count]) {
+        $players = User::factory()->count($count)->create()->values()->all();
+        $clan = Clan::factory()->create(['name' => $name, 'owner_id' => $players[0]->id]);
+        array_walk($players, fn (User $user) => HyperOn::inClan($user, $clan));
+        TournamentParticipant::query()->create(['tournament_id' => $tournament->id, 'lineup_id' => HyperTournamentTeams::lineup($clan, 'live')->id,
+            'name' => $name, 'rating' => 1500 - $index, 'members' => array_map(fn (User $user): int => $user->id, $players)]);
+        $clans[] = [$clan, $players];
+    }
+
+    app(TournamentBrackets::class)->generate($tournament, str_repeat('ab', 32));
+    app(TournamentRunner::class)->sync($tournament);
+    [$captain, $first, $sub] = $clans[0][1];
+    Admin::query()->create(['pubkey' => $captain->pubkey]);
+    $rows = [];
+
+    expect(HyperMatch::query()->count())->toBe(0);
+
+    // The captain: the team to name, the first two entered picked, a third one only after one is unpicked.
+    $page = seasonPage($captain, route('tournaments.show', $tournament, false));
+    foreach ([[390, 844], [1440, 900]] as [$width, $height]) {
+        $rows[] = seasonMeasure($page, 'clan lineup', $width, $height, '[data-test=lineup-confirm]', 'main h1, main h2, main a, main button, main b, [data-test=now-lineup] span');
+    }
+    $page->setViewportSize(1440, 900);
+    $state = fn () => $page->evaluate('() => ({ checked: [...document.querySelectorAll("[data-test=lineup-player]")].map((box) => [Number(box.value), box.checked, box.disabled]), count: document.querySelector("[data-test=lineup-count]").innerText, title: document.querySelector("[data-test=now-title]").innerText })');
+    $before = $state();
+
+    expect($before['title'])->toBe('Benenne dein Team')
+        ->and($before['checked'])->toBe([[$captain->id, true, false], [$first->id, true, false], [$sub->id, false, true]])
+        ->and($before['count'])->toBe('2 von 2 gewählt');
+
+    $page->locator('[data-test=lineup-player][value="'.$first->id.'"]')->click();
+    $page->locator('[data-test=lineup-player][value="'.$sub->id.'"]')->click();
+    expect($state()['checked'])->toBe([[$captain->id, true, false], [$first->id, false, true], [$sub->id, true, false]]);
+
+    $page->locator('[data-test=lineup-confirm]')->click();
+    BrowserWait::until($page, '() => document.querySelector("[data-test=now-action]")?.target === "_blank"', 10_000);
+    $table = HyperMatch::query()->with('seats')->sole();
+
+    expect($table->team_clans)->toBe([$clans[0][0]->id, $clans[1][0]->id])
+        ->and($table->seats->sortBy('seat')->pluck('user_id')->all())->toBe([$captain->id, $clans[1][1][0]->id, $sub->id, $clans[1][1][1]->id]);
+
+    foreach ([[390, 844], [1440, 900]] as [$width, $height]) {
+        $rows[] = seasonMeasure($page, 'clan table live', $width, $height, '[data-test=now-action]', 'main h1, main h2, main a, main button, main b');
+    }
+    $page->setViewportSize(1440, 900);
+    $page->locator('[data-test=now-action]')->click();
+    BrowserWait::until($page, '() => window.__opened.length === 1', 5_000);
+
+    expect($page->evaluate('() => window.__opened'))->toBe([route('hyper.match', $table)])
+        ->and(seasonErrors($page))->toBe([]);
+
+    fwrite(STDERR, "\nhyper clan bracket measured: ".json_encode($rows, JSON_UNESCAPED_UNICODE)."\n");
+
+    foreach ($rows as $row) {
+        $where = $row['page'].' '.$row['size'];
+        expect($row['scroll'][0])->toBe($row['scroll'][1], $where)
+            ->and($row['clipped'])->toBe([], $where)
+            ->and($row['above'])->toBeTrue($where);
+    }
+
+    // The positive control: the collector on this page sees a thrown error and a failed answer.
+    $page->evaluate('() => { setTimeout(() => { throw new Error("hyper p5b positive control"); }); fetch("/hyperbitcoinization/m/0"); }');
+    BrowserWait::until($page, '() => window.__errors.some((e) => e.includes("hyper p5b positive control")) && window.__errors.some((e) => e.startsWith("404 "))', 5_000);
 });

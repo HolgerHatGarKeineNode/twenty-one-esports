@@ -531,7 +531,8 @@ final class TournamentRunner
     /**
      * A tournament's Hyperbitcoinization match ended (plan "Hyperbitcoinization", P5; HyperMatches, after its
      * commit): the places of its seats are the match's result, per slot, closed up among the entries (a cup's bots
-     * hold places too, but no slot). A table of two is a 1v1 with a winner; a larger table a heat whose best move on
+     * hold places too, but no slot). A clan bracket's team match (P5b) places each entry by its team's best seat, so
+     * the team win is the bracket's winner. A table of two is a 1v1 with a winner; a larger table a heat whose best move on
      * (Advancement). Stored in either results mode, since the league's server played it; a match already decided
      * (a director's result, a correction) or one the league voided since is left alone.
      */
@@ -545,11 +546,19 @@ final class TournamentRunner
         }
 
         $places = [];
+        $teams = $played->isTeamMatch();
+        $forfeit = false;
 
-        foreach ($match->slots as $slot) {
+        foreach ($match->slots->sortBy('slot')->values() as $team => $slot) {
+            // A clan bracket's team match (P5b): slot 0 played as team 0, and the team's best place is the entry's.
             $members = $slot->participant?->memberIds() ?? [];
-            $seat = $played->seats->first(fn (HyperSeat $seat): bool => $seat->user_id !== null && in_array((int) $seat->user_id, $members, true));
-            $places[$slot->slot] = $seat->place ?? PHP_INT_MAX;
+            $seats = $teams
+                ? $played->seats->filter(fn (HyperSeat $seat): bool => $seat->team === $team)
+                : $played->seats->filter(fn (HyperSeat $seat): bool => $seat->user_id !== null && in_array((int) $seat->user_id, $members, true))->take(1);
+            $places[$slot->slot] = $seats->min('place') ?? PHP_INT_MAX;
+            // Decided by forfeit: every player of the entry forfeited (a single member of a team who did, plays on as a bot).
+            $humans = $seats->filter(fn (HyperSeat $seat): bool => $seat->user_id !== null);
+            $forfeit = $forfeit || ($humans->isNotEmpty() && $humans->every(fn (HyperSeat $seat): bool => $seat->takeover === HyperSeat::TAKEOVER_FORFEIT));
         }
 
         ksort($places);
@@ -563,7 +572,6 @@ final class TournamentRunner
         $winners = array_keys(array_filter($ranks, fn (int $rank): bool => $rank === 1));
         $winner = count($winners) === 1 ? $winners[0] : null;
         $names = array_map(fn (int $slot): string => (string) ($match->slots->firstWhere('slot', $slot)->participant->name ?? ''), $winners);
-        $forfeit = $played->seats->contains(fn (HyperSeat $seat): bool => $seat->takeover === HyperSeat::TAKEOVER_FORFEIT && $seat->user_id !== null);
         $result = [
             'winner' => $winner,
             'games_won' => [],

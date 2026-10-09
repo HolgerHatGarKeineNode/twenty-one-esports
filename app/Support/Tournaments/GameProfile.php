@@ -200,11 +200,22 @@ final readonly class GameProfile
     }
 
     /**
-     * Series modes with more than one player per side enter teams, everything else single players.
+     * The same profile with another team size: a Hyperbitcoinization clan bracket (plan "Hyperbitcoinization",
+     * P5b) plays 2v2 or 3v3 in the tournament's mode (live or correspondence), set by its options, not its mode.
+     */
+    public function withTeamSize(int $teamSize): self
+    {
+        return new self($this->key, $this->game, $this->mode, $this->unit, $this->gameLength, $this->setup, $this->break,
+            $this->bestOf, $this->finalBestOf, $this->bestOfOptions, $this->allAtOnce, $this->what, max(1, $teamSize), $this->overhead, $this->longPlay);
+    }
+
+    /**
+     * Series modes with more than one player per side enter teams, and a Hyperbitcoinization clan bracket (P5b);
+     * everything else single players.
      */
     public function entersTeams(): bool
     {
-        return $this->isSeries() && $this->teamSize > 1;
+        return ($this->isSeries() || $this->isHyper()) && $this->teamSize > 1;
     }
 
     /**

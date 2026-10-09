@@ -31,6 +31,8 @@ final readonly class FormatOptions
      * @param  'single-elimination'|'double-elimination'  $finalStage
      * @param  int  $lobbyMinutes  Free for All as lobbies (P10, Lobbies): one round, nobody advances, each lobby
      *                             planned at this many minutes; 0 = heats whose best move on
+     * @param  int  $teamSize  Hyperbitcoinization only (plan "Hyperbitcoinization", P5b): 1 = players enter, 2 or 3 =
+     *                         clans enter and play a 2v2 or 3v3 knockout ({@see HYPER_TEAM_SIZES}); 1 for every other game
      */
     public function __construct(
         public int $bestOf = 1,
@@ -53,7 +55,11 @@ final readonly class FormatOptions
         public int $heatSize = 4,
         public int $heatAdvance = 2,
         public int $lobbyMinutes = 0,
+        public int $teamSize = 1,
     ) {}
+
+    /** The players per side of a Hyperbitcoinization tournament (P5b): players alone, or a clan 2v2 or 3v3. */
+    public const HYPER_TEAM_SIZES = [1, 2, 3];
 
     public static function defaults(GameProfile $profile): self
     {
@@ -125,7 +131,21 @@ final readonly class FormatOptions
             // Not forced: what is stored; a tournament stored without it has heats, never lobbies.
             // A game that plays no lobbies never has lobby minutes, whatever is stored (re-audit P10, R9b).
             lobbyMinutes: $defaults->lobbyMinutes === 0 ? 0 : ($forced ? $defaults->lobbyMinutes : $int('lobbyMinutes', 0, 0, 10_000)),
+            teamSize: $profile->isHyper() ? self::hyperTeamSize($values) : 1,
         );
+    }
+
+    /**
+     * The team size stored or submitted for a Hyperbitcoinization tournament (P5b): 1, 2 or 3, anything else 1.
+     * Read by Tournament::profile() too, which cannot build the options before the profile.
+     *
+     * @param  array<string, mixed>|null  $values
+     */
+    public static function hyperTeamSize(?array $values): int
+    {
+        $size = $values['teamSize'] ?? null;
+
+        return is_numeric($size) && in_array((int) $size, self::HYPER_TEAM_SIZES, true) ? (int) $size : 1;
     }
 
     /**
@@ -163,7 +183,7 @@ final readonly class FormatOptions
     {
         return new self($this->bestOf, $this->finalBestOf, $this->thirdPlace, $this->grandFinal, $this->split, $this->iterations,
             $this->rankBy, $rounds, $this->pointsWin, $this->pointsTie, $this->pointsBye, $this->swissTieBreaks, $this->roundRobinTieBreaks,
-            $this->groupSize, $this->advance, $this->groupStage, $this->finalStage, $this->heatSize, $this->heatAdvance, $this->lobbyMinutes);
+            $this->groupSize, $this->advance, $this->groupStage, $this->finalStage, $this->heatSize, $this->heatAdvance, $this->lobbyMinutes, $this->teamSize);
     }
 
     /**
@@ -200,6 +220,7 @@ final readonly class FormatOptions
             'heatSize' => $this->heatSize,
             'heatAdvance' => $this->heatAdvance,
             'lobbyMinutes' => $this->lobbyMinutes,
+            'teamSize' => $this->teamSize,
         ];
     }
 }

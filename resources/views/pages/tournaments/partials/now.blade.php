@@ -85,6 +85,32 @@
             <p class="m-0 max-w-[60ch] text-base leading-normal text-ink-2" data-test="now-line">{{ $now['line'] }}</p>
         @endif
 
+        @if ($now['lineup'] ?? null)
+            {{-- A Hyperbitcoinization clan bracket (P5b): the captain names who plays this match; nothing moves on by itself. --}}
+            @php $pick = $now['lineup']; @endphp
+            <div class="flex max-w-[560px] flex-col gap-3 border-t border-hairline pt-3" x-data="{ picked: @js($pick['picked']), size: {{ $pick['size'] }} }" data-test="now-lineup">
+                <ul class="m-0 grid list-none gap-1.5 p-0 sm:grid-cols-2">
+                    @foreach ($pick['players'] as $player)
+                        <li wire:key="lineup-{{ $pick['match'] }}-{{ $player->id }}">
+                            <label class="flex min-h-12 cursor-pointer items-center gap-3 rounded-md bg-card px-3 text-[13px] shadow-ring has-[:checked]:bg-btc-chip has-[:checked]:shadow-[inset_0_0_0_1px_var(--color-btc)] has-[:disabled]:cursor-not-allowed has-[:disabled]:opacity-60">
+                                <input type="checkbox" class="size-4 accent-[#F7931A]" value="{{ $player->id }}" x-model.number="picked"
+                                       x-bind:disabled="! picked.includes({{ $player->id }}) && picked.length >= size" data-test="lineup-player">
+                                <x-avatar :user="$player" :size="24" />
+                                <span class="min-w-0 grow truncate">{{ $player->displayName() }}</span>
+                            </label>
+                        </li>
+                    @endforeach
+                </ul>
+                <div class="flex flex-wrap items-center gap-3">
+                    <button type="button" x-on:click="$wire.nameHyperLineup({{ $pick['match'] }}, picked)" x-bind:disabled="picked.length !== size" wire:loading.attr="disabled"
+                            class="btn-p inline-flex min-h-12 cursor-pointer items-center justify-center gap-2 rounded-md bg-btc px-6 font-bold text-on-btc hover:text-on-btc disabled:cursor-not-allowed disabled:opacity-60" data-test="lineup-confirm">
+                        <x-icon name="shield-check" :size="18" />{{ __('Confirm team') }}
+                    </button>
+                    <span class="text-[13px] text-ink-2 tabular-nums" x-text="@js(__(':picked of :size picked')).replace(':picked', picked.length).replace(':size', size)" data-test="lineup-count"></span>
+                </div>
+            </div>
+        @endif
+
         @if ($now['until'])
             <p class="m-0 flex flex-wrap items-baseline gap-x-2 text-[13px] text-ink-2" data-test="now-until">
                 <span>{{ __('Round deadline in') }}</span>

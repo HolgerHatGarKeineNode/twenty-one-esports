@@ -373,6 +373,22 @@
                 <section aria-labelledby="opt-h" class="flex flex-col rounded-lg border border-hairline bg-ground px-4 py-3 lg:px-5">
                     <h3 id="opt-h" class="m-0 pb-2 text-[13px] font-bold">{{ __('Options for :format', ['format' => $format->label()]) }}</h3>
 
+                    @if ($profile->isHyper() && in_array($format, [TournamentFormat::SingleElimination, TournamentFormat::FreeForAll], true))
+                        {{-- Hyperbitcoinization (P5b): players alone, or clans as 2v2 or 3v3 teams (a knockout only). --}}
+                        <div class="{{ $optionRow }}" wire:key="hyper-teamSize">
+                            <span class="flex flex-col items-start gap-2">
+                                <span id="hy-teamSize" class="text-[13px] font-bold">{{ __('Who plays') }}</span>
+                                <span role="radiogroup" aria-labelledby="hy-teamSize" class="flex flex-wrap gap-1 rounded-md border border-edge bg-ground p-[3px]" data-test="hyper-teamSize">
+                                    @foreach ([1 => __('Players'), 2 => __('Clan 2v2'), 3 => __('Clan 3v3')] as $value => $label)
+                                        <button type="button" role="radio" aria-checked="{{ $options->teamSize === $value ? 'true' : 'false' }}" wire:click="option('teamSize', {{ $value }})" wire:key="hy-teamSize-{{ $value }}" data-value="{{ $value }}"
+                                                @class(['min-h-[38px] min-w-11 cursor-pointer rounded-sm border-0 px-3 text-[13px] font-bold', 'bg-raised text-btc' => $options->teamSize === $value, 'bg-transparent text-ink-2' => $options->teamSize !== $value])>{{ $label }}</button>
+                                    @endforeach
+                                </span>
+                            </span>
+                            <span class="{{ $help }}">{{ $options->teamSize > 1 ? __('Clans sign up as teams and name their players before each match. Every match is one team table on the league server.') : __('Every player signs up alone.') }}</span>
+                        </div>
+                    @endif
+
                     @if ($format === TournamentFormat::SingleElimination)
                         <div class="{{ $optionRow }}">
                             <label class="flex min-h-11 cursor-pointer items-center gap-2.5 text-[13px] font-bold">

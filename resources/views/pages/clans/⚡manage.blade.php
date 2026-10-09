@@ -734,7 +734,8 @@ new #[Layout('layouts::app', ['section' => 'clans'])] class extends Component
 
         $effects = [];
 
-        foreach ($this->clan->lineups as $lineup) {
+        // A Hyperbitcoinization clan bracket's entry (P5b) mirrors the clan: removing a player changes no lineup the clan set up.
+        foreach ($this->clan->lineups->where('game', '!=', \App\Games\Hyperbitcoinization::SLUG) as $lineup) {
             $seat = $lineup->seats->firstWhere('user_id', $this->confirmRemoval);
 
             if ($seat === null || ! $seat->role->countsTowardsMinimum() || $seat->accepted_at === null) {
