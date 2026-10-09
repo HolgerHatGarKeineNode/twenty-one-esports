@@ -114,7 +114,15 @@ pest()->extend(TestCase::class)
     //
     // A 204 leaves the in-process server with a Content-Length of 0 (Tests\Support\BrowserBodylessFraming):
     // framed as chunked it ends in a late "0\r\n\r\n" that breaks the page's next fetch on the same socket.
+    //
+    // The session cookie is a browser session cookie here (no Expires). Laravel stamps Expires with its own
+    // (frozen or travelled) clock, Chromium judges it against the real one: a test that travelTo()s a day that
+    // is more than session.lifetime (120 min) behind the wall clock got a cookie that was already expired,
+    // so the login, the chosen locale and the CSRF session vanished on the next page (measured 2026-10-09 on
+    // b80beef0: the tests that travel to 2026-10-07 turned red once the real date left that day). The
+    // server-side session lifetime still runs on the app's clock; tests/Browser/BrowserLoginClockTest.php holds it.
     ->beforeEach(function (): void {
+        config(['session.expire_on_close' => true]);
         Vite::useHotFile(storage_path('framework/testing/vite-hot-disabled-for-browser-tests'));
         BrowserAssets::use();
         app(HttpKernel::class)->pushMiddleware(BrowserBodylessFraming::class);

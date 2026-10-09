@@ -367,11 +367,14 @@ test('the board lobby has the chess lobby\'s arrangement, shows who is online an
         shellShot($page, "parity-board-waiting-{$width}");
     }
 
-    // Bert accepts: he lands on the board of a correspondence game, one move a day (no blitz since 2026-10-07). A
-    // correspondence game pulls nobody off the page (BoardGameService::start): Anna's lobby drops its waiting card by push
-    // and lists the game under "Your games".
+    // Bert accepts: he lands on the board of a correspondence game, one move a day (no blitz since 2026-10-07). Since
+    // fa1c659b (2026-10-08, "an accepted correspondence invite takes the inviter to the board too") Anna, who invited and
+    // waits, is taken to the same board by push; back in the lobby the game is listed under "Your games" and her
+    // waiting card is gone.
     $bertPage->evaluate('() => document.querySelector("[data-test=accept-invite]").click()');
     BrowserWait::until($bertPage, '() => location.pathname.startsWith("/board/") && document.querySelector("[data-test=board-game]") !== null', 15_000);
+    BrowserWait::until($page, '() => location.pathname.startsWith("/board/") && location.pathname !== '.json_encode($board).' && document.querySelector("[data-test=board-game]") !== null', 15_000);
+    $page->goto(ComputeUrl::from($board));
     BrowserWait::until($page, '() => document.querySelector("[data-test=lobby-invited]") === null && document.querySelector("[data-test=lobby-correspondence-game]") !== null', 15_000);
     $accepted = BoardGame::query()->where('game', NineMensMorris::SLUG)->whereIn('white_id', [$anna->id, $bert->id])->whereIn('black_id', [$anna->id, $bert->id])->sole();
     expect($accepted->mode)->toBe('correspondence');
