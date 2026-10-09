@@ -1760,9 +1760,9 @@ return [
     | routes in routes/pong.php are not registered and the registry does not
     | know the game. points_to_win: a game ends at this score, but only with a
     | lead of win_by (at 20:20 it goes on until one side is two points ahead).
-    | event_block_rallies: every block of this many rallies holds all nine
-    | meme events once, each on its own rally (P8), the same for both sides
-    | and drawn from the game's seed (App\Support\Pong\PongRules).
+    | event_every_rallies: every this many rallies one rally is a meme event
+    | (Halving, Brrr, Pizza Day, Difficulty Adjustment), the same for both
+    | sides and drawn from the game's seed (App\Support\Pong\PongRules).
     | The physics and the bot have no settings: the browser runs the same
     | simulation and must agree with the server tick for tick.
     |
@@ -1789,7 +1789,7 @@ return [
         'enabled' => (bool) env('ESPORTS_PONG', false),
         'points_to_win' => 21,
         'win_by' => 2,
-        'event_block_rallies' => 21,
+        'event_every_rallies' => 21,
         'rated' => true,
         'invite_seconds' => 120,
         'start_seconds' => 60,

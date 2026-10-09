@@ -38,14 +38,9 @@ test('50 golden rallies: every serve, hit and goal in the same tick, the same la
     }
 });
 
-test('the events of every rally of three blocks of 21, all nine in each block', () => {
+test('the events of every 21st rally', () => {
     for (const { seed, events } of golden.events) {
-        assert.equal(events.length, 63);
-        assert.deepEqual(events.map((_, k) => eventOf(DEFAULT_RULES, seed, k + 1)), events, `seed ${seed}`);
-        for (let block = 0; block < 3; block++) {
-            const played = events.slice(block * 21, block * 21 + 21).filter((event) => event !== null);
-            assert.deepEqual([...played].sort(), [...EVENTS].sort(), `seed ${seed} block ${block}`);
-        }
+        assert.deepEqual(events.map((_, k) => eventOf(DEFAULT_RULES, seed, 21 * (k + 1))), events, `seed ${seed}`);
     }
 });
 

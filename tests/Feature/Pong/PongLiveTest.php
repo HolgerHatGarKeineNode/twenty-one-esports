@@ -378,7 +378,7 @@ test('every snapshot names the rules version, which follows the rules and finger
 
     expect(app(PongMatches::class)->snapshot($match, $match->left)['rules'])->toBe($version)
         ->and($version)->toMatch('/^[0-9a-f]{16}$/')
-        ->and((new PongRules(eventBlock: 22))->version())->not->toBe($version)
+        ->and((new PongRules(eventEvery: 22))->version())->not->toBe($version)
         ->and((new PongRules(pointsToWin: 11))->version())->not->toBe($version);
 
     // Every file of the fingerprint is there: a renamed one would drop out of it without a word.

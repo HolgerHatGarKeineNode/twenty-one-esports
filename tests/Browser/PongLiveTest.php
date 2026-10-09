@@ -5,7 +5,6 @@ use App\Models\PongMatch;
 use App\Models\User;
 use App\Support\Pong\PongGame;
 use App\Support\Pong\PongMatches;
-use App\Support\Pong\PongRules;
 use Illuminate\Support\Facades\File;
 use Illuminate\Support\Facades\Http;
 use Pest\Browser\Playwright\Page;
@@ -112,13 +111,10 @@ function pongLiveMatch(int $seed): array
 test('two players play live to the end over Reverb: both pages and the server end with PongGame::bots()\' score, and the console stays clean', function () {
     expect(config('broadcasting.default'))->toBe('reverb', 'Run this through scripts/test-browser.sh, which starts Reverb.');
 
-    // Seed 29, levels 3 and 2: 21:17 over 35 rallies, all nine meme events in the first 21 rallies (P8), Pizza Day
-    // (two balls at once) on rally 2.
+    // Seed 29, levels 3 and 2: 21:15 over 35 rallies, rally 21 a Pizza Day (two balls at once).
     $expected = PongGame::bots(29, [3, 2]);
-    $firstBlock = array_values(array_filter($expected['events'], fn (array $event): bool => $event[0] <= 21));
-    expect($expected['score'])->toBe([21, 17])
-        ->and(array_column($firstBlock, 1))->toEqualCanonicalizing(PongRules::EVENTS)
-        ->and($expected['events'][0])->toBe([2, 'pizza']);
+    expect($expected['score'])->toBe([21, 15])
+        ->and($expected['events'])->toBe([[21, 'pizza']]);
 
     [$match] = pongLiveMatch(29);
     $phone = pongLivePage($match->left, $match, 390, 844, 3, 'hosp');
@@ -164,8 +160,8 @@ test('two players play live to the end over Reverb: both pages and the server en
         ->and($phone->evaluate('() => window.pongLive.state().score'))->toBe($expected['score'])
         ->and($desktop->evaluate('() => window.pongLive.state().score'))->toBe($expected['score'])
         // Each page shows its own points first: the phone plays left, the desktop right.
-        ->and($phone->evaluate('() => document.querySelector("[data-test=pong-end-score]").textContent'))->toBe('21 : 17')
-        ->and($desktop->evaluate('() => document.querySelector("[data-test=pong-end-score]").textContent'))->toBe('17 : 21')
+        ->and($phone->evaluate('() => document.querySelector("[data-test=pong-end-score]").textContent'))->toBe('21 : 15')
+        ->and($desktop->evaluate('() => document.querySelector("[data-test=pong-end-score]").textContent'))->toBe('15 : 21')
         ->and($phone->evaluate('() => document.body.dataset.result'))->toBe('win')
         ->and($desktop->evaluate('() => document.body.dataset.result'))->toBe('loss')
         // The rating change of a rated match, on the end card.
@@ -298,7 +294,7 @@ test('after a deploy that changes the rules, an open match page reloads itself o
         ->and($phone->evaluate('() => sessionStorage.getItem("loads")'))->toBe('1');
 
     // The deploy: the server now plays other rules, so every snapshot names another version.
-    config(['esports.pong.event_block_rallies' => 22]);
+    config(['esports.pong.event_every_rallies' => 22]);
     $after = PongRules::fromConfig((array) config('esports.pong'))->version();
     expect($after)->not->toBe($before);
 

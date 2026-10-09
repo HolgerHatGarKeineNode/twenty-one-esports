@@ -17,7 +17,7 @@ use App\Support\Pong\PongRules;
  *
  * - rng: the first draws of a few seeds;
  * - rallies: 50 rallies between two bots, every event (five each) and level pair, each from its game seed and number;
- * - events: the event of every rally of the first three blocks of 21 for a few seeds (P8: all nine per block);
+ * - events: the event of every 21st rally for a few seeds (two rounds of all nine);
  * - games: whole games between two bot levels (PongGame::bots());
  * - pow: Proof of Work's paddle half per number of own hits, past its cap (P8: the cap checked in both languages).
  */
@@ -61,9 +61,8 @@ final class PongGolden
 
         $events = [];
 
-        // Seeds 18 and 20 open a block with a swap (its shuffle began with the event that closed the block before).
-        foreach ([7, 99, 29, 18, 20, 4294967295] as $seed) {
-            $events[] = ['seed' => $seed, 'events' => array_map(fn (int $rally): ?string => $rules->eventOf($seed, $rally), range(1, 63))];
+        foreach ([7, 99, 4294967295] as $seed) {
+            $events[] = ['seed' => $seed, 'events' => array_map(fn (int $k): ?string => $rules->eventOf($seed, 21 * $k), range(1, 18))];
         }
 
         $games = [];

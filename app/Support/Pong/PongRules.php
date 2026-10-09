@@ -8,9 +8,8 @@ use InvalidArgumentException;
 
 /**
  * Proof of Pong's rules (plan "Proof of Pong", P1), mirrored by resources/js/pong/rules.js: a game to
- * `pointsToWin`, two points ahead (at 20:20 it goes on until one side leads by two), and meme events, the same for
- * both sides: every block of `eventBlock` rallies (P8, user 2026-10-10: "bei 21 Ballwechseln alle Phasen durchgespielt
- * … nicht überlappend") holds all nine events once, each on its own rally:
+ * `pointsToWin`, two points ahead (at 20:20 it goes on until one side leads by two), and every `eventEvery`-th
+ * rally a meme event, the same for both sides:
  *
  * - halving: the ball is half as big, and its goal counts twice;
  * - brrr: the ball is half as fast again (serve, speed-up and top speed);
@@ -27,11 +26,8 @@ use InvalidArgumentException;
  *
  * The obstacles and the queue are PongPhysics::step(), the paddles' length PongPhysics::halfOf().
  *
- * Each event lasts its one rally. Which rallies of a block and in which order are drawn from the game's seed, block
- * after block (blocks()): the nine events in a fresh shuffle on nine distinct rallies of the block, the other rallies
- * plain, never two events in one rally, and a block never opens with the event that closed the one before. A block
- * shorter than nine rallies (a test's seam) makes every rally an event, the first `eventBlock` of each shuffle. Each
- * rally's serve is drawn from its own seed (rallySeed()), so a rally is replayable on its own.
+ * Each event lasts its one rally. Their order is drawn from the game's seed (all nine events in a shuffled round,
+ * then the next round), and each rally's serve from its own seed (rallySeed()), so a rally is replayable on its own.
  * The RNG is Hyperbitcoinization's (xoshiro128++), mirrored by resources/js/pong/rng.js.
  */
 final readonly class PongRules
@@ -77,10 +73,10 @@ final readonly class PongRules
     public function __construct(
         public int $pointsToWin = ProofOfPong::POINTS_TO_WIN,
         public int $winBy = ProofOfPong::WIN_BY,
-        public int $eventBlock = 21,
+        public int $eventEvery = 21,
     ) {
-        if ($pointsToWin < 1 || $winBy < 1 || $eventBlock < 1) {
-            throw new InvalidArgumentException('Points to win, lead and event block are positive.');
+        if ($pointsToWin < 1 || $winBy < 1 || $eventEvery < 1) {
+            throw new InvalidArgumentException('Points to win, lead and event interval are positive.');
         }
     }
 
@@ -94,16 +90,16 @@ final readonly class PongRules
         return new self(
             (int) ($config['points_to_win'] ?? ProofOfPong::POINTS_TO_WIN),
             (int) ($config['win_by'] ?? ProofOfPong::WIN_BY),
-            (int) ($config['event_block_rallies'] ?? 21),
+            (int) ($config['event_every_rallies'] ?? 21),
         );
     }
 
     /**
-     * @return array{points_to_win: int, win_by: int, event_block_rallies: int}
+     * @return array{points_to_win: int, win_by: int, event_every_rallies: int}
      */
     public function toArray(): array
     {
-        return ['points_to_win' => $this->pointsToWin, 'win_by' => $this->winBy, 'event_block_rallies' => $this->eventBlock];
+        return ['points_to_win' => $this->pointsToWin, 'win_by' => $this->winBy, 'event_every_rallies' => $this->eventEvery];
     }
 
     /**
@@ -129,45 +125,22 @@ final readonly class PongRules
      */
     public function eventOf(int $seed, int $rally): ?string
     {
-        if ($rally < 1) {
+        if ($rally < 1 || $rally % $this->eventEvery !== 0) {
             return null;
         }
 
-        $block = intdiv($rally - 1, $this->eventBlock);
-
-        return $this->blocks($seed, $block + 1)[$block][($rally - 1) % $this->eventBlock] ?? null;
-    }
-
-    /**
-     * The first `$count` blocks of a game: per block, position in the block (0 = its first rally) => event. One
-     * generator for the whole game, block after block, so a block knows the event that closed the one before.
-     *
-     * @return list<array<int, string>>
-     */
-    public function blocks(int $seed, int $count): array
-    {
+        $index = intdiv($rally, $this->eventEvery) - 1;
         $rng = HyperRng::seeded(($seed ^ self::EVENT_SALT) & self::MASK);
-        $events = count(self::EVENTS);
-        $perBlock = min($events, $this->eventBlock);
-        $previous = null;
-        $blocks = [];
+        $order = [];
 
-        for ($b = 0; $b < $count; $b++) {
+        $count = count(self::EVENTS);
+
+        // Every event once per round of draws, each round its own shuffle.
+        for ($round = 0; $round <= intdiv($index, $count); $round++) {
             $order = $rng->shuffle(self::EVENTS);
-
-            if ($order[0] === $previous) {
-                // The block would open with the event that closed the last one: swap it with a later one.
-                $swap = 1 + $rng->below($perBlock > 1 ? $perBlock - 1 : $events - 1);
-                [$order[0], $order[$swap]] = [$order[$swap], $order[0]];
-            }
-
-            $positions = array_slice($rng->shuffle(range(0, $this->eventBlock - 1)), 0, $perBlock);
-            sort($positions);
-            $blocks[] = array_combine($positions, array_slice($order, 0, $perBlock));
-            $previous = $order[$perBlock - 1];
         }
 
-        return $blocks;
+        return $order[$index % $count];
     }
 
     /**

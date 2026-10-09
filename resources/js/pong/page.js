@@ -17,7 +17,7 @@ export const KEY_STEP = 1800;
  * The page's saved settings (localStorage `pong-settings`, the browser test's handle): `speed` runs the clock of a game
  * against a bot faster (1 = real time), `autoplay` lets a bot of that level play the player's paddle, `quality` is the
  * arena's tier (auto, high, medium, low), `motion` false turns the moving effects off as the system's reduced motion
- * does, `eventEvery` sets the event block of a game against a bot (1: every rally a meme event) (the P7 browser test's seam: a game
+ * does, `eventEvery` makes every n-th rally of a game against a bot a meme event (the P7 browser test's seam: a game
  * against a bot is the browser's own and stored nowhere).
  */
 export function readSettings() {

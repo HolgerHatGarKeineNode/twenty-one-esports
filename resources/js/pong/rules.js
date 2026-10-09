@@ -1,65 +1,32 @@
 /**
  * Proof of Pong's rules and a game as a row of rallies (plan "Proof of Pong", P1), the server's
- * App\Support\Pong\PongRules and PongGame: a game to `points_to_win`, `win_by` ahead, and the meme events (Halving,
- * Brrr, Pizza Day, Difficulty Adjustment, and since P7 Steuern sind Raub, Kapitalverkehrskontrolle, Few understand,
- * Proof of Work, Arbeitsamt): since P8 every block of `event_block_rallies` rallies holds all nine once, on distinct
- * rallies drawn from the game's seed, a block never opening with the event that closed the one before; the same for
- * both sides.
+ * App\Support\Pong\PongRules and PongGame: a game to `points_to_win`, `win_by` ahead, and every
+ * `event_every_rallies`-th rally a meme event (Halving, Brrr, Pizza Day, Difficulty Adjustment, and since P7 Steuern
+ * sind Raub, Kapitalverkehrskontrolle, Few understand, Proof of Work, Arbeitsamt) in an order drawn
+ * from the game's seed, the same for both sides.
  */
 import { seeded } from './rng.js';
 import { ARBEITSAMT, BRRR, CONTROLS, DIFFICULTY, FEW, HALVING, PIZZA, POW, TAX, createRally, stepRally } from './physics.js';
 import { botSpeed, createBot } from './bot.js';
 
 export const EVENTS = [HALVING, BRRR, PIZZA, DIFFICULTY, TAX, CONTROLS, FEW, POW, ARBEITSAMT];
-export const DEFAULT_RULES = { points_to_win: 21, win_by: 2, event_block_rallies: 21 };
+export const DEFAULT_RULES = { points_to_win: 21, win_by: 2, event_every_rallies: 21 };
 
 const EVENT_SALT = 0x504f4e47;
 
 /** The seed of rally `rally` (from 1), as PongRules::rallySeed(). */
 export const rallySeed = (seed, rally) => ((seed ^ ((rally * 0x9e3779b9) % 4294967296)) >>> 0);
 
-/**
- * The first `count` blocks of a game, as PongRules::blocks(): per block a Map position (0 = its first rally) => event,
- * drawn block after block from one generator.
- */
-export function blocks(rules, seed, count) {
-    const size = rules.event_block_rallies;
-    const rng = seeded(((seed ^ EVENT_SALT) >>> 0));
-    const perBlock = Math.min(EVENTS.length, size);
-    const all = Array.from({ length: size }, (_, i) => i);
-    let previous = null;
-    const out = [];
-
-    for (let b = 0; b < count; b++) {
-        const order = rng.shuffle(EVENTS);
-        if (order[0] === previous) {
-            // The block would open with the event that closed the last one: swap it with a later one.
-            const swap = 1 + rng.below(perBlock > 1 ? perBlock - 1 : EVENTS.length - 1);
-            [order[0], order[swap]] = [order[swap], order[0]];
-        }
-        const positions = rng.shuffle(all).slice(0, perBlock).sort((a, b2) => a - b2);
-        out.push(new Map(positions.map((position, i) => [position, order[i]])));
-        previous = order[perBlock - 1];
-    }
-
-    return out;
-}
-
-/** The event of rally `rally` (from 1), or null. Blocks already drawn are kept per seed and block size. */
-const drawn = new Map();
+/** The event of rally `rally`, or null. */
 export function eventOf(rules, seed, rally) {
-    if (rally < 1) return null;
-    const size = rules.event_block_rallies;
-    const block = Math.floor((rally - 1) / size);
-    const key = `${seed}|${size}`;
-    let known = drawn.get(key);
-    if (!known || known.length <= block) {
-        known = blocks(rules, seed, block + 1);
-        if (drawn.size > 64) drawn.clear();
-        drawn.set(key, known);
-    }
+    if (rally < 1 || rally % rules.event_every_rallies !== 0) return null;
 
-    return known[block].get((rally - 1) % size) ?? null;
+    const index = Math.floor(rally / rules.event_every_rallies) - 1;
+    const rng = seeded(((seed ^ EVENT_SALT) >>> 0));
+    let order = [];
+    for (let round = 0; round <= Math.floor(index / EVENTS.length); round++) order = rng.shuffle(EVENTS);
+
+    return order[index % EVENTS.length];
 }
 
 /** The winning side, or null. */
