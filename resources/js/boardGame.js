@@ -22,8 +22,14 @@
  * many plies (0 = the start), where no move can be made. Arrow keys, the
  * buttons under the board and a click on a move browse; stepping onto the
  * newest position follows the game again.
+ *
+ * The players chat as on a chess game's page (plan "Blockli-Optimierung",
+ * P1: gameChat, NIP-17). On a phone the board fits the first screen (P2,
+ * fitBoard): as wide as the height left between its top and what sits under
+ * it: Blockli's bar, the chat sheet and the app's tab bar.
  */
 
+import { gameChat } from './gameChat.js';
 import { registerAlpine } from './registerAlpine.js';
 
 const SVG = 'http://www.w3.org/2000/svg';
@@ -141,6 +147,7 @@ function svgElement(name, attributes) {
 }
 
 registerAlpine(() => {
+    window.Alpine.data('gameChat', gameChat);
     window.Alpine.data('boardGame', (config) => ({
         state: config.state,
         layout: config.layout,
@@ -206,17 +213,57 @@ registerAlpine(() => {
             }
 
             this.render();
+
+            this.onResize = () => this.fitBoard();
+            addEventListener('resize', this.onResize);
+            this.$watch('state.status', () => this.$nextTick(() => this.fitBoard()));
+            this.$nextTick(() => this.fitBoard());
         },
 
         destroy() {
             clearInterval(this.ticker);
             clearInterval(this.poller);
+            removeEventListener('resize', this.onResize);
+        },
+
+        /**
+         * Below lg the whole board fits the first screen: its width follows the height left under its top, after the
+         * lower player card, the tab bar, Blockli's bar (with its Rotate/Confirm row, kept in place) and the chat sheet. The page
+         * gets room at its bottom for both fixed bars.
+         */
+        fitBoard() {
+            const board = this.$refs.board;
+            const page = this.$root.closest('[data-test=board-page]') ?? this.$root;
+            if (!board) return;
+            if (!matchMedia('(width < 64rem)').matches) {
+                board.style.maxWidth = '';
+                page.style.paddingBottom = '';
+
+                return;
+            }
+            const sheet = document.querySelector('[data-test=chat-sheet-toggle]') ? 72 : 0;
+            const dock = this.$refs.dock?.offsetHeight ?? 0;
+            // The players share a row above the board on a phone; a card under the board would count too.
+            const lower = this.$root.querySelector('[data-test=player-bottom]');
+            const card = lower && lower.getBoundingClientRect().top > board.getBoundingClientRect().top ? lower.offsetHeight + 8 : 0;
+            // The app's tab bar owns the bottom edge below lg (body padding, app.css): both bars sit on it.
+            const tabbar = parseFloat(getComputedStyle(document.body).paddingBottom) || 0;
+            const top = board.getBoundingClientRect().top + scrollY;
+            const room = innerHeight - tabbar - top - card - sheet - dock - 8;
+            const drawn = board.getBoundingClientRect();
+            board.style.maxWidth = Math.round(Math.max(200, room * (drawn.width / drawn.height))) + 'px';
+            page.style.paddingBottom = sheet + dock + 24 + 'px';
         },
 
         /* ---- the board ------------------------------------------------------------------------------ */
 
         get myTurn() {
             return this.color !== null && this.state.status === 'active' && this.state.turn === this.color;
+        },
+
+        /** Blockli's bar for a player of a running game: on a phone it is fixed above the chat sheet. */
+        get hasDock() {
+            return this.layout.input === 'blocks' && this.color !== null && this.state.status === 'active';
         },
 
         get canMove() {

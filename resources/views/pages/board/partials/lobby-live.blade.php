@@ -43,5 +43,7 @@
         @endif
     </div>
 
-    <x-lobby.online-now :user="$user" :looking-key="$slug.'/'.$this->lobbyMode" :looking-tag="__('looking: :game', ['game' => $name])" :can-invite="! $active" :show-elo="false" />
+    {{-- Correspondence only: a row's action is "Challenge", the correspondence page with that player picked (P3). --}}
+    <x-lobby.online-now :user="$user" :looking-key="$slug.'/'.$this->lobbyMode" :looking-tag="__('looking: :game', ['game' => $name])" :can-invite="! $active" :show-elo="false"
+                        :challenge-url="$this->lobbyMode === 'correspondence' ? route('board.correspondence', $slug) : null" />
 </section>

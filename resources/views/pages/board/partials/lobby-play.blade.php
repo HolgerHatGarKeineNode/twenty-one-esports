@@ -85,7 +85,7 @@
             @auth
                 {{-- A live game with someone online now: the invite buttons are in the online list. --}}
                 <x-chess.lobby-tile :label="__('Challenge a player')" icon="send" data-test="play-challenge" aria-controls="online-now"
-                                    x-on:click="document.getElementById('online-now').scrollIntoView({ block: 'start', behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth' }); (document.querySelector('#online-now [data-test=invite]') ?? document.getElementById('online-h')).focus({ preventScroll: true })">
+                                    x-on:click="document.getElementById('online-now').scrollIntoView({ block: 'start', behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth' }); (document.querySelector('#online-now [data-test=invite], #online-now [data-test=challenge]') ?? document.getElementById('online-h')).focus({ preventScroll: true })">
                     <x-slot:meta><b class="text-ink" x-text="connection === 'connected' ? others.length : '–'" data-test="play-online-count">–</b> {{ __('online') }}</x-slot:meta>
                 </x-chess.lobby-tile>
             @else

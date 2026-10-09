@@ -1,4 +1,4 @@
-@props(['user' => null, 'lookingKey' => 'chess/blitz', 'lookingTag' => null, 'canInvite' => true, 'showElo' => true, 'inviteMode' => null])
+@props(['user' => null, 'lookingKey' => 'chess/blitz', 'lookingTag' => null, 'canInvite' => true, 'showElo' => true, 'inviteMode' => null, 'challengeUrl' => null])
 
 {{--
     "Online now" of a game lobby: everyone on the presence channel `online`
@@ -21,6 +21,10 @@
     chess rapid only, labelled (routes/channels.php), so a board game lobby hides it.
     `inviteMode`: an Alpine expression passed as invite(id, mode) (the chess
     lobby's `liveMode`: rapid or blitz); null = invite(id).
+    `challengeUrl`: a board game's correspondence page. Invite shows only next to
+    a player who looks for this lobby's game; every other row had nothing but the
+    profile link (plan "Blockli-Optimierung", P3: "only opens profiles"), so it
+    gets "Challenge", that page with the player picked (`?to=<id>`).
 --}}
 @php
     $lookingTag ??= __('looking: Blitz 5+3');
@@ -82,6 +86,14 @@
                         {{-- Only a player who is looking can be invited (ChessInvites::invite, BoardInvites::invite refuse the rest). --}}
                         <template x-if="! invited(m) && m.looking === '{{ $lookingKey }}'">
                             <button type="button" x-on:click="$wire.invite(m.id{{ $inviteMode !== null ? ', '.$inviteMode : '' }})" class="btn-w inline-flex h-11 shrink-0 cursor-pointer items-center rounded-md border border-line bg-well px-3 text-[13px] text-ink" data-test="invite">{{ __('Invite') }}</button>
+                        </template>
+                    @endif
+                    @if ($challengeUrl !== null)
+                        {{-- Everyone else (or anyone, while the viewer is in a live game): challenge to a correspondence game. --}}
+                        <template x-if="{{ $canInvite ? "! invited(m) && m.looking !== '".$lookingKey."'" : 'true' }}">
+                            <a :href="@js($challengeUrl) + '?to=' + m.id" class="btn-w inline-flex h-11 shrink-0 cursor-pointer items-center rounded-md border border-line bg-well px-3 text-[13px] text-ink" data-test="challenge">
+                                {{ __('Challenge') }}<span class="sr-only" x-text="' ' + m.name"></span>
+                            </a>
                         </template>
                     @endif
                 </li>
