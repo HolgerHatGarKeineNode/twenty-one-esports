@@ -182,7 +182,7 @@ final class MatchBlocks
             $toMove !== null => __(":name's turn", ['name' => HyperNames::seat($toMove)]),
             default => '',
         };
-        $score = __('round :n', ['n' => $round]);
+        $score = $finished ? __('Winner') : __('round :n', ['n' => $round]);
         $more = max(0, count($seats) - 2);
         $sides = array_map(fn (HyperSeat $seat, int $index): array => [
             'name' => HyperNames::seat($seat).($index === 1 && $more > 0 ? ' +'.$more : ''),
@@ -190,6 +190,11 @@ final class MatchBlocks
             'clan' => null,
             'won' => $finished && $seat->place === 1,
         ], array_slice($seats, 0, 2), [0, 1]);
+        // A won match is one block with its winner alone (user 2026-10-09): no second or third place, no bots.
+        $first = collect($seats)->firstWhere('place', 1);
+        if ($finished) {
+            $sides = $first === null ? [] : [['name' => $winner ?? HyperNames::seat($first), 'user' => $match->isTeamMatch() ? null : $first->user, 'clan' => null, 'won' => true]];
+        }
         $game = GameNames::game(Hyperbitcoinization::SLUG);
 
         return self::shape(
@@ -209,7 +214,7 @@ final class MatchBlocks
             aria: implode(', ', array_filter([
                 $game.' '.$mode,
                 $finished ? $score.' '.$who : $who,
-                implode(', ', array_map(HyperNames::seat(...), $seats)),
+                $finished ? '' : implode(', ', array_map(HyperNames::seat(...), $seats)),
             ], fn (string $part): bool => $part !== '')),
             state: $finished ? 'fin' : 'live',
             level: $finished ? '100%' : (int) round(min(1, $round / 20) * 100).'%',

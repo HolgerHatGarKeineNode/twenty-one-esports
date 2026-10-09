@@ -88,7 +88,7 @@ test('home\'s ladder card shows the season\'s free-for-all leaders by points', f
     $this->get(route('home'))->assertSeeInOrder(['Ada Points', '6 pts', 'Ben Points', '3 pts', 'Cid Points', '1 pts']);
 });
 
-test('/matches lists finished, live and correspondence matches, filters them, and every row and cube opens a new tab', function () {
+test('/matches lists finished, live and correspondence matches, filters them, and every row and the won match’s cube open a new tab', function () {
     HyperOn::play();
     ['done' => $done, 'live' => $live, 'daily' => $daily] = hyperSurfaceMatches();
 
@@ -97,7 +97,7 @@ test('/matches lists finished, live and correspondence matches, filters them, an
     $cubes = array_map(fn (string $cube): string => preg_match('#<a href="([^"]+)"\s+target="_blank"#', $cube, $link) === 1 ? $link[1] : 'no new tab', array_slice(explode('data-test="strip-cube" data-game="hyperbitcoinization"', $all), 1));
 
     expect($rows[1])->toEqualCanonicalizing([route('hyper.match', $done), route('hyper.match', $live), route('hyper.match', $daily)])
-        ->and($cubes)->toEqualCanonicalizing($rows[1])
+        ->and($cubes)->toBe([route('hyper.match', $done)]) // the strip: only the won match (user 2026-10-09)
         ->and($all)->toContain('data-test="game-hyperbitcoinization"');
 
     // Its own filter: only its matches, and "done" keeps the finished one.
@@ -360,19 +360,26 @@ test('the strip and /matches ask the same number of queries for one and four fin
     expect($count())->toBe($one);
 });
 
-test('the mempool shows a table\'s players on its cube, never a table only bots play (user 2026-10-09)', function () {
+test('the mempool gets one block per match a player won, with the winner alone; never a running match, a bot\'s win or a bots-only table (user 2026-10-09)', function () {
     HyperOn::play();
-    $anna = User::factory()->create(['name' => 'Anna Mempool']);
-    // Anna on seat 2 behind two bots: the cube still leads with her.
-    $match = app(HyperMatches::class)->create([['bot' => true, 'faction' => 'fed'], ['bot' => true, 'faction' => 'ezb'], ['user' => $anna, 'faction' => 'bitcoiner']], seed: 5, creator: $anna);
+    [$anna, $bert] = [User::factory()->create(['name' => 'Anna Mempool']), User::factory()->create(['name' => 'Bert Mempool'])];
+    $won = HyperOn::finishTable(HyperOn::versus($anna, $bert, bots: 1), [1, 0, 2]);
+    // A bot (seat 2) took first place at this table.
+    $botWon = HyperOn::finishTable(HyperOn::versus($anna, $bert, bots: 1), [0, 1, 2]);
+    $botWon->seats()->where('seat', 0)->update(['place' => 3]);
+    $botWon->seats()->where('seat', 2)->update(['place' => 1]);
+    $running = HyperOn::versus($anna, $bert, bots: 1);
     $botsOnly = app(HyperMatches::class)->create([['bot' => true, 'faction' => 'fed'], ['bot' => true, 'faction' => 'goldbug']], seed: 6);
 
     $strip = MempoolStrip::build(null);
-    $running = collect($strip['running']);
+    $keys = collect([...$strip['finished'], ...$strip['running']])->pluck('key')->filter(fn (string $key): bool => str_starts_with($key, 'hyper-'))->values()->all();
+    $block = collect($strip['finished'])->firstWhere('key', 'hyper-'.$won->id);
 
-    // The bots-only table plays out at once (sync queue); it stays out of either side.
     expect($botsOnly->refresh()->status)->toBe(HyperMatchStatus::Finished)
-        ->and(collect($strip['finished'])->pluck('key')->all())->not->toContain('hyper-'.$botsOnly->id)
-        ->and($running->pluck('key')->all())->toContain('hyper-'.$match->id)
-        ->and(str($running->firstWhere('key', 'hyper-'.$match->id)['sides'][0]['name'])->startsWith('Anna Mempool'))->toBeTrue();
+        ->and($keys)->toBe(['hyper-'.$won->id])
+        ->and(array_column($block['sides'], 'name'))->toBe(['Bert Mempool'])
+        ->and($block['score'])->toBe('Winner')
+        ->and(MempoolStrip::waiting())->toBe(0)
+        ->and($running->status)->toBe(HyperMatchStatus::Active)
+        ->and($botWon->id)->not->toBe($won->id);
 });
