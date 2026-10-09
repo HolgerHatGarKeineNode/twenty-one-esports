@@ -221,6 +221,11 @@ test('the board lobby lists your follows as chess does, with who is online, the 
         'id' => $user->id, 'name' => $user->displayName(), 'avatar' => null, 'generated' => PlayerProfile::generatedAvatarUrl($user->pubkey),
         'npub' => $user->npub, 'pubkey' => $user->pubkey, 'looking' => $i % 3 === 0 ? NineMensMorris::SLUG.'/correspondence' : null, 'elo' => 1000, 'provisional' => true,
     ])->all();
+    // The channel carries what the database has (routes/channels.php), and the lobby hands the presence the database's
+    // list of who is looking (components/lobby/online-now, plan "Proof of Pong", P4): both say the same.
+    foreach ($members as $member) {
+        User::query()->whereKey($member['id'])->update(['looking_to_play' => $member['looking']]);
+    }
     $inject = '() => window.esportsPresence.set([...window.esportsPresence.members.filter((m) => ! '.json_encode(array_column($members, 'id')).'.includes(m.id)), ...'.json_encode($members).'])';
 
     $board = route('board.lobby', NineMensMorris::SLUG, false);
