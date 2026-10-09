@@ -43,6 +43,11 @@ final class TournamentPreflight
 
     public const HEARTBEAT_MAX_SECONDS = 180;
 
+    /** How many runs in a row the Bitcoin API may miss before the admins hear of it (a new block takes seconds to index). */
+    public const BITCOIN_MISSES_BEFORE_ALERT = 2;
+
+    public const BITCOIN_MISSES = 'tournament-preflight:bitcoin-misses';
+
     /** The checks, in the order the table lists them. */
     public const CHECKS = ['accounts', 'format', 'bitcoin', 'league_key', 'scheduler', 'dry_draw'];
 
@@ -94,6 +99,14 @@ final class TournamentPreflight
         ];
         $rows = [];
 
+        // A Bitcoin API that misses one run is a hiccup, not a finding (prod 2026-10-09: "no time for block 970662"
+        // right after it was found): the admins hear of it from the second run in a row; the log has every miss.
+        $bitcoinMisses = $bitcoin['ok'] ? 0 : $this->countBitcoinMiss();
+
+        if ($bitcoin['ok']) {
+            Cache::forget(self::BITCOIN_MISSES);
+        }
+
         foreach ($tournaments as $tournament) {
             $results = [
                 'accounts' => $this->guard(fn (): array => $this->accounts($tournament)),
@@ -108,8 +121,13 @@ final class TournamentPreflight
                 $result = $results[$check];
                 $rows[] = ['tournament' => $tournament, 'check' => $check, ...$result];
 
+                // A dry draw without a hash is the Bitcoin check's finding and rings only there.
+                $quiet = ($check === 'bitcoin' && $bitcoinMisses < self::BITCOIN_MISSES_BEFORE_ALERT) || ($check === 'dry_draw' && $hash === null);
+
                 if (! $result['ok']) {
-                    $this->alert($tournament, $check, $result['detail']);
+                    $quiet
+                        ? Log::info("Tournament preflight: {$tournament->name} (#{$tournament->id}) {$check} waits: {$result['detail']}")
+                        : $this->alert($tournament, $check, $result['detail']);
                 }
             }
         }
@@ -125,15 +143,41 @@ final class TournamentPreflight
     private function bitcoin(): array
     {
         $tip = $this->blocks->tipHeight();
-        $hash = $tip === null ? null : $this->blocks->hashAt($tip);
-        $time = $hash === null ? null : $this->blocks->timeOf($hash);
 
-        return match (true) {
-            $tip === null => ['result' => self::fail('The Bitcoin API gives no tip height: no sign-up closes and no draw runs.'), 'hash' => null],
-            $hash === null => ['result' => self::fail("The Bitcoin API gives no hash for block {$tip}: no draw runs."), 'hash' => null],
-            $time === null => ['result' => self::fail("The Bitcoin API gives no time for block {$tip}: no draw runs."), 'hash' => null],
-            default => ['result' => self::pass("block {$tip}"), 'hash' => $hash],
-        };
+        if ($tip === null) {
+            return ['result' => self::fail('The Bitcoin API gives no tip height: no sign-up closes and no draw runs.'), 'hash' => null];
+        }
+
+        // A block found seconds ago may have its hash but not yet its details: the one before it serves the check.
+        $missing = '';
+
+        foreach ([$tip, $tip - 1] as $height) {
+            $hash = $this->blocks->hashAt($height);
+            $time = $hash === null ? null : $this->blocks->timeOf($hash);
+
+            if ($hash !== null && $time !== null) {
+                return ['result' => self::pass($height === $tip ? "block {$tip}" : "block {$height} (block {$tip} not indexed yet)"), 'hash' => $hash];
+            }
+
+            $missing = $missing !== '' ? $missing : ($hash === null ? "no hash for block {$height}" : "no time for block {$height}");
+        }
+
+        return ['result' => self::fail("The Bitcoin API gives {$missing} nor for the one before: no draw runs."), 'hash' => null];
+    }
+
+    /** One more run in a row without the Bitcoin API; how many now. */
+    private function countBitcoinMiss(): int
+    {
+        try {
+            Cache::add(self::BITCOIN_MISSES, 0, now()->addHour());
+
+            return (int) Cache::increment(self::BITCOIN_MISSES);
+        } catch (Throwable $e) {
+            report($e);
+
+            // Fails closed: without a counter every miss rings.
+            return self::BITCOIN_MISSES_BEFORE_ALERT;
+        }
     }
 
     /**

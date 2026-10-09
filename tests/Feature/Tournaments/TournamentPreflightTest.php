@@ -170,7 +170,7 @@ test('a scheduler that has not ticked for over three minutes is flagged', functi
     expect(preflightRow($output, 'scheduler'))->toContain('no heartbeat');
 });
 
-test('a Bitcoin API outage is flagged, and the dry draw says it could not run', function () {
+test('a Bitcoin API outage is flagged, the dry draw says it could not run, and the admins hear of it from the second run in a row', function () {
     preflightBlocks(down: true);
     preflightTournament(2);
 
@@ -178,7 +178,60 @@ test('a Bitcoin API outage is flagged, and the dry draw says it could not run', 
 
     expect($code)->toBe(1)
         ->and(preflightRow($output, 'bitcoin'))->toContain('FAILED')->toContain('no tip height')
-        ->and(preflightRow($output, 'dry_draw'))->toContain('FAILED')->toContain('no block hash');
+        ->and(preflightRow($output, 'dry_draw'))->toContain('FAILED')->toContain('no block hash')
+        // One miss is a hiccup: no bell yet (prod 2026-10-09).
+        ->and(preflightBell($this->admin))->toHaveCount(0);
+
+    preflightRun();
+
+    // Still down ten minutes later: one bell, for the Bitcoin check only (the dry draw is its consequence).
+    expect(preflightBell($this->admin))->toHaveCount(1)
+        ->and(preflightBell($this->admin)->first()->data['body'] ?? json_encode(preflightBell($this->admin)->first()->data))->toContain('no tip height');
+});
+
+test('a block found seconds ago without its details yet: the check uses the block before it and stays green, nobody is rung', function () {
+    // Prod 2026-10-09: "The Bitcoin API gives no time for block 970662: no draw runs." right after the block was found.
+    [$tipHash, $prevHash] = [hash('sha256', 'block 900001'), hash('sha256', 'block 900000')];
+    Http::fake(fn ($request) => match (true) {
+        str_ends_with($request->url(), '/blocks/tip/height') => Http::response('900001'),
+        str_ends_with($request->url(), '/block-height/900001') => Http::response($tipHash),
+        str_ends_with($request->url(), '/block/'.$tipHash) => Http::response('', 404),
+        str_ends_with($request->url(), '/block-height/900000') => Http::response($prevHash),
+        str_ends_with($request->url(), '/block/'.$prevHash) => Http::response(['timestamp' => now()->subMinutes(9)->getTimestamp()]),
+        default => Http::response('', 404),
+    });
+    preflightTournament(2);
+
+    [$code, $output] = preflightRun();
+
+    expect($code)->toBe(0)
+        ->and(preflightRow($output, 'bitcoin'))->toContain('block 900000 (block 900001 not indexed yet)')
+        ->and(preflightRow($output, 'dry_draw'))->not->toContain('FAILED')
+        ->and(preflightBell($this->admin))->toHaveCount(0);
+});
+
+test('a Bitcoin API back after one miss starts the count anew', function () {
+    $hash = hash('sha256', 'block 900000');
+    $down = true;
+    // One fake with a switch: a second Http::fake would stack behind the first.
+    Http::fake(function ($request) use ($hash, &$down) {
+        return match (true) {
+            $down => Http::response('', 503),
+            str_ends_with($request->url(), '/blocks/tip/height') => Http::response('900000'),
+            str_ends_with($request->url(), '/block-height/900000') => Http::response($hash),
+            str_ends_with($request->url(), '/block/'.$hash) => Http::response(['timestamp' => now()->subMinutes(5)->getTimestamp()]),
+            default => Http::response('', 404),
+        };
+    });
+    preflightTournament(2);
+
+    preflightRun();
+    $down = false;
+    preflightRun();
+    $down = true;
+    preflightRun();
+
+    expect(preflightBell($this->admin))->toHaveCount(0);
 });
 
 test('a tournament waiting for its draw whose draw would throw is flagged by the dry draw', function () {
