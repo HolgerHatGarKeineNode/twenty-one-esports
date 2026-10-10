@@ -22,6 +22,7 @@ use App\Support\TwentyOne\Stream\PublicName;
 use App\Support\TwentyOne\Stream\StreamStats;
 use App\Support\TwentyOne\Stream\TournamentSlides;
 use BackedEnum;
+use Carbon\CarbonImmutable;
 use Carbon\CarbonInterface;
 use Illuminate\Support\Facades\Cache;
 use Throwable;
@@ -370,7 +371,7 @@ final class OverlaySnapshot
     {
         $target = match (true) {
             $tournament !== null => array_intersect_key($tournament, array_flip(['id', 'name', 'game', 'gameName', 'emblem', 'startsAt', 'starts', 'url', 'qr', 'pot', 'entries', 'status'])),
-            $nextCup !== null => $nextCup + ['pot' => $preset->hasModule('pots') ? $this->pools->shownPotSats(Tournament::query()->findOrFail($nextCup['id'])) : null],
+            $nextCup !== null => $nextCup + ['pot' => $preset->hasModule('pots') ? $this->pools->shownPotSats(Tournament::query()->findOrFail((int) $nextCup['id'])) : null],
             $upcoming !== [] => $upcoming[0],
             default => null,
         };
@@ -470,6 +471,7 @@ final class OverlaySnapshot
         }
 
         $open = fn (array $box): bool => in_array($box['status'], ['waiting', 'ready'], true) && $box['bracket'] !== 'bye';
+        /** @var list<array<string, mixed>> $parts */
         $parts = $stage['parts'];
         $part = collect($parts)->first(fn (array $part): bool => collect(TournamentTv::boxesOf(['parts' => [$part]]))->contains($open)) ?? $parts[count($parts) - 1];
         $title = is_string($part['title'] ?? null) ? $part['title'] : null;
@@ -481,12 +483,12 @@ final class OverlaySnapshot
             return [
                 'kind' => 'table',
                 'title' => $title,
-                'round' => __('Round :round', ['round' => $round['number'] ?? 1]),
+                'round' => trans_choice('Round :round', 1, ['round' => $round['number'] ?? 1]),
                 'matches' => array_slice($real($round['boxes'] ?? []), 0, 8),
-                'rows' => array_slice(array_map(fn (array $row): array => [
+                'rows' => array_values(array_slice(array_map(fn (array $row): array => [
                     'rank' => (int) $row['rank'], 'name' => PublicName::clean((string) $row['name']), 'points' => (string) $row['points'],
                     'wins' => (int) $row['wins'], 'ties' => (int) $row['ties'], 'losses' => (int) $row['losses'],
-                ], $part['rows']), 0, 8),
+                ], $part['rows']), 0, 8)),
             ];
         }
 
@@ -494,6 +496,7 @@ final class OverlaySnapshot
             return ['kind' => 'heats', 'title' => $title, 'round' => $title ?? (string) $stage['title'], 'matches' => array_slice($real($part['heats']), 0, 6), 'rows' => []];
         }
 
+        /** @var list<array{0: string|null, 1: array{label: string, matches: list<array<string, mixed>>}}> $columns */
         $columns = [];
 
         foreach ($part['sections'] as $section) {
@@ -502,7 +505,7 @@ final class OverlaySnapshot
             }
         }
 
-        $current = collect($columns)->first(fn (array $entry): bool => collect($entry[1]['matches'])->contains($open)) ?? $columns[count($columns) - 1];
+        $current = collect($columns)->first(fn (array $entry): bool => array_any($entry[1]['matches'], $open)) ?? $columns[count($columns) - 1];
         $label = (string) $current[1]['label'];
 
         return [
@@ -519,9 +522,14 @@ final class OverlaySnapshot
     {
         $local = $at->toImmutable()->setTimezone(LeagueTime::zone());
 
-        return $local->isSameDay(now()->setTimezone(LeagueTime::zone()))
-            ? LeagueTime::hour($at)
-            : $local->locale(app()->getLocale())->isoFormat('dd').' '.LeagueTime::hour($at);
+        if ($local->isSameDay(now()->setTimezone(LeagueTime::zone()))) {
+            return LeagueTime::hour($at);
+        }
+
+        /** @var CarbonImmutable $localized */
+        $localized = $local->locale(app()->getLocale());
+
+        return $localized->isoFormat('dd').' '.LeagueTime::hour($at);
     }
 
     /**
@@ -531,7 +539,7 @@ final class OverlaySnapshot
      */
     private function gameList(): array
     {
-        return array_values(array_map(fn (string $slug): array => ['slug' => $slug, 'name' => GameNames::game($slug), 'emblem' => self::emblem($slug)], array_keys($this->games->all())));
+        return array_map(fn (string $slug): array => ['slug' => $slug, 'name' => GameNames::game($slug), 'emblem' => self::emblem($slug)], array_keys($this->games->all()));
     }
 
     /**

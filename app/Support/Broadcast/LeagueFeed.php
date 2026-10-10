@@ -175,7 +175,7 @@ final class LeagueFeed
     {
         return array_map(fn (mixed $value): mixed => match (true) {
             is_string($value) => PublicName::maskNpubs($value),
-            is_array($value) => array_map(fn (mixed $entry): mixed => is_string($entry) ? PublicName::maskNpubs($entry) : $entry, $value),
+            is_array($value) => array_map(fn (string $entry): string => PublicName::maskNpubs($entry), $value),
             default => $value,
         }, $item);
     }
