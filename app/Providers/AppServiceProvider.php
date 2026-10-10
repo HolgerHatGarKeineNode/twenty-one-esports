@@ -14,6 +14,7 @@ use App\Games\TrackmaniaNationsForever;
 use App\Models\Tournament;
 use App\Models\User;
 use App\Support\Board\LiveGameGuard;
+use App\Support\Broadcast\LeagueFeed;
 use App\Support\Clans\ClanStats;
 use App\Support\Engagement\ClanHashrate;
 use App\Support\LatinFontPreloads;
@@ -123,6 +124,9 @@ class AppServiceProvider extends ServiceProvider
 
         // One live game at a time across chess and the board games (plan "Mühle und Dame", P5).
         LiveGameGuard::register();
+
+        // The public live feed of the OBS overlays (plan "OBS-Broadcast-Overlays", P2): wins, rank-ups, sign-ups, rounds, champions, payouts.
+        LeagueFeed::register();
 
         Gate::define('admin', fn (User $user): bool => $user->isAdmin());
 

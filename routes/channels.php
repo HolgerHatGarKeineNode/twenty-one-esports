@@ -111,3 +111,9 @@ Broadcast::channel('online', function (User $user) {
         'provisional' => $rapid['provisional'],
     ];
 });
+
+/*
+ * `league.feed` (plan "OBS-Broadcast-Overlays", P2) is a public channel: App\Events\LeagueFeedEvent sends what
+ * happened in the league to the OBS overlays, names as the site shows them publicly. Public channels need no
+ * authorization callback; it is listed here so the next reader finds it.
+ */
