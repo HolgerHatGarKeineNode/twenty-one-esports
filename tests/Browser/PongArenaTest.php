@@ -177,9 +177,11 @@ test('the three.js arena runs at every size: field and HUD in the window, steady
 ]);
 
 test('frame times of the arena at 1440x900 are recorded for each quality tier', function (string $tier) {
-    $page = arenaPage('/proof-of-pong/bot?bot=schiff&seed=11', 1440, 900, ['autoplay' => 3, 'quality' => $tier]);
+    // Seed 9 opens with a plain rally: the 8 s of a meme event's announcement on a software renderer under load
+    // (frames over 100 ms slow the game's clock) kept the first serve past the wait (2026-10-10).
+    $page = arenaPage('/proof-of-pong/bot?bot=schiff&seed=9', 1440, 900, ['autoplay' => 3, 'quality' => $tier]);
     $page->locator('[data-test=pong-start-btn]')->click();
-    BrowserWait::until($page, '() => window.pongGame.state().phase === "play"', 10_000);
+    BrowserWait::until($page, '() => window.pongGame.state().phase === "play"', 20_000);
     $page->evaluate('() => { window.pongFrames.length = 0; }');
     // A number of frames, not a stretch of time: SwiftShader under a full parallel run drew 10 in the 5 s this used to
     // wait (measured 2026-10-09), which said more about the machine's load than about the arena.
@@ -219,7 +221,7 @@ test('every figure has its portrait and pose, the picker changes the paddle, and
         ->and($page->evaluate('() => document.querySelector("[data-test=pong-picked-name]").textContent'))->toBe('Michael Saylor');
 
     $page->locator('[data-test=pong-start-btn]')->click();
-    BrowserWait::until($page, '() => window.pongGame.state().phase === "play"', 10_000);
+    BrowserWait::until($page, '() => window.pongGame.state().phase === "play"', 20_000);
 
     // A goal of the player: the pose slides in on the player's side, never past the middle, and goes in time.
     $page->evaluate('() => window.pongShow.goal(0, 1)');
@@ -242,7 +244,7 @@ test('every figure has its portrait and pose, the picker changes the paddle, and
 test('the four meme events take the field over, and reduced motion stills the show', function () {
     $page = arenaPage('/proof-of-pong/bot?bot=shitcoiner&seed=5', 390, 844, ['autoplay' => 2, 'motion' => false]);
     $page->locator('[data-test=pong-start-btn]')->click();
-    BrowserWait::until($page, '() => window.pongGame.state().phase === "play"', 10_000);
+    BrowserWait::until($page, '() => window.pongGame.state().phase === "play"', 20_000);
 
     foreach (['halving' => 'Halving', 'brrr' => 'Brrr', 'pizza' => 'Pizza Day', 'difficulty' => 'Difficulty Adjustment'] as $event => $name) {
         $page->evaluate("() => window.pongShow.announce('{$event}', 2000, 1)");
@@ -425,7 +427,7 @@ test('a meme event holds still long enough to read, then stays pinned at the fie
     // Real time: rally 1 of seed 5 is the Arbeitsamt, the longest name and line.
     $page = arenaPage('/proof-of-pong/bot?bot=schiff&figure=saylor&seed=5', $width, $height, ['autoplay' => 1, 'eventEvery' => 1]);
     $page->locator('[data-test=pong-start-btn]')->click();
-    BrowserWait::until($page, '() => window.pongGame.state().phase === "play"', 15_000);
+    BrowserWait::until($page, '() => window.pongGame.state().phase === "play"', 20_000);
     $seen = $page->evaluate(PONG_TAKEOVER);
 
     expect($seen['words'])->toBe(15)
