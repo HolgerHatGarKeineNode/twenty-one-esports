@@ -9,6 +9,7 @@ use App\Models\Tournament;
 use App\Models\TournamentMatch;
 use App\Models\User;
 use App\Support\Tournaments\TournamentRunner;
+use Illuminate\Support\Facades\Process;
 use Livewire\Livewire;
 
 /*
@@ -163,4 +164,11 @@ test('the tournament page offers 3D beside the drawn bracket without loading thr
     $this->getJson(route('tournaments.bracket-data', $signup))->assertNotFound();
     $tournament->forceFill(['published_at' => null])->save();
     $this->getJson(route('tournaments.bracket-data', $tournament))->assertNotFound();
+});
+
+test('a remembered 3D that cannot run (no WebGL, three.js not loading) is stored back as 2D, so the next visit does not retry it', function () {
+    $run = Process::path(base_path())->timeout(60)->run(['node', '--test', 'tests/js/bracketView.test.mjs']);
+
+    expect($run->successful())->toBeTrue($run->output().$run->errorOutput())
+        ->and($run->output())->toContain('ℹ pass 3')->toContain('ℹ fail 0');
 });

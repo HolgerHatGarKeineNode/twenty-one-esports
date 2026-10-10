@@ -6,7 +6,8 @@
  * The choice is remembered per viewer (localStorage `bracket-view`, in try/catch: a blocked storage just forgets).
  * A remembered 3D is applied before the first paint by the section's inline script (data-bracket-view on the
  * section, so the page does not jump from 2D to 3D after load); here it only starts the view. Without WebGL the 3D
- * button turns disabled with a hint once picked, and a remembered 3D falls back to 2D.
+ * button turns disabled with a hint once picked, and a remembered 3D falls back to 2D. A remembered 3D that fails
+ * (no WebGL, three.js or the view not loading) is stored back as 2D, so the next visit does not try again.
  *
  * config: { url, id, words, art, three }.
  */
@@ -20,6 +21,15 @@ export function webglWorks() {
         return !!(window.WebGLRenderingContext && (c.getContext('webgl2') || c.getContext('webgl')));
     } catch {
         return false;
+    }
+}
+
+/** Stores the viewer's choice; a blocked storage just forgets (the choice lasts for this page). */
+function remember(view) {
+    try {
+        localStorage.setItem(KEY, view);
+    } catch {
+        // Storage blocked: nothing to keep.
     }
 }
 
@@ -57,6 +67,7 @@ export default function bracketView(config) {
             // WebGL is asked for only when 3D is wanted: a 2D viewer's page opens no GL context.
             this.webgl = remembered === '3d' ? webglWorks() : true;
             this.view = this.webgl ? remembered : '2d';
+            if (remembered === '3d' && !this.webgl) remember('2d');
             section.dataset.bracketView = this.view;
             if (this.view === '3d') this.start();
         },
@@ -66,11 +77,7 @@ export default function bracketView(config) {
             if (view === '3d' && !this.webgl) return;
             this.view = view;
             this.$root.dataset.bracketView = view;
-            try {
-                localStorage.setItem(KEY, view);
-            } catch {
-                // Storage blocked: the choice lasts for this page.
-            }
+            remember(view);
             if (view === '3d') this.start();
             else if (this.api) this.api.pause();
         },
@@ -94,6 +101,7 @@ export default function bracketView(config) {
                 this.state = 'failed';
                 this.view = '2d';
                 this.$root.dataset.bracketView = '2d';
+                remember('2d');
                 console.warn('3D bracket unavailable', e);
             }
         },
