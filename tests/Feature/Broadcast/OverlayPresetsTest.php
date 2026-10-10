@@ -158,6 +158,33 @@ test('editing keeps the URL; a tournament variant needs a public tournament that
         ->and($preset->token_hash)->toBe(hash('sha256', $token));
 });
 
+test('a preset whose tournament finished can still be saved; break and bracket may pick a finished public tournament, never a draft', function () {
+    $admin = overlayAdmin();
+    $open = Tournament::factory()->signup()->create(['published_at' => now()]);
+    $finished = Tournament::factory()->create(['status' => TournamentStatus::Finished, 'published_at' => now()]);
+    $unpublished = Tournament::factory()->create(['status' => TournamentStatus::Finished, 'published_at' => null]);
+    $preset = OverlayPreset::factory()->create(['name' => 'Cup', 'variant' => OverlayVariant::Tournament, 'tournament_id' => $open->id]);
+    $open->forceFill(['status' => TournamentStatus::Finished])->save();
+
+    // Its own tournament, now finished, stays choosable and saves.
+    Livewire::actingAs($admin)->test('pages::admin.overlays')->call('edit', $preset->id)
+        ->set('name', 'Cup final')->call('save')->assertHasNoErrors();
+    expect($preset->refresh()->name)->toBe('Cup final')->and($preset->tournament_id)->toBe($open->id);
+
+    // Another finished tournament is no new pick for the tournament overlay, but is for the full-screen bracket.
+    Livewire::actingAs($admin)->test('pages::admin.overlays')->call('edit', $preset->id)
+        ->set('tournament', $finished->id)->call('save')->assertHasErrors('tournament')
+        ->set('variant', 'bracket')->call('save')->assertHasNoErrors();
+    expect($preset->refresh()->tournament_id)->toBe($finished->id);
+
+    foreach (['bracket', 'break'] as $variant) {
+        Livewire::actingAs($admin)->test('pages::admin.overlays')->set('name', 'New '.$variant)->set('variant', $variant)
+            ->set('tournament', $unpublished->id)->call('save')->assertHasErrors('tournament')
+            ->set('tournament', $finished->id)->call('save')->assertHasNoErrors();
+        expect(OverlayPreset::query()->where('name', 'New '.$variant)->sole()->tournament_id)->toBe($finished->id);
+    }
+});
+
 test('the snapshot carries public data only: no key, npub, email, Lightning address, game account or picture ref', function () {
     $player = User::factory()->create(['name' => 'Satoshi Fan', 'gamer_tags' => ['rocket-league' => 'secret-gamer-tag'], 'lud16' => 'secret@wallet.example']);
     $tournament = runningChess(TournamentFormat::SingleElimination, 4);

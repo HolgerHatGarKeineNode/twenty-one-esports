@@ -58,16 +58,27 @@ new #[Title('OBS overlays')] #[Layout('layouts::app', ['section' => 'admin'])] c
     }
 
     /**
-     * Tournaments an overlay can follow: public, not over, soonest first.
+     * Tournaments an overlay can follow, public only: the ones not over, soonest first; for the break scene and the
+     * full-screen bracket (both show the champion) also the latest finished ones; and the edited preset's own
+     * tournament whatever its state, so a preset whose tournament finished can still be saved.
      *
      * @return Collection<int, Tournament>
      */
     #[Computed]
     public function tournaments(): Collection
     {
-        return Tournament::query()->exceptLeagueWeeks()->whereNotNull('published_at')
-            ->whereIn('status', [TournamentStatus::Signup, TournamentStatus::Drawing, TournamentStatus::Running])
+        $public = fn () => Tournament::query()->exceptLeagueWeeks()->whereNotNull('published_at')->where('status', '!=', TournamentStatus::Draft);
+        $variant = OverlayVariant::tryFrom($this->variant);
+        $current = $this->editing === null ? null : OverlayPreset::query()->whereKey($this->editing)->value('tournament_id');
+
+        $open = $public()->whereIn('status', [TournamentStatus::Signup, TournamentStatus::Drawing, TournamentStatus::Running])
             ->orderBy('starts_at')->orderBy('id')->limit(100)->get();
+        $finished = in_array($variant, [OverlayVariant::Break, OverlayVariant::Bracket], true)
+            ? $public()->where('status', TournamentStatus::Finished)->orderByDesc('starts_at')->orderByDesc('id')->limit(20)->get()
+            : new Collection;
+        $kept = $current === null ? new Collection : $public()->whereKey($current)->get();
+
+        return $open->merge($finished)->merge($kept)->values();
     }
 
     /**
