@@ -705,8 +705,8 @@ test('a guest watching a live game has the history bar in the first viewport at 
         ->and($sizes['guest 1440']['bar'][2])->toBe($sizes['guest 1440']['board'][2], 'guest 1440: the bar is as wide as the board')
         ->and($sizes['guest 375']['board'][1])->toBe(375, 'guest 375: the board stays edge to edge');
 
-    // The players keep their board and bar where they were (P55: 1440 bar at 830, board 576 px; 375 board 375 px).
-    expect($sizes['player 1440']['bar'][0])->toBe(830)
+    // The players keep their board and bar (P55: board 576 px; 375 board 375 px); the bar sits at 822 since row 1 is 56 px, not 64 (Header.dc.html).
+    expect($sizes['player 1440']['bar'][0])->toBe(822)
         ->and($sizes['player 1440']['board'][1])->toBe(576)
         ->and($sizes['player 375']['board'][1])->toBe(375);
 });

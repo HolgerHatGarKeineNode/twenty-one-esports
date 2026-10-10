@@ -58,12 +58,12 @@ test('a paused slot is not dated and its dates leave home and the lobby', functi
 
     expect(SlotEvent::query()->count())->toBe(1);
 
-    $this->get(route('home'))->assertOk()->assertSee('RL Sunday')->assertSee('data-test="weekly-events"', false)->assertDontSee('Paused night');
-    Livewire::test('pages::chess.lobby')->assertOk()->assertSee('RL Sunday');
+    // The weekly events live in the lobbies since the revamped start page (board Main has none).
+    Livewire::test('pages::chess.lobby')->assertOk()->assertSee('RL Sunday')->assertDontSee('Paused night');
 
     $slot->update(['active' => false]);
 
-    $this->get(route('home'))->assertOk()->assertDontSee('RL Sunday')->assertDontSee('data-test="weekly-events"', false);
+    Livewire::test('pages::chess.lobby')->assertOk()->assertDontSee('RL Sunday');
 });
 
 test('an event shows as live while it runs and disappears once it ended', function () {
@@ -71,13 +71,13 @@ test('an event shows as live while it runs and disappears once it ended', functi
     WeeklySlot::factory()->create();
     app(WeeklySlots::class)->schedule();
 
-    $this->get(route('home'))->assertOk()->assertSee('Blitz night')->assertSee(__('running now'));
+    Livewire::test('pages::chess.lobby')->assertOk()->assertSee('Blitz night')->assertSee(__('running now'));
 
     $this->travelTo(CarbonImmutable::parse('2026-09-30 20:01', 'UTC'));
 
     // Only next week's date is left.
     expect(app(WeeklySlots::class)->upcoming()->map(fn (SlotEvent $event) => $event->starts_at->toDateTimeString())->all())->toBe(['2026-10-07 18:00:00']);
-    $this->get(route('home'))->assertOk()->assertDontSee(__('running now'));
+    Livewire::test('pages::chess.lobby')->assertOk()->assertDontSee(__('running now'));
 });
 
 test('an admin adds a slot and it is dated at once; others cannot open the page', function () {

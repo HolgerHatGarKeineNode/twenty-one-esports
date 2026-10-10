@@ -315,17 +315,17 @@ test('a rule change during the season may add a game with its weight, share and 
         ->and($inForce->dailyLimitFor('ea-sports-fc-27'))->toBe(5);
 });
 
-test('the home page, the rules and the countdown read the saved draft; before one is saved they name no supply', function () {
-    $this->get(route('home'))->assertOk()->assertDontSee('data-test="pot"', false)->assertDontSee('data-test="home-supply"', false);
+test('the Season page, the rules and the countdown read the saved draft; before one is saved they name no supply', function () {
+    $this->get(route('mining'))->assertOk()->assertDontSee('data-test="home-supply"', false);
     $this->get(route('rules'))->assertOk()->assertDontSee('Supply, the most paid out after the season');
 
     $this->travelTo(CarbonImmutable::parse('2026-10-01T12:00:00Z'));
     saveChainDraft(['block0_at' => CarbonImmutable::parse('2026-10-03T12:00:00Z')->getTimestamp(), 'supply' => 1_234_567, 'message' => 'Chancellor on the brink of Block 0', 'moves' => 25, 'daily' => ['chess' => 4, 'rocket-league' => 4, 'ea-sports-fc' => 4]]);
 
-    $this->get(route('home'))->assertOk()
-        ->assertSee('data-state="countdown"', false)
+    // Home: the countdown to the saved Block 0; the Season page: the supply, the genesis message and the rules.
+    $this->get(route('home'))->assertOk()->assertSee('data-state="countdown"', false);
+    $this->get(route('mining'))->assertOk()
         ->assertSee("1\u{00A0}234\u{00A0}567", false)
-        ->assertSee('sats at most, paid after the season')
         ->assertSee('Up to 1')
         ->assertSee('nothing is set aside before')
         ->assertSee('Chancellor on the brink of Block 0')

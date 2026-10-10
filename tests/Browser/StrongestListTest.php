@@ -133,7 +133,7 @@ const P40_MEASURE = <<<'JS'
     }
     JS;
 
-test('the strongest list, its home tile and the ladder Proof links hold at 375 and 1440, and in German', function () {
+test('the strongest list, its link in the game hub and the ladder Proof links hold at 375 and 1440, and in German', function () {
     $user = p40BrowserSeason();
     $failures = [];
 
@@ -153,15 +153,15 @@ test('the strongest list, its home tile and the ladder Proof links hold at 375 a
             $ok = $ok && count($m['ratingRights']) === 1 && abs($m['ratingRights'][0] - ($m['headRight'][0] ?? 0)) <= 1 && count($m['segments']) === 10 && min($m['segments']) >= 4;
         }
 
-        // Home: the tile's five, on one line from lg, each a 44 px target.
+        // The game hub links the list from every page (the home tile left with the revamp, Main.dc.html): a 44 px target.
         $page->goto(ComputeUrl::from('/'));
-        BrowserWait::until($page, '() => document.readyState === "complete" && document.querySelector("[data-test=home-strongest]") !== null', 10_000);
-        $page->evaluate('() => document.querySelector("[data-test=home-strongest]").scrollIntoView({block: "center"})');
-        $home = $page->evaluate('() => { const rows = [...document.querySelectorAll("[data-test=home-strongest-row] a")]; return [document.documentElement.scrollWidth, document.documentElement.clientWidth, rows.length, [...new Set(rows.map((r) => Math.round(r.getBoundingClientRect().top)))].length, Math.min(...rows.map((r) => Math.round(r.getBoundingClientRect().height))), rows.map((r) => r.querySelector("[data-test=home-strongest-rating]").textContent.trim())]; }');
-        fwrite(STDERR, "[p40] {$locale} {$width} home ".json_encode($home, JSON_UNESCAPED_UNICODE)."\n");
-        p40Shot($page, "p40-home-{$locale}-{$width}");
-        $ok = $ok && $home[0] <= $home[1] && $home[2] === 5 && $home[4] >= 44 && $home[5] === array_slice($m['ratings'], 0, 5)
-            && ($width === 1440 ? $home[3] === 1 : $home[3] === 5);
+        BrowserWait::until($page, '() => document.readyState === "complete" && !!window.Alpine', 10_000);
+        $page->locator($width >= 1024 ? '[data-test=games-menu]' : '[data-test=tab-games]')->click();
+        BrowserWait::until($page, '() => document.querySelector("[data-test=hub-strongest]")?.checkVisibility() === true', 5_000);
+        $home = $page->evaluate('() => { const a = document.querySelector("[data-test=hub-strongest]"); const r = a.getBoundingClientRect(); return [document.documentElement.scrollWidth, document.documentElement.clientWidth, new URL(a.href).pathname, Math.round(r.height), Math.round(r.right) <= innerWidth]; }');
+        fwrite(STDERR, "[p40] {$locale} {$width} hub ".json_encode($home, JSON_UNESCAPED_UNICODE)."\n");
+        p40Shot($page, "p40-hub-{$locale}-{$width}");
+        $ok = $ok && $home[0] <= $home[1] && $home[2] === route('ladder.strongest', absolute: false) && $home[3] >= 44 && $home[4];
 
         // The ladder Proof: two njump links, 24 px targets, a new tab, the strongest link under the table.
         $page->goto(ComputeUrl::from('/ladder/chess/blitz?pool=rated'));
@@ -184,9 +184,9 @@ test('the strongest list, its home tile and the ladder Proof links hold at 375 a
 
     expect($failures)->toBe([]);
 
-    // The context bar keeps its new link inside the narrowest desktop width, in both languages.
+    // A game's context bar (on its pages only since the revamp, Header.dc.html) keeps the link inside the narrowest desktop width, in both languages.
     foreach (['en', 'de'] as $locale) {
-        $page = p40Page($user, '/ladder/strongest', 1024, 768, $locale);
+        $page = p40Page($user, '/ladder/chess/blitz', 1024, 768, $locale);
         BrowserWait::until($page, '() => document.readyState === "complete"', 10_000);
         $bar = $page->evaluate('() => { const bar = document.querySelector("[data-test=context-bar]"); const link = bar.querySelector("[data-test=ctx-strongest]").getBoundingClientRect(); return [bar.scrollWidth, bar.clientWidth, Math.round(link.right), Math.round(bar.getBoundingClientRect().right), document.documentElement.scrollWidth, document.documentElement.clientWidth]; }');
         fwrite(STDERR, "[p40] {$locale} 1024 context bar ".json_encode($bar)."\n");
@@ -204,7 +204,7 @@ test('the strongest list, its home tile and the ladder Proof links hold at 375 a
         ->and(implode("\n", $page->evaluate(BrowserConsole::BAD_RESPONSES)))->toContain('404 ')->toContain('/p40-missing-image.png');
 });
 
-test('before Block 0 the page and the home tile are honest and empty at 375 and 1440', function () {
+test('before Block 0 the page is honest and empty and home stays whole at 375 and 1440', function () {
     $user = User::factory()->create(['name' => 'earlybird']);
 
     foreach ([375, 1440] as $width) {
@@ -213,9 +213,9 @@ test('before Block 0 the page and the home tile are honest and empty at 375 and 
         $empty = $page->evaluate('() => [document.documentElement.scrollWidth, document.documentElement.clientWidth, document.querySelector("[data-test=strongest-empty]").dataset.state, document.querySelectorAll("[data-test=strongest-row]").length, Math.min(...[...document.querySelectorAll("[data-test=strongest-empty] a")].map((a) => Math.round(a.getBoundingClientRect().height)))]');
         p40Shot($page, "p40-empty-en-{$width}");
 
+        // Home no longer carries the list (Main.dc.html): it stays whole and names nobody before Block 0.
         $page->goto(ComputeUrl::from('/'));
-        BrowserWait::until($page, '() => document.readyState === "complete" && document.querySelector("[data-test=home-strongest-empty]") !== null', 10_000);
-        $page->evaluate('() => document.querySelector("[data-test=home-strongest]").scrollIntoView({block: "center"})');
+        BrowserWait::until($page, '() => document.readyState === "complete" && !!window.Alpine', 10_000);
         $home = $page->evaluate('() => [document.documentElement.scrollWidth, document.documentElement.clientWidth, document.querySelectorAll("[data-test=home-strongest-row]").length]');
         p40Shot($page, "p40-home-empty-en-{$width}");
         fwrite(STDERR, "\n[p40] empty {$width} ".json_encode([$empty, $home])."\n");

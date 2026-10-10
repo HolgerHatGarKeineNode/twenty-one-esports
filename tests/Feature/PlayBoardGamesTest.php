@@ -90,22 +90,21 @@ test('a player who played a board game after chess still finds the board games a
         ->and($html)->not->toContain('Your games come first');
 });
 
-test('home and the phone game chips put the board games at the end; the desktop tabs keep their order', function () {
+test('home puts the browser games first with the board games at their end; the hub keeps the board games last', function () {
     NineMensMorrisOn::play();
     CheckersGame::play();
 
     $html = $this->get(route('home'))->assertOk()->getContent();
-    preg_match_all('/data-test="play-tile" data-game="([a-z0-9-]+)"/', $html, $tiles);
+    preg_match_all('/data-test="game-tile" data-game="([a-z0-9-]+)"/', $html, $tiles);
+    preg_match_all('/data-test="hub-game-([a-z0-9-]+)"/', $html, $hub);
 
-    expect($tiles[1])->toBe(['chess', 'rocket-league', 'ea-sports-fc-27', 'ea-sports-fc-26', 'age-of-empires-2', 'nine-mens-morris', 'checkers'])
-        ->and(boardHooks($html, 'mobile-'))->toContain('nine-mens-morris')
-        ->and(array_values(array_filter(boardHooks($html, 'mobile-'), fn (string $hook): bool => in_array($hook, ['nine-mens-morris', 'checkers', 'rocket-league', 'ea-sports-fc-27', 'ea-sports-fc-26', 'age-of-empires-2'], true))))
-        ->toBe(['rocket-league', 'ea-sports-fc-27', 'ea-sports-fc-26', 'age-of-empires-2', 'nine-mens-morris', 'checkers'])
-        ->and(boardHooks($html, 'game-tab-'))->toBe(['chess', 'rocket-league', 'ea-sports-fc-27'])
+    // Browser games (played here) above the own-copy games (user 2026-10-10).
+    expect(array_values(array_unique($tiles[1])))->toBe(['chess', 'nine-mens-morris', 'checkers', 'rocket-league', 'ea-sports-fc-27', 'ea-sports-fc-26', 'age-of-empires-2'])
+        ->and(array_slice(array_values(array_unique($hub[1])), -2))->toBe(['nine-mens-morris', 'checkers'])
         ->and(array_column(ShellNavigation::current()->games(), 'slug'))->toBe(['chess', 'rocket-league', 'ea-sports-fc-27', 'ea-sports-fc-26', 'age-of-empires-2', 'nine-mens-morris', 'checkers']);
 });
 
-test('the board game tiles on home play correspondence: "Play correspondence" is the one button, no blitz, no second link (user, 2026-10-07)', function () {
+test('the board game tiles on home say correspondence and never blitz (user, 2026-10-07)', function () {
     NineMensMorrisOn::play();
     CheckersGame::play();
     BlockliOn::play();
@@ -113,9 +112,8 @@ test('the board game tiles on home play correspondence: "Play correspondence" is
     $html = $this->actingAs(User::factory()->create())->withSession(['locale' => 'de'])->get(route('home'))->assertOk()->getContent();
 
     foreach ([NineMensMorris::SLUG, Checkers::SLUG, Blockli::SLUG] as $slug) {
-        expect(preg_match('~data-game="'.$slug.'".*?</li>~s', $html, $tile))->toBe(1)
-            ->and($tile[0])->toContain('Fernpartie spielen')
-            ->and($tile[0])->not->toContain('data-test="play-daily"')
+        expect(preg_match('~data-test="game-tile" data-game="'.$slug.'".*?</a>~s', $html, $tile))->toBe(1)
+            ->and($tile[0])->toContain('Fernpartie')
             ->and($tile[0])->not->toContain('Blitz');
     }
 });

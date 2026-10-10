@@ -1,0 +1,784 @@
+/*
+ * Revamp primitives, 1:1 from the design canvas of plan "Refactor und Design-Revamp"
+ * (canvas/project/Header.dc.html, Components.dc.html, Main.dc.html: the board CSS
+ * `.n .tag .seg .live .b .b2 .lk .tb .cube .tick`). One class per board primitive, so a page
+ * built from the boards reads like the board, and P4 ff. reuse the same names.
+ * Radius 4 (marks 2), targets 44 px, focus 2 px #F9B25F (rule R16), motion 150 ms ease-out (R17).
+ */
+@layer components {
+    /* Header (Header.dc.html `.hd .nv .srch .act .ib .av`) */
+    .rv-logo {
+        display: grid;
+        place-items: center;
+        width: 36px;
+        height: 36px;
+        flex: none;
+        border-radius: 4px;
+        background: var(--color-btc);
+        color: var(--color-on-btc);
+        font-family: var(--font-display);
+        font-size: 16px;
+        font-weight: 700;
+        line-height: 1;
+    }
+
+    .rv-logo:hover {
+        color: var(--color-on-btc);
+    }
+
+    .rv-nv {
+        display: inline-flex;
+        flex: none;
+        align-items: center;
+        gap: 6px;
+        /* The row is 56 px with its 1 px hairline inside: 55 px, so nothing hangs half a pixel out of it. */
+        height: 55px;
+        padding: 0 12px;
+        border: 0;
+        border-bottom: 2px solid transparent;
+        background: none;
+        color: var(--color-ink-2);
+        font-size: 14px;
+        white-space: nowrap;
+        cursor: pointer;
+    }
+
+    .rv-nv:hover,
+    .rv-nv[aria-current],
+    .rv-nv[aria-expanded="true"] {
+        color: var(--color-ink);
+    }
+
+    .rv-nv[aria-current] {
+        border-bottom-color: var(--color-btc);
+    }
+
+    /* Between 1024 and 1280 px the row keeps its items by giving up padding, never by wrapping. */
+    @media (width < 80rem) {
+        .rv-nv {
+            padding: 0 6px;
+        }
+    }
+
+    .rv-srch {
+        display: flex;
+        flex: 0 1 240px;
+        align-items: center;
+        gap: 8px;
+        min-width: 44px;
+        height: 36px;
+        padding: 0 12px;
+        overflow: hidden;
+        border: 1px solid var(--color-line);
+        border-radius: 4px;
+        background: var(--color-ground);
+        color: var(--color-ink-3);
+        font-size: 13px;
+        white-space: nowrap;
+    }
+
+    .rv-srch:focus-within {
+        border-color: var(--color-edge);
+    }
+
+    .rv-srch input {
+        align-self: stretch;
+        width: 100%;
+        min-width: 0;
+        border: 0;
+        background: none;
+        color: var(--color-ink);
+        font: inherit;
+        outline: none;
+    }
+
+    .rv-srch input::placeholder {
+        color: var(--color-ink-3);
+        opacity: 1;
+    }
+
+    .rv-act {
+        display: inline-flex;
+        flex: none;
+        align-items: center;
+        gap: 8px;
+        height: 36px;
+        padding: 0 12px;
+        border: 1px solid var(--color-line);
+        border-radius: 4px;
+        background: var(--color-card);
+        color: var(--color-ink);
+        font-size: 14px;
+        font-weight: 500;
+        font-variant-numeric: tabular-nums;
+        white-space: nowrap;
+        cursor: pointer;
+    }
+
+    .rv-act:hover {
+        border-color: var(--color-edge);
+        color: var(--color-ink);
+    }
+
+    .rv-act.is-hot {
+        border-color: var(--color-live-ring);
+        background: var(--color-live-tint);
+    }
+
+    .rv-ib {
+        position: relative;
+        display: inline-grid;
+        flex: none;
+        place-items: center;
+        width: 44px;
+        height: 44px;
+        border: 0;
+        border-radius: 4px;
+        background: none;
+        color: var(--color-ink-2);
+        cursor: pointer;
+    }
+
+    .rv-ib:hover,
+    .rv-ib[aria-expanded="true"] {
+        color: var(--color-ink);
+    }
+
+    .rv-ib > .rv-n {
+        position: absolute;
+        top: 4px;
+        right: 4px;
+        min-width: 16px;
+        height: 16px;
+        padding: 0 3px;
+        font-size: 11px;
+        line-height: 16px;
+    }
+
+    /* Counts and marks (`.n`, `.tag`, `.neu`-free: the canvas label never ships) */
+    .rv-n {
+        display: inline-grid;
+        place-items: center;
+        min-width: 20px;
+        height: 20px;
+        padding: 0 6px;
+        border-radius: 2px;
+        background: var(--color-raised);
+        color: var(--color-ink-2);
+        font-size: 12px;
+        font-weight: 500;
+        font-variant-numeric: tabular-nums;
+        line-height: 20px;
+    }
+
+    .rv-n.is-o {
+        background: var(--color-btc);
+        color: var(--color-on-btc);
+        font-weight: 700;
+    }
+
+    .rv-n.is-r {
+        background: var(--color-urgent);
+        color: var(--color-ink);
+        font-weight: 700;
+    }
+
+    .rv-tag {
+        display: inline-flex;
+        align-items: center;
+        gap: 4px;
+        height: 20px;
+        padding: 0 6px;
+        border: 1px solid var(--color-line);
+        border-radius: 2px;
+        color: var(--color-ink-2);
+        font-size: 12px;
+        font-weight: 400;
+        line-height: 1;
+        white-space: nowrap;
+    }
+
+    .rv-tag.is-ok {
+        border-color: var(--color-win-ring);
+        background: var(--color-win-tint);
+        color: var(--color-win);
+    }
+
+    .rv-tag.is-bad {
+        border-color: var(--color-live-ring);
+        background: var(--color-live-tint);
+        color: var(--color-loss);
+    }
+
+    .rv-tag.is-btc {
+        border-color: var(--color-btc-ring);
+        background: var(--color-btc-chip);
+        color: var(--color-btc);
+    }
+
+    /* LIVE (`.live`): red means the stream or a live game, never colour alone (the word is there). */
+    .rv-live {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        height: 24px;
+        padding: 0 8px;
+        border: 1px solid var(--color-live-ring);
+        border-radius: 2px;
+        background: var(--color-live-tint);
+        color: var(--color-live);
+        font-size: 12px;
+        font-weight: 700;
+        line-height: 1;
+        white-space: nowrap;
+    }
+
+    .rv-live > i {
+        display: block;
+        width: 8px;
+        height: 8px;
+        flex: none;
+        border-radius: 50%;
+        background: currentColor;
+        animation: rv-pulse 1.6s ease-in-out infinite;
+    }
+
+    .rv-live.is-ok {
+        border: 0;
+        background: none;
+        padding: 0;
+        height: auto;
+        color: var(--color-win);
+    }
+
+    /* Seats (`.seg`): taken filled, free as an outline #63636A (3.14:1 on the card, 1.4.11). */
+    .rv-seg {
+        display: inline-flex;
+        flex: none;
+        gap: 2px;
+        vertical-align: middle;
+    }
+
+    .rv-seg > i {
+        display: block;
+        width: 10px;
+        height: 10px;
+        border: 1px solid var(--color-edge);
+    }
+
+    .rv-seg > i.is-on {
+        border-color: var(--color-btc);
+        background: var(--color-btc);
+    }
+
+    /* Buttons (`.b .b2 .sm .lk`): 44 px, radius 4, never a pill, never a wrapped label. */
+    .rv-b,
+    .rv-b2 {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        gap: 8px;
+        height: 44px;
+        padding: 0 16px;
+        border-radius: 4px;
+        font-size: 14px;
+        white-space: nowrap;
+        cursor: pointer;
+        transition: background-color 150ms ease-out, border-color 150ms ease-out;
+    }
+
+    .rv-b {
+        border: 1px solid var(--color-btc);
+        background: var(--color-btc);
+        color: var(--color-on-btc);
+        font-weight: 700;
+    }
+
+    .rv-b:hover {
+        border-color: var(--color-btc-hi);
+        background: var(--color-btc-hi);
+        color: var(--color-on-btc);
+    }
+
+    .rv-b:disabled {
+        border-color: var(--color-btc-deep);
+        background: var(--color-btc-deep);
+        cursor: wait;
+    }
+
+    .rv-b2 {
+        border: 1px solid var(--color-edge);
+        background: transparent;
+        color: var(--color-ink);
+        font-weight: 500;
+    }
+
+    .rv-b2:hover {
+        border-color: var(--color-ink-2);
+        background: var(--color-row-hover);
+        color: var(--color-ink);
+    }
+
+    .rv-b.is-sm,
+    .rv-b2.is-sm {
+        height: 32px;
+        padding: 0 12px;
+        font-size: 13px;
+    }
+
+    .rv-lk {
+        color: var(--color-btc);
+        text-decoration: underline;
+        text-decoration-thickness: 1px;
+        text-underline-offset: 3px;
+    }
+
+    .rv-lk:hover {
+        color: var(--color-btc-hi);
+    }
+
+    /* Cards and tables (`.card .tb`) */
+    .rv-card {
+        border: 1px solid var(--color-hairline);
+        border-radius: 4px;
+        background: var(--color-card);
+    }
+
+    .rv-h2 {
+        margin: 0;
+        font-family: var(--font-display);
+        font-size: 20px;
+        font-weight: 600;
+        line-height: 1.25;
+    }
+
+    .rv-h3 {
+        margin: 0;
+        font-size: 16px;
+        font-weight: 700;
+        line-height: 1.25;
+    }
+
+    .rv-m {
+        color: var(--color-ink-3);
+        font-size: 12px;
+        line-height: 1.4;
+    }
+
+    .rv-tb {
+        width: 100%;
+        border-collapse: collapse;
+    }
+
+    .rv-tb th {
+        padding: 8px 12px;
+        border-bottom: 1px solid var(--color-line);
+        color: var(--color-ink-3);
+        font-size: 12px;
+        font-weight: 400;
+        text-align: left;
+        white-space: nowrap;
+    }
+
+    .rv-tb td {
+        height: 40px;
+        padding: 6px 12px;
+        border-bottom: 1px solid var(--color-hairline);
+        font-size: 14px;
+    }
+
+    .rv-tb .is-r {
+        text-align: right;
+    }
+
+    .rv-tb tr.is-featured td {
+        background: var(--color-feature);
+    }
+
+    .rv-tb tr.is-featured td:first-child {
+        box-shadow: inset 4px 0 0 var(--color-btc);
+    }
+
+    /* Segmented countdown (Components.dc.html "Countdown-Segmente") */
+    .rv-cd {
+        display: flex;
+        align-items: flex-start;
+        gap: 8px;
+    }
+
+    .rv-cd-seg {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 2px;
+    }
+
+    .rv-cd-seg > b {
+        min-width: 41px;
+        padding: 6px 8px;
+        border: 1px solid var(--color-line);
+        border-radius: 4px;
+        background: var(--color-card);
+        font-family: var(--font-display);
+        font-size: 22px;
+        font-weight: 700;
+        font-variant-numeric: tabular-nums;
+        line-height: 1;
+        text-align: center;
+    }
+
+    .rv-cd.is-sm .rv-cd-seg > b {
+        min-width: 38px;
+        font-size: 20px;
+    }
+
+    .rv-cd-colon {
+        padding-top: 6px;
+        color: var(--color-edge);
+        font-family: var(--font-display);
+        font-size: 24px;
+        line-height: 1;
+    }
+
+    /* "gerade eben" ticker (`.tick`) */
+    .rv-tick {
+        display: flex;
+        align-items: center;
+        gap: 16px;
+        height: 32px;
+        padding: 0 12px;
+        overflow: hidden;
+        border-block: 1px solid var(--color-hairline);
+        background: var(--color-tick);
+        font-size: 12px;
+        white-space: nowrap;
+    }
+
+    .rv-tick-sep {
+        width: 1px;
+        height: 14px;
+        flex: none;
+        background: var(--color-line);
+    }
+
+    /* Mempool cubes (`.cube .cw`), 108 px, a top and a side face; finished cubes in their game's colour. */
+    .rv-cw {
+        display: flex;
+        flex: none;
+        flex-direction: column;
+        gap: 6px;
+        width: 116px;
+        color: var(--color-ink);
+        scroll-snap-align: start;
+        transition: transform 150ms ease-out;
+    }
+
+    .rv-cw:hover {
+        color: var(--color-ink);
+        transform: translateY(-2px);
+    }
+
+    .rv-cw-h {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 8px;
+        width: 108px;
+        color: var(--color-ink-3);
+        font-size: 12px;
+        line-height: 1.4;
+    }
+
+    .rv-cube {
+        --c: var(--color-ink-2);
+        --c-top: color-mix(in srgb, var(--c) 45%, #fff);
+        --c-side: color-mix(in srgb, var(--c) 55%, #000);
+        position: relative;
+        width: 108px;
+        height: 108px;
+        flex: none;
+    }
+
+    .rv-cube-tp {
+        position: absolute;
+        top: 0;
+        left: 0;
+        width: 108px;
+        height: 12px;
+        background: var(--c-top);
+        clip-path: polygon(12px 0, 108px 0, 96px 12px, 0 12px);
+    }
+
+    .rv-cube-sd {
+        position: absolute;
+        top: 0;
+        right: 0;
+        width: 12px;
+        height: 108px;
+        background: var(--c-side);
+        clip-path: polygon(0 12px, 12px 0, 12px 96px, 0 108px);
+    }
+
+    .rv-cube-fr {
+        position: absolute;
+        top: 12px;
+        left: 0;
+        display: flex;
+        flex-direction: column;
+        gap: 2px;
+        width: 96px;
+        height: 96px;
+        padding: 8px;
+        overflow: hidden;
+        background: var(--c);
+        color: var(--color-on-btc);
+    }
+
+    .rv-cube-fr > * {
+        position: relative;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+    }
+
+    .rv-cube-k {
+        font-size: 11px;
+        line-height: 1.3;
+    }
+
+    .rv-cube-v {
+        font-family: var(--font-display);
+        font-size: 15px;
+        letter-spacing: -0.02em;
+        font-weight: 700;
+        line-height: 1.2;
+    }
+
+    .rv-cube.is-wait .rv-cube-fr {
+        border: 1px solid var(--color-edge);
+        background: var(--color-cube-side);
+        color: var(--color-ink);
+    }
+
+    .rv-cube.is-wait .rv-cube-tp {
+        background: var(--color-line);
+    }
+
+    .rv-cube.is-wait .rv-cube-sd {
+        background: var(--color-hairline);
+    }
+
+    .rv-cube-fill {
+        position: absolute !important;
+        right: 0;
+        bottom: 0;
+        left: 0;
+        background: var(--color-btc-tint);
+    }
+
+    .rv-cube.is-newest {
+        filter: drop-shadow(0 0 10px color-mix(in srgb, var(--c) 45%, transparent));
+    }
+
+    .rv-cube.g-chess { --c: var(--color-chess); --c-side: var(--color-chess-deep); }
+    .rv-cube.g-rl { --c: var(--color-rl); --c-side: var(--color-rl-deep); }
+    .rv-cube.g-fc { --c: var(--color-fc); --c-side: var(--color-fc-deep); }
+    .rv-cube.g-morris { --c: var(--color-morris); --c-side: var(--color-morris-deep); }
+    .rv-cube.g-checkers { --c: var(--color-checkers); --c-side: var(--color-checkers-deep); }
+    .rv-cube.g-aoe { --c: var(--color-aoe); --c-side: var(--color-aoe-deep); }
+    .rv-cube.g-other { --c: var(--color-ink-2); --c-top: #D4D4D6; --c-side: var(--color-divider); }
+
+    .rv-cw-p {
+        color: var(--color-ink-2);
+        font-size: 12px;
+        line-height: 1.35;
+    }
+
+    .rv-cw-p > span {
+        display: block;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+    }
+
+    /* The chain viewport: drag, wheel, arrow keys; the edge fades say there is more. */
+    .rv-chain {
+        position: relative;
+    }
+
+    .rv-chain-vp {
+        overflow-x: auto;
+        overflow-y: hidden;
+        padding: 4px 0 12px;
+        cursor: grab;
+        overscroll-behavior-x: contain;
+        scroll-snap-type: x proximity;
+        scrollbar-color: var(--color-edge) var(--color-card);
+        scrollbar-width: thin;
+    }
+
+    .rv-chain-vp.is-dragging {
+        cursor: grabbing;
+        scroll-snap-type: none;
+        user-select: none;
+    }
+
+    .rv-chain-vp:focus-visible {
+        outline-offset: 4px;
+    }
+
+    .rv-chain-fade {
+        position: absolute;
+        top: 0;
+        bottom: 12px;
+        width: 48px;
+        pointer-events: none;
+        transition: opacity 150ms ease-out;
+    }
+
+    .rv-chain-fade.is-l {
+        left: 0;
+        background: linear-gradient(90deg, var(--color-ground), rgb(10 10 11 / 0));
+    }
+
+    .rv-chain-fade.is-r {
+        right: 0;
+        background: linear-gradient(270deg, var(--color-ground), rgb(10 10 11 / 0));
+    }
+
+    .rv-chain-div {
+        align-self: stretch;
+        width: 0;
+        margin: 0 8px;
+        border-left: 2px dashed var(--color-edge);
+    }
+
+    /* Game tiles (`.gt .cv`) */
+    .rv-gt {
+        display: flex;
+        min-width: 0;
+        flex-direction: column;
+        gap: 8px;
+        color: var(--color-ink);
+        transition: transform 150ms ease-out;
+    }
+
+    .rv-gt:hover {
+        color: var(--color-ink);
+        transform: translateY(-2px);
+    }
+
+    .rv-gt > b {
+        font-size: 14px;
+        font-weight: 700;
+    }
+
+    .rv-cv {
+        display: block;
+        width: 100%;
+        aspect-ratio: 16 / 9;
+        border-radius: 4px;
+        background: var(--color-card);
+        object-fit: cover;
+    }
+
+    /* Phone tab bar (`.pb`) */
+    /* 63 px plus the bar's 1 px top border: 64 px (= --tabbar-h), as the board's border-box `.pb`. */
+    .rv-pb {
+        display: grid;
+        grid-template-columns: repeat(5, minmax(0, 1fr));
+        height: 63px;
+    }
+
+    .rv-pb-item {
+        position: relative;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        gap: 2px;
+        min-width: 0;
+        border: 0;
+        background: none;
+        color: var(--color-ink-2);
+        font-size: 11px;
+        white-space: nowrap;
+        cursor: pointer;
+    }
+
+    .rv-pb-item:hover {
+        color: var(--color-ink);
+    }
+
+    .rv-pb-item[aria-current],
+    .rv-pb-item[aria-expanded="true"] {
+        box-shadow: inset 0 2px 0 var(--color-btc);
+        color: var(--color-ink);
+    }
+
+    .rv-pb-item > .rv-n {
+        position: absolute;
+        top: 6px;
+        left: calc(50% + 6px);
+        min-width: 18px;
+        height: 18px;
+        padding: 0 4px;
+        line-height: 18px;
+    }
+
+    /* Dimmed key art band (`.band`): the art on the right, faded into the ground; scan lines over it. */
+    .rv-band {
+        position: relative;
+        overflow: hidden;
+        border-bottom: 1px solid var(--color-hairline);
+    }
+
+    .rv-band::after {
+        position: absolute;
+        inset: 0;
+        background: repeating-linear-gradient(0deg, rgb(255 255 255 / 0.025) 0 1px, transparent 1px 3px);
+        content: "";
+        mix-blend-mode: overlay;
+        pointer-events: none;
+    }
+
+    .rv-glow {
+        box-shadow: 0 0 0 1px var(--color-btc), 0 0 28px rgb(247 147 26 / 0.35);
+    }
+
+    a.rv-card {
+        color: var(--color-ink);
+        transition: transform 150ms ease-out, border-color 150ms ease-out;
+    }
+
+    a.rv-card:hover {
+        border-color: var(--color-edge);
+        color: var(--color-ink);
+        transform: translateY(-2px);
+    }
+}
+
+@keyframes rv-pulse {
+    0%, 100% { opacity: 1; transform: scale(1); }
+    50% { opacity: 0.45; transform: scale(0.8); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .rv-live > i {
+        animation: none;
+    }
+
+    .rv-cw,
+    .rv-gt,
+    a.rv-card,
+    .rv-b,
+    .rv-b2 {
+        transition: none;
+    }
+
+    .rv-cw:hover,
+    .rv-gt:hover,
+    a.rv-card:hover {
+        transform: none;
+    }
+}

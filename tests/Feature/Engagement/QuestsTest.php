@@ -60,8 +60,8 @@ test('three games complete the weekly quest, and a result handled twice counts o
         ->and(QuestCredit::query()->where('quest', Quests::THREE_GAMES)->count())->toBe(6);
 
     $this->actingAs($a)->get(route('home'))->assertOk()
-        ->assertSee('data-test="quests"', false)
-        ->assertSee(__(':done of :count done', ['done' => 1, 'count' => 3]));
+        ->assertSee('data-test="home-your-week"', false)
+        ->assertSee(__('Quests :done of :count', ['done' => 1, 'count' => 3]));
 
     // A new ISO week starts from zero.
     $this->travelTo(CarbonImmutable::now()->addWeek()->startOfWeek()->addHour());

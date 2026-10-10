@@ -96,11 +96,11 @@ new class extends Component {
      x-on:dock-toggle.window="$event.detail && (open = false)"
      x-on:keydown.escape.window="open = false" x-on:click.outside="open = false" data-test="bell">
     <button type="button" x-on:click="open = ! open" x-bind:aria-expanded="open.toString()" aria-controls="bell-panel"
-            class="relative flex size-11 shrink-0 cursor-pointer items-center justify-center rounded-lg text-ink-2 hover:text-ink lg:border lg:border-line lg:bg-well"
+            class="relative flex size-11 shrink-0 cursor-pointer items-center justify-center rounded-[4px] text-ink-2 hover:text-ink"
             aria-label="{{ $unread > 0 ? trans_choice('Notifications, :count unread|Notifications, :count unread', $unread) : __('Notifications') }}" data-test="bell-button">
         <x-icon name="bell" />
         @if ($unread > 0)
-            <span class="absolute top-1 right-1 flex h-[18px] min-w-[18px] items-center justify-center rounded-full bg-btc px-1 text-[11px] leading-none font-bold text-on-btc" aria-hidden="true" data-test="bell-count">{{ $unread > 99 ? '99+' : $unread }}</span>
+            <span class="absolute top-1 right-1 flex h-4 min-w-4 items-center justify-center rounded-[2px] bg-raised px-[3px] text-[11px] leading-none font-medium text-ink-2 tabular-nums" aria-hidden="true" data-test="bell-count">{{ $unread > 99 ? '99+' : $unread }}</span>
         @endif
     </button>
 

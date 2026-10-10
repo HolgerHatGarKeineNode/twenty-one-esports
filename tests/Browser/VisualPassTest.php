@@ -90,7 +90,8 @@ test('every touched page shows its pictures at 1440 and 375, German at 375, with
     // Page => the selector of its new pictures and how many at least.
     $pages = [
         '/tournaments' => ['[data-test=cup-group-cover], [data-test^=state-segment-]', 5],
-        '/' => ['[data-test=cup-line-cover]', 3],
+        // The week's covers (desktop) and the browser games' covers (both widths; a phone with only chess on shows one): Main.dc.html, HomePhone.dc.html.
+        '/' => ['[data-test=week-row] [data-game-cover], [data-test=home-games] a[data-game] [data-game-cover]', 1],
         '/chess' => ['[data-test=cup-mention]', 2],
         '/games/rocket-league' => ['[data-test=cup-mention]', 2],
         route('tournaments.show', $cup, false) => ['[data-test=cup-mention]', 1],

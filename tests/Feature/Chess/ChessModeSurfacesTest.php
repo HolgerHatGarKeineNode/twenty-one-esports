@@ -99,8 +99,9 @@ test('home counts every live mode as live, and /games lists and filters every li
     surfaceGame(ChessGame::CORRESPONDENCE);
     $live = count(ChessModes::live());
 
+    // Home's mempool counts every running game, every live mode and the daily one (Main.dc.html "live 29").
     $home = $this->get(route('home'))->assertOk()->getContent();
-    expect($home)->toContain(trans_choice(':count live board|:count live boards', $live).', '.trans_choice(':count daily game|:count daily games', 1));
+    expect($home)->toMatch('#data-test="mempool-counts">\s*<span>live <b class="text-ink tabular-nums">'.($live + 1).'</b>#');
 
     $games = $this->get(route('games.index'))->assertOk()->getContent();
     expect(surfaceModes($games, 'live-game'))->toEqualCanonicalizing(ChessModes::live());

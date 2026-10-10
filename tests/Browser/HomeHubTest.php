@@ -1,7 +1,6 @@
 <?php
 
 use App\Games\Blockfill;
-use App\Games\GameRegistry;
 use App\Models\ChessGame;
 use App\Models\Clan;
 use App\Models\Rating;
@@ -38,9 +37,9 @@ pest()->group('browser');
 |
 | The longer German copy is held to the same first viewport and strip.
 |
-| With Blockfill on, its card closes the grid of the ladders (cover, this
-| week, the top three by time), in English and German at both widths:
-| every card and row inside the window, nothing overflowing.
+| With Blockfill on and no featured tournament, a guest's band is the
+| Blockfill week (revamp P3, HomeGuest.dc.html) with this week's time to
+| beat, in English and German at both widths, nothing overflowing.
 |
 | HOME_SHOTS=<dir> additionally writes the English screenshots there;
 | HOME_TAG=<before|after> runs the measurement of the first viewport (words,
@@ -122,9 +121,9 @@ const HOME_HUB_FIRST_VIEWPORT = <<<'JS'
     }
     JS;
 
-/** A box by selector, rounded, or null when it is not on the page. */
+/** The box of the first visible match, rounded, or null when none shows. */
 const HOME_HUB_BOX = <<<'JS'
-    (selector) => { const el = document.querySelector(selector); if (!el) return null; const r = el.getBoundingClientRect(); return { top: Math.round(r.top), bottom: Math.round(r.bottom), left: Math.round(r.left), right: Math.round(r.right), height: Math.round(r.height) }; }
+    (selector) => { const el = [...document.querySelectorAll(selector)].find((x) => x.checkVisibility()) ?? null; if (!el) return null; const r = el.getBoundingClientRect(); return { top: Math.round(r.top), bottom: Math.round(r.bottom), left: Math.round(r.left), right: Math.round(r.right), height: Math.round(r.height) }; }
     JS;
 
 /** Every visible element matching the selector, and what a tap at its centre hits. */
@@ -289,7 +288,7 @@ test('measure the first viewport of home (before and after)', function () {
  */
 function homeHubTaps(Page $page, string $label): void
 {
-    $selector = '[data-test=hero-cta], [data-test=hero-open-seat], [data-test=play-cta], [data-test=notify-block0], [data-test=your-next-item], [data-test=play-login]';
+    $selector = '[data-test=hero-cta], [data-test=hero-live], [data-test=notify-block0], [data-test=chain-present], [data-test=login-google], [data-test=login-nostr]';
     $floor = $page->evaluate(HOME_HUB_FLOOR);
     $hits = $page->evaluate(HOME_HUB_HITS, $selector);
     $first = array_values(array_filter($hits, fn (array $hit): bool => $hit['bottom'] <= $floor && $hit['top'] >= 0));
@@ -315,112 +314,89 @@ test('the next tournament leads home at 375 and 1440 px, for a guest and a playe
     planBlock0(now()->addDays(5)->setTime(21, 0)->toIso8601String());
 
     foreach ([[null, 'guest'], [$player, 'player']] as [$user, $who]) {
-        foreach ([[375, 667, 96], [1440, 900, 120]] as [$width, $height, $strip]) {
+        foreach ([[375, 667], [1440, 900]] as [$width, $height]) {
             $label = "{$who} {$width}x{$height}";
             $page = homeHubPage($user, $width, $height);
             $floor = $page->evaluate(HOME_HUB_FLOOR);
 
+            // The featured tournament is the band (Main.dc.html "Frame Hero", rule R9).
             expect($page->evaluate('() => document.querySelector("[data-test=home-hero]").dataset.tournament'))->toBe((string) $tournament->id);
 
-            // A player with an open match or a signed-up tournament has "Your next event" (UpcomingEvents) on top of home, ahead of the hero (93653e8a, 9c809992).
+            // A player with an open match or a signed-up tournament has "Your next event" (UpcomingEvents) on top of home, ahead of the band (93653e8a, 9c809992).
             $upcoming = $page->evaluate(HOME_HUB_BOX, '[data-test=upcoming-card]');
             $heroTop = $page->evaluate(HOME_HUB_BOX, '[data-test=home-hero]');
             expect($upcoming !== null)->toBe($user !== null, "{$label}: the next-event card is there for the player only");
 
             if ($upcoming !== null) {
-                expect($upcoming['top'])->toBeGreaterThanOrEqual(0)->and($upcoming['bottom'])->toBeLessThanOrEqual($heroTop['top'] + 1, "{$label}: the card comes before the hero");
+                expect($upcoming['top'])->toBeGreaterThanOrEqual(0)->and($upcoming['bottom'])->toBeLessThanOrEqual($heroTop['top'] + 1, "{$label}: the card comes before the band");
             }
 
-            // The hero's cover, name, time, seats and call to action lie inside the first viewport; behind that card on a phone the hero begins in it and goes on below the fold.
-            foreach (['hero-cover', 'hero-name', 'hero-when', 'hero-seats', 'hero-cta'] as $test) {
-                $box = $page->evaluate(HOME_HUB_BOX, "[data-test={$test}]");
+            // The pot and the call to action lie inside the first viewport; the seats beside them from lg. Behind the card on a phone the band begins in it.
+            foreach (['hero-pot', 'hero-cta', ...($width >= 1024 ? ['hero-taken', 'seats'] : [])] as $test) {
+                $box = $page->evaluate(HOME_HUB_BOX, "[data-test=home-hero] [data-test={$test}]");
                 fwrite(STDERR, "\n[home] {$label} {$test}: ".json_encode($box)."\n");
-                expect($box['top'])->toBeGreaterThanOrEqual(0, "{$label}: {$test} starts above the window");
+                expect($box)->not->toBeNull("{$label}: {$test} is not shown")
+                    ->and($box['top'])->toBeGreaterThanOrEqual(0, "{$label}: {$test} starts above the window");
 
                 if ($upcoming !== null && $width < 1024) {
-                    if ($test === 'hero-cover') {
-                        expect($box['top'])->toBeLessThan($floor, "{$label}: the hero's cover begins above the window's floor");
-                    }
-
                     continue;
                 }
 
                 expect($box['bottom'])->toBeLessThanOrEqual($floor, "{$label}: {$test} ends at {$box['bottom']}, under the floor {$floor}");
             }
 
-            // Twelve faces, four open seats, the count counted up to 12, the pot on the cover.
-            expect($page->evaluate('() => [...document.querySelectorAll("[data-test=hero-seat] img")].filter((i) => i.complete && i.naturalWidth > 0).length'))->toBe(12)
-                ->and($page->evaluate('() => document.querySelectorAll("[data-test=hero-seats] .is-open").length'))->toBe(4)
-                ->and($page->evaluate('() => document.querySelector("[data-test=hero-taken]").textContent.trim()'))->toBe('12')
-                ->and($page->evaluate('() => document.querySelector("[data-test=hero-pot]").innerText'))->toContain('sats pot');
-
-            // Block 0 is a strip under the hero, not a hero.
-            $block0 = $page->evaluate(HOME_HUB_BOX, '[data-test=block0-strip]');
-            $hero = $page->evaluate(HOME_HUB_BOX, '[data-test=home-hero]');
-            fwrite(STDERR, "\n[home] {$label} block0-strip: ".json_encode($block0)."\n");
-            expect($block0['height'])->toBeLessThanOrEqual($strip, "{$label}: the Block 0 strip is {$block0['height']} px high")
-                ->and($block0['top'])->toBeGreaterThan($hero['bottom']);
+            expect($page->evaluate('() => document.querySelector("[data-test=hero-taken]").textContent.trim()'))->toBe('12/16')
+                ->and($page->evaluate('() => document.querySelector("[data-test=hero-pot]").innerText'))->toContain('Sats');
 
             homeHubTaps($page, $label);
             homeHubClean($page, $label);
             homeHubShot($page, "after-{$who}-{$width}");
-
-            if ($who === 'guest') {
-                homeHubShot($page, "after-{$who}-{$width}-full", fullPage: true);
-            }
         }
     }
 
-    // A Livewire roundtrip on home (the invite module) answers without an error.
+    // A Livewire roundtrip on home (the next-event card) answers without an error.
     $page = homeHubPage($player, 1440, 900);
     $updates = '() => performance.getEntriesByType("resource").filter((e) => e.initiatorType === "fetch" && /livewire.*\/update/.test(e.name)).length';
     expect($page->evaluate($updates))->toBe(0);
-    $page->evaluate('() => Livewire.all().find((c) => c.el.querySelector("[data-test=invite-module]")).$wire.$refresh()');
+    $page->evaluate('() => Livewire.all().find((c) => c.el.matches("[data-test=upcoming-card]") || c.el.querySelector("[data-test=upcoming-card]")).$wire.$refresh()');
     BrowserWait::until($page, "() => ({$updates})() === 1", 10_000);
     homeHubClean($page, 'player 1440 after a roundtrip');
 });
 
-test('the longer German copy fits the same first viewport and strip', function () {
+test('the longer German copy fits the same first viewport', function () {
     homeHubSeed();
     planBlock0(now()->addDays(5)->setTime(21, 0)->toIso8601String());
 
-    foreach ([[375, 667, 96], [1440, 900, 120]] as [$width, $height, $strip]) {
+    foreach ([[375, 667], [1440, 900]] as [$width, $height]) {
         $label = "de {$width}x{$height}";
         $page = homeHubPage(null, $width, $height, 'de');
         $floor = $page->evaluate(HOME_HUB_FLOOR);
-        $cta = $page->evaluate(HOME_HUB_BOX, '[data-test=hero-cta]');
-        $block0 = $page->evaluate(HOME_HUB_BOX, '[data-test=block0-strip]');
-        fwrite(STDERR, "\n[home] {$label}: hero-cta ".json_encode($cta).' block0-strip '.json_encode($block0)."\n");
+        $cta = $page->evaluate(HOME_HUB_BOX, '[data-test=home-hero] [data-test=hero-cta]');
+        fwrite(STDERR, "\n[home] {$label}: hero-cta ".json_encode($cta)."\n");
 
         expect($page->evaluate('() => document.documentElement.lang'))->toBe('de')
-            ->and($cta['bottom'])->toBeLessThanOrEqual($floor)
-            ->and($block0['height'])->toBeLessThanOrEqual($strip);
+            ->and($cta['bottom'])->toBeLessThanOrEqual($floor);
         homeHubTaps($page, $label);
         homeHubClean($page, $label);
         homeHubShot($page, "after-de-{$width}");
     }
 });
 
-test('without an open tournament the games lead home at 375 and 1440 px', function () {
+test('without an open tournament home leads with the mempool and the games at 375 and 1440 px', function () {
     planBlock0(null);
 
-    foreach ([[375, 667, 96], [1440, 900, 120]] as [$width, $height, $strip]) {
+    foreach ([[375, 667], [1440, 900]] as [$width, $height]) {
         $label = "no tournament {$width}x{$height}";
         $page = homeHubPage(null, $width, $height);
         $floor = $page->evaluate(HOME_HUB_FLOOR);
 
-        expect($page->evaluate('() => document.querySelector("[data-test=home-hero]")'))->toBeNull()
-            ->and($page->evaluate('() => document.querySelector("[data-test=play-now]").hasAttribute("data-stage")'))->toBeTrue();
-
-        // The first game's cover and its call to action lie in the first viewport.
-        $cover = $page->evaluate(HOME_HUB_BOX, '[data-test=play-tile] [data-game-cover]');
-        $cta = $page->evaluate(HOME_HUB_BOX, '[data-test=play-cta]');
-        fwrite(STDERR, "\n[home] {$label}: cover ".json_encode($cover).' cta '.json_encode($cta)."\n");
-        expect($cover['bottom'])->toBeLessThanOrEqual($floor)->and($cta['bottom'])->toBeLessThanOrEqual($floor);
-
-        $block0 = $page->evaluate(HOME_HUB_BOX, '[data-test=block0-strip]');
-        fwrite(STDERR, "\n[home] {$label} block0-strip: ".json_encode($block0)."\n");
-        expect($block0['height'])->toBeLessThanOrEqual($strip, "{$label}: the Block 0 strip is {$block0['height']} px high");
+        // No band without a featured tournament or a Blockfill week: the mempool comes first, the games follow.
+        expect($page->evaluate('() => document.querySelector("[data-test=home-hero]")'))->toBeNull();
+        $mempool = $page->evaluate(HOME_HUB_BOX, '[data-test=home-mempool]');
+        $games = $page->evaluate(HOME_HUB_BOX, '[data-test=home-games]');
+        fwrite(STDERR, "\n[home] {$label}: mempool ".json_encode($mempool).' games '.json_encode($games)."\n");
+        expect($mempool['top'])->toBeLessThan($floor)
+            ->and($games['top'])->toBeGreaterThan($mempool['top']);
 
         homeHubTaps($page, $label);
         homeHubClean($page, $label);
@@ -428,89 +404,36 @@ test('without an open tournament the games lead home at 375 and 1440 px', functi
     }
 });
 
-/** Every card of the ladder grid and every row of the score card, measured. */
-const HOME_HUB_SCORE_GRID = <<<'JS'
-    () => {
-        const grid = document.querySelector('[data-test=ladders] ul');
-        grid.scrollIntoView({ block: 'start' });
-        const box = (el) => { const r = el.getBoundingClientRect(); return { left: Math.round(r.left), right: Math.round(r.right), top: Math.round(r.top), height: Math.round(r.height) }; };
-        const score = document.querySelector('[data-test=score-top]');
-        return {
-            heading: document.getElementById('ladders-h').textContent.trim(),
-            grid: { ...box(grid), scrollWidth: grid.scrollWidth, clientWidth: grid.clientWidth },
-            cards: [...grid.children].map((li) => ({ test: li.dataset.test, game: li.dataset.game, ...box(li), overflow: li.scrollWidth > li.clientWidth })),
-            rows: [...score.querySelectorAll('[data-test=score-row]')].map((row) => ({
-                text: row.innerText.replace(/\s+/g, ' ').trim(), ...box(row), overflow: row.scrollWidth > row.clientWidth,
-                time: row.lastElementChild.textContent.trim(), timeInside: row.lastElementChild.getBoundingClientRect().right <= row.getBoundingClientRect().right + 0.5,
-                avatar: (() => { const img = row.querySelector('img'); return !!img && img.complete && img.naturalWidth > 0; })(),
-            })),
-            subline: score.querySelector('a span span').textContent.trim(),
-            cover: (() => { const r = score.querySelector('[data-game-cover]').getBoundingClientRect(); return r.width > 0 && r.height > 0; })(),
-        };
-    }
-    JS;
-
-test('the Blockfill card sits in the ladder grid at 375 and 1440 px, in English and German', function () {
+test('a guest meets the Blockfill week as the band, with this week\'s time to beat from lg, in English and German', function () {
     BlockfillOn::play();
     $this->travelTo(CarbonImmutable::parse('2026-10-07 12:00:00'));
     leagueWeeksApproved(Blockfill::SLUG);
-    homeHubSeed();
     app(BlockfillWeeks::class)->open();
 
     // 958 ticks = 0:15.966; one name long enough to need truncating at 375 px.
-    foreach ([['zapmaster', 958], ['A very long Nostr display name that has to be cut off somewhere', 1100], ['lena.k', 1200], ['slowpoke', 3000]] as [$name, $ticks]) {
+    foreach ([['zapmaster', 958], ['A very long Nostr display name that has to be cut off somewhere', 1100], ['lena.k', 1200]] as [$name, $ticks]) {
         $run = StackerRun::factory()->for(User::factory()->create(['name' => $name]))->verified($ticks)->create(['submitted_at' => now()->subHours(2), 'week' => StackerRuns::weekOf(now())]);
         app(BlockfillWeeks::class)->record($run);
     }
 
-    // The games menu's order: the registry's, which the grid sorts by (a stable sort: a game's ladder stays before its score board).
-    $rank = array_flip(array_values(array_map(fn ($game) => $game->slug(), app(GameRegistry::class)->all())));
-    $inMenuOrder = function (array $games) use ($rank): array {
-        usort($games, fn (string $a, string $b): int => ($rank[$a] ?? PHP_INT_MAX) <=> ($rank[$b] ?? PHP_INT_MAX));
-
-        return $games;
-    };
-
     foreach ([['en', 375, 667], ['en', 1440, 900], ['de', 375, 667], ['de', 1440, 900]] as [$lang, $width, $height]) {
-        $label = "scores {$lang} {$width}x{$height}";
+        $label = "blockfill {$lang} {$width}x{$height}";
         $page = homeHubPage(null, $width, $height, $lang);
-        BrowserWait::until($page, '() => [...document.querySelectorAll("[data-test=score-top] img")].every((i) => (i.scrollIntoView(), i.complete))', 10_000);
-        $grid = $page->evaluate(HOME_HUB_SCORE_GRID);
-        homeHubRecord($label, $grid);
+        $floor = $page->evaluate(HOME_HUB_FLOOR);
+        $band = $page->evaluate('() => { const h = document.querySelector("[data-test=home-hero]"); const t = document.querySelector("[data-test=time-to-beat]"); return { hero: h?.dataset.hero ?? null, time: t && t.checkVisibility() ? t.innerText : null, overflow: [...h.querySelectorAll("*")].filter((el) => el.checkVisibility() && el.scrollWidth > el.clientWidth + 1 && getComputedStyle(el).textOverflow !== "ellipsis" && getComputedStyle(el).overflowX !== "auto").map((el) => el.dataset.test || el.tagName) }; }');
+        $cta = $page->evaluate(HOME_HUB_BOX, '[data-test=home-hero] [data-test=hero-cta]');
+        homeHubRecord($label, ['band' => $band, 'cta' => $cta]);
 
-        $score = array_values(array_filter($grid['cards'], fn (array $card): bool => $card['test'] === 'score-top'));
+        expect($band['hero'])->toBe('blockfill')
+            ->and($band['overflow'])->toBe([], "{$label}: something in the band overflows")
+            ->and($cta['bottom'])->toBeLessThanOrEqual($floor);
 
-        expect($grid['heading'])->toBe($lang === 'de' ? 'Die Spitze der Ladders und Bestenlisten' : 'Top of the ladders and leaderboards')
-            ->and($grid['grid']['scrollWidth'])->toBeLessThanOrEqual($grid['grid']['clientWidth'], "{$label}: the grid overflows")
-            ->and($score)->toHaveCount(1)
-            ->and($score[0]['game'])->toBe('blockfill')
-            // One list in the games menu's order, ladders and score boards interleaved (01cfde9b), not the score cards behind the ladders.
-            ->and(array_column($grid['cards'], 'game'))->toBe($inMenuOrder(array_column($grid['cards'], 'game')), "{$label}: the cards follow the games menu's order")
-            ->and($grid['cover'])->toBeTrue()
-            ->and($grid['subline'])->toBe($lang === 'de' ? 'Diese Woche' : 'This week')
-            ->and(array_column($grid['rows'], 'time'))->toBe(['0:15.966', '0:18.333', '0:20.000']);
-
-        foreach ($grid['cards'] as $card) {
-            expect($card['left'])->toBeGreaterThanOrEqual(0, "{$label}: {$card['game']} starts left of the window")
-                ->and($card['right'])->toBeLessThanOrEqual($width, "{$label}: {$card['game']} ends at {$card['right']}")
-                ->and($card['overflow'])->toBeFalse("{$label}: {$card['game']} overflows");
-        }
-
-        foreach ($grid['rows'] as $row) {
-            expect($row['overflow'])->toBeFalse("{$label}: row {$row['text']} overflows")
-                ->and($row['timeInside'])->toBeTrue("{$label}: the time of {$row['text']} sticks out")
-                ->and($row['avatar'])->toBeTrue("{$label}: the avatar of {$row['text']} did not load")
-                ->and($row['height'])->toBeGreaterThanOrEqual(44);
+        if ($width >= 1024) {
+            expect($band['time'])->toContain('0:15.966')->toContain('zapmaster');
         }
 
         homeHubClean($page, $label);
-        homeHubShot($page, "scores-{$lang}-{$width}");
-        $dir = getenv('HOME_SHOTS');
-
-        if (is_string($dir) && $dir !== '') {
-            $page->screenshotElement('[data-test=ladders]', "scores-section-{$lang}-{$width}");
-            File::move(base_path("tests/Browser/Screenshots/scores-section-{$lang}-{$width}.png"), "{$dir}/scores-section-{$lang}-{$width}.png");
-        }
+        homeHubShot($page, "blockfill-{$lang}-{$width}");
     }
 });
 

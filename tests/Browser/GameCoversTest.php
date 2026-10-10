@@ -123,15 +123,13 @@ test('covers show on /tournaments, the games menu, the challenge form and the ma
         gameCoverShot($landing, "covers-tournament-landing-{$width}");
         assertCleanPage($landing, "tournament landing at {$width}");
 
-        // The game hub ("All N games") from lg; below lg the game chips under the top bar, then the hub as a sheet.
+        // The game hub ("All N games") from lg; below lg the hub as a sheet from the tab bar's "Spiele".
         if ($width === 1440) {
             $page->locator('[data-test=games-menu]')->click();
             BrowserWait::until($page, '() => document.querySelector("[data-test=games-menu-ea-sports-fc-26]")?.checkVisibility()', 5_000);
             assertGameCovers($page, ['chess', 'rocket-league', 'ea-sports-fc-27', 'ea-sports-fc-26'], '#game-hub');
         } else {
-            BrowserWait::until($page, '() => document.querySelector("[data-test=mobile-ea-sports-fc-26]")?.checkVisibility()', 5_000);
-            assertGameCovers($page, ['chess', 'rocket-league', 'ea-sports-fc-27', 'ea-sports-fc-26'], '#game-chips');
-            $page->locator('[data-test=mobile-games-menu]')->click();
+            $page->locator('[data-test=tab-games]')->click();
             BrowserWait::until($page, '() => document.querySelector("[data-test=games-menu-ea-sports-fc-26]")?.checkVisibility()', 5_000);
             assertGameCovers($page, ['chess', 'rocket-league', 'ea-sports-fc-27', 'ea-sports-fc-26'], '#game-hub');
         }

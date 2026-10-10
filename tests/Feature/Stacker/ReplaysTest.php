@@ -506,7 +506,7 @@ test('the replays page reads the same number of queries for 2 and 8 own replays 
         ->and($count())->toBe($two);
 });
 
-test('the replay viewer and the replays page mark Replays in the context bar and the tab bar', function () {
+test('the replay viewer and the replays page mark Replays in the context bar and the phone\'s More sheet', function () {
     ['ada' => $ada, 'adaNow' => $adaNow] = replayShelves();
 
     foreach ([route('stacker.replays'), route('stacker.replays', ['week' => 'blockfill-2026-09-28']), route('stacker.replay', $adaNow)] as $url) {
@@ -514,7 +514,7 @@ test('the replay viewer and the replays page mark Replays in the context bar and
 
         expect($html)->toContain('data-test="context-bar" data-game="blockfill"')
             ->and($html)->toMatch('#href="'.preg_quote(route('stacker.replays'), '#').'"\s+aria-current="page"\s+class="ctx-link"\s+data-test="ctx-replays"#')
-            ->and($html)->toMatch('#href="'.preg_quote(route('stacker.replays'), '#').'"\s+class="tab"\s+aria-current="page"\s+data-test="tab-replays"#')
+            ->and($html)->toMatch('#href="'.preg_quote(route('stacker.replays'), '#').'"(?:\s+wire:navigate)?\s+class="[^"]*"\s+aria-current="page"\s+data-test="more-replays"#')
             ->and(preg_match_all('#aria-current="page"\s+class="ctx-link"#', $html))->toBe(1);
     }
 });

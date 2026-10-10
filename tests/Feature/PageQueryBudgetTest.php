@@ -210,7 +210,8 @@ const PAGE_BUDGETS = [
     'matches.room' => [null, 55],
     'live' => [14, 46],
     'clans.index' => [8, 43],
-    'mining' => [17, 48],
+    // +2 (plan "Refactor und Design-Revamp", P3): how the season works moved here from home (the rules in force, the draft).
+    'mining' => [19, 50],
     'games.index' => [5, 36],
     'matches.index' => [38, 69],
     'scores.show' => [7, 38],

@@ -498,14 +498,14 @@ test('at 390 px over the tab bar, and for a guest, the walk leaves nothing behin
     $results = Playwright::usingTimeout(60_000, function () use ($player): array {
         $results = [];
 
-        // The chess tab bar: Matches and Ladder navigate, Tournaments too; the logo goes home.
+        // The tab bar: Mempool and Tournaments navigate; the logo goes home.
         $page = navigatePage($player, '/', 390, 844);
         navigateOnline($page);
         $page->evaluate('() => { window.__kept = true; }');
         $results['phone'] = navigateWalk($page, [
-            ['[data-test=tab-matches]', '/matches'],
-            ['[data-test=tab-ladder]', '/ladder/chess/rapid'],
+            ['[data-test=tab-mempool]', '/matches'],
             ['[data-test=tab-tournaments]', '/tournaments'],
+            ['[data-test=tab-mempool]', '/matches'],
             ['[data-test=shell-home]', '/'],
         ], 3, true);
         $results['phone']['kept'] = $page->evaluate('() => window.__kept === true');

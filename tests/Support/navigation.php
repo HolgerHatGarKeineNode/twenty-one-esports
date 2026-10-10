@@ -11,6 +11,7 @@ use App\Models\Lineup;
 use App\Models\Rating;
 use App\Models\SeriesMatch;
 use App\Models\User;
+use App\Support\Chess\ChessModes;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\File;
 use Illuminate\Support\Facades\Route;
@@ -251,6 +252,10 @@ function navWorld(): array
     foreach ([$player, $captain, $organizer, $admin, ...User::factory()->count(2)->create()->all()] as $index => $user) {
         Rating::query()->create(['pool' => Rating::CASUAL, 'season' => '', 'game' => 'chess', 'mode' => 'blitz', 'subject' => 'user:'.$user->id,
             'user_id' => $user->id, 'rating' => 1000 + 20 * $index, 'results' => 3, 'wins' => 2, 'draws' => 0, 'losses' => 1]);
+        // The ladder the chrome links (the game hub's "Ladder", ChessModes::DEFAULT): since home lost its ladder tiles
+        // (revamp P3, Main.dc.html) a guest reaches a player through it, so it has players too.
+        Rating::query()->create(['pool' => Rating::CASUAL, 'season' => '', 'game' => 'chess', 'mode' => ChessModes::DEFAULT, 'subject' => 'user:'.$user->id,
+            'user_id' => $user->id, 'rating' => 1010 + 20 * $index, 'results' => 3, 'wins' => 2, 'draws' => 0, 'losses' => 1]);
     }
 
     ClanInvite::query()->create([

@@ -150,7 +150,7 @@ const TMNF_BOARD_MEASURE = <<<'JS'
 
 test('the week board leads with the cover and How to join above the fold, the podium and the track fit, clean console', function (string $locale, int $width, int $height) {
     $page = tmnfWeekPage($this->me, $locale, $width, $height, route('tournaments.scores', $this->week, false));
-    BrowserWait::until($page, '() => document.querySelector("[data-test=tmnf-podium]") !== null && document.querySelector("[data-game-cover=tmnf] img")?.complete', 10_000);
+    BrowserWait::until($page, '() => document.querySelector("[data-test=tmnf-podium]") !== null && document.querySelector("#content [data-game-cover=tmnf] img")?.complete', 10_000);
 
     $m = $page->evaluate(TMNF_BOARD_MEASURE);
     fwrite(STDERR, "tmnf board {$locale} {$width}: ".json_encode($m).PHP_EOL);
@@ -213,7 +213,10 @@ test('the official TMNF cover is the picture on the home page\'s game grid, the 
 
         expect($pixel['src'])->toMatch('/^tmnf-(480|1280)\.(webp|jpg)$/')
             ->and(min($pixel['rgb']))->toBeGreaterThan(220);
-        expect($pixel['shown'])->toBeGreaterThan(120);
+        // On a phone home names the own-copy games in one line (HomePhone.dc.html): the cover is in the markup, not shown.
+        if ($name !== 'home' || $width >= 1024) {
+            expect($pixel['shown'])->toBeGreaterThan(120);
+        }
         $page->evaluate('() => document.querySelector("[data-probed]").scrollIntoView({ block: "center" })');
         shellShot($page, "tmnf-cover-{$name}-{$width}");
 

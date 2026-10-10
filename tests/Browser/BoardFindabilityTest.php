@@ -65,21 +65,10 @@ test('the board games are a group at the end of /play, in the casual block and a
     }
 
     shellOpen($page, '/', $problems);
-    $home = $page->evaluate('() => ({ tiles: [...document.querySelectorAll("[data-test=play-tile]")].map((el) => el.dataset.game), scroll: document.documentElement.scrollWidth, client: document.documentElement.clientWidth })');
-
-    // The header: the phone's game chips put the board games at the end.
-    $chips = $page->evaluate(<<<'JS'
-        () => {
-            const row = document.getElementById('game-chips');
-            if (!row || !row.checkVisibility()) return null;
-            const r = row.getBoundingClientRect();
-            return [...row.querySelectorAll('a.gchip')].map((chip) => ({ test: chip.dataset.test ?? 'chess', visible: chip.getBoundingClientRect().right <= r.right + 1 }));
-        }
-        JS);
-    // Row 1 on the desktop: the room left beside the tabs (a board games tab would need about 160 px).
-    $spare = $page->evaluate('() => { const g = document.querySelector("[data-test=game-tabs] > span.grow"); return g && g.checkVisibility() ? Math.round(g.getBoundingClientRect().width) : null; }');
+    // The browser games of home (the desktop grid or the phone's list, whichever shows; Main.dc.html, HomePhone.dc.html).
+    $home = $page->evaluate('() => ({ tiles: [...document.querySelectorAll("[data-test=browser-games] a[data-game], [data-test=browser-games-list] a[data-game]")].filter((el) => el.checkVisibility()).map((el) => el.dataset.game), scroll: document.documentElement.scrollWidth, client: document.documentElement.clientWidth })');
     $shell = $page->evaluate(SHELL_MEASURE);
-    fwrite(STDERR, "\n[board findability] {$locale} {$width}".($player ? ' player' : ' guest').': '.json_encode(compact('play', 'home', 'chips', 'spare')));
+    fwrite(STDERR, "\n[board findability] {$locale} {$width}".($player ? ' player' : ' guest').': '.json_encode(compact('play', 'home')));
 
     $boards = [NineMensMorris::SLUG, Checkers::SLUG];
 
@@ -102,13 +91,6 @@ test('the board games are a group at the end of /play, in the casual block and a
         ->and($home['scroll'])->toBeLessThanOrEqual($home['client'])
         ->and($shell['squeezed'])->toBe([])
         ->and($problems)->toBe([]);
-
-    if ($width < 1024) {
-        $order = array_column($chips, 'test');
-
-        // The strip scrolls (at 390 px it shows one chip whole); the board games are the last chips.
-        expect(array_slice($order, -2))->toBe(['mobile-'.NineMensMorris::SLUG, 'mobile-'.Checkers::SLUG]);
-    }
 
     if ($width >= 1024) {
         // On the desktop the casual block's board tiles are in the first viewport.

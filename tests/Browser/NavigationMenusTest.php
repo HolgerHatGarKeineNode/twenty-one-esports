@@ -198,29 +198,29 @@ test('the header search: type and press Enter at 375 and 1440 px, results for a 
     $series = SeriesMatch::factory()->create();
     $problems = [];
 
-    // One field at every width, in the search row under the header (plan "Mempool-Streifen", P4): the button opens it on a phone, "/" on desktop.
-    foreach ([375 => '#site-search', 1440 => '#site-search'] as $width => $field) {
+    // A phone opens the search row with its button; from lg the field stands in row 1 (Header.dc.html) and "/" focuses it.
+    foreach ([375 => '#site-search', 1440 => '#site-search-inline'] as $width => $field) {
         $page = navPage(null, $width);
         navOpen($page, '/rules', $problems);
 
         if ($width === 375) {
             $page->locator('[aria-controls=mobile-search]')->click();
+            BrowserWait::until($page, '() => document.getElementById("site-search").checkVisibility()', 5_000);
+
+            // Esc closes the row and gives the focus back to the search button, as the hub and the More sheet do.
+            $page->locator('#site-search')->press('Escape');
+            BrowserWait::until($page, '() => !document.getElementById("site-search").checkVisibility() && document.activeElement?.dataset.test === "mobile-search-toggle"', 5_000);
+            $page->locator('[data-test=mobile-search-toggle]')->click();
+            BrowserWait::until($page, '() => document.getElementById("site-search").checkVisibility() && document.activeElement?.id === "site-search"', 5_000);
         } else {
             $page->evaluate('() => document.activeElement.blur()');
             $page->locator('body')->press('/');
-            BrowserWait::until($page, '() => document.activeElement?.id === "site-search"', 5_000);
-            // The row opens under the header, its field at the end of row 1 (same 32 px inset), below the button.
-            $row = $page->evaluate('() => { const f = document.getElementById("site-search").getBoundingClientRect(), b = document.querySelector("[data-test=mobile-search-toggle]").getBoundingClientRect(), r = document.querySelector("body > header > div").getBoundingClientRect(); return [Math.round(f.width), Math.round(r.right - f.right), f.top >= b.bottom]; }');
-            fwrite(STDERR, "\n[nav-search] 1440px field width, inset from the right, below the button: ".json_encode($row));
-            expect($row)->toBe([384, 32, true]);
+            BrowserWait::until($page, '() => document.activeElement?.id === "site-search-inline"', 5_000);
+            // The field sits inside row 1, after the nav.
+            $row = $page->evaluate('() => { const f = document.getElementById("site-search-inline").getBoundingClientRect(), n = document.querySelector("[data-test=main-nav]").getBoundingClientRect(), r = document.querySelector("body > header > div").getBoundingClientRect(); return [f.left >= n.right, f.top >= r.top && f.bottom <= r.bottom, Math.round(f.width) >= 120]; }');
+            fwrite(STDERR, "\n[nav-search] 1440px field after the nav, inside row 1, at least 120 px: ".json_encode($row));
+            expect($row)->toBe([true, true, true]);
         }
-        BrowserWait::until($page, '() => document.getElementById("site-search").checkVisibility()', 5_000);
-
-        // Esc closes the row and gives the focus back to the search button, on a phone and on desktop, as the hub and the More sheet do.
-        $page->locator('#site-search')->press('Escape');
-        BrowserWait::until($page, '() => !document.getElementById("site-search").checkVisibility() && document.activeElement?.dataset.test === "mobile-search-toggle"', 5_000);
-        $page->locator('[data-test=mobile-search-toggle]')->click();
-        BrowserWait::until($page, '() => document.getElementById("site-search").checkVisibility() && document.activeElement?.id === "site-search"', 5_000);
 
         $page->locator($field)->fill('mempool');
         $page->locator($field)->press('Enter');
@@ -385,7 +385,7 @@ test('the admin nav: groups on top, only the active group\'s pages below, the wh
     expect($failures)->toBe([])->and($problems)->toBe([]);
 });
 
-test('Blockfill\'s replays: a tab of its context bar and its tab bar, marked on the replays page, on a replay and on a shared moment, at 375 and 1440 px', function () {
+test('Blockfill\'s replays: a tab of its context bar and of the phone\'s More sheet, marked on the replays page, on a replay and on a shared moment, at 375 and 1440 px', function () {
     BlockfillOn::play();
     leagueWeeksApproved(Blockfill::SLUG);
     $player = User::factory()->create(['name' => 'Replay Walker']);
@@ -399,11 +399,17 @@ test('Blockfill\'s replays: a tab of its context bar and its tab bar, marked on 
 
         foreach (['replays' => route('stacker.replays', absolute: false), 'replay' => route('stacker.replay', $run, false), 'moment' => route('stacker.moment', $run->id, false)] as $key => $url) {
             navOpen($page, $url, $problems);
+            if ($width < 1024) {
+                // Phones: the game's own pages are in the More sheet (the tab bar is the same five places everywhere, Header.dc.html).
+                $page->locator('[data-test=tab-more]')->click();
+                BrowserWait::until($page, '() => document.getElementById("more-sheet").checkVisibility()', 5_000);
+                $page->evaluate('() => Promise.all(document.getElementById("more-sheet").getAnimations().map((a) => a.finished)).then(() => true)');
+            }
             // [the bar shown, its Replays link: href, aria-current, height, left, right; how many links of the bar are current]
             $bar = $page->evaluate(<<<'JS'
                 () => {
-                    const shown = [...document.querySelectorAll('[data-test=context-bar], [data-test=tab-bar]')].find((bar) => bar.checkVisibility());
-                    const link = shown?.querySelector('[data-test=ctx-replays], [data-test=tab-replays]');
+                    const shown = [...document.querySelectorAll('[data-test=context-bar], [data-test=more-game]')].find((bar) => bar.checkVisibility());
+                    const link = shown?.querySelector('[data-test=ctx-replays], [data-test=more-replays]');
                     const r = link?.getBoundingClientRect();
                     return link ? [shown.dataset.test, link.getAttribute('href'), link.getAttribute('aria-current'), Math.round(r.height), Math.round(r.left), Math.round(r.right),
                         shown.querySelectorAll('a[aria-current=page]').length, document.documentElement.scrollWidth <= document.documentElement.clientWidth] : null;
@@ -412,7 +418,7 @@ test('Blockfill\'s replays: a tab of its context bar and its tab bar, marked on 
             fwrite(STDERR, "\n[nav-replays] {$width}px {$key}: ".json_encode($bar));
 
             expect($bar)->not->toBeNull("{$key} at {$width}px: no Replays in the shown bar")
-                ->and($bar[0])->toBe($width >= 1024 ? 'context-bar' : 'tab-bar')
+                ->and($bar[0])->toBe($width >= 1024 ? 'context-bar' : 'more-game')
                 ->and($bar[1])->toBe(route('stacker.replays'))
                 ->and($bar[2])->toBe('page')
                 ->and($bar[3])->toBeGreaterThanOrEqual(44)
@@ -425,7 +431,11 @@ test('Blockfill\'s replays: a tab of its context bar and its tab bar, marked on 
 
         // From the game page the Replays tab leads to the replays page.
         navOpen($page, route('stacker.play', absolute: false), $problems);
-        $page->locator($width >= 1024 ? '[data-test=ctx-replays]' : '[data-test=tab-replays]')->click();
+        if ($width < 1024) {
+            $page->locator('[data-test=tab-more]')->click();
+            BrowserWait::until($page, '() => document.getElementById("more-sheet").checkVisibility()', 5_000);
+        }
+        $page->locator($width >= 1024 ? '[data-test=ctx-replays]' : '[data-test=more-replays]')->click();
         BrowserWait::until($page, '() => location.pathname === "/blockfill/replays" && document.readyState === "complete"', 10_000);
         expect($page->evaluate('() => !! document.querySelector("[data-test=replays-page]")'))->toBeTrue();
     }

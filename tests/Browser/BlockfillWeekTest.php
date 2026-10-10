@@ -223,7 +223,7 @@ const BLOCKFILL_WEEK_PAGE_MEASURE = <<<'JS'
 test('the week\'s page leads with the cover and Play now above the fold, the rules as chips, the podium and the board fit, the way onward, clean console', function (string $locale, int $width, int $height) {
     $week = app(BlockfillWeeks::class)->current();
     $page = blockfillWeekPage($this->me, $locale, $width, $height, route('tournaments.show', $week, false));
-    BrowserWait::until($page, '() => document.querySelector("[data-test=week-podium]") !== null && document.querySelector("[data-game-cover=blockfill] img")?.complete', 10_000);
+    BrowserWait::until($page, '() => document.querySelector("[data-test=week-podium]") !== null && document.querySelector("#content [data-game-cover=blockfill] img")?.complete', 10_000);
     $page->evaluate('() => window.scrollTo(0, 0)');
 
     $m = $page->evaluate(BLOCKFILL_WEEK_PAGE_MEASURE);

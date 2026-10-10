@@ -16,6 +16,7 @@ use App\Support\Chess\ChessGameService;
 use App\Support\Chess\ChessTeamMatches;
 use App\Support\Clans\ClanStats;
 use App\Support\Dock\OpenMatches;
+use App\Support\Engagement\HomeHub;
 use App\Support\Pages\RulesPage;
 use App\Support\Players\RecentResults;
 use App\Support\Series\ChallengeDraft;
@@ -161,20 +162,19 @@ test('the Team filter on /matches lists the team matches only, and the table nam
         ->call('pickGame', 'team')->assertSet('game', 'team')->assertSee($match->label())->assertDontSeeHtml('data-test="chess-row"');
 });
 
-test('home shows a live team match with its score, and its result among the latest results', function () {
+test('a live team match is among the hub\'s live ones, and its result among the latest results', function () {
     ['match' => $match] = surfaceTeamMatch(start: true);
+    $hub = fn () => new HomeHub(null);
 
-    $this->get(route('home'))->assertOk()
-        ->assertSeeHtml('data-test="live-team-match"')
-        ->assertSeeInOrder([$match->sideName('challenger'), '0 : 0', $match->sideName('challenged')]);
+    // Home no longer lists them (board Main); the mempool carries the match (MempoolStrip), HomeHub keeps the lists.
+    expect($hub()->liveTeamMatches()->modelKeys())->toBe([$match->id]);
 
     $boards = surfaceBoards($match);
     surfaceWhiteWins($boards[1]);
     surfaceWhiteWins($boards[2]);
 
-    $this->get(route('home'))->assertOk()
-        ->assertDontSeeHtml('data-test="live-team-match"')
-        ->assertSee(__(':a drew with :b', ['a' => $match->sideName('challenger'), 'b' => $match->sideName('challenged')]));
+    expect($hub()->liveTeamMatches()->modelKeys())->toBe([])
+        ->and(collect($hub()->results())->contains(fn (array $result): bool => $result['draw'] && $result['winner'] === $match->sideName('challenger')))->toBeTrue();
 });
 
 test('the profile names a board game as a board of its team match, and the team result with its board points', function () {

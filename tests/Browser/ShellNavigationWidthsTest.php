@@ -54,9 +54,9 @@ test('row 1 and row 2 fit 1024, 1280 and 1440 px and the phone bars fit 320, 375
                 $failures[] = "{$role} @{$width}: small targets ".json_encode($m['small']);
             }
             if ($width >= 1024) {
-                // Row 1 (64) and row 2 (48); a guest's "New here?" strip comes on top until dismissed.
+                // One 56 px row on a page of no game (Header.dc.html); a guest's "New here?" strip comes on top until dismissed.
                 $rows = array_sum(array_map(fn (string $row): int => (int) substr(strrchr($row, ' '), 1), array_filter($m['rows'], fn (string $row) => ! str_starts_with($row, 'first-steps'))));
-                expect($rows)->toBeLessThanOrEqual(112, "{$role} @{$width}: chrome rows ".json_encode($m['rows']));
+                expect($rows)->toBeLessThanOrEqual(56, "{$role} @{$width}: chrome rows ".json_encode($m['rows']));
                 expect($m['tabbar'])->toBeNull();
             } else {
                 expect($m['tabbar'])->not->toBeNull()
@@ -103,7 +103,7 @@ test('row 1 fits its widest real state: Tournaments with its sign-up count, a fo
         file_put_contents($hls.'/stream.m3u8', "#EXTM3U\n");
         Cache::forget(LiveStatus::CACHE_KEY);
     };
-    $liveBadge = '() => { const b = [...document.querySelectorAll("[data-test=live-badge]")].find((el) => el.checkVisibility()); if (!b) return null; const r = b.getBoundingClientRect(); return [Math.round(r.width), Math.round(r.height), !!b.closest("[data-test=game-tabs]")]; }';
+    $liveBadge = '() => { const b = [...document.querySelectorAll("[data-test=live-badge]")].find((el) => el.checkVisibility()); if (!b) return null; const r = b.getBoundingClientRect(); return [Math.round(r.width), Math.round(r.height), !!b.closest("[data-test=main-nav]")]; }';
 
     // The guest first: the pages of one test share their cookies, so a guest after the login would not be one.
     foreach (['guest' => null, 'admin' => $admin] as $role => $user) {
@@ -120,8 +120,8 @@ test('row 1 fits its widest real state: Tournaments with its sign-up count, a fo
                 $key = "{$role} {$locale}@{$width}";
                 $sizes[$key] = ['squeezed' => $m['squeezed'], 'scroll' => $m['scroll'], 'client' => $m['client'], 'badge' => $badge, 'live' => $live, 'row' => $row];
                 fwrite(STDERR, "\n[shell-row1] {$key}: ".json_encode($row));
-                // The rail: the count and Casual at every width; the Block 0 tag from 96rem.
-                $rail = $row['count'] === '1234' && $row['admin'] === ($role === 'admin' ? '12' : null) && $row['casual'] !== null && ($row['tag'] !== null) === ($width >= 1536);
+                // The mempool count at every width, the Block 0 tag from 80rem (Header.dc.html; it steps aside at 1024).
+                $rail = $row['count'] === '1234' && $row['admin'] === ($role === 'admin' ? '12' : null) && ($row['tag'] !== null) === ($width >= 1280);
                 if ($m['lang'] !== $locale || $m['scroll'] > $m['client'] || $m['squeezed'] !== [] || $row['problems'] !== [] || ! $rail || $badge === null || $badge[2] !== '2' || $live === null || $live[2] !== true) {
                     $failures[] = "{$key}: ".json_encode($sizes[$key]);
                 }
@@ -132,22 +132,21 @@ test('row 1 fits its widest real state: Tournaments with its sign-up count, a fo
         }
     }
 
-    // Phones: the Tournaments tab carries the dot, inside its icon's box (a dot past the edge made the label's span scroll).
+    // Phones: the Tournaments tab names the open count (no dot on the board's tab bar, Header.dc.html "Handy").
     $page = shellPage($admin, 375, 667);
     // The pages of one test share their cookies: back to English after the German run.
     $page->goto(ComputeUrl::from(route('locale.switch', 'en', false)));
     shellOpen($page, '/rules', $problems);
-    $dot = $page->evaluate('() => { const d = document.querySelector("[data-test=tab-tournaments-dot]"); const t = document.querySelector("[data-test=tab-tournaments]"); if (!d || !d.checkVisibility()) return null; const r = d.getBoundingClientRect(); const b = t.getBoundingClientRect(); return { dot: [Math.round(r.width), Math.round(r.height)], inside: r.left >= b.left && r.right <= b.right && r.top >= b.top, name: t.getAttribute("aria-label"), squeezed: ('.SHELL_MEASURE.')().squeezed }; }');
-    fwrite(STDERR, "\n[shell-tournaments] 375 tab dot ".json_encode($dot));
-    expect($dot)->toMatchArray(['dot' => [8, 8], 'inside' => true, 'name' => 'Tournaments, 2 open for sign-up', 'squeezed' => []]);
-    shellShot($page, 'shell-admin-375-tournaments-dot');
+    $tab = $page->evaluate('() => ({ name: document.querySelector("[data-test=tab-tournaments]").getAttribute("aria-label"), squeezed: ('.SHELL_MEASURE.')().squeezed })');
+    expect($tab)->toMatchArray(['name' => 'Tournaments, 2 open for sign-up', 'squeezed' => []]);
+    shellShot($page, 'shell-admin-375-tournaments');
 
     fwrite(STDERR, "\n[shell-tournaments] ".json_encode($sizes));
     File::deleteDirectory($hls);
     expect($failures)->toBe([])->and($problems)->toBe([]);
 });
 
-test('on a phone the active game chip shows whole and no chip label is cut, with each game active, at 320 and 375 px, and in German at 320 px for a guest and a player', function () {
+test('on a phone the top bar and the tab bar keep every label whole and every target at 44 px on each game page, at 320 and 375 px, and in German at 320 px for a guest and a player', function () {
     $problems = [];
     $failures = [];
     $pages = [
@@ -170,8 +169,7 @@ test('on a phone the active game chip shows whole and no chip label is cut, with
         foreach ($pages as $slug => $url) {
             shellOpen($page, $url, $problems);
             $m = $page->evaluate(SHELL_MEASURE);
-            $chips = $page->evaluate('() => [...document.querySelectorAll("#game-chips .gchip")].map((c) => `${c.textContent.trim()} ${Math.round(c.getBoundingClientRect().width)}${c.hasAttribute("aria-current") ? " active" : ""}`)');
-            fwrite(STDERR, "\n[shell-chips] {$role} {$locale} {$slug} @{$width}: ".json_encode($chips));
+            fwrite(STDERR, "\n[shell-phone] {$role} {$locale} {$slug} @{$width}: ".json_encode($m['small']));
             if ($m['lang'] !== $locale || $m['squeezed'] !== [] || $m['small'] !== []) {
                 $failures[] = "{$role} {$locale} {$slug} @{$width}: ".json_encode(['lang' => $m['lang'], 'squeezed' => $m['squeezed'], 'small' => $m['small']]);
             }

@@ -110,10 +110,10 @@ test('the tournaments page has the filter bar and every row carries game, region
     expect($special->refresh()->isCasualCup())->toBeFalse();
 });
 
-test('home names the board with a link to the filters, a game page shows its own pair without covers or filters', function () {
+test('home lists the cups in this week\'s list with a link to all tournaments, a game page shows its own pair without covers or filters', function () {
     $this->get(route('home'))->assertOk()
-        ->assertSeeHtml('id="cup-board-h"')
-        ->assertSeeHtml('data-test="cup-board-all"')
+        ->assertSeeHtml('data-test="week-row"')
+        ->assertSeeHtml('href="'.route('tournaments.index').'"')
         ->assertDontSeeHtml('data-test="cup-filters"');
 
     $game = $this->get('/games/rocket-league')->assertOk()->getContent();

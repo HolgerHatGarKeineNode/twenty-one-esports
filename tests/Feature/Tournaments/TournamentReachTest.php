@@ -155,17 +155,18 @@ test('a special tournament heads every page even when a casual cup starts sooner
     $special = openFor('chess', 'blitz', ['name' => 'Friday Blitz Special', 'published_at' => now()]);
     $rlCup = openFor('rocket-league', '3v3', ['name' => 'Rocket League Casual Cup EU #1', 'cup_series' => 'rocket-league-eu', 'cup_number' => 1, 'published_at' => now()]);
 
+    // Home lists the cups in this week's list (Main.dc.html), the other pages as cup mentions.
     $pages = [
-        '/chess' => 'data-test="next-tournament" data-tournament="',
-        route('tournaments.index') => 'data-test="next-tournament" data-tournament="',
-        route('home') => 'data-test="home-hero" data-tournament="',
+        '/chess' => ['data-test="next-tournament" data-tournament="', 'data-test="cup-mention"'],
+        route('tournaments.index') => ['data-test="next-tournament" data-tournament="', 'data-test="cup-mention"'],
+        route('home') => ['data-test="home-hero" data-tournament="', 'data-test="week-row"'],
     ];
 
-    foreach ($pages as $url => $hero) {
+    foreach ($pages as $url => [$hero, $mention]) {
         $html = $this->get($url)->assertOk()->getContent();
 
         expect(str($html)->after($hero)->before('"')->toString())->toBe((string) $special->id, $url)
-            ->and($html)->toContain('data-test="cup-mention"')
+            ->and($html)->toContain($mention)
             ->and(strpos($html, 'Chess Casual Cup EU #1'))->toBeGreaterThan(strpos($html, $hero), $url);
     }
 
@@ -178,7 +179,7 @@ test('a special tournament heads every page even when a casual cup starts sooner
 
     // Only cups open anywhere: no hero at all on home, and none on the index.
     $special->forceFill(['status' => TournamentStatus::Draft])->save();
-    $this->get(route('home'))->assertOk()->assertDontSeeHtml('data-test="home-hero"')->assertSeeHtml('data-test="cup-mention"');
+    $this->get(route('home'))->assertOk()->assertDontSeeHtml('data-test="home-hero"')->assertSeeHtml('data-test="week-row"');
     $this->get(route('tournaments.index'))->assertOk()->assertDontSeeHtml('data-test="next-tournament"');
     expect($cup->refresh()->isCasualCup())->toBeTrue();
 });

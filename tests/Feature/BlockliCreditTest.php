@@ -75,7 +75,7 @@ function blockliPages(User $player): array
 
 const BLOCKLI_BOXES = [
     'games' => ['games card' => '[data-test="play-game-blockli"]', 'games menu (desktop hub)' => '#game-hub li.hub-card[data-name*="blockli"]'],
-    'home' => ['home tile' => '[data-test="play-tile"][data-game="blockli"]'],
+    'home' => ['home tile' => '[data-test="game-tile"][data-game="blockli"]', 'home phone row' => '[data-test="browser-games-list"] a[data-game="blockli"]'],
     'lobby' => ['lobby title' => '[data-test="lobby-title"]', 'context bar' => '[data-test="context-bar"][data-game="blockli"]'],
     'board' => ['board page head' => '[data-test="board-game"]'],
     'rules' => ['rules section' => 'section#blockli, #blockli', 'rules games table' => 'table [data-game-cover="blockli"] < tr'],

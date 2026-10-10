@@ -1,45 +1,44 @@
 @php
-    // Three counts on every page: fresh for 60 s, then served stale for up to
-    // another 60 s while one request recounts them after its response (P5g).
-    // A failing cache store is reported and the counts are taken directly:
-    // the footer never takes a page down.
-    $count = fn () => [
-        'players' => \App\Models\User::query()->count(),
-        'clans' => \App\Models\Clan::query()->count(),
-        // Every game the league plays, in one query: the stream's own count (StreamStats), so the two never disagree.
-        'games' => \App\Support\TwentyOne\Stream\StreamStats::played(),
-    ];
-
-    try {
-        $stats = \Illuminate\Support\Facades\Cache::flexible('footer.stats', [60, 120], $count);
-    } catch (\Throwable $e) {
-        report($e);
-        $stats = $count();
-    }
+    // Three counts on every page (App\Support\Engagement\HomeBoard::stats(), cached; the login page shows the same).
+    $stats = \App\Support\Engagement\HomeBoard::stats();
     $locales = ['en' => 'English', 'de' => 'Deutsch'];
     $current = app()->getLocale();
 @endphp
 
-{{-- Footer from Main.dc.html (desktop) and MobileHome.dc.html (mobile), plus the language switch. --}}
-<footer class="shrink-0 border-t border-hairline text-xs text-ink-3">
-    <div class="hidden h-14 items-center gap-9 px-12 lg:flex">
-        <span>{{ __('Players') }} <b class="text-ink">{{ $stats['players'] }}</b></span>
-        <span>{{ __('Clans') }} <b class="text-ink">{{ $stats['clans'] }}</b></span>
-        <span>{{ __('Games played') }} <b class="text-ink">{{ $stats['games'] }}</b></span>
+{{-- Footer, 1:1 from the design canvas (Header.dc.html "Fußzeile", Main.dc.html, HomePhone.dc.html): the league's three counts, the links with Impressum, the language. --}}
+<footer class="shrink-0 border-t border-hairline bg-ground text-[13px]" data-test="footer">
+    <div class="hidden items-center gap-6 px-12 py-6 lg:flex">
+        <span class="text-ink-2">{{ __('Players') }} <b class="text-ink">{{ $stats['players'] }}</b></span>
+        <span class="text-ink-2">{{ __('Clans') }} <b class="text-ink">{{ $stats['clans'] }}</b></span>
+        <span class="text-ink-2">{{ __('Games played') }} <b class="text-ink">{{ $stats['games'] }}</b></span>
         <span class="grow"></span>
-        <a href="{{ route('rules') }}" @navigate(route('rules')) class="inline-flex min-h-11 items-center">{{ __('Rules') }}</a>
-        <a href="{{ route('protocol') }}" @navigate(route('protocol')) class="inline-flex min-h-11 items-center">{{ __('Open protocol') }}</a>
-        <a href="https://github.com/HolgerHatGarKeineNode/twenty-one-esports" target="_blank" rel="noopener" class="inline-flex min-h-11 items-center" data-test="source-code">{{ __('Open source') }}</a>
-        <a href="https://einundzwanzig.space/kontakt/" target="_blank" rel="noopener" class="inline-flex min-h-11 items-center" data-test="imprint">{{ __('Legal notice') }}</a>
-        <x-shell.language-switch :locales="$locales" :current="$current" />
+        <a href="{{ route('rules') }}" @navigate(route('rules')) class="inline-flex min-h-6 items-center text-btc">{{ __('Rules') }}</a>
+        <a href="{{ route('protocol') }}" @navigate(route('protocol')) class="inline-flex min-h-6 items-center text-btc">{{ __('Open protocol') }}</a>
+        <a href="https://github.com/HolgerHatGarKeineNode/twenty-one-esports" target="_blank" rel="noopener" class="inline-flex min-h-6 items-center text-btc" data-test="source-code">{{ __('Open source') }}</a>
+        <a href="https://einundzwanzig.space/kontakt/" target="_blank" rel="noopener" class="inline-flex min-h-6 items-center text-btc" data-test="imprint">{{ __('Legal notice') }}</a>
+        <nav aria-label="{{ __('Language') }}" class="flex items-center gap-2">
+            @foreach ($locales as $code => $name)
+                @if ($code === $current)
+                    <b lang="{{ $code }}" aria-current="true" class="text-ink">{{ $name }}</b>
+                @else
+                    <a href="{{ route('locale.switch', $code) }}" lang="{{ $code }}" hreflang="{{ $code }}" class="inline-flex min-h-6 items-center text-ink-2 hover:text-ink">{{ $name }}</a>
+                @endif
+            @endforeach
+        </nav>
     </div>
 
-    <div class="flex flex-wrap gap-x-5 px-4 pt-2 pb-4 lg:hidden">
-        <a href="{{ route('rules') }}" @navigate(route('rules')) class="inline-flex min-h-11 items-center text-ink-2">{{ __('Rules') }}</a>
-        <a href="{{ route('protocol') }}" @navigate(route('protocol')) class="inline-flex min-h-11 items-center text-ink-2">{{ __('How results are verified') }}</a>
-        <a href="https://github.com/HolgerHatGarKeineNode/twenty-one-esports" target="_blank" rel="noopener" class="inline-flex min-h-11 items-center text-ink-2">{{ __('Open source') }}</a>
-        <a href="https://einundzwanzig.space/kontakt/" target="_blank" rel="noopener" class="inline-flex min-h-11 items-center text-ink-2">{{ __('Legal notice') }}</a>
-        <span class="inline-flex min-h-11 items-center">TWENTY ONE esports</span>
-        <x-shell.language-switch :locales="$locales" :current="$current" />
+    <div class="flex flex-col gap-2 px-4 pt-4 pb-6 text-xs text-ink-3 lg:hidden">
+        <span>{{ __('Players') }} {{ $stats['players'] }}, {{ __('Clans') }} {{ $stats['clans'] }}, {{ __('Games') }} {{ $stats['games'] }}</span>
+        <span class="flex flex-wrap gap-x-4">
+            <a href="{{ route('rules') }}" @navigate(route('rules')) class="inline-flex min-h-11 items-center text-btc">{{ __('Rules') }}</a>
+            <a href="{{ route('protocol') }}" @navigate(route('protocol')) class="inline-flex min-h-11 items-center text-btc">{{ __('Open protocol') }}</a>
+            <a href="https://github.com/HolgerHatGarKeineNode/twenty-one-esports" target="_blank" rel="noopener" class="inline-flex min-h-11 items-center text-btc">{{ __('Open source') }}</a>
+            <a href="https://einundzwanzig.space/kontakt/" target="_blank" rel="noopener" class="inline-flex min-h-11 items-center text-btc">{{ __('Legal notice') }}</a>
+            @foreach ($locales as $code => $name)
+                @if ($code !== $current)
+                    <a href="{{ route('locale.switch', $code) }}" lang="{{ $code }}" hreflang="{{ $code }}" class="inline-flex min-h-11 items-center text-btc">{{ $name }}</a>
+                @endif
+            @endforeach
+        </span>
     </div>
 </footer>

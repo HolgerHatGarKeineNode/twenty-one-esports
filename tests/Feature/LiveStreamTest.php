@@ -147,15 +147,15 @@ test('the badge and the floating player show only on air, and follow the feed fr
         ->and(feedSeed($on))->toBe(['url' => '/stream/status', 'interval' => 15, 'live' => true, 'viewers' => 7]);
 });
 
-test('the home stream card holds the badge without a link inside its link', function () {
+test('the header\'s LIVE mark is one link with nothing linked inside it', function () {
     onAir();
 
     $html = $this->get(route('home'))->assertOk()->getContent();
 
     // A nested <a> is split apart by the HTML parser (2026-09-27: an empty card and a stretched badge).
-    expect(preg_match('/<a [^>]*data-test="home-stream"[^>]*>(.*?)<\/a>/s', $html, $card))->toBe(1)
-        ->and($card[1])->not->toContain('<a ')
-        ->and($card[1])->toContain('data-test="live-badge"');
+    expect(preg_match_all('/<a [^>]*data-test="live-badge"[^>]*>(.*?)<\/a>/s', $html, $marks))->toBe(2)
+        ->and(implode('', $marks[1]))->not->toContain('<a ')
+        ->and($marks[1][0])->toContain('LIVE');
 });
 
 test('without a shared count the count is hidden, never a 0', function () {

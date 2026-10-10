@@ -65,7 +65,7 @@ test('the login page offers only Google and Nostr, without linking a membership'
         ->assertOk()
         ->assertDontSee('Lightning')
         ->assertDontSee('Link my membership')
-        ->assertSee('Your badge shows up by itself once you log in.');
+        ->assertSee(__('Your badge comes by itself'));
 });
 
 test('the login page wires both buttons to the Nostr login', function () {

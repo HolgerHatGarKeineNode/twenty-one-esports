@@ -86,7 +86,7 @@ function blockfillShellGo(Page $page, string $path, string $locale): void
 /** The box of the first element matching `$selector`, scrolled into view: [left, right, top, bottom]. */
 const BLOCKFILL_SHELL_BOX = <<<'JS'
     (selector) => {
-        const el = document.querySelector(selector);
+        const el = [...document.querySelectorAll(selector)].find((x) => x.checkVisibility()) ?? null;
         if (! el) { return null; }
         el.scrollIntoView({ block: 'center' });
         const r = el.getBoundingClientRect();
@@ -98,11 +98,11 @@ test('Blockfill is on home, on /play and in the game hub, each leading to /block
     $page = blockfillShellPage($this->player, $locale, $width, $height);
     $game = route('stacker.play');
 
-    // Home: its tile among the games, its cover and main action leading to the game.
+    // Home: its tile among the games (the phone's list row below lg), its cover, leading to the game.
     blockfillShellGo($page, route('home', [], false), $locale);
-    $tile = $page->evaluate(BLOCKFILL_SHELL_BOX, '[data-test=play-tile][data-game=blockfill]');
-    $tileLinks = $page->evaluate('() => [...document.querySelectorAll("[data-test=play-tile][data-game=blockfill] a")].map((a) => a.href)');
-    $cover = $page->evaluate('() => { const img = document.querySelector("[data-test=play-tile][data-game=blockfill] img"); return img ? [img.currentSrc, img.naturalWidth] : null; }');
+    $tile = $page->evaluate(BLOCKFILL_SHELL_BOX, '[data-test=home-games] a[data-game=blockfill]');
+    $tileLinks = $page->evaluate('() => [...document.querySelectorAll("[data-test=home-games] a[data-game=blockfill]")].map((a) => a.href)');
+    $cover = $page->evaluate('() => { const img = [...document.querySelectorAll("[data-test=home-games] a[data-game=blockfill] img")].find((x) => x.checkVisibility()); return img ? [img.currentSrc, img.naturalWidth] : null; }');
     fwrite(STDERR, "blockfill shell home {$locale} {$width}: ".json_encode([$tile, $cover]).PHP_EOL);
     expect($tile)->not->toBeNull()
         ->and($tile[0])->toBeGreaterThanOrEqual(0)->and($tile[1])->toBeLessThanOrEqual($width)
@@ -123,7 +123,7 @@ test('Blockfill is on home, on /play and in the game hub, each leading to /block
     shellShot($page, "blockfill-shell-play-{$locale}-{$width}");
 
     // The game hub: its card with the game page.
-    $page->locator($width >= 1024 ? '[data-test=games-menu]' : '[data-test=mobile-games-menu]')->click();
+    $page->locator($width >= 1024 ? '[data-test=games-menu]' : '[data-test=tab-games]')->click();
     BrowserWait::until($page, '() => { const hub = document.querySelector("#game-hub"); return hub && hub.getClientRects().length > 0 && [...hub.querySelectorAll("a")].some((a) => a.href.endsWith("/blockfill")); }', 5_000);
     $hubCard = $page->evaluate('() => { const a = [...document.querySelectorAll("#game-hub a")].find((a) => a.href.endsWith("/blockfill")); const r = a.getBoundingClientRect(); return [Math.round(r.left), Math.round(r.right), a.innerText.trim()]; }');
     expect($hubCard[0])->toBeGreaterThanOrEqual(0)->and($hubCard[1])->toBeLessThanOrEqual($width)
@@ -136,7 +136,7 @@ test('Blockfill is on home, on /play and in the game hub, each leading to /block
     'de 1440' => ['de', 1440, 900],
 ]);
 
-test('/blockfill and scores/blockfill share Blockfill\'s context bar and tab bar', function (string $locale, int $width, int $height) {
+test('/blockfill and scores/blockfill share Blockfill\'s context bar and the More sheet\'s game section', function (string $locale, int $width, int $height) {
     $page = blockfillShellPage($this->player, $locale, $width, $height);
     $bars = [];
 
@@ -146,7 +146,8 @@ test('/blockfill and scores/blockfill share Blockfill\'s context bar and tab bar
             () => {
                 const visible = (el) => !! el && el.getClientRects().length > 0 && getComputedStyle(el).visibility !== "hidden";
                 const ctx = document.querySelector('[data-test=context-bar]');
-                const tabbar = document.querySelector('[data-test=tab-bar]');
+                // Below lg the game's pages sit in the More sheet (the tab bar is the same five places everywhere, Header.dc.html).
+                const tabbar = document.querySelector('#more-sheet [data-test=more-game]');
                 const box = (el) => { const r = el.getBoundingClientRect(); return [Math.round(r.left), Math.round(r.right)]; };
                 return {
                     ctxGame: ctx.dataset.game,
@@ -164,17 +165,17 @@ test('/blockfill and scores/blockfill share Blockfill\'s context bar and tab bar
     }
 
     $expectedCtx = [['ctx-play', route('stacker.play')], ['ctx-leaderboard', route('scores.show', 'blockfill')], ['ctx-replays', route('stacker.replays')], ['ctx-rules', route('rules').'#blockfill']];
-    $expectedTabs = [['tab-play', route('stacker.play')], ['tab-ladder', route('scores.show', 'blockfill')], ['tab-replays', route('stacker.replays')], ['tab-tournaments', route('tournaments.index')]];
+    $expectedTabs = [['more-play', route('stacker.play')], ['more-leaderboard', route('scores.show', 'blockfill')], ['more-replays', route('stacker.replays')], ['more-rules', route('rules').'#blockfill']];
 
     foreach ($bars as $bar) {
         expect($bar['ctxGame'])->toBe('blockfill')
             ->and($bar['ctx'])->toBe($expectedCtx)
             ->and($bar['tabs'])->toBe($expectedTabs)
-            // One of the two at each width: the context bar from lg, the tab bar below.
-            ->and($bar['ctxVisible'])->toBe($width >= 1024)
-            ->and($bar['tabVisible'])->toBe($width < 1024);
-        $shown = $width >= 1024 ? $bar['ctxBox'] : $bar['tabBox'];
-        expect($shown[0])->toBeGreaterThanOrEqual(0)->and($shown[1])->toBeLessThanOrEqual($width);
+            // The context bar from lg; the More sheet's section is there at every width, shown when the sheet opens.
+            ->and($bar['ctxVisible'])->toBe($width >= 1024);
+        if ($width >= 1024) {
+            expect($bar['ctxBox'][0])->toBeGreaterThanOrEqual(0)->and($bar['ctxBox'][1])->toBeLessThanOrEqual($width);
+        }
     }
 
     // Positive control: the collector sees a throw and a failed answer on this very page.

@@ -16,8 +16,10 @@
     instead of nothing, so /live is one click away on desktop either way.
     `as="span"`: the badge alone, not a link, for use inside a card that is
     already a link (a nested <a> is split apart by every HTML parser).
+    The mark itself is the revamp's `.rv-live` (Header.dc.html): the word LIVE with a pulsing dot, the
+    viewers as a count beside it; `compact` (the phone's top bar) puts the count inside the mark, 28 px high.
 --}}
-@props(['offAir' => false, 'as' => 'a'])
+@props(['offAir' => false, 'as' => 'a', 'compact' => false])
 
 @php
     $status = App\Support\TwentyOne\LiveStatus::current();
@@ -34,16 +36,23 @@
    x-data="{ labels: @js($labels), get label() { const n = $store.live.viewers; return n === null ? this.labels.plain : this.labels[n === 1 ? 'one' : 'many'].replace('#', n); } }"
    x-show="$store.live.live" x-bind:aria-label="label" x-bind:title="label" @unless ($status->live) style="display: none" @endunless
    {{ $attributes->class('group min-h-11 shrink-0 items-center text-ink hover:text-ink') }} data-test="live-badge">
-    <span class="flex h-7 items-center gap-1.5 rounded-control bg-live-tint px-2 shadow-[inset_0_0_0_1px_var(--color-live-ring)] transition-colors duration-150 group-hover:bg-[#2C1517]">
-        <span class="on-air" aria-hidden="true"></span>
-        <span class="font-display text-[11px] leading-none font-extrabold tracking-[0.06em]" aria-hidden="true">LIVE</span>
-        <span class="ml-0.5 hidden min-w-[3ch] text-xs leading-none text-ink-2 tabular-nums min-[90rem]:inline-block" aria-hidden="true" data-test="live-badge-viewers"
+    <span @class(['rv-live', 'h-7' => $compact])>
+        <i aria-hidden="true"></i>
+        <span aria-hidden="true">LIVE</span>
+        @if ($compact)
+            <span class="min-w-[3ch] tabular-nums max-[359px]:hidden" aria-hidden="true" data-test="live-badge-viewers"
+                  x-show="$store.live.viewers !== null" x-text="$store.live.viewers" x-effect="$store.live.tick($el)"
+                  @if ($status->viewers === null) style="display: none" @endif>{{ $status->viewers }}</span>
+        @endif
+    </span>
+    @unless ($compact)
+        <span class="rv-n ml-1.5 hidden min-w-[calc(3ch+12px)] min-[90rem]:inline-grid" aria-hidden="true" data-test="live-badge-viewers"
               x-show="$store.live.viewers !== null" x-text="$store.live.viewers" x-effect="$store.live.tick($el)"
               @if ($status->viewers === null) style="display: none" @endif>{{ $status->viewers }}</span>
-    </span>
+    @endunless
 </{{ $as === 'span' ? 'span' : 'a' }}>
 @if ($offAir)
     <a href="{{ route('live') }}" aria-label="{{ __('Live stream') }}" @if ($current) aria-current="page" @endif
        x-data x-show="! $store.live.live" @if ($status->live) style="display: none" @endif
-       {{ $attributes->class('nav-link') }} data-test="nav-live">{{ __('Live') }}</a>
+       {{ $attributes }} data-test="nav-live">{{ __('Live') }}</a>
 @endif

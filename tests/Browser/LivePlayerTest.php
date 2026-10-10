@@ -394,8 +394,8 @@ test('on air, the badge fits the shell at 320 to 1440 px in English and German, 
                         const chips = document.getElementById('game-chips');
                         const c = chips && chips.checkVisibility() ? chips.getBoundingClientRect() : null;
                         // The search button of row 1 (the field moved to the search row, plan "Mempool-Streifen", P4).
-                        const search = document.querySelector('[data-test=mobile-search-toggle]');
-                        const s = search && search.checkVisibility() ? search.getBoundingClientRect() : null;
+                        const search = [...document.querySelectorAll('[data-test=mobile-search-toggle], [data-test=search-inline]')].find((el) => el.checkVisibility());
+                        const s = search ? search.getBoundingClientRect() : null;
                         return { rect: [Math.round(r.left), Math.round(r.top), Math.round(r.width), Math.round(r.height)], inRow: r.left >= row.left && r.right <= row.right + 0.5 && r.top >= row.top && r.bottom <= row.bottom + 0.5,
                             clearOfChips: !c || r.left >= c.right - 0.5, clearOfSearch: !s || r.right <= s.left + 0.5, chipsWidth: c ? Math.round(c.width) : null };
                     }
@@ -405,8 +405,8 @@ test('on air, the badge fits the shell at 320 to 1440 px in English and German, 
                 $more = $page->evaluate('() => !!document.querySelector("#more-sheet [data-test=mobile-live-on-air]")');
 
                 if ($width < 768) {
-                    // Phones: no room in the top bar (the game chips); the badge's dot is in More.
-                    if ($badge !== null || ! $more) {
+                    // Phones: "LIVE 2" next to the logo (Header.dc.html "Handy"), and the dot in More too.
+                    if ($badge === null || ! $badge['inRow'] || ! $badge['clearOfSearch'] || $badge['rect'][3] < 44 || ! $more) {
                         $failures[] = "{$role} {$locale} @{$width}: badge ".json_encode($badge).', in More: '.json_encode($more);
                     }
                 } elseif ($badge === null || ! $badge['inRow'] || ! $badge['clearOfChips'] || ! $badge['clearOfSearch'] || $badge['rect'][3] < 44) {

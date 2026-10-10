@@ -5,10 +5,11 @@ use App\Enums\TournamentStatus;
 use App\Games\Blockfill;
 use App\Games\GameRegistry;
 use App\Jobs\VerifyStackerRun;
-use App\Models\Rating;
 use App\Models\ScoreRun;
 use App\Models\StackerRun;
 use App\Models\User;
+use App\Support\Engagement\HomeBoard;
+use App\Support\Engagement\HomeHub;
 use App\Support\Engagement\Quests;
 use App\Support\Stacker\BlockfillWeeks;
 use App\Support\Stacker\Verifier;
@@ -57,105 +58,65 @@ function homeVerifiedRun(User $user, int $ticks, ?CarbonInterface $at = null): S
     return $run->refresh();
 }
 
-/**
- * The HTML of every card of the ladder grid whose opening tag carries `$test`:
- * up to the `</li>` that the next card or the end of the grid follows.
- *
- * @return list<string>
- */
-function homeCards(string $html, string $test): array
-{
-    preg_match_all('#<li[^>]*data-test="'.$test.'".*?</li>(?=\s*<li[^>]*data-test="(?:ladder-top|score-top)"|\s*</ul>)#s', $html, $matches);
-
-    return $matches[0];
-}
-
-test('Blockfill has its card in the ladder grid: cover, mode, this week and the top three by best time', function () {
+test('the Blockfill week leads a guest\'s start page with its time to beat, and HomeHub keeps the top three by best time', function () {
     BlockfillOn::play();
     app(BlockfillWeeks::class)->open();
     // Rendered once while empty: the cached places must not outlive the next run.
-    expect($this->get(route('home'))->assertOk()->getContent())->toContain(e(__('No verified run yet this week. Play the first one.')));
+    expect($this->get(route('home'))->assertOk()->getContent())->toContain(e(__('#1 is free')));
 
-    // 958 ticks = 15.966 s; four players, the slowest is fourth and not shown.
+    // 958 ticks = 15.966 s; four players, the slowest is fourth and not in the top three.
     foreach ([['zapmaster', 958], ['lena.k', 1200], ['hodlqueen', 1100], ['slowpoke', 3000]] as [$name, $ticks]) {
         homeVerifiedRun(User::factory()->create(['name' => $name]), $ticks);
     }
 
     $html = $this->get(route('home'))->assertOk()->getContent();
-    $cards = homeCards($html, 'score-top');
+    $band = str($html)->after('data-test="home-hero" data-hero="blockfill"')->before('data-test="live-bar"')->toString();
+    $board = collect((new HomeHub(null))->scores())->firstWhere('game', Blockfill::SLUG);
 
-    expect($html)->toContain(__('Top of the ladders and leaderboards'))
-        ->and($cards)->toHaveCount(1);
-
-    $card = $cards[0];
-    preg_match_all('#data-test="score-row".*?</li>#s', $card, $rows);
-
-    expect($card)->toContain('data-game="blockfill"')
-        ->toContain('href="'.route('scores.show', Blockfill::SLUG).'"')
-        ->toContain('data-game-cover')
-        ->toContain('Blockfill · '.__('40 blocks'))
-        ->toContain(__('This week'))
-        ->and($rows[0])->toHaveCount(3)
-        ->and($rows[0][0])->toContain('zapmaster')->toContain('0:15.966')->toContain('<img')
-        ->and($rows[0][1])->toContain('hodlqueen')->toContain('0:18.333')
-        ->and($rows[0][2])->toContain('lena.k')->toContain('0:20.000')
-        ->and($card)->not->toContain('slowpoke')
-        ->not->toContain(__('No verified run yet this week. Play the first one.'));
+    expect($band)->toContain('0:15.966')->toContain('zapmaster')->toContain('href="'.route('stacker.play').'"')
+        ->not->toContain(e(__('#1 is free')))
+        ->and(array_column($board['rows'], 'name'))->toBe(['zapmaster', 'hodlqueen', 'lena.k'])
+        ->and(array_column($board['rows'], 'value'))->toBe(['0:15.966', '0:18.333', '0:20.000'])
+        ->and($board['weekly'])->toBeTrue();
 });
 
-test('a week nobody has a verified run in yet invites the first one, with a Play link', function () {
+test('a week nobody has a verified run in yet invites the first one, with a Play link; an unopened week has no band', function () {
     BlockfillOn::play();
 
-    // Last week is still running (its review time), with a run in it: not this week's card.
+    // Last week is still running (its review time), with a run in it: not this week's band.
     app(BlockfillWeeks::class)->open(now()->subWeek());
     homeVerifiedRun(User::factory()->create(['name' => 'lastweek']), 958, now()->subWeek());
     expect(ScoreRun::query()->count())->toBe(1);
 
-    // Not even opened yet (the hourly job comes later): the same empty card.
-    foreach (['unopened', 'opened'] as $state) {
-        if ($state === 'opened') {
-            app(BlockfillWeeks::class)->open();
-        }
+    // Not opened yet (the hourly job comes later): no Blockfill band.
+    expect($this->get(route('home'))->assertOk()->getContent())->not->toContain('data-hero="blockfill"');
 
-        $cards = homeCards($this->get(route('home'))->assertOk()->getContent(), 'score-top');
+    app(BlockfillWeeks::class)->open();
+    $band = str($this->get(route('home'))->assertOk()->getContent())->after('data-hero="blockfill"')->before('data-test="live-bar"')->toString();
 
-        expect($cards)->toHaveCount(1, $state)
-            ->and($cards[0])->toContain(e(__('No verified run yet this week. Play the first one.')))
-            ->toContain('href="'.route('stacker.play').'"')
-            ->toContain('data-test="score-play"')
-            ->toContain(__('This week'))
-            ->not->toContain('data-test="score-row"')
-            ->not->toContain('lastweek');
-    }
+    expect($band)->toContain(e(__('#1 is free')))
+        ->toContain('href="'.route('stacker.play').'"')
+        ->toContain(e(__('Start a practice run')))
+        ->not->toContain('lastweek');
 });
 
-test('with the switch off there is no score card, and turned on there is one', function () {
+test('with the switch off there is no Blockfill tile, and turned on there is one among the browser games', function () {
     $off = $this->get(route('home'))->assertOk()->getContent();
 
     BlockfillOn::play();
     $on = $this->get(route('home'))->assertOk()->getContent();
 
-    expect(homeCards($off, 'score-top'))->toBe([])
-        ->and($off)->not->toContain('data-test="score-top"')
-        ->toContain(e(__('Top of the ladders')))
-        ->not->toContain(e(__('Top of the ladders and leaderboards')))
-        ->and(homeCards($on, 'score-top'))->toHaveCount(1);
+    expect($off)->not->toContain('data-test="game-tile" data-game="blockfill"')
+        ->and(str($on)->after('data-test="browser-games"')->before('data-test="browser-games-list"')->toString())->toContain('data-test="game-tile" data-game="blockfill"');
 });
 
-test('the ladder cards stay as they were, and every card sits in the games menu\'s order (score boards between the ladders)', function () {
-    $winner = User::factory()->create(['name' => 'zapmaster']);
-    Rating::query()->create(['pool' => Rating::CASUAL, 'season' => '', 'game' => 'chess', 'mode' => 'blitz', 'subject' => 'user:'.$winner->id, 'user_id' => $winner->id, 'rating' => 1234, 'results' => 3]);
-
-    $off = $this->get(route('home'))->assertOk()->getContent();
+test('the browser games keep the plan\'s order, Blockfill right after chess', function () {
     BlockfillOn::play();
-    $on = $this->get(route('home'))->assertOk()->getContent();
+    $html = $this->get(route('home'))->assertOk()->getContent();
 
-    $ladders = homeCards($on, 'ladder-top');
+    preg_match_all('#data-test="game-tile" data-game="([a-z0-9-]+)"#', str($html)->after('data-test="browser-games"')->before('data-test="browser-games-list"')->toString(), $tiles);
 
-    expect($ladders)->toBe(homeCards($off, 'ladder-top'))
-        ->and($ladders)->toHaveCount(count(app(GameRegistry::class)->versus()))
-        ->and(array_values(array_unique(array_filter(array_map(fn (string $slug): ?string => $slug, (preg_match_all('#data-test="(?:ladder|score)-top" data-game="([a-z0-9-]+)"#', $on, $m) ? $m[1] : []))))))
-        ->toBe(array_values(array_intersect(array_map(fn ($game): string => $game->slug(), app(GameRegistry::class)->all()), $m[1])));
+    expect($tiles[1])->toBe(array_values(array_intersect(HomeBoard::BROWSER_ORDER, array_keys(app(GameRegistry::class)->all()))));
 });
 
 test('a verified ranked run counts for "play 3 games", a practice run and an unchecked value do not', function () {

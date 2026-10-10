@@ -97,9 +97,9 @@ test('the account menu is measured at 390 and 1440 px', function () {
         file_put_contents($file, json_encode($report, JSON_PRETTY_PRINT));
     }
 
-    // The header keeps its height: 56 px on a phone (row 1), 64 + 48 px from lg (row 1 and the context bar).
-    expect($report[390]['closed']['row1']['h'])->toBe(56)
-        ->and($report[1440]['closed']['row1']['h'])->toBe(64)
+    // The header keeps its height (Header.dc.html): 52 px on a phone, 56 px from lg.
+    expect($report[390]['closed']['row1']['h'])->toBe(52)
+        ->and($report[1440]['closed']['row1']['h'])->toBe(56)
         ->and($report[1440]['open']['menu'])->not->toBeNull()
         ->and($report[1440]['open']['overflow'][0])->toBeLessThanOrEqual($report[1440]['open']['overflow'][1]);
 });

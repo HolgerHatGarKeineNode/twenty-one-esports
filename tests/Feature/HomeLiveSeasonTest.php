@@ -10,23 +10,22 @@ test('with a live season home shows the live head, not the Pre-Season countdown'
 
     $this->get(route('home'))->assertOk()
         ->assertSee('data-test="season-live"', false)
-        ->assertSee(__(':season is live', ['season' => 'Season 1']))
         ->assertSee(route('mining'), false)
-        ->assertDontSee(__('Pre-Season starts at Block 0'))
-        ->assertDontSee('data-test="countdown"', false);
+        ->assertSee('data-state="live"', false)
+        ->assertDontSee('data-test="countdown-segments"', false);
 });
 
-test('before Block 0 home shows the Pre-Season countdown', function () {
+test('before Block 0 home shows the Pre-Season with the countdown to Block 0', function () {
     $this->get(route('home'))->assertOk()
-        ->assertSee(__('Pre-Season starts at Block 0'))
-        ->assertSee('data-test="countdown"', false)
+        ->assertSee(__('The chain starts at Block 0'))
+        ->assertSee('data-test="countdown-segments"', false)
         ->assertDontSee('data-test="season-live"', false);
 });
 
-test('the rules card names the live season, and the Pre-Season only before and during it (P16)', function (string $slug, string $heading) {
+test('the Season page names the live season in its rules, and the Pre-Season only before and during it (P16)', function (string $slug, string $heading) {
     openSeason(['slug' => $slug]);
 
-    $this->get(route('home'))->assertOk()
+    $this->get(route('mining'))->assertOk()
         ->assertSee('data-test="how-season">'.e($heading).'</h2>', false);
 })->with([
     'a later season' => ['season-2', 'How Season 2 works'],

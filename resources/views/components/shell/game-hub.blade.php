@@ -50,7 +50,10 @@
                 <button type="button" class="hub-seg" x-on:click="kind = @js($key)" x-bind:aria-pressed="(kind === @js($key)).toString()" aria-pressed="{{ $key === 'all' ? 'true' : 'false' }}" data-test="hub-kind-{{ $key }}">{{ $label }}</button>
             @endforeach
         </div>
-        <a href="{{ route('play') }}" @navigate(route('play')) class="flex min-h-11 items-center text-[13px] font-bold lg:ml-auto" data-test="hub-all-games">{{ __('All games and modes') }}</a>
+        {{-- The strongest players across every game: in the chrome since row 1 lost the game context bar (revamp P3). --}}
+        <a href="{{ route('matches.index', ['chain' => 'casual']) }}" @navigate(route('matches.index', ['chain' => 'casual'])) class="flex min-h-11 items-center text-[13px] lg:ml-auto" data-test="hub-casual">{{ __('Casual chain') }}</a>
+        <a href="{{ route('ladder.strongest') }}" @navigate(route('ladder.strongest')) class="flex min-h-11 items-center text-[13px]" data-test="hub-strongest">{{ __('Strongest players') }}</a>
+        <a href="{{ route('play') }}" @navigate(route('play')) class="flex min-h-11 items-center text-[13px] font-bold" data-test="hub-all-games">{{ __('All games and modes') }}</a>
     </div>
 
     <div class="min-h-0 overflow-y-auto overscroll-contain px-4 pb-4 lg:px-6 lg:pb-6" x-ref="hubTiles">

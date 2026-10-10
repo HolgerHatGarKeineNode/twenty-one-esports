@@ -524,14 +524,15 @@ const SWEEP_PAGE_SIDE = [375 => 16, 1024 => 16, 1440 => 16];
 /**
  * Pages whose design starts flush under the header on purpose, by the path
  * the browser lands on (a redirect such as locale/{locale} is judged by its
- * target): only home, which opens with its full-bleed stage (the next
- * tournament or the games, pages/home.blade.php). The layout opt-out
- * is `<x-layouts::app flush>`. The NIP-05 JSON endpoint has no header at all
+ * target): home, which opens with its full-bleed band (the featured
+ * tournament or the Blockfill week, pages/home.blade.php), and the login,
+ * whose backdrop of covers runs edge to edge from lg (Login.dc.html, revamp
+ * P3). The layout opt-out is `<x-layouts::app flush>`. The NIP-05 JSON endpoint has no header at all
  * and is not a page.
  *
  * @var list<string>
  */
-const SWEEP_FLUSH_PATHS = ['/'];
+const SWEEP_FLUSH_PATHS = ['/', '/login'];
 
 /** @var list<string> Routes that answer without the app shell (JSON, images, the player card fragment, the full-screen tournament TV, the broadcast styleguide). */
 const SWEEP_NO_HEADER_ROUTES = ['tournaments.tv', 'broadcast.styleguide', 'nostr.nip05', 'admin.disputes.evidence', 'players.card', 'avatars.generated', 'invites.card',
@@ -770,7 +771,7 @@ test('positive control: the sweep fails on an injected JS error', function () {
 });
 
 test('positive control: the top-gap probe measures a page that starts flush', function () {
-    // Home is the one opt-out: its stage band sits directly under the header. The probe must report that as ~0px, or a page that
+    // Home is an opt-out: its first band (hero, live bar or mempool) sits directly under the header. The probe must report that as ~0px, or a page that
     // loses its spacing would pass unnoticed.
     $page = freshSweepPage(route('home'));
     $page->setViewportSize(375, 800);
@@ -778,7 +779,7 @@ test('positive control: the top-gap probe measures a page that starts flush', fu
     $data = $page->evaluate(SWEEP_GAP_SCRIPT);
 
     expect($data['gap'])->toBeLessThan(SWEEP_PAGE_TOP[375])
-        ->and($data['first'])->toContain('home-stage');
+        ->and($data['first'])->toContain('[data-test=home-');
 });
 
 test('positive control: the sweep fails on an injected 500', function () {

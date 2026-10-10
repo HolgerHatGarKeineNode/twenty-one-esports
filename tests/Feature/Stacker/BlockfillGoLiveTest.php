@@ -174,14 +174,15 @@ test('switched on, Blockfill is in the hub, on /play and on home, its page is /b
 
     foreach ([route('stacker.play'), route('scores.show', Blockfill::SLUG), route('stacker.replays')] as $url) {
         $html = $this->get($url)->assertOk()->getContent();
-        preg_match('#<nav class="tabbar.*?</nav>#s', $html, $tabbar);
+        // Phones: the game's own pages in the More sheet (the tab bar is the same five places everywhere, Header.dc.html).
+        preg_match('#data-test="more-game">.*?</section>#s', $html, $sheet);
 
         expect($html)->toContain('data-test="context-bar" data-game="blockfill"')
             ->and($html)->toContain('href="'.route('stacker.replays').'"')
-            ->and($tabbar[0] ?? '')->toContain('href="'.route('stacker.play').'"')
-            ->and($tabbar[0] ?? '')->toContain('href="'.route('scores.show', Blockfill::SLUG).'"')
-            ->and($tabbar[0] ?? '')->toContain('data-test="tab-replays"')
-            ->and($tabbar[0] ?? '')->not->toContain(route('chess.lobby'));
+            ->and($sheet[0] ?? '')->toContain('href="'.route('stacker.play').'"')
+            ->and($sheet[0] ?? '')->toContain('href="'.route('scores.show', Blockfill::SLUG).'"')
+            ->and($sheet[0] ?? '')->toContain('data-test="more-replays"')
+            ->and($sheet[0] ?? '')->not->toContain(route('chess.lobby'));
     }
 });
 

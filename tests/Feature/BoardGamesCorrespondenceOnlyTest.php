@@ -81,7 +81,7 @@ test('no surface offers blitz for them: menus, /play, home, their lobbies, the r
     foreach (BOARD_GAMES_NO_BLITZ as $slug) {
         expect(preg_match('~data-test="play-game-'.$slug.'".*?</li>~s', $play, $card))->toBe(1, $slug)
             ->and($card[0])->toContain('Play correspondence')->not->toContain('Blitz')->not->toContain('5+3')->not->toContain('Play blitz')
-            ->and(preg_match('~data-game="'.$slug.'".*?</li>~s', $home, $tile))->toBe(1)
+            ->and(preg_match('~data-test="game-tile" data-game="'.$slug.'".*?</a>~s', $home, $tile))->toBe(1)
             ->and($tile[0])->not->toContain('Blitz')->not->toContain('5+3');
 
         $lobby = $this->get(route('board.lobby', $slug))->assertOk()->getContent();

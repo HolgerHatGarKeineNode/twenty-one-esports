@@ -248,7 +248,7 @@ SHARD_FILES=(
     # a full run: 6-90 s of 417). Its two halves now run each in a pest process of its own after a shard that ends
     # early (both ended at 261 and 268 s), when six shards are left, and still end before the longest one.
     "tests/Browser/NavigationCrawlStaffTest.php tests/Browser/BodylessResponseFramingTest.php tests/Browser/BoardFollowsTest.php tests/Browser/TournamentControlTest.php tests/Browser/TournamentLiveTest.php tests/Browser/BlockfillWeekTest.php tests/Browser/ClanLogoTest.php tests/Browser/ClanMeetupMapTest.php tests/Browser/TmnfWeekTest.php tests/Browser/PongArenaTest.php#=frame~times"
-    "tests/Browser/NavigationCrawlTest.php tests/Browser/CasualCupRegionsTest.php tests/Browser/HomeHubTest.php tests/Browser/NotificationsTest.php tests/Browser/SeriesResultTest.php tests/Browser/ShellStickyHeaderTest.php tests/Browser/TournamentGameEndTest.php tests/Browser/TournamentNowTest.php tests/Browser/GameEndBoardVisibleTest.php tests/Browser/TournamentDeskTest.php"
+    "tests/Browser/NavigationCrawlTest.php tests/Browser/CasualCupRegionsTest.php tests/Browser/HomeHubTest.php tests/Browser/HomeRevampTest.php tests/Browser/NotificationsTest.php tests/Browser/SeriesResultTest.php tests/Browser/ShellStickyHeaderTest.php tests/Browser/TournamentGameEndTest.php tests/Browser/TournamentNowTest.php tests/Browser/GameEndBoardVisibleTest.php tests/Browser/TournamentDeskTest.php"
     "tests/Browser/BlockliTest.php tests/Browser/BoardGamesCorrespondenceOnlyTest.php tests/Browser/MatchRoomFlowTest.php tests/Browser/PlayerPrideTest.php tests/Browser/RenderScopeTest.php tests/Browser/UiTogglesTrafficTest.php tests/Browser/TeamLineupTest.php tests/Browser/TeamMatchLiveTest.php tests/Browser/TeamMatchSurfacesTest.php"
 )
 

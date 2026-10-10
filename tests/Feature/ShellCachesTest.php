@@ -5,6 +5,7 @@ use App\Models\Admin;
 use App\Models\Clan;
 use App\Models\SeriesMatch;
 use App\Models\User;
+use App\Support\Engagement\HomeHub;
 use App\Support\Series\SeriesService;
 use Illuminate\Support\Facades\DB;
 
@@ -43,26 +44,32 @@ function adminBadge(): int
     return preg_match('/data-test="admin-count"><span class="sr-only">, <\/span>(\d+)/', $html, $count) === 1 ? (int) $count[1] : 0;
 }
 
-test('home reads the newcomers from the cache, shows a new player and a deleted clan at once, and a new name without a trigger', function () {
+test('the newcomers come from the cache, with a new player and a deleted clan at once, and a new name without a trigger', function () {
+    // Home no longer lists them (plan "Refactor und Design-Revamp", board Main); HomeHub keeps the cached read for the pages that will.
     $first = User::factory()->create(['name' => 'firstblock']);
     $clan = Clan::factory()->create(['name' => 'Halving Crew']);
-    $newest = fn (array $queries): int => count(array_filter($queries, fn (string $sql): bool => str_contains($sql, 'from "users" order by "created_at" desc')));
+    $read = function (): array {
+        DB::flushQueryLog();
+        DB::enableQueryLog();
+        $newcomers = (new HomeHub(null))->newcomers();
+        DB::disableQueryLog();
 
-    expect($newest(shellCacheQueries(route('home'))))->toBe(1)
-        ->and($newest(shellCacheQueries(route('home'))))->toBe(0);
+        return [$newcomers, count(array_filter(array_column(DB::getQueryLog(), 'query'), fn (string $sql): bool => str_contains($sql, 'from "users" order by "created_at" desc')))];
+    };
+    $names = fn (array $newcomers): array => $newcomers['players']->map->displayName()->all();
 
-    // One trigger at a time, each followed by a read: a second trigger would hide a missing first one.
+    expect($read()[1])->toBe(1)->and($read()[1])->toBe(0);
+
     $first->forceFill(['name' => 'genesisblock'])->save();
-    $this->get(route('home'))->assertOk()->assertSee('genesisblock')->assertSee('Halving Crew');
+    expect($names($read()[0]))->toContain('genesisblock');
 
     User::factory()->create(['name' => 'latecomer']);
-    $this->get(route('home'))->assertOk()->assertSee('latecomer')->assertSee('Halving Crew');
+    expect($names($read()[0]))->toContain('latecomer')
+        ->and($read()[0]['clansThisWeek'])->toBe(1);
 
-    // The rows are read by id, so a deleted clan drops out anyway; the week's count is the cached part.
-    $week = fn (int $clans): string => trans_choice(':count new clan|:count new clans', $clans);
-    $this->get(route('home'))->assertOk()->assertSee($week(1));
     $clan->delete();
-    $this->get(route('home'))->assertOk()->assertDontSee('Halving Crew')->assertSee($week(0));
+    expect($read()[0]['clans']->pluck('name')->all())->not->toContain('Halving Crew')
+        ->and($read()[0]['clansThisWeek'])->toBe(0);
 });
 
 test('the admin badge comes from the cache and follows a new dispute and an admin decision at once', function () {

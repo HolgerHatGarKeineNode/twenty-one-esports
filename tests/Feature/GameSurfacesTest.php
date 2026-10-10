@@ -4,6 +4,7 @@ use App\Enums\BoardEndReason;
 use App\Games\Blockfill;
 use App\Games\Blockli;
 use App\Games\Checkers;
+use App\Games\Contracts\PlayedOnOwnCopy;
 use App\Games\GameKind;
 use App\Games\GameRegistry;
 use App\Games\Hyperbitcoinization;
@@ -21,6 +22,8 @@ use App\Models\User;
 use App\Support\Cards\PageCard;
 use App\Support\Cards\SharePosts;
 use App\Support\Cards\ShareRefused;
+use App\Support\Engagement\HomeBoard;
+use App\Support\GameNames;
 use App\Support\Tournaments\CasualCups;
 use App\Support\Tournaments\CupBoard;
 use App\Support\Tournaments\TournamentGames;
@@ -223,19 +226,41 @@ test('the player page shows every game the player has a result in', function () 
     gameSurfacesInOrder(gameSurfacesAttribute($html, ['player-score']), 'the player page highscores');
 });
 
-test('the ladder grid on home has a card for every game', function () {
-    $html = $this->get(route('home'))->assertOk()->getContent();
+/**
+ * The games of home in the plan's order (user 2026-10-10): the browser games first, then the own-copy games, each in
+ * App\Support\Engagement\HomeBoard's order, a game it does not name after them in the registry order.
+ *
+ * @return list<string>
+ */
+function gameSurfacesHomeOrder(): array
+{
+    $registered = array_keys(app(GameRegistry::class)->all());
+    $own = array_values(array_filter($registered, fn (string $slug): bool => app(GameRegistry::class)->find($slug) instanceof PlayedOnOwnCopy));
+    $browser = array_values(array_diff($registered, $own));
+    $sorted = fn (array $slugs, array $order): array => [...array_values(array_intersect($order, $slugs)), ...array_values(array_diff($slugs, $order))];
 
-    expect(gameSurfacesMissing(gameSurfacesAttribute($html, ['ladder-top', 'score-top'])))->toBe([]);
-    gameSurfacesInOrder(gameSurfacesAttribute($html, ['ladder-top']), 'the ladder grid on home');
-    gameSurfacesInOrder(gameSurfacesAttribute($html, ['score-top']), 'the highscore grid on home');
+    return [...$sorted($browser, HomeBoard::BROWSER_ORDER), ...$sorted($own, HomeBoard::OWN_ORDER)];
+}
+
+test('home has a tile for every game: the browser games first, then the own-copy games, in the plan\'s order', function () {
+    $html = $this->get(route('home'))->assertOk()->getContent();
+    $tiles = gameSurfacesAttribute($html, ['game-tile']);
+
+    expect(gameSurfacesMissing($tiles))->toBe([])
+        ->and($tiles)->toBe(gameSurfacesHomeOrder());
 });
 
-test('the play tiles on home list every game', function () {
+test('the phone list of home names every browser game, the own-copy games in one line', function () {
     $html = $this->get(route('home'))->assertOk()->getContent();
+    $list = str($html)->after('data-test="browser-games-list"')->before('</ul>')->toString();
+    preg_match_all('#data-game="([a-z0-9-]+)"#', $list, $listed);
+    $line = str($html)->after('data-test="own-games-line"')->before('</a>')->toString();
+    $own = array_values(array_filter(gameSurfacesHomeOrder(), fn (string $slug): bool => app(GameRegistry::class)->find($slug) instanceof PlayedOnOwnCopy));
 
-    expect(gameSurfacesMissing(gameSurfacesAttribute($html, ['play-tile'])))->toBe([]);
-    gameSurfacesInOrder(gameSurfacesAttribute($html, ['play-tile']), 'Play now on home');
+    expect([...$listed[1], ...$own])->toBe(gameSurfacesHomeOrder());
+    foreach ($own as $slug) {
+        expect($line)->toContain(e(GameNames::cube($slug)));
+    }
 });
 
 test('/play lists every game', function () {
@@ -339,10 +364,10 @@ test('a player who played a board game last still sees it at the end of Play now
 
     $html = $this->actingAs($player)->get(route('home'))->assertOk()->getContent();
     preg_match_all('#data-test="hub-game-([a-z0-9-]+)"#', $html, $hub);
-    $tiles = gameSurfacesAttribute($html, ['play-tile']);
+    $tiles = gameSurfacesAttribute($html, ['game-tile']);
 
-    // Blockli right after TMNF, then nine men's morris and checkers (user, 2026-10-07).
-    expect(array_slice($tiles, -3))->toBe([Blockli::SLUG, NineMensMorris::SLUG, Checkers::SLUG])
+    // Home keeps the plan's order whoever plays what (user 2026-10-10); the hub ends with Blockli, nine men's morris and checkers (user, 2026-10-07).
+    expect($tiles)->toBe(gameSurfacesHomeOrder())
         ->and(array_slice($hub[1], -3))->toBe([Blockli::SLUG, NineMensMorris::SLUG, Checkers::SLUG]);
 });
 
@@ -394,13 +419,10 @@ test('Proof of Pong is on every surface, each leading to its own pages and never
     $lobby = route('pong.index');
     $ladder = route('pong.ladder');
 
-    // Home: the play tile leads to the lobby, the ladder grid's card to the Elo ladder with the player on it.
+    // Home: the game tile leads to the lobby.
     $home = $this->get(route('home'))->assertOk()->getContent();
-    $tile = (string) str($home)->after('data-test="play-tile" data-game="'.ProofOfPong::SLUG.'"')->before('</li>');
-    $card = (string) str($home)->after('data-test="ladder-top" data-game="'.ProofOfPong::SLUG.'"')->before('</li>');
-    expect($tile)->toContain('href="'.$lobby.'"')->not->toContain(route('chess.lobby'))
-        ->and($card)->toContain('href="'.$ladder.'"', 'Every Game Pleb', '1016')
-        ->and($home)->toContain('data-test="hub-game-'.ProofOfPong::SLUG.'"');
+    expect($home)->toMatch('#href="'.preg_quote($lobby, '#').'"(?:\s+wire:navigate)?\s+class="rv-gt" data-test="game-tile" data-game="'.ProofOfPong::SLUG.'"#')
+        ->toContain('data-test="hub-game-'.ProofOfPong::SLUG.'"');
 
     // The player page: Elo, the record and the figure picked.
     $this->get(route('players.show', $player->npub))->assertOk()

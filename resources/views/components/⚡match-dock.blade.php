@@ -123,7 +123,7 @@ new class extends Component {
 @endphp
 
 <div x-data="matchDock(@js($config))" data-need="{{ $counts['need'] }}" data-open="{{ $counts['open'] }}" data-test="match-dock-root"
-     x-on:keydown.escape.window="close(true)" x-on:bell-toggle.window="$event.detail && close(false)" x-on:chat-sheet-toggle.window="chatOpen = $event.detail; $event.detail && close(false)">
+     x-on:keydown.escape.window="close(true)" x-on:dock-open.window="openFromHeader() && $event.detail?.preventDefault()" x-on:bell-toggle.window="$event.detail && close(false)" x-on:chat-sheet-toggle.window="chatOpen = $event.detail; $event.detail && close(false)">
     <span class="sr-only" aria-live="polite" x-text="announcement"></span>
 
     {{--

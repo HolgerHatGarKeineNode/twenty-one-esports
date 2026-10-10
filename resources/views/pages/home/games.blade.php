@@ -1,53 +1,61 @@
 {{--
-    Play now: every game as its cover with its main action (the actions of
-    the navigation, App\Support\Navigation\ShellNavigation, so home never
-    promises what the menus do not reach), the live count on chess, and the
-    invite by link under the tiles. With no tournament open it is home's
-    hero (`stage`), right under the header.
+    The games on the start page (Main.dc.html #spiele, HomePhone.dc.html): the browser games first (played right
+    here, user 2026-10-10), the own-copy games under them; every tile the full 16:9 cover, the name and one real
+    data line (HomeBoard::games()). On a phone the browser games are a list and the own-copy games one line.
 
-    $games: ShellNavigation::games(); $live: HomeHub::live(); $stage: bool.
+    $games: HomeBoard::games(); $count: how many games the league has.
 --}}
 @php
-    $liveChess = $live['live'] + $live['daily'];
+    $allGames = trans_choice('All :count game|All :count games', $count);
 @endphp
 
-<section aria-labelledby="play-h" @class(['flex flex-col gap-4 px-4 lg:gap-5 lg:px-12', 'pt-5 lg:pt-8' => $stage]) data-test="play-now" @if ($stage) data-stage @endif>
-    <div class="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
-        <h2 id="play-h" @class(['m-0 font-display font-bold', 'text-2xl lg:text-4xl' => $stage, 'text-xl lg:text-2xl' => ! $stage])>{{ __('Play now') }}</h2>
-        @guest
-            <a href="{{ route('login', ['then' => 'play']) }}" class="inline-flex min-h-11 items-center text-[13px] font-bold" data-test="play-login">{{ __('Log in to play') }}</a>
-        @endguest
+<section id="spiele" aria-labelledby="play-h" class="flex flex-col border-t border-hairline p-4 lg:gap-4 lg:border-0 lg:p-0" data-test="home-games">
+    <div class="mb-2 flex items-center gap-4 lg:mb-0">
+        <h2 id="play-h" class="rv-h3 lg:font-display lg:text-xl lg:font-semibold">{{ __('Play in the browser') }}</h2>
+        <span class="rv-m max-lg:hidden">{{ __('right away, no copy of your own') }}</span>
+        <span class="grow"></span>
+        <a href="{{ route('play') }}" @navigate(route('play')) class="rv-lk text-[13px]" data-test="games-all"><span class="max-lg:hidden">{{ $allGames }}</span><span class="lg:hidden">{{ __('All :count', ['count' => $count]) }}</span></a>
     </div>
 
-    <ul class="m-0 grid list-none grid-cols-2 gap-3 p-0 lg:grid-cols-4 lg:gap-5">
-        @foreach ($games as $game)
-            @php
-                $challenge = collect($game['actions'])->firstWhere('key', 'challenge');
-                $primary = $game['slug'] !== 'chess' && $challenge !== null ? $challenge : $game['actions'][0];
-                $daily = collect($game['actions'])->firstWhere('key', 'daily');
-            @endphp
-            <li class="hh-tile flex min-w-0 flex-col overflow-hidden rounded-card bg-card" style="--game: {{ $game['colour'] }}" data-test="play-tile" data-game="{{ $game['slug'] }}">
-                <a href="{{ $game['page'] }}" @navigate($game['page']) class="group flex flex-col text-ink hover:text-ink">
-                    <x-game-cover :game="$game['slug']" size="card" :loading="$stage && $loop->index < 2 ? 'eager' : 'lazy'" class="w-full" />
-                    <span class="flex min-w-0 flex-wrap items-center justify-between gap-x-2 gap-y-1 px-3 pt-3 lg:px-4">
-                        <span class="flex min-w-0 flex-col"><b class="min-w-0 font-display text-sm leading-[1.25] break-words group-hover:text-btc-hi lg:text-base">{{ $game['name'] }}</b><x-game-credit :game="$game['slug']" :link="false" /></span>
-                        @if ($game['slug'] === 'chess' && $liveChess > 0)
-                            <span class="flex shrink-0 items-center gap-1.5 text-xs text-win" data-test="play-live"><span class="size-2 animate-live rounded-full bg-win" aria-hidden="true"></span>{{ __(':count live', ['count' => $liveChess]) }}</span>
-                        @endif
-                    </span>
+    {{-- Desktop: tiles --}}
+    <div class="hidden grid-cols-[repeat(3,1fr)] gap-4 lg:grid xl:grid-cols-[repeat(4,1fr)]" data-test="browser-games">
+        @foreach ($games['browser'] as $game)
+            <a href="{{ $game['href'] }}" @navigate($game['href']) class="rv-gt" data-test="game-tile" data-game="{{ $game['slug'] }}">
+                <x-game-cover :game="$game['slug']" class="rv-cv" />
+                <span class="flex flex-col gap-1"><b>{{ $game['name'] }}</b><x-game-credit :game="$game['slug']" :link="false" /><span class="rv-m">{{ $game['meta'] }}</span></span>
+            </a>
+        @endforeach
+    </div>
+
+    {{-- Phone: a list --}}
+    <ul class="m-0 flex list-none flex-col p-0 lg:hidden" data-test="browser-games-list">
+        @foreach ($games['browser'] as $game)
+            <li>
+                <a href="{{ $game['href'] }}" @navigate($game['href']) class="flex items-center gap-3 border-b border-hairline py-2 text-ink hover:text-ink" data-test="game-row" data-game="{{ $game['slug'] }}">
+                    <x-game-cover :game="$game['slug']" size="thumb" class="h-[54px] w-24 rounded-[2px] [&_img]:object-cover" />
+                    <span class="flex min-w-0 grow flex-col"><b>{{ $game['name'] }}</b><x-game-credit :game="$game['slug']" :link="false" /><span class="rv-m">{{ $game['meta'] }}</span></span>
+                    <x-icon name="next" :size="16" class="shrink-0 text-ink-3" />
                 </a>
-                <span class="mt-auto flex flex-wrap items-center gap-x-3 gap-y-1 p-3 lg:p-4">
-                    <a href="{{ $primary['href'] }}" @navigate($primary['href']) class="btn-p inline-flex h-11 min-w-0 grow items-center justify-center gap-2 rounded-md bg-btc px-3 text-[13px] font-bold text-on-btc hover:text-on-btc" aria-label="{{ $primary['label'] }}, {{ $game['name'] }}" data-test="play-cta">
-                        <x-icon :name="$primary['icon']" :size="16" class="shrink-0" /><span class="truncate sm:hidden">{{ $primary['short'] }}</span><span class="truncate max-sm:hidden">{{ $primary['label'] }}</span>
-                    </a>
-                    @if ($daily)
-                        <a href="{{ $daily['href'] }}" @navigate($daily['href']) class="inline-flex min-h-11 items-center text-[13px] max-lg:hidden" data-test="play-daily">{{ $daily['short'] }}</a>
-                    @endif
-                </span>
             </li>
         @endforeach
     </ul>
 
-    {{-- Bring a friend: right under the games --}}
-    <livewire:invite-link place="home" />
+    @if ($games['own'] !== [])
+        <div class="mt-2 hidden items-center gap-4 lg:flex">
+            <h3 class="rv-h3">{{ __('With your own copy') }}</h3>
+            <span class="rv-m">{{ __('your own account, the result is reported') }}</span>
+        </div>
+        <div class="hidden grid-cols-[repeat(3,1fr)] gap-3 lg:grid xl:grid-cols-[repeat(5,1fr)]" data-test="own-games">
+            @foreach ($games['own'] as $game)
+                <a href="{{ $game['href'] }}" @navigate($game['href']) class="rv-gt" data-test="game-tile" data-game="{{ $game['slug'] }}">
+                    <x-game-cover :game="$game['slug']" class="rv-cv" />
+                    <span class="flex flex-col gap-1"><b>{{ $game['name'] }}</b><x-game-credit :game="$game['slug']" :link="false" /><span class="rv-m">{{ $game['meta'] }}</span></span>
+                </a>
+            @endforeach
+        </div>
+        <a href="{{ route('play') }}" @navigate(route('play')) class="flex min-h-12 items-center gap-2 text-[13px] text-ink-2 hover:text-ink lg:hidden" data-test="own-games-line">
+            <span class="grow">{{ __('With your own copy') }}: {{ implode(', ', array_map(fn (array $game): string => \App\Support\GameNames::cube($game['slug']), $games['own'])) }}</span>
+            <x-icon name="next" :size="16" class="shrink-0 text-ink-3" />
+        </a>
+    @endif
 </section>

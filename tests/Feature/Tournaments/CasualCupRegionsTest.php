@@ -434,11 +434,13 @@ test('the game page, home, the index and a cup\'s own page show both regions\' c
     $us = Tournament::query()->where('cup_open_series', 'chess-us')->sole();
 
     // A guest: each cup in its region's zone, named by the city (the browser rewrites it to its own, P53).
-    foreach (['/chess', route('home'), route('tournaments.index')] as $url) {
+    foreach (['/chess', route('tournaments.index')] as $url) {
         $this->get($url)->assertOk()
             ->assertSeeInOrder(['Chess Casual Cup EU #1', '8:00 PM', 'Sat, Oct 10', 'Berlin', 'Chess Casual Cup US #1', '8:00 PM', 'Sat, Oct 10', 'New York'])
             ->assertSee('x-data="cupStart({ at: '.$us->starts_at->getTimestampMs().", zone: 'America\\/New_York' })\"", false);
     }
+    // Home: both regions' cups in this week's list, soonest first (Main.dc.html "Läuft diese Woche").
+    $this->get(route('home'))->assertOk()->assertSeeInOrder(['data-test="home-week"', 'Chess Casual Cup EU #1', 'Chess Casual Cup US #1']);
 
     $this->get('/games/rocket-league')->assertOk()->assertSeeInOrder(['Rocket League Casual Cup EU #1', 'Rocket League Casual Cup US #1'])->assertDontSee('Chess Casual Cup');
 

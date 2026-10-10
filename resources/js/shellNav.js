@@ -23,6 +23,8 @@ export function shellHeader() {
         search: false,
         bell: false,
         hub: false,
+        // The phone's More sheet (shellSheet) is open: the header's menu button mirrors it in aria-expanded.
+        more: false,
         // The account menu (desktop chip): a WAI-ARIA menu button, see openAccount() and accountKey().
         account: false,
         filter: '',
@@ -43,6 +45,9 @@ export function shellHeader() {
             window.addEventListener('keydown', (event) => this.hotkey(event), { signal });
             window.addEventListener('nav-sheet', (event) => event.detail !== 'hub' && this.closeHub(false), { signal });
             window.addEventListener('matches-filter', (event) => this.followMatchesFilter(event.detail), { signal });
+            // The phone's tab bar "Spiele" opens the same game hub (it sits outside this scope).
+            window.addEventListener('hub-toggle', (event) => this.toggleHub(event.detail), { signal });
+            window.addEventListener('more-state', (event) => { this.more = event.detail; }, { signal });
             this.$nextTick(() => this.revealActiveChip());
         },
 
@@ -52,6 +57,17 @@ export function shellHeader() {
 
         hotkey(event) {
             if (event.key !== '/' || event.defaultPrevented || event.ctrlKey || event.metaKey || event.altKey || typing(event)) return;
+            // From lg the field stands in row 1 (Header.dc.html): focus it there, no row to open.
+            const inline = this.$refs.searchInline;
+            if (inline && inline.getClientRects().length > 0) {
+                event.preventDefault();
+                this.focusTicket++;
+                this.closeHub(false);
+                this.account = false;
+                inline.focus();
+
+                return;
+            }
             const field = this.$refs.searchField;
             if (!field) return;
             event.preventDefault();
@@ -197,6 +213,8 @@ export function shellSheet() {
         init() {
             this.teardown = new AbortController();
             window.addEventListener('nav-sheet', (event) => event.detail !== 'more' && this.close(false), { signal: this.teardown.signal });
+            // The header's menu button (phone top bar, Header.dc.html) sits outside this scope.
+            window.addEventListener('more-toggle', (event) => this.toggle(event.detail), { signal: this.teardown.signal });
         },
 
         destroy() {
@@ -212,6 +230,7 @@ export function shellSheet() {
             this.opener = button;
             this.open = true;
             window.dispatchEvent(new CustomEvent('nav-sheet', { detail: 'more' }));
+            window.dispatchEvent(new CustomEvent('more-state', { detail: true }));
             this.focusTicket++;
             this.$nextTick(() => document.getElementById('more-sheet')?.focus({ preventScroll: true }));
         },
@@ -219,6 +238,7 @@ export function shellSheet() {
         close(returnFocus = true) {
             if (!this.open) return;
             this.open = false;
+            window.dispatchEvent(new CustomEvent('more-state', { detail: false }));
             // After the panel is hidden and x-trap has let go: while the trap holds, focus cannot leave the panel.
             // Same deferred-steal race as shellHeader.closeHub() above: only reclaim focus if no later claim
             // (reopening the sheet, or anything else that bumps focusTicket) has been made since.
@@ -244,6 +264,47 @@ export function firstSteps() {
                 // No cookies either: the strip is gone for this page and comes back on the next.
             }
             document.documentElement.dataset.stepsDismissed = '1';
+        },
+    };
+}
+
+/**
+ * The header's "Aktionen" entry (Header.dc.html): how many entries the match dock holds, read from the dock's
+ * own root (`data-open`, rendered by components/⚡match-dock and kept current by its refreshes), so the header
+ * runs no query of its own. A click opens the dock; with nothing in it the link goes to the player's page.
+ */
+export function dockCount() {
+    // Closure state, never `this.*`: the entry sits inside the header's and the More sheet's scopes, and Alpine writes
+    // a property the parent also has (teardown) to the parent, which then aborted the wrong controller and leaked.
+    let observer = null;
+    let watched = null;
+    const teardown = new AbortController();
+
+    return {
+        dockOpen: 0,
+
+        init() {
+            const read = () => {
+                const root = document.querySelector('[data-test=match-dock-root]');
+                this.dockOpen = root ? Number(root.dataset.open || 0) : 0;
+                if (root && root !== watched) {
+                    observer?.disconnect();
+                    watched = root;
+                    observer = new MutationObserver(read);
+                    observer.observe(root, { attributes: true, attributeFilter: ['data-open'] });
+                }
+            };
+            this.$nextTick(read);
+            document.addEventListener('livewire:navigated', read, { signal: teardown.signal });
+        },
+
+        destroy() {
+            observer?.disconnect();
+            teardown.abort();
+        },
+
+        openDock(event) {
+            window.dispatchEvent(new CustomEvent('dock-open', { detail: event }));
         },
     };
 }

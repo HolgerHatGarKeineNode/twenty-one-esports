@@ -84,12 +84,16 @@ test('the findability defaults: 10 minutes for a cup first move, 20 minutes befo
         ->and(config('esports.tournaments.first_move_nudge_seconds'))->toBe(120);
 });
 
-test('a participant waiting for their cup match sees it in the header, first in the dock and on top of home; nobody else does', function () {
+test('a participant waiting for their cup match sees it in the header, first in the dock and on top of the mempool; nobody else does', function () {
     [$cup, , $first, $second] = findableCupMatch();
 
+    // Home carries it in the header, the dock (Header.dc.html "Frist läuft") and its banner before anything else (CupMatchNow, user 2026-10-03).
     $this->actingAs($first)->get(route('home'))->assertOk()
         ->assertSee('data-test="cup-badge" data-state="waiting"', false)
         ->assertSee('data-test="dock-cup" data-state="waiting"', false)
+        ->assertSee('data-test="cup-banner" data-state="waiting"', false);
+
+    $this->actingAs($first)->get(route('matches.index'))->assertOk()
         ->assertSee('data-test="cup-banner" data-state="waiting"', false)
         ->assertSeeInOrder(['data-test="cup-banner"', 'Your cup match is next', $cup->title(), 'Round 1', 'against '.$second->displayName(), 'Your cup match comes first: casual games wait until it is done.', 'Open tournament'], false)
         ->assertSee('Waiting for '.$second->displayName())
@@ -107,7 +111,11 @@ test('a live cup game turns the badge, the dock entry and the banner to "play no
     $invites = app(ChessInvites::class);
     $game = $invites->accept($invites->inviteToCupMatch($black, $match), $white);
 
-    foreach ([route('home'), route('chess.lobby'), route('matches.index')] as $url) {
+    $this->actingAs($white)->get(route('home'))->assertOk()
+        ->assertSee('data-test="cup-badge" data-state="live"', false)
+        ->assertSee('data-test="dock-cup" data-state="live"', false);
+
+    foreach ([route('chess.lobby'), route('matches.index')] as $url) {
         $this->actingAs($white)->get($url)->assertOk()
             ->assertSee('data-test="cup-badge" data-state="live"', false)
             ->assertSee('data-test="dock-cup" data-state="live"', false)
@@ -233,5 +241,5 @@ test('a cup round over days does not keep its players out of casual games', func
     [, $match, $a] = findableCupMatch();
     $match->round->forceFill(['window_ends_at' => now()->addHours(36)])->save();
 
-    expect(App\Support\Tournaments\CupMatchNow::lockOf($a))->toBeNull();
+    expect(CupMatchNow::lockOf($a))->toBeNull();
 });

@@ -145,10 +145,10 @@ test('/matches keeps the mempool strip and the table whole at 320, 375 and 1280 
 
             // The Chain filter (P4): a second round trip narrows the strip to the casual matches; its buttons are never cut.
             $page->locator('[data-test=chain-casual]')->click();
-            BrowserWait::until($page, '() => document.querySelector("[data-test=chain-casual]").getAttribute("aria-pressed") === "true" && document.querySelector("[data-test=nav-casual]").getAttribute("aria-current") === "page"', 10_000);
+            BrowserWait::until($page, '() => document.querySelector("[data-test=chain-casual]").getAttribute("aria-pressed") === "true" && document.querySelector("[data-test=mobile-casual]").getAttribute("aria-current") === "page"', 10_000);
             $chain = $page->evaluate('() => ({ cubes: document.querySelectorAll("[data-test=strip-cube]").length, cut: [...document.querySelectorAll("[data-test=chain-filter], [data-test=chain-filter] button")].filter((el) => el.scrollWidth > el.clientWidth + 1).map((el) => el.dataset.test || el.innerText), url: location.search, current: [...document.querySelectorAll("[data-chain-key][aria-current=page]")].map((el) => el.dataset.test) })');
-            // The header's rail and the phone's sheet mark Casual now, without a reload.
-            expect($chain)->toBe(['cubes' => $casualCubes, 'cut' => [], 'url' => '?status=done&chain=casual', 'current' => ['nav-casual', 'mobile-casual']], "{$where}: casual chain");
+            // The More sheet marks Casual now, without a reload (row 1 has no casual link since the revamp, Header.dc.html).
+            expect($chain)->toBe(['cubes' => $casualCubes, 'cut' => [], 'url' => '?status=done&chain=casual', 'current' => ['mobile-casual']], "{$where}: casual chain");
 
             expect($page->evaluate('() => window.__errors'))->toBe([], "{$where}: console")
                 ->and($page->evaluate(BrowserConsole::BAD_RESPONSES))->toBe([], "{$where}: responses")

@@ -95,7 +95,7 @@ function surfaceMeasure(Page $page, string $selector, int $width, int $height): 
     return $page->evaluate(<<<JS
         () => {
             const de = document.documentElement;
-            const el = document.querySelector('{$selector}');
+            const el = [...document.querySelectorAll('{$selector}')].find((x) => x.checkVisibility()) ?? null;
             const r = el ? el.getBoundingClientRect() : null;
             const cut = el ? [...el.querySelectorAll('b, span, a, button, h2, h3, p, dd, dt, small')]
                 .filter((x) => x.offsetParent !== null && !x.classList.contains('sr-only') && x.scrollWidth > x.clientWidth + 1 && getComputedStyle(x).textOverflow !== 'ellipsis')
@@ -120,8 +120,8 @@ test('every surface shows the game at 390 and 1440 as an admin in German: no ove
     app(HyperMatches::class)->create([['user' => $anna, 'faction' => 'goldbug'], ['user' => $bert, 'faction' => 'nocoiner']], seed: 9, creator: $anna, mode: HyperMatch::CORRESPONDENCE);
 
     $surfaces = [
-        'home tile' => [route('home', absolute: false), '[data-test=play-tile][data-game=hyperbitcoinization]'],
-        'home ladder' => [route('home', absolute: false), '[data-test=ladder-top][data-game=hyperbitcoinization]'],
+        // The desktop tile, or the phone's list row (Main.dc.html / HomePhone.dc.html): the one that shows.
+        'home tile' => [route('home', absolute: false), '[data-test=home-games] a[data-game=hyperbitcoinization]'],
         'matches row' => [route('matches.index', absolute: false), '[data-test=hyper-row]'],
         // The cube itself: the column's "casual" tag above it is the strip's, the same for every game.
         'matches cube' => [route('matches.index', absolute: false), '[data-test=strip-cube][data-game=hyperbitcoinization] a.bs-cube'],

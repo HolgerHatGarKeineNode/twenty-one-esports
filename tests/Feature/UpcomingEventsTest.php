@@ -27,6 +27,12 @@ use Illuminate\Support\Facades\Queue;
 use Livewire\Livewire;
 use Tests\Support\TestSigner;
 
+/** The card variant of <livewire:upcoming-events> as `$user` sees it (the start page carried it until the revamp). */
+function upcomingCard(User $user): string
+{
+    return Livewire::actingAs($user)->test('upcoming-events', ['variant' => 'card'])->html();
+}
+
 /*
  * A player's upcoming events (2026-10-02): open match rooms and registered
  * tournaments, on the match dock, home's "Your next match" card, the top of
@@ -219,17 +225,15 @@ test('the way to pull out is there while sign-up is open and the player may, and
     $item = app(UpcomingEvents::class)->tournaments($me)->sole();
     expect($item->withdraw)->toBe(route('tournaments.signup', $tournament).'#withdraw');
 
-    $this->actingAs($me)->get(route('home'))->assertOk()
-        ->assertSee('data-test="upcoming-withdraw"', false)
-        ->assertSee(e(route('tournaments.signup', $tournament).'#withdraw'), false);
+    expect(upcomingCard($me))->toContain('data-test="upcoming-withdraw"')
+        ->toContain(e(route('tournaments.signup', $tournament).'#withdraw'));
 
     // Sign-up closed: still registered and listed, no way out any more.
     $tournament->forceFill(['signup_closes_at' => now()->subMinute()])->save();
     expect(app(UpcomingEvents::class)->tournaments($me)->sole()->withdraw)->toBeNull();
 
-    $this->actingAs($me)->get(route('home'))->assertOk()
-        ->assertSee('data-test="upcoming-card"', false)
-        ->assertDontSee('data-test="upcoming-withdraw"', false);
+    expect(upcomingCard($me))->toContain('data-test="upcoming-card"')
+        ->not->toContain('data-test="upcoming-withdraw"');
 });
 
 test('a lineup\'s tournament offers the way out to its captain only', function () {
@@ -313,11 +317,11 @@ test('home, /matches, /tournaments, the game page of that game and the account m
     $tournament = upcomingTournament($me, now()->addDays(4));
     $game = $room->game;
 
+    // The card: the room first (the sooner), its button at the top.
+    $card = upcomingCard($me);
+    expect(strpos($card, 'data-test="upcoming-card"'))->toBeLessThan(strpos($card, 'href="'.e(route('matches.room', $room)).'"'))
+        ->and($card)->toContain('data-test="upcoming-open"')->toContain('data-test="upcoming-more"');
     $this->actingAs($me);
-    $this->get(route('home'))->assertOk()
-        // The room first (the sooner), its button at the top of the page, before the stage.
-        ->assertSeeInOrder(['data-test="upcoming-card"', 'href="'.e(route('matches.room', $room)).'"', 'data-test="upcoming-open"', 'data-test="home-stage"'], false)
-        ->assertSee('data-test="upcoming-more"', false);
     $this->get(route('matches.index'))->assertOk()
         ->assertSeeInOrder(['data-test="matches"', 'data-test="upcoming-list"', 'data-test="upcoming-row" data-key="series-'.$room->number.'"', 'data-test="game-filter-select"'], false)
         ->assertDontSee('data-test="upcoming-row" data-key="tournament-', false);
@@ -344,7 +348,7 @@ test('home, /matches, /tournaments, the game page of that game and the account m
     $this->get(route('home'))->assertOk()->assertDontSee('data-test="upcoming-', false);
 });
 
-test('home\'s card lists every event on the day of the first one, always visible; only later days wait behind "+N more"', function () {
+test('the upcoming card lists every event on the day of the first one, always visible; only later days wait behind "+N more"', function () {
     $me = User::factory()->create(['locale' => 'en', 'timezone' => 'Europe/Berlin']);
     // Wednesday noon in Berlin: two tonight, one tomorrow, one next week.
     $first = upcomingTournament($me, now()->setTime(18, 0));
@@ -352,7 +356,7 @@ test('home\'s card lists every event on the day of the first one, always visible
     $tomorrow = upcomingTournament($me, now()->addDay()->setTime(19, 0));
     $nextWeek = upcomingTournament($me, now()->addWeek());
 
-    $html = $this->actingAs($me)->get(route('home'))->assertOk()->getContent();
+    $html = upcomingCard($me);
     $card = substr($html, strpos($html, 'data-test="upcoming-card"'));
     $card = substr($card, 0, strpos($card, '</section>'));
     $sameDay = substr($card, strpos($card, 'data-test="upcoming-same-day"'));
@@ -377,7 +381,7 @@ test('the control: with nothing else on the first event\'s day there is no same-
     upcomingTournament($me, now()->setTime(18, 0));
     $tomorrow = upcomingTournament($me, now()->addDay()->setTime(19, 0));
 
-    $html = $this->actingAs($me)->get(route('home'))->assertOk()->getContent();
+    $html = upcomingCard($me);
 
     expect($html)->not->toContain('data-test="upcoming-same-day"')
         ->and($html)->toContain('+1 more')

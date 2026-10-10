@@ -121,7 +121,7 @@ test('a board game lobby offers correspondence and no blitz; a correspondence ga
         $measured["board-{$who}"] = boardLeagueMeasure($page) + [
             'bottomCard' => boardLeagueBox($page, '[data-test=player-bottom]'),
             // The board game's own bar is the active one, never chess's.
-            'active' => $page->evaluate('() => [...document.querySelectorAll("[aria-current=page]")].map((e) => e.innerText.trim()).filter(Boolean)'),
+            'active' => $page->evaluate('() => [document.querySelector("[data-test=context-bar]")?.getAttribute("aria-label") ?? "", ...[...document.querySelectorAll("[aria-current=page]")].map((e) => e.innerText.trim())].filter(Boolean)'),
         ];
     }
 

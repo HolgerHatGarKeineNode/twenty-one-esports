@@ -50,6 +50,9 @@ const NAVIGATE_SAFE_COMPONENTS = [
     // player-events subscription cleared, the dock's watch channels stopListening (P6b).
     'shellHeader', 'shellSheet', 'firstSteps', 'profileCardHost', 'toastStack', 'matchDock', 'cupMatch',
     'notificationBell', 'casualWatch',
+    // The revamped header and start page (P3 of plan "Refactor und Design-Revamp"): an observer, listeners behind an
+    // AbortController and an interval, each released in destroy().
+    'dockCount', 'mempoolChain', 'segmentCountdown',
     // @persist keeps it across a swap; it removes its own livewire:navigated listener (livePlayer.js).
     'livePlayer',
     // Intervals cleared in destroy(), or nothing outside the element.
@@ -58,6 +61,8 @@ const NAVIGATE_SAFE_COMPONENTS = [
     'followsHere',
     // Work on a click only, nothing started in init().
     'nostrBar', 'profileBadge', 'nostrAction', 'pushToggle',
+    // The login buttons of the start page's "Mitspielen" (resources/js/nostrLogin.js): no init, nothing outside the element.
+    'nostrLogin',
 ];
 
 /** Inline x-data objects with one of these start something outside their element that nobody takes off again. */

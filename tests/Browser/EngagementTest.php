@@ -171,11 +171,11 @@ test('the P10 pages fit 375 and 1440 px with a clean console, and the placement 
         $page->locator('[data-test=placement-close]')->click();
         BrowserWait::until($page, '() => getComputedStyle(document.querySelector("[data-test=placement-reveal]")).display === "none"', 5_000);
 
+        // The weekly events left home with the revamp (Main.dc.html has none); they live on the chess lobby (WeeklySlotsTest).
         expect($page->evaluate('() => document.querySelector("[data-test=season-live]") !== null'))->toBeTrue()
-            ->and($page->evaluate('() => document.querySelectorAll("[data-test=weekly-event]").length'))->toBe(app(WeeklySlots::class)->upcoming(4)->count())
-            ->and($page->evaluate('() => document.querySelector("[data-test=quests]") !== null'))->toBeTrue();
+            ->and($page->evaluate('() => document.querySelector("[data-test=home-your-week], [data-test=home-quests-phone]") !== null'))->toBeTrue();
         p10Shot($page, "home-live-{$width}", fullPage: false);
-        $page->evaluate('() => document.querySelector("[data-test=weekly-events]").scrollIntoView()');
+        $page->evaluate('() => [...document.querySelectorAll("[data-test=home-your-week], [data-test=home-quests-phone]")].find((el) => el.checkVisibility()).scrollIntoView()');
         p10Shot($page, "home-weekly-quests-{$width}");
         p10Clean($page, "home {$width}");
 

@@ -138,8 +138,7 @@ test('every Proof of Pong surface as an admin in German at 390, 768, 1440 and 19
     app(PongInvites::class)->invite($carl, $anna);
 
     $surfaces = [
-        'home tile' => [route('home', absolute: false), '[data-test=play-tile][data-game=proof-of-pong]'],
-        'home ladder' => [route('home', absolute: false), '[data-test=ladder-top][data-game=proof-of-pong]'],
+        'home tile' => [route('home', absolute: false), '[data-test=home-games] a[data-game=proof-of-pong]'],
         // On a desktop the invite's own tab; on a phone and a tablet the dock is one bar with the most urgent item.
         'dock invite' => [route('home', absolute: false), '[data-test=dock-mobile-bar], [data-dock-tab^=pong-invite-]'],
         'matches row' => [route('matches.index', ['game' => ProofOfPong::SLUG], false), '[data-test=pong-row]'],

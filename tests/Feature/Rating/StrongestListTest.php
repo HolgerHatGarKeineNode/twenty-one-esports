@@ -100,23 +100,15 @@ test('the list ranks by Global Rating, then by weight, and agrees with the ladde
         ->and($html)->toContain('style="width: 88.9%" aria-hidden="true" data-test="game-strip"')
         ->and($html)->toContain('style="width: 100%" aria-hidden="true" data-test="game-strip"');
 
-    // Home: the first five, in the same order.
-    $home = $this->get(route('home'))->assertOk()->getContent();
-    preg_match_all('/data-test="home-strongest-rating">(\d+)</', $home, $homeRatings);
-    expect($homeRatings[1])->toBe(array_slice($ratings[1], 0, StrongestList::HOME));
 });
 
-test('before Block 0 the page and the home tile say the list opens at Block 0, without a number', function () {
+test('before Block 0 the page says the list opens at Block 0, without a number', function () {
     $this->get(route('ladder.strongest'))->assertOk()
         ->assertSee('data-state="pre-launch"', false)
         ->assertSee('The list opens at Block 0')
         ->assertDontSee('data-test="strongest-row"', false)
         ->assertDontSee('data-test="strongest-season"', false);
 
-    $this->get(route('home'))->assertOk()
-        ->assertSee('data-test="home-strongest-empty"', false)
-        ->assertSee('The list opens with a live season: from Block 0, 5 rated results in any game put a player here.')
-        ->assertDontSee('data-test="home-strongest-row"', false);
 });
 
 test('between seasons the list stays empty even though the ended season has ratings', function () {
@@ -142,8 +134,6 @@ test('in a live season without a ranked player the page counts who is on the way
         ->assertSee('Nobody has 5 rated results yet')
         ->assertSee('2 players are on the way.');
 
-    $this->get(route('home'))->assertOk()
-        ->assertSee('Nobody is ranked yet: 5 rated results in any game of the season put a player here.');
 });
 
 test('the page and the home tile run the same number of queries for six players and for sixty', function () {
@@ -218,14 +208,17 @@ test('a casual ladder’s Proof has no njump link', function () {
         ->assertDontSee('njump.me', false);
 });
 
-test('the navigation links the list beside each game’s ladder and once in the phone’s More sheet, not on every hub card', function () {
+test('the navigation links the list beside each game’s ladder, in the hub\'s top row and in the phone’s More sheet, not on every hub card', function () {
+    // A game's ladder page carries the game's context bar (until P4 puts its tabs into the game template).
+    $ladder = $this->get(route('ladder.show', ['chess', 'blitz']))->assertOk()->getContent();
     $html = $this->get(route('ladder.strongest'))->assertOk()->getContent();
 
-    expect($html)->toContain('data-test="ctx-strongest"')
+    expect($ladder)->toContain('data-test="ctx-strongest"')
+        ->toContain('data-test="mobile-strongest"')
         ->and($html)->toContain('data-test="mobile-strongest"')
+        ->and($html)->toContain('data-test="hub-strongest"')
+        // The More sheet and the hub's top row (since row 1 has no game bar on other pages, revamp P3), never once per card.
         ->and(substr_count($html, 'href="'.route('ladder.strongest').'"'))->toBe(2)
-        // The ctx link of the current page is marked.
-        ->and($html)->toMatch('/href="'.preg_quote(route('ladder.strongest'), '/').'"(?:\s+wire:navigate)?\s+aria-current="page"\s+class="ctx-link"/')
         ->and($html)->toMatch('/aria-current="page"\s+data-test="mobile-strongest"/');
 });
 

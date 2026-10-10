@@ -39,9 +39,8 @@ test('the game hub opens with a click, filters and toggles, pins your games in o
     $page = shellPage($player, 1440);
     shellOpen($page, '/clans', $problems);
 
-    // Your games first, by the last match: Rocket League, then chess, then the rest in registry order.
-    expect($page->evaluate('() => [...document.querySelectorAll(".gtab:not(.gtab-hub)")].map((el) => el.dataset.test)'))
-        ->toBe(['game-tab-rocket-league', 'game-tab-chess', 'game-tab-ea-sports-fc-27']);
+    // Row 1 has no game tabs (Header.dc.html): the hub carries every game, yours first.
+    expect($page->evaluate('() => document.querySelectorAll(".gtab").length'))->toBe(0);
 
     $page->locator('[data-test=games-menu]')->click();
     BrowserWait::until($page, '() => document.getElementById("game-hub").checkVisibility() && document.activeElement?.id === "hub-filter"', 5_000);
@@ -80,8 +79,9 @@ test('the game hub opens with a click, filters and toggles, pins your games in o
     // The keydown handler binds on mount; under host load, press() can land
     // before it is bound (or before focus() settles), reading an empty
     // activeElement.id if the check runs only once. Poll the real condition.
-    BrowserWait::until($page, '() => document.activeElement?.id === "site-search"', 5_000);
-    expect($page->evaluate('() => document.activeElement?.id'))->toBe('site-search');
+    // From lg the field stands in row 1 (Header.dc.html).
+    BrowserWait::until($page, '() => document.activeElement?.id === "site-search-inline"', 5_000);
+    expect($page->evaluate('() => document.activeElement?.id'))->toBe('site-search-inline');
 
     expect($problems)->toBe([]);
 });
@@ -203,7 +203,7 @@ test('the hub spends its width on one card grid and does not scroll with the 5 g
     // The phone's sheet stacks title and modes: every title whole there too.
     $page = shellPage($player, 375, 667);
     shellOpen($page, '/clans', $problems);
-    $page->locator('[data-test=mobile-games-menu]')->click();
+    $page->locator('[data-test=tab-games]')->click();
     BrowserWait::until($page, '() => document.getElementById("game-hub").checkVisibility()', 5_000);
     $page->evaluate(SHELL_SETTLE);
     $sizes['5@375']['titles'] = $page->evaluate(HUB_TITLES);
@@ -214,28 +214,25 @@ test('the hub spends its width on one card grid and does not scroll with the 5 g
     expect($problems)->toBe([]);
 });
 
-test('row 2 follows the game of the page, and a page of every game keeps the game opened last', function () {
+test('row 2 shows on the pages of a game only, with that game\'s links', function () {
     $player = User::factory()->create();
     $problems = [];
     $page = shellPage($player, 1280);
-    $state = '() => ({ game: document.querySelector("[data-test=context-bar]").dataset.game, current: document.querySelector(".gtab[aria-current]")?.dataset.test ?? null, how: document.querySelector(".gtab[aria-current]")?.getAttribute("aria-current") ?? null, links: [...document.querySelectorAll("[data-test=context-bar] a")].map((a) => a.dataset.test) })';
+    $state = '() => ({ game: document.querySelector("[data-test=context-bar]")?.dataset.game ?? null, links: [...document.querySelectorAll("[data-test=context-bar] a")].map((a) => a.dataset.test) })';
 
-    // No history: the first registered game.
+    // A page of no game: one row (Header.dc.html).
     shellOpen($page, '/clans', $problems);
-    expect($page->evaluate($state))->toMatchArray(['game' => 'chess', 'current' => 'game-tab-chess', 'how' => 'true']);
+    expect($page->evaluate($state))->toMatchArray(['game' => null]);
 
     shellOpen($page, route('games.rocket-league', absolute: false), $problems);
     $rl = $page->evaluate($state);
-    expect($rl)->toMatchArray(['game' => 'rocket-league', 'current' => 'game-tab-rocket-league', 'how' => 'page'])
+    expect($rl['game'])->toBe('rocket-league')
         ->and($rl['links'])->toBe(['ctx-prizes', 'ctx-play', 'ctx-matches', 'ctx-challenge', 'ctx-ladder', 'ctx-strongest']);
     shellShot($page, 'shell-player-1280-rocket-league');
 
-    shellOpen($page, '/clans', $problems);
-    expect($page->evaluate($state))->toMatchArray(['game' => 'rocket-league', 'how' => 'true']);
-
     shellOpen($page, route('ladder.show', ['chess', 'blitz'], false), $problems);
     $chess = $page->evaluate($state);
-    expect($chess)->toMatchArray(['game' => 'chess', 'how' => 'page'])
+    expect($chess['game'])->toBe('chess')
         ->and($chess['links'])->toBe(['ctx-play', 'ctx-daily', 'ctx-challenge', 'ctx-watch', 'ctx-matches', 'ctx-ladder', 'ctx-strongest', 'ctx-settings']);
 
     expect($problems)->toBe([]);
@@ -255,7 +252,7 @@ test('the hub with 8 and 12 games (a test-only registry): 8 fit without scrollin
         foreach ([1440 => 900, 375 => 667] as $width => $height) {
             $page = shellPage($admin, $width, $height);
             shellOpen($page, '/rules', $problems);
-            $page->locator($width === 1440 ? '[data-test=games-menu]' : '[data-test=mobile-games-menu]')->click();
+            $page->locator($width === 1440 ? '[data-test=games-menu]' : '[data-test=tab-games]')->click();
             BrowserWait::until($page, '() => document.getElementById("game-hub").checkVisibility()', 5_000);
             $page->evaluate(SHELL_SETTLE);
             $m = $page->evaluate(HUB_MEASURE);
@@ -284,7 +281,7 @@ test('the hub with 8 and 12 games (a test-only registry): 8 fit without scrollin
         ->and($problems)->toBe([]);
 });
 
-test('on a phone: game chips, the tab bar, the More sheet and the hub sheet; the match dock sits above the tab bar; a guest sees "Log in" whole', function () {
+test('on a phone: the tab bar, the More sheet and the hub sheet; the match dock sits above the tab bar; a guest sees "Log in" whole', function () {
     $player = shellPlayer();
     $problems = [];
 
@@ -303,26 +300,27 @@ test('on a phone: game chips, the tab bar, the More sheet and the hub sheet; the
     BrowserWait::until($guest, '() => document.getElementById("more-sheet").checkVisibility()', 5_000);
     shellShot($guest, 'shell-guest-375-more');
 
-    // "New here?": dismissed, it stays away on the next page.
+    // "New here?" (not on home and login, which carry their own way in): dismissed, it stays away on the next page.
     $guest->locator(':focus')->press('Escape');
     BrowserWait::until($guest, '() => !document.getElementById("more-sheet").checkVisibility() && document.activeElement?.dataset.test === "tab-more"', 5_000);
-    $guest->locator('[data-test=first-steps-dismiss]')->click();
+    expect($guest->evaluate('() => !!document.querySelector("[data-test=first-steps]")'))->toBeFalse();
     shellOpen($guest, '/rules', $problems);
+    $guest->locator('[data-test=first-steps-dismiss]')->click();
+    shellOpen($guest, '/clans', $problems);
     expect($guest->evaluate('() => document.querySelector("[data-test=first-steps]").checkVisibility()'))->toBeFalse();
 
     $page = shellPage($player, 375, 667);
     shellOpen($page, route('games.rocket-league', absolute: false), $problems);
-    $rects = '() => { const r = (s) => { const el = document.querySelector(s); if (!el || !el.checkVisibility()) return null; const b = el.getBoundingClientRect(); return [Math.round(b.top), Math.round(b.bottom), Math.round(b.left), Math.round(b.right)]; }; return { dock: r("[data-test=dock-mobile-bar]"), tabbar: r("[data-test=tab-bar]"), chip: r("#game-chips [aria-current]"), chips: r("#game-chips"), tabs: [...document.querySelectorAll("[data-test=tab-bar] .tab")].map((t) => t.textContent.trim() + " " + Math.round(t.getBoundingClientRect().height)) }; }';
+    $rects = '() => { const r = (s) => { const el = document.querySelector(s); if (!el || !el.checkVisibility()) return null; const b = el.getBoundingClientRect(); return [Math.round(b.top), Math.round(b.bottom), Math.round(b.left), Math.round(b.right)]; }; return { dock: r("[data-test=dock-mobile-bar]"), tabbar: r("[data-test=tab-bar]"), tabs: [...document.querySelectorAll("[data-test=tab-bar] .rv-pb-item")].map((t) => t.textContent.trim().replace(/\\s+/g, " ") + " " + Math.round(t.getBoundingClientRect().height)) }; }';
     $m = $page->evaluate($rects);
     fwrite(STDERR, "\n[shell-mobile] player 375x667 ".json_encode($m));
 
-    // shellPlayer() has an accepted series, so the More tab carries its screen-reader hint (the count of upcoming matches, 93653e8a).
-    expect($m['tabs'])->toBe(['Play 63', 'Matches 63', 'Ladder 63', 'Tournaments 63', 'More, 1 upcoming match or event 63'])
+    // The same five places on every page (Header.dc.html "Handy"); the game's own pages are in the More sheet.
+    expect(array_map(fn (string $tab): string => preg_replace('/\s*\d+$/', '', preg_replace('/ \d+ (\d+)$/', ' $1', $tab)), $m['tabs']))->toBe(['Game list', 'Tournaments', 'Mempool', 'Actions', 'You'])
+        ->and(array_map(fn (string $tab): int => (int) substr(strrchr($tab, ' '), 1), $m['tabs']))->each->toBeGreaterThanOrEqual(44)
         ->and($m['dock'])->not->toBeNull()
         ->and($m['dock'][1])->toBeLessThanOrEqual($m['tabbar'][0] - 8)
-        // The active game's chip is inside the row's visible part.
-        ->and($m['chip'][2])->toBeGreaterThanOrEqual(0)
-        ->and($m['chip'][3])->toBeLessThanOrEqual(375);
+        ->and($page->evaluate('() => !!document.querySelector("#more-sheet [data-test=more-game]")'))->toBeTrue();
     shellShot($page, 'shell-player-375-rocket-league');
 
     $page->locator('[data-test=tab-more]')->click();
@@ -338,7 +336,7 @@ test('on a phone: game chips, the tab bar, the More sheet and the hub sheet; the
     $page->locator(':focus')->press('Escape');
     BrowserWait::until($page, '() => !document.getElementById("more-sheet").checkVisibility()', 5_000);
 
-    $page->locator('[data-test=mobile-games-menu]')->click();
+    $page->locator('[data-test=tab-games]')->click();
     BrowserWait::until($page, '() => document.getElementById("game-hub").checkVisibility()', 5_000);
     shellShot($page, 'shell-player-375-hub');
 

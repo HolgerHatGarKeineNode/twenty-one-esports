@@ -27,16 +27,16 @@ beforeEach(function () {
     $this->travelTo(CarbonImmutable::parse('2026-10-05 10:00:00', 'UTC'));
 });
 
-test('home shows one line per game with its cover and both regions, and no board', function () {
+test('home lists every open cup as one row with its cover and seats in this week\'s list, and no board', function () {
     cupTick();
 
-    $html = $this->get(route('home'))->assertOk()->getContent();
+    $week = str($this->get(route('home'))->assertOk()->getContent())->after('data-test="home-week"')->before('</section>')->toString();
 
-    expect(substr_count($html, 'data-test="cup-line"'))->toBe(2)
-        ->and(substr_count($html, 'data-test="cup-line-cover"'))->toBe(2)
-        ->and(substr_count($html, 'data-test="cup-mention"'))->toBe(4)
-        ->and($html)->toContain('data-test="cup-compact"', 'data-test="cup-board-all"')
-        ->not->toContain('data-test="cup-group-cover"', 'data-test="cup-filters"');
+    // Two games, two regions each (Main.dc.html "Läuft diese Woche").
+    expect(substr_count($week, 'data-test="week-row"'))->toBe(4)
+        ->and(substr_count($week, 'data-game-cover='))->toBe(4)
+        ->and(substr_count($week, 'data-test="seats"'))->toBe(4)
+        ->and($week)->not->toContain('data-test="cup-filters"');
 });
 
 test('the tournaments page shows the states as one bar with icon, count and word each', function () {

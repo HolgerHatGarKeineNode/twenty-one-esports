@@ -1,16 +1,25 @@
 {{--
-    Login, 1:1 from Login.dc.html without the Lightning option (user decision:
-    Google and Nostr only). The card is the <x-nostr-login> scope: the buttons
-    run the P3 flow, the pending line reuses the "waiting for your wallet" hint
-    of Login.dc.html, the error line the offline banner of States.dc.html.
+    Login, 1:1 from the design canvas of plan "Refactor und Design-Revamp" (boards Login, LoginPhone; rules R13,
+    R14, R15): on the left the league behind its covers, its name in one line, its counts, the featured
+    tournament and the last champion; on the right "Willkommen in der Liga" with the two ways in (Google first,
+    Nostr for people with a key), the member line and what comes after. Phones keep the covers as a strip, the
+    counts, both buttons and the member line. Google and Nostr only (user decision). The right column is the
+    <x-nostr-login> scope: the buttons run the P3 flow, `busy` shows the pending line, `error` the alert.
 --}}
 @php
-    $perks = [
-        [__('Member badge'), __('on your profile, in rankings and on your clan.')],
-        [__('Cosmetics:'), __('board themes, piece sets, profile frames, animated clan logos, pick your own meme team name.')],
-        [__("Members' prize pools:"), __('some tournaments pay their sats to members only. Everyone can still play them.')],
-        [__('A say and early access:'), __('vote on the next game, try new features first.')],
-    ];
+    use App\Support\Engagement\HomeBoard;
+    use App\Support\Engagement\HomeHub;
+
+    $stats = HomeBoard::stats();
+    $live = HomeBoard::counts()['live'];
+    $games = (new HomeBoard(null))->games();
+    $covers = array_column([...$games['browser'], ...$games['own']], 'slug');
+    $gameCount = count($covers);
+    $featured = (new HomeHub(null))->cups()[0] ?? null;
+    $champion = HomeBoard::lastChampion();
+    // The board's backdrop: the browser games, then three own-copy games, twice (Login.dc.html).
+    $wall = array_values(array_intersect(['hyperbitcoinization', 'proof-of-pong', 'chess', 'blockfill', 'blockli', 'rocket-league', 'age-of-empires-2', 'tmnf'], $covers)) ?: $covers;
+    $backdrop = array_slice([...$wall, ...$wall, ...$wall], 0, 16);
 
     // Shared links get a preview; search engines leave the page out.
     $meta = app(App\Support\PageMeta::class)->describe(__('Log in'), __('Log in to TWENTY ONE esports with Google or Nostr and play chess and Rocket League in the league.'));
@@ -18,65 +27,111 @@
     $meta->card(fn () => App\Support\Cards\PageCard::page('login'));
 @endphp
 
-<x-layouts::app :title="__('Log in')">
-    <div class="flex grow flex-col items-center gap-6 px-4 pb-4 lg:flex-row lg:items-start lg:justify-center lg:gap-12 lg:px-12 lg:pb-12">
-        <x-nostr-login class="flex w-full max-w-[460px] flex-col gap-4 rounded-lg bg-card p-5 lg:w-[460px] lg:p-8">
-            <div class="flex flex-col items-center gap-3 pb-2 text-center">
-                <x-logo :size="56" />
-                <h1 class="m-0 font-display text-2xl leading-[1.2] font-bold">{{ __('Log in to play') }}</h1>
-                <span class="text-[13px] leading-normal text-ink-2">{{ __('New here? The same buttons create your player.') }}<br>{{ __('No password to remember.') }}</span>
+<x-layouts::app :title="__('Log in')" flush>
+    <div class="grid grow grid-cols-1 lg:min-h-[844px] lg:grid-cols-[minmax(0,1fr)_560px]" data-test="login-page">
+        {{-- The league --}}
+        <section aria-label="{{ __('The league') }}" class="relative flex flex-col gap-4 overflow-hidden px-4 pt-5 lg:gap-6 lg:border-r lg:border-hairline lg:px-12 lg:py-8">
+            <div class="absolute inset-0 hidden grid-cols-4 gap-2 p-2 opacity-35 lg:grid" aria-hidden="true">
+                @foreach ($backdrop as $slug)
+                    <x-game-cover :game="$slug" class="w-full rounded-[4px] [&_img]:object-cover" />
+                @endforeach
+            </div>
+            <div class="absolute inset-0 hidden bg-[linear-gradient(180deg,rgba(10,10,11,.4),#0A0A0B_85%)] lg:block" aria-hidden="true"></div>
+
+            <div class="flex h-24 gap-2 overflow-hidden lg:hidden" aria-hidden="true">
+                @foreach (array_slice($covers, 0, 3) as $slug)
+                    <x-game-cover :game="$slug" class="w-40 shrink-0 rounded-[4px] opacity-70 [&_img]:object-cover" />
+                @endforeach
             </div>
 
-            <button type="button" class="btn-p flex h-14 w-full cursor-pointer items-center gap-3 rounded-lg bg-btc px-4 text-sm font-bold text-on-btc disabled:cursor-wait"
-                    x-on:click="loginWithGoogle()" x-bind:disabled="busy" data-test="login-google">
-                <x-icon name="google" />
-                {{ __('Continue with Google') }}
-            </button>
+            <div class="relative flex flex-col gap-4 lg:mt-[300px] lg:gap-6">
+                <h1 class="m-0 font-display text-[26px] leading-[1.1] font-bold lg:text-[44px] lg:leading-[1.05]">{{ trans_choice('The Bitcoin league. :count game, one account.|The Bitcoin league. :count games, one account.', $gameCount) }}</h1>
+                <div class="flex gap-4 lg:gap-8" data-test="login-stats">
+                    <span class="flex flex-col"><span class="font-display text-[22px] font-bold tabular-nums lg:text-[30px]">{{ $stats['players'] }}</span><span class="rv-m">{{ __('Players') }}</span></span>
+                    <span class="flex flex-col max-lg:hidden"><span class="font-display text-[30px] font-bold tabular-nums">{{ $stats['clans'] }}</span><span class="rv-m">{{ __('Clans') }}</span></span>
+                    <span class="flex flex-col"><span class="font-display text-[22px] font-bold tabular-nums lg:text-[30px]">{{ $stats['games'] }}</span><span class="rv-m">{{ __('Games') }}</span></span>
+                    <span class="flex flex-col">
+                        <span class="flex items-center gap-1 lg:gap-2">
+                            <span class="rv-live max-lg:h-[18px] max-lg:px-1"><i aria-hidden="true"></i><span class="max-lg:sr-only">LIVE</span></span>
+                            <span class="font-display text-[22px] font-bold tabular-nums lg:text-[30px]">{{ $live }}</span>
+                        </span>
+                        <span class="rv-m"><span class="max-lg:hidden">{{ __('are playing now') }}</span><span class="lg:hidden">{{ __('live') }}</span></span>
+                    </span>
+                </div>
+                @if ($featured !== null || $champion !== null)
+                    <div class="hidden flex-wrap gap-6 lg:flex">
+                        @if ($featured !== null)
+                            @php($tournament = $featured['tournament'])
+                            <a href="{{ route('tournaments.show', $tournament) }}" class="rv-card flex items-center gap-3 border-btc-ring bg-feature p-4" data-test="login-featured">
+                                <x-icon name="trophy" :size="18" class="shrink-0 text-btc" />
+                                <span class="flex flex-col">
+                                    <b>{{ HomeBoard::shortName($tournament) }}</b>
+                                    <span class="rv-m">{{ HomeBoard::dayClock($tournament->starts_at) }}@if (isset($featured['pot']['sats'])), <b class="text-btc">{{ HomeBoard::sats((int) $featured['pot']['sats']) }} Sats</b>@endif</span>
+                                </span>
+                            </a>
+                        @endif
+                        @if ($champion !== null)
+                            <span class="rv-card flex items-center gap-3 p-4" data-test="login-champion">
+                                <span class="grid size-8 shrink-0 place-items-center rounded-full bg-btc text-xs font-bold text-on-btc" aria-hidden="true">{{ mb_strtoupper(mb_substr($champion['name'], 0, 1)) }}</span>
+                                <span class="flex flex-col">
+                                    <b>{{ $champion['name'] }}</b>
+                                    <span class="rv-m">{{ $champion['prize'] !== null
+                                        ? __('Champion :tournament, :sats Sats prize money', ['tournament' => $champion['tournament'], 'sats' => HomeBoard::sats($champion['prize'])])
+                                        : __('Champion :tournament', ['tournament' => $champion['tournament']]) }}</span>
+                                </span>
+                            </span>
+                        @endif
+                    </div>
+                @endif
+            </div>
+        </section>
 
-            <button type="button" class="btn-w flex min-h-12 w-full py-2 cursor-pointer items-center gap-3 rounded-lg border border-line bg-well px-4 text-left text-[13px] text-ink disabled:cursor-wait"
-                    x-on:click="loginWithNostr()" x-bind:disabled="busy" data-test="login-nostr">
-                <x-icon name="key" :size="18" />
-                <span class="flex flex-col items-start gap-0.5">
-                    <span>{{ __('Nostr extension or app') }}</span>
-                    <span class="text-[11px] text-ink-2">{{ __('for people who already have a Nostr key') }}</span>
-                </span>
-            </button>
+        {{-- The way in --}}
+        <x-nostr-login class="flex flex-col gap-4 px-4 pt-4 pb-20 lg:px-12 lg:py-16" aria-labelledby="li-h">
+            <h2 id="li-h" class="m-0 hidden font-display text-[30px] leading-[1.15] font-bold lg:block">{{ __('Welcome to the league') }}</h2>
+            <span class="text-ink-2 max-lg:order-3 max-lg:text-xs max-lg:text-ink-3">{{ __('New here? The same buttons create your player. No password.') }}</span>
 
-            <span class="flex items-center gap-1.5 text-xs text-btc-hi" role="status" x-show="busy" x-cloak data-test="login-pending">
+            <button type="button" class="rv-b h-[52px] w-full max-lg:order-1" x-on:click="loginWithGoogle()" x-bind:disabled="busy" data-test="login-google">{{ __('Continue with Google') }}</button>
+            <button type="button" class="rv-b2 h-[52px] w-full max-lg:order-2" x-on:click="loginWithNostr()" x-bind:disabled="busy" data-test="login-nostr">{{ __('Log in with Nostr') }}</button>
+
+            <span class="flex items-center gap-1.5 text-xs text-btc-hi max-lg:order-2" role="status" x-show="busy" x-cloak data-test="login-pending">
                 <span class="inline-block size-[7px] animate-live rounded-full bg-btc-hi" aria-hidden="true"></span>
                 {{ __('Waiting for your confirmation') }}
             </span>
-
-            <div class="flex items-start gap-2.5 rounded-md bg-loss-tint px-3.5 py-2.5 text-xs leading-normal text-ink shadow-[inset_0_0_0_1px_#5A2A2E]"
-                 role="alert" x-show="error" x-cloak data-test="login-error">
-                <x-icon name="alert" :size="16" class="mt-px text-loss" />
+            <div class="flex items-start gap-2.5 rounded-[4px] border border-live-ring bg-loss-tint px-3.5 py-2.5 text-xs leading-normal text-ink max-lg:order-2" role="alert" x-show="error" x-cloak data-test="login-error">
+                <x-icon name="alert" :size="16" class="mt-px shrink-0 text-loss" />
                 <span x-text="error"></span>
             </div>
 
-            <p class="mt-1 mb-0 text-xs leading-[1.6] text-ink-3">
-                {{ __('Everyone can play everything: ladders, clans, challenges, tournaments. By continuing you accept the') }}
-                <a href="{{ route('rules') }}">{{ __('rules') }}</a>.
-            </p>
-        </x-nostr-login>
+            <span class="rv-m max-lg:hidden">{{ __('Nostr: for everyone with a key, by browser extension or app. By continuing you accept the') }} <a href="{{ route('rules') }}" class="rv-lk">{{ __('rules') }}</a>.</span>
 
-        <div class="flex w-full max-w-[480px] flex-col gap-5 lg:w-[480px]">
-            <section aria-labelledby="perk-h" class="flex flex-col gap-4 rounded-lg bg-card px-5 py-6 shadow-ring-btc lg:px-8 lg:py-7">
-                <span class="flex items-center gap-3"><x-member-badge long /></span>
-                <h2 id="perk-h" class="m-0 font-display text-xl leading-[1.3] font-bold">{{ __('Members of EINUNDZWANZIG get a little extra') }}</h2>
-                <ul class="m-0 flex list-none flex-col gap-2.5 p-0 text-[13px] leading-normal text-ink-2">
-                    @foreach ($perks as [$lead, $rest])
-                        <li class="flex gap-2.5">
-                            <span class="flex pt-0.5 text-btc"><x-icon name="check" :size="14" /></span>
-                            <span><b class="text-ink">{{ $lead }}</b> {{ $rest }}</span>
-                        </li>
-                    @endforeach
-                </ul>
-                <p class="m-0 border-t border-hairline pt-3 text-xs leading-[1.6] text-ink-3">{{ __('Perks never change a rating, a pairing or who may play. Already a member? Your badge shows up by itself once you log in.') }}</p>
-                <div class="flex flex-wrap gap-3">
-                    <a href="https://verein.einundzwanzig.space" class="inline-flex h-11 items-center rounded-md border border-btc-deep px-[18px] text-[13px] font-bold text-btc-hi hover:bg-btc-press">{{ __('Become a member') }}</a>
-                </div>
-            </section>
-            <p class="m-0 px-2 text-xs leading-[1.6] text-ink-3">{{ __('Every result on TWENTY ONE is a public record anyone can check. You never have to deal with that part.') }} <a href="{{ route('protocol') }}">{{ __('How it works') }}</a></p>
-        </div>
+            <span class="flex flex-wrap items-center gap-x-3 gap-y-1 rounded-[4px] border border-btc-ring bg-feature px-3 py-2.5 text-[13px] max-lg:order-4" data-test="login-member">
+                <x-icon name="shield-check" :size="14" class="shrink-0 text-btc" />
+                <b>{{ __('Member of EINUNDZWANZIG?') }}</b>
+                <span class="rv-m max-lg:hidden">{{ __('Your badge comes by itself') }}</span>
+                <span class="grow"></span>
+                <a href="https://verein.einundzwanzig.space" class="rv-lk" rel="noopener">{{ __('Become a member') }}</a>
+            </span>
+
+            <h3 class="rv-h3 mt-4 hidden lg:block">{{ __('After that') }}</h3>
+            <ol class="m-0 hidden list-none flex-col gap-2 p-0 lg:flex" aria-label="{{ __('First steps') }}">
+                <li class="rv-card flex items-center gap-3 p-4">
+                    <x-icon name="user" :size="20" class="shrink-0 text-btc" />
+                    <span class="flex flex-col"><b>{{ __('Create your account') }}</b><span class="rv-m">{{ __('with Google or Nostr') }}</span></span>
+                </li>
+                <li>
+                    <a href="{{ route('chess.lobby') }}" class="rv-card flex items-center gap-3 p-4">
+                        <x-icon name="play" :size="20" class="shrink-0 text-btc" />
+                        <span class="flex flex-col"><b>{{ __('Casual game') }}</b><span class="rv-m">{{ __('Chess or a browser game') }}</span></span>
+                    </a>
+                </li>
+                <li>
+                    <a href="{{ route('clans.index') }}" class="rv-card flex items-center gap-3 p-4">
+                        <x-icon name="clans" :size="20" class="shrink-0 text-btc" />
+                        <span class="flex flex-col"><b>{{ __('Join a clan') }}</b><span class="rv-m">{{ __('for clan series') }}</span></span>
+                    </a>
+                </li>
+            </ol>
+        </x-nostr-login>
     </div>
 </x-layouts::app>

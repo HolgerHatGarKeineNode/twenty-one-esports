@@ -38,7 +38,7 @@ const SHELL_MEASURE = <<<'JS'
         const tabs = [...document.querySelectorAll('.gtab:not(.gtab-hub)')].filter((el) => el.checkVisibility({ checkVisibilityCSS: true })).map((el) => el.dataset.test.replace('game-tab-', '') + ':' + el.querySelector(getComputedStyle(el.querySelector('.gtab-full')).display === 'none' ? '.gtab-short' : '.gtab-full').textContent.trim());
         // Squeezed, not scrolled: a row whose content is wider than its box, a label cut short.
         // Not a `.sr-only` span: it is a 1 px clipped box by design (the More tab's ", 1 upcoming match", 93653e8a), its text is for the screen reader.
-        const squeezed = [...document.querySelectorAll('[data-test=game-tabs], [data-test=context-bar], [data-test=tab-bar] ul, [data-test=tab-bar] .tab span, .nav-link, .ctx-link')]
+        const squeezed = [...document.querySelectorAll('[data-test=main-nav], [data-test=context-bar], [data-test=tab-bar] .rv-pb, [data-test=tab-bar] .rv-pb-item span, .rv-nv, .ctx-link')]
             .filter((el) => el.checkVisibility({ checkVisibilityCSS: true }) && !el.closest('.sr-only') && el.scrollWidth > el.clientWidth + 1)
             .map((el) => `${el.dataset.test || el.className.split(' ')[0] || el.tagName} ${el.scrollWidth}>${el.clientWidth}`);
         // The phone's game chips: no label cut inside its chip, no chip wider than the row, the active one whole inside the row's visible part.
@@ -54,9 +54,9 @@ const SHELL_MEASURE = <<<'JS'
                 if (chip.hasAttribute('aria-current') && (r.left < row.left - 1 || r.right > row.right + 1)) squeezed.push(`active chip ${chip.textContent.trim()} ${Math.round(r.left)}-${Math.round(r.right)} outside its row ${Math.round(row.left)}-${Math.round(row.right)}`);
             }
         }
-        const nav = document.querySelector('[data-test=game-tabs]');
-        // The search button, first after the nav since the search field left row 1 (plan "Mempool-Streifen", P4).
-        const search = document.querySelector('[data-test=mobile-search-toggle]');
+        const nav = document.querySelector('[data-test=main-nav]');
+        // The search field, first after the nav from lg (Header.dc.html).
+        const search = document.querySelector('[data-test=search-inline]');
         if (nav && search && nav.checkVisibility() && search.checkVisibility()) {
             const last = [...nav.children].filter((el) => el.checkVisibility()).pop();
             if (last && last.getBoundingClientRect().right > search.getBoundingClientRect().left) squeezed.push(`row 1 runs under the search: ${Math.round(last.getBoundingClientRect().right)} > ${Math.round(search.getBoundingClientRect().left)}`);
@@ -90,8 +90,8 @@ const SHELL_ROW1 = <<<'JS'
         const items = [];
         const walk = (el) => {
             if (!vis(el)) return;
-            if (el.matches('[data-test=game-tabs], [data-test=chain-rail]')) { [...el.children].forEach(walk); return; }
-            if (el.matches('span.grow, #game-chips')) return;
+            if (el.matches('[data-test=main-nav]')) { [...el.children].forEach(walk); return; }
+            if (el.matches('span.grow')) return;
             items.push(el);
         };
         [...row.children].forEach(walk);

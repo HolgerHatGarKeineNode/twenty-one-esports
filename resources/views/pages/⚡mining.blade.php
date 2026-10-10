@@ -486,4 +486,8 @@ new #[Layout('layouts::app', ['section' => 'mining'])] class extends Component
             @endif
         @endif
     </section>
+
+    {{-- How the season works: when a rated win mines a block, the supply and the genesis message (moved here from home). --}}
+    @include('partials.season-rules', ['laterSeason' => $live && $chain['season']?->slug !== App\Support\SeasonChain\SeasonRelease::SLUG, 'liveSeason' => Seasons::live()])
 </div>
+

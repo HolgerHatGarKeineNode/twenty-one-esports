@@ -13,6 +13,7 @@ use App\Support\Cards\PageCard;
 use App\Support\Cards\ShareCard;
 use App\Support\Cards\SharePosts;
 use App\Support\Cards\ShareRefused;
+use App\Support\GameNames;
 use App\Support\Matches\ScoreAttempts;
 use App\Support\Nostr\NostrKeys;
 use App\Support\Nostr\SignedEvent;
@@ -451,15 +452,17 @@ test('an admin sees a held finish with its hint instead of a proof link, and app
     expect($run->refresh()->verified_at)->not->toBeNull()->and($run->verified_by_id)->toBe($admin->id);
 });
 
-test('home, the rules and the attempts on /matches carry the week: its card shows the time, a finish links its week', function () {
+test('home, the rules and the attempts on /matches carry the week: its tile and this week\'s list name it, a finish links its week', function () {
     tmnfPlayer('ada_drives', linked: true, attributes: ['name' => 'Ada']);
     $run = tmnfFinish('ada_drives', 25_100);
     $week = app(TmnfWeeks::class)->current();
 
     $home = $this->get(route('home'))->assertOk()->getContent();
-    $card = (string) str($home)->after('data-test="score-top" data-game="tmnf"')->before('</li>');
+    $tile = (string) str($home)->after('data-test="game-tile" data-game="tmnf"')->before('</a>');
+    $number = (int) $week->starts_at->copy()->setTimezone('Europe/Berlin')->format('W');
 
-    expect($card)->toContain('This week')->toContain('Ada')->toContain('0:25.100')
+    expect($tile)->toContain(__('Week :week running', ['week' => $number]))
+        ->and(str($home)->after('data-test="home-week"')->toString())->toContain(__(':game week number :week', ['game' => GameNames::cube('tmnf'), 'week' => $number]))
         ->and(ScoreAttempts::links([$run]))->toBe([ScoreAttempts::key($run) => route('tournaments.scores', $week)]);
 
     $this->get(route('rules'))->assertOk()->assertSee('id="tmnf"', false)->assertSee('Only finishes of a linked login count.');

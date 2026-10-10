@@ -72,7 +72,8 @@ const COUNT_PROBE = <<<'JS'
             mini: read('[data-test=live-mini-viewers]') ?? read('[data-test=live-mini-count]'),
             page: read('[data-test=live-viewers] b'),
             store: window.Alpine?.store('live') ? { live: Alpine.store('live').live, viewers: Alpine.store('live').viewers } : null,
-            spare: (() => { const nav = document.querySelector('[data-test=game-tabs]'); const grow = nav && [...nav.children].find((el) => el.classList.contains('grow')); return grow && grow.checkVisibility() ? Math.round(grow.getBoundingClientRect().width) : null; })(),
+            // What row 1 can still give before anything squeezes: the free space plus the search field down to its 44 px (Header.dc.html).
+            spare: (() => { const grow = document.querySelector('body > header > div > span.grow'); const search = document.querySelector('[data-test=search-inline]'); if (!grow || !grow.checkVisibility()) return null; return Math.round(grow.getBoundingClientRect().width + (search && search.checkVisibility() ? Math.max(0, search.getBoundingClientRect().width - 44) : 0)); })(),
         };
     }
     JS;
@@ -176,7 +177,9 @@ test('a new count reaches the badge, the tab, the mini player and /live within o
         expect($before['badgeCount']['text'])->toBe('5')->and($after['badgeCount']['text'])->toBe('128')
             ->and($after['badgeCount']['box'])->toBe($before['badgeCount']['box']);
     } else {
-        expect($after['badgeCount'])->toBeNull();
+        // The phone's top bar carries the count inside the mark ("LIVE 2", Header.dc.html "Handy").
+        expect($after['badgeCount']['text'])->toBe('128')
+            ->and($after['badgeCount']['box'])->toBe($before['badgeCount']['box']);
     }
 
     // The mini player shows the count too, and follows it.

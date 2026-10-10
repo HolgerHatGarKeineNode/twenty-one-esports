@@ -3,12 +3,12 @@
 use App\Enums\TournamentStatus;
 use App\Games\GameRegistry;
 use App\Models\ChessGame;
+use App\Models\ChessMove;
 use App\Models\Clan;
 use App\Models\Rating;
 use App\Models\Tournament;
 use App\Models\TournamentSignup;
 use App\Models\User;
-use App\Support\Cards\ShareCard;
 use App\Support\Tournaments\NoTournamentPrizePool;
 use App\Support\Tournaments\TournamentPrizePool;
 use Illuminate\Support\Facades\DB;
@@ -40,7 +40,7 @@ function homeCount(string $html, string $needle): int
     return substr_count($html, $needle);
 }
 
-test('the hero is the soonest open tournament, the others open ones sit under it', function () {
+test('the hero is the soonest open tournament, the others open ones follow it in this week\'s list', function () {
     $later = openTournament(['name' => 'Later Cup', 'starts_at' => now()->addDays(9)]);
     $soonest = openTournament(['name' => 'Soonest Cup', 'starts_at' => now()->addDays(2)]);
     $middle = openTournament(['name' => 'Middle Cup', 'starts_at' => now()->addDays(5)]);
@@ -50,17 +50,16 @@ test('the hero is the soonest open tournament, the others open ones sit under it
     openTournament(['name' => 'Cancelled Cup', 'starts_at' => now()->addDay()->addHour()])->forceFill(['status' => TournamentStatus::Cancelled])->save();
 
     $html = $this->get(route('home'))->assertOk()->getContent();
+    $week = str($html)->after('data-test="home-week"')->toString();
 
     expect($html)->toContain('data-test="home-hero" data-tournament="'.$soonest->id.'"')
         ->toContain(route('tournaments.signup', $soonest))
-        ->toContain('data-test="play-now"')
         ->not->toContain('Draft Cup')
         ->not->toContain('Closed Cup')
         ->not->toContain('Cancelled Cup')
-        ->not->toContain('data-stage')
-        ->and(homeCount($html, 'data-test="hero-more-cup"'))->toBe(2)
-        ->and(strpos($html, 'Middle Cup'))->toBeLessThan(strpos($html, 'Later Cup'))
-        ->and(strpos($html, 'Soonest Cup'))->toBeLessThan(strpos($html, 'Middle Cup'));
+        ->and(homeCount($week, 'data-featured'))->toBe(3)
+        ->and(strpos($week, 'Soonest Cup'))->toBeLessThan(strpos($week, 'Middle Cup'))
+        ->and(strpos($week, 'Middle Cup'))->toBeLessThan(strpos($week, 'Later Cup'));
 });
 
 test('the seats show only the real entrants, withdrawn ones not', function () {
@@ -68,25 +67,24 @@ test('the seats show only the real entrants, withdrawn ones not', function () {
     homeEntrants($tournament, 5);
     TournamentSignup::query()->latest('id')->first()->forceFill(['withdrawn_at' => now()])->save();
 
-    $html = $this->get(route('home'))->assertOk()->getContent();
+    $hero = str($this->get(route('home'))->assertOk()->getContent())->after('data-test="home-hero"')->before('data-test="live-bar"')->toString();
 
-    expect(homeCount($html, 'data-test="hero-seat"'))->toBe(4)
-        ->and($html)->toContain('data-count="4" data-test="hero-taken">4</b>')
-        ->toContain(__(':taken of :places spots taken', ['taken' => 4, 'places' => 12]))
-        // Eight open seats, the first of them the way in.
-        ->and(homeCount($html, 'class="hh-seat is-open"'))->toBe(8)
-        ->and(homeCount($html, 'data-test="hero-open-seat"'))->toBe(1);
+    // One square per place (Main.dc.html `.seg`): four taken, eight free, and the numbers beside them.
+    expect($hero)->toContain('aria-label="'.__(':taken of :places places taken', ['taken' => 4, 'places' => 12]).'"')
+        ->toContain('data-test="hero-taken">4/12</span>')
+        ->and(homeCount(str($hero)->after('data-test="seats"')->before('</span>')->toString(), '<i class="is-on">'))->toBe(4);
 });
 
-test('a big field ends in one "+N" seat', function () {
+test('a big field keeps sixteen squares, filled in proportion', function () {
     $tournament = openTournament(['capacity' => 40]);
     homeEntrants($tournament, 30);
 
-    $html = $this->get(route('home'))->assertOk()->getContent();
+    $hero = str($this->get(route('home'))->assertOk()->getContent())->after('data-test="home-hero"')->toString();
+    $seats = str($hero)->after('data-test="seats"')->before('</span>')->toString();
 
-    // 24 tiles: 23 faces and "+17" (7 more entrants, 10 open places).
-    expect(homeCount($html, 'data-test="hero-seat"'))->toBe(23)
-        ->and($html)->toContain('data-test="hero-seats-rest">+17</li>');
+    expect(homeCount($seats, '<i'))->toBe(16)
+        ->and(homeCount($seats, '<i class="is-on">'))->toBe(12)
+        ->and($hero)->toContain('data-test="hero-taken">30/40</span>');
 });
 
 test('the pot shows only when the league has a pool for the tournament', function () {
@@ -100,8 +98,7 @@ test('the pot shows only when the league has a pool for the tournament', functio
     ])->save();
 
     $this->get(route('home'))->assertOk()
-        ->assertSee('data-test="hero-pot"', false)
-        ->assertSee(__(':sats sats pot', ['sats' => ShareCard::sats(500_000)]));
+        ->assertSee('data-test="hero-pot">500,000 Sats</span>', false);
 
     // The seam decides: a pool the league does not report is not shown.
     app()->bind(TournamentPrizePool::class, NoTournamentPrizePool::class);
@@ -109,64 +106,58 @@ test('the pot shows only when the league has a pool for the tournament', functio
     expect($this->get(route('home'))->assertOk()->getContent())->not->toContain('data-test="hero-pot"');
 });
 
-test('without an open tournament the games are the hero and Block 0 is a strip under them', function () {
+test('without an open tournament or a Blockfill week there is no band; the mempool, the games and the season lead', function () {
     Tournament::factory()->create(['name' => 'Draft Cup']);
 
     $html = $this->get(route('home'))->assertOk()->getContent();
 
     expect($html)->not->toContain('data-test="home-hero"')
-        ->toMatch('/data-test="play-now"\s+data-stage/')
-        ->toContain('data-test="block0-strip"')
-        ->and(homeCount($html, 'data-test="play-tile"'))->toBe(5)
-        ->and(strpos($html, 'data-test="play-now"'))->toBeLessThan(strpos($html, 'data-test="block0-strip"'));
+        ->toContain('data-test="home-mempool"')
+        ->toContain('data-test="home-season"')
+        ->and(homeCount($html, 'data-test="game-tile"'))->toBe(count(app(GameRegistry::class)->all()))
+        ->and(strpos($html, 'data-test="home-mempool"'))->toBeLessThan(strpos($html, 'data-test="home-games"'));
 });
 
-test('a guest gets the logins, a player their matches and their seat', function () {
+test('a guest gets the logins, a player their seat, their week and the Block 0 notice', function () {
     $tournament = openTournament();
     [$player, $signer] = keyedPlayer();
     soloSignup($tournament, $player, $signer);
-    $rival = User::factory()->create();
-    ChessGame::factory()->create(['white_id' => $player->id, 'black_id' => $rival->id]);
 
     $this->get(route('home'))->assertOk()
-        ->assertSee('data-test="play-login"', false)
-        ->assertSee('href="'.route('login').'" class="btn-p', false)
-        ->assertSee(__('Sign up'))
-        ->assertDontSee('data-test="your-next"', false);
+        ->assertSee('data-test="home-join"', false)
+        ->assertSee('x-on:click="loginWithGoogle()"', false)
+        ->assertSee(__('Enter the tournament'))
+        ->assertDontSee('data-test="home-your-week"', false);
 
     $this->actingAs($player)->get(route('home'))->assertOk()
-        ->assertDontSee('data-test="play-login"', false)
-        ->assertSee('data-test="your-next"', false)
-        ->assertSee(__('You’re in'))
-        ->assertSee('hh-seat is-taken is-you', false)
+        ->assertDontSee('data-test="home-join"', false)
+        ->assertSee('data-test="home-your-week"', false)
+        ->assertSee(__('You are entered'))
         ->assertSee('action="'.route('notify.block0').'"', false);
 });
 
-test('the parts with nothing live say so', function () {
+test('with nothing played yet the page says so and leaves the bar and the proud moments out', function () {
     $html = $this->get(route('home'))->assertOk()->getContent();
 
-    expect($html)->toContain('data-test="live-empty"')
-        ->toContain(__('No results yet. The first win lands here.'))
-        ->toContain(__('Nobody on it yet. One result puts you on top.'))
-        ->not->toContain('data-test="featured-board"')
-        ->not->toContain('data-test="running-tournament"');
+    expect($html)->toContain(__('No match in the mempool yet.'))
+        ->not->toContain('data-test="live-bar"')
+        ->not->toContain('data-test="pride-row"')
+        ->not->toContain('data-test="mempool-chain"');
 });
 
-test('results, live boards, newcomers and the top of the ladders come from the league', function () {
+test('the bar and the chain come from the league: a result, a move and the games behind them', function () {
     $winner = User::factory()->create(['name' => 'zapmaster']);
     $loser = User::factory()->create(['name' => 'kempten.k']);
-    ChessGame::factory()->finished('0-1')->create(['white_id' => $loser->id, 'black_id' => $winner->id]);
-    ChessGame::factory()->create(['white_id' => $winner->id, 'black_id' => $loser->id]);
-    Rating::query()->create(['pool' => Rating::CASUAL, 'season' => '', 'game' => 'chess', 'mode' => 'blitz', 'subject' => 'user:'.$winner->id, 'user_id' => $winner->id, 'rating' => 1234, 'results' => 3]);
-    Clan::factory()->create(['name' => 'Laser Eyes']);
+    ChessGame::factory()->finished('0-1')->create(['white_id' => $loser->id, 'black_id' => $winner->id, 'ended_at' => now()->subMinutes(5)]);
+    $running = ChessGame::factory()->create(['white_id' => $winner->id, 'black_id' => $loser->id, 'ply' => 1]);
+    ChessMove::query()->create(['chess_game_id' => $running->id, 'ply' => 1, 'uci' => 'e2e4', 'san' => 'e4', 'fen' => ChessGame::START_FEN, 'spent_ms' => 900, 'clock_ms' => 300_000, 'created_at' => now()]);
 
     $html = $this->get(route('home'))->assertOk()->getContent();
+    $bar = str($html)->after('data-test="live-bar"')->before('data-test="home-grid"')->toString();
 
-    expect($html)->toContain('<b>zapmaster</b> '.e(__('beat :name', ['name' => 'kempten.k'])))
-        ->toContain('data-test="featured-board"')
-        ->toContain('Laser Eyes')
-        ->and(homeCount($html, 'data-test="ladder-row"'))->toBe(1)
-        ->and($html)->toContain('1234');
+    expect($bar)->toContain(e(__(':player played :move in :game', ['player' => 'zapmaster', 'move' => '1. e4', 'game' => $running->number === null ? 'Chess' : $running->number()])))
+        ->toContain('zapmaster beats kempten.k')
+        ->and(homeCount($html, 'data-test="chain-cube"'))->toBe(2);
 });
 
 test('the queries do not grow with entrants, boards, results, newcomers or ladder rows', function () {

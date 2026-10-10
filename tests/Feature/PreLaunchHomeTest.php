@@ -6,12 +6,13 @@ test('the home page counts down to Block 0 when a date is set', function () {
     $this->freezeTime();
     planBlock0(now()->addDays(3)->addHours(4)->toIso8601String());
 
+    // The season card's segmented countdown (Main.dc.html): days, hours, minutes.
     $this->get('/')
         ->assertOk()
         ->assertSee('data-state="countdown"', false)
-        ->assertSee('x-data="blockZeroCountdown(', false)
-        ->assertSee('3 d 04:00:00')
-        ->assertDontSee('date coming soon');
+        ->assertSee('x-data="segmentCountdown(', false)
+        ->assertSeeInOrder(['data-test="countdown-segments"', '03', '04', '00'], false)
+        ->assertDontSee(__('Date to follow; the countdown starts once it is set.'));
 });
 
 test('the home page says the date is coming soon when none is set', function () {
@@ -20,8 +21,8 @@ test('the home page says the date is coming soon when none is set', function () 
     $this->get('/')
         ->assertOk()
         ->assertSee('data-state="undated"', false)
-        ->assertSee('date coming soon')
-        ->assertDontSee('blockZeroCountdown(', false);
+        ->assertSee(__('Date to follow; the countdown starts once it is set.'))
+        ->assertDontSee('segmentCountdown(', false);
 });
 
 test('the home page shows no fictional sample data', function () {

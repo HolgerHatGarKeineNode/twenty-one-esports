@@ -1,37 +1,22 @@
-@props(['active', 'games' => [], 'community' => [], 'chain' => [], 'tournaments' => null, 'admin' => null, 'account' => [], 'section' => null, 'user' => null])
+@props(['active', 'games' => [], 'community' => [], 'chain' => [], 'tournaments' => null, 'admin' => null, 'account' => [], 'section' => null, 'user' => null, 'onGamePage' => false])
 
 {{--
-    Phones and tablets (below lg, header concept B): the tab bar of the active
-    game at the bottom edge (Play, Matches, Ladder, then Tournaments and More)
-    and the More sheet above it. More holds the account, the pages of every
-    game (Clans, the chain rail's Mempool, Season and Casual, Watch live, Rules,
-    Live stream, Admin) and the other games. The tab bar's Matches is the
-    active game's list; Mempool is every game's, the same page unfiltered. The
-    links are the header's own lists (App\Support\Navigation\ShellNavigation),
-    so no page is desktop-only (P16). The tab bar reserves its height in
-    --tabbar-h (app.css): the page, the match dock and bottom bars of a page
-    sit above it, and the live player (P20) above whatever is highest
-    (`data-live-floor`).
+    Phones and tablets (below lg), 1:1 from the design canvas (Header.dc.html "Handy", HomePhone.dc.html):
+    the tab bar at the bottom edge, the same five places on every page: Spiele (the game hub), Turniere,
+    Mempool, then Aktionen (the match dock) and Du for a player, Live and Anmelden for a guest. The More
+    sheet opens from the menu button in the top bar (components/shell/header) and holds the account, the
+    pages of every game (Clans, Mempool, Season, Casual, Watch live, Rules, Live stream, Admin), on a game
+    page that game's own pages (its tabs move into the shared game template in P4) and the other games.
+    The links are the header's own lists (App\Support\Navigation\ShellNavigation), so no page is
+    desktop-only (P16). The tab bar reserves its height in --tabbar-h (app.css): the page, the match dock
+    and bottom bars of a page sit above it, and the live player (P20) above whatever is highest (`data-live-floor`).
 --}}
 @php
-    $current = request()->fullUrl();
-    $tabs = [];
-    // Blockfill's replays (it has no matches of its own) take a tab after its leaderboard.
-    foreach (['play' => 'bolt', 'matches' => 'matches', 'ladder' => 'ladder', 'replays' => 'play'] as $role => $icon) {
-        foreach ($active['actions'] as $link) {
-            if ($link['tab'] === $role) {
-                $tabs[] = ['href' => $link['href'], 'label' => $role === 'play' ? __('Play') : $link['label'], 'icon' => $icon, 'test' => 'tab-'.$role,
-                    'current' => \App\Support\Navigation\ShellNavigation::isCurrent($link)];
-            }
-        }
-    }
-    // Tournaments carries a dot while any is open for sign-up; its accessible name says how many (the visible label stays one word).
+    $current = request()->url();
+    $mempoolLink = collect($chain)->firstWhere('key', 'mempool');
     $open = (int) ($tournaments['open'] ?? 0);
-    $tabs[] = ['href' => route('tournaments.index'), 'label' => __('Tournaments'), 'icon' => 'tournaments', 'test' => 'tab-tournaments',
-        'dot' => $open > 0, 'name' => $open > 0 ? __('Tournaments').', '.$open.' '.trans_choice('open for sign-up|open for sign-up', $open) : null];
     $profile = $account[0] ?? null;
     $accountLinks = array_slice($account, 1);
-    $upcomingCount = (int) (collect($account)->firstWhere('key', 'upcoming')['count'] ?? 0);
     $chainTests = ['mempool' => 'mobile-mempool', 'mining' => 'mobile-season', 'casual' => 'mobile-casual'];
     $everywhere = [
         [...$community[0], 'icon' => 'clans', 'test' => 'mobile-clans'],
@@ -95,7 +80,7 @@
         @else
             <div class="flex gap-2 px-1 pt-2 pb-1">
                 <a href="{{ route('login') }}" class="btn-s flex h-11 grow items-center justify-center rounded-md border border-edge text-sm font-bold text-ink hover:text-ink">{{ __('Log in') }}</a>
-                <a href="{{ route('login', ['then' => 'play']) }}" class="btn-p flex h-11 grow items-center justify-center rounded-md bg-btc text-sm font-bold text-on-btc hover:text-on-btc" data-test="mobile-start-playing">{{ __('Start playing') }}</a>
+                <a href="{{ route('login') }}" class="btn-p flex h-11 grow items-center justify-center rounded-md bg-btc text-sm font-bold text-on-btc hover:text-on-btc" data-test="mobile-start-playing">{{ __('Start playing') }}</a>
             </div>
         @endif
 
@@ -142,6 +127,22 @@
             </ul>
         </section>
 
+        @if ($onGamePage && $active['actions'] !== [])
+            <section aria-label="{{ $active['name'] }}" data-test="more-game">
+                <h3 class="m-0 px-2 pt-3 pb-1 text-xs font-normal text-ink-3">{{ $active['name'] }}</h3>
+                <ul class="m-0 grid list-none grid-cols-2 gap-1 p-0">
+                    @foreach ($active['actions'] as $link)
+                        <li class="min-w-0">
+                            <a href="{{ $link['href'] }}" @navigate($link['href']) class="{{ $row }}" @if (\App\Support\Navigation\ShellNavigation::isCurrent($link)) aria-current="page" @endif data-test="more-{{ $link['key'] }}">
+                                <x-icon :name="$link['icon']" :size="18" class="text-ink-3" />
+                                <span class="min-w-0 leading-tight break-words">{{ $link['label'] }}</span>
+                            </a>
+                        </li>
+                    @endforeach
+                </ul>
+            </section>
+        @endif
+
         @if ($otherGames !== [])
             <section aria-label="{{ __('Other games') }}">
                 <h3 class="m-0 px-2 pt-3 pb-1 text-xs font-normal text-ink-3">{{ __('Other games') }}</h3>
@@ -159,34 +160,44 @@
         @endif
     </div>
 
-    {{-- The tab bar: the active game's own tabs, labelled, 64 px plus the safe-area inset. --}}
-    <nav class="tabbar fixed inset-x-0 bottom-0 z-40 border-t border-hairline bg-bar pb-[env(safe-area-inset-bottom)]" style="--game: {{ $active['colour'] }}" aria-label="{{ __('Main navigation') }}" data-test="tab-bar" data-live-floor>
-        <ul class="m-0 flex list-none p-0">
-            @foreach ($tabs as $tab)
-                <li class="flex-auto">
-                    <a href="{{ $tab['href'] }}" @navigate($tab['href']) class="tab" @if ($tab['current'] ?? $tab['href'] === $current) aria-current="page" @endif @if ($tab['name'] ?? null) aria-label="{{ $tab['name'] }}" @endif data-test="{{ $tab['test'] }}">
-                        @if ($tab['dot'] ?? false)
-                            <span class="relative flex"><x-icon :name="$tab['icon']" :size="22" /><span class="tab-dot" aria-hidden="true" data-test="tab-tournaments-dot"></span></span>
-                        @else
-                            <x-icon :name="$tab['icon']" :size="22" />
-                        @endif
-                        <span>{{ $tab['label'] }}</span>
-                    </a>
-                </li>
-            @endforeach
-            <li class="flex-auto">
-                <button type="button" class="tab w-full cursor-pointer" aria-controls="more-sheet" x-bind:aria-expanded="open.toString()" aria-expanded="false" aria-haspopup="dialog"
-                        x-on:click="toggle($el)" data-test="tab-more">
-                    @if ($upcomingCount > 0)
-                        {{-- The account's upcoming matches and events (UpcomingEvents) sit in More: the dot says so. --}}
-                        <span class="relative flex"><x-icon name="menu" :size="22" /><span class="tab-dot" aria-hidden="true" data-test="tab-more-dot"></span></span>
-                        <span>{{ __('More') }}<span class="sr-only">, {{ trans_choice(':count upcoming match or event|:count upcoming matches and events', $upcomingCount) }}</span></span>
-                    @else
-                        <x-icon name="menu" :size="22" />
-                        <span>{{ __('More') }}</span>
-                    @endif
-                </button>
-            </li>
-        </ul>
+    {{-- The tab bar: five places, labelled, 64 px plus the safe-area inset. --}}
+    <nav class="tabbar fixed inset-x-0 bottom-0 z-40 border-t border-hairline bg-bar pb-[env(safe-area-inset-bottom)]" aria-label="{{ __('Main navigation') }}" data-test="tab-bar" data-live-floor>
+        <div class="rv-pb">
+            <button type="button" class="rv-pb-item" aria-controls="game-hub" aria-haspopup="dialog"
+                    x-on:click="window.dispatchEvent(new CustomEvent('hub-toggle', { detail: $el }))" data-test="tab-games">
+                <x-icon name="grid" :size="22" />
+                <span>{{ __('Game list') }}</span>
+            </button>
+            <a href="{{ route('tournaments.index') }}" @navigate(route('tournaments.index')) class="rv-pb-item" @if ($section === 'tournaments') aria-current="page" @endif
+               @if ($open > 0) aria-label="{{ __('Tournaments').', '.$open.' '.trans_choice('open for sign-up|open for sign-up', $open) }}" @endif data-test="tab-tournaments">
+                <x-icon name="tournaments" :size="22" />
+                <span>{{ __('Tournaments') }}</span>
+            </a>
+            <a href="{{ $mempoolLink['href'] }}" @navigate($mempoolLink['href']) class="rv-pb-item" @if ($mempoolLink['current']) aria-current="page" @endif aria-label="{{ $mempoolLink['name'] }}" data-test="tab-mempool">
+                <x-icon name="matches" :size="22" />
+                <span>{{ __('Mempool') }}</span>
+            </a>
+            @if ($user)
+                <a href="{{ route('dashboard') }}" class="rv-pb-item" x-data="dockCount" x-on:click="openDock($event)"
+                   x-bind:aria-label="dockOpen > 0 ? @js(__('Actions')).concat(', ', dockOpen, ' ', @js(__('open'))) : @js(__('Actions'))" data-test="tab-actions">
+                    <x-icon name="bolt" :size="22" />
+                    <span>{{ __('Actions') }}</span>
+                    <span class="rv-n is-o" x-show="dockOpen > 0" x-text="dockOpen" x-cloak aria-hidden="true"></span>
+                </a>
+                <a href="{{ $profile['href'] ?? route('dashboard') }}" @navigate($profile['href'] ?? route('dashboard')) class="rv-pb-item" @if (request()->routeIs('dashboard')) aria-current="page" @endif data-test="tab-you">
+                    <x-icon name="user" :size="22" />
+                    <span>{{ __('You') }}</span>
+                </a>
+            @else
+                <a href="{{ route('live') }}" class="rv-pb-item" @if (request()->routeIs('live')) aria-current="page" @endif data-test="tab-live">
+                    <x-icon name="eye" :size="22" />
+                    <span>{{ __('Live') }}</span>
+                </a>
+                <a href="{{ route('login') }}" class="rv-pb-item" @if (request()->routeIs('login')) aria-current="page" @endif data-test="tab-login">
+                    <x-icon name="user" :size="22" />
+                    <span>{{ __('Log in') }}</span>
+                </a>
+            @endif
+        </div>
     </nav>
 </div>

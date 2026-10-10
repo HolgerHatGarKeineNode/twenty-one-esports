@@ -1,4 +1,5 @@
 @import 'tailwindcss';
+@import './revamp.css';
 
 @source '../views';
 @source '../../app/Support';
@@ -96,6 +97,12 @@
     --color-live: #FF3B3B;
     --color-live-tint: #221213;
     --color-live-ring: #4A1D20;
+    /* A count that needs action now (admin cases, a deadline): white on it 5.31:1 (white on #FF3B3B fails at 3.53). */
+    --color-urgent: #C7323D;
+
+    /* Revamp surfaces (design canvas, plan "Refactor und Design-Revamp"): the featured row and the live ticker. */
+    --color-feature: #14110C;
+    --color-tick: #0E0E10;
 
     /* Games: colour nuance plus logo, never colour alone */
     --color-chess: #22D3EE;
@@ -2261,8 +2268,8 @@
  */
 :root {
     --tabbar-h: calc(4rem + env(safe-area-inset-bottom));
-    /* The sticky header: row 1 alone below lg (56 px), row 1 and the context bar from lg (64 + 48 px). */
-    --shell-h: 3.5rem;
+    /* The sticky header (Header.dc.html): 52 px below lg, 56 px from lg, plus the 48 px context bar on a game page. */
+    --shell-h: 3.25rem;
     /*
      * The match dock's floating bar while it shows (P5f; it renders its spacer exactly then): 56 px and 16 px
      * of air. A match room's sticky score bar (phones) carries the dock as a 44 px tab on its top edge instead.
@@ -2280,7 +2287,11 @@
 @media (width >= 64rem) {
     :root {
         --tabbar-h: 0px;
-        --shell-h: 7rem;
+        --shell-h: 3.5rem;
+    }
+
+    :root:has([data-game-page]) {
+        --shell-h: 6.5rem;
     }
 }
 

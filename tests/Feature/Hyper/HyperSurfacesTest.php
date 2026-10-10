@@ -60,11 +60,10 @@ test('switched on, home, /play and the navigation lead to the lobby and the seas
         ->and(public_path('images/games/hyperbitcoinization-480.jpg'))->toBeFile();
 
     $home = $this->get(route('home'))->assertOk()->getContent();
-    $tile = (string) str($home)->after('data-test="play-tile" data-game="hyperbitcoinization"')->before('</li>');
-    $ladder = (string) str($home)->after('data-test="ladder-top" data-game="hyperbitcoinization"')->before('</li>');
+    $tile = (string) str($home)->after('data-test="game-tile" data-game="hyperbitcoinization"')->before('</a>');
 
-    expect($tile)->toContain('href="'.route('hyper.index').'"', 'data-game-cover="hyperbitcoinization"')
-        ->and($ladder)->toContain('href="'.route('hyper.ladder').'"')
+    expect($home)->toMatch('#href="'.preg_quote(route('hyper.index'), '#').'"(?:\s+wire:navigate)?\s+class="rv-gt" data-test="game-tile" data-game="hyperbitcoinization"#')
+        ->and($tile)->toContain('data-game-cover="hyperbitcoinization"')
         ->and($home)->not->toContain(route('chess.lobby').'"  class="hub-tile-main" data-test="games-menu-hyperbitcoinization"');
 
     $play = (string) str($this->get(route('play'))->assertOk()->getContent())->after('data-test="play-game-hyperbitcoinization"')->before('</li>');
@@ -74,18 +73,14 @@ test('switched on, home, /play and the navigation lead to the lobby and the seas
     $this->get(route('ladder.show', [Hyperbitcoinization::SLUG, 'live']))->assertRedirect(route('hyper.ladder'))->assertStatus(301);
 });
 
-test('home\'s ladder card shows the season\'s free-for-all leaders by points', function () {
+test('the season ladder shows the free-for-all leaders by points', function () {
     HyperOn::play();
     openSeason(ladders: false);
     [$a, $b, $c] = User::factory()->count(3)->sequence(['name' => 'Ada Points'], ['name' => 'Ben Points'], ['name' => 'Cid Points'])->create();
     HyperOn::finishTable(app(HyperMatches::class)->create([['user' => $a, 'faction' => 'bitcoiner'], ['user' => $b, 'faction' => 'fed'], ['user' => $c, 'faction' => 'ezb']], seed: 7, creator: $a), [0, 1, 2]);
 
-    $card = (string) str($this->get(route('home'))->assertOk()->getContent())->after('data-test="ladder-top" data-game="hyperbitcoinization"')->before('Full ladder');
-
-    // 3 players: 6 · 3 · 1 points.
-    expect($card)->toContain('Rated')
-        ->and(substr_count($card, 'data-test="ladder-row"'))->toBe(3);
-    $this->get(route('home'))->assertSeeInOrder(['Ada Points', '6 pts', 'Ben Points', '3 pts', 'Cid Points', '1 pts']);
+    // 3 players: 6 · 3 · 1 points (home no longer carries ladder cards: plan "Refactor und Design-Revamp", board Main).
+    $this->get(route('hyper.ladder'))->assertOk()->assertSeeInOrder(['Ada Points', '6', 'Ben Points', '3', 'Cid Points', '1']);
 });
 
 test('/matches lists a match once a player won it, the winner alone, never a running one; row and cube open a new tab (user 2026-10-09)', function () {

@@ -21,7 +21,9 @@ import notificationBell from './notificationBell.js';
 import boardLobby from './boardLobby.js';
 import hyperLobby from './hyperLobby.js';
 import playerPicker from './playerPicker.js';
-import { firstSteps, shellHeader, shellSheet } from './shellNav.js';
+import { dockCount, firstSteps, shellHeader, shellSheet } from './shellNav.js';
+import mempoolChain from './mempoolChain.js';
+import segmentCountdown from './segmentCountdown.js';
 import { livePlayer, liveStage } from './livePlayer.js';
 import { liveStore, readSeed, startLiveFeed } from './liveFeed.js';
 import './nostrSign.js';
@@ -81,6 +83,9 @@ document.addEventListener('alpine:init', () => {
     // The shell navigation: header and game hub, the phone's More sheet, the guests' first steps.
     window.Alpine.data('shellHeader', shellHeader);
     window.Alpine.data('shellSheet', shellSheet);
+    window.Alpine.data('dockCount', dockCount);
+    window.Alpine.data('mempoolChain', mempoolChain);
+    window.Alpine.data('segmentCountdown', segmentCountdown);
     window.Alpine.data('firstSteps', firstSteps);
     // The live stream (P20): the floating player and the big one on /live; hls.js loads on first play.
     window.Alpine.data('livePlayer', livePlayer);

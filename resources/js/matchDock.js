@@ -155,6 +155,29 @@ export default function matchDock(config) {
             }
         },
 
+        /**
+         * The header's "Aktionen" entry (design canvas, Header.dc.html): on a phone the sheet, on a game page's
+         * title row its slot list, else the floating bar unfolded with the focus on its handle.
+         */
+        openFromHeader() {
+            if (Number(this.$root.dataset.open || 0) === 0) return false;
+            if (!window.matchMedia('(width >= 64rem)').matches) {
+                this.toggle('sheet');
+
+                return true;
+            }
+            const slot = this.$root.querySelector('[data-test=dock-slot-button]');
+            if (slot && slot.getClientRects().length > 0) {
+                this.toggle('slot', slot);
+
+                return true;
+            }
+            if (this.folded) this.fold();
+            this.$nextTick(() => this.$root.querySelector('[data-test=dock-handle]')?.focus());
+
+            return true;
+        },
+
         fold() {
             this.folded = !this.folded;
             this.autoFolded = false;

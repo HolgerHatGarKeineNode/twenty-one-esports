@@ -49,7 +49,7 @@ const STICKY_MEASURE = <<<'JS'
     }
     JS;
 
-test('the header stays at the top after a 2000 px scroll, row 1 below lg and both rows from lg, and lifts off the page with its edge', function (int $width, int $height, bool $context) {
+test('the header stays at the top after a 2000 px scroll, 52 px below lg and 56 from lg, and lifts off the page with its edge', function (int $width, int $height, bool $context) {
     $problems = [];
     $page = shellPage(shellPlayer(), $width, $height);
     shellOpen($page, '/rules', $problems);
@@ -64,14 +64,14 @@ test('the header stays at the top after a 2000 px scroll, row 1 below lg and bot
     expect($scrolled['scrollY'])->toBe($top['reach'])
         ->and($scrolled['scrollY'])->toBeGreaterThan(300)
         ->and($scrolled['header']['top'])->toBe(0)
-        ->and($scrolled['header']['height'])->toBe($context ? 112 : 56)
+        ->and($scrolled['header']['height'])->toBe($context ? 104 : ($width >= 1024 ? 56 : 52))
         ->and($scrolled['doc'][0])->toBeLessThanOrEqual($scrolled['doc'][1])
         // Flat at the top, lifted once the page runs under it.
         ->and($top['edge'])->toBe('0')
         ->and($scrolled['edge'])->toBe('1');
 
     if ($context) {
-        expect($scrolled['context'])->toBe(['top' => 64, 'bottom' => 112, 'height' => 48]);
+        expect($scrolled['context'])->toBe(['top' => 56, 'bottom' => 104, 'height' => 48]);
     } else {
         expect($scrolled['context'])->toBeNull();
     }
@@ -80,7 +80,8 @@ test('the header stays at the top after a 2000 px scroll, row 1 below lg and bot
 })->with([
     'phone 375' => [375, 667, false],
     'tablet 768' => [768, 1024, false],
-    'desktop 1440' => [1440, 900, true],
+    // /rules is no game page: one 56 px row (Header.dc.html); a game page adds its 48 px context bar until P4.
+    'desktop 1440' => [1440, 900, false],
 ]);
 
 test('an anchor jump and a focused link land below the sticky header, and a guest\'s "New here?" strip scrolls away', function (int $width, int $height) {

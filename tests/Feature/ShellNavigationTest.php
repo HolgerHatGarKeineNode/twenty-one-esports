@@ -35,8 +35,8 @@ test('your games come first, by the last match, then the registry order; guests 
     SeriesMatch::factory()->accepted()->create(['challenger_lineup_id' => $lineup->id, 'created_at' => now()->subDay()]);
     $registryOrder = array_keys(app(GameRegistry::class)->all());
 
+    // Row 1 has no game tabs since the revamp (Header.dc.html): the game hub carries the viewer's games first.
     $this->actingAs($player)->get('/clans')->assertOk()
-        ->assertSeeInOrder(['data-test="game-tab-rocket-league"', 'data-test="game-tab-chess"'], false)
         ->assertSeeInOrder(['data-test="hub-game-rocket-league"', 'data-test="hub-yours"', 'data-test="hub-game-chess"', 'data-test="hub-yours"', 'data-test="hub-game-ea-sports-fc-27"'], false);
 
     auth()->logout();
@@ -59,17 +59,17 @@ test('the viewer\'s games cost two queries, however many matches there are', fun
     expect(count(array_filter(array_column($queries, 'query'), fn (string $sql) => str_contains($sql, 'chess_games') || str_contains($sql, 'series_matches'))))->toBe(2);
 });
 
-test('row 2 names the game of the page, else the game opened last, else the first registered game', function () {
+test('row 2 shows on a game page only and names its game', function () {
     $player = User::factory()->create();
     $this->actingAs($player);
     $contextOf = fn (string $uri): string => str($this->get($uri)->assertOk()->getContent())->match('/data-test="context-bar" data-game="([^"]+)"/')->toString();
 
-    expect($contextOf('/clans'))->toBe('chess')
+    // The revamped header (Header.dc.html) is one row; the game's context bar stays on its own pages until P4.
+    expect($contextOf('/clans'))->toBe('')
         ->and($contextOf(route('games.series', 'ea-sports-fc-26')))->toBe('ea-sports-fc-26')
-        ->and($contextOf('/clans'))->toBe('ea-sports-fc-26')
+        ->and($contextOf('/clans'))->toBe('')
         ->and($contextOf(route('matches.index', ['game' => 'rocket-league'])))->toBe('rocket-league')
-        ->and($contextOf(route('ladder.show', ['chess', 'blitz'])))->toBe('chess')
-        ->and($contextOf(route('matches.index', ['game' => 'not-a-game'])))->toBe('chess');
+        ->and($contextOf(route('ladder.show', ['chess', 'blitz'])))->toBe('chess');
 });
 
 test('a match page and its room belong to the game of the match, not to the game opened last', function () {
@@ -117,11 +117,11 @@ test('row 1 and the phone\'s More sheet link the mempool with how many matches o
 
     $html = $this->get('/rules')->assertOk()->getContent();
 
-    expect($html)->toContain('aria-label="Mempool and chains"')
-        ->toMatch('/href="'.preg_quote(route('matches.index'), '/').'"(?:\s+wire:navigate)?\s+aria-label="Mempool, 6 matches waiting"[^>]*data-test="nav-mempool"/')
+    // Row 1 (Header.dc.html): Mempool and Season; the casual matches are one filter away on /matches and in the More sheet.
+    expect($html)->toMatch('/href="'.preg_quote(route('matches.index'), '/').'"(?:\s+wire:navigate)?\s+aria-label="Mempool, 6 matches waiting"[^>]*data-test="nav-mempool"/')
         ->toMatch('/data-test="mempool-count">6</')
         ->toMatch('/href="'.preg_quote(route('mining'), '/').'"(?:\s+wire:navigate)?\s+aria-label="Season chain, Block 0 soon"[^>]*data-test="nav-mining"/')
-        ->toMatch('/href="'.preg_quote(route('matches.index', ['chain' => 'casual']), '/').'"(?:\s+wire:navigate)?\s+aria-label="Casual chain"[^>]*data-test="nav-casual"/')
+        ->not->toContain('data-test="nav-casual"')
         // The same three under Everywhere on phones, in the same order after Clans.
         ->and(str($html)->after('data-test="more-sheet"')->toString())->toMatch('/data-test="mobile-clans".*data-test="mobile-mempool".*data-test="mobile-season".*data-test="mobile-casual"/s')
         ->toMatch('/data-test="mobile-mempool-count">6</')
@@ -221,9 +221,10 @@ test('the mempool count costs the same queries for 1, 5 and 25 waiting matches o
 });
 
 test('the rail marks the page on screen: Mempool on /matches, Casual on the casual view, Season on /mining, none on a game\'s own list', function () {
+    $tests = ['mempool' => 'nav-mempool', 'mining' => 'nav-mining', 'casual' => 'mobile-casual'];
     $current = fn (string $uri): array => array_values(array_filter(
         ['mempool', 'mining', 'casual'],
-        fn (string $key): bool => (bool) preg_match('/aria-current="page"[^>]*data-test="nav-'.$key.'"/', $this->get($uri)->assertOk()->getContent()),
+        fn (string $key): bool => (bool) preg_match('/aria-current="page"[^>]*data-test="'.$tests[$key].'"/', $this->get($uri)->assertOk()->getContent()),
     ));
 
     expect($current(route('matches.index')))->toBe(['mempool'])
@@ -274,7 +275,7 @@ test('Tournaments in row 1 and the tab bar counts the tournaments open for sign-
     $this->get('/rules')->assertOk()
         ->assertSee('data-test="nav-tournaments"', false)
         ->assertDontSee('data-test="tournaments-open"', false)
-        ->assertDontSee('data-test="tab-tournaments-dot"', false);
+        ->assertDontSee('aria-label="Tournaments, ', false);
 
     Tournament::factory()->signup()->count(2)->create(['signup_closes_at' => now()->addDay()]);
     Cache::forget(ShellNavigation::OPEN_TOURNAMENTS_KEY);
@@ -282,15 +283,16 @@ test('Tournaments in row 1 and the tab bar counts the tournaments open for sign-
     $html = $this->get('/rules')->assertOk()->getContent();
     expect($html)->toMatch('/data-test="tournaments-open"><span class="sr-only">, <\/span>2<span class="sr-only"> open for sign-up<\/span>/')
         ->toContain('aria-label="Tournaments, 2 open for sign-up"')
-        ->toContain('data-test="tab-tournaments-dot"')
         ->and(ShellNavigation::current()->tournaments()['open'])->toBe(2);
 });
 
-test('the active game holds the first tab, so narrow widths that hide the last tabs still show it', function () {
+test('row 1 carries no game tabs: every game is one click away in the game hub, from the header and the phone\'s tab bar', function () {
     $html = $this->get(route('games.series', 'ea-sports-fc-26'))->assertOk()->getContent();
 
-    preg_match_all('/data-test="game-tab-([a-z0-9-]+)"/', $html, $tabs);
-
-    expect($tabs[1][0] ?? null)->toBe('ea-sports-fc-26')
-        ->and(array_unique($tabs[1]))->toHaveCount(count($tabs[1]));
+    expect($html)->not->toContain('data-test="game-tab-')
+        ->toContain('data-test="games-menu"')
+        ->toContain('data-test="tab-games"');
+    foreach (array_keys(app(GameRegistry::class)->all()) as $slug) {
+        expect($html)->toContain('data-test="hub-game-'.$slug.'"');
+    }
 });
