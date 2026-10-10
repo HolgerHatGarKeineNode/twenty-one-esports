@@ -1,5 +1,6 @@
 <?php
 
+use App\Http\Controllers\BroadcastStyleguideController;
 use App\Http\Controllers\DisputeEvidenceController;
 use App\Http\Controllers\SiteModerationController;
 use Illuminate\Support\Facades\Route;
@@ -50,6 +51,12 @@ Route::middleware(['auth', 'admin'])->prefix('admin')->name('admin.')->group(fun
     Route::livewire('disputes/{match}', 'pages::admin.dispute')->name('disputes.show');
     Route::get('disputes/{match}/evidence/{evidence}', DisputeEvidenceController::class)->name('disputes.evidence');
 });
+
+/*
+| The broadcast design system (plan "OBS-Broadcast-Overlays", P1): the OBS overlays' type, colour, motion and tempo
+| with the engine running live. Admins only; not under admin/ because it is its own full-screen document.
+*/
+Route::middleware(['auth', 'admin'])->get('broadcast/styleguide', BroadcastStyleguideController::class)->name('broadcast.styleguide');
 
 /*
 | Tournaments (P8a): admins and the organizers an admin unlocked. The list

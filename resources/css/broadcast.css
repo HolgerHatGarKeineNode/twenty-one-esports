@@ -1,0 +1,191 @@
+/*
+ * The broadcast styleguide page (/broadcast/styleguide, admin): its own document, no league shell.
+ * Tokens mirror resources/js/broadcast/tokens.js; the JS writes the specimens, swatches and curves from there.
+ * Spacing on the 8 px grid: 4 8 12 16 24 32 48 64 96.
+ */
+
+:root {
+    --ground: #0A0A0B;
+    --card: #121215;
+    --line: #2A2A30;
+    --hairline: #1E1E22;
+    --ink: #FFFFFF;
+    --ink-2: #ADADB0;
+    --ink-3: #8B8B90;
+    --btc: #F7931A;
+    --on-btc: #17120A;
+    --display: var(--font-face-display, 'Unbounded'), system-ui, sans-serif;
+    --mono: var(--font-face-mono, 'JetBrains Mono'), ui-monospace, monospace;
+    /* Specimens at their logical size relative to a 1920 frame, never below half size. */
+    --u: clamp(0.5px, calc(min(100vw, 1600px) / 1920), 1px);
+    --set: cubic-bezier(0.12, 0.9, 0.24, 1.02);
+    color-scheme: dark;
+}
+
+* { box-sizing: border-box; }
+
+html { background: var(--ground); }
+
+body {
+    margin: 0;
+    color: var(--ink);
+    font: 400 16px/1.5 var(--mono);
+}
+
+.page {
+    max-width: 1600px;
+    margin: 0 auto;
+    padding: 32px 24px 96px;
+}
+
+.head {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: end;
+    justify-content: space-between;
+    gap: 16px 24px;
+    margin-bottom: 24px;
+}
+
+.head h1 {
+    margin: 0;
+    font: 800 clamp(24px, 3vw, 36px)/1.1 var(--display);
+}
+
+.head p { margin: 8px 0 0; color: var(--ink-2); max-width: 64ch; }
+
+.actions { display: flex; flex-wrap: wrap; gap: 8px; }
+
+.btn {
+    min-height: 44px;
+    padding: 0 16px;
+    border: 1px solid var(--line);
+    border-radius: 4px;
+    background: var(--card);
+    color: var(--ink);
+    font: 500 14px/1 var(--mono);
+    cursor: pointer;
+    transition: border-color 150ms ease-out, background-color 150ms ease-out;
+}
+
+.btn:hover { border-color: #63636A; }
+.btn[aria-pressed='true'] { border-color: var(--btc); background: #2A2016; }
+.btn.primary { background: var(--btc); border-color: var(--btc); color: var(--on-btc); font-weight: 700; }
+.btn:focus-visible { outline: 2px solid var(--btc); outline-offset: 2px; }
+
+/* The stage: 16:9, the canvas over a chosen backdrop. */
+.stage {
+    position: relative;
+    width: 100%;
+    aspect-ratio: 16 / 9;
+    overflow: hidden;
+    border: 1px solid var(--line);
+    border-radius: 4px;
+    background-color: #1A1A1E;
+    background-image:
+        linear-gradient(45deg, #232328 25%, transparent 25%, transparent 75%, #232328 75%),
+        linear-gradient(45deg, #232328 25%, transparent 25%, transparent 75%, #232328 75%);
+    background-size: 32px 32px;
+    background-position: 0 0, 16px 16px;
+}
+
+.stage[data-backdrop='dark'] { background: #0A0A0B url('/broadcast/art/plate-haze.webp') center / cover; }
+.stage[data-backdrop='bright'] {
+    background:
+        radial-gradient(60% 80% at 30% 20%, #FFFFFF 0%, transparent 60%),
+        linear-gradient(160deg, #E9EEF2 0%, #BFD3C4 45%, #8FB59A 100%);
+}
+
+.stage canvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
+
+.stage-status {
+    position: absolute;
+    inset: auto 24px 24px 24px;
+    margin: 0;
+    padding: 16px;
+    border-radius: 4px;
+    background: var(--card);
+    color: var(--ink-2);
+}
+
+.under {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    gap: 16px;
+    margin: 16px 0 64px;
+}
+
+@media (min-width: 1024px) {
+    .under { grid-template-columns: auto minmax(0, 1fr); align-items: start; }
+}
+
+.live-wrap { overflow-x: auto; }
+
+.live { width: 100%; border-collapse: collapse; font-size: 14px; }
+.live th { text-align: left; font-weight: 500; color: var(--ink-3); padding: 4px 12px 8px 0; }
+.live td { padding: 4px 12px 4px 0; border-top: 1px solid var(--hairline); white-space: nowrap; font-variant-numeric: tabular-nums; }
+
+section { margin-top: 64px; }
+
+section h2 {
+    margin: 0 0 8px;
+    font: 700 24px/1.2 var(--display);
+}
+
+section > p { margin: 0 0 24px; color: var(--ink-2); max-width: 70ch; }
+
+.cols { display: grid; gap: 24px 48px; grid-template-columns: minmax(0, 1fr); }
+@media (min-width: 900px) { .cols { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+
+dl { margin: 0; }
+.row { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 4px 16px; padding: 8px 0; border-top: 1px solid var(--hairline); }
+.row dt { color: var(--ink-2); }
+.row dd { margin: 0; font-variant-numeric: tabular-nums; }
+h3 { margin: 0 0 8px; font: 500 16px/1.4 var(--display); }
+
+.type-row { padding: 16px 0; border-top: 1px solid var(--hairline); }
+.spec { margin: 0; overflow-wrap: anywhere; }
+.spec-display { font-family: var(--display); }
+.spec-mono { font-family: var(--mono); }
+.meta { margin: 8px 0 0; color: var(--ink-3); font-size: 14px; }
+
+.swatches { display: grid; grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); gap: 16px; padding: 0; margin: 0; list-style: none; }
+.swatch { display: grid; gap: 4px; }
+.swatch-chip { display: block; height: 64px; border-radius: 4px; border: 1px solid var(--line); }
+.swatch-name { font: 500 14px/1.4 var(--display); }
+.swatch code { color: var(--ink-3); font-size: 14px; }
+
+.curves { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 16px; }
+.curve-card { margin: 0; padding: 16px; border: 1px solid var(--hairline); border-radius: 4px; background: var(--card); }
+.curve-card svg { width: 100%; height: 140px; overflow: visible; }
+.curve-card .axis { stroke: var(--line); stroke-width: 1; fill: none; }
+.curve-card .curve { stroke: var(--btc); stroke-width: 3; fill: none; stroke-linecap: round; }
+.curve-card figcaption { display: grid; gap: 4px; margin-top: 8px; font-size: 14px; }
+.curve-card strong { font: 700 16px/1.3 var(--display); }
+.curve-card span { color: var(--ink-2); }
+.curve-card code { color: var(--ink-3); font-size: 12px; overflow-wrap: anywhere; }
+
+.slots svg { width: 100%; height: auto; display: block; border-radius: 4px; }
+.slots .frame { fill: var(--card); }
+.slots .safe { fill: none; stroke: var(--line); stroke-width: 2; stroke-dasharray: 12 10; }
+.slots .slot rect { fill: rgb(247 147 26 / 0.1); stroke: var(--btc); stroke-width: 2; }
+.slots .slot-centre rect { fill: rgb(255 255 255 / 0.04); stroke: var(--ink-3); stroke-dasharray: 16 12; }
+.slots text { fill: var(--ink); font: 500 28px var(--display); }
+
+.materials { display: grid; gap: 16px; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); }
+.materials article { padding: 16px; border-radius: 4px; border: 1px solid var(--hairline); background: var(--card); }
+.materials p { margin: 4px 0 0; color: var(--ink-2); font-size: 14px; }
+
+/* Stage alone: what an OBS browser source shows. Transparent everywhere nothing is drawn. */
+html.stage-only, html.stage-only body { background: transparent; overflow: hidden; }
+html.stage-only .page { max-width: none; padding: 0; margin: 0; }
+html.stage-only .head, html.stage-only .under, html.stage-only section, html.stage-only .backdrops { display: none; }
+html.stage-only .stage { position: fixed; inset: 0; width: 100vw; height: 100vh; aspect-ratio: auto; border: 0; border-radius: 0; background: transparent; }
+
+@media (prefers-reduced-motion: reduce) {
+    .btn { transition: none; }
+}
+
+@media (max-width: 640px) {
+    .page { padding: 24px 16px 64px; }
+}

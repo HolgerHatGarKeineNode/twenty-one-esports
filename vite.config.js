@@ -31,6 +31,9 @@ export default defineConfig({
                 // The lobby's figure picker (P3), in the league's shell.
                 'resources/css/pong-picker.css',
                 'resources/js/pong/picker.js',
+                // The OBS broadcast overlays' design system page (plan "OBS-Broadcast-Overlays", P1).
+                'resources/css/broadcast.css',
+                'resources/js/broadcast/styleguide.js',
             ],
             refresh: true,
             fonts: [

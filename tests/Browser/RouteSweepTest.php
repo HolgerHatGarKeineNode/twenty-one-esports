@@ -524,8 +524,8 @@ const SWEEP_PAGE_SIDE = [375 => 16, 1024 => 16, 1440 => 16];
  */
 const SWEEP_FLUSH_PATHS = ['/'];
 
-/** @var list<string> Routes that answer without the app shell (JSON, images, the player card fragment, the full-screen tournament TV). */
-const SWEEP_NO_HEADER_ROUTES = ['tournaments.tv', 'nostr.nip05', 'admin.disputes.evidence', 'players.card', 'avatars.generated', 'invites.card',
+/** @var list<string> Routes that answer without the app shell (JSON, images, the player card fragment, the full-screen tournament TV, the broadcast styleguide). */
+const SWEEP_NO_HEADER_ROUTES = ['tournaments.tv', 'broadcast.styleguide', 'nostr.nip05', 'admin.disputes.evidence', 'players.card', 'avatars.generated', 'invites.card',
     'badges.rank', 'badges.rank.thumb', 'cards.rank-up', 'cards.block', 'cards.tournament', 'cards.tournament-invite', 'cards.wrapped', 'cards.blockfill', 'cards.page', 'stream.cover', 'stream.pride-image'];
 
 const SWEEP_GAP_SCRIPT = <<<'JS'

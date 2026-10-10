@@ -125,6 +125,7 @@ const NAV_NOT_PAGES = [
     'settings' => 'redirect to settings/gaming',
     'locale.switch' => 'action: switches the language (footer)',
     'styleguide' => 'local and testing only',
+    'broadcast.styleguide' => 'internal: the OBS overlays\' design system, admins open it by URL',
     'players.card' => 'fragment: the player card on hover',
     'players.search' => 'JSON: the player picker suggestions',
     'stream.status' => 'JSON: the live stream status the pages poll',
