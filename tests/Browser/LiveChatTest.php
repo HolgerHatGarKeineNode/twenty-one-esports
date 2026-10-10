@@ -183,7 +183,8 @@ test('a player posts a picked custom emoji through her signer, another player an
     $spammer = new TestSigner;
     $zapper = new TestSigner;
     $lnurl = new TestSigner;
-    config(['esports.stream_bot.nsec' => $bot->secret, 'esports.stream_chat.zap_signers' => [$lnurl->pubkey]]);
+    // No cut-off from the local .env (zap_signers_until, the getalby key's end): the receipts below are signed now.
+    config(['esports.stream_bot.nsec' => $bot->secret, 'esports.stream_chat.zap_signers' => [$lnurl->pubkey], 'esports.stream_chat.zap_signers_until' => 0]);
 
     $satoshi = $imageBase.'/satoshi.png';
     $now = now()->getTimestamp();
@@ -471,7 +472,8 @@ test('the stage stays whole, the chat fills the column and ends above the dock, 
     [$images, $imageBase] = p24Images();
     $bot = new TestSigner;
     $lnurl = new TestSigner;
-    config(['esports.stream_bot.nsec' => $bot->secret, 'esports.stream_chat.zap_signers' => [$lnurl->pubkey]]);
+    // No cut-off from the local .env (zap_signers_until, the getalby key's end): the receipts below are signed now.
+    config(['esports.stream_bot.nsec' => $bot->secret, 'esports.stream_chat.zap_signers' => [$lnurl->pubkey], 'esports.stream_chat.zap_signers_until' => 0]);
     [$relay, , $seed] = p24Relay(p24Conversation($this->address, $imageBase, $bot, $lnurl));
 
     $user = null;
