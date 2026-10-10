@@ -48,7 +48,7 @@ function createGlow(THREE, renderer) {
     });
     // Premultiplied additive: colour adds light, alpha grows by the glow's own coverage, never shrinks what is there.
     const add = new THREE.ShaderMaterial({
-        uniforms: { glow: { value: null }, strength: { value: 1.6 }, ...GUARD },
+        uniforms: { glow: { value: null }, strength: { value: 1.6 }, guardOn: GUARD.guardOn, screen: GUARD.screen },
         vertexShader: QUAD_VERT,
         // The bloom passes the centre guard too: blur spill from a hot edge next to the centre never lands in the stream.
         fragmentShader: `${GUARD_GLSL} uniform sampler2D glow; uniform float strength; varying vec2 vUv;
@@ -75,14 +75,17 @@ function createGlow(THREE, renderer) {
             a.setSize(Math.max(1, w), Math.max(1, h));
             b.setSize(Math.max(1, w), Math.max(1, h));
         },
-        render(mainScene, mainCamera, passes) {
-            const mask = mainCamera.layers.mask;
-            mainCamera.layers.set(GLOW);
+        render(views, passes) {
             renderer.setRenderTarget(a);
             renderer.setClearColor(0x000000, 0);
             renderer.clear();
-            renderer.render(mainScene, mainCamera);
-            mainCamera.layers.mask = mask;
+            views.forEach(([viewScene, viewCamera], i) => {
+                const mask = viewCamera.layers.mask;
+                viewCamera.layers.set(GLOW);
+                if (i > 0) renderer.clearDepth();
+                renderer.render(viewScene, viewCamera);
+                viewCamera.layers.mask = mask;
+            });
             for (let i = 1; i <= passes; i++) {
                 blur.uniforms.src.value = a.texture;
                 blur.uniforms.dir.value.set(i / a.width, 0);
@@ -123,6 +126,10 @@ export function createStage(canvas, { THREE, tier: forced = null } = {}) {
     camera.layers.enable(GLOW);
 
     let tier = TIERS[forced] || TIERS.high;
+    // Worlds drawn under the frame-plane scene, each with its own camera (the bracket's flight, plan P6): [scene, camera].
+    const worlds = [];
+    // A full-screen scene draws on an opaque ground; an overlay keeps alpha 0 wherever nothing is drawn.
+    let backdrop = null;
     let glow = null;
     let textScale = 1;
     const listeners = new Set();
@@ -145,6 +152,7 @@ export function createStage(canvas, { THREE, tier: forced = null } = {}) {
         renderer.setSize(w, h, false);
         camera.aspect = w / h;
         camera.updateProjectionMatrix();
+        worlds.forEach(([, c]) => { c.aspect = w / h; c.updateProjectionMatrix(); });
         const size = renderer.getDrawingBufferSize(new THREE.Vector2());
         GUARD.screen.value = { x: size.x, y: size.y };
         if (tier.bloomDiv && !glow) glow = createGlow(THREE, renderer);
@@ -194,10 +202,15 @@ export function createStage(canvas, { THREE, tier: forced = null } = {}) {
 
     function draw() {
         renderer.setRenderTarget(null);
-        renderer.setClearColor(0x000000, 0);
+        if (backdrop) renderer.setClearColor(backdrop, 1);
+        else renderer.setClearColor(0x000000, 0);
         renderer.clear();
-        renderer.render(scene, camera);
-        if (glow) glow.render(scene, camera, tier.blurPasses);
+        const views = [...worlds.filter(([s]) => s.visible), [scene, camera]];
+        views.forEach(([viewScene, viewCamera], i) => {
+            if (i > 0) renderer.clearDepth();
+            renderer.render(viewScene, viewCamera);
+        });
+        if (glow) glow.render(views, tier.blurPasses);
     }
 
     function frame(now) {
@@ -245,7 +258,18 @@ export function createStage(canvas, { THREE, tier: forced = null } = {}) {
         get textScale() { return textScale; },
         onTextScale(fn) { listeners.add(fn); },
         onFrame(fn) { updaters.add(fn); },
+        /** Draw `worldScene` through `worldCamera` under the frame plane (its aspect follows the canvas). */
+        addWorld(worldScene, worldCamera) {
+            const size = renderer.getSize(new THREE.Vector2());
+            worldCamera.aspect = size.x / Math.max(1, size.y);
+            worldCamera.updateProjectionMatrix();
+            worlds.push([worldScene, worldCamera]);
+        },
+        /** An opaque ground colour for a full-screen scene; null keeps the canvas transparent. */
+        setBackdrop(color) { backdrop = color === null ? null : new THREE.Color(color); },
         setTier,
+        /** Stop drawing (a page view taken off screen); start() resumes. */
+        stop() { running = false; last = 0; },
         start() {
             if (running) return;
             running = true;

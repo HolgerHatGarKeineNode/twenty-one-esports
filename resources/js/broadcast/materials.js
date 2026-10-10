@@ -158,7 +158,7 @@ export function createHeat(THREE, w, h, color = COLOR.btc) {
 /** A soft radial light (additive), for halos behind emblems and the stinger's flash. */
 export function createHalo(THREE, size, color = COLOR.btc, strength = 0.6) {
     const material = new THREE.ShaderMaterial({
-        uniforms: { color: { value: new THREE.Color(color) }, opacity: { value: strength }, ...GUARD },
+        uniforms: { color: { value: new THREE.Color(color) }, opacity: { value: strength }, guardOn: GUARD.guardOn, screen: GUARD.screen },
         vertexShader: VERT,
         fragmentShader: `${GUARD_GLSL} uniform vec3 color; uniform float opacity; varying vec2 vUv;
             void main() { float d = length(vUv - 0.5) * 2.0; float a = pow(max(0.0, 1.0 - d), 2.2) * opacity * guard(); gl_FragColor = vec4(color * a, a); }`,
@@ -177,7 +177,7 @@ export function createHalo(THREE, size, color = COLOR.btc, strength = 0.6) {
  */
 export function createFlare(THREE, w = 360, h = 28, color = COLOR.btcHi) {
     const material = new THREE.ShaderMaterial({
-        uniforms: { color: { value: new THREE.Color(color) }, opacity: { value: 0 }, ...GUARD },
+        uniforms: { color: { value: new THREE.Color(color) }, opacity: { value: 0 }, guardOn: GUARD.guardOn, screen: GUARD.screen },
         vertexShader: VERT,
         fragmentShader: `${GUARD_GLSL} uniform vec3 color; uniform float opacity; varying vec2 vUv;
             void main() { vec2 p = (vUv - 0.5) * 2.0;
@@ -197,7 +197,7 @@ export function createFlare(THREE, w = 360, h = 28, color = COLOR.btcHi) {
 /** A shock ring: expands from its centre and thins out as `progress` runs 0..1 (additive, glow layer). */
 export function createShock(THREE, size, color = COLOR.btcHi) {
     const material = new THREE.ShaderMaterial({
-        uniforms: { color: { value: new THREE.Color(color) }, progress: { value: 0 }, opacity: { value: 0 }, ...GUARD },
+        uniforms: { color: { value: new THREE.Color(color) }, progress: { value: 0 }, opacity: { value: 0 }, guardOn: GUARD.guardOn, screen: GUARD.screen },
         vertexShader: VERT,
         fragmentShader: `${GUARD_GLSL} uniform vec3 color; uniform float progress; uniform float opacity; varying vec2 vUv;
             void main() { float d = length(vUv - 0.5) * 2.0; float r = 0.15 + progress * 0.85; float w = 0.02 + 0.06 * (1.0 - progress);
@@ -290,7 +290,7 @@ export function createImage(THREE, url, w, h, { rim = 0, rimFrom = [1, 0.4], rim
  */
 export function createEnergy(THREE, url, w, h, { round = false } = {}) {
     const material = new THREE.ShaderMaterial({
-        uniforms: { map: { value: loadTexture(THREE, url) }, opacity: { value: 0 }, spin: { value: 0 }, round: { value: round ? 1 : 0 }, ...GUARD },
+        uniforms: { map: { value: loadTexture(THREE, url) }, opacity: { value: 0 }, spin: { value: 0 }, round: { value: round ? 1 : 0 }, guardOn: GUARD.guardOn, screen: GUARD.screen },
         vertexShader: VERT,
         fragmentShader: `${GUARD_GLSL} uniform sampler2D map; uniform float opacity; uniform float spin; uniform float round; varying vec2 vUv;
             void main() {

@@ -36,6 +36,8 @@ export function createSound(base = '/broadcast/sound/') {
 
             return enabled;
         },
+        /** The audio graph once enabled ({ ctx, output }), for music on the same output (the break scene's MIDI player). */
+        audio: () => (ctx ? { ctx, output: gain } : null),
         /** Play `name` so that its marked moment lands `inMs` from now (0 = start now). */
         play(name, inMs = 0) {
             if (!enabled || !buffers.has(name)) return;

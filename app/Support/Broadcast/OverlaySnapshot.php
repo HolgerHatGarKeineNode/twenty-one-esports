@@ -9,6 +9,7 @@ use App\Models\Clan;
 use App\Models\OverlayPreset;
 use App\Models\Tournament;
 use App\Support\Cards\ShareCard;
+use App\Support\Engagement\HomeHub;
 use App\Support\GameNames;
 use App\Support\LeagueTime;
 use App\Support\Matches\MempoolStrip;
@@ -41,7 +42,9 @@ use UnitEnum;
  *   while it is public;
  * - `games`: every game of the league (the league live overlay's game spots);
  * - `recent`: the league's latest wins over every game (MempoolStrip), league live only;
- * - `ticker`: the crawl's segments, worded in the preset's language from the data above.
+ * - `ticker`: the crawl's segments, worded in the preset's language from the data above;
+ * - `break`: the break scene's own data (plan P5, breakScene()): its state, what it counts down to, the next matches,
+ *   the leaders of every ladder and the pot.
  *
  * PRIVACY: public data only, as the site shows it. clean() drops every key that could carry a key, an npub, an
  * email, a Lightning address, a game account or a picture ref, and every object (a model would serialise all its
@@ -100,7 +103,7 @@ final class OverlaySnapshot
             $nextCup = $this->guarded(fn (): ?array => $this->nextCup(), null);
             $pride = $preset->hasModule('pride') ? $this->guarded(fn (): array => $this->prideFor($preset), null) : null;
             $stats = $preset->hasModule('stats') ? $this->guarded(fn (): array => $this->statsData(), null) : null;
-            $tournament = $preset->variant->needsTournament() && $preset->tournament !== null ? $this->guarded(fn (): ?array => $this->tournament($preset, $preset->tournament), null) : null;
+            $tournament = $preset->variant->takesTournament() && $preset->tournament !== null ? $this->guarded(fn (): ?array => $this->tournament($preset, $preset->tournament), null) : null;
             $games = $this->guarded(fn (): array => $this->gameList(), []);
             $recent = $preset->variant === OverlayVariant::LeagueLive ? $this->guarded(fn (): array => $this->recentWins(), []) : [];
 
@@ -120,6 +123,7 @@ final class OverlaySnapshot
                 'games' => $games,
                 'recent' => $recent,
                 'ticker' => $this->ticker($preset, $upcoming, $nextCup, $pride, $stats, $tournament, $games, $recent),
+                'break' => $preset->variant === OverlayVariant::Break ? $this->guarded(fn (): array => $this->breakScene($preset, $tournament, $upcoming, $nextCup), null) : null,
             ];
         } finally {
             app()->setLocale($previous);
@@ -331,6 +335,72 @@ final class OverlaySnapshot
             'boxes' => array_values(array_map(self::box(...), array_filter(self::allBoxes($stages), fn (array $box): bool => $box['bracket'] !== 'bye'))),
             'stages' => self::clean($stages),
         ];
+    }
+
+    /** A break scene without a tournament of its own says "starting soon" when the next start is this close. */
+    public const SOON_MINUTES = 120;
+
+    /**
+     * The break scene (plan P5): `state` (soon, break, end: the preset's pin, else from the preset's tournament,
+     * else from the clock), `target` (what the countdown runs to: the preset's tournament, else the next cup, else the
+     * first open tournament), `matches` (the preset's tournament's next matches, the ones up now first), `champion`,
+     * `leaders` (the top three of every ladder with results, as home lists them) and `pot` (the target's, only above
+     * zero and with the `pots` module).
+     *
+     * @param  array<string, mixed>|null  $tournament
+     * @param  list<array<string, mixed>>  $upcoming
+     * @param  array<string, mixed>|null  $nextCup
+     * @return array<string, mixed>
+     */
+    private function breakScene(OverlayPreset $preset, ?array $tournament, array $upcoming, ?array $nextCup): array
+    {
+        $target = match (true) {
+            $tournament !== null => array_intersect_key($tournament, array_flip(['id', 'name', 'game', 'gameName', 'emblem', 'startsAt', 'starts', 'url', 'qr', 'pot', 'entries', 'status'])),
+            $nextCup !== null => $nextCup + ['pot' => $preset->hasModule('pots') ? $this->pools->shownPotSats(Tournament::query()->findOrFail($nextCup['id'])) : null],
+            $upcoming !== [] => $upcoming[0],
+            default => null,
+        };
+
+        $state = $preset->scene;
+
+        if (! in_array($state, OverlayPreset::SCENES, true)) {
+            $state = match ($tournament['status'] ?? null) {
+                TournamentStatus::Signup->value, TournamentStatus::Drawing->value => 'soon',
+                TournamentStatus::Running->value => 'break',
+                TournamentStatus::Finished->value, TournamentStatus::Cancelled->value => 'end',
+                default => $target !== null && now()->lt($target['startsAt']) && now()->diffInMinutes($target['startsAt']) <= self::SOON_MINUTES ? 'soon' : 'break',
+            };
+        }
+
+        $open = array_values(array_filter($tournament['boxes'] ?? [], fn (array $box): bool => in_array($box['status'], ['ready', 'waiting'], true)
+            && count(array_filter($box['sides'], fn (array $side): bool => $side['known'])) > 0));
+        usort($open, fn (array $a, array $b): int => (int) $b['live'] <=> (int) $a['live']);
+
+        return [
+            'state' => $state,
+            'target' => $target,
+            'matches' => array_slice($open, 0, 6),
+            'champion' => $tournament['champion'] ?? null,
+            'leaders' => $this->leaders(),
+            'pot' => $preset->hasModule('pots') && ($target['pot'] ?? 0) > 0 ? (int) $target['pot'] : null,
+        ];
+    }
+
+    /**
+     * The top three of every ladder with results (HomeHub::ladders(), home's grid), public names only.
+     *
+     * @return list<array{game: string, name: string, emblem: string, rows: list<array{place: int, name: string, rating: string}>}>
+     */
+    private function leaders(): array
+    {
+        $ladders = Cache::remember('broadcast.leaders.'.app()->getLocale(), 60, fn (): array => array_map(fn (array $ladder): array => [
+            'game' => $ladder['game'],
+            'name' => (string) $ladder['name'],
+            'emblem' => self::emblem($ladder['game']),
+            'rows' => array_map(fn (array $row): array => ['place' => (int) $row['place'], 'name' => PublicName::clean((string) $row['name']), 'rating' => (string) $row['rating']], $ladder['rows']),
+        ], (new HomeHub(null))->ladders()));
+
+        return array_values(array_filter($ladders, fn (array $ladder): bool => $ladder['rows'] !== []));
     }
 
     /**

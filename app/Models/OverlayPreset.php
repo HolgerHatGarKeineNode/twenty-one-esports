@@ -24,6 +24,7 @@ use Illuminate\Support\Str;
  * @property int|null $tournament_id the tournament of a tournament or bracket overlay
  * @property string $locale de|en
  * @property array<string, bool> $modules module => on, see MODULES
+ * @property string|null $scene the break scene's state: null follows the tournament and the clock, else one of SCENES
  * @property string $token_hash
  * @property Carbon|null $rotated_at
  * @property int|null $created_by_id
@@ -32,7 +33,7 @@ use Illuminate\Support\Str;
  * @property-read Tournament|null $tournament
  * @property-read User|null $creator
  */
-#[Fillable(['name', 'variant', 'tournament_id', 'locale', 'modules', 'token_hash', 'rotated_at', 'created_by_id'])]
+#[Fillable(['name', 'variant', 'tournament_id', 'locale', 'modules', 'scene', 'token_hash', 'rotated_at', 'created_by_id'])]
 #[Hidden(['token_hash'])]
 class OverlayPreset extends Model
 {
@@ -52,7 +53,12 @@ class OverlayPreset extends Model
         'pots' => true,
         'sound' => true,
         'cam-frame' => false,
+        // The break scene's music (plan P5): the league's free MIDI tracks; the other variants have none.
+        'music' => true,
     ];
+
+    /** The break scene's states an admin can pin (plan P5): starting soon, a break, thanks for watching. */
+    public const SCENES = ['soon', 'break', 'end'];
 
     /** The characters of a token after its prefix; the route accepts exactly this shape. */
     public const TOKEN_LENGTH = 48;

@@ -8,7 +8,7 @@ import { GUARD, GUARD_GLSL } from './guard.js';
 import { GLOW } from './stage.js';
 import { COLOR } from './tokens.js';
 
-export function createParticles(stage) {
+export function createParticles(stage, { scene = stage.scene } = {}) {
     const { THREE } = stage;
     const MAX = 480;
     const pos = new Float32Array(MAX * 3);
@@ -24,7 +24,7 @@ export function createParticles(stage) {
     geometry.setAttribute('size', new THREE.BufferAttribute(size, 1));
     geometry.setAttribute('alpha', new THREE.BufferAttribute(alpha, 1));
     const material = new THREE.ShaderMaterial({
-        uniforms: { scale: { value: 1 }, ...GUARD },
+        uniforms: { scale: { value: 1 }, guardOn: GUARD.guardOn, screen: GUARD.screen },
         vertexShader: `attribute float size; attribute float alpha; attribute vec3 color; uniform float scale; varying vec3 vColor; varying float vAlpha;
             void main() { vColor = color; vAlpha = alpha; vec4 mv = modelViewMatrix * vec4(position, 1.0); gl_PointSize = size * scale; gl_Position = projectionMatrix * mv; }`,
         fragmentShader: `${GUARD_GLSL} varying vec3 vColor; varying float vAlpha;
@@ -42,7 +42,7 @@ export function createParticles(stage) {
     points.renderOrder = 4;
     // Embers glow: they are light, not dots.
     points.layers.enable(GLOW);
-    stage.scene.add(points);
+    scene.add(points);
     const hot = new THREE.Color(COLOR.btc);
     const warm = new THREE.Color(COLOR.btcHi);
     const white = new THREE.Color('#FFF4E4');

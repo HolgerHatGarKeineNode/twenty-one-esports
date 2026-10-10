@@ -10,6 +10,8 @@
 
 export const GUARD = {
     guardOn: { value: 1 },
+    // A full-screen scene (break, bracket: plan P5, P6) has no stream under it: the guard stays off for good.
+    fullScreen: false,
     screen: { value: { x: 1920, y: 1080 } },
 };
 

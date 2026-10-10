@@ -23,6 +23,7 @@ use App\Http\Controllers\SitemapController;
 use App\Http\Controllers\StreamCoverController;
 use App\Http\Controllers\StreamPrideImageController;
 use App\Http\Controllers\SwitchLocaleController;
+use App\Http\Controllers\TournamentBracketController;
 use App\Http\Controllers\TournamentCalendarController;
 use App\Livewire\Actions\Logout;
 use App\Models\InviteLink;
@@ -193,6 +194,8 @@ Route::livewire('tournaments/{tournament}/draw', 'pages::tournaments.draw')->whe
 Route::get('tournaments/{tournament}/calendar.ics', TournamentCalendarController::class)->whereNumber('tournament')->name('tournaments.calendar');
 // The TV view (P19): full screen, no site around it, for a big screen or a stream.
 Route::livewire('tournaments/{tournament}/tv', 'pages::tournaments.tv')->whereNumber('tournament')->name('tournaments.tv');
+// The bracket as data for the page's 3D view (plan "OBS-Broadcast-Overlays", P6): fetched only once a viewer picks 3D.
+Route::get('tournaments/{tournament}/bracket.json', TournamentBracketController::class)->whereNumber('tournament')->name('tournaments.bracket-data');
 Route::middleware('auth')->group(function () {
     Route::livewire('tournaments/{tournament}/signup', 'pages::tournaments.signup')->whereNumber('tournament')->name('tournaments.signup');
     Route::livewire('tournaments/{tournament}/pool', 'pages::tournaments.pool')->whereNumber('tournament')

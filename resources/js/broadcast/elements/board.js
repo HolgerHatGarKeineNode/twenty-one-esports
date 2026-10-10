@@ -51,7 +51,7 @@ function svgImage(svg, onLoad) {
 }
 
 /** A small chip of light ("Live"): dark words on orange, chamfered, drawn like the ticker's chip. */
-function createChip(stage, text) {
+export function createChip(stage, text) {
     const probe = document.createElement('canvas').getContext('2d');
     probe.font = fontOf(TYPE.head);
     const w = Math.ceil(probe.measureText(text).width + 20);

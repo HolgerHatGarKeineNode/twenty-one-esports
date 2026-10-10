@@ -19,6 +19,8 @@ import { createParticles } from './particles.js';
 import { createStage } from './stage.js';
 import { fontsReady, wireTextScale } from './text.js';
 import { createTimeline } from './timeline.js';
+import { GUARD } from './guard.js';
+import { COLOR } from './tokens.js';
 
 export function webglAvailable() {
     try {
@@ -65,6 +67,14 @@ export async function createBroadcast(canvas, { tier = null } = {}) {
         stinger: (spec) => add(createStinger(stage, timeline, particles, spec)),
         board: (spec) => add(createBoardPage(stage, timeline, spec)),
         camFrame: (spec) => add(createCamFrame(stage, timeline, spec)),
+        /** A variant's own element ({ seg, update(t), dispose() }); it leaves the stage after its segment ends. */
+        element: (el) => add(el),
+        /** A full-screen scene (break, bracket): opaque ground, no centre to keep free. */
+        fullScreen() {
+            GUARD.fullScreen = true;
+            GUARD.guardOn.value = 0;
+            stage.setBackdrop(COLOR.ground);
+        },
         start: () => stage.start(),
     };
 

@@ -41,7 +41,7 @@ const LIT_VERT = `varying vec3 vN; varying vec3 vV; varying vec3 vPos;
     void main() { vPos = position; vN = normalize(normalMatrix * normal); vec4 mv = modelViewMatrix * vec4(position, 1.0); vV = -mv.xyz; gl_Position = projectionMatrix * mv; }`;
 
 /** Lit metal for the mark: key light from the top left, a tight specular, a warm fresnel rim and a sweep. */
-function litMaterial(THREE, base, { rim = COLOR.btcHi, spec = 0.9, ambient = 0.35, low = base } = {}) {
+export function litMaterial(THREE, base, { rim = COLOR.btcHi, spec = 0.9, ambient = 0.35, low = base } = {}) {
     return new THREE.ShaderMaterial({
         uniforms: { hi: { value: new THREE.Color(base) }, lo: { value: new THREE.Color(low) }, rim: { value: new THREE.Color(rim) }, sweep: { value: -2 }, spec: { value: spec }, ambient: { value: ambient } },
         vertexShader: LIT_VERT,
@@ -166,7 +166,7 @@ export function createStinger(stage, timeline, particles, { start, onPeak = null
         if (!root.visible) {
             if (!guarded && ph.name === 'after') {
                 guarded = true;
-                GUARD.guardOn.value = 1;
+                GUARD.guardOn.value = GUARD.fullScreen ? 0 : 1;
             }
 
             return;
@@ -206,7 +206,7 @@ export function createStinger(stage, timeline, particles, { start, onPeak = null
         seg,
         update,
         dispose() {
-            if (!guarded) GUARD.guardOn.value = 1;
+            if (!guarded) GUARD.guardOn.value = GUARD.fullScreen ? 0 : 1;
             stage.scene.remove(root);
             root.traverse((o) => {
                 if (o.geometry) o.geometry.dispose();

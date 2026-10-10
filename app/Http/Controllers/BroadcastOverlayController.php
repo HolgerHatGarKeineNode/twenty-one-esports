@@ -31,7 +31,7 @@ class BroadcastOverlayController extends Controller
             'preset' => $preset,
             'config' => [
                 'variant' => $preset->variant->value,
-                'tournamentId' => $preset->variant->needsTournament() ? $preset->tournament_id : null,
+                'tournamentId' => $preset->variant->takesTournament() ? $preset->tournament_id : null,
                 'snapshotUrl' => route('broadcast.snapshot', ['token' => $token]),
                 'pollMs' => 20_000,
                 'art' => collect(BroadcastStyleguideController::ART)->mapWithKeys(fn (string $id): array => [$id => '/broadcast/art/'.$id.'.webp'])->all(),
@@ -112,6 +112,24 @@ class BroadcastOverlayController extends Controller
             'scan' => __('Scan to sign up'),
             'standings' => __('Standings'),
             'prizePot' => __('Prize pot'),
+            // Break scene (P5).
+            'stateSoon' => __('Starting soon'),
+            'stateBreak' => __('Short break'),
+            'stateEnd' => __('Thanks for watching'),
+            'nextUp' => __('Next up'),
+            'nextStart' => __('Next start :when'),
+            'tournamentWinner' => __('Tournament winner'),
+            'nextMatches' => __('Next matches'),
+            'topPlayers' => __('Top of the ladders'),
+            'comingUp' => __('Coming up'),
+            'placesTaken' => __(':taken of :places places taken'),
+            'potFor' => __('for :tournament'),
+            'joinScan' => __('Scan and play along'),
+            'music' => __('Music: :title by :author, :license'),
+            // Bracket (P6).
+            'champion' => __('Champion'),
+            'pairings' => __('Pairings'),
+            'scanFollow' => __('Follow live'),
         ];
     }
 }

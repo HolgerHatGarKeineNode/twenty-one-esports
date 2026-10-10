@@ -1193,7 +1193,17 @@ new #[Layout('layouts::app', ['section' => 'tournaments', 'realtime' => true, 's
         @include('pages.scores.partials.tournament-board', ['tournament' => $tournament, 'metric' => $scoreMetric, 'drawn' => $drawn])
     @else
     {{-- The bracket: projected before the draw, the real one after it --}}
-    <section id="bracket" aria-labelledby="bracket-h" class="flex scroll-mt-24 flex-col gap-4 px-4 lg:px-12" data-test="bracket">
+    {{-- The 3D view (plan "OBS-Broadcast-Overlays", P6): beside the drawn bracket of a running or finished tournament, never
+         instead of it; bracketView (resources/js/bracketView.js) loads three.js only when a viewer picks it. Inline @php
+         only: a @php block after an inline @php( in this template swallows the code between them. --}}
+    @php($bracket3d = $drawn && ! $lobbies && $this->stages !== [])
+    @php($bracket3dConfig = $bracket3d ? ['url' => route('tournaments.bracket-data', ['tournament' => $tournament, 'lang' => app()->getLocale()]), 'id' => $tournament->id, 'three' => '/hyper/vendor/three.min.js', 'words' => ['live' => __('Live'), 'champion' => __('Champion'), 'standings' => __('Standings'), 'pairings' => __('Pairings')], 'art' => collect(['crown', 'medal-gold', 'medal-silver', 'medal-bronze'])->mapWithKeys(fn (string $id): array => [$id => '/broadcast/art/'.$id.'.webp'])->all()] : null)
+    <section id="bracket" aria-labelledby="bracket-h" class="group/bv flex scroll-mt-24 flex-col gap-4 px-4 lg:px-12" data-test="bracket"
+             data-bracket-view="2d" wire:ignore.self x-data="{{ $bracket3d ? 'bracketView('.\Illuminate\Support\Js::from($bracket3dConfig).')' : '{}' }}">
+        @if ($bracket3d)
+            {{-- A remembered 3D shows its box before the first paint, so the page does not jump once scripts run. --}}
+            <script>(function (s) { try { if (localStorage.getItem('bracket-view') === '3d') { var c = document.createElement('canvas'); if (window.WebGLRenderingContext && (c.getContext('webgl2') || c.getContext('webgl'))) s.dataset.bracketView = '3d'; } } catch (e) {} })(document.currentScript.parentElement);</script>
+        @endif
         <div class="flex flex-wrap items-center justify-between gap-3">
             <span class="flex flex-wrap items-center gap-3">
                 <h2 id="bracket-h" class="m-0 font-display text-xl font-bold lg:text-2xl">{{ $lobbies ? __('Lobbies') : __('Bracket') }}</h2>
@@ -1202,6 +1212,18 @@ new #[Layout('layouts::app', ['section' => 'tournaments', 'realtime' => true, 's
                 @endif
             </span>
             <span class="flex flex-wrap items-center gap-2">
+                @if ($bracket3d)
+                    <span role="radiogroup" aria-label="{{ __('Bracket view') }}" wire:ignore class="flex gap-1 rounded-md border border-edge bg-ground p-[3px]" data-test="bracket-view-toggle">
+                        @foreach (['2d' => '2D', '3d' => '3D'] as $choice => $text)
+                            <button type="button" role="radio" x-on:click="choose('{{ $choice }}')" :aria-checked="view === '{{ $choice }}' ? 'true' : 'false'" aria-checked="{{ $choice === '2d' ? 'true' : 'false' }}"
+                                    @if ($choice === '3d') :disabled="! webgl" :title="webgl ? '' : @js(__('The 3D view needs WebGL, which this browser has switched off.'))" @endif
+                                    @class(['h-[38px] min-w-11 cursor-pointer rounded-sm border-0 px-3 text-[13px] font-bold whitespace-nowrap disabled:cursor-not-allowed disabled:opacity-50',
+                                        'bg-raised text-btc group-data-[bracket-view=3d]/bv:bg-transparent group-data-[bracket-view=3d]/bv:text-ink-2' => $choice === '2d',
+                                        'bg-transparent text-ink-2 hover:text-ink group-data-[bracket-view=3d]/bv:bg-raised group-data-[bracket-view=3d]/bv:text-btc' => $choice === '3d'])
+                                    data-test="bracket-view-{{ $choice }}">{{ $text }}</button>
+                        @endforeach
+                    </span>
+                @endif
                 @if ($published && $status !== TournamentStatus::Cancelled && ! $tournament->isLeagueWeek())
                     {{-- The TV view (P19): the bracket full screen, live, for a big screen or a stream. A Blockfill week has none (P6). --}}
                     <span class="text-xs text-ink-3 max-sm:hidden" id="tv-hint">{{ __('Full screen for a TV or a stream') }}</span>
@@ -1237,6 +1259,26 @@ new #[Layout('layouts::app', ['section' => 'tournaments', 'realtime' => true, 's
 
         @if ($drawn && $lobbies)
             <livewire:tournament-lobbies :tournament="$tournament" :key="'lobbies-'.$tournament->id" />
+        @elseif ($drawn && $bracket3d)
+            {{-- The 3D view: a fixed box (3:4 on a phone, 16:9 from sm), drawn only while chosen and on screen. --}}
+            <div wire:ignore data-bracket-3d class="hidden flex-col overflow-hidden rounded-card bg-ground shadow-ring-hairline group-data-[bracket-view=3d]/bv:flex" data-test="bracket-3d">
+                <div class="relative">
+                    <canvas class="block aspect-[3/4] max-h-[75vh] w-full touch-pan-y sm:aspect-video sm:max-h-[min(70vh,720px)]" role="img" aria-label="{{ __('The bracket in 3D. The 2D view lists every match as text.') }}"></canvas>
+                    <p class="absolute inset-0 m-0 flex items-center justify-center text-[13px] text-ink-2" x-show="state === 'loading'" x-cloak>{{ __('Loading the 3D view') }}</p>
+                </div>
+                <div class="flex items-center gap-2 border-t border-hairline px-2 py-1.5">
+                    <button type="button" x-on:click="prev()" class="inline-flex size-11 shrink-0 cursor-pointer items-center justify-center rounded-sm border-0 bg-transparent text-ink hover:bg-raised" aria-label="{{ __('Previous part of the bracket') }}" data-test="bracket-3d-prev">
+                        <x-icon name="chevron-down" :size="18" class="rotate-90" />
+                    </button>
+                    <span class="min-w-0 grow truncate text-center text-[13px] font-bold" aria-live="polite" x-text="page ? page.title : ''" data-test="bracket-3d-title"></span>
+                    <button type="button" x-on:click="next()" class="inline-flex size-11 shrink-0 cursor-pointer items-center justify-center rounded-sm border-0 bg-transparent text-ink hover:bg-raised" aria-label="{{ __('Next part of the bracket') }}" data-test="bracket-3d-next">
+                        <x-icon name="chevron-down" :size="18" class="-rotate-90" />
+                    </button>
+                </div>
+            </div>
+            <div class="group-data-[bracket-view=3d]/bv:hidden" data-test="bracket-2d">
+                @include('pages.tournaments.partials.stages', ['stages' => $this->stages, 'tournament' => $tournament])
+            </div>
         @elseif ($drawn)
             @include('pages.tournaments.partials.stages', ['stages' => $this->stages, 'tournament' => $tournament])
         @elseif ($projection !== null)

@@ -1,8 +1,8 @@
 /**
  * /broadcast/{token}: an admin's OBS overlay preset on the broadcast engine (plan "OBS-Broadcast-Overlays"). This is
  * the part every variant shares: config, engine, sound, the snapshot poll and the live channels; the variant itself
- * (resources/js/broadcast/variants/*.js) decides what goes on air. League live (P3) and tournament (P4) have their
- * own; break and bracket (P5, P6) run the shell until they get theirs.
+ * (resources/js/broadcast/variants/*.js) decides what goes on air: league live (P3), tournament (P4), the break
+ * scene (P5) and the bracket (P6); the shell is what a variant falls back to without its data.
  *
  * Data: the first snapshot comes with the page (#broadcast-config); the public `league.feed` channel pushes what
  * happens (App\Events\LeagueFeedEvent); a tournament overlay also listens on `tournament.{id}` and refreshes on every
@@ -19,6 +19,8 @@ import Pusher from 'pusher-js';
 import { createDirector } from './director.js';
 import { createBroadcast, webglAvailable } from './engine.js';
 import { createSound } from './sound.js';
+import { runBreak } from './variants/break.js';
+import { runBracket } from './variants/bracket.js';
 import { runLeagueLive } from './variants/leagueLive.js';
 import { runShell } from './variants/shell.js';
 import { runTournament } from './variants/tournament.js';
@@ -98,7 +100,7 @@ async function start() {
     };
 
     b.start();
-    const run = { 'league-live': runLeagueLive, tournament: runTournament }[config.variant] || runShell;
+    const run = { 'league-live': runLeagueLive, tournament: runTournament, break: runBreak, bracket: runBracket }[config.variant] || runShell;
     variantState = run(ctx) || (() => ({}));
     document.body.dataset.broadcast = 'running';
 

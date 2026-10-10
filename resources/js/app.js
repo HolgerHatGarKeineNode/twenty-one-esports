@@ -35,6 +35,8 @@ import './clanDmsUi.js';
 import './captured.js';
 import './sanNotation.js';
 import './tournamentLanding.js';
+// The bracket's 2D / 3D switch; three.js and the 3D view load only when 3D is picked.
+import './bracketView.js';
 import './autoDecision.js';
 import './tournamentNow.js';
 // The tournament desk's buttons and unread badge; the chat itself loads only where it runs.

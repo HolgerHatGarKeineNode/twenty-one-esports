@@ -29,6 +29,15 @@ enum OverlayVariant: string
         return $this === self::Tournament || $this === self::Bracket;
     }
 
+    /**
+     * Whether the preset may name a tournament: the tournament and bracket variants must, the break scene may (its
+     * countdown, matches and closing words then follow that tournament instead of the next cup).
+     */
+    public function takesTournament(): bool
+    {
+        return $this->needsTournament() || $this === self::Break;
+    }
+
     /** A full-screen scene covers the picture; an overlay keeps the centre free for the stream. */
     public function isFullScreen(): bool
     {

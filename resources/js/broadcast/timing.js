@@ -68,6 +68,33 @@ export const TIMING = Object.freeze({
     boardOutroMs: 600,
     // A champion of a finished tournament comes back this often.
     championRepeatMs: 120000,
+
+    // Break scene (P5). The hero (what the viewer waits for) builds in with the mark and stays; a state change takes
+    // it out behind a full stinger. The right column's sections take turns behind a panel wipe, each held at least
+    // breakSectionMs (more when its words need it), long enough to read a list of names twice.
+    heroIntroMs: 1200,
+    heroOutroMs: 700,
+    panelIntroMs: 1000,
+    panelOutroMs: 600,
+    breakSectionMs: 16000,
+    // The wipe covers the panel by wipeCoverMs and has cleared it by wipeMs (no text: nothing to read).
+    wipeMs: 1500,
+    wipeCoverMs: 650,
+    // The mark turns slowly about its upright axis (one swing in this time) and a light crosses it every heroSweepMs.
+    markSwingMs: 18000,
+    heroSweepMs: 6000,
+
+    // Bracket (P6). A page is a camera position: the flight away from a page is its build-out, the flight in the next
+    // page's build-in; while a page holds, the camera stands still, so no name moves while it is read. A page holds
+    // at least bracketPageMs (the plan: >= 8 s), more when its names need it.
+    bracketFlightInMs: 1200,
+    bracketFlightOutMs: 700,
+    bracketPageMs: 10000,
+    bracketOverviewMs: 9000,
+    bracketChampionMs: 12000,
+    // A live result: the winner's row lights (0-500), the light runs the connector (400-1300), the name lands in the
+    // next match (1200-1900); it plays inside a page's hold, after the page's own build-in.
+    advanceMs: 2000,
 });
 
 /** Words in a text, the way a reader counts them: runs of letters or digits. */

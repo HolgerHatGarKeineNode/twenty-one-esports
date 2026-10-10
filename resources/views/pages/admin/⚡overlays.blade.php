@@ -14,7 +14,7 @@ use Livewire\Component;
 
 /*
  * OBS overlays (plan "OBS-Broadcast-Overlays", P2): an admin sets up a preset once (variant, tournament for the
- * tournament and bracket variants, language, modules) and gets a secret URL for an OBS browser source; everything
+ * tournament and bracket variants and optionally the break scene, the break scene's state, language, modules) and gets a secret URL for an OBS browser source; everything
  * runs on its own after that. The URL is shown once, right after creating or rotating (only the token's SHA-256 is
  * stored); rotating makes the old URL answer 404. Admins only.
  */
@@ -29,6 +29,9 @@ new #[Title('OBS overlays')] #[Layout('layouts::app', ['section' => 'admin'])] c
     public ?int $tournament = null;
 
     public string $locale = 'de';
+
+    /** The break scene's state: '' follows the tournament and the clock, else one of OverlayPreset::SCENES. */
+    public string $scene = '';
 
     /** @var array<string, bool> */
     public array $modules = OverlayPreset::MODULES;
@@ -81,6 +84,7 @@ new #[Title('OBS overlays')] #[Layout('layouts::app', ['section' => 'admin'])] c
             'pots' => __('Prize pots'),
             'sound' => __('Stinger sounds'),
             'cam-frame' => __('Camera frame'),
+            'music' => __('Music in the break scene'),
         ];
     }
 
@@ -91,11 +95,14 @@ new #[Title('OBS overlays')] #[Layout('layouts::app', ['section' => 'admin'])] c
         $this->revealedFor = null;
         $this->flash = '';
 
-        $needsTournament = OverlayVariant::tryFrom($this->variant)?->needsTournament() ?? false;
+        $variant = OverlayVariant::tryFrom($this->variant);
+        $needsTournament = $variant?->needsTournament() ?? false;
+        $takesTournament = $variant?->takesTournament() ?? false;
         $this->validate([
             'name' => ['required', 'string', 'max:80'],
             'variant' => ['required', Rule::enum(OverlayVariant::class)],
-            'tournament' => $needsTournament ? ['required', 'integer', Rule::in($this->tournaments->modelKeys())] : ['nullable'],
+            'tournament' => $needsTournament ? ['required', 'integer', Rule::in($this->tournaments->modelKeys())] : ($takesTournament ? ['nullable', 'integer', Rule::in($this->tournaments->modelKeys())] : ['nullable']),
+            'scene' => ['nullable', Rule::in(['', ...OverlayPreset::SCENES])],
             'locale' => ['required', Rule::in(OverlayPreset::LOCALES)],
             'modules' => ['array'],
             'modules.*' => ['boolean'],
@@ -104,7 +111,8 @@ new #[Title('OBS overlays')] #[Layout('layouts::app', ['section' => 'admin'])] c
         $attributes = [
             'name' => trim($this->name),
             'variant' => $this->variant,
-            'tournament_id' => $needsTournament ? $this->tournament : null,
+            'tournament_id' => $takesTournament ? $this->tournament : null,
+            'scene' => $variant === OverlayVariant::Break && $this->scene !== '' ? $this->scene : null,
             'locale' => $this->locale,
             'modules' => array_map(fn (string $module): bool => (bool) ($this->modules[$module] ?? false), array_combine(array_keys(OverlayPreset::MODULES), array_keys(OverlayPreset::MODULES))),
         ];
@@ -135,6 +143,7 @@ new #[Title('OBS overlays')] #[Layout('layouts::app', ['section' => 'admin'])] c
         $this->name = $preset->name;
         $this->variant = $preset->variant->value;
         $this->tournament = $preset->tournament_id;
+        $this->scene = (string) $preset->scene;
         $this->locale = $preset->locale;
         $this->modules = $preset->moduleStates();
         $this->resetValidation();
@@ -184,6 +193,7 @@ new #[Title('OBS overlays')] #[Layout('layouts::app', ['section' => 'admin'])] c
         $this->name = '';
         $this->variant = OverlayVariant::LeagueLive->value;
         $this->tournament = null;
+        $this->scene = '';
         $this->locale = 'de';
         $this->modules = OverlayPreset::MODULES;
         $this->resetValidation();
@@ -193,6 +203,8 @@ new #[Title('OBS overlays')] #[Layout('layouts::app', ['section' => 'admin'])] c
 @php
     $input = 'h-11 w-full rounded-md border border-edge bg-ground px-3 text-sm text-ink';
     $needsTournament = OverlayVariant::tryFrom($variant)?->needsTournament() ?? false;
+    $takesTournament = OverlayVariant::tryFrom($variant)?->takesTournament() ?? false;
+    $isBreak = $variant === OverlayVariant::Break->value;
     $revealedName = $revealedFor === null ? null : $this->presets->firstWhere('id', $revealedFor)?->name;
 @endphp
 
@@ -236,10 +248,10 @@ new #[Title('OBS overlays')] #[Layout('layouts::app', ['section' => 'admin'])] c
                     <option value="en">English</option>
                 </select>
             </label>
-            @if ($needsTournament)
-                <label class="flex min-w-0 flex-col gap-1 text-xs text-ink-2 sm:col-span-2 lg:col-span-4">{{ __('Tournament') }}
+            @if ($takesTournament)
+                <label @class(['flex min-w-0 flex-col gap-1 text-xs text-ink-2', 'sm:col-span-2 lg:col-span-4' => ! $isBreak, 'sm:col-span-2 lg:col-span-3' => $isBreak])>{{ __('Tournament') }}
                     <select wire:model="tournament" class="{{ $input }}" data-test="overlay-tournament">
-                        <option value="">{{ __('Choose a tournament') }}</option>
+                        <option value="">{{ $needsTournament ? __('Choose a tournament') : __('The next cup or tournament, automatically') }}</option>
                         @foreach ($this->tournaments as $choice)
                             <option value="{{ $choice->id }}">{{ $choice->name }} · {{ $choice->status->label() }} · {{ $choice->starts_at?->translatedFormat('j M Y, H:i') }}</option>
                         @endforeach
@@ -247,6 +259,16 @@ new #[Title('OBS overlays')] #[Layout('layouts::app', ['section' => 'admin'])] c
                     @if ($this->tournaments->isEmpty())
                         <span class="text-xs text-ink-3">{{ __('No tournament is open for sign-up or running right now.') }}</span>
                     @endif
+                </label>
+            @endif
+            @if ($isBreak)
+                <label class="flex min-w-0 flex-col gap-1 text-xs text-ink-2">{{ __('Scene') }}
+                    <select wire:model="scene" class="{{ $input }}" data-test="overlay-scene">
+                        <option value="">{{ __('Follows the tournament') }}</option>
+                        <option value="soon">{{ __('Starting soon') }}</option>
+                        <option value="break">{{ __('Short break') }}</option>
+                        <option value="end">{{ __('Thanks for watching') }}</option>
+                    </select>
                 </label>
             @endif
             <fieldset class="m-0 flex flex-col gap-2 border-0 p-0 sm:col-span-2 lg:col-span-4">
@@ -281,6 +303,8 @@ new #[Title('OBS overlays')] #[Layout('layouts::app', ['section' => 'admin'])] c
                         {{ $preset->variant->label() }} · {{ strtoupper($preset->locale) }}
                         @if ($preset->variant->needsTournament())
                             · {{ $preset->tournament?->name ?? __('Tournament no longer exists') }}
+                        @elseif ($preset->variant->takesTournament() && $preset->tournament !== null)
+                            · {{ $preset->tournament->name }}
                         @endif
                         · {{ $preset->rotated_at === null ? __('URL from :date', ['date' => $preset->created_at?->translatedFormat('j M Y')]) : __('URL rotated :date', ['date' => $preset->rotated_at->translatedFormat('j M Y')]) }}
                     </span>
