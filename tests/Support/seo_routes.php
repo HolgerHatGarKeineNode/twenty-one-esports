@@ -65,6 +65,7 @@ function seoSkipReason(RouteDefinition $route): ?string
         ! in_array('web', $middleware, true) => 'no HTML page: an image, JSON, XML or text for clients and crawlers',
         $name === 'locale.switch' => 'redirect that sets the language',
         $name === 'tournaments.calendar' => 'iCalendar file, not HTML',
+        $name === 'tournaments.bracket-data' => 'JSON for the 3D bracket view, not a page',
         $name === 'players.card' => 'HTML fragment of the player popover, not a page',
         $name === 'invites.create' => 'the invite picker: an action page; what gets shared is the invite link with its own card',
         $name === 'stacker.replay' => 'a replay is access-checked per run (its player, admins, a finished week\'s first ten): noindex',
