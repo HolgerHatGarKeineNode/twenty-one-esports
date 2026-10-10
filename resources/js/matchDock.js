@@ -55,12 +55,19 @@ export function formatLeft(ms, format, labels) {
 }
 
 export default function matchDock(config) {
+    // The row tab watched for its width, and the watcher (outside Alpine's reactivity: DOM, not state).
+    let rowTab = null;
+    let rowObserver = null;
+    let rowWidth = null;
+
     return {
         open: null,
         folded: false,
         autoFolded: false,
         panelLeft: 0,
         pageBar: null,
+        // The row of a page bar the tab sits in (`data-dock-row`): its bottom and height in px, or null.
+        row: null,
         keyboard: false,
         chatOpen: false,
         inside: false,
@@ -83,7 +90,10 @@ export default function matchDock(config) {
             // Folded by that default, not by the player: unfold once something is on them.
             this.autoFolded = stored === null && this.folded;
 
+            // The row tab's width makes room in its row (reserveRow), anew whenever it changes; once more when the tabs exist.
+            rowObserver = typeof ResizeObserver === 'function' ? new ResizeObserver(() => this.reserveRow()) : null;
             this.measure();
+            this.$nextTick(() => this.measure());
             this.tick();
             this.timers.push(setInterval(() => {
                 if (!document.hidden) {
@@ -114,6 +124,8 @@ export default function matchDock(config) {
             clearTimeout(this.debounce);
             this.unsubscribe?.();
             this.teardown?.abort();
+            rowObserver?.disconnect();
+            document.documentElement.style.removeProperty('--dock-row-w');
             // Stop listening, never leave: the next page's dock (or the page itself) may watch the same game.
             this.listened.forEach((handler, id) => window.Echo?.channel('game.' + id + '.watch').stopListening('.game.updated', handler));
             this.listened.clear();
@@ -155,6 +167,13 @@ export default function matchDock(config) {
             }
         },
 
+        /** The chat sheet opened or closed: the two sheets close each other (P5f), and the tab follows its bar. */
+        chatToggled(open) {
+            this.chatOpen = open;
+            if (open) this.close(false);
+            requestAnimationFrame(() => this.measure());
+        },
+
         fold() {
             this.folded = !this.folded;
             this.autoFolded = false;
@@ -194,7 +213,11 @@ export default function matchDock(config) {
          * A page that owns the bottom edge marks its bar with `data-page-bar`
          * (the daily move bar, the chat sheet, the match room's score bar);
          * the dock then folds into a 44 px tab on the top edge of the highest
-         * visible one. The keyboard open on a phone hides the dock.
+         * visible one. A bar that offers its row (`data-dock-row`: the closed
+         * chat sheet) takes the tab beside it instead, at the row's left end
+         * and as tall as the row (DerCaddy, 2026-10-10: "nebeneinander"); the
+         * row leaves it room (--dock-row-w). The keyboard open on a phone
+         * hides the dock.
          */
         measure() {
             let top = null;
@@ -204,9 +227,33 @@ export default function matchDock(config) {
                 if (rect.height > 0 && (top === null || rect.top < top)) top = rect.top;
             });
             this.pageBar = top === null ? null : Math.max(0, Math.round(window.innerHeight - top));
+            const bar = [...document.querySelectorAll('[data-dock-row]')].find((el) => el.getBoundingClientRect().height > 0);
+            const row = bar?.getBoundingClientRect();
+            this.row = row ? { bottom: Math.max(0, Math.round(window.innerHeight - row.bottom)), height: Math.round(row.height) } : null;
+            // Whether the chat sheet is open, from its bar: a refresh of the dock runs init() anew, and the event is gone by then.
+            if (bar) this.chatOpen = bar.getAttribute('aria-expanded') === 'true';
+            this.reserveRow();
 
             const viewport = window.visualViewport;
             this.keyboard = !!viewport && viewport.height < window.innerHeight * 0.7;
+        },
+
+        /**
+         * The room the row tab takes in its row: its width, 0 while it is hidden (the chat sheet open, no row). Watched,
+         * so a new number or label resizes the room at once; a tab rendered later (the first open match) is picked up here.
+         */
+        reserveRow() {
+            // Looked up, not a $ref: Alpine keeps the refs it saw at first access, and the tab may come with a later refresh.
+            const tab = this.$root.querySelector('[data-dock-row-tab]');
+            if (tab !== rowTab) {
+                rowObserver?.disconnect();
+                rowTab = tab;
+                if (tab) rowObserver?.observe(tab);
+            }
+            const width = tab ? Math.round(tab.getBoundingClientRect().width) : 0;
+            if (width === rowWidth) return;
+            rowWidth = width;
+            document.documentElement.style.setProperty('--dock-row-w', width + 'px');
         },
 
         /* ---------- numbers that run down ----------------------------------------------------------------- */
@@ -274,6 +321,7 @@ export default function matchDock(config) {
             this.panelsStale = true;
             await this.$nextTick();
             this.tick();
+            this.measure();
             this.watchGames();
             if (this.autoFolded && this.needKeys().size > 0) {
                 this.folded = false;

@@ -123,7 +123,7 @@ new class extends Component {
 @endphp
 
 <div x-data="matchDock(@js($config))" data-need="{{ $counts['need'] }}" data-open="{{ $counts['open'] }}" data-test="match-dock-root"
-     x-on:keydown.escape.window="close(true)" x-on:bell-toggle.window="$event.detail && close(false)" x-on:chat-sheet-toggle.window="chatOpen = $event.detail; $event.detail && close(false)">
+     x-on:keydown.escape.window="close(true)" x-on:bell-toggle.window="$event.detail && close(false)" x-on:chat-sheet-toggle.window="chatToggled($event.detail)">
     <span class="sr-only" aria-live="polite" x-text="announcement"></span>
 
     {{--
@@ -144,7 +144,7 @@ new class extends Component {
                'bg-btc text-on-btc shadow-[0_0_0_1px_var(--color-btc-hi),0_16px_32px_rgba(10,10,11,.8)] hover:text-on-btc' => $cup['state'] === 'live',
                'bg-card text-ink shadow-[inset_3px_0_0_var(--color-btc),0_0_0_2px_var(--color-btc),0_16px_32px_rgba(10,10,11,.8)] hover:text-ink' => $cup['state'] !== 'live',
            ])
-           x-show="! keyboard && ! chatOpen" x-bind:style="pageBar && { bottom: (pageBar + 52) + 'px' }"
+           x-show="! keyboard && ! chatOpen" x-bind:style="pageBar && { bottom: (pageBar + (row ? 8 : 52)) + 'px' }"
            data-test="dock-cup" data-state="{{ $cup['state'] }}" data-live-floor>
             <span @class(['relative flex size-9 shrink-0 items-center justify-center rounded-lg', 'bg-on-btc text-btc' => $cup['state'] === 'live', 'bg-btc text-on-btc' => $cup['state'] !== 'live'])>
                 <x-icon name="trophy" :size="18" />
@@ -271,7 +271,7 @@ new class extends Component {
             @endteleport
         @endif
 
-        {{-- Phones and tablets (MobileMatchDock.dc.html): the bar, 16 px above the shell's tab bar (--tabbar-h), or a tab on the page's own bottom bar. --}}
+        {{-- Phones and tablets (MobileMatchDock.dc.html): the bar, 16 px above the shell's tab bar (--tabbar-h), or a tab on the page's own bottom bar, or beside the chat bar in its row. --}}
         <button type="button" @class([
                     'fixed inset-x-4 bottom-[calc(var(--tabbar-h)+1rem)] z-[35] flex h-14 cursor-pointer items-center gap-3 rounded-xl border-0 bg-card pr-3 pl-4 text-left lg:hidden',
                     'shadow-[inset_3px_0_0_var(--color-btc),0_0_0_1px_var(--color-line),0_16px_32px_rgba(10,10,11,.8)]' => $counts['need'] > 0,
@@ -288,11 +288,29 @@ new class extends Component {
             <x-icon name="chevron-up" :size="16" class="text-ink-2" />
         </button>
         <button type="button" class="fixed left-4 z-[35] flex h-11 cursor-pointer items-center gap-2 rounded-t-lg border-0 bg-bar px-3 text-xs whitespace-nowrap text-btc shadow-[0_-1px_0_var(--color-line),-1px_0_0_var(--color-line),1px_0_0_var(--color-line),inset_0_3px_0_var(--color-btc)] lg:hidden"
-                x-show="pageBar && ! keyboard && ! chatOpen" x-cloak x-bind:style="pageBar && { bottom: pageBar + 'px' }"
+                x-show="pageBar && ! row && ! keyboard && ! chatOpen" x-cloak x-bind:style="pageBar && { bottom: pageBar + 'px' }"
                 x-on:click="toggle('sheet', $el)" x-bind:aria-expanded="(open === 'sheet').toString()" aria-expanded="false" aria-haspopup="dialog" data-test="dock-bar-tab" data-live-floor>
             <x-match-dock.cube :grey="$counts['need'] === 0" />
             <b @class(['font-display text-[15px]', 'text-ink-2' => $counts['need'] === 0])>{{ $handleNumber }}</b><span class="text-ink-2">{{ $needLabel }}</span><span class="sr-only">, {{ trans_choice(':count open match|:count open matches', $counts['open']) }}</span>
             <x-icon name="chevron-up" :size="16" class="text-ink-2" />
+        </button>
+
+        {{--
+            Beside the closed chat bar, in its row (DerCaddy, 2026-10-10: "10 wartet" next to the chat bar, each opening its
+            own sheet): the row's left end, as tall as the row, with the same grip as the chat sheet. The row leaves it room
+            (resources/js/matchDock.js, --dock-row-w). On the sheet's layer and after it in the page, so it paints over the
+            chat bar and under both sheets and their shade.
+        --}}
+        <button type="button" class="fixed left-0 z-40 flex max-w-[40%] cursor-pointer flex-col items-stretch gap-2 rounded-tl-2xl border-0 bg-bar pt-2 pr-3 pb-3 pl-4 text-xs whitespace-nowrap text-btc shadow-[inset_-1px_0_0_var(--color-hairline)] lg:hidden"
+                x-show="row && ! keyboard && ! chatOpen" x-cloak x-bind:style="row && { bottom: row.bottom + 'px', height: row.height + 'px' }"
+                x-on:click="toggle('sheet', $el)" x-bind:aria-expanded="(open === 'sheet').toString()" aria-expanded="false" aria-haspopup="dialog" data-dock-row-tab data-test="dock-row-tab" data-live-floor>
+            <span aria-hidden="true" class="h-1 w-10 self-center rounded-xs bg-edge"></span>
+            {{-- At most 40 % of the row: on a narrow phone a long label ("2 need you") gives way before the chat does. --}}
+            <span class="flex min-w-0 items-center gap-2">
+                <x-match-dock.cube :grey="$counts['need'] === 0" />
+                <b @class(['shrink-0 font-display text-[15px]', 'text-ink-2' => $counts['need'] === 0])>{{ $handleNumber }}</b><span class="min-w-0 truncate text-ink-2">{{ $needLabel }}</span><span class="sr-only">, {{ trans_choice(':count open match|:count open matches', $counts['open']) }}</span>
+                <x-icon name="chevron-up" :size="16" class="shrink-0 text-ink-2" />
+            </span>
         </button>
 
         <div x-show="open === 'sheet'" x-cloak class="lg:hidden">

@@ -21,7 +21,9 @@ pest()->group('browser');
 |
 | On a phone the whole board, the switch between pawn and block (with the blocks left) and Rotate/Confirm sit in
 | the first screen above the chat sheet and the app's tab bar, as on the daily chess page: measured in pixels at 390x844 and 360x740
-| with a block shown, without any scroll.
+| with a block shown, without any scroll. Rotate, Confirm and Move the pawn stand in the pop-up over the board, so
+| Blockli's bar is one row ("Set a block") and the board gets the height back (DerCaddy, 2026-10-10: "das Spielfeld
+| wieder vergrößern"): the full width at 390x844. The match dock's tab sits beside the chat bar, in its row.
 |
 */
 
@@ -58,7 +60,7 @@ const BLOCKLI_FOLD = <<<'JS'
     const sheet = box('[data-test=chat-sheet-toggle]');
     return {
         tabbar: parseFloat(getComputedStyle(document.body).paddingBottom) || 0, height: innerHeight, width: innerWidth, sheet: sheet ? sheet.top : innerHeight,
-        board: box('[data-test=board]'), chatPanel: box('[data-test=chat-panel]'), chatInput: box('#chatin'), moves: box('[data-test=moves]'), side: Math.round(Math.max(...[...document.querySelector('[data-test=board-game] .grid > div:nth-child(2)').children].filter((el) => el.checkVisibility()).map((el) => el.getBoundingClientRect().bottom))), dock: box('[data-test=block-input]'), modeMove: box('[data-test=mode-move]'), modeBlock: box('[data-test=mode-block]'),
+        board: box('[data-test=board]'), chatPanel: box('[data-test=chat-panel]'), chatInput: box('#chatin'), moves: box('[data-test=moves]'), side: Math.round(Math.max(...[...document.querySelector('[data-test=board-game] > .grid > div:nth-child(2)').children].filter((el) => el.checkVisibility()).map((el) => el.getBoundingClientRect().bottom))), dock: box('[data-test=block-input]'), modeMove: box('[data-test=mode-move]'), modeBlock: box('[data-test=mode-block]'),
         rotate: box('[data-test=rotate-block]'), confirm: box('[data-test=set-block]'), top: box('[data-test=player-top]'), bottomCard: box('[data-test=player-bottom]'),
         overflow: document.documentElement.scrollWidth - document.documentElement.clientWidth,
         // The narrowest field on the drawn board: the step between two neighbouring squares' points (a1, b1, ...).
@@ -82,6 +84,11 @@ test('the board, the pawn/block switch and Confirm fit the first phone screen ab
 
     expect($m['sheet'])->toBe($height - (int) $m['tabbar'] - 72, 'the chat sheet sits on the tab bar')
         ->and($m['board']['top'])->toBeGreaterThanOrEqual(0)
+        // One row: "Set a block" beside whose move it is; the board takes what the second row and the tab on it took.
+        ->and($m['dock']['h'])->toBeLessThanOrEqual(58, 'Blockli\'s bar is one row')
+        ->and($m['board']['right'] - $m['board']['left'])->toBeGreaterThanOrEqual($width === 390 ? $width - 32 : 300, 'the board keeps the width')
+        ->and($m['rotate']['bottom'])->toBeLessThanOrEqual($m['board']['bottom'], 'Rotate stands over the board')
+        ->and($m['confirm']['bottom'])->toBeLessThanOrEqual($m['board']['bottom'], 'Confirm stands over the board')
         ->and(max($m['board']['bottom'], $m['bottomCard']['bottom']))->toBeLessThanOrEqual($m['dock']['top'], 'board and player cards end above the bar')
         ->and($m['dock']['bottom'])->toBeLessThanOrEqual($m['sheet'], 'the bar ends above the chat sheet')
         ->and($m['confirm']['bottom'])->toBeLessThanOrEqual($m['sheet'])
@@ -122,6 +129,66 @@ test('the board keeps its size while the phone browser shows and hides its addre
     expect(array_values(array_unique(array_map('json_encode', $sizes))))->toBe([json_encode($before)])
         ->and($page->evaluate($box))->not->toBe($before)
         ->and($page->evaluate('() => window.__errors'))->toBe([]);
+});
+
+/** The closed chat bar's row: the dock's tab in it, the chat's room, Blockli's bar and the board above. */
+const BLOCKLI_DOCK_ROW = <<<'JS'
+() => {
+    const box = (sel) => { const el = document.querySelector(sel); if (!el || !el.checkVisibility()) return null; const r = el.getBoundingClientRect(); return { left: Math.round(r.left), top: Math.round(r.top), right: Math.round(r.right), bottom: Math.round(r.bottom) }; };
+    const toggle = document.querySelector('[data-test=chat-sheet-toggle]');
+    return {
+        tab: box('[data-test=dock-row-tab]'), onTop: box('[data-test=dock-bar-tab]'), chat: box('[data-test=chat-sheet-toggle]'), chatLabel: box('#sheet-h'),
+        bar: box('[data-test=block-input]'), board: box('[data-test=board]'), pad: Math.round(parseFloat(getComputedStyle(toggle).paddingLeft)),
+        sheet: !!document.querySelector('[data-test=dock-sheet]')?.checkVisibility(),
+    };
+}
+JS;
+
+test('beside the closed chat bar the match dock\'s tab sits in its row and opens the open matches; the chat opens its own sheet', function () {
+    // DerCaddy, 2026-10-10: "die Leiste '10 wartet' soll neben der Leiste zum Chat unten nebeneinander erscheinen, also
+    // wenn sie eingeklappt sind. Klicken darauf öffnet einen der Reiter." On this game's page the dock's tab sits at the
+    // left end of the chat bar's row, not on top of Blockli's bar.
+    [$anna, $bert, $carl] = User::factory()->count(3)->create();
+    $service = app(BoardGameService::class);
+    $game = BlockliOn::setUp($service->start('blockli', $anna, $bert), 'e7 e3 10 10 w - 0');
+    $page = blockliPhone($anna, route('board.show', $game, false), 390, 844);
+    BrowserWait::until($page, '() => window.Alpine && Alpine.$data(document.querySelector("[data-test=board-game]"))?.canMove', 10_000);
+    $refresh = '() => Alpine.$data(document.querySelector("[data-test=match-dock-root]")).requestRefresh()';
+    $empty = $page->evaluate(BLOCKLI_DOCK_ROW);
+
+    // No other match yet: no tab, the chat has the row. Then a second game starts and the dock's refresh brings the tab:
+    // rendered after the page loaded, it still gets its room (looked up, not a $ref cached while there was none).
+    $service->start('blockli', $anna, $carl);
+    $page->evaluate($refresh);
+    BrowserWait::until($page, '() => !!document.querySelector("[data-test=dock-row-tab]")?.checkVisibility() && parseFloat(getComputedStyle(document.querySelector("[data-test=chat-sheet-toggle]")).paddingLeft) > 16', 10_000);
+    $closed = $page->evaluate(BLOCKLI_DOCK_ROW);
+
+    expect([$empty['tab'], $empty['pad']])->toBe([null, 16])
+        ->and($closed['onTop'])->toBeNull('no tab on top of Blockli\'s bar')
+        ->and([$closed['tab']['left'], $closed['tab']['top'], $closed['tab']['bottom']])->toBe([0, $closed['chat']['top'], $closed['chat']['bottom']], 'the tab in the chat bar\'s row')
+        ->and($closed['pad'])->toBe($closed['tab']['right'] + 16, 'the chat leaves the tab its room')
+        ->and($closed['chatLabel']['left'])->toBeGreaterThanOrEqual($closed['tab']['right'])
+        ->and($closed['board']['bottom'])->toBeLessThanOrEqual($closed['bar']['top'], 'nothing of the dock over the board');
+
+    // The tab opens the open matches, and closes them.
+    $page->locator('[data-test=dock-row-tab]')->tap();
+    BrowserWait::until($page, '() => !!document.querySelector("[data-test=dock-sheet]")?.checkVisibility()', 5_000);
+    $page->locator('[data-test=dock-sheet] .dk-x')->tap();
+    BrowserWait::until($page, '() => !document.querySelector("[data-test=dock-sheet]")?.checkVisibility()', 5_000);
+
+    // The chat opens its own sheet: the tab gives way and the chat gets its room back. A refresh of the dock meanwhile
+    // (it starts the dock anew) keeps it away. Closed again, the tab is back in the row.
+    $page->locator('[data-test=chat-sheet-toggle]')->tap();
+    BrowserWait::until($page, '() => !document.querySelector("[data-test=dock-row-tab]").checkVisibility() && parseFloat(getComputedStyle(document.querySelector("[data-test=chat-sheet-toggle]")).paddingLeft) === 16', 5_000);
+    $page->evaluate($refresh);
+    $page->evaluate('() => new Promise((r) => setTimeout(r, 1500))');
+    expect($page->evaluate('() => !!document.querySelector("[data-test=dock-row-tab]")?.checkVisibility()'))->toBeFalse('no tab inside the open chat');
+    $page->locator('[data-test=chat-sheet-toggle]')->tap();
+    BrowserWait::until($page, '() => !!document.querySelector("[data-test=dock-row-tab]")?.checkVisibility()', 5_000);
+
+    expect($page->evaluate(BLOCKLI_DOCK_ROW))->toBe($closed)
+        ->and($page->evaluate('() => window.__errors'))->toBe([])
+        ->and($page->evaluate(BrowserConsole::BAD_RESPONSES))->toBe([]);
 });
 
 /*
@@ -199,6 +266,9 @@ test('on a desktop the board, the lower player card, the switch and Confirm fit 
     BrowserWait::until($page, '() => window.Alpine && Alpine.$data(document.querySelector("[data-test=board-game]"))?.canMove', 10_000);
     $before = $page->evaluate(BLOCKLI_FOLD);
     $page->locator('[data-test=mode-block]')->click();
+    // A mouse sets with its click and keeps the hint; an arrow key shows a block in the middle with Rotate and Confirm over the board.
+    $page->locator('[data-test=mode-block]')->press('ArrowUp');
+    BrowserWait::until($page, '() => !!Alpine.$data(document.querySelector("[data-test=board-game]")).preview', 5_000);
     $m = $page->evaluate(BLOCKLI_FOLD);
     fwrite(STDERR, PHP_EOL."desktop {$width}x{$height} ".json_encode(['board' => $m['board'], 'card' => $m['bottomCard'], 'confirm' => $m['confirm'], 'chat' => $m['chatPanel'], 'side' => $m['side'], 'field' => $m['field']]).PHP_EOL);
 
@@ -216,6 +286,7 @@ test('on a desktop the board, the lower player card, the switch and Confirm fit 
         ->and($width >= 1400 ? $m['chatPanel']['top'] < $m['board']['top'] : $m['chatPanel']['top'] > $m['bottomCard']['bottom'])->toBeTrue('chat beside the board from 1400, under it below')
         ->and($m['chatPanel']['h'])->toBeGreaterThanOrEqual(400, 'the chat keeps room for messages')
         ->and($m['confirm']['bottom'])->toBeLessThanOrEqual($height, 'Confirm inside the first screen')
+        ->and($m['confirm']['bottom'])->toBeLessThanOrEqual($m['board']['bottom'], 'Confirm over the board')
         ->and($m['modeBlock']['bottom'])->toBeLessThanOrEqual($height)
         // The switch to block mode does not move the board.
         ->and($m['board'])->toBe($before['board'])
