@@ -82,8 +82,9 @@ return [
     |
     | ttl_minutes: a profile a browser confirmed or updated within this time
     | is not asked from relays again by any page.
-    | nip05_recheck_hours: how long a NIP-05 check stands before a newer
-    | profile triggers the next one.
+    | nip05_recheck_hours: how long a NIP-05 check stands, passed or failed,
+    | before the next profile hand-in (a newer version or the same one again)
+    | repeats it.
     | throttle_per_minute: profile hand-ins per minute and client (IP).
     | wait_ms: how long a page waits for relays before it gives up.
     |

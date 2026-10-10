@@ -140,6 +140,39 @@ test('the same profile version fills in a Lightning address the stored copy lack
         ->and($player->lud16_changed_at)->toBeNull();
 });
 
+test('the same profile version repeats a NIP-05 check that has stood its interval', function (bool $passed) {
+    Queue::fake([VerifyNip05::class]);
+    $this->freezeSecond();
+    $at = now()->subDays(3);
+    // Cached three days ago, checked 25 hours ago, and the player published nothing since (issue #1).
+    [$player, $signer] = knownPlayer([
+        'nip05' => 'max@mempool.example', 'profile_event_at' => $at,
+        'nip05_checked_at' => now()->subHours(25), 'nip05_verified_at' => $passed ? now()->subHours(25) : null,
+    ]);
+
+    handIn([kindZero($signer, ['nip05' => 'Max@Mempool.example'], createdAt: $at->getTimestamp())])->assertOk()->assertExactJson(['updated' => []]);
+
+    Queue::assertPushed(VerifyNip05::class, fn (VerifyNip05 $job) => $job->user->is($player));
+    // The outcome stands until the check speaks: the player page does not flicker to "unchecked" meanwhile.
+    expect($player->refresh())->nip05_checked_at->toEqual(now()->subHours(25))->profile_checked_at->toEqual(now());
+})->with([
+    'after a failed check' => [false],
+    'after a passed check' => [true],
+]);
+
+test('within the interval, the same profile version leaves the NIP-05 check alone', function (?string $nip05, ?int $checkedHoursAgo) {
+    Queue::fake([VerifyNip05::class]);
+    $at = now()->subDays(3)->startOfSecond();
+    [$player, $signer] = knownPlayer(['profile_event_at' => $at, 'nip05' => $nip05, 'nip05_checked_at' => $checkedHoursAgo === null ? null : now()->subHours($checkedHoursAgo)]);
+
+    handIn([kindZero($signer, ['name' => 'max'], createdAt: $at->getTimestamp())])->assertOk();
+
+    Queue::assertNotPushed(VerifyNip05::class);
+})->with([
+    'checked 23 hours ago' => ['max@mempool.example', 23],
+    'no address' => [null, null],
+]);
+
 test('of two versions in one batch the newer wins, whatever their order', function () {
     [$player, $signer] = knownPlayer();
 
