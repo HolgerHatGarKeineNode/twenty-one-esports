@@ -120,6 +120,7 @@ const NAV_PAGES = [
  * @var array<string, string>
  */
 const NAV_NOT_PAGES = [
+    'tournaments.bracket-data' => 'JSON for the 3D bracket view on the tournament page, not a page',
     'invites.link' => 'entry point: the invite link a player shares outside the app',
     'challenges.casual' => 'entry point: "Schedule a 1v1" from the casual 1v1 module and a player page, always with ?to=',
     'notifications.dm-off' => 'entry point: the signed link at the end of every DM',

@@ -32,9 +32,9 @@ afterAll(fn () => BrowserWebGL::off());
 test('the overlay renders transparent with the centre free, its shell on air and a clean console', function () {
     BrowserWebGL::on();
     Tournament::factory()->signup()->create(['published_at' => now(), 'signup_closes_at' => now()->addDay(), 'name' => 'Autumn Blitz Cup']);
-    // The shell runs the variants without a scene of their own yet (break, bracket: P5, P6); league live and tournament
-    // have theirs (tests/Browser/BroadcastLiveOverlaysTest.php).
-    OverlayPreset::factory()->withToken($token = str_repeat('k', 48))->create(['name' => 'Laptop stream', 'locale' => 'en', 'variant' => OverlayVariant::Break]);
+    // The transparent league overlay as OBS opens it (its moments: tests/Browser/BroadcastLiveOverlaysTest.php; the
+    // opaque break and bracket scenes: BroadcastBreakBracketTest).
+    OverlayPreset::factory()->withToken($token = str_repeat('k', 48))->create(['name' => 'Laptop stream', 'locale' => 'en', 'variant' => OverlayVariant::LeagueLive]);
 
     $page = visit('/broadcast/'.$token)->page();
     $page->context()->addInitScript(BrowserConsole::COLLECTOR);
@@ -55,13 +55,11 @@ test('the overlay renders transparent with the centre free, its shell on air and
     $segments = collect($page->evaluate('() => window.broadcast.timeline().segments'));
     $alpha = $page->evaluate('() => ({ centre: window.broadcast.sampleAlpha(960, 540), centreEdge: window.broadcast.sampleAlpha(410, 240), corner: window.broadcast.sampleAlpha(1900, 400), plate: window.broadcast.sampleAlpha(420, 930), rail: window.broadcast.sampleAlpha(1400, 1002) })');
 
-    expect($segments->pluck('kind')->unique()->sort()->values()->all())->toBe(['lowerThird', 'ticker'])
-        ->and($segments->firstWhere('kind', 'lowerThird')['texts'][0])->toBe('Laptop stream')
+    expect($segments->pluck('kind')->unique()->all())->toContain('ticker')
         ->and($alpha['centre'])->toBe(0)
         ->and($alpha['centreEdge'])->toBe(0)
         ->and($alpha['corner'])->toBe(0)
-        // Positive controls of the sampler: the name plate's glass and the ticker rail cover most of their pixels.
-        ->and($alpha['plate'])->toBeGreaterThan(0.8)
+        // Positive control of the sampler: the ticker rail covers most of its pixels.
         ->and($alpha['rail'])->toBeGreaterThan(0.5);
 
     // The poll fallback answers: one fetch of the snapshot, the way the 20 s timer does it.

@@ -103,7 +103,7 @@ const SWEEP_DOWNLOADS = ['tournaments.calendar', 'tournaments.lobby-screenshot']
  *
  * @var list<string>
  */
-const SWEEP_JSON_ENDPOINTS = ['players.search', 'lnurl.pay', 'lnurl.callback', 'stream.status', 'broadcast.snapshot'];
+const SWEEP_JSON_ENDPOINTS = ['players.search', 'lnurl.pay', 'lnurl.callback', 'stream.status', 'broadcast.snapshot', 'tournaments.bracket-data'];
 
 /**
  * Pages behind a secret URL, not reachable by any link: an OBS overlay preset's browser source (plan
