@@ -29,5 +29,8 @@
         "laravel-echo": "^2.5.0",
         "playwright": "^1.62.1",
         "pusher-js": "^8.6.0"
+    },
+    "overrides": {
+        "tinypool": "2.1.2"
     }
 }
