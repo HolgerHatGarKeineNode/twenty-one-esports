@@ -462,7 +462,7 @@ test('home, the rules and the attempts on /matches carry the week: its tile and 
     $number = (int) $week->starts_at->copy()->setTimezone('Europe/Berlin')->format('W');
 
     expect($tile)->toContain(__('Week :week running', ['week' => $number]))
-        ->and(str($home)->after('data-test="home-week"')->toString())->toContain(__(':game week number :week', ['game' => GameNames::cube('tmnf'), 'week' => $number]))
+        ->and(str($home)->after('data-test="home-week"')->toString())->toContain(__(':game week :week', ['game' => GameNames::cube('tmnf'), 'week' => $number]))
         ->and(ScoreAttempts::links([$run]))->toBe([ScoreAttempts::key($run) => route('tournaments.scores', $week)]);
 
     $this->get(route('rules'))->assertOk()->assertSee('id="tmnf"', false)->assertSee('Only finishes of a linked login count.');

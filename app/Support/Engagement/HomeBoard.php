@@ -313,7 +313,7 @@ final class HomeBoard
 
         foreach ($this->leagueWeeks() as $week) {
             $rows[] = [
-                'tournament' => $week, 'name' => __(':game week number :week', ['game' => GameNames::cube($week->game), 'week' => self::isoWeek($week->starts_at)]),
+                'tournament' => $week, 'name' => __(':game week :week', ['game' => GameNames::cube($week->game), 'week' => self::isoWeek($week->starts_at)]),
                 'href' => route('scores.show', $week->game), 'featured' => false, 'running' => true, 'meta' => __('Best time wins'), 'taken' => 0, 'places' => 0,
             ];
         }
