@@ -3,6 +3,9 @@
  *
  * - Camera: perspective, placed so that on the z = 0 plane one world unit is one logical pixel, (0, 0) the frame's
  *   centre. Plates are real slabs with depth, so the perspective shows their sides as they swing in.
+ * - Frame: the canvas is always 16:9 (resources/css/broadcast.css fits it into any viewport, centred), so the
+ *   1920x1080 frame, the 3D worlds under it, the centre guard and sampleAlpha share one mapping at every source size;
+ *   nothing drifts against anything else in an ultrawide or square browser source.
  * - Size: the canvas' CSS size times devicePixelRatio, capped per quality tier. An OBS source of 3840x2160 at DPR 1
  *   draws 3840x2160; text textures are drawn at drawingBufferHeight / 1080 (resources/js/broadcast/text.js).
  * - Glow: selective bloom. Objects on layer GLOW (hot edges, cube rims) are rendered alone into a reduced target,
@@ -252,6 +255,9 @@ export function createStage(canvas, { THREE, tier: forced = null } = {}) {
         scene,
         camera,
         renderer,
+        canvas,
+        /** What is drawn, back to front: [scene, camera, 'world' | 'frame'] (the layout probe projects through these). */
+        views: () => [...worlds.filter(([s]) => s.visible).map(([s, c]) => [s, c, 'world']), [scene, camera, 'frame']],
         /** Page clock of the stage, ms since it was created (the timeline's time base). */
         now: () => performance.now() - startedAt,
         get tier() { return tier; },

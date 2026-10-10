@@ -119,7 +119,8 @@ export function createPride(stage, timeline, particles, { start, side = 'right',
     }
     root.add(plate.group);
     const maxText = W - 32 - 28;
-    const head = createLine(stage, name, TYPE.name, { color: COLOR.ink, maxWidth: maxText });
+    // A 32-character name shrinks to half before it is cut: the moment is about who.
+    const head = createLine(stage, name, TYPE.name, { color: COLOR.ink, maxWidth: maxText, minScale: 0.5 });
     const what = createLine(stage, line, TYPE.line, { color: COLOR.ink, maxWidth: maxText });
     const where = createLine(stage, context, TYPE.data, { color: COLOR.ink2, maxWidth: maxText });
     const top0 = 14;

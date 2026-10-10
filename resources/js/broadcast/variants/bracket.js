@@ -73,7 +73,9 @@ export function runBracket(ctx) {
         bannerKey = `${tour.name}|${tour.statusLine}`;
         banner = b.lowerThird({ slot: SLOTS.banner, kind: 'banner', start, name: tour.name, line: tour.statusLine, emblem: ctx.art(tour.emblem) === 'mark' ? null : ctx.art(tour.emblem), mark: ctx.art(tour.emblem) === 'mark', holdMs: 3_600_000 });
     };
-    bannerFor(after + 100);
+    // Before the draw the hero names the tournament itself, under the 21 mark in the banner's corner: the banner
+    // only comes with the bracket's pages (begin()), so the name stands once and nothing covers it.
+    const showBanner = (start) => { if (!banner) bannerFor(Math.max(start, after + 100)); };
     setInterval(() => {
         const tour = T();
         if (!tour || !banner || `${tour.name}|${tour.statusLine}` === bannerKey) return;
@@ -160,6 +162,10 @@ export function runBracket(ctx) {
         order = orderPages();
         at = 0;
         if (order.length === 0) {
+            if (banner) {
+                banner.retire(start - TIMING.heroOutroMs);
+                banner = null;
+            }
             showHero(start);
 
             return;
@@ -168,6 +174,7 @@ export function runBracket(ctx) {
             hero.retire(start - TIMING.heroOutroMs);
             hero = null;
         }
+        showBanner(start);
         pose = null;
         nextPage(start);
     }
@@ -270,6 +277,9 @@ export function runBracket(ctx) {
         r.advances.forEach((key) => queue.push({ key, at: stage.now() }));
         order = orderPages().length ? orderPages() : order;
     });
+
+    // The layout probe (window.broadcast.layout()) marks the names of the page the camera stands on.
+    stage.layoutScope = () => new Set(cur ? world.textMeshes(cur.page) : []);
 
     world.setData(T(), t0);
     begin(t0 + 300 + TIMING.stingerPeakMs);

@@ -491,7 +491,7 @@ export function createBracketWorld(stage, { words, art, reserve = { top: 0, bott
         img.position.set(cx, -(topY - 160), p.z + 30);
         root.add(img);
         const label = line(words.champion, COLHEAD, { color: COLOR.btcHi });
-        const nameLine = line(name, TYPE.hero, { color: COLOR.ink, maxWidth: 1100 });
+        const nameLine = line(name, TYPE.hero, { color: COLOR.ink, maxWidth: 1100, minScale: 0.5 });
         const nameTop = topY - 320 - 96;
         at(nameLine, cx - boxW(nameLine) / 2, nameTop, p.z + 30);
         at(label, cx - boxW(label) / 2, nameTop - 44, p.z + 30);

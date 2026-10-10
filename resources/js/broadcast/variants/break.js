@@ -49,10 +49,12 @@ export function heroFor(ctx, s = ctx.snapshot()) {
     const target = B.target;
     const headline = { soon: t.stateSoon, break: t.stateBreak, end: t.stateEnd }[B.state] || t.stateBreak;
     const hero = { state: B.state, headline, line: null, label: null, startsAt: null, big: null, when: null, winner: false };
+    // The join card under the column names the host with its QR code: the hero does not say it a second time.
+    const host = s.preset.modules.qr && s.site.qr ? null : s.site.host;
     const toTarget = () => {
         if (!target) {
             hero.line = t.joinName;
-            hero.big = s.site.host;
+            hero.big = host;
 
             return;
         }
@@ -79,7 +81,7 @@ export function heroFor(ctx, s = ctx.snapshot()) {
             hero.big = s.nextCup.starts;
         } else {
             hero.line = t.joinName;
-            hero.big = s.site.host;
+            hero.big = host;
         }
     } else if (B.state === 'break' && T && T.status === 'running') {
         hero.line = T.name;
@@ -180,7 +182,8 @@ export function sectionsFor(ctx, s = ctx.snapshot()) {
         });
     }
 
-    if (list.length === 0) {
+    // Nothing to show: the column invites to play, unless the join card under it already does (then it stays empty).
+    if (list.length === 0 && !(modules.qr && s.site.qr)) {
         list.push({
             key: 'join',
             title: t.joinName,
@@ -246,14 +249,25 @@ export function runBreak(ctx) {
     let turning = false;
     const pageAt = (start) => {
         const list = sectionsFor(ctx);
+        if (list.length === 0) {
+            page = null;
+
+            return;
+        }
         const spec = list[turn++ % list.length];
         const holdMs = list.length === 1 ? 60000 : TIMING.breakSectionMs;
         page = b.element(createPanelPage(b.stage, b.timeline, { start, slot: PANEL, title: spec.title, rows: spec.rows, holdMs, extra: { section: spec.key } }));
     };
     pageAt(after + 400);
     setInterval(() => {
-        if (!page || turning) return;
+        if (turning) return;
         const now = b.stage.now();
+        // An empty column takes its first section as soon as the snapshot brings one.
+        if (!page) {
+            if (now > after + 400) pageAt(now + 200);
+
+            return;
+        }
         const outroAt = page.seg.start + page.seg.introMs + page.seg.holdMs;
         // The wipe arrives as the page leaves: it covers the column the moment the old rows are gone.
         if (now < outroAt - 300) return;

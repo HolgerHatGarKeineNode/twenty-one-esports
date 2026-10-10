@@ -16,7 +16,7 @@
 
 import { CURVES, span } from '../curves.js';
 import { createHeat, createImage, createSlab } from '../materials.js';
-import { createCanvasPlane, createLine, disposeTree } from '../text.js';
+import { clockText, createCanvasPlane, createClockPlane, createLine, disposeTree } from '../text.js';
 import { COLOR, SLOTS, TYPE } from '../tokens.js';
 import { TIMING, holdForTexts } from '../timing.js';
 import { DEG, place } from './lowerThird.js';
@@ -75,45 +75,6 @@ export function createChip(stage, text) {
         ctx.textBaseline = 'middle';
         ctx.fillText(text, 10, h / 2 + 1);
     });
-}
-
-/**
- * The countdown's digits on a fixed-size plane: every character sits in a fixed cell, so the digits change in place
- * and nothing on the page moves while it counts.
- */
-function createDigits(stage, w, h) {
-    let text = '';
-    const plane = createCanvasPlane(stage, w, h, (ctx) => {
-        ctx.font = fontOf(DIGITS);
-        ctx.fillStyle = COLOR.ink;
-        ctx.textBaseline = 'middle';
-        ctx.textAlign = 'center';
-        const cell = (c) => (c === ':' ? 14 : 34);
-        const total = [...text].reduce((n, c) => n + cell(c), 0);
-        let x = Math.max(0, (w - total) / 2);
-        [...text].forEach((c) => {
-            ctx.fillText(c, x + cell(c) / 2, h / 2 + 2);
-            x += cell(c);
-        });
-    });
-    plane.set = (next) => {
-        if (next === text) return;
-        text = next;
-        plane.redraw();
-    };
-
-    return plane;
-}
-
-/** "02:14:09" / "14:09": the time left until `startsAt`, never below zero. */
-export function countdownText(startsAt, now = Date.now()) {
-    const left = Math.max(0, Math.floor((new Date(startsAt).getTime() - now) / 1000));
-    const h = Math.floor(left / 3600);
-    const m = Math.floor((left % 3600) / 60);
-    const s = left % 60;
-    const two = (n) => String(n).padStart(2, '0');
-
-    return h > 0 ? `${two(h)}:${two(m)}:${two(s)}` : `${two(m)}:${two(s)}`;
 }
 
 /**
@@ -231,12 +192,18 @@ export function createBoardPage(stage, timeline, { start, page, words, art }) {
         const h = page.qr ? 452 : 238;
         const card = slab(y, h, { heat: true });
         put(card, line(page.label, TYPE.line, { color: COLOR.ink2, maxWidth: W - 32 }), 18, 16);
-        digits = createDigits(stage, W - 24, 72);
-        digits.set(page.startsAt ? countdownText(page.startsAt) : page.big);
-        place(digits, 12, 58);
-        card.s.pivot.add(digits.mesh);
-        card.extras.push(digits);
-        texts.push(page.startsAt ? '00:00' : page.big);
+        if (page.startsAt) {
+            // HH:MM:SS in fixed cells, sized to the card: every digit stays inside it at any length of wait.
+            digits = createClockPlane(stage, W - 32, 72, DIGITS, { ink: COLOR.ink, colon: COLOR.ink, align: 'center', nudge: 2 });
+            digits.set(clockText(page.startsAt));
+            place(digits, 16, 58);
+            card.s.pivot.add(digits.mesh);
+            card.extras.push(digits);
+            texts.push('00:00:00');
+        } else {
+            // A date in the clock's place is a line: it shrinks before it would leave the card.
+            put(card, line(page.big, TYPE.headline, { color: COLOR.ink, maxWidth: W - 32, minScale: 0.5 }), 16, 66);
+        }
         put(card, line(page.when, TYPE.data, { color: COLOR.ink, maxWidth: W - 32 }), 18, 140);
         if (page.entries) put(card, line(page.entries, TYPE.data, { color: COLOR.ink2, maxWidth: W - 32 }), 18, 180);
         if (page.qr) {
@@ -278,7 +245,7 @@ export function createBoardPage(stage, timeline, { start, page, words, art }) {
     function update(t) {
         const ph = timeline.phase(seg, t);
         root.visible = ph.name !== 'before' && ph.name !== 'after';
-        if (root.visible && digits && page.startsAt) digits.set(countdownText(page.startsAt));
+        if (root.visible && digits && page.startsAt) digits.set(clockText(page.startsAt));
         slabs.forEach((e) => {
             let k = 1, w = 1, fade = 1;
             const s0 = e.index === 0 ? 0 : 120 + (e.index - 1) * 60;

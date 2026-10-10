@@ -1,8 +1,10 @@
 /**
  * The break scene's hero (plan P5): what the viewer waits for, the one thing on the screen read from across a room.
  *
- * Hierarchy, decided before any colour: 1. the state ("Starting soon", 64 px Unbounded 800, white), 2. the clock
- * (168 px Unbounded 800 in fixed cells, so the digits change in place and nothing shifts while it counts), 3. what
+ * Hierarchy, decided before any colour: 1. the state ("Starting soon", 64 px Unbounded 800, white; a long tournament
+ * name shrinks to 32 px before it is cut), 2. the clock (HH:MM:SS always, Unbounded 800 in fixed cells, so the digits
+ * change in place and nothing shifts while it counts; its size is what fits all eight characters into the column,
+ * 168 px at most), 3. what
  * it counts to (the tournament and its game, 30 px Unbounded 500) and when (JetBrains Mono, grey). The league's 21
  * mark stands above it as a block of lit metal with the rig's light behind it: the scene's one monument.
  *
@@ -19,7 +21,7 @@
 import { CURVES, span } from '../curves.js';
 import { markGeometry } from '../mark.js';
 import { createEnergy, createHalo, createHeat, createImage } from '../materials.js';
-import { createCanvasPlane, createLine, disposeTree } from '../text.js';
+import { clockText, createClockPlane, createLine, disposeTree } from '../text.js';
 import { COLOR, TYPE } from '../tokens.js';
 import { TIMING, holdForTexts } from '../timing.js';
 import { place } from './lowerThird.js';
@@ -30,51 +32,9 @@ const LEFT = 96;
 const MARK = 280;
 export const HERO_W = 904;
 
-function fontOf(style) {
-    const family = getComputedStyle(document.documentElement).getPropertyValue(style.family === 'mono' ? '--font-face-mono' : '--font-face-display').trim() || "'Unbounded'";
-
-    return `${style.weight} ${style.size}px ${family}`;
-}
-
-/** "02:14:09" / "14:09" until `startsAt`, never below zero. */
-export function clockText(startsAt, now = Date.now()) {
-    const left = Math.max(0, Math.floor((new Date(startsAt).getTime() - now) / 1000));
-    const h = Math.floor(left / 3600);
-    const m = Math.floor((left % 3600) / 60);
-    const s = left % 60;
-    const two = (n) => String(n).padStart(2, '0');
-
-    return h > 0 ? `${two(h)}:${two(m)}:${two(s)}` : `${two(m)}:${two(s)}`;
-}
-
-/** The clock's digits on a fixed plane: every digit in a cell as wide as the widest digit, so a tick moves nothing. */
+/** The hero's clock: the shared clock plane (resources/js/broadcast/text.js) at CLOCK size at most. */
 function createClock(stage, w, h) {
-    let text = '';
-    const probe = document.createElement('canvas').getContext('2d');
-    probe.font = fontOf(CLOCK);
-    const cell = Math.ceil(Math.max(...'0123456789'.split('').map((d) => probe.measureText(d).width)));
-    const colon = Math.ceil(probe.measureText(':').width + 8);
-    const plane = createCanvasPlane(stage, w, h, (ctx) => {
-        ctx.font = fontOf(CLOCK);
-        ctx.textBaseline = 'middle';
-        ctx.textAlign = 'center';
-        let x = 0;
-        [...text].forEach((c) => {
-            const cw = c === ':' ? colon : cell;
-            // The colons sit a step back in grey: the digits carry the time.
-            ctx.fillStyle = c === ':' ? COLOR.ink3 : COLOR.ink;
-            ctx.fillText(c, x + cw / 2, h / 2 + 6);
-            x += cw;
-        });
-    });
-    plane.set = (next) => {
-        if (next === text) return;
-        text = next;
-        plane.redraw();
-    };
-    plane.widthFor = (str) => [...str].reduce((n, c) => n + (c === ':' ? colon : cell), 0);
-
-    return plane;
+    return createClockPlane(stage, w, h, CLOCK, { ink: COLOR.ink, colon: COLOR.ink3, nudge: 6 });
 }
 
 /**
@@ -102,6 +62,7 @@ export function createHero(stage, timeline, particles, { start, hero, art, holdM
     const mark = new THREE.Group();
     mark.add(new THREE.Mesh(geo.tile, tileMat), new THREE.Mesh(geo.glyphs, glyphMat));
     mark.children.forEach((c) => { c.renderOrder = 3; });
+    mark.userData.layout = 'mark';
     root.add(mark);
     let crown = null;
     if (hero.winner && art.crown) {
@@ -118,8 +79,8 @@ export function createHero(stage, timeline, particles, { start, hero, art, holdM
     root.add(words);
     const lines = [];
     const texts = [];
-    const add = (text, style, color, top, maxWidth = HERO_W) => {
-        const l = createLine(stage, String(text), style, { color, maxWidth });
+    const add = (text, style, color, top, maxWidth = HERO_W, minScale = 0.72) => {
+        const l = createLine(stage, String(text), style, { color, maxWidth, minScale });
         place(l, LEFT, top);
         words.add(l.mesh);
         lines.push(l);
@@ -127,7 +88,8 @@ export function createHero(stage, timeline, particles, { start, hero, art, holdM
 
         return l;
     };
-    const headline = add(hero.headline, TYPE.name, COLOR.ink, 432);
+    // A tournament's name stands here in the bracket scene before the draw: it shrinks to half before it is cut.
+    const headline = add(hero.headline, TYPE.name, COLOR.ink, 432, HERO_W, 0.5);
     const sub = hero.line ? add(hero.line, TYPE.line, COLOR.ink, 516) : null;
     const label = hero.label ? add(hero.label, TYPE.data, COLOR.ink2, 592) : null;
     let clock = null;
@@ -140,10 +102,10 @@ export function createHero(stage, timeline, particles, { start, hero, art, holdM
         words.add(clock.mesh);
         texts.push('00:00:00');
     } else if (hero.big) {
-        big = add(hero.big, hero.winner ? TYPE.hero : TYPE.headline, COLOR.ink, hero.winner ? 640 : 646, HERO_W - 28);
+        big = add(hero.big, hero.winner ? TYPE.hero : TYPE.headline, COLOR.ink, hero.winner ? 640 : 646, HERO_W - 28, 0.5);
         if (hero.winner) {
             place(big, LEFT + 28, 640);
-            bar = createHeat(THREE, 6, 84);
+            bar = createHeat(THREE, 6, Math.round(big.size * 1.05));
             const p = stage.toWorld(LEFT, 642);
             bar.position.set(p.x, p.y, 1);
             root.add(bar);

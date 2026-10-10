@@ -55,7 +55,8 @@ export function createLowerThird(stage, timeline, { start, name, line, emblem = 
     stage.scene.add(root);
 
     const plateX = B + 4;
-    const nameLine = createLine(stage, name, TYPE.title, { color: COLOR.ink, maxWidth: slot.w - plateX - 64 });
+    // A name or a tournament's title shrinks to half (22 px, the type floor) before it is cut.
+    const nameLine = createLine(stage, name, TYPE.title, { color: COLOR.ink, maxWidth: slot.w - plateX - 64, minScale: 0.5 });
     const subLine = createLine(stage, line, TYPE.data, { color: COLOR.ink2, maxWidth: slot.w - plateX - 64 });
     const contentW = Math.max(nameLine.width - nameLine.pad * 2, subLine.width - subLine.pad * 2);
     const W = Math.min(slot.w - plateX, Math.max(440, Math.ceil(contentW + 64)));

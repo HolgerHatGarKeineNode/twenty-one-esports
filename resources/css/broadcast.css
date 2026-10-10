@@ -180,7 +180,19 @@ h3 { margin: 0 0 8px; font: 500 16px/1.4 var(--display); }
 html.stage-only, html.stage-only body { background: transparent; overflow: hidden; }
 html.stage-only .page { max-width: none; padding: 0; margin: 0; }
 html.stage-only .head, html.stage-only .under, html.stage-only section, html.stage-only .backdrops { display: none; }
-html.stage-only .stage { position: fixed; inset: 0; width: 100vw; height: 100vh; aspect-ratio: auto; border: 0; border-radius: 0; background: transparent; }
+/* The frame is fitted, never stretched or cropped: the largest 16:9 box in the viewport, centred. The bars around it
+   stay transparent for an overlay and take the ground colour in a full-screen scene (resources/js/broadcast/engine.js). */
+html.stage-only .stage {
+    position: fixed;
+    inset: 0;
+    margin: auto;
+    width: min(100vw, calc(100vh * 16 / 9));
+    height: min(100vh, calc(100vw * 9 / 16));
+    aspect-ratio: auto;
+    border: 0;
+    border-radius: 0;
+    background: transparent;
+}
 
 @media (prefers-reduced-motion: reduce) {
     .btn { transition: none; }

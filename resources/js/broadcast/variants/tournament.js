@@ -86,7 +86,7 @@ export function runTournament(ctx) {
                 title: T.status === 'drawing' ? t.boardDrawing : t.boardSignup,
                 label: left > 0 && left < DAY ? t.startsIn : t.starts,
                 startsAt: left > 0 && left < DAY ? T.startsAt : null,
-                big: left >= DAY ? T.starts : '00:00',
+                big: left >= DAY ? T.starts : '00:00:00',
                 when: left >= DAY ? T.gameName : T.starts,
                 entries: T.entries ? ctx.fill(T.entries === 1 ? t.entry : t.entries, { count: T.entries }) : null,
                 qr: modules().qr ? T.qr : null,

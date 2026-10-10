@@ -52,9 +52,10 @@ export async function fontsReady() {
 
 /**
  * A line of text. `style` is a TYPE entry (resources/js/broadcast/tokens.js); `maxWidth` in logical px shrinks the
- * line down to 72 % of its size before it would overflow, then cuts it with an ellipsis. `width`/`height` are logical.
+ * line down to `minScale` (72 %) of its size before it would overflow, then cuts it with an ellipsis. `width`/`height`
+ * are logical; `ink` is the drawn text's own width and `room` the width its type box gives it (layout probe).
  */
-export function createLine(stage, text, style, { color = '#FFFFFF', maxWidth = Infinity } = {}) {
+export function createLine(stage, text, style, { color = '#FFFFFF', maxWidth = Infinity, minScale = 0.72 } = {}) {
     const { THREE } = stage;
     const canvas = document.createElement('canvas');
     const texture = new THREE.CanvasTexture(canvas);
@@ -101,7 +102,7 @@ export function createLine(stage, text, style, { color = '#FFFFFF', maxWidth = I
         let str = text;
         let w = measure(size, str);
         if (w > maxWidth) {
-            size = Math.max(style.size * 0.72, style.size * (maxWidth / w));
+            size = Math.max(style.size * minScale, style.size * (maxWidth / w));
             w = measure(size, str);
             while (w > maxWidth && str.length > 1) {
                 str = str.slice(0, -2).trimEnd() + '…';
@@ -131,6 +132,8 @@ export function createLine(stage, text, style, { color = '#FFFFFF', maxWidth = I
         line.size = size;
         line.pad = pad;
         line.shown = str;
+        line.ink = w;
+        line.room = W - pad * 2 - tracking;
         if (line.placed) placeLine(line);
     }
 
@@ -171,7 +174,7 @@ export function createCanvasPlane(stage, w, h, draw) {
     });
     const mesh = new THREE.Mesh(new THREE.PlaneGeometry(1, 1), material);
     mesh.renderOrder = 5;
-    const line = { mesh, material, text: '', width: w, height: h, size: h, pad: 0 };
+    const line = { mesh, material, text: '', width: w, height: h, size: h, pad: 0, ink: w, room: w, plane: true };
     mesh.userData.line = line;
     const paint = (scale) => {
         canvas.width = Math.ceil(w * scale);
@@ -188,6 +191,57 @@ export function createCanvasPlane(stage, w, h, draw) {
     lines.add(line);
 
     return line;
+}
+
+/** "02:14:09" until `startsAt`, never below zero: always HH:MM:SS, so a clock never changes its width. */
+export function clockText(startsAt, now = Date.now()) {
+    const left = Math.max(0, Math.floor((new Date(startsAt).getTime() - now) / 1000));
+    const two = (n) => String(n).padStart(2, '0');
+
+    return `${two(Math.min(99, Math.floor(left / 3600)))}:${two(Math.floor((left % 3600) / 60))}:${two(left % 60)}`;
+}
+
+/**
+ * A clock on a fixed plane of w x h logical px: every digit in a cell as wide as the face's widest digit, so a tick
+ * moves nothing. Its size is `style.size` or less, whatever puts "00:00:00" inside `w` (measured on the loaded face,
+ * never assumed). `align`: 'left' | 'center'. The colons sit a step back in `colon`.
+ */
+export function createClockPlane(stage, w, h, style, { ink = '#FFFFFF', colon = '#8B8B90', align = 'left', nudge = 0 } = {}) {
+    const face = `${style.weight} ${style.size}px ${fontFamily(style.family)}`;
+    const probe = document.createElement('canvas').getContext('2d');
+    probe.font = face;
+    const cell0 = Math.max(...'0123456789'.split('').map((d) => probe.measureText(d).width));
+    const colon0 = probe.measureText(':').width + style.size * 0.05;
+    const fit = Math.min(1, w / (6 * cell0 + 2 * colon0));
+    const size = Math.floor(style.size * fit);
+    const cell = cell0 * (size / style.size);
+    const gap = colon0 * (size / style.size);
+    const widthFor = (str) => [...str].reduce((n, c) => n + (c === ':' ? gap : cell), 0);
+    let text = '';
+    const plane = createCanvasPlane(stage, w, h, (ctx) => {
+        ctx.font = `${style.weight} ${size}px ${fontFamily(style.family)}`;
+        ctx.textBaseline = 'middle';
+        ctx.textAlign = 'center';
+        let x = align === 'center' ? Math.max(0, (w - widthFor(text)) / 2) : 0;
+        [...text].forEach((c) => {
+            const cw = c === ':' ? gap : cell;
+            ctx.fillStyle = c === ':' ? colon : ink;
+            ctx.fillText(c, x + cw / 2, h / 2 + nudge * fit);
+            x += cw;
+        });
+    });
+    plane.clock = true;
+    plane.fontSize = size;
+    plane.widthFor = widthFor;
+    plane.set = (next) => {
+        if (next === text) return;
+        text = next;
+        plane.text = plane.shown = text;
+        plane.ink = widthFor(text);
+        plane.redraw();
+    };
+
+    return plane;
 }
 
 /** Redraw every line at the stage's new text scale (wired once per stage). */

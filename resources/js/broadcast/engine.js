@@ -7,6 +7,7 @@
  *   stats()           frame-time p50/p95/p99 over the last 600 frames, tier, drawing-buffer size, GL renderer
  *   sampleAlpha(x,y)  canvas alpha at a logical frame position (0 = transparent, OBS shows the game there)
  *   setTier(name)     high | medium | low
+ *   layout()          every visible text, drawn plane and the 21 mark as a box in viewport px (see layoutOf)
  */
 
 import { createBoardPage } from './elements/board.js';
@@ -74,6 +75,8 @@ export async function createBroadcast(canvas, { tier = null } = {}) {
             GUARD.fullScreen = true;
             GUARD.guardOn.value = 0;
             stage.setBackdrop(COLOR.ground);
+            // The bars beside a fitted 16:9 frame (an ultrawide or square source) are ground as well.
+            document.documentElement.style.background = COLOR.ground;
         },
         start: () => stage.start(),
     };
@@ -86,7 +89,84 @@ export async function createBroadcast(canvas, { tier = null } = {}) {
         sampleAlpha: (x, y) => stage.sampleAlpha(x, y),
         setTier: (name) => stage.setTier(name),
         live: () => [...live].map((el) => el.seg.id),
+        layout: () => layoutOf(stage),
     };
 
     return api;
+}
+
+/**
+ * The layout probe: what is on the screen now, as boxes in viewport px (x0, y0, x1, y1), plus the frame's own box.
+ *
+ * - kind `text`: a line (createLine) with its type box (the padding left out), `text` as asked, `shown` as drawn
+ *   (an ellipsis when it was cut), `ink` and `room` in logical px (the drawn width and what its box gives it).
+ *   A drawn plane (createCanvasPlane: the clock, ticker chips) is a `text` too, with `plane: true`.
+ * - kind `mark`: the 21 mark of a hero, its projected bounds.
+ * - `clipped`: drawn through a moving clip (the ticker's crawl), so it may leave its box on purpose.
+ * - `layer`: `frame` (the 1920x1080 plane) or `world` (a 3D scene under it, the bracket); a world text carries
+ *   `onPage` when a variant names the meshes of the page the camera stands on (stage.layoutScope()).
+ *
+ * Hidden things are left out: a mesh or a parent invisible, or opacity / reveal under 0.02.
+ */
+function layoutOf(stage) {
+    const { THREE, canvas } = stage;
+    const r = canvas.getBoundingClientRect();
+    const v = new THREE.Vector3();
+    const scope = stage.layoutScope ? stage.layoutScope() : null;
+    const out = [];
+    const shown = (o) => {
+        for (let p = o; p; p = p.parent) if (!p.visible) return false;
+
+        return true;
+    };
+    const project = (points, camera) => {
+        let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
+        points.forEach((p) => {
+            v.copy(p).project(camera);
+            const x = r.left + ((v.x + 1) / 2) * r.width;
+            const y = r.top + ((1 - v.y) / 2) * r.height;
+            x0 = Math.min(x0, x); x1 = Math.max(x1, x); y0 = Math.min(y0, y); y1 = Math.max(y1, y);
+        });
+
+        return { x0: +x0.toFixed(1), y0: +y0.toFixed(1), x1: +x1.toFixed(1), y1: +y1.toFixed(1) };
+    };
+    stage.views().forEach(([scene, camera, layer]) => {
+        scene.updateMatrixWorld();
+        camera.updateMatrixWorld();
+        scene.traverse((o) => {
+            if (o.userData.layout === 'mark' && shown(o)) {
+                const box = new THREE.Box3().setFromObject(o);
+                if (box.isEmpty()) return;
+                const pts = [];
+                [box.min.x, box.max.x].forEach((x) => [box.min.y, box.max.y].forEach((y) => [box.min.z, box.max.z].forEach((z) => pts.push(new THREE.Vector3(x, y, z)))));
+                out.push({ kind: 'mark', layer, ...project(pts, camera) });
+
+                return;
+            }
+            const line = o.userData.line;
+            if (!line || !shown(o)) return;
+            const u = o.material.uniforms;
+            if (u.opacity.value < 0.02 || u.reveal.value < 0.02) return;
+            // The type box: the plane less its padding, in the mesh's unit plane.
+            const px = line.pad / Math.max(1, line.width);
+            const py = line.pad / Math.max(1, line.height);
+            const pts = [[-0.5 + px, -0.5 + py], [0.5 - px, -0.5 + py], [-0.5 + px, 0.5 - py], [0.5 - px, 0.5 - py]].map(([x, y]) => new THREE.Vector3(x, y, 0).applyMatrix4(o.matrixWorld));
+            out.push({
+                kind: 'text',
+                layer,
+                text: String(line.text ?? ''),
+                shown: String(line.shown ?? line.text ?? ''),
+                plane: !!line.plane,
+                clock: !!line.clock,
+                ink: +(line.ink ?? 0).toFixed(1),
+                room: +(line.room ?? 0).toFixed(1),
+                size: line.size,
+                clipped: u.clip.value.z > u.clip.value.x,
+                onPage: scope ? scope.has(o) : null,
+                ...project(pts, camera),
+            });
+        });
+    });
+
+    return { frame: { x0: r.left, y0: r.top, x1: r.right, y1: r.bottom }, viewport: { w: innerWidth, h: innerHeight }, boxes: out };
 }
