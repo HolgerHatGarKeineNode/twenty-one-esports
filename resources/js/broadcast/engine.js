@@ -57,7 +57,7 @@ export async function createBroadcast(canvas, { tier = null } = {}) {
         stage,
         timeline,
         particles,
-        lowerThird: (spec) => add(createLowerThird(stage, timeline, spec)),
+        lowerThird: (spec) => add(createLowerThird(stage, timeline, { particles, ...spec })),
         pride: (spec) => add(createPride(stage, timeline, particles, spec)),
         ticker: (spec) => add(createTicker(stage, timeline, spec)),
         stinger: (spec) => add(createStinger(stage, timeline, particles, spec)),

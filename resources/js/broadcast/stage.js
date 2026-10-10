@@ -13,6 +13,8 @@
  *   row (the first 5 s excluded), never up (no oscillation on air). `?tier=` forces one.
  */
 
+import { GUARD, GUARD_GLSL } from './guard.js';
+
 export const GLOW = 1;
 
 export const TIERS = Object.freeze({
@@ -46,10 +48,11 @@ function createGlow(THREE, renderer) {
     });
     // Premultiplied additive: colour adds light, alpha grows by the glow's own coverage, never shrinks what is there.
     const add = new THREE.ShaderMaterial({
-        uniforms: { glow: { value: null }, strength: { value: 1.6 } },
+        uniforms: { glow: { value: null }, strength: { value: 1.6 }, ...GUARD },
         vertexShader: QUAD_VERT,
-        fragmentShader: `uniform sampler2D glow; uniform float strength; varying vec2 vUv;
-            void main() { vec3 g = texture2D(glow, vUv).rgb * strength; float a = clamp(max(g.r, max(g.g, g.b)), 0.0, 1.0);
+        // The bloom passes the centre guard too: blur spill from a hot edge next to the centre never lands in the stream.
+        fragmentShader: `${GUARD_GLSL} uniform sampler2D glow; uniform float strength; varying vec2 vUv;
+            void main() { vec3 g = texture2D(glow, vUv).rgb * strength * guard(); float a = clamp(max(g.r, max(g.g, g.b)), 0.0, 1.0);
               gl_FragColor = vec4(g, a); }`,
         transparent: true,
         depthTest: false,
@@ -143,6 +146,7 @@ export function createStage(canvas, { THREE, tier: forced = null } = {}) {
         camera.aspect = w / h;
         camera.updateProjectionMatrix();
         const size = renderer.getDrawingBufferSize(new THREE.Vector2());
+        GUARD.screen.value = { x: size.x, y: size.y };
         if (tier.bloomDiv && !glow) glow = createGlow(THREE, renderer);
         if (!tier.bloomDiv && glow) {
             glow.dispose();
@@ -251,6 +255,11 @@ export function createStage(canvas, { THREE, tier: forced = null } = {}) {
         },
         /** Logical frame position (x right, y down, 0..1920 / 0..1080) to world units. */
         toWorld(x, y) { return { x: x - 960, y: 540 - y }; },
+        /**
+         * The world x/y that puts a point standing `z` in front of the frame plane on screen where (wx, wy) on the
+         * plane would be: perspective pushes near things outwards, so a figure in front of a plate is pulled back in.
+         */
+        onScreen(wx, wy, z) { const k = (distance - z) / distance; return { x: wx * k, y: wy * k }; },
         stats() {
             const size = renderer.getDrawingBufferSize(new THREE.Vector2());
 

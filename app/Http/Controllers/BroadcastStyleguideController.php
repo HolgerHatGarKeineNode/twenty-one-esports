@@ -48,12 +48,13 @@ class BroadcastStyleguideController extends Controller
             'prideRight' => ['name' => 'Hodlbert', 'line' => __('Climbs from 14th to 3rd place'), 'context' => __('Proof of Pong ladder, this week')],
             'prideLeft' => ['name' => 'Satoshis Stack', 'line' => __('Champions of the Autumn Cup'), 'context' => __('Age of Empires II, 8 teams')],
             'tickerLabel' => __('Live'),
+            // Segments of the crawl: an emblem of the pack (or the league mark), what kind of news, the news.
             'ticker' => [
-                __('Next cup: Saturday at 6 pm, Rocket League'),
-                __('Chess blitz arena is open now'),
-                __('Prize pot this week: 210,000 sats'),
-                __('Join the league for free on the website'),
-                __('TrackMania week: the fastest lap wins'),
+                ['emblem' => 'emblem-rocket-league', 'head' => __('Next cup'), 'text' => __('Saturday at 6 pm, Rocket League')],
+                ['emblem' => 'emblem-chess', 'head' => __('Open now'), 'text' => __('Chess blitz arena')],
+                ['emblem' => 'trophy', 'head' => __('Prize pot'), 'text' => __('210,000 sats this week')],
+                ['emblem' => 'mark', 'head' => __('Join in'), 'text' => __('Play in the league for free on the website')],
+                ['emblem' => 'emblem-tmnf', 'head' => __('This week'), 'text' => __('TrackMania, the fastest lap wins')],
             ],
         ];
     }
@@ -91,6 +92,8 @@ class BroadcastStyleguideController extends Controller
                 'centre' => __('Free for the stream'),
                 'cornerLeft' => __('Pride moment, left'),
                 'cornerRight' => __('Pride moment, right'),
+                'pillarLeft' => __('Trophy column'),
+                'pillarRight' => __('Trophy column'),
                 'lowerThird' => __('Lower third'),
                 'ticker' => __('Ticker'),
             ],

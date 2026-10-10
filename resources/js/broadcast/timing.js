@@ -39,9 +39,13 @@ export const TIMING = Object.freeze({
     tickerIntroMs: 900,
     // Elements that take turns in one slot (lower third texts, corner moments) swap at most this often.
     rotationMs: 12000,
-    // The stinger carries no text (nothing to read): a wall of blocks covers the cut, peaks, and clears.
+    // The stinger carries no text (nothing to read): the shutter covers the cut by the peak, the mark punches through,
+    // the shutter starts to clear at stingerClearMs and is gone by stingerMs.
     stingerMs: 1600,
     stingerPeakMs: 700,
+    stingerClearMs: 900,
+    // A pride moment's trophy lands this far into its build-in (shock ring, burst, the shimmer sound).
+    prideLandMs: 760,
     // The gap after one element leaves before the next in the same slot comes in.
     slotGapMs: 1400,
 });

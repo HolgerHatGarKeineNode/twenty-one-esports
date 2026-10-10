@@ -77,9 +77,10 @@
     <section>
         <h2>{{ __('Materials') }}</h2>
         <div class="materials">
-            <article><h3>{{ __('Glass') }}</h3><p>{{ __('Smoked glass plates at 90 % cover, a lit top lip and one light sweep per build-in.') }}</p></article>
-            <article><h3>{{ __('Metal') }}</h3><p>{{ __('The sides of every plate: each one is a block with depth that swings into place.') }}</p></article>
-            <article><h3>{{ __('Hot edge') }}</h3><p>{{ __('An orange edge that leads every build-in and glows. Text never glows.') }}</p></article>
+            <article><h3>{{ __('Glass') }}</h3><p>{{ __('Smoked glass plates at 92 % cover with a light stroke on every edge, a brushed metal lip on top and a sweep of light with a narrow specular streak.') }}</p></article>
+            <article><h3>{{ __('Metal') }}</h3><p>{{ __('Every plate is a block with depth and one chamfered corner, the corner it travels towards; its sides show as it swings into place.') }}</p></article>
+            <article><h3>{{ __('Hot edge') }}</h3><p>{{ __('An orange edge that leads every build-in and glows. In a pride moment it traces the corner of the live picture. Text never glows.') }}</p></article>
+            <article><h3>{{ __('Light') }}</h3><p>{{ __('Rays, halos, flares, shock rings and embers mark the moment something lands. None of them ever reaches into the free centre.') }}</p></article>
         </div>
     </section>
 

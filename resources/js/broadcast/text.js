@@ -141,6 +141,55 @@ export function createLine(stage, text, style, { color = '#FFFFFF', maxWidth = I
     return line;
 }
 
+/**
+ * A drawn plane of w x h logical px that behaves like a line (same material: reveal, opacity, clip; placed with
+ * placeLine; redrawn crisp at every text scale): `draw(ctx, w, h)` paints it in logical units. The ticker draws its
+ * segment chips, emblems and the league mark this way, so they clip at the rail's ends exactly like its words.
+ * `redraw()` repaints it, e.g. once an image it draws has loaded.
+ */
+export function createCanvasPlane(stage, w, h, draw) {
+    const { THREE } = stage;
+    const canvas = document.createElement('canvas');
+    const texture = new THREE.CanvasTexture(canvas);
+    texture.generateMipmaps = false;
+    texture.minFilter = THREE.LinearFilter;
+    texture.magFilter = THREE.LinearFilter;
+    const material = new THREE.ShaderMaterial({
+        uniforms: {
+            map: { value: texture },
+            opacity: { value: 1 },
+            reveal: { value: 1 },
+            soft: { value: 0.18 },
+            edge: { value: new THREE.Color('#F9B25F') },
+            clip: { value: new THREE.Vector4(0, 0, 0, 0) },
+            clipFade: { value: 48 },
+        },
+        vertexShader: VERT,
+        fragmentShader: FRAG,
+        transparent: true,
+        depthWrite: false,
+    });
+    const mesh = new THREE.Mesh(new THREE.PlaneGeometry(1, 1), material);
+    mesh.renderOrder = 5;
+    const line = { mesh, material, text: '', width: w, height: h, size: h, pad: 0 };
+    mesh.userData.line = line;
+    const paint = (scale) => {
+        canvas.width = Math.ceil(w * scale);
+        canvas.height = Math.ceil(h * scale);
+        const ctx = canvas.getContext('2d');
+        ctx.setTransform(scale, 0, 0, scale, 0, 0);
+        draw(ctx, w, h);
+        texture.needsUpdate = true;
+        mesh.scale.set(w, h, 1);
+        if (line.placed) placeLine(line);
+    };
+    paint(stage.textScale);
+    line.redraw = () => paint(stage.textScale);
+    lines.add(line);
+
+    return line;
+}
+
 /** Redraw every line at the stage's new text scale (wired once per stage). */
 export function wireTextScale(stage) {
     stage.onTextScale(() => lines.forEach((l) => l.redraw()));

@@ -77,10 +77,14 @@ function program(b, sound, t0) {
     const at = (ms) => t0 + ms;
     b.lowerThird({ start: at(1200), name: d.lower[0].name, line: d.lower[0].line, emblem: config.art['emblem-rocket-league'] });
     b.lowerThird({ start: at(1200 + TIMING.rotationMs), name: d.lower[1].name, line: d.lower[1].line, emblem: config.art['emblem-chess'] });
-    b.pride({ start: at(3000), side: 'right', ...d.prideRight, trophy: config.art['rank-up'], energy: config.art['energy-wide'] });
-    b.pride({ start: at(16000), side: 'left', ...d.prideLeft, trophy: config.art.trophy, energy: config.art['energy-wide'] });
+    b.pride({ start: at(3000), side: 'right', ...d.prideRight, trophy: config.art['rank-up'], rays: config.art['energy-rays'] });
+    b.pride({ start: at(16000), side: 'left', ...d.prideLeft, trophy: config.art.trophy, rays: config.art['energy-rays'] });
     b.stinger({ start: at(27500), onPeak: () => sound.play('hit') });
-    setTimeout(() => sound.play('riser'), Math.max(0, at(3000) - 1200 - b.stage.now()));
+    const later = (ms, name) => setTimeout(() => sound.play(name), Math.max(0, ms - b.stage.now()));
+    later(at(3000) - 1200, 'riser');
+    later(at(3000) + TIMING.prideLandMs, 'shimmer');
+    later(at(16000) - 1200, 'riser');
+    later(at(16000) + TIMING.prideLandMs, 'shimmer');
     setTimeout(() => sound.play('whoosh'), Math.max(0, at(27500) - b.stage.now()));
 }
 
@@ -104,7 +108,7 @@ async function start() {
         setTimeout(plan, PROGRAM_MS);
     };
     const run = () => {
-        b.ticker({ start: b.stage.now() + 300, label: config.demo.tickerLabel, items: config.demo.ticker });
+        b.ticker({ start: b.stage.now() + 300, label: config.demo.tickerLabel, items: config.demo.ticker.map((it) => ({ ...it, emblem: it.emblem === 'mark' ? 'mark' : config.art[it.emblem] })) });
         plan();
         document.body.dataset.broadcast = 'running';
     };
