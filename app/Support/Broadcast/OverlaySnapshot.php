@@ -48,7 +48,7 @@ use UnitEnum;
  *
  * PRIVACY: public data only, as the site shows it. clean() drops every key that could carry a key, an npub, an
  * email, a Lightning address, a game account or a picture ref, and every object (a model would serialise all its
- * columns); names are the public display names. Cached CACHE_SECONDS per preset and language.
+ * columns); names are the public display names, every npub in them masked (withoutNpubs()). Cached CACHE_SECONDS per preset and language.
  */
 final class OverlaySnapshot
 {
@@ -107,7 +107,7 @@ final class OverlaySnapshot
             $games = $this->guarded(fn (): array => $this->gameList(), []);
             $recent = $preset->variant === OverlayVariant::LeagueLive ? $this->guarded(fn (): array => $this->recentWins(), []) : [];
 
-            return [
+            return self::withoutNpubs([
                 'generatedAt' => now()->toIso8601String(),
                 'preset' => ['name' => $preset->name, 'variant' => $preset->variant->value, 'locale' => $preset->locale, 'modules' => $preset->moduleStates()],
                 'site' => [
@@ -124,10 +124,24 @@ final class OverlaySnapshot
                 'recent' => $recent,
                 'ticker' => $this->ticker($preset, $upcoming, $nextCup, $pride, $stats, $tournament, $games, $recent),
                 'break' => $preset->variant === OverlayVariant::Break ? $this->guarded(fn (): array => $this->breakScene($preset, $tournament, $upcoming, $nextCup), null) : null,
-            ];
+            ]);
         } finally {
             app()->setLocale($previous);
         }
+    }
+
+    /**
+     * Every string at any depth with its npubs masked (PublicName::maskNpubs()): the names come from readers the
+     * site shares (ladders, pride moments, cups, the mempool strip), several of which fall back to the truncated npub
+     * of User::displayName(); on a stream none of it may stand next to a result.
+     */
+    public static function withoutNpubs(mixed $value): mixed
+    {
+        if (is_string($value)) {
+            return PublicName::maskNpubs($value);
+        }
+
+        return is_array($value) ? array_map(self::withoutNpubs(...), $value) : $value;
     }
 
     /**

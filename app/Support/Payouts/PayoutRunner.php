@@ -6,6 +6,7 @@ use App\Enums\PayoutStatus;
 use App\Models\SeasonPayout;
 use App\Models\TournamentPayout;
 use App\Models\User;
+use App\Support\Broadcast\LeagueFeed;
 use App\Support\FairPlay\AccountLinks;
 use App\Support\FairPlay\FairPlay;
 use App\Support\Lightning\Bolt11;
@@ -396,6 +397,8 @@ final class PayoutRunner
             }
 
             $payout->refresh();
+            // Written past the model, so no model event announces it: the live feed hears it here (after the commit).
+            LeagueFeed::payoutPaid($payout);
 
             $league = LeagueKey::required();
             $relay = (string) (config('esports.relays')[0] ?? '');

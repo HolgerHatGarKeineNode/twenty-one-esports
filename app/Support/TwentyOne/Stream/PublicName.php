@@ -54,6 +54,17 @@ final class PublicName
     }
 
     /**
+     * Every npub in a text, whole or cut short (User::displayName()'s `npub1qy3k8wz…` fallback, a name frozen from
+     * it), as the bare `npub1…`; the short form `npub1…k7q2` of of() stays as it is. For the public broadcast paths
+     * (the league feed, the overlay snapshot), whose names come from many readers: none of them may put a
+     * searchable part of a Nostr identity next to a result.
+     */
+    public static function maskNpubs(string $text): string
+    {
+        return preg_replace('/npub1[02-9ac-hj-np-z]+…?/u', 'npub1…', $text) ?? '';
+    }
+
+    /**
      * clean(), then at most `$max` code points: longer names keep `$max - 1`
      * and end in "…".
      */

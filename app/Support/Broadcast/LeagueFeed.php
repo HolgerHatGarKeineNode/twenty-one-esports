@@ -55,8 +55,12 @@ use Throwable;
  * - `champion`: a tournament finishing with a single winner.
  * - `payout`: a tournament prize or a season payout paid.
  *
- * Names are the public display names (PublicName, as the stream shows them); no key, npub, email, Lightning address
- * or game account ever goes into an item. A source that throws reports and sends nothing: the feed never costs the
+ * Names are the public names (PublicName::of(), as the stream shows them; any npub left in a name read elsewhere is
+ * masked to `npub1…` on the way out); no key, npub, email, Lightning address or game account ever goes into an item.
+ *
+ * Series results and paid payouts are also written past the model (a query-builder update guarded by the status,
+ * which fires no model event): those writers call seriesDecided() and payoutPaid() themselves. The model events stay
+ * for the writers that save the model; one write never takes both paths, so nothing is sent twice. A source that throws reports and sends nothing: the feed never costs the
  * game its save (fail-open for the push, never for the result). Sent after the commit, so a rolled-back result is
  * never announced, and throttled to FEED_PER_MINUTE pushes: in a burst the rest is left to the overlays' snapshot
  * poll.
@@ -93,6 +97,7 @@ final class LeagueFeed
      */
     public static function push(array $item): void
     {
+        $item = self::masked($item);
         $item['at'] = now()->getTimestampMs();
 
         DB::afterCommit(function () use ($item): void {
@@ -105,6 +110,36 @@ final class LeagueFeed
             } catch (Throwable $exception) {
                 report($exception);
             }
+        });
+    }
+
+    /**
+     * A series just decided by a query-builder update (SeriesService: a confirmation, an admin's decision, the
+     * league's deadline decision), read as stored: a win when its result stands. Call inside the write's
+     * transaction; sent after the commit like every item.
+     */
+    public static function seriesDecided(int $seriesId): void
+    {
+        self::guard(function () use ($seriesId): ?array {
+            $match = SeriesMatch::query()->find($seriesId);
+
+            return $match === null ? null : self::seriesWin($match);
+        });
+    }
+
+    /**
+     * A payout just marked paid by a query-builder update (PayoutRunner::markPaid()), read as stored.
+     */
+    public static function payoutPaid(TournamentPayout|SeasonPayout $payout): void
+    {
+        self::guard(function () use ($payout): ?array {
+            $fresh = $payout::query()->find($payout->id);
+
+            return match (true) {
+                $fresh === null || $fresh->status !== PayoutStatus::Paid => null,
+                $fresh instanceof SeasonPayout => self::seasonPayoutItem($fresh),
+                default => self::tournamentPayoutItem($fresh),
+            };
         });
     }
 
@@ -124,10 +159,25 @@ final class LeagueFeed
         }
     }
 
-    /** The public name of a player: their display name, cleaned as the stream prints it. */
+    /** The public name of a player as the stream prints it: never the truncated npub of User::displayName(). */
     private static function name(?User $user): string
     {
-        return $user === null ? '' : PublicName::clean($user->displayName());
+        return $user === null ? '' : PublicName::of($user);
+    }
+
+    /**
+     * Every string of an item with its npubs masked (PublicName::maskNpubs()).
+     *
+     * @param  array<string, scalar|list<string>|null>  $item
+     * @return array<string, scalar|list<string>|null>
+     */
+    private static function masked(array $item): array
+    {
+        return array_map(fn (mixed $value): mixed => match (true) {
+            is_string($value) => PublicName::maskNpubs($value),
+            is_array($value) => array_map(fn (mixed $entry): mixed => is_string($entry) ? PublicName::maskNpubs($entry) : $entry, $value),
+            default => $value,
+        }, $item);
     }
 
     /** Whether an update just moved `status` to `$status`. */
@@ -170,7 +220,17 @@ final class LeagueFeed
      */
     private static function series(SeriesMatch $match): ?array
     {
-        if (! $match->wasChanged('status') || ! in_array($match->status, [SeriesStatus::Confirmed, SeriesStatus::Resolved], true)
+        return $match->wasChanged('status') ? self::seriesWin($match) : null;
+    }
+
+    /**
+     * A series with a result that stands, as stored.
+     *
+     * @return array<string, scalar|list<string>|null>|null
+     */
+    private static function seriesWin(SeriesMatch $match): ?array
+    {
+        if (! in_array($match->status, [SeriesStatus::Confirmed, SeriesStatus::Resolved], true)
             || ! in_array($match->winner, SeriesMatch::SIDES, true)
             || in_array($match->resolution, [SeriesResolution::Void, SeriesResolution::Forfeit], true)) {
             return null;
@@ -180,8 +240,18 @@ final class LeagueFeed
         $other = SeriesMatch::otherSide($side);
         $score = SeriesMatch::seriesScore($match->result_games);
 
-        return self::win($match->game, $match->mode, [PublicName::clean($match->sideName($side))], [PublicName::clean($match->sideName($other))],
+        return self::win($match->game, $match->mode, [self::sideName($match, $side)], [self::sideName($match, $other)],
             $score[$side] + $score[$other] > 0 ? $score[$side].'-'.$score[$other] : null, (bool) $match->rated);
+    }
+
+    /** A solo side is its player's public name (as name()), a lineup the name it played under. */
+    private static function sideName(SeriesMatch $match, string $side): string
+    {
+        $ids = (array) ($match->sides[$side] ?? []);
+        $lineup = $side === 'challenger' ? $match->challenger_lineup_id : $match->challenged_lineup_id;
+        $user = $lineup === null && count($ids) === 1 ? User::query()->find((int) reset($ids)) : null;
+
+        return $user !== null ? self::name($user) : PublicName::clean($match->sideName($side));
     }
 
     /**
@@ -348,7 +418,15 @@ final class LeagueFeed
      */
     private static function tournamentPayout(TournamentPayout $payout): ?array
     {
-        if (! self::became($payout, 'status', PayoutStatus::Paid) || $payout->amount_sats <= 0) {
+        return self::became($payout, 'status', PayoutStatus::Paid) ? self::tournamentPayoutItem($payout) : null;
+    }
+
+    /**
+     * @return array<string, scalar|list<string>|null>|null
+     */
+    private static function tournamentPayoutItem(TournamentPayout $payout): ?array
+    {
+        if ($payout->amount_sats <= 0) {
             return null;
         }
 
@@ -365,7 +443,15 @@ final class LeagueFeed
      */
     private static function seasonPayout(SeasonPayout $payout): ?array
     {
-        if (! self::became($payout, 'status', PayoutStatus::Paid) || $payout->amount_sats <= 0) {
+        return self::became($payout, 'status', PayoutStatus::Paid) ? self::seasonPayoutItem($payout) : null;
+    }
+
+    /**
+     * @return array<string, scalar|list<string>|null>|null
+     */
+    private static function seasonPayoutItem(SeasonPayout $payout): ?array
+    {
+        if ($payout->amount_sats <= 0) {
             return null;
         }
 

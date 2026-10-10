@@ -22,6 +22,7 @@ use App\Models\SeriesReport;
 use App\Models\Tournament;
 use App\Models\TournamentMatch;
 use App\Models\User;
+use App\Support\Broadcast\LeagueFeed;
 use App\Support\Chess\Broadcasts;
 use App\Support\Chess\ChessTeamMatches;
 use App\Support\FairPlay\FairPlay;
@@ -1130,6 +1131,8 @@ final class SeriesService
 
             if ($status === 'confirmed') {
                 $this->rateAndAttest($match);
+                // Written past the model, so no model event announces it: the live feed is told here (after the commit).
+                LeagueFeed::seriesDecided($match->id);
             }
         });
 
@@ -1257,8 +1260,9 @@ final class SeriesService
                 throw new SeriesRuleViolation('changed', __('This match changed in between. Please look again.'));
             }
 
-            // Written past the model: the decided case leaves the admin badge.
+            // Written past the model: the decided case leaves the admin badge, and the live feed hears it here.
             ShellNavigation::forgetOpenCases();
+            LeagueFeed::seriesDecided($match->id);
 
             if ($falseReport?->user !== null) {
                 FalseReport::query()->create([
@@ -1585,6 +1589,8 @@ final class SeriesService
             }
 
             $this->chains->attestSeries(SeriesMatch::query()->findOrFail($match->id));
+            // Written past the model: the live feed hears the decision here (a forfeit or a void sends nothing).
+            LeagueFeed::seriesDecided($match->id);
 
             if ($match->tournament_match_id !== null) {
                 $id = $match->id;

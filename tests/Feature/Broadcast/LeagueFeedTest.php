@@ -2,32 +2,42 @@
 
 use App\Enums\ChessEndReason;
 use App\Enums\HyperMatchStatus;
+use App\Enums\OverlayVariant;
 use App\Enums\PayoutStatus;
 use App\Enums\PongMatchStatus;
 use App\Enums\SeriesResolution;
 use App\Enums\SeriesStatus;
 use App\Enums\TournamentFormat;
+use App\Enums\TournamentResultsMode;
 use App\Enums\TournamentStatus;
 use App\Events\LeagueFeedEvent;
+use App\Models\Admin;
 use App\Models\BoardGame;
 use App\Models\ChessGame;
 use App\Models\HyperMatch;
 use App\Models\HyperSeat;
+use App\Models\OverlayPreset;
 use App\Models\PongMatch;
 use App\Models\RankBadge;
 use App\Models\RankBadgeVersion;
 use App\Models\ScoreRun;
-use App\Models\Season;
-use App\Models\SeasonPayout;
 use App\Models\SeriesMatch;
 use App\Models\Tournament;
 use App\Models\TournamentParticipant;
-use App\Models\TournamentPayout;
 use App\Models\TournamentSignup;
 use App\Models\User;
 use App\Support\Broadcast\LeagueFeed;
 use App\Support\Chess\ChessGameService;
+use App\Support\Payouts\PayoutApproval;
+use App\Support\Payouts\PayoutRunner;
+use App\Support\SeasonChain\SeasonSettlement;
+use App\Support\Series\SeriesService;
+use App\Support\Tournaments\FormatOptions;
+use App\Support\Tournaments\GameProfile;
+use App\Support\Tournaments\TournamentBrackets;
 use App\Support\Tournaments\TournamentChampion;
+use App\Support\Tournaments\TournamentRunner;
+use App\Support\Tournaments\TournamentScheduler;
 use App\Support\TwentyOne\Stream\PublicName;
 use Illuminate\Broadcasting\Channel;
 use Illuminate\Broadcasting\PresenceChannel;
@@ -73,7 +83,55 @@ function feedItem(string $kind): array
 
 function feedName(User $user): string
 {
-    return PublicName::clean($user->displayName());
+    return PublicName::of($user);
+}
+
+/**
+ * A running players-mode Rocket League 1v1 final between two solo players, its series paired now; not published
+ * unless `$attributes` say so (an unpublished tournament sends no round or champion item, only the series' win).
+ *
+ * @param  array<string, mixed>  $attributes
+ * @return array{0: Tournament, 1: SeriesMatch, 2: User, 3: User}
+ */
+function feedDuel(array $attributes = [], bool $named = true): array
+{
+    test()->freezeTime();
+    config(['esports.series.noshow_minutes' => 15, 'esports.tournaments.report_hours' => 2, 'esports.tournaments.response_minutes' => 30]);
+    $tournament = Tournament::factory()->create([
+        'game' => 'rocket-league', 'mode' => '1v1', 'format' => TournamentFormat::SingleElimination, 'capacity' => 2,
+        'options' => FormatOptions::defaults(GameProfile::for('rocket-league', '1v1'))->toArray(),
+        'results_mode' => TournamentResultsMode::Players, 'status' => TournamentStatus::Running, 'slug' => 'feed-duel-'.fake()->unique()->numberBetween(1, 1_000_000),
+        'on_site' => true, 'stations' => 2, 'published_at' => null,
+        ...$attributes,
+    ]);
+    $players = [User::factory()->create($named ? [] : ['name' => null]), User::factory()->create($named ? [] : ['name' => null])];
+
+    foreach ($players as $index => $player) {
+        TournamentParticipant::query()->create(['tournament_id' => $tournament->id, 'user_id' => $player->id, 'name' => $player->displayName(), 'rating' => 1100 - $index, 'members' => [$player->id]]);
+    }
+
+    app(TournamentBrackets::class)->generate($tournament, str_repeat('cd', 32));
+    app(TournamentRunner::class)->sync($tournament);
+    $series = SeriesMatch::query()->where('tournament_match_id', $tournament->matches()->value('id'))->sole();
+
+    test()->travel(20)->minutes();
+
+    return [$tournament->refresh(), $series, User::query()->findOrFail($series->rosterSide('challenger')[0]), User::query()->findOrFail($series->rosterSide('challenged')[0])];
+}
+
+/** `$winner` enters a clean series win and reports it (casual: nothing to sign). */
+function feedReport(SeriesMatch $series, User $winner): SeriesMatch
+{
+    $service = app(SeriesService::class);
+    $challenger = $series->refresh()->captainSideOf($winner) === 'challenger';
+
+    foreach (range(0, intdiv($series->best_of, 2)) as $index) {
+        $service->saveLiveGame($series, $winner, $index, $challenger ? 3 : 1, $challenger ? 1 : 3, null);
+    }
+
+    $service->report($series, $winner, []);
+
+    return $series->refresh();
 }
 
 test('the channel is public: league.feed, sent as league.feed with the items only', function () {
@@ -120,18 +178,63 @@ test('a decided board game is a win in its game', function () {
     expect(feedItem('win'))->toMatchArray(['game' => 'checkers', 'winners' => [feedName($black)], 'losers' => [feedName($white)]]);
 });
 
-test('a confirmed series is a win of the side with its score; a void or forfeit one is not', function () {
-    $match = SeriesMatch::factory()->accepted()->create();
-    $match->forceFill(['status' => SeriesStatus::Confirmed, 'winner' => 'challenged', 'result_games' => [['winner' => 'challenged'], ['winner' => 'challenger'], ['winner' => 'challenged']], 'finished_at' => now()])->save();
+test('a series a player confirms (SeriesService::respond) is one win of the side with its score', function () {
+    [, $series, $a, $b] = feedDuel();
+    feedReport($series, $a);
+    expect(feedItems())->toBe([]);
+
+    app(SeriesService::class)->respond($series, $b, 'confirmed', '', []);
 
     $item = feedItem('win');
-    expect($item)->toMatchArray(['game' => $match->game, 'winners' => [PublicName::clean($match->challenged_name)], 'losers' => [PublicName::clean($match->challenger_name)]])
-        ->and($item['score'])->toBe('2-1');
+    expect($series->refresh()->status)->toBe(SeriesStatus::Confirmed)
+        ->and($item)->toMatchArray(['game' => 'rocket-league', 'winners' => [PublicName::of($a)], 'losers' => [PublicName::of($b)], 'score' => '3-0'])
+        ->and(feedItems())->toHaveCount(1);
+});
 
+test('a series an admin decides (SeriesService::decide) is one win; one an admin voids is none', function () {
+    $admin = User::factory()->create();
+    Admin::query()->create(['pubkey' => $admin->pubkey]);
+    [, $series, $a, $b] = feedDuel();
+    $report = feedReport($series, $a)->latestReport;
+    app(SeriesService::class)->respond($series, $b, 'disputed', 'Game 2 was ours.', []);
+
+    app(SeriesService::class)->decide($series, $admin, ['type' => 'report', 'report' => $report->id], 'Screenshots back the report.');
+
+    expect($series->refresh()->status)->toBe(SeriesStatus::Resolved)
+        ->and(feedItem('win'))->toMatchArray(['winners' => [PublicName::of($a)], 'losers' => [PublicName::of($b)], 'score' => '3-0'])
+        ->and(feedItems())->toHaveCount(1);
+
+    [, $voided, $c, $d] = feedDuel();
+    feedReport($voided, $c);
+    app(SeriesService::class)->respond($voided, $d, 'disputed', 'Server crash.', []);
+    app(SeriesService::class)->decide($voided, $admin, ['type' => 'void'], 'Server crash, replay.');
+
+    expect($voided->refresh()->resolution)->toBe(SeriesResolution::Void)
+        ->and(feedItems())->toHaveCount(1);
+});
+
+test('a report the league confirms at its deadline (TournamentScheduler::tick) is one win', function () {
+    [, $series, $a, $b] = feedDuel();
+    feedReport($series, $a);
+
+    $this->travel(31)->minutes();
+    expect(app(TournamentScheduler::class)->tick()['confirmed'])->toBe(1);
+
+    expect($series->refresh()->status)->toBe(SeriesStatus::Resolved)
+        ->and(feedItem('win'))->toMatchArray(['winners' => [PublicName::of($a)], 'losers' => [PublicName::of($b)], 'score' => '3-0'])
+        ->and(feedItems())->toHaveCount(1);
+});
+
+test('a series saved through the model (a director\'s entry, a forfeit) still goes through the model event: a void or forfeit one sends nothing', function () {
     SeriesMatch::factory()->accepted()->create()->forceFill(['status' => SeriesStatus::Resolved, 'resolution' => SeriesResolution::Void, 'winner' => 'challenger', 'finished_at' => now()])->save();
     SeriesMatch::factory()->accepted()->create()->forceFill(['status' => SeriesStatus::Resolved, 'resolution' => SeriesResolution::Forfeit, 'winner' => 'challenger', 'finished_at' => now()])->save();
 
-    expect(feedItems())->toHaveCount(1);
+    expect(feedItems())->toBe([]);
+
+    $match = SeriesMatch::factory()->accepted()->create();
+    $match->forceFill(['status' => SeriesStatus::Resolved, 'resolution' => SeriesResolution::Admin, 'winner' => 'challenged', 'result_games' => [['winner' => 'challenged'], ['winner' => 'challenger'], ['winner' => 'challenged']], 'finished_at' => now()])->save();
+
+    expect(feedItem('win'))->toMatchArray(['winners' => [PublicName::clean($match->challenged_name)], 'score' => '2-1']);
 });
 
 test('a finished Proof of Pong match is a win with the score from the winner\'s side', function () {
@@ -205,26 +308,59 @@ test('a tournament played out by its director sends every closed round and the c
         ->and(feedItem('champion'))->toMatchArray(['winners' => [feedName($winner)], 'tournamentId' => $tournament->id]);
 });
 
-test('a paid tournament prize and a paid season payout are sent with their sats, never the Lightning address', function () {
-    $user = User::factory()->create();
-    $tournament = Tournament::factory()->create(['status' => TournamentStatus::Finished, 'published_at' => now()]);
-    $payout = TournamentPayout::query()->create(['tournament_id' => $tournament->id, 'user_id' => $user->id, 'pubkey' => $user->pubkey, 'name' => 'Winner',
-        'place' => 1, 'amount_sats' => 21000, 'idempotency_key' => 'k1', 'lud16' => 'secret@wallet.example', 'status' => PayoutStatus::Paying]);
+test('a tournament prize the payout runner pays (PayoutRunner::run, markPaid) is sent once with its sats, never the Lightning address', function () {
+    fakeWallet();
+    $wallet = ownPotWallet(0);
+    fakeLightningAddresses($wallet);
+    $tournament = finishedPoolTournament($wallet, 10_000, 2);
+    app(PayoutApproval::class)->approve($tournament, anAdmin());
+    $payout = $tournament->payouts()->where('place', 1)->sole();
+    expect(collect(feedItems())->where('kind', 'payout')->all())->toBe([]);
 
-    $payout->forceFill(['status' => PayoutStatus::Paid, 'paid_at' => now()])->save();
-
-    expect(feedItem('payout'))->toMatchArray(['winners' => [feedName($user)], 'place' => 1, 'sats' => 21000, 'tournamentId' => $tournament->id]);
-
-    $season = Season::factory()->create();
-    $seasonPayout = SeasonPayout::query()->create(['season_id' => $season->id, 'user_id' => $user->id, 'pubkey' => $user->pubkey, 'name' => 'Miner', 'blocks' => 3,
-        'heights' => [1, 2, 3], 'amount_sats' => 3000, 'idempotency_key' => 'k2', 'lud16' => 'secret@wallet.example', 'status' => PayoutStatus::Paying]);
-    $seasonPayout->forceFill(['status' => PayoutStatus::Paid, 'paid_at' => now()])->save();
+    app(PayoutRunner::class)->run($payout, true);
+    app(PayoutRunner::class)->run($payout->refresh(), true);
 
     $json = json_encode(feedItems());
-    expect(collect(feedItems())->where('kind', 'payout')->last())->toMatchArray(['sats' => 3000, 'blocks' => 3, 'season' => $season->slug])
+    expect($payout->refresh()->status)->toBe(PayoutStatus::Paid)
+        ->and(feedItem('payout'))->toMatchArray(['winners' => [PublicName::of($payout->user)], 'place' => 1, 'sats' => $payout->amount_sats, 'tournamentId' => $tournament->id])
         ->and($json)->not->toContain('wallet.example')
-        ->and($json)->not->toContain($user->pubkey)
-        ->and($json)->not->toContain((string) $user->npub);
+        ->and($json)->not->toContain((string) $payout->pubkey);
+});
+
+test('a season payout the payout runner pays is sent once with its blocks and season', function () {
+    settlementWallet();
+    $alice = settlementPlayer('Alice');
+    $season = settledSeason([[$alice, 1], [$alice, 2]]);
+    app(SeasonSettlement::class)->approve($season, aBoardMember());
+    $payout = payoutOf($season, $alice);
+
+    app(PayoutRunner::class)->run($payout, true);
+
+    expect($payout->refresh()->status)->toBe(PayoutStatus::Paid)
+        ->and(feedItem('payout'))->toMatchArray(['winners' => ['Alice'], 'season' => $season->slug, 'blocks' => $payout->blocks, 'sats' => $payout->amount_sats])
+        ->and(json_encode(feedItems()))->not->toContain('wallet.example');
+});
+
+test('a player without a profile name never shows a searchable npub in the feed or the overlay snapshot', function () {
+    [$tournament, $series, $a, $b] = feedDuel(['published_at' => now()->subHour()], named: false);
+    feedReport($series, $a);
+    app(SeriesService::class)->respond($series, $b, 'confirmed', '', []);
+    $score = ScoreRun::query()->create(['user_id' => $a->id, 'game' => 'score-demo', 'mode' => 'time-trial', 'course' => 'demo', 'value' => 61234, 'unit' => 'ms', 'achieved_at' => now(), 'source' => ScoreRun::MANUAL, 'verified_at' => now()]);
+
+    OverlayPreset::factory()->withToken($token = str_repeat('n', 48))->create(['variant' => OverlayVariant::Tournament, 'tournament_id' => $tournament->id, 'locale' => 'en']);
+    $snapshot = json_encode($this->getJson('/broadcast/'.$token.'/snapshot.json')->assertOk()->json(), JSON_UNESCAPED_UNICODE);
+    $feed = json_encode(feedItems(), JSON_UNESCAPED_UNICODE);
+
+    expect($a->name)->toBeNull()
+        ->and(feedItem('win')['winners'])->toBe([PublicName::of($a)])
+        ->and(feedItem('score')['winners'])->toBe([PublicName::of($a)])
+        ->and($snapshot)->toContain('npub1…');
+
+    // `npub1` followed by a bech32 character is a searchable part of a key (User::displayName()'s `npub1qy3k8wz…`).
+    foreach ([$feed, $snapshot] as $json) {
+        expect($json)->not->toMatch('/npub1[02-9ac-hj-np-z]/')
+            ->not->toContain((string) $a->npub)->not->toContain((string) $a->pubkey);
+    }
 });
 
 test('a result rolled back is never announced; one committed is announced after the commit', function () {
