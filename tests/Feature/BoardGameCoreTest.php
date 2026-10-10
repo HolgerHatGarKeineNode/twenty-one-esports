@@ -125,6 +125,8 @@ test('the server accepts a legal move: it stores it, passes the turn and tells p
         expect($event->broadcastAs())->toBe('board.updated')
             ->and(array_map(fn ($channel) => $channel->name, $event->broadcastOn()))->toBe(['private-board.'.$game->id, 'board.'.$game->id.'.watch'])
             ->and($event->broadcastWith())->not->toHaveKey('moves')
+            // A race standing only for a race (RaceStanding, Blockli).
+            ->and($event->broadcastWith()['standing'])->toBeNull()
             ->and($event->broadcastWith()['pieces'])->toBe(['b2' => ['side' => 'w', 'kind' => 'man']])
             ->and($event->broadcastWith()['lastMove']['path'])->toBe(['b2'])
             // Black's placements: every point but b2.

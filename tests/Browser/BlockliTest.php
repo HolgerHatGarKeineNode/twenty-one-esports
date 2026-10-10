@@ -226,7 +226,7 @@ test('two players play Blockli to a win with every way to set a block: groove ta
     'desktop 1440 (mouse)' => [1440, 900, false],
 ]);
 
-test('while a block is shown, the buttons are at least 44 px high and Confirm is the only filled one', function (int $width, int $height, bool $touch) {
+test('while a block is shown, Rotate, Confirm and Move the pawn stand in the pop-up, every button is at least 44 px high and Confirm is the only filled one; a mouse sets it by its click, without them', function (int $width, int $height, bool $touch) {
     [$anna, $bert] = User::factory()->count(2)->create();
     $game = BlockliOn::setUp(app(BoardGameService::class)->start('blockli', $anna, $bert), 'e7 e3 10 10 w - 0');
     $white = blockliPage($anna, route('board.show', $game, false), $width, $height, $touch);
@@ -235,16 +235,137 @@ test('while a block is shown, the buttons are at least 44 px high and Confirm is
     $touch ? $white->locator('[data-test=mode-block]')->tap() : $white->locator('[data-test=mode-block]')->click();
     $touch ? blockliTap($white, true, 'c4/d5', -30) : blockliHover($white, 'c4/d5', -30);
     // Filled = the orange primary ground (bg-btc); the pressed toggle keeps a dark tint (bg-btc-press).
-    $buttons = $white->evaluate('() => [...document.querySelectorAll("[data-test=block-input] button")].filter((b) => b.checkVisibility()).map((b) => ({ test: b.dataset.test, h: Math.round(b.getBoundingClientRect().height), filled: b.classList.contains("bg-btc") }))');
+    // Rotate, Confirm and Move the pawn stand in the pop-up over the board (DerCaddy, 2026-10-09), so they come first;
+    // under the board only "Set a block" is left.
+    $buttons = $white->evaluate('() => [...document.querySelectorAll("[data-test=block-popup] button, [data-test=block-input] button")].filter((b) => b.checkVisibility()).map((b) => ({ test: b.dataset.test, h: Math.round(b.getBoundingClientRect().height), filled: b.classList.contains("bg-btc") }))');
 
-    expect(collect($buttons)->pluck('test')->all())->toBe(['mode-move', 'mode-block', 'rotate-block', 'set-block'])
+    expect(collect($buttons)->pluck('test')->all())->toBe($touch ? ['rotate-block', 'set-block', 'mode-move', 'mode-block'] : ['mode-block'])
         ->and(collect($buttons)->every(fn (array $b): bool => $b['h'] >= 44))->toBeTrue()
-        ->and(collect($buttons)->where('filled', true)->pluck('test')->all())->toBe(['set-block'])
+        ->and(collect($buttons)->where('filled', true)->pluck('test')->all())->toBe($touch ? ['set-block'] : [])
         ->and($white->evaluate('() => window.__errors'))->toBe([]);
 })->with([
     'phone 390 (touch)' => [390, 844, true],
     'desktop 1440 (mouse)' => [1440, 900, false],
 ]);
+
+/**
+ * The vertical extent [top, bottom] of the board, of its part in view (below the sticky header, above the tab bar: the
+ * root's scroll padding; above the bars fixed over the board on a phone: Blockli's bar, the chat sheet, the dock), the
+ * block pop-up (the stretch it stands in), its card (the buttons' box, or the hint), its buttons and the block shown,
+ * rounded; null where there is none.
+ */
+const BLOCKLI_BOXES = <<<'JS'
+    () => {
+        const box = (selector) => {
+            const el = document.querySelector(selector);
+            if (!el || !el.checkVisibility()) return null;
+            const r = el.getBoundingClientRect();
+            return [Math.round(r.top), Math.round(r.bottom)];
+        };
+        const root = getComputedStyle(document.documentElement);
+        const board = document.querySelector('[data-test=board]').getBoundingClientRect();
+        let floor = innerHeight - (parseFloat(root.scrollPaddingBottom) || 0);
+        document.querySelectorAll('[data-page-bar], [data-live-floor]').forEach((el) => {
+            if (!el.checkVisibility() || getComputedStyle(el).position !== 'fixed') return;
+            const r = el.getBoundingClientRect();
+            if (r.height > 0 && r.left < board.right && r.right > board.left && r.top > board.top) floor = Math.min(floor, r.top);
+        });
+        const view = [Math.round(Math.max(board.top, parseFloat(root.scrollPaddingTop) || 0)), Math.round(Math.min(board.bottom, floor))];
+        const card = box('[data-test=block-popup] > div') ?? box('[data-test=block-popup] > p');
+        return { board: box('[data-test=board]'), view, popup: box('[data-test=block-popup]'), card, buttons: box('[data-test=set-block]'), block: box('[data-test=board] [data-preview]') };
+    }
+    JS;
+
+test('the block pop-up stands over the board, never over the block: a finger gets Rotate, Confirm and Move the pawn in the middle of the board on the other side of the block, a mouse the hint at the edge', function (int $width, int $height, bool $touch) {
+    [$anna, $bert] = User::factory()->count(2)->create();
+    $game = BlockliOn::setUp(app(BoardGameService::class)->start('blockli', $anna, $bert), 'e7 e3 10 10 w - 0');
+    $white = blockliPage($anna, route('board.show', $game, false), $width, $height, $touch);
+    BrowserWait::until($white, '() => window.Alpine && Alpine.$data(document.querySelector("[data-test=board-game]"))?.canMove', 10_000);
+
+    // "Set a block" (on a phone in the bar fixed above the chat sheet, from lg at the head of the side column): at the top
+    // of the page, the hint alone stands at the top of the part of the board in view.
+    $touch ? $white->locator('[data-test=mode-block]')->tap() : $white->locator('[data-test=mode-block]')->click();
+    $white->evaluate('() => window.scrollTo(0, 0)');
+    BrowserWait::until($white, '() => { const b = ('.BLOCKLI_BOXES.')(); return b.popup !== null && Math.abs(b.popup[0] - b.view[0] - 8) <= 1; }', 5_000);
+    expect($white->evaluate(BLOCKLI_BOXES)['buttons'])->toBeNull();
+
+    // A block on the 7th rank: the pop-up below it, a finger's buttons in the middle between the block and the bottom of the
+    // board in view (DerCaddy, 2026-10-09), a mouse's hint at that bottom.
+    $touch ? blockliTap($white, true, 'c7/d8', -30) : blockliHover($white, 'c7/d8', -30);
+    $boxes = $white->evaluate(BLOCKLI_BOXES);
+    expect($white->evaluate(BLOCKLI_PREVIEW))->toBe(['c7/d8', 'h', true])
+        ->and($boxes['buttons'] !== null)->toBe($touch)
+        ->and($boxes['card'][0])->toBeGreaterThan($boxes['block'][1])
+        ->and($boxes['card'][1])->toBeLessThanOrEqual($boxes['view'][1])
+        ->and($touch
+            ? abs(($boxes['card'][0] + $boxes['card'][1]) / 2 - ($boxes['block'][1] + 12 + $boxes['view'][1] - 8) / 2)
+            : abs($boxes['view'][1] - 8 - $boxes['card'][1]))->toBeLessThanOrEqual(3);
+
+    // A block on the 2nd rank, reached below the pop-up: it moves above the block.
+    $touch ? blockliTap($white, true, 'c1/d2', -30) : blockliHover($white, 'c1/d2', -30);
+    $boxes = $white->evaluate(BLOCKLI_BOXES);
+    expect($white->evaluate(BLOCKLI_PREVIEW))->toBe(['c1/d2', 'h', true])
+        ->and($boxes['card'][1])->toBeLessThan($boxes['block'][0])
+        ->and($boxes['card'][0])->toBeGreaterThanOrEqual($boxes['view'][0])
+        ->and($touch
+            ? abs(($boxes['card'][0] + $boxes['card'][1]) / 2 - ($boxes['view'][0] + 8 + $boxes['block'][0] - 12) / 2)
+            : abs($boxes['card'][0] - $boxes['view'][0] - 8))->toBeLessThanOrEqual(3);
+
+    // Confirm in the pop-up sets the block; a mouse clicks it.
+    $touch ? $white->locator('[data-test=set-block]')->tap() : blockliTap($white, false, 'c1/d2', -30);
+    BrowserWait::until($white, '() => Alpine.$data(document.querySelector("[data-test=board-game]")).state.ply === 1', 5_000);
+
+    expect($game->refresh()->moves()->pluck('notation')->all())->toBe(['c1h'])
+        ->and($white->evaluate('() => window.__errors'))->toBe([]);
+})->with([
+    'phone 390 (touch)' => [390, 844, true],
+    'desktop 1440 (mouse)' => [1440, 900, false],
+]);
+
+test('one time before the repetition draw the board warns over it and beside it, the 21st time draws; the race standing stands beside the board', function () {
+    [$anna, $bert] = User::factory()->count(2)->create();
+    $service = app(BoardGameService::class);
+    $game = $service->start('blockli', $anna, $bert);
+    $play = function (array $moves) use ($service, &$game): void {
+        foreach ($moves as $move) {
+            $game->refresh();
+            $game = $service->move($game, $game->player($game->turn), $move, $game->ply + 1);
+        }
+    };
+
+    // To and fro nineteen times: the start stands there for the 20th time, White to move.
+    foreach (range(1, 19) as $round) {
+        $play(['e1-e2', 'e9-e8', 'e2-e1', 'e8-e9']);
+    }
+
+    $white = blockliPage($anna, route('board.show', $game, false), 390, 844, true);
+    BrowserWait::until($white, '() => window.Alpine && Alpine.$data(document.querySelector("[data-test=board-game]"))?.canMove', 10_000);
+
+    // Over the board for a few seconds, like a push message; beside the board for as long as the position stands.
+    expect($game->refresh()->ply)->toBe(76)
+        ->and($white->locator('[data-test=repetition-warning]')->innerText())->toBe('The same position 20 times. Once more and the game is drawn.')
+        ->and($white->locator('[data-test=repetition-note]')->innerText())->toBe('The same position 20 times. Once more and the game is drawn.')
+        ->and($white->locator('[data-test=standing]')->innerText())->toBe('Race: '.$anna->displayName().' needs 8 steps and has 10 blocks, '.$bert->displayName().' needs 8 steps and has 10 blocks. A block counts 1.5 steps: Both are level.');
+    shellShot($white, 'blockli-390-repetition-warning');
+
+    // The warning stands over the board and the pawn still moves.
+    blockliTap($white, true, 'e2');
+    BrowserWait::until($white, '() => Alpine.$data(document.querySelector("[data-test=board-game]")).state.ply === 77', 5_000);
+
+    $play(['e9-e8', 'e2-e1', 'e8-e9']);
+
+    expect($game->refresh()->status)->toBe(BoardGameStatus::Finished)
+        ->and($game->result)->toBe('1/2-1/2')
+        ->and($game->end_reason)->toBe('repetition');
+
+    $white->goto(ComputeUrl::from(route('board.show', $game, false)));
+    BrowserWait::until($white, '() => window.Alpine && Alpine.$data(document.querySelector("[data-test=board-game]"))?.state.status === "finished"', 10_000);
+
+    expect($white->evaluate('() => document.querySelector("[data-test=result]")?.innerText'))->toContain('The same position 21 times')
+        ->and($white->locator('[data-test=repetition-warning]')->isVisible())->toBeFalse()
+        ->and($white->locator('[data-test=repetition-note]')->isVisible())->toBeFalse()
+        ->and($white->evaluate('() => window.__errors'))->toBe([]);
+});
 
 /*
 | P6: the Blockli pages measured as an admin in German (and English for the

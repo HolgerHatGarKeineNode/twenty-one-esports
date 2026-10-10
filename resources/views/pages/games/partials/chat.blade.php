@@ -37,21 +37,22 @@
 
     {{-- Mobile sheet --}}
     @if ($chat['opponent'])
-        {{-- The chat sheet and the match dock's sheet close each other (P5f). --}}
+        {{-- The chat sheet and the match dock's sheet close each other (P5f). The closed bar offers its row to the dock's tab
+             (data-dock-row, resources/js/matchDock.js): the tab sits at its left end, beside the chat (DerCaddy, 2026-10-10). --}}
         <div class="lg:hidden" x-data="{ open: false, seen: 0 }" x-effect="open && (seen = messages.length)"
              x-init="$watch('open', (value) => window.dispatchEvent(new CustomEvent('chat-sheet-toggle', { detail: value })))" x-on:dock-toggle.window="$event.detail && (open = false)">
             <div x-show="open" x-cloak aria-hidden="true" class="fixed inset-0 z-30 bg-[rgba(10,10,11,.6)]" x-on:click="open = false"></div>
             <section role="dialog" :aria-modal="open ? 'true' : 'false'" aria-labelledby="sheet-h" data-page-bar
                      class="fixed inset-x-0 bottom-0 z-40 flex flex-col rounded-t-2xl bg-bar shadow-[0_-1px_0_#2A2A30,0_-16px_32px_rgba(10,10,11,.8)]"
                      :class="open ? 'h-[min(520px,80svh)] animate-drop-in' : 'h-[72px]'">
-                <button type="button" x-on:click="open = ! open" :aria-expanded="open ? 'true' : 'false'" aria-controls="sheet-body" data-test="chat-sheet-toggle"
-                        class="flex min-h-[72px] shrink-0 cursor-pointer flex-col items-stretch gap-2 border-0 bg-transparent px-4 pt-2 pb-3 text-left text-ink">
+                <button type="button" x-on:click="open = ! open" :aria-expanded="open ? 'true' : 'false'" aria-controls="sheet-body" data-test="chat-sheet-toggle" data-dock-row
+                        class="flex min-h-[72px] shrink-0 cursor-pointer flex-col items-stretch gap-2 border-0 bg-transparent pt-2 pr-4 pb-3 pl-[calc(1rem+var(--dock-row-w,0px))] text-left text-ink">
                     <span aria-hidden="true" class="h-1 w-10 self-center rounded-xs bg-edge"></span>
                     <span class="flex items-center gap-2.5">
                         <x-icon name="chat-sheet" :size="18" class="text-ink-2" />
                         <span id="sheet-h" class="text-sm font-bold">{{ __('Chat') }}</span>
                         <template x-if="! open">
-                            <span class="flex min-w-0 grow items-center gap-2.5">
+                            <span class="flex min-w-0 grow items-center gap-2.5 overflow-hidden">
                                 <span x-show="messages.filter((m) => m.from === 'them').length > seen" class="inline-flex h-5 shrink-0 items-center rounded-[10px] bg-btc px-[7px] text-[11px] font-bold whitespace-nowrap text-on-btc"
                                       x-text="t.unread.replace(':count', Math.max(0, messages.filter((m) => m.from === 'them').length - seen))"></span>
                                 <span class="min-w-0 grow truncate text-xs text-ink-2" x-text="opponentMuted ? t.mutedPeek : (messages.length ? messages[messages.length - 1].name + ': ' + messages[messages.length - 1].text : '')"></span>

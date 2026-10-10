@@ -38,6 +38,12 @@ const SVG = 'http://www.w3.org/2000/svg';
 /** How long the page trusts the websocket alone before it asks the server. */
 const HEARTBEAT_MS = 4000;
 
+/** How long the repetition warning stands over the board after a move (it stays beside the board). */
+const WARNING_MS = 6000;
+
+/** How often the position of a state has stood there (Blockli's repetition warning), counted once per state. */
+const REPEATS = new WeakMap();
+
 // Black men are dark discs with a light rim: on the dark board a dark rim would hide them.
 const PIECE_FILL = { w: '#F4F4F5', b: '#09090B' };
 const PIECE_STROKE = { w: '#A1A1AA', b: '#D4D4D8' };
@@ -140,6 +146,11 @@ function watchConnection(onChange) {
     pusher.connection.bind('state_change', ({ current }) => onChange(current));
 }
 
+/** Whether an element is rendered: checkVisibility(), or its boxes where a browser lacks it (Safari before 17.4). */
+function rendered(el) {
+    return !!el && (el.checkVisibility?.() ?? el.getClientRects().length > 0);
+}
+
 function svgElement(name, attributes) {
     const element = document.createElementNS(SVG, name);
     Object.entries(attributes).forEach(([key, value]) => element.setAttribute(key, String(value)));
@@ -159,9 +170,16 @@ registerAlpine(() => {
         receivedAt: performance.now(),
         now: performance.now(),
         clicks: [],
-        // The block input (Blockli): set-a-block mode, the block shown before it is set, the last pointer.
+        // The block input (Blockli): set-a-block mode, the block shown before it is set, the last pointer, whether the
+        // pop-up stands above or below the block, the stretch of the board it stands in the middle of ([top, bottom] in
+        // px from the board's top), and how far from its top and bottom edge the part of the board in view begins.
         blockMode: false,
         preview: null,
+        popupTop: true,
+        popupRegion: null,
+        band: { top: 8, bottom: 8 },
+        onScroll: null,
+        warningUntil: 0,
         pointerType: 'touch',
         lastTap: null,
         pending: false,
@@ -211,6 +229,21 @@ registerAlpine(() => {
                 board.addEventListener('pointermove', (event) => this.hoverBlock(event));
                 // A finger leaves the board after every tap: only a mouse leaving takes the block shown away.
                 board.addEventListener('pointerleave', (event) => event.pointerType === 'mouse' && this.hoverBlock(null));
+                // The pop-ups over the board follow the part of it in view, once a frame at most.
+                let queued = false;
+                this.onScroll = () => {
+                    if (queued) return;
+                    queued = true;
+                    requestAnimationFrame(() => {
+                        queued = false;
+                        if (this.preview) this.placePopup();
+                        else this.measureBand();
+                    });
+                };
+                window.addEventListener('scroll', this.onScroll, { passive: true });
+                window.addEventListener('resize', this.onScroll);
+                this.measureBand();
+                this.warningUntil = performance.now() + WARNING_MS;
             }
 
             this.render();
@@ -234,6 +267,10 @@ registerAlpine(() => {
             clearInterval(this.ticker);
             clearInterval(this.poller);
             removeEventListener('resize', this.onResize);
+            if (this.onScroll) {
+                window.removeEventListener('scroll', this.onScroll);
+                window.removeEventListener('resize', this.onScroll);
+            }
         },
 
         /**
@@ -246,11 +283,13 @@ registerAlpine(() => {
         fitBoard() {
             const board = this.$refs.board;
             if (!board) return;
-            const column = board.parentElement;
+            // The box around the board (Blockli's pop-ups stand in it) takes the size, so they keep to the board.
+            const box = board.closest('[data-board-box]') ?? board;
+            const column = box.parentElement;
             const grid = column.parentElement;
             const page = this.$root.closest('[data-test=board-page]') ?? this.$root;
             const phone = matchMedia('(width < 64rem)').matches;
-            const shown = (el) => !!el && el.checkVisibility() && el.getBoundingClientRect().height > 0;
+            const shown = (el) => rendered(el) && el.getBoundingClientRect().height > 0;
             const fixed = (el) => getComputedStyle(el).position === 'fixed';
             const tabbar = parseFloat(getComputedStyle(document.body).paddingBottom) || 0;
             const sheet = document.querySelector('[data-test=chat-sheet-toggle]')?.closest('section');
@@ -265,12 +304,14 @@ registerAlpine(() => {
             const width = Math.round(room * (drawn.width / drawn.height));
             if (phone) {
                 grid.style.gridTemplateColumns = '';
-                board.style.maxWidth = Math.max(200, width) + 'px';
+                box.style.maxWidth = Math.max(200, width) + 'px';
                 page.style.paddingBottom = (shown(sheet) ? 72 : 0) + (shown(dock) ? dock.offsetHeight : 0) + 24 + 'px';
+                // The pop-ups follow the board's new size.
+                if (this.layout.input === 'blocks') this.$nextTick(() => (this.preview ? this.placePopup() : this.measureBand()));
 
                 return;
             }
-            board.style.maxWidth = '';
+            box.style.maxWidth = '';
             page.style.paddingBottom = '';
             // From 87.5rem the players' chat is a third column (the page's grid classes).
             const third = this.$root.querySelector('[data-test=chat-panel]') && matchMedia('(width >= 87.5rem)').matches ? ' 380px' : '';
@@ -499,6 +540,84 @@ registerAlpine(() => {
             return this.blockMoves.size > 0;
         },
 
+        /** The block pop-up over the board (Blockli): the hint, or with a block shown Rotate, Confirm and Move the pawn. */
+        get blockPopup() {
+            return this.blockMode && this.canMove;
+        },
+
+        /**
+         * The buttons in the pop-up, for a finger and the keys. A mouse sets the block with its click and turns it by
+         * pointing along the other groove, and on its way to buttons over the board the block would follow it and send
+         * them to the other side: it keeps the hint.
+         */
+        get blockButtons() {
+            return this.blockPopup && this.preview !== null && this.pointerType !== 'mouse';
+        },
+
+        /**
+         * Where the pop-up stands (DerCaddy, 2026-10-09: lower, in the middle over the board): the buttons in the middle of
+         * the part of the board in view on the side the block shown is not on, clear of it; the hint, slim and letting taps
+         * through, at the top or bottom edge of that part.
+         */
+        get blockPopupStyle() {
+            if (!this.blockButtons || !this.popupRegion) return this.popupAt(!this.preview || this.popupTop);
+            const [top, bottom] = this.popupRegion;
+
+            return { top: top + 'px', bottom: 'auto', height: Math.max(0, bottom - top) + 'px' };
+        },
+
+        /**
+         * How often the position on the board has stood there in this game, the current time included: for a game
+         * whose layout names a repetition limit (Blockli), where the pieces and the side to move (the parity of the
+         * ply) are the whole position.
+         */
+        get repeats() {
+            if (!this.layout.repetitions) return 0;
+            const state = this.state;
+            if (REPEATS.has(state)) return REPEATS.get(state);
+            const key = (pieces) => JSON.stringify(Object.keys(pieces ?? {}).sort().map((id) => [id, pieces[id].side, pieces[id].kind]));
+            const moves = state.moves ?? [];
+            const now = key(state.pieces);
+            let count = 0;
+            for (let ply = moves.length; ply >= 0; ply -= 2) if (key(ply === 0 ? this.startPieces : moves[ply - 1].pieces) === now) count++;
+            REPEATS.set(state, count);
+
+            return count;
+        },
+
+        /** The warning one time before the repetition draw, for players and spectators (DerCaddy, 2026-10-09). */
+        get repetitionWarning() {
+            if (!this.layout.repetitions || this.state.status !== 'active' || this.viewIndex !== null) return '';
+
+            return this.repeats === this.layout.repetitions - 1 ? this.t.repetition.replace(':count', this.repeats) : '';
+        },
+
+        /**
+         * Over the board like a push message for a few seconds after each move that brings it, at the top of the board in
+         * view, and gone while a block is being set; beside the board it stays.
+         */
+        get warningShown() {
+            return this.repetitionWarning !== '' && this.now < this.warningUntil && !this.blockPopup;
+        },
+
+        /**
+         * The race standing of the live position (Blockli, DerCaddy 2026-10-09), from the server: steps to the goal and
+         * blocks left a side, who leads by how many steps with a block worth `rate` steps.
+         */
+        get standingLine() {
+            const standing = this.state.standing;
+            if (!standing || this.viewIndex !== null || !this.t.standing) return '';
+            const words = this.t.standing;
+            // One pass over the placeholders, so a name with a colon or a dollar sign stays as it is.
+            const fill = (text, values) => text.replace(/:(\w+)/g, (placeholder, key) => (key in values ? values[key] : placeholder));
+            const number = (value) => value.toLocaleString(document.documentElement.lang || undefined, { maximumFractionDigits: 2 });
+            const count = (forms, value) => fill(forms[value === 1 ? 0 : 1], { count: number(value) });
+            const side = (key) => fill(words.side, { name: this.t.names[key], steps: count(words.steps, standing[key].steps), blocks: count(words.blocks, standing[key].blocks) });
+            const lead = standing.lead ? fill(words.lead, { name: this.t.names[standing.lead], steps: count(words.steps, Math.abs(standing.margin)) }) : words.level;
+
+            return fill(words.line, { white: side('w'), black: side('b'), lead, rate: number(standing.rate) });
+        },
+
         /** The blocks the player has left: the spares of their side in the tray. */
         get blocksLeft() {
             return Object.values(this.state.pieces).filter((piece) => piece.kind === 'spare' && piece.side === this.color).length;
@@ -523,9 +642,13 @@ registerAlpine(() => {
         /** `event` is the button's click: one from a key (detail 0) switches the hint to the keys. */
         setBlockMode(on, event = null) {
             if (event && event.detail === 0) this.pointerType = 'keyboard';
+            // Focus on a button of the pop-up (Move the pawn, or Escape on Rotate) would go with it: it moves to "Set a block".
+            const inPopup = !!document.activeElement?.closest?.('[data-test=block-popup]');
             this.blockMode = on && this.canMove && this.canSetBlocks;
             this.preview = null;
             this.error = '';
+            if (this.blockMode) this.measureBand();
+            else if (inPopup) this.$nextTick(() => this.$root.querySelector('[data-test=mode-block]')?.focus());
             this.render();
         },
 
@@ -646,6 +769,67 @@ registerAlpine(() => {
         /** Shows a block; `turned` marks one the player rotated, which keeps its direction on that crossing. */
         showBlock(crossing, dir, turned = false) {
             this.preview = { crossing, dir, turned, move: this.blockMoves.get(crossing + ' ' + dir) ?? null };
+            this.placePopup();
+        },
+
+        /**
+         * The pop-up stands above the block shown or below it, as the board is seen (Black's is turned), on the side with
+         * more of the board in view; a block near the middle leaves it where it is, so it does not jump while a mouse
+         * crosses. The buttons stand in the middle of that side's stretch, 12 px clear of the block. On a small board a side
+         * may be shorter than their card: it gives way to the other side if that has more room, and where neither has
+         * enough, the card stays clear of the block and reaches past the edge of the part in view instead.
+         */
+        placePopup() {
+            this.measureBand();
+            const at = this.layout.points.find((point) => point.id === this.preview?.crossing);
+            const height = this.$refs.board?.getBoundingClientRect().height ?? 0;
+            if (!at || !height || !this.bar) return;
+            const scale = height / this.layout.height;
+            const y = (this.color === 'b' ? this.layout.height - at.y : at.y) * scale;
+            const half = ((this.preview.dir === 'h' ? this.bar.thickness : this.bar.length) / 2) * scale;
+            const [from, to] = [this.band.top - 8, height - this.band.bottom + 8];
+            const seen = to > from ? (y - from) / (to - from) : 0.5;
+            if (this.popupTop && seen < 0.4) this.popupTop = false;
+            else if (!this.popupTop && seen > 0.6) this.popupTop = true;
+            const [top, bottom] = [this.band.top, height - this.band.bottom];
+            const [above, below] = [Math.round(y - half - 12), Math.round(y + half + 12)];
+            const card = this.$root.querySelector('[data-block-card]')?.offsetHeight || 112;
+            const room = (onTop) => (onTop ? above - top : bottom - below);
+            if (this.blockButtons && room(this.popupTop) < card && room(!this.popupTop) > room(this.popupTop)) this.popupTop = !this.popupTop;
+            this.popupRegion = this.popupTop ? [Math.min(top, above - card), Math.max(top, above)] : [Math.min(bottom, below), Math.max(bottom, below + card)];
+        },
+
+        /**
+         * The part of the board in view, below the sticky header and above the phone's tab bar and the dock (the root's
+         * scroll padding names both) and above the bars fixed to a phone's bottom (Blockli's bar, the chat sheet, the
+         * dock's tab: `data-page-bar`, `data-live-floor`): on a phone the board may reach under one of them, and a pop-up
+         * at its very edge would stand there unseen. The pop-ups stand 8 px inside that part. True when it changed.
+         */
+        measureBand() {
+            const box = this.$refs.board?.getBoundingClientRect();
+            if (!box || !box.height) return false;
+            const root = getComputedStyle(document.documentElement);
+            const top = Math.max(box.top, parseFloat(root.scrollPaddingTop) || 0);
+            let floor = window.innerHeight - (parseFloat(root.scrollPaddingBottom) || 0);
+            document.querySelectorAll('[data-page-bar], [data-live-floor]').forEach((bar) => {
+                if (!rendered(bar) || getComputedStyle(bar).position !== 'fixed') return;
+                const edge = bar.getBoundingClientRect();
+                // Only what lies over the board and below its top: a bar beside it, or a sheet open over all of it, does not count.
+                if (edge.height > 0 && edge.left < box.right && edge.right > box.left && edge.top > box.top) floor = Math.min(floor, edge.top);
+            });
+            const bottom = Math.min(box.bottom, floor);
+            // Never off the board: a pop-up keeps about 100 px of it below or above.
+            const edge = (inset) => Math.round(Math.min(Math.max(0, inset), Math.max(0, box.height - 108))) + 8;
+            const band = { top: edge(top - box.top), bottom: edge(box.bottom - bottom) };
+            if (band.top === this.band.top && band.bottom === this.band.bottom) return false;
+            this.band = band;
+
+            return true;
+        },
+
+        /** The style of a pop-up over the board: at the top or the bottom of the part of the board in view. */
+        popupAt(top) {
+            return top ? { top: this.band.top + 'px', bottom: 'auto', height: 'auto' } : { top: 'auto', bottom: this.band.bottom + 'px', height: 'auto' };
         },
 
         /** Shows the block at the crossing nearest to a board position, along the groove the position lies in. */
@@ -799,6 +983,7 @@ registerAlpine(() => {
         apply(state) {
             if (!state || state.version < this.state.version) return;
             const changed = state.version !== this.state.version;
+            const moved = state.ply !== this.state.ply;
             this.state = { ...state, moves: state.moves ?? this.state.moves };
             this.receivedAt = performance.now();
             this.lastSyncAt = this.receivedAt;
@@ -806,6 +991,7 @@ registerAlpine(() => {
             if (changed) this.clicks = [];
             // The block input: a block shown is checked against the new legal moves; off the move none is shown.
             if (changed && this.layout.input === 'blocks') {
+                if (moved) this.warningUntil = this.now + WARNING_MS;
                 if (!this.canMove) [this.blockMode, this.preview] = [false, null];
                 else if (this.preview) this.showBlock(this.preview.crossing, this.preview.dir, this.preview.turned);
             }

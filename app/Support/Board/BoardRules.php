@@ -114,9 +114,13 @@ interface BoardRules
      * `input`, if set, asks the board for another way of clicking than path
      * by path: `blocks` (Blockli) moves the pawn with one tap on its target
      * and shows a block at the crossing nearest to a tap, to be confirmed.
+     * `repetitions`, if set, is the repetition limit of a game whose pieces
+     * and side to move are its whole position (Blockli): the board counts how
+     * often the position has stood there and warns at the last time before
+     * the draw.
      *
      * @param  TPosition  $position
-     * @return array{width: int, height: int, lines: list<array{0: int, 1: int, 2: int, 3: int}>, cells: list<array{x: int, y: int, size: int}>, points: list<array{id: string, x: int, y: int}>, pieces: array<string, array{side: 'w'|'b', kind: string}>, input?: 'blocks'}
+     * @return array{width: int, height: int, lines: list<array{0: int, 1: int, 2: int, 3: int}>, cells: list<array{x: int, y: int, size: int}>, points: list<array{id: string, x: int, y: int}>, pieces: array<string, array{side: 'w'|'b', kind: string}>, input?: 'blocks', repetitions?: int}
      */
     public function view(mixed $position): array;
 }

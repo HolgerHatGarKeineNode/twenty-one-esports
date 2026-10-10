@@ -31,10 +31,17 @@ use InvalidArgumentException;
  *   pawn's square (its own is off it, or the game were over): two
  *   neighbouring squares, while ranks 1 and 9 lie eight rows apart.
  * - The first pawn on its goal rank wins.
- * - Draw: the same position with the same side to move for the third time,
- *   or 100 moves of each side (200 plies) without a new block. After the
- *   last block a pawn that heads for its goal arrives long before that, so
- *   the limit only ends games that nobody tries to win.
+ * - Draw: the same position with the same side to move for the 21st time
+ *   (REPETITIONS; DerCaddy, 2026-10-09: a pawn cannot pass, so moving to and
+ *   fro to wait is play, and three times ended such waits too early; the
+ *   board warns one time before, see `repetitions` in the view), or 100
+ *   moves of each side (200 plies) without a new block. After the last block
+ *   a pawn that heads for its goal arrives long before that, so the limit
+ *   only ends games that nobody tries to win.
+ * - The race standing (standing()) counts, for every position, each side's
+ *   steps to its goal rank and blocks left, a block worth BLOCK_STEPS steps:
+ *   who would be ahead. The board shows it; a tournament could decide a
+ *   drawn game by it.
  *
  * Sources, read 2026-09-30: English Wikipedia "Quoridor", sections on the
  * rules (the jump; beside the other pawn when a wall or the edge stands
@@ -63,7 +70,10 @@ use InvalidArgumentException;
  * crossings and a tray of ten points per side for the blocks it has left
  * (Black's above the board, White's below). Pieces: `pawn`; a block on its
  * crossing as `block-h` or `block-v`, a bar across two squares and the
- * groove between them; a block in the tray as `spare`.
+ * groove between them; a block in the tray as `spare`. `repetitions` is the
+ * repetition limit: the pieces and the side to move are the whole position,
+ * so the board counts how often it has stood there and warns at the last
+ * time before the draw.
  *
  * The position is `white black left-w left-b turn blocks quiet`: the squares
  * of both pawns, the blocks each side has left, the side to move, the blocks
@@ -75,14 +85,23 @@ use InvalidArgumentException;
  * @phpstan-type Position array{pawns: array{w: int, b: int}, left: array{w: int, b: int}, turn: 'w'|'b', blocks: array<int, 'w'|'b'>, quiet: int}
  *
  * @implements BoardRules<Position>
+ * @implements RaceStanding<Position>
  */
-final class BlockliRules implements BoardRules
+final class BlockliRules implements BoardRules, RaceStanding
 {
     /** The blocks each side starts with. */
     public const BLOCKS = 10;
 
-    /** How often the same position with the same side to move draws the game. */
-    public const REPETITIONS = 3;
+    /** How often the same position with the same side to move draws the game (the board warns one time before). */
+    public const REPETITIONS = 21;
+
+    /**
+     * What a block in hand is worth in steps, for the race standing (standing()). Measured, not chosen: in
+     * 1,000 self-play games of the Blockli engine on two levels (DerCaddy's prototype, 2026-10-09), a logistic
+     * fit of the winner on the step and block differences gave 1.58 steps a block on both; rounded to a half
+     * for a rule players can count. The standing then names the later winner in about three positions of four.
+     */
+    public const BLOCK_STEPS = 1.5;
 
     /** 100 moves of each side without a new block draw the game. */
     public const QUIET_PLY_LIMIT = 200;
@@ -267,7 +286,8 @@ final class BlockliRules implements BoardRules
     {
         return [
             'goal' => 'Reached the far side',
-            'repetition' => 'Threefold repetition',
+            // lang/de.json translates this label for 21 times.
+            'repetition' => 'The same position '.self::REPETITIONS.' times',
             'no_progress' => 'A hundred moves each without a new block',
         ];
     }
@@ -319,7 +339,40 @@ final class BlockliRules implements BoardRules
             'points' => $points,
             'pieces' => $pieces,
             'input' => 'blocks',
+            'repetitions' => self::REPETITIONS,
         ];
+    }
+
+    /**
+     * The race standing of a position (RaceStanding): each side's steps to its
+     * goal rank (pawns not counted) and blocks left, scored as steps minus
+     * BLOCK_STEPS per block; the lower score leads.
+     *
+     * @param  Position  $position
+     * @return array{w: array{steps: int, blocks: int, score: float}, b: array{steps: int, blocks: int, score: float}, margin: float, lead: Side|null, rate: float}
+     */
+    public function standing(mixed $position): array
+    {
+        $white = $this->sideStanding($position, 'w');
+        $black = $this->sideStanding($position, 'b');
+        $margin = $black['score'] - $white['score'];
+
+        return ['w' => $white, 'b' => $black, 'margin' => $margin, 'lead' => $margin > 0 ? 'w' : ($margin < 0 ? 'b' : null), 'rate' => self::BLOCK_STEPS];
+    }
+
+    /**
+     * One side's part of the race standing.
+     *
+     * @param  Position  $position
+     * @param  Side  $side
+     * @return array{steps: int, blocks: int, score: float}
+     */
+    private function sideStanding(array $position, string $side): array
+    {
+        $steps = $this->distance($position, $side) ?? 0;
+        $blocks = $position['left'][$side];
+
+        return ['steps' => $steps, 'blocks' => $blocks, 'score' => $steps - self::BLOCK_STEPS * $blocks];
     }
 
     /**

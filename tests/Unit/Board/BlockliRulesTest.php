@@ -11,7 +11,7 @@ use App\Support\Board\BlockliRules;
 |
 | Every rule and edge case of BlockliRules from a hand-made position, with
 | the legal moves worked out by hand; then 42 seeded games of the reference
-| implementation (the JS engine of the Blockli prototype, 2 510 plies, see
+| implementation (the JS engine of the Blockli prototype, 4 117 plies, see
 | tests/Fixtures/blockli-vectors.json), replayed ply by ply: the same legal
 | moves before every ply, the same final position, the same outcome.
 |
@@ -253,20 +253,26 @@ test('the first pawn on its goal rank wins and ends the game', function () {
         ->and($rules->legalMoves($black))->toBe([]);
 });
 
-test('the same position with the same side to move for the third time is a draw', function () {
+test('the same position with the same side to move for the 21st time is a draw, the 20th is not', function () {
     $rules = new BlockliRules;
     $position = $rules->start();
     $history = [$rules->serialize($position)];
     $outcomes = [];
 
-    foreach (['e2', 'e8', 'e1', 'e9', 'e2', 'e8', 'e1', 'e9'] as $move) {
-        $position = blockliPlay($position, $move);
-        $history[] = $rules->serialize($position);
-        $outcomes[] = $rules->outcome($position, $history);
+    // To and fro twenty times: every position of the round comes back each round, the start a 21st time after 80 plies.
+    foreach (range(1, 20) as $round) {
+        foreach (['e2', 'e8', 'e1', 'e9'] as $move) {
+            $position = blockliPlay($position, $move);
+            $history[] = $rules->serialize($position);
+            $outcomes[] = $rules->outcome($position, $history);
+        }
     }
 
-    expect(array_slice($outcomes, 0, 7))->each->toBeNull()
-        ->and($outcomes[7])->toBe(['result' => '1/2-1/2', 'reason' => 'repetition']);
+    expect(BlockliRules::REPETITIONS)->toBe(21)
+        ->and(array_slice($outcomes, 0, 79))->each->toBeNull()
+        ->and($outcomes[79])->toBe(['result' => '1/2-1/2', 'reason' => 'repetition'])
+        // The quiet plies are no part of the position: they rose all the while.
+        ->and($position['quiet'])->toBe(80);
 });
 
 test('200 plies without a new block are a draw', function () {
@@ -279,7 +285,35 @@ test('200 plies without a new block are a draw', function () {
 });
 
 test('every end reason has a label', function () {
-    expect(array_keys((new BlockliRules)->reasons()))->toBe(['goal', 'repetition', 'no_progress']);
+    expect(array_keys((new BlockliRules)->reasons()))->toBe(['goal', 'repetition', 'no_progress'])
+        ->and((new BlockliRules)->reasons()['repetition'])->toBe('The same position 21 times');
+});
+
+test('the race standing counts each side\'s steps to its goal and blocks left, a block worth one and a half steps', function () {
+    $rules = new BlockliRules;
+
+    // The start: eight steps and ten blocks each, level.
+    expect($rules->standing($rules->start()))->toBe([
+        'w' => ['steps' => 8, 'blocks' => 10, 'score' => -7.0],
+        'b' => ['steps' => 8, 'blocks' => 10, 'score' => -7.0],
+        'margin' => 0.0, 'lead' => null, 'rate' => 1.5,
+    ]);
+
+    // White's own block above e6 and f6 sends its pawn round by d6: 4 steps and 9 blocks (-9.5) against 2 and 10 (-13).
+    expect($rules->standing(blockliPosition('e6', 'c3', ['e6h' => 'w'])))->toBe([
+        'w' => ['steps' => 4, 'blocks' => 9, 'score' => -9.5],
+        'b' => ['steps' => 2, 'blocks' => 10, 'score' => -13.0],
+        'margin' => -3.5, 'lead' => 'b', 'rate' => 1.5,
+    ]);
+
+    // Two steps behind with two blocks more is ahead: 4 and 10 (-11) against 2 and 8 (-10); whose turn it is does not count.
+    $behind = blockliPosition('e5', 'e3', ['a1h' => 'b', 'h7v' => 'b']);
+
+    expect($rules->standing($behind))->toBe([
+        'w' => ['steps' => 4, 'blocks' => 10, 'score' => -11.0],
+        'b' => ['steps' => 2, 'blocks' => 8, 'score' => -10.0],
+        'margin' => 1.0, 'lead' => 'w', 'rate' => 1.5,
+    ])->and($rules->standing(blockliPosition('e5', 'e3', ['a1h' => 'b', 'h7v' => 'b'], 'b')))->toBe($rules->standing($behind));
 });
 
 /* ---------- Positions as text ----------------------------------------------------------------------------- */
@@ -347,7 +381,7 @@ test('the path of a pawn move is its start and target, of a block its crossing a
         ->and($rules->path('e2'))->toBe([]);
 });
 
-test('the view shows the 81 squares, the 64 crossings and a tray of ten a side, and asks for the block input', function () {
+test('the view shows the 81 squares, the 64 crossings and a tray of ten a side, and asks for the block input and the repetition warning', function () {
     $rules = new BlockliRules;
     $position = blockliPosition('e2', 'e8', ['e3h' => 'w', 'c6v' => 'b', 'g7h' => 'b'], 'w');
     $view = $rules->view($position);
@@ -357,6 +391,7 @@ test('the view shows the 81 squares, the 64 crossings and a tray of ten a side, 
     expect($view['width'])->toBe(880)
         ->and($view['height'])->toBe(1020)
         ->and($view['input'])->toBe('blocks')
+        ->and($view['repetitions'])->toBe(21)
         ->and($view['lines'])->toBe([])
         ->and($view['cells'])->toHaveCount(81)
         ->and($view['cells'][0])->toBe(['x' => 0, 'y' => 870, 'size' => 80])
