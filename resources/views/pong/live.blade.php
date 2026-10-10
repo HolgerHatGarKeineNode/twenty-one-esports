@@ -81,6 +81,7 @@
         <canvas id="arena" aria-label="{{ __('The playing field') }}" role="img"></canvas>
 
         <div class="banner" id="banner" hidden aria-live="polite" data-test="pong-banner"><img alt="" width="160" height="160"><small></small><b></b><span></span></div>
+        <div class="event-pin" id="event-pin" hidden data-test="pong-event-pin"><img alt="" width="160" height="160"><span class="event-pin-text"><b></b><span></span></span></div>
         <div class="ticker" id="ticker" hidden aria-live="polite" data-test="pong-ticker"></div>
         <div class="toast" id="toast" hidden aria-live="polite"></div>
         <div class="queue" id="queue" hidden aria-live="polite" data-test="pong-queue"><b></b><span></span><small hidden></small></div>

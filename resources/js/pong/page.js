@@ -1,6 +1,6 @@
 /**
  * What both Proof of Pong pages share (plan "Proof of Pong", P1/P2): the game against a bot (game.js) and the live
- * match (live.js). The page's config, its texts, the meme events' names and lines, the field fitted to the window and
+ * match (live.js). The page's config, its texts, the field fitted to the window and
  * the player's input.
  *
  * The field is fitted to the window once and again only when the window's WIDTH changes: a phone shows and hides its
@@ -58,19 +58,6 @@ export function readConfig() {
 
     return { config, t };
 }
-
-/** Each meme event's name and line (literal keys, so the page's text test finds them). */
-export const eventText = (t, event) => ({
-    halving: [t('Halving'), t('The ball is half the size, its point counts double.')],
-    brrr: [t('Brrr'), t('The ball flies faster.')],
-    pizza: [t('Pizza Day'), t('Two balls at once.')],
-    difficulty: [t('Difficulty Adjustment'), t('Both paddles are shorter.')],
-    tax: [t('Taxation is Theft'), t('A tax office patrols the centre line; the ball bounces off it.')],
-    controls: [t('Capital Controls'), t('A border wall with a moving gap; hit the wall and the ball comes back.')],
-    few: [t('Few understand'), t('The ball is invisible in the middle of the field.')],
-    pow: [t('Proof of Work'), t('Each of your hits makes your paddle longer.')],
-    arbeitsamt: [t('Job Centre – Please wait'), t('At the centre line the ball draws a number and waits a second.')],
-})[event];
 
 /**
  * The stage: the arena fitted into the window, and the player's wanted paddle position. `input.target(current)` is

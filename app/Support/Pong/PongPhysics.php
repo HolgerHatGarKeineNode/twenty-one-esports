@@ -78,6 +78,18 @@ final class PongPhysics
     public const int POW_MAX_HALF = 18000;
 
     /**
+     * The pauses around a rally, in ticks, as resources/js/pong/physics.js (the browser test's golden checks both): on a
+     * point, a meme event's announcement (its takeover: 600 ms in, the name and line held long enough to read the
+     * longest of them in German and English, 400 ms out; resources/js/pong/takeover.js), the serve's countdown. The
+     * referee serves the next rally after them, so they are part of the rules' fingerprint (PongRules::version()).
+     */
+    public const int POINT_TICKS = 70;
+
+    public const int ANNOUNCE_TICKS = 480;
+
+    public const int SERVE_TICKS = 50;
+
+    /**
      * Floor division, as JavaScript's Math.floor(a / b) gives it (PHP's intdiv() rounds towards zero).
      */
     public static function floorDiv(int $a, int $b): int

@@ -39,12 +39,12 @@ final class PongReferee
     /** Before the first serve: three seconds once both players are there. */
     public const int START_TICKS = 180;
 
-    /** As resources/js/pong/game.js: the pause on a point, a meme event's announcement, the serve's countdown. */
-    public const int POINT_TICKS = 70;
+    /** The pause on a point, a meme event's announcement, the serve's countdown (PongPhysics, shared with the browser). */
+    public const int POINT_TICKS = PongPhysics::POINT_TICKS;
 
-    public const int ANNOUNCE_TICKS = 110;
+    public const int ANNOUNCE_TICKS = PongPhysics::ANNOUNCE_TICKS;
 
-    public const int SERVE_TICKS = 50;
+    public const int SERVE_TICKS = PongPhysics::SERVE_TICKS;
 
     /** How late a defender's report may come before the contact counts as a miss (server's clock). */
     public const int GRACE_MS = 4000;
@@ -104,7 +104,8 @@ final class PongReferee
     public static function start(int $seed, PongRules $rules, int $now, int $speed = 1): self
     {
         $referee = new self($seed, $rules, $speed);
-        $referee->serveRally(1, $now + $referee->ms(self::START_TICKS - self::SERVE_TICKS));
+        $announce = $rules->eventOf($seed, 1) !== null ? self::ANNOUNCE_TICKS : 0;
+        $referee->serveRally(1, $now + $referee->ms(self::START_TICKS - self::SERVE_TICKS + $announce));
 
         return $referee;
     }

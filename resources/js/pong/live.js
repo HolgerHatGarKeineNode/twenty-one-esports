@@ -28,13 +28,11 @@ import Pusher from 'pusher-js';
 import { createNet } from '../hyper/net.js';
 import { botSpeed, createBot } from './bot.js';
 import { createStage, readConfig, readSettings } from './page.js';
-import { HEIGHT, PADDLE_HALF, PLAYER_SPEED, RALLY_TICK_CAP, TICKS_PER_SECOND, WIDTH, approaches, bounce, createRally, crossed, halfOf, meets, speedAfter, step } from './physics.js';
+import { HEIGHT, PADDLE_HALF, PLAYER_SPEED, RALLY_TICK_CAP, SERVE_TICKS, TICKS_PER_SECOND, WIDTH, approaches, bounce, createRally, crossed, halfOf, meets, speedAfter, step } from './physics.js';
 import { storedFigure } from './picker.js';
 import { rallySeed } from './rules.js';
 import { createShow } from './show.js';
 
-const ANNOUNCE_TICKS = 110;
-const SERVE_TICKS = 50;
 const HEARTBEAT_MS = 2000;
 const POLL_MS = 700;
 const WHISPER_MS = 50;
@@ -422,7 +420,11 @@ function end(s) {
 
 /** The banner of a meme event and the serve's countdown, before tick 0 of a rally. */
 function phase(now) {
-    if (!snap || snap.status !== 'active' || !rally) return snap?.status ?? 'loading';
+    if (!snap || snap.status !== 'active' || !rally) {
+        theShow.unpin();
+
+        return snap?.status ?? 'loading';
+    }
     const until = rally.ref.servedAt - (rally.ref.pausedAt ?? now);
     if (until > 0) {
         const serveMs = msOf(SERVE_TICKS, snap.speed);
@@ -434,14 +436,22 @@ function phase(now) {
 
             return 'announce';
         }
+        pinFor(rally);
         banner.hidden = true;
 
         return previous ? 'point' : 'serve';
     }
+    pinFor(rally);
     banner.hidden = true;
     previous = null;
 
     return 'play';
+}
+
+/** The event of the rally in play pinned at the field's edge once its takeover is out; gone with the next rally. */
+function pinFor(r) {
+    if (r.ref.event) theShow.pin(r.ref.event, r.number);
+    else theShow.unpin();
 }
 
 /** The field from this player's side: they are always side 0 (left, or at the bottom upright). */

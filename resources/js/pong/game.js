@@ -4,7 +4,8 @@
  * second and hands each frame to the arena (arena.js) to draw. The player is side 0 (left, or at the bottom on a
  * phone held upright), the bot side 1.
  *
- * A rally goes: an announced meme event (all nine in every block of 21 rallies), a short countdown, play, then a pause on the point.
+ * A rally goes: an announced meme event (all nine in every block of 21 rallies; pinned at the field's edge after its
+ * takeover until the rally ends), a short countdown, play, then a pause on the point.
  * Goals count as they fall, so a Pizza Day rally can end the game with its first ball.
  *
  * The field and the player's input are page.js's (shared with the live match, live.js).
@@ -16,14 +17,11 @@
 import { botSpeed, createBot } from './bot.js';
 import './picker.js';
 import { createStage, readConfig, readSettings } from './page.js';
-import { HEIGHT, PADDLE_HALF, PLAYER_SPEED, TICKS_PER_SECOND, rallyHalf, stepRally } from './physics.js';
+import { ANNOUNCE_TICKS, HEIGHT, PADDLE_HALF, PLAYER_SPEED, POINT_TICKS, SERVE_TICKS, TICKS_PER_SECOND, rallyHalf, stepRally } from './physics.js';
 import { createGame, rallySeed } from './rules.js';
 import { createShow } from './show.js';
 import { musicState } from './sound.js';
 
-const ANNOUNCE_TICKS = 110;
-const SERVE_TICKS = 50;
-const POINT_TICKS = 70;
 const TICK_MS = 1000 / TICKS_PER_SECOND;
 
 function boot() {
@@ -93,6 +91,8 @@ function boot() {
             if (phase === 'announce') {
                 phase = 'serve';
                 wait = SERVE_TICKS;
+                // The takeover is out: the event stays pinned at the field's edge for its rally.
+                show.pin(rally.event, game.rally);
 
                 return;
             }
@@ -136,6 +136,7 @@ function boot() {
         if (rally.over || game.winner !== null) {
             phase = 'point';
             wait = POINT_TICKS;
+            show.unpin();
         }
     };
 

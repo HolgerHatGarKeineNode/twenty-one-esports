@@ -19,7 +19,9 @@ use App\Support\Pong\PongRules;
  * - rallies: 50 rallies between two bots, every event (five each) and level pair, each from its game seed and number;
  * - events: the event of every rally of the first three blocks of 21 for a few seeds (P8: all nine per block);
  * - games: whole games between two bot levels (PongGame::bots());
- * - pow: Proof of Work's paddle half per number of own hits, past its cap (P8: the cap checked in both languages).
+ * - pow: Proof of Work's paddle half per number of own hits, past its cap (P8: the cap checked in both languages);
+ * - timing: the pauses around a rally in ticks (on a point, a meme event's announcement, the serve's countdown), which
+ *   the referee serves by and the browser counts down.
  */
 final class PongGolden
 {
@@ -80,7 +82,7 @@ final class PongGolden
             $halves[] = ['hits' => $hits, 'half' => $pow->halfOf(0), 'other' => $pow->halfOf(1)];
         }
 
-        return ['rng' => $rng, 'rallies' => $rallies, 'events' => $events, 'games' => $games, 'pow' => ['grow' => PongPhysics::POW_GROW, 'max' => PongPhysics::POW_MAX_HALF, 'halves' => $halves]];
+        return ['rng' => $rng, 'rallies' => $rallies, 'events' => $events, 'games' => $games, 'pow' => ['grow' => PongPhysics::POW_GROW, 'max' => PongPhysics::POW_MAX_HALF, 'halves' => $halves], 'timing' => ['point' => PongPhysics::POINT_TICKS, 'announce' => PongPhysics::ANNOUNCE_TICKS, 'serve' => PongPhysics::SERVE_TICKS]];
     }
 
     public static function encode(mixed $data): string

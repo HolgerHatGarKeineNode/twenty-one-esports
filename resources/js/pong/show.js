@@ -5,7 +5,8 @@
  *
  * - The figures (resources/js/pong/cast.json) in the HUD, on the paddles and in the goal celebration: the scorer's
  *   victory pose slides in from their side for at most 2.5 s, never over the middle of the field, gone on a click.
- * - A meme event takes the field over while it is announced: its icon, its name and line, its staging in the arena.
+ * - A meme event takes the field over while it is announced: its icon, its name and line, its staging in the arena;
+ *   long enough to read (takeover.js), then pinned small at the field's edge for its rally.
  *   The Arbeitsamt stamps a waiting ball with its number ("Ihre Wartenummer: 21"), with a line for Markus Turm when
  *   he plays; a ball bouncing off the tax block or the border wall sparks there instead of at a paddle.
  * - Sound (sound.js): blips, the goal, the event's sound, the figures' clips; the settings panel (gear in the HUD)
@@ -15,12 +16,15 @@
  */
 import { autoQuality } from './arena.js';
 import { TICKER, eventIcon, figure, neon, oneOf, portrait as portraitOf, pose } from './cast.js';
-import { eventText, writeSetting } from './page.js';
+import { writeSetting } from './page.js';
 import { ARBEITSAMT, CONTROLS, HEIGHT, TAX, WIDTH } from './physics.js';
 import { EVENTS } from './rules.js';
 import { play, say, set as setSound, settings as sound } from './sound.js';
+import { TAKEOVER_OUTRO_MS, TAKEOVER_SLACK_MS, eventText } from './takeover.js';
 
 const CHEER_MS = 2200;
+// The arena's staging of a meme event (flash, slash) keeps the length it had before the takeover grew (2026-10-10).
+const STAGING_MS = 1800;
 const FRAME_KEEP = 600;
 
 export function createShow({ arena, settings, t, castTexts, figures: ids, arenaName }) {
@@ -150,10 +154,24 @@ export function createShow({ arena, settings, t, castTexts, figures: ids, arenaN
 
     /* ---------- Moments ---------- */
 
-    /** The takeover of a meme event, for `ms` milliseconds (its announcement). */
+    /** What the show staged and when (performance.now()), for the browser test: takeovers, their outro, the pin. */
+    const timeline = [];
+    const mark = (kind, event, rally) => {
+        timeline.push({ kind, event, rally, at: performance.now() });
+        if (timeline.length > 200) timeline.shift();
+    };
+    let outroTimer = 0;
+    let pinned = null;
+
+    /**
+     * The takeover of a meme event, for `ms` milliseconds (its announcement): in for 600 ms, its name and line held
+     * still, out for TAKEOVER_OUTRO_MS ending a frame's slack before the end (takeover.js has the numbers and the reading time they cover). The
+     * arena's own staging keeps its short length.
+     */
     function announce(event, ms, seed = 0) {
         const banner = $('banner');
         const [name, line] = eventText(t, event);
+        unpin();
         banner.querySelector('small').textContent = t('Meme event');
         banner.querySelector('b').textContent = name;
         banner.querySelector('span').textContent = line;
@@ -167,15 +185,64 @@ export function createShow({ arena, settings, t, castTexts, figures: ids, arenaN
             if (icon.complete && icon.naturalWidth > 0) icon.style.visibility = '';
         }
         banner.dataset.event = event;
-        banner.classList.remove('in');
+        banner.classList.remove('in', 'out');
         void banner.offsetWidth;
         banner.classList.add('in');
-        arena.event(event, ms);
+        arena.event(event, Math.min(ms, STAGING_MS));
+        mark('takeover', event, seed);
         // The page hides it when the rally starts; a moment staged on its own goes after its time as well.
+        clearTimeout(outroTimer);
         clearTimeout(bannerTimer);
-        bannerTimer = setTimeout(() => { if (banner.dataset.event === event) banner.hidden = true; }, ms);
+        outroTimer = setTimeout(() => {
+            if (banner.dataset.event !== event || banner.hidden) return;
+            banner.classList.add('out');
+            mark('outro', event, seed);
+        }, Math.max(0, ms - TAKEOVER_OUTRO_MS - TAKEOVER_SLACK_MS));
+        bannerTimer = setTimeout(() => {
+            if (banner.dataset.event !== event) return;
+            banner.hidden = true;
+            banner.classList.remove('out');
+            mark('hidden', event, seed);
+        }, ms);
         play[({ difficulty: 'ratchet' })[event] ?? event]?.();
         say(`event:${event}`);
+    }
+
+    /**
+     * After the takeover the event stays readable for its rally: icon, name and line pinned at the field's top edge
+     * (upright, turned with the field to its left edge), off the paddles' reach. Once per rally; unpin() at its end.
+     */
+    function pin(event, rally) {
+        const box = $('event-pin');
+        if (!box || (pinned && pinned.event === event && pinned.rally === rally)) return;
+        // The announcement is over on the game's clock: a takeover still fading out goes now, not a few ms later.
+        const banner = $('banner');
+        clearTimeout(outroTimer);
+        clearTimeout(bannerTimer);
+        if (!banner.hidden) {
+            banner.hidden = true;
+            banner.classList.remove('out');
+            mark('hidden', banner.dataset.event, rally);
+        }
+        const [name, line] = eventText(t, event);
+        box.querySelector('img').src = eventIcon(event);
+        box.querySelector('b').textContent = name;
+        box.querySelector('.event-pin-text > span').textContent = line;
+        box.dataset.event = event;
+        box.hidden = false;
+        box.classList.remove('in');
+        void box.offsetWidth;
+        box.classList.add('in');
+        pinned = { event, rally };
+        mark('pin', event, rally);
+    }
+
+    function unpin() {
+        const box = $('event-pin');
+        if (!pinned) return;
+        if (box) box.hidden = true;
+        mark('unpin', pinned.event, pinned.rally);
+        pinned = null;
     }
 
     function serve(rally) {
@@ -337,6 +404,10 @@ export function createShow({ arena, settings, t, castTexts, figures: ids, arenaN
     return {
         frame,
         announce,
+        pin,
+        unpin,
+        pinned: () => pinned,
+        timeline: () => timeline.map((entry) => ({ ...entry })),
         serve,
         goal,
         end,

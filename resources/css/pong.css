@@ -130,10 +130,38 @@ body.gl #field { background: transparent; box-shadow: none; border-radius: 0; }
 .banner small { display: block; font-size: 13px; font-weight: 700; color: var(--ev); }
 .banner b { display: block; font: 800 clamp(26px, 9cqmin, 56px)/1.05 var(--font-display); text-shadow: 0 0 24px color-mix(in srgb, var(--ev) 80%, transparent), 0 2px 0 rgb(0 0 0 / 0.6); }
 .banner span { display: block; max-width: 36ch; font-size: 15px; color: var(--pong-ink); text-shadow: 0 1px 2px rgb(0 0 0 / 0.8); }
-.banner.in img { animation: event-icon 560ms var(--ease-pop) both; }
-.banner.in small, .banner.in b, .banner.in span { animation: rise 320ms var(--ease-out) 140ms both; }
+/* In for 600 ms, out for the last 400 ms of the announcement (resources/js/pong/takeover.js); still in between. */
+.banner.in img { animation: event-icon 600ms var(--ease-pop) both; }
+.banner.in small, .banner.in b, .banner.in span { animation: rise 400ms var(--ease-out) 200ms both; }
+.banner.out { animation: takeover-out 400ms ease-in both; }
+@keyframes takeover-out { to { opacity: 0; transform: scale(0.96); } }
 @keyframes event-icon { 0% { transform: scale(0.3) rotate(-24deg); opacity: 0; } 60% { transform: scale(1.12) rotate(4deg); opacity: 1; } 100% { transform: scale(1) rotate(0); } }
 @keyframes rise { from { transform: translateY(12px); opacity: 0; } to { transform: none; opacity: 1; } }
+
+/*
+ * The event pinned for its rally after the takeover: small and translucent at the top edge, between the paddles' columns
+ * (70 % of the field's width), where only the wall bounces happen. Upright the field lies turned (its top wall is the
+ * screen's left edge), and the pin turns with it, reading upwards along that edge.
+ */
+.event-pin { --ev: var(--pong-ice); position: absolute; left: 50%; top: 6px; transform: translateX(-50%); display: flex; align-items: center; gap: 8px; width: max-content; max-width: 70cqw; padding: 4px 12px 4px 4px; border-radius: 10px;
+    background: rgb(4 6 13 / 0.55); box-shadow: inset 0 -2px 0 color-mix(in srgb, var(--ev) 70%, transparent); pointer-events: none; }
+.event-pin[data-event=halving] { --ev: #67e8f9; }
+.event-pin[data-event=brrr] { --ev: #22c55e; }
+.event-pin[data-event=pizza] { --ev: #fb923c; }
+.event-pin[data-event=difficulty], .event-pin[data-event=tax] { --ev: #ef4444; }
+.event-pin[data-event=controls] { --ev: #f97316; }
+.event-pin[data-event=few] { --ev: #a78bfa; }
+.event-pin[data-event=pow] { --ev: #facc15; }
+.event-pin[data-event=arbeitsamt] { --ev: #fb7185; }
+.event-pin img { width: 32px; height: 32px; flex: none; object-fit: contain; filter: drop-shadow(0 0 8px color-mix(in srgb, var(--ev) 70%, transparent)); }
+.event-pin-text { display: flex; flex-direction: column; min-width: 0; line-height: 1.25; }
+.event-pin b { font: 800 13px/1.2 var(--font-display); color: var(--ev); }
+.event-pin-text span { font-size: 12px; color: var(--pong-ink); text-shadow: 0 1px 2px rgb(0 0 0 / 0.8); }
+.event-pin.in { animation: pin-in 400ms var(--ease-out) both; }
+@keyframes pin-in { from { opacity: 0; translate: 0 -8px; } to { opacity: 1; translate: none; } }
+body[data-portrait="1"] .event-pin { left: 6px; top: 50%; max-width: 70cqh; transform-origin: 0 0; transform: rotate(-90deg) translateX(-50%); }
+body[data-portrait="1"] .event-pin.in { animation-name: pin-in-upright; }
+@keyframes pin-in-upright { from { opacity: 0; translate: -8px 0; } to { opacity: 1; translate: none; } }
 
 /* The announcer's line of the ticker, now and then on a serve. */
 .ticker { position: absolute; left: 50%; top: 10%; transform: translateX(-50%); max-width: calc(100% - 32px); padding: 8px 16px; border-radius: 10px; background: rgb(4 6 13 / 0.78);
@@ -220,5 +248,5 @@ body[data-portrait="1"] .cheer.in[data-side="1"] { animation-name: cheer-t; }
 /* Reduced motion (the system's or the setting's): nothing slides, pops or flies. */
 body.still .hud .score.pop, body.still .banner.in img, body.still .banner.in small, body.still .banner.in b, body.still .banner.in span { animation: none; }
 body.still .cheer.in { animation: cheer-still 2200ms linear both; }
-body.still .ticker.in, body.still .queue.in { animation: none; }
+body.still .ticker.in, body.still .queue.in, body.still .banner.out, body.still .event-pin.in { animation: none; }
 @keyframes cheer-still { 0%, 92% { opacity: 1; } 100% { opacity: 0; } }

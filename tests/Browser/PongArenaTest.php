@@ -394,6 +394,73 @@ test('the five P7 meme events take the field over in a real game', function () {
     }
 });
 
+/**
+ * The takeover of rally 1 and the pin after it, from the show's timeline (window.pongShow.timeline()) and the boxes on
+ * screen: the hold between the 600 ms intro and the outro (which runs its 400 ms in full) against the reading time of the name and line shown
+ * (resources/js/pong/takeover.js: 1.5 s plus 0.3 s a word, at least 4 s), the pin inside the field, off the HUD.
+ */
+const PONG_TAKEOVER = <<<'JS'
+    () => {
+        const box = (el) => { const r = el.getBoundingClientRect(); return { top: Math.round(r.top), left: Math.round(r.left), right: Math.round(r.right), bottom: Math.round(r.bottom), w: Math.round(r.width), h: Math.round(r.height) }; };
+        const banner = document.querySelector('[data-test=pong-banner]');
+        const text = banner.querySelector('b').textContent + ' ' + banner.querySelector('span').textContent;
+        const words = text.split(/\s+/).filter((word) => /[\p{L}\p{N}]/u.test(word)).length;
+        const at = (kind) => window.pongShow.timeline().find((e) => e.kind === kind && e.rally === 1)?.at ?? null;
+        const pin = document.querySelector('[data-test=pong-event-pin]');
+        return {
+            words,
+            reading: Math.max(4000, 1500 + 300 * words),
+            hold: Math.round(at('outro') - at('takeover') - 600),
+            shown: Math.round(at('hidden') - at('takeover')),
+            outro: Math.round(at('hidden') - at('outro')),
+            pin: pin.checkVisibility() ? { event: pin.dataset.event, name: pin.querySelector('b').textContent, ...box(pin) } : null,
+            field: box(document.querySelector('[data-test=pong-field]')),
+            hud: box(document.querySelector('.hud')),
+            portrait: document.body.dataset.portrait === '1',
+        };
+    }
+    JS;
+
+test('a meme event holds still long enough to read, then stays pinned at the field\'s edge for its rally', function (int $width, int $height) {
+    // Real time: rally 1 of seed 5 is the Arbeitsamt, the longest name and line.
+    $page = arenaPage('/proof-of-pong/bot?bot=schiff&figure=saylor&seed=5', $width, $height, ['autoplay' => 1, 'eventEvery' => 1]);
+    $page->locator('[data-test=pong-start-btn]')->click();
+    BrowserWait::until($page, '() => window.pongGame.state().phase === "play"', 15_000);
+    $seen = $page->evaluate(PONG_TAKEOVER);
+
+    expect($seen['words'])->toBe(15)
+        ->and($seen['hold'])->toBeGreaterThanOrEqual($seen['reading'])
+        ->and($seen['shown'])->toBeGreaterThanOrEqual(7_800)
+        ->and($seen['outro'])->toBeGreaterThanOrEqual(400)
+        ->and($seen['pin'])->toMatchArray(['event' => 'arbeitsamt', 'name' => __('Job Centre – Please wait', [], 'de')])
+        // Inside the field, under the HUD; lying along the top edge, upright turned along the left edge.
+        ->and($seen['pin']['top'])->toBeGreaterThanOrEqual($seen['field']['top'])->toBeGreaterThanOrEqual($seen['hud']['bottom'])
+        ->and($seen['pin']['bottom'])->toBeLessThanOrEqual($seen['field']['bottom'])
+        ->and($seen['pin']['left'])->toBeGreaterThanOrEqual($seen['field']['left'])
+        ->and($seen['pin']['right'])->toBeLessThanOrEqual($seen['field']['right']);
+    $seen['portrait']
+        ? expect($seen['pin']['h'])->toBeGreaterThan($seen['pin']['w'])->and($seen['pin']['left'] - $seen['field']['left'])->toBeLessThanOrEqual(8)
+        : expect($seen['pin']['w'])->toBeGreaterThan($seen['pin']['h'])->and($seen['pin']['top'] - $seen['field']['top'])->toBeLessThanOrEqual(8);
+    arenaShot($page, "shot-{$width}-event-pinned");
+    if (is_string(getenv('PONG_SHOTS')) && getenv('PONG_SHOTS') !== '') {
+        File::put(getenv('PONG_SHOTS')."/takeover-{$width}.json", (string) json_encode($seen, JSON_PRETTY_PRINT));
+    }
+
+    // Gone when the rally ends.
+    BrowserWait::until($page, '() => window.pongGame.state().phase === "point"', 60_000);
+    expect($page->evaluate('() => document.querySelector("[data-test=pong-event-pin]").checkVisibility()'))->toBeFalse()
+        ->and($page->evaluate('() => window.pongShow.timeline().filter((e) => e.rally === 1).map((e) => e.kind)'))->toBe(['takeover', 'outro', 'hidden', 'pin', 'unpin'])
+        ->and([...$page->evaluate('() => window.__errors ?? ["collector missing"]'), ...$page->evaluate(BrowserConsole::BAD_RESPONSES)])->toBe([]);
+
+    // Positive control: the collector sees a thrown error.
+    $page->evaluate('() => { setTimeout(() => { throw new Error("positive control"); }); }');
+    usleep(100_000);
+    expect($page->evaluate('() => window.__errors'))->toContain('error: Uncaught Error: positive control');
+})->with([
+    'phone 390x844' => [390, 844],
+    'desktop 1440x900' => [1440, 900],
+]);
+
 test('measurements of the five P7 events at five sizes for the report: in the window, console clean', function (int $width, int $height) {
     $dir = getenv('PONG_SHOTS');
     if (! is_string($dir) || $dir === '') {

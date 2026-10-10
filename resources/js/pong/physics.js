@@ -34,6 +34,10 @@ export const GAP_SPEED = 300;
 export const QUEUE_TICKS = 60;
 export const POW_GROW = 1500;
 export const POW_MAX_HALF = 18000;
+// The pauses around a rally in ticks, as PongPhysics: on a point, a meme event's announcement (takeover.js), the serve's countdown.
+export const POINT_TICKS = 70;
+export const ANNOUNCE_TICKS = 480;
+export const SERVE_TICKS = 50;
 
 export const HALVING = 'halving';
 export const BRRR = 'brrr';

@@ -385,3 +385,24 @@ test('a referee restored from a state served under other rules judges the rally 
         ->and($restored['points'])->toBe(1)
         ->and($restored['half'])->toBe(PongPhysics::PADDLE_HALF);
 });
+
+it('serves a meme event rally after its whole announcement, the first rally as well, and a plain one as quickly as before', function () {
+    // Every rally a meme event: rally 1 of seed 7 is the tax office.
+    $referee = PongReferee::start(7, new PongRules(eventBlock: 1), 0);
+
+    // Three seconds before the first serve, with the 8 s announcement before its countdown: (180 - 50 + 480) ticks.
+    expect($referee->event)->toBe(PongRules::TAX)
+        ->and($referee->servedAt)->toBe(10_166);
+
+    $contact = $referee->contact(0);
+    expect($referee->report($contact['side'], 0, $contact['tick'], 'goal'))->toBe('miss');
+    $goalAt = $referee->timeOf($referee->balls[0]['goal'][0]);
+
+    // The next rally: the point's pause, the announcement and the countdown, (70 + 480 + 50) ticks = 10 s after the goal.
+    expect($referee->nextIfOver(0))->toBeTrue()
+        ->and($referee->rally)->toBe(2)
+        ->and($referee->event)->not->toBeNull()
+        ->and($referee->servedAt - $goalAt)->toBe(10_000)
+        // A rally without an event keeps its quick serve: the point's pause and the countdown, two seconds.
+        ->and($referee->ms(PongReferee::POINT_TICKS + PongReferee::SERVE_TICKS))->toBe(2_000);
+});
