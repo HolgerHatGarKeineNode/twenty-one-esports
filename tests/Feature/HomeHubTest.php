@@ -214,3 +214,16 @@ test('the queries do not grow with entrants, boards, results, newcomers or ladde
  * 2026-10-01: the live season is kept per request, so a new game adds no query.
  */
 const HOME_QUERY_BUDGET = 51;
+
+test('home and the login render twice from a cache that unserializes no objects, as production\'s Redis does', function () {
+    // config/cache.php sets serializable_classes = false: a cached Carbon comes back as __PHP_Incomplete_Class.
+    // The test store keeps values unserialized; this one serializes like Redis, so the second request reads it back.
+    config(['cache.stores.array.serialize' => true, 'cache.serializable_classes' => false]);
+    app('cache')->forgetDriver('array');
+    planBlock0(now()->addDays(5)->setTime(21, 0)->toIso8601String());
+
+    foreach ([1, 2] as $request) {
+        $this->get(route('home'))->assertOk()->assertSee('data-test="home-season"', false);
+        $this->get(route('login'))->assertOk();
+    }
+});

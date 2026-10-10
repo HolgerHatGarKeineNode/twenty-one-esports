@@ -384,7 +384,9 @@ final class HomeBoard
             $eras = [];
 
             foreach (array_slice($chain['schedule'], 0, 3) as $row) {
-                $eras[] = ['era' => (int) $row['era'], 'from' => CarbonImmutable::instance($row['from']), 'sats' => (int) ($payKey === null ? 0 : ($row['rewards'][$payKey] ?? 0))];
+                // A timestamp, not a Carbon: the cache unserializes no objects (config cache.serializable_classes = false),
+                // a cached CarbonImmutable came back as __PHP_Incomplete_Class and took home down (500) from the second request on.
+                $eras[] = ['era' => (int) $row['era'], 'from' => CarbonImmutable::instance($row['from'])->getTimestamp(), 'sats' => (int) ($payKey === null ? 0 : ($row['rewards'][$payKey] ?? 0))];
             }
 
             return [
@@ -398,13 +400,16 @@ final class HomeBoard
         };
 
         try {
-            /** @var array{state: string, slug: string|null, live: bool, height: int|null, eras: list<array{era: int, from: CarbonImmutable, sats: int}>, payKey: string|null} */
-            return Cache::remember('home:season-card:'.app()->getLocale(), 60, $read);
+            /** @var array{state: string, slug: string|null, live: bool, height: int|null, eras: list<array{era: int, from: int, sats: int}>, payKey: string|null} $card */
+            $card = Cache::remember('home:season-card:'.app()->getLocale(), 60, $read);
         } catch (Throwable $e) {
             report($e);
-
-            return $read();
+            $card = $read();
         }
+
+        $card['eras'] = array_map(fn (array $era): array => [...$era, 'from' => CarbonImmutable::createFromTimestamp($era['from'])], $card['eras']);
+
+        return $card;
     }
 
     /**
