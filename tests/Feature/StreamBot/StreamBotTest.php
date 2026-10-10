@@ -127,7 +127,7 @@ test('a post is a kind-1311 live chat message under the stream, signed by the bo
         ->and($post->event_id)->toBe($event->id)
         ->and($post->content)->toBe($event->content)
         ->and($post->relays_accepted)->toBe(2)
-        ->and($post->next_due_at->getTimestamp())->toBe(now()->addMinutes(20)->getTimestamp());
+        ->and($post->next_due_at->getTimestamp())->toBe(now()->addMinutes((int) config('esports.stream_bot.interval_minutes'))->getTimestamp());
 });
 
 test('a message that names a player for an achievement goes out with their p tag after the stream\'s a tag', function () {
@@ -190,17 +190,19 @@ test('the interval: nothing before the next post is due, even with a busy chat',
     botTick();
     $this->humans = [(new TestSigner)->pubkey];
 
-    botLater(19);
-    expect(botTick())->toBe('no post: the next post is due at 14:20');
+    $interval = (int) config('esports.stream_bot.interval_minutes');
+    botLater($interval - 1);
+    expect(botTick())->toBe('no post: the next post is due at '.now()->addMinute()->timezone(config('esports.stream_bot.timezone'))->format('H:i'));
 
     botLater(1);
     expect(botTick())->toStartWith('posted ')
         ->and($this->published)->toHaveCount(2);
 });
 
-test('the jitter keeps every interval within 20 ± 5 minutes', function () {
+test('the jitter keeps every interval within the configured window', function () {
     config(['esports.stream_bot.jitter_minutes' => 5, 'esports.stream_bot.daily_cap' => 100, 'esports.stream_bot.repeat_hours' => 0]);
     streamIsLive();
+    $interval = (int) config('esports.stream_bot.interval_minutes');
 
     for ($i = 0; $i < 12; $i++) {
         botTick();
@@ -210,8 +212,8 @@ test('the jitter keeps every interval within 20 ± 5 minutes', function () {
     $gaps = StreamBotPost::query()->get()->map(fn (StreamBotPost $post): int => $post->next_due_at->getTimestamp() - $post->posted_at->getTimestamp());
 
     expect($gaps)->toHaveCount(12)
-        ->and($gaps->min())->toBeGreaterThanOrEqual(15 * 60)
-        ->and($gaps->max())->toBeLessThanOrEqual(25 * 60)
+        ->and($gaps->min())->toBeGreaterThanOrEqual(($interval - 5) * 60)
+        ->and($gaps->max())->toBeLessThanOrEqual(($interval + 5) * 60)
         ->and($gaps->unique()->count())->toBeGreaterThan(1);
 });
 
@@ -220,7 +222,7 @@ test('never two bot posts in a row: a human in the chat, or 45 minutes', functio
     botTick();
     $readsAfterFirst = $this->chatReads;
 
-    botLater(20);
+    botLater((int) config('esports.stream_bot.interval_minutes'));
     expect(botTick())->toBe('no post: no human wrote since the last post, and 45 min have not passed')
         ->and($this->chatReads)->toBe($readsAfterFirst + 1);
 
@@ -305,9 +307,11 @@ test('a post no relay accepted is logged, counts for nothing and is retried afte
     expect(botTick())->toStartWith('posted ');
 });
 
-test('rotation: no builder within the last 4 posts, no fact twice within 12 hours', function () {
+test('rotation: no builder inside the gap, no fact twice inside the repeat window', function () {
     config(['esports.stream_bot.daily_cap' => 100]);
     streamIsLive();
+    $gap = (int) config('esports.stream_bot.builder_gap');
+    $window = (int) config('esports.stream_bot.repeat_hours') * 3600;
 
     for ($i = 0; $i < 20; $i++) {
         botTick();
@@ -319,13 +323,40 @@ test('rotation: no builder within the last 4 posts, no fact twice within 12 hour
     expect($posts->count())->toBeGreaterThan(8);
 
     foreach ($posts as $index => $post) {
-        $earlier = $posts->slice(max(0, $index - 4), min(4, $index))->pluck('builder')->all();
+        $earlier = $posts->slice(max(0, $index - $gap), min($gap, $index))->pluck('builder')->all();
         expect($earlier)->not->toContain($post->builder);
 
         $sameFact = $posts->slice(0, $index)->where('fact_key', $post->fact_key)
-            ->filter(fn (StreamBotPost $other): bool => $post->posted_at->getTimestamp() - $other->posted_at->getTimestamp() < 12 * 3600);
+            ->filter(fn (StreamBotPost $other): bool => $post->posted_at->getTimestamp() - $other->posted_at->getTimestamp() < $window);
         expect($sameFact)->toBeEmpty();
     }
+});
+
+test('a delivered line never goes out again, even when the fact window is open', function () {
+    // Pin the variant and leave only this builder in the draw, so a removed
+    // dedup returns this exact line instead of some other tip by chance.
+    $builders = app(StreamBotBuilders::class);
+    $builders->pickVariantsWith(fn (int $variants): int => 0);
+    app()->instance(StreamBotBuilders::class, $builders);
+    $login = $builders->build('login', CarbonImmutable::now())[0];
+
+    StreamBotPost::query()->create([
+        'builder' => 'login',
+        'fact_key' => 'feature:login',
+        'event_id' => str_repeat('ab', 32),
+        'content' => $login->content,
+        'relays_accepted' => 1,
+        'relays_total' => 1,
+        'posted_at' => now(),
+        'next_due_at' => now(),
+    ]);
+
+    $others = array_values(array_diff(array_keys($builders->all()), ['login']));
+    $next = app(StreamBot::class)->next(CarbonImmutable::now(), $others, []);
+
+    expect($next)->not->toBeNull()
+        ->and($next->builder)->toBe('login')
+        ->and($next->content)->not->toBe($login->content);
 });
 
 test('with every fact and tip used up, the bot says nothing', function () {

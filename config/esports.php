@@ -1211,7 +1211,9 @@ return [
     | never sees any, so only the `alone_minutes` rule lets it post again.
     |
     | Rotation: no builder again within `builder_gap` posts, no fact (a
-    | tournament, a game, a feature tip) again within `repeat_hours`.
+    | tournament, a game, a feature tip) again within `repeat_hours`. A line
+    | whose exact text already went out is never posted again, whatever the
+    | window. A tip with every wording used simply stops.
     |
     */
 
@@ -1221,14 +1223,14 @@ return [
         'chat_relays' => array_values(array_filter(array_map('trim', explode(',', (string) env('ESPORTS_STREAM_BOT_CHAT_RELAYS', ''))))),
         'quiet_hours' => env('ESPORTS_STREAM_BOT_QUIET_HOURS'),
         'timezone' => 'Europe/Berlin',
-        'interval_minutes' => 20,
-        'jitter_minutes' => 5,
+        'interval_minutes' => 22,
+        'jitter_minutes' => 6,
         'alone_minutes' => 45,
-        'daily_cap' => 24,
-        // One kind-1 note on the bot profile across every type: four hours, about four notes on a waking day. 0 turns the shared brake off.
-        'profile_gap_minutes' => 240,
-        'builder_gap' => 4,
-        'repeat_hours' => 12,
+        'daily_cap' => 18,
+        // One kind-1 note on the bot profile across every type: three hours, about five notes on a waking day. 0 turns the shared brake off.
+        'profile_gap_minutes' => 180,
+        'builder_gap' => 5,
+        'repeat_hours' => 24,
         // A failed post (no relay accepted) is tried again after this long.
         'retry_minutes' => 5,
         // The stream counts as live while its last accepted `live` 30311 is this young (republished every 20 min) ...

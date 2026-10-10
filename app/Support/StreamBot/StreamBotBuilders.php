@@ -5,7 +5,13 @@ namespace App\Support\StreamBot;
 use App\Enums\ChessGameStatus;
 use App\Enums\SeriesStatus;
 use App\Enums\TournamentStatus;
+use App\Games\Blockfill;
+use App\Games\Blockli;
+use App\Games\Checkers;
 use App\Games\GameRegistry;
+use App\Games\Hyperbitcoinization;
+use App\Games\NineMensMorris;
+use App\Games\ProofOfPong;
 use App\Games\ScoreMetric;
 use App\Games\TrackmaniaNationsForever;
 use App\Models\ChessGame;
@@ -52,8 +58,14 @@ use LogicException;
  */
 final class StreamBotBuilders
 {
-    /** How much likelier a fact builder is drawn than a feature tip. */
+    /** How much likelier a fact builder is drawn than a general feature tip. */
     public const FACT_WEIGHT = 3;
+
+    /** A game tip, between a fact and a general feature, so a new game is not drowned out. */
+    public const GAME_TIP_WEIGHT = 2;
+
+    /** A general feature tip (login, clans, a zap). */
+    public const FEATURE_WEIGHT = 1;
 
     /** A tournament whose sign-up closes within this many hours gets a "last call". */
     public const LAST_CALL_HOURS = 3;
@@ -70,8 +82,11 @@ final class StreamBotBuilders
     /** Messages with numbers are read in this locale, whatever the process runs in. */
     private const LOCALE = 'en';
 
-    /** @var (Closure(int): int)|null picks a variant; random by default */
+    /** @var (Closure(int): int)|null picks a variant; the first unused one by default */
     private ?Closure $variantPicker = null;
+
+    /** @var (Closure(string): bool)|null true when that exact chat text already went out */
+    private ?Closure $usedContent = null;
 
     public function __construct(
         private GameRegistry $games,
@@ -83,38 +98,68 @@ final class StreamBotBuilders
     ) {}
 
     /**
-     * Builder name => true for a fact builder, false for a feature tip.
+     * Builder name => draw weight. Facts outweigh a game tip, a game tip a
+     * general feature. A game tip is listed only while that game is registered,
+     * so a switched-off game never enters the rotation.
      *
-     * @return array<string, bool>
+     * @return array<string, int>
      */
     public function all(): array
     {
         return [
-            'tournament_signup' => true,
-            'tournament_last_call' => true,
-            'tournament_live' => true,
-            'live_game' => true,
-            'live_games' => true,
-            'live_series' => true,
-            'tournament_winner' => true,
-            'rank_up' => true,
-            'new_clan' => true,
-            'ladder_top' => true,
-            'season' => true,
-            'stats' => true,
-            'tmnf_week' => true,
-            'tmnf_top' => true,
-            'tmnf_podium' => true,
-            'play_blitz' => false,
-            'daily_chess' => false,
-            'clan_challenge' => false,
-            'invite_friend' => false,
-            'clans' => false,
-            'badges' => false,
-            'all_games' => false,
-            'login' => false,
-            'zap' => false,
+            'tournament_signup' => self::FACT_WEIGHT,
+            'tournament_last_call' => self::FACT_WEIGHT,
+            'tournament_live' => self::FACT_WEIGHT,
+            'live_game' => self::FACT_WEIGHT,
+            'live_games' => self::FACT_WEIGHT,
+            'live_series' => self::FACT_WEIGHT,
+            'tournament_winner' => self::FACT_WEIGHT,
+            'rank_up' => self::FACT_WEIGHT,
+            'new_clan' => self::FACT_WEIGHT,
+            'ladder_top' => self::FACT_WEIGHT,
+            'season' => self::FACT_WEIGHT,
+            'stats' => self::FACT_WEIGHT,
+            'tmnf_week' => self::FACT_WEIGHT,
+            'tmnf_top' => self::FACT_WEIGHT,
+            'tmnf_podium' => self::FACT_WEIGHT,
+            'play_blitz' => self::FEATURE_WEIGHT,
+            'daily_chess' => self::FEATURE_WEIGHT,
+            'clan_challenge' => self::FEATURE_WEIGHT,
+            'invite_friend' => self::FEATURE_WEIGHT,
+            'clans' => self::FEATURE_WEIGHT,
+            'badges' => self::FEATURE_WEIGHT,
+            'all_games' => self::FEATURE_WEIGHT,
+            'login' => self::FEATURE_WEIGHT,
+            'zap' => self::FEATURE_WEIGHT,
+            ...$this->gameTips(),
         ];
+    }
+
+    /**
+     * Game tips that may speak right now: name => weight.
+     *
+     * @return array<string, int>
+     */
+    private function gameTips(): array
+    {
+        $tips = [];
+
+        foreach ([
+            'proof_of_pong' => ProofOfPong::SLUG,
+            'hyperbitcoinization' => Hyperbitcoinization::SLUG,
+            'blockfill_play' => Blockfill::SLUG,
+            'board_blockli' => Blockli::SLUG,
+            'board_morris' => NineMensMorris::SLUG,
+            'board_checkers' => Checkers::SLUG,
+            'aoe2' => 'age-of-empires-2',
+            'ea_fc' => 'ea-sports-fc-27',
+        ] as $builder => $slug) {
+            if ($this->games->find($slug) !== null || ($builder === 'ea_fc' && $this->games->find('ea-sports-fc-26') !== null)) {
+                $tips[$builder] = self::GAME_TIP_WEIGHT;
+            }
+        }
+
+        return $tips;
     }
 
     /**
@@ -125,6 +170,17 @@ final class StreamBotBuilders
     public function pickVariantsWith(?Closure $picker): void
     {
         $this->variantPicker = $picker;
+    }
+
+    /**
+     * Skip a rendered line the chat already carried. Set for a tick, cleared
+     * after it. Null (the tests) keeps the picked variant and does not walk.
+     *
+     * @param  (Closure(string): bool)|null  $used
+     */
+    public function skipPosted(?Closure $used): void
+    {
+        $this->usedContent = $used;
     }
 
     /**
@@ -161,6 +217,14 @@ final class StreamBotBuilders
                 'all_games' => $this->allGames(),
                 'login' => $this->feature('login', route('login')),
                 'zap' => $this->zap(),
+                'proof_of_pong' => $this->feature('proof_of_pong', route('pong.index')),
+                'hyperbitcoinization' => $this->feature('hyperbitcoinization', route('hyper.index')),
+                'blockfill_play' => $this->feature('blockfill_play', route('stacker.play')),
+                'board_blockli' => $this->boardTip('board_blockli', Blockli::SLUG),
+                'board_morris' => $this->boardTip('board_morris', NineMensMorris::SLUG),
+                'board_checkers' => $this->boardTip('board_checkers', Checkers::SLUG),
+                'aoe2' => $this->feature('aoe2', route('games.series', 'age-of-empires-2')),
+                'ea_fc' => $this->eaFc(),
                 default => throw new LogicException("Unknown stream bot builder [{$builder}]."),
             };
         } finally {
@@ -194,14 +258,14 @@ final class StreamBotBuilders
             $places = $landing->places();
             $pot = $this->potSats($tournament);
 
-            $messages[] = $this->message('tournament_signup', 'tournament-signup:'.$tournament->id, [
+            $this->add($messages, $this->message('tournament_signup', 'tournament-signup:'.$tournament->id, [
                 'name' => $name,
                 'game' => Lobbies::isLobby($tournament) ? $this->games->name($tournament->game).', one lobby match' : $this->gameLine($tournament->game, $tournament->mode),
                 'starts' => $this->berlin($tournament->starts_at),
                 'spots' => $places['taken'].' of '.$places['places'].' spots taken',
                 'pot' => $pot === null ? '' : ' · 💰 '.number_format($pot).' sats in the pot',
                 'url' => route('tournaments.show', $tournament),
-            ]);
+            ]));
         }
 
         return $messages;
@@ -230,13 +294,13 @@ final class StreamBotBuilders
                 continue;
             }
 
-            $messages[] = $this->message('tournament_last_call', 'tournament-last-call:'.$tournament->id, [
+            $this->add($messages, $this->message('tournament_last_call', 'tournament-last-call:'.$tournament->id, [
                 'name' => $name,
                 'left' => $this->duration($closes->getTimestamp() - $now->getTimestamp()),
                 'open' => $open.' '.($open === 1 ? 'spot' : 'spots'),
                 'game' => Lobbies::isLobby($tournament) ? $this->games->name($tournament->game).', one lobby match' : $this->gameLine($tournament->game, $tournament->mode),
                 'url' => route('tournaments.signup', $tournament),
-            ]);
+            ]));
         }
 
         return $messages;
@@ -254,10 +318,10 @@ final class StreamBotBuilders
             $name = StreamBotCopy::clean($tournament->name);
 
             if ($name !== '') {
-                $messages[] = $this->message('tournament_live', 'tournament-live:'.$tournament->id, [
+                $this->add($messages, $this->message('tournament_live', 'tournament-live:'.$tournament->id, [
                     'name' => $name,
                     'url' => route('tournaments.tv', $tournament),
-                ]);
+                ]));
             }
         }
 
@@ -281,19 +345,20 @@ final class StreamBotBuilders
                 continue;
             }
 
-            $white = StreamBotCopy::clean($game->white->displayName(), 24);
-            $black = StreamBotCopy::clean($game->black->displayName(), 24);
+            $tags = [];
+            $white = $this->mention($game->white, StreamBotCopy::clean($game->white->displayName(), 24), $tags);
+            $black = $this->mention($game->black, StreamBotCopy::clean($game->black->displayName(), 24), $tags);
 
             if ($white === '' || $black === '') {
                 continue;
             }
 
-            $messages[] = $this->message('live_game', 'live-game:'.$game->id, [
+            $this->add($messages, $this->message('live_game', 'live-game:'.$game->id, [
                 'white' => $white,
                 'black' => $black,
                 'mode' => $this->games->mode('chess', $game->mode)->name ?? 'Chess',
                 'url' => route('games.show', $game),
-            ]);
+            ], tags: $tags));
         }
 
         return $messages;
@@ -312,10 +377,10 @@ final class StreamBotBuilders
             return [];
         }
 
-        return [$this->message('live_games', 'live-games:'.implode(',', $ids), [
+        return $this->one($this->message('live_games', 'live-games:'.implode(',', $ids), [
             'count' => count($ids),
             'url' => route('games.index'),
-        ])];
+        ]));
     }
 
     /**
@@ -331,8 +396,9 @@ final class StreamBotBuilders
             ->orderByDesc('start_at')->limit(5)->get();
 
         foreach ($series as $match) {
-            $home = StreamBotCopy::clean($match->challenger_name, 24);
-            $away = StreamBotCopy::clean($match->challenged_name, 24);
+            $tags = [];
+            $home = $this->sideName($match, 'challenger', $match->challenger_name, $tags);
+            $away = $this->sideName($match, 'challenged', $match->challenged_name, $tags);
 
             if ($home === '' || $away === '') {
                 continue;
@@ -341,24 +407,24 @@ final class StreamBotBuilders
             if ($match->isTeamMatch()) {
                 // Before its lock a team match may still end as a forfeit: posted once its boards are set.
                 if ($match->lineup_locked_at !== null) {
-                    $messages[] = $this->message('live_team_match', 'live-series:'.$match->id, [
+                    $this->add($messages, $this->message('live_team_match', 'live-series:'.$match->id, [
                         'home' => $home,
                         'away' => $away,
                         'boards' => (int) $match->boards,
                         'url' => route('matches.show', $match->number),
-                    ], 'live_series');
+                    ], 'live_series', $tags));
                 }
 
                 continue;
             }
 
-            $messages[] = $this->message('live_series', 'live-series:'.$match->id, [
+            $this->add($messages, $this->message('live_series', 'live-series:'.$match->id, [
                 'game' => $this->games->name($match->game),
                 'home' => $home,
                 'away' => $away,
                 'best_of' => $match->best_of,
                 'url' => route('matches.show', $match->number),
-            ]);
+            ], tags: $tags));
         }
 
         return $messages;
@@ -386,11 +452,11 @@ final class StreamBotBuilders
             }
 
             $tags = [];
-            $messages[] = $this->message('tournament_winner', 'tournament-winner:'.$tournament->id, [
+            $this->add($messages, $this->message('tournament_winner', 'tournament-winner:'.$tournament->id, [
                 'winner' => $this->mention($champion?->user, $winner, $tags),
                 'name' => $name,
                 'url' => route('tournaments.show', $tournament),
-            ], tags: $tags);
+            ], tags: $tags));
         }
 
         return $messages;
@@ -417,12 +483,12 @@ final class StreamBotBuilders
             }
 
             $tags = [];
-            $messages[] = $this->message('rank_up', 'rank-up:'.$version->id, [
+            $this->add($messages, $this->message('rank_up', 'rank-up:'.$version->id, [
                 'player' => $this->mention($user, $player, $tags),
                 'tier' => RankTiers::label($version->tier),
                 'game' => $this->gameLine($version->badge->game, $version->badge->mode),
                 'url' => route('players.show', NostrKeys::hexToNpub($user->pubkey)),
-            ], tags: $tags);
+            ], tags: $tags));
         }
 
         return $messages;
@@ -447,11 +513,11 @@ final class StreamBotBuilders
                 continue;
             }
 
-            $messages[] = $this->message('new_clan', 'new-clan:'.$clan->id, [
+            $this->add($messages, $this->message('new_clan', 'new-clan:'.$clan->id, [
                 'name' => $name,
                 'tag' => $tag,
                 'url' => route('clans.show', $clan),
-            ]);
+            ]));
         }
 
         return $messages;
@@ -497,11 +563,11 @@ final class StreamBotBuilders
             return [];
         }
 
-        return [$this->message('ladder_top', 'ladder-top:'.$now->format('Y-m-d').':'.implode(',', $rows->pluck('user_id')->all()), [
+        return $this->one($this->message('ladder_top', 'ladder-top:'.$now->format('Y-m-d').':'.implode(',', $rows->pluck('user_id')->all()), [
             'ladder' => ucfirst($mode),
             'podium' => implode(' · ', $podium),
             'url' => route('ladder.show', ['chess', $mode]),
-        ], tags: $tags)];
+        ], tags: $tags));
     }
 
     /**
@@ -515,7 +581,7 @@ final class StreamBotBuilders
         $state = Seasons::state();
 
         if ($state === 'live') {
-            return [$this->message('season_live', 'season-live:'.Seasons::live()?->slug, ['url' => route('mining')], 'season')];
+            return $this->one($this->message('season_live', 'season-live:'.Seasons::live()?->slug, ['url' => route('mining')], 'season'));
         }
 
         $block0At = PreSeason::block0At();
@@ -524,10 +590,10 @@ final class StreamBotBuilders
             return [];
         }
 
-        return [$this->message('season_countdown', 'season-countdown:'.$block0At->getTimestamp(), [
+        return $this->one($this->message('season_countdown', 'season-countdown:'.$block0At->getTimestamp(), [
             'left' => $this->duration($block0At->getTimestamp() - $now->getTimestamp()),
             'url' => route('mining'),
-        ], 'season')];
+        ], 'season'));
     }
 
     /**
@@ -541,12 +607,12 @@ final class StreamBotBuilders
             return [];
         }
 
-        return [$this->message('stats', 'stats:'.$now->format('Y-m-d'), [
+        return $this->one($this->message('stats', 'stats:'.$now->format('Y-m-d'), [
             'players' => number_format($players),
             'clans' => number_format(Clan::query()->count()),
             'games' => number_format(ChessGame::query()->where('status', ChessGameStatus::Finished)->count()),
             'url' => route('home'),
-        ])];
+        ]));
     }
 
     /**
@@ -568,13 +634,13 @@ final class StreamBotBuilders
 
         $server = StreamBotCopy::clean((string) config('esports.tmnf.server.name'), 32);
 
-        return [$this->message('tmnf_week', 'tmnf-week:'.$week->id, [
+        return $this->one($this->message('tmnf_week', 'tmnf-week:'.$week->id, [
             'name' => StreamBotCopy::clean($week->title()),
             'track' => TmnfNotes::track($week),
             'server' => $server === '' ? null : $server,
             'ends' => LeagueTime::stamp(ScoreWindow::of($week)->end),
             'url' => route('tournaments.show', $week),
-        ])];
+        ]));
     }
 
     /**
@@ -604,14 +670,14 @@ final class StreamBotBuilders
         $gap = $before === null ? 0 : $before - (int) $run->value;
         $tags = [];
 
-        return [$this->message('tmnf_top', 'tmnf-top:'.$run->id, [
+        return $this->one($this->message('tmnf_top', 'tmnf-top:'.$run->id, [
             'name' => StreamBotCopy::clean($week->title()),
             'player' => $this->mention($first->participant->user, $name, $tags),
             'time' => ScoreMetric::time()->format((int) $run->value),
             'track' => TmnfNotes::track($week),
             'gap' => $gap > 0 ? ', '.BlockfillSlides::seconds($gap).' faster' : '',
             'url' => route('tournaments.show', $week),
-        ], tags: $tags)];
+        ], tags: $tags));
     }
 
     /**
@@ -648,13 +714,13 @@ final class StreamBotBuilders
             return [];
         }
 
-        return [$this->message('tmnf_podium', 'tmnf-podium:'.$week->id, [
+        return $this->one($this->message('tmnf_podium', 'tmnf-podium:'.$week->id, [
             'name' => StreamBotCopy::clean($week->title()),
             'winner' => $winner,
             'track' => TmnfNotes::track($week),
             'podium' => implode(' · ', $podium),
             'url' => route('scores.show', TrackmaniaNationsForever::SLUG),
-        ], tags: $tags)];
+        ], tags: $tags));
     }
 
     /** The TMNF week `$now` lies in while it runs; null while TMNF is off or no week is open. */
@@ -676,7 +742,7 @@ final class StreamBotBuilders
             return [];
         }
 
-        return $this->feature('clan_challenge', route('challenges.create'), ['games' => $this->list($names)]);
+        return $this->feature('clan_challenge', route('challenges.create'), ['games' => $this->shortList($names)]);
     }
 
     /**
@@ -702,7 +768,7 @@ final class StreamBotBuilders
             return [];
         }
 
-        return $this->feature('all_games', route('play'), ['games' => $this->list($names)]);
+        return $this->feature('all_games', route('play'), ['games' => $this->shortList($names)]);
     }
 
     /**
@@ -724,19 +790,116 @@ final class StreamBotBuilders
      */
     private function feature(string $name, string $url, array $values = []): array
     {
-        return [$this->message($name, 'feature:'.$name, ['url' => $url, ...$values])];
+        return $this->one($this->message($name, 'feature:'.$name, ['url' => $url, ...$values]));
+    }
+
+    /**
+     * A board game's own tip, while it is registered. The lobby route exists
+     * only then (routes/board.php).
+     *
+     * @return list<StreamBotMessage>
+     */
+    private function boardTip(string $builder, string $slug): array
+    {
+        $game = $this->games->find($slug);
+
+        return $game === null ? [] : $this->featureNamed($builder, 'board_game', route('board.lobby', $slug), ['game' => $game->name()]);
+    }
+
+    /**
+     * EA Sports FC, the newest registered edition. The page is the series page.
+     *
+     * @return list<StreamBotMessage>
+     */
+    private function eaFc(): array
+    {
+        $slug = $this->games->find('ea-sports-fc-27') !== null ? 'ea-sports-fc-27' : 'ea-sports-fc-26';
+
+        return $this->games->find($slug) === null ? [] : $this->feature('ea_fc', route('games.series', $slug));
+    }
+
+    /** @param list<StreamBotMessage> $messages */
+    private function add(array &$messages, ?StreamBotMessage $message): void
+    {
+        if ($message !== null) {
+            $messages[] = $message;
+        }
+    }
+
+    /**
+     * @return list<StreamBotMessage>
+     */
+    private function one(?StreamBotMessage $message): array
+    {
+        return $message === null ? [] : [$message];
+    }
+
+    /**
+     * A feature tip whose builder name is not the template name (a board game
+     * shares `board_game`).
+     *
+     * @param  array<string, string|int|null>  $values
+     * @return list<StreamBotMessage>
+     */
+    private function featureNamed(string $builder, string $template, string $url, array $values = []): array
+    {
+        return $this->one($this->message($template, 'feature:'.$builder, ['url' => $url, ...$values], $builder));
     }
 
     /**
      * @param  array<string, string|int|null>  $values
      * @param  list<list<string>>  $tags  the `p` tags of the players it names
      */
-    private function message(string $template, string $factKey, array $values, ?string $builder = null, array $tags = []): StreamBotMessage
+    private function message(string $template, string $factKey, array $values, ?string $builder = null, array $tags = []): ?StreamBotMessage
     {
         $variants = StreamBotCopy::variants($template);
-        $variant = $this->variantPicker !== null ? ($this->variantPicker)($variants) : random_int(0, max(0, $variants - 1));
+        $start = $this->variantPicker !== null ? ($this->variantPicker)($variants) : random_int(0, max(0, $variants - 1));
+        $tries = $this->usedContent === null ? 1 : $variants;
 
-        return new StreamBotMessage($builder ?? $template, $factKey, StreamBotCopy::render($template, $variant, $values), $tags);
+        if ($this->usedContent !== null && $this->variantPicker === null) {
+            $start = 0;
+        }
+
+        for ($i = 0; $i < $tries; $i++) {
+            $content = StreamBotCopy::render($template, ($start + $i) % max(1, $variants), $values);
+
+            if ($this->usedContent !== null && ($this->usedContent)($content)) {
+                continue;
+            }
+
+            return new StreamBotMessage($builder ?? $template, $factKey, $content, $tags);
+        }
+
+        return null;
+    }
+
+    /**
+     * A series side as the chat names it: the stored name, plus each listed
+     * player's `nostr:npub1…` in brackets. The plain name when the side lists
+     * no account.
+     *
+     * @param  list<list<string>>  $tags
+     */
+    private function sideName(SeriesMatch $match, string $side, string $fallback, array &$tags): string
+    {
+        $name = StreamBotCopy::clean($fallback, 24);
+        $ids = array_values(array_unique(array_map(intval(...), ($match->sides ?? [])[$side] ?? [])));
+
+        if ($name === '' || $ids === []) {
+            return $name;
+        }
+
+        $mentions = [];
+
+        foreach (User::query()->whereIn('id', $ids)->get() as $user) {
+            $who = $this->mention($user, '', $tags);
+
+            if (str_starts_with($who, 'nostr:')) {
+                $mentions[] = $who;
+            }
+        }
+
+        return $mentions === [] ? $name : $name.' ('.implode(', ', $mentions).')';
     }
 
     /**
@@ -816,6 +979,20 @@ final class StreamBotBuilders
     private function duration(int $seconds): string
     {
         return StreamBotCopy::duration($seconds);
+    }
+
+    /**
+     * At most three names, then "and more", so a chat line stays a line.
+     *
+     * @param  list<string>  $names
+     */
+    private function shortList(array $names, int $max = 3): string
+    {
+        if (count($names) <= $max) {
+            return $this->list($names);
+        }
+
+        return implode(', ', array_slice($names, 0, $max)).' and more';
     }
 
     /**

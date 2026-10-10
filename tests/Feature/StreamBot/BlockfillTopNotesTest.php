@@ -242,7 +242,7 @@ test('the note tags the player (nostr:npub1… and p), names the time, the gap t
     // The week's second first-place note takes the type's second wording (ProfileNotes).
     expect($note->kind)->toBe(1)
         ->and($note->content)->toBe(
-            'New name on top of Blockfill Week 41, 2026: '.topNoteNpub('Ben').".\n"
+            '🥇 New name on top of Blockfill Week 41, 2026: '.topNoteNpub('Ben').".\n"
             ."⏱️ 0:50.000, 1.666 s faster than the first place before\n"
             .'👉 '.route('stacker.play')."\n\nnostr:".$naddr)
         ->and(route('stacker.play'))->toEndWith('/blockfill')

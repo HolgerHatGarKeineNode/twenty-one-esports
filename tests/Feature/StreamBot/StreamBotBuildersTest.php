@@ -19,6 +19,10 @@ use Carbon\CarbonImmutable;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\URL;
+use Tests\Support\BlockfillOn;
+use Tests\Support\HyperOn;
+use Tests\Support\NineMensMorrisOn;
+use Tests\Support\PongOn;
 
 /*
  * The stream chat bot's builders (P22): each one offers messages only when
@@ -179,7 +183,7 @@ test('happening now: a running tournament on the TV view, live boards and a seri
 
     expect(botBuild('tournament_live')[0]->content)->toContain('RL Sunday is running right now')->toEndWith('/tv')
         ->and(botBuild('live_game'))->toHaveCount(2)
-        ->and(collect(botBuild('live_game'))->pluck('content')->implode("\n"))->toContain('Live on the board: Alice vs Bob')
+        ->and(collect(botBuild('live_game'))->pluck('content')->implode("\n"))->toContain('Live on the board: '.botNpub(User::query()->where('name', 'Alice')->sole()).' vs '.botNpub(User::query()->where('name', 'Bob')->sole()))
         ->and(botBuild('live_games')[0]->content)->toStartWith('🔴 2 games are live right now')->toEndWith('https://esports.test/games')
         ->and(botBuild('live_series')[0]->content)->toContain('Laser Eyes vs HODL Rockets');
 });
@@ -277,4 +281,74 @@ test('the feature tips link the exact page', function (string $builder, string $
     ['all_games', '/play'],
     ['login', '/login'],
     ['zap', ''],
+    ['aoe2', '/games/age-of-empires-2'],
+    ['ea_fc', '/games/ea-sports-fc-27'],
 ]);
+
+test('a switched-on game gets its own chat tip, and a switched-off game stays out of the rotation', function () {
+    expect(array_keys($this->builders->all()))->toContain('aoe2', 'ea_fc')
+        ->not->toContain('proof_of_pong', 'hyperbitcoinization', 'blockfill_play', 'board_morris');
+
+    PongOn::play();
+    HyperOn::play();
+    BlockfillOn::play();
+    NineMensMorrisOn::play();
+
+    $builders = app(StreamBotBuilders::class);
+    $builders->pickVariantsWith(fn (int $variants): int => 0);
+
+    expect(array_keys($builders->all()))->toContain('proof_of_pong', 'hyperbitcoinization', 'blockfill_play', 'board_morris');
+
+    $tips = [
+        'proof_of_pong' => route('pong.index'),
+        'hyperbitcoinization' => route('hyper.index'),
+        'blockfill_play' => route('stacker.play'),
+        'board_morris' => route('board.lobby', 'nine-mens-morris'),
+    ];
+
+    foreach ($tips as $builder => $url) {
+        $message = $builders->build($builder, CarbonImmutable::now())[0];
+
+        expect($message->content)->toEndWith($url)
+            ->and($message->factKey)->toBe('feature:'.$builder)
+            ->and(StreamBotCopy::violations($message->content, $message->tags))->toBe([], $message->content);
+    }
+});
+
+test('a live board tags both players, and a player without a key keeps the plain name', function () {
+    $alice = User::factory()->create(['name' => 'Alice']);
+    $guest = User::factory()->create(['name' => 'Guest', 'pubkey' => str_repeat('z', 64)]);
+    ChessGame::factory()->create(['white_id' => $alice->id, 'black_id' => $guest->id]);
+
+    $message = botBuild('live_game')[0];
+
+    expect($message->content)->toContain('Live on the board: '.botNpub($alice).' vs Guest')
+        ->and($message->tags)->toBe([['p', $alice->pubkey]]);
+});
+
+test('every wording leads with an emoji, keeps a link and stays inside four lines', function () {
+    $values = [
+        'name' => 'Cup', 'game' => 'Chess', 'starts' => 'Sat 4 Oct, 20:00 CEST', 'spots' => '3 of 8 spots taken',
+        'pot' => '1,000', 'left' => '2 h', 'open' => '4 spots', 'url' => 'https://esports.test/play',
+        'white' => 'nostr:npub1white', 'black' => 'nostr:npub1black', 'mode' => 'Blitz', 'count' => '3',
+        'home' => 'Home', 'away' => 'Away', 'best_of' => '3', 'boards' => '4', 'winner' => 'nostr:npub1win',
+        'player' => 'nostr:npub1player', 'tier' => 'Gold', 'tag' => 'SATS', 'ladder' => 'Rapid', 'podium' => '🥇 Ada 1600',
+        'players' => '12', 'clans' => '3', 'games' => 'Chess and Blockfill', 'track' => 'A01', 'server' => 'tm.example',
+        'ends' => 'Sun 5 Oct, 22:00 CEST', 'time' => '1:02.3', 'gap' => '', 'days' => '7', 'elo' => '+12',
+        'loser' => 'nostr:npub1loser', 'places' => '8', 'free' => '2', 'sponsors' => 'the league', 'first' => '1st',
+        'winners' => 'nostr:npub1win', 'tournament' => 'Cup', 'prize' => '1000', 'others' => 'nostr:npub1other',
+        'blocks' => '40',
+    ];
+
+    foreach (StreamBotCopy::TEMPLATES as $name => $variants) {
+        foreach (array_keys($variants) as $index) {
+            $text = StreamBotCopy::render($name, $index, $values);
+
+            expect(StreamBotCopy::violations($text))->toBe([], $name.'#'.$index.': '.$text);
+
+            foreach (explode("\n", $text) as $line) {
+                expect($line)->toMatch('/^\p{Extended_Pictographic}/u', $name.'#'.$index.': '.$line);
+            }
+        }
+    }
+});

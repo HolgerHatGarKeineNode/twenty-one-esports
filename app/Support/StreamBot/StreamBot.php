@@ -26,7 +26,8 @@ use Throwable;
  * Rule 6 reads the chat relays only when 1-5 already allow a post.
  *
  * The rotation (next()): builders weighted towards facts, none of the last
- * `builder_gap` posts' builders, no fact posted within `repeat_hours`, and
+ * `builder_gap` posts' builders, no fact posted within `repeat_hours`, no
+ * line whose exact text already went out (that block does not expire), and
  * no message that breaks StreamBotCopy's rules (a `#`, no link).
  */
 class StreamBot
@@ -54,7 +55,7 @@ class StreamBot
         }
 
         assert($key !== null && $stream !== null);
-        $message = $this->next($now, $this->recentBuilders(), $this->recentFacts($now));
+        $message = $this->next($now, $this->recentBuilders(), $this->recentFacts($now), $this->deliveredContents());
 
         if ($message === null) {
             return 'no post: nothing new to say';
@@ -143,39 +144,48 @@ class StreamBot
 
     /**
      * The next message: builders in weighted random order (facts first more
-     * often), skipping the recent builders and facts and every message that
-     * breaks the copy rules. Null when there is nothing new.
+     * often), skipping the recent builders and facts, every line that already
+     * went out, and every message that breaks the copy rules. Null when there
+     * is nothing new.
      *
      * @param  list<string>  $recentBuilders
      * @param  list<string>  $recentFacts
+     * @param  array<string, true>|null  $usedContents  delivered chat text; null reads the log
      */
-    public function next(CarbonImmutable $now, array $recentBuilders, array $recentFacts): ?StreamBotMessage
+    public function next(CarbonImmutable $now, array $recentBuilders, array $recentFacts, ?array $usedContents = null): ?StreamBotMessage
     {
-        foreach ($this->order($recentBuilders) as $builder) {
-            try {
-                $messages = $this->builders->build($builder, $now);
-            } catch (Throwable $e) {
-                // One broken builder must not silence the others.
-                report($e);
+        $used = $usedContents ?? $this->deliveredContents();
+        $this->builders->skipPosted(fn (string $content): bool => isset($used[$content]));
 
-                continue;
-            }
-
-            foreach ($messages as $message) {
-                if (in_array($message->factKey, $recentFacts, true)) {
-                    continue;
-                }
-
-                $problems = StreamBotCopy::violations($message->content, $message->tags);
-
-                if ($problems !== []) {
-                    Log::warning('Stream bot message dropped', ['builder' => $message->builder, 'problems' => $problems]);
+        try {
+            foreach ($this->order($recentBuilders) as $builder) {
+                try {
+                    $messages = $this->builders->build($builder, $now);
+                } catch (Throwable $e) {
+                    // One broken builder must not silence the others.
+                    report($e);
 
                     continue;
                 }
 
-                return $message;
+                foreach ($messages as $message) {
+                    if (in_array($message->factKey, $recentFacts, true) || isset($used[$message->content])) {
+                        continue;
+                    }
+
+                    $problems = StreamBotCopy::violations($message->content, $message->tags);
+
+                    if ($problems !== []) {
+                        Log::warning('Stream bot message dropped', ['builder' => $message->builder, 'problems' => $problems]);
+
+                        continue;
+                    }
+
+                    return $message;
+                }
             }
+        } finally {
+            $this->builders->skipPosted(null);
         }
 
         return null;
@@ -191,12 +201,14 @@ class StreamBot
     {
         $builders = $this->recentBuilders();
         $facts = $this->recentFacts($now);
+        $used = $this->deliveredContents();
         $gap = max(0, (int) config('esports.stream_bot.builder_gap', 4));
         $messages = [];
 
-        while (count($messages) < $count && ($message = $this->next($now, $builders, $facts)) !== null) {
+        while (count($messages) < $count && ($message = $this->next($now, $builders, $facts, $used)) !== null) {
             $messages[] = $message;
             $facts[] = $message->factKey;
+            $used[$message->content] = true;
             array_unshift($builders, $message->builder);
             $builders = array_slice($builders, 0, $gap);
         }
@@ -318,6 +330,16 @@ class StreamBot
     }
 
     /**
+     * Exact chat text that already went out. A later tick never posts it again.
+     *
+     * @return array<string, true>
+     */
+    public function deliveredContents(): array
+    {
+        return array_fill_keys(StreamBotPost::query()->delivered()->pluck('content')->all(), true);
+    }
+
+    /**
      * Facts of the delivered posts within `repeat_hours`.
      *
      * @return list<string>
@@ -340,13 +362,13 @@ class StreamBot
     {
         $keys = [];
 
-        foreach ($this->builders->all() as $name => $isFact) {
+        foreach ($this->builders->all() as $name => $weight) {
             if (in_array($name, $recentBuilders, true)) {
                 continue;
             }
 
             $u = random_int(1, PHP_INT_MAX) / PHP_INT_MAX;
-            $keys[$name] = $u ** (1 / ($isFact ? StreamBotBuilders::FACT_WEIGHT : 1));
+            $keys[$name] = $u ** (1 / max(1, $weight));
         }
 
         arsort($keys);
