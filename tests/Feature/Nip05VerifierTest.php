@@ -103,6 +103,23 @@ test('an address pointing inside the network is refused before any request', fun
     'no address at all' => ['max@nxdomain.example', []],
 ]);
 
+test('a repeated check moves the address between verified and not verified', function (bool $verifiedBefore, bool $documentNamesKey) {
+    $this->freezeSecond();
+    resolveHosts(['mempool.example' => ['93.184.215.14']]);
+    $player = playerWithAddress('max@mempool.example');
+    $player->forceFill(['nip05_checked_at' => now()->subDay(), 'nip05_verified_at' => $verifiedBefore ? now()->subDay() : null])->save();
+    Http::fake(['https://mempool.example/.well-known/nostr.json?name=max' => Http::response(['names' => ['max' => $documentNamesKey ? $player->pubkey : str_repeat('0', 64)]])]);
+
+    VerifyNip05::dispatchSync($player);
+
+    expect($player->refresh())
+        ->nip05_checked_at->toEqual(now())
+        ->nip05_verified_at->toEqual($documentNamesKey ? now() : null);
+})->with([
+    'a failed check recovers once the document names the key' => [false, true],
+    'a passed check is withdrawn once the name went to another key' => [true, false],
+]);
+
 test('a check whose address changed meanwhile stores nothing', function () {
     resolveHosts(['mempool.example' => ['93.184.215.14']]);
     $player = playerWithAddress('max@mempool.example');

@@ -125,6 +125,11 @@ final class ProfileCache
             $lud16 = $user->lud16 === null ? self::lud16($metadata['lud16'] ?? null) : null;
             $user->forceFill(['profile_checked_at' => now(), ...($lud16 !== null ? ['lud16' => $lud16] : [])])->save();
 
+            // A NIP-05 check is repeated here too once it has stood its interval (issue #1): before, only a NEWER profile
+            // did, so a check that failed on a briefly unreachable domain, or passed before the domain gave the name to
+            // another key, stood until the player republished the profile.
+            self::verifyNip05WhenDue($user);
+
             return $lud16 !== null;
         }
 
@@ -149,11 +154,23 @@ final class ProfileCache
             'profile_checked_at' => now(),
         ])->save();
 
-        if ($nip05 !== null && ($nip05Changed || Nip05Verifier::isDue($user))) {
-            VerifyNip05::dispatch($user);
-        }
+        // A changed address has no check time any more, so it is due at once.
+        self::verifyNip05WhenDue($user);
 
         return true;
+    }
+
+    /**
+     * Queues the NIP-05 check when the player has an address and the last
+     * check is older than `esports.profiles.nip05_recheck_hours` (or there
+     * was none). In memory only; the job is unique per player, so a page
+     * that hands the profile in twice queues it once.
+     */
+    private static function verifyNip05WhenDue(User $user): void
+    {
+        if ($user->nip05 !== null && Nip05Verifier::isDue($user)) {
+            VerifyNip05::dispatch($user);
+        }
     }
 
     /**
