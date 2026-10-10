@@ -2,11 +2,16 @@
 
 namespace App\Support\Broadcast;
 
+use App\Enums\OverlayVariant;
 use App\Enums\TournamentStatus;
 use App\Games\GameRegistry;
+use App\Models\Clan;
 use App\Models\OverlayPreset;
 use App\Models\Tournament;
 use App\Support\Cards\ShareCard;
+use App\Support\GameNames;
+use App\Support\LeagueTime;
+use App\Support\Matches\MempoolStrip;
 use App\Support\Prizes\PrizePool;
 use App\Support\QrCode;
 use App\Support\Tournaments\CupBoard;
@@ -32,7 +37,10 @@ use UnitEnum;
  * - `pride`: the pride moments (PrideSlides::read(), its 15 s cache) with the `pride` module;
  * - `stats`: the league's counts (StreamStats) with the `stats` module;
  * - `tournament`: the preset's tournament for the tournament and bracket variants (TournamentTv: stages, latest
- *   results, progress, champion) while it is public;
+ *   results, progress, champion; for the overlay its board, every match with seeds, a status line, its QR code)
+ *   while it is public;
+ * - `games`: every game of the league (the league live overlay's game spots);
+ * - `recent`: the league's latest wins over every game (MempoolStrip), league live only;
  * - `ticker`: the crawl's segments, worded in the preset's language from the data above.
  *
  * PRIVACY: public data only, as the site shows it. clean() drops every key that could carry a key, an npub, an
@@ -93,6 +101,8 @@ final class OverlaySnapshot
             $pride = $preset->hasModule('pride') ? $this->guarded(fn (): array => $this->prideFor($preset), null) : null;
             $stats = $preset->hasModule('stats') ? $this->guarded(fn (): array => $this->statsData(), null) : null;
             $tournament = $preset->variant->needsTournament() && $preset->tournament !== null ? $this->guarded(fn (): ?array => $this->tournament($preset, $preset->tournament), null) : null;
+            $games = $this->guarded(fn (): array => $this->gameList(), []);
+            $recent = $preset->variant === OverlayVariant::LeagueLive ? $this->guarded(fn (): array => $this->recentWins(), []) : [];
 
             return [
                 'generatedAt' => now()->toIso8601String(),
@@ -107,7 +117,9 @@ final class OverlaySnapshot
                 'pride' => $pride,
                 'stats' => $stats,
                 'tournament' => $tournament,
-                'ticker' => $this->ticker($preset, $upcoming, $nextCup, $pride, $stats, $tournament),
+                'games' => $games,
+                'recent' => $recent,
+                'ticker' => $this->ticker($preset, $upcoming, $nextCup, $pride, $stats, $tournament, $games, $recent),
             ];
         } finally {
             app()->setLocale($previous);
@@ -183,9 +195,10 @@ final class OverlaySnapshot
             'id' => $tournament->id,
             'name' => PublicName::clean($tournament->name),
             'game' => $tournament->game,
-            'gameName' => $this->games->name($tournament->game),
+            'gameName' => GameNames::game($tournament->game),
             'emblem' => self::emblem($tournament->game),
             'startsAt' => $tournament->starts_at->toIso8601String(),
+            'starts' => self::when($tournament->starts_at),
             'signupClosesAt' => $tournament->signup_closes_at?->toIso8601String(),
             'url' => route('tournaments.show', $tournament),
             'pot' => $preset->hasModule('pots') ? $this->pools->shownPotSats($tournament) : null,
@@ -209,9 +222,10 @@ final class OverlaySnapshot
             'id' => $tournament->id,
             'name' => PublicName::clean($tournament->name),
             'game' => $tournament->game,
-            'gameName' => $this->games->name($tournament->game),
+            'gameName' => GameNames::game($tournament->game),
             'emblem' => self::emblem($tournament->game),
             'startsAt' => $tournament->starts_at->toIso8601String(),
+            'starts' => self::when($tournament->starts_at),
             'taken' => $cup['taken'],
             'places' => $cup['places'],
             'url' => route('tournaments.show', $tournament),
@@ -226,6 +240,11 @@ final class OverlaySnapshot
     private function prideFor(OverlayPreset $preset): array
     {
         $pride = self::clean($this->prideData());
+
+        // The pride data is the stream's, worded in English; the overlay speaks its preset's language.
+        if (is_array($pride['win'] ?? null)) {
+            $pride['win']['mode'] = __((string) ($pride['win']['mode'] ?? ''));
+        }
 
         if (! $preset->hasModule('pots')) {
             $pride['prizes'] = null;
@@ -262,7 +281,11 @@ final class OverlaySnapshot
     }
 
     /**
-     * A public tournament as its TV reads it; null for a draft or an unpublished one.
+     * A public tournament as its TV reads it; null for a draft or an unpublished one. On top of the TV's data the
+     * overlay gets what its banner, board and moments need (plan P4): `statusLine` (where the tournament stands, one
+     * line), `board` (the round on now: its matches, a table's top rows, or the heats), `boxes` (every match with its
+     * sides' public names, seeds and result, the overlay diffs them for won / upset / final reached), `entries` (sign-ups
+     * while open) and, with the `qr` module, a QR code of its page.
      *
      * @return array<string, mixed>|null
      */
@@ -274,6 +297,10 @@ final class OverlaySnapshot
 
         $tv = new TournamentTv($tournament);
         $champion = $tournament->status === TournamentStatus::Finished ? $tv->champion() : null;
+        $stages = $tv->stages();
+        $board = self::board($stages);
+        $progress = $tv->progress();
+        $url = route('tournaments.show', $tournament);
 
         return [
             'id' => $tournament->id,
@@ -281,30 +308,198 @@ final class OverlaySnapshot
             'status' => $tournament->status->value,
             'format' => $tournament->format->value,
             'game' => $tournament->game,
-            'gameName' => $this->games->name($tournament->game),
+            'gameName' => GameNames::game($tournament->game),
             'emblem' => self::emblem($tournament->game),
             'startsAt' => $tournament->starts_at->toIso8601String(),
-            'url' => route('tournaments.show', $tournament),
+            'starts' => self::when($tournament->starts_at),
+            'url' => $url,
+            'qr' => $preset->hasModule('qr') ? QrCode::svg($url) : null,
             'pot' => $preset->hasModule('pots') ? $this->pools->shownPotSats($tournament) : null,
-            'progress' => $tv->progress(),
+            'entries' => $tournament->status === TournamentStatus::Signup ? $tournament->signups()->whereNull('withdrawn_at')->whereNull('removed_at')->count() : null,
+            'progress' => $progress,
+            'statusLine' => match ($tournament->status) {
+                TournamentStatus::Signup => __('Sign-up open, starts :when', ['when' => self::when($tournament->starts_at)]),
+                TournamentStatus::Drawing => __('Drawing the pairings'),
+                // The round and the format, never a count: the banner holds its line while results come in.
+                TournamentStatus::Running => $board === null ? __('Running') : $board['round'].', '.$tournament->format->label(),
+                TournamentStatus::Finished => $champion === null ? __('Finished') : __('Finished, won by :name', ['name' => PublicName::clean((string) $champion['name'])]),
+                default => __('Called off'),
+            },
             'results' => self::clean($tv->ticker()),
             'champion' => $champion === null ? null : PublicName::clean((string) $champion['name']),
-            'stages' => self::clean($tv->stages()),
+            'board' => $board,
+            'boxes' => array_values(array_map(self::box(...), array_filter(self::allBoxes($stages), fn (array $box): bool => $box['bracket'] !== 'bye'))),
+            'stages' => self::clean($stages),
         ];
     }
 
     /**
-     * The crawl's segments in the preset's language: the tournament's latest results, the next cup, the upcoming
-     * tournaments with their pots, the latest win, the league's numbers and the invitation to play.
+     * @param  list<array<string, mixed>>  $stages
+     * @return list<array<string, mixed>>
+     */
+    private static function allBoxes(array $stages): array
+    {
+        return array_merge([], ...array_map(TournamentTv::boxesOf(...), $stages));
+    }
+
+    /**
+     * One match as the overlay reads it: public names, seeds, scores, who won; `final` for the deciding match.
+     *
+     * @param  array<string, mixed>  $box
+     * @return array<string, mixed>
+     */
+    private static function box(array $box): array
+    {
+        $round = (string) ($box['round'] ?? '');
+
+        return [
+            'key' => (string) $box['key'],
+            'round' => $round,
+            'bracket' => (string) $box['bracket'],
+            'status' => (string) $box['status'],
+            'live' => (bool) ($box['live'] ?? false),
+            'final' => in_array($box['bracket'], ['grand-final', 'reset'], true) || ($round === __('Final') && $box['bracket'] === 'main'),
+            'label' => is_string($box['label'] ?? null) ? $box['label'] : null,
+            'sides' => array_values(array_map(fn (array $side): array => [
+                'name' => PublicName::clean((string) $side['name']),
+                'known' => (bool) $side['known'],
+                'seed' => isset($side['entry']['seed']) ? (int) $side['entry']['seed'] : null,
+                'score' => isset($side['score']) ? (string) $side['score'] : null,
+                'won' => (bool) $side['won'],
+            ], is_array($box['sides'] ?? null) ? $box['sides'] : [])),
+        ];
+    }
+
+    /**
+     * The round on now, as the overlay's board shows it: the first part of the current stage with a match to play,
+     * and in it the first column (bracket), round (table) or the heats; else the last of them.
+     *
+     * @param  list<array<string, mixed>>  $stages
+     * @return array{kind: string, title: string|null, round: string, matches: list<array<string, mixed>>, rows: list<array<string, mixed>>}|null
+     */
+    private static function board(array $stages): ?array
+    {
+        $stage = TournamentTv::currentStage($stages);
+
+        if ($stage === null || $stage['parts'] === []) {
+            return null;
+        }
+
+        $open = fn (array $box): bool => in_array($box['status'], ['waiting', 'ready'], true) && $box['bracket'] !== 'bye';
+        $parts = $stage['parts'];
+        $part = collect($parts)->first(fn (array $part): bool => collect(TournamentTv::boxesOf(['parts' => [$part]]))->contains($open)) ?? $parts[count($parts) - 1];
+        $title = is_string($part['title'] ?? null) ? $part['title'] : null;
+        $real = fn (array $boxes): array => array_values(array_map(self::box(...), array_filter($boxes, fn (array $box): bool => $box['bracket'] !== 'bye')));
+
+        if ($part['kind'] === 'table') {
+            $round = TournamentTv::tableRound($part);
+
+            return [
+                'kind' => 'table',
+                'title' => $title,
+                'round' => __('Round :round', ['round' => $round['number'] ?? 1]),
+                'matches' => array_slice($real($round['boxes'] ?? []), 0, 8),
+                'rows' => array_slice(array_map(fn (array $row): array => [
+                    'rank' => (int) $row['rank'], 'name' => PublicName::clean((string) $row['name']), 'points' => (string) $row['points'],
+                    'wins' => (int) $row['wins'], 'ties' => (int) $row['ties'], 'losses' => (int) $row['losses'],
+                ], $part['rows']), 0, 8),
+            ];
+        }
+
+        if ($part['kind'] === 'heats') {
+            return ['kind' => 'heats', 'title' => $title, 'round' => $title ?? (string) $stage['title'], 'matches' => array_slice($real($part['heats']), 0, 6), 'rows' => []];
+        }
+
+        $columns = [];
+
+        foreach ($part['sections'] as $section) {
+            foreach ($section['columns'] as $column) {
+                $columns[] = [$section['title'], $column];
+            }
+        }
+
+        $current = collect($columns)->first(fn (array $entry): bool => collect($entry[1]['matches'])->contains($open)) ?? $columns[count($columns) - 1];
+        $label = (string) $current[1]['label'];
+
+        return [
+            'kind' => 'bracket',
+            'title' => $title,
+            'round' => $current[0] !== null && $label !== __('Final') ? $current[0].', '.$label : $label,
+            'matches' => array_slice($real($current[1]['matches']), 0, 8),
+            'rows' => [],
+        ];
+    }
+
+    /** A start as a stream says it: "20:00" today, else the weekday with the time, in the league's zone. */
+    private static function when(CarbonInterface $at): string
+    {
+        $local = $at->toImmutable()->setTimezone(LeagueTime::zone());
+
+        return $local->isSameDay(now()->setTimezone(LeagueTime::zone()))
+            ? LeagueTime::hour($at)
+            : $local->locale(app()->getLocale())->isoFormat('dd').' '.LeagueTime::hour($at);
+    }
+
+    /**
+     * Every game of the league, for the overlay's game spots.
+     *
+     * @return list<array{slug: string, name: string, emblem: string}>
+     */
+    private function gameList(): array
+    {
+        return array_values(array_map(fn (string $slug): array => ['slug' => $slug, 'name' => GameNames::game($slug), 'emblem' => self::emblem($slug)], array_keys($this->games->all())));
+    }
+
+    /**
+     * The league's latest results over every game, newest first, as /matches lists them (MempoolStrip): who won,
+     * whom they beat, the score. A side is its public name, a clan lineup its clan's name.
+     *
+     * @return list<array{game: string, gameName: string, emblem: string, winner: string, loser: string|null, score: string|null}>
+     */
+    private function recentWins(): array
+    {
+        $rows = [];
+
+        foreach (array_reverse(MempoolStrip::build()['finished']) as $cube) {
+            $sides = array_values((array) ($cube['sides'] ?? []));
+            $won = array_values(array_filter($sides, fn (array $side): bool => (bool) ($side['won'] ?? false)));
+            $lost = array_values(array_filter($sides, fn (array $side): bool => ! ($side['won'] ?? false)));
+
+            if (count($won) !== 1) {
+                continue;
+            }
+
+            $name = fn (array $side): string => PublicName::clean(($side['clan'] ?? null) instanceof Clan ? (string) $side['clan']->name : (string) ($side['name'] ?? ''));
+            $slug = (string) ($cube['slug'] ?? $cube['game'] ?? '');
+            $rows[] = [
+                'game' => $slug,
+                'gameName' => GameNames::game($slug),
+                'emblem' => self::emblem($slug),
+                'winner' => $name($won[0]),
+                'loser' => count($lost) === 1 ? $name($lost[0]) : null,
+                'score' => filled($cube['score'] ?? null) && ! ($cube['word'] ?? false) && self::scoreLabel((string) $cube['score']) !== '' ? (string) $cube['score'] : null,
+            ];
+        }
+
+        return array_slice(array_values(array_filter($rows, fn (array $row): bool => $row['winner'] !== '')), 0, 6);
+    }
+
+    /**
+     * The crawl's segments in the preset's language. A tournament overlay: the matches on now, the latest results,
+     * the pot. Every overlay: the latest wins over every game (league live), the next cup and the open tournaments
+     * with their start and pots, the week's climbs and rank-ups, the league's numbers, the invitation to play and a
+     * spot for every game of the league. The overlay rebuilds the crawl from a fresh snapshot at each loop.
      *
      * @param  list<array<string, mixed>>  $upcoming
      * @param  array<string, mixed>|null  $nextCup
      * @param  array<string, mixed>|null  $pride
      * @param  array<string, mixed>|null  $stats
      * @param  array<string, mixed>|null  $tournament
+     * @param  list<array<string, mixed>>  $games
+     * @param  list<array<string, mixed>>  $recent
      * @return list<array{emblem: string, head: string, text: string}>
      */
-    private function ticker(OverlayPreset $preset, array $upcoming, ?array $nextCup, ?array $pride, ?array $stats, ?array $tournament): array
+    private function ticker(OverlayPreset $preset, array $upcoming, ?array $nextCup, ?array $pride, ?array $stats, ?array $tournament, array $games = [], array $recent = []): array
     {
         if (! $preset->hasModule('ticker')) {
             return [];
@@ -312,40 +507,80 @@ final class OverlaySnapshot
 
         $items = [];
 
-        foreach (array_slice($tournament['results'] ?? [], 0, 4) as $result) {
-            $items[] = ['emblem' => $tournament['emblem'], 'head' => __('Result'), 'text' => $result['draw'] ?? false
-                ? __(':first and :second draw', ['first' => $result['winner'], 'second' => (string) $result['loser']])
-                : trim(__(':winner beats :loser', ['winner' => $result['winner'], 'loser' => (string) ($result['loser'] ?? '')]).' '.($result['label'] ?? ''))];
+        if ($tournament !== null) {
+            foreach (array_slice(array_filter($tournament['boxes'] ?? [], fn (array $box): bool => $box['live'] && count($box['sides']) === 2), 0, 4) as $box) {
+                $items[] = ['emblem' => $tournament['emblem'], 'head' => __('Up now'), 'text' => __(':first against :second', ['first' => $box['sides'][0]['name'], 'second' => $box['sides'][1]['name']])];
+            }
+
+            foreach (array_slice($tournament['results'] ?? [], 0, 4) as $result) {
+                $items[] = ['emblem' => $tournament['emblem'], 'head' => __('Result'), 'text' => $result['draw'] ?? false
+                    ? __(':first and :second draw', ['first' => $result['winner'], 'second' => (string) $result['loser']])
+                    : trim(__(':winner beats :loser', ['winner' => $result['winner'], 'loser' => (string) ($result['loser'] ?? '')]).' '.self::scoreLabel($result['label'] ?? null))];
+            }
+
+            if (($tournament['pot'] ?? null) !== null) {
+                $items[] = ['emblem' => 'trophy', 'head' => __('Prize pot'), 'text' => __(':sats sats in :tournament', ['sats' => ShareCard::sats((int) $tournament['pot']), 'tournament' => $tournament['name']])];
+            }
+        }
+
+        foreach ($recent as $win) {
+            $items[] = ['emblem' => $win['emblem'], 'head' => $win['gameName'], 'text' => $win['loser'] !== null
+                ? trim(__(':winner beats :loser', ['winner' => $win['winner'], 'loser' => $win['loser']]).' '.($win['score'] ?? ''))
+                : __(':winner wins', ['winner' => $win['winner']])];
+        }
+
+        if ($recent === [] && $tournament === null && is_array($pride['win'] ?? null) && ($pride['win']['winner'] ?? '') !== '') {
+            $items[] = ['emblem' => 'crown', 'head' => __('Latest win'), 'text' => ($pride['win']['loser'] ?? '') !== ''
+                ? __(':winner beats :loser', ['winner' => $pride['win']['winner'], 'loser' => $pride['win']['loser']])
+                : (string) $pride['win']['winner']];
         }
 
         if ($nextCup !== null) {
-            $items[] = ['emblem' => $nextCup['emblem'], 'head' => __('Next cup'), 'text' => __(':game, :taken of :places places taken', ['game' => $nextCup['gameName'], 'taken' => $nextCup['taken'], 'places' => $nextCup['places']])];
+            $items[] = ['emblem' => $nextCup['emblem'], 'head' => __('Next cup'), 'text' => __(':game, starts :when, :taken of :places places taken', ['game' => $nextCup['gameName'], 'when' => $nextCup['starts'], 'taken' => $nextCup['taken'], 'places' => $nextCup['places']])];
         }
 
-        foreach (array_slice($upcoming, 0, 3) as $next) {
-            $items[] = ['emblem' => $next['emblem'], 'head' => __('Open now'), 'text' => $next['name']];
+        foreach (array_slice(array_values(array_filter($upcoming, fn (array $next): bool => $next['id'] !== ($tournament['id'] ?? null))), 0, 3) as $next) {
+            $items[] = ['emblem' => $next['emblem'], 'head' => __('Open now'), 'text' => __(':tournament, starts :when', ['tournament' => $next['name'], 'when' => $next['starts']])];
 
             if (($next['pot'] ?? null) !== null) {
                 $items[] = ['emblem' => 'trophy', 'head' => __('Prize pot'), 'text' => __(':sats sats in :tournament', ['sats' => ShareCard::sats((int) $next['pot']), 'tournament' => $next['name']])];
             }
         }
 
-        if (is_array($pride['win'] ?? null) && ($pride['win']['winner'] ?? '') !== '') {
-            $items[] = ['emblem' => 'crown', 'head' => __('Latest win'), 'text' => ($pride['win']['loser'] ?? '') !== ''
-                ? __(':winner beats :loser', ['winner' => $pride['win']['winner'], 'loser' => $pride['win']['loser']])
-                : (string) $pride['win']['winner']];
+        // A tournament overlay stays with its tournament: the league's own news is the league live overlay's.
+        foreach (array_slice($tournament === null && is_array($pride['climbers'] ?? null) ? $pride['climbers'] : [], 0, 2) as $climber) {
+            $items[] = ['emblem' => 'rank-up', 'head' => __('Climbing'), 'text' => __(':name gains :gain Elo this week', ['name' => $climber['name'], 'gain' => $climber['gain']])];
         }
 
-        if ($stats !== null && $stats['gamesToday'] > 0) {
+        foreach (array_slice($tournament === null && is_array($pride['rankUps'] ?? null) ? $pride['rankUps'] : [], 0, 2) as $rankUp) {
+            $items[] = ['emblem' => 'rank-up', 'head' => __('Rank up'), 'text' => __(':name reaches :tier in :ladder', ['name' => $rankUp['name'], 'tier' => $rankUp['tier'], 'ladder' => $rankUp['ladder']])];
+        }
+
+        if ($tournament === null && $stats !== null && $stats['gamesToday'] > 0) {
             $items[] = ['emblem' => 'mark', 'head' => __('Today'), 'text' => trans_choice(':count game played|:count games played', $stats['gamesToday'])];
         }
 
         if ($preset->hasModule('ads')) {
             $host = (string) preg_replace('#^https?://#', '', rtrim(url('/'), '/'));
             $items[] = ['emblem' => 'mark', 'head' => __('Join in'), 'text' => __('Play in the league for free at :host', ['host' => $host])];
+
+            if ($tournament === null) {
+                foreach ($games as $game) {
+                    $items[] = ['emblem' => $game['emblem'], 'head' => __('In the league'), 'text' => $game['name']];
+                }
+            }
         }
 
         return $items;
+    }
+
+    /**
+     * A result's label for the crawl, written after "A beats B": a one-game result as the board writes it from White's
+     * side ("0–1") would read against the winner, so it is left out; a series score ("3–1") stays.
+     */
+    private static function scoreLabel(?string $label): string
+    {
+        return $label === null || preg_match('/^[01½]\s*[–-]\s*[01½]$/u', $label) === 1 ? '' : $label;
     }
 
     /** The emblem of a game in the asset pack (public/broadcast/art), the league mark for a game without one. */

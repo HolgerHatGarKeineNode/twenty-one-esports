@@ -3,7 +3,11 @@
  * and a glass rail along the foot of the frame. The crawl is made of segments: an emblem (a game's, the trophy, or the
  * league mark), a metal chip naming what kind of news follows, the news itself, and a slanted orange cut before the
  * next segment. Everything on the rail is drawn by the same material as its words, so it fades out at both ends
- * together. The segments repeat until they cover the rail twice and wrap off-screen, so the loop has no seam.
+ * together. The crawl is a conveyor: segments are laid out one after the other as the rail needs them and dropped once
+ * they have left it on the left. Each segment is laid from the list `source()` returns at that moment, so a fresh
+ * snapshot or feed rebuilds the crawl seamlessly: off-screen, from the segment after the last one laid, never in the
+ * middle of a word on screen (P3). `seg.loops` counts the passes through the list, `seg.rebuilt` the times the list
+ * changed under the crawl.
  *
  * Speed: TIMING.tickerPxPerS (64 logical px/s, cap 80). The crawl is the one place text moves while read, as the
  * plan allows it: slow enough that a word stays ~25 s on the rail. Its speed is measured from the meshes' real
@@ -109,7 +113,7 @@ function createCut(stage) {
     });
 }
 
-export function createTicker(stage, timeline, { start, label, items }) {
+export function createTicker(stage, timeline, { start, label, items, source = null }) {
     const { THREE } = stage;
     const slot = SLOTS.ticker;
     const H = slot.h;
@@ -117,7 +121,8 @@ export function createTicker(stage, timeline, { start, label, items }) {
     const o = stage.toWorld(slot.x, slot.y);
     root.position.set(o.x, o.y, 0);
     stage.scene.add(root);
-    const segments = items.map((it) => (typeof it === 'string' ? { text: it } : it));
+    const normalize = (list) => (list || []).map((it) => (typeof it === 'string' ? { text: it } : it)).filter((it) => it && it.text);
+    let list = normalize(items);
 
     // The chip: mark + label on orange glass-metal, chamfered on the corner towards the rail.
     const chipText = createLine(stage, label, TYPE.tag, { color: COLOR.onBtc });
@@ -152,46 +157,80 @@ export function createTicker(stage, timeline, { start, label, items }) {
     flare.position.set(railX, -3, 3);
     root.add(flare);
 
-    // The crawl: segments laid out once, repeated until they cover the rail twice, wrapped by length.
+    // The conveyor: parts in strip coordinates (x grows to the right without end), created ahead of the rail's
+    // right end and dropped behind its left end.
     const crawl = new THREE.Group();
     crawl.position.set(railX, 0, 1);
     root.add(crawl);
     const parts = [];
-    let x = 0;
+    let tail = 0;
+    let cursor = 0;
+    let itemK = 0;
     const push = (plane, w, top, gapAfter) => {
         crawl.add(plane.mesh);
-        parts.push({ plane, x, top });
-        x += w + gapAfter;
+        plane.material.uniforms.clipFade.value = 56;
+        plane.material.uniforms.opacity.value = itemK;
+        parts.push({ plane, x: tail, w, top });
+        tail += w + gapAfter;
     };
-    do {
-        segments.forEach((sgm) => {
-            if (sgm.emblem) push(createEmblem(stage, sgm.emblem), 40, (H - 40) / 2, 12);
-            if (sgm.head) {
-                const head = createHead(stage, sgm.head);
-                push(head, head.width, (H - head.height) / 2, 14);
-            }
-            const l = createLine(stage, sgm.text, TYPE.crawl, { color: COLOR.ink });
-            push(l, l.width - l.pad * 2, (H - TYPE.crawl.size * TYPE.crawl.leading) / 2, 40);
-            push(createCut(stage), 18, (H - 28) / 2, 40);
-        });
-    } while (x < railW * 2);
-    const length = x;
-    parts.forEach((p) => { p.plane.material.uniforms.clipFade.value = 56; });
+    const append = (sgm) => {
+        if (sgm.emblem) push(createEmblem(stage, sgm.emblem), 40, (H - 40) / 2, 12);
+        if (sgm.head) {
+            const head = createHead(stage, sgm.head);
+            push(head, head.width, (H - head.height) / 2, 14);
+        }
+        const l = createLine(stage, sgm.text, TYPE.crawl, { color: COLOR.ink });
+        push(l, l.width - l.pad * 2, (H - TYPE.crawl.size * TYPE.crawl.leading) / 2, 40);
+        push(createCut(stage), 18, (H - 28) / 2, 40);
+    };
+    const keyOf = (l) => l.map((it) => `${it.head}|${it.text}`).join('\n');
 
     const seg = timeline.add({
-        kind: 'ticker', slot: 'ticker', texts: segments.map((s) => [s.head, s.text].filter(Boolean).join(' ')), start, introMs: TIMING.tickerIntroMs, holdMs: 3_600_000, outroMs: 600,
-        extra: { pxPerS: TIMING.tickerPxPerS, observedPxPerS: null },
+        kind: 'ticker', slot: 'ticker', texts: list.map((sg) => [sg.head, sg.text].filter(Boolean).join(' ')), start, introMs: TIMING.tickerIntroMs, holdMs: 3_600_000, outroMs: 600,
+        extra: { pxPerS: TIMING.tickerPxPerS, observedPxPerS: null, loops: 0, rebuilt: 0 },
     });
+
+    const itemKey = (it) => `${it.head}|${it.text}`;
+    let lastKey = null;
+
+    /**
+     * Lay segments up to `ahead` px past the rail's right end. Every segment laid is taken from the list as it is
+     * now (a result that went stale leaves the crawl with its next pass, never from the screen); the next one follows
+     * the last laid one in the fresh list. A pass through the list ends at a loop boundary.
+     */
+    function fill(offset) {
+        const ahead = offset + railW + 240;
+        let guard = 0;
+        while (tail < ahead && list.length > 0 && guard++ < 64) {
+            const fresh = source ? normalize(source()) : list;
+            if (fresh.length > 0 && keyOf(fresh) !== keyOf(list)) {
+                const at = lastKey === null ? -1 : fresh.findIndex((it) => itemKey(it) === lastKey);
+                cursor = at >= 0 ? at + 1 : Math.min(cursor, fresh.length);
+                list = fresh;
+                seg.rebuilt++;
+            }
+            if (cursor >= list.length) {
+                cursor = 0;
+                seg.loops++;
+            }
+            lastKey = itemKey(list[cursor]);
+            append(list[cursor++]);
+        }
+        while (parts.length > 0 && parts[0].x + parts[0].w < offset - 160) {
+            const gone = parts.shift();
+            crawl.remove(gone.plane.mesh);
+            disposeTree(gone.plane.mesh);
+        }
+    }
+
     let probe = null;
+    const clipL = root.position.x + railX + 12;
+    const clipR = root.position.x + railX + railW - 12;
 
     function layout(offset) {
         const left = 20;
-        const clipL = root.position.x + railX + 12;
-        const clipR = root.position.x + railX + railW - 12;
         parts.forEach((p) => {
-            // Wrapped with a lead of 640 px: a part leaves the clip on the left before it jumps to the far right.
-            const px = ((p.x - offset + 640) % length + length) % length - 640;
-            placeLine(p.plane, left + px, p.top, 0);
+            placeLine(p.plane, left + p.x - offset, p.top, 0);
             p.plane.material.uniforms.clip.value.set(clipL, 0, clipR, 0);
         });
     }
@@ -201,7 +240,8 @@ export function createTicker(stage, timeline, { start, label, items }) {
         root.visible = ph.name !== 'before' && ph.name !== 'after';
         timeline.observe(seg, ph, t, []);
         if (!root.visible) return;
-        let chipK = 1, railK = 1, itemK = 1;
+        let chipK = 1, railK = 1;
+        itemK = 1;
         if (ph.name === 'intro') {
             chipK = CURVES.set(span(ph.t, 0, 600));
             railK = CURVES.set(span(ph.t, 120, 780));
@@ -224,21 +264,22 @@ export function createTicker(stage, timeline, { start, label, items }) {
         flare.position.x = railX + sweep * railW;
         flare.material.uniforms.opacity.value = flareAt(sweep) * 0.7 * railK;
         const moving = Math.max(0, t - seg.start - seg.introMs);
-        layout((moving * TIMING.tickerPxPerS) / 1000);
+        const offset = (moving * TIMING.tickerPxPerS) / 1000;
+        fill(offset);
+        layout(offset);
         parts.forEach((p) => { p.plane.material.uniforms.opacity.value = itemK; });
 
-        // Speed from real positions: the first part's world x, sampled once a second, wraps skipped.
-        const v = new THREE.Vector3();
-        parts[0].plane.mesh.getWorldPosition(v);
-        if (ph.name === 'hold') {
-            if (!probe) probe = { t, x: v.x };
+        // Speed from real positions: one part's world x, sampled once a second; a part that left resets the probe.
+        if (ph.name === 'hold' && parts.length > 0) {
+            const v = new THREE.Vector3();
+            if (probe && !parts.includes(probe.part)) probe = null;
+            const part = probe ? probe.part : parts[parts.length - 1];
+            part.plane.mesh.getWorldPosition(v);
+            if (!probe) probe = { part, t, x: v.x };
             else if (t - probe.t >= 1000) {
                 const d = probe.x - v.x;
-                if (d >= 0 && d < length / 2) {
-                    const speed = (d / (t - probe.t)) * 1000;
-                    seg.observedPxPerS = Math.max(seg.observedPxPerS || 0, +speed.toFixed(2));
-                }
-                probe = { t, x: v.x };
+                if (d >= 0) seg.observedPxPerS = Math.max(seg.observedPxPerS || 0, +((d / (t - probe.t)) * 1000).toFixed(2));
+                probe = { part, t, x: v.x };
             }
         }
     }

@@ -16,7 +16,8 @@
 
 import { CURVES, span } from '../curves.js';
 import { createFlare, createHalo, createHeat, createImage, createSlab } from '../materials.js';
-import { createLine, disposeTree, placeLine } from '../text.js';
+import { drawMark } from '../mark.js';
+import { createCanvasPlane, createLine, disposeTree, placeLine } from '../text.js';
 import { COLOR, SLOTS, TYPE } from '../tokens.js';
 import { TIMING, holdForTexts } from '../timing.js';
 
@@ -30,11 +31,24 @@ export function place(line, left, top, z = 0.6) {
 /** A light sweep's position along a plate (0..1 crosses it) and the flare's brightness there. */
 export const flareAt = (sweep) => Math.sin(Math.PI * Math.min(1, Math.max(0, sweep)));
 
-export function createLowerThird(stage, timeline, { start, name, line, emblem = null, particles = null }) {
+/** An SVG document (the snapshot's QR code) as an image the 2D canvas can draw; calls back once it can. */
+function svgImage(svg, onLoad) {
+    const img = new Image();
+    img.addEventListener('load', onLoad, { once: true });
+    img.src = `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}`;
+
+    return img;
+}
+
+/**
+ * `qr` (an SVG QR code) puts a scannable tile of 144 px on a wider block instead of an emblem: dark modules on white,
+ * drawn without smoothing at the stage's text scale, so each module stays a hard square in 1080p and 4K. `mark` puts
+ * the league's 21 mark there when there is no emblem.
+ */
+export function createLowerThird(stage, timeline, { start, name, line, emblem = null, qr = null, mark = false, holdMs = 0, particles = null, slot = SLOTS.lowerThird, kind = 'lowerThird' }) {
     const { THREE } = stage;
-    const slot = SLOTS.lowerThird;
     const H = slot.h;
-    const B = 112;
+    const B = qr ? 160 : 112;
     const root = new THREE.Group();
     const o = stage.toWorld(slot.x, slot.y);
     root.position.set(o.x, o.y, 0);
@@ -60,6 +74,39 @@ export function createLowerThird(stage, timeline, { start, name, line, emblem = 
     }
     const at = stage.onScreen(o.x + B / 2 + 4, o.y - H / 2 + 14, 18);
     const emblemHome = { x: at.x - o.x, y: at.y - o.y, z: 18 };
+    // A drawn figure on the block instead of an emblem image: the QR tile or the league mark.
+    let tile = null;
+    let tileHome = null;
+    if (qr || (mark && !emblem)) {
+        const S = qr ? 144 : 92;
+        let plane = null;
+        const img = qr ? svgImage(qr, () => plane && plane.redraw()) : null;
+        plane = createCanvasPlane(stage, S, S, (ctx) => {
+            if (!qr) {
+                drawMark(ctx, 0, 0, S);
+
+                return;
+            }
+            ctx.fillStyle = '#FFFFFF';
+            ctx.beginPath();
+            ctx.roundRect(0, 0, S, S, 6);
+            ctx.fill();
+            if (!img.complete || !img.naturalWidth) return;
+            ctx.imageSmoothingEnabled = false;
+            ctx.drawImage(img, 4, 4, S - 8, S - 8);
+        });
+        tile = plane;
+        tile.mesh.renderOrder = 4;
+        root.add(tile.mesh);
+        const p = stage.onScreen(o.x + B / 2, o.y - H / 2 + (qr ? 20 : 8), 18);
+        tileHome = { x: p.x - o.x, y: p.y - o.y, z: 18 };
+        if (!emblem) {
+            halo = createHalo(THREE, qr ? 300 : 220, COLOR.btc, 0.3);
+            halo.position.set(B / 2, -H / 2 + 10, 2);
+            halo.renderOrder = 1.5;
+            root.add(halo);
+        }
+    }
 
     const heat = createHeat(THREE, 4, H);
     heat.position.set(B, 0, 1);
@@ -86,7 +133,7 @@ export function createLowerThird(stage, timeline, { start, name, line, emblem = 
 
     const intro = TIMING.lowerThirdIntroMs;
     const outro = TIMING.lowerThirdOutroMs;
-    const seg = timeline.add({ kind: 'lowerThird', slot: 'lowerThird', texts: [name, line], start, introMs: intro, holdMs: holdForTexts([name, line]), outroMs: outro });
+    const seg = timeline.add({ kind, slot: kind, texts: [name, line], start, introMs: intro, holdMs: Math.max(holdMs, holdForTexts([name, line])), outroMs: outro });
     const texts = [nameLine.mesh, subLine.mesh];
     let landed = false;
 
@@ -144,6 +191,12 @@ export function createLowerThird(stage, timeline, { start, name, line, emblem = 
             image.material.uniforms.sheen.value = sheen;
             halo.material.uniforms.opacity.value = 0.34 * emblemK * fade;
         }
+        if (tile) {
+            tile.mesh.position.set(tileHome.x, tileHome.y - (1 - emblemK) * 28, tileHome.z);
+            tile.mesh.scale.set(tile.width * Math.max(0.001, 0.72 + 0.28 * emblemK), tile.height * Math.max(0.001, 0.72 + 0.28 * emblemK), 1);
+            tile.material.uniforms.opacity.value = Math.min(1, emblemK * 1.3) * fade;
+            if (!image) halo.material.uniforms.opacity.value = 0.34 * emblemK * fade;
+        }
         plate.front.uniforms.sweep.value = sweep;
         flare.position.x = plateX + sweep * W;
         flare.material.uniforms.opacity.value = flareAt(sweep) * 0.9 * fade;
@@ -155,6 +208,8 @@ export function createLowerThird(stage, timeline, { start, name, line, emblem = 
     return {
         seg,
         update,
+        /** Leave from `t` on (a persistent banner whose words changed): the hold never ends under its reading rule. */
+        retire(t) { timeline.endAt(seg, t); },
         dispose() {
             stage.scene.remove(root);
             disposeTree(root);

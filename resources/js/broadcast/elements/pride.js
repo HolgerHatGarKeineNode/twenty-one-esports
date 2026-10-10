@@ -24,7 +24,12 @@ import { COLOR, SLOTS, TYPE } from '../tokens.js';
 import { RULES, TIMING, holdForTexts } from '../timing.js';
 import { DEG, flareAt, place } from './lowerThird.js';
 
-export function createPride(stage, timeline, particles, { start, side = 'right', name, line, context, trophy, rays = null }) {
+/**
+ * Options beyond the words: `targetMs` (total length, clamped by RULES; a champion takes the longest), `figure` (the
+ * box the trophy art is fitted into, its own aspect kept: a crown is wide, a trophy tall), `onLand` (called once when
+ * the figure lands, for the shimmer sound), `kind` (what the moment is about, for the timeline and tests).
+ */
+export function createPride(stage, timeline, particles, { start, side = 'right', name, line, context, trophy, rays = null, targetMs = TIMING.prideTargetMs, figure = { w: 220, h: 350 }, onLand = null, kind = null }) {
     const { THREE } = stage;
     const right = side === 'right';
     const slot = right ? SLOTS.cornerRight : SLOTS.cornerLeft;
@@ -77,7 +82,7 @@ export function createPride(stage, timeline, particles, { start, side = 'right',
     const cupZ = 50;
     const cupScreen = stage.onScreen(o.x + cx, o.y + ledgeY + 176, cupZ);
     const cupHome = { x: cupScreen.x - o.x, y: cupScreen.y - o.y, z: cupZ };
-    const cup = createImage(THREE, trophy, 220, 350, { rim: 1.3, rimFrom: [right ? -1 : 1, 0.35] });
+    const cup = createImage(THREE, trophy, figure.w, figure.h, { rim: 1.3, rimFrom: [right ? -1 : 1, 0.35] });
     cup.position.set(cupHome.x, cupHome.y, cupHome.z);
     root.add(cup);
     const shock = createShock(THREE, 560);
@@ -133,8 +138,8 @@ export function createPride(stage, timeline, particles, { start, side = 'right',
     const outro = TIMING.prideOutroMs;
     const texts = [name, line, context];
     const minHold = holdForTexts(texts);
-    const hold = Math.min(RULES.prideMaxMs - intro - outro, Math.max(minHold, TIMING.prideTargetMs - intro - outro));
-    const seg = timeline.add({ kind: 'pride', slot: right ? 'cornerRight' : 'cornerLeft', texts, start, introMs: intro, holdMs: Math.max(hold, minHold), outroMs: outro });
+    const hold = Math.min(RULES.prideMaxMs - intro - outro, Math.max(minHold, Math.max(RULES.prideMinMs, targetMs) - intro - outro));
+    const seg = timeline.add({ kind: 'pride', slot: right ? 'cornerRight' : 'cornerLeft', texts, start, introMs: intro, holdMs: Math.max(hold, minHold), outroMs: outro, extra: { moment: kind } });
     const meshes = [head.mesh, what.mesh, where.mesh];
     const dir = right ? 1 : -1;
     let burst = false;
@@ -170,6 +175,7 @@ export function createPride(stage, timeline, particles, { start, side = 'right',
             flash = Math.exp(-Math.pow((x - land - 30) / 120, 2));
             if (!burst && x >= land) {
                 burst = true;
+                if (onLand) onLand();
                 particles.emit(pillarSlot.x + PW / 2 - 30, pillarSlot.y + 150, 120, { w: 60, h: 60, speed: 300, rise: 20, lifeMs: 1500, sizePx: 8, radial: true, inner: 110, z: 60 });
             }
         } else if (ph.name === 'hold') {

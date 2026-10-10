@@ -9,6 +9,8 @@
  *   setTier(name)     high | medium | low
  */
 
+import { createBoardPage } from './elements/board.js';
+import { createCamFrame } from './elements/camFrame.js';
 import { createLowerThird } from './elements/lowerThird.js';
 import { createPride } from './elements/pride.js';
 import { createStinger } from './elements/stinger.js';
@@ -61,6 +63,8 @@ export async function createBroadcast(canvas, { tier = null } = {}) {
         pride: (spec) => add(createPride(stage, timeline, particles, spec)),
         ticker: (spec) => add(createTicker(stage, timeline, spec)),
         stinger: (spec) => add(createStinger(stage, timeline, particles, spec)),
+        board: (spec) => add(createBoardPage(stage, timeline, spec)),
+        camFrame: (spec) => add(createCamFrame(stage, timeline, spec)),
         start: () => stage.start(),
     };
 

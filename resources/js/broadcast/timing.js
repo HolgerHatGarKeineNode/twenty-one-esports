@@ -48,6 +48,26 @@ export const TIMING = Object.freeze({
     prideLandMs: 760,
     // The gap after one element leaves before the next in the same slot comes in.
     slotGapMs: 1400,
+
+    // Overlays (P3, P4). A corner moment is decided this far ahead of its start (the riser plays 1200 ms before it).
+    prideLeadMs: 1400,
+    // Between two corner moments the stream breathes: the next starts this long after the last has left.
+    prideGapMs: 6000,
+    // A corner left empty this long replays the league's pride list, so a quiet league still shows its people.
+    prideIdleMs: 40000,
+    // A champion takes the longest moment the rules allow.
+    championTargetMs: 12000,
+    // League live: an information card (stats, next cup, join, a game) in the lower third at most this often.
+    infoEveryMs: 20000,
+    // The join card with its QR code holds long enough to take out a phone and scan.
+    qrHoldMs: 8000,
+    // Tournament board: a page holds at least this long (more when its words need it); one page alone holds a minute.
+    boardPageMs: 12000,
+    boardAloneMs: 60000,
+    boardIntroMs: 900,
+    boardOutroMs: 600,
+    // A champion of a finished tournament comes back this often.
+    championRepeatMs: 120000,
 });
 
 /** Words in a text, the way a reader counts them: runs of letters or digits. */

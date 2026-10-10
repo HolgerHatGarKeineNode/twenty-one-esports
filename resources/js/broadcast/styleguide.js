@@ -67,7 +67,8 @@ function renderDocs() {
     });
 
     const slots = document.querySelector('[data-doc=slots]');
-    const rects = Object.entries(SLOTS).map(([name, r]) => `<g class="slot slot-${name}"><rect x="${r.x}" y="${r.y}" width="${r.w}" height="${r.h}"/><text x="${r.x + 16}" y="${r.y + 36}">${config.texts.slots[name]}</text></g>`).join('');
+    // The overlays' own slots (banner, board, camera) overlap the corners they replace; the diagram shows the system's.
+    const rects = Object.entries(SLOTS).filter(([name]) => config.texts.slots[name]).map(([name, r]) => `<g class="slot slot-${name}"><rect x="${r.x}" y="${r.y}" width="${r.w}" height="${r.h}"/><text x="${r.x + 16}" y="${r.y + 36}">${config.texts.slots[name]}</text></g>`).join('');
     slots.innerHTML = `<svg viewBox="0 0 1920 1080" role="img" aria-label="${config.texts.slotsLabel}"><rect class="frame" x="0" y="0" width="1920" height="1080"/><rect class="safe" x="96" y="54" width="1728" height="972"/>${rects}</svg>`;
 }
 

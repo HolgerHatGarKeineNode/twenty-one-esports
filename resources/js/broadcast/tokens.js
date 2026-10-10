@@ -38,6 +38,13 @@ export const SLOTS = Object.freeze({
     pillarRight: { x: 1560, y: 54, w: 264, h: 470 },
     lowerThird: { x: 96, y: 858, w: 1120, h: 104 },
     ticker: { x: 96, y: 978, w: 1728, h: 48 },
+    // Tournament overlay (P4): the banner holds the top band's left half (pride moments use the right corner only),
+    // the board stands in the left strip, 40 px clear of the centre, and ends above the lower third.
+    banner: { x: 96, y: 54, w: 840, h: 104 },
+    board: { x: 96, y: 206, w: 264, h: 632 },
+    // League live (P3), module cam-frame: a 16:9 frame for the streamer's camera in the bottom right, clear of the
+    // centre (x from 1544) and above the ticker.
+    cam: { x: 1544, y: 788, w: 280, h: 158 },
 });
 
 /**

@@ -81,6 +81,12 @@ export function createTimeline(stage) {
         }
     }
 
+    /** End a segment's hold at `t` (an element with an open-ended hold), never under its reading rule. */
+    function endAt(seg, t) {
+        seg.holdMs = Math.round(Math.max(seg.holdRuleMs, Math.min(seg.holdMs, t - seg.start - seg.introMs)));
+        seg.end = Math.round(seg.start + seg.introMs + seg.holdMs + seg.outroMs);
+    }
+
     function snapshot() {
         return {
             now: Math.round(stage.now()),
@@ -89,5 +95,5 @@ export function createTimeline(stage) {
         };
     }
 
-    return { add, phase, observe, snapshot, segments };
+    return { add, phase, observe, endAt, snapshot, segments };
 }

@@ -1,5 +1,6 @@
 <?php
 
+use App\Enums\OverlayVariant;
 use App\Models\OverlayPreset;
 use App\Models\Tournament;
 use Illuminate\Support\Facades\Http;
@@ -15,7 +16,7 @@ pest()->group('browser');
 | An OBS overlay preset's browser source (plan "OBS-Broadcast-Overlays", P2)
 |--------------------------------------------------------------------------
 |
-| /broadcast/{token} opened without a login at 1920x1080 with software WebGL (SwiftShader,
+| /broadcast/{token} of a break preset (the shell) opened without a login at 1920x1080 with software WebGL (SwiftShader,
 | tests/Support/BrowserWebGL.php), as OBS opens it: the document is transparent, the engine runs the shell (the
 | preset's name as a lower third, the ticker with the snapshot's segments), the free centre stays transparent
 | while both are on air (the lower third's plate and the ticker rail are the sampler's positive control), the
@@ -31,7 +32,9 @@ afterAll(fn () => BrowserWebGL::off());
 test('the overlay renders transparent with the centre free, its shell on air and a clean console', function () {
     BrowserWebGL::on();
     Tournament::factory()->signup()->create(['published_at' => now(), 'signup_closes_at' => now()->addDay(), 'name' => 'Autumn Blitz Cup']);
-    OverlayPreset::factory()->withToken($token = str_repeat('k', 48))->create(['name' => 'Laptop stream', 'locale' => 'en']);
+    // The shell runs the variants without a scene of their own yet (break, bracket: P5, P6); league live and tournament
+    // have theirs (tests/Browser/BroadcastLiveOverlaysTest.php).
+    OverlayPreset::factory()->withToken($token = str_repeat('k', 48))->create(['name' => 'Laptop stream', 'locale' => 'en', 'variant' => OverlayVariant::Break]);
 
     $page = visit('/broadcast/'.$token)->page();
     $page->context()->addInitScript(BrowserConsole::COLLECTOR);
@@ -45,7 +48,7 @@ test('the overlay renders transparent with the centre free, its shell on air and
 
     $snapshot = $page->evaluate('() => window.broadcastOverlay.snapshot()');
     expect($snapshot['preset']['name'])->toBe('Laptop stream')
-        ->and(collect($snapshot['ticker'])->pluck('text')->all())->toContain('Autumn Blitz Cup');
+        ->and(collect($snapshot['ticker'])->pluck('text')->first(fn (string $text): bool => str_starts_with($text, 'Autumn Blitz Cup, starts ')))->not->toBeNull();
 
     // The name plate holds from about 1.3 s (start 0.3 s, build-in 1 s); the ticker is in from about 1.5 s.
     BrowserWait::until($page, '() => window.broadcast.timeline().now >= 3000', 20_000);

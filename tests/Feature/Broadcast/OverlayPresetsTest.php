@@ -171,7 +171,7 @@ test('the snapshot carries public data only: no key, npub, email, Lightning addr
     $json = json_encode($data);
     $keys = overlayKeys($data);
 
-    expect(array_keys($data))->toBe(['generatedAt', 'preset', 'site', 'upcoming', 'nextCup', 'pride', 'stats', 'tournament', 'ticker'])
+    expect(array_keys($data))->toBe(['generatedAt', 'preset', 'site', 'upcoming', 'nextCup', 'pride', 'stats', 'tournament', 'games', 'recent', 'ticker'])
         ->and(array_intersect($keys, OverlaySnapshot::PRIVATE_KEYS))->toBe([])
         ->and(array_filter($keys, fn (string $key): bool => str_ends_with($key, 'Ref') || str_ends_with($key, 'Refs')))->toBe([])
         ->and($data['tournament']['name'])->toBe($tournament->name)
