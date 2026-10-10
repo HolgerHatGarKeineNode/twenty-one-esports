@@ -1,0 +1,134 @@
+{
+ "model": "google/gemini-3-pro-image",
+ "style": "",
+ "assets": [
+  {
+   "id": "trophy",
+   "aspect": "1:1",
+   "size": "2K",
+   "prompt": "The grand championship trophy of a professional esports league, broadcast hero asset: a tall elegant faceted chalice with two sweeping angular handles, the cup of polished mirror-like orange-gold metal (like #F7931A anodised gold) with fine engraved geometric lines, a slim waist with a glowing orange ring, standing on a heavy base of three stacked dark gunmetal cubes with bevelled edges, dramatic studio lighting: hard white rim light from both sides, a warm key light, glossy reflections, a few tiny sparks of light on the edges. Ultra detailed premium 3D product render, three-quarter front view from slightly below so it looks monumental, centred, the trophy fills 80% of the frame height with a margin on every side. Isolated on a perfectly flat uniform pure magenta background (#FF00FF), no floor, no shadow on the background, no magenta reflections on the metal. No text, no letters, no numbers, no logos, no watermark."
+  },
+  {
+   "id": "crown",
+   "aspect": "1:1",
+   "size": "2K",
+   "prompt": "A champion's crown for a professional esports league broadcast: a bold geometric crown with five sharp points, each point capped by a small glowing orange cube, body made of polished orange-gold metal (like #F7931A anodised gold) with dark gunmetal inner band, crisp bevels catching hard white rim light, ultra clean high-end 3D product render, slight three-quarter front view from a little below, centred, fills 80% of the frame width. Isolated on a perfectly flat uniform pure magenta background (#FF00FF), no floor, no shadow on the background. No text, no letters, no logos, no watermark."
+  },
+  {
+   "id": "medal-gold",
+   "aspect": "1:1",
+   "size": "2K",
+   "prompt": "A premium esports tournament medal, first place: a thick octagonal medal of polished orange-gold metal (like #F7931A anodised gold) with a raised cube motif in the centre and a fine engraved concentric pattern, a small solid ring loop at the top and NO ribbon, crisp bevelled edge catching hard white rim light, ultra clean high-end 3D product render, front view tilted 15 degrees, centred, the whole medal including its ring fully inside the frame with a 12% margin on every side. Isolated on a perfectly flat uniform pure magenta background (#FF00FF). No text, no letters, no numbers, no logos, no watermark."
+  },
+  {
+   "id": "medal-silver",
+   "aspect": "1:1",
+   "size": "2K",
+   "prompt": "A premium esports tournament medal, second place: a thick octagonal medal of polished cool silver metal with a faint warm orange reflection on one edge with a raised cube motif in the centre and a fine engraved concentric pattern, a small solid ring loop at the top and NO ribbon, crisp bevelled edge catching hard white rim light, ultra clean high-end 3D product render, front view tilted 15 degrees, centred, the whole medal including its ring fully inside the frame with a 12% margin on every side. Isolated on a perfectly flat uniform pure magenta background (#FF00FF). No text, no letters, no numbers, no logos, no watermark."
+  },
+  {
+   "id": "medal-bronze",
+   "aspect": "1:1",
+   "size": "2K",
+   "prompt": "A premium esports tournament medal, third place: a thick octagonal medal of polished dark bronze copper metal with a raised cube motif in the centre and a fine engraved concentric pattern, a small solid ring loop at the top and NO ribbon, crisp bevelled edge catching hard white rim light, ultra clean high-end 3D product render, front view tilted 15 degrees, centred, the whole medal including its ring fully inside the frame with a 12% margin on every side. Isolated on a perfectly flat uniform pure magenta background (#FF00FF). No text, no letters, no numbers, no logos, no watermark."
+  },
+  {
+   "id": "rank-up",
+   "aspect": "1:1",
+   "size": "2K",
+   "prompt": "A bold 3D emblem for climbing the ranking in an esports league: three stacked upward chevrons made of dark gunmetal blocks, the top chevron polished orange-gold (like #F7931A) and glowing softly from inside, crisp bevels with hard white rim light, ultra clean high-end 3D render, front view slightly from below, centred, fills 80% of the frame. Isolated on a perfectly flat uniform pure magenta background (#FF00FF). No text, no letters, no numbers, no logos, no watermark."
+  },
+  {
+   "id": "emblem-chess",
+   "aspect": "1:1",
+   "size": "2K",
+   "prompt": "Game emblem for chess in a premium esports broadcast package: a single bold sculpted chess knight piece standing on a small square plinth block, dark gunmetal with polished orange-gold (like #F7931A) bevelled edges and a soft inner orange glow along its contours, crisp hard white rim light, ultra clean high-end 3D render, three-quarter front view. The whole piece including the plinth is fully inside the frame with a generous empty margin of at least 12% on every side, centred. Isolated on a perfectly flat uniform pure magenta background (#FF00FF). No text, no letters, no logos, no watermark."
+  },
+  {
+   "id": "emblem-rocket-league",
+   "aspect": "1:1",
+   "size": "2K",
+   "prompt": "Game emblem for car football (rocket-powered cars playing football) in a premium esports broadcast package: a generic angular sports car seen from the front three-quarter, boosting upward with a short orange flame, next to a large hexagon-panelled ball, both dark gunmetal with polished orange-gold (like #F7931A) edges and soft orange glow, crisp hard white rim light, ultra clean high-end 3D render, compact composition, centred, fills 80% of the frame. Not any real car brand or game logo. Isolated on a perfectly flat uniform pure magenta background (#FF00FF). No text, no letters, no logos, no watermark."
+  },
+  {
+   "id": "emblem-football",
+   "aspect": "1:1",
+   "size": "2K",
+   "prompt": "Game emblem for football (soccer) video games in a premium esports broadcast package: a classic football with pentagon and hexagon panels, the panels alternating dark gunmetal and polished orange-gold (like #F7931A), flying forward with a short motion streak of orange light, crisp hard white rim light, ultra clean high-end 3D render, centred, fills 75% of the frame. Isolated on a perfectly flat uniform pure magenta background (#FF00FF). No text, no letters, no logos, no watermark."
+  },
+  {
+   "id": "emblem-age-of-empires-2",
+   "aspect": "1:1",
+   "size": "2K",
+   "prompt": "Game emblem for a medieval real-time strategy game in a premium esports broadcast package: a sturdy medieval castle keep tower with battlements and a pennant, crossed in front by a sword, sculpted in dark gunmetal stone with polished orange-gold (like #F7931A) edges and warm glowing arrow-slit windows, crisp hard white rim light, ultra clean high-end 3D render, three-quarter front view, centred, fills 80% of the frame. Not any real game logo. Isolated on a perfectly flat uniform pure magenta background (#FF00FF). No text, no letters, no logos, no watermark."
+  },
+  {
+   "id": "emblem-tmnf",
+   "aspect": "1:1",
+   "size": "2K",
+   "prompt": "Game emblem for an arcade racing time-trial game in a premium esports broadcast package: a low sleek generic race car at speed on a short curved track segment that rises into a loop, with a checkered start gate behind, dark gunmetal with polished orange-gold (like #F7931A) edges and orange light streaks, crisp hard white rim light, ultra clean high-end 3D render, compact composition, centred, fills 80% of the frame. Not any real brand or game logo. Isolated on a perfectly flat uniform pure magenta background (#FF00FF). No text, no letters, no logos, no watermark."
+  },
+  {
+   "id": "emblem-pong",
+   "aspect": "1:1",
+   "size": "2K",
+   "prompt": "Game emblem for a classic retro paddle-and-ball arcade video game in a premium esports broadcast package: a small square arcade playfield tile in isometric three-quarter view, made of thick dark gunmetal with polished orange-gold (like #F7931A) bevelled rim; on it two short thick glowing orange bars stand at the left and right edges like the two paddles, a dashed line of small glowing squares runs down the middle, and one bright glowing orange cube ball flies diagonally across with a straight streak of light behind it. Crisp hard white rim light, ultra clean high-end 3D render, centred, fills 80% of the frame with a 10% margin on every side. No rackets, no table tennis, no checkmark shapes. Isolated on a perfectly flat uniform pure magenta background (#FF00FF). No text, no letters, no logos, no watermark."
+  },
+  {
+   "id": "emblem-hyper",
+   "aspect": "1:1",
+   "size": "2K",
+   "prompt": "Game emblem for a world-conquest strategy board game in a premium esports broadcast package: a faceted globe made of dark gunmetal plates with continents raised in polished orange-gold (like #F7931A), circled by one thin glowing orange ring on which a single small plain gold cube rides, crisp hard white rim light, ultra clean high-end 3D render, warm palette only (no blue), centred, fully inside the frame with a 12% margin on every side. No symbols or logos on the cube or globe. Isolated on a perfectly flat uniform pure magenta background (#FF00FF). No text, no letters, no logos, no watermark."
+  },
+  {
+   "id": "emblem-blockfill",
+   "aspect": "1:1",
+   "size": "2K",
+   "prompt": "Game emblem for a falling-blocks stacking puzzle game in a premium esports broadcast package: four stacked tetromino-like shapes made of cubes, dark gunmetal cubes with polished orange-gold (like #F7931A) bevels, the top piece glowing orange, crisp hard white rim light, ultra clean high-end 3D render, three-quarter front view, centred, fills 80% of the frame. Isolated on a perfectly flat uniform pure magenta background (#FF00FF). No text, no letters, no logos, no watermark."
+  },
+  {
+   "id": "emblem-checkers",
+   "aspect": "1:1",
+   "size": "2K",
+   "prompt": "Game emblem for checkers (draughts) in a premium esports broadcast package: a stack of two thick round checkers pieces with a crowned king piece on top, the pieces alternating dark gunmetal and polished orange-gold (like #F7931A), resting on a small tilted corner of a checkered board, crisp hard white rim light, ultra clean high-end 3D render, three-quarter view, centred, fills 80% of the frame. Isolated on a perfectly flat uniform pure magenta background (#FF00FF). No text, no letters, no logos, no watermark."
+  },
+  {
+   "id": "emblem-mill",
+   "aspect": "1:1",
+   "size": "2K",
+   "prompt": "Game emblem for nine men's morris (mill board game) in a premium esports broadcast package: the board's three nested squares with connecting lines raised as glowing orange-gold (like #F7931A) inlays on a square dark gunmetal tile, three round pieces in a row on one line, crisp hard white rim light, ultra clean high-end 3D render, tilted three-quarter view, centred, fills 80% of the frame. Isolated on a perfectly flat uniform pure magenta background (#FF00FF). No text, no letters, no logos, no watermark."
+  },
+  {
+   "id": "emblem-blockli",
+   "aspect": "1:1",
+   "size": "2K",
+   "prompt": "Game emblem for a maze race board game where players place walls on a 9x9 grid: a small square grid tile of dark gunmetal with two tall glowing orange-gold (like #F7931A) wall bars placed on it and one rounded pawn racing between them, crisp hard white rim light, ultra clean high-end 3D render, tilted three-quarter view, centred, fills 80% of the frame. Isolated on a perfectly flat uniform pure magenta background (#FF00FF). No text, no letters, no logos, no watermark."
+  },
+  {
+   "id": "plate-arena",
+   "aspect": "16:9",
+   "size": "4K",
+   "prompt": "Full-screen background plate for a premium esports broadcast break scene: a vast dark arena stage seen from the stands, very dark charcoal and near-black (#0A0A0B), with long sharp beams of warm orange (#F7931A) light cutting diagonally through thin haze from high above, a floor of dark glossy cubes receding into depth with faint orange edge reflections, cinematic, calm and premium, mostly dark so large text can sit on top, centre and lower half especially dark and quiet. Photoreal 3D render. No people, no screens with content, no text, no letters, no logos, no watermark.",
+   "model": "google/gemini-3.1-flash-image"
+  },
+  {
+   "id": "plate-haze",
+   "aspect": "16:9",
+   "size": "4K",
+   "prompt": "Abstract full-screen background plate for a premium esports broadcast: deep black-charcoal space (#0A0A0B) with soft layered volumetric haze, a low horizon glow of warm orange (#F7931A) and amber at the bottom edge, a few out-of-focus floating cubes catching orange rim light at different depths, fine dust particles, very calm and dark, cinematic depth of field, premium. Photoreal 3D render. No text, no letters, no logos, no watermark.",
+   "model": "google/gemini-3.1-flash-image"
+  },
+  {
+   "id": "energy-wide",
+   "aspect": "21:9",
+   "size": "2K",
+   "prompt": "Abstract light energy texture for compositing over video with additive blending: on a pure black background (#000000), horizontal streaks of warm orange (#F7931A) and pale amber light, like a long-exposure light sweep with fine sparks, brightest in the middle third and fading to pure black towards all four edges with soft falloff, no hard edges anywhere, elegant and premium. No objects, no text, no letters, no logos, no watermark."
+  },
+  {
+   "id": "energy-rays",
+   "aspect": "1:1",
+   "size": "2K",
+   "prompt": "Abstract light burst texture for compositing with additive blending: on a pure black background (#000000), thin radial rays of warm orange (#F7931A) and pale gold light bursting from a bright small centre, with a soft glow and fine sparkles, the rays fade out completely before reaching the edges, so the border is pure black all around. Elegant, premium broadcast look. No objects, no text, no letters, no logos, no watermark."
+  }
+ ]
+}

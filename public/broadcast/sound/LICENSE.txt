@@ -1,0 +1,6 @@
+whoosh.ogg, hit.ogg, riser.ogg, shimmer.ogg
+
+Synthesized for TWENTY ONE esports by tools/broadcast-sound/synth.py from noise and
+oscillators; no third-party samples are contained. Dedicated to the public domain
+under CC0 1.0 (https://creativecommons.org/publicdomain/zero/1.0/).
+Loudness: -20 LUFS integrated, true peak <= -3 dBTP (ffmpeg loudnorm).

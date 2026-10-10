@@ -38,7 +38,8 @@ def main():
             'model': it.get('model', items.get('model', 'google/gemini-3-pro-image')),
             'messages': [{'role': 'user', 'content': (it['prompt'] + ' ' + style).strip()}],
             'modalities': ['image', 'text'],
-            'image_config': {'aspect_ratio': it.get('aspect', '1:1')},
+            # `size` (1K, 2K, 4K) asks Gemini for a larger image: the broadcast pack needs 2x for 4K sources.
+            'image_config': {'aspect_ratio': it.get('aspect', '1:1'), **({'image_size': it['size']} if 'size' in it else {})},
             'usage': {'include': True},
         }
         req = urllib.request.Request(URL, data=json.dumps(body).encode(), headers={'Authorization': 'Bearer ' + key, 'Content-Type': 'application/json'})

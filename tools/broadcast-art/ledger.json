@@ -1,0 +1,110 @@
+{
+ "spent": 4.1836,
+ "items": {
+  "trophy": {
+   "cost": 0.139528,
+   "ok": true,
+   "model": "google/gemini-3-pro-image"
+  },
+  "crown": {
+   "cost": 0.13824,
+   "ok": true,
+   "model": "google/gemini-3-pro-image"
+  },
+  "medal-gold": {
+   "cost": 0.138968,
+   "ok": true,
+   "model": "google/gemini-3-pro-image"
+  },
+  "medal-silver": {
+   "cost": 0.139258,
+   "ok": true,
+   "model": "google/gemini-3-pro-image"
+  },
+  "medal-bronze": {
+   "cost": 0.13851,
+   "ok": true,
+   "model": "google/gemini-3-pro-image"
+  },
+  "rank-up": {
+   "cost": 0.137886,
+   "ok": true,
+   "model": "google/gemini-3-pro-image"
+  },
+  "emblem-chess": {
+   "cost": 0.13867,
+   "ok": true,
+   "model": "google/gemini-3-pro-image"
+  },
+  "emblem-rocket-league": {
+   "cost": 0.139472,
+   "ok": true,
+   "model": "google/gemini-3-pro-image"
+  },
+  "emblem-football": {
+   "cost": 0.13868,
+   "ok": true,
+   "model": "google/gemini-3-pro-image"
+  },
+  "emblem-age-of-empires-2": {
+   "cost": 0.138256,
+   "ok": true,
+   "model": "google/gemini-3-pro-image"
+  },
+  "emblem-tmnf": {
+   "cost": 0.138806,
+   "ok": true,
+   "model": "google/gemini-3-pro-image"
+  },
+  "emblem-pong": {
+   "cost": 0.138914,
+   "ok": true,
+   "model": "google/gemini-3-pro-image"
+  },
+  "emblem-hyper": {
+   "cost": 0.138818,
+   "ok": true,
+   "model": "google/gemini-3-pro-image"
+  },
+  "emblem-blockfill": {
+   "cost": 0.138422,
+   "ok": true,
+   "model": "google/gemini-3-pro-image"
+  },
+  "emblem-checkers": {
+   "cost": 0.138582,
+   "ok": true,
+   "model": "google/gemini-3-pro-image"
+  },
+  "emblem-mill": {
+   "cost": 0.138386,
+   "ok": true,
+   "model": "google/gemini-3-pro-image"
+  },
+  "emblem-blockli": {
+   "cost": 0.138778,
+   "ok": true,
+   "model": "google/gemini-3-pro-image"
+  },
+  "plate-arena": {
+   "cost": 0.151265,
+   "ok": true,
+   "model": "google/gemini-3.1-flash-image"
+  },
+  "plate-haze": {
+   "cost": 0.151253,
+   "ok": true,
+   "model": "google/gemini-3.1-flash-image"
+  },
+  "energy-wide": {
+   "cost": 0.137596,
+   "ok": true,
+   "model": "google/gemini-3-pro-image"
+  },
+  "energy-rays": {
+   "cost": 0.138914,
+   "ok": true,
+   "model": "google/gemini-3-pro-image"
+  }
+ }
+}
