@@ -129,7 +129,9 @@ final class PongReferee
         $referee->version = (int) $state['version'];
         // A state stored before P7 has no hits per side; no rally then grew a paddle.
         $referee->sideHits = $state['sideHits'] ?? [0, 0];
-        $referee->serve = $referee->rallyOf($referee->rally);
+        // The serve follows the stored event, never the rules' current draw: a match running across a deploy that
+        // changed the event order keeps judging its rally as it was served (review 2026-10-10).
+        $referee->serve = new PongRally(PongRules::rallySeed($seed, $referee->rally), $referee->event, [PongPhysics::PLAYER_SPEED, PongPhysics::PLAYER_SPEED]);
 
         return $referee;
     }

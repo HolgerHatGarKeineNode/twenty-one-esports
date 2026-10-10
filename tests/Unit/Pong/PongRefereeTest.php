@@ -368,3 +368,20 @@ it('keeps an Arbeitsamt ball a second in the queue: the next contact comes QUEUE
     unset($state['sideHits']);
     expect(PongReferee::fromArray($referee->seed, $referee->rules, $state)->sideHits)->toBe([0, 0]);
 });
+
+test('a referee restored from a state served under other rules judges the rally by its stored event, not the current draw', function () {
+    // Review 2026-10-10: a match running across a deploy that changed the event order mixed a plain stored rally with
+    // the new draw's points and paddle length (a plain rally judged as a Halving for double points).
+    $rules = new PongRules;
+    $seed = collect(range(1, 500))->first(fn (int $seed): bool => $rules->eventOf($seed, 1) === 'halving');
+    $state = PongReferee::start($seed, $rules, 0)->toArray();
+
+    expect($state['points'])->toBe(2);
+
+    $state['event'] = null;
+    $restored = PongReferee::fromArray($seed, $rules, $state)->toArray();
+
+    expect($restored['event'])->toBeNull()
+        ->and($restored['points'])->toBe(1)
+        ->and($restored['half'])->toBe(PongPhysics::PADDLE_HALF);
+});
