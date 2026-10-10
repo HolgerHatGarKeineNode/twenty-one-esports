@@ -46,6 +46,8 @@ final class AdminNavigation
         'status' => 'system',
         // Site-wide mutes and bans. Here, not under Players & roles or League: in German both are as wide as the nav allows (NavigationMenusTest, 640 px).
         'moderation' => 'system',
+        // OBS overlay presets (plan "OBS-Broadcast-Overlays", P2): the stream's tools, next to the status page.
+        'overlays' => 'system',
     ];
 
     public function __construct(private readonly ?User $user) {}
@@ -104,6 +106,7 @@ final class AdminNavigation
             ['key' => 'system', 'label' => self::groupLabel('system'), 'items' => [
                 self::item('status', __('Status'), route('admin.status')),
                 self::item('moderation', __('Moderation'), route('admin.moderation')),
+                self::item('overlays', __('OBS overlays'), route('admin.overlays')),
             ]],
         ];
     }

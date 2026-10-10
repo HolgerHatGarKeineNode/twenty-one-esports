@@ -157,6 +157,9 @@ class AppServiceProvider extends ServiceProvider
         // The site search (P16): three capped lookups per request, open to guests, so per IP.
         RateLimiter::for('search', fn (Request $request): Limit => Limit::perMinute(30)->by($request->ip()));
 
+        // OBS overlays (plan "OBS-Broadcast-Overlays", P2): a browser source polls its snapshot every 20 s; a few sources behind one IP.
+        RateLimiter::for('broadcast', fn (Request $request): Limit => Limit::perMinute(60)->by($request->ip()));
+
         // The live status (P20b): every open page asks every 15 s, many viewers may share one IP.
         RateLimiter::for('live-status', fn (Request $request): Limit => Limit::perMinute((int) config('esports.live.status_per_minute', 240))->by($request->ip()));
 

@@ -34,6 +34,8 @@ export default defineConfig({
                 // The OBS broadcast overlays' design system page (plan "OBS-Broadcast-Overlays", P1).
                 'resources/css/broadcast.css',
                 'resources/js/broadcast/styleguide.js',
+                // An admin's OBS overlay preset at /broadcast/{token} (P2).
+                'resources/js/broadcast/overlay.js',
             ],
             refresh: true,
             fonts: [

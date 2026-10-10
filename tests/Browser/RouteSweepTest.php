@@ -103,7 +103,15 @@ const SWEEP_DOWNLOADS = ['tournaments.calendar', 'tournaments.lobby-screenshot']
  *
  * @var list<string>
  */
-const SWEEP_JSON_ENDPOINTS = ['players.search', 'lnurl.pay', 'lnurl.callback', 'stream.status'];
+const SWEEP_JSON_ENDPOINTS = ['players.search', 'lnurl.pay', 'lnurl.callback', 'stream.status', 'broadcast.snapshot'];
+
+/**
+ * Pages behind a secret URL, not reachable by any link: an OBS overlay preset's browser source (plan
+ * "OBS-Broadcast-Overlays", P2), a transparent full-screen stage measured by tests/Browser/BroadcastOverlayTest.
+ *
+ * @var list<string>
+ */
+const SWEEP_SECRET_URLS = ['broadcast.overlay'];
 
 /**
  * @param  array<string, string>  $bound  route key per bound parameter, from sweepFixtures()
@@ -118,6 +126,7 @@ function sweepRoutes(array $bound = []): array
         ->reject(fn (RoutingRoute $route) => in_array($route->getName(), SWEEP_CRAWLER_FILES, true))
         ->reject(fn (RoutingRoute $route) => in_array($route->getName(), SWEEP_DOWNLOADS, true))
         ->reject(fn (RoutingRoute $route) => in_array($route->getName(), SWEEP_JSON_ENDPOINTS, true))
+        ->reject(fn (RoutingRoute $route) => in_array($route->getName(), SWEEP_SECRET_URLS, true))
         ->reject(function (RoutingRoute $route) {
             foreach (SWEEP_VENDOR_PREFIXES as $prefix) {
                 if (str_starts_with($route->uri(), $prefix)) {
