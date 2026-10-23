@@ -13,6 +13,7 @@ use App\Enums\InviteLinkType;
 use App\Enums\TournamentFormat;
 use App\Enums\TournamentResultsMode;
 use App\Games\Blockfill;
+use App\Games\Blockli;
 use App\Games\GameRegistry;
 use App\Models\ChessGame;
 use App\Models\Clan;
@@ -143,6 +144,8 @@ function seoRouteFixtures(): array
         'board.lobby' => fn () => array_map(fn (string $slug): string => route('board.lobby', $slug), array_keys($registry()->boards())),
         'board.correspondence' => fn () => array_map(fn (string $slug): string => route('board.correspondence', $slug), array_keys($registry()->boards())),
         'board.show' => fn () => array_map(fn (string $slug): string => route('board.show', mempoolBoard($slug, ['status' => BoardGameStatus::Active])), array_keys($registry()->boards())),
+        // Practice against bots (DerCaddy, 2026-10-23): only Blockli has bots, every other board game's practice is a 404.
+        'board.practice' => fn () => array_key_exists(Blockli::SLUG, $registry()->boards()) ? [route('board.practice', Blockli::SLUG)] : [],
         'stacker.play' => fn () => [route('stacker.play')],
         // The replays page with last week's first place on it: a verified run of an ended week, on its board.
         'stacker.replays' => function (): array {

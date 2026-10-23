@@ -113,6 +113,15 @@
                     </x-chess.lobby-tile>
                 @endauth
             </li>
+            @if ($slug === \App\Games\Blockli::SLUG && \Illuminate\Support\Facades\Route::has('board.practice'))
+                {{-- Practice against bots (DerCaddy, 2026-10-23): six lessons, then three bots, for guests too; nothing counts. --}}
+                <li>
+                    <x-chess.lobby-tile :label="__('Practice against bots')" :action="__('Practice')" :href="route('board.practice', $slug)" data-test="play-practice">
+                        <x-slot:detail>{{ __('Learn the rules, then play three bots') }}</x-slot:detail>
+                        <x-slot:meta>{{ __('nothing counts') }}</x-slot:meta>
+                    </x-chess.lobby-tile>
+                </li>
+            @endif
         </ul>
     </div>
 

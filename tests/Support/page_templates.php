@@ -32,6 +32,8 @@ return [
     'auth/login.blade.php' => ['Login', 'Login › Login'],
     'board/⚡correspondence.blade.php' => ['T14', 'BoardCorrespondence › BoardCorrespondence'],
     'board/⚡lobby.blade.php' => ['T1', 'GameLobby › Brettspiel-Lobby (Blockli)'],
+    // Blockli practice against bots (DerCaddy, 2026-10-23): no canvas board yet (NEU, Scope), built as the match view T2 with a practice panel.
+    'board/⚡practice.blade.php' => ['T2 (NEU, Scope)', 'MatchBoards › Brettspiel-Partie (Blockli)'],
     'board/⚡show.blade.php' => ['T2', 'MatchBoards › Brettspiel-Partie (Blockli)'],
     'challenges/⚡casual.blade.php' => ['T8', 'ChallengeCasual › ChallengeCasual'],
     'challenges/⚡create.blade.php' => ['T8', 'ChallengeCreate › ChallengeCreate'],

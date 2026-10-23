@@ -28,6 +28,11 @@
  * fitBoard): as wide as the height left between its top and what sits under
  * it: Blockli's bar, the chat sheet and the app's tab bar; on a desktop the
  * window, with the lower player card under the board.
+ *
+ * Practice (Blockli against a bot, DerCaddy 2026-10-23): the same board for a
+ * game its page keeps in the browser. `config.source` names an entry of
+ * boardSources that answers the board's actions in the server's place; the
+ * board then neither listens on a channel nor polls.
  */
 
 import { setFocus } from './focusMode.js';
@@ -50,6 +55,14 @@ const DESKTOP_BOARD = 380;
 
 /** How often the position of a state has stood there (Blockli's repetition warning), counted once per state. */
 const REPEATS = new WeakMap();
+
+/**
+ * Boards whose page keeps the game in the browser instead of on the server (Blockli practice against a bot,
+ * resources/js/blockli/practice.js): `config.source` names an entry here, an object with the actions the board asks
+ * its Livewire component for (fetchState, move, resign, …), answered as the server would answer them. Such a board
+ * neither listens on a channel nor polls: its page hands every change of the game to `apply()` itself.
+ */
+export const boardSources = new Map();
 
 // Black men are dark discs with a light rim: on the dark board a dark rim would hide them.
 const PIECE_FILL = { w: '#F4F4F5', b: '#09090B' };
@@ -201,6 +214,8 @@ registerAlpine(() => {
         clockCheckSent: 0,
         startPieces: config.startPieces ?? {},
         viewIndex: null,
+        // The page's own answers in place of the server (boardSources), null for a game the server keeps.
+        source: config.source ? (boardSources.get(config.source) ?? null) : null,
 
         init() {
             this.ticker = setInterval(() => this.tick(), 200);
@@ -219,12 +234,14 @@ registerAlpine(() => {
                 this.syncPolling();
             });
 
-            if (window.Echo) {
+            if (window.Echo && !this.source) {
                 const channel = this.color ? window.Echo.private('board.' + this.state.id) : window.Echo.channel('board.' + this.state.id + '.watch');
                 channel.listen('.board.updated', (update) => this.receive(update));
                 // Anything that happened between rendering the page and subscribing.
                 channel.subscribed?.(() => this.resync());
             }
+            // A page that plays in the browser gets the board, to hand it the other side's moves (boardSources).
+            this.source?.attach?.(this);
 
             // The block input (Blockli): a mouse shows the block it points at before the click sets it.
             if (this.layout.input === 'blocks' && this.$refs.board) {
@@ -1033,7 +1050,7 @@ registerAlpine(() => {
         /* ---- state from the server ------------------------------------------------------------------ */
 
         syncPolling() {
-            const needed = this.connection !== 'connected' && this.state.status === 'active';
+            const needed = !this.source && this.connection !== 'connected' && this.state.status === 'active';
             if (needed && !this.poller) {
                 this.poller = setInterval(() => this.resync(), 3000);
             } else if (!needed && this.poller) {
@@ -1081,7 +1098,7 @@ registerAlpine(() => {
             this.syncing = true;
             this.lastSyncAt = performance.now();
             try {
-                const state = await this.$wire.fetchState();
+                const state = await (this.source ?? this.$wire).fetchState();
                 if (state) this.apply(state);
             } finally {
                 this.syncing = false;
@@ -1089,7 +1106,7 @@ registerAlpine(() => {
         },
 
         async call(method, ...args) {
-            const response = await this.$wire[method](...args);
+            const response = await (this.source ?? this.$wire)[method](...args);
             if (!response) return null;
             if (response.state) this.apply(response.state);
             this.error = response.ok === false ? (this.t.errors[response.error] ?? this.t.errors.default) : '';
