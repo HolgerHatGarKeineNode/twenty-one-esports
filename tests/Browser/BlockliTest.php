@@ -581,7 +581,8 @@ test('after the first leg the bracket, the live page and the game banner show th
     app(TournamentRunner::class)->sync($tournament);
     $live = fn (): BoardGame => BoardGame::query()->whereIn('tournament_match_id', $tournament->matches()->select('id'))->where('status', BoardGameStatus::Active)->sole();
     $match = TournamentMatch::query()->where('tournament_id', $tournament->id)->where('bracket', '!=', 'bye')->with('slots.participant')->sole();
-    app(BoardGameService::class)->resign($live(), User::query()->findOrFail((int) $match->slots[1]->participant->memberIds()[0]));
+    $first = $live();
+    app(BoardGameService::class)->resign($first, User::query()->findOrFail((int) $match->slots[1]->participant->memberIds()[0]));
     $second = $live();
     $admin = User::factory()->create(['locale' => 'de']);
     Admin::query()->create(['pubkey' => $admin->pubkey]);
@@ -596,7 +597,16 @@ test('after the first leg the bracket, the live page and the game banner show th
             $m = $page->evaluate($box);
             fwrite(STDERR, PHP_EOL."[legs {$where} {$width}] ".json_encode($m).PHP_EOL);
 
+            // DerCaddy 2026-10-30: every game of the pairing opens from the box, the first leg too.
+            $g = $page->evaluate('() => { const el = document.querySelector("[data-test=match-games]"); const b = el.closest("[data-test=match-box]").getBoundingClientRect(), r = el.getBoundingClientRect(); return { text: el.innerText.replace(/\s+/g, " ").trim(), visible: el.checkVisibility(), inside: r.left >= b.left - 0.5 && r.right <= b.right + 0.5, links: [...el.querySelectorAll("[data-test=match-game]")].map((a) => ({ href: new URL(a.href).pathname, label: a.getAttribute("aria-label"), hit: Math.round(parseFloat(getComputedStyle(a, "::after").height)), inside: a.getBoundingClientRect().right <= b.right + 0.5 })) }; }');
+            fwrite(STDERR, PHP_EOL."[games {$where} {$width}] ".json_encode($g).PHP_EOL);
+
             expect($m)->toMatchArray(['text' => 'Stand 1–0 · Partie 2 läuft', 'visible' => true, 'inside' => true, 'scores' => ['1', '0'], 'href' => route('board.show', $second, false)])
+                ->and($g)->toMatchArray(['text' => 'Partien 1: 1–0 2 live', 'visible' => true, 'inside' => true])
+                ->and(array_column($g['links'], 'href'))->toBe([route('board.show', $first, false), route('board.show', $second, false)])
+                ->and(array_column($g['links'], 'label'))->toBe(['Partie 1 von M1-1 ansehen', 'Partie 2 von M1-1 ansehen'])
+                ->and(min(array_column($g['links'], 'hit')))->toBeGreaterThanOrEqual(44)
+                ->and(array_column($g['links'], 'inside'))->toBe([true, true])
                 ->and($m['overflow'])->toBeLessThanOrEqual(0)
                 ->and($page->evaluate('() => window.__errors'))->toBe([], "{$where} {$width}: console")
                 ->and($page->evaluate(BrowserConsole::BAD_RESPONSES))->toBe([], "{$where} {$width}: responses");
@@ -615,6 +625,34 @@ test('after the first leg the bracket, the live page and the game banner show th
                 ->and($m['right'])->toBeLessThanOrEqual($m['vw']);
         } else {
             expect($row)->toContain('Anna Racer führt 1–0 · Partie 2 läuft');
+        }
+
+        // DerCaddy 2026-10-30: the games of the pairing on the game's page, this one marked, the other one link (on a
+        // phone in the panel the banner row opens).
+        if ($width < 1024) {
+            $page->locator('[data-test=tournament-banner-row]')->click();
+            BrowserWait::until($page, '() => document.querySelector("[data-test=banner-sheet] [data-test=pairing-games]")?.checkVisibility()', 5_000);
+        }
+        $switch = $page->evaluate('() => { const nav = [...document.querySelectorAll("[data-test=pairing-games]")].find((el) => el.checkVisibility()); return nav ? { items: [...nav.querySelectorAll("[data-test=pairing-game]")].map((el) => { const r = el.getBoundingClientRect(); return { text: el.innerText.trim(), current: el.hasAttribute("aria-current"), href: el.href ? new URL(el.href).pathname : null, h: Math.round(r.height), right: Math.round(r.right) }; }), vw: innerWidth } : null; }');
+        fwrite(STDERR, PHP_EOL."[pairing games {$width}] ".json_encode($switch).PHP_EOL);
+
+        expect($switch)->not->toBeNull()
+            ->and(array_column($switch['items'], 'text'))->toBe(['Partie 1 · gewonnen von Anna Racer', 'Partie 2 · läuft'])
+            ->and(array_column($switch['items'], 'current'))->toBe([false, true])
+            ->and(array_column($switch['items'], 'href'))->toBe([route('board.show', $first, false), null])
+            ->and(min(array_column($switch['items'], 'h')))->toBeGreaterThanOrEqual($width < 1024 ? 44 : 32)
+            ->and(max(array_column($switch['items'], 'right')))->toBeLessThanOrEqual($switch['vw']);
+
+        if ($width < 1024) {
+            // DerCaddy 2026-10-31: a long name ends in "…" on one line, never a second one.
+            $long = $page->evaluate('() => { const a = document.querySelector("[data-test=banner-sheet] a[data-test=pairing-game]"), t = a.querySelector(".truncate"); t.textContent = "Partie 1 · gewonnen von Satoshi Nakamoto der Allererste von allen Hodlern"; const r = a.getBoundingClientRect(), s = getComputedStyle(t); return { h: Math.round(r.height), right: Math.round(r.right), vw: innerWidth, cut: t.scrollWidth > t.clientWidth, ellipsis: s.textOverflow, lines: Math.round(t.getBoundingClientRect().height / parseFloat(s.lineHeight)), title: a.title }; }');
+            fwrite(STDERR, PHP_EOL."[pairing long name {$width}] ".json_encode($long).PHP_EOL);
+            expect($long)->toMatchArray(['h' => 44, 'cut' => true, 'ellipsis' => 'ellipsis', 'lines' => 1, 'title' => 'Partie 1 · gewonnen von Anna Racer'])
+                ->and($long['right'])->toBeLessThanOrEqual($long['vw'] - 16);
+
+            // The first leg's board opens from the panel.
+            $page->locator('[data-test=banner-sheet] a[data-test=pairing-game]')->click();
+            BrowserWait::until($page, '() => location.pathname === '.json_encode(route('board.show', $first, false)), 10_000);
         }
 
         expect($m['overflow'])->toBeLessThanOrEqual(0)

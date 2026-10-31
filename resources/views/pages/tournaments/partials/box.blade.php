@@ -71,6 +71,24 @@
         {{-- A drawn decider settled by the race standing (Blockli), with the margin: the score alone would read ½–½. --}}
         <span class="border-t border-hairline px-3 py-1.5 text-[11px] leading-snug text-ink-2" data-test="match-decision">{{ $box['decision'] }}</span>
     @endif
+    @if (($box['games'] ?? []) !== [])
+        {{-- Every game of the pairing, the earlier legs too (DerCaddy 2026-10-30: only the latest could be opened from the bracket); the score from the first side's view, as above. --}}
+        <span class="flex flex-wrap items-center gap-x-3 gap-y-1 border-t border-hairline px-3 py-1.5 text-[11px] leading-snug text-ink-3" data-test="match-games">
+            <span>{{ __('Games') }}</span>
+            @foreach ($box['games'] as $game)
+                <a href="{{ $game['href'] }}" class="relative inline-flex items-center gap-1 font-bold text-ink-2 tabular-nums after:absolute after:-inset-x-1.5 after:-inset-y-4 hover:text-ink" aria-label="{{ __('Watch game :n of :match', ['n' => $game['n'], 'match' => strtoupper($box['key'])]) }}" data-test="match-game">
+                    <x-icon name="eye" :size="12" />
+                    @if ($game['score'] !== null)
+                        <span>{{ $game['n'] }}<span class="font-normal text-ink-3">: {{ $game['score'] }}</span></span>
+                    @elseif ($game['live'])
+                        <span>{{ $game['n'] }}</span><span class="inline-flex items-center gap-1 font-normal text-btc-hi"><span class="size-1.5 rounded-full bg-btc"></span>{{ __('live') }}</span>
+                    @else
+                        <span>{{ $game['n'] }}</span>
+                    @endif
+                </a>
+            @endforeach
+        </span>
+    @endif
     @if ($box['director'])
         <div class="px-3 pb-2">@include('pages.tournaments.partials.marker', ['marker' => $box['director']])</div>
     @endif

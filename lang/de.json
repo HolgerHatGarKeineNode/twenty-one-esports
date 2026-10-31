@@ -8835,5 +8835,11 @@
     "Another tip": "Noch ein Tipp",
     "Practice against bots": "Gegen Bots üben",
     "Learn the rules, then play three bots": "Regeln lernen, dann gegen drei Bots spielen",
-    "nothing counts": "zählt nicht"
+    "nothing counts": "zählt nicht",
+    "Watch game :n of :match": "Partie :n von :match ansehen",
+    "Games of this pairing": "Partien dieser Paarung",
+    "Game :n · won by :name": "Partie :n · gewonnen von :name",
+    "Game :n · drawn": "Partie :n · remis",
+    "Game :n · under way": "Partie :n · läuft",
+    "Game :n of the pairing": "Partie :n der Paarung"
 }
