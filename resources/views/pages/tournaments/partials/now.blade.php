@@ -33,9 +33,11 @@
     // Waiting on a phone: the band and the title take the pinned lobby's low size, so the round's running games and the
     // countdown to their latest end stay above the tab bar (at 375 x 812 the hero ended at 826, the tab bar starts at 748).
     $waitCompact = $lobby === null && $tone === 'wait';
-    // Without an action of its own, the desk button joins the row of live boards (icon only on a phone): both are the
-    // secondary links of a waiting hero, and its own row pushed the hero 60 px further down.
-    $deskInBoards = $action === null && ($desk ?? null) && $now['boards'] !== [];
+    // The desk button joins the row of live boards (icon only on a phone) when the hero has no action or only waits:
+    // both are secondary links there, and its own row pushed the hero 52-60 px further down ("done" ended at 834 of 748).
+    $deskInBoards = ($action === null || $waitCompact) && ($desk ?? null) && $now['boards'] !== [];
+    // While waiting the action is optional (watch the rest): 48 px on a phone, as the page's other secondary buttons.
+    $actionHeight = $waitCompact ? 'min-h-12 @min-[52rem]:min-h-16' : 'min-h-16';
 @endphp
 <section aria-labelledby="now-h" wire:key="now-{{ $state }}"
          x-data="tournamentNow({ id: {{ $tournament->id }}, state: @js($state) })" :class="flipped && 'tn-flip'"
@@ -74,7 +76,7 @@
         chat rail at 1280 the text column kept 328 px, the 44 px title broke in two and "Play now" sank to y 922 of an 800 px
         screen, and under the details it still stood at 883 (V2, rule R3: the primary action without scrolling).
     --}}
-    <div class="flex flex-col gap-4 px-4 pt-3 pb-5 lg:px-8 lg:pb-7 @min-[52rem]:grid @min-[52rem]:grid-cols-[minmax(0,1fr)_auto] @min-[52rem]:gap-x-12 @min-[52rem]:gap-y-0">
+    <div @class(['flex flex-col px-4 pt-3 lg:px-8 lg:pb-7 @min-[52rem]:grid @min-[52rem]:grid-cols-[minmax(0,1fr)_auto] @min-[52rem]:gap-x-12 @min-[52rem]:gap-y-0', 'gap-4 pb-5' => ! $waitCompact, 'gap-3 pb-4 lg:gap-4' => $waitCompact])>
     <div class="flex min-w-0 flex-col gap-2 @min-[52rem]:col-start-1" data-test="now-head">
         @if ($now['context'])
             <p class="m-0 flex min-w-0 items-center gap-2 text-[13px] text-ink-2" data-test="now-context">
@@ -119,16 +121,18 @@
              to 839-887 of an 844 px phone (rule R3). Wide, this column stands beside them as before. --}}
         <div @class(['flex min-w-0 flex-col gap-2 @min-[52rem]:col-start-2 @min-[52rem]:row-span-2 @min-[52rem]:row-start-1 @min-[52rem]:items-end @min-[52rem]:self-end', 'order-last' => $action === null]) data-live-clear>
             @if (isset($action['href']))
-                <a href="{{ $action['href'] }}" @if (isset($action['target'])) target="{{ $action['target'] }}" rel="noopener" @endif class="btn-p inline-flex min-h-16 w-full items-center justify-center gap-3 rounded-md bg-btc px-8 text-lg font-bold text-on-btc hover:text-on-btc @min-[52rem]:min-w-[300px]" data-test="now-action">
+                <a href="{{ $action['href'] }}" @if (isset($action['target'])) target="{{ $action['target'] }}" rel="noopener" @endif @class(['btn-p inline-flex w-full items-center justify-center gap-3 rounded-md bg-btc px-8 text-lg font-bold text-on-btc hover:text-on-btc @min-[52rem]:min-w-[300px]', $actionHeight]) data-test="now-action">
                     <x-icon :name="$action['icon']" :size="22" />{{ $action['label'] }}
                 </a>
             @elseif ($action !== null)
-                <button type="button" wire:click="{{ $action['wire'] }}" wire:loading.attr="disabled" class="btn-p inline-flex min-h-16 w-full cursor-pointer items-center justify-center gap-3 rounded-md bg-btc px-8 text-lg font-bold text-on-btc hover:text-on-btc disabled:opacity-60 @min-[52rem]:min-w-[300px]" data-test="now-action">
+                <button type="button" wire:click="{{ $action['wire'] }}" wire:loading.attr="disabled" @class(['btn-p inline-flex w-full cursor-pointer items-center justify-center gap-3 rounded-md bg-btc px-8 text-lg font-bold text-on-btc hover:text-on-btc disabled:opacity-60 @min-[52rem]:min-w-[300px]', $actionHeight]) data-test="now-action">
                     <x-icon :name="$action['icon']" :size="22" />{{ $action['label'] }}
                 </button>
             @endif
             {{-- The tournament desk (TournamentDesk): open right below (from xl beside), this button brings it into view. --}}
-            <x-tournaments.desk-button :desk="$desk ?? null" on-page class="w-full @min-[52rem]:w-auto" />
+            @unless ($deskInBoards)
+                <x-tournaments.desk-button :desk="$desk ?? null" on-page class="w-full @min-[52rem]:w-auto" />
+            @endunless
         </div>
     @endif
 
@@ -161,18 +165,18 @@
         @endif
 
         @if ($now['until'])
-            <p class="m-0 flex max-w-[560px] items-center justify-between gap-x-3 text-[13px] text-ink-2 @min-[52rem]:justify-start" data-test="now-until">
-                <span class="min-w-0">{{ __('Round deadline in') }}</span>
-                <b class="shrink-0 font-display text-xl font-bold text-ink tabular-nums" role="timer" x-data="countdown({ at: {{ (int) $now['until']->getTimestampMs() }}, days: @js(__(':count day|:count days')) })" x-text="text" data-test="now-countdown">{{ $format($now['until']) }}</b>
+            <p class="m-0 max-w-[560px] text-[13px] leading-5 text-ink-2" data-test="now-until">
+                <span>{{ __('Round deadline in') }}</span>
+                <b class="ml-1 inline-block font-display text-xl leading-5 font-bold whitespace-nowrap text-ink tabular-nums" role="timer" x-data="countdown({ at: {{ (int) $now['until']->getTimestampMs() }}, days: @js(__(':count day|:count days')) })" x-text="text" data-test="now-countdown">{{ $format($now['until']) }}</b>
             </p>
         @endif
 
         @if ($now['eta'] ?? null)
-            {{-- When the round's games are over at the latest (both clocks of the slowest game): time for a break. The label
-                 wraps beside its countdown instead of standing above it: one row less on a phone. --}}
-            <p class="m-0 flex max-w-[560px] items-center justify-between gap-x-3 text-[13px] text-ink-2 @min-[52rem]:justify-start" data-test="now-eta">
-                <span class="min-w-0">{{ __('The running games are over at the latest in about') }}</span>
-                <b class="shrink-0 font-display text-xl font-bold text-ink tabular-nums" role="timer" x-data="countdown({ at: {{ (int) $now['eta']->getTimestampMs() }}, days: @js(__(':count day|:count days')) })" x-text="text" data-test="now-eta-countdown">{{ sprintf('%02d:%02d:%02d', intdiv($etaLeft = max(0, (int) now()->diffInSeconds($now['eta'])), 3600), intdiv($etaLeft % 3600, 60), $etaLeft % 60) }}</b>
+            {{-- When the round's games are over at the latest (both clocks of the slowest game): time for a break. Label and
+                 countdown flow as one sentence, the countdown on the label's last line: two 20 px lines on a phone. --}}
+            <p class="m-0 max-w-[560px] text-[13px] leading-5 text-ink-2" data-test="now-eta">
+                <span>{{ __('The running games are over at the latest in about') }}</span>
+                <b class="ml-1 inline-block font-display text-xl leading-5 font-bold whitespace-nowrap text-ink tabular-nums" role="timer" x-data="countdown({ at: {{ (int) $now['eta']->getTimestampMs() }}, days: @js(__(':count day|:count days')) })" x-text="text" data-test="now-eta-countdown">{{ sprintf('%02d:%02d:%02d', intdiv($etaLeft = max(0, (int) now()->diffInSeconds($now['eta'])), 3600), intdiv($etaLeft % 3600, 60), $etaLeft % 60) }}</b>
             </p>
         @endif
 

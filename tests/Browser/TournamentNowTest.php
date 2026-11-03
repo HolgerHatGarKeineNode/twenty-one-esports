@@ -8,6 +8,7 @@ use App\Models\ChessGame;
 use App\Models\Tournament;
 use App\Models\TournamentMatch;
 use App\Models\TournamentParticipant;
+use App\Models\TournamentRound;
 use App\Models\User;
 use App\Support\Chess\ChessGameService;
 use App\Support\TwentyOne\LiveStatus;
@@ -400,4 +401,98 @@ test('a player with a bye sees the running games and the countdown to their late
     expect(implode(' | ', $page->evaluate('() => window.__errors')))->toContain('probe');
 
     fwrite(STDERR, "\n[bye-eta] ".json_encode($measured)."\n");
+});
+
+/**
+ * The hero of a waiting state measured at 375 x 812 in German and English as an admin: its bottom against the phone's
+ * tab bar, the texts it must keep, no overflow, a clean console after the load and after a Livewire roundtrip, and a
+ * positive control. Gate review of 69a40451 (2026-11-03): "done" ended at 824 / 834 and a bye with a round deadline at
+ * 762 in German, the tab bar starts at 748.
+ *
+ * @param  array<string, list<string>>  $texts  per locale, the texts the hero must keep
+ * @return array<string, array<string, mixed>>
+ */
+function nowWaitingFold(User $viewer, Tournament $tournament, string $state, array $texts, string $shot): array
+{
+    Admin::query()->firstOrCreate(['pubkey' => $viewer->pubkey]);
+    $measured = [];
+
+    foreach (['de', 'en'] as $locale) {
+        $viewer->forceFill(['locale' => $locale])->save();
+        $page = visit(BrowserLogin::url($viewer))->page();
+        $page->context()->addInitScript(NOW_COLLECTOR);
+        $page->setViewportSize(375, 812);
+        $page->goto(ComputeUrl::from(route('tournaments.show', $tournament)));
+        BrowserWait::until($page, '() => document.querySelector("[data-test=now-hero]") !== null && document.readyState === "complete"', 8_000);
+        usleep(500_000);
+        $m = $page->evaluate(NOW_MEASURE);
+        nowShot($page, "{$shot}-{$locale}-375");
+        $measured[$locale] = array_diff_key($m, ['text' => 1]);
+
+        expect($m['state'])->toBe($state)
+            ->and($m['first'])->toBeTrue()
+            ->and($m['overflow'])->toBeLessThanOrEqual(0)
+            ->and($m['right'])->toBeLessThanOrEqual(375)
+            ->and($m['tab'])->not->toBeNull()
+            ->and($m['bottom'])->toBeLessThanOrEqual($m['tab'], "{$state} {$locale} 375")
+            ->and($m['errors'])->toBe([])
+            ->and($page->evaluate(BrowserConsole::BAD_RESPONSES))->toBe([]);
+        foreach ($texts[$locale] as $text) {
+            expect($m['text'])->toContain($text);
+        }
+
+        $page->evaluate('() => { window.__rt = false; Livewire.all().find((c) => c.el.matches("[data-test=tournament-show]")).$wire.$refresh().then(() => { window.__rt = true; }); }');
+        BrowserWait::until($page, '() => window.__rt === true && document.querySelector("[data-test=now-hero]") !== null', 8_000);
+        expect($page->evaluate('() => window.__errors'))->toBe([])
+            ->and($page->evaluate(BrowserConsole::BAD_RESPONSES))->toBe([]);
+    }
+
+    $page->evaluate('() => { setTimeout(() => { throw new Error("probe"); }, 0); }');
+    BrowserWait::until($page, '() => window.__errors.length > 0', 5_000);
+    expect(implode(' | ', $page->evaluate('() => window.__errors')))->toContain('probe');
+
+    return $measured;
+}
+
+test('a player whose games are done sees the running games and their latest end inside the hero, above the tab bar at 375 in German and English (gate 2026-11-03); clean console', function () {
+    $tournament = runningChess(TournamentFormat::RoundRobin, 4, TournamentResultsMode::Players);
+    // A fixed name: the tournament's own hero above stays the same height on every run.
+    $tournament->forceFill(['name' => 'Halving Blitz Cup', 'published_at' => now()])->save();
+    $active = fn () => ChessGame::query()->with(['white', 'black'])->whereIn('tournament_match_id', $tournament->matches()->select('id'))->where('status', 'active')->orderBy('id')->get();
+
+    foreach ([1, 2] as $round) {
+        foreach ($active() as $game) {
+            app(ChessGameService::class)->resign($game, $game->black);
+        }
+    }
+
+    // Round 3: the viewer wins their game, the other one keeps running on five minutes per clock.
+    [$mine] = $active()->all();
+    $viewer = $mine->white;
+    app(ChessGameService::class)->resign($mine, $mine->black);
+    ChessGame::query()->whereIn('tournament_match_id', $tournament->matches()->select('id'))->where('status', 'active')
+        ->update(['white_ms' => 300_000, 'black_ms' => 300_000, 'turn_started_ms' => (int) (microtime(true) * 1000)]);
+
+    $measured = nowWaitingFold($viewer, $tournament, 'done', [
+        'de' => ['Deine Spiele sind fertig', 'spätestens vorbei'],
+        'en' => ['Your games are done', 'over at the latest'],
+    ], 'now-done');
+
+    fwrite(STDERR, "\n[done] ".json_encode($measured)."\n");
+});
+
+test('a player with a bye sees the round deadline and the running games\' latest end inside the hero, above the tab bar at 375 in German and English (gate 2026-11-03); clean console', function () {
+    $tournament = runningChess(TournamentFormat::Swiss, 3, TournamentResultsMode::Players);
+    $tournament->forceFill(['name' => 'Halving Blitz Cup', 'published_at' => now()])->save();
+    $bye = TournamentMatch::query()->where('tournament_id', $tournament->id)->where('bracket', 'bye')->with('slots.participant.user')->firstOrFail();
+    $viewer = $bye->slots[0]->participant->user;
+    ChessGame::query()->whereIn('tournament_match_id', $tournament->matches()->select('id'))->update(['white_ms' => 300_000, 'black_ms' => 300_000, 'turn_started_ms' => (int) (microtime(true) * 1000)]);
+    TournamentRound::query()->findOrFail($bye->tournament_round_id)->forceFill(['window_ends_at' => now()->addHours(2)])->save();
+
+    $measured = nowWaitingFold($viewer, $tournament, 'bye', [
+        'de' => ['Rundenschluss in', 'spätestens vorbei', 'Zug 1'],
+        'en' => ['Round deadline in', 'over at the latest', 'move 1'],
+    ], 'now-bye-deadline');
+
+    fwrite(STDERR, "\n[bye-deadline] ".json_encode($measured)."\n");
 });
