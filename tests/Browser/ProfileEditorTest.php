@@ -2,12 +2,16 @@
 
 use App\Enums\PayoutStatus;
 use App\Enums\TournamentFormat;
+use App\Games\Blockfill;
 use App\Models\User;
 use App\Support\Payouts\PayoutApproval;
+use App\Support\Stacker\BlockfillWeeks;
 use App\Support\Tournaments\TournamentChampion;
+use Carbon\CarbonImmutable;
 use Illuminate\Support\Facades\File;
 use Pest\Browser\Playwright\Page;
 use Pest\Browser\Support\ComputeUrl;
+use Tests\Support\BlockfillOn;
 use Tests\Support\BrowserConsole;
 use Tests\Support\BrowserLogin;
 use Tests\Support\BrowserWait;
@@ -178,6 +182,80 @@ test('the welcome banner for a fresh Google sign-in fits 390 and 1440 and leads 
 
     expect($page->evaluate('() => window.__errors'))->toBe([])->and($page->evaluate(BrowserConsole::BAD_RESPONSES))->toBe([]);
     fwrite(STDERR, "\n[welcome] ".json_encode($measured)."\n");
+});
+
+test('on a phone the welcome banner is one line of at most 52 px with a 44 px link, and Blockfill week\'s Play now stays above the tab bar, in German and English at 375 and 390; clean console', function () {
+    // At 375 the two-sentence banner stood 174 px tall in English and 194 in German and pushed Play now of a Blockfill
+    // week page to a bottom of 777 / 797, below the tab bar at 748 (603 without the banner; user 2026-11-03).
+    BlockfillOn::play();
+    $this->freezeTime();
+    $this->travelTo(CarbonImmutable::parse('2026-10-07 12:00:00'));
+    leagueWeeksApproved(Blockfill::SLUG);
+    // The week's tournament opens with its first visit or run; open() creates it, as the sweep does.
+    $week = app(BlockfillWeeks::class)->open();
+    $fresh = User::factory()->create(['profile_event_at' => null, 'name' => null, 'lud16' => null, 'locale' => 'de']);
+
+    $webpage = visit(BrowserLogin::url($fresh));
+    $page = $webpage->page();
+    $page->context()->addInitScript(BrowserConsole::COLLECTOR);
+    $measure = '() => { const box = (s) => { const el = document.querySelector(s); if (! el || ! el.checkVisibility()) return null; const r = el.getBoundingClientRect(); return { left: Math.round(r.left), top: Math.round(r.top), right: Math.round(r.right), bottom: Math.round(r.bottom), width: Math.round(r.width), height: Math.round(r.height) }; };
+        const text = document.querySelector("[data-test=profile-welcome] p"), bar = document.querySelector("[data-test=tab-bar]");
+        return { scroll: [document.documentElement.scrollWidth, document.documentElement.clientWidth], banner: box("[data-test=profile-welcome]"), link: box("[data-test=profile-welcome-link]"),
+            text: { height: Math.round(text.getBoundingClientRect().height), line: parseFloat(getComputedStyle(text).lineHeight), cut: text.scrollWidth > text.clientWidth, ellipsis: getComputedStyle(text).textOverflow },
+            play: box("[data-test=play-now]"), tab: bar && bar.checkVisibility() ? Math.round(bar.getBoundingClientRect().top) : null, lang: document.documentElement.lang }; }';
+    $measured = [];
+
+    foreach (['de', 'en'] as $locale) {
+        $page->goto(ComputeUrl::from(route('locale.switch', $locale, false)));
+
+        foreach ([[375, 812], [390, 844]] as [$width, $height]) {
+            $page->setViewportSize($width, $height);
+            $page->goto(ComputeUrl::from(route('tournaments.show', $week, false)));
+            BrowserWait::until($page, '() => document.querySelector("[data-test=profile-welcome]") !== null && document.querySelector("[data-test=play-now]") !== null && document.readyState === "complete"', 10_000);
+            $page->evaluate('() => window.scrollTo(0, 0)');
+            $m = $page->evaluate($measure);
+            $m['squeezed'] = $page->evaluate(BrowserConsole::SQUEEZED, ['[data-test=profile-welcome]']);
+            $m['spilled'] = $page->evaluate(BrowserConsole::SPILLED, ['[data-test=profile-welcome]']);
+            profileEditorShot($page, "welcome-line-{$locale}-{$width}");
+            $measured["{$locale}-{$width}"] = $m;
+
+            expect($m['lang'])->toBe($locale)
+                ->and($m['scroll'][0])->toBeLessThanOrEqual($m['scroll'][1])
+                ->and($m['banner']['height'])->toBeLessThanOrEqual(52, "banner {$locale} {$width}")
+                ->and($m['banner']['right'])->toBeLessThanOrEqual($width)
+                // One line that cuts with an ellipsis, never a second line.
+                ->and($m['text']['height'])->toBeLessThanOrEqual((int) ceil($m['text']['line']))
+                ->and($m['text']['ellipsis'])->toBe('ellipsis')
+                ->and($m['link']['height'])->toBeGreaterThanOrEqual(44)
+                ->and($m['link']['width'])->toBeGreaterThanOrEqual(44)
+                ->and($m['link']['right'])->toBeLessThanOrEqual($width)
+                ->and($m['tab'])->not->toBeNull()
+                ->and($m['play']['bottom'])->toBeLessThanOrEqual($m['tab'], "Play now {$locale} {$width}")
+                ->and($m['squeezed'])->toBe([])
+                ->and($m['spilled'])->toBe([]);
+        }
+    }
+
+    // The link still leads to the profile page.
+    $page->locator('[data-test=profile-welcome-link]')->click();
+    BrowserWait::until($page, '() => location.pathname === '.json_encode(parse_url(route('settings.profile'), PHP_URL_PATH)), 10_000);
+
+    expect($page->evaluate('() => window.__errors'))->toBe([])->and($page->evaluate(BrowserConsole::BAD_RESPONSES))->toBe([]);
+
+    // A Livewire roundtrip on the week page keeps the console clean and the banner on one line.
+    $page->goto(ComputeUrl::from(route('tournaments.show', $week, false)));
+    BrowserWait::until($page, '() => document.querySelector("[data-test=profile-welcome]") !== null && window.Livewire !== undefined && document.readyState === "complete"', 10_000);
+    $page->evaluate('() => { window.__refreshed = false; Livewire.all().find((c) => c.el.matches("[data-test=tournament-show]")).$wire.$refresh().then(() => { window.__refreshed = true; }); }');
+    BrowserWait::until($page, '() => window.__refreshed === true', 10_000);
+    expect($page->evaluate('() => window.__errors'))->toBe([])
+        ->and($page->evaluate(BrowserConsole::BAD_RESPONSES))->toBe([])
+        ->and($page->evaluate('() => Math.round(document.querySelector("[data-test=profile-welcome]").getBoundingClientRect().height)'))->toBeLessThanOrEqual(52);
+
+    // Positive control: the collector sees a throw and a failed answer on this very page.
+    $page->evaluate('() => { setTimeout(() => { throw new Error("welcome line positive control"); }); fetch("/tournaments/nothing-here"); }');
+    BrowserWait::until($page, '() => window.__errors.some((e) => e.includes("welcome line positive control")) && window.__errors.some((e) => e.startsWith("404 "))', 10_000);
+
+    fwrite(STDERR, "\n[welcome-line] ".json_encode($measured)."\n");
 });
 
 test('the four first steps and the prize hint on a tournament fit 390, 1024 and 1440 (user 2026-10-25); clean console', function () {
