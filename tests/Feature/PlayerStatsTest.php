@@ -368,6 +368,8 @@ test('a player with chess and Blockfill sees the chess ladder with its place and
 
     // Last week (Monday 2026-09-28 Berlin): the player wins it, and its end scores the points ladder.
     $this->travelTo(CarbonImmutable::parse('2026-09-30 12:00:00'));
+    // The weeks approved in beforeEach are the ones around the real clock; the two weeks played here are fixed dates.
+    leagueWeeksApproved(Blockfill::SLUG, at: now());
     app(BlockfillWeeks::class)->open();
     playerStatsBlockfillRun($player, 900);
     playerStatsBlockfillRun($rival, 1300);
