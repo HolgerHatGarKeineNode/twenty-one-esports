@@ -12,6 +12,15 @@ use Illuminate\Database\Eloquent\Factories\Factory;
 class UserFactory extends Factory
 {
     /**
+     * Set by the Browser group (tests/Pest.php): its players are returning ones, who have a Nostr profile and so
+     * never see the welcome banner of a bare Google sign-in (resources/views/components/shell/profile-welcome.blade.php),
+     * which would push every first-screen measurement down. The Feature suite keeps the bare default: the profile
+     * cache and the banner tests start from a player without a profile. A test that wants either passes
+     * `profile_event_at` itself.
+     */
+    public static bool $withProfile = false;
+
+    /**
      * Define the model's default state.
      *
      * The pubkey is 32 random bytes: fine for everything that does not sign.
@@ -27,6 +36,7 @@ class UserFactory extends Factory
             'pubkey' => $pubkey,
             'npub' => NostrKeys::hexToNpub($pubkey),
             'name' => fake()->userName(),
+            'profile_event_at' => self::$withProfile ? now() : null,
             'is_member' => false,
         ];
     }

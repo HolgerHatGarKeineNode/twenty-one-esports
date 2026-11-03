@@ -16,6 +16,7 @@ use App\Support\Voice\WebLookupAgent;
 use Carbon\CarbonImmutable;
 use Carbon\CarbonInterface;
 use Carbon\CarbonInterval;
+use Database\Factories\UserFactory;
 use Illuminate\Contracts\Http\Kernel as HttpKernel;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Carbon;
@@ -169,6 +170,11 @@ pest()->extend(TestCase::class)
         Vite::useHotFile(storage_path('framework/testing/vite-hot-disabled-for-browser-tests'));
         BrowserAssets::use();
         app(HttpKernel::class)->pushMiddleware(BrowserBodylessFraming::class);
+        // Returning players, not bare Google sign-ins: no welcome banner above the page under measurement (see UserFactory::$withProfile).
+        UserFactory::$withProfile = true;
+    })
+    ->afterEach(function (): void {
+        UserFactory::$withProfile = false;
     })
     ->group('browser')
     ->in('Browser');
