@@ -235,6 +235,10 @@ test('an aborted game and the games a correction replaced are not listed; a pair
     $tournament = blockliTournament();
     $box = fn (): array => (new TournamentView($tournament->refresh()))->box(blockliMatch($tournament))['games'];
     $banner = fn (BoardGame $game): array => TournamentGameEnd::banner($game->fresh())['games'];
+    // The bracket page reads the games once for all matches (stages()), with its own aborted filter.
+    $staged = fn (): array => collect((new TournamentView($tournament->refresh()))->stages())->flatMap(fn (array $stage) => $stage['parts'])
+        ->flatMap(fn (array $part) => collect($part['sections'])->flatMap(fn (array $section) => $section['columns'])->flatMap(fn (array $column) => $column['matches']))
+        ->first(fn (array $box): bool => $box['bracket'] !== 'bye')['games'];
 
     $first = blockliLose($tournament, 1);
     $second = blockliLive($tournament);
@@ -249,6 +253,7 @@ test('an aborted game and the games a correction replaced are not listed; a pair
         ->and($third->id)->not->toBe($second->id)
         ->and(array_column($box(), 'n'))->toBe([1, 2])
         ->and(array_column($box(), 'href'))->toBe([route('board.show', $first), route('board.show', $third)])
+        ->and($staged())->toBe($box())
         ->and(array_column($banner($third), 'href'))->toBe([route('board.show', $first), route('board.show', $third)])
         ->and(array_column($banner($third), 'current'))->toBe([false, true]);
 
@@ -256,6 +261,7 @@ test('an aborted game and the games a correction replaced are not listed; a pair
     // the first leg goes too, one game is left, nothing to switch between.
     blockliMatch($tournament)->forceFill(['replaced_through' => $second->id])->save();
     expect($box())->toBe([])
+        ->and($staged())->toBe([])
         ->and($banner($third))->toBe([]);
 
     // The games after the correction count again, from number 1.

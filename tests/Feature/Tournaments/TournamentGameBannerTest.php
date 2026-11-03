@@ -78,7 +78,7 @@ test('a chess duel names the game of the duel in the banner', function () {
     $tournament = runningChess(TournamentFormat::RoundRobin, 2, TournamentResultsMode::Players, ['iterations' => 3, 'rankBy' => 'points']);
     [$first] = bannerChessGames($tournament);
 
-    expect(TournamentGameEnd::banner($first))->toMatchArray(['step' => 'Game 1 of 3', 'round' => 'Round 1', 'url' => route('tournaments.show', $tournament)]);
+    expect(TournamentGameEnd::banner($first))->toMatchArray(['step' => 'Game 1 of 3', 'round' => 'Round 1', 'url' => route('tournaments.show', $tournament), 'games' => []]);
 
     $this->actingAs($first->white)->get(route('games.show', $first))->assertOk()
         ->assertSee('data-test="tournament-banner-step"', false)

@@ -94,7 +94,7 @@ final class TournamentGameEnd
      * Turnierspiel handelt"): the tournament, its round, the game of a duel
      * ("Game 2 of 3") and what is at stake. Null when it is no tournament game.
      *
-     * @return array{tournament: string, round: string, step: string|null, stake: string, url: string, cup: bool}|null
+     * @return array{tournament: string, round: string, step: string|null, stake: string, url: string, cup: bool, tournamentId: int, games: list<array{n: int, href: string, text: string, current: bool, live: bool}>}|null
      */
     public static function banner(ChessGame|BoardGame|SeriesMatch $played): ?array
     {

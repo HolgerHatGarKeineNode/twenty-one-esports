@@ -517,3 +517,19 @@ test('the correspondence page offers rated only while it is open, and names the 
     Livewire::actingAs($anna)->test('pages::board.correspondence', ['board' => NineMensMorris::SLUG])
         ->assertDontSeeHtml('data-test="correspondence-rated"');
 });
+
+test('a correspondence game in the German dock keeps the opponent\'s capital and lowers "dein Zug" mid-sentence', function () {
+    // DerCaddy 2026-10-31: the actions sheet read "Fern-Blockli, gegner am Zug" (OpenMatches::midSentence()).
+    [$anna, $bert] = [correspondencePlayer(), correspondencePlayer()];
+    $game = correspondenceGame($anna, $bert);
+    $line = fn (User $user): ?string => app(OpenMatches::class)->for($user)->firstWhere('key', 'board-'.$game->id)?->line;
+
+    app()->setLocale('de');
+    [$annaDe, $bertDe] = [$line($anna), $line($bert)];
+    app()->setLocale('en');
+
+    expect($annaDe)->toEndWith(', dein Zug')
+        ->and($bertDe)->toEndWith(', Gegner am Zug')
+        ->and($line($anna))->toEndWith(', your move')
+        ->and($line($bert))->toEndWith(', their move');
+});
