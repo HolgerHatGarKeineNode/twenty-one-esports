@@ -566,8 +566,14 @@ test('a drawn decider settled by the race standing says so with its margin in th
     Lottery::determineResultNormally();
 });
 
-test('after the first leg the bracket, the live page and the game banner show the standing and the game under way, at 390 and 1440', function () {
-    // DerCaddy 2026-10-15: a won first leg showed nowhere, so players took their results for lost.
+/**
+ * A two-player Blockli knockout whose first leg is won (Anna Racer, resigned by Bert) and whose second is live, and an
+ * admin who reads it in German: the bracket's box then lists two games, the board's banner switches between them.
+ *
+ * @return array{0: Tournament, 1: BoardGame, 2: BoardGame, 3: User}
+ */
+function blockliTwoLegs(): array
+{
     $tournament = Tournament::factory()->create([
         'game' => 'blockli', 'mode' => 'correspondence', 'format' => TournamentFormat::SingleElimination, 'name' => 'Blockli Legs Cup',
         'options' => FormatOptions::fromArray([], GameProfile::for('blockli', 'correspondence'))->toArray(),
@@ -586,6 +592,13 @@ test('after the first leg the bracket, the live page and the game banner show th
     $second = $live();
     $admin = User::factory()->create(['locale' => 'de']);
     Admin::query()->create(['pubkey' => $admin->pubkey]);
+
+    return [$tournament, $first, $second, $admin];
+}
+
+test('after the first leg the bracket, the live page and the game banner show the standing and the game under way, at 390 and 1440', function () {
+    // DerCaddy 2026-10-15: a won first leg showed nowhere, so players took their results for lost.
+    [$tournament, $first, $second, $admin] = blockliTwoLegs();
 
     $box = '() => { const el = document.querySelector("[data-test=match-legs]"); el.scrollIntoView(); const r = el.getBoundingClientRect(), box = el.closest("[data-test=match-box]"), b = box.getBoundingClientRect(); return { text: el.innerText.trim(), visible: el.checkVisibility(), inside: r.left >= b.left - 0.5 && r.right <= b.right + 0.5, h: Math.round(r.height), boxW: Math.round(b.width), scores: [...box.querySelectorAll(".font-display")].map((s) => s.innerText.trim()), href: new URL(box.querySelector("[data-test=match-box-watch]").href).pathname, overflow: document.documentElement.scrollWidth - document.documentElement.clientWidth }; }';
     $banner = '() => { const el = document.querySelector("[data-test=tournament-banner-step]"); if (el.checkVisibility()) el.scrollIntoView(); const r = el.getBoundingClientRect(); return { text: el.innerText.trim(), visible: el.checkVisibility(), right: Math.round(r.right), vw: innerWidth, h: Math.round(r.height), overflow: document.documentElement.scrollWidth - document.documentElement.clientWidth }; }';
@@ -660,6 +673,97 @@ test('after the first leg the bracket, the live page and the game banner show th
             ->and($page->evaluate(BrowserConsole::BAD_RESPONSES))->toBe([], "banner {$width}: responses");
         $page->close();
     }
+});
+
+test('the games of a pairing fit the bracket box, the live page and the board banner at 390 to 1920, as an admin in German: no overflow, nothing squeezed or spilled, a clean console and answers, also after a Livewire roundtrip', function () {
+    // DerCaddy 2026-10-30/31: every game of a pairing opens from the box and from the board's banner (on a phone from its panel).
+    [$tournament, $first, $second, $admin] = blockliTwoLegs();
+    $inBox = '() => { const el = document.querySelector("[data-test=match-games]"); el.scrollIntoView(); const b = el.closest("[data-test=match-box]").getBoundingClientRect(), r = el.getBoundingClientRect(), inside = (q) => q.left >= b.left - 0.5 && q.right <= b.right + 0.5;
+        return { text: el.innerText.replace(/\s+/g, " ").trim(), boxW: Math.round(b.width), rowInside: inside(r), linksInside: [...el.querySelectorAll("[data-test=match-game]")].every((a) => inside(a.getBoundingClientRect())), overflow: document.documentElement.scrollWidth - document.documentElement.clientWidth }; }';
+    $switch = '() => { const nav = [...document.querySelectorAll("[data-test=pairing-games]")].find((el) => el.checkVisibility()); if (! nav) return null;
+        const holder = nav.closest("[data-test=banner-sheet], [data-test=tournament-banner]"), h = holder.getBoundingClientRect(), n = nav.getBoundingClientRect(), items = [...nav.querySelectorAll("[data-test=pairing-game]")].map((el) => el.getBoundingClientRect());
+        return { in: holder.matches("[data-test=banner-sheet]") ? "panel" : "banner", texts: [...nav.querySelectorAll("[data-test=pairing-game]")].map((el) => el.innerText.trim()), navInside: n.left >= h.left - 0.5 && n.right <= h.right + 0.5,
+            itemsInViewport: items.every((q) => q.left >= 0 && q.right <= innerWidth), minH: Math.round(Math.min(...items.map((q) => q.height))), holderW: Math.round(h.width), navW: Math.round(n.width), overflow: document.documentElement.scrollWidth - document.documentElement.clientWidth }; }';
+    $roundtrip = 'async () => { const all = window.Livewire.all(); await Promise.all(all.map((c) => c.$wire.$refresh())); return all.length; }';
+    $clean = function (Page $page, string $when): void {
+        expect($page->evaluate('() => window.__errors'))->toBe([], "{$when}: console")
+            ->and($page->evaluate(BrowserConsole::BAD_RESPONSES))->toBe([], "{$when}: responses");
+    };
+    // Below lg the switch is in the panel the banner row opens; from lg it stands in the banner.
+    $switchOf = function (Page $page, int $width) use ($switch): array {
+        if ($width < 1024 && ! $page->evaluate('() => document.querySelector("[data-test=banner-sheet] [data-test=pairing-games]")?.checkVisibility() ?? false')) {
+            $page->locator('[data-test=tournament-banner-row]')->click();
+        }
+        BrowserWait::until($page, '() => [...document.querySelectorAll("[data-test=pairing-games]")].some((el) => el.checkVisibility())', 5_000);
+
+        return $page->evaluate($switch);
+    };
+    $measured = [];
+
+    foreach ([[390, 844], [768, 1024], [1024, 800], [1280, 800], [1440, 900], [1920, 1080]] as [$width, $height]) {
+        $page = blockliPage($admin, route('tournaments.show', $tournament, false).'?lang=de', $width, $height, false);
+
+        foreach (['show' => route('tournaments.show', $tournament, false), 'live' => route('tournaments.live', $tournament, false)] as $where => $url) {
+            if ($where === 'live') {
+                $page->goto(ComputeUrl::from($url.'?lang=de'));
+            }
+            BrowserWait::until($page, '() => !!document.querySelector("[data-test=match-games]")', 10_000);
+
+            foreach (['load', 'roundtrip'] as $when) {
+                if ($when === 'roundtrip') {
+                    expect($page->evaluate($roundtrip))->toBeGreaterThan(0);
+                    BrowserWait::until($page, '() => !!document.querySelector("[data-test=match-games]")', 10_000);
+                }
+                $m = $page->evaluate($inBox);
+                $measured["{$where} {$width} {$when}"] = $m;
+
+                expect($m)->toMatchArray(['text' => 'Partien 1: 1–0 2 live', 'rowInside' => true, 'linksInside' => true])
+                    ->and($m['overflow'])->toBeLessThanOrEqual(0, "{$where} {$width} {$when}: horizontal overflow")
+                    ->and($page->evaluate(BrowserConsole::SQUEEZED, ['[data-test=match-box]']))->toBe([], "{$where} {$width} {$when}: squeezed")
+                    ->and($page->evaluate(BrowserConsole::SPILLED, ['[data-test=match-box]']))->toBe([], "{$where} {$width} {$when}: spilled");
+                $clean($page, "{$where} {$width} {$when}");
+            }
+        }
+
+        $page->goto(ComputeUrl::from(route('board.show', $second, false).'?lang=de'));
+        BrowserWait::until($page, '() => !!document.querySelector("[data-test=tournament-banner-step]")', 10_000);
+
+        foreach (['load', 'roundtrip'] as $when) {
+            if ($when === 'roundtrip') {
+                expect($page->evaluate($roundtrip))->toBeGreaterThan(0);
+            }
+            $m = $switchOf($page, $width);
+            $measured["board {$width} {$when}"] = $m;
+
+            expect($m['in'])->toBe($width < 1024 ? 'panel' : 'banner')
+                ->and($m['texts'])->toBe(['Partie 1 · gewonnen von Anna Racer', 'Partie 2 · läuft'])
+                ->and($m['navInside'])->toBeTrue("board {$width} {$when}: the switch leaves its banner")
+                ->and($m['itemsInViewport'])->toBeTrue("board {$width} {$when}: an item leaves the viewport")
+                ->and($m['minH'])->toBeGreaterThanOrEqual($width < 1024 ? 44 : 32)
+                ->and($m['overflow'])->toBeLessThanOrEqual(0, "board {$width} {$when}: horizontal overflow")
+                ->and($page->evaluate(BrowserConsole::SQUEEZED, ['[data-test=tournament-banner], [data-test=banner-sheet]']))->toBe([], "board {$width} {$when}: squeezed")
+                ->and($page->evaluate(BrowserConsole::SPILLED, ['[data-test=tournament-banner], [data-test=banner-sheet]']))->toBe([], "board {$width} {$when}: spilled");
+            $clean($page, "board {$width} {$when}");
+        }
+        $page->close();
+    }
+
+    fwrite(STDERR, PHP_EOL.'[pairing games widths] '.json_encode($measured).PHP_EOL);
+
+    // Positive controls on the same kind of page: a thrown error, a broken image, a squeezed and a spilling text each
+    // show up in the very checks above, so their "empty" says something.
+    $page = blockliPage($admin, route('tournaments.show', $tournament, false).'?lang=de', 390, 844, false);
+    BrowserWait::until($page, '() => !!document.querySelector("[data-test=match-games]")', 10_000);
+    $page->evaluate('() => { setTimeout(() => { throw new Error("pr15-control"); }); const img = document.createElement("img"); img.src = "/pr15-missing-image.png"; document.body.append(img);
+        const box = document.querySelector("[data-test=match-box]"); box.insertAdjacentHTML("beforeend", "<p style=\"width:90px\">a sentence of far more than twenty-five characters</p><div style=\"width:40px;white-space:nowrap\">overflowingwordoverflowingword</div>"); }');
+    BrowserWait::until($page, '() => window.__errors.length > 0', 5_000);
+    BrowserWait::until($page, '() => performance.getEntries().some((e) => typeof e.responseStatus === "number" && e.responseStatus >= 400)', 5_000);
+
+    expect(implode(' ', $page->evaluate('() => window.__errors')))->toContain('pr15-control')
+        ->and(implode(' ', $page->evaluate(BrowserConsole::BAD_RESPONSES)))->toContain('pr15-missing-image.png')
+        ->and($page->evaluate(BrowserConsole::SQUEEZED, ['[data-test=match-box]']))->toHaveCount(1)
+        ->and($page->evaluate(BrowserConsole::SPILLED, ['[data-test=match-box]']))->not->toBe([]);
+    $page->close();
 });
 
 test('a Blockli rapid game plays live on a running 10+5 clock, from the lobby\'s Rapid tile to moves on both boards; clean console', function (int $width, int $height, bool $touch) {

@@ -14,6 +14,7 @@ use App\Support\Tournaments\TournamentGameEnd;
 use App\Support\Tournaments\TournamentMatchMaker;
 use App\Support\Tournaments\TournamentRunner;
 use App\Support\Tournaments\TournamentView;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Queue;
 use Illuminate\Support\Lottery;
 use Tests\Support\BlockliOn;
@@ -227,4 +228,86 @@ test('a board game\'s tournament banner lists the games of its pairing, this one
     blockliLose($tournament, 0);
     expect(array_column(TournamentGameEnd::banner($first->refresh())['games'], 'text'))
         ->toBe(['Game 1 · won by Player 1', 'Game 2 · won by Player 2', 'Game 3 · won by Player 2']);
+});
+
+test('an aborted game and the games a correction replaced are not listed; a pairing left with one counting game lists nothing', function () {
+    // The list is what a player can still watch and what counts: a voided game or one up to `replaced_through` is neither.
+    $tournament = blockliTournament();
+    $box = fn (): array => (new TournamentView($tournament->refresh()))->box(blockliMatch($tournament))['games'];
+    $banner = fn (BoardGame $game): array => TournamentGameEnd::banner($game->fresh())['games'];
+
+    $first = blockliLose($tournament, 1);
+    $second = blockliLive($tournament);
+    expect(array_column($box(), 'href'))->toBe([route('board.show', $first), route('board.show', $second)]);
+
+    // The league voids the live second leg and a replacement starts at once: the voided game stays out, the numbers
+    // run over the counting games only.
+    app(BoardGameService::class)->void($second);
+    $third = blockliLive($tournament);
+
+    expect($second->refresh()->status)->toBe(BoardGameStatus::Aborted)
+        ->and($third->id)->not->toBe($second->id)
+        ->and(array_column($box(), 'n'))->toBe([1, 2])
+        ->and(array_column($box(), 'href'))->toBe([route('board.show', $first), route('board.show', $third)])
+        ->and(array_column($banner($third), 'href'))->toBe([route('board.show', $first), route('board.show', $third)])
+        ->and(array_column($banner($third), 'current'))->toBe([false, true]);
+
+    // A correction replaces everything played up to the voided game (`replaced_through`, as TournamentControl sets it):
+    // the first leg goes too, one game is left, nothing to switch between.
+    blockliMatch($tournament)->forceFill(['replaced_through' => $second->id])->save();
+    expect($box())->toBe([])
+        ->and($banner($third))->toBe([]);
+
+    // The games after the correction count again, from number 1.
+    app(BoardGameService::class)->resign($third, $third->white);
+    $fourth = blockliLive($tournament);
+    expect(array_column($box(), 'n'))->toBe([1, 2])
+        ->and(array_column($box(), 'href'))->toBe([route('board.show', $third), route('board.show', $fourth)])
+        ->and(array_column($banner($fourth), 'href'))->toBe([route('board.show', $third), route('board.show', $fourth)]);
+
+    // The aborted game's own page lists the counting games, itself none of them.
+    expect(array_column($banner($second), 'current'))->toBe([false, false]);
+});
+
+test('a drawn leg reads ½–½ in the bracket box and "drawn" in the banner, not a winner', function () {
+    $tournament = blockliTournament();
+    $first = blockliLive($tournament);
+    app(BoardGameService::class)->offerDraw($first, $first->white);
+    app(BoardGameService::class)->acceptDraw($first->refresh(), $first->black);
+    $second = blockliLive($tournament);
+
+    $box = (new TournamentView($tournament->refresh()))->box(blockliMatch($tournament));
+    $html = trim((string) preg_replace('/\s+/', ' ', strip_tags(view('pages.tournaments.partials.box', ['box' => $box])->render())));
+    $games = TournamentGameEnd::banner($second)['games'];
+
+    expect(array_column($box['games'], 'score'))->toBe(['½–½', null])
+        ->and($html)->toMatch('/Games 1: ½–½ 2 ?live/u')
+        ->and(array_column($games, 'text'))->toBe(['Game 1 · drawn', 'Game 2 · under way'])
+        ->and(array_column($games, 'current'))->toBe([false, true]);
+});
+
+test('the bracket page reads the board games of its matches in one query, however many matches it shows', function () {
+    // stages() preloads them (TournamentView::$boardGames), box() alone asks per match. Every first-round pairing is on
+    // its second leg, so each box really lists its games. Only the list's own query is counted: the runner's per-match
+    // reads of the finished legs (legsSoFar) are older and not the claim.
+    $listQueries = function (int $players): array {
+        $tournament = blockliTournament(n: $players);
+        BoardGame::query()->where('status', BoardGameStatus::Active)->get()->each(fn (BoardGame $game) => app(BoardGameService::class)->resign($game, User::query()->findOrFail($game->white_id)));
+        $view = new TournamentView($tournament->refresh());
+
+        DB::flushQueryLog();
+        DB::enableQueryLog();
+        $stages = $view->stages();
+        DB::disableQueryLog();
+
+        $queries = collect(DB::getQueryLog())->pluck('query')->filter(fn (string $sql): bool => str_starts_with($sql, 'select "id", "tournament_match_id", "status", "result", "white_id" from "board_games"'))->count();
+        $lists = collect($stages)->flatMap(fn (array $stage) => $stage['parts'])
+            ->flatMap(fn (array $part) => collect($part['sections'])->flatMap(fn (array $section) => $section['columns'])->flatMap(fn (array $column) => $column['matches']))
+            ->filter(fn (array $box): bool => $box['games'] !== [])->count();
+
+        return [$queries, $lists];
+    };
+
+    expect($listQueries(2))->toBe([1, 1])
+        ->and($listQueries(8))->toBe([1, 4]);
 });
