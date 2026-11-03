@@ -106,6 +106,8 @@ const NAV_PAGES = [
     'admin.overlays' => ['roles' => ['admin'], 'max' => 2],
     'gaming.edit' => ['roles' => NAV_LOGGED_IN, 'max' => 1],
     'settings.account' => ['roles' => NAV_LOGGED_IN, 'max' => 2],
+    // Name, picture and Lightning address: the account menu's first entry, the welcome banner's button and a tab of every settings page.
+    'settings.profile' => ['roles' => NAV_LOGGED_IN, 'max' => 1],
     'settings.notifications' => ['roles' => NAV_LOGGED_IN, 'max' => 1],
     'settings.chess' => ['roles' => NAV_LOGGED_IN, 'max' => 1],
     'settings.opponents' => ['roles' => NAV_LOGGED_IN, 'max' => 2],

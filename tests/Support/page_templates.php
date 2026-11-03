@@ -94,6 +94,7 @@ return [
     'settings/⚡nip05.blade.php' => ['T-Settings', 'SettingsNip05 › SettingsNip05'],
     'settings/⚡notifications.blade.php' => ['T-Settings', 'Settings › Settings'],
     'settings/⚡opponents.blade.php' => ['T-Settings', 'SettingsOpponents › SettingsOpponents'],
+    'settings/⚡profile.blade.php' => ['T-Settings', 'SettingsProfile › SettingsProfile'],
     'stacker/⚡moment.blade.php' => ['Viewer + Karte', 'BlockfillReplay › Geteilter Moment'],
     'stacker/⚡play.blade.php' => ['T1 + T2 Vollbild', 'PlayFrame › Blockfill spielen, im Browser gemessen'],
     'stacker/⚡replay.blade.php' => ['Viewer', 'BlockfillReplay › Blockfill-Replay'],

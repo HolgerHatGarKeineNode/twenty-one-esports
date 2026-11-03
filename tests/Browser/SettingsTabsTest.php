@@ -123,7 +123,7 @@ function settingsMeasure(Page $page, string $label, int $width, string $heading)
     fwrite(STDERR, "\n[settings] {$label} {$width}px: ".json_encode($layout)."\n");
 
     expect($layout['scrollWidth'])->toBeLessThanOrEqual($layout['clientWidth'])
-        ->and($layout['tabs'])->toBe(7)
+        ->and($layout['tabs'])->toBe(8)
         ->and($layout['activeCount'])->toBe(1)
         ->and($layout['active'])->toBe($heading)
         ->and($layout['heading'])->toBe($heading)
