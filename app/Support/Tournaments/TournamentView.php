@@ -11,6 +11,7 @@ use App\Models\TournamentMatch;
 use App\Models\TournamentParticipant;
 use App\Models\TournamentStage;
 use App\Support\Tournaments\Engine\Standings;
+use Illuminate\Database\Eloquent\Collection as EloquentCollection;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Route;
@@ -30,7 +31,7 @@ final class TournamentView
     /** @var array<int, array{points: array{0: float, 1: float}, label: string, game: int, legs: list<array{0: float, 1: float}>}|null> */
     private array $legs = [];
 
-    /** @var Collection<int, Collection<int, BoardGame>>|null the board games of every match, read once by stages() */
+    /** @var Collection<array-key, EloquentCollection<int, BoardGame>>|null the board games of every match, read once by stages() */
     private ?Collection $boardGames = null;
 
     public function __construct(private Tournament $tournament)
@@ -46,7 +47,7 @@ final class TournamentView
         $matches = TournamentMatch::query()->where('tournament_id', $this->tournament->id)
             ->with(['round', 'slots', 'seriesMatch', 'chessGame', 'boardGame'])->orderBy('id')->get();
         $this->boardGames = BoardGame::query()->whereIn('tournament_match_id', $matches->modelKeys())->where('status', '!=', BoardGameStatus::Aborted)
-            ->orderBy('id')->get(['id', 'tournament_match_id', 'status', 'result', 'white_id'])->groupBy('tournament_match_id');
+            ->orderBy('id')->get(['id', 'tournament_match_id', 'status', 'result', 'white_id'])->groupBy('tournament_match_id')->toBase();
         $stages = [];
 
         foreach (TournamentStage::query()->where('tournament_id', $this->tournament->id)->orderBy('number')->get() as $stage) {
@@ -213,7 +214,7 @@ final class TournamentView
             $swiss ? $options->swissTieBreaks : $options->roundRobinTieBreaks,
             $perLeg,
         );
-        $rows = Standings::outLast($rows, $this->participants->whereNotNull('disqualified_at')->keys()->map(intval(...))->values()->all());
+        $rows = Standings::outLast($rows, array_values($this->participants->whereNotNull('disqualified_at')->keys()->map(intval(...))->all()));
 
         return array_map(function ($row): array {
             $participant = $this->participants->get($row->entrant);
@@ -325,8 +326,8 @@ final class TournamentView
         $first = $match->slots->firstWhere('slot', 0)?->tournament_participant_id;
         $members = $first === null ? [] : ($this->participants->get($first)?->memberIds() ?? []);
 
-        return array_values(array_map(fn (array $game): array => array_diff_key($game, ['id' => 0, 'won' => 0]),
-            self::pairingGames($match, $members, $this->boardGames?->get($match->id, collect()))));
+        return array_map(fn (array $game): array => ['n' => $game['n'], 'href' => $game['href'], 'score' => $game['score'], 'live' => $game['live']],
+            self::pairingGames($match, $members, $this->boardGames?->get($match->id, new EloquentCollection)));
     }
 
     /**
