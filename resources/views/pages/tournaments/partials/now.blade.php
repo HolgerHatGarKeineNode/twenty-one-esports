@@ -30,6 +30,12 @@
     $format = fn ($at) => $at->copy()->setTimezone($tz)->translatedFormat('D j M, H:i');
     $action = $now['action'];
     $cover = app(\App\Games\GameRegistry::class)->cover((string) $now['game']);
+    // Waiting on a phone: the band and the title take the pinned lobby's low size, so the round's running games and the
+    // countdown to their latest end stay above the tab bar (at 375 x 812 the hero ended at 826, the tab bar starts at 748).
+    $waitCompact = $lobby === null && $tone === 'wait';
+    // Without an action of its own, the desk button joins the row of live boards (icon only on a phone): both are the
+    // secondary links of a waiting hero, and its own row pushed the hero 60 px further down.
+    $deskInBoards = $action === null && ($desk ?? null) && $now['boards'] !== [];
 @endphp
 <section aria-labelledby="now-h" wire:key="now-{{ $state }}"
          x-data="tournamentNow({ id: {{ $tournament->id }}, state: @js($state) })" :class="flipped && 'tn-flip'"
@@ -44,13 +50,13 @@
          data-test="now-hero" data-state="{{ $state }}" data-tone="{{ $tone }}">
     {{-- The game's cover as a band, the two players on its edge: whose game this is, before a word is read. --}}
     {{-- A pinned lobby brings its own access block: the band stays low, so the name and the password share the first screen. --}}
-    <div @class(['relative shrink-0', 'h-24 lg:h-28' => $lobby === null, 'h-16 lg:h-16' => $lobby !== null]) aria-hidden="true" data-test="now-cover">
+    <div @class(['relative shrink-0', 'h-24 lg:h-28' => $lobby === null && ! $waitCompact, 'h-16 lg:h-28' => $waitCompact, 'h-16 lg:h-16' => $lobby !== null]) aria-hidden="true" data-test="now-cover">
         @if ($cover)
             <img src="{{ asset($cover->path($cover->widths[0], 'webp')) }}" alt="" width="480" height="270" loading="eager" decoding="async" class="absolute inset-y-0 right-0 h-full w-full object-cover object-[center_30%] opacity-50 [mask-image:linear-gradient(to_bottom,black_35%,transparent)] lg:w-[45%] lg:opacity-70 lg:[mask-image:linear-gradient(to_right,transparent,black_50%),linear-gradient(to_bottom,black_45%,transparent)] lg:[mask-composite:intersect]">
         @endif
         <span @class(['absolute inset-0 bg-linear-to-t to-transparent lg:bg-linear-to-r', 'from-btc-tint' => $tone === 'act', 'from-proof-fill' => $tone === 'wait', 'from-win-tint' => $tone === 'won', 'from-card' => in_array($tone, ['watch', 'over'], true)])></span>
         @if ($now['me'] || $now['opponent'])
-            <span @class(['absolute left-4 flex items-center gap-2 lg:left-8', 'bottom-3' => $lobby === null, 'bottom-1' => $lobby !== null])>
+            <span @class(['absolute left-4 flex items-center gap-2 lg:left-8', 'bottom-3' => $lobby === null && ! $waitCompact, 'bottom-1 lg:bottom-3' => $waitCompact, 'bottom-1' => $lobby !== null])>
                 @if ($now['me'])
                     <x-avatar :user="$now['me']" :size="52" class="size-[52px] rounded-full shadow-[0_0_0_3px_var(--color-card)]" />
                 @endif
@@ -77,7 +83,7 @@
             </p>
         @endif
 
-        <h2 id="now-h" @class(['m-0 font-display leading-[1.12] font-bold text-balance [overflow-wrap:anywhere]', 'text-[28px] lg:text-[44px]' => $lobby === null, 'text-2xl lg:text-[30px]' => $lobby !== null]) data-test="now-title">{{ $now['title'] }}</h2>
+        <h2 id="now-h" @class(['m-0 font-display leading-[1.12] font-bold text-balance [overflow-wrap:anywhere]', 'text-[28px] lg:text-[44px]' => $lobby === null && ! $waitCompact, 'text-2xl lg:text-[44px]' => $waitCompact, 'text-2xl lg:text-[30px]' => $lobby !== null]) data-test="now-title">{{ $now['title'] }}</h2>
 
         @if ($round !== null && $round['total'] > 1 && $round['total'] <= 32 && ! in_array($now['state'], ['play', 'ready', 'start', 'invited', 'schedule', 'room', 'lobby'], true))
             {{-- The round as one strip: a segment per match, decided ones filled, the ones still playing pulse. The count is in the context line. --}}
@@ -105,7 +111,7 @@
         @endif
     </div>
 
-    @if ($action !== null || ($desk ?? null))
+    @if ($action !== null || (($desk ?? null) && ! $deskInBoards))
         {{-- data-live-clear (resources/js/livePlayer.js): the folded "Watch live" tab steps aside while it would cover the primary
              action; at 1280 x 800 on air it covered its lower 15 px, at 390 x 844 its left 173 px (E4, 2026-10-20).
              Without an action of its own (the desk button alone), the page's primary action is in the details (a clan
@@ -155,17 +161,18 @@
         @endif
 
         @if ($now['until'])
-            <p class="m-0 flex flex-wrap items-baseline gap-x-2 text-[13px] text-ink-2" data-test="now-until">
-                <span>{{ __('Round deadline in') }}</span>
-                <b class="font-display text-xl font-bold text-ink tabular-nums" role="timer" x-data="countdown({ at: {{ (int) $now['until']->getTimestampMs() }}, days: @js(__(':count day|:count days')) })" x-text="text" data-test="now-countdown">{{ $format($now['until']) }}</b>
+            <p class="m-0 flex max-w-[560px] items-center justify-between gap-x-3 text-[13px] text-ink-2 @min-[52rem]:justify-start" data-test="now-until">
+                <span class="min-w-0">{{ __('Round deadline in') }}</span>
+                <b class="shrink-0 font-display text-xl font-bold text-ink tabular-nums" role="timer" x-data="countdown({ at: {{ (int) $now['until']->getTimestampMs() }}, days: @js(__(':count day|:count days')) })" x-text="text" data-test="now-countdown">{{ $format($now['until']) }}</b>
             </p>
         @endif
 
         @if ($now['eta'] ?? null)
-            {{-- When the round's games are over at the latest (both clocks of the slowest game): time for a break. --}}
-            <p class="m-0 flex flex-wrap items-baseline gap-x-2 text-[13px] text-ink-2" data-test="now-eta">
-                <span>{{ __('The running games are over at the latest in about') }}</span>
-                <b class="font-display text-xl font-bold text-ink tabular-nums" role="timer" x-data="countdown({ at: {{ (int) $now['eta']->getTimestampMs() }}, days: @js(__(':count day|:count days')) })" x-text="text" data-test="now-eta-countdown">{{ sprintf('%02d:%02d:%02d', intdiv($etaLeft = max(0, (int) now()->diffInSeconds($now['eta'])), 3600), intdiv($etaLeft % 3600, 60), $etaLeft % 60) }}</b>
+            {{-- When the round's games are over at the latest (both clocks of the slowest game): time for a break. The label
+                 wraps beside its countdown instead of standing above it: one row less on a phone. --}}
+            <p class="m-0 flex max-w-[560px] items-center justify-between gap-x-3 text-[13px] text-ink-2 @min-[52rem]:justify-start" data-test="now-eta">
+                <span class="min-w-0">{{ __('The running games are over at the latest in about') }}</span>
+                <b class="shrink-0 font-display text-xl font-bold text-ink tabular-nums" role="timer" x-data="countdown({ at: {{ (int) $now['eta']->getTimestampMs() }}, days: @js(__(':count day|:count days')) })" x-text="text" data-test="now-eta-countdown">{{ sprintf('%02d:%02d:%02d', intdiv($etaLeft = max(0, (int) now()->diffInSeconds($now['eta'])), 3600), intdiv($etaLeft % 3600, 60), $etaLeft % 60) }}</b>
             </p>
         @endif
 
@@ -219,11 +226,17 @@
         @endforeach
 
         @if ($now['boards'] !== [])
-            <ul class="m-0 flex list-none flex-wrap gap-2 p-0" data-test="now-boards">
-                @foreach ($now['boards'] as $board)
-                    <li class="min-w-0"><a href="{{ $board['url'] }}" @if (isset($board['target'])) target="{{ $board['target'] }}" rel="noopener" @endif class="btn-w inline-flex min-h-11 max-w-full items-center gap-2 rounded-md border border-line bg-well px-3 text-[13px] text-ink hover:text-ink" data-test="now-board"><x-icon name="pawn" :size="14" class="shrink-0 text-btc" /><span class="min-w-0 truncate">{{ $board['label'] }}</span></a></li>
-                @endforeach
-            </ul>
+            {{-- The boards wrap in their own column, so a long pairing never pushes the desk button onto a row of its own. --}}
+            <div class="flex min-w-0 items-start gap-2">
+                <ul class="m-0 flex min-w-0 grow list-none flex-wrap gap-2 p-0" data-test="now-boards">
+                    @foreach ($now['boards'] as $board)
+                        <li class="min-w-0"><a href="{{ $board['url'] }}" @if (isset($board['target'])) target="{{ $board['target'] }}" rel="noopener" @endif class="btn-w inline-flex min-h-11 max-w-full items-center gap-2 rounded-md border border-line bg-well px-3 text-[13px] text-ink hover:text-ink" data-test="now-board"><x-icon name="pawn" :size="14" class="shrink-0 text-btc" /><span class="min-w-0 truncate">{{ $board['label'] }}</span></a></li>
+                    @endforeach
+                </ul>
+                @if ($deskInBoards)
+                    <x-tournaments.desk-button :desk="$desk" on-page compact />
+                @endif
+            </div>
         @endif
     </div>
     </div>
