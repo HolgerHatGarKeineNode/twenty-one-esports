@@ -897,12 +897,13 @@ new #[Layout('layouts::app', ['section' => 'tournaments', 'realtime' => true, 's
         --}}
         {{-- With a step of their own ("What to do now") the hero is compact, so that step stays in the first screen (user, 2026-10-02/03). --}}
         @php($compactHero = $now && ! $championMoment)
+        @php($heroOpenEnd = in_array($status, [TournamentStatus::Finished, TournamentStatus::Cancelled], true) ? null : $landing->openEndLine($zone))
         <section aria-labelledby="t-name" @class(['rv-band -mt-page-top lg:-mt-page-top-lg', 'lg:min-h-[300px]' => ! $compactHero]) data-test="tournament-hero" data-state="{{ $cta }}">
             {{-- With a step of their own to take ("What to do now"), a phone skips the art so the step stays in the first screen. --}}
             <x-game-cover :game="$tournament->game" size="hero" loading="eager" class="{{ ($now && ! $championMoment) || (in_array($cta, ['open', 'entered'], true) && app(\App\Games\GameRegistry::class)->find($tournament->game) instanceof \App\Games\Contracts\PlayedOnOwnCopy) ? 'max-lg:hidden ' : '' }}mx-4 mt-4 rounded-[4px] lg:absolute lg:top-0 lg:right-0 lg:m-0 lg:aspect-video lg:h-auto lg:w-[38%] lg:max-w-[533px] lg:rounded-none [&_img]:object-cover" data-test="game-cover" />
             <div class="absolute inset-y-0 right-0 hidden w-[37%] bg-[linear-gradient(90deg,#0A0A0B,rgba(10,10,11,.1)_45%)] lg:block" aria-hidden="true"></div>
 
-            <div @class(['relative mx-auto flex w-full max-w-[1440px] flex-col gap-3 px-4 pt-4 lg:pr-[40%] lg:pl-12', 'pb-6 lg:pt-8 lg:pb-10' => ! $compactHero, 'pb-4 lg:pt-5 lg:pb-5' => $compactHero])>
+            <div @class(['relative mx-auto flex w-full max-w-[1440px] flex-col gap-3 px-4 pt-4 lg:pr-[40%] lg:pl-12', 'pb-6 lg:pt-8 lg:pb-10' => ! $compactHero, 'pb-3 max-lg:gap-2 max-lg:pt-3 lg:pt-5 lg:pb-5' => $compactHero])>
                 <span class="flex flex-wrap items-center gap-2">
                     <span class="{{ $statusTag[0] }}" data-test="tournament-status">@if ($statusTag[1])<x-icon :name="$statusTag[1]" :size="12" />@elseif (in_array($cta, ['open', 'live'], true))<span class="rv-live is-ok" aria-hidden="true"><i></i></span>@endif{{ $beforeStart ? __('Drawn') : $status->label() }}</span>
                     @if ($tournament->isCasualCup())
@@ -910,7 +911,7 @@ new #[Layout('layouts::app', ['section' => 'tournaments', 'realtime' => true, 's
                     @elseif (! $week)
                         <span class="rv-tag is-btc"><x-icon name="trophy" :size="12" />{{ __('Organizer tournament') }}</span>
                     @endif
-                    <span class="rv-m">{{ $gameLine }}, <span data-test="tournament-format">{{ $formatLabel }}</span>, {{ \App\Support\Engagement\HomeBoard::dayClock($tournament->starts_at) }}</span>
+                    <span class="rv-m">{{ $gameLine }}, <span data-test="tournament-format">{{ $formatLabel }}</span>, {{ \App\Support\Engagement\HomeBoard::dayClock($tournament->starts_at) }}@if ($compactHero && $heroOpenEnd)<span class="lg:hidden" data-test="hero-open-end-inline">. {{ $heroOpenEnd }}</span>@endif</span>
                 </span>
 
                 <h1 id="t-name" @class(['m-0 font-display leading-[1.1] font-bold [overflow-wrap:anywhere]', 'text-[28px] sm:text-[40px] xl:text-[52px]' => ! $compactHero, 'text-2xl lg:text-[30px]' => $compactHero]) data-test="tournament-name">{{ $tournament->title() }}</h1>
@@ -920,7 +921,7 @@ new #[Layout('layouts::app', ['section' => 'tournaments', 'realtime' => true, 's
                     <div class="max-w-[640px]">@include('pages.tournaments.partials.own-copy', ['tournament' => $tournament])</div>
                 @endif
 
-                <div class="flex flex-wrap items-end gap-x-8 gap-y-4 pt-1">
+                <div @class(['flex flex-wrap items-end gap-x-8 gap-y-4 pt-1', 'max-lg:pt-0' => $compactHero])>
                     @if ($hasPool)
                         <span class="flex flex-col" data-test="prize-pot">
                             <span class="rv-m">{{ __('Prize pot in sats') }}</span>
@@ -953,7 +954,8 @@ new #[Layout('layouts::app', ['section' => 'tournaments', 'realtime' => true, 's
                         </span>
                     @endif
                     @if ($published && ! $week && $seatsAll > 0)
-                        <span class="flex flex-col gap-1" data-test="places-meter">
+                        {{-- Compact on a phone: the label beside the seats, one row less above "What to do now" (user 2026-11-03: 360 x 740). --}}
+                        <span @class(['flex flex-col gap-1', 'max-lg:flex-row max-lg:items-center max-lg:gap-3' => $compactHero]) data-test="places-meter">
                             <span class="rv-m">{{ __('Places') }}</span>
                             <span class="flex h-8 items-center gap-2"><x-ui.seats :taken="$seatsTaken" :places="$seatsAll" /><span class="tabular-nums">{{ $seatsTaken }}/{{ $seatsAll }}</span></span>
                         </span>
@@ -1042,8 +1044,9 @@ new #[Layout('layouts::app', ['section' => 'tournaments', 'realtime' => true, 's
                         @endif
                     </p>
                 @endif
-                @if (! in_array($status, [TournamentStatus::Finished, TournamentStatus::Cancelled], true) && ($openEnd = $landing->openEndLine($zone)))
-                    <p class="rv-m m-0" data-test="hero-open-end">{{ $openEnd }}</p>
+                @if ($heroOpenEnd)
+                    {{-- Compact on a phone, the expected end continues the data line above instead (user 2026-11-03: 360 x 740). --}}
+                    <p @class(['rv-m m-0', 'max-lg:hidden' => $compactHero]) data-test="hero-open-end">{{ $heroOpenEnd }}</p>
                 @endif
 
                 @if (($championMoment['viewer']['state'] ?? null) === 'won')
@@ -1085,7 +1088,7 @@ new #[Layout('layouts::app', ['section' => 'tournaments', 'realtime' => true, 's
         The bracket's 2D / 3D switch (bracketView, resources/js/bracketView.js) holds the whole column, so its toggle
         sits in the tab row; three.js loads only when a viewer picks 3D.
     --}}
-    <div @class(['group/bv mx-auto flex w-full max-w-[1440px] flex-col gap-8 px-4 pt-6 lg:px-12 lg:pt-8', 'chat-rail-host xl:[--chat-rail-top:2rem] xl:[--chat-rail-own:3rem]' => $rail === 'game'])
+    <div @class(['group/bv mx-auto flex w-full max-w-[1440px] flex-col gap-8 px-4 pt-6 lg:px-12 lg:pt-8', 'max-lg:pt-3' => $now && ! $championMoment && ! $blockfillWeek, 'chat-rail-host xl:[--chat-rail-top:2rem] xl:[--chat-rail-own:3rem]' => $rail === 'game'])
          data-bracket-view="2d" @if ($bracket3d) wire:ignore.self x-data="bracketView({{ \Illuminate\Support\Js::from($bracket3dConfig) }})" @endif data-test="tournament-body">
         @if ($bracket3d)
             {{-- A remembered 3D shows its box before the first paint, so the page does not jump once scripts run. --}}

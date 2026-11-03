@@ -133,7 +133,7 @@ test('a waiting player sees the hero right under the tournament\'s, above the ta
     $measured = [];
     $page = null;
 
-    foreach ([[375, 812, 'en', true], [1440, 900, 'en', false], [375, 812, 'de', false]] as [$width, $height, $locale, $flip]) {
+    foreach ([[375, 812, 'en', true], [1440, 900, 'en', false], [375, 812, 'de', false], [360, 740, 'de', false], [360, 740, 'en', false]] as [$width, $height, $locale, $flip]) {
         $tournament = runningChess(TournamentFormat::SingleElimination, 4, TournamentResultsMode::Players);
         $tournament->forceFill(['name' => 'Halving Blitz Cup', 'published_at' => now()])->save();
         // The players are read below: loaded with the games, as the lazy-loading guard (local and testing) wants.
@@ -377,7 +377,7 @@ test('a player with a bye sees the running games and the countdown to their late
     $page->context()->addInitScript(NOW_COLLECTOR);
     $measured = [];
 
-    foreach ([[390, 844], [1440, 900]] as [$width, $height]) {
+    foreach ([[360, 740], [390, 844], [1440, 900]] as [$width, $height]) {
         $page->setViewportSize($width, $height);
         $page->goto(ComputeUrl::from(route('tournaments.show', $tournament)));
         BrowserWait::until($page, '() => document.querySelector("[data-test=now-eta]") !== null && document.readyState === "complete"', 8_000);
@@ -392,6 +392,8 @@ test('a player with a bye sees the running games and the countdown to their late
             ->and($m['eta']['right'])->toBeLessThanOrEqual($m['right'])
             ->and($m['board']['right'])->toBeLessThanOrEqual($m['right'])
             ->and($m['countdown'])->toMatch('/^00:09:\d\d$/')
+            // The whole hero above the tab bar on a small phone too (user 2026-11-03: the tournament's header goes compact).
+            ->and($m['bottom'])->toBeLessThanOrEqual($m['tab'] ?? $height, "bye {$width}")
             ->and($m['text'])->toContain('Zug 1')->toContain('spätestens vorbei')
             ->and($m['errors'])->toBe([]);
     }
@@ -404,7 +406,7 @@ test('a player with a bye sees the running games and the countdown to their late
 });
 
 /**
- * The hero of a waiting state measured at 375 x 812 in German and English as an admin: its bottom against the phone's
+ * The hero of a waiting state measured at 375 x 812 and 360 x 740 in German and English as an admin: its bottom against the phone's
  * tab bar, the texts it must keep, no overflow, a clean console after the load and after a Livewire roundtrip, and a
  * positive control. Gate review of 69a40451 (2026-11-03): "done" ended at 824 / 834 and a bye with a round deadline at
  * 762 in German, the tab bar starts at 748.
@@ -417,26 +419,27 @@ function nowWaitingFold(User $viewer, Tournament $tournament, string $state, arr
     Admin::query()->firstOrCreate(['pubkey' => $viewer->pubkey]);
     $measured = [];
 
-    foreach (['de', 'en'] as $locale) {
+    foreach ([['de', 375, 812], ['en', 375, 812], ['de', 360, 740], ['en', 360, 740]] as [$locale, $width, $height]) {
         $viewer->forceFill(['locale' => $locale])->save();
         $page = visit(BrowserLogin::url($viewer))->page();
         $page->context()->addInitScript(NOW_COLLECTOR);
-        $page->setViewportSize(375, 812);
+        $page->setViewportSize($width, $height);
         $page->goto(ComputeUrl::from(route('tournaments.show', $tournament)));
         BrowserWait::until($page, '() => document.querySelector("[data-test=now-hero]") !== null && document.readyState === "complete"', 8_000);
         usleep(500_000);
         $m = $page->evaluate(NOW_MEASURE);
-        nowShot($page, "{$shot}-{$locale}-375");
-        $measured[$locale] = array_diff_key($m, ['text' => 1]);
+        nowShot($page, "{$shot}-{$locale}-{$width}");
+        $measured["{$locale}-{$width}"] = array_diff_key($m, ['text' => 1]);
 
         expect($m['state'])->toBe($state)
             ->and($m['first'])->toBeTrue()
             ->and($m['overflow'])->toBeLessThanOrEqual(0)
-            ->and($m['right'])->toBeLessThanOrEqual(375)
+            ->and($m['right'])->toBeLessThanOrEqual($width)
             ->and($m['tab'])->not->toBeNull()
-            ->and($m['bottom'])->toBeLessThanOrEqual($m['tab'], "{$state} {$locale} 375")
+            ->and($m['bottom'])->toBeLessThanOrEqual($m['tab'], "{$state} {$locale} {$width}")
             ->and($m['errors'])->toBe([])
-            ->and($page->evaluate(BrowserConsole::BAD_RESPONSES))->toBe([]);
+            ->and($page->evaluate(BrowserConsole::BAD_RESPONSES))->toBe([])
+            ->and($page->evaluate(BrowserConsole::SQUEEZED, ['[data-test=tournament-hero], [data-test=now-hero]']))->toBe([]);
         foreach ($texts[$locale] as $text) {
             expect($m['text'])->toContain($text);
         }

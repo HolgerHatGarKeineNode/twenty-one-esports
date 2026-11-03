@@ -36,8 +36,9 @@
     // The desk button joins the row of live boards (icon only on a phone) when the hero has no action or only waits:
     // both are secondary links there, and its own row pushed the hero 52-60 px further down ("done" ended at 834 of 748).
     $deskInBoards = ($action === null || $waitCompact) && ($desk ?? null) && $now['boards'] !== [];
-    // While waiting the action is optional (watch the rest): 48 px on a phone, as the page's other secondary buttons.
-    $actionHeight = $waitCompact ? 'min-h-12 @min-[52rem]:min-h-16' : 'min-h-16';
+    // While waiting the action is optional (watch the rest): 48 px on a phone, as the page's other secondary buttons, its
+    // label on one line (rule R11; at 360 "Den Rest anschauen" broke in two).
+    $actionHeight = $waitCompact ? 'min-h-12 whitespace-nowrap max-lg:px-4 @min-[52rem]:min-h-16' : 'min-h-16';
 @endphp
 <section aria-labelledby="now-h" wire:key="now-{{ $state }}"
          x-data="tournamentNow({ id: {{ $tournament->id }}, state: @js($state) })" :class="flipped && 'tn-flip'"
