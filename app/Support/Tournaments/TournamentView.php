@@ -46,8 +46,10 @@ final class TournamentView
     {
         $matches = TournamentMatch::query()->where('tournament_id', $this->tournament->id)
             ->with(['round', 'slots', 'seriesMatch', 'chessGame', 'boardGame'])->orderBy('id')->get();
-        $this->boardGames = BoardGame::query()->whereIn('tournament_match_id', $matches->modelKeys())->where('status', '!=', BoardGameStatus::Aborted)
-            ->orderBy('id')->get(['id', 'tournament_match_id', 'status', 'result', 'white_id'])->groupBy('tournament_match_id')->toBase();
+        // Only a board game's tournament has games to list: chess, series and the rest skip the query.
+        $this->boardGames = $matches->every(fn (TournamentMatch $match): bool => $match->boardGame === null) ? collect()
+            : BoardGame::query()->whereIn('tournament_match_id', $matches->modelKeys())->where('status', '!=', BoardGameStatus::Aborted)
+                ->orderBy('id')->get(['id', 'tournament_match_id', 'status', 'result', 'white_id'])->groupBy('tournament_match_id')->toBase();
         $stages = [];
 
         foreach (TournamentStage::query()->where('tournament_id', $this->tournament->id)->orderBy('number')->get() as $stage) {
