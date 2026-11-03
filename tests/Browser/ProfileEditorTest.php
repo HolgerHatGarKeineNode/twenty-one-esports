@@ -202,7 +202,7 @@ test('on a phone the welcome banner is one line of at most 52 px with a 44 px li
         const text = document.querySelector("[data-test=profile-welcome] p"), bar = document.querySelector("[data-test=tab-bar]");
         return { scroll: [document.documentElement.scrollWidth, document.documentElement.clientWidth], banner: box("[data-test=profile-welcome]"), link: box("[data-test=profile-welcome-link]"),
             text: { height: Math.round(text.getBoundingClientRect().height), line: parseFloat(getComputedStyle(text).lineHeight), cut: text.scrollWidth > text.clientWidth, ellipsis: getComputedStyle(text).textOverflow },
-            play: box("[data-test=play-now]"), tab: bar && bar.checkVisibility() ? Math.round(bar.getBoundingClientRect().top) : null, lang: document.documentElement.lang }; }';
+            name: document.querySelector("[data-test=profile-welcome-link]").getAttribute("aria-label"), play: box("[data-test=play-now]"), tab: bar && bar.checkVisibility() ? Math.round(bar.getBoundingClientRect().top) : null, lang: document.documentElement.lang }; }';
     $measured = [];
 
     foreach (['de', 'en'] as $locale) {
@@ -229,6 +229,8 @@ test('on a phone the welcome banner is one line of at most 52 px with a 44 px li
                 ->and($m['link']['height'])->toBeGreaterThanOrEqual(44)
                 ->and($m['link']['width'])->toBeGreaterThanOrEqual(44)
                 ->and($m['link']['right'])->toBeLessThanOrEqual($width)
+                // The chevron's accessible name carries the action and the welcome (gate 2026-11-03).
+                ->and($m['name'])->toBe($locale === 'de' ? 'Mein Profil einrichten. Willkommen! Gib dir einen Namen und ein Bild.' : 'Set up my profile. Welcome! Give yourself a name and a picture.')
                 ->and($m['tab'])->not->toBeNull()
                 ->and($m['play']['bottom'])->toBeLessThanOrEqual($m['tab'], "Play now {$locale} {$width}")
                 ->and($m['squeezed'])->toBe([])

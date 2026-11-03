@@ -18,7 +18,7 @@
                 <b>{{ __('Welcome! Give yourself a name and a picture.') }}</b>
                 {{ __('Right now other players only see a code. Add a Lightning address too, so prizes can reach you. Takes two minutes, no extra app needed.') }}
             </p>
-            <a href="{{ route('settings.profile') }}" aria-label="{{ __('Set up my profile') }}"
+            <a href="{{ route('settings.profile') }}" aria-label="{{ __('Set up my profile') }}. {{ __('Welcome! Give yourself a name and a picture.') }}"
                class="rv-b h-11 shrink-0 px-5 max-lg:w-11 max-lg:border-transparent max-lg:bg-transparent max-lg:px-0 max-lg:text-btc max-lg:after:absolute max-lg:after:inset-0 max-lg:hover:bg-transparent max-lg:hover:text-btc-hi"
                data-test="profile-welcome-link"><span class="max-lg:hidden">{{ __('Set up my profile') }}</span><x-icon name="next" :size="20" class="lg:hidden" /></a>
         </div>
