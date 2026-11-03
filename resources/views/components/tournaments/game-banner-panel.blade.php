@@ -34,6 +34,7 @@
                 <button type="button" x-ref="close" x-on:click="close()" class="-mt-2 -mr-2 flex size-11 shrink-0 cursor-pointer items-center justify-center rounded-md text-ink-2 hover:text-ink"
                         aria-label="{{ __('Close') }}" data-test="banner-sheet-close"><x-icon name="close" :size="18" /></button>
             </div>
+            <x-tournaments.game-switch :games="$banner['games'] ?? []" size="lg" />
             <div class="flex flex-wrap gap-2">
                 @if ($desk)
                     <x-tournaments.desk-button :desk="$desk" class="grow" />

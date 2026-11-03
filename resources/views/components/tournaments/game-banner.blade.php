@@ -30,6 +30,8 @@
                 @endif
             </span>
             <span class="text-[13px] font-bold text-ink max-sm:hidden" data-test="tournament-banner-stake">{{ $banner['stake'] }}</span>
+            {{-- The other games of the pairing (DerCaddy 2026-10-30); on a phone they are in the panel the line opens. --}}
+            <x-tournaments.game-switch :games="$banner['games'] ?? []" class="mt-1.5 max-lg:hidden" />
         </span>
         @php($desk = isset($banner['tournamentId']) && ($deskTournament = \App\Models\Tournament::query()->find($banner['tournamentId'])) !== null ? \App\Support\Tournaments\TournamentDesk::for($deskTournament, auth()->user()) : null)
         @if ($desk)

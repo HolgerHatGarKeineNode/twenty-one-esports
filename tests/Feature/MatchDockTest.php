@@ -357,3 +357,21 @@ test('the migration backfills series_match_players from the sides of existing se
         ->toBe([['series_match_id' => $series->id, 'user_id' => $anna->id, 'side' => 'challenger']])
         ->and(dockKeys($anna))->toBe(['series-'.$series->number]);
 });
+
+test('a state inside a dock sentence keeps the capital of a German noun and lowers the rest', function () {
+    // DerCaddy 2026-10-31: the actions sheet read "Fern-Blockli, gegner am Zug".
+    $user = User::factory()->create();
+    $mine = dockDaily($user, true, 20);
+    $theirs = dockDaily($user, false, 20);
+    $lines = fn (): array => app(OpenMatches::class)->for($user)->mapWithKeys(fn (DockItem $item) => [$item->key => $item->line])->all();
+
+    app()->setLocale('de');
+    $de = $lines();
+    app()->setLocale('en');
+    $en = $lines();
+
+    expect($de['game-'.$theirs->id])->toEndWith(', Gegner am Zug')
+        ->and($de['game-'.$mine->id])->toEndWith(', dein Zug')
+        ->and($en['game-'.$theirs->id])->toEndWith(', their move')
+        ->and($en['game-'.$mine->id])->toEndWith(', your move');
+});

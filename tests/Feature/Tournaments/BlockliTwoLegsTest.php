@@ -174,3 +174,57 @@ test('after the first leg the bracket box and the game banner show the standing 
         ->and(array_column($box()['sides'], 'won'))->toBe([true, false])
         ->and($box()['label'])->toBe('2–0');
 });
+
+test('the bracket box links every game of a pairing, the earlier legs too, with the score from the first side', function () {
+    // DerCaddy 2026-10-30: from the bracket only the latest game of a pairing could be opened.
+    $tournament = blockliTournament();
+    $games = fn (): array => (new TournamentView($tournament->refresh()))->box(blockliMatch($tournament))['games'];
+    $staged = fn (): array => collect((new TournamentView($tournament->refresh()))->stages())->flatMap(fn (array $stage) => $stage['parts'])
+        ->flatMap(fn (array $part) => collect($part['sections'])->flatMap(fn (array $section) => $section['columns'])->flatMap(fn (array $column) => $column['matches']))
+        ->first(fn (array $box): bool => $box['bracket'] !== 'bye')['games'];
+
+    // One game: the key above the box opens it, no list.
+    expect($games())->toBe([]);
+
+    $first = blockliLose($tournament, 1);
+    $second = blockliLive($tournament);
+    $expected = [
+        ['n' => 1, 'href' => route('board.show', $first), 'score' => '1–0', 'live' => false],
+        ['n' => 2, 'href' => route('board.show', $second), 'score' => null, 'live' => true],
+    ];
+
+    // The bracket page reads all games in one query (stages()); the director page per match (box() alone): the same list.
+    expect($games())->toBe($expected)
+        ->and($staged())->toBe($expected);
+
+    // 1:1 and a decider: three games, the second won by the second side (who had White then).
+    blockliLose($tournament, 0);
+    $decider = blockliLive($tournament);
+
+    expect(array_column($games(), 'score'))->toBe(['1–0', '0–1', null])
+        ->and(array_column($games(), 'href'))->toBe([route('board.show', $first), route('board.show', $second), route('board.show', $decider)]);
+});
+
+test('a board game\'s tournament banner lists the games of its pairing, this one marked, to switch between them', function () {
+    // DerCaddy 2026-10-30: from game 2 the first leg was only reachable over the bracket.
+    $tournament = blockliTournament();
+
+    // One game so far: nothing to switch.
+    expect(TournamentGameEnd::banner(blockliLive($tournament))['games'])->toBe([]);
+
+    $first = blockliLose($tournament, 1);
+    $second = blockliLive($tournament);
+    $games = TournamentGameEnd::banner($second)['games'];
+
+    expect(array_column($games, 'text'))->toBe(['Game 1 · won by Player 1', 'Game 2 · under way'])
+        ->and(array_column($games, 'current'))->toBe([false, true])
+        ->and(array_column($games, 'href'))->toBe([route('board.show', $first), route('board.show', $second)])
+        // The first game's page has the same list, the other one marked.
+        ->and(array_column(TournamentGameEnd::banner($first)['games'], 'current'))->toBe([true, false]);
+
+    // After the pairing ended the list stays, with how each game ended.
+    blockliLose($tournament, 0);
+    blockliLose($tournament, 0);
+    expect(array_column(TournamentGameEnd::banner($first->refresh())['games'], 'text'))
+        ->toBe(['Game 1 · won by Player 1', 'Game 2 · won by Player 2', 'Game 3 · won by Player 2']);
+});

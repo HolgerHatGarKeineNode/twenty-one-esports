@@ -119,7 +119,34 @@ final class TournamentGameEnd
             'cup' => $cup,
             // The tournament desk's button (TournamentDesk::for(), per viewer, in the banner component).
             'tournamentId' => $tournament->id,
+            'games' => $played instanceof BoardGame ? self::pairingGames($match, $played) : [],
         ];
+    }
+
+    /**
+     * The other games of a board game's pairing, to switch between them on its page (DerCaddy 2026-10-30: from
+     * game 2 the first leg was only one way away, over the bracket): each game's number, its board, how it ended in
+     * words, and which one this is. Empty for a pairing of one game.
+     *
+     * @return list<array{n: int, href: string, text: string, current: bool, live: bool}>
+     */
+    private static function pairingGames(TournamentMatch $match, BoardGame $played): array
+    {
+        $first = $match->slots->firstWhere('slot', 0)?->participant;
+
+        return array_map(function (array $game) use ($match, $played): array {
+            $name = $game['won'] === null ? null : (string) ($match->slots->firstWhere('slot', $game['won'])?->participant->name ?? '?');
+
+            return [
+                'n' => $game['n'],
+                'href' => $game['href'],
+                'text' => $name !== null ? (string) __('Game :n · won by :name', ['n' => $game['n'], 'name' => $name])
+                    : ($game['score'] !== null ? (string) __('Game :n · drawn', ['n' => $game['n']])
+                        : ($game['live'] ? (string) __('Game :n · under way', ['n' => $game['n']]) : (string) __('Game :n of the pairing', ['n' => $game['n']]))),
+                'current' => $game['id'] === (int) $played->id,
+                'live' => $game['live'],
+            ];
+        }, TournamentView::pairingGames($match, $first?->memberIds() ?? []));
     }
 
     /**

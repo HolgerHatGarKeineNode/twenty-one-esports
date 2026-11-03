@@ -2,7 +2,9 @@
 
 namespace App\Support\Tournaments;
 
+use App\Enums\BoardGameStatus;
 use App\Enums\TournamentFormat;
+use App\Models\BoardGame;
 use App\Models\Clan;
 use App\Models\Tournament;
 use App\Models\TournamentMatch;
@@ -28,6 +30,9 @@ final class TournamentView
     /** @var array<int, array{points: array{0: float, 1: float}, label: string, game: int, legs: list<array{0: float, 1: float}>}|null> */
     private array $legs = [];
 
+    /** @var Collection<int, Collection<int, BoardGame>>|null the board games of every match, read once by stages() */
+    private ?Collection $boardGames = null;
+
     public function __construct(private Tournament $tournament)
     {
         $this->participants = $tournament->participants()->with('lineup.clan')->get()->keyBy('id');
@@ -40,6 +45,8 @@ final class TournamentView
     {
         $matches = TournamentMatch::query()->where('tournament_id', $this->tournament->id)
             ->with(['round', 'slots', 'seriesMatch', 'chessGame', 'boardGame'])->orderBy('id')->get();
+        $this->boardGames = BoardGame::query()->whereIn('tournament_match_id', $matches->modelKeys())->where('status', '!=', BoardGameStatus::Aborted)
+            ->orderBy('id')->get(['id', 'tournament_match_id', 'status', 'result', 'white_id'])->groupBy('tournament_match_id');
         $stages = [];
 
         foreach (TournamentStage::query()->where('tournament_id', $this->tournament->id)->orderBy('number')->get() as $stage) {
@@ -302,7 +309,69 @@ final class TournamentView
                 ? TournamentRunner::standingLabel((string) ($result['standing']['legs'] ?? ''), (float) $result['standing']['margin']) : null,
             'if_needed' => $match->if_needed,
             'legs' => $legs,
+            'games' => $this->games($match),
         ];
+    }
+
+    /**
+     * Every game of a pairing that plays more than one (Blockli's two legs and its deciders), each with its own
+     * link: the box's key opens only the latest (DerCaddy 2026-10-30: the first leg could not be watched again
+     * from the bracket). The score is from the first side's view, as in the box; an empty list for a single game.
+     *
+     * @return list<array{n: int, href: string, score: string|null, live: bool}>
+     */
+    private function games(TournamentMatch $match): array
+    {
+        $first = $match->slots->firstWhere('slot', 0)?->tournament_participant_id;
+        $members = $first === null ? [] : ($this->participants->get($first)?->memberIds() ?? []);
+
+        return array_values(array_map(fn (array $game): array => array_diff_key($game, ['id' => 0, 'won' => 0]),
+            self::pairingGames($match, $members, $this->boardGames?->get($match->id, collect()))));
+    }
+
+    /**
+     * The board games of a pairing that plays more than one, in the order played, without aborted ones and without
+     * those a correction replaced (`replaced_through`): each with its number, its board, its score from the view of
+     * slot 0 (whose members are passed), the slot that won it (null for a draw or a game not over) and whether it is
+     * on now. The bracket box and a game's tournament banner both list them (DerCaddy 2026-10-30). Empty for a single
+     * game. A caller that read the match's games already passes them.
+     *
+     * @param  list<int>  $firstMembers
+     * @param  Collection<int, BoardGame>|null  $games
+     * @return list<array{n: int, id: int, href: string, score: string|null, won: int|null, live: bool}>
+     */
+    public static function pairingGames(TournamentMatch $match, array $firstMembers, ?Collection $games = null): array
+    {
+        if (! Route::has('board.show')) {
+            return [];
+        }
+
+        $games = ($games ?? BoardGame::query()->where('tournament_match_id', $match->id)->where('status', '!=', BoardGameStatus::Aborted)
+            ->orderBy('id')->get(['id', 'tournament_match_id', 'status', 'result', 'white_id']))
+            ->filter(fn (BoardGame $game): bool => $game->id > (int) $match->replaced_through)->values();
+
+        if ($games->count() < 2) {
+            return [];
+        }
+
+        return array_values($games->map(function (BoardGame $game, int $index) use ($firstMembers): array {
+            $white = $game->white_id !== null && in_array((int) $game->white_id, $firstMembers, true);
+            $won = match ($game->status === BoardGameStatus::Finished ? $game->result : null) {
+                '1-0' => $white ? 0 : 1,
+                '0-1' => $white ? 1 : 0,
+                default => null,
+            };
+            $draw = $game->status === BoardGameStatus::Finished && $game->result === '1/2-1/2';
+
+            return [
+                'n' => $index + 1,
+                'id' => (int) $game->id,
+                'href' => route('board.show', $game->id),
+                'score' => $draw ? '½–½' : ($won === null ? null : ($won === 0 ? '1–0' : '0–1')),
+                'won' => $won,
+                'live' => $game->status === BoardGameStatus::Active,
+            ];
+        })->all());
     }
 
     /**
