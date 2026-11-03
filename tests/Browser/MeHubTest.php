@@ -86,6 +86,8 @@ function meHubControl(Page $page): void
 
 test('a player with something in every part: needs, running and upcoming, ratings, the chain of results, clan, at 1440 and 375', function () {
     $player = meHubPlayer();
+    // All four first steps done (the profile step wants a Lightning address too), so the steps are gone.
+    $player['me']->forceFill(['lud16' => 'satoshi@wallet.example'])->save();
 
     $wide = meHubPage($player['me'], 1440, 900);
     meHubControl($wide);
@@ -151,7 +153,7 @@ test('a brand-new player gets the first steps at the top, in German at 375 too',
         ->and($desk)->toMatchArray(['overflow' => 0, 'inside' => true, 'small' => [], 'clipped' => []])
         ->and($phone)->toMatchArray(['overflow' => 0, 'inside' => true, 'small' => [], 'clipped' => []])
         ->and($heading)->toBe('Deine ersten Schritte')
-        ->and($labelLines)->toBe([1, 1, 1, 1]);
+        ->and($labelLines)->toBe([1, 1, 1, 1, 1]);
 
     foreach ([$wide, $de] as $page) {
         expect($page->evaluate('() => window.__errors'))->toBe([])
