@@ -40,6 +40,9 @@ final class TournamentView
     /** @var Collection<array-key, EloquentCollection<int, BoardGame>>|null the board games of every match, read once by stages() */
     private ?Collection $boardGames = null;
 
+    /** @var array<int, array<int, int>>|null stage id => participant id => the lowest round with an open match, read once by queued() */
+    private ?array $openRounds = null;
+
     public function __construct(private Tournament $tournament)
     {
         $this->participants = $tournament->participants()->with('lineup.clan')->get()->keyBy('id');
@@ -375,7 +378,68 @@ final class TournamentView
             'if_needed' => $match->if_needed,
             'legs' => $legs,
             'games' => $this->games($match),
+            'queued' => $this->queued($match, $stage),
         ];
+    }
+
+    /**
+     * A round-robin match the league holds back until its sides have played their earlier rounds
+     * (TournamentMatchMaker::waitsForEarlierRound()): it is ready, but not up now (DerCaddy 2026-11-04: a blitz
+     * group showed rounds 1, 3 and 6 as "Up now" at once). One query for the whole tournament, not one per box.
+     */
+    private function queued(TournamentMatch $match, ?TournamentStage $stage): bool
+    {
+        if ($match->status !== 'ready' || $match->result !== null || $match->bracket === 'bye') {
+            return false;
+        }
+
+        $round = $match->loadMissing('round')->round;
+        $stage ??= $round->loadMissing('stage')->stage;
+
+        if (! TournamentMatchMaker::queuesRounds($this->tournament, $stage)) {
+            return false;
+        }
+
+        $this->openRounds ??= $this->openRounds();
+        $open = $this->openRounds[$stage->id] ?? [];
+
+        foreach ($match->loadMissing('slots')->slots as $slot) {
+            $first = $slot->tournament_participant_id === null ? null : ($open[(int) $slot->tournament_participant_id] ?? null);
+
+            if ($first !== null && $first < $round->number) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /**
+     * Per stage and participant the lowest round number with a match not yet done, as
+     * TournamentMatchMaker::waitsForEarlierRound() counts them.
+     *
+     * @return array<int, array<int, int>>
+     */
+    private function openRounds(): array
+    {
+        $open = [];
+        $matches = TournamentMatch::query()->where('tournament_id', $this->tournament->id)
+            ->whereNotIn('status', ['done', 'skipped'])->where('bracket', '!=', 'bye')
+            ->with(['round:id,number,tournament_stage_id', 'slots:id,tournament_match_id,tournament_participant_id'])->get();
+
+        foreach ($matches as $match) {
+            foreach ($match->slots as $slot) {
+                if ($slot->tournament_participant_id === null) {
+                    continue;
+                }
+
+                $stage = (int) $match->round->tournament_stage_id;
+                $id = (int) $slot->tournament_participant_id;
+                $open[$stage][$id] = min($open[$stage][$id] ?? PHP_INT_MAX, (int) $match->round->number);
+            }
+        }
+
+        return $open;
     }
 
     /**

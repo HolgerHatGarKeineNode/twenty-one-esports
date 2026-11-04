@@ -9,8 +9,10 @@
     $skipped = $box['status'] === 'skipped';
     // Held (P18): played before a correction changed its sides; it waits for the organizer or an admin.
     $held = $box['held'] ?? false;
+    // Queued: a round-robin match held back until its sides have played their earlier rounds (DerCaddy 2026-11-04).
+    $queued = ! $held && ($box['queued'] ?? false);
     // Up now: both sides are known and the match is waiting for its result.
-    $live = ! $held && $box['status'] === 'ready' && $box['bracket'] !== 'bye' && collect($box['sides'])->every(fn (array $side): bool => $side['known']);
+    $live = ! $held && ! $queued && $box['status'] === 'ready' && $box['bracket'] !== 'bye' && collect($box['sides'])->every(fn (array $side): bool => $side['known']);
 @endphp
 {{-- The board's match (TournamentDetail.dc.html): one 40 px row per side, the winner raised and bold with its score in orange; the match's number, state and director marker in a quiet line above. --}}
 <div @class([
@@ -37,6 +39,8 @@
                 {{ __('done') }}
             @elseif ($held)
                 <span class="font-bold text-loss" data-test="held">{{ __('on hold') }}</span>
+            @elseif ($queued)
+                <span data-test="queued">{{ __('after the earlier rounds') }}</span>
             @elseif ($live)
                 <span class="inline-flex items-center gap-1.5 font-bold text-btc-hi"><span class="size-1.5 animate-live rounded-full bg-btc"></span>{{ __('Up now') }}</span>
             @elseif ($box['status'] === 'ready')
