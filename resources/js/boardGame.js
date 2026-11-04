@@ -270,6 +270,18 @@ registerAlpine(() => {
                 this.warningUntil = performance.now() + WARNING_MS;
             }
 
+            // Blockspace brings its own input and its jewels, loaded only for its boards.
+            if (this.layout.input === 'pieces' && this.$refs.board) {
+                import('./blockspace/board.js').catch(() => (this.error = this.t.errors.default)).then(({ mountPieceBoard } = {}) => {
+                    if (!mountPieceBoard) return;
+                    this.$refs.board.pieceBoard = mountPieceBoard(this);
+                    this.fitBoard();
+                    this.render();
+                    this.fitBoard();
+                    this.$refs.board.pieceBoard.openOnBlock();
+                });
+            }
+
             this.render();
 
             // Only another width fits anew (a turned phone, a resized window). A phone's browser shows and hides its
@@ -312,6 +324,7 @@ registerAlpine(() => {
         fitBoard() {
             const board = this.$refs.board;
             if (!board) return;
+            if (this.layout.input === 'pieces') return board.pieceBoard?.fit();
             // The box around the board (Blockli's repetition warning stands in it) takes the size, so the warning keeps to the board.
             const box = board.closest('[data-board-box]') ?? board;
             const column = box.parentElement;
@@ -402,6 +415,9 @@ registerAlpine(() => {
         browseKey(event) {
             if (event.target.closest?.('input, textarea, select')) return;
             if (this.layout.input === 'blocks' && this.blockKey(event)) return;
+            if (this.$refs.board?.pieceBoard?.key(event)) return;
+            // The tutorial has no way back from an earlier position on its page.
+            if (this.layout.input === 'pieces' && this.source) return;
             const steps = { ArrowLeft: this.shownPly - 1, ArrowRight: this.shownPly + 1, Home: 0, End: this.state.moves.length };
             if (!(event.key in steps)) return;
             event.preventDefault();
@@ -426,6 +442,7 @@ registerAlpine(() => {
         render() {
             const svg = this.$refs.board;
             if (!svg) return;
+            if (this.layout.input === 'pieces') return svg.pieceBoard?.render();
             svg.replaceChildren();
             const r = this.radius;
             const targets = new Set(this.targets);
@@ -580,7 +597,13 @@ registerAlpine(() => {
             this.pending = true;
             this.render();
             try {
-                await this.call('move', move, this.state.ply + 1);
+                return await this.call('move', move, this.state.ply + 1);
+            } catch {
+                // No answer at all (a lost connection, a server error): say so and ask where the game stands.
+                this.error = this.t.errors.default;
+                this.resync();
+
+                return { ok: false };
             } finally {
                 this.pending = false;
                 this.render();
@@ -932,7 +955,7 @@ registerAlpine(() => {
          */
         get takeBackLeft() {
             const until = this.state.takeBackUntil;
-            if (!until || this.color === null || this.state.status !== 'active' || this.state.turn === this.color) return 0;
+            if (!until || this.color === null || this.state.status !== 'active' || this.state.takeBackBy !== this.color) return 0;
 
             return Math.max(0, Math.ceil((until - this.serverNow()) / 1000));
         },
@@ -1071,6 +1094,7 @@ registerAlpine(() => {
             this.now = this.receivedAt;
             if (takenBack) [this.notice, this.noticeUntil] = [this.t.takeBack.notice.replace(':name', this.t.names[state.turn]), this.now + WARNING_MS];
             if (changed) this.clicks = [];
+            if (moved) this.$refs.board?.pieceBoard?.changed();
             // The block input: a block shown is checked against the new legal moves; off the move none is shown.
             if (changed && this.layout.input === 'blocks') {
                 if (moved) this.warningUntil = this.now + WARNING_MS;
@@ -1085,7 +1109,8 @@ registerAlpine(() => {
         receive(update) {
             if (update.version <= this.state.version) return;
             if (update.ply === this.state.ply + 1 && update.lastMove) {
-                this.apply({ ...update, moves: [...this.state.moves, update.lastMove] });
+                // A push of a board with its own input carries the pieces once (BoardGameService::snapshot()).
+                this.apply({ ...update, moves: [...this.state.moves, { ...update.lastMove, pieces: update.lastMove.pieces ?? update.pieces }] });
             } else if (update.ply === this.state.ply) {
                 this.apply({ ...update, moves: this.state.moves });
             } else {
@@ -1098,7 +1123,7 @@ registerAlpine(() => {
             this.syncing = true;
             this.lastSyncAt = performance.now();
             try {
-                const state = await (this.source ?? this.$wire).fetchState();
+                const state = await (this.source ?? this.$wire).fetchState(this.state.version);
                 if (state) this.apply(state);
             } finally {
                 this.syncing = false;

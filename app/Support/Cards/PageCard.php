@@ -307,7 +307,7 @@ final class PageCard
                 '1-0' => __(':name won', ['name' => $this->sideName('white')]),
                 '0-1' => __(':name won', ['name' => $this->sideName('black')]),
                 default => $this->gameHeadline(),
-            }.'. '.$this->sideName('white').' '.__('(white)').', '.$this->sideName('black').' '.__('(black)').'. '.GameNames::credited((string) $f['game']).'.',
+            }.'. '.$this->sideName('white').' ('.mb_strtolower(GameNames::sides((string) $f['game'])['w']).'), '.$this->sideName('black').' ('.mb_strtolower(GameNames::sides((string) $f['game'])['b']).'). '.GameNames::credited((string) $f['game']).'.',
             'leaderboard' => $this->leaderboardTitle($f).'. '.$this->leaderboardStatus().'.',
             'hyper' => $this->hyperTitle().'. '.$this->hyperLine().'.',
             'pong' => $this->pongTitle().'. '.$f['sides'][0]['name'].' '.$f['score'][0].':'.$f['score'][1].' '.$f['sides'][1]['name'].'.',
@@ -1177,7 +1177,7 @@ final class PageCard
         $f = $this->facts;
 
         if ($f['status'] === 'active') {
-            return $f['turn'] === 'b' ? __('Black to move') : __('White to move');
+            return __(':side to move', ['side' => GameNames::sides((string) $f['game'])[$f['turn'] === 'b' ? 'b' : 'w']]);
         }
 
         $definition = app(GameRegistry::class)->find((string) $f['game']);

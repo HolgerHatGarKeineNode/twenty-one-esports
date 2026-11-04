@@ -25,4 +25,6 @@ Route::livewire('games/{board}', 'pages::board.lobby')->where('board', '[a-z][a-
 Route::livewire('games/{board}/correspondence', 'pages::board.correspondence')->where('board', '[a-z][a-z0-9-]*')->name('board.correspondence');
 // Practice against bots (DerCaddy, 2026-10-23): the lessons and the bots, for guests too; the game stays in the browser
 // and nothing counts. Only Blockli has bots: the page answers 404 for every other slug and while Blockli is off.
+// Blockspace has its own lessons and bots, the game stays in the browser as well.
+Route::livewire('games/blockspace/practice', 'pages::board.blockspace-practice')->name('board.blockspace-practice');
 Route::livewire('games/{board}/practice', 'pages::board.practice')->where('board', '[a-z][a-z0-9-]*')->name('board.practice');

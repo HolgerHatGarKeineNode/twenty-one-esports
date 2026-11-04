@@ -5,6 +5,7 @@ namespace App\Support\Pages;
 use App\Enums\TournamentFormat;
 use App\Games\Blockfill;
 use App\Games\Blockli;
+use App\Games\Blockspace;
 use App\Games\GameMode;
 use App\Games\GameRegistry;
 use App\Games\Hyperbitcoinization;
@@ -13,6 +14,7 @@ use App\Games\ProofOfPong;
 use App\Games\TrackmaniaNationsForever;
 use App\Models\Tournament;
 use App\Support\Board\BlockliRules;
+use App\Support\Board\BlockspaceRules;
 use App\Support\Board\CheckersRules;
 use App\Support\Board\NineMensMorrisRules;
 use App\Support\Chess\ChessModes;
@@ -80,6 +82,7 @@ final class RulesPage
             ...self::nineMensMorris(),
             ...self::checkers(),
             ...self::blockli(),
+            ...self::blockspace(),
             self::tournaments(),
             self::cups(),
             self::prizes(),
@@ -554,6 +557,42 @@ final class RulesPage
     }
 
     /**
+     * Blockspace, only while it is switched on: the rules of BlockspaceRules, its numbers read from there.
+     *
+     * @return list<Section>
+     */
+    private static function blockspace(): array
+    {
+        if (app(GameRegistry::class)->find(Blockspace::SLUG) === null) {
+            return [];
+        }
+
+        return [[
+            'id' => Blockspace::SLUG,
+            'title' => GameNames::game(Blockspace::SLUG),
+            'game' => Blockspace::SLUG,
+            'lead' => __('Two miners fill one block of 9 × 21 cells from the mempool. Whoever collects the higher fees wins.'),
+            'facts' => [
+                [__('Time control'), implode(', ', [__('Blitz 5+3'), __('Rapid 10+5'), __('1 move a day')])],
+                [__('First move'), self::seconds((int) config('esports.board_games.first_move_seconds'))],
+            ],
+            'items' => [
+                __('The mempool holds each of the 21 forms of one to five cells twice, in a hidden order. :rungs of them stand on the ladder, the oldest on top.', ['rungs' => BlockspaceRules::RUNGS]),
+                __('A transaction pays its size plus its rung: :bonus from the oldest to the newest. Everything behind what you take moves up a rung, and the next one comes in.', ['bonus' => implode(', ', BlockspaceRules::BONUS)]),
+                __('The sides move Orange, Blue, Blue, Orange, again and again.'),
+                __('Your first stones cover your start cell: e2 for Orange, e20 for Blue. After that your new stones touch your own at a corner and never along an edge. The other side\'s stones only take their cells.'),
+                __('You may pass. A side with nothing to set has to. Either way the oldest transaction falls out.'),
+                __('Blitz adds the fuse: at every second turn the oldest transaction falls out by itself.'),
+                __('The game ends when the ladder is empty or after :passes passes in a row. The higher fees win, equal fees are a draw.', ['passes' => BlockspaceRules::PASS_LIMIT]),
+                __('Take a transaction, turn it and set it. With a mouse: left click takes and sets, right click turns, a long right click mirrors. The board shows no places, finding them is the game.'),
+                __('While transactions are still to come a move cannot be taken back: the next one would be known.'),
+                __('Fees count in sat. They are the points of this game, no real sats change hands.'),
+                self::correspondence(),
+            ],
+        ]];
+    }
+
+    /**
      * Nine men's morris (plan "Mühle und Dame", P3), only while it is
      * switched on: the rules of NineMensMorrisRules, its numbers read from there.
      *
@@ -825,7 +864,7 @@ final class RulesPage
                 __('Sign up on the tournament page before sign-up closes. Rules and prizes are fixed from then on.'),
                 __('Mixed teams and seeds are drawn from the hash of a Bitcoin block mined after sign-up closed, once it has :count confirmations. Anyone can check the draw.', ['count' => (int) config('esports.bitcoin.confirmations')]),
                 __('A side that misses its first move or does not show up loses the match by forfeit. Both missing: the higher seed advances in a knockout, both lose in Swiss and round robin.'),
-                __('In a board game only White can miss the first move: the game starts once more with the same colours, and a second miss loses the pairing for White.'),
+                __('In a board game only the side that moves first can miss the first move: the game starts once more with the same colours, and a second miss loses the pairing for that side.'),
                 ...(NoShowDisqualifier::threshold() > 0 ? [__('An entry that loses :count matches of a tournament by not showing up is disqualified by the league; its open matches go to the opponents.', ['count' => NoShowDisqualifier::threshold()])] : []),
                 __('A drawn knockout chess game is replayed with the colours swapped, at most :count times; then the higher seed advances.', ['count' => (int) $t['drawn_replays']]),
                 __('A Blockli pairing plays two games with the colours swapped. In a knockout a third game decides at 1:1; if that one is drawn too, the tournament page says what follows: the race standing of its final position, or replays as for chess. In Swiss and in a round robin 1:1 is a draw, with no third game.'),

@@ -5,6 +5,7 @@ use App\Games\GameRegistry;
 use App\Models\BoardGame;
 use App\Models\ChatMute;
 use App\Models\User;
+use App\Support\Board\BlockspacePractice;
 use App\Support\Board\BoardGameService;
 use App\Support\Board\BoardRuleViolation;
 use App\Support\GameNames;
@@ -70,7 +71,7 @@ new #[Layout('layouts::app', ['realtime' => true, 'scripts' => ['resources/js/bo
 
         // Search and link preview, as a chess game's page has them: the players, the state, the board as a card.
         $kind = ($game->rated ? __('Rated') : __('Casual')).' · '.GameNames::full($game->game, $game->mode);
-        $description = __(':kind: :white (white) vs :black (black) in the TWENTY ONE esports league.', ['kind' => $kind, 'white' => $this->name('w'), 'black' => $this->name('b')]).' '.match ($game->status) {
+        $description = __(':kind: :white (:whiteSide) vs :black (:blackSide) in the TWENTY ONE esports league.', ['whiteSide' => mb_strtolower(GameNames::sides($game->game)['w']), 'blackSide' => mb_strtolower(GameNames::sides($game->game)['b']), 'kind' => $kind, 'white' => $this->name('w'), 'black' => $this->name('b')]).' '.match ($game->status) {
             BoardGameStatus::Active => __('Live now: watch the board move by move.'),
             BoardGameStatus::Aborted => __('Aborted before both first moves'),
             BoardGameStatus::Finished => __('Result: :result.', ['result' => $game->result ?? '?']),
@@ -84,9 +85,12 @@ new #[Layout('layouts::app', ['realtime' => true, 'scripts' => ['resources/js/bo
      * @return array<string, mixed>
      */
     #[Json]
-    public function fetchState(): array
+    public function fetchState(?int $known = null): array
     {
-        return app(BoardGameService::class)->snapshot($this->boardGame->refresh());
+        $game = $this->boardGame->refresh();
+
+        // Nothing new since the page's last state: the move list stays with the page (Blockspace carries all stones per move).
+        return app(BoardGameService::class)->snapshot($game, withMoves: $known !== $game->version);
     }
 
     /**
@@ -270,11 +274,11 @@ new #[Layout('layouts::app', ['realtime' => true, 'scripts' => ['resources/js/bo
             'state' => $games->snapshot($this->boardGame),
             'layout' => $games->layout($this->boardGame),
             // The position before the first move, for browsing back to it (P8).
-            'startPieces' => $rules === null ? [] : $rules->view($rules->start())['pieces'],
+            'startPieces' => $rules === null ? [] : $rules->view($rules->deserialize($games->startOf($this->boardGame, $rules)))['pieces'],
             'color' => $this->boardGame->colorOf(auth()->user()),
             'labels' => [
-                'white' => __('White'),
-                'black' => __('Black'),
+                'white' => GameNames::sides($this->boardGame->game)['w'],
+                'black' => GameNames::sides($this->boardGame->game)['b'],
                 'names' => ['w' => $this->name('w'), 'b' => $this->name('b')],
                 'firstMove' => __(':side: first move within :s s'),
                 // A tournament game's first-move deadline, in the player's words (user, 2026-10-03).
@@ -294,6 +298,8 @@ new #[Layout('layouts::app', ['realtime' => true, 'scripts' => ['resources/js/bo
                     'forfeit' => __('No first move'), 'voided' => __('Voided by the league'),
                     ...array_map(fn (string $label): string => __($label), $reasons),
                 ],
+                // Blockspace's own input (resources/js/blockspace/board.js).
+                'pieces' => BlockspacePractice::boardWords(),
                 'errors' => ['illegal_move' => __('That move is not legal here.'), 'not_your_turn' => __('It is not your turn.'),
                     'out_of_sync' => __('The board was behind. It shows the latest position now.'), 'game_over' => __('The game is already over.'),
                     'not_a_player' => __('Only the two players can do that.'), 'too_late_to_abort' => __('Both sides have moved, the game can no longer be aborted.'),
@@ -378,6 +384,9 @@ new #[Layout('layouts::app', ['realtime' => true, 'scripts' => ['resources/js/bo
                      gone while a block is being set and never in the way of a tap; beside the board it stays. fitBoard sizes this box
                      (data-board-box), so the warning keeps to the board. The live stream's tab steps aside while the board lies where it
                      would stand (data-live-clear, resources/js/livePlayer.js): over the lower left corner it took the squares' clicks. --}}
+                @if (($config['layout']['input'] ?? null) === 'pieces')
+                    <div class="col-span-2 min-w-0">@include('pages.board.partials.blockspace-stage')</div>
+                @else
                 <div class="relative col-span-2 mx-auto w-full" data-board-box>
                     <svg x-ref="board" data-focus-board data-live-clear viewBox="0 0 {{ $config['layout']['width'] ?? 100 }} {{ $config['layout']['height'] ?? 100 }}"
                          x-on:click="pick($event)" x-on:keydown="pickKey($event)"
@@ -392,6 +401,7 @@ new #[Layout('layouts::app', ['realtime' => true, 'scripts' => ['resources/js/bo
                         </div>
                     </template>
                 </div>
+                @endif
                 <div class="flex min-w-0 flex-col items-start rounded-lg bg-card px-3 py-1 max-lg:order-first max-lg:col-start-2 max-lg:row-start-1 lg:hidden" data-test="player-bottom">
                     <span class="max-w-full min-w-0 truncate text-xs leading-4"><span x-text="t.names[bottomSide]"></span></span>
                     <span class="flex shrink-0 items-baseline gap-1.5"><span class="text-[11px] text-ink-3" x-text="bottomSide === 'w' ? t.white : t.black"></span><span role="timer" class="shrink-0 font-display text-lg font-bold whitespace-nowrap tabular-nums max-lg:leading-6" :class="state.clock.running === bottomSide ? 'text-btc-hi' : 'text-ink-2'" x-text="clock(bottomSide)" data-test="clock-bottom"></span></span>
@@ -524,7 +534,7 @@ new #[Layout('layouts::app', ['realtime' => true, 'scripts' => ['resources/js/bo
                 @endif
                 {{-- The other side took its move back (on a phone Blockli's bar says it too). --}}
                 <p role="status" class="m-0 text-[13px] font-bold text-ink" x-show="noticeShown" x-text="notice" data-test="board-notice"></p>
-                <p role="alert" class="m-0 text-[13px] text-loss" x-show="error" x-text="error" data-test="board-error"></p>
+                <p role="alert" class="m-0 text-[13px] text-loss" x-show="error && layout.input !== 'pieces'" x-text="error" data-test="board-error"></p>
 
                 <template x-if="state.status !== 'active'">
                     <div class="flex flex-col gap-3 rounded-lg bg-card p-4" data-test="board-result">

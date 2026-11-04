@@ -1,0 +1,440 @@
+/* Blockspace on the league's board page. One unit, --u, the side of a cell: the block, the ladder and the forms on it are all counted in it. */
+.bs-stage {
+    --bs-w: #f7931a;
+    --bs-b: #8db4ff;
+    --bs-cell: #1c1f31;
+    --bs-rung: #15172a;
+    --bs-rung-held: #20233a;
+    --bs-hair: rgb(255 255 255 / 7%);
+    display: flex;
+    flex-direction: column;
+    gap: calc(var(--u) * 0.5);
+    width: calc(var(--u) * 15.3);
+    max-width: 100%;
+    margin-inline: auto;
+}
+
+.bs-row {
+    display: flex;
+    gap: calc(var(--u) * 0.7);
+}
+
+.bs-box {
+    position: relative;
+    flex: none;
+    width: calc(var(--u) * 9);
+    height: calc(var(--u) * 21);
+}
+
+.bs-box svg {
+    display: block;
+    width: 100%;
+    height: 100%;
+    user-select: none;
+    outline: none;
+}
+
+.bs-stone {
+    transform-box: fill-box;
+    transform-origin: center;
+}
+
+.bs-start-mark {
+    transform: rotate(45deg);
+    transform-box: fill-box;
+    transform-origin: center;
+}
+
+.bs-start.is-due .bs-start-mark {
+    animation: bs-breathe 2.4s ease-in-out infinite;
+}
+
+@keyframes bs-breathe {
+    50% { transform: scale(1.25) rotate(45deg); opacity: 0.65; }
+}
+
+.bs-ghost {
+    opacity: 0.88;
+    filter: drop-shadow(0 0 5px rgb(255 255 255 / 45%));
+    pointer-events: none;
+}
+
+.bs-ghost[data-refused]:not([data-refused='']) { opacity: 1; filter: none; }
+
+/* The head: both fees, and the turn order between them. */
+.bs-head {
+    display: grid;
+    grid-template-columns: minmax(max-content, 1fr) auto minmax(max-content, 1fr);
+    align-items: stretch;
+    gap: 8px;
+}
+
+.bs-fee {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr) auto;
+    align-items: baseline;
+    gap: 2px 5px;
+    padding: 6px 2px;
+    border-bottom: 2px solid var(--bs-hair);
+    color: var(--color-ink-2);
+    font-size: 13px;
+    white-space: nowrap;
+    transition: border-color 200ms ease-out, color 200ms ease-out;
+}
+
+.bs-fee span { grid-area: 1 / 1; }
+.bs-fee b {
+    grid-area: 1 / 2;
+    justify-self: end;
+    color: var(--color-ink);
+    font-family: var(--font-display);
+    font-size: 20px;
+    font-variant-numeric: tabular-nums;
+    line-height: 1;
+}
+
+.bs-fee small { grid-area: 1 / 3; color: var(--color-ink-3); font-size: 11px; }
+
+.bs-clock {
+    grid-area: 2 / 1 / 2 / 4;
+    color: var(--color-ink-3);
+    font-size: 12px;
+    font-variant-numeric: tabular-nums;
+    line-height: 1;
+}
+
+.bs-clock:empty { display: none; }
+.bs-clock.is-running { color: var(--color-ink); font-weight: 700; }
+
+/* The other side mirrors it: its fee stands next to the middle, its name outside. */
+.bs-fee.is-b { grid-template-columns: auto auto minmax(0, 1fr); }
+.bs-fee.is-b b { grid-area: 1 / 1; justify-self: start; }
+.bs-fee.is-b small { grid-area: 1 / 2; }
+.bs-fee.is-b span { grid-area: 1 / 3; justify-self: end; }
+.bs-fee.is-b .bs-clock { text-align: right; }
+.bs-fee.is-w.is-turn { border-color: var(--bs-w); color: var(--color-ink); }
+.bs-fee.is-b.is-turn { border-color: var(--bs-b); color: var(--color-ink); }
+
+.bs-order {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 3px;
+    color: var(--color-ink-3);
+    font-size: 11px;
+    white-space: nowrap;
+}
+
+.bs-marks {
+    display: flex;
+    gap: 5px;
+}
+
+.bs-order i {
+    width: 7px;
+    height: 7px;
+    border-radius: 2px;
+    opacity: 0.28;
+    transform: rotate(45deg);
+    transition: opacity 200ms ease-out, transform 200ms ease-out;
+}
+
+.bs-order i.is-w { background: var(--bs-w); }
+.bs-order i.is-b { background: var(--bs-b); }
+.bs-order i.is-now { opacity: 1; transform: rotate(45deg) scale(1.35); }
+
+/* The ladder: five blocks of the mempool, as tall as the block being mined, a dashed line between them. */
+.bs-ladder {
+    --lu: var(--u);
+    --bs-depth: calc(var(--lu) * 0.35);
+    position: relative;
+    flex: none;
+    width: calc(var(--lu) * 5.6);
+    height: calc(var(--u) * 21);
+}
+
+.bs-ladder::before {
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    left: calc(var(--u) * -0.35);
+    border-left: 2px dashed rgb(255 255 255 / 22%);
+    content: '';
+}
+
+.bs-rung {
+    position: absolute;
+    top: calc(var(--u) * 4.2 * var(--rung));
+    left: 0;
+    display: block;
+    width: 100%;
+    height: calc(var(--u) * 4.1);
+    padding: 0;
+    border: 0;
+    background: none;
+    color: #fff;
+    cursor: pointer;
+    transition: top 320ms cubic-bezier(0.2, 0.8, 0.2, 1), opacity 240ms ease-out;
+}
+
+.bs-rung[aria-disabled='true'] { cursor: default; }
+
+/* The slab of a block: its top and its left side, in shade. */
+.bs-rung::before {
+    position: absolute;
+    inset: 0 0 auto;
+    height: var(--bs-depth);
+    background: #2c3049;
+    clip-path: polygon(0 0, calc(100% - var(--bs-depth)) 0, 100% 100%, var(--bs-depth) 100%);
+    content: '';
+}
+
+.bs-rung::after {
+    position: absolute;
+    inset: 0 auto 0 0;
+    width: var(--bs-depth);
+    background: #1e2134;
+    clip-path: polygon(0 0, 100% var(--bs-depth), 100% 100%, 0 calc(100% - var(--bs-depth)));
+    content: '';
+}
+
+.bs-front {
+    position: absolute;
+    inset: var(--bs-depth) 0 0 var(--bs-depth);
+    display: block;
+    background: linear-gradient(100deg, color-mix(in srgb, var(--bs-fee) 86%, black), var(--bs-fee));
+    transition: box-shadow 150ms ease-out;
+}
+
+.bs-rung[aria-disabled='false']:hover .bs-front { box-shadow: inset 0 0 0 1px rgb(255 255 255 / 60%); }
+.bs-rung:focus-visible { outline: none; }
+.bs-rung:focus-visible .bs-front { box-shadow: 0 0 0 2px #f9b25f; }
+.bs-rung[aria-pressed='true'] .bs-front { box-shadow: inset 0 0 0 2px #fff; }
+
+.bs-rung svg {
+    position: absolute;
+    bottom: 0;
+    left: calc(var(--lu) * 0.125);
+    width: calc(var(--lu) * 5);
+    height: calc(var(--lu) * 3);
+    transition: opacity 150ms ease-out;
+}
+
+.bs-rung[aria-pressed='true'] svg { opacity: 0.25; }
+
+.bs-pay {
+    position: absolute;
+    inset: 0 calc(var(--u) * 0.2) auto;
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    height: calc(var(--u) * 0.75);
+    line-height: calc(var(--u) * 0.8);
+    white-space: nowrap;
+}
+
+.bs-pay b {
+    font-size: max(12px, calc(var(--u) * 0.56));
+    font-variant-numeric: tabular-nums;
+}
+
+.bs-pay small {
+    color: #fff;
+    font-size: clamp(10px, calc(var(--u) * 0.46), 12px);
+    font-variant-numeric: tabular-nums;
+}
+
+/* The fuse: a line that burns away along the oldest. */
+.bs-fuse {
+    position: absolute;
+    right: 0;
+    bottom: 0;
+    left: 0;
+    display: none;
+    height: 3px;
+    background: linear-gradient(90deg, #ffd9a0, #fff);
+    transform-origin: left;
+    animation: bs-fuse 1.8s ease-in-out infinite alternate;
+}
+
+.bs-rung.is-burning .bs-fuse { display: block; }
+
+@keyframes bs-fuse {
+    from { transform: scaleX(1); opacity: 1; }
+    to { transform: scaleX(0.35); opacity: 0.55; }
+}
+
+/* What the player does: the note, then four buttons in one line. */
+.bs-dock {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
+.bs-note {
+    margin: 0;
+    color: var(--color-loss);
+    font-size: 13px;
+    font-weight: 700;
+    line-height: 1.3;
+}
+
+.bs-note:empty { display: none; }
+.bs-note.is-info { color: var(--color-ink-2); font-weight: 400; }
+
+.bs-hint {
+    min-height: 36px;
+    margin: 0;
+    color: #ff8a8e;
+    font-size: 13px;
+    line-height: 18px;
+}
+
+.bs-buttons {
+    display: grid;
+    grid-template-columns: 1fr 1fr 1.25fr 1fr;
+    gap: 6px;
+}
+
+.bs-buttons.has-chat { grid-template-columns: 1fr 1fr 1.2fr 1fr 0.9fr; }
+.bs-fold, .bs-button.is-phone { display: none; }
+
+.bs-button {
+    height: 44px;
+    padding: 0 4px;
+    border: 1px solid var(--bs-hair);
+    border-radius: 6px;
+    background: var(--bs-rung);
+    color: var(--color-ink);
+    font-size: 13px;
+    white-space: nowrap;
+    cursor: pointer;
+    transition: background 150ms ease-out, border-color 150ms ease-out, color 150ms ease-out, opacity 150ms ease-out;
+}
+
+.bs-button[aria-disabled='false']:hover { background: var(--bs-rung-held); }
+.bs-button:focus-visible { outline: 2px solid #f9b25f; outline-offset: 1px; }
+.bs-button[aria-disabled='true'] { color: var(--color-ink-3); cursor: default; opacity: 0.55; }
+.bs-button.is-main[aria-disabled='false'] { border-color: var(--color-btc); background: var(--color-btc); color: var(--color-on-btc); font-weight: 700; }
+.bs-button.is-sure { border-color: var(--color-loss); color: var(--color-loss); }
+
+.bs-help {
+    margin: 0;
+    color: var(--color-ink-3);
+    font-size: 12px;
+    line-height: 1.4;
+}
+
+/* A phone held upright: the block as large as the screen allows, everything else folds away. */
+@media (width < 64rem) and (height >= 500px) {
+    .bs-stage.is-compact {
+        width: auto;
+        max-width: none;
+        margin-inline: -10px;
+        gap: 6px;
+    }
+
+    .is-compact .bs-row { position: relative; justify-content: center; gap: 8px; }
+    .is-compact .bs-ladder { --lu: var(--strip-unit); --bs-depth: 5px; width: var(--strip); }
+    .is-compact .bs-ladder::before { left: -5px; }
+    .is-compact .bs-help { display: none; }
+    .is-compact .bs-button { padding-inline: 2px; }
+    .bs-button.is-phone { display: block; }
+    .bs-buttons:not(.has-chat) .bs-button.is-phone { display: none; }
+
+    /* Folded: the blocks show their fee and a small form; a tap takes it all the same. */
+    .is-compact .bs-ladder:not(.is-open) .bs-front { display: flex; flex-direction: column; justify-content: space-between; }
+    .is-compact .bs-ladder:not(.is-open) .bs-pay { position: static; height: auto; padding: 4px 5px 0; line-height: 1.1; }
+    .is-compact .bs-ladder:not(.is-open) .bs-pay small { display: none; }
+    .is-compact .bs-ladder:not(.is-open) .bs-rung svg { position: static; display: block; margin: auto; }
+
+    /* Unfolded: the ladder in full size over the block. */
+    .is-compact .bs-ladder.is-open {
+        --lu: var(--u);
+        --bs-depth: calc(var(--u) * 0.35);
+        position: absolute;
+        top: 0;
+        right: 0;
+        z-index: 15;
+        flex: none;
+        width: calc(var(--u) * 5.6);
+        background: rgb(10 10 11 / 92%);
+        box-shadow: -12px 0 24px rgb(0 0 0 / 70%);
+    }
+
+    .bs-fold:not([hidden]) {
+        position: absolute;
+        top: calc(50% - 32px);
+        left: -18px;
+        z-index: 16;
+        display: block;
+        width: 26px;
+        height: 64px;
+        padding: 0;
+        border: 1px solid var(--color-line);
+        border-radius: 8px;
+        background: var(--color-bar);
+        color: var(--color-ink);
+        font-size: 18px;
+        line-height: 1;
+        cursor: pointer;
+    }
+
+    /* The action dock's bar waits while a game is on the screen. */
+    :root.bs-playing [data-test='dock-mobile-bar'] { display: none; }
+
+    /* The chat's handle gives its height to the block, the dock's button opens it. */
+    :root.bs-playing section[data-page-bar]:has([data-test='chat-sheet-toggle'][aria-expanded='false']) { translate: 0 100%; }
+}
+
+@media (width < 64rem) {
+    .bs-head { gap: 4px; }
+    .bs-fee { gap: 4px; }
+
+    .bs-dock {
+        position: fixed;
+        inset-inline: 0;
+        z-index: 20;
+        padding: 8px 12px;
+        border-top: 1px solid var(--color-line);
+        background: var(--color-bar);
+    }
+
+    .bs-buttons {
+        width: 100%;
+        max-width: 480px;
+        margin-inline: auto;
+    }
+
+    /* The reason lies over the block's edge: the dock keeps its height, so the block does not jump. */
+    .bs-hint,
+    .bs-note {
+        position: absolute;
+        inset: auto 0 100%;
+        min-height: 0;
+        padding: 4px 12px;
+        background: var(--color-bar);
+        text-align: center;
+    }
+
+    .bs-hint:empty { display: none; }
+    .bs-dock.is-off { display: none; }
+}
+
+/* A phone on its side: the block scrolls, the buttons stay in the page. */
+@media (width < 64rem) and (height < 500px) {
+    .bs-dock { position: static; padding: 0; border: 0; background: none; }
+    .bs-hint, .bs-note { position: static; background: none; text-align: left; }
+}
+
+@media (width < 430px) {
+    .bs-fee small { display: none; }
+    .bs-fee b { font-size: 18px; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .bs-start.is-due .bs-start-mark,
+    .bs-fuse { animation: none; }
+    .bs-rung { transition: none; }
+}

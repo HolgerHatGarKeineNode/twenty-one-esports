@@ -3,6 +3,7 @@
 namespace App\Support;
 
 use App\Games\Blockfill;
+use App\Games\Blockspace;
 use App\Games\GameRegistry;
 use App\Games\Hyperbitcoinization;
 use App\Games\ProofOfPong;
@@ -80,6 +81,16 @@ final class GameNames
     public static function full(string $game, string $mode): string
     {
         return self::game($game).' '.self::mode($game, $mode);
+    }
+
+    /**
+     * What the two sides of a board game are called: White and Black, in Blockspace the colours of its stones.
+     *
+     * @return array{w: string, b: string}
+     */
+    public static function sides(string $game): array
+    {
+        return $game === Blockspace::SLUG ? ['w' => __('Orange'), 'b' => __('Blue')] : ['w' => __('White'), 'b' => __('Black')];
     }
 
     /** full() with the credit after it, for text without markup: "Blockli Blitz 5+3 by DerCaddy". */

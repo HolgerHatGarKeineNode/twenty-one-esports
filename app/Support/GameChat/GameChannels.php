@@ -83,6 +83,8 @@ final class GameChannels
         // registers it (has()). A Hyperbitcoinization match keeps its own table chat beside it (matchCreateEvent()).
         'hyperbitcoinization' => 'Hyperbitcoinization',
         'proof-of-pong' => 'Proof of Pong',
+        // Blockspace, like the other board games only while switched on (has()).
+        'blockspace' => 'Blockspace',
     ];
 
     /** Games that exist only behind a switch: their channel is open only while the registry has them. */
