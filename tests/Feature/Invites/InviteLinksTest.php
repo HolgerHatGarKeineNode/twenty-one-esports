@@ -239,6 +239,23 @@ test('a guest logs in from the invite and lands in the game, counted as a new pl
         ->and(InviteLinkUse::query()->sole()->only(['user_id', 'was_new']))->toBe(['user_id' => $newcomer->id, 'was_new' => true]);
 });
 
+test('a guest on a German phone reads the landing in German, and the account made from it keeps German', function () {
+    $anna = User::factory()->create(['name' => 'satsjäger']);
+    $link = $this->links->create($anna, InviteLinkType::Daily);
+
+    $this->withHeader('Accept-Language', 'de-DE,de;q=0.9,en;q=0.8')
+        ->get($link->url())
+        ->assertOk()
+        ->assertSee('<html lang="de"', false)
+        ->assertSee('satsjäger fordert dich zu Fernschach heraus')
+        ->assertSee('Weiter mit Google');
+
+    $challenge = $this->postJson(route('auth.nostr.challenge', ['invite' => $link->code]))->assertOk()->json('challenge');
+    $this->postJson(route('auth.nostr.login'), ['event' => (new TestSigner)->loginEvent($challenge)])->assertOk();
+
+    expect(User::query()->whereKeyNot($anna->id)->sole()->locale)->toBe('de');
+});
+
 test('viewing an invite alone never takes it: only a login started on it does', function () {
     [$anna, $bert] = User::factory()->count(2)->create();
     $link = $this->links->create($anna, InviteLinkType::Daily);

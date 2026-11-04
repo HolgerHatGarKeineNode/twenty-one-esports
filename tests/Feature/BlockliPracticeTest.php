@@ -167,7 +167,7 @@ test('every word of the practice is there in German', function () {
 
     expect(array_values(array_diff(array_unique($keys), array_keys($german))))->toBe([]);
 
-    app()->setLocale('de');
-    $this->get(route('board.practice', 'blockli'))->assertOk()
+    // As a friend on a German phone opens the practice: the browser's language (SetLocale).
+    $this->withHeader('Accept-Language', 'de-DE,de;q=0.9')->get(route('board.practice', 'blockli'))->assertOk()
         ->assertSee('Blockli · Üben')->assertSee('Figur ziehen')->assertSee('Nie ganz einsperren')->assertSee('Gibt keinen Block her. Er läuft nur.')->assertSee('Wal');
 });
