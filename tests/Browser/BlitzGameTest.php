@@ -770,3 +770,61 @@ test('a tournament chess game on a phone shows its tournament in the header whil
     'phone 320' => [320, 640],
     'phone 390' => [390, 844],
 ]);
+
+test('on a phone the header chip stays in its box beside the search, and the cup badge steps aside where it leads to the game on screen', function (int $width, int $height) {
+    // DerCaddy, 2026-11-04 (412 x 915): beside the chip the cup badge was a second trophy for the same way, and the chip's round lay over the search button.
+    $tournament = runningChess(TournamentFormat::SingleElimination, 4, TournamentResultsMode::Players);
+    $tournament->forceFill(['name' => 'Blitz Blockli'])->save();
+    [$first, $second] = ChessGame::query()->whereIn('tournament_match_id', $tournament->matches()->select('id'))->with(['white'])->orderBy('id')->get()->all();
+
+    $measure = <<<'JS'
+        () => {
+            const box = (el) => { if (!el || !el.checkVisibility()) return null; const r = el.getBoundingClientRect(); return { left: Math.round(r.left), right: Math.round(r.right), w: Math.round(r.width) }; };
+            const pill = document.querySelector('[data-test=shell-tournament] > span');
+            const round = document.querySelector('[data-test=shell-tournament-round]');
+            const row = document.querySelector('.shell-header > div:not(.shell-edge)');
+            // The rightmost edge anything of the chip paints to, clipped by its pill or not.
+            const ink = pill ? Math.round(Math.max(...[...pill.querySelectorAll('*')].map((el) => el.getBoundingClientRect().right).concat(pill.getBoundingClientRect().right))) : null;
+            return {
+                pill: box(pill), ink, clipped: !!pill && getComputedStyle(pill).overflow !== 'visible', roundWhole: !!round && round.checkVisibility() && round.scrollWidth <= round.clientWidth,
+                search: box(document.querySelector('.shell-header [aria-controls=mobile-search]')), badge: box(document.querySelector('[data-test=cup-badge]')),
+                rowFits: row.scrollWidth <= row.clientWidth, overflow: document.documentElement.scrollWidth - document.documentElement.clientWidth,
+            };
+        }
+        JS;
+    $read = function (ChessGame $player, ChessGame $shown) use ($width, $height, $measure): array {
+        $page = visit(BrowserLogin::url($player->white))->on()->mobile()->page();
+        $page->context()->addInitScript(BrowserConsole::COLLECTOR);
+        $page->setViewportSize($width, $height);
+        $page->goto(ComputeUrl::from(route('games.show', $shown, false)));
+        BrowserWait::until($page, '() => window.Alpine && !!document.querySelector("[data-test=shell-tournament] > span")?.checkVisibility()', 10_000);
+        BrowserWait::until($page, '() => !!document.querySelector("[data-test=cup-badge]")', 10_000);
+
+        return [...$page->evaluate($measure), 'errors' => $page->evaluate('() => window.__errors')];
+    };
+    $own = $read($first, $first);
+    $watching = $read($second, $first);
+    fwrite(STDERR, PHP_EOL."chip and badge {$width}x{$height} ".json_encode(compact('own', 'watching')).PHP_EOL);
+
+    // On the own game the badge would lead here: the chip stands for it, and the round is whole.
+    expect($own['badge'])->toBeNull('the badge gives way on the own game')
+        ->and($own['pill']['right'])->toBeLessThanOrEqual($own['search']['left'])
+        ->and($own['ink'])->toBeLessThanOrEqual($own['search']['left'], 'nothing of the chip over the search')
+        ->and($own['roundWhole'] || $width < 360)->toBeTrue('the round whole from 360')
+        ->and($own['rowFits'])->toBeTrue()
+        ->and($own['overflow'])->toBeLessThanOrEqual(0)
+        ->and($own['errors'])->toBe([]);
+
+    // Watching another game, the own live game is elsewhere: the badge stays, and the chip keeps to its box (cut, never over the search).
+    expect($watching['badge'])->not->toBeNull('the way to the own board stays')
+        ->and($watching['pill']['right'])->toBeLessThanOrEqual($watching['search']['left'])
+        ->and($watching['clipped'])->toBeTrue('whatever does not fit is cut inside the chip')
+        ->and($watching['rowFits'])->toBeTrue()
+        ->and($watching['overflow'])->toBeLessThanOrEqual(0)
+        ->and($watching['errors'])->toBe([]);
+})->with([
+    'DerCaddy\'s phone 412' => [412, 915],
+    'phone 390' => [390, 844],
+    'phone 360' => [360, 740],
+    'phone 320' => [320, 640],
+]);

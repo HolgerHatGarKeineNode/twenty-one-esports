@@ -245,3 +245,15 @@ test('a cup round over days does not keep its players out of casual games', func
 
     expect(CupMatchNow::lockOf($a))->toBeNull();
 });
+
+test('on a tournament game page of the same tournament the waiting badge gives way on a phone, the chip leads there', function () {
+    // DerCaddy, 2026-11-04: watching a game of his tournament, the chip and the badge stood as two trophies for one tournament page.
+    [$cup, , $first] = findableCupMatch();
+    $path = parse_url(route('tournaments.show', $cup), PHP_URL_PATH);
+
+    $badge = fn (array $covered): string => \Livewire\Livewire::actingAs($first)->test('cup-match', ['variant' => 'badge', 'covered' => $covered])->html();
+
+    expect($badge([$path, '/board/1']))->toContain('data-test="cup-badge" data-state="waiting"')->toContain('max-lg:hidden')
+        ->and($badge(['/tournaments/another-cup', '/board/1']))->toContain('data-test="cup-badge" data-state="waiting"')->not->toContain('max-lg:hidden')
+        ->and($badge([]))->not->toContain('max-lg:hidden');
+});

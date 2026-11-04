@@ -32,6 +32,11 @@
     $searchTerm = request()->routeIs('search') ? (string) request()->string('q') : '';
     $searchLabel = __('Search players, clans or match #');
     $allGames = trans_choice('All :count game|All :count games', count($games));
+    // A tournament game's page (its game-banner, rendered before the header) and where its chip leads: this page and the tournament page.
+    $tournamentBanner = request()->attributes->get('tournament-banner');
+    // Paths, not URLs: route() writes the app URL, the request its own host.
+    $bannerLeadsTo = $tournamentBanner ? array_values(array_unique(array_filter([request()->path(), parse_url($tournamentBanner['url'] ?? '', PHP_URL_PATH)]))) : [];
+    $bannerLeadsTo = array_map(fn (string $path): string => '/'.ltrim($path, '/'), $bannerLeadsTo);
 @endphp
 
 {{--
@@ -84,17 +89,19 @@
              the top, since the header stays (people, 2026-10-15: "eine kleine Anzeige immer oben, ob es sich um ein Turnier-Match
              handelt"). It costs the board nothing; while a banner of the page is in view it gives way, so nothing stands twice. Under
              360 px on air (the LIVE mark beside it) it may shrink to its trophy, or the row spilled 9 px (measured at 320). A tap
-             opens the whole banner over the page, with the tournament page in it (components/tournaments/game-banner-panel). --}}
-        @if ($tournamentBanner = request()->attributes->get('tournament-banner'))
+             opens the whole banner over the page, with the tournament page in it (components/tournaments/game-banner-panel).
+             Narrower than its content it gives the name first, then the round (with "…"), and stays inside its own box: at 412 px
+             beside the cup badge its round lay over the search button (DerCaddy, 2026-11-04). --}}
+        @if ($tournamentBanner)
             <button type="button" class="flex h-11 min-w-[34px] shrink cursor-pointer items-center min-[360px]:ml-1 min-[360px]:min-w-11 lg:hidden" x-cloak x-show="shown"
                x-on:tournament-banner-state.window="open = $event.detail" x-bind:aria-expanded="open.toString()" aria-expanded="false" aria-haspopup="dialog" aria-controls="tournament-banner-sheet"
                x-on:click="$dispatch('tournament-banner', { opener: $el })"
                x-data="{ shown: true, open: false, io: null, init() { const inline = [...document.querySelectorAll('[data-tournament-inline]')]; if (! inline.length) return; this.shown = false; const seen = new Set(); this.io = new IntersectionObserver((entries) => { entries.forEach((e) => e.isIntersecting ? seen.add(e.target) : seen.delete(e.target)); this.shown = seen.size === 0; }, { rootMargin: '-52px 0px 0px 0px' }); inline.forEach((el) => this.io.observe(el)); }, destroy() { this.io?.disconnect(); } }"
                aria-label="{{ ($tournamentBanner['cup'] ? __('Cup game') : __('Tournament game')).': '.$tournamentBanner['tournament'].', '.$tournamentBanner['round'] }}" data-test="shell-tournament">
-                <span class="flex h-[30px] min-w-0 items-center gap-1.5 rounded-md bg-btc-tint px-2 text-xs shadow-[inset_0_0_0_1px_var(--color-btc)]" aria-hidden="true">
+                <span class="flex h-[30px] min-w-0 items-center gap-1.5 overflow-hidden rounded-md bg-btc-tint px-2 text-xs shadow-[inset_0_0_0_1px_var(--color-btc)]" aria-hidden="true">
                     <x-icon name="trophy" :size="14" class="shrink-0 text-btc" />
-                    <b class="min-w-0 truncate text-ink" data-test="shell-tournament-name">{{ $tournamentBanner['tournament'] }}</b>
-                    <span class="shrink-0 font-bold whitespace-nowrap text-btc-hi max-[359px]:hidden" data-test="shell-tournament-round">{{ $tournamentBanner['round'] }}</span>
+                    <b class="min-w-0 shrink-[999] truncate text-ink" data-test="shell-tournament-name">{{ $tournamentBanner['tournament'] }}</b>
+                    <span class="min-w-0 truncate font-bold text-btc-hi max-[359px]:hidden" data-test="shell-tournament-round">{{ $tournamentBanner['round'] }}</span>
                 </span>
             </button>
         @endif
@@ -132,8 +139,11 @@
                 </span>
             </a>
 
-            {{-- An open cup match on every page (CupMatchNow; user, 2026-10-03): pulsing while the game is live. --}}
-            <livewire:cup-match variant="badge" />
+            {{-- An open cup match on every page (CupMatchNow; user, 2026-10-03): pulsing while the game is live. On a phone it
+                 steps aside on a tournament game's page when it leads where the page or its chip already leads (this game, or the
+                 tournament page as "your match"): two trophies for one way crowded the row (DerCaddy, 2026-11-04). A match of yours
+                 elsewhere (live, a lobby, another tournament) keeps it. --}}
+            <livewire:cup-match variant="badge" :covered="$bannerLeadsTo" />
 
             <livewire:notification-bell />
 

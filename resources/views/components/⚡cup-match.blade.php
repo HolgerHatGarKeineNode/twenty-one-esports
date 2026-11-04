@@ -26,6 +26,15 @@ new class extends Component {
     #[Locked]
     public string $variant = 'badge';
 
+    /**
+     * Where the page already leads, as paths (a tournament game's page: the page itself and its tournament page, components/shell/header).
+     * A badge leading to one of them stays off on a phone, where the header's tournament chip stands for it.
+     *
+     * @var list<string>
+     */
+    #[Locked]
+    public array $covered = [];
+
     /** Classes of the banner's frame (its place on the page), rendered only when there is something to show. */
     #[Locked]
     public string $frame = '';
@@ -44,6 +53,7 @@ new class extends Component {
 
 @php
     $cup = $this->cup;
+    $covered = $this->covered;
     $config = [
         'userId' => auth()->id(),
         'poll' => (int) config('esports.dock.poll_seconds'),
@@ -57,6 +67,7 @@ new class extends Component {
         <a href="{{ $cup['href'] }}" title="{{ $cup['label'] }} · {{ $cup['tournament'] }}"
            @class([
                'relative flex h-11 min-w-11 shrink-0 items-center justify-center gap-1.5 rounded-md px-2.5 text-[13px] font-bold whitespace-nowrap',
+               'max-lg:hidden' => in_array('/'.ltrim((string) parse_url($cup['href'], PHP_URL_PATH), '/'), $covered, true),
                'bg-btc text-on-btc hover:text-on-btc' => $cup['state'] === 'live',
                'bg-btc-chip text-btc-hi shadow-[inset_0_0_0_1px_var(--color-btc)] hover:text-btc-hi' => $cup['state'] !== 'live',
            ])

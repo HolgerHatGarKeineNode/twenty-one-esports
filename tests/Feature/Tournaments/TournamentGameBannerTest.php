@@ -140,3 +140,34 @@ test('a tournament board game and a tournament series room open with the banner'
         ->assertSeeInOrder(['data-test="tournament-banner"', $series->name, 'Round 1', 'Tournament page', 'data-test="room-status"'], false)
         ->assertSee('data-test="shell-tournament"', false);
 });
+
+/** The cup badge of the header as rendered: its link and its classes, or null. */
+function bannerCupBadge(string $html): ?array
+{
+    return preg_match('/<a href="([^"]*)"[^>]*?class="([^"]*)"[^>]*?data-test="cup-badge"/s', $html, $found) === 1
+        ? ['href' => html_entity_decode($found[1]), 'class' => $found[2]] : null;
+}
+
+test('on a phone the cup badge gives way to the chip when it leads to the game on the page, not when it leads elsewhere', function () {
+    // DerCaddy, 2026-11-04: scrolled down, the chip and the badge stood as two trophies side by side, and the chip's round lay over the search.
+    $tournament = runningChess(TournamentFormat::SingleElimination, 4, TournamentResultsMode::Players);
+    [$first, $second] = bannerChessGames($tournament);
+
+    $own = bannerCupBadge($this->actingAs($first->white)->get(route('games.show', $first))->assertOk()->assertSee('data-test="shell-tournament"', false)->getContent());
+
+    expect($own)->not->toBeNull()
+        ->and($own['href'])->toBe(route('games.show', $first))
+        ->and($own['class'])->toContain('max-lg:hidden');
+
+    // Watching another game of the tournament, the own live game is elsewhere: the badge stays, it is the way back to the board.
+    $elsewhere = bannerCupBadge($this->actingAs($second->white)->get(route('games.show', $first))->assertOk()->assertSee('data-test="shell-tournament"', false)->getContent());
+
+    expect($elsewhere)->not->toBeNull()
+        ->and($elsewhere['href'])->toBe(route('games.show', $second))
+        ->and($elsewhere['class'])->not->toContain('max-lg:hidden');
+
+    // Any other page keeps it.
+    $home = bannerCupBadge($this->actingAs($first->white)->get(route('home'))->assertOk()->getContent());
+
+    expect($home)->not->toBeNull()->and($home['class'])->not->toContain('max-lg:hidden');
+});
