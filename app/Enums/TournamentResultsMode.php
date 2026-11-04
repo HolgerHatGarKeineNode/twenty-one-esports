@@ -32,6 +32,37 @@ enum TournamentResultsMode: string
         };
     }
 
+    /**
+     * The radio title for a game the league server plays (chess, board games: TournamentMatchMaker starts the game in
+     * players mode, and its result comes from the board; in director mode no game starts, the players meet at a real
+     * board). There "players report" was wrong: nobody reports a game played here (DerCaddy, 2026-11-04: "bei den Spielen
+     * im Browser macht die Auswahl ... keinen Sinn"). The choice is where the games are played.
+     */
+    public function choiceFor(bool $playedHere): string
+    {
+        if (! $playedHere) {
+            return $this->choice();
+        }
+
+        return match ($this) {
+            self::Players => __('Here in the browser'),
+            self::Director => __('At real boards, directors enter'),
+        };
+    }
+
+    /** What the mode means for a game the league server plays ({@see choiceFor()}). */
+    public function helpFor(bool $playedHere): string
+    {
+        if (! $playedHere) {
+            return $this->help();
+        }
+
+        return match ($this) {
+            self::Players => __('Every game runs on the league with its clock; the result comes from the board, nobody reports it.'),
+            self::Director => __('For on-site events at real boards: no game starts here. You and the directors you name enter every result. Every entry is saved with name and time.'),
+        };
+    }
+
     public function help(): string
     {
         return match ($this) {

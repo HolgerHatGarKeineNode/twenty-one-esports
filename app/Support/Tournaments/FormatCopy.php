@@ -41,7 +41,7 @@ final class FormatCopy
             TournamentFormat::RoundRobin => [
                 'short' => 'Everyone plays everyone',
                 'how' => 'Everyone plays everyone. Most points wins.',
-                'good' => 'Small groups up to about 8, or daily chess, where all games run at the same time.',
+                'good' => 'Small groups up to about 8, or correspondence games, where all games run at the same time.',
                 'pros' => ['The fairest result: no lucky or unlucky draw.', 'Everyone plays the same number of games.'],
                 'cons' => ['Gets long fast: 12 players need 11 rounds.', 'Late games can no longer change the top of the table.'],
             ],

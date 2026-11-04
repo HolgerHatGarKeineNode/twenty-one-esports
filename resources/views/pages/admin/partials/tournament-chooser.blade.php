@@ -113,9 +113,9 @@
         : ($profile->isSeries() && $recommended->format->hasFinal()
             // Series games recommend a format with a final first (user, 2026-09-26, for Rocket League), so the reason names it.
             ? ($teams
-                ? __('Ends with a final; every team plays at least :games, and it takes about :duration of your :window.', ['games' => $gamesCount($recommended->guaranteed()), 'duration' => $duration($recommended->total()), 'window' => $duration($window)])
-                : __('Ends with a final; every player plays at least :games, and it takes about :duration of your :window.', ['games' => $gamesCount($recommended->guaranteed()), 'duration' => $duration($recommended->total()), 'window' => $duration($window)]))
-            : __('Everyone gets at least :games, and it takes about :duration of your :window.', ['games' => $gamesCount($recommended->guaranteed()), 'duration' => $duration($recommended->total()), 'window' => $duration($window)]))));
+                ? __('Ends with a final; every team plays at least :games, and it takes about :duration of your :window.', ['games' => $gamesCount($recommended->guaranteedGames()), 'duration' => $duration($recommended->total()), 'window' => $duration($window)])
+                : __('Ends with a final; every player plays at least :games, and it takes about :duration of your :window.', ['games' => $gamesCount($recommended->guaranteedGames()), 'duration' => $duration($recommended->total()), 'window' => $duration($window)]))
+            : __('Everyone gets at least :games, and it takes about :duration of your :window.', ['games' => $gamesCount($recommended->guaranteedGames()), 'duration' => $duration($recommended->total()), 'window' => $duration($window)]))));
 
     $chosen = $evaluation->row($format);
     $structure = $chosen->structure;
@@ -124,10 +124,20 @@
     $rounds = $evaluation->swissRounds;
     $odd = $n % 2 === 1;
 
+    // Blockli plays two games a match (one per pairing in a table, by choice): the counts read in games, and say what a
+    // pairing is (DerCaddy, 2026-11-04: "mindestens 9 Spiele" and "Alle spielen 9 Partien" for 18 games, 6 against each).
+    $perMatch = $chosen->perMatch;
     $guaranteed = match ($format) {
-        TournamentFormat::Swiss => $odd ? __('Everyone plays :fewer or :rounds games. With an odd number, one player per round gets a free win (bye).', ['fewer' => $rounds - 1, 'rounds' => $rounds]) : __('Everyone plays :rounds games.', ['rounds' => $rounds]),
-        TournamentFormat::RoundRobin => __('Everyone plays :games games.', ['games' => $structure?->guaranteed ?? 0]).($chosen->atOnce > 0 ? ' '.__('In daily chess all of them start at once: :count games running at the same time for each player.', ['count' => $chosen->atOnce]) : ''),
-        TournamentFormat::TwoStage => trans_choice('Everyone plays at least :games game in the groups. The top :advance of each group play on.|Everyone plays at least :games games in the groups. The top :advance of each group play on.', $structure?->guaranteed ?? 0, ['games' => $structure?->guaranteed ?? 0, 'advance' => $structure?->advance ?? 0]),
+        TournamentFormat::Swiss => $perMatch > 1
+            ? ($odd
+                ? __('Everyone plays :fewer or :rounds pairings of :per games each, so :fewerGames or :games games. With an odd number, one player per round gets a free win (bye).', ['fewer' => $rounds - 1, 'rounds' => $rounds, 'per' => $perMatch, 'fewerGames' => ($rounds - 1) * $perMatch, 'games' => $rounds * $perMatch])
+                : __('Everyone plays :rounds pairings of :per games each, so :games games.', ['rounds' => $rounds, 'per' => $perMatch, 'games' => $rounds * $perMatch]))
+            : ($odd ? __('Everyone plays :fewer or :rounds games. With an odd number, one player per round gets a free win (bye).', ['fewer' => $rounds - 1, 'rounds' => $rounds]) : __('Everyone plays :rounds games.', ['rounds' => $rounds])),
+        TournamentFormat::RoundRobin => ($perMatch > 1
+                ? __('Everyone plays :games games: :pairings pairings of :per games each, :against against each opponent.', ['games' => $chosen->guaranteedGames(), 'pairings' => $structure?->guaranteed ?? 0, 'per' => $perMatch, 'against' => $options->iterations * $perMatch])
+                : __('Everyone plays :games games.', ['games' => $structure?->guaranteed ?? 0]))
+            .($chosen->atOnce > 0 ? ' '.__('In daily chess all of them start at once: :count games running at the same time for each player.', ['count' => $chosen->atOnce]) : ''),
+        TournamentFormat::TwoStage => trans_choice('Everyone plays at least :games game in the groups. The top :advance of each group play on.|Everyone plays at least :games games in the groups. The top :advance of each group play on.', $chosen->guaranteedGames(), ['games' => $chosen->guaranteedGames(), 'advance' => $structure?->advance ?? 0]),
         TournamentFormat::SingleElimination => __('The weakest may play only 1 match. The winner plays :rounds.', ['rounds' => $structure?->max ?? 0]).(($structure?->byes ?? 0) > 0 ? ' '.__(':byes of :n skip round 1 (bye), because :n does not fill the bracket.', ['byes' => $structure?->byes, 'n' => $n]) : ''),
         TournamentFormat::FreeForAll => __('Everyone plays exactly 1 match: their lobby\'s game.'),
         default => ($structure?->guaranteed ?? 2) < 2
@@ -143,8 +153,8 @@
     $facts = [
         [__('Rounds'), $roundsText],
         [__('Matches'), $format === TournamentFormat::DoubleElimination && $options->grandFinal === 'reset' ? __(':fewer or :matches', ['fewer' => ($structure?->matches ?? 1) - 1, 'matches' => $structure?->matches ?? 0]) : (string) ($structure?->matches ?? 0)],
-        [$teams ? __('Games per team') : __('Games per player'), $structure !== null && $structure->min === $structure->max ? (string) $structure->min : __(':min to :max', ['min' => $structure?->min ?? 0, 'max' => $structure?->max ?? 0])],
-        [__('Guaranteed'), (string) ($structure?->guaranteed ?? 0)],
+        [$teams ? __('Games per team') : __('Games per player'), $structure !== null && $structure->min === $structure->max ? (string) $chosen->games($structure->min) : __(':min to :max', ['min' => $chosen->games($structure?->min ?? 0), 'max' => $chosen->games($structure?->max ?? 0)])],
+        [__('Guaranteed'), (string) $chosen->guaranteedGames()],
     ];
 
     $caption = match ($format) {
@@ -325,7 +335,7 @@
                         @else
                             <button type="button" role="radio" aria-checked="{{ $entry['selected'] ? 'true' : 'false' }}" wire:click="select('{{ $row->format->value }}')" wire:key="row-{{ $row->format->value }}"
                                     data-test="row-{{ $row->format->value }}"
-                                    aria-label="{{ $row->format->label() }}, {{ __('about :duration', ['duration' => $duration($row->total())]) }}, {{ $entry['fitText'] }}, {{ __('at least :games for everyone', ['games' => $gamesCount($row->guaranteed())]) }}{{ $entry['recommended'] ? ', '.__('recommended') : '' }}"
+                                    aria-label="{{ $row->format->label() }}, {{ __('about :duration', ['duration' => $duration($row->total())]) }}, {{ $entry['fitText'] }}, {{ __('at least :games for everyone', ['games' => $gamesCount($row->guaranteedGames())]) }}{{ $entry['recommended'] ? ', '.__('recommended') : '' }}"
                                     @class(['flex w-full cursor-pointer flex-col gap-2.5 rounded-md border-0 p-3 text-left text-ink hover:bg-row-hover @min-[820px]/rows:grid @min-[820px]/rows:min-h-16 @min-[820px]/rows:grid-cols-[300px_minmax(0,1fr)_184px_88px] @min-[820px]/rows:items-center @min-[820px]/rows:gap-3 @min-[820px]/rows:px-3 @min-[820px]/rows:py-2.5',
                                         'bg-btc-chip shadow-[inset_0_0_0_1px_var(--color-btc)]' => $entry['selected'], 'bg-transparent' => ! $entry['selected']])>
                                 {{-- A card (under 820 px): time and minimum go under the name where the description would wrap beside them (R11, 151 px at 390). --}}
@@ -339,7 +349,7 @@
                                     </span>
                                     <span class="flex shrink-0 flex-col items-end gap-0.5 whitespace-nowrap @min-[820px]/rows:hidden">
                                         <span class="text-[13px] font-bold">{{ $duration($row->total()) }}</span>
-                                        <span class="text-xs text-ink-2">{{ __(':games at least', ['games' => $gamesCount($row->guaranteed())]) }}</span>
+                                        <span class="text-xs text-ink-2">{{ __(':games at least', ['games' => $gamesCount($row->guaranteedGames())]) }}</span>
                                     </span>
                                 </span>
                                 <span class="block w-full py-1.5 @min-[820px]/rows:py-0" aria-hidden="true">
@@ -372,7 +382,7 @@
                                         <span class="inline-flex h-[22px] items-center gap-1 rounded-xs bg-btc-press px-2 text-[11px] font-bold whitespace-nowrap text-btc-hi @min-[820px]/rows:hidden"><x-icon name="award" :size="12" />{{ __('Recommended') }}</span>
                                     @endif
                                 </span>
-                                <span class="hidden text-right font-display text-lg font-bold @min-[820px]/rows:block">{{ $row->guaranteed() }}</span>
+                                <span class="hidden text-right font-display text-lg font-bold @min-[820px]/rows:block">{{ $row->guaranteedGames() }}</span>
                             </button>
                         @endif
                     @endforeach
@@ -468,7 +478,11 @@
                                     @endforeach
                                 </span>
                             </span>
-                            <span class="{{ $help }}">{{ __('Twice means a return match; in chess with the other color.') }}</span>
+                            {{-- A two-leg game (Blockli) multiplies this with its games per pairing below: say what comes out (DerCaddy, 2026-11-04:
+                                 "spielt man dann 6 Spiele gegen einen Gegner?"). --}}
+                            <span class="{{ $help }}" data-test="iterations-help">{{ \App\Support\Tournaments\TournamentRunner::tableChoosesLegs($profile->game, $format, $options)
+                                ? __('Each time is one more pairing with the same opponent. With the games per pairing below that makes :against games against each opponent and :games games for everyone.', ['against' => $options->iterations * $perMatch, 'games' => $chosen->guaranteedGames()])
+                                : __('Twice means a return match; in chess with the other color.') }}</span>
                         </div>
                         <div class="{{ $optionRow }}">
                             <span class="flex flex-col items-start gap-2">
@@ -476,9 +490,33 @@
                                 <x-ui.select-menu model="options.rankBy" live labelledby="rank-by-l" :value="$options->rankBy" width="16rem" data-test="rank-by"
                                                   :options="['points' => __('Points (win 1, draw ½)'), 'match-wins' => __('Matches won'), 'game-wins' => __('Games won'), 'custom' => __('Custom points')]" />
                             </span>
-                            <span class="{{ $help }}">{{ __('Matches won counts wins. Games won counts single games inside a series. Custom points lets you set points for a win and a draw.') }}</span>
+                            {{-- The help explains the choice made, not all four (DerCaddy, 2026-11-04). --}}
+                            <span class="{{ $help }}" data-test="rank-by-help">{{ match ($options->rankBy) {
+                                'match-wins' => __('Matches won: only won matches count, a draw counts nothing.'),
+                                'game-wins' => __('Games won: every single game won counts, also inside a series or a pairing.'),
+                                'custom' => __('Custom points: you set the points for a win and a draw.'),
+                                default => __('Points: a win 1, a draw ½.'),
+                            } }}</span>
                         </div>
-                        @include('pages.admin.partials.tournament-tie-breaks', ['key' => 'roundRobinTieBreaks', 'current' => $options->roundRobinTieBreaks, 'labels' => array_diff_key($tieBreakLabels, ['median-buchholz' => true])])
+                        @if ($options->rankBy === 'custom')
+                            {{-- Custom points had nothing to set them with in a round robin (DerCaddy, 2026-11-04): the Swiss fields, without the bye. --}}
+                            <div class="{{ $optionRow }}" data-test="custom-points">
+                                <span class="flex flex-col items-start gap-2">
+                                    <span class="text-[13px] font-bold">{{ __('Points for a win and a draw') }}</span>
+                                    <span class="flex gap-2">
+                                        @foreach ([['pointsWin', __('Win')], ['pointsTie', __('Draw')]] as [$key, $label])
+                                            <label class="flex flex-col gap-1 text-xs text-ink-2" wire:key="rr-pts-{{ $key }}">{{ $label }}
+                                                <input wire:model.live.debounce.500ms="options.{{ $key }}" inputmode="decimal" class="h-11 w-16 rounded-md border border-edge bg-ground px-2 text-center text-[13px] text-ink">
+                                            </label>
+                                        @endforeach
+                                    </span>
+                                </span>
+                                <span class="{{ $help }}">{{ __('From 0 to 10 points each.') }}</span>
+                            </div>
+                        @endif
+                        {{-- Counted game by game, everyone's games won follow from the points (DerCaddy, 2026-11-04). --}}
+                        @include('pages.admin.partials.tournament-tie-breaks', ['key' => 'roundRobinTieBreaks', 'current' => $options->roundRobinTieBreaks, 'labels' => array_diff_key($tieBreakLabels, ['median-buchholz' => true]),
+                            'same' => $options->rankBy === 'points' && $options->perLeg() && \App\Support\Tournaments\TournamentRunner::tableChoosesLegs($profile->game, $format, $options) ? ['game-wins', 'game-difference', 'game-win-percentage'] : []])
                     @endif
 
                     @if ($format === TournamentFormat::Swiss)
@@ -676,7 +714,10 @@
 
     {{-- Who enters results (director mode, TOURNAMENT-FORMATS.md section 6) --}}
     <section aria-labelledby="res-h" class="flex flex-col gap-4 rounded border border-hairline bg-card p-4 lg:p-6" data-test="results-mode">
-        <h2 id="res-h" class="m-0 font-display text-lg font-bold">{{ __('Who enters results') }}</h2>
+        {{-- A game the league server plays (chess, board games) has no results to enter in players mode: the choice is where the
+             games are played (DerCaddy, 2026-11-04). --}}
+        @php($playedHere = $profile->isChess() || $profile->isBoard())
+        <h2 id="res-h" class="m-0 font-display text-lg font-bold">{{ $playedHere ? __('Where the games are played') : __('Who enters results') }}</h2>
         {{-- One card per row up to 1400 px of the admin column: side by side at 1280 the director's sentence ran 5 lines in 405 px,
              at 1024 7 lines in 277 (E1). --}}
         {{--
@@ -688,9 +729,9 @@
                 <div class="flex flex-col gap-1" wire:key="mode-{{ $mode->value }}">
                     <button type="button" role="radio" class="rv-opt" aria-checked="{{ $this->resultsMode === $mode->value ? 'true' : 'false' }}" aria-describedby="res-{{ $mode->value }}-d" wire:click="pickResultsMode('{{ $mode->value }}')" data-test="results-{{ $mode->value }}">
                         <i aria-hidden="true"></i>
-                        <span class="text-[13px] font-bold whitespace-nowrap">{{ $mode->choice() }}</span>
+                        <span class="text-[13px] font-bold whitespace-nowrap">{{ $mode->choiceFor($playedHere) }}</span>
                     </button>
-                    <p id="res-{{ $mode->value }}-d" class="m-0 cursor-pointer px-3 text-xs leading-normal text-ink-2" wire:click="pickResultsMode('{{ $mode->value }}')" data-test="results-{{ $mode->value }}-help">{{ $mode->help() }}</p>
+                    <p id="res-{{ $mode->value }}-d" class="m-0 cursor-pointer px-3 text-xs leading-normal text-ink-2" wire:click="pickResultsMode('{{ $mode->value }}')" data-test="results-{{ $mode->value }}-help">{{ $mode->helpFor($playedHere) }}</p>
                 </div>
             @endforeach
         </div>

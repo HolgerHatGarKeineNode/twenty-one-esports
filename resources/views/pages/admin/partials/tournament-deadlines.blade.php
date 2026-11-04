@@ -22,12 +22,17 @@
         $reportDefault = [$clock->reportDueMinutes($this->profile(), $chooserOptions->bestOf), $clock->reportDueMinutes($this->profile(), $chooserOptions->finalBestOf)];
     }
     $deadlineField = 'rv-in';
-    $deadlines = [
-        ['checkinMinutes', 'checkin_minutes', __('Chess and board games: first move within (minutes)'), __('A player who misses it loses by forfeit.')],
-        ['noshowMinutes', 'noshow_minutes', __('Series: no-show report after (minutes)'), __('From the start until a captain can report the other side missing.')],
-        ['reportHours', 'report_hours', __('Series: result due (hours after the start)'), __('Nobody reported by then: the match goes to the admin queue.')],
-        ['responseMinutes', 'response_minutes', __('Series: answer within (minutes)'), __('An unanswered result is confirmed unrated; an unanswered no-show is a forfeit.')],
-    ];
+    // Each game sees the deadlines that reach it (DerCaddy, 2026-11-04: Blockli showed a captain's no-show report and a result
+    // to report, though its games run here and end on the board): chess and the board games their first move, every other game
+    // its series deadlines. In director mode none applies (TournamentDeadlines: players mode only; no game starts, nobody reports).
+    $playedHere = $this->profile()->isChess() || $this->profile()->isBoard();
+    $directors = $this->resultsMode === \App\Enums\TournamentResultsMode::Director->value;
+    $deadlines = array_values(array_filter([
+        ['checkinMinutes', 'checkin_minutes', __('First move within (minutes)'), __('A player who misses it loses by forfeit.')],
+        ['noshowMinutes', 'noshow_minutes', __('No-show report after (minutes)'), __('From the start until a captain can report the other side missing.')],
+        ['reportHours', 'report_hours', __('Result due (hours after the start)'), __('Nobody reported by then: the match goes to the admin queue.')],
+        ['responseMinutes', 'response_minutes', __('Answer within (minutes)'), __('An unanswered result is confirmed unrated; an unanswered no-show is a forfeit.')],
+    ], fn (array $deadline): bool => ($deadline[1] === 'checkin_minutes') === $playedHere));
 @endphp
 
 @if (\App\Support\Tournaments\Lobbies::isLobbyGame($this->profile()->game))
@@ -36,20 +41,27 @@
         <h2 class="rv-h3">{{ __('Deadlines') }}</h2>
         <span class="max-w-[80ch] text-xs leading-normal text-ink-2">{{ __('A lobby has no series deadlines: its players report the places within :time after the Time Limit, then a director decides.', ['time' => \App\Support\Pages\RulesPage::minutes((int) (\App\Support\Tournaments\Lobbies::config($this->profile()->game)['report_minutes'] ?? 60))]) }}</span>
     </section>
+@elseif ($directors)
+    <section class="rv-sec" data-test="tournament-deadlines-directors">
+        <h2 class="rv-h3">{{ __('Deadlines') }}</h2>
+        <span class="max-w-[80ch] text-xs leading-normal text-ink-2">{{ __('The directors enter every result: no deadline of the league applies.') }}</span>
+    </section>
 @else
 <section aria-labelledby="deadlines-h" class="rv-sec" data-test="tournament-deadlines">
     <span class="flex flex-col gap-1">
         <h2 id="deadlines-h" class="rv-h3">{{ __('Deadlines') }}</h2>
-        <span class="max-w-[80ch] text-xs leading-normal text-ink-2">{{ __('The league applies them when the players report their results. Leave a field empty for the league default. A change while the tournament runs applies to matches paired from then on.') }}</span>
-        @if ($reportDefault !== null)
+        <span class="max-w-[80ch] text-xs leading-normal text-ink-2">{{ $playedHere
+            ? __('Every game starts on the league by itself and ends on the board; nobody reports a result. Leave the field empty for the league default. A change while the tournament runs applies to games paired from then on.')
+            : __('The league applies them when the players report their results. Leave a field empty for the league default. A change while the tournament runs applies to matches paired from then on.') }}</span>
+        @if ($reportDefault !== null && ! $playedHere)
             <span class="max-w-[80ch] text-xs leading-normal text-ink-2" data-test="round-clock">{{ __('Online on one day, every deadline runs from the start of the match: a no-show after :noshow min, the result :report min after the start (a final :final min), an answer within :response min.', [
                 'noshow' => $shown['noshow_minutes'], 'report' => $reportDefault[0], 'final' => $reportDefault[1], 'response' => $shown['response_minutes'],
             ]) }}</span>
         @endif
     </span>
-    {{-- Four fields side by side only where each keeps about 340 px for its label and help (the admin column from 1400 px); at
-         1024 the four columns were 156 px and the help ran 4 to 8 lines (E1). --}}
-    <div class="grid grid-cols-1 gap-3 @min-[480px]/admin:grid-cols-2 @min-[480px]/admin:gap-4 @min-[1400px]/admin:grid-cols-4">
+    {{-- Three fields side by side only where each keeps about 340 px for its label and help (the admin column from 1400 px); at
+         1024 the columns were 156 px and the help ran 4 to 8 lines (E1). A single field keeps one column's width. --}}
+    <div @class(['grid grid-cols-1 gap-3 @min-[480px]/admin:grid-cols-2 @min-[480px]/admin:gap-4', '@min-[1400px]/admin:grid-cols-3' => count($deadlines) > 1, '@min-[1400px]/admin:grid-cols-4' => count($deadlines) === 1])>
         @foreach ($deadlines as [$property, $column, $label, $hint])
             <label class="flex min-w-0 flex-col text-xs text-ink-2" wire:key="deadline-{{ $column }}">
                 <span class="rv-lb">{{ $label }}</span>
@@ -105,7 +117,8 @@
     </section>
 @endif
 
-@if ($this->drawDeciderApplies())
+{{-- Only a knockout plays a decider (DerCaddy, 2026-11-04). --}}
+@if ($this->drawDeciderMatters())
     @php
         // A drawn deciding game of a two-leg pairing (Blockli): the race standing or a replay (DerCaddy, PR #5; user, 2026-10-11).
         $replays = \App\Support\Tournaments\TournamentRunner::drawnReplays();

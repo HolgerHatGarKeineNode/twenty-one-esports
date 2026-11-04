@@ -301,9 +301,11 @@ test('the chooser computes the honest range with its times and warnings, and the
     expect($page->instance()->durationRange->latest)->toBeGreaterThan(600.0)
         ->and($page->instance()->expectedTimes()['warnings'])->toBe(['too-long']);
 
-    // The page: the range under the chosen format, the round clock as the deadlines' defaults.
+    // The page: the range under the chosen format. Its default game is chess, played here: the first-move deadline only, no
+    // round clock of reported series (DerCaddy, 2026-11-04; a series game's round clock: tests/Browser).
     $this->actingAs($admin)->get(route('admin.tournaments.create'))->assertOk()
         ->assertSeeHtml('data-test="duration-range"')
         ->assertSeeText('Start 19:00 · expected end about')
-        ->assertSeeHtml('data-test="round-clock"');
+        ->assertSeeHtml('data-test="deadline-checkin_minutes"')
+        ->assertDontSeeHtml('data-test="round-clock"')->assertDontSeeHtml('data-test="deadline-noshow_minutes"');
 });

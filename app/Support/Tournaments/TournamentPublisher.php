@@ -479,9 +479,12 @@ final class TournamentPublisher
             : ($profile->entersTeams()
             ? 'Clan lineups are seeded by their rating at registration close; the mix teams of the solo draw follow in draw order.'
             : 'Players are seeded by their rating at registration close; equal ratings by who signed up first.'));
-        $lines[] = $tournament->isDirectorMode()
-            ? 'Results are entered by the tournament directors.'
-            : 'Players report results and the other side accepts them.';
+        $lines[] = match (true) {
+            $tournament->isDirectorMode() => 'Results are entered by the tournament directors.',
+            // Chess and the board games are played on the league server: nobody reports their result (DerCaddy, 2026-11-04).
+            $profile->isChess() || $profile->isBoard() => 'Every game is played on the league server; its result comes from the board.',
+            default => 'Players report results and the other side accepts them.',
+        };
         $lines[] = match (true) {
             $tournament->ladder_address === null => 'The matches are unrated: no ladder was open when the tournament was published, so they are casual for its whole run.',
             // A board game (plan "Mühle und Dame", P6) is rated like chess when played here; a directors' result rates nothing.

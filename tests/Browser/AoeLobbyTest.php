@@ -436,7 +436,8 @@ test('the create page swaps the deadlines with the game: Age of Empires II shows
     foreach ([[390, 844], [1440, 900]] as [$width, $height]) {
         $page->setViewportSize($width, $height);
         shellOpen($page, route('admin.tournaments.create', [], false), $problems);
-        BrowserWait::until($page, '() => document.querySelector("[data-test=deadline-noshow_minutes]") !== null', 8_000);
+        // The page opens on chess: its first-move deadline (a series' no-show report shows for a series game only).
+        BrowserWait::until($page, '() => document.querySelector("[data-test=deadline-checkin_minutes]") !== null', 8_000);
 
         $page->locator('[data-test=game-age-of-empires-2] button')->first()->click();
         BrowserWait::until($page, '() => document.querySelector("[data-test=tournament-deadlines-lobby]") !== null', 8_000);
