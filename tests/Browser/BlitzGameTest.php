@@ -774,6 +774,44 @@ test('a tournament chess game on a phone shows its tournament in the header whil
     'phone 390' => [390, 844],
 ]);
 
+test('the header chip fits itself once it is actually shown, also in a background tab where the show comes late', function (int $width, int $height) {
+    // Gate run of PR #20 (2026-11-05): under load the chip kept a 12 px name stub. Alpine shows an x-show element on the next
+    // frame, or, in a background tab, on a timer that Chrome throttles to a second; the chip's fit ran on its frame while the
+    // chip was still display: none (every width 0), decided nothing, and nothing asked again. The seam is that background tab:
+    // the page reports itself hidden and timers wait a second, while frames keep running.
+    $tournament = runningChess(TournamentFormat::SingleElimination, 2, TournamentResultsMode::Players);
+    $tournament->forceFill(['name' => 'Chess Phone Cup with a rather long name'])->save();
+    $game = ChessGame::query()->whereIn('tournament_match_id', $tournament->matches()->select('id'))->with('white')->orderBy('id')->firstOrFail();
+
+    $page = visit(BrowserLogin::url($game->white))->on()->mobile()->page();
+    $page->context()->addInitScript(BrowserConsole::COLLECTOR);
+    $page->context()->addInitScript('window.__setTimeout = window.setTimeout.bind(window); Object.defineProperty(document, "visibilityState", { get: () => "hidden", configurable: true }); window.setTimeout = (cb, ms, ...rest) => window.__setTimeout(cb, Math.max(Number(ms) || 0, 1000), ...rest);');
+    $page->setViewportSize($width, $height);
+    $page->goto(ComputeUrl::from(route('games.show', $game, false)));
+    BrowserWait::until($page, '() => window.Alpine && !!document.querySelector("[data-test=shell-tournament] > span")?.checkVisibility()', 15_000);
+    BrowserWait::until($page, '() => new Promise((done) => window.__setTimeout(() => requestAnimationFrame(() => requestAnimationFrame(() => done(true))), 300))', 5_000);
+
+    $chip = $page->evaluate(<<<'JS'
+        () => {
+            const chip = document.querySelector('[data-test=shell-tournament]'), pill = chip.firstElementChild;
+            const name = chip.querySelector('[data-test=shell-tournament-name]'), round = chip.querySelector('[data-test=shell-tournament-round]');
+            return {
+                hidden: document.visibilityState, name: name.checkVisibility() ? name.clientWidth : null,
+                stub: name.checkVisibility() && name.clientWidth < 40 && name.scrollWidth > name.clientWidth, cut: pill.scrollWidth > pill.clientWidth,
+                round: round.checkVisibility(),
+            };
+        }
+        JS);
+
+    expect($chip['hidden'])->toBe('hidden', 'the seam: a background tab')
+        ->and($chip['stub'])->toBeFalse('no name stub under 40 px')
+        ->and($chip['cut'])->toBeFalse('nothing cut inside the chip')
+        ->and($page->evaluate('() => window.__errors'))->toBe([]);
+})->with([
+    'phone 320' => [320, 640],
+    'phone 390' => [390, 844],
+]);
+
 test('on a phone the header chip stays in its box beside the search, and the cup badge steps aside where it leads to the game on screen', function (int $width, int $height, bool $onAir = false) {
     // DerCaddy, 2026-11-04 (412 x 915, on air): beside the chip the cup badge was a second trophy for the same way, and the chip's round lay over the search button.
     $hls = sys_get_temp_dir().'/esports-badge-'.getmypid().'-'.bin2hex(random_bytes(3));
