@@ -220,14 +220,16 @@ test('the admin preview follows the typed start live, names MEZ or MESZ, refuses
         $state = $page->evaluate(PREVIEW_STATE);
         $measured[$width] = [...$state['box'], 'tops' => $state['tops']];
 
-        // The editor switches on the width of the admin column, not the viewport (bc7c3880): name, start and sign-up close
-        // share one row from 1400 px of that column (1920 px viewport). At 1440 the 240 px sidebar leaves 1136 px, so the
-        // name has its own row and the two dates sit side by side under it.
+        // Order E (jury 2026-11-05): start and sign-up close stand in "When", near the top, side by side from 640 px of the
+        // admin column (1136 px at 1440, 1616 at 1920), each wide enough for its preview line (330 px, E1); on a phone one under
+        // the other. The name follows further down in "Name and description".
         [$nameTop, $startTop, $closeTop] = $state['tops'];
-        if ($width === 1920) {
-            expect(array_unique($state['tops']))->toHaveCount(1);
-        } elseif ($width === 1440) {
-            expect($startTop)->toBe($closeTop)->and($nameTop)->toBeLessThan($startTop);
+        if ($width === 375) {
+            expect($closeTop)->toBeGreaterThan($startTop)->and($nameTop)->toBeGreaterThan($closeTop);
+        } else {
+            expect($startTop)->toBe($closeTop)
+                ->and($nameTop)->toBeGreaterThan($startTop)
+                ->and($state['box']['width'])->toBeGreaterThanOrEqual(330);
         }
 
         // The browser's first frame is the server's, word for word.
@@ -294,14 +296,15 @@ test('the admin preview follows the typed start live, names MEZ or MESZ, refuses
         ->and($german['zone'])->toBe('Zeitzone: Europa/Berlin (MEZ, UTC+1)')
         ->and($german['errors'])->toBe([]);
 
-    // The create page uses the same field: clean, lined up with the name, no overflow.
+    // The create page uses the same field: clean, no overflow, and in order E's "When" beside the time you have from 900 px
+    // of the admin column (1136 at 1440), under it on a phone; the name follows further down.
     foreach ([[375, 812], [1440, 900]] as [$width, $height]) {
         $page->setViewportSize($width, $height);
         $page->goto(ComputeUrl::from(route('admin.tournaments.create')));
         BrowserWait::until($page, '() => document.querySelector("[data-test=create-starts-at] [data-preview]") !== null && window.Alpine !== undefined', 10_000);
         timeShot($page, "admin-create-de-{$width}");
         $create = $page->evaluate('() => ({
-            tops: ["[data-test=tournament-name]", "[data-test=create-starts-at] input"].map((s) => Math.round(document.querySelector(s).getBoundingClientRect().top)),
+            tops: ["[data-test=tournament-name]", "[data-test=create-starts-at]", "#win-l"].map((s) => Math.round(document.querySelector(s).getBoundingClientRect().top + scrollY)),
             preview: document.querySelector("[data-test=create-starts-at] [data-preview]").innerText.trim(),
             overflow: document.documentElement.scrollWidth - document.documentElement.clientWidth,
             errors: window.__errors,
@@ -310,9 +313,9 @@ test('the admin preview follows the typed start live, names MEZ or MESZ, refuses
         expect($create['preview'])->toStartWith('= ')->toContain(' UTC')
             ->and([$width, $create['overflow'], $create['errors']])->toBe([$width, 0, []]);
 
-        if ($width === 1440) {
-            expect(array_unique($create['tops']))->toHaveCount(1);
-        }
+        [$nameTop, $startTop, $windowTop] = $create['tops'];
+        expect($nameTop)->toBeGreaterThan(max($startTop, $windowTop));
+        $width === 1440 ? expect($windowTop)->toBe($startTop) : expect($windowTop)->toBeGreaterThan($startTop);
     }
 
     // Positive control on this page too.
