@@ -7,6 +7,8 @@ use App\Models\Admin;
 use App\Models\Tournament;
 use App\Models\TournamentSignup;
 use App\Models\User;
+use App\Support\Tournaments\Engine\MatchResult;
+use App\Support\Tournaments\Engine\Standings;
 use App\Support\Tournaments\Estimator;
 use App\Support\Tournaments\FormatOptions;
 use App\Support\Tournaments\GameProfile;
@@ -343,4 +345,20 @@ test('custom points in a round robin are set in the form and saved with "Save ch
     // Ranked by points, the block is gone.
     Livewire::actingAs(rulesFormAdmin())->test('pages::admin.tournament-edit', ['tournament' => rulesFormBlockli(TournamentFormat::RoundRobin)])
         ->assertDontSeeHtml('data-test="custom-points"');
+});
+
+test('counted per game, the game tie-breaks split a tie only after a double no-show, and the form says so as advice', function () {
+    // 1 and 3 both have 2 points; 1's third pairing was a double no-show against 2, so 1 lost no game: game difference
+    // splits them (2 to 1), games won do not (2 and 2).
+    $games = [
+        [1, 2, MatchResult::doubleLoss()], [1, 3, MatchResult::win(0)], [1, 4, MatchResult::win(0)],
+        [2, 3, MatchResult::win(1)], [2, 4, MatchResult::win(0)], [3, 4, MatchResult::win(0)],
+    ];
+    $order = fn (array $tieBreaks): array => array_map(fn ($row): int => $row->entrant, Standings::table([3, 1, 2, 4], $games, tieBreaks: $tieBreaks));
+    expect($order(['game-wins']))->toBe([3, 1, 2, 4])->and($order(['game-difference']))->toBe([1, 3, 2, 4]);
+
+    Livewire::actingAs(rulesFormAdmin())->test('pages::admin.tournament-edit', ['tournament' => rulesFormBlockli(TournamentFormat::RoundRobin, ['legPoints' => true])])
+        ->assertSee('Games won and Game difference follow from the points and split a tie only after a double no-show. Head-to-head does.')
+        ->assertDontSee('split no tie')
+        ->assertDontSeeHtml('class="text-loss" role="status" data-test="tie-break-same"');
 });

@@ -8845,7 +8845,6 @@
     "Answer within (minutes)": "Antwort innerhalb von (Minuten)",
     "At real boards, directors enter": "Am Brett, Turnierleitung trägt ein",
     "Buchholz, median: the points of your opponents without the best and the worst; the stronger your opponents were, the higher you rank.": "Buchholz, Median: die Punkte deiner Gegner ohne den besten und den schwächsten; je stärker deine Gegner waren, desto weiter oben stehst du.",
-    "Counted per game, everyone plays the same games, so :tieBreaks follow from the points and split no tie. Head-to-head does.": "Bei Punkten je Partie spielen alle gleich viele Partien, daher folgen :tieBreaks aus den Punkten und trennen keinen Gleichstand. Der direkte Vergleich schon.",
     "Custom points: you set the points for a win and a draw.": "Eigene Punkte: Du legst die Punkte für Sieg und Remis fest.",
     "Each time is one more pairing with the same opponent. With the games per pairing below that makes :against games against each opponent and :games games for everyone.": "Jedes Mal ist eine weitere Begegnung mit demselben Gegner. Mit den Partien je Paarung unten sind das :against Partien gegen jeden Gegner und :games Partien für jeden.",
     "Everyone plays :fewer or :rounds pairings of :per games each, so :fewerGames or :games games. With an odd number, one player per round gets a free win (bye).": "Alle spielen :fewer oder :rounds Begegnungen mit je :per Partien, also :fewerGames oder :games Partien. Bei ungerader Zahl bekommt pro Runde ein Spieler einen kampflosen Sieg (Freilos).",
@@ -8875,5 +8874,6 @@
     "Every game runs here on the league; its result comes from the game itself, nobody reports it.": "Jede Partie läuft hier in der Liga; das Ergebnis kommt aus dem Spiel selbst, niemand muss es melden.",
     "Every game starts on the league by itself; its result comes from the game itself, nobody reports it. Leave the field empty for the league default. A change while the tournament runs applies to games paired from then on.": "Jede Partie startet hier von selbst; das Ergebnis kommt aus dem Spiel selbst, niemand meldet es. Lass das Feld leer für den Liga-Standard. Eine Änderung während des Turniers gilt für Partien, die ab dann gepaart werden.",
     "Every match runs here on the league on its own turn clock: no deadline of the tournament applies.": "Jedes Match läuft hier in der Liga mit seiner eigenen Zuguhr: Es gilt keine Frist des Turniers.",
-    "every game is played on the league server; its result comes from the game itself": "jede Partie wird auf dem Liga-Server gespielt; das Ergebnis kommt aus dem Spiel selbst"
+    "every game is played on the league server; its result comes from the game itself": "jede Partie wird auf dem Liga-Server gespielt; das Ergebnis kommt aus dem Spiel selbst",
+    "Counted per game, everyone plays the same games, so :tieBreaks follow from the points and split a tie only after a double no-show. Head-to-head does.": "Bei Punkten je Partie spielen alle gleich viele Partien, daher folgen :tieBreaks aus den Punkten und trennen einen Gleichstand nur nach einem beidseitigen Nichtantreten. Der direkte Vergleich schon."
 }
