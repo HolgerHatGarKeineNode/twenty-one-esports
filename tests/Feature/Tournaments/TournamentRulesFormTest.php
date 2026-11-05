@@ -9,10 +9,13 @@ use App\Models\User;
 use App\Support\Tournaments\Estimator;
 use App\Support\Tournaments\FormatOptions;
 use App\Support\Tournaments\GameProfile;
+use App\Support\Tournaments\TournamentPublisher;
 use Carbon\CarbonImmutable;
 use Illuminate\Support\Facades\Queue;
 use Livewire\Livewire;
 use Tests\Support\BlockliOn;
+use Tests\Support\HyperOn;
+use Tests\Support\PongOn;
 
 /*
 |--------------------------------------------------------------------------
@@ -208,4 +211,83 @@ test('a two-stage Blockli tournament of one game per group pairing counts the kn
     $tournament = rulesFormBlockli(TournamentFormat::TwoStage, ['legs' => 1], players: 8);
     Livewire::actingAs(rulesFormAdmin())->test('pages::admin.tournament-edit', ['tournament' => $tournament])
         ->assertSeeHtml('3 to 7');
+});
+
+/** The rules text the league publishes for a tournament (TournamentPublisher::content()). */
+function rulesFormPublished(Tournament $tournament): string
+{
+    return (fn (): string => $this->content($tournament))->call(app(TournamentPublisher::class));
+}
+
+test('a deadline the chosen game never reads cannot block the save: a series no-show typed before switching to Blockli', function () {
+    $page = Livewire::actingAs(rulesFormAdmin())->test('pages::admin.tournament-create')
+        ->set('name', 'Blockli Evening')
+        ->call('pickGame', 'rl3')
+        ->set('noshowMinutes', '9999')
+        ->call('pickGame', 'blockli/blitz')
+        ->set('players', '4')
+        ->call('select', 'round-robin')
+        ->call('create')
+        ->assertHasNoErrors();
+
+    // Out of range, it is not stored either.
+    $created = Tournament::query()->where('name', 'Blockli Evening')->sole();
+    expect($created->game)->toBe('blockli')->and($created->noshow_minutes)->toBeNull();
+
+    // The deadline the game reads still validates.
+    Livewire::actingAs(rulesFormAdmin())->test('pages::admin.tournament-create')
+        ->set('name', 'Blockli Night')
+        ->call('pickGame', 'blockli/blitz')
+        ->set('checkinMinutes', '0')
+        ->call('create')
+        ->assertHasErrors(['checkinMinutes']);
+});
+
+test('Proof of Pong and Hyperbitcoinization are played on the league: the form asks where and shows the deadlines each reads', function () {
+    PongOn::play();
+    HyperOn::play();
+    config(['esports.pong.tournaments' => true, 'esports.hyper.tournaments' => true]);
+    $admin = rulesFormAdmin();
+    $draft = fn (string $game, string $mode, TournamentFormat $format): Tournament => Tournament::factory()->create([
+        'game' => $game, 'mode' => $mode, 'format' => $format, 'capacity' => 8,
+        'options' => FormatOptions::defaults(GameProfile::for($game, $mode))->toArray(),
+    ]);
+
+    // Pong starts every match with the first-move window (TournamentMatchMaker::startPongMatch()), in either results mode.
+    Livewire::actingAs($admin)->test('pages::admin.tournament-edit', ['tournament' => $draft('proof-of-pong', 'live', TournamentFormat::SingleElimination)])
+        ->assertSee('Where the games are played')->assertSee('Here in the browser')->assertDontSee('Players report results')
+        ->assertSeeHtml('data-test="deadline-checkin_minutes"')->assertDontSeeHtml('data-test="deadline-noshow_minutes"')
+        ->call('pickResultsMode', 'director')
+        ->assertSeeHtml('data-test="deadline-checkin_minutes"')->assertDontSee('At real boards, directors enter');
+
+    // Hyperbitcoinization runs on its own turn clock: no deadline of the tournament reaches it.
+    Livewire::actingAs($admin)->test('pages::admin.tournament-edit', ['tournament' => $draft('hyperbitcoinization', 'live', TournamentFormat::FreeForAll)])
+        ->assertSee('Where the games are played')
+        ->assertSeeHtml('data-test="tournament-deadlines-none"')
+        ->assertDontSeeHtml('data-test="deadline-checkin_minutes"')->assertDontSeeHtml('data-test="deadline-noshow_minutes"');
+
+    // The published rules say the same, in both results modes.
+    foreach ([['proof-of-pong', 'live', TournamentFormat::SingleElimination], ['hyperbitcoinization', 'live', TournamentFormat::FreeForAll]] as [$game, $mode, $format]) {
+        foreach ([TournamentResultsMode::Players, TournamentResultsMode::Director] as $resultsMode) {
+            $tournament = $draft($game, $mode, $format);
+            $tournament->forceFill(['results_mode' => $resultsMode])->save();
+            expect(rulesFormPublished($tournament->refresh()))->toContain('Every game is played on the league server; its result comes from the game itself.')
+                ->not->toContain('Players report results')->not->toContain('Results are entered by the tournament directors.');
+        }
+    }
+});
+
+test('the published rules and the tournament page say a chess or board game is played on the league; directors at real boards enter results', function () {
+    $chess = Tournament::factory()->signup()->create(['published_at' => now()]);
+    $blockli = rulesFormBlockli(TournamentFormat::RoundRobin);
+    $directed = Tournament::factory()->signup()->create(['published_at' => now(), 'results_mode' => TournamentResultsMode::Director]);
+
+    expect(rulesFormPublished($chess))->toContain('Every game is played on the league server; its result comes from the game itself.')->not->toContain('Players report results')
+        ->and(rulesFormPublished($blockli))->toContain('Every game is played on the league server; its result comes from the game itself.')
+        ->and(rulesFormPublished($directed))->toContain('Results are entered by the tournament directors.')->not->toContain('Every game is played on the league server');
+
+    $this->get(route('tournaments.show', $chess))->assertOk()
+        ->assertSee('every game is played on the league server; its result comes from the game itself')->assertDontSee('Players report results');
+    $this->get(route('tournaments.show', $directed))->assertOk()
+        ->assertSee('Tournament directors enter results')->assertDontSee('every game is played on the league server');
 });

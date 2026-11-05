@@ -13,6 +13,7 @@ use App\Support\Tournaments\Estimator;
 use App\Support\Tournaments\Evaluation;
 use App\Support\Tournaments\FormatOptions;
 use App\Support\Tournaments\GameProfile;
+use App\Support\Tournaments\Lobbies;
 use App\Support\Tournaments\NightPause;
 use App\Support\Tournaments\TournamentDeadlines;
 use App\Support\Tournaments\TournamentGames;
@@ -504,6 +505,29 @@ abstract class TournamentFormatChooser extends Component
     }
 
     /**
+     * The deadline fields that reach the chosen game in the chosen results mode, as the league reads them: a lobby game
+     * none (its own report deadline), Hyperbitcoinization none (its turn clock), a game the league server starts its
+     * first move (chess and board games in players mode, Proof of Pong in either: TournamentDeadlines::checkinSeconds()),
+     * directors none (no game starts, nobody reports), a series its no-show, report and answer
+     * (TournamentDeadlines::forSeries()). The form shows, validates and stores these; any other is hidden and can never
+     * block the save (a series no-show of 9999 typed before switching to Blockli failed on a field nobody saw).
+     *
+     * @return list<key-of<self::DEADLINE_FIELDS>>
+     */
+    public function applicableDeadlines(): array
+    {
+        $profile = $this->profile();
+        $directors = $this->resultsMode === TournamentResultsMode::Director->value;
+
+        return match (true) {
+            Lobbies::isLobbyGame($profile->game), $profile->isHyper() => [],
+            $profile->playedOnLeague($directors) => ['checkinMinutes'],
+            $directors => [],
+            default => ['noshowMinutes', 'reportHours', 'responseMinutes'],
+        };
+    }
+
+    /**
      * The rules of the deadline fields: empty, or a whole number in range;
      * the night pause times empty or "HH:MM" ("24:00" for midnight), not equal.
      *
@@ -513,8 +537,8 @@ abstract class TournamentFormatChooser extends Component
     {
         $rules = [];
 
-        foreach (self::DEADLINE_FIELDS as $property => $column) {
-            [$min, $max] = TournamentDeadlines::BOUNDS[$column];
+        foreach ($this->applicableDeadlines() as $property) {
+            [$min, $max] = TournamentDeadlines::BOUNDS[self::DEADLINE_FIELDS[$property]];
             $rules[$property] = ['nullable', 'integer', "between:{$min},{$max}"];
         }
 
@@ -633,14 +657,26 @@ abstract class TournamentFormatChooser extends Component
      */
     protected function chosenDeadlines(): array
     {
-        $value = fn (string $typed): ?int => trim($typed) === '' ? null : (int) $typed;
+        // A deadline that does not reach the game is not validated ({@see applicableDeadlines()}): kept while it is in range
+        // (a switch back finds it), else dropped.
+        $applicable = $this->applicableDeadlines();
+        $value = function (string $property) use ($applicable): ?int {
+            $typed = trim($this->{$property});
+            [$min, $max] = TournamentDeadlines::BOUNDS[self::DEADLINE_FIELDS[$property]];
+
+            return match (true) {
+                $typed === '' => null,
+                in_array($property, $applicable, true) => (int) $typed,
+                default => filter_var($typed, FILTER_VALIDATE_INT, ['options' => ['min_range' => $min, 'max_range' => $max]]) === false ? null : (int) $typed,
+            };
+        };
         $time = fn (string $typed): ?string => ($typed = trim($typed)) === '' ? null : ($typed === '24:00' ? '00:00' : $typed);
 
         return [
-            'checkin_minutes' => $value($this->checkinMinutes),
-            'noshow_minutes' => $value($this->noshowMinutes),
-            'report_hours' => $value($this->reportHours),
-            'response_minutes' => $value($this->responseMinutes),
+            'checkin_minutes' => $value('checkinMinutes'),
+            'noshow_minutes' => $value('noshowMinutes'),
+            'report_hours' => $value('reportHours'),
+            'response_minutes' => $value('responseMinutes'),
             'night_pause' => $this->nightPause === null || $this->nightPause === NightPause::defaults()['enabled'] ? null : $this->nightPause,
             'night_pause_until' => $time($this->nightPauseUntil),
             'night_pause_resume' => $time($this->nightPauseResume),

@@ -714,9 +714,9 @@
 
     {{-- Who enters results (director mode, TOURNAMENT-FORMATS.md section 6) --}}
     <section aria-labelledby="res-h" class="flex flex-col gap-4 rounded border border-hairline bg-card p-4 lg:p-6" data-test="results-mode">
-        {{-- A game the league server plays (chess, board games) has no results to enter in players mode: the choice is where the
-             games are played (DerCaddy, 2026-11-04). --}}
-        @php($playedHere = $profile->isChess() || $profile->isBoard())
+        {{-- A game the league server plays (GameProfile::playedOnLeague()) has no results to enter in players mode: the choice is
+             where the games are played (DerCaddy, 2026-11-04). --}}
+        @php($playedHere = $profile->playedOnLeague())
         <h2 id="res-h" class="m-0 font-display text-lg font-bold">{{ $playedHere ? __('Where the games are played') : __('Who enters results') }}</h2>
         {{-- One card per row up to 1400 px of the admin column: side by side at 1280 the director's sentence ran 5 lines in 405 px,
              at 1024 7 lines in 277 (E1). --}}
@@ -729,9 +729,9 @@
                 <div class="flex flex-col gap-1" wire:key="mode-{{ $mode->value }}">
                     <button type="button" role="radio" class="rv-opt" aria-checked="{{ $this->resultsMode === $mode->value ? 'true' : 'false' }}" aria-describedby="res-{{ $mode->value }}-d" wire:click="pickResultsMode('{{ $mode->value }}')" data-test="results-{{ $mode->value }}">
                         <i aria-hidden="true"></i>
-                        <span class="text-[13px] font-bold whitespace-nowrap">{{ $mode->choiceFor($playedHere) }}</span>
+                        <span class="text-[13px] font-bold whitespace-nowrap">{{ $mode->choiceFor($profile) }}</span>
                     </button>
-                    <p id="res-{{ $mode->value }}-d" class="m-0 cursor-pointer px-3 text-xs leading-normal text-ink-2" wire:click="pickResultsMode('{{ $mode->value }}')" data-test="results-{{ $mode->value }}-help">{{ $mode->helpFor($playedHere) }}</p>
+                    <p id="res-{{ $mode->value }}-d" class="m-0 cursor-pointer px-3 text-xs leading-normal text-ink-2" wire:click="pickResultsMode('{{ $mode->value }}')" data-test="results-{{ $mode->value }}-help">{{ $mode->helpFor($profile) }}</p>
                 </div>
             @endforeach
         </div>

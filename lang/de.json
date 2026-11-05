@@ -8848,8 +8848,6 @@
     "Counted per game, everyone plays the same games, so :tieBreaks follow from the points and split no tie. Head-to-head does.": "Bei Punkten je Partie spielen alle gleich viele Partien, daher folgen :tieBreaks aus den Punkten und trennen keinen Gleichstand. Der direkte Vergleich schon.",
     "Custom points: you set the points for a win and a draw.": "Eigene Punkte: Du legst die Punkte für Sieg und Remis fest.",
     "Each time is one more pairing with the same opponent. With the games per pairing below that makes :against games against each opponent and :games games for everyone.": "Jedes Mal ist eine weitere Begegnung mit demselben Gegner. Mit den Partien je Paarung unten sind das :against Partien gegen jeden Gegner und :games Partien für jeden.",
-    "Every game runs on the league with its clock; the result comes from the board, nobody reports it.": "Jede Partie läuft hier mit Uhr; das Ergebnis kommt vom Brett, niemand muss es melden.",
-    "Every game starts on the league by itself and ends on the board; nobody reports a result. Leave the field empty for the league default. A change while the tournament runs applies to games paired from then on.": "Jede Partie startet hier von selbst und endet auf dem Brett; niemand meldet ein Ergebnis. Lass das Feld leer für den Liga-Standard. Eine Änderung während des Turniers gilt für Partien, die ab dann gepaart werden.",
     "Everyone plays :fewer or :rounds pairings of :per games each, so :fewerGames or :games games. With an odd number, one player per round gets a free win (bye).": "Alle spielen :fewer oder :rounds Begegnungen mit je :per Partien, also :fewerGames oder :games Partien. Bei ungerader Zahl bekommt pro Runde ein Spieler einen kampflosen Sieg (Freilos).",
     "Everyone plays :games games: :pairings pairings of :per games each, :against against each opponent.": "Alle spielen :games Partien: :pairings Begegnungen mit je :per Partien, :against gegen jeden Gegner.",
     "Everyone plays :rounds pairings of :per games each, so :games games.": "Alle spielen :rounds Begegnungen mit je :per Partien, also :games Partien.",
@@ -8873,6 +8871,9 @@
     "The directors enter every result: no deadline of the league applies.": "Die Turnierleitung trägt jedes Ergebnis ein: Es gilt keine Frist der Liga.",
     "Used when two have the same points, in this order.": "Gilt bei Punktgleichheit, in dieser Reihenfolge.",
     "Where the games are played": "Wo gespielt wird",
-    "Every game is played on the league server; its result comes from the board.": "Jede Partie wird auf dem Liga-Server gespielt; das Ergebnis kommt vom Brett.",
-    "Small groups up to about 8, or correspondence games, where all games run at the same time.": "Kleine Gruppen bis etwa 8, oder Fernpartien, wo alle Partien gleichzeitig laufen."
+    "Small groups up to about 8, or correspondence games, where all games run at the same time.": "Kleine Gruppen bis etwa 8, oder Fernpartien, wo alle Partien gleichzeitig laufen.",
+    "Every game runs here on the league; its result comes from the game itself, nobody reports it.": "Jede Partie läuft hier in der Liga; das Ergebnis kommt aus dem Spiel selbst, niemand muss es melden.",
+    "Every game starts on the league by itself; its result comes from the game itself, nobody reports it. Leave the field empty for the league default. A change while the tournament runs applies to games paired from then on.": "Jede Partie startet hier von selbst; das Ergebnis kommt aus dem Spiel selbst, niemand meldet es. Lass das Feld leer für den Liga-Standard. Eine Änderung während des Turniers gilt für Partien, die ab dann gepaart werden.",
+    "Every match runs here on the league on its own turn clock: no deadline of the tournament applies.": "Jedes Match läuft hier in der Liga mit seiner eigenen Zuguhr: Es gilt keine Frist des Turniers.",
+    "every game is played on the league server; its result comes from the game itself": "jede Partie wird auf dem Liga-Server gespielt; das Ergebnis kommt aus dem Spiel selbst"
 }

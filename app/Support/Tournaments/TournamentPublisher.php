@@ -480,9 +480,9 @@ final class TournamentPublisher
             ? 'Clan lineups are seeded by their rating at registration close; the mix teams of the solo draw follow in draw order.'
             : 'Players are seeded by their rating at registration close; equal ratings by who signed up first.'));
         $lines[] = match (true) {
+            // A game the league server plays: nobody reports its result (DerCaddy, 2026-11-04; GameProfile::playedOnLeague()).
+            $profile->playedOnLeague($tournament->isDirectorMode()) => 'Every game is played on the league server; its result comes from the game itself.',
             $tournament->isDirectorMode() => 'Results are entered by the tournament directors.',
-            // Chess and the board games are played on the league server: nobody reports their result (DerCaddy, 2026-11-04).
-            $profile->isChess() || $profile->isBoard() => 'Every game is played on the league server; its result comes from the board.',
             default => 'Players report results and the other side accepts them.',
         };
         $lines[] = match (true) {

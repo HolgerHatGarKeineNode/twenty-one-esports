@@ -166,6 +166,17 @@ final readonly class GameProfile
     }
 
     /**
+     * The league's server plays the match and its result comes from the game itself, so nobody reports it: chess and
+     * the board games in players mode (in director mode they are played at real boards and TournamentMatchMaker starts
+     * no game), Proof of Pong and Hyperbitcoinization in either mode (TournamentMatchMaker starts them before it reads
+     * the mode). The one rule the tournament form, the tournament page and the published rules read.
+     */
+    public function playedOnLeague(bool $directorMode = false): bool
+    {
+        return $this->isPong() || $this->isHyper() || (! $directorMode && ($this->isChess() || $this->isBoard()));
+    }
+
+    /**
      * A board game whose pairings play two legs with the colours swapped (Blockli, TournamentRunner::playsTwoLegs()), in
      * every time control, whatever its best-of here says. Asks the game registry for a board game only, so a chess or
      * series profile plans without it.
