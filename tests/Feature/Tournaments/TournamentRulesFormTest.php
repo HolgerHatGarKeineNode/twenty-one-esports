@@ -315,3 +315,32 @@ test('before the draw another time control of the same game keeps the format and
     $page = Livewire::actingAs(rulesFormAdmin())->test('pages::admin.tournament-edit', ['tournament' => $tournament])->call('pickGame', 'blitz');
     expect($page->get('selected'))->toBeNull()->and($page->get('options')['iterations'])->toBe(1);
 });
+
+test('the recommendation ranks by the games everyone plays: a Blockli round robin of one game per pairing gives fewer games than a Swiss of two', function () {
+    $profile = GameProfile::for('blockli', 'blitz');
+    $evaluation = (new Estimator)->evaluate(6, $profile, FormatOptions::fromArray(['legs' => 1], $profile), null, 180);
+
+    // Round robin: 5 pairings of one game, 5 games. Swiss: 3 pairings of two games, 6 games. By matches the round robin led.
+    expect($evaluation->row(TournamentFormat::RoundRobin)->guaranteedGames())->toBe(5)
+        ->and($evaluation->row(TournamentFormat::Swiss)->guaranteedGames())->toBe(6)
+        ->and($evaluation->recommended)->toBe(TournamentFormat::Swiss);
+});
+
+test('custom points in a round robin are set in the form and saved with "Save changes" only', function () {
+    $tournament = rulesFormBlockli(TournamentFormat::RoundRobin, ['rankBy' => 'custom']);
+
+    $page = Livewire::actingAs(rulesFormAdmin())->test('pages::admin.tournament-edit', ['tournament' => $tournament])
+        ->assertSeeHtml('data-test="custom-points"')
+        ->assertSeeHtml('wire:model.live.debounce.500ms="options.pointsWin"')->assertSeeHtml('wire:model.live.debounce.500ms="options.pointsTie"')
+        ->set('options.pointsWin', '3')->set('options.pointsTie', '1');
+
+    expect($tournament->refresh()->formatOptions()->pointsWin)->toBe(1.0);
+
+    $page->call('save')->assertSet('error', '');
+    $options = $tournament->refresh()->formatOptions();
+    expect([$options->rankBy, $options->pointsWin, $options->pointsTie])->toBe(['custom', 3.0, 1.0]);
+
+    // Ranked by points, the block is gone.
+    Livewire::actingAs(rulesFormAdmin())->test('pages::admin.tournament-edit', ['tournament' => rulesFormBlockli(TournamentFormat::RoundRobin)])
+        ->assertDontSeeHtml('data-test="custom-points"');
+});
