@@ -26,6 +26,7 @@ use App\Support\Tournaments\TournamentReminders;
 use App\Support\Tournaments\TournamentRunner;
 use Carbon\CarbonImmutable;
 use Illuminate\Support\Facades\Queue;
+use Livewire\Livewire;
 use Tests\Support\TestSigner;
 
 /*
@@ -246,14 +247,16 @@ test('a cup round over days does not keep its players out of casual games', func
     expect(CupMatchNow::lockOf($a))->toBeNull();
 });
 
-test('on a tournament game page of the same tournament the waiting badge gives way on a phone, the chip leads there', function () {
-    // DerCaddy, 2026-11-04: watching a game of his tournament, the chip and the badge stood as two trophies for one tournament page.
+test('the waiting badge leaves a phone\'s header only where the page is the one it leads to, not on a game page of its tournament', function () {
+    // DerCaddy, 2026-11-04: on a game page of his tournament the chip and the badge stood as two trophies. The PR first hid the
+    // badge for its tournament page too; the review (2026-11-05) keeps it there: "your match" says the player is up, the chip
+    // does not. The header now passes only the current path (components/shell/header); the chip steps aside instead.
     [$cup, , $first] = findableCupMatch();
     $path = parse_url(route('tournaments.show', $cup), PHP_URL_PATH);
 
-    $badge = fn (array $covered): string => \Livewire\Livewire::actingAs($first)->test('cup-match', ['variant' => 'badge', 'covered' => $covered])->html();
+    $badge = fn (array $covered): string => Livewire::actingAs($first)->test('cup-match', ['variant' => 'badge', 'covered' => $covered])->html();
 
-    expect($badge([$path, '/board/1']))->toContain('data-test="cup-badge" data-state="waiting"')->toContain('max-lg:hidden')
-        ->and($badge(['/tournaments/another-cup', '/board/1']))->toContain('data-test="cup-badge" data-state="waiting"')->not->toContain('max-lg:hidden')
+    expect($badge(['/games/1']))->toContain('data-test="cup-badge" data-state="waiting"')->not->toContain('max-lg:hidden')
+        ->and($badge([$path]))->toContain('data-test="cup-badge" data-state="waiting"')->toContain('max-lg:hidden')
         ->and($badge([]))->not->toContain('max-lg:hidden');
 });

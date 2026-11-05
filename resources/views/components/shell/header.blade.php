@@ -32,11 +32,11 @@
     $searchTerm = request()->routeIs('search') ? (string) request()->string('q') : '';
     $searchLabel = __('Search players, clans or match #');
     $allGames = trans_choice('All :count game|All :count games', count($games));
-    // A tournament game's page (its game-banner, rendered before the header) and where its chip leads: this page and the tournament page.
+    // A tournament game's page (its game-banner, rendered before the header): the chip below, and the page the cup badge may stand for.
     $tournamentBanner = request()->attributes->get('tournament-banner');
-    // Paths, not URLs: route() writes the app URL, the request its own host.
-    $bannerLeadsTo = $tournamentBanner ? array_values(array_unique(array_filter([request()->path(), parse_url($tournamentBanner['url'] ?? '', PHP_URL_PATH)]))) : [];
-    $bannerLeadsTo = array_map(fn (string $path): string => '/'.ltrim($path, '/'), $bannerLeadsTo);
+    // The path, not the URL: route() writes the app URL, the request its own host. Only this page: a badge for the tournament page
+    // ("your match", waiting) says the player is up, which the chip does not, so it stays (PR #20 review, 2026-11-05).
+    $bannerLeadsTo = $tournamentBanner ? ['/'.ltrim(request()->path(), '/')] : [];
 @endphp
 
 {{--
@@ -143,9 +143,9 @@
             </a>
 
             {{-- An open cup match on every page (CupMatchNow; user, 2026-10-03): pulsing while the game is live. On a phone it
-                 steps aside on a tournament game's page when it leads where the page or its chip already leads (this game, or the
-                 tournament page as "your match"): two trophies for one way crowded the row (DerCaddy, 2026-11-04). A match of yours
-                 elsewhere (live, a lobby, another tournament) keeps it. --}}
+                 steps aside only on the page it leads to, the own game, where the header's chip stands for it (DerCaddy,
+                 2026-11-04). Anywhere else it stays, "your match" on a game page of its own tournament too: it says the player
+                 is up, the chip does not (review of PR #20, 2026-11-05). --}}
             <livewire:cup-match variant="badge" :covered="$bannerLeadsTo" />
 
             <livewire:notification-bell />
