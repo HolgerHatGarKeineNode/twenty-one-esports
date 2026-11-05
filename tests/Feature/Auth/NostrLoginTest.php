@@ -38,6 +38,26 @@ test('a signed login event creates a session for the pubkey', function () {
     $this->assertAuthenticatedAs($user);
 });
 
+test('a new account keeps the language its owner read: the browser\'s, when they never chose one', function () {
+    $this->withHeader('Accept-Language', 'de-DE,de;q=0.9,en;q=0.8')
+        ->postJson(route('auth.nostr.login'), ['event' => (new TestSigner)->loginEvent(issueChallenge())])
+        ->assertOk();
+
+    expect(User::query()->sole()->locale)->toBe('de');
+});
+
+test('an account keeps its language when its owner logs in from a browser that asks for another', function () {
+    $signer = new TestSigner;
+    $user = User::factory()->withPubkey($signer->pubkey)->create(['locale' => 'en']);
+
+    $this->withHeader('Accept-Language', 'de-DE,de;q=0.9')
+        ->postJson(route('auth.nostr.login'), ['event' => $signer->loginEvent(issueChallenge())])
+        ->assertOk();
+
+    expect($user->fresh()->locale)->toBe('en');
+    $this->get(route('home'))->assertSee('<html lang="en"', false);
+});
+
 test('a guest is sent to the login page and back to the page they wanted', function () {
     $this->get(route('gaming.edit'))->assertRedirect(route('login'));
 
