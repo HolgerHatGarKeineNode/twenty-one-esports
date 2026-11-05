@@ -797,7 +797,10 @@ test('on a phone the header chip stays in its box beside the search, and the cup
             // The rightmost edge anything of the chip paints to, clipped by its pill or not.
             const ink = pill ? Math.round(Math.max(...[...pill.querySelectorAll('*')].map((el) => el.getBoundingClientRect().right).concat(pill.getBoundingClientRect().right))) : null;
             return {
-                pill: box(pill), ink, clipped: !!pill && getComputedStyle(pill).overflow !== 'visible', roundWhole: !!round && round.checkVisibility() && round.scrollWidth <= round.clientWidth,
+                pill: box(pill), ink, clipped: !!pill && getComputedStyle(pill).overflow !== 'visible',
+                // Never cut: the round is shown whole inside the pill's padding, or not at all (PR #20 review: "R…" says nothing).
+                roundCut: !!pill && pill.checkVisibility() && round.checkVisibility() && (round.scrollWidth > round.clientWidth || round.getBoundingClientRect().right > pill.getBoundingClientRect().right - parseFloat(getComputedStyle(pill).paddingRight) + 0.5),
+                roundShown: !!round && round.checkVisibility(),
                 search: box(document.querySelector('.shell-header [aria-controls=mobile-search]')), badge: box(document.querySelector('[data-test=cup-badge]')),
                 rowFits: row.scrollWidth <= row.clientWidth, overflow: document.documentElement.scrollWidth - document.documentElement.clientWidth,
                 live: [...document.querySelectorAll('.shell-header [data-test=live-badge]')].some((el) => el.checkVisibility()),
@@ -818,23 +821,24 @@ test('on a phone the header chip stays in its box beside the search, and the cup
     };
     $own = $read($first, $first);
     $watching = $read($second, $first);
-    fwrite(STDERR, PHP_EOL."chip and badge {$width}x{$height} ".json_encode(compact('own', 'watching')).PHP_EOL);
 
-    // On the own game the badge would lead here: the chip stands for it, and the round is whole.
+    // On the own game the badge would lead here: the chip stands for it, and its round is whole or not shown, never cut.
     expect($own['badge'])->toBeNull('the badge gives way on the own game')
-        ->and($own['pill']['right'])->toBeLessThanOrEqual($own['search']['left'])
+        ->and($own['pill'])->not->toBeNull('the chip stands for the badge');
+    expect($own['pill']['right'])->toBeLessThanOrEqual($own['search']['left'])
         ->and($own['ink'])->toBeLessThanOrEqual($own['search']['left'], 'nothing of the chip over the search')
-        ->and($own['pill'])->not->toBeNull('the chip stands for the badge')
-        ->and($own['roundWhole'] || $width < ($onAir ? 412 : 360))->toBeTrue('the round whole: from 360, on air from 412 (DerCaddy\'s phone)')
+        ->and($own['roundCut'])->toBeFalse('the round whole or not shown, never cut')
+        ->and($own['roundShown'] || $onAir)->toBeTrue('off air the round is shown')
         ->and($own['rowFits'])->toBeTrue()
         ->and($own['overflow'])->toBeLessThanOrEqual(0)
         ->and($own['errors'])->toBe([]);
 
-    // Watching another game, the own live game is elsewhere: the badge stays, and the chip keeps to its box (cut, never over the search).
-    // On air under about 400 px not even its trophy fits beside the badge: it steps aside rather than push the row past the screen.
+    // Watching another game, the own live game is elsewhere: the badge stays, and the chip keeps to its box. Where its round does not
+    // fit beside the badge (on air, or under 390 px) it steps aside rather than stand as a second bare trophy or push the row past the screen.
     expect($watching['badge'])->not->toBeNull('the way to the own board stays')
-        ->and($watching['pill'] === null ? ($onAir && $width < 400) : $watching['pill']['right'] <= $watching['search']['left'])->toBeTrue('the chip beside the search, or aside on a narrow phone on air')
-        ->and($watching['pill'] === null || $watching['clipped'])->toBeTrue('whatever does not fit is cut inside the chip')
+        ->and($watching['pill'] === null ? ($onAir || $width < 390) : $watching['pill']['right'] <= $watching['search']['left'])->toBeTrue('the chip beside the search, or aside where its round does not fit')
+        ->and($watching['pill'] === null || $watching['roundShown'])->toBeTrue('never a bare trophy beside the badge\'s trophy')
+        ->and($watching['roundCut'])->toBeFalse('the round whole, never cut')
         ->and($watching['rowFits'])->toBeTrue('the header row keeps one line')
         ->and($watching['overflow'])->toBeLessThanOrEqual(0)
         ->and($watching['errors'])->toBe([]);
