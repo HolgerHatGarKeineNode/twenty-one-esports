@@ -302,10 +302,16 @@ test('the chooser computes the honest range with its times and warnings, and the
         ->and($page->instance()->expectedTimes()['warnings'])->toBe(['too-long']);
 
     // The page: the range under the chosen format. Its default game is chess, played here: the first-move deadline only, no
-    // round clock of reported series (DerCaddy, 2026-11-04; a series game's round clock: tests/Browser).
+    // round clock of reported series (DerCaddy, 2026-11-04).
     $this->actingAs($admin)->get(route('admin.tournaments.create'))->assertOk()
         ->assertSeeHtml('data-test="duration-range"')
         ->assertSeeText('Start 19:00 · expected end about')
         ->assertSeeHtml('data-test="deadline-checkin_minutes"')
         ->assertDontSeeHtml('data-test="round-clock"')->assertDontSeeHtml('data-test="deadline-noshow_minutes"');
+
+    // A series game online on one day: the round clock as the deadlines' defaults.
+    $this->actingAs($admin)->get(route('admin.tournaments.edit', Tournament::factory()->rocketLeague()->create()))->assertOk()
+        ->assertSeeHtml('data-test="round-clock"')
+        ->assertSeeText('Online on one day, every deadline runs from the start of the match')
+        ->assertSeeHtml('data-test="deadline-noshow_minutes"');
 });
