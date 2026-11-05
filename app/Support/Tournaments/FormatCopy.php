@@ -12,6 +12,15 @@ use App\Enums\TournamentFormat;
 final class FormatCopy
 {
     /**
+     * A sentence with a duration at its end: a German duration ends in its abbreviation's period ("3 Std.", "39 Min."), so
+     * the sentence's own period doubled it ("of your 3 Std.."). Two periods after a letter become one.
+     */
+    public static function sentence(string $text): string
+    {
+        return (string) preg_replace('/(?<=\pL)\.\.(?!\.)/u', '.', $text);
+    }
+
+    /**
      * @return array{short: string, how: string, good: string, pros: list<string>, cons: list<string>}
      */
     public static function for(TournamentFormat $format, ?string $groupStage = null): array

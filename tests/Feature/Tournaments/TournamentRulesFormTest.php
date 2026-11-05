@@ -10,6 +10,7 @@ use App\Models\User;
 use App\Support\Tournaments\Engine\MatchResult;
 use App\Support\Tournaments\Engine\Standings;
 use App\Support\Tournaments\Estimator;
+use App\Support\Tournaments\FormatCopy;
 use App\Support\Tournaments\FormatOptions;
 use App\Support\Tournaments\GameProfile;
 use App\Support\Tournaments\TournamentPublisher;
@@ -120,7 +121,7 @@ test('a game played here asks where it is played and shows its first-move deadli
     $admin = rulesFormAdmin();
 
     Livewire::actingAs($admin)->test('pages::admin.tournament-edit', ['tournament' => rulesFormBlockli(TournamentFormat::RoundRobin)])
-        ->assertSee('Where the games are played')->assertDontSee('Who enters results')
+        ->assertSee('Who records results')->assertDontSee('Who enters results')
         ->assertSee('Here in the browser')->assertSee('At real boards, directors enter')
         ->assertSeeHtml('data-test="deadline-checkin_minutes"')
         ->assertDontSeeHtml('data-test="deadline-noshow_minutes"')->assertDontSeeHtml('data-test="deadline-report_hours"')->assertDontSeeHtml('data-test="deadline-response_minutes"')
@@ -259,14 +260,14 @@ test('Proof of Pong and Hyperbitcoinization are played on the league: the form a
 
     // Pong starts every match with the first-move window (TournamentMatchMaker::startPongMatch()), in either results mode.
     Livewire::actingAs($admin)->test('pages::admin.tournament-edit', ['tournament' => $draft('proof-of-pong', 'live', TournamentFormat::SingleElimination)])
-        ->assertSee('Where the games are played')->assertSee('Here in the browser')->assertDontSee('Players report results')
+        ->assertSee('Who records results')->assertSee('Here in the browser')->assertDontSee('Players report results')
         ->assertSeeHtml('data-test="deadline-checkin_minutes"')->assertDontSeeHtml('data-test="deadline-noshow_minutes"')
         ->call('pickResultsMode', 'director')
         ->assertSeeHtml('data-test="deadline-checkin_minutes"')->assertDontSee('At real boards, directors enter');
 
     // Hyperbitcoinization runs on its own turn clock: no deadline of the tournament reaches it.
     Livewire::actingAs($admin)->test('pages::admin.tournament-edit', ['tournament' => $draft('hyperbitcoinization', 'live', TournamentFormat::FreeForAll)])
-        ->assertSee('Where the games are played')
+        ->assertSee('Who records results')
         ->assertSeeHtml('data-test="tournament-deadlines-none"')
         ->assertDontSeeHtml('data-test="deadline-checkin_minutes"')->assertDontSeeHtml('data-test="deadline-noshow_minutes"');
 
@@ -361,4 +362,33 @@ test('counted per game, the game tie-breaks split a tie only after a double no-s
         ->assertSee('Games won and Game difference follow from the points and split a tie only after a double no-show. Head-to-head does.')
         ->assertDontSee('split no tie')
         ->assertDontSeeHtml('class="text-loss" role="status" data-test="tie-break-same"');
+});
+
+test('the form words counts, correspondence and durations for the game chosen: one game, correspondence games, one period', function () {
+    $admin = rulesFormAdmin();
+
+    // One game against each opponent reads singular (it read "1 games").
+    Livewire::actingAs($admin)->test('pages::admin.tournament-edit', ['tournament' => rulesFormBlockli(TournamentFormat::RoundRobin, ['legs' => 1], players: 2)])
+        ->assertSee('that makes 1 game against each opponent and 1 game for everyone')->assertDontSee('1 games');
+
+    // A Blockli correspondence tournament speaks of correspondence games; chess keeps daily chess.
+    Livewire::actingAs($admin)->test('pages::admin.tournament-edit', ['tournament' => rulesFormBlockli(TournamentFormat::RoundRobin, mode: 'correspondence')])
+        ->assertSee('In correspondence all of them start at once: 3 games running at the same time for each player.')
+        ->assertSee('A correspondence game is planned at 30 days')
+        ->assertSee('Correspondence games are always played online')
+        ->assertDontSee('daily chess')->assertDontSee('Daily chess');
+    Livewire::actingAs($admin)->test('pages::admin.tournament-edit', ['tournament' => Tournament::factory()->create(['mode' => 'correspondence', 'format' => TournamentFormat::RoundRobin, 'capacity' => 4, 'time_window' => 90])])
+        ->assertSee('In daily chess all of them start at once')->assertSee('Daily chess is always played online');
+
+    // The results heading names who records them, in the deadlines' heading style.
+    Livewire::actingAs($admin)->test('pages::admin.tournament-edit', ['tournament' => rulesFormBlockli(TournamentFormat::RoundRobin)])
+        ->assertSeeHtml('<h2 id="res-h" class="rv-h3">Who records results</h2>');
+
+    // A German duration ends in a period: the sentence does not add a second one.
+    app()->setLocale('de');
+    expect(FormatCopy::sentence('von deinen 3 Std..'))->toBe('von deinen 3 Std.')
+        ->and(FormatCopy::sentence('Warte…'))->toBe('Warte…');
+    Livewire::actingAs($admin)->test('pages::admin.tournament-edit', ['tournament' => rulesFormBlockli(TournamentFormat::RoundRobin, ['iterations' => 3])])
+        ->assertSeeHtml('data-test="duration-range-detail"')
+        ->assertDontSee('Std..')->assertDontSee('Min..');
 });

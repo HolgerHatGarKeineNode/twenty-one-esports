@@ -116,6 +116,7 @@
                 ? __('Ends with a final; every team plays at least :games, and it takes about :duration of your :window.', ['games' => $gamesCount($recommended->guaranteedGames()), 'duration' => $duration($recommended->total()), 'window' => $duration($window)])
                 : __('Ends with a final; every player plays at least :games, and it takes about :duration of your :window.', ['games' => $gamesCount($recommended->guaranteedGames()), 'duration' => $duration($recommended->total()), 'window' => $duration($window)]))
             : __('Everyone gets at least :games, and it takes about :duration of your :window.', ['games' => $gamesCount($recommended->guaranteedGames()), 'duration' => $duration($recommended->total()), 'window' => $duration($window)]))));
+    $recommendedWhy = FormatCopy::sentence($recommendedWhy);
 
     $chosen = $evaluation->row($format);
     $structure = $chosen->structure;
@@ -135,8 +136,10 @@
             : ($odd ? __('Everyone plays :fewer or :rounds games. With an odd number, one player per round gets a free win (bye).', ['fewer' => $rounds - 1, 'rounds' => $rounds]) : __('Everyone plays :rounds games.', ['rounds' => $rounds])),
         TournamentFormat::RoundRobin => ($perMatch > 1
                 ? __('Everyone plays :games games: :pairings pairings of :per games each, :against against each opponent.', ['games' => $chosen->guaranteedGames(), 'pairings' => $structure?->guaranteed ?? 0, 'per' => $perMatch, 'against' => $options->iterations * $perMatch])
-                : __('Everyone plays :games games.', ['games' => $structure?->guaranteed ?? 0]))
-            .($chosen->atOnce > 0 ? ' '.__('In daily chess all of them start at once: :count games running at the same time for each player.', ['count' => $chosen->atOnce]) : ''),
+                : trans_choice('Everyone plays :games game.|Everyone plays :games games.', $structure?->guaranteed ?? 0, ['games' => $structure?->guaranteed ?? 0]))
+            .($chosen->atOnce > 0 ? ' '.($profile->isChess()
+                ? __('In daily chess all of them start at once: :count games running at the same time for each player.', ['count' => $chosen->atOnce])
+                : __('In correspondence all of them start at once: :count games running at the same time for each player.', ['count' => $chosen->atOnce])) : ''),
         TournamentFormat::TwoStage => trans_choice('Everyone plays at least :games game in the groups. The top :advance of each group play on.|Everyone plays at least :games games in the groups. The top :advance of each group play on.', $chosen->guaranteedGames(), ['games' => $chosen->guaranteedGames(), 'advance' => $structure?->advance ?? 0]),
         TournamentFormat::SingleElimination => __('The weakest may play only 1 match. The winner plays :rounds.', ['rounds' => $structure?->max ?? 0]).(($structure?->byes ?? 0) > 0 ? ' '.__(':byes of :n skip round 1 (bye), because :n does not fill the bracket.', ['byes' => $structure?->byes, 'n' => $n]) : ''),
         TournamentFormat::FreeForAll => __('Everyone plays exactly 1 match: their lobby\'s game.'),
@@ -173,7 +176,9 @@
     $assumption = $lobbyFormat
         ? __('One lobby game runs to its Time Limit of :limit, plus :setup min to fill the lobby. All lobbies play at the same time.', ['limit' => \App\Support\Pages\RulesPage::minutes(Lobbies::timeLimit($profile->game)), 'setup' => Lobbies::plannedMinutes($profile->game) - Lobbies::timeLimit($profile->game)])
         : ($daily
-        ? __('A daily chess game is planned at :days days, 1 move a day. :break day between rounds.', ['days' => $profile->gameLength + 0, 'break' => $profile->break + 0])
+        ? ($profile->isChess()
+            ? __('A daily chess game is planned at :days days, 1 move a day. :break day between rounds.', ['days' => $profile->gameLength + 0, 'break' => $profile->break + 0])
+            : __('A correspondence game is planned at :days days, 1 move a day. :break day between rounds.', ['days' => $profile->gameLength + 0, 'break' => $profile->break + 0]))
         : ($series
             ? __('One :game game: about :minutes min, plus :setup min to set up each series. A Bo:best series is planned at :slot min (all games played). :break min between rounds.', ['game' => GameNames::game($profile->game), 'minutes' => $profile->gameLength + 0, 'setup' => $profile->setup + 0, 'best' => $options->bestOf, 'slot' => $profile->slot($options->bestOf) + 0, 'break' => $profile->break + 0])
             : __('One :mode game: up to :minutes min, including pairing. :break min between rounds.', ['mode' => GameNames::mode($profile->game, $profile->mode), 'minutes' => $profile->gameLength + 0, 'break' => $profile->break + 0])));
@@ -241,7 +246,7 @@
             <span class="flex flex-col gap-1.5">
                 <span id="where-l" class="text-xs text-ink-2">{{ __('Where') }}</span>
                 @if ($daily)
-                    <span class="text-xs leading-normal text-ink-3">{{ __('Daily chess is always played online, so boards don’t limit it.') }}</span>
+                    <span class="text-xs leading-normal text-ink-3">{{ $profile->isChess() ? __('Daily chess is always played online, so boards don’t limit it.') : __('Correspondence games are always played online, so boards don’t limit them.') }}</span>
                 @else
                     <x-tournaments.segmented labelledby="where-l" method="pickWhere" :current="$site ? 'site' : 'online'" :options="[['online', __('Online')], ['site', __('On site')]]" />
                     @if ($site)
@@ -481,7 +486,7 @@
                             {{-- A two-leg game (Blockli) multiplies this with its games per pairing below: say what comes out (DerCaddy, 2026-11-04:
                                  "spielt man dann 6 Spiele gegen einen Gegner?"). --}}
                             <span class="{{ $help }}" data-test="iterations-help">{{ \App\Support\Tournaments\TournamentRunner::tableChoosesLegs($profile->game, $format, $options)
-                                ? __('Each time is one more pairing with the same opponent. With the games per pairing below that makes :against games against each opponent and :games games for everyone.', ['against' => $options->iterations * $perMatch, 'games' => $chosen->guaranteedGames()])
+                                ? __('Each time is one more pairing with the same opponent. With the games per pairing below that makes :against against each opponent and :games for everyone.', ['against' => $gamesCount($options->iterations * $perMatch), 'games' => $gamesCount($chosen->guaranteedGames())])
                                 : __('Twice means a return match; in chess with the other color.') }}</span>
                         </div>
                         <div class="{{ $optionRow }}">
@@ -717,7 +722,8 @@
         {{-- A game the league server plays (GameProfile::playedOnLeague()) has no results to enter in players mode: the choice is
              where the games are played (DerCaddy, 2026-11-04). --}}
         @php($playedHere = $profile->playedOnLeague())
-        <h2 id="res-h" class="m-0 font-display text-lg font-bold">{{ $playedHere ? __('Where the games are played') : __('Who enters results') }}</h2>
+        {{-- Titled by who records the results: "Where" is asked above already (Online / On site). The siblings' heading style. --}}
+        <h2 id="res-h" class="rv-h3">{{ $playedHere ? __('Who records results') : __('Who enters results') }}</h2>
         {{-- One card per row up to 1400 px of the admin column: side by side at 1280 the director's sentence ran 5 lines in 405 px,
              at 1024 7 lines in 277 (E1). --}}
         {{--
