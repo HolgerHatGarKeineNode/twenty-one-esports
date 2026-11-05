@@ -2,7 +2,9 @@
 
 use App\Enums\TournamentFormat;
 use App\Enums\TournamentStatus;
+use App\Models\Admin;
 use App\Models\Tournament;
+use App\Models\User;
 use Livewire\Features\SupportTesting\Testable;
 use Livewire\Livewire;
 use Tests\Support\TestSigner;
@@ -77,3 +79,23 @@ test('a full refresh still renders the islands with the page', function () {
         ->and($page->effects['html'])->toContain('data-test="bracket"')
         ->and($page->effects['html'])->toContain('FRAGMENT:type=island|name=board');
 });
+
+/*
+ * The tournament form (order E, 2026-11-05) stands in four chooser islands (game, the time you have, players and place,
+ * format) plus the summary and the deadlines: a change in any of them renders all six, so a game picked updates the
+ * systems, a player count the recommendation, a results mode the deadlines.
+ */
+test('a chooser change on the tournament form renders all six of its islands', function (string $method, array $arguments) {
+    $admin = User::factory()->create();
+    Admin::query()->create(['pubkey' => $admin->pubkey]);
+    $form = Livewire::actingAs($admin)->test('pages::admin.tournament-create');
+
+    $form->call($method, ...$arguments)->assertOk();
+    preg_match_all('/FRAGMENT:type=island\|name=([\w-]+)/', implode('', $form->effects['islandFragments'] ?? []), $names);
+
+    expect(array_values(array_unique($names[1])))->toEqualCanonicalizing(['chooser-game', 'chooser-window', 'chooser-place', 'chooser', 'summary', 'deadlines']);
+})->with([
+    'a game picked' => ['pickGame', ['rapid']],
+    'one player more' => ['stepPlayers', [1]],
+    'directors enter results' => ['pickResultsMode', ['director']],
+]);
