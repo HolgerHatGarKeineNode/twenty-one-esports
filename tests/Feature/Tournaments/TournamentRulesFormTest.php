@@ -292,9 +292,9 @@ test('the published rules and the tournament page say a chess or board game is p
         ->and(rulesFormPublished($directed))->toContain('Results are entered by the tournament directors.')->not->toContain('Every game is played on the league server');
 
     $this->get(route('tournaments.show', $chess))->assertOk()
-        ->assertSee('every game is played on the league server; its result comes from the game itself')->assertDontSee('Players report results');
+        ->assertSee('Played on the league, nobody reports')->assertDontSee('Players report results');
     $this->get(route('tournaments.show', $directed))->assertOk()
-        ->assertSee('Tournament directors enter results')->assertDontSee('every game is played on the league server');
+        ->assertSee('Tournament directors enter results')->assertDontSee('Played on the league, nobody reports');
 });
 
 test('before the draw another time control of the same game keeps the format and its options; the players are told of the switch', function () {
