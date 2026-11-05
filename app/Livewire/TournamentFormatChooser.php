@@ -191,10 +191,19 @@ abstract class TournamentFormatChooser extends Component
             $start = CarbonImmutable::createFromFormat('Y-m-d\TH:i', $typed, $this->chooserZone()) ?: null;
         }
 
+        // With the night pause on, an end past its start moves past the pause, to the next day (DerCaddy, 2026-11-04: "Ende
+        // gegen 1:24" right above "at 24:00 the night pause holds the tournament"). About: a game under way at the pause
+        // start still finishes, so the real end can come a little earlier.
+        $window = $start !== null && $this->nightPauseApplies() && $this->nightPauseOn()
+            ? NightPause::window($this->nightPauseTimes()['until'], $this->nightPauseTimes()['resume'])
+            : null;
+        $end = fn (float $minutes): ?CarbonImmutable => $start === null ? null
+            : ($window !== null ? CarbonImmutable::instance(NightPause::addSeconds($window, $start, (int) ceil($minutes) * 60)) : $start->addMinutes((int) ceil($minutes)));
+
         return [
             'start' => $start,
-            'typical' => $start?->addMinutes((int) ceil($range->typical)),
-            'latest' => $start?->addMinutes((int) ceil($range->latest)),
+            'typical' => $end($range->typical),
+            'latest' => $end($range->latest),
             // Midnight in the league's zone (Berlin), whatever zone the organizer types in.
             'warnings' => $start !== null ? $range->warnings($start, $profile, (string) config('esports.preseason.display_timezone'))
                 : ($range->latest > DurationRange::LATEST_MAX_MINUTES ? ['too-long'] : []),
@@ -560,6 +569,16 @@ abstract class TournamentFormatChooser extends Component
     public function drawDeciderApplies(): bool
     {
         return TournamentRunner::canDecideByStanding($this->profile()->game);
+    }
+
+    /**
+     * Whether the chosen format ever plays a decider: only a knockout does (Swiss and round robin take a 1:1 as a draw,
+     * TournamentRunner::stageAllowsDraw()), so only then the rule shows (DerCaddy, 2026-11-04: shown under a round robin,
+     * where it never applies). The stored rule stays the game's either way: it is kept for a later switch to a knockout.
+     */
+    public function drawDeciderMatters(): bool
+    {
+        return $this->drawDeciderApplies() && in_array($this->format, [TournamentFormat::SingleElimination, TournamentFormat::DoubleElimination, TournamentFormat::TwoStage], true);
     }
 
     /**

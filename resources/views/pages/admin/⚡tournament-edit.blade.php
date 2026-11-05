@@ -278,11 +278,12 @@ new #[Layout('layouts::app', ['section' => 'admin'])] class extends TournamentFo
             }
         }
 
-        // The time control of the switch section, in every state until the end (user, 2026-10-11); only when it was
-        // touched, so a game picked in the chooser keeps its own mode.
+        // The time control of the switch section, from the draw until the end (user, 2026-10-11); only when it was
+        // touched. Before the draw the chooser's game and mode are the one place (DerCaddy, 2026-11-04: two choices of
+        // the time control on one page, and the lower one won over what the plan above was made for).
         $modeSwitch = app(TournamentModeSwitch::class);
 
-        if ($modeSwitch->canSwitch($tournament) && $this->mode !== $tournament->mode && in_array($this->mode, $modeSwitch->modes($tournament), true)) {
+        if (! $beforeDraw && $modeSwitch->canSwitch($tournament) && $this->mode !== $tournament->mode && in_array($this->mode, $modeSwitch->modes($tournament), true)) {
             $changes['mode'] = $this->mode;
         }
 
@@ -540,10 +541,11 @@ new #[Layout('layouts::app', ['section' => 'admin'])] class extends TournamentFo
 
         {{-- Its own island, rendered with every chooser change (game, mode, where) and with the page (errors). --}}
         @php($modeSwitch = app(\App\Support\Tournaments\TournamentModeSwitch::class))
-        @if ($modeSwitch->canSwitch($tournament))
+        @if (! $beforeDraw && $modeSwitch->canSwitch($tournament))
             {{-- The time control (Blockli: blitz, rapid, correspondence), switchable in every state until the end (user, 2026-10-11): the board's
                  section with its choice list. Deferred like every field here, saved by "Save changes" (user, 2026-10-12: nothing in the form
-                 saves on its own); running, it reaches the games not started yet. --}}
+                 saves on its own); running, it reaches the games not started yet. Before the draw the chooser above picks the time control
+                 with the game (DerCaddy, 2026-11-04: "Macht das Sinn?" — two choices, and the lower one silently won), so it shows from the draw on. --}}
             <section aria-labelledby="mode-switch-h" class="rv-sec" data-test="tournament-mode-switch">
                 <span class="flex flex-col gap-1">
                     <h2 id="mode-switch-h" class="rv-h3">{{ __('Time control') }}</h2>

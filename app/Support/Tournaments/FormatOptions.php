@@ -73,6 +73,16 @@ final readonly class FormatOptions
         return $this->legs === 2 && $this->legPoints;
     }
 
+    /**
+     * The games one match of a round-robin table plays: one when the organizer chose one game per pairing
+     * ({@see $legs}, only a two-leg game can), else the games of a match ({@see $bestOf}; Blockli 2). The estimator plans
+     * and counts a table with it (DerCaddy, 2026-11-04: one game per pairing was still planned at two).
+     */
+    public function tableBestOf(): int
+    {
+        return $this->legs === 1 ? 1 : $this->bestOf;
+    }
+
     /** What options stored before the choice of legs existed mean ({@see $legs}): two games per pairing. */
     private const STORED_LEGS = 2;
 

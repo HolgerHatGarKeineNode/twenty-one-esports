@@ -14,7 +14,19 @@
     $expected = $this->expectedTimes();
     $rangeProfile = $this->profile();
     $range = $this->durationRange;
-    $clockTime = fn (\Carbon\CarbonImmutable $moment): string => $moment->setTimezone($this->chooserZone())->format('G:i');
+    // With the night pause on, a time on a later day than the start says so: the pause moves an end to the next evening
+    // (DerCaddy, 2026-11-04). Played through, an end after midnight keeps its plain time and the midnight warning.
+    $pauseMoves = $this->nightPauseApplies() && $this->nightPauseOn();
+    $clockTime = function (\Carbon\CarbonImmutable $moment) use ($expected, $pauseMoves): string {
+        $local = $moment->setTimezone($this->chooserZone());
+        $days = $expected['start'] === null || ! $pauseMoves ? 0 : (int) $expected['start']->setTimezone($this->chooserZone())->startOfDay()->diffInDays($local->startOfDay());
+
+        return match (true) {
+            $days <= 0 => $local->format('G:i'),
+            $days === 1 => __(':time the next day', ['time' => $local->format('G:i')]),
+            default => __(':time in :count days', ['time' => $local->format('G:i'), 'count' => $days]),
+        };
+    };
     $measured = $expected === null ? null : RoundTimes::median($rangeProfile->game, $rangeProfile->mode);
 @endphp
 
@@ -50,7 +62,7 @@
         @endforeach
         @if ($measured !== null)
             <span class="text-xs leading-normal text-ink-2" data-test="duration-measured">{{ trans_choice('Measured: a round took :measured in the median of :count finished round (assumed :assumed).|Measured: a round took :measured in the median of :count finished rounds (assumed :assumed).', $measured['rounds'], [
-                'measured' => Estimator::format($measured['minutes'], $rangeProfile), 'assumed' => Estimator::format($rangeProfile->onlineSlot($this->evaluation->options->bestOf), $rangeProfile),
+                'measured' => Estimator::format($measured['minutes'], $rangeProfile), 'assumed' => Estimator::format($rangeProfile->onlineSlot(Estimator::isTable($this->format, $this->evaluation->options) ? $this->evaluation->options->tableBestOf() : $this->evaluation->options->bestOf), $rangeProfile),
             ]) }}</span>
         @endif
     </div>
