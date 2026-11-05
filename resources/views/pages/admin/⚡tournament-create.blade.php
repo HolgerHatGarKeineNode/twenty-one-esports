@@ -162,26 +162,28 @@ new #[Title('New tournament')] #[Layout('layouts::app', ['section' => 'admin'])]
 
 <x-admin.page active="tournaments" :title="__('New tournament')" :lead="__('Draft. Players see it once you publish.')" :crumbs="[[__('Tournaments'), route('admin.tournaments')]]" data-test="tournament-create">
 
-    <section aria-label="{{ __('Basics') }}" class="grid grid-cols-2 gap-3 rounded border border-hairline bg-card p-4 lg:grid-cols-[minmax(0,2fr)_minmax(0,1fr)_minmax(0,1fr)] lg:gap-4 lg:px-6 lg:py-5">
-        <label class="col-span-2 flex flex-col gap-1.5 text-xs text-ink-2 lg:col-span-1">
-            {{ __('Name') }}
-            <input wire:model="name" maxlength="80" placeholder="{{ __('Blitz Night Munich') }}" data-test="tournament-name"
-                   class="rv-in">
-            @error('name')<span class="text-loss" role="alert">{{ $message }}</span>@enderror
-        </label>
-        <x-berlin-datetime-input model="startsAt" :label="__('Starts')" :value="$startsAt" test="create-starts-at" class="col-span-2" />
-        <label class="col-span-2 flex flex-col gap-1.5 text-xs text-ink-2 lg:col-span-3">
-            {{ __('Description (optional)') }}
-            <textarea wire:model="description" maxlength="1000" rows="3" data-test="tournament-description"
-                      placeholder="{{ __('What makes this one worth playing: the stakes, the stream, the after-party.') }}"
-                      class="min-h-24 w-full rounded-md border border-edge bg-ground px-3 py-2.5 text-[13px] leading-normal text-ink"></textarea>
-            <span class="text-ink-3">{{ __('Shown at the top of the tournament page and published with it on Nostr. Up to 1000 characters.') }}</span>
-            @error('description')<span class="text-loss" role="alert">{{ $message }}</span>@enderror
-        </label>
+    {{-- Order E (jury 2026-11-05, owner "E bauen"; canvas AdminTournamentForm): game, time, players and place first, then the
+         format and its rules, the deadlines, name and description, the pot; the create button in a bar that stays in view. --}}
+    @island(name: 'chooser-game')
+        @include('pages.admin.partials.tournament-chooser', ['part' => 'game'])
+    @endisland
+
+    <section aria-labelledby="when-h" class="rv-sec" data-test="tournament-when">
+        <h2 id="when-h" class="rv-h3">{{ __('When') }}</h2>
+        <div class="grid items-start gap-4 @min-[900px]/admin:grid-cols-[minmax(0,1fr)_minmax(0,1.3fr)] @min-[900px]/admin:gap-6">
+            <x-berlin-datetime-input model="startsAt" :label="__('Starts')" :value="$startsAt" test="create-starts-at" />
+            @island(name: 'chooser-window')
+                @include('pages.admin.partials.tournament-chooser', ['part' => 'window'])
+            @endisland
+        </div>
     </section>
 
+    @island(name: 'chooser-place')
+        @include('pages.admin.partials.tournament-chooser', ['part' => 'place'])
+    @endisland
+
     @island(name: 'chooser')
-        @include('pages.admin.partials.tournament-chooser')
+        @include('pages.admin.partials.tournament-chooser', ['part' => 'format'])
     @endisland
 
     {{-- Its own island, rendered with every chooser change (game, mode, where) and with the page (errors). --}}
@@ -189,24 +191,48 @@ new #[Title('New tournament')] #[Layout('layouts::app', ['section' => 'admin'])]
         @include('pages.admin.partials.tournament-deadlines')
     @endisland
 
+    <section aria-labelledby="name-h" class="rv-sec" data-test="tournament-naming">
+        <h2 id="name-h" class="rv-h3">{{ __('Name and description') }}</h2>
+        <label class="flex max-w-[560px] flex-col gap-1.5 text-xs text-ink-2">
+            {{ __('Name') }}
+            <input wire:model="name" maxlength="80" placeholder="{{ __('Blitz Night Munich') }}" data-test="tournament-name"
+                   class="rv-in">
+            <x-admin.field-error for="name" />
+        </label>
+        <label class="flex flex-col gap-1.5 text-xs text-ink-2">
+            {{ __('Description (optional)') }}
+            <textarea wire:model="description" maxlength="1000" rows="3" data-test="tournament-description"
+                      placeholder="{{ __('What makes this one worth playing: the stakes, the stream, the after-party.') }}"
+                      class="min-h-24 w-full rounded-md border border-edge bg-ground px-3 py-2.5 text-[13px] leading-normal text-ink"></textarea>
+            <span class="text-ink-3">{{ __('Shown at the top of the tournament page and published with it on Nostr. Up to 1000 characters.') }}</span>
+            <x-admin.field-error for="description" />
+        </label>
+    </section>
+
     @include('pages.admin.partials.prize-pot', ['potTournament' => null, 'potSave' => null])
 
-    {{-- Summary and button in one row from 900 px of the admin column (the admin page's container); "Turnier anlegen" wrapped at 1024 and 1280 (E1). --}}
-    <div class="flex flex-col gap-3 rounded border border-hairline bg-card px-4 py-4 lg:px-6 lg:py-5 @min-[900px]/admin:flex-row @min-[900px]/admin:items-center @min-[900px]/admin:gap-4">
+    {{-- The save bar (order E): sticks to the bottom of the screen until the form ends, so creating is always one click away. The page
+         keeps a scrolled-to error clear of it (app.css, `--save-bar-h`), stands above the phone's tab bar (`--tabbar-h`) and scrolls a field focused under it into view
+         (focusin below; a field already half on screen is not scrolled by the browser itself): WCAG 2.4.11. Under 640 px of the admin
+         column the summary (one line of 13 px) over the button, a row from 640 with the summary's second line (a row at 390 squeezed
+         "Two Stage, 12 Spieler, …" into 159 px, 3 lines). --}}
+    <div class="sticky bottom-[var(--tabbar-h)] z-20 flex flex-col items-stretch gap-2 rounded border border-edge bg-card px-4 py-3 shadow-[0_-12px_24px_var(--color-ground)] lg:px-6 lg:py-4 @min-[640px]/admin:flex-row @min-[640px]/admin:items-center @min-[640px]/admin:gap-3 @min-[900px]/admin:gap-4" data-save-bar x-data
+             x-on:focusin.window="const r = $event.target.getBoundingClientRect(), bar = $el.getBoundingClientRect();
+                 if (! $el.contains($event.target) && r.bottom > bar.top && r.top < bar.bottom) window.scrollBy({ top: r.bottom - bar.top + 16 })">
         @island(name: 'summary')
             @php
                 $summaryRow = $this->evaluation->row($this->format);
                 $summaryProfile = $this->profile();
             @endphp
-            <span class="flex flex-col gap-1" data-test="tournament-summary">
-                <b class="text-sm">{{ $this->format->label() }}@if ($this->format === \App\Enums\TournamentFormat::Swiss), {{ trans_choice(':count round|:count rounds', $this->evaluation->swissRounds) }}@endif,
+            <span class="flex min-w-0 flex-col gap-1" data-test="tournament-summary">
+                <b class="text-[13px] @min-[640px]/admin:text-sm">{{ $this->format->label() }}@if ($this->format === \App\Enums\TournamentFormat::Swiss), {{ trans_choice(':count round|:count rounds', $this->evaluation->swissRounds) }}@endif,
                     {{ $summaryProfile->entersTeams() ? trans_choice(':count team|:count teams', $this->count()) : trans_choice(':count player|:count players', $this->count()) }},
                     {{ __('about :duration', ['duration' => \App\Support\Tournaments\Estimator::format($summaryRow->total(), $summaryProfile)]) }}</b>
-                <span class="text-xs text-ink-2">{{ __('Next: sign-up and sponsors on the tournament page. The format can change until sign-up closes.') }}</span>
+                <span class="hidden text-xs text-ink-2 @min-[640px]/admin:block">{{ __('Next: sign-up and sponsors on the tournament page. The format can change until sign-up closes.') }}</span>
             </span>
         @endisland
         <span class="hidden grow @min-[900px]/admin:block"></span>
         @error('format')<span class="text-[13px] text-loss" role="alert">{{ $message }}</span>@enderror
-        <x-button wire:click="create" class="shrink-0 self-start whitespace-nowrap @min-[900px]/admin:self-auto" data-test="tournament-create-button">{{ __('Create tournament') }}</x-button>
+        <x-button wire:click="create" class="shrink-0 justify-center whitespace-nowrap @min-[640px]/admin:ml-auto" data-test="tournament-create-button">{{ __('Create tournament') }}</x-button>
     </div>
 </x-admin.page>

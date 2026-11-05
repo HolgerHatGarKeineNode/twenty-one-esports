@@ -8878,5 +8878,8 @@
     "A correspondence game is planned at :days days, 1 move a day. :break day between rounds.": "Eine Fernpartie ist mit :days Tagen geplant, 1 Zug pro Tag. :break Tag zwischen den Runden.",
     "Correspondence games are always played online, so boards don’t limit them.": "Fernpartien werden immer online gespielt, Bretter begrenzen sie also nicht.",
     "Who records results": "Wer Ergebnisse festhält",
-    "Everyone plays :games game.|Everyone plays :games games.": "Alle spielen :games Partie.|Alle spielen :games Partien."
+    "Everyone plays :games game.|Everyone plays :games games.": "Alle spielen :games Partie.|Alle spielen :games Partien.",
+    "Players and place": "Spieler und Ort",
+    "Teams and place": "Teams und Ort",
+    "Name and description": "Name und Beschreibung"
 }

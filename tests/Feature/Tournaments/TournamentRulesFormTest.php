@@ -380,9 +380,10 @@ test('the form words counts, correspondence and durations for the game chosen: o
     Livewire::actingAs($admin)->test('pages::admin.tournament-edit', ['tournament' => Tournament::factory()->create(['mode' => 'correspondence', 'format' => TournamentFormat::RoundRobin, 'capacity' => 4, 'time_window' => 90])])
         ->assertSee('In daily chess all of them start at once')->assertSee('Daily chess is always played online');
 
-    // The results heading names who records them, in the deadlines' heading style.
+    // The results question names who records them, right under "Where" in the players-and-place section (order E, 2026-11-05):
+    // a question inside that section, in the options' label style.
     Livewire::actingAs($admin)->test('pages::admin.tournament-edit', ['tournament' => rulesFormBlockli(TournamentFormat::RoundRobin)])
-        ->assertSeeHtml('<h2 id="res-h" class="rv-h3">Who records results</h2>');
+        ->assertSeeHtmlInOrder(['data-test="chooser-place"', 'id="where-l"', '<h3 id="res-h" class="m-0 text-[13px] font-bold">Who records results</h3>']);
 
     // A German duration ends in a period: the sentence does not add a second one.
     app()->setLocale('de');

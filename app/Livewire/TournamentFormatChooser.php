@@ -37,6 +37,9 @@ use Livewire\Component;
  */
 abstract class TournamentFormatChooser extends Component
 {
+    /** The islands the chooser stands in on the create and edit pages (pages.admin.partials.tournament-chooser, `$part`). */
+    public const CHOOSER_ISLANDS = ['chooser-game', 'chooser-window', 'chooser-place', 'chooser'];
+
     /** The profile key of the game and mode ({@see TournamentGames}). */
     public string $game = 'blitz';
 
@@ -698,11 +701,19 @@ abstract class TournamentFormatChooser extends Component
     /**
      * The chooser changed: the summary island shows the new choice too, and
      * the deadlines island the deadlines of the game now picked (a lobby game
-     * has none of a series, P10).
+     * has none of a series, P10). The chooser itself stands in four islands
+     * in the order an organizer decides (order E, jury 2026-11-05): a change
+     * in one of them reaches the others (a game picked changes the systems,
+     * a player count the recommendation, a results mode the night pause).
      */
     protected function changed(): void
     {
         unset($this->evaluation, $this->format, $this->durationRange);
+
+        foreach (self::CHOOSER_ISLANDS as $island) {
+            $this->renderIsland($island);
+        }
+
         $this->renderIsland('summary');
         $this->renderIsland('deadlines');
     }
