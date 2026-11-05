@@ -62,7 +62,7 @@
         @endforeach
         @if ($measured !== null)
             <span class="text-xs leading-normal text-ink-2" data-test="duration-measured">{{ trans_choice('Measured: a round took :measured in the median of :count finished round (assumed :assumed).|Measured: a round took :measured in the median of :count finished rounds (assumed :assumed).', $measured['rounds'], [
-                'measured' => Estimator::format($measured['minutes'], $rangeProfile), 'assumed' => Estimator::format($rangeProfile->onlineSlot(Estimator::isTable($this->format, $this->evaluation->options) ? $this->evaluation->options->tableBestOf() : $this->evaluation->options->bestOf), $rangeProfile),
+                'measured' => Estimator::format($measured['minutes'], $rangeProfile), 'assumed' => Estimator::format($rangeProfile->onlineSlot(Estimator::matchGames($rangeProfile, $this->evaluation->options, Estimator::isTable($this->format, $this->evaluation->options))), $rangeProfile),
             ]) }}</span>
         @endif
     </div>

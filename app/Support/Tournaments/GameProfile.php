@@ -166,6 +166,16 @@ final readonly class GameProfile
     }
 
     /**
+     * A board game whose pairings play two legs with the colours swapped (Blockli, TournamentRunner::playsTwoLegs()), in
+     * every time control, whatever its best-of here says. Asks the game registry for a board game only, so a chess or
+     * series profile plans without it.
+     */
+    public function playsTwoLegs(): bool
+    {
+        return $this->isBoard() && TournamentRunner::playsTwoLegs($this->game);
+    }
+
+    /**
      * A match is a Hyperbitcoinization match (plan "Hyperbitcoinization", P5): a free-for-all table of 3 to 6
      * players or a 1v1, started and decided on the league's server (HyperMatches), never a two-sided game record.
      */

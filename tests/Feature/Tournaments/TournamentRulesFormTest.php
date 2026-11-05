@@ -176,3 +176,36 @@ test('with the night pause on, an end past midnight moves to the next day; switc
         ->and($typical->format('Y-m-d'))->toBe(CarbonImmutable::parse($day)->addDay()->format('Y-m-d'))
         ->and($typical->format('G:i'))->toBe(CarbonImmutable::parse($day.' 18:00', 'Europe/Berlin')->addMinutes((int) ceil($range->typical) - $played)->format('G:i'));
 });
+
+test('a Blockli correspondence table counts and plans the two games of every pairing, as every Blockli mode plays them', function () {
+    $profile = GameProfile::for('blockli', 'correspondence');
+    $estimator = new Estimator;
+    $row = fn (int $players, array $options, TournamentFormat $format = TournamentFormat::RoundRobin) => $estimator->evaluate($players, $profile, FormatOptions::fromArray($options, $profile), null, 365)->row($format);
+
+    // Four players, everyone three times: 9 pairings of two legs, 18 games, 6 against each. It counted one game a pairing.
+    $four = $row(4, ['iterations' => 3]);
+    expect($four->perMatch)->toBe(2)->and($four->guaranteedGames())->toBe(18)
+        ->and($row(10, ['iterations' => 3])->guaranteedGames())->toBe(54);
+
+    // All pairings start at once, but the legs follow each other: 30 days a leg, 60 a pairing (it planned 30).
+    expect($row(4, [])->total())->toBe(60.0)
+        ->and($row(4, ['legs' => 1])->total())->toBe(30.0)
+        ->and($row(4, ['legs' => 1])->guaranteedGames())->toBe(3)
+        ->and($row(4, ['legs' => 1], TournamentFormat::SingleElimination)->perMatch)->toBe(2);
+
+    Livewire::actingAs(rulesFormAdmin())->test('pages::admin.tournament-edit', ['tournament' => rulesFormBlockli(TournamentFormat::RoundRobin, ['iterations' => 3], mode: 'correspondence')])
+        ->assertSee('Everyone plays 18 games: 9 pairings of 2 games each, 6 against each opponent.')
+        ->assertDontSee('Everyone plays 9 games.');
+});
+
+test('a two-stage Blockli tournament of one game per group pairing counts the knockout at two games a match', function () {
+    $profile = GameProfile::for('blockli', 'blitz');
+    $row = (new Estimator)->evaluate(8, $profile, FormatOptions::fromArray(['legs' => 1], $profile), null, 600)->row(TournamentFormat::TwoStage);
+
+    // Two groups of four: 3 group games at one game a pairing, then up to 2 knockout matches of two games: 3 to 7.
+    expect($row->guaranteedGames())->toBe(3)->and($row->maxGames())->toBe(7);
+
+    $tournament = rulesFormBlockli(TournamentFormat::TwoStage, ['legs' => 1], players: 8);
+    Livewire::actingAs(rulesFormAdmin())->test('pages::admin.tournament-edit', ['tournament' => $tournament])
+        ->assertSeeHtml('3 to 7');
+});

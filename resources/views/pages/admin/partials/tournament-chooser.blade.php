@@ -153,7 +153,7 @@
     $facts = [
         [__('Rounds'), $roundsText],
         [__('Matches'), $format === TournamentFormat::DoubleElimination && $options->grandFinal === 'reset' ? __(':fewer or :matches', ['fewer' => ($structure?->matches ?? 1) - 1, 'matches' => $structure?->matches ?? 0]) : (string) ($structure?->matches ?? 0)],
-        [$teams ? __('Games per team') : __('Games per player'), $structure !== null && $structure->min === $structure->max ? (string) $chosen->games($structure->min) : __(':min to :max', ['min' => $chosen->games($structure?->min ?? 0), 'max' => $chosen->games($structure?->max ?? 0)])],
+        [$teams ? __('Games per team') : __('Games per player'), $structure !== null && $structure->min === $structure->max ? (string) $chosen->games($structure->min) : __(':min to :max', ['min' => $chosen->games($structure?->min ?? 0), 'max' => $chosen->maxGames()])],
         [__('Guaranteed'), (string) $chosen->guaranteedGames()],
     ];
 

@@ -15,7 +15,9 @@ use App\Enums\TournamentFormat;
  * `perMatch` is the games one match plays where a match is games, not a
  * series: Blockli plays each pairing twice (or once in a table, by choice),
  * so its counts read in games, not matches (DerCaddy, 2026-11-04: "mindestens
- * 9 Spiele" for 6 games against every opponent, 18 in all).
+ * 9 Spiele" for 6 games against every opponent, 18 in all). `knockoutPerMatch`
+ * is the games of a knockout match, which differs from `perMatch` only in the
+ * knockout after round-robin groups of one game per pairing.
  */
 final readonly class EstimateRow
 {
@@ -29,6 +31,7 @@ final readonly class EstimateRow
         public int $atOnce = 0,
         public bool $heavy = false,
         public int $perMatch = 1,
+        public int $knockoutPerMatch = 1,
     ) {}
 
     /** The matches everyone plays at least. */
@@ -47,6 +50,23 @@ final readonly class EstimateRow
     public function games(int $matches): int
     {
         return $matches * $this->perMatch;
+    }
+
+    /**
+     * The games one player plays at most. Two-stage after round-robin groups counts the groups at `perMatch` and the
+     * knockout at `knockoutPerMatch` (a Blockli knockout plays two games a match whatever the groups play).
+     */
+    public function maxGames(): int
+    {
+        $max = $this->structure->max ?? 0;
+
+        if ($this->structure === null || $this->structure->groups === [] || $this->knockoutPerMatch === $this->perMatch) {
+            return $max * $this->perMatch;
+        }
+
+        $group = max($this->structure->groups) - 1;
+
+        return $group * $this->perMatch + ($max - $group) * $this->knockoutPerMatch;
     }
 
     public function total(): float
