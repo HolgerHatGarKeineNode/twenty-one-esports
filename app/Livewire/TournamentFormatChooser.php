@@ -20,6 +20,7 @@ use App\Support\Tournaments\TournamentGames;
 use App\Support\Tournaments\TournamentRunner;
 use Carbon\CarbonImmutable;
 use Illuminate\Database\Eloquent\Collection;
+use Illuminate\Validation\ValidationException;
 use Livewire\Attributes\Computed;
 use Livewire\Component;
 
@@ -696,6 +697,25 @@ abstract class TournamentFormatChooser extends Component
             'night_pause_until' => $time($this->nightPauseUntil),
             'night_pause_resume' => $time($this->nightPauseResume),
         ];
+    }
+
+    /**
+     * Validates the page's save (create or save changes). A failed one tells the browser so: the first field message on the
+     * page (x-admin.field-error) brings itself into view and focuses its field on every failed save, also the second with
+     * the same unfixed error, whose message the morph keeps in place without running its Alpine init again.
+     *
+     * @param  array<string, mixed>  $rules
+     * @return array<string, mixed>
+     */
+    protected function validateForm(array $rules): array
+    {
+        try {
+            return $this->validate($rules);
+        } catch (ValidationException $exception) {
+            $this->dispatch('admin-form-invalid');
+
+            throw $exception;
+        }
     }
 
     /**

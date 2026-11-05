@@ -205,6 +205,30 @@ test('the chooser recommends live at 375 and 1440 px, through island requests on
         ->and(collect($control['livewire'])->where('html', true)->count())->toBe(1)
         ->and($control['errors'])->toBe([]);
 
+    // Order E puts the name far below the top and the button in a sticky bar: every failed create, the second with the same
+    // unfixed error too, brings the message into view above the bar and focuses the name (x-admin.field-error).
+    $errorInView = <<<'JS'
+        () => {
+            const alert = document.querySelector('[data-field-error=name]'), bar = document.querySelector('[data-save-bar]').getBoundingClientRect();
+            const r = alert?.getBoundingClientRect();
+            return { top: r ? Math.round(r.top) : null, bottom: r ? Math.round(r.bottom) : null, barTop: Math.round(bar.top),
+                inView: !!r && r.top >= 0 && r.bottom <= bar.top, focused: document.activeElement?.dataset.test ?? null };
+        }
+        JS;
+    $page->evaluate('() => new Promise((r) => setTimeout(r, 700))');
+    $firstError = $page->evaluate($errorInView);
+    $page->evaluate('() => { document.activeElement?.blur(); window.scrollTo(0, 0); }');
+    $page->locator('[data-test=tournament-create-button]')->click();
+    BrowserWait::until($page, '() => window.scrollY > 0', 8_000);
+    $page->evaluate('() => new Promise((r) => setTimeout(r, 700))');
+    $secondError = $page->evaluate($errorInView);
+    $measured['name error'] = [$firstError, $secondError];
+
+    expect($firstError['inView'])->toBeTrue(json_encode($firstError))
+        ->and($firstError['focused'])->toBe('tournament-name')
+        ->and($secondError['inView'])->toBeTrue(json_encode($secondError))
+        ->and($secondError['focused'])->toBe('tournament-name');
+
     // With a name the same button creates the draft and lands on its page, the banner with the notice and the publish form on top.
     $page->locator('[data-test=tournament-name]')->fill('Rocket Night Munich');
     $page->locator('[data-test=tournament-create-button]')->click();

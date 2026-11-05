@@ -67,7 +67,7 @@ new #[Title('New tournament')] #[Layout('layouts::app', ['section' => 'admin'])]
     {
         Gate::authorize('create-tournaments');
 
-        $this->validate([
+        $this->validateForm([
             'name' => ['required', 'string', 'max:80'],
             'description' => ['nullable', 'string', 'max:1000'],
             'startsAt' => ['required', LeagueTime::rule()],

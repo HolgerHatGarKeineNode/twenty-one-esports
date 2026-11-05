@@ -225,7 +225,7 @@ new #[Layout('layouts::app', ['section' => 'admin'])] class extends TournamentFo
         $tournament = $this->tournament;
         $beforeDraw = $tournament->isBeforeDraw();
 
-        $this->validate([
+        $this->validateForm([
             'name' => ['required', 'string', 'max:80'],
             'description' => ['nullable', 'string', 'max:1000'],
             'startsAt' => ['required', LeagueTime::rule($tournament->starts_at)],
