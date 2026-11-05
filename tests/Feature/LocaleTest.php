@@ -45,6 +45,9 @@ test('a guest who never chose reads the first language of their browser the leag
 })->with([
     'a German phone' => ['de-DE,de;q=0.9,en-US;q=0.8,en;q=0.7', 'de', 'Hauptnavigation'],
     'German after French' => ['fr-FR,fr;q=0.9,de;q=0.8,en;q=0.5', 'de', 'Hauptnavigation'],
+    'only a region, as Safari sends it' => ['de-DE', 'de', 'Hauptnavigation'],
+    'a region in capitals' => ['DE-at', 'de', 'Hauptnavigation'],
+    'an underscore' => ['de_DE', 'de', 'Hauptnavigation'],
     'English before German' => ['en-GB,en;q=0.9,de;q=0.8', 'en', 'Main navigation'],
     'only French' => ['fr-FR,fr;q=0.9', 'en', 'Main navigation'],
     'German refused with q=0' => ['de;q=0,fr', 'en', 'Main navigation'],

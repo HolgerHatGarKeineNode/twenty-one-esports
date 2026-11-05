@@ -4,11 +4,13 @@ namespace App\Support\Seo;
 
 /**
  * The language versions of one page (P14). The interface language is a
- * session choice, so every page has one URL; `?lang=<locale>` picks a
- * language for that request (App\Http\Middleware\SetLocale) and makes each
- * version addressable for search engines:
+ * session choice, then the account's, then the browser's, so every page has
+ * one URL; `?lang=<locale>` picks a language for that request
+ * (App\Http\Middleware\SetLocale) and makes each version addressable for
+ * search engines:
  *
- *   /clans             English, and the x-default a visitor without a choice gets
+ *   /clans             the x-default: English for a visitor whose browser asks
+ *                      for no language the league speaks (a crawler), else theirs
  *   /clans?lang=de     German
  *
  * The canonical URL of a page is the version of the language it was rendered
