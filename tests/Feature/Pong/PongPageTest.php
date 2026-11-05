@@ -126,7 +126,6 @@ test('every text of the pages is a key the scripts use and has a German translat
         ->and(array_values(array_unique([...$keys, ...$live])))->toEqualCanonicalizing(PongController::LIVE_TEXTS)
         ->and(array_values(array_diff([...PongController::LIVE_TEXTS, ...$blade, ...$names, ...array_keys(PongCast::texts())], array_keys($german))))->toBe([]);
 
-    app()->setLocale('de');
-    $this->actingAs(User::factory()->create())->get(route('pong.bot', ['level' => 1]))->assertOk()
+    $this->actingAs(User::factory()->create(['locale' => 'de']))->get(route('pong.bot', ['level' => 1]))->assertOk()
         ->assertSee('Nocoiner-Onkel')->assertSee('Spiel starten')->assertSee('Ballwechsel :n');
 });

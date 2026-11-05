@@ -636,6 +636,9 @@ new #[Layout('layouts::app', ['section' => 'tournaments', 'realtime' => true, 's
                 $tmnfWeek => __('every finish timed by our own TMNF server; a time far below the author time waits for an admin'),
                 $week => __('every ranked run replayed by the league; only a run that reaches the same time counts'),
                 $score => __('values read from the game, or submitted with a proof link an admin checks'),
+                // As the form and the published rules say it (GameProfile::playedOnLeague()), as a fact chip's value line (R2): the
+                // sentence ran 2 lines, 59 px, beside the chat rail at 1280 (TournamentNowTest).
+                $profile->playedOnLeague($tournament->isDirectorMode()) => __('Played on the league, nobody reports'),
                 default => $tournament->results_mode->label(),
             }, 'results'],
             ['ladder', __('Rated'), match (true) {

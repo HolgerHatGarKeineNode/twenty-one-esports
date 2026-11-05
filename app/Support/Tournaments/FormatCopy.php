@@ -12,6 +12,15 @@ use App\Enums\TournamentFormat;
 final class FormatCopy
 {
     /**
+     * A sentence with a duration at its end: a German duration ends in its abbreviation's period ("3 Std.", "39 Min."), so
+     * the sentence's own period doubled it ("of your 3 Std.."). Two periods after a letter become one.
+     */
+    public static function sentence(string $text): string
+    {
+        return (string) preg_replace('/(?<=\pL)\.\.(?!\.)/u', '.', $text);
+    }
+
+    /**
      * @return array{short: string, how: string, good: string, pros: list<string>, cons: list<string>}
      */
     public static function for(TournamentFormat $format, ?string $groupStage = null): array
@@ -41,7 +50,7 @@ final class FormatCopy
             TournamentFormat::RoundRobin => [
                 'short' => 'Everyone plays everyone',
                 'how' => 'Everyone plays everyone. Most points wins.',
-                'good' => 'Small groups up to about 8, or daily chess, where all games run at the same time.',
+                'good' => 'Small groups up to about 8, or correspondence games, where all games run at the same time.',
                 'pros' => ['The fairest result: no lucky or unlucky draw.', 'Everyone plays the same number of games.'],
                 'cons' => ['Gets long fast: 12 players need 11 rounds.', 'Late games can no longer change the top of the table.'],
             ],

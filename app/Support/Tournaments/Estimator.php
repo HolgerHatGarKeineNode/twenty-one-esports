@@ -318,6 +318,37 @@ final class Estimator
         };
     }
 
+    /** Whether the format's first stage is a round-robin table: the round robin, or round-robin groups. */
+    public static function isTable(TournamentFormat $format, FormatOptions $options): bool
+    {
+        return $format === TournamentFormat::RoundRobin || ($format === TournamentFormat::TwoStage && $options->groupStage === 'round-robin');
+    }
+
+    /**
+     * The games one match plays, for counting games instead of matches: a game that is played game by game (not a
+     * series) plays {@see matchGames()} of them a match; a series game and the league's other games 1, their counts stay
+     * matches. Two-stage counts its groups, where the guaranteed games are.
+     */
+    public static function gamesPerMatch(TournamentFormat $format, GameProfile $profile, FormatOptions $options): int
+    {
+        return $profile->what === 'game' ? self::matchGames($profile, $options, self::isTable($format, $options)) : 1;
+    }
+
+    /**
+     * The games one match of a stage plays. A two-leg game (Blockli) plays two in every time control
+     * ({@see GameProfile::playsTwoLegs()}, whatever its profile's best-of: correspondence is planned at one), or one per
+     * pairing in a round-robin table when the organizer chose it ({@see FormatOptions::$legs}); any other game its
+     * best-of, the final's in a final.
+     */
+    public static function matchGames(GameProfile $profile, FormatOptions $options, bool $table, bool $final = false): int
+    {
+        if ($profile->playsTwoLegs()) {
+            return $table && $options->legs === 1 ? 1 : 2;
+        }
+
+        return max(1, $final ? $options->finalBestOf : $options->bestOf);
+    }
+
     /**
      * Duration in the game's unit. `$stations` null = online, no limit. In
      * daily chess, formats whose pairings don't depend on results (round
@@ -337,22 +368,34 @@ final class Estimator
             $slotOf = fn (int $bestOf): float => (float) $options->lobbyMinutes;
         }
 
-        $slot = $slotOf($options->bestOf);
-        $finalSlot = $slotOf($options->finalBestOf);
-        $rounds = array_map(fn (array $round): array => [...$round, 'merged' => 0], $structure->rounds);
+        // A two-leg game plays its legs one after the other (TournamentMatchMaker::needsBoardGame(): the next leg starts
+        // when one ends). A correspondence slot is one game whatever the best-of, so its legs add up here (a Blockli
+        // correspondence pairing was planned at one game of 30 days).
+        if ($profile->allAtOnce && $profile->playsTwoLegs()) {
+            $oneGame = $slotOf;
+            $slotOf = fn (int $games): float => $games * $oneGame(1);
+        }
 
-        if ($profile->allAtOnce && ($format === TournamentFormat::RoundRobin || ($format === TournamentFormat::TwoStage && $options->groupStage === 'round-robin'))) {
-            $depth = $format === TournamentFormat::RoundRobin ? count($rounds) : $structure->groupDepth;
-            $merged = ['m' => array_sum(array_column(array_slice($rounds, 0, $depth), 'm')), 'final' => false, 'ifNeeded' => false, 'merged' => $depth];
-            $rounds = [$merged, ...array_slice($rounds, $depth)];
+        $slot = $slotOf(self::matchGames($profile, $options, false));
+        $finalSlot = $slotOf(self::matchGames($profile, $options, false, true));
+        // A round-robin table plays the games per pairing the organizer chose ({@see matchGames()}; DerCaddy, 2026-11-04:
+        // one game per pairing was still planned at two).
+        $tableSlot = $slotOf(self::matchGames($profile, $options, true));
+        $rounds = array_map(fn (array $round): array => [...$round, 'merged' => 0], $structure->rounds);
+        $tableRounds = self::isTable($format, $options) ? ($format === TournamentFormat::RoundRobin ? count($rounds) : $structure->groupDepth) : 0;
+
+        if ($profile->allAtOnce && self::isTable($format, $options)) {
+            $merged = ['m' => array_sum(array_column(array_slice($rounds, 0, $tableRounds), 'm')), 'final' => false, 'ifNeeded' => false, 'merged' => $tableRounds];
+            $rounds = [$merged, ...array_slice($rounds, $tableRounds)];
+            $tableRounds = 1;
         }
 
         $blocks = [];
 
-        foreach ($rounds as $round) {
+        foreach ($rounds as $index => $round) {
             $waves = $stations !== null ? max(1, (int) ceil($round['m'] / $stations)) : 1;
             $blocks[] = [
-                't' => $waves * ($round['final'] ? $finalSlot : $slot),
+                't' => $waves * ($index < $tableRounds ? $tableSlot : ($round['final'] ? $finalSlot : $slot)),
                 'm' => $round['m'],
                 'waves' => $waves,
                 'final' => $round['final'],
@@ -465,7 +508,8 @@ final class Estimator
                 $atOnce = max($structure->groups) - 1;
             }
 
-            $rows[] = new EstimateRow($format, true, '', $structure, $duration, self::fit($duration->total, $window), $atOnce, $atOnce > self::AT_ONCE_MAX);
+            $rows[] = new EstimateRow($format, true, '', $structure, $duration, self::fit($duration->total, $window), $atOnce, $atOnce > self::AT_ONCE_MAX,
+                self::gamesPerMatch($format, $profile, $used), $profile->what === 'game' ? self::matchGames($profile, $used, false) : 1);
         }
 
         $enabled = array_values(array_filter($rows, fn (EstimateRow $row): bool => $row->enabled));
@@ -477,7 +521,7 @@ final class Estimator
         if ($fitting !== []) {
             usort($fitting, function (EstimateRow $a, EstimateRow $b) use ($finalFirst): int {
                 $final = (int) $b->format->hasFinal() <=> (int) $a->format->hasFinal();
-                $guaranteed = $b->guaranteed() <=> $a->guaranteed();
+                $guaranteed = $b->guaranteedGames() <=> $a->guaranteedGames();
 
                 return ($finalFirst ? ($final ?: $guaranteed) : ($guaranteed ?: $final)) ?: $a->total() <=> $b->total();
             });
@@ -486,7 +530,7 @@ final class Estimator
             $nothingFits = true;
             usort($enabled, fn (EstimateRow $a, EstimateRow $b): int => ((int) $a->heavy <=> (int) $b->heavy)
                 ?: ($a->total() <=> $b->total())
-                ?: ($b->guaranteed() <=> $a->guaranteed()));
+                ?: ($b->guaranteedGames() <=> $a->guaranteedGames()));
             $recommended = $enabled[0]->format;
         }
 

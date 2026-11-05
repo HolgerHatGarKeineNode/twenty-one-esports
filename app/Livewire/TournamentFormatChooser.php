@@ -13,12 +13,14 @@ use App\Support\Tournaments\Estimator;
 use App\Support\Tournaments\Evaluation;
 use App\Support\Tournaments\FormatOptions;
 use App\Support\Tournaments\GameProfile;
+use App\Support\Tournaments\Lobbies;
 use App\Support\Tournaments\NightPause;
 use App\Support\Tournaments\TournamentDeadlines;
 use App\Support\Tournaments\TournamentGames;
 use App\Support\Tournaments\TournamentRunner;
 use Carbon\CarbonImmutable;
 use Illuminate\Database\Eloquent\Collection;
+use Illuminate\Validation\ValidationException;
 use Livewire\Attributes\Computed;
 use Livewire\Component;
 
@@ -36,6 +38,9 @@ use Livewire\Component;
  */
 abstract class TournamentFormatChooser extends Component
 {
+    /** The islands the chooser stands in on the create and edit pages (pages.admin.partials.tournament-chooser, `$part`). */
+    public const CHOOSER_ISLANDS = ['chooser-game', 'chooser-window', 'chooser-place', 'chooser'];
+
     /** The profile key of the game and mode ({@see TournamentGames}). */
     public string $game = 'blitz';
 
@@ -191,10 +196,19 @@ abstract class TournamentFormatChooser extends Component
             $start = CarbonImmutable::createFromFormat('Y-m-d\TH:i', $typed, $this->chooserZone()) ?: null;
         }
 
+        // With the night pause on, an end past its start moves past the pause, to the next day (DerCaddy, 2026-11-04: "Ende
+        // gegen 1:24" right above "at 24:00 the night pause holds the tournament"). About: a game under way at the pause
+        // start still finishes, so the real end can come a little earlier.
+        $window = $start !== null && $this->nightPauseApplies() && $this->nightPauseOn()
+            ? NightPause::window($this->nightPauseTimes()['until'], $this->nightPauseTimes()['resume'])
+            : null;
+        $end = fn (float $minutes): ?CarbonImmutable => $start === null ? null
+            : ($window !== null ? CarbonImmutable::instance(NightPause::addSeconds($window, $start, (int) ceil($minutes) * 60)) : $start->addMinutes((int) ceil($minutes)));
+
         return [
             'start' => $start,
-            'typical' => $start?->addMinutes((int) ceil($range->typical)),
-            'latest' => $start?->addMinutes((int) ceil($range->latest)),
+            'typical' => $end($range->typical),
+            'latest' => $end($range->latest),
             // Midnight in the league's zone (Berlin), whatever zone the organizer types in.
             'warnings' => $start !== null ? $range->warnings($start, $profile, (string) config('esports.preseason.display_timezone'))
                 : ($range->latest > DurationRange::LATEST_MAX_MINUTES ? ['too-long'] : []),
@@ -240,11 +254,23 @@ abstract class TournamentFormatChooser extends Component
             return;
         }
 
+        // Another time control of the same game keeps the format and its options where they stay valid (PR #19 review: a
+        // Blockli blitz -> rapid switch before the draw reset "three times", one game per pairing and the ranking); the
+        // times are the mode's own, and the window only carries over in the same unit.
+        $before = $this->profile();
         $this->game = $key;
         $this->gameLength = $this->setup = $this->break = '';
-        $this->window = $this->profile()->isDaily() ? 90 : 180;
-        $this->options = FormatOptions::defaults($this->profile())->toArray();
-        $this->selected = null;
+        $sameGame = $this->profile()->game === $before->game;
+
+        if (! $sameGame || $this->profile()->unit !== $before->unit) {
+            $this->window = $this->profile()->isDaily() ? 90 : 180;
+        }
+
+        $this->options = ($sameGame ? FormatOptions::fromArray($this->options, $this->profile()) : FormatOptions::defaults($this->profile()))->toArray();
+
+        if (! $sameGame) {
+            $this->selected = null;
+        }
 
         if ($this->profile()->isDaily()) {
             $this->onSite = false;
@@ -495,6 +521,29 @@ abstract class TournamentFormatChooser extends Component
     }
 
     /**
+     * The deadline fields that reach the chosen game in the chosen results mode, as the league reads them: a lobby game
+     * none (its own report deadline), Hyperbitcoinization none (its turn clock), a game the league server starts its
+     * first move (chess and board games in players mode, Proof of Pong in either: TournamentDeadlines::checkinSeconds()),
+     * directors none (no game starts, nobody reports), a series its no-show, report and answer
+     * (TournamentDeadlines::forSeries()). The form shows, validates and stores these; any other is hidden and can never
+     * block the save (a series no-show of 9999 typed before switching to Blockli failed on a field nobody saw).
+     *
+     * @return list<key-of<self::DEADLINE_FIELDS>>
+     */
+    public function applicableDeadlines(): array
+    {
+        $profile = $this->profile();
+        $directors = $this->resultsMode === TournamentResultsMode::Director->value;
+
+        return match (true) {
+            Lobbies::isLobbyGame($profile->game), $profile->isHyper() => [],
+            $profile->playedOnLeague($directors) => ['checkinMinutes'],
+            $directors => [],
+            default => ['noshowMinutes', 'reportHours', 'responseMinutes'],
+        };
+    }
+
+    /**
      * The rules of the deadline fields: empty, or a whole number in range;
      * the night pause times empty or "HH:MM" ("24:00" for midnight), not equal.
      *
@@ -504,8 +553,8 @@ abstract class TournamentFormatChooser extends Component
     {
         $rules = [];
 
-        foreach (self::DEADLINE_FIELDS as $property => $column) {
-            [$min, $max] = TournamentDeadlines::BOUNDS[$column];
+        foreach ($this->applicableDeadlines() as $property) {
+            [$min, $max] = TournamentDeadlines::BOUNDS[self::DEADLINE_FIELDS[$property]];
             $rules[$property] = ['nullable', 'integer', "between:{$min},{$max}"];
         }
 
@@ -563,6 +612,16 @@ abstract class TournamentFormatChooser extends Component
     }
 
     /**
+     * Whether the chosen format ever plays a decider: only a knockout does (Swiss and round robin take a 1:1 as a draw,
+     * TournamentRunner::stageAllowsDraw()), so only then the rule shows (DerCaddy, 2026-11-04: shown under a round robin,
+     * where it never applies). The stored rule stays the game's either way: it is kept for a later switch to a knockout.
+     */
+    public function drawDeciderMatters(): bool
+    {
+        return $this->drawDeciderApplies() && in_array($this->format, [TournamentFormat::SingleElimination, TournamentFormat::DoubleElimination, TournamentFormat::TwoStage], true);
+    }
+
+    /**
      * Whether the rule may still change: it is part of the rules players sign up under, so like the prizes only in a
      * draft or while sign-up is open (PrizePool::canChangeSplit). The create page always may.
      */
@@ -614,14 +673,26 @@ abstract class TournamentFormatChooser extends Component
      */
     protected function chosenDeadlines(): array
     {
-        $value = fn (string $typed): ?int => trim($typed) === '' ? null : (int) $typed;
+        // A deadline that does not reach the game is not validated ({@see applicableDeadlines()}): kept while it is in range
+        // (a switch back finds it), else dropped.
+        $applicable = $this->applicableDeadlines();
+        $value = function (string $property) use ($applicable): ?int {
+            $typed = trim($this->{$property});
+            [$min, $max] = TournamentDeadlines::BOUNDS[self::DEADLINE_FIELDS[$property]];
+
+            return match (true) {
+                $typed === '' => null,
+                in_array($property, $applicable, true) => (int) $typed,
+                default => filter_var($typed, FILTER_VALIDATE_INT, ['options' => ['min_range' => $min, 'max_range' => $max]]) === false ? null : (int) $typed,
+            };
+        };
         $time = fn (string $typed): ?string => ($typed = trim($typed)) === '' ? null : ($typed === '24:00' ? '00:00' : $typed);
 
         return [
-            'checkin_minutes' => $value($this->checkinMinutes),
-            'noshow_minutes' => $value($this->noshowMinutes),
-            'report_hours' => $value($this->reportHours),
-            'response_minutes' => $value($this->responseMinutes),
+            'checkin_minutes' => $value('checkinMinutes'),
+            'noshow_minutes' => $value('noshowMinutes'),
+            'report_hours' => $value('reportHours'),
+            'response_minutes' => $value('responseMinutes'),
             'night_pause' => $this->nightPause === null || $this->nightPause === NightPause::defaults()['enabled'] ? null : $this->nightPause,
             'night_pause_until' => $time($this->nightPauseUntil),
             'night_pause_resume' => $time($this->nightPauseResume),
@@ -629,13 +700,40 @@ abstract class TournamentFormatChooser extends Component
     }
 
     /**
+     * Validates the page's save (create or save changes). A failed one tells the browser so: the first field message on the
+     * page (x-admin.field-error) brings itself into view and focuses its field on every failed save, also the second with
+     * the same unfixed error, whose message the morph keeps in place without running its Alpine init again.
+     *
+     * @param  array<string, mixed>  $rules
+     * @return array<string, mixed>
+     */
+    protected function validateForm(array $rules): array
+    {
+        try {
+            return $this->validate($rules);
+        } catch (ValidationException $exception) {
+            $this->dispatch('admin-form-invalid');
+
+            throw $exception;
+        }
+    }
+
+    /**
      * The chooser changed: the summary island shows the new choice too, and
      * the deadlines island the deadlines of the game now picked (a lobby game
-     * has none of a series, P10).
+     * has none of a series, P10). The chooser itself stands in four islands
+     * in the order an organizer decides (order E, jury 2026-11-05): a change
+     * in one of them reaches the others (a game picked changes the systems,
+     * a player count the recommendation, a results mode the night pause).
      */
     protected function changed(): void
     {
         unset($this->evaluation, $this->format, $this->durationRange);
+
+        foreach (self::CHOOSER_ISLANDS as $island) {
+            $this->renderIsland($island);
+        }
+
         $this->renderIsland('summary');
         $this->renderIsland('deadlines');
     }

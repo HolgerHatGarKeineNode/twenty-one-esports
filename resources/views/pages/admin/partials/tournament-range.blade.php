@@ -14,7 +14,19 @@
     $expected = $this->expectedTimes();
     $rangeProfile = $this->profile();
     $range = $this->durationRange;
-    $clockTime = fn (\Carbon\CarbonImmutable $moment): string => $moment->setTimezone($this->chooserZone())->format('G:i');
+    // With the night pause on, a time on a later day than the start says so: the pause moves an end to the next evening
+    // (DerCaddy, 2026-11-04). Played through, an end after midnight keeps its plain time and the midnight warning.
+    $pauseMoves = $this->nightPauseApplies() && $this->nightPauseOn();
+    $clockTime = function (\Carbon\CarbonImmutable $moment) use ($expected, $pauseMoves): string {
+        $local = $moment->setTimezone($this->chooserZone());
+        $days = $expected['start'] === null || ! $pauseMoves ? 0 : (int) $expected['start']->setTimezone($this->chooserZone())->startOfDay()->diffInDays($local->startOfDay());
+
+        return match (true) {
+            $days <= 0 => $local->format('G:i'),
+            $days === 1 => __(':time the next day', ['time' => $local->format('G:i')]),
+            default => __(':time in :count days', ['time' => $local->format('G:i'), 'count' => $days]),
+        };
+    };
     $measured = $expected === null ? null : RoundTimes::median($rangeProfile->game, $rangeProfile->mode);
 @endphp
 
@@ -31,11 +43,11 @@
                 ]) }}
             @endif
         </p>
-        <span class="text-xs leading-normal text-ink-2" data-test="duration-range-detail">{{ \App\Support\Tournaments\Lobbies::isLobbyGame($rangeProfile->game)
+        <span class="text-xs leading-normal text-ink-2" data-test="duration-range-detail">{{ \App\Support\Tournaments\FormatCopy::sentence(\App\Support\Tournaments\Lobbies::isLobbyGame($rangeProfile->game)
             ? __('Every lobby plays at the same time, :planned with filling the lobby and the Time Limit. The end stays open for the players.', ['planned' => Estimator::format($range->planned, $rangeProfile)])
             : __('Planned play :planned, online about :typical with finding the opponent and reporting, at most :latest. The end stays open for the players.', [
             'planned' => Estimator::format($range->planned, $rangeProfile), 'typical' => Estimator::format($range->typical, $rangeProfile), 'latest' => Estimator::format($range->latest, $rangeProfile),
-        ]) }}</span>
+        ])) }}</span>
         @foreach ($expected['warnings'] as $warning)
             {{-- Past midnight with the night pause on (NightPause) is no fault: it says when play goes on instead of warning. --}}
             @if ($warning === 'after-midnight' && $this->nightPauseApplies() && $this->nightPauseOn())
@@ -50,7 +62,7 @@
         @endforeach
         @if ($measured !== null)
             <span class="text-xs leading-normal text-ink-2" data-test="duration-measured">{{ trans_choice('Measured: a round took :measured in the median of :count finished round (assumed :assumed).|Measured: a round took :measured in the median of :count finished rounds (assumed :assumed).', $measured['rounds'], [
-                'measured' => Estimator::format($measured['minutes'], $rangeProfile), 'assumed' => Estimator::format($rangeProfile->onlineSlot($this->evaluation->options->bestOf), $rangeProfile),
+                'measured' => Estimator::format($measured['minutes'], $rangeProfile), 'assumed' => Estimator::format($rangeProfile->onlineSlot(Estimator::matchGames($rangeProfile, $this->evaluation->options, Estimator::isTable($this->format, $this->evaluation->options))), $rangeProfile),
             ]) }}</span>
         @endif
     </div>

@@ -225,7 +225,7 @@ new #[Layout('layouts::app', ['section' => 'admin'])] class extends TournamentFo
         $tournament = $this->tournament;
         $beforeDraw = $tournament->isBeforeDraw();
 
-        $this->validate([
+        $this->validateForm([
             'name' => ['required', 'string', 'max:80'],
             'description' => ['nullable', 'string', 'max:1000'],
             'startsAt' => ['required', LeagueTime::rule($tournament->starts_at)],
@@ -278,11 +278,12 @@ new #[Layout('layouts::app', ['section' => 'admin'])] class extends TournamentFo
             }
         }
 
-        // The time control of the switch section, in every state until the end (user, 2026-10-11); only when it was
-        // touched, so a game picked in the chooser keeps its own mode.
+        // The time control of the switch section, from the draw until the end (user, 2026-10-11); only when it was
+        // touched. Before the draw the chooser's game and mode are the one place (DerCaddy, 2026-11-04: two choices of
+        // the time control on one page, and the lower one won over what the plan above was made for).
         $modeSwitch = app(TournamentModeSwitch::class);
 
-        if ($modeSwitch->canSwitch($tournament) && $this->mode !== $tournament->mode && in_array($this->mode, $modeSwitch->modes($tournament), true)) {
+        if (! $beforeDraw && $modeSwitch->canSwitch($tournament) && $this->mode !== $tournament->mode && in_array($this->mode, $modeSwitch->modes($tournament), true)) {
             $changes['mode'] = $this->mode;
         }
 
@@ -475,8 +476,6 @@ new #[Layout('layouts::app', ['section' => 'admin'])] class extends TournamentFo
         'result' => __('Result'), 'elo' => __('Elo'), 'voided' => __('Voided and paired again'), 'held' => __('On hold'), 'forfeited' => __('Lost by forfeit'),
         'pot_sats' => __('Sats in the league wallet'),
     ];
-    // The start (and, in sign-up, the close) beside each other from 640 px of the admin column, beside the name from 1400 (E1).
-    $datesClass = $tournament->status === TournamentStatus::Signup ? 'col-span-2 @min-[640px]/admin:col-span-1' : 'col-span-2 @min-[1400px]/admin:col-span-1';
 @endphp
 
 <x-admin.page active="tournaments" :title="__('Edit :name', ['name' => $tournament->name])" :crumbs="[[__('Tournaments'), route('admin.tournaments')], [$tournament->name, route('tournaments.show', $tournament)]]" :notice="$notice" notice-test="edit-notice" :error="$error" error-test="edit-error" data-test="tournament-edit">
@@ -503,30 +502,12 @@ new #[Layout('layouts::app', ['section' => 'admin'])] class extends TournamentFo
     @if ($ended)
         <p class="m-0 rounded border border-hairline bg-card px-4 py-4 text-[13px] text-ink-2" data-test="edit-ended">{{ __('This tournament has ended; it can no longer be changed.') }}</p>
     @else
-        {{-- Name, start and sign-up close in one row from 1400 px of the admin column, where each date keeps the 330 px its line
-             "= Fri, 23 Oct 2026, 2:08 PM CEST · 12:08 UTC" needs; below, the name on its own row and the dates under it (E1). --}}
-        <section aria-label="{{ __('Basics') }}" class="grid grid-cols-2 gap-3 rounded border border-hairline bg-card p-4 lg:gap-4 lg:px-6 lg:py-5 @min-[1400px]/admin:grid-cols-[minmax(0,2fr)_minmax(0,1.5fr)_minmax(0,1.5fr)]">
-            <label class="col-span-2 flex min-w-0 flex-col gap-1.5 text-xs text-ink-2 @min-[1400px]/admin:col-span-1">
-                {{ __('Name') }}
-                <input wire:model="name" maxlength="80" data-test="edit-name" class="{{ $field }}">
-                @error('name')<span class="text-loss" role="alert">{{ $message }}</span>@enderror
-            </label>
-            <x-berlin-datetime-input model="startsAt" :label="__('Starts')" :value="$startsAt" test="edit-starts-at" :class="$datesClass" />
-            @if ($tournament->status === TournamentStatus::Signup)
-                <x-berlin-datetime-input model="closesAt" :label="__('Sign-up closes')" :value="$closesAt" test="edit-closes-at" :class="$datesClass" />
-            @endif
-            <label class="col-span-2 flex min-w-0 flex-col gap-1.5 text-xs text-ink-2 @min-[1400px]/admin:col-span-3">
-                {{ __('Description (optional)') }}
-                <textarea wire:model="description" maxlength="1000" rows="3" data-test="edit-description"
-                          class="min-h-24 w-full rounded-md border border-edge bg-ground px-3 py-2.5 text-[13px] leading-normal text-ink"></textarea>
-                <span class="text-ink-3">{{ __('Shown at the top of the tournament page and published with it on Nostr. Up to 1000 characters.') }}</span>
-                @error('description')<span class="text-loss" role="alert">{{ $message }}</span>@enderror
-            </label>
-        </section>
-
+        {{-- Order E (jury 2026-11-05, owner "E bauen"; canvas AdminTournamentEdit): game, time, players and place first, then the format
+             and its rules, the deadlines, name and description; "Save changes" in a bar that stays in view. After the draw the locked
+             format and the time control stand where the game was. --}}
         @if ($beforeDraw)
-            @island(name: 'chooser')
-                @include('pages.admin.partials.tournament-chooser')
+            @island(name: 'chooser-game')
+                @include('pages.admin.partials.tournament-chooser', ['part' => 'game'])
             @endisland
         @else
             <section class="flex flex-col gap-2 rounded border border-hairline bg-card px-4 py-5 shadow-[inset_0_0_0_1px_#F7931A] lg:px-6" data-test="format-locked">
@@ -536,40 +517,86 @@ new #[Layout('layouts::app', ['section' => 'admin'])] class extends TournamentFo
                     'who' => $teams ? trans_choice(':count team|:count teams', $tournament->capacity) : trans_choice(':count player|:count players', $tournament->capacity),
                 ]) }}</p>
             </section>
+            @php($modeSwitch = app(\App\Support\Tournaments\TournamentModeSwitch::class))
+            @if (! $beforeDraw && $modeSwitch->canSwitch($tournament))
+                {{-- The time control (Blockli: blitz, rapid, correspondence), switchable in every state until the end (user, 2026-10-11): the board's
+                     section with its choice list. Deferred like every field here, saved by "Save changes" (user, 2026-10-12: nothing in the form
+                     saves on its own); running, it reaches the games not started yet. Before the draw the chooser above picks the time control
+                     with the game (DerCaddy, 2026-11-04: "Macht das Sinn?" — two choices, and the lower one silently won), so it shows from the draw on. --}}
+                <section aria-labelledby="mode-switch-h" class="rv-sec" data-test="tournament-mode-switch">
+                    <span class="flex flex-col gap-1">
+                        <h2 id="mode-switch-h" class="rv-h3">{{ __('Time control') }}</h2>
+                        <span class="max-w-[80ch] text-xs leading-normal text-ink-2">{{ $tournament->status === TournamentStatus::Running
+                            ? __('Saved with "Save changes". It applies to every game that has not started yet; games under way finish as they started. The players get a message.')
+                            : __('Saved with "Save changes". Once players have signed up, each gets a message.') }}</span>
+                    </span>
+                    <x-ui.options class="sm:max-w-xl" model="mode" :current="$this->mode" labelledby="mode-switch-h" test="mode-switch"
+                                  :options="array_map(fn (string $mode): array => [$mode, GameNames::mode($tournament->game, $mode)], $modeSwitch->modes($tournament))" />
+                </section>
+            @endif
         @endif
 
-        {{-- Its own island, rendered with every chooser change (game, mode, where) and with the page (errors). --}}
-        @php($modeSwitch = app(\App\Support\Tournaments\TournamentModeSwitch::class))
-        @if ($modeSwitch->canSwitch($tournament))
-            {{-- The time control (Blockli: blitz, rapid, correspondence), switchable in every state until the end (user, 2026-10-11): the board's
-                 section with its choice list. Deferred like every field here, saved by "Save changes" (user, 2026-10-12: nothing in the form
-                 saves on its own); running, it reaches the games not started yet. --}}
-            <section aria-labelledby="mode-switch-h" class="rv-sec" data-test="tournament-mode-switch">
-                <span class="flex flex-col gap-1">
-                    <h2 id="mode-switch-h" class="rv-h3">{{ __('Time control') }}</h2>
-                    <span class="max-w-[80ch] text-xs leading-normal text-ink-2">{{ $tournament->status === TournamentStatus::Running
-                        ? __('Saved with "Save changes". It applies to every game that has not started yet; games under way finish as they started. The players get a message.')
-                        : __('Saved with "Save changes". Once players have signed up, each gets a message.') }}</span>
-                </span>
-                <x-ui.options class="sm:max-w-xl" model="mode" :current="$this->mode" labelledby="mode-switch-h" test="mode-switch"
-                              :options="array_map(fn (string $mode): array => [$mode, GameNames::mode($tournament->game, $mode)], $modeSwitch->modes($tournament))" />
-            </section>
+        <section aria-labelledby="when-h" class="rv-sec" data-test="tournament-when">
+            <h2 id="when-h" class="rv-h3">{{ __('When') }}</h2>
+            {{-- The start and, in sign-up, the close beside each other from 640 px of the admin column; each date keeps the 330 px its
+                 line "= Fri, 23 Oct 2026, 2:08 PM CEST · 12:08 UTC" needs (E1). --}}
+            <div class="grid items-start gap-4 @min-[640px]/admin:grid-cols-2">
+                <x-berlin-datetime-input model="startsAt" :label="__('Starts')" :value="$startsAt" test="edit-starts-at" />
+                @if ($tournament->status === TournamentStatus::Signup)
+                    <x-berlin-datetime-input model="closesAt" :label="__('Sign-up closes')" :value="$closesAt" test="edit-closes-at" />
+                @endif
+            </div>
+            @if ($beforeDraw)
+                @island(name: 'chooser-window')
+                    @include('pages.admin.partials.tournament-chooser', ['part' => 'window'])
+                @endisland
+            @endif
+        </section>
+
+        @if ($beforeDraw)
+            @island(name: 'chooser-place')
+                @include('pages.admin.partials.tournament-chooser', ['part' => 'place'])
+            @endisland
+
+            @island(name: 'chooser')
+                @include('pages.admin.partials.tournament-chooser', ['part' => 'format'])
+            @endisland
         @endif
 
         @island(name: 'deadlines', always: true)
             @include('pages.admin.partials.tournament-deadlines')
         @endisland
 
-        {{-- Summary and buttons in one row from 900 px of the admin column; at 1024 the buttons left the summary 144 px (E1). --}}
-        <div class="flex flex-col gap-3 rounded border border-hairline bg-card px-4 py-4 lg:px-6 lg:py-5 @min-[900px]/admin:flex-row @min-[900px]/admin:items-center @min-[900px]/admin:gap-4">
+        <section aria-labelledby="name-h" class="rv-sec" data-test="tournament-naming">
+            <h2 id="name-h" class="rv-h3">{{ __('Name and description') }}</h2>
+            <label class="flex max-w-[560px] min-w-0 flex-col gap-1.5 text-xs text-ink-2">
+                {{ __('Name') }}
+                <input wire:model="name" maxlength="80" data-test="edit-name" class="{{ $field }}">
+                <x-admin.field-error for="name" />
+            </label>
+            <label class="flex min-w-0 flex-col gap-1.5 text-xs text-ink-2">
+                {{ __('Description (optional)') }}
+                <textarea wire:model="description" maxlength="1000" rows="3" data-test="edit-description"
+                          class="min-h-24 w-full rounded-md border border-edge bg-ground px-3 py-2.5 text-[13px] leading-normal text-ink"></textarea>
+                <span class="text-ink-3">{{ __('Shown at the top of the tournament page and published with it on Nostr. Up to 1000 characters.') }}</span>
+                <x-admin.field-error for="description" />
+            </label>
+        </section>
+
+        {{-- The save bar (order E, jury 2026-11-05): sticks to the bottom of the screen until the form ends, so "Save changes" is always
+             one click away; nothing saves on its own. The page keeps a scrolled-to error clear of it (app.css, `--save-bar-h`), stands above the phone's tab bar (`--tabbar-h`)
+             and scrolls a field focused under it into view (focusin below): WCAG 2.4.11. The prize pot under it has its own save button. --}}
+        <div class="sticky bottom-[var(--tabbar-h)] z-20 flex flex-col items-stretch gap-2 rounded border border-edge bg-card px-4 py-3 shadow-[0_-12px_24px_var(--color-ground)] lg:px-6 lg:py-4 @min-[640px]/admin:flex-row @min-[640px]/admin:flex-wrap @min-[640px]/admin:items-center @min-[640px]/admin:gap-3 @min-[900px]/admin:flex-nowrap @min-[900px]/admin:gap-4" data-save-bar x-data
+             x-on:focusin.window="const r = $event.target.getBoundingClientRect(), bar = $el.getBoundingClientRect();
+                 if (! $el.contains($event.target) && r.bottom > bar.top && r.top < bar.bottom) window.scrollBy({ top: r.bottom - bar.top + 16 })">
             @island(name: 'summary')
                 {{-- An island renders in its own scope: nothing from the @php block above reaches it. --}}
-                <span class="flex min-w-0 flex-col gap-2" data-test="edit-summary">
+                <span class="flex min-w-0 flex-col gap-2 @min-[640px]/admin:grow @min-[640px]/admin:basis-[16rem] @min-[900px]/admin:grow-0 @min-[900px]/admin:basis-auto" data-test="edit-summary">
                     @if ($this->tournament->isBeforeDraw())
-                        <b class="text-sm">{{ $this->format->label() }}, {{ $this->profile()->entersTeams() ? trans_choice(':count team|:count teams', $this->count()) : trans_choice(':count player|:count players', $this->count()) }},
+                        <b class="text-[13px] @min-[640px]/admin:text-sm">{{ $this->format->label() }}, {{ $this->profile()->entersTeams() ? trans_choice(':count team|:count teams', $this->count()) : trans_choice(':count player|:count players', $this->count()) }},
                             {{ __('about :duration', ['duration' => \App\Support\Tournaments\Estimator::format($this->evaluation->row($this->format)->total(), $this->profile())]) }}</b>
                     @endif
-                    <span class="text-xs text-ink-2">{{ $this->tournament->event_id !== null ? __('Saving publishes a new version of the tournament to the league calendar. Its address stays the same.') : __('A draft: nothing is published until you publish it on the tournament page.') }}</span>
+                    <span class="hidden text-xs text-ink-2 @min-[640px]/admin:block">{{ $this->tournament->event_id !== null ? __('Saving publishes a new version of the tournament to the league calendar. Its address stays the same.') : __('A draft: nothing is published until you publish it on the tournament page.') }}</span>
                     @if ($this->incompatible->isNotEmpty())
                         <span class="flex flex-col gap-2 rounded-md px-3 py-3 shadow-[inset_0_0_0_1px_#5A2A2E]" data-test="incompatible">
                             <span class="text-[13px] font-bold text-loss">{{ __('These lineups were entered for the old game or mode') }}</span>
@@ -580,7 +607,7 @@ new #[Layout('layouts::app', ['section' => 'admin'])] class extends TournamentFo
                 </span>
             @endisland
             <span class="hidden grow @min-[900px]/admin:block"></span>
-            <span class="flex shrink-0 flex-wrap gap-3">
+            <span class="flex shrink-0 flex-wrap gap-3 @min-[640px]/admin:ml-auto [&>*]:grow @min-[640px]/admin:[&>*]:grow-0">
                 <x-button wire:click="save" class="shrink-0 whitespace-nowrap" data-test="edit-save">{{ __('Save changes') }}</x-button>
                 {{-- A draft's next step beside its save (user, 2026-10-01): it saves first, then opens the publish form; the top of the page has it too. --}}
                 @if ($tournament->status === TournamentStatus::Draft)

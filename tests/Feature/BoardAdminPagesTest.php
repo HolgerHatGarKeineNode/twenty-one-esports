@@ -45,7 +45,8 @@ test('switched off, no admin page offers a board game; switched on, the weekly e
     Livewire::actingAs(boardPagesAdmin())->test('pages::admin.tournament-create')
         ->assertSee('data-test="game-row-nine-mens-morris"', false)
         ->assertSee('data-test="game-row-checkers"', false)
-        ->assertSee('Chess and board games: first move within (minutes)');
+        // A board game sees its first-move deadline, not a series' (DerCaddy, 2026-11-04).
+        ->assertSee('First move within (minutes)')->assertDontSee('No-show report after (minutes)');
 });
 
 test('a weekly event can be set for a board game', function () {

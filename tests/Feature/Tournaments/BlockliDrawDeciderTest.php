@@ -186,6 +186,10 @@ test('a new Blockli tournament is created with the standing; the edit page shows
         ->set('name', 'Blockli Race')
         ->call('pickGame', 'blockli/correspondence')
         ->set('players', '8')
+        // Only a knockout plays a decider: a round robin does not show the rule (DerCaddy, 2026-11-04).
+        ->call('select', 'round-robin')
+        ->assertDontSeeHtml('data-test="tournament-draw-decider"')
+        ->call('select', 'single-elimination')
         ->assertSeeHtml('data-test="draw-decider-standing"')
         ->call('create')
         ->assertHasNoErrors();

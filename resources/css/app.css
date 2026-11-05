@@ -2282,13 +2282,20 @@
      * of air. A match room's sticky score bar (phones) carries the dock as a 44 px tab on its top edge instead.
      */
     --dock-h: 0px;
-    /* Anchors and focus land below the header and above the phone's tab bar and the dock, never under them. */
+    /* A form's save bar that sticks above the tab bar while it shows (the tournament form, order E, `[data-save-bar]`). */
+    --save-bar-h: 0px;
+    /* Anchors and focus land below the header and above the phone's tab bar, the dock and a save bar, never under them. */
     scroll-padding-top: var(--spacing-below-shell);
-    scroll-padding-bottom: calc(var(--tabbar-h) + var(--dock-h) + 1rem);
+    scroll-padding-bottom: calc(var(--tabbar-h) + var(--dock-h) + var(--save-bar-h) + 1rem);
 }
 
 :root:has([data-test="dock-spacer"]) {
     --dock-h: 4.5rem;
+}
+
+/* The save bar is one row of 64 to 88 px and, under 640 px of the admin column, summary over button: 112 px at most (WCAG 2.4.11). */
+:root:has([data-save-bar]) {
+    --save-bar-h: 7rem;
 }
 
 @media (width >= 64rem) {

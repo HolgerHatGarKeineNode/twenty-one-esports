@@ -12,10 +12,12 @@
 
     /*
      * The format chooser and "Who enters results" (AdminTournamentCreate.dc.html,
-     * the `renderVals` of its logic script). Rendered inside the `chooser`
-     * island of pages::admin.tournament-create and pages::admin.tournament-edit
+     * the `renderVals` of its logic script). Rendered in four parts, each inside
+     * its own `chooser*` island of pages::admin.tournament-create and pages::admin.tournament-edit
      * (state and actions: App\Livewire\TournamentFormatChooser).
      */
+    // Which part of the form this include draws (order E: game, window, place, format; see the comment before the markup).
+    $part ??= 'format';
     $profile = $this->profile();
     $evaluation = $this->evaluation;
     $options = $evaluation->options;
@@ -113,9 +115,10 @@
         : ($profile->isSeries() && $recommended->format->hasFinal()
             // Series games recommend a format with a final first (user, 2026-09-26, for Rocket League), so the reason names it.
             ? ($teams
-                ? __('Ends with a final; every team plays at least :games, and it takes about :duration of your :window.', ['games' => $gamesCount($recommended->guaranteed()), 'duration' => $duration($recommended->total()), 'window' => $duration($window)])
-                : __('Ends with a final; every player plays at least :games, and it takes about :duration of your :window.', ['games' => $gamesCount($recommended->guaranteed()), 'duration' => $duration($recommended->total()), 'window' => $duration($window)]))
-            : __('Everyone gets at least :games, and it takes about :duration of your :window.', ['games' => $gamesCount($recommended->guaranteed()), 'duration' => $duration($recommended->total()), 'window' => $duration($window)]))));
+                ? __('Ends with a final; every team plays at least :games, and it takes about :duration of your :window.', ['games' => $gamesCount($recommended->guaranteedGames()), 'duration' => $duration($recommended->total()), 'window' => $duration($window)])
+                : __('Ends with a final; every player plays at least :games, and it takes about :duration of your :window.', ['games' => $gamesCount($recommended->guaranteedGames()), 'duration' => $duration($recommended->total()), 'window' => $duration($window)]))
+            : __('Everyone gets at least :games, and it takes about :duration of your :window.', ['games' => $gamesCount($recommended->guaranteedGames()), 'duration' => $duration($recommended->total()), 'window' => $duration($window)]))));
+    $recommendedWhy = FormatCopy::sentence($recommendedWhy);
 
     $chosen = $evaluation->row($format);
     $structure = $chosen->structure;
@@ -124,10 +127,22 @@
     $rounds = $evaluation->swissRounds;
     $odd = $n % 2 === 1;
 
+    // Blockli plays two games a match (one per pairing in a table, by choice): the counts read in games, and say what a
+    // pairing is (DerCaddy, 2026-11-04: "mindestens 9 Spiele" and "Alle spielen 9 Partien" for 18 games, 6 against each).
+    $perMatch = $chosen->perMatch;
     $guaranteed = match ($format) {
-        TournamentFormat::Swiss => $odd ? __('Everyone plays :fewer or :rounds games. With an odd number, one player per round gets a free win (bye).', ['fewer' => $rounds - 1, 'rounds' => $rounds]) : __('Everyone plays :rounds games.', ['rounds' => $rounds]),
-        TournamentFormat::RoundRobin => __('Everyone plays :games games.', ['games' => $structure?->guaranteed ?? 0]).($chosen->atOnce > 0 ? ' '.__('In daily chess all of them start at once: :count games running at the same time for each player.', ['count' => $chosen->atOnce]) : ''),
-        TournamentFormat::TwoStage => trans_choice('Everyone plays at least :games game in the groups. The top :advance of each group play on.|Everyone plays at least :games games in the groups. The top :advance of each group play on.', $structure?->guaranteed ?? 0, ['games' => $structure?->guaranteed ?? 0, 'advance' => $structure?->advance ?? 0]),
+        TournamentFormat::Swiss => $perMatch > 1
+            ? ($odd
+                ? __('Everyone plays :fewer or :rounds pairings of :per games each, so :fewerGames or :games games. With an odd number, one player per round gets a free win (bye).', ['fewer' => $rounds - 1, 'rounds' => $rounds, 'per' => $perMatch, 'fewerGames' => ($rounds - 1) * $perMatch, 'games' => $rounds * $perMatch])
+                : __('Everyone plays :rounds pairings of :per games each, so :games games.', ['rounds' => $rounds, 'per' => $perMatch, 'games' => $rounds * $perMatch]))
+            : ($odd ? __('Everyone plays :fewer or :rounds games. With an odd number, one player per round gets a free win (bye).', ['fewer' => $rounds - 1, 'rounds' => $rounds]) : __('Everyone plays :rounds games.', ['rounds' => $rounds])),
+        TournamentFormat::RoundRobin => ($perMatch > 1
+                ? __('Everyone plays :games games: :pairings pairings of :per games each, :against against each opponent.', ['games' => $chosen->guaranteedGames(), 'pairings' => $structure?->guaranteed ?? 0, 'per' => $perMatch, 'against' => $options->iterations * $perMatch])
+                : trans_choice('Everyone plays :games game.|Everyone plays :games games.', $structure?->guaranteed ?? 0, ['games' => $structure?->guaranteed ?? 0]))
+            .($chosen->atOnce > 0 ? ' '.($profile->isChess()
+                ? __('In daily chess all of them start at once: :count games running at the same time for each player.', ['count' => $chosen->atOnce])
+                : __('In correspondence all of them start at once: :count games running at the same time for each player.', ['count' => $chosen->atOnce])) : ''),
+        TournamentFormat::TwoStage => trans_choice('Everyone plays at least :games game in the groups. The top :advance of each group play on.|Everyone plays at least :games games in the groups. The top :advance of each group play on.', $chosen->guaranteedGames(), ['games' => $chosen->guaranteedGames(), 'advance' => $structure?->advance ?? 0]),
         TournamentFormat::SingleElimination => __('The weakest may play only 1 match. The winner plays :rounds.', ['rounds' => $structure?->max ?? 0]).(($structure?->byes ?? 0) > 0 ? ' '.__(':byes of :n skip round 1 (bye), because :n does not fill the bracket.', ['byes' => $structure?->byes, 'n' => $n]) : ''),
         TournamentFormat::FreeForAll => __('Everyone plays exactly 1 match: their lobby\'s game.'),
         default => ($structure?->guaranteed ?? 2) < 2
@@ -143,8 +158,8 @@
     $facts = [
         [__('Rounds'), $roundsText],
         [__('Matches'), $format === TournamentFormat::DoubleElimination && $options->grandFinal === 'reset' ? __(':fewer or :matches', ['fewer' => ($structure?->matches ?? 1) - 1, 'matches' => $structure?->matches ?? 0]) : (string) ($structure?->matches ?? 0)],
-        [$teams ? __('Games per team') : __('Games per player'), $structure !== null && $structure->min === $structure->max ? (string) $structure->min : __(':min to :max', ['min' => $structure?->min ?? 0, 'max' => $structure?->max ?? 0])],
-        [__('Guaranteed'), (string) ($structure?->guaranteed ?? 0)],
+        [$teams ? __('Games per team') : __('Games per player'), $structure !== null && $structure->min === $structure->max ? (string) $chosen->games($structure->min) : __(':min to :max', ['min' => $chosen->games($structure?->min ?? 0), 'max' => $chosen->maxGames()])],
+        [__('Guaranteed'), (string) $chosen->guaranteedGames()],
     ];
 
     $caption = match ($format) {
@@ -163,7 +178,9 @@
     $assumption = $lobbyFormat
         ? __('One lobby game runs to its Time Limit of :limit, plus :setup min to fill the lobby. All lobbies play at the same time.', ['limit' => \App\Support\Pages\RulesPage::minutes(Lobbies::timeLimit($profile->game)), 'setup' => Lobbies::plannedMinutes($profile->game) - Lobbies::timeLimit($profile->game)])
         : ($daily
-        ? __('A daily chess game is planned at :days days, 1 move a day. :break day between rounds.', ['days' => $profile->gameLength + 0, 'break' => $profile->break + 0])
+        ? ($profile->isChess()
+            ? __('A daily chess game is planned at :days days, 1 move a day. :break day between rounds.', ['days' => $profile->gameLength + 0, 'break' => $profile->break + 0])
+            : __('A correspondence game is planned at :days days, 1 move a day. :break day between rounds.', ['days' => $profile->gameLength + 0, 'break' => $profile->break + 0]))
         : ($series
             ? __('One :game game: about :minutes min, plus :setup min to set up each series. A Bo:best series is planned at :slot min (all games played). :break min between rounds.', ['game' => GameNames::game($profile->game), 'minutes' => $profile->gameLength + 0, 'setup' => $profile->setup + 0, 'best' => $options->bestOf, 'slot' => $profile->slot($options->bestOf) + 0, 'break' => $profile->break + 0])
             : __('One :mode game: up to :minutes min, including pairing. :break min between rounds.', ['mode' => GameNames::mode($profile->game, $profile->mode), 'minutes' => $profile->gameLength + 0, 'break' => $profile->break + 0])));
@@ -189,62 +206,132 @@
     $help = 'text-xs leading-normal text-ink-2';
 @endphp
 
+{{--
+    Order E (jury 2026-11-05, owner "E bauen"; canvas AdminTournamentForm/AdminTournamentEdit): the page asks in the order an
+    organizer decides. Each part renders in its own island of the page, all re-rendered by TournamentFormatChooser::changed():
+    `game` (game and mode), `window` (the time you have, inside the page's "When" section), `place` (players, where, and who
+    records results right under "Where"), `format` (recommendation, every system, the options of the one chosen).
+--}}
+@if ($part === 'game')
+<section aria-labelledby="game-l" class="rv-sec" data-test="chooser-game">
+    <h2 id="game-l" class="rv-h3">{{ __('Game and mode') }}</h2>
+    <div class="flex max-w-[720px] flex-col gap-1.5">
+        {{-- One row per registered game with a tournament profile (TournamentGames): its cover, its name and one button per mode. --}}
+        @foreach (\App\Support\Tournaments\TournamentGames::grouped($this->game) as $gameRow)
+            {{-- Phones: the name over its modes; wider, beside them in 200 px (two lines for "Age of Empires II: Definitive Edition"). --}}
+            <span class="flex flex-col items-stretch gap-1.5 @min-[480px]/admin:flex-row @min-[480px]/admin:items-center @min-[480px]/admin:gap-2" wire:key="game-row-{{ $gameRow['slug'] }}" data-test="game-row-{{ $gameRow['slug'] }}">
+                <span class="flex shrink-0 items-center gap-2 text-xs text-ink-3 @min-[480px]/admin:w-[200px]">
+                    <x-game-cover :game="$gameRow['slug']" size="thumb" class="w-10 rounded-xs" />
+                    <span class="min-w-0 leading-tight">{{ GameNames::game($gameRow['slug']) }}</span>
+                </span>
+                <x-tournaments.segmented labelledby="game-l" method="pickGame" :current="$this->game" class="grow" data-test="game-{{ $gameRow['slug'] }}"
+                    :options="$gameRow['options']" />
+            </span>
+        @endforeach
+    </div>
+</section>
+@elseif ($part === 'window')
+<span class="flex flex-col gap-1.5">
+    <span id="win-l" class="text-xs text-ink-2">{{ __('Time you have') }}</span>
+    <x-tournaments.segmented labelledby="win-l" method="pickWindow" :current="$this->window" :options="$this->windows()" data-test="window" />
+</span>
+@elseif ($part === 'place')
+<section aria-labelledby="place-h" class="rv-sec" data-test="chooser-place">
+    <h2 id="place-h" class="rv-h3">{{ $teams ? __('Teams and place') : __('Players and place') }}</h2>
+    <div class="grid items-start gap-5 @min-[640px]/admin:grid-cols-[160px_minmax(0,1fr)] @min-[640px]/admin:gap-6">
+        <span class="flex flex-col gap-1.5">
+            <label for="n-in" class="text-xs text-ink-2">{{ $teams ? __('Teams') : __('Players') }}</label>
+            <x-tournaments.stepper id="n-in" model="players" :value="$n" decrement="stepPlayers(-1)" increment="stepPlayers(1)" class="self-start"
+                :less="$teams ? __('One team less') : __('One player less')" :more="$teams ? __('One team more') : __('One player more')" />
+            <span class="text-xs text-ink-3">{{ __('How many you expect. 2 to 64.') }}</span>
+        </span>
+
+        {{-- Two choices need no more than 560 px; across the whole column at 1440 the pair stretched to 900. --}}
+        <span class="flex max-w-[560px] flex-col gap-1.5">
+            <span id="where-l" class="text-xs text-ink-2">{{ __('Where') }}</span>
+            @if ($daily)
+                <span class="text-xs leading-normal text-ink-3">{{ $profile->isChess() ? __('Daily chess is always played online, so boards don’t limit it.') : __('Correspondence games are always played online, so boards don’t limit them.') }}</span>
+            @else
+                <x-tournaments.segmented labelledby="where-l" method="pickWhere" :current="$site ? 'site' : 'online'" :options="[['online', __('Online')], ['site', __('On site')]]" />
+                @if ($site)
+                    <span class="flex flex-wrap items-center gap-2.5">
+                        <span class="text-xs text-ink-2">{{ $series ? __('Stations') : __('Boards') }}</span>
+                        <x-tournaments.stepper :value="$this->stations" decrement="stepStations(-1)" increment="stepStations(1)" :less="__('One less')" :more="__('One more')" />
+                    </span>
+                    <span class="text-xs leading-normal text-ink-3">{{ $series ? __('Matches that can run at the same time: one station = one setup per team.') : __('Games that can run at the same time.') }}</span>
+                @else
+                    <span class="text-xs leading-normal text-ink-3">{{ __('All matches of a round run at the same time.') }}</span>
+                @endif
+            @endif
+        </span>
+    </div>
+
+    {{-- Who enters results (director mode, TOURNAMENT-FORMATS.md section 6), right under "Where": both say how the games are played. --}}
+    <div class="flex flex-col gap-4 border-t border-hairline pt-4" data-test="results-mode">
+        {{-- A game the league server plays (GameProfile::playedOnLeague()) has no results to enter in players mode: the choice is
+             where the games are played (DerCaddy, 2026-11-04). --}}
+        @php($playedHere = $profile->playedOnLeague())
+        {{-- Titled by who records the results: "Where" is asked right above it (Online / On site), so the two never contradict unseen. --}}
+        <h3 id="res-h" class="m-0 text-[13px] font-bold">{{ $playedHere ? __('Who records results') : __('Who enters results') }}</h3>
+        {{-- One card per row up to 1400 px of the admin column: side by side at 1280 the director's sentence ran 5 lines in 405 px,
+             at 1024 7 lines in 277 (E1). --}}
+        {{--
+            Each mode is a one-line radio (rule R11) with its short title (choice()); what it means stands under it, outside the
+            control, and picks it too, as the grand final choices do. Title and sentence inside the radio ran 7 lines in 277 px.
+        --}}
+        <div role="radiogroup" aria-labelledby="res-h" class="grid gap-3 @min-[1400px]/admin:grid-cols-2 @min-[1400px]/admin:gap-x-4">
+            @foreach (TournamentResultsMode::cases() as $mode)
+                <div class="flex flex-col gap-1" wire:key="mode-{{ $mode->value }}">
+                    <button type="button" role="radio" class="rv-opt" aria-checked="{{ $this->resultsMode === $mode->value ? 'true' : 'false' }}" aria-describedby="res-{{ $mode->value }}-d" wire:click="pickResultsMode('{{ $mode->value }}')" data-test="results-{{ $mode->value }}">
+                        <i aria-hidden="true"></i>
+                        <span class="text-[13px] font-bold whitespace-nowrap">{{ $mode->choiceFor($profile) }}</span>
+                    </button>
+                    <p id="res-{{ $mode->value }}-d" class="m-0 cursor-pointer px-3 text-xs leading-normal text-ink-2" wire:click="pickResultsMode('{{ $mode->value }}')" data-test="results-{{ $mode->value }}-help">{{ $mode->helpFor($profile) }}</p>
+                </div>
+            @endforeach
+        </div>
+
+        @if ($this->resultsMode === TournamentResultsMode::Director->value)
+            <div class="flex flex-col gap-3" data-test="directors">
+                <span class="text-[13px] font-bold">{{ __('Tournament directors') }}</span>
+                <ul class="m-0 flex list-none flex-wrap gap-2 p-0">
+                    @if ($chooserCreator = $this->chooserCreator())
+                        <li class="inline-flex h-9 items-center gap-2 rounded-md bg-ground px-2.5 text-[13px] shadow-ring">
+                            <x-avatar :user="$chooserCreator" :size="24" />{{ $chooserCreator->displayName() }} <span class="text-ink-3">{{ $chooserCreator->id === auth()->id() ? __('(you)') : __('(creator)') }}</span>
+                        </li>
+                    @endif
+                    @foreach ($this->directors as $director)
+                        <li class="inline-flex h-9 items-center gap-2 rounded-md bg-ground pl-2.5 text-[13px] shadow-ring" wire:key="director-{{ $director->id }}">
+                            <x-avatar :user="$director" :size="24" />{{ $director->displayName() }}
+                            <button type="button" class="flex size-9 cursor-pointer items-center justify-center text-ink-2 hover:text-ink" wire:click="removeDirector({{ $director->id }})" aria-label="{{ __('Remove :name', ['name' => $director->displayName()]) }}"><x-icon name="close" :size="14" /></button>
+                        </li>
+                    @endforeach
+                </ul>
+                <form wire:submit="addDirector" class="flex flex-col gap-1.5">
+                    <span class="flex items-end gap-2">
+                        <x-player-picker id="dir-new" wire:model="directorId" :label="__('Add a director')" :exclude="array_values(array_filter([$this->chooserCreator()?->id, ...$this->directorIds]))" submit-on-pick class="grow lg:max-w-80" />
+                        <x-button variant="quiet" type="submit" data-test="add-director">{{ __('Add') }}</x-button>
+                    </span>
+                    @if ($this->directorError !== '')
+                        <span class="text-xs text-loss" role="alert">{{ $this->directorError }}</span>
+                    @endif
+                </form>
+                <ul class="m-0 flex list-disc flex-col gap-1 pl-5 text-xs leading-normal text-ink-2">
+                    <li>{{ __('Directors enter results on the director desk; players see them right away, marked “Entered by the tournament director”.') }}</li>
+                    <li>{{ __('Every entry and correction is saved with name and time and shown on the match.') }}</li>
+                    <li>{{ __('Results can be corrected until the round is closed.') }}</li>
+                    <li>{{ __('Rated games still count for Elo. Tournament games never mine season blocks.') }}</li>
+                </ul>
+            </div>
+        @endif
+    </div>
+</section>
+@else
 <div class="flex flex-col gap-4" data-test="tournament-chooser" data-format="{{ $format->value }}" data-recommended="{{ $evaluation->recommended?->value }}">
     <section aria-labelledby="fmt-h" class="flex flex-col gap-5 rounded border border-hairline bg-card p-4 lg:p-6">
         <div class="flex flex-col gap-1.5 @min-[900px]/admin:flex-row @min-[900px]/admin:items-baseline @min-[900px]/admin:gap-4">
             <h2 id="fmt-h" class="m-0 shrink-0 font-display text-lg font-bold lg:text-xl">{{ __('Pick a format') }}</h2>
             <span class="text-[13px] leading-normal text-ink-2">{{ __('Tell us who plays and how much time you have. We compare every system for you.') }}</span>
-        </div>
-
-        {{-- Inputs: game, participants, time, where --}}
-        {{-- The game list needs about 540 px (a name of two lines and three modes in one row): four columns from 1400 px, below
-             it the whole first row and the other three inputs under it. --}}
-        <div class="grid items-start gap-5 @min-[640px]/admin:grid-cols-[160px_minmax(0,1fr)_minmax(0,1.2fr)] @min-[640px]/admin:gap-6 @min-[1400px]/admin:grid-cols-[minmax(0,1.6fr)_minmax(0,0.6fr)_minmax(0,1.2fr)_minmax(0,1fr)]">
-            <span class="flex max-w-[720px] flex-col gap-1.5 @min-[640px]/admin:col-span-3 @min-[1400px]/admin:col-span-1">
-                <span id="game-l" class="text-xs text-ink-2">{{ __('Game, mode') }}</span>
-                {{-- One row per registered game with a tournament profile (TournamentGames): its cover, its name and one button per mode. --}}
-                @foreach (\App\Support\Tournaments\TournamentGames::grouped($this->game) as $gameRow)
-                    {{-- Phones: the name over its modes; wider, beside them in 200 px (two lines for "Age of Empires II: Definitive Edition"). --}}
-                    <span class="flex flex-col items-stretch gap-1.5 @min-[480px]/admin:flex-row @min-[480px]/admin:items-center @min-[480px]/admin:gap-2" wire:key="game-row-{{ $gameRow['slug'] }}" data-test="game-row-{{ $gameRow['slug'] }}">
-                        <span class="flex shrink-0 items-center gap-2 text-xs text-ink-3 @min-[480px]/admin:w-[200px]">
-                            <x-game-cover :game="$gameRow['slug']" size="thumb" class="w-10 rounded-xs" />
-                            <span class="min-w-0 leading-tight">{{ GameNames::game($gameRow['slug']) }}</span>
-                        </span>
-                        <x-tournaments.segmented labelledby="game-l" method="pickGame" :current="$this->game" class="grow" data-test="game-{{ $gameRow['slug'] }}"
-                            :options="$gameRow['options']" />
-                    </span>
-                @endforeach
-            </span>
-
-            <span class="flex flex-col gap-1.5">
-                <label for="n-in" class="text-xs text-ink-2">{{ $teams ? __('Teams') : __('Players') }}</label>
-                <x-tournaments.stepper id="n-in" model="players" :value="$n" decrement="stepPlayers(-1)" increment="stepPlayers(1)" class="self-start"
-                    :less="$teams ? __('One team less') : __('One player less')" :more="$teams ? __('One team more') : __('One player more')" />
-                <span class="text-xs text-ink-3">{{ __('How many you expect. 2 to 64.') }}</span>
-            </span>
-
-            <span class="flex flex-col gap-1.5">
-                <span id="win-l" class="text-xs text-ink-2">{{ __('Time you have') }}</span>
-                <x-tournaments.segmented labelledby="win-l" method="pickWindow" :current="$this->window" :options="$this->windows()" data-test="window" />
-            </span>
-
-            <span class="flex flex-col gap-1.5">
-                <span id="where-l" class="text-xs text-ink-2">{{ __('Where') }}</span>
-                @if ($daily)
-                    <span class="text-xs leading-normal text-ink-3">{{ __('Daily chess is always played online, so boards don’t limit it.') }}</span>
-                @else
-                    <x-tournaments.segmented labelledby="where-l" method="pickWhere" :current="$site ? 'site' : 'online'" :options="[['online', __('Online')], ['site', __('On site')]]" />
-                    @if ($site)
-                        <span class="flex flex-wrap items-center gap-2.5">
-                            <span class="text-xs text-ink-2">{{ $series ? __('Stations') : __('Boards') }}</span>
-                            <x-tournaments.stepper :value="$this->stations" decrement="stepStations(-1)" increment="stepStations(1)" :less="__('One less')" :more="__('One more')" />
-                        </span>
-                        <span class="text-xs leading-normal text-ink-3">{{ $series ? __('Matches that can run at the same time: one station = one setup per team.') : __('Games that can run at the same time.') }}</span>
-                    @else
-                        <span class="text-xs leading-normal text-ink-3">{{ __('All matches of a round run at the same time.') }}</span>
-                    @endif
-                @endif
-            </span>
         </div>
 
         {{-- The planning values --}}
@@ -325,7 +412,7 @@
                         @else
                             <button type="button" role="radio" aria-checked="{{ $entry['selected'] ? 'true' : 'false' }}" wire:click="select('{{ $row->format->value }}')" wire:key="row-{{ $row->format->value }}"
                                     data-test="row-{{ $row->format->value }}"
-                                    aria-label="{{ $row->format->label() }}, {{ __('about :duration', ['duration' => $duration($row->total())]) }}, {{ $entry['fitText'] }}, {{ __('at least :games for everyone', ['games' => $gamesCount($row->guaranteed())]) }}{{ $entry['recommended'] ? ', '.__('recommended') : '' }}"
+                                    aria-label="{{ $row->format->label() }}, {{ __('about :duration', ['duration' => $duration($row->total())]) }}, {{ $entry['fitText'] }}, {{ __('at least :games for everyone', ['games' => $gamesCount($row->guaranteedGames())]) }}{{ $entry['recommended'] ? ', '.__('recommended') : '' }}"
                                     @class(['flex w-full cursor-pointer flex-col gap-2.5 rounded-md border-0 p-3 text-left text-ink hover:bg-row-hover @min-[820px]/rows:grid @min-[820px]/rows:min-h-16 @min-[820px]/rows:grid-cols-[300px_minmax(0,1fr)_184px_88px] @min-[820px]/rows:items-center @min-[820px]/rows:gap-3 @min-[820px]/rows:px-3 @min-[820px]/rows:py-2.5',
                                         'bg-btc-chip shadow-[inset_0_0_0_1px_var(--color-btc)]' => $entry['selected'], 'bg-transparent' => ! $entry['selected']])>
                                 {{-- A card (under 820 px): time and minimum go under the name where the description would wrap beside them (R11, 151 px at 390). --}}
@@ -339,7 +426,7 @@
                                     </span>
                                     <span class="flex shrink-0 flex-col items-end gap-0.5 whitespace-nowrap @min-[820px]/rows:hidden">
                                         <span class="text-[13px] font-bold">{{ $duration($row->total()) }}</span>
-                                        <span class="text-xs text-ink-2">{{ __(':games at least', ['games' => $gamesCount($row->guaranteed())]) }}</span>
+                                        <span class="text-xs text-ink-2">{{ __(':games at least', ['games' => $gamesCount($row->guaranteedGames())]) }}</span>
                                     </span>
                                 </span>
                                 <span class="block w-full py-1.5 @min-[820px]/rows:py-0" aria-hidden="true">
@@ -372,7 +459,7 @@
                                         <span class="inline-flex h-[22px] items-center gap-1 rounded-xs bg-btc-press px-2 text-[11px] font-bold whitespace-nowrap text-btc-hi @min-[820px]/rows:hidden"><x-icon name="award" :size="12" />{{ __('Recommended') }}</span>
                                     @endif
                                 </span>
-                                <span class="hidden text-right font-display text-lg font-bold @min-[820px]/rows:block">{{ $row->guaranteed() }}</span>
+                                <span class="hidden text-right font-display text-lg font-bold @min-[820px]/rows:block">{{ $row->guaranteedGames() }}</span>
                             </button>
                         @endif
                     @endforeach
@@ -468,17 +555,50 @@
                                     @endforeach
                                 </span>
                             </span>
-                            <span class="{{ $help }}">{{ __('Twice means a return match; in chess with the other color.') }}</span>
+                            {{-- A two-leg game (Blockli) multiplies this with its games per pairing below: say what comes out (DerCaddy, 2026-11-04:
+                                 "spielt man dann 6 Spiele gegen einen Gegner?"). --}}
+                            <span class="{{ $help }}" data-test="iterations-help">{{ \App\Support\Tournaments\TournamentRunner::tableChoosesLegs($profile->game, $format, $options)
+                                ? __('Each time is one more pairing with the same opponent. With the games per pairing below that makes :against against each opponent and :games for everyone.', ['against' => $gamesCount($options->iterations * $perMatch), 'games' => $gamesCount($chosen->guaranteedGames())])
+                                : __('Twice means a return match; in chess with the other color.') }}</span>
                         </div>
+                        {{-- Cause before effect (order E, jury 2026-11-05): the games per pairing and how they count come right under the
+                             iterations their help multiplies with, before ranking and tie-breaks, whose note depends on them. --}}
+                        @if (\App\Support\Tournaments\TournamentRunner::tableChoosesLegs($profile->game, $format, $options))
+                            @include('pages.admin.partials.tournament-legs')
+                        @endif
                         <div class="{{ $optionRow }}">
                             <span class="flex flex-col items-start gap-2">
                                 <span class="text-[13px] font-bold" id="rank-by-l">{{ __('Rank by') }}</span>
                                 <x-ui.select-menu model="options.rankBy" live labelledby="rank-by-l" :value="$options->rankBy" width="16rem" data-test="rank-by"
                                                   :options="['points' => __('Points (win 1, draw ½)'), 'match-wins' => __('Matches won'), 'game-wins' => __('Games won'), 'custom' => __('Custom points')]" />
                             </span>
-                            <span class="{{ $help }}">{{ __('Matches won counts wins. Games won counts single games inside a series. Custom points lets you set points for a win and a draw.') }}</span>
+                            {{-- The help explains the choice made, not all four (DerCaddy, 2026-11-04). --}}
+                            <span class="{{ $help }}" data-test="rank-by-help">{{ match ($options->rankBy) {
+                                'match-wins' => __('Matches won: only won matches count, a draw counts nothing.'),
+                                'game-wins' => __('Games won: every single game won counts, also inside a series or a pairing.'),
+                                'custom' => __('Custom points: you set the points for a win and a draw.'),
+                                default => __('Points: a win 1, a draw ½.'),
+                            } }}</span>
                         </div>
-                        @include('pages.admin.partials.tournament-tie-breaks', ['key' => 'roundRobinTieBreaks', 'current' => $options->roundRobinTieBreaks, 'labels' => array_diff_key($tieBreakLabels, ['median-buchholz' => true])])
+                        @if ($options->rankBy === 'custom')
+                            {{-- Custom points had nothing to set them with in a round robin (DerCaddy, 2026-11-04): the Swiss fields, without the bye. --}}
+                            <div class="{{ $optionRow }}" data-test="custom-points">
+                                <span class="flex flex-col items-start gap-2">
+                                    <span class="text-[13px] font-bold">{{ __('Points for a win and a draw') }}</span>
+                                    <span class="flex gap-2">
+                                        @foreach ([['pointsWin', __('Win')], ['pointsTie', __('Draw')]] as [$key, $label])
+                                            <label class="flex flex-col gap-1 text-xs text-ink-2" wire:key="rr-pts-{{ $key }}">{{ $label }}
+                                                <input wire:model.live.debounce.500ms="options.{{ $key }}" inputmode="decimal" class="h-11 w-16 rounded-md border border-edge bg-ground px-2 text-center text-[13px] text-ink">
+                                            </label>
+                                        @endforeach
+                                    </span>
+                                </span>
+                                <span class="{{ $help }}">{{ __('From 0 to 10 points each.') }}</span>
+                            </div>
+                        @endif
+                        {{-- Counted game by game, everyone's games won follow from the points (DerCaddy, 2026-11-04). --}}
+                        @include('pages.admin.partials.tournament-tie-breaks', ['key' => 'roundRobinTieBreaks', 'current' => $options->roundRobinTieBreaks, 'labels' => array_diff_key($tieBreakLabels, ['median-buchholz' => true]),
+                            'same' => $options->rankBy === 'points' && $options->perLeg() && \App\Support\Tournaments\TournamentRunner::tableChoosesLegs($profile->game, $format, $options) ? ['game-wins', 'game-difference', 'game-win-percentage'] : []])
                     @endif
 
                     @if ($format === TournamentFormat::Swiss)
@@ -538,28 +658,8 @@
                         </div>
                     @endif
 
-                    @if (\App\Support\Tournaments\TournamentRunner::tableChoosesLegs($profile->game, $format, $options))
-                        {{-- A two-leg game (Blockli) in a round-robin table (DerCaddy, 2026-10-18: "das sollte man vorher einstellen können",
-                             "sollte man dann auch zwei Punkte bekommen können"): one game or two per pairing, points per pairing or per game.
-                             A knockout keeps its two legs and decider. --}}
-                        <div class="{{ $optionRow }}" data-test="legs-option">
-                            <span class="flex flex-col items-start gap-2">
-                                <span id="legs-l" class="text-[13px] font-bold">{{ __('Games per pairing') }}</span>
-                                <x-tournaments.segmented labelledby="legs-l" method="pickLegs" :current="$options->legs" :grow="false" data-test="legs"
-                                    :options="[[2, __('Two games')], [1, __('One game')]]" />
-                            </span>
-                            <span class="{{ $help }}">{{ __('Two games with the colours swapped are fairer: everyone starts once. One game per pairing halves the games; the colours even out over the rounds.') }}</span>
-                        </div>
-                        @if ($options->legs === 2)
-                            <div class="{{ $optionRow }}" data-test="leg-points-option">
-                                <span class="flex flex-col items-start gap-2">
-                                    <span id="legp-l" class="text-[13px] font-bold">{{ __('Points in the table') }}</span>
-                                    <x-tournaments.segmented labelledby="legp-l" method="pickLegPoints" :current="$options->legPoints" :grow="false" data-test="leg-points"
-                                        :options="[[false, __('Per pairing')], [true, __('Per game')]]" />
-                                </span>
-                                <span class="{{ $help }}">{{ __('Per game: every game counts, a win 1 and a draw ½, so up to 2 points per pairing, and each game is in the table once it ends. Per pairing: the pairing counts once, 1 for winning it, ½ when each wins a game.') }}</span>
-                            </div>
-                        @endif
+                    @if ($format !== TournamentFormat::RoundRobin && \App\Support\Tournaments\TournamentRunner::tableChoosesLegs($profile->game, $format, $options))
+                        @include('pages.admin.partials.tournament-legs')
                     @endif
 
                     @if ($lobbyFormat)
@@ -673,60 +773,5 @@
             </div>
         </div>
     </section>
-
-    {{-- Who enters results (director mode, TOURNAMENT-FORMATS.md section 6) --}}
-    <section aria-labelledby="res-h" class="flex flex-col gap-4 rounded border border-hairline bg-card p-4 lg:p-6" data-test="results-mode">
-        <h2 id="res-h" class="m-0 font-display text-lg font-bold">{{ __('Who enters results') }}</h2>
-        {{-- One card per row up to 1400 px of the admin column: side by side at 1280 the director's sentence ran 5 lines in 405 px,
-             at 1024 7 lines in 277 (E1). --}}
-        {{--
-            Each mode is a one-line radio (rule R11) with its short title (choice()); what it means stands under it, outside the
-            control, and picks it too, as the grand final choices do. Title and sentence inside the radio ran 7 lines in 277 px.
-        --}}
-        <div role="radiogroup" aria-labelledby="res-h" class="grid gap-3 @min-[1400px]/admin:grid-cols-2 @min-[1400px]/admin:gap-x-4">
-            @foreach (TournamentResultsMode::cases() as $mode)
-                <div class="flex flex-col gap-1" wire:key="mode-{{ $mode->value }}">
-                    <button type="button" role="radio" class="rv-opt" aria-checked="{{ $this->resultsMode === $mode->value ? 'true' : 'false' }}" aria-describedby="res-{{ $mode->value }}-d" wire:click="pickResultsMode('{{ $mode->value }}')" data-test="results-{{ $mode->value }}">
-                        <i aria-hidden="true"></i>
-                        <span class="text-[13px] font-bold whitespace-nowrap">{{ $mode->choice() }}</span>
-                    </button>
-                    <p id="res-{{ $mode->value }}-d" class="m-0 cursor-pointer px-3 text-xs leading-normal text-ink-2" wire:click="pickResultsMode('{{ $mode->value }}')" data-test="results-{{ $mode->value }}-help">{{ $mode->help() }}</p>
-                </div>
-            @endforeach
-        </div>
-
-        @if ($this->resultsMode === TournamentResultsMode::Director->value)
-            <div class="flex flex-col gap-3" data-test="directors">
-                <span class="text-[13px] font-bold">{{ __('Tournament directors') }}</span>
-                <ul class="m-0 flex list-none flex-wrap gap-2 p-0">
-                    @if ($chooserCreator = $this->chooserCreator())
-                        <li class="inline-flex h-9 items-center gap-2 rounded-md bg-ground px-2.5 text-[13px] shadow-ring">
-                            <x-avatar :user="$chooserCreator" :size="24" />{{ $chooserCreator->displayName() }} <span class="text-ink-3">{{ $chooserCreator->id === auth()->id() ? __('(you)') : __('(creator)') }}</span>
-                        </li>
-                    @endif
-                    @foreach ($this->directors as $director)
-                        <li class="inline-flex h-9 items-center gap-2 rounded-md bg-ground pl-2.5 text-[13px] shadow-ring" wire:key="director-{{ $director->id }}">
-                            <x-avatar :user="$director" :size="24" />{{ $director->displayName() }}
-                            <button type="button" class="flex size-9 cursor-pointer items-center justify-center text-ink-2 hover:text-ink" wire:click="removeDirector({{ $director->id }})" aria-label="{{ __('Remove :name', ['name' => $director->displayName()]) }}"><x-icon name="close" :size="14" /></button>
-                        </li>
-                    @endforeach
-                </ul>
-                <form wire:submit="addDirector" class="flex flex-col gap-1.5">
-                    <span class="flex items-end gap-2">
-                        <x-player-picker id="dir-new" wire:model="directorId" :label="__('Add a director')" :exclude="array_values(array_filter([$this->chooserCreator()?->id, ...$this->directorIds]))" submit-on-pick class="grow lg:max-w-80" />
-                        <x-button variant="quiet" type="submit" data-test="add-director">{{ __('Add') }}</x-button>
-                    </span>
-                    @if ($this->directorError !== '')
-                        <span class="text-xs text-loss" role="alert">{{ $this->directorError }}</span>
-                    @endif
-                </form>
-                <ul class="m-0 flex list-disc flex-col gap-1 pl-5 text-xs leading-normal text-ink-2">
-                    <li>{{ __('Directors enter results on the director desk; players see them right away, marked “Entered by the tournament director”.') }}</li>
-                    <li>{{ __('Every entry and correction is saved with name and time and shown on the match.') }}</li>
-                    <li>{{ __('Results can be corrected until the round is closed.') }}</li>
-                    <li>{{ __('Rated games still count for Elo. Tournament games never mine season blocks.') }}</li>
-                </ul>
-            </div>
-        @endif
-    </section>
 </div>
+@endif
