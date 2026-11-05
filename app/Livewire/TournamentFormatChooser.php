@@ -250,11 +250,23 @@ abstract class TournamentFormatChooser extends Component
             return;
         }
 
+        // Another time control of the same game keeps the format and its options where they stay valid (PR #19 review: a
+        // Blockli blitz -> rapid switch before the draw reset "three times", one game per pairing and the ranking); the
+        // times are the mode's own, and the window only carries over in the same unit.
+        $before = $this->profile();
         $this->game = $key;
         $this->gameLength = $this->setup = $this->break = '';
-        $this->window = $this->profile()->isDaily() ? 90 : 180;
-        $this->options = FormatOptions::defaults($this->profile())->toArray();
-        $this->selected = null;
+        $sameGame = $this->profile()->game === $before->game;
+
+        if (! $sameGame || $this->profile()->unit !== $before->unit) {
+            $this->window = $this->profile()->isDaily() ? 90 : 180;
+        }
+
+        $this->options = ($sameGame ? FormatOptions::fromArray($this->options, $this->profile()) : FormatOptions::defaults($this->profile()))->toArray();
+
+        if (! $sameGame) {
+            $this->selected = null;
+        }
 
         if ($this->profile()->isDaily()) {
             $this->onSite = false;

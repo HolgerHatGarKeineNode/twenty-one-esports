@@ -5,12 +5,14 @@ use App\Enums\TournamentResultsMode;
 use App\Enums\TournamentStatus;
 use App\Models\Admin;
 use App\Models\Tournament;
+use App\Models\TournamentSignup;
 use App\Models\User;
 use App\Support\Tournaments\Estimator;
 use App\Support\Tournaments\FormatOptions;
 use App\Support\Tournaments\GameProfile;
 use App\Support\Tournaments\TournamentPublisher;
 use Carbon\CarbonImmutable;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Queue;
 use Livewire\Livewire;
 use Tests\Support\BlockliOn;
@@ -290,4 +292,26 @@ test('the published rules and the tournament page say a chess or board game is p
         ->assertSee('every game is played on the league server; its result comes from the game itself')->assertDontSee('Players report results');
     $this->get(route('tournaments.show', $directed))->assertOk()
         ->assertSee('Tournament directors enter results')->assertDontSee('every game is played on the league server');
+});
+
+test('before the draw another time control of the same game keeps the format and its options; the players are told of the switch', function () {
+    $tournament = rulesFormBlockli(TournamentFormat::RoundRobin, ['iterations' => 3, 'legs' => 1, 'rankBy' => 'game-wins']);
+    $tournament->forceFill(['status' => TournamentStatus::Signup, 'signup_closes_at' => now()->addDay(), 'published_at' => now()->subDay()])->save();
+    foreach (User::factory()->count(2)->create() as $player) {
+        TournamentSignup::query()->create(['tournament_id' => $tournament->id, 'user_id' => $player->id, 'name' => $player->displayName(), 'members' => [$player->id]]);
+    }
+
+    Livewire::actingAs(rulesFormAdmin())->test('pages::admin.tournament-edit', ['tournament' => $tournament->refresh()])
+        ->call('pickGame', 'blockli/rapid')
+        ->assertSet('selected', TournamentFormat::RoundRobin->value)
+        ->call('save')->assertSet('error', '');
+
+    $options = $tournament->refresh()->formatOptions();
+    expect($tournament->mode)->toBe('rapid')->and($tournament->format)->toBe(TournamentFormat::RoundRobin)
+        ->and([$options->iterations, $options->legs, $options->rankBy])->toBe([3, 1, 'game-wins'])
+        ->and(DB::table('notifications')->where('data', 'like', '%now plays%')->count())->toBe(2);
+
+    // Another game starts from its own defaults.
+    $page = Livewire::actingAs(rulesFormAdmin())->test('pages::admin.tournament-edit', ['tournament' => $tournament])->call('pickGame', 'blitz');
+    expect($page->get('selected'))->toBeNull()->and($page->get('options')['iterations'])->toBe(1);
 });
