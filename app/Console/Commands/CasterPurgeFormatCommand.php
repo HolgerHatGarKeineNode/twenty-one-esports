@@ -29,7 +29,7 @@ class CasterPurgeFormatCommand extends Command
 {
     public function handle(ClipSpool $spool): int
     {
-        $format = (string) $this->argument('format');
+        $format = is_string($this->argument('format')) ? $this->argument('format') : '';
 
         if (! isset(Rubrics::all()[$format])) {
             $this->error("Unknown format \"{$format}\".");

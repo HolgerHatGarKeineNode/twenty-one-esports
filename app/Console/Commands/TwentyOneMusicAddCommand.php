@@ -53,9 +53,9 @@ class TwentyOneMusicAddCommand extends Command
             ini_set('memory_limit', '1G');
         }
 
-        $file = (string) $this->argument('file');
+        $file = is_string($this->argument('file')) ? $this->argument('file') : '';
         $dir = rtrim((string) ($this->option('dir') ?: config('twentyone.stream.music.dir')), '/');
-        $artist = trim((string) $this->option('artist'));
+        $artist = is_string($this->option('artist')) ? trim($this->option('artist')) : '';
 
         if ($dir === '' || ! is_dir($dir)) {
             return $this->refuse('No music folder at '.$dir);
@@ -129,10 +129,12 @@ class TwentyOneMusicAddCommand extends Command
         // Taken across both catalogs: an overlay id never repeats one of the repo's.
         $taken = array_fill_keys([...array_keys($prints), ...array_map(fn (array $track): string => (string) $track['id'], MusicCatalog::tracks())], true);
         $id = MusicCatalog::newId($relative, $taken);
+        $title = $this->option('title');
+        $wavlakeId = $this->option('wavlake-id');
         $tracks[$relative] = [
             'id' => $id,
             'artists' => $artistIds,
-            'title' => (string) ($this->option('title') ?: MusicPlaylist::title($name)),
+            'title' => is_string($title) && $title ? $title : MusicPlaylist::title($name),
             'duration' => $result['duration'],
             'bitrate' => $result['bitrate'],
             'lufs' => $result['lufs'],
@@ -142,7 +144,7 @@ class TwentyOneMusicAddCommand extends Command
             'size' => (int) filesize($target),
             'mtime' => (int) filemtime($target),
             'credit_source' => $artistIds === [] ? 'none' : 'manual',
-            ...($this->option('wavlake-id') ? ['wavlake_track_id' => (string) $this->option('wavlake-id')] : []),
+            ...(is_string($wavlakeId) && $wavlakeId ? ['wavlake_track_id' => $wavlakeId] : []),
         ];
         $prints[$id] = $result['fingerprint'];
         $artists = array_filter($artists, 'is_array');

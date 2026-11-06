@@ -32,7 +32,7 @@ class TwentyOneMusicRenormalizeCommand extends Command
     public function handle(LoudnessNormalizer $normalizer): int
     {
         $dir = rtrim((string) ($this->option('dir') ?: config('twentyone.stream.music.dir')), '/');
-        $from = rtrim((string) $this->option('from'), '/');
+        $from = is_string($this->option('from')) ? rtrim($this->option('from'), '/') : '';
 
         if ($from === '' || ! is_dir($from)) {
             $this->error('No folder of originals at '.$from.' (--from=)');

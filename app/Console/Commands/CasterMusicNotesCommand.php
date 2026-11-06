@@ -35,7 +35,7 @@ class CasterMusicNotesCommand extends Command
             $warmed++;
         }
 
-        if ($this->output?->isVerbose()) {
+        if ($this->output->isVerbose()) {
             $this->line('artists warmed: '.$warmed);
         }
 
