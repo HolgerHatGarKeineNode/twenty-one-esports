@@ -640,6 +640,8 @@ class CasterFetcher
      * "News, Sport und Wetter will ich auch nicht haben"): a live tournament, the news talk, sport and weather,
      * a bulletin, the news itself and every programme the clock places are perishable - only the evergreen
      * programmes stay in the local render archive.
+     *
+     * @param  array<mixed>  $topics
      */
     public static function timelessTopics(array $topics): bool
     {
@@ -653,6 +655,8 @@ class CasterFetcher
      * The programme name of a block's topics for its file name (user 2026-10-16: "im Dateinamen mit ihrem
      * Programmnamen benennen, dann weiß ich was drinnen steckt"): a stock topic names its format
      * ("stock:talk:..." -> "talk"), anything else stays "talk" - the file always says what is inside.
+     *
+     * @param  array<mixed>  $topics
      */
     public static function programmeLabel(array $topics): string
     {

@@ -208,12 +208,14 @@ class PodcastLibrary
                 }
             }
 
+            // An episode stored without its publication time sorts last, as the oldest.
+            $meta['published_at'] = (int) ($meta['published_at'] ?? 0);
             $episodes[$meta['guid']] = $meta;
         }
 
         /** @var list<array{guid: string, title: string, episode_number?: int|null, notes?: string, published_at: int, seconds: float, chunks: list<array{path: string, seconds: float, bytes: int, pauses: list<float>}>}> $sorted */
         $sorted = array_values($episodes);
-        usort($sorted, fn (array $a, array $b): int => (int) ($b['published_at'] ?? 0) <=> (int) ($a['published_at'] ?? 0));
+        usort($sorted, fn (array $a, array $b): int => $b['published_at'] <=> $a['published_at']);
 
         return $sorted;
     }

@@ -88,7 +88,7 @@ final class Imaging
     private Closure $random;
 
     /**
-     * @param  array{dir?: string, station_every_minutes?: float|int, station_long_every_minutes?: float|int, sweeper_share?: float|int, power_intro_share?: float|int, back_to_back_seconds?: float|int, repeat_minutes?: float|int, pause_seconds?: float|int}  $settings
+     * @param  array{dir?: string, station_every_minutes?: float|int, station_long_every_minutes?: float|int, sweeper_share?: float|int, power_intro_share?: float|int, back_to_back_seconds?: float|int, repeat_minutes?: float|int, pause_seconds?: float|int, music_change_share?: float|int, music_change_night_share?: float|int, music_change_every_minutes?: float|int}  $settings
      * @param  (Closure(): float)|null  $random  a number in [0, 1), mt_rand by default
      */
     public function __construct(

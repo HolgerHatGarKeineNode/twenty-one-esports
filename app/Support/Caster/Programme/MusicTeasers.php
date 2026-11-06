@@ -54,7 +54,6 @@ final class MusicTeasers
     public function __construct(
         private readonly DuetScripts $duets,
         private readonly VoiceUsage $usage,
-        private readonly ScriptGuard $scriptGuard = new ScriptGuard,
         private readonly VoiceHygiene $hygiene = new VoiceHygiene,
         private readonly ?RelayReader $reader = null,
     ) {}
@@ -100,7 +99,7 @@ final class MusicTeasers
                 'npub' => self::orNull($identity['npub'] ?? null),
                 'youtube' => self::orNull($identity['youtube'] ?? null),
                 'wavlake' => $credit['kind'] === 'wavlake' || (($identity['qr_kind'] ?? null) === 'wavlake'),
-                'lud16' => self::orNull($identity['lud16'] ?? null) ?? ($credit['kind'] === 'lud16' ? self::orNull($credit['target'] ?? null) : null),
+                'lud16' => self::orNull($identity['lud16'] ?? null) ?? ($credit['kind'] === 'lud16' ? self::orNull($credit['target']) : null),
             ];
         }
 
@@ -148,7 +147,7 @@ final class MusicTeasers
             $deadline = microtime(true) + min(6.0, max(1.0, (float) config('esports.relay_fetch_budget_seconds', 6)));
             $byRelay = ($this->reader ?? app(RelayReader::class))->readGuarded(
                 [['authors' => [$pubkey], 'kinds' => [1], 'limit' => 10]],
-                (array) config('esports.relays', []),
+                array_values(array_filter((array) config('esports.relays', []), 'is_string')),
                 10,
                 $deadline,
             );
@@ -247,6 +246,8 @@ final class MusicTeasers
     /**
      * A model answer checked: one or two whole sentences within the word limit, the artist's name and the title
      * in it word for word, no digits (numbers of the title included, written as words), no sign-off. Null otherwise.
+     *
+     * @param  array{artist: string, title: string|null}  $next
      */
     public function evaluate(string $raw, array $next): ?string
     {

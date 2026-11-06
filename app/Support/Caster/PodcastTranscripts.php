@@ -34,7 +34,7 @@ class PodcastTranscripts
     /**
      * Stores an uploaded transcript; null when it is older than the stored episode.
      *
-     * @param  array{guid: string, title: string, episode_number: int|null, published_at: int, transcript: string}  $episode
+     * @param  array{guid: string, title: string, podcast?: string, episode_number: int|null, published_at: int, transcript: string}  $episode
      */
     public function store(array $episode): ?CasterPodcastTranscript
     {
@@ -42,7 +42,7 @@ class PodcastTranscripts
             // One latest episode per podcast (user 2026-10-16: transcripts of several podcasts - EINUNDZWANZIG,
             // Blocktrainer, Münzweg): an episode is older only than its own podcast's stored one, and the
             // others' episodes stay.
-            $podcast = (string) ($episode['podcast'] ?? '');
+            $podcast = $episode['podcast'] ?? '';
             $latest = CasterPodcastTranscript::query()->where('podcast', $podcast)->orderByDesc('published_at')->orderByDesc('id')->first();
 
             if ($latest !== null && $latest->guid !== $episode['guid'] && $latest->published_at > $episode['published_at']) {
