@@ -33,6 +33,7 @@ use App\Support\Tournaments\Engine\Slot;
 use App\Support\Tournaments\Engine\StandingRow;
 use App\Support\Tournaments\Engine\Standings;
 use Illuminate\Support\Collection;
+use Illuminate\Support\Facades\DB;
 
 /**
  * A tie for place 1 of a final table that points and every tie-break leave (DerCaddy, 2026-11-05: Blitz Blockli #55,
@@ -233,32 +234,61 @@ final class FirstPlaceTie
      *   (finished: a result, maybe a signed record). Aborted without a move (both sides missed the first move, or the
      *   league voided it) is untouched;
      * - a Hyperbitcoinization table (HyperMatch): an action (`ply` above 0), or finished;
-     * - a Proof of Pong match (PongMatch): a first serve (`started_at`), a goal, or finished (a forfeit names a winner).
-     *   Waiting for its players, or aborted before the first serve, is untouched.
+     * - a Proof of Pong match (PongMatch): both players there and the match on (`started_at`, set as it turns active
+     *   once both pages are open), a goal, or finished (a forfeit names a winner). Waiting for its players, or aborted
+     *   before both were there, is untouched.
      */
     public static function hasStarted(TournamentStage $stage): bool
     {
-        $matches = TournamentMatch::query()->whereIn('tournament_round_id', TournamentRound::query()->where('tournament_stage_id', $stage->id)->select('id'));
-
-        if ((clone $matches)->where(fn ($query) => $query->whereNotNull('result')->orWhereNotNull('held'))->exists()) {
-            return true;
-        }
-
-        return self::linkedPlay(array_values((clone $matches)->pluck('id')->map(intval(...))->all()))->contains(fn (SeriesMatch|ChessGame|BoardGame|HyperMatch|PongMatch $played): bool => self::wasPlayed($played));
+        return self::played(self::matchIds($stage));
     }
 
     /**
-     * Every series, game, table and Pong match linked to one of the tournament matches `$ids`.
+     * The ids of the tie-break knockout's matches.
+     *
+     * @return list<int>
+     */
+    private static function matchIds(TournamentStage $stage): array
+    {
+        return array_values(TournamentMatch::query()->whereIn('tournament_round_id', TournamentRound::query()->where('tournament_stage_id', $stage->id)->select('id'))
+            ->orderBy('id')->pluck('id')->map(intval(...))->all());
+    }
+
+    /**
+     * Whether any of the tournament matches `$ids` is played ({@see hasStarted()}). `$locked`: the rows are read for
+     * update and the linked ones returned in `$linked`, so nothing played can land on them until the transaction ends.
+     *
+     * @param  list<int>  $ids
+     * @param  Collection<int, SeriesMatch|ChessGame|BoardGame|HyperMatch|PongMatch>|null  $linked
+     */
+    private static function played(array $ids, bool $locked = false, ?Collection &$linked = null): bool
+    {
+        $matches = TournamentMatch::query()->whereKey($ids)->orderBy('id');
+        $matches = $locked ? $matches->lockForUpdate() : $matches;
+
+        if ($matches->get(['id', 'result', 'held'])->contains(fn (TournamentMatch $match): bool => $match->result !== null || $match->held !== null)) {
+            return true;
+        }
+
+        $linked = self::linkedPlay($ids, $locked);
+
+        return $linked->contains(fn (SeriesMatch|ChessGame|BoardGame|HyperMatch|PongMatch $played): bool => self::wasPlayed($played));
+    }
+
+    /**
+     * Every series, game, table and Pong match linked to one of the tournament matches `$ids`; read for update when
+     * `$locked`, kind by kind and in id order.
      *
      * @param  list<int>  $ids
      * @return Collection<int, SeriesMatch|ChessGame|BoardGame|HyperMatch|PongMatch>
      */
-    private static function linkedPlay(array $ids): Collection
+    private static function linkedPlay(array $ids, bool $locked = false): Collection
     {
         $linked = new Collection;
 
         foreach ([SeriesMatch::class, ChessGame::class, BoardGame::class, HyperMatch::class, PongMatch::class] as $played) {
-            $linked = $linked->concat($played::query()->whereIn('tournament_match_id', $ids)->orderBy('id')->get()->all());
+            $query = $played::query()->whereIn('tournament_match_id', $ids)->orderBy('id');
+            $linked = $linked->concat(($locked ? $query->lockForUpdate() : $query)->get()->all());
         }
 
         return $linked;
@@ -280,8 +310,8 @@ final class FirstPlaceTie
     }
 
     /**
-     * End and unlink what the league started for the matches `$ids` of a tie-break knockout nobody played
-     * ({@see hasStarted()}), the way a correction voids a pairing it changed (TournamentControl::voidPlay()): a running
+     * End and unlink `$linked`, what the league started for the matches `$ids` of a tie-break knockout nobody played
+     * (read under lock, {@see played()}), the way a correction voids a pairing it changed (TournamentControl::voidPlay()): a running
      * series is closed as void (unrated, the league's void attested), a live game, table or Pong match ends voided
      * (unrated, its open pages see it end). Each then lets go of its match (`tournament_match_id`), which the database
      * would otherwise keep from going, and reports nothing to the bracket. Nothing is deleted: the voided rows and
@@ -289,12 +319,13 @@ final class FirstPlaceTie
      * leads to the knockout opened anew, never to a voided game.
      *
      * @param  list<int>  $ids
+     * @param  Collection<int, SeriesMatch|ChessGame|BoardGame|HyperMatch|PongMatch>  $linked
      */
-    private static function voidUntouched(array $ids): void
+    private static function voidUntouched(array $ids, Collection $linked): void
     {
         $reason = 'Voided by the league: the tie-break for 1st place was drawn up anew after a result of the table was corrected.';
 
-        foreach (self::linkedPlay($ids) as $played) {
+        foreach ($linked as $played) {
             try {
                 if ($played instanceof SeriesMatch) {
                     app(SeriesService::class)->leagueClose($played, ['resolution' => SeriesResolution::Void, 'winner' => 'none', 'games' => null], $reason, null);
@@ -324,25 +355,35 @@ final class FirstPlaceTie
      * all when place 1 is clear now (TournamentRunner::sync(), in its lock; the next start seats the new pairings). A
      * knockout under way stays; TournamentPlacements and TournamentChampion read nothing from it until the table
      * matches it again. True when it went.
+     *
+     * All or nothing, in one transaction: before anything is voided, the knockout's matches and every row linked to
+     * them are read again for update. A first move, a report or a result that landed since the first look holds the
+     * knockout as it is (fail-closed), and none of it is voided or let go.
      */
     public static function dropStalePlayoff(Tournament $tournament): bool
     {
-        $stage = self::playoffStage($tournament);
+        return DB::transaction(function () use ($tournament): bool {
+            $stage = self::playoffStage($tournament);
 
-        if ($stage === null || ! self::isStale($tournament) || self::hasStarted($stage)) {
-            return false;
-        }
+            if ($stage === null || ! self::isStale($tournament) || self::hasStarted($stage)) {
+                return false;
+            }
 
-        $rounds = TournamentRound::query()->where('tournament_stage_id', $stage->id)->select('id');
-        $matches = TournamentMatch::query()->whereIn('tournament_round_id', $rounds)->select('id');
+            $ids = self::matchIds($stage);
+            $linked = null;
 
-        self::voidUntouched(array_values((clone $matches)->pluck('id')->map(intval(...))->all()));
-        TournamentMatchSlot::query()->whereIn('tournament_match_id', $matches)->delete();
-        TournamentMatch::query()->whereIn('tournament_round_id', $rounds)->delete();
-        TournamentRound::query()->where('tournament_stage_id', $stage->id)->delete();
-        $stage->delete();
+            if (self::played($ids, locked: true, linked: $linked) || $linked === null) {
+                return false;
+            }
 
-        return true;
+            self::voidUntouched($ids, $linked);
+            TournamentMatchSlot::query()->whereIn('tournament_match_id', $ids)->delete();
+            TournamentMatch::query()->whereKey($ids)->delete();
+            TournamentRound::query()->where('tournament_stage_id', $stage->id)->delete();
+            $stage->delete();
+
+            return true;
+        });
     }
 
     /**

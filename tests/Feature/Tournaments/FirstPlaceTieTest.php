@@ -666,11 +666,15 @@ test('a game the league started for the tie-break counts as played only once it 
     'series, a game on its live sheet' => ['series', [], ['live_games' => [['challenger' => 2, 'challenged' => 0, 'winner' => 'challenger']]]],
     'series, a report' => ['series', [], ['status' => SeriesStatus::Reported]],
     'series, a no-show report' => ['series', [], ['noshow_reported_at' => '2026-11-06 12:00:00']],
+    'series, the games of a result' => ['series', [], ['result_games' => [['winner' => 'challenger', 'challenger' => 3, 'challenged' => 1]]]],
     'chess, a move' => ['chess', [], ['ply' => 1]],
     'chess aborted without a move, then finished' => ['chess', ['status' => ChessGameStatus::Aborted], ['status' => ChessGameStatus::Finished, 'result' => '1-0']],
     'board game, a move' => ['board', [], ['ply' => 1]],
+    'board game, finished without a move' => ['board', [], ['status' => BoardGameStatus::Finished, 'result' => '1-0']],
     'Hyperbitcoinization table, an action' => ['hyper', [], ['ply' => 1]],
-    'Pong, the first serve' => ['pong', [], ['status' => PongMatchStatus::Active, 'started_at' => '2026-11-06 12:00:00']],
+    'Hyperbitcoinization table, finished without an action' => ['hyper', [], ['status' => HyperMatchStatus::Finished]],
+    'Pong, both players there and the match on' => ['pong', [], ['status' => PongMatchStatus::Active, 'started_at' => '2026-11-06 12:00:00']],
+    'Pong, finished by forfeit before it began' => ['pong', [], ['status' => PongMatchStatus::Finished]],
     'Pong aborted before a serve, then a goal' => ['pong', ['status' => PongMatchStatus::Aborted], ['score_left' => 1]],
 ]);
 
@@ -811,4 +815,34 @@ test('players mode: a tie-break game with one move played holds the stale knocko
         ->and(FirstPlaceTie::isStale($tournament))->toBeTrue()
         ->and(app(TournamentChampion::class)->of($tournament))->toBeNull()
         ->and(app(TournamentPlacements::class)->of($tournament))->toBeNull();
+});
+
+test('a first move that lands while the stale tie-break is being taken back holds it: nothing is voided or let go', function () {
+    [$tournament, [, , $c, $d]] = playersPairOfFour();
+    [$game] = tieGames($tournament);
+    $final = TournamentMatch::query()->findOrFail($game->tournament_match_id);
+    // D against C open again (its result set aside), with no sync yet: the knockout of A and B is stale.
+    TournamentMatch::query()->where('tournament_id', $tournament->id)->where('key', 'not like', FirstPlaceTie::PREFIX.'%')->with('slots')->get()
+        ->first(fn (TournamentMatch $match) => count($match->slots) === 2 && array_diff($match->slots->pluck('tournament_participant_id')->all(), [$c->id, $d->id]) === [])
+        ->forceFill(['result' => null, 'status' => 'ready'])->save();
+    $reads = 0;
+    // The seam: the first look (hasStarted()) reads the game untouched, and White's first move lands right after it.
+    ChessGame::retrieved(function (ChessGame $read) use ($game, &$reads): void {
+        if ($read->id === $game->id && ++$reads === 1) {
+            ChessGame::query()->whereKey($game->id)->update(['ply' => 1]);
+        }
+    });
+
+    expect(FirstPlaceTie::isStale($tournament))->toBeTrue()
+        ->and(FirstPlaceTie::dropStalePlayoff($tournament))->toBeFalse()
+        // Read twice: the first look, then again under lock before anything is voided.
+        ->and($reads)->toBe(2);
+
+    $game->refresh();
+
+    expect($game->status)->toBe(ChessGameStatus::Active)
+        ->and($game->ply)->toBe(1)
+        ->and($game->tournament_match_id)->toBe($final->id)
+        ->and(FirstPlaceTie::playoffStage($tournament))->not->toBeNull()
+        ->and(FirstPlaceTie::isStale($tournament))->toBeTrue();
 });
