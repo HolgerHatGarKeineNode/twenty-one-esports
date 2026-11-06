@@ -22,6 +22,20 @@ final readonly class FormatOptions
     public const FINAL_STAGES = ['single-elimination', 'double-elimination'];
 
     /**
+     * What a tie for place 1 of a final table (round robin, Swiss) that no tie-break splits comes to
+     * ({@see $firstPlaceTie}): a tie-break match among the tied (`playoff`), or a shared place 1 (`shared`). The
+     * organizer picks one of these two.
+     */
+    public const FIRST_PLACE_TIES = ['playoff', 'shared'];
+
+    /**
+     * The seed order splits the tie, as every table did before the choice existed (DerCaddy, 2026-11-05: Blitz Blockli
+     * #55 went to the higher seed at 6:2 against 6:2 and 2:2 head-to-head). Never offered; what options stored without
+     * the key mean, and what a casual cup keeps (its seeds are the block hash's lot, CasualCups::formatFor()).
+     */
+    public const FIRST_PLACE_TIE_SEED = 'seed';
+
+    /**
      * @param  'reset'|'single'|'skip'  $grandFinal
      * @param  'points'|'match-wins'|'game-wins'|'custom'  $rankBy
      * @param  int|null  $swissRounds  null = as many as fit the time (recommendation rule 2)
@@ -40,6 +54,12 @@ final readonly class FormatOptions
      *                           per pairing, each game in the table once it ends (DerCaddy, 2026-10-18: "Wenn man zwei Spiele
      *                           gegeneinander spielt, sollte man dann auch zwei Punkte bekommen können"); false: the pairing
      *                           counts once, as before
+     * @param  'playoff'|'shared'|'seed'  $firstPlaceTie  A final table's tie for place 1 that points and every tie-break
+     *                                                    leave (DerCaddy, 2026-11-06: "entweder Stichkampf oder geteilter
+     *                                                    erster Platz, soll der Turnierleiter im Editor auswählen können"):
+     *                                                    a knockout among the tied decides (FirstPlaceTie::openPlayoff()),
+     *                                                    or they share place 1; `seed` only for options stored before
+     *                                                    ({@see FIRST_PLACE_TIE_SEED})
      */
     public function __construct(
         public int $bestOf = 1,
@@ -65,6 +85,7 @@ final readonly class FormatOptions
         public int $teamSize = 1,
         public int $legs = 2,
         public bool $legPoints = false,
+        public string $firstPlaceTie = 'playoff',
     ) {}
 
     /** Whether the games of a two-leg pairing count one by one in a round-robin table ({@see $legPoints}). */
@@ -159,6 +180,14 @@ final readonly class FormatOptions
             // the choice: they keep two games counted per pairing, as they were drawn, whatever the defaults become.
             legs: $twoLegs ? $int('legs', self::STORED_LEGS, 1, 2) : self::STORED_LEGS,
             legPoints: $twoLegs && (bool) ($values['legPoints'] ?? self::STORED_LEG_POINTS),
+            // Options stored without the key predate the choice: their ties stay with the seed order, as they were drawn
+            // and paid out; anything else unknown takes the default.
+            firstPlaceTie: ! array_key_exists('firstPlaceTie', $values) ? self::FIRST_PLACE_TIE_SEED : match ($values['firstPlaceTie']) {
+                'playoff' => 'playoff',
+                'shared' => 'shared',
+                self::FIRST_PLACE_TIE_SEED => self::FIRST_PLACE_TIE_SEED,
+                default => $defaults->firstPlaceTie,
+            },
         );
     }
 
@@ -211,7 +240,7 @@ final readonly class FormatOptions
         return new self($this->bestOf, $this->finalBestOf, $this->thirdPlace, $this->grandFinal, $this->split, $this->iterations,
             $this->rankBy, $rounds, $this->pointsWin, $this->pointsTie, $this->pointsBye, $this->swissTieBreaks, $this->roundRobinTieBreaks,
             $this->groupSize, $this->advance, $this->groupStage, $this->finalStage, $this->heatSize, $this->heatAdvance, $this->lobbyMinutes, $this->teamSize,
-            $this->legs, $this->legPoints);
+            $this->legs, $this->legPoints, $this->firstPlaceTie);
     }
 
     /**
@@ -223,7 +252,7 @@ final readonly class FormatOptions
     }
 
     /**
-     * @return array{bestOf: int, finalBestOf: int, thirdPlace: bool, grandFinal: string, split: bool, iterations: int, rankBy: string, swissRounds: int|null, pointsWin: float, pointsTie: float, pointsBye: float, swissTieBreaks: list<string>, roundRobinTieBreaks: list<string>, groupSize: int, advance: int, groupStage: string, finalStage: string, heatSize: int, heatAdvance: int, lobbyMinutes: int, teamSize: int, legs: int, legPoints: bool}
+     * @return array{bestOf: int, finalBestOf: int, thirdPlace: bool, grandFinal: string, split: bool, iterations: int, rankBy: string, swissRounds: int|null, pointsWin: float, pointsTie: float, pointsBye: float, swissTieBreaks: list<string>, roundRobinTieBreaks: list<string>, groupSize: int, advance: int, groupStage: string, finalStage: string, heatSize: int, heatAdvance: int, lobbyMinutes: int, teamSize: int, legs: int, legPoints: bool, firstPlaceTie: string}
      */
     public function toArray(): array
     {
@@ -251,6 +280,7 @@ final readonly class FormatOptions
             'teamSize' => $this->teamSize,
             'legs' => $this->legs,
             'legPoints' => $this->legPoints,
+            'firstPlaceTie' => $this->firstPlaceTie,
         ];
     }
 }

@@ -4,6 +4,7 @@ namespace App\Support\Tournaments;
 
 use App\Enums\BoardGameStatus;
 use App\Enums\TournamentFormat;
+use App\Enums\TournamentStatus;
 use App\Models\BoardGame;
 use App\Models\Clan;
 use App\Models\Tournament;
@@ -31,6 +32,9 @@ final class TournamentView
     /** @var array<int, array{points: array{0: float, 1: float}, label: string, game: int, legs: list<array{0: float, 1: float}>}|null> */
     private array $legs = [];
 
+    /** @var list<int> who is level on place 1 of the table read last (FirstPlaceTie), for its part's note */
+    private array $leaders = [];
+
     /** @var Collection<array-key, EloquentCollection<int, BoardGame>>|null the board games of every match, read once by stages() */
     private ?Collection $boardGames = null;
 
@@ -40,7 +44,9 @@ final class TournamentView
     }
 
     /**
-     * @return list<array{number: int, format: TournamentFormat, title: string, parts: list<array<string, mixed>>}>
+     * `playoff`: the stage is the tie-break knockout of a round robin or Swiss (FirstPlaceTie).
+     *
+     * @return list<array{number: int, format: TournamentFormat, title: string, playoff: bool, parts: list<array<string, mixed>>}>
      */
     public function stages(): array
     {
@@ -63,7 +69,13 @@ final class TournamentView
             $stages[] = [
                 'number' => $stage->number,
                 'format' => $stage->format,
-                'title' => $this->tournament->format === TournamentFormat::TwoStage ? ($stage->number === 1 ? __('Group stage') : __('Final stage')) : $stage->format->label(),
+                'title' => match (true) {
+                    $this->tournament->format === TournamentFormat::TwoStage => $stage->number === 1 ? __('Group stage') : __('Final stage'),
+                    // A round robin's or Swiss's tie for place 1 played off (FirstPlaceTie).
+                    FirstPlaceTie::isPlayoffStage($this->tournament, $stage->number) => trans_choice('Tie-break match for 1st place|Tie-break matches for 1st place', $own->count()),
+                    default => $stage->format->label(),
+                },
+                'playoff' => FirstPlaceTie::isPlayoffStage($this->tournament, $stage->number),
                 'parts' => $parts,
             ];
         }
@@ -93,6 +105,9 @@ final class TournamentView
                 // says so and lists the pairings under way with their standing (Nidan21 2026-10-17: a won and a lost
                 // game showed as one draw, a lost first leg nowhere). Unless the organizer chose one game per pairing,
                 // or points per game: then every game is in the table once it ends (FormatOptions::$legs, $legPoints).
+                // A tie for place 1 nothing split, and what it comes to (FirstPlaceTie; DerCaddy, 2026-11-06: "und dann auch
+                // irgendwo sichtbar sein"): read after the rows, which find who is level.
+                'first_tie' => $this->firstTie(),
                 'two_legs' => $this->twoLegs($stage),
                 'per_leg' => $this->perLeg($stage),
                 'open' => array_values(array_map(fn (array $box): array => [
@@ -151,6 +166,35 @@ final class TournamentView
             $number === $last - 1 && $matches->every(fn (TournamentMatch $match): bool => $match->bracket === 'main' || $match->bracket === 'third-place') => __('Semifinal'),
             default => __('Round :round', ['round' => $number]),
         };
+    }
+
+    /**
+     * Whether this table is the final table of a round robin or Swiss whose tie for place 1 the organizer did not leave
+     * to the seeds (FirstPlaceTie), and complete: the tournament is over or its tie-break knockout opened. While games
+     * are still open a level top is no tie yet.
+     */
+    private function firstTieShown(TournamentStage $stage, int $group): bool
+    {
+        return $stage->number === 1 && $group === 0 && FirstPlaceTie::mode($this->tournament) !== FormatOptions::FIRST_PLACE_TIE_SEED
+            && ($this->tournament->status === TournamentStatus::Finished || FirstPlaceTie::playoffStage($this->tournament) !== null);
+    }
+
+    /**
+     * The tie for place 1 of the table read last ({@see table()}): who is level and what it comes to, `playoff` (stage 2
+     * decides) or `shared`; null when place 1 is clear or the tie is not shown.
+     *
+     * @return array{mode: string, names: list<string>}|null
+     */
+    private function firstTie(): ?array
+    {
+        if ($this->leaders === []) {
+            return null;
+        }
+
+        return [
+            'mode' => FirstPlaceTie::playoffStage($this->tournament) !== null ? 'playoff' : 'shared',
+            'names' => array_map(fn (int $id): string => (string) ($this->participants->get($id)->name ?? '?'), $this->leaders),
+        ];
     }
 
     /** Whether this stage's pairings play two legs ({@see TournamentRunner::stagePlaysTwoLegs()}). */
@@ -217,12 +261,15 @@ final class TournamentView
             $perLeg,
         );
         $rows = Standings::outLast($rows, array_values($this->participants->whereNotNull('disqualified_at')->keys()->map(intval(...))->all()));
+        // The final table's tie for place 1 (FirstPlaceTie), once the table is complete: all who are level hold rank 1.
+        $level = $this->firstTieShown($stage, $group) ? FirstPlaceTie::leaders($rows, $this->tournament) : [];
+        $this->leaders = $level;
 
-        return array_map(function ($row): array {
+        return array_map(function ($row) use ($level): array {
             $participant = $this->participants->get($row->entrant);
 
             return [
-                'rank' => $row->rank,
+                'rank' => in_array($row->entrant, $level, true) ? 1 : $row->rank,
                 'name' => $participant->name ?? '?',
                 'tag' => $participant?->lineup?->clan->clantag,
                 'clan' => $participant?->lineup?->clan,
