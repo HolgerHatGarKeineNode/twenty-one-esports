@@ -243,13 +243,14 @@ test('the editor offers the choice for a round robin and Swiss, stores it, and n
 
 /**
  * A round robin of four: A, B and C draw each other, A and B beat D, D beats C. A and B level on everything at 2, C and
- * D 1 each; the directors closed every round of the table, so a correction goes through the control.
+ * D 1 each; the directors closed every round of the table, so a correction goes through the control (a shared tie
+ * ends the tournament at once).
  *
  * @return array{0: Tournament, 1: list<TournamentParticipant>}
  */
-function drawnPairOfFour(): array
+function drawnPairOfFour(string $rule = 'playoff'): array
 {
-    $tournament = runningChess(TournamentFormat::RoundRobin, 4, options: ['firstPlaceTie' => 'playoff']);
+    $tournament = runningChess(TournamentFormat::RoundRobin, 4, options: ['firstPlaceTie' => $rule]);
     $seeds = TournamentParticipant::query()->where('tournament_id', $tournament->id)->orderBy('seed')->get()->all();
     [$a, $b, $c, $d] = $seeds;
 
@@ -261,7 +262,7 @@ function drawnPairOfFour(): array
     tieGame($tournament, $d, $c);
     app(TournamentRunner::class)->sync($tournament);
 
-    while (($round = TournamentRunner::currentRound($tournament->refresh())) !== null && $round->stage->number === 1) {
+    while ($tournament->refresh()->status === TournamentStatus::Running && ($round = TournamentRunner::currentRound($tournament)) !== null && $round->stage->number === 1) {
         app(TournamentRunner::class)->closeRound($round, $tournament->creator);
     }
 
@@ -413,4 +414,71 @@ test('a player outside the tie-break is done with the tournament, not told to wa
         // A tied player still has the knockout ahead; a two-stage group stage stays never the end (no participant asked).
         ->and(TournamentGameEnd::playedOut($tournament, $last))->toBeFalse()
         ->and(TournamentNow::of($tournament, $userOf($a))['state'] ?? null)->not->toBe('done');
+});
+
+test('options stored before the choice keep the seeds deciding a tie for place 1: no knockout, nothing shared', function (TournamentFormat $format) {
+    $swiss = $format === TournamentFormat::Swiss;
+    $tournament = runningChess($format, $swiss ? 2 : 3, $swiss ? TournamentResultsMode::Players : TournamentResultsMode::Director, $swiss ? ['swissRounds' => 1] : []);
+    // As stored before the choice existed (Blitz Blockli #55): no `firstPlaceTie` key at all.
+    $options = $tournament->options;
+    unset($options['firstPlaceTie']);
+    $tournament->forceFill(['options' => $options])->save();
+    $seeds = TournamentParticipant::query()->where('tournament_id', $tournament->id)->orderBy('seed')->get()->all();
+
+    if ($swiss) {
+        tieGame($tournament, $seeds[0], $seeds[1], draw: true);
+    } else {
+        foreach ([[$seeds[0], $seeds[1]], [$seeds[1], $seeds[2]], [$seeds[2], $seeds[0]]] as [$winner, $loser]) {
+            tieGame($tournament, $winner, $loser);
+        }
+    }
+
+    app(TournamentRunner::class)->sync($tournament);
+    $tournament->refresh();
+
+    expect(FirstPlaceTie::mode($tournament))->toBe('seed')
+        ->and($tournament->status)->toBe(TournamentStatus::Finished)
+        ->and(TournamentStage::query()->where('tournament_id', $tournament->id)->count())->toBe(1)
+        ->and(app(TournamentChampion::class)->of($tournament)?->id)->toBe($seeds[0]->id)
+        ->and(placeNames($tournament))->toBe(array_map(fn (TournamentParticipant $participant): array => [$participant->name], $seeds));
+})->with([TournamentFormat::RoundRobin, TournamentFormat::Swiss]);
+
+test('another sync after the knockout opened opens no second stage and no second set of matches', function () {
+    [$tournament] = circleOfThree(['firstPlaceTie' => 'playoff']);
+
+    app(TournamentRunner::class)->sync($tournament);
+    app(TournamentRunner::class)->sync($tournament->refresh());
+
+    expect(TournamentStage::query()->where('tournament_id', $tournament->id)->count())->toBe(2)
+        ->and(TournamentMatch::query()->where('tournament_id', $tournament->id)->where('key', 'like', FirstPlaceTie::PREFIX.'%')->count())->toBe(2);
+});
+
+test('a shared place 1 pays the prizes of the places its holders take, split equally: 40/40 at 50/30/20', function () {
+    [$tournament, [$a, $b, $c, $d]] = drawnPairOfFour('shared');
+
+    $paid = collect(app(PayoutPlan::class)->compute($tournament, 100_000)['rows'] ?? [])
+        ->mapWithKeys(fn (array $row): array => [$row['participant']->id => [$row['place'], $row['amount']]])->all();
+
+    // A and B share place 1 (50 + 30 between them), D is third on the head-to-head (20), C fourth wins nothing.
+    expect($tournament->status)->toBe(TournamentStatus::Finished)
+        ->and($tournament->prizeSplit())->toBe([50, 30, 20])
+        ->and($paid)->toBe([$a->id => [1, 40_000], $b->id => [1, 40_000], $d->id => [3, 20_000]]);
+});
+
+test('a two-stage tournament ends in its knockout as before: no tie-break stage, its final decides', function () {
+    $tournament = runningChess(TournamentFormat::TwoStage, 6, options: ['groupSize' => 3, 'advance' => 2]);
+
+    playOutAsDirector($tournament);
+    $tournament->refresh();
+
+    $seed = fn (int $seed): int => (int) TournamentParticipant::query()->where('tournament_id', $tournament->id)->where('seed', $seed)->value('id');
+
+    expect($tournament->status)->toBe(TournamentStatus::Finished)
+        ->and(FirstPlaceTie::mode($tournament))->toBe('seed')
+        ->and(FirstPlaceTie::playoffStage($tournament))->toBeNull()
+        ->and(TournamentMatch::query()->where('tournament_id', $tournament->id)->where('key', 'like', FirstPlaceTie::PREFIX.'%')->exists())->toBeFalse()
+        ->and((new TournamentView($tournament))->stages()[1]['playoff'] ?? false)->toBeFalse()
+        // The better seed wins every match (playOutAsDirector()).
+        ->and(app(TournamentChampion::class)->of($tournament)?->id)->toBe($seed(1))
+        ->and(app(TournamentPlacements::class)->of($tournament)[0] ?? null)->toBe(['place' => 1, 'participants' => [$seed(1)]]);
 });
