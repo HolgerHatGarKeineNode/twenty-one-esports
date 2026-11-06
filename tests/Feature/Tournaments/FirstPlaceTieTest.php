@@ -1,16 +1,29 @@
 <?php
 
+use App\Enums\BoardEndReason;
+use App\Enums\BoardGameStatus;
+use App\Enums\ChessEndReason;
+use App\Enums\ChessGameStatus;
+use App\Enums\HyperEndReason;
+use App\Enums\HyperMatchStatus;
+use App\Enums\PongMatchStatus;
+use App\Enums\SeriesResolution;
+use App\Enums\SeriesStatus;
 use App\Enums\TournamentFormat;
 use App\Enums\TournamentResultsMode;
 use App\Enums\TournamentStatus;
 use App\Models\Admin;
+use App\Models\BoardGame;
 use App\Models\ChessGame;
+use App\Models\HyperMatch;
+use App\Models\PongMatch;
 use App\Models\SeriesMatch;
 use App\Models\Tournament;
 use App\Models\TournamentMatch;
 use App\Models\TournamentParticipant;
 use App\Models\TournamentStage;
 use App\Models\User;
+use App\Support\Chess\ChessGameService;
 use App\Support\Payouts\PayoutPlan;
 use App\Support\Payouts\TournamentPlacements;
 use App\Support\Tournaments\FirstPlaceTie;
@@ -561,13 +574,14 @@ test('an entrant outside the tie-break disqualified during it changes nothing ab
         ->and($tournament->status)->toBe(TournamentStatus::Running);
 });
 
-test('a stale tie-break whose game already started stays as it is, and the sync does not trip over the game', function (string $played) {
+test('a stale tie-break whose game was really played stays as it is, and the sync does not trip over the game', function (string $played) {
     [$tournament, [$a, $b]] = drawnPairOfFour();
     $final = TournamentMatch::query()->where('tournament_id', $tournament->id)->where('key', 'like', FirstPlaceTie::PREFIX.'%')->sole();
-    // Started for the tie-break's match, nothing decided yet: the database keeps it from going with its match.
+    // Played for the tie-break's match, nothing decided yet: a move on the board, a game on the series' live sheet.
     $played === 'chess'
-        ? ChessGame::factory()->create(['tournament_match_id' => $final->id, 'tournament_game' => 1])
-        : SeriesMatch::factory()->create(['tournament_match_id' => $final->id, 'tournament_attempt' => 1]);
+        ? ChessGame::factory()->create(['tournament_match_id' => $final->id, 'tournament_game' => 1, 'ply' => 1])
+        : SeriesMatch::factory()->create(['tournament_match_id' => $final->id, 'tournament_attempt' => 1, 'status' => SeriesStatus::Accepted,
+            'live_games' => [['challenger' => 3, 'challenged' => 1, 'winner' => 'challenger']]]);
 
     // A won the table's game against B after all: place 1 is clear, but the tie-break is under way.
     correctTable($tournament, $a, $b);
@@ -612,4 +626,189 @@ test('a match of the table open again takes the unplayed tie-break back until th
 
     expect(playoffEntrants($tournament->refresh()))->toBe([$a->id, $b->id])
         ->and(FirstPlaceTie::isStale($tournament))->toBeFalse();
+});
+
+/*
+| Where the players start their own games, the league starts the tie-break's game as soon as its match is ready
+| (owner, 2026-11-06): one nobody touched does not hold a stale knockout. FirstPlaceTie::hasStarted().
+*/
+
+/**
+ * A row of `$kind` the league starts for a tournament match, as it stands before anyone plays.
+ *
+ * @param  array<string, mixed>  $attributes
+ */
+function tiePlay(string $kind, int $matchId, array $attributes = []): SeriesMatch|ChessGame|BoardGame|HyperMatch|PongMatch
+{
+    return match ($kind) {
+        'series' => SeriesMatch::factory()->create(['tournament_match_id' => $matchId, 'tournament_attempt' => 1, 'status' => SeriesStatus::Accepted, ...$attributes]),
+        'chess' => ChessGame::factory()->create(['tournament_match_id' => $matchId, 'tournament_game' => 1, ...$attributes]),
+        'board' => BoardGame::query()->forceCreate(['game' => 'checkers', 'mode' => 'correspondence', 'white_id' => User::factory()->create()->id, 'black_id' => User::factory()->create()->id,
+            'status' => BoardGameStatus::Active, 'position' => '-', 'turn' => 'w', 'ply' => 0, 'initial_ms' => 300000, 'increment_ms' => 3000, 'white_ms' => 300000, 'black_ms' => 300000,
+            'turn_started_ms' => 0, 'tournament_match_id' => $matchId, 'tournament_game' => 1, ...$attributes]),
+        'hyper' => HyperMatch::factory()->create(['tournament_match_id' => $matchId, ...$attributes]),
+        'pong' => PongMatch::factory()->create(['tournament_match_id' => $matchId, ...$attributes]),
+    };
+}
+
+test('a game the league started for the tie-break counts as played only once it saw play', function (string $kind, array $untouched, array $touched) {
+    [$tournament] = drawnPairOfFour();
+    $stage = FirstPlaceTie::playoffStage($tournament);
+    $final = TournamentMatch::query()->where('tournament_id', $tournament->id)->where('key', 'like', FirstPlaceTie::PREFIX.'%')->sole();
+    $played = tiePlay($kind, $final->id, $untouched);
+
+    expect(FirstPlaceTie::hasStarted($stage))->toBeFalse();
+
+    $played->forceFill($touched)->save();
+
+    expect(FirstPlaceTie::hasStarted($stage))->toBeTrue();
+})->with([
+    'series, a game on its live sheet' => ['series', [], ['live_games' => [['challenger' => 2, 'challenged' => 0, 'winner' => 'challenger']]]],
+    'series, a report' => ['series', [], ['status' => SeriesStatus::Reported]],
+    'series, a no-show report' => ['series', [], ['noshow_reported_at' => '2026-11-06 12:00:00']],
+    'chess, a move' => ['chess', [], ['ply' => 1]],
+    'chess aborted without a move, then finished' => ['chess', ['status' => ChessGameStatus::Aborted], ['status' => ChessGameStatus::Finished, 'result' => '1-0']],
+    'board game, a move' => ['board', [], ['ply' => 1]],
+    'Hyperbitcoinization table, an action' => ['hyper', [], ['ply' => 1]],
+    'Pong, the first serve' => ['pong', [], ['status' => PongMatchStatus::Active, 'started_at' => '2026-11-06 12:00:00']],
+    'Pong aborted before a serve, then a goal' => ['pong', ['status' => PongMatchStatus::Aborted], ['score_left' => 1]],
+]);
+
+test('a stale tie-break whose game nobody touched goes: the game is voided and let go, and the table places everyone', function (string $kind) {
+    [$tournament, [$a, $b]] = drawnPairOfFour();
+    $final = TournamentMatch::query()->where('tournament_id', $tournament->id)->where('key', 'like', FirstPlaceTie::PREFIX.'%')->sole();
+    $played = tiePlay($kind, $final->id);
+
+    // A won the table's game against B after all: place 1 is clear.
+    correctTable($tournament, $a, $b);
+    $tournament->refresh();
+    $played->refresh();
+
+    expect(FirstPlaceTie::playoffStage($tournament))->toBeNull()
+        ->and(TournamentMatch::query()->whereKey($final->id)->exists())->toBeFalse()
+        ->and($tournament->status)->toBe(TournamentStatus::Finished)
+        ->and(app(TournamentChampion::class)->of($tournament)?->id)->toBe($a->id)
+        // Kept, ended, and no longer the tournament's.
+        ->and($played->tournament_match_id)->toBeNull()
+        ->and(match ($kind) {
+            'series' => [$played->status, $played->resolution],
+            'chess' => [$played->status, $played->end_reason],
+            'board' => [$played->status, $played->end_reason],
+            'hyper' => [$played->status, $played->end_reason],
+            'pong' => [$played->status, $played->rated],
+        })->toBe(match ($kind) {
+            'series' => [SeriesStatus::Resolved, SeriesResolution::Void],
+            'chess' => [ChessGameStatus::Aborted, ChessEndReason::Voided],
+            'board' => [BoardGameStatus::Aborted, BoardEndReason::Voided->value],
+            'hyper' => [HyperMatchStatus::Aborted, HyperEndReason::Voided],
+            'pong' => [PongMatchStatus::Aborted, false],
+        });
+})->with(['series', 'chess', 'board', 'hyper', 'pong']);
+
+/**
+ * A players-mode round robin of four, played out on the board (a resignation or an agreed draw): A, B and C draw each
+ * other, A and B beat D, D beats C. A and B tie for place 1, and the league starts the tie-break's game at once.
+ *
+ * @return array{0: Tournament, 1: list<TournamentParticipant>}
+ */
+function playersPairOfFour(): array
+{
+    $tournament = runningChess(TournamentFormat::RoundRobin, 4, TournamentResultsMode::Players, ['firstPlaceTie' => 'playoff']);
+    $seeds = TournamentParticipant::query()->where('tournament_id', $tournament->id)->orderBy('seed')->get()->all();
+    [$a, $b, $c, $d] = $seeds;
+    // Winner first, or null for a draw; keyed by the two players' user ids, sorted.
+    $outcomes = [];
+
+    foreach ([[$a, $b, null], [$a, $c, null], [$b, $c, null], [$a, $d, $a], [$b, $d, $b], [$d, $c, $d]] as [$one, $other, $winner]) {
+        $pair = [$one->user_id, $other->user_id];
+        sort($pair);
+        $outcomes[implode('-', $pair)] = $winner?->user_id;
+    }
+
+    // Each round's games start once the earlier round is through.
+    for ($games = 0; $games < 6; $games++) {
+        $game = ChessGame::query()->where('status', ChessGameStatus::Active)
+            ->whereHas('tournamentMatch', fn ($query) => $query->where('tournament_id', $tournament->id)->where('key', 'not like', FirstPlaceTie::PREFIX.'%'))
+            ->orderBy('id')->firstOrFail();
+        $pair = [$game->white_id, $game->black_id];
+        sort($pair);
+        $winner = $outcomes[implode('-', $pair)];
+        [$white, $black] = [User::query()->findOrFail($game->white_id), User::query()->findOrFail($game->black_id)];
+
+        if ($winner === null) {
+            app(ChessGameService::class)->offerDraw($game, $white);
+            app(ChessGameService::class)->acceptDraw($game->refresh(), $black);
+        } else {
+            app(ChessGameService::class)->resign($game, $winner === $white->id ? $black : $white);
+        }
+    }
+
+    return [$tournament->refresh(), $seeds];
+}
+
+/** The tie-break's games of the tournament, oldest first, linked or let go. */
+function tieGames(Tournament $tournament): array
+{
+    return ChessGame::query()->whereHas('tournamentMatch', fn ($query) => $query->where('tournament_id', $tournament->id)->where('key', 'like', FirstPlaceTie::PREFIX.'%'))->orderBy('id')->get()->all();
+}
+
+test('players mode: a correction that leaves another tie voids the untouched tie-break game and seats the new tie, with its players sent there', function () {
+    [$tournament, [$a, $b, $c, $d]] = playersPairOfFour();
+    [$old] = tieGames($tournament);
+
+    expect(playoffEntrants($tournament))->toBe([$a->id, $b->id])
+        ->and($old->status)->toBe(ChessGameStatus::Active)
+        ->and($old->ply)->toBe(0);
+
+    // C beats D instead: A, B and C level on everything at 2.
+    correctTable($tournament, $c, $d);
+    $tournament->refresh();
+    $old->refresh();
+    $new = tieGames($tournament);
+
+    expect($old->status)->toBe(ChessGameStatus::Aborted)
+        ->and($old->end_reason)->toBe(ChessEndReason::Voided)
+        ->and($old->tournament_match_id)->toBeNull()
+        ->and($tournament->status)->toBe(TournamentStatus::Running)
+        ->and(playoffEntrants($tournament))->toBe([$a->id, $b->id, $c->id])
+        ->and(FirstPlaceTie::isStale($tournament))->toBeFalse()
+        // Seeds 2 and 3 play at once, seed 1 waits in the final.
+        ->and($new)->toHaveCount(1)
+        ->and([$new[0]->white_id, $new[0]->black_id])->toEqualCanonicalizing([$b->user_id, $c->user_id])
+        ->and($new[0]->status)->toBe(ChessGameStatus::Active)
+        ->and(TournamentNow::of($tournament, User::query()->findOrFail($b->user_id))['action']['href'] ?? null)->toBe(route('games.show', ['game' => $new[0]]));
+});
+
+test('players mode: a correction that clears place 1 voids the untouched tie-break game and ends the tournament on the table', function () {
+    [$tournament, [$a, $b]] = playersPairOfFour();
+    [$old] = tieGames($tournament);
+
+    correctTable($tournament, $a, $b);
+    $tournament->refresh();
+    $old->refresh();
+
+    expect($old->status)->toBe(ChessGameStatus::Aborted)
+        ->and($old->tournament_match_id)->toBeNull()
+        ->and(FirstPlaceTie::playoffStage($tournament))->toBeNull()
+        ->and($tournament->status)->toBe(TournamentStatus::Finished)
+        ->and(app(TournamentChampion::class)->of($tournament)?->id)->toBe($a->id)
+        ->and(TournamentNow::of($tournament, User::query()->findOrFail($b->user_id))['action']['href'] ?? null)->not->toBe(route('games.show', ['game' => $old]));
+});
+
+test('players mode: a tie-break game with one move played holds the stale knockout, with nothing read from it', function () {
+    [$tournament, [$a, $b]] = playersPairOfFour();
+    [$game] = tieGames($tournament);
+    app(ChessGameService::class)->move($game, User::query()->findOrFail($game->white_id), 'e2e4');
+
+    correctTable($tournament, $a, $b);
+    $tournament->refresh();
+    $game->refresh();
+
+    expect($game->ply)->toBe(1)
+        ->and($game->status)->toBe(ChessGameStatus::Active)
+        ->and($game->tournament_match_id)->not->toBeNull()
+        ->and(playoffEntrants($tournament))->toBe([$a->id, $b->id])
+        ->and(FirstPlaceTie::isStale($tournament))->toBeTrue()
+        ->and(app(TournamentChampion::class)->of($tournament))->toBeNull()
+        ->and(app(TournamentPlacements::class)->of($tournament))->toBeNull();
 });
