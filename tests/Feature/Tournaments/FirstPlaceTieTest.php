@@ -381,3 +381,18 @@ test('director mode: a correction at the desk while the table\'s round is still 
         ->and($tournament->status)->toBe(TournamentStatus::Finished)
         ->and(app(TournamentChampion::class)->of($tournament)?->id)->toBe($loser);
 });
+
+test('the director desk and the control name the tie-break round as such, not as another round of the table', function () {
+    [$tournament] = drawnPairOfFour();
+    $admin = User::factory()->create();
+    Admin::query()->create(['pubkey' => $admin->pubkey]);
+
+    Livewire::actingAs($tournament->creator)->test('pages::tournaments.director', ['tournament' => $tournament])
+        ->assertSeeHtml('data-test="desk-tie-break"')
+        ->assertSee('(Tie-break match for 1st place)');
+
+    $control = Livewire::actingAs($admin)->test('tournament-control', ['tournament' => $tournament]);
+    $control->assertSeeHtml('data-test="control-tie-break"');
+    // Only the knockout's round: the table's three rounds keep their plain names.
+    expect(substr_count($control->html(), 'data-test="control-tie-break"'))->toBe(1);
+});

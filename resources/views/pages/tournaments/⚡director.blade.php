@@ -216,7 +216,7 @@ new #[Layout('layouts::app', ['section' => 'tournaments'])] class extends Compon
             @else
                 <section aria-labelledby="round-h" class="flex flex-col gap-3 rounded-lg bg-card px-4 py-5 lg:px-6" data-test="round-results">
                     <span class="flex flex-wrap items-baseline justify-between gap-2">
-                        <h2 id="round-h" class="m-0 text-[15px] font-bold">{{ __('Round :round results', ['round' => $round->number]) }}@if ($tournament->format === \App\Enums\TournamentFormat::TwoStage) <span class="text-xs font-normal text-ink-3">({{ $round->stage->number === 1 ? __('Group stage') : __('Final stage') }})</span>@endif</h2>
+                        <h2 id="round-h" class="m-0 text-[15px] font-bold">{{ __('Round :round results', ['round' => $round->number]) }}@if ($tournament->format === \App\Enums\TournamentFormat::TwoStage) <span class="text-xs font-normal text-ink-3">({{ $round->stage->number === 1 ? __('Group stage') : __('Final stage') }})</span>@elseif (\App\Support\Tournaments\FirstPlaceTie::isPlayoffStage($tournament, $round->stage->number)) <span class="text-xs font-normal text-ink-3" data-test="desk-tie-break">({{ trans_choice('Tie-break match for 1st place|Tie-break matches for 1st place', $matches->count()) }})</span>@endif</h2>
                         <span class="text-xs text-ink-2">{{ __(':done of :total in', ['done' => $matches->count() - $left, 'total' => $matches->count()]) }}</span>
                     </span>
 

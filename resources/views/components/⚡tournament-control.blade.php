@@ -346,7 +346,7 @@ new class extends Component {
                 @endphp
                 <div class="flex flex-col gap-2 border-t border-hairline pt-3" wire:key="round-{{ $round->id }}" data-test="control-round">
                     <span class="flex flex-wrap items-center justify-between gap-2">
-                        <h3 class="m-0 text-[13px] font-bold">{{ __('Round :round', ['round' => $round->number]) }}@if ($tournament->format === \App\Enums\TournamentFormat::TwoStage) <span class="font-normal text-ink-3">({{ $round->stage->number === 1 ? __('Group stage') : __('Final stage') }})</span>@endif</h3>
+                        <h3 class="m-0 text-[13px] font-bold">{{ __('Round :round', ['round' => $round->number]) }}@if ($tournament->format === \App\Enums\TournamentFormat::TwoStage) <span class="font-normal text-ink-3">({{ $round->stage->number === 1 ? __('Group stage') : __('Final stage') }})</span>@elseif (\App\Support\Tournaments\FirstPlaceTie::isPlayoffStage($tournament, $round->stage->number)) <span class="font-normal text-ink-3" data-test="control-tie-break">({{ trans_choice('Tie-break match for 1st place|Tie-break matches for 1st place', $round->matches->count()) }})</span>@endif</h3>
                         @if ($restartable = $running && ! $tournament->isDirectorMode() && $undecided->isNotEmpty())
                             <x-button variant="quiet" x-on:click="$wire.$set('restarting', {{ $round->id }}, false); $wire.$set('restartReason', '', false)" class="h-9 px-3" data-test="control-restart-{{ $round->number }}">{{ __('Restart round') }}</x-button>
                         @endif
