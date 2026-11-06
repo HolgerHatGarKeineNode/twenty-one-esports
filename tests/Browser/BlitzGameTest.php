@@ -7,6 +7,9 @@ use App\Enums\TournamentResultsMode;
 use App\Models\ChessGame;
 use App\Models\User;
 use App\Support\Chess\ChessGameService;
+use App\Support\TwentyOne\LiveStatus;
+use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\File;
 use Illuminate\Support\Facades\Http;
 use Pest\Browser\Playwright\Page;
 use Pest\Browser\Support\ComputeUrl;
@@ -769,4 +772,122 @@ test('a tournament chess game on a phone shows its tournament in the header whil
 })->with([
     'phone 320' => [320, 640],
     'phone 390' => [390, 844],
+]);
+
+test('the header chip fits itself once it is actually shown, also in a background tab where the show comes late', function (int $width, int $height) {
+    // Gate run of PR #20 (2026-11-05): under load the chip kept a 12 px name stub. Alpine shows an x-show element on the next
+    // frame, or, in a background tab, on a timer that Chrome throttles to a second; the chip's fit ran on its frame while the
+    // chip was still display: none (every width 0), decided nothing, and nothing asked again. The seam is that background tab:
+    // the page reports itself hidden and timers wait a second, while frames keep running.
+    $tournament = runningChess(TournamentFormat::SingleElimination, 2, TournamentResultsMode::Players);
+    $tournament->forceFill(['name' => 'Chess Phone Cup with a rather long name'])->save();
+    $game = ChessGame::query()->whereIn('tournament_match_id', $tournament->matches()->select('id'))->with('white')->orderBy('id')->firstOrFail();
+
+    $page = visit(BrowserLogin::url($game->white))->on()->mobile()->page();
+    $page->context()->addInitScript(BrowserConsole::COLLECTOR);
+    $page->context()->addInitScript('window.__setTimeout = window.setTimeout.bind(window); Object.defineProperty(document, "visibilityState", { get: () => "hidden", configurable: true }); window.setTimeout = (cb, ms, ...rest) => window.__setTimeout(cb, Math.max(Number(ms) || 0, 1000), ...rest);');
+    $page->setViewportSize($width, $height);
+    $page->goto(ComputeUrl::from(route('games.show', $game, false)));
+    BrowserWait::until($page, '() => window.Alpine && !!document.querySelector("[data-test=shell-tournament] > span")?.checkVisibility()', 15_000);
+    BrowserWait::until($page, '() => new Promise((done) => window.__setTimeout(() => requestAnimationFrame(() => requestAnimationFrame(() => done(true))), 300))', 5_000);
+
+    $chip = $page->evaluate(<<<'JS'
+        () => {
+            const chip = document.querySelector('[data-test=shell-tournament]'), pill = chip.firstElementChild;
+            const name = chip.querySelector('[data-test=shell-tournament-name]'), round = chip.querySelector('[data-test=shell-tournament-round]');
+            return {
+                hidden: document.visibilityState, name: name.checkVisibility() ? name.clientWidth : null,
+                stub: name.checkVisibility() && name.clientWidth < 40 && name.scrollWidth > name.clientWidth, cut: pill.scrollWidth > pill.clientWidth,
+                round: round.checkVisibility(),
+            };
+        }
+        JS);
+
+    expect($chip['hidden'])->toBe('hidden', 'the seam: a background tab')
+        ->and($chip['stub'])->toBeFalse('no name stub under 40 px')
+        ->and($chip['cut'])->toBeFalse('nothing cut inside the chip')
+        ->and($page->evaluate('() => window.__errors'))->toBe([]);
+})->with([
+    'phone 320' => [320, 640],
+    'phone 390' => [390, 844],
+]);
+
+test('on a phone the header chip stays in its box beside the search, and the cup badge steps aside where it leads to the game on screen', function (int $width, int $height, bool $onAir = false) {
+    // DerCaddy, 2026-11-04 (412 x 915, on air): beside the chip the cup badge was a second trophy for the same way, and the chip's round lay over the search button.
+    $hls = sys_get_temp_dir().'/esports-badge-'.getmypid().'-'.bin2hex(random_bytes(3));
+    File::ensureDirectoryExists($hls);
+    config(['twentyone.stream.hls_dir' => $hls, 'twentyone.stream.public_url' => '/__test/live/stream.m3u8']);
+    if ($onAir) {
+        // The LIVE mark beside the logo, as on DerCaddy's screenshot ("LIVE 0").
+        file_put_contents($hls.'/stream.m3u8', "#EXTM3U\n");
+        Cache::put(LiveStatus::ANNOUNCED_KEY, ['viewers' => 0, 'title' => 'Live now'], 600);
+    }
+    $tournament = runningChess(TournamentFormat::SingleElimination, 4, TournamentResultsMode::Players);
+    $tournament->forceFill(['name' => 'Blitz Blockli'])->save();
+    [$first, $second] = ChessGame::query()->whereIn('tournament_match_id', $tournament->matches()->select('id'))->with(['white'])->orderBy('id')->get()->all();
+
+    $measure = <<<'JS'
+        () => {
+            const box = (el) => { if (!el || !el.checkVisibility()) return null; const r = el.getBoundingClientRect(); return { left: Math.round(r.left), right: Math.round(r.right), w: Math.round(r.width) }; };
+            const pill = document.querySelector('[data-test=shell-tournament] > span');
+            const round = document.querySelector('[data-test=shell-tournament-round]');
+            const row = document.querySelector('.shell-header > div:not(.shell-edge)');
+            // The rightmost edge anything of the chip paints to, clipped by its pill or not.
+            const ink = pill ? Math.round(Math.max(...[...pill.querySelectorAll('*')].map((el) => el.getBoundingClientRect().right).concat(pill.getBoundingClientRect().right))) : null;
+            return {
+                pill: box(pill), ink, clipped: !!pill && getComputedStyle(pill).overflow !== 'visible',
+                // Never cut: the round is shown whole inside the pill's padding, or not at all (PR #20 review: "R…" says nothing).
+                roundCut: !!pill && pill.checkVisibility() && round.checkVisibility() && (round.scrollWidth > round.clientWidth || round.getBoundingClientRect().right > pill.getBoundingClientRect().right - parseFloat(getComputedStyle(pill).paddingRight) + 0.5),
+                roundShown: !!round && round.checkVisibility(),
+                search: box(document.querySelector('.shell-header [aria-controls=mobile-search]')), badge: box(document.querySelector('[data-test=cup-badge]')),
+                rowFits: row.scrollWidth <= row.clientWidth, overflow: document.documentElement.scrollWidth - document.documentElement.clientWidth,
+                live: [...document.querySelectorAll('.shell-header [data-test=live-badge]')].some((el) => el.checkVisibility()),
+            };
+        }
+        JS;
+    $read = function (ChessGame $player, ChessGame $shown) use ($width, $height, $measure): array {
+        $page = visit(BrowserLogin::url($player->white))->on()->mobile()->page();
+        $page->context()->addInitScript(BrowserConsole::COLLECTOR);
+        $page->setViewportSize($width, $height);
+        $page->goto(ComputeUrl::from(route('games.show', $shown, false)));
+        BrowserWait::until($page, '() => window.Alpine && !!document.querySelector("[data-test=cup-badge]") && !!document.querySelector("[data-test=shell-tournament]")', 10_000);
+        // The chip shows at the top (its banner is under the game), or has stepped aside for want of room.
+        BrowserWait::until($page, '() => { const chip = document.querySelector("[data-test=shell-tournament]"); return chip.checkVisibility() || Alpine.$data(chip).squeezed === true; }', 10_000);
+        BrowserWait::until($page, '() => new Promise((done) => requestAnimationFrame(() => requestAnimationFrame(() => done(true))))', 5_000);
+
+        return [...$page->evaluate($measure), 'errors' => $page->evaluate('() => window.__errors')];
+    };
+    $own = $read($first, $first);
+    $watching = $read($second, $first);
+
+    // On the own game the badge would lead here: the chip stands for it, and its round is whole or not shown, never cut.
+    expect($own['badge'])->toBeNull('the badge gives way on the own game')
+        ->and($own['pill'])->not->toBeNull('the chip stands for the badge');
+    expect($own['pill']['right'])->toBeLessThanOrEqual($own['search']['left'])
+        ->and($own['ink'])->toBeLessThanOrEqual($own['search']['left'], 'nothing of the chip over the search')
+        ->and($own['roundCut'])->toBeFalse('the round whole or not shown, never cut')
+        ->and($own['roundShown'] || $onAir)->toBeTrue('off air the round is shown')
+        ->and($own['rowFits'])->toBeTrue()
+        ->and($own['overflow'])->toBeLessThanOrEqual(0)
+        ->and($own['errors'])->toBe([]);
+
+    // Watching another game, the own live game is elsewhere: the badge stays, and the chip keeps to its box. Where its round does not
+    // fit beside the badge (on air, or under 390 px) it steps aside rather than stand as a second bare trophy or push the row past the screen.
+    expect($watching['badge'])->not->toBeNull('the way to the own board stays')
+        ->and($watching['pill'] === null ? ($onAir || $width < 390) : $watching['pill']['right'] <= $watching['search']['left'])->toBeTrue('the chip beside the search, or aside where its round does not fit')
+        ->and($watching['pill'] === null || $watching['roundShown'])->toBeTrue('never a bare trophy beside the badge\'s trophy')
+        ->and($watching['roundCut'])->toBeFalse('the round whole, never cut')
+        ->and($watching['rowFits'])->toBeTrue('the header row keeps one line')
+        ->and($watching['overflow'])->toBeLessThanOrEqual(0)
+        ->and($watching['errors'])->toBe([]);
+    expect(! $onAir || $own['live'])->toBeTrue('on air: the LIVE mark beside the chip');
+    File::deleteDirectory($hls);
+})->with([
+    'DerCaddy\'s phone 412, on air' => [412, 915, true],
+    'phone 360, on air' => [360, 740, true],
+    'phone 320, on air' => [320, 640, true],
+    'DerCaddy\'s phone 412' => [412, 915],
+    'phone 390' => [390, 844],
+    'phone 360' => [360, 740],
+    'phone 320' => [320, 640],
 ]);

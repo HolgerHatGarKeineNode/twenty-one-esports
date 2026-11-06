@@ -140,3 +140,49 @@ test('a tournament board game and a tournament series room open with the banner'
         ->assertSeeInOrder(['data-test="tournament-banner"', $series->name, 'Round 1', 'Tournament page', 'data-test="room-status"'], false)
         ->assertSee('data-test="shell-tournament"', false);
 });
+
+/** The cup badge of the header as rendered: its link and its classes, or null. */
+function bannerCupBadge(string $html): ?array
+{
+    return preg_match('/<a href="([^"]*)"[^>]*?class="([^"]*)"[^>]*?data-test="cup-badge"/s', $html, $found) === 1
+        ? ['href' => html_entity_decode($found[1]), 'class' => $found[2]] : null;
+}
+
+test('on a phone the cup badge gives way to the chip when it leads to the game on the page, not when it leads elsewhere', function () {
+    // DerCaddy, 2026-11-04: scrolled down, the chip and the badge stood as two trophies side by side, and the chip's round lay over the search.
+    $tournament = runningChess(TournamentFormat::SingleElimination, 4, TournamentResultsMode::Players);
+    [$first, $second] = bannerChessGames($tournament);
+
+    $own = bannerCupBadge($this->actingAs($first->white)->get(route('games.show', $first))->assertOk()->assertSee('data-test="shell-tournament"', false)->getContent());
+
+    expect($own)->not->toBeNull()
+        ->and($own['href'])->toBe(route('games.show', $first))
+        ->and($own['class'])->toContain('max-lg:hidden');
+
+    // Watching another game of the tournament, the own live game is elsewhere: the badge stays, it is the way back to the board.
+    $elsewhere = bannerCupBadge($this->actingAs($second->white)->get(route('games.show', $first))->assertOk()->assertSee('data-test="shell-tournament"', false)->getContent());
+
+    expect($elsewhere)->not->toBeNull()
+        ->and($elsewhere['href'])->toBe(route('games.show', $second))
+        ->and($elsewhere['class'])->not->toContain('max-lg:hidden');
+
+    // Any other page keeps it.
+    $home = bannerCupBadge($this->actingAs($first->white)->get(route('home'))->assertOk()->getContent());
+
+    expect($home)->not->toBeNull()->and($home['class'])->not->toContain('max-lg:hidden');
+});
+
+test('on a game page of its own tournament the waiting badge stays in a phone header: it gives way only where it leads to the page itself', function () {
+    // Review of PR #20 (2026-11-05): "your match" for the tournament page says the player is up, which the chip does not say.
+    $tournament = runningChess(TournamentFormat::SingleElimination, 8, TournamentResultsMode::Players);
+    [$first, , $third] = bannerChessGames($tournament);
+    $waiting = $third->white;
+    // No game for this match yet: the player waits, and the badge leads to the tournament page.
+    $third->delete();
+
+    $badge = bannerCupBadge($this->actingAs($waiting)->get(route('games.show', $first))->assertOk()->assertSee('data-test="shell-tournament"', false)->getContent());
+
+    expect($badge)->not->toBeNull()
+        ->and(parse_url($badge['href'], PHP_URL_PATH))->toBe(parse_url(route('tournaments.show', $tournament), PHP_URL_PATH))
+        ->and($badge['class'])->not->toContain('max-lg:hidden');
+});

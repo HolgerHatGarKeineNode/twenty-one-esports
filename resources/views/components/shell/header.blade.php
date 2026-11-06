@@ -32,6 +32,11 @@
     $searchTerm = request()->routeIs('search') ? (string) request()->string('q') : '';
     $searchLabel = __('Search players, clans or match #');
     $allGames = trans_choice('All :count game|All :count games', count($games));
+    // A tournament game's page (its game-banner, rendered before the header): the chip below, and the page the cup badge may stand for.
+    $tournamentBanner = request()->attributes->get('tournament-banner');
+    // The path, not the URL: route() writes the app URL, the request its own host. Only this page: a badge for the tournament page
+    // ("your match", waiting) says the player is up, which the chip does not, so it stays (PR #20 review, 2026-11-05).
+    $bannerLeadsTo = $tournamentBanner ? ['/'.ltrim(request()->path(), '/')] : [];
 @endphp
 
 {{--
@@ -82,19 +87,28 @@
 
         {{-- Phones on a tournament game's page (the page's game-banner tells): a chip with the tournament and its round, always at
              the top, since the header stays (people, 2026-10-15: "eine kleine Anzeige immer oben, ob es sich um ein Turnier-Match
-             handelt"). It costs the board nothing; while a banner of the page is in view it gives way, so nothing stands twice. Under
-             360 px on air (the LIVE mark beside it) it may shrink to its trophy, or the row spilled 9 px (measured at 320). A tap
-             opens the whole banner over the page, with the tournament page in it (components/tournaments/game-banner-panel). --}}
-        @if ($tournamentBanner = request()->attributes->get('tournament-banner'))
-            <button type="button" class="flex h-11 min-w-[34px] shrink cursor-pointer items-center min-[360px]:ml-1 min-[360px]:min-w-11 lg:hidden" x-cloak x-show="shown"
+             handelt"). It costs the board nothing; while a banner of the page is in view it gives way, so nothing stands twice. A tap
+             opens the whole banner over the page, with the tournament page in it (components/tournaments/game-banner-panel).
+             Narrower than its content (fit(), measured on load, on resize and when the row changes) it steps down, one step at a
+             time: the name shrinks with "…" and goes when under 40 px or when the round would be cut; then the round goes, the
+             trophy alone stays on a 44 px target; where that does not fit either, or the trophy would stand beside the cup badge's
+             trophy, the chip steps aside. The round itself is never cut: "R…" or "Runde …" (DerCaddy's 412 px phone and the
+             review of PR #20, 2026-11-04/05) says nothing. Steps aside in practice: on air under about 400 px beside a cup badge,
+             and for a guest on air up to 390 px, where the sign-in button takes the room. It comes back only when the room it
+             needs is there, so a viewer count does not make it flicker. It measures once it is shown, not on a frame of its
+             own: Alpine shows an x-show element a frame later (in a background tab on a throttled timer), and a fit on the still
+             hidden chip measured nothing and kept a 12 px name stub (gate run of PR #20, 2026-11-05). A webfont arriving late fits
+             it again. --}}
+        @if ($tournamentBanner)
+            <button type="button" class="flex h-11 min-w-[34px] shrink cursor-pointer items-center min-[360px]:ml-1 min-[360px]:min-w-11 lg:hidden" x-cloak x-show="shown && ! squeezed" x-on:resize.window.debounce.150ms="fit()"
                x-on:tournament-banner-state.window="open = $event.detail" x-bind:aria-expanded="open.toString()" aria-expanded="false" aria-haspopup="dialog" aria-controls="tournament-banner-sheet"
                x-on:click="$dispatch('tournament-banner', { opener: $el })"
-               x-data="{ shown: true, open: false, io: null, init() { const inline = [...document.querySelectorAll('[data-tournament-inline]')]; if (! inline.length) return; this.shown = false; const seen = new Set(); this.io = new IntersectionObserver((entries) => { entries.forEach((e) => e.isIntersecting ? seen.add(e.target) : seen.delete(e.target)); this.shown = seen.size === 0; }, { rootMargin: '-52px 0px 0px 0px' }); inline.forEach((el) => this.io.observe(el)); }, destroy() { this.io?.disconnect(); } }"
+               x-data="{ shown: true, squeezed: false, why: null, need: 0, bare: false, roundless: false, roundW: 0, open: false, io: null, mo: null, so: null, refit: null, init() { this.$watch('shown', () => this.fit()); this.mo = new MutationObserver((list) => { if (list.some((m) => ! this.$el.contains(m.target))) this.fit(); }); this.mo.observe(this.$el.parentElement, { childList: true, subtree: true, attributes: true, attributeFilter: ['class', 'style'] }); this.so = new MutationObserver(() => { if (this.$el.checkVisibility()) this.settle(); }); this.so.observe(this.$el, { attributes: true, attributeFilter: ['style'] }); this.refit = () => this.fit(); document.fonts?.addEventListener('loadingdone', this.refit); this.fit(); document.fonts?.ready.then(this.refit); const inline = [...document.querySelectorAll('[data-tournament-inline]')]; if (! inline.length) return; this.shown = false; const seen = new Set(); this.io = new IntersectionObserver((entries) => { entries.forEach((e) => e.isIntersecting ? seen.add(e.target) : seen.delete(e.target)); this.shown = seen.size === 0; }, { rootMargin: '-52px 0px 0px 0px' }); inline.forEach((el) => this.io.observe(el)); }, badge() { return this.$el.parentElement.querySelector('[data-test=cup-badge]')?.checkVisibility() ?? false; }, least() { const css = getComputedStyle(this.$el); return Math.max(44, parseFloat(css.minWidth)) + parseFloat(css.marginLeft); }, fit() { if (! this.shown) { this.squeezed = false; return; } const spare = this.$el.nextElementSibling?.getBoundingClientRect().width ?? 0; if (this.squeezed) { if (spare < this.need && ! (this.why === 'badge' && ! this.badge())) return; this.squeezed = false; if (this.why === 'badge') this.roundless = false; } else if (this.roundless && spare >= this.roundW) { this.roundless = false; } else if (this.bare && ! this.roundless && spare >= 40) { this.bare = false; } this.settle(); }, settle() { this.$nextTick(() => { if (! this.shown || this.squeezed || ! this.$el.checkVisibility()) return; const row = this.$el.parentElement; const pill = this.$el.firstElementChild; const name = this.$refs.name; const cut = pill.scrollWidth > pill.clientWidth; if (row.scrollWidth > row.clientWidth + 1) { this.why = 'row'; this.need = this.least(); this.squeezed = true; return; } if (! this.bare && name.scrollWidth > name.clientWidth && (name.clientWidth < 40 || cut)) { this.bare = true; this.settle(); return; } if (! this.roundless && cut) { this.roundW = this.$refs.round.getBoundingClientRect().width + 6; this.roundless = true; this.settle(); return; } if (this.roundless && this.badge()) { this.why = 'badge'; this.need = this.least() + this.roundW; this.squeezed = true; } }); }, destroy() { this.io?.disconnect(); this.mo?.disconnect(); this.so?.disconnect(); document.fonts?.removeEventListener('loadingdone', this.refit); } }" x-bind:style="{ minWidth: roundless ? '44px' : null }"
                aria-label="{{ ($tournamentBanner['cup'] ? __('Cup game') : __('Tournament game')).': '.$tournamentBanner['tournament'].', '.$tournamentBanner['round'] }}" data-test="shell-tournament">
-                <span class="flex h-[30px] min-w-0 items-center gap-1.5 rounded-md bg-btc-tint px-2 text-xs shadow-[inset_0_0_0_1px_var(--color-btc)]" aria-hidden="true">
+                <span class="flex h-[30px] min-w-0 items-center gap-1.5 overflow-hidden rounded-md bg-btc-tint px-2 text-xs shadow-[inset_0_0_0_1px_var(--color-btc)]" aria-hidden="true">
                     <x-icon name="trophy" :size="14" class="shrink-0 text-btc" />
-                    <b class="min-w-0 truncate text-ink" data-test="shell-tournament-name">{{ $tournamentBanner['tournament'] }}</b>
-                    <span class="shrink-0 font-bold whitespace-nowrap text-btc-hi max-[359px]:hidden" data-test="shell-tournament-round">{{ $tournamentBanner['round'] }}</span>
+                    <b class="min-w-0 shrink-[999] truncate text-ink" x-ref="name" x-bind:class="bare && 'hidden'" data-test="shell-tournament-name">{{ $tournamentBanner['tournament'] }}</b>
+                    <span class="shrink-0 font-bold whitespace-nowrap text-btc-hi" x-ref="round" x-bind:class="roundless && 'hidden'" data-test="shell-tournament-round">{{ $tournamentBanner['round'] }}</span>
                 </span>
             </button>
         @endif
@@ -132,8 +146,11 @@
                 </span>
             </a>
 
-            {{-- An open cup match on every page (CupMatchNow; user, 2026-10-03): pulsing while the game is live. --}}
-            <livewire:cup-match variant="badge" />
+            {{-- An open cup match on every page (CupMatchNow; user, 2026-10-03): pulsing while the game is live. On a phone it
+                 steps aside only on the page it leads to, the own game, where the header's chip stands for it (DerCaddy,
+                 2026-11-04). Anywhere else it stays, "your match" on a game page of its own tournament too: it says the player
+                 is up, the chip does not (review of PR #20, 2026-11-05). --}}
+            <livewire:cup-match variant="badge" :covered="$bannerLeadsTo" />
 
             <livewire:notification-bell />
 
