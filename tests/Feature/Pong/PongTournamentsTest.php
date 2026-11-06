@@ -18,6 +18,7 @@ use App\Enums\TournamentFormat;
 use App\Enums\TournamentResultsMode;
 use App\Enums\TournamentStatus;
 use App\Events\PongMatchStarted;
+use App\Events\PongMatchUpdated;
 use App\Games\ProofOfPong;
 use App\Models\Admin;
 use App\Models\PongMatch;
@@ -30,6 +31,7 @@ use App\Support\Tournaments\Estimator;
 use App\Support\Tournaments\FormatOptions;
 use App\Support\Tournaments\GameProfile;
 use App\Support\Tournaments\TournamentBrackets;
+use App\Support\Tournaments\TournamentControl;
 use App\Support\Tournaments\TournamentEditor;
 use App\Support\Tournaments\TournamentGames;
 use App\Support\Tournaments\TournamentRuleViolation;
@@ -227,4 +229,66 @@ test('a result that failed to reach the bracket is reported again by pong:check-
     expect($otherPairing->refresh()->result)->toMatchArray(['by' => 'league'])
         ->and($other->refresh()->status)->toBe(TournamentStatus::Finished)
         ->and(PongMatch::query()->count())->toBe(2);
+});
+
+test('the league voids a tournament match: called off unrated, both pages hear it, the bracket hears nothing, and once only', function () {
+    Event::fake([PongMatchUpdated::class]);
+    $tournament = pongTournament(2);
+    $played = PongMatch::query()->sole();
+    $played->forceFill(['rated' => true])->save();
+    $version = (int) $played->state['version'];
+
+    expect(app(PongMatches::class)->void($played))->toBeTrue();
+    $played->refresh();
+
+    expect($played->status)->toBe(PongMatchStatus::Aborted)
+        ->and($played->end_reason)->toBe(PongEndReason::Abort)
+        ->and($played->winner_id)->toBeNull()
+        ->and($played->rated)->toBeFalse()
+        ->and((int) $played->state['version'])->toBe($version + 1)
+        // The bracket heard nothing: a called-off match it heard of is started again (TournamentRunner::pongMatchAborted()).
+        ->and(TournamentMatch::query()->findOrFail($played->tournament_match_id)->result)->toBeNull()
+        ->and(PongMatch::query()->where('tournament_match_id', $played->tournament_match_id)->count())->toBe(1);
+    Event::assertDispatchedTimes(PongMatchUpdated::class, 1);
+    Event::assertDispatched(PongMatchUpdated::class, fn (PongMatchUpdated $event): bool => $event->ulid === $played->ulid);
+
+    // Over already: nothing changes, nobody hears anything.
+    expect(app(PongMatches::class)->void($played))->toBeFalse()
+        ->and((int) $played->refresh()->state['version'])->toBe($version + 1)
+        ->and(fn () => app(PongMatches::class)->void(PongMatch::factory()->create()))->toThrow(InvalidArgumentException::class);
+    Event::assertDispatchedTimes(PongMatchUpdated::class, 1);
+});
+
+test('a correction that re-pairs a Proof of Pong match calls its live match off and starts one for the new pairing', function () {
+    $tournament = pongTournament(4);
+    $admin = User::factory()->create();
+    Admin::query()->create(['pubkey' => $admin->pubkey]);
+    $control = app(TournamentControl::class);
+    $round = fn (int $number) => TournamentMatch::query()->where('tournament_id', $tournament->id)->where('bracket', '!=', 'bye')
+        ->whereHas('round', fn ($query) => $query->where('number', $number))->with('slots.participant')->orderBy('id')->get();
+    [$semi1, $semi2] = $round(1)->all();
+    $userOf = fn (TournamentMatch $match, int $slot): int => (int) $match->slots[$slot]->participant->user_id;
+
+    // Both semi-finals decided by the league: their live matches are called off, so the final starts at once.
+    $control->setResult($tournament, $admin, $semi1->id, ['result' => '1-0'], 'Reported by phone');
+    $control->setResult($tournament, $admin, $semi2->id, ['result' => '1-0'], 'Reported by phone');
+    $final = $round(2)->sole();
+    $old = $final->pongMatch;
+
+    expect(PongMatch::query()->whereIn('tournament_match_id', [$semi1->id, $semi2->id])->get()->every(fn (PongMatch $match): bool => $match->status === PongMatchStatus::Aborted))->toBeTrue()
+        ->and($old?->status)->toBe(PongMatchStatus::Waiting)
+        ->and([(int) $old->left_id, (int) $old->right_id])->toEqualCanonicalizing([$userOf($semi1, 0), $userOf($semi2, 0)]);
+
+    // The other player won semi-final 1 after all: the final has a new side.
+    $control->setResult($tournament, $admin, $semi1->id, ['result' => '0-1'], 'The other player won');
+    $old->refresh();
+    $final->refresh();
+    $new = PongMatch::query()->where('tournament_match_id', $final->id)->whereKeyNot($old->id)->sole();
+
+    expect($old->status)->toBe(PongMatchStatus::Aborted)
+        ->and($old->rated)->toBeFalse()
+        ->and($final->isReplaced($old->id))->toBeTrue()
+        ->and($final->result)->toBeNull()
+        ->and($new->status)->toBe(PongMatchStatus::Waiting)
+        ->and([(int) $new->left_id, (int) $new->right_id])->toEqualCanonicalizing([$userOf($semi1, 1), $userOf($semi2, 0)]);
 });
