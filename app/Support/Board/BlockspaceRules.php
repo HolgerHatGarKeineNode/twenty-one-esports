@@ -131,6 +131,11 @@ final class BlockspaceRules implements BoardRules, DealtGame
         return $this->dealt($position['deck'], $position['fuse']);
     }
 
+    public function withoutHidden(mixed $position): mixed
+    {
+        return [...$position, 'queue' => str_repeat('a', strlen($position['queue'])), 'deck' => str_repeat('a', strlen($position['deck']))];
+    }
+
     public function revealsOnMove(mixed $position): bool
     {
         return $position['queue'] !== '';

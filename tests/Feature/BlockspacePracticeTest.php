@@ -2,7 +2,6 @@
 
 use App\Support\Board\BlockspacePractice;
 use App\Support\Board\BlockspaceRules;
-use Symfony\Component\Process\Process;
 use Tests\Support\BlockspaceOn;
 
 /*
@@ -41,9 +40,6 @@ test('every lesson reaches its goal in the browser\'s engine', function () {
     $file = tempnam(sys_get_temp_dir(), 'lessons');
     file_put_contents($file, json_encode($lessons));
 
-    $node = new Process(['node', 'tests/js/blockspace/lessons.check.mjs', $file], dirname(__DIR__, 2));
-    $node->run();
+    nodeTest('tests/js/blockspace/lessons.check.mjs', 9, 60, ['BLOCKSPACE_LESSONS' => $file]);
     unlink($file);
-
-    expect($node->getExitCode())->toBe(0, $node->getErrorOutput());
 });

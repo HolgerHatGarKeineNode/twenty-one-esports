@@ -88,9 +88,27 @@ final class GameNames
      *
      * @return array{w: string, b: string}
      */
-    public static function sides(string $game): array
+    public static function sides(string $game, ?string $locale = null): array
     {
-        return $game === Blockspace::SLUG ? ['w' => __('Orange'), 'b' => __('Blue')] : ['w' => __('White'), 'b' => __('Black')];
+        return $game === Blockspace::SLUG
+            ? ['w' => __('Orange', [], $locale), 'b' => __('Blue', [], $locale)]
+            : ['w' => __('White', [], $locale), 'b' => __('Black', [], $locale)];
+    }
+
+    /**
+     * The sides as a note after a player's name: "(white)", "(Weiß)", "(Orange)".
+     *
+     * @return array{w: string, b: string}
+     */
+    public static function sideNotes(string $game): array
+    {
+        if ($game !== Blockspace::SLUG) {
+            return ['w' => __('(white)'), 'b' => __('(black)')];
+        }
+
+        $sides = self::sides($game);
+
+        return ['w' => '('.$sides['w'].')', 'b' => '('.$sides['b'].')'];
     }
 
     /** full() with the credit after it, for text without markup: "Blockli Blitz 5+3 by DerCaddy". */

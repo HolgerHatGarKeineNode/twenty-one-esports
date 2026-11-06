@@ -218,7 +218,7 @@ test('a game plays to its end through the service and names a winner', function 
         ->and($game->result)->toBeIn(['1-0', '0-1', '1/2-1/2']);
 });
 
-test('the drawn cards and the stream draw a game, and only its stones', function () {
+test('the rungs and the state are pieces no point draws, and the card takes the game', function () {
     $game = blockspacePlay(blockspaceGame(), 4);
     $rules = new BlockspaceRules;
     $view = $rules->view($rules->deserialize($game->position));

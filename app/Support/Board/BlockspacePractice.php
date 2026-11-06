@@ -13,9 +13,6 @@ namespace App\Support\Board;
  */
 final class BlockspacePractice
 {
-    /** Who plays the bots, weakest first (the engine's levels, resources/js/blockspace/engine.js think()). */
-    public const BOTS = ['hodler' => 'leicht', 'miner' => 'mittel', 'whale' => 'stark'];
-
     /** The last lesson: 3 sats behind with six transactions left, from a game of the bots. */
     private const ENDGAME = 'n 0 85 88 11 0 rofie p dmqnmbeanrkqlitgsgbjulctkhhpcufjsorofaidep .b.www.w..bbwbbbw..b.bwwb.w..bb.wbww..bb.wwbw.bwwb.bbw.b.wbb.wb.bw..bbwb.bwb...wb.bwb..wwbbwbbww..bbw.bwwwb.bwwwb..w.bb.bb.ww....b.bw...wwwwbw..w..bbwbbbwwbbwwbw.wbwbwbwww.ww.wb.w...ww.b...';
 
@@ -31,17 +28,17 @@ final class BlockspacePractice
         [
             'id' => 'first', 'pool' => 'cdfgj', 'queue' => 'bebh', 'played' => '00', 'goal' => 'place',
             'title' => 'Your first stones',
-            'text' => 'You are Orange, your opponent Blue. Whoever collects the higher fees wins. Fees count in sat, the points of this game. Beside the block is the mempool: five transactions waiting. Take one and set it so that it covers your start cell, the orange diamond.',
+            'text' => 'You are Orange, your opponent Blue. Whoever collects the higher yield wins. Yield counts in sat, the points of this game. Beside the block is the mempool: five transactions waiting. Take one and set it so that it covers your start cell, the orange diamond.',
             'task' => 'Cover your start cell.',
-            'done' => 'Your first transaction is in the block and has paid its fee.',
+            'done' => 'Your first transaction is in the block and has brought you its sats.',
             'retry' => 'Set it on the orange diamond.',
         ],
         [
             'id' => 'ladder', 'pool' => 'bgeck', 'queue' => 'hbeb', 'played' => '00', 'goal' => 'fee',
-            'title' => 'The fee ladder',
-            'text' => 'The oldest transaction stands on top. Each pays its size in vB plus a bonus for its age: +4 for the oldest, then +3, +2, +1, nothing for the newest. So a big stone is not always the best payer. Each block shows what it pays, in its number and its colour.',
-            'task' => 'Take the transaction that pays the most and cover your start cell.',
-            'done' => 'What you take leaves a gap: everything behind it moves up a rung and pays more, for Blue as well.',
+            'title' => 'The mempool ladder',
+            'text' => 'The oldest transaction stands on top. Each brings its size in vB plus a bonus for its age: +4 for the oldest, then +3, +2, +1, nothing for the newest. So a big stone does not always bring the most. Each block shows what it brings, in its number and its colour.',
+            'task' => 'Take the transaction that brings the most and cover your start cell.',
+            'done' => 'What you take leaves a gap: everything behind it moves up a rung and brings more, for Blue as well.',
             'retry' => 'That was not the highest number. Look at the sat on each block.',
         ],
         [
@@ -87,7 +84,7 @@ final class BlockspacePractice
         [
             'id' => 'fuse', 'stones' => ['w' => 'e5'], 'pool' => 'kccbb', 'queue' => 'gbhe', 'played' => '10', 'ti' => 3, 'fuse' => true, 'goal' => 'slot', 'slot' => 0,
             'title' => 'Blitz: the fuse',
-            'text' => 'In blitz games a fuse burns: at every second turn the oldest transaction falls out by itself. The marked one will be gone after this turn, and it pays 9 sat.',
+            'text' => 'In blitz games a fuse burns: at every second turn the oldest transaction falls out by itself. The marked one will be gone after this turn, and it brings 9 sat.',
             'task' => 'Take the oldest before it burns.',
             'done' => 'In blitz nothing waits for long. After this one the next oldest burns, so look at the top of the ladder on every turn.',
             'retry' => 'That one was not the oldest. It has burned now.',
@@ -95,10 +92,10 @@ final class BlockspacePractice
         [
             'id' => 'endgame', 'position' => self::ENDGAME, 'goal' => 'win',
             'title' => 'Close the block',
-            'text' => 'The end of a real game. The game is over when the ladder is empty or after 14 passes in a row, and the higher fees win. You are 3 behind and six transactions are left.',
+            'text' => 'The end of a real game. The game is over when the ladder is empty or after 14 passes in a row, and the higher yield wins. You are 3 behind and six transactions are left.',
             'task' => 'Win the game against the Hodler.',
             'done' => 'That is Blockspace. Now try the bots, or find a real opponent in the lobby.',
-            'retry' => 'The Hodler stayed ahead. Count the fees and start again.',
+            'retry' => 'The Hodler stayed ahead. Count the yield and start again.',
         ],
     ];
 
@@ -156,7 +153,7 @@ final class BlockspacePractice
             'at' => __('Shown on :cells.'),
             'burning' => __('burns after this turn'),
             'touch' => __('Pick a transaction, then tap or drag on the block. One more tap on the stones sets them.'),
-            'tile' => __('Rung :rung, form :form: :size vB plus :bonus, pays :fee sat'),
+            'tile' => __('Rung :rung, form :form: :size vB plus :bonus, brings :fee sat'),
             'why' => [
                 'taken' => __('A stone already lies there.'),
                 'edge' => __('Your stones may not touch along an edge.'),

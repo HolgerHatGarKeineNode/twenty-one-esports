@@ -71,7 +71,7 @@ new #[Layout('layouts::app', ['realtime' => true, 'scripts' => ['resources/js/bo
 
         // Search and link preview, as a chess game's page has them: the players, the state, the board as a card.
         $kind = ($game->rated ? __('Rated') : __('Casual')).' · '.GameNames::full($game->game, $game->mode);
-        $description = __(':kind: :white (:whiteSide) vs :black (:blackSide) in the TWENTY ONE esports league.', ['whiteSide' => mb_strtolower(GameNames::sides($game->game)['w']), 'blackSide' => mb_strtolower(GameNames::sides($game->game)['b']), 'kind' => $kind, 'white' => $this->name('w'), 'black' => $this->name('b')]).' '.match ($game->status) {
+        $description = __(':kind: :white :whiteSide vs :black :blackSide in the TWENTY ONE esports league.', ['whiteSide' => GameNames::sideNotes($game->game)['w'], 'blackSide' => GameNames::sideNotes($game->game)['b'], 'kind' => $kind, 'white' => $this->name('w'), 'black' => $this->name('b')]).' '.match ($game->status) {
             BoardGameStatus::Active => __('Live now: watch the board move by move.'),
             BoardGameStatus::Aborted => __('Aborted before both first moves'),
             BoardGameStatus::Finished => __('Result: :result.', ['result' => $game->result ?? '?']),

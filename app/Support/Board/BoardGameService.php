@@ -241,7 +241,7 @@ final class BoardGameService
             $position = $rules->deserialize($game->position);
 
             if (! in_array($move, $rules->legalMoves($position), true)) {
-                throw new BoardRuleViolation('illegal_move', "{$move} is illegal in {$game->position}.");
+                throw new BoardRuleViolation('illegal_move', "{$move} is illegal in {$this->publicPosition($game, $rules)}.");
             }
 
             $notation = $rules->notation($position, $move);
@@ -367,6 +367,16 @@ final class BoardGameService
     private function lastMover(BoardGame $game, BoardRules $rules): string
     {
         return $rules->turn($rules->deserialize($this->positionBeforeLast($game, $rules)));
+    }
+
+    /**
+     * The game's position as anyone may know it: what a dealt game hides stays in the game.
+     *
+     * @param  BoardRules<mixed>  $rules
+     */
+    public function publicPosition(BoardGame $game, BoardRules $rules): string
+    {
+        return $rules instanceof DealtGame ? $rules->serialize($rules->withoutHidden($rules->deserialize($game->position))) : $game->position;
     }
 
     /**

@@ -66,8 +66,9 @@ final readonly class GameProfile
             'chess/correspondence' => new self('daily', $game, $mode, 'day', 30, 0, 1, 1, 1, [1], true, 'game'),
             // Board games (plan "Mühle und Dame", P5): one blitz game 5+3 per match, planned as blitz chess. No game offers
             // blitz since 2026-10-07 (user: correspondence only); kept so tournaments made before still plan and render.
-            'nine-mens-morris/blitz', 'checkers/blitz', 'blockspace/blitz' => new self("{$game}/{$mode}", $game, $mode, 'min', 14, 0, 3, 1, 1, [1], false, 'game', overhead: 3),
-            // Blockspace rapid 10+5, planned as rapid chess; the first move is no advantage (50.6 % in 3,000 bot games), so one game a slot.
+            'nine-mens-morris/blitz', 'checkers/blitz' => new self("{$game}/{$mode}", $game, $mode, 'min', 14, 0, 3, 1, 1, [1], false, 'game', overhead: 3),
+            // Blockspace: blitz 5+3 with its fuse and rapid 10+5, planned as chess; the first move is no advantage (50.6 % in 3,000 bot games), so one game a slot.
+            'blockspace/blitz' => new self("{$game}/{$mode}", $game, $mode, 'min', 14, 0, 3, 1, 1, [1], false, 'game', overhead: 3),
             'blockspace/rapid' => new self("{$game}/{$mode}", $game, $mode, 'min', 27, 0, 3, 1, 1, [1], false, 'game', overhead: 3),
             // Blockli plays each pairing twice with the colours swapped (plan "Blockli", P4): two games a slot.
             'blockli/blitz' => new self("{$game}/{$mode}", $game, $mode, 'min', 14, 0, 3, 2, 2, [2], false, 'game', overhead: 3),

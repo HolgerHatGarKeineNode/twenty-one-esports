@@ -34,4 +34,13 @@ interface DealtGame
      * @param  TPosition  $position
      */
     public function revealsOnMove(mixed $position): bool;
+
+    /**
+     * This position as anyone may know it: what is dealt and hidden is gone, only how much of it is left stays. Whatever
+     * leaves the game (a drawn card and its fingerprint, a log line) reads this, never the stored position.
+     *
+     * @param  TPosition  $position
+     * @return TPosition
+     */
+    public function withoutHidden(mixed $position): mixed;
 }

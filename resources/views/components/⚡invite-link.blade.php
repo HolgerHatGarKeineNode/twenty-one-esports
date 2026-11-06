@@ -202,7 +202,7 @@ new class extends Component
         'member' => __('Join links for :clan come from its captains. Ask one of them, or challenge a friend to daily chess.', ['clan' => $clan?->name]),
         default => '',
     };
-    $colorLabel = ['random' => __('Random'), 'white' => __('White'), 'black' => __('Black')];
+    $colorLabel = ['random' => __('Random'), 'white' => \App\Support\GameNames::sides((string) $this->game)['w'], 'black' => \App\Support\GameNames::sides((string) $this->game)['b']];
     // A game page (P26) keeps the module to one row below sm in every state: heading and button, the text from sm.
     $slim = ($type !== null && $compact) || $place === 'game';
 @endphp

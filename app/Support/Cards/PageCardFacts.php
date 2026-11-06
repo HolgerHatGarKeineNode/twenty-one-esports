@@ -31,6 +31,7 @@ use App\Models\Tournament;
 use App\Models\TournamentParticipant;
 use App\Models\TournamentPayout;
 use App\Models\User;
+use App\Support\Board\BoardGameService;
 use App\Support\Chess\ChessTeamMatches;
 use App\Support\Clans\ClanLogos;
 use App\Support\GameNames;
@@ -511,6 +512,7 @@ final class PageCardFacts
     {
         $game->loadMissing(['white', 'black', 'tournamentMatch.tournament']);
         $tournament = $game->tournamentMatch?->tournament;
+        $rules = app(BoardGameService::class)->rulesOf($game);
         // A deleted account has no face and no name of its own: the card draws "Deleted player".
         $side = fn (?User $user): array => $user === null ? ['name' => null, 'pubkey' => str_repeat('0', 64), 'avatar_path' => null] : self::person($user);
 
@@ -522,7 +524,8 @@ final class PageCardFacts
             'status' => $game->status->value,
             'result' => $game->status === BoardGameStatus::Finished ? $game->result : null,
             'reason' => $game->status === BoardGameStatus::Active ? null : $game->end_reason,
-            'position' => $game->position,
+            // The card's fingerprint is public: what a dealt game hides may not feed it.
+            'position' => $rules === null ? $game->position : app(BoardGameService::class)->publicPosition($game, $rules),
             'turn' => $game->turn,
             'ply' => (int) $game->ply,
             'white' => $side($game->white),

@@ -58,7 +58,7 @@ new #[Layout('layouts::app', ['scripts' => ['resources/js/blockspace/practice.js
             ], BlockspacePractice::LESSONS),
             'bots' => [
                 'hodler' => ['level' => 'leicht', 'name' => __('Hodler'), 'grade' => __('Easy'), 'text' => __('Takes what pays well right now and looks no further.')],
-                'miner' => ['level' => 'mittel', 'name' => __('Miner'), 'grade' => __('Medium'), 'text' => __('Weighs the fee against open corners and blocks your way.')],
+                'miner' => ['level' => 'mittel', 'name' => __('Miner'), 'grade' => __('Medium'), 'text' => __('Weighs the yield against open corners and blocks your way.')],
                 'whale' => ['level' => 'stark', 'name' => __('Whale'), 'grade' => __('Hard'), 'text' => __('Plays each move out to the end of the game. Few beat him.')],
             ],
             'labels' => [
