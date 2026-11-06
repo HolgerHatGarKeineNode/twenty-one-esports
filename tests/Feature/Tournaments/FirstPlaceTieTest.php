@@ -488,3 +488,71 @@ test('a two-stage tournament ends in its knockout as before: no tie-break stage,
         ->and(app(TournamentChampion::class)->of($tournament)?->id)->toBe($seed(1))
         ->and(app(TournamentPlacements::class)->of($tournament)[0] ?? null)->toBe(['place' => 1, 'participants' => [$seed(1)]]);
 });
+
+/*
+| A disqualification during the tie-break knockout changes no result of the table (gate review of PR #21): the
+| knockout plays on, the disqualified entrant loses its matches by forfeit, and the others decide place 1.
+*/
+
+/** An admin disqualifies `$participant` (TournamentControl::disqualifyMany(), which syncs). */
+function disqualifyInTie(Tournament $tournament, TournamentParticipant $participant): void
+{
+    $admin = User::factory()->create();
+    Admin::query()->create(['pubkey' => $admin->pubkey]);
+
+    expect(app(TournamentControl::class)->disqualifyMany($tournament, $admin, [$participant->id], 'Did not show up for the tie-break'))->toBe(1);
+}
+
+test('a tied entrant disqualified during the tie-break loses it by forfeit, and the other is champion with the places read', function () {
+    [$tournament, [$a, $b, $c, $d]] = drawnPairOfFour();
+
+    disqualifyInTie($tournament, $a);
+    $tournament->refresh();
+
+    $final = TournamentMatch::query()->where('tournament_id', $tournament->id)->where('key', 'like', FirstPlaceTie::PREFIX.'%')->sole();
+    $admin = User::factory()->create();
+    Admin::query()->create(['pubkey' => $admin->pubkey]);
+
+    expect($final->result['decided'] ?? null)->toBe('disqualified')
+        ->and($tournament->status)->toBe(TournamentStatus::Finished)
+        ->and(FirstPlaceTie::isStale($tournament))->toBeFalse()
+        ->and(app(TournamentChampion::class)->of($tournament)?->id)->toBe($b->id)
+        ->and(app(TournamentPlacements::class)->of($tournament)[0] ?? null)->toBe(['place' => 1, 'participants' => [$b->id]])
+        ->and(app(PayoutPlan::class)->compute($tournament, 100_000))->not->toBeNull();
+
+    Livewire::actingAs($admin)->test('tournament-control', ['tournament' => $tournament])
+        ->assertDontSeeHtml('data-test="control-stale-tie"');
+});
+
+test('a tied entrant disqualified before its tie-break match is played leaves the knockout standing', function () {
+    // Three level: seeds 2 and 3 play, seed 1 waits in the final with a bye. Seed 1 goes before anything is played.
+    [$tournament, [$first, $second, $third]] = circleOfThree(['firstPlaceTie' => 'playoff']);
+    $before = TournamentMatch::query()->where('tournament_id', $tournament->id)->where('key', 'like', FirstPlaceTie::PREFIX.'%')->orderBy('id')->pluck('id')->all();
+
+    disqualifyInTie($tournament, $first);
+    $tournament->refresh();
+
+    expect(FirstPlaceTie::isStale($tournament))->toBeFalse()
+        ->and(TournamentMatch::query()->where('tournament_id', $tournament->id)->where('key', 'like', FirstPlaceTie::PREFIX.'%')->orderBy('id')->pluck('id')->all())->toBe($before)
+        ->and($tournament->status)->toBe(TournamentStatus::Running);
+
+    // The semi-final is played; the final against the disqualified seed 1 goes by forfeit.
+    tieGame($tournament, $third, $second);
+    app(TournamentRunner::class)->sync($tournament);
+    $tournament->refresh();
+
+    expect($tournament->status)->toBe(TournamentStatus::Finished)
+        ->and(app(TournamentChampion::class)->of($tournament)?->id)->toBe($third->id)
+        ->and(app(TournamentPlacements::class)->of($tournament))->not->toBeNull();
+});
+
+test('an entrant outside the tie-break disqualified during it changes nothing about the knockout', function () {
+    [$tournament, [$a, $b, $c, $d]] = drawnPairOfFour();
+
+    disqualifyInTie($tournament, $d);
+    $tournament->refresh();
+
+    expect(FirstPlaceTie::isStale($tournament))->toBeFalse()
+        ->and(playoffEntrants($tournament))->toBe([$a->id, $b->id])
+        ->and($tournament->status)->toBe(TournamentStatus::Running);
+});

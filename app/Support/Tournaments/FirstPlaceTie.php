@@ -135,16 +135,22 @@ final class FirstPlaceTie
     }
 
     /**
-     * The entrants level on place 1 of the tournament's table (stage 1) as its finished games stand now, in table order;
-     * empty when place 1 is clear.
+     * Who still stands level on place 1 of the tournament's table (stage 1) as its finished games stand now: the entry
+     * on top and everyone level with it, without the disqualified, sorted; one entry when place 1 is clear. Unlike
+     * {@see leaders()} it keeps a single survivor of a tie, so a disqualification during the knockout (which changes
+     * no table result) leaves the comparison in {@see isStale()} as it was.
      *
+     * @param  list<int>  $disqualified
      * @return list<int>
      */
-    public static function currentLeaders(Tournament $tournament): array
+    private static function standingLevel(Tournament $tournament, array $disqualified): array
     {
         $entrants = array_values($tournament->participants()->whereNotNull('seed')->orderBy('seed')->pluck('id')->map(intval(...))->all());
+        $first = self::table($tournament, $entrants, app(TournamentRunner::class)->games($tournament, stage: 1))[0] ?? null;
+        $level = $first === null ? [] : array_values(array_diff([$first->entrant, ...$first->tiedWith], $disqualified));
+        sort($level);
 
-        return self::leaders(self::table($tournament, $entrants, app(TournamentRunner::class)->games($tournament, stage: 1)), $tournament);
+        return $level;
     }
 
     /**
@@ -172,6 +178,10 @@ final class FirstPlaceTie
     /**
      * Whether the tournament's tie-break knockout no longer answers its table: a result of stage 1 corrected since it
      * opened left another tie for place 1, a clear place 1, or a match of the table open again. False without a knockout.
+     *
+     * Both sides are compared without the disqualified: an entrant of the knockout disqualified during it loses its
+     * matches by forfeit, and the others play on for place 1 (review of PR #21: a disqualification made a correct
+     * knockout stale, so the tournament ended with no champion and no places).
      */
     public static function isStale(Tournament $tournament): bool
     {
@@ -188,10 +198,9 @@ final class FirstPlaceTie
             return true;
         }
 
-        $leaders = self::currentLeaders($tournament);
-        sort($leaders);
+        $disqualified = array_values(TournamentParticipant::query()->where('tournament_id', $tournament->id)->whereNotNull('disqualified_at')->pluck('id')->map(intval(...))->all());
 
-        return $leaders !== self::playoffEntrants($stage);
+        return self::standingLevel($tournament, $disqualified) !== array_values(array_diff(self::playoffEntrants($stage), $disqualified));
     }
 
     /**
