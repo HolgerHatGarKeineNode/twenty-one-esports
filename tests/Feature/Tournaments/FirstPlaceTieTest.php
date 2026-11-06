@@ -16,6 +16,8 @@ use App\Support\Tournaments\FormatOptions;
 use App\Support\Tournaments\GameProfile;
 use App\Support\Tournaments\TournamentChampion;
 use App\Support\Tournaments\TournamentControl;
+use App\Support\Tournaments\TournamentGameEnd;
+use App\Support\Tournaments\TournamentNow;
 use App\Support\Tournaments\TournamentRunner;
 use App\Support\Tournaments\TournamentView;
 use Illuminate\Support\Facades\Queue;
@@ -395,4 +397,20 @@ test('the director desk and the control name the tie-break round as such, not as
     $control->assertSeeHtml('data-test="control-tie-break"');
     // Only the knockout's round: the table's three rounds keep their plain names.
     expect(substr_count($control->html(), 'data-test="control-tie-break"'))->toBe(1);
+});
+
+test('a player outside the tie-break is done with the tournament, not told to wait for a next round', function () {
+    [$tournament, [$a, , $c]] = drawnPairOfFour();
+    $userOf = fn (TournamentParticipant $participant): User => User::query()->findOrFail($participant->user_id);
+    $lastOf = fn (TournamentParticipant $participant): TournamentMatch => TournamentMatch::query()->where('tournament_id', $tournament->id)
+        ->whereHas('slots', fn ($query) => $query->where('tournament_participant_id', $participant->id))->with(['round.stage', 'slots'])->orderByDesc('id')->first();
+
+    $last = $lastOf($c);
+    expect($last->round->stage->number)->toBe(1)
+        ->and(TournamentGameEnd::after($tournament, $last, $last->slots->firstWhere('tournament_participant_id', $c->id)->slot)[0])->toBe('done')
+        ->and(TournamentGameEnd::playedOut($tournament, $last, $c->id))->toBeTrue()
+        ->and(TournamentNow::of($tournament, $userOf($c))['state'] ?? null)->toBe('done')
+        // A tied player still has the knockout ahead; a two-stage group stage stays never the end (no participant asked).
+        ->and(TournamentGameEnd::playedOut($tournament, $last))->toBeFalse()
+        ->and(TournamentNow::of($tournament, $userOf($a))['state'] ?? null)->not->toBe('done');
 });

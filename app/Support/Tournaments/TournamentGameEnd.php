@@ -255,7 +255,7 @@ final class TournamentGameEnd
             return ['out', __('You are out'), $cup ? __('Thanks for playing! Follow the rest of the cup on the tournament page.') : __('Thanks for playing! Follow the rest of the tournament on the tournament page.')];
         }
 
-        if ($participantId !== null && self::playedOut($tournament, $match)) {
+        if ($participantId !== null && self::playedOut($tournament, $match, $participantId)) {
             return ['done', __('Your matches are done — waiting for the others'), __('The final standings come when the last games end.')];
         }
 
@@ -267,13 +267,16 @@ final class TournamentGameEnd
      * robin stores every round up front, so nothing ahead means all games are
      * played; Swiss pairs one round at a time, so only its planned count
      * tells the last round. A group stage is never the end: its knockout
-     * stage follows. The tournament page's hero (TournamentNow) reads it too.
+     * stage follows. A table's tie-break knockout (FirstPlaceTie) follows
+     * only for the tied: `$participantId` without a slot in it is done with
+     * the table. The tournament page's hero (TournamentNow) reads it too.
      */
-    public static function playedOut(Tournament $tournament, TournamentMatch $last): bool
+    public static function playedOut(Tournament $tournament, TournamentMatch $last, ?int $participantId = null): bool
     {
         $stage = $last->round->stage;
+        $lastStage = (int) TournamentStage::query()->where('tournament_id', $tournament->id)->max('number');
 
-        if ($stage->number < (int) TournamentStage::query()->where('tournament_id', $tournament->id)->max('number')) {
+        if ($stage->number < $lastStage && ! self::outsidePlayoff($tournament, $stage->number, $lastStage, $participantId)) {
             return false;
         }
 
@@ -282,6 +285,19 @@ final class TournamentGameEnd
             TournamentFormat::Swiss => $last->round->number >= app(TournamentRunner::class)->swissRounds($tournament),
             default => false,
         };
+    }
+
+    /** Whether every stage after `$stage` is a table's tie-break knockout (FirstPlaceTie) without a slot for the entry. */
+    private static function outsidePlayoff(Tournament $tournament, int $stage, int $lastStage, ?int $participantId): bool
+    {
+        if ($participantId === null || ! FirstPlaceTie::isPlayoffStage($tournament, $lastStage)) {
+            return false;
+        }
+
+        return ! TournamentMatch::query()->where('tournament_id', $tournament->id)
+            ->whereHas('round.stage', fn ($query) => $query->where('number', '>', $stage))
+            ->whereHas('slots', fn ($query) => $query->where('tournament_participant_id', $participantId))
+            ->exists();
     }
 
     /** Whether the match is a knockout of the last stage: an entry without a further match there is out. */

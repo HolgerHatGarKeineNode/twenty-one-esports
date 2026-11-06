@@ -467,7 +467,7 @@ final class TournamentNow
                 'line' => (string) __('Thanks for playing!'), 'action' => ['label' => (string) __('Watch the rest'), 'href' => self::watchUrl($tournament), 'icon' => 'eye'], 'round' => $live];
         }
 
-        if (! $ahead && TournamentGameEnd::playedOut($tournament, $last)) {
+        if (! $ahead && TournamentGameEnd::playedOut($tournament, $last, $participant->id)) {
             $title = $last->round->stage->format === TournamentFormat::RoundRobin ? __('Your games are done') : __('Your matches are done — waiting for the others');
 
             return ['state' => 'done', 'title' => (string) $title, 'context' => $live === null ? null : self::roundLine($live),
