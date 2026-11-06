@@ -10,7 +10,8 @@ use App\Models\TournamentParticipant;
 use App\Support\Tournaments\Engine\Advancement;
 use App\Support\Tournaments\Engine\BracketMatch;
 use App\Support\Tournaments\Engine\MatchResult;
-use App\Support\Tournaments\Engine\Standings;
+use App\Support\Tournaments\FirstPlaceTie;
+use App\Support\Tournaments\FormatOptions;
 use App\Support\Tournaments\Lobbies;
 use App\Support\Tournaments\TournamentBrackets;
 
@@ -36,8 +37,11 @@ use App\Support\Tournaments\TournamentBrackets;
  *   allies who share place 1), and across lobbies the same place shared:
  *   every lobby's winners are place 1 together, then the next place number
  *   of any lobby, and so on; `unplaced` entries are left out;
- * - a final stage that is a table (round robin, Swiss): the table's ranks,
- *   ties shared as the tie-breaks leave them.
+ * - a final stage that is a table (round robin, Swiss): the table's ranks;
+ *   a tie for place 1 nothing splits shared where the organizer chose so
+ *   (FirstPlaceTie), every other tie in seed order;
+ * - a table whose tie for place 1 was played off (FirstPlaceTie, stage 2):
+ *   the tied by the knockout, everyone else by the table after them.
  *
  * Only sides of the final stage are placed. Null while the tournament is not
  * finished or when its end cannot be read (parallel heats that feed nothing
@@ -87,6 +91,12 @@ final class TournamentPlacements
             return self::lobbies($tournament, $terminal, $state);
         }
 
+        // A table's tie for place 1 played off in a knockout (FirstPlaceTie, stage 2): the knockout places the tied, the
+        // table everyone else after them.
+        if (FirstPlaceTie::isPlayoffStage($tournament, $stage)) {
+            return $this->playoff($tournament, $bracket->matches, $final, $terminal, $state, $results);
+        }
+
         if (count($terminal) === 1) {
             $last = $state[$terminal[0]->key] ?? null;
 
@@ -110,16 +120,46 @@ final class TournamentPlacements
 
             $champion = $last['ranking'][0] ?? $last['winner'] ?? null;
 
-            return $champion === null ? null : self::byKnockOut($final, $state, (int) $champion);
+            return $champion === null ? null : self::numbered(self::byKnockOut($final, $state, (int) $champion));
         }
 
-        return $this->table($tournament, $final, $state, $results);
+        $groups = $this->table($tournament, $final, $state, $results);
+
+        return $groups === null ? null : self::numbered($groups);
+    }
+
+    /**
+     * The places of a round robin or Swiss whose tie for place 1 was played off (FirstPlaceTie): the knockout's order
+     * for the tied, then the table's for everyone else; null until the knockout has its winner.
+     *
+     * @param  list<BracketMatch>  $matches  every match of the tournament
+     * @param  list<BracketMatch>  $playoff  the knockout's
+     * @param  list<BracketMatch>  $terminal  the knockout's last match
+     * @param  array<string, array{entrants: list<int|null>, status: string, winner: int|null, loser: int|null, ranking: list<int>}>  $state
+     * @param  array<string, MatchResult>  $results
+     * @return list<array{place: int, participants: list<int>}>|null
+     */
+    private function playoff(Tournament $tournament, array $matches, array $playoff, array $terminal, array $state, array $results): ?array
+    {
+        $last = count($terminal) === 1 ? ($state[$terminal[0]->key] ?? null) : null;
+        $champion = ($last['status'] ?? null) === 'done' ? ($last['winner'] ?? null) : null;
+        $table = $this->table($tournament, array_values(array_filter($matches, fn (BracketMatch $match): bool => $match->stage === 1)), $state, $results);
+
+        if ($champion === null || $table === null) {
+            return null;
+        }
+
+        $top = self::byKnockOut($playoff, $state, (int) $champion);
+        $placed = array_merge(...$top);
+        $rest = array_values(array_filter(array_map(fn (array $group): array => array_values(array_diff($group, $placed)), $table)));
+
+        return self::numbered([...$top, ...$rest]);
     }
 
     /**
      * @param  list<BracketMatch>  $matches
      * @param  array<string, array{entrants: list<int|null>, status: string, winner: int|null, loser: int|null, ranking: list<int>}>  $state
-     * @return list<array{place: int, participants: list<int>}>
+     * @return list<list<int>> participant ids per place, best first
      */
     private static function byKnockOut(array $matches, array $state, int $champion): array
     {
@@ -159,14 +199,14 @@ final class TournamentPlacements
             $previous = $key;
         }
 
-        return self::numbered($groups);
+        return $groups;
     }
 
     /**
      * @param  list<BracketMatch>  $matches
      * @param  array<string, array{entrants: list<int|null>, status: string, winner: int|null, loser: int|null, ranking: list<int>}>  $state
      * @param  array<string, MatchResult>  $results
-     * @return list<array{place: int, participants: list<int>}>|null
+     * @return list<list<int>>|null participant ids per place, best first
      */
     private function table(Tournament $tournament, array $matches, array $state, array $results): ?array
     {
@@ -176,7 +216,6 @@ final class TournamentPlacements
             return null;
         }
 
-        $options = $tournament->formatOptions();
         $members = [];
         $games = [];
 
@@ -196,32 +235,20 @@ final class TournamentPlacements
             }
         }
 
-        $swiss = $format === TournamentFormat::Swiss;
-        $custom = $options->rankBy === 'custom';
-        $rows = Standings::table(
-            // A tie nothing splits falls back to this order: by seed, as the public table has it (TournamentView::table()).
-            array_values(TournamentParticipant::query()->whereKey(array_keys($members))->orderBy('seed')->pluck('id')->map(intval(...))->all()),
-            $games,
-            $swiss || $custom ? $options->pointsWin : 1.0,
-            $swiss || $custom ? $options->pointsTie : 0.5,
-            $swiss ? $options->pointsBye : 0.0,
-            $swiss ? 'points' : $options->rankBy,
-            $swiss ? $options->swissTieBreaks : $options->roundRobinTieBreaks,
-            // A round robin's two legs game by game where the organizer chose so (FormatOptions::$legPoints).
-            ! $swiss && $options->perLeg(),
-        );
+        // A tie nothing splits falls back to this order: by seed, as the public table has it (TournamentView::table()).
         // A disqualified entry places below everyone who stayed in, never on a prize place ahead of them.
-        $rows = Standings::outLast($rows, TournamentParticipant::query()->whereKey(array_keys($members))->whereNotNull('disqualified_at')->pluck('id')->map(intval(...))->all());
-
-        $groups = [];
+        $rows = FirstPlaceTie::table($tournament, array_values(TournamentParticipant::query()->whereKey(array_keys($members))->orderBy('seed')->pluck('id')->map(intval(...))->all()), $games);
+        // A tie for place 1 shared (FirstPlaceTie): one place for all who hold it, and its prize split.
+        $shared = FirstPlaceTie::mode($tournament) !== FormatOptions::FIRST_PLACE_TIE_SEED ? FirstPlaceTie::leaders($rows, $tournament) : [];
+        $groups = $shared === [] ? [] : [$shared];
 
         foreach ($rows as $row) {
-            $groups[$row->rank][] = $row->entrant;
+            if (! in_array($row->entrant, $shared, true)) {
+                $groups[] = [$row->entrant];
+            }
         }
 
-        ksort($groups);
-
-        return self::numbered(array_values($groups));
+        return $groups;
     }
 
     /**

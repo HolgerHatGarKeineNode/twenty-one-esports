@@ -82,6 +82,13 @@
                                 </tbody>
                             </table>
                         </div>
+                        @if (($part['first_tie'] ?? null) !== null)
+                            {{-- A tie for place 1 nothing split (FirstPlaceTie; DerCaddy, 2026-11-06: "und dann auch irgendwo sichtbar sein"):
+                                 who is level and what decides, the organizer's choice. --}}
+                            <p class="m-0 max-w-[68ch] text-xs leading-snug text-ink-2" data-test="standings-first-tie" data-mode="{{ $part['first_tie']['mode'] }}">{{ $part['first_tie']['mode'] === 'playoff'
+                                ? __('Level on points and every tie-break: :names. A tie-break match decides 1st place.', ['names' => implode(', ', $part['first_tie']['names'])])
+                                : __('Level on points and every tie-break: :names share 1st place.', ['names' => implode(', ', $part['first_tie']['names'])]) }}</p>
+                        @endif
                         @if ($part['two_legs'] ?? false)
                             {{-- Blockli: the table ranks pairings of two legs (Nidan21 2026-10-17: a won and a lost game read as a wrong draw), or
                                  each game where the organizer chose points per game (DerCaddy, 2026-10-18), every game in the table once it ends. --}}

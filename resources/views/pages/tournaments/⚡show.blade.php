@@ -503,15 +503,17 @@ new #[Layout('layouts::app', ['section' => 'tournaments', 'realtime' => true, 's
     }
 
     /**
-     * A finished lobby tournament (P10) whose place 1 is shared, across all
-     * its lobbies: the names on it (there is no single champion then).
+     * A finished tournament whose place 1 is shared: a lobby tournament's (P10)
+     * across all its lobbies, or a table's tie the organizer chose to share
+     * (FirstPlaceTie). The names on it (there is no single champion then).
      *
      * @return list<string>
      */
     #[Computed]
     public function sharedFirst(): array
     {
-        if ($this->tournament->status !== TournamentStatus::Finished || ! \App\Support\Tournaments\Lobbies::isLobby($this->tournament)) {
+        if ($this->tournament->status !== TournamentStatus::Finished
+            || (! \App\Support\Tournaments\Lobbies::isLobby($this->tournament) && \App\Support\Tournaments\FirstPlaceTie::mode($this->tournament) === \App\Support\Tournaments\FormatOptions::FIRST_PLACE_TIE_SEED)) {
             return [];
         }
 
@@ -664,6 +666,16 @@ new #[Layout('layouts::app', ['section' => 'tournaments', 'realtime' => true, 's
 
         if (! $drawn && $tournament->signup_closes_at !== null) {
             array_splice($chips, 2, 0, [['lock', __('Sign-up closes'), $at($tournament->signup_closes_at), 'closes']]);
+        }
+
+        // A round robin's or Swiss's tie for place 1 that points and every tie-break leave (FirstPlaceTie): what the
+        // organizer chose, before the season chain (DerCaddy, 2026-11-06: "und dann auch irgendwo sichtbar sein").
+        $firstTie = \App\Support\Tournaments\FirstPlaceTie::mode($tournament);
+
+        if ($firstTie !== \App\Support\Tournaments\FormatOptions::FIRST_PLACE_TIE_SEED) {
+            array_splice($chips, count($chips) - 1, 0, [['award', __('Tie for 1st place'), $firstTie === 'playoff'
+                ? __('a tie-break match among those level on points and every tie-break; no draw, as in a knockout')
+                : __('those level on points and every tie-break share 1st place and its prize'), 'first-tie']]);
         }
 
         // A two-leg race game (Blockli): how a 1:1 and a drawn third game are settled (draw_decider, user 2026-10-11).
@@ -1007,7 +1019,8 @@ new #[Layout('layouts::app', ['section' => 'tournaments', 'realtime' => true, 's
                                         @endif
                                         @break
                                     @case('finished')
-                                        @if ($heroChampion !== null && ! $week)
+                                        {{-- A shared place 1 has no single winner to zap and no #zap-winner block (a lobby's allies, a table's tie, FirstPlaceTie). --}}
+                                        @if ($heroChampion !== null && ! $championMoment['shared'] && ! $week)
                                             <a href="#zap-winner" class="rv-b h-12 px-6" data-test="to-zap-winner"><x-icon name="bolt" :size="18" />{{ __('Zap the winner') }}</a>
                                         @else
                                             <a href="{{ $score ? '#leaderboard' : '#bracket' }}" class="rv-b2 h-12 px-6" data-test="to-bracket">{{ __('See the results') }}</a>

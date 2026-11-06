@@ -10,7 +10,6 @@ use App\Support\Payouts\TournamentPlacements;
 use App\Support\Tournaments\Engine\Advancement;
 use App\Support\Tournaments\Engine\BracketMatch;
 use App\Support\Tournaments\Engine\MatchResult;
-use App\Support\Tournaments\Engine\Standings;
 
 /**
  * Who won a finished tournament (P11, the "Tournament win" share card), read
@@ -20,7 +19,11 @@ use App\Support\Tournaments\Engine\Standings;
  *   a double elimination, a final heat): its first place; a reset that was not
  *   needed hands over to the grand final it hangs on;
  * - a final stage that is a table (round robin, Swiss): place 1 of the table,
- *   with the stage's points and tie-breaks as the tournament page ranks it.
+ *   with the stage's points and tie-breaks as the tournament page ranks it;
+ *   a tie for place 1 nothing splits is played off in a knockout (stage 2,
+ *   FirstPlaceTie, read as a final stage that ends in one match) or shared
+ *   (no single champion), as the organizer chose, or goes to the seeds where
+ *   the options predate that choice.
  *
  * Null while the tournament is not finished or when no single winner can be
  * read (a stage of parallel heats, a lobby whose place 1 is shared, a table
@@ -103,7 +106,6 @@ final class TournamentChampion
             return null;
         }
 
-        $options = $tournament->formatOptions();
         $members = [];
         $games = [];
 
@@ -123,24 +125,19 @@ final class TournamentChampion
             }
         }
 
-        $swiss = $format === TournamentFormat::Swiss;
-        $custom = $options->rankBy === 'custom';
-        $rows = Standings::table(
-            // A tie nothing splits falls back to this order: by seed, as the public table has it (TournamentView::table()).
-            array_values(TournamentParticipant::query()->whereKey(array_keys($members))->orderBy('seed')->pluck('id')->map(intval(...))->all()),
-            $games,
-            $swiss || $custom ? $options->pointsWin : 1.0,
-            $swiss || $custom ? $options->pointsTie : 0.5,
-            $swiss ? $options->pointsBye : 0.0,
-            $swiss ? 'points' : $options->rankBy,
-            $swiss ? $options->swissTieBreaks : $options->roundRobinTieBreaks,
-            // A round robin's two legs game by game where the organizer chose so (FormatOptions::$legPoints).
-            ! $swiss && $options->perLeg(),
-        );
+        // A tie nothing splits falls back to this order: by seed, as the public table has it (TournamentView::table()); a
+        // disqualified entry below everyone who stayed in, as the payout places have it.
+        $rows = FirstPlaceTie::table($tournament, array_values(TournamentParticipant::query()->whereKey(array_keys($members))->orderBy('seed')->pluck('id')->map(intval(...))->all()), $games);
 
-        $leaders = array_values(array_filter($rows, fn ($row): bool => $row->rank === 1));
+        // A tie for place 1 the organizer did not leave to the seeds (FirstPlaceTie): shared, so no single champion.
+        // One that is played off ends in the knockout of stage 2, read above.
+        if (FirstPlaceTie::mode($tournament) !== FormatOptions::FIRST_PLACE_TIE_SEED && FirstPlaceTie::leaders($rows, $tournament) !== []) {
+            return null;
+        }
 
-        return count($leaders) !== 1 ? null
-            : TournamentParticipant::query()->whereKey($leaders[0]->entrant)->where('tournament_id', $tournament->id)->first();
+        $leader = $rows[0] ?? null;
+
+        return $leader === null ? null
+            : TournamentParticipant::query()->whereKey($leader->entrant)->where('tournament_id', $tournament->id)->first();
     }
 }

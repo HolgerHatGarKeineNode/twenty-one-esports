@@ -36,6 +36,14 @@ final class StandingRow
     /** @var list<int> */
     public array $opponents = [];
 
+    /**
+     * The other entrants this row is level with after the ranking and every tie-break: only the seed order put them
+     * apart (Standings::rank()). Empty for a row the table split from all others.
+     *
+     * @var list<int>
+     */
+    public array $tiedWith = [];
+
     public function __construct(
         public readonly int $entrant,
         public readonly int $seed,

@@ -8881,5 +8881,15 @@
     "Everyone plays :games game.|Everyone plays :games games.": "Alle spielen :games Partie.|Alle spielen :games Partien.",
     "Players and place": "Spieler und Ort",
     "Teams and place": "Teams und Ort",
-    "Name and description": "Name und Beschreibung"
+    "Name and description": "Name und Beschreibung",
+    "Tie-break match for 1st place|Tie-break matches for 1st place": "Stichkampf um Platz 1|Stichkämpfe um Platz 1",
+    "Level on points and every tie-break: :names. A tie-break match decides 1st place.": "Gleichstand nach Punkten und allen Feinwertungen: :names. Ein Stichkampf entscheidet über Platz 1.",
+    "Level on points and every tie-break: :names share 1st place.": "Gleichstand nach Punkten und allen Feinwertungen: :names teilen sich Platz 1.",
+    "Tie for 1st place": "Gleichstand um Platz 1",
+    "a tie-break match among those level on points and every tie-break; no draw, as in a knockout": "ein Stichkampf unter allen, die nach Punkten und allen Feinwertungen gleichauf sind; ohne Remis, wie im K.-o.",
+    "those level on points and every tie-break share 1st place and its prize": "wer nach Punkten und allen Feinwertungen gleichauf ist, teilt sich Platz 1 und sein Preisgeld",
+    "Tie-break match": "Stichkampf",
+    "Shared 1st place: those level on points and every tie-break share 1st place, and the prize of the places they hold is split equally.": "Geteilter 1. Platz: Wer nach Punkten und allen Feinwertungen gleichauf ist, teilt sich Platz 1, und das Preisgeld der belegten Plätze wird gleichmäßig aufgeteilt.",
+    "Tie-break match: those level on points and every tie-break play it after the last round, as a knockout without draws; with three or more, the best seeds get a bye. Plan a little time for it.": "Stichkampf: Wer nach Punkten und allen Feinwertungen gleichauf ist, spielt ihn nach der letzten Runde aus, im K.-o. ohne Remis; bei drei oder mehr bekommen die besten Setzplätze ein Freilos. Plane etwas Zeit dafür ein.",
+    "Stored before this choice: the higher seed takes 1st place. Pick one to change it.": "Gespeichert, bevor es diese Wahl gab: Der höhere Setzplatz bekommt Platz 1. Wähle eine Regel, um das zu ändern."
 }

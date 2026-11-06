@@ -405,6 +405,14 @@ abstract class TournamentFormatChooser extends Component
         $this->option('legPoints', $perGame);
     }
 
+    /** A tie for place 1 of the final table played off or shared (FormatOptions::$firstPlaceTie); stored only on save. */
+    public function pickFirstPlaceTie(string $rule): void
+    {
+        if (in_array($rule, FormatOptions::FIRST_PLACE_TIES, true)) {
+            $this->option('firstPlaceTie', $rule);
+        }
+    }
+
     public function pickBestOf(int $bestOf): void
     {
         $this->option('bestOf', $bestOf);
