@@ -233,7 +233,9 @@ test('the editor offers the choice for a round robin and Swiss, stores it, and n
     expect($tournament->formatOptions()->firstPlaceTie)->toBe('shared');
 
     Livewire::actingAs($admin)->test('pages::admin.tournament-edit', ['tournament' => $tournament])
-        ->assertSeeHtml('data-test="first-place-tie-option"');
+        ->assertSeeHtml('data-test="first-place-tie-option"')
+        // Worded as the chip on the tournament page: the prizes of the places they hold.
+        ->assertSee('and the prizes of the places they hold are split equally.');
 
     $tournament->forceFill(['format' => TournamentFormat::Swiss])->save();
     Livewire::actingAs($admin)->test('pages::admin.tournament-edit', ['tournament' => $tournament->refresh()])

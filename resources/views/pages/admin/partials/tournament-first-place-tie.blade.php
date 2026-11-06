@@ -12,7 +12,7 @@
             :options="[['playoff', __('Tie-break match')], ['shared', __('Shared 1st place')]]" />
     </span>
     <span class="{{ $help }}" data-test="first-place-tie-help">{{ match ($options->firstPlaceTie) {
-        'shared' => __('Shared 1st place: those level on points and every tie-break share 1st place, and the prize of the places they hold is split equally.'),
+        'shared' => __('Shared 1st place: those level on points and every tie-break share 1st place, and the prizes of the places they hold are split equally.'),
         'playoff' => __('Tie-break match: those level on points and every tie-break play it after the last round, as a knockout without draws; with three or more, the best seeds get a bye. Plan a little time for it.'),
         default => __('Stored before this choice: the higher seed takes 1st place. Pick one to change it.'),
     } }}</span>
