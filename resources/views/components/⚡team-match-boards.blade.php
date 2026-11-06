@@ -2,7 +2,9 @@
 
 use App\Enums\SeriesResolution;
 use App\Enums\SeriesStatus;
+use App\Models\BoardGame;
 use App\Models\SeriesMatch;
+use App\Support\Board\BoardGameService;
 use App\Support\Chess\ChessGameService;
 use App\Support\Chess\ChessTeamMatches;
 use App\Support\Series\SeriesPresenter;
@@ -11,11 +13,14 @@ use Livewire\Attributes\Locked;
 use Livewire\Component;
 
 /*
- * The live view of a chess team match on its public page (plan "Schach Rapid
- * und Clan", P5; NIP rev. 9.22, "Start and board forfeit", "Team result"):
+ * The live view of a chess or Blockli team match on its public page (plan
+ * "Schach Rapid und Clan", P5; NIP rev. 9.22, 9.25, "Start and board
+ * forfeit", "Team result"):
  * every board as a small board with both players and their clocks, the team
  * score over the boards that have ended, and a link to each board's own page,
- * where anyone with the link watches live as at any game.
+ * where anyone with the link watches live as at any game. A Blockli board has
+ * no small board here (the app draws none outside its page): its players,
+ * clocks and move, and the link.
  *
  * Live: resources/js/teamMatchBoards.js listens on each board's public watch
  * channel (`game.{id}.watch`) and asks for a render after a move, and polls
@@ -47,6 +52,7 @@ new class extends Component {
     $score = ChessTeamMatches::score($results);
     $nowMs = (int) now()->getTimestampMs();
     $service = app(ChessGameService::class);
+    $boardService = app(BoardGameService::class);
     $live = $m->status === SeriesStatus::Accepted;
     $colors = ['challenger' => '#F7931A', 'challenged' => '#A78BFA'];
     $status = match (true) {
@@ -96,11 +102,14 @@ new class extends Component {
             @foreach ($results as $row)
                 @php
                     $game = $row['game'];
+                    // A Blockli board (NIP rev. 9.25) is a board game: its own clocks and turn, no FEN.
+                    $boardGame = $game instanceof BoardGame;
+                    $turn = $game === null ? null : ($boardGame ? $game->turn : $game->turn());
                     $black = SeriesMatch::otherSide($row['white']);
-                    $clocks = $game === null ? null : $service->clocks($game, $nowMs);
-                    $running = $game !== null && $game->isActive() && $game->clocksRunning() ? $game->turn() : null;
-                    $firstMove = $game !== null && $game->isActive() && ! $game->clocksRunning() ? $game->turn() : null;
-                    $last = $game !== null && $game->ply > 0 ? $game->moves()->where('ply', $game->ply)->first() : null;
+                    $clocks = $game === null ? null : ($boardGame ? $boardService->clocks($game, $nowMs) : $service->clocks($game, $nowMs));
+                    $running = $game !== null && $game->isActive() && $game->clocksRunning() ? $turn : null;
+                    $firstMove = $game !== null && $game->isActive() && ! $game->clocksRunning() ? $turn : null;
+                    $last = $game !== null && ! $boardGame && $game->ply > 0 ? $game->moves()->where('ply', $game->ply)->first() : null;
                     $chip = match ($row['outcome']) {
                         'live' => [__('Live'), 'text-loss'],
                         'pending' => [__('Not started'), 'text-ink-2'],
@@ -109,13 +118,15 @@ new class extends Component {
                         default => [$game?->result === '1/2-1/2' ? __('Draw') : __(':clan wins', ['clan' => $m->sideName($row['points']['challenger'] > $row['points']['challenged'] ? 'challenger' : 'challenged')]), 'text-win'],
                     };
                 @endphp
-                <article class="flex min-w-0 flex-col gap-3 rounded-lg bg-card p-4" wire:key="team-board-{{ $row['board'] }}" data-test="team-board-{{ $row['board'] }}" @if ($game) data-game="{{ $game->id }}" @endif>
+                <article class="flex min-w-0 flex-col gap-3 rounded-lg bg-card p-4" wire:key="team-board-{{ $row['board'] }}" data-test="team-board-{{ $row['board'] }}" @if ($game) data-game="{{ $game->id }}" @if ($boardGame) data-kind="board" @endif @endif>
                     <span class="flex items-baseline justify-between gap-3">
                         <b class="text-[15px]">{{ __('Board :n', ['n' => $row['board']]) }}</b>
                         <span class="text-xs font-bold {{ $chip[1] }}" data-test="team-board-state-{{ $row['board'] }}">{{ $chip[0] }}</span>
                     </span>
                     @foreach ([$black => 'b', $row['white'] => 'w'] as $side => $color)
-                        @if ($color === 'w')
+                        @if ($color === 'w' && $boardGame)
+                            <span class="text-xs text-ink-2" data-test="team-board-move-{{ $row['board'] }}">{{ $game->ply === 0 ? __('No move yet') : __('move :n', ['n' => intdiv($game->ply, 2) + 1]) }}</span>
+                        @elseif ($color === 'w')
                             <x-match-dock.board class="w-full" :fen="$game?->fen ?? \App\Models\ChessGame::START_FEN" :last="$last ? [substr($last->uci, 0, 2), substr($last->uci, 2, 2)] : []"
                                                 :label="__('Board :n of :number', ['n' => $row['board'], 'number' => $m->label()])" data-test="team-board-fen-{{ $row['board'] }}" data-fen="{{ $game?->fen ?? \App\Models\ChessGame::START_FEN }}" />
                         @endif
@@ -135,7 +146,7 @@ new class extends Component {
                         <span class="text-xs text-btc-hi" data-test="team-board-first-move-{{ $row['board'] }}">{{ $firstMove === 'w' ? __('White to make the first move') : __('Black to make the first move') }} · <span data-clock='@json(['ms' => max(0, $game->deadline_ms - $nowMs), 'running' => true])'>{{ $clock($game->deadline_ms - $nowMs) }}</span></span>
                     @endif
                     @if ($game !== null)
-                        <a href="{{ route('games.show', $game) }}" class="btn-w inline-flex min-h-11 items-center justify-center gap-2 rounded-md border border-line bg-well px-4 text-[13px] text-ink hover:text-ink" data-test="team-board-link-{{ $row['board'] }}">
+                        <a href="{{ ChessTeamMatches::gameUrl($game) }}" class="btn-w inline-flex min-h-11 items-center justify-center gap-2 rounded-md border border-line bg-well px-4 text-[13px] text-ink hover:text-ink" data-test="team-board-link-{{ $row['board'] }}">
                             <x-icon name="eye" :size="16" />{{ $game->isActive() ? __('Watch board :n', ['n' => $row['board']]) : __('Open board :n', ['n' => $row['board']]) }}
                         </a>
                     @endif

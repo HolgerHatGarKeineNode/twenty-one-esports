@@ -137,7 +137,7 @@ final class RatingService
             $game->rated, $game->game, $game->mode,
             ['subject' => 'user:'.$game->white_id, 'user_id' => $game->white_id],
             ['subject' => 'user:'.$game->black_id, 'user_id' => $game->black_id],
-            $score, RatingChange::BOARD, $game->id, $game->number,
+            $score, RatingChange::BOARD, $game->id, $game->matchNumber(),
         );
     }
 

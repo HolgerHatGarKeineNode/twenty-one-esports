@@ -23,8 +23,8 @@ use Illuminate\Support\Facades\DB;
  *    League series gives each player of the counted roster the series
  *    result;
  * 2. a series won by a lineup adds the team-win bonus once to the lineup's
- *    clan, and so does a chess team match won on board points (NIP rev.
- *    9.22) that has at least one board rated in the season; a team draw,
+ *    clan, and so does a chess or Blockli team match won on board points
+ *    (NIP rev. 9.22, 9.25) that has at least one board rated in the season; a team draw,
  *    a whole-team forfeit or void and a friendly add none;
  * 3. only rated results count: results that moved a rating of the season's
  *    rated ladders. Casual games, void series and players without a clan
@@ -129,7 +129,7 @@ final class ClanHashrate
             }
         };
 
-        // The chess team matches (NIP rev. 9.22) with a board rated in this season, for their team-win bonus below.
+        // The team matches (chess, NIP rev. 9.22; Blockli, rev. 9.25) with a board rated in this season, for their team-win bonus below.
         $teamMatchIds = [];
 
         foreach ($sources->where('source', RatingChange::CHESS)->pluck('source_id')->chunk(self::CHUNK) as $ids) {
@@ -157,7 +157,9 @@ final class ClanHashrate
 
         // A rated board game (plan "Mühle und Dame", P6) gives its two players the game result, as a chess game.
         foreach ($sources->where('source', RatingChange::BOARD)->pluck('source_id')->chunk(self::CHUNK) as $ids) {
-            $games = DB::table('board_games')->whereIn('id', $ids->all())->get(['id', 'white_id', 'black_id', 'clans_at_accept']);
+            $games = DB::table('board_games')->whereIn('id', $ids->all())->get(['id', 'white_id', 'black_id', 'clans_at_accept', 'series_match_id']);
+            // A board of a Blockli team match (NIP rev. 9.25) counts for its team-win bonus below, as a chess board.
+            $teamMatchIds = [...$teamMatchIds, ...$games->pluck('series_match_id')->filter()->all()];
             $pubkeys = DB::table('users')->whereIn('id', $games->pluck('white_id')->merge($games->pluck('black_id'))->filter()->unique()->values()->all())->pluck('pubkey', 'id');
 
             foreach ($games as $game) {

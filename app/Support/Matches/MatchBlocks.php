@@ -140,7 +140,8 @@ final class MatchBlocks
     {
         return self::oneVsOne(
             key: 'board-'.$game->id,
-            number: $game->number === null ? '' : '#'.$game->number,
+            // A Blockli team match board carries its challenge's number and board (`#412/2`, NIP rev. 9.25).
+            number: $game->number === null && $game->series_match_id === null ? '' : $game->number(),
             slug: $game->game,
             // "Correspondence" does not fit a cube; "Daily" is chess's word ("Fernschach").
             mode: $game->isCorrespondence() ? __('Daily game') : GameNames::mode($game->game, $game->mode),

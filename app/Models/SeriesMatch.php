@@ -110,6 +110,7 @@ use Illuminate\Support\Facades\DB;
  * @property-read TournamentMatch|null $tournamentMatch
  * @property-read Collection<int, SeriesMatchBoard> $boardPlayers
  * @property-read Collection<int, ChessGame> $boardGames
+ * @property-read Collection<int, BoardGame> $boardBoardGames
  */
 #[Fillable([
     'number', 'game', 'mode', 'best_of', 'rated',
@@ -309,6 +310,26 @@ class SeriesMatch extends Model
     public function boardGames(): HasMany
     {
         return $this->hasMany(ChessGame::class)->orderBy('board');
+    }
+
+    /**
+     * The games of a Blockli team match (NIP rev. 9.25), one per board once
+     * started: board games, where a chess team match has chess games.
+     *
+     * @return HasMany<BoardGame, $this>
+     */
+    public function boardBoardGames(): HasMany
+    {
+        return $this->hasMany(BoardGame::class)->orderBy('board');
+    }
+
+    /**
+     * Whether this team match plays its boards as board games (Blockli, NIP
+     * rev. 9.25) rather than as chess games (NIP rev. 9.22).
+     */
+    public function playsBoardGames(): bool
+    {
+        return $this->isTeamMatch() && $this->game !== 'chess';
     }
 
     /**

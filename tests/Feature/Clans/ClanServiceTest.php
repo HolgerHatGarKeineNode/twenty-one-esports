@@ -22,6 +22,7 @@ use App\Support\Nostr\SignedEvent;
 use Illuminate\Database\UniqueConstraintViolationException;
 use Illuminate\Support\Facades\Queue;
 use Livewire\Livewire;
+use Tests\Support\BlockliOn;
 use Tests\Support\TestSigner;
 
 beforeEach(function () {
@@ -353,4 +354,40 @@ test('the owner saves a chess rapid lineup for team matches, signed as <clan>/ch
         ->assertSee('A team match needs a player per board')
         ->call('$refresh')->assertOk()
         ->call('editLineup', 'blitz', 'chess')->assertForbidden();
+});
+
+test('the owner saves a Blockli rapid lineup for team matches, signed as <clan>/blockli/rapid, as chess rapid; blitz and correspondence have no lineup', function () {
+    // Blockli team matches (NIP rev. 9.25, DerCaddy 2026-11-06): the registry rebuilt with Blockli on, so a fresh service.
+    BlockliOn::play();
+    $clans = app(ClanService::class);
+    [$owner, $ownerSigner] = player();
+    [$queen, $queenSigner] = player();
+    $clan = foundClan($owner, $ownerSigner);
+    joinClan($clan, $owner, $ownerSigner, $queen, $queenSigner);
+    $seats = [$owner->id => LineupRole::Captain, $queen->id => LineupRole::Player];
+
+    $templates = $clans->prepareLineup($owner, $clan, 'blockli', 'rapid', $seats);
+    $lineup = $clans->saveLineup($owner, $clan, 'blockli', 'rapid', $seats, $ownerSigner->signTemplates($templates));
+    $event = SignedEvent::fromInput(NostrEvent::query()->where('kind', Lineup::KIND)->sole()->payload());
+
+    expect($templates)->toHaveCount(1)
+        ->and($event->tag('d'))->toBe($clan->slug.'/blockli/rapid')
+        ->and($event->tag('game'))->toBe('blockli')
+        ->and($event->tag('mode'))->toBe('rapid')
+        ->and(app(EsportsEventRules::class)->check($event))->toBeNull()
+        ->and($lineup->fresh()->isReady())->toBeTrue();
+
+    foreach (['blitz', 'correspondence'] as $mode) {
+        expect(fn () => $clans->prepareLineup($owner, $clan, 'blockli', $mode, $seats))->toThrow(ClanRuleViolation::class, 'This game mode does not exist.');
+    }
+
+    Livewire::actingAs($owner)->test('pages::clans.manage', ['clan' => $clan])
+        ->assertSeeHtml('data-test="lineups-blockli"')
+        ->assertSeeHtml('data-test="edit-lineup-blockli-rapid"')
+        ->assertDontSeeHtml('data-test="edit-lineup-blockli-blitz"')
+        ->call('editLineup', 'rapid', 'blockli')
+        ->assertOk()
+        ->assertSee('Who plays the Blockli rapid')
+        ->call('$refresh')->assertOk()
+        ->call('editLineup', 'correspondence', 'blockli')->assertForbidden();
 });

@@ -8881,5 +8881,11 @@
     "Everyone plays :games game.|Everyone plays :games games.": "Alle spielen :games Partie.|Alle spielen :games Partien.",
     "Players and place": "Spieler und Ort",
     "Teams and place": "Teams und Ort",
-    "Name and description": "Name und Beschreibung"
+    "Name and description": "Name und Beschreibung",
+    "Make your first move within :time or you lose this board": "Mach deinen ersten Zug innerhalb von :time, sonst verlierst du dieses Brett",
+    ":side must move within :time or loses this board": ":side muss innerhalb von :time ziehen, sonst ist dieses Brett verloren",
+    ":game team match over :boards boards between :challenger and :challenged in the TWENTY ONE esports league.": ":game-Mannschaftskampf an :boards Brettern zwischen :challenger und :challenged in der TWENTY ONE esports Liga.",
+    "Two clans play chess or Blockli on 2 or 3 boards at the same time, all in :mode. The board points decide the team match.": "Zwei Clans spielen gleichzeitig Schach oder Blockli an 2 oder 3 Brettern, alle in :mode. Die Brettpunkte entscheiden den Mannschaftskampf.",
+    "Blockli team matches follow the same rules with a Blockli rapid lineup: the boards are ordered by Blockli rapid Elo, the challenging clan has the first move on boards 1 and 3, and in a rated team match every board is a rated solo game on the Blockli rapid ladder.": "Blockli-Mannschaftskämpfe folgen denselben Regeln mit einem Blockli-Rapid-Lineup: Die Bretter werden nach Blockli-Rapid-Elo geordnet, der herausfordernde Clan hat an den Brettern 1 und 3 den ersten Zug, und in einem gewerteten Mannschaftskampf ist jedes Brett eine gewertete Solopartie auf der Blockli-Rapid-Leiter.",
+    "Won the :game team match :score against :side on TWENTY ONE Esports.": ":game-Mannschaftskampf :score gegen :side auf TWENTY ONE Esports gewonnen."
 }

@@ -26,7 +26,7 @@ use Livewire\Component;
  * right card shows the casual stakes. An unknown number shows the "Match not found"
  * state of States.dc.html with a 404.
  *
- * A chess team match (plan "Schach Rapid und Clan", P5) shows its boards
+ * A chess or Blockli team match (plan "Schach Rapid und Clan", P5; NIP rev. 9.25) shows its boards
  * live instead of the flow of games and the score sheet
  * (components/⚡team-match-boards), on a page with the websocket on, also for
  * guests: anyone may watch.
@@ -61,7 +61,10 @@ new #[Layout('layouts::app', ['section' => 'matches'])] class extends Component 
         $view->title($title);
 
         $description = $match->isTeamMatch()
-            ? __('Chess team match over :boards boards between :challenger and :challenged in the TWENTY ONE esports league.', ['boards' => $match->boards, 'challenger' => $match->challenger_name, 'challenged' => $match->challenged_name])
+            ? ($match->playsBoardGames()
+                // A Blockli team match (NIP rev. 9.25): the same sentence with its game.
+                ? __(':game team match over :boards boards between :challenger and :challenged in the TWENTY ONE esports league.', ['game' => \App\Support\GameNames::game($match->game), 'boards' => $match->boards, 'challenger' => $match->challenger_name, 'challenged' => $match->challenged_name])
+                : __('Chess team match over :boards boards between :challenger and :challenged in the TWENTY ONE esports league.', ['boards' => $match->boards, 'challenger' => $match->challenger_name, 'challenged' => $match->challenged_name]))
             : __(':game :mode series, best of :best_of, between :challenger and :challenged in the TWENTY ONE esports league.', [
                 'game' => \App\Support\GameNames::game($match->game),
                 'mode' => $match->mode, 'best_of' => $match->best_of, 'challenger' => $match->challenger_name, 'challenged' => $match->challenged_name,
