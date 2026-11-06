@@ -195,9 +195,10 @@ final class BlockFetcher
 
         // The local archive keeps only the timeless (user 2026-10-16: "News, Sport und Wetter will ich auch nicht
         // haben"): a block whose batch carries a bulletin, the news or a rubric is perishable whatever its topics
-        // say - the stock and evergreen programmes stay.
+        // say - the stock and evergreen programmes stay. The topics are the batch's: the rendered block carries none.
         $kinds = array_values(array_filter(array_map(fn (array $script): ?string => is_string($script['kind'] ?? null) ? $script['kind'] : null, $batch)));
-        $timeless = CasterFetcher::timelessTopics((array) ($block['topics'] ?? []))
+        $topics = array_values(array_filter(array_map(fn (array $script): ?string => is_string($script['topic'] ?? null) ? $script['topic'] : null, $batch)));
+        $timeless = CasterFetcher::timelessTopics($topics)
             && ! in_array(CasterScript::BULLETIN, $kinds, true)
             && ! in_array(CasterScript::NEWS, $kinds, true)
             && ! in_array(CasterScript::RUBRIC, $kinds, true);
@@ -211,7 +212,7 @@ final class BlockFetcher
                     'X-Caster-Boundaries' => $times($block['boundaries']),
                     'X-Caster-Protected' => sprintf('%.3F', $block['protected']),
                 ])
-                ->withBody(CasterFetcher::keepLocal($opus, 'block-'.CasterFetcher::programmeLabel((array) ($block['topics'] ?? [])), $timeless), 'audio/ogg')
+                ->withBody(CasterFetcher::keepLocal($opus, 'block-'.CasterFetcher::programmeLabel($topics), $timeless), 'audio/ogg')
                 ->post($fetcher->settings()['server'].'/api/caster/blocks');
         } catch (ConnectionException) {
             $fetcher->note('block '.implode(',', $ids).': upload failed, server unreachable, released');
