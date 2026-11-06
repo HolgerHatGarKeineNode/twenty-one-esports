@@ -243,7 +243,7 @@ final class TournamentPlacements
         // A tie nothing splits falls back to this order: by seed, as the public table has it (TournamentView::table()).
         // A disqualified entry places below everyone who stayed in, never on a prize place ahead of them.
         $rows = FirstPlaceTie::table($tournament, array_values(TournamentParticipant::query()->whereKey(array_keys($members))->orderBy('seed')->pluck('id')->map(intval(...))->all()), $games);
-        // A tie for place 1 shared (FirstPlaceTie): one place for all who hold it, and its prize split.
+        // A tie for place 1 shared (FirstPlaceTie): one place for all who hold it; PayoutPlan splits the prizes of the places they hold.
         $shared = FirstPlaceTie::mode($tournament) !== FormatOptions::FIRST_PLACE_TIE_SEED ? FirstPlaceTie::leaders($rows, $tournament) : [];
         $groups = $shared === [] ? [] : [$shared];
 

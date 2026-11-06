@@ -32,7 +32,8 @@ use App\Support\Tournaments\Engine\Standings;
  *   seed order ({@see openPlayoff()}); its winner is the champion (TournamentChampion reads the last stage as usual), its
  *   knockout order their places, everyone else keeps the table's place (TournamentPlacements). The knockout plays by its
  *   own rules: no draw, a Blockli pairing two legs and a decider;
- * - `shared`: the tied share place 1 and its prize (TournamentPlacements; TournamentChampion has no single champion);
+ * - `shared`: the tied share place 1 and the prizes of the places they hold, split equally (TournamentPlacements,
+ *   PayoutPlan; TournamentChampion has no single champion);
  * - `seed`: the seed order splits it, as before the choice; options stored before it and casual cups.
  *
  * Only place 1: a tie further down keeps the seed order, as before.

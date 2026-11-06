@@ -675,7 +675,7 @@ new #[Layout('layouts::app', ['section' => 'tournaments', 'realtime' => true, 's
         if ($firstTie !== \App\Support\Tournaments\FormatOptions::FIRST_PLACE_TIE_SEED) {
             array_splice($chips, count($chips) - 1, 0, [['award', __('Tie for 1st place'), $firstTie === 'playoff'
                 ? __('a tie-break match among those level on points and every tie-break; no draw, as in a knockout')
-                : __('those level on points and every tie-break share 1st place and its prize'), 'first-tie']]);
+                : __('those level on points and every tie-break share 1st place and the prizes of the places they hold'), 'first-tie']]);
         }
 
         // A two-leg race game (Blockli): how a 1:1 and a drawn third game are settled (draw_decider, user 2026-10-11).

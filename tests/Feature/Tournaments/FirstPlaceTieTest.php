@@ -89,7 +89,7 @@ test('the options: a tie-break match by default, shared on choice, the seeds onl
         ->and(FormatOptions::fromArray(FormatOptions::defaults($profile)->toArray(), $profile)->firstPlaceTie)->toBe('playoff');
 });
 
-test('shared: those level on everything share place 1 and its prize, there is no single champion, and the page says so', function () {
+test('shared: those level on everything share place 1 and the prizes of the places they hold, there is no single champion, and the page says so', function () {
     [$tournament, [$first, $second, $third]] = circleOfThree(['firstPlaceTie' => 'shared']);
 
     $part = (new TournamentView($tournament))->stages()[0]['parts'][0];
@@ -104,8 +104,14 @@ test('shared: those level on everything share place 1 and its prize, there is no
         ->assertSee('Level on points and every tie-break: '.$first->name.', '.$second->name.', '.$third->name.' share 1st place.', false)
         ->assertSee('data-fact="first-tie"', false)
         ->assertSee('Shared 1st place', false)
+        // Worded as the editor's help (owner, 2026-11-06): the prizes of the places they hold, not one prize.
+        ->assertSee('those level on points and every tie-break share 1st place and the prizes of the places they hold', false)
         // No single winner to zap: the hero leads to the results instead.
         ->assertDontSee('data-test="to-zap-winner"', false);
+
+    app()->setLocale('de');
+    expect(__('those level on points and every tie-break share 1st place and the prizes of the places they hold'))
+        ->toBe('wer nach Punkten und allen Feinwertungen gleichauf ist, teilt sich Platz 1 und das Preisgeld der belegten Plätze');
 });
 
 test('playoff: the table opens a knockout among the tied; its winner is champion and the knockout places them', function () {
