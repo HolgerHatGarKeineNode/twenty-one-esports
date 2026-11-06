@@ -11,7 +11,6 @@ use Carbon\CarbonImmutable;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Log;
 use Laravel\Ai\Responses\Data\FinishReason;
-use Laravel\Ai\Responses\StructuredAgentResponse;
 use Throwable;
 
 /**
@@ -123,8 +122,8 @@ final class DuetScripts
             ->prompt(self::prompt($sequence, $phase, $facts, $topics, $previous, $rejected, in_array(CasterVoice::SPOKEN_REPEAT, $rejected, true) ? $this->repeated : []));
         $this->usage->recordTokens(self::CHANNEL, $response->usage->inputTokens, $response->usage->outputTokens, (int) $response->usage->cacheReadInputTokens, (int) $response->usage->cacheWriteInputTokens);
 
-        $answer = $response instanceof StructuredAgentResponse ? $response->toArray() : json_decode($response->text, true);
-        $raw = is_array($answer) && is_string($answer['text'] ?? null) ? $answer['text'] : '';
+        $answer = $response->toArray();
+        $raw = is_string($answer['text'] ?? null) ? $answer['text'] : '';
         [$duet, $violations] = $this->evaluate($raw, $facts, $response->steps->last()?->finishReason === FinishReason::Length);
 
         // A first draft that repeats the station is said anew once (P8).

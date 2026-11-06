@@ -9,7 +9,6 @@ use Carbon\CarbonImmutable;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Log;
-use Laravel\Ai\Responses\StructuredAgentResponse;
 use Throwable;
 
 /**
@@ -183,8 +182,8 @@ class PersonaCards
                 : $prompt."\n\n## Dein erster Entwurf ging nicht durch\n\nGrund: {$reason}. Schreib die Karte neu und halte jedes Nie ein.");
             $this->usage->recordTokens(self::CHANNEL, $response->usage->inputTokens, $response->usage->outputTokens, (int) $response->usage->cacheReadInputTokens, (int) $response->usage->cacheWriteInputTokens);
 
-            $answer = $response instanceof StructuredAgentResponse ? $response->toArray() : json_decode($response->text, true);
-            [$card, $dropped] = self::kept(is_array($answer) && is_string($answer['text'] ?? null) ? $answer['text'] : '', $tags);
+            $answer = $response->toArray();
+            [$card, $dropped] = self::kept(is_string($answer['text'] ?? null) ? $answer['text'] : '', $tags);
 
             if ($dropped !== []) {
                 $this->usage->recordRejection(self::CHANNEL, $dropped);
