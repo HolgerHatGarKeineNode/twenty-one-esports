@@ -9,11 +9,13 @@ use App\Models\TournamentMatch;
 use App\Models\TournamentParticipant;
 use App\Models\TournamentStage;
 use App\Models\User;
+use App\Support\Payouts\PayoutPlan;
 use App\Support\Payouts\TournamentPlacements;
 use App\Support\Tournaments\FirstPlaceTie;
 use App\Support\Tournaments\FormatOptions;
 use App\Support\Tournaments\GameProfile;
 use App\Support\Tournaments\TournamentChampion;
+use App\Support\Tournaments\TournamentControl;
 use App\Support\Tournaments\TournamentRunner;
 use App\Support\Tournaments\TournamentView;
 use Illuminate\Support\Facades\Queue;
@@ -40,9 +42,11 @@ function tieGame(Tournament $tournament, TournamentParticipant $a, TournamentPar
     $match = TournamentMatch::query()->where('tournament_id', $tournament->id)->whereNull('result')->with('slots')->get()
         ->first(fn (TournamentMatch $match) => count($match->slots) === 2 && array_diff($match->slots->pluck('tournament_participant_id')->all(), [$a->id, $b->id]) === []);
     $slot = $match->slots[0]->tournament_participant_id === $a->id ? 0 : 1;
-    app(TournamentRunner::class)->store($match, $draw
-        ? ['winner' => null, 'games_won' => [0.5, 0.5], 'points' => [], 'forfeit' => false, 'label' => '½–½', 'by' => 'director']
-        : ['winner' => $slot, 'games_won' => $slot === 0 ? [1.0, 0.0] : [0.0, 1.0], 'points' => [], 'forfeit' => false, 'label' => '1–0', 'by' => 'director']);
+    // Who entered it, as the director desk stores it (TournamentRunner::enterResult()), so a desk correction finds it.
+    $entered = ['by' => 'director', 'user_id' => null, 'name' => 'Director', 'at' => now()->toIso8601String()];
+    app(TournamentRunner::class)->store($match, ($draw
+        ? ['winner' => null, 'games_won' => [0.5, 0.5], 'points' => [], 'forfeit' => false, 'label' => '½–½']
+        : ['winner' => $slot, 'games_won' => $slot === 0 ? [1.0, 0.0] : [0.0, 1.0], 'points' => [], 'forfeit' => false, 'label' => '1–0']) + $entered);
 }
 
 /**
@@ -228,4 +232,152 @@ test('the editor offers the choice for a round robin and Swiss, stores it, and n
     $tournament->forceFill(['format' => TournamentFormat::SingleElimination])->save();
     Livewire::actingAs($admin)->test('pages::admin.tournament-edit', ['tournament' => $tournament->refresh()])
         ->assertDontSeeHtml('data-test="first-place-tie-option"');
+});
+
+/*
+| A result of the table corrected after the tie-break knockout opened (review of PR #21): the knockout follows the
+| table while nobody has played it, and reads nothing once it is under way. FirstPlaceTie::isStale().
+*/
+
+/**
+ * A round robin of four: A, B and C draw each other, A and B beat D, D beats C. A and B level on everything at 2, C and
+ * D 1 each; the directors closed every round of the table, so a correction goes through the control.
+ *
+ * @return array{0: Tournament, 1: list<TournamentParticipant>}
+ */
+function drawnPairOfFour(): array
+{
+    $tournament = runningChess(TournamentFormat::RoundRobin, 4, options: ['firstPlaceTie' => 'playoff']);
+    $seeds = TournamentParticipant::query()->where('tournament_id', $tournament->id)->orderBy('seed')->get()->all();
+    [$a, $b, $c, $d] = $seeds;
+
+    tieGame($tournament, $a, $b, draw: true);
+    tieGame($tournament, $a, $c, draw: true);
+    tieGame($tournament, $b, $c, draw: true);
+    tieGame($tournament, $a, $d);
+    tieGame($tournament, $b, $d);
+    tieGame($tournament, $d, $c);
+    app(TournamentRunner::class)->sync($tournament);
+
+    while (($round = TournamentRunner::currentRound($tournament->refresh())) !== null && $round->stage->number === 1) {
+        app(TournamentRunner::class)->closeRound($round, $tournament->creator);
+    }
+
+    return [$tournament->refresh(), $seeds];
+}
+
+/** An admin sets the result of the table's match between `$winner` and `$loser`: `$winner` wins, or a draw. */
+function correctTable(Tournament $tournament, TournamentParticipant $winner, TournamentParticipant $loser, bool $draw = false): void
+{
+    $admin = User::factory()->create();
+    Admin::query()->create(['pubkey' => $admin->pubkey]);
+    $match = TournamentMatch::query()->where('tournament_id', $tournament->id)->where('key', 'not like', FirstPlaceTie::PREFIX.'%')->with('slots')->get()
+        ->first(fn (TournamentMatch $match) => count($match->slots) === 2 && array_diff($match->slots->pluck('tournament_participant_id')->all(), [$winner->id, $loser->id]) === []);
+    $input = ['result' => $draw ? '1/2-1/2' : ($match->slots[0]->tournament_participant_id === $winner->id ? '1-0' : '0-1')];
+
+    expect(app(TournamentControl::class)->setResult($tournament, $admin, $match->id, $input, 'The scoresheet said otherwise'))->toBeTrue();
+}
+
+/** @return list<int> the participants the tie-break knockout was opened for, sorted; empty without one */
+function playoffEntrants(Tournament $tournament): array
+{
+    $stage = FirstPlaceTie::playoffStage($tournament);
+
+    return $stage === null ? [] : FirstPlaceTie::playoffEntrants($stage);
+}
+
+test('a correction that clears place 1 takes the unplayed tie-break back, and the table places everyone', function () {
+    [$tournament, [$a, $b, $c, $d]] = drawnPairOfFour();
+
+    expect(playoffEntrants($tournament))->toBe([$a->id, $b->id]);
+
+    correctTable($tournament, $a, $b);
+    $tournament->refresh();
+
+    // A 2½, B 1½; C and D 1 each, D ahead on the head-to-head.
+    expect($tournament->status)->toBe(TournamentStatus::Finished)
+        ->and(TournamentStage::query()->where('tournament_id', $tournament->id)->count())->toBe(1)
+        ->and(TournamentMatch::query()->where('tournament_id', $tournament->id)->where('key', 'like', FirstPlaceTie::PREFIX.'%')->exists())->toBeFalse()
+        ->and(app(TournamentChampion::class)->of($tournament)?->id)->toBe($a->id)
+        ->and(placeNames($tournament))->toBe([[$a->name], [$b->name], [$d->name], [$c->name]]);
+});
+
+test('a correction that leaves another tie draws the unplayed tie-break up anew for the new tie', function () {
+    [$tournament, [$a, $b, $c, $d]] = drawnPairOfFour();
+
+    // C beats D instead: A, B and C level on everything at 2.
+    correctTable($tournament, $c, $d);
+    $tournament->refresh();
+
+    $playoff = TournamentMatch::query()->where('tournament_id', $tournament->id)->where('key', 'like', FirstPlaceTie::PREFIX.'%')->with('slots')->orderBy('id')->get();
+
+    expect($tournament->status)->toBe(TournamentStatus::Running)
+        ->and(TournamentStage::query()->where('tournament_id', $tournament->id)->count())->toBe(2)
+        ->and(playoffEntrants($tournament))->toBe([$a->id, $b->id, $c->id])
+        ->and(FirstPlaceTie::isStale($tournament))->toBeFalse()
+        // Seeds 2 and 3 play, seed 1 has a bye into the final.
+        ->and($playoff)->toHaveCount(2)
+        ->and($playoff[0]->slots->pluck('tournament_participant_id')->all())->toBe([$b->id, $c->id]);
+});
+
+test('a correction after the tie-break was played leaves it, reads no places and no champion, and tells the directors', function () {
+    [$tournament, [$a, $b, $c, $d]] = drawnPairOfFour();
+    $runner = app(TournamentRunner::class);
+    $final = TournamentMatch::query()->where('tournament_id', $tournament->id)->where('key', 'like', FirstPlaceTie::PREFIX.'%')->with('slots')->sole();
+
+    $runner->enterResult($final, $tournament->creator, ['result' => '1-0']);
+    $runner->closeRound(TournamentRunner::currentRound($tournament), $tournament->creator);
+    $tournament->refresh();
+
+    expect($tournament->status)->toBe(TournamentStatus::Finished)
+        ->and(app(TournamentChampion::class)->of($tournament)?->id)->toBe($final->slots[0]->tournament_participant_id)
+        ->and(FirstPlaceTie::isStale($tournament))->toBeFalse();
+
+    // Before the payouts: C beat D after all, so A, B and C were level, but the knockout of A and B is played.
+    correctTable($tournament, $c, $d);
+    $tournament->refresh();
+
+    expect($tournament->status)->toBe(TournamentStatus::Finished)
+        ->and(playoffEntrants($tournament))->toBe([$a->id, $b->id])
+        ->and(FirstPlaceTie::isStale($tournament))->toBeTrue()
+        ->and(app(TournamentPlacements::class)->of($tournament))->toBeNull()
+        ->and(app(TournamentChampion::class)->of($tournament))->toBeNull()
+        ->and(app(PayoutPlan::class)->compute($tournament, 100_000))->toBeNull();
+
+    $admin = User::factory()->create();
+    Admin::query()->create(['pubkey' => $admin->pubkey]);
+
+    Livewire::actingAs($admin)->test('tournament-control', ['tournament' => $tournament])
+        ->assertSeeHtml('data-test="control-stale-tie"')
+        ->assertSee('The tie-break for 1st place no longer matches the table');
+    Livewire::actingAs($tournament->creator)->test('pages::tournaments.director', ['tournament' => $tournament])
+        ->assertSeeHtml('data-test="desk-stale-tie"');
+});
+
+test('director mode: a correction at the desk while the table\'s round is still open is caught at the next sync', function () {
+    // The knockout opened while the directors had not closed the table's rounds yet (circleOfThree() syncs once all its
+    // results are in), so a correction of the open round goes through the desk, which does not sync.
+    [$tournament] = circleOfThree(['firstPlaceTie' => 'playoff']);
+    $round = TournamentRunner::currentRound($tournament);
+    $match = TournamentMatch::query()->where('tournament_round_id', $round->id)->where('bracket', '!=', 'bye')->with('slots')->sole();
+    $loser = $match->slots[1 - $match->result['winner']]->tournament_participant_id;
+    $admin = User::factory()->create();
+    Admin::query()->create(['pubkey' => $admin->pubkey]);
+
+    expect($round->stage->number)->toBe(1)
+        ->and(FirstPlaceTie::playoffStage($tournament))->not->toBeNull();
+
+    // Flipping any game of the circle gives its loser two wins: place 1 is clear.
+    app(TournamentControl::class)->setResult($tournament, $admin, $match->id, ['result' => $match->result['winner'] === 0 ? '0-1' : '1-0'], 'The scoresheet said otherwise');
+
+    expect(FirstPlaceTie::isStale($tournament->refresh()))->toBeTrue();
+    Livewire::actingAs($tournament->creator)->test('pages::tournaments.director', ['tournament' => $tournament])
+        ->assertSeeHtml('data-test="desk-stale-tie"');
+
+    app(TournamentRunner::class)->closeRound($round, $tournament->creator);
+    $tournament->refresh();
+
+    expect(FirstPlaceTie::playoffStage($tournament))->toBeNull()
+        ->and($tournament->status)->toBe(TournamentStatus::Finished)
+        ->and(app(TournamentChampion::class)->of($tournament)?->id)->toBe($loser);
 });

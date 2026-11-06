@@ -3,7 +3,14 @@
 namespace App\Support\Tournaments;
 
 use App\Enums\TournamentFormat;
+use App\Models\BoardGame;
+use App\Models\ChessGame;
+use App\Models\HyperMatch;
+use App\Models\PongMatch;
+use App\Models\SeriesMatch;
 use App\Models\Tournament;
+use App\Models\TournamentMatch;
+use App\Models\TournamentMatchSlot;
 use App\Models\TournamentParticipant;
 use App\Models\TournamentRound;
 use App\Models\TournamentStage;
@@ -29,6 +36,12 @@ use App\Support\Tournaments\Engine\Standings;
  * - `seed`: the seed order splits it, as before the choice; options stored before it and casual cups.
  *
  * Only place 1: a tie further down keeps the seed order, as before.
+ *
+ * A result of the table corrected after the knockout opened (TournamentControl::setResult(), until the payouts are
+ * approved) can leave another tie at the top, or none ({@see isStale()}). Nobody has played the knockout yet: the runner
+ * takes it back and opens it again for the table as it stands ({@see dropStalePlayoff()}). Under way: it stays, and
+ * neither the places nor the champion are read from it until the table matches it again; the control and director
+ * pages say so.
  */
 final class FirstPlaceTie
 {
@@ -118,6 +131,116 @@ final class FirstPlaceTie
         $level = array_values(array_filter($rows, fn (StandingRow $row): bool => $row->entrant === $first->entrant || (in_array($row->entrant, $first->tiedWith, true) && ! in_array($row->entrant, $out, true))));
 
         return count($level) > 1 ? array_map(fn (StandingRow $row): int => $row->entrant, $level) : [];
+    }
+
+    /**
+     * The entrants level on place 1 of the tournament's table (stage 1) as its finished games stand now, in table order;
+     * empty when place 1 is clear.
+     *
+     * @return list<int>
+     */
+    public static function currentLeaders(Tournament $tournament): array
+    {
+        $entrants = array_values($tournament->participants()->whereNotNull('seed')->orderBy('seed')->pluck('id')->map(intval(...))->all());
+
+        return self::leaders(self::table($tournament, $entrants, app(TournamentRunner::class)->games($tournament, stage: 1)), $tournament);
+    }
+
+    /**
+     * The entrants the tie-break knockout was opened for: every slot it seeded with an entrant (a bye's too), sorted.
+     *
+     * @return list<int>
+     */
+    public static function playoffEntrants(TournamentStage $stage): array
+    {
+        $matches = TournamentMatch::query()->whereIn('tournament_round_id', TournamentRound::query()->where('tournament_stage_id', $stage->id)->select('id'))->select('id');
+        $entrants = [];
+
+        foreach (TournamentMatchSlot::query()->whereIn('tournament_match_id', $matches)->get(['source']) as $slot) {
+            if (($slot->source['take'] ?? null) === 'entrant') {
+                $entrants[] = (int) ($slot->source['entrant'] ?? 0);
+            }
+        }
+
+        $entrants = array_values(array_unique($entrants));
+        sort($entrants);
+
+        return $entrants;
+    }
+
+    /**
+     * Whether the tournament's tie-break knockout no longer answers its table: a result of stage 1 corrected since it
+     * opened left another tie for place 1, a clear place 1, or a match of the table open again. False without a knockout.
+     */
+    public static function isStale(Tournament $tournament): bool
+    {
+        $stage = self::playoffStage($tournament);
+
+        if ($stage === null) {
+            return false;
+        }
+
+        $open = TournamentMatch::query()->where('tournament_id', $tournament->id)->whereNotIn('status', ['done', 'skipped'])
+            ->whereHas('round.stage', fn ($query) => $query->where('number', 1))->exists();
+
+        if ($open) {
+            return true;
+        }
+
+        $leaders = self::currentLeaders($tournament);
+        sort($leaders);
+
+        return $leaders !== self::playoffEntrants($stage);
+    }
+
+    /**
+     * Whether any match of the tie-break knockout is under way: a result, a result on hold, or a series, game, table or
+     * Pong match started for it (those carry played games, signed events and notices, and the database keeps them from
+     * going with their match).
+     */
+    public static function hasStarted(TournamentStage $stage): bool
+    {
+        $matches = TournamentMatch::query()->whereIn('tournament_round_id', TournamentRound::query()->where('tournament_stage_id', $stage->id)->select('id'));
+
+        if ((clone $matches)->where(fn ($query) => $query->whereNotNull('result')->orWhereNotNull('held'))->exists()) {
+            return true;
+        }
+
+        $ids = (clone $matches)->pluck('id');
+
+        foreach ([SeriesMatch::class, ChessGame::class, BoardGame::class, HyperMatch::class, PongMatch::class] as $played) {
+            if ($played::query()->whereIn('tournament_match_id', $ids)->exists()) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /**
+     * Take back a tie-break knockout the table no longer asks for ({@see isStale()}) while nobody has played it
+     * ({@see hasStarted()}): its stage goes with its rounds, matches and slots, and openPlayoff() opens it again for the
+     * table as it stands, or not at all when place 1 is clear now (TournamentRunner::sync(), in its lock). A knockout
+     * under way stays; TournamentPlacements and TournamentChampion read nothing from it until the table matches it
+     * again. True when it went.
+     */
+    public static function dropStalePlayoff(Tournament $tournament): bool
+    {
+        $stage = self::playoffStage($tournament);
+
+        if ($stage === null || ! self::isStale($tournament) || self::hasStarted($stage)) {
+            return false;
+        }
+
+        $rounds = TournamentRound::query()->where('tournament_stage_id', $stage->id)->select('id');
+        $matches = TournamentMatch::query()->whereIn('tournament_round_id', $rounds)->select('id');
+
+        TournamentMatchSlot::query()->whereIn('tournament_match_id', $matches)->delete();
+        TournamentMatch::query()->whereIn('tournament_round_id', $rounds)->delete();
+        TournamentRound::query()->where('tournament_stage_id', $stage->id)->delete();
+        $stage->delete();
+
+        return true;
     }
 
     /**

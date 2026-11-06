@@ -204,6 +204,11 @@ new #[Layout('layouts::app', ['section' => 'tournaments'])] class extends Compon
         <p class="m-0 rounded-md px-4 py-3 text-[13px] text-loss shadow-[inset_0_0_0_1px_#5A2A2E]" role="alert" data-test="desk-error">{{ $error }}</p>
     @endif
 
+    {{-- A corrected table result under a tie-break knockout already under way (FirstPlaceTie::isStale()): its places stay unread. --}}
+    @if (\App\Support\Tournaments\FirstPlaceTie::isStale($tournament))
+        <p class="m-0 rounded-md px-4 py-3 text-[13px] text-loss shadow-[inset_0_0_0_1px_#5A2A2E]" role="alert" data-test="desk-stale-tie">{{ __('The tie-break for 1st place no longer matches the table: a result was corrected after it was drawn up. Until they match again, no places, champion or payouts are read from it. A tie-break nobody has played yet is drawn up anew by itself; one already under way stays as it is.') }}</p>
+    @endif
+
     <div class="grid gap-4 lg:grid-cols-[minmax(0,1fr)_360px]">
         <div class="flex min-w-0 flex-col gap-4">
             @if ($round === null)

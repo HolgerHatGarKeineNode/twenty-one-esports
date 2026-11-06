@@ -71,6 +71,11 @@ final class TournamentChampion
         $final = array_values(array_filter($bracket->matches, fn (BracketMatch $match): bool => $match->stage === $stage));
         $terminal = array_values(array_filter($final, fn (BracketMatch $match): bool => ! isset($fed[$match->key]) && $match->bracket !== 'third-place'));
 
+        // A tie-break knockout the corrected table no longer asks for names no champion (FirstPlaceTie::isStale()).
+        if (FirstPlaceTie::isPlayoffStage($tournament, $stage) && FirstPlaceTie::isStale($tournament)) {
+            return null;
+        }
+
         if (count($terminal) === 1) {
             $last = $state[$terminal[0]->key] ?? null;
 

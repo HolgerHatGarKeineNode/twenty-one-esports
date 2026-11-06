@@ -141,6 +141,11 @@ final class TournamentPlacements
      */
     private function playoff(Tournament $tournament, array $matches, array $playoff, array $terminal, array $state, array $results): ?array
     {
+        // A knockout the corrected table no longer asks for places nobody (fail closed: PayoutApproval refuses `no_places`).
+        if (FirstPlaceTie::isStale($tournament)) {
+            return null;
+        }
+
         $last = count($terminal) === 1 ? ($state[$terminal[0]->key] ?? null) : null;
         $champion = ($last['status'] ?? null) === 'done' ? ($last['winner'] ?? null) : null;
         $table = $this->table($tournament, array_values(array_filter($matches, fn (BracketMatch $match): bool => $match->stage === 1)), $state, $results);

@@ -309,6 +309,10 @@ new class extends Component {
     @if ($error !== '')
         <p class="m-0 rounded-md px-4 py-3 text-[13px] text-loss shadow-[inset_0_0_0_1px_#5A2A2E]" role="alert" data-test="control-error">{{ $error }}</p>
     @endif
+    {{-- A corrected table result under a tie-break knockout already under way (FirstPlaceTie::isStale()): its places stay unread. --}}
+    @if (\App\Support\Tournaments\FirstPlaceTie::isStale($tournament))
+        <p class="m-0 rounded-md px-4 py-3 text-[13px] text-loss shadow-[inset_0_0_0_1px_#5A2A2E]" role="alert" data-test="control-stale-tie">{{ __('The tie-break for 1st place no longer matches the table: a result was corrected after it was drawn up. Until they match again, no places, champion or payouts are read from it. A tie-break nobody has played yet is drawn up anew by itself; one already under way stays as it is.') }}</p>
+    @endif
 
     @if ($running)
         <div class="flex flex-col gap-2 rounded-md bg-ground p-3 lg:flex-row lg:items-end lg:gap-3" data-test="control-pause">
