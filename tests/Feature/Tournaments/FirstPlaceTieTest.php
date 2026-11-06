@@ -4,6 +4,8 @@ use App\Enums\TournamentFormat;
 use App\Enums\TournamentResultsMode;
 use App\Enums\TournamentStatus;
 use App\Models\Admin;
+use App\Models\ChessGame;
+use App\Models\SeriesMatch;
 use App\Models\Tournament;
 use App\Models\TournamentMatch;
 use App\Models\TournamentParticipant;
@@ -555,4 +557,57 @@ test('an entrant outside the tie-break disqualified during it changes nothing ab
     expect(FirstPlaceTie::isStale($tournament))->toBeFalse()
         ->and(playoffEntrants($tournament))->toBe([$a->id, $b->id])
         ->and($tournament->status)->toBe(TournamentStatus::Running);
+});
+
+test('a stale tie-break whose game already started stays as it is, and the sync does not trip over the game', function (string $played) {
+    [$tournament, [$a, $b]] = drawnPairOfFour();
+    $final = TournamentMatch::query()->where('tournament_id', $tournament->id)->where('key', 'like', FirstPlaceTie::PREFIX.'%')->sole();
+    // Started for the tie-break's match, nothing decided yet: the database keeps it from going with its match.
+    $played === 'chess'
+        ? ChessGame::factory()->create(['tournament_match_id' => $final->id, 'tournament_game' => 1])
+        : SeriesMatch::factory()->create(['tournament_match_id' => $final->id, 'tournament_attempt' => 1]);
+
+    // A won the table's game against B after all: place 1 is clear, but the tie-break is under way.
+    correctTable($tournament, $a, $b);
+    $tournament->refresh();
+
+    expect(TournamentMatch::query()->whereKey($final->id)->exists())->toBeTrue()
+        ->and(FirstPlaceTie::playoffStage($tournament))->not->toBeNull()
+        ->and(FirstPlaceTie::isStale($tournament))->toBeTrue()
+        ->and(app(TournamentChampion::class)->of($tournament))->toBeNull();
+})->with(['chess', 'series']);
+
+test('a stale tie-break with a match on hold stays as it is', function () {
+    [$tournament, [$a, $b]] = drawnPairOfFour();
+    $final = TournamentMatch::query()->where('tournament_id', $tournament->id)->where('key', 'like', FirstPlaceTie::PREFIX.'%')->sole();
+    // Set aside by an earlier correction (TournamentControl::hold()): no result, but it was played.
+    $final->forceFill(['held' => ['was' => ['winner' => 0, 'label' => '1–0'], 'reason' => 'A result this match depended on was corrected.', 'at' => now()->toIso8601String(), 'user_id' => null, 'name' => 'Admin']])->save();
+
+    correctTable($tournament, $a, $b);
+    $tournament->refresh();
+
+    expect(TournamentMatch::query()->whereKey($final->id)->exists())->toBeTrue()
+        ->and(FirstPlaceTie::isStale($tournament))->toBeTrue()
+        ->and(app(TournamentPlacements::class)->of($tournament))->toBeNull();
+});
+
+test('a match of the table open again takes the unplayed tie-break back until the table is complete again', function () {
+    [$tournament, [$a, $b, $c, $d]] = drawnPairOfFour();
+    // D against C open again (its result set aside): A and B still lead, but the table is not final.
+    $reopened = TournamentMatch::query()->where('tournament_id', $tournament->id)->where('key', 'not like', FirstPlaceTie::PREFIX.'%')->with('slots')->get()
+        ->first(fn (TournamentMatch $match) => count($match->slots) === 2 && array_diff($match->slots->pluck('tournament_participant_id')->all(), [$c->id, $d->id]) === []);
+    $reopened->forceFill(['result' => null, 'status' => 'ready'])->save();
+
+    expect(FirstPlaceTie::isStale($tournament))->toBeTrue();
+
+    app(TournamentRunner::class)->sync($tournament);
+
+    expect(FirstPlaceTie::playoffStage($tournament->refresh()))->toBeNull()
+        ->and($tournament->status)->toBe(TournamentStatus::Running);
+
+    tieGame($tournament, $d, $c);
+    app(TournamentRunner::class)->sync($tournament);
+
+    expect(playoffEntrants($tournament->refresh()))->toBe([$a->id, $b->id])
+        ->and(FirstPlaceTie::isStale($tournament))->toBeFalse();
 });
