@@ -544,7 +544,7 @@ final class TournamentControl
      * Set a played result aside: the match waits until someone sets its
      * result or restarts its round. The old series or game stays as it was
      * (rated, attested) and no longer counts here; a Hyperbitcoinization
-     * table (P5c) as well, so the restart seats a new one.
+     * table (P5c) and a Proof of Pong match as well, so the restart seats a new one.
      */
     private function hold(TournamentMatch $match, User $actor): void
     {
@@ -557,7 +557,7 @@ final class TournamentControl
                 'user_id' => $actor->id,
                 'name' => $actor->displayName(),
             ],
-            'replaced_through' => max((int) $match->replaced_through, (int) ($match->seriesMatch->id ?? $match->chessGame->id ?? $match->boardGame->id ?? $match->hyperMatch?->id)),
+            'replaced_through' => max((int) $match->replaced_through, (int) ($match->seriesMatch->id ?? $match->chessGame->id ?? $match->boardGame->id ?? $match->hyperMatch->id ?? $match->pongMatch?->id)),
         ])->save();
     }
 

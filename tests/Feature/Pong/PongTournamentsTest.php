@@ -292,3 +292,42 @@ test('a correction that re-pairs a Proof of Pong match calls its live match off 
         ->and($new->status)->toBe(PongMatchStatus::Waiting)
         ->and([(int) $new->left_id, (int) $new->right_id])->toEqualCanonicalizing([$userOf($semi1, 1), $userOf($semi2, 0)]);
 });
+
+test('a correction that sets aside a played Proof of Pong final starts a new match once its round is restarted', function () {
+    $tournament = pongTournament(4);
+    $admin = User::factory()->create();
+    Admin::query()->create(['pubkey' => $admin->pubkey]);
+    $control = app(TournamentControl::class);
+    $round = fn (int $number) => TournamentMatch::query()->where('tournament_id', $tournament->id)->where('bracket', '!=', 'bye')
+        ->whereHas('round', fn ($query) => $query->where('number', $number))->with('slots.participant')->orderBy('id')->get();
+    [$semi1, $semi2] = $round(1)->all();
+    $userOf = fn (TournamentMatch $match, int $slot): int => (int) $match->slots[$slot]->participant->user_id;
+
+    $control->setResult($tournament, $admin, $semi1->id, ['result' => '1-0'], 'Reported by phone');
+    $control->setResult($tournament, $admin, $semi2->id, ['result' => '1-0'], 'Reported by phone');
+    $final = $round(2)->sole();
+    $played = $final->pongMatch;
+    $matches = app(PongMatches::class);
+    $matches->sync($played, $played->left);
+    $matches->sync($played, $played->right);
+    PongLive::play($played->refresh(), [4, 1]);
+
+    expect($played->refresh()->status)->toBe(PongMatchStatus::Finished)
+        ->and($final->refresh()->result)->not->toBeNull();
+
+    // The other player won semi-final 1 after all: the played final is set aside and a new one starts.
+    $control->setResult($tournament, $admin, $semi1->id, ['result' => '0-1'], 'The other player won');
+    $final->refresh();
+
+    expect($final->result)->toBeNull()
+        ->and($final->held)->not->toBeNull()
+        ->and($final->isReplaced($played->id))->toBeTrue();
+
+    // The organizer restarts the final's round: the new pairing gets a match of its own.
+    $control->restartRound($tournament, $admin, $final->tournament_round_id, $final->round->restarts, 'Replay the final');
+    $new = PongMatch::query()->where('tournament_match_id', $final->id)->whereKeyNot($played->id)->sole();
+
+    expect($played->refresh()->status)->toBe(PongMatchStatus::Finished)
+        ->and($new->status)->toBe(PongMatchStatus::Waiting)
+        ->and([(int) $new->left_id, (int) $new->right_id])->toEqualCanonicalizing([$userOf($semi1, 1), $userOf($semi2, 0)]);
+});
