@@ -515,3 +515,18 @@ test('the public clan page shows a Blockli rapid lineup with its own team challe
     $this->actingAs($captain)->get(route('clans.show', $blockli->clan))->assertOk()
         ->assertSeeHtml('href="'.e(route('challenges.create', ['lineup' => $mine->id, 'to' => $blockli->id])).'"');
 });
+
+test('the match list reads the team match number of Blockli boards with the list, not once per board', function () {
+    [$match] = lockedBlockliTeamMatch(boards: 3);
+    $boards = startedBlockliBoards($match);
+
+    DB::flushQueryLog();
+    DB::enableQueryLog();
+    $html = $this->get(route('matches.index'))->assertOk()->getContent();
+    DB::disableQueryLog();
+
+    $perBoard = array_filter(array_column(DB::getQueryLog(), 'query'), fn (string $sql): bool => str_contains($sql, 'select "number" from "series_matches"'));
+
+    expect($perBoard)->toBe([])
+        ->and($html)->toContain($boards[3]->number());
+});

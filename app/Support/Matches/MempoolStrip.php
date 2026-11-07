@@ -113,7 +113,7 @@ final class MempoolStrip
             ...self::onChain(ChessGame::query(), $chain)->with([...$players, 'seriesMatch:id,number'])->where('status', ChessGameStatus::Finished)
                 ->orderByDesc('ended_at')->limit($side)->get()
                 ->map(fn (ChessGame $game): array => self::item('chess', $game, $game->ended_at))->all(),
-            ...($boards === [] ? [] : self::onChain(BoardGame::query(), $chain)->with($players)->whereIn('game', $boards)->where('status', BoardGameStatus::Finished)
+            ...($boards === [] ? [] : self::onChain(BoardGame::query(), $chain)->with([...$players, 'seriesMatch:id,number'])->whereIn('game', $boards)->where('status', BoardGameStatus::Finished)
                 ->orderByDesc('ended_at')->limit($side)->get()
                 ->map(fn (BoardGame $game): array => self::item('board', $game, $game->ended_at))->all()),
             ...(! $hyper ? [] : self::onChain(HyperMatch::query(), $chain)->whereHas('seats', fn ($seats) => $seats->where('place', 1)->whereNotNull('user_id')->where('bot', false))->with('seats.user')->where('status', HyperMatchStatus::Finished)
@@ -132,7 +132,7 @@ final class MempoolStrip
             ...self::onChain(ChessGame::query(), $chain)->with([...$players, 'seriesMatch:id,number'])->where('status', ChessGameStatus::Active)
                 ->orderByDesc('updated_at')->limit(self::SIDE)->get()
                 ->map(fn (ChessGame $game): array => self::item('chess', $game, $game->updated_at))->all(),
-            ...($boards === [] ? [] : self::onChain(BoardGame::query(), $chain)->with($players)->whereIn('game', $boards)->where('status', BoardGameStatus::Active)
+            ...($boards === [] ? [] : self::onChain(BoardGame::query(), $chain)->with([...$players, 'seriesMatch:id,number'])->whereIn('game', $boards)->where('status', BoardGameStatus::Active)
                 ->orderByDesc('updated_at')->limit(self::SIDE)->get()
                 ->map(fn (BoardGame $game): array => self::item('board', $game, $game->updated_at))->all()),
             // No running Hyperbitcoinization match here: a whole match is one block once a player won it (user 2026-10-09).
