@@ -452,7 +452,7 @@ final class BlockRenderer
 
         foreach ($scripts as $index => $script) {
             $group = is_array($script['part'] ?? null) && is_string($script['part']['group'] ?? null) ? $script['part']['group'] : null;
-            $run = $group !== null && $group === $previousGroup && $previous !== null ? $previous : 'run:'.$index;
+            $run = $group !== null && $group === $previousGroup ? $previous : 'run:'.$index;
             $plan['runs'][$index] = $run;
             $members[$run][] = $index;
             [$previous, $previousGroup] = [$run, $group];

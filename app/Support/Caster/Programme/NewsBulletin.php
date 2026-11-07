@@ -19,7 +19,6 @@ use Carbon\CarbonImmutable;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Log;
 use Laravel\Ai\Responses\Data\FinishReason;
-use Laravel\Ai\Responses\StructuredAgentResponse;
 use Throwable;
 
 /**
@@ -490,8 +489,8 @@ class NewsBulletin
             ->prompt(self::prompt($slot['type'], $this->clock()->spokenTime($slot['starts_at']), $items, $itemMax, $commentMin, $commentMax, $sirius, $rejected, $entries));
         $this->usage->recordTokens(self::CHANNEL, $response->usage->inputTokens, $response->usage->outputTokens, (int) $response->usage->cacheReadInputTokens, (int) $response->usage->cacheWriteInputTokens);
 
-        $answer = $response instanceof StructuredAgentResponse ? $response->toArray() : json_decode($response->text, true);
-        $raw = is_array($answer) && is_string($answer['text'] ?? null) ? $answer['text'] : '';
+        $answer = $response->toArray();
+        $raw = is_string($answer['text'] ?? null) ? $answer['text'] : '';
         $cutOff = $response->steps->last()?->finishReason === FinishReason::Length;
         $parsed = self::parse($this->hygiene->clean($raw, true, 'de'));
 

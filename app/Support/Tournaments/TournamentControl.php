@@ -31,6 +31,7 @@ use App\Support\Hyper\HyperMatches;
 use App\Support\Hyper\HyperSeason;
 use App\Support\Notifications\Notice;
 use App\Support\Notifications\Notifier;
+use App\Support\Pong\PongMatches;
 use App\Support\Rating\RatingService;
 use App\Support\Series\SeriesService;
 use App\Support\Tournaments\Engine\Advancement;
@@ -106,6 +107,7 @@ final class TournamentControl
         private BoardGameService $boards,
         private HyperMatches $hyper,
         private HyperSeason $hyperSeason,
+        private PongMatches $pongs,
     ) {}
 
     /* ---------- 1. Results ------------------------------------------------------------------------------------ */
@@ -203,6 +205,8 @@ final class TournamentControl
             $this->voidBoard($match);
             // So is a Hyperbitcoinization table still being played (plan "Hyperbitcoinization", P5c).
             $this->voidHyper($match, finishedToo: false);
+            // And a Proof of Pong match still waiting or being played (plan "Proof of Pong", P4): its players are free at once.
+            $this->voidPong($match);
             [$voided, $held] = $this->propagate($locked, $match->id, $before, $actor);
 
             if ($locked->status === TournamentStatus::Finished) {
@@ -502,7 +506,7 @@ final class TournamentControl
             $state = Advancement::resolve($this->brackets->load($tournament), $this->brackets->results($tournament), $tournament->formatOptions());
             $moved = false;
             $matches = TournamentMatch::query()->where('tournament_id', $tournament->id)->where('bracket', '!=', 'bye')
-                ->whereKeyNot($changedId)->with(['seriesMatch', 'chessGame', 'boardGame', 'hyperMatch', 'round'])->orderBy('id')->get();
+                ->whereKeyNot($changedId)->with(['seriesMatch', 'chessGame', 'boardGame', 'hyperMatch', 'pongMatch', 'round'])->orderBy('id')->get();
 
             foreach ($matches as $match) {
                 if (self::ids($before[$match->id] ?? []) === self::ids($state[$match->key]['entrants'] ?? [])) {
@@ -540,7 +544,7 @@ final class TournamentControl
      * Set a played result aside: the match waits until someone sets its
      * result or restarts its round. The old series or game stays as it was
      * (rated, attested) and no longer counts here; a Hyperbitcoinization
-     * table (P5c) as well, so the restart seats a new one.
+     * table (P5c) and a Proof of Pong match as well, so the restart seats a new one.
      */
     private function hold(TournamentMatch $match, User $actor): void
     {
@@ -553,7 +557,7 @@ final class TournamentControl
                 'user_id' => $actor->id,
                 'name' => $actor->displayName(),
             ],
-            'replaced_through' => max((int) $match->replaced_through, (int) ($match->seriesMatch->id ?? $match->chessGame->id ?? $match->boardGame->id ?? $match->hyperMatch?->id)),
+            'replaced_through' => max((int) $match->replaced_through, (int) ($match->seriesMatch->id ?? $match->chessGame->id ?? $match->boardGame->id ?? $match->hyperMatch->id ?? $match->pongMatch?->id)),
         ])->save();
     }
 
@@ -587,7 +591,7 @@ final class TournamentControl
             return true;
         }
 
-        return $this->voidBoard($match) || $this->voidHyper($match, finishedToo: true);
+        return $this->voidBoard($match) || $this->voidHyper($match, finishedToo: true) || $this->voidPong($match);
     }
 
     /**
@@ -613,6 +617,29 @@ final class TournamentControl
 
         $match->forceFill(['replaced_through' => max((int) $match->replaced_through, $played->id)])->save();
         $match->unsetRelation('hyperMatch');
+
+        return true;
+    }
+
+    /**
+     * Supersede the live Proof of Pong match of a match (plan "Proof of Pong", P4), as voidHyper() does a table: one
+     * waiting for its players or being played ends called off (PongMatches::void(): no winner, unrated, its pages see
+     * it end), and `replaced_through` covers it, so the match starts a new one once it may start again
+     * (TournamentMatchMaker::needsPongMatch()) and a late end of the old one is ignored
+     * (TournamentRunner::pongMatchFinished()). Its players are free for that new one at once. True if one was live.
+     */
+    private function voidPong(TournamentMatch $match): bool
+    {
+        $played = $match->pongMatch()->first();
+
+        if ($played === null || $match->isReplaced($played->id) || $played->isOver()) {
+            return false;
+        }
+
+        // False when it ended on its own a moment ago: superseded all the same.
+        $this->pongs->void($played);
+        $match->forceFill(['replaced_through' => max((int) $match->replaced_through, $played->id)])->save();
+        $match->unsetRelation('pongMatch');
 
         return true;
     }

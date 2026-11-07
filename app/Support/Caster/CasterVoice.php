@@ -20,7 +20,6 @@ use Illuminate\Support\Facades\Log;
 use Laravel\Ai\Responses\Data\FinishReason;
 use Laravel\Ai\Responses\Data\ProviderToolCall;
 use Laravel\Ai\Responses\Data\Step;
-use Laravel\Ai\Responses\StructuredAgentResponse;
 use Throwable;
 
 /**
@@ -357,8 +356,8 @@ final class CasterVoice
         $response = ($this->agent())->prompt(self::newsPrompt($facts['headline'], $source, $section, $min, $max, $context));
         $this->usage->recordTokens(self::NEWS_CHANNEL, $response->usage->inputTokens, $response->usage->outputTokens, (int) $response->usage->cacheReadInputTokens, (int) $response->usage->cacheWriteInputTokens);
 
-        $answer = $response instanceof StructuredAgentResponse ? $response->toArray() : json_decode($response->text, true);
-        $raw = is_array($answer) && is_string($answer['text'] ?? null) ? trim($answer['text']) : '';
+        $answer = $response->toArray();
+        $raw = is_string($answer['text'] ?? null) ? trim($answer['text']) : '';
 
         if (preg_match('/^\W*SKIP\W*$/u', $raw) === 1) {
             $this->usage->recordRejection(self::NEWS_CHANNEL, ['model_skip']);
@@ -490,8 +489,8 @@ final class CasterVoice
         $response = ($this->agent())->prompt(self::followedPrompt($note, $author, $german, $min, $max, $self, $when));
         $this->usage->recordTokens(self::FOLLOWED_CHANNEL, $response->usage->inputTokens, $response->usage->outputTokens, (int) $response->usage->cacheReadInputTokens, (int) $response->usage->cacheWriteInputTokens);
 
-        $answer = $response instanceof StructuredAgentResponse ? $response->toArray() : json_decode($response->text, true);
-        $raw = is_array($answer) && is_string($answer['text'] ?? null) ? trim($answer['text']) : '';
+        $answer = $response->toArray();
+        $raw = is_string($answer['text'] ?? null) ? trim($answer['text']) : '';
 
         if (preg_match('/^\W*SKIP\W*$/u', $raw) === 1) {
             $this->usage->recordRejection(self::FOLLOWED_CHANNEL, ['model_skip']);
@@ -824,8 +823,8 @@ final class CasterVoice
         $response = $agent->prompt(self::chatReplyPrompt($message, $name, max($min, min($max, (int) ($range['ask'] ?? $min))), $max, $hints, $openings, $rejected, $data, $duet, in_array(self::SPOKEN_REPEAT, $rejected, true) ? $this->repeated : [], $summary));
         $this->usage->recordTokens(self::CHANNEL, $response->usage->inputTokens, $response->usage->outputTokens, (int) $response->usage->cacheReadInputTokens, (int) $response->usage->cacheWriteInputTokens);
 
-        $answer = $response instanceof StructuredAgentResponse ? $response->toArray() : json_decode($response->text, true);
-        $raw = is_array($answer) && is_string($answer['text'] ?? null) ? trim($answer['text']) : '';
+        $answer = $response->toArray();
+        $raw = is_string($answer['text'] ?? null) ? trim($answer['text']) : '';
         // "24/7" is what chatters write and what the model echoes (real run 2026-10-11); spoken, it is words, and the guard rejects digits.
         $raw = (string) preg_replace(['~^((?:\[[a-z-]+\]\s*)*)24\s*/\s*7(?!\d)~mu', '~(?<!\d)24\s*/\s*7(?!\d)~u'], ['$1Vierundzwanzig sieben', 'vierundzwanzig sieben'], $raw);
         $cutOff = $response->steps->last()?->finishReason === FinishReason::Length;
@@ -1455,8 +1454,8 @@ final class CasterVoice
                     .($repeated === [] ? '' : "\n\n".self::repeatBlock($repeated)));
                 $this->usage->recordTokens($channel, $response->usage->inputTokens, $response->usage->outputTokens, (int) $response->usage->cacheReadInputTokens, (int) $response->usage->cacheWriteInputTokens);
 
-                $answer = $response instanceof StructuredAgentResponse ? $response->toArray() : json_decode($response->text, true);
-                $raw = is_array($answer) && is_string($answer['text'] ?? null) ? trim($answer['text']) : '';
+                $answer = $response->toArray();
+                $raw = is_string($answer['text'] ?? null) ? trim($answer['text']) : '';
                 $cutOff = $response->steps->last()?->finishReason === FinishReason::Length;
                 $text = ScriptGuard::trimSentences(ScriptGuard::withoutShort(ScriptGuard::sentenceLines(self::withoutHashtags(implode("\n", ScriptGuard::lines($this->hygiene->clean($raw, true, 'de'))))), $min, $maxWords), $max);
                 $spoken = ScriptGuard::withoutMarkers(str_replace("\n", ' ', $text));
@@ -1810,10 +1809,10 @@ final class CasterVoice
             (int) $response->usage->cacheWriteInputTokens,
         );
 
-        $answer = $response instanceof StructuredAgentResponse ? $response->toArray() : json_decode($response->text, true);
-        $raw = is_array($answer) && is_string($answer['text'] ?? null) ? $answer['text'] : '';
-        $canonId = is_array($answer) && is_string($answer['canon_id'] ?? null) && trim($answer['canon_id']) !== '' ? trim($answer['canon_id']) : null;
-        $mood = is_array($answer) && is_string($answer['mood'] ?? null) ? $answer['mood'] : '';
+        $answer = $response->toArray();
+        $raw = is_string($answer['text'] ?? null) ? $answer['text'] : '';
+        $canonId = is_string($answer['canon_id'] ?? null) && trim($answer['canon_id']) !== '' ? trim($answer['canon_id']) : null;
+        $mood = is_string($answer['mood'] ?? null) ? $answer['mood'] : '';
         $cutOff = $response->steps->last()?->finishReason === FinishReason::Length;
 
         $maxWords = (int) ($settings['max_words_per_sentence'] ?? 32);

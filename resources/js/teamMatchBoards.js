@@ -1,9 +1,10 @@
 /**
- * The live view of a chess team match (plan "Schach Rapid und Clan", P5;
+ * The live view of a chess or Blockli team match (plan "Schach Rapid und Clan", P5; NIP rev. 9.25;
  * resources/views/components/⚡team-match-boards.blade.php).
  *
- * Live: the public watch channel of every board (`game.{id}.watch`, the
- * channel spectators of a single game hear) asks for a render after a move,
+ * Live: the public watch channel of every board (`game.{id}.watch` for a chess
+ * board, `board.{id}.watch` for a Blockli board: the channel spectators of a
+ * single game hear) asks for a render after a move,
  * a clock event or the end of a board, debounced. The start of the boards and
  * the team result have no push for spectators: a render shortly after the
  * agreed start, and a slow poll while the match runs (a faster one without a
@@ -59,19 +60,21 @@ export default function teamMatchBoards(config) {
             });
             clearTimeout(this.debounce);
             // Stop listening, never leave: the dock may watch the same game.
-            this.listened.forEach((handler, id) => window.Echo?.channel('game.' + id + '.watch').stopListening('.game.updated', handler));
+            this.listened.forEach(({ channel, event, handler }) => window.Echo?.channel(channel).stopListening(event, handler));
             this.listened.clear();
         },
 
-        /** The boards on the page now, each heard on its watch channel once. */
+        /** The boards on the page now, each heard on its watch channel once: a chess game's, or a board game's (`data-kind="board"`). */
         watch() {
             if (!window.Echo) return;
-            const ids = new Set([...this.$root.querySelectorAll('[data-game]')].map((el) => el.dataset.game));
-            ids.forEach((id) => {
-                if (this.listened.has(id)) return;
+            this.$root.querySelectorAll('[data-game]').forEach((el) => {
+                const board = el.dataset.kind === 'board';
+                const channel = (board ? 'board.' : 'game.') + el.dataset.game + '.watch';
+                if (this.listened.has(channel)) return;
+                const event = board ? '.board.updated' : '.game.updated';
                 const handler = () => this.requestRefresh();
-                window.Echo.channel('game.' + id + '.watch').listen('.game.updated', handler);
-                this.listened.set(id, handler);
+                window.Echo.channel(channel).listen(event, handler);
+                this.listened.set(channel, { channel, event, handler });
             });
         },
 

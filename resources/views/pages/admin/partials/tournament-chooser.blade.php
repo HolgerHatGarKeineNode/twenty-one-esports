@@ -599,6 +599,7 @@
                         {{-- Counted game by game, everyone's games won follow from the points (DerCaddy, 2026-11-04). --}}
                         @include('pages.admin.partials.tournament-tie-breaks', ['key' => 'roundRobinTieBreaks', 'current' => $options->roundRobinTieBreaks, 'labels' => array_diff_key($tieBreakLabels, ['median-buchholz' => true]),
                             'same' => $options->rankBy === 'points' && $options->perLeg() && \App\Support\Tournaments\TournamentRunner::tableChoosesLegs($profile->game, $format, $options) ? ['game-wins', 'game-difference', 'game-win-percentage'] : []])
+                        @include('pages.admin.partials.tournament-first-place-tie')
                     @endif
 
                     @if ($format === TournamentFormat::Swiss)
@@ -623,6 +624,7 @@
                             <span class="{{ $help }}">{{ __('A bye is a free round when the number of players is odd. By default it counts like a win.') }}</span>
                         </div>
                         @include('pages.admin.partials.tournament-tie-breaks', ['key' => 'swissTieBreaks', 'current' => $options->swissTieBreaks, 'labels' => $tieBreakLabels])
+                        @include('pages.admin.partials.tournament-first-place-tie')
                     @endif
 
                     @if ($format === TournamentFormat::TwoStage)

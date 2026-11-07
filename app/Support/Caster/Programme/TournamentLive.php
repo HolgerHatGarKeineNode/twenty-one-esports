@@ -27,7 +27,6 @@ use Carbon\CarbonImmutable;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Log;
-use Laravel\Ai\Responses\StructuredAgentResponse;
 use Throwable;
 
 /**
@@ -413,8 +412,8 @@ final class TournamentLive
             ->prompt(self::prompt($material, $said, $intro));
         $this->usage->recordTokens(self::CHANNEL, $response->usage->inputTokens, $response->usage->outputTokens, (int) $response->usage->cacheReadInputTokens, (int) $response->usage->cacheWriteInputTokens);
 
-        $answer = $response instanceof StructuredAgentResponse ? $response->toArray() : json_decode($response->text, true);
-        $raw = is_array($answer) && is_string($answer['text'] ?? null) ? $answer['text'] : '';
+        $answer = $response->toArray();
+        $raw = is_string($answer['text'] ?? null) ? $answer['text'] : '';
         [$duet, $violations] = $this->duets->evaluate($raw, [], false, 8, 3);
 
         if ($duet === null || $violations !== []) {

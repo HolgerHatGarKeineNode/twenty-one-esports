@@ -315,18 +315,22 @@ final class RulesPage
      * 9.22): rapid only, 2 or 3 boards, the lineup lock, the board order, the
      * first-move window with its floor on a late start, board forfeit and
      * void, the team draw, friendlies and the pair limit; every number from
-     * config (App\Support\Chess\ChessTeamMatches).
+     * config (App\Support\Chess\ChessTeamMatches). Blockli plays them by the
+     * same rules while it is switched on (NIP rev. 9.25): one more sentence.
      *
      * @return Section
      */
     private static function teamMatches(): array
     {
         $lock = ChessTeamMatches::lockMinutes();
+        $blockli = in_array('rapid', app(GameRegistry::class)->teamMatchModes()[Blockli::SLUG] ?? [], true);
 
         return [
             'id' => 'clan-team-match',
             'title' => __('Clan team match'),
-            'lead' => __('Two clans play chess on 2 or 3 boards at the same time, all in :mode. The board points decide the team match.', ['mode' => ChessModes::label('rapid')]),
+            'lead' => $blockli
+                ? __('Two clans play chess or Blockli on 2 or 3 boards at the same time, all in :mode. The board points decide the team match.', ['mode' => ChessModes::label('rapid')])
+                : __('Two clans play chess on 2 or 3 boards at the same time, all in :mode. The board points decide the team match.', ['mode' => ChessModes::label('rapid')]),
             'facts' => [
                 [__('Boards'), '2 / 3'],
                 [__('Lineup lock'), __(':time before the start', ['time' => self::minutes($lock)])],
@@ -343,6 +347,7 @@ final class RulesPage
                 __('In a rated team match every board is a rated solo game on the rapid ladder. A friendly is unrated and earns no hashrate.'),
                 __('Two clans play one rated team match per :time. Friendlies are not limited.', ['time' => self::minutes((int) config('esports.team_matches.rated_pair_days', 7) * 1440)]),
                 __('From the lock until the end the named players cannot start any other game.'),
+                ...($blockli ? [__('Blockli team matches follow the same rules with a Blockli rapid lineup: the boards are ordered by Blockli rapid Elo, the challenging clan has the first move on boards 1 and 3, and in a rated team match every board is a rated solo game on the Blockli rapid ladder.')] : []),
             ],
             'links' => [[__('Clans'), route('clans.index')], [__('Matches'), route('matches.index', ['game' => 'team'])]],
         ];

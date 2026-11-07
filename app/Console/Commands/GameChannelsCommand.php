@@ -68,8 +68,8 @@ class GameChannelsCommand extends Command
         $events = [];
 
         if ($this->option('mute') !== null || $this->option('hide') !== null) {
-            $mute = $this->option('mute') !== null ? NostrKeys::toHex(trim((string) $this->option('mute'))) : null;
-            $hide = $this->option('hide') !== null ? strtolower(trim((string) $this->option('hide'))) : null;
+            $mute = is_string($this->option('mute')) ? NostrKeys::toHex(trim($this->option('mute'))) : null;
+            $hide = is_string($this->option('hide')) ? strtolower(trim($this->option('hide'))) : null;
 
             if (($this->option('mute') !== null && $mute === null) || ($hide !== null && preg_match('/^[0-9a-f]{64}$/', $hide) !== 1)) {
                 $this->error('--mute takes an npub or a hex pubkey, --hide a 64-character event id.');

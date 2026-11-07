@@ -728,3 +728,31 @@ it('gives a short block back to the queue while the stream has audio enough, and
     expect($fetcher->runOnce())->toBe(CasterFetcher::VOICED);
     Http::assertSent(fn (Request $request): bool => $request->url() === 'https://tv.test/api/caster/blocks' && $request->header('X-Caster-Scripts')[0] === '21');
 });
+
+it('names the kept copy of a block after the programme of its scripts and keeps no copy of a live tournament block', function () {
+    $dir = sys_get_temp_dir().'/caster-keep-'.bin2hex(random_bytes(4));
+    config(['tv.commentary.music_first.enabled' => false, 'tv.commentary.voicestudio.keep_local_dir' => $dir,
+        'tv.commentary.blocks.enabled' => true, 'tv.commentary.blocks.seconds' => ['min' => 1, 'max' => 240], 'tv.commentary.blocks.jingles.dir' => programmeBlockJingleDir([])]);
+    Process::fake(fn ($process) => Process::result(output: in_array('libopus', $process->command, true) ? casterOpus() : str_repeat(pack('v', 2), 24000)));
+    $claims = [];
+    Http::fake(function (Request $request) use (&$claims) {
+        return match (true) {
+            str_ends_with($request->url(), '/api/caster/claim') => Http::response(['script' => array_shift($claims), 'spool_seconds' => 0, 'pronunciation' => []]),
+            str_ends_with($request->url(), '/generate') => Http::response(programmeBlockWav(1.0)),
+            str_ends_with($request->url(), '/blocks') => Http::response(['clip' => 1], 201),
+            default => Http::response([]),
+        };
+    });
+
+    $claims = [['id' => 41, 'kind' => 'scene', 'topic' => 'stock:stammtisch:bitcoin', 'sentences' => ['Eins.'], 'estimated_seconds' => 20]];
+    expect((new CasterFetcher(fn () => null))->runOnce())->toBe(CasterFetcher::VOICED)
+        ->and(array_map('basename', glob($dir.'/*.ogg')))->toHaveCount(1)
+        ->and(glob($dir.'/*-block-stammtisch-*.ogg'))->toHaveCount(1);
+
+    $claims = [['id' => 42, 'kind' => 'scene', 'topic' => 'turnier_live', 'sentences' => ['Zwei.'], 'estimated_seconds' => 20]];
+    expect((new CasterFetcher(fn () => null))->runOnce())->toBe(CasterFetcher::VOICED)
+        ->and(glob($dir.'/*.ogg'))->toHaveCount(1);
+
+    array_map('unlink', glob($dir.'/*'));
+    rmdir($dir);
+});

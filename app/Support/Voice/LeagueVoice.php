@@ -6,7 +6,6 @@ use Carbon\CarbonImmutable;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Log;
 use Laravel\Ai\Responses\Data\FinishReason;
-use Laravel\Ai\Responses\StructuredAgentResponse;
 use Throwable;
 
 /**
@@ -209,10 +208,10 @@ final class LeagueVoice
             (int) $response->usage->cacheWriteInputTokens,
         );
 
-        $answer = $response instanceof StructuredAgentResponse ? $response->toArray() : json_decode($response->text, true);
-        $raw = is_array($answer) && is_string($answer['text'] ?? null) ? $answer['text'] : '';
-        $canonId = is_array($answer) && is_string($answer['canon_id'] ?? null) && trim($answer['canon_id']) !== '' ? trim($answer['canon_id']) : null;
-        $mood = is_array($answer) && is_string($answer['mood'] ?? null) ? $answer['mood'] : '';
+        $answer = $response->toArray();
+        $raw = is_string($answer['text'] ?? null) ? $answer['text'] : '';
+        $canonId = is_string($answer['canon_id'] ?? null) && trim($answer['canon_id']) !== '' ? trim($answer['canon_id']) : null;
+        $mood = is_string($answer['mood'] ?? null) ? $answer['mood'] : '';
         $cutOff = $response->steps->last()?->finishReason === FinishReason::Length;
 
         $text = $this->hygiene->clean($raw, $multiline, $language);
@@ -267,9 +266,9 @@ final class LeagueVoice
         $response = (new VoiceFactCheck)->prompt(VoiceFactCheck::message($facts, $text, $canonWording, $moment, CarbonImmutable::now()));
         $this->usage->recordTokens(self::FACT_CHECK, $response->usage->inputTokens, $response->usage->outputTokens, (int) $response->usage->cacheReadInputTokens, (int) $response->usage->cacheWriteInputTokens);
 
-        $answer = $response instanceof StructuredAgentResponse ? $response->toArray() : json_decode($response->text, true);
+        $answer = $response->toArray();
 
-        if (! is_array($answer) || ! is_array($answer['claims'] ?? null)) {
+        if (! is_array($answer['claims'] ?? null)) {
             // An unreadable answer is no clearance.
             return ['unreadable fact check'];
         }

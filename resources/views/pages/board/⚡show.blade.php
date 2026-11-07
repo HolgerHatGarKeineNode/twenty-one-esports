@@ -44,6 +44,12 @@ use Livewire\Component;
  * with a block shown, Rotate, Confirm and Move the pawn: nothing of it stands
  * over the board.
  *
+ * A board of a Blockli team match (NIP rev. 9.25) is played here as a chess
+ * board on its page (plan "Schach Rapid und Clan", P6): a banner names the
+ * board and the team match, its players cannot abort it, the first-move
+ * window loses the board, and the way on is back to the team match. The
+ * first visit of each player is kept (BoardGameService::markSeen()).
+ *
  * The route exists only while `esports.board_games.enabled` is on
  * (routes/board.php); a game whose own board game is switched off is a 404.
  */
@@ -57,6 +63,17 @@ new #[Layout('layouts::app', ['realtime' => true, 'scripts' => ['resources/js/bo
 
         // A flag that fell while nobody was looking is settled before the clock is shown.
         $this->boardGame = $boardGame->isActive() ? app(BoardGameService::class)->checkClock($boardGame) : $boardGame;
+        $this->markSeen();
+    }
+
+    /** A player opened a team match board: the first visit is kept (a missed first move, as chess). */
+    private function markSeen(): void
+    {
+        $user = auth()->user();
+
+        if ($user instanceof User && $this->boardGame->series_match_id !== null) {
+            app(BoardGameService::class)->markSeen($this->boardGame, $user);
+        }
     }
 
     public function rendering(\Illuminate\View\View $view): void
@@ -87,6 +104,8 @@ new #[Layout('layouts::app', ['realtime' => true, 'scripts' => ['resources/js/bo
     #[Json]
     public function fetchState(?int $known = null): array
     {
+        $this->markSeen();
+
         $game = $this->boardGame->refresh();
 
         // Nothing new since the page's last state: the move list stays with the page (Blockspace carries all stones per move).
@@ -282,7 +301,12 @@ new #[Layout('layouts::app', ['realtime' => true, 'scripts' => ['resources/js/bo
                 'names' => ['w' => $this->name('w'), 'b' => $this->name('b')],
                 'firstMove' => __(':side: first move within :s s'),
                 // A tournament game's first-move deadline, in the player's words (user, 2026-10-03).
-                'cupFirstMove' => $this->boardGame->tournament_match_id === null ? null : ['mine' => __('Make your first move within :time or you lose this cup game'), 'theirs' => __(':side must move within :time or loses this cup game')],
+                'cupFirstMove' => match (true) {
+                    $this->boardGame->tournament_match_id !== null => ['mine' => __('Make your first move within :time or you lose this cup game'), 'theirs' => __(':side must move within :time or loses this cup game')],
+                    // A team match board: a missed first move loses the board (NIP rev. 9.25).
+                    $this->boardGame->series_match_id !== null => ['mine' => __('Make your first move within :time or you lose this board'), 'theirs' => __(':side must move within :time or loses this board')],
+                    default => null,
+                },
                 'drawOffer' => __(':name offers a draw', ['name' => $this->name($this->boardGame->colorOf(auth()->user()) === 'w' ? 'b' : 'w')]),
                 // A move taken back within take_back_seconds (BoardGameService::takeBack(); DerCaddy, 2026-10-15).
                 'takeBack' => ['button' => __('Take back'), 'left' => __('Take back your move, :seconds s left'), 'notice' => __(':name took the move back.')],
@@ -332,12 +356,22 @@ new #[Layout('layouts::app', ['realtime' => true, 'scripts' => ['resources/js/bo
     // players and logged-in spectators keep 560 px (their card ends at 886).
     $boardColumn = auth()->guest() ? 'lg:grid-cols-[minmax(0,min(560px,calc(100dvh-411px)))_minmax(0,1fr)]' : 'lg:grid-cols-[minmax(0,560px)_minmax(0,1fr)]';
     $banner = $boardGame->tournament_match_id !== null ? TournamentGameEnd::banner($boardGame) : null;
+    // A board of a Blockli team match (NIP rev. 9.25): its way back is the team match, as a chess board's.
+    $teamUrl = $boardGame->series_match_id !== null ? route('matches.show', (int) $boardGame->matchNumber()) : null;
 @endphp
 
 <div class="flex grow flex-col px-4 pb-8 lg:px-12 lg:pb-10" data-test="board-page" data-focus-page>
     {{-- A tournament game says so first, above everything else (user, 2026-10-03). Below lg it is one line in the title row
          instead (game-banner-row, DerCaddy 2026-10-15): above the game, and the board keeps the size of a casual game's. --}}
     <x-tournaments.game-banner :banner="$banner" class="mx-auto mb-4 w-full max-w-[1000px] max-lg:hidden lg:mb-5" />
+    @if ($teamUrl !== null)
+        {{-- Which board of which team match, and the way back to all boards (as pages/games/partials/team-board). --}}
+        <a href="{{ $teamUrl }}" @navigate($teamUrl) class="mx-auto mb-4 flex min-h-11 w-full max-w-[1000px] min-w-0 items-center gap-3 rounded-lg bg-card px-4 py-2 text-[13px] text-ink shadow-ring hover:text-ink lg:mb-5" data-test="team-board-banner">
+            <x-icon name="clans" :size="18" class="shrink-0 text-btc" />
+            <span class="min-w-0 grow truncate">{{ __('Board :board of team match :number', ['board' => $boardGame->board, 'number' => '#'.$boardGame->matchNumber()]) }}</span>
+            <b class="shrink-0">{{ __('All boards') }}</b>
+        </a>
+    @endif
 
     <div wire:ignore x-data="boardGame(@js($config))" x-on:keydown.window="browseKey($event)" @class(["mx-auto flex w-full max-w-[1000px] flex-col gap-2 lg:gap-5", "min-[87.5rem]:max-w-[1360px]" => $chat]) data-test="board-game" data-mode="{{ $boardGame->mode }}">
 
@@ -426,8 +460,8 @@ new #[Layout('layouts::app', ['realtime' => true, 'scripts' => ['resources/js/bo
                                 {{ __('Take back') }} <span class="min-w-[2ch] tabular-nums" x-text="takeBackLeft"></span>
                             </x-button>
                         </template>
-                        {{-- A tournament game cannot be aborted: a missed first move is the league's to decide (P5). --}}
-                        @if ($boardGame->tournament_match_id === null)
+                        {{-- A tournament game or a team match board cannot be aborted: a missed first move is the league's to decide (P5). --}}
+                        @if (! $boardGame->hasEnvelope())
                             <template x-if="state.ply < 2">
                                 <x-button variant="quiet" x-on:click="call('abort')" data-test="abort">{{ __('Abort game') }}</x-button>
                             </template>
@@ -506,8 +540,8 @@ new #[Layout('layouts::app', ['realtime' => true, 'scripts' => ['resources/js/bo
                         <p class="sr-only" role="status" aria-live="polite" x-text="blockHint" data-test="block-hint"></p>
                     </div>
                 </template>
-                @if ($boardGame->tournament_match_id !== null)
-                    {{-- A tournament game ends at the first-move deadline by the league's decision: the countdown leads, the rule stays under it. --}}
+                @if ($boardGame->hasEnvelope())
+                    {{-- A tournament game or a team match board ends at the first-move deadline by the league's decision: the countdown leads, the rule stays under it. --}}
                     <div class="flex flex-col gap-1 rounded-lg bg-btc-tint px-4 py-3 shadow-[inset_0_0_0_1px_var(--color-btc)]" role="status" x-show="firstMoveLine" data-test="first-move">
                         <b class="font-display text-base leading-snug text-btc-hi lg:text-lg" data-test="first-move-cup"
                            x-text="firstMoveLeft === null ? '' : (color === state.turn ? t.cupFirstMove.mine : t.cupFirstMove.theirs.replace(':side', t.names[state.turn])).replace(':time', Math.floor(firstMoveLeft / 60) + ':' + String(firstMoveLeft % 60).padStart(2, '0'))"></b>
@@ -539,7 +573,10 @@ new #[Layout('layouts::app', ['realtime' => true, 'scripts' => ['resources/js/bo
                 <template x-if="state.status !== 'active'">
                     <div class="flex flex-col gap-3 rounded-lg bg-card p-4" data-test="board-result">
                         <span class="text-base font-bold" data-test="result" x-text="outcome"></span>
-                        @if ($boardGame->tournament_match_id === null)
+                        @if ($teamUrl !== null)
+                            {{-- A team match board: no next search, the team match decides what comes next (as a chess board). --}}
+                            <x-button :href="$teamUrl" class="w-full" data-test="back-to-team-match">{{ __('Back to the team match') }}</x-button>
+                        @elseif ($boardGame->tournament_match_id === null)
                             <x-button :href="route('board.lobby', $boardGame->game)" icon="bolt" data-test="next-opponent">{{ __('Find next opponent') }}</x-button>
                         @else
                             {{-- A tournament game: what comes next in the tournament (user, 2026-10-03), rendered now for a game already over. --}}

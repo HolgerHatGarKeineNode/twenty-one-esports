@@ -10,6 +10,7 @@ use App\Models\User;
 use App\Support\Chess\Broadcasts;
 use App\Support\Tournaments\TournamentRunner;
 use Illuminate\Support\Facades\DB;
+use InvalidArgumentException;
 use Throwable;
 
 /**
@@ -184,6 +185,45 @@ final class PongMatches
 
             return true;
         }, $user);
+    }
+
+    /**
+     * The league calls off a tournament's match that no longer counts (FirstPlaceTie::dropStalePlayoff(): a tie-break
+     * drawn up anew before anyone played it). It ends at once as aborted: no winner, unrated, and it reports nothing to
+     * the bracket. Both pages hear it as any other change. False for a match that was over already.
+     *
+     * @throws InvalidArgumentException for a match that plays no tournament match
+     */
+    public function void(PongMatch $match): bool
+    {
+        if ($match->tournament_match_id === null) {
+            throw new InvalidArgumentException('Only a tournament match is voided by the league.');
+        }
+
+        $voided = DB::transaction(function () use ($match): ?PongMatch {
+            $locked = PongMatch::query()->lockForUpdate()->findOrFail($match->id);
+
+            if ($locked->isOver()) {
+                return null;
+            }
+
+            $locked->rated = false;
+            $this->end($locked, null, PongEndReason::Abort);
+            $state = $locked->state;
+            $state['version'] = (int) $state['version'] + 1;
+            $locked->state = $state;
+            $locked->save();
+
+            return $locked;
+        });
+
+        if ($voided === null) {
+            return false;
+        }
+
+        Broadcasts::send(new PongMatchUpdated($voided->ulid, $this->snapshot($voided)));
+
+        return true;
     }
 
     /**

@@ -3,6 +3,7 @@
 namespace App\Support\Notifications;
 
 use App\Enums\NotificationKind;
+use App\Models\BoardGame;
 use App\Models\ChessGame;
 use App\Models\LineupSeat;
 use App\Models\SeriesMatch;
@@ -12,7 +13,7 @@ use App\Support\Chess\ChessTeamMatches;
 use Illuminate\Support\Collection;
 
 /**
- * Chess team match notifications (plan "Schach Rapid und Clan", P6), all of
+ * Team match notifications, chess and Blockli (plan "Schach Rapid und Clan", P6; NIP rev. 9.25), all of
  * kind `team_match` (bell and push, never a DM: everything here is minutes
  * away). The challenge itself is `challenge` (SeriesService::notifyChallenged()).
  *
@@ -77,10 +78,11 @@ final class TeamMatchNotifications
         }
     }
 
-    public function boardStarted(ChessGame $game): void
+    public function boardStarted(ChessGame|BoardGame $game): void
     {
         foreach ([$game->white, $game->black] as $user) {
-            if (! $user->exists) {
+            // A deleted side is ChessGame's "Deleted player" default, or no user at all on a board game.
+            if ($user === null || ! $user->exists) {
                 continue;
             }
 
@@ -89,7 +91,7 @@ final class TeamMatchNotifications
             $this->notifier->send($user, NotificationKind::TeamMatch, new Notice(
                 __('Your board :board started', ['board' => $game->board], $locale),
                 __('Team match :number, rapid 10+5. Make your first move within :seconds seconds, or the board is lost by forfeit.', ['number' => '#'.$game->matchNumber(), 'seconds' => (int) ($game->first_move_seconds ?? ChessTeamMatches::firstMoveSeconds())], $locale),
-                route('games.show', $game),
+                ChessTeamMatches::gameUrl($game),
                 $game->matchNumber(),
                 __('Play', [], $locale),
             ), $game);

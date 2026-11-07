@@ -124,6 +124,17 @@ final class TournamentRunner
                 $this->applyState($locked);
             }
 
+            // A result of the table corrected under a tie-break knockout nobody has played yet: the knockout goes, and the
+            // next step opens it again for the table as it stands, or not at all when place 1 is clear now.
+            if (FirstPlaceTie::dropStalePlayoff($locked)) {
+                $this->applyState($locked);
+            }
+
+            // A complete table with a tie for place 1 the organizer wants played off: the tie-break knockout first.
+            if ($this->isComplete($locked) && FirstPlaceTie::openPlayoff($locked, $this->games($locked, stage: 1))) {
+                $this->applyState($locked);
+            }
+
             if ($this->isComplete($locked)) {
                 $locked->forceFill(['status' => TournamentStatus::Finished])->save();
             }

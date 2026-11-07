@@ -13,7 +13,6 @@ use Carbon\CarbonImmutable;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Log;
 use Laravel\Ai\Responses\Data\FinishReason;
-use Laravel\Ai\Responses\StructuredAgentResponse;
 use Throwable;
 
 /**
@@ -304,8 +303,8 @@ class Announcements
                     ->prompt(self::prompt($entries, $try > 0));
                 $this->usage->recordTokens(self::CHANNEL, $response->usage->inputTokens, $response->usage->outputTokens, (int) $response->usage->cacheReadInputTokens, (int) $response->usage->cacheWriteInputTokens);
 
-                $answer = $response instanceof StructuredAgentResponse ? $response->toArray() : json_decode($response->text, true);
-                $raw = is_array($answer) && is_string($answer['text'] ?? null) ? $answer['text'] : '';
+                $answer = $response->toArray();
+                $raw = is_string($answer['text'] ?? null) ? $answer['text'] : '';
                 $text = $this->accept(self::parse($this->hygiene->clean($raw, true, 'de')), $entries, null, false, 2, $response->steps->last()?->finishReason === FinishReason::Length);
 
                 // The first line has to announce the slot this teaser is for.

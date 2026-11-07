@@ -204,6 +204,11 @@ new #[Layout('layouts::app', ['section' => 'tournaments'])] class extends Compon
         <p class="m-0 rounded-md px-4 py-3 text-[13px] text-loss shadow-[inset_0_0_0_1px_#5A2A2E]" role="alert" data-test="desk-error">{{ $error }}</p>
     @endif
 
+    {{-- A corrected table result under a tie-break knockout already under way (FirstPlaceTie::isStale()): its places stay unread. --}}
+    @if (\App\Support\Tournaments\FirstPlaceTie::isStale($tournament))
+        <p class="m-0 rounded-md px-4 py-3 text-[13px] text-loss shadow-[inset_0_0_0_1px_#5A2A2E]" role="alert" data-test="desk-stale-tie">{{ __('The tie-break for 1st place no longer matches the table: a result was corrected after it was drawn up. Until they match again, no places, champion or payouts are read from it. A tie-break nobody has played yet is drawn up anew by itself; one already under way stays as it is.') }}</p>
+    @endif
+
     <div class="grid gap-4 lg:grid-cols-[minmax(0,1fr)_360px]">
         <div class="flex min-w-0 flex-col gap-4">
             @if ($round === null)
@@ -211,7 +216,7 @@ new #[Layout('layouts::app', ['section' => 'tournaments'])] class extends Compon
             @else
                 <section aria-labelledby="round-h" class="flex flex-col gap-3 rounded-lg bg-card px-4 py-5 lg:px-6" data-test="round-results">
                     <span class="flex flex-wrap items-baseline justify-between gap-2">
-                        <h2 id="round-h" class="m-0 text-[15px] font-bold">{{ __('Round :round results', ['round' => $round->number]) }}@if ($tournament->format === \App\Enums\TournamentFormat::TwoStage) <span class="text-xs font-normal text-ink-3">({{ $round->stage->number === 1 ? __('Group stage') : __('Final stage') }})</span>@endif</h2>
+                        <h2 id="round-h" class="m-0 text-[15px] font-bold">{{ __('Round :round results', ['round' => $round->number]) }}@if ($tournament->format === \App\Enums\TournamentFormat::TwoStage) <span class="text-xs font-normal text-ink-3">({{ $round->stage->number === 1 ? __('Group stage') : __('Final stage') }})</span>@elseif (\App\Support\Tournaments\FirstPlaceTie::isPlayoffStage($tournament, $round->stage->number)) <span class="text-xs font-normal text-ink-3" data-test="desk-tie-break">({{ trans_choice('Tie-break match for 1st place|Tie-break matches for 1st place', $matches->count()) }})</span>@endif</h2>
                         <span class="text-xs text-ink-2">{{ __(':done of :total in', ['done' => $matches->count() - $left, 'total' => $matches->count()]) }}</span>
                     </span>
 

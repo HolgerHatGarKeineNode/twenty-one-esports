@@ -15,7 +15,7 @@ final class DiscoverArticles
 {
     private const CACHE = 'caster:discover_feed';
 
-    /** @var list<array<string, string>>|null */
+    /** @var list<array{title: string, author: string, day: string, body: string, url: string}>|null */
     private static ?array $items = null;
 
     /**
@@ -112,9 +112,9 @@ final class DiscoverArticles
             return self::$items;
         }
 
-        $cached = cache()->get(self::CACHE);
+        $cached = self::cached(cache()->get(self::CACHE));
 
-        if (is_array($cached)) {
+        if ($cached !== null) {
             return self::$items = $cached;
         }
 
@@ -171,5 +171,30 @@ final class DiscoverArticles
         cache()->put(self::CACHE, $items, now()->addMinutes((int) config('tv.commentary.chat.podcast_minutes', 60)));
 
         return self::$items = $items;
+    }
+
+    /**
+     * The cached feed items when every entry carries the five strings items() writes; null for anything else, so a
+     * cache entry of another shape is fetched anew instead of read.
+     *
+     * @return list<array{title: string, author: string, day: string, body: string, url: string}>|null
+     */
+    private static function cached(mixed $cached): ?array
+    {
+        if (! is_array($cached) || ! array_is_list($cached)) {
+            return null;
+        }
+
+        $items = [];
+        foreach ($cached as $item) {
+            if (! is_array($item) || ! is_string($item['title'] ?? null) || ! is_string($item['author'] ?? null) || ! is_string($item['day'] ?? null)
+                || ! is_string($item['body'] ?? null) || ! is_string($item['url'] ?? null)) {
+                return null;
+            }
+
+            $items[] = ['title' => $item['title'], 'author' => $item['author'], 'day' => $item['day'], 'body' => $item['body'], 'url' => $item['url']];
+        }
+
+        return $items;
     }
 }

@@ -29,7 +29,7 @@ class TournamentZoneSuspectsCommand extends Command
 {
     public function handle(): int
     {
-        $fixedAt = CarbonImmutable::parse((string) $this->option('fixed-at'), 'UTC');
+        $fixedAt = CarbonImmutable::parse(is_string($this->option('fixed-at')) ? $this->option('fixed-at') : '', 'UTC');
         $rows = [];
 
         foreach (Tournament::query()->where('created_at', '<', $fixedAt)->orderBy('id')->get() as $tournament) {

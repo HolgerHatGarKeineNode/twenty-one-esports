@@ -7,7 +7,6 @@ use App\Support\Voice\VoiceUsage;
 use Illuminate\Console\Attributes\Description;
 use Illuminate\Console\Attributes\Signature;
 use Illuminate\Console\Command;
-use Laravel\Ai\Responses\StructuredAgentResponse;
 use Throwable;
 
 /**
@@ -28,7 +27,8 @@ class VoiceMarkEnglishCommand extends Command
 {
     public function handle(VoiceUsage $usage): int
     {
-        $path = (string) ($this->option('path') ?: resource_path('data/voice/meme-canon.json'));
+        $given = $this->option('path');
+        $path = is_string($given) && $given ? $given : resource_path('data/voice/meme-canon.json');
         $raw = (string) file_get_contents($path);
         $canon = json_decode($raw, true);
 
@@ -62,7 +62,7 @@ class VoiceMarkEnglishCommand extends Command
             $usage->recordAttempt('canon_language');
             $usage->recordTokens('canon_language', $response->usage->inputTokens, $response->usage->outputTokens, (int) $response->usage->cacheReadInputTokens, (int) $response->usage->cacheWriteInputTokens);
 
-            $answer = $response instanceof StructuredAgentResponse ? $response->toArray() : json_decode($response->text, true);
+            $answer = $response->toArray();
 
             foreach ((array) ($answer['decisions'] ?? []) as $decision) {
                 $id = is_array($decision) ? ($decision['id'] ?? null) : null;

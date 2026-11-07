@@ -72,7 +72,7 @@ class CasterRenderLocalCommand extends Command
                 'scene' => StockScripts::SCENE,
                 'topic' => StockScripts::TOPIC_PREFIX.$talk['format'],
                 'sentences' => array_values(array_filter(array_map('trim', explode("\n", $talk['text'])), fn (string $line): bool => $line !== '')),
-                'speakers' => $talk['speakers'] ?? null,
+                'speakers' => $talk['speakers'],
                 'estimated_seconds' => ceil(mb_strlen($talk['text']) / 12),
             ]];
 
@@ -96,7 +96,7 @@ class CasterRenderLocalCommand extends Command
                 continue;
             }
 
-            $formats = implode('+', array_unique(array_map(fn (array $script): string => (string) ($script['topic'] ?? ''), $batch)));
+            $formats = implode('+', array_unique(array_map(fn (array $script): string => $script['topic'], $batch)));
             $this->line(now()->toDateTimeString().sprintf(' programme kept: %s (%.1f s, %d talks, %s)', $name, $seconds, count($batch), $formats));
 
             // Straight up into the server's library (the one upload this machine makes).

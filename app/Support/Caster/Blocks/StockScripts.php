@@ -23,7 +23,6 @@ use Carbon\CarbonImmutable;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Log;
 use Laravel\Ai\Responses\Data\FinishReason;
-use Laravel\Ai\Responses\StructuredAgentResponse;
 use Throwable;
 
 /**
@@ -343,8 +342,8 @@ final class StockScripts
             ->prompt(self::prompt($format, $material, $rejected, $this->hint));
         $this->usage->recordTokens(self::CHANNEL, $response->usage->inputTokens, $response->usage->outputTokens, (int) $response->usage->cacheReadInputTokens, (int) $response->usage->cacheWriteInputTokens);
 
-        $answer = $response instanceof StructuredAgentResponse ? $response->toArray() : json_decode($response->text, true);
-        $raw = is_array($answer) && is_string($answer['text'] ?? null) ? $answer['text'] : '';
+        $answer = $response->toArray();
+        $raw = is_string($answer['text'] ?? null) ? $answer['text'] : '';
         $this->answers[] = $raw;
         [$talk, $violations] = $this->evaluate($raw, $response->steps->last()?->finishReason === FinishReason::Length);
 
@@ -402,13 +401,13 @@ final class StockScripts
         $labelled = implode("\n", array_map(fn (int $index, string $line): string => (self::NAMES[$speakers[$index] ?? ''] ?? ucfirst($speakers[$index] ?? 'Markus')).': '.$line, array_keys($lines = ScriptGuard::lines($text)), $lines));
         $response = (new StockCoherenceJudge)->prompt(StockCoherenceJudge::message(self::SHOW_NAMES[$format] ?? $format, $material, $labelled));
         $this->usage->recordTokens(self::JUDGE_CHANNEL, $response->usage->inputTokens, $response->usage->outputTokens, (int) $response->usage->cacheReadInputTokens, (int) $response->usage->cacheWriteInputTokens);
-        $answer = $response instanceof StructuredAgentResponse ? $response->toArray() : json_decode($response->text, true);
+        $answer = $response->toArray();
         $min = (int) ($settings['min_score'] ?? 4);
-        $invented = is_array($answer) && is_array($answer['invented'] ?? null) ? array_values(array_filter($answer['invented'], fn (mixed $line): bool => is_string($line) && trim($line) !== '')) : null;
+        $invented = is_array($answer['invented'] ?? null) ? array_values(array_filter($answer['invented'], fn (mixed $line): bool => is_string($line) && trim($line) !== '')) : null;
         $weak = $invented === null || $invented !== [] ? [self::INVENTED] : [];
 
         foreach (StockCoherenceJudge::SCORES as $score) {
-            $value = is_array($answer) ? ($answer[$score] ?? null) : null;
+            $value = $answer[$score] ?? null;
             // Sense needs only `sense_min_score` (user decision 2026-10-13: a clear image is airable radio); an invented fact is
             // the hard reject (INVENTED) instead.
             $floor = $score === 'sense' ? (int) ($settings['sense_min_score'] ?? 3) : $min;
@@ -419,9 +418,9 @@ final class StockScripts
             }
         }
 
-        $nonsense = is_array($answer) ? array_values(array_filter((array) ($answer['nonsense'] ?? []), fn (mixed $line): bool => is_string($line) && trim($line) !== '')) : [];
-        $this->judgements[] = ['format' => $format, 'material' => $material, 'text' => $labelled, 'answer' => is_array($answer) ? $answer : null];
-        $this->hint = trim((is_array($answer) && is_string($answer['hint'] ?? null) ? trim($answer['hint']) : '')
+        $nonsense = array_values(array_filter((array) ($answer['nonsense'] ?? []), fn (mixed $line): bool => is_string($line) && trim($line) !== ''));
+        $this->judgements[] = ['format' => $format, 'material' => $material, 'text' => $labelled, 'answer' => $answer];
+        $this->hint = trim((is_string($answer['hint'] ?? null) ? trim($answer['hint']) : '')
             .($nonsense === [] ? '' : ' Diese Sätze sagen nichts Konkretes: '.implode(' ', array_map(fn (string $line): string => '„'.trim($line).'“', array_slice($nonsense, 0, 4))))
             .($invented === null || $invented === [] ? '' : ' Diese Sätze erfinden, was nicht im Material steht: '.implode(' ', array_map(fn (string $line): string => '„'.trim($line).'“', array_slice($invented, 0, 4)))));
         $this->usage->recordOutcome(self::JUDGE_CHANNEL, $weak === [] ? 'accepted' : 'rejected');

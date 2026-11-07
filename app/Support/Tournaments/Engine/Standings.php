@@ -110,11 +110,11 @@ final class Standings
     {
         $ordered = [...array_filter($rows, fn (StandingRow $row): bool => ! in_array($row->entrant, $out, true)), ...array_filter($rows, fn (StandingRow $row): bool => in_array($row->entrant, $out, true))];
 
-        foreach (array_values($ordered) as $index => $row) {
+        foreach ($ordered as $index => $row) {
             $row->rank = $index + 1;
         }
 
-        return array_values($ordered);
+        return $ordered;
     }
 
     /**
@@ -169,6 +169,15 @@ final class Standings
     {
         if (count($rows) <= 1 || $criteria === []) {
             usort($rows, fn (StandingRow $a, StandingRow $b): int => $a->seed <=> $b->seed);
+
+            // Nothing split them: the seed order stands in, and each row knows who it is level with (FirstPlaceTie).
+            if (count($rows) > 1) {
+                $tied = array_map(fn (StandingRow $row): int => $row->entrant, $rows);
+
+                foreach ($rows as $row) {
+                    $row->tiedWith = array_values(array_diff($tied, [$row->entrant]));
+                }
+            }
 
             return $rows;
         }

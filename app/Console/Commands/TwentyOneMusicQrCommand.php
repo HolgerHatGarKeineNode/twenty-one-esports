@@ -44,7 +44,7 @@ class TwentyOneMusicQrCommand extends Command
                 continue;
             }
 
-            $error = self::draw($credit['target'], $credit['kind'], (string) $this->option('qrencode'));
+            $error = self::draw($credit['target'], $credit['kind'], is_string($this->option('qrencode')) ? $this->option('qrencode') : '');
 
             if ($error !== null) {
                 $this->error('qrencode failed for '.$credit['artist'].': '.$error);

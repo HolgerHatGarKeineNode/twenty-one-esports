@@ -63,7 +63,8 @@ class CancelBoardBlitzCupsCommand extends Command
             return self::FAILURE;
         }
 
-        $reason = trim((string) ($this->option('reason') ?: self::REASON));
+        $given = $this->option('reason') ?: self::REASON;
+        $reason = trim(is_string($given) ? $given : self::REASON);
         $failed = 0;
 
         foreach ($cups as $cup) {
@@ -80,7 +81,7 @@ class CancelBoardBlitzCupsCommand extends Command
 
     private function actor(): ?User
     {
-        $given = trim((string) $this->option('actor'));
+        $given = is_string($this->option('actor')) ? trim($this->option('actor')) : '';
 
         if ($given !== '') {
             $hex = str_starts_with($given, 'npub') ? NostrKeys::npubToHex($given) : $given;

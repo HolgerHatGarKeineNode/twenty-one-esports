@@ -67,7 +67,7 @@ class CasterVoicesCommand extends Command
         $uses = self::speakerProfiles();
         $probe = $this->option('probe');
 
-        if ($probe === null) {
+        if (! is_string($probe)) {
             $this->table(['id', 'name', 'created', 'used by'], array_map(fn (array $profile): array => [
                 $profile['id'],
                 (string) ($profile['name'] ?? ''),
@@ -84,9 +84,9 @@ class CasterVoicesCommand extends Command
             return self::SUCCESS;
         }
 
-        $speaker = (string) $this->option('speaker');
+        $speaker = $this->option('speaker');
 
-        if (! in_array($speaker, DuetScripts::speakerNames(), true)) {
+        if (! is_string($speaker) || ! in_array($speaker, DuetScripts::speakerNames(), true)) {
             $this->error('--speaker is one of: '.implode(', ', DuetScripts::speakerNames()).'.');
 
             return self::FAILURE;

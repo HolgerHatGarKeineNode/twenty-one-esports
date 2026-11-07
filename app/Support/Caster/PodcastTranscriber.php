@@ -174,7 +174,7 @@ class PodcastTranscriber
             }
 
             $podcast = preg_match('/<title>(.*?)<\/title>/s', $body, $m) === 1
-                ? trim(html_entity_decode(strip_tags($m[1]), ENT_QUOTES | ENT_HTML5, 'UTF-8')) : basename(parse_url($url, PHP_URL_HOST) ?? '');
+                ? trim(html_entity_decode(strip_tags($m[1]), ENT_QUOTES | ENT_HTML5, 'UTF-8')) : basename(parse_url($url, PHP_URL_HOST) ?: '');
             $episode['podcast'] = mb_substr($podcast !== '' ? $podcast : 'Podcast', 0, 80);
             $episodes[] = $episode;
         }
