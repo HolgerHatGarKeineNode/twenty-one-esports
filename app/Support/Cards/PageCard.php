@@ -4,6 +4,7 @@ namespace App\Support\Cards;
 
 use App\Enums\TournamentFormat;
 use App\Games\Blockfill;
+use App\Games\Blockspace;
 use App\Games\BoardGame as BoardGameDefinition;
 use App\Games\GameRegistry;
 use App\Games\Hyperbitcoinization;
@@ -307,7 +308,7 @@ final class PageCard
                 '1-0' => __(':name won', ['name' => $this->sideName('white')]),
                 '0-1' => __(':name won', ['name' => $this->sideName('black')]),
                 default => $this->gameHeadline(),
-            }.'. '.$this->sideName('white').' '.__('(white)').', '.$this->sideName('black').' '.__('(black)').'. '.GameNames::credited((string) $f['game']).'.',
+            }.'. '.$this->sideName('white').' '.GameNames::sideNotes((string) $f['game'])['w'].', '.$this->sideName('black').' '.GameNames::sideNotes((string) $f['game'])['b'].'. '.GameNames::credited((string) $f['game']).'.',
             'leaderboard' => $this->leaderboardTitle($f).'. '.$this->leaderboardStatus().'.',
             'hyper' => $this->hyperTitle().'. '.$this->hyperLine().'.',
             'pong' => $this->pongTitle().'. '.$f['sides'][0]['name'].' '.$f['score'][0].':'.$f['score'][1].' '.$f['sides'][1]['name'].'.',
@@ -456,7 +457,7 @@ final class PageCard
         $this->c->rect($tx + 2, $line - 20, 20, 20, $colour === 'white' ? '#F4F4F5' : '#0A0A0B');
         $delta = ($p['delta'] ?? null) !== null && $p['delta'] !== 0 ? ($p['delta'] > 0 ? '+' : '−').abs((int) $p['delta']) : null;
         // A board game has no rating on its card: the side's colour is named instead.
-        $rating = ($p['rating'] ?? null) === null ? ($colour === 'white' ? __('White') : __('Black')) : __(':rating Elo', ['rating' => $p['rating']]);
+        $rating = ($p['rating'] ?? null) === null ? $this->sideLabel($colour) : __(':rating Elo', ['rating' => $p['rating']]);
         $provisional = __(':rating Elo, provisional', ['rating' => $p['rating']]);
         $room = $max - 40 - ($delta === null ? 0 : $this->c->width($delta, 'mono-bold', self::MIN) + 16);
 
@@ -479,8 +480,8 @@ final class PageCard
             'active' => __('Move :move', ['move' => intdiv((int) $f['ply'], 2) + 1]),
             'aborted' => __('Aborted'),
             default => match ($f['result']) {
-                '1-0' => __('White wins'),
-                '0-1' => __('Black wins'),
+                '1-0' => ($f['game'] ?? null) === Blockspace::SLUG ? __(':name wins', ['name' => $this->sideLabel('white')]) : __('White wins'),
+                '0-1' => ($f['game'] ?? null) === Blockspace::SLUG ? __(':name wins', ['name' => $this->sideLabel('black')]) : __('Black wins'),
                 default => __('Draw'),
             },
         };
@@ -1165,6 +1166,12 @@ final class PageCard
         }
     }
 
+    /** What a side of this card's game is called: White and Black, in Blockspace the colours of its stones. */
+    public function sideLabel(string $colour): string
+    {
+        return GameNames::sides((string) ($this->facts['game'] ?? ''))[$colour === 'white' ? 'w' : 'b'];
+    }
+
     /** A side's name; a deleted account has none of its own. */
     private function sideName(string $colour): string
     {
@@ -1177,7 +1184,7 @@ final class PageCard
         $f = $this->facts;
 
         if ($f['status'] === 'active') {
-            return $f['turn'] === 'b' ? __('Black to move') : __('White to move');
+            return __(':side to move', ['side' => GameNames::sides((string) $f['game'])[$f['turn'] === 'b' ? 'b' : 'w']]);
         }
 
         $definition = app(GameRegistry::class)->find((string) $f['game']);

@@ -29,7 +29,7 @@ use App\Support\Board\NineMensMorrisRules;
 final class BoardMoments
 {
     /** Spoken game names by registry slug. */
-    public const NAMES = ['blockli' => 'Blockli', 'nine-mens-morris' => 'Mühle', 'checkers' => 'Dame'];
+    public const NAMES = ['blockli' => 'Blockli', 'blockspace' => 'Blockspace', 'nine-mens-morris' => 'Mühle', 'checkers' => 'Dame'];
 
     /** A race score margin up to this is close. */
     public const CLOSE_RACE = 1.0;
