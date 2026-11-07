@@ -5,6 +5,7 @@ namespace App\Support\Navigation;
 use App\Enums\InviteStatus;
 use App\Enums\TournamentStatus;
 use App\Games\Blockfill;
+use App\Games\Blockspace;
 use App\Games\Contracts\Game;
 use App\Games\Contracts\PlayedOnOwnCopy;
 use App\Games\GameKind;
@@ -260,6 +261,7 @@ final class ShellNavigation
             $name === 'ladder.show' => $known($route->parameter('game')),
             // A board game's lobby and its games (plan "Mühle und Dame", P5): their own context bar, never chess's.
             $name === 'board.lobby', $name === 'board.correspondence', $name === 'board.practice' => $known($route->parameter('board')),
+            $name === 'board.blockspace-practice' => $known(Blockspace::SLUG),
             $name === 'board.show' => $known($this->gameOfBoardGame($route->parameter('boardGame'))),
             $name === 'scores.show' => $known($route->parameter('game')),
             // Blockfill's game page (plan "Blockfill", P6): its own context bar, never the one of the game opened last.

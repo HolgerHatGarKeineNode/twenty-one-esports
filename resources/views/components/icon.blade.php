@@ -91,6 +91,8 @@
         'store-epic' => '<path d="M5 3h14v14l-7 4-7-4z"></path><path d="M14.5 7.5h-5v7h5M9.5 11h4"></path>',
         // Blockli: four squares and a block in the groove between them.
         'blockli' => '<rect x="3" y="3" width="7" height="7" rx="1.5"></rect><rect x="14" y="3" width="7" height="7" rx="1.5"></rect><rect x="3" y="16" width="7" height="5" rx="1.5"></rect><rect x="14" y="16" width="7" height="5" rx="1.5"></rect><path d="M3 13h18" stroke-width="2.5"></path>',
+        // Blockspace: stones that touch only at their corners.
+        'blockspace' => '<rect x="3" y="13" width="8" height="8" rx="1.5"></rect><rect x="11" y="3" width="5" height="10" rx="1.5"></rect><rect x="16" y="13" width="5" height="5" rx="1.5"></rect>',
         // A like on Nostr (P48, NIP-25).
         'heart' => '<path d="M20.8 4.6a5.5 5.5 0 0 0-7.8 0L12 5.7l-1-1.1a5.5 5.5 0 0 0-7.8 7.8L12 21.2l8.8-8.8a5.5 5.5 0 0 0 0-7.8z"></path>',
         default => throw new InvalidArgumentException("Unknown icon [{$name}]."),

@@ -2,6 +2,7 @@
 
 use App\Games\AgeOfEmpires2;
 use App\Games\Blockli;
+use App\Games\Blockspace;
 use App\Games\Checkers;
 use App\Games\Chess;
 use App\Games\EaSportsFc26;
@@ -227,7 +228,7 @@ return [
     */
     'game_order' => [
         'first' => [
-            'hyperbitcoinization', 'proof-of-pong', 'chess', 'blockfill', 'blockli', 'nine-mens-morris', 'checkers',
+            'hyperbitcoinization', 'proof-of-pong', 'chess', 'blockfill', 'blockli', 'blockspace', 'nine-mens-morris', 'checkers',
             'rocket-league', 'ea-sports-fc-27', 'ea-sports-fc-26', 'age-of-empires-2', 'tmnf',
         ],
         'last' => [],
@@ -299,6 +300,8 @@ return [
             // appears; `credit_url` makes it a link (a profile or website, none yet).
             'blockli' => ['enabled' => (bool) env('ESPORTS_BOARD_GAME_BLOCKLI', false), 'class' => Blockli::class,
                 'credit' => env('ESPORTS_BOARD_GAME_BLOCKLI_CREDIT', 'by DerCaddy'), 'credit_url' => env('ESPORTS_BOARD_GAME_BLOCKLI_CREDIT_URL')],
+            'blockspace' => ['enabled' => (bool) env('ESPORTS_BOARD_GAME_BLOCKSPACE', false), 'class' => Blockspace::class,
+                'credit' => env('ESPORTS_BOARD_GAME_BLOCKSPACE_CREDIT', 'by StackingJones'), 'credit_url' => env('ESPORTS_BOARD_GAME_BLOCKSPACE_CREDIT_URL')],
         ],
     ],
 

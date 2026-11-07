@@ -64,7 +64,7 @@ use Throwable;
 final class HomeBoard
 {
     /** The browser games in the order of the plan (user 2026-10-10: Pong second, so the coloured covers lead). */
-    public const BROWSER_ORDER = [Hyperbitcoinization::SLUG, ProofOfPong::SLUG, 'chess', Blockfill::SLUG, 'blockli', 'nine-mens-morris', 'checkers'];
+    public const BROWSER_ORDER = [Hyperbitcoinization::SLUG, ProofOfPong::SLUG, 'chess', Blockfill::SLUG, 'blockli', 'blockspace', 'nine-mens-morris', 'checkers'];
 
     public const OWN_ORDER = ['rocket-league', 'ea-sports-fc-27', 'ea-sports-fc-26', 'age-of-empires-2', TrackmaniaNationsForever::SLUG];
 

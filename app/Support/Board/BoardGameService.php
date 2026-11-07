@@ -137,7 +137,8 @@ final class BoardGameService
         [$initialMs, $incrementMs] = $this->timeControl($definition, $mode);
         $daily = $mode === BoardGame::CORRESPONDENCE;
         $rules = $definition->rules();
-        $start = $rules->start();
+        // A dealt game (Blockspace) starts from a deal of its own.
+        $start = $rules instanceof DealtGame ? $rules->deal($mode) : $rules->start();
         // A rated game is pinned to the ladder open when it starts (a tournament's frozen ladder), and
         // counts only while that ladder is still open (NIP rule 16): never on a later season's. No ladder, no rating.
         $ladder = $ratedGate === null ? null : ($tournamentMatchId === null
@@ -281,7 +282,7 @@ final class BoardGameService
             $position = $rules->deserialize($game->position);
 
             if (! in_array($move, $rules->legalMoves($position), true)) {
-                throw new BoardRuleViolation('illegal_move', "{$move} is illegal in {$game->position}.");
+                throw new BoardRuleViolation('illegal_move', "{$move} is illegal in {$this->publicPosition($game, $rules)}.");
             }
 
             $notation = $rules->notation($position, $move);
@@ -327,7 +328,7 @@ final class BoardGameService
                 default => $now + $this->firstMoveMs($game),
             };
 
-            $history = [$rules->serialize($rules->start()), ...$game->moves()->pluck('position')->all()];
+            $history = [$this->startOf($game, $rules), ...$game->moves()->pluck('position')->all()];
             $outcome = $rules->outcome($next, array_values(array_map(strval(...), $history)));
 
             if ($outcome !== null) {
@@ -357,13 +358,15 @@ final class BoardGameService
             $last = $game->ply > 0 ? $game->moves()->where('ply', $game->ply)->first() : null;
             $until = $last === null ? null : $this->takeBackUntil($game, $last);
 
-            // Only the side that made the last move, whose opponent is to move now, and only in time.
-            if ($last === null || $until === null || $game->turn === $color || $now >= $until) {
+            $rules = $this->definition($game->game)->rules();
+
+            // Only the side that made the last move, and only in time. The side to move does not tell: in Blockspace a
+            // side moves twice in a row, so the last mover can be to move again, and the other side never may take it back.
+            if ($last === null || $until === null || $this->lastMover($game, $rules) !== $color || $now >= $until) {
                 throw new BoardRuleViolation('take_back_closed');
             }
 
-            $rules = $this->definition($game->game)->rules();
-            $before = $game->ply > 1 ? (string) $game->moves()->where('ply', $game->ply - 1)->value('position') : $rules->serialize($rules->start());
+            $before = $this->positionBeforeLast($game, $rules);
             $started = $game->turn_started_ms - $last->spent_ms;
             $clockKey = $color === 'w' ? 'white_ms' : 'black_ms';
             // The move took its thinking time off and added the increment only once both first moves were made (move()).
@@ -387,6 +390,47 @@ final class BoardGameService
     }
 
     /**
+     * The position before the game's last move.
+     *
+     * @param  BoardRules<mixed>  $rules
+     */
+    private function positionBeforeLast(BoardGame $game, BoardRules $rules): string
+    {
+        return $game->ply > 1 ? (string) $game->moves()->where('ply', $game->ply - 1)->value('position') : $this->startOf($game, $rules);
+    }
+
+    /**
+     * The side that made the last move: the one to move before it.
+     *
+     * @param  BoardRules<mixed>  $rules
+     * @return 'w'|'b'
+     */
+    private function lastMover(BoardGame $game, BoardRules $rules): string
+    {
+        return $rules->turn($rules->deserialize($this->positionBeforeLast($game, $rules)));
+    }
+
+    /**
+     * The game's position as anyone may know it: what a dealt game hides stays in the game.
+     *
+     * @param  BoardRules<mixed>  $rules
+     */
+    public function publicPosition(BoardGame $game, BoardRules $rules): string
+    {
+        return $rules instanceof DealtGame ? $rules->serialize($rules->withoutHidden($rules->deserialize($game->position))) : $game->position;
+    }
+
+    /**
+     * The game's start position as text: every game's own for a dealt game, the rules' one for all others.
+     *
+     * @param  BoardRules<mixed>  $rules
+     */
+    public function startOf(BoardGame $game, BoardRules $rules): string
+    {
+        return $rules->serialize($rules instanceof DealtGame ? $rules->startOf($rules->deserialize($game->position)) : $rules->start());
+    }
+
+    /**
      * Until when (server ms) the side that made the last move may take it back, or null: not before a move, not after
      * the game, not with `take_back_seconds` at 0. The window ends that long after the move, or earlier where the
      * mover's own time would have run out by then on the clock as a take-back puts it back. Never on a team match
@@ -403,6 +447,13 @@ final class BoardGameService
         $last ??= $game->moves()->where('ply', $game->ply)->first();
 
         if ($last === null) {
+            return null;
+        }
+
+        // A move that showed something hidden stands: a take-back would be a free look at what comes next.
+        $rules = $this->rulesOf($game);
+
+        if ($rules instanceof DealtGame && $rules->revealsOnMove($rules->deserialize($this->positionBeforeLast($game, $rules)))) {
             return null;
         }
 
@@ -608,7 +659,16 @@ final class BoardGameService
         $rules = $this->rulesOf($game);
         $position = $rules?->deserialize($game->position);
         $last = $game->ply > 0 ? $game->moves()->where('ply', $game->ply)->first() : null;
-        $legal = $rules !== null && $game->isActive() ? $rules->legalMoves($position) : [];
+        $view = $rules?->view($position);
+        // A board with its own input (Blockspace) proposes its move and the server judges it: it gets no legal moves, nor
+        // the pieces twice in a push. Up to 279 moves would not fit into a Reverb message of 10 kB, the stones twice hardly.
+        $ownInput = ($view['input'] ?? null) === 'pieces';
+        $legal = $rules !== null && $game->isActive() && ! $ownInput ? $rules->legalMoves($position) : [];
+        $lastMove = $last === null ? null : $this->moveState($last, $rules);
+
+        if ($ownInput && ! $withMoves && $lastMove !== null) {
+            unset($lastMove['pieces']);
+        }
 
         $state = [
             'id' => $game->id,
@@ -631,11 +691,13 @@ final class BoardGameService
             'drawOffer' => $game->draw_offer,
             // Until when the side that just moved may take the move back (server ms), null when it may not.
             'takeBackUntil' => $last === null ? null : $this->takeBackUntil($game, $last),
-            'pieces' => $rules === null ? [] : $rules->view($position)['pieces'],
+            // Which side that is: the board offers the take-back to it alone.
+            'takeBackBy' => $last === null || $rules === null ? null : $this->lastMover($game, $rules),
+            'pieces' => $view['pieces'] ?? [],
             // Who would be ahead in a race (Blockli): steps to the goal and blocks left a side (DerCaddy, 2026-10-09).
             'standing' => $rules instanceof RaceStanding ? $rules->standing($position) : null,
             'legal' => array_map(fn (string $move): array => ['move' => $move, 'path' => $rules?->path($move) ?? []], $legal),
-            'lastMove' => $last === null ? null : $this->moveState($last, $rules),
+            'lastMove' => $lastMove,
         ];
 
         if ($withMoves) {
@@ -649,7 +711,7 @@ final class BoardGameService
      * The board's fixed drawing (lines, cells, clickable points) of this
      * game, for the page; pushes carry only the pieces.
      *
-     * @return array{width: int, height: int, lines: list<array{0: int, 1: int, 2: int, 3: int}>, cells: list<array{x: int, y: int, size: int}>, points: list<array{id: string, x: int, y: int}>, input?: 'blocks', repetitions?: int}|null
+     * @return array{width: int, height: int, lines: list<array{0: int, 1: int, 2: int, 3: int}>, cells: list<array{x: int, y: int, size: int}>, points: list<array{id: string, x: int, y: int}>, input?: 'blocks'|'pieces', repetitions?: int}|null
      */
     public function layout(BoardGame $game): ?array
     {

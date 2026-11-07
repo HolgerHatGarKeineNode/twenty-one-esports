@@ -14,6 +14,7 @@ use App\Enums\TournamentFormat;
 use App\Enums\TournamentResultsMode;
 use App\Games\Blockfill;
 use App\Games\Blockli;
+use App\Games\Blockspace;
 use App\Games\GameRegistry;
 use App\Models\ChessGame;
 use App\Models\Clan;
@@ -142,6 +143,7 @@ function seoRouteFixtures(): array
         'tournaments.tv' => fn () => [route('tournaments.tv', openTournament(['name' => 'TV Cup']))],
         'invites.link' => fn () => [app(InviteLinks::class)->create(User::factory()->create(), InviteLinkType::Blitz)->url()],
         'board.lobby' => fn () => array_map(fn (string $slug): string => route('board.lobby', $slug), array_keys($registry()->boards())),
+        'board.blockspace-practice' => fn () => array_key_exists(Blockspace::SLUG, $registry()->boards()) ? [route('board.blockspace-practice')] : [],
         'board.correspondence' => fn () => array_map(fn (string $slug): string => route('board.correspondence', $slug), array_keys($registry()->boards())),
         'board.show' => fn () => array_map(fn (string $slug): string => route('board.show', mempoolBoard($slug, ['status' => BoardGameStatus::Active])), array_keys($registry()->boards())),
         // Practice against bots (DerCaddy, 2026-10-23): only Blockli has bots, every other board game's practice is a 404.

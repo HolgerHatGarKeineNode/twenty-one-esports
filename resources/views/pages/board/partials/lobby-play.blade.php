@@ -122,6 +122,15 @@
                     </x-chess.lobby-tile>
                 </li>
             @endif
+            @if ($slug === \App\Games\Blockspace::SLUG && \Illuminate\Support\Facades\Route::has('board.blockspace-practice'))
+                {{-- The tutorial first: nine short lessons on the board, then the bots, for guests too; nothing counts. --}}
+                <li>
+                    <x-chess.lobby-tile :label="__('Learn to play')" :action="__('Tutorial')" :href="route('board.blockspace-practice')" data-test="play-practice">
+                        <x-slot:detail>{{ __('Nine lessons on the board, then three bots') }}</x-slot:detail>
+                        <x-slot:meta>{{ __('nothing counts') }}</x-slot:meta>
+                    </x-chess.lobby-tile>
+                </li>
+            @endif
         </ul>
     </div>
 

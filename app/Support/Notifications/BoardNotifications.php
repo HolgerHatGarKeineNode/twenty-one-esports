@@ -9,6 +9,7 @@ use App\Models\BoardChallenge;
 use App\Models\BoardGame;
 use App\Models\User;
 use App\Support\Board\BoardGameService;
+use App\Support\GameNames;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Route;
 
@@ -90,8 +91,8 @@ final class BoardNotifications
         $player = $challenge->challenged;
         $locale = $this->locale($player);
         $color = match ($challenge->color) {
-            'white' => __('Black', [], $locale),
-            'black' => __('White', [], $locale),
+            'white' => GameNames::sides($challenge->game, $locale)['b'],
+            'black' => GameNames::sides($challenge->game, $locale)['w'],
             default => __('a random colour', [], $locale),
         };
         $kind = $challenge->rated ? __('Rated', [], $locale) : __('Casual', [], $locale);
@@ -121,8 +122,8 @@ final class BoardNotifications
         $this->notifier->send($challenger, NotificationKind::GameStarted, new Notice(
             __(':name accepted your :game challenge', ['name' => $game->opponentOf($challenger)?->displayName() ?? '', 'game' => $this->name($game, $locale)], $locale),
             $white
-                ? __(':game correspondence · you play White, your move.', ['game' => $this->name($game, $locale)], $locale)
-                : __(':game correspondence · you play Black, their move.', ['game' => $this->name($game, $locale)], $locale),
+                ? __(':game correspondence · you play :color, your move.', ['game' => $this->name($game, $locale), 'color' => GameNames::sides($game->game, $locale)['w']], $locale)
+                : __(':game correspondence · you play :color, their move.', ['game' => $this->name($game, $locale), 'color' => GameNames::sides($game->game, $locale)['b']], $locale),
             self::gameUrl($game),
             null,
             __('Open game', [], $locale),

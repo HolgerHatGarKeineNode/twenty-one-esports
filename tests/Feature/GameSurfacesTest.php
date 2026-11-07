@@ -3,6 +3,7 @@
 use App\Enums\BoardEndReason;
 use App\Games\Blockfill;
 use App\Games\Blockli;
+use App\Games\Blockspace;
 use App\Games\Checkers;
 use App\Games\Contracts\PlayedOnOwnCopy;
 use App\Games\GameKind;
@@ -75,6 +76,7 @@ beforeEach(function () {
         'esports.board_games.games.'.NineMensMorris::SLUG.'.enabled' => true,
         'esports.board_games.games.'.Checkers::SLUG.'.enabled' => true,
         'esports.board_games.games.'.Blockli::SLUG.'.enabled' => true,
+        'esports.board_games.games.'.Blockspace::SLUG.'.enabled' => true,
         'esports.blockfill.enabled' => true,
         'esports.score_games.demo' => true,
         'esports.tmnf.enabled' => true,
@@ -212,7 +214,7 @@ test('the registry under test holds every kind of game, the made-up ones include
     $registry = app(GameRegistry::class);
 
     // Not a surface: proof that the switches above took, so a guard below cannot pass over an empty registry.
-    expect(array_keys($registry->all()))->toContain('chess', 'rocket-league', NineMensMorris::SLUG, Checkers::SLUG, Blockli::SLUG, Blockfill::SLUG, TrackmaniaNationsForever::SLUG, Hyperbitcoinization::SLUG, ProofOfPong::SLUG, 'score-demo', 'fake-arena', FakeScoreGame::SLUG)
+    expect(array_keys($registry->all()))->toContain('chess', 'rocket-league', NineMensMorris::SLUG, Checkers::SLUG, Blockli::SLUG, Blockspace::SLUG, Blockfill::SLUG, TrackmaniaNationsForever::SLUG, Hyperbitcoinization::SLUG, ProofOfPong::SLUG, 'score-demo', 'fake-arena', FakeScoreGame::SLUG)
         ->and($registry->scores())->toHaveKeys([Blockfill::SLUG, TrackmaniaNationsForever::SLUG, 'score-demo', FakeScoreGame::SLUG]);
 });
 
@@ -327,14 +329,14 @@ test('/rules names every game', function () {
     expect(gameSurfacesMissing(array_values($shown)))->toBe([]);
 });
 
-test('/rules explains Nine Men\'s Morris, Checkers and Blockli last, and its games table follows the registry', function () {
+test('/rules explains Nine Men\'s Morris, Checkers, Blockli and Blockspace last, and its games table follows the registry', function () {
     $html = $this->get(route('rules'))->assertOk()->getContent();
     preg_match_all('#data-test="doc-section-([a-z0-9-]+)"#', $html, $sections);
     $games = array_values(array_intersect($sections[1], array_keys(app(GameRegistry::class)->all())));
 
     // The sections group games by kind (the series games share one), so only the end is the registry's.
-    expect($games)->toContain('chess', NineMensMorris::SLUG, Checkers::SLUG, Blockli::SLUG)
-        ->and(array_slice($games, -3))->toBe([NineMensMorris::SLUG, Checkers::SLUG, Blockli::SLUG]);
+    expect($games)->toContain('chess', NineMensMorris::SLUG, Checkers::SLUG, Blockli::SLUG, Blockspace::SLUG)
+        ->and(array_slice($games, -4))->toBe([NineMensMorris::SLUG, Checkers::SLUG, Blockli::SLUG, Blockspace::SLUG]);
 
     $table = (string) str($html)->after('data-test="doc-section-games"')->before('data-test="doc-section-casual-1v1"');
     $at = [];
@@ -372,11 +374,11 @@ test('a player who played a board game last still sees it at the end of Play now
 
     // Home and the hub keep the registry's order whoever plays what (user 2026-10-10): Blockli, nine men's morris and
     // checkers close the browser games, the own-copy games follow.
-    $boards = array_values(array_intersect($hub[1], [Blockli::SLUG, NineMensMorris::SLUG, Checkers::SLUG]));
+    $boards = array_values(array_intersect($hub[1], [Blockli::SLUG, Blockspace::SLUG, NineMensMorris::SLUG, Checkers::SLUG]));
     $start = array_search(Blockli::SLUG, $hub[1], true);
     expect($tiles)->toBe(gameSurfacesHomeOrder())
-        ->and($boards)->toBe([Blockli::SLUG, NineMensMorris::SLUG, Checkers::SLUG])
-        ->and(array_slice($hub[1], $start, 3))->toBe($boards);
+        ->and($boards)->toBe([Blockli::SLUG, Blockspace::SLUG, NineMensMorris::SLUG, Checkers::SLUG])
+        ->and(array_slice($hub[1], $start, 4))->toBe($boards);
 });
 
 test('the invite chooser lists the games in the registry order', function () {

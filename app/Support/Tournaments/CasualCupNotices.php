@@ -15,6 +15,7 @@ use App\Models\TournamentMatch;
 use App\Models\TournamentRound;
 use App\Models\TournamentSignup;
 use App\Models\User;
+use App\Support\GameNames;
 use App\Support\Notifications\Notice;
 use App\Support\Notifications\Notifier;
 use App\Support\PreSeason;
@@ -260,7 +261,7 @@ final class CasualCupNotices
             $this->notifier->send($player, NotificationKind::CupGameNow, new Notice(
                 __(':tournament: your game is on', ['tournament' => $cup->name], $locale),
                 __('You play :color against :name. Make your first move in time.', [
-                    'color' => $game->colorOf($player) === 'w' ? __('White', [], $locale) : __('Black', [], $locale),
+                    'color' => GameNames::sides($game instanceof BoardGame ? $game->game : 'chess', $locale)[$game->colorOf($player) === 'w' ? 'w' : 'b'],
                     'name' => $game->opponentOf($player)?->displayName() ?? '',
                 ], $locale),
                 $game instanceof BoardGame ? route('board.show', $game) : route('games.show', $game),

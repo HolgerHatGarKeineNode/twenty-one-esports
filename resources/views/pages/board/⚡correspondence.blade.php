@@ -350,7 +350,7 @@ new #[Layout('layouts::app')] class extends Component {
     $name = GameNames::game($slug);
     $opponent = $this->opponent;
     $hours = (int) config('esports.board_games.correspondence.challenge_hours');
-    $colorLabel = ['random' => __('Random'), 'white' => __('White'), 'black' => __('Black')];
+    $colorLabel = ['random' => __('Random'), 'white' => GameNames::sides($slug)['w'], 'black' => GameNames::sides($slug)['b']];
     $nowMs = (int) now()->getTimestampMs();
     $rating = $me ? Ratings::forUser($me->id, $slug, BoardGame::CORRESPONDENCE, Rating::CASUAL) : null;
     $ratedRefusal = $this->ratedOffered ? $this->ratedRefusal : null;
@@ -400,7 +400,7 @@ new #[Layout('layouts::app')] class extends Component {
                     <x-player-link :user="$challenge->challenger" class="shrink-0"><x-avatar :user="$challenge->challenger" :size="40" class="rounded-md" /></x-player-link>
                     <span class="flex min-w-0 flex-col gap-0.5">
                         <b class="truncate text-[15px]">{{ __(':name challenges you', ['name' => $challenge->challenger->displayName()]) }}</b>
-                        <span class="text-xs text-ink-2">{{ __(':kind · you play :color · 1 move a day', ['kind' => $challenge->rated ? __('Rated') : __('Casual'), 'color' => match ($challenge->color) { 'white' => __('Black'), 'black' => __('White'), default => __('a random colour') }]) }}</span>
+                        <span class="text-xs text-ink-2">{{ __(':kind · you play :color · 1 move a day', ['kind' => $challenge->rated ? __('Rated') : __('Casual'), 'color' => match ($challenge->color) { 'white' => GameNames::sides($slug)['b'], 'black' => GameNames::sides($slug)['w'], default => __('a random colour') }]) }}</span>
                         @if ($challenge->message)<span class="text-xs text-ink [overflow-wrap:anywhere]">“{{ $challenge->message }}”</span>@endif
                     </span>
                 </span>

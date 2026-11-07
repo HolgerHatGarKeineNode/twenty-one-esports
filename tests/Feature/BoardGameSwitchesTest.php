@@ -62,7 +62,7 @@ test('every registered game names its kind, and no board game is registered whil
 
 test('the board game slugs are reserved: nine men\'s morris is never "mill"', function () {
     expect(array_keys(config('esports.board_games.games')))->toBe(BoardGame::RESERVED_SLUGS)
-        ->and(BoardGame::RESERVED_SLUGS)->toBe(['nine-mens-morris', 'checkers', 'blockli'])
+        ->and(BoardGame::RESERVED_SLUGS)->toBe(['nine-mens-morris', 'checkers', 'blockli', 'blockspace'])
         ->and(BoardGame::RESERVED_SLUGS)->not->toContain('mill')
         ->and(app(GameRegistry::class)->find('mill'))->toBeNull();
 });
