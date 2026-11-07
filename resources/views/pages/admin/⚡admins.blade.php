@@ -121,7 +121,7 @@ new #[Title('Admins')] #[Layout('layouts::app', ['section' => 'admin'])] class e
         <form wire:submit="add" class="flex flex-col gap-1.5">
             <span class="flex flex-wrap items-end gap-2">
                 <x-player-picker id="admin-key" wire:model="key" allow-npub :label="__('Player or npub')" :exclude="$this->adminUserIds" class="min-w-0 grow basis-[16rem] lg:max-w-[560px]" />
-                <x-button type="submit" variant="quiet">{{ __('Add admin') }}</x-button>
+                <x-button type="submit" data-test="admin-add">{{ __('Add admin') }}</x-button>
             </span>
             @error('key')<span class="text-xs text-loss" role="alert" data-test="admin-key-error">{{ $message }}</span>@enderror
         </form>

@@ -75,8 +75,9 @@
                     </x-empty-state>
                 @else
                     <x-empty-state :heading="__('The list opens at Block 0')" :text="__('Rated play starts with the season at Block 0. From then on, :n rated results in any game put a player on this list.', ['n' => $minimum])">
-                        <a href="{{ route('mining') }}" class="btn-p inline-flex h-11 items-center rounded-md bg-btc px-5 text-sm font-bold text-on-btc hover:text-on-btc">{{ __('How the season works') }}</a>
-                        <a href="{{ route('play') }}" class="btn-s inline-flex h-11 items-center rounded-md border border-edge bg-ground px-5 text-sm text-ink hover:text-ink">{{ __('Play a casual game') }}</a>
+                        {{-- LadderStrongest.dc.html: playing now is the one action; the season explained is the second. --}}
+                        <a href="{{ route('play') }}" class="btn-p inline-flex h-11 items-center rounded-md bg-btc px-5 text-sm font-bold text-on-btc hover:text-on-btc" data-test="strongest-play">{{ __('Play a casual game') }}</a>
+                        <a href="{{ route('mining') }}" class="btn-s inline-flex h-11 items-center rounded-md border border-edge bg-ground px-5 text-sm text-ink hover:text-ink">{{ __('How the season works') }}</a>
                     </x-empty-state>
                 @endif
             </section>

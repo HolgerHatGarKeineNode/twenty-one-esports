@@ -283,3 +283,17 @@ test('the prize mode switches freely before sign-up closes and is frozen after, 
     $edit()->call('usePotMode', 'fixed')->set('potFixed', [5_000])->call('savePotSettings')->assertNotSet('potError', '');
     expect($tournament->refresh()->prizeMode())->toBe(Tournament::PRIZES_PERCENT);
 });
+
+test('on the edit page the prize pot saves with "Save changes", the one save button (P1), and a refused pot stops the save', function () {
+    fakeWallet();
+    $tournament = openTournament();
+    $page = Livewire::actingAs($tournament->creator)->test('pages::admin.tournament-edit', ['tournament' => $tournament])
+        ->assertDontSeeHtml('data-test="pot-save"');
+
+    $page->set('potEnabled', true)->set('potSplit', [45, 35, 20])->call('save')->assertSet('error', '');
+    expect($tournament->refresh()->hasPot())->toBeTrue()->and($tournament->prizeSplit())->toBe([45, 35, 20]);
+
+    $this->travel(3)->seconds();
+    $page->set('potSplit', [50, 30, 10])->call('save')->assertSet('error', __('The shares add up to 100 percent.'));
+    expect($tournament->refresh()->prizeSplit())->toBe([45, 35, 20]);
+});

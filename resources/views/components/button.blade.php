@@ -12,6 +12,8 @@
         'primary' => 'btn-p bg-btc font-bold text-on-btc hover:text-on-btc',
         'secondary' => 'btn-s border border-edge text-ink hover:text-ink',
         'quiet' => 'btn-w border border-line bg-well text-ink hover:text-ink',
+        // What is final or costly (rule R18; AdminFairPlay.dc.html "Konten verknüpfen"): a red edge, never the orange fill.
+        'danger' => 'border border-loss text-loss hover:bg-loss-tint hover:text-loss',
     };
 @endphp
 

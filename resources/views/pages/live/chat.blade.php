@@ -113,7 +113,7 @@
 
         @if ($guest)
             <div class="flex shrink-0 flex-wrap items-center gap-x-3 gap-y-1 border-t border-hairline px-4 py-3" data-test="live-chat-guest">
-                <x-button variant="quiet" icon="chat" :href="route('login', ['then' => 'live'])">{{ __('Log in to chat') }}</x-button>
+                <x-button icon="chat" :href="route('login', ['then' => 'live'])" data-test="live-chat-login">{{ __('Log in to chat') }}</x-button>
                 <span class="text-xs text-ink-3">{{ __('Reading is open to everyone.') }}</span>
             </div>
         @else

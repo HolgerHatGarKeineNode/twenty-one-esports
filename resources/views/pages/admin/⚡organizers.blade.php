@@ -104,7 +104,7 @@ new #[Title('Organizers')] #[Layout('layouts::app', ['section' => 'admin'])] cla
         <form wire:submit="addOrganizer" class="flex flex-col gap-1.5">
             <span class="flex flex-wrap items-end gap-2">
                 <x-player-picker id="organizer-key" wire:model="organizerKey" allow-npub :label="__('Player or npub')" :exclude="$this->organizerUserIds" class="min-w-0 grow basis-[16rem] lg:max-w-[560px]" />
-                <x-button type="submit" variant="quiet">{{ __('Add organizer') }}</x-button>
+                <x-button type="submit" data-test="organizer-add">{{ __('Add organizer') }}</x-button>
             </span>
             @error('organizerKey')<span class="text-xs text-loss" role="alert">{{ $message }}</span>@enderror
         </form>

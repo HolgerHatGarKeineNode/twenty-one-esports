@@ -85,6 +85,15 @@ new #[Layout('layouts::app', ['section' => 'admin'])] class extends TournamentFo
         return $this->tournament;
     }
 
+    /** Whether the pot fields differ from what the tournament has saved (the values fillPot() reads). */
+    private function potChanged(): bool
+    {
+        $t = $this->tournament;
+
+        return [$this->potEnabled, trim($this->potTarget), $this->potMode, array_values($this->potSplit), array_values($this->potFixed)]
+            != [$t->hasPot(), $t->prize_target_sats === null ? '' : (string) $t->prize_target_sats, $t->prizeMode(), array_values($t->prizeSplit()), array_values($t->prizeFixed() ?: [])];
+    }
+
     public function savePotSettings(): void
     {
         Gate::authorize('manage-tournament', $this->tournament);
@@ -313,6 +322,17 @@ new #[Layout('layouts::app', ['section' => 'admin'])] class extends TournamentFo
         }
 
         $this->tournament = $tournament->refresh();
+
+        // The prize pot saves with the page (one save button, P1); only when it was changed, as each save may sign a new 31923.
+        if ($this->potChanged()) {
+            if (! $this->savePot($this->tournament)) {
+                $this->error = $this->potError;
+
+                return;
+            }
+            $this->tournament = $this->tournament->refresh();
+            $changed[] = 'pot';
+        }
 
         if (in_array('mode', $changed, true)) {
             $modeSwitch->announce($this->tournament);
@@ -583,9 +603,12 @@ new #[Layout('layouts::app', ['section' => 'admin'])] class extends TournamentFo
             </label>
         </section>
 
+        {{-- The prize pot saves with "Save changes" (P1: one save button per page, AdminTournamentEdit.dc.html). --}}
+        @include('pages.admin.partials.prize-pot', ['potTournament' => $tournament, 'potSave' => null])
+
         {{-- The save bar (order E, jury 2026-11-05): sticks to the bottom of the screen until the form ends, so "Save changes" is always
              one click away; nothing saves on its own. The page keeps a scrolled-to error clear of it (app.css, `--save-bar-h`), stands above the phone's tab bar (`--tabbar-h`)
-             and scrolls a field focused under it into view (focusin below): WCAG 2.4.11. The prize pot under it has its own save button. --}}
+             and scrolls a field focused under it into view (focusin below): WCAG 2.4.11. The prize pot above it saves with it. --}}
         <div class="sticky bottom-[var(--tabbar-h)] z-20 flex flex-col items-stretch gap-2 rounded border border-edge bg-card px-4 py-3 shadow-[0_-12px_24px_var(--color-ground)] lg:px-6 lg:py-4 @min-[640px]/admin:flex-row @min-[640px]/admin:flex-wrap @min-[640px]/admin:items-center @min-[640px]/admin:gap-3 @min-[900px]/admin:flex-nowrap @min-[900px]/admin:gap-4" data-save-bar x-data
              x-on:focusin.window="const r = $event.target.getBoundingClientRect(), bar = $el.getBoundingClientRect();
                  if (! $el.contains($event.target) && r.bottom > bar.top && r.top < bar.bottom) window.scrollBy({ top: r.bottom - bar.top + 16 })">
@@ -616,7 +639,6 @@ new #[Layout('layouts::app', ['section' => 'admin'])] class extends TournamentFo
             </span>
         </div>
 
-        @include('pages.admin.partials.prize-pot', ['potTournament' => $tournament, 'potSave' => 'savePotSettings'])
     @endif
 
     @if ($tournament->status !== TournamentStatus::Draft)

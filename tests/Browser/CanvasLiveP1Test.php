@@ -2,6 +2,7 @@
 
 use App\Enums\InviteStatus;
 use App\Enums\PayoutStatus;
+use App\Enums\SeriesStatus;
 use App\Enums\TournamentFormat;
 use App\Enums\TournamentResultsMode;
 use App\Enums\TournamentStatus;
@@ -488,4 +489,74 @@ test('P1 cut columns and broken words: payouts, match games, the season table, H
         }
     }
     expect($found)->toBe([]);
+});
+
+test('P1 button hierarchy: the one primary action of each page is the orange button the board draws, at 1440 and 390', function () {
+    [$admin, $featured] = p1TournamentLeague();
+    $dispute = SeriesMatch::factory()->accepted()->create(['status' => SeriesStatus::Disputed, 'challenger_name' => 'Bitcoinmaximalistausdemerzgebirge', 'challenged_name' => 'El Presidento Ben']);
+    $orange = 'rgb(247, 147, 26)';
+    // [user, path, the primary (orange fill), the secondaries (no orange fill) in their order after it, a danger button (red edge)]
+    $cases = [
+        'admins' => [$admin, '/admin/admins', '[data-test=admin-add]', null, null],
+        'organizers' => [$admin, '/admin/organizers', '[data-test=organizer-add]', null, null],
+        'fair-play' => [$admin, '/admin/fair-play', null, null, '[data-test=fair-play-link]'],
+        'dispute' => [$admin, route('admin.disputes.show', $dispute, false), '[data-test=confirm-decision]', '[data-test=ask-new-report]', null],
+        'strongest' => [null, '/ladder/strongest', '[data-test=strongest-play]', 'main a[href$="/mining"].btn-s', null],
+        'live-chat' => [null, '/live', '[data-test=live-chat-login]', null, null],
+    ];
+    $found = [];
+    foreach ([1440, 390] as $width) {
+        foreach ($cases as $name => [$user, $path, $primary, $secondary, $danger]) {
+            $page = p1Open($user, $path, $width);
+            $m = $page->evaluate('([primary, secondary, danger]) => {
+                const pick = (s) => s ? [...document.querySelectorAll(s)].find((el) => el.checkVisibility()) ?? null : null;
+                const p = pick(primary), s = pick(secondary), d = pick(danger);
+                const bg = (el) => el ? getComputedStyle(el).backgroundColor : null;
+                return {
+                    primary: primary ? (p ? bg(p) : "missing") : null,
+                    secondaryBg: secondary ? (s ? bg(s) : "missing") : null,
+                    order: p && s ? (p.compareDocumentPosition(s) & Node.DOCUMENT_POSITION_FOLLOWING ? "primary first" : "secondary first") : null,
+                    danger: danger ? (d ? [getComputedStyle(d).borderTopColor, bg(d)] : "missing") : null,
+                };
+            }', [$primary, $secondary, $danger]);
+            $bad = [];
+            if ($primary !== null && $m['primary'] !== $orange) {
+                $bad[] = 'primary '.$m['primary'];
+            }
+            if ($secondary !== null && ($m['secondaryBg'] === $orange || $m['secondaryBg'] === 'missing' || $m['order'] !== 'primary first')) {
+                $bad[] = 'secondary '.json_encode([$m['secondaryBg'], $m['order']]);
+            }
+            if ($danger !== null && (! is_array($m['danger']) || $m['danger'][0] !== 'rgb(255, 59, 59)' && $m['danger'][0] !== 'rgb(248, 113, 113)' || $m['danger'][1] === $orange)) {
+                $bad[] = 'danger '.json_encode($m['danger']);
+            }
+            $loud = p1Loud($page);
+            if ($bad !== [] || $loud !== []) {
+                $found["{$name} {$width}"] = [...$bad, ...$loud];
+            }
+        }
+    }
+
+    // Tournament edit: one save button for the whole page; the prize pot saves with it.
+    $page = p1Open($admin, route('admin.tournaments.edit', $featured, false), 1440);
+    $saves = $page->evaluate('() => [...document.querySelectorAll("main button")].filter((b) => b.checkVisibility() && /^(Änderungen speichern|Gewinntopf speichern|Speichern)$/.test(b.textContent.trim())).map((b) => b.textContent.trim())');
+    expect($found)->toBe([])->and($saves)->toBe(['Änderungen speichern']);
+});
+
+test('P1 "Neu hier?" strip at 390: the steps scroll sideways inside the strip under an edge fade, the page does not', function () {
+    $page = p1Open(null, '/clans', 390);
+    $m = $page->evaluate('() => {
+        const list = document.querySelector("[data-test=first-steps-list]");
+        const cs = getComputedStyle(list);
+        return { scrolls: cs.overflowX === "auto" && list.scrollWidth > list.clientWidth, fade: (cs.maskImage || cs.webkitMaskImage || "").includes("linear-gradient"), page: document.documentElement.scrollWidth <= document.documentElement.clientWidth };
+    }');
+    expect($m)->toBe(['scrolls' => true, 'fade' => true, 'page' => true])->and(p1Loud($page))->toBe([]);
+});
+
+test('P1 positive control: a thrown error and a 404 fetch reach the channels the other P1 tests read', function () {
+    $page = p1Open(null, '/', 1440);
+    expect(p1Loud($page))->toBe([]);
+    $page->evaluate('() => { setTimeout(() => { throw new Error("p1-positive-control"); }, 0); return fetch("/__p1-missing-route-500").then((r) => r.text()).catch(() => null); }');
+    $page->evaluate('() => new Promise((r) => setTimeout(r, 300))');
+    $loud = implode(' | ', p1Loud($page));
+    expect($loud)->toContain('p1-positive-control')->toContain('404');
 });

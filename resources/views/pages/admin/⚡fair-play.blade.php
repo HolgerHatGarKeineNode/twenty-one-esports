@@ -183,7 +183,7 @@ new #[Title('Fair play')] #[Layout('layouts::app', ['section' => 'admin'])] clas
             </label>
             @error('reason')<p class="m-0 text-[13px] text-loss" role="alert" data-test="fair-play-error">{{ $message }}</p>@enderror
             <span class="flex flex-wrap gap-3">
-                <x-button type="submit" icon="shield-check" data-test="fair-play-link">{{ __('Link accounts') }}</x-button>
+                <x-button type="submit" variant="danger" icon="shield-check" data-test="fair-play-link">{{ __('Link accounts') }}</x-button>
             </span>
         </form>
     </x-admin.panel>

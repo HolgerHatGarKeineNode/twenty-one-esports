@@ -313,11 +313,11 @@ new #[Title('Dispute')] #[Layout('layouts::app', ['section' => 'admin'])] class 
                 <textarea id="reason" wire:model="reason" rows="3" maxlength="500" data-test="decision-reason" class="w-full resize-none rounded-lg border border-edge bg-ground px-3.5 py-3 text-[13px] text-ink"></textarea>
                 <p class="m-0 rounded-md bg-proof-fill px-3.5 py-2.5 text-xs text-proof">{{ __('Result') }}: {{ $preview }}</p>
                 @if ($error)<p class="m-0 text-[13px] text-loss" role="alert" data-test="decision-error">{{ $error }}</p>@endif
-                <div class="flex flex-wrap justify-end gap-3">
+                <div class="flex flex-wrap justify-start gap-3">
+                    <x-button icon="shield-check" wire:click="decide" data-test="confirm-decision">{{ __('Confirm decision') }}</x-button>
                     @if ($case->status === SeriesStatus::Disputed)
                         <x-button variant="quiet" wire:click="askForNewReport" data-test="ask-new-report">{{ $case->new_report_requested_at ? __('New report asked') : __('Ask for a new report') }}</x-button>
                     @endif
-                    <x-button icon="shield-check" wire:click="decide" data-test="confirm-decision">{{ __('Confirm decision') }}</x-button>
                 </div>
             @endif
         </section>
