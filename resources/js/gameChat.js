@@ -22,6 +22,14 @@
  *   recipient's DM relays too, and shows the opponent's reply without the
  *   `match` tag when it belongs to this game (dmReplies() in nostrChat.js),
  *   marked "via Nostr DM".
+ * - A wrap the signer could not open just now (a remote signer timed out or
+ *   was busy, an extension's prompt was closed) is tried again and never
+ *   cached, as in the match room (roomChat.js, TRANSIENT_UNWRAP). Until
+ *   2026-11-07 the game chat cached it as null and never opened it again:
+ *   "Your chats" showed StackingJones' message (opened by the tournament
+ *   desk), the game's chat stayed empty (DerCaddy, 2026-11-07).
+ * - Reads the rumors the match room and the desk opened on this device too,
+ *   as "Your chats" does (chatInbox.js): what the list shows, the chat shows.
  */
 import { SimplePool } from 'nostr-tools/pool';
 import { entryFor, loadCache, saveCache } from './chatCache.js';
@@ -29,10 +37,17 @@ import { readMarkers, saveReadMarker } from './chatRead.js';
 import { chatDay, chatTime } from './chatTime.js';
 import { isExpired } from './lobbyCards.js';
 import { extraInboxRelays, lookupInboxes, relaysFor } from './dmInbox.js';
-import { canEncrypt, chatSince, gameMessages, isUntagged, unwrapMessage, wrapMessage } from './nostrChat.js';
+import { UnwrapError, canEncrypt, chatSince, gameMessages, isUntagged, unwrapMessage, wrapMessage } from './nostrChat.js';
 import { awaitSigner, ensureSigner } from './nostrSign.js';
 
 const MUTES_KEY = 'esports.chat.mutes';
+
+/** The signer failed, not the wrap (roomChat.js): tried again after these delays (ms), never cached. */
+const TRANSIENT_UNWRAP = new Set(['wrap_decrypt', 'seal_decrypt']);
+export const UNWRAP_RETRIES = [2000, 8000, 30000];
+
+/** The other chats' caches on this device (chatCache.js): read, never written from here. */
+const OTHER_CACHES = ['room', 'desk'];
 
 function writeJson(key, value) {
     try {
@@ -58,6 +73,7 @@ export function gameChat(config) {
         // Both players' DM relays (10050), looked up once per start: Promise<Map<pubkey, relays>>.
         inboxes: null,
         closed: false,
+        timers: new Set(),
         t: config.labels,
         // The newest message read on this device (ms), and whether the desktop panel (lg and up) is the chat on screen.
         readAt: 0,
@@ -106,6 +122,8 @@ export function gameChat(config) {
             window.removeEventListener('chess-chat-notice', this.onNotice);
             this.wideQuery?.removeEventListener?.('change', this.onWide);
             this.closed = true;
+            this.timers.forEach(clearTimeout);
+            this.timers.clear();
             this.sub?.close();
             this.inboxSub?.close();
             this.pool?.destroy();
@@ -141,6 +159,8 @@ export function gameChat(config) {
             const { cache, rumors } = loadCache('game', config.me);
             this.cache = cache;
             this.rumors.push(...rumors);
+            // What the match room or the desk opened here already: the same message, without asking the signer again.
+            for (const other of OTHER_CACHES) loadCache(other, config.me).rumors.forEach((rumor) => this.add(rumor));
 
             this.pool = this.makePool();
             const filter = { kinds: [1059], '#p': [config.me], since: chatSince(config.since) };
@@ -160,7 +180,7 @@ export function gameChat(config) {
             });
         },
 
-        async receive(wrap) {
+        async receive(wrap, attempt = 0) {
             if (Object.hasOwn(this.cache, wrap.id)) return;
 
             let rumor = null;
@@ -168,7 +188,14 @@ export function gameChat(config) {
             if (!isExpired(wrap)) {
                 try {
                     rumor = await unwrapMessage(window.nostr, wrap, config.me);
-                } catch {
+                } catch (error) {
+                    // The signer failed, not the wrap: again later, and not in the cache (TRANSIENT_UNWRAP).
+                    if (error instanceof UnwrapError && TRANSIENT_UNWRAP.has(error.code)) {
+                        this.retryUnwrap(wrap, attempt);
+
+                        return;
+                    }
+
                     // Not for us, not valid, or a forged sender: never shown.
                     rumor = null;
                 }
@@ -178,6 +205,16 @@ export function gameChat(config) {
             this.cache[wrap.id] = entryFor('game', rumor);
             if (this.cache[wrap.id] !== null) this.add(this.cache[wrap.id]);
             saveCache('game', config.me, this.cache);
+        },
+
+        retryUnwrap(wrap, attempt) {
+            if (this.closed || attempt >= UNWRAP_RETRIES.length) return;
+
+            const timer = setTimeout(() => {
+                this.timers.delete(timer);
+                if (!this.closed) this.receive(wrap, attempt + 1);
+            }, UNWRAP_RETRIES[attempt]);
+            this.timers.add(timer);
         },
 
         add(rumor) {

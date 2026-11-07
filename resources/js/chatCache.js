@@ -130,8 +130,14 @@ export function migrateLegacy(me, storage = globalThis.localStorage, now = nowSe
  * null again, cheaply.
  */
 export function purgeKey(chat, me) {
-    return `esports.chat.nullpurge.${chat}.${me}`;
+    return `esports.chat.nullpurge.${chat}${PURGE_ROUND[chat] ?? ''}.${me}`;
 }
+
+/**
+ * The game chat cached a wrap its signer failed to open as null until 2026-11-07 (gameChat.js, receive()), after
+ * the purge above: a new mark, so its null entries are dropped once more and the wraps opened anew.
+ */
+const PURGE_ROUND = { game: '2' };
 
 /** Every write of this code marks the cache as its own (markPurged()); only a cache without the mark is purged. */
 function purgeNulls(chat, me, storage, cache) {
