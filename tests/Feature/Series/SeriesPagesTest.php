@@ -186,7 +186,7 @@ test('the room tick renders when a rating or a captain changed outside the match
         'subject' => 'lineup:'.$match->challenger_lineup_id, 'lineup_id' => $match->challenger_lineup_id, 'rating' => 1800, 'results' => 6, 'wins' => 6]);
     $room->call('sync')->assertOk();
     expect($room->effects)->toHaveKey('html')
-        ->and($room->html())->toContain($match->challenger_tag.' 1800');
+        ->and($room->html())->toContain($match->challenger_tag.' 1,800');
 
     // The challenged clan's owner, who sits in no lineup, renames themselves: the captain line follows.
     $owner = User::factory()->create(['name' => 'Old Captain']);

@@ -195,7 +195,7 @@ new class extends Component {
     $leagueKey = LeagueKey::fromConfig() !== null;
     $zone = PreSeason::timezoneFor(auth()->user());
     $sats = fn (int $value): string => PreSeason::formatSats($value);
-    $date = fn ($at): string => CarbonImmutable::instance($at)->setTimezone($zone)->locale(app()->getLocale())->translatedFormat('D j M Y, H:i');
+    $date = fn ($at): string => \App\Support\Formats::date(CarbonImmutable::instance($at), true, $zone);
     $payouts = $this->payouts;
     $pending = $payouts->where('status', PayoutStatus::Pending);
     $claimEnds = SeasonSettlement::claimEndsAt($season);

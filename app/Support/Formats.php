@@ -2,6 +2,7 @@
 
 namespace App\Support;
 
+use Carbon\CarbonImmutable;
 use Carbon\CarbonInterface;
 
 /**
@@ -30,7 +31,7 @@ final class Formats
             return '';
         }
 
-        $local = $at->toImmutable()->setTimezone($zone ?? LeagueTime::zone())->locale(app()->getLocale());
+        $local = self::local($at, $zone);
         $thisYear = $local->year === now($zone ?? LeagueTime::zone())->year;
 
         if (self::german()) {
@@ -47,7 +48,7 @@ final class Formats
             return '';
         }
 
-        $local = $at->toImmutable()->setTimezone($zone ?? LeagueTime::zone())->locale(app()->getLocale());
+        $local = self::local($at, $zone);
         $thisYear = $local->year === now($zone ?? LeagueTime::zone())->year;
 
         if (self::german()) {
@@ -55,6 +56,12 @@ final class Formats
         }
 
         return $local->isoFormat($thisYear ? 'MMM D' : 'MMM D, YYYY');
+    }
+
+    /** The moment in the zone, speaking the page's language. */
+    private static function local(CarbonInterface $at, ?string $zone): CarbonImmutable
+    {
+        return CarbonImmutable::instance($at)->setTimezone($zone ?? LeagueTime::zone())->settings(['locale' => app()->getLocale()]);
     }
 
     private static function german(): bool

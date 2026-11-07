@@ -4,6 +4,7 @@ namespace App\Support\SeasonChain;
 
 use App\Models\Season;
 use App\Models\User;
+use App\Support\Formats;
 use App\Support\PreSeason;
 use Carbon\CarbonImmutable;
 
@@ -125,7 +126,7 @@ final class Seasons
         $local = $block0At->setTimezone(PreSeason::timezoneFor($user))->settings(['locale' => app()->getLocale()]);
 
         return __('Casual until Block 0. Rated play and mining start :when (in :left).', [
-            'when' => $local->translatedFormat('D j M, H:i'),
+            'when' => Formats::date($local, true, $local->getTimezone()->getName()),
             'left' => self::left(PreSeason::secondsLeft()),
         ]);
     }

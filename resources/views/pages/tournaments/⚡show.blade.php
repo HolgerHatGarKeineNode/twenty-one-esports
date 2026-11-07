@@ -983,7 +983,7 @@ new #[Layout('layouts::app', ['section' => 'tournaments', 'realtime' => true, 's
                             <span class="rv-m">{{ __('Starts') }}</span>
                             <time datetime="{{ $tournament->starts_at->copy()->utc()->format('Y-m-d\TH:i:s\Z') }}" class="flex items-baseline gap-2">
                                 <b class="font-display text-[26px] leading-tight font-bold text-ink tabular-nums lg:text-[32px]" data-test="tournament-start-clock">{{ $tournament->starts_at->copy()->setTimezone($startZone)->format('H:i') }}</b>
-                                <span class="rv-m" data-test="tournament-start-day">{{ $tournament->starts_at->copy()->setTimezone($startZone)->translatedFormat('D j M') }} · {{ __(':city time', ['city' => str_replace('_', ' ', \Illuminate\Support\Str::afterLast($startZone, '/'))]) }}</span>
+                                <span class="rv-m" data-test="tournament-start-day">{{ \App\Support\Formats::date($tournament->starts_at, false, $startZone) }} · {{ __(':city time', ['city' => str_replace('_', ' ', \Illuminate\Support\Str::afterLast($startZone, '/'))]) }}</span>
                             </time>
                         </span>
                     @endif

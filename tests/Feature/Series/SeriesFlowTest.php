@@ -423,7 +423,7 @@ test('a confirmed casual series moves both lineups\' casual Elo once, and a seco
         ->and(lineupRatings($match, Rating::CASUAL))->toBe($after)
         ->and(RatingChange::query()->count())->toBe(2);
 
-    $this->get(route('matches.show', $match->number))->assertOk()->assertSee('casual Elo 1000 → 1020');
+    $this->get(route('matches.show', $match->number))->assertOk()->assertSee('casual Elo 1,000 → 1,020');
 });
 
 test('an admin decision rates the series inside the decision; a void rates nothing', function () {

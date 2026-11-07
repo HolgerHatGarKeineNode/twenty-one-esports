@@ -21,6 +21,7 @@ use App\Models\TournamentMatch;
 use App\Models\TournamentParticipant;
 use App\Models\TournamentRound;
 use App\Models\User;
+use App\Support\Formats;
 use App\Support\Hyper\HyperTournamentTeams;
 use App\Support\Payouts\TournamentPlacements;
 use App\Support\Series\CasualMatches;
@@ -216,7 +217,7 @@ final class TournamentNow
 
         if ($series instanceof SeriesMatch && $series->status->isRunning()) {
             return [...$face, 'state' => 'room', 'title' => (string) __('Join your lobby'), 'context' => $context,
-                'line' => $series->start_at === null ? null : (string) __('Your match starts :time. Check in in the match room before.', ['time' => $series->start_at->copy()->setTimezone(self::zone($viewer))->translatedFormat('D j M, H:i')]),
+                'line' => $series->start_at === null ? null : (string) __('Your match starts :time. Check in in the match room before.', ['time' => Formats::date($series->start_at, true, self::zone($viewer))]),
                 'action' => ['label' => (string) __('Open your match room'), 'href' => route('matches.room', $series), 'icon' => 'next'],
                 // A casual cup with the league's lobby (LeagueLobby, P5) shows it here too; a chat-shared lobby is named in the chat only.
                 'lobby' => ['name' => $series->lobby_name, 'password' => $series->lobby_password, 'chat' => $series->isCasualPairing() && ! LeagueLobby::isLeagueMade($series)]];
@@ -249,7 +250,7 @@ final class TournamentNow
         if ($opponentBusy) {
             $line = match (true) {
                 $cup !== null && $cup['outgoing'] !== null => (string) __(':name is in another game right now. Your invite waits; this page tells you once they accept.', ['name' => $name]),
-                $cup !== null && ! ($cup['evening'] ?? false) => (string) __(':name is in another game right now. Invite them when it ends, or the league starts your game at :slot.', ['name' => $name, 'slot' => $cup['slot']->copy()->setTimezone(self::zone($viewer))->translatedFormat('D j M, H:i')]),
+                $cup !== null && ! ($cup['evening'] ?? false) => (string) __(':name is in another game right now. Invite them when it ends, or the league starts your game at :slot.', ['name' => $name, 'slot' => Formats::date($cup['slot'], true, self::zone($viewer))]),
                 default => (string) __(':name is in another game right now. Yours starts within a minute after it ends.', ['name' => $name]),
             };
 
@@ -274,7 +275,7 @@ final class TournamentNow
                     'action' => ['label' => (string) __('Start your game'), 'wire' => 'acceptCupInvite('.(int) $cup['incoming']->id.')', 'icon' => 'pawn']],
                 $cup['outgoing'] !== null => ['state' => 'invited', 'title' => (string) __('Invite sent'), 'context' => $context, 'line' => (string) __('Waiting for :name to accept. Stay here: this page tells you when your game starts.', ['name' => $name])],
                 default => ['state' => 'start', 'title' => (string) __('Start your game'), 'context' => $context,
-                    'line' => ($cup['evening'] ?? false) ? (string) __('Both online? Invite your opponent now. Otherwise the league starts your game as soon as you are both free.') : (string) __('Both online? Invite your opponent now. Otherwise the league starts your game at :slot.', ['slot' => $cup['slot']->copy()->setTimezone(self::zone($viewer))->translatedFormat('D j M, H:i')]),
+                    'line' => ($cup['evening'] ?? false) ? (string) __('Both online? Invite your opponent now. Otherwise the league starts your game as soon as you are both free.') : (string) __('Both online? Invite your opponent now. Otherwise the league starts your game at :slot.', ['slot' => Formats::date($cup['slot'], true, self::zone($viewer))]),
                     'action' => ['label' => (string) __('Invite your opponent'), 'wire' => 'playCupMatch', 'icon' => 'pawn']],
             }];
         }
@@ -621,7 +622,7 @@ final class TournamentNow
     {
         $side = self::side($game, $participant);
         $deadline = $game->deadline_ms === null ? null : Carbon::createFromTimestampMs($game->deadline_ms)->setTimezone(self::zone($viewer));
-        $until = $deadline?->translatedFormat('D j M, H:i');
+        $until = $deadline === null ? null : Formats::date($deadline, true, $deadline->getTimezone()->getName());
 
         if ($side === null) {
             return ['state' => 'play', 'title' => (string) __('Play now'), 'line' => (string) __('Your game is live.')];

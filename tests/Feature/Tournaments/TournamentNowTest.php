@@ -15,6 +15,7 @@ use App\Models\TournamentParticipant;
 use App\Models\User;
 use App\Support\Chess\ChessGameService;
 use App\Support\Chess\ChessInvites;
+use App\Support\Formats;
 use App\Support\Tournaments\CupSchedules;
 use App\Support\Tournaments\TournamentRunner;
 use App\Support\Tournaments\TournamentWaits;
@@ -346,7 +347,7 @@ function nowBlockli(TournamentFormat $format, int $n): Tournament
 test('in a correspondence game the hero names the deadline of the side to move, in the viewer\'s time zone', function () {
     $tournament = nowBlockli(TournamentFormat::SingleElimination, 2);
     $game = BoardGame::query()->whereIn('tournament_match_id', $tournament->matches()->select('id'))->where('status', BoardGameStatus::Active)->sole();
-    $until = Carbon::createFromTimestampMs($game->deadline_ms)->setTimezone('Europe/Berlin')->translatedFormat('D j M, H:i');
+    $until = Formats::date(Carbon::createFromTimestampMs($game->deadline_ms), true, 'Europe/Berlin');
     $whiteName = $tournament->participants()->where('user_id', $game->white_id)->value('name');
 
     expect(nowHero(nowPage($tournament, $game->white)))->toContain('data-state="play"')->toContain('Your move, until '.$until.'.')

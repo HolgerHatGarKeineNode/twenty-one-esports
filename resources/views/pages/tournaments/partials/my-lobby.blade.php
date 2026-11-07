@@ -27,7 +27,7 @@
     <x-tournaments.lobby-creds :name="$lobby['name'] ?? ''" :password="$match->lobby_password" test="my-lobby" :big="! $embedded" />
     <span class="flex flex-wrap items-center justify-between gap-x-4 gap-y-1 border-t border-hairline pt-2">
         @if ($reportUntil !== null && LobbyResults::reportOpen($match))
-            <span class="text-xs text-ink-2" data-test="my-lobby-deadline">{{ __('Players report by :time; after that a director decides.', ['time' => $reportUntil->copy()->setTimezone($zone)->translatedFormat('D j M, H:i')]) }}</span>
+            <span class="text-xs text-ink-2" data-test="my-lobby-deadline">{{ __('Players report by :time; after that a director decides.', ['time' => \App\Support\Formats::date($reportUntil, true, $zone)]) }}</span>
         @endif
         <a href="#lobby-{{ $match->position }}" class="inline-flex min-h-11 items-center text-[13px] font-bold" data-test="my-lobby-report">{{ __('Report the places') }}</a>
     </span>

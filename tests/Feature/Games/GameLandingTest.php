@@ -171,7 +171,7 @@ test('the page shows a standing once the player has a result', function () {
 
     $this->actingAs($me)->get(route('games.series', 'ea-sports-fc-27'))->assertOk()
         ->assertSeeHtml('data-test="game-standing-rank">#2</b>')
-        ->assertSee('1043 Elo after 3 series')
+        ->assertSee('1,043 Elo after 3 series')
         ->assertDontSeeHtml('data-test="game-steps"');
 });
 

@@ -84,7 +84,7 @@ test('a rated 1v1 moves both players\' duel Elo; a casual one moves nothing', fu
             ['before' => 1000, 'after' => 980, 'delta' => -20, 'score' => 0.0],
         ]);
 
-    $this->get(route('hyper.ladder', ['board' => 'duel']))->assertOk()->assertSeeInOrder([$anna->displayName(), '1020', $bert->displayName(), '980']);
+    $this->get(route('hyper.ladder', ['board' => 'duel']))->assertOk()->assertSeeInOrder([$anna->displayName(), '1,020', $bert->displayName(), '980']);
 });
 
 test('a rated team match rates every member against the teams\' average Elo with the member\'s own k-factor', function () {

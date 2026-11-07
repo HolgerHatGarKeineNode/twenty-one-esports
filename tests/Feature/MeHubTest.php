@@ -92,8 +92,8 @@ test('what needs the player, what runs and comes, ratings, results, clan and Loo
 
     // Ratings: chess blitz and the lineup's RL 3v3, both casual before Block 0 (no rank badge), each to its ladder.
     expect(substr_count($html, 'data-test="me-rating" data-pool="casual"'))->toBe(2)
-        ->and($html)->toContain('data-test="me-rating-value">1042<')
-        ->toContain('data-test="me-rating-value">1016<')
+        ->and($html)->toContain('data-test="me-rating-value">1,042<')
+        ->toContain('data-test="me-rating-value">1,016<')
         ->toContain(route('ladder.show', ['game' => 'chess', 'mode' => 'blitz']))
         ->toContain(route('ladder.show', ['game' => 'rocket-league', 'mode' => '3v3']));
 

@@ -174,7 +174,7 @@ new #[Title('Nostr addresses')] #[Layout('layouts::app', ['section' => 'admin'])
                     <li wire:key="hold-{{ $hold->id }}" class="flex min-h-14 flex-wrap items-center gap-3 border-t border-hairline py-2 first:border-t-0" data-test="nip05-hold" data-reason="{{ $hold->reason }}">
                         <span class="flex min-w-0 grow flex-col">
                             <b class="font-mono text-[13px] [overflow-wrap:anywhere]">{{ $hold->name.'@'.Nip05Names::domain() }}</b>
-                            <span class="text-xs text-ink-2">{{ $hold->reason === Nip05Hold::REVOKED ? __('Revoked, held until lifted') : __('Given up, held until :date', ['date' => $hold->held_until?->translatedFormat('j M Y') ?? '']) }}</span>
+                            <span class="text-xs text-ink-2">{{ $hold->reason === Nip05Hold::REVOKED ? __('Revoked, held until lifted') : __('Given up, held until :date', ['date' => \App\Support\Formats::day($hold->held_until) ?? '']) }}</span>
                         </span>
                         <x-button variant="secondary" wire:click="lift({{ $hold->id }})" wire:confirm="{{ __('Lift the hold on :name?', ['name' => $hold->name]) }}" data-test="nip05-lift">{{ __('Lift') }}</x-button>
                     </li>

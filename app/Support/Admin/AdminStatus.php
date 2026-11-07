@@ -15,6 +15,7 @@ use App\Models\TournamentOrganizer;
 use App\Models\TournamentPayout;
 use App\Models\TrustRun;
 use App\Support\Board;
+use App\Support\Formats;
 use App\Support\PreSeason;
 use App\Support\SeasonChain\Seasons;
 use App\Support\Tournaments\TournamentScheduler;
@@ -567,8 +568,7 @@ final class AdminStatus
             return '–';
         }
 
-        return CarbonImmutable::instance($at)->setTimezone((string) config('esports.preseason.display_timezone', 'Europe/Berlin'))
-            ->settings(['locale' => app()->getLocale()])->translatedFormat('D j M Y, H:i');
+        return Formats::date(CarbonImmutable::instance($at), true, (string) config('esports.preseason.display_timezone', 'Europe/Berlin'));
     }
 
     /**

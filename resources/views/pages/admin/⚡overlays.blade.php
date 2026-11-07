@@ -261,7 +261,7 @@ new #[Title('OBS overlays')] #[Layout('layouts::app', ['section' => 'admin'])] c
             @if ($takesTournament)
                 <div class="min-w-0"><span class="rv-lb" id="overlay-tournament-l">{{ __('Tournament') }}</span>
                     <x-ui.select-menu model="tournament" labelledby="overlay-tournament-l" :value="$this->tournament" data-test="overlay-tournament"
-                                      :options="['' => $needsTournament ? __('Choose a tournament') : __('The next cup or tournament, automatically')] + $this->tournaments->mapWithKeys(fn ($choice): array => [$choice->id => $choice->name.', '.$choice->status->label().', '.$choice->starts_at?->translatedFormat('j M Y, H:i')])->all()" />
+                                      :options="['' => $needsTournament ? __('Choose a tournament') : __('The next cup or tournament, automatically')] + $this->tournaments->mapWithKeys(fn ($choice): array => [$choice->id => $choice->name.', '.$choice->status->label().', '.\App\Support\Formats::date($choice->starts_at)])->all()" />
                     @if ($this->tournaments->isEmpty())
                         <span class="mt-1 block rv-m">{{ __('No tournament is open for sign-up or running right now.') }}</span>
                     @endif
@@ -320,7 +320,7 @@ new #[Title('OBS overlays')] #[Layout('layouts::app', ['section' => 'admin'])] c
                         $presetMeta = array_filter([
                             strtoupper($preset->locale),
                             $preset->variant->needsTournament() ? ($preset->tournament?->name ?? __('Tournament no longer exists')) : ($preset->variant->takesTournament() ? $preset->tournament?->name : null),
-                            $preset->rotated_at === null ? __('URL from :date', ['date' => $preset->created_at?->translatedFormat('j M Y')]) : __('URL rotated :date', ['date' => $preset->rotated_at->translatedFormat('j M Y')]),
+                            $preset->rotated_at === null ? __('URL from :date', ['date' => \App\Support\Formats::day($preset->created_at)]) : __('URL rotated :date', ['date' => \App\Support\Formats::day($preset->rotated_at)]),
                         ]);
                     @endphp
                     <span class="rv-m">{{ implode(', ', $presetMeta) }}</span>

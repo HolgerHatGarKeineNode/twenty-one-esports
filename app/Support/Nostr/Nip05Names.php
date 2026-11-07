@@ -5,6 +5,7 @@ namespace App\Support\Nostr;
 use App\Http\Controllers\NostrJsonController;
 use App\Models\Nip05Hold;
 use App\Models\User;
+use App\Support\Formats;
 use App\Support\PreSeason;
 use Carbon\CarbonInterface;
 use Illuminate\Database\UniqueConstraintViolationException;
@@ -169,7 +170,7 @@ final class Nip05Names
         if ($hold !== null) {
             return $hold->reason === Nip05Hold::REVOKED
                 ? __('This name is reserved.')
-                : __('This name was given up recently and is held until :date.', ['date' => $hold->held_until?->copy()->timezone(PreSeason::timezoneFor($user))->translatedFormat('j M Y') ?? '']);
+                : __('This name was given up recently and is held until :date.', ['date' => Formats::day($hold->held_until, PreSeason::timezoneFor($user))]);
         }
 
         if (User::query()->where('nip05_name', $name)->whereKeyNot($user->id)->exists()) {
@@ -179,7 +180,7 @@ final class Nip05Names
         $next = $this->nextChangeAt($user);
 
         if ($next !== null && $next->isFuture()) {
-            return __('You can pick a new name from :date on.', ['date' => $next->copy()->timezone(PreSeason::timezoneFor($user))->translatedFormat('j M Y, H:i')]);
+            return __('You can pick a new name from :date on.', ['date' => Formats::date($next, true, PreSeason::timezoneFor($user))]);
         }
 
         return null;

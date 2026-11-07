@@ -11,7 +11,7 @@
      * the same numbers stay reachable in the table below.
      */
     $sats = fn (int $value): string => \App\Support\PreSeason::formatSats($value);
-    $day = fn (\Carbon\CarbonImmutable $at): string => $at->setTimezone($zone)->locale(app()->getLocale())->translatedFormat('D j M');
+    $day = fn (\Carbon\CarbonImmutable $at): string => \App\Support\Formats::date($at, false, $zone);
     $from = $curve['from'];
     $to = $curve['to'];
     $span = max(1, $to->getTimestamp() - $from->getTimestamp());

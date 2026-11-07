@@ -261,7 +261,7 @@ test('the ladder lists players by rating with their tier, and shows the Pre-Seas
     seedRating($mid, Rating::CASUAL, 1010, 6);
 
     $this->get(route('ladder.show', ['chess', 'blitz']).'?pool=casual')
-        ->assertOk()->assertSeeInOrder(['topdog', '1180', 'midway', '1010', 'lowkey', '940'])
+        ->assertOk()->assertSeeInOrder(['topdog', '1,180', 'midway', '1,010', 'lowkey', '940'])
         ->assertDontSee('Diamond I');
 
     openLadders();
@@ -271,7 +271,7 @@ test('the ladder lists players by rating with their tier, and shows the Pre-Seas
 
     $this->get(route('ladder.show', ['chess', 'blitz']))
         ->assertOk()
-        ->assertSeeInOrder(['lowkey', 'Grand Champion III', '1430', 'topdog', 'Diamond I', '1180', 'midway', 'Provisional', '1010'])
+        ->assertSeeInOrder(['lowkey', 'Grand Champion III', '1,430', 'topdog', 'Diamond I', '1,180', 'midway', 'Provisional', '1,010'])
         ->assertSee(route('players.show', $top->npub));
 
     $this->get('/ladder/chess/bullet')->assertNotFound();
@@ -315,12 +315,12 @@ test('the player page and the player card show the casual blitz Elo and the line
 
     foreach ([route('players.show', $player->npub), route('players.card', $player->npub)] as $url) {
         $this->get($url)->assertOk()
-            ->assertSeeInOrder(['Chess blitz', 'Casual', '1020', 'RL 2v2', 'Casual', '987', 'provisional'])
+            ->assertSeeInOrder(['Chess blitz', 'Casual', '1,020', 'RL 2v2', 'Casual', '987', 'provisional'])
             ->assertDontSee('Silver III');
     }
 
     openLadders();
     seedRating($player, Rating::RATED, 1060, 6);
 
-    $this->get(route('players.show', $player->npub))->assertOk()->assertSeeInOrder(['Chess blitz', '1060', 'Gold II']);
+    $this->get(route('players.show', $player->npub))->assertOk()->assertSeeInOrder(['Chess blitz', '1,060', 'Gold II']);
 });

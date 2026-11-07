@@ -162,7 +162,7 @@ new class extends Component {
     $tournament = $this->tournament;
     $viewer = auth()->user();
     $zone = (string) ($viewer?->timezone ?? config('esports.preseason.display_timezone'));
-    $time = fn (?string $at): string => $at === null ? '' : \Carbon\CarbonImmutable::parse($at)->setTimezone($zone)->translatedFormat('D j M, H:i');
+    $time = fn (?string $at): string => $at === null ? '' : \App\Support\Formats::date(\Carbon\CarbonImmutable::parse($at), true, $zone);
 @endphp
 
 <section aria-labelledby="lobbies-h" class="flex flex-col gap-4" data-test="lobbies">

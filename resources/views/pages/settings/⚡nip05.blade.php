@@ -119,7 +119,7 @@ new #[Title('Nostr address')] class extends Component {
                 </span>
                 <span id="nip05-rules" class="text-xs leading-normal text-ink-2">{{ __(':min to :max characters: a to z, 0 to 9, dot, underscore, hyphen. You can change it once every :days days.', ['min' => (int) config('esports.nip05.min_length'), 'max' => (int) config('esports.nip05.max_length'), 'days' => (int) config('esports.nip05.change_days')]) }}</span>
                 @if ($next !== null)
-                    <span class="text-xs text-ink-2" data-test="nip05-next">{{ __('You can pick a new name from :date on.', ['date' => $next->copy()->timezone($tz)->translatedFormat('j M Y, H:i')]) }}</span>
+                    <span class="text-xs text-ink-2" data-test="nip05-next">{{ __('You can pick a new name from :date on.', ['date' => \App\Support\Formats::date($next, true, $tz)]) }}</span>
                 @endif
                 @if ($error !== '')
                     <span class="text-xs text-loss" role="alert" data-test="nip05-error">{{ $error }}</span>

@@ -27,7 +27,7 @@
     };
     $round = $now['round'];
     $tz = auth()->user()?->timezone ?? (string) config('esports.preseason.display_timezone');
-    $format = fn ($at) => $at->copy()->setTimezone($tz)->translatedFormat('D j M, H:i');
+    $format = fn ($at) => \App\Support\Formats::date($at, true, $tz);
     $action = $now['action'];
     $cover = app(\App\Games\GameRegistry::class)->cover((string) $now['game']);
     // Waiting on a phone: the band and the title take the pinned lobby's low size, so the round's running games and the
@@ -103,7 +103,7 @@
                 <span class="basis-full text-[13px] font-bold text-ink-2">{{ __('Your match starts at') }}</span>
                 <time datetime="{{ $now['starts']->copy()->utc()->format('Y-m-d\TH:i:s\Z') }}" class="font-display text-[40px] leading-none font-bold text-btc-hi tabular-nums lg:text-[56px]" data-test="now-starts-clock">{{ $now['starts']->copy()->setTimezone($tz)->format('H:i') }}</time>
                 <span class="flex flex-col text-[13px] text-ink-2">
-                    <span data-test="now-starts-zone">{{ $now['starts']->copy()->setTimezone($tz)->translatedFormat('D j M') }} · {{ __(':city time', ['city' => str_replace('_', ' ', \Illuminate\Support\Str::afterLast($tz, '/'))]) }}</span>
+                    <span data-test="now-starts-zone">{{ \App\Support\Formats::date($now['starts'], false, $tz) }} · {{ __(':city time', ['city' => str_replace('_', ' ', \Illuminate\Support\Str::afterLast($tz, '/'))]) }}</span>
                     <span>{{ __('Starts in') }} <b class="text-ink tabular-nums" role="timer" x-data="countdown({ at: {{ (int) $now['starts']->getTimestampMs() }}, days: @js(__(':count day|:count days')) })" x-text="text" data-test="now-starts-countdown">{{ sprintf('%02d:%02d:%02d', intdiv($left = max(0, (int) now()->diffInSeconds($now['starts'])), 3600), intdiv($left % 3600, 60), $left % 60) }}</b></span>
                 </span>
             </div>

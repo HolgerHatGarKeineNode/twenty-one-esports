@@ -84,7 +84,7 @@ test('a rated player ladder shows the season, the overview, tier lines, form, Bl
 
     $response->assertSee('data-test="ladder-season"', false)->assertSee('since')->assertSee(route('mining'), false)
         // Overview: 11 distinct games from the changes, 4 players, average Elo round((1430+1180+1010+940)/4) = 1140.
-        ->assertSeeInOrder(['data-test="ladder-stat-games">11<', 'data-test="ladder-stat-entries">4<', 'data-test="ladder-stat-average">1140<'], false)
+        ->assertSeeInOrder(['data-test="ladder-stat-games">11<', 'data-test="ladder-stat-entries">4<', 'data-test="ladder-stat-average">1,140<'], false)
         ->assertSee('Standings after match #402')
         // Share of wins: 9 + 4 + 2 + 1 = 16 wins, most first.
         ->assertSeeInOrder(['Share of wins', '16 wins on this ladder', 'topdog', '56%', 'highroller', '25%', 'midway', '13%', 'lowkey', '6%'])

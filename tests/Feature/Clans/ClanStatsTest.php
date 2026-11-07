@@ -80,7 +80,7 @@ test('the clans page and the clan page show the same real Clan Rating, Hashrate 
         ->assertDontSee('data-test="rating-empty"', false);
 
     $this->get(route('clans.show', $clan))->assertOk()
-        ->assertSee('data-test="clan-rating">'.$clanRating.'</b>', false)
+        ->assertSee('data-test="clan-rating">'.number_format($clanRating).'</b>', false)
         ->assertSee('data-test="hashrate-s">3</b>', false)
         ->assertSee('data-test="hashrate-w">3</b>', false)
         ->assertSeeInOrder(['owner', 'data-test="block-height">1</b>'], false)
