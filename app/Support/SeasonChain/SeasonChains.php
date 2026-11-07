@@ -417,23 +417,26 @@ final class SeasonChains
      * one `board` row (`*` for a void board, which has no result); `winner`
      * by side; `elo` only for a rated result; the challenge's `match`. A
      * player whose account was deleted after the game is named by the key
-     * frozen with the board.
+     * frozen with the board. A board of a Blockli team match (NIP rev. 9.25)
+     * has the same tags without a game record, which a board game has none of.
      *
      * @param  list<string>|null  $block
      * @return list<list<string>>
      */
-    private function teamBoardTags(ChessGame $game, SeriesMatch $match, Season $season, string $ladder, ?array $block): array
+    private function teamBoardTags(ChessGame|BoardGame $game, SeriesMatch $match, Season $season, string $ladder, ?array $block): array
     {
+        $chess = $game instanceof ChessGame;
         $whiteSide = $game->board % 2 === 1 ? 'challenger' : 'challenged';
         $frozen = self::frozenBoardKeys($match, (int) $game->board);
         // A deleted side reads as the "Deleted player" default (pubkey of zeros, ChessGame::white()): never that one.
-        $white = $game->white_id === null ? (string) $frozen[$whiteSide] : $game->white->pubkey;
-        $black = $game->black_id === null ? (string) $frozen[SeriesMatch::otherSide($whiteSide)] : $game->black->pubkey;
-        $void = $game->status === ChessGameStatus::Aborted;
+        $white = $game->white_id === null || $game->white === null ? (string) $frozen[$whiteSide] : $game->white->pubkey;
+        $black = $game->black_id === null || $game->black === null ? (string) $frozen[SeriesMatch::otherSide($whiteSide)] : $game->black->pubkey;
+        $void = $chess ? $game->status === ChessGameStatus::Aborted : $game->status === BoardGameStatus::Aborted;
+        $forfeit = $chess ? $game->end_reason === ChessEndReason::Forfeit : $game->end_reason === BoardEndReason::Forfeit->value;
 
         $elo = [];
         $players = [$game->white_id => $white, $game->black_id => $black];
-        $changes = RatingChange::query()->with('rating')->where('source', RatingChange::CHESS)->where('source_id', $game->id)->orderBy('id')->get();
+        $changes = RatingChange::query()->with('rating')->where('source', $chess ? RatingChange::CHESS : RatingChange::BOARD)->where('source_id', $game->id)->orderBy('id')->get();
 
         foreach ($changes as $change) {
             $userId = $change->rating->user_id;
@@ -445,14 +448,14 @@ final class SeasonChains
 
         return $this->teamBoardTagList($match, $season, $ladder, (int) $game->board, $white, $black, [
             'result' => $void ? '*' : (string) $game->result,
-            'resolution' => $void ? SeriesResolution::Void->value : ($game->end_reason === ChessEndReason::Forfeit ? Resolution::Forfeit : Resolution::Admin)->value,
+            'resolution' => $void ? SeriesResolution::Void->value : ($forfeit ? Resolution::Forfeit : Resolution::Admin)->value,
             'winner' => match (true) {
                 $void => 'none',
                 $game->result === '1/2-1/2' => 'draw',
                 $game->result === '1-0' => $whiteSide,
                 default => SeriesMatch::otherSide($whiteSide),
             },
-            'record' => $game->recordEvent,
+            'record' => $chess ? $game->recordEvent : null,
             'elo' => $elo,
             'gate' => $game->gate_at_accept,
             'clans' => $game->clans_at_accept,
@@ -542,7 +545,7 @@ final class SeasonChains
             $tags[] = $block;
         }
 
-        $tags[] = ['alt', "Esports league attestation: chess team match #{$match->number}, board {$number}, ".($board['resolution'] === SeriesResolution::Void->value ? 'void' : $board['result'])];
+        $tags[] = ['alt', "Esports league attestation: {$match->game} team match #{$match->number}, board {$number}, ".($board['resolution'] === SeriesResolution::Void->value ? 'void' : $board['result'])];
 
         return $tags;
     }
@@ -570,7 +573,7 @@ final class SeasonChains
         }
 
         $live = Seasons::live();
-        $ladder = Ladders::address('chess', (string) $match->mode);
+        $ladder = Ladders::address((string) $match->game, (string) $match->mode);
 
         // As a board game of this match: only on the ladder the challenge pinned, while it is open (NIP rule 16).
         if ($live === null || $ladder === null || $match->ladder_address !== $ladder) {
@@ -610,7 +613,7 @@ final class SeasonChains
             'board' => $board,
             'match_number' => $match->number,
             'label' => '#'.$match->number.'/'.$board,
-            'game' => 'chess',
+            'game' => (string) $match->game,
             'mode' => (string) $match->mode,
             'ladder_address' => $ladder,
             'attested_at' => $attestedAt,
@@ -631,11 +634,22 @@ final class SeasonChains
      * by no player: the resolution is `admin` (`forfeit` for a Black who
      * missed the first move of a tournament game) and the content says so.
      * A board game has no game record (`64`), so no `e` names one.
+     *
+     * A board of a Blockli team match (NIP rev. 9.25) is attested as a chess
+     * team match board is ({@see attestChessGame()}): with its board number,
+     * the challenge's `match` and lineups, `challenger`/`challenged` by side
+     * ({@see teamBoardTags()}); a board forfeit is `forfeit` without `elo` or
+     * block, a board where nobody moved (aborted) `void`, both only from the
+     * team result (ChessTeamMatches::settle()).
      */
     public function attestBoardGame(BoardGame $game): ?SeasonAttestation
     {
-        if (! $game->rated || $game->status !== BoardGameStatus::Finished || ! in_array($game->result, ['1-0', '0-1', '1/2-1/2'], true)
-            || $game->white_id === null || $game->black_id === null) {
+        $team = $game->series_match_id !== null;
+        $voidBoard = $team && $game->status === BoardGameStatus::Aborted;
+
+        // A team board names a deleted player by the key frozen at the lock; a solo game needs both accounts.
+        if (! $game->rated || (! $voidBoard && ($game->status !== BoardGameStatus::Finished || ! in_array($game->result, ['1-0', '0-1', '1/2-1/2'], true)))
+            || (! $team && ($game->white_id === null || $game->black_id === null))) {
             return null;
         }
 
@@ -648,25 +662,28 @@ final class SeasonChains
         }
 
         $season = Season::query()->whereKey($live->id)->lockForUpdate()->firstOrFail();
-        $existing = $season->attestations()->where(['source' => SeasonAttestation::BOARD, 'source_id' => $game->id, 'board' => 1])->first();
+        $board = $team ? (int) $game->board : 1;
+        $existing = $season->attestations()->where(['source' => SeasonAttestation::BOARD, 'source_id' => $game->id, 'board' => $board])->first();
 
         if ($existing !== null) {
             return $existing;
         }
 
         $league = LeagueKey::required();
-        $game->loadMissing(['white', 'black']);
+        $game->loadMissing(['white', 'black', 'seriesMatch.challengeEvent', 'seriesMatch.answerEvent']);
         $attestedAt = $this->nextAttestationTime($season);
-        // Tournament games never mine (user, 2026-09-26: "die Chain gehört zur Season").
-        $candidate = $game->tournament_match_id === null ? $this->boardCandidate($game, $attestedAt) : null;
+        // Tournament games never mine (user, 2026-09-26: "die Chain gehört zur Season"), and neither does a board the
+        // league decided, a forfeit or a void (NIP rev. 9.25, as rev. 9.22: no `elo`, no block).
+        $candidate = $game->tournament_match_id === null && ! $voidBoard && ! ($team && $game->end_reason === BoardEndReason::Forfeit->value)
+            ? $this->boardCandidate($game, $attestedAt) : null;
 
         $row = [
             'season_id' => $season->id,
             'source' => SeasonAttestation::BOARD,
             'source_id' => $game->id,
-            'board' => 1,
-            'match_number' => $game->number,
-            'label' => '#'.$game->number,
+            'board' => $board,
+            'match_number' => $game->matchNumber(),
+            'label' => $team ? $game->number() : '#'.$game->number,
             'game' => $game->game,
             'mode' => $game->mode,
             'ladder_address' => $ladder,
@@ -692,10 +709,14 @@ final class SeasonChains
             $block = ['block', $verdict->mines() ? (string) $row['height'] : '', $tip['id']];
         }
 
-        $content = $game->end_reason === BoardEndReason::Forfeit->value
-            ? 'Decided by forfeit: a player missed the first move of a tournament game; unrated.'
-            : 'Played on the league server, which checked every move; no signed report or response.';
-        $event = $league->publish(self::ATTESTATION, $this->boardTags($game, $season, $ladder, $block), $content, $attestedAt->getTimestamp());
+        $content = match (true) {
+            $voidBoard => 'Void: neither player made a first move on this board of the team match; no board point for either side.',
+            $team && $game->end_reason === BoardEndReason::Forfeit->value => 'Decided by forfeit: a player missed the first move on this board of the team match; unrated, one board point for the side that showed up.',
+            $game->end_reason === BoardEndReason::Forfeit->value => 'Decided by forfeit: a player missed the first move of a tournament game; unrated.',
+            default => 'Played on the league server, which checked every move; no signed report or response.',
+        };
+        $tags = $game->seriesMatch !== null ? $this->teamBoardTags($game, $game->seriesMatch, $season, $ladder, $block) : $this->boardTags($game, $season, $ladder, $block);
+        $event = $league->publish(self::ATTESTATION, $tags, $content, $attestedAt->getTimestamp());
 
         return SeasonAttestation::query()->create($row + ['event_id' => $event->event_id, 'nostr_event_id' => $event->id]);
     }
@@ -715,9 +736,10 @@ final class SeasonChains
         $pin = GatePin::fromArray($game->gate_at_accept);
         $clans = $this->clans([$winner, $loser], $game->clans_at_accept);
 
+        // A board of a team match: labelled `#<challenge>/<board>`, one challenge for all its boards (as chess).
         return new Candidate(
-            '#'.$game->number,
-            'board:'.$game->id,
+            $game->series_match_id === null ? '#'.$game->number : $game->number(),
+            $game->series_match_id === null ? 'board:'.$game->id : 'series:'.$game->series_match_id,
             $game->game,
             $game->game.'/'.$game->mode,
             $attestedAt,

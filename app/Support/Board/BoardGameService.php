@@ -16,6 +16,7 @@ use App\Models\BoardInvite;
 use App\Models\BoardMove;
 use App\Models\BoardQueueEntry;
 use App\Models\ChessQueueEntry;
+use App\Models\SeriesMatch;
 use App\Models\SeriesQueueEntry;
 use App\Models\TournamentMatch;
 use App\Models\User;
@@ -89,6 +90,16 @@ use Illuminate\Support\Facades\DB;
  * before a deadline. Every game ends by the rules on their own: both rule
  * sets draw after a run of quiet moves, and progress is finite.
  *
+ * Boards of a Blockli team match (NIP rev. 9.25, "Start and board forfeit")
+ * follow the rules of a chess team match board (ChessGameService): they start
+ * for their two players whatever else they do, the first-move window is
+ * `esports.team_matches.first_move_seconds` from the agreed start (at least
+ * `late_start_floor_seconds` from a late actual start), a side that misses it
+ * loses the board by forfeit (unrated; attested with the team result,
+ * App\Support\Chess\ChessTeamMatches::settle()), both sides: the board is
+ * void. Its players cannot abort it, and every end of a board asks its team
+ * match for the result.
+ *
  * Not yet here (later phases of the plan): a record of the game.
  */
 final class BoardGameService
@@ -104,10 +115,17 @@ final class BoardGameService
      * Without a mode the game plays correspondence where it has it, else its
      * lobby mode (BoardGame::lobbyMode()).
      *
+     * A board of a Blockli team match (`$teamMatch`, `$board`) starts for its
+     * two players whatever else they do (ChessTeamMatches::startBoard()), as
+     * a chess board does: neither their own reservation for this team match
+     * nor another live game refuses it; a player held elsewhere simply misses
+     * the first move. It is rated only while the ladder its challenge pinned
+     * is still open, and casual otherwise (fail closed).
+     *
      * @throws BoardRuleViolation for a game that is no switched-on board game,
      *                            a mode without a clock, or a player already in a live game
      */
-    public function start(string $slug, User $white, User $black, ?string $mode = null, ?int $tournamentMatchId = null, ?int $tournamentGame = null, ?int $firstMoveSeconds = null, ?GatePin $ratedGate = null): BoardGame
+    public function start(string $slug, User $white, User $black, ?string $mode = null, ?int $tournamentMatchId = null, ?int $tournamentGame = null, ?int $firstMoveSeconds = null, ?GatePin $ratedGate = null, ?SeriesMatch $teamMatch = null, ?int $board = null): BoardGame
     {
         if ($white->is($black)) {
             throw new BoardRuleViolation('same_player');
@@ -126,10 +144,25 @@ final class BoardGameService
             ? Ladders::address($slug, $mode)
             : TournamentMatch::query()->with('tournament')->find($tournamentMatchId)?->tournament->openLadder());
         $ratedGate = $ladder === null ? null : $ratedGate;
+        $clans = $ratedGate === null ? null : RatedBoard::clans($white, $black);
+        $firstMoveAt = null;
 
-        $game = DB::transaction(function () use ($slug, $mode, $white, $black, $initialMs, $incrementMs, $rules, $start, $tournamentMatchId, $tournamentGame, $firstMoveSeconds, $ratedGate, $ladder, $daily): BoardGame {
-            // A correspondence game (P8) is no live game: it neither waits for one to end nor ends a search.
-            foreach ($daily ? [] : [$white, $black] as $player) {
+        if ($teamMatch !== null) {
+            // A board is rated on the ladder its challenge pinned, while that ladder is still the open one;
+            // otherwise casual, never rated without a ladder (as ChessGameService::start()).
+            $ladder = $ratedGate !== null && $teamMatch->rated && $teamMatch->ladder_address !== null && $teamMatch->ladder_address === Ladders::address($slug, $mode)
+                ? $teamMatch->ladder_address : null;
+            $ratedGate = $ladder === null ? null : $ratedGate;
+            // Each player counts for the clan of the accept (NIP rev. 9.25, as rev. 9.22), never the clan of today.
+            $clans = $ratedGate === null ? null : array_intersect_key((array) $teamMatch->clans_at_accept, array_flip([$white->pubkey, $black->pubkey]));
+            $firstMoveSeconds = ChessTeamMatches::firstMoveSeconds();
+            $firstMoveAt = $teamMatch->start_at?->getTimestampMs();
+        }
+
+        $game = DB::transaction(function () use ($slug, $mode, $white, $black, $initialMs, $incrementMs, $rules, $start, $tournamentMatchId, $tournamentGame, $firstMoveSeconds, $ratedGate, $ladder, $daily, $teamMatch, $board, $clans, $firstMoveAt): BoardGame {
+            // A correspondence game (P8) is no live game: it neither waits for one to end nor ends a search. Nor
+            // does a team match board wait: it starts for its players whatever else they play (as chess).
+            foreach ($daily || $teamMatch !== null ? [] : [$white, $black] as $player) {
                 if ($this->activeGameOf($player) !== null) {
                     throw new BoardRuleViolation('already_playing', "{$player->id} already plays a live board game.");
                 }
@@ -142,12 +175,12 @@ final class BoardGameService
             }
 
             // The casual lock (user, 2026-10-03): no casual game, live or by correspondence, while a player's cup match in a running round is open.
-            foreach ($tournamentMatchId === null ? [$white, $black] : [] as $player) {
+            foreach ($tournamentMatchId === null && $teamMatch === null ? [$white, $black] : [] as $player) {
                 if (CupMatchNow::lockOf($player) !== null) {
                     throw new BoardRuleViolation(CupMatchNow::LOCKED, __('Your cup match comes first.'));
                 }
 
-                // From the lineup lock a chess team match's players start no other game (plan "Schach Rapid und Clan", P4).
+                // From the lineup lock a team match's players start no other game (plan "Schach Rapid und Clan", P4).
                 if (ChessTeamMatches::reservationOf($player) !== null) {
                     throw new BoardRuleViolation(ChessTeamMatches::RESERVED, __('Your clan match comes first.'));
                 }
@@ -155,6 +188,12 @@ final class BoardGameService
 
             $now = $this->nowMs();
             $players = [$white->id, $black->id];
+            $firstMoveMs = $firstMoveSeconds !== null ? $firstMoveSeconds * 1000 : ($daily ? $initialMs : $this->firstMoveMs());
+            // A board's window runs from the agreed start, also when the tick comes late, but never ends sooner than
+            // `late_start_floor_seconds` after the actual start (as a chess board, CEO decision 2026-10-05).
+            $deadline = $firstMoveAt !== null
+                ? max($firstMoveAt + $firstMoveMs, $now + ChessTeamMatches::lateStartFloorSeconds() * 1000)
+                : $now + $firstMoveMs;
 
             // One intent at a time: both stop searching anywhere, and their open board invites are withdrawn.
             if (! $daily) {
@@ -180,14 +219,16 @@ final class BoardGameService
                 'white_ms' => $initialMs,
                 'black_ms' => $initialMs,
                 'turn_started_ms' => $now,
-                'deadline_ms' => $now + ($firstMoveSeconds !== null ? $firstMoveSeconds * 1000 : ($daily ? $initialMs : $this->firstMoveMs())),
+                'deadline_ms' => $deadline,
                 'first_move_seconds' => $firstMoveSeconds,
                 'tournament_match_id' => $tournamentMatchId,
                 'tournament_game' => $tournamentGame,
                 'rated' => $ratedGate !== null,
                 'ladder_address' => $ladder,
                 'gate_at_accept' => $ratedGate?->toArray(),
-                'clans_at_accept' => $ratedGate === null ? null : RatedBoard::clans($white, $black),
+                'clans_at_accept' => $clans,
+                'series_match_id' => $teamMatch?->id,
+                'board' => $teamMatch === null ? null : $board,
             ]);
         });
 
@@ -450,8 +491,8 @@ final class BoardGameService
                 throw new BoardRuleViolation('too_late_to_abort');
             }
 
-            // A tournament game is the league's to abort (a missed first move), never a player's.
-            if ($game->tournament_match_id !== null) {
+            // A tournament game or a team match board is the league's to abort (a missed first move), never a player's.
+            if ($game->hasEnvelope()) {
                 throw new BoardRuleViolation('tournament_game');
             }
 
@@ -717,7 +758,15 @@ final class BoardGameService
             return false;
         }
 
-        if (! $game->clocksRunning() && $game->tournament_match_id !== null && $game->ply === 1) {
+        if (! $game->clocksRunning() && $game->series_match_id !== null) {
+            // A team match board (as a chess one): a side that missed its first move loses the board by forfeit; before
+            // any move a Black who never opened the board missed it too, and both missed: the board is void.
+            $missed = $this->missedFirstMove($game);
+
+            count($missed) === 1
+                ? $this->end($game, BoardGameStatus::Finished, $missed[0] === 'w' ? '0-1' : '1-0', BoardEndReason::Forfeit->value, $game->deadline_ms)
+                : $this->end($game, BoardGameStatus::Aborted, null, BoardEndReason::Aborted->value, $game->deadline_ms);
+        } elseif (! $game->clocksRunning() && $game->tournament_match_id !== null && $game->ply === 1) {
             // A tournament game whose Black missed the first move after White's: Black loses by forfeit.
             $this->end($game, BoardGameStatus::Finished, '1-0', BoardEndReason::Forfeit->value, $game->deadline_ms);
         } elseif (! $game->clocksRunning()) {
@@ -730,6 +779,41 @@ final class BoardGameService
         $game->save();
 
         return true;
+    }
+
+    /**
+     * The sides of a team match board that missed their first move when the
+     * first-move deadline passed: the side to move, and before any move a
+     * Black who never opened the board (as ChessGameService).
+     *
+     * @return list<'w'|'b'>
+     */
+    private function missedFirstMove(BoardGame $game): array
+    {
+        $missed = [$game->turn];
+
+        if ($game->ply === 0 && $game->black_seen_at === null) {
+            $missed[] = 'b';
+        }
+
+        return array_values(array_unique($missed));
+    }
+
+    /**
+     * The player opened a board of a team match: the first visit is kept, so
+     * a Black who never opened a board nobody moved on missed the first move
+     * too (as ChessGameService::markPresent()).
+     */
+    public function markSeen(BoardGame $game, User $user): void
+    {
+        $color = $game->colorOf($user);
+
+        if ($color === null || $game->series_match_id === null || ! $game->isActive()) {
+            return;
+        }
+
+        $seen = $color === 'w' ? 'white_seen_at' : 'black_seen_at';
+        BoardGame::query()->whereKey($game->id)->whereNull($seen)->update([$seen => now()]);
     }
 
     /**
@@ -759,7 +843,18 @@ final class BoardGameService
                 app(RatingService::class)->applyBoardGame($game);
             }
 
-            app(SeasonChains::class)->attestBoardGame($game);
+            // A team match board's forfeit is attested with its team result (ChessTeamMatches::settle()), as chess:
+            // if the same side showed up at no board, the whole team match is one forfeit and no board is attested.
+            if ($game->series_match_id === null || $reason !== BoardEndReason::Forfeit->value) {
+                app(SeasonChains::class)->attestBoardGame($game);
+            }
+        }
+
+        // A team match board asks its team match for the result; a failure there is reported and never undoes the
+        // board, the tick settles later (as ChessGameService::moveBracket()).
+        if ($game->series_match_id !== null) {
+            $matchId = $game->series_match_id;
+            DB::afterCommit(fn () => rescue(fn () => app(ChessTeamMatches::class)->settleById($matchId)));
         }
 
         if ($game->tournament_match_id !== null) {

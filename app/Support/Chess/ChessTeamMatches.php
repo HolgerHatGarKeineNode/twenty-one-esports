@@ -2,10 +2,13 @@
 
 namespace App\Support\Chess;
 
+use App\Enums\BoardEndReason;
+use App\Enums\BoardGameStatus;
 use App\Enums\ChessEndReason;
 use App\Enums\ChessGameStatus;
 use App\Enums\SeriesResolution;
 use App\Enums\SeriesStatus;
+use App\Models\BoardGame;
 use App\Models\BoardQueueEntry;
 use App\Models\ChessGame;
 use App\Models\ChessQueueEntry;
@@ -15,6 +18,7 @@ use App\Models\SeriesMatch;
 use App\Models\SeriesMatchBoard;
 use App\Models\SeriesQueueEntry;
 use App\Models\User;
+use App\Support\Board\BoardGameService;
 use App\Support\Notifications\TeamMatchNotifications;
 use App\Support\Rating\EloRating;
 use App\Support\SeasonChain\GatePin;
@@ -68,6 +72,13 @@ use Illuminate\Support\Facades\DB;
  *   `none` for a team draw; the boards the league decided (forfeit, void)
  *   are attested now, the played ones were attested when they ended. No
  *   team result event: the NIP derives it from the board attestations.
+ *
+ * Blockli team matches (NIP rev. 9.25; DerCaddy, 2026-11-06: "Bau mir Rapid
+ * und orientiere dich strikt an dem Pendant von Schach!") run through the
+ * same class and the same rules: a `blockli/rapid` lineup, the board order
+ * by Blockli rapid Elo, each board a Blockli game (App\Models\BoardGame,
+ * started by BoardGameService), the challenger with the first move (White)
+ * on odd boards. Only what a board is differs ({@see boardGamesOf()}).
  */
 final class ChessTeamMatches
 {
@@ -330,7 +341,7 @@ final class ChessTeamMatches
             }
 
             foreach (SeriesMatch::SIDES as $side) {
-                $this->freeze($picks->get($side) ?? collect());
+                $this->freeze($picks->get($side) ?? collect(), (string) $locked->game);
             }
 
             $locked->update(['lineup_locked_at' => now()]);
@@ -375,10 +386,10 @@ final class ChessTeamMatches
      *
      * @param  Collection<int, SeriesMatchBoard>  $picks
      */
-    private function freeze(Collection $picks): void
+    private function freeze(Collection $picks, string $game = 'chess'): void
     {
-        $rows = $picks->map(function (SeriesMatchBoard $pick): array {
-            $standing = $pick->user === null ? ['rating' => null, 'pool' => null, 'results' => null] : $this->standing($pick->user);
+        $rows = $picks->map(function (SeriesMatchBoard $pick) use ($game): array {
+            $standing = $pick->user === null ? ['rating' => null, 'pool' => null, 'results' => null] : $this->standing($pick->user, $game);
 
             return ['pick' => $pick, ...$standing];
         })->all();
@@ -416,14 +427,14 @@ final class ChessTeamMatches
      * A player's rapid Elo for the board order (NIP rev. 9.22, "Board
      * order"): the rating on the season's rated rapid ladder, else the
      * casual rapid rating, else the start rating; with the results on that
-     * ladder.
+     * ladder. `$game` is the team match's game: chess, or Blockli (rev. 9.25).
      *
      * @return array{rating: int, pool: 'rated'|'casual'|'start', results: int}
      */
-    public function standing(User $user): array
+    public function standing(User $user, string $game = 'chess'): array
     {
-        $season = Ladders::isOpen('chess', 'rapid') ? Ladders::season() : null;
-        $base = Rating::query()->where(['game' => 'chess', 'mode' => 'rapid', 'subject' => 'user:'.$user->id]);
+        $season = Ladders::isOpen($game, 'rapid') ? Ladders::season() : null;
+        $base = Rating::query()->where(['game' => $game, 'mode' => 'rapid', 'subject' => 'user:'.$user->id]);
         $rated = $season === null ? null : (clone $base)->where('pool', Rating::RATED)->where('season', $season)->first();
         $rating = $rated ?? (clone $base)->where('pool', Rating::CASUAL)->where('season', '')->first();
 
@@ -444,7 +455,8 @@ final class ChessTeamMatches
         $started = 0;
         $due = SeriesMatch::query()->whereNotNull('boards')->where('status', SeriesStatus::Accepted)->whereNotNull('lineup_locked_at')
             ->whereNotNull('start_at')->where('start_at', '<=', now())
-            ->whereRaw('(select count(*) from chess_games where chess_games.series_match_id = series_matches.id) < series_matches.boards')
+            ->whereRaw('(select count(*) from chess_games where chess_games.series_match_id = series_matches.id)'
+                .' + (select count(*) from board_games where board_games.series_match_id = series_matches.id) < series_matches.boards')
             ->orderBy('start_at')->get();
 
         foreach ($due as $match) {
@@ -474,11 +486,12 @@ final class ChessTeamMatches
      * is player k of the challenger side against player k of the challenged
      * side; the challenger has White on odd boards (NIP rev. 9.22). Null
      * when nothing was due, or when a player's account is gone (that board
-     * counts as missed, {@see boardResults()}).
+     * counts as missed, {@see boardResults()}). A Blockli team match starts a
+     * Blockli game, the challenger with the first move on odd boards (rev. 9.25).
      */
-    public function startBoard(SeriesMatch $match, int $board): ?ChessGame
+    public function startBoard(SeriesMatch $match, int $board): ChessGame|BoardGame|null
     {
-        return DB::transaction(function () use ($match, $board): ?ChessGame {
+        return DB::transaction(function () use ($match, $board): ChessGame|BoardGame|null {
             $locked = SeriesMatch::query()->lockForUpdate()->find($match->id);
 
             if ($locked === null || ! $locked->isTeamMatch() || $locked->status !== SeriesStatus::Accepted || $locked->lineup_locked_at === null
@@ -486,7 +499,7 @@ final class ChessTeamMatches
                 return null;
             }
 
-            if (ChessGame::query()->where('series_match_id', $locked->id)->where('board', $board)->exists()) {
+            if (self::gameQuery($locked)->where('series_match_id', $locked->id)->where('board', $board)->exists()) {
                 return null;
             }
 
@@ -499,9 +512,14 @@ final class ChessTeamMatches
             }
 
             [$white, $black] = $board % 2 === 1 ? [$challenger, $challenged] : [$challenged, $challenger];
+            $gate = $locked->rated ? GatePin::fromArray($locked->gate_at_accept) : null;
 
-            return $this->games->start($white, $black, (string) $locked->mode,
-                ratedGate: $locked->rated ? GatePin::fromArray($locked->gate_at_accept) : null, teamMatch: $locked, board: $board);
+            if ($locked->playsBoardGames()) {
+                return app(BoardGameService::class)->start((string) $locked->game, $white, $black, (string) $locked->mode,
+                    ratedGate: $gate, teamMatch: $locked, board: $board);
+            }
+
+            return $this->games->start($white, $black, (string) $locked->mode, ratedGate: $gate, teamMatch: $locked, board: $board);
         });
     }
 
@@ -516,11 +534,69 @@ final class ChessTeamMatches
     public static function preload(iterable $matches): void
     {
         $team = collect($matches)->filter(fn (SeriesMatch $match): bool => $match->isTeamMatch() && $match->lineup_locked_at !== null
-            && ! ($match->relationLoaded('boardGames') && $match->relationLoaded('boardPlayers')))->values();
+            && ! ($match->relationLoaded(self::gamesRelation($match)) && $match->relationLoaded('boardPlayers')))->values();
 
-        if ($team->isNotEmpty()) {
-            (new \Illuminate\Database\Eloquent\Collection($team->all()))->load(['boardGames', 'boardPlayers.user']);
+        // Chess boards and Blockli boards live in their own tables: each team match loads its own (rev. 9.25).
+        foreach ($team->groupBy(fn (SeriesMatch $match): string => self::gamesRelation($match)) as $relation => $group) {
+            (new \Illuminate\Database\Eloquent\Collection($group->all()))->load([$relation, 'boardPlayers.user']);
         }
+    }
+
+    /** The relation that holds a team match's board games: chess games, or Blockli games (rev. 9.25). */
+    public static function gamesRelation(SeriesMatch $match): string
+    {
+        return $match->playsBoardGames() ? 'boardBoardGames' : 'boardGames';
+    }
+
+    /**
+     * The games of a team match's boards: chess games, or Blockli games (rev. 9.25).
+     *
+     * @return Builder<ChessGame>|Builder<BoardGame>
+     */
+    public static function gameQuery(SeriesMatch $match): Builder
+    {
+        return $match->playsBoardGames() ? BoardGame::query() : ChessGame::query();
+    }
+
+    /**
+     * A team match's started boards, keyed by board, read fresh.
+     *
+     * @return Collection<int, ChessGame|BoardGame>
+     */
+    public static function boardGamesOf(SeriesMatch $match): Collection
+    {
+        return self::gameQuery($match)->where('series_match_id', $match->id)->get()->keyBy('board');
+    }
+
+    /**
+     * What a board game stands at, the same for a chess and a Blockli board:
+     * `live`, `void` (aborted, or no result), `forfeit` or `played`.
+     *
+     * @return 'live'|'void'|'forfeit'|'played'
+     */
+    public static function gameOutcome(ChessGame|BoardGame $game): string
+    {
+        if ($game instanceof BoardGame) {
+            return match (true) {
+                $game->status === BoardGameStatus::Active => 'live',
+                $game->status === BoardGameStatus::Aborted || ! in_array($game->result, ['1-0', '0-1', '1/2-1/2'], true) => 'void',
+                $game->end_reason === BoardEndReason::Forfeit->value => 'forfeit',
+                default => 'played',
+            };
+        }
+
+        return match (true) {
+            $game->status === ChessGameStatus::Active => 'live',
+            $game->status === ChessGameStatus::Aborted || ! in_array($game->result, ['1-0', '0-1', '1/2-1/2'], true) => 'void',
+            $game->end_reason === ChessEndReason::Forfeit => 'forfeit',
+            default => 'played',
+        };
+    }
+
+    /** A board's page: the chess game, or the Blockli game (rev. 9.25). */
+    public static function gameUrl(ChessGame|BoardGame $game): string
+    {
+        return $game instanceof BoardGame ? route('board.show', $game) : route('games.show', $game);
     }
 
     /**
@@ -532,14 +608,14 @@ final class ChessTeamMatches
      * `pubkeys`: each side's key frozen with the board, also after its
      * account was deleted.
      *
-     * @return list<array{board: int, white: string, players: array<string, User|null>, pubkeys: array<string, string|null>, game: ChessGame|null, outcome: 'pending'|'live'|'played'|'forfeit'|'void', points: array{challenger: int, challenged: int}, showed: list<string>}>
+     * @return list<array{board: int, white: string, players: array<string, User|null>, pubkeys: array<string, string|null>, game: ChessGame|BoardGame|null, outcome: 'pending'|'live'|'played'|'forfeit'|'void', points: array{challenger: int, challenged: int}, showed: list<string>}>
      */
     public static function boardResults(SeriesMatch $match, bool $preloaded = false): array
     {
         // A list page preloads boards and seats for all its team matches at once (preload()); the result logic always reads fresh.
-        $usePreloaded = $preloaded && $match->relationLoaded('boardGames') && $match->relationLoaded('boardPlayers');
-        $games = $usePreloaded ? $match->boardGames->keyBy('board')
-            : ChessGame::query()->where('series_match_id', $match->id)->get()->keyBy('board');
+        $relation = self::gamesRelation($match);
+        $usePreloaded = $preloaded && $match->relationLoaded($relation) && $match->relationLoaded('boardPlayers');
+        $games = $usePreloaded ? $match->{$relation}->keyBy('board') : self::boardGamesOf($match);
         $seats = $usePreloaded ? $match->boardPlayers->whereNotNull('board')->groupBy('board')
             : SeriesMatchBoard::query()->with('user')->where('series_match_id', $match->id)->whereNotNull('board')->get()->groupBy('board');
         $windowOver = $match->start_at !== null && $match->start_at->copy()->addSeconds(self::firstMoveSeconds())->isPast();
@@ -572,11 +648,11 @@ final class ChessTeamMatches
                         $row['points'] = self::boardPoint($row['showed'][0]);
                     }
                 }
-            } elseif ($game->status === ChessGameStatus::Active) {
+            } elseif (self::gameOutcome($game) === 'live') {
                 $row['outcome'] = 'live';
-            } elseif ($game->status === ChessGameStatus::Aborted || ! in_array($game->result, ['1-0', '0-1', '1/2-1/2'], true)) {
+            } elseif (self::gameOutcome($game) === 'void') {
                 $row['outcome'] = 'void';
-            } elseif ($game->end_reason === ChessEndReason::Forfeit) {
+            } elseif (self::gameOutcome($game) === 'forfeit') {
                 $winner = $game->result === '1-0' ? $white : $black;
                 $row['outcome'] = 'forfeit';
                 $row['showed'] = [$winner];
@@ -717,7 +793,9 @@ final class ChessTeamMatches
                     continue;
                 }
 
-                if ($row['game'] !== null) {
+                if ($row['game'] instanceof BoardGame) {
+                    $this->chains->attestBoardGame($row['game']);
+                } elseif ($row['game'] !== null) {
                     $this->chains->attestChessGame($row['game']);
                 } else {
                     $this->chains->attestUnstartedBoard($locked, $row['board'], $row['pubkeys'], $row['showed'][0] ?? null);

@@ -25,6 +25,7 @@ use App\Models\User;
 use App\Support\Badges\BadgeCopy;
 use App\Support\Chess\ChessModes;
 use App\Support\Chess\ChessTeamMatches;
+use App\Support\GameNames;
 use App\Support\Hyper\HyperMoments;
 use App\Support\Invites\InviteLinkRefused;
 use App\Support\Invites\InviteLinks;
@@ -549,7 +550,10 @@ final class SharePosts
         return new SharePost(
             type: 'series',
             sentence: $team
-                ? __('Won the chess team match :score against :side on TWENTY ONE Esports.', ['score' => $score[$won].'–'.$score[$lost], 'side' => $match->sideName($lost)])
+                // A Blockli team match (NIP rev. 9.25) names its game.
+                ? ($match->playsBoardGames()
+                    ? __('Won the :game team match :score against :side on TWENTY ONE Esports.', ['game' => GameNames::game($match->game), 'score' => $score[$won].'–'.$score[$lost], 'side' => $match->sideName($lost)])
+                    : __('Won the chess team match :score against :side on TWENTY ONE Esports.', ['score' => $score[$won].'–'.$score[$lost], 'side' => $match->sideName($lost)]))
                 : __('Won :score against :side in :ladder on TWENTY ONE Esports.', [
                     'score' => $score[$won].'–'.$score[$lost],
                     'side' => $match->sideName($lost),

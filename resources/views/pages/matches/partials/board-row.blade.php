@@ -13,7 +13,7 @@
 
 {{-- A rated game carries its league match number; a casual one has none (Art says "casual"). --}}
 <x-mempool.row :href="route('board.show', $boardGame)" wire:key="b-{{ $boardGame->id }}" data-test="board-row" data-game="{{ $boardGame->game }}"
-               :number="$boardGame->number !== null ? '#'.$boardGame->number : null" :art="$boardGame->rated ? __('rated') : __('casual')" :format="$format" :chip="$chip"
+               :number="$boardGame->number !== null || $boardGame->series_match_id !== null ? $boardGame->number() : null" :art="$boardGame->rated ? __('rated') : __('casual')" :format="$format" :chip="$chip"
                :when="$at?->diffForHumans()" :score="$boardGame->result ? str_replace(['1/2', '-'], ['½', '–'], $boardGame->result) : '–'">
     <x-slot:sides>
         <span class="flex min-w-0 items-center gap-2">

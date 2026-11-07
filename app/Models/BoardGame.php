@@ -52,6 +52,10 @@ use Illuminate\Support\Carbon;
  * @property array<string, mixed>|null $gate_at_accept App\Support\SeasonChain\GatePin of a rated game
  * @property array<string, string>|null $clans_at_accept pubkey => clan address at the pairing, for a rated game
  * @property int|null $reminded_ply the ply whose deadline reminder went out (correspondence, P8)
+ * @property int|null $series_match_id the Blockli team match this game is a board of (NIP rev. 9.25); its number is the team match's
+ * @property int|null $board its board (1..boards) in that team match
+ * @property Carbon|null $white_seen_at when White first opened a team match board (a missed first move, as chess)
+ * @property Carbon|null $black_seen_at when Black first opened a team match board
  * @property Carbon|null $ended_at
  * @property Carbon|null $created_at
  * @property Carbon|null $updated_at
@@ -59,10 +63,11 @@ use Illuminate\Support\Carbon;
  * @property-read User|null $black
  * @property-read Collection<int, BoardMove> $moves
  * @property-read TournamentMatch|null $tournamentMatch
+ * @property-read SeriesMatch|null $seriesMatch
  */
 #[Fillable(['game', 'mode', 'white_id', 'black_id', 'status', 'result', 'end_reason', 'position', 'turn', 'ply', 'initial_ms', 'increment_ms',
     'white_ms', 'black_ms', 'turn_started_ms', 'deadline_ms', 'draw_offer', 'version', 'ended_at', 'tournament_match_id', 'tournament_game', 'first_move_seconds',
-    'number', 'rated', 'ladder_address', 'gate_at_accept', 'clans_at_accept', 'reminded_ply'])]
+    'number', 'rated', 'ladder_address', 'gate_at_accept', 'clans_at_accept', 'reminded_ply', 'series_match_id', 'board'])]
 class BoardGame extends Model
 {
     /**
@@ -75,12 +80,18 @@ class BoardGame extends Model
      * A rated game takes the next league match number when it is created
      * (plan "Mühle und Dame", P6), as every chess game does, recorded as used
      * by White: its attestation (`2154`) names it as `match`. A casual board
-     * game takes none.
+     * game takes none, and neither does a board of a team match: it carries
+     * the number of its challenge (NIP rev. 9.25), as a chess board does.
      */
     protected static function booted(): void
     {
         static::creating(function (BoardGame $game): void {
-            if ($game->rated && $game->white_id !== null) {
+            // One envelope per game: a tournament match or a team match, never both (as ChessGame).
+            if ($game->series_match_id !== null && $game->tournament_match_id !== null) {
+                throw new \LogicException('A board game is a tournament game or a team match board, not both.');
+            }
+
+            if ($game->rated && $game->white_id !== null && $game->series_match_id === null) {
                 $game->number ??= MatchNumber::query()->create(['user_id' => $game->white_id, 'used_at' => now()])->id;
             }
         });
@@ -105,6 +116,9 @@ class BoardGame extends Model
             'tournament_game' => 'integer',
             'first_move_seconds' => 'integer',
             'reminded_ply' => 'integer',
+            'board' => 'integer',
+            'white_seen_at' => 'datetime',
+            'black_seen_at' => 'datetime',
             'ended_at' => 'datetime',
         ];
     }
@@ -139,6 +153,52 @@ class BoardGame extends Model
     public function tournamentMatch(): BelongsTo
     {
         return $this->belongsTo(TournamentMatch::class);
+    }
+
+    /**
+     * The Blockli team match this game is a board of (NIP rev. 9.25).
+     *
+     * @return BelongsTo<SeriesMatch, $this>
+     */
+    public function seriesMatch(): BelongsTo
+    {
+        return $this->belongsTo(SeriesMatch::class);
+    }
+
+    /**
+     * A game inside an envelope: a tournament game or a board of a team
+     * match (as ChessGame::hasEnvelope()). Neither can be aborted by its
+     * players.
+     */
+    public function hasEnvelope(): bool
+    {
+        return $this->tournament_match_id !== null || $this->series_match_id !== null;
+    }
+
+    /**
+     * `#412`; a board of a team match carries the number of its challenge
+     * and the board (`#412/2`, as a board's block label), never one of its
+     * own (as ChessGame::number()). Empty for a casual game without one.
+     */
+    public function number(): string
+    {
+        if ($this->series_match_id !== null) {
+            return '#'.$this->matchNumber().'/'.$this->board;
+        }
+
+        return $this->number === null ? '' : '#'.$this->number;
+    }
+
+    /** The league match number: the game's own, or for a team match board its challenge's. */
+    public function matchNumber(): ?int
+    {
+        if ($this->series_match_id === null) {
+            return $this->number;
+        }
+
+        return $this->relationLoaded('seriesMatch')
+            ? $this->seriesMatch?->number
+            : SeriesMatch::query()->whereKey($this->series_match_id)->value('number');
     }
 
     /**
