@@ -561,11 +561,15 @@ final class ChessTeamMatches
     /**
      * A team match's started boards, keyed by board, read fresh.
      *
-     * @return Collection<int, ChessGame|BoardGame>
+     * @return Collection<int|string, ChessGame>|Collection<int|string, BoardGame>
      */
     public static function boardGamesOf(SeriesMatch $match): Collection
     {
-        return self::gameQuery($match)->where('series_match_id', $match->id)->get()->keyBy('board');
+        if ($match->playsBoardGames()) {
+            return BoardGame::query()->where('series_match_id', $match->id)->get()->keyBy('board');
+        }
+
+        return ChessGame::query()->where('series_match_id', $match->id)->get()->keyBy('board');
     }
 
     /**

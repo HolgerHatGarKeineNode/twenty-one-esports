@@ -17,7 +17,7 @@ use App\Support\Board\BoardRules;
  *
  * Clan team matches over 2 or 3 boards in rapid only, exactly as chess has
  * them (DerCaddy, 2026-11-06: "Bau mir Rapid und orientiere dich strikt an
- * dem Pendant von Schach!"; NIP rev. 9.23): a Blockli lineup is
+ * dem Pendant von Schach!"; NIP rev. 9.25): a Blockli lineup is
  * `<clan>/blockli/rapid`, its boards are rated solo games on the rapid
  * ladder, there is no team Elo. A solo game reports one result, a team
  * match one result per board, as in chess.
@@ -48,7 +48,7 @@ final class Blockli extends BoardGame
         return [
             // As chess has them, in chess's order (user, 2026-10-11): each its own rating pool and ladder (blockli/blitz, blockli/rapid).
             'blitz' => new GameMode('blitz', 'Blitz 5+3', 1, [], [], 'player', true, '300+3'),
-            // Rapid also plays clan team matches over 2 or 3 boards, as chess rapid does (NIP rev. 9.23).
+            // Rapid also plays clan team matches over 2 or 3 boards, as chess rapid does (NIP rev. 9.25).
             'rapid' => new GameMode('rapid', 'Rapid 10+5', 1, [], [2, 3], 'player', true, '600+5'),
             // Correspondence: one move per day, as for the other board games; the rules end every game.
             'correspondence' => new GameMode('correspondence', 'Correspondence', 1, [], [], 'player', true, '1/86400'),
@@ -57,7 +57,7 @@ final class Blockli extends BoardGame
 
     public function resultSchema(GameMode $mode): array
     {
-        // As chess (NIP rev. 9.23): a team match reports one result per board, in the modes that have boards.
+        // As chess (NIP rev. 9.25): a team match reports one result per board, in the modes that have boards.
         if ($mode->boards === []) {
             return ['result' => 'one of '.implode(', ', self::RESULTS)];
         }
