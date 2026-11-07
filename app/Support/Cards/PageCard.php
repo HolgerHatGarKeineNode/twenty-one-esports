@@ -307,7 +307,7 @@ final class PageCard
             'board' => match ($f['result']) {
                 '1-0' => __(':name won', ['name' => $this->sideName('white')]),
                 '0-1' => __(':name won', ['name' => $this->sideName('black')]),
-                default => $this->gameHeadline(),
+                default => $this->gameHeadline().($f['status'] === 'active' ? ', '.$this->boardDetail() : ''),
             }.'. '.$this->sideName('white').' '.GameNames::sideNotes((string) $f['game'])['w'].', '.$this->sideName('black').' '.GameNames::sideNotes((string) $f['game'])['b'].'. '.GameNames::credited((string) $f['game']).'.',
             'leaderboard' => $this->leaderboardTitle($f).'. '.$this->leaderboardStatus().'.',
             'hyper' => $this->hyperTitle().'. '.$this->hyperLine().'.',

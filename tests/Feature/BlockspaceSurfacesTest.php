@@ -4,6 +4,7 @@ use App\Enums\BoardGameStatus;
 use App\Enums\BoardInviteStatus;
 use App\Models\BoardChallenge;
 use App\Models\BoardGame;
+use App\Models\Tournament;
 use App\Models\User;
 use App\Support\Board\BlockspaceRules;
 use App\Support\Board\BoardGameService;
@@ -12,6 +13,7 @@ use App\Support\Cards\PageCard;
 use App\Support\Cards\PageCardFacts;
 use App\Support\GameNames;
 use App\Support\Notifications\BoardNotifications;
+use App\Support\Tournaments\CasualCupNotices;
 use Illuminate\Support\Facades\Queue;
 use Illuminate\Support\Str;
 use Livewire\Livewire;
@@ -118,7 +120,9 @@ test('the card names the sides by their colours', function () {
     $card = PageCard::boardGame($game);
 
     expect($card->sideLabel('white'))->toBe('Orange')
-        ->and($card->sideLabel('black'))->toBe('Blue');
+        ->and($card->sideLabel('black'))->toBe('Blue')
+        // Whose turn it is, as the card draws it: after Orange, Blue, Blue it is Orange again (A B B A).
+        ->and($card->alt())->toContain('Orange to move')->not->toContain('White to move');
 
     $game->forceFill(['status' => BoardGameStatus::Finished, 'result' => '1-0'])->save();
 
@@ -144,6 +148,18 @@ test('the notifications name the colour a player has', function () {
     $notifications->challengeReceived($challenge->refresh(), false);
 
     expect($bell($black))->toContain('you play Blue.');
+});
+
+test('the cup notice names the colour a player has', function () {
+    $game = blockspaceSurfaceGame();
+    $cup = Tournament::factory()->create(['name' => 'Blockspace Cup', 'game' => 'blockspace']);
+
+    app(CasualCupNotices::class)->gameStarted($cup, $game);
+
+    $bell = fn (User $user): string => (string) json_encode($user->notifications()->get()->pluck('data'), JSON_UNESCAPED_UNICODE);
+
+    expect($bell($game->white))->toContain('You play Orange against')->not->toContain('You play White')
+        ->and($bell($game->black))->toContain('You play Blue against')->not->toContain('You play Black');
 });
 
 test('the sides of the other board games keep their words, in German with their capitals', function () {

@@ -525,7 +525,7 @@ final class PageCardFacts
             'result' => $game->status === BoardGameStatus::Finished ? $game->result : null,
             'reason' => $game->status === BoardGameStatus::Active ? null : $game->end_reason,
             // The card's fingerprint is public: what a dealt game hides may not feed it.
-            'position' => $rules === null ? $game->position : app(BoardGameService::class)->publicPosition($game, $rules),
+            'position' => $rules === null ? '' : app(BoardGameService::class)->publicPosition($game, $rules),
             'turn' => $game->turn,
             'ply' => (int) $game->ply,
             'white' => $side($game->white),

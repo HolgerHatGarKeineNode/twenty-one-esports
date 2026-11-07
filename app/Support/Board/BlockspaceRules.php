@@ -176,7 +176,8 @@ final class BlockspaceRules implements BoardRules, DealtGame
     public function deserialize(string $position): mixed
     {
         if (preg_match(self::POSITION, $position, $parts) !== 1) {
-            throw new InvalidArgumentException("No Blockspace position: {$position}");
+            // The position holds the hidden deal: the message names its length, never its letters.
+            throw new InvalidArgumentException('No Blockspace position ('.strlen($position).' characters).');
         }
 
         return [
