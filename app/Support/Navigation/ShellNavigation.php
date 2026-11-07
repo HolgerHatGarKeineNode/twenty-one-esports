@@ -281,6 +281,29 @@ final class ShellNavigation
     }
 
     /**
+     * The main-navigation item the page on screen belongs to (Header.dc.html and the page boards, plan "Canvas and
+     * live alignment", P1, G4): `games` (the Spiele menu) for a game's own pages, `mempool` for the match pages and
+     * the list of running games, `season` for the season, its ladders and the strongest players, `tournaments` for the
+     * tournament pages, null elsewhere. The boards: GameScore, BlockfillReplays, LadderHyper and LadderPong mark
+     * Spiele; GamesIndex and MatchShow mark Mempool; LadderPage and LadderStrongest mark Season.
+     *
+     * @return 'games'|'mempool'|'season'|'tournaments'|null
+     */
+    public function group(?string $section): ?string
+    {
+        $request = $this->request;
+
+        return match (true) {
+            $request->routeIs('scores.show') => 'games',
+            $request->routeIs('games.index', 'matches.show', 'matches.index') => 'mempool',
+            $request->routeIs('ladder.show', 'ladder.strongest') || $section === 'mining' => 'season',
+            $section === 'tournaments' => 'tournaments',
+            $this->onGamePage() && ! $request->routeIs('matches.room', 'tournaments.*', 'challenges.*') => 'games',
+            default => null,
+        };
+    }
+
+    /**
      * Cross-game destinations of row 1 besides the chain rail: Clans.
      *
      * @return list<array{key: string, href: string, label: string}>

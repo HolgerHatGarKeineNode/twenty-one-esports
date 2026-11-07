@@ -21,6 +21,8 @@
     $contextBar = $onGamePage && ! request()->attributes->get('game-subnav', false);
     $community = $nav->community();
     $chain = $nav->chain($section);
+    // The item the page belongs to (G4, ShellNavigation::group()): the Spiele menu, Mempool, Season or Turniere.
+    $group = $nav->group($section);
     $mempool = collect($chain)->firstWhere('key', 'mempool');
     $season = collect($chain)->firstWhere('key', 'mining');
     $tournaments = $nav->tournaments();
@@ -52,24 +54,24 @@
 
         <nav class="hidden shrink-0 items-center lg:flex" aria-label="{{ __('Main navigation') }}" data-test="main-nav">
             <button type="button" class="rv-nv" aria-controls="game-hub" x-bind:aria-expanded="hub.toString()" aria-expanded="false" aria-haspopup="dialog"
-                    x-on:click="toggleHub($el)" title="{{ $allGames }}" data-test="games-menu">
+                    x-on:click="toggleHub($el)" title="{{ $allGames }}" @if ($group === 'games') aria-current="true" @endif data-test="games-menu">
                 {{ __('Game list') }}<span class="sr-only">, {{ $allGames }}</span>
                 <x-icon name="chevron-down" :size="14" />
             </button>
-            <a href="{{ $tournaments['href'] }}" @navigate($tournaments['href']) @if ($section === 'tournaments') aria-current="page" @endif class="rv-nv" data-test="nav-tournaments">
+            <a href="{{ $tournaments['href'] }}" @navigate($tournaments['href']) @if ($group === 'tournaments') aria-current="{{ request()->routeIs('tournaments.index') ? 'page' : 'true' }}" @endif class="rv-nv" data-test="nav-tournaments">
                 {{ $tournaments['label'] }}
                 @if ($tournaments['open'] > 0)
                     <span class="rv-n" data-test="tournaments-open"><span class="sr-only">, </span>{{ $tournaments['open'] }}<span class="sr-only"> {{ trans_choice('open for sign-up|open for sign-up', $tournaments['open']) }}</span></span>
                 @endif
             </a>
-            <a href="{{ $mempool['href'] }}" @navigate($mempool['href']) @if ($mempool['current']) aria-current="page" @endif aria-label="{{ $mempool['name'] }}" class="rv-nv" data-chain-key="mempool" data-test="nav-mempool">
+            <a href="{{ $mempool['href'] }}" @navigate($mempool['href']) @if ($mempool['current']) aria-current="page" @elseif ($group === 'mempool' && ! request()->routeIs('matches.index')) aria-current="true" @endif aria-label="{{ $mempool['name'] }}" class="rv-nv" data-chain-key="mempool" data-test="nav-mempool">
                 <x-icon name="matches" :size="14" class="max-xl:hidden" />
                 <span>{{ $mempool['label'] }}</span>
                 @if ($mempool['count'] !== null)
                     <span class="rv-n" aria-hidden="true" data-test="mempool-count">{{ $mempool['count'] }}</span>
                 @endif
             </a>
-            <a href="{{ $season['href'] }}" @navigate($season['href']) @if ($season['current']) aria-current="page" @endif aria-label="{{ $season['name'] }}" class="rv-nv" data-test="nav-mining">
+            <a href="{{ $season['href'] }}" @navigate($season['href']) @if ($season['current']) aria-current="page" @elseif ($group === 'season') aria-current="true" @endif aria-label="{{ $season['name'] }}" class="rv-nv" data-test="nav-mining">
                 <span>{{ $season['label'] }}</span>
                 @if ($season['tag'] !== null)
                     <span class="rv-tag max-xl:hidden" data-test="season-tag">{{ $season['tag'] }}</span>

@@ -29,6 +29,7 @@ use Tests\Support\BrowserLogin;
 use Tests\Support\BrowserWait;
 use Tests\Support\FakeStackerVerifier;
 use Tests\Support\HyperOn;
+use Tests\Support\PongOn;
 use Tests\Support\TestSigner;
 
 pest()->group('browser');
@@ -257,3 +258,31 @@ function p1TournamentLeague(): array
 
     return [$admin->refresh(), $featured->refresh(), $finished->refresh()];
 }
+
+test('P1 main navigation: each page marks the item the board marks (G4), at 1440', function () {
+    [$admin, $featured, $finished] = p1TournamentLeague();
+    PongOn::play();
+    app()->forgetInstance(GameRegistry::class);
+    $done = SeriesMatch::factory()->accepted()->create(['game' => 'rocket-league', 'mode' => '1v1']);
+    // Header.dc.html and the page boards: GameScore, BlockfillReplays, LadderHyper, LadderPong -> Spiele; GamesIndex,
+    // MatchShow -> Mempool; LadderPage, LadderStrongest -> Season; TournamentDetail -> Turniere.
+    $expected = [
+        '/scores/blockfill' => 'games-menu',
+        '/blockfill/replays' => 'games-menu',
+        '/hyperbitcoinization/ladder' => 'games-menu',
+        '/proof-of-pong/ladder' => 'games-menu',
+        '/games' => 'nav-mempool',
+        route('matches.show', $done->number, false) => 'nav-mempool',
+        '/ladder/chess/blitz' => 'nav-mining',
+        '/ladder/strongest' => 'nav-mining',
+        '/mining' => 'nav-mining',
+        route('tournaments.show', $finished, false) => 'nav-tournaments',
+    ];
+    $seen = [];
+    foreach ($expected as $path => $item) {
+        $page = p1Open($admin, $path, 1440);
+        $seen[$path] = $page->evaluate('() => [...document.querySelectorAll("[data-test=main-nav] [aria-current]")].map((el) => el.dataset.test)');
+        expect(p1Loud($page))->toBe([], $path);
+    }
+    expect($seen)->toBe(array_map(fn (string $item): array => [$item], $expected));
+});
