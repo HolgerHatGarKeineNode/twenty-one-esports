@@ -30,7 +30,7 @@ final class BlockspacePractice
             'title' => 'Your first stones',
             'text' => 'You are Orange, your opponent Blue. Whoever collects the higher yield wins. Yield counts in sat, the points of this game. Beside the block is the mempool: five transactions waiting. Take one and set it so that it covers your start cell, the orange diamond.',
             'task' => 'Cover your start cell.',
-            'done' => 'Your first transaction is in the block and has brought you its sats.',
+            'done' => 'Your first transaction is in the block and now counts toward your yield.',
             'retry' => 'Set it on the orange diamond.',
         ],
         [
