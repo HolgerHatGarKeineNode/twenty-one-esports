@@ -389,13 +389,14 @@ final class BoardGameService
     /**
      * Until when (server ms) the side that made the last move may take it back, or null: not before a move, not after
      * the game, not with `take_back_seconds` at 0. The window ends that long after the move, or earlier where the
-     * mover's own time would have run out by then on the clock as a take-back puts it back.
+     * mover's own time would have run out by then on the clock as a take-back puts it back. Never on a team match
+     * board, as chess boards have none (NIP rev. 9.25).
      */
     public function takeBackUntil(BoardGame $game, ?BoardMove $last = null): ?int
     {
         $window = (int) config('esports.board_games.take_back_seconds', 0) * 1000;
 
-        if ($window <= 0 || ! $game->isActive() || $game->ply === 0) {
+        if ($window <= 0 || ! $game->isActive() || $game->ply === 0 || $game->series_match_id !== null) {
             return null;
         }
 

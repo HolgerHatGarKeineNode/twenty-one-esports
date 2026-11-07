@@ -207,6 +207,8 @@ printed examples.
   a game record (a board game has none); a board forfeit `forfeit` without `elo` or block, a void board `*`, `void`,
   `none`; a whole-team forfeit or void once for the challenge, unrated.
 - **Clan hashrate**: a Blockli team match won on board points adds the team win bonus once, as a chess one.
+- **No take-back on a board**: a team match board offers no take-back, as chess boards have none; Blockli's take-back
+  stays for its other games.
 
 ### Changelog of revision 9.24 (2026-10-09, draft)
 

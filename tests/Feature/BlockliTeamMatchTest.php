@@ -263,7 +263,7 @@ test('at the start each board starts once as a Blockli game with its own first-m
     ])))->toThrow(UniqueConstraintViolationException::class);
 });
 
-test('from the lock the named players start no other game, a board starts for them anyway, and its players cannot abort it', function () {
+test('from the lock the named players start no other game, a board starts for them anyway, and its players can neither abort it nor take a move back', function () {
     [$match] = lockedBlockliTeamMatch(boards: 2);
     $named = User::query()->findOrFail(SeriesMatchBoard::query()->where('series_match_id', $match->id)->where('side', 'challenged')->where('board', 1)->value('user_id'));
     $reason = function (Closure $action): ?string {
@@ -285,6 +285,13 @@ test('from the lock the named players start no other game, a board starts for th
         ->and($games[1]->black_id)->toBe($named->id)
         ->and($reason(fn () => app(BoardGameService::class)->abort($games[1], $games[1]->white)))->toBe('tournament_game')
         ->and($games[1]->refresh()->status)->toBe(BoardGameStatus::Active);
+
+    // As chess boards (NIP rev. 9.25): no take-back on a team board, also right after the move.
+    $board = playBlockli($games[1], ['e1-e2'])->loadMissing(['white', 'black']);
+
+    expect(app(BoardGameService::class)->takeBackUntil($board))->toBeNull()
+        ->and($reason(fn () => app(BoardGameService::class)->takeBack($board, $board->white)))->toBe('take_back_closed')
+        ->and($board->refresh()->ply)->toBe(1);
 });
 
 test('a board forfeit counts one board point, is unrated and is attested with the team result', function () {
