@@ -8,7 +8,7 @@ import { TIMING } from '../timing.js';
 const EMBLEMS = {
     chess: 'emblem-chess', 'rocket-league': 'emblem-rocket-league', 'age-of-empires-2': 'emblem-age-of-empires-2', tmnf: 'emblem-tmnf',
     'proof-of-pong': 'emblem-pong', hyperbitcoinization: 'emblem-hyper', blockfill: 'emblem-blockfill', checkers: 'emblem-checkers',
-    'nine-mens-morris': 'emblem-mill', blockli: 'emblem-blockli',
+    'nine-mens-morris': 'emblem-mill', blockli: 'emblem-blockli', blockspace: 'emblem-blockspace',
 };
 
 /** The emblem id of a game slug (as OverlaySnapshot::emblem()), 'mark' for a game without one. */

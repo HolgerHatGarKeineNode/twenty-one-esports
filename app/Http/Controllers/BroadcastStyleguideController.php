@@ -17,7 +17,7 @@ class BroadcastStyleguideController extends Controller
     public const array ART = [
         'trophy', 'crown', 'medal-gold', 'medal-silver', 'medal-bronze', 'rank-up',
         'emblem-chess', 'emblem-rocket-league', 'emblem-football', 'emblem-age-of-empires-2', 'emblem-tmnf',
-        'emblem-pong', 'emblem-hyper', 'emblem-blockfill', 'emblem-checkers', 'emblem-mill', 'emblem-blockli',
+        'emblem-pong', 'emblem-hyper', 'emblem-blockfill', 'emblem-checkers', 'emblem-mill', 'emblem-blockli', 'emblem-blockspace',
         'energy-wide', 'energy-rays',
     ];
 

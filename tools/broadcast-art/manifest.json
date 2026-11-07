@@ -105,6 +105,12 @@
    "prompt": "Game emblem for a maze race board game where players place walls on a 9x9 grid: a small square grid tile of dark gunmetal with two tall glowing orange-gold (like #F7931A) wall bars placed on it and one rounded pawn racing between them, crisp hard white rim light, ultra clean high-end 3D render, tilted three-quarter view, centred, fills 80% of the frame. Isolated on a perfectly flat uniform pure magenta background (#FF00FF). No text, no letters, no logos, no watermark."
   },
   {
+   "id": "emblem-blockspace",
+   "aspect": "1:1",
+   "size": "2K",
+   "prompt": "Game emblem for a block-laying board game where two miners fill a tall block with transactions from a mempool: a small tilted slab of dark gunmetal grid cells with a few chunky square stones laid on it, some glowing orange-gold (like #F7931A) and some cool light blue (like #8DB4FF), each stone a faceted gem-like cube, and one orange L-shaped piece of four cubes hovering just above the slab as if being placed, crisp hard white rim light, ultra clean high-end 3D render, tilted three-quarter view, centred, fills 80% of the frame. Isolated on a perfectly flat uniform pure magenta background (#FF00FF). No text, no letters, no logos, no watermark."
+  },
+  {
    "id": "plate-arena",
    "aspect": "16:9",
    "size": "4K",

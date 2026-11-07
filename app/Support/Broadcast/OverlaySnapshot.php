@@ -690,6 +690,7 @@ final class OverlaySnapshot
             $game === 'checkers' => 'emblem-checkers',
             $game === 'nine-mens-morris' => 'emblem-mill',
             $game === 'blockli' => 'emblem-blockli',
+            $game === 'blockspace' => 'emblem-blockspace',
             default => 'mark',
         };
     }

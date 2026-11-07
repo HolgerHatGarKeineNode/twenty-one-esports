@@ -10,6 +10,7 @@ use App\Support\Board\BlockspaceDrawing;
 use App\Support\Board\BlockspaceRules;
 use App\Support\Board\BoardGameService;
 use App\Support\Board\BoardRuleViolation;
+use App\Support\Broadcast\OverlaySnapshot;
 use App\Support\Cards\PageCard;
 use App\Support\Cards\PageCardFacts;
 use App\Support\GameNames;
@@ -197,4 +198,10 @@ test('the drawing shows only what the board page shows: two deals that differ in
 
     expect(BlockspaceDrawing::layout($rules->view($other), [], 0, 0, 420))->toBe(BlockspaceDrawing::layout($rules->view($position), [], 0, 0, 420))
         ->and(BlockspaceDrawing::layout($rules->view($position), [], 0, 0, 420)['rungs'][0]['form'])->not->toBe([]);
+});
+
+test('the broadcast overlay shows Blockspace with its own emblem, on the server and in the browser variants', function () {
+    expect(OverlaySnapshot::emblem('blockspace'))->toBe('emblem-blockspace')
+        ->and(public_path('broadcast/art/emblem-blockspace.webp'))->toBeFile()
+        ->and((string) file_get_contents(resource_path('js/broadcast/variants/shared.js')))->toContain("blockspace: 'emblem-blockspace'");
 });
