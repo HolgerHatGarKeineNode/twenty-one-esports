@@ -338,7 +338,13 @@ test('tab, mini player and badge share the screen with the header, the match doc
     $tab = $page->evaluate(LIVE_LAYOUT);
     liveShot($page, 'badge-and-tab-with-dock-'.$width);
 
-    livePlay($page);
+    if ($width < 1024) {
+        // The folded tab is aside on a phone with the dock (above): open the player as the tab would.
+        $page->evaluate('() => Alpine.$data(document.querySelector("[data-test=live-player]")).open()');
+        BrowserWait::until($page, '() => { const v = document.querySelector("[data-test=live-mini-video]"); return !!v && !v.paused && v.currentTime > 1.5; }', 20_000);
+    } else {
+        livePlay($page);
+    }
     $freshToast();
     $open = $page->evaluate(LIVE_LAYOUT);
     liveShot($page, 'player-open-with-dock-'.$width);
@@ -348,7 +354,13 @@ test('tab, mini player and badge share the screen with the header, the match doc
     // Phones: the tab bar and the dock above it are both on screen, the player above both; the badge is in More.
     $expected = $width < 1024 ? ['player', 'header', 'toast0', 'dock-mobile-bar', 'tab-bar'] : ['player', 'header', 'toast0', 'match-dock'];
 
-    foreach (['tab' => $tab, 'open' => $open] as $state => $layout) {
+    // Phones, folded: the dock owns the one floor row above the tab bar, so the tab steps aside instead of stacking over
+    // the page; the header's LIVE badge still leads to the stream (plan "Canvas and live alignment", P1, B1/G2).
+    if ($width < 1024) {
+        expect(array_key_exists('player', $tab['rects']))->toBeFalse('tab at '.$width.': '.json_encode($tab));
+    }
+
+    foreach (($width < 1024 ? ['open' => $open] : ['tab' => $tab, 'open' => $open]) as $state => $layout) {
         $dump = "{$state} at {$width}: ".json_encode($layout);
         expect(array_diff($expected, array_keys($layout['rects'])))->toBe([], $dump)
             ->and($layout['overlaps'])->toBe([], $dump)
@@ -638,6 +650,19 @@ test('the folded tab stands aside while a game board lies where it would stand, 
 
     // At the top of the page the board lies where the tab would stand: the tab is aside.
     $load = $page->evaluate($where);
+
+    // A phone: the board page's own bottom bar owns the one floor row above the tab bar, so the folded tab stays aside on
+    // the whole page (plan "Canvas and live alignment", P1: on game pages the live card moves out of the way; the header's
+    // LIVE badge leads to the stream).
+    if ($width < 1024) {
+        $page->evaluate('() => window.scrollTo(0, document.documentElement.scrollHeight)');
+        Execution::instance()->wait(0.4);
+        expect($load['tab'])->toBeNull()
+            ->and($page->evaluate($where)['tab'])->toBeNull()
+            ->and(liveErrors($page))->toBe([]);
+
+        return;
+    }
     // At the end of the page the board is away from the corner: the tab is back at once (it measures on scroll).
     $page->evaluate('() => window.scrollTo(0, document.documentElement.scrollHeight)');
     Execution::instance()->wait(0.4);

@@ -41,6 +41,9 @@
 
         <x-shell.footer />
 
+        {{-- The floor band (plan "Canvas and live alignment", P1): the opaque strip the floating layers stand on, so they never lie over the page. --}}
+        <div aria-hidden="true" class="floor-band" data-test="floor-band"></div>
+
         {{-- The live stream (P20): a floating player at the bottom left while it is on air. --}}
         <div @class(['contents', 'max-lg:hidden' => $playfield]) data-test="shell-live-player">
             <x-live-player />

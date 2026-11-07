@@ -220,7 +220,12 @@ export function livePlayer(config) {
             const keyboard = !!viewport && viewport.height < window.innerHeight * 0.7;
             // An open sheet or panel of the shell or the dock (the More sheet, the game hub, the dock's list).
             const sheet = document.querySelector('[aria-haspopup="dialog"][aria-expanded="true"]') !== null;
-            this.stepAside = keyboard || sheet || this.overBoard(rect);
+            // A phone has one row of floor above its tab bar (the floor band, app.css): when the match dock or a page's
+            // own bottom bar owns it, the folded tab steps aside rather than stack over the page; the header's LIVE
+            // badge still leads to the stream (plan "Canvas and live alignment", P1, B1/G2).
+            const owned = this.view === 'tab' && window.innerWidth < 1024 && [...document.querySelectorAll('[data-live-floor]:not(nav), [data-page-bar], [data-floor-owner]')]
+                .some((bar) => bar.getClientRects().length > 0 && bar.getBoundingClientRect().height > 0);
+            this.stepAside = keyboard || sheet || owned || this.overBoard(rect);
         },
 
         /**

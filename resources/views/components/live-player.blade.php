@@ -50,7 +50,7 @@
             {{-- Room below the footer, so the end of a page never sits under the tab. --}}
             <div aria-hidden="true" class="h-[72px]" x-show="shown" @unless ($status->live) style="display: none" @endunless></div>
 
-            <section aria-label="{{ __('Live stream') }}" x-ref="box" x-bind:style="position" x-show="shown && ! stepAside" @unless ($status->live) x-cloak @endunless
+            <section aria-label="{{ __('Live stream') }}" x-ref="box" data-test="live-box" x-bind:style="position" x-show="shown && ! stepAside" @unless ($status->live) x-cloak @endunless
                      class="fixed left-4 z-[35] sm:left-6" style="bottom: calc(16px + env(safe-area-inset-bottom, 0px))"
                      x-on:keydown.escape="view === 'open' && minimise()">
                 {{-- The tab: the same card as the match dock's handle on the other side. --}}

@@ -692,7 +692,7 @@ new #[Title('New challenge')] #[Layout('layouts::app', ['section' => 'clans'])] 
         </div>
 
         {{-- Mobile step bar --}}
-        <div class="fixed inset-x-0 bottom-0 z-20 flex gap-3 bg-bar px-4 py-3 shadow-[0_-1px_0_#2A2A30] lg:hidden">
+        <div class="fixed inset-x-0 bottom-0 z-20 flex gap-3 bg-bar px-4 py-3 shadow-[0_-1px_0_#2A2A30] lg:hidden" data-floor-owner>
             <button type="button" x-on:click="step = Math.max(1, step - 1)" :disabled="step === 1" class="btn-w h-[52px] w-[112px] cursor-pointer rounded-md border border-line bg-well text-sm text-ink disabled:opacity-50">{{ __('Back') }}</button>
             <button type="button" x-show="step < 5" x-on:click="step++" class="btn-p h-[52px] grow cursor-pointer rounded-md border-0 bg-btc text-sm font-bold text-on-btc" data-test="next-step">
                 <span x-text="[@js(__('Next: Opponent')), @js(__('Next: Rated or casual')), @js(__('Next: Times')), @js(__('Next: Send'))][step - 1]"></span>

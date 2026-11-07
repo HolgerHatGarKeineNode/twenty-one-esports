@@ -3300,3 +3300,47 @@
         border-radius: 0;
     }
 }
+
+/*
+ * The floor band (plan "Canvas and live alignment", P1, comparison B1/G2, 2026-11-07): the floating layers (the
+ * match dock's bar, its cup bar, the folded "Watch live" tab) stand on an opaque strip along the bottom edge, above
+ * the phone's tab bar. What lies in the strip is below the visible area, as under the tab bar; nothing floats over
+ * the page. The band shows exactly while one of them shows (Alpine's x-show writes display: none), so a page without
+ * them (a running game, focus mode, a page that owns its bottom bar) gets no band and no extra padding; the end of a
+ * page clears it through the dock's and the player's own spacers. 72 px: the 56 px bars stand 16 px above its floor.
+ */
+:root {
+    --floor-h: 0px;
+}
+
+:root:has([data-test="dock-spacer"]:not([style*="display: none"])),
+:root:has([data-test="dock-cup-spacer"]:not([style*="display: none"])),
+:root:has([data-test="live-box"]:not([style*="display: none"]):not([x-cloak])) {
+    --floor-h: 4.5rem;
+}
+
+/* The cup bar stands on the dock's bar: two rows (desktop 88 + 56 px, phone 80 + 56 px). */
+:root:has([data-test="dock-spacer"]:not([style*="display: none"])):has([data-test="dock-cup"]:not([style*="display: none"])) {
+    --floor-h: 9rem;
+}
+
+.floor-band {
+    display: none;
+    position: fixed;
+    inset-inline: 0;
+    bottom: var(--tabbar-h);
+    z-index: 30;
+    height: var(--floor-h);
+    background: var(--color-ground);
+    box-shadow: 0 -1px 0 var(--color-hairline);
+}
+
+:root:has([data-test="dock-spacer"]:not([style*="display: none"])) .floor-band,
+:root:has([data-test="dock-cup-spacer"]:not([style*="display: none"])) .floor-band,
+:root:has([data-test="live-box"]:not([style*="display: none"]):not([x-cloak])) .floor-band {
+    display: block;
+}
+
+:root {
+    scroll-padding-bottom: calc(var(--tabbar-h) + max(var(--dock-h), var(--floor-h)) + var(--save-bar-h) + 1rem);
+}

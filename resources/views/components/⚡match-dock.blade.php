@@ -192,7 +192,7 @@ new class extends Component {
                 score bar) keeps it in the sheet instead, so nothing floats over its ways to play.
             --}}
             @if ($cup)
-                <div aria-hidden="true" class="h-16 lg:hidden" x-show="! pageBar" data-test="dock-cup-spacer"></div>
+                <div aria-hidden="true" class="h-16" x-show="! pageBar" data-test="dock-cup-spacer"></div>
                 <a href="{{ $cup['href'] }}" wire:key="dock-cup-{{ $cup['key'] }}"
                    @class([
                        'fixed inset-x-4 z-[35] flex h-14 items-center gap-3 rounded-xl pr-3 pl-3 lg:right-6 lg:left-auto lg:w-[380px]',
