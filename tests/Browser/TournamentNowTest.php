@@ -297,7 +297,9 @@ test('with the stream on air the floating "Watch live" tab never covers the hero
         $measured["{$width}x{$height}"] = ['top' => $top, 'end' => $end];
 
         expect($top['covered'])->toBeNull("{$width}x{$height}: the tab covers the action ".json_encode($top))
-            ->and($end['shown'])->toBeTrue("{$width}x{$height}: the tab stays away after the action left the screen")
+            // Below 1024 px a page with its own bottom bar or the dock owns the bottom edge: the tab stays aside on the whole page
+            // (plan "Canvas and live alignment", P1; the tab bar's Live tab is the way to the stream there).
+            ->and($end['shown'])->toBe($width >= 1024, "{$width}x{$height}: the tab is back on a desktop, aside on a phone")
             ->and($end['covered'])->toBeNull()
             ->and($page->evaluate('() => window.__errors'))->toBe([])
             ->and($page->evaluate(BrowserConsole::BAD_RESPONSES))->toBe([]);

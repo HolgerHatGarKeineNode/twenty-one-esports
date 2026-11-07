@@ -210,7 +210,7 @@ test('a player with games shows ladders, results, the won cup, seasons and clans
     // The won cup moved the chess rating too, so the chess value is read back.
     $chess = Rating::query()->where(['subject' => 'user:'.$player->id, 'game' => 'chess', 'pool' => Rating::CASUAL])->value('rating');
 
-    expect($state['ladders'])->toBe(['chess/blitz '.$chess, 'rocket-league/1v1 1000', 'rocket-league/2v2 1020'])
+    expect($state['ladders'])->toBe(['chess/blitz '.number_format($chess), 'rocket-league/1v1 1,000', 'rocket-league/2v2 1,020'])
         // The exact order of the form is tests/Feature/PlayerStatsTest.php's; here five played blocks.
         ->and($state['form'])->toHaveCount(5)->not->toContain('none')
         ->and($state['results'])->toHaveCount(10)

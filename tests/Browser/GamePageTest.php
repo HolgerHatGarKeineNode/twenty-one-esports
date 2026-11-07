@@ -137,7 +137,7 @@ test('the Rocket League page shows live, next and final series with faces and sc
 
     expect($state['states'])->toBe(['live', 'next', 'final', 'final', 'final', 'final'])
         ->and($state['scores'])->toBe(['1 : 0', 'vs', '2 : 1', '0 : 2', '0 : 2', '2 : 0'])
-        ->and($state['ladder'])->toBe(['1080', '1057', '1034', '1011', '988'])
+        ->and($state['ladder'])->toBe(['1,080', '1,057', '1,034', '1,011', '988'])
         // The top five in one row from lg.
         ->and($state['ladderRow'])->toBe(1)
         ->and($state['clans'])->toBe(5)

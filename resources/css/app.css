@@ -3341,6 +3341,20 @@
     display: block;
 }
 
+/* A page that owns its bottom edge on a phone (touch controls, a fixed sign-up bar: data-floor-owner) keeps it: the
+   live tab steps aside there (livePlayer.js), so without the dock there is nothing to stand on, and the band would
+   cover the page's own buttons (Stacker's touch keys, 2026-11-07). A playfield page hides the dock by its wrapper's
+   max-lg:hidden (layouts/app.blade.php), not by x-show, so that wrapper is part of the test. */
+@media (width < 64rem) {
+    :root:has([data-floor-owner]:not([style*="display: none"])):not(:has([data-test="shell-match-dock"]:not(.max-lg\:hidden) [data-test="dock-spacer"]:not([style*="display: none"]))) {
+        --floor-h: 0px;
+    }
+
+    :root:has([data-floor-owner]:not([style*="display: none"])):not(:has([data-test="shell-match-dock"]:not(.max-lg\:hidden) [data-test="dock-spacer"]:not([style*="display: none"]))) .floor-band {
+        display: none;
+    }
+}
+
 :root {
     scroll-padding-bottom: calc(var(--tabbar-h) + max(var(--dock-h), var(--floor-h)) + var(--save-bar-h) + 1rem);
 }

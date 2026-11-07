@@ -455,7 +455,7 @@ test('P1 cut columns and broken words: payouts, match games, the season table, H
     $done = SeriesMatch::factory()->accepted()->create(['game' => 'rocket-league', 'mode' => '1v1', 'challenger_name' => 'Bitcoinmaximalistausdemerzgebirge', 'challenged_name' => 'El Presidento Ben']);
     $done->forceFill(['live_games' => array_map(fn (array $g): array => ['challenger' => $g[0], 'challenged' => $g[1], 'winner' => $g[0] > $g[1] ? 'challenger' : 'challenged'], [[4, 2], [2, 3], [3, 4]])])->save();
     $cases = [
-        ['payouts', null, route('tournaments.show', $finished, false), '[data-test=pool-payouts]', [390, 1440]],
+        ['payouts', null, route('tournaments.show', $finished, false), '[data-test=pool-payouts]', [375, 390, 1440]],
         ['match-games', null, route('matches.show', $done->number, false), '[data-test=flow-game]', [390, 1440]],
         ['mining-pay', $admin, '/mining', '#eras-h, [data-test=mining-eras-scroll]', [390, 1440]],
         ['hyper', null, '/hyperbitcoinization', 'main h1', [390, 1440]],

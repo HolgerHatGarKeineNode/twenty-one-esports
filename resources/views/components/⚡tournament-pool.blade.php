@@ -437,14 +437,14 @@ new class extends Component {
     @if ($this->payouts->isNotEmpty())
         <div class="flex flex-col gap-2 rounded-card bg-card p-4 sm:p-6" data-test="pool-payouts">
             <h3 class="m-0 text-[13px] font-bold">{{ __('Payouts') }}</h3>
-            {{-- Fits a 390 px phone without a sideways scroll (P1, comparison: the status column was cut): the name wraps, amount and status stay whole. --}}
+            {{-- Fits a 375 px phone without a sideways scroll (P1, comparison: the status column was cut): on a phone the amount stands under the name, the status pill may wrap. --}}
             <div>
                 <table class="w-full border-collapse text-left text-[13px]">
                     <thead class="text-xs text-ink-3">
                         <tr>
                             <th class="py-2 pr-3 font-normal">{{ __('Place') }}</th>
                             <th class="py-2 pr-3 font-normal">{{ __('Player') }}</th>
-                            <th class="py-2 pr-3 text-right font-normal">{{ __('Amount') }}</th>
+                            <th class="py-2 pr-3 text-right font-normal max-sm:hidden">{{ __('Amount') }}</th>
                             <th class="py-2 font-normal">{{ __('Status') }}</th>
                         </tr>
                     </thead>
@@ -452,10 +452,10 @@ new class extends Component {
                         @foreach ($this->payouts as $payout)
                             <tr class="border-t border-hairline align-top" wire:key="payout-{{ $payout->id }}" data-test="payout-row" data-status="{{ $payout->status->value }}">
                                 <td class="py-2 pr-3">{{ $payout->place }}.</td>
-                                <td class="py-2 pr-3 [overflow-wrap:anywhere]" data-test="payout-name">{{ $payout->publicName() }}@if (isset($this->movedUp[$payout->id]))<span class="mt-1 block text-xs text-ink-2" data-test="payout-moved-up">{{ $this->movedUp[$payout->id] }}</span>@endif</td>
-                                <td class="py-2 pr-3 text-right whitespace-nowrap">{{ $sats($payout->amount_sats) }} {{ __('sats') }}</td>
+                                <td class="py-2 pr-3 [overflow-wrap:anywhere]" data-test="payout-name">{{ $payout->publicName() }}<span class="mt-0.5 block whitespace-nowrap text-ink-2 tabular-nums sm:hidden">{{ $sats($payout->amount_sats) }} {{ __('sats') }}</span>@if (isset($this->movedUp[$payout->id]))<span class="mt-1 block text-xs text-ink-2" data-test="payout-moved-up">{{ $this->movedUp[$payout->id] }}</span>@endif</td>
+                                <td class="py-2 pr-3 text-right whitespace-nowrap max-sm:hidden">{{ $sats($payout->amount_sats) }} {{ __('sats') }}</td>
                                 <td class="py-2">
-                                    <span @class(['inline-flex h-6 items-center rounded-xs px-2 text-xs font-bold', 'bg-win-tint text-win' => $payout->status === PayoutStatus::Paid, 'bg-raised text-ink-2' => $payout->status === PayoutStatus::Forwarded, 'bg-btc-chip text-btc-hi' => ! in_array($payout->status, [PayoutStatus::Paid, PayoutStatus::Forwarded], true)])>{{ $payout->status->label() }}</span>
+                                    <span @class(['inline-flex min-h-6 items-center rounded-xs px-2 py-0.5 text-xs font-bold', 'bg-win-tint text-win' => $payout->status === PayoutStatus::Paid, 'bg-raised text-ink-2' => $payout->status === PayoutStatus::Forwarded, 'bg-btc-chip text-btc-hi' => ! in_array($payout->status, [PayoutStatus::Paid, PayoutStatus::Forwarded], true)])>{{ $payout->status->label() }}</span>
                                     @if ($payout->status === PayoutStatus::Forwarded)
                                         <span class="mt-1 block text-xs text-ink-2" data-test="payout-forwarded">{{ __(':name passed the prize on: it goes into the next pot.', ['name' => $payout->publicName()]) }}</span>
                                     @endif
@@ -463,7 +463,7 @@ new class extends Component {
                                         <span class="mt-1 block text-xs text-ink-2">{{ $payout->reasonText() }}</span>
                                     @endif
                                     @if ($payout->event)
-                                        <span class="mt-1 block truncate font-mono text-[11px] text-proof" title="{{ $payout->event->event_id }}">2157 · {{ \Illuminate\Support\Str::limit($payout->event->event_id, 16, '…') }}</span>
+                                        <span class="mt-1 block max-w-[9rem] truncate font-mono text-[11px] text-proof" title="{{ $payout->event->event_id }}">2157 · {{ \Illuminate\Support\Str::limit($payout->event->event_id, 16, '…') }}</span>
                                     @endif
                                 </td>
                             </tr>
