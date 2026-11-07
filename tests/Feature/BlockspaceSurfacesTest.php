@@ -6,6 +6,7 @@ use App\Models\BoardChallenge;
 use App\Models\BoardGame;
 use App\Models\Tournament;
 use App\Models\User;
+use App\Support\Board\BlockspaceDrawing;
 use App\Support\Board\BlockspaceRules;
 use App\Support\Board\BoardGameService;
 use App\Support\Board\BoardRuleViolation;
@@ -14,6 +15,10 @@ use App\Support\Cards\PageCardFacts;
 use App\Support\GameNames;
 use App\Support\Notifications\BoardNotifications;
 use App\Support\Tournaments\CasualCupNotices;
+use App\Support\TwentyOne\Stream\RotationPlanner;
+use App\Support\TwentyOne\Stream\SceneRenderer;
+use App\Support\TwentyOne\Stream\SceneSource;
+use App\Support\TwentyOne\Stream\StreamStats;
 use Illuminate\Support\Facades\Queue;
 use Illuminate\Support\Str;
 use Livewire\Livewire;
@@ -168,4 +173,28 @@ test('the sides of the other board games keep their words, in German with their 
     expect(GameNames::sides('blockli'))->toBe(['w' => 'Weiß', 'b' => 'Schwarz'])
         ->and(GameNames::sideNotes('blockli'))->toBe(['w' => '(Weiß)', 'b' => '(Schwarz)'])
         ->and(GameNames::sideNotes('blockspace'))->toBe(['w' => '(Orange)', 'b' => '(Blau)']);
+});
+
+test('the stream draws a live game with square stones in orange and blue, the ladder, each yield and what is to come', function () {
+    $game = blockspaceSurfaceGame('rapid');
+    $state = explode(':', (new BlockspaceRules)->view((new BlockspaceRules)->deserialize($game->position))['pieces']['state']['kind']);
+    $data = app(SceneSource::class)->rotation(RotationPlanner::BOARD_SCENE, null, [], 0, (int) now()->getTimestampMs(), app(StreamStats::class)->all());
+    $svg = SceneRenderer::fromConfig()->svg([...$data, 'viewers' => null], RotationPlanner::VIEWS[RotationPlanner::BOARD_SCENE]);
+
+    expect($data['board']['slug'])->toBe('blockspace')
+        ->and(substr_count($svg, 'data-stone="w"'))->toBeGreaterThan(0)
+        ->and(substr_count($svg, 'data-stone="b"'))->toBeGreaterThan(0)
+        ->and($svg)->not->toContain('data-piece=')
+        ->and(substr_count($svg, 'data-rung='))->toBe(BlockspaceRules::RUNGS)
+        ->and($svg)->toContain('>'.$state[1].' sat<', '>'.$state[2].' sat<', '>'.$state[3].' to come<')
+        ->and($svg)->toContain(BlockspaceDrawing::FILL['w'], BlockspaceDrawing::FILL['b']);
+});
+
+test('the drawing shows only what the board page shows: two deals that differ in hidden order draw the same', function () {
+    $rules = new BlockspaceRules;
+    $position = $rules->deserialize(blockspaceSurfaceGame()->position);
+    $other = [...$position, 'queue' => strrev($position['queue']), 'deck' => strrev($position['deck'])];
+
+    expect(BlockspaceDrawing::layout($rules->view($other), [], 0, 0, 420))->toBe(BlockspaceDrawing::layout($rules->view($position), [], 0, 0, 420))
+        ->and(BlockspaceDrawing::layout($rules->view($position), [], 0, 0, 420)['rungs'][0]['form'])->not->toBe([]);
 });

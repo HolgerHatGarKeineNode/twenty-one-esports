@@ -127,7 +127,7 @@ class BoardScene
         foreach ($this->games->boards() as $definition) {
             if ($definition instanceof BoardGameDefinition) {
                 $start = $definition->rules();
-                $boards[] = ['name' => $this->credited($definition->slug()), 'view' => $start->view($start->start()), 'last' => []];
+                $boards[] = ['slug' => $definition->slug(), 'name' => $this->credited($definition->slug()), 'view' => $start->view($start->start()), 'last' => []];
             }
         }
 
@@ -151,6 +151,7 @@ class BoardScene
         $mode = $daily ? 'Daily' : ($this->games->mode($game->game, $game->mode)->name ?? ($game->mode === 'blitz' ? 'Blitz 5+3' : $game->mode));
 
         return [
+            'slug' => $game->game,
             'game' => $name,
             // Sentence case like the chess arena's mode line (RotationKit::modeLabel()): "Checkers · Daily, casual".
             'mode' => $name.' · '.$mode.($game->rated ? '' : ', casual'),

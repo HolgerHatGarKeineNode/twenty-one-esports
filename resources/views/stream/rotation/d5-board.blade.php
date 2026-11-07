@@ -17,6 +17,7 @@
 --}}
 @use('App\Support\TwentyOne\Stream\RotationKit', 'K')
 @use('App\Support\TwentyOne\Stream\BoardScene', 'BS')
+@use('App\Support\Board\BlockspaceDrawing', 'BSD')
 @php
     $live = is_array($board ?? null) ? $board : null;
     $drawings = [];
@@ -28,7 +29,12 @@
     if ($live) {
         // As a1: the board on the dark left (x 0..576), the fighter cards on the orange right, text within x 600..1016
         // (the now-playing column covers x 1040..1280); the name across the card on top, face and clock below.
-        $drawings[] = BS::drawing($live['view'], $live['last'] ?? [], 48, 120, 480);
+        // Blockspace draws its own way (BlockspaceDrawing): square stones in orange and blue, and the mempool ladder beside them.
+        $liveBlockspace = ($live['slug'] ?? null) === 'blockspace';
+        $drawings[] = $liveBlockspace
+            ? ['x' => 48, 'y' => 120, 'size' => 480, 'bs' => BSD::layout($live['view'], $live['last'] ?? [], 64, 136, 448)]
+            : BS::drawing($live['view'], $live['last'] ?? [], 48, 120, 480);
+        $sideFill = $liveBlockspace ? BSD::FILL : BS::PIECE_FILL;
         $y = 160;
         foreach ([['black', 'b', 'Black player'], ['white', 'w', 'White player']] as [$side, $colour, $fallback]) {
             $p = $live[$side] ?? [];
@@ -66,7 +72,9 @@
         $boardSize = count($shown) > 1 ? 208 : 400;
         foreach ($shown as $i => $entry) {
             $bx = count($shown) > 1 ? 568 + $i * 232 : 600;
-            $drawings[] = BS::drawing($entry['view'], [], $bx, 150, $boardSize);
+            $drawings[] = ($entry['slug'] ?? null) === 'blockspace'
+                ? ['x' => $bx, 'y' => 150, 'size' => $boardSize, 'bs' => BSD::layout($entry['view'], [], $bx + 8, 158, $boardSize - 16)]
+                : BS::drawing($entry['view'], [], $bx, 150, $boardSize);
             $labels[] = ['x' => $bx, 'w' => $boardSize, 'y' => 150 + $boardSize + 44, 'text' => K::fit($entry['name'] ?? '', K::MONO, 20, $boardSize)];
         }
         $names = [];
@@ -94,6 +102,21 @@
 @foreach ($drawings as $i => $dr)
 <g data-unit="board-{{ $i }}">
 <rect x="{{ $dr['x'] - 8 }}" y="{{ $dr['y'] - 8 }}" width="{{ $dr['size'] + 16 }}" height="{{ $dr['size'] + 16 }}" fill="#3A2C14"/>
+@if (isset($dr['bs']))
+<rect x="{{ $dr['x'] }}" y="{{ $dr['y'] }}" width="{{ $dr['size'] }}" height="{{ $dr['size'] }}" fill="{{ BSD::GROUND }}"/>
+@foreach ($dr['bs']['cells'] as [$cx, $cy, $cs, $stone, $fresh])<rect @if ($stone !== null) data-stone="{{ $stone }}" @endif x="{{ $cx }}" y="{{ $cy }}" width="{{ $cs }}" height="{{ $cs }}" fill="{{ $stone === null ? BSD::CELL : BSD::FILL[$stone] }}" @if ($fresh) stroke="#FFFFFF" stroke-width="2" @endif/>@endforeach
+@foreach ($dr['bs']['rungs'] as $rung)
+<rect data-rung="{{ $rung['bonus'] }}" x="{{ $rung['x'] }}" y="{{ $rung['y'] }}" width="{{ $rung['w'] }}" height="{{ $rung['h'] }}" fill="{{ BSD::RUNG }}"/>
+<text x="{{ $rung['label']['x'] }}" y="{{ $rung['label']['y'] }}" font-family="JetBrains Mono" font-weight="700" font-size="{{ $rung['label']['size'] }}" fill="{{ BSD::INK_MUTED }}">+{{ $rung['bonus'] }}</text>
+@foreach ($rung['form'] as [$fx, $fy, $fs])<rect x="{{ $fx }}" y="{{ $fy }}" width="{{ $fs }}" height="{{ $fs }}" fill="{{ BSD::INK }}"/>@endforeach
+@endforeach
+@foreach ($dr['bs']['scores'] as $score)
+@if ($live && $score['side'] === $dr['bs']['turn'])<rect x="{{ $score['x'] - 3 }}" y="{{ $score['y'] - 3 }}" width="{{ $score['swatch'] + 6 }}" height="{{ $score['swatch'] + 6 }}" fill="#FFFFFF"/>@endif
+<rect x="{{ $score['x'] }}" y="{{ $score['y'] }}" width="{{ $score['swatch'] }}" height="{{ $score['swatch'] }}" fill="{{ BSD::FILL[$score['side']] }}"/>
+<text data-unit="yield-{{ $score['side'] }}" x="{{ $score['x'] + $score['swatch'] * 1.4 }}" y="{{ $score['y'] + $score['swatch'] * 0.82 }}" font-family="JetBrains Mono" font-weight="700" font-size="{{ $score['size'] }}" fill="{{ BSD::INK }}">{{ $score['value'] }} sat</text>
+@endforeach
+<text data-unit="queue" x="{{ $dr['bs']['queue']['x'] }}" y="{{ $dr['bs']['queue']['y'] }}" font-family="JetBrains Mono" font-weight="700" font-size="{{ max(12, round($dr['bs']['queue']['size'] * 1.6, 1)) }}" fill="{{ BSD::INK_MUTED }}">{{ $dr['bs']['queue']['value'] }} to come</text>
+@else
 <rect x="{{ $dr['x'] }}" y="{{ $dr['y'] }}" width="{{ $dr['size'] }}" height="{{ $dr['size'] }}" fill="#1C1C20"/>
 @foreach ($dr['cells'] as [$cx, $cy, $cs])<rect x="{{ $cx }}" y="{{ $cy }}" width="{{ $cs }}" height="{{ $cs }}" fill="#3F3F46"/>@endforeach
 @foreach ($dr['lines'] as [$x1, $y1, $x2, $y2])<line x1="{{ $x1 }}" y1="{{ $y1 }}" x2="{{ $x2 }}" y2="{{ $y2 }}" stroke="#71717A" stroke-width="{{ $dr['stroke'] }}" stroke-linecap="round"/>@endforeach
@@ -109,6 +132,7 @@
 @foreach ($dr['bars'] as $bar)
 <rect data-bar="{{ $bar['side'] }}:{{ $bar['kind'] }}" x="{{ $bar['x'] }}" y="{{ $bar['y'] }}" width="{{ $bar['w'] }}" height="{{ $bar['h'] }}" rx="{{ $bar['r'] }}" fill="{{ BS::PIECE_FILL[$bar['side']] ?? '#F4F4F5' }}" stroke="{{ BS::PIECE_STROKE[$bar['side']] ?? '#A1A1AA' }}" stroke-width="{{ round(max(1, $bar['r'] * 0.24), 2) }}"/>
 @endforeach
+@endif
 </g>
 @endforeach
 @if ($live)
@@ -118,7 +142,7 @@
 @if ($blk['active'])<rect x="{{ $cardX }}" y="{{ $blk['y'] }}" width="{{ $cardW }}" height="{{ $blk['h'] }}" fill="#17120A"/>@endif
 @include('stream.rotation.partials.face', ['face' => ['uri' => $blk['avatar'], 'tag' => null], 'x' => $blk['nx'], 'y' => $blk['faceY'], 'd' => $blk['d'], 'id' => 'p'.$i,
     'fUnit' => 'face-'.$i, 'fRing' => $blk['active'] ? '#F7931A' : '#17120A'])
-<circle data-unit="side-{{ $i }}" cx="{{ $blk['nx'] + $blk['d'] - 12 }}" cy="{{ $blk['faceY'] + $blk['d'] - 12 }}" r="{{ $blk['active'] ? 18 : 14 }}" fill="{{ BS::PIECE_FILL[$blk['colour']] }}" stroke="#17120A" stroke-width="3"/>
+<circle data-unit="side-{{ $i }}" cx="{{ $blk['nx'] + $blk['d'] - 12 }}" cy="{{ $blk['faceY'] + $blk['d'] - 12 }}" r="{{ $blk['active'] ? 18 : 14 }}" fill="{{ $sideFill[$blk['colour']] }}" stroke="#17120A" stroke-width="3"/>
 <text data-unit="name-{{ $i }}" data-box="{{ $blk['nx'] - 1 }} {{ $blk['y'] }} {{ K::CONTENT_RIGHT }} {{ $blk['faceY'] - 4 }}" x="{{ $blk['nx'] }}" y="{{ $blk['nameY'] }}" font-family="{{ $blk['name']['font'] }}" font-weight="800" font-size="{{ $blk['nameSize'] }}" fill="{{ $blk['active'] ? '#FFFFFF' : '#17120A' }}">{{ $blk['name']['text'] }}</text>
 @if ($blk['noClock'])
 <text data-unit="clock" x="{{ $blk['cx'] }}" y="{{ $blk['clockY'] }}" font-family="JetBrains Mono" font-weight="700" font-size="24" fill="#17120A">1 move a day</text>

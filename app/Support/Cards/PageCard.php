@@ -20,6 +20,7 @@ use App\Models\SeriesMatch;
 use App\Models\Tournament;
 use App\Models\User;
 use App\Support\Badges\BadgeCopy;
+use App\Support\Board\BlockspaceDrawing;
 use App\Support\Chess\ChessModes;
 use App\Support\GameNames;
 use App\Support\Nostr\NostrKeys;
@@ -453,8 +454,10 @@ final class PageCard
 
         // The side's colour as a square, then the rating and this game's change.
         $line = $y + $size / 2 + 38;
-        $this->c->rect($tx, $line - 22, 24, 24, $colour === 'white' ? '#F4F4F5' : '#5C5C60');
-        $this->c->rect($tx + 2, $line - 20, 20, 20, $colour === 'white' ? '#F4F4F5' : '#0A0A0B');
+        // Blockspace names its sides by the colours of its stones, and shows them.
+        $stone = ($this->facts['game'] ?? null) === Blockspace::SLUG ? BlockspaceDrawing::FILL[$colour === 'white' ? 'w' : 'b'] : null;
+        $this->c->rect($tx, $line - 22, 24, 24, $stone ?? ($colour === 'white' ? '#F4F4F5' : '#5C5C60'));
+        $this->c->rect($tx + 2, $line - 20, 20, 20, $stone ?? ($colour === 'white' ? '#F4F4F5' : '#0A0A0B'));
         $delta = ($p['delta'] ?? null) !== null && $p['delta'] !== 0 ? ($p['delta'] > 0 ? '+' : '−').abs((int) $p['delta']) : null;
         // A board game has no rating on its card: the side's colour is named instead.
         $rating = ($p['rating'] ?? null) === null ? $this->sideLabel($colour) : __(':rating Elo', ['rating' => $p['rating']]);
@@ -1212,6 +1215,45 @@ final class PageCard
      * into a square with the chess board's frame. A king carries an orange
      * ring.
      */
+    /**
+     * A Blockspace position as the board page shows it (BlockspaceDrawing): the cells with the orange and blue stones,
+     * the mempool ladder with what each rung adds, each side's yield (the side to move framed) and what is to come.
+     *
+     * @param  array{width: int, height: int, cells: list<array{x: int, y: int, size: int}>, points: list<array{id: string, x: int, y: int}>, pieces: array<string, array{side: 'w'|'b', kind: string}>}  $view
+     */
+    private function blockspacePosition(array $view, int $x, int $y, int $inner): void
+    {
+        $pad = 18;
+        $d = BlockspaceDrawing::layout($view, [], $x + $pad, $y + $pad, $inner - 2 * $pad);
+        $this->c->rect($x, $y, $inner, $inner, BlockspaceDrawing::GROUND);
+
+        foreach ($d['cells'] as [$cx, $cy, $cs, $side]) {
+            $this->c->rect($cx, $cy, $cs, $cs, $side === null ? BlockspaceDrawing::CELL : BlockspaceDrawing::FILL[$side]);
+        }
+
+        foreach ($d['rungs'] as $rung) {
+            $this->c->rect($rung['x'], $rung['y'], $rung['w'], $rung['h'], BlockspaceDrawing::RUNG);
+            $this->c->text('+'.$rung['bonus'], 'mono-bold', (int) round($rung['label']['size']), $rung['label']['x'], $rung['label']['y'], BlockspaceDrawing::INK_MUTED);
+
+            foreach ($rung['form'] as [$fx, $fy, $fs]) {
+                $this->c->rect($fx, $fy, $fs, $fs, BlockspaceDrawing::INK);
+            }
+        }
+
+        foreach ($d['scores'] as $score) {
+            $swatch = $score['swatch'];
+
+            if ($score['side'] === $d['turn'] && ($this->facts['status'] ?? null) === 'active') {
+                $this->c->rect($score['x'] - 3, $score['y'] - 3, $swatch + 6, $swatch + 6, Canvas::INK);
+            }
+
+            $this->c->rect($score['x'], $score['y'], $swatch, $swatch, BlockspaceDrawing::FILL[$score['side']]);
+            $this->c->text(__(':count sat', ['count' => $score['value']]), 'mono-bold', (int) round($score['size']), $score['x'] + $swatch * 1.4, $score['y'] + $swatch * 0.82, BlockspaceDrawing::INK);
+        }
+
+        $this->c->text(__(':count to come', ['count' => $d['queue']['value']]), 'mono', max(self::MIN - 8, (int) round($d['queue']['size'] * 1.6)), $d['queue']['x'], $d['queue']['y'], BlockspaceDrawing::INK_MUTED);
+    }
+
     private function boardPosition(string $game, string $position, int $x, int $y, int $size): void
     {
         $definition = app(GameRegistry::class)->find($game);
@@ -1225,6 +1267,13 @@ final class PageCard
 
         $rules = $definition->rules();
         $view = $rules->view($rules->deserialize($position));
+
+        if ($game === Blockspace::SLUG) {
+            $this->blockspacePosition($view, $x + $border, $y + $border, $inner);
+
+            return;
+        }
+
         $scale = $inner / max(1, $view['width'], $view['height']);
         $ox = $x + $border;
         $oy = $y + $border;

@@ -8848,6 +8848,7 @@
     "Pass": "Passen",
     "Really pass?": "Wirklich passen?",
     ":count to come": "noch :count",
+    ":count sat": ":count sat",
     "A stone already lies there.": "Dort liegt schon ein Stein.",
     "Your stones may not touch along an edge.": "Deine Steine dürfen sich nicht an einer Kante berühren.",
     "Your first stones must cover your start cell.": "Deine ersten Steine müssen dein Startfeld bedecken.",
