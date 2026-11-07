@@ -17,14 +17,18 @@ use App\Models\SeriesMatchBoard;
 use App\Models\User;
 use App\Support\Board\BoardGameService;
 use App\Support\Board\BoardRuleViolation;
+use App\Support\Caster\GameMoments\MatchAnchor;
 use App\Support\Chess\ChessTeamMatches;
+use App\Support\Dock\OpenMatches;
 use App\Support\Engagement\ClanHashrate;
 use App\Support\Nostr\SignedEvent;
 use App\Support\SeasonChain\TrustFacts;
 use App\Support\Series\ChallengeDraft;
 use App\Support\Series\Ladders;
+use App\Support\Series\SeriesRuleViolation;
 use App\Support\Series\SeriesService;
 use Illuminate\Database\UniqueConstraintViolationException;
+use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Queue;
 use Livewire\Livewire;
@@ -547,4 +551,79 @@ test('the clan page names the games of its team lineups in German', function () 
         ->assertSee('Zum Schach-Mannschaftskampf herausfordern')
         ->assertSee('Schach · Rapid-Aufstellung')
         ->assertDontSee('Chess-Mannschaftskampf');
+});
+
+test('a side without a Blockli lineup at the lock loses the whole team match by forfeit, unrated; neither side named: void', function () {
+    ratedBlockliTeamSetup();
+    $a = blockliTeamLineup();
+    $b = blockliTeamLineup();
+    $match = blockliTeamChallengeAndAccept($a, $b, rated: true);
+    $this->teamMatches->name($match, $a[1], array_slice(blockliActiveIds($a[0]), 0, 2));
+
+    $this->travelTo(ChessTeamMatches::lockAt($match)->copy()->subMinute());
+    expect($this->teamMatches->lockDue())->toBe(['locked' => 0, 'forfeited' => 0, 'voided' => 0]);
+
+    $this->travelTo(ChessTeamMatches::lockAt($match)->copy()->addSecond());
+    expect($this->teamMatches->lockDue())->toBe(['locked' => 0, 'forfeited' => 1, 'voided' => 0]);
+
+    $match->refresh();
+    expect($match->status)->toBe(SeriesStatus::Resolved)
+        ->and($match->resolution)->toBe(SeriesResolution::Forfeit)
+        ->and($match->winner)->toBe('challenger')
+        ->and(BoardGame::query()->where('series_match_id', $match->id)->exists())->toBeFalse()
+        ->and(Rating::query()->where('game', 'blockli')->where('mode', 'rapid')->count())->toBe(0)
+        ->and(ChessTeamMatches::reservationOf($a[1]))->toBeNull();
+
+    $void = blockliTeamChallengeAndAccept(blockliTeamLineup(), blockliTeamLineup());
+    $this->travelTo(ChessTeamMatches::lockAt($void)->copy()->addSecond());
+    expect($this->teamMatches->lock($void))->toBe('void')
+        ->and($void->refresh()->resolution)->toBe(SeriesResolution::Void)
+        ->and($void->winner)->toBe('none');
+});
+
+test('the pair limit counts per game: a rated Blockli team match blocks a second one for seven days, never a chess one of the same clans', function () {
+    ratedBlockliTeamSetup();
+    $series = app(SeriesService::class);
+    $a = blockliTeamLineup();
+    $b = blockliTeamLineup();
+    $first = blockliTeamChallengeAndAccept($a, $b, rated: true);
+    $first->update(['status' => SeriesStatus::Resolved, 'resolution' => SeriesResolution::Void, 'winner' => 'none', 'finished_at' => now()]);
+    $draft = fn (Lineup $from, Lineup $to): ChallengeDraft => new ChallengeDraft($from->id, $to->id, 1, true, [$start = now()->addHours(2)->startOfMinute()->getTimestamp(), $start + 3600], $start - 3600, 'gl hf', 2);
+
+    expect(fn () => $series->prepareChallenge($b[1], $draft($b[0], $a[0])))->toThrow(SeriesRuleViolation::class, 'rated team match in the last 7 days');
+
+    // The same two clans in chess rapid: not blocked by the Blockli one.
+    $chessA = Lineup::factory()->game('chess', 'rapid')->ready(1)->create(['clan_id' => $a[0]->clan_id]);
+    $chessB = Lineup::factory()->game('chess', 'rapid')->ready(1)->create(['clan_id' => $b[0]->clan_id]);
+    expect($series->prepareChallenge($a[1], $draft($chessA, $chessB))['templates'])->toHaveCount(1);
+
+    $this->travelTo(now()->setTimestamp($first->start_at->getTimestamp())->addDays(7)->addMinute());
+    expect($series->prepareChallenge($b[1], $draft($b[0], $a[0]))['templates'])->toHaveCount(1);
+});
+
+test('a Black who misses the first move after White opened loses the board by forfeit', function () {
+    [$match] = lockedBlockliTeamMatch(boards: 2);
+    $games = startedBlockliBoards($match);
+    $board = playBlockli($games[1], ['e1-e2']);
+
+    expect($board->deadline_ms)->not->toBeNull();
+
+    $this->travelTo(Carbon::createFromTimestampMs($board->deadline_ms + 1000));
+    app(BoardGameService::class)->checkClock($board->loadMissing(['white', 'black']));
+    $board->refresh();
+
+    expect($board->status)->toBe(BoardGameStatus::Finished)
+        ->and($board->end_reason)->toBe(BoardEndReason::Forfeit->value)
+        ->and($board->result)->toBe('1-0')
+        ->and(collect(ChessTeamMatches::boardResults($match->refresh()))->firstWhere('board', 1)['outcome'])->toBe('forfeit');
+});
+
+test('a running Blockli team board is named as a clan team match board by the caster and carries #number/board in the dock', function () {
+    [$match] = lockedBlockliTeamMatch(boards: 2);
+    $games = startedBlockliBoards($match);
+    $anchor = MatchAnchor::of($games[2], 'Blockli', 'Rapid');
+    $item = app(OpenMatches::class)->for($games[2]->white)->first(fn ($item) => $item->key === 'board-'.$games[2]->id);
+
+    expect($anchor)->toBe('Rapid-Blocklipartie am Brett 2 eines Clan-Duells')
+        ->and($item?->number)->toBe('#'.$match->number.'/2');
 });

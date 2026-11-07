@@ -420,7 +420,7 @@ final class OpenMatches
 
         $games = BoardGame::query()->playedBy($user)->where('status', BoardGameStatus::Active)
             ->when($exclude !== null, fn ($query) => $query->whereKeyNot($exclude))
-            ->with(['white', 'black'])->latest('id')->limit(self::KIND_LIMIT)->get();
+            ->with(['white', 'black', 'seriesMatch:id,number'])->latest('id')->limit(self::KIND_LIMIT)->get();
 
         return array_values($games->map(function (BoardGame $game) use ($user, $nowMs): DockItem {
             if ($game->isCorrespondence()) {
@@ -450,7 +450,8 @@ final class OpenMatches
                 name: $name,
                 face: $opponent,
                 tag: null,
-                number: '',
+                // A team match board carries its challenge's number and board, as a chess one (`#412/2`, NIP rev. 9.25).
+                number: $game->series_match_id !== null ? $game->number() : '',
                 href: route('board.show', $game),
                 title: $title,
                 state: $state,

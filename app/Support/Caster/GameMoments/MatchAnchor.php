@@ -32,11 +32,11 @@ final class MatchAnchor
 
         $context = match (true) {
             $tournament !== null => 'im Turnier '.$tournament,
-            $game instanceof ChessGame && $game->series_match_id !== null && $game->board !== null => 'am Brett '.$game->board.' eines Clan-Duells',
+            $game->series_match_id !== null && $game->board !== null => 'am Brett '.$game->board.' eines Clan-Duells',
             (bool) $game->rated => 'gewertet in der Ladder',
             default => 'als freie Partie',
         };
-        $number = $game instanceof ChessGame && $game->series_match_id !== null ? null : $game->number;
+        $number = $game->series_match_id !== null ? null : $game->number;
 
         return $what.' '.$context.($number === null ? '' : ', Match Nummer '.$number);
     }
