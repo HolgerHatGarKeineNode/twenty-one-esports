@@ -5,7 +5,7 @@
  * tournament desk on the same page opened it and "Your chats" found it in the desk's cache.
  *
  * Now the game chat retries like the room, reads what the room and the desk opened on this device, and drops its
- * null entries of before once. Run by tests/Feature/Board/GameChatUnwrapTest.php; runnable alone with `node --test`.
+ * null entries of before once. Run by tests/Feature/GameChatUnwrapTest.php; runnable alone with `node --test`.
  */
 import assert from 'node:assert/strict';
 import { afterEach, test } from 'node:test';
