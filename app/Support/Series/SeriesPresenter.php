@@ -10,6 +10,7 @@ use App\Models\SeriesMatch;
 use App\Models\User;
 use App\Support\Chess\ChessTeamMatches;
 use App\Support\FairPlay\AccountLinks;
+use App\Support\Formats;
 use App\Support\GameNames;
 use App\Support\Matches\MatchBlocks;
 use App\Support\Nostr\NostrKeys;
@@ -80,13 +81,13 @@ final class SeriesPresenter
         $ratings = Ratings::forSeries($match);
         $casual = $ratings['pool'] === 'casual';
         $signed = fn (int $delta): string => $delta > 0 ? '+'.$delta : ($delta < 0 ? '−'.abs($delta) : '±0');
-        $before = fn (array $rating): int => $rating['before'] ?? $rating['rating'];
+        $before = fn (array $rating): string => Formats::number($rating['before'] ?? $rating['rating']);
         $line = function (array $rating) use ($casual): string {
             if ($rating['delta'] === null) {
-                return $casual ? __('casual Elo :elo', ['elo' => $rating['rating']]) : __('Elo :elo', ['elo' => $rating['rating']]);
+                return $casual ? __('casual Elo :elo', ['elo' => Formats::number($rating['rating'])]) : __('Elo :elo', ['elo' => Formats::number($rating['rating'])]);
             }
 
-            $values = ['before' => $rating['before'], 'after' => $rating['rating']];
+            $values = ['before' => Formats::number($rating['before']), 'after' => Formats::number($rating['rating'])];
 
             return $casual ? __('casual Elo :before → :after', $values) : __('Elo :before → :after', $values);
         };
@@ -269,8 +270,13 @@ final class SeriesPresenter
         };
     }
 
-    public static function time(CarbonInterface $time, ?User $viewer, string $format = 'D, M j · H:i'): string
+    public static function time(CarbonInterface $time, ?User $viewer, ?string $format = null): string
     {
+        // The full stamp in the page's language ("Mo. 5.10., 13:02" / "Mon, Oct 5, 1:02 PM", P1 G5); a short pattern when asked.
+        if ($format === null || $format === 'D, M j · H:i') {
+            return Formats::date($time, true, PreSeason::timezoneFor($viewer));
+        }
+
         return $time->copy()->timezone(PreSeason::timezoneFor($viewer))->locale(app()->getLocale())->translatedFormat($format);
     }
 

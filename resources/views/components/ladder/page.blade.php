@@ -45,7 +45,7 @@
                         <x-icon name="trophy" :size="16" class="text-btc" />
                         <span class="rv-m">{{ __('Top') }}</span>
                         <b>{{ $leader['name'] }}</b>
-                        <b class="font-display text-2xl text-btc tabular-nums">{{ $leader['value'] }}</b>
+                        <b class="font-display text-2xl text-btc tabular-nums">{{ is_numeric($leader['value']) ? \App\Support\Formats::number($leader['value']) : $leader['value'] }}</b>
                     </span>
                 @endif
                 @isset($action)

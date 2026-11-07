@@ -92,7 +92,7 @@ test('the band shows Tournament #2 with its 23 310 sats pot and podium, and its 
     $html = (string) $this->get(route('games.rocket-league'))->assertOk()->getContent();
     $band = between($html, 'data-test="prize-band"', '</section>'."\n".'                    <div id="game-cups"');
     $last = between($html, 'data-test="prize-last"', '</article>');
-    $sats = "23\u{00A0}310";
+    $sats = '23,310';
 
     expect($last)->toContain('Rocket League Cup #2')
         ->not->toContain('Newer Casual Cup')
@@ -139,7 +139,7 @@ test('the ways to play name the prizes paid and lead to the Rocket League tourna
     $filtered = e(route('tournaments.index', ['game' => 'rocket-league']));
 
     expect(between($html, 'data-test="play"', '</section>'))->toContain('data-test="play-tournaments"')
-        ->and(between($html, 'data-test="play-tournaments"', '</a>'))->toContain("23\u{00A0}310 sats won")->toContain('Champion: Industrie_KPI')
+        ->and(between($html, 'data-test="play-tournaments"', '</a>'))->toContain('23,310 sats won')->toContain('Champion: Industrie_KPI')
         ->and($html)->toMatch('#<a\s+href="'.preg_quote($filtered, '#').'"[^>]*data-test="play-tournaments"#')
         ->and($html)->toMatch('#<a href="'.preg_quote($filtered, '#').'"[^>]*class="gs-tab"[^>]*data-test="ctx-tournaments"#')
         // One game bar, no second tab row and no start tiles on the page; the prize band follows the ways to play.

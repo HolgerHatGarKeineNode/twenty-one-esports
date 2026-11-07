@@ -152,7 +152,7 @@ new #[Title('Opponents')] class extends Component {
                             <dl class="m-0 flex flex-col text-[13px]" aria-label="{{ __('What the league knows about :name', ['name' => $name]) }}" data-test="opponent-request-facts">
                                 @if ($facts['joined'])
                                     <div class="{{ $row }}" data-test="fact-joined"><dt class="text-ink-3">{{ __('Joined') }}</dt>
-                                        <dd class="m-0">{{ $facts['joined']->locale(app()->getLocale())->translatedFormat('M j, Y') }} <span class="text-ink-3">({{ $facts['joined']->locale(app()->getLocale())->diffForHumans() }})</span></dd></div>
+                                        <dd class="m-0">{{ \App\Support\Formats::day($facts['joined']) }} <span class="text-ink-3">({{ $facts['joined']->locale(app()->getLocale())->diffForHumans() }})</span></dd></div>
                                 @endif
                                 <div class="{{ $row }}" data-test="fact-games"><dt class="text-ink-3">{{ __('Games here') }}</dt>
                                     <dd @class(['m-0', 'text-ink-3' => $facts['games'] === 0])>{{ $facts['games'] === 0 ? __('none finished yet') : trans_choice(':count finished|:count finished', $facts['games']) }}</dd></div>

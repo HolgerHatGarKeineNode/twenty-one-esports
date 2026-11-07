@@ -315,7 +315,7 @@ new class extends Component {
                     {{ $fixed
                         ? __('Kept in the league wallet for this tournament alone; the fixed prizes are paid once the pot covers them.')
                         : __('Kept in the league wallet for this tournament alone.') }} ·
-                    {{ $open ? __('open to everyone until the tournament ends') : __('closed at the admin check, :date', ['date' => $tournament->pool_closed_at?->format('Y-m-d H:i')]) }}
+                    {{ $open ? __('open to everyone until the tournament ends') : __('closed at the admin check, :date', ['date' => \App\Support\Formats::date($tournament->pool_closed_at)]) }}
                 </p>
                 <p class="m-0 max-w-[80ch] text-xs leading-normal text-ink-2">
                     {{ $teams

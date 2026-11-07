@@ -658,7 +658,7 @@ new #[Layout('layouts::app', ['section' => 'admin'])] class extends TournamentFo
                             <span class="col-span-2 min-w-0 text-xs text-ink-2 [overflow-wrap:anywhere] lg:col-span-1">
                                 {{ $signup->lineup_id ? collect($signup->members)->map(fn ($id) => $this->members[$id]?->displayName())->filter()->implode(', ') : ($signup->lineup?->clan?->name ?? '') }}
                             </span>
-                            <span class="text-xs whitespace-nowrap text-ink-3">{{ __('signed up :date', ['date' => $signup->created_at?->copy()->timezone($zone)->format('Y-m-d H:i')]) }}</span>
+                            <span class="text-xs whitespace-nowrap text-ink-3">{{ __('signed up :date', ['date' => \App\Support\Formats::date($signup->created_at, true, $zone)]) }}</span>
                             <span class="text-right text-xs text-ink-2 lg:text-left">{{ $seed === null ? __('mix pool') : __('Elo :rating', ['rating' => $seed]) }}</span>
                         </div>
 
@@ -704,7 +704,7 @@ new #[Layout('layouts::app', ['section' => 'admin'])] class extends TournamentFo
         </span>
         @forelse ($this->log as $entry)
             <div class="flex flex-col gap-1 border-t border-hairline pt-2 text-xs leading-normal" wire:key="log-{{ $entry->id }}">
-                <span class="[overflow-wrap:anywhere]"><span class="text-ink-3">{{ $entry->created_at->copy()->timezone($zone)->format('Y-m-d H:i') }}</span>
+                <span class="[overflow-wrap:anywhere]"><span class="text-ink-3">{{ \App\Support\Formats::date($entry->created_at, true, $zone) }}</span>
                     <b>{{ $entry->user_name }}</b> {{ $actions[$entry->action] ?? $entry->action }}@if ($entry->subject): <b>{{ $entry->subject }}</b>@endif
                     @if ($entry->reason) <span class="text-ink-2">— {{ $entry->reason === TournamentEditor::DEADLINES_AHEAD ? __($entry->reason) : $entry->reason }}</span>@endif</span>
                 @foreach ($entry->details ?? [] as $key => [$old, $new])

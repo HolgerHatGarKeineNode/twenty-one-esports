@@ -170,8 +170,8 @@ test('a player with wins shows honours and trophies at 390 and 1440, English and
     $calm = $still->evaluate(PRIDE_GEOMETRY);
 
     expect($desk)->toMatchArray($clean)->and($german)->toMatchArray($clean)->and($phone)->toMatchArray($clean)
-        ->and($desk['honours'])->toBe(['2 tournament wins', '2× 2nd or 3rd place', "30\u{00A0}000 sats won"])
-        ->and($german['honours'])->toBe(['2 Turniersiege', '2× Platz 2 oder 3', "30\u{00A0}000 Sats gewonnen"])
+        ->and($desk['honours'])->toBe(['2 tournament wins', '2× 2nd or 3rd place', '30,000 sats won'])
+        ->and($german['honours'])->toBe(['2 Turniersiege', '2× Platz 2 oder 3', '30.000 Sats gewonnen'])
         ->and($desk['featured'])->toMatchArray(['place' => '1', 'recent' => '1', 'name' => '21,000 Sats, Zero Ball Control'])
         ->and($desk['featured']['words'])->toStartWith('Tournament win, 2 days ago')
         ->and($german['featured']['words'])->toStartWith('Turniersieg, vor 2 Tagen')
@@ -202,7 +202,7 @@ test('a player with one win gets the plate alone and a player with none no troph
     $n = $empty->evaluate(PRIDE_GEOMETRY);
     prideRoundtrip($empty, 'none');
 
-    expect($m)->toMatchArray(['overflow' => 0, 'overflowing' => [], 'outside' => [], 'zero' => 0, 'rest' => [], 'honours' => ['1 tournament win', "21\u{00A0}000 sats won"]])
+    expect($m)->toMatchArray(['overflow' => 0, 'overflowing' => [], 'outside' => [], 'zero' => 0, 'rest' => [], 'honours' => ['1 tournament win', '21,000 sats won']])
         ->and($m['featured']['recent'])->toBe('1')
         ->and($n)->toMatchArray(['overflow' => 0, 'overflowing' => [], 'outside' => [], 'featured' => null, 'honours' => [], 'trophiesTop' => null]);
 });

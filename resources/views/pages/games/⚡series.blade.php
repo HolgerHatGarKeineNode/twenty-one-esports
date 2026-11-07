@@ -556,7 +556,7 @@ new #[Layout('layouts::app', ['section' => 'matches', 'scripts' => ['resources/j
                                         <x-clan-tag :clan="$clan" :tile="56" class="flex size-8 shrink-0 items-center justify-center rounded-md bg-btc-tint text-[10px] font-bold text-btc sm:size-14 sm:text-xs" />
                                     @endif
                                     <span class="min-w-0 grow truncate sm:w-full sm:grow-0">{{ $name }}</span>
-                                    <b class="shrink-0 font-display text-[15px] tabular-nums sm:text-lg" data-test="game-ladder-rating">{{ $row->rating }}</b>
+                                    <b class="shrink-0 font-display text-[15px] tabular-nums sm:text-lg" data-test="game-ladder-rating">{{ \App\Support\Formats::number($row->rating) }}</b>
                                 </a>
                             </li>
                         @endforeach

@@ -152,7 +152,7 @@ test('the player page shows the honours and the trophies, and its warm query cou
 
     $this->get(route('players.show', $one->npub))->assertOk()
         ->assertSee('data-test="player-honours-wins"', false)->assertSee('1 tournament win')
-        ->assertSee("21\u{00A0}000 sats won")
+        ->assertSee('21,000 sats won')
         ->assertSee('data-test="player-trophy-featured" data-place="1" data-recent="1"', false)
         ->assertDontSee('data-test="player-trophy"', false);
     $this->get(route('players.show', ['npub' => $five->npub, 'lang' => 'de']))->assertOk()

@@ -899,7 +899,7 @@ new #[Layout('layouts::app', ['section' => 'clans'])] class extends Component
             @foreach ([
                 [__('Players'), trans_choice(':count active|:count active', $members->count()).', '.trans_choice(':count invite open|:count invites open', $pending->count()), 'text-ink'],
                 [__('Captains'), $captains, 'text-ink'],
-                [__('Founded'), $clan->created_at?->translatedFormat('M j'), 'text-ink'],
+                [__('Founded'), \App\Support\Formats::day($clan->created_at), 'text-ink'],
                 [__('Clan Rating, chess'), ! $clanStats->seasonLive() ? __('starts at Block 0') : ($rating['rating'] ? __(':n, average of the top 3 players', ['n' => $rating['rating']]) : __('needs 3 rapid Elos')), 'text-ink'],
                 [__('Hashrate'), ! $clanStats->seasonLive() ? __('starts at Block 0') : __(':season this season, :week in the last 7 days', ['season' => $hash['season'], 'week' => $hash['week']]), 'text-btc'],
             ] as [$key, $value, $colour])

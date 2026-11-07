@@ -31,9 +31,9 @@ test('each moment becomes a signed kind 1 with the card in the content and in an
     $posts = app(SharePosts::class);
     $moments = [
         ['rank-up', (string) $this->moments['versions'][1]->id, 'Ranked up to Gold II in Chess blitz on TWENTY ONE Esports.'],
-        ['block', (string) $this->moments['block']->id, 'Mined block 2 on the TWENTY ONE Esports season chain: +5'."\u{00A0}".'000 sats.'],
+        ['block', (string) $this->moments['block']->id, 'Mined block 2 on the TWENTY ONE Esports season chain: +5,000 sats.'],
         ['tournament', (string) $this->moments['tournament']->id, 'Won Testnet Cup on TWENTY ONE Esports.'],
-        ['wrapped', 'pre-season', 'My Pre-Season on TWENTY ONE Esports: 2 blocks mined, 10'."\u{00A0}".'000 sats.'],
+        ['wrapped', 'pre-season', 'My Pre-Season on TWENTY ONE Esports: 2 blocks mined, 10,000 sats.'],
     ];
 
     foreach ($moments as [$type, $id, $sentence]) {

@@ -22,7 +22,7 @@
     @elseif ($label)
         <span @class(['max-sm:hidden' => $compact])>{{ $label }}</span>
     @endif
-    <b class="text-ink" data-test="rating-value">{{ $rating['rating'] }}</b>
+    <b class="text-ink" data-test="rating-value">{{ \App\Support\Formats::number($rating['rating']) }}</b>
     @if ($delta !== null)
         <b @class(['text-win' => $delta > 0, 'text-loss' => $delta < 0, 'text-ink-2' => $delta === 0]) data-test="rating-delta">{{ $delta > 0 ? '+'.$delta : ($delta < 0 ? '−'.abs($delta) : '±0') }}</b>
     @endif

@@ -219,7 +219,7 @@ test('a player with games shows ladders, results, the won cup, seasons and clans
         // Every player row has the opponent's picture; the lineup series has the clan's mark.
         ->and($state['faces'])->toBe(9)
         ->and($state['place'])->toBe('1.')
-        ->and($state['prize'])->toBe("21\u{00A0}000 sats")
+        ->and($state['prize'])->toBe('21,000 sats')
         ->and($state['clans'])->toBe(['true', 'false'])
         ->and($desk)->toMatchArray(['overflow' => 0, 'inside' => true, 'small' => [], 'clipped' => [], 'hiddenWhen' => 0])
         // The side column starts level with the first ladder card.

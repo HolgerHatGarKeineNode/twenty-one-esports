@@ -10,8 +10,8 @@
 --}}
 @php
     $viewer = auth()->id();
-    // Elo and points without a thousands separator, as on every ladder of the league (ladder/⚡show, the lobbies).
-    $format = fn (mixed $value): string => (string) $value;
+    // Elo and points grouped in the page's language ("1.116" in German, plan "Canvas and live alignment", P1, G5).
+    $format = fn (mixed $value): string => is_numeric($value) ? \App\Support\Formats::number((float) $value, is_float($value) && floor($value) != $value ? 1 : 0) : (string) $value;
 @endphp
 
 <table {{ $attributes->class('rv-tb') }}>

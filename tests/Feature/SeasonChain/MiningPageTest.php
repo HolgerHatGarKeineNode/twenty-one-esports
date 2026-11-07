@@ -32,7 +32,7 @@ test('before Block 0 /mining shows the rest state with the countdown and the Pre
         ->assertSee('data-state="pre-launch"', false)
         ->assertSee('The chain starts at Block 0')
         ->assertSee('(in 1 d 00:00:00)')
-        ->assertSee("2\u{00A0}100\u{00A0}000", false)
+        ->assertSee('2,100,000', false)
         ->assertSee('Rules of the Pre-Season draft')
         ->assertSee('the most it pays out, after the season')
         ->assertDontSee('fixed at Block 0')
@@ -44,11 +44,11 @@ test('before the board saved a chain draft /mining announces no supply, as home 
         ->assertOk()
         ->assertSee('data-state="pre-launch"', false)
         ->assertSee('not announced yet')
-        ->assertDontSee("2\u{00A0}100\u{00A0}000", false);
+        ->assertDontSee('2,100,000', false);
 
     saveChainDraft(['supply' => 1_234_567]);
 
-    $this->get(route('mining'))->assertOk()->assertSee("1\u{00A0}234\u{00A0}567", false)->assertDontSee('not announced yet');
+    $this->get(route('mining'))->assertOk()->assertSee('1,234,567', false)->assertDontSee('not announced yet');
 });
 
 test('/mining is the Season page: title, share title and heading say Season, like the navigation', function () {
@@ -80,7 +80,7 @@ test('in a live season /mining shows mined sats, the blocks with their miners an
     $this->get(route('mining'))
         ->assertOk()
         ->assertSee('data-state="live"', false)
-        ->assertSeeInOrder(['Mined', "20\u{00A0}000"], false)
+        ->assertSeeInOrder(['Mined', '20,000'], false)
         ->assertSee('#412')
         ->assertSee('satsjaeger')
         ->assertSee('Long blitz evenings.')
@@ -183,11 +183,11 @@ test('in a live season the supply chart plots the mined sats per day with the fo
         ->assertSee('data-test="supply-chart"', false)
         ->assertSee('Forecast from the last 4 weeks')
         // Two days with blocks: 2 blocks for 40 000, then 1 more for a total of 60 000.
-        ->assertSeeInOrder(['data-test="supply-table"', '>2</td>', "40\u{00A0}000", "40\u{00A0}000", '>1</td>', "20\u{00A0}000", "60\u{00A0}000", 'forecast</span>'], false)
+        ->assertSeeInOrder(['data-test="supply-table"', '>2</td>', '40,000', '40,000', '>1</td>', '20,000', '60,000', 'forecast</span>'], false)
         ->assertSee('Era 2')
         ->assertSee('data-test="mining-payouts"', false)
         ->assertSee('the sats wait 90 days for a claim, then go to the reserve')
-        ->assertSee("60\u{00A0}000 sats, 1 player", false)
+        ->assertSee('60,000 sats, 1 player', false)
         ->assertSeeInOrder(['data-test="mining-review"', 'opens '], false)
         ->assertSee('Unmined rest at the season end, at the current rate');
 });
@@ -203,9 +203,9 @@ test('the reserve lists each settled zap with its payer, never a total, so no ba
     $this->get(route('mining'))
         ->assertOk()
         ->assertSee('2 zaps')
-        ->assertSeeInOrder(['data-test="reserve-zaps"', 'anonymous', "2\u{00A0}000", 'poolfan', "1\u{00A0}000"], false)
-        ->assertDontSee("3\u{00A0}000", false)
-        ->assertDontSee("50\u{00A0}000", false);
+        ->assertSeeInOrder(['data-test="reserve-zaps"', 'anonymous', '2,000', 'poolfan', '1,000'], false)
+        ->assertDontSee('3,000', false)
+        ->assertDontSee('50,000', false);
 });
 
 test('the reserve card shows a QR code to zap the league reserve, never its address as text, and nothing without one', function (string $state) {
@@ -241,7 +241,7 @@ test('between seasons the page shows the ended season as it closed: no forecast,
         ->assertDontSee('Pre-Season draft')
         ->assertSee('data-test="supply-chart"', false)
         ->assertDontSee('Forecast from the last 4 weeks')
-        ->assertSeeInOrder(['Not mined', "2\u{00A0}080\u{00A0}000", 'goes to the league reserve'], false)
+        ->assertSeeInOrder(['Not mined', '2,080,000', 'goes to the league reserve'], false)
         ->assertSee('lena.k')
         ->assertSee('Rules at the season end')
         ->assertSeeInOrder(['data-test="mining-review"', 'mining stopped'], false)

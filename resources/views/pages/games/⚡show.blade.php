@@ -942,7 +942,7 @@ new #[Layout('layouts::app', ['section' => 'chess', 'realtime' => true, 'scripts
             {{-- Details (desktop) --}}
             <div class="hidden grid-cols-2 gap-5 lg:grid">
                 <div class="rounded-lg bg-card px-6 py-2">
-                    @foreach ([[__('Time control'), __(':mode · :minutes min, +:seconds s per move', ['mode' => \App\Support\Chess\ChessModes::label($game->mode), 'minutes' => intdiv((int) $game->initial_ms, 60_000), 'seconds' => intdiv((int) $game->increment_ms, 1000)])], [__('Started'), $game->created_at?->timezone(config('app.timezone'))->isoFormat('ddd YYYY-MM-DD · HH:mm')], [__('Kind'), $game->rated ? __('Rated') : __('Casual · casual Elo only')], [__('Moves'), __('checked by the server, one by one')]] as [$key, $value])
+                    @foreach ([[__('Time control'), __(':mode · :minutes min, +:seconds s per move', ['mode' => \App\Support\Chess\ChessModes::label($game->mode), 'minutes' => intdiv((int) $game->initial_ms, 60_000), 'seconds' => intdiv((int) $game->increment_ms, 1000)])], [__('Started'), \App\Support\Formats::date($game->created_at, true, config('app.timezone'))], [__('Kind'), $game->rated ? __('Rated') : __('Casual · casual Elo only')], [__('Moves'), __('checked by the server, one by one')]] as [$key, $value])
                         <div class="grid h-11 grid-cols-[180px_minmax(0,1fr)] items-center border-b border-hairline text-sm last:border-0"><span class="text-ink-2">{{ $key }}</span><span>{{ $value }}</span></div>
                     @endforeach
                 </div>

@@ -159,7 +159,7 @@
                     @endif
                     <div class="flex min-h-14 items-center gap-3 lg:min-h-[52px]">
                         <span class="text-xs text-ink-3">
-                            {{ __('joined :date', ['date' => $user->created_at?->translatedFormat('M j, Y')]) }}@if ($profile->games()){{ __(', plays :games', ['games' => $profile->games()]) }}@endif
+                            {{ __('joined :date', ['date' => \App\Support\Formats::day($user->created_at)]) }}@if ($profile->games()){{ __(', plays :games', ['games' => $profile->games()]) }}@endif
                         </span>
                         <span class="grow"></span>
                         <x-copy-npub :npub="$user->npub" :name="$name" variant="button" :label="$user->shortNpub()" />

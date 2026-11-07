@@ -15,6 +15,7 @@ use App\Models\Tournament;
 use App\Models\TournamentParticipant;
 use App\Models\User;
 use App\Support\Badges\BadgeCopy;
+use App\Support\Formats;
 use App\Support\GameNames;
 use App\Support\Nostr\NostrKeys;
 use App\Support\Rating\RankTiers;
@@ -827,9 +828,9 @@ final class ShareCard
         return $names === [] ? (string) $last : __(':first and :last', ['first' => implode(', ', $names), 'last' => $last]);
     }
 
-    /** 195000 → "195 000", with a no-break space. */
+    /** 195000 → "195.000" in German, "195,000" in English (plan "Canvas and live alignment", P1, G5). */
     public static function sats(int $amount): string
     {
-        return number_format($amount, 0, '.', "\u{00A0}");
+        return Formats::number($amount);
     }
 }

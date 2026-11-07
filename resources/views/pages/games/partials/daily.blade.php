@@ -32,7 +32,8 @@
     $started = $game->created_at?->timezone($viewer->timezone ?? config('app.timezone'));
     $myColorName = $color === 'w' ? __('White') : ($color === 'b' ? __('Black') : null);
     $cards = ['w' => $players['w'], 'b' => $players['b']];
-    $deadline = \Illuminate\Support\Carbon::createFromTimestampMs((int) $game->deadline_ms)->timezone($viewer->timezone ?? config('app.timezone'))->isoFormat('ddd YYYY-MM-DD HH:mm');
+    $deadline = \Illuminate\Support\Carbon::createFromTimestampMs((int) $game->deadline_ms)->timezone($viewer->timezone ?? config('app.timezone'));
+    $deadline = \App\Support\Formats::date($deadline, true, $deadline->getTimezone()->getName());
 @endphp
 
 {{-- Players get the chat sheet (72px) under the bottom bar on phones, hence the taller bottom padding. --}}
@@ -324,7 +325,7 @@
                 @foreach ([
                     [__('Opponent'), ($opponentUser ? '' : $opponentName).($opponentUser?->clanMember?->clan ? ' · '.$opponentUser->clanMember->clan->name : '').($myColorName ? ' · '.__('you play :color', ['color' => $myColorName]) : '')],
                     [__('Time control'), __('Daily chess (1 move/day), max 24 h')],
-                    [__('Started'), ($started?->isoFormat('ddd YYYY-MM-DD') ?? '').' · '],
+                    [__('Started'), \App\Support\Formats::date($started, false).' · '],
                 ] as $i => [$key, $value])
                     <div class="grid h-11 grid-cols-[180px_minmax(0,1fr)] items-center border-b border-hairline text-sm last:border-0">
                         <span class="text-ink-2">{{ $key }}</span>

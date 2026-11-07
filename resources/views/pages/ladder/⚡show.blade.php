@@ -312,7 +312,7 @@ new #[Layout('layouts::app', ['section' => 'ladder'])] class extends Component
                     @foreach ([
                         [$series ? __('Series played') : __('Games'), $totals['games'], 'ladder-stat-games'],
                         [$players ? __('Players') : __('Lineups'), $totals['entries'], 'ladder-stat-entries'],
-                        [__('Average Elo'), $totals['average'] ?? '–', 'ladder-stat-average'],
+                        [__('Average Elo'), isset($totals['average']) ? \App\Support\Formats::number($totals['average']) : '–', 'ladder-stat-average'],
                     ] as [$label, $value, $test])
                         <div class="flex min-w-0 flex-col gap-1">
                             <dt class="text-xs text-ink-2">{{ $label }}</dt>
@@ -475,7 +475,7 @@ new #[Layout('layouts::app', ['section' => 'ladder'])] class extends Component
                         @if ($rated)
                             <span class="hidden lg:block" data-test="ladder-tier"><x-rank-badge :tier="$badge['tier']" :level="$badge['level']" /></span>
                         @endif
-                        <b class="text-right text-[15px] tabular-nums" data-test="ladder-elo">{{ $summary['rating'] }}</b>
+                        <b class="text-right text-[15px] tabular-nums" data-test="ladder-elo">{{ \App\Support\Formats::number($summary['rating']) }}</b>
                         <span class="hidden text-right whitespace-nowrap text-ink-2 tabular-nums lg:block">{{ $this->gameMode->allowsDraws ? $summary['wins'].' / '.$summary['draws'].' / '.$summary['losses'] : $summary['wins'].' / '.$summary['losses'] }}</span>
                         <span class="hidden lg:block" data-test="ladder-form">
                             @if ($letters !== [])

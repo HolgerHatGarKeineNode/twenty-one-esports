@@ -101,8 +101,8 @@ test('the pot scene shows the league pool and who can still win it, and is left 
 
     $this->get(route('tournaments.tv', $tournament))->assertOk()
         ->assertSee('data-scene-id="pot"', false)
-        ->assertSee("210\u{00A0}000")
-        ->assertSee("126\u{00A0}000 sats")
+        ->assertSee('210,000')
+        ->assertSee('126,000 sats')
         ->assertSee('4 entries can still win it');
 });
 

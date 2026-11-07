@@ -333,7 +333,7 @@ new #[Layout('layouts::app', ['section' => 'tournaments'])] class extends PrizeP
         @else
             <p class="m-0 flex flex-wrap items-baseline gap-x-3 gap-y-1 text-[13px] text-ink-2">
                 <b class="font-display text-[36px] leading-none font-bold text-btc tabular-nums lg:text-[48px]" data-test="pool-status-sats">{{ \App\Support\Engagement\HomeBoard::sats((int) $pool->potSats($tournament)) }} Sats</b>
-                {{ $tournament->isPoolOpen() ? __('open since :date', ['date' => $tournament->pool_opened_at->format('Y-m-d H:i')]) : __('closed at the admin check, :date', ['date' => $tournament->pool_closed_at?->format('Y-m-d H:i')]) }}
+                {{ $tournament->isPoolOpen() ? __('open since :date', ['date' => \App\Support\Formats::date($tournament->pool_opened_at)]) : __('closed at the admin check, :date', ['date' => \App\Support\Formats::date($tournament->pool_closed_at)]) }}
             </p>
             {{-- What came into the league wallet for this pot apart from what sponsors paid outside it: a payout only ever pays from the wallet. --}}
             <p class="m-0 text-[13px] text-ink-2" data-test="pool-in-wallet">
@@ -404,7 +404,7 @@ new #[Layout('layouts::app', ['section' => 'tournaments'])] class extends PrizeP
                 @if ($invoice->status === IncomingPaymentStatus::Settled)
                     <p class="m-0 text-[13px] text-win" role="status">{{ __('Paid: :sats sats. The logo shows now.', ['sats' => $sats($invoice->amount_sats)]) }}</p>
                 @else
-                    <p class="m-0 text-[13px]">{{ __('Send this invoice to :name. It is valid until :time.', ['name' => $invoice->sponsor?->name ?? '', 'time' => $invoice->expires_at->format('Y-m-d H:i')]) }}</p>
+                    <p class="m-0 text-[13px]">{{ __('Send this invoice to :name. It is valid until :time.', ['name' => $invoice->sponsor?->name ?? '', 'time' => \App\Support\Formats::date($invoice->expires_at)]) }}</p>
                     @php($sponsorQr = rescue(fn () => \App\Support\QrCode::svg('lightning:'.$invoice->bolt11, label: __('Lightning invoice for :sats sats', ['sats' => $sats($invoice->amount_sats)])), null, false))
                     @if ($sponsorQr)
                         <div class="w-full max-w-[240px] self-start rounded-md bg-white p-2" data-test="sponsor-qr">{!! $sponsorQr !!}</div>
@@ -430,7 +430,7 @@ new #[Layout('layouts::app', ['section' => 'tournaments'])] class extends PrizeP
                                 <b class="block truncate text-[13px]">{{ $sponsor->name }}</b>
                                 <span class="text-xs text-ink-2">{{ __(':pledged sats pledged, :paid sats paid', ['pledged' => $sats($sponsor->pledged_sats), 'paid' => $sats($paid)]) }}</span>
                                 @if ($sponsor->paid_outside_sats !== null)
-                                    <span class="block text-xs text-ink-2 [overflow-wrap:anywhere]" data-test="sponsor-outside">{{ __(':sats sats paid outside the wallet, marked by :name on :date', ['sats' => $sats($sponsor->paidOutsideSats()), 'name' => $sponsor->paidOutsideBy?->displayName() ?? __('a deleted account'), 'date' => $sponsor->paid_outside_at?->copy()->timezone(\App\Support\LeagueTime::zone())->format('Y-m-d H:i')]) }}@if ($sponsor->paid_outside_note): {{ __('“:note”', ['note' => $sponsor->paid_outside_note]) }}@endif</span>
+                                    <span class="block text-xs text-ink-2 [overflow-wrap:anywhere]" data-test="sponsor-outside">{{ __(':sats sats paid outside the wallet, marked by :name on :date', ['sats' => $sats($sponsor->paidOutsideSats()), 'name' => $sponsor->paidOutsideBy?->displayName() ?? __('a deleted account'), 'date' => \App\Support\Formats::date($sponsor->paid_outside_at)]) }}@if ($sponsor->paid_outside_note): {{ __('“:note”', ['note' => $sponsor->paid_outside_note]) }}@endif</span>
                                 @endif
                             </span>
                         </span>

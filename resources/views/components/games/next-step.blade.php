@@ -22,7 +22,7 @@
             <b class="font-display text-4xl leading-none text-btc tabular-nums" data-test="game-standing-rank">#{{ $standing['rank'] }}</b>
             <span class="flex min-w-0 flex-col gap-0.5">
                 <span class="text-[13px] font-bold">{{ __(':mode ladder', ['mode' => $standing['mode']]) }}</span>
-                <span class="text-xs text-ink-2">{{ __(':rating Elo after :results', ['rating' => $standing['rating'], 'results' => trans_choice(':count series|:count series', $standing['results'])]) }}</span>
+                <span class="text-xs text-ink-2">{{ __(':rating Elo after :results', ['rating' => \App\Support\Formats::number($standing['rating']), 'results' => trans_choice(':count series|:count series', $standing['results'])]) }}</span>
             </span>
         </a>
     </section>

@@ -70,7 +70,7 @@
                             </a>
 
                             <span class="flex flex-wrap items-center gap-x-3 gap-y-1">
-                                <b class="font-display text-[30px] leading-none font-bold tabular-nums" data-test="player-ladder-rating">{{ $rating['rating'] }}</b>
+                                <b class="font-display text-[30px] leading-none font-bold tabular-nums" data-test="player-ladder-rating">{{ \App\Support\Formats::number($rating['rating']) }}</b>
                                 @if ($rated)
                                     <x-rank-badge :tier="$badge['tier']" :level="$badge['level']" />
                                 @elseif ($rating['provisional'])
@@ -79,7 +79,7 @@
                                 @if ($ladder['place'] !== null)
                                     <span class="text-xs text-ink-2 tabular-nums" data-test="player-ladder-place">{{ __('#:place of :count', ['place' => $ladder['place'], 'count' => $ladder['of']]) }}</span>
                                 @endif
-                                <span class="ml-auto text-xs text-ink-3" data-test="player-ladder-peak">{{ __('Peak') }} <b class="text-ink-2 tabular-nums">{{ $ladder['peak'] }}</b></span>
+                                <span class="ml-auto text-xs text-ink-3" data-test="player-ladder-peak">{{ __('Peak') }} <b class="text-ink-2 tabular-nums">{{ \App\Support\Formats::number($ladder['peak']) }}</b></span>
                             </span>
 
                             <span class="relative flex items-center gap-1" data-test="player-ladder-form">

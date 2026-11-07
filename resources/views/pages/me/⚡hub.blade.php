@@ -212,7 +212,7 @@ new #[Title('Your page')] #[Layout('layouts::app')] class extends Component {
                                                 @endif
                                             </span>
                                         </td>
-                                        <td class="is-r"><b class="font-display text-[18px] tabular-nums" data-test="me-rating-value">{{ $rating['rating'] }}</b></td>
+                                        <td class="is-r"><b class="font-display text-[18px] tabular-nums" data-test="me-rating-value">{{ \App\Support\Formats::number($rating['rating']) }}</b></td>
                                         <td class="text-ink-2 tabular-nums max-sm:hidden">{{ __(':w W, :d D, :l L', ['w' => $rating['wins'], 'd' => $rating['draws'], 'l' => $rating['losses']]) }}</td>
                                         <td class="is-r"><a href="{{ $standing['href'] }}" class="rv-lk inline-flex min-h-11 items-center">{{ __('Ladder') }}</a></td>
                                     </tr>

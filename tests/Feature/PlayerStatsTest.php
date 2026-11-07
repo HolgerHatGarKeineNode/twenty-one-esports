@@ -122,11 +122,11 @@ test('a casual ladder shows rating, record, share of wins, the last five oldest 
     $card = str($html)->after('data-test="player-ladder"')->before('</li>');
 
     expect((string) $card)->toContain('data-pool="casual"')
-        ->toContain('>1010<')
+        ->toContain('>1,010<')
         ->toContain(__('Casual'))
         ->toContain(__(':w W, :d D, :l L', ['w' => 3, 'd' => 1, 'l' => 2]))
         ->toContain(__(':n% won', ['n' => 50]))
-        ->and(str($card)->after('data-test="player-ladder-peak"')->before('</span>')->toString())->toContain('1030')
+        ->and(str($card)->after('data-test="player-ladder-peak"')->before('</span>')->toString())->toContain('1,030')
         // The last five, oldest first: win, loss, draw, win, loss (the first win dropped out).
         ->and(preg_match_all('/data-outcome="(\w+)"/', (string) str($card)->after('player-ladder-form')->before('player-ladder-record'), $form))->toBe(5)
         ->and($form[1])->toBe(['win', 'loss', 'draw', 'win', 'loss'])
@@ -155,7 +155,7 @@ test('once a season is live the ladder is the rated one, with its rank badge', f
     // 1140: platinum-2 with six rated results.
     expect(substr_count($html, 'data-test="player-ladder"'))->toBe(1)
         ->and($html)->toContain('data-pool="rated"')
-        ->and((string) str($html)->after('data-test="player-ladder"')->before('</li>'))->toContain('>1140<')->toContain(__('Platinum').' II')
+        ->and((string) str($html)->after('data-test="player-ladder"')->before('</li>'))->toContain('>1,140<')->toContain(__('Platinum').' II')
         // The season record lists the Pre-Season and Season 0 apart.
         ->and((string) str($html)->after('data-season="rated-pre-season"')->before('</li>'))->toContain(__(':w W, :d D, :l L', ['w' => 6, 'd' => 0, 'l' => 0]))
         ->and((string) str($html)->after('data-season="casual"')->before('</li>'))->toContain(__(':w W, :d D, :l L', ['w' => 1, 'd' => 0, 'l' => 1]));
@@ -238,11 +238,11 @@ test('tournaments show the place and only the prize the league paid, never a pot
     $first = $this->get(route('players.show', $champion->npub))->getContent();
     $second = $this->get(route('players.show', $runnerUp->npub))->getContent();
 
-    expect((string) str($first)->after('data-test="player-tournament"')->before('</a>'))->toContain('Halving Cup')->toContain('>1.<')->toContain("21\u{00A0}000 sats")
+    expect((string) str($first)->after('data-test="player-tournament"')->before('</a>'))->toContain('Halving Cup')->toContain('>1.<')->toContain('21,000 sats')
         ->and($first)->toContain('data-test="player-prizes"')
         ->and((string) str($second)->after('data-test="player-tournament"')->before('</a>'))->toContain('>2.<')->not->toContain('sats')
         // An unpaid payout is no prize won.
-        ->and($second)->not->toContain('data-test="player-prizes"')->not->toContain('12 600')->not->toContain("12\u{00A0}600");
+        ->and($second)->not->toContain('data-test="player-prizes"')->not->toContain('12 600')->not->toContain('12,600');
 });
 
 test('an unpublished tournament is not listed', function () {
@@ -339,7 +339,7 @@ test('a player with more tournaments than listed: six rows read, the count and t
 
     $this->get(route('players.show', $player->npub))->assertOk()
         ->assertSee(trans_choice(':count played|:count played', PlayerStats::TOURNAMENTS + $extra))
-        ->assertSee("9\u{00A0}000 sats", false);
+        ->assertSee('9,000 sats', false);
 });
 
 /** A ranked Blockfill run of `$user` with `$ticks`, decided by the verifier job as verified (it joins its week). */
@@ -387,7 +387,7 @@ test('a player with chess and Blockfill sees the chess ladder with its place and
     $chess = (string) str($html)->after('data-test="player-ladder" data-game="chess"')->before('</li>');
     $blockfill = (string) str($html)->after('data-test="player-score" data-game="blockfill"')->before('</li>');
 
-    expect($chess)->toContain('>1006<')
+    expect($chess)->toContain('>1,006<')
         ->and((string) str($chess)->after('data-test="player-ladder-place"')->before('</span>'))->toContain(__('#:place of :count', ['place' => 2, 'count' => 2]))
         ->and($blockfill)->toContain(e(GameNames::mode(Blockfill::SLUG, Blockfill::MODE)))
         ->and($blockfill)->toContain(trans_choice(':count verified attempt|:count verified attempts', 3))

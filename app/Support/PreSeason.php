@@ -72,11 +72,11 @@ class PreSeason
     }
 
     /**
-     * Sats with a no-break space as the thousands separator, as in the designs
-     * ("2 100 000").
+     * Sats grouped in the page's language: "2.100.000" in German, "2,100,000" in English (the boards; plan "Canvas
+     * and live alignment", P1, G5 — the no-break space of before read as two numbers).
      */
     public static function formatSats(int $sats): string
     {
-        return number_format($sats, 0, '', "\u{00A0}");
+        return Formats::number($sats);
     }
 }

@@ -286,3 +286,78 @@ test('P1 main navigation: each page marks the item the board marks (G4), at 1440
     }
     expect($seen)->toBe(array_map(fn (string $item): array => [$item], $expected));
 });
+
+/**
+ * German formats on German pages (G5, B2): text nodes of the page with a number grouped by a space ("2 100"), a
+ * 4- to 7-digit number above 999 without a separator that is not a year ("1143"), an ISO date ("2026-11-07"), a
+ * German month written before its day ("Okt 5", "Sep 25, 2026") or an English stock phrase.
+ */
+const P1_FORMATS = <<<'JS'
+() => {
+    const out = [];
+    const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);
+    const months = 'Jan|Feb|Mär|Apr|Mai|Jun|Jul|Aug|Sep|Sept|Okt|Nov|Dez';
+    for (let n = walker.nextNode(); n; n = walker.nextNode()) {
+        const el = n.parentElement;
+        if (!el || el.closest('script, style, input, textarea, code, kbd, [data-format-free], .sr-only') || !el.checkVisibility()) continue;
+        const t = n.textContent;
+        const push = (kind, m) => out.push(kind + ': ' + t.trim().replace(/\s+/g, ' ').slice(0, 60));
+        if (/\d[    ]\d{3}(?!\d)/.test(t) && !/\d{1,2}[  ]\d{3}\s*(px|ms)/.test(t)) push('space-grouped', t);
+        for (const m of t.matchAll(/(?<![\d.,:#\/\-])(\d{4,7})(?![\d.,:\-\/])/g)) {
+            const v = Number(m[1]);
+            if (v >= 1900 && v <= 2100 && m[1].length === 4) continue;
+            if (/^\s*Zeichen/.test(t.slice(m.index + m[1].length))) continue;
+            push('ungrouped ' + m[1], t);
+        }
+        if (/\b\d{4}-\d{2}-\d{2}\b/.test(t)) push('iso', t);
+        if (new RegExp('\\b(' + months + ')\\.? \\d{1,2}\\b').test(t)) push('month-first', t);
+        if (/games played on|matches played on/i.test(t)) push('english', t);
+    }
+    return [...new Set(out)].slice(0, 30);
+}
+JS;
+
+test('P1 German formats: German pages group thousands with a dot, Elo too, and write dates day first; English keeps English', function () {
+    [$admin, $featured, $finished] = p1TournamentLeague();
+    [$me, $invite, $world] = p1Player();
+    $done = SeriesMatch::factory()->accepted()->create(['game' => 'rocket-league', 'mode' => '1v1']);
+    $pages = ['/mining', route('tournaments.show', $finished, false), '/ladder/chess/blitz', route('players.show', $me->npub, false), route('clans.show', $world['clan'], false),
+        route('matches.show', $done->number, false), '/me', route('admin.tournaments.edit', $featured, false), route('games.show', $world['myMove'], false), '/games/rocket-league'];
+    $found = [];
+    foreach ($pages as $path) {
+        $page = p1Open($me, $path, 1440);
+        $bad = $page->evaluate(P1_FORMATS);
+        $loud = p1Loud($page);
+        if ($bad !== [] || $loud !== []) {
+            $found[$path] = ['formats' => $bad, 'loud' => $loud];
+        }
+    }
+    expect($found)->toBe([]);
+
+    // English pages keep English: "2,100" sats per win on /mining, "Nov 7" style dates.
+    $page = visit(BrowserLogin::url($me))->page();
+    $page->setViewportSize(1440, 900);
+    $page->goto(ComputeUrl::from(route('locale.switch', 'en')));
+    $page->goto(ComputeUrl::from('/mining'));
+    $page->waitForLoadState('networkidle');
+    $text = $page->evaluate('() => document.body.innerText');
+    expect($text)->toContain('2,100')->not->toContain('2.100')->not->toMatch('/\d[\x{00A0}\x{202F} ]\d{3}\b/u');
+});
+
+test('P1 native inputs: the admin week-slot time field shows "08:00 PM" whole at 1440', function () {
+    [$admin] = p1TournamentLeague();
+    // en-US (the runner's default): the 12-hour clock is the widest a time field shows.
+    $page = p1Open($admin, route('admin.events', absolute: false), 1440);
+    $fit = $page->evaluate('() => {
+        const input = document.querySelector("[data-test=slot-time]");
+        const cs = getComputedStyle(input);
+        const ctx = document.createElement("canvas").getContext("2d");
+        ctx.font = cs.fontWeight + " " + cs.fontSize + " " + cs.fontFamily;
+        // The text, the clock button (about 24 px) and the padding: what the field needs to show "08:00 PM" whole.
+        const need = ctx.measureText("08:00 PM").width + 24 + parseFloat(cs.paddingLeft) + parseFloat(cs.paddingRight) + parseFloat(cs.borderLeftWidth) * 2;
+        return { need: Math.ceil(need), has: Math.floor(input.getBoundingClientRect().width) };
+    }');
+    expect($fit['has'])->toBeGreaterThanOrEqual($fit['need'], json_encode($fit));
+    p1Shot($page, 'admin-events-en-US-1440');
+
+});

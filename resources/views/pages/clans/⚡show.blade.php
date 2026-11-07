@@ -311,7 +311,7 @@ new #[Layout('layouts::app', ['section' => 'clans'])] class extends Component {
                     <span class="inline-flex h-7 items-center rounded-sm border border-line bg-ground px-2.5"><x-rank-badge :tier="$leadStats['tier']" :level="$leadStats['level']" /></span>
                 @endif
                 <span class="inline-flex h-7 items-center rounded-sm bg-well px-2.5 text-ink-2">{{ $lineups === [] ? __('No lineups yet') : __('Lineups :modes', ['modes' => implode(' · ', array_map($this->lineupLabel(...), $lineups))]) }}</span>
-                <span class="inline-flex h-7 items-center rounded-sm bg-well px-2.5 text-ink-2">{{ __('founded :date', ['date' => $clan->created_at?->translatedFormat('M j')]) }}</span>
+                <span class="inline-flex h-7 items-center rounded-sm bg-well px-2.5 text-ink-2">{{ __('founded :date', ['date' => \App\Support\Formats::day($clan->created_at)]) }}</span>
                 @if ($clan->isMemberClan())
                     <span title="{{ __('Most players in this clan are EINUNDZWANZIG members') }}" class="inline-flex h-7 items-center rounded-sm border border-btc-deep px-2.5 font-bold text-btc">{{ __('EINUNDZWANZIG Member clan') }}</span>
                 @endif
@@ -372,7 +372,7 @@ new #[Layout('layouts::app', ['section' => 'clans'])] class extends Component {
                 <div class="grid h-11 grid-cols-[minmax(0,1fr)_auto_48px] items-center gap-3 border-b border-hairline text-sm sm:grid-cols-[minmax(0,1fr)_auto_64px_136px]">
                     <span class="truncate text-ink-2">{{ __('Elo :mode', ['mode' => $this->lineupLabel($lineup)]) }}</span>
                     <span @class(['inline-flex h-6 items-center rounded-sm bg-ground px-2', 'border border-dashed border-edge' => $line['tier'] === 'provisional', 'border border-line' => $line['tier'] !== 'provisional'])><x-rank-badge :tier="$line['tier']" :level="$line['level']" /></span>
-                    <b class="text-right">{{ $line['elo'] }}</b>
+                    <b class="text-right">{{ is_numeric($line['elo']) ? \App\Support\Formats::number($line['elo']) : $line['elo'] }}</b>
                     <span class="hidden text-right text-ink-2 sm:block">{{ $line['series'] === 0 ? __('no series yet') : __('#:rank of :of', ['rank' => $line['rank'], 'of' => $line['of']]) }}</span>
                 </div>
             @endforeach
@@ -385,7 +385,7 @@ new #[Layout('layouts::app', ['section' => 'clans'])] class extends Component {
             <span class="flex items-baseline justify-between gap-3"><h2 id="cr-h" class="m-0 text-[15px] font-bold">{{ __('Clan Rating · chess') }}</h2>
                 <span class="text-xs text-ink-3">{{ $ranks['rating'] ? __('#:rank of :of rated clans', ['rank' => $ranks['rating'], 'of' => $ranks['ratedClans']]) : __('not rated yet') }}</span></span>
             <div class="flex flex-wrap items-baseline gap-x-4 gap-y-1">
-                <b class="font-display text-[40px] leading-[1.1] font-bold" data-test="clan-rating">{{ $rating['rating'] ?? '–' }}</b>
+                <b class="font-display text-[40px] leading-[1.1] font-bold" data-test="clan-rating">{{ isset($rating['rating']) ? \App\Support\Formats::number($rating['rating']) : '–' }}</b>
             </div>
             <span class="text-[13px] leading-[1.6] text-ink-2">{{ __('Average of the 3 best solo Elos in the clan. Chess has no separate team Elo.') }}</span>
             <div class="flex flex-col">
@@ -395,7 +395,7 @@ new #[Layout('layouts::app', ['section' => 'clans'])] class extends Component {
                         <span class="text-ink-3">{{ $index + 1 }}</span>
                         <x-player-link :user="$row['user']" class="relative inline-flex min-h-6 min-w-0 items-center font-bold after:absolute after:inset-x-0 after:-inset-y-2.5"><span class="truncate">{{ $row['user']->displayName() }}</span></x-player-link>
                         <x-rank-badge :tier="$badge['tier']" :level="$badge['level']" class="font-normal" />
-                        <b class="text-right">{{ $row['rating'] }}</b>
+                        <b class="text-right">{{ is_numeric($row['rating']) ? \App\Support\Formats::number($row['rating']) : $row['rating'] }}</b>
                     </div>
                 @empty
                     <p class="m-0 text-[13px] text-ink-2" data-test="rating-empty">{{ $live ? __('No player has a rapid Elo yet.') : __('Clan Ratings start at Block 0, with the first rated rapid games.') }}</p>

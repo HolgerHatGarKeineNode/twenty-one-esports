@@ -154,7 +154,7 @@
             </span>
             <span class="text-[13px] leading-normal text-ink-2">
                 {{ __(':number vs :name, you play :color.', ['number' => $game->number(), 'name' => $players[$color === 'w' ? 'b' : 'w']['name'], 'color' => $color === 'w' ? __('White') : __('Black')]) }}
-                {{ $lost ? __('Your time for move :n ran out :at.', ['n' => $moveCount + ($game->ply % 2 === 0 ? 1 : 0), 'at' => $game->ended_at?->timezone($viewerZone)->isoFormat('ddd YYYY-MM-DD HH:mm')]) : __('Their time ran out :at.', ['at' => $game->ended_at?->timezone($viewerZone)->isoFormat('ddd YYYY-MM-DD HH:mm')]) }}
+                {{ $lost ? __('Your time for move :n ran out :at.', ['n' => $moveCount + ($game->ply % 2 === 0 ? 1 : 0), 'at' => \App\Support\Formats::date($game->ended_at, true, $viewerZone)]) : __('Their time ran out :at.', ['at' => \App\Support\Formats::date($game->ended_at, true, $viewerZone)]) }}
             </span>
             <div class="flex flex-col">
                 <div class="grid h-10 grid-cols-[110px_minmax(0,1fr)] items-center border-b border-hairline text-[13px]"><span class="text-ink-2">{{ __('Daily Elo') }}</span><x-rating :rating="$players[$color]['rating']" :delta="$players[$color]['rating']['delta']" /></div>
@@ -170,7 +170,7 @@
     <div class="grid grid-cols-1 gap-4 lg:grid-cols-2 lg:gap-5">
         <div class="rounded-lg bg-card px-4 py-2 lg:px-6">
             @foreach ([
-                [__('Played'), ($game->created_at?->isoFormat('ddd YYYY-MM-DD · HH:mm') ?? '').($game->ended_at ? ' '.__('to').' '.($daily ? $game->ended_at->isoFormat('ddd YYYY-MM-DD · HH:mm') : $game->ended_at->isoFormat('HH:mm')) : '')],
+                [__('Played'), (\App\Support\Formats::date($game->created_at) ?? '').($game->ended_at ? ' '.__('to').' '.($daily ? \App\Support\Formats::date($game->ended_at) : $game->ended_at->isoFormat('HH:mm')) : '')],
                 [__('Time control'), $timeControl],
                 [__('Kind'), $game->rated ? __('Rated') : __('Casual · casual Elo only')],
                 [__('Ending'), $aborted ? __('Aborted before both first moves') : __(':reason, decided by the server', ['reason' => $reason])],

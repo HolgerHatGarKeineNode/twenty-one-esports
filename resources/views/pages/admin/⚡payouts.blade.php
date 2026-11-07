@@ -327,7 +327,7 @@ new #[Title('Payouts')] #[Layout('layouts::app', ['section' => 'admin'])] class 
                     </p>
                 </div>
                 @if ($tournament->payouts_approved_at)
-                    <span class="rv-tag is-ok shrink-0 self-start sm:self-center"><x-icon name="check" :size="12" />{{ __('checked :date', ['date' => $tournament->payouts_approved_at->format('Y-m-d H:i')]) }}</span>
+                    <span class="rv-tag is-ok shrink-0 self-start sm:self-center"><x-icon name="check" :size="12" />{{ __('checked :date', ['date' => \App\Support\Formats::date($tournament->payouts_approved_at)]) }}</span>
                 @endif
             </div>
 

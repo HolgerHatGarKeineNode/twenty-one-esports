@@ -351,7 +351,7 @@ test('the Season page, the rules and the countdown read the saved draft; before 
     // Home: the countdown to the saved Block 0; the Season page: the supply, the genesis message and the rules.
     $this->get(route('home'))->assertOk()->assertSee('data-state="countdown"', false);
     $this->get(route('mining'))->assertOk()
-        ->assertSee("1\u{00A0}234\u{00A0}567", false)
+        ->assertSee('1,234,567', false)
         ->assertSee('Up to 1')
         ->assertSee('nothing is set aside before')
         ->assertSee('Chancellor on the brink of Block 0')
@@ -361,7 +361,7 @@ test('the Season page, the rules and the countdown read the saved draft; before 
 
     $this->get(route('rules'))->assertOk()
         ->assertSee('Supply, the most paid out after the season')
-        ->assertSee("1\u{00A0}234\u{00A0}567 sats", false)
+        ->assertSee('1,234,567 sats', false)
         ->assertSee('EA Sports FC 27 1v1');
 });
 

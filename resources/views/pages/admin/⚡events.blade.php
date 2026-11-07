@@ -152,7 +152,7 @@ new #[Title('Weekly events')] #[Layout('layouts::app', ['section' => 'admin'])] 
 
     <x-admin.panel :title="__('Add event')" id="slot-form-h">
         <form wire:submit="add" class="flex flex-col gap-3" data-test="slot-form">
-            <div class="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-[minmax(0,2fr)_minmax(0,2fr)_minmax(0,1fr)_minmax(0,1fr)_minmax(0,2fr)_minmax(0,1fr)] lg:items-end">
+            <div class="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-[minmax(0,2fr)_minmax(0,2fr)_minmax(8.5rem,1fr)_minmax(8.5rem,1fr)_minmax(0,2fr)_minmax(0,1fr)] lg:items-end">
                 <label class="min-w-0"><span class="rv-lb">{{ __('Title') }}</span><input type="text" wire:model="title" maxlength="80" placeholder="{{ __('Blitz night') }}" class="{{ $input }}" data-test="slot-title"></label>
                 <div class="min-w-0"><span class="rv-lb" id="slot-ladder-l">{{ __('Game and mode') }}</span>
                     <x-ui.select-menu model="ladder" labelledby="slot-ladder-l" :value="$this->ladder" :options="$this->ladders" data-test="slot-ladder" /></div>
@@ -182,7 +182,7 @@ new #[Title('Weekly events')] #[Layout('layouts::app', ['section' => 'admin'])] 
                         @if (! $slot->active)
                             <span class="rv-tag" data-test="slot-paused">{{ __('Paused') }}</span>
                         @elseif ($next)
-                            {{ __('Next: :when', ['when' => CarbonImmutable::parse($next->starts_at)->setTimezone($slot->timezone)->locale(app()->getLocale())->isoFormat('ddd YYYY-MM-DD HH:mm')]) }}
+                            {{ __('Next: :when', ['when' => \App\Support\Formats::date(CarbonImmutable::parse($next->starts_at), true, $slot->timezone)]) }}
                         @endif
                     </span>
                     <span class="flex flex-wrap gap-2">
