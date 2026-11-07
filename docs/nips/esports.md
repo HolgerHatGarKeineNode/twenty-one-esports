@@ -175,6 +175,11 @@ League, EA Sports FC or Age of Empires II rule, ladder or event changes.
 The rules marked "rev. 9.23" add one game channel, `blockli` (Blockli, a board game by DerCaddy), on the terms of
 revision 9.3 and like the other board games only while the league runs it. Nothing else changes.
 
+The rules marked "rev. 9.26" add one game channel, `blockspace` (Blockspace, a board game by StackingJones), on the
+terms of revision 9.3 and like the other board games only while the league runs it. Nothing else changes: Blockspace
+has no season weight yet, so its ladders are not opened and its games are casual; no ladder, attestation or block
+carries it until a later revision does.
+
 The rules marked "rev. 9.25" give Blockli rapid the clan team matches of revision 9.22, on the same terms. They apply
 to every Blockli team match whose challenge the league signs after it adopts revision 9.25, and only while the league
 runs Blockli. Blockli rapid keeps its ladder, its solo games and their attestations; blitz and correspondence Blockli
