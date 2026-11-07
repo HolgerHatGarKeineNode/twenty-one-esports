@@ -9,7 +9,7 @@
     <x-game-cover :game="$game" size="card" class="gp-hero-cover" loading="eager" />
     <div class="min-w-0">
         <div data-test="lobby-title">
-            <h1 class="gp-title">{{ $title ?? \App\Support\GameNames::game((string) $game) }}</h1>
+            <h1 class="gp-title">{{ \App\Support\GameNames::breakable($title ?? \App\Support\GameNames::game((string) $game)) }}</h1>
             <x-game-credit :game="$game" class="mt-1" />
         </div>
         @if ($lede)

@@ -220,7 +220,7 @@ new #[Layout('layouts::app', ['section' => 'matches'])] class extends Component 
                     @else
                         <div class="relative overflow-x-auto">
                             <table class="rv-tb">
-                                <thead><tr><th scope="col">{{ __('Game') }}</th>@if ($hasGoals)<th scope="col" class="is-r max-w-40 truncate">{{ $match->sideName('challenger') }}</th><th scope="col" class="is-r max-w-40 truncate">{{ $match->sideName('challenged') }}</th>@endif<th scope="col">{{ __('Winner') }}</th></tr></thead>
+                                <thead><tr><th scope="col">{{ __('Game') }}</th>@if ($hasGoals)<th scope="col" class="is-r sm:max-w-40 sm:truncate"><abbr class="no-underline sm:hidden" title="{{ $match->sideName('challenger') }}">{{ $match->sideTag('challenger') }}</abbr><span class="max-sm:hidden">{{ $match->sideName('challenger') }}</span></th><th scope="col" class="is-r sm:max-w-40 sm:truncate"><abbr class="no-underline sm:hidden" title="{{ $match->sideName('challenged') }}">{{ $match->sideTag('challenged') }}</abbr><span class="max-sm:hidden">{{ $match->sideName('challenged') }}</span></th>@endif<th scope="col">{{ __('Winner') }}</th></tr></thead>
                                 <tbody>
                                     @foreach ($games as $index => $game)
                                         <tr data-test="flow-game">
@@ -229,7 +229,7 @@ new #[Layout('layouts::app', ['section' => 'matches'])] class extends Component 
                                                 <td class="is-r font-bold tabular-nums">{{ $game['challenger'] ?? '–' }}</td>
                                                 <td class="is-r font-bold tabular-nums">{{ $game['challenged'] ?? '–' }}</td>
                                             @endif
-                                            <td class="[overflow-wrap:anywhere]">{{ $match->sideName((string) $game['winner']) }}</td>
+                                            <td class="[overflow-wrap:anywhere]"><span class="sm:hidden">{{ $match->sideTag((string) $game['winner']) }}</span><span class="max-sm:hidden">{{ $match->sideName((string) $game['winner']) }}</span></td>
                                         </tr>
                                     @endforeach
                                 </tbody>

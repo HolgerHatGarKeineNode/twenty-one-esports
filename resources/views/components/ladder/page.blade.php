@@ -26,7 +26,7 @@
             <section class="gp-hero" data-test="ladder-hero">
                 <x-game-cover :game="$game" size="card" class="gp-hero-cover" loading="eager" />
                 <div class="min-w-0">
-                    <h1 class="gp-title">{{ $title }}</h1>
+                    <h1 class="gp-title">{{ \App\Support\GameNames::breakable($title) }}</h1>
                     <p class="gp-lede">{{ $lede }}</p>
                 </div>
                 @isset($action)

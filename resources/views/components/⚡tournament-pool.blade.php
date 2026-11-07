@@ -437,8 +437,9 @@ new class extends Component {
     @if ($this->payouts->isNotEmpty())
         <div class="flex flex-col gap-2 rounded-card bg-card p-4 sm:p-6" data-test="pool-payouts">
             <h3 class="m-0 text-[13px] font-bold">{{ __('Payouts') }}</h3>
-            <div class="overflow-x-auto">
-                <table class="w-full min-w-[520px] border-collapse text-left text-[13px]">
+            {{-- Fits a 390 px phone without a sideways scroll (P1, comparison: the status column was cut): the name wraps, amount and status stay whole. --}}
+            <div>
+                <table class="w-full border-collapse text-left text-[13px]">
                     <thead class="text-xs text-ink-3">
                         <tr>
                             <th class="py-2 pr-3 font-normal">{{ __('Place') }}</th>

@@ -288,6 +288,8 @@
         font-family: var(--font-display);
         /* "Hyperbitcoinization" is one word: 30 px ran 16 px past a 390 px phone (measured 2026-10-10). */
         font-size: clamp(22px, 6.4vw, 30px);
+        /* A long name breaks at its soft hyphens (GameNames::breakable()), a user's unbroken word anywhere. */
+        hyphens: manual;
         overflow-wrap: anywhere;
         font-weight: 700;
         line-height: 1.15;

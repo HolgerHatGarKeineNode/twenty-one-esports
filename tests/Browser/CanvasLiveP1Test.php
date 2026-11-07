@@ -4,6 +4,7 @@ use App\Enums\InviteStatus;
 use App\Enums\PayoutStatus;
 use App\Enums\TournamentFormat;
 use App\Enums\TournamentResultsMode;
+use App\Enums\TournamentStatus;
 use App\Games\Blockfill;
 use App\Games\GameRegistry;
 use App\Models\Admin;
@@ -11,12 +12,18 @@ use App\Models\Clan;
 use App\Models\ClanInvite;
 use App\Models\SeriesMatch;
 use App\Models\Tournament;
+use App\Models\TournamentMatch;
+use App\Models\TournamentOrganizer;
 use App\Models\TournamentParticipant;
 use App\Models\TournamentPayout;
 use App\Models\User;
 use App\Support\Stacker\BlockfillWeeks;
 use App\Support\Stacker\Verifier;
+use App\Support\Tournaments\FormatOptions;
+use App\Support\Tournaments\GameProfile;
+use App\Support\Tournaments\TournamentBrackets;
 use App\Support\Tournaments\TournamentChampion;
+use App\Support\Tournaments\TournamentRunner;
 use App\Support\TwentyOne\LiveStatus;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\File;
@@ -360,4 +367,125 @@ test('P1 native inputs: the admin week-slot time field shows "08:00 PM" whole at
     expect($fit['has'])->toBeGreaterThanOrEqual($fit['need'], json_encode($fit));
     p1Shot($page, 'admin-events-en-US-1440');
 
+});
+
+/**
+ * Cut and broken text inside `scope` (R3, WCAG 1.4.10): a word laid out over two lines ("Hyperbitcoiniz|ation",
+ * "21-archive-2|-1"), a cell or label whose text is cut by its own box (overflow hidden or an ellipsis), and a box
+ * that runs out of the page. Text inside a sideways scroller counts as cut only when the scroller cannot reach it.
+ */
+const P1_CUT = <<<'JS'
+([scope]) => {
+    const out = [];
+    const roots = [...document.querySelectorAll(scope)].filter((el) => el.checkVisibility());
+    if (roots.length === 0) return ['no ' + scope];
+    const width = document.documentElement.clientWidth;
+    if (document.documentElement.scrollWidth > width) out.push('page ' + document.documentElement.scrollWidth + ' > ' + width);
+    for (const root of roots) {
+        const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
+        for (let n = walker.nextNode(); n; n = walker.nextNode()) {
+            const el = n.parentElement;
+            if (!el || !el.checkVisibility() || el.closest('.sr-only, svg, [aria-hidden=true]')) continue;
+            // A soft hyphen is a break the text allows; a user's unbroken word of 25 characters or more has to break somewhere.
+            const re = /[^\s\u00a0\u2009\u202f\u00ad\-\u2013\u00b7,/]+/g;
+            let m;
+            while ((m = re.exec(n.textContent))) {
+                if (m[0].length < 2 || m[0].length >= 25) continue;
+                const range = document.createRange();
+                range.setStart(n, m.index);
+                range.setEnd(n, m.index + m[0].length);
+                // After a soft hyphen the range also holds the hyphen drawn at the end of the line above: not part of the word.
+                const rects = [...range.getClientRects()].filter((r) => r.width > 2).slice(n.textContent[m.index - 1] === '\u00ad' ? 1 : 0);
+                const tops = new Set(rects.map((r) => Math.round(r.top)));
+                if (tops.size > 1) out.push('broken ' + m[0].slice(0, 40));
+            }
+        }
+        // A lobby's name and password stay on one line: a break inside reads as two values.
+        for (const el of root.querySelectorAll('[data-test$="-access"] b')) {
+            if (new Set([...el.getClientRects()].map((r) => Math.round(r.top))).size > 1 || el.getClientRects().length > 1) out.push('wrapped ' + el.textContent.trim());
+        }
+        for (const el of [root, ...root.querySelectorAll('*')]) {
+            if (!el.checkVisibility() || el.childElementCount > 0 || !el.textContent.trim() || el.closest('.sr-only, [aria-hidden=true]')) continue;
+            // Visually hidden on purpose (a responsive sr-only label: 1 px, clipped) is not cut text.
+            if (el.getBoundingClientRect().width <= 1) continue;
+            const cs = getComputedStyle(el);
+            if ((cs.overflowX !== 'visible' || cs.textOverflow === 'ellipsis') && el.scrollWidth > el.clientWidth + 1) out.push('cut ' + el.textContent.trim().slice(0, 40));
+            const r = el.getBoundingClientRect();
+            let clipped = false;
+            for (let a = el.parentElement; a && a !== document.body; a = a.parentElement) {
+                const ox = getComputedStyle(a).overflowX;
+                // A scroller with edge fades (x-ui.scroll-x) says there is more; a bare overflow-x-auto cuts without a hint.
+                if (ox === 'auto' || ox === 'scroll') { const b = a.getBoundingClientRect(); if (!a.classList.contains('rv-xs-vp') && (r.right > b.right + 1 || r.left < b.left - 1)) clipped = true; break; }
+                if (ox === 'hidden' || ox === 'clip') { const b = a.getBoundingClientRect(); if (r.right > b.right + 1 || r.left < b.left - 1) clipped = true; break; }
+            }
+            if (clipped) out.push('clipped ' + el.textContent.trim().slice(0, 40));
+        }
+    }
+    return [...new Set(out)].slice(0, 20);
+}
+JS;
+
+/** An Age of Empires II lobby tournament run by its director: nine players in two lobbies with their access. */
+function p1LobbyTournament(): array
+{
+    $organizer = User::factory()->create(['name' => 'Bitcoinmaximalistausdemerzgebirge']);
+    TournamentOrganizer::query()->create(['pubkey' => $organizer->pubkey]);
+    $tournament = Tournament::factory()->create([
+        'name' => 'Age of Empires II Diplomacy Night: Wer baut das größte Weltwunder', 'game' => 'age-of-empires-2', 'mode' => '1v1', 'format' => TournamentFormat::FreeForAll,
+        'options' => FormatOptions::fromArray([], GameProfile::for('age-of-empires-2', '1v1'))->toArray(),
+        'capacity' => 9, 'results_mode' => TournamentResultsMode::Players, 'status' => TournamentStatus::Running, 'starts_at' => now(),
+        'published_at' => now(), 'slug' => 'p1-lobby-night', 'created_by_id' => $organizer->id,
+    ]);
+    foreach (['Saladin', 'Joan of Arc', 'Genghis Khan', 'Barbarossa', 'Tamerlane', 'El Cid', 'Attila', 'Bari', 'Gajah Mada'] as $index => $name) {
+        $user = User::factory()->create(['name' => $name]);
+        TournamentParticipant::query()->create(['tournament_id' => $tournament->id, 'user_id' => $user->id, 'name' => $name, 'rating' => 1500 - 10 * $index, 'members' => [$user->id]]);
+    }
+    app(TournamentBrackets::class)->generate($tournament, str_repeat('ab', 32));
+    app(TournamentRunner::class)->sync($tournament);
+    $lobby = TournamentMatch::query()->where('tournament_id', $tournament->id)->orderBy('position')->with('slots.participant')->firstOrFail();
+
+    return [$tournament->refresh(), $organizer, User::query()->findOrFail($lobby->slots[0]->participant->user_id)];
+}
+
+test('P1 cut columns and broken words: payouts, match games, the season table, Hyperbitcoinization, the more sheet and lobby access, at 390 and 1440', function () {
+    [$admin, $featured, $finished] = p1TournamentLeague();
+    [$me] = p1Player();
+    [$lobbyTournament, $organizer, $lobbyPlayer] = p1LobbyTournament();
+    $done = SeriesMatch::factory()->accepted()->create(['game' => 'rocket-league', 'mode' => '1v1', 'challenger_name' => 'Bitcoinmaximalistausdemerzgebirge', 'challenged_name' => 'El Presidento Ben']);
+    $done->forceFill(['live_games' => array_map(fn (array $g): array => ['challenger' => $g[0], 'challenged' => $g[1], 'winner' => $g[0] > $g[1] ? 'challenger' : 'challenged'], [[4, 2], [2, 3], [3, 4]])])->save();
+    $cases = [
+        ['payouts', null, route('tournaments.show', $finished, false), '[data-test=pool-payouts]', [390, 1440]],
+        ['match-games', null, route('matches.show', $done->number, false), '[data-test=flow-game]', [390, 1440]],
+        ['mining-pay', $admin, '/mining', '#eras-h, [data-test=mining-eras-scroll]', [390, 1440]],
+        ['hyper', null, '/hyperbitcoinization', 'main h1', [390, 1440]],
+        ['hyper-ladder', null, '/hyperbitcoinization/ladder', 'main h1', [390, 1440]],
+        ['more-sheet', $me, '/me', '#more-sheet ul', [390]],
+        ['lobby-director', $organizer, route('tournaments.show', $lobbyTournament, false), '[data-test=lobby-card]', [1440]],
+        ['lobby-player', $lobbyPlayer, route('tournaments.show', $lobbyTournament, false), '[data-test=my-lobby], [data-test=lobby-card]', [390, 1440]],
+    ];
+    $found = [];
+    foreach ($cases as [$name, $user, $path, $scope, $widths]) {
+        foreach ($widths as $width) {
+            $page = p1Open($user, $path, $width);
+            if ($name === 'more-sheet') {
+                $page->locator('[data-test=tab-more]')->click();
+                $page->evaluate('() => new Promise((r) => setTimeout(r, 400))');
+            }
+            if ($name === 'mining-pay') {
+                // The table scrolls inside its card (x-ui.scroll-x): the right fade says there is more, the scroller reaches the end.
+                $scroll = $page->evaluate('() => { const v = document.querySelector("[data-test=mining-eras-scroll] .rv-xs-vp"); const more = v.scrollWidth > v.clientWidth + 1; return { more, fade: getComputedStyle(document.querySelector("[data-test=mining-eras-scroll] [data-test=scroll-fade-r]")).opacity, keys: v.tabIndex }; }');
+                if ($scroll['more'] && ($scroll['fade'] !== '1' || $scroll['keys'] !== 0)) {
+                    $found["{$name} {$width}"][] = 'scroll '.json_encode($scroll);
+                }
+            }
+            $page->evaluate('(s) => { const el = document.querySelector(s); el?.scrollIntoView({ block: "center" }); return new Promise((r) => setTimeout(r, 300)); }', $scope);
+            p1Shot($page, "cut-{$name}-{$width}");
+            $cut = $page->evaluate(P1_CUT, [$scope]);
+            $loud = p1Loud($page);
+            if ($cut !== [] || $loud !== []) {
+                $found["{$name} {$width}"] = array_merge($found["{$name} {$width}"] ?? [], $cut, $loud);
+            }
+        }
+    }
+    expect($found)->toBe([]);
 });

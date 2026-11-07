@@ -65,7 +65,8 @@
                         </button>
                     </form>
                 </div>
-                <ul class="m-0 grid list-none grid-cols-2 gap-1 p-0">
+                {{-- One column on a phone: the account links are long ("Benachrichtigungen" broke mid-word in a half row at 390 px, P1); two from 26rem. --}}
+                <ul class="m-0 grid list-none grid-cols-[repeat(auto-fill,minmax(12rem,1fr))] gap-1 p-0">
                     @foreach ($accountLinks as $link)
                         <li class="min-w-0">
                             <a href="{{ $link['href'] }}" @navigate($link['href']) class="{{ $row }}" @if ($link['mobileTest']) data-test="{{ $link['mobileTest'] }}" @endif>
