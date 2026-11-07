@@ -172,11 +172,22 @@ new #[Layout('layouts::app', ['section' => 'clans'])] class extends Component {
         return route('challenges.create', array_filter(['lineup' => $mine?->id, 'to' => $target->id]));
     }
 
-    /** The clan's chess rapid lineup, the one that plays team matches (plan "Schach Rapid und Clan", P6). */
+    /**
+     * The clan's lineups that play team matches over boards: chess rapid, and
+     * Blockli rapid while Blockli is on (NIP rev. 9.22, 9.25), in registry order.
+     *
+     * @return Collection<int, Lineup>
+     */
     #[Computed]
-    public function rapidLineup(): ?Lineup
+    public function teamLineups(): Collection
     {
-        return $this->clan->lineups->first(fn (Lineup $lineup): bool => $lineup->game === 'chess' && $lineup->mode === 'rapid');
+        $modes = app(GameRegistry::class)->teamMatchModes();
+        $order = array_flip(array_keys($modes));
+
+        return $this->clan->lineups
+            ->filter(fn (Lineup $lineup): bool => in_array($lineup->mode, $modes[$lineup->game] ?? [], true))
+            ->sortBy(fn (Lineup $lineup): int => $order[$lineup->game])
+            ->values();
     }
 
     /**
@@ -201,24 +212,32 @@ new #[Layout('layouts::app', ['section' => 'clans'])] class extends Component {
     }
 
     /**
-     * "Challenge to a team match" on another clan's page: the challenge form
-     * with their rapid lineup picked (and the viewer's, when they captain
-     * one); null for its own members and for a clan without a rapid lineup.
+     * "Challenge to a team match" on another clan's page, one per team lineup:
+     * the challenge form with their lineup picked (and the viewer's of the same
+     * game and mode, when they captain one); none for its own members.
+     *
+     * @return list<array{game: string, url: string}>
      */
-    public function teamChallengeUrl(): ?string
+    public function teamChallenges(): array
     {
         $user = auth()->user();
-        $theirs = $this->rapidLineup;
 
-        if ($theirs === null || ($user instanceof User && $this->clan->memberOf($user) !== null)) {
-            return null;
+        if ($user instanceof User && $this->clan->memberOf($user) !== null) {
+            return [];
         }
 
         $mine = $user instanceof User && $user->clanMember !== null
-            ? Lineup::query()->where(['clan_id' => $user->clanMember->clan_id, 'game' => 'chess', 'mode' => 'rapid'])->first()
-            : null;
+            ? Lineup::query()->where('clan_id', $user->clanMember->clan_id)->get()
+            : collect();
 
-        return route('challenges.create', array_filter(['lineup' => $mine?->isActingCaptain($user) === true ? $mine->id : null, 'to' => $theirs->id]));
+        return $this->teamLineups->map(function (Lineup $theirs) use ($mine, $user): array {
+            $own = $mine->first(fn (Lineup $lineup): bool => $lineup->game === $theirs->game && $lineup->mode === $theirs->mode);
+
+            return [
+                'game' => app(GameRegistry::class)->name($theirs->game),
+                'url' => route('challenges.create', array_filter(['lineup' => $user instanceof User && $own?->isActingCaptain($user) === true ? $own->id : null, 'to' => $theirs->id])),
+            ];
+        })->all();
     }
 
     public function canManage(): bool
@@ -463,21 +482,27 @@ new #[Layout('layouts::app', ['section' => 'clans'])] class extends Component {
         @endif
     </section>
 
-    {{-- Chess team matches: the public rapid lineup and what is coming (plan "Schach Rapid und Clan", P6). --}}
-    @php($rapid = $this->rapidLineup)
+    {{-- Team matches: the public rapid lineups (chess, Blockli) and what is coming (plan "Schach Rapid und Clan", P6; NIP rev. 9.25). --}}
+    @php($teamLineups = $this->teamLineups)
     @php($openTeam = $this->openTeamMatches)
-    @if ($rapid !== null || $openTeam->isNotEmpty())
+    @php($onlyChess = $teamLineups->every(fn (Lineup $lineup): bool => $lineup->game === 'chess'))
+    @if ($teamLineups->isNotEmpty() || $openTeam->isNotEmpty())
         <section aria-labelledby="tm-h" class="flex flex-col gap-3 rounded-[4px] border border-hairline bg-card px-4 py-4 lg:px-6 lg:py-5" data-test="clan-team-matches">
             <div class="flex flex-wrap items-center justify-between gap-x-4 gap-y-2">
-                <div class="flex min-w-0 flex-wrap items-center gap-x-4 gap-y-1"><h2 id="tm-h" class="m-0 text-[15px] font-bold">{{ __('Chess team matches') }}</h2><span class="text-xs text-ink-3">{{ __('Rapid 10+5 over 2 or 3 boards') }}</span></div>
-                @if ($teamChallenge = $this->teamChallengeUrl())
-                    <a href="{{ $teamChallenge }}" class="inline-flex h-11 items-center rounded-md border border-line px-4 text-[13px] font-bold text-ink hover:text-ink" data-test="challenge-team-match">{{ __('Challenge to a team match') }}</a>
+                <div class="flex min-w-0 flex-wrap items-center gap-x-4 gap-y-1"><h2 id="tm-h" class="m-0 text-[15px] font-bold">{{ $onlyChess ? __('Chess team matches') : __('Team matches') }}</h2><span class="text-xs text-ink-3">{{ __('Rapid 10+5 over 2 or 3 boards') }}</span></div>
+                @php($teamChallenges = $this->teamChallenges())
+                @if ($teamChallenges !== [])
+                    <div class="flex flex-wrap gap-2">
+                        @foreach ($teamChallenges as $teamChallenge)
+                            <a href="{{ $teamChallenge['url'] }}" class="inline-flex h-11 items-center rounded-md border border-line px-4 text-[13px] font-bold text-ink hover:text-ink" data-test="challenge-team-match">{{ count($teamChallenges) === 1 ? __('Challenge to a team match') : __('Challenge to a :game team match', ['game' => $teamChallenge['game']]) }}</a>
+                        @endforeach
+                    </div>
                 @endif
             </div>
-            @if ($rapid !== null)
+            @foreach ($teamLineups as $rapid)
                 @php($rapidSeats = $rapid->seats->filter(fn (LineupSeat $seat): bool => $seat->accepted_at !== null && $seat->user !== null))
                 <div class="flex flex-col gap-1.5" data-test="rapid-lineup">
-                    <span class="text-xs font-bold text-ink-2">{{ __('Rapid lineup') }}</span>
+                    <span class="text-xs font-bold text-ink-2">{{ $onlyChess ? __('Rapid lineup') : __(':game · rapid lineup', ['game' => app(GameRegistry::class)->name($rapid->game)]) }}</span>
                     @if ($rapidSeats->isEmpty())
                         <span class="text-[13px] text-ink-2">{{ __('No players confirmed yet.') }}</span>
                     @else
@@ -488,7 +513,7 @@ new #[Layout('layouts::app', ['section' => 'clans'])] class extends Component {
                         </ul>
                     @endif
                 </div>
-            @endif
+            @endforeach
             <div class="flex flex-col" data-test="upcoming-team-matches">
                 <span class="text-xs font-bold text-ink-2">{{ __('Next team matches') }}</span>
                 @forelse ($openTeam as $teamMatch)

@@ -486,3 +486,32 @@ test('the challenge form offers a Blockli rapid lineup boards and friendly or ra
     $this->get(route('rules'))->assertOk()
         ->assertSee(__('Two clans play chess or Blockli on 2 or 3 boards at the same time, all in :mode. The board points decide the team match.', ['mode' => 'Rapid 10+5']), false);
 });
+
+test('the public clan page shows a Blockli rapid lineup with its own team challenge, and one challenge per game beside chess', function () {
+    [$blockli] = blockliTeamLineup();
+    $outsider = User::factory()->create();
+
+    // Only a Blockli rapid lineup: the card, the lineup and the challenge against it.
+    $this->actingAs($outsider)->get(route('clans.show', $blockli->clan))->assertOk()
+        ->assertSeeHtml('data-test="clan-team-matches"')
+        ->assertSeeHtml('data-test="rapid-lineup"')
+        ->assertSee('Team matches')
+        ->assertSee('Blockli · rapid lineup')
+        ->assertSeeHtml('href="'.e(route('challenges.create', ['to' => $blockli->id])).'"');
+
+    // Beside a chess rapid lineup: one challenge per game, each against its own lineup.
+    $chess = Lineup::factory()->game('chess', 'rapid')->ready(1)->create(['clan_id' => $blockli->clan_id]);
+    $html = $this->actingAs($outsider)->get(route('clans.show', $blockli->clan))->assertOk()
+        ->assertSee('Challenge to a Chess team match')
+        ->assertSee('Challenge to a Blockli team match')
+        ->assertSeeInOrder([e(route('challenges.create', ['to' => $chess->id])), e(route('challenges.create', ['to' => $blockli->id]))], false)
+        ->getContent();
+
+    expect(substr_count($html, 'data-test="challenge-team-match"'))->toBe(2)
+        ->and(substr_count($html, 'data-test="rapid-lineup"'))->toBe(2);
+
+    // A captain of a Blockli rapid lineup gets their own lineup picked for the Blockli challenge.
+    [$mine, $captain] = blockliTeamLineup();
+    $this->actingAs($captain)->get(route('clans.show', $blockli->clan))->assertOk()
+        ->assertSeeHtml('href="'.e(route('challenges.create', ['lineup' => $mine->id, 'to' => $blockli->id])).'"');
+});
