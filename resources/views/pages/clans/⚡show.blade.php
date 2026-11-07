@@ -234,7 +234,7 @@ new #[Layout('layouts::app', ['section' => 'clans'])] class extends Component {
             $own = $mine->first(fn (Lineup $lineup): bool => $lineup->game === $theirs->game && $lineup->mode === $theirs->mode);
 
             return [
-                'game' => app(GameRegistry::class)->name($theirs->game),
+                'game' => __(app(GameRegistry::class)->name($theirs->game)),
                 'url' => route('challenges.create', array_filter(['lineup' => $user instanceof User && $own?->isActingCaptain($user) === true ? $own->id : null, 'to' => $theirs->id])),
             ];
         })->all();
@@ -494,7 +494,7 @@ new #[Layout('layouts::app', ['section' => 'clans'])] class extends Component {
                 @if ($teamChallenges !== [])
                     <div class="flex flex-wrap gap-2">
                         @foreach ($teamChallenges as $teamChallenge)
-                            <a href="{{ $teamChallenge['url'] }}" class="inline-flex h-11 items-center rounded-md border border-line px-4 text-[13px] font-bold text-ink hover:text-ink" data-test="challenge-team-match">{{ count($teamChallenges) === 1 ? __('Challenge to a team match') : __('Challenge to a :game team match', ['game' => $teamChallenge['game']]) }}</a>
+                            <a href="{{ $teamChallenge['url'] }}" class="{{ count($teamChallenges) === 1 ? 'inline-flex h-11 items-center' : 'inline-flex min-h-11 items-center py-2' }} rounded-md border border-line px-4 text-[13px] font-bold text-ink hover:text-ink" data-test="challenge-team-match">{{ count($teamChallenges) === 1 ? __('Challenge to a team match') : __('Challenge to a :game team match', ['game' => $teamChallenge['game']]) }}</a>
                         @endforeach
                     </div>
                 @endif
@@ -502,7 +502,7 @@ new #[Layout('layouts::app', ['section' => 'clans'])] class extends Component {
             @foreach ($teamLineups as $rapid)
                 @php($rapidSeats = $rapid->seats->filter(fn (LineupSeat $seat): bool => $seat->accepted_at !== null && $seat->user !== null))
                 <div class="flex flex-col gap-1.5" data-test="rapid-lineup">
-                    <span class="text-xs font-bold text-ink-2">{{ $onlyChess ? __('Rapid lineup') : __(':game · rapid lineup', ['game' => app(GameRegistry::class)->name($rapid->game)]) }}</span>
+                    <span class="text-xs font-bold text-ink-2">{{ $onlyChess ? __('Rapid lineup') : __(':game · rapid lineup', ['game' => __(app(GameRegistry::class)->name($rapid->game))]) }}</span>
                     @if ($rapidSeats->isEmpty())
                         <span class="text-[13px] text-ink-2">{{ __('No players confirmed yet.') }}</span>
                     @else

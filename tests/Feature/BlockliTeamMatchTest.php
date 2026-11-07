@@ -530,3 +530,14 @@ test('the match list reads the team match number of Blockli boards with the list
     expect($perBoard)->toBe([])
         ->and($html)->toContain($boards[3]->number());
 });
+
+test('the clan page names the games of its team lineups in German', function () {
+    [$blockli] = blockliTeamLineup();
+    Lineup::factory()->game('chess', 'rapid')->ready(1)->create(['clan_id' => $blockli->clan_id]);
+    app()->setLocale('de');
+
+    $this->withSession(['locale' => 'de'])->actingAs(User::factory()->create())->get(route('clans.show', $blockli->clan))->assertOk()
+        ->assertSee('Zum Schach-Mannschaftskampf herausfordern')
+        ->assertSee('Schach · Rapid-Aufstellung')
+        ->assertDontSee('Chess-Mannschaftskampf');
+});
