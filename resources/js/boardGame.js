@@ -38,6 +38,10 @@
 import { setFocus } from './focusMode.js';
 import { gameChat } from './gameChat.js';
 import { registerAlpine } from './registerAlpine.js';
+// Blockspace's styles ride with the board script, not with the lazily loaded board (blockspace/board.js): as a CSS
+// dependency of that dynamic import, Vite's preload left the import pending on a page loaded fresh, and the block,
+// the ladder and the yields stayed empty at every width (measured 2026-11-07). Every selector is `.bs-*`.
+import './blockspace/board.css';
 
 const SVG = 'http://www.w3.org/2000/svg';
 

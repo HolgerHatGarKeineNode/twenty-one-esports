@@ -1,5 +1,7 @@
 <?php
 
+use App\Support\LatinFontPreloads;
+
 /*
 |--------------------------------------------------------------------------
 | Webfont preloads: latin only (performance plan P5, F12)
@@ -35,4 +37,8 @@ test('a page preloads the latin webfont files and no latin-ext file', function (
     foreach ($ranges as $file => $range) {
         expect($html)->toContain($file);
     }
+});
+
+test('a stylesheet that a script entry imports, which Vite hands over without a src, gets the plain preload instead of a 500', function () {
+    expect(LatinFontPreloads::resolve(null, 'https://esports.test/build/assets/board-Cnc5OLXX.css'))->toBe([]);
 });

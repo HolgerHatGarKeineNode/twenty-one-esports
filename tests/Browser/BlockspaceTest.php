@@ -73,7 +73,9 @@ test('the game page shows the board, the mempool ladder and both yields at every
     $admin = blockspaceAdmin();
     $game = blockspaceBrowserGame($admin);
     $page = blockspacePage($admin, route('board.show', ['boardGame' => $game, 'lang' => 'de'], false), $width);
-    BrowserWait::until($page, '() => document.querySelector("[data-test=mempool]")?.checkVisibility()', 10_000);
+    // Drawn, not only laid out, and soon: the block's cells and the five rungs of the ladder within 2.5 s of the page
+    // (an empty box measured visible for seconds while the lazily loaded board hung on its stylesheet, 2026-11-07).
+    BrowserWait::until($page, '() => document.querySelectorAll("[data-test=mempool] > *").length >= 5 && document.querySelector("[data-board-box] svg")?.childElementCount > 0', 2_500);
 
     $board = $page->evaluate(BLOCKSPACE_BOX, '[data-board-box]');
     $ladder = $page->evaluate(BLOCKSPACE_BOX, '[data-test=mempool]');
@@ -98,7 +100,7 @@ test('the game page shows the board, the mempool ladder and both yields at every
 
 test('the tutorial opens its first lesson on the board at every width, with a clean console', function (int $width) {
     $page = blockspacePage(blockspaceAdmin(), route('board.blockspace-practice', ['lang' => 'de'], false), $width);
-    BrowserWait::until($page, '() => document.querySelector("[data-test=lesson-dot]") !== null && document.querySelector("[data-board-box]")?.checkVisibility()', 10_000);
+    BrowserWait::until($page, '() => document.querySelector("[data-test=lesson-dot]") !== null && document.querySelectorAll("[data-test=mempool] > *").length >= 5', 2_500);
     [$scrollWidth, $clientWidth] = $page->evaluate(BrowserConsole::WIDTHS);
 
     expect($page->evaluate(BLOCKSPACE_BOX, '[data-board-box]')['w'] ?? 0)->toBeGreaterThan(120, "board width at {$width}")
@@ -106,4 +108,17 @@ test('the tutorial opens its first lesson on the board at every width, with a cl
         ->and($page->evaluate('() => document.body.innerText'))->not->toContain('Gebühr')->not->toContain('Leiter')
         ->and($page->evaluate('() => window.__errors'))->toBe([], "console at {$width}")
         ->and($page->evaluate(BrowserConsole::BAD_RESPONSES))->toBe([], "answers at {$width}");
+})->with([390, 1440]);
+
+test('a fresh load draws the block and the ladder within 2.5 s, from a phone to a wide desktop', function (int $width) {
+    // As a player's browser opens it: no init script on the page. The board's lazily loaded script once hung here on its
+    // stylesheet and left the block and the ladder empty for seconds (2026-11-07); the console collector's timing hid it.
+    $admin = blockspaceAdmin();
+    $game = blockspaceBrowserGame($admin);
+    $page = visit(BrowserLogin::url($admin))->page();
+    $page->setViewportSize($width, 900);
+    $page->goto(ComputeUrl::from(route('board.show', ['boardGame' => $game, 'lang' => 'de'], false)));
+    BrowserWait::until($page, '() => document.querySelectorAll("[data-test=mempool] > *").length >= 5 && document.querySelector("[data-board-box] svg")?.childElementCount > 0', 2_500);
+
+    expect($page->evaluate('() => document.querySelectorAll("[data-test=mempool] > *").length'))->toBeGreaterThanOrEqual(5);
 })->with([390, 1440]);

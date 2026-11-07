@@ -10,7 +10,7 @@
  * It shows no legal places, finding them is the game (user, 2026-11-04). A stone the rules refuse is refused here with
  * the reason, before anything is sent; the server judges what is sent.
  */
-import './board.css';
+// board.css comes with boardGame.js: as a dependency of this lazily loaded module it kept the import pending (see there).
 import { setFocus } from '../focusMode.js';
 import { BONUS, C, N, NAMES, ORDER, ORI, R, SIZE, START, cellName, cellOf, flip, key, moveText, readPieces, refuse, rot } from './engine.js';
 import { CELL, SIDES, element, form, joints, stone, stoneDefs } from './stones.js';

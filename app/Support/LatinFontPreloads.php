@@ -22,7 +22,7 @@ final class LatinFontPreloads
     /**
      * @return array<string, string>|false
      */
-    public static function resolve(string $src, string $url): array|false
+    public static function resolve(?string $src, string $url): array|false
     {
         if ($src !== 'fonts') {
             return [];
