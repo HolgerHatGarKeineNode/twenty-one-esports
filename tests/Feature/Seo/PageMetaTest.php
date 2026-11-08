@@ -318,8 +318,8 @@ test('a tournament is titled and described from its data in english and german',
 
     expect(titleOf($en))->toBe('Blitz Night Berlin · Chess tournament – TWENTY ONE esports')
         ->and(titleOf($de))->toBe('Blitz Night Berlin · Schach-Turnier – TWENTY ONE esports')
-        ->and(descriptionOf($en))->toBe('Chess tournament (Blitz 5+3), Swiss, for 12 players, online, starting 2026-10-03 19:00 CEST. Sign-up is open until 2026-10-03 18:00 CEST.')
-        ->and(descriptionOf($de))->toBe('Turnier in Schach (Blitz 5+3), Swiss, für 12 Spieler, online, Beginn 2026-10-03 19:00 CEST. Die Anmeldung ist offen bis 2026-10-03 18:00 CEST.');
+        ->and(descriptionOf($en))->toBe('Chess tournament (Blitz 5+3), Swiss, for 12 players, online, starting Sat, Oct 3, 7:00 PM CEST. Sign-up is open until Sat, Oct 3, 6:00 PM CEST.')
+        ->and(descriptionOf($de))->toBe('Turnier in Schach (Blitz 5+3), Swiss, für 12 Spieler, online, Beginn Sa. 3.10., 19:00 CEST. Die Anmeldung ist offen bis Sa. 3.10., 18:00 CEST.');
 });
 
 test('a tournament is a SportsEvent whose status follows the tournament', function (TournamentStatus $status, string $eventStatus) {
