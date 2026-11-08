@@ -330,7 +330,7 @@ new #[Layout('layouts::app', ['scripts' => ['resources/js/stacker/page.js', 'res
                     without scrolling; the spacer keeps the page's end clear of them.
                 --}}
                 <div class="hidden h-[136px] pointer-coarse:block" x-show="kind === 'practice' && (mode === 'playing' || mode === 'countdown')" aria-hidden="true"></div>
-                <div class="fixed inset-x-0 bottom-[var(--tabbar-h)] z-30 hidden grid-cols-4 gap-2 border-t border-hairline bg-bar px-4 py-2 pointer-coarse:grid" x-show="kind === 'practice' && (mode === 'playing' || mode === 'countdown')" data-test="touch" data-floor-owner>
+                <div class="fixed inset-x-0 bottom-[var(--floor-top)] z-30 hidden grid-cols-4 gap-2 border-t border-hairline bg-bar px-4 py-2 pointer-coarse:grid" x-show="kind === 'practice' && (mode === 'playing' || mode === 'countdown')" data-test="touch" data-floor-owner>
                     @foreach (['left' => '←', 'soft' => '↓', 'right' => '→', 'hard' => '⤓', 'ccw' => '↺', 'flip' => '180', 'cw' => '↻', 'hold' => __('Hold')] as $action => $label)
                         <button type="button" class="h-12 rounded-md border border-line bg-well text-[15px] font-bold text-ink select-none" data-test="touch-{{ $action }}"
                                 x-on:pointerdown.prevent="touch('{{ $action }}', true)" x-on:pointerup.prevent="touch('{{ $action }}', false)" x-on:pointerleave="touch('{{ $action }}', false)"

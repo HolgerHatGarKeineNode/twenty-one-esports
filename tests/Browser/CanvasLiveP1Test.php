@@ -9,8 +9,11 @@ use App\Enums\TournamentStatus;
 use App\Games\Blockfill;
 use App\Games\GameRegistry;
 use App\Models\Admin;
+use App\Models\ChessGame;
 use App\Models\Clan;
 use App\Models\ClanInvite;
+use App\Models\InviteLink;
+use App\Models\Lineup;
 use App\Models\SeriesMatch;
 use App\Models\Tournament;
 use App\Models\TournamentMatch;
@@ -330,7 +333,10 @@ test('P1 German formats: German pages group thousands with a dot, Elo too, and w
     [$me, $invite, $world] = p1Player();
     $done = SeriesMatch::factory()->accepted()->create(['game' => 'rocket-league', 'mode' => '1v1']);
     $pages = ['/mining', route('tournaments.show', $finished, false), '/ladder/chess/blitz', route('players.show', $me->npub, false), route('clans.show', $world['clan'], false),
-        route('matches.show', $done->number, false), '/me', route('admin.tournaments.edit', $featured, false), route('games.show', $world['myMove'], false), '/games/rocket-league'];
+        route('matches.show', $done->number, false), '/me', route('admin.tournaments.edit', $featured, false), route('games.show', $world['myMove'], false), '/games/rocket-league',
+        // An invite link open for three more days ("Offen bis …", gate M3) and the TV page of the league's next tournament.
+        route('invites.link', InviteLink::factory()->create(['inviter_id' => $admin->id, 'expires_at' => now()->addDays(3)]), false),
+        route('tournaments.tv', $featured, false)];
     $found = [];
     foreach ($pages as $path) {
         $page = p1Open($me, $path, 1440);
@@ -559,4 +565,93 @@ test('P1 positive control: a thrown error and a 404 fetch reach the channels the
     $page->evaluate('() => new Promise((r) => setTimeout(r, 300))');
     $loud = implode(' | ', p1Loud($page));
     expect($loud)->toContain('p1-positive-control')->toContain('404');
+});
+
+/**
+ * Every button of a page's own bottom bar (`[data-save-bar]`, `[data-floor-owner]`) at the top, the middle and the
+ * end of the page: its centre and its lower edge hit-test to the button itself, never to the floor band, the live
+ * tab, the dock or the tab bar. Unlike P1_FLOATING, points inside the band strip count.
+ */
+const P1_BARS = <<<'JS'
+async () => {
+    const wait = (ms) => new Promise((r) => setTimeout(r, ms));
+    const label = (el) => !el ? 'nothing' : (el.closest('[data-test]')?.dataset.test || el.className?.toString().slice(0, 40) || el.tagName);
+    const out = [];
+    let seen = 0;
+    const max = Math.max(0, document.scrollingElement.scrollHeight - innerHeight);
+    for (const y of [0, Math.round(max / 2), max]) {
+        scrollTo(0, y);
+        await wait(1300);
+        for (const bar of document.querySelectorAll('[data-save-bar], [data-floor-owner]')) {
+            if (!bar.checkVisibility()) continue;
+            for (const b of bar.querySelectorAll('button, a[href]')) {
+                if (!b.checkVisibility()) continue;
+                const r = b.getBoundingClientRect();
+                // On screen means its centre is in the viewport (a sticky bar left behind at the form's end is off screen, not covered).
+                if (r.width === 0 || r.top + r.height / 2 < 0 || r.top + r.height / 2 > innerHeight) continue;
+                seen++;
+                for (const [px, py] of [[r.left + r.width / 2, r.top + r.height / 2], [r.left + r.width / 2, r.bottom - 3]]) {
+                    if (py < 0 || py >= innerHeight) continue;
+                    const hit = document.elementFromPoint(px, py);
+                    if (!hit || !(b === hit || b.contains(hit))) out.push((b.dataset.test || b.textContent.trim().replace(/\s+/g, ' ').slice(0, 30)) + ' @' + y + ' -> ' + label(hit));
+                }
+            }
+        }
+    }
+    return seen === 0 ? ['no bar button seen'] : [...new Set(out)];
+}
+JS;
+
+test('P1 page bottom bars: every save-bar and floor-owner button stays free of the floor band, live tab, dock and tab bar, at 390 and 1440', function () {
+    [$admin, $featured] = p1TournamentLeague();
+    $signup = Tournament::factory()->signup()->create(['name' => 'P1 Sign-up Cup', 'published_at' => now()]);
+    $found = [];
+    foreach (['live tab' => false, 'dock and live tab' => true] as $state => $dock) {
+        $user = User::factory()->member()->create(['name' => 'Bitcoinmaximalistausdemerzgebirge']);
+        Admin::query()->firstOrCreate(['pubkey' => $user->pubkey]);
+        if ($dock) {
+            ChessGame::factory()->daily()->create(['white_id' => $user->id]);
+        }
+        // A clan captain with a ready lineup and an opponent: the challenge form and its phone step bar.
+        $captain = Lineup::factory()->ready()->create()->clan->owner;
+        Lineup::factory()->ready()->create();
+        if ($dock) {
+            ChessGame::factory()->daily()->create(['white_id' => $captain->id]);
+        }
+        $cases = [
+            ['edit', $user, route('admin.tournaments.edit', $featured, false), [1440, 390]],
+            ['create', $user, route('admin.tournaments.create', absolute: false), [1440, 390]],
+            ['challenge', $captain, route('challenges.create', absolute: false), [390]],
+            ['signup', $user, route('tournaments.show', $signup, false), [390]],
+        ];
+        foreach ($cases as [$name, $who, $path, $widths]) {
+            foreach ($widths as $width) {
+                $page = p1Open($who, $path, $width);
+                $bad = $page->evaluate(P1_BARS);
+                p1Shot($page, "bars-{$name}-".($dock ? 'dock-' : '')."{$width}");
+                $loud = p1Loud($page);
+                if ($bad !== [] || $loud !== []) {
+                    $found["{$name} {$width} {$state}"] = [...$bad, ...$loud];
+                }
+            }
+        }
+    }
+
+    // Stacker's touch keys (a coarse pointer, practice running): the floor-owner bar of a playfield page.
+    $player = User::factory()->member()->create(['name' => 'Phone Player']);
+    ChessGame::factory()->daily()->create(['white_id' => $player->id]);
+    $page = visit(BrowserLogin::url($player))->on()->mobile()->page();
+    $page->context()->addInitScript(BrowserConsole::COLLECTOR);
+    $page->setViewportSize(390, 844);
+    touch($this->hls.'/stream.m3u8');
+    $page->goto(ComputeUrl::from(route('stacker.play', [], false)));
+    BrowserWait::until($page, '() => window.__stacker !== undefined', 10_000);
+    $page->locator('[data-test=start-practice]')->click();
+    BrowserWait::until($page, '() => window.__stacker.state().mode === "playing"', 6_000);
+    $stacker = $page->evaluate('() => [...document.querySelectorAll("[data-floor-owner] [data-test^=touch-]")].filter((b) => b.checkVisibility()).map((b) => { const r = b.getBoundingClientRect(); const e = document.elementFromPoint(r.left + r.width / 2, r.bottom - 3); return b.contains(e) ? null : b.dataset.test + " -> " + (e?.closest("[data-test]")?.dataset.test ?? e?.className); }).filter(Boolean)');
+    if ($stacker !== []) {
+        $found['stacker 390'] = $stacker;
+    }
+
+    expect($found)->toBe([]);
 });

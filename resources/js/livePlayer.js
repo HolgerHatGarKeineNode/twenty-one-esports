@@ -223,7 +223,7 @@ export function livePlayer(config) {
             // A phone has one row of floor above its tab bar (the floor band, app.css): when the match dock or a page's
             // own bottom bar owns it, the folded tab steps aside rather than stack over the page; the header's LIVE
             // badge still leads to the stream (plan "Canvas and live alignment", P1, B1/G2).
-            const owned = this.view === 'tab' && window.innerWidth < 1024 && [...document.querySelectorAll('[data-live-floor]:not(nav), [data-page-bar], [data-floor-owner]')]
+            const owned = this.view === 'tab' && window.innerWidth < 1024 && [...document.querySelectorAll('[data-live-floor]:not(nav), [data-page-bar], [data-floor-owner], [data-save-bar]')]
                 .some((bar) => bar.getClientRects().length > 0 && bar.getBoundingClientRect().height > 0);
             this.stepAside = keyboard || sheet || owned || this.overBoard(rect);
         },

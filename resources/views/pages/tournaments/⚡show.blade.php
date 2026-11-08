@@ -141,7 +141,7 @@ new #[Layout('layouts::app', ['section' => 'tournaments', 'realtime' => true, 's
     {
         $tournament = $this->tournament;
         $zone = (string) config('esports.preseason.display_timezone');
-        $date = fn (\Carbon\CarbonInterface $at): string => $at->copy()->timezone($zone)->format('Y-m-d H:i T');
+        $date = fn (\Carbon\CarbonInterface $at): string => \App\Support\Formats::date($at, true, $zone).' '.$at->copy()->timezone($zone)->format('T');
         $teams = $tournament->profile()->entersTeams();
         // A casual cup in sign-up names the format and the field it would play now (CasualCups::asPlanned()).
         $planned = CasualCups::asPlanned($tournament);
@@ -998,7 +998,7 @@ new #[Layout('layouts::app', ['section' => 'tournaments', 'realtime' => true, 's
                     @if ($cta !== 'draft')
                         {{-- On a phone the main action is a bar above the tab bar (TournamentDetailPhone, TournamentSignup-Phone.dc.html): always in reach. --}}
                         {{-- With "What to do now" a phone takes its action from there, not from a second bar. --}}
-                        <span class="{{ $compactHero ? 'max-lg:!hidden ' : '' }}flex flex-wrap items-center gap-2 max-lg:fixed max-lg:inset-x-0 max-lg:bottom-[calc(var(--tabbar-h)+var(--dock-h))] max-lg:z-30 max-lg:flex-nowrap max-lg:border-t max-lg:border-hairline max-lg:bg-ground max-lg:px-4 max-lg:py-3 max-lg:[&>a]:grow" data-test="signup-cta" data-state="{{ $cta }}" data-floor-owner>
+                        <span class="{{ $compactHero ? 'max-lg:!hidden ' : '' }}flex flex-wrap items-center gap-2 max-lg:fixed max-lg:inset-x-0 max-lg:bottom-[var(--floor-top)] max-lg:z-30 max-lg:flex-nowrap max-lg:border-t max-lg:border-hairline max-lg:bg-ground max-lg:px-4 max-lg:py-3 max-lg:[&>a]:grow" data-test="signup-cta" data-state="{{ $cta }}" data-floor-owner>
                             @if ($tmnfWeek)
                                 <a href="#join" class="rv-b h-12 px-6" data-test="to-tmnf-join"><x-icon name="flag" :size="18" />{{ __('How to join') }}</a>
                             @elseif ($week && \Illuminate\Support\Facades\Route::has('stacker.play'))

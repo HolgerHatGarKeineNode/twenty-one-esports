@@ -216,7 +216,7 @@ new #[Title('New tournament')] #[Layout('layouts::app', ['section' => 'admin'])]
          (focusin below; a field already half on screen is not scrolled by the browser itself): WCAG 2.4.11. Under 640 px of the admin
          column the summary (one line of 13 px) over the button, a row from 640 with the summary's second line (a row at 390 squeezed
          "Two Stage, 12 Spieler, …" into 159 px, 3 lines). --}}
-    <div class="sticky bottom-[var(--tabbar-h)] z-20 flex flex-col items-stretch gap-2 rounded border border-edge bg-card px-4 py-3 shadow-[0_-12px_24px_var(--color-ground)] lg:px-6 lg:py-4 @min-[640px]/admin:flex-row @min-[640px]/admin:items-center @min-[640px]/admin:gap-3 @min-[900px]/admin:gap-4" data-save-bar x-data
+    <div class="sticky bottom-[var(--floor-top)] z-20 flex flex-col items-stretch gap-2 rounded border border-edge bg-card px-4 py-3 shadow-[0_-12px_24px_var(--color-ground)] lg:px-6 lg:py-4 @min-[640px]/admin:flex-row @min-[640px]/admin:items-center @min-[640px]/admin:gap-3 @min-[900px]/admin:gap-4" data-save-bar x-data
              x-on:focusin.window="const r = $event.target.getBoundingClientRect(), bar = $el.getBoundingClientRect();
                  if (! $el.contains($event.target) && r.bottom > bar.top && r.top < bar.bottom) window.scrollBy({ top: r.bottom - bar.top + 16 })">
         @island(name: 'summary')

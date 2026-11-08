@@ -296,6 +296,16 @@ new #[Layout('layouts::app', ['section' => 'admin'])] class extends TournamentFo
             $changes['mode'] = $this->mode;
         }
 
+        // A refused prize pot stops the whole save before anything is written or throttled (P1 gate M2): the form is one save.
+        $this->potError = '';
+        $potChanged = $this->potChanged();
+
+        if ($potChanged && ($refusal = app(\App\Support\Prizes\PrizePool::class)->refusal($tournament, $this->user(), $this->potEnabled, $this->potTarget, $this->potMode, $this->potSplit, $this->potFixed)) !== null) {
+            $this->error = $this->potError = $refusal;
+
+            return;
+        }
+
         // One saved change every 2 s per tournament and per organizer: each one signs a new 31923 and queues the calendar.
         $throttles = ['tournament-edit:'.$tournament->id, 'tournament-edit-user:'.$this->user()->id];
 
@@ -323,15 +333,17 @@ new #[Layout('layouts::app', ['section' => 'admin'])] class extends TournamentFo
 
         $this->tournament = $tournament->refresh();
 
-        // The prize pot saves with the page (one save button, P1); only when it was changed, as each save may sign a new 31923.
-        if ($this->potChanged()) {
-            if (! $this->savePot($this->tournament)) {
-                $this->error = $this->potError;
+        // The prize pot saves with the page (one save button, P1), checked above; only when it was changed, as each save may
+        // sign a new 31923. Refused only by a race under the row lock: the other fields are saved by then, and the notice says so.
+        $potRefused = false;
 
-                return;
+        if ($potChanged) {
+            if ($this->savePot($this->tournament)) {
+                $this->tournament = $this->tournament->refresh();
+                $changed[] = 'pot';
+            } else {
+                $potRefused = true;
             }
-            $this->tournament = $this->tournament->refresh();
-            $changed[] = 'pot';
         }
 
         if (in_array('mode', $changed, true)) {
@@ -346,6 +358,10 @@ new #[Layout('layouts::app', ['section' => 'admin'])] class extends TournamentFo
             $this->tournament->status === TournamentStatus::Draft => __('Saved. Publish it when ready.'),
             default => __('Saved.').($this->tournament->event_id !== null ? ' '.__('The league published the new version of the tournament.') : ''),
         };
+
+        if ($potRefused) {
+            $this->error = $this->potError;
+        }
     }
 
     /**
@@ -609,7 +625,7 @@ new #[Layout('layouts::app', ['section' => 'admin'])] class extends TournamentFo
         {{-- The save bar (order E, jury 2026-11-05): sticks to the bottom of the screen until the form ends, so "Save changes" is always
              one click away; nothing saves on its own. The page keeps a scrolled-to error clear of it (app.css, `--save-bar-h`), stands above the phone's tab bar (`--tabbar-h`)
              and scrolls a field focused under it into view (focusin below): WCAG 2.4.11. The prize pot above it saves with it. --}}
-        <div class="sticky bottom-[var(--tabbar-h)] z-20 flex flex-col items-stretch gap-2 rounded border border-edge bg-card px-4 py-3 shadow-[0_-12px_24px_var(--color-ground)] lg:px-6 lg:py-4 @min-[640px]/admin:flex-row @min-[640px]/admin:flex-wrap @min-[640px]/admin:items-center @min-[640px]/admin:gap-3 @min-[900px]/admin:flex-nowrap @min-[900px]/admin:gap-4" data-save-bar x-data
+        <div class="sticky bottom-[var(--floor-top)] z-20 flex flex-col items-stretch gap-2 rounded border border-edge bg-card px-4 py-3 shadow-[0_-12px_24px_var(--color-ground)] lg:px-6 lg:py-4 @min-[640px]/admin:flex-row @min-[640px]/admin:flex-wrap @min-[640px]/admin:items-center @min-[640px]/admin:gap-3 @min-[900px]/admin:flex-nowrap @min-[900px]/admin:gap-4" data-save-bar x-data
              x-on:focusin.window="const r = $event.target.getBoundingClientRect(), bar = $el.getBoundingClientRect();
                  if (! $el.contains($event.target) && r.bottom > bar.top && r.top < bar.bottom) window.scrollBy({ top: r.bottom - bar.top + 16 })">
             @island(name: 'summary')
