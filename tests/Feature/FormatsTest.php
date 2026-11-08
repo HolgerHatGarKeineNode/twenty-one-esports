@@ -48,3 +48,12 @@ test('a UTC instant is shown in the league time zone', function () {
     app()->setLocale('de');
     expect(Formats::date(CarbonImmutable::parse('2026-11-08 20:56', 'UTC')))->toBe('So. 8.11., 21:56');
 });
+
+test('a text for someone else takes their language, not the page\'s (a notification, P1 gate M3)', function () {
+    $this->travelTo(CarbonImmutable::parse('2026-11-07 20:00', 'Europe/Berlin'));
+    app()->setLocale('en');
+    $at = CarbonImmutable::parse('2026-10-05 13:02', 'Europe/Berlin');
+
+    expect(Formats::date($at, true, 'Europe/Berlin', 'de'))->toBe('Mo. 5.10., 13:02')
+        ->and(Formats::date($at, true, 'Europe/Berlin'))->toBe('Mon, Oct 5, 1:02 PM');
+});

@@ -13,6 +13,7 @@ use App\Support\Badges\BadgeCopy;
 use App\Support\Board;
 use App\Support\FairPlay\AccountLinks;
 use App\Support\FairPlay\FairPlay;
+use App\Support\Formats;
 use App\Support\Lightning\LightningAddress;
 use App\Support\Notifications\Notice;
 use App\Support\Notifications\Notifier;
@@ -360,7 +361,7 @@ final class SeasonSettlement
         }
 
         if ($user !== null && self::addressFrozen($user)) {
-            throw new SeasonSettlementRefused(__('The Lightning address changed less than 72 hours ago. It can be approved from :when.', ['when' => self::frozenUntil($user)?->setTimezone(PreSeason::timezoneFor($admin))->format('Y-m-d H:i')]));
+            throw new SeasonSettlementRefused(__('The Lightning address changed less than 72 hours ago. It can be approved from :when.', ['when' => Formats::date(self::frozenUntil($user), true, PreSeason::timezoneFor($admin))]));
         }
 
         if (! hash_equals(self::fingerprint($address), strtolower(trim($seen)))) {

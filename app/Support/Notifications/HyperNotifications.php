@@ -6,6 +6,7 @@ use App\Enums\NotificationKind;
 use App\Models\HyperMatch;
 use App\Models\HyperSeat;
 use App\Models\User;
+use App\Support\Formats;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Route;
 
@@ -54,8 +55,7 @@ final class HyperNotifications
     private function deadline(HyperMatch $match, User $user, string $locale): string
     {
         $deadline = Carbon::createFromTimestampMs((int) $match->deadline_ms)->setTimezone($user->timezone ?? (string) config('app.timezone'));
-        $deadline->locale($locale);
 
-        return $deadline->isoFormat('ddd YYYY-MM-DD HH:mm');
+        return Formats::date($deadline, true, $deadline->getTimezone()->getName(), $locale);
     }
 }

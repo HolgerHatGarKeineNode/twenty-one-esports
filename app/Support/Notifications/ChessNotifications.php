@@ -10,6 +10,7 @@ use App\Models\ChessInvite;
 use App\Models\User;
 use App\Support\Chess\ChessModes;
 use App\Support\Chess\SanNotation;
+use App\Support\Formats;
 use Illuminate\Support\Carbon;
 
 /**
@@ -248,8 +249,7 @@ final class ChessNotifications
     private function deadline(ChessGame $game, User $user): string
     {
         $deadline = Carbon::createFromTimestampMs((int) $game->deadline_ms)->setTimezone($user->timezone ?? (string) config('app.timezone'));
-        $deadline->locale($this->locale($user));
 
-        return $deadline->isoFormat('ddd YYYY-MM-DD HH:mm');
+        return Formats::date($deadline, true, $deadline->getTimezone()->getName(), $this->locale($user));
     }
 }

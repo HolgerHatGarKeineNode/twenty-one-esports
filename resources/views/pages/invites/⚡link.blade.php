@@ -264,7 +264,7 @@ new #[Layout('layouts::app')] class extends Component {
 
         $local = $time->copy()->timezone(PreSeason::timezoneFor(auth()->user() instanceof User ? auth()->user() : null))->locale(App::getLocale());
 
-        return $local->isToday() ? __('Today :time', ['time' => $local->format('H:i')]) : $local->translatedFormat('D Y-m-d, H:i');
+        return $local->isToday() ? __('Today :time', ['time' => $local->format('H:i')]) : \App\Support\Formats::date($local, true, $local->getTimezone()->getName());
     }
 
     private function user(): User

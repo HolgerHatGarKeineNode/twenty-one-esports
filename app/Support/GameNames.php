@@ -17,7 +17,6 @@ use Illuminate\Support\Facades\Route;
  */
 final class GameNames
 {
-    /** "Chess" (translated), "Rocket League", "EA Sports FC 27"; the slug of an unregistered game. */
     /**
      * Soft hyphens in the game names that are one long word, for a big headline (plan "Canvas and live alignment",
      * P1): "Hyperbitcoinization" broke mid-word without a hyphen ("Hyperbitcoiniz|ation") beside the cover at 390 px;
@@ -28,6 +27,7 @@ final class GameNames
         return str_replace('Hyperbitcoinization', "Hyper\u{00AD}bitcoin\u{00AD}ization", $text);
     }
 
+    /** "Chess" (translated), "Rocket League", "EA Sports FC 27"; the slug of an unregistered game. */
     public static function game(string $game): string
     {
         return __(app(GameRegistry::class)->name($game));

@@ -407,7 +407,7 @@ new #[Layout('layouts::tv')] class extends Component {
                 @if ($ticker === [])
                     <span class="tv-ticker-empty">{{ match (true) {
                         $running => __('Results appear here as they come in.'),
-                        $lobby => __('Round 1 starts :date.', ['date' => $tournament->starts_at->copy()->timezone($zone)->locale(app()->getLocale())->translatedFormat('D Y-m-d H:i')]),
+                        $lobby => __('Round 1 starts :date.', ['date' => \App\Support\Formats::date($tournament->starts_at, true, $zone)]),
                         default => __('No results yet.'),
                     } }}</span>
                 @else

@@ -9,6 +9,7 @@ use App\Models\NostrEvent;
 use App\Models\Season;
 use App\Models\User;
 use App\Support\Board;
+use App\Support\Formats;
 use App\Support\Nostr\RejectedEvent;
 use App\Support\Nostr\SignedEventGate;
 use App\Support\Rating\RatingSettings;
@@ -154,7 +155,7 @@ final class SeasonRelease
             }
 
             if ($plan->starts_at->isFuture()) {
-                return __(':season is planned for Block 0 on :when (UTC). It can be released from then on.', ['season' => $plan->name, 'when' => $plan->starts_at->utc()->format('Y-m-d H:i')]);
+                return __(':season is planned for Block 0 on :when (UTC). It can be released from then on.', ['season' => $plan->name, 'when' => Formats::date($plan->starts_at, true, 'UTC')]);
             }
         }
 

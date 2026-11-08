@@ -24,17 +24,18 @@ final class Formats
     /**
      * A day and, by default, its time in the league's (or the given) time zone: "Mo. 5.10., 13:02" /
      * "Mon, Oct 5, 1:02 PM"; another year adds it ("Mo. 5.10.2025, 13:02" / "Mon, Oct 5, 2025, 1:02 PM").
+     * `$locale`: a text built for someone else (a notification in its recipient's language); the page's by default.
      */
-    public static function date(?CarbonInterface $at, bool $time = true, ?string $zone = null): string
+    public static function date(?CarbonInterface $at, bool $time = true, ?string $zone = null, ?string $locale = null): string
     {
         if ($at === null) {
             return '';
         }
 
-        $local = self::local($at, $zone);
+        $local = self::local($at, $zone, $locale);
         $thisYear = $local->year === now($zone ?? LeagueTime::zone())->year;
 
-        if (self::german()) {
+        if (self::german($locale)) {
             return $local->isoFormat(($thisYear ? 'ddd D.M.' : 'ddd D.M.YYYY').($time ? ', HH:mm' : ''));
         }
 
@@ -59,13 +60,13 @@ final class Formats
     }
 
     /** The moment in the zone, speaking the page's language. */
-    private static function local(CarbonInterface $at, ?string $zone): CarbonImmutable
+    private static function local(CarbonInterface $at, ?string $zone, ?string $locale = null): CarbonImmutable
     {
-        return CarbonImmutable::instance($at)->setTimezone($zone ?? LeagueTime::zone())->settings(['locale' => app()->getLocale()]);
+        return CarbonImmutable::instance($at)->setTimezone($zone ?? LeagueTime::zone())->settings(['locale' => $locale ?? app()->getLocale()]);
     }
 
-    private static function german(): bool
+    private static function german(?string $locale = null): bool
     {
-        return str_starts_with(app()->getLocale(), 'de');
+        return str_starts_with($locale ?? app()->getLocale(), 'de');
     }
 }

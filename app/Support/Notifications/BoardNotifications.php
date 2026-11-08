@@ -9,6 +9,7 @@ use App\Models\BoardChallenge;
 use App\Models\BoardGame;
 use App\Models\User;
 use App\Support\Board\BoardGameService;
+use App\Support\Formats;
 use App\Support\GameNames;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Route;
@@ -231,8 +232,7 @@ final class BoardNotifications
     private function deadline(BoardGame $game, User $user): string
     {
         $deadline = Carbon::createFromTimestampMs((int) $game->deadline_ms)->setTimezone($user->timezone ?? (string) config('app.timezone'));
-        $deadline->locale($this->locale($user));
 
-        return $deadline->isoFormat('ddd YYYY-MM-DD HH:mm');
+        return Formats::date($deadline, true, $deadline->getTimezone()->getName(), $this->locale($user));
     }
 }
