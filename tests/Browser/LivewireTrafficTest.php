@@ -73,6 +73,9 @@ const TRAFFIC_LOAD_MS = 3_000;
 const TRAFFIC_PROBE = LivewireTraffic::PROBE;
 
 beforeEach(function () {
+    // Both tests wait for Echo's socket: without the runner's Reverb the failure is a 15 s timeout that names nothing.
+    expect(config('broadcasting.default'))->toBe('reverb', 'Run this through `composer test:browser` (bash scripts/test-browser.sh tests/Browser/LivewireTrafficTest.php), which starts Reverb.');
+
     Http::fake(fn () => Http::response([]));
     Queue::fake();
 
