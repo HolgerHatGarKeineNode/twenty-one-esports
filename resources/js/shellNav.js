@@ -312,10 +312,31 @@ export function dockCount() {
         // The entry under its limit (ActionDock.dc.html "Zu, Frist unter 15 Min"): its label and the time left.
         urgentLabel: '',
         urgentTime: '',
+        // Red (`is-hot`): a dock entry under its limit, or the match room's own step under 15 minutes (Header.dc.html).
+        hot: false,
+        // The match room's step (`[data-test=room-deadline]`, pages/matches/⚡room): its chip wins over the dock's on that page.
+        room: false,
 
         init() {
             let urgent = null;
+            // Header.dc.html "Kopfzeile, Frist läuft": the room's step as "Lobby bis 20:15", under 15 minutes "Check-in 4:12" in red.
+            const roomStep = () => {
+                const el = document.querySelector('[data-test=room-deadline]');
+                if (!el) return false;
+                const ends = Number(el.dataset.ends || 0);
+                const left = ends > 0 ? Math.max(0, Math.ceil((ends - Date.now()) / 1000)) : null;
+                const soon = left !== null && left < 15 * 60 && el.dataset.short;
+                this.urgentLabel = soon ? el.dataset.short : (el.dataset.until ?? '');
+                this.urgentTime = soon ? Math.floor(left / 60) + ':' + String(left % 60).padStart(2, '0') : '';
+                this.hot = !!soon;
+
+                return true;
+            };
             const clock = () => {
+                this.room = roomStep();
+                if (this.room) return;
+                this.urgentLabel = urgent?.label ?? '';
+                this.hot = this.urgentLabel !== '';
                 if (!urgent?.tick) {
                     this.urgentTime = '';
 
@@ -332,7 +353,6 @@ export function dockCount() {
                 } catch {
                     urgent = null;
                 }
-                this.urgentLabel = urgent?.label ?? '';
                 clock();
                 if (root && root !== watched) {
                     observer?.disconnect();

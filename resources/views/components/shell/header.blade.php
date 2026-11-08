@@ -137,13 +137,15 @@
             {{-- An entry under its limit turns it red with its label and time (ActionDock.dc.html "Zu, Frist unter 15 Min"). --}}
             {{-- The board's 36 px button inside a 44 px target (the header row is 56 px; WCAG 2.5.8 and the house 44 px rule). --}}
             <a href="{{ route('dashboard') }}" class="hidden h-11 shrink-0 items-center lg:inline-flex" x-data="dockCount" x-on:click="openDock($event)" x-bind:title="urgentLabel || null"
-               x-bind:aria-label="dockOpen > 0 ? @js(__('Actions')).concat(', ', dockOpen, ' ', @js(__('open'))) : @js(__('Actions'))" data-test="nav-actions">
-                <span class="rv-act" x-bind:class="urgentLabel && 'is-hot'">
+               x-bind:aria-label="[@js(__('Actions')), dockOpen > 0 ? dockOpen + ' ' + @js(__('open')) : '', [urgentLabel, urgentTime].filter(Boolean).join(' ')].filter(Boolean).join(', ')" data-test="nav-actions">
+                <span class="rv-act" x-bind:class="hot && 'is-hot'">
                     <x-icon name="bolt" :size="14" class="text-btc" x-show="! urgentLabel" />
-                    <span class="rv-live h-5 w-6 justify-center px-0" x-show="urgentLabel" x-cloak aria-hidden="true"><i></i></span>
+                    <span class="rv-live h-5 w-6 justify-center px-0" x-show="hot" x-cloak aria-hidden="true"><i></i></span>
+                    {{-- The match room's step before its last 15 minutes (Header.dc.html "Lobby bis 20:15"): a clock, not the red live mark. --}}
+                    <x-icon name="clock" :size="14" class="text-btc-hi" x-show="urgentLabel && ! hot" x-cloak />
                     <span class="max-xl:hidden" x-show="! urgentLabel">{{ __('Actions') }}</span>
-                    {{-- The urgent label shows from 2xl; below, the red edge, the live mark and the time say it (the label stays for screen readers and as the title): with a live cup match its badge stands beside, and the two labels pushed row 1 144 px past 1280 (V1, measured as an admin in German). --}}
-                    <span class="whitespace-nowrap" x-show="urgentLabel" x-cloak data-test="actions-urgent"><span class="max-2xl:sr-only" x-text="urgentLabel" data-test="actions-urgent-label"></span> <b class="tabular-nums" x-text="urgentTime"></b></span>
+                    {{-- The urgent label shows from 2xl; below, the red edge, the live mark and the time say it (the label stays for screen readers and as the title): with a live cup match its badge stands beside, and the two labels pushed row 1 144 px past 1280 (V1, measured as an admin in German). The match room's own step shows its label from xl. --}}
+                    <span class="whitespace-nowrap" x-show="urgentLabel" x-cloak data-test="actions-urgent"><span x-bind:class="room ? 'max-xl:sr-only' : 'max-2xl:sr-only'" x-text="urgentLabel" data-test="actions-urgent-label"></span> <b class="tabular-nums" x-show="urgentTime" x-text="urgentTime"></b></span>
                     <span class="rv-n is-o" x-show="dockOpen > 0" x-text="dockOpen" x-cloak data-test="actions-count"></span>
                 </span>
             </a>
