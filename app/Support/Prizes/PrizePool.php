@@ -417,21 +417,37 @@ final class PrizePool
     }
 
     /**
-     * The prize pot of the tournament create and edit pages and the pool
-     * page: off (`$enabled` false) or on, booked in the league wallet, with
-     * its prizes. No wallet is asked for (user, 2026-10-02). A published
-     * tournament's pot is open at once, and the rules on Nostr get a new
-     * version when the pot or its prizes changed.
+     * Why a form's pot fields would be refused, or null when they would be saved: the target as typed (a whole number
+     * of sats in percent mode), then checkPot() with its authorization. Saves nothing (P1 gate M2).
      *
-     * The prizes (mode, split, fixed amounts) change only until sign-up
-     * closes; after the payouts were approved nothing changes.
-     *
-     * @param  array<int, mixed>  $split  percents per place (percent mode)
-     * @param  array<int, mixed>  $fixed  sats per place (fixed mode)
-     *
-     * @throws TournamentRuleViolation
+     * @param  array<int, mixed>  $split
+     * @param  array<int, mixed>  $fixed
      */
-    public function configurePot(Tournament $tournament, User $user, bool $enabled, ?int $targetSats, string $mode, array $split, array $fixed = []): Tournament
+    public function refusal(Tournament $tournament, User $user, bool $enabled, string $target, string $mode, array $split, array $fixed = []): ?string
+    {
+        $target = trim($target);
+
+        if ($enabled && $mode === Tournament::PRIZES_PERCENT && $target !== '' && ! ctype_digit($target)) {
+            return __('The target is a whole number of sats.');
+        }
+
+        try {
+            $this->checkPot($tournament, $user, $enabled, $enabled && $target !== '' && ctype_digit($target) ? (int) $target : null, $mode, $split, $fixed);
+        } catch (TournamentRuleViolation $violation) {
+            return $violation->getMessage();
+        }
+
+        return null;
+    }
+
+    /**
+     * The checks of configurePot() without writing anything (P1 gate M2): the edit page runs them before it saves the
+     * other fields, so a refused pot leaves the whole form unsaved. Throws TournamentRuleViolation like configurePot().
+     *
+     * @param  array<int, mixed>  $split
+     * @param  array<int, mixed>  $fixed
+     */
+    public function checkPot(Tournament $tournament, User $user, bool $enabled, ?int $targetSats, string $mode, array $split, array $fixed = []): void
     {
         $this->authorize($tournament, $user);
         $this->refuseWhenEnded($tournament);
@@ -457,6 +473,29 @@ final class PrizePool
         if ($prizesChanged && ($error = $mode === Tournament::PRIZES_FIXED ? self::fixedError($fixed) : self::splitError($split)) !== null) {
             throw new TournamentRuleViolation('split', $error);
         }
+    }
+
+    /**
+     * The prize pot of the tournament create and edit pages and the pool
+     * page: off (`$enabled` false) or on, booked in the league wallet, with
+     * its prizes. No wallet is asked for (user, 2026-10-02). A published
+     * tournament's pot is open at once, and the rules on Nostr get a new
+     * version when the pot or its prizes changed.
+     *
+     * The prizes (mode, split, fixed amounts) change only until sign-up
+     * closes; after the payouts were approved nothing changes.
+     *
+     * @param  array<int, mixed>  $split  percents per place (percent mode)
+     * @param  array<int, mixed>  $fixed  sats per place (fixed mode)
+     *
+     * @throws TournamentRuleViolation
+     */
+    public function configurePot(Tournament $tournament, User $user, bool $enabled, ?int $targetSats, string $mode, array $split, array $fixed = []): Tournament
+    {
+        $this->checkPot($tournament, $user, $enabled, $targetSats, $mode, $split, $fixed);
+        $split = array_map(fn ($value): int => is_numeric($value) ? (int) $value : 0, array_values($split));
+        $fixed = array_map(fn ($value): int => is_numeric($value) ? (int) $value : 0, array_values($fixed));
+        $prizesChanged = $enabled && $this->prizesDiffer($tournament, $mode, $split, $fixed);
 
         return DB::transaction(function () use ($tournament, $enabled, $targetSats, $mode, $split, $fixed, $prizesChanged): Tournament {
             $locked = Tournament::query()->whereKey($tournament->id)->lockForUpdate()->firstOrFail();

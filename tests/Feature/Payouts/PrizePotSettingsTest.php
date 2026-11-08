@@ -297,3 +297,19 @@ test('on the edit page the prize pot saves with "Save changes", the one save but
     $page->set('potSplit', [50, 30, 10])->call('save')->assertSet('error', __('The shares add up to 100 percent.'));
     expect($tournament->refresh()->prizeSplit())->toBe([45, 35, 20]);
 });
+
+test('a refused pot on the edit page saves nothing, not even the other fields, and a fixed retry saves at once (P1 gate M2)', function () {
+    fakeWallet();
+    $tournament = openTournament();
+    $name = $tournament->name;
+    $page = Livewire::actingAs($tournament->creator)->test('pages::admin.tournament-edit', ['tournament' => $tournament]);
+
+    $page->set('name', 'Probe Neuer Name')->set('potEnabled', true)->set('potSplit', [50, 30, 10])->call('save')
+        ->assertSet('potError', __('The shares add up to 100 percent.'))
+        ->assertSet('error', __('The shares add up to 100 percent.'))
+        ->assertSet('notice', '');
+    expect($tournament->refresh()->name)->toBe($name)->and($tournament->hasPot())->toBeFalse();
+
+    $page->set('potSplit', [50, 30, 20])->call('save')->assertSet('error', '')->assertSet('potError', '')->assertNotSet('notice', '');
+    expect($tournament->refresh()->name)->toBe('Probe Neuer Name')->and($tournament->hasPot())->toBeTrue()->and($tournament->prizeSplit())->toBe([50, 30, 20]);
+});
