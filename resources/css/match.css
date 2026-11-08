@@ -251,8 +251,14 @@
         font-size: 18px;
     }
 
+    /* Two lines at most (the full name in the title): a 39-character name took three and pushed the match room's
+       result step past the first 1440×900 screen (plan "Canvas and live alignment", P3). */
     .rv-side-name {
+        display: -webkit-box;
         min-width: 0;
+        overflow: hidden;
+        -webkit-box-orient: vertical;
+        -webkit-line-clamp: 2;
         color: var(--color-ink);
         font-size: 20px;
         font-weight: 700;

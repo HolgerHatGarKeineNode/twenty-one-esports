@@ -175,8 +175,82 @@ export function lobbyPin(labels) {
     };
 }
 
+/**
+ * The phone's action bar of the match room (boards MatchRoom-*-Phone, plan "Canvas and live alignment", P3): it
+ * mirrors the step's own buttons, `data-room-primary` and `data-room-secondary` inside `[data-test=room-main]`
+ * (hidden below lg), so one action keeps one handler (an Alpine scope, a Livewire call, the lobby pin's store) and
+ * the bar never drifts from the view: a render, a template swap or a busy state is read again from the DOM. "Chat"
+ * scrolls the room chat into view. Shown only with something to press.
+ */
+export function roomBar() {
+    // Closure state, never `this.*`: the bar sits inside the room's roomSync scope (see dockCount in shellNav.js).
+    let observer = null;
+    const teardown = new AbortController();
+    const pick = (attr) => {
+        const main = document.querySelector('[data-test=room-main]');
+
+        // The bar mirrors what the step hides below lg (max-lg:hidden); a button on screen stays the step's own, and one
+        // its step put away (x-show: the corrected sheet is open) is no action of the bar either.
+        return main ? ([...main.querySelectorAll(`[${attr}]`)].find((el) => !el.closest('template') && !el.closest('[style*="display: none"]') && el.getClientRects().length === 0) ?? null) : null;
+    };
+    const text = (el) => (el?.textContent ?? '').replace(/\s+/g, ' ').trim();
+
+    return {
+        primary: '',
+        secondary: '',
+        primaryDisabled: false,
+        secondaryDisabled: false,
+        hasChat: false,
+
+        init() {
+            this.hasChat = this.$root.querySelector('[data-chat]') !== null;
+            this.read();
+            window.addEventListener('resize', () => this.read(), { signal: teardown.signal });
+            const main = document.querySelector('[data-test=room-main]');
+            if (main) {
+                observer = new MutationObserver(() => this.read());
+                observer.observe(main, { subtree: true, childList: true, characterData: true, attributes: true, attributeFilter: ['disabled', 'style'] });
+            }
+        },
+
+        destroy() {
+            observer?.disconnect();
+            teardown.abort();
+        },
+
+        read() {
+            const primary = pick('data-room-primary');
+            const secondary = pick('data-room-secondary');
+            this.primary = text(primary);
+            this.secondary = text(secondary);
+            this.primaryDisabled = !!primary?.disabled;
+            this.secondaryDisabled = !!secondary?.disabled;
+        },
+
+        get shown() {
+            return this.hasChat || this.primary !== '' || this.secondary !== '';
+        },
+
+        press(kind) {
+            const el = pick(kind === 'primary' ? 'data-room-primary' : 'data-room-secondary');
+            if (!el || el.disabled) return;
+            el.click();
+            // What the secondary press opened (the dispute form under the check) comes into view above the bar; a primary
+            // press stays where the page is (its own handler moves the page if it needs to).
+            if (kind === 'secondary') {
+                requestAnimationFrame(() => (el.closest('section') ?? el).scrollIntoView({ block: 'nearest', behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth' }));
+            }
+        },
+
+        chat() {
+            document.querySelector('[data-test=room-chat]')?.scrollIntoView({ block: 'start', behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth' });
+        },
+    };
+}
+
 registerAlpine(() => {
     window.Alpine.store('lobbyPin', { card: null, busy: false, error: '' });
+    window.Alpine.data('roomBar', roomBar);
     window.Alpine.data('lobbyPin', lobbyPin);
     window.Alpine.data('roomChat', roomChat);
     window.Alpine.data('roomSync', roomSync);

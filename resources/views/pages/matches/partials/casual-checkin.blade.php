@@ -12,6 +12,6 @@
     @else
         <p class="m-0">{{ __('Check in by :time, or you lose by forfeit.', ['time' => $at($m->ready_by)]) }}</p>
         {{-- The primary action of the step, as big as Ready (partials/casual-steps $big). --}}
-        <div><x-button icon="check" wire:click="casualCheckIn" class="{{ $big ?? '' }}" data-test="casual-checkin">{{ __('Check in') }}</x-button></div>
+        <div><x-button icon="check" wire:click="casualCheckIn" class="{{ $big ?? '' }} max-lg:hidden" data-room-primary data-test="casual-checkin">{{ __('Check in') }}</x-button></div>
     @endif
 @endif

@@ -4,7 +4,9 @@
     sides as big named blocks, the leader marked live; per game −/+ steppers of 48 px around a big score field,
     "Winner only" as a switch (goals dropped, a "… wins" pair instead), the refusal at its own row. A game without
     goals (Age of Empires II) has only the "… wins" pair. The submit and the summary line follow in the report
-    block. Needs $m, $sheet, $hasGoals, $editable, $mySide, $wins, $casual, $errorRow, $error and $captainOf.
+    block. Needs $m, $sheet, $hasGoals, $editable, $mySide, $wins, $casual, $errorRow, $error and $captainOf;
+    optional $sheetTitle and $sheetHint (the check step names it "Check the result", who reported). A game the
+    series no longer needs and nobody entered is left out (board MatchRoom-3: only the games played).
 --}}
 @php
     use App\Models\SeriesMatch;
@@ -23,8 +25,8 @@
 @endphp
 <section aria-labelledby="games-h" class="flex flex-col gap-4 px-4 pt-5 pb-4 lg:px-6" data-test="games">
     <span class="flex flex-wrap items-baseline justify-between gap-2">
-        <h2 id="games-h" class="rv-h3">{{ $editable ? __('Report the result') : __('Games in this series') }}</h2>
-        <span class="rv-m text-[13px]">{{ $hasGoals ? __('after each game, enter the team goals from the end screen') : __('after each game, pick its winner') }}</span>
+        <h2 id="games-h" class="rv-h3">{{ $sheetTitle ?? ($editable ? __('Report the result') : __('Games in this series')) }}</h2>
+        <span class="rv-m text-[13px]">{{ $sheetHint ?? ($hasGoals ? __('after each game, enter the team goals from the end screen') : __('after each game, pick its winner')) }}</span>
     </span>
 
     {{-- The two sides, big and named; the one ahead is marked (never by colour alone: "leads"). --}}
@@ -36,7 +38,7 @@
                 <div @class(['rv-side', 'is-lead' => $leader === $cell, 'sm:flex-row-reverse sm:text-right' => $cell === 'challenged']) data-test="scoreboard-side-{{ $cell }}" data-lead="{{ $leader === $cell ? '1' : '0' }}">
                     <span @class(['rv-av', 'is-o' => $cell === 'challenger']) @style(['background: var(--color-ink-2); color: var(--color-on-btc)' => $cell === 'challenged']) aria-hidden="true">{{ $initial($m->sideName($cell)) }}</span>
                     <span @class(['flex min-w-0 grow flex-col', 'sm:items-end' => $cell === 'challenged'])>
-                        <b class="rv-side-name" data-test="sheet-name-{{ $cell }}">{{ $m->sideName($cell) }}</b>
+                        <b class="rv-side-name" title="{{ $m->sideName($cell) }}" data-test="sheet-name-{{ $cell }}">{{ $m->sideName($cell) }}</b>
                         <span class="flex flex-wrap items-center gap-2">
                             @if ($roleOf($cell) !== '')<span class="rv-m">{{ $roleOf($cell) }}</span>@endif
                             @if ($leader === $cell)<span class="rv-tag is-btc">{{ __('leads') }}</span>@endif
@@ -65,6 +67,7 @@
                     default => __('not played'),
                 };
             @endphp
+            @continue($decided && $row['winner'] === null && $row['c'] === null && $row['d'] === null)
             <div wire:key="g-{{ $index }}" @class(['grid grid-cols-1 items-center gap-3 border-b border-hairline py-3 sm:grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] sm:gap-4', 'opacity-50' => $decided]) data-test="game-row" data-index="{{ $index }}">
                 <span class="flex flex-wrap items-center gap-x-4 gap-y-1">
                     <b class="whitespace-nowrap">{{ __('Game :n', ['n' => $index + 1]) }}</b>
@@ -106,7 +109,9 @@
                 @endif
 
                 <span class="flex min-w-0 flex-col gap-1 sm:items-end sm:text-right">
-                    <span @class(['text-[13px] [overflow-wrap:anywhere]', 'text-win' => $row['winner'] !== null && $row['winner'] === ($mySide ?? 'challenger'), 'text-loss' => $row['winner'] !== null && $row['winner'] !== ($mySide ?? 'challenger'), 'text-btc' => $row['winner'] === null && $current && $playingNow, 'text-ink-3' => $row['winner'] === null && ! ($current && $playingNow)]) data-test="game-status-{{ $index }}">{{ $statusText }}</span>
+                    {{-- A long name shortens with an ellipsis, the verb stays ("…Replay gewinnt"): clamped whole, the line lost "gewinnt". --}}
+                    @php([$winBefore, $winAfter] = $row['winner'] !== null ? array_pad(explode('%name%', __(':tag win', ['tag' => '%name%']), 2), 2, '') : ['', ''])
+                    <span title="{{ $statusText }}" @class(['flex max-w-full min-w-0 text-[13px] whitespace-nowrap sm:justify-end', 'text-win' => $row['winner'] !== null && $row['winner'] === ($mySide ?? 'challenger'), 'text-loss' => $row['winner'] !== null && $row['winner'] !== ($mySide ?? 'challenger'), 'text-btc' => $row['winner'] === null && $current && $playingNow, 'text-ink-3' => $row['winner'] === null && ! ($current && $playingNow)]) data-test="game-status-{{ $index }}">@if ($row['winner'] !== null)<span class="shrink-0 whitespace-pre">{{ $winBefore }}</span><span class="min-w-0 truncate">{{ $m->sideName($row['winner']) }}</span><span class="shrink-0 whitespace-pre">{{ $winAfter }}</span>@else{{ $statusText }}@endif</span>
                     @if ($rowError !== null)
                         <span class="inline-flex items-center gap-1 text-[13px] text-loss" role="alert" data-test="game-error-{{ $index }}"><x-icon name="close" :size="12" class="shrink-0" />{{ $rowError }}</span>
                     @endif

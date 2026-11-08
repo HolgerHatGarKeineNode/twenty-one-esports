@@ -10,8 +10,11 @@
     and account cards"); "Share lobby" and "Replace" open that composer. The
     host's open card is pinned here by the browser from its decrypted chat,
     never by the league, which only knows that a card went out. Needs $m,
-    $mySide, $viewer, $report and $editable
-    from pages/matches/⚡room.
+    $mySide, $viewer, $report, $editable, $view and $roomClock from
+    pages/matches/⚡room. One view per step (P3): in the result step only the
+    folded lobby stays; the step's primary action carries
+    `data-room-primary` and hides below lg, where the room's phone bar
+    mirrors it.
 --}}
 @php
     use App\Enums\ReportStatus;
@@ -79,7 +82,6 @@
         'report' => __('Report the result by :time', ['time' => $at($deadline['at'])]),
         'confirm' => __(':name answers the report by :time', ['name' => $m->sideName((string) $deadline['side']), 'time' => $at($deadline['at'])]),
     };
-    $toCheck = $m->status === SeriesStatus::Reported && $report?->status === ReportStatus::Open && $mySide !== null && $mySide !== $report->side;
     $big = 'min-h-14 w-full px-6 font-display text-base font-bold sm:w-auto';
 @endphp
 
@@ -101,6 +103,7 @@
         @include('pages.matches.partials.casual-lobby-pin')
     @endif
 
+    @if (in_array($view, ['ready', 'checkin', 'lobby'], true))
     <div class="rv-card flex flex-col gap-3 px-4 py-4 lg:px-6 lg:py-5" data-test="casual-step-card">
     <span class="flex flex-wrap items-baseline justify-between gap-2">
         <b class="rv-h3">{{ match ($currentKey) {
@@ -134,7 +137,10 @@
         {{-- The clock line of the running step: who acts by when; the big clock sits in the head. --}}
         <div class="flex flex-wrap items-center justify-between gap-x-4 gap-y-1 rounded-[4px] bg-well px-4 py-3" data-test="casual-deadline" data-kind="{{ $deadline['kind'] }}">
             <span class="flex min-w-0 items-center gap-2 text-[13px] leading-normal"><x-icon name="clock" :size="16" class="shrink-0 text-btc-hi" /><span class="min-w-0">{{ $deadlineText }}</span></span>
-            <b class="font-display text-xl leading-none font-bold text-btc-hi tabular-nums" role="timer" x-data="casualClock({{ ($deadline['kind'] === 'checkin' && $checkInOpens?->isFuture() ? $checkInOpens : $deadline['at'])->getTimestamp() }}, {{ now()->getTimestampMs() }})" x-text="left" data-test="casual-clock"></b>
+            {{-- One clock per step: the head's from sm, this one on a phone, both counting to the same moment ($roomClock). --}}
+            @if ($roomClock !== null)
+                <b class="font-display text-xl leading-none font-bold text-btc-hi tabular-nums sm:hidden" role="timer" x-data="casualClock({{ $roomClock['at']->getTimestamp() }}, {{ now()->getTimestampMs() }})" x-text="left" data-test="casual-clock"></b>
+            @endif
         </div>
     @endif
     {{-- What this player does now: one primary action. --}}
@@ -145,7 +151,7 @@
             @elseif ($mySide !== null)
                 <p class="m-0">{{ __('Press Ready to start. The chat needs a signer that can encrypt (NIP-44): the lobby travels through it, end-to-end encrypted.') }}</p>
                 <div x-data="casualReady(@js(\App\Support\Nostr\SignerMessages::labels() + ['noNip44' => __('Your signer cannot encrypt messages (NIP-44), so you cannot get the lobby. Use a Nostr extension or signer app with NIP-44 to play casual 1v1.')]))" class="flex flex-col items-stretch gap-2 sm:items-start">
-                    <x-button icon="check" x-on:click="ready()" ::disabled="busy" class="{{ $big }}" data-test="casual-ready">{{ __('Ready') }}</x-button>
+                    <x-button icon="check" x-on:click="ready()" ::disabled="busy" class="{{ $big }} max-lg:hidden" data-room-primary data-test="casual-ready">{{ __('Ready') }}</x-button>
                     <p x-show="error" x-text="error" class="m-0 text-loss" role="alert"></p>
                 </div>
             @endif
@@ -154,7 +160,7 @@
         @elseif ($running)
             @if ($claimAgainstMe)
                 <p class="m-0 text-loss">{{ __(':name says you did not show up. Answer before :time, or the match is scored as a forfeit.', ['name' => $otherName, 'time' => $at($m->casualContestDueAt())]) }}</p>
-                <div><x-button icon="user" wire:click="casualContestNoShow" class="{{ $big }}" data-test="casual-contest">{{ __('I am here') }}</x-button></div>
+                <div><x-button icon="user" wire:click="casualContestNoShow" class="{{ $big }} max-lg:hidden" data-room-primary data-test="casual-contest">{{ __('I am here') }}</x-button></div>
             @elseif ($m->noshow_reported_at !== null)
                 <p class="m-0">{{ __('You claimed a no-show. :name can answer until :time.', ['name' => $otherName, 'time' => $at($m->casualContestDueAt())]) }}</p>
             @elseif ($iHost && $m->lobby_shared_at === null)
@@ -163,7 +169,7 @@
                     <p class="m-0">{{ __('Share your EA ID in the chat. :name sends you a friend request; accept it and send the Play a Friend invite.', ['name' => $otherName]) }}</p>
                     <div>
                         {{-- Opens the card composer in the chat (roomChat listens for casual-compose). A component attribute compiles no @js: the kind rides on data-kind. --}}
-                        <x-button icon="user" class="{{ $big }}" data-test="casual-share" data-kind="account"
+                        <x-button icon="user" class="{{ $big }} max-lg:hidden" data-room-primary data-test="casual-share" data-kind="account"
                                   x-on:click="window.dispatchEvent(new CustomEvent('casual-compose', { detail: $el.dataset.kind })); document.querySelector('[data-test=room-chat]')?.scrollIntoView({ block: 'nearest', behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth' })">
                             {{ __('Share EA ID') }}
                         </x-button>
@@ -187,14 +193,8 @@
                 {{-- Rocket League and Age of Empires II: "I am in the lobby" sits in the lobby pin above, under the card. --}}
                 @unless ($sharesLobby)
                     <p class="m-0">{{ __('Send :name a friend request with the EA ID from the chat and accept the invite, then confirm here.', ['name' => $otherName]) }}</p>
-                    <div><x-button icon="check" wire:click="casualJoined" class="{{ $big }}" data-test="casual-joined">{{ __('I am in the lobby') }}</x-button></div>
+                    <div><x-button icon="check" wire:click="casualJoined" class="{{ $big }} max-lg:hidden" data-room-primary data-test="casual-joined">{{ __('I am in the lobby') }}</x-button></div>
                 @endunless
-            @else
-                <p class="m-0">{{ __('Both are in. Play, then enter the score.') }}</p>
-                {{-- The submit sits under the games in the room (user, 2026-10-04): this jumps there instead of a second submit. --}}
-                @if ($editable)
-                    <div><x-button icon="chevron-down" href="#report" class="{{ $big }}" data-test="casual-report">{{ __('Enter the score') }}</x-button></div>
-                @endif
             @endif
 
             @if ($canClaim)
@@ -212,21 +212,19 @@
                     <span class="text-xs text-ink-3">{{ __('If your signer fails, hand the host seat to :name instead of missing the deadline.', ['name' => $otherName]) }}</span>
                 </div>
             @endif
-        @elseif ($toCheck)
-            <p class="m-0">{{ __(':name sent the score. Check it: accept it, or report a problem.', ['name' => $otherName]) }}</p>
-            <div><x-button icon="shield-check" href="#check" class="{{ $big }}" data-test="casual-check">{{ __('Check the result') }}</x-button></div>
-        @elseif ($m->status === SeriesStatus::Reported)
-            <p class="m-0">{{ __('Your score is sent. :name accepts it or reports a problem; without an answer the league confirms it.', ['name' => $otherName]) }}</p>
         @endif
     </div>
+
+    {{-- The sheet belongs to the result step; a match played without both confirming the lobby still reports (user, 2026-10-05). --}}
+    @if ($editable && $running && $view === 'lobby')
+        <div x-show="! early" class="border-t border-hairline pt-3"><x-button variant="quiet" icon="chevron-down" x-on:click="early = true" data-test="casual-early-sheet">{{ __('Enter the result now') }}</x-button></div>
+    @endif
 
     {{-- Before the check-in the check-in is the action; a card sent that early waits under it. --}}
     @if ($lobbyPin && ! $running && ! $leagueLobby)
         @include('pages.matches.partials.casual-lobby-pin')
     @endif
 
-    @unless ($m->status->hasResult())
-        @include('pages.matches.partials.lobby-rules')
-    @endunless
     </div>
+    @endif
 </section>

@@ -12,6 +12,40 @@
     // The guest's step "Joined" (CasualMatches::markJoined()): offered with the card, as the steps did before (no claim pending).
     $guestJoins = ! $iHost && $running && $pinShared && $m->joined_at === null && $m->noshow_reported_at === null;
 @endphp
+@if ($m->joined_at !== null)
+{{-- Both in (R20 "folded after confirmation", boards MatchRoom-4a … 4c): the card shrinks to one line, name and password stay readable with their copy buttons. --}}
+<div wire:key="lobby-pin-{{ $hostSide }}-joined" wire:ignore x-data="lobbyPin(@js(['sharedBy' => __('Shared by :name at :time'), 'sharedByMe' => __('Shared by you at :time')]))" data-test="lobby-pin" data-compact="1">
+    <template x-if="card">
+        <section aria-label="{{ __('Lobby of :name', ['name' => $m->sideName($hostSide)]) }}" class="flex flex-wrap items-center gap-x-4 gap-y-2 rounded-[4px] border border-btc-ring bg-feature px-4 py-2.5" data-test="lobby-pin-card">
+            <span class="flex items-center gap-1.5 text-[13px] text-ink-3"><x-icon name="lock" :size="14" class="shrink-0 text-btc-hi" /><span class="sm:sr-only">{{ __('Lobby of :name', ['name' => $m->sideName($hostSide)]) }}</span></span>
+            @foreach (['name' => __('Name'), 'password' => __('Password')] as $field => $label)
+                <span class="flex min-w-0 items-center gap-2 max-sm:w-full">
+                    <span class="rv-m w-16 shrink-0 text-[13px] sm:w-auto">{{ $label }}</span>
+                    <b class="min-w-0 font-mono text-[15px] [overflow-wrap:anywhere] max-sm:grow" x-text="card.{{ $field }}" data-test="lobby-pin-{{ $field }}"></b>
+                    <button type="button" x-on:click="copy(card.{{ $field }}, '{{ $field }}')" aria-label="{{ $field === 'name' ? __('Copy lobby name') : __('Copy password') }}" data-test="lobby-pin-copy-{{ $field }}" class="rv-b2 size-11 shrink-0 px-0">
+                        <span x-show="copied !== '{{ $field }}'"><x-icon name="copy" :size="14" /></span><span x-show="copied === '{{ $field }}'" x-cloak class="text-win"><x-icon name="check" :size="14" /></span>
+                    </button>
+                </span>
+            @endforeach
+            <span class="grow max-sm:hidden"></span>
+            <span class="rv-tag is-ok"><x-icon name="check" :size="12" />{{ __('both joined') }}</span>
+            @if ($iHost)
+                {{-- The host keeps Replace and Close in the result step: a lobby that crashed mid-series gets a new card. --}}
+                <span class="flex flex-wrap gap-2">
+                    <x-button variant="quiet" icon="retry" x-on:click="act('compose')" ::disabled="pin.busy" data-test="lobby-pin-replace">{{ __('Replace') }}</x-button>
+                    <x-button variant="quiet" icon="close" x-on:click="act('close')" ::disabled="pin.busy" data-test="lobby-pin-close">{{ __('Close lobby') }}</x-button>
+                </span>
+            @endif
+        </section>
+    </template>
+    @if ($iHost)
+        {{-- A closed card in the result step: the host can share a new one, as in the lobby step. --}}
+        <template x-if="! card">
+            <div><x-button variant="secondary" icon="key" x-on:click="act('compose')" ::disabled="pin.busy" data-test="casual-share">{{ __('Share lobby') }}</x-button></div>
+        </template>
+    @endif
+</div>
+@else
 <div wire:key="lobby-pin-{{ $hostSide }}-{{ $running ? 'run' : 'wait' }}-{{ $pinShared ? 'shared' : 'open' }}-{{ $guestJoins ? 'join' : 'in' }}" wire:ignore
      x-data="lobbyPin(@js(['sharedBy' => __('Shared by :name at :time'), 'sharedByMe' => __('Shared by you at :time')]))" data-test="lobby-pin">
     <template x-if="card">
@@ -42,7 +76,7 @@
                 @if ($running && ! $pinShared)
                     {{-- An open card the league has not counted (sent before the check-in): one click re-sends it to the opponent and counts it. --}}
                     <p class="m-0 border-t border-hairline pt-2 text-xs leading-normal text-ink-2">{{ __('Still open? Confirm it, and :name gets it again.', ['name' => $otherName]) }}</p>
-                    <x-button icon="check" x-on:click="act('confirm')" ::disabled="pin.busy" class="{{ $big }}" data-test="lobby-pin-confirm">{{ __('Still valid') }}</x-button>
+                    <x-button icon="check" x-on:click="act('confirm')" ::disabled="pin.busy" class="{{ $big }} max-lg:hidden" data-room-primary data-test="lobby-pin-confirm">{{ __('Still valid') }}</x-button>
                 @endif
                 <span class="flex flex-wrap gap-2">
                     <x-button variant="quiet" icon="retry" x-on:click="act('compose')" ::disabled="pin.busy" data-test="lobby-pin-replace">{{ __('Replace') }}</x-button>
@@ -51,7 +85,7 @@
             @elseif ($running && ! $pinShared)
                 <p class="m-0 border-t border-hairline pt-2 text-xs leading-normal text-ink-2">{{ __('Waiting for :name to confirm the lobby is still valid.', ['name' => $otherName]) }}</p>
             @elseif ($guestJoins)
-                <x-button icon="check" x-on:click="$wire.casualJoined()" class="{{ $big }}" data-test="casual-joined">{{ __('I am in the lobby') }}</x-button>
+                <x-button icon="check" x-on:click="$wire.casualJoined()" class="{{ $big }} max-lg:hidden" data-room-primary data-test="casual-joined">{{ __('I am in the lobby') }}</x-button>
             @endif
         </div>
     </template>
@@ -83,12 +117,13 @@
                     </div>
                 @endif
                 @if ($iHost)
-                    <div><x-button icon="key" x-on:click="act('compose')" ::disabled="pin.busy" class="{{ $big }}" data-test="casual-share">{{ __('Share lobby') }}</x-button></div>
+                    <div><x-button icon="key" x-on:click="act('compose')" ::disabled="pin.busy" class="{{ $big }} max-lg:hidden" data-room-primary data-test="casual-share">{{ __('Share lobby') }}</x-button></div>
                 @elseif ($guestJoins)
-                    <div><x-button icon="check" x-on:click="$wire.casualJoined()" class="{{ $big }}" data-test="casual-joined">{{ __('I am in the lobby') }}</x-button></div>
+                    <div><x-button icon="check" x-on:click="$wire.casualJoined()" class="{{ $big }} max-lg:hidden" data-room-primary data-test="casual-joined">{{ __('I am in the lobby') }}</x-button></div>
                 @endif
             </div>
         </template>
     @endif
     <p x-show="pin.error" x-cloak x-text="pin.error" class="m-0 mt-2 text-xs text-loss" role="alert" data-test="lobby-pin-error"></p>
 </div>
+@endif

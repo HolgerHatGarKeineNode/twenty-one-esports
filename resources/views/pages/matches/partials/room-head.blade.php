@@ -3,7 +3,7 @@
     (kind, best of, region, live state), the versus plate in display type, one line of what counts, and on the
     right the clock of the step that runs (Min / Sek). Before any game the plate reads "VS"; once games are entered
     it carries the series score (`series-score`). Needs $m, $wins, $games, $chip, $status, $casual, $roomClock,
-    $seriesMeta and $mySide from pages/matches/⚡room.
+    $cardClock, $seriesMeta and $mySide from pages/matches/⚡room.
 --}}
 @php
     $initial = fn (string $name): string => mb_strtoupper(mb_substr(trim($name) !== '' ? trim($name) : '?', 0, 1));
@@ -43,9 +43,11 @@
         <span class="rv-m text-[13px]" data-test="series-meta"><span @class(['max-sm:hidden' => ! $m->rated])>{{ $seriesMeta }}{{ $m->rated ? '' : '; ' }}</span>{{ $m->rated ? '' : __('casual: no block, no sats until Block 0') }}</span>
     </div>
     @if ($roomClock !== null)
-        <span class="flex shrink-0 items-center gap-3 sm:flex-col sm:items-end sm:gap-1" data-test="room-clock">
+        {{-- Readable at any distance (R2): minutes and seconds under an hour, hours up to a day, then days ("1397 : 23 Min" read as nonsense). On a phone the step's card carries it when $cardClock. --}}
+        @php($clockLeft = (int) now()->diffInSeconds($roomClock['at'], true))
+        <span @class(['flex shrink-0 items-center gap-3 sm:flex-col sm:items-end sm:gap-1', 'max-sm:hidden' => $cardClock ?? false]) data-test="room-clock">
             <span class="rv-m">{{ $roomClock['label'] }}</span>
-            <x-ui.countdown :at="$roomClock['at']" :units="$roomClock['at']->diffInSeconds(now(), true) >= 3600 ? 'hms' : 'ms'" size="sm" :label="$roomClock['label']" />
+            <x-ui.countdown :at="$roomClock['at']" :units="$clockLeft >= 86400 ? 'dhm' : ($clockLeft >= 3600 ? 'hms' : 'ms')" size="sm" :label="$roomClock['label']" />
         </span>
     @endif
 </section>

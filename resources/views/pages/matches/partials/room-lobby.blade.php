@@ -94,9 +94,9 @@
             @endforeach
             <span class="grow"></span>
             @if ($running && $iHostLobby && ! $hostIn)
-                <button type="button" wire:click="casualLeagueLobbyOpen" class="rv-b h-[52px] px-6 max-sm:w-full" data-test="league-lobby-open">{{ __('I am in the lobby') }}</button>
+                <button type="button" wire:click="casualLeagueLobbyOpen" class="rv-b h-[52px] px-6 max-lg:hidden" data-room-primary data-test="league-lobby-open">{{ __('I am in the lobby') }}</button>
             @elseif ($running && $mySide !== null && ! $iHostLobby && $hostIn && ! $guestIn)
-                <button type="button" wire:click="casualJoined" class="rv-b h-[52px] px-6 max-sm:w-full" data-test="casual-joined">{{ __('I am in the lobby') }}</button>
+                <button type="button" wire:click="casualJoined" class="rv-b h-[52px] px-6 max-lg:hidden" data-room-primary data-test="casual-joined">{{ __('I am in the lobby') }}</button>
             @elseif ($mySide !== null && (($iHostLobby && $hostIn) || (! $iHostLobby && $guestIn)))
                 <span class="rv-tag is-ok h-11 px-3"><x-icon name="check" :size="14" />{{ __('Joined') }}</span>
             @endif

@@ -826,7 +826,9 @@ new #[Title('Match room')] #[Layout('layouts::app', ['section' => 'matches', 'sc
     // A tournament series on the league's deadlines (P18, slice 5): the countdown to the automatic decision. A casual cup's series has it in its steps.
     $wait = ! $casual && $m->deadlines !== null && ! $m->status->hasResult() ? \App\Support\Tournaments\TournamentWaits::ofPlay($m) : null;
     // The clock of the step that runs, top right of the head (MatchRoom boards: "Lobby bis 20:15", Min / Sek).
-    $clockTime = fn ($time): string => SeriesPresenter::time($time, $viewer, 'H:i');
+    // A time on another day carries its day ("Check-in ab Mo. 9.11., 01:45"): a bare 01:45 a day ahead read as tonight.
+    $viewerZone = \App\Support\PreSeason::timezoneFor($viewer);
+    $clockTime = fn ($time): string => $time->copy()->timezone($viewerZone)->isSameDay(now()->timezone($viewerZone)) ? SeriesPresenter::time($time, $viewer, 'H:i') : SeriesPresenter::time($time, $viewer);
     $casualDeadline = $casual ? $m->casualNextDeadline() : null;
     $roomClock = match (true) {
         $casualDeadline !== null && $casualDeadline['kind'] === 'checkin' && $m->awaitsCheckIn() && $m->checkInOpensAt()?->isFuture() => ['at' => $m->checkInOpensAt(), 'label' => __('Check-in from :time', ['time' => $clockTime($m->checkInOpensAt())])],
@@ -845,6 +847,18 @@ new #[Title('Match room')] #[Layout('layouts::app', ['section' => 'matches', 'sc
     if ($roomClock !== null && ! $roomClock['at']->isFuture()) {
         $roomClock = null;
     }
+    // The header's chip for this step (Header.dc.html "Kopfzeile, Frist läuft"): a short word for the countdown under 15 minutes.
+    if ($roomClock !== null) {
+        $roomClock['short'] = match (true) {
+            $casualDeadline === null => $wait?->decidesAt !== null ? __('Decision') : __('Match start'),
+            $casualDeadline['kind'] === 'ready' => __('Ready'),
+            $casualDeadline['kind'] === 'checkin' => __('Check-in'),
+            $casualDeadline['kind'] === 'lobby' => __('Lobby'),
+            $casualDeadline['kind'] === 'join' => __('Join'),
+            $casualDeadline['kind'] === 'report' => __('Result'),
+            default => __('Reply'),
+        };
+    }
     $steps = [
         [__('Challenge'), SeriesPresenter::time($m->created_at ?? now(), $viewer, 'D H:i'), __('sent by :clan', ['clan' => $m->challenger_name]), true],
         [__('Accepted'), $m->answered_at && $m->start_at ? SeriesPresenter::time($m->answered_at, $viewer, 'D H:i') : '', $m->answered_at && $m->start_at ? __('by :clan', ['clan' => $m->challenged_name]) : __('waiting'), $m->start_at !== null],
@@ -857,29 +871,52 @@ new #[Title('Match room')] #[Layout('layouts::app', ['section' => 'matches', 'sc
     $canSubmit = $editable;
     // A 1v1 side is one player whose name is the side's name: the player chips under the versus would only repeat it.
     $showPlayers = collect(SeriesMatch::SIDES)->contains(fn (string $side): bool => count($rosters[$side]) !== 1 || $rosters[$side][0]['seat']->user->displayName() !== $m->sideName($side));
-    /*
-     * The room is one thread (user, 2026-10-04: "keinen roten Faden"): 1 who vs who and the status, 2 get into
-     * the game, 3 play and report, 4 problems, 5 details. The step that runs now gets the orange dot on the rail.
-     */
+    // The step a series stands at (2 get in, 3 play and report); a casual 1v1 reads its own steps below.
     $flowNow = match (true) {
         ! $m->status->isRunning() => null,
         $casual => $m->joined_at === null && $m->status === SeriesStatus::Accepted ? 2 : 3,
         $m->status === SeriesStatus::Accepted && ($m->start_at?->isFuture() || ($m->tournament_match_id !== null && $captainSide !== null && $m->readyAt($captainSide) === null)) => 2,
         default => 3,
     };
-    $thread = fn (int $n, bool $last = false): string => 'relative pl-6 lg:pl-8 before:absolute before:top-0 before:left-[7px] before:w-0.5 '
-        .($last ? 'before:h-8 ' : 'before:-bottom-5 ')
-        .($flowNow !== null && $n < $flowNow ? 'before:bg-btc' : 'before:bg-line');
-    $dot = fn (int $n): string => 'pointer-events-none absolute top-6 left-0 z-10 size-4 rounded-full border-2 '.match (true) {
-        $flowNow !== null && $n < $flowNow => 'border-btc bg-btc',
-        $n === $flowNow => 'border-btc bg-ground ring-4 ring-btc-press',
-        default => 'border-line bg-ground',
+    /*
+     * One view per step (plan "Canvas and live alignment", P3; boards MatchRoom-1a … 4c, user 2026-11-07: "code follows
+     * the board"). The room shows the step that runs and its one primary action; everything else (rules, facts,
+     * timeline, the season line, Nostr) waits in one closed Details block under it.
+     */
+    $view = match (true) {
+        $m->status->hasResult() => 'done',
+        $m->status === SeriesStatus::Disputed => 'problem',
+        $toAnswer => 'check',
+        $m->status === SeriesStatus::Reported => 'reported',
+        $m->status === SeriesStatus::Open => 'answer',
+        $team => 'lineup',
+        $casual && $m->awaitsReady() => 'ready',
+        $casual && $m->awaitsCheckIn() => 'checkin',
+        $casual => $m->joined_at === null || $m->noshow_reported_at !== null ? 'lobby' : 'result',
+        default => $flowNow === 2 ? 'lobby' : 'result',
     };
+    // A casual 1v1's sheet belongs to its result step; before it a quiet "Enter the result now" opens it (user, 2026-10-05:
+    // a match played without both pressing "I am in the lobby" still has to be reportable).
+    $sheetFirst = ! $casual || ! in_array($view, ['ready', 'checkin', 'lobby'], true);
+    // The step's clock stands in its card on a phone (boards *-Phone), in the head from sm.
+    $cardClock = $casual && $casualDeadline !== null && in_array($view, ['ready', 'checkin', 'lobby'], true);
+    // The phone's action bar (boards *-Phone): the step's actions on the floor above the tab bar; "Chat" where the board has it.
+    $barChat = in_array($view, ['checkin', 'lobby', 'reported', 'answer', 'lineup'], true);
+    $mine = $captainSide ?? $mySide ?? 'challenger';
+    // Who played is a choice only when a lineup has more seats than the mode plays; a 1v1's one player per side is no choice.
+    $rosterChoice = ! $team && count($rosters[$mine]) > $m->gameMode()->teamSize;
 @endphp
 
-<div class="flex grow flex-col gap-5 px-4 pt-4 pb-40 lg:mx-auto lg:w-full lg:max-w-[1232px] lg:px-4 lg:pt-8 lg:pb-10" data-test="match-room"
+<div class="flex grow flex-col gap-4 px-4 pt-0 pb-40 lg:mx-auto lg:w-full lg:max-w-[1232px] lg:gap-5 lg:px-4 lg:pb-10" data-test="match-room" data-view="{{ $view }}"
      x-data="roomSync(@js(['userId' => $viewer->id, 'number' => $m->number, 'poll' => $this::POLL_SECONDS, 'pollWithSocket' => $this::POLL_SECONDS_WITH_SOCKET]))"
      data-server-now="{{ (int) now()->getTimestampMs() }}" data-next-edge="{{ $this->nextEdgeMs() ?? 0 }}">
+
+    {{-- The step's deadline for the header's chip (Header.dc.html "Kopfzeile, Frist läuft", resources/js/shellNav.js dockCount). --}}
+    @if ($roomClock !== null)
+        <span hidden data-test="room-deadline" data-short="{{ $roomClock['short'] }}" data-until="{{ $roomClock['label'] }}" data-ends="{{ $roomClock['at']->getTimestampMs() }}"></span>
+    @elseif ($m->status === SeriesStatus::Disputed)
+        <span hidden data-test="room-deadline" data-short="" data-until="{{ __('Admin checks') }}" data-ends=""></span>
+    @endif
 
     {{-- 1. Who vs who, and where it stands: the tournament first (user, 2026-10-03), the versus, then status and deadline in one line. --}}
     <div class="flex flex-col gap-2 lg:gap-4" data-flow="1" data-test="room-head">
@@ -921,91 +958,99 @@ new #[Title('Match room')] #[Layout('layouts::app', ['section' => 'matches', 'sc
         <p class="m-0 rounded-md bg-loss-tint px-4 py-3 text-[13px] text-loss" role="alert" data-test="room-error">{{ $error }}</p>
     @endif
 
-    {{-- The result, once there is one, is where it stands: right under the head. Win moment (Overlays.dc.html "Win, once the other captain accepts") --}}
-    @if ($m->status->hasResult())
-        @php($won = $m->winner === $mySide)
-        <section aria-label="{{ __('Result') }}" class="grid grid-cols-1 items-center gap-4 rounded-lg px-5 py-6 lg:grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] lg:px-8" style="background: linear-gradient(90deg, {{ $won ? '#111A14' : '#17171B' }}, #121215 60%); box-shadow: inset 0 0 0 1px {{ $won ? '#1F5A34' : '#2A2A30' }}" data-test="win-moment">
-            <span class="flex items-center gap-4">
-                @if ($m->winner === 'challenger' || $m->winner === 'challenged')
-                    <x-clan-tag :clan="$m->sideClan($m->winner)" :tag="$m->sideTag($m->winner)" :tile="56" class="flex size-14 shrink-0 items-center justify-center rounded-md font-display text-[15px] font-extrabold {{ $sideInk[$m->winner] }}" style="background: {{ $sideColor[$m->winner] }}" />
-                    <span class="flex flex-col gap-1"><b class="font-display text-[22px]">{{ $m->sideName($m->winner) }}</b><span class="inline-flex items-center gap-1 text-[13px] text-win"><x-icon name="check" :size="14" />{{ __('Win') }}</span></span>
-                @else
-                    <b class="font-display text-[22px]">{{ __('No winner') }}</b>
-                @endif
-            </span>
-            <span class="flex flex-col items-center gap-2">
-                <span class="inline-flex h-7 items-center gap-1.5 rounded-sm bg-win-tint px-2.5 text-xs font-bold text-win shadow-[inset_0_0_0_1px_#1F5A34]"><x-icon name="check" :size="14" />{{ $m->resolution?->label() ?? __('Accepted') }}</span>
-                {{-- The score reads from the named winner's side (2 : 1 next to the winner), never challenger first. --}}
-                @php($lead = $m->winner === 'challenged' ? ['challenged', 'challenger'] : ['challenger', 'challenged'])
-                <b class="font-display text-[56px] leading-none font-extrabold lg:text-[72px]" data-test="win-score">{{ $wins[$lead[0]] }} : {{ $wins[$lead[1]] }}</b>
-                <span class="text-[13px] text-ink-2">BO{{ $m->best_of }}, {{ $m->mode }}, {{ __('match :number', ['number' => $m->label()]) }}, {{ $m->rated ? __('saved') : __('casual, saved') }}</span>
-            </span>
-            <span class="flex flex-col gap-1 text-xs leading-normal text-ink-2 lg:items-end lg:text-right">
-                <span>{{ $m->rated ? __('The league record follows.') : __('Casual: casual Elo only, no Hashrate, no block. Rated series start at Block 0.') }}</span>
-                @if ($m->resolution_reason)<span>{{ __('Admin decision') }}: {{ \App\Support\Series\SeriesPresenter::resolutionReason($m->resolution_reason) }}</span>@endif
-                <a href="{{ route('matches.show', $m) }}" class="inline-flex min-h-11 items-center">{{ __('Open the match page') }}</a>
-            </span>
-        </section>
-
-        {{-- A tournament series: what comes next in the tournament instead of a rematch or another series (user, 2026-10-03). --}}
-        @php($tournamentPanel = TournamentGameEnd::of($m, $viewer))
-        @if ($tournamentPanel)
-            <x-tournaments.game-end :panel="$tournamentPanel" wire:key="tournament-end-{{ $m->id }}" />
-        @endif
-
-        {{-- A casual 1v1 (P23 S3): the same opponent again, as a direct invite. --}}
-        @if ($casual && $tournamentPanel === null && $mySide !== null && $m->resolution !== \App\Enums\SeriesResolution::Void)
-            @php(['outgoing' => $rematchOut, 'incoming' => $rematchIn] = $this->rematchInvites())
-            @php($rematchOpen = $m->finished_at !== null && $m->finished_at->gte(now()->subMinutes((int) config('esports.casual.rematch_minutes'))))
-            @if ($rematchIn || $rematchOut || $rematchOpen)
-                <section aria-labelledby="rematch-h" class="flex flex-col gap-3 rounded-lg bg-card px-4 py-4 shadow-ring-btc sm:flex-row sm:items-center sm:gap-6 lg:px-6" data-test="casual-rematch-card"
-                         x-data="{ now: Date.now(), skew: {{ (int) now()->getTimestampMs() }} - Date.now() }" x-init="setInterval(() => now = Date.now(), 1000)">
-                    <span class="flex min-w-0 grow flex-col gap-1">
-                        <h2 id="rematch-h" class="m-0 font-display text-base leading-[1.25] font-bold">{{ $rematchIn ? __(':name wants a rematch', ['name' => $m->sideName($other)]) : __('Rematch') }}</h2>
-                        <span class="text-[13px] leading-normal text-ink-2">{{ $rematchOut ? __('Sent. Waiting for :name.', ['name' => $m->sideName($other)]) : __('Same opponent, same platforms, a new ready check.') }}</span>
-                    </span>
-                    @if ($rematchIn || $rematchOut)
-                        @php($ends = ($rematchIn ?? $rematchOut)->expires_at->getTimestampMs())
-                        <b class="font-display text-xl tabular-nums" role="timer" x-text="(() => { const s = Math.max(0, Math.ceil(({{ $ends }} - now - skew) / 1000)); return Math.floor(s / 60) + ':' + String(s % 60).padStart(2, '0'); })()"></b>
-                    @endif
-                    @if ($rematchIn)
-                        <span class="grid grid-cols-2 gap-2 sm:flex">
-                            <x-button variant="quiet" wire:click="casualDeclineRematch" data-test="casual-rematch-decline">{{ __('Decline') }}</x-button>
-                            <x-button icon="check" wire:click="casualAcceptRematch({{ $rematchIn->id }})" data-test="casual-rematch-incoming">{{ __('Accept rematch') }}</x-button>
-                        </span>
-                    @elseif ($rematchOut)
-                        <button type="button" wire:click="casualWithdrawRematch" class="inline-flex h-11 cursor-pointer items-center justify-center rounded-md border border-[#5A2A2E] bg-transparent px-4 text-[13px] text-loss" data-test="casual-rematch-waiting">{{ __('Withdraw') }}</button>
+    {{--
+        One view per step in the main column, the chat column right of it from lg (R1, R6). Below lg one column: the
+        step, the chat, then the closed Details block.
+    --}}
+    <div class="grid grid-cols-1 gap-4 lg:grid-cols-[minmax(0,1fr)_400px] lg:grid-rows-[auto_1fr] lg:gap-5">
+    <div class="flex min-w-0 flex-col gap-4 lg:col-start-1 lg:row-start-1 lg:gap-5" data-test="room-main" data-view="{{ $view }}"
+         x-data="{ fix: false, early: false }" x-on:room-fix.window="fix = true">
+        {{-- The result, once there is one, is where it stands: right under the head. Win moment (Overlays.dc.html "Win, once the other captain accepts") --}}
+        @if ($m->status->hasResult())
+            @php($won = $m->winner === $mySide)
+            <section aria-label="{{ __('Result') }}" class="grid grid-cols-1 items-center gap-4 rounded-lg px-5 py-6 lg:grid-cols-[minmax(0,1.4fr)_auto_minmax(0,1fr)] lg:px-8" style="background: linear-gradient(90deg, {{ $won ? '#111A14' : '#17171B' }}, #121215 60%); box-shadow: inset 0 0 0 1px {{ $won ? '#1F5A34' : '#2A2A30' }}" data-test="win-moment">
+                <span class="flex items-center gap-4">
+                    @if ($m->winner === 'challenger' || $m->winner === 'challenged')
+                        <x-clan-tag :clan="$m->sideClan($m->winner)" :tag="$m->sideTag($m->winner)" :tile="56" class="flex size-14 shrink-0 items-center justify-center overflow-hidden rounded-md font-display text-[13px] font-extrabold {{ $sideInk[$m->winner] }}" style="background: {{ $sideColor[$m->winner] }}" />
+                        <span class="flex min-w-0 flex-col gap-1"><b class="line-clamp-2 font-display text-[22px] leading-tight [overflow-wrap:anywhere]" title="{{ $m->sideName($m->winner) }}">{{ $m->sideName($m->winner) }}</b><span class="inline-flex items-center gap-1 text-[13px] text-win"><x-icon name="check" :size="14" />{{ __('Win') }}</span></span>
                     @else
-                        <x-button icon="retry" wire:click="casualRematch" class="min-h-12 shrink-0 px-6 font-display text-base font-bold" data-test="casual-rematch">{{ __('Rematch') }}</x-button>
+                        <b class="font-display text-[22px]">{{ __('No winner') }}</b>
                     @endif
+                </span>
+                <span class="flex flex-col items-center gap-2">
+                    <span class="inline-flex h-7 items-center gap-1.5 rounded-sm bg-win-tint px-2.5 text-xs font-bold text-win shadow-[inset_0_0_0_1px_#1F5A34]"><x-icon name="check" :size="14" />{{ $m->resolution?->label() ?? __('Accepted') }}</span>
+                    {{-- The score reads from the named winner's side (2 : 1 next to the winner), never challenger first. --}}
+                    @php($lead = $m->winner === 'challenged' ? ['challenged', 'challenger'] : ['challenger', 'challenged'])
+                    <b class="font-display text-[56px] leading-none font-extrabold lg:text-[72px]" data-test="win-score">{{ $wins[$lead[0]] }} : {{ $wins[$lead[1]] }}</b>
+                    <span class="text-[13px] text-ink-2">BO{{ $m->best_of }}, {{ $m->mode }}, {{ __('match :number', ['number' => $m->label()]) }}, {{ $m->rated ? __('saved') : __('casual, saved') }}</span>
+                </span>
+                <span class="flex flex-col gap-1 text-xs leading-normal text-ink-2 lg:items-end lg:text-right">
+                    <span>{{ $m->rated ? __('The league record follows.') : __('Casual: casual Elo only, no Hashrate, no block. Rated series start at Block 0.') }}</span>
+                    @if ($m->resolution_reason)<span>{{ __('Admin decision') }}: {{ \App\Support\Series\SeriesPresenter::resolutionReason($m->resolution_reason) }}</span>@endif
+                    <a href="{{ route('matches.show', $m) }}" class="inline-flex min-h-11 items-center">{{ __('Open the match page') }}</a>
+                </span>
+                {{-- The games of the series, short (board MatchRoom-4b: the rows under the result). --}}
+                @if ($games !== [])
+                    <ol class="m-0 flex list-none flex-wrap gap-x-6 gap-y-1 p-0 text-[13px] text-ink-2 lg:col-span-3" data-test="win-games">
+                        @foreach ($games as $index => $game)
+                            <li class="whitespace-nowrap"><span>{{ __('Game :n', ['n' => $index + 1]) }}</span> <b class="text-ink tabular-nums">{{ ($game['challenger'] ?? null) !== null ? $game['challenger'].' : '.$game['challenged'] : __(':tag win', ['tag' => $m->sideTag((string) $game['winner'])]) }}</b></li>
+                        @endforeach
+                    </ol>
+                @endif
+            </section>
+
+            {{-- A tournament series: what comes next in the tournament instead of a rematch or another series (user, 2026-10-03). --}}
+            @php($tournamentPanel = TournamentGameEnd::of($m, $viewer))
+            @if ($tournamentPanel)
+                <x-tournaments.game-end :panel="$tournamentPanel" wire:key="tournament-end-{{ $m->id }}" />
+            @endif
+
+            {{-- A casual 1v1 (P23 S3): the same opponent again, as a direct invite. --}}
+            @if ($casual && $tournamentPanel === null && $mySide !== null && $m->resolution !== \App\Enums\SeriesResolution::Void)
+                @php(['outgoing' => $rematchOut, 'incoming' => $rematchIn] = $this->rematchInvites())
+                @php($rematchOpen = $m->finished_at !== null && $m->finished_at->gte(now()->subMinutes((int) config('esports.casual.rematch_minutes'))))
+                @if ($rematchIn || $rematchOut || $rematchOpen)
+                    <section aria-labelledby="rematch-h" class="flex flex-col gap-3 rounded-lg bg-card px-4 py-4 shadow-ring-btc sm:flex-row sm:items-center sm:gap-6 lg:px-6" data-test="casual-rematch-card"
+                             x-data="{ now: Date.now(), skew: {{ (int) now()->getTimestampMs() }} - Date.now() }" x-init="setInterval(() => now = Date.now(), 1000)">
+                        <span class="flex min-w-0 grow flex-col gap-1">
+                            <h2 id="rematch-h" class="m-0 font-display text-base leading-[1.25] font-bold">{{ $rematchIn ? __(':name wants a rematch', ['name' => $m->sideName($other)]) : __('Rematch') }}</h2>
+                            <span class="text-[13px] leading-normal text-ink-2">{{ $rematchOut ? __('Sent. Waiting for :name.', ['name' => $m->sideName($other)]) : __('Same opponent, same platforms, a new ready check.') }}</span>
+                        </span>
+                        @if ($rematchIn || $rematchOut)
+                            @php($ends = ($rematchIn ?? $rematchOut)->expires_at->getTimestampMs())
+                            <b class="font-display text-xl tabular-nums" role="timer" x-text="(() => { const s = Math.max(0, Math.ceil(({{ $ends }} - now - skew) / 1000)); return Math.floor(s / 60) + ':' + String(s % 60).padStart(2, '0'); })()"></b>
+                        @endif
+                        @if ($rematchIn)
+                            <span class="grid grid-cols-2 gap-2 sm:flex">
+                                <x-button variant="quiet" wire:click="casualDeclineRematch" class="max-lg:hidden" data-room-secondary data-test="casual-rematch-decline">{{ __('Decline') }}</x-button>
+                                <x-button icon="check" wire:click="casualAcceptRematch({{ $rematchIn->id }})" class="max-lg:hidden" data-room-primary data-test="casual-rematch-incoming">{{ __('Accept rematch') }}</x-button>
+                            </span>
+                        @elseif ($rematchOut)
+                            <button type="button" wire:click="casualWithdrawRematch" class="inline-flex h-11 cursor-pointer items-center justify-center rounded-md border border-[#5A2A2E] bg-transparent px-4 text-[13px] text-loss" data-test="casual-rematch-waiting">{{ __('Withdraw') }}</button>
+                        @else
+                            <x-button icon="retry" wire:click="casualRematch" class="min-h-12 shrink-0 px-6 font-display text-base font-bold max-lg:hidden" data-room-primary data-test="casual-rematch">{{ __('Rematch') }}</x-button>
+                        @endif
+                    </section>
+                @endif
+            @endif
+
+            {{-- The next series: a captain challenges the same lineup again (the challenge form, prefilled) --}}
+            @php($ownLineup = $captainSide !== null ? $m->lineup($captainSide) : null)
+            @php($theirLineup = $captainSide !== null ? $m->lineup(SeriesMatch::otherSide($captainSide)) : null)
+            @if ($ownLineup !== null && $theirLineup !== null && $tournamentPanel === null)
+                <section aria-labelledby="again-h" class="flex flex-col gap-3 rounded-lg bg-card px-4 py-4 sm:flex-row sm:items-center sm:gap-6 lg:px-6" data-test="series-again">
+                    <span class="flex min-w-0 grow flex-col gap-1">
+                        <h2 id="again-h" class="m-0 font-display text-base leading-[1.25] font-bold">{{ __('Another series') }}</h2>
+                        <span class="text-[13px] leading-normal text-ink-2">{{ __('Challenge :clan to the next series: same lineups, new times.', ['clan' => $m->sideName(SeriesMatch::otherSide($captainSide))]) }}</span>
+                    </span>
+                    <x-button :href="route('challenges.create', ['lineup' => $ownLineup->id, 'to' => $theirLineup->id, 'game' => $m->game])" icon="retry" class="shrink-0" data-test="series-challenge-again">{{ __('Challenge again') }}</x-button>
                 </section>
             @endif
         @endif
 
-        {{-- The next series: a captain challenges the same lineup again (the challenge form, prefilled) --}}
-        @php($ownLineup = $captainSide !== null ? $m->lineup($captainSide) : null)
-        @php($theirLineup = $captainSide !== null ? $m->lineup(SeriesMatch::otherSide($captainSide)) : null)
-        @if ($ownLineup !== null && $theirLineup !== null && $tournamentPanel === null)
-            <section aria-labelledby="again-h" class="flex flex-col gap-3 rounded-lg bg-card px-4 py-4 sm:flex-row sm:items-center sm:gap-6 lg:px-6" data-test="series-again">
-                <span class="flex min-w-0 grow flex-col gap-1">
-                    <h2 id="again-h" class="m-0 font-display text-base leading-[1.25] font-bold">{{ __('Another series') }}</h2>
-                    <span class="text-[13px] leading-normal text-ink-2">{{ __('Challenge :clan to the next series: same lineups, new times.', ['clan' => $m->sideName(SeriesMatch::otherSide($captainSide))]) }}</span>
-                </span>
-                <x-button :href="route('challenges.create', ['lineup' => $ownLineup->id, 'to' => $theirLineup->id, 'game' => $m->game])" icon="retry" class="shrink-0" data-test="series-challenge-again">{{ __('Challenge again') }}</x-button>
-            </section>
-        @endif
-    @endif
-
-    {{--
-        Steps 2 to 5 in the main column, the chat column right of them from lg. Below lg one column in reading
-        order: get in, play and report, the chat, problems, details.
-    --}}
-    <div class="grid grid-cols-1 gap-5 lg:grid-cols-[minmax(0,1fr)_400px] lg:grid-rows-[auto_1fr]">
-    <div class="flex min-w-0 flex-col gap-5 lg:col-start-1 lg:row-start-1">
-    {{-- 2. Get into the game: answer the challenge, or the lobby and the check-in. --}}
+    {{-- Get into the game: answer the challenge, or the lobby and the check-in. --}}
     @if ($m->status === SeriesStatus::Open)
-        <div class="{{ $thread(2) }}" data-flow="2">
-            <span aria-hidden="true" class="{{ $dot(2) }}"></span>
+        <div data-flow="2">
             @if ($casual)
                 @include('pages.matches.partials.casual-challenge')
             @else
@@ -1040,25 +1085,22 @@ new #[Title('Match room')] #[Layout('layouts::app', ['section' => 'matches', 'sc
                 </section>
             @endif
         </div>
-    @elseif ($casual)
-        {{-- A casual 1v1: its steps are the way in (ready or check-in, lobby card, joined). --}}
-        <div class="{{ $thread(2) }}" data-flow="2">
-            <span aria-hidden="true" class="{{ $dot(2) }}"></span>
+    @elseif ($casual && in_array($view, ['ready', 'checkin', 'lobby', 'result'], true))
+        {{-- A casual 1v1: its steps are the way in (ready or check-in, lobby card, joined); in the result step only the folded lobby. --}}
+        <div data-flow="2">
             @include('pages.matches.partials.casual-steps')
         </div>
     @elseif ($team && $m->status->isRunning())
         {{-- A team match: the captains pick their players, hidden from each other until the lock. --}}
-        <div class="{{ $thread(2) }}" data-flow="2">
-            <span aria-hidden="true" class="{{ $dot(2) }}"></span>
+        <div data-flow="2">
             <livewire:team-lineup :match="$m" :key="'team-lineup-'.$m->id" />
         </div>
     @elseif (! $casual && $m->status->isRunning())
-        <div class="{{ $thread(2) }}" data-flow="2">
-            <span aria-hidden="true" class="{{ $dot(2) }}"></span>
+        <div data-flow="2">
             {{--
                 The lobby the league made (a tournament match, LeagueLobby) or a captain set (a lineup series,
                 SeriesService::setLobby()), pinned under the steps while the series runs (2026-10-02: "die Lobby Karte ...
-                darf nicht irgendwo im Chat unlesbar verschwinden"; boards MatchRoom-2c, TournamentMatchRoom).
+                darf nicht irgendwo im Chat unlesbar verschwinden"; boards MatchRoom-2c, TournamentMatchRoom; R20).
             --}}
             @if ($lobbyPinned)
                 @include('pages.matches.partials.room-lobby')
@@ -1135,20 +1177,48 @@ new #[Title('Match room')] #[Layout('layouts::app', ['section' => 'matches', 'sc
                         @endif
                     </div>
                 @endif
-                @include('pages.matches.partials.lobby-rules')
             </div>
         </div>
     @endif
 
     {{--
-        3. Play and enter the results: the sheet, and right under it the report and its state, in one card (user,
-        2026-10-04: "Ergebnis melden ist auf einmal ganz wo anders zu finden, als die Ergebnisse, die man einträgt").
+        A reported problem (board MatchRoom-4c-Problem): the reason in its own words, who decides, and the corrected
+        result as the one action; the sheet opens under it on "Send corrected result".
     --}}
-    @unless ($team)
-    <div class="{{ $thread(3) }} flex flex-col gap-5" data-flow="3">
-        <span aria-hidden="true" class="{{ $dot(3) }}"></span>
+    @if ($view === 'problem' && $report !== null)
+        @php($disputerSide = SeriesMatch::otherSide($report->side))
+        @php($evidenceIn = $m->evidence()->exists())
+        <section aria-labelledby="problem-h" class="rv-card flex flex-col gap-3 px-4 py-4 [overflow-wrap:anywhere] lg:px-6 lg:py-5" data-test="room-problem">
+            <h2 id="problem-h" class="rv-h3">{{ __('Problem reported') }}</h2>
+            <p class="m-0 text-[15px] leading-normal" data-test="room-problem-reason"><span class="text-ink-2">{{ $disputerSide === $mySide ? __('You') : $m->sideName($disputerSide) }}:</span> {{ (string) $report->response_reason }}</p>
+            <span class="flex flex-wrap items-center gap-2">
+                @if ($evidenceIn)
+                    <span class="rv-tag h-7"><x-icon name="upload" :size="12" />{{ __('Evidence uploaded, only admins see it') }}</span>
+                @endif
+                <span class="rv-tag is-btc h-7" data-test="room-problem-admin">{{ __('An admin decides') }}</span>
+            </span>
+            @if ($m->new_report_requested_at)
+                <p class="m-0 text-[13px] leading-normal text-btc-hi">{{ __('An admin asked for a new report.') }}</p>
+            @endif
+            <p class="m-0 text-[13px] leading-normal text-ink-2">{{ __('Until then either side can send a corrected result.') }}</p>
+            @if ($canSubmit)
+                <div x-show="! fix"><x-button icon="retry" x-on:click="fix = true; $nextTick(() => document.querySelector('[data-test=games]')?.scrollIntoView({ block: 'start', behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth' }))" class="min-h-[52px] px-6 max-lg:hidden" data-room-primary data-test="room-problem-fix">{{ __('Send corrected result') }}</x-button></div>
+            @endif
+        </section>
+    @endif
+
+    {{--
+        Play and enter the results: the sheet, and right under it the report and its state, in one card (user,
+        2026-10-04: "Ergebnis melden ist auf einmal ganz wo anders zu finden, als die Ergebnisse, die man einträgt").
+        The result step's view; a casual 1v1 before it opens it on "Enter the result now", a reported problem on
+        "Send corrected result". A finished match keeps its games in the result card and in Details.
+    --}}
+    @if (! $team && $view !== 'done' && $view !== 'answer')
+    <div class="flex flex-col gap-4 lg:gap-5" data-flow="3"
+         @if ($view === 'problem') x-show="fix" x-cloak @elseif (! $sheetFirst) x-show="early" x-cloak @endif>
         <div class="flex flex-col rounded-lg bg-card">
-            @include('pages.matches.partials.room-scoreboard', ['sheet' => $this->sheet])
+            {{-- The check step names the sheet after itself (board MatchRoom-4a: "Ergebnis prüfen", who reported). --}}
+            @include('pages.matches.partials.room-scoreboard', ['sheet' => $this->sheet] + ($toAnswer ? ['sheetTitle' => __('Check the result'), 'sheetHint' => __(':name reported', ['name' => $report->user?->displayName() ?? $m->sideName($report->side)])] : []))
             @php($reportState = $directorEntered || $canSubmit || $toAnswer || ($m->status === SeriesStatus::Reported && $report !== null) || $m->status === SeriesStatus::Disputed
                 || ($m->status === SeriesStatus::Accepted && ! $casual && ($captainSide === null || $m->start_at?->isFuture())))
             @if ($reportState)
@@ -1159,47 +1229,56 @@ new #[Title('Match room')] #[Layout('layouts::app', ['section' => 'matches', 'sc
                         </p>
                     @endif
                     @if ($toAnswer)
-                        {{-- Check the result (the other captain) --}}
+                        {{--
+                            Check the result (the other side; boards MatchRoom-4a-Pruefen and its phone board): the games above,
+                            the reported score in one line, "Report a problem | Accept result" right under it. "Report a problem"
+                            opens the reason and the evidence first, and only "Send report" files it (R18).
+                        --}}
                         @php($reportWins = $report->score())
-                        <section id="check" aria-labelledby="check-h" class="grid grid-cols-1 gap-5 [overflow-wrap:anywhere] lg:grid-cols-2" x-data="nostrAction({ pubkey: @js($viewer->pubkey), messages: @js(\App\Support\Nostr\SignerMessages::labels()) })" data-test="check-result">
-                            <div class="flex min-w-0 flex-col gap-3">
-                                <h2 id="check-h" class="m-0 text-[15px] font-bold">{{ __('Check the result from :clan', ['clan' => $m->sideName($report->side)]) }}</h2>
-                                <p class="m-0 text-[13px] leading-normal text-ink-2" data-test="reported-score">
-                                    {{ __(':name submitted :a : :b for :clan', ['name' => $report->user?->displayName() ?? '', 'a' => $reportWins[$report->side], 'b' => $reportWins[SeriesMatch::otherSide($report->side)], 'clan' => $m->sideName($report->side)]) }}:
-                                    @foreach ($report->games as $index => $game){{ $index > 0 ? ', ' : '' }}{{ $game['challenger'] !== null ? $game['challenger'].' : '.$game['challenged'] : __(':tag win', ['tag' => $m->sideTag($game['winner'])]) }}@endforeach.
-                                </p>
+                        <section id="check" aria-labelledby="check-h" class="flex flex-col gap-4 [overflow-wrap:anywhere]" x-data="nostrAction({ pubkey: @js($viewer->pubkey), messages: @js(\App\Support\Nostr\SignerMessages::labels()) })" data-test="check-result">
+                            <h2 id="check-h" class="sr-only">{{ __('Check the result from :clan', ['clan' => $m->sideName($report->side)]) }}</h2>
+                            <p class="m-0 sr-only" data-test="reported-score">
+                                {{ __(':name submitted :a : :b for :clan', ['name' => $report->user?->displayName() ?? '', 'a' => $reportWins[$report->side], 'b' => $reportWins[SeriesMatch::otherSide($report->side)], 'clan' => $m->sideName($report->side)]) }}:
+                                @foreach ($report->games as $index => $game){{ $index > 0 ? ', ' : '' }}{{ $game['challenger'] !== null ? $game['challenger'].' : '.$game['challenged'] : __(':tag win', ['tag' => $m->sideTag($game['winner'])]) }}@endforeach.
+                            </p>
+                            @php($checkLead = $reportWins['challenged'] > $reportWins['challenger'] ? ['challenged', 'challenger'] : ['challenger', 'challenged'])
+                            <div x-data="{ dispute: false }" x-on:room-dispute.window="dispute = true; $nextTick(() => $refs.reason?.focus())" class="flex flex-col gap-4">
+                                <span class="flex flex-col items-stretch gap-3 sm:flex-row sm:items-center sm:gap-4">
+                                    <b class="rv-sum grow">{{ $m->sideName($checkLead[0]) }} <span class="whitespace-nowrap">{{ $reportWins[$checkLead[0]] }} : {{ $reportWins[$checkLead[1]] }}</span> {{ $m->sideName($checkLead[1]) }}</b>
+                                    <span class="flex shrink-0 gap-3 max-lg:hidden">
+                                        <x-button variant="secondary" icon="flag" x-on:click="dispute = true; $nextTick(() => $refs.reason?.focus())" ::disabled="busy" class="h-[52px] px-5" data-room-secondary data-test="open-dispute">{{ __('Report a problem') }}</x-button>
+                                        <x-button icon="shield-check" x-on:click="run('prepareResponse', 'respond', 'confirmed')" ::disabled="busy" class="h-[52px] px-6" data-room-primary data-test="accept-result">{{ __('Accept result') }}</x-button>
+                                    </span>
+                                </span>
+                                @if ($casual && $roomClock !== null)
+                                    <p class="m-0 text-[13px] leading-normal text-ink-2" data-test="check-deadline">{{ __(':deadline, otherwise the result stands.', ['deadline' => $roomClock['label']]) }}</p>
+                                @endif
                                 <p class="m-0 text-xs text-ink-2">{{ __('Played') }}: {{ implode(', ', array_column($report->roster, 'name')) }}</p>
-                                <div class="flex flex-wrap gap-3">
-                                    <x-button icon="shield-check" x-on:click="run('prepareResponse', 'respond', 'confirmed')" ::disabled="busy" data-test="accept-result">{{ __('Accept result') }}</x-button>
-                                    <button type="button" x-on:click="$refs.reason.focus()" class="inline-flex h-11 cursor-pointer items-center rounded-md border border-[#5A2A2E] bg-transparent px-4 text-[13px] text-loss">{{ __('Report a problem') }}</button>
-                                </div>
                                 <p x-show="error" x-text="error" class="m-0 text-[13px] text-loss" role="alert"></p>
-                            </div>
-                            <div class="flex min-w-0 flex-col gap-2">
-                                <label for="reason" class="text-xs text-ink-2">{{ __('What went wrong? Shown publicly, up to :max characters', ['max' => SeriesService::REASON_MAX]) }}</label>
-                                <textarea id="reason" x-ref="reason" wire:model="reason" maxlength="{{ SeriesService::REASON_MAX }}" rows="3" data-test="dispute-reason" class="w-full resize-none rounded-lg border border-edge bg-ground px-3.5 py-3 text-[13px] text-ink"></textarea>
-                                @error('reason')<p class="m-0 text-xs text-loss">{{ $message }}</p>@enderror
-                                <label class="flex flex-col gap-1 text-xs text-ink-2">{{ __('Evidence for a dispute: a screenshot of the end screen or the in-game match history. Only admins see it.') }}
-                                    <input type="file" wire:model="shots" multiple accept="image/*" class="max-w-full text-xs text-ink-2 file:mr-3 file:h-9 file:rounded-md file:border file:border-line file:bg-well file:px-3 file:text-ink">
-                                </label>
-                                @error('shots.*')<p class="m-0 text-xs text-loss">{{ $message }}</p>@enderror
-                                <div><button type="button" x-on:click="run('prepareResponse', 'respond', 'disputed')" :disabled="busy" data-test="send-dispute" class="inline-flex h-11 cursor-pointer items-center rounded-md border-0 bg-loss px-5 text-[13px] font-bold text-on-btc">{{ __('Send report') }}</button></div>
+                                <div x-show="dispute" x-cloak class="flex min-w-0 flex-col gap-2 border-t border-hairline pt-4" data-test="dispute-form">
+                                    <label for="reason" class="text-xs text-ink-2">{{ __('What went wrong? Shown publicly, up to :max characters', ['max' => SeriesService::REASON_MAX]) }}</label>
+                                    <textarea id="reason" x-ref="reason" wire:model="reason" maxlength="{{ SeriesService::REASON_MAX }}" rows="3" data-test="dispute-reason" class="w-full resize-none rounded-lg border border-edge bg-ground px-3.5 py-3 text-[13px] text-ink"></textarea>
+                                    @error('reason')<p class="m-0 text-xs text-loss">{{ $message }}</p>@enderror
+                                    <label class="flex flex-col gap-1 text-xs text-ink-2">{{ __('Evidence for a dispute: a screenshot of the end screen or the in-game match history. Only admins see it.') }}
+                                        <input type="file" wire:model="shots" multiple accept="image/*" class="max-w-full text-xs text-ink-2 file:mr-3 file:h-9 file:rounded-md file:border file:border-line file:bg-well file:px-3 file:text-ink">
+                                    </label>
+                                    @error('shots.*')<p class="m-0 text-xs text-loss">{{ $message }}</p>@enderror
+                                    <span class="flex flex-wrap gap-3">
+                                        <x-button variant="quiet" x-on:click="dispute = false" data-test="cancel-dispute">{{ __('Cancel') }}</x-button>
+                                        <button type="button" x-on:click="run('prepareResponse', 'respond', 'disputed')" :disabled="busy" data-test="send-dispute" class="inline-flex h-11 cursor-pointer items-center rounded-md border-0 bg-loss px-5 text-[13px] font-bold text-on-btc">{{ __('Send report') }}</button>
+                                    </span>
+                                </div>
                             </div>
                         </section>
                     @elseif ($m->status === SeriesStatus::Reported && $report !== null)
                         <p class="m-0 text-[13px] leading-normal text-ink-2" data-test="waiting-for-ok">{{ __(':clan submitted the final score. Waiting for :other to accept it or report a problem.', ['clan' => $m->sideName($report->side), 'other' => $m->sideName(SeriesMatch::otherSide($report->side))]) }}</p>
-                    @elseif ($m->status === SeriesStatus::Disputed)
-                        <p class="m-0 rounded-md bg-loss-tint px-4 py-3 text-[13px] leading-normal text-loss" data-test="disputed-note">
-                            {{ __('A problem was reported: “:reason” An admin decides, or either captain submits a corrected score.', ['reason' => (string) $report?->response_reason]) }}
-                            @if ($m->new_report_requested_at) {{ __('An admin asked for a new report.') }}@endif
-                        </p>
                     @endif
                     @if ($canSubmit)
                         {{-- The summary line and the send action, right under the games it reports (board "Ergebnis: A 2 : 0 B"); after a dispute either captain sends the corrected score here. --}}
                         @php($sumLead = $wins['challenged'] > $wins['challenger'] ? ['challenged', 'challenger'] : ['challenger', 'challenged'])
                         <span class="flex flex-col items-stretch gap-3 sm:flex-row sm:items-center sm:gap-4" data-test="report-summary">
                             <span class="rv-sum grow">{{ __('Result: :a :x : :y :b', ['a' => $m->sideName($sumLead[0]), 'x' => $wins[$sumLead[0]], 'y' => $wins[$sumLead[1]], 'b' => $m->sideName($sumLead[1])]) }}</span>
-                            <button type="button" x-on:click="submit = true" class="rv-b h-[52px] shrink-0 px-6" data-test="open-submit">{{ __('Send result') }}</button>
+                            <button type="button" x-on:click="submit = true" class="rv-b h-[52px] shrink-0 px-6" data-room-primary data-test="open-submit">{{ __('Send result') }}</button>
                         </span>
                     @elseif ($m->status === SeriesStatus::Accepted && ! $directorEntered && $captainSide === null)
                         <p class="m-0 text-[13px] leading-normal text-ink-2">{{ __('Your captain enters the games and submits the final score.') }}</p>
@@ -1210,6 +1289,7 @@ new #[Title('Match room')] #[Layout('layouts::app', ['section' => 'matches', 'sc
             @endif
         </div>
 
+        @if ($rosterChoice)
             <section aria-labelledby="who-h" class="flex flex-col gap-2 rounded-lg bg-card px-4 py-5 lg:px-6" data-test="who-played">
                 @php($mine = $captainSide ?? $mySide ?? 'challenger')
                 @php($set = count(array_filter($rosters[$mine], fn ($r) => $r['on'])))
@@ -1237,8 +1317,15 @@ new #[Title('Match room')] #[Layout('layouts::app', ['section' => 'matches', 'sc
                 <p class="m-0 text-xs text-ink-3">{{ __('their captain sets this') }}</p>
                 <p class="m-0 text-xs leading-normal text-ink-2">{{ __('This list goes out with your result.') }}</p>
             </section>
+        @endif
     </div>
-    @endunless
+    @endif
+
+    {{-- A no-show report the player can file right now stays with the step; otherwise it waits in Details. --}}
+    @php($noshowNow = ! $casual && ! $team && $m->status === SeriesStatus::Accepted && $noshowFrom !== null && ! $noshowFrom->isFuture() && $captainSide !== null && $games === [] && $m->noshow_reported_at === null)
+    @if ($noshowNow)
+        <div data-flow="4">@include('pages.matches.partials.room-problems')</div>
+    @endif
     </div>
 
     {{--
@@ -1319,98 +1406,140 @@ new #[Title('Match room')] #[Layout('layouts::app', ['section' => 'matches', 'sc
             </section>
     </div>
 
+    {{--
+        Details (boards MatchRoom-*: none of this on the step's screen): the lobby rules, what to do when something goes
+        wrong, the games of a finished series, who played, the facts, the timeline with its proof, the season line and
+        the match on Nostr. Closed by default; wire:ignore.self keeps it open across the room's renders (a poll's morph
+        shut an open <details> once, plan "Refactor und Design-Revamp" P5).
+    --}}
     <div class="flex min-w-0 flex-col gap-5 lg:col-start-1 lg:row-start-2">
-    {{-- 4. When something goes wrong: the no-show report and what a dispute means. A casual 1v1 has both in its steps. --}}
-    @if (! $casual && ! $team && $m->status->isRunning())
-        <div class="{{ $thread(4) }}" data-flow="4">
-            <span aria-hidden="true" class="{{ $dot(4) }}"></span>
-            <section aria-labelledby="problems-h" class="flex flex-col gap-3 rounded-lg bg-card px-4 py-5 lg:px-6" data-test="room-problems">
-                <h2 id="problems-h" class="m-0 text-[15px] font-bold">{{ __('If something goes wrong') }}</h2>
-                @if ($m->status === SeriesStatus::Accepted && $noshowFrom)
-                    <div class="flex flex-col gap-2" data-test="room-noshow">
-                        <b class="text-[13px]">{{ __('Opponent not in the lobby?') }}</b>
-                        <p class="m-0 text-xs leading-normal text-ink-2">{{ __('From :time, :minutes minutes after start, you can report it. An admin checks and scores the match as a forfeit.', ['time' => SeriesPresenter::time($noshowFrom, $viewer, 'H:i'), 'minutes' => $m->noshowMinutes()]) }}</p>
-                        <span class="flex flex-wrap items-center gap-3">
-                            <x-button variant="secondary" icon="user" wire:click="reportNoShow" class="disabled:cursor-not-allowed disabled:opacity-50" :disabled="$captainSide === null || $noshowFrom->isFuture() || $games !== [] || $m->noshow_reported_at !== null" data-test="report-noshow">{{ __('Opponent didn\'t show') }}</x-button>
-                            <span class="text-xs text-ink-3">{{ $m->noshow_reported_at ? __('reported, an admin decides') : ($games !== [] ? __('not needed, games are entered') : '') }}</span>
-                        </span>
-                    </div>
-                @endif
-                <p class="m-0 flex items-start gap-2 text-xs leading-normal text-ink-2"><x-icon name="retry" :size="14" class="mt-0.5 shrink-0" />{{ __('If a result is disputed, either side can submit again. The new one replaces the old; the timeline keeps both.') }}</p>
+    <details class="group rounded-lg bg-card" data-test="room-details" data-flow="5" wire:ignore.self>
+        <summary class="flex min-h-12 cursor-pointer list-none items-center justify-between gap-3 px-4 py-3 text-[15px] font-bold lg:px-6 [&::-webkit-details-marker]:hidden" data-test="room-details-toggle">
+            <span>{{ __('Match details') }}</span>
+            <x-icon name="chevron-down" :size="16" class="shrink-0 text-ink-2 transition-transform duration-200 ease-out group-open:rotate-180 motion-reduce:transition-none" />
+        </summary>
+        <div class="flex flex-col gap-5 border-t border-hairline px-4 pt-4 pb-5 lg:px-6">
+        @include('pages.matches.partials.lobby-rules')
 
-            </section>
-        </div>
-    @endif
+        @if (! $casual && ! $team && $m->status->isRunning() && ! $noshowNow)
+            @include('pages.matches.partials.room-problems')
+        @endif
 
-    {{-- 5. Details: the facts, the season line, the timeline with its proof, the match on Nostr. --}}
-    <div class="{{ $thread(5, true) }} flex flex-col gap-5" data-flow="5">
-        <span aria-hidden="true" class="{{ $dot(5) }}"></span>
-        {{-- Facts (the score lives in the versus, its submit under the sheet) --}}
-        <div class="grid grid-cols-1 gap-5 lg:grid-cols-2">
-            <div class="flex flex-col rounded-lg bg-card px-4 py-2 lg:px-6">
-                @foreach ([
-                    [__('Challenge'), __(':from to :to, :time', ['from' => $m->created_by_id === $viewer->id ? __('you') : $m->challenger_name, 'to' => $m->challenged_name, 'time' => SeriesPresenter::time($m->created_at ?? now(), $viewer, 'D H:i')])],
-                    [__('Start'), $m->start_at ? SeriesPresenter::time($m->start_at, $viewer, 'D H:i') : __('one of :n suggested times', ['n' => count($m->proposals)])],
-                    [__('Format'), \App\Support\GameNames::game($m->game).', '.$m->mode.', '.($team ? trans_choice(':count board|:count boards', $m->boards) : 'BO'.$m->best_of)],
-                    [__('Ladder'), $m->rated ? $m->mode : __('none, casual until Block 0')],
-                ] as [$key, $value])
-                    <div class="grid min-h-11 grid-cols-[110px_minmax(0,1fr)] items-center gap-3 border-b border-hairline py-2 text-sm last:border-0 lg:grid-cols-[150px_minmax(0,1fr)]"><span class="text-ink-2">{{ $key }}</span><span class="[overflow-wrap:anywhere]">{{ $value }}</span></div>
-                @endforeach
+        @if ($view === 'done' && ! $team)
+            <div class="flex flex-col rounded-lg shadow-ring">
+                @include('pages.matches.partials.room-scoreboard', ['sheet' => $this->sheet])
             </div>
-            {{-- A casual 1v1 is never rated (CasualMatches): no Elo to show; a team match has no team Elo (NIP rev. 9.22). --}}
-            @unless ($casual || $team)
-            <div class="flex flex-col rounded-lg bg-card px-4 py-2 lg:px-6">
-                    @foreach ([[__('Elo before'), $elo['before'].($elo['casual'] ? ' · '.__('casual') : '')], [__('Expected'), $elo['expected']], [__('At stake'), $elo['stake']]] as [$key, $value])
-                        <div class="grid min-h-11 grid-cols-[110px_minmax(0,1fr)] items-center gap-3 border-b border-hairline py-2 text-sm last:border-0 lg:grid-cols-[150px_minmax(0,1fr)]" data-test="elo-fact"><span class="text-ink-2">{{ $key }}</span><span class="text-ink-2">{{ $value }}</span></div>
+        @endif
+
+        @if (! $team && ! $rosterChoice)
+                <section aria-labelledby="who-h" class="flex flex-col gap-2 rounded-lg bg-card px-4 py-5 lg:px-6" data-test="who-played">
+                    @php($mine = $captainSide ?? $mySide ?? 'challenger')
+                    @php($set = count(array_filter($rosters[$mine], fn ($r) => $r['on'])))
+                    <span class="flex items-baseline justify-between"><h2 id="who-h" class="m-0 text-[15px] font-bold">{{ __('Who played') }}</h2><span @class(['text-xs', 'text-win' => $set >= $m->gameMode()->teamSize, 'text-btc-hi' => $set < $m->gameMode()->teamSize])>{{ __(':n of :size set', ['n' => $set, 'size' => $m->gameMode()->teamSize]) }}</span></span>
+                    <p class="m-0 text-xs leading-normal text-ink-2">{{ __('Regulars are preselected. If a sub played, switch them on and a regular off.') }}</p>
+                    @foreach ($rosters[$mine] as ['seat' => $seat, 'on' => $on])
+                        <div wire:key="r-{{ $seat->id }}" class="flex min-h-12 items-center justify-between gap-3 border-b border-hairline py-1">
+                            <span class="flex min-w-0 flex-col">
+                                <span class="flex items-center gap-2 text-[13px]"><span class="truncate">{{ $seat->user->displayName() }}</span>@if ($seat->user->is_member)<x-member-badge />@endif</span>
+                                <span class="text-[11px] text-ink-3">{{ $seat->role->label() }}@if ($seat->user_id === $viewer->id), {{ __('you') }}@endif</span>
+                            </span>
+                            <button type="button" role="switch" aria-checked="{{ $on ? 'true' : 'false' }}" aria-label="{{ __(':name played', ['name' => $seat->user->displayName()]) }}"
+                                    @if ($editable) wire:click="toggleRoster({{ $seat->user_id }})" @else disabled @endif
+                                    @class(['relative h-7 w-[46px] shrink-0 cursor-pointer rounded-full border-0 disabled:cursor-default', 'bg-btc' => $on, 'bg-raised' => ! $on])>
+                                <span @class(['absolute top-1 size-5 rounded-full transition-all', 'left-[22px] bg-on-btc' => $on, 'left-1 bg-ink-2' => ! $on])></span>
+                            </button>
+                        </div>
                     @endforeach
+                    {{-- A clan or player name without a space breaks anywhere: a 37-character name widened the page at 320. --}}
+                    <p class="m-0 flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1 pt-1 text-xs leading-normal text-ink-2 [overflow-wrap:anywhere]" data-test="opponent-roster">{{ $m->sideName(SeriesMatch::otherSide($mine)) }}:
+                        @foreach (array_filter($rosters[SeriesMatch::otherSide($mine)], fn ($r) => $r['on']) as ['seat' => $seat])
+                            <span class="inline-flex max-w-full min-w-0 items-center gap-1"><x-player-link :user="$seat->user" class="inline-flex min-h-6 min-w-0 items-center" /><x-copy-npub :npub="$seat->user->npub" :name="$seat->user->displayName()" /></span>
+                        @endforeach
+                    </p>
+                    <p class="m-0 text-xs text-ink-3">{{ __('their captain sets this') }}</p>
+                    <p class="m-0 text-xs leading-normal text-ink-2">{{ __('This list goes out with your result.') }}</p>
+                </section>
+        @endif
+
+            {{-- Facts (the score lives in the versus, its submit under the sheet) --}}
+            <div class="grid grid-cols-1 gap-5 lg:grid-cols-2">
+                <div class="flex flex-col rounded-lg bg-card px-4 py-2 lg:px-6">
+                    @foreach ([
+                        [__('Challenge'), __(':from to :to, :time', ['from' => $m->created_by_id === $viewer->id ? __('you') : $m->challenger_name, 'to' => $m->challenged_name, 'time' => SeriesPresenter::time($m->created_at ?? now(), $viewer, 'D H:i')])],
+                        [__('Start'), $m->start_at ? SeriesPresenter::time($m->start_at, $viewer, 'D H:i') : __('one of :n suggested times', ['n' => count($m->proposals)])],
+                        [__('Format'), \App\Support\GameNames::game($m->game).', '.$m->mode.', '.($team ? trans_choice(':count board|:count boards', $m->boards) : 'BO'.$m->best_of)],
+                        [__('Ladder'), $m->rated ? $m->mode : __('none, casual until Block 0')],
+                    ] as [$key, $value])
+                        <div class="grid min-h-11 grid-cols-[110px_minmax(0,1fr)] items-center gap-3 border-b border-hairline py-2 text-sm last:border-0 lg:grid-cols-[150px_minmax(0,1fr)]"><span class="text-ink-2">{{ $key }}</span><span class="[overflow-wrap:anywhere]">{{ $value }}</span></div>
+                    @endforeach
+                </div>
+                {{-- A casual 1v1 is never rated (CasualMatches): no Elo to show; a team match has no team Elo (NIP rev. 9.22). --}}
+                @unless ($casual || $team)
+                <div class="flex flex-col rounded-lg bg-card px-4 py-2 lg:px-6">
+                        @foreach ([[__('Elo before'), $elo['before'].($elo['casual'] ? ' · '.__('casual') : '')], [__('Expected'), $elo['expected']], [__('At stake'), $elo['stake']]] as [$key, $value])
+                            <div class="grid min-h-11 grid-cols-[110px_minmax(0,1fr)] items-center gap-3 border-b border-hairline py-2 text-sm last:border-0 lg:grid-cols-[150px_minmax(0,1fr)]" data-test="elo-fact"><span class="text-ink-2">{{ $key }}</span><span class="text-ink-2">{{ $value }}</span></div>
+                        @endforeach
+                </div>
+                @endunless
             </div>
+
+            {{-- Timeline + Proof (a casual 1v1 has its own, in the steps) --}}
+            @unless ($casual)
+            <section aria-labelledby="tl-h" class="flex flex-col gap-4 rounded-lg bg-card px-4 py-5 lg:px-6">
+                <span class="flex flex-wrap items-baseline justify-between gap-2"><h2 id="tl-h" class="m-0 text-[15px] font-bold">{{ __('Timeline') }}</h2><span class="text-xs text-ink-2">{{ __('your result and their OK make 2 of 2') }}</span></span>
+                <ol class="m-0 grid list-none grid-cols-2 gap-y-4 p-0 lg:grid-cols-4">
+                    @foreach ($steps as $index => [$label, $when, $who, $done])
+                        <li @class(['relative flex min-w-0 flex-col items-center gap-1 text-center', 'lg:after:absolute lg:after:top-[27px] lg:after:left-1/2 lg:after:h-0.5 lg:after:w-full' => $index < 3, 'lg:after:bg-ink' => $index < 3 && ($steps[$index + 1][3] ?? false), 'lg:after:bg-line' => $index < 3 && ! ($steps[$index + 1][3] ?? false)])>
+                            <span class="h-4 text-[11px] text-ink-3">{{ $when }}</span>
+                            <span @class(['relative z-10 size-3.5 rounded-full border-2', 'border-ink bg-ink' => $done, 'border-btc bg-btc' => ! $done && ($steps[$index - 1][3] ?? true), 'border-edge bg-transparent' => ! $done && ! ($steps[$index - 1][3] ?? true)])></span>
+                            <b class="text-xs">{{ $label }}</b>
+                            {{-- A clan name without a space ("by …") breaks anywhere instead of widening the page at 320 and 375. --}}
+                            <span class="max-w-full text-[11px] text-ink-2 [overflow-wrap:anywhere]">{{ $who }}</span>
+                        </li>
+                    @endforeach
+                </ol>
+                <x-proof :rows="SeriesPresenter::proofRows($m)" />
+            </section>
             @endunless
+
+            {{-- Casual until Block 0 (the design's "can mine" line, States.dc.html "Locked until Block 0") --}}
+            <section aria-label="{{ __('Season chain') }}" class="flex min-h-14 items-center gap-3.5 rounded-lg bg-card px-5 py-3 shadow-[inset_0_0_0_1px_#2A2A30]" data-test="casual-line">
+                <x-icon name="lock" :size="18" class="shrink-0 text-ink-2" />
+                <span class="flex min-w-0 grow flex-col gap-0.5">
+                    <b class="text-sm leading-[1.4]">{{ $m->rated ? __('Rated series') : __('Casual until Block 0 · casual Elo only, no reward') }}</b>
+                    <span class="text-xs leading-normal text-ink-2">{{ __('Rated play and mining start at Block 0. Until then every series is casual: it moves only the casual Elo, never a rank, Block Height or Clan Hashrate, and it stays casual even if it ends later.') }}</span>
+                </span>
+                <a href="{{ route('rules') }}" class="inline-flex min-h-11 shrink-0 items-center text-xs whitespace-nowrap max-lg:hidden">{{ __('How mining works') }}</a>
+            </section>
+
+            {{-- P45: the match on Nostr, and a direct message to the other side outside the room chat --}}
+            <x-nostr-bar :bar="\App\Support\Nostr\NostrBar::match($m, 'room')" />
         </div>
-
-        {{-- Timeline + Proof (a casual 1v1 has its own, in the steps) --}}
-        @unless ($casual)
-        <section aria-labelledby="tl-h" class="flex flex-col gap-4 rounded-lg bg-card px-4 py-5 lg:px-6">
-            <span class="flex flex-wrap items-baseline justify-between gap-2"><h2 id="tl-h" class="m-0 text-[15px] font-bold">{{ __('Timeline') }}</h2><span class="text-xs text-ink-2">{{ __('your result and their OK make 2 of 2') }}</span></span>
-            <ol class="m-0 grid list-none grid-cols-2 gap-y-4 p-0 lg:grid-cols-4">
-                @foreach ($steps as $index => [$label, $when, $who, $done])
-                    <li @class(['relative flex min-w-0 flex-col items-center gap-1 text-center', 'lg:after:absolute lg:after:top-[27px] lg:after:left-1/2 lg:after:h-0.5 lg:after:w-full' => $index < 3, 'lg:after:bg-ink' => $index < 3 && ($steps[$index + 1][3] ?? false), 'lg:after:bg-line' => $index < 3 && ! ($steps[$index + 1][3] ?? false)])>
-                        <span class="h-4 text-[11px] text-ink-3">{{ $when }}</span>
-                        <span @class(['relative z-10 size-3.5 rounded-full border-2', 'border-ink bg-ink' => $done, 'border-btc bg-btc' => ! $done && ($steps[$index - 1][3] ?? true), 'border-edge bg-transparent' => ! $done && ! ($steps[$index - 1][3] ?? true)])></span>
-                        <b class="text-xs">{{ $label }}</b>
-                        {{-- A clan name without a space ("by …") breaks anywhere instead of widening the page at 320 and 375. --}}
-                        <span class="max-w-full text-[11px] text-ink-2 [overflow-wrap:anywhere]">{{ $who }}</span>
-                    </li>
-                @endforeach
-            </ol>
-            <x-proof :rows="SeriesPresenter::proofRows($m)" />
-        </section>
-        @endunless
-
-        {{-- Casual until Block 0 (the design's "can mine" line, States.dc.html "Locked until Block 0") --}}
-        <section aria-label="{{ __('Season chain') }}" class="flex min-h-14 items-center gap-3.5 rounded-lg bg-card px-5 py-3 shadow-[inset_0_0_0_1px_#2A2A30]" data-test="casual-line">
-            <x-icon name="lock" :size="18" class="shrink-0 text-ink-2" />
-            <span class="flex min-w-0 grow flex-col gap-0.5">
-                <b class="text-sm leading-[1.4]">{{ $m->rated ? __('Rated series') : __('Casual until Block 0 · casual Elo only, no reward') }}</b>
-                <span class="text-xs leading-normal text-ink-2">{{ __('Rated play and mining start at Block 0. Until then every series is casual: it moves only the casual Elo, never a rank, Block Height or Clan Hashrate, and it stays casual even if it ends later.') }}</span>
-            </span>
-            <a href="{{ route('rules') }}" class="inline-flex min-h-11 shrink-0 items-center text-xs whitespace-nowrap max-lg:hidden">{{ __('How mining works') }}</a>
-        </section>
-
-        {{-- P45: the match on Nostr, and a direct message to the other side outside the room chat --}}
-        <x-nostr-bar :bar="\App\Support\Nostr\NostrBar::match($m, 'room')" />
-    </div>
+    </details>
     </div>
     </div>
 
-    {{-- Sticky score bar (MobileMatchRoom); a casual 1v1 only once both are in, before that its steps carry the action
-         (the bar would cover the lobby card at 375). The submit under the games is there either way. --}}
-    @if ($canSubmit && (! $casual || $m->joined_at !== null))
-        {{-- Hidden while the report block under the sheet is on screen: one "Submit final score" in view, never two. --}}
-        {{-- MatchRoom-3-Ergebnis-Phone: the summary line over a full-width "Send result". --}}
+    {{--
+        The phone's action bar (boards MatchRoom-*-Phone): on the floor above the tab bar, never under the dock or the
+        tab bar: `data-page-bar` lifts it by the tab bar (app.css), `bottom: --floor-h` by the floor band, together
+        --floor-top (P1). The result step keeps its score bar: the summary line over a full-width "Send result"
+        (MatchRoom-3-Ergebnis-Phone), hidden while the report block under the sheet is on screen (one "Send result" in
+        view, never two). Every other step mirrors its own buttons (`data-room-primary`, `data-room-secondary` in the
+        step's view, hidden below lg), plus "Chat" where the board has it (resources/js/matchRoom.js roomBar).
+    --}}
+    @if ($view === 'result' && $canSubmit)
         @php($barLead = $wins['challenged'] > $wins['challenger'] ? ['challenged', 'challenger'] : ['challenger', 'challenged'])
-        <div x-show="! reportInView" class="fixed inset-x-0 bottom-0 z-20 flex flex-col gap-2 bg-bar px-4 py-3 shadow-[0_-1px_0_#2A2A30] lg:hidden" data-page-bar data-room-bar>
+        <div x-show="! reportInView" class="fixed inset-x-0 bottom-[var(--floor-h)] z-20 flex flex-col gap-2 bg-bar px-4 py-3 shadow-[0_-1px_0_#2A2A30] lg:hidden" data-test="room-bar" data-page-bar data-room-bar data-floor-owner>
             <b class="rv-sum line-clamp-2 text-center text-[18px]">{{ $m->sideName($barLead[0]) }} <span class="whitespace-nowrap">{{ $wins[$barLead[0]] }} : {{ $wins[$barLead[1]] }}</span> {{ $m->sideName($barLead[1]) }}</b>
             <button type="button" x-on:click="submit = true" class="rv-b h-[52px] w-full"><x-icon name="shield-check" :size="18" />{{ __('Send result') }}</button>
+        </div>
+    @elseif ($view !== 'result')
+        <div x-data="roomBar" x-show="shown" x-cloak class="fixed inset-x-0 bottom-[var(--floor-h)] z-20 flex gap-3 bg-bar px-4 py-3 shadow-[0_-1px_0_#2A2A30] lg:hidden" data-test="room-bar" data-page-bar data-room-bar data-floor-owner>
+            @if ($barChat)
+                <button type="button" x-on:click="chat()" x-bind:class="primary || secondary ? 'shrink-0' : 'grow'" class="rv-b2 h-[52px] px-4" data-chat data-test="room-bar-chat"><x-icon name="chat" :size="16" />{{ __('Chat') }}</button>
+            @endif
+            <button type="button" x-show="secondary" x-on:click="press('secondary')" x-bind:disabled="secondaryDisabled" class="rv-b2 h-[52px] min-w-0 grow basis-0 px-3" data-test="room-bar-secondary"><span class="truncate" x-text="secondary"></span></button>
+            <button type="button" x-show="primary" x-on:click="press('primary')" x-bind:disabled="primaryDisabled" class="rv-b h-[52px] min-w-0 grow basis-0 px-3" data-test="room-bar-primary"><span class="truncate" x-text="primary"></span></button>
         </div>
     @endif
 
