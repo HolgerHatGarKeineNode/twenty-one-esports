@@ -231,14 +231,15 @@ test('two players find an opponent on the Rocket League page, both get the ready
             ->and($roomGeometry[1])->toMatchArray(['overflow' => 0, 'inWindow' => true, 'small' => [], 'outside' => [], 'clipped' => []])
             ->and($timeline)->toBe([true, true, true, true])
             ->and($current)->toBe('Step 2 of 4: Lobby')
-            // No sticky score bar on the phone before both are in: the steps carry the one action.
-            ->and($narrow->evaluate('() => document.querySelector("[data-page-bar]")'))->toBeNull()
+            // No score bar on the phone before both are in: the lobby step's own bar (P3, MatchRoom-2a/2b-Phone) with "Chat".
+            ->and($narrow->evaluate('() => [document.querySelector("[data-page-bar] .rv-sum"), document.querySelector("[data-test=room-bar-chat]")?.checkVisibility()]'))->toBe([null, true])
             ->and($match->refresh()->start_at)->not->toBeNull();
 
         // "Share lobby" of the host opens the card composer in the chat.
         [$hostPage] = $match->host_side === casualSideOf($match, $anna) ? [$wide] : [$narrow];
         BrowserWait::until($hostPage, '() => Alpine.$data(document.querySelector("[data-test=room-chat]"))?.status === "live"', 10_000);
-        $hostPage->locator('[data-test=casual-share]')->click();
+        // At 375 "Share lobby" is the primary action of the room's phone bar (P3, MatchRoom-2a-LobbyTeilen-Phone).
+        $hostPage->locator($hostPage === $narrow ? '[data-test=room-bar-primary]' : '[data-test=casual-share]')->click();
         BrowserWait::until($hostPage, '() => document.querySelector("[data-test=lobby-form]")?.checkVisibility() === true', 5_000);
 
         foreach ([$wide, $narrow] as $page) {
@@ -369,7 +370,9 @@ test('a scheduled 1v1 in its check-in window: step 1 "Checked in", the check-in 
         $state = $page->evaluate('() => ({
             step: document.querySelector("[data-test=room-step-line]").innerText,
             kind: document.querySelector("[data-test=casual-deadline]").dataset.kind,
-            button: Math.round(document.querySelector("[data-test=casual-checkin]").getBoundingClientRect().height),
+            // On a phone "Check in" stands in the action bar of the room (P3, MatchRoom-1b-Einchecken-Phone); the one of the card hides.
+            button: Math.round(document.querySelector("[data-test=room-bar-primary]").getBoundingClientRect().height),
+            label: document.querySelector("[data-test=room-bar-primary]").innerText.trim(),
         })');
         casualPlayShot($page, 'casual-scheduled-steps-375', '[data-test=casual-steps]');
         $page->setViewportSize(1440, 900);
@@ -379,7 +382,7 @@ test('a scheduled 1v1 in its check-in window: step 1 "Checked in", the check-in 
         $page->locator('[data-test=casual-checkin]')->click();
         BrowserWait::until($page, '() => document.querySelector("[data-test=casual-checkin]") === null && document.querySelector("[data-test=casual-steps]").innerText.includes("1 of 2 checked in")', 10_000);
 
-        expect($state)->toBe(['step' => 'Step 1 of 4: Present', 'kind' => 'checkin', 'button' => 56])
+        expect($state)->toBe(['step' => 'Step 1 of 4: Present', 'kind' => 'checkin', 'button' => 52, 'label' => 'Check in'])
             ->and($narrow)->toMatchArray(['overflow' => 0, 'inWindow' => true, 'small' => [], 'outside' => [], 'clipped' => []])
             ->and($wide)->toMatchArray(['overflow' => 0, 'inWindow' => true, 'small' => [], 'outside' => [], 'clipped' => []])
             ->and($match->refresh()->readyAt(casualSideOf($match, $anna)))->not->toBeNull()

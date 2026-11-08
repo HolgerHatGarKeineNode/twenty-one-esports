@@ -147,7 +147,9 @@ test('one captain challenges, the other accepts, then submits and accepts the fi
 
     $pageB->reload();
     BrowserWait::until($pageB, '() => document.querySelector("[data-test=reported-score]")?.innerText.includes("3 : 1, 2 : 0")', 10_000);
-    $pageB->locator('[data-test=accept-result]')->click();
+    // At 375 "Accept result" stands in the room's action bar (P3, MatchRoom-4a-Pruefen-Phone); the step's own hides.
+    expect($pageB->evaluate('() => document.querySelector("[data-test=room-bar-primary]").innerText.trim()'))->toBe($pageB->evaluate('() => document.querySelector("[data-test=accept-result]").textContent.trim()'));
+    $pageB->locator('[data-test=room-bar-primary]')->click();
     BrowserWait::until($pageB, '() => document.querySelector("[data-test=win-moment]") !== null', 10_000);
 
     $pageA->reload();

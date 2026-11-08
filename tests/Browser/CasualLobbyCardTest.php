@@ -187,18 +187,21 @@ test('the host shares a Rocket League lobby card, the guest sees it drawn from t
 
         cardRoomShot($guestPage, 'card-guest-1440');
         $guestPage->setViewportSize(375, 812);
+        // The phone bar reads the step's buttons again on the resize event, which lands after the viewport change.
+        BrowserWait::until($guestPage, '() => document.querySelector("[data-test=room-bar-primary]")?.innerText.trim() !== ""', 3_000);
         $narrow = $guestPage->evaluate('() => {
             const box = (s) => document.querySelector(s).getBoundingClientRect();
             const card = box("[data-test=room-chat] li[data-from=them]");
             const chat = box("[data-test=room-chat]");
             const steps = box("[data-test=casual-steps]");
-            const joined = box("[data-test=casual-joined]");
+            // On a phone "I am in the lobby" stands in the action bar of the room (P3, MatchRoom-2c-LobbyGeteilt-Phone), the one of the card hides.
+            const joined = box("[data-test=room-bar-primary]");
             // The phone line of the four steps (P5 stepper): it fits its box.
             const tiles = [...document.querySelectorAll("[data-test=room-step-line]")].filter((el) => el.checkVisibility()).map((el) => el.scrollWidth <= el.clientWidth + 1);
             return {
                 overflow: document.documentElement.scrollWidth - document.documentElement.clientWidth,
                 cardInside: card.left >= chat.left && card.right <= chat.right,
-                joinedInside: joined.height >= 44 && joined.left >= steps.left && joined.right <= steps.right && joined.bottom <= steps.bottom,
+                joinedInBar: joined.height >= 44 && joined.bottom <= innerHeight && document.querySelector("[data-test=room-bar-primary]").innerText.trim() === document.querySelector("[data-test=casual-joined]").textContent.replace(/\\s+/g, " ").trim(),
                 tilesFit: tiles,
                 stepsFirst: steps.top < box("[data-test=casual-line]").top,
             };
@@ -207,7 +210,7 @@ test('the host shares a Rocket League lobby card, the guest sees it drawn from t
         cardRoomShot($guestPage, 'card-guest-steps-375', '[data-test=casual-steps]');
         cardRoomShot($guestPage, 'card-guest-chat-375', '[data-test=room-chat]');
 
-        expect($narrow)->toBe(['overflow' => 0, 'cardInside' => true, 'joinedInside' => true, 'tilesFit' => [true], 'stepsFirst' => true])
+        expect($narrow)->toBe(['overflow' => 0, 'cardInside' => true, 'joinedInBar' => true, 'tilesFit' => [true], 'stepsFirst' => true])
             ->and($hostPage->evaluate('() => window.__errors'))->toBe([])
             ->and($guestPage->evaluate('() => window.__errors'))->toBe([])
             ->and($hostPage->evaluate(BrowserConsole::BAD_RESPONSES))->toBe([])
@@ -300,8 +303,10 @@ const CARD_PIN_BOX = '() => {
     if (!pin) return null;
     const r = pin.getBoundingClientRect();
     const steps = document.querySelector("[data-test=casual-steps]").getBoundingClientRect();
-    const action = document.querySelector("[data-test=lobby-pin-confirm]") ?? document.querySelector("[data-test=lobby-pin-replace]") ?? document.querySelector("[data-test=lobby-pin-copy-password]");
-    const joined = document.querySelector("[data-test=casual-joined]");
+    // Below lg the primary action of the step ("Still valid", "I am in the lobby") stands in the action bar of the room (P3, boards MatchRoom-*-Phone).
+    const bar = (el) => el && el.getClientRects().length === 0 ? document.querySelector("[data-test=room-bar-primary]") : el;
+    const action = bar(document.querySelector("[data-test=lobby-pin-confirm]")) ?? document.querySelector("[data-test=lobby-pin-replace]") ?? document.querySelector("[data-test=lobby-pin-copy-password]");
+    const joined = bar(document.querySelector("[data-test=casual-joined]"));
     // Seen without scrolling: inside the window, and its bottom edge not covered by a bar fixed over it (tab bar, score bar).
     const seen = (el) => {
         const box = el.getBoundingClientRect();
@@ -396,7 +401,7 @@ test('the open lobby card is pinned in the steps for both players; a card from b
         app(CasualMatches::class)->checkIn($match, $bert);
         cardPinRefresh($hostPage);
         cardPinRefresh($guestPage);
-        BrowserWait::until($hostPage, '() => document.querySelector("[data-test=lobby-pin-confirm]")?.checkVisibility() === true', 10_000);
+        BrowserWait::until($hostPage, '() => document.querySelector("[data-test=lobby-pin-confirm]") !== null && document.querySelector("[data-test=room-bar-primary]")?.checkVisibility() === true', 10_000);
         BrowserWait::until($guestPage, '() => document.querySelector("[data-test=casual-deadline]")?.dataset.kind === "lobby" && document.querySelector("[data-test=lobby-pin-name]")?.textContent === '.json_encode($name), 10_000);
 
         // The flow stands at "Lobby shared" with the card open: the pin shows it, with "Still valid" as the one primary action, on screen at 375.
@@ -410,7 +415,8 @@ test('the open lobby card is pinned in the steps for both players; a card from b
         cardRoomShot($hostPage, 'pin-host-confirm-375-en');
 
         // "Still valid": the card goes out again, the league counts it, the steps move on to "Joined" on both sides.
-        $hostPage->locator('[data-test=lobby-pin-confirm]')->click();
+        // At 375 "Still valid" is the bar's primary action.
+        $hostPage->locator('[data-test=room-bar-primary]')->click();
         cardRoomFlag($hostPage, 'shared');
         BrowserWait::until($hostPage, '() => document.querySelector("[data-test=casual-steps]")?.dataset.current === "joined" && document.querySelector("[data-test=lobby-pin-confirm]") === null && document.querySelector("[data-test=lobby-pin-replace]") !== null', 10_000);
         cardRoomFlag($guestPage, 'seen');
@@ -423,6 +429,7 @@ test('the open lobby card is pinned in the steps for both players; a card from b
         // Both sizes for both players: the pin is on screen without scrolling the page or the chat.
         $hostPage->setViewportSize(1440, 900);
         $guestPage->setViewportSize(375, 812);
+        BrowserWait::until($guestPage, '() => document.querySelector("[data-test=room-bar-primary]")?.innerText.trim() !== ""', 3_000);
         $guestPage->evaluate('() => window.scrollTo(0, 0)');
         expect($hostPage->evaluate(CARD_PIN_BOX))->toBe(['scrollY' => 0, 'visible' => true, 'inFold' => true, 'actionInFold' => true, 'joinedInFold' => null, 'inSteps' => true, 'overflow' => 0])
             // The guest's primary action, "I am in the lobby", stays above the fold at 375 too.
@@ -439,7 +446,7 @@ test('the open lobby card is pinned in the steps for both players; a card from b
         expect($guestPage->evaluate('() => window.__copied'))->toBe([$name, $password]);
 
         // "I am in the lobby" under the card: the step "Joined" is done, the card stays pinned.
-        $guestPage->locator('[data-test=casual-joined]')->click();
+        $guestPage->locator('[data-test=room-bar-primary]')->click();
         BrowserWait::until($guestPage, '() => document.querySelector("[data-test=casual-steps]")?.dataset.current === "report" && document.querySelector("[data-test=casual-joined]") === null && document.querySelector("[data-test=lobby-pin-name]")?.textContent === '.json_encode($name), 10_000);
         expect($match->refresh()->joined_at)->not->toBeNull();
 
