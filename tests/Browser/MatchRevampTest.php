@@ -184,7 +184,7 @@ test('the match room, the match page, the match views and the correspondence lis
 
         // The room's lobby step: the league card under the stepper, name and password in plain text, never hidden.
         $room = matchRevampPage($admin, $pages['room-lobby'], $width);
-        $card = $room->evaluate('() => { const c = document.querySelector("[data-test=room-lobby-pin]"); const s = document.querySelector("[data-test=room-stepper]"); return { league: c?.dataset.league, below: c && s ? c.getBoundingClientRect().top >= s.getBoundingClientRect().bottom : false, password: document.querySelector("[data-test=room-lobby-password]")?.innerText, copy: [...c.querySelectorAll("button")].map((b) => Math.round(b.getBoundingClientRect().height)) }; }');
+        $card = $room->evaluate('() => { const c = document.querySelector("[data-test=room-lobby-pin]"); const s = document.querySelector("[data-test=room-stepper]"); return { league: c?.dataset.league, below: c && s ? c.getBoundingClientRect().top >= s.getBoundingClientRect().bottom : false, password: document.querySelector("[data-test=room-lobby-password]")?.innerText, copy: [...c.querySelectorAll("button")].filter((b) => b.checkVisibility()).map((b) => Math.round(b.getBoundingClientRect().height)) }; }');
         expect($card['league'])->toBe('1')
             ->and($card['below'])->toBeTrue()
             ->and($card['password'])->toBe($cupRoom->lobby_password)

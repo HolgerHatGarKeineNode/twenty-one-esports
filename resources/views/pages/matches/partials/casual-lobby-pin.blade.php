@@ -39,8 +39,8 @@
         </section>
     </template>
     @if ($iHost)
-        {{-- A closed card in the result step: the host can share a new one, as in the lobby step. --}}
-        <template x-if="! card">
+        {{-- A closed card in the result step: with the chat running, the host can share a new one, as in the lobby step. --}}
+        <template x-if="! card && pin.live">
             <div><x-button variant="secondary" icon="key" x-on:click="act('compose')" ::disabled="pin.busy" data-test="casual-share">{{ __('Share lobby') }}</x-button></div>
         </template>
     @endif

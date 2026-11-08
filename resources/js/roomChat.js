@@ -346,6 +346,8 @@ export function roomChat(config) {
             const store = window.Alpine?.store('lobbyPin');
             if (!store) return;
             store.card = this.pinned;
+            // Whether the chat runs here: a closed card can only be replaced through it (partials/casual-lobby-pin).
+            store.live = this.status === 'live';
             store.busy = this.sending;
             store.error = this.pinError;
         },

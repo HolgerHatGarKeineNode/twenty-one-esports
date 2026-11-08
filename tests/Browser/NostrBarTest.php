@@ -177,6 +177,8 @@ test('the bar is on every kind of page, with 44 px targets, no overflow and a cl
     foreach ([375, 1440] as $width) {
         foreach ($pages as $name => $to) {
             $page = nostrBarPage($viewer, $to, $width);
+            // The match room keeps its Nostr bar in the closed "Details" block (P3, one view per step): open it first.
+            $page->evaluate('() => { const details = document.querySelector("[data-test=room-details]"); if (details) details.open = true; }');
             $bar = $page->evaluate(NOSTR_BAR_MEASURE);
             fwrite(STDERR, "\n[nostr-bar] {$name} {$width}px ".json_encode($bar));
             nostrBarShot($page, "nostr-bar-{$name}-{$width}");

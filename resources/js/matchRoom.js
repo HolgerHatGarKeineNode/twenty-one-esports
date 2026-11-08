@@ -249,7 +249,7 @@ export function roomBar() {
 }
 
 registerAlpine(() => {
-    window.Alpine.store('lobbyPin', { card: null, busy: false, error: '' });
+    window.Alpine.store('lobbyPin', { card: null, live: false, busy: false, error: '' });
     window.Alpine.data('roomBar', roomBar);
     window.Alpine.data('lobbyPin', lobbyPin);
     window.Alpine.data('roomChat', roomChat);
