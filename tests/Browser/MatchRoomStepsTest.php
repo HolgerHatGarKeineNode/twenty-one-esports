@@ -309,7 +309,8 @@ test('the header chip shows the step\'s deadline, red with a countdown in its la
 
     foreach ([1280, 1440] as $width) {
         $page = roomStepsPage($admin, $checkIn, $width, 900);
-        BrowserWait::until($page, '() => document.querySelector("[data-test=actions-urgent]")?.checkVisibility() === true', 3000);
+        // The chip turns hot only once dockCount has read the room deadline: wait for that, not just for the chip.
+        BrowserWait::until($page, '() => document.querySelector("[data-test=actions-urgent]")?.checkVisibility() === true && document.querySelector("[data-test=nav-actions] .rv-act")?.classList.contains("is-hot") === true', 5000);
         $hot = $page->evaluate($chip);
         $page = roomStepsPage(User::query()->findOrFail($result->sides['challenger'][0]), $result, $width, 900);
         BrowserWait::until($page, '() => document.querySelector("[data-test=actions-urgent]")?.checkVisibility() === true', 3000);
@@ -328,6 +329,28 @@ test('the header chip shows the step\'s deadline, red with a countdown in its la
     }
 
     fwrite(STDERR, "\nROOM-CHIP ".json_encode($measured)."\n");
+});
+
+test('a step change on an open phone page swaps the bar: the opponent\'s report turns "Send result" into "Problem melden | Ergebnis annehmen" without console errors', function () {
+    $admin = roomStepsAdmin();
+    [$match, , $opponent] = roomStepsStarted($admin, 'opponent');
+    $match->forceFill(['lobby_shared_at' => now()->subSeconds(50), 'joined_at' => now()->subSeconds(40)])->save();
+    app(SeriesService::class)->saveLiveGame($match, $opponent, 0, 3, 1, null);
+    app(SeriesService::class)->saveLiveGame($match, $opponent, 1, 2, 1, null);
+
+    $bar = '() => { const seen = (el) => !!el && el.checkVisibility() && el.getBoundingClientRect().height > 0; const b = [...document.querySelectorAll("[data-room-bar]")].find(seen); return b ? [...b.querySelectorAll("button")].filter(seen).map((x) => x.innerText.trim()) : []; }';
+    $page = roomStepsPage($admin, $match->refresh(), 390, 844);
+    expect($page->evaluate($bar))->toBe(['Ergebnis senden']);
+
+    // The opponent sends first; the poll would carry it, $refresh does it now. Before the keyed bar the morphed
+    // result bar kept no roomBar scope: empty bar and "shown is not defined" (reviewer gate P3, M1).
+    app(SeriesService::class)->report($match->refresh(), $opponent, []);
+    $page->evaluate('async () => { await Livewire.all().find((c) => c.el.matches("[data-test=match-room]")).$wire.$refresh(); }');
+    BrowserWait::until($page, '() => document.querySelector("[data-test=room-main]")?.dataset.view === "check"', 5000);
+    BrowserWait::until($page, '() => ('.$bar.')().includes("Ergebnis annehmen")', 5000);
+
+    expect($page->evaluate($bar))->toBe(['Problem melden', 'Ergebnis annehmen']);
+    roomStepsQuiet($page, 'result → check');
 });
 
 test('positive control: the probe and the collector see a throw, a failed response, a secondary module on screen and a covered bar button', function () {

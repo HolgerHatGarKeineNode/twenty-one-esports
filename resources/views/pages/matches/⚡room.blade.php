@@ -1525,16 +1525,18 @@ new #[Title('Match room')] #[Layout('layouts::app', ['section' => 'matches', 'sc
         --floor-top (P1). The result step keeps its score bar: the summary line over a full-width "Send result"
         (MatchRoom-3-Ergebnis-Phone), hidden while the report block under the sheet is on screen (one "Send result" in
         view, never two). Every other step mirrors its own buttons (`data-room-primary`, `data-room-secondary` in the
-        step's view, hidden below lg), plus "Chat" where the board has it (resources/js/matchRoom.js roomBar).
+        step's view, hidden below lg), plus "Chat" where the board has it (resources/js/matchRoom.js roomBar). Each
+        branch is keyed by the step: a poll that changes the step replaces the bar instead of morphing it, so Alpine starts
+        a fresh roomBar scope (a morphed result bar never got one: empty bar, "shown is not defined").
     --}}
     @if ($view === 'result' && $canSubmit)
         @php($barLead = $wins['challenged'] > $wins['challenger'] ? ['challenged', 'challenger'] : ['challenger', 'challenged'])
-        <div x-show="! reportInView" class="fixed inset-x-0 bottom-[var(--floor-h)] z-20 flex flex-col gap-2 bg-bar px-4 py-3 shadow-[0_-1px_0_#2A2A30] lg:hidden" data-test="room-bar" data-page-bar data-room-bar data-floor-owner>
+        <div wire:key="room-bar-result" x-show="! reportInView" class="fixed inset-x-0 bottom-[var(--floor-h)] z-20 flex flex-col gap-2 bg-bar px-4 py-3 shadow-[0_-1px_0_#2A2A30] lg:hidden" data-test="room-bar" data-page-bar data-room-bar data-floor-owner>
             <b class="rv-sum line-clamp-2 text-center text-[18px]">{{ $m->sideName($barLead[0]) }} <span class="whitespace-nowrap">{{ $wins[$barLead[0]] }} : {{ $wins[$barLead[1]] }}</span> {{ $m->sideName($barLead[1]) }}</b>
             <button type="button" x-on:click="submit = true" class="rv-b h-[52px] w-full"><x-icon name="shield-check" :size="18" />{{ __('Send result') }}</button>
         </div>
     @elseif ($view !== 'result')
-        <div x-data="roomBar" x-show="shown" x-cloak class="fixed inset-x-0 bottom-[var(--floor-h)] z-20 flex gap-3 bg-bar px-4 py-3 shadow-[0_-1px_0_#2A2A30] lg:hidden" data-test="room-bar" data-page-bar data-room-bar data-floor-owner>
+        <div wire:key="room-bar-{{ $view }}" x-data="roomBar" x-show="shown" x-cloak class="fixed inset-x-0 bottom-[var(--floor-h)] z-20 flex gap-3 bg-bar px-4 py-3 shadow-[0_-1px_0_#2A2A30] lg:hidden" data-test="room-bar" data-page-bar data-room-bar data-floor-owner>
             @if ($barChat)
                 <button type="button" x-on:click="chat()" x-bind:class="primary || secondary ? 'shrink-0' : 'grow'" class="rv-b2 h-[52px] px-4" data-chat data-test="room-bar-chat"><x-icon name="chat" :size="16" />{{ __('Chat') }}</button>
             @endif
