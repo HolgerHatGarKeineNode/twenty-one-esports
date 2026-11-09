@@ -13,7 +13,6 @@ use App\Models\ChessGame;
 use App\Models\Clan;
 use App\Models\ClanInvite;
 use App\Models\InviteLink;
-use App\Models\Lineup;
 use App\Models\SeriesMatch;
 use App\Models\Tournament;
 use App\Models\TournamentMatch;
@@ -612,16 +611,13 @@ test('P1 page bottom bars: every save-bar and floor-owner button stays free of t
         if ($dock) {
             ChessGame::factory()->daily()->create(['white_id' => $user->id]);
         }
-        // A clan captain with a ready lineup and an opponent: the challenge form and its phone step bar.
-        $captain = Lineup::factory()->ready()->create()->clan->owner;
-        Lineup::factory()->ready()->create();
-        if ($dock) {
-            ChessGame::factory()->daily()->create(['white_id' => $captain->id]);
-        }
+        // The challenge form had a phone step bar here; since P4 it is a wizard whose actions sit in the step's own card
+        // (ChallengeCreate.dc.html, tests/Browser/ChallengeWizardTest.php). In its place the game page's play bar
+        // (GamePhone.dc.html, P4), which owns the floor the same way.
         $cases = [
             ['edit', $user, route('admin.tournaments.edit', $featured, false), [1440, 390]],
             ['create', $user, route('admin.tournaments.create', absolute: false), [1440, 390]],
-            ['challenge', $captain, route('challenges.create', absolute: false), [390]],
+            ['chess-play-bar', $user, route('chess.lobby', absolute: false), [390]],
             ['signup', $user, route('tournaments.show', $signup, false), [390]],
         ];
         foreach ($cases as [$name, $who, $path, $widths]) {

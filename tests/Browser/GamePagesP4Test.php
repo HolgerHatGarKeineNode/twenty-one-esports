@@ -268,8 +268,14 @@ test('P4 GameScore and every game page at 1440: no grid leaves more than a third
         $page = p4Open($admin, $path, 1440);
         p4Shot($page, "{$name}-1440");
         $empty = $page->evaluate(P4_EMPTY_COLUMNS);
+        // The widest empty share of any grid on the page, for the report (the limit is a third).
+        $widest = $page->evaluate(str_replace('if (empty > box.width / 3) out.push(', 'out.push(', P4_EMPTY_COLUMNS));
+        $share = collect(is_array($widest) ? $widest : [])->filter(fn ($row): bool => is_array($row))->map(fn (array $row): float => round($row[2] / $row[1], 3))->max();
+        fwrite(STDERR, "\n[p4] {$name} 1440: widest empty share ".json_encode($share)."\n");
         [$scroll, $client] = $page->evaluate(BrowserConsole::WIDTHS);
         $loud = p4Loud($page);
+        p4Refresh($page);
+        $loud = array_merge($loud, p4Loud($page));
         if ($empty !== [] || $scroll > $client || $loud !== []) {
             $problems[$name] = ['empty' => $empty, 'overflow' => $scroll - $client, 'loud' => $loud];
         }
@@ -303,6 +309,7 @@ test('P4 GamePhone at 390: the "Spielen" action stands in a bar on the floor, co
         $page = p4Open($admin, $path, 390);
         p4Shot($page, "{$name}-390");
         $bar = $page->evaluate(P4_PLAY_BAR);
+        fwrite(STDERR, "\n[p4] {$name} 390: ".json_encode(array_intersect_key($bar, array_flip(['bar', 'floorTop', 'lastBottom', 'covered'])))."\n");
         $tabs = $page->evaluate(P4_TABS);
         $lede = $page->evaluate(P4_LEDE);
         $squeezed = $page->evaluate(BrowserConsole::SQUEEZED, ['main']);

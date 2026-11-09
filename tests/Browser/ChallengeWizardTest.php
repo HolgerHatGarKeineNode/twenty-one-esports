@@ -132,6 +132,7 @@ test('P4 the challenge is a wizard of five steps, each in its own card with its 
                 BrowserWait::until($page, '() => document.querySelector("[data-test=pick-opponent][aria-checked=true]") !== null', 5_000);
             }
             $m = $page->evaluate(WIZARD_PROBE);
+            fwrite(STDERR, "\n[wizard] {$width} step {$step}: ".json_encode(array_intersect_key($m, array_flip(['step', 'title', 'action', 'cardWidth', 'overflow', 'native', 'spiele'])), JSON_UNESCAPED_UNICODE)."\n");
             $squeezed = $page->evaluate(BrowserConsole::SQUEEZED, ['main']);
             // BrowserConsole::SPILLED, without the screen-reader-only texts (the stepper's step names, the search label):
             // they are clipped to 1 px on purpose.
