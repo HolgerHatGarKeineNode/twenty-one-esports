@@ -78,10 +78,10 @@ function p4Pages(): array
     ];
 }
 
-/** The game pages with a primary "Spielen" action (the slot of x-game.subnav). */
+/** The game pages whose primary "Spielen" action moves to the floor bar on a phone (Hyperbitcoinization keeps its hero's action: phone-action="hero"). */
 function p4PlayPages(): array
 {
-    return array_intersect_key(p4Pages(), array_flip(['chess', 'rocket-league', 'nine-mens-morris', 'blockli', 'hyper', 'pong', 'scores-blockfill']));
+    return array_intersect_key(p4Pages(), array_flip(['chess', 'rocket-league', 'nine-mens-morris', 'blockli', 'pong', 'scores-blockfill']));
 }
 
 /**
@@ -364,6 +364,28 @@ test('P4 GamePhone at 390: the "Spielen" action stands in a bar on the floor, co
     expect($problems)->toBe([])
         // GamePhone: chess shows its chat beside "Spielen: Rapid suchen", every chess tab whole.
         ->and(array_column($seen['chess'] ?? [], 'text'))->toBe(['Chat', 'Spielen: Rapid suchen']);
+});
+
+test('P4 Hyperbitcoinization at 390: no floor bar, its hero action and "Tisch eröffnen" stay in the first screen, the game bar shows no button', function () {
+    $admin = p4League();
+    $page = p4Open($admin, '/hyperbitcoinization', 390);
+    $m = $page->evaluate(<<<'JS'
+        () => {
+            const fold = Math.min(innerHeight, document.querySelector('[data-test=tab-bar]').getBoundingClientRect().top);
+            const at = (sel) => { const el = document.querySelector(sel); if (!el) return null; const r = el.getBoundingClientRect(); const hit = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2); return { bottom: Math.round(r.bottom), hit: !!hit && el.contains(hit) }; };
+            const act = document.querySelector('[data-test=game-subnav] .gs-act');
+            return { fold: Math.round(fold), bar: !!document.querySelector('[data-test=game-play-bar]'), hero: at('[data-test=hyper-hero-bots]'), open: at('[data-test=hyper-lobby-open]'),
+                act: !!act && act.checkVisibility() && act.getBoundingClientRect().width > 0 };
+        }
+        JS);
+    fwrite(STDERR, "\n[p4] hyper 390: ".json_encode($m)."\n");
+    expect($m['bar'])->toBeFalse()
+        ->and($m['act'])->toBeFalse()
+        ->and($m['hero']['hit'])->toBeTrue()
+        ->and($m['hero']['bottom'])->toBeLessThanOrEqual($m['fold'])
+        ->and($m['open']['hit'])->toBeTrue()
+        ->and($m['open']['bottom'])->toBeLessThanOrEqual($m['fold'])
+        ->and(p4Loud($page))->toBe([]);
 });
 
 test('P4 GamePhone: the chess tabs are all whole at 390 and the bar\'s Chat opens the chat', function () {

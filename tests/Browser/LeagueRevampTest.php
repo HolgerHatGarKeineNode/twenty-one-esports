@@ -228,24 +228,44 @@ test('T12: on a 375 x 667 phone nothing floats over the ways to play of a game p
 
     foreach (['/games/rocket-league', '/chess'] as $path) {
         $page = leagueRevampOpen($me, $path, 375, 667);
-        $probe = $page->evaluate('() => {
-            const floor = Math.min(innerHeight, ...[...document.querySelectorAll("[data-test=tab-bar]")].filter((el) => el.checkVisibility()).map((el) => el.getBoundingClientRect().top));
+        // Since plan "Canvas and live alignment", P4 (GamePhone.dc.html) the page's play bar owns the floor above the
+        // tab bar, like the tab bar itself: the first screen ends at its top, it is no floating layer, and a way to play
+        // under it is one scroll away and takes its tap once scrolled to (the user accepted this for /chess, 2026-11-09).
+        $probe = $page->evaluate('async () => {
+            const own = "[data-test=tab-bar], [data-test=game-play-bar]";
+            const floorOf = () => Math.min(innerHeight, ...[...document.querySelectorAll(own)].filter((el) => el.checkVisibility()).map((el) => el.getBoundingClientRect().top));
+            const floor = floorOf();
             const lead = document.querySelector(".gp-lead");
-            const controls = [...lead.querySelectorAll("a[href], button")].filter((el) => el.checkVisibility()).map((el) => [el, el.getBoundingClientRect()])
-                .filter(([, r]) => r.height > 0 && r.top >= 0 && r.bottom <= floor);
-            const covered = controls.filter(([el, r]) => { const hit = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2); return !(hit && (hit === el || el.contains(hit))); })
-                .map(([el]) => el.dataset.test || el.innerText.trim().slice(0, 24));
+            const label = (el) => el.dataset.test || el.innerText.trim().slice(0, 24);
+            const hits = (el) => { const r = el.getBoundingClientRect(); const hit = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2); return !!hit && (hit === el || el.contains(hit)); };
+            const all = [...lead.querySelectorAll("a[href], button")].filter((el) => el.checkVisibility() && el.getBoundingClientRect().height > 0);
+            const controls = all.filter((el) => { const r = el.getBoundingClientRect(); return r.top >= 0 && r.bottom <= floor; });
+            const covered = controls.filter((el) => !hits(el)).map(label);
+            const below = all.filter((el) => !controls.includes(el));
+            const unreachable = [];
+            for (const el of below) {
+                el.scrollIntoView({ block: "center" });
+                await new Promise((r) => setTimeout(r, 120));
+                const r = el.getBoundingClientRect();
+                if (r.bottom > floorOf() || !hits(el)) unreachable.push(label(el));
+            }
+            scrollTo(0, 0);
             const floating = [...document.querySelectorAll("body *")].filter((el) => el.checkVisibility() && getComputedStyle(el).position === "fixed" && el.getBoundingClientRect().height > 0)
-                .filter((el) => !el.closest("header, [data-test=tab-bar], [data-test=toast-stack], #more-sheet, [aria-hidden=true]"))
+                .filter((el) => !el.closest("header, [data-test=tab-bar], [data-test=game-play-bar], [data-test=toast-stack], #more-sheet, [aria-hidden=true]"))
                 .map((el) => el.dataset.test || el.tagName + "." + el.className.toString().split(" ")[0]);
-            return { floor: Math.round(floor), controls: controls.length, covered, floating };
+            const bar = document.querySelector("[data-test=game-play-bar]");
+            const tab = document.querySelector("[data-test=tab-bar]");
+            return { floor: Math.round(floor), controls: controls.length, below: below.map(label), covered, unreachable, floating,
+                barOnTabBar: !!bar && Math.abs(bar.getBoundingClientRect().bottom - tab.getBoundingClientRect().top) <= 1 };
         }');
         fwrite(STDERR, "[T12 {$path}] ".json_encode($probe).PHP_EOL);
         leagueRevampShot($page, 'p7-t12-'.trim(str_replace('/', '-', $path), '-'));
 
         expect($probe['controls'])->toBeGreaterThan(0, $path)
             ->and($probe['covered'])->toBe([], $path)
-            ->and($probe['floating'])->toBe([], $path);
+            ->and($probe['unreachable'])->toBe([], $path)
+            ->and($probe['floating'])->toBe([], $path)
+            ->and($probe['barOnTabBar'])->toBeTrue($path);
         leagueRevampQuiet($page, "T12 {$path}");
     }
 });

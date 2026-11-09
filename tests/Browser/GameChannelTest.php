@@ -271,6 +271,9 @@ const P21_PHONE = <<<'JS'
             .filter((el, _, all) => ! all.some((other) => other !== el && other.contains(el))).map((el) => el.dataset.test);
         return {
             chat: box(chat), action: box(action), floor: bar && bar.checkVisibility() ? Math.round(bar.getBoundingClientRect().top) : innerHeight,
+            // The page's play bar on the floor (GamePhone.dc.html, P4): the primary action and the chat in the first screen.
+            playBar: document.querySelector('[data-test=game-play-bar-play]')?.checkVisibility() ? (() => { const b = document.querySelector('[data-test=game-play-bar-play]'); const r = b.getBoundingClientRect(); const hit = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2); return { bottom: Math.round(r.bottom), hit: !!hit && b.contains(hit) }; })() : null,
+            playBarChat: !!document.querySelector('[data-test=game-play-bar-chat]')?.checkVisibility(),
             toggle: box(toggle), expanded: toggle.getAttribute('aria-expanded'), toggleName: toggle.getAttribute('aria-label'),
             body: chat.querySelector('[data-test=game-chat-body]').checkVisibility(),
             preview: chat.querySelector('[data-test=game-chat-preview]').checkVisibility() ? chat.querySelector('[data-test=game-chat-preview]').innerText.trim() : null,
@@ -358,8 +361,14 @@ test('the chat sits right under the head at 375, a bar opened in place, and in a
 
         fwrite(STDERR, "\n[p21 place] {$game}: ".json_encode(compact('closed', 'open', 'rails'))."\n");
 
-        // 375, closed: the primary action above the tab bar, the bar right after it, small, with the newest message and the count.
-        expect($closed['action']['bottom'])->toBeLessThanOrEqual($closed['floor'])
+        // 375, closed: the primary action and the chat in the first screen — since P4 (GamePhone.dc.html) in the play bar
+        // on the floor above the tab bar, so the ways to play end where the hero's whole line leaves them, one scroll
+        // away (accepted for /chess, 2026-11-09); the chat bar right after the ways to play, small, with the newest
+        // message and the count.
+        expect($closed['playBar'])->not->toBeNull()
+            ->and($closed['playBar']['hit'])->toBeTrue()
+            ->and($closed['playBar']['bottom'])->toBeLessThanOrEqual($closed['floor'])
+            ->and($closed['playBarChat'])->toBeTrue()
             ->and($closed['chat']['top'])->toBeGreaterThanOrEqual($closed['action']['bottom'])
             ->and($closed['between'])->toBe($between)
             ->and($closed['chat']['height'])->toBeLessThanOrEqual(96)

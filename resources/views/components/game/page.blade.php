@@ -1,4 +1,4 @@
-@props(['game', 'active' => 'play', 'mode' => null, 'template' => 'T1', 'title' => null, 'lede' => null, 'stat' => null, 'statLabel' => null, 'statLive' => false, 'stickyRail' => true, 'playLabel' => null])
+@props(['game', 'active' => 'play', 'mode' => null, 'template' => 'T1', 'title' => null, 'lede' => null, 'stat' => null, 'statLabel' => null, 'statLive' => false, 'stickyRail' => true, 'playLabel' => null, 'phoneAction' => 'bar'])
 
 {{--
     The one lobby template of every game (template T1, rules R1, R5, R6, R7; GameLobby.dc.html, HyperIndex.dc.html,
@@ -26,16 +26,20 @@
     on the floor above the tab bar: "Chat" (opens the chat, when the page has one) and `playLabel` ("Spielen: Rapid
     suchen"), which presses the page's own primary action, so the action exists once. The bar owns the floor
     (`data-floor-owner`, app.css) and the page ends above it (app.css reserves the bar's height).
+    `phoneAction="hero"`: the hero's own action (heroAside, Hyperbitcoinization's "Gegen Bots spielen") already stands
+    in the first screen, and the page's other first-screen action ("Tisch eröffnen") must stay there: no floor bar takes
+    72 px of it; the game bar's button still leaves the tabs alone.
 --}}
 @php
     $colour = app(\App\Games\GameRegistry::class)->find((string) $game)?->assets()->colour;
     $heroAbove = isset($heroAside) && ! isset($hero);
     $hasLead = isset($lead);
-    $playBar = isset($primary) && $primary->isNotEmpty();
+    $primaryOn = isset($primary) && $primary->isNotEmpty();
+    $playBar = $primaryOn && $phoneAction === 'bar';
 @endphp
 
 <div {{ $attributes->class(['flex grow flex-col']) }} style="--game: {{ $colour }}" data-template="{{ $template }}" data-game="{{ $game }}">
-    <x-game.subnav :game="$game" :active="$active" :mode="$mode" :phone-bar="$playBar">{{ $primary ?? '' }}</x-game.subnav>
+    <x-game.subnav :game="$game" :active="$active" :mode="$mode" :phone-bar="$primaryOn">{{ $primary ?? '' }}</x-game.subnav>
 
     <div class="gp">
         @isset($top)
