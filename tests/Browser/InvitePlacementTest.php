@@ -59,9 +59,9 @@ const INVITE_BOX = <<<'JS'
     (selector) => { const r = document.querySelector(selector).getBoundingClientRect(); return { top: Math.round(r.top), bottom: Math.round(r.bottom), left: Math.round(r.left), right: Math.round(r.right), vh: innerHeight, vw: innerWidth }; }
     JS;
 
-/** Top of the shell's tab bar where it shows (below lg), else the window height. */
+/** Top of the shell's tab bar where it shows (below lg) and of a game page's play bar on it (P4), else the window height. */
 const INVITE_FLOOR = <<<'JS'
-    () => { const bar = document.querySelector('[data-test=tab-bar]'); return bar && bar.checkVisibility() ? Math.round(bar.getBoundingClientRect().top) : innerHeight; }
+    () => Math.round(Math.min(innerHeight, ...[...document.querySelectorAll('[data-test=tab-bar], [data-test=game-play-bar]')].filter((bar) => bar.checkVisibility()).map((bar) => bar.getBoundingClientRect().top)))
     JS;
 
 /** The module's visible call to action (log in, start a clan, create the link) and what a tap at its centre hits. */
@@ -165,6 +165,11 @@ function inviteInFirstViewport(Page $page, string $label): array
  */
 function inviteHitAboveFloor(Page $page, string $selector, string $label): void
 {
+    // On a phone game page the play bar (GamePhone.dc.html, plan "Canvas and live alignment", P4) holds the primary
+    // action in the first screen; a tile under it is one scroll away (accepted for /chess, 2026-11-09) and must take its
+    // tap once scrolled to. Without the bar the tile stays in the first viewport, as before.
+    $page->evaluate('(selector) => { const bar = document.querySelector("[data-test=game-play-bar]"); const el = document.querySelector(selector);
+        if (bar && bar.checkVisibility() && el.getBoundingClientRect().bottom > bar.getBoundingClientRect().top) { el.scrollIntoView({ block: "center" }); } }', $selector);
     $hit = $page->evaluate('(selector) => { const el = document.querySelector(selector); const r = el.getBoundingClientRect(); const top = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2);
         return { top: Math.round(r.top), bottom: Math.round(r.bottom), hit: !!top && (top === el || el.contains(top)), over: top ? (top.dataset?.test || top.closest("[data-test]")?.dataset.test || top.tagName) : null }; }', $selector);
     $floor = $page->evaluate(INVITE_FLOOR);
