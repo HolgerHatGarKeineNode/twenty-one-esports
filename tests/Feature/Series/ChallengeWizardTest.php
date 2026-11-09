@@ -1,5 +1,6 @@
 <?php
 
+use App\Models\InviteLink;
 use App\Models\Lineup;
 use App\Models\SeriesMatch;
 use Carbon\CarbonImmutable;
@@ -135,4 +136,48 @@ test('the last step sends through the existing path: casual, nothing to sign, th
     $match = SeriesMatch::query()->sole();
     $page->assertRedirect(route('matches.room', $match));
     expect($match->challenged_lineup_id)->toBe($theirs->id)->and($match->best_of)->toBe(3)->and($match->rated)->toBeFalse();
+});
+
+test('step 4: a month word reads in German or English, an unknown one or a day past the month end is a field error, not a crash; times past the planning window stop on step 4', function () {
+    [$mine, $theirs] = wizardPair();
+    $this->travelTo(CarbonImmutable::parse('2026-11-09 12:00:00', 'Europe/Berlin'));
+
+    $page = Livewire::actingAs($mine->clan->owner)->test('pages::challenges.create')
+        ->call('next')->call('pickOpponent', $theirs->id)->call('next')->call('next')->assertSet('step', 4);
+
+    foreach (['17 abc 2026', '31 Feb 2026', '31 Nov 2026'] as $typed) {
+        $page->set('times.0.date', $typed)->call('next')->assertOk()->assertHasErrors(['times.0.date'])->assertSet('step', 4);
+    }
+
+    $page->set('times.0.date', '20 Dez 2026')->call('next')
+        ->assertHasErrors(['replyTime'])->assertSet('step', 4)
+        ->assertSee('Every suggested time has to lie in the future, at most 14 days ahead.');
+
+    $page->set('times.0.date', '14 Nov 2026')->set('replyDate', '13 Nov. 2026')->call('next')
+        ->assertHasNoErrors()->assertSet('step', 5);
+});
+
+test('send, the invite link and "Invite by link" cannot skip the wizard: each checks the steps before it on the server', function () {
+    [$mine, $theirs] = wizardPair();
+    $incomplete = Lineup::factory()->mode('3v3')->create(['clan_id' => $mine->clan_id]);
+
+    // Sending straight from step 1, without "Next": step 1 has no lineup yet, nothing goes out.
+    Livewire::actingAs($mine->clan->owner)->test('pages::challenges.create')
+        ->set('lineupId', null)->set('opponentId', $theirs->id)
+        ->call('send', '[]')
+        ->assertSet('step', 1)->assertHasErrors(['lineupId']);
+    expect(SeriesMatch::query()->count())->toBe(0);
+
+    // "Invite by link" on step 1 does nothing; on step 2 it re-checks step 1 (an incomplete lineup reopens it).
+    $page = Livewire::actingAs($mine->clan->owner)->test('pages::challenges.create')
+        ->call('pickLineup', $incomplete->id)
+        ->call('inviteByLink')->assertSet('step', 1)->assertSet('viaLink', false);
+
+    $page->call('pickLineup', $mine->id)->call('next')->assertSet('step', 2)
+        ->call('pickLineup', $incomplete->id)
+        ->call('inviteByLink')->assertSet('step', 1)->assertSet('viaLink', false)->assertHasErrors(['lineupId']);
+
+    // The invite link without "Invite by link", or with a step that no longer holds, makes no link.
+    $page->call('createLink')->assertSet('step', 1);
+    expect(InviteLink::query()->count())->toBe(0);
 });

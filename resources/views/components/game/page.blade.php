@@ -25,7 +25,7 @@
     Phone (below lg, GamePhone.dc.html): the `primary` action leaves the game bar, where it cut the tabs off, for a bar
     on the floor above the tab bar: "Chat" (opens the chat, when the page has one) and `playLabel` ("Spielen: Rapid
     suchen"), which presses the page's own primary action, so the action exists once. The bar owns the floor
-    (`data-floor-owner`, app.css) and the page ends above it (`.has-play-bar`, revamp-games.css).
+    (`data-floor-owner`, app.css) and the page ends above it (app.css reserves the bar's height).
 --}}
 @php
     $colour = app(\App\Games\GameRegistry::class)->find((string) $game)?->assets()->colour;
@@ -34,7 +34,7 @@
     $playBar = isset($primary) && $primary->isNotEmpty();
 @endphp
 
-<div {{ $attributes->class(['flex grow flex-col', 'has-play-bar' => $playBar]) }} style="--game: {{ $colour }}" data-template="{{ $template }}" data-game="{{ $game }}">
+<div {{ $attributes->class(['flex grow flex-col']) }} style="--game: {{ $colour }}" data-template="{{ $template }}" data-game="{{ $game }}">
     <x-game.subnav :game="$game" :active="$active" :mode="$mode" :phone-bar="$playBar">{{ $primary ?? '' }}</x-game.subnav>
 
     <div class="gp">

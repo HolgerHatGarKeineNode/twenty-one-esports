@@ -63,6 +63,9 @@ new #[Title('New challenge')] #[Layout('layouts::app', ['section' => 'games'])] 
     #[Locked]
     public int $step = 1;
 
+    /** Month words a typed date may carry, German and English, by their first three letters. */
+    private const array MONTHS = ['jan' => 1, 'feb' => 2, 'mär' => 3, 'mar' => 3, 'mrz' => 3, 'apr' => 4, 'mai' => 5, 'may' => 5, 'jun' => 6, 'jul' => 7, 'aug' => 8, 'sep' => 9, 'okt' => 10, 'oct' => 10, 'nov' => 11, 'dez' => 12, 'dec' => 12];
+
     /** No opponent picked: the challenge becomes an invite link at the end (the board's "Per Link einladen"). */
     public bool $viaLink = false;
 
@@ -209,7 +212,11 @@ new #[Title('New challenge')] #[Layout('layouts::app', ['section' => 'games'])] 
             $reply = $this->parse($this->replyDate, (string) $value, $zone);
             $starts = array_filter(array_map(fn (array $row): ?int => $this->parse($row['date'], $row['time'], $zone), $this->times));
 
-            if ($reply !== null && $reply <= now()->getTimestamp()) {
+            $days = (int) config('esports.series.plan_max_days', 14);
+
+            if (array_filter($starts, fn (int $start): bool => $start <= now()->getTimestamp() || $start > now()->getTimestamp() + $days * 86400) !== []) {
+                $fail(__('Every suggested time has to lie in the future, at most :days days ahead.', ['days' => $days]));
+            } elseif ($reply !== null && $reply <= now()->getTimestamp()) {
                 $fail(__('The reply deadline has to be in the future.'));
             } elseif ($reply !== null && $starts !== [] && $reply >= min($starts)) {
                 $fail(__('The reply deadline has to be before the first suggested time.'));
@@ -265,6 +272,10 @@ new #[Title('New challenge')] #[Layout('layouts::app', ['section' => 'games'])] 
             return;
         }
 
+        if ($this->step !== 2 || ! $this->stepsHoldUpTo(1)) {
+            return;
+        }
+
         $this->viaLink = true;
         $this->opponentId = null;
         $this->rated = false;
@@ -301,7 +312,13 @@ new #[Title('New challenge')] #[Layout('layouts::app', ['section' => 'games'])] 
      */
     private function stepsHold(): bool
     {
-        foreach ([1, 2, 3, 4] as $step) {
+        return $this->stepsHoldUpTo(4);
+    }
+
+    /** Steps 1 to $last again, in order; the first that fails is opened with its error. */
+    private function stepsHoldUpTo(int $last): bool
+    {
+        foreach (range(1, $last) as $step) {
             try {
                 $this->validateStep($step);
             } catch (ValidationException $invalid) {
@@ -341,6 +358,10 @@ new #[Title('New challenge')] #[Layout('layouts::app', ['section' => 'games'])] 
 
     public function send(string $signed): void
     {
+        if (! $this->stepsHold()) {
+            return;
+        }
+
         $draft = $this->draft();
 
         if ($draft === null) {
@@ -406,6 +427,10 @@ new #[Title('New challenge')] #[Layout('layouts::app', ['section' => 'games'])] 
     public function createLink(InviteLinks $links): void
     {
         $this->error = '';
+
+        if (! $this->viaLink || ! $this->stepsHold()) {
+            return;
+        }
 
         if ($this->lineupId === null) {
             $this->error = __('Pick your lineup first.');
@@ -504,7 +529,7 @@ new #[Title('New challenge')] #[Layout('layouts::app', ['section' => 'games'])] 
 
     /**
      * A typed date as Y-m-d, or null: "17.10.2026", "17.10.26", "17.10." (the next 17 October), "2026-10-17" and
-     * "17 Oct 2026", with or without a weekday in front ("Sa. 17.10.").
+     * "17 Oct 2026" / "17 Okt 2026", with or without a weekday in front ("Sa. 17.10.").
      */
     public function dateOf(string $value): ?string
     {
@@ -526,11 +551,13 @@ new #[Title('New challenge')] #[Layout('layouts::app', ['section' => 'games'])] 
                 }
             }
         } elseif (preg_match('/^(\d{1,2})\s+(\p{L}{3,})\.?\s+(\d{4})$/u', $text, $m) === 1) {
-            $parsed = CarbonImmutable::createFromFormat('!j M Y', "{$m[1]} ".mb_substr($m[2], 0, 3)." {$m[3]}");
-            if ($parsed === null) {
+            $month = self::MONTHS[mb_strtolower(mb_substr($m[2], 0, 3))] ?? null;
+
+            if ($month === null) {
                 return null;
             }
-            [$year, $month, $day] = [$parsed->year, $parsed->month, $parsed->day];
+
+            [$year, $day] = [(int) $m[3], (int) $m[1]];
         } else {
             return null;
         }

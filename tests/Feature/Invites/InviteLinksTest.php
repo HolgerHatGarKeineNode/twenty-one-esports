@@ -329,7 +329,9 @@ test('a link with an expiry that is not offered is refused with a message', func
 test('the challenge page makes a casual series link from the captain\'s lineup and times', function () {
     $home = inviteLineup();
 
+    // Through the wizard (P4): lineup, "Invite by link", format, times, then the link.
     Livewire::actingAs($home->clan->owner)->test('pages::challenges.create', ['lineup' => $home->id])
+        ->call('next')->call('inviteByLink')->call('next')->call('next')->assertSet('step', 5)
         ->call('createLink')
         ->assertRedirect(InviteLink::query()->sole()->url());
 
