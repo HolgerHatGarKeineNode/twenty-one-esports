@@ -387,8 +387,6 @@ test('no text on any card is cut or runs off the edge, in English or German, wit
     ScoreDemoOn::play();
     BlockfillOn::play();
     $this->travelTo(CarbonImmutable::parse('2026-10-07 12:00:00'));
-    // The weeks the beforeEach approved lie around the real today; this test lives on its own date.
-    leagueWeeksApproved(Blockfill::SLUG);
     $morris = mempoolBoard('nine-mens-morris', ['white_id' => $satoshi->id, 'black_id' => $hodler->id, 'rated' => true]);
     $checkers = mempoolBoard('checkers', ['white_id' => $hal->id, 'black_id' => $hodler->id, 'mode' => 'correspondence', 'status' => BoardGameStatus::Finished,
         'result' => '1/2-1/2', 'end_reason' => 'no_progress', 'ply' => 131, 'rated' => true, 'tournament_match_id' => $cup->matches()->value('id')]);
@@ -468,8 +466,6 @@ function tmnfNationsGreen(string $png, int $x, int $y, int $w, int $h): int
 test('every TMNF link preview shows the official cover art, in English and German, and a new cover is a new URL', function () {
     tmnfOn();
     $this->travelTo(CarbonImmutable::parse('2026-10-07 12:00:00'));
-    // The weeks the beforeEach approved lie around the real today; this test lives on its own date.
-    leagueWeeksApproved(TrackmaniaNationsForever::SLUG);
     tmnfPlayer('ada_drives', linked: true, attributes: ['name' => 'Ada']);
     $run = tmnfFinish('ada_drives', 25_100);
     $week = app(TmnfWeeks::class)->current();
