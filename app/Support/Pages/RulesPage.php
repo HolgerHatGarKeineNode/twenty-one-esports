@@ -422,6 +422,8 @@ final class RulesPage
         ], [
             'id' => Hyperbitcoinization::SLUG.'-points',
             'title' => __('Hyperbitcoinization season points'),
+            // The sidebar names it under "Hyperbitcoinization", the entry right above: "Season-Punkte" holds one line in 224 px.
+            'nav' => __('Season points'),
             'lead' => __('Points of a rated match of everyone for themselves, by place.'),
             'table' => ['head' => [__('Table'), __('Places 1, 2, 3 …')], 'rows' => $points],
         ]];

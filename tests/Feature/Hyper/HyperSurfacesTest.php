@@ -130,7 +130,7 @@ test('/rules explains the game: phases, units, cards, teams, season and forfeit,
 
     app()->setLocale('de');
     $german = $this->get(route('rules', ['lang' => 'de']))->assertOk()->getContent();
-    expect($german)->toContain('Zentralbanken stürzen', 'Hyperbitcoinization-Season-Punkte');
+    expect($german)->toContain('Zentralbanken stürzen', 'Hyperbitcoinization: Season-Punkte');
 });
 
 test('the lobby, the ladder, a match and its replay carry their own link preview, drawn for every state', function () {

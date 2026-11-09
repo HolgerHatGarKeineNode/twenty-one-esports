@@ -11,6 +11,7 @@ use Pest\Browser\Support\ComputeUrl;
 use Tests\Support\BrowserConsole;
 use Tests\Support\BrowserLogin;
 use Tests\Support\BrowserWait;
+use Tests\Support\HyperOn;
 use Tests\Support\TestSigner;
 
 pest()->group('browser');
@@ -195,6 +196,8 @@ test('the docs labels on /rules stand whole as an admin in German: the sidebar a
     $admin = User::factory()->create(['locale' => 'de']);
     Admin::query()->create(['pubkey' => $admin->pubkey]);
     app()->setLocale('de');
+    // Hyperbitcoinization on: its season-points section carries the longest heading of the page ("Hyperbitcoinization: Season-Punkte").
+    HyperOn::play();
     $sections = RulesPage::sections();
     // The sidebar may carry a shorter label than the heading ("AoE2", not "Age of Empires II: Definitive Edition"); both are whole.
     foreach ([[1440, 900, '[data-test=doc-nav] a', 'nav'], [390, 844, '[data-test=doc-toggle] > span', 'title']] as [$width, $height, $selector, $key]) {
@@ -209,6 +212,11 @@ test('the docs labels on /rules stand whole as an admin in German: the sidebar a
             ->and(array_filter($labels, fn (array $l): bool => $l['ellipsis'] || $l['clippedX'] || $l['clippedY'] || $l['clamped']))->toBe([], "{$width}: no label cut")
             ->and(array_column($labels, 'broken'))->each->toBe([], "{$width}: no word broken mid-word")
             ->and($page->evaluate('() => document.documentElement.scrollWidth - document.documentElement.clientWidth'))->toBe(0);
+        if ($width === 1440) {
+            // Its sidebar entry is "Season-Punkte" under "Hyperbitcoinization", on one line (the full name broke at a hyphen in 224 px).
+            $points = array_values(array_filter($labels, fn (array $l): bool => $l['text'] === 'Season-Punkte'));
+            expect($points)->toHaveCount(1)->and($points[0]['lines'])->toBe(1);
+        }
         expect($page->evaluate('() => window.__errors'))->toBe([], "{$width}: console")
             ->and($page->evaluate(BrowserConsole::BAD_RESPONSES))->toBe([], "{$width}: responses");
     }
