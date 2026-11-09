@@ -193,6 +193,13 @@ export function roomBar() {
         // its step put away (x-show: the corrected sheet is open) is no action of the bar either.
         return main ? ([...main.querySelectorAll(`[${attr}]`)].find((el) => !el.closest('template') && !el.closest('[style*="display: none"]') && el.getClientRects().length === 0) ?? null) : null;
     };
+    // A primary of the page itself on screen (the early result sheet's "Send result" under the lobby step): R12, one primary
+    // per screen, so the bar's mirrored action steps down to the secondary style and the page's stays orange.
+    const pagePrimaryOnScreen = () => {
+        const main = document.querySelector('[data-test=room-main]');
+
+        return main ? [...main.querySelectorAll('[data-room-primary]')].some((el) => !el.closest('template') && !el.closest('[style*="display: none"]') && el.getClientRects().length > 0) : false;
+    };
     const text = (el) => (el?.textContent ?? '').replace(/\s+/g, ' ').trim();
 
     return {
@@ -200,6 +207,7 @@ export function roomBar() {
         secondary: '',
         primaryDisabled: false,
         secondaryDisabled: false,
+        primaryDemoted: false,
         hasChat: false,
 
         init() {
@@ -225,6 +233,7 @@ export function roomBar() {
             this.secondary = text(secondary);
             this.primaryDisabled = !!primary?.disabled;
             this.secondaryDisabled = !!secondary?.disabled;
+            this.primaryDemoted = primary !== null && pagePrimaryOnScreen();
         },
 
         get shown() {

@@ -300,6 +300,45 @@ test('each match room state renders its own view: primary action in the first sc
 
 })->with(array_keys(roomStepsStates()));
 
+test('one orange primary per screen once the result sheet is opened early under the lobby step: the page keeps "Ergebnis senden", the phone bar\'s "Lobby teilen" steps down to the secondary style (R12)', function () {
+    $admin = roomStepsAdmin();
+    $match = roomStepsStates()['2a host shares'][0]($admin);
+    // Every button that is solid orange (the primary style) and on screen right now, page and bar alike.
+    $orange = '() => [...document.querySelectorAll("main button, main a, [data-room-bar] button")].filter((el) => el.checkVisibility() && el.getBoundingClientRect().height > 0 && getComputedStyle(el).backgroundColor === "rgb(247, 147, 26)").map((el) => (el.dataset.test ?? "") + ":" + el.innerText.trim().replace(/\s+/g, " ") + (el.closest("[data-room-bar]") ? " (bar)" : ""))';
+    $barProbe = '() => { const b = document.querySelector("[data-test=room-bar-primary]"); if (!b || !b.checkVisibility()) return null; const r = b.getBoundingClientRect(); return { label: b.innerText.trim(), orange: getComputedStyle(b).backgroundColor === "rgb(247, 147, 26)", hit: b.contains(document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2)) }; }';
+    $measured = [];
+
+    foreach ([[390, 844], [1440, 900]] as [$width, $height]) {
+        $page = roomStepsPage($admin, $match, $width, $height);
+        $before = $page->evaluate($orange);
+        $page->locator('[data-test=casual-early-sheet]')->click();
+        BrowserWait::until($page, '() => [...document.querySelectorAll("[data-test=open-submit]")].some((el) => el.checkVisibility())', 5000);
+
+        if ($width === 390) {
+            // The bar reads the page again on the style change: it shows "Lobby teilen" in the secondary style (150 ms colour transition done).
+            BrowserWait::until($page, '() => document.querySelector("[data-test=room-bar-primary]")?.classList.contains("rv-b2") === true && getComputedStyle(document.querySelector("[data-test=room-bar-primary]")).backgroundColor !== "rgb(247, 147, 26)"', 3000);
+        }
+
+        $after = $page->evaluate($orange);
+        $bar = $page->evaluate($barProbe);
+        $measured[$width] = compact('before', 'after', 'bar');
+        roomStepsShot($page, "room-early-sheet-{$width}");
+
+        if ($width === 390) {
+            // The sheet's own primary is the page's; the bar's "Lobby teilen" is still there and still presses, as a secondary.
+            expect($after)->toBe(['open-submit:Ergebnis senden'], '390: exactly one orange button, the page\'s')
+                ->and($bar)->toBe(['label' => 'Lobby teilen', 'orange' => false, 'hit' => true]);
+        } else {
+            expect($bar)->toBeNull('1440: no phone bar')
+                ->and($after)->toContain('open-submit:Ergebnis senden');
+        }
+
+        roomStepsQuiet($page, "early sheet {$width}");
+    }
+
+    fwrite(STDERR, "\nROOM-EARLY ".json_encode($measured, JSON_UNESCAPED_UNICODE)."\n");
+});
+
 test('the header chip shows the step\'s deadline, red with a countdown in its last 15 minutes, without pushing the header past its row', function () {
     $admin = roomStepsAdmin();
     $checkIn = roomStepsStates()['1b check-in'][0]($admin);

@@ -1541,7 +1541,7 @@ new #[Title('Match room')] #[Layout('layouts::app', ['section' => 'matches', 'sc
                 <button type="button" x-on:click="chat()" x-bind:class="primary || secondary ? 'shrink-0' : 'grow'" class="rv-b2 h-[52px] px-4" data-chat data-test="room-bar-chat"><x-icon name="chat" :size="16" />{{ __('Chat') }}</button>
             @endif
             <button type="button" x-show="secondary" x-on:click="press('secondary')" x-bind:disabled="secondaryDisabled" class="rv-b2 h-[52px] min-w-0 grow basis-0 px-3" data-test="room-bar-secondary"><span class="truncate" x-text="secondary"></span></button>
-            <button type="button" x-show="primary" x-on:click="press('primary')" x-bind:disabled="primaryDisabled" class="rv-b h-[52px] min-w-0 grow basis-0 px-3" data-test="room-bar-primary"><span class="truncate" x-text="primary"></span></button>
+            <button type="button" x-show="primary" x-on:click="press('primary')" x-bind:disabled="primaryDisabled" x-bind:class="primaryDemoted ? 'rv-b2' : 'rv-b'" class="h-[52px] min-w-0 grow basis-0 px-3" data-test="room-bar-primary"><span class="truncate" x-text="primary"></span></button>
         </div>
     @endif
 
