@@ -55,7 +55,7 @@ use Illuminate\Support\Facades\Route;
  * as short sentences), `table` (head and rows) and `links` (label and URL
  * into the pages where the rule applies).
  *
- * @phpstan-type Section array{id: string, title: string, game?: string, lead: string, facts?: list<array{0: string, 1: string}>, items?: list<string>, table?: array{head: list<string>, rows: list<list<string>>, covers?: list<string>}, links?: list<array{0: string, 1: string}>}
+ * @phpstan-type Section array{id: string, title: string, nav?: string, game?: string, lead: string, facts?: list<array{0: string, 1: string}>, items?: list<string>, table?: array{head: list<string>, rows: list<list<string>>, covers?: list<string>}, links?: list<array{0: string, 1: string}>}
  */
 final class RulesPage
 {
@@ -697,9 +697,14 @@ final class RulesPage
             return [];
         }
 
+        // The sidebar's label is the game's short name ("AoE2", as on the mempool cube), not "Age of Empires II: Definitive
+        // Edition": 224 px hold it on one line, whole, and "…II-Turniere" no longer wraps at its hyphen.
+        $nav = GameNames::cube($slug);
+
         $sections = [[
             'id' => $slug,
             'title' => GameNames::game($slug),
+            'nav' => $nav,
             'lead' => __('The league\'s defaults for every Age of Empires II lobby, casual 1v1 and clan series. The host sets them when creating the lobby.'),
             'facts' => LobbyRules::facts($slug),
             'items' => LobbyRules::items($slug),
@@ -712,6 +717,7 @@ final class RulesPage
             $sections[] = [
                 'id' => $slug.'-tournaments',
                 'title' => __(':game tournaments', ['game' => GameNames::game($slug)]),
+                'nav' => __(':game tournaments', ['game' => $nav]),
                 'lead' => __('Every :game tournament and cup is one lobby match. The league sets each lobby at the draw; its settings follow its players.', ['game' => GameNames::game($slug)]),
                 'facts' => [
                     [__('Players per lobby'), __(':min to :max', ['min' => min(Lobbies::minEntries($slug), Lobbies::maxPlayers($slug)), 'max' => Lobbies::maxPlayers($slug)])],

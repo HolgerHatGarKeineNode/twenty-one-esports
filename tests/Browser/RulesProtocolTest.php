@@ -1,7 +1,9 @@
 <?php
 
+use App\Models\Admin;
 use App\Models\User;
 use App\Support\Nostr\NostrKeys;
+use App\Support\Pages\RulesPage;
 use Illuminate\Support\Facades\File;
 use Illuminate\Support\Facades\Http;
 use Pest\Browser\Playwright\Page;
@@ -151,5 +153,63 @@ test('the open protocol: kinds, keys with their npub, relays and the nak command
     foreach ([$wide, $narrow] as $page) {
         expect($page->evaluate('() => window.__errors'))->toBe([])
             ->and($page->evaluate(BrowserConsole::BAD_RESPONSES))->toBe([]);
+    }
+});
+
+/**
+ * Every doc label of the page, measured as the reader sees it: nothing clipped by scroll size, an ellipsis or a line
+ * clamp, and no word broken across lines (each word is one line box).
+ *
+ * @return list<array<string, mixed>>
+ */
+function docLabels(Page $page, string $selector): array
+{
+    return $page->evaluate('() => [...document.querySelectorAll('.json_encode($selector).')].filter((el) => el.checkVisibility()).map((el) => {
+        const style = getComputedStyle(el);
+        const walker = document.createTreeWalker(el, NodeFilter.SHOW_TEXT);
+        const broken = [];
+        for (let node = walker.nextNode(); node; node = walker.nextNode()) {
+            for (const m of node.data.matchAll(/\S+/g)) {
+                const range = document.createRange();
+                range.setStart(node, m.index);
+                range.setEnd(node, m.index + m[0].length);
+                if (new Set([...range.getClientRects()].map((r) => Math.round(r.top))).size > 1) broken.push(m[0]);
+            }
+        }
+        const r = el.getBoundingClientRect();
+        const all = document.createRange();
+        all.selectNodeContents(el);
+        return {
+            text: el.innerText.trim().replace(/\s+/g, " "),
+            ellipsis: style.textOverflow === "ellipsis" || [...el.querySelectorAll("*")].some((c) => getComputedStyle(c).textOverflow === "ellipsis"),
+            clippedX: el.scrollWidth > Math.ceil(r.width) + 1,
+            clippedY: el.scrollHeight > Math.ceil(r.height) + 1,
+            clamped: style.webkitLineClamp !== "none",
+            broken,
+            lines: new Set([...all.getClientRects()].map((r) => Math.round(r.top))).size,
+        };
+    })');
+}
+
+test('the docs labels on /rules stand whole as an admin in German: the sidebar at 1440, the accordion headings at 390, no ellipsis and no word broken', function () {
+    $admin = User::factory()->create(['locale' => 'de']);
+    Admin::query()->create(['pubkey' => $admin->pubkey]);
+    app()->setLocale('de');
+    $sections = RulesPage::sections();
+    // The sidebar may carry a shorter label than the heading ("AoE2", not "Age of Empires II: Definitive Edition"); both are whole.
+    foreach ([[1440, 900, '[data-test=doc-nav] a', 'nav'], [390, 844, '[data-test=doc-toggle] > span', 'title']] as [$width, $height, $selector, $key]) {
+        $expected = array_map(fn (array $section): string => $section[$key] ?? $section['title'], $sections);
+        $page = docPage('/rules', $width, $height, $admin);
+        docControl($page);
+        $labels = docLabels($page, $selector);
+        docShot($page, "rules-labels-{$width}", false);
+        fwrite(STDERR, "\nDOC-LABELS {$width} max lines ".max(array_column($labels, 'lines')).' '.json_encode(array_column(array_filter($labels, fn (array $l): bool => $l['lines'] > 1), 'text'), JSON_UNESCAPED_UNICODE)."\n");
+
+        expect(array_column($labels, 'text'))->toBe($expected, "{$width}: every label whole, in section order")
+            ->and(array_filter($labels, fn (array $l): bool => $l['ellipsis'] || $l['clippedX'] || $l['clippedY'] || $l['clamped']))->toBe([], "{$width}: no label cut")
+            ->and(array_column($labels, 'broken'))->each->toBe([], "{$width}: no word broken mid-word")
+            ->and($page->evaluate('() => document.documentElement.scrollWidth - document.documentElement.clientWidth'))->toBe(0);
+        expect($page->evaluate('() => window.__errors'))->toBe([], "{$width}: console")
+            ->and($page->evaluate(BrowserConsole::BAD_RESPONSES))->toBe([], "{$width}: responses");
     }
 });

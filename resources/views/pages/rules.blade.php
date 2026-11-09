@@ -22,7 +22,7 @@
             </span>
         </header>
 
-        <x-doc-page :sections="array_map(fn ($s) => [$s['id'], $s['title']], $sections)" :nav-label="__('Rules sections')">
+        <x-doc-page :sections="array_map(fn ($s) => [$s['id'], $s['title'], $s['nav'] ?? $s['title']], $sections)" :nav-label="__('Rules sections')">
             @foreach ($sections as $section)
                 <x-doc-section :id="$section['id']" :title="$section['title']">
                     @isset($section['game'])<x-game-credit :game="$section['game']" class="-mt-2" />@endisset
