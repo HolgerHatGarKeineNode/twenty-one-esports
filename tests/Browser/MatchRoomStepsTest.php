@@ -329,8 +329,12 @@ test('one orange primary per screen once the result sheet is opened early under 
             expect($after)->toBe(['open-submit:Ergebnis senden'], '390: exactly one orange button, the page\'s')
                 ->and($bar)->toBe(['label' => 'Lobby teilen', 'orange' => false, 'hit' => true]);
         } else {
+            // R12 from lg too: the lobby card's "Lobby teilen" stays on screen and pressable, in the secondary look.
+            $share = $page->evaluate('() => { const b = document.querySelector("[data-test=room-main] [data-test=casual-share]"); if (!b || !b.checkVisibility()) return null; const r = b.getBoundingClientRect(); return { orange: getComputedStyle(b).backgroundColor === "rgb(247, 147, 26)", hit: b.contains(document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2)) }; }');
             expect($bar)->toBeNull('1440: no phone bar')
-                ->and($after)->toContain('open-submit:Ergebnis senden');
+                ->and($before)->toBe(['casual-share:Lobby teilen'], '1440 before: the step\'s primary is orange')
+                ->and($after)->toBe(['open-submit:Ergebnis senden'], '1440: exactly one orange button, the sheet\'s')
+                ->and($share)->toBe(['orange' => false, 'hit' => true]);
         }
 
         roomStepsQuiet($page, "early sheet {$width}");

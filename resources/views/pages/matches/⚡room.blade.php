@@ -964,7 +964,7 @@ new #[Title('Match room')] #[Layout('layouts::app', ['section' => 'matches', 'sc
     --}}
     <div class="grid grid-cols-1 gap-4 lg:grid-cols-[minmax(0,1fr)_400px] lg:grid-rows-[auto_1fr] lg:gap-5">
     <div class="flex min-w-0 flex-col gap-4 lg:col-start-1 lg:row-start-1 lg:gap-5" data-test="room-main" data-view="{{ $view }}"
-         x-data="{ fix: false, early: false }" x-on:room-fix.window="fix = true">
+         x-data="{ fix: false, early: false }" x-bind:class="{ 'is-early': early }" x-on:room-fix.window="fix = true">
         {{-- The result, once there is one, is where it stands: right under the head. Win moment (Overlays.dc.html "Win, once the other captain accepts") --}}
         @if ($m->status->hasResult())
             @php($won = $m->winner === $mySide)
