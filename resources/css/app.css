@@ -2429,6 +2429,16 @@
         padding-bottom: var(--tabbar-h);
     }
 
+    /* A game page's floor bar (x-game.page, GamePhone.dc.html, 72 px): the page, footer included, ends above it, and a
+       field scrolled into view stays clear of it (plan "Canvas and live alignment", P4). */
+    :root:has([data-test="game-play-bar"]) {
+        --save-bar-h: 4.5rem;
+    }
+
+    :root:has([data-test="game-play-bar"]) body {
+        padding-bottom: calc(var(--tabbar-h) + 4.5rem);
+    }
+
     [data-page-bar] {
         translate: 0 calc(-1 * var(--tabbar-h));
     }

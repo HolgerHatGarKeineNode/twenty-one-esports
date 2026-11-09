@@ -39,7 +39,7 @@
 
             {{-- The game against a bot: the five of the cast, the easiest first, the picked one named in the row. --}}
             <form id="pong-play-form" method="get" action="{{ route('pong.bot') }}" target="_blank" aria-labelledby="pong-bot-h"
-                  class="gp-mode md:!grid-cols-[minmax(0,1fr)_auto_auto]" x-data="{ bot: @js($firstBot['id']) }" data-test="pong-play-form">
+                  class="gp-mode max-md:grid-cols-1 md:!grid-cols-[minmax(0,1fr)_auto_auto]" x-data="{ bot: @js($firstBot['id']) }" data-test="pong-play-form">
                 <span class="gp-mode-l">
                     <b id="pong-bot-h">{{ __('Vs bot') }}</b>
                     @foreach ($bots as $bot)
@@ -55,7 +55,7 @@
                         </label>
                     @endforeach
                 </fieldset>
-                <button type="submit" class="gp-mode-a rv-b2" title="{{ auth()->check() ? __('Opens in a new tab, full-screen.') : __('You log in first, then the game opens in a new tab.') }}" data-test="pong-play-bot">{{ __('Play vs bot') }}</button>
+                <button type="submit" class="gp-mode-a rv-b2 max-md:col-auto max-md:row-auto max-md:justify-self-start" title="{{ auth()->check() ? __('Opens in a new tab, full-screen.') : __('You log in first, then the game opens in a new tab.') }}" data-test="pong-play-bot">{{ __('Play vs bot') }}</button>
             </form>
 
             @unless ($liveFirst)

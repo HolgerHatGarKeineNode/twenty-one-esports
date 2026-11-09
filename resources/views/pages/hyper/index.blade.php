@@ -15,7 +15,7 @@
     $chip = 'flex min-h-11 cursor-pointer items-center justify-center gap-2 rounded-md bg-well font-bold text-ink-2 shadow-ring has-[:checked]:bg-btc-chip has-[:checked]:text-ink has-[:checked]:shadow-[inset_0_0_0_1px_var(--color-btc)] has-[:focus-visible]:outline-2 has-[:focus-visible]:outline-btc';
 @endphp
 <x-layouts::app :title="'Hyperbitcoinization'" :scripts="['resources/js/gameChannel.js']">
-    <x-game.page :game="\App\Games\Hyperbitcoinization::SLUG" :mode="__('Live')" :sticky-rail="false" data-test="hyper-index"
+    <x-game.page :game="\App\Games\Hyperbitcoinization::SLUG" :mode="__('Live')" :play-label="$viewer !== null ? __('Play') : __('Log in to play')" :sticky-rail="false" data-test="hyper-index"
                  :lede="implode(' · ', [__('2 to 6 players'), __('10 currency spaces'), __('Topple central banks'), __(':seconds s per turn', ['seconds' => (int) config('esports.hyper.turn_seconds', 90)])])">
         <x-slot:primary>
             @if ($viewer !== null)

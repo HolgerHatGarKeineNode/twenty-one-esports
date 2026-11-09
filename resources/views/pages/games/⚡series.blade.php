@@ -379,7 +379,7 @@ new #[Layout('layouts::app', ['section' => 'matches', 'scripts' => ['resources/j
     viewer's next step, the next tournament, matches, the casual 1v1, the ladder, clans; the chat in the right column,
     invite and follows in the secondary slot.
 --}}
-<x-game.page :game="$slug" data-test="game-page">
+<x-game.page :game="$slug" :play-label="$ctaLabel" data-test="game-page">
     <x-slot:primary>
         {{-- In the sticky bar on a phone too: there the short word, so the tabs keep their room at 320 px. --}}
         <a href="{{ $ctaHref }}" class="rv-b" data-test="game-cta" data-action="{{ $ctaAction }}"><span class="md:hidden">{{ match ($ctaAction) { 'login' => __('Log in'), 'match' => __('Open match'), 'casual' => __('Find opponent'), default => __('Challenge') } }}</span><span class="max-md:hidden">{{ $ctaAction === 'challenge' ? __('Challenge') : $ctaLabel }}</span></a>
@@ -539,28 +539,21 @@ new #[Layout('layouts::app', ['section' => 'matches', 'scripts' => ['resources/j
                 @if ($ladder === null)
                     <p class="m-0 rounded-[4px] bg-card px-4 py-3 text-[13px] leading-normal text-ink-2 shadow-ring" data-test="game-ladder-empty">{{ __('No results yet: the ladder fills with the first finished series.') }}</p>
                 @else
-                    <ol class="m-0 grid list-none grid-cols-1 rounded-[4px] bg-card px-4 py-1 sm:grid-cols-5 sm:gap-3 sm:bg-transparent sm:px-0 sm:py-0">
-                        @foreach ($ladder['rows'] as $row)
-                            @php
-                                $isPlayer = $row->user_id !== null;
-                                $clan = $isPlayer ? $row->user?->clanMember?->clan : $row->lineup?->clan;
-                                $name = $isPlayer ? ($row->user?->displayName() ?? __('Deleted account')) : ($clan?->name ?? __('Deleted lineup'));
-                                $href = $isPlayer ? ($row->user ? route('players.show', $row->user->npub) : null) : ($clan ? route('clans.show', $clan) : null);
-                            @endphp
-                            <li wire:key="gl-{{ $row->id }}" class="min-w-0" data-test="game-ladder-row">
-                                <a @if ($href) href="{{ $href }}" @endif @class(['flex min-h-12 items-center gap-3 border-b border-hairline text-[13px] text-ink hover:text-ink sm:h-full sm:flex-col sm:gap-2 sm:rounded-lg sm:border-0 sm:bg-card sm:px-2 sm:py-4 sm:text-center sm:shadow-ring sm:hover:bg-row-hover', 'sm:shadow-ring-btc' => $loop->first])>
-                                    <b @class(['w-5 shrink-0 text-right font-display text-sm sm:w-auto sm:text-base', 'text-btc' => $loop->first, 'text-ink-2' => ! $loop->first])>{{ $loop->iteration }}</b>
-                                    @if ($isPlayer && $row->user)
-                                        <x-avatar :user="$row->user" :size="56" class="size-8! rounded-md sm:size-14!" />
-                                    @else
-                                        <x-clan-tag :clan="$clan" :tile="56" class="flex size-8 shrink-0 items-center justify-center rounded-md bg-btc-tint text-[10px] font-bold text-btc sm:size-14 sm:text-xs" />
-                                    @endif
-                                    <span class="min-w-0 grow truncate sm:w-full sm:grow-0">{{ $name }}</span>
-                                    <b class="shrink-0 font-display text-[15px] tabular-nums sm:text-lg" data-test="game-ladder-rating">{{ \App\Support\Formats::number($row->rating) }}</b>
-                                </a>
-                            </li>
-                        @endforeach
-                    </ol>
+                    {{-- The T5 table (GameSeries.dc.html "1v1-Ladder": rank, player, Elo, record), as on every ladder; the
+                         row of five podium cards it replaces read differently from every other ladder (P4, comparison GameSeries). --}}
+                    @php($draws = app(\App\Games\GameRegistry::class)->mode($slug, $ladder['mode'])?->allowsDraws ?? false)
+                    <div class="overflow-hidden rounded-[4px] bg-card shadow-ring">
+                        <x-ladder.table row-test="game-ladder-row" :value-label="$ladder['pool'] === 'rated' ? __('Elo') : __('Casual Elo')"
+                                        :rows="$ladder['rows']->values()->map(fn ($row, $index): array => [
+                                            'rank' => $index + 1,
+                                            'user' => $row->user_id !== null ? $row->user : null,
+                                            'clan' => $row->user_id === null ? $row->lineup?->clan : null,
+                                            'lineup' => $row->user_id === null,
+                                            'value' => (int) $row->rating,
+                                            'record' => $draws ? __(':w W, :d D, :l L', ['w' => $row->wins, 'd' => $row->draws, 'l' => $row->losses]) : __(':w W, :l L', ['w' => $row->wins, 'l' => $row->losses]),
+                                            'key' => 'gl-'.$row->id,
+                                        ])->all()" />
+                    </div>
                 @endif
             </section>
 

@@ -152,7 +152,7 @@ new #[Layout('layouts::app', ['section' => 'tournaments', 'scripts' => ['resourc
 @endphp
 {{-- The lobby template T1 (x-game.page; GameScore.dc.html for Blockfill): game bar, hero, Spielarten, this week's board, the leaderboards and the points ladder; the chat on the right. --}}
 {{-- Blockfill's play field is its own page (stacker.play, the "Spielen" tab); this page is its leaderboard tab. --}}
-<x-game.page :game="$this->game" :active="$blockfill ? 'leaderboard' : 'play'" data-test="score-game" :mode="$blockfill && $week !== null ? __('Week :week', ['week' => (int) $week->starts_at->copy()->timezone(\App\Support\Stacker\BlockfillWeeks::TIMEZONE)->format('W')]) : null"
+<x-game.page :game="$this->game" :play-label="$blockfill ? __('Start a ranked run') : null" :active="$blockfill ? 'leaderboard' : 'play'" data-test="score-game" :mode="$blockfill && $week !== null ? __('Week :week', ['week' => (int) $week->starts_at->copy()->timezone(\App\Support\Stacker\BlockfillWeeks::TIMEZONE)->format('W')]) : null"
              :lede="__('Everyone plays alone, as often as they like, for the best value on the course inside the window. No lobby, no opponent to wait for. Each leaderboard\'s places score points on the ladder below.')">
     @if ($blockfill)
         <x-slot:primary>
@@ -246,7 +246,8 @@ new #[Layout('layouts::app', ['section' => 'tournaments', 'scripts' => ['resourc
                 <x-button :href="route('tournaments.index')" variant="secondary">{{ __('All tournaments') }}</x-button>
             </x-empty-state>
         @else
-            <ul class="m-0 grid list-none grid-cols-1 gap-3 p-0 md:grid-cols-2 xl:grid-cols-3">
+            {{-- auto-fit: one or two leaderboards fill the row instead of standing in a third of it (P4, R1). --}}
+            <ul class="m-0 grid list-none grid-cols-[repeat(auto-fit,minmax(240px,1fr))] gap-3 p-0">
                 @foreach ($this->leaderboards as $tournament)
                     @php($window = ScoreWindow::of($tournament))
                     <li wire:key="board-{{ $tournament->id }}" data-test="score-board-card">
@@ -297,11 +298,18 @@ new #[Layout('layouts::app', ['section' => 'tournaments', 'scripts' => ['resourc
                 <li class="inline-flex h-7 items-center px-1 text-xs text-ink-3">{{ __('then 0') }}</li>
             </ol>
         </div>
-        <div class="grid grid-cols-1 gap-3 lg:grid-cols-2">
+        {{-- One mode (Blockfill's "Blöcke der Woche", GameScore.dc.html): its card spans the main column and its places run
+             in two columns, 1 to 10 on the left; with more modes one card per column. Either way no half of the column
+             stays empty (plan "Canvas and live alignment", P4, comparison GameScore, R1). --}}
+        @php($single = count($score->modes()) === 1)
+        <div @class(['grid grid-cols-1 gap-3', 'lg:grid-cols-2' => ! $single])>
             @foreach ($score->modes() as $mode)
+                @php($entries = $this->ladders[$mode->slug])
+                @php($split = $single && count($entries) > 1)
                 <div class="flex flex-col gap-2 rounded-[4px] bg-card px-2 py-4 lg:px-5" wire:key="ladder-{{ $mode->slug }}" data-test="score-points-{{ $mode->slug }}">
                     <h3 class="m-0 px-2 text-[15px] font-bold lg:px-0">{{ __($mode->name) }}</h3>
-                    @forelse ($this->ladders[$mode->slug] as $index => $entry)
+                    <div @class(['grid grid-cols-1', 'lg:grid-flow-col lg:grid-cols-2 lg:grid-rows-[repeat(var(--rows),auto)] lg:gap-x-8' => $split]) @if ($split) style="--rows: {{ (int) ceil(count($entries) / 2) }}" @endif>
+                    @forelse ($entries as $index => $entry)
                         <div class="grid min-h-11 grid-cols-[32px_minmax(0,1fr)_64px] items-center gap-3 border-b border-hairline px-2 text-[13px] last:border-b-0" data-test="score-points-row">
                             <span class="font-display font-bold text-ink-2 tabular-nums">{{ $index + 1 }}</span>
                             <span class="flex min-w-0 items-center gap-2">
@@ -313,10 +321,40 @@ new #[Layout('layouts::app', ['section' => 'tournaments', 'scripts' => ['resourc
                     @empty
                         <p class="m-0 px-2 py-3 text-[13px] text-ink-2 lg:px-0">{{ __('No finished leaderboard yet.') }}</p>
                     @endforelse
+                    </div>
                 </div>
             @endforeach
         </div>
     </section>
+
+    {{-- The foot of every game page (GameScore.dc.html "Nächstes Turnier" | the secondary line, R7): the running or next
+         leaderboard of this game, and the weekly dates behind the closed secondary line (P4, comparison GameScore). --}}
+    @php($nextBoard = $this->leaderboards->first(fn (Tournament $tournament): bool => $tournament->status !== TournamentStatus::Finished))
+    <x-slot:next>
+        @if ($nextBoard !== null)
+            {{-- One row (GameScore.dc.html): the leaderboard's cover, its name and state; a running week has no start to count down to. --}}
+            <section aria-labelledby="score-next-h" class="flex flex-col gap-3" data-test="score-next">
+                <h2 id="score-next-h" class="gp-h">{{ __('Next tournament') }}</h2>
+                <a href="{{ $blockfill ? route('tournaments.scores', $nextBoard) : route('tournaments.show', $nextBoard) }}" class="flex min-h-11 items-center gap-3 rounded-[4px] bg-card p-3 text-ink shadow-ring hover:text-ink hover:shadow-[inset_0_0_0_1px_var(--color-btc)]">
+                    <x-game-cover :game="$this->game" size="thumb" class="w-14 shrink-0 rounded-xs" />
+                    <span class="flex min-w-0 grow flex-col gap-0.5">
+                        <b class="text-[13px] [overflow-wrap:anywhere]">{{ BlockfillWeeks::title($nextBoard) }}</b>
+                        <span class="text-xs text-ink-2">{{ $statusLabel($nextBoard) }}</span>
+                    </span>
+                    @if ($nextBoard->status === TournamentStatus::Running)
+                        <span class="rv-tag shrink-0 text-win">{{ __('Running') }}</span>
+                    @endif
+                </a>
+            </section>
+        @else
+            <x-tournaments.next-empty :game="$this->game" heading-id="score-next-h" />
+        @endif
+    </x-slot:next>
+    <x-slot:secondary>
+        <x-game.secondary :label="__('Weekly events')">
+            <x-weekly-events :events="app(App\Support\Engagement\WeeklySlots::class)->upcoming(4)" heading-id="score-weekly-h" />
+        </x-game.secondary>
+    </x-slot:secondary>
     @if ($chatRail)
         <x-slot:chat>
             {{-- The game's chat (every game has one, 2026-10-03): the right column, sticky (rule R6). --}}

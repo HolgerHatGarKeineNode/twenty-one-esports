@@ -52,9 +52,9 @@ beforeEach(function () {
     });
 });
 
-/** Top of the fixed chrome at the bottom: the tab bar, and the dock's bar over it (below lg); else the window. */
+/** Top of the fixed chrome at the bottom: the tab bar, the dock's bar and the page's play bar over it (below lg); else the window. */
 const LOBBY_FLOOR = <<<'JS'
-    () => Math.round(Math.min(innerHeight, ...['[data-test=tab-bar]', '[data-test=dock-mobile-bar]']
+    () => Math.round(Math.min(innerHeight, ...['[data-test=tab-bar]', '[data-test=dock-mobile-bar]', '[data-test=game-play-bar]']
         .map((s) => document.querySelector(s)).filter((el) => el && el.checkVisibility()).map((el) => el.getBoundingClientRect().top)))
     JS;
 
@@ -144,12 +144,26 @@ test('every way to play is in the first viewport, and each tile does its job at 
         $page = lobbyPage($player, route('chess.lobby', absolute: false), $width, $height);
         BrowserWait::until($page, '() => document.querySelectorAll("[data-test=online-player]").length === 2', 10_000);
 
-        // The tile row and each tile: in the first viewport, above the chrome at the bottom.
-        lobbyAboveFloor($page, '[data-test=play-grid]', "grid {$width}");
+        // The tile row and each tile: in the first viewport, above the chrome at the bottom. On a phone the play bar
+        // (GamePhone.dc.html, plan "Canvas and live alignment", P4) holds Rapid and the chat in the first screen (R3:
+        // primary action and chat without scrolling) and the tiles start there; a tile below the bar is one scroll away
+        // and takes its tap once scrolled to.
+        if ($width < 1024) {
+            lobbyAboveFloor($page, '[data-test=play-rapid]', "play-rapid {$width}");
+            $bar = $page->evaluate(LOBBY_HIT, '[data-test=game-play-bar-play]');
+            expect($bar['hit'])->toBeTrue("play bar {$width}: covered by {$bar['over']}")
+                ->and($bar['bottom'])->toBeLessThanOrEqual($page->evaluate('() => Math.round(document.querySelector("[data-test=tab-bar]").getBoundingClientRect().top)'));
+        } else {
+            lobbyAboveFloor($page, '[data-test=play-grid]', "grid {$width}");
+        }
         // Tournaments are the game bar's tab and the next tournament under the ladder (template T1), no longer a tile.
         foreach (['play-rapid', 'play-blitz', 'play-daily', 'play-challenge', 'play-invite'] as $tile) {
+            if ($width < 1024) {
+                $page->evaluate("() => document.querySelector('[data-test={$tile}]').scrollIntoView({ block: 'center' })");
+            }
             lobbyAboveFloor($page, "[data-test={$tile}]", "{$tile} {$width}");
         }
+        $page->evaluate('() => scrollTo(0, 0)');
         // The Team match teaser (not playable yet) shows only in the wide grid: a fourth row of tiles pushed "Find opponent" under the tab bar.
         if ($width >= 1024) {
             lobbyAboveFloor($page, '[data-test=play-team]', "play-team {$width}");
@@ -213,9 +227,11 @@ test('every way to play is in the first viewport, and each tile does its job at 
         }
     }
 
-    // A guest: the same tiles, in their logged-out state, still in the first viewport.
+    // A guest: the same tiles, in their logged-out state; Rapid in the first viewport, the play bar's action above the
+    // tab bar (P4, as for the player above).
     $page = lobbyPage(null, route('chess.lobby', ['lang' => 'en'], false), 375, 667);
-    lobbyAboveFloor($page, '[data-test=play-grid]', 'guest grid 375');
+    lobbyAboveFloor($page, '[data-test=play-rapid]', 'guest rapid 375');
+    expect($page->evaluate(LOBBY_HIT, '[data-test=game-play-bar-play]')['hit'])->toBeTrue('guest play bar 375');
     ChessLobby::openBlitz($page);
     expect($page->evaluate('() => document.querySelector("[data-test=find-opponent-login]").getAttribute("href")'))->toEndWith('/login');
     lobbyShot($page, 'lobby-guest-375');

@@ -5,7 +5,8 @@
     order fixed): rank (the top three with a medal edge), player, the ladder's value, the record. Used by every
     ladder page (x-ladder.page) and by the "Ladder" block of every lobby (template T1), so a ladder reads the same
     everywhere. Each row: ['rank' => int, 'user' => ?User, 'value' => string|int, 'record' => ?string,
-    'me' => bool, 'mark' => ?string (a short tag after the name, e.g. provisional), 'key' => string|int].
+    'me' => bool, 'mark' => ?string (a short tag after the name, e.g. provisional), 'key' => string|int]; a lineup's row
+    carries 'clan' => ?Clan and 'lineup' => true instead of a user.
     `recordLabel` false drops the record column.
 --}}
 @php
@@ -41,8 +42,14 @@
                             @if ($me)<span class="rv-m">({{ __('you') }})</span>@endif
                             @if ($row['mark'] ?? null)<span class="rv-tag">{{ $row['mark'] }}</span>@endif
                         </x-player-link>
+                    @elseif (($row['clan'] ?? null) !== null)
+                        {{-- A lineup's row (the series ladders of team modes): the clan stands where a player would. --}}
+                        <a href="{{ route('clans.show', $row['clan']) }}" class="-my-1.5 flex min-h-11 min-w-0 items-center gap-2 text-ink hover:text-ink">
+                            <x-clan-tag :clan="$row['clan']" compact />
+                            <b class="truncate">{{ $row['clan']->name }}</b>
+                        </a>
                     @else
-                        <span class="text-ink-3">{{ __('Deleted account') }}</span>
+                        <span class="text-ink-3">{{ ($row['lineup'] ?? false) ? __('Deleted lineup') : __('Deleted account') }}</span>
                     @endif
                 </td>
                 <td class="is-r whitespace-nowrap"><b class="font-display text-lg tabular-nums">{{ $format($row['value']) }}</b></td>

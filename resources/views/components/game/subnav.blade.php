@@ -1,4 +1,4 @@
-@props(['game', 'active' => 'play', 'mode' => null])
+@props(['game', 'active' => 'play', 'mode' => null, 'phoneBar' => false])
 
 {{--
     The game bar of every game page (rule R5, GameLobby.dc.html `.sn`): the game's thumbnail and name, its fixed tabs
@@ -31,9 +31,9 @@
         @endforeach
     </div>
     @if ($slot->isNotEmpty() || $mode)
-        {{-- The page's one primary action stays in the sticky bar on a phone too (R3: in the first screen, whatever the
-             page scrolled); GamePhone.dc.html puts it beside a chat handle at the bottom (T12, not built yet). --}}
-        <div class="gs-act">
+        {{-- The page's one primary action. On a phone (`phoneBar`) it moves to x-game.page's bar on the floor beside the
+             chat (GamePhone.dc.html, plan "Canvas and live alignment", P4): here it cut the tabs off at "T…". --}}
+        <div @class(["gs-act", "max-lg:hidden" => $phoneBar])>
             {{ $slot }}
             @if ($mode)
                 <span class="text-[13px] text-ink-3 max-md:hidden" data-test="game-subnav-mode">{{ $mode }}</span>

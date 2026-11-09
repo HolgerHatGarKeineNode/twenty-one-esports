@@ -637,7 +637,7 @@ new #[Layout('layouts::app', ['section' => 'chess', 'realtime' => true, 'scripts
 
 {{-- The lobby template T1 (x-game.page, GameLobby.dc.html "Schach-Lobby"): game bar, hero, Spielarten, your games, live, ladder, next tournament | secondary slot; the chat in the right column. --}}
 <div class="flex grow flex-col" x-data="chessLobby(@js(['userId' => $user?->id, 'poll' => max(30, (int) config('esports.chess.lobby_poll_seconds')), 'liveMode' => ChessModes::DEFAULT]))" data-server-now="{{ (int) now()->getTimestampMs() }}" data-looking="{{ $user?->looking_to_play === 'chess/blitz' ? 'true' : 'false' }}">
-    <x-game.page game="chess" :mode="ChessModes::short(ChessModes::DEFAULT)"
+    <x-game.page game="chess" :mode="ChessModes::short(ChessModes::DEFAULT)" :play-label="__('Play: find :mode', ['mode' => ChessModes::short(ChessModes::DEFAULT)])"
                  :lede="__(':modes. :season', ['modes' => implode(', ', [ChessModes::short('rapid'), ChessModes::label('blitz'), __('Daily chess')]), 'season' => \App\Support\SeasonChain\Seasons::live() === null ? __('Rated from Block 0, casual until then.') : __(':season is live', ['season' => \App\Support\Badges\BadgeCopy::season(\App\Support\SeasonChain\Seasons::live()->slug)])])"
                  :stat="$this->dailyRunning" :stat-label="trans_choice('daily game running|daily games running', $this->dailyRunning)" :stat-live="$this->dailyRunning > 0">
         <x-slot:primary>

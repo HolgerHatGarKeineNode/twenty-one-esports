@@ -1,4 +1,4 @@
-@props(['game', 'active' => 'play', 'mode' => null, 'template' => 'T1', 'title' => null, 'lede' => null, 'stat' => null, 'statLabel' => null, 'statLive' => false, 'stickyRail' => true])
+@props(['game', 'active' => 'play', 'mode' => null, 'template' => 'T1', 'title' => null, 'lede' => null, 'stat' => null, 'statLabel' => null, 'statLive' => false, 'stickyRail' => true, 'playLabel' => null])
 
 {{--
     The one lobby template of every game (template T1, rules R1, R5, R6, R7; GameLobby.dc.html, HyperIndex.dc.html,
@@ -21,15 +21,21 @@
     asked for it (2026-10-03, "weiter oben"), not at the end of a long page. Without `lead` the chat closes the page.
 
     `template`: T1 for a lobby; a game page of another kind keeps the same frame and names itself.
+
+    Phone (below lg, GamePhone.dc.html): the `primary` action leaves the game bar, where it cut the tabs off, for a bar
+    on the floor above the tab bar: "Chat" (opens the chat, when the page has one) and `playLabel` ("Spielen: Rapid
+    suchen"), which presses the page's own primary action, so the action exists once. The bar owns the floor
+    (`data-floor-owner`, app.css) and the page ends above it (`.has-play-bar`, revamp-games.css).
 --}}
 @php
     $colour = app(\App\Games\GameRegistry::class)->find((string) $game)?->assets()->colour;
     $heroAbove = isset($heroAside) && ! isset($hero);
     $hasLead = isset($lead);
+    $playBar = isset($primary) && $primary->isNotEmpty();
 @endphp
 
-<div {{ $attributes->class('flex grow flex-col') }} style="--game: {{ $colour }}" data-template="{{ $template }}" data-game="{{ $game }}">
-    <x-game.subnav :game="$game" :active="$active" :mode="$mode">{{ $primary ?? '' }}</x-game.subnav>
+<div {{ $attributes->class(['flex grow flex-col', 'has-play-bar' => $playBar]) }} style="--game: {{ $colour }}" data-template="{{ $template }}" data-game="{{ $game }}">
+    <x-game.subnav :game="$game" :active="$active" :mode="$mode" :phone-bar="$playBar">{{ $primary ?? '' }}</x-game.subnav>
 
     <div class="gp">
         @isset($top)
@@ -70,4 +76,18 @@
             @endif
         </div>
     </div>
+
+    @if ($playBar)
+        {{-- GamePhone.dc.html: "Chat" and the page's one action on the floor above the tab bar (R3, R6). --}}
+        <div class="gp-play-bar lg:hidden" data-test="game-play-bar" data-floor-owner>
+            @isset($chat)
+                <button type="button" class="rv-b2" data-test="game-play-bar-chat"
+                        x-data x-on:click="const chat = document.querySelector('[data-test=game-chat]'); if (! chat) return; if (chat.dataset.open !== 'true') chat.querySelector('[data-test=game-chat-toggle]')?.click(); chat.scrollIntoView({ block: 'start', behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth' })">
+                    <x-icon name="chat" :size="16" />{{ __('Chat') }}
+                </button>
+            @endisset
+            <button type="button" class="rv-b grow" data-test="game-play-bar-play"
+                    x-data x-on:click="document.querySelector('[data-test=game-subnav] .gs-act')?.querySelector('a, button')?.click()">{{ $playLabel ?? __('Play') }}</button>
+        </div>
+    @endif
 </div>

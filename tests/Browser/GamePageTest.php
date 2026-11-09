@@ -123,7 +123,7 @@ test('the Rocket League page shows live, next and final series with faces and sc
     $state = $wide->evaluate('() => ({
         states: [...document.querySelectorAll("[data-test=game-match]")].map((el) => el.dataset.state),
         scores: [...document.querySelectorAll("[data-test=game-match-score]")].map((el) => el.innerText.replace(/\\s+/g, " ").trim()),
-        ladder: [...document.querySelectorAll("[data-test=game-ladder-rating]")].map((el) => el.innerText),
+        ladder: [...document.querySelectorAll("[data-test=game-ladder-row] td:nth-child(3)")].map((el) => el.innerText.trim()),
         ladderRow: [...new Set([...document.querySelectorAll("[data-test=game-ladder-row]")].map((el) => Math.round(el.getBoundingClientRect().top)))].length,
         clans: document.querySelectorAll("[data-test=game-clan]").length,
         weeks: document.querySelector("[data-test=game-weeks]") !== null,
@@ -138,8 +138,8 @@ test('the Rocket League page shows live, next and final series with faces and sc
     expect($state['states'])->toBe(['live', 'next', 'final', 'final', 'final', 'final'])
         ->and($state['scores'])->toBe(['1 : 0', 'vs', '2 : 1', '0 : 2', '0 : 2', '2 : 0'])
         ->and($state['ladder'])->toBe(['1,080', '1,057', '1,034', '1,011', '988'])
-        // The top five in one row from lg.
-        ->and($state['ladderRow'])->toBe(1)
+        // The top five as the T5 table, one row each (GameSeries.dc.html, plan "Canvas and live alignment", P4).
+        ->and($state['ladderRow'])->toBe(5)
         ->and($state['clans'])->toBe(5)
         ->and($state['weeks'])->toBeTrue()
         ->and($desk)->toMatchArray(['overflow' => 0, 'inside' => true, 'small' => [], 'clipped' => []])
@@ -202,7 +202,10 @@ const GAME_LANDING_PROBE = <<<'JS'
         const floor = Math.round(Math.min(innerHeight, ...['[data-test=tab-bar]', '[data-test=dock-mobile-bar]']
             .map((s) => document.querySelector(s)).filter((el) => el && el.checkVisibility()).map((el) => el.getBoundingClientRect().top)));
         const cta = document.querySelector('[data-test=game-cta]');
-        const r = cta.getBoundingClientRect();
+        // Below lg the action stands in the page's play bar on the floor (GamePhone.dc.html, plan "Canvas and live
+        // alignment", P4) and presses the game bar's own link, which leaves the bar there.
+        const shown = cta.checkVisibility() ? cta : document.querySelector('[data-test=game-play-bar-play]');
+        const r = shown.getBoundingClientRect();
         const hit = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2);
         const ctx = document.createElement('canvas').getContext('2d');
         const lines = [];
@@ -222,7 +225,7 @@ const GAME_LANDING_PROBE = <<<'JS'
         const top = (sel) => { const el = document.querySelector(sel); return el ? el.getBoundingClientRect().top + scrollY : null; };
         return {
             overflow: document.documentElement.scrollWidth - document.documentElement.clientWidth,
-            floor, ctaTop: Math.round(r.top), ctaBottom: Math.round(r.bottom), ctaHit: !!hit && (hit === cta || cta.contains(hit)),
+            floor, ctaTop: Math.round(r.top), ctaBottom: Math.round(r.bottom), ctaHit: !!hit && (hit === shown || shown.contains(hit)),
             action: cta.dataset.action,
             order: [top('[data-test=game-cta]'), top('[data-test=invite-module]'), top('[data-test=game-matches]')],
             small: heads.filter((el) => el.getBoundingClientRect().height < 44).map((el) => (el.dataset.test || el.innerText.trim().slice(0, 20)) + ' ' + Math.round(el.getBoundingClientRect().height)),

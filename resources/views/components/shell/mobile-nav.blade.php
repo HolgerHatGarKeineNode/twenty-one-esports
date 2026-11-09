@@ -1,4 +1,4 @@
-@props(['active', 'games' => [], 'community' => [], 'chain' => [], 'tournaments' => null, 'admin' => null, 'account' => [], 'section' => null, 'user' => null, 'onGamePage' => false])
+@props(['active', 'games' => [], 'community' => [], 'chain' => [], 'tournaments' => null, 'admin' => null, 'account' => [], 'section' => null, 'user' => null, 'onGamePage' => false, 'group' => null])
 
 {{--
     Phones and tablets (below lg), 1:1 from the design canvas (Header.dc.html "Handy", HomePhone.dc.html):
@@ -168,11 +168,12 @@
     <nav class="tabbar fixed inset-x-0 bottom-0 z-40 border-t border-hairline bg-bar pb-[env(safe-area-inset-bottom)]" aria-label="{{ __('Main navigation') }}" data-test="tab-bar" data-live-floor>
         <div class="rv-pb">
             <button type="button" class="rv-pb-item" aria-controls="game-hub" aria-haspopup="dialog"
-                    x-on:click="window.dispatchEvent(new CustomEvent('hub-toggle', { detail: $el }))" data-test="tab-games">
+                    x-on:click="window.dispatchEvent(new CustomEvent('hub-toggle', { detail: $el }))" @if ($group === 'games') aria-current="page" @endif data-test="tab-games">
                 <x-icon name="grid" :size="22" />
                 <span>{{ __('Game list') }}</span>
             </button>
-            <a href="{{ route('tournaments.index') }}" @navigate(route('tournaments.index')) class="rv-pb-item" @if ($section === 'tournaments') aria-current="page" @endif
+            {{-- The same item as the header's (ShellNavigation::group(), G4): a score game's page belongs to Spiele (GamePhone, P4). --}}
+            <a href="{{ route('tournaments.index') }}" @navigate(route('tournaments.index')) class="rv-pb-item" @if (($group ?? $section) === 'tournaments') aria-current="page" @endif
                @if ($open > 0) aria-label="{{ __('Tournaments').', '.$open.' '.trans_choice('open for sign-up|open for sign-up', $open) }}" @endif data-test="tab-tournaments">
                 <x-icon name="tournaments" :size="22" />
                 <span>{{ __('Tournaments') }}</span>

@@ -76,6 +76,18 @@
         }
     }
 
+    /* Phones (GamePhone.dc.html): the bar starts at the edge and the tabs sit closer, so a game's five tabs fit 390 px
+       once the primary action moved to the floor bar (x-game.page). Still 44 px tall targets. */
+    @media (width < 40rem) {
+        .gs-bar {
+            padding: 0 4px;
+        }
+
+        .gs-tabs .gs-tab {
+            padding: 0 8px;
+        }
+    }
+
     .gs-tab {
         display: inline-flex;
         flex: none;
@@ -245,8 +257,11 @@
        screen above the tab bar (rule R3; 375 x 667 measured by tests/Browser/ChessLobbyTest.php). */
     @media (width < 40rem) {
         .gp-hero {
-            grid-template-columns: 88px minmax(0, 1fr);
+            /* 72 px: the line beside it keeps 250 px at 390, its whole text in four lines at most (RocketLeagueStartTest). */
+            grid-template-columns: 72px minmax(0, 1fr);
             gap: 12px;
+            /* The cover beside the name, at the top (GamePhone.dc.html): centred it floated mid-card beside a tall score hero. */
+            align-items: start;
             padding: 8px;
         }
 
@@ -254,13 +269,38 @@
             display: none;
         }
 
+        /* The whole line (GamePhone.dc.html "Rapid, Blitz 5+3, Fernschach" plus the casual note): cut to one line with an
+           ellipsis it lost what the game offers (plan "Canvas and live alignment", P4). The play action no longer has
+           to stay in the first screen by the hero's height: it stands in the floor bar. */
         .gp-hero .gp-lede {
-            display: -webkit-box;
             margin-top: 4px;
-            overflow: hidden;
-            -webkit-box-orient: vertical;
-            -webkit-line-clamp: 1;
+            font-size: 12px;
         }
+    }
+
+    /* The phone's floor bar of a game page (x-game.page, GamePhone.dc.html): "Chat" and the play action on the floor
+       above the tab bar and whatever stands in the floor band; 48 px buttons, 12 px around them (72 px). */
+    .gp-play-bar {
+        position: fixed;
+        inset-inline: 0;
+        bottom: var(--floor-top);
+        z-index: 20;
+        display: flex;
+        gap: 12px;
+        padding: 12px 16px;
+        background: var(--color-bar);
+        box-shadow: 0 -1px 0 var(--color-line);
+    }
+
+    .gp-play-bar .rv-b,
+    .gp-play-bar .rv-b2 {
+        height: 48px;
+        padding: 0 12px;
+        font-size: 13px;
+    }
+
+    .gp-play-bar .rv-b {
+        min-width: 0;
     }
 
     /* The top slot (cup banner, errors, invites) leaves no gap when nothing is in it: Livewire's block comments and

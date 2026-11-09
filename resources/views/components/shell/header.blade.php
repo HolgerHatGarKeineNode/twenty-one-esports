@@ -298,4 +298,4 @@
     @endunless
 @endguest
 
-<x-shell.mobile-nav :active="$active" :games="$games" :community="$community" :chain="$chain" :tournaments="$tournaments" :admin="$admin" :account="$account" :section="$section" :user="$user" :on-game-page="$onGamePage" />
+<x-shell.mobile-nav :active="$active" :games="$games" :community="$community" :chain="$chain" :tournaments="$tournaments" :admin="$admin" :account="$account" :section="$section" :group="$group" :user="$user" :on-game-page="$onGamePage" />

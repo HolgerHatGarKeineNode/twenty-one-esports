@@ -752,7 +752,7 @@ new #[Layout('layouts::app', ['realtime' => true, 'scripts' => ['resources/js/ga
         $modeName = $this->liveModes !== [] ? $liveNames : __('Correspondence');
         $season = \App\Support\SeasonChain\Seasons::live();
     @endphp
-    <x-game.page :game="$slug" :mode="$modeName"
+    <x-game.page :game="$slug" :mode="$modeName" :play-label="$this->liveModes !== [] ? __('Play: find :mode', ['mode' => GameNames::mode($slug, $this->liveModes[0])]) : __('Play correspondence')"
                  :lede="__($this->liveModes !== [] ? ':mode or 1 move a day. :season' : ':mode, 1 move a day. :season', ['mode' => $modeName, 'season' => $season === null ? __('Rated from Block 0.') : __(':season is live', ['season' => \App\Support\Badges\BadgeCopy::season($season->slug)])])"
                  :stat="$seats !== null ? $seats.'/'.$next->capacity : $this->correspondence['running']"
                  :stat-label="$seats !== null ? __('in :tournament', ['tournament' => \App\Support\Engagement\HomeBoard::shortName($next)]) : trans_choice('game running|games running', $this->correspondence['running'])">
