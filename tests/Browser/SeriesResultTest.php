@@ -98,12 +98,23 @@ test('one captain challenges, the other accepts, then submits and accepts the fi
     $b = $challenged->clan->owner;
 
     $pageA = captainPage($a, route('challenges.create', [], false), 1440);
-    BrowserWait::until($pageA, '() => document.querySelector("[data-test=pick-opponent]") !== null', 10_000);
+    // The wizard (plan "Canvas and live alignment", P4): lineup, opponent, format, times, send.
+    $step = fn (int $to) => BrowserWait::until($pageA, '() => document.querySelector("[data-test=challenge-create]")?.dataset.step === "'.$to.'"', 10_000);
+    $pageA->locator('[data-test=next-step]')->click();
+    $step(2);
     $pageA->locator('[data-test=pick-opponent]')->click();
+    BrowserWait::until($pageA, '() => document.querySelector("[data-test=pick-opponent][aria-checked=true]") !== null', 5_000);
+    $pageA->locator('[data-test=next-step]')->click();
+    $step(3);
+    $pageA->locator('[data-test=next-step]')->click();
+    $step(4);
     // "Challenge now" (start in esports.series.now_minutes) keeps the reply
     // deadline a few minutes out instead of tomorrow: enough real time for
     // the round trip below, short enough to travel() past below.
     $pageA->locator('[data-test=challenge-now]')->click();
+    BrowserWait::until($pageA, '() => document.querySelector("[data-test=challenge-now]")?.getAttribute("aria-checked") === "true"', 5_000);
+    $pageA->locator('[data-test=next-step]')->click();
+    $step(5);
     BrowserWait::until($pageA, '() => document.querySelector("[data-test=send-challenge]") && ! document.querySelector("[data-test=send-challenge]").disabled', 5_000);
     $pageA->locator('[data-test=send-challenge]')->click();
     BrowserWait::until($pageA, '() => document.querySelector("[data-test=withdraw-challenge]") !== null', 10_000);

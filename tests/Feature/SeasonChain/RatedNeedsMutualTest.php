@@ -73,8 +73,9 @@ test('challenge: rated to a clan whose captain you do not list each other with n
     [$a, $b] = [p57Lineup('anna'), p57Lineup('bert')];
     p57Trusted(...collect([$a[1], $b[1], ...array_map(fn ($seat) => $seat->user, [...$a[0]->activeSeats(), ...$b[0]->activeSeats()])])->unique('id')->values()->all());
 
+    // The wizard (P4): lineup, opponent, then rated on step 3, where the notice stands.
     $page = Livewire::actingAs($a[1])->test('pages::challenges.create')
-        ->set('lineupId', $a[0]->id)->set('rated', true)->call('pickOpponent', $b[0]->id)
+        ->set('lineupId', $a[0]->id)->call('next')->call('pickOpponent', $b[0]->id)->call('next')->set('rated', true)
         ->assertSee("You and bert clan's captain do not list each other as opponents yet, so this challenge cannot be rated.")
         ->assertSeeHtml('data-test="needs-mutual-casual"');
 
@@ -99,7 +100,7 @@ test('challenge: "Make it casual instead" switches the draft to casual and the n
     p57Trusted($a[1], $b[1]);
 
     Livewire::actingAs($a[1])->test('pages::challenges.create')
-        ->set('lineupId', $a[0]->id)->set('rated', true)->call('pickOpponent', $b[0]->id)
+        ->set('lineupId', $a[0]->id)->call('next')->call('pickOpponent', $b[0]->id)->call('next')->set('rated', true)
         ->assertSeeHtml('data-test="needs-mutual"')
         ->set('rated', false)
         ->assertDontSeeHtml('data-test="needs-mutual"');

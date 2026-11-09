@@ -285,7 +285,7 @@ final class ShellNavigation
      * live alignment", P1, G4): `games` (the Spiele menu) for a game's own pages, `mempool` for the match pages and
      * the list of running games, `season` for the season, its ladders and the strongest players, `tournaments` for the
      * tournament pages, null elsewhere. The boards: GameScore, BlockfillReplays, LadderHyper and LadderPong mark
-     * Spiele; GamesIndex and MatchShow mark Mempool; LadderPage and LadderStrongest mark Season.
+     * Spiele, and so does ChallengeCreate (P4); GamesIndex and MatchShow mark Mempool; LadderPage and LadderStrongest mark Season.
      *
      * @return 'games'|'mempool'|'season'|'tournaments'|null
      */
@@ -294,7 +294,7 @@ final class ShellNavigation
         $request = $this->request;
 
         return match (true) {
-            $request->routeIs('scores.show') => 'games',
+            $request->routeIs('scores.show', 'challenges.create') => 'games',
             $request->routeIs('games.index', 'matches.show', 'matches.index') => 'mempool',
             $request->routeIs('ladder.show', 'ladder.strongest') || $section === 'mining' => 'season',
             $section === 'tournaments' => 'tournaments',

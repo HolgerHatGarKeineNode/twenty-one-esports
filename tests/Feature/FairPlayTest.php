@@ -266,7 +266,11 @@ test('a linked captain cannot send a rated challenge; the refusal says why, and 
         ->toThrow(SeriesRuleViolation::class, 'An admin linked this account to your main account Main.')
         ->and(app(SeriesService::class)->prepareChallenge($captainA, $draft(false))['templates'])->toBe([]);
 
-    $this->get(route('challenges.create'))->assertOk()->assertSee('data-test="rated-fair-play"', false);
+    // The wizard (P4): rated or casual is step 3, where the refusal stands.
+    $this->get(route('challenges.create'))->assertOk();
+    Livewire::actingAs($captainA)->test('pages::challenges.create')
+        ->call('next')->call('pickOpponent', $lineupB->id)->call('next')->assertSet('step', 3)
+        ->assertSee('data-test="rated-fair-play"', false);
 });
 
 /* ---------- Results between the accounts ----------------------------------------------------------------------- */

@@ -345,9 +345,11 @@ test('a rated chess result reads only the gate pinned at the pairing: none or be
 });
 
 test('after Block 0 the challenge page keeps rated locked until trust ranks exist, and says why', function () {
-    [$a] = [gateLineup('3v3')];
+    [$a, $b] = [gateLineup('3v3'), gateLineup('3v3')];
 
+    // The wizard (P4): rated or casual is step 3, after the lineup and the opponent.
     Livewire::actingAs($a[1])->test('pages::challenges.create')
+        ->call('next')->call('pickOpponent', $b[0]->id)->call('next')->assertSet('step', 3)
         ->assertSee('data-test="rated-needs-trust"', false)
         ->assertSee('Rated play opens once trust ranks are computed')
         ->assertSee('data-test="type-rated-locked"', false);
@@ -355,6 +357,7 @@ test('after Block 0 the challenge page keeps rated locked until trust ranks exis
     app()->instance(TrustFacts::class, gateFacts());
 
     Livewire::actingAs($a[1])->test('pages::challenges.create')
+        ->call('next')->call('pickOpponent', $b[0]->id)->call('next')->assertSet('step', 3)
         ->assertDontSee('data-test="type-rated-locked"', false)
         ->assertDontSee('data-test="rated-needs-trust"', false);
 });

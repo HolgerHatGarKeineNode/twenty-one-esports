@@ -487,10 +487,13 @@ test('the team match page shows every Blockli board with its clocks and a link t
 test('the challenge form offers a Blockli rapid lineup boards and friendly or rated, and the rules page names Blockli team matches', function () {
     [$lineup, $captain] = blockliTeamLineup();
 
-    $this->actingAs($captain)->get(route('challenges.create', ['lineup' => $lineup->id]))->assertOk()
-        ->assertSee(__('Friendly'));
+    [$other] = blockliTeamLineup();
 
+    $this->actingAs($captain)->get(route('challenges.create', ['lineup' => $lineup->id]))->assertOk();
+
+    // The wizard (P4): friendly or rated and the boards are step 3, after the lineup and the opponent.
     Livewire::actingAs($captain)->test('pages::challenges.create', ['lineupId' => $lineup->id])
+        ->call('next')->call('pickOpponent', $other->id)->call('next')->assertSet('step', 3)
         ->assertSet('boards', 2)
         ->assertSee(__('Friendly'));
 

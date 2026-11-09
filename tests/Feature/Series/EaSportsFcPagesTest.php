@@ -81,9 +81,12 @@ test('the challenge form offers a captain\'s FC lineup with its cover and the le
         ->assertSet('bestOf', 3)
         ->assertSeeHtml('data-test="lineup-ea-sports-fc-27-1v1"')
         ->assertSeeHtml('data-test="challenge-game-cover"')
-        ->assertSeeHtml('data-test="bo-1"')->assertSeeHtml('data-test="bo-3"')->assertDontSeeHtml('data-test="bo-5"')
+        ->assertSee('EA Sports FC 27 ladder, Pre-Season')
+        // The wizard (P4): the opponent on step 2, the lengths on step 3.
+        ->call('next')->assertSet('step', 2)
         ->assertSee($theirs->clan->name)
-        ->assertSee('EA Sports FC 27 ladder, Pre-Season');
+        ->call('pickOpponent', $theirs->id)->call('next')->assertSet('step', 3)
+        ->assertSeeHtml('data-test="bo-1"')->assertSeeHtml('data-test="bo-3"')->assertDontSeeHtml('data-test="bo-5"');
 });
 
 test('the owner builds an FC lineup next to the Rocket League ones', function () {
@@ -152,8 +155,10 @@ test('Age of Empires II has its page, 2v2 and 3v3 lineups built by the owner, a 
         ->assertSet('lineupId', $mine->id)
         ->assertSet('bestOf', 3)
         ->assertSeeHtml('data-test="lineup-age-of-empires-2-3v3"')
-        ->assertSeeHtml('data-test="bo-1"')->assertSeeHtml('data-test="bo-3"')->assertDontSeeHtml('data-test="bo-5"')
-        ->assertSee($theirs->clan->name);
+        // The wizard (P4): the opponent on step 2, the lengths on step 3.
+        ->call('next')->assertSee($theirs->clan->name)
+        ->call('pickOpponent', $theirs->id)->call('next')->assertSet('step', 3)
+        ->assertSeeHtml('data-test="bo-1"')->assertSeeHtml('data-test="bo-3"')->assertDontSeeHtml('data-test="bo-5"');
 
     $this->get(route('ladder.show', ['age-of-empires-2', '3v3']))->assertOk()->assertSee('Age of Empires II: Definitive Edition');
 });

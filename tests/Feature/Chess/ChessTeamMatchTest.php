@@ -479,14 +479,18 @@ test('the challenge form offers a chess rapid lineup boards and friendly or rate
     Livewire::actingAs($a[1])->test('pages::challenges.create', ['lineup' => $a[0]->id])
         ->assertOk()
         ->assertSet('lineupId', $a[0]->id)
-        ->assertSeeHtml('data-test="boards-3"')
-        ->assertSee('Friendly')
+        // The wizard (P4): step 2 the opponent (no invite link for a team match), step 3 boards and friendly, step 4 now.
+        ->call('next')->assertSet('step', 2)
         ->assertDontSeeHtml('data-test="series-invite-link"')
         // Players of a team lineup out of the boards it is challenged to (2 by default), not out of a series team size.
         ->assertSeeHtml('data-test="opponent-players-'.$b[0]->id.'">3 / 2<')
         ->call('pickOpponent', $b[0]->id)
+        ->call('next')->assertSet('step', 3)
+        ->assertSeeHtml('data-test="boards-3"')
+        ->assertSee('Friendly')
         ->set('boards', 3)
-        ->set('now', true)
+        ->call('next')->set('now', true)
+        ->call('next')->assertSet('step', 5)
         ->call('send', '[]')
         ->assertSet('error', '');
 
