@@ -220,7 +220,9 @@ const PAGE_BUDGETS = [
     // HomeBoard::ticker()) and the proud moments (HomeBoard::pride()) the start page shows too; the advanced statistics
     // are read only once opened.
     'matches.index' => [46, 77],
-    'scores.show' => [7, 38],
+    // +2/+4 (plan "Canvas and live alignment", P4, GameScore.dc.html): the page foot every game page has, the next or
+    // running leaderboard and the weekly dates (WeeklySlots::upcoming()).
+    'scores.show' => [9, 42],
     // +2 (plan "Schach Rapid und Clan", P1): the published-ladder read and the player's chess rapid rating.
     'dashboard' => [null, 68],
 ];
