@@ -20,6 +20,7 @@ use Throwable;
 /**
  * From sign-up to the bracket (TournamentDraw.dc.html, NIP "Tournament Draw"):
  *
+ * 0. A start vote that has closed is settled (TournamentStartVote::settleDue()).
  * 1. close(): once sign-up has closed, the entries are frozen and the draw
  *    commits to the next Bitcoin block (tip + 1, the first block after the
  *    deadline; open question 10, CEO default). With a solo pool in a team
@@ -60,6 +61,7 @@ final class TournamentDraws
         private TournamentPublisher $publisher,
         private TournamentModeration $moderation,
         private Notifier $notifier,
+        private TournamentStartVote $startVote,
     ) {}
 
     /**
@@ -71,6 +73,10 @@ final class TournamentDraws
     {
         $closed = 0;
         $drawn = 0;
+
+        // A start vote that has closed is settled first (TournamentStartVote): it closes at least an hour before sign-up,
+        // so the draw always runs on the start the entries chose.
+        $this->startVote->settleDue();
 
         // Each tournament on its own: one that fails is reported and the others go on.
         foreach (Tournament::query()->where('status', TournamentStatus::Signup)->where('signup_closes_at', '<=', now())->get() as $tournament) {

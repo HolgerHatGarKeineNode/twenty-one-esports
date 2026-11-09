@@ -30,6 +30,7 @@ use Illuminate\Support\Carbon;
  * @property Carbon|null $removed_at
  * @property int|null $removed_by_id
  * @property string|null $removal_reason
+ * @property list<string>|null $start_fits the offered starts this entry can make (Tournament::$start_options); null = it has not voted
  * @property Carbon|null $created_at
  * @property Carbon|null $updated_at
  * @property-read Tournament $tournament
@@ -37,12 +38,12 @@ use Illuminate\Support\Carbon;
  * @property-read Lineup|null $lineup
  * @property-read NostrEvent|null $event
  */
-#[Fillable(['tournament_id', 'user_id', 'lineup_id', 'name', 'members', 'event_id', 'withdrawn_at', 'withdraw_event_id', 'removed_at', 'removed_by_id', 'removal_reason'])]
+#[Fillable(['tournament_id', 'user_id', 'lineup_id', 'name', 'members', 'event_id', 'withdrawn_at', 'withdraw_event_id', 'removed_at', 'removed_by_id', 'removal_reason', 'start_fits'])]
 class TournamentSignup extends Model
 {
     protected function casts(): array
     {
-        return ['members' => 'array', 'withdrawn_at' => 'datetime', 'removed_at' => 'datetime'];
+        return ['members' => 'array', 'withdrawn_at' => 'datetime', 'removed_at' => 'datetime', 'start_fits' => 'array'];
     }
 
     /**

@@ -628,10 +628,16 @@ new #[Layout('layouts::app', ['section' => 'tournaments', 'realtime' => true, 's
             ? __('Play :tournament with me on TWENTY ONE Esports: :game, :spots.', ['tournament' => $tournament->title(), 'game' => $gameLine, 'spots' => trans_choice(':count spot left|:count spots left', $open)])
             : __(':tournament on TWENTY ONE Esports: :game.', ['tournament' => $tournament->title(), 'game' => $gameLine]);
 
+        // While the entries vote on the start (TournamentStartVote) no end can be expected yet: the planned duration stands instead.
+        $openEnd = $tournament->hasOpenStartVote() ? null : $landing->openEndLine($zone);
+
         $chips = [
             ['tournaments', __('Format'), $formatLabel.($tournament->format === TournamentFormat::Swiss && $options->swissRounds !== null ? ', '.trans_choice(':count round|:count rounds', $options->swissRounds) : ''), 'format'],
             // Online the end is open (P18): the start, and when it is expected to end, never a planned duration.
-            ['flag', __('Starts'), $at($tournament->starts_at).(($openEnd = $landing->openEndLine($zone)) !== null ? ' · '.$openEnd : ''), 'starts'],
+            // While the entries vote on the start it is one of the offered starts, the earliest at the soonest.
+            ['flag', __('Starts'), $tournament->hasOpenStartVote()
+                ? __('by vote, at the earliest :time', ['time' => $at($tournament->starts_at)])
+                : $at($tournament->starts_at).($openEnd !== null ? ' · '.$openEnd : ''), 'starts'],
             ...($openEnd === null ? [['clock', __('Planned duration'), __('about :duration', ['duration' => Estimator::format($tournament->plannedDuration(), $profile)]), 'duration']] : []),
             [$tournament->on_site ? 'home' : 'wifi', __('Where'), $tournament->on_site ? __('On site').', '.trans_choice(':count station|:count stations', (int) $tournament->stations) : __('Online'), 'where'],
             ['shield-check', __('Results'), match (true) {
@@ -912,7 +918,8 @@ new #[Layout('layouts::app', ['section' => 'tournaments', 'realtime' => true, 's
         --}}
         {{-- With a step of their own ("What to do now") the hero is compact, so that step stays in the first screen (user, 2026-10-02/03). --}}
         @php($compactHero = $now && ! $championMoment)
-        @php($heroOpenEnd = in_array($status, [TournamentStatus::Finished, TournamentStatus::Cancelled], true) ? null : $landing->openEndLine($zone))
+        {{-- While the entries vote on the start (TournamentStartVote) the start is not set: no expected end for it yet. --}}
+        @php($heroOpenEnd = in_array($status, [TournamentStatus::Finished, TournamentStatus::Cancelled], true) || $tournament->hasOpenStartVote() ? null : $landing->openEndLine($zone))
         <section aria-labelledby="t-name" @class(['rv-band -mt-page-top lg:-mt-page-top-lg', 'lg:min-h-[300px]' => ! $compactHero]) data-test="tournament-hero" data-state="{{ $cta }}">
             {{-- With a step of their own to take ("What to do now"), a phone skips the art so the step stays in the first screen. --}}
             <x-game-cover :game="$tournament->game" size="hero" loading="eager" class="{{ ($now && ! $championMoment) || (in_array($cta, ['open', 'entered'], true) && app(\App\Games\GameRegistry::class)->find($tournament->game) instanceof \App\Games\Contracts\PlayedOnOwnCopy) ? 'max-lg:hidden ' : '' }}mx-4 mt-4 rounded-[4px] lg:absolute lg:top-0 lg:right-0 lg:m-0 lg:aspect-video lg:h-auto lg:w-[38%] lg:max-w-[533px] lg:rounded-none [&_img]:object-cover" data-test="game-cover" />
@@ -926,7 +933,7 @@ new #[Layout('layouts::app', ['section' => 'tournaments', 'realtime' => true, 's
                     @elseif (! $week)
                         <span class="rv-tag is-btc"><x-icon name="trophy" :size="12" />{{ __('Organizer tournament') }}</span>
                     @endif
-                    <span class="rv-m">{{ $gameLine }}, <span data-test="tournament-format">{{ $formatLabel }}</span>, {{ \App\Support\Engagement\HomeBoard::dayClock($tournament->starts_at) }}@if ($compactHero && $heroOpenEnd)<span class="lg:hidden" data-test="hero-open-end-inline">. {{ $heroOpenEnd }}</span>@endif</span>
+                    <span class="rv-m">{{ $gameLine }}, <span data-test="tournament-format">{{ $formatLabel }}</span>, {{ $tournament->hasOpenStartVote() ? __('start by vote') : \App\Support\Engagement\HomeBoard::dayClock($tournament->starts_at) }}@if ($compactHero && $heroOpenEnd)<span class="lg:hidden" data-test="hero-open-end-inline">. {{ $heroOpenEnd }}</span>@endif</span>
                 </span>
 
                 <h1 id="t-name" @class(['m-0 font-display leading-[1.1] font-bold [overflow-wrap:anywhere]', 'text-[28px] sm:text-[40px] xl:text-[52px]' => ! $compactHero, 'text-2xl lg:text-[30px]' => $compactHero]) data-test="tournament-name">{{ $tournament->title() }}</h1>
@@ -1059,6 +1066,10 @@ new #[Layout('layouts::app', ['section' => 'tournaments', 'realtime' => true, 's
                             @endswitch
                         @endif
                     </p>
+                @endif
+                {{-- The start vote (TournamentStartVote): the entries tick the starts they can make, right under the main action. --}}
+                @if ($tournament->start_options !== null && in_array($status, [TournamentStatus::Draft, TournamentStatus::Signup], true))
+                    <livewire:tournament-start-vote :tournament="$tournament->id" :wire:key="'start-vote-'.$tournament->id" />
                 @endif
                 @if ($heroOpenEnd)
                     {{-- Compact on a phone, the expected end continues the data line above instead (user 2026-11-03: 360 x 740). --}}
