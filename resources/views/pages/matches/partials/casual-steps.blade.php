@@ -54,6 +54,18 @@
     $claimAgainstMe = $running && $m->noshow_reported_at !== null && $m->noshow_side !== null && $m->noshow_side !== $mySide && ($m->casualContestDueAt()?->isFuture() ?? false);
     $canSwap = $running && $iHost && ! \App\Support\Tournaments\LeagueLobby::isLeagueMade($m) && $m->lobby_shared_at === null && $m->host_swapped_at === null && $m->noshow_reported_at === null && ($lobbyDue?->isFuture() ?? false);
     $at = fn ($time) => $time === null ? '' : \App\Support\Series\SeriesPresenter::time($time, $viewer, 'H:i');
+    // "at 02:31" today, "tomorrow at 02:31" a day ahead, "Mon, Nov 10 at 02:31" beyond: a bare time a day ahead read as tonight.
+    $viewerZone = \App\Support\PreSeason::timezoneFor($viewer);
+    $atWhen = function ($time) use ($at, $viewerZone) {
+        $local = $time->copy()->timezone($viewerZone);
+        $today = now($viewerZone);
+
+        return match (true) {
+            $local->isSameDay($today) => __('at :time', ['time' => $at($time)]),
+            $local->isSameDay($today->copy()->addDay()) => __('tomorrow at :time', ['time' => $at($time)]),
+            default => __(':day at :time', ['day' => \App\Support\Formats::date($time, false, $viewerZone), 'time' => $at($time)]),
+        };
+    };
     $reported = $report !== null && $report->status !== ReportStatus::Superseded;
     $casualSteps = [
         $scheduled
@@ -75,7 +87,7 @@
     $deadlineText = $deadline === null ? null : match ($deadline['kind']) {
         'ready' => __('Both press Ready by :time', ['time' => $at($deadline['at'])]),
         // Before its window the clock counts to the opening, not to the close.
-        'checkin' => $checkInOpens?->isFuture() ? __('The check-in opens at :open, the match starts :time', ['open' => $at($checkInOpens), 'time' => $at($m->scheduledAt())]) : __('Both check in by :time', ['time' => $at($deadline['at'])]),
+        'checkin' => $checkInOpens?->isFuture() ? __('The check-in opens :open, the match starts :time', ['open' => $atWhen($checkInOpens), 'time' => $m->scheduledAt()->copy()->timezone($viewerZone)->isSameDay($checkInOpens->copy()->timezone($viewerZone)) ? __('at :time', ['time' => $at($m->scheduledAt())]) : $atWhen($m->scheduledAt())]) : __('Both check in by :time', ['time' => $at($deadline['at'])]),
         'lobby' => __(':name shares the lobby by :time', ['name' => $m->sideName($hostSide), 'time' => $at($deadline['at'])]),
         'join' => __(':name joins by :time', ['name' => $m->sideName($guestSide), 'time' => $at($deadline['at'])]),
         'contest' => __(':name answers the no-show claim by :time', ['name' => $m->sideName((string) $deadline['side']), 'time' => $at($deadline['at'])]),

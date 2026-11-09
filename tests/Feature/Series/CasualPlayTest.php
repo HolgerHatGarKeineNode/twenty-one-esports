@@ -10,6 +10,8 @@ use App\Models\SeriesMatch;
 use App\Models\SeriesQueueEntry;
 use App\Models\User;
 use App\Support\Dock\OpenMatches;
+use App\Support\Formats;
+use App\Support\PreSeason;
 use App\Support\Series\CasualChallenges;
 use App\Support\Series\CasualInvites;
 use App\Support\Series\CasualLobby;
@@ -438,6 +440,37 @@ test('a scheduled match: step 1 is "Checked in", the clock counts to the opening
     Livewire::actingAs($bert)->test('pages::matches.room', ['match' => $match])->call('casualCheckIn')
         ->assertSee('data-kind="lobby"', false)
         ->assertSee('data-test="room-step-present" data-state="done"', false);
+});
+
+test('the check-in sentence of a scheduled match is said once and names its day when it is not today (P5)', function () {
+    foreach (['today' => 30, 'tomorrow' => 24 * 60 + 10, 'later' => 3 * 24 * 60] as $day => $before) {
+        [$match, $anna] = casualPlayScheduled(before: $before);
+        $zone = PreSeason::timezoneFor($anna);
+        $opens = $match->checkInOpensAt()->copy()->timezone($zone)->format('H:i');
+        $starts = $match->scheduledAt()->copy()->timezone($zone)->format('H:i');
+        $when = fn (string $locale, string $at): string => match ($day) {
+            'today' => $at,
+            'tomorrow' => $locale === 'en' ? 'tomorrow '.$at : 'morgen '.$at,
+            default => Formats::date($match->checkInOpensAt(), false, $zone, $locale).' '.$at,
+        };
+        $sentences = [
+            'en' => 'The check-in opens '.$when('en', "at {$opens}").', the match starts at '.$starts,
+            'de' => 'Der Check-in öffnet '.$when('de', "um {$opens}").', das Match startet um '.$starts,
+        ];
+
+        foreach ($sentences as $locale => $sentence) {
+            app()->setLocale($locale);
+            $room = Livewire::actingAs($anna)->test('pages::matches.room', ['match' => $match])->assertSee($sentence);
+            $text = html_entity_decode(strip_tags($room->html()));
+
+            // One sentence on the page, not two: the clock line carries it.
+            expect(preg_match_all($locale === 'en' ? '/check-in opens/i' : '/Check-in öffnet/', $text))->toBe(1, "{$day} {$locale}: said once");
+        }
+
+        $this->travelBack();
+    }
+
+    app()->setLocale('en');
 });
 
 test('the dock counts a scheduled match down to its check-in, then asks the player to check in now until they are in', function () {
