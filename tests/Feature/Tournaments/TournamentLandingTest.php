@@ -203,6 +203,20 @@ test('before the draw every format shows its projected bracket with the entries 
     'two stage' => [TournamentFormat::TwoStage, 'Groups if sign-up closed now'],
 ]);
 
+test('a long name in the projected round 1 is cut inside its box, its "(you)" stays outside the cut, and the pairing may shrink below the name', function () {
+    $tournament = openTournament(['format' => TournamentFormat::SingleElimination, 'capacity' => 8]);
+    $long = 'Satoshi_Nakamoto_Fanclub_Hamburg_2140';
+    $viewer = enteredPlayer($tournament, $long, 1500);
+
+    $html = (string) $this->actingAs($viewer)->get(route('tournaments.show', $tournament))->assertOk()->getContent();
+
+    // A grid item keeps its content's width unless it may shrink: min-w-0 (the page ran 20 px past 390 with this name).
+    expect($html)->toMatch('/<li class="[^"]*\\bmin-w-0\\b[^"]*"[^>]*data-test="projected-match"/')
+        // The name alone is truncated; "(you)" is its own element beside it, never clipped with it.
+        ->and($html)->toContain('title="'.$long.'">'.$long.'</span>')
+        ->and($html)->toMatch('/<span class="[^"]*shrink-0[^"]*">\('.preg_quote(__('you'), '/').'\)<\/span>/');
+});
+
 test('the page card is the preview image of a published tournament, the invite card stays for posts, and both 404 for a draft', function () {
     $tournament = openTournament(['name' => 'Halving Cup']);
     enteredPlayer($tournament, 'satsjaeger', 1200);

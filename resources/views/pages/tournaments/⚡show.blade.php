@@ -1300,7 +1300,8 @@ new #[Layout('layouts::app', ['section' => 'tournaments', 'realtime' => true, 's
                             @else
                                 <ol class="m-0 grid list-none gap-2 p-0 sm:grid-cols-2">
                                     @foreach ($projection['matches'] as $match)
-                                        <li class="flex flex-col gap-1 rounded-md bg-ground p-2.5 shadow-ring-hairline" wire:key="pm-{{ $match['key'] }}" data-test="projected-match">
+                                        {{-- min-w-0: a grid item keeps its longest name's width otherwise, and a long name pushed the page sideways at 390. --}}
+                                        <li class="flex min-w-0 flex-col gap-1 rounded-md bg-ground p-2.5 shadow-ring-hairline" wire:key="pm-{{ $match['key'] }}" data-test="projected-match">
                                             @foreach ($match['sides'] as $side)
                                                 @include('pages.tournaments.partials.projected-side', ['side' => $side])
                                             @endforeach
