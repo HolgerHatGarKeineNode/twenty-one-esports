@@ -11,6 +11,7 @@ use App\Models\TournamentModerationEntry;
 use App\Models\TournamentSignup;
 use App\Models\User;
 use App\Support\Broadcast\OverlaySnapshot;
+use App\Support\Cards\PageCard;
 use App\Support\Cards\PageCardFacts;
 use App\Support\Cards\ShareMoments;
 use App\Support\Caster\SceneFacts;
@@ -564,7 +565,9 @@ test('while the vote is open, the link preview card and a lobby tournament\'s TV
 
     expect($facts['starts_utc'])->toBeNull()
         ->and($facts['starts_local'])->toBeNull()
-        ->and($facts['vote'])->toBeTrue();
+        ->and($facts['vote'])->toBeTrue()
+        // The card draws with that ("Start by vote" in place of the times).
+        ->and(PageCard::tournament($tournament)->render())->not->toBe('');
 
     $lobby = openTournament(['name' => 'Lobby Vote', 'game' => 'age-of-empires-2', 'mode' => '1v1', 'format' => TournamentFormat::FreeForAll,
         'options' => FormatOptions::defaults(GameProfile::for('age-of-empires-2', '1v1'))->toArray(), 'capacity' => 16, 'starts_at' => CarbonImmutable::parse('2026-11-20 19:00', 'UTC')]);
