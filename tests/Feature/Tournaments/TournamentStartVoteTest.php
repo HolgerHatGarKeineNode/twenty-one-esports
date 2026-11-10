@@ -701,14 +701,14 @@ function settleUnvoted(Tournament $tournament): Tournament
     return $tournament->refresh();
 }
 
-test('while the vote is open, home, the login page and the tournaments list say "Start by vote" and count down to no start; once settled they show it', function () {
+test('while the vote is open, home, the login page and the tournaments list say "by vote" and count down to no start; once settled they show it', function () {
     $tournament = votingTournament();
     $earliest = $tournament->starts_at->toImmutable();
     $pages = [route('home'), route('login'), route('tournaments.index')];
 
     foreach ($pages as $page) {
         $response = $this->get($page)->assertOk()->assertSee(HomeBoard::shortName($tournament))
-            ->assertSee(__('Start by vote'));
+            ->assertSee(__('by vote'));
 
         foreach (earliestStartMarks($earliest) as $mark) {
             $response->assertDontSee($mark, false);
@@ -718,7 +718,7 @@ test('while the vote is open, home, the login page and the tournaments list say 
     settleUnvoted($tournament);
 
     foreach ($pages as $page) {
-        $html = $this->get($page)->assertOk()->assertDontSee(__('Start by vote'))->getContent();
+        $html = $this->get($page)->assertOk()->assertDontSee(__('by vote'))->getContent();
 
         expect(array_filter(earliestStartMarks($earliest), fn (string $mark): bool => str_contains((string) $html, $mark)))->not->toBeEmpty();
     }
@@ -753,14 +753,14 @@ test('while the vote is open, the game page\'s poster, the live page\'s next tou
     }
 });
 
-test('while the vote is open, an entrant\'s dock, next-event card and hub say "Start by vote" and count down to no start; once settled they count down again', function () {
+test('while the vote is open, an entrant\'s dock, next-event card and hub say "by vote" and count down to no start; once settled they count down again', function () {
     $tournament = votingTournament();
     $earliest = $tournament->starts_at->toImmutable();
     [$ana] = voter($tournament, 'Ana');
     $item = fn (): DockItem => app(UpcomingEvents::class)->tournaments($ana)->firstOrFail(fn (DockItem $item): bool => $item->model?->is($tournament) ?? false);
 
     expect($item())
-        ->state->toBe(__('Start by vote'))
+        ->state->toBe(__('by vote'))
         ->tick->toBeNull()
         ->trailing->toBe('')
         ->needsYou->toBeFalse()
@@ -769,7 +769,7 @@ test('while the vote is open, an entrant\'s dock, next-event card and hub say "S
     foreach ([route('home'), route('dashboard')] as $page) {
         $html = (string) $this->actingAs($ana)->get($page)->assertOk()->assertSee($tournament->title())->getContent();
 
-        expect($html)->toContain(__('Start by vote'))->not->toContain('data-test="me-tournament-clock"');
+        expect($html)->toContain(__('by vote'))->not->toContain('data-test="me-tournament-clock"');
 
         foreach (earliestStartMarks($earliest) as $mark) {
             expect($html)->not->toContain($mark);
@@ -779,7 +779,7 @@ test('while the vote is open, an entrant\'s dock, next-event card and hub say "S
     settleUnvoted($tournament);
 
     expect($item())->state->toBe(__('Starts'))->tick->not->toBeNull();
-    $this->actingAs($ana)->get(route('dashboard'))->assertOk()->assertSeeHtml('data-test="me-tournament-clock"')->assertDontSee(__('Start by vote'));
+    $this->actingAs($ana)->get(route('dashboard'))->assertOk()->assertSeeHtml('data-test="me-tournament-clock"')->assertDontSee(__('by vote'));
 });
 
 test('while the vote is open, the link preview of home and the tournaments page names the next tournament "start by vote", not the earliest start; once settled it names the start', function () {

@@ -151,7 +151,7 @@ new #[Title('Tournaments')] #[Layout('layouts::app', ['section' => 'tournaments'
                 <span class="flex flex-wrap gap-x-4 gap-y-1 text-[13px] text-ink-2 max-lg:hidden">
                     <span>{{ \App\Support\Tournaments\Lobbies::gameLine($ft) }}</span>
                     <span>{{ \App\Support\Tournaments\Lobbies::formatLabel($ft) }}</span>
-                    <span>{{ \App\Support\Tournaments\TournamentStartVote::cardStart($ft, __('Start :when', ['when' => $featured['start']])) }}</span>
+                    <span>{{ __('Start :when', ['when' => $featured['start']]) }}</span>
                     @if ($openEnd = \App\Support\Tournaments\TournamentLanding::openEnd($ft, $board->zone()))
                         <span data-test="featured-open-end">{{ $openEnd }}</span>
                     @endif

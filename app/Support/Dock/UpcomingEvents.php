@@ -205,7 +205,7 @@ final class UpcomingEvents
             title: $title,
             state: match (true) {
                 $running => self::text('Live'),
-                $byVote => self::text('Start by vote'),
+                $byVote => self::text('by vote'),
                 default => self::text('Starts'),
             },
             trailing: match (true) {
