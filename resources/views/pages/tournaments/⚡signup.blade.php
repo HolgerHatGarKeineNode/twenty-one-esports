@@ -333,7 +333,7 @@ new #[Layout('layouts::app', ['section' => 'tournaments'])] class extends Compon
                             {{ __('Seed :seed if sign-up closed now.', ['seed' => $yourSeed]) }}
                         @endif
                     </p>
-                    <p class="m-0 flex items-center gap-2 text-[13px] text-ink-2"><x-icon name="flag" :size="16" class="shrink-0 text-win" />{{ __('Round 1 starts :time.', ['time' => $at($tournament->starts_at)]) }}</p>
+                    <p class="m-0 flex items-center gap-2 text-[13px] text-ink-2"><x-icon name="flag" :size="16" class="shrink-0 text-win" />{{ __('Round 1 starts :time.', ['time' => \App\Support\Tournaments\TournamentStartVote::startLine($tournament)]) }}</p>
                     @if ($followNote !== null)
                         <p class="m-0 flex items-center gap-2 text-[13px] text-ink-2" data-test="entry-format-follows"><x-icon name="tournaments" :size="16" class="shrink-0 text-win" />{{ $followNote }}</p>
                     @endif
@@ -462,7 +462,21 @@ new #[Layout('layouts::app', ['section' => 'tournaments'])] class extends Compon
             <dl class="m-0 flex flex-col px-4 text-[13px]">
                 <div class="flex h-10 items-center justify-between gap-3 border-b border-hairline"><dt class="text-ink-2">{{ __('Format') }}</dt><dd class="m-0 truncate"><span data-test="signup-format">{{ \App\Support\Tournaments\Lobbies::formatLabel($tournament) }}</span>, {{ \App\Support\Tournaments\Lobbies::gameLine($tournament) }}</dd></div>
                 <div class="flex h-10 items-center justify-between gap-3 border-b border-hairline"><dt class="text-ink-2">{{ __('Places') }}</dt><dd class="m-0 tabular-nums" data-test="places">{{ $places['taken'] }} / {{ $places['places'] }}</dd></div>
-                <div class="flex h-10 items-center justify-between gap-3 border-b border-hairline"><dt class="text-ink-2">{{ __('Starts') }}</dt><dd class="m-0">{{ $at($tournament->starts_at) }}</dd></div>
+                @if ($tournament->hasOpenStartVote())
+                    {{-- The start is put to a vote (TournamentStartVote): whoever signs up sees the offered starts, not the earliest as if it were set. --}}
+                    <div class="flex items-start justify-between gap-3 border-b border-hairline py-2.5" data-test="signup-start-vote">
+                        <dt class="text-ink-2">{{ __('Starts') }}</dt>
+                        <dd class="m-0 flex flex-col items-end gap-0.5 text-right">
+                            <span>{{ __('by vote') }}</span>
+                            @foreach (\App\Support\Tournaments\TournamentStartVote::options($tournament) as $option)
+                                <time datetime="{{ $option->format('Y-m-d\TH:i:s\Z') }}" class="whitespace-nowrap">{{ $at($option) }}</time>
+                            @endforeach
+                            <span class="text-xs text-ink-2">{{ __('Vote closes') }} {{ $at($tournament->start_vote_until ?? $tournament->starts_at) }}</span>
+                        </dd>
+                    </div>
+                @else
+                    <div class="flex h-10 items-center justify-between gap-3 border-b border-hairline"><dt class="text-ink-2">{{ __('Starts') }}</dt><dd class="m-0">{{ $at($tournament->starts_at) }}</dd></div>
+                @endif
             </dl>
             <span class="flex flex-wrap gap-2 p-4">
                 <a href="{{ route('tournaments.show', $tournament) }}" class="rv-b2 is-sm">{{ __('Tournament page') }}</a>

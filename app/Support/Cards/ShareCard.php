@@ -430,7 +430,10 @@ final class ShareCard
         $game = $f['lobby'] ? GameNames::credited((string) $f['game']) : GameNames::fullCredited((string) $f['game'], (string) $f['mode']);
         $format = $f['lobby'] ? __('One lobby match') : TournamentFormat::from((string) $f['format'])->label();
 
-        return __(':game, :format. Starts :date.', ['game' => $game, 'format' => $format, 'date' => $f['starts']]);
+        // A start put to a vote (TournamentStartVote) has no date yet; the offered starts do not fit two lines.
+        return ($f['vote'] ?? false)
+            ? __(':game, :format. Start by vote.', ['game' => $game, 'format' => $format])
+            : __(':game, :format. Starts :date.', ['game' => $game, 'format' => $format, 'date' => $f['starts']]);
     }
 
     /** One block per place, taken ones orange, and the count. */

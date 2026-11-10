@@ -144,7 +144,7 @@ final class ShareMoments
      * is, when it starts and how many places are taken. Raw values; the card
      * translates them when it draws.
      *
-     * @return array{tournament: string, game: string, mode: string, format: string, lobby: bool, status: string, starts: string, taken: int, places: int, cover: string|null, pot: int|null, first_prize: int|null}
+     * @return array{tournament: string, game: string, mode: string, format: string, lobby: bool, status: string, starts: string, vote: bool, taken: int, places: int, cover: string|null, pot: int|null, first_prize: int|null}
      */
     public static function tournamentInvite(Tournament $tournament): array
     {
@@ -160,6 +160,8 @@ final class ShareMoments
             'lobby' => Lobbies::isLobby($tournament),
             'status' => $tournament->isSignupOpen() ? 'open' : $tournament->status->value,
             'starts' => $tournament->starts_at->copy()->timezone((string) config('esports.preseason.display_timezone'))->format('Y-m-d H:i T'),
+            // The start is put to a vote (TournamentStartVote): the card says so instead of the earliest offered start.
+            'vote' => $tournament->hasOpenStartVote(),
             'taken' => $places['taken'],
             'places' => $places['places'],
             // The cover's file name, not just whether there is one: a new cover file draws a new card.

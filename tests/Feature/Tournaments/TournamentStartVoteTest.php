@@ -7,13 +7,18 @@ use App\Models\Tournament;
 use App\Models\TournamentModerationEntry;
 use App\Models\TournamentSignup;
 use App\Models\User;
+use App\Support\Cards\ShareMoments;
+use App\Support\Caster\SceneFacts;
 use App\Support\LeagueTime;
+use App\Support\StreamBot\FreePlaceNotes;
+use App\Support\StreamBot\TournamentNotes;
 use App\Support\Tournaments\TournamentDraws;
 use App\Support\Tournaments\TournamentEditor;
 use App\Support\Tournaments\TournamentPublisher;
 use App\Support\Tournaments\TournamentRuleViolation;
 use App\Support\Tournaments\TournamentSignups;
 use App\Support\Tournaments\TournamentStartVote;
+use App\Support\TwentyOne\Stream\TournamentSlides;
 use Carbon\CarbonImmutable;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Queue;
@@ -290,8 +295,9 @@ test('a tie goes to the earlier start, and without a vote the earliest stays', f
         ->and(TournamentStartVote::key($tie->refresh()->starts_at))->toBe('2026-11-21 18:00')
         ->and(TournamentStartVote::key($quiet->refresh()->starts_at))->toBe('2026-11-20 19:00')
         ->and($quiet->start_decided_at)->not->toBeNull()
-        // The start did not move: no new version of the calendar event.
-        ->and(NostrEvent::query()->where('kind', Tournament::CALENDAR_EVENT)->where('d', $quiet->slug)->count())->toBe(1);
+        // The start did not move, but the version out there said "put to a vote": a new version without that line.
+        ->and(NostrEvent::query()->where('kind', Tournament::CALENDAR_EVENT)->where('d', $quiet->slug)->count())->toBe(2)
+        ->and($quiet->event->payload()['content'])->not->toContain('put to a vote');
 });
 
 test('the tournament page shows the offered starts instead of one start while the vote is open', function () {
@@ -432,4 +438,58 @@ test('the tick keeps keyboard focus while it saves: aria-disabled, never disable
         ->assertSeeHtml('wire:loading.attr="aria-disabled"')
         ->assertSeeHtml('wire:loading.class="pointer-events-none"')
         ->assertDontSeeHtml('wire:loading.attr="disabled"');
+});
+
+test('while the vote is open, the published tournament and the sign-up page name the offered starts, not the earliest as the start', function () {
+    $tournament = votingTournament();
+    $content = $tournament->event->payload()['content'];
+
+    expect($content)->toContain('The start is put to a vote among the entries: 2026-11-20 19:00 UTC, 2026-11-21 18:00 UTC, 2026-11-22 16:00 UTC; the vote closes 2026-11-18 19:00 UTC.')
+        ->and($content)->not->toContain('#')
+        ->and(collect($tournament->event->payload()['tags'])->firstWhere(0, 't'))->toBeNull()
+        ->and(ShareMoments::tournamentInvite($tournament)['vote'])->toBeTrue();
+
+    [$ana] = voter($tournament, 'Ana');
+
+    $this->actingAs($ana)->get(route('tournaments.signup', $tournament))->assertOk()
+        ->assertSeeHtml('data-test="signup-start-vote"')
+        ->assertSee(__('by vote'))
+        ->assertSee(LeagueTime::stamp(CarbonImmutable::parse('2026-11-22 16:00', 'UTC')))
+        ->assertSee(__('Round 1 starts :time.', ['time' => TournamentStartVote::startLine($tournament)]));
+
+    // Changing the offered starts publishes a new version naming them.
+    $this->travel(3)->seconds();
+    app(TournamentEditor::class)->update($tournament->refresh(), $tournament->creator, ['start_options' => ['2026-11-20 19:00', '2026-11-21 18:00']]);
+
+    expect($tournament->refresh()->event->payload()['content'])->toContain('2026-11-20 19:00 UTC, 2026-11-21 18:00 UTC;')->not->toContain('2026-11-22 16:00 UTC');
+});
+
+test('while the vote is open, the stream bot, the voice and the slides name every offered start, never the earliest alone', function () {
+    $tournament = votingTournament();
+    $earliest = LeagueTime::stamp(CarbonImmutable::parse('2026-11-20 19:00', 'UTC'), null, 'en');
+    $nowMs = (int) now()->getTimestampMs();
+
+    $places = app(FreePlaceNotes::class)->values($tournament, 5, 12, CarbonImmutable::now())['starts'];
+    $note = app(TournamentNotes::class)->values($tournament)['starts'];
+    $spoken = collect((fn (): array => $this->openTournaments())->call(app(SceneFacts::class)))->firstWhere('name', $tournament->name)['start'];
+    $slide = app(TournamentSlides::class)->data($tournament, $nowMs)['startsAt'];
+
+    foreach ([$places, $note] as $line) {
+        expect($line)->not->toBe($earliest)
+            ->and($line)->toStartWith('by vote: '.$earliest.' / ')
+            ->and($line)->toContain(LeagueTime::stamp(CarbonImmutable::parse('2026-11-22 16:00', 'UTC'), null, 'en'))
+            ->and($line)->toContain('vote closes '.LeagueTime::stamp(CarbonImmutable::parse('2026-11-18 19:00', 'UTC'), null, 'en'));
+    }
+
+    expect($spoken)->toBe('per Abstimmung: am Freitag den 20. November um 20 Uhr, am Samstag den 21. November um 19 Uhr oder am Sonntag den 22. November um 17 Uhr, die Abstimmung endet am Mittwoch den 18. November um 20 Uhr')
+        ->and($slide)->toBe('by vote: Fri 20 / Sat 21 / Sun 22 Nov');
+
+    // Settled: one start everywhere.
+    $this->travelTo(CarbonImmutable::parse('2026-11-18 19:00', 'UTC'));
+    app(TournamentStartVote::class)->settle($tournament);
+    $tournament->refresh();
+
+    expect(app(FreePlaceNotes::class)->values($tournament, 5, 12, CarbonImmutable::now())['starts'])->toBe($earliest)
+        ->and(app(TournamentNotes::class)->values($tournament)['starts'])->toBe($earliest)
+        ->and(app(TournamentSlides::class)->data($tournament, (int) now()->getTimestampMs())['startsAt'])->not->toContain('by vote');
 });

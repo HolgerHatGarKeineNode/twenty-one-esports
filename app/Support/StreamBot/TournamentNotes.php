@@ -13,6 +13,7 @@ use App\Support\Prizes\PrizePool;
 use App\Support\SeasonChain\LeagueKey;
 use App\Support\Tournaments\CasualCups;
 use App\Support\Tournaments\Lobbies;
+use App\Support\Tournaments\TournamentStartVote;
 use App\Support\TwentyOne\EventBuilder;
 use App\Support\Voice\BotVoice;
 use App\Support\Voice\HeldBack;
@@ -211,9 +212,16 @@ class TournamentNotes
         // five minutes, its corrected note never matching the start check): at most one correction per day.
         // Only once the corrected note replaced the old one (the note on record is no longer the one a deletion names):
         // a correction still in progress keeps its retries.
+        // A start vote settled after that correction is the exception (TournamentStartVote): the note on record said
+        // "by vote", never a fixed start, so it is corrected once more, whenever the vote settles.
         $deleted = [];
+        $correctedAt = [];
         foreach (BotPost::query()->where(['subject_type' => BotPost::SUBJECT_TOURNAMENT, 'kind' => self::KIND_DELETION])
-            ->where('created_at', '>', now()->subHours(self::CORRECTION_HOURS))->whereNotNull('event')->get(['subject_id', 'event']) as $row) {
+            ->where('created_at', '>', now()->subHours(self::CORRECTION_HOURS))->whereNotNull('event')->get(['subject_id', 'event', 'created_at']) as $row) {
+            if (! isset($correctedAt[$row->subject_id]) || $row->created_at->greaterThan($correctedAt[$row->subject_id])) {
+                $correctedAt[$row->subject_id] = $row->created_at;
+            }
+
             foreach ((array) (json_decode((string) $row->event, true)['tags'] ?? []) as $tag) {
                 if (($tag[0] ?? null) === 'e' && is_string($tag[1] ?? null)) {
                     $deleted[$row->subject_id][] = $tag[1];
@@ -225,7 +233,9 @@ class TournamentNotes
             $tournament = $tournaments->get($post->subject_id);
 
             $noteId = json_decode((string) $post->event, true)['id'] ?? null;
-            if (isset($deleted[$post->subject_id]) && ! in_array($noteId, $deleted[$post->subject_id], true)) {
+            $settledSince = $tournament instanceof Tournament && $tournament->start_decided_at !== null
+                && isset($correctedAt[$post->subject_id]) && $tournament->start_decided_at->greaterThanOrEqualTo($correctedAt[$post->subject_id]);
+            if (isset($deleted[$post->subject_id]) && ! in_array($noteId, $deleted[$post->subject_id], true) && ! $settledSince) {
                 continue;
             }
 
@@ -261,7 +271,12 @@ class TournamentNotes
         try {
             // A lobby tournament's note (P10) also names the format in its game line ("one lobby match"): a note from
             // before the switch to lobbies announced another format.
+            // A note from while the start was put to a vote (TournamentStartVote::startLine()) holds the settled start
+            // as one of the offered ones: it announced the vote, not the start, once the vote is settled.
+            $voteLine = explode(':options', __('by vote: :options, vote closes :close'))[0];
+
             return str_contains($note->content, $this->startStamp($tournament))
+                && ($tournament->hasOpenStartVote() || ! str_contains($note->content, $voteLine))
                 && (! Lobbies::isLobby($tournament) || str_contains($note->content, $this->gameLine($tournament)));
         } finally {
             app()->setLocale($previous);
@@ -725,10 +740,14 @@ class TournamentNotes
         return sprintf('tournament %d: %s id=%s to %d/%d relays', $tournament->id, $accepted > 0 ? 'posted' : 'not accepted, retried later', $event->id, $accepted, count($results));
     }
 
-    /** A casual cup's start on its region's clock (a US cup in New York time), everything else in the league's. */
+    /**
+     * A casual cup's start on its region's clock (a US cup in New York time), everything else in the league's; while
+     * the start is put to a vote, every offered start and the vote's close (TournamentStartVote::startLine()), so the
+     * note never names the earliest as THE start, and a settled vote makes the note stale (stale()).
+     */
     private function startStamp(Tournament $tournament): string
     {
-        return LeagueTime::stamp($tournament->starts_at, $tournament->isCasualCup() ? CasualCups::timezoneOf($tournament) : null);
+        return $tournament->isCasualCup() ? LeagueTime::stamp($tournament->starts_at, CasualCups::timezoneOf($tournament)) : TournamentStartVote::startLine($tournament);
     }
 
     private function perRun(): int

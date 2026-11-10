@@ -9064,5 +9064,8 @@
     "Your entry did not tick it. If you cannot play then, withdraw it by :close; otherwise you play as planned.": "Deine Anmeldung hat diesen Termin nicht angehakt. Wenn du dann nicht spielen kannst, zieh sie bis :close zurück; sonst spielst du wie geplant.",
     "An entry that does not vote counts for the earliest start.": "Eine Anmeldung ohne Stimme zählt für den frühesten Termin.",
     "The vote set :time: :count entry can make it.|The vote set :time: :count entries can make it.": "Die Abstimmung hat entschieden: :time. Dann kann :count Anmeldung spielen.|Die Abstimmung hat entschieden: :time. Dann können :count Anmeldungen spielen.",
-    "Your entry did not tick this start. If you cannot play then, withdraw it by :time.": "Deine Anmeldung hat diesen Termin nicht angehakt. Wenn du dann nicht spielen kannst, zieh sie bis :time zurück."
+    "Your entry did not tick this start. If you cannot play then, withdraw it by :time.": "Deine Anmeldung hat diesen Termin nicht angehakt. Wenn du dann nicht spielen kannst, zieh sie bis :time zurück.",
+    "by vote: :options, vote closes :close": "per Abstimmung: :options, Abstimmung bis :close",
+    "by vote": "per Abstimmung",
+    ":game, :format. Start by vote.": ":game, :format. Termin per Abstimmung."
 }

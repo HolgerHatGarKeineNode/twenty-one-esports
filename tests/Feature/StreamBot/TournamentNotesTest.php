@@ -9,6 +9,9 @@ use App\Support\StreamBot\StreamBotCopy;
 use App\Support\StreamBot\StreamBotPublisher;
 use App\Support\StreamBot\TournamentNotes;
 use App\Support\Tournaments\CasualCups;
+use App\Support\Tournaments\TournamentEditor;
+use App\Support\Tournaments\TournamentPublisher;
+use App\Support\Tournaments\TournamentStartVote;
 use App\Support\TwentyOne\PublishResult;
 use App\Support\Voice\SpamGate;
 use App\Support\Voice\VoiceAgent;
@@ -627,4 +630,40 @@ test('a tournament whose note was corrected is not corrected again within the da
 
     expect(app(TournamentNotes::class)->stale())->toBe([])
         ->and($this->published)->toHaveCount(3);
+});
+
+test('a note that said the start is put to a vote is corrected once the vote settles, even within the day of a correction', function () {
+    Queue::fake();
+    $tournament = Tournament::factory()->create(['created_by_id' => organizer()->id, 'starts_at' => CarbonImmutable::parse('2026-10-02 19:00', 'UTC')]);
+    app(TournamentEditor::class)->update($tournament, $tournament->creator, [
+        'start_options' => ['2026-10-02 19:00', '2026-10-03 18:00', '2026-10-04 16:00'],
+        'start_vote_until' => CarbonImmutable::parse('2026-09-30 19:00', 'UTC'),
+    ]);
+    $tournament = app(TournamentPublisher::class)->publish($tournament->refresh(), $tournament->creator, CarbonImmutable::parse('2026-10-01 19:00', 'UTC'));
+    Artisan::call('twentyone:stream-bot:tournaments');
+
+    expect($this->published)->toHaveCount(1)
+        ->and($this->published[0]->content)->toContain('starts by vote: Fri, 2 Oct 2026, 9:00 PM CEST / Sat, 3 Oct 2026, 8:00 PM CEST / Sun, 4 Oct 2026, 6:00 PM CEST, vote closes Wed, 30 Sep 2026, 9:00 PM CEST');
+
+    // The organizer takes Sunday out a few hours before the vote closes: the note is corrected.
+    $this->travelTo(CarbonImmutable::parse('2026-09-30 12:00', 'UTC'));
+    app(TournamentEditor::class)->update($tournament->refresh(), $tournament->creator, ['start_options' => ['2026-10-02 19:00', '2026-10-03 18:00']]);
+    Artisan::call('twentyone:stream-bot:tournaments');
+    expect($this->published)->toHaveCount(3)
+        ->and($this->published[2]->content)->not->toContain('Sun, 4 Oct');
+
+    // The vote settles seven hours later, on the earliest start: the note on record never named a fixed start.
+    $this->travelTo(CarbonImmutable::parse('2026-09-30 19:00', 'UTC'));
+    app(TournamentStartVote::class)->settle($tournament);
+    $this->travel(5)->minutes();
+    Artisan::call('twentyone:stream-bot:tournaments');
+
+    expect($this->published)->toHaveCount(5)
+        ->and($this->published[3]->kind)->toBe(5)
+        ->and($this->published[4]->content)->toContain('Fri, 2 Oct 2026, 9:00 PM CEST')->not->toContain('by vote');
+
+    // Corrected once: the next run leaves it alone.
+    $this->travel(11)->minutes();
+    Artisan::call('twentyone:stream-bot:tournaments');
+    expect($this->published)->toHaveCount(5);
 });

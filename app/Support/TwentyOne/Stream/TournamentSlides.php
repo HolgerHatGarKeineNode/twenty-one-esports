@@ -9,6 +9,8 @@ use App\Support\Prizes\PrizePool;
 use App\Support\Tournaments\CasualCups;
 use App\Support\Tournaments\Lobbies;
 use App\Support\Tournaments\TournamentLanding;
+use App\Support\Tournaments\TournamentStartVote;
+use Carbon\CarbonImmutable;
 use Carbon\CarbonInterface;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Support\Facades\Cache;
@@ -232,7 +234,8 @@ class TournamentSlides
             'teamSize' => $tournament->teamSize(),
             'rated' => $tournament->openLadder() !== null,
             'where' => $tournament->on_site ? 'On site' : 'Online',
-            'startsAt' => $at($tournament->starts_at),
+            // While the start is put to a vote (TournamentStartVote), the offered days, never the earliest as THE start.
+            'startsAt' => $tournament->hasOpenStartVote() ? self::voteDays(TournamentStartVote::options($tournament), $timezone) : $at($tournament->starts_at),
             'signupClosesAt' => $at($tournament->signup_closes_at),
             'countdownLabel' => $countdown['label'] ?? 'Sign-up closes in',
             'taken' => $places['taken'],
@@ -403,5 +406,19 @@ class TournamentSlides
         }
 
         return $bytes === false || $bytes === '' ? null : 'data:image/jpeg;base64,'.base64_encode($bytes);
+    }
+
+    /**
+     * The offered starts of an open start vote in the few characters a slide
+     * has for the start: "by vote: Fri 20 / Sat 21 / Sun 22 Nov".
+     *
+     * @param  list<CarbonImmutable>  $options
+     */
+    public static function voteDays(array $options, string $timezone): string
+    {
+        $local = array_map(fn (CarbonImmutable $at): CarbonImmutable => $at->setTimezone($timezone), $options);
+        $days = array_map(fn (CarbonImmutable $at): string => $at->format('D j'), $local);
+
+        return 'by vote: '.implode(' / ', $days).($local === [] ? '' : ' '.end($local)->format('M'));
     }
 }

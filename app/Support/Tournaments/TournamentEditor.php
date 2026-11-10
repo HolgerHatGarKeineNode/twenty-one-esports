@@ -57,8 +57,9 @@ use Illuminate\Support\Facades\Gate;
  *
  * The start vote (TournamentStartVote: two to four offered starts and the
  * close of the vote) changes before the draw until the league settles it.
- * While it is open `starts_at` is the earliest offered start; the vote itself
- * is league data, so a change of only its close publishes nothing.
+ * While it is open `starts_at` is the earliest offered start; the published
+ * tournament names the offered starts and the vote's close in its content, so
+ * a change of them publishes a new version. The ticks are league data.
  *
  * Every change to a published tournament republishes its `31923` and the
  * league calendar (TournamentPublisher::republish); the address never
@@ -172,9 +173,9 @@ final class TournamentEditor
             $this->moderation->log($locked, $actor, 'edited', reason: $deadlinesAhead ? self::DEADLINES_AHEAD : null, details: $details);
             $removed = $this->moderation->removeLocked($locked, $actor, $incompatible, self::GAME_CORRECTED);
 
-            // The deadlines and the start vote are not part of the published tournament: a change of only them publishes
-            // nothing (an earlier earliest offered start changes `starts_at`, which does).
-            if ($locked->status !== TournamentStatus::Draft && array_diff(array_keys($details), [...self::DEADLINES, ...self::START_VOTE]) !== []) {
+            // The deadlines are not part of the published tournament: a change of only them publishes nothing. The open
+            // start vote is: its content names the offered starts and the vote's close (TournamentPublisher::content()).
+            if ($locked->status !== TournamentStatus::Draft && array_diff(array_keys($details), self::DEADLINES) !== []) {
                 $this->publisher->republish($locked);
             }
 

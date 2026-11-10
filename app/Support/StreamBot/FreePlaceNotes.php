@@ -11,6 +11,7 @@ use App\Support\SeasonChain\LeagueKey;
 use App\Support\Settings\LeagueSettings;
 use App\Support\Tournaments\CasualCups;
 use App\Support\Tournaments\TournamentSignups;
+use App\Support\Tournaments\TournamentStartVote;
 use App\Support\Voice\BotVoice;
 use App\Support\Voice\HeldBack;
 use Carbon\CarbonImmutable;
@@ -222,7 +223,8 @@ class FreePlaceNotes
                 'places' => $places,
                 'name' => StreamBotCopy::clean($tournament->name, self::NAME_LENGTH),
                 'game' => $this->notes->gameLine($tournament),
-                'starts' => LeagueTime::stamp($tournament->starts_at, $tournament->isCasualCup() ? CasualCups::timezoneOf($tournament) : null),
+                // While the start is put to a vote, every offered start and the vote's close, never the earliest alone.
+                'starts' => $tournament->isCasualCup() ? LeagueTime::stamp($tournament->starts_at, CasualCups::timezoneOf($tournament)) : TournamentStartVote::startLine($tournament),
                 'left' => StreamBotCopy::duration((int) $tournament->signup_closes_at?->getTimestamp() - $now->getTimestamp()),
                 'url' => route('tournaments.show', $tournament),
             ];

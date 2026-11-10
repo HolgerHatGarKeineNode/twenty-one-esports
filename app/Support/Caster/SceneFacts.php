@@ -6,9 +6,11 @@ use App\Enums\ChessEndReason;
 use App\Enums\ChessGameStatus;
 use App\Models\ChessGame;
 use App\Models\Clan;
+use App\Models\Tournament;
 use App\Models\User;
 use App\Support\Caster\GameMoments\GameMoments;
 use App\Support\Caster\GameMoments\MatchAnchor;
+use App\Support\Tournaments\TournamentStartVote;
 use App\Support\TwentyOne\Stream\BlockfillSlides;
 use App\Support\TwentyOne\Stream\MempoolSlides;
 use App\Support\TwentyOne\Stream\StreamStats;
@@ -408,7 +410,7 @@ class SceneFacts
                     'name' => self::spoken($tournament->name),
                     'game' => self::gameName((string) ($data['game'] ?? $tournament->game)),
                     'mode' => self::spoken((string) ($data['mode'] ?? '')),
-                    'start' => self::spokenStart(CarbonImmutable::instance($tournament->starts_at)),
+                    'start' => self::spokenTournamentStart($tournament),
                     'places' => (int) ($data['places'] ?? 0),
                     'taken' => (int) ($data['taken'] ?? 0),
                     'spots_left' => (int) ($data['spotsLeft'] ?? 0),
@@ -643,6 +645,26 @@ class SceneFacts
     }
 
     /** A start in Berlin time, spoken: "am Sonntag den 11. Oktober um 20 Uhr" (no comma: a repair cut there split the date off). */
+    /**
+     * A tournament's start as the voice says it; while its start is put to a
+     * vote (TournamentStartVote) every offered start and the vote's close, so
+     * the voice never names the earliest as the start: "per Abstimmung: am
+     * Freitag den 20. November um 20 Uhr oder am Samstag …, die Abstimmung
+     * endet am Mittwoch …".
+     */
+    private static function spokenTournamentStart(Tournament $tournament): string
+    {
+        if (! $tournament->hasOpenStartVote()) {
+            return self::spokenStart(CarbonImmutable::instance($tournament->starts_at));
+        }
+
+        $options = array_map(self::spokenStart(...), TournamentStartVote::options($tournament));
+        $last = array_pop($options);
+        $until = CarbonImmutable::instance($tournament->start_vote_until ?? $tournament->starts_at);
+
+        return 'per Abstimmung: '.($options === [] ? '' : implode(', ', $options).' oder ').$last.', die Abstimmung endet '.self::spokenStart($until);
+    }
+
     private static function spokenStart(CarbonImmutable $start): string
     {
         $local = $start->setTimezone('Europe/Berlin');

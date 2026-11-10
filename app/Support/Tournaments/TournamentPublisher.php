@@ -19,6 +19,7 @@ use App\Support\SeasonChain\LeagueKey;
 use App\Support\Series\Ladders;
 use App\Support\Tmnf\TmnfWeeks;
 use Carbon\CarbonImmutable;
+use Carbon\CarbonInterface;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Gate;
@@ -394,6 +395,14 @@ final class TournamentPublisher
 
         if ($tournament->pool_opened_at !== null && $tournament->hasPot()) {
             $lines[] = $this->prizes($tournament);
+        }
+
+        // A start put to a vote (TournamentStartVote): said in words while it is open, no tag and no NIP change; the
+        // `start` tag carries the earliest offered start until the league settles it and signs the next version.
+        if ($tournament->hasOpenStartVote()) {
+            $utc = fn (CarbonInterface $at): string => $at->toImmutable()->utc()->format('Y-m-d H:i').' UTC';
+            $lines[] = 'The start is put to a vote among the entries: '.implode(', ', array_map($utc, TournamentStartVote::options($tournament)))
+                .'; the vote closes '.$utc($tournament->start_vote_until ?? $tournament->starts_at).'. Until then the start given is the earliest offered one.';
         }
         $lines[] = 'Page: '.route('tournaments.show', $tournament);
         $rules = implode(' ', $lines);

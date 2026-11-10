@@ -112,6 +112,24 @@ final class TournamentStartVote
         return $keys;
     }
 
+    /**
+     * The start as an outward channel names it (stream notes, the sign-up
+     * page, the stream's slides): one stamp, or while the vote is open every
+     * offered start and when the vote closes, so no channel announces the
+     * earliest offered start as THE start.
+     */
+    public static function startLine(Tournament $tournament, ?string $zone = null, ?string $locale = null): string
+    {
+        if (! $tournament->hasOpenStartVote()) {
+            return LeagueTime::stamp($tournament->starts_at, $zone, $locale);
+        }
+
+        return __('by vote: :options, vote closes :close', [
+            'options' => implode(' / ', array_map(fn (CarbonImmutable $at): string => LeagueTime::stamp($at, $zone, $locale), self::options($tournament))),
+            'close' => LeagueTime::stamp($tournament->start_vote_until ?? $tournament->starts_at, $zone, $locale),
+        ], $locale);
+    }
+
     /** Entries tick their starts now: sign-up is open, the vote is not settled and has not closed. */
     public static function isOpen(Tournament $tournament): bool
     {
@@ -335,9 +353,9 @@ final class TournamentStartVote
                 'start_votes' => [null, array_map(fn (string $option, int $count): string => $option.' UTC: '.$count, array_keys($tally['counts']), array_values($tally['counts']))],
             ]);
 
-            if ($start->notEqualTo($old)) {
-                $this->publisher->republish($locked);
-            }
+            // Always a new version: the one out there said the start is put to a vote (TournamentPublisher::content()),
+            // and a moved start is a new version of the same address anyway (NIP "Tournaments").
+            $this->publisher->republish($locked);
 
             Broadcasts::send(new TournamentChanged($locked->id, 'edited'));
 
