@@ -9070,5 +9070,7 @@
     "Entries tick every start they can make until the vote closes, at least an hour before sign-up; the start most of them can make wins, the earlier one on a tie. An entry that does not vote counts for the earliest start.": "Die Anmeldungen haken bis zum Ende der Abstimmung, spätestens eine Stunde vor Anmeldeschluss, alle Termine an, die passen; es gewinnt der Termin, den die meisten schaffen, bei Gleichstand der frühere. Eine Anmeldung ohne Stimme zählt für den frühesten Termin.",
     "2nd start (optional)": "2. Termin (optional)",
     "3rd start (optional)": "3. Termin (optional)",
-    "4th start (optional)": "4. Termin (optional)"
+    "4th start (optional)": "4. Termin (optional)",
+    "Sign-up open, start by vote": "Anmeldung offen, Termin per Abstimmung",
+    ":tournament, start by vote": ":tournament, Termin per Abstimmung"
 }

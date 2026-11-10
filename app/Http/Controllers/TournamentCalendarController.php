@@ -14,7 +14,8 @@ use Illuminate\Http\Response;
  * calendar" on the tournament page: public, no session. Every time is UTC
  * (the trailing Z), so each calendar shows it in its owner's zone and no
  * zone table can disagree. The end is the planned end (start plus the
- * format's planned duration); drafts do not exist here.
+ * format's planned duration); drafts and a start still put to a vote do
+ * not exist here.
  */
 class TournamentCalendarController extends Controller
 {
@@ -23,6 +24,9 @@ class TournamentCalendarController extends Controller
         abort_if($tournament->status === TournamentStatus::Draft || $tournament->published_at === null, 404);
         // A Blockfill week while Blockfill is switched off (P6): no page to point to.
         abort_if($tournament->isSwitchedOffLeagueWeek(), 404);
+        // A start put to a vote (TournamentStartVote) has no start to put in a calendar: the page hides "Add to
+        // calendar" until the vote is settled, and the file is not there either (an entry would claim the earliest).
+        abort_if($tournament->hasOpenStartVote(), 404);
 
         $planned = $tournament->plannedDuration();
         // A score leaderboard ends with its window (a Blockfill week: the next Monday 00:00 Berlin, 167 to 169 hours).

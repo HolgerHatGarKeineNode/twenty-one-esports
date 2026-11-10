@@ -35,6 +35,7 @@ use App\Support\Rating\RankTiers;
 use App\Support\Rating\StrongestList;
 use App\Support\Tournaments\Lobbies;
 use App\Support\Tournaments\TournamentChampion;
+use App\Support\Tournaments\TournamentStartVote;
 use Carbon\CarbonInterface;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Carbon;
@@ -615,7 +616,10 @@ class PrideSlides
             'pot' => $pot,
             'places' => array_map(fn (array $place): array => ['place' => $place['place'], 'sats' => $place['sats']], $this->pools->projection($tournament)),
             'sponsors' => $tournament->sponsors()->orderBy('id')->limit(3)->pluck('name')->map(fn ($name): string => PublicName::clean((string) $name))->all(),
-            'startsAt' => $tournament->starts_at->copy()->timezone($timezone)->format('D j M, H:i T'),
+            // While the start is put to a vote (TournamentStartVote), the offered days, never the earliest as THE start.
+            'startsAt' => $tournament->hasOpenStartVote()
+                ? TournamentSlides::voteDays(TournamentStartVote::options($tournament), $timezone)
+                : $tournament->starts_at->copy()->timezone($timezone)->format('D j M, H:i T'),
             // A full https link: the pride note needs one (StreamBotCopy::violations), the slide drops the scheme.
             'url' => route('tournaments.show', $tournament),
         ];

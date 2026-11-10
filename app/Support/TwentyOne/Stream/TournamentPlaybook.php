@@ -9,6 +9,7 @@ use App\Support\Tournaments\Estimator;
 use App\Support\Tournaments\FormatCopy;
 use App\Support\Tournaments\Lobbies;
 use App\Support\Tournaments\TournamentDeadlines;
+use App\Support\Tournaments\TournamentStartVote;
 use Carbon\CarbonInterface;
 use Throwable;
 
@@ -36,8 +37,13 @@ final class TournamentPlaybook
         $at = fn (?CarbonInterface $moment, string $format): ?string => $moment?->copy()->timezone($timezone)->format($format);
         $end = null;
 
+        // While the start is put to a vote (TournamentStartVote): the offered days, and no end, which would be
+        // reckoned from the earliest offered start (the tournament page leaves the end out then too).
+        $voting = $tournament->hasOpenStartVote();
+        $starts = $voting ? TournamentSlides::voteDays(TournamentStartVote::options($tournament), $timezone) : $at($tournament->starts_at, 'D j M, H:i T');
+
         try {
-            $expected = $tournament->expectedEnd();
+            $expected = $voting ? null : $tournament->expectedEnd();
             $end = $expected === null ? null : 'Around '.$at($expected['typical'], 'H:i T');
         } catch (Throwable) {
             // An estimate that cannot be made leaves the line out; it is never guessed.
@@ -52,7 +58,7 @@ final class TournamentPlaybook
                 'steps' => self::lobbySteps($tournament, $n),
                 'matches' => 'One lobby match, '.($hours % 60 === 0 ? intdiv($hours, 60).' h' : $hours.' min').' time limit',
                 'showUp' => 'Be in the lobby at the start',
-                'starts' => $at($tournament->starts_at, 'D j M, H:i T'),
+                'starts' => $starts,
                 'ends' => $end,
             ];
         }
@@ -65,7 +71,7 @@ final class TournamentPlaybook
             'steps' => $duel ? self::duelSteps($tournament) : self::steps($tournament, $n),
             'matches' => self::matches($profile->isSeries(), $options->bestOf, $tournament->format->hasFinal() ? $options->finalBestOf : $options->bestOf, $profile->isDaily()),
             'showUp' => self::showUp($tournament, $profile->isSeries(), $n),
-            'starts' => $at($tournament->starts_at, 'D j M, H:i T'),
+            'starts' => $starts,
             'ends' => $end,
         ];
     }

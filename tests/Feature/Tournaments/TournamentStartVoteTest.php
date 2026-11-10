@@ -1,12 +1,15 @@
 <?php
 
 use App\Enums\NotificationKind;
+use App\Enums\OverlayVariant;
 use App\Enums\TournamentStatus;
 use App\Models\NostrEvent;
+use App\Models\OverlayPreset;
 use App\Models\Tournament;
 use App\Models\TournamentModerationEntry;
 use App\Models\TournamentSignup;
 use App\Models\User;
+use App\Support\Broadcast\OverlaySnapshot;
 use App\Support\Cards\ShareMoments;
 use App\Support\Caster\SceneFacts;
 use App\Support\LeagueTime;
@@ -18,6 +21,7 @@ use App\Support\Tournaments\TournamentPublisher;
 use App\Support\Tournaments\TournamentRuleViolation;
 use App\Support\Tournaments\TournamentSignups;
 use App\Support\Tournaments\TournamentStartVote;
+use App\Support\TwentyOne\Stream\PrideSlides;
 use App\Support\TwentyOne\Stream\TournamentSlides;
 use Carbon\CarbonImmutable;
 use Illuminate\Support\Facades\Http;
@@ -499,4 +503,52 @@ test('while the vote is open, the stream bot, the voice and the slides name ever
     expect(app(FreePlaceNotes::class)->values($tournament, 5, 12, CarbonImmutable::now())['starts'])->toBe($earliest)
         ->and(app(TournamentNotes::class)->values($tournament)['starts'])->toBe($earliest)
         ->and(app(TournamentSlides::class)->data($tournament, (int) now()->getTimestampMs())['startsAt'])->not->toContain('by vote');
+});
+
+test('while the vote is open, the broadcast overlay counts down to no start and names the start "by vote"', function () {
+    $tournament = votingTournament();
+    $snapshot = function (OverlayVariant $variant, ?int $tournamentId = null): array {
+        $preset = OverlayPreset::factory()->withToken(str_pad((string) random_int(1, 999_999), 48, 'v'))
+            ->create(['variant' => $variant, 'locale' => 'en', 'tournament_id' => $tournamentId]);
+
+        return app(OverlaySnapshot::class)->read($preset);
+    };
+
+    $live = $snapshot(OverlayVariant::LeagueLive);
+    $upcoming = collect($live['upcoming'])->firstWhere('id', $tournament->id);
+    $own = $snapshot(OverlayVariant::Tournament, $tournament->id)['tournament'];
+
+    expect($upcoming['startsAt'])->toBeNull()
+        ->and($upcoming['starts'])->toBe(__('start by vote'))
+        // The ticker (a module the preset has by default) names no single start either.
+        ->and(array_column($live['ticker'], 'text'))->toContain(__(':tournament, start by vote', ['tournament' => $tournament->name]))
+        ->and($own['startsAt'])->toBeNull()
+        ->and($own['statusLine'])->toBe(__('Sign-up open, start by vote'));
+
+    // Settled: the clock runs to the start again.
+    $this->travelTo(CarbonImmutable::parse('2026-11-18 19:00', 'UTC'));
+    app(TournamentStartVote::class)->settle($tournament);
+
+    expect($snapshot(OverlayVariant::Tournament, $tournament->id)['tournament']['startsAt'])->toBe($tournament->refresh()->starts_at->toIso8601String());
+});
+
+test('while the vote is open, the prize slide and "how it runs" name the offered days and no end', function () {
+    $tournament = votingTournament();
+    $tournament->forceFill(['pot_source' => Tournament::POT_WALLET, 'prize_target_sats' => 21000, 'prize_split' => [50, 30, 20]])->save();
+    $how = app(TournamentSlides::class)->data($tournament, (int) now()->getTimestampMs())['howItRuns'];
+
+    expect(app(PrideSlides::class)->all()['prizes']['startsAt'])->toBe('by vote: Fri 20 / Sat 21 / Sun 22 Nov')
+        ->and($how['starts'])->toBe('by vote: Fri 20 / Sat 21 / Sun 22 Nov')
+        ->and($how['ends'])->toBeNull();
+});
+
+test('while the vote is open, the tournament has no calendar file; once settled it has', function () {
+    $tournament = votingTournament();
+
+    $this->get(route('tournaments.calendar', $tournament))->assertNotFound();
+
+    $this->travelTo(CarbonImmutable::parse('2026-11-18 19:00', 'UTC'));
+    app(TournamentStartVote::class)->settle($tournament);
+
+    $this->get(route('tournaments.calendar', $tournament))->assertOk()->assertSee('DTSTART:20261120T190000Z');
 });

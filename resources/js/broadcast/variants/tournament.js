@@ -79,7 +79,9 @@ export function runTournament(ctx) {
     const pages = () => {
         const T = tour();
         const list = [];
-        const left = Date.parse(T.startsAt) - Date.now();
+        // No startsAt while the start is put to a vote (OverlaySnapshot): no clock, the start in words instead.
+        const voting = !T.startsAt;
+        const left = voting ? Infinity : Date.parse(T.startsAt) - Date.now();
         if (T.status === 'signup' || T.status === 'drawing' || (T.status === 'running' && !T.board)) {
             list.push({
                 kind: 'countdown',

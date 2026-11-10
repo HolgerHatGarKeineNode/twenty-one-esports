@@ -216,8 +216,8 @@ final class OverlaySnapshot
             'game' => $tournament->game,
             'gameName' => GameNames::game($tournament->game),
             'emblem' => self::emblem($tournament->game),
-            'startsAt' => $tournament->starts_at->toIso8601String(),
-            'starts' => self::when($tournament->starts_at),
+            'startsAt' => self::startsAt($tournament),
+            'starts' => self::starts($tournament),
             'signupClosesAt' => $tournament->signup_closes_at?->toIso8601String(),
             'url' => route('tournaments.show', $tournament),
             'pot' => $preset->hasModule('pots') ? $this->pools->shownPotSats($tournament) : null,
@@ -243,8 +243,8 @@ final class OverlaySnapshot
             'game' => $tournament->game,
             'gameName' => GameNames::game($tournament->game),
             'emblem' => self::emblem($tournament->game),
-            'startsAt' => $tournament->starts_at->toIso8601String(),
-            'starts' => self::when($tournament->starts_at),
+            'startsAt' => self::startsAt($tournament),
+            'starts' => self::starts($tournament),
             'taken' => $cup['taken'],
             'places' => $cup['places'],
             'url' => route('tournaments.show', $tournament),
@@ -329,15 +329,15 @@ final class OverlaySnapshot
             'game' => $tournament->game,
             'gameName' => GameNames::game($tournament->game),
             'emblem' => self::emblem($tournament->game),
-            'startsAt' => $tournament->starts_at->toIso8601String(),
-            'starts' => self::when($tournament->starts_at),
+            'startsAt' => self::startsAt($tournament),
+            'starts' => self::starts($tournament),
             'url' => $url,
             'qr' => $preset->hasModule('qr') ? QrCode::svg($url) : null,
             'pot' => $preset->hasModule('pots') ? $this->pools->shownPotSats($tournament) : null,
             'entries' => $tournament->status === TournamentStatus::Signup ? $tournament->signups()->whereNull('withdrawn_at')->whereNull('removed_at')->count() : null,
             'progress' => $progress,
             'statusLine' => match ($tournament->status) {
-                TournamentStatus::Signup => __('Sign-up open, starts :when', ['when' => self::when($tournament->starts_at)]),
+                TournamentStatus::Signup => $tournament->hasOpenStartVote() ? __('Sign-up open, start by vote') : __('Sign-up open, starts :when', ['when' => self::when($tournament->starts_at)]),
                 TournamentStatus::Drawing => __('Drawing the pairings'),
                 // The round and the format, never a count: the banner holds its line while results come in.
                 TournamentStatus::Running => $board === null ? __('Running') : $board['round'].', '.$tournament->format->label(),
@@ -383,7 +383,8 @@ final class OverlaySnapshot
                 TournamentStatus::Signup->value, TournamentStatus::Drawing->value => 'soon',
                 TournamentStatus::Running->value => 'break',
                 TournamentStatus::Finished->value, TournamentStatus::Cancelled->value => 'end',
-                default => $target !== null && now()->lt($target['startsAt']) && now()->diffInMinutes($target['startsAt']) <= self::SOON_MINUTES ? 'soon' : 'break',
+                // A start put to a vote has no moment to count down to (startsAt null): not "soon" on the earliest offered start.
+                default => $target !== null && ($target['startsAt'] ?? null) !== null && now()->lt($target['startsAt']) && now()->diffInMinutes($target['startsAt']) <= self::SOON_MINUTES ? 'soon' : 'break',
             };
         }
 
@@ -518,6 +519,21 @@ final class OverlaySnapshot
     }
 
     /** A start as a stream says it: "20:00" today, else the weekday with the time, in the league's zone. */
+    /**
+     * What the clocks count down to; null while the start is put to a vote (TournamentStartVote): the earliest
+     * offered start is not THE start, so no overlay counts down to it (the variants then show `starts` instead).
+     */
+    private static function startsAt(Tournament $tournament): ?string
+    {
+        return $tournament->hasOpenStartVote() ? null : $tournament->starts_at->toIso8601String();
+    }
+
+    /** The start in words: "start by vote" while the vote is open, else when(). */
+    private static function starts(Tournament $tournament): string
+    {
+        return $tournament->hasOpenStartVote() ? __('start by vote') : self::when($tournament->starts_at);
+    }
+
     private static function when(CarbonInterface $at): string
     {
         $local = $at->toImmutable()->setTimezone(LeagueTime::zone());
@@ -632,7 +648,10 @@ final class OverlaySnapshot
         }
 
         foreach (array_slice(array_values(array_filter($upcoming, fn (array $next): bool => $next['id'] !== ($tournament['id'] ?? null))), 0, 3) as $next) {
-            $items[] = ['emblem' => $next['emblem'], 'head' => __('Open now'), 'text' => __(':tournament, starts :when', ['tournament' => $next['name'], 'when' => $next['starts']])];
+            // A start put to a vote (startsAt null) is not named as one start.
+            $items[] = ['emblem' => $next['emblem'], 'head' => __('Open now'), 'text' => $next['startsAt'] === null
+                ? __(':tournament, start by vote', ['tournament' => $next['name']])
+                : __(':tournament, starts :when', ['tournament' => $next['name'], 'when' => $next['starts']])];
 
             if (($next['pot'] ?? null) !== null) {
                 $items[] = ['emblem' => 'trophy', 'head' => __('Prize pot'), 'text' => __(':sats sats in :tournament', ['sats' => ShareCard::sats((int) $next['pot']), 'tournament' => $next['name']])];
