@@ -315,10 +315,25 @@ function trafficSubscribed(Page $page, string $channel): void
     $page->evaluate('() => { window.__pushes = 0; if (! window.__pushCounter) { window.__pushCounter = true; window.Echo.connector.pusher.connection.bind("message", (m) => { if (m.event && ! m.event.startsWith("pusher")) window.__pushes++; }); } }');
 }
 
-/** Lets `$ms` virtual milliseconds pass and returns what Livewire sent meanwhile. */
-function trafficWindow(Page $page, int $ms): array
+/** The count of roundtrips so far, to hand to trafficWindow() as `$from`. */
+function trafficMark(Page $page): int
 {
-    $mark = $page->evaluate('() => window.__traffic.mark()');
+    return $page->evaluate('() => window.__traffic.mark()');
+}
+
+/**
+ * Lets `$ms` virtual milliseconds pass and returns what Livewire sent meanwhile.
+ *
+ * A window that a STIMULUS opens (a push, a tab shown again) takes its mark BEFORE the stimulus and passes it as
+ * `$from`. A mark taken after it counts only what is sent from then on, and a request that Livewire built meanwhile
+ * (its 5 ms buffer runs on the real clock, the page's other timers on the virtual one) falls out of the window: the
+ * mark is a CDP roundtrip later, a few ms idle and tens under load. Measured 2026-11-10: with 100 ms between the tab
+ * shown again and the mark, "room back" saw the dock's render and not the room's sync (0, not 1), exactly as the
+ * sharded push gate did; idle, both shared one request and the test was green.
+ */
+function trafficWindow(Page $page, int $ms, ?int $from = null): array
+{
+    $mark = $from ?? trafficMark($page);
     Playwright::usingTimeout(120_000, fn () => $page->evaluate('async (ms) => { await window.__traffic.advance(ms); }', $ms));
 
     return $page->evaluate('(mark) => window.__traffic.since(mark)', $mark);
@@ -351,9 +366,10 @@ test('a push renders once, the fallback poll comes back without a socket, a hidd
     // The room: a series push makes one request that carries the room's sync (and the dock's and badge's renders).
     $room = $open($player, route('matches.room', $series));
     trafficSubscribed($room, 'private-App.Models.User.'.$player->id);
+    $from = trafficMark($room);
     event(new SeriesMatchChanged([$player->id], $series->number, $series->status->value));
     BrowserWait::until($room, '() => window.__pushes >= 1', 10_000);
-    $seen['room push'] = trafficWindow($room, 2_000);
+    $seen['room push'] = trafficWindow($room, 2_000, $from);
 
     // No socket: the room asks every 30 s; a hidden tab asks nothing, and once when it comes back.
     $room->evaluate('() => window.Echo.connector.pusher.disconnect()');
@@ -362,16 +378,18 @@ test('a push renders once, the fallback poll comes back without a socket, a hidd
     // A batch the shell raised just before the tab hid still leaves (playerEvents.js, 250 ms); then the quiet.
     trafficWindow($room, 1_000);
     $seen['room hidden'] = trafficWindow($room, 120_000);
+    $from = trafficMark($room);
     $room->evaluate('() => { Object.defineProperty(document, "hidden", { configurable: true, get: () => false }); document.dispatchEvent(new Event("visibilitychange")); }');
-    $seen['room back'] = trafficWindow($room, 1_000);
+    $seen['room back'] = trafficWindow($room, 1_000, $from);
     $roomErrors = [...$room->evaluate('() => window.__errors'), ...$room->evaluate(BrowserConsole::BAD_RESPONSES)];
 
     // The tournament page: a push renders it once, after its random wait; without a socket it polls every 15 s.
     $show = $open(null, route('tournaments.show', $tournament));
     trafficSubscribed($show, 'tournament.'.$tournament->id);
+    $from = trafficMark($show);
     event(new TournamentChanged($tournament->id, 'result'));
     BrowserWait::until($show, '() => window.__pushes >= 1', 10_000);
-    $seen['tournament push'] = trafficWindow($show, 2_000);
+    $seen['tournament push'] = trafficWindow($show, 2_000, $from);
     $show->evaluate('() => window.Echo.connector.pusher.disconnect()');
     $seen['tournament no socket'] = trafficWindow($show, 60_000);
     $showErrors = [...$show->evaluate('() => window.__errors'), ...$show->evaluate(BrowserConsole::BAD_RESPONSES)];
