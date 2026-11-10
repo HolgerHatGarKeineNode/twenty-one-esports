@@ -942,9 +942,9 @@ new #[Layout('layouts::app', ['section' => 'tournaments', 'realtime' => true, 's
 
                 <h1 id="t-name" @class(['m-0 font-display leading-[1.1] font-bold [overflow-wrap:anywhere]', 'text-[28px] sm:text-[40px] xl:text-[52px]' => ! $compactHero, 'text-2xl lg:text-[30px]' => $compactHero]) data-test="tournament-name">{{ $tournament->title() }}</h1>
 
-                {{-- A game played outside the site: "you need your own copy", above the action. --}}
+                {{-- A game played outside the site: "you need your own copy", above the action; one line while the viewer's vote is due. --}}
                 @if (in_array($cta, ['open', 'entered'], true))
-                    <div class="max-w-[640px]">@include('pages.tournaments.partials.own-copy', ['tournament' => $tournament])</div>
+                    <div class="max-w-[640px]">@include('pages.tournaments.partials.own-copy', ['tournament' => $tournament, 'line' => $voteDue])</div>
                 @endif
 
                 <div @class(['flex flex-wrap items-end gap-x-8 gap-y-4 pt-1', 'max-lg:pt-0' => $compactHero])>
@@ -1050,6 +1050,10 @@ new #[Layout('layouts::app', ['section' => 'tournaments', 'realtime' => true, 's
                     @endif
                 </div>
 
+                @if ($voteDue)
+                    {{-- The viewer's vote on the start is due: the vote above the data line (the seed note), so its first tick stays in the first screen. --}}
+                    <livewire:tournament-start-vote :tournament="$tournament->id" :due="true" :wire:key="'start-vote-'.$tournament->id" />
+                @endif
                 {{-- One data line under the action: what the state means for this viewer (rule: hybrid density, data stays). --}}
                 @if (in_array($cta, ['open', 'entered', 'full', 'closed'], true) || ($week && $cta !== 'draft'))
                     <p class="rv-m m-0 max-w-[75ch] text-[13px]" data-test="cta-note">
@@ -1072,7 +1076,7 @@ new #[Layout('layouts::app', ['section' => 'tournaments', 'realtime' => true, 's
                     </p>
                 @endif
                 {{-- The start vote (TournamentStartVote): the entries tick the starts they can make, right under the main action. --}}
-                @if ($tournament->start_options !== null && in_array($status, [TournamentStatus::Draft, TournamentStatus::Signup], true))
+                @if (! $voteDue && $tournament->start_options !== null && in_array($status, [TournamentStatus::Draft, TournamentStatus::Signup], true))
                     <livewire:tournament-start-vote :tournament="$tournament->id" :wire:key="'start-vote-'.$tournament->id" />
                 @endif
                 @if ($heroOpenEnd)

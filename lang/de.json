@@ -9056,6 +9056,8 @@
     ":count can make it|:count can make it": ":count kann|:count können",
     ":voted of :count entry has voted.|:voted of :count entries have voted.": ":voted von :count Anmeldung hat abgestimmt.|:voted von :count Anmeldungen haben abgestimmt.",
     "Yours has not yet.": "Deine noch nicht.",
+    "Tick every start you can make, until :time.": "Hake bis :time alle Termine an, die dir passen.",
+    "Then the start most entries can make is set; on a tie the earlier one.": "Dann gilt der Termin, den die meisten Anmeldungen schaffen; bei Gleichstand der frühere.",
     "start by vote": "Termin per Abstimmung",
     "The entries vote until :time; then the start most of them can make is set.": "Abgestimmt wird bis :time; dann gilt der Termin, den die meisten Anmeldungen schaffen.",
     "by vote, at the earliest :time": "per Abstimmung, frühestens :time",

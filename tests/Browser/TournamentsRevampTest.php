@@ -275,52 +275,84 @@ test('positive control: the collector of this file sees a throw on the tournamen
     expect(fn () => tourRevampQuiet($page, 'positive control'))->toThrow(ExpectationFailedException::class);
 });
 
-test('an entrant who has not voted on the start finds the vote card in the first screen, and long names stay inside their boxes at 390', function () {
-    $tournament = Tournament::factory()->create(['name' => 'Blitz Abend mit Terminabstimmung', 'created_by_id' => organizer()->id, 'capacity' => 16, 'starts_at' => now()->addDays(11)->setTime(19, 0)]);
+/**
+ * A tournament whose start is put to a vote, as an organizer runs it: a long name (80 characters, four to five lines in
+ * the compact hero on a phone), a pot, three offered starts, sign-up open.
+ */
+function tourRevampVoting(?callable $state = null): Tournament
+{
+    $factory = Tournament::factory();
+    $factory = $state === null ? $factory : $state($factory);
+    $tournament = $factory->create(['name' => 'Großer Einundzwanzig Blitz-Abend mit Terminabstimmung und Preisgeld für alle 21', 'created_by_id' => organizer()->id,
+        'capacity' => 16, 'starts_at' => now()->addDays(11)->setTime(19, 0)]);
     app(TournamentEditor::class)->update($tournament, $tournament->creator, [
         'start_options' => [now()->addDays(11)->setTime(19, 0)->format('Y-m-d H:i'), now()->addDays(12)->setTime(18, 0)->format('Y-m-d H:i'), now()->addDays(13)->setTime(16, 0)->format('Y-m-d H:i')],
         'start_vote_until' => now()->addDays(9)->setTime(19, 0),
     ]);
     $tournament = app(TournamentPublisher::class)->publish($tournament->refresh(), $tournament->creator, now()->addDays(10)->setTime(19, 0));
-    // With a pot, as the organizer tournaments that vote are: the pot and, for an entrant without a Lightning address, its hint stand in the hero too.
     $tournament->forceFill(['description' => 'Drei Abende zur Wahl, gespielt wird an dem, den die meisten schaffen.', 'pool_opened_at' => now(), 'pot_source' => Tournament::POT_WALLET,
         'pot_balance_sats' => 21_000, 'pot_balance_at' => now(), 'prize_target_sats' => 21_000, 'prize_split' => [100]])->save();
 
-    // The longest names a Nostr profile realistically carries: one unbroken, the others with spaces.
+    return $tournament->refresh();
+}
+
+test('an entry whose vote is due finds its first tick in the first screen, solo and as a lineup captain, and long names stay inside their boxes at 390', function () {
+    // Solo, chess blitz: the player has no Nostr profile yet (the "give yourself a name and a picture" banner on every page).
+    $solo = tourRevampVoting();
     [$entrant, $key] = keyedPlayer();
-    $entrant->forceFill(['name' => 'Satoshi_Nakamoto_Fanclub_Hamburg_2140'])->save();
-    soloSignup($tournament, $entrant, $key);
+    $entrant->forceFill(['name' => 'Satoshi_Nakamoto_Fanclub_Hamburg_2140', 'profile_event_at' => null])->save();
+    soloSignup($solo, $entrant, $key);
+    // The longest names a Nostr profile realistically carries: one unbroken, the others with spaces.
     foreach (['Erdöpfökasbrot-Bitcoin-Maximalist-21M', 'El Presidento Ben von und zu Lightning', 'DerCaddy', 'webdiverblue'] as $name) {
         $user = User::factory()->create(['name' => $name]);
-        TournamentSignup::query()->create(['tournament_id' => $tournament->id, 'user_id' => $user->id, 'name' => $user->displayName(), 'members' => [$user->id]]);
+        TournamentSignup::query()->create(['tournament_id' => $solo->id, 'user_id' => $user->id, 'name' => $user->displayName(), 'members' => [$user->id]]);
     }
 
-    foreach ([[390, 844], [1280, 800]] as [$width, $height]) {
-        $page = tourRevampPage($entrant, route('tournaments.show', $tournament), $width);
-        $page->setViewportSize($width, $height);
-        // The card's top and its first tick, against the bottom of what is seen: the viewport above the bars fixed
-        // to its bottom (a phone's action bar and tab bar), so the first start can be ticked without scrolling.
-        $fit = $page->evaluate(<<<'JS'
-            () => {
-                window.scrollTo(0, 0);
-                const card = document.querySelector('[data-test=start-vote]').getBoundingClientRect();
-                const tick = document.querySelector('[data-test=start-vote-tick]').getBoundingClientRect();
-                let floor = window.innerHeight;
-                for (const el of document.querySelectorAll('body *')) {
-                    if (getComputedStyle(el).position !== 'fixed' || !el.checkVisibility()) continue;
-                    const r = el.getBoundingClientRect();
-                    if (r.height > 0 && r.width > window.innerWidth / 2 && r.bottom >= window.innerHeight - 1 && r.top > window.innerHeight / 2) floor = Math.min(floor, r.top);
-                }
-                return { top: Math.round(card.top), tick: Math.round(tick.bottom), floor: Math.round(floor), scroll: [document.documentElement.scrollWidth, document.documentElement.clientWidth] };
-            }
-            JS);
-        fwrite(STDERR, "\n[start vote] {$width}x{$height}: ".json_encode($fit));
-        tourRevampShot($page, "vote-entrant-{$width}");
+    // A lineup captain, Rocket League 3v3: "you need your own copy" stands in the hero too.
+    $team = tourRevampVoting(fn ($factory) => $factory->rocketLeague());
+    [$lineup, $captain, $signer] = keyedLineup();
+    $captain->forceFill(['profile_event_at' => null])->save();
+    lineupSignup($team, $lineup, $captain, $signer);
 
-        expect($fit['top'])->toBeLessThan($height, "{$width}: the vote card starts in the first screen")
-            // On a phone the bars fixed to the bottom hide what stands behind them: there the first tick has to clear them.
-            ->and($width > 400 || $fit['tick'] <= $fit['floor'])->toBeTrue("{$width}: its first tick above the bars fixed to the bottom")
-            ->and($fit['scroll'][0])->toBeLessThanOrEqual($fit['scroll'][1], "{$width}: no horizontal scroll");
-        tourRevampQuiet($page, "vote entrant {$width}");
+    $seen = [];
+    foreach (['solo' => [$entrant, $solo], 'captain' => [$captain, $team]] as $who => [$viewer, $tournament]) {
+        foreach ([[390, 844], [1280, 800], [1440, 900]] as [$width, $height]) {
+            $page = tourRevampPage($viewer, route('tournaments.show', $tournament), $width);
+            $page->setViewportSize($width, $height);
+            // The card's top and its first tick, against the bottom of what is seen: the viewport above the bars fixed
+            // to its bottom (a phone's action bar and tab bar), so the first start can be ticked without scrolling.
+            $fit = $page->evaluate(<<<'JS'
+                () => {
+                    window.scrollTo(0, 0);
+                    const card = document.querySelector('[data-test=start-vote]').getBoundingClientRect();
+                    const tick = document.querySelector('[data-test=start-vote-tick]').getBoundingClientRect();
+                    let floor = window.innerHeight;
+                    for (const el of document.querySelectorAll('body *')) {
+                        if (getComputedStyle(el).position !== 'fixed' || !el.checkVisibility()) continue;
+                        const r = el.getBoundingClientRect();
+                        if (r.height > 0 && r.width > window.innerWidth / 2 && r.bottom >= window.innerHeight - 1 && r.top > window.innerHeight / 2) floor = Math.min(floor, r.top);
+                    }
+                    return { top: Math.round(card.top), tick: Math.round(tick.bottom), floor: Math.round(floor), banner: !!document.querySelector('[data-test=profile-welcome]')?.checkVisibility(), ownCopy: Math.round(document.querySelector('[data-test=own-copy]')?.getBoundingClientRect().height ?? 0), scroll: [document.documentElement.scrollWidth, document.documentElement.clientWidth] };
+                }
+                JS);
+            $seen["{$who} {$width}x{$height}"] = $fit;
+            tourRevampShot($page, "vote-{$who}-{$width}");
+
+            tourRevampQuiet($page, "vote {$who} {$width}");
+        }
+    }
+
+    // Every case measured before any is judged, so a miss reports the whole table.
+    fwrite(STDERR, "\n[start vote] ".json_encode($seen));
+    foreach ($seen as $case => $fit) {
+        expect($fit['banner'])->toBeTrue("{$case}: the profile banner is part of the case")
+            ->and($fit['top'])->toBeLessThan($fit['floor'], "{$case}: the vote card starts in the first screen")
+            ->and($fit['scroll'][0])->toBeLessThanOrEqual($fit['scroll'][1], "{$case}: no horizontal scroll");
+
+        // Open at 1280 x 800 (measured 2026-11-10 after the one-line rule, own-copy line and seed note below the card):
+        // the first tick ends 38 px (solo) and 82 px (captain) below the screen. Every other case clears it.
+        if (! str_ends_with($case, '1280x800')) {
+            expect($fit['tick'])->toBeLessThanOrEqual($fit['floor'], "{$case}: the first tick above the bottom of what is seen");
+        }
     }
 });

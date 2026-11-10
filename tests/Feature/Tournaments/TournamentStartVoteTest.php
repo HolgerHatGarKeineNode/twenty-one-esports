@@ -821,3 +821,54 @@ test('an entry that has not voted gets the compact hero, as with "What to do now
 
     expect($compact($ana))->toBeFalse('an entry that voted');
 });
+
+/** A Rocket League 3v3 tournament whose start is put to a vote (as votingTournament()), and the captain of a ready lineup in it. */
+function votingLineupTournament(): array
+{
+    $tournament = Tournament::factory()->rocketLeague()->create(['created_by_id' => organizer()->id, 'starts_at' => CarbonImmutable::parse('2026-11-20 19:00', 'UTC')]);
+    app(TournamentEditor::class)->update($tournament, $tournament->creator, [
+        'start_options' => ['2026-11-20 19:00', '2026-11-21 18:00'],
+        'start_vote_until' => CarbonImmutable::parse('2026-11-18 19:00', 'UTC'),
+    ]);
+    $tournament = app(TournamentPublisher::class)->publish($tournament->refresh(), $tournament->creator, CarbonImmutable::parse('2026-11-19 19:00', 'UTC'));
+    [$lineup, $captain, $signer] = keyedLineup();
+    lineupSignup($tournament, $lineup, $captain, $signer);
+
+    return [$tournament, $captain];
+}
+
+test('while an entry\'s vote is due, the rule above the starts is one line and the rest stands under them, the seed note under the vote card; once voted, as before', function () {
+    $tournament = votingTournament();
+    [$ana] = voter($tournament, 'Ana');
+    $short = __('Tick every start you can make, until :time.', ['time' => LeagueTime::stampUnbroken($tournament->start_vote_until)]);
+    $page = fn (): string => (string) $this->actingAs($ana)->get(route('tournaments.show', $tournament))->assertOk()->getContent();
+
+    $html = $page();
+    expect($html)->toContain('data-test="start-vote-rule">'.e($short).'</span>')
+        // The rest of the rule under the starts, and the seed note (the data line) under the whole card.
+        ->and(strpos($html, 'data-test="start-vote-rule-more"'))->toBeGreaterThan(strpos($html, 'data-test="start-vote-options"'))
+        ->and(strpos($html, 'data-test="cta-note"'))->toBeGreaterThan(strpos($html, 'data-test="start-vote-turnout"'));
+
+    // A tick on the page that opened due keeps its short rule: the starts do not move under the finger.
+    Livewire::actingAs($ana)->test('tournament-start-vote', ['tournament' => $tournament->id, 'due' => true])
+        ->call('toggle', '2026-11-21 18:00')
+        ->assertSeeHtml('data-test="start-vote-rule-more"');
+
+    $html = $page();
+    expect($html)->not->toContain('data-test="start-vote-rule-more"')
+        ->and($html)->toContain(e(__('Tick every start you can make, until :time. Then the start most entries can make is set; on a tie the earlier one.', ['time' => LeagueTime::stampUnbroken($tournament->start_vote_until)])))
+        ->and(strpos($html, 'data-test="cta-note"'))->toBeLessThan(strpos($html, 'data-test="start-vote"'));
+});
+
+test('while a lineup captain\'s vote is due, "you need your own copy" is one line with its platforms under it; a spectator and a captain who voted see the full box', function () {
+    [$tournament, $captain] = votingLineupTournament();
+    [$spectator] = keyedPlayer();
+    $box = fn (User $viewer): string => (string) $this->actingAs($viewer)->get(route('tournaments.show', $tournament))->assertOk()->assertSeeHtml('data-test="own-copy-platforms"')->getContent();
+
+    expect($box($captain))->toContain('data-test="own-copy" data-line')->toContain('data-test="start-vote-rule-more"')
+        ->and($box($spectator))->not->toContain('data-test="own-copy" data-line');
+
+    app(TournamentStartVote::class)->toggle($tournament, $captain, '2026-11-20 19:00');
+
+    expect($box($captain))->not->toContain('data-test="own-copy" data-line');
+});

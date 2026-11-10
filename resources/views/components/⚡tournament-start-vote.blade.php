@@ -25,17 +25,25 @@ use Livewire\Component;
  *
  * An entry without a tick counts for the earliest start (TournamentStartVote::fitsOf()).
  *
+ * `due`: the page opened for an entry whose vote is not cast yet (⚡show `$voteDue`): the rule above the starts is one
+ * line, the rest of it (most wins, a tie, no vote) stands under them, so the first tick sits in the first screen. Held
+ * for the page's life: a tick does not bring the long rule back and push the starts down under the finger.
+ *
  * Nothing for a tournament without a vote, or once sign-up has closed.
  */
 new class extends Component {
     #[Locked]
     public int $tournamentId;
 
+    #[Locked]
+    public bool $due = false;
+
     public string $error = '';
 
-    public function mount(int $tournament): void
+    public function mount(int $tournament, bool $due = false): void
     {
         $this->tournamentId = $tournament;
+        $this->due = $due;
     }
 
     #[Computed]
@@ -93,6 +101,8 @@ new class extends Component {
             $open = TournamentStartVote::isOpen($tournament);
             $fits = $entry?->start_fits ?? [];
             $earliest = __('An entry that does not vote counts for the earliest start.');
+            // Due (see the header): one line above the starts, the rest under them.
+            $short = $this->due && $entry !== null && $open;
         @endphp
         @if ($tournament->hasOpenStartVote())
             <section aria-labelledby="start-vote-h" class="flex max-w-[640px] flex-col gap-3 rounded-card bg-card px-4 py-4 shadow-[inset_0_0_0_1px_var(--color-btc)] lg:px-5" data-test="start-vote" data-state="{{ $status === TournamentStatus::Draft ? 'draft' : ($open ? 'open' : 'closing') }}">
@@ -101,6 +111,7 @@ new class extends Component {
                     <span class="text-[13px] leading-normal text-ink-2" data-test="start-vote-rule">{{ match (true) {
                         $status === TournamentStatus::Draft => __('Once you publish, the entries tick every start they can make until :time. Then the start most of them can make is set.', ['time' => LeagueTime::stampUnbroken($tournament->start_vote_until)]),
                         ! $open => __('The vote has closed. The league sets the start in a moment.'),
+                        $short => __('Tick every start you can make, until :time.', ['time' => LeagueTime::stampUnbroken($tournament->start_vote_until)]),
                         $entry !== null => __('Tick every start you can make, until :time. Then the start most entries can make is set; on a tie the earlier one.', ['time' => LeagueTime::stampUnbroken($tournament->start_vote_until)]).' '.$earliest,
                         default => __('The entries tick every start they can make, until :time. Then the start most of them can make is set.', ['time' => LeagueTime::stampUnbroken($tournament->start_vote_until)]).' '.$earliest,
                     } }}</span>
@@ -131,6 +142,9 @@ new class extends Component {
                         </li>
                     @endforeach
                 </ul>
+                @if ($short)
+                    <span class="text-xs leading-normal text-ink-2" data-test="start-vote-rule-more">{{ __('Then the start most entries can make is set; on a tie the earlier one.') }} {{ $earliest }}</span>
+                @endif
                 @if ($status !== TournamentStatus::Draft)
                     <span class="text-xs text-ink-2" data-test="start-vote-turnout">{{ trans_choice(':voted of :count entry has voted.|:voted of :count entries have voted.', $tally['entries'], ['voted' => $tally['voted']]) }}@if ($entry !== null && $open && ! TournamentStartVote::hasVoted($entry, $tournament->start_options ?? [])) {{ __('Yours has not yet.') }}@endif</span>
                 @endif
