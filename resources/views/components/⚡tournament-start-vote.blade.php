@@ -1,0 +1,141 @@
+<?php
+
+use App\Enums\TournamentStatus;
+use App\Models\Tournament;
+use App\Models\TournamentSignup;
+use App\Models\User;
+use App\Support\LeagueTime;
+use App\Support\Tournaments\TournamentRuleViolation;
+use App\Support\Tournaments\TournamentStartVote;
+use Livewire\Attributes\Computed;
+use Livewire\Attributes\Locked;
+use Livewire\Component;
+
+/*
+ * The start vote on the tournament page (TournamentStartVote, DerCaddy
+ * 2026-11-09), in the hero under the main action:
+ *
+ * - while it is open, every offered start with the number of entries that can
+ *   make it; the person who votes for an entry (the solo player, a lineup's
+ *   captain) ticks the starts that suit it, each tick saved at once;
+ * - in a draft, the organizer's preview: the starts players will vote on;
+ * - once settled and while sign-up is open, one line: the start most entries
+ *   can make, and to an entry that said it does not suit it, until when it
+ *   can pull out.
+ *
+ * Nothing for a tournament without a vote, or once sign-up has closed.
+ */
+new class extends Component {
+    #[Locked]
+    public int $tournamentId;
+
+    public string $error = '';
+
+    public function mount(int $tournament): void
+    {
+        $this->tournamentId = $tournament;
+    }
+
+    #[Computed]
+    public function tournament(): ?Tournament
+    {
+        return Tournament::query()->find($this->tournamentId);
+    }
+
+    #[Computed]
+    public function entry(): ?TournamentSignup
+    {
+        $tournament = $this->tournament;
+        $user = auth()->user();
+
+        return $tournament !== null && $user instanceof User ? app(TournamentStartVote::class)->entryOf($tournament, $user) : null;
+    }
+
+    /** @return array{counts: array<string, int>, voted: int, entries: int} */
+    #[Computed]
+    public function tally(): array
+    {
+        return $this->tournament === null ? ['counts' => [], 'voted' => 0, 'entries' => 0] : TournamentStartVote::tally($this->tournament);
+    }
+
+    public function toggle(string $option): void
+    {
+        $user = auth()->user();
+        abort_unless($user instanceof User && $this->tournament !== null, 403);
+
+        $this->error = '';
+
+        try {
+            app(TournamentStartVote::class)->toggle($this->tournament, $user, $option);
+        } catch (TournamentRuleViolation $violation) {
+            $this->error = $violation->getMessage();
+        }
+
+        unset($this->tournament, $this->entry, $this->tally);
+    }
+}; ?>
+
+@php
+    $tournament = $this->tournament;
+    $status = $tournament?->status;
+    $shown = $tournament !== null && $tournament->start_options !== null && in_array($status, [TournamentStatus::Draft, TournamentStatus::Signup], true)
+        && ($tournament->hasOpenStartVote() || $tournament->isSignupOpen());
+@endphp
+
+{{-- `contents`: with nothing to show the component takes no room in the hero's flex column. --}}
+<div class="contents">
+    @if ($shown)
+        @php
+            $entry = $this->entry;
+            $tally = $this->tally;
+            $open = TournamentStartVote::isOpen($tournament);
+            $fits = $entry?->start_fits ?? [];
+        @endphp
+        @if ($tournament->hasOpenStartVote())
+            <section aria-labelledby="start-vote-h" class="flex max-w-[640px] flex-col gap-3 rounded-card bg-card px-4 py-4 shadow-[inset_0_0_0_1px_var(--color-btc)] lg:px-5" data-test="start-vote" data-state="{{ $status === TournamentStatus::Draft ? 'draft' : ($open ? 'open' : 'closing') }}">
+                <span class="flex flex-col gap-1">
+                    <h2 id="start-vote-h" class="m-0 text-[15px] font-bold">{{ $entry !== null && $open ? __('When can you play?') : __('The start is put to a vote') }}</h2>
+                    <span class="text-[13px] leading-normal text-ink-2" data-test="start-vote-rule">{{ match (true) {
+                        $status === TournamentStatus::Draft => __('Once you publish, the entries tick every start they can make until :time. Then the start most of them can make is set.', ['time' => LeagueTime::stamp($tournament->start_vote_until)]),
+                        ! $open => __('The vote has closed. The league sets the start in a moment.'),
+                        $entry !== null => __('Tick every start you can make, until :time. Then the start most entries can make is set; on a tie the earlier one.', ['time' => LeagueTime::stamp($tournament->start_vote_until)]),
+                        default => __('The entries tick every start they can make, until :time. Then the start most of them can make is set.', ['time' => LeagueTime::stamp($tournament->start_vote_until)]),
+                    } }}</span>
+                </span>
+                <ul role="list" class="m-0 flex list-none flex-col gap-1 p-0" data-test="start-vote-options">
+                    @foreach (TournamentStartVote::options($tournament) as $at)
+                        @php
+                            $key = TournamentStartVote::key($at);
+                            $count = $tally['counts'][$key] ?? 0;
+                        @endphp
+                        <li class="flex min-h-11 items-center justify-between gap-3" wire:key="start-option-{{ $key }}" data-option="{{ $key }}">
+                            @if ($entry !== null && $open)
+                                <x-ui.check :checked="in_array($key, $fits, true)" wire:click="toggle('{{ $key }}')" wire:loading.attr="disabled" data-test="start-vote-tick"><time datetime="{{ $at->format('Y-m-d\TH:i:s\Z') }}" class="text-[13px] text-ink">{{ LeagueTime::stamp($at) }}</time></x-ui.check>
+                            @else
+                                <time datetime="{{ $at->format('Y-m-d\TH:i:s\Z') }}" class="min-w-0 text-[13px] text-ink">{{ LeagueTime::stamp($at) }}</time>
+                            @endif
+                            @if ($status !== TournamentStatus::Draft)
+                                <span class="shrink-0 text-xs text-ink-2 tabular-nums" data-test="start-vote-count">{{ trans_choice(':count can make it|:count can make it', $count) }}</span>
+                            @endif
+                        </li>
+                    @endforeach
+                </ul>
+                @if ($status !== TournamentStatus::Draft)
+                    <span class="text-xs text-ink-2" data-test="start-vote-turnout">{{ trans_choice(':voted of :count entry has voted.|:voted of :count entries have voted.', $tally['entries'], ['voted' => $tally['voted']]) }}@if ($entry !== null && $open && $entry->start_fits === null) {{ __('Yours has not yet.') }}@endif</span>
+                @endif
+                @if ($error !== '')
+                    <p class="m-0 text-[13px] text-loss" role="alert">{{ $error }}</p>
+                @endif
+            </section>
+        @else
+            {{-- Settled, sign-up still open: the start the vote set, and whoever said it does not suit them can still pull out. --}}
+            @php($winner = TournamentStartVote::key($tournament->starts_at))
+            <p class="m-0 max-w-[75ch] text-[13px] leading-normal text-ink-2" data-test="start-vote-settled">
+                {{ trans_choice('The entries voted on the start: :count of them can make it.|The entries voted on the start: :count of them can make it.', $tally['counts'][$winner] ?? 0) }}
+                @if ($entry !== null && $entry->start_fits !== null && ! in_array($winner, $entry->start_fits, true))
+                    <b class="text-ink" data-test="start-vote-cannot">{{ __('Your entry said this start does not suit it. If you cannot play then, pull out by :time.', ['time' => LeagueTime::stamp($tournament->signup_closes_at)]) }}</b>
+                @endif
+            </p>
+        @endif
+    @endif
+</div>

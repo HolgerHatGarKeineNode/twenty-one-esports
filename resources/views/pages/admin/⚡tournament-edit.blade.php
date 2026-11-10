@@ -16,6 +16,9 @@ use App\Support\Tournaments\TournamentGames;
 use App\Support\Tournaments\TournamentModeSwitch;
 use App\Support\Tournaments\TournamentModeration;
 use App\Support\Tournaments\TournamentRuleViolation;
+use App\Support\Tournaments\TournamentStartVote;
+use Carbon\CarbonImmutable;
+use Carbon\CarbonInterface;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\Facades\RateLimiter;
@@ -36,6 +39,9 @@ use Livewire\Attributes\On;
  * reason. The rules live in App\Support\Tournaments\TournamentEditor and
  * TournamentModeration; every step lands in the moderation log shown here.
  *
+ * The start can be put to a vote of the entries (TournamentStartVote): beside
+ * the start, up to three more starts and the close of the vote, in "When".
+ *
  * The optional prize pot has its own section and save (P9 scope addition,
  * App\Livewire\Concerns\EditsPrizePot): its split follows the sign-up
  * rules, its wallet connection is never shown.
@@ -54,6 +60,15 @@ new #[Layout('layouts::app', ['section' => 'admin'])] class extends TournamentFo
 
     /** Sign-up close as `Y-m-d\TH:i` in the league's zone; only while sign-up is open. */
     public string $closesAt = '';
+
+    /** The entries vote on the start (TournamentStartVote): the start above and up to three more. */
+    public bool $voteStart = false;
+
+    /** @var list<string> the other offered starts as `Y-m-d\TH:i` in the league's zone; '' = not offered */
+    public array $startOptions = ['', '', ''];
+
+    /** The close of the vote as `Y-m-d\TH:i` in the league's zone. */
+    public string $voteUntil = '';
 
     /** Remove the lineups a game or mode correction no longer fits. */
     public bool $confirmRemoval = false;
@@ -155,7 +170,56 @@ new #[Layout('layouts::app', ['section' => 'admin'])] class extends TournamentFo
         }
 
         $this->fillNightPause($tournament);
+        $this->fillStartVote($tournament);
         $this->drawDecider = $tournament->decidesDrawByStanding() ? Tournament::DRAW_DECIDER_STANDING : Tournament::DRAW_DECIDER_REPLAY;
+    }
+
+    /**
+     * The start vote's fields: the offered starts after the first (that one is the start, the earliest), and its
+     * close; without a vote, a close two days before the start to begin with.
+     */
+    private function fillStartVote(Tournament $tournament): void
+    {
+        $this->voteStart = $tournament->hasOpenStartVote();
+        $others = $this->voteStart ? array_slice(TournamentStartVote::options($tournament), 1) : [];
+        $this->startOptions = array_pad(array_map(LeagueTime::input(...), $others), TournamentStartVote::MAX_OPTIONS - 1, '');
+        $this->voteUntil = LeagueTime::input($tournament->start_vote_until ?? $tournament->starts_at->copy()->subDays(2));
+    }
+
+    /**
+     * The changes of the start vote (TournamentEditor checks them): the start and the other offered starts, earliest
+     * first; the start becomes the earliest of them. Nothing once the vote is settled or the draw has run.
+     *
+     * @param  array<string, mixed>  $changes  with `starts_at` already read
+     * @return array<string, mixed>
+     */
+    private function startVoteChanges(Tournament $tournament, array $changes): array
+    {
+        if (! $tournament->isBeforeDraw() || $tournament->start_decided_at !== null) {
+            return $changes;
+        }
+
+        if (! $this->voteStart) {
+            return [...$changes, 'start_options' => null, 'start_vote_until' => null];
+        }
+
+        $stored = TournamentStartVote::options($tournament);
+        $starts = [$changes['starts_at']];
+
+        foreach ($this->startOptions as $typed) {
+            if (($typed = trim((string) $typed)) !== '') {
+                // An unchanged value keeps its stored instant (LeagueTime::parse), as the start does.
+                $starts[] = LeagueTime::parse($typed, collect($stored)->first(fn (CarbonImmutable $at): bool => LeagueTime::input($at) === $typed));
+            }
+        }
+
+        usort($starts, fn (CarbonInterface $a, CarbonInterface $b): int => $a <=> $b);
+
+        return [...$changes,
+            'starts_at' => $starts[0],
+            'start_options' => TournamentStartVote::normalize($starts),
+            'start_vote_until' => LeagueTime::parse($this->voteUntil, $tournament->start_vote_until),
+        ];
     }
 
     /**
@@ -247,6 +311,14 @@ new #[Layout('layouts::app', ['section' => 'admin'])] class extends TournamentFo
                 'break' => ['nullable', 'numeric', 'between:0,1000'],
             ] : []),
             ...($tournament->status === TournamentStatus::Signup ? ['closesAt' => ['required', LeagueTime::rule($tournament->signup_closes_at)]] : []),
+            ...($this->voteStart && $beforeDraw && $tournament->start_decided_at === null ? [
+                'startOptions.*' => ['nullable', function (string $attribute, mixed $value, Closure $fail): void {
+                    if (trim((string) $value) !== '') {
+                        LeagueTime::rule()($attribute, trim((string) $value), $fail);
+                    }
+                }],
+                'voteUntil' => ['required', LeagueTime::rule($tournament->start_vote_until)],
+            ] : []),
         ]);
 
         $changes = [
@@ -256,6 +328,7 @@ new #[Layout('layouts::app', ['section' => 'admin'])] class extends TournamentFo
             ...$this->chosenDeadlines(),
             ...$this->chosenDrawDecider(),
         ];
+        $changes = $this->startVoteChanges($tournament, $changes);
 
         if ($beforeDraw) {
             if (! $this->chosenFormatRuns()) {
@@ -494,6 +567,7 @@ new #[Layout('layouts::app', ['section' => 'admin'])] class extends TournamentFo
         'pot_released' => __('released to the league reserve'),
         'left' => __('took a player whose account is gone off an entry'),
         'withdrawn' => __('withdrew an entry whose account is gone'),
+        'start_voted' => __('settled the vote on the start'),
     ];
     $shown = fn (mixed $value): string => match (true) {
         $value === null, $value === [] => '—',
@@ -511,6 +585,7 @@ new #[Layout('layouts::app', ['section' => 'admin'])] class extends TournamentFo
         'night_pause' => __('Night pause'), 'night_pause_until' => __('Night pause from'), 'night_pause_resume' => __('Night pause until'),
         'result' => __('Result'), 'elo' => __('Elo'), 'voided' => __('Voided and paired again'), 'held' => __('On hold'), 'forfeited' => __('Lost by forfeit'),
         'pot_sats' => __('Sats in the league wallet'),
+        'start_options' => __('Starts offered for the vote (UTC)'), 'start_vote_until' => __('Vote closes'), 'start_votes' => __('Entries that can make it'),
     ];
 @endphp
 
@@ -582,6 +657,23 @@ new #[Layout('layouts::app', ['section' => 'admin'])] class extends TournamentFo
                     <x-berlin-datetime-input model="closesAt" :label="__('Sign-up closes')" :value="$closesAt" test="edit-closes-at" />
                 @endif
             </div>
+            @if ($tournament->start_decided_at !== null && $tournament->start_options !== null)
+                <p class="m-0 max-w-[80ch] text-xs leading-normal text-ink-2" data-test="start-vote-decided">{{ __('The entries voted on the start; the league set it on :date. You can still change it above, but the players are not told then.', ['date' => \App\Support\Formats::date($tournament->start_decided_at, true, $zone)]) }}</p>
+            @elseif ($beforeDraw && ($voteStart || TournamentStartVote::offers($tournament)))
+                {{-- The start vote (TournamentStartVote, DerCaddy 2026-11-09): deferred like every field here, shown at once. --}}
+                <div class="flex flex-col gap-3" x-data="{ vote: $wire.$entangle('voteStart') }" data-test="start-vote-edit">
+                    <x-ui.check :checked="$voteStart" x-bind:aria-checked="vote.toString()" x-on:click="vote = ! vote" class="self-start text-[13px]" data-test="start-vote-toggle">{{ __('Let the entries vote on the start') }}</x-ui.check>
+                    <div x-show="vote" @unless ($voteStart) style="display: none" @endunless class="flex flex-col gap-3" data-test="start-vote-fields">
+                        <p class="m-0 max-w-[80ch] text-xs leading-normal text-ink-2">{{ __('Offer up to three more starts beside the one above. Each entry ticks the starts it can make until the vote closes; then the start most entries can make wins (on a tie the earlier one), the league publishes it and tells the players. The vote closes at least an hour before sign-up, so whoever cannot make it can still pull out. Until then the tournament shows the earliest start.') }}</p>
+                        <div class="grid items-start gap-4 @min-[640px]/admin:grid-cols-2">
+                            @foreach ($startOptions as $index => $option)
+                                <x-berlin-datetime-input :model="'startOptions.'.$index" :label="__('Another possible start (optional)')" :value="$option" :test="'start-option-'.$index" />
+                            @endforeach
+                            <x-berlin-datetime-input model="voteUntil" :label="__('Vote closes')" :value="$voteUntil" test="start-vote-until" />
+                        </div>
+                    </div>
+                </div>
+            @endif
             @if ($beforeDraw)
                 @island(name: 'chooser-window')
                     @include('pages.admin.partials.tournament-chooser', ['part' => 'window'])
@@ -744,7 +836,7 @@ new #[Layout('layouts::app', ['section' => 'admin'])] class extends TournamentFo
             <div class="flex flex-col gap-1 border-t border-hairline pt-2 text-xs leading-normal" wire:key="log-{{ $entry->id }}">
                 <span class="[overflow-wrap:anywhere]"><span class="text-ink-3">{{ \App\Support\Formats::date($entry->created_at, true, $zone) }}</span>
                     <b>{{ $entry->user_name }}</b> {{ $actions[$entry->action] ?? $entry->action }}@if ($entry->subject): <b>{{ $entry->subject }}</b>@endif
-                    @if ($entry->reason) <span class="text-ink-2">— {{ $entry->reason === TournamentEditor::DEADLINES_AHEAD ? __($entry->reason) : $entry->reason }}</span>@endif</span>
+                    @if ($entry->reason) <span class="text-ink-2">— {{ in_array($entry->reason, [TournamentEditor::DEADLINES_AHEAD, TournamentStartVote::SETTLED], true) ? __($entry->reason) : $entry->reason }}</span>@endif</span>
                 @foreach ($entry->details ?? [] as $key => [$old, $new])
                     <span class="text-ink-2 [overflow-wrap:anywhere]">{{ $fields[$key] ?? $key }}: {{ $shown($old) }} → {{ $shown($new) }}</span>
                 @endforeach

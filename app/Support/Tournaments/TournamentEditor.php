@@ -55,6 +55,11 @@ use Illuminate\Support\Facades\Gate;
  * exactly what the commitment rules out (NIP "Tournament Draw"). A finished
  * or called-off tournament does not change.
  *
+ * The start vote (TournamentStartVote: two to four offered starts and the
+ * close of the vote) changes before the draw until the league settles it.
+ * While it is open `starts_at` is the earliest offered start; the vote itself
+ * is league data, so a change of only its close publishes nothing.
+ *
  * Every change to a published tournament republishes its `31923` and the
  * league calendar (TournamentPublisher::republish); the address never
  * changes. Every change is logged in the moderation log. No change asks
@@ -77,6 +82,9 @@ final class TournamentEditor
     /** The tournament's own deadlines (P18) and its night pause (NightPause); null = the league default. */
     public const DEADLINES = ['checkin_minutes', 'noshow_minutes', 'report_hours', 'response_minutes', 'night_pause', 'night_pause_until', 'night_pause_resume'];
 
+    /** The start vote's fields (TournamentStartVote): before the draw, until it is settled. */
+    public const START_VOTE = ['start_options', 'start_vote_until'];
+
     /** The moderation log's note on a deadline edit while the tournament runs. */
     public const DEADLINES_AHEAD = 'Deadline changes apply to matches paired from now on; running matches keep theirs.';
 
@@ -86,7 +94,7 @@ final class TournamentEditor
     public function __construct(private TournamentPublisher $publisher, private TournamentModeration $moderation) {}
 
     /**
-     * @param  array{name?: string, description?: string|null, draw_decider?: string|null, checkin_minutes?: int|null, noshow_minutes?: int|null, report_hours?: int|null, response_minutes?: int|null, night_pause?: bool|null, night_pause_until?: string|null, night_pause_resume?: string|null, starts_at?: CarbonImmutable, signup_closes_at?: CarbonImmutable, capacity?: int, results_mode?: TournamentResultsMode, director_ids?: list<int>, game?: string, mode?: string, format?: TournamentFormat, options?: array<string, mixed>, time_window?: int, on_site?: bool, stations?: int|null, times?: array<string, float>|null}  $changes
+     * @param  array{name?: string, description?: string|null, draw_decider?: string|null, checkin_minutes?: int|null, noshow_minutes?: int|null, report_hours?: int|null, response_minutes?: int|null, night_pause?: bool|null, night_pause_until?: string|null, night_pause_resume?: string|null, starts_at?: CarbonImmutable, signup_closes_at?: CarbonImmutable, capacity?: int, results_mode?: TournamentResultsMode, director_ids?: list<int>, game?: string, mode?: string, format?: TournamentFormat, options?: array<string, mixed>, time_window?: int, on_site?: bool, stations?: int|null, times?: array<string, float>|null, start_options?: list<string>|null, start_vote_until?: CarbonImmutable|null}  $changes
      * @return list<string> the fields that changed
      *
      * @throws TournamentRuleViolation
@@ -142,6 +150,8 @@ final class TournamentEditor
                 $locked->ladder_address = Ladders::address($game, $mode, $locked->published_at?->toImmutable());
             }
 
+            $this->assertStartVote($locked, $diff);
+
             $locked->save();
 
             $details = [];
@@ -162,8 +172,9 @@ final class TournamentEditor
             $this->moderation->log($locked, $actor, 'edited', reason: $deadlinesAhead ? self::DEADLINES_AHEAD : null, details: $details);
             $removed = $this->moderation->removeLocked($locked, $actor, $incompatible, self::GAME_CORRECTED);
 
-            // The deadlines are not part of the published tournament: a change of only them publishes nothing.
-            if ($locked->status !== TournamentStatus::Draft && array_diff(array_keys($details), self::DEADLINES) !== []) {
+            // The deadlines and the start vote are not part of the published tournament: a change of only them publishes
+            // nothing (an earlier earliest offered start changes `starts_at`, which does).
+            if ($locked->status !== TournamentStatus::Draft && array_diff(array_keys($details), [...self::DEADLINES, ...self::START_VOTE]) !== []) {
                 $this->publisher->republish($locked);
             }
 
@@ -249,6 +260,41 @@ final class TournamentEditor
         if (! $tournament->isBeforeDraw() && array_diff(array_keys($diff), $after) !== []) {
             throw new TournamentRuleViolation('locked', __('The draw has run: format, game, capacity and sign-up are locked. Only the name, the description and the start time can change.'));
         }
+
+        if ($tournament->start_decided_at !== null && array_intersect(array_keys($diff), self::START_VOTE) !== []) {
+            throw new TournamentRuleViolation('start_vote_decided', __('The vote has decided the start already. Change it under Starts if you have to.'));
+        }
+    }
+
+    /**
+     * The start vote as it will be saved (TournamentStartVote): checked when
+     * it or what it depends on changes (the start, the sign-up close, the
+     * game, the place), and `starts_at` held on the earliest offered start.
+     *
+     * @param  array<string, true>  $diff
+     *
+     * @throws TournamentRuleViolation
+     */
+    private function assertStartVote(Tournament $tournament, array $diff): void
+    {
+        if (! $tournament->hasOpenStartVote()) {
+            return;
+        }
+
+        $touched = array_intersect(array_keys($diff), [...self::START_VOTE, 'starts_at', 'signup_closes_at', 'game', 'mode', 'on_site']) !== [];
+
+        if (! $touched) {
+            return;
+        }
+
+        $options = TournamentStartVote::normalize(TournamentStartVote::options($tournament));
+        $tournament->start_options = $options;
+
+        if ($options !== [] && TournamentStartVote::key($tournament->starts_at) !== $options[0]) {
+            throw new TournamentRuleViolation('start_vote_start', __('While the start is put to a vote, the start is the earliest start you offer.'));
+        }
+
+        TournamentStartVote::assertValid($tournament, $options, $tournament->start_vote_until, $tournament->signup_closes_at);
     }
 
     /**

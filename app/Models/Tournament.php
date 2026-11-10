@@ -18,6 +18,7 @@ use App\Support\Tournaments\GameProfile;
 use App\Support\Tournaments\Lobbies;
 use App\Support\Tournaments\NightPause;
 use App\Support\Tournaments\TournamentDeadlines;
+use App\Support\Tournaments\TournamentStartVote;
 use Carbon\CarbonImmutable;
 use Database\Factories\TournamentFactory;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
@@ -100,6 +101,9 @@ use Illuminate\Support\Carbon;
  * @property Carbon|null $cup_extended_at when its sign-up was extended (once)
  * @property Carbon|null $cup_ended_at when it finished or was called off
  * @property string|null $score_course the course a score game's leaderboard is played on (plan "AoE2 und Trackmania", P4); null for every other tournament
+ * @property list<string>|null $start_options the starts its entries vote on, UTC `Y-m-d H:i`, earliest first; null = no vote ({@see TournamentStartVote})
+ * @property Carbon|null $start_vote_until when the start vote closes
+ * @property Carbon|null $start_decided_at when the league settled the start vote; null while it is open
  * @property Carbon|null $created_at
  * @property Carbon|null $updated_at
  * @property-read User|null $creator
@@ -120,7 +124,8 @@ use Illuminate\Support\Carbon;
     'prize_target_sats', 'prize_split', 'pool_opened_at', 'pool_closed_at', 'payouts_approved_at', 'payouts_approved_by_id',
     'pot_source', 'pot_nwc_uri', 'pot_lud16', 'pot_balance_sats', 'pot_balance_at', 'pot_balance_error', 'paused_at',
     'prize_mode', 'prize_fixed', 'pot_can_receive',
-    'cup_series', 'cup_number', 'cup_open_series', 'cup_extended_at', 'cup_ended_at', 'score_course'])]
+    'cup_series', 'cup_number', 'cup_open_series', 'cup_extended_at', 'cup_ended_at', 'score_course',
+    'start_options', 'start_vote_until', 'start_decided_at'])]
 #[Hidden(['pot_nwc_uri'])]
 class Tournament extends Model
 {
@@ -191,6 +196,9 @@ class Tournament extends Model
             'cup_number' => 'integer',
             'cup_extended_at' => 'datetime',
             'cup_ended_at' => 'datetime',
+            'start_options' => 'array',
+            'start_vote_until' => 'datetime',
+            'start_decided_at' => 'datetime',
         ];
     }
 
@@ -624,6 +632,15 @@ class Tournament extends Model
         return $this->isTmnfWeek()
             ? __('TMNF Week :week, :year', ['week' => $local->isoWeek(), 'year' => $local->isoWeekYear()])
             : __('Blockfill Week :week, :year', ['week' => $local->isoWeek(), 'year' => $local->isoWeekYear()]);
+    }
+
+    /**
+     * Its start is put to a vote that the league has not settled yet
+     * (TournamentStartVote): `starts_at` is the earliest offered start until then.
+     */
+    public function hasOpenStartVote(): bool
+    {
+        return $this->start_options !== null && $this->start_decided_at === null;
     }
 
     public function isDirectorMode(): bool

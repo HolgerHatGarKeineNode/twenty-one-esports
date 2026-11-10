@@ -63,6 +63,11 @@ final class TournamentPublisher
             throw new TournamentRuleViolation('deadline', __('Sign-up has to close in the future, at the latest when the tournament starts.'));
         }
 
+        // A start put to a vote (TournamentStartVote): its offered starts still ahead, and the vote closing an hour before sign-up.
+        if ($tournament->hasOpenStartVote()) {
+            TournamentStartVote::assertValid($tournament, $tournament->start_options ?? [], $tournament->start_vote_until, $signupClosesAt);
+        }
+
         return $this->openSignup($tournament, $signupClosesAt);
     }
 
