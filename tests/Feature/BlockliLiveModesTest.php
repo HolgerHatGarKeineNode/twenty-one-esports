@@ -166,6 +166,19 @@ test('"Live now" in the lobby lists the live games first, then the running cup g
         ->assertSeeHtml('data-test="live-game-cup"');
 });
 
+test('the lobby hero counts the games running as "Live now" does, not the viewer\'s own correspondence games', function () {
+    // PR #24 review, 2026-11-10: the hero said "0 games running" while "Live now" listed 2 running Blockli games.
+    [$me, $friend] = User::factory()->count(2)->create()->all();
+    app(BoardGameService::class)->start(Blockli::SLUG, $me, $friend, mode: 'correspondence');
+    app(BoardGameService::class)->start(Blockli::SLUG, ...User::factory()->count(2)->create()->all(), mode: 'blitz');
+    app(BoardGameService::class)->start(Blockli::SLUG, ...User::factory()->count(2)->create()->all(), mode: 'rapid');
+
+    $stat = fn (string $html): string => trim(strip_tags(str((string) $html)->after('data-test="game-stat"')->before('</div>')->toString()));
+
+    expect($stat($this->get(route('board.lobby', Blockli::SLUG))->assertOk()->getContent()))->toContain('2')->toContain('games running')
+        ->and($stat($this->actingAs($me)->get(route('board.lobby', Blockli::SLUG))->assertOk()->getContent()))->toContain('2')->not->toContain('3');
+});
+
 test('a tournament switches its time control in a draft, in sign-up and with the draw pending; once players are in, each is told once', function (TournamentStatus $status, int $told) {
     $admin = blockliLiveAdmin();
     $tournament = Tournament::factory()->create(['status' => $status, 'game' => 'blockli', 'mode' => 'correspondence', 'starts_at' => now()->addDays(3),
