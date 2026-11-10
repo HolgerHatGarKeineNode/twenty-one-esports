@@ -647,8 +647,12 @@ test('the Blockli lobby offers the team match as the chess lobby does, and a boa
     $member = User::factory()->create();
     $clan = Clan::factory()->create();
     ClanMember::query()->create(['clan_id' => $clan->id, 'user_id' => $member->id, 'role' => ClanRole::Member, 'joined_at' => now()]);
-    $this->actingAs($member)->get(route('board.lobby', 'blockli'))->assertOk()
-        ->assertSee('href="'.route('clans.show', $clan).'"', false);
+    // The shell links the member's clan elsewhere too, so the href is read off the tile and the line themselves.
+    $memberHtml = $this->actingAs($member)->get(route('board.lobby', 'blockli'))->assertOk()->getContent();
+    foreach (['play-team', 'play-team-link'] as $hook) {
+        expect(preg_match('/<a\b[^>]*data-test="'.$hook.'"[^>]*>/', $memberHtml, $tag))->toBe(1)
+            ->and($tag[0])->toContain('href="'.route('clans.show', $clan).'"');
+    }
 
     // In German, as on the chess lobby.
     $this->withHeader('Accept-Language', 'de-DE')->get(route('board.lobby', 'blockli'))->assertOk()

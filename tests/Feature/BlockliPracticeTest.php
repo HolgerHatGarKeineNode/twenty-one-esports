@@ -12,7 +12,7 @@ use Tests\Support\BlockliOn;
 | Blockli practice against bots (DerCaddy, 2026-10-23)
 |--------------------------------------------------------------------------
 |
-| A guest finds six lessons and three bots behind the lobby's "Learn the game" (until 2026-11-08 "Practice against bots"). The game stays in the browser
+| A guest finds six lessons and three bots behind the lobby's "Learn to play" (until 2026-11-08 "Practice against bots"). The game stays in the browser
 | (resources/js/blockli/practice.js); the page only judges each move it is sent by BlockliRules, as a live game's move
 | is judged, and stores nothing (App\Support\Board\BlockliPractice). Every lesson's position holds what its words
 | promise. The bots and the tips are tested in node, and the engine they run on against the server's rules
@@ -34,7 +34,7 @@ const PRACTICE_START = 'e1 e9 10 10 w - 0';
 
 test('a guest finds the practice in the lobby and gets the lessons and the bots', function () {
     $this->get(route('board.lobby', 'blockli'))->assertOk()
-        ->assertSee(route('board.practice', 'blockli'))->assertSee('Learn the game')->assertSee('Tutorial');
+        ->assertSee(route('board.practice', 'blockli'))->assertSee('Learn to play')->assertSee('Tutorial');
 
     $this->get(route('board.practice', 'blockli'))->assertOk()
         ->assertSee('Blockli · Practice')->assertSee('blockliPractice(', false)->assertSee('boardGame(boardConfig())', false)

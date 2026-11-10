@@ -121,9 +121,9 @@
             </li>
             @if ($slug === \App\Games\Blockli::SLUG && \Illuminate\Support\Facades\Route::has('board.practice'))
                 {{-- Practice against bots (DerCaddy, 2026-10-23): six lessons, then three bots, for guests too; nothing counts.
-                     Named "Learn the game" with the action "Tutorial" (DerCaddy, 2026-11-08). --}}
+                     Named "Spiel lernen" with the action "Tutorial" (DerCaddy, 2026-11-08), in English "Learn to play" as Blockspace's tile. --}}
                 <li>
-                    <x-chess.lobby-tile :label="__('Learn the game')" :action="__('Tutorial')" :href="route('board.practice', $slug)" data-test="play-practice">
+                    <x-chess.lobby-tile :label="__('Learn to play')" :action="__('Tutorial')" :href="route('board.practice', $slug)" data-test="play-practice">
                         <x-slot:detail>{{ __('Learn the rules, then play three bots') }}</x-slot:detail>
                         <x-slot:meta>{{ __('nothing counts') }}</x-slot:meta>
                     </x-chess.lobby-tile>
