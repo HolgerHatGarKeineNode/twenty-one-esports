@@ -83,6 +83,7 @@ test('the organizer offers starts on the edit page: the start becomes the earlie
 
     Livewire::actingAs($tournament->creator)->test('pages::admin.tournament-edit', ['tournament' => $tournament])
         ->assertSee(__('Let the entries vote on the start'))
+        ->assertSee([__('2nd start (optional)'), __('3rd start (optional)'), __('4th start (optional)'), __('Vote closes')])
         ->set('voteStart', true)
         // Typed in Berlin time: 20 Nov 20:00 and 22 Nov 17:00 are 19:00 and 16:00 UTC.
         ->set('startOptions', ['2026-11-22T17:00', '2026-11-20T20:00', ''])
@@ -352,6 +353,8 @@ test('a vote still open when sign-up closes is settled before the close, without
     $tournament = votingTournament();
     [$ana] = voter($tournament, 'Ana');
     [$bob] = voter($tournament, 'Bob');
+    // Cleo never votes: Saturday moves her start without her yes, yet she can no longer withdraw.
+    [$cleo] = voter($tournament, 'Cleo');
     $vote = app(TournamentStartVote::class);
     $vote->toggle($tournament, $ana, '2026-11-21 18:00');
     $vote->toggle($tournament, $bob, '2026-11-21 18:00');
@@ -368,7 +371,7 @@ test('a vote still open when sign-up closes is settled before the close, without
         ->and($tournament->status)->toBe(TournamentStatus::Drawing);
 
     // Nobody can withdraw any more: the notice names the start and the count, nothing else.
-    foreach ([$ana, $bob] as $player) {
+    foreach ([$ana, $bob, $cleo] as $player) {
         expect($player->notifications()->sole()->data['body'])->not->toContain('withdraw')
             ->and($player->notifications()->sole()->data['url'])->toBe(route('tournaments.show', $tournament));
     }
@@ -455,7 +458,11 @@ test('while the vote is open, the published tournament and the sign-up page name
         ->assertSeeHtml('data-test="signup-start-vote"')
         ->assertSee(__('by vote'))
         ->assertSee(LeagueTime::stamp(CarbonImmutable::parse('2026-11-22 16:00', 'UTC')))
-        ->assertSee(__('Round 1 starts :time.', ['time' => TournamentStartVote::startLine($tournament)]));
+        // The entered player's confirmation names the vote, not the earliest start (built here, not by startLine()).
+        ->assertSee(__('Round 1 starts :time.', ['time' => __('by vote: :options, vote closes :close', [
+            'options' => implode(' / ', array_map(fn (string $at): string => LeagueTime::stamp(CarbonImmutable::parse($at, 'UTC')), ['2026-11-20 19:00', '2026-11-21 18:00', '2026-11-22 16:00'])),
+            'close' => LeagueTime::stamp(CarbonImmutable::parse('2026-11-18 19:00', 'UTC')),
+        ])]));
 
     // Changing the offered starts publishes a new version naming them.
     $this->travel(3)->seconds();
