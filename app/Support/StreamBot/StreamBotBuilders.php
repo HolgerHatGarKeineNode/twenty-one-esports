@@ -36,6 +36,7 @@ use App\Support\Tmnf\TmnfWeeks;
 use App\Support\Tournaments\Lobbies;
 use App\Support\Tournaments\TournamentChampion;
 use App\Support\Tournaments\TournamentLanding;
+use App\Support\Tournaments\TournamentStartVote;
 use App\Support\TwentyOne\Stream\BlockfillSlides;
 use Carbon\CarbonImmutable;
 use Closure;
@@ -261,7 +262,8 @@ final class StreamBotBuilders
             $this->add($messages, $this->message('tournament_signup', 'tournament-signup:'.$tournament->id, [
                 'name' => $name,
                 'game' => Lobbies::isLobby($tournament) ? $this->games->name($tournament->game).', ein Lobby-Match' : $this->gameLine($tournament->game, $tournament->mode),
-                'starts' => $this->berlin($tournament->starts_at),
+                // While the start is put to a vote, every offered start and the vote's close (TournamentStartVote).
+                'starts' => TournamentStartVote::startLine($tournament, (string) config('esports.stream_bot.timezone', 'Europe/Berlin'), self::LOCALE),
                 'spots' => $places['taken'].' von '.$places['places'].' Plätzen belegt',
                 'pot' => $pot === null ? '' : ' · 💰 '.StreamBotCopy::number($pot, self::LOCALE).' Sats im Topf',
                 'url' => route('tournaments.show', $tournament),
@@ -967,12 +969,6 @@ final class StreamBotBuilders
         $modeName = $this->games->mode($game, $mode)->name ?? $mode;
 
         return trim($this->games->name($game).' '.$modeName);
-    }
-
-    /** "Sa, 4. Okt 2026, 20:00 MESZ" in the bot's time zone (Berlin). */
-    private function berlin(\DateTimeInterface $moment): string
-    {
-        return LeagueTime::stamp(CarbonImmutable::instance($moment), (string) config('esports.stream_bot.timezone', 'Europe/Berlin'), self::LOCALE);
     }
 
     /** "3 Tage 4 Std.", "2 Std. 15 Min.", "40 Min.". */

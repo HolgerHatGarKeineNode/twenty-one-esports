@@ -358,3 +358,17 @@ test('every wording leads with an emoji, keeps a link and stays inside four line
         }
     }
 });
+
+test('an open tournament whose start is put to a vote names every offered start and the vote\'s close, not the earliest alone', function () {
+    Tournament::factory()->signup()->create([
+        'name' => 'Vote Cup',
+        'signup_closes_at' => now()->addDays(2),
+        'starts_at' => CarbonImmutable::parse('2026-09-28 18:00', 'UTC'),
+        'start_options' => ['2026-09-28 18:00', '2026-09-29 18:00'],
+        'start_vote_until' => CarbonImmutable::parse('2026-09-27 12:00', 'UTC'),
+    ]);
+
+    expect(botBuild('tournament_signup')[0]->content)
+        ->toContain('Start per Abstimmung: Mo, 28. Sep 2026, 20:00 MESZ / Di, 29. Sep 2026, 20:00 MESZ, Abstimmung bis So, 27. Sep 2026, 14:00 MESZ')
+        ->not->toContain('#');
+});
