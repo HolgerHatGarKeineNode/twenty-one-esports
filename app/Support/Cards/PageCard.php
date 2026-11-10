@@ -587,6 +587,8 @@ final class PageCard
             // UTC for everyone, the local time of the league (a cup: of its region) beside it.
             $this->c->text($this->c->fit(__('Starts :utc UTC', ['utc' => $f['starts_utc']]), 'mono', self::MIN, $max), 'mono', self::MIN, self::M, $after + 2, Canvas::INK);
             $this->c->text($this->c->fit(__(':local local time', ['local' => $f['starts_local']]), 'mono', self::MIN, $max), 'mono', self::MIN, self::M, $after + 42, Canvas::INK_2);
+        } elseif ($f['vote'] ?? false) {
+            $this->c->text($this->c->fit(__('Start by vote'), 'mono', self::MIN, $max), 'mono', self::MIN, self::M, $after + 2, Canvas::INK);
         }
 
         if ($f['score_unit'] !== null) {

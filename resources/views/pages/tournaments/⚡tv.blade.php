@@ -407,7 +407,8 @@ new #[Layout('layouts::tv')] class extends Component {
                 @if ($ticker === [])
                     <span class="tv-ticker-empty">{{ match (true) {
                         $running => __('Results appear here as they come in.'),
-                        $lobby => __('Round 1 starts :date.', ['date' => \App\Support\Formats::date($tournament->starts_at, true, $zone)]),
+                        // A start put to a vote names every offered start (TournamentStartVote), not the earliest.
+                        $lobby => __('Round 1 starts :date.', ['date' => $tournament->hasOpenStartVote() ? \App\Support\Tournaments\TournamentStartVote::startLine($tournament, $zone) : \App\Support\Formats::date($tournament->starts_at, true, $zone)]),
                         default => __('No results yet.'),
                     } }}</span>
                 @else

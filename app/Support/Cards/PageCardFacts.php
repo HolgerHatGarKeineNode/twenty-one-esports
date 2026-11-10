@@ -157,8 +157,10 @@ final class PageCardFacts
             'status' => $tournament->isSignupOpen() ? 'open' : $tournament->status->value,
             'cup' => $cup,
             'region' => $cup ? CasualCups::regionLabel($tournament) : null,
-            'starts_utc' => $starts->copy()->utc()->format('Y-m-d H:i'),
-            'starts_local' => $starts->copy()->timezone($zone)->format('H:i T'),
+            // A start put to a vote (TournamentStartVote) has no time yet: the card says "Start by vote" instead.
+            'starts_utc' => $tournament->hasOpenStartVote() ? null : $starts->copy()->utc()->format('Y-m-d H:i'),
+            'starts_local' => $tournament->hasOpenStartVote() ? null : $starts->copy()->timezone($zone)->format('H:i T'),
+            'vote' => $tournament->hasOpenStartVote(),
             'taken' => $places['taken'],
             'places' => $places['places'],
             'teams' => $tournament->profile()->entersTeams(),

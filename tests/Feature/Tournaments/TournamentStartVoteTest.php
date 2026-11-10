@@ -2,6 +2,7 @@
 
 use App\Enums\NotificationKind;
 use App\Enums\OverlayVariant;
+use App\Enums\TournamentFormat;
 use App\Enums\TournamentStatus;
 use App\Models\NostrEvent;
 use App\Models\OverlayPreset;
@@ -10,11 +11,15 @@ use App\Models\TournamentModerationEntry;
 use App\Models\TournamentSignup;
 use App\Models\User;
 use App\Support\Broadcast\OverlaySnapshot;
+use App\Support\Cards\PageCardFacts;
 use App\Support\Cards\ShareMoments;
 use App\Support\Caster\SceneFacts;
+use App\Support\Formats;
 use App\Support\LeagueTime;
 use App\Support\StreamBot\FreePlaceNotes;
 use App\Support\StreamBot\TournamentNotes;
+use App\Support\Tournaments\FormatOptions;
+use App\Support\Tournaments\GameProfile;
 use App\Support\Tournaments\TournamentDraws;
 use App\Support\Tournaments\TournamentEditor;
 use App\Support\Tournaments\TournamentPublisher;
@@ -551,4 +556,21 @@ test('while the vote is open, the tournament has no calendar file; once settled 
     app(TournamentStartVote::class)->settle($tournament);
 
     $this->get(route('tournaments.calendar', $tournament))->assertOk()->assertSee('DTSTART:20261120T190000Z');
+});
+
+test('while the vote is open, the link preview card and a lobby tournament\'s TV name no fixed start', function () {
+    $tournament = votingTournament();
+    $facts = PageCardFacts::tournament($tournament);
+
+    expect($facts['starts_utc'])->toBeNull()
+        ->and($facts['starts_local'])->toBeNull()
+        ->and($facts['vote'])->toBeTrue();
+
+    $lobby = openTournament(['name' => 'Lobby Vote', 'game' => 'age-of-empires-2', 'mode' => '1v1', 'format' => TournamentFormat::FreeForAll,
+        'options' => FormatOptions::defaults(GameProfile::for('age-of-empires-2', '1v1'))->toArray(), 'capacity' => 16, 'starts_at' => CarbonImmutable::parse('2026-11-20 19:00', 'UTC')]);
+    $lobby->forceFill(['start_options' => ['2026-11-20 19:00', '2026-11-21 18:00'], 'start_vote_until' => CarbonImmutable::parse('2026-11-18 19:00', 'UTC')])->save();
+
+    $this->get(route('tournaments.tv', $lobby))->assertOk()
+        ->assertSee(__('Round 1 starts :date.', ['date' => TournamentStartVote::startLine($lobby->refresh(), LeagueTime::zone())]))
+        ->assertDontSee(__('Round 1 starts :date.', ['date' => Formats::date($lobby->starts_at, true, LeagueTime::zone())]));
 });
