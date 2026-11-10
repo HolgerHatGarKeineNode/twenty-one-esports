@@ -131,6 +131,18 @@ final class TournamentStartVote
         ], $locale);
     }
 
+    /**
+     * The start on a card or a list row (home, the tournaments list, the
+     * dock): the stamp the caller formatted, or while the vote is open
+     * "Start by vote", so no card names the earliest offered start as THE
+     * start. A caller that counts down to the start drops its countdown then
+     * (Tournament::hasOpenStartVote(), TournamentLanding::startsIn()).
+     */
+    public static function cardStart(Tournament $tournament, string $stamp): string
+    {
+        return $tournament->hasOpenStartVote() ? __('Start by vote') : $stamp;
+    }
+
     /** Entries tick their starts now: sign-up is open, the vote is not settled and has not closed. */
     public static function isOpen(Tournament $tournament): bool
     {

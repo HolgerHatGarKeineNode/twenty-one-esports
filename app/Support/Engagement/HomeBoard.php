@@ -39,6 +39,7 @@ use App\Support\Stacker\BlockfillRules;
 use App\Support\Stacker\BlockfillWeeks;
 use App\Support\Tournaments\CupBoard;
 use App\Support\Tournaments\TournamentChampion;
+use App\Support\Tournaments\TournamentStartVote;
 use App\Support\TwentyOne\Stream\StreamStats;
 use Carbon\CarbonImmutable;
 use Carbon\CarbonInterface;
@@ -306,7 +307,7 @@ final class HomeBoard
             $places = $cup['places'];
             $rows[] = [
                 'tournament' => $tournament, 'name' => self::shortName($tournament), 'href' => route('tournaments.show', $tournament), 'featured' => true, 'running' => false,
-                'meta' => implode(', ', array_filter([$pot ? self::sats((int) $pot).' Sats' : null, self::dayClock($tournament->starts_at, false), $places['taken'].'/'.$places['places']])),
+                'meta' => implode(', ', array_filter([$pot ? self::sats((int) $pot).' Sats' : null, TournamentStartVote::cardStart($tournament, self::dayClock($tournament->starts_at, false)), $places['taken'].'/'.$places['places']])),
                 'taken' => (int) $places['taken'], 'places' => (int) $places['places'],
             ];
         }

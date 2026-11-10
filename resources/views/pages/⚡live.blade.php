@@ -246,7 +246,7 @@ new #[Layout('layouts::app', ['scripts' => ['resources/js/liveChat.js']])] class
                                 <span class="flex min-w-0 flex-col gap-1 leading-tight">
                                     <span class="text-xs">{{ __('Next up:') }}</span>
                                     <b class="truncate text-ink">{{ $this->next->name }}</b>
-                                    <x-league-time :at="$this->next->starts_at" class="text-xs" />
+                                    <x-tournaments.start :tournament="$this->next" class="text-xs" />
                                     <span class="flex items-center gap-2 text-xs" data-test="live-offline-next-seats">
                                         <span class="flex h-1 w-20 overflow-hidden rounded-[2px] bg-raised" aria-hidden="true"><span class="block h-full bg-btc" style="width: {{ $nextPlaces['places'] > 0 ? min(100, round(100 * $nextPlaces['taken'] / $nextPlaces['places'], 2)) : 0 }}%"></span></span>
                                         {{ __(':taken of :places spots taken', ['taken' => $nextPlaces['taken'], 'places' => $nextPlaces['places']]) }}

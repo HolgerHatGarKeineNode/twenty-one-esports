@@ -9075,5 +9075,6 @@
     "Sign-up open, start by vote": "Anmeldung offen, Termin per Abstimmung",
     ":tournament, start by vote": ":tournament, Termin per Abstimmung",
     "Start by vote": "Termin per Abstimmung",
+    "Next: :name, start by vote": "Als Nächstes: :name, Termin per Abstimmung",
     "incl. :count without a vote": "davon :count ohne Stimme"
 }

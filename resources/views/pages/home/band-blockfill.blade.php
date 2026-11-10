@@ -71,7 +71,7 @@
                         @if (isset($featured['pot']['sats']))
                             <span class="font-display font-bold text-btc tabular-nums">{{ HomeBoard::sats((int) $featured['pot']['sats']) }} Sats</span>
                         @endif
-                        <span class="rv-m">{{ HomeBoard::dayClock($tournament->starts_at, false) }}, {{ $featured['places']['taken'] }}/{{ $featured['places']['places'] }}</span>
+                        <span class="rv-m">{{ \App\Support\Tournaments\TournamentStartVote::cardStart($tournament, HomeBoard::dayClock($tournament->starts_at, false)) }}, {{ $featured['places']['taken'] }}/{{ $featured['places']['places'] }}</span>
                     </span>
                 </span>
             </a>

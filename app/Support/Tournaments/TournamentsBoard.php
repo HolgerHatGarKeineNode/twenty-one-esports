@@ -199,7 +199,7 @@ final class TournamentsBoard
             'pot' => $pot !== null && $pot > 0 ? $pot : null,
             'region' => $region,
             'regionKey' => $regionKey,
-            'start' => self::dayClock($tournament->starts_at, $this->zone()),
+            'start' => TournamentStartVote::cardStart($tournament, self::dayClock($tournament->starts_at, $this->zone())),
             'taken' => $taken,
             'places' => $places,
             'free' => $taken < $places,

@@ -151,7 +151,7 @@ new #[Title('Tournaments')] #[Layout('layouts::app', ['section' => 'tournaments'
                 <span class="flex flex-wrap gap-x-4 gap-y-1 text-[13px] text-ink-2 max-lg:hidden">
                     <span>{{ \App\Support\Tournaments\Lobbies::gameLine($ft) }}</span>
                     <span>{{ \App\Support\Tournaments\Lobbies::formatLabel($ft) }}</span>
-                    <span>{{ __('Start :when', ['when' => $featured['start']]) }}</span>
+                    <span>{{ \App\Support\Tournaments\TournamentStartVote::cardStart($ft, __('Start :when', ['when' => $featured['start']])) }}</span>
                     @if ($openEnd = \App\Support\Tournaments\TournamentLanding::openEnd($ft, $board->zone()))
                         <span data-test="featured-open-end">{{ $openEnd }}</span>
                     @endif
@@ -159,7 +159,7 @@ new #[Title('Tournaments')] #[Layout('layouts::app', ['section' => 'tournaments'
                 @if ($featured['pot'] !== null)
                     <span class="flex items-baseline gap-3 lg:hidden">
                         <b class="font-display text-[22px] font-bold whitespace-nowrap text-btc tabular-nums" data-test="featured-pot-phone">{{ $sats($featured['pot']) }} Sats</b>
-                        <span class="rv-m">{{ HomeBoard::dayClock($ft->starts_at, false) }}</span>
+                        <span class="rv-m">{{ \App\Support\Tournaments\TournamentStartVote::cardStart($ft, HomeBoard::dayClock($ft->starts_at, false)) }}</span>
                     </span>
                 @endif
                 <span class="flex items-center gap-2">

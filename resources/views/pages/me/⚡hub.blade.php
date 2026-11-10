@@ -151,7 +151,7 @@ new #[Title('Your page')] #[Layout('layouts::app')] class extends Component {
                                     <x-game-cover :game="$tournament->game" size="thumb" class="w-16 rounded-[2px] sm:w-[72px]" />
                                     <span class="flex min-w-0 flex-col gap-0.5">
                                         <b class="truncate text-[14px]">{{ $tournament->title() }}</b>
-                                        <span class="truncate text-xs text-ink-2">{{ \App\Support\GameNames::full($tournament->game, $tournament->mode) }}, <x-league-time :at="$tournament->starts_at" /></span>
+                                        <span class="truncate text-xs text-ink-2">{{ \App\Support\GameNames::full($tournament->game, $tournament->mode) }}, <x-tournaments.start :tournament="$tournament" /></span>
                                     </span>
                                     <span class="col-start-2 flex items-center gap-2 text-xs sm:col-start-3 sm:justify-end">
                                         @if ($entry['state'] === 'running')

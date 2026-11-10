@@ -1681,7 +1681,10 @@ final class PageCard
         $after = $this->c->paragraph($this->pageLine(), 'mono', 30, self::M, $after + 16, $max, 3, Canvas::INK_2, 1.35);
 
         if (is_array($f['next'])) {
-            $this->c->paragraph(__('Next: :name, :utc UTC', ['name' => $f['next']['name'], 'utc' => $f['next']['starts_utc']]), 'mono-bold', self::MIN, self::M, $after + 8, 800, 2, Canvas::ORANGE, 1.3);
+            $next = ($f['next']['starts_utc'] ?? null) === null
+                ? __('Next: :name, start by vote', ['name' => $f['next']['name']])
+                : __('Next: :name, :utc UTC', ['name' => $f['next']['name'], 'utc' => $f['next']['starts_utc']]);
+            $this->c->paragraph($next, 'mono-bold', self::MIN, self::M, $after + 8, 800, 2, Canvas::ORANGE, 1.3);
         }
 
         $this->pageMotif(896, 64, 240);

@@ -66,7 +66,7 @@
                                 <x-icon name="trophy" :size="18" class="shrink-0 text-btc" />
                                 <span class="flex flex-col">
                                     <b>{{ HomeBoard::shortName($tournament) }}</b>
-                                    <span class="rv-m">{{ HomeBoard::dayClock($tournament->starts_at) }}@if (isset($featured['pot']['sats'])), <b class="text-btc">{{ HomeBoard::sats((int) $featured['pot']['sats']) }} Sats</b>@endif</span>
+                                    <span class="rv-m">{{ \App\Support\Tournaments\TournamentStartVote::cardStart($tournament, HomeBoard::dayClock($tournament->starts_at)) }}@if (isset($featured['pot']['sats'])), <b class="text-btc">{{ HomeBoard::sats((int) $featured['pot']['sats']) }} Sats</b>@endif</span>
                                 </span>
                             </a>
                         @endif

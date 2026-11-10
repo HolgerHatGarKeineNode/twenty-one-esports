@@ -182,7 +182,9 @@ final class UpcomingEvents
         $startMs = (int) $tournament->starts_at->getTimestampMs();
         $running = self::isLive($tournament, $nowMs);
         $today = self::isToday($tournament);
-        $soon = ! $running && $startMs - $nowMs <= OpenMatches::STARTS_SOON_MS;
+        // While the start is put to a vote `starts_at` is only the earliest offered start: no countdown to it, "start by vote" instead.
+        $byVote = ! $running && $tournament->hasOpenStartVote();
+        $soon = ! $running && ! $byVote && $startMs - $nowMs <= OpenMatches::STARTS_SOON_MS;
         $name = $tournament->title();
         $title = $tournament->isCasualCup() ? self::text('Casual cup') : self::text('Tournament');
         $game = GameNames::game($tournament->game);
@@ -201,18 +203,30 @@ final class UpcomingEvents
             number: '',
             href: $running ? ($rooms[$tournament->id] ?? route('tournaments.show', $tournament)) : route('tournaments.show', $tournament),
             title: $title,
-            state: $running ? self::text('Live') : self::text('Starts'),
-            trailing: $running ? $game : $left,
-            line: $running
-                ? self::text(':title, live', ['title' => $title])
-                : self::text(':title, starts :time', ['title' => $title, 'time' => self::when($tournament->starts_at, $user)]),
-            sentence: $running
-                ? self::text(':name is running', ['name' => $name])
-                : self::text(':name starts in :left', ['name' => $name, 'left' => $left]),
+            state: match (true) {
+                $running => self::text('Live'),
+                $byVote => self::text('Start by vote'),
+                default => self::text('Starts'),
+            },
+            trailing: match (true) {
+                $running => $game,
+                $byVote => '',
+                default => $left,
+            },
+            line: match (true) {
+                $running => self::text(':title, live', ['title' => $title]),
+                $byVote => self::text(':tournament, start by vote', ['tournament' => $title]),
+                default => self::text(':title, starts :time', ['title' => $title, 'time' => self::when($tournament->starts_at, $user)]),
+            },
+            sentence: match (true) {
+                $running => self::text(':name is running', ['name' => $name]),
+                $byVote => self::text(':tournament, start by vote', ['tournament' => $name]),
+                default => self::text(':name starts in :left', ['name' => $name, 'left' => $left]),
+            },
             action: $running ? self::text('Open tournament') : null,
             // Running: after everything with a deadline, its own room carries the urgency.
             deadlineMs: $running ? null : $startMs,
-            tick: $running ? null : ['endsAt' => $startMs, 'format' => 'hm', 'total' => max(1, $startMs - $nowMs), 'redUnder' => 0],
+            tick: $running || $byVote ? null : ['endsAt' => $startMs, 'format' => 'hm', 'total' => max(1, $startMs - $nowMs), 'redUnder' => 0],
             model: $tournament,
             withdraw: $mayWithdraw ? route('tournaments.signup', $tournament).'#withdraw' : null,
         );

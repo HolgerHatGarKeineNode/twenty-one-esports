@@ -57,11 +57,19 @@
 
         {{-- Two numbers: when it starts, and what there is to win --}}
         <div class="grid grid-cols-2 gap-3">
-            <div class="flex min-w-0 flex-col gap-1">
-                <span class="text-xs text-ink-2">{{ __('Starts in') }}</span>
-                <span class="font-display text-xl leading-none font-bold tabular-nums sm:text-2xl" role="timer" x-data="countdown({ at: {{ (int) $tournament->starts_at->getTimestampMs() }}, days: @js(__(':count day|:count days')) })" x-text="text" data-test="next-tournament-countdown">{{ $clock }}</span>
-                <x-league-time :at="$tournament->starts_at" class="text-xs text-ink-2" data-test="next-tournament-start" />
-            </div>
+            @if ($tournament->hasOpenStartVote())
+                {{-- The start is put to a vote: no countdown to the earliest offered start (TournamentStartVote::cardStart()). --}}
+                <div class="flex min-w-0 flex-col gap-1">
+                    <span class="text-xs text-ink-2">{{ __('Starts') }}</span>
+                    <span class="text-[15px] leading-tight font-bold text-ink sm:text-xl" data-test="next-tournament-start" data-start-vote>{{ __('by vote') }}</span>
+                </div>
+            @else
+                <div class="flex min-w-0 flex-col gap-1">
+                    <span class="text-xs text-ink-2">{{ __('Starts in') }}</span>
+                    <span class="font-display text-xl leading-none font-bold tabular-nums sm:text-2xl" role="timer" x-data="countdown({ at: {{ (int) $tournament->starts_at->getTimestampMs() }}, days: @js(__(':count day|:count days')) })" x-text="text" data-test="next-tournament-countdown">{{ $clock }}</span>
+                    <x-league-time :at="$tournament->starts_at" class="text-xs text-ink-2" data-test="next-tournament-start" />
+                </div>
+            @endif
             @if ($pot !== null)
                 <div class="flex min-w-0 flex-col gap-1" data-test="next-tournament-pot">
                     <span class="text-xs text-ink-2">{{ __('Prize pool') }}</span>

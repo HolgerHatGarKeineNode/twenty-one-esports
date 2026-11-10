@@ -839,7 +839,9 @@ final class PageCardFacts
         return [
             'page' => $page,
             'figures' => $figures,
-            'next' => $upcoming === null ? null : ['name' => $upcoming->name, 'game' => $upcoming->game, 'starts_utc' => $upcoming->starts_at->copy()->utc()->format('Y-m-d H:i')],
+            // While its start is put to a vote the next tournament has no start yet: the card says "start by vote" (PageCard::drawPage()).
+            'next' => $upcoming === null ? null : ['name' => $upcoming->name, 'game' => $upcoming->game,
+                'starts_utc' => $upcoming->hasOpenStartVote() ? null : $upcoming->starts_at->copy()->utc()->format('Y-m-d H:i')],
             'games' => $page === 'play' ? array_keys($offered) : [],
             // The page's own picture: the newest live board (chess pages), the biggest clans (clan list).
             'board' => $board === null ? null : [

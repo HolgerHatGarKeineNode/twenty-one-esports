@@ -149,7 +149,8 @@ final class TournamentLanding
      */
     public static function openEnd(Tournament $tournament, string $zone): ?string
     {
-        $end = $tournament->expectedEnd();
+        // While the start is put to a vote the expected end would follow the earliest offered start only.
+        $end = $tournament->hasOpenStartVote() ? null : $tournament->expectedEnd();
 
         if ($end === null) {
             return null;
@@ -195,7 +196,9 @@ final class TournamentLanding
     {
         $tournament = $this->tournament;
 
-        if (! in_array($tournament->status, [TournamentStatus::Draft, TournamentStatus::Signup, TournamentStatus::Drawing], true) || ! $tournament->starts_at->isFuture()) {
+        // While the start is put to a vote `starts_at` is only the earliest offered start: nothing counts down to it.
+        if (! in_array($tournament->status, [TournamentStatus::Draft, TournamentStatus::Signup, TournamentStatus::Drawing], true) || ! $tournament->starts_at->isFuture()
+            || $tournament->hasOpenStartVote()) {
             return null;
         }
 

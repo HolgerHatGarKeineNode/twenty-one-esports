@@ -9,6 +9,7 @@
     use App\Support\Engagement\HomeBoard;
     use App\Support\GameNames;
     use App\Support\Tournaments\Lobbies;
+    use App\Support\Tournaments\TournamentStartVote;
 
     $tournament = $cup['tournament'];
     $places = $cup['places'];
@@ -32,7 +33,7 @@
             <span class="rv-tag is-btc"><x-icon name="trophy" :size="12" />{{ __('Organizer tournament') }}</span>
             <span class="rv-tag max-lg:hidden">{{ __('Open for sign-up') }}</span>
             <span class="rv-m max-lg:hidden">{{ $meta }}</span>
-            <span class="rv-m lg:hidden">{{ HomeBoard::dayClock($tournament->starts_at) }}</span>
+            <span class="rv-m lg:hidden">{{ TournamentStartVote::cardStart($tournament, HomeBoard::dayClock($tournament->starts_at)) }}</span>
         </span>
 
         <h1 id="hero-h" class="m-0 max-w-[1040px] font-display text-2xl leading-[1.05] font-bold lg:text-[44px]">
@@ -49,8 +50,14 @@
                 </span>
             @endif
             <span class="flex flex-col gap-1 max-lg:hidden">
-                <span class="rv-m">{{ __('Start :when in', ['when' => HomeBoard::dayClock($tournament->starts_at)]) }}</span>
-                <x-ui.countdown :at="$tournament->starts_at" :label="__('Start in')" />
+                {{-- While the start is put to a vote there is no start to count down to (TournamentStartVote::cardStart()). --}}
+                @if ($tournament->hasOpenStartVote())
+                    <span class="rv-m">{{ __('Starts') }}</span>
+                    <span class="font-display text-[22px] leading-none font-bold whitespace-nowrap" data-start-vote>{{ __('by vote') }}</span>
+                @else
+                    <span class="rv-m">{{ __('Start :when in', ['when' => HomeBoard::dayClock($tournament->starts_at)]) }}</span>
+                    <x-ui.countdown :at="$tournament->starts_at" :label="__('Start in')" />
+                @endif
             </span>
             <span class="flex flex-col gap-1">
                 <span class="rv-m max-lg:hidden">{{ __('Places') }}</span>

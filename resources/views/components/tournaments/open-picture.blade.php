@@ -21,7 +21,7 @@
         <span class="flex min-w-0 flex-col gap-0.5 text-xs leading-tight">
             <span>{{ __('Open for sign-up') }}</span>
             <b class="truncate text-[13px] text-ink">{{ $openNext->name }}</b>
-            <x-league-time :at="$openNext->starts_at" class="truncate" />
+            <x-tournaments.start :tournament="$openNext" class="truncate" />
         </span>
     </a>
 @endif

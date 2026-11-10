@@ -15,6 +15,9 @@ use App\Support\Cards\PageCard;
 use App\Support\Cards\PageCardFacts;
 use App\Support\Cards\ShareMoments;
 use App\Support\Caster\SceneFacts;
+use App\Support\Dock\DockItem;
+use App\Support\Dock\UpcomingEvents;
+use App\Support\Engagement\HomeBoard;
 use App\Support\Formats;
 use App\Support\LeagueTime;
 use App\Support\StreamBot\FreePlaceNotes;
@@ -25,11 +28,14 @@ use App\Support\Tournaments\TournamentDraws;
 use App\Support\Tournaments\TournamentEditor;
 use App\Support\Tournaments\TournamentPublisher;
 use App\Support\Tournaments\TournamentRuleViolation;
+use App\Support\Tournaments\TournamentsBoard;
 use App\Support\Tournaments\TournamentSignups;
 use App\Support\Tournaments\TournamentStartVote;
 use App\Support\TwentyOne\Stream\PrideSlides;
 use App\Support\TwentyOne\Stream\TournamentSlides;
 use Carbon\CarbonImmutable;
+use Illuminate\Support\Facades\Blade;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Queue;
 use Livewire\Livewire;
@@ -669,4 +675,126 @@ test('the slides name the month of each day when the offered starts span two mon
 
     expect(TournamentSlides::voteDays($options, 'Europe/Berlin'))->toBe('by vote: Mon 30 Nov / Tue 1 Dec')
         ->and(TournamentSlides::voteDays([$options[0], $options[0]->addDay(-1)], 'Europe/Berlin'))->toBe('by vote: Mon 30 / Sun 29 Nov');
+});
+
+/**
+ * The marks of the earliest offered start (2026-11-20 19:00 UTC, Fri 20:00 in Berlin) on a card or a list row: its
+ * stamps in every short form the cards use, and its instant (a countdown's or a <time>'s), so a page that shows
+ * none of them names no start and counts down to none.
+ *
+ * @return list<string>
+ */
+function earliestStartMarks(CarbonImmutable $earliest): array
+{
+    return [
+        HomeBoard::dayClock($earliest), HomeBoard::dayClock($earliest, false), TournamentsBoard::dayClock($earliest, LeagueTime::zone()),
+        LeagueTime::stamp($earliest), (string) $earliest->getTimestampMs(), $earliest->format('Y-m-d\TH:i:s\Z'),
+    ];
+}
+
+/** Settle the vote with no tick: the earliest offered start is set. */
+function settleUnvoted(Tournament $tournament): Tournament
+{
+    test()->travelTo(CarbonImmutable::parse('2026-11-18 19:00', 'UTC'));
+    app(TournamentStartVote::class)->settle($tournament);
+
+    return $tournament->refresh();
+}
+
+test('while the vote is open, home, the login page and the tournaments list say "Start by vote" and count down to no start; once settled they show it', function () {
+    $tournament = votingTournament();
+    $earliest = $tournament->starts_at->toImmutable();
+    $pages = [route('home'), route('login'), route('tournaments.index')];
+
+    foreach ($pages as $page) {
+        $response = $this->get($page)->assertOk()->assertSee(HomeBoard::shortName($tournament))
+            ->assertSee(__('Start by vote'));
+
+        foreach (earliestStartMarks($earliest) as $mark) {
+            $response->assertDontSee($mark, false);
+        }
+    }
+
+    settleUnvoted($tournament);
+
+    foreach ($pages as $page) {
+        $html = $this->get($page)->assertOk()->assertDontSee(__('Start by vote'))->getContent();
+
+        expect(array_filter(earliestStartMarks($earliest), fn (string $mark): bool => str_contains((string) $html, $mark)))->not->toBeEmpty();
+    }
+});
+
+test('while the vote is open, the game page\'s poster, the live page\'s next tournament and the open-tournament picture say "Start by vote" and count down to no start; once settled they show it', function () {
+    $tournament = votingTournament();
+    $earliest = $tournament->starts_at->toImmutable();
+    $surfaces = [
+        'poster' => fn (): string => (string) $this->get(route('chess.lobby'))->assertOk()->assertSeeHtml('data-test="next-tournament"')->getContent(),
+        'live' => fn (): string => (string) $this->get(route('live'))->assertOk()->assertSeeHtml('data-test="live-offline-next-cover"')->getContent(),
+        'picture' => fn (): string => Blade::render('<x-tournaments.open-picture />'),
+    ];
+
+    foreach ($surfaces as $render) {
+        $html = $render();
+
+        expect($html)->toContain($tournament->name, 'data-start-vote');
+
+        foreach (earliestStartMarks($earliest) as $mark) {
+            expect($html)->not->toContain($mark);
+        }
+    }
+
+    settleUnvoted($tournament);
+
+    foreach ($surfaces as $render) {
+        $html = $render();
+
+        expect($html)->not->toContain('data-start-vote')
+            ->and(array_filter(earliestStartMarks($earliest), fn (string $mark): bool => str_contains($html, $mark)))->not->toBeEmpty();
+    }
+});
+
+test('while the vote is open, an entrant\'s dock, next-event card and hub say "Start by vote" and count down to no start; once settled they count down again', function () {
+    $tournament = votingTournament();
+    $earliest = $tournament->starts_at->toImmutable();
+    [$ana] = voter($tournament, 'Ana');
+    $item = fn (): DockItem => app(UpcomingEvents::class)->tournaments($ana)->firstOrFail(fn (DockItem $item): bool => $item->model?->is($tournament) ?? false);
+
+    expect($item())
+        ->state->toBe(__('Start by vote'))
+        ->tick->toBeNull()
+        ->trailing->toBe('')
+        ->needsYou->toBeFalse()
+        ->line->toBe(__(':tournament, start by vote', ['tournament' => __('Tournament')]));
+
+    foreach ([route('home'), route('dashboard')] as $page) {
+        $html = (string) $this->actingAs($ana)->get($page)->assertOk()->assertSee($tournament->title())->getContent();
+
+        expect($html)->toContain(__('Start by vote'))->not->toContain('data-test="me-tournament-clock"');
+
+        foreach (earliestStartMarks($earliest) as $mark) {
+            expect($html)->not->toContain($mark);
+        }
+    }
+
+    settleUnvoted($tournament);
+
+    expect($item())->state->toBe(__('Starts'))->tick->not->toBeNull();
+    $this->actingAs($ana)->get(route('dashboard'))->assertOk()->assertSeeHtml('data-test="me-tournament-clock"')->assertDontSee(__('Start by vote'));
+});
+
+test('while the vote is open, the link preview of home and the tournaments page names the next tournament "start by vote", not the earliest start; once settled it names the start', function () {
+    $tournament = votingTournament();
+
+    foreach (['home', 'tournaments'] as $page) {
+        Cache::forget('page-card:page:'.$page);
+        $facts = PageCardFacts::page($page);
+
+        expect($facts['next'])->toMatchArray(['name' => $tournament->name, 'starts_utc' => null])
+            ->and(PageCard::page($page)->render())->not->toBe('');
+    }
+
+    settleUnvoted($tournament);
+    Cache::forget('page-card:page:home');
+
+    expect(PageCardFacts::page('home')['next']['starts_utc'])->toBe('2026-11-20 19:00');
 });
