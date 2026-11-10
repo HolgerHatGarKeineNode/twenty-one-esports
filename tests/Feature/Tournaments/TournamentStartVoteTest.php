@@ -4,6 +4,8 @@ use App\Enums\NotificationKind;
 use App\Enums\OverlayVariant;
 use App\Enums\TournamentFormat;
 use App\Enums\TournamentStatus;
+use App\Games\Blockfill;
+use App\Games\GameRegistry;
 use App\Models\NostrEvent;
 use App\Models\OverlayPreset;
 use App\Models\Tournament;
@@ -21,12 +23,14 @@ use App\Support\Dock\UpcomingEvents;
 use App\Support\Engagement\HomeBoard;
 use App\Support\Formats;
 use App\Support\LeagueTime;
+use App\Support\Stacker\BlockfillWeeks;
 use App\Support\StreamBot\FreePlaceNotes;
 use App\Support\StreamBot\TournamentNotes;
 use App\Support\Tournaments\FormatOptions;
 use App\Support\Tournaments\GameProfile;
 use App\Support\Tournaments\TournamentDraws;
 use App\Support\Tournaments\TournamentEditor;
+use App\Support\Tournaments\TournamentLanding;
 use App\Support\Tournaments\TournamentPublisher;
 use App\Support\Tournaments\TournamentRuleViolation;
 use App\Support\Tournaments\TournamentsBoard;
@@ -40,6 +44,7 @@ use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Queue;
 use Livewire\Livewire;
+use Tests\Support\BlockfillOn;
 use Tests\Support\TestSigner;
 
 /*
@@ -902,4 +907,85 @@ test('the home link preview cuts only a long name of the next tournament: "start
     settleUnvoted($tournament);
 
     expect($nextText())->toEndWith('…, 2026-11-20 19:00 UTC');
+});
+
+/** The pot of an organizer tournament (a featured card, rule R9): 21,000 sats in the wallet. */
+function withPot(Tournament $tournament): Tournament
+{
+    $tournament->forceFill(['pool_opened_at' => now(), 'pot_source' => Tournament::POT_WALLET, 'pot_balance_sats' => 21_000, 'pot_balance_at' => now(), 'prize_target_sats' => 21_000, 'prize_split' => [100]])->save();
+
+    return $tournament->refresh();
+}
+
+/** The markup of one element by its data-test, up to the end of its own parent's line (enough for a card's data line). */
+function fragmentOf(string $html, string $test, int $length = 1200): string
+{
+    $at = strpos($html, 'data-test="'.$test.'"');
+
+    return $at === false ? '' : substr($html, $at, $length);
+}
+
+test('while the vote is open, a guest\'s home with a Blockfill week shows the featured tournament as "by vote"; once settled with its start', function () {
+    BlockfillOn::play();
+    app()->forgetInstance(GameRegistry::class);
+    leagueWeeksApproved(Blockfill::SLUG);
+    app(BlockfillWeeks::class)->open();
+    $tournament = withPot(votingTournament());
+    $earliest = $tournament->starts_at->toImmutable();
+
+    $card = fragmentOf((string) $this->get(route('home'))->assertOk()->assertSeeHtml('data-hero="blockfill"')->getContent(), 'hero-featured');
+
+    expect($card)->toContain(HomeBoard::shortName($tournament))->toContain(__('by vote'))
+        ->not->toContain(HomeBoard::dayClock($earliest, false));
+
+    settleUnvoted($tournament);
+    // Nine days on: that week's window has passed, the league opens the next one.
+    leagueWeeksApproved(Blockfill::SLUG);
+    app(BlockfillWeeks::class)->open();
+
+    expect(fragmentOf((string) $this->get(route('home'))->assertOk()->assertSeeHtml('data-hero="blockfill"')->getContent(), 'hero-featured'))->toContain(HomeBoard::dayClock($earliest, false));
+});
+
+test('while the vote is open, the tournaments list\'s featured card shows the pot with "by vote" on a phone and no expected end; once settled the start and the end are back', function () {
+    $tournament = withPot(votingTournament());
+    $earliest = $tournament->starts_at->toImmutable();
+    $phonePot = fn (string $html): string => fragmentOf($html, 'featured-pot-phone', 400);
+
+    $html = (string) $this->get(route('tournaments.index'))->assertOk()->assertSeeHtml('data-test="featured-pot-phone"')->getContent();
+    expect($phonePot($html))->toContain(__('by vote'))->not->toContain(HomeBoard::dayClock($earliest, false))
+        ->and($html)->not->toContain('data-test="featured-open-end"')
+        ->and(TournamentLanding::openEnd($tournament, LeagueTime::zone()))->toBeNull();
+
+    settleUnvoted($tournament);
+
+    $html = (string) $this->get(route('tournaments.index'))->assertOk()->getContent();
+    expect($phonePot($html))->toContain(HomeBoard::dayClock($earliest, false))
+        ->and($html)->toContain('data-test="featured-open-end"');
+});
+
+test('while the vote is open, the dock does not call an earliest start within the hour "soon" and its sentence says "start by vote"', function () {
+    $tournament = votingTournament();
+    [$ana] = voter($tournament, 'Ana');
+    // Against the rules (forced): the earliest offered start 30 minutes ahead while the vote is still open.
+    $tournament->forceFill(['starts_at' => now()->addMinutes(30), 'start_vote_until' => now()->addMinutes(10)])->save();
+    $item = fn (): DockItem => app(UpcomingEvents::class)->tournaments($ana)->firstOrFail(fn (DockItem $item): bool => $item->model?->is($tournament) ?? false);
+
+    expect($item())->needsYou->toBeFalse()
+        ->sentence->toBe(__(':tournament, start by vote', ['tournament' => $tournament->title()]));
+
+    // The same start without a vote is "soon".
+    $tournament->forceFill(['start_decided_at' => now()])->save();
+
+    expect($item())->needsYou->toBeTrue();
+});
+
+test('once the vote has closed and before the league settles it, an entry without a vote gets the full hero again: nothing left to tick', function () {
+    $tournament = votingTournament();
+    [$ana] = voter($tournament, 'Ana');
+    $this->travelTo(CarbonImmutable::parse('2026-11-18 19:30', 'UTC'));
+
+    $html = (string) $this->actingAs($ana)->get(route('tournaments.show', $tournament))->assertOk()->assertSeeHtml('data-state="closing"')->getContent();
+    preg_match('/<section aria-labelledby="t-name" class="([^"]*)"/', $html, $hero);
+
+    expect($hero[1] ?? '')->toContain('lg:min-h-[300px]');
 });

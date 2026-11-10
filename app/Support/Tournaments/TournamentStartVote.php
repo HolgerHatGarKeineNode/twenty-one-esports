@@ -134,10 +134,11 @@ final class TournamentStartVote
     /**
      * The start on a card or a list row (home, the tournaments list): the
      * stamp the caller formatted, or while the vote is open "by vote", so no
-     * card names the earliest offered start as THE start. Never longer than
-     * the stamp it stands for, so a row that fit on one line still does. A
-     * caller that counts down to the start drops its countdown then
-     * (Tournament::hasOpenStartVote(), TournamentLanding::startsIn()).
+     * card names the earliest offered start as THE start. Short, but not
+     * always shorter than the stamp ("per Abstimmung" against "Mi 19:00");
+     * one line at 390 px in German in the list rows and the dock, measured
+     * 2026-11-10. A caller that counts down to the start drops its countdown
+     * then (Tournament::hasOpenStartVote(), TournamentLanding::startsIn()).
      */
     public static function cardStart(Tournament $tournament, string $stamp): string
     {
