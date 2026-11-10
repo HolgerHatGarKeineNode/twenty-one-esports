@@ -191,6 +191,19 @@ final class LeagueTime
         return self::iso($local, $locale, self::PATTERNS[$locale]['short']).', '.self::iso($local, $locale, self::PATTERNS[$locale]['clock']).' '.__($local->format('T'), [], $locale);
     }
 
+    /**
+     * stamp() with its clock held together by no-break spaces, so a narrow row
+     * never breaks between "8:00" and "PM" or "20:00" and "MEZ". For pages only:
+     * every outward text (notes, stream, notices) keeps stamp().
+     */
+    public static function stampUnbroken(CarbonInterface $at, ?string $zone = null, ?string $locale = null): string
+    {
+        $stamp = self::stamp($at, $zone, $locale);
+        $cut = strrpos($stamp, ', ');
+
+        return $cut === false ? $stamp : substr($stamp, 0, $cut + 2).str_replace(' ', "\u{00A0}", substr($stamp, $cut + 2));
+    }
+
     /** "18:00 UTC" / "6:00 PM UTC". */
     public static function utc(CarbonInterface $at): string
     {

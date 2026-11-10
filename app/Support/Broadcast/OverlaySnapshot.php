@@ -518,7 +518,6 @@ final class OverlaySnapshot
         ];
     }
 
-    /** A start as a stream says it: "20:00" today, else the weekday with the time, in the league's zone. */
     /**
      * What the clocks count down to; null while the start is put to a vote (TournamentStartVote): the earliest
      * offered start is not THE start, so no overlay counts down to it (the variants then show `starts` instead).
@@ -528,12 +527,16 @@ final class OverlaySnapshot
         return $tournament->hasOpenStartVote() ? null : $tournament->starts_at->toIso8601String();
     }
 
-    /** The start in words: "start by vote" while the vote is open, else when(). */
+    /**
+     * The start in words: "by vote" while the vote is open (short: it stands under a "Starts" label on the
+     * panels), else when().
+     */
     private static function starts(Tournament $tournament): string
     {
-        return $tournament->hasOpenStartVote() ? __('start by vote') : self::when($tournament->starts_at);
+        return $tournament->hasOpenStartVote() ? __('by vote') : self::when($tournament->starts_at);
     }
 
+    /** A start as a stream says it: "20:00" today, else the weekday with the time, in the league's zone. */
     private static function when(CarbonInterface $at): string
     {
         $local = $at->toImmutable()->setTimezone(LeagueTime::zone());

@@ -306,11 +306,16 @@ final class TournamentPublisher
         $page = route('tournaments.show', $tournament);
         // NIP-52 has no status for a called-off event (P18): the new version says it in title and summary.
         $calledOff = $tournament->status === TournamentStatus::Cancelled;
+        // A start put to a vote (TournamentStartVote), as "Called off" above: summary and alt name every offered start,
+        // never the earliest alone; the `start` tag carries the earliest until the vote is settled (no NIP change).
+        $byVote = $tournament->hasOpenStartVote()
+            ? 'start by vote: '.implode(' / ', array_map(fn (CarbonImmutable $at): string => $at->utc()->format('Y-m-d H:i'), TournamentStartVote::options($tournament))).' UTC'
+            : null;
 
         $tags = [
             ['d', (string) $tournament->slug],
             ['title', ($calledOff ? 'Called off: ' : '').$tournament->name],
-            ['summary', ($calledOff ? 'Called off. ' : '').$this->summary($tournament)],
+            ['summary', ($calledOff ? 'Called off. ' : '').$this->summary($tournament).($byVote === null ? '' : ' '.ucfirst($byVote).'.')],
             ['start', (string) $start],
             ['end', (string) $end],
             ...array_map(fn (int $day): array => ['D', (string) $day], range(intdiv($start, 86400), intdiv(max($start, $end - 1), 86400))),
@@ -332,7 +337,7 @@ final class TournamentPublisher
             $tags[] = ['zap', $pool, (string) (config('esports.relays')[0] ?? ''), '1'];
         }
 
-        $tags[] = ['alt', ($calledOff ? 'Called off tournament: ' : 'Tournament: ').$tournament->name.', '.$tournament->starts_at->utc()->format('Y-m-d H:i').' UTC'];
+        $tags[] = ['alt', ($calledOff ? 'Called off tournament: ' : 'Tournament: ').$tournament->name.', '.($byVote ?? $tournament->starts_at->utc()->format('Y-m-d H:i').' UTC')];
 
         return $tags;
     }

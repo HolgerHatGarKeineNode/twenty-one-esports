@@ -410,13 +410,20 @@ class TournamentSlides
 
     /**
      * The offered starts of an open start vote in the few characters a slide
-     * has for the start: "by vote: Fri 20 / Sat 21 / Sun 22 Nov".
+     * has for the start: "by vote: Fri 20 / Sat 21 / Sun 22 Nov"; across two
+     * months each day with its month ("by vote: Sat 30 Nov / Sun 1 Dec").
      *
      * @param  list<CarbonImmutable>  $options
      */
     public static function voteDays(array $options, string $timezone): string
     {
         $local = array_map(fn (CarbonImmutable $at): CarbonImmutable => $at->setTimezone($timezone), $options);
+        $months = array_unique(array_map(fn (CarbonImmutable $at): string => $at->format('Y-m'), $local));
+
+        if (count($months) > 1) {
+            return 'by vote: '.implode(' / ', array_map(fn (CarbonImmutable $at): string => $at->format('D j M'), $local));
+        }
+
         $days = array_map(fn (CarbonImmutable $at): string => $at->format('D j'), $local);
 
         return 'by vote: '.implode(' / ', $days).($local === [] ? '' : ' '.end($local)->format('M'));

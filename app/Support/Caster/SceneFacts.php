@@ -644,7 +644,6 @@ class SceneFacts
         return (int) $match[1] > 0 ? ((int) $match[1]).' Minuten '.$seconds : $seconds;
     }
 
-    /** A start in Berlin time, spoken: "am Sonntag den 11. Oktober um 20 Uhr" (no comma: a repair cut there split the date off). */
     /**
      * A tournament's start as the voice says it; while its start is put to a
      * vote (TournamentStartVote) every offered start and the vote's close, so
@@ -665,6 +664,7 @@ class SceneFacts
         return 'per Abstimmung: '.($options === [] ? '' : implode(', ', $options).' oder ').$last.', die Abstimmung endet '.self::spokenStart($until);
     }
 
+    /** A start in Berlin time, spoken: "am Sonntag den 11. Oktober um 20 Uhr" (no comma: a repair cut there split the date off). */
     private static function spokenStart(CarbonImmutable $start): string
     {
         $local = $start->setTimezone('Europe/Berlin');

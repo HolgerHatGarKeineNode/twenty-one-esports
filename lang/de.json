@@ -9073,5 +9073,6 @@
     "4th start (optional)": "4. Termin (optional)",
     "Sign-up open, start by vote": "Anmeldung offen, Termin per Abstimmung",
     ":tournament, start by vote": ":tournament, Termin per Abstimmung",
-    "Start by vote": "Termin per Abstimmung"
+    "Start by vote": "Termin per Abstimmung",
+    "incl. :count without a vote": "davon :count ohne Stimme"
 }

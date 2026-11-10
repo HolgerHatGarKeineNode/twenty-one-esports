@@ -19,10 +19,10 @@
         <span class="font-display text-lg leading-tight font-medium text-ink sm:text-xl">{{ __('The start is put to a vote') }}</span>
         <ul role="list" class="m-0 flex list-none flex-col gap-1 p-0 text-[13px] leading-normal text-ink" data-test="when-vote-options">
             @foreach (\App\Support\Tournaments\TournamentStartVote::options($tournament) as $option)
-                <li><time datetime="{{ $option->format('Y-m-d\TH:i:s\Z') }}">{{ LeagueTime::stamp($option) }}</time></li>
+                <li><time datetime="{{ $option->format('Y-m-d\TH:i:s\Z') }}">{{ LeagueTime::stampUnbroken($option) }}</time></li>
             @endforeach
         </ul>
-        <span class="text-[13px] leading-normal text-ink-2" data-test="when-vote-until">{{ __('The entries vote until :time; then the start most of them can make is set.', ['time' => LeagueTime::stamp($tournament->start_vote_until ?? $start)]) }}@if ($tournament->isSignupOpen()) {{ __('Sign-up until :time', ['time' => LeagueTime::stamp($tournament->signup_closes_at)]) }}.@endif</span>
+        <span class="text-[13px] leading-normal text-ink-2" data-test="when-vote-until">{{ __('The entries vote until :time; then the start most of them can make is set.', ['time' => LeagueTime::stampUnbroken($tournament->start_vote_until ?? $start)]) }}@if ($tournament->isSignupOpen()) {{ __('Sign-up until :time', ['time' => LeagueTime::stampUnbroken($tournament->signup_closes_at)]) }}.@endif</span>
     </div>
 @else
 

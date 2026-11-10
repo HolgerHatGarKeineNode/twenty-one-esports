@@ -281,7 +281,7 @@ test('the start most entries can make wins at the close: set, published, logged 
     Livewire::actingAs($ana)->test('tournament-start-vote', ['tournament' => $tournament->id])
         ->assertSeeHtml('data-test="start-vote-settled"')
         // The settled line names the start it set and its real count.
-        ->assertSee(trans_choice('The vote set :time: :count entry can make it.|The vote set :time: :count entries can make it.', 3, ['time' => LeagueTime::stamp($tournament->starts_at)]))
+        ->assertSee(trans_choice('The vote set :time: :count entry can make it.|The vote set :time: :count entries can make it.', 3, ['time' => LeagueTime::stampUnbroken($tournament->starts_at)]))
         ->assertSeeHtml('data-test="start-vote-cannot"');
     Livewire::actingAs($eve)->test('tournament-start-vote', ['tournament' => $tournament->id])
         ->assertSeeHtml('data-test="start-vote-cannot"');
@@ -342,7 +342,7 @@ test('an entry that does not vote counts for the earliest start: one of eight vo
     $vote->toggle($tournament, $undecided, '2026-11-21 18:00');
 
     expect($undecidedEntry->refresh()->start_fits)->toBe([])
-        ->and(TournamentStartVote::tally($tournament))->toBe(['counts' => ['2026-11-20 19:00' => 7, '2026-11-21 18:00' => 0, '2026-11-22 16:00' => 1], 'voted' => 1, 'entries' => 8]);
+        ->and(TournamentStartVote::tally($tournament))->toBe(['counts' => ['2026-11-20 19:00' => 7, '2026-11-21 18:00' => 0, '2026-11-22 16:00' => 1], 'voted' => 1, 'entries' => 8, 'silent' => 7]);
 
     $this->travelTo(CarbonImmutable::parse('2026-11-18 19:00', 'UTC'));
     expect($vote->settleDue())->toBe(1)
@@ -462,6 +462,15 @@ test('while the vote is open, the published tournament and the sign-up page name
         ->and(collect($tournament->event->payload()['tags'])->firstWhere(0, 't'))->toBeNull()
         ->and(ShareMoments::tournamentInvite($tournament)['vote'])->toBeTrue();
 
+    // As "Called off": alt and summary name every offered start, never the earliest alone.
+    $tags = collect($tournament->event->payload()['tags']);
+    $alt = $tags->firstWhere(0, 'alt')[1];
+    $summary = $tags->firstWhere(0, 'summary')[1];
+
+    expect($alt)->toBe('Tournament: '.$tournament->name.', start by vote: 2026-11-20 19:00 / 2026-11-21 18:00 / 2026-11-22 16:00 UTC')
+        ->and($alt)->not->toContain('2026-11-20 19:00 UTC')
+        ->and($summary)->toEndWith(' Start by vote: 2026-11-20 19:00 / 2026-11-21 18:00 / 2026-11-22 16:00 UTC.');
+
     [$ana] = voter($tournament, 'Ana');
 
     $this->actingAs($ana)->get(route('tournaments.signup', $tournament))->assertOk()
@@ -525,7 +534,8 @@ test('while the vote is open, the broadcast overlay counts down to no start and 
     $own = $snapshot(OverlayVariant::Tournament, $tournament->id)['tournament'];
 
     expect($upcoming['startsAt'])->toBeNull()
-        ->and($upcoming['starts'])->toBe(__('start by vote'))
+        // Short: it stands under a "Starts" label on the panels.
+        ->and($upcoming['starts'])->toBe(__('by vote'))
         // The ticker (a module the preset has by default) names no single start either.
         ->and(array_column($live['ticker'], 'text'))->toContain(__(':tournament, start by vote', ['tournament' => $tournament->name]))
         ->and($own['startsAt'])->toBeNull()
@@ -576,4 +586,86 @@ test('while the vote is open, the link preview card and a lobby tournament\'s TV
     $this->get(route('tournaments.tv', $lobby))->assertOk()
         ->assertSee(__('Round 1 starts :date.', ['date' => TournamentStartVote::startLine($lobby->refresh(), LeagueTime::zone())]))
         ->assertDontSee(__('Round 1 starts :date.', ['date' => Formats::date($lobby->starts_at, true, LeagueTime::zone())]));
+});
+
+test('a vote row never spills: it wraps, and only the clock with its AM/PM and zone is held together', function () {
+    $tournament = votingTournament();
+    [$ana] = voter($tournament, 'Ana');
+    $friday = CarbonImmutable::parse('2026-11-20 19:00', 'UTC');
+
+    // stamp() itself is unchanged (it feeds notes and the stream); the pages take the unbroken form.
+    expect(LeagueTime::stamp($friday, null, 'en'))->toBe('Fri, 20 Nov 2026, 8:00 PM CET')
+        ->and(LeagueTime::stampUnbroken($friday, null, 'en'))->toBe("Fri, 20 Nov 2026, 8:00\u{00A0}PM\u{00A0}CET")
+        ->and(LeagueTime::stampUnbroken($friday, null, 'de'))->toBe(str_replace(['20:00 ', ' MEZ'], ["20:00\u{00A0}", "\u{00A0}MEZ"], LeagueTime::stamp($friday, null, 'de')));
+
+    $html = Livewire::actingAs($ana)->test('tournament-start-vote', ['tournament' => $tournament->id])->html();
+
+    expect($html)->toContain('flex-wrap')
+        ->and($html)->toContain('ml-auto')
+        ->and($html)->not->toContain('whitespace-nowrap')
+        ->and($html)->toContain(LeagueTime::stampUnbroken($friday));
+
+    $this->get(route('tournaments.show', $tournament))->assertSee(LeagueTime::stampUnbroken($friday), false);
+    $this->actingAs($ana)->get(route('tournaments.signup', $tournament))->assertSee(__('Vote closes').' '.LeagueTime::stampUnbroken(CarbonImmutable::parse('2026-11-18 19:00', 'UTC')), false);
+});
+
+test('the earliest row says how many entries without a vote it counts; a tick elsewhere is explained, not silent', function () {
+    $tournament = votingTournament();
+    [$ana] = voter($tournament, 'Ana');
+    voter($tournament, 'Bob');
+    voter($tournament, 'Cleo');
+
+    Livewire::actingAs($ana)->test('tournament-start-vote', ['tournament' => $tournament->id])
+        ->assertSee(__('incl. :count without a vote', ['count' => 3]))
+        ->call('toggle', '2026-11-21 18:00')
+        // Ana's tick moved her out of the earliest row: it now says two without a vote.
+        ->assertSee(__('incl. :count without a vote', ['count' => 2]))
+        ->assertDontSee(__('incl. :count without a vote', ['count' => 3]));
+
+    expect(substr_count(Livewire::actingAs($ana)->test('tournament-start-vote', ['tournament' => $tournament->id])->html(), 'data-test="start-vote-silent"'))->toBe(1);
+});
+
+test('once the organizer moves a settled start by hand, the page no longer says the vote set it', function () {
+    $tournament = votingTournament();
+    [$ana] = voter($tournament, 'Ana');
+    app(TournamentStartVote::class)->toggle($tournament, $ana, '2026-11-21 18:00');
+
+    $this->travelTo(CarbonImmutable::parse('2026-11-18 19:00', 'UTC'));
+    app(TournamentStartVote::class)->settle($tournament);
+
+    Livewire::actingAs($ana)->test('tournament-start-vote', ['tournament' => $tournament->id])
+        ->assertSeeHtml('data-test="start-vote-settled"');
+
+    app(TournamentEditor::class)->update($tournament->refresh(), $tournament->creator, ['starts_at' => CarbonImmutable::parse('2026-11-22 16:00', 'UTC')]);
+
+    Livewire::actingAs($ana)->test('tournament-start-vote', ['tournament' => $tournament->id])
+        ->assertDontSeeHtml('data-test="start-vote-settled"')
+        ->assertDontSeeHtml('data-test="start-vote-cannot"');
+});
+
+test('a vote still open when sign-up closes and not settleable keeps sign-up open: nothing closed, settled or told', function () {
+    Http::fake(fn ($request) => str_ends_with($request->url(), '/blocks/tip/height') ? Http::response('900000') : Http::response('', 404));
+    $tournament = votingTournament();
+    [$ana] = voter($tournament, 'Ana');
+    voter($tournament, 'Bob');
+
+    // Against the rules (forced): sign-up has closed, the vote closes only in an hour.
+    $this->travelTo(CarbonImmutable::parse('2026-11-19 19:00', 'UTC'));
+    $tournament->forceFill(['start_vote_until' => now()->addHour()])->save();
+
+    $done = app(TournamentDraws::class)->advanceDue();
+    $tournament->refresh();
+
+    expect($done['closed'])->toBe(0)
+        ->and($tournament->status)->toBe(TournamentStatus::Signup)
+        ->and($tournament->start_decided_at)->toBeNull()
+        ->and($ana->notifications()->count())->toBe(0)
+        ->and(TournamentModerationEntry::query()->where('action', 'start_voted')->count())->toBe(0);
+});
+
+test('the slides name the month of each day when the offered starts span two months', function () {
+    $options = [CarbonImmutable::parse('2026-11-30 19:00', 'UTC'), CarbonImmutable::parse('2026-12-01 19:00', 'UTC')];
+
+    expect(TournamentSlides::voteDays($options, 'Europe/Berlin'))->toBe('by vote: Mon 30 Nov / Tue 1 Dec')
+        ->and(TournamentSlides::voteDays([$options[0], $options[0]->addDay(-1)], 'Europe/Berlin'))->toBe('by vote: Mon 30 / Sun 29 Nov');
 });

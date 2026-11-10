@@ -6,6 +6,7 @@ use App\Enums\NotificationKind;
 use App\Enums\TournamentStatus;
 use App\Events\TournamentChanged;
 use App\Models\Tournament;
+use App\Models\TournamentModerationEntry;
 use App\Models\TournamentSignup;
 use App\Models\User;
 use App\Support\Chess\Broadcasts;
@@ -264,7 +265,7 @@ final class TournamentStartVote
      * tick counts for the earliest), the entries that ticked a start and all
      * active entries.
      *
-     * @return array{counts: array<string, int>, voted: int, entries: int}
+     * @return array{counts: array<string, int>, voted: int, entries: int, silent: int}
      */
     public static function tally(Tournament $tournament): array
     {
@@ -282,7 +283,22 @@ final class TournamentStartVote
             }
         }
 
-        return ['counts' => $counts, 'voted' => $voted, 'entries' => $entries];
+        // `silent`: the entries without a tick, counted for the earliest start (fitsOf()).
+        return ['counts' => $counts, 'voted' => $voted, 'entries' => $entries, 'silent' => $entries - $voted];
+    }
+
+    /**
+     * The start the vote set, as the league logged it when it settled (UTC
+     * key); null before that. A start the organizer moved by hand afterwards
+     * no longer equals it, and the page stops saying the vote set it.
+     */
+    public static function settledStart(Tournament $tournament): ?string
+    {
+        $details = TournamentModerationEntry::query()->where('tournament_id', $tournament->id)->where('action', 'start_voted')
+            ->latest('id')->value('details');
+        $settled = is_array($details) ? ($details['starts_at'][1] ?? null) : null;
+
+        return is_string($settled) ? $settled : null;
     }
 
     /**
@@ -390,7 +406,7 @@ final class TournamentStartVote
      * earliest start), that it can pull out until sign-up closes; that hint
      * only while sign-up is still open.
      *
-     * @param  array{counts: array<string, int>, voted: int, entries: int}  $tally
+     * @param  array{counts: array<string, int>, voted: int, entries: int, silent: int}  $tally
      */
     private function tell(Tournament $tournament, array $tally): void
     {

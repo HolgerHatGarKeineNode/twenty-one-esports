@@ -469,9 +469,9 @@ new #[Layout('layouts::app', ['section' => 'tournaments'])] class extends Compon
                         <dd class="m-0 flex flex-col items-end gap-0.5 text-right">
                             <span>{{ __('by vote') }}</span>
                             @foreach (\App\Support\Tournaments\TournamentStartVote::options($tournament) as $option)
-                                <time datetime="{{ $option->format('Y-m-d\TH:i:s\Z') }}" class="whitespace-nowrap">{{ $at($option) }}</time>
+                                <time datetime="{{ $option->format('Y-m-d\TH:i:s\Z') }}">{{ \App\Support\LeagueTime::stampUnbroken($option) }}</time>
                             @endforeach
-                            <span class="text-xs text-ink-2">{{ __('Vote closes') }} {{ $at($tournament->start_vote_until ?? $tournament->starts_at) }}</span>
+                            <span class="text-xs text-ink-2">{{ __('Vote closes') }} {{ \App\Support\LeagueTime::stampUnbroken($tournament->start_vote_until ?? $tournament->starts_at) }}</span>
                         </dd>
                     </div>
                 @else
