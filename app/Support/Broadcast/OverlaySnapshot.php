@@ -533,7 +533,7 @@ final class OverlaySnapshot
      */
     private static function starts(Tournament $tournament): string
     {
-        return $tournament->hasOpenStartVote() ? __('by vote') : self::when($tournament->starts_at);
+        return $tournament->hasOpenStartVote() ? __('open vote') : self::when($tournament->starts_at);
     }
 
     /** A start as a stream says it: "20:00" today, else the weekday with the time, in the league's zone. */

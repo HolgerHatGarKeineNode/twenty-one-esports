@@ -534,8 +534,9 @@ test('while the vote is open, the broadcast overlay counts down to no start and 
     $own = $snapshot(OverlayVariant::Tournament, $tournament->id)['tournament'];
 
     expect($upcoming['startsAt'])->toBeNull()
-        // Short: it stands under a "Starts" label on the panels.
-        ->and($upcoming['starts'])->toBe(__('by vote'))
+        // Short: it stands under a "Starts" label on the panels, whose value cuts off after about ten letters ("Abstimmung").
+        ->and($upcoming['starts'])->toBe(__('open vote'))
+        ->and(mb_strlen(__('open vote', [], 'de')))->toBeLessThanOrEqual(10)
         // The ticker (a module the preset has by default) names no single start either.
         ->and(array_column($live['ticker'], 'text'))->toContain(__(':tournament, start by vote', ['tournament' => $tournament->name]))
         ->and($own['startsAt'])->toBeNull()
