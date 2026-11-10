@@ -269,6 +269,10 @@ test('a finished match at 390 and 1440, German and English: the Rated/Unrated ch
             $row['end'] = surfaceMeasure($page, '[data-test=hyper-end] .panel', $width, $height)['box'];
             // The chip's row must not push the top bar into the roster under it (both fixed).
             $row['bars'] = $page->evaluate('() => [Math.round(document.querySelector("#topbar").getBoundingClientRect().bottom), Math.round(document.querySelector("#roster").getBoundingClientRect().top)]');
+            // And with a long instruction in the bar (the "Muted: …" toast, a card's hint wrap it onto more lines): the
+            // roster moves down with the bar instead of being covered. Written into the line directly, so it does not
+            // depend on when the toast shows; the next render puts the real instruction back.
+            $row['barsLong'] = $page->evaluate('() => new Promise((done) => { document.querySelector("#instruct-t").textContent = "Stumm: Effekte, Soundboard, Musik. Oben rechts wieder einschalten. Stumm: Effekte, Soundboard, Musik."; requestAnimationFrame(() => requestAnimationFrame(() => done([Math.round(document.querySelector("#topbar").getBoundingClientRect().bottom), Math.round(document.querySelector("#roster").getBoundingClientRect().top)]))); })');
             $rows[] = ['locale' => $locale, 'page' => 'match', ...$row];
         }
 
@@ -358,7 +362,9 @@ test('a finished match at 390 and 1440, German and English: the Rated/Unrated ch
         // Below 820 px the roster sits under the wrapped top bar (hyper.css): the chip's row must leave it clear. Wider,
         // the roster is a column of its own beside the top bar's middle (measured 2026-10-09: bar 103, roster 92 at 1440).
         if ($row['page'] === 'match' && str_starts_with($row['size'], '390x')) {
-            expect($row['bars'][0])->toBeLessThanOrEqual($row['bars'][1], $where);
+            expect($row['bars'][0])->toBeLessThanOrEqual($row['bars'][1], $where)
+                ->and($row['barsLong'][0])->toBeGreaterThan($row['bars'][0], $where.' (the long instruction wraps the bar)')
+                ->and($row['barsLong'][0])->toBeLessThanOrEqual($row['barsLong'][1], $where.' (long instruction)');
         }
     }
 

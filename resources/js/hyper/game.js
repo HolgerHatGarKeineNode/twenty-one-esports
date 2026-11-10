@@ -502,6 +502,15 @@ function arrow(fromId, toId, color = '#ffb54d', speed = 1) {
 
     return () => gsap().to(p.node(), { opacity: 0, duration: 0.3, onComplete: () => p.remove() });
 }
+/**
+ * Below 820 px the roster sits under the wrapped top bar (hyper.css). A long instruction (the "Muted: …" toast, a card's
+ * hint) wraps the bar onto more lines: `--hud-bottom` follows its bottom edge, so the roster moves down with it instead
+ * of being covered (measured 2026-11-10: the toast took the bar's bottom from 179 to 207 px, the roster stood at 182).
+ */
+const hudBar = $('#topbar');
+if (hudBar && 'ResizeObserver' in window) {
+    new ResizeObserver(() => document.documentElement.style.setProperty('--hud-bottom', `${Math.ceil(hudBar.getBoundingClientRect().bottom)}px`)).observe(hudBar);
+}
 /** A message in the instruction line for 4 s; the next render keeps it until then. */
 let toastUntil = 0;
 function toast(text) {

@@ -330,7 +330,8 @@ input[type=range] { width: 100%; accent-color: var(--btc); height: 30px; }
 
 @media (width < 1180px) { #legend, #ticker { display: none; } }
 @media (width < 820px) {
-    #roster { top: 182px; left: 8px; width: auto; flex-direction: row; gap: 4px; }
+    /* Under the top bar, and further down when a long instruction wraps it (game.js sets --hud-bottom). */
+    #roster { top: max(182px, calc(var(--hud-bottom, 0px) + 3px)); left: 8px; width: auto; flex-direction: row; gap: 4px; }
     .team-group { flex-direction: row; gap: 4px; }
     .team-group + .team-group { margin: 0 0 0 8px; }
     .team-head { padding: 4px; }
