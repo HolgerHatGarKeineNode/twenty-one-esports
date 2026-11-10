@@ -9046,7 +9046,6 @@
     "Entries that can make it": "Anmeldungen, die können",
     "The entries voted on the start; the league set it on :date. You can still change it above, but the players are not told then.": "Die Anmeldungen haben über den Termin abgestimmt; die Liga hat ihn am :date festgelegt. Du kannst ihn oben noch ändern, die Spieler werden dann aber nicht benachrichtigt.",
     "Let the entries vote on the start": "Anmeldungen über den Termin abstimmen lassen",
-    "Offer up to three more starts beside the one above. Each entry ticks the starts it can make until the vote closes; then the start most entries can make wins (on a tie the earlier one), the league publishes it and tells the players. The vote closes at least an hour before sign-up, so whoever cannot make it can still pull out. Until then the tournament shows the earliest start.": "Biete neben dem Beginn oben bis zu drei weitere Termine an. Jede Anmeldung hakt bis zum Ende der Abstimmung alle Termine an, die passen; dann gewinnt der Termin, den die meisten schaffen (bei Gleichstand der frühere), die Liga veröffentlicht ihn und benachrichtigt die Spieler. Die Abstimmung endet spätestens eine Stunde vor Anmeldeschluss, damit sich noch abmelden kann, wem der Termin nicht passt. Bis dahin zeigt das Turnier den frühesten Termin.",
     "Another possible start (optional)": "Weiterer möglicher Termin (optional)",
     "When can you play?": "Wann kannst du spielen?",
     "The start is put to a vote": "Über den Termin wird abgestimmt",
@@ -9060,12 +9059,16 @@
     "start by vote": "Termin per Abstimmung",
     "The entries vote until :time; then the start most of them can make is set.": "Abgestimmt wird bis :time; dann gilt der Termin, den die meisten Anmeldungen schaffen.",
     "by vote, at the earliest :time": "per Abstimmung, frühestens :time",
+    "by vote: :options, vote closes :close": "per Abstimmung: :options, Abstimmung bis :close",
     "The vote on the start is over: :count of :entries entries can make this start.|The vote on the start is over: :count of :entries entries can make this start.": "Die Terminabstimmung ist vorbei: :count von :entries Anmeldungen kann zu diesem Termin spielen.|Die Terminabstimmung ist vorbei: :count von :entries Anmeldungen können zu diesem Termin spielen.",
     "Your entry did not tick it. If you cannot play then, withdraw it by :close; otherwise you play as planned.": "Deine Anmeldung hat diesen Termin nicht angehakt. Wenn du dann nicht spielen kannst, zieh sie bis :close zurück; sonst spielst du wie geplant.",
     "An entry that does not vote counts for the earliest start.": "Eine Anmeldung ohne Stimme zählt für den frühesten Termin.",
     "The vote set :time: :count entry can make it.|The vote set :time: :count entries can make it.": "Die Abstimmung hat entschieden: :time. Dann kann :count Anmeldung spielen.|Die Abstimmung hat entschieden: :time. Dann können :count Anmeldungen spielen.",
     "Your entry did not tick this start. If you cannot play then, withdraw it by :time.": "Deine Anmeldung hat diesen Termin nicht angehakt. Wenn du dann nicht spielen kannst, zieh sie bis :time zurück.",
-    "by vote: :options, vote closes :close": "per Abstimmung: :options, Abstimmung bis :close",
     "by vote": "per Abstimmung",
-    ":game, :format. Start by vote.": ":game, :format. Termin per Abstimmung."
+    ":game, :format. Start by vote.": ":game, :format. Termin per Abstimmung.",
+    "Entries tick every start they can make until the vote closes, at least an hour before sign-up; the start most of them can make wins, the earlier one on a tie. An entry that does not vote counts for the earliest start.": "Die Anmeldungen haken bis zum Ende der Abstimmung, spätestens eine Stunde vor Anmeldeschluss, alle Termine an, die passen; es gewinnt der Termin, den die meisten schaffen, bei Gleichstand der frühere. Eine Anmeldung ohne Stimme zählt für den frühesten Termin.",
+    "2nd start (optional)": "2. Termin (optional)",
+    "3rd start (optional)": "3. Termin (optional)",
+    "4th start (optional)": "4. Termin (optional)"
 }
