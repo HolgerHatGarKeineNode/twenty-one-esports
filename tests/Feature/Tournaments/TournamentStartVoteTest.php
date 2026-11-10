@@ -798,3 +798,26 @@ test('while the vote is open, the link preview of home and the tournaments page 
 
     expect(PageCardFacts::page('home')['next']['starts_utc'])->toBe('2026-11-20 19:00');
 });
+
+test('an entry that has not voted gets the compact hero, as with "What to do now", so the vote card stands in the first screen; after its tick, and for anyone else, the hero is full', function () {
+    $tournament = votingTournament();
+    [$ana] = voter($tournament, 'Ana');
+    [$bob] = keyedPlayer();
+    // Compact: no 300 px minimum from lg, the art skipped on a phone (the hero's own markup, TournamentDetailPhone.dc.html).
+    $compact = function (?User $viewer) use ($tournament): bool {
+        $html = (string) ($viewer === null ? $this->get(route('tournaments.show', $tournament)) : $this->actingAs($viewer)->get(route('tournaments.show', $tournament)))
+            ->assertOk()->assertSeeHtml('data-test="start-vote"')->getContent();
+        preg_match('/<section aria-labelledby="t-name" class="([^"]*)"/', $html, $hero);
+
+        return ! str_contains($hero[1] ?? 'lg:min-h-[300px]', 'lg:min-h-[300px]');
+    };
+
+    // The guest first: actingAs() holds for every later request of the test.
+    expect($compact(null))->toBeFalse('a guest')
+        ->and($compact($ana))->toBeTrue('an entry without a vote')
+        ->and($compact($bob))->toBeFalse('a signed-in spectator');
+
+    app(TournamentStartVote::class)->toggle($tournament, $ana, '2026-11-21 18:00');
+
+    expect($compact($ana))->toBeFalse('an entry that voted');
+});

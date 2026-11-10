@@ -623,6 +623,10 @@ new #[Layout('layouts::app', ['section' => 'tournaments', 'realtime' => true, 's
         $faces = array_values(array_filter(array_map(fn (array $row) => $row['users'][0] ?? null, array_slice($roster, 0, 5))));
 
         $countdown = $landing->countdown();
+        // An entry that has not voted on the start yet (TournamentStartVote): the vote is its step now, so the hero goes
+        // compact as for "What to do now" and the vote card stands in the first screen. A spectator's hero is unchanged.
+        $voteEntry = \App\Support\Tournaments\TournamentStartVote::isOpen($tournament) ? app(\App\Support\Tournaments\TournamentStartVote::class)->entryOf($tournament, auth()->user()) : null;
+        $voteDue = $voteEntry !== null && ! \App\Support\Tournaments\TournamentStartVote::hasVoted($voteEntry, $tournament->start_options ?? []);
 
         $shareText = $status === TournamentStatus::Signup && $tournament->isSignupOpen()
             ? __('Play :tournament with me on TWENTY ONE Esports: :game, :spots.', ['tournament' => $tournament->title(), 'game' => $gameLine, 'spots' => trans_choice(':count spot left|:count spots left', $open)])
@@ -916,13 +920,13 @@ new #[Layout('layouts::app', ['section' => 'tournaments', 'realtime' => true, 's
             organizer marks with the data line, the name big, then the pot, the champion, the seats, the countdown and
             the one main action. On a phone the art sits on top (TournamentDetailPhone.dc.html).
         --}}
-        {{-- With a step of their own ("What to do now") the hero is compact, so that step stays in the first screen (user, 2026-10-02/03). --}}
-        @php($compactHero = $now && ! $championMoment)
+        {{-- With a step of their own ("What to do now", or a vote on the start not cast yet) the hero is compact, so that step stays in the first screen (user, 2026-10-02/03). --}}
+        @php($compactHero = ($now && ! $championMoment) || $voteDue)
         {{-- While the entries vote on the start (TournamentStartVote) the start is not set: no expected end for it yet. --}}
         @php($heroOpenEnd = in_array($status, [TournamentStatus::Finished, TournamentStatus::Cancelled], true) || $tournament->hasOpenStartVote() ? null : $landing->openEndLine($zone))
         <section aria-labelledby="t-name" @class(['rv-band -mt-page-top lg:-mt-page-top-lg', 'lg:min-h-[300px]' => ! $compactHero]) data-test="tournament-hero" data-state="{{ $cta }}">
             {{-- With a step of their own to take ("What to do now"), a phone skips the art so the step stays in the first screen. --}}
-            <x-game-cover :game="$tournament->game" size="hero" loading="eager" class="{{ ($now && ! $championMoment) || (in_array($cta, ['open', 'entered'], true) && app(\App\Games\GameRegistry::class)->find($tournament->game) instanceof \App\Games\Contracts\PlayedOnOwnCopy) ? 'max-lg:hidden ' : '' }}mx-4 mt-4 rounded-[4px] lg:absolute lg:top-0 lg:right-0 lg:m-0 lg:aspect-video lg:h-auto lg:w-[38%] lg:max-w-[533px] lg:rounded-none [&_img]:object-cover" data-test="game-cover" />
+            <x-game-cover :game="$tournament->game" size="hero" loading="eager" class="{{ $compactHero || (in_array($cta, ['open', 'entered'], true) && app(\App\Games\GameRegistry::class)->find($tournament->game) instanceof \App\Games\Contracts\PlayedOnOwnCopy) ? 'max-lg:hidden ' : '' }}mx-4 mt-4 rounded-[4px] lg:absolute lg:top-0 lg:right-0 lg:m-0 lg:aspect-video lg:h-auto lg:w-[38%] lg:max-w-[533px] lg:rounded-none [&_img]:object-cover" data-test="game-cover" />
             <div class="absolute inset-y-0 right-0 hidden w-[37%] bg-[linear-gradient(90deg,#0A0A0B,rgba(10,10,11,.1)_45%)] lg:block" aria-hidden="true"></div>
 
             <div @class(['relative mx-auto flex w-full max-w-[1440px] flex-col gap-3 px-4 pt-4 lg:pr-[40%] lg:pl-12', 'pb-6 lg:pt-8 lg:pb-10' => ! $compactHero, 'pb-3 max-lg:gap-2 max-lg:pt-3 lg:pt-5 lg:pb-5' => $compactHero])>
