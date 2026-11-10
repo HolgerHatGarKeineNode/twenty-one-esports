@@ -15,6 +15,7 @@ use App\Support\Scores\LeagueWeekDrafts;
 use App\Support\SeasonChain\LeagueKey;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
+use RuntimeException;
 use Throwable;
 
 /**
@@ -162,11 +163,24 @@ final class TournamentDraws
             return false;
         }
 
+        // Sign-up never closes on a start the entries did not set (TournamentStartVote): a vote that advanceDue() could
+        // not settle (it failed, or close() is called on its own) is settled here first. Before this transaction, not
+        // inside it: settling tells the players, and a close that rolls back must not leave notices of a start that was
+        // never saved. settle() takes the same row lock and settles once.
+        if ($tournament->hasOpenStartVote()) {
+            $this->startVote->settle($tournament);
+        }
+
         return DB::transaction(function () use ($tournament, $league, $tip): bool {
             $locked = Tournament::query()->with('event')->lockForUpdate()->findOrFail($tournament->id);
 
             if ($locked->status !== TournamentStatus::Signup) {
                 return false;
+            }
+
+            // Still unsettled (its close lies ahead, against the rules): sign-up stays open, and the admins hear of it.
+            if ($locked->hasOpenStartVote()) {
+                throw new RuntimeException("Tournament {$locked->id}: the start vote is not settled, so sign-up stays open.");
             }
 
             $this->moderation->withdrawOrphaned($locked, self::ORPHAN_REASON);

@@ -9038,8 +9038,6 @@
     "This start is not offered (any more). Reload the page.": "Dieser Termin steht nicht (mehr) zur Wahl. Lade die Seite neu.",
     "Only entries vote on the start: the player of a solo entry, the captain for a lineup.": "Über den Termin stimmen nur Anmeldungen ab: bei einer Solo-Anmeldung der Spieler, bei einem Lineup der Captain.",
     ":tournament starts :time": ":tournament beginnt am :time",
-    "The vote on the start is over and your entry said this start does not suit it. If you cannot play then, pull out by :close; otherwise you play as planned.": "Die Terminabstimmung ist vorbei, und laut deiner Anmeldung passt dir dieser Termin nicht. Wenn du dann nicht spielen kannst, melde dich bis :close ab; sonst spielst du wie geplant.",
-    "The vote on the start is over: most entries can make this start.": "Die Terminabstimmung ist vorbei: Diesen Termin schaffen die meisten Anmeldungen.",
     "The vote has decided the start already. Change it under Starts if you have to.": "Die Abstimmung hat den Termin schon festgelegt. Wenn nötig, ändere ihn unter „Beginnt“.",
     "While the start is put to a vote, the start is the earliest start you offer.": "Solange über den Termin abgestimmt wird, ist der Beginn der früheste angebotene Termin.",
     "settled the vote on the start": "hat die Terminabstimmung abgeschlossen",
@@ -9059,9 +9057,12 @@
     ":count can make it|:count can make it": ":count kann|:count können",
     ":voted of :count entry has voted.|:voted of :count entries have voted.": ":voted von :count Anmeldung hat abgestimmt.|:voted von :count Anmeldungen haben abgestimmt.",
     "Yours has not yet.": "Deine noch nicht.",
-    "The entries voted on the start: :count of them can make it.|The entries voted on the start: :count of them can make it.": "Über den Termin wurde abgestimmt: :count Anmeldung kann.|Über den Termin wurde abgestimmt: :count Anmeldungen können.",
-    "Your entry said this start does not suit it. If you cannot play then, pull out by :time.": "Laut deiner Anmeldung passt dir dieser Termin nicht. Wenn du dann nicht spielen kannst, melde dich bis :time ab.",
     "start by vote": "Termin per Abstimmung",
     "The entries vote until :time; then the start most of them can make is set.": "Abgestimmt wird bis :time; dann gilt der Termin, den die meisten Anmeldungen schaffen.",
-    "by vote, at the earliest :time": "per Abstimmung, frühestens :time"
+    "by vote, at the earliest :time": "per Abstimmung, frühestens :time",
+    "The vote on the start is over: :count of :entries entries can make this start.|The vote on the start is over: :count of :entries entries can make this start.": "Die Terminabstimmung ist vorbei: :count von :entries Anmeldungen kann zu diesem Termin spielen.|Die Terminabstimmung ist vorbei: :count von :entries Anmeldungen können zu diesem Termin spielen.",
+    "Your entry did not tick it. If you cannot play then, withdraw it by :close; otherwise you play as planned.": "Deine Anmeldung hat diesen Termin nicht angehakt. Wenn du dann nicht spielen kannst, zieh sie bis :close zurück; sonst spielst du wie geplant.",
+    "An entry that does not vote counts for the earliest start.": "Eine Anmeldung ohne Stimme zählt für den frühesten Termin.",
+    "The vote set :time: :count entry can make it.|The vote set :time: :count entries can make it.": "Die Abstimmung hat entschieden: :time. Dann kann :count Anmeldung spielen.|Die Abstimmung hat entschieden: :time. Dann können :count Anmeldungen spielen.",
+    "Your entry did not tick this start. If you cannot play then, withdraw it by :time.": "Deine Anmeldung hat diesen Termin nicht angehakt. Wenn du dann nicht spielen kannst, zieh sie bis :time zurück."
 }

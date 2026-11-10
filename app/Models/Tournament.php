@@ -637,10 +637,13 @@ class Tournament extends Model
     /**
      * Its start is put to a vote that the league has not settled yet
      * (TournamentStartVote): `starts_at` is the earliest offered start until then.
+     * Only before sign-up closes (a draft or in sign-up): a tournament that was
+     * called off, is drawn or running never says its start is put to a vote.
      */
     public function hasOpenStartVote(): bool
     {
-        return $this->start_options !== null && $this->start_decided_at === null;
+        return $this->start_options !== null && $this->start_decided_at === null
+            && in_array($this->status, [TournamentStatus::Draft, TournamentStatus::Signup], true);
     }
 
     public function isDirectorMode(): bool

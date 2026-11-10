@@ -30,12 +30,18 @@ use Throwable;
  * - each entry ticks every start it can make, until the vote closes: the
  *   person who may pull the entry out votes for it (the solo player, a
  *   lineup's captain). One entry, one voice; a withdrawn entry's voice drops;
+ * - an entry that has not voted counts for the EARLIEST offered start: the one
+ *   it signed up and consented to (user decision 2026-11-10). An entry that
+ *   ticked starts and then unticked all of them (`start_fits = []`), or whose
+ *   ticks were all taken out of the offer since, has no tick left and counts
+ *   the same: it never said the earliest start does not suit it;
  * - when the vote closes ({@see settleDue()}, `tournaments:tick`), the start
  *   with the most entries that can make it wins, a tie goes to the earlier
  *   one. The league sets it, publishes the new version of the tournament
  *   (a change of time is a new version, NIP "Tournaments"), logs it and tells
- *   every player. Whoever said it does not suit them hears that they can pull
- *   out until sign-up closes: the vote closes at least {@see GAP_MINUTES}
+ *   every player how many entries can make it. Every entry whose ticks do not
+ *   include the winning start (a non-voter's: the earliest) hears that it can
+ *   pull out until sign-up closes: the vote closes at least {@see GAP_MINUTES}
  *   before that, so the draw always runs on the settled start.
  *
  * The vote is league data like the entries: never published, never signed.
@@ -211,8 +217,34 @@ final class TournamentStartVote
     }
 
     /**
-     * Per offered start the entries that can make it, the entries that voted
-     * and all active entries.
+     * The offered starts an entry can make: its ticks still on offer, or,
+     * without one (never voted, unticked all, or its starts were taken out),
+     * the earliest offered start, the one it signed up for.
+     *
+     * @param  list<string>  $options  normalized ({@see normalize()})
+     * @return list<string>
+     */
+    public static function fitsOf(TournamentSignup $signup, array $options): array
+    {
+        $fits = array_values(array_intersect($signup->start_fits ?? [], $options));
+
+        return $fits !== [] || $options === [] ? $fits : [$options[0]];
+    }
+
+    /**
+     * Whether the entry has a tick on a start still offered (else it counts for the earliest).
+     *
+     * @param  list<string>  $options
+     */
+    public static function hasVoted(TournamentSignup $signup, array $options): bool
+    {
+        return array_intersect($signup->start_fits ?? [], $options) !== [];
+    }
+
+    /**
+     * Per offered start the entries that can make it (an entry without a
+     * tick counts for the earliest), the entries that ticked a start and all
+     * active entries.
      *
      * @return array{counts: array<string, int>, voted: int, entries: int}
      */
@@ -225,14 +257,9 @@ final class TournamentStartVote
 
         foreach (TournamentSignup::query()->where('tournament_id', $tournament->id)->active()->get(['id', 'start_fits']) as $signup) {
             $entries++;
+            $voted += self::hasVoted($signup, $options) ? 1 : 0;
 
-            if ($signup->start_fits === null) {
-                continue;
-            }
-
-            $voted++;
-
-            foreach (array_intersect($signup->start_fits, $options) as $fit) {
+            foreach (self::fitsOf($signup, $options) as $fit) {
                 $counts[$fit]++;
             }
         }
@@ -314,31 +341,49 @@ final class TournamentStartVote
 
             Broadcasts::send(new TournamentChanged($locked->id, 'edited'));
 
-            return [$locked, $winner, $tally];
+            return [$locked, $tally];
         });
 
         if ($told === null) {
             return false;
         }
 
-        [$settled, $winner] = $told;
-        $this->tell($settled, $winner);
+        [$settled, $tally] = $told;
+        $this->tell($settled, $tally);
 
         return true;
     }
 
     /**
-     * One tournament news per player of every active entry, in their own
-     * language and zone: the start that won, and for an entry that said it
-     * cannot make it, that it can pull out until sign-up closes.
+     * Whether the settled start is not among the entry's ticks (a non-voter's:
+     * the earliest offered start), so it may want to pull out.
      */
-    private function tell(Tournament $tournament, ?string $winner): void
+    public static function missedBy(Tournament $tournament, TournamentSignup $signup): bool
+    {
+        $options = $tournament->start_options ?? [];
+
+        return $options !== [] && ! in_array(self::key($tournament->starts_at), self::fitsOf($signup, $options), true);
+    }
+
+    /**
+     * One tournament news per player of every active entry, in their own
+     * language and zone: the start that won and how many entries can make it,
+     * and for an entry whose ticks do not include it (a non-voter's: the
+     * earliest start), that it can pull out until sign-up closes; that hint
+     * only while sign-up is still open.
+     *
+     * @param  array{counts: array<string, int>, voted: int, entries: int}  $tally
+     */
+    private function tell(Tournament $tournament, array $tally): void
     {
         $signups = TournamentSignup::query()->where('tournament_id', $tournament->id)->active()->orderBy('id')->get();
         $told = [];
+        $canMake = $tally['counts'][self::key($tournament->starts_at)] ?? 0;
+        $closes = $tournament->signup_closes_at;
+        $canPullOut = $closes !== null && $closes->isFuture();
 
         foreach ($signups as $signup) {
-            $cannot = $winner !== null && $signup->start_fits !== null && ! in_array($winner, $signup->start_fits, true);
+            $cannot = $canPullOut && self::missedBy($tournament, $signup);
 
             foreach (User::query()->whereKey(TournamentModeration::entrants($signup))->get() as $player) {
                 if (isset($told[$player->id])) {
@@ -353,9 +398,8 @@ final class TournamentStartVote
                 try {
                     $this->notifier->send($player, NotificationKind::TournamentNews, new Notice(
                         __(':tournament starts :time', ['tournament' => $tournament->name, 'time' => $start], $locale),
-                        $cannot
-                            ? __('The vote on the start is over and your entry said this start does not suit it. If you cannot play then, pull out by :close; otherwise you play as planned.', ['close' => LeagueTime::stamp($tournament->signup_closes_at ?? $tournament->starts_at, $zone, $locale)], $locale)
-                            : __('The vote on the start is over: most entries can make this start.', [], $locale),
+                        trans_choice('The vote on the start is over: :count of :entries entries can make this start.|The vote on the start is over: :count of :entries entries can make this start.', $canMake, ['count' => $canMake, 'entries' => $tally['entries']], $locale)
+                            .($cannot ? ' '.__('Your entry did not tick it. If you cannot play then, withdraw it by :close; otherwise you play as planned.', ['close' => LeagueTime::stamp($closes, $zone, $locale)], $locale) : ''),
                         route($cannot ? 'tournaments.signup' : 'tournaments.show', $tournament),
                         null,
                         __('Open tournament', [], $locale),
