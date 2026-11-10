@@ -54,6 +54,12 @@
     $zone = PreSeason::timezoneFor($user);
     $busy = $entry !== null || $outgoing !== null;
     $tag = 'inline-block rounded-xs px-1.5 text-[11px] leading-4 font-bold';
+    // Team match, as in the chess lobby (DerCaddy, 2026-11-08: "Beim Schach steht 'Mannschaftskampf, Clan gegen Clan',
+    // die Auswahl fehlt noch bei Blockli"): only a game with a team match mode (Blockli rapid, NIP rev. 9.25) has it.
+    // A clan member goes to their clan page (its team matches and the challenge), everyone else to the clans to pick one.
+    $hasTeamMatch = array_key_exists($slug, app(GameRegistry::class)->teamMatchModes());
+    $teamClan = $user?->clanMember?->clan;
+    $teamHref = $teamClan !== null ? route('clans.show', $teamClan) : route('clans.index');
 @endphp
 
 <section aria-labelledby="play-h" class="flex flex-col gap-2 lg:gap-3" data-test="play"
@@ -114,9 +120,10 @@
                 @endauth
             </li>
             @if ($slug === \App\Games\Blockli::SLUG && \Illuminate\Support\Facades\Route::has('board.practice'))
-                {{-- Practice against bots (DerCaddy, 2026-10-23): six lessons, then three bots, for guests too; nothing counts. --}}
+                {{-- Practice against bots (DerCaddy, 2026-10-23): six lessons, then three bots, for guests too; nothing counts.
+                     Named "Learn the game" with the action "Tutorial" (DerCaddy, 2026-11-08). --}}
                 <li>
-                    <x-chess.lobby-tile :label="__('Practice against bots')" :action="__('Practice')" :href="route('board.practice', $slug)" data-test="play-practice">
+                    <x-chess.lobby-tile :label="__('Learn the game')" :action="__('Tutorial')" :href="route('board.practice', $slug)" data-test="play-practice">
                         <x-slot:detail>{{ __('Learn the rules, then play three bots') }}</x-slot:detail>
                         <x-slot:meta>{{ __('nothing counts') }}</x-slot:meta>
                     </x-chess.lobby-tile>
@@ -128,6 +135,14 @@
                     <x-chess.lobby-tile :label="__('Learn to play')" :action="__('Tutorial')" :href="route('board.blockspace-practice')" data-test="play-practice">
                         <x-slot:detail>{{ __('Nine lessons on the board, then three bots') }}</x-slot:detail>
                         <x-slot:meta>{{ __('nothing counts') }}</x-slot:meta>
+                    </x-chess.lobby-tile>
+                </li>
+            @endif
+            @if ($hasTeamMatch)
+                {{-- As chess: below lg the team match is one slim line under the panels, so the ways to play stay above the tab bar. --}}
+                <li class="max-lg:hidden">
+                    <x-chess.lobby-tile :label="__('Team match')" :action="__('Challenge a clan')" :href="$teamHref" data-test="play-team">
+                        <x-slot:detail>{{ __('Rapid · 2 or 3 boards') }}, {{ __('Clan against clan') }}</x-slot:detail>
                     </x-chess.lobby-tile>
                 </li>
             @endif
@@ -222,5 +237,13 @@
                 <p class="m-0 max-w-[72ch]">{{ __('You join the queue and can cancel any time. The game starts as soon as someone in your range is found.') }}</p>
             </div>
         </div>
+    @endif
+
+    @if ($hasTeamMatch)
+        <a href="{{ $teamHref }}" class="flex min-h-11 items-center gap-2 rounded-[4px] border border-line px-3 text-[13px] text-ink hover:text-ink lg:hidden" data-test="play-team-link">
+            <x-icon name="clans" :size="16" class="shrink-0 text-ink-2" />
+            <b class="shrink-0">{{ __('Team match') }}</b>
+            <span class="min-w-0 truncate text-ink-2">{{ __('Clan against clan') }}</span>
+        </a>
     @endif
 </section>

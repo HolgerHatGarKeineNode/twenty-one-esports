@@ -2,11 +2,13 @@
 
 use App\Enums\BoardEndReason;
 use App\Enums\BoardGameStatus;
+use App\Enums\ClanRole;
 use App\Enums\SeriesResolution;
 use App\Enums\SeriesStatus;
 use App\Games\GameRegistry;
 use App\Models\BoardGame;
 use App\Models\Clan;
+use App\Models\ClanMember;
 use App\Models\Lineup;
 use App\Models\NostrEvent;
 use App\Models\Rating;
@@ -33,6 +35,7 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Queue;
 use Livewire\Livewire;
 use Tests\Support\BlockliOn;
+use Tests\Support\NineMensMorrisOn;
 use Tests\Support\TestSigner;
 use Tests\Support\TrustedFacts;
 
@@ -629,4 +632,30 @@ test('a running Blockli team board is named as a clan team match board by the ca
 
     expect($anchor)->toBe('Rapid-Blocklipartie am Brett 2 eines Clan-Duells')
         ->and($item?->number)->toBe('#'.$match->number.'/2');
+});
+
+test('the Blockli lobby offers the team match as the chess lobby does, and a board game without one does not', function () {
+    // DerCaddy, 2026-11-08: "Beim Schach steht 'Mannschaftskampf, Clan gegen Clan', die Auswahl fehlt noch bei Blockli."
+    $guest = $this->get(route('board.lobby', 'blockli'))->assertOk()->getContent();
+
+    // From lg a tile among the ways to play, below lg one slim line under the panels; without a clan both lead to the clans.
+    expect($guest)->toContain('data-test="play-team"')->toContain('data-test="play-team-link"')
+        ->and(substr_count($guest, 'href="'.route('clans.index').'"'))->toBeGreaterThanOrEqual(2)
+        ->and($guest)->toContain(__('Team match'))->toContain(__('Challenge a clan'))->toContain(__('Clan against clan'))->toContain(__('Rapid · 2 or 3 boards'));
+
+    // A clan member goes to their clan page, where the Blockli lineup and the challenge are.
+    $member = User::factory()->create();
+    $clan = Clan::factory()->create();
+    ClanMember::query()->create(['clan_id' => $clan->id, 'user_id' => $member->id, 'role' => ClanRole::Member, 'joined_at' => now()]);
+    $this->actingAs($member)->get(route('board.lobby', 'blockli'))->assertOk()
+        ->assertSee('href="'.route('clans.show', $clan).'"', false);
+
+    // In German, as on the chess lobby.
+    $this->withHeader('Accept-Language', 'de-DE')->get(route('board.lobby', 'blockli'))->assertOk()
+        ->assertSee('Clan herausfordern')->assertSee('Clan gegen Clan');
+
+    // Nine men's morris has no team match mode: no tile, no line.
+    NineMensMorrisOn::play();
+    $this->get(route('board.lobby', 'nine-mens-morris'))->assertOk()
+        ->assertDontSee('data-test="play-team"', false)->assertDontSee('data-test="play-team-link"', false);
 });
