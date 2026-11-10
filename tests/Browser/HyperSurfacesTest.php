@@ -51,6 +51,7 @@ function surfacePage(User $user, string $path, string $locale = 'de'): Page
 {
     $page = visit(BrowserLogin::url($user))->page();
     $page->context()->addInitScript(BrowserConsole::COLLECTOR);
+    $page->context()->addInitScript(SURFACE_TOAST_WATCH);
     $page->context()->addInitScript('window.__opened = []; window.open = (url) => { window.__opened.push(String(url)); return null; };');
     $page->context()->addInitScript('try { localStorage.setItem("hb-settings", '.json_encode((string) json_encode(['scenes' => false, 'music' => false, 'fx' => false, 'board' => false, 'speed' => 20])).'); } catch (e) {}');
     $page->goto(ComputeUrl::from(route('locale.switch', $locale, false)));
@@ -65,6 +66,33 @@ function surfaceGo(Page $page, string $path): void
     $page->goto(ComputeUrl::from($path));
     BrowserWait::until($page, '() => document.querySelector("[data-test=hyper-match]") ? document.body.dataset.ready === "1" : document.readyState === "complete" && !!window.Livewire', 15_000);
 }
+
+/**
+ * Waits until the page's one-off "Muted: Effects, Soundboard, Music …" toast has come and gone. The page greets
+ * the muted settings these tests save (`hb-settings`) with it 2.5 s after its start (game.js, `muted`), in the
+ * instruction line of the top bar, and it stays at least 4 s. On a phone it wraps there and the top bar grows by
+ * 28 px (15 px at 1440), under the roster that sits at a fixed `top`: measured 2026-11-10, the bar's bottom 207 px
+ * against 179 with the toast gone. Whether a measurement lands before, in or after that window depends on how
+ * fast the page and the test are, so a layout measurement waits for the settled page: the sharded push gate
+ * (16 Chromiums at once) landed inside it every time, a run alone never did.
+ *
+ * `window.__muted` (SURFACE_TOAST_WATCH) remembers that the toast was shown, so a test that arrives after it has
+ * already gone does not wait for it in vain; a page that never shows it fails on the first wait, by name.
+ */
+function surfaceSettled(Page $page): void
+{
+    BrowserWait::until($page, '() => window.__muted === true', 10_000);
+    BrowserWait::until($page, '() => !/^(Muted|Stumm):/.test(document.querySelector("#instruct-t").textContent.trim())', 15_000);
+}
+
+/** Registered before the page's scripts: notes in `window.__muted` that the instruction line showed the muted toast. */
+const SURFACE_TOAST_WATCH = <<<'JS'
+    window.__muted = false;
+    document.addEventListener('DOMContentLoaded', () => {
+        const line = document.querySelector('#instruct-t');
+        if (line) new MutationObserver(() => { if (/^(Muted|Stumm):/.test(line.textContent.trim())) window.__muted = true; }).observe(line, { childList: true, characterData: true, subtree: true });
+    });
+    JS;
 
 /**
  * @return list<string>
@@ -234,6 +262,7 @@ test('a finished match at 390 and 1440, German and English: the Rated/Unrated ch
         BrowserWait::until($page, '() => window.hyperStats?.state().open', 10_000);
         $page->locator('[data-test=hyper-stats-skip]')->click();
         BrowserWait::until($page, '() => document.querySelector("[data-test=hyper-stats]").hidden && !document.querySelector("[data-test=hyper-end]").hidden', 5_000);
+        surfaceSettled($page);
 
         foreach (HYPER_SURFACE_SIZES as [$width, $height]) {
             $row = surfaceMeasure($page, '[data-test=hyper-rated]', $width, $height);
