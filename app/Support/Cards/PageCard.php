@@ -1681,10 +1681,19 @@ final class PageCard
         $after = $this->c->paragraph($this->pageLine(), 'mono', 30, self::M, $after + 16, $max, 3, Canvas::INK_2, 1.35);
 
         if (is_array($f['next'])) {
-            $next = ($f['next']['starts_utc'] ?? null) === null
-                ? __('Next: :name, start by vote', ['name' => $f['next']['name']])
-                : __('Next: :name, :utc UTC', ['name' => $f['next']['name'], 'utc' => $f['next']['starts_utc']]);
-            $this->c->paragraph($next, 'mono-bold', self::MIN, self::M, $after + 8, 800, 2, Canvas::ORANGE, 1.3);
+            // At most two lines, and only the name is cut: "start by vote" or the start always stands in full after it.
+            $line = fn (string $name): string => ($f['next']['starts_utc'] ?? null) === null
+                ? __('Next: :name, start by vote', ['name' => $name])
+                : __('Next: :name, :utc UTC', ['name' => $name, 'utc' => $f['next']['starts_utc']]);
+            $name = $this->c->printable((string) $f['next']['name']);
+            $cut = false;
+
+            while (mb_strlen($name) > 1 && ($this->c->lineCount($line($name.($cut ? '…' : '')), 'mono-bold', self::MIN, 800) ?? 3) > 2) {
+                $name = rtrim(mb_substr($name, 0, -1));
+                $cut = true;
+            }
+
+            $this->c->paragraph($line($name.($cut ? '…' : '')), 'mono-bold', self::MIN, self::M, $after + 8, 800, 2, Canvas::ORANGE, 1.3);
         }
 
         $this->pageMotif(896, 64, 240);

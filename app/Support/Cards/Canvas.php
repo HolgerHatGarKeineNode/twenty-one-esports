@@ -41,6 +41,13 @@ final class Canvas
      */
     public static ?array $cuts = null;
 
+    /**
+     * Every text drawn, while a probe listens (tests only): what a card says, line by line.
+     *
+     * @var list<string>|null
+     */
+    public static ?array $drawn = null;
+
     public function __construct(public readonly int $width, public readonly int $height, public readonly int $scale = 2, string $ground = self::GROUND)
     {
         $image = imagecreatetruecolor(max(1, $width * $scale), max(1, $height * $scale));
@@ -125,6 +132,10 @@ final class Canvas
     {
         if (self::$cuts !== null && $x + $this->width($text, $face, $px) > $this->width) {
             self::$cuts[] = "overflow: {$text}";
+        }
+
+        if (self::$drawn !== null) {
+            self::$drawn[] = $this->printable($text);
         }
 
         imagettftext($this->image, $this->pt($px) * $this->scale, 0, (int) round($x * $this->scale), (int) round($baseline * $this->scale), $this->color($color), $this->font($face), $this->printable($text));

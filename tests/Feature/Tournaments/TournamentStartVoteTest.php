@@ -11,6 +11,7 @@ use App\Models\TournamentModerationEntry;
 use App\Models\TournamentSignup;
 use App\Models\User;
 use App\Support\Broadcast\OverlaySnapshot;
+use App\Support\Cards\Canvas;
 use App\Support\Cards\PageCard;
 use App\Support\Cards\PageCardFacts;
 use App\Support\Cards\ShareMoments;
@@ -871,4 +872,34 @@ test('while a lineup captain\'s vote is due, "you need your own copy" is one lin
     app(TournamentStartVote::class)->toggle($tournament, $captain, '2026-11-20 19:00');
 
     expect($box($captain))->not->toContain('data-test="own-copy" data-line');
+});
+
+test('the home link preview cuts only a long name of the next tournament: "start by vote" and the start always stand in full', function () {
+    $tournament = votingTournament();
+    // 79 characters, near the 80 a tournament name may have (tournament-create).
+    $long = 'Großer Einundzwanzig Blitz-Abend mit Terminabstimmung und Preisgeld für alle 21';
+    $tournament->forceFill(['name' => $long])->save();
+    // The next tournament's lines as the card draws them (at most two), joined.
+    $nextText = function (): string {
+        Cache::forget('page-card:page:home');
+        Canvas::$drawn = [];
+        PageCard::page('home')->render();
+        $drawn = Canvas::$drawn;
+        Canvas::$drawn = null;
+        $start = array_search(true, array_map(fn (string $line): bool => str_starts_with($line, explode(':name', __('Next: :name, start by vote'))[0]), $drawn), true);
+
+        return $start === false ? '' : implode(' ', array_slice($drawn, $start, 2));
+    };
+
+    foreach (['en', 'de'] as $locale) {
+        app()->setLocale($locale);
+        [$before, $after] = explode(':name', __('Next: :name, start by vote'));
+
+        expect($nextText())->toStartWith($before.'Großer Einundzwanzig')->toEndWith('…'.$after)->not->toContain('für alle 21');
+    }
+
+    app()->setLocale('en');
+    settleUnvoted($tournament);
+
+    expect($nextText())->toEndWith('…, 2026-11-20 19:00 UTC');
 });
