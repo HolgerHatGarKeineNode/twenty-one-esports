@@ -28,6 +28,7 @@ use App\Support\Tournaments\TournamentPublisher;
 use App\Support\Tournaments\TournamentRunner;
 use Carbon\CarbonImmutable;
 use Illuminate\Support\Facades\Queue;
+use Illuminate\Support\Lottery;
 use Livewire\Livewire;
 use Tests\Support\BlockliOn;
 use Tests\Support\BlockspaceOn;
@@ -50,6 +51,12 @@ beforeEach(function () {
     Queue::fake();
     BlockliOn::play();
     BlockspaceOn::play();
+    // Each game's first leg draws its colours by lot: pinned to slot 0 with White.
+    Lottery::alwaysLose();
+});
+
+afterEach(function () {
+    Lottery::determineResultNormally();
 });
 
 test('the options: a Blockli tournament takes another board game of its mode, always with two legs; nothing else does', function () {
@@ -103,7 +110,7 @@ test('the sequence: games in order, the tournament\'s game first, repeats allowe
         ->and(FormatOptions::fromArray(['games' => ['blockli', 'blockspace']], $blockli)->games)->toBe([]);
 });
 
-test('a pairing plays Blockli, then Blockspace with the colours swapped, and after 1:1 a Blockli decider', function () {
+test('a pairing plays Blockli, then Blockspace, and after 1:1 a Blockli decider', function () {
     $tournament = blockliTournament(TournamentFormat::SingleElimination, ['pairGame' => 'blockspace']);
     $first = blockliLive($tournament);
 
@@ -118,7 +125,8 @@ test('a pairing plays Blockli, then Blockspace with the colours swapped, and aft
     $second = blockliLive($tournament);
 
     expect($second->game)->toBe('blockspace')
-        ->and((int) $second->white_id)->toBe((int) $first->black_id)
+        // Its game's first leg: by lot (pinned), not swapped against the other game's leg.
+        ->and((int) $second->white_id)->toBe((int) $first->white_id)
         ->and(blockliMatch($tournament)->result)->toBeNull();
 
     // Leg 2 to the lower seed: 1:1, a decider in Blockli.
@@ -234,9 +242,19 @@ test('the published tournament says in words that it is combined', function () {
 /** A drawn, running two-player tournament of `$game` combined with `$pair`, in `$mode`. */
 function combinedTournament(string $game, string $pair, string $mode, TournamentFormat $format = TournamentFormat::SingleElimination): Tournament
 {
+    return sequenceTournament($game, $mode, ['pairGame' => $pair], $format);
+}
+
+/**
+ * A drawn, running two-player tournament of `$game` in `$mode` with these options (a sequence: `games`, `decider`).
+ *
+ * @param  array<string, mixed>  $options
+ */
+function sequenceTournament(string $game, string $mode, array $options, TournamentFormat $format = TournamentFormat::SingleElimination): Tournament
+{
     $tournament = Tournament::factory()->create([
         'game' => $game, 'mode' => $mode, 'format' => $format,
-        'options' => FormatOptions::fromArray(['pairGame' => $pair], GameProfile::for($game, $mode))->toArray(),
+        'options' => FormatOptions::fromArray($options, GameProfile::for($game, $mode))->toArray(),
         'capacity' => 2, 'results_mode' => TournamentResultsMode::Players, 'status' => TournamentStatus::Running,
         'slug' => 'combined-'.fake()->unique()->numberBetween(1, 1_000_000),
     ]);
@@ -261,6 +279,36 @@ function combinedLive(Tournament $tournament): ChessGame|BoardGame
         ?? BoardGame::query()->where('tournament_match_id', $match->id)->where('status', BoardGameStatus::Active)->sole();
 }
 
+/** The live game ends drawn: White offers, Black accepts. */
+function combinedDraw(Tournament $tournament): void
+{
+    $game = combinedLive($tournament);
+    $white = User::query()->findOrFail($game->white_id);
+    $black = User::query()->findOrFail($game->black_id);
+
+    if ($game instanceof ChessGame) {
+        app(ChessGameService::class)->acceptDraw(app(ChessGameService::class)->offerDraw($game, $white), $black);
+    } else {
+        app(BoardGameService::class)->acceptDraw(app(BoardGameService::class)->offerDraw($game, $white), $black);
+    }
+}
+
+/** The live game's first move is missed: it ends aborted, and the league hears of it as from the clock. */
+function combinedMissFirstMove(Tournament $tournament): ChessGame|BoardGame
+{
+    $game = combinedLive($tournament);
+
+    if ($game instanceof ChessGame) {
+        $game->forceFill(['status' => ChessGameStatus::Aborted])->save();
+        app(TournamentRunner::class)->chessGameAborted($game->id);
+    } else {
+        $game->forceFill(['status' => BoardGameStatus::Aborted])->save();
+        app(TournamentRunner::class)->boardGameAborted($game->id);
+    }
+
+    return $game;
+}
+
 /** The player of `$loserSlot` resigns the live game. */
 function combinedLose(Tournament $tournament, int $loserSlot): void
 {
@@ -281,7 +329,7 @@ test('chess combines with every board game of its mode, and a board game with ch
         ->and(FormatOptions::pairGames(GameProfile::for('chess', 'blitz')))->not->toContain('rocket-league');
 });
 
-test('chess + Blockli: chess, then Blockli with the colours swapped, after 1:1 a chess decider', function () {
+test('chess + Blockli: chess, then Blockli, after 1:1 a chess decider', function () {
     $tournament = combinedTournament('chess', 'blockli', 'blitz');
     $first = combinedLive($tournament);
 
@@ -293,7 +341,8 @@ test('chess + Blockli: chess, then Blockli with the colours swapped, after 1:1 a
 
     expect($second)->toBeInstanceOf(BoardGame::class)
         ->and($second->game)->toBe('blockli')
-        ->and((int) $second->white_id)->toBe((int) $first->black_id)
+        // Its game's first leg: by lot (pinned), not swapped against the other game's leg.
+        ->and((int) $second->white_id)->toBe((int) $first->white_id)
         ->and(TournamentRunner::legsSoFar(blockliMatch($tournament), $tournament)['label'])->toBe('1–0');
 
     // The board's switch lists both games, the chess game first.
@@ -397,3 +446,127 @@ test('the live matrix counts a finished chess leg of a combined pairing', functi
     expect($scores['Player 1-Player 2'])->toBe('1–0')
         ->and($scores['Player 2-Player 1'])->toBe('0–1');
 })->skip('P5: matrix chess legs — TournamentMatrix::scores() reads only the board games');
+
+/*
+| A sequence the organizer composes (user, 2026-11-11: "dynamisch konfigurierbar"): 2..N games in order, repeats allowed,
+| one leg each, then deciders by the tournament's rule; colours per game.
+*/
+
+/** The game slug of a chess or board game. */
+function sequenceSlug(ChessGame|BoardGame $game): string
+{
+    return $game instanceof ChessGame ? 'chess' : (string) $game->game;
+}
+
+test('a three-game sequence plays its games in order as legs 1 to 3, and the points decide only after the third', function () {
+    $tournament = sequenceTournament('blockli', 'blitz', ['games' => ['blockli', 'blockspace', 'chess']]);
+    $played = [];
+
+    // 2:0 after two legs still plays the third.
+    foreach ([1, 1, 0] as $loser) {
+        $live = combinedLive($tournament);
+        $played[] = [sequenceSlug($live), $live->tournament_leg];
+
+        expect(blockliMatch($tournament)->result)->toBeNull();
+        combinedLose($tournament, $loser);
+    }
+
+    $result = blockliMatch($tournament)->result;
+
+    expect($played)->toBe([['blockli', 1], ['blockspace', 2], ['chess', 3]])
+        ->and($result['winner'])->toBe(0)
+        ->and($result['decided'])->toBe('legs')
+        ->and($result['legs'])->toEqual([[1, 0], [1, 0], [0, 1]]);
+});
+
+test('a repeated game: chess, Blockli, chess, colours alternating per game, and a missed first move restarts the leg in its game with its colours', function () {
+    $tournament = sequenceTournament('chess', 'blitz', ['games' => ['chess', 'blockli', 'chess']]);
+    $first = blockliSlotUser($tournament, 0);
+
+    // Leg 1, chess, its first leg by lot (pinned: slot 0 White). Its first move is missed once: restarted as leg 1 with
+    // the same colours, not drawn again (the lot now would swap them).
+    Lottery::alwaysWin();
+    $missed = combinedMissFirstMove($tournament);
+    $leg1 = combinedLive($tournament);
+    Lottery::alwaysLose();
+
+    expect($leg1)->toBeInstanceOf(ChessGame::class)
+        ->and($leg1->id)->not->toBe($missed->id)
+        ->and($leg1->tournament_leg)->toBe(1)
+        ->and((int) $leg1->white_id)->toBe($first);
+
+    combinedLose($tournament, 1);
+
+    // Leg 2, Blockli, its first leg by lot: slot 0 White again, not swapped against the chess leg.
+    $leg2 = combinedLive($tournament);
+
+    expect(sequenceSlug($leg2))->toBe('blockli')->and($leg2->tournament_leg)->toBe(2)->and((int) $leg2->white_id)->toBe($first);
+
+    combinedLose($tournament, 0);
+
+    // Leg 3, chess again: swapped against chess leg 1. Its own first move missed once restarts it, although
+    // leg 1 already used a restart of the chess table.
+    $leg3 = combinedLive($tournament);
+
+    expect($leg3)->toBeInstanceOf(ChessGame::class)->and($leg3->tournament_leg)->toBe(3)->and((int) $leg3->black_id)->toBe($first);
+
+    combinedMissFirstMove($tournament);
+    $again = combinedLive($tournament);
+
+    expect(blockliMatch($tournament)->result)->toBeNull()
+        ->and($again)->toBeInstanceOf(ChessGame::class)
+        ->and($again->id)->not->toBe($leg3->id)
+        ->and($again->tournament_leg)->toBe(3)
+        ->and((int) $again->white_id)->toBe((int) $leg3->white_id);
+
+    combinedLose($tournament, 1);
+    $result = blockliMatch($tournament)->result;
+
+    expect($result['winner'])->toBe(0)
+        ->and($result['legs'])->toEqual([[1, 0], [0, 1], [1, 0]])
+        ->and(TournamentRunner::finishedLegs(blockliMatch($tournament), $tournament)->map(fn ($game): array => [sequenceSlug($game), $game->tournament_leg])->all())
+        ->toBe([['chess', 1], ['blockli', 2], ['chess', 3]]);
+});
+
+test('the deciders after a level sequence: the games in turn (cycle), or always the first game (first)', function () {
+    $tournament = sequenceTournament('blockli', 'blitz', ['games' => ['blockli', 'chess', 'blockspace']]);
+    $first = sequenceTournament('blockli', 'blitz', ['games' => ['blockli', 'chess', 'blockspace'], 'decider' => 'first']);
+
+    expect(array_map(fn (int $leg): string => TournamentRunner::legGame($tournament, $leg), range(0, 6)))
+        ->toBe(['blockli', 'chess', 'blockspace', 'blockli', 'chess', 'blockspace', 'blockli'])
+        ->and(array_map(fn (int $leg): string => TournamentRunner::legGame($first, $leg), range(0, 6)))
+        ->toBe(['blockli', 'chess', 'blockspace', 'blockli', 'blockli', 'blockli', 'blockli']);
+
+    // Played: chess and Blockli 1:1, a drawn first decider in chess, then the second decider by each rule.
+    foreach (['cycle' => 'blockli', 'first' => 'chess'] as $decider => $second) {
+        $played = sequenceTournament('chess', 'blitz', ['games' => ['chess', 'blockli'], 'decider' => $decider]);
+        combinedLose($played, 1);
+        combinedLose($played, 0);
+
+        $decider1 = combinedLive($played);
+        expect($decider1)->toBeInstanceOf(ChessGame::class)->and($decider1->tournament_leg)->toBe(3);
+
+        combinedDraw($played);
+        $decider2 = combinedLive($played);
+
+        expect(blockliMatch($played)->result)->toBeNull()
+            ->and(sequenceSlug($decider2))->toBe($second)
+            ->and($decider2->tournament_leg)->toBe(4);
+
+        combinedLose($played, 1);
+
+        expect(blockliMatch($played)->result['winner'])->toBe(0)->and(blockliMatch($played)->result['decided'])->toBe('decider');
+    }
+});
+
+test('a Blockli tournament of one game keeps its two legs on the single-game path, with no leg index on its games', function () {
+    $tournament = blockliTournament(TournamentFormat::SingleElimination);
+
+    expect($tournament->formatOptions()->sequence())->toBeFalse();
+
+    blockliLose($tournament, 1);
+    blockliLive($tournament);
+
+    expect(BoardGame::query()->where('tournament_match_id', blockliMatch($tournament)->id)->count())->toBe(2)
+        ->and(BoardGame::query()->where('tournament_match_id', blockliMatch($tournament)->id)->whereNotNull('tournament_leg')->count())->toBe(0);
+});

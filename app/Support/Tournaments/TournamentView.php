@@ -410,7 +410,7 @@ final class TournamentView
         }
 
         $games = ($games ?? BoardGame::query()->where('tournament_match_id', $match->id)->where('status', '!=', BoardGameStatus::Aborted)
-            ->orderBy('id')->get(['id', 'tournament_match_id', 'game', 'status', 'result', 'white_id']))
+            ->orderBy('id')->get(['id', 'tournament_match_id', 'game', 'status', 'result', 'white_id', 'tournament_leg']))
             ->filter(fn (BoardGame $game): bool => $game->id > (int) $match->replaced_through)->values();
 
         $list = $games->all();
@@ -418,7 +418,7 @@ final class TournamentView
         // A combined tournament (FormatOptions::$pairGame): its chess games stand among them, in the order played.
         if ($combined !== null) {
             $chess = ChessGame::query()->where('tournament_match_id', $match->id)->where('status', '!=', ChessGameStatus::Aborted)
-                ->where('id', '>', (int) $match->replaced_through)->orderBy('id')->get(['id', 'tournament_match_id', 'status', 'result', 'white_id']);
+                ->where('id', '>', (int) $match->replaced_through)->orderBy('id')->get(['id', 'tournament_match_id', 'status', 'result', 'white_id', 'tournament_leg']);
             $list = TournamentRunner::inLegOrder($combined, [...$list, ...$chess->all()]);
         }
 

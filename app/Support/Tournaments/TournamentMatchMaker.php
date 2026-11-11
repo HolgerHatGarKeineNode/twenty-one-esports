@@ -279,9 +279,9 @@ final class TournamentMatchMaker
             return true;
         }
 
-        // A combined tournament (FormatOptions::$pairGame, DerCaddy 2026-11-11): leg by leg in the game it is due in,
-        // chess or a board game, either way round; directors enter its results as for its own game.
-        if ($tournament->formatOptions()->pairGame !== null && ! $tournament->isDirectorMode()) {
+        // A combined tournament (FormatOptions::$games, DerCaddy 2026-11-11): leg by leg in the game it is due in,
+        // chess or a board game, in the organizer's order; directors enter its results as for its own game.
+        if ($tournament->formatOptions()->sequence() && ! $tournament->isDirectorMode()) {
             return ! self::needsCombinedGame($match, $tournament) || $this->startCombined($tournament, $match, $a, $b, $acceptedBy) !== null;
         }
 
@@ -369,28 +369,22 @@ final class TournamentMatchMaker
 
     /**
      * The latest game of a combined pairing, chess or board game, that the league has not set aside (`replaced_through`,
-     * read per kind of game as the match does): what decides whether the next one is due, and its colours.
+     * read per kind of game as the match does): the one of the highest leg (`tournament_leg`), the latest try within
+     * it. What decides whether the next one is due, and whether a restart keeps its colours.
      */
     public static function lastLeg(TournamentMatch $match, Tournament $tournament): BoardGame|ChessGame|null
     {
-        $chess = ChessGame::query()->where('tournament_match_id', $match->id)->where('id', '>', (int) $match->replaced_through)->latest('id')->first();
-        $board = BoardGame::query()->where('tournament_match_id', $match->id)->where('id', '>', (int) $match->replaced_through)->latest('id')->first();
+        $latest = fn (BoardGame|ChessGame $model): BoardGame|ChessGame|null => $model->newQuery()->where('tournament_match_id', $match->id)
+            ->where('id', '>', (int) $match->replaced_through)->orderByDesc('tournament_leg')->orderByDesc('id')->first();
+        $chess = $latest(new ChessGame);
+        $board = $latest(new BoardGame);
 
         if ($chess === null || $board === null) {
             return $chess ?? $board;
         }
 
-        // Legs alternate (TournamentRunner::legGame()), and timestamps tie within a second: the game under way is the last;
-        // else the game due after the finished ones, if its latest try was aborted (a restart pending); else the other.
-        if ($chess->status === ChessGameStatus::Active || $board->status === BoardGameStatus::Active) {
-            return $chess->status === ChessGameStatus::Active ? $chess : $board;
-        }
-
-        $dueChess = TournamentRunner::legGame($tournament, TournamentRunner::finishedLegs($match, $tournament)->count()) === 'chess';
-        $due = $dueChess ? $chess : $board;
-        $aborted = $dueChess ? $chess->status === ChessGameStatus::Aborted : $board->status === BoardGameStatus::Aborted;
-
-        return $aborted ? $due : ($dueChess ? $board : $chess);
+        // A leg is played on one table: the two never share a leg.
+        return (int) $chess->tournament_leg > (int) $board->tournament_leg ? $chess : $board;
     }
 
     /**
@@ -402,19 +396,22 @@ final class TournamentMatchMaker
     {
         $last = self::lastLeg($match, $tournament);
 
+        // Each leg restarts on its own (TournamentRunner::abortedInLeg()): a repeated game does not share its restarts.
         return match (true) {
             $last === null => true,
-            $last instanceof ChessGame && $last->status === ChessGameStatus::Aborted => TournamentRunner::abortedGames($match) <= TournamentRunner::firstMoveRestarts(),
-            $last instanceof BoardGame && $last->status === BoardGameStatus::Aborted => TournamentRunner::abortedBoardGames($match) <= TournamentRunner::firstMoveRestarts(),
+            $last instanceof ChessGame && $last->status === ChessGameStatus::Aborted => TournamentRunner::abortedInLeg($match, $last) <= TournamentRunner::firstMoveRestarts(),
+            $last instanceof BoardGame && $last->status === BoardGameStatus::Aborted => TournamentRunner::abortedInLeg($match, $last) <= TournamentRunner::firstMoveRestarts(),
             $last instanceof ChessGame ? $last->status === ChessGameStatus::Finished : $last->status === BoardGameStatus::Finished => $match->result === null,
             default => false,
         };
     }
 
     /**
-     * The next game of a combined pairing, in the game it is due in: slot 0 has White in leg 1, leg 2 swaps the
-     * colours, the first decider after 1:1 draws them by lot, a later one swaps them, a restart keeps them. Rated as
-     * any tournament game, the second game on its own ladder (Tournament::openLadderFor()).
+     * The next game of a combined pairing, in the game its leg is due in (TournamentRunner::legGame()), its leg kept on
+     * the game (`tournament_leg`: 1..N for the sequence, N+1… for the deciders). The colours go per game: each game's
+     * first leg draws them by lot, every later leg of that game, a decider included, swaps them against its previous
+     * leg ([chess, Blockli, chess]: the second chess leg swaps the first), and a restart after a missed first move
+     * keeps them. Rated as any tournament game, each game on its own ladder (Tournament::openLadderFor()).
      */
     private function startCombined(Tournament $tournament, TournamentMatch $match, TournamentParticipant $a, TournamentParticipant $b, ?User $acceptedBy = null): ChessGame|BoardGame|null
     {
@@ -426,16 +423,18 @@ final class TournamentMatchMaker
         }
 
         $last = self::lastLeg($match, $tournament);
-        $finished = TournamentRunner::finishedLegs($match, $tournament)->count();
-        $aborted = $last !== null && ($last instanceof ChessGame ? $last->status === ChessGameStatus::Aborted : $last->status === BoardGameStatus::Aborted);
+        $legs = TournamentRunner::finishedLegs($match, $tournament);
+        $leg = $legs->count() + 1;
+        $slug = TournamentRunner::legGame($tournament, $legs->count());
+        $aborted = $last !== null && $last->tournament_leg === $leg
+            && ($last instanceof ChessGame ? $last->status === ChessGameStatus::Aborted : $last->status === BoardGameStatus::Aborted);
+        $previous = $legs->last(fn (BoardGame|ChessGame $game): bool => ($game instanceof ChessGame ? 'chess' : $game->game) === $slug);
         $swap = match (true) {
-            $last === null => false,
             $aborted => (int) $last->white_id !== $first->id,
-            $finished === 2 => Lottery::odds(1, 2)->winner(fn (): bool => true)->loser(fn (): bool => false)->choose(),
-            default => (int) $last->white_id === $first->id,
+            $previous !== null => (int) $previous->white_id === $first->id,
+            default => Lottery::odds(1, 2)->winner(fn (): bool => true)->loser(fn (): bool => false)->choose(),
         };
         [$white, $black] = $swap ? [$second, $first] : [$first, $second];
-        $slug = TournamentRunner::legGame($tournament, $finished);
 
         try {
             $game = $slug === 'chess'
@@ -449,6 +448,7 @@ final class TournamentMatchMaker
             return null;
         }
 
+        $game->forceFill(['tournament_leg' => $leg])->save();
         $this->cupNotices->gameStarted($tournament, $game, $acceptedBy);
 
         return $game;
@@ -609,8 +609,8 @@ final class TournamentMatchMaker
 
         $twoLegs = TournamentRunner::twoLegs($match, $tournament);
         $finished = $twoLegs ? TournamentRunner::finishedBoardGames($match)->count() : 0;
-        // A combined tournament (FormatOptions::$pairGame): leg 2 and every other decider in the second game.
-        $slug = $twoLegs ? TournamentRunner::legGame($tournament, $finished) : (string) $tournament->game;
+        // A combined tournament (FormatOptions::$games) never comes here: startCombined() plays its legs.
+        $slug = (string) $tournament->game;
 
         if ($finished >= 2) {
             $swap = $last?->status === BoardGameStatus::Finished && $finished === 2
