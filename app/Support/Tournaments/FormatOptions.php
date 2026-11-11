@@ -40,6 +40,12 @@ final readonly class FormatOptions
     public const FIRST_PLACE_TIE_SEED = 'seed';
 
     /**
+     * What a combined tournament plays after its sequence ends level ({@see $decider}): the sequence's games again in
+     * turn (`cycle`, as #28 played its two games), or always its first game (`first`).
+     */
+    public const DECIDERS = ['cycle', 'first'];
+
+    /**
      * @param  'reset'|'single'|'skip'  $grandFinal
      * @param  'points'|'match-wins'|'game-wins'|'custom'  $rankBy
      * @param  int|null  $swissRounds  null = as many as fit the time (recommendation rule 2)
@@ -64,11 +70,13 @@ final readonly class FormatOptions
      *                                                    a knockout among the tied decides (FirstPlaceTie::openPlayoff()),
      *                                                    or they share place 1; `seed` only for options stored before
      *                                                    ({@see FIRST_PLACE_TIE_SEED})
-     * @param  string|null  $pairGame  A combined tournament (DerCaddy, 2026-11-11: "kombinierte Turniere … Blockli und
-     *                                 Blockspace gegeneinander", one game of each per pairing): the second board game, whose
-     *                                 slug plays leg 2 and every other decider ({@see TournamentRunner::legGame()}); chess
-     *                                 or a board game with the tournament's mode ({@see pairGames()}), and the pairing
-     *                                 always plays two legs. Null: one game, as before
+     * @param  list<string>  $games  A combined tournament (DerCaddy, 2026-11-11: "kombinierte Turniere … Blockli und
+     *                               Blockspace gegeneinander"; user, 2026-11-11: the organizer composes the sequence): the
+     *                               games every pairing plays in this order, one leg each ({@see TournamentRunner::legGame()}),
+     *                               the tournament's own game first; a game may repeat. Chess or a board game with the
+     *                               tournament's mode ({@see pairGames()}), at most `esports.tournaments.sequence_max_games`.
+     *                               Fewer than two: one game, as before (an empty list)
+     * @param  'cycle'|'first'  $decider  What a level sequence plays next ({@see DECIDERS})
      */
     public function __construct(
         public int $bestOf = 1,
@@ -95,8 +103,23 @@ final readonly class FormatOptions
         public int $legs = 2,
         public bool $legPoints = false,
         public string $firstPlaceTie = 'playoff',
-        public ?string $pairGame = null,
-    ) {}
+        public array $games = [],
+        public string $decider = 'cycle',
+    ) {
+        $this->pairGame = $games[1] ?? null;
+    }
+
+    /**
+     * The second game of a combined tournament's sequence, null for one game: the game #28's copy and views name beside
+     * the tournament's own ({@see $games} holds the whole sequence).
+     */
+    public ?string $pairGame;
+
+    /** Whether the pairings play a sequence of games ({@see $games}): two or more, one leg each. */
+    public function sequence(): bool
+    {
+        return count($this->games) >= 2;
+    }
 
     /** Whether the games of a two-leg pairing count one by one in a round-robin table ({@see $legPoints}). */
     public function perLeg(): bool
@@ -147,8 +170,8 @@ final readonly class FormatOptions
         $pick = fn (string $key, string $default, array $allowed): string => in_array($values[$key] ?? null, $allowed, true) ? (string) $values[$key] : $default;
 
         $twoLegs = TournamentRunner::playsTwoLegs($profile->game);
-        // A combined tournament's second game: only one the chooser offers for this game and mode, else none.
-        $pairGame = in_array($values['pairGame'] ?? null, self::pairGames($profile), true) ? (string) $values['pairGame'] : null;
+        $games = self::gameSequence($values, $profile);
+        $sequence = count($games) >= 2;
         $bestOf = in_array((int) ($values['bestOf'] ?? 0), $profile->bestOfOptions, true) ? (int) $values['bestOf'] : $defaults->bestOf;
         $finalBestOf = in_array((int) ($values['finalBestOf'] ?? 0), $profile->bestOfOptions, true) ? (int) $values['finalBestOf'] : $defaults->finalBestOf;
 
@@ -190,9 +213,9 @@ final readonly class FormatOptions
             // Only a game that plays two legs has them to choose (TournamentRunner::playsTwoLegs()): any other keeps one
             // result per match, whatever a draft stored before its game changed. Options stored without the keys predate
             // the choice: they keep two games counted per pairing, as they were drawn, whatever the defaults become.
-            // A combined tournament plays one game of each per pairing: always two.
-            legs: $pairGame !== null ? 2 : ($twoLegs ? $int('legs', self::STORED_LEGS, 1, 2) : self::STORED_LEGS),
-            legPoints: ($twoLegs || $pairGame !== null) && (bool) ($values['legPoints'] ?? self::STORED_LEG_POINTS),
+            // A combined tournament plays its sequence per pairing: always more than one game.
+            legs: $sequence ? 2 : ($twoLegs ? $int('legs', self::STORED_LEGS, 1, 2) : self::STORED_LEGS),
+            legPoints: ($twoLegs || $sequence) && (bool) ($values['legPoints'] ?? self::STORED_LEG_POINTS),
             // Options stored without the key predate the choice: their ties stay with the seed order, as they were drawn
             // and paid out; anything else unknown takes the default.
             firstPlaceTie: ! array_key_exists('firstPlaceTie', $values) ? self::FIRST_PLACE_TIE_SEED : match ($values['firstPlaceTie']) {
@@ -201,8 +224,43 @@ final readonly class FormatOptions
                 self::FIRST_PLACE_TIE_SEED => self::FIRST_PLACE_TIE_SEED,
                 default => $defaults->firstPlaceTie,
             },
-            pairGame: $pairGame,
+            games: $games,
+            decider: $sequence && ($values['decider'] ?? null) === 'first' ? 'first' : 'cycle',
         );
+    }
+
+    /**
+     * The sequence of a combined tournament ({@see $games}) from stored or submitted values. Options stored by #28 name
+     * only a second game (`pairGame`): they read as the tournament's game, then that one. A game no longer offered
+     * (switched off, another mode, not combinable) is dropped, the list is cut at the configured length, and a list
+     * that does not start with the tournament's game, or keeps fewer than two games, is one game: an empty list.
+     *
+     * @param  array<string, mixed>  $values
+     * @return list<string>
+     */
+    private static function gameSequence(array $values, GameProfile $profile): array
+    {
+        $listed = match (true) {
+            is_array($values['games'] ?? null) => array_values($values['games']),
+            is_string($values['pairGame'] ?? null) && $values['pairGame'] !== $profile->game => [$profile->game, $values['pairGame']],
+            default => [],
+        };
+
+        if (! self::combinable($profile->game)) {
+            return [];
+        }
+
+        $offered = [$profile->game, ...self::pairGames($profile)];
+        $games = array_values(array_filter($listed, fn (mixed $slug): bool => is_string($slug) && in_array($slug, $offered, true)));
+        $games = array_slice($games, 0, self::maxSequence());
+
+        return count($games) >= 2 && $games[0] === $profile->game ? $games : [];
+    }
+
+    /** The most games a sequence plays before its deciders (`esports.tournaments.sequence_max_games`), never fewer than two. */
+    public static function maxSequence(): int
+    {
+        return max(2, (int) config('esports.tournaments.sequence_max_games', 5));
     }
 
     /**
@@ -284,7 +342,7 @@ final readonly class FormatOptions
         return new self($this->bestOf, $this->finalBestOf, $this->thirdPlace, $this->grandFinal, $this->split, $this->iterations,
             $this->rankBy, $rounds, $this->pointsWin, $this->pointsTie, $this->pointsBye, $this->swissTieBreaks, $this->roundRobinTieBreaks,
             $this->groupSize, $this->advance, $this->groupStage, $this->finalStage, $this->heatSize, $this->heatAdvance, $this->lobbyMinutes, $this->teamSize,
-            $this->legs, $this->legPoints, $this->firstPlaceTie, $this->pairGame);
+            $this->legs, $this->legPoints, $this->firstPlaceTie, $this->games, $this->decider);
     }
 
     /**
@@ -296,7 +354,7 @@ final readonly class FormatOptions
     }
 
     /**
-     * @return array{bestOf: int, finalBestOf: int, thirdPlace: bool, grandFinal: string, split: bool, iterations: int, rankBy: string, swissRounds: int|null, pointsWin: float, pointsTie: float, pointsBye: float, swissTieBreaks: list<string>, roundRobinTieBreaks: list<string>, groupSize: int, advance: int, groupStage: string, finalStage: string, heatSize: int, heatAdvance: int, lobbyMinutes: int, teamSize: int, legs: int, legPoints: bool, firstPlaceTie: string, pairGame: string|null}
+     * @return array{bestOf: int, finalBestOf: int, thirdPlace: bool, grandFinal: string, split: bool, iterations: int, rankBy: string, swissRounds: int|null, pointsWin: float, pointsTie: float, pointsBye: float, swissTieBreaks: list<string>, roundRobinTieBreaks: list<string>, groupSize: int, advance: int, groupStage: string, finalStage: string, heatSize: int, heatAdvance: int, lobbyMinutes: int, teamSize: int, legs: int, legPoints: bool, firstPlaceTie: string, games: list<string>, decider: string}
      */
     public function toArray(): array
     {
@@ -325,7 +383,8 @@ final readonly class FormatOptions
             'legs' => $this->legs,
             'legPoints' => $this->legPoints,
             'firstPlaceTie' => $this->firstPlaceTie,
-            'pairGame' => $this->pairGame,
+            'games' => $this->games,
+            'decider' => $this->decider,
         ];
     }
 }

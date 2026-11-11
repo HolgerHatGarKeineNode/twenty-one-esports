@@ -58,6 +58,7 @@ use Illuminate\Support\Carbon;
  * @property int|null $reminded_ply
  * @property int|null $tournament_match_id the tournament match this game plays (P8b)
  * @property int|null $tournament_game 1 for the first game of that match, 2 for a replay after a knockout draw, …
+ * @property int|null $tournament_leg its leg in a combined tournament's sequence (FormatOptions::$games): 1..N, then the deciders; null otherwise
  * @property int|null $series_match_id the chess team match this game is a board of (NIP rev. 9.22); its number is the team match's
  * @property int|null $board the board of that team match, 1..boards
  * @property int|null $white_gone_ms
@@ -117,6 +118,7 @@ class ChessGame extends Model
     {
         return [
             'number' => 'integer',
+            'tournament_leg' => 'integer',
             'rated' => 'boolean',
             'gate_at_accept' => 'array',
             'clans_at_accept' => 'array',

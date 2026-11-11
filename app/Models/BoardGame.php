@@ -45,6 +45,7 @@ use Illuminate\Support\Carbon;
  * @property int $version
  * @property int|null $tournament_match_id the tournament match this game is played for (P5), null for a casual game
  * @property int|null $tournament_game its number within that match (a replay after a draw is the next)
+ * @property int|null $tournament_leg its leg in a combined tournament's sequence (FormatOptions::$games): 1..N, then the deciders; null otherwise
  * @property int|null $first_move_seconds a tournament game's first-move window, pinned at the start; null = the league default
  * @property int|null $number league match number of a rated game (MatchNumber, shared with chess and series); null for a casual game
  * @property bool $rated rated at the pairing (P6): pinned to `ladder_address` with the trust gate and clans read then
@@ -114,6 +115,7 @@ class BoardGame extends Model
             'deadline_ms' => 'integer',
             'version' => 'integer',
             'tournament_game' => 'integer',
+            'tournament_leg' => 'integer',
             'first_move_seconds' => 'integer',
             'reminded_ply' => 'integer',
             'board' => 'integer',

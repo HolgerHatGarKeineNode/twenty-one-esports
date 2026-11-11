@@ -400,12 +400,12 @@ abstract class TournamentFormatChooser extends Component
     }
 
     /**
-     * A combined tournament: '' for one game, else the second board game each pairing plays one game of
-     * (FormatOptions::$pairGame, DerCaddy 2026-11-11); stored only on save.
+     * A combined tournament: '' for one game, else the second game each pairing plays one game of, after the
+     * tournament's own (FormatOptions::$games, DerCaddy 2026-11-11); stored only on save.
      */
     public function pickPairGame(string $slug): void
     {
-        $this->option('pairGame', $slug === '' ? null : $slug);
+        $this->option('games', $slug === '' ? [] : [$this->profile()->game, $slug]);
     }
 
     /** The two legs count per pairing or game by game (FormatOptions::$legPoints); stored only on save. */

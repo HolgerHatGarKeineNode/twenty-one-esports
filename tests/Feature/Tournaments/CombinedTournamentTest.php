@@ -72,6 +72,37 @@ test('the options: a Blockli tournament takes another board game of its mode, al
         ->and(FormatOptions::fromArray(['pairGame' => 'blockspace'], $blockli)->pairGame)->toBeNull();
 });
 
+test('the sequence: games in order, the tournament\'s game first, repeats allowed, cut at the configured length', function () {
+    $blockli = GameProfile::for('blockli', 'blitz');
+
+    // Options stored by #28 name only the second game: they read as the tournament's game, then that one.
+    expect(FormatOptions::fromArray(['pairGame' => 'chess'], $blockli))->games->toBe(['blockli', 'chess'])->decider->toBe('cycle')
+        ->and(FormatOptions::fromArray(['games' => ['blockli', 'chess', 'blockli', 'blockspace'], 'decider' => 'first'], $blockli))
+        ->games->toBe(['blockli', 'chess', 'blockli', 'blockspace'])->decider->toBe('first')->legs->toBe(2)
+        ->and(FormatOptions::fromArray(['games' => ['blockli', 'chess', 'blockli']], $blockli)->sequence())->toBeTrue()
+        // A stored list wins over a #28 key beside it; an unknown decider is the default.
+        ->and(FormatOptions::fromArray(['games' => [], 'pairGame' => 'chess'], $blockli)->sequence())->toBeFalse()
+        ->and(FormatOptions::fromArray(['games' => ['blockli', 'chess'], 'decider' => 'lot'], $blockli)->decider)->toBe('cycle')
+        // The tournament's game leads, or there is no sequence; one game alone is none; unknown games are dropped.
+        ->and(FormatOptions::fromArray(['games' => ['chess', 'blockli']], $blockli)->games)->toBe([])
+        ->and(FormatOptions::fromArray(['games' => ['blockli']], $blockli)->games)->toBe([])
+        ->and(FormatOptions::fromArray(['games' => ['blockli', 'rocket-league', 7, 'chess']], $blockli)->games)->toBe(['blockli', 'chess'])
+        // A round trip keeps the sequence.
+        ->and(FormatOptions::fromArray(FormatOptions::fromArray(['games' => ['blockli', 'chess', 'chess']], $blockli)->toArray(), $blockli)->games)->toBe(['blockli', 'chess', 'chess']);
+
+    // At most the configured number of games: the rest is cut.
+    expect(FormatOptions::fromArray(['games' => ['blockli', 'chess', 'blockli', 'chess', 'blockli', 'chess']], $blockli)->games)->toHaveCount(5);
+    config(['esports.tournaments.sequence_max_games' => 3]);
+    expect(FormatOptions::fromArray(['games' => ['blockli', 'chess', 'blockspace', 'chess']], $blockli)->games)->toBe(['blockli', 'chess', 'blockspace']);
+
+    // Blockspace switched off: dropped from a stored sequence; fewer than two games left is one game.
+    config(['esports.board_games.games.blockspace.enabled' => false]);
+    app()->forgetInstance(GameRegistry::class);
+
+    expect(FormatOptions::fromArray(['games' => ['blockli', 'blockspace', 'chess']], $blockli)->games)->toBe(['blockli', 'chess'])
+        ->and(FormatOptions::fromArray(['games' => ['blockli', 'blockspace']], $blockli)->games)->toBe([]);
+});
+
 test('a pairing plays Blockli, then Blockspace with the colours swapped, and after 1:1 a Blockli decider', function () {
     $tournament = blockliTournament(TournamentFormat::SingleElimination, ['pairGame' => 'blockspace']);
     $first = blockliLive($tournament);
@@ -158,7 +189,7 @@ test('the organizer picks the second game on the create page; it is stored and s
         ->set('name', 'Blockli und Blockspace')
         ->call('pickGame', 'blockli/blitz')
         ->call('pickPairGame', 'blockspace')
-        ->assertSet('options.pairGame', 'blockspace')
+        ->assertSet('options.games', ['blockli', 'blockspace'])
         ->call('create')
         ->assertHasNoErrors();
 
@@ -168,18 +199,18 @@ test('the organizer picks the second game on the create page; it is stored and s
 
     Livewire::actingAs($organizer)->test('pages::admin.tournament-edit', ['tournament' => $tournament])
         ->assertSeeHtml('data-test="pair-game-option"')
-        ->assertSet('options.pairGame', 'blockspace')
+        ->assertSet('options.games', ['blockli', 'blockspace'])
         ->call('pickPairGame', '')
-        ->assertSet('options.pairGame', null);
+        ->assertSet('options.games', []);
 
     // Chess combines as well; a series game does not, the pick does nothing there.
     Livewire::actingAs($organizer)->test('pages::admin.tournament-create')
         ->call('pickGame', 'blitz')
         ->call('pickPairGame', 'blockspace')
-        ->assertSet('options.pairGame', 'blockspace')
+        ->assertSet('options.games', ['chess', 'blockspace'])
         ->call('pickGame', 'rl1')
         ->call('pickPairGame', 'blockspace')
-        ->assertSet('options.pairGame', null);
+        ->assertSet('options.games', []);
 });
 
 test('the published tournament says in words that it is combined', function () {
