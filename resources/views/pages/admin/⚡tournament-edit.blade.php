@@ -3,6 +3,7 @@
 use App\Enums\TournamentResultsMode;
 use App\Enums\TournamentStatus;
 use App\Livewire\Concerns\EditsPrizePot;
+use App\Livewire\Concerns\EditsStartVote;
 use App\Livewire\TournamentFormatChooser;
 use App\Models\Tournament;
 use App\Models\TournamentBan;
@@ -17,8 +18,6 @@ use App\Support\Tournaments\TournamentModeSwitch;
 use App\Support\Tournaments\TournamentModeration;
 use App\Support\Tournaments\TournamentRuleViolation;
 use App\Support\Tournaments\TournamentStartVote;
-use Carbon\CarbonImmutable;
-use Carbon\CarbonInterface;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\Facades\RateLimiter;
@@ -48,6 +47,7 @@ use Livewire\Attributes\On;
  */
 new #[Layout('layouts::app', ['section' => 'admin'])] class extends TournamentFormatChooser {
     use EditsPrizePot;
+    use EditsStartVote;
 
     public Tournament $tournament;
 
@@ -60,15 +60,6 @@ new #[Layout('layouts::app', ['section' => 'admin'])] class extends TournamentFo
 
     /** Sign-up close as `Y-m-d\TH:i` in the league's zone; only while sign-up is open. */
     public string $closesAt = '';
-
-    /** The entries vote on the start (TournamentStartVote): the start above and up to three more. */
-    public bool $voteStart = false;
-
-    /** @var list<string> the other offered starts as `Y-m-d\TH:i` in the league's zone; '' = not offered */
-    public array $startOptions = ['', '', ''];
-
-    /** The close of the vote as `Y-m-d\TH:i` in the league's zone. */
-    public string $voteUntil = '';
 
     /** Remove the lineups a game or mode correction no longer fits. */
     public bool $confirmRemoval = false;
@@ -170,20 +161,8 @@ new #[Layout('layouts::app', ['section' => 'admin'])] class extends TournamentFo
         }
 
         $this->fillNightPause($tournament);
-        $this->fillStartVote($tournament);
+        $this->fillStartVote($tournament, $tournament->starts_at);
         $this->drawDecider = $tournament->decidesDrawByStanding() ? Tournament::DRAW_DECIDER_STANDING : Tournament::DRAW_DECIDER_REPLAY;
-    }
-
-    /**
-     * The start vote's fields: the offered starts after the first (that one is the start, the earliest), and its
-     * close; without a vote, a close two days before the start to begin with.
-     */
-    private function fillStartVote(Tournament $tournament): void
-    {
-        $this->voteStart = $tournament->hasOpenStartVote();
-        $others = $this->voteStart ? array_slice(TournamentStartVote::options($tournament), 1) : [];
-        $this->startOptions = array_pad(array_map(LeagueTime::input(...), $others), TournamentStartVote::MAX_OPTIONS - 1, '');
-        $this->voteUntil = LeagueTime::input($tournament->start_vote_until ?? $tournament->starts_at->copy()->subDays(2));
     }
 
     /**
@@ -199,27 +178,7 @@ new #[Layout('layouts::app', ['section' => 'admin'])] class extends TournamentFo
             return $changes;
         }
 
-        if (! $this->voteStart) {
-            return [...$changes, 'start_options' => null, 'start_vote_until' => null];
-        }
-
-        $stored = TournamentStartVote::options($tournament);
-        $starts = [$changes['starts_at']];
-
-        foreach ($this->startOptions as $typed) {
-            if (($typed = trim((string) $typed)) !== '') {
-                // An unchanged value keeps its stored instant (LeagueTime::parse), as the start does.
-                $starts[] = LeagueTime::parse($typed, collect($stored)->first(fn (CarbonImmutable $at): bool => LeagueTime::input($at) === $typed));
-            }
-        }
-
-        usort($starts, fn (CarbonInterface $a, CarbonInterface $b): int => $a <=> $b);
-
-        return [...$changes,
-            'starts_at' => $starts[0],
-            'start_options' => TournamentStartVote::normalize($starts),
-            'start_vote_until' => LeagueTime::parse($this->voteUntil, $tournament->start_vote_until),
-        ];
+        return [...$changes, ...$this->chosenStartVote($changes['starts_at'], $tournament)];
     }
 
     /**
@@ -311,14 +270,7 @@ new #[Layout('layouts::app', ['section' => 'admin'])] class extends TournamentFo
                 'break' => ['nullable', 'numeric', 'between:0,1000'],
             ] : []),
             ...($tournament->status === TournamentStatus::Signup ? ['closesAt' => ['required', LeagueTime::rule($tournament->signup_closes_at)]] : []),
-            ...($this->voteStart && $beforeDraw && $tournament->start_decided_at === null ? [
-                'startOptions.*' => ['nullable', function (string $attribute, mixed $value, Closure $fail): void {
-                    if (trim((string) $value) !== '') {
-                        LeagueTime::rule()($attribute, trim((string) $value), $fail);
-                    }
-                }],
-                'voteUntil' => ['required', LeagueTime::rule($tournament->start_vote_until)],
-            ] : []),
+            ...($beforeDraw && $tournament->start_decided_at === null ? $this->startVoteRules($tournament->start_vote_until) : []),
         ]);
 
         $changes = [
@@ -660,23 +612,7 @@ new #[Layout('layouts::app', ['section' => 'admin'])] class extends TournamentFo
             @if ($tournament->start_decided_at !== null && $tournament->start_options !== null)
                 <p class="m-0 max-w-[80ch] text-xs leading-normal text-ink-2" data-test="start-vote-decided">{{ __('The entries voted on the start; the league set it on :date. You can still change it above, but the players are not told then.', ['date' => \App\Support\Formats::date($tournament->start_decided_at, true, $zone)]) }}</p>
             @elseif ($beforeDraw && ($voteStart || TournamentStartVote::offers($tournament)))
-                {{-- The start vote (TournamentStartVote, DerCaddy 2026-11-09): deferred like every field here, shown at once. --}}
-                <div class="flex flex-col gap-3" x-data="{ vote: $wire.$entangle('voteStart') }" data-test="start-vote-edit">
-                    <x-ui.check :checked="$voteStart" x-bind:aria-checked="vote.toString()" x-on:click="vote = ! vote" class="self-start text-[13px]" data-test="start-vote-toggle">{{ __('Let the entries vote on the start') }}</x-ui.check>
-                    <div x-show="vote" @unless ($voteStart) style="display: none" @endunless class="flex flex-col gap-3" data-test="start-vote-fields">
-                        <p class="m-0 max-w-[80ch] text-xs leading-normal text-ink-2" data-test="start-vote-help">{{ __('Entries tick every start they can make until the vote closes, at least an hour before sign-up; the start most of them can make wins, the earlier one on a tie. An entry that does not vote counts for the earliest start.') }}</p>
-                        <div class="grid items-start gap-4 @min-[640px]/admin:grid-cols-2">
-                            {{-- The start above is the 1st; these are the 2nd to 4th. --}}
-                            @foreach ($startOptions as $index => $option)
-                                <x-berlin-datetime-input :model="'startOptions.'.$index" :label="[__('2nd start (optional)'), __('3rd start (optional)'), __('4th start (optional)')][$index] ?? __('Another possible start (optional)')" :value="$option" :test="'start-option-'.$index" />
-                            @endforeach
-                        </div>
-                        {{-- On its own row: the close is not one of the starts. --}}
-                        <div class="grid items-start gap-4 @min-[640px]/admin:grid-cols-2">
-                            <x-berlin-datetime-input model="voteUntil" :label="__('Vote closes')" :value="$voteUntil" test="start-vote-until" />
-                        </div>
-                    </div>
-                </div>
+                @include('pages.admin.partials.tournament-start-vote', ['testId' => 'start-vote-edit'])
             @endif
             @if ($beforeDraw)
                 @island(name: 'chooser-window')
