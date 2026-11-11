@@ -688,8 +688,11 @@ new #[Layout('layouts::app', ['section' => 'tournaments', 'realtime' => true, 's
                 : __('those level on points and every tie-break share 1st place and the prizes of the places they hold'), 'first-tie']]);
         }
 
-        // A two-leg race game (Blockli): how a 1:1 and a drawn third game are settled (draw_decider, user 2026-10-11).
-        if (\App\Support\Tournaments\TournamentRunner::canDecideByStanding($tournament->game)) {
+        // A combined tournament (FormatOptions::$games): its sequence and its deciders, whatever its first game. Else a
+        // two-leg race game (Blockli): how a 1:1 and a drawn third game are settled (draw_decider, user 2026-10-11).
+        if ($tournament->formatOptions()->sequence()) {
+            array_splice($chips, 1, 0, [['award', __('Pairings'), \App\Support\Tournaments\FormatCopy::sequence($tournament->formatOptions()), 'pairings']]);
+        } elseif (\App\Support\Tournaments\TournamentRunner::canDecideByStanding($tournament->game)) {
             // Per stage what really happens (TournamentRunner::stagePlaysTwoLegs(), stageAllowsDraw()): a knockout plays
             // a third game at 1:1; Swiss and a round-robin table take 1:1 as a draw, and a round-robin table plays what the
             // organizer chose (FormatOptions::$legs, $legPoints; DerCaddy, 2026-10-18). Two stages name both.

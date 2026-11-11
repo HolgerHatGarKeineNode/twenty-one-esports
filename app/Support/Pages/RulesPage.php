@@ -38,6 +38,7 @@ use App\Support\Series\LobbyRules;
 use App\Support\Settings\LeagueSettings;
 use App\Support\Stacker\BlockfillRules;
 use App\Support\Tournaments\CasualCups;
+use App\Support\Tournaments\FormatOptions;
 use App\Support\Tournaments\Lobbies;
 use App\Support\Tournaments\NoShowDisqualifier;
 use App\Support\Tournaments\TournamentDeadlines;
@@ -882,6 +883,8 @@ final class RulesPage
                 __('A drawn knockout chess game is replayed with the colours swapped, at most :count times; then the higher seed advances.', ['count' => (int) $t['drawn_replays']]),
                 __('A Blockli pairing plays two games with the colours swapped. In a knockout a third game decides at 1:1; if that one is drawn too, the tournament page says what follows: the race standing of its final position, or replays as for chess. In Swiss and in a round robin 1:1 is a draw, with no third game.'),
                 __('In a Blockli round robin or round-robin group the organizer chooses one game per pairing or two, and whether the two count as one pairing (1:1 is a draw, no third game) or game by game (a win 1, a draw ½ each); the tournament page names both under Pairings.'),
+                // A combined tournament (FormatOptions::$games; DerCaddy 2026-11-11, user: "dynamisch konfigurierbar").
+                __('A combined tournament plays the games its organizer lined up, up to :count per pairing: chess and board games of one time control, a game may repeat, one game each, the colours alternating per game. In a knockout a level score goes to deciders, the games in turn or always the first, as the tournament page says under Pairings; in Swiss and a round robin it is a draw. Each game is rated on its own ladder.', ['count' => FormatOptions::maxSequence()]),
                 __('A report or a no-show claim the other side does not answer in time is decided by the league.'),
                 __('Players get reminders :list minutes before the league decides a waiting match.', ['list' => implode(', ', (array) $t['reminders'])]),
                 __('In a tournament run by its directors, the directors enter every result; players report nothing.'),

@@ -3,6 +3,7 @@
 namespace App\Support\Tournaments;
 
 use App\Enums\TournamentFormat;
+use App\Support\GameNames;
 
 /**
  * The layperson explanation of every format (TOURNAMENT-FORMATS.md, section
@@ -18,6 +19,20 @@ final class FormatCopy
     public static function sentence(string $text): string
     {
         return (string) preg_replace('/(?<=\pL)\.\.(?!\.)/u', '.', $text);
+    }
+
+    /**
+     * What a combined tournament's pairing plays (FormatOptions::$games, $decider), translated: its games in order and,
+     * for a knockout, the deciders after a level score. The chooser's help and the tournament page's "Pairings" read it.
+     */
+    public static function sequence(FormatOptions $options): string
+    {
+        $games = implode(' + ', array_map(GameNames::game(...), $options->games));
+        $first = GameNames::game($options->games[0] ?? '');
+
+        return $options->decider === 'first'
+            ? __(':games, one game each, the colours alternating per game. In a knockout a level score goes to deciders of :first, as many as it takes; in Swiss and a round robin it is a draw.', ['games' => $games, 'first' => $first])
+            : __(':games, one game each, the colours alternating per game. In a knockout a level score goes to deciders, the games in turn, :first first; in Swiss and a round robin it is a draw.', ['games' => $games, 'first' => $first]);
     }
 
     /**

@@ -229,17 +229,58 @@
             </span>
         @endforeach
     </div>
-    {{-- A combined tournament (FormatOptions::$pairGame, DerCaddy 2026-11-11: "Blockli und Blockspace gegeneinander"): each
-         pairing plays one game of each, offered where another two-leg board game has the same mode. --}}
+    {{-- A combined tournament (FormatOptions::$games; DerCaddy 2026-11-11: "Blockli und Blockspace gegeneinander", user:
+         "dynamisch konfigurierbar"): the organizer composes the games every pairing plays, in order, the tournament's game
+         first and fixed; a game may repeat, up to FormatOptions::maxSequence(). Saved with the form like every option. --}}
     @php($pairGames = FormatOptions::pairGames($profile))
     @if ($pairGames !== [])
-        <div class="flex max-w-[720px] flex-col gap-1.5 border-t border-hairline pt-3" data-test="pair-game-option">
-            <span id="pair-l" class="text-[13px] font-bold">{{ __('Combined tournament') }}</span>
-            <x-tournaments.segmented labelledby="pair-l" method="pickPairGame" :current="$options->pairGame ?? ''" :grow="false" data-test="pair-game"
-                :options="[['', __('Only :game', ['game' => GameNames::game($profile->game)])], ...array_map(fn (string $slug): array => [$slug, __('With :game', ['game' => GameNames::game($slug)])], $pairGames)]" />
-            <span class="text-xs leading-normal text-ink-2">{{ $options->pairGame === null
-                ? __('Combined: every pairing plays one game of each, with the colours swapped. Whoever is better at both wins.')
-                : __('Every pairing plays one game of :main and one of :second, with the colours swapped; after 1:1 a decider alternates between them, :main first. The :second games count on the :second ladder.', ['main' => GameNames::game($profile->game), 'second' => GameNames::game($options->pairGame)]) }}</span>
+        @php($sequence = $this->sequenceGames())
+        @php($last = count($sequence) - 1)
+        <div class="flex max-w-[720px] flex-col gap-2 border-t border-hairline pt-3" data-test="sequence-option">
+            <span id="seq-l" class="text-[13px] font-bold">{{ __('Combined tournament') }}</span>
+            <ol class="m-0 flex list-none flex-col gap-1.5 p-0" aria-labelledby="seq-l" data-test="sequence-games">
+                @foreach ($sequence as $index => $slug)
+                    <li class="flex min-h-11 min-w-0 items-center gap-2 rounded-md bg-ground pl-3 text-[13px] shadow-ring" wire:key="seq-{{ $index }}-{{ $slug }}" data-test="sequence-game" data-game="{{ $slug }}">
+                        <span class="w-5 shrink-0 text-ink-3 tabular-nums">{{ $index + 1 }}.</span>
+                        <span class="min-w-0 grow truncate font-bold">{{ GameNames::game($slug) }}</span>
+                        @if ($index === 0)
+                            <span class="shrink-0 pr-3 text-xs text-ink-3">{{ __('Tournament\'s game') }}</span>
+                        @else
+                            <span class="flex shrink-0">
+                                <button type="button" class="flex size-11 cursor-pointer items-center justify-center text-ink-2 hover:text-ink disabled:cursor-default disabled:opacity-40"
+                                        wire:click="moveSequenceGame({{ $index }}, -1)" @disabled($index === 1) data-test="sequence-up"
+                                        aria-label="{{ __('Move :game up', ['game' => GameNames::game($slug)]) }}"><x-icon name="chevron-up" :size="16" /></button>
+                                <button type="button" class="flex size-11 cursor-pointer items-center justify-center text-ink-2 hover:text-ink disabled:cursor-default disabled:opacity-40"
+                                        wire:click="moveSequenceGame({{ $index }}, 1)" @disabled($index === $last) data-test="sequence-down"
+                                        aria-label="{{ __('Move :game down', ['game' => GameNames::game($slug)]) }}"><x-icon name="chevron-down" :size="16" /></button>
+                                <button type="button" class="flex size-11 cursor-pointer items-center justify-center text-ink-2 hover:text-ink"
+                                        wire:click="removeSequenceGame({{ $index }})" data-test="sequence-remove"
+                                        aria-label="{{ __('Remove :game', ['game' => GameNames::game($slug)]) }}"><x-icon name="close" :size="14" /></button>
+                            </span>
+                        @endif
+                    </li>
+                @endforeach
+            </ol>
+            @if (count($sequence) < FormatOptions::maxSequence())
+                <span class="flex flex-col gap-1.5">
+                    <span id="seq-add-l" class="text-xs text-ink-2">{{ __('Add a game') }}</span>
+                    <span class="flex flex-wrap gap-1.5" role="group" aria-labelledby="seq-add-l" data-test="sequence-add">
+                        @foreach ([$profile->game, ...$pairGames] as $slug)
+                            <x-button variant="quiet" class="whitespace-nowrap" wire:click="addSequenceGame('{{ $slug }}')" wire:key="seq-add-{{ $slug }}" data-test="sequence-add-{{ $slug }}">+ {{ GameNames::game($slug) }}</x-button>
+                        @endforeach
+                    </span>
+                </span>
+            @endif
+            @if ($options->sequence())
+                <span class="flex flex-col items-start gap-1.5">
+                    <span id="dec-l" class="text-xs text-ink-2">{{ __('After a level score') }}</span>
+                    <x-tournaments.segmented labelledby="dec-l" method="pickDecider" :current="$options->decider" :grow="false" data-test="sequence-decider"
+                        :options="[['cycle', __('Deciders in turn')], ['first', __('Always :game', ['game' => GameNames::game($profile->game)])]]" />
+                </span>
+            @endif
+            <span class="{{ $help }}" data-test="sequence-help">{{ $options->sequence()
+                ? FormatCopy::sequence($options).' '.__('Each game counts on its own ladder.')
+                : __('Combined: add games, and every pairing plays one game of each in this order. Whoever is better at all of them wins.') }}</span>
         </div>
     @endif
 </section>

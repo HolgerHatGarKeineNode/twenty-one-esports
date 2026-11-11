@@ -516,12 +516,19 @@ final class TournamentPublisher
             $lines[] = $this->cupPlacesLine($tournament);
         }
 
-        // A combined tournament (FormatOptions::$pairGame, DerCaddy 2026-11-11): said in words, no tag and no NIP change;
+        // A combined tournament (FormatOptions::$games, DerCaddy 2026-11-11): said in words, no tag and no NIP change;
         // the `t` tags keep naming the tournament's own game.
-        if (($pair = $tournament->formatOptions()->pairGame) !== null) {
-            $main = GameNames::game((string) $tournament->game);
-            $second = GameNames::game($pair);
-            $lines[] = "A combined tournament: each pairing plays one game of {$main} and one of {$second}, with the colours swapped; a decider after a level score alternates between them, {$main} first. The {$second} games are rated on the open {$second} ladder of the same season.";
+        $options = $tournament->formatOptions();
+
+        if ($options->sequence()) {
+            $names = array_map(GameNames::game(...), $options->games);
+            $first = $names[0];
+            $others = array_values(array_unique(array_filter($names, fn (string $name): bool => $name !== $first)));
+            $deciders = $options->decider === 'first'
+                ? "a level score in a knockout goes to deciders of {$first}, as many as it takes"
+                : "a level score in a knockout goes to deciders, the games in turn, {$first} first";
+            $lines[] = 'A combined tournament: each pairing plays '.count($names).' games in this order, one each: '.implode(', ', $names)
+                .", the colours alternating per game; {$deciders}. The ".implode(' and ', $others).' games are rated on the open ladder of their game in the same season.';
         }
 
         return $lines;

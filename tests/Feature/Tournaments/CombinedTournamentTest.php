@@ -192,35 +192,55 @@ test('the tournament names both games, and the board\'s game switch names each g
     ]);
 });
 
-test('the organizer picks the second game on the create page; it is stored and shown again on the edit page', function () {
+test('the organizer composes the sequence on the create page, add, reorder, remove; it is stored and edited again on the edit page', function () {
     $organizer = organizer();
 
     // The chooser's game island is drawn by the browser test of the page (the action's response carries it apart).
     Livewire::actingAs($organizer)->test('pages::admin.tournament-create')
         ->set('name', 'Blockli und Blockspace')
         ->call('pickGame', 'blockli/blitz')
-        ->call('pickPairGame', 'blockspace')
+        ->call('addSequenceGame', 'blockspace')
         ->assertSet('options.games', ['blockli', 'blockspace'])
+        ->call('addSequenceGame', 'chess')
+        ->call('moveSequenceGame', 2, -1)
+        ->assertSet('options.games', ['blockli', 'chess', 'blockspace'])
+        // The tournament's own game stays first: neither moved nor removed.
+        ->call('moveSequenceGame', 1, -1)
+        ->call('removeSequenceGame', 0)
+        ->assertSet('options.games', ['blockli', 'chess', 'blockspace'])
+        ->call('pickDecider', 'first')
+        ->call('pickDecider', 'lot')
+        ->assertSet('options.decider', 'first')
         ->call('create')
         ->assertHasNoErrors();
 
     $tournament = Tournament::query()->sole();
 
-    expect($tournament->formatOptions()->pairGame)->toBe('blockspace');
+    expect($tournament->formatOptions())->games->toBe(['blockli', 'chess', 'blockspace'])->decider->toBe('first');
 
     Livewire::actingAs($organizer)->test('pages::admin.tournament-edit', ['tournament' => $tournament])
-        ->assertSeeHtml('data-test="pair-game-option"')
+        ->assertSeeHtml('data-test="sequence-option"')
+        ->assertSet('options.games', ['blockli', 'chess', 'blockspace'])
+        ->call('removeSequenceGame', 1)
         ->assertSet('options.games', ['blockli', 'blockspace'])
-        ->call('pickPairGame', '')
+        // One game left is one game per pairing again.
+        ->call('removeSequenceGame', 1)
         ->assertSet('options.games', []);
 
-    // Chess combines as well; a series game does not, the pick does nothing there.
+    // Deferred: nothing changed until the edit page saves.
+    expect($tournament->refresh()->formatOptions()->games)->toBe(['blockli', 'chess', 'blockspace']);
+
+    // The cap: at most sequence_max_games; a series game combines with nothing, the add does nothing there.
+    config(['esports.tournaments.sequence_max_games' => 3]);
+
     Livewire::actingAs($organizer)->test('pages::admin.tournament-create')
         ->call('pickGame', 'blitz')
-        ->call('pickPairGame', 'blockspace')
-        ->assertSet('options.games', ['chess', 'blockspace'])
+        ->call('addSequenceGame', 'blockspace')
+        ->call('addSequenceGame', 'chess')
+        ->call('addSequenceGame', 'blockli')
+        ->assertSet('options.games', ['chess', 'blockspace', 'chess'])
         ->call('pickGame', 'rl1')
-        ->call('pickPairGame', 'blockspace')
+        ->call('addSequenceGame', 'blockspace')
         ->assertSet('options.games', []);
 });
 
@@ -233,8 +253,12 @@ test('the published tournament says in words that it is combined', function () {
 
     app(TournamentPublisher::class)->publish($tournament, $tournament->creator, $tournament->starts_at->copy()->subHour());
 
-    expect($tournament->refresh()->event->payload()['content'])
-        ->toContain('A combined tournament: each pairing plays one game of Blockli and one of Blockspace, with the colours swapped');
+    $payload = $tournament->refresh()->event->payload();
+
+    expect($payload['content'])
+        ->toContain('A combined tournament: each pairing plays 2 games in this order, one each: Blockli, Blockspace, the colours alternating per game; a level score in a knockout goes to deciders, the games in turn, Blockli first.')
+        // Said in words only: no hashtag, no `t` tag (a standing rule of this project).
+        ->and(collect($payload['tags'])->where(0, 't')->all())->toBe([]);
 });
 
 /*

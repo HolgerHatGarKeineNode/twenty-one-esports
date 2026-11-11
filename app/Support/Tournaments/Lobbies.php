@@ -84,11 +84,17 @@ final class Lobbies
             return GameNames::game($tournament->game);
         }
 
-        // A combined tournament (FormatOptions::$pairGame): "Blockli + Blockspace Blitz 5+3".
-        $pair = $tournament->formatOptions()->pairGame;
+        // A combined tournament (FormatOptions::$games): its sequence in order, "Chess + Blockli + Chess Blitz 5+3".
+        $options = $tournament->formatOptions();
 
-        return $pair === null ? GameNames::full($tournament->game, $tournament->mode)
-            : GameNames::game($tournament->game).' + '.GameNames::full($pair, $tournament->mode);
+        if (! $options->sequence()) {
+            return GameNames::full($tournament->game, $tournament->mode);
+        }
+
+        $games = $options->games;
+        $last = (string) array_pop($games);
+
+        return implode(' + ', [...array_map(GameNames::game(...), $games), GameNames::full($last, $tournament->mode)]);
     }
 
     /** The mode alone ("Blitz 5+3"), null for a lobby tournament (see {@see gameLine()}). */

@@ -400,12 +400,61 @@ abstract class TournamentFormatChooser extends Component
     }
 
     /**
-     * A combined tournament: '' for one game, else the second game each pairing plays one game of, after the
-     * tournament's own (FormatOptions::$games, DerCaddy 2026-11-11); stored only on save.
+     * A combined tournament's sequence (FormatOptions::$games; DerCaddy 2026-11-11, user: "dynamisch konfigurierbar"):
+     * one more game at its end, the tournament's own or one it combines with (FormatOptions::pairGames()), a game may
+     * repeat; one game alone becomes the sequence of two. FormatOptions drops what it does not offer and cuts at its
+     * cap. Stored only on save, as every option.
      */
-    public function pickPairGame(string $slug): void
+    public function addSequenceGame(string $slug): void
     {
-        $this->option('games', $slug === '' ? [] : [$this->profile()->game, $slug]);
+        $this->option('games', [...$this->sequenceGames(), $slug]);
+    }
+
+    /** A game taken out of the sequence (never the tournament's own at index 0); one left is one game per pairing again. */
+    public function removeSequenceGame(int $index): void
+    {
+        $games = $this->sequenceGames();
+
+        if ($index < 1 || $index >= count($games)) {
+            return;
+        }
+
+        array_splice($games, $index, 1);
+        $this->option('games', count($games) >= 2 ? $games : []);
+    }
+
+    /** A game of the sequence one place earlier (`$by` -1) or later (1); the tournament's own stays first. */
+    public function moveSequenceGame(int $index, int $by): void
+    {
+        $games = $this->sequenceGames();
+        $target = $index + ($by < 0 ? -1 : 1);
+
+        if ($index < 1 || $target < 1 || $index >= count($games) || $target >= count($games)) {
+            return;
+        }
+
+        [$games[$index], $games[$target]] = [$games[$target], $games[$index]];
+        $this->option('games', $games);
+    }
+
+    /** What a level sequence plays next (FormatOptions::DECIDERS): its games in turn, or always its first. */
+    public function pickDecider(string $rule): void
+    {
+        if (in_array($rule, FormatOptions::DECIDERS, true)) {
+            $this->option('decider', $rule);
+        }
+    }
+
+    /**
+     * The sequence as the editor shows it: the stored games, or the tournament's game alone while it plays one.
+     *
+     * @return list<string>
+     */
+    public function sequenceGames(): array
+    {
+        $options = $this->formatOptions();
+
+        return $options->sequence() ? $options->games : [$this->profile()->game];
     }
 
     /** The two legs count per pairing or game by game (FormatOptions::$legPoints); stored only on save. */
