@@ -6,6 +6,7 @@ use App\Enums\TournamentFormat;
 use App\Enums\TournamentResultsMode;
 use App\Enums\TournamentStatus;
 use App\Games\GameRegistry;
+use App\Models\Admin;
 use App\Models\BoardGame;
 use App\Models\ChessGame;
 use App\Models\Tournament;
@@ -19,10 +20,13 @@ use App\Support\Tournaments\FormatOptions;
 use App\Support\Tournaments\GameProfile;
 use App\Support\Tournaments\Lobbies;
 use App\Support\Tournaments\TournamentBrackets;
+use App\Support\Tournaments\TournamentControl;
 use App\Support\Tournaments\TournamentGameEnd;
 use App\Support\Tournaments\TournamentMatchMaker;
+use App\Support\Tournaments\TournamentMatrix;
 use App\Support\Tournaments\TournamentPublisher;
 use App\Support\Tournaments\TournamentRunner;
+use Carbon\CarbonImmutable;
 use Illuminate\Support\Facades\Queue;
 use Livewire\Livewire;
 use Tests\Support\BlockliOn;
@@ -321,3 +325,44 @@ test('a combined leg whose first move was missed is played again in the same gam
         ->and($again->game)->toBe('blockli')
         ->and((int) $again->white_id)->toBe((int) $board->white_id);
 });
+
+test('a restarted round replays the whole combined pairing, even when the chess ids run ahead of the board ids', function () {
+    // Fresh tables both count from 1, which hides a watermark compared across them: the chess table runs ahead here.
+    $outsider = User::factory()->count(2)->create();
+    ChessGame::factory()->count(50)->create(['white_id' => $outsider[0]->id, 'black_id' => $outsider[1]->id, 'status' => ChessGameStatus::Aborted]);
+
+    $tournament = combinedTournament('chess', 'blockli', 'blitz');
+    combinedLose($tournament, 1);
+    $match = blockliMatch($tournament);
+
+    expect(combinedLive($tournament))->toBeInstanceOf(BoardGame::class)
+        ->and(ChessGame::query()->where('tournament_match_id', $match->id)->value('id'))->toBeGreaterThan(BoardGame::query()->where('tournament_match_id', $match->id)->value('id'));
+
+    $admin = User::factory()->create();
+    Admin::query()->create(['pubkey' => $admin->pubkey]);
+
+    expect(app(TournamentControl::class)->restartRound($tournament, $admin, $match->tournament_round_id, 0, 'Server outage'))->toBeTrue();
+
+    $match = blockliMatch($tournament->refresh());
+
+    expect(TournamentRunner::finishedLegs($match, $tournament))->toHaveCount(0)
+        ->and(combinedLive($tournament))->toBeInstanceOf(ChessGame::class);
+})->skip('P4: voids per table — restartRound sets replaced_through to the board id and keeps the higher chess id of leg 1');
+
+test('the live matrix counts a finished chess leg of a combined pairing', function () {
+    $tournament = combinedTournament('chess', 'blockli', 'blitz', TournamentFormat::RoundRobin);
+    combinedLose($tournament, 1);
+
+    $overview = (new TournamentMatrix($tournament->refresh()))->overview(CarbonImmutable::now());
+    $names = collect($overview['groups'][0]['players'])->pluck('name', 'id');
+    $scores = [];
+
+    foreach ($overview['groups'][0]['cells'] as $row => $columns) {
+        foreach ($columns as $column => $cell) {
+            $scores[$names[$row].'-'.$names[$column]] = $cell['score'];
+        }
+    }
+
+    expect($scores['Player 1-Player 2'])->toBe('1–0')
+        ->and($scores['Player 2-Player 1'])->toBe('0–1');
+})->skip('P5: matrix chess legs — TournamentMatrix::scores() reads only the board games');
