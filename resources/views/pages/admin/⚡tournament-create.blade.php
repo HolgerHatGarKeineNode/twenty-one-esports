@@ -3,6 +3,7 @@
 use App\Enums\TournamentResultsMode;
 use App\Enums\TournamentStatus;
 use App\Livewire\Concerns\EditsPrizePot;
+use App\Livewire\Concerns\EditsStartVote;
 use App\Livewire\TournamentFormatChooser;
 use App\Models\Tournament;
 use App\Models\User;
@@ -10,6 +11,7 @@ use App\Support\LeagueTime;
 use App\Support\Tournaments\FormatOptions;
 use App\Support\Tournaments\TournamentGames;
 use App\Support\Tournaments\TournamentRuleViolation;
+use App\Support\Tournaments\TournamentStartVote;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Gate;
 use Livewire\Attributes\Layout;
@@ -28,6 +30,11 @@ use Livewire\Attributes\Title;
  * re-renders only them (and the summary island), never the page. Creating
  * saves a draft; sign-up and publishing follow on the tournament page.
  *
+ * The start can be put to a vote of the entries right here (TournamentStartVote,
+ * App\Livewire\Concerns\EditsStartVote; DerCaddy 2026-11-11): offered for an
+ * online tournament of a game played on one evening, checked when the draft
+ * is created, like on the edit page.
+ *
  * The prize pot is optional and off by default (P9 scope addition,
  * App\Livewire\Concerns\EditsPrizePot): a draft with a pot is created
  * only when the pot is valid too (a wallet connection is checked live,
@@ -36,6 +43,7 @@ use Livewire\Attributes\Title;
  */
 new #[Title('New tournament')] #[Layout('layouts::app', ['section' => 'admin'])] class extends TournamentFormatChooser {
     use EditsPrizePot;
+    use EditsStartVote;
 
     public string $name = '';
 
@@ -49,6 +57,7 @@ new #[Title('New tournament')] #[Layout('layouts::app', ['section' => 'admin'])]
         Gate::authorize('create-tournaments');
 
         $this->startsAt = now()->addWeek()->timezone(LeagueTime::zone())->format('Y-m-d').'T19:00';
+        $this->fillStartVote(null, LeagueTime::parse($this->startsAt));
         $this->options = FormatOptions::defaults($this->profile())->toArray();
         $this->fillPot(null);
     }
@@ -56,6 +65,15 @@ new #[Title('New tournament')] #[Layout('layouts::app', ['section' => 'admin'])]
     protected function potTournament(): ?Tournament
     {
         return null;
+    }
+
+    /**
+     * Whether the game, mode and place picked so far can put the start to a vote (TournamentStartVote::offers()):
+     * online, a game played on one evening, not a score window.
+     */
+    public function startVoteOffered(): bool
+    {
+        return TournamentStartVote::offers(new Tournament(['game' => $this->profile()->game, 'mode' => $this->profile()->mode, 'on_site' => $this->stationLimit() !== null]));
     }
 
     public function chooserCreator(): ?User
@@ -77,6 +95,7 @@ new #[Title('New tournament')] #[Layout('layouts::app', ['section' => 'admin'])]
             'setup' => ['nullable', 'numeric', 'between:0,1000'],
             'break' => ['nullable', 'numeric', 'between:0,1000'],
             ...$this->deadlineRules(),
+            ...$this->startVoteRules(),
         ]);
 
         // Only a game the chooser offers (TournamentGames): an unknown key, Blockfill's set by hand, or Hyperbitcoinization while its
@@ -112,9 +131,12 @@ new #[Title('New tournament')] #[Layout('layouts::app', ['section' => 'admin'])]
             return;
         }
 
-        // The draft and its pot are one step: a refused pot creates nothing.
+        // The start vote: the start becomes the earliest offered start (EditsStartVote).
+        $vote = $this->chosenStartVote($startsAt);
+
+        // The draft, its start vote and its pot are one step: a refused vote or pot creates nothing.
         try {
-            $tournament = DB::transaction(function () use ($profile, $format, $startsAt): Tournament {
+            $tournament = DB::transaction(function () use ($profile, $format, $vote): Tournament {
                 $tournament = Tournament::query()->create([
                     'name' => $this->name,
                     'description' => trim($this->description) === '' ? null : trim($this->description),
@@ -123,7 +145,7 @@ new #[Title('New tournament')] #[Layout('layouts::app', ['section' => 'admin'])]
                     'format' => $format,
                     'options' => $this->chosenOptions()->toArray(),
                     'capacity' => $this->count(),
-                    'starts_at' => $startsAt,
+                    ...$vote,
                     'time_window' => $this->window,
                     'on_site' => $this->stationLimit() !== null,
                     'stations' => $this->stationLimit(),
@@ -135,6 +157,11 @@ new #[Title('New tournament')] #[Layout('layouts::app', ['section' => 'admin'])]
                     ...$this->chosenDrawDecider(),
                 ]);
 
+                // Checked on the draft as created (game, mode, place), as the edit page's TournamentEditor does.
+                if ($tournament->start_options !== null) {
+                    TournamentStartVote::assertValid($tournament, $tournament->start_options, $tournament->start_vote_until, null);
+                }
+
                 if ($tournament->results_mode === TournamentResultsMode::Director) {
                     $tournament->directors()->attach(User::query()->whereKey($this->directorIds)->pluck('id')->all(), ['added_by_id' => auth()->id()]);
                 }
@@ -145,7 +172,12 @@ new #[Title('New tournament')] #[Layout('layouts::app', ['section' => 'admin'])]
 
                 return $tournament;
             });
-        } catch (TournamentRuleViolation) {
+        } catch (TournamentRuleViolation $violation) {
+            // The pot shows its own error; a refused vote shows its reason under the vote's fields.
+            if ($violation->reason !== 'pot') {
+                $this->addError('voteUntil', $violation->getMessage());
+            }
+
             return;
         }
 
@@ -176,6 +208,14 @@ new #[Title('New tournament')] #[Layout('layouts::app', ['section' => 'admin'])]
                 @include('pages.admin.partials.tournament-chooser', ['part' => 'window'])
             @endisland
         </div>
+        {{-- The start vote: its own island, rendered with every chooser change, so it shows only where the game and the
+             place allow it (an online tournament of a game played on one evening). --}}
+        @island(name: 'start-vote', always: true)
+            @if ($this->startVoteOffered())
+                @include('pages.admin.partials.tournament-start-vote', ['testId' => 'start-vote-create'])
+                <x-admin.field-error for="voteUntil" />
+            @endif
+        @endisland
     </section>
 
     @island(name: 'chooser-place')

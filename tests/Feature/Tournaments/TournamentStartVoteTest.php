@@ -100,6 +100,79 @@ function voter(Tournament $tournament, string $name): array
     return [$user, soloSignup($tournament, $user, $key)];
 }
 
+test('the organizer puts the start to a vote right when creating the tournament', function () {
+    $organizer = organizer();
+
+    Livewire::actingAs($organizer)->test('pages::admin.tournament-create')
+        ->set('name', 'Blitz Abend')
+        ->call('pickGame', 'blitz')
+        ->assertSeeHtml('data-test="start-vote-create"')
+        ->set('startsAt', '2026-11-21T19:00')
+        ->set('voteStart', true)
+        // Typed in Berlin time: 20 Nov 20:00 and 22 Nov 17:00 are 19:00 and 16:00 UTC.
+        ->set('startOptions', ['2026-11-22T17:00', '2026-11-20T20:00', ''])
+        ->set('voteUntil', '2026-11-18T20:00')
+        ->call('create')
+        ->assertHasNoErrors();
+
+    $tournament = Tournament::query()->sole();
+
+    expect($tournament->status)->toBe(TournamentStatus::Draft)
+        ->and($tournament->start_options)->toBe(['2026-11-20 19:00', '2026-11-21 18:00', '2026-11-22 16:00'])
+        ->and(TournamentStartVote::key($tournament->starts_at))->toBe('2026-11-20 19:00')
+        ->and(TournamentStartVote::key($tournament->start_vote_until))->toBe('2026-11-18 19:00');
+
+    // The edit page picks it up as it was created.
+    Livewire::actingAs($organizer)->test('pages::admin.tournament-edit', ['tournament' => $tournament])
+        ->assertSet('voteStart', true)
+        ->assertSet('startsAt', '2026-11-20T20:00')
+        ->assertSet('startOptions', ['2026-11-21T19:00', '2026-11-22T17:00', '']);
+});
+
+test('creating refuses a vote that breaks a rule and creates nothing; correspondence and on site do not offer it', function () {
+    $organizer = organizer();
+
+    Livewire::actingAs($organizer)->test('pages::admin.tournament-create')
+        ->set('name', 'Blitz Abend')
+        ->call('pickGame', 'blitz')
+        ->set('startsAt', '2026-11-21T19:00')
+        ->set('voteStart', true)
+        ->set('startOptions', ['', '', ''])
+        ->call('create')
+        ->assertHasErrors(['voteUntil' => __('Offer two to four different starts for the vote.')]);
+
+    Livewire::actingAs($organizer)->test('pages::admin.tournament-create')
+        ->set('name', 'Blitz Abend')
+        ->call('pickGame', 'blitz')
+        ->set('startsAt', '2026-11-21T19:00')
+        ->set('voteStart', true)
+        ->set('startOptions', ['2026-11-22T19:00', '', ''])
+        // Less than an hour before the earliest start.
+        ->set('voteUntil', '2026-11-21T18:30')
+        ->call('create')
+        ->assertHasErrors(['voteUntil']);
+
+    expect(Tournament::query()->count())->toBe(0);
+
+    Livewire::actingAs($organizer)->test('pages::admin.tournament-create')
+        ->call('pickGame', 'daily')
+        ->assertDontSeeHtml('data-test="start-vote-create"')
+        ->call('pickGame', 'blitz')
+        ->assertSeeHtml('data-test="start-vote-create"')
+        ->call('pickWhere', 'site')
+        ->assertDontSeeHtml('data-test="start-vote-create"');
+
+    // Without the check nothing changes.
+    Livewire::actingAs($organizer)->test('pages::admin.tournament-create')
+        ->set('name', 'Blitz ohne Abstimmung')
+        ->call('pickGame', 'blitz')
+        ->set('startsAt', '2026-11-21T19:00')
+        ->call('create')
+        ->assertHasNoErrors();
+
+    expect(Tournament::query()->sole()->start_options)->toBeNull();
+});
+
 test('the organizer offers starts on the edit page: the start becomes the earliest, the others stand below it', function () {
     $tournament = Tournament::factory()->create(['created_by_id' => organizer()->id, 'starts_at' => CarbonImmutable::parse('2026-11-21 18:00', 'UTC')]);
 
