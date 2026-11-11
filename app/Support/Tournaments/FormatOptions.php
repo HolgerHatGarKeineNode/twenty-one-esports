@@ -2,6 +2,10 @@
 
 namespace App\Support\Tournaments;
 
+use App\Games\BoardGame as BoardGameDefinition;
+use App\Games\Chess;
+use App\Games\GameRegistry;
+
 /**
  * The options of every format at once, as the chooser keeps them while the
  * organizer switches between systems (`tfDefaults` of the artboard script,
@@ -60,6 +64,11 @@ final readonly class FormatOptions
      *                                                    a knockout among the tied decides (FirstPlaceTie::openPlayoff()),
      *                                                    or they share place 1; `seed` only for options stored before
      *                                                    ({@see FIRST_PLACE_TIE_SEED})
+     * @param  string|null  $pairGame  A combined tournament (DerCaddy, 2026-11-11: "kombinierte Turniere … Blockli und
+     *                                 Blockspace gegeneinander", one game of each per pairing): the second board game, whose
+     *                                 slug plays leg 2 and every other decider ({@see TournamentRunner::legGame()}); chess
+     *                                 or a board game with the tournament's mode ({@see pairGames()}), and the pairing
+     *                                 always plays two legs. Null: one game, as before
      */
     public function __construct(
         public int $bestOf = 1,
@@ -86,6 +95,7 @@ final readonly class FormatOptions
         public int $legs = 2,
         public bool $legPoints = false,
         public string $firstPlaceTie = 'playoff',
+        public ?string $pairGame = null,
     ) {}
 
     /** Whether the games of a two-leg pairing count one by one in a round-robin table ({@see $legPoints}). */
@@ -137,6 +147,8 @@ final readonly class FormatOptions
         $pick = fn (string $key, string $default, array $allowed): string => in_array($values[$key] ?? null, $allowed, true) ? (string) $values[$key] : $default;
 
         $twoLegs = TournamentRunner::playsTwoLegs($profile->game);
+        // A combined tournament's second game: only one the chooser offers for this game and mode, else none.
+        $pairGame = in_array($values['pairGame'] ?? null, self::pairGames($profile), true) ? (string) $values['pairGame'] : null;
         $bestOf = in_array((int) ($values['bestOf'] ?? 0), $profile->bestOfOptions, true) ? (int) $values['bestOf'] : $defaults->bestOf;
         $finalBestOf = in_array((int) ($values['finalBestOf'] ?? 0), $profile->bestOfOptions, true) ? (int) $values['finalBestOf'] : $defaults->finalBestOf;
 
@@ -178,8 +190,9 @@ final readonly class FormatOptions
             // Only a game that plays two legs has them to choose (TournamentRunner::playsTwoLegs()): any other keeps one
             // result per match, whatever a draft stored before its game changed. Options stored without the keys predate
             // the choice: they keep two games counted per pairing, as they were drawn, whatever the defaults become.
-            legs: $twoLegs ? $int('legs', self::STORED_LEGS, 1, 2) : self::STORED_LEGS,
-            legPoints: $twoLegs && (bool) ($values['legPoints'] ?? self::STORED_LEG_POINTS),
+            // A combined tournament plays one game of each per pairing: always two.
+            legs: $pairGame !== null ? 2 : ($twoLegs ? $int('legs', self::STORED_LEGS, 1, 2) : self::STORED_LEGS),
+            legPoints: ($twoLegs || $pairGame !== null) && (bool) ($values['legPoints'] ?? self::STORED_LEG_POINTS),
             // Options stored without the key predate the choice: their ties stay with the seed order, as they were drawn
             // and paid out; anything else unknown takes the default.
             firstPlaceTie: ! array_key_exists('firstPlaceTie', $values) ? self::FIRST_PLACE_TIE_SEED : match ($values['firstPlaceTie']) {
@@ -188,7 +201,38 @@ final readonly class FormatOptions
                 self::FIRST_PLACE_TIE_SEED => self::FIRST_PLACE_TIE_SEED,
                 default => $defaults->firstPlaceTie,
             },
+            pairGame: $pairGame,
         );
+    }
+
+    /**
+     * The games a tournament of this game and mode can be combined with ({@see $pairGame}; DerCaddy, 2026-11-11: "Cooler
+     * wäre ja, wenn man jedes Spiel mit jedem Spiel kombinieren könnte"): every other switched-on game played one against
+     * one on the league server with a result of win, loss or draw ({@see combinable()}: chess and the board games) that
+     * has the same mode, in the league's order. Series, lobbies and score games combine with nothing.
+     *
+     * @return list<string>
+     */
+    public static function pairGames(GameProfile $profile): array
+    {
+        if (! self::combinable($profile->game)) {
+            return [];
+        }
+
+        $registry = app(GameRegistry::class);
+
+        return array_values(array_filter(
+            array_map(fn ($game): string => $game->slug(), $registry->all()),
+            fn (string $slug): bool => $slug !== $profile->game && self::combinable($slug) && $registry->mode($slug, $profile->mode) !== null,
+        ));
+    }
+
+    /** A game a combined tournament can play ({@see pairGames()}): chess or a board game, both played here, one against one. */
+    public static function combinable(string $slug): bool
+    {
+        $game = app(GameRegistry::class)->find($slug);
+
+        return $game instanceof Chess || $game instanceof BoardGameDefinition;
     }
 
     /**
@@ -240,7 +284,7 @@ final readonly class FormatOptions
         return new self($this->bestOf, $this->finalBestOf, $this->thirdPlace, $this->grandFinal, $this->split, $this->iterations,
             $this->rankBy, $rounds, $this->pointsWin, $this->pointsTie, $this->pointsBye, $this->swissTieBreaks, $this->roundRobinTieBreaks,
             $this->groupSize, $this->advance, $this->groupStage, $this->finalStage, $this->heatSize, $this->heatAdvance, $this->lobbyMinutes, $this->teamSize,
-            $this->legs, $this->legPoints, $this->firstPlaceTie);
+            $this->legs, $this->legPoints, $this->firstPlaceTie, $this->pairGame);
     }
 
     /**
@@ -252,7 +296,7 @@ final readonly class FormatOptions
     }
 
     /**
-     * @return array{bestOf: int, finalBestOf: int, thirdPlace: bool, grandFinal: string, split: bool, iterations: int, rankBy: string, swissRounds: int|null, pointsWin: float, pointsTie: float, pointsBye: float, swissTieBreaks: list<string>, roundRobinTieBreaks: list<string>, groupSize: int, advance: int, groupStage: string, finalStage: string, heatSize: int, heatAdvance: int, lobbyMinutes: int, teamSize: int, legs: int, legPoints: bool, firstPlaceTie: string}
+     * @return array{bestOf: int, finalBestOf: int, thirdPlace: bool, grandFinal: string, split: bool, iterations: int, rankBy: string, swissRounds: int|null, pointsWin: float, pointsTie: float, pointsBye: float, swissTieBreaks: list<string>, roundRobinTieBreaks: list<string>, groupSize: int, advance: int, groupStage: string, finalStage: string, heatSize: int, heatAdvance: int, lobbyMinutes: int, teamSize: int, legs: int, legPoints: bool, firstPlaceTie: string, pairGame: string|null}
      */
     public function toArray(): array
     {
@@ -281,6 +325,7 @@ final readonly class FormatOptions
             'legs' => $this->legs,
             'legPoints' => $this->legPoints,
             'firstPlaceTie' => $this->firstPlaceTie,
+            'pairGame' => $this->pairGame,
         ];
     }
 }

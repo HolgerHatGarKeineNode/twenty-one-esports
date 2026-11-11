@@ -13,6 +13,7 @@ use App\Models\Tournament;
 use App\Models\TournamentMatch;
 use App\Models\TournamentStage;
 use App\Models\User;
+use App\Support\GameNames;
 use Illuminate\Support\Collection;
 
 /**
@@ -119,7 +120,8 @@ final class TournamentGameEnd
             'cup' => $cup,
             // The tournament desk's button (TournamentDesk::for(), per viewer, in the banner component).
             'tournamentId' => $tournament->id,
-            'games' => $played instanceof BoardGame ? self::pairingGames($match, $played) : [],
+            // A combined tournament's chess game lists its pairing's games too (FormatOptions::$pairGame).
+            'games' => $played instanceof BoardGame || ($played instanceof ChessGame && $tournament->formatOptions()->pairGame !== null) ? self::pairingGames($match, $played) : [],
         ];
     }
 
@@ -130,23 +132,28 @@ final class TournamentGameEnd
      *
      * @return list<array{n: int, href: string, text: string, current: bool, live: bool}>
      */
-    private static function pairingGames(TournamentMatch $match, BoardGame $played): array
+    private static function pairingGames(TournamentMatch $match, BoardGame|ChessGame $played): array
     {
         $first = $match->slots->firstWhere('slot', 0)?->participant;
 
-        return array_map(function (array $game) use ($match, $played): array {
+        // A combined tournament (FormatOptions::$pairGame): each game names its game, "Game 2 (Chess) · under way".
+        $combined = $match->tournament->formatOptions()->pairGame !== null;
+        $playedKind = $played instanceof ChessGame ? 'chess' : 'board';
+
+        return array_map(function (array $game) use ($match, $played, $combined, $playedKind): array {
             $name = $game['won'] === null ? null : (string) ($match->slots->firstWhere('slot', $game['won'])?->participant->name ?? '?');
+            $n = $combined ? $game['n'].' ('.GameNames::game($game['game']).')' : $game['n'];
 
             return [
                 'n' => $game['n'],
                 'href' => $game['href'],
-                'text' => $name !== null ? (string) __('Game :n · won by :name', ['n' => $game['n'], 'name' => $name])
-                    : ($game['score'] !== null ? (string) __('Game :n · drawn', ['n' => $game['n']])
-                        : ($game['live'] ? (string) __('Game :n · under way', ['n' => $game['n']]) : (string) __('Game :n of the pairing', ['n' => $game['n']]))),
-                'current' => $game['id'] === (int) $played->id,
+                'text' => $name !== null ? (string) __('Game :n · won by :name', ['n' => $n, 'name' => $name])
+                    : ($game['score'] !== null ? (string) __('Game :n · drawn', ['n' => $n])
+                        : ($game['live'] ? (string) __('Game :n · under way', ['n' => $n]) : (string) __('Game :n of the pairing', ['n' => $n]))),
+                'current' => $game['id'] === (int) $played->id && ($game['game'] === 'chess' ? 'chess' : 'board') === $playedKind,
                 'live' => $game['live'],
             ];
-        }, TournamentView::pairingGames($match, $first?->memberIds() ?? []));
+        }, TournamentView::pairingGames($match, $first?->memberIds() ?? [], null, $combined ? $match->tournament : null));
     }
 
     /**

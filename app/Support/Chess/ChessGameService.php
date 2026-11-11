@@ -108,7 +108,7 @@ final class ChessGameService
         $tournament = $tournamentMatchId === null ? null : TournamentMatch::query()->with('tournament')->find($tournamentMatchId)?->tournament;
         $ladder = $ratedGate === null ? null : ($tournamentMatchId === null
             ? Ladders::address('chess', $mode)
-            : $tournament?->openLadder());
+            : $tournament?->openLadderFor('chess'));
         // The tournament's check-in window, pinned for this game (P18): an edit later reaches only later games.
         $firstMoveSeconds = $tournamentMatchId === null ? null
             : ($tournament === null ? intdiv($this->tournamentFirstMoveMs($mode), 1000) : TournamentDeadlines::checkinSeconds($tournament));

@@ -80,7 +80,15 @@ final class Lobbies
      */
     public static function gameLine(Tournament $tournament): string
     {
-        return self::isLobby($tournament) ? GameNames::game($tournament->game) : GameNames::full($tournament->game, $tournament->mode);
+        if (self::isLobby($tournament)) {
+            return GameNames::game($tournament->game);
+        }
+
+        // A combined tournament (FormatOptions::$pairGame): "Blockli + Blockspace Blitz 5+3".
+        $pair = $tournament->formatOptions()->pairGame;
+
+        return $pair === null ? GameNames::full($tournament->game, $tournament->mode)
+            : GameNames::game($tournament->game).' + '.GameNames::full($pair, $tournament->mode);
     }
 
     /** The mode alone ("Blitz 5+3"), null for a lobby tournament (see {@see gameLine()}). */

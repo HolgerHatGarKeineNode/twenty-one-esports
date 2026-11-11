@@ -10,6 +10,7 @@ use App\Jobs\PublishTournamentCalendar;
 use App\Models\NostrEvent;
 use App\Models\Tournament;
 use App\Models\User;
+use App\Support\GameNames;
 use App\Support\Prizes\PoolInvoices;
 use App\Support\Prizes\PotTopUps;
 use App\Support\Prizes\PrizePool;
@@ -513,6 +514,14 @@ final class TournamentPublisher
         };
         if ($tournament->isCasualCup()) {
             $lines[] = $this->cupPlacesLine($tournament);
+        }
+
+        // A combined tournament (FormatOptions::$pairGame, DerCaddy 2026-11-11): said in words, no tag and no NIP change;
+        // the `t` tags keep naming the tournament's own game.
+        if (($pair = $tournament->formatOptions()->pairGame) !== null) {
+            $main = GameNames::game((string) $tournament->game);
+            $second = GameNames::game($pair);
+            $lines[] = "A combined tournament: each pairing plays one game of {$main} and one of {$second}, with the colours swapped; a decider after a level score alternates between them, {$main} first. The {$second} games are rated on the open {$second} ladder of the same season.";
         }
 
         return $lines;

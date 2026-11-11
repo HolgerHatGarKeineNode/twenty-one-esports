@@ -419,6 +419,14 @@ final class TournamentRunner
             return;
         }
 
+        // A chess game of a combined tournament (FormatOptions::$pairGame) is one of the pairing's legs or deciders.
+        if ($match->tournament->formatOptions()->pairGame !== null) {
+            $this->twoLegsFinished($match);
+            $this->sync($match->tournament);
+
+            return;
+        }
+
         $whiteSlot = in_array((int) $game->white_id, $match->slots[0]->participant?->memberIds() ?? [], true) ? 0 : 1;
 
         if ($game->result === '1/2-1/2' && ! self::allowsDraw($match) && $match->tournament->isCasualCup()) {
@@ -800,7 +808,10 @@ final class TournamentRunner
      */
     public static function tableChoosesLegs(string $slug, TournamentFormat $format, FormatOptions $options): bool
     {
-        return self::choosesLegs($slug, $format === TournamentFormat::TwoStage ? TournamentFormat::from($options->groupStage) : $format);
+        $stage = $format === TournamentFormat::TwoStage ? TournamentFormat::from($options->groupStage) : $format;
+
+        // A combined tournament's table (FormatOptions::$pairGame) counts its two games per pairing or one by one, whatever its game.
+        return self::choosesLegs($slug, $stage) || ($options->pairGame !== null && $stage === TournamentFormat::RoundRobin);
     }
 
     /**
@@ -815,8 +826,26 @@ final class TournamentRunner
     {
         $slug = (string) $tournament->game;
 
+        // A combined tournament (FormatOptions::$pairGame) plays one game of each per pairing, whatever its games.
+        if ($tournament->formatOptions()->pairGame !== null) {
+            return true;
+        }
+
         return self::playsTwoLegs($slug)
             && ($tournament->formatOptions()->legs === 2 || ! self::choosesLegs($slug, $stage instanceof Closure ? $stage() : $stage));
+    }
+
+    /**
+     * The game a two-leg pairing plays next, after `$finished` finished games: the tournament's game, but in a
+     * combined tournament (FormatOptions::$pairGame, DerCaddy 2026-11-11) leg 2 is the second game, and the deciders
+     * after 1:1 alternate, the tournament's game first. A restart after a missed first move keeps the game. Chess or
+     * a board game, either way round.
+     */
+    public static function legGame(Tournament $tournament, int $finished): string
+    {
+        $pair = $tournament->formatOptions()->pairGame;
+
+        return $pair !== null && $finished % 2 === 1 ? $pair : (string) $tournament->game;
     }
 
     /**
@@ -833,7 +862,7 @@ final class TournamentRunner
      * decider): what twoLegsFinished() adds up, and what a table that counts game by game reads (Standings::perLeg()).
      * A caller that already read the match's finished games ({@see finishedBoardGames()}) passes them.
      *
-     * @param  Collection<int, BoardGame>|null  $games
+     * @param  Collection<int, BoardGame|ChessGame>|null  $games
      * @return list<array{0: float, 1: float}>
      */
     public static function legPoints(TournamentMatch $match, ?Collection $games = null): array
@@ -842,7 +871,7 @@ final class TournamentRunner
         $members = $match->loadMissing('slots.participant')->slots->firstWhere('slot', 0)?->participant?->memberIds() ?? [];
         $legs = [];
 
-        foreach (($games ?? self::finishedBoardGames($match))->take(2) as $leg) {
+        foreach (($games ?? self::finishedLegs($match))->take(2) as $leg) {
             [$white, $black] = match ($leg->result) {
                 '1-0' => [1.0, 0.0],
                 '0-1' => [0.0, 1.0],
@@ -879,6 +908,60 @@ final class TournamentRunner
     }
 
     /**
+     * The finished games of a two-leg pairing in the order played: its board games, and in a combined tournament
+     * (FormatOptions::$pairGame) its chess games among them, ordered by when they started. The league's correction
+     * (`replaced_through`) is read per kind of game, as the match reads it.
+     *
+     * @return Collection<int, BoardGame|ChessGame>
+     */
+    public static function finishedLegs(TournamentMatch $match, ?Tournament $tournament = null): Collection
+    {
+        $board = self::finishedBoardGames($match);
+        // The views load matches without their tournament (lazy loading is off): a caller without it gets the board games
+        // alone, as every tournament but a combined one has. A combined tournament's callers pass it.
+        $tournament ??= $match->relationLoaded('tournament') ? $match->tournament : null;
+
+        $games = array_values($board->all());
+
+        if ($tournament !== null && $tournament->formatOptions()->pairGame !== null) {
+            $chess = ChessGame::query()->where('tournament_match_id', $match->id)->where('id', '>', (int) $match->replaced_through)
+                ->where('status', ChessGameStatus::Finished)->orderBy('id')->get();
+            $games = self::inLegOrder($tournament, [...$games, ...$chess->all()]);
+        }
+
+        return new Collection($games);
+    }
+
+    /**
+     * The games of a combined pairing in the order they were played. The legs alternate between the tournament's game
+     * and the second one ({@see legGame()}), so each game's own ids give the order within it and the two interleave,
+     * the tournament's game first; timestamps would tie within a second. Without a second game: as given.
+     *
+     * @param  list<BoardGame|ChessGame>  $games  finished or under way, none aborted
+     * @return list<BoardGame|ChessGame>
+     */
+    public static function inLegOrder(Tournament $tournament, array $games): array
+    {
+        if ($tournament->formatOptions()->pairGame === null) {
+            return $games;
+        }
+
+        $slug = fn (BoardGame|ChessGame $game): string => $game instanceof ChessGame ? 'chess' : (string) $game->game;
+        $byId = fn (BoardGame|ChessGame $a, BoardGame|ChessGame $b): int => $a->id <=> $b->id;
+        $main = array_values(array_filter($games, fn (BoardGame|ChessGame $game): bool => $slug($game) === $tournament->game));
+        $pair = array_values(array_filter($games, fn (BoardGame|ChessGame $game): bool => $slug($game) !== $tournament->game));
+        usort($main, $byId);
+        usort($pair, $byId);
+        $ordered = [];
+
+        for ($index = 0; $index < max(count($main), count($pair)); $index++) {
+            array_push($ordered, ...array_filter([$main[$index] ?? null, $pair[$index] ?? null]));
+        }
+
+        return $ordered;
+    }
+
+    /**
      * The standing of an undecided two-leg pairing after its first finished leg (DerCaddy 2026-10-15: a won first
      * leg showed nowhere, so players took their result for lost): the points per slot over the finished legs as
      * twoLegsFinished() counts them, its label, and the number of the game on now; null for a decided match, any
@@ -892,7 +975,7 @@ final class TournamentRunner
             return null;
         }
 
-        $games = self::finishedBoardGames($match);
+        $games = self::finishedLegs($match, $tournament);
         $legs = self::legPoints($match, $games);
 
         if ($legs === []) {
@@ -915,7 +998,7 @@ final class TournamentRunner
      */
     private function twoLegsFinished(TournamentMatch $match): void
     {
-        $games = self::finishedBoardGames($match);
+        $games = self::finishedLegs($match);
 
         if ($games->count() < 2) {
             return;
@@ -944,7 +1027,8 @@ final class TournamentRunner
         if ($last->result === '1/2-1/2') {
             // The tournament's rule (draw_decider `standing`, user 2026-10-11): the side ahead in the race standing of the
             // final position wins; a level standing is replayed as before.
-            $standing = $match->tournament->decidesDrawByStanding() ? $this->raceStanding($last) : null;
+            // A chess decider of a combined tournament has no race to count.
+            $standing = $match->tournament->decidesDrawByStanding() && $last instanceof BoardGame ? $this->raceStanding($last) : null;
 
             if ($standing !== null && $standing['lead'] !== null) {
                 $whiteSlot = in_array((int) $last->white_id, $match->slots[0]->participant?->memberIds() ?? [], true) ? 0 : 1;

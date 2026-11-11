@@ -477,6 +477,18 @@ class Tournament extends Model
     }
 
     /**
+     * The ladder a game of this slug is rated on in this tournament: its own ladder for its game; for the second game
+     * of a combined tournament (FormatOptions::$pairGame) that game's open ladder of the same season, while the
+     * tournament's own ladder is still open. Null: casual.
+     */
+    public function openLadderFor(string $slug): ?string
+    {
+        $open = $this->openLadder();
+
+        return $open === null || $slug === $this->game ? $open : Ladders::address($slug, $this->mode);
+    }
+
+    /**
      * Paused by an organizer or admin (P18): no deadline runs and no new
      * match starts until it is resumed (TournamentControl).
      */
