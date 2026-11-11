@@ -9,10 +9,15 @@
 <div class="{{ $optionRow }}" data-test="legs-option">
     <span class="flex flex-col items-start gap-2">
         <span id="legs-l" class="text-[13px] font-bold">{{ __('Games per pairing') }}</span>
-        <x-tournaments.segmented labelledby="legs-l" method="pickLegs" :current="$options->legs" :grow="false" data-test="legs"
-            :options="[[2, __('Two games')], [1, __('One game')]]" />
+        {{-- A combined tournament always plays one game of each (FormatOptions::$pairGame): nothing to choose. --}}
+        @if ($options->pairGame === null)
+            <x-tournaments.segmented labelledby="legs-l" method="pickLegs" :current="$options->legs" :grow="false" data-test="legs"
+                :options="[[2, __('Two games')], [1, __('One game')]]" />
+        @endif
     </span>
-    <span class="{{ $help }}">{{ __('Two games with the colours swapped are fairer: everyone starts once. One game per pairing halves the games; the colours even out over the rounds.') }}</span>
+    <span class="{{ $help }}">{{ $options->pairGame === null
+        ? __('Two games with the colours swapped are fairer: everyone starts once. One game per pairing halves the games; the colours even out over the rounds.')
+        : __('Two games: one of each game of the combined tournament.') }}</span>
 </div>
 @if ($options->legs === 2)
     <div class="{{ $optionRow }}" data-test="leg-points-option">

@@ -820,6 +820,18 @@ final class TournamentRunner
     }
 
     /**
+     * The board game a two-leg pairing plays next, after `$finished` finished games: the tournament's game, but in a
+     * combined tournament (FormatOptions::$pairGame, DerCaddy 2026-11-11) leg 2 is the second game, and the deciders
+     * after 1:1 alternate, the tournament's game first. A restart after a missed first move keeps the game.
+     */
+    public static function legGame(Tournament $tournament, int $finished): string
+    {
+        $pair = $tournament->formatOptions()->pairGame;
+
+        return $pair !== null && $finished % 2 === 1 ? $pair : (string) $tournament->game;
+    }
+
+    /**
      * Whether this match plays two legs ({@see stagePlaysTwoLegs()}). A caller that holds the match's stage passes it;
      * else it is loaded, and only for a tournament of one game per pairing.
      */

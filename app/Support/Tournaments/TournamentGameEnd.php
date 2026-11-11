@@ -13,6 +13,7 @@ use App\Models\Tournament;
 use App\Models\TournamentMatch;
 use App\Models\TournamentStage;
 use App\Models\User;
+use App\Support\GameNames;
 use Illuminate\Support\Collection;
 
 /**
@@ -134,15 +135,19 @@ final class TournamentGameEnd
     {
         $first = $match->slots->firstWhere('slot', 0)?->participant;
 
-        return array_map(function (array $game) use ($match, $played): array {
+        // A combined tournament (FormatOptions::$pairGame): each game names its board game, "Game 2 (Blockspace) · under way".
+        $combined = $match->tournament->formatOptions()->pairGame !== null;
+
+        return array_map(function (array $game) use ($match, $played, $combined): array {
             $name = $game['won'] === null ? null : (string) ($match->slots->firstWhere('slot', $game['won'])?->participant->name ?? '?');
+            $n = $combined ? $game['n'].' ('.GameNames::game($game['game']).')' : $game['n'];
 
             return [
                 'n' => $game['n'],
                 'href' => $game['href'],
-                'text' => $name !== null ? (string) __('Game :n · won by :name', ['n' => $game['n'], 'name' => $name])
-                    : ($game['score'] !== null ? (string) __('Game :n · drawn', ['n' => $game['n']])
-                        : ($game['live'] ? (string) __('Game :n · under way', ['n' => $game['n']]) : (string) __('Game :n of the pairing', ['n' => $game['n']]))),
+                'text' => $name !== null ? (string) __('Game :n · won by :name', ['n' => $n, 'name' => $name])
+                    : ($game['score'] !== null ? (string) __('Game :n · drawn', ['n' => $n])
+                        : ($game['live'] ? (string) __('Game :n · under way', ['n' => $n]) : (string) __('Game :n of the pairing', ['n' => $n]))),
                 'current' => $game['id'] === (int) $played->id,
                 'live' => $game['live'],
             ];

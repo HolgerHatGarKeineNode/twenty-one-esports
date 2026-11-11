@@ -229,6 +229,19 @@
             </span>
         @endforeach
     </div>
+    {{-- A combined tournament (FormatOptions::$pairGame, DerCaddy 2026-11-11: "Blockli und Blockspace gegeneinander"): each
+         pairing plays one game of each, offered where another two-leg board game has the same mode. --}}
+    @php($pairGames = FormatOptions::pairGames($profile))
+    @if ($pairGames !== [])
+        <div class="flex max-w-[720px] flex-col gap-1.5 border-t border-hairline pt-3" data-test="pair-game-option">
+            <span id="pair-l" class="text-[13px] font-bold">{{ __('Combined tournament') }}</span>
+            <x-tournaments.segmented labelledby="pair-l" method="pickPairGame" :current="$options->pairGame ?? ''" :grow="false" data-test="pair-game"
+                :options="[['', __('Only :game', ['game' => GameNames::game($profile->game)])], ...array_map(fn (string $slug): array => [$slug, __('With :game', ['game' => GameNames::game($slug)])], $pairGames)]" />
+            <span class="text-xs leading-normal text-ink-2">{{ $options->pairGame === null
+                ? __('Combined: every pairing plays one game of each, with the colours swapped. Whoever is better at both wins.')
+                : __('Every pairing plays one game of :main and one of :second, with the colours swapped; after 1:1 a decider alternates between them, :main first. The :second games count on the :second ladder.', ['main' => GameNames::game($profile->game), 'second' => GameNames::game($options->pairGame)]) }}</span>
+        </div>
+    @endif
 </section>
 @elseif ($part === 'window')
 <span class="flex flex-col gap-1.5">

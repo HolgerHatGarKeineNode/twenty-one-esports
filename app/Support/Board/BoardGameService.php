@@ -143,7 +143,7 @@ final class BoardGameService
         // counts only while that ladder is still open (NIP rule 16): never on a later season's. No ladder, no rating.
         $ladder = $ratedGate === null ? null : ($tournamentMatchId === null
             ? Ladders::address($slug, $mode)
-            : TournamentMatch::query()->with('tournament')->find($tournamentMatchId)?->tournament->openLadder());
+            : TournamentMatch::query()->with('tournament')->find($tournamentMatchId)?->tournament->openLadderFor($slug));
         $ratedGate = $ladder === null ? null : $ratedGate;
         $clans = $ratedGate === null ? null : RatedBoard::clans($white, $black);
         $firstMoveAt = null;

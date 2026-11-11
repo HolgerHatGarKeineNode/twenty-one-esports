@@ -514,7 +514,10 @@ final class TournamentMatchMaker
         $swap = $last !== null && ($last->status === BoardGameStatus::Aborted ? $last->white_id !== $first->id : $last->white_id === $first->id);
         $mode = $tournament->mode;
 
-        $finished = TournamentRunner::twoLegs($match, $tournament) ? TournamentRunner::finishedBoardGames($match)->count() : 0;
+        $twoLegs = TournamentRunner::twoLegs($match, $tournament);
+        $finished = $twoLegs ? TournamentRunner::finishedBoardGames($match)->count() : 0;
+        // A combined tournament (FormatOptions::$pairGame): leg 2 and every other decider in the second game.
+        $slug = $twoLegs ? TournamentRunner::legGame($tournament, $finished) : (string) $tournament->game;
 
         if ($finished >= 2) {
             $swap = $last?->status === BoardGameStatus::Finished && $finished === 2
@@ -526,7 +529,7 @@ final class TournamentMatchMaker
 
         try {
             // Rated as a tournament chess game is (P6): the frozen ladder still open and the trust gate passing at the pairing.
-            $game = $this->boards->start($tournament->game, $white, $black, $mode, $match->id,
+            $game = $this->boards->start($slug, $white, $black, $mode, $match->id,
                 BoardGame::query()->where('tournament_match_id', $match->id)->count() + 1, TournamentDeadlines::checkinSeconds($tournament),
                 $this->chessPin($tournament, $white, $black));
         } catch (BoardRuleViolation) {

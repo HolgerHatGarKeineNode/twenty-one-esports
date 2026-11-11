@@ -9078,5 +9078,11 @@
     ":tournament, start by vote": ":tournament, Termin per Abstimmung",
     "Start by vote": "Termin per Abstimmung",
     "Next: :name, start by vote": "Als Nächstes: :name, Termin per Abstimmung",
-    "incl. :count without a vote": "davon :count ohne Stimme"
+    "incl. :count without a vote": "davon :count ohne Stimme",
+    "Combined tournament": "Kombi-Turnier",
+    "Only :game": "Nur :game",
+    "With :game": "Mit :game",
+    "Combined: every pairing plays one game of each, with the colours swapped. Whoever is better at both wins.": "Kombiniert: Jede Paarung spielt je eine Partie beider Spiele, mit getauschten Farben. Es gewinnt, wer beide besser kann.",
+    "Every pairing plays one game of :main and one of :second, with the colours swapped; after 1:1 a decider alternates between them, :main first. The :second games count on the :second ladder.": "Jede Paarung spielt eine Partie :main und eine Partie :second, mit getauschten Farben; nach 1:1 wechselt die Entscheidungspartie zwischen beiden, zuerst :main. Die :second-Partien zählen in der :second-Ladder.",
+    "Two games: one of each game of the combined tournament.": "Zwei Partien: je eine in jedem Spiel des Kombi-Turniers."
 }

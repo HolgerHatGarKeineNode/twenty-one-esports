@@ -388,7 +388,7 @@ final class TournamentView
      *
      * @param  list<int>  $firstMembers
      * @param  Collection<int, BoardGame>|null  $games
-     * @return list<array{n: int, id: int, href: string, score: string|null, won: int|null, live: bool}>
+     * @return list<array{n: int, id: int, href: string, score: string|null, won: int|null, live: bool, game: string}>
      */
     public static function pairingGames(TournamentMatch $match, array $firstMembers, ?Collection $games = null): array
     {
@@ -397,7 +397,7 @@ final class TournamentView
         }
 
         $games = ($games ?? BoardGame::query()->where('tournament_match_id', $match->id)->where('status', '!=', BoardGameStatus::Aborted)
-            ->orderBy('id')->get(['id', 'tournament_match_id', 'status', 'result', 'white_id']))
+            ->orderBy('id')->get(['id', 'tournament_match_id', 'game', 'status', 'result', 'white_id']))
             ->filter(fn (BoardGame $game): bool => $game->id > (int) $match->replaced_through)->values();
 
         if ($games->count() < 2) {
@@ -420,6 +420,7 @@ final class TournamentView
                 'score' => $draw ? '½–½' : ($won === null ? null : ($won === 0 ? '1–0' : '0–1')),
                 'won' => $won,
                 'live' => $game->status === BoardGameStatus::Active,
+                'game' => (string) $game->game,
             ];
         })->all());
     }
