@@ -16,7 +16,8 @@ namespace App\Support\Tournaments\Engine;
  * no opponent and adds nothing.
  *
  * `$perLeg` (FormatOptions::$legPoints): the games of a two-leg pairing count
- * one by one, as results of their own ({@see perLeg()}).
+ * one by one, as results of their own ({@see perLeg()}); `$legs` of them, the
+ * length of a combined tournament's sequence (FormatOptions::legCount()).
  */
 final class Standings
 {
@@ -27,10 +28,10 @@ final class Standings
      * @param  list<string>  $tieBreaks
      * @return list<StandingRow> first place first
      */
-    public static function table(array $entrants, array $games, float $win = 1.0, float $tie = 0.5, float $bye = 1.0, string $rankBy = 'points', array $tieBreaks = [], bool $perLeg = false): array
+    public static function table(array $entrants, array $games, float $win = 1.0, float $tie = 0.5, float $bye = 1.0, string $rankBy = 'points', array $tieBreaks = [], bool $perLeg = false, int $legs = 2): array
     {
         if ($perLeg) {
-            $games = self::perLeg($games);
+            $games = self::perLeg($games, $legs);
         }
 
         /** @var array<int, StandingRow> $rows */
@@ -121,13 +122,13 @@ final class Standings
      * Each game of a two-leg pairing as a result of its own (DerCaddy, 2026-10-18: "Wenn man zwei Spiele
      * gegeneinander spielt, sollte man dann auch zwei Punkte bekommen können"): a win 1 and a draw ½ per game, so
      * up to two points per pairing; wins, draws, losses, head-to-head and Buchholz count games. A pairing decided
-     * without its games (a no-show, a forfeit, a result the directors entered) counts for both of them; a bye
-     * stays a bye.
+     * without its games (a no-show, a forfeit, a result the directors entered) counts for all `$legs` of them (a
+     * combined tournament's sequence plays more than two, FormatOptions::legCount()); a bye stays a bye.
      *
      * @param  list<array{0: int, 1: int|null, 2: MatchResult}>  $games
      * @return list<array{0: int, 1: int|null, 2: MatchResult}>
      */
-    public static function perLeg(array $games): array
+    public static function perLeg(array $games, int $legs = 2): array
     {
         $out = [];
 
@@ -139,7 +140,7 @@ final class Standings
             }
 
             if ($result->legs === []) {
-                array_push($out, [$a, $b, $result], [$a, $b, $result]);
+                array_push($out, ...array_fill(0, max(1, $legs), [$a, $b, $result]));
 
                 continue;
             }

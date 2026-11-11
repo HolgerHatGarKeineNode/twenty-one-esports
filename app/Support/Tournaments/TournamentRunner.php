@@ -865,9 +865,7 @@ final class TournamentRunner
      */
     public static function legCount(Tournament $tournament): int
     {
-        $options = $tournament->formatOptions();
-
-        return $options->sequence() ? count($options->games) : 2;
+        return $tournament->formatOptions()->legCount();
     }
 
     /** Whether a game is a leg of a combined tournament's sequence (FormatOptions::$games), which counts its leg on its own. */

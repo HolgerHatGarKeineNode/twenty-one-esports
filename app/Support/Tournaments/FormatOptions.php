@@ -121,6 +121,12 @@ final readonly class FormatOptions
         return count($this->games) >= 2;
     }
 
+    /** The games a two-leg pairing plays before a decider: the length of a combined tournament's sequence ({@see $games}), else its two legs. */
+    public function legCount(): int
+    {
+        return $this->sequence() ? count($this->games) : 2;
+    }
+
     /** Whether the games of a two-leg pairing count one by one in a round-robin table ({@see $legPoints}). */
     public function perLeg(): bool
     {

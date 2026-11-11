@@ -119,6 +119,7 @@ final class FirstPlaceTie
             $swiss ? $options->swissTieBreaks : $options->roundRobinTieBreaks,
             // A round robin's two legs game by game where the organizer chose so (FormatOptions::$legPoints).
             ! $swiss && $options->perLeg(),
+            $options->legCount(),
         );
 
         return Standings::outLast($rows, array_values(TournamentParticipant::query()->whereKey($entrants)->whereNotNull('disqualified_at')->pluck('id')->map(intval(...))->all()));

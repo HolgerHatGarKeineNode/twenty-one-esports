@@ -16,6 +16,8 @@ use App\Support\Board\BoardGameService;
 use App\Support\Chess\ChessGameService;
 use App\Support\GameNames;
 use App\Support\Series\Ladders;
+use App\Support\Tournaments\Engine;
+use App\Support\Tournaments\Estimator;
 use App\Support\Tournaments\FormatOptions;
 use App\Support\Tournaments\GameProfile;
 use App\Support\Tournaments\Lobbies;
@@ -26,6 +28,7 @@ use App\Support\Tournaments\TournamentMatchMaker;
 use App\Support\Tournaments\TournamentMatrix;
 use App\Support\Tournaments\TournamentPublisher;
 use App\Support\Tournaments\TournamentRunner;
+use App\Support\Tournaments\TournamentView;
 use Carbon\CarbonImmutable;
 use Illuminate\Support\Facades\Queue;
 use Illuminate\Support\Lottery;
@@ -495,7 +498,46 @@ test('the live matrix counts a finished chess leg of a combined pairing', functi
 
     expect($scores['Player 1-Player 2'])->toBe('1–0')
         ->and($scores['Player 2-Player 1'])->toBe('0–1');
-})->skip('P5: matrix chess legs — TournamentMatrix::scores() reads only the board games');
+});
+
+test('the estimate plans every game of a sequence: chess blitz + Blockli blitz 28 minutes a pairing, a third game 42', function () {
+    $profile = GameProfile::for('chess', 'blitz');
+    $estimator = new Estimator;
+    $minutes = function (array $games) use ($estimator, $profile): float {
+        $options = FormatOptions::fromArray(['games' => $games], $profile);
+
+        // Two players, one pairing: the planned minutes are that pairing's games, 14 each (chess and Blockli blitz).
+        return $estimator->duration(TournamentFormat::SingleElimination, $estimator->structure(TournamentFormat::SingleElimination, 2, $options), $profile, $options, null)->total;
+    };
+
+    expect(Estimator::matchGames($profile, FormatOptions::fromArray(['games' => ['chess', 'blockli', 'blockspace']], $profile), true))->toBe(3)
+        ->and($minutes(['chess', 'blockli']))->toBe(28.0)
+        ->and($minutes(['chess', 'blockli', 'blockspace']))->toBe(42.0);
+});
+
+test('a forfeit in a table that counts game by game counts every game of the sequence', function () {
+    $won = Engine\MatchResult::win(0);
+
+    expect(Engine\Standings::perLeg([[1, 2, $won]], 3))->toHaveCount(3)
+        ->and(Engine\Standings::perLeg([[1, 2, $won]]))->toHaveCount(2)
+        ->and(FormatOptions::fromArray(['games' => ['chess', 'blockli', 'chess'], 'legPoints' => true], GameProfile::for('chess', 'blitz'))->legCount())->toBe(3);
+});
+
+test('a round robin of three games counted game by game: each game in the table, up to three points a pairing', function () {
+    $tournament = sequenceTournament('chess', 'blitz', ['games' => ['chess', 'blockli', 'chess'], 'legPoints' => true], TournamentFormat::RoundRobin);
+    combinedLose($tournament, 1);
+    combinedLose($tournament, 0);
+
+    // Two of three games played: both count at once, the pairing is still under way.
+    expect(blockliTable($tournament)[0])->toBe(['Player 1' => ['1', 1, 0, 1], 'Player 2' => ['1', 1, 0, 1]]);
+
+    combinedLose($tournament, 1);
+    $part = (new TournamentView($tournament->refresh()))->stages()[0]['parts'][0];
+
+    expect(blockliMatch($tournament)->result['legs'])->toHaveCount(3)
+        ->and(blockliTable($tournament)[0])->toBe(['Player 1' => ['2', 2, 0, 1], 'Player 2' => ['1', 1, 0, 2]])
+        ->and($part['leg_count'])->toBe(3);
+});
 
 /*
 | A sequence the organizer composes (user, 2026-11-11: "dynamisch konfigurierbar"): 2..N games in order, repeats allowed,

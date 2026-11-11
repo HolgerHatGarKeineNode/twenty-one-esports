@@ -289,16 +289,23 @@ final class TournamentMatrix
         }
 
         $finished = ($this->boardGames[$match->id] ?? new EloquentCollection)
-            ->filter(fn (BoardGame $game): bool => $game->id > $match->boardReplacedThrough() && $game->status === BoardGameStatus::Finished);
+            ->filter(fn (BoardGame $game): bool => $game->id > $match->boardReplacedThrough() && $game->status === BoardGameStatus::Finished)->values()->all();
 
-        if ($finished->isEmpty()) {
+        // A combined tournament (FormatOptions::$games): its chess legs count too, all of its sequence in the order played.
+        if ($this->tournament->formatOptions()->sequence()) {
+            $chess = ($this->chessGames[$match->id] ?? new EloquentCollection)
+                ->filter(fn (ChessGame $game): bool => $game->id > (int) $match->replaced_through && $game->status === ChessGameStatus::Finished)->values()->all();
+            $finished = TournamentRunner::inLegOrder($this->tournament, [...$finished, ...$chess]);
+        }
+
+        if ($finished === []) {
             return ['–', '–'];
         }
 
         $members = $this->participants->get((int) $match->slots->firstWhere('slot', 0)?->tournament_participant_id)?->memberIds() ?? [];
         $points = [0.0, 0.0];
 
-        foreach ($finished->take(2) as $leg) {
+        foreach (array_slice($finished, 0, TournamentRunner::legCount($this->tournament)) as $leg) {
             $whiteSlot = in_array((int) $leg->white_id, $members, true) ? 0 : 1;
             [$white, $black] = match ($leg->result) {
                 '1-0' => [1.0, 0.0],

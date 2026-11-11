@@ -112,6 +112,8 @@ final class TournamentView
                 'first_tie' => $this->firstTie(),
                 'two_legs' => $this->twoLegs($stage),
                 'per_leg' => $this->perLeg($stage),
+                // A combined tournament's pairing plays its whole sequence (FormatOptions::$games): the note counts its games.
+                'leg_count' => $this->combined() ? $this->tournament->formatOptions()->legCount() : 2,
                 'open' => array_values(array_map(fn (array $box): array => [
                     'a' => $box['sides'][0]['name'] ?? '?',
                     'b' => $box['sides'][1]['name'] ?? '?',
@@ -199,10 +201,10 @@ final class TournamentView
         ];
     }
 
-    /** A combined tournament (FormatOptions::$pairGame): its pairings list their chess and board games together. */
+    /** A combined tournament (FormatOptions::$games): its pairings list their chess and board games together. */
     private function combined(): bool
     {
-        return $this->tournament->formatOptions()->pairGame !== null;
+        return $this->tournament->formatOptions()->sequence();
     }
 
     /** Whether this stage's pairings play two legs ({@see TournamentRunner::stagePlaysTwoLegs()}). */
@@ -216,8 +218,8 @@ final class TournamentView
     {
         $options = $this->tournament->formatOptions();
 
-        // A combined tournament's round robin counts its two games like Blockli's legs (FormatOptions::$pairGame).
-        return (TournamentRunner::choosesLegs((string) $this->tournament->game, $stage->format) || ($options->pairGame !== null && $stage->format === TournamentFormat::RoundRobin))
+        // A combined tournament's round robin counts the games of its sequence like Blockli's legs (FormatOptions::$games).
+        return (TournamentRunner::choosesLegs((string) $this->tournament->game, $stage->format) || ($options->sequence() && $stage->format === TournamentFormat::RoundRobin))
             && $options->perLeg();
     }
 
@@ -271,6 +273,7 @@ final class TournamentView
             $swiss ? 'points' : $options->rankBy,
             $swiss ? $options->swissTieBreaks : $options->roundRobinTieBreaks,
             $perLeg,
+            $options->legCount(),
         );
         $rows = Standings::outLast($rows, array_values($this->participants->whereNotNull('disqualified_at')->keys()->map(intval(...))->all()));
         // The final table's tie for place 1 (FirstPlaceTie), once the table is complete: all who are level hold rank 1.

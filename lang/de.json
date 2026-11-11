@@ -9084,5 +9084,7 @@
     "With :game": "Mit :game",
     "Combined: every pairing plays one game of each, with the colours swapped. Whoever is better at both wins.": "Kombiniert: Jede Paarung spielt je eine Partie beider Spiele, mit getauschten Farben. Es gewinnt, wer beide besser kann.",
     "Every pairing plays one game of :main and one of :second, with the colours swapped; after 1:1 a decider alternates between them, :main first. The :second games count on the :second ladder.": "Jede Paarung spielt eine Partie :main und eine Partie :second, mit getauschten Farben; nach 1:1 wechselt die Entscheidungspartie zwischen beiden, zuerst :main. Die :second-Partien zählen in der :second-Ladder.",
-    "Two games: one of each game of the combined tournament.": "Zwei Partien: je eine in jedem Spiel des Kombi-Turniers."
+    "Two games: one of each game of the combined tournament.": "Zwei Partien: je eine in jedem Spiel des Kombi-Turniers.",
+    "Every game counts: a win 1 point, a draw ½, up to :count points per pairing. W D L counts games; a game enters the table once it is over.": "Jede Partie zählt: Sieg 1 Punkt, Remis ½, bis zu :count Punkte je Paarung. S R N zählt Partien; jede Partie kommt in die Tabelle, sobald sie vorbei ist.",
+    "W D L counts pairings: all :count games together. A pairing enters the table once all :count are over.": "S R N zählt Paarungen: alle :count Partien zusammen. Eine Paarung kommt erst nach allen :count Partien in die Tabelle."
 }
