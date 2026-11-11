@@ -139,7 +139,7 @@ test('creating refuses a vote that breaks a rule and creates nothing; correspond
         ->set('voteStart', true)
         ->set('startOptions', ['', '', ''])
         ->call('create')
-        ->assertHasErrors(['voteUntil' => __('Offer two to four different starts for the vote.')]);
+        ->assertHasErrors(['startVote' => __('Offer two to four different starts for the vote.')]);
 
     Livewire::actingAs($organizer)->test('pages::admin.tournament-create')
         ->set('name', 'Blitz Abend')
@@ -150,7 +150,9 @@ test('creating refuses a vote that breaks a rule and creates nothing; correspond
         // Less than an hour before the earliest start.
         ->set('voteUntil', '2026-11-21T18:30')
         ->call('create')
-        ->assertHasErrors(['voteUntil']);
+        ->assertHasErrors(['startVote'])
+        // Once, under the vote's fields, not again inside the date input.
+        ->assertSeeHtml('data-field-error="startVote"');
 
     expect(Tournament::query()->count())->toBe(0);
 
@@ -171,6 +173,22 @@ test('creating refuses a vote that breaks a rule and creates nothing; correspond
         ->assertHasNoErrors();
 
     expect(Tournament::query()->sole()->start_options)->toBeNull();
+});
+
+test('a vote ticked before the game or place stopped offering it is ignored: the draft is created without one', function () {
+    Livewire::actingAs(organizer())->test('pages::admin.tournament-create')
+        ->set('name', 'Daily ohne Abstimmung')
+        ->call('pickGame', 'blitz')
+        ->set('startsAt', '2026-11-21T19:00')
+        ->set('voteStart', true)
+        ->set('startOptions', ['', '', ''])
+        ->call('pickGame', 'daily')
+        ->call('create')
+        ->assertHasNoErrors();
+
+    expect(Tournament::query()->sole())
+        ->start_options->toBeNull()
+        ->start_vote_until->toBeNull();
 });
 
 test('the organizer offers starts on the edit page: the start becomes the earliest, the others stand below it', function () {

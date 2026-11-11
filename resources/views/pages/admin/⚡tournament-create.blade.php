@@ -76,6 +76,17 @@ new #[Title('New tournament')] #[Layout('layouts::app', ['section' => 'admin'])]
         return TournamentStartVote::offers(new Tournament(['game' => $this->profile()->game, 'mode' => $this->profile()->mode, 'on_site' => $this->stationLimit() !== null]));
     }
 
+    /**
+     * A chooser change reaches the start vote too: a game or place that does not offer it hides it, one that does
+     * shows it. A chooser click renders only the islands named here, so `always: true` alone never reaches it.
+     */
+    protected function changed(): void
+    {
+        parent::changed();
+
+        $this->renderIsland('start-vote');
+    }
+
     public function chooserCreator(): ?User
     {
         return auth()->user();
@@ -95,7 +106,8 @@ new #[Title('New tournament')] #[Layout('layouts::app', ['section' => 'admin'])]
             'setup' => ['nullable', 'numeric', 'between:0,1000'],
             'break' => ['nullable', 'numeric', 'between:0,1000'],
             ...$this->deadlineRules(),
-            ...$this->startVoteRules(),
+            // A vote the chooser no longer offers (ticked, then correspondence or on site picked) is ignored, not refused.
+            ...($this->startVoteOffered() ? $this->startVoteRules() : []),
         ]);
 
         // Only a game the chooser offers (TournamentGames): an unknown key, Blockfill's set by hand, or Hyperbitcoinization while its
@@ -132,7 +144,9 @@ new #[Title('New tournament')] #[Layout('layouts::app', ['section' => 'admin'])]
         }
 
         // The start vote: the start becomes the earliest offered start (EditsStartVote).
-        $vote = $this->chosenStartVote($startsAt);
+        $vote = $this->startVoteOffered()
+            ? $this->chosenStartVote($startsAt)
+            : ['starts_at' => $startsAt, 'start_options' => null, 'start_vote_until' => null];
 
         // The draft, its start vote and its pot are one step: a refused vote or pot creates nothing.
         try {
@@ -173,9 +187,10 @@ new #[Title('New tournament')] #[Layout('layouts::app', ['section' => 'admin'])]
                 return $tournament;
             });
         } catch (TournamentRuleViolation $violation) {
-            // The pot shows its own error; a refused vote shows its reason under the vote's fields.
+            // The pot shows its own error; a refused vote shows its reason once, under the vote's fields (the date
+            // inputs show only their own field rules).
             if ($violation->reason !== 'pot') {
-                $this->addError('voteUntil', $violation->getMessage());
+                $this->addError('startVote', $violation->getMessage());
             }
 
             return;
@@ -213,7 +228,7 @@ new #[Title('New tournament')] #[Layout('layouts::app', ['section' => 'admin'])]
         @island(name: 'start-vote', always: true)
             @if ($this->startVoteOffered())
                 @include('pages.admin.partials.tournament-start-vote', ['testId' => 'start-vote-create'])
-                <x-admin.field-error for="voteUntil" />
+                <x-admin.field-error for="startVote" />
             @endif
         @endisland
     </section>

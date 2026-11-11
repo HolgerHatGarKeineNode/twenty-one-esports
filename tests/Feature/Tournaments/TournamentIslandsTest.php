@@ -82,10 +82,11 @@ test('a full refresh still renders the islands with the page', function () {
 
 /*
  * The tournament form (order E, 2026-11-05) stands in four chooser islands (game, the time you have, players and place,
- * format) plus the summary and the deadlines: a change in any of them renders all six, so a game picked updates the
- * systems, a player count the recommendation, a results mode the deadlines.
+ * format) plus the summary and the deadlines, and on the create page the start vote (PR #26): a change in any of them
+ * renders all seven, so a game picked updates the systems and whether the start can be put to a vote, a player count
+ * the recommendation, a results mode the deadlines.
  */
-test('a chooser change on the tournament form renders all six of its islands', function (string $method, array $arguments) {
+test('a chooser change on the tournament form renders all seven of its islands', function (string $method, array $arguments) {
     $admin = User::factory()->create();
     Admin::query()->create(['pubkey' => $admin->pubkey]);
     $form = Livewire::actingAs($admin)->test('pages::admin.tournament-create');
@@ -93,7 +94,7 @@ test('a chooser change on the tournament form renders all six of its islands', f
     $form->call($method, ...$arguments)->assertOk();
     preg_match_all('/FRAGMENT:type=island\|name=([\w-]+)/', implode('', $form->effects['islandFragments'] ?? []), $names);
 
-    expect(array_values(array_unique($names[1])))->toEqualCanonicalizing(['chooser-game', 'chooser-window', 'chooser-place', 'chooser', 'summary', 'deadlines']);
+    expect(array_values(array_unique($names[1])))->toEqualCanonicalizing(['chooser-game', 'chooser-window', 'chooser-place', 'chooser', 'summary', 'deadlines', 'start-vote']);
 })->with([
     'a game picked' => ['pickGame', ['rapid']],
     'one player more' => ['stepPlayers', [1]],
