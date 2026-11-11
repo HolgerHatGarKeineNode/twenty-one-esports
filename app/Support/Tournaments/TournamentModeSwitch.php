@@ -60,7 +60,14 @@ final class TournamentModeSwitch
             return [];
         }
 
-        return array_values(array_filter(array_keys($game->modes()), fn (string $mode): bool => TournamentGames::keyOf($tournament->game, $mode) !== null));
+        // A combined tournament (FormatOptions::$games) switches only to a mode every game of its sequence has: any other
+        // would drop games from the sequence mid-run and shift the legs still to play.
+        $sequence = $tournament->formatOptions()->sequence() ? $tournament->formatOptions()->games : [$tournament->game];
+
+        return array_values(array_filter(array_keys($game->modes()), fn (string $mode): bool => array_all(
+            $sequence,
+            fn (string $slug): bool => TournamentGames::keyOf($slug, $mode) !== null,
+        )));
     }
 
     /** Whether the tournament's time control can still be switched: a board game with live modes, not a cup, not over. */

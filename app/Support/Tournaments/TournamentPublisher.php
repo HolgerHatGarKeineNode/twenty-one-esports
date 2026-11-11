@@ -528,7 +528,9 @@ final class TournamentPublisher
                 ? "a level score in a knockout goes to deciders of {$first}, as many as it takes"
                 : "a level score in a knockout goes to deciders, the games in turn, {$first} first";
             $lines[] = 'A combined tournament: each pairing plays '.count($names).' games in this order, one each: '.implode(', ', $names)
-                .", the colours alternating per game; {$deciders}. The ".implode(' and ', $others).' games are rated on the open ladder of their game in the same season.';
+                .", the colours alternating per game; {$deciders}."
+                // A sequence of the tournament's own game alone has no other game to name.
+                .($others === [] ? '' : ' The '.implode(' and ', $others).' games are rated on the open ladder of their game in the same season.');
         }
 
         return $lines;

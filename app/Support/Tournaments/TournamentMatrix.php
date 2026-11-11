@@ -65,9 +65,13 @@ final class TournamentMatrix
     /** @var array<int|string, EloquentCollection<int, ChessGame>> chess games by tournament match */
     private array $chessGames = [];
 
+    /** Whether the tournament plays a game sequence (FormatOptions::$games): read once, not per open match. */
+    private bool $sequence;
+
     public function __construct(private Tournament $tournament)
     {
         $this->participants = $tournament->participants()->get()->keyBy('id');
+        $this->sequence = $tournament->formatOptions()->sequence();
     }
 
     /**
@@ -292,7 +296,7 @@ final class TournamentMatrix
             ->filter(fn (BoardGame $game): bool => $game->id > $match->boardReplacedThrough() && $game->status === BoardGameStatus::Finished)->values()->all();
 
         // A combined tournament (FormatOptions::$games): its chess legs count too, all of its sequence in the order played.
-        if ($this->tournament->formatOptions()->sequence()) {
+        if ($this->sequence) {
             $chess = ($this->chessGames[$match->id] ?? new EloquentCollection)
                 ->filter(fn (ChessGame $game): bool => $game->id > (int) $match->replaced_through && $game->status === ChessGameStatus::Finished)->values()->all();
             $finished = TournamentRunner::inLegOrder($this->tournament, [...$finished, ...$chess]);

@@ -26,6 +26,7 @@ use App\Support\Tournaments\TournamentControl;
 use App\Support\Tournaments\TournamentGameEnd;
 use App\Support\Tournaments\TournamentMatchMaker;
 use App\Support\Tournaments\TournamentMatrix;
+use App\Support\Tournaments\TournamentModeSwitch;
 use App\Support\Tournaments\TournamentPublisher;
 use App\Support\Tournaments\TournamentRunner;
 use App\Support\Tournaments\TournamentView;
@@ -35,6 +36,7 @@ use Illuminate\Support\Lottery;
 use Livewire\Livewire;
 use Tests\Support\BlockliOn;
 use Tests\Support\BlockspaceOn;
+use Tests\Support\NineMensMorrisOn;
 use Tests\Support\TestSigner;
 
 /*
@@ -259,6 +261,37 @@ test('the published tournament says in words that it is combined', function () {
         ->toContain('A combined tournament: each pairing plays 2 games in this order, one each: Blockli, Blockspace, the colours alternating per game; a level score in a knockout goes to deciders, the games in turn, Blockli first.')
         // Said in words only: no hashtag, no `t` tag (a standing rule of this project).
         ->and(collect($payload['tags'])->where(0, 't')->all())->toBe([]);
+});
+
+test('a sequence of the tournament\'s own game alone names no other ladder in the published text', function () {
+    $league = new TestSigner;
+    config(['esports.league.nsec' => $league->secret]);
+
+    $tournament = Tournament::factory()->create(['created_by_id' => organizer()->id, 'game' => 'blockli', 'mode' => 'correspondence',
+        'options' => FormatOptions::fromArray(['games' => ['blockli', 'blockli', 'blockli']], GameProfile::for('blockli', 'correspondence'))->toArray()]);
+
+    app(TournamentPublisher::class)->publish($tournament, $tournament->creator, $tournament->starts_at->copy()->subHour());
+
+    expect($tournament->refresh()->event->payload()['content'])
+        ->toContain('each pairing plays 3 games in this order, one each: Blockli, Blockli, Blockli')
+        ->not->toContain('The  games')
+        ->not->toContain('open ladder of their game');
+});
+
+test('the time control of a combined tournament switches only to a mode every game of its sequence has', function () {
+    NineMensMorrisOn::play();
+    $profile = GameProfile::for('blockli', 'correspondence');
+    $withMorris = Tournament::factory()->create(['created_by_id' => organizer()->id, 'game' => 'blockli', 'mode' => 'correspondence',
+        'options' => FormatOptions::fromArray(['games' => ['blockli', 'nine-mens-morris']], $profile)->toArray()]);
+    $withBlockspace = Tournament::factory()->create(['created_by_id' => organizer()->id, 'game' => 'blockli', 'mode' => 'correspondence',
+        'options' => FormatOptions::fromArray(['games' => ['blockli', 'blockspace']], $profile)->toArray()]);
+    $switch = app(TournamentModeSwitch::class);
+
+    // Nine Men's Morris plays correspondence only: switching to blitz would drop it from the sequence mid-run.
+    expect($withMorris->formatOptions()->games)->toBe(['blockli', 'nine-mens-morris'])
+        ->and($switch->modes($withMorris))->toBe(['correspondence'])
+        ->and($switch->canSwitch($withMorris))->toBeFalse()
+        ->and($switch->modes($withBlockspace))->toBe(['blitz', 'rapid', 'correspondence']);
 });
 
 /*

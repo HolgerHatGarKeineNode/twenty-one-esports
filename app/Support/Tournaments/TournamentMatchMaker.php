@@ -467,7 +467,7 @@ final class TournamentMatchMaker
         $game = $match->boardGame;
 
         return match (true) {
-            $game === null, $match->isReplaced($game->id) => true,
+            $game === null, $match->isBoardReplaced($game->id) => true,
             $game->status === BoardGameStatus::Aborted => TournamentRunner::abortedBoardGames($match) <= TournamentRunner::firstMoveRestarts(),
             // Two legs (plan "Blockli", P4): a finished game of an undecided match calls the next leg or the decider.
             $game->status === BoardGameStatus::Finished && TournamentRunner::twoLegs($match, $tournament ?? $match->tournament) => $match->result === null,
