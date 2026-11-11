@@ -279,6 +279,12 @@ final class TournamentMatchMaker
             return true;
         }
 
+        // A combined tournament (FormatOptions::$pairGame, DerCaddy 2026-11-11): leg by leg in the game it is due in,
+        // chess or a board game, either way round; directors enter its results as for its own game.
+        if ($tournament->formatOptions()->pairGame !== null && ! $tournament->isDirectorMode()) {
+            return ! self::needsCombinedGame($match, $tournament) || $this->startCombined($tournament, $match, $a, $b, $acceptedBy) !== null;
+        }
+
         if ($tournament->profile()->isChess()) {
             if ($tournament->isDirectorMode()) {
                 $this->pinPairing($tournament, $match, $a, $b);
@@ -359,6 +365,93 @@ final class TournamentMatchMaker
             $game->status === ChessGameStatus::Finished && $game->result === '1/2-1/2' && ! TournamentRunner::allowsDraw($match) => TournamentRunner::drawnGames($match) <= TournamentRunner::drawnReplays($match->tournament),
             default => false,
         };
+    }
+
+    /**
+     * The latest game of a combined pairing, chess or board game, that the league has not set aside (`replaced_through`,
+     * read per kind of game as the match does): what decides whether the next one is due, and its colours.
+     */
+    public static function lastLeg(TournamentMatch $match, Tournament $tournament): BoardGame|ChessGame|null
+    {
+        $chess = ChessGame::query()->where('tournament_match_id', $match->id)->where('id', '>', (int) $match->replaced_through)->latest('id')->first();
+        $board = BoardGame::query()->where('tournament_match_id', $match->id)->where('id', '>', (int) $match->replaced_through)->latest('id')->first();
+
+        if ($chess === null || $board === null) {
+            return $chess ?? $board;
+        }
+
+        // Legs alternate (TournamentRunner::legGame()), and timestamps tie within a second: the game under way is the last;
+        // else the game due after the finished ones, if its latest try was aborted (a restart pending); else the other.
+        if ($chess->status === ChessGameStatus::Active || $board->status === BoardGameStatus::Active) {
+            return $chess->status === ChessGameStatus::Active ? $chess : $board;
+        }
+
+        $dueChess = TournamentRunner::legGame($tournament, TournamentRunner::finishedLegs($match, $tournament)->count()) === 'chess';
+        $due = $dueChess ? $chess : $board;
+        $aborted = $dueChess ? $chess->status === ChessGameStatus::Aborted : $board->status === BoardGameStatus::Aborted;
+
+        return $aborted ? $due : ($dueChess ? $board : $chess);
+    }
+
+    /**
+     * A combined pairing needs its next game ({@see TournamentRunner::legGame()}): none yet; the last one ended and the
+     * match is still open (the next leg or a decider); or it was aborted because White missed the first move, restarted
+     * `first_move_restarts` times as any tournament game.
+     */
+    public static function needsCombinedGame(TournamentMatch $match, Tournament $tournament): bool
+    {
+        $last = self::lastLeg($match, $tournament);
+
+        return match (true) {
+            $last === null => true,
+            $last instanceof ChessGame && $last->status === ChessGameStatus::Aborted => TournamentRunner::abortedGames($match) <= TournamentRunner::firstMoveRestarts(),
+            $last instanceof BoardGame && $last->status === BoardGameStatus::Aborted => TournamentRunner::abortedBoardGames($match) <= TournamentRunner::firstMoveRestarts(),
+            $last instanceof ChessGame ? $last->status === ChessGameStatus::Finished : $last->status === BoardGameStatus::Finished => $match->result === null,
+            default => false,
+        };
+    }
+
+    /**
+     * The next game of a combined pairing, in the game it is due in: slot 0 has White in leg 1, leg 2 swaps the
+     * colours, the first decider after 1:1 draws them by lot, a later one swaps them, a restart keeps them. Rated as
+     * any tournament game, the second game on its own ladder (Tournament::openLadderFor()).
+     */
+    private function startCombined(Tournament $tournament, TournamentMatch $match, TournamentParticipant $a, TournamentParticipant $b, ?User $acceptedBy = null): ChessGame|BoardGame|null
+    {
+        $first = User::query()->find($a->memberIds()[0] ?? 0);
+        $second = User::query()->find($b->memberIds()[0] ?? 0);
+
+        if ($first === null || $second === null) {
+            return null;
+        }
+
+        $last = self::lastLeg($match, $tournament);
+        $finished = TournamentRunner::finishedLegs($match, $tournament)->count();
+        $aborted = $last !== null && ($last instanceof ChessGame ? $last->status === ChessGameStatus::Aborted : $last->status === BoardGameStatus::Aborted);
+        $swap = match (true) {
+            $last === null => false,
+            $aborted => (int) $last->white_id !== $first->id,
+            $finished === 2 => Lottery::odds(1, 2)->winner(fn (): bool => true)->loser(fn (): bool => false)->choose(),
+            default => (int) $last->white_id === $first->id,
+        };
+        [$white, $black] = $swap ? [$second, $first] : [$first, $second];
+        $slug = TournamentRunner::legGame($tournament, $finished);
+
+        try {
+            $game = $slug === 'chess'
+                ? $this->chess->start($white, $black, $tournament->mode, null, $this->chessPin($tournament, $white, $black), $match->id,
+                    ChessGame::query()->where('tournament_match_id', $match->id)->count() + 1)
+                : $this->boards->start($slug, $white, $black, $tournament->mode, $match->id,
+                    BoardGame::query()->where('tournament_match_id', $match->id)->count() + 1, TournamentDeadlines::checkinSeconds($tournament),
+                    $this->chessPin($tournament, $white, $black));
+        } catch (ChessRuleViolation|BoardRuleViolation) {
+            // Busy in another live game, or the game is switched off: the next run tries again.
+            return null;
+        }
+
+        $this->cupNotices->gameStarted($tournament, $game, $acceptedBy);
+
+        return $game;
     }
 
     /**

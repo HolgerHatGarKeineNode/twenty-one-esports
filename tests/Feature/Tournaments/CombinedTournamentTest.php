@@ -1,15 +1,26 @@
 <?php
 
 use App\Enums\BoardGameStatus;
+use App\Enums\ChessGameStatus;
 use App\Enums\TournamentFormat;
+use App\Enums\TournamentResultsMode;
+use App\Enums\TournamentStatus;
 use App\Games\GameRegistry;
 use App\Models\BoardGame;
+use App\Models\ChessGame;
 use App\Models\Tournament;
+use App\Models\TournamentParticipant;
+use App\Models\User;
+use App\Support\Board\BoardGameService;
+use App\Support\Chess\ChessGameService;
+use App\Support\GameNames;
 use App\Support\Series\Ladders;
 use App\Support\Tournaments\FormatOptions;
 use App\Support\Tournaments\GameProfile;
 use App\Support\Tournaments\Lobbies;
+use App\Support\Tournaments\TournamentBrackets;
 use App\Support\Tournaments\TournamentGameEnd;
+use App\Support\Tournaments\TournamentMatchMaker;
 use App\Support\Tournaments\TournamentPublisher;
 use App\Support\Tournaments\TournamentRunner;
 use Illuminate\Support\Facades\Queue;
@@ -43,11 +54,11 @@ test('the options: a Blockli tournament takes another board game of its mode, al
     expect(FormatOptions::pairGames($blockli))->toContain('blockspace')->not->toContain('blockli')
         ->and(FormatOptions::fromArray(['pairGame' => 'blockspace', 'legs' => 1], $blockli))->pairGame->toBe('blockspace')->legs->toBe(2)
         ->and(FormatOptions::fromArray([], $blockli)->pairGame)->toBeNull()
-        ->and(FormatOptions::fromArray(['pairGame' => 'chess'], $blockli)->pairGame)->toBeNull()
+        // Chess combines too (any game with any): Blockli + chess.
+        ->and(FormatOptions::fromArray(['pairGame' => 'chess'], $blockli)->pairGame)->toBe('chess')
+        ->and(FormatOptions::fromArray(['pairGame' => 'rocket-league'], $blockli)->pairGame)->toBeNull()
         ->and(FormatOptions::fromArray(['pairGame' => 'blockli'], $blockli)->pairGame)->toBeNull()
-        // Chess plays no legs: nothing to combine.
-        ->and(FormatOptions::pairGames(GameProfile::for('chess', 'blitz')))->toBe([])
-        ->and(FormatOptions::fromArray(['pairGame' => 'blockspace'], GameProfile::for('chess', 'blitz'))->pairGame)->toBeNull();
+        ->and(FormatOptions::fromArray(['pairGame' => 'blockspace'], GameProfile::for('chess', 'blitz'))->pairGame)->toBe('blockspace');
 
     // Blockspace switched off: no longer offered, and stored options fall back to one game.
     config(['esports.board_games.games.blockspace.enabled' => false]);
@@ -157,9 +168,12 @@ test('the organizer picks the second game on the create page; it is stored and s
         ->call('pickPairGame', '')
         ->assertSet('options.pairGame', null);
 
-    // Chess offers no combination: the pick does nothing.
+    // Chess combines as well; a series game does not, the pick does nothing there.
     Livewire::actingAs($organizer)->test('pages::admin.tournament-create')
         ->call('pickGame', 'blitz')
+        ->call('pickPairGame', 'blockspace')
+        ->assertSet('options.pairGame', 'blockspace')
+        ->call('pickGame', 'rl1')
         ->call('pickPairGame', 'blockspace')
         ->assertSet('options.pairGame', null);
 });
@@ -175,4 +189,135 @@ test('the published tournament says in words that it is combined', function () {
 
     expect($tournament->refresh()->event->payload()['content'])
         ->toContain('A combined tournament: each pairing plays one game of Blockli and one of Blockspace, with the colours swapped');
+});
+
+/*
+| Any game with any (DerCaddy, 2026-11-11: "Cooler wäre ja, wenn man jedes Spiel mit jedem Spiel kombinieren könnte"):
+| chess and every board game, either way round; series, lobbies and score games combine with nothing.
+*/
+
+/** A drawn, running two-player tournament of `$game` combined with `$pair`, in `$mode`. */
+function combinedTournament(string $game, string $pair, string $mode, TournamentFormat $format = TournamentFormat::SingleElimination): Tournament
+{
+    $tournament = Tournament::factory()->create([
+        'game' => $game, 'mode' => $mode, 'format' => $format,
+        'options' => FormatOptions::fromArray(['pairGame' => $pair], GameProfile::for($game, $mode))->toArray(),
+        'capacity' => 2, 'results_mode' => TournamentResultsMode::Players, 'status' => TournamentStatus::Running,
+        'slug' => 'combined-'.fake()->unique()->numberBetween(1, 1_000_000),
+    ]);
+
+    foreach ([1, 2] as $index) {
+        $player = User::factory()->create();
+        TournamentParticipant::query()->create(['tournament_id' => $tournament->id, 'user_id' => $player->id, 'name' => "Player {$index}", 'rating' => 1500 - 10 * $index, 'members' => [$player->id]]);
+    }
+
+    app(TournamentBrackets::class)->generate($tournament, str_repeat('cd', 32));
+    app(TournamentRunner::class)->sync($tournament);
+
+    return $tournament->refresh();
+}
+
+/** The live game of the tournament's one match, chess or board game. */
+function combinedLive(Tournament $tournament): ChessGame|BoardGame
+{
+    $match = blockliMatch($tournament);
+
+    return ChessGame::query()->where('tournament_match_id', $match->id)->where('status', ChessGameStatus::Active)->first()
+        ?? BoardGame::query()->where('tournament_match_id', $match->id)->where('status', BoardGameStatus::Active)->sole();
+}
+
+/** The player of `$loserSlot` resigns the live game. */
+function combinedLose(Tournament $tournament, int $loserSlot): void
+{
+    $game = combinedLive($tournament);
+    $loser = User::query()->findOrFail(blockliSlotUser($tournament, $loserSlot));
+
+    $game instanceof ChessGame
+        ? app(ChessGameService::class)->resign($game, $loser)
+        : app(BoardGameService::class)->resign($game, $loser);
+}
+
+test('chess combines with every board game of its mode, and a board game with chess', function () {
+    expect(FormatOptions::pairGames(GameProfile::for('chess', 'blitz')))->toContain('blockli')->toContain('blockspace')->not->toContain('chess')
+        ->and(FormatOptions::pairGames(GameProfile::for('blockspace', 'rapid')))->toContain('chess')->toContain('blockli')
+        ->and(FormatOptions::fromArray(['pairGame' => 'blockli'], GameProfile::for('chess', 'blitz')))->pairGame->toBe('blockli')->legs->toBe(2)
+        // A series game combines with nothing, and nothing with it.
+        ->and(FormatOptions::pairGames(GameProfile::for('rocket-league', '1v1')))->toBe([])
+        ->and(FormatOptions::pairGames(GameProfile::for('chess', 'blitz')))->not->toContain('rocket-league');
+});
+
+test('chess + Blockli: chess, then Blockli with the colours swapped, after 1:1 a chess decider', function () {
+    $tournament = combinedTournament('chess', 'blockli', 'blitz');
+    $first = combinedLive($tournament);
+
+    expect($first)->toBeInstanceOf(ChessGame::class)
+        ->and(Lobbies::gameLine($tournament))->toStartWith(GameNames::game('chess').' + Blockli');
+
+    combinedLose($tournament, 1);
+    $second = combinedLive($tournament);
+
+    expect($second)->toBeInstanceOf(BoardGame::class)
+        ->and($second->game)->toBe('blockli')
+        ->and((int) $second->white_id)->toBe((int) $first->black_id)
+        ->and(TournamentRunner::legsSoFar(blockliMatch($tournament), $tournament)['label'])->toBe('1–0');
+
+    // The board's switch lists both games, the chess game first.
+    $banner = TournamentGameEnd::banner($second);
+    expect(collect($banner['games'])->pluck('href')->all())->toBe([route('games.show', $first->id), route('board.show', $second->id)]);
+
+    combinedLose($tournament, 0);
+    $decider = combinedLive($tournament);
+
+    expect($decider)->toBeInstanceOf(ChessGame::class)
+        ->and(blockliMatch($tournament)->result)->toBeNull();
+
+    combinedLose($tournament, 0);
+    $result = blockliMatch($tournament)->result;
+
+    expect($result['winner'])->toBe(1)
+        ->and($result['decided'])->toBe('decider');
+});
+
+test('Blockspace + chess in a round robin: both games count, a chess game in the table like a leg', function () {
+    $tournament = combinedTournament('blockspace', 'chess', 'rapid', TournamentFormat::RoundRobin);
+
+    expect(combinedLive($tournament))->toBeInstanceOf(BoardGame::class)->and(combinedLive($tournament)->game)->toBe('blockspace');
+
+    combinedLose($tournament, 0);
+    expect(combinedLive($tournament))->toBeInstanceOf(ChessGame::class);
+
+    combinedLose($tournament, 0);
+    $result = blockliMatch($tournament)->result;
+
+    expect($result['winner'])->toBe(1)
+        ->and($result['decided'])->toBe('legs')
+        ->and($result['legs'])->toEqual([[0, 1], [0, 1]]);
+});
+
+test('the chess games of a combined tournament are rated on the chess ladder, the other game on its own', function () {
+    $tournament = Tournament::factory()->create(['game' => 'blockli', 'mode' => 'blitz',
+        'options' => FormatOptions::fromArray(['pairGame' => 'chess'], GameProfile::for('blockli', 'blitz'))->toArray(),
+        'ladder_address' => Ladders::address('blockli', 'blitz')]);
+
+    expect($tournament->openLadderFor('chess'))->toBe(Ladders::address('chess', 'blitz'))
+        ->and($tournament->openLadderFor('blockli'))->toBe(Ladders::address('blockli', 'blitz'));
+});
+
+test('a combined leg whose first move was missed is played again in the same game with the same colours', function () {
+    $tournament = combinedTournament('chess', 'blockli', 'blitz');
+    combinedLose($tournament, 1);
+    $board = combinedLive($tournament);
+    $board->forceFill(['status' => BoardGameStatus::Aborted])->save();
+    $match = blockliMatch($tournament);
+
+    expect(TournamentMatchMaker::lastLeg($match, $tournament)->is($board))->toBeTrue()
+        ->and(TournamentMatchMaker::needsCombinedGame($match, $tournament))->toBeTrue();
+
+    app(TournamentRunner::class)->sync($tournament);
+    $again = combinedLive($tournament);
+
+    expect($again)->toBeInstanceOf(BoardGame::class)
+        ->and($again->id)->not->toBe($board->id)
+        ->and($again->game)->toBe('blockli')
+        ->and((int) $again->white_id)->toBe((int) $board->white_id);
 });

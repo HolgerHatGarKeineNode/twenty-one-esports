@@ -3,9 +3,11 @@
 namespace App\Support\Tournaments;
 
 use App\Enums\BoardGameStatus;
+use App\Enums\ChessGameStatus;
 use App\Enums\TournamentFormat;
 use App\Enums\TournamentStatus;
 use App\Models\BoardGame;
+use App\Models\ChessGame;
 use App\Models\Clan;
 use App\Models\Tournament;
 use App\Models\TournamentMatch;
@@ -197,6 +199,12 @@ final class TournamentView
         ];
     }
 
+    /** A combined tournament (FormatOptions::$pairGame): its pairings list their chess and board games together. */
+    private function combined(): bool
+    {
+        return $this->tournament->formatOptions()->pairGame !== null;
+    }
+
     /** Whether this stage's pairings play two legs ({@see TournamentRunner::stagePlaysTwoLegs()}). */
     private function twoLegs(TournamentStage $stage): bool
     {
@@ -206,7 +214,11 @@ final class TournamentView
     /** Whether this stage's table counts the two legs game by game (FormatOptions::$legPoints, round-robin tables only). */
     private function perLeg(TournamentStage $stage): bool
     {
-        return TournamentRunner::choosesLegs((string) $this->tournament->game, $stage->format) && $this->tournament->formatOptions()->perLeg();
+        $options = $this->tournament->formatOptions();
+
+        // A combined tournament's round robin counts its two games like Blockli's legs (FormatOptions::$pairGame).
+        return (TournamentRunner::choosesLegs((string) $this->tournament->game, $stage->format) || ($options->pairGame !== null && $stage->format === TournamentFormat::RoundRobin))
+            && $options->perLeg();
     }
 
     /**
@@ -376,7 +388,7 @@ final class TournamentView
         $members = $first === null ? [] : ($this->participants->get($first)?->memberIds() ?? []);
 
         return array_map(fn (array $game): array => ['n' => $game['n'], 'href' => $game['href'], 'score' => $game['score'], 'live' => $game['live']],
-            self::pairingGames($match, $members, $this->boardGames?->get($match->id, new EloquentCollection)));
+            self::pairingGames($match, $members, $this->combined() ? null : $this->boardGames?->get($match->id, new EloquentCollection), $this->combined() ? $this->tournament : null));
     }
 
     /**
@@ -388,11 +400,12 @@ final class TournamentView
      *
      * @param  list<int>  $firstMembers
      * @param  Collection<int, BoardGame>|null  $games
+     * @param  Tournament|null  $combined  a combined tournament (FormatOptions::$pairGame): its chess games too
      * @return list<array{n: int, id: int, href: string, score: string|null, won: int|null, live: bool, game: string}>
      */
-    public static function pairingGames(TournamentMatch $match, array $firstMembers, ?Collection $games = null): array
+    public static function pairingGames(TournamentMatch $match, array $firstMembers, ?Collection $games = null, ?Tournament $combined = null): array
     {
-        if (! Route::has('board.show')) {
+        if (! Route::has('board.show') && $combined === null) {
             return [];
         }
 
@@ -400,29 +413,40 @@ final class TournamentView
             ->orderBy('id')->get(['id', 'tournament_match_id', 'game', 'status', 'result', 'white_id']))
             ->filter(fn (BoardGame $game): bool => $game->id > (int) $match->replaced_through)->values();
 
-        if ($games->count() < 2) {
+        $list = $games->all();
+
+        // A combined tournament (FormatOptions::$pairGame): its chess games stand among them, in the order played.
+        if ($combined !== null) {
+            $chess = ChessGame::query()->where('tournament_match_id', $match->id)->where('status', '!=', ChessGameStatus::Aborted)
+                ->where('id', '>', (int) $match->replaced_through)->orderBy('id')->get(['id', 'tournament_match_id', 'status', 'result', 'white_id']);
+            $list = TournamentRunner::inLegOrder($combined, [...$list, ...$chess->all()]);
+        }
+
+        if (count($list) < 2) {
             return [];
         }
 
-        return array_values($games->map(function (BoardGame $game, int $index) use ($firstMembers): array {
+        return array_map(function (BoardGame|ChessGame $game, int $index) use ($firstMembers): array {
+            $chess = $game instanceof ChessGame;
+            $finished = $chess ? $game->status === ChessGameStatus::Finished : $game->status === BoardGameStatus::Finished;
             $white = $game->white_id !== null && in_array((int) $game->white_id, $firstMembers, true);
-            $won = match ($game->status === BoardGameStatus::Finished ? $game->result : null) {
+            $won = match ($finished ? $game->result : null) {
                 '1-0' => $white ? 0 : 1,
                 '0-1' => $white ? 1 : 0,
                 default => null,
             };
-            $draw = $game->status === BoardGameStatus::Finished && $game->result === '1/2-1/2';
+            $draw = $finished && $game->result === '1/2-1/2';
 
             return [
                 'n' => $index + 1,
                 'id' => (int) $game->id,
-                'href' => route('board.show', $game->id),
+                'href' => $chess ? route('games.show', $game->id) : route('board.show', $game->id),
                 'score' => $draw ? '½–½' : ($won === null ? null : ($won === 0 ? '1–0' : '0–1')),
                 'won' => $won,
-                'live' => $game->status === BoardGameStatus::Active,
-                'game' => (string) $game->game,
+                'live' => $chess ? $game->status === ChessGameStatus::Active : $game->status === BoardGameStatus::Active,
+                'game' => $chess ? 'chess' : (string) $game->game,
             ];
-        })->all());
+        }, $list, array_keys($list));
     }
 
     /**

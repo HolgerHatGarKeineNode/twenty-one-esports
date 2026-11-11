@@ -342,7 +342,8 @@ final class Estimator
      */
     public static function matchGames(GameProfile $profile, FormatOptions $options, bool $table, bool $final = false): int
     {
-        if ($profile->playsTwoLegs()) {
+        // A combined tournament (FormatOptions::$pairGame) plays one game of each game per pairing.
+        if ($profile->playsTwoLegs() || $options->pairGame !== null) {
             return $table && $options->legs === 1 ? 1 : 2;
         }
 
@@ -371,7 +372,7 @@ final class Estimator
         // A two-leg game plays its legs one after the other (TournamentMatchMaker::needsBoardGame(): the next leg starts
         // when one ends). A correspondence slot is one game whatever the best-of, so its legs add up here (a Blockli
         // correspondence pairing was planned at one game of 30 days).
-        if ($profile->allAtOnce && $profile->playsTwoLegs()) {
+        if ($profile->allAtOnce && ($profile->playsTwoLegs() || $options->pairGame !== null)) {
             $oneGame = $slotOf;
             $slotOf = fn (int $games): float => $games * $oneGame(1);
         }

@@ -3,6 +3,7 @@
 namespace App\Support\Tournaments;
 
 use App\Games\BoardGame as BoardGameDefinition;
+use App\Games\Chess;
 use App\Games\GameRegistry;
 
 /**
@@ -65,8 +66,8 @@ final readonly class FormatOptions
      *                                                    ({@see FIRST_PLACE_TIE_SEED})
      * @param  string|null  $pairGame  A combined tournament (DerCaddy, 2026-11-11: "kombinierte Turniere … Blockli und
      *                                 Blockspace gegeneinander", one game of each per pairing): the second board game, whose
-     *                                 slug plays leg 2 and every other decider ({@see TournamentRunner::legGame()}); only
-     *                                 another board game with the tournament's mode ({@see pairGames()}), and the pairing
+     *                                 slug plays leg 2 and every other decider ({@see TournamentRunner::legGame()}); chess
+     *                                 or a board game with the tournament's mode ({@see pairGames()}), and the pairing
      *                                 always plays two legs. Null: one game, as before
      */
     public function __construct(
@@ -147,7 +148,7 @@ final readonly class FormatOptions
 
         $twoLegs = TournamentRunner::playsTwoLegs($profile->game);
         // A combined tournament's second game: only one the chooser offers for this game and mode, else none.
-        $pairGame = $twoLegs && in_array($values['pairGame'] ?? null, self::pairGames($profile), true) ? (string) $values['pairGame'] : null;
+        $pairGame = in_array($values['pairGame'] ?? null, self::pairGames($profile), true) ? (string) $values['pairGame'] : null;
         $bestOf = in_array((int) ($values['bestOf'] ?? 0), $profile->bestOfOptions, true) ? (int) $values['bestOf'] : $defaults->bestOf;
         $finalBestOf = in_array((int) ($values['finalBestOf'] ?? 0), $profile->bestOfOptions, true) ? (int) $values['finalBestOf'] : $defaults->finalBestOf;
 
@@ -191,7 +192,7 @@ final readonly class FormatOptions
             // the choice: they keep two games counted per pairing, as they were drawn, whatever the defaults become.
             // A combined tournament plays one game of each per pairing: always two.
             legs: $pairGame !== null ? 2 : ($twoLegs ? $int('legs', self::STORED_LEGS, 1, 2) : self::STORED_LEGS),
-            legPoints: $twoLegs && (bool) ($values['legPoints'] ?? self::STORED_LEG_POINTS),
+            legPoints: ($twoLegs || $pairGame !== null) && (bool) ($values['legPoints'] ?? self::STORED_LEG_POINTS),
             // Options stored without the key predate the choice: their ties stay with the seed order, as they were drawn
             // and paid out; anything else unknown takes the default.
             firstPlaceTie: ! array_key_exists('firstPlaceTie', $values) ? self::FIRST_PLACE_TIE_SEED : match ($values['firstPlaceTie']) {
@@ -205,15 +206,16 @@ final readonly class FormatOptions
     }
 
     /**
-     * The board games a tournament of this game and mode can be combined with ({@see $pairGame}): a tournament of a two-leg
-     * game (Blockli) takes any other switched-on board game for two (Blockspace, Nine Men's Morris, Checkers) that has the
-     * same mode; that game's leg replaces the return leg.
+     * The games a tournament of this game and mode can be combined with ({@see $pairGame}; DerCaddy, 2026-11-11: "Cooler
+     * wäre ja, wenn man jedes Spiel mit jedem Spiel kombinieren könnte"): every other switched-on game played one against
+     * one on the league server with a result of win, loss or draw ({@see combinable()}: chess and the board games) that
+     * has the same mode, in the league's order. Series, lobbies and score games combine with nothing.
      *
      * @return list<string>
      */
     public static function pairGames(GameProfile $profile): array
     {
-        if (! TournamentRunner::playsTwoLegs($profile->game)) {
+        if (! self::combinable($profile->game)) {
             return [];
         }
 
@@ -221,8 +223,16 @@ final readonly class FormatOptions
 
         return array_values(array_filter(
             array_map(fn ($game): string => $game->slug(), $registry->all()),
-            fn (string $slug): bool => $slug !== $profile->game && $registry->find($slug) instanceof BoardGameDefinition && $registry->mode($slug, $profile->mode) !== null,
+            fn (string $slug): bool => $slug !== $profile->game && self::combinable($slug) && $registry->mode($slug, $profile->mode) !== null,
         ));
+    }
+
+    /** A game a combined tournament can play ({@see pairGames()}): chess or a board game, both played here, one against one. */
+    public static function combinable(string $slug): bool
+    {
+        $game = app(GameRegistry::class)->find($slug);
+
+        return $game instanceof Chess || $game instanceof BoardGameDefinition;
     }
 
     /**
