@@ -201,7 +201,7 @@ final class TournamentMatrix
             };
         }
 
-        $board = ($this->boardGames[$match->id] ?? new EloquentCollection)->filter(fn (BoardGame $game): bool => $game->id > (int) $match->replaced_through);
+        $board = ($this->boardGames[$match->id] ?? new EloquentCollection)->filter(fn (BoardGame $game): bool => $game->id > $match->boardReplacedThrough());
         $chess = ($this->chessGames[$match->id] ?? new EloquentCollection);
         $active = $board->first(fn (BoardGame $game): bool => $game->status === BoardGameStatus::Active)
             ?? $chess->first(fn (ChessGame $game): bool => $game->status === ChessGameStatus::Active);
@@ -289,7 +289,7 @@ final class TournamentMatrix
         }
 
         $finished = ($this->boardGames[$match->id] ?? new EloquentCollection)
-            ->filter(fn (BoardGame $game): bool => $game->id > (int) $match->replaced_through && $game->status === BoardGameStatus::Finished);
+            ->filter(fn (BoardGame $game): bool => $game->id > $match->boardReplacedThrough() && $game->status === BoardGameStatus::Finished);
 
         if ($finished->isEmpty()) {
             return ['–', '–'];

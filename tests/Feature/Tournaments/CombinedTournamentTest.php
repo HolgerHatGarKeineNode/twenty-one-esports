@@ -427,7 +427,57 @@ test('a restarted round replays the whole combined pairing, even when the chess 
 
     expect(TournamentRunner::finishedLegs($match, $tournament))->toHaveCount(0)
         ->and(combinedLive($tournament))->toBeInstanceOf(ChessGame::class);
-})->skip('P4: voids per table — restartRound sets replaced_through to the board id and keeps the higher chess id of leg 1');
+});
+
+test('a held combined final sets both of its legs aside, even when the board ids run ahead of the chess ids', function () {
+    // The mirror of the restart above: hold() took the chess game's id, which a board table running ahead outnumbers.
+    $outsiders = User::factory()->count(2)->create();
+
+    foreach (range(1, 50) as $ignored) {
+        BoardGame::query()->create(['game' => 'blockli', 'mode' => 'blitz', 'white_id' => $outsiders[0]->id, 'black_id' => $outsiders[1]->id, 'status' => 'aborted',
+            'position' => '-', 'turn' => 'w', 'ply' => 0, 'initial_ms' => 300000, 'increment_ms' => 3000, 'white_ms' => 1, 'black_ms' => 1, 'turn_started_ms' => 0]);
+    }
+
+    $tournament = Tournament::factory()->create([
+        'game' => 'chess', 'mode' => 'blitz', 'format' => TournamentFormat::SingleElimination, 'capacity' => 4,
+        'options' => FormatOptions::fromArray(['games' => ['chess', 'blockli'], 'thirdPlace' => false], GameProfile::for('chess', 'blitz'))->toArray(),
+        'results_mode' => TournamentResultsMode::Players, 'status' => TournamentStatus::Running, 'slug' => 'combined-hold',
+    ]);
+
+    foreach (range(1, 4) as $index) {
+        $player = User::factory()->create();
+        TournamentParticipant::query()->create(['tournament_id' => $tournament->id, 'user_id' => $player->id, 'name' => "Player {$index}", 'rating' => 1500 - 10 * $index, 'members' => [$player->id]]);
+    }
+
+    app(TournamentBrackets::class)->generate($tournament, str_repeat('cd', 32));
+    $round = fn (int $number) => $tournament->matches()->where('bracket', '!=', 'bye')->whereHas('round', fn ($query) => $query->where('number', $number))
+        ->with('slots.participant', 'tournament')->orderBy('position')->get();
+
+    // Every pairing plays chess, then Blockli: the higher seed wins both.
+    foreach ([1, 2] as $number) {
+        foreach ([ChessGame::class, BoardGame::class] as $table) {
+            app(TournamentRunner::class)->sync($tournament->refresh());
+
+            foreach ($round($number) as $match) {
+                $leg = $table::query()->where('tournament_match_id', $match->id)->where('status', 'active')->sole();
+                $loser = User::query()->findOrFail($match->slots[1]->participant->memberIds()[0]);
+                $leg instanceof ChessGame ? app(ChessGameService::class)->resign($leg, $loser) : app(BoardGameService::class)->resign($leg, $loser);
+            }
+        }
+    }
+
+    $final = fn () => $round(2)->sole();
+
+    expect($final()->result)->not->toBeNull()
+        ->and(BoardGame::query()->where('tournament_match_id', $final()->id)->value('id'))->toBeGreaterThan(ChessGame::query()->where('tournament_match_id', $final()->id)->value('id'));
+
+    $admin = User::factory()->create();
+    Admin::query()->create(['pubkey' => $admin->pubkey]);
+    app(TournamentControl::class)->setResult($tournament->refresh(), $admin, $round(1)[0]->id, ['result' => '0-1'], 'The scoresheet said otherwise');
+
+    expect($final()->held)->not->toBeNull()
+        ->and(TournamentRunner::finishedLegs($final(), $tournament->refresh()))->toHaveCount(0);
+});
 
 test('the live matrix counts a finished chess leg of a combined pairing', function () {
     $tournament = combinedTournament('chess', 'blockli', 'blitz', TournamentFormat::RoundRobin);

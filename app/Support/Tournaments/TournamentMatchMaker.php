@@ -375,7 +375,7 @@ final class TournamentMatchMaker
     public static function lastLeg(TournamentMatch $match, Tournament $tournament): BoardGame|ChessGame|null
     {
         $latest = fn (BoardGame|ChessGame $model): BoardGame|ChessGame|null => $model->newQuery()->where('tournament_match_id', $match->id)
-            ->where('id', '>', (int) $match->replaced_through)->orderByDesc('tournament_leg')->orderByDesc('id')->first();
+            ->where('id', '>', $model instanceof ChessGame ? (int) $match->replaced_through : $match->boardReplacedThrough())->orderByDesc('tournament_leg')->orderByDesc('id')->first();
         $chess = $latest(new ChessGame);
         $board = $latest(new BoardGame);
 
@@ -603,7 +603,7 @@ final class TournamentMatchMaker
         // Slot 0 has White; a knockout replay after a draw swaps the colours, a restart keeps them. Two legs
         // (plan "Blockli", P4): the second leg swaps them too; the first decider after 1:1 draws them by lot, in the
         // tournament's own mode (user, 2026-10-07: the board games are correspondence only, so no blitz decider).
-        $last = $match->boardGame !== null && ! $match->isReplaced($match->boardGame->id) ? $match->boardGame : null;
+        $last = $match->boardGame !== null && ! $match->isBoardReplaced($match->boardGame->id) ? $match->boardGame : null;
         $swap = $last !== null && ($last->status === BoardGameStatus::Aborted ? $last->white_id !== $first->id : $last->white_id === $first->id);
         $mode = $tournament->mode;
 

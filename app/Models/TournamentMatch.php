@@ -44,6 +44,7 @@ use Illuminate\Support\Carbon;
  * @property array{gate?: array<string, mixed>|null, clans?: array<string, string>, ladder?: string|null}|null $pairing what the league read at the pairing of a director chess match (the ladder since P8c)
  * @property array{was: array<string, mixed>, reason: string, at: string, user_id: int|null, name: string}|null $held a played result set aside after a correction it depended on (P18, TournamentControl); the match waits for a decision
  * @property int|null $replaced_through the last series or chess game of this match that no longer counts (voided or superseded by the league, P18); only a newer one is played
+ * @property int|null $replaced_board_through the last board game of a combined tournament's pairing that no longer counts (FormatOptions::$games): its chess and board games run on two id sequences; null elsewhere ({@see boardReplacedThrough()})
  * @property array{by: int, proposals: list<int>, respond_by: int, agreed_at: int|null, accepted_by: int|null}|null $schedule a casual cup series match's proposed and agreed start (P25 S3, CupSchedules)
  * @property array<string, mixed>|null $lobby a lobby tournament's lobby (P10, App\Support\Tournaments\Lobbies): its settings as fixed at the draw, `name` and `report_by`
  * @property string|null $lobby_password the lobby's password, encrypted at rest, for its players and the directors only
@@ -60,13 +61,13 @@ use Illuminate\Support\Carbon;
  * @property-read HyperMatch|null $hyperMatch
  * @property-read PongMatch|null $pongMatch
  */
-#[Fillable(['tournament_id', 'tournament_round_id', 'key', 'group', 'bracket', 'position', 'if_needed', 'status', 'result', 'pairing', 'held', 'replaced_through', 'schedule', 'lobby', 'lobby_password', 'lobby_report', 'lineups'])]
+#[Fillable(['tournament_id', 'tournament_round_id', 'key', 'group', 'bracket', 'position', 'if_needed', 'status', 'result', 'pairing', 'held', 'replaced_through', 'replaced_board_through', 'schedule', 'lobby', 'lobby_password', 'lobby_report', 'lineups'])]
 #[Hidden(['lobby_password', 'lobby_report'])]
 class TournamentMatch extends Model
 {
     protected function casts(): array
     {
-        return ['group' => 'integer', 'position' => 'integer', 'if_needed' => 'boolean', 'result' => 'array', 'pairing' => 'array', 'held' => 'array', 'replaced_through' => 'integer', 'schedule' => 'array',
+        return ['group' => 'integer', 'position' => 'integer', 'if_needed' => 'boolean', 'result' => 'array', 'pairing' => 'array', 'held' => 'array', 'replaced_through' => 'integer', 'replaced_board_through' => 'integer', 'schedule' => 'array',
             'lobby' => 'array', 'lobby_password' => 'encrypted', 'lobby_report' => 'array', 'lineups' => 'array'];
     }
 
@@ -165,6 +166,22 @@ class TournamentMatch extends Model
     public function isReplaced(?int $id): bool
     {
         return $id !== null && $this->replaced_through !== null && $id <= $this->replaced_through;
+    }
+
+    /**
+     * The last board game of this match that no longer counts: a combined tournament's pairing keeps its own
+     * (`replaced_board_through`), as its chess and board games run on two id sequences; every other match covers its
+     * board games with `replaced_through`. 0 = none.
+     */
+    public function boardReplacedThrough(): int
+    {
+        return (int) ($this->replaced_board_through ?? $this->replaced_through);
+    }
+
+    /** Whether a board game (by id) is one the league voided or superseded for this match ({@see boardReplacedThrough()}). */
+    public function isBoardReplaced(?int $id): bool
+    {
+        return $id !== null && $id <= $this->boardReplacedThrough();
     }
 
     public function isDirectorResult(): bool

@@ -197,7 +197,7 @@ final class CupMatchNow
 
         [$state, $href] = match (true) {
             $chess !== null && ! $match->isReplaced($chess->id) && $chess->isActive() => $chess->isCorrespondence() ? [null, null] : ['live', route('games.show', $chess)],
-            $board !== null && ! $match->isReplaced($board->id) && $board->isActive() => $board->isCorrespondence() ? [null, null] : ['live', route('board.show', $board)],
+            $board !== null && ! $match->isBoardReplaced($board->id) && $board->isActive() => $board->isCorrespondence() ? [null, null] : ['live', route('board.show', $board)],
             $series !== null && ! $match->isReplaced($series->id) && $series->status === SeriesStatus::Accepted => [self::seriesState($series), route('matches.room', $series)],
             $series !== null && ! $match->isReplaced($series->id) && $series->status->isRunning() => [null, null],
             default => ['waiting', route('tournaments.show', $match->tournament)],

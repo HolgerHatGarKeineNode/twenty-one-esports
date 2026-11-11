@@ -1309,7 +1309,7 @@ final class CasualCups
 
         $board = $match->boardGame;
 
-        if ($board !== null && ! $match->isReplaced($board->id) && $board->status === BoardGameStatus::Active) {
+        if ($board !== null && ! $match->isBoardReplaced($board->id) && $board->status === BoardGameStatus::Active) {
             return true;
         }
 
@@ -1445,7 +1445,7 @@ final class CasualCups
             }
         }
 
-        foreach (BoardGameModel::query()->where('tournament_match_id', $match->id)->where('id', '>', (int) $match->replaced_through)->get() as $board) {
+        foreach (BoardGameModel::query()->where('tournament_match_id', $match->id)->where('id', '>', $match->boardReplacedThrough())->get() as $board) {
             if ($board->ply >= 1) {
                 $acted[] = $board->white_id;
             }

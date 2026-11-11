@@ -411,7 +411,7 @@ final class TournamentView
 
         $games = ($games ?? BoardGame::query()->where('tournament_match_id', $match->id)->where('status', '!=', BoardGameStatus::Aborted)
             ->orderBy('id')->get(['id', 'tournament_match_id', 'game', 'status', 'result', 'white_id', 'tournament_leg']))
-            ->filter(fn (BoardGame $game): bool => $game->id > (int) $match->replaced_through)->values();
+            ->filter(fn (BoardGame $game): bool => $game->id > $match->boardReplacedThrough())->values();
 
         $list = $games->all();
 

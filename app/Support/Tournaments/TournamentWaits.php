@@ -140,7 +140,7 @@ final class TournamentWaits
 
         $board = $match->boardGame;
 
-        if ($board !== null && ! $match->isReplaced($board->id) && $board->status === BoardGameStatus::Active) {
+        if ($board !== null && ! $match->isBoardReplaced($board->id) && $board->status === BoardGameStatus::Active) {
             return self::board($base, $board);
         }
 

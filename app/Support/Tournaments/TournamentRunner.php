@@ -517,7 +517,7 @@ final class TournamentRunner
         $game = BoardGame::query()->with('tournamentMatch.tournament', 'tournamentMatch.round.stage', 'tournamentMatch.slots.participant')->find($boardGameId);
         $match = $game?->tournamentMatch;
 
-        if ($game === null || $match === null || $match->tournament->isDirectorMode() || $match->result !== null || $game->status !== BoardGameStatus::Finished || $match->isReplaced($game->id)) {
+        if ($game === null || $match === null || $match->tournament->isDirectorMode() || $match->result !== null || $game->status !== BoardGameStatus::Finished || $match->isBoardReplaced($game->id)) {
             return;
         }
 
@@ -767,7 +767,7 @@ final class TournamentRunner
         $game = BoardGame::query()->with('tournamentMatch.tournament', 'tournamentMatch.round.stage', 'tournamentMatch.slots.participant')->find($boardGameId);
         $match = $game?->tournamentMatch;
 
-        if ($game === null || $match === null || $match->tournament->isDirectorMode() || $match->result !== null || $game->status !== BoardGameStatus::Aborted || $match->isReplaced($game->id)) {
+        if ($game === null || $match === null || $match->tournament->isDirectorMode() || $match->result !== null || $game->status !== BoardGameStatus::Aborted || $match->isBoardReplaced($game->id)) {
             return;
         }
 
@@ -882,7 +882,7 @@ final class TournamentRunner
      */
     public static function abortedInLeg(TournamentMatch $match, BoardGame|ChessGame $game): int
     {
-        return $game->newQuery()->where('tournament_match_id', $match->id)->where('id', '>', (int) $match->replaced_through)
+        return $game->newQuery()->where('tournament_match_id', $match->id)->where('id', '>', $game instanceof ChessGame ? (int) $match->replaced_through : $match->boardReplacedThrough())
             ->where('tournament_leg', $game->tournament_leg)->where('status', $game instanceof ChessGame ? ChessGameStatus::Aborted : BoardGameStatus::Aborted)->count();
     }
 
@@ -943,7 +943,7 @@ final class TournamentRunner
      */
     public static function finishedBoardGames(TournamentMatch $match): Collection
     {
-        return BoardGame::query()->where('tournament_match_id', $match->id)->where('id', '>', (int) $match->replaced_through)
+        return BoardGame::query()->where('tournament_match_id', $match->id)->where('id', '>', $match->boardReplacedThrough())
             ->where('status', BoardGameStatus::Finished)->orderBy('id')->get();
     }
 
@@ -1121,14 +1121,14 @@ final class TournamentRunner
     /** Knockout draws of a board game match so far (since the league last voided or superseded its games). */
     public static function drawnBoardGames(TournamentMatch $match): int
     {
-        return BoardGame::query()->where('tournament_match_id', $match->id)->where('id', '>', (int) $match->replaced_through)
+        return BoardGame::query()->where('tournament_match_id', $match->id)->where('id', '>', $match->boardReplacedThrough())
             ->where('status', BoardGameStatus::Finished)->where('result', '1/2-1/2')->count();
     }
 
     /** Games of a board game match aborted because White missed the first move. */
     public static function abortedBoardGames(TournamentMatch $match): int
     {
-        return BoardGame::query()->where('tournament_match_id', $match->id)->where('id', '>', (int) $match->replaced_through)
+        return BoardGame::query()->where('tournament_match_id', $match->id)->where('id', '>', $match->boardReplacedThrough())
             ->where('status', BoardGameStatus::Aborted)->count();
     }
 
@@ -1226,7 +1226,7 @@ final class TournamentRunner
                 continue;
             }
 
-            if ($match->boardGame !== null && $match->boardGame->status === BoardGameStatus::Active && ! $match->isReplaced($match->boardGame->id)) {
+            if ($match->boardGame !== null && $match->boardGame->status === BoardGameStatus::Active && ! $match->isBoardReplaced($match->boardGame->id)) {
                 continue;
             }
 

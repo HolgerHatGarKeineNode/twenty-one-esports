@@ -557,8 +557,67 @@ final class TournamentControl
                 'user_id' => $actor->id,
                 'name' => $actor->displayName(),
             ],
-            'replaced_through' => max((int) $match->replaced_through, (int) ($match->seriesMatch->id ?? $match->chessGame->id ?? $match->boardGame->id ?? $match->hyperMatch->id ?? $match->pongMatch?->id)),
+            // A combined pairing plays on two tables: every game of both is set aside (sequenceWatermarks()).
+            ...($this->playsSequence($match) ? $this->sequenceWatermarks($match) : [
+                'replaced_through' => max((int) $match->replaced_through, (int) ($match->seriesMatch->id ?? $match->chessGame->id ?? $match->boardGame->id ?? $match->hyperMatch->id ?? $match->pongMatch?->id)),
+            ]),
         ])->save();
+    }
+
+    /** Whether the match belongs to a combined tournament (FormatOptions::$games), whose pairings play chess and board games. */
+    private function playsSequence(TournamentMatch $match): bool
+    {
+        return $match->loadMissing('tournament')->tournament->formatOptions()->sequence();
+    }
+
+    /**
+     * The watermarks that set aside every game a combined pairing played so far, on both of its tables: the chess
+     * games (`replaced_through`) and the board games (`replaced_board_through`) run on two id sequences, so each table
+     * keeps its own. The whole pairing replays, leg 1 first (user, 2026-11-11), as one game's void always did.
+     *
+     * @return array{replaced_through: int, replaced_board_through: int}
+     */
+    private function sequenceWatermarks(TournamentMatch $match): array
+    {
+        return [
+            'replaced_through' => max((int) $match->replaced_through, (int) ChessGame::query()->where('tournament_match_id', $match->id)->max('id')),
+            'replaced_board_through' => max((int) $match->replaced_board_through, (int) BoardGame::query()->where('tournament_match_id', $match->id)->max('id')),
+        ];
+    }
+
+    /**
+     * Void a combined pairing (FormatOptions::$games): its live leg, chess or board game, ends unrated, and every game
+     * it played so far, the finished legs too, no longer counts ({@see sequenceWatermarks()}); the next run starts the
+     * sequence again. True if a game of the pairing was set aside.
+     */
+    private function voidSequence(TournamentMatch $match): bool
+    {
+        $chess = ChessGame::query()->where('tournament_match_id', $match->id)->where('id', '>', (int) $match->replaced_through)
+            ->where('status', ChessGameStatus::Active)->first();
+        $board = BoardGame::query()->where('tournament_match_id', $match->id)->where('id', '>', (int) $match->replaced_board_through)
+            ->where('status', BoardGameStatus::Active)->first();
+
+        if ($chess !== null) {
+            try {
+                $this->chess->void($chess);
+            } catch (ChessRuleViolation) {
+                // It ended on its own a moment ago: superseded all the same.
+            }
+        }
+
+        if ($board !== null) {
+            try {
+                $this->boards->void($board);
+            } catch (BoardRuleViolation) {
+                // It ended on its own a moment ago: superseded all the same.
+            }
+        }
+
+        $watermarks = $this->sequenceWatermarks($match);
+        $setAside = $watermarks['replaced_through'] > (int) $match->replaced_through || $watermarks['replaced_board_through'] > (int) $match->replaced_board_through;
+        $match->forceFill($watermarks)->save();
+
+        return $setAside;
     }
 
     /**
@@ -568,6 +627,10 @@ final class TournamentControl
      */
     private function voidPlay(TournamentMatch $match, string $reason): bool
     {
+        if ($this->playsSequence($match)) {
+            return $this->voidSequence($match);
+        }
+
         $series = $this->current($match, $match->seriesMatch);
 
         if ($series !== null && $series->status->isRunning()) {
@@ -652,7 +715,7 @@ final class TournamentControl
     {
         $board = $match->boardGame()->first();
 
-        if ($board === null || $match->isReplaced($board->id) || $board->status !== BoardGameStatus::Active) {
+        if ($board === null || $match->isBoardReplaced($board->id) || $board->status !== BoardGameStatus::Active) {
             return false;
         }
 
@@ -678,7 +741,7 @@ final class TournamentControl
      */
     private function current(TournamentMatch $match, SeriesMatch|ChessGame|BoardGame|null $played): SeriesMatch|ChessGame|BoardGame|null
     {
-        return $played === null || $match->isReplaced($played->id) ? null : $played;
+        return $played === null || ($played instanceof BoardGame ? $match->isBoardReplaced($played->id) : $match->isReplaced($played->id)) ? null : $played;
     }
 
     /**
@@ -825,7 +888,7 @@ final class TournamentControl
         foreach ($matches as $match) {
             $series = $this->current($match, $match->seriesMatch);
             $game = $this->current($match, $match->chessGame);
-            $board = $match->boardGame !== null && ! $match->isReplaced($match->boardGame->id) ? $match->boardGame : null;
+            $board = $match->boardGame !== null && ! $match->isBoardReplaced($match->boardGame->id) ? $match->boardGame : null;
             $hyper = $match->hyperMatch !== null && ! $match->isReplaced($match->hyperMatch->id) && $match->hyperMatch->isActive() ? $match->hyperMatch : null;
             $running = ($series !== null && $series->status->isRunning()) || ($game !== null && $game->status === ChessGameStatus::Active)
                 || ($board !== null && $board->status === BoardGameStatus::Active) || $hyper !== null;
