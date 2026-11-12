@@ -660,6 +660,15 @@ registerAlpine(() => {
             return this.settingBlock && this.preview !== null && this.pointerType !== 'mouse';
         },
 
+        /**
+         * While a block is being set, the toggle says what its click does: "Move the pawn", as the button in the phone's bar
+         * (DerCaddy, 2026-11-12: on a desktop a block shown but not set still read "Set a block"). From lg it stands in for that
+         * button. The keys keep "Set a block": Enter on the toggle sets the block they show.
+         */
+        get toggleMoves() {
+            return this.settingBlock && this.pointerType !== 'keyboard';
+        },
+
         /** The bar's line: whose move it is, and in set-a-block mode what to do (the hint, red where no block fits); a take-back for a moment. */
         get barLine() {
             return this.settingBlock ? this.blockHint : this.noticeShown ? this.notice : this.statusLine;

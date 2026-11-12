@@ -266,6 +266,8 @@ test('while a block is shown, Rotate, Confirm and Move the pawn stand in Blockli
     fwrite(STDERR, PHP_EOL."[bar buttons {$width}] ".json_encode($buttons).PHP_EOL);
 
     expect(collect($buttons)->pluck('test')->all())->toBe($touch ? ['rotate-block', 'set-block', 'mode-move'] : ['mode-block'])
+        // A block shown but not set: the toggle says what its click does, as the phone's button (DerCaddy, 2026-11-12).
+        ->and(collect($buttons)->pluck('text')->all())->toBe($touch ? ['Drehen', 'Bestätigen', 'Figur bewegen'] : ['Figur bewegen'])
         ->and(collect($buttons)->every(fn (array $b): bool => $b['h'] >= 44))->toBeTrue()
         ->and(collect($buttons)->where('filled', true)->pluck('test')->all())->toBe($touch ? ['set-block'] : [])
         ->and(collect($buttons)->where('lines', '>', 1)->pluck('text')->all())->toBe([])

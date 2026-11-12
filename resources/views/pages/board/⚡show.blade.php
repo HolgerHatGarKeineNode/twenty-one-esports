@@ -506,7 +506,9 @@ new #[Layout('layouts::app', ['realtime' => true, 'scripts' => ['resources/js/bo
                      phone a bar of one row fixed above the chat sheet (P2), which changes what it holds: whose move it is and "Set a
                      block"; in set-a-block mode what to do; with a block shown Rotate, Confirm and Move the pawn. The row never grows, so
                      the board keeps its height (DerCaddy, 2026-10-10). On a desktop the head of this column: the toggle, the hint under
-                     it, and the three buttons for a finger or the keys (a mouse sets with its click, R turns). --}}
+                     it, and the three buttons for a finger or the keys (a mouse sets with its click, R turns). While a block is being
+                     set the toggle reads "Move the pawn", as the phone's button (DerCaddy, 2026-11-12), and from lg stands in for it;
+                     the keys keep "Set a block", Enter on it sets the block they show. --}}
                 <template x-if="layout.input === 'blocks' && color && state.status === 'active'">
                     <div @class(['flex flex-col gap-2 max-lg:fixed max-lg:inset-x-0 max-lg:z-20 max-lg:flex-row max-lg:items-center max-lg:gap-3 max-lg:border-t max-lg:border-line max-lg:bg-bar max-lg:px-4 max-lg:py-1.5 max-lg:shadow-[0_-16px_32px_rgba(10,10,11,.8)]', $chat ? 'max-lg:bottom-[72px]' : 'max-lg:bottom-0']) x-ref="dock" data-page-bar data-test="block-input">
                         {{-- The line: on a phone whose move it is (the status chip gives way to the bar), in set-a-block mode the hint;
@@ -516,9 +518,9 @@ new #[Layout('layouts::app', ['realtime' => true, 'scripts' => ['resources/js/bo
                            x-text="barLine" data-test="block-status"></p>
                         <button type="button" class="inline-flex h-11 shrink-0 cursor-pointer items-center justify-center gap-2 rounded-md px-[18px] text-[13px] disabled:cursor-default disabled:opacity-50 lg:order-1 lg:w-full"
                                 :class="[blockMode ? 'border border-btc bg-btc-press font-bold text-btc-hi' : 'btn-w border border-line bg-well text-ink', blockButtons ? 'max-lg:hidden' : '']"
-                                :aria-pressed="blockMode ? 'true' : 'false'" :disabled="!myTurn || !canSetBlocks" x-on:click="setBlockMode(!blockMode, $event)" aria-keyshortcuts="ArrowUp ArrowDown ArrowLeft ArrowRight R Enter Escape"
+                                :aria-pressed="toggleMoves ? null : (blockMode ? 'true' : 'false')" :disabled="!myTurn || !canSetBlocks" x-on:click="setBlockMode(!blockMode, $event)" aria-keyshortcuts="ArrowUp ArrowDown ArrowLeft ArrowRight R Enter Escape"
                                 x-show="!canTakeBack" data-test="mode-block">
-                            {{ __('Set a block') }} <span class="tabular-nums" x-text="blocksLeft"></span>
+                            <span x-show="!toggleMoves">{{ __('Set a block') }} <span class="tabular-nums" x-text="blocksLeft"></span></span><span x-show="toggleMoves" x-cloak>{{ __('Move the pawn') }}</span>
                         </button>
                         {{-- Right after the player's own move, until the opponent answers: take it back, with the seconds left (BoardGameService::takeBack();
                              DerCaddy and the players, 2026-10-15: a misclick, 21 seconds, no accept step). In the toggle's place, which is off then anyway. --}}
@@ -534,7 +536,7 @@ new #[Layout('layouts::app', ['realtime' => true, 'scripts' => ['resources/js/bo
                             <button type="button" class="inline-flex h-11 grow cursor-pointer items-center justify-center rounded-md bg-btc px-2 text-xs whitespace-nowrap min-[360px]:text-[13px] font-bold text-on-btc btn-p hover:text-on-btc disabled:cursor-default disabled:opacity-50"
                                     x-bind:disabled="!preview || !preview.move" x-on:click="setBlock()" data-test="set-block">{{ __('Confirm') }}</button>
                             <button type="button" class="inline-flex h-11 grow cursor-pointer items-center justify-center rounded-md border border-edge px-2 text-xs whitespace-nowrap min-[360px]:text-[13px] text-ink btn-s hover:text-ink"
-                                    x-on:click="setBlockMode(false)" data-test="mode-move">{{ __('Move the pawn') }}</button>
+                                    :class="toggleMoves ? 'lg:hidden' : ''" x-on:click="setBlockMode(false)" data-test="mode-move">{{ __('Move the pawn') }}</button>
                         </div>
                         {{-- Always in the page, so a screen reader hears each new hint (the keys say where the block is). --}}
                         <p class="sr-only" role="status" aria-live="polite" x-text="blockHint" data-test="block-hint"></p>
