@@ -1,6 +1,6 @@
 @blaze
 
-@props(['game', 'size' => 'card', 'loading' => 'lazy'])
+@props(['game', 'size' => 'card', 'loading' => 'lazy', 'games' => []])
 
 {{--
     The cover art of a registered game (GameRegistry::cover()), 16:9, as WebP
@@ -12,6 +12,9 @@
     letterboxed on the well colour instead of losing its edges.
     `loading="eager"` for a cover at the top of a page (it is then fetched first).
     An unknown game gets a neutral tile with its name, never a broken image.
+    `games` (Tournament::coverGames()): a combined tournament's games, two or more. Their covers are cards laid over one
+    another from the top left to the bottom right, each whole (App\Support\Cards\CoverStack, as on its link
+    preview); `game` stays the first (DerCaddy, 2026-11-12).
 --}}
 @php
     $registry = app(\App\Games\GameRegistry::class);
@@ -29,7 +32,17 @@
     $srcset = fn (string $format): string => $cover === null ? '' : implode(', ', array_map(fn (int $width): string => asset($cover->path($width, $format)).' '.$width.'w', $cover->widths));
 @endphp
 
-@if ($cover !== null)
+@php($combined = array_values(array_unique(array_filter((array) $games, 'is_string'))))
+@if (count($combined) >= 2)
+    <span role="img" aria-label="{{ __(':games covers', ['games' => implode(' + ', array_map(fn (string $slug): string => \App\Support\GameNames::game($slug), $combined))]) }}"
+          {{ $attributes->class('relative block aspect-video shrink-0 overflow-hidden bg-ground')->merge(['data-game-cover' => implode('+', $combined)]) }} data-combined-cover>
+        @foreach ($combined as $index => $slug)
+            {{-- Each card on top of the one before, framed in the ground so it stands apart. --}}
+            <x-game-cover :game="$slug" :size="$size" :loading="$loading" style="{{ \App\Support\Cards\CoverStack::style($index, count($combined)) }}"
+                          class="absolute rounded-[inherit] [&_img]:object-cover {{ $index > 0 ? 'shadow-[0_0_0_2px_var(--color-ground)]' : '' }}" />
+        @endforeach
+    </span>
+@elseif ($cover !== null)
     <picture {{ $attributes->class('block aspect-video shrink-0 overflow-hidden bg-well')->merge(['data-game-cover' => $game]) }}>
         <source type="image/webp" srcset="{{ $srcset('webp') }}" sizes="{{ $sizes }}">
         <img src="{{ asset($cover->path($cover->smallest(), 'jpg')) }}" srcset="{{ $srcset('jpg') }}" sizes="{{ $sizes }}"

@@ -166,6 +166,8 @@ final class ShareMoments
             'places' => $places['places'],
             // The cover's file name, not just whether there is one: a new cover file draws a new card.
             'cover' => ($cover = app(GameRegistry::class)->coverPath($tournament->game)) === null ? null : basename($cover),
+            // A combined tournament: every game of its sequence, its picture combines their covers (CoverSlices).
+            'games' => count($games = $tournament->coverGames()) >= 2 ? $games : [],
             // The prize pot as the tournament page shows it (P9): the pot, and in fixed mode what 1st place wins; null without an open pot.
             'pot' => $pot = ($tournament->pool_opened_at === null ? null : app(PrizePool::class)->potSats($tournament)),
             'first_prize' => $pot !== null && $tournament->prizeMode() === Tournament::PRIZES_FIXED ? ($tournament->prizeFixed()[0] ?? null) : null,

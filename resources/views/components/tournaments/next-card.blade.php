@@ -27,7 +27,7 @@
 <section aria-labelledby="{{ $headingId }}" {{ $attributes->class('grid overflow-hidden rounded-card bg-card shadow-ring-hairline lg:grid-cols-[minmax(0,7fr)_minmax(0,5fr)]') }}
          data-test="next-tournament" data-tournament="{{ $tournament->id }}">
     <a href="{{ $show }}" class="block bg-well" tabindex="-1" aria-hidden="true">
-        <x-game-cover :game="$tournament->game" size="hero" loading="eager" class="w-full lg:aspect-auto lg:h-full lg:min-h-full lg:[&_img]:object-cover" data-test="next-tournament-cover" />
+        <x-game-cover :game="$tournament->game" :games="$tournament->coverGames()" size="hero" loading="eager" class="w-full lg:aspect-auto lg:h-full lg:min-h-full lg:[&_img]:object-cover" data-test="next-tournament-cover" />
     </a>
 
     <div class="flex min-w-0 flex-col gap-4 p-4 sm:p-6 lg:justify-center lg:gap-5 lg:p-8">

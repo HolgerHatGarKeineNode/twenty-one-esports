@@ -25,7 +25,7 @@
 @endphp
 
 <section aria-labelledby="hero-h" class="rv-band lg:h-[300px]" data-test="home-hero" data-tournament="{{ $tournament->id }}">
-    <x-game-cover :game="$tournament->game" size="hero" loading="eager" class="mx-4 mt-4 rounded-[4px] lg:absolute lg:top-0 lg:right-0 lg:m-0 lg:h-[300px] lg:rounded-none [&_img]:object-cover" />
+    <x-game-cover :game="$tournament->game" :games="$tournament->coverGames()" size="hero" loading="eager" class="mx-4 mt-4 rounded-[4px] lg:absolute lg:top-0 lg:right-0 lg:m-0 lg:h-[300px] lg:rounded-none [&_img]:object-cover" />
     <div class="absolute inset-0 hidden bg-[linear-gradient(90deg,#0A0A0B_48%,rgba(10,10,11,.15)_80%,rgba(10,10,11,.6))] lg:block" aria-hidden="true"></div>
 
     <div class="relative mx-auto flex w-full max-w-[1440px] flex-col gap-3 p-4 lg:px-12 lg:py-7">

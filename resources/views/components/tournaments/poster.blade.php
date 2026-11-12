@@ -39,7 +39,7 @@
 <section aria-labelledby="{{ $headingId }}" {{ $attributes->class('grid gap-4 rounded-card bg-card p-4 shadow-ring lg:grid-cols-[minmax(0,5fr)_minmax(0,7fr)] lg:items-center lg:gap-8 lg:p-6') }} data-test="next-tournament" data-tournament="{{ $tournament->id }}">
     <div class="flex min-w-0 flex-col gap-2">
         <a href="{{ $show }}" class="hh-cover block" tabindex="-1" aria-hidden="true">
-            <x-game-cover :game="$tournament->game" size="card" class="w-full rounded-md" data-test="next-tournament-cover" />
+            <x-game-cover :game="$tournament->game" :games="$tournament->coverGames()" size="card" class="w-full rounded-md" data-test="next-tournament-cover" />
         </a>
         <p class="m-0 flex flex-wrap gap-1.5 text-xs font-bold">
             <span class="inline-flex h-7 items-center gap-1.5 rounded-tag bg-btc-chip px-2.5 text-btc-hi"><x-icon name="trophy" :size="14" />{{ __('Next tournament') }}</span>

@@ -266,7 +266,7 @@ final class PageCard
     private function coverVersions(): array
     {
         $games = app(GameRegistry::class);
-        $slugs = array_filter([$this->facts['game'] ?? null, $this->facts['board']['game'] ?? null, $this->facts['next']['game'] ?? null], 'is_string');
+        $slugs = array_filter([$this->facts['game'] ?? null, $this->facts['board']['game'] ?? null, $this->facts['next']['game'] ?? null, ...(array) ($this->facts['games'] ?? [])], 'is_string');
 
         return array_values(array_filter(array_map(fn (string $slug): ?string => $games->coverVersion($slug), array_unique($slugs))));
     }
@@ -279,7 +279,7 @@ final class PageCard
      */
     private function credits(): array
     {
-        $slugs = array_filter([$this->facts['game'] ?? null, $this->facts['board']['game'] ?? null, $this->facts['next']['game'] ?? null], 'is_string');
+        $slugs = array_filter([$this->facts['game'] ?? null, $this->facts['board']['game'] ?? null, $this->facts['next']['game'] ?? null, ...(array) ($this->facts['games'] ?? [])], 'is_string');
 
         return array_values(array_filter(array_map(fn (string $slug): ?string => GameNames::credit($slug), array_unique($slugs))));
     }
@@ -689,11 +689,18 @@ final class PageCard
         return $this->c->fit((string) end($forms), $face, $px, $max);
     }
 
-    /** The game's cover art, or the game's name on its colours. */
+    /** The game's cover art (a combined tournament's: its games' covers in slices), or the game's name on its colours. */
     private function tournamentCover(int $x, int $y, int $w, int $h): void
     {
         $game = (string) $this->facts['game'];
-        $path = app(GameRegistry::class)->coverPath($game);
+        $registry = app(GameRegistry::class);
+        $combined = array_values(array_filter(array_map(fn (string $slug): ?string => $registry->coverPath($slug), (array) ($this->facts['games'] ?? []))));
+
+        if (count($combined) >= 2 && $this->c->covers($combined, $x, $y, $w, $h)) {
+            return;
+        }
+
+        $path = $registry->coverPath($game);
 
         if ($path !== null && $this->c->cover($path, $x, $y, $w, $h)) {
             return;

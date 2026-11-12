@@ -17,7 +17,7 @@
 <section aria-labelledby="my-lobby-h" @class(['flex flex-col gap-4', 'rv-feat p-4 lg:p-6' => ! $embedded, 'max-w-[640px]' => $embedded]) data-test="my-lobby">
     {{-- TournamentLobby.dc.html: the game's thumb, "Lobby n, Liga-Zugang", the way in, and "Jetzt dran". --}}
     <span class="flex items-start gap-3">
-        <x-game-cover :game="$tournament->game" size="thumb" class="h-10 w-[72px] flex-none rounded-[2px] [&_img]:object-cover max-sm:hidden" />
+        <x-game-cover :game="$tournament->game" :games="$tournament->coverGames()" size="thumb" class="h-10 w-[72px] flex-none rounded-[2px] [&_img]:object-cover max-sm:hidden" />
         <span class="flex min-w-0 grow flex-col">
             <h2 id="my-lobby-h" class="m-0 flex items-center gap-1.5 text-[15px] font-bold"><x-icon name="lock" :size="14" class="shrink-0 text-btc-hi" />{{ __('Lobby :number', ['number' => $match->position]) }}, {{ __('league access') }}</h2>
             <span class="rv-m">{{ __('Join this lobby in :game', ['game' => \App\Support\GameNames::game($tournament->game)]) }}, {{ trans_choice(':count player|:count players', $match->slots->count()) }}</span>

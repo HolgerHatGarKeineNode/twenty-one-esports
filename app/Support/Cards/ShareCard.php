@@ -149,8 +149,10 @@ final class ShareCard
         // The cover a card draws is part of what it shows: new art is a new file and a new `v`.
         $game = $this->type === 'tmnf' ? TrackmaniaNationsForever::SLUG : ($this->facts['game'] ?? null);
         $cover = is_string($game) ? app(GameRegistry::class)->coverVersion($game) : null;
+        // A combined tournament's invite draws every game's cover.
+        $more = array_values(array_filter(array_map(fn (string $slug): ?string => $slug === $game ? null : app(GameRegistry::class)->coverVersion($slug), array_filter((array) ($this->facts['games'] ?? []), 'is_string'))));
 
-        return substr(hash('sha256', (string) json_encode([self::LAYOUT, $this->type, $this->key, $format, App::getLocale(), $this->facts, config('app.url'), ...($cover === null ? [] : [$cover])])), 0, 16);
+        return substr(hash('sha256', (string) json_encode([self::LAYOUT, $this->type, $this->key, $format, App::getLocale(), $this->facts, config('app.url'), ...($cover === null ? [] : [$cover]), ...$more])), 0, 16);
     }
 
     /** The public URL of the card in the current locale, with its fingerprint. */
@@ -391,10 +393,17 @@ final class ShareCard
         $this->inviteSeats(72, 1400, 936, 72, 40);
     }
 
-    /** The game's cover, or its name on the game's colours. */
+    /** The game's cover (a combined tournament's: its games' covers in slices), or its name on the game's colours. */
     private function inviteCover(int $x, int $y, int $w, int $h): void
     {
-        $path = app(GameRegistry::class)->coverPath((string) $this->facts['game']);
+        $registry = app(GameRegistry::class);
+        $combined = array_values(array_filter(array_map(fn (string $slug): ?string => $registry->coverPath($slug), array_filter((array) ($this->facts['games'] ?? []), 'is_string'))));
+
+        if (count($combined) >= 2 && $this->c->covers($combined, $x, $y, $w, $h)) {
+            return;
+        }
+
+        $path = $registry->coverPath((string) $this->facts['game']);
 
         if ($path !== null && $this->c->cover($path, $x, $y, $w, $h)) {
             return;

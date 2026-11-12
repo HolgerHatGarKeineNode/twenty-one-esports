@@ -380,6 +380,35 @@ final class Canvas
         return true;
     }
 
+    /**
+     * The covers of a combined tournament as cards laid over one another ({@see CoverStack}), each whole, framed in the
+     * ground so the one on top stands apart. False, drawing nothing, unless at least two of the files can be read.
+     *
+     * @param  list<string>  $paths
+     */
+    public function covers(array $paths, int|float $x, int|float $y, int|float $w, int|float $h): bool
+    {
+        $readable = array_values(array_filter($paths, fn (string $path): bool => @imagecreatefromstring((string) @file_get_contents($path)) !== false));
+
+        if (count($readable) < 2) {
+            return false;
+        }
+
+        $frame = 3;
+
+        foreach (CoverStack::of(count($readable), $w / $h) as $index => $card) {
+            [$cx, $cy, $cw, $ch] = [$x + $card['x'] * $w, $y + $card['y'] * $h, $card['w'] * $w, $card['h'] * $h];
+
+            if ($index > 0) {
+                $this->rect($cx - $frame, $cy - $frame, $cw + 2 * $frame, $ch + 2 * $frame, self::GROUND);
+            }
+
+            $this->cover($readable[$index], $cx, $cy, $cw, $ch);
+        }
+
+        return true;
+    }
+
     public function picture(string $path, int|float $x, int|float $y, int $size, int $radius): void
     {
         $bytes = @file_get_contents($path);

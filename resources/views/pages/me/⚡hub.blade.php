@@ -148,7 +148,7 @@ new #[Title('Your page')] #[Layout('layouts::app')] class extends Component {
                             @php($tournament = $entry['tournament'])
                             <li class="border-b border-hairline last:border-b-0" wire:key="t-{{ $tournament->id }}">
                                 <a href="{{ route('tournaments.show', $tournament) }}" class="grid min-h-14 grid-cols-[64px_minmax(0,1fr)] items-center gap-3 px-3 py-2 text-ink hover:bg-row-hover hover:text-ink sm:grid-cols-[72px_minmax(0,1fr)_auto]" data-test="me-tournament" data-state="{{ $entry['state'] }}">
-                                    <x-game-cover :game="$tournament->game" size="thumb" class="w-16 rounded-[2px] sm:w-[72px]" />
+                                    <x-game-cover :game="$tournament->game" :games="$tournament->coverGames()" size="thumb" class="w-16 rounded-[2px] sm:w-[72px]" />
                                     <span class="flex min-w-0 flex-col gap-0.5">
                                         <b class="truncate text-[14px]">{{ $tournament->title() }}</b>
                                         <span class="truncate text-xs text-ink-2">{{ \App\Support\GameNames::full($tournament->game, $tournament->mode) }}, <x-tournaments.start :tournament="$tournament" /></span>

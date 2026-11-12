@@ -16,7 +16,7 @@
             @foreach ($rows as $row)
                 <tr @class(['is-featured' => $row['featured']]) data-test="week-row" @if ($row['featured']) data-featured @endif>
                     <td class="w-[60px]">
-                        <x-game-cover :game="$row['tournament']->game" size="thumb" class="h-[27px] w-12 rounded-[2px] [&_img]:object-cover" />
+                        <x-game-cover :game="$row['tournament']->game" :games="$row['tournament']->coverGames()" size="thumb" class="h-[27px] w-12 rounded-[2px] [&_img]:object-cover" />
                     </td>
                     <td class="[overflow-wrap:anywhere]">
                         <a href="{{ $row['href'] }}" @navigate($row['href']) class="font-bold text-ink hover:text-ink">{{ $row['name'] }}</a>
