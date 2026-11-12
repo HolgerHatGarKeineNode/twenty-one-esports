@@ -160,7 +160,7 @@ new #[Layout('layouts::app', ['scripts' => ['resources/js/liveChat.js']])] class
     $status = $this->status;
     $games = $this->games;
     $pageUrl = route('live');
-    $shareText = __('Live now on TWENTY ONE esports: chess, tournaments and music.');
+    $shareText = __('Live now on TWENTY ONE esports: games, tournaments and music.');
     $watchingNow = [
         'one' => trans_choice('watching now|watching now', 1),
         'many' => trans_choice('watching now|watching now', 2),
@@ -242,7 +242,7 @@ new #[Layout('layouts::app', ['scripts' => ['resources/js/liveChat.js']])] class
                             {{-- The next tournament as a picture (P53): its game's cover, name, start and places. --}}
                             @php($nextPlaces = app(\App\Support\Tournaments\TournamentSignups::class)->places($this->next))
                             <a href="{{ route('tournaments.show', $this->next) }}" class="flex max-w-full items-center gap-3 rounded-md border border-line bg-well p-2 pr-4 text-left text-[13px] text-ink-2 hover:border-edge hover:text-ink-2" data-test="live-offline-next">
-                                <x-game-cover :game="$this->next->game" size="thumb" loading="eager" class="w-24 rounded-xs" data-test="live-offline-next-cover" />
+                                <x-game-cover :game="$this->next->game" :games="$this->next->coverGames()" size="thumb" loading="eager" class="w-24 rounded-xs" data-test="live-offline-next-cover" />
                                 <span class="flex min-w-0 flex-col gap-1 leading-tight">
                                     <span class="text-xs">{{ __('Next up:') }}</span>
                                     <b class="truncate text-ink">{{ $this->next->name }}</b>
@@ -352,7 +352,7 @@ new #[Layout('layouts::app', ['scripts' => ['resources/js/liveChat.js']])] class
                             @foreach ($this->tournaments as $tournament)
                                 {{-- The game's cover beside the name (P53): which game runs reads before the words. --}}
                                 <li wire:key="live-tournament-{{ $tournament->id }}" class="grid grid-cols-[80px_minmax(0,1fr)] items-center gap-x-3">
-                                    <x-game-cover :game="$tournament->game" size="thumb" loading="eager" class="row-span-2 w-20 rounded-xs" data-test="live-tournament-cover" />
+                                    <x-game-cover :game="$tournament->game" :games="$tournament->coverGames()" size="thumb" loading="eager" class="row-span-2 w-20 rounded-xs" data-test="live-tournament-cover" />
                                     <b class="text-[13px] break-words">{{ $tournament->name }}</b>
                                     <span class="flex flex-wrap gap-x-4 text-xs">
                                         <a href="{{ route('tournaments.show', $tournament) }}" class="inline-flex min-h-11 items-center lg:min-h-6">{{ __('Bracket') }}</a>

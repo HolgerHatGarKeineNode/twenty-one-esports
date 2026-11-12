@@ -43,10 +43,10 @@
     };
 
     app(App\Support\PageMeta::class)->describe(
-        __('Chess and Rocket League ladder for Bitcoiners'),
+        __('The esports league for Bitcoiners'),
         $season['live']
-            ? __('The esports league of the Bitcoin community EINUNDZWANZIG: rapid, blitz and daily chess, Rocket League series between clans, login with Nostr. The season is live: every fair rated win mines a block.')
-            : __('The esports league of the Bitcoin community EINUNDZWANZIG: rapid, blitz and daily chess, Rocket League series between clans, login with Nostr. The Pre-Season starts at Block 0.'),
+            ? __('The esports league of the Bitcoin community EINUNDZWANZIG: chess, Blockli and other board games, Rocket League series between clans and games right in the browser, login with Nostr. The season is live: every fair rated win mines a block.')
+            : __('The esports league of the Bitcoin community EINUNDZWANZIG: chess, Blockli and other board games, Rocket League series between clans and games right in the browser, login with Nostr. The Pre-Season starts at Block 0.'),
     )->card(fn () => \App\Support\Cards\PageCard::page('home'));
 @endphp
 
@@ -65,7 +65,7 @@
     @elseif ($hero === 'blockfill')
         @include('pages.home.band-blockfill', ['week' => $blockfill, 'hub' => $hub, 'user' => $user, 'featured' => $user === null ? $featured : null, 'live' => $counts['live']])
     @else
-        <h1 class="sr-only">{{ __('TWENTY ONE Esports: chess and Rocket League for Bitcoiners') }}</h1>
+        <h1 class="sr-only">{{ __('TWENTY ONE Esports: the esports league for Bitcoiners') }}</h1>
     @endif
 
     <x-ui.live-bar :ticks="$board->ticker()" />

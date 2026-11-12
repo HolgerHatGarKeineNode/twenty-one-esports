@@ -22,7 +22,7 @@
     $plays = $profile->games();
     $description = ($plays !== null
         ? __(':name plays :games in the TWENTY ONE esports league.', ['name' => $name, 'games' => $plays])
-        : __(':name is a player in the TWENTY ONE esports league, the chess and Rocket League ladder of the Bitcoin community EINUNDZWANZIG.', ['name' => $name]))
+        : __(':name plays in TWENTY ONE esports, the esports league of the Bitcoin community EINUNDZWANZIG.', ['name' => $name]))
         .($profile->clan !== null ? ' '.__('Clan: :clan.', ['clan' => $profile->clan->name]) : '')
         .(filled($profile->about) ? ' '.\Illuminate\Support\Str::limit(\Illuminate\Support\Str::squish($profile->about), 100, '…') : '');
     app(\App\Support\PageMeta::class)

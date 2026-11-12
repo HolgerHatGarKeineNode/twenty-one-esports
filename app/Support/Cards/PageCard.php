@@ -1654,7 +1654,7 @@ final class PageCard
         if ($tournaments !== []) {
             $this->c->text($this->c->fit(__('Tournament running: :names', ['names' => $tournaments[0]]), 'mono', self::MIN, self::RIGHT - self::M), 'mono', self::MIN, self::M, 420, Canvas::ORANGE);
         } else {
-            $this->c->text($this->c->fit(__('Chess, tournaments and music, around the clock'), 'mono', self::MIN, self::RIGHT - self::M), 'mono', self::MIN, self::M, 420, Canvas::INK_2);
+            $this->c->text($this->c->fit(__('Games, tournaments and music, around the clock'), 'mono', self::MIN, self::RIGHT - self::M), 'mono', self::MIN, self::M, 420, Canvas::INK_2);
         }
     }
 
@@ -1765,7 +1765,7 @@ final class PageCard
     private function pageTitle(): string
     {
         return match (true) {
-            $this->key === 'home', $this->key === 'brand' => __('Chess and Rocket League ladder for Bitcoiners'),
+            $this->key === 'home', $this->key === 'brand' => __('The esports league for Bitcoiners'),
             $this->key === 'login' => __('Log in'),
             $this->key === 'clans' => __('Clans'),
             $this->key === 'matches' => __('Matches'),
@@ -1801,7 +1801,7 @@ final class PageCard
 
         return match ($this->key) {
             'clans' => __('Every clan of the league with its players, lineups and Clan Rating.'),
-            'matches' => __('Every series and chess game by match number: live, scheduled and done.'),
+            'matches' => __('Every series and game by match number: live, scheduled and done.'),
             'games' => __('Every chess game running now. Watch without logging in.'),
             'chess' => __(':modes live or daily chess against Bitcoiners.', ['modes' => implode(' / ', array_map(ChessModes::label(...), ChessModes::live()))]),
             'tournaments' => __('Open sign-ups, running brackets and results, drawn from a Bitcoin block.'),

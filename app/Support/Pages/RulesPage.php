@@ -1008,7 +1008,7 @@ final class RulesPage
                 [__('Pause between messages'), self::seconds(intdiv((int) config('esports.game_chat.cooldown_ms'), 1000))],
             ],
             'items' => [
-                __('The chats of a match room and of a chess game are end-to-end encrypted over Nostr: the league server never receives or stores these messages.'),
+                __('The chats of a match room and of a game are end-to-end encrypted over Nostr: the league server never receives or stores these messages.'),
                 __('The game channels and the stream chat are public Nostr messages. Anyone can read them.'),
                 __('Mute a player to hide their messages; the mute is yours alone.'),
                 __('Polls and votes in a game channel count only from members and players with a result in the league.'),
