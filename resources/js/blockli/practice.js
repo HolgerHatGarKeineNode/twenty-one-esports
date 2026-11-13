@@ -34,7 +34,6 @@ const GAME = {
     bots: BOTS,
     worker: () => new Worker(new URL('./engineWorker.js', import.meta.url), { type: 'module' }),
     answerHere,
-    rival: 'black',
     standing: 'standing',
     reset: { blockMode: false, preview: null },
     // A lesson's opponent is the Hodler, at his pace.

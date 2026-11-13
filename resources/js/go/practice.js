@@ -53,7 +53,6 @@ const GAME = {
     bots: BOTS,
     worker: () => new Worker(new URL('./engineWorker.js', import.meta.url), { type: 'module' }),
     answerHere,
-    rival: 'white',
     standing: 'count',
     reset: { stone: null, confirmPass: false, showArea: false },
     undoReset: { showArea: false },

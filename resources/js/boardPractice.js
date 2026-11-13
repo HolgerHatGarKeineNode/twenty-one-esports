@@ -12,7 +12,6 @@
  *   game.slug        the game the board draws
  *   game.bots        the bots by id, each with its pace `think` in ms
  *   game.worker()    the engine's worker; game.answerHere(request) answers where the page has none
- *   game.rival       the label of the lessons' opponent ('black' in Blockli, 'white' in Go)
  *   game.standing    the key of the server's standing in its answers ('standing', 'count')
  *   game.reset       what the board forgets with a new game, game.undoReset with a move taken back
  *   game.lessonPace  the least time of the opponent's answer in a lesson, in ms
@@ -292,7 +291,7 @@ export function boardPractice(config, game, members) {
         },
 
         get botName() {
-            return this.mode === 'learn' ? this.cfg.labels[game.rival] : this.cfg.bots[this.botId].name;
+            return this.mode === 'learn' ? this.cfg.labels.rival : this.cfg.bots[this.botId].name;
         },
 
         /** The bot's move (in a lesson the opponent's answer): never faster than the bot's own pace, judged by the server like the player's. */
@@ -348,7 +347,7 @@ export function boardPractice(config, game, members) {
             this.lessonNote = '';
             this.triedClosing = false;
             const lesson = this.lesson;
-            this.setGame(lesson.position, lesson.view, { color: 'w', names: { w: this.cfg.labels.you, b: this.cfg.labels[game.rival] } });
+            this.setGame(lesson.position, lesson.view, { color: 'w', names: { w: this.cfg.labels.you, b: this.cfg.labels.rival } });
             if (scroll) this.showBoard();
         },
 
