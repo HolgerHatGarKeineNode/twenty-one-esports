@@ -18,6 +18,7 @@ use Pest\Browser\Support\ComputeUrl;
 use Tests\Support\BlockfillOn;
 use Tests\Support\BrowserConsole;
 use Tests\Support\BrowserLogin;
+use Tests\Support\BrowserMainThread;
 use Tests\Support\BrowserWait;
 use Tests\Support\HyperOn;
 use Tests\Support\PongOn;
@@ -846,27 +847,39 @@ test('the auditor\'s 63 KB message renders bounded here too, and keeps the main 
         $page = p21Page(null, '/games/rocket-league');
         $page->evaluate('() => { window.__frames = []; new PerformanceObserver((list) => list.getEntries().forEach((e) => window.__frames.push({ duration: Math.round(e.duration), chat: Math.round((e.scripts ?? []).filter((s) => /\\/build\\/assets\\/(pool|gameChannel)-/.test(s.sourceURL ?? "")).reduce((sum, s) => sum + s.duration, 0)) }))).observe({ type: "long-animation-frame" }); }');
 
+        $thread = BrowserMainThread::of($page);
+        $before = $thread->spent();
         $page->evaluate('async ([url, event]) => await new Promise((resolve) => { const ws = new WebSocket(url); ws.onopen = () => ws.send(JSON.stringify(["EVENT", event])); ws.onmessage = () => { ws.close(); resolve(); }; })', [$url, $payload]);
-        BrowserWait::until($page, '() => { const imgs = [...document.querySelectorAll("[data-test=game-chat] [data-test=live-chat-emoji-img]")].filter((i) => i.checkVisibility()); return imgs.length > 0 && imgs.every((i) => i.complete); }', 10_000);
+        // This attacker's row, not the first one in the list: a second receive finds the first attacker's message in
+        // the relay's history, and its images would end the wait before the new message is there (under the
+        // mutation that lifts the caps the second receive then read 522 ms of 6 s of work).
+        $row = '[data-test=game-chat-message][data-pubkey="'.$payload['pubkey'].'"]';
+        BrowserWait::until($page, '() => { const imgs = [...(document.querySelector(\''.$row.'\')?.closest("li").querySelectorAll("[data-test=live-chat-emoji-img]") ?? [])].filter((i) => i.checkVisibility()); return imgs.length > 0 && imgs.every((i) => i.complete); }', 10_000);
         Execution::instance()->wait(0.5);
+        $after = $thread->spent();
 
-        $measured = $page->evaluate('() => { const li = document.querySelector("[data-test=game-chat-message]").closest("li"); return { frames: window.__frames, nodes: li.querySelectorAll("*").length, images: [...li.querySelectorAll("[data-test=live-chat-emoji-img]")].filter((i) => i.checkVisibility()).length, chars: [...li.querySelector("[data-test=game-chat-text]").innerText].length }; }');
+        $measured = $page->evaluate('([row]) => { const li = document.querySelector(row).closest("li"); return { frames: window.__frames, nodes: li.querySelectorAll("*").length, images: [...li.querySelectorAll("[data-test=live-chat-emoji-img]")].filter((i) => i.checkVisibility()).length, chars: [...li.querySelector("[data-test=game-chat-text]").innerText].length }; }', [$row]);
+        $measured['cpu'] = array_map(fn (string $kind): float => round($after[$kind] - $before[$kind], 1), array_combine(array_keys($after), array_keys($after)));
         fwrite(STDERR, "\n[p21 payload] ".json_encode($measured)."\n");
 
-        return [$page, $measured, array_sum(array_column($measured['frames'], 'chat'))];
+        return [$page, $measured, $measured['cpu']['script']];
     };
 
     try {
-        // Judged is the chat's own render task: the time of the scripts pool-* and gameChannel-* inside the long
-        // animation frames, not the frames' wall time (other scripts, style and paint; 216 ms under the parallel
-        // gate 2026-10-10, green alone). Over the budget it is received once more, cold, on a fresh page, and the
-        // cheaper receive counts: contention only adds time (LiveChatTest, same test).
-        [$page, $measured, $chatTask] = $receive();
-        if ($chatTask >= 200) {
-            [$page, $measured, $chatTask] = $receive();
+        // Judged is the script work of the main thread from the publish to the rendered message, on the thread's
+        // CPU clock (BrowserMainThread), not on the wall clock: the nodes, images and characters below bound what
+        // style and layout can cost, the script time is what they cannot see. Until 2026-11-13 it was the wall time
+        // of the scripts pool-* and gameChannel-* inside the long animation frames (still printed as `frames`): up
+        // to 62 ms alone, 228 and 269 ms in the sharded full run with every core busy, and wall time counts a
+        // thread's waiting for a core. The CPU clock does not: `frames` 318 ms with 250 ms of waiting inside the
+        // chat's task read 72 ms here. Over the budget it is received once more on a fresh page, and the cheaper
+        // receive counts: contention only adds time. More than nothing: a counter that stopped counting must not pass.
+        [$page, $measured, $script] = $receive();
+        if ($script >= 200) {
+            [$page, $measured, $script] = $receive();
         }
 
-        expect($chatTask)->toBeLessThan(200)
+        expect($script)->toBeGreaterThan(1.0)->toBeLessThan(200.0)
             ->and($measured['images'])->toBe(20)
             ->and($measured['nodes'])->toBeLessThan(400)
             ->and($measured['chars'])->toBeLessThanOrEqual(4 * 280 + 1)

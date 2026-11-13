@@ -238,8 +238,13 @@ test('the invite DM: NIP-17 on the click to a follow with DM relays, nothing to 
     BrowserWait::until($page, '() => [...document.querySelectorAll("[data-test=follows-invite-recipient]")].every((li) => li.dataset.status !== "waiting")', 30_000);
     $statuses = $page->evaluate('() => [...document.querySelectorAll("[data-test=follows-invite-recipient]")].map((li) => li.dataset.status)');
     fwrite(STDERR, "\n[p47] invite statuses ".json_encode($statuses).' warns '.json_encode($page->evaluate('() => window.__warns')));
-    expect($statuses)->toBe(['sent', 'confirm'])
-        ->and($page->evaluate('() => [...document.querySelectorAll("[data-test=follows-invite-confirm]")].map((el) => el.checkVisibility())'))->toBe([false, true]);
+    expect($statuses)->toBe(['sent', 'confirm']);
+    // The status attribute is not the question yet: Alpine writes `:data-status` in the effect, and lets an x-show
+    // element appear one animation frame later (Alpine: `nextTick2 = document.visibilityState === "visible" ?
+    // requestAnimationFrame : setTimeout`; measured 13.5 ms apart alone). A late frame under load read [false, false]
+    // here (2026-11-13), so the question for Lars is waited for, and only then is Rita's row checked to have none.
+    BrowserWait::until($page, '() => document.querySelector("[data-test=follows-invite-recipient][data-status=confirm] [data-test=follows-invite-confirm]")?.checkVisibility() === true', 5_000);
+    expect($page->evaluate('() => [...document.querySelectorAll("[data-test=follows-invite-confirm]")].map((el) => el.checkVisibility())'))->toBe([false, true]);
     p47Shot($page, 'p47-invite-confirm-nip04-1440');
 
     // Rita: one gift wrap, which she opens with her key; Lars: nothing yet.

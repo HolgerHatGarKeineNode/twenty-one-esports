@@ -14,6 +14,7 @@ use Pest\Browser\Playwright\Page;
 use Pest\Browser\Support\ComputeUrl;
 use Tests\Support\BrowserConsole;
 use Tests\Support\BrowserLogin;
+use Tests\Support\BrowserMainThread;
 use Tests\Support\BrowserWait;
 use Tests\Support\TestSigner;
 use Tests\Support\WaitForPort;
@@ -351,15 +352,23 @@ test('the auditor\'s 63 KB message renders bounded and keeps the main thread und
         // contexts at host load 44 they reached 272 ms.
         $page->evaluate('() => { window.__long = []; window.__frames = []; new PerformanceObserver((list) => list.getEntries().forEach((e) => window.__long.push(Math.round(e.duration)))).observe({ type: "longtask" }); new PerformanceObserver((list) => list.getEntries().forEach((e) => window.__frames.push({ duration: Math.round(e.duration), chat: Math.round((e.scripts ?? []).filter((s) => /\\/build\\/assets\\/(pool|liveChat)-/.test(s.sourceURL ?? "")).reduce((sum, s) => sum + s.duration, 0)) }))).observe({ type: "long-animation-frame" }); }');
 
-        // Published while the page listens: the receive path, not the first load, takes it.
+        // Published while the page listens: the receive path, not the first load, takes it. The work is read on the
+        // main thread's CPU clock (BrowserMainThread), from the publish to the rendered message.
+        $thread = BrowserMainThread::of($page);
+        $before = $thread->spent();
         $page->evaluate('async ([url, event]) => await new Promise((resolve) => { const ws = new WebSocket(url); ws.onopen = () => ws.send(JSON.stringify(["EVENT", event])); ws.onmessage = () => { ws.close(); resolve(); }; })', [$url, $payload]);
-        BrowserWait::until($page, '() => { const imgs = [...document.querySelectorAll("[data-test=live-chat-emoji-img]")].filter((i) => i.checkVisibility()); return imgs.length > 0 && imgs.every((i) => i.complete); }', 10_000);
+        // This attacker's row, not the first one in the list: a second receive finds the first attacker's message in
+        // the relay's history, and its images would end the wait before the new message is there.
+        $row = '[data-test=live-chat-message][data-pubkey="'.$payload['pubkey'].'"]';
+        BrowserWait::until($page, '() => { const imgs = [...(document.querySelector(\''.$row.'\')?.closest("li").querySelectorAll("[data-test=live-chat-emoji-img]") ?? [])].filter((i) => i.checkVisibility()); return imgs.length > 0 && imgs.every((i) => i.complete); }', 10_000);
         Execution::instance()->wait(0.5);
+        $after = $thread->spent();
 
-        $measured = $page->evaluate('() => { const li = document.querySelector("[data-test=live-chat-message]").closest("li"); return { longTasks: window.__long, frames: window.__frames, nodes: li.querySelectorAll("*").length, images: [...li.querySelectorAll("[data-test=live-chat-emoji-img]")].filter((i) => i.checkVisibility()).length, chars: [...li.querySelector("[data-test=live-chat-text]").innerText].length, allNodes: document.querySelectorAll("*").length }; }');
+        $measured = $page->evaluate('([row]) => { const li = document.querySelector(row).closest("li"); return { longTasks: window.__long, frames: window.__frames, nodes: li.querySelectorAll("*").length, images: [...li.querySelectorAll("[data-test=live-chat-emoji-img]")].filter((i) => i.checkVisibility()).length, chars: [...li.querySelector("[data-test=live-chat-text]").innerText].length, allNodes: document.querySelectorAll("*").length }; }', [$row]);
+        $measured['cpu'] = array_map(fn (string $kind): float => round($after[$kind] - $before[$kind], 1), array_combine(array_keys($after), array_keys($after)));
         fwrite(STDERR, "\n[p24 payload] ".json_encode($measured)."\n");
 
-        return [$page, $measured, array_sum(array_column($measured['frames'], 'chat'))];
+        return [$page, $measured, $measured['cpu']['script']];
     };
 
     try {
@@ -371,10 +380,11 @@ test('the auditor\'s 63 KB message renders bounded and keeps the main thread und
             [$page, $measured, $chatTask] = $receive();
         }
 
-        // Long animation frames only exist above 50 ms: on a fast machine the chat produces none, and that is within the
-        // budget (measured 2026-10-09: no frame at all, the test demanded one). The message still has to have rendered
-        // (images and nodes below), so "none" cannot mean "nothing happened".
-        expect($chatTask)->toBeLessThan(200)
+        // Judged since 2026-11-13 is the main thread's script work on its CPU clock, not the wall time of the chat's
+        // scripts inside long animation frames (still printed as `frames`): wall time counts a thread's waiting for
+        // a core (218 ms in the sharded full run of 2026-11-13, GameChannelTest's twin 269 ms). More than nothing:
+        // a counter that stopped counting must not pass.
+        expect($chatTask)->toBeGreaterThan(1.0)->toBeLessThan(200.0)
             ->and($measured['images'])->toBe(20)
             ->and($measured['nodes'])->toBeLessThan(400)
             ->and($measured['chars'])->toBeLessThanOrEqual(4 * 280 + 1)

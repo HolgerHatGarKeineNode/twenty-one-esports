@@ -334,6 +334,10 @@ test('no relay answering is said as such, and an event without comments says so;
     config(['esports.relays' => ['ws://127.0.0.1:9']]);
     $down = commentsPage($user, route('tournaments.show', $tournament, false), 375, 'en');
     BrowserWait::until($down, '() => document.querySelector("[data-test=comments-unreached]")?.checkVisibility()', 15_000);
+    // The RSVP line is a component of its own: it reads on its own sockets and says "no relay answered" only once
+    // the moderation read on the chat relay has ended too (nostrComments.js, rsvpSummary: `await Promise.all(reads)`),
+    // 3 ms after the comments alone and whenever that relay answers under load (red 2026-11-13). Waited for, not assumed.
+    BrowserWait::until($down, '() => document.querySelector("[data-test=rsvp-unreached]")?.checkVisibility() === true', 15_000);
 
     expect($down->evaluate('() => document.querySelector("[data-test=comments-empty]").checkVisibility()'))->toBeFalse()
         ->and($down->evaluate('() => document.querySelector("[data-test=rsvp-unreached]")?.checkVisibility() ?? false'))->toBeTrue();
