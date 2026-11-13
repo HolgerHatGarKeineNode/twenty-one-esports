@@ -306,6 +306,17 @@ test('a start inside the pause still waits for the pause: drawn at 16:00 for 17:
         ->and(TournamentWaits::of($tournament)[0]->consequence)->toBe('Night pause: the league starts it at :time');
 });
 
+test('drawn for an 18:00 start, the tournament gets no "night pause soon" banner before 24:00: that pause is over by its start; one under way gets it in the same minute', function () {
+    $this->travelTo(berlin('2026-11-13 23:00'));
+    $waiting = nightDuel(['starts_at' => berlin('2026-11-14 18:00')->utc(), 'draw_committed_at' => now()]);
+    $playing = nightDuel(['starts_at' => berlin('2026-11-13 22:00')->utc(), 'draw_committed_at' => berlin('2026-11-13 21:00')->utc()]);
+
+    $this->travelTo(berlin('2026-11-13 23:10'));
+
+    $this->blade('<x-tournament-night-pause :tournament="$t" />', ['t' => $waiting])->assertDontSee('night-pause-banner', false);
+    $this->blade('<x-tournament-night-pause :tournament="$t" />', ['t' => $playing])->assertSee('data-state="soon"', false);
+});
+
 /* ---------- The organizer's setting ------------------------------------------------------------------------- */
 
 test('the organizer switches the night pause off or sets its times in the edit page; bad times are refused', function () {
