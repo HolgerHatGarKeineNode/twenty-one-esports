@@ -317,7 +317,7 @@ test('drawn for an 18:00 start, the tournament gets no "night pause soon" banner
     $this->blade('<x-tournament-night-pause :tournament="$t" />', ['t' => $playing])->assertSee('data-state="soon"', false);
 });
 
-test('a start postponed while a series is under way does not hide the night pause from its wait: the series\' clock stands until 18:00', function () {
+test('a start postponed while a series is under way does not hide the night pause: the banner and the wait say the series\' clock stands until 18:00', function () {
     Queue::fake();
     config(['esports.league.nsec' => (new TestSigner)->secret]);
     $this->travelTo(berlin('2026-11-13 23:40'));
@@ -333,7 +333,9 @@ test('a start postponed while a series is under way does not hide the night paus
     expect(NightPause::heldForStart($tournament))->toBeTrue()
         ->and($series->refresh()->reportDueAt()->getTimestamp())->toBe(berlin('2026-11-14 18:00')->addMinutes($series->deadlines['report_minutes'] - 20)->getTimestamp())
         ->and($wait->resumesAt?->getTimestamp())->toBe(berlin('2026-11-14 18:00')->getTimestamp())
-        ->and($wait->paused)->toBeTrue();
+        ->and($wait->paused)->toBeTrue()
+        ->and(NightPauseNotices::state($tournament)['state'] ?? null)->toBe('paused');
+    $this->blade('<x-tournament-night-pause :tournament="$t" />', ['t' => $tournament])->assertSee('data-state="paused"', false);
 });
 
 test('a small cup drawn for its evening at 20:00 waits for the evening, not for a night pause that ends at 18:00', function () {

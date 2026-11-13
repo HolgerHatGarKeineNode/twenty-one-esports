@@ -3,9 +3,11 @@
 namespace App\Support\Tournaments;
 
 use App\Models\Tournament;
+use App\Models\TournamentMatch;
 use App\Support\LeagueTime;
 use Carbon\CarbonImmutable;
 use Carbon\CarbonInterface;
+use Illuminate\Database\Eloquent\Builder;
 
 /**
  * The night pause of a tournament (user decision 2026-10-10: "Turniere, die
@@ -156,11 +158,22 @@ final class NightPause
      * tournament wait for: not when the tournament has not started yet and
      * starts at or after the pause's end (DerCaddy, 2026-11-13: a blitz
      * tournament drawn at 16:30 for 18:00 said "Nachtpause bis 18:00", as
-     * if play had stopped; the default pause runs 00:00 to 18:00).
+     * if play had stopped; the default pause runs 00:00 to 18:00). A start
+     * moved ahead after play began leaves matches under way, and their
+     * clocks stand in every pause.
      */
     public static function holdsUp(Tournament $tournament, CarbonInterface $resumes, ?CarbonInterface $at = null): bool
     {
-        return ! self::heldForStart($tournament, $at) || $resumes->getTimestamp() > $tournament->starts_at->getTimestamp();
+        return ! self::heldForStart($tournament, $at) || $resumes->getTimestamp() > $tournament->starts_at->getTimestamp() || self::playUnderWay($tournament);
+    }
+
+    /**
+     * A match of this tournament the league has started and nobody has finished.
+     */
+    private static function playUnderWay(Tournament $tournament): bool
+    {
+        return TournamentMatch::query()->where('tournament_id', $tournament->id)->where('status', 'ready')
+            ->where(fn (Builder $query) => $query->whereHas('seriesMatch')->orWhereHas('chessGame')->orWhereHas('boardGame'))->exists();
     }
 
     /**
