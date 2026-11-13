@@ -92,7 +92,8 @@
                 </div>
                 @unless ($isMe)
                     <div class="flex min-w-0 flex-wrap items-center gap-3 lg:col-start-2 lg:max-w-[520px]">
-                        <a href="{{ route('chess.challenge', ['to' => $user->npub]) }}" data-test="challenge"
+                        {{-- Every game this player can be challenged to, picked on the next page (DerCaddy, 2026-11-13: it was daily chess only). --}}
+                        <a href="{{ route('challenge', ['to' => $user->npub]) }}" data-test="challenge"
                            class="flex h-11 min-w-0 grow items-center justify-center gap-2 rounded-md bg-btc px-5 text-sm font-bold whitespace-nowrap text-on-btc hover:bg-btc-hi hover:text-on-btc lg:grow-0">
                             <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true" class="shrink-0"><path d="M8 5v14l11-7z"></path></svg><span class="truncate">{{ __('Challenge :name', ['name' => $name]) }}</span>
                         </a>

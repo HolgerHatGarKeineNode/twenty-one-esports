@@ -101,7 +101,7 @@ test('context actions sit on the page where they are looked for, at 375 and 1440
     // rival clan, "Play" on an empty ladder, and the clan's own matches behind its "All matches".
     $cases = [
         ['tournaments-new', 'organizer', route('tournaments.index', absolute: false), 'index-new-tournament', route('admin.tournaments.create', absolute: false)],
-        ['player-challenge', 'player', route('players.show', $users['captain']->npub, false), 'challenge', route('chess.challenge', ['to' => $users['captain']->npub], false)],
+        ['player-challenge', 'player', route('players.show', $users['captain']->npub, false), 'challenge', route('challenge', ['to' => $users['captain']->npub], false)],
         ['clan-challenge', 'captain', route('clans.show', $rival->clan, false), 'challenge-clan', null],
         ['ladder-empty', 'player', route('ladder.show', ['rocket-league', '3v3'], false).'?pool=casual', 'ladder-empty-play', route('games.rocket-league', absolute: false)],
         ['clan-matches', 'guest', route('clans.show', $rival->clan, false), 'clan-matches', route('matches.index', ['clan' => $rival->clan->slug], false)],

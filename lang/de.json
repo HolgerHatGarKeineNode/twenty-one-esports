@@ -9105,5 +9105,10 @@
     "A combined tournament plays the games its organizer lined up, up to :count per pairing: chess and board games of one time control, a game may repeat, one game each, the colours alternating per game. In a knockout a level score goes to deciders, the games in turn or always the first, as the tournament page says under Pairings; in Swiss and a round robin it is a draw. Each game is rated on its own ladder.": "Ein Kombi-Turnier spielt die Spiele, die der Veranstalter festgelegt hat, bis zu :count je Paarung: Schach und Brettspiele einer Bedenkzeit, ein Spiel darf sich wiederholen, je eine Partie, die Farben wechseln je Spiel. Im K.-o.-System entscheiden bei Gleichstand weitere Partien, die Spiele reihum oder immer das erste, wie die Turnierseite unter Paarungen sagt; im Schweizer System und im Jeder-gegen-jeden ist es ein Remis. Jedes Spiel wird in seiner eigenen Ladder gewertet.",
     "No correspondence games yet": "Noch keine Fernpartien",
     "Pick a game and play": "Such dir ein Spiel aus und spiel los",
-    ":games covers": "Titelbilder von :games"
+    ":games covers": "Titelbilder von :games",
+    "Correspondence, one move a day": "Fernpartie, ein Zug pro Tag",
+    "a time you agree on": "zu einer Zeit, die ihr ausmacht",
+    "Pick the game. Nothing is sent yet: the next page shows the challenge before you send it.": "Wähl das Spiel. Noch wird nichts verschickt: Die nächste Seite zeigt die Herausforderung, bevor du sie abschickst.",
+    "Blitz and rapid are played live: invite a friend who is online in the game's lobby.": "Blitz und Rapid spielt ihr live: Lade in der Lobby des Spiels einen Freund ein, der gerade online ist.",
+    ":game and :count more": ":game und :count weitere"
 }
