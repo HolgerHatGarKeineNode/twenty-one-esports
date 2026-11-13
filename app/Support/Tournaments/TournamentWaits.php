@@ -215,9 +215,9 @@ final class TournamentWaits
      */
     private static function leagueSeries(WaitBuilder $base, Tournament $tournament, SeriesMatch $series): MatchWait
     {
-        $night = NightPause::activeFor($tournament);
+        // A series under way always stands in the pause, also when the start was moved ahead after play began.
         $base->subject('series:'.$series->id)->url(route('matches.room', $series))->paused($tournament->isPaused())
-            ->nightPauseUntil($night !== null && NightPause::holdsUp($tournament, $night[1]) ? $night[1] : null);
+            ->nightPauseUntil(NightPause::activeFor($tournament)[1] ?? null);
 
         if ($series->status === SeriesStatus::Disputed) {
             return $base->make('disputed', since: self::disputedSince($series), consequence: 'An admin decides the dispute', needsAdmin: true);
@@ -315,6 +315,13 @@ final class TournamentWaits
             // Drawn at the sign-up close, nothing starts before the start (TournamentMatchMaker::startReady()); say so,
             // not "shortly" (DerCaddy, 2026-11-13).
             if ($resumesAt === null && ! $tournament->isPaused() && NightPause::heldForStart($tournament)) {
+                // A start inside a pause that has not begun yet: the league starts the match at that pause's end.
+                $startPause = NightPause::current(NightPause::windowOf($tournament), $tournament->starts_at);
+
+                if ($startPause !== null) {
+                    return $base->make('not_started', consequence: 'Night pause: the league starts it at :time', params: ['time' => LeagueTime::stamp($startPause[1])], timeAt: $startPause[1]);
+                }
+
                 return $base->make('not_started', consequence: 'The league starts it at :time', params: ['time' => LeagueTime::stamp($tournament->starts_at)], timeAt: $tournament->starts_at->toImmutable());
             }
 

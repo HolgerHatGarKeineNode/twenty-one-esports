@@ -287,7 +287,7 @@ test('drawn at 16:30 for an 18:00 start, the tournament waits for its start, not
     $item = app(UpcomingEvents::class)->tournaments($player, todayOnly: true)->firstWhere('key', 'tournament-'.$tournament->id);
     $wait = TournamentWaits::of($tournament->refresh())[0];
 
-    expect($item?->title)->not->toBe('Night pause')
+    expect($item?->title)->toBe('Tournament')
         ->and($wait->state)->toBe('not_started')
         ->and($wait->consequence)->toBe('The league starts it at :time')
         ->and($wait->timeAt?->getTimestamp())->toBe(berlin('2026-11-13 18:00')->getTimestamp());
@@ -315,6 +315,63 @@ test('drawn for an 18:00 start, the tournament gets no "night pause soon" banner
 
     $this->blade('<x-tournament-night-pause :tournament="$t" />', ['t' => $waiting])->assertDontSee('night-pause-banner', false);
     $this->blade('<x-tournament-night-pause :tournament="$t" />', ['t' => $playing])->assertSee('data-state="soon"', false);
+});
+
+test('a start postponed while a series is under way does not hide the night pause from its wait: the series\' clock stands until 18:00', function () {
+    Queue::fake();
+    config(['esports.league.nsec' => (new TestSigner)->secret]);
+    $this->travelTo(berlin('2026-11-13 23:40'));
+    $tournament = nightDuel(['starts_at' => berlin('2026-11-13 19:00')->utc(), 'draw_committed_at' => berlin('2026-11-13 16:30')->utc(), 'created_by_id' => organizer()->id]);
+    $series = nightSeries($tournament);
+    SeriesMatch::query()->whereKey($series->id)->update(['ready_at_challenger' => now(), 'ready_at_challenged' => now()]);
+
+    $this->travelTo(berlin('2026-11-14 00:30'));
+    app(TournamentEditor::class)->update($tournament, $tournament->creator, ['starts_at' => berlin('2026-11-14 19:00')->utc()]);
+    $wait = TournamentWaits::of($tournament->refresh())[0];
+
+    // The series pinned the window at its pairing: 20 of its report minutes ran before midnight, the rest runs from 18:00.
+    expect(NightPause::heldForStart($tournament))->toBeTrue()
+        ->and($series->refresh()->reportDueAt()->getTimestamp())->toBe(berlin('2026-11-14 18:00')->addMinutes($series->deadlines['report_minutes'] - 20)->getTimestamp())
+        ->and($wait->resumesAt?->getTimestamp())->toBe(berlin('2026-11-14 18:00')->getTimestamp())
+        ->and($wait->paused)->toBeTrue();
+});
+
+test('a small cup drawn for its evening at 20:00 waits for the evening, not for a night pause that ends at 18:00', function () {
+    $this->travelTo(berlin('2026-11-13 16:30'));
+    $cup = runningCup(2, TournamentFormat::SingleElimination, ['bestOf' => 3, 'finalBestOf' => 3], 'rocket-league', '1v1');
+    $cup->forceFill(['starts_at' => berlin('2026-11-13 20:00')->utc(), 'draw_committed_at' => now()])->save();
+    $wait = TournamentWaits::of($cup->refresh())[0];
+
+    expect(NightPauseNotices::state($cup))->toBeNull()
+        ->and($wait->timeAt?->getTimestamp())->toBe(berlin('2026-11-13 20:00')->getTimestamp());
+
+    $this->travelTo(berlin('2026-11-13 18:00'));
+    cupTick();
+    expect(SeriesMatch::query()->count())->toBe(0);
+
+    $this->travelTo(berlin('2026-11-13 20:00'));
+    cupTick();
+    expect(SeriesMatch::query()->count())->toBe(1);
+});
+
+test('drawn at 22:00 for a start at 00:30 inside the coming night pause, the match is announced for the end of that pause, not for 00:30', function () {
+    $this->travelTo(berlin('2026-11-13 22:00'));
+    $tournament = nightDuel(['starts_at' => berlin('2026-11-14 00:30')->utc(), 'draw_committed_at' => now()]);
+
+    $this->travelTo(berlin('2026-11-13 22:01'));
+    $wait = TournamentWaits::of($tournament)[0];
+
+    expect(NightPause::activeFor($tournament))->toBeNull()
+        ->and($wait->consequence)->toBe('Night pause: the league starts it at :time')
+        ->and($wait->timeAt?->getTimestamp())->toBe(berlin('2026-11-14 18:00')->getTimestamp());
+
+    $this->travelTo(berlin('2026-11-14 00:30'));
+    app(TournamentScheduler::class)->tick();
+    expect(nightSeries($tournament))->toBeNull();
+
+    $this->travelTo(berlin('2026-11-14 18:00'));
+    app(TournamentScheduler::class)->tick();
+    expect(nightSeries($tournament)?->start_at?->getTimestamp())->toBe(berlin('2026-11-14 18:00')->getTimestamp());
 });
 
 /* ---------- The organizer's setting ------------------------------------------------------------------------- */

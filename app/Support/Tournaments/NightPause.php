@@ -141,11 +141,13 @@ final class NightPause
      * Drawn at its sign-up close and waiting for its start: no match starts
      * before `starts_at` (TournamentMatchMaker::startReady()), so a pause
      * that is over by then holds nothing up. A casual cup schedules each
-     * series itself and is never held for its start.
+     * series itself and is never held for its start, except the cup played
+     * as one live evening: its round opens at the evening's start
+     * (CasualCups::eveningRoundDue()).
      */
     public static function heldForStart(Tournament $tournament, ?CarbonInterface $at = null): bool
     {
-        return ! $tournament->isCasualCup() && $tournament->draw_committed_at !== null
+        return (! $tournament->isCasualCup() || CasualCups::isEvening($tournament)) && $tournament->draw_committed_at !== null
             && $tournament->starts_at->getTimestamp() > ($at ?? now())->getTimestamp();
     }
 
