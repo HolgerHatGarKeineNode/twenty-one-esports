@@ -146,6 +146,40 @@
         border-bottom: 0;
     }
 
+    /*
+     * AdminPayouts overview (`.rv-po`): rows of 56 px, the whole row opens the tournament. A tournament that waits
+     * carries the feature ground and the accent edge (`.is-featured`, as a card too); the one opened last keeps a
+     * quiet frame (`.is-seen`) so it is found again.
+     */
+    .rv-po td {
+        height: 56px;
+        padding-top: 8px;
+        padding-bottom: 8px;
+    }
+
+    .rv-po tbody tr:last-child td {
+        border-bottom: 0;
+    }
+
+    .rv-po tr.is-seen {
+        outline: 1px solid var(--color-edge);
+        outline-offset: -1px;
+    }
+
+    .rv-po-card {
+        transition: border-color 150ms ease-out;
+    }
+
+    .rv-po-card:hover,
+    .rv-po-card.is-seen {
+        border-color: var(--color-edge);
+    }
+
+    .rv-po-card.is-featured {
+        background: var(--color-feature);
+        box-shadow: inset 4px 0 0 var(--color-btc);
+    }
+
     /* A form label (`.lb`) and field (`.in`) of the boards. */
     .rv-lb {
         display: block;
@@ -371,7 +405,8 @@
             animation: none;
         }
 
-        .rv-admin-side-item {
+        .rv-admin-side-item,
+        .rv-po-card {
             transition: none;
         }
     }

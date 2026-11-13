@@ -8,6 +8,7 @@ use App\Models\TournamentPayout;
 use Illuminate\Support\Facades\DB;
 use App\Support\PreSeason;
 use App\Support\Payouts\PayoutApproval;
+use App\Support\Payouts\PayoutOverview;
 use App\Support\Payouts\PayoutPlan;
 use App\Support\Payouts\PayoutRunner;
 use App\Support\Prizes\PrizePool;
@@ -27,6 +28,14 @@ use Livewire\Component;
  * the Lightning address in their Nostr profile. Admins only (route
  * middleware `admin`, and again in every action).
  *
+ * Without a tournament the page is the overview (user, 2026-11-13: "eine
+ * weltbeste Filterfunktion und eine Übersicht der Turniere. Prio A sind
+ * Turniere, die auf Auszahlung warten"): every tournament with a pot and
+ * its payout state (PayoutOverview), what waits for an admin first, chip
+ * filters by state and game (R8), a name search, pages of twelve (R3). It
+ * never opens a tournament by itself. `?tournament=<id>` opens one: the
+ * overview gives way to its panel, with the way back on top.
+ *
  * Per tournament: the admin check at the end (closes the pool, reads the
  * places, writes one payout per player with its fixed key), then "Pay" per
  * player or for all that are ready. Every payment is queued
@@ -44,8 +53,26 @@ use Livewire\Component;
  * took over still pays from its own wallet.
  */
 new #[Title('Payouts')] #[Layout('layouts::app', ['section' => 'admin'])] class extends Component {
-    #[Url(as: 'tournament')]
+    #[Url(as: 'tournament', history: true)]
     public ?int $tournamentId = null;
+
+    /** The payout state the overview shows: `waiting`, `all` or one state; empty picks `waiting` when anything waits. */
+    #[Url(as: 'state', except: '', history: true)]
+    public string $state = '';
+
+    /** The name search of the overview. */
+    #[Url(as: 'q', except: '')]
+    public string $q = '';
+
+    /** The game the overview is narrowed to, empty for every game. */
+    #[Url(as: 'game', except: '', history: true)]
+    public string $game = '';
+
+    #[Url(as: 'page', except: 1, history: true)]
+    public int $page = 1;
+
+    /** The tournament opened last: its row stays marked back in the overview. */
+    public ?int $seen = null;
 
     public string $notice = '';
 
@@ -56,26 +83,84 @@ new #[Title('Payouts')] #[Layout('layouts::app', ['section' => 'admin'])] class 
     {
         Gate::authorize('admin');
 
-        if ($this->tournamentId === null) {
-            $this->tournamentId = $this->tournaments->first()?->id;
+        // A link to a tournament without a pot (or a deleted one) lands on the overview.
+        if ($this->tournamentId !== null && $this->tournament === null) {
+            $this->tournamentId = null;
         }
     }
 
-    /**
-     * Tournaments with a pool, newest first.
-     *
-     * @return Collection<int, Tournament>
-     */
+    /** The overview's filter in effect: the one asked for, else what waits, else everything. */
     #[Computed]
-    public function tournaments(): Collection
+    public function filter(): string
     {
-        return Tournament::query()->whereNotNull('pool_opened_at')->whereIn('pot_source', [Tournament::POT_LEAGUE, Tournament::POT_WALLET])->latest('id')->limit(100)->get();
+        if (PayoutOverview::isFilter($this->state)) {
+            return $this->state;
+        }
+
+        return $this->waitingTotal > 0 ? PayoutOverview::FILTER_WAITING : PayoutOverview::FILTER_ALL;
+    }
+
+    /** How many tournaments wait for an admin: the readout, and the default filter. */
+    #[Computed]
+    public function waitingTotal(): int
+    {
+        return PayoutOverview::waitingTotal();
+    }
+
+    #[Computed]
+    public function overview(): PayoutOverview
+    {
+        return new PayoutOverview(mb_substr($this->q, 0, 80), $this->game);
+    }
+
+    public function showState(string $state): void
+    {
+        $this->state = PayoutOverview::isFilter($state) ? $state : '';
+        $this->page = 1;
+    }
+
+    public function showGame(string $game): void
+    {
+        $this->game = mb_substr($game, 0, 40);
+        $this->page = 1;
+    }
+
+    public function updatedQ(): void
+    {
+        $this->page = 1;
+    }
+
+    public function showPage(int $page): void
+    {
+        $this->page = max(1, $page);
+    }
+
+    public function open(int $tournamentId): void
+    {
+        $this->tournamentId = $tournamentId;
+        $this->notice = '';
+        $this->watching = false;
+        unset($this->tournament, $this->payouts);
+
+        if ($this->tournament === null) {
+            $this->tournamentId = null;
+        }
+    }
+
+    /** Back to the overview, the tournament just seen marked in it. */
+    public function close(): void
+    {
+        $this->seen = $this->tournamentId;
+        $this->tournamentId = null;
+        $this->notice = '';
+        $this->watching = false;
+        unset($this->tournament, $this->payouts, $this->waitingTotal, $this->filter);
     }
 
     #[Computed]
     public function tournament(): ?Tournament
     {
-        return $this->tournamentId === null ? null : Tournament::query()->whereNotNull('pool_opened_at')->whereIn('pot_source', [Tournament::POT_LEAGUE, Tournament::POT_WALLET])->find($this->tournamentId);
+        return $this->tournamentId === null ? null : PayoutOverview::base()->find($this->tournamentId);
     }
 
     /**
@@ -262,21 +347,25 @@ new #[Title('Payouts')] #[Layout('layouts::app', ['section' => 'admin'])] class 
 @endphp
 
 {{--
-    AdminPayouts.dc.html: the readout (nothing waiting, or how many wait, and the last prize paid), then the
-    chosen tournament as one featured card: its cover, name and pot as a display numeral, the closing state
-    on the right, the places as a table. Addresses are never shown, only whether one is checked; the one
-    exception is the button that approves a changed address (rule: no Lightning address on screens).
+    AdminPayouts.dc.html: the readout (nothing waiting, or how many tournaments wait, and the last prize paid),
+    then either the overview (search, state chips, game chips, the list with what waits first) or the chosen
+    tournament as one featured card: its cover, name and pot as a display numeral, the closing state on the
+    right, the places as a table. Addresses are never shown, only whether one is checked; the one exception is
+    the button that approves a changed address (rule: no Lightning address on screens).
 --}}
 @php
-    $waitingAll = \App\Models\TournamentPayout::query()->whereIn('status', [PayoutStatus::Pending, PayoutStatus::Failed])->count();
+    $waitingAll = $this->waitingTotal;
     $lastPaid = \App\Models\TournamentPayout::query()->where('status', PayoutStatus::Paid)->latest('updated_at')->value('amount_sats');
+    $hasPots = $tournament !== null || PayoutOverview::base()->exists();
+    // The overview's own address: the filters in effect, so a chip, a page and the way back keep them.
+    $overviewUrl = fn (array $change = []): string => route('admin.payouts', array_filter([...['state' => $this->state, 'q' => $this->q, 'game' => $this->game], ...$change], fn ($value): bool => $value !== '' && $value !== null));
 @endphp
 <x-admin.page active="payouts" :title="__('Payouts')" :lead="__('Prize money per player, sent to the Lightning address in their Nostr profile. Every payment has a fixed key: a second click never pays twice.')" data-test="admin-payouts">
     <x-slot:readout>
         @if ($waitingAll === 0)
-            <span class="flex items-center gap-2"><span class="rv-dot" aria-hidden="true"></span><span class="text-xs text-ink-2">{{ __('No payout waiting') }}</span></span>
+            <span class="flex items-center gap-2"><span class="rv-dot" aria-hidden="true"></span><span class="text-xs text-ink-2" data-test="readout-waiting" data-count="0">{{ __('No payout waiting') }}</span></span>
         @else
-            <span class="flex items-center gap-2"><span class="rv-dot is-p" style="--c: var(--color-btc-hi)" aria-hidden="true"></span><span class="text-xs text-ink-2">{{ trans_choice(':count payout waiting|:count payouts waiting', $waitingAll) }}</span></span>
+            <span class="flex items-center gap-2"><span class="rv-dot is-p" style="--c: var(--color-btc-hi)" aria-hidden="true"></span><span class="text-xs text-ink-2" data-test="readout-waiting" data-count="{{ $waitingAll }}">{{ trans_choice(':count tournament waits for its payout|:count tournaments wait for their payout', $waitingAll) }}</span></span>
         @endif
         @if ($lastPaid !== null)
             <span class="flex items-baseline gap-2"><span class="rv-m">{{ __('last paid') }}</span><span class="rv-num text-base text-btc" data-test="readout-value">{{ $sats((int) $lastPaid) }} {{ __('Sats') }}</span></span>
@@ -286,21 +375,207 @@ new #[Title('Payouts')] #[Layout('layouts::app', ['section' => 'admin'])] class 
         <x-admin.flash tone="error" :message="__('The league key is not set up (ESPORTS_LEAGUE_NSEC), so no payout can be published.')" data-test="league-key-missing" />
     @endunless
 
-    @if ($this->tournaments->isEmpty())
+    @if (! $hasPots)
         <x-admin.panel>
-        <x-admin.empty :text="__('No tournament has a prize pot yet. Organizers switch one on on their tournament’s prize pool page.')" data-test="payouts-empty">
-            <x-button variant="quiet" :href="route('admin.tournaments')">{{ __('All tournaments') }}</x-button>
-        </x-admin.empty>
-    </x-admin.panel>
-    @else
-        <div class="flex flex-col sm:max-w-[420px]">
-            <span class="rv-lb" id="payouts-tournament-l">{{ __('Tournament') }}</span>
-            <x-ui.select-menu model="tournamentId" live labelledby="payouts-tournament-l" :value="$this->tournamentId" data-test="payouts-tournament"
-                              :options="$this->tournaments->mapWithKeys(fn ($option): array => [$option->id => $option->name.', '.$option->status->label()])->all()" />
-        </div>
+            <x-admin.empty :text="__('No tournament has a prize pot yet. Organizers switch one on on their tournament’s prize pool page.')" data-test="payouts-empty">
+                <x-button variant="quiet" :href="route('admin.tournaments')">{{ __('All tournaments') }}</x-button>
+            </x-admin.empty>
+        </x-admin.panel>
+    @elseif ($tournament === null)
+        @php
+            $filter = $this->filter;
+            $counts = $this->overview->counts();
+            $gameCounts = PayoutOverview::gameCount() > 1 ? $this->overview->games($filter) : [];
+            $rows = $this->overview->page($filter, $this->page);
+            // R8: "Alle" first, what waits beside it, then the states by count (the more urgent first on a tie).
+            $stateOrder = PayoutOverview::STATES;
+            usort($stateOrder, fn (string $a, string $b): int => [$counts[$b], array_search($a, PayoutOverview::STATES, true)] <=> [$counts[$a], array_search($b, PayoutOverview::STATES, true)]);
+            $stateChips = array_map(fn (string $key): array => ['label' => PayoutOverview::label($key), 'count' => $counts[$key], 'href' => $overviewUrl(['state' => $key, 'page' => null]), 'active' => $filter === $key, 'key' => $key],
+                [PayoutOverview::FILTER_ALL, PayoutOverview::FILTER_WAITING, ...$stateOrder]);
+            $gameChips = $gameCounts === [] ? [] : [
+                ['label' => __('All'), 'count' => array_sum($gameCounts), 'href' => $overviewUrl(['game' => null, 'page' => null]), 'active' => $this->game === '', 'key' => 'all'],
+                ...array_map(fn (string $slug): array => ['label' => \App\Support\Tournaments\TournamentsBoard::chipLabel($slug), 'count' => $gameCounts[$slug], 'href' => $overviewUrl(['game' => $slug, 'page' => null]), 'active' => $this->game === $slug, 'key' => $slug], array_keys($gameCounts)),
+            ];
+            // A game picked and then filtered away by the state still shows as the chosen chip, at zero.
+            if ($this->game !== '' && $gameChips !== [] && ! isset($gameCounts[$this->game])) {
+                $gameChips[] = ['label' => \App\Support\Tournaments\TournamentsBoard::chipLabel($this->game), 'count' => 0, 'href' => $overviewUrl(['page' => null]), 'active' => true, 'key' => $this->game];
+            }
+            $narrowed = trim($this->q) !== '' || $this->game !== '';
+        @endphp
+        <section class="flex flex-col gap-4" aria-label="{{ __('Tournaments with a prize pot') }}" data-test="payouts-overview" data-filter="{{ $filter }}">
+            {{-- The filters: a chip is a link to the filtered page (it works without JS); with JS the click stays on the page. --}}
+            <div class="flex flex-col gap-3"
+                 x-data x-on:click="const chip = $event.target.closest('a[data-chip], a[data-chip-menu]'); if (chip && ! ($event.metaKey || $event.ctrlKey || $event.shiftKey)) { $event.preventDefault(); const to = new URL(chip.href).searchParams; chip.closest('[data-test=payouts-games]') ? $wire.showGame(to.get('game') ?? '') : $wire.showState(to.get('state') ?? ''); }">
+                <label class="relative block w-full @2xl/admin:max-w-[420px]">
+                    <x-icon name="search" :size="16" class="pointer-events-none absolute top-1/2 left-3 -translate-y-1/2 text-ink-3" />
+                    <input type="search" aria-label="{{ __('Search tournaments by name') }}" wire:model.live.debounce.300ms="q" maxlength="80" autocomplete="off" enterkeyhint="search" placeholder="{{ __('Search tournaments') }}"
+                           class="h-11 w-full rounded-md border border-line bg-ground pr-3 pl-10 text-sm text-ink placeholder:text-ink-3" data-test="payouts-search">
+                </label>
+                <x-ui.chips :label="__('Payout')" :items="$stateChips" size="lg" test="payouts-states" />
+                @if ($gameChips !== [])
+                    <x-ui.chips :label="__('Game title')" :items="$gameChips" size="lg" test="payouts-games" />
+                @endif
+            </div>
+
+            @if ($rows->isEmpty() && $filter === PayoutOverview::FILTER_WAITING && ! $narrowed)
+                {{-- Nothing waits: a calm line, not an empty box. --}}
+                <div class="rv-card flex flex-col items-start gap-3 p-4 lg:p-6" style="box-shadow: inset 4px 0 0 var(--color-win)" role="status" data-test="payouts-all-paid">
+                    <p class="m-0 flex items-center gap-3 font-display text-base leading-[1.3] font-bold"><x-icon name="check" :size="20" class="shrink-0 text-win" />{{ __('Everything is paid.') }}</p>
+                    <p class="m-0 max-w-[60ch] text-[13px] leading-normal text-ink-2">{{ __('No tournament waits for a check or a payment. A tournament shows up here as soon as it has finished.') }}</p>
+                    <a href="{{ $overviewUrl(['state' => PayoutOverview::FILTER_ALL, 'page' => null]) }}" wire:click.prevent="showState('{{ PayoutOverview::FILTER_ALL }}')" class="rv-b2" data-test="payouts-show-all">{{ __('Show all tournaments') }}</a>
+                </div>
+            @elseif ($rows->isEmpty())
+                <x-admin.panel>
+                    <x-admin.empty :text="__('No tournament fits. Change the search or pick another filter.')" data-test="payouts-no-hits">
+                        <a href="{{ route('admin.payouts', ['state' => PayoutOverview::FILTER_ALL]) }}" class="rv-b2" data-test="payouts-reset">{{ __('Reset filters') }}</a>
+                    </x-admin.empty>
+                </x-admin.panel>
+            @else
+                @php
+                    $rowData = $rows->getCollection()->map(function (Tournament $row) use ($sats, $overviewUrl): array {
+                        $state = (string) $row->getAttribute('payout_state');
+                        $unpaid = (int) $row->getAttribute('unpaid_count');
+                        $finished = PayoutOverview::finishedAt($row);
+
+                        return [
+                            'id' => $row->id,
+                            'game' => $row->game,
+                            'name' => $row->name,
+                            'sub' => \App\Support\Tournaments\Lobbies::gameLine($row).', '.$row->status->label(),
+                            'state' => $state,
+                            'waits' => PayoutOverview::waits($state),
+                            'href' => $overviewUrl(['tournament' => $row->id]),
+                            'finished' => $finished === null ? null : \App\Support\Formats::day($finished),
+                            'pot' => \App\Support\Prizes\PrizeChips::of($row)['sats'] ?? null,
+                            'unpaid' => $unpaid,
+                            'unpaidSats' => (int) $row->getAttribute('unpaid_sats'),
+                            // Before the check no payout is written: the whole pot is still to be split.
+                            'unpaidNote' => $state === PayoutOverview::UNCHECKED ? __('whole pot') : null,
+                            'total' => (int) $row->getAttribute('payouts_count'),
+                            'paid' => (int) $row->getAttribute('paid_count'),
+                            'forwarded' => (int) $row->getAttribute('forwarded_count'),
+                        ];
+                    })->all();
+                @endphp
+
+                {{-- From 896 px of column width a table (R2: numbers right-aligned, column order fixed); below it the same rows as cards. --}}
+                <div class="rv-card hidden @4xl/admin:block" data-test="payouts-table">
+                    <table class="rv-tb rv-po">
+                        <thead>
+                            <tr>
+                                <th>{{ __('Payout') }}</th>
+                                <th>{{ __('Tournament') }}</th>
+                                <th>{{ __('Finished') }}</th>
+                                <th class="is-r">{{ __('Pot (sats)') }}</th>
+                                <th class="is-r">{{ __('Still waiting') }}</th>
+                                <th class="is-r">{{ __('Paid') }}</th>
+                                <th class="w-10" aria-label="{{ __('Open the tournament') }}"></th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @foreach ($rowData as $row)
+                                <tr wire:key="pt-{{ $row['id'] }}" wire:click="open({{ $row['id'] }})" @class(['cursor-pointer hover:bg-row-hover', 'is-featured' => $row['waits'], 'is-seen' => $seen === $row['id']])
+                                    data-test="payouts-row" data-tournament="{{ $row['id'] }}" data-state="{{ $row['state'] }}">
+                                    <td><span class="rv-tag {{ PayoutOverview::tone($row['state']) }}" data-test="payouts-row-state">@if ($icon = PayoutOverview::icon($row['state']))<x-icon :name="$icon" :size="12" />@endif{{ PayoutOverview::label($row['state']) }}</span></td>
+                                    <td>
+                                        <span class="flex items-center gap-3">
+                                            {{-- Under 1024 px of column the cover gives its 76 px to the name: 60 characters then fit on two lines (measured at 1280). --}}
+                                            <x-game-cover :game="$row['game']" size="thumb" class="hidden h-9 w-16 flex-none rounded-[2px] @5xl/admin:block [&_img]:object-cover" />
+                                            <span class="flex min-w-0 flex-col">
+                                                <a href="{{ $row['href'] }}" wire:click.prevent.stop="open({{ $row['id'] }})" title="{{ $row['name'] }}" class="line-clamp-2 font-bold text-ink [overflow-wrap:anywhere] hover:text-btc-hi" data-test="payouts-open" @if ($seen === $row['id']) aria-current="true" @endif>{{ $row['name'] }}</a>
+                                                <span class="rv-m [overflow-wrap:anywhere]">{{ $row['sub'] }}@if ($seen === $row['id']), {{ __('opened last') }}@endif</span>
+                                            </span>
+                                        </span>
+                                    </td>
+                                    <td class="whitespace-nowrap tabular-nums">@if ($row['finished'] !== null){{ $row['finished'] }}@else<span class="text-ink-3">–</span>@endif</td>
+                                    <td class="is-r whitespace-nowrap">@if ($row['pot'] !== null)<b class="rv-num text-sm text-btc" data-test="payouts-row-pot">{{ $sats($row['pot']) }}</b>@else<span class="text-ink-3">–</span>@endif</td>
+                                    <td class="is-r whitespace-nowrap tabular-nums" data-test="payouts-row-waiting">
+                                        @if ($row['unpaidNote'] !== null)
+                                            <span class="text-[13px] text-ink-2">{{ $row['unpaidNote'] }}</span>
+                                        @elseif ($row['unpaid'] > 0)
+                                            <b>{{ $sats($row['unpaidSats']) }}</b>
+                                            <span class="block rv-m">{{ trans_choice(':count payout|:count payouts', $row['unpaid']) }}</span>
+                                        @else
+                                            <span class="text-ink-3">–</span>
+                                        @endif
+                                    </td>
+                                    <td class="is-r whitespace-nowrap tabular-nums" data-test="payouts-row-paid">
+                                        @if ($row['total'] > 0)
+                                            {{ __(':paid of :total', ['paid' => $row['paid'], 'total' => $row['total']]) }}
+                                            @if ($row['forwarded'] > 0)<span class="block rv-m">{{ trans_choice(':count passed on|:count passed on', $row['forwarded']) }}</span>@endif
+                                        @else
+                                            <span class="text-ink-3">–</span>
+                                        @endif
+                                    </td>
+                                    <td class="w-10 text-ink-3"><x-icon name="next" :size="16" /></td>
+                                </tr>
+                            @endforeach
+                        </tbody>
+                    </table>
+                </div>
+
+                <ul class="m-0 flex list-none flex-col gap-2 p-0 @4xl/admin:hidden" data-test="payouts-cards">
+                    @foreach ($rowData as $row)
+                        <li wire:key="pc-{{ $row['id'] }}">
+                            <a href="{{ $row['href'] }}" wire:click.prevent="open({{ $row['id'] }})" @class(['rv-card rv-po-card flex flex-col gap-3 p-3 text-ink hover:text-ink', 'is-featured' => $row['waits'], 'is-seen' => $seen === $row['id']])
+                               data-test="payouts-card" data-tournament="{{ $row['id'] }}" data-state="{{ $row['state'] }}" @if ($seen === $row['id']) aria-current="true" @endif>
+                                <span class="flex items-start gap-3">
+                                    <x-game-cover :game="$row['game']" size="thumb" class="h-9 w-16 flex-none rounded-[2px] [&_img]:object-cover" />
+                                    <span class="flex min-w-0 grow flex-col">
+                                        <b class="line-clamp-2 text-sm leading-tight [overflow-wrap:anywhere]" title="{{ $row['name'] }}">{{ $row['name'] }}</b>
+                                        <span class="rv-m [overflow-wrap:anywhere]">{{ $row['sub'] }}@if ($row['finished'] !== null) {{ $row['finished'] }}@endif</span>
+                                    </span>
+                                    <x-icon name="next" :size="16" class="mt-0.5 flex-none text-ink-3" />
+                                </span>
+                                <span class="flex items-center justify-between gap-3">
+                                    <span class="rv-tag {{ PayoutOverview::tone($row['state']) }}">@if ($icon = PayoutOverview::icon($row['state']))<x-icon :name="$icon" :size="12" />@endif{{ PayoutOverview::label($row['state']) }}</span>
+                                    @if ($row['pot'] !== null)<b class="rv-num text-sm whitespace-nowrap text-btc">{{ $sats($row['pot']) }} {{ __('Sats') }}</b>@endif
+                                </span>
+                                @if ($row['unpaidNote'] !== null || $row['total'] > 0)
+                                    <span class="flex items-baseline justify-between gap-3 border-t border-hairline pt-2 text-[13px] text-ink-2 tabular-nums">
+                                        <span>
+                                            @if ($row['unpaidNote'] !== null){{ __('Still waiting') }}: {{ $row['unpaidNote'] }}
+                                            @elseif ($row['unpaid'] > 0){{ __('Still waiting') }}: <b class="text-ink">{{ $sats($row['unpaidSats']) }}</b>
+                                            @else{{ __('Nothing waits') }}
+                                            @endif
+                                        </span>
+                                        @if ($row['total'] > 0)<span class="whitespace-nowrap">{{ __(':paid of :total paid', ['paid' => $row['paid'], 'total' => $row['total']]) }}</span>@endif
+                                    </span>
+                                @endif
+                            </a>
+                        </li>
+                    @endforeach
+                </ul>
+
+                <div class="flex flex-wrap items-center gap-x-4 gap-y-2">
+                    <span class="rv-m" data-test="payouts-total">{{ trans_choice(':count tournament, what waits first|:count tournaments, what waits first', $rows->total()) }}</span>
+                    @if ($rows->hasPages())
+                        <nav class="ml-auto flex items-center gap-3" aria-label="{{ __('Pages') }}" data-test="payouts-pages">
+                            @if ($rows->currentPage() > 1)<a href="{{ $overviewUrl(['page' => $rows->currentPage() - 1 === 1 ? null : $rows->currentPage() - 1]) }}" wire:click.prevent="showPage({{ $rows->currentPage() - 1 }})" class="rv-b2" data-test="payouts-page-prev">{{ __('Previous page') }}</a>@endif
+                            <span class="rv-m whitespace-nowrap">{{ __('Page :page of :pages', ['page' => $rows->currentPage(), 'pages' => $rows->lastPage()]) }}</span>
+                            @if ($rows->hasMorePages())<a href="{{ $overviewUrl(['page' => $rows->currentPage() + 1]) }}" wire:click.prevent="showPage({{ $rows->currentPage() + 1 }})" class="rv-b2" data-test="payouts-page-next">{{ __('Next page') }}</a>@endif
+                        </nav>
+                    @endif
+                </div>
+            @endif
+        </section>
     @endif
 
     @if ($tournament)
+        @php
+            $detailState = (string) PayoutOverview::stateOf($tournament->id);
+            $nextWaiting = PayoutOverview::nextWaiting($tournament->id);
+        @endphp
+        {{-- The way back, the tournament's state, and the next one that waits: an admin works the queue without the detour. --}}
+        <nav class="flex flex-wrap items-center gap-3" aria-label="{{ __('Payouts overview') }}" data-test="payouts-detail-bar">
+            <a href="{{ $overviewUrl() }}" wire:click.prevent="close" class="rv-b2" data-test="payouts-back"><x-icon name="prev" :size="16" />{{ __('All payouts') }}</a>
+            <span class="rv-tag {{ PayoutOverview::tone($detailState) }}" data-test="payouts-detail-state" data-state="{{ $detailState }}">@if ($icon = PayoutOverview::icon($detailState))<x-icon :name="$icon" :size="12" />@endif{{ PayoutOverview::label($detailState) }}</span>
+            @if ($nextWaiting)
+                <a href="{{ $overviewUrl(['tournament' => $nextWaiting->id]) }}" wire:click.prevent="open({{ $nextWaiting->id }})" class="rv-b2 max-w-full min-w-0 sm:ml-auto" data-test="payouts-next" title="{{ $nextWaiting->name }}">
+                    <span class="flex-none">{{ __('Next waiting') }}</span><span class="max-w-[24ch] min-w-0 truncate text-ink-2">{{ $nextWaiting->name }}</span><x-icon name="next" :size="16" class="flex-none" />
+                </a>
+            @endif
+        </nav>
         <section aria-labelledby="t-h" class="rv-card rv-glow flex flex-col gap-4 p-4 lg:p-6" style="box-shadow: inset 4px 0 0 var(--color-btc), 0 0 0 1px var(--color-btc), 0 0 28px rgb(247 147 26 / 0.25)" data-test="payouts-tournament-panel"
                  @if ($this->watching || $this->payouts->contains(fn ($payout) => $payout->status === PayoutStatus::Paying)) wire:poll.3s @endif>
             <div class="flex flex-col gap-4 sm:flex-row sm:items-center">
@@ -360,7 +635,7 @@ new #[Title('Payouts')] #[Layout('layouts::app', ['section' => 'admin'])] class 
                             <span wire:loading wire:target="refreshProfiles">{{ __('Reading the relays…') }}</span>
                         </x-button>
                     @endif
-                    @unless ($payingHere)<span class="text-[13px] text-loss">{{ __('The connection of this pot’s own wallet is missing, so nothing can be paid out.') }}</span>@endunless
+                    @unless ($payingHere)<span class="text-[13px] text-loss">{{ $tournament->hasOwnWallet() ? __('The connection of this pot’s own wallet is missing, so nothing can be paid out.') : __('The league wallet is not connected, so nothing can be paid out.') }}</span>@endunless
                 </div>
 
                 <div class="relative overflow-x-auto" @if ($payouts->contains(fn ($p) => $p->status === PayoutStatus::Paying)) wire:poll.5s @endif>
@@ -387,7 +662,7 @@ new #[Title('Payouts')] #[Layout('layouts::app', ['section' => 'admin'])] class 
                                     <td class="is-r whitespace-nowrap font-bold tabular-nums">{{ $sats($payout->amount_sats) }}</td>
                                     <td>
                                         <span @class(['rv-tag', 'is-ok' => $payout->status === PayoutStatus::Paid, 'is-bad' => $payout->status === PayoutStatus::Failed, 'is-btc' => ! in_array($payout->status, [PayoutStatus::Paid, PayoutStatus::Failed], true)])>@if ($payout->status === PayoutStatus::Paid)<x-icon name="check" :size="12" />@endif{{ $payout->status->label() }}</span>
-                                        @if ($payout->reasonText())<span class="mt-1 block max-w-[280px] text-xs text-ink-2" data-test="payout-reason">{{ $payout->reasonText() }}</span>@endif
+                                        @if ($payout->reasonText())<span class="mt-1 block w-[240px] max-w-[280px] text-xs text-ink-2" data-test="payout-reason">{{ $payout->reasonText() }}</span>@endif
                                         @if (is_array($payout->debug) && $payout->debug !== [])
                                             {{-- The raw trace of the last failed attempt (user 2026-10-25: admins are devs and bitcoiners, show them why). --}}
                                             {{-- wire:ignore.self: the polls morph the row, and its `open` (closed on the server) snapped the details shut (user 2026-10-26). --}}

@@ -309,7 +309,7 @@ test('the payout debug details stay open while the payouts page re-renders (user
     $webpage = visit(BrowserLogin::url($admin));
     $page = $webpage->page();
     $page->context()->addInitScript(BrowserConsole::COLLECTOR);
-    $page->goto(ComputeUrl::from(route('admin.payouts')));
+    $page->goto(ComputeUrl::from(route('admin.payouts', ['tournament' => $tournament->id])));
     BrowserWait::until($page, '() => document.querySelector("[data-test=payout-debug] summary") !== null && window.Livewire !== undefined', 10_000);
     $page->evaluate('() => document.querySelector("[data-test=payout-debug] summary").click()');
     expect($page->evaluate('() => document.querySelector("[data-test=payout-debug]").open'))->toBeTrue();

@@ -2,14 +2,13 @@
 
 namespace App\Support\Navigation;
 
-use App\Enums\PayoutStatus;
 use App\Enums\StackerRunStatus;
 use App\Models\LeagueWeek;
 use App\Models\ScoreRun;
 use App\Models\SeriesMatch;
 use App\Models\StackerRun;
-use App\Models\TournamentPayout;
 use App\Models\User;
+use App\Support\Payouts\PayoutOverview;
 use App\Support\Scores\ScoreAccounts;
 use Illuminate\Support\Facades\Route;
 
@@ -76,7 +75,8 @@ final class AdminNavigation
         }
 
         $openCases = SeriesMatch::query()->openCase()->count();
-        $payable = TournamentPayout::query()->whereIn('status', [PayoutStatus::Pending, PayoutStatus::Failed])->count();
+        // The same count as the payouts page's readout and its "waiting" chip: tournaments, not single payouts.
+        $payable = PayoutOverview::waitingTotal();
 
         return [
             ['key' => 'league', 'label' => self::groupLabel('league'), 'items' => [

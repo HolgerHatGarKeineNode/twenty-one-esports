@@ -8,6 +8,7 @@ use Illuminate\Http\Client\Request;
 use Illuminate\Support\Facades\Http;
 use Livewire\Livewire;
 use Tests\Support\Bolt11Fixture;
+use Tests\Support\FakeNwcWallet;
 
 /*
 | A failed payout keeps what its attempt saw (user 2026-10-25: "invoice_mismatch" alone told nobody why a Primal
@@ -31,12 +32,12 @@ test('an invoice whose description hash is not sha256(metadata) fails with the f
         ->and($payout->debug['invoice_description_hash'])->toBe(hash('sha256', 'something primal hashed'))
         ->and($payout->debug['callback_url'])->toStartWith('https://wallet.example/cb?amount=');
 
-    Livewire::actingAs($admin)->test('pages::admin.payouts')->assertSeeHtml('data-test="payout-debug"')->assertSee('description_hash != sha256(metadata)');
+    Livewire::actingAs($admin)->test('pages::admin.payouts', ['tournamentId' => $tournament->id])->assertSeeHtml('data-test="payout-debug"')->assertSee('description_hash != sha256(metadata)');
 
 });
 
 /** LNURL answers like Primal's (2026-10-26): the invoice's description hash is not sha256(metadata); config `test.extra_msats` skews the amount. */
-function primalLikeAddresses(?Tests\Support\FakeNwcWallet $wallet = null): void
+function primalLikeAddresses(?FakeNwcWallet $wallet = null): void
 {
     app()->instance(HostResolver::class, new class extends HostResolver
     {
