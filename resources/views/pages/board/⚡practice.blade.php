@@ -3,6 +3,7 @@
 use App\Games\Blockli;
 use App\Games\GameRegistry;
 use App\Support\Board\BlockliPractice;
+use App\Support\Board\BoardThrottle;
 use App\Support\Cards\PageCard;
 use App\Support\GameNames;
 use App\Support\PageMeta;
@@ -47,14 +48,14 @@ new #[Layout('layouts::app', ['scripts' => ['resources/js/blockli/practice.js']]
     #[Json]
     public function open(mixed $position = null): array
     {
-        return app(BlockliPractice::class)->open($position);
+        return BoardThrottle::allows('practice', BoardThrottle::PRACTICE_PER_MINUTE) ? app(BlockliPractice::class)->open($position) : ['ok' => false, 'error' => 'too_many'];
     }
 
     /** A move in the position the browser holds, judged by the rules (BlockliPractice::play()). @return array<string, mixed> */
     #[Json]
     public function play(mixed $position = null, mixed $move = null, mixed $history = []): array
     {
-        return app(BlockliPractice::class)->play($position, $move, $history);
+        return BoardThrottle::allows('practice', BoardThrottle::PRACTICE_PER_MINUTE) ? app(BlockliPractice::class)->play($position, $move, $history) : ['ok' => false, 'error' => 'too_many'];
     }
 
     /**

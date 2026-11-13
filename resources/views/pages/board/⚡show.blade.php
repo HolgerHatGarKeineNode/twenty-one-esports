@@ -8,6 +8,7 @@ use App\Models\User;
 use App\Support\Board\BlockspacePractice;
 use App\Support\Board\BoardGameService;
 use App\Support\Board\BoardRuleViolation;
+use App\Support\Board\BoardThrottle;
 use App\Support\Board\GoLabels;
 use App\Support\GameNames;
 use App\Support\Nostr\NostrKeys;
@@ -110,8 +111,12 @@ new #[Layout('layouts::app', ['realtime' => true, 'scripts' => ['resources/js/bo
 
         $game = $this->boardGame->refresh();
 
-        // Nothing new since the page's last state: the move list stays with the page (Blockspace carries all stones per move).
-        return app(BoardGameService::class)->snapshot($game, withMoves: $known !== $game->version);
+        // Nothing new since the page's last state: the move list stays with the page (Blockspace carries all stones per
+        // move). The whole record is the costly answer, so a visitor gets it a few times a minute (BoardThrottle); beyond
+        // that the state comes without it and the board asks again (boardGame.js resync()).
+        $record = $known !== $game->version && BoardThrottle::allows('history', BoardThrottle::HISTORY_PER_MINUTE);
+
+        return app(BoardGameService::class)->snapshot($game, withMoves: $record);
     }
 
     /**
@@ -170,7 +175,7 @@ new #[Layout('layouts::app', ['realtime' => true, 'scripts' => ['resources/js/bo
         $games = app(BoardGameService::class);
         $games->checkClock($this->boardGame);
 
-        return ['ok' => true, 'error' => null, 'state' => $games->snapshot($this->boardGame->refresh())];
+        return ['ok' => true, 'error' => null, 'state' => $games->snapshot($this->boardGame->refresh(), withMoves: false)];
     }
 
     /**
@@ -269,7 +274,9 @@ new #[Layout('layouts::app', ['realtime' => true, 'scripts' => ['resources/js/bo
             $error = $violation->reason;
         }
 
-        return ['ok' => $error === null, 'error' => $error, 'state' => $games->snapshot($this->boardGame->refresh())];
+        // Without the record: the board joins its own to the state (boardGame.js follow()) and asks for the whole one only
+        // where it fell behind. A refused action of a long go game answered with 1 MB before.
+        return ['ok' => $error === null, 'error' => $error, 'state' => $games->snapshot($this->boardGame->refresh(), withMoves: false)];
     }
 
     /**

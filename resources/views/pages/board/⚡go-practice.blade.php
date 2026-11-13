@@ -1,6 +1,7 @@
 <?php
 
 use App\Games\Go;
+use App\Support\Board\BoardThrottle;
 use App\Support\Board\GoLabels;
 use App\Support\Board\GoPractice;
 use App\Support\Cards\PageCard;
@@ -47,14 +48,14 @@ new #[Layout('layouts::app', ['scripts' => ['resources/js/go/practice.js']])] cl
     #[Json]
     public function open(mixed $position = null): array
     {
-        return app(GoPractice::class)->open($position);
+        return BoardThrottle::allows('practice', BoardThrottle::PRACTICE_PER_MINUTE) ? app(GoPractice::class)->open($position) : ['ok' => false, 'error' => 'too_many'];
     }
 
     /** A move in the position the browser holds, judged by the rules (GoPractice::play()). @return array<string, mixed> */
     #[Json]
     public function play(mixed $position = null, mixed $move = null, mixed $history = []): array
     {
-        return app(GoPractice::class)->play($position, $move, $history);
+        return BoardThrottle::allows('practice', BoardThrottle::PRACTICE_PER_MINUTE) ? app(GoPractice::class)->play($position, $move, $history) : ['ok' => false, 'error' => 'too_many'];
     }
 
     /**
