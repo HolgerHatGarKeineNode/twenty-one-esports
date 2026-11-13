@@ -11,7 +11,7 @@
 @endphp
 <li id="{{ $game['slug'] }}" class="grid grid-cols-1 gap-4 rounded-lg bg-card p-4 sm:grid-cols-[240px_minmax(0,1fr)] lg:grid-cols-[320px_minmax(0,1fr)] lg:gap-6 lg:p-5" style="--game: {{ $game['colour'] }}" data-test="play-game-{{ $game['slug'] }}">
     <a href="{{ $game['page'] }}" @navigate($game['page']) class="block self-start">
-        <x-game-cover :game="$game['slug']" size="card" class="w-full rounded-md border-b-[3px] border-(--game)" :loading="($eager ?? false) ? 'eager' : 'lazy'" />
+        <x-game-cover :game="$game['slug']" listed size="card" class="w-full rounded-md border-b-[3px] border-(--game)" :loading="($eager ?? false) ? 'eager' : 'lazy'" />
     </a>
     <div class="flex min-w-0 flex-col gap-3">
         <div class="flex flex-wrap items-baseline gap-x-3 gap-y-1">

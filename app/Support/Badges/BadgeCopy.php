@@ -2,6 +2,7 @@
 
 namespace App\Support\Badges;
 
+use App\Games\BoardGame;
 use App\Games\GameRegistry;
 use App\Support\Rating\RankTiers;
 
@@ -15,12 +16,12 @@ final class BadgeCopy
 {
     public static function ladder(string $game, string $mode): string
     {
-        return match ($game.'/'.$mode) {
-            'chess/blitz' => __('Chess blitz'),
-            'chess/rapid' => __('Chess rapid'),
-            'chess/correspondence' => __('Chess daily'),
-            // A board game's correspondence mode (plan "Mühle und Dame", P8).
-            'nine-mens-morris/correspondence', 'checkers/correspondence', 'blockli/correspondence', 'blockspace/correspondence', 'go-9/correspondence', 'go-13/correspondence', 'go-19/correspondence' => __(':game correspondence', ['game' => __(app(GameRegistry::class)->name($game))]),
+        return match (true) {
+            $game === 'chess' && $mode === 'blitz' => __('Chess blitz'),
+            $game === 'chess' && $mode === 'rapid' => __('Chess rapid'),
+            $game === 'chess' && $mode === 'correspondence' => __('Chess daily'),
+            // A board game's correspondence mode (plan "Mühle und Dame", P8): every board game, switched on or kept for later.
+            $mode === 'correspondence' && (app(GameRegistry::class)->isBoard($game) || in_array($game, BoardGame::RESERVED_SLUGS, true)) => __(':game correspondence', ['game' => __(app(GameRegistry::class)->name($game))]),
             default => app(GameRegistry::class)->name($game).' '.$mode,
         };
     }

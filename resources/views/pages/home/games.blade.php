@@ -21,7 +21,7 @@
     <div class="hidden grid-cols-[repeat(3,1fr)] gap-4 lg:grid xl:grid-cols-[repeat(4,1fr)]" data-test="browser-games">
         @foreach ($games['browser'] as $game)
             <a href="{{ $game['href'] }}" @navigate($game['href']) class="rv-gt" data-test="game-tile" data-game="{{ $game['slug'] }}">
-                <x-game-cover :game="$game['slug']" class="rv-cv" />
+                <x-game-cover :game="$game['slug']" listed class="rv-cv" />
                 <span class="flex flex-col gap-1"><b>{{ $game['name'] }}</b><x-game-credit :game="$game['slug']" :link="false" /><span class="rv-m">{{ $game['meta'] }}</span></span>
             </a>
         @endforeach
@@ -32,7 +32,7 @@
         @foreach ($games['browser'] as $game)
             <li>
                 <a href="{{ $game['href'] }}" @navigate($game['href']) class="flex items-center gap-3 border-b border-hairline py-2 text-ink hover:text-ink" data-test="game-row" data-game="{{ $game['slug'] }}">
-                    <x-game-cover :game="$game['slug']" size="thumb" class="h-[54px] w-24 rounded-[2px] [&_img]:object-cover" />
+                    <x-game-cover :game="$game['slug']" listed size="thumb" class="h-[54px] w-24 rounded-[2px] [&_img]:object-cover" />
                     <span class="flex min-w-0 grow flex-col"><b>{{ $game['name'] }}</b><x-game-credit :game="$game['slug']" :link="false" /><span class="rv-m">{{ $game['meta'] }}</span></span>
                     <x-icon name="next" :size="16" class="shrink-0 text-ink-3" />
                 </a>
@@ -48,7 +48,7 @@
         <div class="hidden grid-cols-[repeat(3,1fr)] gap-3 lg:grid xl:grid-cols-[repeat(5,1fr)]" data-test="own-games">
             @foreach ($games['own'] as $game)
                 <a href="{{ $game['href'] }}" @navigate($game['href']) class="rv-gt" data-test="game-tile" data-game="{{ $game['slug'] }}">
-                    <x-game-cover :game="$game['slug']" class="rv-cv" />
+                    <x-game-cover :game="$game['slug']" listed class="rv-cv" />
                     <span class="flex flex-col gap-1"><b>{{ $game['name'] }}</b><x-game-credit :game="$game['slug']" :link="false" /><span class="rv-m">{{ $game['meta'] }}</span></span>
                 </a>
             @endforeach

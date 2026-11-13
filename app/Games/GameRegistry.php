@@ -3,6 +3,7 @@
 namespace App\Games;
 
 use App\Games\Contracts\Game;
+use App\Games\Contracts\Grouped;
 use InvalidArgumentException;
 
 /**
@@ -190,6 +191,74 @@ final class GameRegistry
     public function versus(): array
     {
         return array_filter($this->games, fn (Game $game): bool => ! $game instanceof ScoreGame);
+    }
+
+    /**
+     * The group a game belongs to (Contracts\Grouped: Go's three sizes are "Go"), null for a game on its own or one
+     * that is not registered.
+     */
+    public function groupOf(string $slug): ?GameGroup
+    {
+        $game = $this->find($slug);
+
+        return $game instanceof Grouped ? $game->group() : null;
+    }
+
+    /**
+     * The registered games of a group, in display order; empty for a group none of whose games is switched on.
+     *
+     * @return array<string, Game&Grouped>
+     */
+    public function members(string $group): array
+    {
+        return array_filter($this->games, fn (Game $game): bool => $game instanceof Grouped && $game->group()->slug === $group);
+    }
+
+    /** The game a group's one entry leads to: its first registered member (Go: the smallest size on), null without one. */
+    public function home(string $group): ?string
+    {
+        return array_key_first($this->members($group));
+    }
+
+    /**
+     * The game that stands for this one wherever games are listed: its group's home, or the game itself.
+     */
+    public function entry(string $slug): string
+    {
+        $group = $this->groupOf($slug);
+
+        return $group === null ? $slug : ($this->home($group->slug) ?? $slug);
+    }
+
+    /**
+     * The slugs a list entry covers: every registered member of the game's group, or the game alone. A filter by
+     * the entry ("Go" on /matches) matches all of them.
+     *
+     * @return list<string>
+     */
+    public function covered(string $slug): array
+    {
+        $group = $this->groupOf($slug);
+
+        return $group === null ? [$slug] : array_keys($this->members($group->slug));
+    }
+
+    /**
+     * Games as the pages list them: every group collapsed into one entry, its home (the three sizes of Go show as
+     * "Go", leading to the smallest size on). All registered games, or the given ones (versus(), boards()).
+     *
+     * @param  array<string, Game>|null  $games
+     * @return array<string, Game>
+     */
+    public function listed(?array $games = null): array
+    {
+        return array_filter($games ?? $this->games, fn (Game $game): bool => $this->entry($game->slug()) === $game->slug());
+    }
+
+    /** The name of a game's list entry: its group's name ("Go"), or its own. */
+    public function listedName(string $slug): string
+    {
+        return $this->groupOf($slug)?->name ?? $this->name($slug);
     }
 
     /**

@@ -8,9 +8,7 @@ use App\Games\Blockli;
 use App\Games\Blockspace;
 use App\Games\GameMode;
 use App\Games\GameRegistry;
-use App\Games\Go13;
-use App\Games\Go19;
-use App\Games\Go9;
+use App\Games\Go;
 use App\Games\Hyperbitcoinization;
 use App\Games\NineMensMorris;
 use App\Games\ProofOfPong;
@@ -615,7 +613,7 @@ final class RulesPage
     private static function go(): array
     {
         $registry = app(GameRegistry::class);
-        $sizes = array_values(array_filter([Go9::SLUG, Go13::SLUG, Go19::SLUG], fn (string $slug): bool => $registry->find($slug) !== null));
+        $sizes = array_keys($registry->members(Go::GROUP));
 
         if ($sizes === []) {
             return [];

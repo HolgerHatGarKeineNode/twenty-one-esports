@@ -1,4 +1,4 @@
-@props(['game' => null, 'title', 'tag' => null, 'leader' => null, 'chips' => [], 'chipsLabel' => null, 'lede' => null])
+@props(['game' => null, 'title', 'tag' => null, 'leader' => null, 'chips' => [], 'chipsLabel' => null, 'lede' => null, 'mode' => null])
 
 {{--
     The one ladder template (T5; LadderPage.dc.html, LadderHyper.dc.html, LadderPong.dc.html, LadderStrongest.dc.html;
@@ -8,6 +8,7 @@
         bar      a game's ladder carries its game bar (x-game.subnav, tab "Ladder" current); the cross-game list has none
         head     `title` (the h1) with its `tag` and, on the right, the `leader` (['name' => …, 'value' => …]);
                  with a `lede` the head is the game's hero card instead (cover, title, one line, `action` on the right)
+        group    the other games of the game's group (x-game.group-switch: Go's sizes), on their ladder of `mode`
         chips    `chips` (x-ui.chips, Priority+): the ladders to switch to, one line
         main     the default slot, 8 of 12 columns: the standings (x-ladder.table) or the empty state
         aside    the right column, 4 of 12: how it counts, the strongest players
@@ -22,6 +23,10 @@
     @endif
 
     <div class="gp flex flex-col gap-6">
+        {{-- A group's other games (Go's sizes), on their ladder of the same `mode` where they have it. --}}
+        @if ($game !== null)
+            <x-game.group-switch :game="$game" active="ladder" :mode="$mode" />
+        @endif
         @if ($lede !== null)
             <section class="gp-hero" data-test="ladder-hero">
                 <x-game-cover :game="$game" size="card" class="gp-hero-cover" loading="eager" />

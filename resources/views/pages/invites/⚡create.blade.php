@@ -94,8 +94,11 @@ new #[Layout('layouts::app')] class extends Component {
 }; ?>
 
 @php
-    $games = app(InviteGames::class)->all();
-    $picked = $games[$game] ?? null;
+    // The picker lists a group of games once (Go); the picked game is always one game, a size of its own.
+    $games = app(InviteGames::class)->listed();
+    $picked = app(InviteGames::class)->find($game);
+    $members = $picked === null ? [] : app(InviteGames::class)->members($picked['slug']);
+    $pickedEntry = $members[0] ?? $game;
     $viewer = auth()->user();
     $kindLabel = fn (array $entry): string => match ($entry['kind']) {
         'score' => __('Beat my time'),
@@ -125,6 +128,16 @@ new #[Layout('layouts::app')] class extends Component {
                         <p class="m-0 text-[13px] text-ink-2">{{ __('Casual, no rating change.') }}</p>
                     @endif
                 </div>
+
+                {{-- A group's members switched on (Go: the board sizes), as the game types below: one line, the picked one marked. --}}
+                @if (count($members) > 1)
+                    <div role="radiogroup" aria-label="{{ GameNames::listed($picked['slug']) }}" @class(['grid gap-2', 'grid-cols-3' => count($members) === 3, 'grid-cols-2' => count($members) !== 3]) data-test="invite-members">
+                        @foreach ($members as $member)
+                            <button type="button" role="radio" wire:click="pick('{{ $member }}')" aria-checked="{{ $member === $picked['slug'] ? 'true' : 'false' }}" data-test="invite-member-{{ $member }}"
+                                    @class(['min-h-11 cursor-pointer rounded-md border bg-ground px-2 text-[13px] whitespace-nowrap text-ink', 'border-btc' => $member === $picked['slug'], 'border-line' => $member !== $picked['slug']])>{{ app(\App\Games\GameRegistry::class)->find($member)->groupLabel() }}</button>
+                        @endforeach
+                    </div>
+                @endif
 
                 @if (count($picked['modes']) > 1)
                     <div role="radiogroup" aria-label="{{ __('Game type') }}" @class(['grid gap-2', 'grid-cols-3' => count($picked['modes']) === 3, 'grid-cols-2' => count($picked['modes']) !== 3])>
@@ -156,15 +169,15 @@ new #[Layout('layouts::app')] class extends Component {
             <h2 id="invite-picker-h" class="m-0 text-[13px] font-bold text-ink-2">{{ __('Pick a game') }}</h2>
             <div role="radiogroup" aria-labelledby="invite-picker-h" class="grid grid-cols-1 gap-2 sm:grid-cols-2" data-test="invite-picker" data-selected="{{ $game }}">
                 @foreach ($games as $entry)
-                    <button type="button" role="radio" aria-checked="{{ $entry['slug'] === $game ? 'true' : 'false' }}" wire:click="pick('{{ $entry['slug'] }}')" wire:key="pick-{{ $entry['slug'] }}"
+                    <button type="button" role="radio" aria-checked="{{ $entry['slug'] === $pickedEntry ? 'true' : 'false' }}" wire:click="pick('{{ $entry['slug'] }}')" wire:key="pick-{{ $entry['slug'] }}"
                             x-on:click="if (! matchMedia('(min-width: 1024px)').matches) $nextTick(() => document.getElementById('invite-panel')?.scrollIntoView({ block: 'start', behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth' }))"
                             data-invite-game="{{ $entry['slug'] }}" data-kind="{{ $entry['kind'] }}"
                             @class(['flex min-h-16 min-w-0 cursor-pointer items-center gap-3 rounded-lg border bg-card p-2 pr-3 text-left text-ink',
-                                'border-btc shadow-[inset_0_0_0_1px_#F7931A]' => $entry['slug'] === $game, 'border-line hover:border-edge' => $entry['slug'] !== $game])>
-                        <x-game-cover :game="$entry['slug']" size="thumb" class="w-20 shrink-0 rounded-md" />
+                                'border-btc shadow-[inset_0_0_0_1px_#F7931A]' => $entry['slug'] === $pickedEntry, 'border-line hover:border-edge' => $entry['slug'] !== $pickedEntry])>
+                        <x-game-cover :game="$entry['slug']" listed size="thumb" class="w-20 shrink-0 rounded-md" />
                         <span class="flex min-w-0 flex-col gap-0.5">
                             <b class="truncate text-sm">{{ $entry['name'] }}</b>
-                            <span class="truncate text-xs text-ink-2">{{ $kindLabel($entry) }}</span>
+                            <span class="truncate text-xs text-ink-2">{{ \App\Support\Engagement\HomeBoard::groupLine($entry['slug']) ?? $kindLabel($entry) }}</span>
                         </span>
                     </button>
                 @endforeach

@@ -80,6 +80,39 @@ final class InviteGames
         return $games;
     }
 
+    /**
+     * The games as the picker lists them: a group of games (Go's sizes) is one entry under the group's name, its home;
+     * the panel of the picked game offers the other members (members()).
+     *
+     * @return array<string, InviteGame>
+     */
+    public function listed(): array
+    {
+        $games = $this->all();
+        $listed = [];
+
+        foreach ($games as $slug => $game) {
+            // The first member that takes invites stands for its group.
+            $entry = $this->members($slug)[0] ?? $slug;
+
+            if ($entry === $slug) {
+                $listed[$slug] = [...$game, 'name' => GameNames::listed($slug)];
+            }
+        }
+
+        return $listed;
+    }
+
+    /**
+     * The games of this game's group a player can invite to, in registry order; the game alone when it has no group.
+     *
+     * @return list<string>
+     */
+    public function members(string $slug): array
+    {
+        return array_values(array_intersect($this->registry->covered($slug), array_keys($this->all())));
+    }
+
     /** @return InviteGame|null */
     public function find(?string $slug): ?array
     {

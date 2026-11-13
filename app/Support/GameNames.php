@@ -34,6 +34,12 @@ final class GameNames
         return __(app(GameRegistry::class)->name($game));
     }
 
+    /** The name of a game's entry in a list of games: its group's ("Go" for every size), else game(). */
+    public static function listed(string $game): string
+    {
+        return __(app(GameRegistry::class)->listedName($game));
+    }
+
     /** The longest name a mempool cube's first line holds (96 px at 11 px mono, 88 px on phones). */
     public const CUBE_NAME_MAX = 13;
 

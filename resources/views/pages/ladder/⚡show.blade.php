@@ -258,7 +258,7 @@ new #[Layout('layouts::app', ['section' => 'ladder'])] class extends Component
 @endphp
 
 {{-- The ladder template T5 (x-ladder.page, LadderPage.dc.html): game bar, "Ladder" with the game and mode, the leader, the ladders as chips, the standings left and the strongest players right. --}}
-<x-ladder.page :game="$game" :title="__('Ladder')" :tag="$ladderTag" :leader="$leader" data-test="ladder"
+<x-ladder.page :game="$game" :mode="$mode" :title="__('Ladder')" :tag="$ladderTag" :leader="$leader" data-test="ladder"
                :chips="\App\Support\Navigation\LadderChips::items($game.'/'.$mode)" :chips-label="__('Ladders')">
     <div class="flex flex-wrap items-center justify-between gap-3">
         @if ($context !== null)

@@ -107,14 +107,16 @@ new #[Layout('layouts::app', ['section' => 'matches'])] class extends Component 
 
     /**
      * The game chips in the registry's display order (rule R19: browser games first), the ones the table can show.
+     * A group of games is one chip, its home's (GameRegistry::listed()): "Go" filters to all three sizes.
      *
      * @return list<string>
      */
     public function orderedGames(): array
     {
-        $listable = $this->gameFilters();
+        $registry = app(GameRegistry::class);
+        $listable = array_map($registry->entry(...), $this->gameFilters());
 
-        return array_values(array_filter(array_keys(app(GameRegistry::class)->all()), fn (string $slug): bool => in_array($slug, $listable, true)));
+        return array_values(array_filter(array_keys($registry->listed()), fn (string $slug): bool => in_array($slug, $listable, true)));
     }
 
     /**
@@ -316,7 +318,8 @@ new #[Layout('layouts::app', ['section' => 'matches'])] class extends Component 
     {
         $boards = MempoolStrip::boardSlugs();
 
-        return $this->game === 'all' ? $boards : array_values(array_intersect($boards, [$this->game]));
+        // A size of a group filters to the whole group (GameRegistry::covered()): the chip says "Go".
+        return $this->game === 'all' ? $boards : array_values(array_intersect($boards, app(GameRegistry::class)->covered($this->game)));
     }
 
     /**
@@ -560,7 +563,7 @@ new #[Layout('layouts::app', ['section' => 'matches'])] class extends Component 
         ['all', 'season', 'casual'], [__('All'), __('Season'), __('Casual')]);
     $gameChips = [
         ['key' => 'all', 'label' => __('All'), 'href' => $this->filterUrl(['game' => 'all']), 'active' => $game === 'all'],
-        ...array_map(fn (string $slug): array => ['key' => $slug, 'label' => __($registry->get($slug)->assets()->shortLabel), 'href' => $this->filterUrl(['game' => $slug]), 'active' => $game === $slug], $this->orderedGames()),
+        ...array_map(fn (string $slug): array => ['key' => $slug, 'label' => __($registry->groupOf($slug)->name ?? $registry->get($slug)->assets()->shortLabel), 'href' => $this->filterUrl(['game' => $slug]), 'active' => $registry->entry($game) === $slug], $this->orderedGames()),
         ['key' => 'team', 'label' => __('Team'), 'href' => $this->filterUrl(['game' => 'team']), 'active' => $game === 'team'],
     ];
     $statusChips = [
@@ -665,7 +668,7 @@ new #[Layout('layouts::app', ['section' => 'matches'])] class extends Component 
                         </x-empty-state>
                     @elseif ($game !== 'all' && $registry->isBoard($game))
                         <x-empty-state :heading="__('No games yet')" :text="__('The first game opens the list.')">
-                            <x-button :href="GameNames::page($game)">{{ __('Play :game', ['game' => GameNames::game($game)]) }}</x-button>
+                            <x-button :href="GameNames::page($registry->entry($game))">{{ __('Play :game', ['game' => GameNames::listed($game)]) }}</x-button>
                         </x-empty-state>
                     @elseif ($game !== 'all' && $game !== 'team' && ! $registry->isSeries($game))
                         <x-empty-state :heading="__('No games yet')" :text="__('The first chess game opens the list.')">

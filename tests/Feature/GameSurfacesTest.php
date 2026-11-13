@@ -8,6 +8,7 @@ use App\Games\Checkers;
 use App\Games\Contracts\PlayedOnOwnCopy;
 use App\Games\GameKind;
 use App\Games\GameRegistry;
+use App\Games\Go;
 use App\Games\Hyperbitcoinization;
 use App\Games\NineMensMorris;
 use App\Games\ProofOfPong;
@@ -38,6 +39,7 @@ use Carbon\CarbonInterface;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Route;
 use Tests\Support\FakeGame;
+use Tests\Support\FakeGroupedGame;
 use Tests\Support\FakeScoreGame;
 use Tests\Support\HyperOn;
 
@@ -58,6 +60,10 @@ use Tests\Support\HyperOn;
 | A surface that hard-codes its games misses at least the made-up ones and
 | fails here, naming the surface and the games it lost.
 |
+| A group of games (App\Games\Contracts\Grouped: Go's three sizes, and a
+| made-up group of two) is one entry on every surface that lists games, its
+| home, and each member keeps its own pages.
+|
 | A surface that is legitimately about one game is listed in
 | GAME_SURFACES_EXEMPT with the reason.
 |
@@ -77,6 +83,9 @@ beforeEach(function () {
         'esports.board_games.games.'.Checkers::SLUG.'.enabled' => true,
         'esports.board_games.games.'.Blockli::SLUG.'.enabled' => true,
         'esports.board_games.games.'.Blockspace::SLUG.'.enabled' => true,
+        'esports.board_games.games.go-9.enabled' => true,
+        'esports.board_games.games.go-13.enabled' => true,
+        'esports.board_games.games.go-19.enabled' => true,
         'esports.blockfill.enabled' => true,
         'esports.score_games.demo' => true,
         'esports.tmnf.enabled' => true,
@@ -100,6 +109,8 @@ beforeEach(function () {
     app()->instance(GameRegistry::class, new GameRegistry(GameRegistry::ordered([
         ...array_values(app(GameRegistry::class)->all()),
         new FakeGame('fake-arena', 'Fake Arena'),
+        new FakeGroupedGame('A'),
+        new FakeGroupedGame('B'),
         new FakeScoreGame,
     ], (array) config('esports.game_order.first'), (array) config('esports.game_order.last'))));
 });
@@ -159,6 +170,21 @@ function gameSurfacesPlayer(): User
 function gameSurfacesMissing(array $shown): array
 {
     return array_values(array_diff(array_keys(app(GameRegistry::class)->all()), $shown));
+}
+
+/**
+ * The entries a surface that lists games does not show (a group of games is one entry, its home), and the members of
+ * a group it shows beside their group's entry: both empty when the surface lists every game once.
+ *
+ * @param  list<string>  $shown
+ * @return array{missing: list<string>, doubled: list<string>}
+ */
+function gameSurfacesUnlisted(array $shown): array
+{
+    $registry = app(GameRegistry::class);
+    $listed = array_keys($registry->listed());
+
+    return ['missing' => array_values(array_diff($listed, $shown)), 'doubled' => array_values(array_intersect(array_diff(array_keys($registry->all()), $listed), $shown))];
 }
 
 /**
@@ -236,10 +262,17 @@ test('the player page shows every game the player has a result in', function () 
  */
 function gameSurfacesHomeOrder(): array
 {
-    $registered = array_keys(app(GameRegistry::class)->all());
+    // One tile per game, a group of games (Go) as one: its home, at the place HomeBoard names the group's slug.
+    $registered = array_keys(app(GameRegistry::class)->listed());
     $own = array_values(array_filter($registered, fn (string $slug): bool => app(GameRegistry::class)->find($slug) instanceof PlayedOnOwnCopy));
     $browser = array_values(array_diff($registered, $own));
-    $sorted = fn (array $slugs, array $order): array => [...array_values(array_intersect($order, $slugs)), ...array_values(array_diff($slugs, $order))];
+    $place = fn (string $slug): string => app(GameRegistry::class)->groupOf($slug)->slug ?? $slug;
+    $sorted = function (array $slugs, array $order) use ($place): array {
+        $named = array_values(array_filter($slugs, fn (string $slug): bool => in_array($place($slug), $order, true)));
+        usort($named, fn (string $a, string $b): int => array_search($place($a), $order, true) <=> array_search($place($b), $order, true));
+
+        return [...$named, ...array_values(array_diff($slugs, $named))];
+    };
 
     return [...$sorted($browser, HomeBoard::BROWSER_ORDER), ...$sorted($own, HomeBoard::OWN_ORDER)];
 }
@@ -248,7 +281,7 @@ test('home has a tile for every game: the browser games first, then the own-copy
     $html = $this->get(route('home'))->assertOk()->getContent();
     $tiles = gameSurfacesAttribute($html, ['game-tile']);
 
-    expect(gameSurfacesMissing($tiles))->toBe([])
+    expect(gameSurfacesUnlisted($tiles))->toBe(['missing' => [], 'doubled' => []])
         ->and($tiles)->toBe(gameSurfacesHomeOrder());
 });
 
@@ -269,7 +302,7 @@ test('/play lists every game', function () {
     $html = $this->get(route('play'))->assertOk()->getContent();
     preg_match_all('#data-test="play-game-([a-z0-9-]+)"#', $html, $shown);
 
-    expect(gameSurfacesMissing($shown[1]))->toBe([]);
+    expect(gameSurfacesUnlisted($shown[1]))->toBe(['missing' => [], 'doubled' => []]);
     gameSurfacesInOrder($shown[1], '/play');
 });
 
@@ -277,7 +310,7 @@ test('the game filter on /matches offers every game', function () {
     $html = $this->get(route('matches.index'))->assertOk()->getContent();
     preg_match_all('#data-test="game-([a-z0-9-]+)"#', $html, $shown);
 
-    expect(gameSurfacesMissing(array_values(array_diff($shown[1], ['all', 'filter-select']))))->toBe([]);
+    expect(gameSurfacesUnlisted(array_values(array_diff($shown[1], ['all', 'filter-select']))))->toBe(['missing' => [], 'doubled' => []]);
     gameSurfacesInOrder($shown[1], 'the game filter on /matches');
 });
 
@@ -355,7 +388,8 @@ test('the header\'s game hub and game chips list the games in the registry order
     preg_match_all('#data-test="hub-game-([a-z0-9-]+)"#', $html, $hub);
     preg_match_all('#data-test="mobile-([a-z0-9-]+)"#', $html, $chips);
 
-    expect(gameSurfacesMissing($hub[1]))->toBe([]);
+    expect(gameSurfacesUnlisted($hub[1]))->toBe(['missing' => [], 'doubled' => []])
+        ->and(gameSurfacesUnlisted($chips[1])['doubled'])->toBe([]);
     // The games menu (GamesMenu.dc.html) splits the registry's order in two: the browser games, then the own-copy games.
     $registered = array_values(app(GameRegistry::class)->all());
     $browser = array_map(fn ($game): string => $game->slug(), array_values(array_filter($registered, fn ($game): bool => ! $game instanceof PlayedOnOwnCopy)));
@@ -385,7 +419,8 @@ test('the invite chooser lists the games in the registry order', function () {
     $html = $this->actingAs(User::factory()->create())->get(route('invites.create'))->assertOk()->getContent();
     preg_match_all('#data-invite-game="([a-z0-9-]+)"#', $html, $shown);
 
-    expect($shown[1])->toContain(NineMensMorris::SLUG, Checkers::SLUG);
+    expect($shown[1])->toContain(NineMensMorris::SLUG, Checkers::SLUG, 'go-9')
+        ->and(gameSurfacesUnlisted($shown[1])['doubled'])->toBe([]);
     gameSurfacesInOrder($shown[1], 'the invite chooser');
 });
 
@@ -417,6 +452,122 @@ test('the game chips on /matches name their games in the registry order', functi
 
     expect(count($chips[1]))->toBeGreaterThan(1);
     gameSurfacesInOrder($chips[1], 'the game chips of /matches');
+});
+
+test('Go is one entry named "Go" on every surface that lists games, and so is any other group of games', function () {
+    $registry = app(GameRegistry::class);
+    $sizes = ['go-9', 'go-13', 'go-19'];
+    $duo = [FakeGroupedGame::GROUP.'-a', FakeGroupedGame::GROUP.'-b'];
+
+    expect(array_keys($registry->members(Go::GROUP)))->toBe($sizes)
+        ->and(Go::home())->toBe('go-9')
+        ->and(array_keys($registry->members(FakeGroupedGame::GROUP)))->toBe($duo)
+        ->and(array_values(array_intersect(array_keys($registry->listed()), [...$sizes, ...$duo])))->toBe(['go-9', $duo[0]]);
+
+    $home = $this->get(route('home'))->assertOk()->getContent();
+    $phone = str($home)->after('data-test="browser-games-list"')->before('</ul>')->toString();
+    $play = $this->get(route('play'))->assertOk()->getContent();
+    $matches = $this->get(route('matches.index'))->assertOk()->getContent();
+    $invite = $this->actingAs(User::factory()->create())->get(route('invites.create'))->assertOk()->getContent();
+    $found = fn (string $pattern, string $html): array => preg_match_all($pattern, $html, $hits) > 0 ? array_values(array_unique($hits[1])) : [];
+
+    $surfaces = [
+        'home tiles' => gameSurfacesAttribute($home, ['game-tile']),
+        'home phone list' => $found('#data-game="([a-z0-9-]+)"#', $phone),
+        'header hub' => $found('#data-test="hub-game-([a-z0-9-]+)"#', $home),
+        'game chips' => $found('#data-test="mobile-([a-z0-9-]+)"#', $home),
+        '/play' => $found('#data-test="play-game-([a-z0-9-]+)"#', $play),
+        '/matches filter' => $found('#data-test="game-([a-z0-9-]+)"#', $matches),
+        'invite chooser' => $found('#data-invite-game="([a-z0-9-]+)"#', $invite),
+    ];
+
+    foreach ($surfaces as $surface => $shown) {
+        // The game chips of a phone hold the first games only: Go once, or not at all.
+        expect(array_values(array_intersect($shown, $sizes)))->toBeIn($surface === 'game chips' ? [['go-9'], []] : [['go-9']], "{$surface}: Go's entries")
+            // The made-up group plays no board, so the board-only surfaces do not list it at all.
+            ->and(array_values(array_intersect($shown, $duo)))->toBeIn([[$duo[0]], []], "{$surface}: the made-up group's entries");
+    }
+
+    expect(array_values(array_intersect($surfaces['home tiles'], $duo)))->toBe([$duo[0]])
+        ->and(array_values(array_intersect($surfaces['header hub'], $duo)))->toBe([$duo[0]])
+        ->and(array_values(array_intersect($surfaces['/play'], $duo)))->toBe([$duo[0]]);
+
+    // The entry goes by the group's name and leads to its home; no size is named in a list.
+    expect($home)->toMatch('#href="'.preg_quote(route('board.lobby', 'go-9'), '#').'"[^>]*data-test="game-tile" data-game="go-9"#')
+        ->and(str($home)->after('data-test="game-tile" data-game="go-9"')->before('</a>')->toString())->toContain('Go')->toContain('9×9, 13×13, 19×19')->not->toContain('Go 9×9')
+        ->and(str($home)->after('data-test="game-tile" data-game="'.$duo[0].'"')->before('</a>')->toString())->toContain('Fake Duo')->not->toContain('Fake Duo A')
+        ->and(str($play)->after('data-test="play-game-go-9"')->before('</li>')->toString())->not->toContain('Go 9×9')
+        ->and(str($matches)->after('data-test="game-go-9"')->before('</a>')->toString())->toContain('Go')->not->toContain('9×9')
+        ->and(str($invite)->after('data-invite-game="go-9"')->before('</button>')->toString())->toContain('Go')->not->toContain('Go 9×9');
+});
+
+test('each size of Go keeps its own pages, with a switch between the sizes that stays on the tab', function () {
+    foreach (['go-9' => 'Go 9×9', 'go-13' => 'Go 13×13', 'go-19' => 'Go 19×19'] as $slug => $name) {
+        $lobby = $this->get(route('board.lobby', $slug))->assertOk()->assertSeeInOrder(['data-test="game-subnav-name"', $name], false)->getContent();
+        $switch = str($lobby)->after('data-test="group-switch"')->before('data-test="group-switch-more"')->toString();
+
+        // 9×9, 13×13 and 19×19 as chips, this size current, each leading to that size's lobby.
+        expect(preg_match_all('#href="([^"]+)"[^>]*data-test="group-switch-(go-\d+)"#', $switch, $chips))->toBe(3)
+            ->and(array_combine($chips[2], $chips[1]))->toBe(['go-9' => route('board.lobby', 'go-9'), 'go-13' => route('board.lobby', 'go-13'), 'go-19' => route('board.lobby', 'go-19')])
+            ->and($switch)->toMatch('#aria-current="page"\s+class="rv-chip"\s+data-test="group-switch-'.$slug.'"#')
+            ->and(preg_match_all('#aria-current="page"#', $switch))->toBe(1)
+            ->and($switch)->toContain('9×9', '13×13', '19×19');
+
+        $this->get(route('tournaments.index', ['game' => $slug]))->assertOk();
+    }
+
+    // The ladder keeps the tab and the mode where the other size plays it: 13×13 has no blitz, so its first ladder.
+    $ladder = $this->get(route('ladder.show', ['go-9', 'correspondence']))->assertOk()->assertSee('Go 9×9')->getContent();
+    expect($ladder)->toContain('href="'.route('ladder.show', ['go-13', 'correspondence']).'"')
+        ->toContain('href="'.route('ladder.show', ['go-19', 'correspondence']).'"');
+
+    $blitz = str($this->get(route('ladder.show', ['go-9', 'blitz']))->assertOk()->getContent())->after('data-test="group-switch"')->before('data-test="group-switch-more"')->toString();
+    expect($blitz)->toContain('href="'.route('ladder.show', ['go-13', 'rapid']).'"')->not->toContain('go-13/blitz');
+
+    // A game on its own has no switch.
+    $this->get(route('board.lobby', Checkers::SLUG))->assertOk()->assertDontSee('data-test="group-switch"', false);
+});
+
+test('with one size of Go switched on, the one entry leads to that size and no switch shows', function () {
+    config(['esports.board_games.games.go-9.enabled' => false, 'esports.board_games.games.go-19.enabled' => false]);
+    app()->forgetInstance(GameRegistry::class);
+
+    expect(Go::home())->toBe('go-13')
+        ->and(array_keys(app(GameRegistry::class)->listed(app(GameRegistry::class)->boards())))->toContain('go-13')->not->toContain('go-9', 'go-19');
+
+    $home = $this->get(route('home'))->assertOk()->getContent();
+    expect(gameSurfacesAttribute($home, ['game-tile']))->toContain('go-13')->not->toContain('go-9', 'go-19')
+        ->and($home)->toMatch('#href="'.preg_quote(route('board.lobby', 'go-13'), '#').'"[^>]*data-test="game-tile" data-game="go-13"#')
+        ->toContain('data-test="hub-game-go-13"');
+
+    $this->get(route('board.lobby', 'go-13'))->assertOk()->assertDontSee('data-test="group-switch"', false);
+    $this->get(route('ladder.show', ['go-13', 'rapid']))->assertOk()->assertDontSee('data-test="group-switch"', false);
+    $this->actingAs(User::factory()->create())->get(route('invites.create', ['game' => 'go-13']))->assertOk()
+        ->assertSee('data-invite-game="go-13"', false)->assertDontSee('data-test="invite-members"', false);
+});
+
+test('the Go filter on /matches lists the games of every size, whichever size the address names', function () {
+    $player = User::factory()->create();
+
+    foreach (['go-9', 'go-13', 'go-19', Checkers::SLUG] as $index => $slug) {
+        gameSurfacesBoardGame($slug, $player, now()->subMinutes(10 + $index));
+    }
+
+    foreach (['go-9', 'go-13'] as $filter) {
+        $html = $this->get(route('matches.index', ['game' => $filter]))->assertOk()->getContent();
+        preg_match_all('#data-test="board-row" data-game="([a-z0-9-]+)"#', $html, $rows);
+        $sorted = $rows[1];
+        sort($sorted);
+
+        expect($sorted)->toBe(['go-13', 'go-19', 'go-9'], "the rows under ?game={$filter}")
+            ->and($html)->toMatch('#aria-current="page"[^>]*data-test="game-go-9"#');
+    }
+
+    // Another game's filter, and "all", are as they were.
+    preg_match_all('#data-test="board-row" data-game="([a-z0-9-]+)"#', $this->get(route('matches.index', ['game' => Checkers::SLUG]))->assertOk()->getContent(), $rows);
+    expect($rows[1])->toBe([Checkers::SLUG]);
+    preg_match_all('#data-test="board-row" data-game="([a-z0-9-]+)"#', $this->get(route('matches.index'))->assertOk()->getContent(), $rows);
+    expect($rows[1])->toHaveCount(4);
 });
 
 test('the surfaces left out are about one game by design and still exist', function (string $route, string $reason) {

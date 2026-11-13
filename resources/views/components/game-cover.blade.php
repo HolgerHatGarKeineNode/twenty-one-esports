@@ -1,6 +1,6 @@
 @blaze
 
-@props(['game', 'size' => 'card', 'loading' => 'lazy', 'games' => []])
+@props(['game', 'size' => 'card', 'loading' => 'lazy', 'games' => [], 'listed' => false])
 
 {{--
     The cover art of a registered game (GameRegistry::cover()), 16:9, as WebP
@@ -15,11 +15,13 @@
     `games` (Tournament::coverGames()): a combined tournament's games, two or more. Their covers are cards laid over one
     another from the top left to the bottom right, each whole (App\Support\Cards\CoverStack, as on its link
     preview); `game` stays the first (DerCaddy, 2026-11-12). In a box under 240 px: the first cover and "+N".
+    `listed`: the cover stands for the game's entry in a list of games, so its label names the game's group ("Go"),
+    not the one member that is the group's home (GameNames::listed()).
 --}}
 @php
     $registry = app(\App\Games\GameRegistry::class);
     $cover = $registry->cover((string) $game);
-    $name = \App\Support\GameNames::game((string) $game);
+    $name = $listed ? \App\Support\GameNames::listed((string) $game) : \App\Support\GameNames::game((string) $game);
     // The alt text carries the credit of a community game (plan "Blockli", P3): "Blockli cover by DerCaddy".
     $credit = \App\Support\GameNames::credit((string) $game);
     $alt = __(':game cover', ['game' => $name]).($credit === null ? '' : ' '.$credit);

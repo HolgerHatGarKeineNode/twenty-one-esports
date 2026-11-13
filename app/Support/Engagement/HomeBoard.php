@@ -9,9 +9,11 @@ use App\Enums\SeriesStatus;
 use App\Enums\TournamentFormat;
 use App\Enums\TournamentStatus;
 use App\Games\Blockfill;
+use App\Games\Contracts\Grouped;
 use App\Games\Contracts\PlayedOnOwnCopy;
 use App\Games\GameKind;
 use App\Games\GameRegistry;
+use App\Games\Go;
 use App\Games\Hyperbitcoinization;
 use App\Games\ProofOfPong;
 use App\Games\TrackmaniaNationsForever;
@@ -64,8 +66,11 @@ use Throwable;
  */
 final class HomeBoard
 {
-    /** The browser games in the order of the plan (user 2026-10-10: Pong second, so the coloured covers lead); Go's sizes after Checkers (2026-10-27). */
-    public const BROWSER_ORDER = [Hyperbitcoinization::SLUG, ProofOfPong::SLUG, 'chess', Blockfill::SLUG, 'blockli', 'blockspace', 'nine-mens-morris', 'checkers', 'go-9', 'go-13', 'go-19'];
+    /**
+     * The browser games in the order of the plan (user 2026-10-10: Pong second, so the coloured covers lead); Go after
+     * Checkers (2026-10-27). A group of games (GameRegistry::groupOf()) stands here by its group's slug: one tile.
+     */
+    public const BROWSER_ORDER = [Hyperbitcoinization::SLUG, ProofOfPong::SLUG, 'chess', Blockfill::SLUG, 'blockli', 'blockspace', 'nine-mens-morris', 'checkers', Go::GROUP];
 
     public const OWN_ORDER = ['rocket-league', 'ea-sports-fc-27', 'ea-sports-fc-26', 'age-of-empires-2', TrackmaniaNationsForever::SLUG];
 
@@ -276,8 +281,9 @@ final class HomeBoard
         $browser = [];
         $own = [];
 
-        foreach ($registry->all() as $slug => $game) {
-            $tile = ['slug' => $slug, 'name' => GameNames::game($slug), 'href' => GameNames::page($slug), 'meta' => $this->meta($slug, $game->kind())];
+        // A group of games is one tile, its home's (Go's three sizes: "Go", leading to the smallest size on).
+        foreach ($registry->listed() as $slug => $game) {
+            $tile = ['slug' => $slug, 'name' => GameNames::listed($slug), 'href' => GameNames::page($slug), 'meta' => self::groupLine($slug) ?? $this->meta($slug, $game->kind())];
 
             if ($game instanceof PlayedOnOwnCopy) {
                 $own[] = $tile;
@@ -492,10 +498,11 @@ final class HomeBoard
     private static function ordered(array $tiles, array $order): array
     {
         $rank = array_flip($order);
+        $registry = app(GameRegistry::class);
         $keyed = [];
 
         foreach ($tiles as $index => $tile) {
-            $keyed[] = [$rank[$tile['slug']] ?? PHP_INT_MAX, $index, $tile];
+            $keyed[] = [$rank[$registry->groupOf($tile['slug'])->slug ?? $tile['slug']] ?? PHP_INT_MAX, $index, $tile];
         }
 
         usort($keyed, fn (array $a, array $b): int => [$a[0], $a[1]] <=> [$b[0], $b[1]]);
@@ -522,6 +529,19 @@ final class HomeBoard
         }
 
         return $this->cupGroups;
+    }
+
+    /**
+     * The data line of a group's one entry: its members switched on, as their switch names them ("9×9, 13×13, 19×19");
+     * null for a game on its own and for a group with one member on, which keeps the game's own line.
+     */
+    public static function groupLine(string $slug): ?string
+    {
+        $registry = app(GameRegistry::class);
+        $group = $registry->groupOf($slug);
+        $members = $group === null ? [] : $registry->members($group->slug);
+
+        return count($members) > 1 ? implode(', ', array_map(fn (Grouped $member): string => $member->groupLabel(), array_values($members))) : null;
     }
 
     /**

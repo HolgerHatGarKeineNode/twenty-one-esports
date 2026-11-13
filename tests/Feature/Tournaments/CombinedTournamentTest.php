@@ -36,6 +36,7 @@ use Illuminate\Support\Lottery;
 use Livewire\Livewire;
 use Tests\Support\BlockliOn;
 use Tests\Support\BlockspaceOn;
+use Tests\Support\GoOn;
 use Tests\Support\NineMensMorrisOn;
 use Tests\Support\TestSigner;
 
@@ -387,6 +388,25 @@ test('chess combines with every board game of its mode, and a board game with ch
         // A series game combines with nothing, and nothing with it.
         ->and(FormatOptions::pairGames(GameProfile::for('rocket-league', '1v1')))->toBe([])
         ->and(FormatOptions::pairGames(GameProfile::for('chess', 'blitz')))->not->toContain('rocket-league');
+});
+
+test('two sizes of Go are never offered in one combined tournament, and a stored sequence keeps the first size only', function () {
+    GoOn::play();
+    $go9 = GameProfile::for('go-9', 'correspondence');
+
+    // Another game combines with Go; another size of Go does not.
+    expect(FormatOptions::pairGames($go9))->toContain('chess')->not->toContain('go-9', 'go-13', 'go-19')
+        ->and(FormatOptions::pairGames(GameProfile::for('go-13', 'correspondence')))->not->toContain('go-9', 'go-13', 'go-19')
+        // Each size is still offered to another game.
+        ->and(FormatOptions::pairGames(GameProfile::for('chess', 'correspondence')))->toContain('go-9', 'go-13', 'go-19')
+        ->and(FormatOptions::fromArray(['pairGame' => 'go-13'], $go9)->pairGame)->toBeNull()
+        ->and(FormatOptions::fromArray(['games' => ['go-9', 'go-13', 'chess', 'go-9']], $go9)->games)->toBe(['go-9', 'chess', 'go-9']);
+
+    // A chess tournament that already plays one size takes that size again, not another.
+    $chess = GameProfile::for('chess', 'correspondence');
+    expect(FormatOptions::fromArray(['games' => ['chess', 'go-13', 'go-9', 'go-13']], $chess)->games)->toBe(['chess', 'go-13', 'go-13'])
+        ->and(FormatOptions::addable($chess, ['chess', 'go-13']))->toContain('chess', 'go-13')->not->toContain('go-9', 'go-19')
+        ->and(FormatOptions::addable($chess, ['chess']))->toContain('go-9', 'go-13', 'go-19');
 });
 
 test('chess + Blockli: chess, then Blockli, after 1:1 a chess decider', function () {

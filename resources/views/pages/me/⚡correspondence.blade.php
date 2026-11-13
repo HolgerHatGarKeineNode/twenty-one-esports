@@ -247,7 +247,7 @@ new #[Title('Your correspondence games')] #[Layout('layouts::app', ['section' =>
     <div class="flex flex-wrap items-baseline gap-x-4 gap-y-1 rounded-[4px] border-l-4 border-chess bg-gradient-to-r from-card to-transparent px-4 py-3">
         <h1 class="m-0 font-display text-[28px] leading-tight font-bold lg:text-[34px]">{{ __('Your correspondence games') }}</h1>
         {{-- Go (2026-10-27) joins the line while one of its sizes is switched on. --}}
-        @php($withGo = collect(['go-9', 'go-13', 'go-19'])->contains(fn (string $slug): bool => app(\App\Games\GameRegistry::class)->find($slug) !== null))
+        @php($withGo = \App\Games\Go::home() !== null)
         <span class="rv-m text-[13px]">{{ $withGo ? __('Chess, Blockli, nine men\'s morris, checkers, Go: one list') : __('Chess, Blockli, nine men\'s morris, checkers: one list') }}</span>
     </div>
 

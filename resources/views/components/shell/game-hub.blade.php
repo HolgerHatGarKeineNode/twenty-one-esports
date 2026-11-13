@@ -53,7 +53,7 @@
                     <span class="flex gap-2 max-lg:hidden" data-test="hub-recent">
                         @foreach ($recent as $game)
                             <a href="{{ $game['page'] }}" @navigate($game['page']) class="gm-chip gap-2 text-ink" data-test="hub-recent-{{ $game['slug'] }}">
-                                <x-game-cover :game="$game['slug']" size="thumb" class="h-4 w-7 rounded-[2px] [&_img]:object-cover" />{{ $game['name'] }}
+                                <x-game-cover :game="$game['slug']" listed size="thumb" class="h-4 w-7 rounded-[2px] [&_img]:object-cover" />{{ $game['name'] }}
                             </a>
                         @endforeach
                     </span>
@@ -88,7 +88,7 @@
                         @php($meta = $row($game))
                         <li data-name="{{ $meta['name'] }}" data-kinds="{{ $meta['kind'] }}" x-show="shows($el)" data-hub-game="{{ $game['slug'] }}" data-test="hub-game-{{ $game['slug'] }}">
                             <a href="{{ $game['page'] }}" @navigate($game['page']) class="gm-row" data-test="games-menu-{{ $game['slug'] }}">
-                                <x-game-cover :game="$game['slug']" size="thumb" class="gm-thumb" />
+                                <x-game-cover :game="$game['slug']" listed size="thumb" class="gm-thumb" />
                                 <span class="flex min-w-0 flex-col">
                                     <b class="text-sm" title="{{ $game['name'] }}">{{ $game['name'] }}</b>
                                     <x-game-credit :game="$game['slug']" :link="false" />
@@ -112,7 +112,7 @@
                             @php($meta = $row($game))
                             <li data-name="{{ $meta['name'] }}" data-kinds="{{ $meta['kind'] }}" x-show="shows($el)" data-hub-game="{{ $game['slug'] }}" data-test="hub-game-{{ $game['slug'] }}">
                                 <a href="{{ $game['page'] }}" @navigate($game['page']) class="gm-row" data-test="games-menu-{{ $game['slug'] }}">
-                                    <x-game-cover :game="$game['slug']" size="thumb" class="gm-thumb" />
+                                    <x-game-cover :game="$game['slug']" listed size="thumb" class="gm-thumb" />
                                     <span class="flex min-w-0 flex-col">
                                         <b class="text-sm" title="{{ $game['name'] }}">{{ $game['name'] }}</b>
                                         <span class="rv-m" title="{{ $game['meta'] }}">{{ $game['meta'] }}</span>

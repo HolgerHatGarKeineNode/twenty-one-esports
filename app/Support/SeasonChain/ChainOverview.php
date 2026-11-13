@@ -45,12 +45,13 @@ final class ChainOverview
     {
         [$game, $mode] = array_pad(explode('/', $key, 2), 2, null);
 
-        return match ($key) {
-            'chess/blitz' => __('Chess blitz'),
-            'chess/rapid' => __('Chess rapid'),
-            'chess/correspondence' => __('Chess daily'),
-            // A board game's correspondence mode (plan "Mühle und Dame", P8), as the board game's pages name it.
-            'nine-mens-morris/correspondence', 'checkers/correspondence', 'blockli/correspondence', 'blockspace/correspondence', 'go-9/correspondence', 'go-13/correspondence', 'go-19/correspondence' => __(':game correspondence', ['game' => __(app(GameRegistry::class)->name($game))]),
+        return match (true) {
+            $key === 'chess/blitz' => __('Chess blitz'),
+            $key === 'chess/rapid' => __('Chess rapid'),
+            $key === 'chess/correspondence' => __('Chess daily'),
+            // A board game's correspondence mode (plan "Mühle und Dame", P8), as the board game's pages name it: every
+            // board game, switched on or kept for later.
+            $mode === 'correspondence' && (app(GameRegistry::class)->isBoard((string) $game) || in_array($game, BoardGame::RESERVED_SLUGS, true)) => __(':game correspondence', ['game' => __(app(GameRegistry::class)->name((string) $game))]),
             default => $mode !== null && app(GameRegistry::class)->find($game) !== null ? app(GameRegistry::class)->name($game).' '.$mode : $key,
         };
     }

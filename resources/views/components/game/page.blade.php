@@ -42,6 +42,8 @@
     <x-game.subnav :game="$game" :active="$active" :mode="$mode" :phone-bar="$primaryOn">{{ $primary ?? '' }}</x-game.subnav>
 
     <div class="gp">
+        {{-- A group's other games (Go's sizes), on the same tab. --}}
+        <x-game.group-switch :game="$game" :active="$active" class="mb-4 lg:mb-6" />
         @isset($top)
             <div class="gp-top mb-4 flex flex-col gap-3 lg:mb-6">{{ $top }}</div>
         @endisset

@@ -265,7 +265,7 @@
                 <span class="flex flex-col gap-1.5">
                     <span id="seq-add-l" class="text-xs text-ink-2">{{ __('Add a game') }}</span>
                     <span class="flex flex-wrap gap-1.5" role="group" aria-labelledby="seq-add-l" data-test="sequence-add">
-                        @foreach ([$profile->game, ...$pairGames] as $slug)
+                        @foreach (FormatOptions::addable($profile, $sequence) as $slug)
                             <x-button variant="quiet" class="whitespace-nowrap" wire:click="addSequenceGame('{{ $slug }}')" wire:key="seq-add-{{ $slug }}" data-test="sequence-add-{{ $slug }}">+ {{ GameNames::game($slug) }}</x-button>
                         @endforeach
                     </span>

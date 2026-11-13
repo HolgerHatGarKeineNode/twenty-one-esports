@@ -291,8 +291,8 @@ test('Go takes its place where every board game has one: the ladders\' names, th
             ->and(GameChannels::createEvent($slug)['content'] ?? null)->toBe('{"name":"TWENTY ONE esports · '.$name.'","about":"The global chat of '.$name.' in the TWENTY ONE esports league: talk and vote."}');
     }
 
-    // The start page's browser games: Go's three sizes right after Checkers, as everywhere (esports.game_order).
-    expect(array_slice(HomeBoard::BROWSER_ORDER, -4))->toBe(['checkers', 'go-9', 'go-13', 'go-19']);
+    // The start page's browser games: Go, one tile for its sizes, right after Checkers, as everywhere (esports.game_order).
+    expect(array_slice(HomeBoard::BROWSER_ORDER, -2))->toBe(['checkers', Go::GROUP]);
 
     // The list of one's correspondence games holds Go's too, and says so.
     $game = goGame('go-13', 'correspondence');

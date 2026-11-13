@@ -258,9 +258,49 @@ final readonly class FormatOptions
 
         $offered = [$profile->game, ...self::pairGames($profile)];
         $games = array_values(array_filter($listed, fn (mixed $slug): bool => is_string($slug) && in_array($slug, $offered, true)));
+        $games = self::oneOfEachGroup($games);
         $games = array_slice($games, 0, self::maxSequence());
 
         return count($games) >= 2 && $games[0] === $profile->game ? $games : [];
+    }
+
+    /**
+     * The games a sequence may take one more of: the tournament's own and the ones it combines with ({@see pairGames()}),
+     * without a game whose group already plays in the sequence as another member (Go 13×13 beside Go 9×9).
+     *
+     * @param  list<string>  $sequence
+     * @return list<string>
+     */
+    public static function addable(GameProfile $profile, array $sequence): array
+    {
+        $offered = [$profile->game, ...self::pairGames($profile)];
+
+        return array_values(array_filter($offered, fn (string $slug): bool => self::oneOfEachGroup([...$sequence, $slug]) === [...$sequence, $slug]));
+    }
+
+    /**
+     * A sequence with one member of each group at most: a game may repeat, but a second member of a group whose
+     * other member already plays (two sizes of Go) is dropped.
+     *
+     * @param  list<string>  $games
+     * @return list<string>
+     */
+    private static function oneOfEachGroup(array $games): array
+    {
+        $registry = app(GameRegistry::class);
+        $taken = [];
+
+        return array_values(array_filter($games, function (string $slug) use ($registry, &$taken): bool {
+            $group = $registry->groupOf($slug)?->slug;
+
+            if ($group === null) {
+                return true;
+            }
+
+            $taken[$group] ??= $slug;
+
+            return $taken[$group] === $slug;
+        }));
     }
 
     /** The most games a sequence plays before its deciders (`esports.tournaments.sequence_max_games`), never fewer than two. */
@@ -273,7 +313,8 @@ final readonly class FormatOptions
      * The games a tournament of this game and mode can be combined with ({@see $pairGame}; DerCaddy, 2026-11-11: "Cooler
      * wäre ja, wenn man jedes Spiel mit jedem Spiel kombinieren könnte"): every other switched-on game played one against
      * one on the league server with a result of win, loss or draw ({@see combinable()}: chess and the board games) that
-     * has the same mode, in the league's order. Series, lobbies and score games combine with nothing.
+     * has the same mode, in the league's order. Series, lobbies and score games combine with nothing, and a game never
+     * combines with another of its own group (two sizes of Go).
      *
      * @return list<string>
      */
@@ -287,7 +328,8 @@ final readonly class FormatOptions
 
         return array_values(array_filter(
             array_map(fn ($game): string => $game->slug(), $registry->all()),
-            fn (string $slug): bool => $slug !== $profile->game && self::combinable($slug) && $registry->mode($slug, $profile->mode) !== null,
+            // Never a game of the same group (GameRegistry::covered()): Go 9×9 with Go 13×13 is one game twice.
+            fn (string $slug): bool => ! in_array($slug, $registry->covered($profile->game), true) && self::combinable($slug) && $registry->mode($slug, $profile->mode) !== null,
         ));
     }
 

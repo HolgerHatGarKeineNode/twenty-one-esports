@@ -117,8 +117,10 @@ final class ShellNavigation
         }
 
         $lastPlayed = $this->lastPlayed();
+        // A group of games (Go's sizes) is one entry: its home, under the group's name, played when any member was.
+        $last = fn (Game $game): ?string => max([null, ...array_map(fn (string $slug): ?string => $lastPlayed[$slug] ?? null, $this->registry->covered($game->slug()))]);
 
-        return $this->games = array_map(fn (Game $game): array => $this->describe($game, $lastPlayed[$game->slug()] ?? null), array_values($this->registry->all()));
+        return $this->games = array_map(fn (Game $game): array => $this->describe($game, $last($game), true), array_values($this->registry->listed()));
     }
 
     /**
@@ -181,6 +183,39 @@ final class ShellNavigation
     }
 
     /**
+     * The switch between the games of this game's group (Go's sizes), for its game pages (x-game.group-switch): one
+     * chip per member switched on, named as the group names it ("13×13"), leading to the same tab of that game where
+     * it has one (`$active`: play, ladder, …) and to its page otherwise; the ladder keeps its mode where the other
+     * game plays it. Empty for a game on its own and for a group with one member on.
+     *
+     * @return list<array{key: string, label: string, href: string, active: bool}>
+     */
+    public function groupSwitch(string $slug, string $active = 'play', ?string $mode = null): array
+    {
+        $group = $this->registry->groupOf($slug);
+        $members = $group === null ? [] : $this->registry->members($group->slug);
+
+        if (count($members) < 2) {
+            return [];
+        }
+
+        $chips = [];
+
+        foreach ($members as $member) {
+            $tabs = array_column($this->gameTabs($member->slug()), 'href', 'key');
+            $href = $tabs[$active] ?? GameNames::page($member->slug());
+
+            if ($active === 'ladder' && $mode !== null && $member->mode($mode) !== null) {
+                $href = route('ladder.show', [$member->slug(), $mode]);
+            }
+
+            $chips[] = ['key' => $member->slug(), 'label' => $member->groupLabel(), 'href' => $href, 'active' => $member->slug() === $slug];
+        }
+
+        return $chips;
+    }
+
+    /**
      * The order /play, home and the header list the games in: games(), the registry's display order.
      *
      * @return list<NavGame>
@@ -201,7 +236,7 @@ final class ShellNavigation
     public function tabs(): array
     {
         $active = $this->activeGame();
-        $others = array_values(array_filter($this->games(), fn (array $game): bool => $game['slug'] !== $active['slug']));
+        $others = array_values(array_filter($this->games(), fn (array $game): bool => $game['slug'] !== $this->registry->entry($active['slug'])));
 
         return [$active, ...array_slice($others, 0, self::TABS - 1)];
     }
@@ -216,6 +251,11 @@ final class ShellNavigation
         foreach ([$this->pageGame(), $remembered] as $slug) {
             if (is_string($slug) && isset($bySlug[$slug])) {
                 return $bySlug[$slug];
+            }
+
+            // A member of a group that is not the group's entry (Go 13×13): the bar is this game's own, by its own name.
+            if (is_string($slug) && ($game = $this->registry->find($slug)) !== null) {
+                return $this->describe($game, null);
             }
         }
 
@@ -541,8 +581,11 @@ final class ShellNavigation
         return ['key' => $key, 'href' => $href, 'label' => $label, 'short' => $short ?? $label, 'icon' => $icon, 'test' => $test, 'mobileTest' => $mobileTest, 'tab' => $tab];
     }
 
-    /** @return NavGame */
-    private function describe(Game $game, ?string $lastAt): array
+    /**
+     * @param  bool  $listed  the entry of a list of games: a group's home goes by the group's name and names its members
+     * @return NavGame
+     */
+    private function describe(Game $game, ?string $lastAt, bool $listed = false): array
     {
         $slug = $game->slug();
         $modes = $game->modes();
@@ -559,7 +602,7 @@ final class ShellNavigation
 
         return [
             'slug' => $slug,
-            'name' => GameNames::game($slug),
+            'name' => $listed ? GameNames::listed($slug) : GameNames::game($slug),
             'short' => __($game->assets()->shortLabel),
             'colour' => $game->assets()->colour,
             'formats' => implode(', ', array_map(fn ($mode): string => __($mode->name), array_values($modes))),
@@ -570,7 +613,7 @@ final class ShellNavigation
             // Played right here in the browser, or with the player's own copy of the game (PlayedOnOwnCopy).
             'browser' => ! $game instanceof PlayedOnOwnCopy,
             'kind' => $game->kind()->value,
-            'meta' => HomeBoard::menuLine($slug, $game->kind()),
+            'meta' => ($listed ? HomeBoard::groupLine($slug) : null) ?? HomeBoard::menuLine($slug, $game->kind()),
             'actions' => $this->actions($game),
         ];
     }
