@@ -260,5 +260,5 @@ test('every word of the practice is there in German', function () {
     expect(array_values(array_diff(array_unique($keys), array_keys($german))))->toBe([]);
 
     $this->withSession(['locale' => 'de'])->get(route('board.go-practice'))->assertOk()
-        ->assertSee('Go · Üben')->assertSee('Freiheiten und Schlagen')->assertSee('Die Leiter')->assertSee('Gibt keinen Stein her')->assertSee('Wal');
+        ->assertSee('Go · Üben')->assertSee('Freiheiten und Schlagen')->assertSee('Die Treppe')->assertSee('Gibt keinen Stein her')->assertSee('Wal');
 });

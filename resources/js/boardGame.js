@@ -1103,12 +1103,17 @@ registerAlpine(() => {
             if (this.pointerType === 'keyboard') {
                 if (!this.stone) return words.keys;
 
-                return words.at.replace(':point', this.stone.toUpperCase()) + ' ' + (this.stoneMoves.has(this.stone) ? words.enter : words.illegal);
+                return words.at.replace(':point', this.stone.toUpperCase()) + ' ' + (this.stoneMoves.has(this.stone) ? words.enter : this.stoneRefusal);
             }
             if (!this.stone) return this.pointerType === 'mouse' ? words.click : words.tap;
-            if (!this.stoneMoves.has(this.stone)) return words.illegal;
+            if (!this.stoneMoves.has(this.stone)) return this.stoneRefusal;
 
             return this.pointerType === 'mouse' ? words.click : words.confirm;
+        },
+
+        /** Why the stone shown may not go where it is: a stone lies there, or the point has no liberty or is a ko. */
+        get stoneRefusal() {
+            return this.state.pieces?.[this.stone] ? this.t.stones.taken : this.t.stones.illegal;
         },
 
         /** The bar's line under the stone input: the pass that ends the game, the stone shown, a take-back, a pass of the other side, or whose move it is. */
@@ -1228,7 +1233,7 @@ registerAlpine(() => {
             if (!this.stone || !this.canMove) return;
             const move = this.stoneMoves.get(this.stone);
             if (move) return this.send(move);
-            this.error = this.t.stones.illegal;
+            // Refused on the board, without asking the server: the bar's line says why (stoneRefusal), once.
             this.render();
         },
 

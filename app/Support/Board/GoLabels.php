@@ -20,13 +20,14 @@ final class GoLabels
                 'click' => __('Click a point to place your stone.'),
                 'confirm' => __('Tap the stone again or press Set stone.'),
                 'illegal' => __('No stone may go here (no liberty, or a ko).'),
+                'taken' => __('A stone is already here.'),
                 'keys' => __('Arrow keys move the stone, Enter places it, Escape takes it away.'),
                 'at' => __('Stone at :point.'),
                 'enter' => __('Enter places it.'),
                 'passed' => __(':side passed. If you pass too, the game ends and is counted.'),
                 'endGame' => __('Pass again to end the game?'),
                 // Before a player's first pass of a game, with the count after it (boardGame.js passEndLine).
-                'firstPass' => __('Counted exactly as it stands, dead stones too. If both pass:'),
+                'firstPass' => __('Counted as it stands, dead stones too. If both pass:'),
             ],
             'count' => [
                 'line' => __('Count now: :first · :second → :lead'),

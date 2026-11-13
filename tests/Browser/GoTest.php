@@ -208,8 +208,10 @@ test('two players play Go to the count with every way to set a stone: tap twice,
         ->and($white->locator('[data-test=place-stone]')->isVisible())->toBeFalse();
     shellShot($white, "go-{$width}-red");
     goLiveTap($white, $touch, 'd5');
-    BrowserWait::until($white, '() => document.querySelector("[data-test=board-error]")?.innerText === '.json_encode($illegal), 3_000);
-    expect($game->refresh()->ply)->toBe(1);
+    // The refusal stands once, in the bar's line: no second red line under it (it stood twice on a desktop).
+    expect($white->evaluate('() => [...document.querySelectorAll("[data-test=stone-status], [data-test=board-error]")].filter((el) => el.checkVisibility() && el.innerText.trim() !== "").map((el) => el.innerText)'))->toBe([$illegal])
+        ->and($white->evaluate(GO_LIVE_PREVIEW))->toBe(['d5', 'illegal'])
+        ->and($game->refresh()->ply)->toBe(1);
 
     if ($touch) {
         // A finger: G5 shows, "Set stone" sets it.
@@ -239,7 +241,8 @@ test('two players play Go to the count with every way to set a stone: tap twice,
     expect($black->locator('[data-test=pass]')->innerText())->toBe('Pass');
     goLivePress($black, $touch, '[data-test=pass]');
     expect($black->locator('[data-test=pass]')->innerText())->toBe('Pass anyway')
-        ->and($black->locator('[data-test=stone-status]')->innerText())->toBe('Counted exactly as it stands, dead stones too. If both pass: White wins by 6.5.')
+        ->and($black->locator('[data-test=stone-status]')->innerText())->toBe('Counted as it stands, dead stones too. If both pass: White wins by 6.5.')
+        ->and($black->evaluate(GO_LIVE_BAR)['cut'])->toBeFalse('first pass: the line is cut')
         ->and($game->refresh()->ply)->toBe(2)
         ->and($black->evaluate(GO_LIVE_LOW))->toBe([], 'first pass: buttons under 44 px');
     shellShot($black, "go-{$width}-first-pass");
@@ -295,6 +298,92 @@ test('two players play Go to the count with every way to set a stone: tap twice,
 })->with([
     'phone 390 (touch)' => [390, 844, true],
     'desktop 1440 (mouse)' => [1440, 900, false],
+]);
+
+/** Go's bar as it stands: its line (text, box, cut or not, type size), its buttons shown (name, width, height, label cut or not), and what runs off the side. */
+const GO_LIVE_BAR = <<<'JS'
+    () => {
+        const bar = document.querySelector('[data-test=stone-input]');
+        const line = bar.querySelector('[data-test=stone-status]');
+        const box = (el) => { const r = el.getBoundingClientRect(); return [Math.round(r.width), Math.round(r.height)]; };
+        const buttons = [...bar.querySelectorAll('button')].filter((el) => el.checkVisibility());
+        return {
+            text: line.innerText, line: box(line), bar: box(bar), size: parseFloat(getComputedStyle(line).fontSize),
+            cut: line.scrollHeight > line.clientHeight || line.scrollWidth > line.clientWidth,
+            buttons: buttons.map((el) => [el.dataset.test, ...box(el), el.scrollWidth > el.clientWidth]),
+            outside: buttons.filter((el) => el.getBoundingClientRect().right > innerWidth || el.getBoundingClientRect().left < 0).length,
+            overflow: document.documentElement.scrollWidth - document.documentElement.clientWidth,
+        };
+    }
+    JS;
+
+test('on a phone in German every line of Go\'s bar shows in full beside buttons 44 px high: the hint, a point taken, the first pass, a take-back, the other side\'s pass, the pass that ends', function (int $width, int $height) {
+    [$anna, $bert] = User::factory()->count(2)->create();
+    // White holds D5 and has closed the corner: A9 has no liberty for Black.
+    $game = GoOn::setUp(app(BoardGameService::class)->start('go-9', $anna, $bert), '1o7/o8/9/9/3o5/9/9/9/9 x - 0');
+    $black = goLivePage($anna, route('board.show', ['boardGame' => $game, 'lang' => 'de'], false), $width, $height, true);
+    BrowserWait::until($black, GO_LIVE_READY, 10_000);
+    goLiveCanMove($black);
+    $bars = [];
+    $measure = function (string $state) use ($black, &$bars): void {
+        goLiveSettle($black);
+        $bars[$state] = $black->evaluate(GO_LIVE_BAR);
+    };
+
+    // A stone shown where it may go: the hint beside "Setzen" and "Passen".
+    goLiveTap($black, true, 'e5');
+    $measure('hint');
+    // A point that holds a stone: no stone is shown, and the line says why.
+    goLiveTap($black, true, 'd5');
+    $measure('taken');
+    // A point without a liberty: the stone shows red.
+    goLiveTap($black, true, 'a9');
+    $measure('no liberty');
+    // The first pass asks, with the count: the longest line of the bar.
+    $black->locator('[data-test=pass]')->tap();
+    $measure('first pass');
+    // A stone instead: right after it "Zurücknehmen" stands in the pass's place.
+    goLiveTap($black, true, 'e5');
+    goLiveTap($black, true, 'e5');
+    goLivePly([$black], 1);
+    $measure('take back');
+    // White passes: the line says so, and Black's pass asks once more before it ends the game.
+    app(BoardGameService::class)->move($game->refresh(), $bert, 'pass');
+    goLivePly([$black], 2);
+    goLiveCanMove($black);
+    $measure('passed');
+    $black->locator('[data-test=pass]')->tap();
+    $measure('pass and end');
+    shellShot($black, "go-bar-de-{$width}-pass-and-end");
+
+    fwrite(STDERR, PHP_EOL.implode(PHP_EOL, array_map(fn (string $state, array $m): string => sprintf('%d %-12s bar %s line %s %dpx cut %d  %s  "%s"', $width, $state, implode('x', $m['bar']), implode('x', $m['line']), $m['size'], $m['cut'], implode(' ', array_map(fn (array $b): string => "{$b[0]} {$b[1]}x{$b[2]}", $m['buttons'])), $m['text']), array_keys($bars), $bars)).PHP_EOL);
+
+    expect(array_map(fn (array $m): string => $m['text'], $bars))->toBe([
+        'hint' => 'Tippe den Stein nochmal an oder drücke „Setzen“.',
+        'taken' => 'Hier liegt schon ein Stein.',
+        'no liberty' => 'Hier darf kein Stein hin (keine Freiheit oder Ko).',
+        'first pass' => 'Auch tote Steine zählen. Passen beide: Weiß gewinnt mit 88,5 Punkten.',
+        'take back' => 'Fernpartie · Zug 2 · Weiß am Zug',
+        'passed' => 'Weiß hat gepasst. Passt du auch, endet die Partie und wird gezählt.',
+        'pass and end' => 'Nochmal passen und die Partie beenden? Weiß gewinnt mit 10,5 Punkten.',
+    ])
+        // The bar never grows or shrinks with its line, so the board keeps its size from one line to the next.
+        ->and(array_values(array_unique(array_map(fn (array $m): int => $m['bar'][1], $bars))))->toHaveCount(1);
+
+    foreach ($bars as $state => $m) {
+        expect($m['cut'])->toBeFalse("{$state}: the line is cut")
+            ->and($m['size'])->toBeGreaterThanOrEqual(12, "{$state}: type under 12 px")
+            ->and(array_filter($m['buttons'], fn (array $b): bool => $b[2] < 44 || $b[3]))->toBe([], "{$state}: a button under 44 px or with a cut label")
+            ->and($m['outside'])->toBe(0, "{$state}: a button off the screen")
+            ->and($m['overflow'])->toBeLessThanOrEqual(0, "{$state}: sideways overflow");
+    }
+
+    expect(array_map(fn (array $b): string => $b[0], $bars['hint']['buttons']))->toBe(['place-stone', 'pass'])
+        ->and($black->evaluate('() => window.__errors'))->toBe([])
+        ->and($black->evaluate(BrowserConsole::BAD_RESPONSES))->toBe([]);
+})->with([
+    'phone 320' => [320, 640],
+    'phone 390' => [390, 844],
 ]);
 
 test('19 x 19 on a phone: the board fits the screen, a tap shows the stone with its lines on the intersection meant, and the second tap sets it', function (int $width, int $height) {

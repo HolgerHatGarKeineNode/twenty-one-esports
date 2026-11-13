@@ -525,12 +525,11 @@ new #[Layout('layouts::app', ['realtime' => true, 'scripts' => ['resources/js/bo
                      set the toggle reads "Move the pawn", as the phone's button (DerCaddy, 2026-11-12), and from lg stands in for it;
                      the keys keep "Set a block", Enter on it sets the block they show. --}}
                 <template x-if="layout.input === 'blocks' && color && state.status === 'active'">
-                    <div @class(['flex flex-col gap-2 max-lg:fixed max-lg:inset-x-0 max-lg:z-20 max-lg:flex-row max-lg:items-center max-lg:gap-3 max-lg:border-t max-lg:border-line max-lg:bg-bar max-lg:px-4 max-lg:py-1.5 max-[359px]:gap-2 max-[359px]:px-3 max-lg:shadow-[0_-16px_32px_rgba(10,10,11,.8)]', $chat ? 'max-lg:bottom-[72px]' : 'max-lg:bottom-0']) x-ref="dock" data-page-bar data-test="block-input">
-                        {{-- The line: on a phone whose move it is (the status chip gives way to the bar), in set-a-block mode the hint;
-                             from lg the hint alone, under the toggle. Gone on a phone while the three buttons need the row. --}}
-                        <p class="m-0 line-clamp-2 min-w-0 grow text-xs max-[359px]:line-clamp-3 max-[359px]:leading-[14px] lg:order-2 lg:text-[13px]"
-                           :class="[preview && !preview.move && settingBlock ? 'text-loss' : 'text-ink-2', blockButtons ? 'max-lg:hidden' : '', settingBlock ? '' : 'lg:hidden']"
-                           x-text="barLine" data-test="block-status"></p>
+                    {{-- The line (in the wrapper Go's bar shares, x-board.input-bar): on a phone whose move it is (the status chip gives way
+                         to the bar), in set-a-block mode the hint; from lg the hint alone, under the toggle. Gone on a phone while the three
+                         buttons need the row. --}}
+                    <x-board.input-bar name="block-input" status="block-status" :bottom="$chat ? 'max-lg:bottom-[72px]' : 'max-lg:bottom-0'" line="lg:order-2"
+                                       tone="[preview && !preview.move && settingBlock ? 'text-loss' : 'text-ink-2', blockButtons ? 'max-lg:hidden' : '', settingBlock ? '' : 'lg:hidden']">
                         <button type="button" class="inline-flex h-11 shrink-0 cursor-pointer items-center justify-center gap-2 rounded-md px-[18px] max-[359px]:px-2 text-[13px] disabled:cursor-default disabled:opacity-50 lg:order-1 lg:w-full"
                                 :class="[blockMode ? 'border border-btc bg-btc-press font-bold text-btc-hi' : 'btn-w border border-line bg-well text-ink', blockButtons ? 'max-lg:hidden' : '']"
                                 :aria-pressed="toggleMoves ? 'false' : (blockMode ? 'true' : 'false')" :disabled="!myTurn || !canSetBlocks" x-on:click="setBlockMode(!blockMode, $event)" aria-keyshortcuts="ArrowUp ArrowDown ArrowLeft ArrowRight R Enter Escape"
@@ -560,7 +559,7 @@ new #[Layout('layouts::app', ['realtime' => true, 'scripts' => ['resources/js/bo
                         </div>
                         {{-- Always in the page, so a screen reader hears each new hint (the keys say where the block is). --}}
                         <p class="sr-only" role="status" aria-live="polite" x-text="blockHint" data-test="block-hint"></p>
-                    </div>
+                    </x-board.input-bar>
                 </template>
                 {{-- Go's bar (the stone input): Place, Pass, Take back, as Blockli's bar on a phone fixed above the chat sheet. --}}
                 @include('pages.board.partials.stone-input', ['bottom' => $chat ? 'max-lg:bottom-[72px]' : 'max-lg:bottom-0'])
