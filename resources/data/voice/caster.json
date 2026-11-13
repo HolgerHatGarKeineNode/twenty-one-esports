@@ -4797,6 +4797,22 @@
    "text": "{king_owner} hat schon {kings} auf dem Brett."
   },
   {
+   "id": "ml-go-captures-1",
+   "topics": [
+    "live_games",
+    "mempool"
+   ],
+   "text": "{captor} hat schon {stones_taken} vom Brett genommen."
+  },
+  {
+   "id": "ml-go-count-1",
+   "topics": [
+    "live_games",
+    "mempool"
+   ],
+   "text": "Passen jetzt beide, liegt {count_leader} um {count_margin} vorn."
+  },
+  {
    "id": "ml-hyper-leader-1",
    "topics": [
     "live_games",

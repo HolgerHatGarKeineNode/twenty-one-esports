@@ -4,6 +4,9 @@ use App\Models\ChessGame;
 use App\Models\ChessMove;
 use App\Models\HyperAction;
 use App\Models\HyperMatch;
+use App\Models\User;
+use App\Support\Board\BoardGameService;
+use App\Support\Board\GoRules;
 use App\Support\Board\NineMensMorrisRules;
 use App\Support\Caster\CasterVoice;
 use App\Support\Caster\GameMoments\BoardMoments;
@@ -23,6 +26,7 @@ use App\Support\Caster\ScriptGuard;
 use App\Support\Chess\ChessRules;
 use App\Support\Hyper\HyperMap;
 use PChess\Chess\Chess;
+use Tests\Support\GoOn;
 
 /*
 |--------------------------------------------------------------------------
@@ -337,6 +341,41 @@ it('takes the moments of several games in turn, at most the cap', function () {
         ->and(array_column(GameMoments::interleave([$a, $b], 12), 'kind'))->toBe(['a1', 'b1', 'a2', 'a3']);
 });
 
+it('counts the stones taken in Go and, once a side has passed, who is ahead by how much', function () {
+    $names = ['w' => 'Ada', 'b' => 'Bob'];
+    $base = ['game' => 'Go', 'a' => 'Ada', 'b' => 'Bob'];
+    $rules = new GoRules(9);
+    // Black (Ada) has five stones on the board, White (Bob) two.
+    $count = fn (int $passes): array => $rules->areaCount($rules->deserialize("9/9/9/3xx4/3xo4/3xx4/9/9/8o x - {$passes}"));
+
+    // Ada set five and has five; Bob set five and has two left: Ada took three.
+    $playing = BoardMoments::go($count(0), 0, ['w' => 5, 'b' => 5], $names, $base);
+    $passed = BoardMoments::go($count(1), 1, ['w' => 5, 'b' => 3], $names, $base);
+
+    expect(momentsOfKind($playing, 'go_captures'))->toHaveCount(1)
+        ->and(momentsOfKind($playing, 'go_captures')[0])->toMatchArray(['game' => 'Go', 'captor' => 'Ada', 'lead' => 'Ada', 'stones_taken' => 'drei Steine'])
+        ->and(momentsOfKind($playing, 'go_count'))->toBe([])
+        ->and(momentsOfKind($passed, 'go_captures')[0])->toMatchArray(['captor' => 'Ada', 'stones_taken' => 'einen Stein'])
+        ->and(momentsOfKind($passed, 'go_count')[0])->toMatchArray(['count_leader' => 'Bob', 'lead' => 'Bob', 'count_margin' => '4,5 Punkte', 'mood' => Mood::TENSION]);
+});
+
+it('calls every Go size "Go" and reads the stones taken from the game played', function (string $slug) {
+    GoOn::play();
+    $boards = app(BoardGameService::class);
+    $game = $boards->start($slug, User::factory()->create(), User::factory()->create());
+
+    // Black takes the white stone on a1: b1, a1, a2.
+    foreach (['b1', 'a1', 'a2'] as $move) {
+        $game = $boards->move($game, $game->player($game->turn), $move, $game->ply + 1);
+    }
+
+    $moments = app(BoardMoments::class)->of($game, 'Ada', 'Bob');
+
+    expect($moments)->toHaveCount(1)
+        ->and($moments[0])->toMatchArray(['kind' => 'go_captures', 'game' => 'Go', 'captor' => 'Ada', 'stones_taken' => 'einen Stein'])
+        ->and($moments[0]['match'])->toStartWith('Gopartie ');
+})->with(['go-9', 'go-13', 'go-19']);
+
 it('offers every moment as a slot set with its mood slot naming the player the moment is about', function () {
     $slots = PatternScripts::slots(['moments' => [['game' => 'Schach', 'kind' => 'material', 'mood' => Mood::DOMINANCE, 'lead' => 'Ada', 'ahead' => 'Ada', 'edge' => 'die Dame', 'edge_points' => 9]]]);
 
@@ -356,6 +395,7 @@ it('has moment lines that pass the script and fact guards when filled from a mom
         'men_leader' => 'Ada', 'men_trailer' => 'Bob', 'leader_men' => 'sieben Steine', 'trailer_men' => 'vier Steine', 'trailer_men_lost' => 'fünf Steine', 'men_each' => 'sechs Steine',
         'mill_owner' => 'Ada', 'mills' => 'zwei Mühlen', 'flying' => 'Bob', 'pieces_leader' => 'Ada', 'pieces_trailer' => 'Bob', 'leader_pieces' => 'acht Steine',
         'trailer_pieces' => 'fünf Steine', 'pieces_each' => 'sieben Steine', 'king_owner' => 'Ada', 'kings' => 'eine Dame',
+        'captor' => 'Ada', 'stones_taken' => 'drei Steine', 'count_leader' => 'Bob', 'count_margin' => '7,5 Punkte',
         'hyper_leader' => 'Ada', 'leader_territories' => '13 Gebiete', 'leader_banks' => 'zwei Zentralbanken', 'duel_a' => 'Ada', 'duel_b' => 'Bob', 'bank_by' => 'Ada',
         'bank_name' => 'EZB', 'conqueror' => 'Ada', 'conquests' => 'drei Gebiete', 'still_in' => 'drei Spieler',
         'series_leader' => 'Bern', 'series_score' => '2 zu 1', 'series_level' => '2 zu 2', 'series_point' => 'Bern',

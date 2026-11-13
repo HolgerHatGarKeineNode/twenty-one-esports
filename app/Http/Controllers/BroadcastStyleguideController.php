@@ -21,12 +21,28 @@ class BroadcastStyleguideController extends Controller
         'energy-wide', 'energy-rays',
     ];
 
+    /** Assets the overlays already name whose file the designer still delivers: used once the file is in the pack. */
+    public const array PENDING = ['emblem-go'];
+
+    /**
+     * The pack as the overlay scripts get it, id to URL: every asset of ART, and of PENDING the ones whose file is
+     * there. An id that is not in it shows as the league mark (overlay.js art(), OverlaySnapshot::emblem()).
+     *
+     * @return array<string, string>
+     */
+    public static function art(): array
+    {
+        $ids = [...self::ART, ...array_filter(self::PENDING, fn (string $id): bool => is_file(public_path("broadcast/art/{$id}.webp")))];
+
+        return collect($ids)->mapWithKeys(fn (string $id): array => [$id => '/broadcast/art/'.$id.'.webp'])->all();
+    }
+
     public function __invoke(Request $request): View
     {
         return view('broadcast.styleguide', [
             'stageOnly' => $request->query('stage') === '1',
             'config' => [
-                'art' => collect(self::ART)->mapWithKeys(fn (string $id): array => [$id => '/broadcast/art/'.$id.'.webp'])->all(),
+                'art' => self::art(),
                 'demo' => $this->demo(),
                 'texts' => $this->texts(),
             ],

@@ -61,7 +61,7 @@ final class GameMoments
     public const PERSON_SLOTS = [
         'lead', 'mood_tension', 'mood_comeback', 'mood_dominance', 'mood_close', 'mood_upset',
         'check_by', 'check_to', 'capture_by', 'comeback_by', 'ahead', 'behind', 'clock_low',
-        'race_leader', 'race_trailer', 'one_step', 'men_leader', 'men_trailer', 'mill_owner', 'flying', 'pieces_leader', 'pieces_trailer', 'king_owner',
+        'race_leader', 'race_trailer', 'one_step', 'men_leader', 'men_trailer', 'mill_owner', 'flying', 'pieces_leader', 'pieces_trailer', 'king_owner', 'captor', 'count_leader',
         'hyper_leader', 'duel_a', 'duel_b', 'bank_by', 'conqueror', 'series_leader', 'series_point', 'pong_winner', 'pong_loser', 'saver',
         'finalist_a', 'finalist_b', 'upset_winner', 'upset_loser', 'score_leader', 'score_second', 'tied_a', 'tied_b', 'new_top', 'dethroned', 'best_by',
     ];

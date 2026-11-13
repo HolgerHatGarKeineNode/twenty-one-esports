@@ -11,9 +11,13 @@ const EMBLEMS = {
     'nine-mens-morris': 'emblem-mill', blockli: 'emblem-blockli', blockspace: 'emblem-blockspace',
 };
 
-/** The emblem id of a game slug (as OverlaySnapshot::emblem()), 'mark' for a game without one. */
+/**
+ * The emblem id of a game slug (as OverlaySnapshot::emblem()), 'mark' for a game without one. Every Go size has Go's
+ * emblem; until its file is in the pack the page's art list does not hold it and ctx.art() shows the mark.
+ */
 export function emblemOf(slug) {
     if (!slug) return 'mark';
+    if (String(slug).startsWith('go-')) return 'emblem-go';
 
     return EMBLEMS[slug] || (String(slug).startsWith('ea-sports-fc') ? 'emblem-football' : 'mark');
 }

@@ -34,7 +34,7 @@ class BroadcastOverlayController extends Controller
                 'tournamentId' => $preset->variant->takesTournament() ? $preset->tournament_id : null,
                 'snapshotUrl' => route('broadcast.snapshot', ['token' => $token]),
                 'pollMs' => 20_000,
-                'art' => collect(BroadcastStyleguideController::ART)->mapWithKeys(fn (string $id): array => [$id => '/broadcast/art/'.$id.'.webp'])->all(),
+                'art' => BroadcastStyleguideController::art(),
                 'snapshot' => $snapshot,
                 'texts' => $this->texts(),
             ],

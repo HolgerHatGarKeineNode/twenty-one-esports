@@ -2,10 +2,13 @@
 
 namespace App\Support\Caster\GameMoments;
 
+use App\Games\GameRegistry;
+use App\Games\Go;
 use App\Models\BoardGame;
 use App\Support\Board\BlockliRules;
 use App\Support\Board\BoardGameService;
 use App\Support\Board\CheckersRules;
+use App\Support\Board\GoRules;
 use App\Support\Board\NineMensMorrisRules;
 
 /**
@@ -21,6 +24,11 @@ use App\Support\Board\NineMensMorrisRules;
  * - Nine men's morris (`morris`, `morris_level`): men left per side (on the
  *   board and in hand), mills standing, a side down to three men flies.
  * - Checkers (`checkers`, `checkers_level`): pieces and kings per side.
+ * - Go, every size (`go_captures`, `go_count`): the stones a side has
+ *   taken off the board; and once a side has passed, who wins by how much
+ *   if the other passes too (GoRules::areaCount()). The count is left out
+ *   before a pass: early in a game it says nothing (after the first stone
+ *   the whole board is Black's area).
  *
  * Every moment carries the spoken game name and both players' names
  * (`a`, `b`: White, Black), `kind`, `mood` where the rule gives one and
@@ -28,8 +36,8 @@ use App\Support\Board\NineMensMorrisRules;
  */
 final class BoardMoments
 {
-    /** Spoken game names by registry slug. */
-    public const NAMES = ['blockli' => 'Blockli', 'blockspace' => 'Blockspace', 'nine-mens-morris' => 'Mühle', 'checkers' => 'Dame'];
+    /** Spoken game names by registry slug, or by the slug of a game's group (Go: one name for its three sizes). */
+    public const NAMES = ['blockli' => 'Blockli', 'blockspace' => 'Blockspace', 'nine-mens-morris' => 'Mühle', 'checkers' => 'Dame', Go::GROUP => 'Go'];
 
     /** A race score margin up to this is close. */
     public const CLOSE_RACE = 1.0;
@@ -43,7 +51,13 @@ final class BoardMoments
     /** Checkers pieces at the start, per side. */
     public const CHECKERS_PIECES = 12;
 
-    public function __construct(private BoardGameService $boards) {}
+    public function __construct(private BoardGameService $boards, private GameRegistry $games) {}
+
+    /** The spoken name of a board game: its own, its group's, else its slug. */
+    public function name(string $slug): string
+    {
+        return self::NAMES[$slug] ?? self::NAMES[$this->games->groupOf($slug)?->slug ?? ''] ?? $slug;
+    }
 
     /**
      * @return list<array<string, string|int>>
@@ -52,14 +66,62 @@ final class BoardMoments
     {
         $rules = $this->boards->rulesOf($game);
         $names = ['w' => $white, 'b' => $black];
-        $base = ['game' => self::NAMES[$game->game] ?? $game->game, 'match' => MatchAnchor::of($game, self::NAMES[$game->game] ?? $game->game), 'a' => $white, 'b' => $black];
+        $name = $this->name($game->game);
+        $base = ['game' => $name, 'match' => MatchAnchor::of($game, $name), 'a' => $white, 'b' => $black];
 
         return match (true) {
             $rules instanceof BlockliRules => self::race($rules->standing($rules->deserialize($game->position)), $names, $base),
             $rules instanceof NineMensMorrisRules => self::morris($rules->deserialize($game->position), $names, $base),
             $rules instanceof CheckersRules => self::checkers($rules->deserialize($game->position), $names, $base),
+            $rules instanceof GoRules => self::go($rules->areaCount($position = $rules->deserialize($game->position)), $position['passes'], $this->stonesSet($game), $names, $base),
             default => [],
         };
+    }
+
+    /**
+     * The stones each side has put on the board in this game: its moves that were no pass (the first side makes the
+     * odd plies).
+     *
+     * @return array{w: int, b: int}
+     */
+    private function stonesSet(BoardGame $game): array
+    {
+        $plies = $game->moves()->where('move', '!=', GoRules::PASS)->pluck('ply');
+        $first = $plies->filter(fn (int $ply): bool => $ply % 2 === 1)->count();
+
+        return ['w' => $first, 'b' => $plies->count() - $first];
+    }
+
+    /**
+     * @param  array{w: array{stones: int, area: int, score: float}, b: array{stones: int, area: int, score: float}, margin: float, lead: 'w'|'b'|null}  $count  GoRules::areaCount()
+     * @param  int  $passes  the passes in a row before this position
+     * @param  array{w: int, b: int}  $set  the stones each side has put on the board
+     * @param  array{w: string, b: string}  $names
+     * @param  array<string, string>  $base
+     * @return list<array<string, string|int>>
+     */
+    public static function go(array $count, int $passes, array $set, array $names, array $base): array
+    {
+        $moments = [];
+
+        foreach (['w' => 'b', 'b' => 'w'] as $side => $other) {
+            // What the other side set and no longer has was taken by this one (never negative on a position put up by hand).
+            $taken = max(0, $set[$other] - $count[$other]['stones']);
+
+            if ($taken > 0) {
+                $moments[] = [...$base, 'kind' => 'go_captures', 'lead' => $names[$side], 'captor' => $names[$side], 'stones_taken' => Words::count($taken, 'einen Stein', 'Steine')];
+            }
+        }
+
+        $lead = $count['lead'];
+
+        if ($passes > 0 && $lead !== null) {
+            $margin = abs($count['margin']);
+            $moments[] = [...$base, 'kind' => 'go_count', 'mood' => Mood::TENSION, 'lead' => $names[$lead], 'count_leader' => $names[$lead],
+                'count_margin' => floor($margin) === $margin ? Words::count((int) $margin, 'einen Punkt', 'Punkte') : str_replace('.', ',', (string) $margin).' Punkte'];
+        }
+
+        return $moments;
     }
 
     /**

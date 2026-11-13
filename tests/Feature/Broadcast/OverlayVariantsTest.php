@@ -2,13 +2,17 @@
 
 use App\Enums\OverlayVariant;
 use App\Enums\TournamentFormat;
+use App\Http\Controllers\BroadcastStyleguideController;
 use App\Models\ChessGame;
 use App\Models\OverlayPreset;
 use App\Models\Tournament;
 use App\Models\TournamentMatch;
 use App\Models\TournamentSignup;
 use App\Models\User;
+use App\Support\Broadcast\OverlaySnapshot;
 use App\Support\Tournaments\TournamentRunner;
+use Illuminate\Process\Factory;
+use Illuminate\Support\Facades\File;
 
 /*
 |--------------------------------------------------------------------------
@@ -134,4 +138,30 @@ test('an open tournament shows its sign-ups and start, a round robin its table, 
     expect($finished['champion'])->not->toBeNull()
         ->and($finished['statusLine'])->toBe('Finished, won by '.$finished['champion'])
         ->and($finished['board']['round'])->toBe('Final');
+});
+
+test('every Go size shows Go\'s emblem once its file is in the pack, and the league mark until then', function (string $slug) {
+    // A pack of its own, so the test neither needs nor leaves a file in public/.
+    app()->usePublicPath($public = storage_path('framework/testing/go-emblem-'.$slug));
+    File::ensureDirectoryExists($public.'/broadcast/art');
+    File::delete($public.'/broadcast/art/emblem-go.webp');
+
+    expect(OverlaySnapshot::emblem($slug))->toBe('mark')
+        ->and(BroadcastStyleguideController::art())->not->toHaveKey('emblem-go')
+        ->and(array_keys(BroadcastStyleguideController::art()))->toBe(BroadcastStyleguideController::ART);
+
+    File::put($public.'/broadcast/art/emblem-go.webp', 'webp');
+
+    expect(OverlaySnapshot::emblem($slug))->toBe('emblem-go')
+        ->and(BroadcastStyleguideController::art()['emblem-go'])->toBe('/broadcast/art/emblem-go.webp');
+
+    File::deleteDirectory($public);
+})->with(['go-9', 'go-13', 'go-19']);
+
+test('the browser variants name Go\'s emblem for every Go size, as the server does', function () {
+    $script = "import('./resources/js/broadcast/variants/shared.js').then((m) => console.log(JSON.stringify(['go-9', 'go-13', 'go-19', 'chess', 'gomoku'].map(m.emblemOf))))";
+    $run = (new Factory)->path(base_path())->timeout(30)->run(['node', '--input-type=module', '-e', $script]);
+
+    expect($run->successful())->toBeTrue($run->errorOutput())
+        ->and(json_decode($run->output(), true))->toBe(['emblem-go', 'emblem-go', 'emblem-go', 'emblem-chess', 'mark']);
 });
