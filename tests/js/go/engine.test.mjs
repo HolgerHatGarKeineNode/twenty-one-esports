@@ -50,6 +50,34 @@ test('suicide is not allowed unless the stone captures; the ko forbids taking ba
     assert.equal(ko.legal(ko.pointOf('d5')), true, 'after a move elsewhere the ko may be taken back');
 });
 
+test('a pass lifts the ko; a stone that joins a group and takes one stone leaves none (a snapback)', () => {
+    const ko = board(['.........', '.........', '.........', '...xo....', '..xo.o...', '...xo....', '.........', '.........', '.........']);
+    ko.playId('e5');
+    assert.equal(ko.toText(), '9/9/9/3xo4/2x1xo3/3xo4/9/9/9 o d5 0');
+    ko.playId('pass');
+    assert.equal(ko.ko, 0, 'the pass lifts the ko');
+    assert.equal(ko.toText(), '9/9/9/3xo4/2x1xo3/3xo4/9/9/9 x - 1');
+    ko.playId('pass');
+    assert.equal(ko.toText(), '9/9/9/3xo4/2x1xo3/3xo4/9/9/9 o - 2');
+
+    // The same ko, White passes and Black plays elsewhere: White may take back on d5.
+    const lifted = board(['.........', '.........', '.........', '...xo....', '..x.xo...', '...xo....', '.........', '.........', '.........'], 'o', 'd5');
+    assert.equal(lifted.legal(lifted.pointOf('d5')), false);
+    lifted.playId('pass');
+    lifted.playId('h2');
+    assert.equal(lifted.legal(lifted.pointOf('d5')), true);
+    assert.equal(lifted.playId('d5'), 1);
+
+    // White throws in on d9, Black takes it on e9 and joins four stones with d9 as their only liberty: no ko.
+    const snapback = board(['.ox..o...', '.oxxxo...', '..ooo....', '.........', '.........', '.........', '.........', '.........', '.........'], 'o');
+    snapback.playId('d9');
+    assert.equal(snapback.playId('e9'), 1);
+    assert.equal(snapback.ko, 0);
+    assert.equal(snapback.legal(snapback.pointOf('d9')), true);
+    assert.equal(snapback.playId('d9'), 5);
+    assert.equal(snapback.toText(), '1o1o1o3/1o3o3/2ooo4/9/9/9/9/9/9 x - 0');
+});
+
 test('two passes end the game; the count is stones and the area that touches one colour, with 7.5 for White', () => {
     const b = GoBoard.fromText('9/9/9/9/9/9/9/9/9 x - 0');
     b.play(PASS);

@@ -9,11 +9,11 @@ use Illuminate\Process\Factory;
  * exactly: the second case holds both to the same legal moves, the same count, the same position after a move and the
  * same end of the game (GoRules::outcome()) in a thousand positions of random games on all three boards, ko and
  * captures among them. The cases of the scripts
- * themselves are tests/js/go/*.test.mjs under node:test, 22 of them: 8 for the engine (engine.test.mjs), 6 for the
+ * themselves are tests/js/go/*.test.mjs under node:test, 23 of them: 9 for the engine (engine.test.mjs), 6 for the
  * bots (bots.test.mjs), 8 for the tips (tips.test.mjs).
  */
 test('the go practice engine, bots and tips keep their cases', function () {
-    nodeTest('tests/js/go/*.test.mjs', 22, 180);
+    nodeTest('tests/js/go/*.test.mjs', 23, 180);
 });
 
 test('the engine of the go practice knows the server\'s rules: the same legal moves, count and next position in a thousand positions', function () {

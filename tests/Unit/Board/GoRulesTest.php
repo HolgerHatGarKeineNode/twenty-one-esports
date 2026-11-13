@@ -236,6 +236,62 @@ test('taking two stones is no ko', function () {
         ->and($rules->legalMoves($after))->toContain('e9', 'e8');
 });
 
+test('ko needs a single capturing stone: a stone that joins a group and takes one stone leaves no ko', function () {
+    $rules = new GoRules(9);
+    $position = goPosition([
+        'o . x o . . . . .',
+        'x o o . . . . . .',
+        '. . . . . . . . .',
+        '. . . . . . . . .',
+        '. . . . . . . . .',
+        '. . . . . . . . .',
+        '. . . . . . . . .',
+        '. . . . . . . . .',
+        '. . . . . . . . .',
+    ], 'w');
+
+    // Black b9 takes the one white stone on a9 and joins c9: two stones whose only liberty is a9.
+    $after = $rules->apply($position, 'b9');
+
+    expect(goRows($after)[0])->toBe('. x x o . . . . .')
+        ->and($after['ko'])->toBeNull()
+        ->and($rules->serialize($after))->toEndWith(' o - 0')
+        ->and($rules->legalMoves($after))->toContain('a9');
+
+    // White takes both back at once.
+    expect(goRows($rules->apply($after, 'a9'))[0])->toBe('o . . o . . . . .');
+});
+
+test('a snapback is no ko: the stone thrown in is taken, and the group that took it comes off at once', function () {
+    $rules = new GoRules(9);
+    $position = goPosition([
+        '. o x . . o . . .',
+        '. o x x x o . . .',
+        '. . o o o . . . .',
+        '. . . . . . . . .',
+        '. . . . . . . . .',
+        '. . . . . . . . .',
+        '. . . . . . . . .',
+        '. . . . . . . . .',
+        '. . . . . . . . .',
+    ], 'b');
+
+    // White throws a stone in on d9, where it has one liberty; Black takes it on e9 and is left with d9 alone.
+    $thrown = $rules->apply($position, 'd9');
+    expect($rules->legalMoves($thrown))->toContain('e9');
+
+    $taken = $rules->apply($thrown, 'e9');
+    expect(goRows($taken)[0])->toBe('. o x . x o . . .')
+        ->and($taken['ko'])->toBeNull()
+        ->and($rules->legalMoves($taken))->toContain('d9');
+
+    // White plays d9 again and takes all five.
+    $snapped = $rules->apply($taken, 'd9');
+    expect(goRows($snapped)[0])->toBe('. o . o . o . . .')
+        ->and(goRows($snapped)[1])->toBe('. o . . . o . . .')
+        ->and($snapped['ko'])->toBeNull();
+});
+
 test('two passes in a row end the game and count it; a stone between them starts the count again', function () {
     $rules = new GoRules(9);
     $once = $rules->apply($rules->start(), 'pass');
@@ -336,6 +392,48 @@ test('the same stones with the same side to move a third time draw the game', fu
     expect($rules->outcome($position, [$text, $text]))->toBeNull()
         ->and($rules->outcome($position, [$text, $otherKo, $text]))->toBe(['result' => '1/2-1/2', 'reason' => 'repetition'])
         ->and($rules->outcome($position, [$text, goText(GO_EMPTY, 'b'), $text]))->toBeNull();
+});
+
+test('a triple ko played out on 13 x 13 draws the game when the stones stand the same a third time', function () {
+    $rules = new GoRules(13);
+    // Three kos: Black may take on d11 and d3, White on c7.
+    $position = goPosition([
+        '. . . . . . . . . . . . .',
+        '. . x o . . . . . . . . .',
+        '. x o . o . . . . . . . .',
+        '. . x o . . . . . . . . .',
+        '. . . . . . . . . . . . .',
+        '. . x o . . . . . . . . .',
+        '. x . x o . . . . . . . .',
+        '. . x o . . . . . . . . .',
+        '. . . . . . . . . . . . .',
+        '. . x o . . . . . . . . .',
+        '. x o . o . . . . . . . .',
+        '. . x o . . . . . . . . .',
+        '. . . . . . . . . . . . .',
+    ], 'w');
+    $start = $rules->serialize($position);
+    $history = [$start];
+    $outcomes = [];
+    // Each takes the ko the other may not take back yet; after six moves the stones stand as at the start.
+    $cycle = ['d11' => 'c11', 'c7' => 'd7', 'd3' => 'c3', 'c11' => 'd11', 'd7' => 'c7', 'c3' => 'd3'];
+
+    foreach ([...array_keys($cycle), ...array_keys($cycle)] as $move) {
+        expect($rules->legalMoves($position))->toContain($move);
+
+        $position = $rules->apply($position, $move);
+        $history[] = $rules->serialize($position);
+        $outcomes[] = $rules->outcome($position, $history);
+
+        // Every move is a ko capture: the point just emptied is closed for one move.
+        expect($position['ko'])->toBe($rules->index($cycle[$move]))
+            ->and($rules->legalMoves($position))->not->toContain($cycle[$move]);
+    }
+
+    // The same stones with Black to move: at the start, after six moves and after twelve.
+    expect($history[6])->toBe(str_replace(' x - 0', ' x d3 0', $start))
+        ->and(array_slice($outcomes, 0, 11))->each->toBeNull()
+        ->and($outcomes[11])->toBe(['result' => '1/2-1/2', 'reason' => 'repetition']);
 });
 
 test('a game that reaches the move limit, four plies per point of the board, is drawn and not counted', function () {
