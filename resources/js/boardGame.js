@@ -94,6 +94,55 @@ export function stoneKind(side) {
     return side === 'w' ? 'black' : 'white';
 }
 
+/**
+ * A board of stones comes short from the server (BoardGameService::snapshot(): a push of 19 x 19 has to fit into one
+ * Reverb message): the stones as one character per point, the empty points that may not be played instead of every
+ * legal move, each side's area as one character per point. This turns such a state into the form every other board
+ * has (pieces by point, legal moves with their paths, the areas as lists), so the rest of the script reads one form.
+ * A state that already has it (another board, the practice page's own answers) passes through.
+ */
+export function unpackStones(state, points) {
+    if (!state || typeof state.pieces !== 'string') return state;
+    const refused = new Set(state.illegal ?? []);
+    const live = state.status === 'active';
+    const pieces = {};
+    const legal = [];
+    points.forEach((point, index) => {
+        const stone = state.pieces[index];
+        if (stone === 'x' || stone === 'o') pieces[point.id] = stonePiece(stone === 'x' ? 'w' : 'b');
+        else if (live && !refused.has(point.id)) legal.push({ move: point.id, path: [point.id] });
+    });
+    if (live && state.pass) legal.push({ move: state.pass, path: [] });
+    const count = state.count && typeof state.count.owners === 'string' ? { ...state.count, owners: { w: [], b: [] } } : state.count;
+    if (count !== state.count) points.forEach((point, index) => count.owners[state.count.owners[index]]?.push(point.id));
+
+    return { ...state, pieces, legal, count };
+}
+
+/** A side's stone as a piece of the board. */
+function stonePiece(side) {
+    return { side, kind: stoneKind(side) };
+}
+
+/**
+ * The stones after `index` plies of a record that names what each move took (`taken`) instead of the pieces after it:
+ * built from the nearest position known, and kept (`known`, by ply) for the next step.
+ */
+function stonesAfter(moves, index, startPieces, known) {
+    let from = index;
+    while (from > 0 && !moves[from - 1].pieces && !known.has(from)) from--;
+    let pieces = from === 0 ? startPieces : (moves[from - 1].pieces ?? known.get(from));
+    for (let ply = from + 1; ply <= index; ply++) {
+        const move = moves[ply - 1];
+        pieces = { ...pieces };
+        (move.taken ?? []).forEach((id) => delete pieces[id]);
+        if (move.path[0] && move.side) pieces[move.path[0]] = stonePiece(move.side);
+        known.set(ply, pieces);
+    }
+
+    return pieces;
+}
+
 export function formatClock(ms) {
     const total = Math.max(0, Math.ceil(ms / 1000));
 
@@ -206,8 +255,9 @@ function svgElement(name, attributes) {
 
 registerAlpine(() => {
     window.Alpine.data('gameChat', gameChat);
-    window.Alpine.data('boardGame', (config) => ({
-        state: config.state,
+    // The stones of earlier positions of a record without pieces (stonesAfter()), by ply; emptied with every new state.
+    window.Alpine.data('boardGame', (config, stonesKnown = new Map()) => ({
+        state: unpackStones(config.state, config.layout.points),
         layout: config.layout,
         color: config.color,
         t: config.labels,
@@ -441,8 +491,11 @@ registerAlpine(() => {
         piecesAt(index) {
             if (index >= this.state.moves.length) return this.state.pieces;
             if (index <= 0) return this.startPieces;
+            const move = this.state.moves[index - 1];
+            // A record of stones names what each move took, not the pieces after it.
+            if (!move.pieces && move.taken) return stonesAfter(this.state.moves, index, this.startPieces, stonesKnown);
 
-            return this.state.moves[index - 1].pieces ?? this.state.pieces;
+            return move.pieces ?? this.state.pieces;
         },
 
         browse(index) {
@@ -1441,6 +1494,8 @@ registerAlpine(() => {
 
         apply(state) {
             if (!state || state.version < this.state.version) return;
+            state = unpackStones(state, this.layout.points);
+            if (state.version !== this.state.version || state.moves) stonesKnown.clear();
             const changed = state.version !== this.state.version;
             const moved = state.ply !== this.state.ply;
             // One ply less in a running game: the side that had just moved took it back. Its opponent (and a spectator) is told.
@@ -1470,16 +1525,30 @@ registerAlpine(() => {
             this.render();
         },
 
+        /**
+         * A state that came without the record (a push, the answer to an own action, a state the server kept short) with the
+         * page's record joined to it: the next move added, the same move kept, a move taken back cut off. Null where it does
+         * not follow on from what the page has: then the whole record is asked for.
+         */
+        follow(update) {
+            if (update.moves) return update;
+            const moves = this.state.moves;
+            const same = (ply) => ply === 0 || moves[ply - 1]?.move === update.lastMove?.move;
+            if (update.ply === moves.length + 1 && update.lastMove) {
+                // A push of a board with its own input carries the pieces once (BoardGameService::snapshot()).
+                return { ...update, moves: [...moves, { ...update.lastMove, pieces: update.lastMove.pieces ?? update.pieces }] };
+            }
+            if (update.ply === moves.length && same(update.ply)) return { ...update, moves };
+            if (update.ply < moves.length && same(update.ply)) return { ...update, moves: moves.slice(0, update.ply) };
+
+            return null;
+        },
+
         receive(update) {
             if (update.version <= this.state.version) return;
-            if (update.ply === this.state.ply + 1 && update.lastMove) {
-                // A push of a board with its own input carries the pieces once (BoardGameService::snapshot()).
-                this.apply({ ...update, moves: [...this.state.moves, { ...update.lastMove, pieces: update.lastMove.pieces ?? update.pieces }] });
-            } else if (update.ply === this.state.ply) {
-                this.apply({ ...update, moves: this.state.moves });
-            } else {
-                this.resync();
-            }
+            const state = this.follow(unpackStones(update, this.layout.points));
+            if (state) this.apply(state);
+            else this.resync();
         },
 
         async resync() {
@@ -1487,8 +1556,11 @@ registerAlpine(() => {
             this.syncing = true;
             this.lastSyncAt = performance.now();
             try {
-                const state = await (this.source ?? this.$wire).fetchState(this.state.version);
+                const answer = await (this.source ?? this.$wire).fetchState(this.state.version);
+                const state = answer ? this.follow(unpackStones(answer, this.layout.points)) : null;
                 if (state) this.apply(state);
+                // The server kept the record back (too many asked for in a minute): once more in a while.
+                else if (answer) setTimeout(() => this.resync(), 3000);
             } finally {
                 this.syncing = false;
             }
@@ -1497,7 +1569,9 @@ registerAlpine(() => {
         async call(method, ...args) {
             const response = await (this.source ?? this.$wire)[method](...args);
             if (!response) return null;
-            if (response.state) this.apply(response.state);
+            const state = response.state ? this.follow(unpackStones(response.state, this.layout.points)) : null;
+            if (state) this.apply(state);
+            else if (response.state) this.resync();
             this.error = response.ok === false ? (this.t.errors[response.error] ?? this.t.errors.default) : '';
 
             return response;

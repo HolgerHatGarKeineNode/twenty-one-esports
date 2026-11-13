@@ -127,7 +127,8 @@ test('a game is played out and counted: two passes end it, the count decides, an
         ->and($count['w'])->toBe(['stones' => 9, 'area' => 36, 'score' => 45.0])
         ->and($count['b'])->toBe(['stones' => 9, 'area' => 27, 'score' => 43.5])
         ->and($count['lead'])->toBe('w')
-        ->and($count['owners']['w'])->toHaveCount(36);
+        // Each side's area as one character per point, rows from the top: four files of Black's, the stones, three of White's.
+        ->and($count['owners'])->toBe(str_repeat('wwww..bbb', 9));
 });
 
 test('White wins by the komi when the areas are equal, and the snapshot carries the count all game long', function () {
@@ -135,9 +136,11 @@ test('White wins by the komi when the areas are equal, and the snapshot carries 
     $snapshot = app(BoardGameService::class)->snapshot($game);
 
     expect($snapshot['count'])->toMatchArray(['komi' => 7.5, 'margin' => -7.5, 'lead' => 'b'])
-        ->and($snapshot['legal'])->toHaveCount(13 * 13 + 1)
-        ->and($snapshot['legal'][0])->toBe(['move' => 'a1', 'path' => ['a1']])
-        ->and(end($snapshot['legal']))->toBe(['move' => 'pass', 'path' => []]);
+        // A board of stones is written short: the stones as text, no list of every legal point, only the refused ones.
+        ->and($snapshot['pieces'])->toBe(str_repeat('.', 13 * 13))
+        ->and($snapshot['legal'])->toBe([])
+        ->and($snapshot['illegal'])->toBe([])
+        ->and($snapshot['pass'])->toBe('pass');
 
     $game = goPlay($game, ['pass', 'pass']);
 
@@ -160,7 +163,7 @@ test('the server refuses what the rules forbid: a stone on a stone, suicide, ret
     $game = GoOn::setUp($game, '9/9/9/3xo4/2xo1o3/3xo4/9/9/9 x - 0');
     $game = goPlay($game, ['e5']);
     expect(goRefusal(fn () => $service->move($game->refresh(), $game->player('b'), 'd5', $game->ply + 1)))->toBe('illegal_move')
-        ->and(collect($service->snapshot($game)['legal'])->pluck('move'))->not->toContain('d5');
+        ->and($service->snapshot($game)['illegal'])->toBe(['d5']);
 });
 
 test('a stone and a pass can be taken back, as every board game move', function () {
@@ -184,7 +187,10 @@ test('the board is a go board: stones by colour, star points, the same way round
 
     expect($layout)->toMatchArray(['width' => 2000, 'height' => 2000, 'input' => 'stones', 'upright' => true, 'stars' => GoRules::STARS[19]])
         ->and($layout['points'])->toHaveCount(361)
-        ->and($service->snapshot($game)['pieces'])->toBe(['q16' => ['side' => 'w', 'kind' => 'black'], 'd4' => ['side' => 'b', 'kind' => 'white']]);
+        // The stones as text, one character per point in the layout's order: `x` the first side's (black), `o` the other's.
+        ->and(array_filter(array_combine(array_column($layout['points'], 'id'), str_split($service->snapshot($game)['pieces'])), fn (string $stone): bool => $stone !== '.'))->toBe(['q16' => 'x', 'd4' => 'o'])
+        ->and($service->snapshot($game)['moves'])->each->not->toHaveKey('pieces')
+        ->and($service->snapshot($game)['moves'][1])->toMatchArray(['move' => 'd4', 'path' => ['d4'], 'side' => 'b', 'taken' => []]);
 
     $config = Livewire::actingAs($game->player('w'))->test('pages::board.show', ['boardGame' => $game])->instance()->config();
 

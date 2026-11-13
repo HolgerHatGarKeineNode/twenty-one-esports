@@ -652,6 +652,16 @@ final class BoardGameService
      * The full move list is included for page loads and reconnects; pushes
      * leave it out and carry `lastMove` instead.
      *
+     * A board of stones (StoneBoard, Go) is written short, as a push of
+     * 19 x 19 with one object per stone and every legal point is refused by
+     * Reverb (measured: 11 kB at the start, up to 29 kB): `pieces` is the
+     * stones as text (StoneBoard::stones()), `legal` stays empty and `illegal`
+     * names the empty points the side to move may not play (ko, suicide; every
+     * other empty point and `pass` are legal), `count.owners` is one
+     * character per point (`w`, `b` or `.`), and a move carries the stones it
+     * took (`taken`) and its side instead of the pieces after it. The board
+     * script reads both forms (boardGame.js unpack()).
+     *
      * @return array<string, mixed>
      */
     public function snapshot(BoardGame $game, bool $withMoves = true): array
@@ -665,10 +675,24 @@ final class BoardGameService
         // the pieces twice in a push. Up to 279 moves would not fit into a Reverb message of 10 kB, the stones twice hardly.
         $ownInput = ($view['input'] ?? null) === 'pieces';
         $legal = $rules !== null && $game->isActive() && ! $ownInput ? $rules->legalMoves($position) : [];
-        $lastMove = $last === null ? null : $this->moveState($last, $rules);
+        // A board of stones is written short (see above); its last move never carries the pieces.
+        $stones = $rules instanceof StoneBoard && ($view['input'] ?? null) === 'stones' ? $rules->stones($game->position) : null;
+        $ids = $stones === null ? [] : array_column($view['points'], 'id');
+        $lastMove = match (true) {
+            $last === null => null,
+            $stones !== null => $this->stoneMove($last, $rules, null, $stones, $ids),
+            default => $this->moveState($last, $rules),
+        };
 
         if ($ownInput && ! $withMoves && $lastMove !== null) {
             unset($lastMove['pieces']);
+        }
+
+        $count = $rules instanceof AreaCount ? $rules->areaCount($position) : null;
+
+        if ($stones !== null && $count !== null) {
+            $owners = array_fill_keys($count['owners']['w'], 'w') + array_fill_keys($count['owners']['b'], 'b');
+            $count['owners'] = implode('', array_map(fn (string $id): string => $owners[$id] ?? '.', $ids));
         }
 
         $state = [
@@ -694,17 +718,28 @@ final class BoardGameService
             'takeBackUntil' => $last === null ? null : $this->takeBackUntil($game, $last),
             // Which side that is: the board offers the take-back to it alone.
             'takeBackBy' => $last === null || $rules === null ? null : $this->lastMover($game, $rules),
-            'pieces' => $view['pieces'] ?? [],
+            'pieces' => $stones ?? $view['pieces'] ?? [],
             // Who would be ahead in a race (Blockli): steps to the goal and blocks left a side (DerCaddy, 2026-10-09).
             'standing' => $rules instanceof RaceStanding ? $rules->standing($position) : null,
             // What each side would have if the game were counted now (Go, DerCaddy 2026-10-27: play it out, then count).
-            'count' => $rules instanceof AreaCount ? $rules->areaCount($position) : null,
-            'legal' => array_map(fn (string $move): array => ['move' => $move, 'path' => $rules?->path($move) ?? []], $legal),
+            'count' => $count,
+            'legal' => $stones !== null ? [] : array_map(fn (string $move): array => ['move' => $move, 'path' => $rules?->path($move) ?? []], $legal),
             'lastMove' => $lastMove,
         ];
 
+        if ($stones !== null) {
+            $playable = array_fill_keys($legal, true);
+            // The move without a point: the pass, null where the side to move has none.
+            $state['pass'] = array_find($legal, fn (string $move): bool => $rules->path($move) === []);
+            $state['illegal'] = $game->isActive()
+                ? array_values(array_filter($ids, fn (string $id, int $point): bool => $stones[$point] === '.' && ! isset($playable[$id]), ARRAY_FILTER_USE_BOTH))
+                : [];
+        }
+
         if ($withMoves) {
-            $state['moves'] = $game->moves()->get()->map(fn (BoardMove $move) => $this->moveState($move, $rules))->all();
+            $state['moves'] = $stones !== null
+                ? $this->stoneMoves($game, $rules, $ids)
+                : $game->moves()->get()->map(fn (BoardMove $move) => $this->moveState($move, $rules))->all();
         }
 
         return $state;
@@ -748,6 +783,69 @@ final class BoardGameService
             'spent' => $move->spent_ms,
             'at' => $move->created_at?->getTimestampMs(),
             'pieces' => $rules === null ? [] : $rules->view($rules->deserialize($move->position))['pieces'],
+        ];
+    }
+
+    /**
+     * The record of a board of stones (StoneBoard): every move with the stones it took off the board and the side that
+     * made it, read from the stored texts alone. The board builds the stones of an earlier position from them
+     * (boardGame.js piecesAt()); the pieces after every move, as other boards carry them, came to 1 MB for a go game of
+     * 250 moves on 19 x 19.
+     *
+     * @param  BoardRules<mixed>&StoneBoard  $rules
+     * @param  list<string>  $ids  the points in the order of the stones' text
+     * @return list<array{ply: int, move: string, notation: string, path: list<string>, spent: int, at: int|null, side: 'w'|'b'|null, taken: list<string>}>
+     */
+    private function stoneMoves(BoardGame $game, BoardRules $rules, array $ids): array
+    {
+        $before = $rules->stones($this->startOf($game, $rules));
+        $moves = [];
+
+        foreach ($game->moves()->get() as $move) {
+            $after = $rules->stones($move->position);
+            $moves[] = $this->stoneMove($move, $rules, $before, $after, $ids);
+            $before = $after;
+        }
+
+        return $moves;
+    }
+
+    /**
+     * One move of a board of stones: `side` is the side whose stone it set (null for a pass), `taken` the points whose
+     * stones it took off; without the stones before it (a push's last move) nothing taken is named, the push carries
+     * the stones as they stand.
+     *
+     * @param  BoardRules<mixed>  $rules
+     * @param  list<string>  $ids
+     * @return array{ply: int, move: string, notation: string, path: list<string>, spent: int, at: int|null, side: 'w'|'b'|null, taken: list<string>}
+     */
+    private function stoneMove(BoardMove $move, BoardRules $rules, ?string $before, string $after, array $ids): array
+    {
+        $path = $rules->path($move->move);
+        $at = $path === [] ? false : array_search($path[0], $ids, true);
+        $taken = [];
+
+        if ($before !== null && strlen($before) === strlen($after)) {
+            foreach ($ids as $point => $id) {
+                if ($before[$point] !== '.' && $after[$point] === '.') {
+                    $taken[] = $id;
+                }
+            }
+        }
+
+        return [
+            'ply' => $move->ply,
+            'move' => $move->move,
+            'notation' => $move->notation,
+            'path' => $path,
+            'spent' => $move->spent_ms,
+            'at' => $move->created_at?->getTimestampMs(),
+            'side' => $at === false ? null : match ($after[$at] ?? '.') {
+                'x' => 'w',
+                'o' => 'b',
+                default => null,
+            },
+            'taken' => $taken,
         ];
     }
 

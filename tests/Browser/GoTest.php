@@ -320,3 +320,36 @@ test('19 x 19 on a phone: the board fits the screen, a tap shows the stone with 
     'phone 320' => [320, 640],
     'phone 390' => [390, 844],
 ]);
+
+test('stepping back through a go game shows the stones as they stood, a captured stone too', function () {
+    [$anna, $bert] = User::factory()->count(2)->create();
+    $games = app(BoardGameService::class);
+    $game = $games->start('go-9', $anna, $bert, 'correspondence');
+
+    // Black's A2 takes the white stone on A1.
+    foreach (['b1', 'a1', 'a2', 'e5'] as $ply => $move) {
+        $game = $games->move($game->refresh(), $game->player($game->turn), $move, $ply + 1);
+    }
+
+    // The page gets the record without the pieces after every move (BoardGameService::snapshot(): what each move took
+    // instead) and builds an earlier position from it.
+    $page = goLivePage($anna, route('board.show', $game, false), 1440, 900, false);
+    BrowserWait::until($page, '() => window.Alpine && '.GO_LIVE_BOARD.'?.state.moves.length === 4 && '.GO_LIVE_BOARD.'.state.moves.every((move) => !move.pieces)', 10_000);
+    $stones = '() => ['.GO_LIVE_BOARD.'.shownPly, ...["a1", "a2", "b1", "e5"].map((id) => document.querySelector(`[data-test=board] [data-point=${id}]`).dataset.piece)]';
+
+    expect($page->evaluate($stones))->toBe([4, '', 'w:black', 'w:black', 'b:white']);
+    $page->locator('body')->press('Home');
+    expect($page->evaluate($stones))->toBe([0, '', '', '', '']);
+    $page->locator('body')->press('ArrowRight');
+    $page->locator('body')->press('ArrowRight');
+    expect($page->evaluate($stones))->toBe([2, 'b:white', '', 'w:black', ''])
+        ->and($page->evaluate('() => !!document.querySelector("[data-test=board] [data-point=a1] [data-last]")'))->toBeTrue();
+    $page->locator('body')->press('ArrowRight');
+    expect($page->evaluate($stones))->toBe([3, '', 'w:black', 'w:black', '']);
+    $page->locator('body')->press('ArrowLeft');
+    expect($page->evaluate($stones))->toBe([2, 'b:white', '', 'w:black', '']);
+    $page->locator('body')->press('End');
+    expect($page->evaluate($stones))->toBe([4, '', 'w:black', 'w:black', 'b:white'])
+        ->and($page->evaluate('() => window.__errors'))->toBe([])
+        ->and($page->evaluate(BrowserConsole::BAD_RESPONSES))->toBe([]);
+});

@@ -47,7 +47,7 @@ use InvalidArgumentException;
  * @implements BoardRules<Position>
  * @implements AreaCount<Position>
  */
-final class GoRules implements AreaCount, BoardRules
+final class GoRules implements AreaCount, BoardRules, StoneBoard
 {
     /** The board sizes the league plays. */
     public const SIZES = [9, 13, 19];
@@ -155,6 +155,14 @@ final class GoRules implements AreaCount, BoardRules
         }
 
         return $parsed;
+    }
+
+    public function stones(string $serialized): string
+    {
+        // A row's run of empty points is at most the board's width, whatever the text says.
+        $rows = (string) preg_replace_callback('/\d+/', fn (array $run): string => str_repeat('.', min((int) $run[0], $this->size)), (string) strtok($serialized, ' '));
+
+        return str_replace('/', '', $rows);
     }
 
     public function turn(mixed $position): string
