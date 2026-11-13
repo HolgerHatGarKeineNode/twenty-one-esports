@@ -57,7 +57,8 @@ final class TournamentsBoard
      */
     public function featured(?string $game = null): ?array
     {
-        $rows = array_values(array_filter($this->rows()['open'], fn (array $row): bool => $row['featured'] && ($game === null || $row['game'] === $game)));
+        $games = $game === null ? null : app(GameRegistry::class)->covered($game);
+        $rows = array_values(array_filter($this->rows()['open'], fn (array $row): bool => $row['featured'] && ($games === null || in_array($row['game'], $games, true))));
         usort($rows, fn (array $a, array $b): int => [$a['tournament']->signup_closes_at?->getTimestamp() ?? PHP_INT_MAX, $a['tournament']->id]
             <=> [$b['tournament']->signup_closes_at?->getTimestamp() ?? PHP_INT_MAX, $b['tournament']->id]);
 
@@ -82,7 +83,8 @@ final class TournamentsBoard
 
     /**
      * The game chips: "Alle" with every listed tournament, then each registered game with its count, the biggest
-     * first (registry order breaks a tie), zero counts last.
+     * first (registry order breaks a tie), zero counts last. A group of games is one chip, its home's
+     * (GameRegistry::listed()): "Go" counts the tournaments of all three sizes.
      *
      * @return list<array{key: string, label: string, count: int}>
      */
@@ -93,8 +95,9 @@ final class TournamentsBoard
         $order = array_flip(array_keys($registry->all()));
         $chips = [];
 
-        foreach (array_keys($registry->all()) as $slug) {
-            $chips[] = ['key' => $slug, 'label' => self::chipLabel($slug), 'count' => count(array_filter($rows, fn (array $row): bool => $row['game'] === $slug))];
+        foreach (array_keys($registry->listed()) as $slug) {
+            $covered = $registry->covered($slug);
+            $chips[] = ['key' => $slug, 'label' => $registry->groupOf($slug) === null ? self::chipLabel($slug) : GameNames::listed($slug), 'count' => count(array_filter($rows, fn (array $row): bool => in_array($row['game'], $covered, true)))];
         }
 
         usort($chips, fn (array $a, array $b): int => [$b['count'], $order[$a['key']]] <=> [$a['count'], $order[$b['key']]]);
@@ -120,12 +123,16 @@ final class TournamentsBoard
     }
 
     /**
+     * A size of a group filters to the whole group (GameRegistry::covered()): the chip says "Go".
+     *
      * @param  list<Row>  $rows
      * @return list<Row>
      */
     private static function filter(array $rows, ?string $game, ?string $region, bool $freeOnly): array
     {
-        return array_values(array_filter($rows, fn (array $row): bool => ($game === null || $row['game'] === $game)
+        $games = $game === null ? null : app(GameRegistry::class)->covered($game);
+
+        return array_values(array_filter($rows, fn (array $row): bool => ($games === null || in_array($row['game'], $games, true))
             && ($region === null || $row['regionKey'] === null || $row['regionKey'] === $region)
             && (! $freeOnly || $row['free'])));
     }

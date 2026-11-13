@@ -570,6 +570,36 @@ test('the Go filter on /matches lists the games of every size, whichever size th
     expect($rows[1])->toHaveCount(4);
 });
 
+test('the Go filter on /tournaments is one chip that lists the tournaments of every size, whichever size the address names', function () {
+    foreach (['go-9', 'go-13', 'go-19', 'chess'] as $index => $slug) {
+        $tournament = Tournament::factory()->signup()->create(['game' => $slug, 'mode' => 'rapid', 'name' => "Open {$slug}", 'starts_at' => now()->addDays(2 + $index)]);
+        $tournament->forceFill(['published_at' => now()->subDay(), 'signup_closes_at' => now()->addDays(1 + $index), 'slug' => "open-{$slug}"])->save();
+    }
+
+    $rowsOf = function (string $html): array {
+        preg_match_all('#data-test="open-row"[^>]*data-game="([a-z0-9-]+)"#', $html, $rows);
+        sort($rows[1]);
+
+        return $rows[1];
+    };
+
+    foreach (['go-9', 'go-13'] as $filter) {
+        $html = $this->get(route('tournaments.index', ['game' => $filter]))->assertOk()->getContent();
+        preg_match_all('#data-test="filter-game-([a-z0-9-]+)"#', $html, $chips);
+
+        expect($rowsOf($html))->toBe(['go-13', 'go-19', 'go-9'], "the rows under ?game={$filter}")
+            ->and(gameSurfacesUnlisted(array_values(array_diff($chips[1], ['all', 'more']))))->toBe(['missing' => [], 'doubled' => []])
+            ->and($html)->toMatch('#aria-current="page"\s+class="rv-chip"\s+data-test="filter-game-go-9"#')
+            ->and(preg_match_all('#aria-current="page"[^>]*data-test="filter-game-#', $html))->toBe(1)
+            ->and(str($html)->after('data-test="filter-game-go-9"')->before('</a>')->toString())->toMatch('#>\s*Go\s*<#')->toMatch('#>\s*3\s*<#')
+            ->and(str($html)->after('data-test="featured-tournament"')->before('</section>')->toString())->toContain('Open go-9');
+    }
+
+    // Another game's filter, and no filter, are as they were.
+    expect($rowsOf($this->get(route('tournaments.index', ['game' => 'chess']))->assertOk()->getContent()))->toBe(['chess'])
+        ->and($rowsOf($this->get(route('tournaments.index'))->assertOk()->getContent()))->toHaveCount(4);
+});
+
 test('the surfaces left out are about one game by design and still exist', function (string $route, string $reason) {
     expect(Route::has($route))->toBeTrue()
         ->and($reason)->not->toBeEmpty();

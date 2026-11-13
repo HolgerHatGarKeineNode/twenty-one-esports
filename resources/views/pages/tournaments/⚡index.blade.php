@@ -88,7 +88,7 @@ new #[Title('Tournaments')] #[Layout('layouts::app', ['section' => 'tournaments'
     $gameChips = array_map(fn (array $chip): array => [
         'key' => $chip['key'], 'label' => $chip['label'], 'count' => $chip['count'],
         'href' => $this->filterUrl(['game' => $chip['key'] === 'all' ? null : $chip['key']]),
-        'active' => $chip['key'] === 'all' ? $game === null : $game === $chip['key'],
+        'active' => $chip['key'] === 'all' ? $game === null : $game !== null && app(\App\Games\GameRegistry::class)->entry($game) === $chip['key'],
     ], $board->gameChips());
     $regionChips = [
         ['key' => 'all', 'label' => __('All'), 'count' => null, 'href' => $this->filterUrl(['region' => null]), 'active' => $region === null],
