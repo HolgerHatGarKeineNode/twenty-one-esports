@@ -2,8 +2,8 @@
     Go's bar, the stone input (DerCaddy, 2026-10-27), as Blockli's bar: on a phone one row fixed at the bottom (above the
     chat sheet, `$bottom`), so the board keeps the first screen; from lg the head of the middle column. The line says
     whose move it is, what a tap did, or why no stone may go there. "Set stone" sets the stone a finger showed (a second tap
-    on it does the same; a mouse sets with its click). "Pass" passes, and asks once more when the other side has just
-    passed, with the count the game would end in. Right after the own move "Take back" stands in its place, as in
+    on it does the same; a mouse sets with its click). "Pass" passes, and asks once more before a player's first pass of
+    the game and when the other side has just passed, with the count the game would end in. Right after the own move "Take back" stands in its place, as in
     Blockli's bar (21 seconds, DerCaddy and the players, 2026-10-15). Everything is boardGame.js's stone input.
 --}}
 @php($bottom ??= 'max-lg:bottom-0')
@@ -20,7 +20,7 @@
             <button type="button" class="inline-flex h-11 grow cursor-pointer items-center justify-center rounded-md border px-[18px] text-[13px] whitespace-nowrap disabled:cursor-default disabled:opacity-50"
                     :class="confirmPass && canMove ? 'border-btc bg-btc-press font-bold text-btc-hi' : 'btn-w border-line bg-well text-ink'"
                     x-show="!canTakeBack && !state.noPass" :disabled="!passMove" x-on:click="pass()" data-test="pass">
-                <span x-text="confirmPass && canMove ? @js(__('Pass and end')) : @js(__('Pass'))"></span>
+                <span x-text="confirmPass && canMove ? (opponentPassed ? @js(__('Pass and end')) : @js(__('Pass anyway'))) : @js(__('Pass'))"></span>
             </button>
             <button type="button" class="inline-flex h-11 grow cursor-pointer items-center justify-center gap-2 rounded-md border border-btc bg-btc-press px-[18px] text-[13px] font-bold whitespace-nowrap text-btc-hi"
                     x-show="canTakeBack" x-cloak x-on:click="takeBack()" :aria-label="t.takeBack.left.replace(':seconds', takeBackLeft)" data-test="take-back">

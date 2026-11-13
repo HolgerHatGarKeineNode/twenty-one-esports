@@ -644,7 +644,7 @@ final class RulesPage
                 __('Two passes in a row end the game. It is counted as it stands, with nothing marked dead: each side has its stones and the empty points that touch only its stones; White adds a komi of :komi. So capture dead stones before you pass: a stone in your own area costs you nothing.', ['komi' => $komi]),
                 __('The same stones with the same side to move a third time draw the game; so does a draw by agreement. A game that reaches :limit moves per point of the board is drawn too, it is not counted.', ['limit' => GoRules::MOVE_LIMIT]),
                 __('Beside the board the count as it stands is shown all the time, so you see what passing would mean. Show area marks each side\'s empty points.'),
-                __('Tap a point: your stone shows there, tap it again or press Set stone. With a mouse a click places it. When your opponent has just passed, Pass asks once more, with the count the game would end in.'),
+                __('Tap a point: your stone shows there, tap it again or press Set stone. With a mouse a click places it. Before your first pass of a game and when your opponent has just passed, Pass asks once more, with the count the game would end in.'),
                 __('Points are named as on a go board: files A to T without I, ranks from the bottom. The board stays the same way round for both players.'),
                 ...self::takeBack(),
                 self::correspondence(),

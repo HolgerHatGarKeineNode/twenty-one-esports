@@ -22,7 +22,8 @@ pest()->group('browser');
 | input: a tap shows the stone and a second tap or "Set stone" sets it (a
 | finger), the stone under the pointer and its click (a mouse), the arrow keys
 | and Enter on the focused board (a keyboard), a red point where no stone may
-| go (a ko), and the pass that asks once more before it ends the game. Then
+| go (a ko), a first pass that asks once and the pass that asks once more
+| before it ends the game. Then
 | the count decides, and both see each side's area. Phone (touch) at 390,
 | desktop (mouse) at 1440; a 19 x 19 board on a phone fits the screen and its
 | tap lands on the intersection meant. Console, uncaught errors and answers
@@ -232,9 +233,16 @@ test('two players play Go to the count with every way to set a stone: tap twice,
     }
     goLivePly($pages, 2);
 
-    // Ply 3, Black passes: nothing to confirm, White has not passed.
+    // Ply 3, Black passes for the first time in this game: the first press only asks, and says that the board is counted
+    // exactly as it stands, with the count both passing would end in (a newcomer loses stones left standing otherwise).
     goLiveCanMove($black);
     expect($black->locator('[data-test=pass]')->innerText())->toBe('Pass');
+    goLivePress($black, $touch, '[data-test=pass]');
+    expect($black->locator('[data-test=pass]')->innerText())->toBe('Pass anyway')
+        ->and($black->locator('[data-test=stone-status]')->innerText())->toBe('Counted exactly as it stands, dead stones too. If both pass: White wins by 6.5.')
+        ->and($game->refresh()->ply)->toBe(2)
+        ->and($black->evaluate(GO_LIVE_LOW))->toBe([], 'first pass: buttons under 44 px');
+    shellShot($black, "go-{$width}-first-pass");
     goLivePress($black, $touch, '[data-test=pass]');
     goLivePly($pages, 3);
 

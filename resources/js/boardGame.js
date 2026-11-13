@@ -37,7 +37,8 @@
  * Go (DerCaddy, 2026-10-27; layout `input: 'stones'`): a board of lines with
  * star points and the coordinates of a go board, a stone shown on the nearest
  * intersection first and set by a second tap, a pass button that asks before
- * the pass that ends the game, and the count as it stands beside the board.
+ * a player's first pass and before the pass that ends the game, and the count
+ * as it stands beside the board.
  */
 
 import { setFocus } from './focusMode.js';
@@ -1120,12 +1121,23 @@ registerAlpine(() => {
             return this.statusLine;
         },
 
-        /** What both passing now would end in: the count as it stands. */
+        /** The player passed before in this game (every second move back from the other side's last one is the player's). */
+        get passedBefore() {
+            const moves = this.state.moves;
+
+            return moves.some((move, index) => (moves.length - index) % 2 === 0 && move.path.length === 0);
+        },
+
+        /**
+         * What the pass that waits for its second click would mean: the pass that ends the game, or the player's first pass
+         * of the game (the board is counted exactly as it stands, stones that could still be captured too); with the count
+         * both passing now would end in.
+         */
         get passEndLine() {
             const count = this.state.count;
-            if (!count) return this.t.stones.endGame;
+            const line = this.opponentPassed ? this.t.stones.endGame : this.t.stones.firstPass;
 
-            return this.t.stones.endGame + ' ' + this.countResult(count);
+            return count ? line + ' ' + this.countResult(count) : line;
         },
 
         /** "Black 41 · White 33 + 7.5 = 40.5 → Black +0.5": the count as it stands, from the server (stones and area, the komi for the second side). */
@@ -1220,11 +1232,15 @@ registerAlpine(() => {
             this.render();
         },
 
-        /** Pass; the pass that would end the game (the other side passed last) asks first, with the count it ends in. */
+        /**
+         * Pass. The pass that would end the game (the other side passed last) asks first, with the count it ends in; so does
+         * the player's first pass of a game: a newcomer who passes with stones left to capture loses them to the count
+         * without a word otherwise (challenger, 2026-11-13).
+         */
         pass() {
             const move = this.passMove;
             if (!move) return;
-            if (this.opponentPassed && !this.confirmPass) {
+            if ((this.opponentPassed || !this.passedBefore) && !this.confirmPass) {
                 this.confirmPass = true;
                 this.stone = null;
                 this.render();

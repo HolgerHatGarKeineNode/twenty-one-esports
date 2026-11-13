@@ -25,6 +25,8 @@ final class GoLabels
                 'enter' => __('Enter places it.'),
                 'passed' => __(':side passed. If you pass too, the game ends and is counted.'),
                 'endGame' => __('Pass again to end the game?'),
+                // Before a player's first pass of a game, with the count after it (boardGame.js passEndLine).
+                'firstPass' => __('Counted exactly as it stands, dead stones too. If both pass:'),
             ],
             'count' => [
                 'line' => __('Count now: :first · :second → :lead'),
