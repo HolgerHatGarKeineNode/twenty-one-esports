@@ -182,7 +182,7 @@ test('every settings page shows the same eight tabs, its own one active and name
     ['gaming.edit', 'Gamer tags'],
     ['settings.account', 'Account'],
     ['settings.notifications', 'Notifications'],
-    ['settings.chess', 'Chess'],
+    ['settings.chess', 'Board and sounds'],
     ['settings.opponents', 'Opponents'],
     ['settings.badges', 'Badges and sharing'],
     ['settings.nip05', 'Nostr address'],
