@@ -341,11 +341,11 @@ new #[Layout('layouts::app', ['scripts' => ['resources/js/blockli/practice.js']]
 
                     {{-- The block input (Blockli), as on a game's page: on a phone a bar fixed at the bottom, from lg here in the column. --}}
                     <template x-if="layout.input === 'blocks' && color && state.status === 'active'">
-                        <div class="flex flex-col gap-2 max-lg:fixed max-lg:inset-x-0 max-lg:bottom-0 max-lg:z-20 max-lg:flex-row max-lg:items-center max-lg:gap-3 max-lg:border-t max-lg:border-line max-lg:bg-bar max-lg:px-4 max-lg:py-1.5 max-lg:shadow-[0_-16px_32px_rgba(10,10,11,.8)]" x-ref="dock" data-page-bar data-test="block-input">
-                            <p class="m-0 line-clamp-2 min-w-0 grow text-xs lg:order-2 lg:text-[13px]"
+                        <div class="flex flex-col gap-2 max-lg:fixed max-lg:inset-x-0 max-lg:bottom-0 max-lg:z-20 max-lg:flex-row max-lg:items-center max-lg:gap-3 max-lg:border-t max-lg:border-line max-lg:bg-bar max-lg:px-4 max-lg:py-1.5 max-[359px]:gap-2 max-[359px]:px-3 max-lg:shadow-[0_-16px_32px_rgba(10,10,11,.8)]" x-ref="dock" data-page-bar data-test="block-input">
+                            <p class="m-0 line-clamp-2 min-w-0 grow text-xs max-[359px]:line-clamp-3 max-[359px]:leading-[14px] lg:order-2 lg:text-[13px]"
                                :class="[preview && !preview.move && settingBlock ? 'text-loss' : 'text-ink-2', blockButtons ? 'max-lg:hidden' : '', settingBlock ? '' : 'lg:hidden']"
                                x-text="barLine" data-test="block-status"></p>
-                            <button type="button" class="inline-flex h-11 shrink-0 cursor-pointer items-center justify-center gap-2 rounded-md px-[18px] text-[13px] disabled:cursor-default disabled:opacity-50 lg:order-1 lg:w-full"
+                            <button type="button" class="inline-flex h-11 shrink-0 cursor-pointer items-center justify-center gap-2 rounded-md px-[18px] max-[359px]:px-2 text-[13px] disabled:cursor-default disabled:opacity-50 lg:order-1 lg:w-full"
                                     :class="[blockMode ? 'border border-btc bg-btc-press font-bold text-btc-hi' : 'btn-w border border-line bg-well text-ink', blockButtons ? 'max-lg:hidden' : '']"
                                     :aria-pressed="toggleMoves ? 'false' : (blockMode ? 'true' : 'false')" :disabled="!myTurn || !canSetBlocks" x-on:click="setBlockMode(!blockMode, $event)" aria-keyshortcuts="ArrowUp ArrowDown ArrowLeft ArrowRight R Enter Escape"
                                     data-test="mode-block">
