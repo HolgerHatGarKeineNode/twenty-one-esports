@@ -89,7 +89,8 @@ new #[Title('Challenge a player')] #[Layout('layouts::app')] class extends Compo
             // A calendar instead of four covers, the first game by name: the list of games is on the next page.
             $games = count($casual) === 1 ? GameNames::game($casual[0]) : __(':game and :count more', ['game' => GameNames::game($casual[0]), 'count' => count($casual) - 1]);
             $options[] = ['key' => 'casual', 'game' => null, 'title' => __('Schedule a 1v1'),
-                'line' => $games.' · '.__('a time you agree on'),
+                // The games only: that the time is agreed on is what "Schedule" says, and the line stays one row.
+                'line' => $games,
                 'href' => route('challenges.casual', array_filter(['to' => $this->opponent?->id]))];
         }
 
@@ -103,36 +104,39 @@ new #[Title('Challenge a player')] #[Layout('layouts::app')] class extends Compo
         <h1 class="m-0 flex min-w-0 items-center gap-3 font-display text-[24px] leading-tight font-bold sm:text-[28px] lg:text-[32px]">
             @if ($opponent)
                 <x-avatar :user="$opponent" :size="36" class="shrink-0 rounded-md" />
-                <span class="min-w-0 wrap-anywhere">{{ __('Challenge :name', ['name' => $opponent->displayName()]) }}</span>
+                {{-- Two lines at most: a name of 60 characters would push the games off a phone's first screen. --}}
+                <span class="line-clamp-2 min-w-0 wrap-anywhere" title="{{ $opponent->displayName() }}">{{ __('Challenge :name', ['name' => $opponent->displayName()]) }}</span>
             @else
                 {{ __('Challenge a player') }}
             @endif
         </h1>
-        <p class="m-0 text-[13px] text-ink-2">{{ __('Pick the game. Nothing is sent yet: the next page shows the challenge before you send it.') }}</p>
+        <p class="m-0 max-w-[68ch] text-[13px] text-ink-2">{{ __('Pick the game. Nothing is sent yet: the next page shows the challenge before you send it.') }}</p>
     </div>
 
-    <ul class="m-0 grid list-none grid-cols-1 gap-3 p-0 sm:grid-cols-2" data-test="challenge-options">
+    {{-- Two columns only where a column holds an option's line in one row (880 px container: 248 px for the text;
+         the 720 px of the form pages would leave 168 px for a 234 px line). --}}
+    <ul class="m-0 grid list-none grid-cols-1 gap-3 p-0 lg:grid-cols-2" data-test="challenge-options">
         @foreach ($this->options as $option)
-            <li>
+            <li class="flex">
                 <a href="{{ $option['href'] }}" @navigate($option['href']) data-test="challenge-option-{{ $option['key'] }}"
-                   class="flex min-h-[72px] items-center gap-4 rounded-lg bg-card p-3 text-ink shadow-ring hover:bg-row-hover hover:text-ink">
+                   class="flex min-h-[72px] grow items-center gap-3 rounded-lg bg-card p-3 text-ink shadow-ring transition-colors duration-150 ease-out hover:bg-row-hover hover:text-ink motion-reduce:transition-none sm:gap-4">
                     @if ($option['game'] !== null)
-                        <x-game-cover :game="$option['game']" size="thumb" class="w-24 rounded-md" />
+                        <x-game-cover :game="$option['game']" size="thumb" class="w-16 rounded-md sm:w-24" />
                     @else
-                        <span class="flex aspect-video w-24 shrink-0 items-center justify-center rounded-md bg-well text-ink-2" aria-hidden="true"><x-icon name="calendar" :size="24" /></span>
+                        <span class="flex aspect-video w-16 shrink-0 items-center justify-center rounded-md bg-well text-ink-2 sm:w-24" aria-hidden="true"><x-icon name="calendar" :size="24" /></span>
                     @endif
                     <span class="flex min-w-0 flex-col gap-0.5">
                         <span class="truncate text-[15px] font-bold">{{ $option['title'] }}</span>
                         <span class="text-[13px] leading-snug text-ink-2">{{ $option['line'] }}</span>
                     </span>
-                    <x-icon name="chevron-down" :size="18" class="ms-auto shrink-0 -rotate-90 text-ink-3" />
+                    <x-icon name="chevron-down" :size="18" class="ms-auto hidden shrink-0 -rotate-90 text-ink-3 sm:block" />
                 </a>
             </li>
         @endforeach
     </ul>
 
-    <p class="m-0 text-[13px] leading-normal text-ink-2">
+    <p class="m-0 max-w-[68ch] text-[13px] leading-normal text-ink-2">
         {{ __('Blitz and rapid are played live: invite a friend who is online in the game\'s lobby.') }}
-        <a href="{{ route('play') }}" @navigate(route('play')) class="inline-flex min-h-11 items-center">{{ __('All games and modes') }}</a>
+        <a href="{{ route('play') }}" @navigate(route('play')) class="flex min-h-11 w-fit items-center">{{ __('All games and modes') }}</a>
     </p>
 </div>

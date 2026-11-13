@@ -303,7 +303,8 @@ new #[Layout('layouts::tv')] class extends Component {
 
             @if (isset($scenes['spotlight']))
                 <section class="tv-scene tv-spotlight" data-scene-id="spotlight" data-dwell="{{ $scenes['spotlight'][1] }}" wire:key="scene-spotlight" aria-label="{{ $scenes['spotlight'][0] }}" data-test="tv-spotlight">
-                    <x-game-cover :game="$tournament->game" :games="$tournament->coverGames()" size="hero" class="tv-spotlight-cover" />
+                    {{-- A backdrop at a tenth of its strength, stretched over the scene: one cover, a stack of cards would only be noise. --}}
+                    <x-game-cover :game="$tournament->game" size="hero" class="tv-spotlight-cover" />
                     @if ($lobbyTv)
                         @include('pages.tournaments.partials.tv-lobbies', ['boxes' => $spotlight])
                     @endif

@@ -14,7 +14,7 @@
     An unknown game gets a neutral tile with its name, never a broken image.
     `games` (Tournament::coverGames()): a combined tournament's games, two or more. Their covers are cards laid over one
     another from the top left to the bottom right, each whole (App\Support\Cards\CoverStack, as on its link
-    preview); `game` stays the first (DerCaddy, 2026-11-12).
+    preview); `game` stays the first (DerCaddy, 2026-11-12). In a box under 240 px: the first cover and "+N".
 --}}
 @php
     $registry = app(\App\Games\GameRegistry::class);
@@ -34,13 +34,23 @@
 
 @php($combined = array_values(array_unique(array_filter((array) $games, 'is_string'))))
 @if (count($combined) >= 2)
+    {{-- The stack needs 240 px: below that its names are under 5 px high (measured 2026-11-13: 1.1 to 3.1 px in the
+         48 to 128 px list thumbs), so a small box shows the first game's cover whole and how many more there are. The
+         box itself decides (a container query), not the caller: the same call is a thumb in a row and a picture in a
+         page head. Every name stays in the label. --}}
     <span role="img" aria-label="{{ __(':games covers', ['games' => implode(' + ', array_map(fn (string $slug): string => \App\Support\GameNames::game($slug), $combined))]) }}"
-          {{ $attributes->class('relative block aspect-video shrink-0 overflow-hidden bg-ground')->merge(['data-game-cover' => implode('+', $combined)]) }} data-combined-cover>
-        @foreach ($combined as $index => $slug)
-            {{-- Each card on top of the one before, framed in the ground so it stands apart. --}}
-            <x-game-cover :game="$slug" :size="$size" :loading="$loading" style="{{ \App\Support\Cards\CoverStack::style($index, count($combined)) }}"
-                          class="absolute rounded-[inherit] [&_img]:object-cover {{ $index > 0 ? 'shadow-[0_0_0_2px_var(--color-ground)]' : '' }}" />
-        @endforeach
+          {{ $attributes->class('@container relative block aspect-video shrink-0 overflow-hidden bg-ground')->merge(['data-game-cover' => implode('+', $combined)]) }} data-combined-cover>
+        <span class="block @min-[240px]:hidden" data-cover-first>
+            <x-game-cover :game="$combined[0]" :size="$size" class="w-full rounded-[inherit]" />
+            <span class="absolute right-0 bottom-0 rounded-tl-[2px] bg-ground px-0.5 py-px font-mono text-xs leading-none whitespace-nowrap text-ink tabular-nums" data-cover-more>+{{ count($combined) - 1 }}</span>
+        </span>
+        <span class="hidden @min-[240px]:block" data-cover-stack>
+            @foreach (array_slice($combined, 0, \App\Support\Cards\CoverStack::MAX) as $index => $slug)
+                {{-- Each card on top of the ones before, framed in the ground so it stands apart. --}}
+                <x-game-cover :game="$slug" :size="$size" :loading="$loading" style="{{ \App\Support\Cards\CoverStack::style($index, count($combined)) }}"
+                              class="absolute rounded-[inherit] [&_img]:object-cover {{ $index > 0 ? 'shadow-[0_0_0_2px_var(--color-ground)]' : '' }}" />
+            @endforeach
+        </span>
     </span>
 @elseif ($cover !== null)
     <picture {{ $attributes->class('block aspect-video shrink-0 overflow-hidden bg-well')->merge(['data-game-cover' => $game]) }}>

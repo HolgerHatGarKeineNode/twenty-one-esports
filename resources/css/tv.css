@@ -84,6 +84,23 @@
     border-radius: calc(var(--u) * 0.4);
 }
 
+/*
+ * A combined tournament's cover in the head is a thumb at every screen size (12.8u wide: its stacked names would be
+ * 5 px high on a 1920 px screen), so it never switches to the stack: the first cover and "+N", scaled with the screen.
+ */
+.tv-head-cover [data-cover-stack] {
+    display: none;
+}
+
+.tv-head-cover [data-cover-first] {
+    display: block;
+}
+
+.tv-head-cover [data-cover-more] {
+    padding: calc(var(--u) * 0.1) calc(var(--u) * 0.3);
+    font-size: calc(var(--u) * 1.4);
+}
+
 .tv-head-title {
     display: flex;
     flex-direction: column;
