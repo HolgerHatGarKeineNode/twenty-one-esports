@@ -185,13 +185,21 @@ test('the week board leads with the cover and How to join above the fold, the po
     'de 375' => ['de', 375, 812],
 ]);
 
-/** The official Steam art's top-right corner is its pale sky haze (near white); the drawn stand-in before it was dark. */
+/**
+ * The official Steam art's top-right corner is its pale sky haze (near white); the drawn stand-in before it was dark.
+ *
+ * One call does everything that needs the cover, the scroll for the screenshot included. Nothing is marked on the
+ * page for a later call: the game page and the week board ask for `$refresh` as they load (the hero's "Closes in"
+ * countdown stands at zero on the browser's real clock, the server's is frozen in October 2026), and the morph of
+ * that answer takes an attribute the server did not render off again. Measured 2026-11-13: a `data-probed` mark set
+ * here was removed by Livewire's patchAttributes 41 ms later, and the next call's
+ * `document.querySelector("[data-probed]")` was null whenever the answer arrived between the two calls.
+ */
 const TMNF_COVER_PIXEL = <<<'JS'
     async () => {
         // The biggest TMNF cover on the page (the header's game switcher carries a small one too).
         const img = [...document.querySelectorAll('[data-game-cover=tmnf] img')].sort((a, b) => b.getBoundingClientRect().width - a.getBoundingClientRect().width)[0];
         if (!img) { return null; }
-        img.closest('[data-game-cover]').dataset.probed = '1';
         img.loading = 'eager';
         img.scrollIntoView({ block: 'center' });
         await img.decode().catch(() => null);
@@ -200,6 +208,8 @@ const TMNF_COVER_PIXEL = <<<'JS'
         const ctx = c.getContext('2d');
         ctx.drawImage(img, 0, 0);
         const [r, g, b] = ctx.getImageData(Math.round(c.width * 0.97), Math.round(c.height * 0.03), 1, 1).data;
+        // The picture has its size now: put it in the middle for the screenshot.
+        img.scrollIntoView({ block: 'center' });
         return { src: img.currentSrc.split('/').pop(), shown: Math.round(img.getBoundingClientRect().width), rgb: [r, g, b] };
     }
     JS;
@@ -217,7 +227,6 @@ test('the official TMNF cover is the picture on the home page\'s game grid, the 
         if ($name !== 'home' || $width >= 1024) {
             expect($pixel['shown'])->toBeGreaterThan(120);
         }
-        $page->evaluate('() => document.querySelector("[data-probed]").scrollIntoView({ block: "center" })');
         shellShot($page, "tmnf-cover-{$name}-{$width}");
 
         expect($page->evaluate('() => window.__errors'))->toBe([])
