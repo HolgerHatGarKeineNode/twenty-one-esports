@@ -323,7 +323,8 @@ return [
             'gallery_seconds' => 20,
             'teaser_seconds' => 12,
             'teasers_per_round' => 3,
-            'loop_every_rounds' => 3,
+            // 6 since 2026-11-13 (user: the stream seemed to loop the video only): at 3 the promo video held about a third of the air time.
+            'loop_every_rounds' => 6,
             'loop_fallback_seconds' => 60,
             'tournament_seconds' => 15,
             // While a tournament runs it takes the stream (RotationPlanner): this long per running tournament, then the next one.
