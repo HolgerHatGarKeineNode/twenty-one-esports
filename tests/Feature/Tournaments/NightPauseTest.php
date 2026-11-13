@@ -20,6 +20,7 @@ use App\Support\Tournaments\FormatOptions;
 use App\Support\Tournaments\GameProfile;
 use App\Support\Tournaments\Lobbies;
 use App\Support\Tournaments\NightPause;
+use App\Support\Tournaments\NightPauseNotices;
 use App\Support\Tournaments\TournamentBrackets;
 use App\Support\Tournaments\TournamentEditor;
 use App\Support\Tournaments\TournamentRuleViolation;
@@ -262,6 +263,47 @@ test('the banner and the dock say it big: soon before 24:00, then the restart an
 
     $this->travelTo(berlin('2026-10-11 18:00'));
     $this->blade('<x-tournament-night-pause :tournament="$t" />', ['t' => $tournament->refresh()])->assertDontSee('night-pause-banner', false);
+});
+
+test('drawn at 16:30 for an 18:00 start, the tournament waits for its start, not for a night pause: no banner, no dock item, no message', function () {
+    // DerCaddy, 2026-11-13: Blitz Blockli Abend, start 18:00 by vote, drawn at the sign-up close; at 16:49 the page said
+    // "Nachtpause: Bis 18:00 startet kein neues Match", as if play had stopped. The default pause runs 24:00 to 18:00.
+    Queue::fake([SendNostrDm::class, PublishNostrEvent::class]);
+    config(['esports.notifications.nsec' => bin2hex(random_bytes(32))]);
+    $this->travelTo(berlin('2026-11-13 16:30'));
+    $tournament = nightDuel(['starts_at' => berlin('2026-11-13 18:00')->utc(), 'draw_committed_at' => now()]);
+    $player = User::query()->whereKey($tournament->participants()->value('user_id'))->firstOrFail();
+
+    $this->travelTo(berlin('2026-11-13 16:49'));
+    $this->actingAs($player);
+
+    expect(NightPause::activeFor($tournament))->not->toBeNull()
+        ->and(NightPause::heldForStart($tournament))->toBeTrue()
+        ->and(NightPauseNotices::state($tournament))->toBeNull()
+        ->and(app(TournamentScheduler::class)->tick()['night'])->toBe(0)
+        ->and(Queue::pushed(SendNostrDm::class))->toHaveCount(0);
+    $this->blade('<x-tournament-night-pause :tournament="$t" />', ['t' => $tournament])->assertDontSee('night-pause-banner', false);
+
+    $item = app(UpcomingEvents::class)->tournaments($player, todayOnly: true)->firstWhere('key', 'tournament-'.$tournament->id);
+    $wait = TournamentWaits::of($tournament->refresh())[0];
+
+    expect($item?->title)->not->toBe('Night pause')
+        ->and($wait->state)->toBe('not_started')
+        ->and($wait->consequence)->toBe('The league starts it at :time')
+        ->and($wait->timeAt?->getTimestamp())->toBe(berlin('2026-11-13 18:00')->getTimestamp());
+
+    $this->travelTo(berlin('2026-11-13 18:00'));
+    app(TournamentScheduler::class)->tick();
+    expect(nightSeries($tournament)?->start_at?->getTimestamp())->toBe(berlin('2026-11-13 18:00')->getTimestamp());
+});
+
+test('a start inside the pause still waits for the pause: drawn at 16:00 for 17:00, it says the night pause until 18:00', function () {
+    $this->travelTo(berlin('2026-11-13 16:00'));
+    $tournament = nightDuel(['starts_at' => berlin('2026-11-13 17:00')->utc(), 'draw_committed_at' => now()]);
+
+    $this->travelTo(berlin('2026-11-13 16:30'));
+    expect(NightPauseNotices::state($tournament)['state'] ?? null)->toBe('paused')
+        ->and(TournamentWaits::of($tournament)[0]->consequence)->toBe('Night pause: the league starts it at :time');
 });
 
 /* ---------- The organizer's setting ------------------------------------------------------------------------- */

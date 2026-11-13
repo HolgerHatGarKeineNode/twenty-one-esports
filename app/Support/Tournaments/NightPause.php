@@ -138,6 +138,30 @@ final class NightPause
     }
 
     /**
+     * Drawn at its sign-up close and waiting for its start: no match starts
+     * before `starts_at` (TournamentMatchMaker::startReady()), so a pause
+     * that is over by then holds nothing up. A casual cup schedules each
+     * series itself and is never held for its start.
+     */
+    public static function heldForStart(Tournament $tournament, ?CarbonInterface $at = null): bool
+    {
+        return ! $tournament->isCasualCup() && $tournament->draw_committed_at !== null
+            && $tournament->starts_at->getTimestamp() > ($at ?? now())->getTimestamp();
+    }
+
+    /**
+     * Whether a pause that ends at `$resumes` is what the players of this
+     * tournament wait for: not when the tournament has not started yet and
+     * starts at or after the pause's end (DerCaddy, 2026-11-13: a blitz
+     * tournament drawn at 16:30 for 18:00 said "Nachtpause bis 18:00", as
+     * if play had stopped; the default pause runs 00:00 to 18:00).
+     */
+    public static function holdsUp(Tournament $tournament, CarbonInterface $resumes, ?CarbonInterface $at = null): bool
+    {
+        return ! self::heldForStart($tournament, $at) || $resumes->getTimestamp() > $tournament->starts_at->getTimestamp();
+    }
+
+    /**
      * The pause of this tournament under way at `$at` (now by default):
      * its start and its end; null outside one.
      *
