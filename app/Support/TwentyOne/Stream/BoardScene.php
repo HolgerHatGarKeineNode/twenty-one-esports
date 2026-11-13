@@ -9,6 +9,7 @@ use App\Models\BoardGame;
 use App\Models\User;
 use App\Support\Board\BoardGameService;
 use App\Support\Board\BoardRules;
+use App\Support\GameNames;
 
 /**
  * The data of the "board live" scene (d5, plan "Mühle und Dame", P7): the
@@ -159,6 +160,8 @@ class BoardScene
             'daily' => $daily,
             'white' => $this->side($game->white, $clocks['w'], $toMove === 'w'),
             'black' => $this->side($game->black, $clocks['b'], $toMove === 'b'),
+            // The colour each side's card shows, as a piece of that side is drawn: Go's first side plays black.
+            'colours' => array_map(fn (string $colour): string => $colour === 'black' ? 'b' : 'w', GameNames::sideColours($game->game)),
             // The rules' view and the last move's points; the scene scales them with drawing().
             'view' => $rules->view($rules->deserialize($game->position)),
             'last' => $last === null ? [] : $rules->path($last->move),
@@ -210,7 +213,7 @@ class BoardScene
      * page's radius (a little over a third of the closest distance between
      * two points), blocks as bars (BARS) and the points of the last move.
      *
-     * @param  array{width: int, height: int, lines: list<array{0: int, 1: int, 2: int, 3: int}>, cells: list<array{x: int, y: int, size: int}>, points: list<array{id: string, x: int, y: int}>, pieces: array<string, array{side: 'w'|'b', kind: string}>}  $view
+     * @param  array{width: int, height: int, lines: list<array{0: int, 1: int, 2: int, 3: int}>, cells: list<array{x: int, y: int, size: int}>, points: list<array{id: string, x: int, y: int}>, pieces: array<string, array{side: 'w'|'b', kind: string}>, stars?: list<string>}  $view
      * @param  list<string>  $lastPath  point ids of the last move
      * @return array{x: float, y: float, size: float, lines: list<array{0: float, 1: float, 2: float, 3: float}>, cells: list<array{0: float, 1: float, 2: float}>, dots: list<array{0: float, 1: float}>, pieces: list<array{x: float, y: float, side: string, king: bool}>, bars: list<array{x: float, y: float, w: float, h: float, r: float, side: string, kind: string}>, last: list<array{0: float, 1: float}>, radius: float, stroke: float, dot: float}
      */
@@ -244,8 +247,14 @@ class BoardScene
             $shape = $bar === null ? null : (self::BARS[$piece['kind']] ?? null);
 
             if ($shape === null) {
-                // The ring only for a king (checkers): a Blockli pawn or a morris man is a plain disc.
-                $pieces[] = ['x' => $px, 'y' => $py, 'side' => $piece['side'], 'king' => $piece['kind'] === 'king'];
+                // The ring only for a king (checkers): a Blockli pawn or a morris man is a plain disc. A go stone names its
+                // colour, and the drawing colours by side: Go's first side plays black (DerCaddy, 2026-10-27).
+                $side = match ($piece['kind']) {
+                    'black' => 'b',
+                    'white' => 'w',
+                    default => $piece['side'],
+                };
+                $pieces[] = ['x' => $px, 'y' => $py, 'side' => $side, 'king' => $piece['kind'] === 'king'];
 
                 continue;
             }
@@ -263,7 +272,8 @@ class BoardScene
             'size' => $size,
             'lines' => array_map(fn (array $line): array => [...$at($line[0], $line[1]), ...$at($line[2], $line[3])], $view['lines']),
             'cells' => array_map(fn (array $cell): array => [...$at($cell['x'], $cell['y']), round($cell['size'] * $scale, 2)], $view['cells']),
-            'dots' => array_map(fn (array $point): array => $at($point['x'], $point['y']), $points),
+            // Every point of a board of lines, but only the star points of a go board.
+            'dots' => array_map(fn (array $point): array => $at($point['x'], $point['y']), isset($view['stars']) ? array_values(array_filter($points, fn (array $point): bool => in_array($point['id'], $view['stars'], true))) : $points),
             'pieces' => $pieces,
             'bars' => $bars,
             'last' => array_values(array_map(fn (string $id): array => $at($byId[$id]['x'], $byId[$id]['y']), array_filter($lastPath, fn (string $id): bool => isset($byId[$id])))),

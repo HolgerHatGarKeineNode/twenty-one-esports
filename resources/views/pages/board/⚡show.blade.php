@@ -8,6 +8,7 @@ use App\Models\User;
 use App\Support\Board\BlockspacePractice;
 use App\Support\Board\BoardGameService;
 use App\Support\Board\BoardRuleViolation;
+use App\Support\Board\GoLabels;
 use App\Support\GameNames;
 use App\Support\Nostr\NostrKeys;
 use App\Support\Notifications\DmRelays;
@@ -86,7 +87,8 @@ new #[Layout('layouts::app', ['realtime' => true, 'scripts' => ['resources/js/bo
         ]);
         $view->title($title);
 
-        // Search and link preview, as a chess game's page has them: the players, the state, the board as a card.
+        // Search and link preview, as a chess game's page has them: the players, the state, the board as a card. The sides
+        // by the game's names for them (Go: Black moves first).
         $kind = ($game->rated ? __('Rated') : __('Casual')).' · '.GameNames::full($game->game, $game->mode);
         $description = __(':kind: :white :whiteSide vs :black :blackSide in the TWENTY ONE esports league.', ['whiteSide' => GameNames::sideNotes($game->game)['w'], 'blackSide' => GameNames::sideNotes($game->game)['b'], 'kind' => $kind, 'white' => $this->name('w'), 'black' => $this->name('b')]).' '.match ($game->status) {
             BoardGameStatus::Active => __('Live now: watch the board move by move.'),
@@ -342,6 +344,8 @@ new #[Layout('layouts::app', ['realtime' => true, 'scripts' => ['resources/js/bo
                     'steps' => [trans_choice(':count step|:count steps', 1, ['count' => ':count']), trans_choice(':count step|:count steps', 2, ['count' => ':count'])],
                     'blocks' => [trans_choice(':count block|:count blocks', 1, ['count' => ':count']), trans_choice(':count block|:count blocks', 2, ['count' => ':count'])],
                     'lead' => __(':name leads by :steps.'), 'level' => __('Both are level.')],
+                // The stone input and the count (Go, DerCaddy 2026-10-27).
+                ...GoLabels::board(),
             ],
         ];
     }
@@ -422,12 +426,16 @@ new #[Layout('layouts::app', ['realtime' => true, 'scripts' => ['resources/js/bo
                     <div class="col-span-2 min-w-0">@include('pages.board.partials.blockspace-stage')</div>
                 @else
                 <div class="relative col-span-2 mx-auto w-full" data-board-box>
+                    {{-- Go's board stays the same way round for both (layout `upright`: its coordinates read alike); the board takes the
+                         focus there, and the arrow keys move the stone shown (boardGame.js, the stone input). The ring shows only for
+                         the keyboard: after a tap or a click the browser would draw its own around the board. --}}
                     <svg x-ref="board" data-focus-board data-live-clear viewBox="0 0 {{ $config['layout']['width'] ?? 100 }} {{ $config['layout']['height'] ?? 100 }}"
                          x-on:click="pick($event)" x-on:keydown="pickKey($event)"
                          role="group" aria-label="{{ __('Game board') }}"
-                         x-bind:class="color === 'b' ? 'rotate-180' : ''"
+                         x-bind:tabindex="layout.input === 'stones' && color ? 0 : null"
+                         x-bind:class="color === 'b' && !layout.upright ? 'rotate-180' : ''"
                          style="aspect-ratio: {{ $config['layout']['width'] ?? 1 }} / {{ $config['layout']['height'] ?? 1 }}"
-                         class="block w-full touch-manipulation rounded-[4px] bg-well select-none" data-test="board"></svg>
+                         class="block w-full touch-manipulation rounded-[4px] bg-well select-none [&:focus:not(:focus-visible)]:outline-none" data-test="board"></svg>
                     <template x-if="layout.input === 'blocks'">
                         <div>
                             <p x-show="warningShown" x-transition.opacity.duration.300ms class="pointer-events-none absolute inset-x-2 z-10 m-0 rounded-[4px] border border-btc-ring bg-feature py-2 pr-3 pl-4 text-[13px] font-bold text-btc-hi shadow-[inset_3px_0_0_var(--color-btc),0_16px_32px_rgba(10,10,11,.8)]"
@@ -454,8 +462,8 @@ new #[Layout('layouts::app', ['realtime' => true, 'scripts' => ['resources/js/bo
                 <template x-if="color && state.status === 'active'">
                     <div class="col-span-2 flex flex-wrap items-center justify-end gap-2" data-fit-skip data-test="board-actions">
                         <span class="mr-auto text-[13px] text-ink-2 max-lg:hidden" x-text="state.moves.length ? (Math.ceil(state.moves.length / 2) + (state.moves.length % 2 ? '. ' : '… ') + state.moves[state.moves.length - 1].notation) : ''"></span>
-                        {{-- Take the own move back, as in Blockli's bar (which has the button there): nine men's morris, checkers. --}}
-                        <template x-if="layout.input !== 'blocks' && canTakeBack">
+                        {{-- Take the own move back, as in Blockli's bar and Go's (which have the button there): nine men's morris, checkers. --}}
+                        <template x-if="layout.input !== 'blocks' && layout.input !== 'stones' && canTakeBack">
                             <x-button variant="quiet" x-on:click="takeBack()" x-bind:aria-label="t.takeBack.left.replace(':seconds', takeBackLeft)" data-test="take-back">
                                 {{ __('Take back') }} <span class="min-w-[2ch] tabular-nums" x-text="takeBackLeft"></span>
                             </x-button>
@@ -547,6 +555,8 @@ new #[Layout('layouts::app', ['realtime' => true, 'scripts' => ['resources/js/bo
                         <p class="sr-only" role="status" aria-live="polite" x-text="blockHint" data-test="block-hint"></p>
                     </div>
                 </template>
+                {{-- Go's bar (the stone input): Place, Pass, Take back, as Blockli's bar on a phone fixed above the chat sheet. --}}
+                @include('pages.board.partials.stone-input', ['bottom' => $chat ? 'max-lg:bottom-[72px]' : 'max-lg:bottom-0'])
                 @if ($boardGame->hasEnvelope())
                     {{-- A tournament game or a team match board ends at the first-move deadline by the league's decision: the countdown leads, the rule stays under it. --}}
                     <div class="flex flex-col gap-1 rounded-lg bg-btc-tint px-4 py-3 shadow-[inset_0_0_0_1px_var(--color-btc)]" role="status" x-show="firstMoveLine" data-test="first-move">
@@ -563,6 +573,8 @@ new #[Layout('layouts::app', ['realtime' => true, 'scripts' => ['resources/js/bo
                 <p class="m-0 rounded-[4px] border border-btc-ring bg-feature py-2 pr-3 pl-4 text-[13px] font-bold text-btc-hi shadow-[inset_3px_0_0_var(--color-btc)]" x-show="repetitionWarning" x-text="repetitionWarning" data-test="repetition-note"></p>
                 {{-- Who would be ahead in the race (Blockli): steps to the goal and blocks left a side (DerCaddy, 2026-10-09). --}}
                 <p class="m-0 text-[13px] text-ink-2" x-show="standingLine" x-text="standingLine" data-test="standing"></p>
+                {{-- What each side would have if the game were counted now (Go). --}}
+                @include('pages.board.partials.area-count')
                 @php
                     // The deciding game of a two-leg pairing in a tournament whose drawn decider goes to the race standing (user, 2026-10-11).
                     $deciderMatch = $boardGame->isActive() ? $boardGame->tournamentMatch : null;

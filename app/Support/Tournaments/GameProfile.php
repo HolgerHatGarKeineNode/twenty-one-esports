@@ -76,6 +76,17 @@ final readonly class GameProfile
             'blockli/rapid' => new self("{$game}/{$mode}", $game, $mode, 'min', 27, 0, 3, 2, 2, [2], false, 'game', overhead: 3),
             // Their correspondence mode (P8): one game per match, planned as daily chess.
             'nine-mens-morris/correspondence', 'checkers/correspondence', 'blockli/correspondence', 'blockspace/correspondence' => new self("{$game}/{$mode}", $game, $mode, 'day', 30, 0, 1, 1, 1, [1], true, 'game'),
+            // Go (DerCaddy, 2026-10-27): one game per pairing, the komi makes up for the first move. Unmeasured, from the
+            // clock and the usual length of a game (9 x 9 about 60 plies, 13 x 13 about 150, 19 x 19 about 250): 9 x 9
+            // blitz and rapid as Blockli's, 13 x 13 rapid 2 x (10 min + 75 x 5 s) ≈ 33 min, 19 x 19 rapid 15+10
+            // 2 x (15 min + 125 x 10 s) ≈ 72 min; one move a day 30, 60 and 100 days.
+            'go-9/blitz' => new self("{$game}/{$mode}", $game, $mode, 'min', 14, 0, 3, 1, 1, [1], false, 'game', overhead: 3),
+            'go-9/rapid' => new self("{$game}/{$mode}", $game, $mode, 'min', 27, 0, 3, 1, 1, [1], false, 'game', overhead: 3),
+            'go-13/rapid' => new self("{$game}/{$mode}", $game, $mode, 'min', 33, 0, 3, 1, 1, [1], false, 'game', overhead: 3),
+            'go-19/rapid' => new self("{$game}/{$mode}", $game, $mode, 'min', 72, 0, 5, 1, 1, [1], false, 'game', overhead: 3),
+            'go-9/correspondence' => new self("{$game}/{$mode}", $game, $mode, 'day', 30, 0, 1, 1, 1, [1], true, 'game'),
+            'go-13/correspondence' => new self("{$game}/{$mode}", $game, $mode, 'day', 60, 0, 1, 1, 1, [1], true, 'game'),
+            'go-19/correspondence' => new self("{$game}/{$mode}", $game, $mode, 'day', 100, 0, 1, 1, 1, [1], true, 'game'),
             'rocket-league/1v1' => new self('rl1', $game, $mode, 'min', 8, 5, 5, 3, 5, [3, 5], false, 'series', 1, 5, 1.25),
             'rocket-league/2v2' => new self('rl2', $game, $mode, 'min', 8, 5, 5, 3, 5, [3, 5], false, 'series', 2, 5, 1.25),
             'rocket-league/3v3' => new self('rl3', $game, $mode, 'min', 8, 5, 5, 3, 5, [3, 5], false, 'series', 3, 5, 1.25),

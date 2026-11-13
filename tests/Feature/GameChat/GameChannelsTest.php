@@ -49,8 +49,8 @@ test('each game has its own channel, fixed by the creator, and the league key si
     $ids = array_map(fn (string $game): ?string => GameChannels::channelId($game), array_keys(GameChannels::GAMES));
     $signed = SignedEvent::fromInput($league->sign(40, [], GameChannels::createContent('rocket-league'), GameChannels::CREATED_AT));
 
-    expect(array_keys(GameChannels::GAMES))->toBe(['chess', 'rocket-league', 'ea-sports-fc-26', 'ea-sports-fc-27', 'nine-mens-morris', 'checkers', 'age-of-empires-2', 'tmnf', 'blockfill', 'blockli', 'hyperbitcoinization', 'proof-of-pong', 'blockspace'])
-        ->and(array_unique($ids))->toHaveCount(13)
+    expect(array_keys(GameChannels::GAMES))->toBe(['chess', 'rocket-league', 'ea-sports-fc-26', 'ea-sports-fc-27', 'nine-mens-morris', 'checkers', 'age-of-empires-2', 'tmnf', 'blockfill', 'blockli', 'hyperbitcoinization', 'proof-of-pong', 'blockspace', 'go-9', 'go-13', 'go-19'])
+        ->and(array_unique($ids))->toHaveCount(16)
         ->and($ids)->each->toMatch('/^[0-9a-f]{64}$/')
         ->and(GameChannels::channelId('rocket-league'))->toBe($signed?->id)
         ->and($signed?->hasValidSignature())->toBeTrue()
@@ -98,6 +98,10 @@ test('the board games add two channels and change none of the four: every id of 
         'hyperbitcoinization' => 'f19ac294a4d935b12feee8567ef63c32e77b341b5e7eb406b6a6d837e9848257',
         'proof-of-pong' => 'baef46e9f787ba9457b4c3611c45d992c47367712a5bbce4210b9faa3400c98c',
         'blockspace' => '407c5fd6aa1804397ec6478374e07a1055bc846b6563647797a1d2e686ea1b7a',
+        // Go, one channel per size (DerCaddy, 2026-10-27), each equal to nostr-tools' getEventHash.
+        'go-9' => 'ab04ce1908e0bb56b7ef46e57deee5489bad590be9b238ecdde5e390168afda0',
+        'go-13' => '2ebbdc8e9bccc5df5239cd58c48e64ee6d2a882e8abe9eb01434ec4fc832708d',
+        'go-19' => '2d016efb5700c58e4dfcd01f9d2498f3a9a5f3fe9a679075c890eb9353ef739b',
     ];
     $ids = fn (): array => array_combine(array_keys(GameChannels::GAMES), array_map(GameChannels::channelId(...), array_keys(GameChannels::GAMES)));
 
@@ -451,7 +455,7 @@ test('the command signs a board game\'s channel only while the board game is swi
     // Both on: seven channels, each signed with exactly its id (TMNF and Blockfill stay off here).
     CheckersGame::play();
     [$events, $output] = gameChannelsDryRun();
-    expect($creates($events))->toBe(array_map(GameChannels::channelId(...), array_values(array_diff(array_keys(GameChannels::GAMES), ['tmnf', 'blockfill', 'blockli', 'blockspace', 'hyperbitcoinization', 'proof-of-pong']))))
+    expect($creates($events))->toBe(array_map(GameChannels::channelId(...), array_values(array_diff(array_keys(GameChannels::GAMES), ['tmnf', 'blockfill', 'blockli', 'blockspace', 'hyperbitcoinization', 'proof-of-pong', 'go-9', 'go-13', 'go-19']))))
         ->and($events)->toHaveCount(14)
         ->and(collect($events)->every(fn (array $event): bool => SignedEvent::fromInput($event)?->hasValidSignature() === true))->toBeTrue()
         ->and($output)->not->toContain('nine-mens-morris: switched off')->not->toContain('checkers: switched off');

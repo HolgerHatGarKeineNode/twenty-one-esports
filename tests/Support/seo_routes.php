@@ -16,6 +16,7 @@ use App\Games\Blockfill;
 use App\Games\Blockli;
 use App\Games\Blockspace;
 use App\Games\GameRegistry;
+use App\Games\Go;
 use App\Models\ChessGame;
 use App\Models\Clan;
 use App\Models\Rating;
@@ -33,6 +34,7 @@ use Illuminate\Routing\Route as RouteDefinition;
 use Illuminate\Support\Facades\Route;
 use Tests\Support\BlockfillOn;
 use Tests\Support\CheckersGame;
+use Tests\Support\GoOn;
 use Tests\Support\NineMensMorrisOn;
 use Tests\Support\ScoreDemoOn;
 
@@ -44,6 +46,8 @@ function seoEverySwitchOn(): void
     ScoreDemoOn::play();
     BlockfillOn::play();
     leagueWeeksApproved(Blockfill::SLUG);
+    // Go (DerCaddy, 2026-10-27): its three sizes and their practice pages crawled like every board game's.
+    GoOn::play();
 }
 
 /**
@@ -148,6 +152,8 @@ function seoRouteFixtures(): array
         'board.show' => fn () => array_map(fn (string $slug): string => route('board.show', mempoolBoard($slug, ['status' => BoardGameStatus::Active])), array_keys($registry()->boards())),
         // Practice against bots (DerCaddy, 2026-10-23): only Blockli has bots, every other board game's practice is a 404.
         'board.practice' => fn () => array_key_exists(Blockli::SLUG, $registry()->boards()) ? [route('board.practice', Blockli::SLUG)] : [],
+        // Go practice (DerCaddy, 2026-10-27): one page for all sizes, while one is switched on.
+        'board.go-practice' => fn () => Go::home() !== null ? [route('board.go-practice')] : [],
         'stacker.play' => fn () => [route('stacker.play')],
         // The replays page with last week's first place on it: a verified run of an ended week, on its board.
         'stacker.replays' => function (): array {

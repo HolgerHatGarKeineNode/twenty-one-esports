@@ -8,6 +8,9 @@ use App\Games\Blockli;
 use App\Games\Blockspace;
 use App\Games\GameMode;
 use App\Games\GameRegistry;
+use App\Games\Go13;
+use App\Games\Go19;
+use App\Games\Go9;
 use App\Games\Hyperbitcoinization;
 use App\Games\NineMensMorris;
 use App\Games\ProofOfPong;
@@ -16,6 +19,7 @@ use App\Models\Tournament;
 use App\Support\Board\BlockliRules;
 use App\Support\Board\BlockspaceRules;
 use App\Support\Board\CheckersRules;
+use App\Support\Board\GoRules;
 use App\Support\Board\NineMensMorrisRules;
 use App\Support\Chess\ChessModes;
 use App\Support\Chess\ChessTeamMatches;
@@ -84,6 +88,7 @@ final class RulesPage
             ...self::checkers(),
             ...self::blockli(),
             ...self::blockspace(),
+            ...self::go(),
             self::tournaments(),
             self::cups(),
             self::prizes(),
@@ -595,6 +600,53 @@ final class RulesPage
                 __('Take a transaction, turn it and set it. With a mouse: left click takes and sets, right click turns, a long right click mirrors. The board shows no places, finding them is the game.'),
                 __('While transactions are still to come a move cannot be taken back: the next one would be known.'),
                 __('Yield counts in sat, the points of this game. No real sats change hands.'),
+                self::correspondence(),
+            ],
+        ]];
+    }
+
+    /**
+     * Go (DerCaddy, 2026-10-27), one section for the sizes switched on: the
+     * rules of GoRules, its numbers read from there; the time controls of each
+     * size from its modes.
+     *
+     * @return list<Section>
+     */
+    private static function go(): array
+    {
+        $registry = app(GameRegistry::class);
+        $sizes = array_values(array_filter([Go9::SLUG, Go13::SLUG, Go19::SLUG], fn (string $slug): bool => $registry->find($slug) !== null));
+
+        if ($sizes === []) {
+            return [];
+        }
+
+        $facts = array_map(function (string $slug) use ($registry): array {
+            $modes = array_map(fn (string $mode): string => $mode === 'correspondence' ? __('1 move a day') : GameNames::mode($slug, $mode), array_keys($registry->find($slug)?->modes() ?? []));
+
+            return [__('Time control').' · '.GameNames::game($slug), implode(', ', $modes)];
+        }, $sizes);
+        $komi = app()->getLocale() === 'de' ? str_replace('.', ',', (string) GoRules::KOMI) : (string) GoRules::KOMI;
+
+        return [[
+            'id' => 'go',
+            'title' => 'Go',
+            'lead' => __('The old game of surrounding: on 9 × 9, 13 × 13 or 19 × 19, played out and then counted.'),
+            'facts' => [
+                ...$facts,
+                [__('Komi for White'), $komi],
+                [__('First move'), self::seconds((int) config('esports.board_games.first_move_seconds'))],
+            ],
+            'items' => [
+                __('Black moves first. In turn each side puts a stone on an empty intersection, or passes.'),
+                __('Stones of one colour joined along the lines form a group. A group without an empty neighbouring point (a liberty) is captured and comes off the board.'),
+                __('No stone may go where its group would have no liberty, unless it captures. A single stone just captured in a ko may not be taken back at once: play elsewhere first.'),
+                __('Two passes in a row end the game. It is counted as it stands, with nothing marked dead: each side has its stones and the empty points that touch only its stones; White adds a komi of :komi. So capture dead stones before you pass: a stone in your own area costs you nothing.', ['komi' => $komi]),
+                __('The same stones with the same side to move a third time draw the game; so does a draw by agreement. A game is counted as it stands after :limit moves per point of the board.', ['limit' => GoRules::MOVE_LIMIT]),
+                __('Beside the board the count as it stands is shown all the time, so you see what passing would mean. Show area marks each side\'s empty points.'),
+                __('Tap a point: your stone shows there, tap it again or press Set stone. With a mouse a click places it. When your opponent has just passed, Pass asks once more, with the count the game would end in.'),
+                __('Points are named as on a go board: files A to T without I, ranks from the bottom. The board stays the same way round for both players.'),
+                ...self::takeBack(),
                 self::correspondence(),
             ],
         ]];

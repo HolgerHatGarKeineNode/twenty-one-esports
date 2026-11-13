@@ -128,6 +128,14 @@
                         <x-slot:meta>{{ __('nothing counts') }}</x-slot:meta>
                     </x-chess.lobby-tile>
                 </li>
+            @elseif (app(\App\Games\GameRegistry::class)->find($slug) instanceof \App\Games\Go && \Illuminate\Support\Facades\Route::has('board.go-practice'))
+                {{-- Go practice (DerCaddy, 2026-10-27): eight lessons, then three bots on 9 x 9, for guests too; nothing counts. --}}
+                <li>
+                    <x-chess.lobby-tile :label="__('Learn Go and practice')" :action="__('Practice')" :href="route('board.go-practice')" data-test="play-practice">
+                        <x-slot:detail>{{ __('Eight lessons, then three bots on 9 x 9') }}</x-slot:detail>
+                        <x-slot:meta>{{ __('nothing counts') }}</x-slot:meta>
+                    </x-chess.lobby-tile>
+                </li>
             @endif
             @if ($slug === \App\Games\Blockspace::SLUG && \Illuminate\Support\Facades\Route::has('board.blockspace-practice'))
                 {{-- The tutorial first: nine short lessons on the board, then the bots, for guests too; nothing counts. --}}

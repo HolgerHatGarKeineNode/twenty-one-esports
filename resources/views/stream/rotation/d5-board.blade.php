@@ -57,7 +57,7 @@
             $cx = $nx + $d + 24;
             $blocks[] = [
                 'y' => $y, 'h' => $h, 'd' => $d, 'faceY' => $faceY, 'active' => $active, 'low' => (int) ($p['clockMs'] ?? 0) < 10000,
-                'colour' => $colour, 'avatar' => $p['avatar'] ?? null, 'nx' => $nx, 'cx' => $cx,
+                'colour' => $live['colours'][$colour] ?? $colour, 'avatar' => $p['avatar'] ?? null, 'nx' => $nx, 'cx' => $cx,
                 'name' => K::name($p['name'] ?? '', $fallback, $size, $nameMax), 'nameSize' => $size, 'nameY' => round($y + $pad + $size * 0.8, 1),
                 'clock' => K::clock((int) ($p['clockMs'] ?? 0), $cx, $active ? 64 : 44, K::CONTENT_RIGHT - $pad - $cx),
                 // Correspondence: no clock for the side that waits, its day starts with its turn.
