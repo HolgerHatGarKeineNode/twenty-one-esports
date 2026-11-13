@@ -2,6 +2,7 @@
 
 use App\Enums\BoardGameStatus;
 use App\Enums\BoardInviteStatus;
+use App\Enums\InviteLinkType;
 use App\Models\BoardChallenge;
 use App\Models\BoardGame;
 use App\Models\Tournament;
@@ -14,6 +15,7 @@ use App\Support\Broadcast\OverlaySnapshot;
 use App\Support\Cards\PageCard;
 use App\Support\Cards\PageCardFacts;
 use App\Support\GameNames;
+use App\Support\Invites\InviteLinks;
 use App\Support\Notifications\BoardNotifications;
 use App\Support\Tournaments\CasualCupNotices;
 use App\Support\TwentyOne\Stream\RotationPlanner;
@@ -119,6 +121,15 @@ test('the invite link offers the colours of the stones', function () {
         ->assertSeeHtml('data-state="board"')
         ->assertSee('Orange')->assertSee('Blue')
         ->assertDontSee('White')->assertDontSee('Black');
+});
+
+test('an invite to a game says which colour of stones the inviter took', function () {
+    $this->withoutVite();
+    $inviter = User::factory()->create(['name' => 'satsjäger']);
+    $link = app(InviteLinks::class)->create($inviter, InviteLinkType::Board, ['game' => 'blockspace', 'mode' => BoardGame::CORRESPONDENCE, 'color' => 'black']);
+
+    $this->actingAs(User::factory()->create())->get($link->url())->assertOk()
+        ->assertSee('satsjäger plays Blue')->assertDontSee('plays Black')->assertDontSee('plays White');
 });
 
 test('the card names the sides by their colours', function () {

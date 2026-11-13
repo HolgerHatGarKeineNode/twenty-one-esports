@@ -1954,6 +1954,7 @@
     "Colours": "Farben",
     ":name plays White": ":name spielt Weiß",
     ":name plays Black": ":name spielt Schwarz",
+    ":name plays :side": ":name spielt :side",
     "Rocket League :mode, best of :bo": "Rocket League :mode, Best of :bo",
     "Casual scrim, no rating change": "Casual-Scrim, keine Wertungsänderung",
     "Against": "Gegen",

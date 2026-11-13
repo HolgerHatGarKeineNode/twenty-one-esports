@@ -5,6 +5,7 @@ use App\Support\Board\BoardThrottle;
 use App\Support\Board\GoLabels;
 use App\Support\Board\GoPractice;
 use App\Support\Cards\PageCard;
+use App\Support\GameNames;
 use App\Support\PageMeta;
 use Livewire\Attributes\Json;
 use Livewire\Attributes\Layout;
@@ -67,6 +68,8 @@ new #[Layout('layouts::app', ['scripts' => ['resources/js/go/practice.js']])] cl
     protected function config(): array
     {
         $practice = app(GoPractice::class);
+        // The names of the two sides as the game gives them: the first side (`w`) is Black.
+        $sides = GameNames::sides($this->slug);
         $rules = $practice->rules();
         $start = $rules->serialize($rules->start());
         $layout = $rules->view($rules->start());
@@ -101,7 +104,7 @@ new #[Layout('layouts::app', ['scripts' => ['resources/js/go/practice.js']])] cl
             ],
             'labels' => [
                 'you' => __('You'),
-                'white' => __('White'),
+                'white' => $sides['b'],
                 'lessonOf' => __('Lesson :n of :total'),
                 'nextLesson' => __('Next lesson'),
                 'toBots' => __('On to the bots'),
@@ -145,8 +148,8 @@ new #[Layout('layouts::app', ['scripts' => ['resources/js/go/practice.js']])] cl
                 ],
                 // The board's own words (boardGame.js), as on a game's page; Go's first side is Black.
                 'board' => [
-                    'white' => __('Black'),
-                    'black' => __('White'),
+                    'white' => $sides['w'],
+                    'black' => $sides['b'],
                     'firstMove' => __(':side: first move within :s s'),
                     'takeBack' => ['button' => __('Take back'), 'left' => __('Take back your move, :seconds s left'), 'notice' => __(':name took the move back.')],
                     'status' => ['live' => __(':side to move'), 'daily' => __(':side to move'), 'over' => __('Game over'), 'aborted' => __('Aborted')],

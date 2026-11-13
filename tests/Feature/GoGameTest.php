@@ -1,6 +1,7 @@
 <?php
 
 use App\Enums\BoardGameStatus;
+use App\Games\BoardSide;
 use App\Games\GameRegistry;
 use App\Games\Go;
 use App\Games\Go13;
@@ -14,6 +15,7 @@ use App\Support\Board\BoardGameService;
 use App\Support\Board\BoardRuleViolation;
 use App\Support\Board\GoLabels;
 use App\Support\Board\GoRules;
+use App\Support\Cards\PageCard;
 use App\Support\Engagement\HomeBoard;
 use App\Support\GameChat\GameChannels;
 use App\Support\GameNames;
@@ -85,7 +87,7 @@ test('Go is three board games, one per size, each with its modes, Black first, o
             ->and($game->rules())->toBeInstanceOf(GoRules::class)
             ->and($game->rules()->size())->toBe($size)
             ->and($game->playsTwoLegs())->toBeFalse()
-            ->and($game->sideColours())->toBe(['w' => 'black', 'b' => 'white'])
+            ->and(array_map(fn (BoardSide $side): string => $side->name, $game->sides()))->toBe(['w' => 'Black', 'b' => 'White'])
             ->and(GameNames::sides($slug))->toBe(['w' => 'Black', 'b' => 'White'])
             ->and($registry->isBoard($slug))->toBeTrue();
 
@@ -239,6 +241,45 @@ test('a correspondence challenge names the colours of Go: the challenger who tak
     expect(GameNames::sides($game->game))->toBe(['w' => 'Schwarz', 'b' => 'Weiß'])
         ->and(__(':game correspondence · you play :color, your move.', ['game' => 'Go 9×9', 'color' => GameNames::sides($game->game)['w']]))->toBe('Fern-Go 9×9 · du spielst Schwarz, du bist am Zug.');
 });
+
+/**
+ * The colour in the middle of the square beside a player on a finished board game's card (PageCard::gamePlayer()): the
+ * first side sits at the bottom, the other at the top, and the winner's picture is the larger one.
+ */
+function goCardSwatch(string $png, string $side, bool $won): string
+{
+    $size = $won ? 104 : 80;
+    $top = $side === 'w' ? 48 + 446 - $size : 48;
+    $rgb = imagecolorat(imagecreatefromstring($png), 64 + 446 + 56 + $size + 28 + 12, (int) ($top + $size / 2 + 38 - 10));
+
+    return sprintf('#%06X', $rgb & 0xFFFFFF);
+}
+
+test('the card of a finished Go game says who won by the stones, with each side\'s own colour beside its player', function (string $result, string $headline, string $wrong) {
+    $game = goGame();
+    $game->forceFill(['status' => BoardGameStatus::Finished, 'result' => $result])->save();
+    $card = PageCard::boardGame($game->refresh());
+    [$black, $white] = [$game->player('w')->name, $game->player('b')->name];
+
+    expect($card->gameHeadline())->toBe($headline)->not->toBe($wrong)
+        ->and($card->sideLabel('white'))->toBe('Black')
+        ->and($card->sideLabel('black'))->toBe('White')
+        // The first side (`w`) laid the black stones: its player is the one named Black, and the winner by name.
+        ->and($card->alt())->toContain(($result === '1-0' ? $black : $white).' won. ')
+        ->toContain($black.' (black), '.$white.' (white).');
+})->with([
+    'Black won' => ['1-0', 'Black wins', 'White wins'],
+    'White won' => ['0-1', 'White wins', 'Black wins'],
+]);
+
+test('the drawn card of a finished Go game shows a black square beside Black and a white one beside White', function (string $result) {
+    $game = goGame();
+    $game->forceFill(['status' => BoardGameStatus::Finished, 'result' => $result])->save();
+    $png = PageCard::boardGame($game->refresh())->render();
+
+    expect(goCardSwatch($png, 'w', $result === '1-0'))->toBe('#0A0A0B')
+        ->and(goCardSwatch($png, 'b', $result === '0-1'))->toBe('#F4F4F5');
+})->with(['Black won' => ['1-0'], 'White won' => ['0-1']]);
 
 test('Go takes its place where every board game has one: the ladders\' names, the start page\'s order, a chat channel per size', function () {
     config(['esports.game_chat.creator' => str_repeat('a', 64)]);

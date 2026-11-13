@@ -2,6 +2,7 @@
 
 namespace App\Games;
 
+use App\Support\Board\BlockspaceDrawing;
 use App\Support\Board\BlockspaceRules;
 use App\Support\Board\BoardRules;
 
@@ -49,6 +50,15 @@ final class Blockspace extends BoardGame
     public function validateResult(GameMode $mode, array $result): array
     {
         return in_array($result['result'] ?? null, self::RESULTS, true) ? [] : ['result'];
+    }
+
+    /** Orange and Blue, the colours of the stones (BlockspaceDrawing::FILL), not White and Black. */
+    public function sides(): array
+    {
+        return [
+            'w' => new BoardSide('Orange', 'white', BlockspaceDrawing::FILL['w'], BlockspaceDrawing::FILL['w']),
+            'b' => new BoardSide('Blue', 'black', BlockspaceDrawing::FILL['b'], BlockspaceDrawing::FILL['b']),
+        ];
     }
 
     public function assets(): GameAssets

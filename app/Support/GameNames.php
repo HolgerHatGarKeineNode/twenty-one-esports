@@ -3,8 +3,8 @@
 namespace App\Support;
 
 use App\Games\Blockfill;
-use App\Games\Blockspace;
 use App\Games\BoardGame;
+use App\Games\BoardSide;
 use App\Games\GameRegistry;
 use App\Games\Hyperbitcoinization;
 use App\Games\ProofOfPong;
@@ -76,15 +76,28 @@ final class GameNames
     }
 
     /**
-     * The colour of each side of a game, the side that moves first (`w`) first: white and black, Go's black first.
+     * The two sides of a game as its registry entry names them (BoardGame::sides()), the side that moves first (`w`)
+     * first; White and Black for chess and for a game no longer registered.
+     *
+     * @return array{w: BoardSide, b: BoardSide}
+     */
+    public static function boardSides(string $game): array
+    {
+        $definition = app(GameRegistry::class)->find($game);
+
+        return $definition instanceof BoardGame ? $definition->sides() : ['w' => BoardSide::white(), 'b' => BoardSide::black()];
+    }
+
+    /**
+     * The colour each side's pieces are drawn in, the side that moves first (`w`) first: white and black, Go's black first.
      *
      * @return array{w: 'white'|'black', b: 'white'|'black'}
      */
     public static function sideColours(string $game): array
     {
-        $definition = app(GameRegistry::class)->find($game);
+        $sides = self::boardSides($game);
 
-        return $definition instanceof BoardGame ? $definition->sideColours() : ['w' => 'white', 'b' => 'black'];
+        return ['w' => $sides['w']->stone, 'b' => $sides['b']->stone];
     }
 
     /** "Blitz 5+3", "Daily" (translated), "1v1"; the slug of an unregistered mode. */
@@ -114,14 +127,9 @@ final class GameNames
      */
     public static function sides(string $game, ?string $locale = null): array
     {
-        if ($game === Blockspace::SLUG) {
-            return ['w' => __('Orange', [], $locale), 'b' => __('Blue', [], $locale)];
-        }
+        $sides = self::boardSides($game);
 
-        $name = fn (string $colour): string => $colour === 'black' ? __('Black', [], $locale) : __('White', [], $locale);
-        $colours = self::sideColours($game);
-
-        return ['w' => $name($colours['w']), 'b' => $name($colours['b'])];
+        return ['w' => __($sides['w']->name, [], $locale), 'b' => __($sides['b']->name, [], $locale)];
     }
 
     /**
@@ -131,16 +139,10 @@ final class GameNames
      */
     public static function sideNotes(string $game): array
     {
-        if ($game !== Blockspace::SLUG) {
-            $note = fn (string $colour): string => $colour === 'black' ? __('(black)') : __('(white)');
-            $colours = self::sideColours($game);
+        $note = fn (BoardSide $side): string => $side->note === null ? '('.__($side->name).')' : __($side->note);
+        $sides = self::boardSides($game);
 
-            return ['w' => $note($colours['w']), 'b' => $note($colours['b'])];
-        }
-
-        $sides = self::sides($game);
-
-        return ['w' => '('.$sides['w'].')', 'b' => '('.$sides['b'].')'];
+        return ['w' => $note($sides['w']), 'b' => $note($sides['b'])];
     }
 
     /** full() with the credit after it, for text without markup: "Blockli Blitz 5+3 by DerCaddy". */

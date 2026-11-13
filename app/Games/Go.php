@@ -13,7 +13,7 @@ use App\Support\Board\GoRules;
  * ESPORTS_BOARD_GAME_GO (or the size's own switch) turns it on.
  *
  * Black moves first: the core's first side (`w`) plays the black stones, so the sides are named the other way round
- * than in chess (sideColours()). White's komi of 7.5 makes up for the first move, so a pairing plays one game.
+ * than in chess (sides()). White's komi of 7.5 makes up for the first move, so a pairing plays one game.
  */
 abstract class Go extends BoardGame
 {
@@ -59,9 +59,9 @@ abstract class Go extends BoardGame
         return in_array($result['result'] ?? null, self::RESULTS, true) ? [] : ['result'];
     }
 
-    public function sideColours(): array
+    public function sides(): array
     {
-        return ['w' => 'black', 'b' => 'white'];
+        return ['w' => BoardSide::black(), 'b' => BoardSide::white()];
     }
 
     public function assets(): GameAssets

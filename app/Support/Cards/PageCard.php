@@ -454,10 +454,10 @@ final class PageCard
 
         // The side's colour as a square, then the rating and this game's change.
         $line = $y + $size / 2 + 38;
-        // Blockspace names its sides by the colours of its stones, and shows them.
-        $stone = ($this->facts['game'] ?? null) === Blockspace::SLUG ? BlockspaceDrawing::FILL[$colour === 'white' ? 'w' : 'b'] : null;
-        $this->c->rect($tx, $line - 22, 24, 24, $stone ?? ($colour === 'white' ? '#F4F4F5' : '#5C5C60'));
-        $this->c->rect($tx + 2, $line - 20, 20, 20, $stone ?? ($colour === 'white' ? '#F4F4F5' : '#0A0A0B'));
+        // The colour the game gives this side: Go's first side is black, Blockspace shows the colours of its stones.
+        $side = GameNames::boardSides((string) ($this->facts['game'] ?? ''))[$colour === 'white' ? 'w' : 'b'];
+        $this->c->rect($tx, $line - 22, 24, 24, $side->swatchEdge);
+        $this->c->rect($tx + 2, $line - 20, 20, 20, $side->swatch);
         $delta = ($p['delta'] ?? null) !== null && $p['delta'] !== 0 ? ($p['delta'] > 0 ? '+' : '−').abs((int) $p['delta']) : null;
         // A board game has no rating on its card: the side's colour is named instead.
         $rating = ($p['rating'] ?? null) === null ? $this->sideLabel($colour) : __(':rating Elo', ['rating' => $p['rating']]);
@@ -475,7 +475,8 @@ final class PageCard
         }
     }
 
-    private function gameHeadline(): string
+    /** The card's big line: the move of a live game, or who won it, the side by the name its game gives it. */
+    public function gameHeadline(): string
     {
         $f = $this->facts;
 
@@ -483,8 +484,8 @@ final class PageCard
             'active' => __('Move :move', ['move' => intdiv((int) $f['ply'], 2) + 1]),
             'aborted' => __('Aborted'),
             default => match ($f['result']) {
-                '1-0' => ($f['game'] ?? null) === Blockspace::SLUG ? __(':name wins', ['name' => $this->sideLabel('white')]) : __('White wins'),
-                '0-1' => ($f['game'] ?? null) === Blockspace::SLUG ? __(':name wins', ['name' => $this->sideLabel('black')]) : __('Black wins'),
+                '1-0' => __(':name wins', ['name' => $this->sideLabel('white')]),
+                '0-1' => __(':name wins', ['name' => $this->sideLabel('black')]),
                 default => __('Draw'),
             },
         };
@@ -1178,7 +1179,7 @@ final class PageCard
         }
     }
 
-    /** What a side of this card's game is called: White and Black, in Blockspace the colours of its stones. */
+    /** What a side of this card's game is called (GameNames::sides()): `white` is the side that moves first. */
     public function sideLabel(string $colour): string
     {
         return GameNames::sides((string) ($this->facts['game'] ?? ''))[$colour === 'white' ? 'w' : 'b'];

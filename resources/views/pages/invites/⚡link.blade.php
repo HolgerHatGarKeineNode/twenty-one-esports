@@ -347,10 +347,10 @@ new #[Layout('layouts::app')] class extends Component {
         InviteLinkType::Board => [
             [__('Game'), $copy->gameChip()],
             [__('Game type'), __('Casual, no rating change')],
-            // The colour of the chosen side in this game (`white` moves first: Go's first side plays black, DerCaddy 2026-10-27).
+            // The side the inviter chose, by the name its game gives it (`white` moves first: Black in Go, Orange in Blockspace).
             [__('Colours'), match ($boardDaily ? (string) $link->option('color', 'random') : 'random') {
-                'white' => \App\Support\GameNames::sideColours((string) $link->option('game'))['w'] === 'black' ? __(':name plays Black', ['name' => $name]) : __(':name plays White', ['name' => $name]),
-                'black' => \App\Support\GameNames::sideColours((string) $link->option('game'))['b'] === 'white' ? __(':name plays White', ['name' => $name]) : __(':name plays Black', ['name' => $name]),
+                'white' => __(':name plays :side', ['name' => $name, 'side' => \App\Support\GameNames::sides((string) $link->option('game'))['w']]),
+                'black' => __(':name plays :side', ['name' => $name, 'side' => \App\Support\GameNames::sides((string) $link->option('game'))['b']]),
                 default => __('Random'),
             }],
         ],

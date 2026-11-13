@@ -76,14 +76,15 @@ abstract class BoardGame implements Game
     }
 
     /**
-     * The colour of each side: the side that moves first (`w`) and the other. White and black as in chess; Go's first
-     * side plays the black stones (DerCaddy, 2026-10-27). The pages name the sides by it (GameNames::sides()).
+     * The two sides, the side that moves first (`w`) and the other: what each is called and the colour of its swatch.
+     * White and Black as in chess; Go's first side plays the black stones (DerCaddy, 2026-10-27), Blockspace names its
+     * sides by the colours of its stones. The one source every page, card and notice reads (GameNames::sides()).
      *
-     * @return array{w: 'white'|'black', b: 'white'|'black'}
+     * @return array{w: BoardSide, b: BoardSide}
      */
-    public function sideColours(): array
+    public function sides(): array
     {
-        return ['w' => 'white', 'b' => 'black'];
+        return ['w' => BoardSide::white(), 'b' => BoardSide::black()];
     }
 
     /** The credit line of the game's config entry (`credit`), null without one (plan "Blockli", P3). */
