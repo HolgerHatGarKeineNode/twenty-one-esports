@@ -5,6 +5,7 @@ namespace App\Support\GameChat;
 use App\Games\Blockfill;
 use App\Games\BoardGame;
 use App\Games\GameRegistry;
+use App\Games\Go;
 use App\Games\Hyperbitcoinization;
 use App\Games\ProofOfPong;
 use App\Games\TrackmaniaNationsForever;
@@ -46,7 +47,8 @@ use swentel\nostr\Sign\Sign;
  * the channel computed here. TMNF and Blockfill (2026-10-03) follow the same
  * terms behind their own switches (`esports.tmnf`, `esports.blockfill`), and
  * so do Hyperbitcoinization and Proof of Pong (2026-10-09, `esports.hyper`,
- * `esports.pong`).
+ * `esports.pong`). Go has one channel for its three sizes, open while any
+ * of them is switched on.
  *
  * A Hyperbitcoinization match has its own table chat on the same terms,
  * fixed by the match's public id (matchCreateEvent(), plan
@@ -85,15 +87,13 @@ final class GameChannels
         'proof-of-pong' => 'Proof of Pong',
         // Blockspace, like the other board games only while switched on (has()).
         'blockspace' => 'Blockspace',
-        // 2026-10-27 (DerCaddy, Go): one channel per size, as each size is a board game of its own, and like the other
-        // board games only while switched on (has()).
-        'go-9' => 'Go 9×9',
-        'go-13' => 'Go 13×13',
-        'go-19' => 'Go 19×19',
+        // Go: ONE channel for its three sizes (owner, 2026-11-14), keyed by the group (Go::GROUP) and open while any
+        // size is switched on (has()); a size finds it through its group (key()).
+        Go::GROUP => 'Go',
     ];
 
     /** Games that exist only behind a switch: their channel is open only while the registry has them. */
-    private const SWITCHED = [...BoardGame::RESERVED_SLUGS, TrackmaniaNationsForever::SLUG, Blockfill::SLUG, Hyperbitcoinization::SLUG, ProofOfPong::SLUG];
+    private const SWITCHED = [...BoardGame::RESERVED_SLUGS, Go::GROUP, TrackmaniaNationsForever::SLUG, Blockfill::SLUG, Hyperbitcoinization::SLUG, ProofOfPong::SLUG];
 
     /**
      * Whether the game's channel is open: shown on its page and published. A
@@ -102,11 +102,30 @@ final class GameChannels
      */
     public static function has(string $game): bool
     {
-        if (! array_key_exists($game, self::GAMES)) {
+        $key = self::key($game);
+
+        if ($key === null) {
             return false;
         }
 
-        return ! in_array($game, self::SWITCHED, true) || app(GameRegistry::class)->find($game) !== null;
+        $games = app(GameRegistry::class);
+
+        return ! in_array($key, self::SWITCHED, true) || $games->find($key) !== null || $games->members($key) !== [];
+    }
+
+    /**
+     * The key in GAMES of the channel a game talks in: its own, or its group's (every Go size talks in "go"). Null
+     * for a game without a channel; a group's member is known only while it is registered (GameRegistry::groupOf()).
+     */
+    public static function key(string $game): ?string
+    {
+        if (array_key_exists($game, self::GAMES)) {
+            return $game;
+        }
+
+        $group = app(GameRegistry::class)->groupOf($game)?->slug;
+
+        return $group !== null && array_key_exists($group, self::GAMES) ? $group : null;
     }
 
     /**
@@ -134,7 +153,7 @@ final class GameChannels
     /** The kind-40 content: name and about, keys in this order, no relays (those go in kind 41). */
     public static function createContent(string $game): string
     {
-        $name = self::GAMES[$game] ?? throw new \InvalidArgumentException("No channel for [{$game}].");
+        $name = self::GAMES[self::key($game) ?? ''] ?? throw new \InvalidArgumentException("No channel for [{$game}].");
 
         return (string) json_encode([
             'name' => 'TWENTY ONE esports · '.$name,
@@ -152,7 +171,7 @@ final class GameChannels
     {
         $creator ??= self::creator();
 
-        if (! array_key_exists($game, self::GAMES) || ! NostrKeys::isHexPubkey($creator)) {
+        if (self::key($game) === null || ! NostrKeys::isHexPubkey($creator)) {
             return null;
         }
 

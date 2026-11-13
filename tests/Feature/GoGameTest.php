@@ -281,15 +281,26 @@ test('the drawn card of a finished Go game shows a black square beside Black and
         ->and(goCardSwatch($png, 'b', $result === '0-1'))->toBe('#F4F4F5');
 })->with(['Black won' => ['1-0'], 'White won' => ['0-1']]);
 
-test('Go takes its place where every board game has one: the ladders\' names, the start page\'s order, a chat channel per size', function () {
+test('Go takes its place where every board game has one: the ladders\' names, the start page\'s order, one chat channel for all sizes', function () {
     config(['esports.game_chat.creator' => str_repeat('a', 64)]);
 
     foreach (['go-9' => 'Go 9×9', 'go-13' => 'Go 13×13', 'go-19' => 'Go 19×19'] as $slug => $name) {
         expect(BadgeCopy::ladder($slug, 'correspondence'))->toBe("{$name} correspondence")
             ->and(ChainOverview::keyLabel("{$slug}/correspondence"))->toBe("{$name} correspondence")
             ->and(GameChannels::has($slug))->toBeTrue()
-            ->and(GameChannels::createEvent($slug)['content'] ?? null)->toBe('{"name":"TWENTY ONE esports · '.$name.'","about":"The global chat of '.$name.' in the TWENTY ONE esports league: talk and vote."}');
+            ->and(GameChannels::createEvent($slug)['content'] ?? null)->toBe('{"name":"TWENTY ONE esports · Go","about":"The global chat of Go in the TWENTY ONE esports league: talk and vote."}')
+            // One channel for the three sizes: every lobby's chat is configured with the same id.
+            ->and(GameChannels::config($slug, null)['channel'] ?? null)->toBe('b107d16f48bd8e217071cc8d5b73c18365c837c796c43f37898a9f4e4387342e');
     }
+
+    // Only 13×13 on: the channel is open and published under the group, and a size switched off has none.
+    config(['esports.board_games.games.go-9.enabled' => false, 'esports.board_games.games.go-19.enabled' => false]);
+    app()->forgetInstance(GameRegistry::class);
+    expect(GameChannels::has('go-13'))->toBeTrue()
+        ->and(GameChannels::config('go-13', null)['channel'] ?? null)->toBe('b107d16f48bd8e217071cc8d5b73c18365c837c796c43f37898a9f4e4387342e')
+        ->and(GameChannels::open())->toContain('go')
+        ->and(GameChannels::has('go-9'))->toBeFalse();
+    GoOn::play();
 
     // The start page's browser games: Go, one tile for its sizes, right after Checkers, as everywhere (esports.game_order).
     expect(array_slice(HomeBoard::BROWSER_ORDER, -2))->toBe(['checkers', Go::GROUP]);
