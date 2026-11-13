@@ -129,9 +129,11 @@ test('the games menu and the account menus link every chess page, so none is fou
         ->toContain('href="'.route('me.correspondence').'"')
         ->toContain('href="'.route('gaming.edit').'"')
         ->toContain('data-test="games-menu-chess"')
-        // The account menu is the same for every game (DerCaddy, 2026-11-12): the chess settings are a tab of the
-        // settings and a link of the chess menu, no longer an entry beside "Settings".
+        // The account menu is the same for every game (DerCaddy, 2026-11-12): the page with the board and the sounds of
+        // every game is "Board and sounds" there, no longer "Chess settings".
         ->not->toContain('data-test="mobile-chess-settings"')
+        ->toContain('data-test="mobile-board-sounds"')
+        ->toContain('Board and sounds')
         ->toContain('Your correspondence games')
         ->not->toContain('Your daily games');
     expect($this->get(route('gaming.edit'))->assertOk()->getContent())->toContain('href="'.route('settings.chess').'"');

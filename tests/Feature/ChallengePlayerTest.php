@@ -52,6 +52,8 @@ test('a profile challenges to every game: daily chess, each board game by corres
 
     // A user id names the player as well; the board game's page fills the form from the npub it is handed.
     $this->actingAs($me)->get(route('challenge', ['to' => $rival->id]))->assertOk()->assertSee('Challenge Rivalin');
+    // A hex key names the player too, as on the pages this one hands on to.
+    $this->actingAs($me)->get(route('challenge', ['to' => $rival->pubkey]))->assertOk()->assertSee('Challenge Rivalin');
     Livewire::actingAs($me)->withQueryParams(['to' => $rival->npub])->test('pages::board.correspondence', ['board' => 'blockli'])
         ->assertSee('Rivalin');
 });

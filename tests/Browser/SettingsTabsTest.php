@@ -150,7 +150,7 @@ test('every settings page has the same tabs, the active one names the heading an
             'gaming.edit' => 'Gamer tags',
             'settings.account' => 'Account',
             'settings.notifications' => 'Notifications',
-            'settings.chess' => 'Chess',
+            'settings.chess' => 'Board and sounds',
             'settings.opponents' => 'Opponents',
             'settings.badges' => 'Badges and sharing',
             'settings.nip05' => 'Nostr address',

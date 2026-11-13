@@ -31,6 +31,7 @@ class RobotsController extends Controller
         '/me/',
         '/clans/create',
         '/clans/*/manage',
+        '/challenge',
         '/challenges/',
         '/chess/challenge',
         '/matches/*/room',

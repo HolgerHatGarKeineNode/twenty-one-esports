@@ -490,8 +490,8 @@ class Tournament extends Model
 
     /**
      * The games whose covers stand for this tournament: a combined tournament's games in the order they first come in
-     * its sequence (DerCaddy, 2026-11-12: its picture combines them, CoverSlices), else its own game alone. Options
-     * without a sequence are not parsed, so a list of tournaments pays nothing for it.
+     * its sequence (DerCaddy, 2026-11-12: its picture combines them, CoverStack), else its own game alone. Options
+     * that name fewer than two games are not parsed, so a list of single-game tournaments pays nothing for it.
      *
      * @return non-empty-list<string>
      */
@@ -499,7 +499,9 @@ class Tournament extends Model
     {
         $options = $this->options ?? [];
 
-        if (! is_array($options['games'] ?? null) && ! is_string($options['pairGame'] ?? null)) {
+        // FormatOptions::toArray() always writes a `games` key, for a single game too: only two or more games, or the
+        // older `pairGame`, make a combined tournament.
+        if (count(is_array($options['games'] ?? null) ? $options['games'] : []) < 2 && ! is_string($options['pairGame'] ?? null)) {
             return [$this->game];
         }
 

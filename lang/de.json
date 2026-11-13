@@ -1071,7 +1071,6 @@
     "Start": "Anfang",
     "Start a clan": "Clan gründen",
     "Start clan": "Clan gründen",
-    "Start daily chess": "Fernschach starten",
     "Start from your meetup": "Mit deinem Meetup starten",
     "Start position": "Grundstellung",
     "Started": "Begonnen",
@@ -1291,7 +1290,6 @@
     "Your color": "Deine Farbe",
     "Your confirmation did not match this move. Nothing was played.": "Deine Bestätigung passte nicht zu diesem Zug. Es wurde nichts gezogen.",
     "your daily challenge was accepted": "deine Fernschach-Herausforderung wurde angenommen",
-    "Your daily games": "Deine Fernschachpartien",
     "your deadline": "deine Frist",
     "Your first block in 2 minutes": "Dein erster Block in 2 Minuten",
     "your friend accepted, the game starts": "deine Einladung wurde angenommen, die Partie beginnt",
@@ -3487,7 +3485,6 @@
     "No game matches this filter.": "Kein Spiel passt zu diesem Filter.",
     "New here?": "Neu hier?",
     "Log in with Nostr or Google": "Mit Nostr oder Google anmelden",
-    "Play a casual chess game": "Eine lockere Schachpartie spielen",
     "Dismiss the first steps": "Erste Schritte ausblenden",
     "More": "Mehr",
     "Everywhere": "Überall",
@@ -9136,6 +9133,7 @@
     "Correspondence, one move a day": "Fernpartie, ein Zug pro Tag",
     "a time you agree on": "zu einer Zeit, die ihr ausmacht",
     "Pick the game. Nothing is sent yet: the next page shows the challenge before you send it.": "Wähl das Spiel. Noch wird nichts verschickt: Die nächste Seite zeigt die Herausforderung, bevor du sie abschickst.",
-    "Blitz and rapid are played live: invite a friend who is online in the game's lobby.": "Blitz und Rapid spielt ihr live: Lade in der Lobby des Spiels einen Freund ein, der gerade online ist.",
-    ":game and :count more": ":game und :count weitere"
+    "Blitz and rapid are played live: invite a friend who is online in the game's lobby.": "Blitz und Rapid werden live gespielt: Lade in der Lobby des Spiels einen Freund ein, der gerade online ist.",
+    ":game and :count more": ":game und :count weitere",
+    "Board and sounds": "Brett und Töne"
 }

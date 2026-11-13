@@ -62,7 +62,7 @@
     opponentFound: { en: 'Opponent found', de: 'Gegner gefunden' },
     copied: { en: 'Copied', de: 'Kopiert' },
     linkCopied: { en: 'Link copied', de: 'Link kopiert' },
-    yourDailyGames: { en: 'Your daily games', de: 'Deine Fernschachpartien' },
+    yourDailyGames: { en: 'Your correspondence games', de: 'Deine Fernpartien' },
     dailyTheirs: { en: 'Daily chess :number against :name, their move', de: 'Fernschach :number gegen :name, Gegner am Zug' },
     dailyYours: { en: 'Daily chess :number against :name, your move', de: 'Fernschach :number gegen :name, dein Zug' },
     name: { en: 'Name', de: 'Name' },

@@ -32,12 +32,12 @@ beforeEach(function () {
     BlockliOn::play();
 });
 
-function queuedRoundRobin(string $mode): Tournament
+function queuedRoundRobin(string $mode, TournamentResultsMode $results = TournamentResultsMode::Players): Tournament
 {
     $tournament = Tournament::factory()->create([
         'game' => 'blockli', 'mode' => $mode, 'format' => TournamentFormat::RoundRobin,
         'options' => FormatOptions::fromArray(['legs' => 1], GameProfile::for('blockli', $mode))->toArray(),
-        'capacity' => 3, 'results_mode' => TournamentResultsMode::Players, 'status' => TournamentStatus::Running,
+        'capacity' => 3, 'results_mode' => $results, 'status' => TournamentStatus::Running,
         'starts_at' => now()->subMinute(), 'slug' => 'queued-'.fake()->unique()->numberBetween(1, 1_000_000),
     ]);
 
@@ -86,4 +86,12 @@ test('daily play starts every game at once: nothing waits, every match is up now
 
     expect($boxes->count())->toBe(3)
         ->and($boxes->every(fn (array $box): bool => $box['href'] !== null && ! $box['queued']))->toBeTrue();
+});
+
+test('a director opens the rounds himself: no match of a director tournament is held back', function () {
+    $tournament = queuedRoundRobin('blitz', TournamentResultsMode::Director);
+    $boxes = collect(queuedBoxes($tournament));
+
+    expect($boxes->count())->toBe(3)
+        ->and($boxes->contains(fn (array $box): bool => $box['queued']))->toBeFalse();
 });

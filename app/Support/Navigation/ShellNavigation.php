@@ -477,8 +477,9 @@ final class ShellNavigation
             // Name, picture and Lightning address: the way in for players without a Nostr app (user 2026-10-25).
             self::link('profile', route('settings.profile'), $user->profile_event_at === null || $user->lud16 === null ? __('Set up name and Lightning') : __('Name and Lightning'), 'bolt', 'account-profile', 'mobile-profile'),
             self::link('notifications', route('settings.notifications'), __('Notifications'), 'bell', 'account-menu-notifications', 'mobile-notifications'),
-            // No "Chess settings" here: the account menu is the same for every game (DerCaddy, 2026-11-12). The chess menu links
-            // that page, and so does the settings rail ("Chess").
+            // Not "Chess settings": the account menu is the same for every game (DerCaddy, 2026-11-12). The page also holds the
+            // sounds and the volume of every game, so it stays one click away under a name that fits them all.
+            self::link('board-sounds', route('settings.chess'), __('Board and sounds'), 'settings', null, 'mobile-board-sounds'),
             self::link('badges', route('settings.badges'), __('Badges and sharing'), 'award', 'account-badges', 'mobile-badges'),
             $this->isAdmin || $this->isOrganizer ? self::link('tournaments', route('admin.tournaments'), __('Your tournaments'), 'trophy', 'account-tournaments', 'mobile-tournaments') : null,
         ]));

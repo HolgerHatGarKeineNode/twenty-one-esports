@@ -393,7 +393,7 @@ final class ShareCard
         $this->inviteSeats(72, 1400, 936, 72, 40);
     }
 
-    /** The game's cover (a combined tournament's: its games' covers in slices), or its name on the game's colours. */
+    /** The game's cover (a combined tournament's: its games' covers as stacked cards), or its name on the game's colours. */
     private function inviteCover(int $x, int $y, int $w, int $h): void
     {
         $registry = app(GameRegistry::class);

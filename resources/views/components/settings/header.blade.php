@@ -26,7 +26,7 @@
         'account' => [route('settings.account'), __('Account'), 'settings-account-tab', 'user'],
         'profile' => [route('settings.profile'), __('Name and Lightning'), 'settings-profile-tab', 'bolt'],
         'gaming' => [route('gaming.edit'), __('Gamer tags'), 'settings-gamer-tags-tab', 'home'],
-        'chess' => [route('settings.chess'), __('Chess'), 'settings-chess-tab', 'settings'],
+        'chess' => [route('settings.chess'), __('Board and sounds'), 'settings-chess-tab', 'settings'],
         'notifications' => [route('settings.notifications'), __('Notifications'), 'settings-notifications-tab', 'bell'],
         'opponents' => [route('settings.opponents'), __('Opponents'), 'settings-opponents-tab', 'clans'],
         'badges' => [route('settings.badges'), __('Badges and sharing'), 'settings-badges-tab', 'award'],

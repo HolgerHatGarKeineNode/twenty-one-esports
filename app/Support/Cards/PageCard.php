@@ -689,7 +689,7 @@ final class PageCard
         return $this->c->fit((string) end($forms), $face, $px, $max);
     }
 
-    /** The game's cover art (a combined tournament's: its games' covers in slices), or the game's name on its colours. */
+    /** The game's cover art (a combined tournament's: its games' covers as stacked cards), or the game's name on its colours. */
     private function tournamentCover(int $x, int $y, int $w, int $h): void
     {
         $game = (string) $this->facts['game'];

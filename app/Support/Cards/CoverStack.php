@@ -47,7 +47,9 @@ final class CoverStack
     /** The CSS of card `index` of `count` in a 16:9 box (its height follows from its width and the cover's ratio). */
     public static function style(int $index, int $count): string
     {
-        $card = self::of($count)[$index];
+        $cards = self::of($count);
+        // of() draws five cards at most: a sixth game and on share the last card's place instead of failing.
+        $card = $cards[min($index, count($cards) - 1)];
         $percent = fn (float $fraction): string => round($fraction * 100, 3).'%';
 
         return 'left:'.$percent($card['x']).';top:'.$percent($card['y']).';width:'.$percent($card['w']);

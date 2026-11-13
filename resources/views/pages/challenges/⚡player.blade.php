@@ -1,11 +1,13 @@
 <?php
 
 use App\Games\BoardGame;
+use App\Models\BoardGame as BoardGameModel;
 use App\Games\GameRegistry;
 use App\Models\User;
 use App\Support\GameNames;
 use App\Support\Nostr\NostrKeys;
 use App\Support\Series\CasualLobby;
+use Illuminate\Support\Facades\Route;
 use Livewire\Attributes\Computed;
 use Livewire\Attributes\Layout;
 use Livewire\Attributes\Title;
@@ -53,7 +55,8 @@ new #[Title('Challenge a player')] #[Layout('layouts::app')] class extends Compo
         $user = match (true) {
             $to === '' => null,
             ctype_digit($to) => User::query()->find((int) $to),
-            NostrKeys::npubToHex($to) !== null => User::query()->where('npub', $to)->first(),
+            // As the pages this one hands on to: an npub or a hex key, by the key itself.
+            ($hex = NostrKeys::toHex($to)) !== null => User::query()->where('pubkey', $hex)->first(),
             default => null,
         };
 
@@ -63,7 +66,7 @@ new #[Title('Challenge a player')] #[Layout('layouts::app')] class extends Compo
     /**
      * The challenges on offer, in the registry's order of games, the casual 1v1 last.
      *
-     * @return list<array{key: string, game: ?string, games: list<string>, title: string, line: string, href: string}>
+     * @return list<array{key: string, game: ?string, title: string, line: string, href: string}>
      */
     #[Computed]
     public function options(): array
@@ -74,10 +77,10 @@ new #[Title('Challenge a player')] #[Layout('layouts::app')] class extends Compo
 
         foreach ($registry->all() as $slug => $game) {
             if ($slug === 'chess') {
-                $options[] = ['key' => 'chess', 'game' => 'chess', 'games' => [], 'title' => GameNames::game('chess'),
+                $options[] = ['key' => 'chess', 'game' => 'chess', 'title' => GameNames::game('chess'),
                     'line' => __('Correspondence, one move a day'), 'href' => route('chess.challenge', $to)];
-            } elseif ($game instanceof BoardGame && $registry->mode($slug, \App\Models\BoardGame::CORRESPONDENCE) !== null && \Illuminate\Support\Facades\Route::has('board.correspondence')) {
-                $options[] = ['key' => $slug, 'game' => $slug, 'games' => [], 'title' => GameNames::game($slug),
+            } elseif ($game instanceof BoardGame && $registry->mode($slug, BoardGameModel::CORRESPONDENCE) !== null && Route::has('board.correspondence')) {
+                $options[] = ['key' => $slug, 'game' => $slug, 'title' => GameNames::game($slug),
                     'line' => __('Correspondence, one move a day'), 'href' => route('board.correspondence', ['board' => $slug, ...$to])];
             }
         }
@@ -85,7 +88,7 @@ new #[Title('Challenge a player')] #[Layout('layouts::app')] class extends Compo
         if (($casual = CasualLobby::games()) !== []) {
             // A calendar instead of four covers, the first game by name: the list of games is on the next page.
             $games = count($casual) === 1 ? GameNames::game($casual[0]) : __(':game and :count more', ['game' => GameNames::game($casual[0]), 'count' => count($casual) - 1]);
-            $options[] = ['key' => 'casual', 'game' => null, 'games' => [], 'title' => __('Schedule a 1v1'),
+            $options[] = ['key' => 'casual', 'game' => null, 'title' => __('Schedule a 1v1'),
                 'line' => $games.' · '.__('a time you agree on'),
                 'href' => route('challenges.casual', array_filter(['to' => $this->opponent?->id]))];
         }
@@ -114,7 +117,7 @@ new #[Title('Challenge a player')] #[Layout('layouts::app')] class extends Compo
                 <a href="{{ $option['href'] }}" @navigate($option['href']) data-test="challenge-option-{{ $option['key'] }}"
                    class="flex min-h-[72px] items-center gap-4 rounded-lg bg-card p-3 text-ink shadow-ring hover:bg-row-hover hover:text-ink">
                     @if ($option['game'] !== null)
-                        <x-game-cover :game="$option['game']" :games="$option['games']" size="thumb" class="w-24 rounded-md" />
+                        <x-game-cover :game="$option['game']" size="thumb" class="w-24 rounded-md" />
                     @else
                         <span class="flex aspect-video w-24 shrink-0 items-center justify-center rounded-md bg-well text-ink-2" aria-hidden="true"><x-icon name="calendar" :size="24" /></span>
                     @endif

@@ -1,11 +1,16 @@
 <?php
 
 use App\Enums\TournamentFormat;
+use App\Enums\TournamentStatus;
 use App\Games\GameRegistry;
+use App\Models\Tournament;
 use App\Support\Cards\Canvas;
 use App\Support\Cards\CoverStack;
 use App\Support\Cards\PageCard;
 use App\Support\Cards\ShareCard;
+use App\Support\Tournaments\FormatOptions;
+use App\Support\Tournaments\GameProfile;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Queue;
 use Illuminate\Support\Lottery;
 use Tests\Support\BlockliOn;
@@ -38,6 +43,22 @@ test('a combined tournament stands for each of its games once, in the order they
     expect(blockliTournament(TournamentFormat::SingleElimination, ['games' => ['blockli', 'chess', 'blockli', 'blockspace']])->coverGames())->toBe(['blockli', 'chess', 'blockspace'])
         ->and(blockliTournament(TournamentFormat::SingleElimination, ['pairGame' => 'blockspace'])->coverGames())->toBe(['blockli', 'blockspace'])
         ->and(blockliTournament()->coverGames())->toBe(['blockli']);
+
+    // A tournament of one game stores a `games` key too (FormatOptions::toArray()): its cover costs no query, so a
+    // list of tournaments pays nothing for it. A running lobby game's options ask the database when they are parsed.
+    $single = Tournament::factory()->create([
+        'game' => 'age-of-empires-2', 'mode' => '1v1', 'status' => TournamentStatus::Running,
+        'options' => FormatOptions::defaults(GameProfile::for('age-of-empires-2', '1v1'))->toArray(),
+    ])->refresh();
+    DB::enableQueryLog();
+
+    expect(array_key_exists('games', $single->options))->toBeTrue()
+        ->and($single->coverGames())->toBe(['age-of-empires-2'])
+        ->and(DB::getQueryLog())->toBe([]);
+
+    DB::disableQueryLog();
+    // More games than the stack draws: the page still renders.
+    expect(CoverStack::style(5, 6))->toBe(CoverStack::style(4, 5));
 });
 
 test('the cards go from the top left to the bottom right, each whole and inside the box, none hiding the name of the one before', function () {
@@ -90,8 +111,22 @@ test('the link preview and the invite card draw the covers side by side, Blockli
 
     expect($card->facts['games'])->toBe(['blockli', 'blockspace'])
         ->and(PageCard::tournament(blockliTournament())->facts['games'])->toBe([])
-        // A new cover of the second game is a new card.
         ->and($card->fingerprint())->not->toBe(PageCard::tournament(blockliTournament(TournamentFormat::SingleElimination, ['games' => ['blockli', 'chess']]))->fingerprint());
+
+    // A new cover file of the second game is a new card, on the link preview and on the invite: same tournament, only
+    // that file's version changes.
+    $share = ShareCard::tournamentInvite($tournament);
+    $before = [$card->fingerprint(), $share->fingerprint('wide')];
+    $versions = new ReflectionProperty(GameRegistry::class, 'coverVersions');
+    $known = $versions->getValue();
+    $versions->setValue(null, [...$known, app(GameRegistry::class)->coverPath('blockspace') => 'a-new-file']);
+
+    try {
+        expect($card->fingerprint())->not->toBe($before[0])
+            ->and($share->fingerprint('wide'))->not->toBe($before[1]);
+    } finally {
+        $versions->setValue(null, $known);
+    }
 
     // Each card holds its own game's cover: the PageCard's cover box is 688,48 448×210, Blockli at the back top left,
     // Blockspace on top at the bottom right.
