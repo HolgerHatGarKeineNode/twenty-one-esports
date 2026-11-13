@@ -20,6 +20,7 @@ use App\Support\Caster\Programme\Shows;
 use App\Support\Caster\Programme\SportWeather;
 use App\Support\Caster\QuietHours;
 use Carbon\CarbonImmutable;
+use Illuminate\Database\Eloquent\Collection;
 
 /**
  * The radio programme on the stream (plan "TWENTY ONE Radio", P19; user 2026-10-13: "neue Slides für den Livestream,
@@ -266,6 +267,10 @@ class ProgrammeSlides
                 $playing = $clip;
             }
 
+            if ($clip->status === CasterClip::READY && self::stranded($script, $clips, $now)) {
+                continue;
+            }
+
             $left = $clip->status === CasterClip::PLAYING
                 ? max(0.0, $clip->duration_seconds - max(0, $ts - (int) $clip->updated_at?->getTimestamp()))
                 : $clip->duration_seconds;
@@ -334,6 +339,26 @@ class ProgrammeSlides
             'night' => $night || QuietHours::active($now),
             'now' => $ts,
         ];
+    }
+
+    /**
+     * A later part of a show with no part before it left to lead to it (none ready or playing, none still to be voiced):
+     * the spool plays a later part only right after the one before (ClipSpool::continuations()), so it never airs. Prod
+     * 2026-11-13: part 41 of a talk of 2026-10-25 stood on the slide as "Turm und Genossin, gleich" for 19 days.
+     *
+     * @param  Collection<int, CasterClip>  $clips  the ready and playing clips, their scripts loaded
+     */
+    private static function stranded(CasterScript $script, Collection $clips, CarbonImmutable $now): bool
+    {
+        if ($script->part_group === null || (int) $script->part_index <= 1) {
+            return false;
+        }
+
+        $before = fn (?CasterScript $other): bool => $other !== null && $other->part_group === $script->part_group && (int) $other->part_index < (int) $script->part_index;
+
+        return ! $clips->contains(fn (CasterClip $clip): bool => $before($clip->script))
+            && ! CasterScript::query()->where('part_group', $script->part_group)->where('part_index', '<', (int) $script->part_index)
+                ->whereIn('status', [CasterScript::QUEUED, CasterScript::CLAIMED])->where('expires_at', '>', $now->utc())->exists();
     }
 
     /**

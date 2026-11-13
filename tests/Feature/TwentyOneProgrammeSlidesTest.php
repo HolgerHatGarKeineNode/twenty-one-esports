@@ -162,6 +162,22 @@ test('the next bulletin slot always stands, ready or not; a rubric in parts is o
     expect(array_column(programmeNow()['upcoming'], 'title'))->toBe(['Presseschau']);
 });
 
+test('a later part left alone in the spool is no show to come: the part before it aired or is gone, so it never plays', function () {
+    programmeClip(CasterScript::RUBRIC, Shows::STAMMTISCH, programmeBerlin('13:15'), 329, script: ['part_group' => 'old', 'part_index' => 41]);
+    $second = programmeClip(CasterScript::RUBRIC, 'presseschau', programmeBerlin('14:45'), 80, script: ['part_group' => 'g1', 'part_index' => 2]);
+
+    expect(array_column(programmeNow()['upcoming'], 'key'))->not->toContain('rubric:old')->not->toContain('rubric:g1');
+
+    // The part before it is still to be voiced: the show comes.
+    CasterScript::query()->create([
+        'kind' => CasterScript::RUBRIC, 'phase' => ScenePhase::BREAK, 'priority' => 0, 'text' => 'Eins.', 'facts_hash' => 'first-part', 'status' => CasterScript::QUEUED,
+        'source' => CasterScript::SOURCE_AI, 'topic' => 'presseschau', 'estimated_seconds' => 100, 'airs_at' => $second->script->airs_at, 'expires_at' => now()->addHours(3),
+        'part_group' => 'g1', 'part_index' => 1,
+    ]);
+
+    expect(array_column(programmeNow()['upcoming'], 'key'))->toContain('rubric:g1')->not->toContain('rubric:old');
+});
+
 test('without a voice the fixed news slot and the news sentence leave; the autopilot hour shows as the station ID, never in the spotlight', function (string $gone) {
     config(['tv.commentary.news.enabled' => true]);
     match ($gone) {
