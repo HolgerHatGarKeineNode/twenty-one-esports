@@ -2,8 +2,8 @@
  * Go for the browser (DerCaddy, 2026-10-27): the league's rules (App\Support\Board\GoRules) for the practice page, its
  * bots and its tips. The server judges every move of a practice game (App\Support\Board\GoPractice), so these rules
  * must be the server's to the letter: the same legal moves (suicide forbidden unless the stone captures, the simple
- * ko), the same captures, the same text of a position and the same count by area (tests/Unit/Board/GoPracticeScripts
- * holds both to the same answers in a thousand positions of random games).
+ * ko), the same captures, the same text of a position, the same count by area and the same end of a game
+ * (tests/Unit/Board/GoPracticeScripts holds both to the same answers in a thousand positions of random games).
  *
  * The board keeps its chains the way fast go programs do (libego, Pachi): every stone points to its chain's head, the
  * stones of a chain form a ring, and a chain counts its pseudo-liberties (each empty neighbour of each stone, counted
@@ -19,6 +19,10 @@
 
 export const FILES = 'abcdefghjklmnopqrst';
 export const KOMI = 7.5;
+/** The same stones with the same side to move this often draw the game (GoRules::REPETITIONS). */
+export const REPETITIONS = 3;
+/** A game is drawn after this many plies per point of the board (GoRules::MOVE_LIMIT). */
+export const MOVE_LIMIT = 4;
 /** The pass as a point: cell 0 is the corner of the frame, never a point of the board. */
 export const PASS = 0;
 export const EMPTY = 0;
@@ -384,6 +388,21 @@ export class GoBoard {
     /** The winner of the count as it stands: BLACK or WHITE (the half point of the komi rules out a tie). */
     winner() {
         return this.count().margin > 0 ? BLACK : WHITE;
+    }
+
+    /**
+     * How the game ends in this position, as the server judges it (GoRules::outcome()): counted after two passes, drawn
+     * when the same stones with the same side to move stand there a third time, drawn (not counted) at the move limit;
+     * null while it runs. `history` is the text of every position of the game, the start first and this one last.
+     */
+    outcome(history) {
+        if (this.over) return { result: this.winner() === BLACK ? '1-0' : '0-1', reason: 'score' };
+        const key = (text) => text.split(' ').slice(0, 2).join(' ');
+        const now = key(this.toText());
+        if (history.filter((earlier) => key(earlier) === now).length >= REPETITIONS) return { result: '1/2-1/2', reason: 'repetition' };
+        if (history.length - 1 >= MOVE_LIMIT * this.size * this.size) return { result: '1/2-1/2', reason: 'move_limit' };
+
+        return null;
     }
 
     /* ---- habits of the random games -------------------------------------------------------------- */

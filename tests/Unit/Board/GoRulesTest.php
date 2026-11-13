@@ -12,7 +12,7 @@ use App\Support\Board\GoRules;
 | unless the stone captures, ko and what lifts it, a snapback that is no
 | ko, two passes ending the game, the count by area as it stands (dead
 | stones count until captured, seki points are neutral) with White's komi,
-| the third repetition drawing, the move limit counting, and the text of a
+| the third repetition drawing, the move limit drawing, and the text of a
 | position read strictly. The sources are named in GoRules.
 |
 */
@@ -338,25 +338,24 @@ test('the same stones with the same side to move a third time draw the game', fu
         ->and($rules->outcome($position, [$text, goText(GO_EMPTY, 'b'), $text]))->toBeNull();
 });
 
-test('a game is counted at the move limit, four plies per point of the board', function () {
+test('a game that reaches the move limit, four plies per point of the board, is drawn and not counted', function () {
     $rules = new GoRules(9);
-    $position = goPosition([
-        'x . . . . . . . .',
-        '. . . . . . . . .',
-        '. . . . . . . . .',
-        '. . . . . . . . .',
-        '. . . . . . . . .',
-        '. . . . . . . . .',
-        '. . . . . . . . .',
-        '. . . . . . . . .',
-        '. . . . . . . . .',
-    ]);
     $history = array_map(fn (int $ply): string => "history {$ply}", range(0, 323));
+    // Black leads 45 to 43.5 with the board split by two walls.
+    $walls = goPosition(array_fill(0, 9, '. . . . x o . . .'), 'b');
+    // Counted at the limit, White's last stone on A9 made Black's 36 points touch both colours: 9 to 44.5, and Black
+    // could not answer any more (challenger, 2026-11-13). Now neither stone decides.
+    $spoiled = $rules->apply($walls, 'a9');
 
     expect($rules->moveLimit())->toBe(324)
         ->and((new GoRules(19))->moveLimit())->toBe(1444)
-        ->and($rules->outcome($position, $history))->toBeNull()
-        ->and($rules->outcome($position, [...$history, 'history 324']))->toBe(['result' => '1-0', 'reason' => 'move_limit']);
+        ->and($rules->areaCount($walls))->toMatchArray(['margin' => 1.5, 'lead' => 'w'])
+        ->and($rules->areaCount($spoiled))->toMatchArray(['margin' => -35.5, 'lead' => 'b'])
+        ->and($rules->outcome($spoiled, $history))->toBeNull()
+        ->and($rules->outcome($spoiled, [...$history, 'history 324']))->toBe(['result' => '1/2-1/2', 'reason' => 'move_limit'])
+        ->and($rules->outcome($walls, [...$history, 'history 324']))->toBe(['result' => '1/2-1/2', 'reason' => 'move_limit'])
+        // Two passes still end the game by its count, at the limit too.
+        ->and($rules->outcome([...$walls, 'passes' => 2], [...$history, 'history 324']))->toBe(['result' => '1-0', 'reason' => 'score']);
 });
 
 test('the text of a position is read strictly', function () {

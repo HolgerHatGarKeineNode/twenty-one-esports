@@ -198,7 +198,7 @@ test('the board is a go board: stones by colour, star points, the same way round
         ->and($config['labels']['black'])->toBe('White')
         ->and($config['labels']['stones'])->toBe(GoLabels::board()['stones'])
         ->and($config['labels']['count'])->toBe(GoLabels::board()['count'])
-        ->and($config['labels']['reasons'])->toMatchArray(['score' => 'Counted after both passed', 'move_limit' => 'Counted at the move limit']);
+        ->and($config['labels']['reasons'])->toMatchArray(['score' => 'Counted after both passed', 'move_limit' => 'Drawn at the move limit']);
 
     $this->actingAs($game->player('w'))->get(route('board.show', $game))->assertOk()
         ->assertSee('data-test="stone-input"', false)->assertSee('data-test="pass"', false)->assertSee('data-test="count"', false)

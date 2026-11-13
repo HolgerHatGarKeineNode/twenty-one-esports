@@ -24,8 +24,10 @@ use InvalidArgumentException;
  *   stones. A dead stone counts as long as it stands, so it is captured before passing; under area scoring a stone
  *   played into one's own area costs nothing. White gets KOMI for moving second: 7.5 points, and with its half point a
  *   counted game is never drawn.
- * - A game that reaches MOVE_LIMIT plies per point of the board (4 x 81 on 9 x 9) is counted as it stands, so no
- *   game, not even one move a day, runs on for ever.
+ * - A game that reaches MOVE_LIMIT plies per point of the board (4 x 81 on 9 x 9) is drawn, so no game, not even one
+ *   move a day, runs on for ever. It is not counted there (owner's decision, 2026-11-13): counted at the limit, the
+ *   side behind put one last stone into the other's area, which then touched both colours and counted for nobody
+ *   (measured on 9 x 9: 45 to 43.5 became 9 to 44.5), and the move could not be answered any more.
  *
  * Sources, read 2026-10-27: John Tromp's Tromp-Taylor rules (tromp.github.io/go.html), rule 8 (the game ends after
  * two consecutive passes) and rule 9 (a player's score is the points of her colour plus the empty points that reach
@@ -58,7 +60,7 @@ final class GoRules implements AreaCount, BoardRules, StoneBoard
     /** The same stones with the same side to move this often draw the game. */
     public const REPETITIONS = 3;
 
-    /** A game is counted after this many plies per point of the board, whatever happens (324 on 9 x 9, 1444 on 19 x 19). */
+    /** A game is drawn after this many plies per point of the board, whatever happens (324 on 9 x 9, 1444 on 19 x 19). */
     public const MOVE_LIMIT = 4;
 
     public const PASS = 'pass';
@@ -261,7 +263,7 @@ final class GoRules implements AreaCount, BoardRules, StoneBoard
     public function outcome(mixed $position, array $history): ?array
     {
         if ($position['passes'] >= 2) {
-            return $this->counted($position, 'score');
+            return $this->counted($position);
         }
 
         $key = self::repetitionKey($this->serialize($position));
@@ -272,7 +274,7 @@ final class GoRules implements AreaCount, BoardRules, StoneBoard
         }
 
         if (count($history) - 1 >= $this->moveLimit()) {
-            return $this->counted($position, 'move_limit');
+            return ['result' => '1/2-1/2', 'reason' => 'move_limit'];
         }
 
         return null;
@@ -282,12 +284,12 @@ final class GoRules implements AreaCount, BoardRules, StoneBoard
     {
         return [
             'score' => 'Counted after both passed',
-            'move_limit' => 'Counted at the move limit',
+            'move_limit' => 'Drawn at the move limit',
             'repetition' => 'Threefold repetition',
         ];
     }
 
-    /** The plies after which a game is counted as it stands. */
+    /** The plies after which a game is drawn. */
     public function moveLimit(): int
     {
         return self::MOVE_LIMIT * $this->size * $this->size;
@@ -416,9 +418,9 @@ final class GoRules implements AreaCount, BoardRules, StoneBoard
      * Counted as it stands: the side with the higher score wins.
      *
      * @param  Position  $position
-     * @return array{result: '1-0'|'0-1'|'1/2-1/2', reason: string}
+     * @return array{result: '1-0'|'0-1'|'1/2-1/2', reason: 'score'}
      */
-    private function counted(array $position, string $reason): array
+    private function counted(array $position): array
     {
         $lead = $this->areaCount($position)['lead'];
 
@@ -426,7 +428,7 @@ final class GoRules implements AreaCount, BoardRules, StoneBoard
             'w' => '1-0',
             'b' => '0-1',
             default => '1/2-1/2',
-        }, 'reason' => $reason];
+        }, 'reason' => 'score'];
     }
 
     /**

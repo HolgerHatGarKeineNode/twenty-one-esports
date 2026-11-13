@@ -1086,9 +1086,9 @@ registerAlpine(() => {
             return this.state.status === 'active' && this.color !== null && this.state.turn === this.color && this.state.ply > 0 && this.state.lastMove?.path?.length === 0;
         },
 
-        /** A game that ended by its count (Go: both passed, or the move limit), not by a resignation or the clock. */
+        /** A game that ended by its count (Go: both passed), not by a resignation, the clock or the move limit's draw. */
         get counted() {
-            return this.state.status === 'finished' && !!this.state.count && ['score', 'move_limit'].includes(this.state.reason);
+            return this.state.status === 'finished' && !!this.state.count && this.state.reason === 'score';
         },
 
         /** The marks of each side's area: on request, and on a counted game's last position. */
@@ -1143,8 +1143,9 @@ registerAlpine(() => {
             };
             const lead = count.lead ? fill(words.lead, { colour: this.colour(count.lead), points: number(Math.abs(count.margin)) }) : words.level;
 
-            // While the game runs it is the count as it stands; once it is over, the final one.
-            const line = this.state.status === 'active' ? words.line : (words.final ?? words.line);
+            // While the game runs it is the count as it stands; once it is over, the final one. A game drawn at the move
+            // limit was not counted: the count is still only how it stood.
+            const line = this.state.status === 'active' || this.state.reason === 'move_limit' ? words.line : (words.final ?? words.line);
 
             return fill(line, { first: side('w'), second: side('b'), lead });
         },
