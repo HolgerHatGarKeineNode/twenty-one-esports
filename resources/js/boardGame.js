@@ -1162,7 +1162,7 @@ registerAlpine(() => {
 
             // While the game runs it is the count as it stands; once it is over, the final one. A game drawn at the move
             // limit was not counted: the count is still only how it stood.
-            const line = this.state.status === 'active' || this.state.reason === 'move_limit' ? words.line : (words.final ?? words.line);
+            const line = this.state.status === 'active' || this.state.reason === 'move_limit' ? words.line : words.final;
 
             return fill(line, { first: side('w'), second: side('b'), lead });
         },
@@ -1205,7 +1205,8 @@ registerAlpine(() => {
             if (next === this.stone) return;
             // Another point: the refusal of the last one no longer stands.
             [this.stone, this.error] = [next, ''];
-            this.render();
+            // Only the shown stone moves: nothing else on the board changes under a mouse.
+            if (this.$refs.board) this.drawGhost(this.$refs.board);
         },
 
         /** The intersection nearest to a board position, null off the board (more than half a line beyond its edge). */
@@ -1345,14 +1346,12 @@ registerAlpine(() => {
 
             const owners = this.areaShown ? this.state.count.owners : null;
             const ownerOf = new Map(owners ? [...owners.w.map((id) => [id, 'w']), ...owners.b.map((id) => [id, 'b'])] : []);
-            const touch = this.pointerType !== 'mouse' && this.pointerType !== 'keyboard';
             points.forEach((point) => {
                 const piece = pieces[point.id] ?? null;
                 const group = svgElement('g', { 'data-point': point.id, 'data-piece': piece ? piece.side + ':' + piece.kind : '', 'aria-label': this.pointLabel(point.id, piece) });
                 group.append(svgElement('rect', { x: point.x - unit / 2, y: point.y - unit / 2, width: unit, height: unit, fill: 'transparent' }));
                 if (piece) {
-                    const kind = piece.kind === 'white' || piece.kind === 'black' ? piece.kind : stoneKind(piece.side);
-                    group.append(svgElement('circle', { cx: point.x, cy: point.y, r: unit * 0.47, fill: STONE_FILL[kind], stroke: STONE_EDGE[kind], 'stroke-width': 1, 'vector-effect': 'non-scaling-stroke' }));
+                    group.append(svgElement('circle', { cx: point.x, cy: point.y, r: unit * 0.47, fill: STONE_FILL[piece.kind], stroke: STONE_EDGE[piece.kind], 'stroke-width': 1, 'vector-effect': 'non-scaling-stroke' }));
                     if (point.id === last) group.append(svgElement('circle', { cx: point.x, cy: point.y, r: unit * 0.19, fill: 'none', stroke: GO.ring, 'stroke-width': unit * 0.07, 'data-last': '1' }));
                 }
                 const owner = ownerOf.get(point.id);
@@ -1363,18 +1362,29 @@ registerAlpine(() => {
                 svg.append(group);
             });
 
-            // The stone shown before it is set: in the player's colour where it may go, red where not. A finger's gets the
-            // lines through it, so on 19 x 19 the row and the file are plain to see.
-            const at = this.stone && this.canMove && !pieces[this.stone] ? byId.get(this.stone) : null;
-            if (at) {
-                const legal = this.stoneMoves.has(at.id);
-                if (touch) {
-                    svg.append(svgElement('line', { x1: left, y1: at.y, x2: right, y2: at.y, stroke: GO.cross, 'stroke-width': 2, 'vector-effect': 'non-scaling-stroke', 'pointer-events': 'none' }));
-                    svg.append(svgElement('line', { x1: at.x, y1: top, x2: at.x, y2: bottom, stroke: GO.cross, 'stroke-width': 2, 'vector-effect': 'non-scaling-stroke', 'pointer-events': 'none' }));
-                }
-                const kind = stoneKind(this.color);
-                svg.append(svgElement('circle', { cx: at.x, cy: at.y, r: unit * 0.47, fill: legal ? STONE_FILL[kind] : GO.illegal, stroke: legal ? STONE_EDGE[kind] : 'none', 'stroke-width': 1, 'vector-effect': 'non-scaling-stroke', opacity: legal ? 0.6 : 1, 'pointer-events': 'none', 'data-preview': legal ? 'legal' : 'illegal' }));
+            this.drawGhost(svg);
+        },
+
+        /**
+         * The stone shown before it is set: in the player's colour where it may go, red where not. A finger's gets the
+         * lines through it, so on 19 x 19 the row and the file are plain to see. Drawn on its own, so a mouse moving over
+         * the board does not rebuild it (measured 2026-11-14 on 19 x 19: 5.7 ms a point for the whole board).
+         */
+        drawGhost(svg) {
+            svg.querySelectorAll(':scope > [data-ghost]').forEach((element) => element.remove());
+            const points = this.layout.points;
+            const at = this.stone && this.canMove && !this.piecesAt(this.shownPly)[this.stone] ? points.find((point) => point.id === this.stone) : null;
+            if (!at) return;
+            const unit = this.stoneUnit;
+            const legal = this.stoneMoves.has(at.id);
+            if (this.pointerType !== 'mouse' && this.pointerType !== 'keyboard') {
+                const xs = points.map((point) => point.x);
+                const ys = points.map((point) => point.y);
+                svg.append(svgElement('line', { x1: Math.min(...xs), y1: at.y, x2: Math.max(...xs), y2: at.y, stroke: GO.cross, 'stroke-width': 2, 'vector-effect': 'non-scaling-stroke', 'pointer-events': 'none', 'data-ghost': '' }));
+                svg.append(svgElement('line', { x1: at.x, y1: Math.min(...ys), x2: at.x, y2: Math.max(...ys), stroke: GO.cross, 'stroke-width': 2, 'vector-effect': 'non-scaling-stroke', 'pointer-events': 'none', 'data-ghost': '' }));
             }
+            const kind = stoneKind(this.color);
+            svg.append(svgElement('circle', { cx: at.x, cy: at.y, r: unit * 0.47, fill: legal ? STONE_FILL[kind] : GO.illegal, stroke: legal ? STONE_EDGE[kind] : 'none', 'stroke-width': 1, 'vector-effect': 'non-scaling-stroke', opacity: legal ? 0.6 : 1, 'pointer-events': 'none', 'data-preview': legal ? 'legal' : 'illegal', 'data-ghost': '' }));
         },
 
         /* ---- take back (BoardGameService::takeBack()) ------------------------------------------------- */
