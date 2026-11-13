@@ -24,6 +24,7 @@ use App\Models\Tournament;
 use App\Models\TournamentMatch;
 use App\Models\TournamentParticipant;
 use App\Models\TournamentRound;
+use App\Models\TournamentStage;
 use App\Models\User;
 use App\Support\Board\BoardGameService;
 use App\Support\Board\BoardRuleViolation;
@@ -335,7 +336,7 @@ final class TournamentMatchMaker
      */
     public static function waitsForEarlierRound(Tournament $tournament, TournamentMatch $match): bool
     {
-        if ($tournament->isDirectorMode() || $tournament->profile()->isDaily() || $match->round->stage->format !== TournamentFormat::RoundRobin) {
+        if (! self::queuesRounds($tournament, $match->round->stage)) {
             return false;
         }
 
@@ -346,6 +347,16 @@ final class TournamentMatchMaker
             ->whereHas('round', fn ($round) => $round->where('tournament_stage_id', $match->round->tournament_stage_id)->where('number', '<', $match->round->number))
             ->whereHas('slots', fn ($slot) => $slot->whereIn('tournament_participant_id', $sides))
             ->exists();
+    }
+
+    /**
+     * Whether a stage starts its round-robin matches one after another per
+     * player ({@see waitsForEarlierRound()}): not in daily play, which starts
+     * them all at once, nor for directors, who open the rounds themselves.
+     */
+    public static function queuesRounds(Tournament $tournament, TournamentStage $stage): bool
+    {
+        return ! $tournament->isDirectorMode() && ! $tournament->profile()->isDaily() && $stage->format === TournamentFormat::RoundRobin;
     }
 
     /**

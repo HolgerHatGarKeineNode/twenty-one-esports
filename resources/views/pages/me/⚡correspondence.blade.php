@@ -15,7 +15,7 @@ use Livewire\Attributes\Title;
 use Livewire\Component;
 
 /*
- * "Your daily games" (ChessCorrespondenceList.dc.html): the numbers, the
+ * "Your correspondence games" (ChessCorrespondenceList.dc.html, once "Your daily games"): the numbers, the
  * games where it is your move and where it is theirs, the finished ones.
  * Open challenges (ChessOverlays "Daily challenge received") sit above the
  * games; the list design has no place for them.
@@ -24,7 +24,7 @@ use Livewire\Component;
  * listed below, each leading to its board, with the board challenges to
  * answer; they are played and answered on the board games' own pages.
  */
-new #[Title('Daily chess')] #[Layout('layouts::app', ['section' => 'chess', 'scripts' => ['resources/js/chess.js']])] class extends Component {
+new #[Title('Your correspondence games')] #[Layout('layouts::app', ['section' => 'chess', 'scripts' => ['resources/js/chess.js']])] class extends Component {
     public string $error = '';
 
     public function acceptChallenge(int $id): void
@@ -295,8 +295,8 @@ new #[Title('Daily chess')] #[Layout('layouts::app', ['section' => 'chess', 'scr
 
     @if ($corrRows->isEmpty() && $this->incoming->isEmpty() && $this->outgoing->isEmpty())
         <section class="rv-card flex flex-col items-start gap-3 px-4 py-6 lg:px-6" data-test="correspondence-empty">
-            <b class="font-display text-lg">{{ __('No daily games yet') }}</b>
-            <x-button icon="pawn" :href="route('chess.challenge')">{{ __('Start daily chess') }}</x-button>
+            <b class="font-display text-lg">{{ __('No correspondence games yet') }}</b>
+            <x-button icon="send" :href="route('challenge')">{{ __('Challenge a player') }}</x-button>
         </section>
     @else
         {{-- Status chips: all first, then by count; a zero stays visible, dimmed (rule "Chip filter rows"). --}}
@@ -349,7 +349,7 @@ new #[Title('Daily chess')] #[Layout('layouts::app', ['section' => 'chess', 'scr
     @endif
 
     <div class="flex flex-wrap items-center gap-x-6 gap-y-3">
-        <x-button icon="pawn" :href="route('chess.challenge')" data-test="new-challenge">{{ __('Challenge a player') }}</x-button>
+        <x-button icon="send" :href="route('challenge')" data-test="new-challenge">{{ __('Challenge a player') }}</x-button>
         {{-- Notifications: one line, the details in the settings (the list design has no panel for it). --}}
         <span class="flex min-w-0 grow items-center gap-3 text-[13px]">
             <x-icon name="bell" :size="16" class="shrink-0 text-proof" />

@@ -189,6 +189,8 @@ Route::get('broadcast/{token}/snapshot.json', [BroadcastOverlayController::class
 // Daily chess (P5b): challenge a player, your daily games.
 Route::middleware('auth')->group(function () {
     Route::livewire('chess/challenge', 'pages::chess.challenge')->name('chess.challenge');
+    // "Challenge a player" for every game (DerCaddy, 2026-11-13): pick the game, then that game's challenge page.
+    Route::livewire('challenge', 'pages::challenges.player')->name('challenge');
     Route::livewire('me/correspondence', 'pages::me.correspondence')->name('me.correspondence');
     // "Your chats" (DerCaddy, 2026-10-18): the player's desks, game chats and match rooms in one list (App\Support\Chat\ChatInbox).
     Route::livewire('me/chats', 'pages::me.chats')->name('me.chats');

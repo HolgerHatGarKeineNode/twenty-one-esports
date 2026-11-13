@@ -31,7 +31,7 @@
 
 <article {{ $attributes->class('relative flex min-w-0 flex-col overflow-hidden rounded-card bg-card shadow-ring-hairline has-[[data-card-link]:focus-visible]:outline-2 has-[[data-card-link]:focus-visible]:outline-offset-2 has-[[data-card-link]:focus-visible]:outline-btc-hi') }}
          data-test="organizer-card" data-tournament="{{ $tournament->id }}" data-state="{{ $card['state'] }}">
-    <x-game-cover :game="$tournament->game" size="header" :loading="$loading" class="w-full" data-test="organizer-card-cover" />
+    <x-game-cover :game="$tournament->game" :games="$tournament->coverGames()" size="header" :loading="$loading" class="w-full" data-test="organizer-card-cover" />
 
     <div class="flex grow flex-col gap-3 p-4 lg:p-5">
         <p class="m-0 flex flex-wrap items-center gap-2 text-xs font-bold">

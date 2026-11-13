@@ -64,7 +64,7 @@
         @if ($featured !== null)
             @php($tournament = $featured['tournament'])
             <a href="{{ route('tournaments.show', $tournament) }}" @navigate(route('tournaments.show', $tournament)) class="rv-card rv-glow flex items-center gap-3 border-btc-ring bg-feature p-2.5 lg:hidden" data-test="hero-featured">
-                <x-game-cover :game="$tournament->game" size="thumb" class="w-20 rounded-[2px] [&_img]:object-cover" />
+                <x-game-cover :game="$tournament->game" :games="$tournament->coverGames()" size="thumb" class="w-20 rounded-[2px] [&_img]:object-cover" />
                 <span class="flex min-w-0 flex-col">
                     <b class="truncate" title="{{ $tournament->name }}">{{ HomeBoard::shortName($tournament) }}</b>
                     <span class="flex flex-wrap items-baseline gap-x-2">

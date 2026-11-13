@@ -347,9 +347,9 @@ new #[Layout('layouts::app', ['scripts' => ['resources/js/blockli/practice.js']]
                                x-text="barLine" data-test="block-status"></p>
                             <button type="button" class="inline-flex h-11 shrink-0 cursor-pointer items-center justify-center gap-2 rounded-md px-[18px] text-[13px] disabled:cursor-default disabled:opacity-50 lg:order-1 lg:w-full"
                                     :class="[blockMode ? 'border border-btc bg-btc-press font-bold text-btc-hi' : 'btn-w border border-line bg-well text-ink', blockButtons ? 'max-lg:hidden' : '']"
-                                    :aria-pressed="blockMode ? 'true' : 'false'" :disabled="!myTurn || !canSetBlocks" x-on:click="setBlockMode(!blockMode, $event)" aria-keyshortcuts="ArrowUp ArrowDown ArrowLeft ArrowRight R Enter Escape"
+                                    :aria-pressed="toggleMoves ? null : (blockMode ? 'true' : 'false')" :disabled="!myTurn || !canSetBlocks" x-on:click="setBlockMode(!blockMode, $event)" aria-keyshortcuts="ArrowUp ArrowDown ArrowLeft ArrowRight R Enter Escape"
                                     data-test="mode-block">
-                                {{ __('Set a block') }} <span class="tabular-nums" x-text="blocksLeft"></span>
+                                <span x-show="!toggleMoves">{{ __('Set a block') }} <span class="tabular-nums" x-text="blocksLeft"></span></span><span x-show="toggleMoves" x-cloak>{{ __('Move the pawn') }}</span>
                             </button>
                             <div class="min-w-0 grow gap-2 lg:order-3" :class="blockButtons ? 'flex' : 'hidden'" data-block-buttons>
                                 <button type="button" class="inline-flex h-11 grow cursor-pointer items-center justify-center rounded-md border border-line bg-well px-2 text-xs whitespace-nowrap min-[360px]:text-[13px] text-ink btn-w hover:text-ink disabled:cursor-default disabled:opacity-50"
@@ -357,7 +357,7 @@ new #[Layout('layouts::app', ['scripts' => ['resources/js/blockli/practice.js']]
                                 <button type="button" class="inline-flex h-11 grow cursor-pointer items-center justify-center rounded-md bg-btc px-2 text-xs whitespace-nowrap min-[360px]:text-[13px] font-bold text-on-btc btn-p hover:text-on-btc disabled:cursor-default disabled:opacity-50"
                                         x-bind:disabled="!preview || !preview.move" x-on:click="setBlock()" data-test="set-block">{{ __('Confirm') }}</button>
                                 <button type="button" class="inline-flex h-11 grow cursor-pointer items-center justify-center rounded-md border border-edge px-2 text-xs whitespace-nowrap min-[360px]:text-[13px] text-ink btn-s hover:text-ink"
-                                        x-on:click="setBlockMode(false)" data-test="mode-move">{{ __('Move the pawn') }}</button>
+                                        :class="toggleMoves ? 'lg:hidden' : ''" x-on:click="setBlockMode(false)" data-test="mode-move">{{ __('Move the pawn') }}</button>
                             </div>
                             {{-- Always in the page, so a screen reader hears each new hint (the keys say where the block is). --}}
                             <p class="sr-only" role="status" aria-live="polite" x-text="blockHint" data-test="block-hint"></p>

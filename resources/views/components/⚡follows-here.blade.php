@@ -283,7 +283,9 @@ new class extends Component {
                                 </a>
                             @endif
                             @if (in_array($context, ['me', 'chess'], true))
-                                <a href="{{ route('chess.challenge', ['to' => $player->npub]) }}" class="{{ $button }}" data-test="follows-here-challenge" aria-label="{{ __('Challenge :name to daily chess', ['name' => $player->displayName()]) }}" title="{{ __('Challenge :name to daily chess', ['name' => $player->displayName()]) }}">
+                                {{-- The chess lobby challenges to daily chess; "Your follows here" on the hub to any game, picked next (DerCaddy, 2026-11-13). --}}
+                                @php($challengeLabel = $context === 'chess' ? __('Challenge :name to daily chess', ['name' => $player->displayName()]) : __('Challenge :name', ['name' => $player->displayName()]))
+                                <a href="{{ $context === 'chess' ? route('chess.challenge', ['to' => $player->npub]) : route('challenge', ['to' => $player->npub]) }}" class="{{ $button }}" data-test="follows-here-challenge" aria-label="{{ $challengeLabel }}" title="{{ $challengeLabel }}">
                                     <x-icon name="pawn" :size="16" class="shrink-0" /><span class="max-sm:sr-only" @if ($lookingKey) x-bind:class="{ 'sr-only': canInvite() && (looks({{ $player->id }}) || invitedBlitz({{ $player->id }})) }" @endif>{{ __('Challenge') }}</span>
                                 </a>
                             @endif

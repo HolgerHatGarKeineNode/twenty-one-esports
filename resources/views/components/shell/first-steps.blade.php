@@ -22,8 +22,9 @@
     <div class="flex items-center gap-3 py-1.5 pr-1 pl-4 lg:gap-6 lg:py-3 lg:pr-4 lg:pl-8">
         <h2 id="first-steps-h" class="m-0 shrink-0 text-[13px] font-bold text-btc-hi">{{ __('New here?') }}</h2>
         <ol class="m-0 flex min-w-0 flex-1 snap-x snap-mandatory list-none gap-5 overflow-x-auto p-0 whitespace-nowrap [scrollbar-width:none] max-lg:pr-12 max-lg:[mask-image:linear-gradient(90deg,#000_calc(100%-48px),transparent)] lg:gap-6" data-test="first-steps-list">
-            {{-- Phones get the short labels: "Log in with Nostr or Google" alone was wider than the row and was cut mid-word at 390. --}}
-            @foreach ([[route('login', ['then' => 'play']), __('Log in with Nostr or Google'), __('Log in')], [route('chess.lobby'), __('Play a casual chess game'), __('Play chess')], [route('clans.index'), __('Join a clan'), __('Join a clan')]] as $index => [$href, $label, $short])
+            {{-- The second step is every game's page, not the chess lobby (DerCaddy, 2026-11-12: the league is more than chess).
+                 Phones get the short labels: "Log in with Nostr or Google" alone was wider than the row and was cut mid-word at 390. --}}
+            @foreach ([[route('login', ['then' => 'play']), __('Log in with Nostr or Google'), __('Log in')], [route('play'), __('Pick a game and play'), __('Pick a game')], [route('clans.index'), __('Join a clan'), __('Join a clan')]] as $index => [$href, $label, $short])
                 <li class="flex shrink-0 snap-start items-center gap-2 text-[13px]">
                     <span aria-hidden="true" class="flex size-5 shrink-0 items-center justify-center rounded-xs bg-btc text-xs font-bold text-on-btc">{{ $index + 1 }}</span>
                     <a href="{{ $href }}" @navigate($href) class="inline-flex min-h-11 items-center text-ink underline decoration-edge underline-offset-4 hover:text-ink hover:decoration-btc lg:min-h-8"><span class="lg:hidden">{{ $short }}</span><span class="max-lg:hidden">{{ $label }}</span></a>

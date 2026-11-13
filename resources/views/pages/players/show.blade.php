@@ -22,7 +22,7 @@
     $plays = $profile->games();
     $description = ($plays !== null
         ? __(':name plays :games in the TWENTY ONE esports league.', ['name' => $name, 'games' => $plays])
-        : __(':name is a player in the TWENTY ONE esports league, the chess and Rocket League ladder of the Bitcoin community EINUNDZWANZIG.', ['name' => $name]))
+        : __(':name plays in TWENTY ONE esports, the esports league of the Bitcoin community EINUNDZWANZIG.', ['name' => $name]))
         .($profile->clan !== null ? ' '.__('Clan: :clan.', ['clan' => $profile->clan->name]) : '')
         .(filled($profile->about) ? ' '.\Illuminate\Support\Str::limit(\Illuminate\Support\Str::squish($profile->about), 100, '…') : '');
     app(\App\Support\PageMeta::class)
@@ -92,7 +92,8 @@
                 </div>
                 @unless ($isMe)
                     <div class="flex min-w-0 flex-wrap items-center gap-3 lg:col-start-2 lg:max-w-[520px]">
-                        <a href="{{ route('chess.challenge', ['to' => $user->npub]) }}" data-test="challenge"
+                        {{-- Every game this player can be challenged to, picked on the next page (DerCaddy, 2026-11-13: it was daily chess only). --}}
+                        <a href="{{ route('challenge', ['to' => $user->npub]) }}" data-test="challenge"
                            class="flex h-11 min-w-0 grow items-center justify-center gap-2 rounded-md bg-btc px-5 text-sm font-bold whitespace-nowrap text-on-btc hover:bg-btc-hi hover:text-on-btc lg:grow-0">
                             <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true" class="shrink-0"><path d="M8 5v14l11-7z"></path></svg><span class="truncate">{{ __('Challenge :name', ['name' => $name]) }}</span>
                         </a>

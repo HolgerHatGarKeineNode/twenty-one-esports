@@ -458,7 +458,7 @@ new #[Layout('layouts::app', ['section' => 'tournaments'])] class extends Compon
         </div>
 
         <aside class="rv-card flex flex-col self-start overflow-hidden" data-test="signup-aside">
-            <x-game-cover :game="$tournament->game" size="card" class="w-full [&_img]:object-cover" data-test="game-cover" />
+            <x-game-cover :game="$tournament->game" :games="$tournament->coverGames()" size="card" class="w-full [&_img]:object-cover" data-test="game-cover" />
             <dl class="m-0 flex flex-col px-4 text-[13px]">
                 <div class="flex h-10 items-center justify-between gap-3 border-b border-hairline"><dt class="text-ink-2">{{ __('Format') }}</dt><dd class="m-0 truncate"><span data-test="signup-format">{{ \App\Support\Tournaments\Lobbies::formatLabel($tournament) }}</span>, {{ \App\Support\Tournaments\Lobbies::gameLine($tournament) }}</dd></div>
                 <div class="flex h-10 items-center justify-between gap-3 border-b border-hairline"><dt class="text-ink-2">{{ __('Places') }}</dt><dd class="m-0 tabular-nums" data-test="places">{{ $places['taken'] }} / {{ $places['places'] }}</dd></div>

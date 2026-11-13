@@ -382,7 +382,8 @@ final class TournamentTv
             'ids' => $ids,
             'from' => $from,
             'round' => $round,
-            'live' => $box['status'] === 'ready' && $box['bracket'] !== 'bye' && $known,
+            // A round-robin match queued behind its sides' earlier rounds is not up now (DerCaddy 2026-11-04).
+            'live' => $box['status'] === 'ready' && $box['bracket'] !== 'bye' && $known && ! ($box['queued'] ?? false),
             'sig' => implode('|', [$box['status'], (string) $box['label'], implode(',', array_map(fn (?int $id): string => (string) $id, $ids))]),
         ];
     }

@@ -127,9 +127,14 @@ test('the games menu and the account menus link every chess page, so none is fou
 
     expect($html)->toContain('data-test="games-menu"')
         ->toContain('href="'.route('me.correspondence').'"')
-        ->toContain('href="'.route('settings.chess').'"')
+        ->toContain('href="'.route('gaming.edit').'"')
         ->toContain('data-test="games-menu-chess"')
-        ->toContain('data-test="mobile-chess-settings"');
+        // The account menu is the same for every game (DerCaddy, 2026-11-12): the chess settings are a tab of the
+        // settings and a link of the chess menu, no longer an entry beside "Settings".
+        ->not->toContain('data-test="mobile-chess-settings"')
+        ->toContain('Your correspondence games')
+        ->not->toContain('Your daily games');
+    expect($this->get(route('gaming.edit'))->assertOk()->getContent())->toContain('href="'.route('settings.chess').'"');
 
     // The games menu leads to the chess lobby (GamesMenu.dc.html); its game bar and ways to play link the rest (template T1):
     // daily challenges, and the rapid ladder first (plan "Schach Rapid und Clan", P3).

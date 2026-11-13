@@ -77,7 +77,7 @@
                  aria-labelledby="cup-next-h" data-test="cup-next" data-tournament="{{ $nextCup->id }}"
                  x-data="{ started: false }" x-on:countdown-zero="started = true">
             <a href="{{ $nextShow }}" class="block" tabindex="-1" aria-hidden="true">
-                <x-game-cover :game="$nextCup->game" size="card" class="w-full rounded-xs" data-test="cup-next-cover" />
+                <x-game-cover :game="$nextCup->game" :games="$nextCup->coverGames()" size="card" class="w-full rounded-xs" data-test="cup-next-cover" />
             </a>
 
             <div class="flex min-w-0 flex-col gap-3">

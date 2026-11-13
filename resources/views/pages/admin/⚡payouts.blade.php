@@ -579,7 +579,7 @@ new #[Title('Payouts')] #[Layout('layouts::app', ['section' => 'admin'])] class 
         <section aria-labelledby="t-h" class="rv-card rv-glow flex flex-col gap-4 p-4 lg:p-6" style="box-shadow: inset 4px 0 0 var(--color-btc), 0 0 0 1px var(--color-btc), 0 0 28px rgb(247 147 26 / 0.25)" data-test="payouts-tournament-panel"
                  @if ($this->watching || $this->payouts->contains(fn ($payout) => $payout->status === PayoutStatus::Paying)) wire:poll.3s @endif>
             <div class="flex flex-col gap-4 sm:flex-row sm:items-center">
-                <x-game-cover :game="$tournament->game" size="thumb" class="w-24 shrink-0 rounded-xs" />
+                <x-game-cover :game="$tournament->game" :games="$tournament->coverGames()" size="thumb" class="w-24 shrink-0 rounded-xs" />
                 <div class="flex min-w-0 grow flex-col gap-1">
                     <h2 id="t-h" class="m-0 flex items-center gap-2 text-[14px] font-bold"><x-icon name="trophy" :size="16" class="shrink-0 text-bolt" /><a href="{{ route('tournaments.show', $tournament) }}" class="min-w-0 [overflow-wrap:anywhere]">{{ $tournament->name }}</a></h2>
                     @if ($pool !== null)

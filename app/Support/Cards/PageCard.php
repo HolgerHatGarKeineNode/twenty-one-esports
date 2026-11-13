@@ -266,7 +266,7 @@ final class PageCard
     private function coverVersions(): array
     {
         $games = app(GameRegistry::class);
-        $slugs = array_filter([$this->facts['game'] ?? null, $this->facts['board']['game'] ?? null, $this->facts['next']['game'] ?? null], 'is_string');
+        $slugs = array_filter([$this->facts['game'] ?? null, $this->facts['board']['game'] ?? null, $this->facts['next']['game'] ?? null, ...(array) ($this->facts['games'] ?? [])], 'is_string');
 
         return array_values(array_filter(array_map(fn (string $slug): ?string => $games->coverVersion($slug), array_unique($slugs))));
     }
@@ -279,7 +279,7 @@ final class PageCard
      */
     private function credits(): array
     {
-        $slugs = array_filter([$this->facts['game'] ?? null, $this->facts['board']['game'] ?? null, $this->facts['next']['game'] ?? null], 'is_string');
+        $slugs = array_filter([$this->facts['game'] ?? null, $this->facts['board']['game'] ?? null, $this->facts['next']['game'] ?? null, ...(array) ($this->facts['games'] ?? [])], 'is_string');
 
         return array_values(array_filter(array_map(fn (string $slug): ?string => GameNames::credit($slug), array_unique($slugs))));
     }
@@ -689,11 +689,18 @@ final class PageCard
         return $this->c->fit((string) end($forms), $face, $px, $max);
     }
 
-    /** The game's cover art, or the game's name on its colours. */
+    /** The game's cover art (a combined tournament's: its games' covers in slices), or the game's name on its colours. */
     private function tournamentCover(int $x, int $y, int $w, int $h): void
     {
         $game = (string) $this->facts['game'];
-        $path = app(GameRegistry::class)->coverPath($game);
+        $registry = app(GameRegistry::class);
+        $combined = array_values(array_filter(array_map(fn (string $slug): ?string => $registry->coverPath($slug), (array) ($this->facts['games'] ?? []))));
+
+        if (count($combined) >= 2 && $this->c->covers($combined, $x, $y, $w, $h)) {
+            return;
+        }
+
+        $path = $registry->coverPath($game);
 
         if ($path !== null && $this->c->cover($path, $x, $y, $w, $h)) {
             return;
@@ -1654,7 +1661,7 @@ final class PageCard
         if ($tournaments !== []) {
             $this->c->text($this->c->fit(__('Tournament running: :names', ['names' => $tournaments[0]]), 'mono', self::MIN, self::RIGHT - self::M), 'mono', self::MIN, self::M, 420, Canvas::ORANGE);
         } else {
-            $this->c->text($this->c->fit(__('Chess, tournaments and music, around the clock'), 'mono', self::MIN, self::RIGHT - self::M), 'mono', self::MIN, self::M, 420, Canvas::INK_2);
+            $this->c->text($this->c->fit(__('Games, tournaments and music, around the clock'), 'mono', self::MIN, self::RIGHT - self::M), 'mono', self::MIN, self::M, 420, Canvas::INK_2);
         }
     }
 
@@ -1765,7 +1772,7 @@ final class PageCard
     private function pageTitle(): string
     {
         return match (true) {
-            $this->key === 'home', $this->key === 'brand' => __('Chess and Rocket League ladder for Bitcoiners'),
+            $this->key === 'home', $this->key === 'brand' => __('The esports league for Bitcoiners'),
             $this->key === 'login' => __('Log in'),
             $this->key === 'clans' => __('Clans'),
             $this->key === 'matches' => __('Matches'),
@@ -1801,7 +1808,7 @@ final class PageCard
 
         return match ($this->key) {
             'clans' => __('Every clan of the league with its players, lineups and Clan Rating.'),
-            'matches' => __('Every series and chess game by match number: live, scheduled and done.'),
+            'matches' => __('Every series and game by match number: live, scheduled and done.'),
             'games' => __('Every chess game running now. Watch without logging in.'),
             'chess' => __(':modes live or daily chess against Bitcoiners.', ['modes' => implode(' / ', array_map(ChessModes::label(...), ChessModes::live()))]),
             'tournaments' => __('Open sign-ups, running brackets and results, drawn from a Bitcoin block.'),

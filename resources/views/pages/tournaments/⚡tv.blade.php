@@ -149,7 +149,7 @@ new #[Layout('layouts::tv')] class extends Component {
     <div class="tv-stage" x-ref="stage" wire:ignore.self data-scene="{{ $first }}" data-cycle="a" data-renew-after="400" style="--dwell: {{ $scenes[$first][1] }}s">
         {{-- Who plays what, and where to follow it on a phone --}}
         <header class="tv-head">
-            <x-game-cover :game="$tournament->game" size="thumb" loading="eager" class="tv-head-cover" />
+            <x-game-cover :game="$tournament->game" :games="$tournament->coverGames()" size="thumb" loading="eager" class="tv-head-cover" />
             <div class="tv-head-title">
                 <span class="tv-fit" style="--chars: {{ max(8, mb_strlen($tournament->name)) }}"><h1 class="tv-name">{{ $tournament->name }}</h1></span>
                 <p class="tv-meta">
@@ -179,7 +179,7 @@ new #[Layout('layouts::tv')] class extends Component {
                     @php($places = $landing->places())
                     @php($countdown = $landing->countdown($zone))
                     @php($roster = $landing->roster())
-                    <x-game-cover :game="$tournament->game" size="hero" loading="eager" class="tv-lobby-cover" />
+                    <x-game-cover :game="$tournament->game" :games="$tournament->coverGames()" size="hero" loading="eager" class="tv-lobby-cover" />
                     <div class="tv-lobby-body">
                         @if ($countdown)
                             <p class="tv-lobby-when">
@@ -303,7 +303,7 @@ new #[Layout('layouts::tv')] class extends Component {
 
             @if (isset($scenes['spotlight']))
                 <section class="tv-scene tv-spotlight" data-scene-id="spotlight" data-dwell="{{ $scenes['spotlight'][1] }}" wire:key="scene-spotlight" aria-label="{{ $scenes['spotlight'][0] }}" data-test="tv-spotlight">
-                    <x-game-cover :game="$tournament->game" size="hero" class="tv-spotlight-cover" />
+                    <x-game-cover :game="$tournament->game" :games="$tournament->coverGames()" size="hero" class="tv-spotlight-cover" />
                     @if ($lobbyTv)
                         @include('pages.tournaments.partials.tv-lobbies', ['boxes' => $spotlight])
                     @endif

@@ -196,7 +196,7 @@
                         $groups = [
                             'play' => [__('Play'), ['upcoming', 'chats', 'daily', 'tournaments']],
                             'community' => [__('Community'), ['clan', 'invite', 'invite-friend', 'badges']],
-                            'account' => [__('Account'), ['settings', 'notifications', 'chess-settings']],
+                            'account' => [__('Account'), ['settings', 'notifications']],
                         ];
                         $grouped = collect($groups)->map(fn (array $group): array => [$group[0], array_values(array_filter($account, fn (array $link): bool => in_array($link['key'], $group[1], true)))]);
                         $loose = array_values(array_filter($account, fn (array $link): bool => $link['key'] !== 'page' && ! collect($groups)->pluck(1)->flatten()->contains($link['key'])));

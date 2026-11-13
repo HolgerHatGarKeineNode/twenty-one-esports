@@ -165,6 +165,8 @@ final class PageCardFacts
             'places' => $places['places'],
             'teams' => $tournament->profile()->entersTeams(),
             'cover' => ($cover = app(GameRegistry::class)->coverPath($tournament->game)) === null ? null : basename($cover),
+            // A combined tournament: every game of its sequence, its picture combines their covers (CoverSlices).
+            'games' => count($games = $tournament->coverGames()) >= 2 ? $games : [],
             'pot' => $pot,
             'left' => $pot === null ? null : max(0, $pot - PrizePool::settledSats($tournament)),
             'podium' => $tournament->status === TournamentStatus::Finished ? self::podium($tournament) : [],

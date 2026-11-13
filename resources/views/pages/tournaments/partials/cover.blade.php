@@ -8,5 +8,5 @@
     $class: size and placement from the caller
 --}}
 <figure class="tl-poster m-0 {{ $class ?? '' }}" data-test="game-cover" data-cover="{{ app(\App\Games\GameRegistry::class)->cover($tournament->game) === null ? 'tile' : 'art' }}">
-    <x-game-cover :game="$tournament->game" size="header" loading="eager" class="w-full rounded-card" />
+    <x-game-cover :game="$tournament->game" :games="$tournament->coverGames()" size="header" loading="eager" class="w-full rounded-card" />
 </figure>

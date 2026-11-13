@@ -68,7 +68,7 @@ new #[Title('Tournament archive')] #[Layout('layouts::app', ['section' => 'tourn
                     <li @class(['min-w-0', 'max-lg:hidden' => ! $loop->first]) wire:key="hof-{{ $card['tournament']->id }}">
                         <a href="{{ $card['href'] }}" @class(['rv-card flex h-full flex-col overflow-hidden text-ink hover:text-ink', 'rv-glow border-btc' => $card['featured'] && $card['pot'] !== null])
                            data-test="hof-card" @if ($card['featured']) data-featured @endif>
-                            <x-game-cover :game="$card['tournament']->game" size="card" :loading="$loop->first ? 'eager' : 'lazy'" class="w-full [&_img]:object-cover" />
+                            <x-game-cover :game="$card['tournament']->game" :games="$card['tournament']->coverGames()" size="card" :loading="$loop->first ? 'eager' : 'lazy'" class="w-full [&_img]:object-cover" />
                             <span class="flex flex-col gap-3 p-4">
                                 <span class="flex items-center gap-2 text-xs text-ink-2"><x-icon name="trophy" :size="14" class="flex-none text-btc" /><span class="truncate">{{ $card['name'] }}</span></span>
                                 <span class="flex min-w-0 items-center gap-3">
@@ -110,7 +110,7 @@ new #[Title('Tournament archive')] #[Layout('layouts::app', ['section' => 'tourn
                     <tbody>
                         @foreach ($finished as $row)
                             <tr wire:key="done-{{ $row['tournament']->id }}" @class(['is-featured' => $row['pot'] !== null]) data-test="archive-row" data-tournament="{{ $row['tournament']->id }}">
-                                <td class="w-[84px]"><x-game-cover :game="$row['tournament']->game" size="thumb" class="h-9 w-16 rounded-[2px] [&_img]:object-cover" /></td>
+                                <td class="w-[84px]"><x-game-cover :game="$row['tournament']->game" :games="$row['tournament']->coverGames()" size="thumb" class="h-9 w-16 rounded-[2px] [&_img]:object-cover" /></td>
                                 <td class="[overflow-wrap:anywhere]">
                                     <a href="{{ $row['href'] }}" class="font-bold text-ink hover:text-ink">{{ $row['name'] }}</a>
                                     <div class="rv-m">{{ $row['sub'] }}</div>
@@ -143,7 +143,7 @@ new #[Title('Tournament archive')] #[Layout('layouts::app', ['section' => 'tourn
                 @foreach ($finished as $row)
                     <li wire:key="done-p-{{ $row['tournament']->id }}" class="border-b border-hairline" data-test="archive-row-phone">
                         <a href="{{ $row['href'] }}" @class(['flex min-h-[60px] items-center gap-3 py-2.5 text-ink hover:text-ink', 'border-l-4 border-btc pl-2' => $row['pot'] !== null])>
-                            <x-game-cover :game="$row['tournament']->game" size="thumb" class="h-9 w-16 flex-none rounded-[2px] [&_img]:object-cover" />
+                            <x-game-cover :game="$row['tournament']->game" :games="$row['tournament']->coverGames()" size="thumb" class="h-9 w-16 flex-none rounded-[2px] [&_img]:object-cover" />
                             <span class="flex min-w-0 grow flex-col">
                                 <b class="text-sm leading-tight [overflow-wrap:anywhere]">{{ $row['name'] }}</b>
                                 <span class="rv-m [overflow-wrap:anywhere]">{{ implode(', ', array_filter([$row['date'], $row['pot'] !== null ? $sats($row['pot']).' Sats' : null, $row['champion']['name'] ?? null])) }}</span>

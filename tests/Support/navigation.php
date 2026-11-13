@@ -48,7 +48,9 @@ const NAV_PAGES = [
     'login' => ['roles' => ['guest'], 'max' => 1],
     'play' => ['roles' => NAV_ROLES, 'max' => 1],
     'chess.lobby' => ['roles' => NAV_ROLES, 'max' => 1],
-    'chess.challenge' => ['roles' => NAV_LOGGED_IN, 'max' => 1],
+    // "Challenge a player" picks the game first (DerCaddy, 2026-11-13); daily chess is one click below it, or in the chess menu.
+    'challenge' => ['roles' => NAV_LOGGED_IN, 'max' => 1],
+    'chess.challenge' => ['roles' => NAV_LOGGED_IN, 'max' => 2],
     'me.correspondence' => ['roles' => NAV_LOGGED_IN, 'max' => 1],
     // "Your chats", in the account menu below the matches (DerCaddy, 2026-10-18).
     'me.chats' => ['roles' => NAV_LOGGED_IN, 'max' => 1],

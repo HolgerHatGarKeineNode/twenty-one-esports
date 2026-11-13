@@ -249,7 +249,7 @@ test('/play lists every registered game with its modes, public, with "Log in to 
 
     $this->actingAs(User::factory()->create())->get(route('play'))->assertOk()
         ->assertDontSee('data-test="play-login"', false)
-        ->assertSee('href="'.route('chess.challenge').'"', false);
+        ->assertSee('href="'.route('challenge').'"', false);
 });
 
 test('"Start playing" logs a guest in and lands in the chess lobby; a plain login keeps its default', function () {

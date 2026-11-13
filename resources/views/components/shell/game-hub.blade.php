@@ -134,7 +134,7 @@
             <a href="{{ route('ladder.show', ['chess', 'rapid']) }}" @navigate(route('ladder.show', ['chess', 'rapid'])) class="flex min-h-11 items-center text-ink-2 hover:text-ink" data-test="hub-ladders">{{ __('Ladders') }}</a>
             <a href="{{ route('ladder.strongest') }}" @navigate(route('ladder.strongest')) class="flex min-h-11 items-center text-ink-2 hover:text-ink" data-test="hub-strongest">{{ __('Strongest players') }}</a>
             @auth
-                <a href="{{ route('chess.challenge') }}" @navigate(route('chess.challenge')) class="flex min-h-11 items-center text-ink-2 hover:text-ink" data-test="hub-challenge-player">{{ __('Challenge a player') }}</a>
+                <a href="{{ route('challenge') }}" @navigate(route('challenge')) class="flex min-h-11 items-center text-ink-2 hover:text-ink" data-test="hub-challenge-player">{{ __('Challenge a player') }}</a>
                 <a href="{{ route('challenges.create') }}" @navigate(route('challenges.create')) class="flex min-h-11 items-center text-ink-2 hover:text-ink" data-test="hub-challenge-clan">{{ __('Challenge a clan') }}</a>
             @endauth
             <a href="{{ route('matches.index', ['chain' => 'casual']) }}" @navigate(route('matches.index', ['chain' => 'casual'])) class="flex min-h-11 items-center text-ink-2 hover:text-ink" data-test="hub-casual">{{ __('Casual chain') }}</a>

@@ -34,7 +34,7 @@
 <div {{ $attributes->class('flex min-w-0 flex-col gap-4') }} data-test="tournament-page-head">
     <div class="rv-thead flex-wrap sm:flex-nowrap">
         <a href="{{ route('tournaments.show', $tournament) }}" class="max-sm:hidden" tabindex="-1" aria-hidden="true">
-            <x-game-cover :game="$tournament->game" size="thumb" class="h-[72px] w-32 flex-none rounded-[4px] [&_img]:object-cover" />
+            <x-game-cover :game="$tournament->game" :games="$tournament->coverGames()" size="thumb" class="h-[72px] w-32 flex-none rounded-[4px] [&_img]:object-cover" />
         </a>
         <div class="flex min-w-0 grow flex-col gap-2">
             <span class="flex min-w-0 flex-wrap items-center gap-2">

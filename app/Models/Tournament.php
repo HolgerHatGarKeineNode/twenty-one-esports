@@ -489,6 +489,26 @@ class Tournament extends Model
     }
 
     /**
+     * The games whose covers stand for this tournament: a combined tournament's games in the order they first come in
+     * its sequence (DerCaddy, 2026-11-12: its picture combines them, CoverSlices), else its own game alone. Options
+     * without a sequence are not parsed, so a list of tournaments pays nothing for it.
+     *
+     * @return non-empty-list<string>
+     */
+    public function coverGames(): array
+    {
+        $options = $this->options ?? [];
+
+        if (! is_array($options['games'] ?? null) && ! is_string($options['pairGame'] ?? null)) {
+            return [$this->game];
+        }
+
+        $games = array_values(array_unique($this->formatOptions()->games));
+
+        return count($games) >= 2 ? $games : [$this->game];
+    }
+
+    /**
      * Paused by an organizer or admin (P18): no deadline runs and no new
      * match starts until it is resumed (TournamentControl).
      */
