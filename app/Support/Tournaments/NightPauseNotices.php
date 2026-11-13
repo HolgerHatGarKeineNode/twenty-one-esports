@@ -67,14 +67,16 @@ final class NightPauseNotices
         $labels = ['until' => NightPause::untilLabel($window['until']), 'resume' => $window['resume']];
         $current = NightPause::current($window, $at);
 
+        // Before its start a pause that is over by then is no pause of this tournament: its players wait for the start, which
+        // the tournament page counts down (NightPause::holdsUp()). No banner, no dock item, no message.
         if ($current !== null) {
-            return ['state' => 'paused', 'starts' => $current[0], 'resumes' => $current[1], ...$labels];
+            return NightPause::holdsUp($tournament, $current[1], $at) ? ['state' => 'paused', 'starts' => $current[0], 'resumes' => $current[1], ...$labels] : null;
         }
 
         $next = NightPause::next($window, $at);
         $warn = max(0, (int) config('esports.tournaments.night_pause.warn_minutes', 60)) * 60;
 
-        if ($next !== null && $next[0]->getTimestamp() - $at->getTimestamp() <= $warn) {
+        if ($next !== null && $next[0]->getTimestamp() - $at->getTimestamp() <= $warn && NightPause::holdsUp($tournament, $next[1], $at)) {
             return ['state' => 'soon', 'starts' => $next[0], 'resumes' => $next[1], ...$labels];
         }
 

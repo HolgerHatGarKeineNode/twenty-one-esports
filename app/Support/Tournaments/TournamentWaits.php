@@ -215,8 +215,9 @@ final class TournamentWaits
      */
     private static function leagueSeries(WaitBuilder $base, Tournament $tournament, SeriesMatch $series): MatchWait
     {
+        $night = NightPause::activeFor($tournament);
         $base->subject('series:'.$series->id)->url(route('matches.room', $series))->paused($tournament->isPaused())
-            ->nightPauseUntil(NightPause::activeFor($tournament)[1] ?? null);
+            ->nightPauseUntil($night !== null && NightPause::holdsUp($tournament, $night[1]) ? $night[1] : null);
 
         if ($series->status === SeriesStatus::Disputed) {
             return $base->make('disputed', since: self::disputedSince($series), consequence: 'An admin decides the dispute', needsAdmin: true);
@@ -306,6 +307,16 @@ final class TournamentWaits
 
         if (! $tournament->isCasualCup() || $endsAt === null || CasualCups::isEvening($tournament)) {
             $resumesAt = $tournament->isPaused() ? null : (NightPause::activeFor($tournament)[1] ?? null);
+
+            if ($resumesAt !== null && ! NightPause::holdsUp($tournament, $resumesAt)) {
+                $resumesAt = null;
+            }
+
+            // Drawn at the sign-up close, nothing starts before the start (TournamentMatchMaker::startReady()); say so,
+            // not "shortly" (DerCaddy, 2026-11-13).
+            if ($resumesAt === null && ! $tournament->isPaused() && NightPause::heldForStart($tournament)) {
+                return $base->make('not_started', consequence: 'The league starts it at :time', params: ['time' => LeagueTime::stamp($tournament->starts_at)], timeAt: $tournament->starts_at->toImmutable());
+            }
 
             if ($resumesAt !== null) {
                 // The night pause (NightPause): the next tick after it starts the match.
