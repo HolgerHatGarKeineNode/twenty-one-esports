@@ -197,6 +197,12 @@ test('the chooser recommends live at 375 and 1440 px, through island requests on
     // Positive control: a request outside the islands (create without a name)
     // re-renders the component, and the probes see it — the marker goes, the
     // response carries the component's html. The page stays clean.
+    // Armed before the first failed create: whether the document is scrolling right now (read by the name error below).
+    $page->evaluate('() => {
+        window.__scrolling = false;
+        document.addEventListener("scroll", () => { window.__scrolling = true; });
+        document.addEventListener("scrollend", () => { window.__scrolling = false; });
+    }');
     $page->locator('[data-test=tournament-create-button]')->click();
     BrowserWait::until($page, '() => document.querySelector("[data-test=tournament-create] [role=alert]") !== null', 8_000);
     $control = $page->evaluate(CHOOSER_STATE);
@@ -207,26 +213,38 @@ test('the chooser recommends live at 375 and 1440 px, through island requests on
 
     // Order E puts the name far below the top and the button in a sticky bar: every failed create, the second with the same
     // unfixed error too, brings the message into view above the bar and focuses the name (x-admin.field-error).
+    // The reveal is a smooth scroll that starts once the roundtrip is back (measured 2026-11-13 at 1440: 685 ms over 1606 px,
+    // 935 ms over 3129 px, both ending at top 418), so the position is judged when the document has come to rest, never after
+    // a fixed time: a read 700 ms after the click passed with 170 ms to spare and went red on a busy machine, 3 px behind the
+    // bar. `scrollY > 0` says nothing either: the click itself scrolls its button into view before the app moves.
     $errorInView = <<<'JS'
         () => {
             const alert = document.querySelector('[data-field-error=name]'), bar = document.querySelector('[data-save-bar]').getBoundingClientRect();
             const r = alert?.getBoundingClientRect();
-            return { top: r ? Math.round(r.top) : null, bottom: r ? Math.round(r.bottom) : null, barTop: Math.round(bar.top),
+            return { top: r ? Math.round(r.top) : null, bottom: r ? Math.round(r.bottom) : null, barTop: Math.round(bar.top), atRest: window.__scrolling === false,
                 inView: !!r && r.top >= 0 && r.bottom <= bar.top, focused: document.activeElement?.dataset.test ?? null };
         }
         JS;
-    $page->evaluate('() => new Promise((r) => setTimeout(r, 700))');
-    $firstError = $page->evaluate($errorInView);
+    $revealed = function () use ($page, $errorInView): array {
+        try {
+            BrowserWait::until($page, "() => { const s = ({$errorInView})(); return s.atRest && s.inView && s.focused === 'tournament-name'; }", 8_000);
+        } catch (RuntimeException) {
+            // Not revealed within the budget: the expectations below judge, with the position in their message.
+        }
+
+        return $page->evaluate($errorInView);
+    };
+    $firstError = $revealed();
     $page->evaluate('() => { document.activeElement?.blur(); window.scrollTo(0, 0); }');
     $page->locator('[data-test=tournament-create-button]')->click();
-    BrowserWait::until($page, '() => window.scrollY > 0', 8_000);
-    $page->evaluate('() => new Promise((r) => setTimeout(r, 700))');
-    $secondError = $page->evaluate($errorInView);
+    $secondError = $revealed();
     $measured['name error'] = [$firstError, $secondError];
 
     expect($firstError['inView'])->toBeTrue(json_encode($firstError))
+        ->and($firstError['atRest'])->toBeTrue(json_encode($firstError))
         ->and($firstError['focused'])->toBe('tournament-name')
         ->and($secondError['inView'])->toBeTrue(json_encode($secondError))
+        ->and($secondError['atRest'])->toBeTrue(json_encode($secondError))
         ->and($secondError['focused'])->toBe('tournament-name');
 
     // With a name the same button creates the draft and lands on its page, the banner with the notice and the publish form on top.

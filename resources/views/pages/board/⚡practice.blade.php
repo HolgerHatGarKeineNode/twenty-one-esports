@@ -347,9 +347,14 @@ new #[Layout('layouts::app', ['scripts' => ['resources/js/blockli/practice.js']]
                                x-text="barLine" data-test="block-status"></p>
                             <button type="button" class="inline-flex h-11 shrink-0 cursor-pointer items-center justify-center gap-2 rounded-md px-[18px] text-[13px] disabled:cursor-default disabled:opacity-50 lg:order-1 lg:w-full"
                                     :class="[blockMode ? 'border border-btc bg-btc-press font-bold text-btc-hi' : 'btn-w border border-line bg-well text-ink', blockButtons ? 'max-lg:hidden' : '']"
-                                    :aria-pressed="toggleMoves ? null : (blockMode ? 'true' : 'false')" :disabled="!myTurn || !canSetBlocks" x-on:click="setBlockMode(!blockMode, $event)" aria-keyshortcuts="ArrowUp ArrowDown ArrowLeft ArrowRight R Enter Escape"
+                                    :aria-pressed="toggleMoves ? 'false' : (blockMode ? 'true' : 'false')" :disabled="!myTurn || !canSetBlocks" x-on:click="setBlockMode(!blockMode, $event)" aria-keyshortcuts="ArrowUp ArrowDown ArrowLeft ArrowRight R Enter Escape"
                                     data-test="mode-block">
-                                <span x-show="!toggleMoves">{{ __('Set a block') }} <span class="tabular-nums" x-text="blocksLeft"></span></span><span x-show="toggleMoves" x-cloak>{{ __('Move the pawn') }}</span>
+                                    {{-- Both labels in one cell, the one not shown invisible: the button is as wide as the longer one and does not jump
+                                         when the label swaps or the count goes from 10 to 9 (measured 2026-11-13: 8 to 16 px in German on a phone). --}}
+                                    <span class="grid whitespace-nowrap" data-toggle-label>
+                                        <span class="col-start-1 row-start-1" :class="toggleMoves ? 'invisible' : ''">{{ __('Set a block') }} <span class="inline-block w-[2ch] text-start tabular-nums" x-text="blocksLeft"></span></span>
+                                        <span class="col-start-1 row-start-1" :class="toggleMoves ? '' : 'invisible'">{{ __('Move the pawn') }}</span>
+                                    </span>
                             </button>
                             <div class="min-w-0 grow gap-2 lg:order-3" :class="blockButtons ? 'flex' : 'hidden'" data-block-buttons>
                                 <button type="button" class="inline-flex h-11 grow cursor-pointer items-center justify-center rounded-md border border-line bg-well px-2 text-xs whitespace-nowrap min-[360px]:text-[13px] text-ink btn-w hover:text-ink disabled:cursor-default disabled:opacity-50"

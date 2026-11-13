@@ -142,6 +142,9 @@ test('two players play Blockli to a win with every way to set a block: groove ta
         ->and($white->evaluate($names))->toBe(['count' => 18, 'a' => ['left', 'bottom'], 'i' => ['right', 'bottom'], 'one' => ['left', 'bottom'], 'nine' => ['left', 'top']])
         ->and($black->evaluate($names))->toBe(['count' => 18, 'a' => ['right', 'bottom'], 'i' => ['left', 'bottom'], 'one' => ['left', 'top'], 'nine' => ['left', 'bottom']])
         ->and($white->evaluate('() => document.querySelector("[data-test=mode-block]").innerText.replace(/\s+/g, " ").trim()'))->toBe('Set a block 10');
+    // The switch's visible label, width and height, read again on ply 3.
+    $toggle = '() => { const b = document.querySelector("[data-test=mode-block]"), r = b.getBoundingClientRect(); return [b.innerText.replace(/\s+/g, " ").trim(), r.width, r.height]; }';
+    $toggleAtStart = $white->evaluate($toggle);
 
     // Ply 1, White: a tap in the groove left of the crossing a1/b2 shows a horizontal block there; a second tap sets it.
     blockliTap($white, $touch, 'a1/b2', -30);
@@ -159,7 +162,15 @@ test('two players play Blockli to a win with every way to set a block: groove ta
 
     // Ply 3, White: Set a block; the vertical block on a1/b2 would cross a1h, so it shows red and Confirm stays off.
     blockliCanMove($white);
+    $toggleOneDigit = $white->evaluate($toggle);
     $touch ? $white->locator('[data-test=mode-block]')->tap() : $white->locator('[data-test=mode-block]')->click();
+    BrowserWait::until($white, '() => document.querySelector("[data-test=mode-block]").innerText.includes("Move the pawn")', 5_000);
+    // The switch does not change its width: both labels stand in one cell and the count keeps two digits' room, so the bar's
+    // line beside it stays put when the count goes from 10 to 9 and when the label swaps (two spans, one shown at a time: 147 to
+    // 139 px here on a phone, 155 to 147 to 139 px in German). The label not shown is invisible, not read out: innerText is one label.
+    expect($toggleAtStart[2])->toEqual(44)
+        ->and($toggleOneDigit)->toEqual(['Set a block 9', $toggleAtStart[1], 44])
+        ->and($white->evaluate($toggle))->toEqual(['Move the pawn', $toggleAtStart[1], 44]);
     $touch ? blockliTap($white, true, 'a1/b2', 0, 30) : blockliHover($white, 'a1/b2', 0, 30);
     expect($white->evaluate(BLOCKLI_PREVIEW))->toBe(['a1/b2', 'v', false])
         ->and($white->evaluate('() => document.querySelector("[data-test=board] [data-preview]")?.dataset.preview'))->toBe('illegal')
