@@ -31,6 +31,8 @@ return [
     'admin/⚡trust.blade.php' => ['T-Admin-List', 'AdminTrust › AdminTrust'],
     'auth/login.blade.php' => ['Login', 'Login › Login'],
     'board/⚡correspondence.blade.php' => ['T14', 'BoardCorrespondence › BoardCorrespondence'],
+    // Go practice against bots (DerCaddy, 2026-10-27): built as Blockli's practice, the match view T2 with a practice panel.
+    'board/⚡go-practice.blade.php' => ['T2 (NEU, Scope)', 'MatchBoards › Brettspiel-Partie (Blockli)'],
     'board/⚡lobby.blade.php' => ['T1', 'GameLobby › Brettspiel-Lobby (Blockli)'],
     // Blockli practice against bots (DerCaddy, 2026-10-23): no canvas board yet (NEU, Scope), built as the match view T2 with a practice panel.
     'board/⚡practice.blade.php' => ['T2 (NEU, Scope)', 'MatchBoards › Brettspiel-Partie (Blockli)'],

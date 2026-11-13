@@ -62,7 +62,7 @@ test('every registered game names its kind, and no board game is registered whil
 
 test('the board game slugs are reserved: nine men\'s morris is never "mill"', function () {
     expect(array_keys(config('esports.board_games.games')))->toBe(BoardGame::RESERVED_SLUGS)
-        ->and(BoardGame::RESERVED_SLUGS)->toBe(['nine-mens-morris', 'checkers', 'blockli', 'blockspace'])
+        ->and(BoardGame::RESERVED_SLUGS)->toBe(['nine-mens-morris', 'checkers', 'blockli', 'blockspace', 'go-9', 'go-13', 'go-19'])
         ->and(BoardGame::RESERVED_SLUGS)->not->toContain('mill')
         ->and(app(GameRegistry::class)->find('mill'))->toBeNull();
 });
@@ -209,13 +209,19 @@ test('a tournament plays only a board game with a profile: nine men\'s morris an
         ->and(array_column(TournamentGames::all(), 0))->not->toContain(FIXTURE_BOARD);
 
     foreach (BoardGame::RESERVED_SLUGS as $slug) {
-        $profile = GameProfile::for($slug, 'blitz');
+        // Every mode the game offers, and blitz for the three older games: their tournaments made before 2026-10-07 still
+        // plan by it. Go 13 x 13 and 19 x 19 never had blitz.
+        $modes = array_keys(app(config("esports.board_games.games.{$slug}.class"))->modes());
 
-        expect($profile->isBoard())->toBeTrue()
-            ->and($profile->isChess())->toBeFalse()
-            ->and($profile->isSeries())->toBeFalse()
-            // Blockli plays a pairing twice with the colours swapped (plan "Blockli", P4).
-            ->and($profile->bestOfOptions)->toBe($slug === 'blockli' ? [2] : [1]);
+        foreach (array_unique(str_starts_with($slug, 'go-') ? $modes : [...$modes, 'blitz']) as $mode) {
+            $profile = GameProfile::for($slug, $mode);
+
+            expect($profile->isBoard())->toBeTrue()
+                ->and($profile->isChess())->toBeFalse()
+                ->and($profile->isSeries())->toBeFalse()
+                // Blockli plays a pairing twice with the colours swapped (plan "Blockli", P4); everything else once.
+                ->and($profile->bestOfOptions)->toBe($slug === 'blockli' && $mode !== 'correspondence' ? [2] : [1]);
+        }
     }
 
     // Switched off, a board game's cup does not open; chess's does.

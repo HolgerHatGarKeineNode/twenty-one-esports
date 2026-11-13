@@ -4,6 +4,7 @@ namespace App\Support;
 
 use App\Games\Blockfill;
 use App\Games\Blockspace;
+use App\Games\BoardGame;
 use App\Games\GameRegistry;
 use App\Games\Hyperbitcoinization;
 use App\Games\ProofOfPong;
@@ -74,6 +75,18 @@ final class GameNames
         return $credit === null ? self::game($game) : self::game($game).' '.$credit;
     }
 
+    /**
+     * The colour of each side of a game, the side that moves first (`w`) first: white and black, Go's black first.
+     *
+     * @return array{w: 'white'|'black', b: 'white'|'black'}
+     */
+    public static function sideColours(string $game): array
+    {
+        $definition = app(GameRegistry::class)->find($game);
+
+        return $definition instanceof BoardGame ? $definition->sideColours() : ['w' => 'white', 'b' => 'black'];
+    }
+
     /** "Blitz 5+3", "Daily" (translated), "1v1"; the slug of an unregistered mode. */
     public static function mode(string $game, string $mode): string
     {
@@ -94,26 +107,35 @@ final class GameNames
     }
 
     /**
-     * What the two sides of a board game are called: White and Black, in Blockspace the colours of its stones.
+     * What the two sides of a board game are called, the side that moves first (`w`) first: White and Black, in
+     * Blockspace the colours of its stones, in Go Black and White, as Black moves first there (DerCaddy, 2026-10-27).
      *
      * @return array{w: string, b: string}
      */
     public static function sides(string $game, ?string $locale = null): array
     {
-        return $game === Blockspace::SLUG
-            ? ['w' => __('Orange', [], $locale), 'b' => __('Blue', [], $locale)]
-            : ['w' => __('White', [], $locale), 'b' => __('Black', [], $locale)];
+        if ($game === Blockspace::SLUG) {
+            return ['w' => __('Orange', [], $locale), 'b' => __('Blue', [], $locale)];
+        }
+
+        $name = fn (string $colour): string => $colour === 'black' ? __('Black', [], $locale) : __('White', [], $locale);
+        $colours = self::sideColours($game);
+
+        return ['w' => $name($colours['w']), 'b' => $name($colours['b'])];
     }
 
     /**
-     * The sides as a note after a player's name: "(white)", "(Weiß)", "(Orange)".
+     * The sides as a note after a player's name: "(white)", "(Weiß)", "(Orange)"; Go's first side "(black)".
      *
      * @return array{w: string, b: string}
      */
     public static function sideNotes(string $game): array
     {
         if ($game !== Blockspace::SLUG) {
-            return ['w' => __('(white)'), 'b' => __('(black)')];
+            $note = fn (string $colour): string => $colour === 'black' ? __('(black)') : __('(white)');
+            $colours = self::sideColours($game);
+
+            return ['w' => $note($colours['w']), 'b' => $note($colours['b'])];
         }
 
         $sides = self::sides($game);

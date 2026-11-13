@@ -33,6 +33,11 @@
  * game its page keeps in the browser. `config.source` names an entry of
  * boardSources that answers the board's actions in the server's place; the
  * board then neither listens on a channel nor polls.
+ *
+ * Go (DerCaddy, 2026-10-27; layout `input: 'stones'`): a board of lines with
+ * star points and the coordinates of a go board, a stone shown on the nearest
+ * intersection first and set by a second tap, a pass button that asks before
+ * the pass that ends the game, and the count as it stands beside the board.
  */
 
 import { setFocus } from './focusMode.js';
@@ -71,6 +76,23 @@ export const boardSources = new Map();
 // Black men are dark discs with a light rim: on the dark board a dark rim would hide them.
 const PIECE_FILL = { w: '#F4F4F5', b: '#09090B' };
 const PIECE_STROKE = { w: '#A1A1AA', b: '#D4D4D8' };
+
+/**
+ * The go board (the stone input): wood with dark lines and star points, as a real board looks, so black and white
+ * stones both stand out; the last stone ringed in the league's orange. The first side plays black (Go: Black moves
+ * first); every stone on the board names its colour (`kind`).
+ */
+const GO = { wood: '#D8AD60', line: '#3B2C16', label: '#5A4422', ring: '#F7931A', illegal: 'rgba(239, 68, 68, 0.55)', cross: 'rgba(247, 147, 26, 0.6)' };
+const STONE_FILL = { black: 'url(#go-stone-black)', white: 'url(#go-stone-white)' };
+const STONE_EDGE = { black: '#050506', white: '#9A958B' };
+const STONE_GRADIENTS =
+    '<radialGradient id="go-stone-black" cx="36%" cy="32%" r="70%"><stop offset="0" stop-color="#55555C"/><stop offset="0.45" stop-color="#1C1C20"/><stop offset="1" stop-color="#08080A"/></radialGradient>' +
+    '<radialGradient id="go-stone-white" cx="36%" cy="32%" r="75%"><stop offset="0" stop-color="#FFFFFF"/><stop offset="0.6" stop-color="#F1EFEA"/><stop offset="1" stop-color="#CFCBC2"/></radialGradient>';
+
+/** The colour of a side's stones under the stone input: the first side plays black. */
+export function stoneKind(side) {
+    return side === 'w' ? 'black' : 'white';
+}
 
 export function formatClock(ms) {
     const total = Math.max(0, Math.ceil(ms / 1000));
@@ -204,6 +226,11 @@ registerAlpine(() => {
         // A line for the other side's take-back (":name took the move back"), shown until noticeUntil.
         notice: '',
         noticeUntil: 0,
+        // The stone input (Go): the intersection whose stone is shown before it is set, the pass that would end the game
+        // waiting for its second click, and the area of each side marked on the board.
+        stone: null,
+        confirmPass: false,
+        showArea: false,
         pointerType: 'touch',
         lastTap: null,
         pending: false,
@@ -284,6 +311,16 @@ registerAlpine(() => {
                     this.fitBoard();
                     this.$refs.board.pieceBoard.openOnBlock();
                 });
+            }
+
+            // The stone input (Go): a mouse shows the stone under it before the click sets it; a finger taps twice.
+            if (this.layout.input === 'stones' && this.$refs.board) {
+                const board = this.$refs.board;
+                board.addEventListener('pointerdown', (event) => (this.pointerType = event.pointerType));
+                board.addEventListener('pointermove', (event) => this.hoverStone(event));
+                board.addEventListener('pointerleave', (event) => event.pointerType === 'mouse' && this.pointerType === 'mouse' && this.hoverStone(null));
+                // A game that ends counted shows each side's area at once (the count says why it ended so).
+                this.showArea = this.counted;
             }
 
             this.render();
@@ -384,9 +421,9 @@ registerAlpine(() => {
             return this.color !== null && this.state.status === 'active' && this.state.turn === this.color;
         },
 
-        /** Blockli's bar for a player of a running game: on a phone it is fixed above the chat sheet. */
+        /** Blockli's bar (or Go's) for a player of a running game: on a phone it is fixed above the chat sheet. */
         get hasDock() {
-            return this.layout.input === 'blocks' && this.color !== null && this.state.status === 'active';
+            return (this.layout.input === 'blocks' || this.layout.input === 'stones') && this.color !== null && this.state.status === 'active';
         },
 
         get canMove() {
@@ -417,7 +454,8 @@ registerAlpine(() => {
         },
 
         browseKey(event) {
-            if (event.target.closest?.('input, textarea, select')) return;
+            // The board took the key already (the stone input moves its stone with the arrows).
+            if (event.defaultPrevented || event.target.closest?.('input, textarea, select')) return;
             if (this.layout.input === 'blocks' && this.blockKey(event)) return;
             if (this.$refs.board?.pieceBoard?.key(event)) return;
             // The tutorial has no way back from an earlier position on its page.
@@ -436,7 +474,8 @@ registerAlpine(() => {
         /** The points a click may go to next: the start of a move, or the next step of one begun. */
         get targets() {
             if (this.layout.input === 'blocks') return this.blockTargets;
-            if (!this.canMove) return [];
+            // Go: nearly every intersection is a move; the board marks none, it shows the stone where it would go.
+            if (this.layout.input === 'stones' || !this.canMove) return [];
             const next = new Set(candidates(this.state.legal, this.clicks).map((option) => option.path[this.clicks.length]));
             next.delete(undefined);
 
@@ -448,6 +487,7 @@ registerAlpine(() => {
             if (!svg) return;
             if (this.layout.input === 'pieces') return svg.pieceBoard?.render();
             svg.replaceChildren();
+            if (this.layout.input === 'stones') return this.renderStones(svg);
             const r = this.radius;
             const targets = new Set(this.targets);
             const shown = this.shownPly;
@@ -539,16 +579,21 @@ registerAlpine(() => {
         },
 
         pointLabel(id, piece) {
-            return piece ? id + ', ' + (piece.side === 'w' ? this.t.white : this.t.black) : id;
+            // A go board names its points in capitals (D4).
+            const name = this.layout.input === 'stones' ? id.toUpperCase() : id;
+
+            return piece ? name + ', ' + (piece.side === 'w' ? this.t.white : this.t.black) : name;
         },
 
         pick(event) {
             if (this.layout.input === 'blocks') return this.tapBlocks(event);
+            if (this.layout.input === 'stones') return this.tapStones(event);
             const point = event.target.closest?.('[data-point]')?.dataset.point;
             if (point) this.click(point);
         },
 
         pickKey(event) {
+            if (this.layout.input === 'stones') return this.stoneKey(event);
             if (event.key !== 'Enter' && event.key !== ' ') return;
             const point = event.target.closest?.('[data-point]')?.dataset.point;
             if (!point) return;
@@ -598,6 +643,8 @@ registerAlpine(() => {
             this.clicks = [];
             this.blockMode = false;
             this.preview = null;
+            this.stone = null;
+            this.confirmPass = false;
             this.pending = true;
             this.render();
             try {
@@ -662,6 +709,8 @@ registerAlpine(() => {
 
         /** The bar's line: whose move it is, and in set-a-block mode what to do (the hint, red where no block fits); a take-back for a moment. */
         get barLine() {
+            if (this.layout.input === 'stones') return this.stoneLine;
+
             return this.settingBlock ? this.blockHint : this.noticeShown ? this.notice : this.statusLine;
         },
 
@@ -949,6 +998,301 @@ registerAlpine(() => {
             return nearest;
         },
 
+        /* ---- the stone input (Go) ---------------------------------------------------------------------- */
+        // A layout with `input: 'stones'` (Go, DerCaddy 2026-10-27): a tap shows the stone on the nearest intersection, a
+        // second tap on it (or "Set stone") sets it, so a finger on 19 x 19 never sets a stone a line off; a mouse shows it
+        // under the pointer and sets it with its click; with the board focused the arrow keys move it and Enter sets it.
+        // The move without a path is the pass, a button that asks once more when the other side has just passed, with
+        // the count the game would end in. The board still knows no rules: a stone is one of the legal moves the server
+        // sent; anywhere else it shows red (a ko, or a point without a liberty).
+
+        /** The legal stones by their intersection. */
+        get stoneMoves() {
+            const moves = new Map();
+            if (this.canMove) this.state.legal.forEach((option) => option.path.length === 1 && moves.set(option.path[0], option.move));
+
+            return moves;
+        },
+
+        /** The pass, while the player may make it. */
+        get passMove() {
+            return this.canMove ? (this.state.legal.find((option) => option.path.length === 0)?.move ?? null) : null;
+        },
+
+        /** The other side passed last: a pass now ends the game. */
+        get opponentPassed() {
+            return this.state.status === 'active' && this.color !== null && this.state.turn === this.color && this.state.ply > 0 && this.state.lastMove?.path?.length === 0;
+        },
+
+        /** A game that ended by its count (Go: both passed, or the move limit), not by a resignation or the clock. */
+        get counted() {
+            return this.state.status === 'finished' && !!this.state.count && ['score', 'move_limit'].includes(this.state.reason);
+        },
+
+        /** The marks of each side's area: on request, and on a counted game's last position. */
+        get areaShown() {
+            return this.showArea && this.viewIndex === null && !!this.state.count;
+        },
+
+        get stoneHint() {
+            if (!this.canMove) return '';
+            const words = this.t.stones;
+            if (this.pointerType === 'keyboard') {
+                if (!this.stone) return words.keys;
+
+                return words.at.replace(':point', this.stone.toUpperCase()) + ' ' + (this.stoneMoves.has(this.stone) ? words.enter : words.illegal);
+            }
+            if (!this.stone) return this.pointerType === 'mouse' ? words.click : words.tap;
+            if (!this.stoneMoves.has(this.stone)) return words.illegal;
+
+            return this.pointerType === 'mouse' ? words.click : words.confirm;
+        },
+
+        /** The bar's line under the stone input: the pass that ends the game, the stone shown, a take-back, a pass of the other side, or whose move it is. */
+        get stoneLine() {
+            if (this.confirmPass && this.canMove) return this.passEndLine;
+            if (this.stone && this.canMove) return this.stoneHint;
+            if (this.noticeShown) return this.notice;
+            if (this.opponentPassed) return this.t.stones.passed.replace(':side', this.colour(this.state.turn === 'w' ? 'b' : 'w'));
+
+            return this.statusLine;
+        },
+
+        /** What both passing now would end in: the count as it stands. */
+        get passEndLine() {
+            const count = this.state.count;
+            if (!count) return this.t.stones.endGame;
+
+            return this.t.stones.endGame + ' ' + this.countResult(count);
+        },
+
+        /** "Black 41 · White 33 + 7.5 = 40.5 → Black +0.5": the count as it stands, from the server (stones and area, the komi for the second side). */
+        get countLine() {
+            const count = this.state.count;
+            if (!count || this.viewIndex !== null || !this.t.count) return '';
+            const words = this.t.count;
+            const number = (value) => value.toLocaleString(document.documentElement.lang || undefined, { maximumFractionDigits: 1 });
+            const fill = (text, values) => text.replace(/:(\w+)/g, (placeholder, key) => (key in values ? values[key] : placeholder));
+            const side = (key) => {
+                const points = count[key].stones + count[key].area;
+                const komi = count[key].score - points;
+
+                return komi > 0 ? fill(words.komi, { colour: this.colour(key), points: number(points), komi: number(komi), score: number(count[key].score) }) : fill(words.side, { colour: this.colour(key), points: number(points) });
+            };
+            const lead = count.lead ? fill(words.lead, { colour: this.colour(count.lead), points: number(Math.abs(count.margin)) }) : words.level;
+
+            // While the game runs it is the count as it stands; once it is over, the final one.
+            const line = this.state.status === 'active' ? words.line : (words.final ?? words.line);
+
+            return fill(line, { first: side('w'), second: side('b'), lead });
+        },
+
+        /** "Black wins by 0.5.": the result a count gives. */
+        countResult(count) {
+            if (!count.lead) return this.t.count.tie;
+            const number = Math.abs(count.margin).toLocaleString(document.documentElement.lang || undefined, { maximumFractionDigits: 1 });
+
+            return this.t.count.result.replace(':colour', this.colour(count.lead)).replace(':points', number);
+        },
+
+        /** A side's colour as the page names it (Go: the first side is Black). */
+        colour(side) {
+            return side === 'w' ? this.t.white : this.t.black;
+        },
+
+        tapStones(event) {
+            if (!this.canMove) return;
+            this.error = '';
+            this.confirmPass = false;
+            const id = event.target.closest?.('[data-point]')?.dataset.point ?? this.nearestPoint(this.boardPoint(event))?.id ?? null;
+            if (!id) return;
+            // A mouse sets with its click; a finger (and a key's click) sees the stone first and sets it with the second tap.
+            if (this.pointerType === 'mouse' || this.stone === id) {
+                this.stone = id;
+
+                return this.setStone();
+            }
+            this.stone = id;
+            this.render();
+        },
+
+        hoverStone(event) {
+            if (event && event.pointerType !== 'mouse') return;
+            if (event) this.pointerType = 'mouse';
+            if (!this.canMove) return;
+            const at = event ? this.boardPoint(event) : null;
+            const next = at ? (this.nearestPoint(at)?.id ?? null) : null;
+            if (next === this.stone) return;
+            // Another point: the refusal of the last one no longer stands.
+            [this.stone, this.error] = [next, ''];
+            this.render();
+        },
+
+        /** The intersection nearest to a board position, null off the board (more than half a line beyond its edge). */
+        nearestPoint(at) {
+            if (!at) return null;
+            const unit = this.stoneUnit;
+            let nearest = null;
+            let distance = Infinity;
+            this.layout.points.forEach((point) => {
+                const d = Math.max(Math.abs(point.x - at.x), Math.abs(point.y - at.y));
+                if (d < distance) [nearest, distance] = [point, d];
+            });
+
+            return distance <= unit * 0.75 ? nearest : null;
+        },
+
+        /** The distance between two lines of the board. */
+        get stoneUnit() {
+            const [a, b] = this.layout.points;
+
+            return a && b ? Math.hypot(b.x - a.x, b.y - a.y) : 100;
+        },
+
+        setStone() {
+            if (!this.stone || !this.canMove) return;
+            const move = this.stoneMoves.get(this.stone);
+            if (move) return this.send(move);
+            this.error = this.t.stones.illegal;
+            this.render();
+        },
+
+        /** Pass; the pass that would end the game (the other side passed last) asks first, with the count it ends in. */
+        pass() {
+            const move = this.passMove;
+            if (!move) return;
+            if (this.opponentPassed && !this.confirmPass) {
+                this.confirmPass = true;
+                this.stone = null;
+                this.render();
+
+                return;
+            }
+            this.send(move);
+        },
+
+        toggleArea() {
+            this.showArea = !this.showArea;
+            this.render();
+        },
+
+        /** With the board focused: the arrows move the stone shown (the middle first), Enter or Space sets it, Escape takes it away. */
+        stoneKey(event) {
+            if (!this.canMove) return;
+            const step = BLOCK_KEY_STEPS[event.key];
+            if (step) {
+                [this.pointerType, this.error] = ['keyboard', ''];
+                this.moveStone(step);
+            } else if ((event.key === 'Enter' || event.key === ' ') && this.stone) {
+                this.pointerType = 'keyboard';
+                this.setStone();
+            } else if (event.key === 'Escape' && this.stone) {
+                [this.stone, this.error] = [null, ''];
+                this.render();
+            } else {
+                return;
+            }
+            event.preventDefault();
+        },
+
+        moveStone([dx, dy]) {
+            const points = this.layout.points;
+            const from = points.find((point) => point.id === this.stone);
+            if (!from) {
+                const xs = points.map((point) => point.x);
+                const ys = points.map((point) => point.y);
+                this.stone = this.nearestPoint({ x: (Math.min(...xs) + Math.max(...xs)) / 2, y: (Math.min(...ys) + Math.max(...ys)) / 2 })?.id ?? null;
+                this.render();
+
+                return;
+            }
+            let next = null;
+            let distance = Infinity;
+            points.forEach((point) => {
+                const along = (point.x - from.x) * dx + (point.y - from.y) * dy;
+                const across = Math.abs((point.x - from.x) * dy) + Math.abs((point.y - from.y) * dx);
+                if (along > 0 && across < 1 && along < distance) [next, distance] = [point, along];
+            });
+            if (next) this.stone = next.id;
+            this.render();
+        },
+
+        /**
+         * The go board: wood, the lines (the edge a little stronger), the star points, the coordinates as on a go board (files
+         * A to T without I under the board, ranks up its left side, the same for both players), the stones with the last one
+         * ringed, the areas on request, and the stone shown before it is set (red where no stone may go). Every intersection
+         * is a `data-point` group as wide as a line's distance, so a tap anywhere near it hits it.
+         */
+        renderStones(svg) {
+            const { width, height, points } = this.layout;
+            const unit = this.stoneUnit;
+            const shown = this.shownPly;
+            const pieces = this.piecesAt(shown);
+            const lastPath = (shown > 0 ? this.state.moves[shown - 1]?.path : null) ?? (this.viewIndex === null ? (this.state.lastMove?.path ?? []) : []);
+            const last = lastPath[0] ?? null;
+            const xs = points.map((point) => point.x);
+            const ys = points.map((point) => point.y);
+            const [left, right, top, bottom] = [Math.min(...xs), Math.max(...xs), Math.min(...ys), Math.max(...ys)];
+            const defs = svgElement('defs', {});
+            defs.innerHTML = STONE_GRADIENTS;
+            svg.append(defs, svgElement('rect', { x: 0, y: 0, width, height, rx: unit * 0.1, fill: GO.wood }));
+
+            this.layout.lines.forEach(([x1, y1, x2, y2]) => {
+                const edge = x1 === x2 ? x1 === left || x1 === right : y1 === top || y1 === bottom;
+                svg.append(svgElement('line', { x1, y1, x2, y2, stroke: GO.line, 'stroke-width': edge ? 1.7 : 1, 'vector-effect': 'non-scaling-stroke', 'stroke-linecap': 'square' }));
+            });
+            const byId = new Map(points.map((point) => [point.id, point]));
+            (this.layout.stars ?? []).forEach((id) => byId.has(id) && svg.append(svgElement('circle', { cx: byId.get(id).x, cy: byId.get(id).y, r: unit * 0.09, fill: GO.line })));
+
+            // The coordinates: under the bottom line and left of the left line, in the margin. On 13 x 13 and 19 x 19 a line
+            // is narrower on the same screen, so their letters take more of it (two digits still fit beside an edge stone).
+            const labelSize = unit * (points.length > 81 ? 0.4 : 0.28);
+            points.forEach((point) => {
+                const [file, rank] = [point.id.replace(/\d+$/, ''), point.id.replace(/^[a-z]/, '')];
+                const label = (text, x, y) => {
+                    const element = svgElement('text', { x, y, 'text-anchor': 'middle', 'dominant-baseline': 'central', 'font-size': labelSize, 'font-weight': 600, fill: GO.label, 'pointer-events': 'none', 'aria-hidden': 'true', 'data-coordinate': text });
+                    element.textContent = text;
+                    svg.append(element);
+                };
+                // In the middle between a stone on the edge line and the board's edge, so no stone ever covers them.
+                if (point.y === bottom) label(file.toUpperCase(), point.x, bottom + (unit * 0.47 + (height - bottom)) / 2);
+                if (point.x === left) label(rank, left - (unit * 0.47 + left) / 2, point.y);
+            });
+
+            const owners = this.areaShown ? this.state.count.owners : null;
+            const ownerOf = new Map(owners ? [...owners.w.map((id) => [id, 'w']), ...owners.b.map((id) => [id, 'b'])] : []);
+            const touch = this.pointerType !== 'mouse' && this.pointerType !== 'keyboard';
+            points.forEach((point) => {
+                const piece = pieces[point.id] ?? null;
+                const group = svgElement('g', { 'data-point': point.id, 'data-piece': piece ? piece.side + ':' + piece.kind : '', 'aria-label': this.pointLabel(point.id, piece) });
+                group.append(svgElement('rect', { x: point.x - unit / 2, y: point.y - unit / 2, width: unit, height: unit, fill: 'transparent' }));
+                if (piece) {
+                    const kind = piece.kind === 'white' || piece.kind === 'black' ? piece.kind : stoneKind(piece.side);
+                    group.append(svgElement('circle', { cx: point.x, cy: point.y, r: unit * 0.47, fill: STONE_FILL[kind], stroke: STONE_EDGE[kind], 'stroke-width': 1, 'vector-effect': 'non-scaling-stroke' }));
+                    if (point.id === last) group.append(svgElement('circle', { cx: point.x, cy: point.y, r: unit * 0.19, fill: 'none', stroke: GO.ring, 'stroke-width': unit * 0.07, 'data-last': '1' }));
+                }
+                const owner = ownerOf.get(point.id);
+                if (owner) {
+                    const size = unit * 0.3;
+                    group.append(svgElement('rect', { x: point.x - size / 2, y: point.y - size / 2, width: size, height: size, fill: STONE_FILL[stoneKind(owner)], stroke: STONE_EDGE[stoneKind(owner)], 'stroke-width': 1, 'vector-effect': 'non-scaling-stroke', 'data-area': owner }));
+                }
+                svg.append(group);
+            });
+
+            // The stone shown before it is set: in the player's colour where it may go, red where not. A finger's gets the
+            // lines through it, so on 19 x 19 the row and the file are plain to see.
+            const at = this.stone && this.canMove && !pieces[this.stone] ? byId.get(this.stone) : null;
+            if (at) {
+                const legal = this.stoneMoves.has(at.id);
+                if (touch) {
+                    svg.append(svgElement('line', { x1: left, y1: at.y, x2: right, y2: at.y, stroke: GO.cross, 'stroke-width': 2, 'vector-effect': 'non-scaling-stroke', 'pointer-events': 'none' }));
+                    svg.append(svgElement('line', { x1: at.x, y1: top, x2: at.x, y2: bottom, stroke: GO.cross, 'stroke-width': 2, 'vector-effect': 'non-scaling-stroke', 'pointer-events': 'none' }));
+                }
+                const kind = stoneKind(this.color);
+                svg.append(svgElement('circle', { cx: at.x, cy: at.y, r: unit * 0.47, fill: legal ? STONE_FILL[kind] : GO.illegal, stroke: legal ? STONE_EDGE[kind] : 'none', 'stroke-width': 1, 'vector-effect': 'non-scaling-stroke', opacity: legal ? 0.6 : 1, 'pointer-events': 'none', 'data-preview': legal ? 'legal' : 'illegal' }));
+            }
+        },
+
         /* ---- take back (BoardGameService::takeBack()) ------------------------------------------------- */
 
         /**
@@ -1104,6 +1448,13 @@ registerAlpine(() => {
                 if (moved) this.warningUntil = this.now + WARNING_MS;
                 if (!this.canMove) [this.blockMode, this.preview] = [false, null];
                 else if (this.preview) this.showBlock(this.preview.crossing, this.preview.dir, this.preview.turned);
+            }
+            // The stone input: a pass that waited for its second click waits no more; off the move no stone is shown; a game
+            // that just ended by its count shows each side's area.
+            if (changed && this.layout.input === 'stones') {
+                this.confirmPass = false;
+                if (!this.canMove) this.stone = null;
+                if (this.counted) this.showArea = true;
             }
             if (this.state.status !== 'active') this.confirmResign = false;
             this.syncPolling();

@@ -21,7 +21,7 @@ abstract class BoardGame implements Game
      * `nine-mens-morris`, never `mill` (resources/js/millAuth.js is the
      * nostr-mill login; a game named "mill" would mix up search and names).
      */
-    public const RESERVED_SLUGS = ['nine-mens-morris', 'checkers', 'blockli', 'blockspace'];
+    public const RESERVED_SLUGS = ['nine-mens-morris', 'checkers', 'blockli', 'blockspace', 'go-9', 'go-13', 'go-19'];
 
     final public function kind(): GameKind
     {
@@ -73,6 +73,17 @@ abstract class BoardGame implements Game
     public function playsTwoLegs(): bool
     {
         return false;
+    }
+
+    /**
+     * The colour of each side: the side that moves first (`w`) and the other. White and black as in chess; Go's first
+     * side plays the black stones (DerCaddy, 2026-10-27). The pages name the sides by it (GameNames::sides()).
+     *
+     * @return array{w: 'white'|'black', b: 'white'|'black'}
+     */
+    public function sideColours(): array
+    {
+        return ['w' => 'white', 'b' => 'black'];
     }
 
     /** The credit line of the game's config entry (`credit`), null without one (plan "Blockli", P3). */

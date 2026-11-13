@@ -647,7 +647,8 @@ final class BoardGameService
     /**
      * Everything a board needs to show this game right now: the pieces and
      * the legal moves with the points to click for each (the board knows no
-     * rules of its own), and for a race (RaceStanding) who would be ahead.
+     * rules of its own), for a race (RaceStanding) who would be ahead, and
+     * for a game counted by area (AreaCount, Go) the count as it stands.
      * The full move list is included for page loads and reconnects; pushes
      * leave it out and carry `lastMove` instead.
      *
@@ -696,6 +697,8 @@ final class BoardGameService
             'pieces' => $view['pieces'] ?? [],
             // Who would be ahead in a race (Blockli): steps to the goal and blocks left a side (DerCaddy, 2026-10-09).
             'standing' => $rules instanceof RaceStanding ? $rules->standing($position) : null,
+            // What each side would have if the game were counted now (Go, DerCaddy 2026-10-27: play it out, then count).
+            'count' => $rules instanceof AreaCount ? $rules->areaCount($position) : null,
             'legal' => array_map(fn (string $move): array => ['move' => $move, 'path' => $rules?->path($move) ?? []], $legal),
             'lastMove' => $lastMove,
         ];
@@ -711,7 +714,7 @@ final class BoardGameService
      * The board's fixed drawing (lines, cells, clickable points) of this
      * game, for the page; pushes carry only the pieces.
      *
-     * @return array{width: int, height: int, lines: list<array{0: int, 1: int, 2: int, 3: int}>, cells: list<array{x: int, y: int, size: int}>, points: list<array{id: string, x: int, y: int}>, input?: 'blocks'|'pieces', repetitions?: int}|null
+     * @return array{width: int, height: int, lines: list<array{0: int, 1: int, 2: int, 3: int}>, cells: list<array{x: int, y: int, size: int}>, points: list<array{id: string, x: int, y: int}>, input?: 'blocks'|'pieces'|'stones', repetitions?: int}|null
      */
     public function layout(BoardGame $game): ?array
     {

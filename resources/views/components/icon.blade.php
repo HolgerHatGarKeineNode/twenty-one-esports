@@ -93,6 +93,8 @@
         'blockli' => '<rect x="3" y="3" width="7" height="7" rx="1.5"></rect><rect x="14" y="3" width="7" height="7" rx="1.5"></rect><rect x="3" y="16" width="7" height="5" rx="1.5"></rect><rect x="14" y="16" width="7" height="5" rx="1.5"></rect><path d="M3 13h18" stroke-width="2.5"></path>',
         // Blockspace: stones that touch only at their corners.
         'blockspace' => '<rect x="3" y="13" width="8" height="8" rx="1.5"></rect><rect x="11" y="3" width="5" height="10" rx="1.5"></rect><rect x="16" y="13" width="5" height="5" rx="1.5"></rect>',
+        // Go (DerCaddy, 2026-10-27): the grid with a black stone and a white one (an outline the lines stop at).
+        'go' => '<path d="M3 8h18M8 3v18M3 16h9.8M19.2 16H21M16 3v9.8M16 19.2V21"></path><circle cx="8" cy="8" r="3.2" fill="currentColor"></circle><circle cx="16" cy="16" r="3.2"></circle>',
         // A like on Nostr (P48, NIP-25).
         'heart' => '<path d="M20.8 4.6a5.5 5.5 0 0 0-7.8 0L12 5.7l-1-1.1a5.5 5.5 0 0 0-7.8 7.8L12 21.2l8.8-8.8a5.5 5.5 0 0 0 0-7.8z"></path>',
         default => throw new InvalidArgumentException("Unknown icon [{$name}]."),

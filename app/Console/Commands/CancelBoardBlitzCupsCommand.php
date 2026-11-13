@@ -3,7 +3,6 @@
 namespace App\Console\Commands;
 
 use App\Enums\TournamentStatus;
-use App\Games\BoardGame;
 use App\Models\Tournament;
 use App\Models\User;
 use App\Support\Board;
@@ -33,9 +32,12 @@ class CancelBoardBlitzCupsCommand extends Command
 {
     public const REASON = 'Nine Men\'s Morris, Checkers and Blockli are now played one move a day only, so their blitz cups are called off. Challenge a player on the game\'s page instead.';
 
+    /** The games of that decision: not every board game (Go 9 x 9 came later with a blitz of its own, DerCaddy 2026-10-27). */
+    public const GAMES = ['nine-mens-morris', 'checkers', 'blockli'];
+
     public function handle(TournamentControl $control): int
     {
-        $cups = Tournament::query()->casualCup()->whereIn('game', BoardGame::RESERVED_SLUGS)->where('mode', 'blitz')
+        $cups = Tournament::query()->casualCup()->whereIn('game', self::GAMES)->where('mode', 'blitz')
             ->where('status', TournamentStatus::Signup)->orderBy('id')->get();
         $dryRun = (bool) $this->option('dry-run');
 

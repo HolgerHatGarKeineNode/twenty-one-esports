@@ -119,10 +119,15 @@ interface BoardRules
      * `repetitions`, if set, is the repetition limit of a game whose pieces
      * and side to move are its whole position (Blockli): the board counts how
      * often the position has stood there and warns at the last time before
-     * the draw.
+     * the draw. `stones` (Go) puts a stone on the intersection nearest to a
+     * tap, shown first and set by a second tap (a mouse sets it with its
+     * click), draws `stars` as dots and the pieces in the colour their `kind`
+     * names (`black`, `white`), whatever their side; a move without a path
+     * (a pass) is a button. `upright` keeps the board the same way round for
+     * both players (no turning for the second).
      *
      * @param  TPosition  $position
-     * @return array{width: int, height: int, lines: list<array{0: int, 1: int, 2: int, 3: int}>, cells: list<array{x: int, y: int, size: int}>, points: list<array{id: string, x: int, y: int}>, pieces: array<string, array{side: 'w'|'b', kind: string}>, input?: 'blocks'|'pieces', repetitions?: int}
+     * @return array{width: int, height: int, lines: list<array{0: int, 1: int, 2: int, 3: int}>, cells: list<array{x: int, y: int, size: int}>, points: list<array{id: string, x: int, y: int}>, pieces: array<string, array{side: 'w'|'b', kind: string}>, input?: 'blocks'|'pieces'|'stones', repetitions?: int, stars?: list<string>, upright?: bool}
      */
     public function view(mixed $position): array;
 }
