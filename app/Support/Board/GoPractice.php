@@ -2,21 +2,19 @@
 
 namespace App\Support\Board;
 
-use InvalidArgumentException;
-
 /**
  * Go practice against bots (DerCaddy, 2026-10-27: Go "nach dem Vorbild von Blockli", with an interactive tutorial):
- * the lessons, the bots, and the rules' answers for a game the browser keeps (pages/board/⚡go-practice,
- * resources/js/go/practice.js), on 9 x 9. Nothing of it is stored and nothing counts. The page sends the position it
- * holds with every move, and this checks the move by GoRules as a live game's move is checked, so a practice game
- * follows the league's rules to the letter. The bots and the tips run in the browser (resources/js/go); the server
- * only judges. The twin of BlockliPractice.
+ * the lessons, the bots, and the rules a game the browser keeps is judged by (pages/board/⚡go-practice,
+ * resources/js/go/practice.js), on 9 x 9, with the count as its standing. The judging itself is BoardPractice's, as
+ * for Blockli. The bots and the tips run in the browser (resources/js/go); the server only judges.
  *
  * @phpstan-import-type Position from GoRules
  *
+ * @extends BoardPractice<Position>
+ *
  * @phpstan-type Lesson array{id: string, position: string, goal: 'capture'|'escape'|'point'|'win', min?: int, point?: string, points?: list<string>, closing?: string, reply: 'pass'|'runner'|null, count?: bool, pass?: bool, title: string, text: string, task: string, done: string, retry: string, closingNote?: string}
  */
-final class GoPractice
+final class GoPractice extends BoardPractice
 {
     /** The board the practice plays on. */
     public const SIZE = 9;
@@ -114,6 +112,8 @@ final class GoPractice
 
     public function __construct()
     {
+        parent::__construct(self::POSITION_LENGTH, self::HISTORY_LIMIT);
+
         $this->rules = new GoRules(self::SIZE);
     }
 
@@ -122,105 +122,9 @@ final class GoPractice
         return $this->rules;
     }
 
-    /**
-     * What the board needs for a position the page starts from (a lesson, the start of a game): its pieces, the legal
-     * moves with their paths, the count and how the game stands; an error for text that is no position.
-     *
-     * @return array<string, mixed>
-     */
-    public function open(mixed $position): array
+    /** @return array{count: array<string, mixed>} */
+    protected function standing(mixed $position): array
     {
-        $parsed = $this->position($position);
-
-        return $parsed === null ? ['ok' => false, 'error' => 'no_position'] : ['ok' => true, ...$this->describe($parsed, [$this->rules->serialize($parsed)])];
-    }
-
-    /**
-     * A move in a position the page holds: the next position and what the board needs for it, or an error (`illegal_move`,
-     * `game_over`, `no_position`). `history` is every position of the game before this move, the one it is made in
-     * last, as the page kept them: the repetition draw and the move limit count them as a live game's are counted.
-     *
-     * @return array<string, mixed>
-     */
-    public function play(mixed $position, mixed $move, mixed $history = []): array
-    {
-        $parsed = $this->position($position);
-        $earlier = $this->history($history);
-
-        if ($parsed === null || $earlier === null) {
-            return ['ok' => false, 'error' => 'no_position'];
-        }
-
-        $serialized = $this->rules->serialize($parsed);
-        $earlier = $earlier === [] || end($earlier) !== $serialized ? [...$earlier, $serialized] : $earlier;
-
-        if ($this->rules->outcome($parsed, $earlier) !== null) {
-            return ['ok' => false, 'error' => 'game_over'];
-        }
-
-        if (! is_string($move) || ! in_array($move, $this->rules->legalMoves($parsed), true)) {
-            return ['ok' => false, 'error' => 'illegal_move'];
-        }
-
-        $next = $this->rules->apply($parsed, $move);
-
-        return [
-            'ok' => true,
-            'move' => ['move' => $move, 'notation' => $this->rules->notation($parsed, $move), 'path' => $this->rules->path($move)],
-            ...$this->describe($next, [...$earlier, $this->rules->serialize($next)]),
-        ];
-    }
-
-    /**
-     * @param  Position  $position
-     * @param  list<string>  $history
-     * @return array<string, mixed>
-     */
-    private function describe(array $position, array $history): array
-    {
-        $outcome = $this->rules->outcome($position, $history);
-
-        return [
-            'position' => $this->rules->serialize($position),
-            'turn' => $this->rules->turn($position),
-            'pieces' => $this->rules->view($position)['pieces'],
-            'legal' => $outcome === null ? array_map(fn (string $move): array => ['move' => $move, 'path' => $this->rules->path($move)], $this->rules->legalMoves($position)) : [],
-            'count' => $this->rules->areaCount($position),
-            'outcome' => $outcome,
-        ];
-    }
-
-    /** @return Position|null */
-    private function position(mixed $text): ?array
-    {
-        if (! is_string($text) || strlen($text) > self::POSITION_LENGTH) {
-            return null;
-        }
-
-        try {
-            return $this->rules->deserialize($text);
-        } catch (InvalidArgumentException) {
-            return null;
-        }
-    }
-
-    /** @return list<string>|null */
-    private function history(mixed $history): ?array
-    {
-        if (! is_array($history) || count($history) > self::HISTORY_LIMIT) {
-            return null;
-        }
-
-        $positions = [];
-
-        foreach ($history as $entry) {
-            if (! is_string($entry) || strlen($entry) > self::POSITION_LENGTH) {
-                return null;
-            }
-
-            $positions[] = $entry;
-        }
-
-        return $positions;
+        return ['count' => $this->rules->areaCount($position)];
     }
 }
