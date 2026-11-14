@@ -41,8 +41,8 @@ return [
     'board/⚡show.blade.php' => ['T2', 'MatchBoards › Brettspiel-Partie (Blockli)'],
     'challenges/⚡casual.blade.php' => ['T8', 'ChallengeCasual › ChallengeCasual'],
     'challenges/⚡create.blade.php' => ['T8', 'ChallengeCreate › ChallengeCreate'],
-    // "Challenge a player" picks the game first (DerCaddy, 2026-11-13): no canvas board yet (NEU, Scope), built as the challenge view T8.
-    'challenges/⚡player.blade.php' => ['T8 (NEU, Scope)', 'ChallengeCasual › ChallengeCasual'],
+    // "Challenge a player" picks the game first (DerCaddy, 2026-11-13): the challenge view T8, drawn on the canvas since 2026-11-14.
+    'challenges/⚡player.blade.php' => ['T8', 'ChallengePlayer › ChallengePlayer'],
     'chess/⚡challenge.blade.php' => ['T8', 'ChessChallenge › ChessChallenge'],
     'chess/⚡lobby.blade.php' => ['T1', 'GameLobby › Schach-Lobby'],
     'clans/⚡create.blade.php' => ['Formular (T-Admin-Form)', 'ClanCreate › ClanCreate'],
