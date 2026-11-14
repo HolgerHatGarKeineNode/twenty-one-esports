@@ -450,3 +450,56 @@ test('stepping back through a go game shows the stones as they stood, a captured
         ->and($page->evaluate('() => window.__errors'))->toBe([])
         ->and($page->evaluate(BrowserConsole::BAD_RESPONSES))->toBe([]);
 });
+
+/** What of the actions under the board the bar cuts (px of each), where the names of the stone shown stand, and whether a point's node is still the one marked. */
+const GO_LIVE_SLAB = <<<'JS'
+    () => {
+        const svg = document.querySelector('[data-test=board]');
+        const top = document.querySelector('[data-test=stone-input]').getBoundingClientRect().top;
+        const box = svg.getBoundingClientRect();
+        return {
+            peek: [...document.querySelectorAll('[data-fit-skip] button, [data-fit-skip] a')].filter((el) => el.checkVisibility())
+                .map((el) => el.getBoundingClientRect()).filter((r) => r.top < top && r.bottom > top).map((r) => Math.round(top - r.top)),
+            tags: [...svg.querySelectorAll(':scope > [data-tag]')].map((el) => { const r = el.getBoundingClientRect(); return [el.dataset.tag, r.left >= box.left - 0.5 && r.right <= box.right + 0.5 && r.top >= box.top - 0.5 && r.bottom <= box.bottom + 0.5, Math.round(r.height)]; }),
+            kept: svg.querySelector('[data-point=a1]').dataset.kept === '1',
+            stones: svg.querySelectorAll('[data-stone]').length,
+            ring: svg.querySelector('[data-point=e5] [data-last]')?.getAttribute('stroke') ?? null,
+        };
+    }
+    JS;
+
+test('on a phone in German nothing under Go\'s board is cut by the bar, the stone shown is named inside the board at its file and rank, and a stone set redraws its own point only', function (int $width, int $height, string $kind) {
+    [$anna, $bert] = User::factory()->count(2)->create();
+    $game = app(BoardGameService::class)->start($kind, $anna, $bert, 'correspondence');
+    $black = goLivePage($anna, route('board.show', ['boardGame' => $game, 'lang' => 'de'], false), $width, $height, true);
+    BrowserWait::until($black, '() => window.Alpine && '.GO_LIVE_BOARD.'?.canMove', 10_000);
+    goLiveSettle($black);
+    $black->evaluate('() => { document.querySelector("[data-test=board] [data-point=a1]").dataset.kept = "1"; }');
+
+    goLiveTap($black, true, 'e5');
+    goLiveSettle($black);
+    $shown = $black->evaluate(GO_LIVE_SLAB);
+    goLiveTap($black, true, 'e5');
+    BrowserWait::until($black, '() => '.GO_LIVE_BOARD.'.state.ply === 1', 5_000);
+    goLiveSettle($black);
+    $set = $black->evaluate(GO_LIVE_SLAB);
+
+    // 320 x 640 cut two of the buttons under the board by 5 px (measured 2026-11-14): they begin under the bar now.
+    expect($shown['peek'])->toBe([])
+        ->and($set['peek'])->toBe([])
+        // The file and the rank of the stone shown, whole inside the board (the SVG cuts what leaves it), at least 9 px high.
+        ->and(array_column($shown['tags'], 0))->toBe(['E', '5'])
+        ->and(array_column($shown['tags'], 1))->toBe([true, true])
+        ->and(min(array_column($shown['tags'], 2)))->toBeGreaterThanOrEqual(9)
+        // The board is kept: the point marked before the stone is the same node after it.
+        ->and($set['kept'])->toBeTrue()
+        ->and($set['stones'])->toBe(1)
+        // The last stone's ring on a black stone is the league's orange.
+        ->and($set['ring'])->toBe('#F7931A')
+        ->and($black->evaluate('() => window.__errors'))->toBe([])
+        ->and($black->evaluate(BrowserConsole::BAD_RESPONSES))->toBe([]);
+})->with([
+    '9 x 9 at 320' => [320, 640, 'go-9'],
+    '19 x 19 at 320' => [320, 640, 'go-19'],
+    '19 x 19 at 390' => [390, 844, 'go-19'],
+]);

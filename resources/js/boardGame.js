@@ -48,6 +48,8 @@ import { registerAlpine } from './registerAlpine.js';
 // dependency of that dynamic import, Vite's preload left the import pending on a page loaded fresh, and the block,
 // the ladder and the yields stayed empty at every width (measured 2026-11-07). Every selector is `.bs-*`.
 import './blockspace/board.css';
+// Go's board: the slab's shadow on the page and the three short motions of its stones. Every selector is `.go-*`.
+import './go/board.css';
 
 const SVG = 'http://www.w3.org/2000/svg';
 
@@ -83,12 +85,47 @@ const PIECE_STROKE = { w: '#A1A1AA', b: '#D4D4D8' };
  * stones both stand out; the last stone ringed in the league's orange. The first side plays black (Go: Black moves
  * first); every stone on the board names its colour (`kind`).
  */
-const GO = { wood: '#D8AD60', line: '#3B2C16', label: '#5A4422', ring: '#F7931A', illegal: 'rgba(239, 68, 68, 0.55)', cross: 'rgba(247, 147, 26, 0.6)' };
+/*
+ * The material (design pass 2026-11-14): a slab of honey wood lit from the top left, with its lower face in view, so
+ * the board is a thing on the dark page and not a flat field. The wood is as dark as it may be for black stones and as
+ * light as it may be for white ones: both stand out by at least 3:1 (WCAG 1.4.11; the sand of the first draft, #D8AD60,
+ * gave white stones 1.85:1), and the coordinates by 4.5:1. Orange is never a stone and never the wood: it is the ring
+ * of the last stone (darker on a white stone, where #F7931A has only 2:1) and the edge of the stone about to be set.
+ * A point that may not be played is a dark disc with a cross, read by its shape, not by red beside brown.
+ */
+const GO = {
+    wood: ['#B07C3D', '#A47038'],
+    side: '#553619',
+    grain: '#3C220A',
+    sheen: '#FFE2B4',
+    line: '#2A1B0B',
+    label: '#160D05',
+    ring: { black: '#F7931A', white: '#B9640A' },
+    accent: '#F7931A',
+    guide: '#FFE8C2',
+    tag: '#17120A',
+    tagInk: '#F9B25F',
+    illegal: '#1A0B0C',
+    illegalMark: '#F87171',
+    area: { black: 'rgba(10, 10, 11, 0.32)', white: 'rgba(255, 255, 255, 0.2)' },
+};
 const STONE_FILL = { black: 'url(#go-stone-black)', white: 'url(#go-stone-white)' };
-const STONE_EDGE = { black: '#050506', white: '#9A958B' };
+const STONE_EDGE = { black: '#000000', white: '#6B6354' };
 const STONE_GRADIENTS =
-    '<radialGradient id="go-stone-black" cx="36%" cy="32%" r="70%"><stop offset="0" stop-color="#55555C"/><stop offset="0.45" stop-color="#1C1C20"/><stop offset="1" stop-color="#08080A"/></radialGradient>' +
-    '<radialGradient id="go-stone-white" cx="36%" cy="32%" r="75%"><stop offset="0" stop-color="#FFFFFF"/><stop offset="0.6" stop-color="#F1EFEA"/><stop offset="1" stop-color="#CFCBC2"/></radialGradient>';
+    '<radialGradient id="go-stone-black" cx="35%" cy="30%" r="75%"><stop offset="0" stop-color="#5C5C66"/><stop offset="0.38" stop-color="#26262B"/><stop offset="1" stop-color="#0B0B0D"/></radialGradient>' +
+    '<radialGradient id="go-stone-white" cx="35%" cy="30%" r="80%"><stop offset="0" stop-color="#FFFFFF"/><stop offset="0.55" stop-color="#F4F1EA"/><stop offset="1" stop-color="#CBC5B8"/></radialGradient>' +
+    '<radialGradient id="go-stone-shadow"><stop offset="0.7" stop-color="#1E0F02" stop-opacity="0.5"/><stop offset="1" stop-color="#1E0F02" stop-opacity="0"/></radialGradient>' +
+    '<linearGradient id="go-wood" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="' + GO.wood[0] + '"/><stop offset="1" stop-color="' + GO.wood[1] + '"/></linearGradient>';
+
+/** The board's own state between two drawings (the layers, what each point showed), by its SVG. */
+const GO_DRAWN = new WeakMap();
+
+/** A number from 0 to 1 that is the same for the same seed: the wood's grain is the same on every drawing. */
+function grainAt(seed) {
+    const x = Math.sin(seed * 12.9898) * 43758.5453;
+
+    return x - Math.floor(x);
+}
 
 /** The colour of a side's stones under the stone input: the first side plays black. */
 export function stoneKind(side) {
@@ -372,6 +409,8 @@ registerAlpine(() => {
                 board.addEventListener('pointerleave', (event) => event.pointerType === 'mouse' && this.pointerType === 'mouse' && this.hoverStone(null));
                 // A game that ends counted shows each side's area at once (the count says why it ended so).
                 this.showArea = this.counted;
+                // The pass that asks makes the bar a line taller on a phone: the board gives way, nothing lies over it.
+                this.$watch('confirmPass', () => this.$nextTick(() => this.fitBoard()));
             }
 
             this.render();
@@ -449,6 +488,16 @@ registerAlpine(() => {
                 grid.style.gridTemplateColumns = '';
                 box.style.maxWidth = Math.max(200, width) + 'px';
                 page.style.paddingBottom = (shown(sheet) ? 72 : 0) + (shown(dock) ? dock.offsetHeight : 0) + 24 + 'px';
+                // Go on a phone as wide as the board may be (320 x 640): the game's actions under it began above the bar and were
+                // cut by it (5 px of two buttons, measured 2026-11-14). They begin where the bar ends, a scroll away.
+                if (this.layout.input === 'stones') {
+                    const skipped = [...column.children].find((el) => el.hasAttribute('data-fit-skip') && shown(el));
+                    if (skipped) {
+                        skipped.style.marginTop = '';
+                        const gap = edge - skipped.getBoundingClientRect().top;
+                        if (shown(dock) && gap > 0) skipped.style.marginTop = Math.ceil(gap) + 'px';
+                    }
+                }
                 // The warning over the board follows the board's new size.
                 if (this.layout.input === 'blocks') this.$nextTick(() => this.measureBand());
 
@@ -456,6 +505,7 @@ registerAlpine(() => {
             }
             box.style.maxWidth = '';
             page.style.paddingBottom = '';
+            column.querySelectorAll(':scope > [data-fit-skip]').forEach((el) => (el.style.marginTop = ''));
             // The board gives way to the actions and the lower card only down to DESKTOP_BOARD: below that they follow under the
             // first screen. A short window (a laptop at 150 %, about 1250 x 555: DerCaddy, 2026-10-14, the board had fallen to its
             // floor of 300 px) gets the board that fits below the sticky header (the root's scroll-padding-top) with 16 px of air:
@@ -540,8 +590,9 @@ registerAlpine(() => {
             const svg = this.$refs.board;
             if (!svg) return;
             if (this.layout.input === 'pieces') return svg.pieceBoard?.render();
-            svg.replaceChildren();
+            // Go's board is kept between two drawings: only the points that changed are drawn anew.
             if (this.layout.input === 'stones') return this.renderStones(svg);
+            svg.replaceChildren();
             const r = this.radius;
             const targets = new Set(this.targets);
             const shown = this.shownPly;
@@ -1092,9 +1143,9 @@ registerAlpine(() => {
             return this.state.status === 'finished' && !!this.state.count && this.state.reason === 'score';
         },
 
-        /** The marks of each side's area: on request, and on a counted game's last position. */
+        /** The marks of each side's area: on request, while a pass waits for its second click (the board as it would be counted), and on a counted game's last position. */
         get areaShown() {
-            return this.showArea && this.viewIndex === null && !!this.state.count;
+            return (this.showArea || (this.confirmPass && this.canMove)) && this.viewIndex === null && !!this.state.count;
         },
 
         get stoneHint() {
@@ -1303,72 +1354,131 @@ registerAlpine(() => {
         },
 
         /**
-         * The go board: wood, the lines (the edge a little stronger), the star points, the coordinates as on a go board (files
-         * A to T without I under the board, ranks up its left side, the same for both players), the stones with the last one
-         * ringed, the areas on request, and the stone shown before it is set (red where no stone may go). Every intersection
-         * is a `data-point` group as wide as a line's distance, so a tap anywhere near it hits it.
+         * The go board: a slab of wood with its lower face in view, the lines (the edge a little stronger), the star points,
+         * the coordinates as on a go board (files A to T without I under the board, ranks up its left side, the same for
+         * both players), the stones with their shadows and the last one ringed, each side's area on request, and the stone
+         * shown before it is set. Every intersection is a `data-point` group as wide as a line's distance, so a tap anywhere
+         * near it hits it. The wood, the lines and the coordinates are drawn once; after that only the points that changed
+         * are drawn anew (a stone set on 19 x 19 rebuilt 361 groups before). A stone that came with the newest move settles
+         * in and the stones it took fade out (R17: 180 and 260 ms, ease-out, not with reduced motion); nothing else moves.
          */
         renderStones(svg) {
-            const { width, height, points } = this.layout;
+            const points = this.layout.points;
             const unit = this.stoneUnit;
             const shown = this.shownPly;
             const pieces = this.piecesAt(shown);
             const lastPath = (shown > 0 ? this.state.moves[shown - 1]?.path : null) ?? (this.viewIndex === null ? (this.state.lastMove?.path ?? []) : []);
             const last = lastPath[0] ?? null;
-            const xs = points.map((point) => point.x);
-            const ys = points.map((point) => point.y);
-            const [left, right, top, bottom] = [Math.min(...xs), Math.max(...xs), Math.min(...ys), Math.max(...ys)];
-            const defs = svgElement('defs', {});
-            defs.innerHTML = STONE_GRADIENTS;
-            svg.append(defs, svgElement('rect', { x: 0, y: 0, width, height, rx: unit * 0.1, fill: GO.wood }));
-
-            this.layout.lines.forEach(([x1, y1, x2, y2]) => {
-                const edge = x1 === x2 ? x1 === left || x1 === right : y1 === top || y1 === bottom;
-                svg.append(svgElement('line', { x1, y1, x2, y2, stroke: GO.line, 'stroke-width': edge ? 1.7 : 1, 'vector-effect': 'non-scaling-stroke', 'stroke-linecap': 'square' }));
-            });
-            const byId = new Map(points.map((point) => [point.id, point]));
-            (this.layout.stars ?? []).forEach((id) => byId.has(id) && svg.append(svgElement('circle', { cx: byId.get(id).x, cy: byId.get(id).y, r: unit * 0.09, fill: GO.line })));
-
-            // The coordinates: under the bottom line and left of the left line, in the margin. On 13 x 13 and 19 x 19 a line
-            // is narrower on the same screen, so their letters take more of it (two digits still fit beside an edge stone).
-            const labelSize = unit * (points.length > 81 ? 0.4 : 0.28);
-            points.forEach((point) => {
-                const [file, rank] = [point.id.replace(/\d+$/, ''), point.id.replace(/^[a-z]/, '')];
-                const label = (text, x, y) => {
-                    const element = svgElement('text', { x, y, 'text-anchor': 'middle', 'dominant-baseline': 'central', 'font-size': labelSize, 'font-weight': 600, fill: GO.label, 'pointer-events': 'none', 'aria-hidden': 'true', 'data-coordinate': text });
-                    element.textContent = text;
-                    svg.append(element);
-                };
-                // In the middle between a stone on the edge line and the board's edge, so no stone ever covers them.
-                if (point.y === bottom) label(file.toUpperCase(), point.x, bottom + (unit * 0.47 + (height - bottom)) / 2);
-                if (point.x === left) label(rank, left - (unit * 0.47 + left) / 2, point.y);
-            });
-
+            let drawn = GO_DRAWN.get(svg);
+            if (!drawn || drawn.layout !== this.layout || !drawn.stones.isConnected) {
+                drawn = this.drawGoBoard(svg);
+                GO_DRAWN.set(svg, drawn);
+            }
             const owners = this.areaShown ? this.state.count.owners : null;
             const ownerOf = new Map(owners ? [...owners.w.map((id) => [id, 'w']), ...owners.b.map((id) => [id, 'b'])] : []);
+            const animate = drawn.animate && !matchMedia('(prefers-reduced-motion: reduce)').matches;
+            drawn.animate = false;
             points.forEach((point) => {
                 const piece = pieces[point.id] ?? null;
-                const group = svgElement('g', { 'data-point': point.id, 'data-piece': piece ? piece.side + ':' + piece.kind : '', 'aria-label': this.pointLabel(point.id, piece) });
-                group.append(svgElement('rect', { x: point.x - unit / 2, y: point.y - unit / 2, width: unit, height: unit, fill: 'transparent' }));
-                if (piece) {
-                    group.append(svgElement('circle', { cx: point.x, cy: point.y, r: unit * 0.47, fill: STONE_FILL[piece.kind], stroke: STONE_EDGE[piece.kind], 'stroke-width': 1, 'vector-effect': 'non-scaling-stroke' }));
-                    if (point.id === last) group.append(svgElement('circle', { cx: point.x, cy: point.y, r: unit * 0.19, fill: 'none', stroke: GO.ring, 'stroke-width': unit * 0.07, 'data-last': '1' }));
-                }
-                const owner = ownerOf.get(point.id);
+                const owner = ownerOf.get(point.id) ?? '';
+                const key = (piece ? piece.kind : '') + '|' + (point.id === last ? 1 : 0) + '|' + owner;
+                const before = drawn.keys.get(point.id);
+                if (before === key) return;
+                drawn.keys.set(point.id, key);
+                const had = before ? before.split('|')[0] : '';
+                const group = drawn.groups.get(point.id);
+                group.setAttribute('data-piece', piece ? piece.side + ':' + piece.kind : '');
+                group.setAttribute('aria-label', this.pointLabel(point.id, piece));
+                // The square around the point stays: it takes the tap.
+                while (group.childNodes.length > 1) group.lastChild.remove();
                 if (owner) {
-                    const size = unit * 0.3;
-                    group.append(svgElement('rect', { x: point.x - size / 2, y: point.y - size / 2, width: size, height: size, fill: STONE_FILL[stoneKind(owner)], stroke: STONE_EDGE[stoneKind(owner)], 'stroke-width': 1, 'vector-effect': 'non-scaling-stroke', 'data-area': owner }));
+                    // A side's area: its points darkened (Black) or lightened (White) into one field, each with a small stone of
+                    // the side, so the fields read at a glance and every point still says whose it is.
+                    const kind = stoneKind(owner);
+                    group.append(svgElement('rect', { x: point.x - unit / 2, y: point.y - unit / 2, width: unit, height: unit, fill: GO.area[kind], class: 'go-fade' }));
+                    group.append(svgElement('circle', { cx: point.x, cy: point.y, r: unit * 0.17, fill: STONE_FILL[kind], stroke: STONE_EDGE[kind], 'stroke-width': 1, 'vector-effect': 'non-scaling-stroke', class: 'go-fade', 'data-area': owner }));
                 }
-                svg.append(group);
+                if (piece) {
+                    const fresh = animate && had !== piece.kind ? 'go-in' : '';
+                    group.append(svgElement('circle', { cx: point.x + unit * 0.02, cy: point.y + unit * 0.07, r: unit * 0.55, fill: 'url(#go-stone-shadow)', class: fresh }));
+                    group.append(svgElement('circle', { cx: point.x, cy: point.y, r: unit * 0.47, fill: STONE_FILL[piece.kind], stroke: STONE_EDGE[piece.kind], 'stroke-width': 1, 'vector-effect': 'non-scaling-stroke', class: fresh, 'data-stone': piece.kind }));
+                    if (point.id === last) group.append(svgElement('circle', { cx: point.x, cy: point.y, r: unit * 0.2, fill: 'none', stroke: GO.ring[piece.kind], 'stroke-width': unit * 0.075, 'data-last': '1' }));
+                } else if (animate && had) {
+                    // A stone taken off by the newest move: it fades where it lay, then it is gone.
+                    const gone = svgElement('circle', { cx: point.x, cy: point.y, r: unit * 0.47, fill: STONE_FILL[had], stroke: STONE_EDGE[had], 'stroke-width': 1, 'vector-effect': 'non-scaling-stroke', class: 'go-out', 'data-taken': '' });
+                    gone.addEventListener('animationend', () => gone.remove());
+                    setTimeout(() => gone.remove(), 600);
+                    group.append(gone);
+                }
             });
 
             this.drawGhost(svg);
         },
 
+        /** The parts of the go board that never change: the slab, its grain, the lines, the star points, the coordinates; and one empty group a point. */
+        drawGoBoard(svg) {
+            const { width, height, points } = this.layout;
+            const unit = this.stoneUnit;
+            const xs = points.map((point) => point.x);
+            const ys = points.map((point) => point.y);
+            const [left, right, top, bottom] = [Math.min(...xs), Math.max(...xs), Math.min(...ys), Math.max(...ys)];
+            // The slab's lower face is an eighth of a line's distance on every size: under the edge line stand a stone's half, the
+            // file's letter and this face, and the letter needs the room (19 x 19 cut its letters with a taller face).
+            const [lip, corner] = [unit * 0.12, unit * 0.08];
+            const face = height - lip;
+            svg.replaceChildren();
+            svg.classList.add('go-board');
+            const defs = svgElement('defs', {});
+            defs.innerHTML = STONE_GRADIENTS;
+            const board = svgElement('g', { 'data-layer': 'board', 'pointer-events': 'none' });
+            board.append(svgElement('rect', { x: 0, y: face - corner * 2, width, height: lip + corner * 2, rx: corner, fill: GO.side }));
+            board.append(svgElement('rect', { x: 0, y: 0, width, height: face, rx: corner, fill: 'url(#go-wood)' }));
+            // Straight grain along the board, as the wood of a go board is cut: a few faint darker streaks, the same every time.
+            for (let streak = 1; streak <= 28; streak++) {
+                const thick = (0.002 + grainAt(streak + 40) * 0.009) * width;
+                board.append(svgElement('rect', { x: corner + grainAt(streak) * (width - corner * 2 - thick), y: 0, width: thick, height: face, fill: GO.grain, opacity: (0.025 + grainAt(streak + 80) * 0.05).toFixed(3) }));
+            }
+            // The light on the slab's upper edge.
+            board.append(svgElement('line', { x1: corner, y1: width * 0.0015, x2: width - corner, y2: width * 0.0015, stroke: GO.sheen, 'stroke-width': 1, 'vector-effect': 'non-scaling-stroke', opacity: 0.4 }));
+            this.layout.lines.forEach(([x1, y1, x2, y2]) => {
+                const edge = x1 === x2 ? x1 === left || x1 === right : y1 === top || y1 === bottom;
+                board.append(svgElement('line', { x1, y1, x2, y2, stroke: GO.line, 'stroke-width': edge ? 1.8 : 1, 'vector-effect': 'non-scaling-stroke', 'stroke-linecap': 'square' }));
+            });
+            const byId = new Map(points.map((point) => [point.id, point]));
+            (this.layout.stars ?? []).forEach((id) => byId.has(id) && board.append(svgElement('circle', { cx: byId.get(id).x, cy: byId.get(id).y, r: unit * (points.length > 81 ? 0.12 : 0.1), fill: GO.line })));
+
+            // The coordinates: under the bottom line and left of the left line, on the wood's margin, in the middle between a
+            // stone on the edge line and the slab's edge, so no stone ever covers them. On 13 x 13 and 19 x 19 a line is
+            // narrower on the same screen, so their letters take as much of that margin as two digits may (0.4 of a line).
+            const labelSize = unit * (points.length > 81 ? 0.4 : 0.32);
+            points.forEach((point) => {
+                const [file, rank] = [point.id.replace(/\d+$/, ''), point.id.replace(/^[a-z]/, '')];
+                const label = (text, x, y) => {
+                    const element = svgElement('text', { x, y, 'text-anchor': 'middle', 'dominant-baseline': 'central', 'font-size': labelSize, 'font-weight': 700, fill: GO.label, 'aria-hidden': 'true', 'data-coordinate': text });
+                    element.textContent = text;
+                    board.append(element);
+                };
+                if (point.y === bottom) label(file.toUpperCase(), point.x, (bottom + unit * 0.47 + face) / 2);
+                if (point.x === left) label(rank, (left - unit * 0.47) / 2, point.y);
+            });
+
+            const stones = svgElement('g', { 'data-layer': 'stones' });
+            const groups = new Map();
+            points.forEach((point) => {
+                const group = svgElement('g', { 'data-point': point.id, 'data-piece': '' });
+                group.append(svgElement('rect', { x: point.x - unit / 2, y: point.y - unit / 2, width: unit, height: unit, fill: 'transparent' }));
+                groups.set(point.id, group);
+                stones.append(group);
+            });
+            svg.append(defs, board, stones);
+
+            return { layout: this.layout, stones, groups, keys: new Map(), animate: false, face };
+        },
+
         /**
-         * The stone shown before it is set: in the player's colour where it may go, red where not. A finger's gets the
-         * lines through it, so on 19 x 19 the row and the file are plain to see. Drawn on its own, so a mouse moving over
-         * the board does not rebuild it (measured 2026-11-14 on 19 x 19: 5.7 ms a point for the whole board).
+         * The stone shown before it is set: the player's stone, a little clear, with the league's orange around it; where no
+         * stone may go, a dark disc with a cross. A finger's and the keys' get the lines through it and the name of its file
+         * and its rank at the board's edge, large enough to read on 19 x 19 (they stand on the margin, over the coordinate they name); a mouse points at the place itself. Drawn on its own, so a mouse moving over the board does not rebuild it.
          */
         drawGhost(svg) {
             svg.querySelectorAll(':scope > [data-ghost]').forEach((element) => element.remove());
@@ -1377,14 +1487,37 @@ registerAlpine(() => {
             if (!at) return;
             const unit = this.stoneUnit;
             const legal = this.stoneMoves.has(at.id);
-            if (this.pointerType !== 'mouse' && this.pointerType !== 'keyboard') {
+            const add = (name, attributes) => {
+                const element = svgElement(name, { ...attributes, 'pointer-events': 'none', 'data-ghost': '' });
+                svg.append(element);
+
+                return element;
+            };
+            if (this.pointerType !== 'mouse') {
                 const xs = points.map((point) => point.x);
                 const ys = points.map((point) => point.y);
-                svg.append(svgElement('line', { x1: Math.min(...xs), y1: at.y, x2: Math.max(...xs), y2: at.y, stroke: GO.cross, 'stroke-width': 2, 'vector-effect': 'non-scaling-stroke', 'pointer-events': 'none', 'data-ghost': '' }));
-                svg.append(svgElement('line', { x1: at.x, y1: Math.min(...ys), x2: at.x, y2: Math.max(...ys), stroke: GO.cross, 'stroke-width': 2, 'vector-effect': 'non-scaling-stroke', 'pointer-events': 'none', 'data-ghost': '' }));
+                add('line', { x1: Math.min(...xs), y1: at.y, x2: Math.max(...xs), y2: at.y, stroke: GO.guide, 'stroke-width': 1.5, 'vector-effect': 'non-scaling-stroke' });
+                add('line', { x1: at.x, y1: Math.min(...ys), x2: at.x, y2: Math.max(...ys), stroke: GO.guide, 'stroke-width': 1.5, 'vector-effect': 'non-scaling-stroke' });
+                const size = unit * (points.length > 169 ? 0.7 : points.length > 81 ? 0.5 : 0.36);
+                const tag = (text, x, y) => {
+                    const [wide, high] = [size * (text.length * 0.62 + 0.7), size * 1.35];
+                    add('rect', { x: x - wide / 2, y: y - high / 2, width: wide, height: high, rx: size * 0.18, fill: GO.tag, 'data-tag': text });
+                    add('text', { x, y, 'text-anchor': 'middle', 'dominant-baseline': 'central', 'font-size': size, 'font-weight': 700, fill: GO.tagInk, 'aria-hidden': 'true' }).textContent = text;
+                };
+                // Where the coordinate stands, over it; kept inside the board's box, which cuts what leaves it.
+                const [file, rank] = [at.id.replace(/\d+$/, '').toUpperCase(), at.id.replace(/^[a-z]/, '')];
+                const face = GO_DRAWN.get(svg)?.face ?? this.layout.height;
+                tag(file, at.x, Math.min((Math.max(...ys) + unit * 0.47 + face) / 2, this.layout.height - size * 0.7));
+                tag(rank, Math.max((Math.min(...xs) - unit * 0.47) / 2, size * (rank.length * 0.31 + 0.37)), at.y);
             }
-            const kind = stoneKind(this.color);
-            svg.append(svgElement('circle', { cx: at.x, cy: at.y, r: unit * 0.47, fill: legal ? STONE_FILL[kind] : GO.illegal, stroke: legal ? STONE_EDGE[kind] : 'none', 'stroke-width': 1, 'vector-effect': 'non-scaling-stroke', opacity: legal ? 0.6 : 1, 'pointer-events': 'none', 'data-preview': legal ? 'legal' : 'illegal', 'data-ghost': '' }));
+            if (legal) {
+                add('circle', { cx: at.x, cy: at.y, r: unit * 0.47, fill: STONE_FILL[stoneKind(this.color)], opacity: 0.78, 'data-preview': 'legal' });
+                add('circle', { cx: at.x, cy: at.y, r: unit * 0.47, fill: 'none', stroke: GO.accent, 'stroke-width': 2, 'vector-effect': 'non-scaling-stroke' });
+            } else {
+                const arm = unit * 0.15;
+                add('circle', { cx: at.x, cy: at.y, r: unit * 0.4, fill: GO.illegal, opacity: 0.92, stroke: GO.illegalMark, 'stroke-width': 1.5, 'vector-effect': 'non-scaling-stroke', 'data-preview': 'illegal' });
+                add('path', { d: `M${at.x - arm} ${at.y - arm}L${at.x + arm} ${at.y + arm}M${at.x + arm} ${at.y - arm}L${at.x - arm} ${at.y + arm}`, stroke: GO.illegalMark, 'stroke-width': unit * 0.09, 'stroke-linecap': 'round', fill: 'none' });
+            }
         },
 
         /* ---- take back (BoardGameService::takeBack()) ------------------------------------------------- */
@@ -1554,6 +1687,9 @@ registerAlpine(() => {
             }
             if (this.state.status !== 'active') this.confirmResign = false;
             this.syncPolling();
+            // The newest move of the game being followed: its stone settles in, what it took fades (renderStones()).
+            const drawn = this.$refs.board ? GO_DRAWN.get(this.$refs.board) : null;
+            if (drawn && moved && this.viewIndex === null) drawn.animate = true;
             this.render();
         },
 
@@ -1568,7 +1704,10 @@ registerAlpine(() => {
             const same = (ply) => ply === 0 || moves[ply - 1]?.move === update.lastMove?.move;
             if (update.ply === moves.length + 1 && update.lastMove) {
                 // A push of a board with its own input carries the pieces once (BoardGameService::snapshot()).
-                return { ...update, moves: [...moves, { ...update.lastMove, pieces: update.lastMove.pieces ?? update.pieces }] };
+                // A push of stones names nothing taken (it carries the stones as they stand): what lay there before and is gone was taken.
+                const taken = this.layout.input === 'stones' && !update.lastMove.taken?.length && update.pieces ? Object.keys(this.state.pieces).filter((id) => !update.pieces[id]) : update.lastMove.taken;
+
+                return { ...update, moves: [...moves, { ...update.lastMove, ...(taken ? { taken } : {}), pieces: update.lastMove.pieces ?? update.pieces }] };
             }
             if (update.ply === moves.length && same(update.ply)) return { ...update, moves };
             if (update.ply < moves.length && same(update.ply)) return { ...update, moves: moves.slice(0, update.ply) };

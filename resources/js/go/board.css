@@ -1,0 +1,60 @@
+/*
+ * Go's board (resources/js/boardGame.js, renderStones()). The slab itself is drawn in the SVG; here are only its shadow
+ * on the page and the three short motions of its stones (R17: 150-300 ms, ease-out; none with reduced motion).
+ */
+svg.go-board {
+    background: transparent;
+    box-shadow:
+        0 1px 0 rgb(255 255 255 / 6%),
+        0 12px 24px -8px rgb(0 0 0 / 70%);
+}
+
+.go-board .go-in,
+.go-board .go-out,
+.go-board .go-fade {
+    transform-box: fill-box;
+    transform-origin: center;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+    /* A stone set by the newest move settles onto the wood. */
+    .go-board .go-in {
+        animation: go-in 180ms ease-out;
+    }
+
+    /* A stone the newest move took: it fades where it lay. */
+    .go-board .go-out {
+        animation: go-out 260ms ease-out forwards;
+    }
+
+    /* A side's area, shown on request. */
+    .go-board .go-fade {
+        animation: go-fade 200ms ease-out;
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .go-board .go-out {
+        display: none;
+    }
+}
+
+@keyframes go-in {
+    from {
+        opacity: 0;
+        transform: scale(1.14);
+    }
+}
+
+@keyframes go-out {
+    to {
+        opacity: 0;
+        transform: scale(0.82);
+    }
+}
+
+@keyframes go-fade {
+    from {
+        opacity: 0;
+    }
+}
