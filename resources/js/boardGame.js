@@ -551,6 +551,16 @@ registerAlpine(() => {
                         const at = strip.getBoundingClientRect();
                         if (at.top + scrollY < fold && at.bottom + scrollY > fold - 8) strip.style.marginTop = Math.ceil(fold - at.top - scrollY) + 'px';
                     }
+                    // The moves' card after it, by the same rule for its head (the title and the four buttons that step through the
+                    // game): whole above the sheet, or the card begins where the first screen ends (with short names 9 px of it
+                    // showed at 390 x 844 and the buttons stood wholly under the sheet).
+                    const card = this.$root.querySelector('[data-test=moves-card]');
+                    const head = card?.querySelector('[data-test=history-nav]');
+                    if (card) card.style.marginTop = '';
+                    if (head && this.state.status !== 'active') {
+                        const top = card.getBoundingClientRect().top + scrollY;
+                        if (top < fold && head.getBoundingClientRect().bottom + scrollY > fold - 8) card.style.marginTop = Math.ceil(fold - top) + 'px';
+                    }
                 }
                 // The warning over the board follows the board's new size.
                 if (this.layout.input === 'blocks') this.$nextTick(() => this.measureBand());
@@ -560,7 +570,7 @@ registerAlpine(() => {
             box.style.maxWidth = '';
             page.style.paddingBottom = '';
             column.querySelectorAll(':scope > [data-fit-skip]').forEach((el) => (el.style.marginTop = ''));
-            this.$root.querySelectorAll('[data-test=count]').forEach((el) => (el.style.marginTop = ''));
+            this.$root.querySelectorAll('[data-test=count], [data-test=moves-card]').forEach((el) => (el.style.marginTop = ''));
             this.$root.querySelectorAll('[data-fit-after]').forEach((el) => (el.style.marginTop = ''));
             // The board gives way to the actions and the lower card only down to DESKTOP_BOARD: below that they follow under the
             // first screen. A short window (a laptop at 150 %, about 1250 x 555: DerCaddy, 2026-10-14, the board had fallen to its

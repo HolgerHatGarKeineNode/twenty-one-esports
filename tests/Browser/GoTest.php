@@ -779,6 +779,9 @@ test('on a phone nothing to press on a finished Go game\'s page is under the bar
     // Before: "Gebiet zeigen" stood at 760 to 804 and the chat sheet began at 772. The score was placed while the deadline's
     // line, emptied by the game's end, still took its 12 px of gap above it; Alpine hides such a line a frame later.
     '19 x 19 at 390, ended with the tab bar tucked away' => [390, 844, 'go-19', ['Anna-Magdalena Satoshi Nakamoto', 'Bertram Hal Finney von Lightning']],
+    // Before: with short names the result takes fewer lines and the moves' card began at 763 while the chat sheet began at
+    // 772: 9 px of the card showed and its four history buttons stood wholly under the sheet.
+    '9 x 9 at 390, short names, ended with the tab bar tucked away' => [390, 844, 'go-9', ['Anna', 'Bert']],
 ]);
 
 test('everything to press on a Go game\'s page is at least 44 px wide and high, in the game and after it', function (int $width, int $height, bool $touch) {
