@@ -12,7 +12,6 @@ use App\Models\User;
 use App\Support\Broadcast\OverlaySnapshot;
 use App\Support\Tournaments\TournamentRunner;
 use Illuminate\Process\Factory;
-use Illuminate\Support\Facades\File;
 
 /*
 |--------------------------------------------------------------------------
@@ -140,22 +139,19 @@ test('an open tournament shows its sign-ups and start, a round robin its table, 
         ->and($finished['board']['round'])->toBe('Final');
 });
 
-test('every Go size shows Go\'s emblem once its file is in the pack, and the league mark until then', function (string $slug) {
-    // A pack of its own, so the test neither needs nor leaves a file in public/.
-    app()->usePublicPath($public = storage_path('framework/testing/go-emblem-'.$slug));
-    File::ensureDirectoryExists($public.'/broadcast/art');
-    File::delete($public.'/broadcast/art/emblem-go.webp');
-
-    expect(OverlaySnapshot::emblem($slug))->toBe('mark')
-        ->and(BroadcastStyleguideController::art())->not->toHaveKey('emblem-go')
-        ->and(array_keys(BroadcastStyleguideController::art()))->toBe(BroadcastStyleguideController::ART);
-
-    File::put($public.'/broadcast/art/emblem-go.webp', 'webp');
-
+test('every Go size shows Go\'s emblem, and its file is in the pack like the other emblems', function (string $slug) {
     expect(OverlaySnapshot::emblem($slug))->toBe('emblem-go')
+        ->and(BroadcastStyleguideController::ART)->toContain('emblem-go')
+        ->and(BroadcastStyleguideController::PENDING)->not->toContain('emblem-go')
         ->and(BroadcastStyleguideController::art()['emblem-go'])->toBe('/broadcast/art/emblem-go.webp');
 
-    File::deleteDirectory($public);
+    // The pack's format: a WebP with a clear ground, 1024 px on its long side.
+    $file = public_path('broadcast/art/emblem-go.webp');
+    $image = imagecreatefromwebp($file);
+
+    expect(max(imagesx($image), imagesy($image)))->toBe(1024)
+        ->and(imagecolorat($image, 2, 2) >> 24)->toBe(127)
+        ->and(imagecolorat($image, (int) (imagesx($image) / 2), (int) (imagesy($image) / 2)) >> 24)->toBe(0);
 })->with(['go-9', 'go-13', 'go-19']);
 
 test('the browser variants name Go\'s emblem for every Go size, as the server does', function () {

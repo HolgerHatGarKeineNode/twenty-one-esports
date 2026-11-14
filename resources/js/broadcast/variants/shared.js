@@ -13,7 +13,7 @@ const EMBLEMS = {
 
 /**
  * The emblem id of a game slug (as OverlaySnapshot::emblem()), 'mark' for a game without one. Every Go size has Go's
- * emblem; until its file is in the pack the page's art list does not hold it and ctx.art() shows the mark.
+ * emblem.
  */
 export function emblemOf(slug) {
     if (!slug) return 'mark';

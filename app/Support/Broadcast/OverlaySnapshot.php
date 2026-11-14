@@ -5,7 +5,6 @@ namespace App\Support\Broadcast;
 use App\Enums\OverlayVariant;
 use App\Enums\TournamentStatus;
 use App\Games\GameRegistry;
-use App\Http\Controllers\BroadcastStyleguideController;
 use App\Models\Clan;
 use App\Models\OverlayPreset;
 use App\Models\Tournament;
@@ -700,8 +699,7 @@ final class OverlaySnapshot
 
     /**
      * The emblem of a game in the asset pack (public/broadcast/art), the league mark for a game without one. Every Go
-     * size has Go's emblem, from the moment its file is in the pack (BroadcastStyleguideController::PENDING); the mark
-     * until then.
+     * size has Go's emblem.
      */
     public static function emblem(string $game): string
     {
@@ -718,7 +716,7 @@ final class OverlaySnapshot
             $game === 'nine-mens-morris' => 'emblem-mill',
             $game === 'blockli' => 'emblem-blockli',
             $game === 'blockspace' => 'emblem-blockspace',
-            str_starts_with($game, 'go-') => array_key_exists('emblem-go', BroadcastStyleguideController::art()) ? 'emblem-go' : 'mark',
+            str_starts_with($game, 'go-') => 'emblem-go',
             default => 'mark',
         };
     }

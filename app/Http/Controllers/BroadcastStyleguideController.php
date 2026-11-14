@@ -13,16 +13,21 @@ use Illuminate\Http\Request;
  */
 class BroadcastStyleguideController extends Controller
 {
-    /** The asset pack under public/broadcast/art, by id (tools/broadcast-art/manifest.json). */
+    /**
+     * The asset pack under public/broadcast/art, by id (tools/broadcast-art/manifest.json). `emblem-go` is not of that
+     * manifest: it is drawn from the material of Go's own board (resources/js/boardGame.js `GO`), a block of the
+     * wooden board with four stones.
+     */
     public const array ART = [
         'trophy', 'crown', 'medal-gold', 'medal-silver', 'medal-bronze', 'rank-up',
         'emblem-chess', 'emblem-rocket-league', 'emblem-football', 'emblem-age-of-empires-2', 'emblem-tmnf',
         'emblem-pong', 'emblem-hyper', 'emblem-blockfill', 'emblem-checkers', 'emblem-mill', 'emblem-blockli', 'emblem-blockspace',
+        'emblem-go',
         'energy-wide', 'energy-rays',
     ];
 
     /** Assets the overlays already name whose file the designer still delivers: used once the file is in the pack. */
-    public const array PENDING = ['emblem-go'];
+    public const array PENDING = [];
 
     /**
      * The pack as the overlay scripts get it, id to URL: every asset of ART, and of PENDING the ones whose file is
