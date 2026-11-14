@@ -165,6 +165,70 @@ test('a tournament Blockli board is as large on a phone as a casual one, its ban
     'iPhone SE in Safari, the bars slide slowly' => [375, 553, false, 600],
 ]);
 
+test('on a phone too short for the board the tab bar stays away when Livewire reports the page late, and of two changes that overlap only the last one reports', function () {
+    // The full run of 2026-11-14 (16 shards, load average 45): the board's page had the tab bar away and its last
+    // `focus-mode` event said "shown", so the two tests that wait for the hide's event waited in vain. focusMode.js started
+    // twice on a plain page load (DOMContentLoaded, then Livewire's `livewire:navigated` a task later): the second start
+    // called the bar back, the board sent it away again, and the three delayed events came in no fixed order.
+    [$anna, $bert] = User::factory()->count(2)->create();
+    $game = app(BoardGameService::class)->start('blockli', $anna, $bert);
+    $page = visit(BrowserLogin::url($anna))->on()->mobile()->page();
+    $page->context()->addInitScript(BrowserConsole::COLLECTOR);
+    $page->setViewportSize(375, 553);
+    // Every `focus-mode` event with what the bar does at that moment. And the seam: Livewire's report of the page load is
+    // held until the test lets it go, after the bars have slid: a phone whose main thread is busy, made deterministic.
+    $page->context()->addInitScript(<<<'JS'
+        (() => {
+            window.__focus = { events: [], held: 0, release: null };
+            const away = () => document.documentElement.classList.contains('is-focus');
+            addEventListener('focus-mode', (event) => window.__focus.events.push([event.detail.hidden, away()]));
+            document.addEventListener('livewire:navigated', (event) => {
+                if (window.__focus.held > 0) return;
+                window.__focus.held++;
+                event.stopImmediatePropagation();
+                window.__focus.release = () => { document.dispatchEvent(new CustomEvent('livewire:navigated', { bubbles: true })); return away(); };
+            }, true);
+        })();
+        JS);
+    $state = '() => ({ away: document.documentElement.classList.contains("is-focus"), board: document.querySelector("[data-board-box]").style.maxWidth, tabBar: Math.round(document.querySelector("[data-test=tab-bar]").getBoundingClientRect().top), events: window.__focus.events.length })';
+    $settle = function (int $after) use ($page): void {
+        // The hide has reported, as the last event, and nothing slides any more.
+        BrowserWait::until($page, "() => window.__focus?.events.length > {$after} && window.__focus.events.at(-1)[0] === true && document.documentElement.classList.contains('is-focus')", 10_000);
+        BrowserWait::until($page, '() => document.getAnimations().every((a) => a.playState !== "running" || a.effect?.getTiming().iterations === Infinity)', 5_000);
+    };
+    $page->goto(ComputeUrl::from(route('board.show', $game, false)));
+    BrowserWait::until($page, '() => window.Alpine && !!document.querySelector("[data-test=board]")', 10_000);
+    $settle(0);
+    $loaded = $page->evaluate($state);
+
+    // Livewire reports the page now: the bar stays away at once, and two frames on nothing has moved or reported.
+    expect($page->evaluate('() => window.__focus.held'))->toBe(1, 'the seam held Livewire\'s report of the page load');
+    $stillAway = $page->evaluate('() => window.__focus.release()');
+    $reported = $page->evaluate('() => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve(('.$state.')()))))');
+    fwrite(STDERR, PHP_EOL.'[focus 375x553] '.json_encode(compact('loaded', 'stillAway', 'reported')).PHP_EOL);
+
+    expect($loaded['tabBar'])->toBe(553, 'the tab bar is below the screen')
+        ->and($stillAway)->toBeTrue('the tab bar stays away when Livewire reports the page')
+        ->and($reported)->toBe($loaded, 'nothing moved and nothing was reported');
+
+    // The bar called back and sent away again within one task (a tap on the bottom edge, then one on the board): the
+    // show is overtaken and stays silent, the hide reports once, and no event says other than what the bar does.
+    $page->evaluate('() => { for (const selector of ["[data-test=focus-edge]", "[data-focus-board]"]) document.querySelector(selector).dispatchEvent(new PointerEvent("pointerdown", { bubbles: true })); }');
+    $settle($loaded['events']);
+    $events = $page->evaluate('() => window.__focus.events');
+    fwrite(STDERR, '[focus events] '.json_encode($events).PHP_EOL);
+
+    expect(array_slice($events, $loaded['events']))->toBe([[true, true]], 'one report for two overlapping changes, saying what the bar does')
+        ->and(collect($events)->reject(fn (array $event): bool => $event[0] === $event[1])->all())->toBe([], 'every focus-mode event says what the bar does')
+        ->and($page->evaluate($state)['board'])->toBe($loaded['board'], 'the board keeps its size')
+        ->and($page->evaluate('() => window.__errors'))->toBe([])
+        ->and($page->evaluate(BrowserConsole::BAD_RESPONSES))->toBe([]);
+
+    // Positive control: the collector sees a throw, a console error and a failed answer on this very page.
+    $page->evaluate('() => { console.error("focus console control"); setTimeout(() => { throw new Error("focus positive control"); }); fetch("/board/0"); }');
+    BrowserWait::until($page, '() => window.__errors.some((e) => e.includes("focus positive control")) && window.__errors.some((e) => e.includes("focus console control")) && window.__errors.some((e) => e.startsWith("404 "))', 5_000);
+});
+
 /** A running single-elimination Blockli cup of two, and its one active game. */
 function phoneCupGame(string $name): BoardGame
 {

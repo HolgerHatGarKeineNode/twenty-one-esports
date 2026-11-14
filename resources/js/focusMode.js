@@ -5,7 +5,8 @@
  * Only on a page that marks itself `data-focus-page` (the chess and board game pages of a running game) and only below
  * 1024 px. It hides when the player taps the board (`data-focus-board`) or scrolls down; it shows again on a scroll
  * up, a swipe up from the bottom edge, or a tap on the bottom edge (a 24 px strip, `data-test=focus-edge`, while the
- * bar is away). Every change dispatches `focus-mode`, so a board that fits the first screen (boardGame.js fitBoard) takes
+ * bar is away). Every change dispatches `focus-mode` once the bars have slid (of changes that overlap only the last one, with
+ * what the bar does then), so a board that fits the first screen (boardGame.js fitBoard) takes
  * the height the bar gave up; so does its start, for a board that fitted itself before it. The root class `is-focus` slides the bar and the page's own bottom bars down
  * (revamp-league.css); the body keeps its room, so nothing on the page moves. Reduced motion: no slide, the bar is shown or hidden at once (revamp-league.css).
  * One listener set on window, released on every wire:navigate swap; a page without the mark never hides the bar.
@@ -14,6 +15,8 @@
 const PHONE = '(width < 64rem)';
 const STEP = 8;
 const EDGE = 48;
+/** Counts the changes of setFocus(): a report whose change another overtook stays silent. */
+let change = 0;
 
 function root() {
     return document.documentElement;
@@ -33,10 +36,17 @@ function setFocus(on) {
     // The 220 ms is a guess at the slide (200 ms): on a busy phone the first frame of the slide can come later than that, and a
     // board that fitted then read the bars half-way down and stayed 12 px short for good. So the event waits for the slide itself.
     const slide = window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 0 : 220;
+    // Only the last change reports. Each change waits for the slide on its own, so two that overlap (the bar sent away
+    // and called back within the slide) end their waits in no fixed order: a change another overtook could report last
+    // and say "shown" while the bar was away (measured 2026-11-14: made at 378, 393, 394 ms, events at 631 shown, 632 hidden).
+    const mine = ++change;
     setTimeout(async () => {
         await slideDone();
+        if (mine !== change) {
+            return;
+        }
         window.dispatchEvent(new Event('resize'));
-        requestAnimationFrame(() => requestAnimationFrame(() => window.dispatchEvent(new CustomEvent('focus-mode', { detail: { hidden: on } }))));
+        requestAnimationFrame(() => requestAnimationFrame(() => mine === change && window.dispatchEvent(new CustomEvent('focus-mode', { detail: { hidden: on } }))));
     }, slide);
 }
 
@@ -53,8 +63,18 @@ async function slideDone() {
 }
 
 let teardown = null;
+/** The page start() has set up, by its body: Livewire puts a new body in place on every wire:navigate. */
+let started = null;
 
 function start() {
+    // Livewire reports a plain page load too (`livewire:navigated`, a task after DOMContentLoaded): the same page, set up
+    // already. Starting anew called the bar back that the board had just sent away (boardGame.js fitBoard), and the board
+    // sent it away once more. On a phone busy enough for that report to come after the slide, the bar came back and left
+    // again and the board went from 212 to 200 to 212 px (an iPhone SE in Safari, measured 2026-11-14).
+    if (started === document.body) {
+        return;
+    }
+    started = document.body;
     teardown?.abort();
     teardown = null;
     setFocus(false);
