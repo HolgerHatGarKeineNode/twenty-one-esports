@@ -503,3 +503,50 @@ test('on a phone in German nothing under Go\'s board is cut by the bar, the ston
     '19 x 19 at 320' => [320, 640, 'go-19'],
     '19 x 19 at 390' => [390, 844, 'go-19'],
 ]);
+
+test('a counted Go game on a phone in German: the winner, the margin and the reason stand under the board with "Nächsten Gegner suchen" on the first screen, each card carries its side\'s score', function (int $width, int $height) {
+    [$anna, $bert] = User::factory()->count(2)->create();
+    $game = GoOn::setUp(app(BoardGameService::class)->start('go-9', $anna, $bert), '9/9/9/3xo4/2xo1o3/3xo4/9/9/9 x - 0');
+    app(BoardGameService::class)->move($game->refresh(), $anna, 'pass');
+    app(BoardGameService::class)->move($game->refresh(), $bert, 'pass');
+    $page = goLivePage($anna, route('board.show', ['boardGame' => $game, 'lang' => 'de'], false), $width, $height, true);
+    BrowserWait::until($page, '() => window.Alpine && document.querySelector("[data-test=next-opponent]")?.getClientRects().length > 0', 10_000);
+    goLiveSettle($page);
+
+    $end = $page->evaluate(<<<'JS'
+        () => {
+            const box = (selector) => document.querySelector(selector)?.getBoundingClientRect();
+            const sheet = [...document.querySelectorAll('body *')].filter((el) => getComputedStyle(el).position === 'fixed' && el.getBoundingClientRect().height > 0 && el.getBoundingClientRect().top > innerHeight / 2);
+            const edge = Math.min(innerHeight, ...sheet.map((el) => el.getBoundingClientRect().top));
+            const button = box('[data-test=next-opponent]');
+            const board = box('[data-test=board]');
+            const cut = [...document.querySelectorAll('[data-test=result] *')].filter((el) => el.children.length === 0 && el.innerText?.trim() && !el.closest('.sr-only') && (el.scrollWidth > el.clientWidth + 1 || el.scrollHeight > el.clientHeight + 1) && getComputedStyle(el).display !== 'inline');
+
+            return {
+                button: [Math.round(button.height), button.bottom <= edge, button.top >= board.bottom],
+                board: Math.round(board.width),
+                head: document.querySelector('[data-test=result-head]').innerText,
+                margin: document.querySelector('[data-test=result-margin]').innerText,
+                why: document.querySelector('[data-test=result-why]').innerText,
+                scores: [document.querySelector('[data-test=score-top]').innerText, document.querySelector('[data-test=score-bottom]').innerText],
+                cut: cut.map((el) => el.innerText),
+                overflow: document.documentElement.scrollWidth - document.documentElement.clientWidth,
+            };
+        }
+    JS);
+
+    // Before the design pass of 2026-11-14 the button stood below the first screen at 320 x 640 and at 390 x 844 (measured).
+    expect($end['button'])->toBe([44, true, true])
+        ->and($end['board'])->toBeGreaterThanOrEqual(200)
+        ->and($end['head'])->toBe($bert->displayName().' gewinnt')
+        ->and($end['margin'])->toBe('+9,5')
+        ->and($end['why'])->toBe('Gezählt, nachdem beide gepasst haben')
+        ->and($end['scores'])->toBe(['12,5', '3'])
+        ->and($end['cut'])->toBe([])
+        ->and($end['overflow'])->toBe(0)
+        ->and($page->evaluate('() => window.__errors'))->toBe([])
+        ->and($page->evaluate(BrowserConsole::BAD_RESPONSES))->toBe([]);
+})->with([
+    'phone 320' => [320, 640],
+    'phone 390' => [390, 844],
+]);

@@ -9251,8 +9251,10 @@
     ":game and :count more": ":game und :count weitere",
     "Board and sounds": "Brett und Töne",
     ":colour leads by :points.": ":colour führt mit :points Punkten.",
-    "Not counted. At the end:": "Nicht gezählt. Stand am Ende:",
     "Stones": "Steine",
     "Area": "Gebiet",
-    "Komi": "Komi"
+    "Komi": "Komi",
+    ":name ran out of time": ":name hat die Zeit überschritten",
+    "The game was not counted.": "Die Partie wurde nicht gezählt.",
+    "Not counted.": "Nicht gezählt."
 }

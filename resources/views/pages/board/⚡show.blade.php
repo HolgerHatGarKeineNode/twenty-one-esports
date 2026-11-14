@@ -409,7 +409,7 @@ new #[Layout('layouts::app', ['realtime' => true, 'scripts' => ['resources/js/bo
                 <span class="size-2 rounded-full" :class="connection === 'connected' ? 'bg-win' : 'bg-btc-hi'"></span>
                 <span x-text="connectionLabel" class="max-lg:sr-only" data-test="connection"></span>
             </span>
-            <span class="flex h-7 items-center rounded-md bg-btc-press px-3 text-xs font-bold text-btc-hi max-lg:w-full lg:h-[34px] lg:px-3.5 lg:text-[13px]" :class="hasDock ? 'max-lg:hidden' : ''" x-text="statusLine" data-test="status-line"></span>
+            <span class="flex h-7 items-center rounded-md bg-btc-press px-3 text-xs font-bold text-btc-hi max-lg:w-full lg:h-[34px] lg:px-3.5 lg:text-[13px]" :class="hasDock || (layout.input === 'stones' && state.status !== 'active') ? 'max-lg:hidden' : ''" x-text="statusLine" data-test="status-line"></span>
         </div>
 
         {{-- The match view template T2 (MatchBoards.dc.html, plan "Refactor und Design-Revamp", P5), harmonised to daily
@@ -470,7 +470,7 @@ new #[Layout('layouts::app', ['realtime' => true, 'scripts' => ['resources/js/bo
 
                 @if ($stones)
                     {{-- Go's score on a phone: under the board, in the room between it and the bar (from lg a card of the middle column). --}}
-                    <template x-if="score && phone">
+                    <template x-if="score && phone && state.status === 'active'">
                         <div class="col-span-2 min-w-0" data-fit-skip>@include('pages.board.partials.go-score')</div>
                     </template>
                 @endif
@@ -533,6 +533,12 @@ new #[Layout('layouts::app', ['realtime' => true, 'scripts' => ['resources/js/bo
                         <span role="timer" class="shrink-0 rounded-[4px] bg-btc px-3 py-2 font-display text-[26px] leading-none font-bold whitespace-nowrap text-on-btc tabular-nums" x-text="clock(state.turn)"></span>
                     </div>
                 </template>
+
+                {{-- Go: the result takes the turn card's place, so on a phone it follows the board at once (the next action on the
+                     first screen at 320 x 640; boardGame.js fitBoard gives it the room). --}}
+                @if ($stones)
+                    @include('pages.board.partials.result')
+                @endif
 
                 {{-- The block input (Blockli): a marked square moves the pawn; "Set a block" (or a tap in a groove) shows a block first, as
                      in the Blockli prototype, and is a toggle. Everything stays off the board (a player on an iPhone SE, 2026-10-14). On a
@@ -599,7 +605,7 @@ new #[Layout('layouts::app', ['realtime' => true, 'scripts' => ['resources/js/bo
                 <p class="m-0 text-[13px] text-ink-2" x-show="standingLine" x-text="standingLine" data-test="standing"></p>
                 {{-- What each side would have if the game were counted now (Go), from lg; on a phone it stands under the board. --}}
                 @if ($stones)
-                    <template x-if="score && !phone">@include('pages.board.partials.go-score')</template>
+                    <template x-if="score && (!phone || state.status !== 'active')">@include('pages.board.partials.go-score')</template>
                 @endif
                 @php
                     // The deciding game of a two-leg pairing in a tournament whose drawn decider goes to the race standing (user, 2026-10-11).
@@ -615,20 +621,9 @@ new #[Layout('layouts::app', ['realtime' => true, 'scripts' => ['resources/js/bo
                 <p role="status" class="m-0 text-[13px] font-bold text-ink" x-show="noticeShown" x-text="notice" data-test="board-notice"></p>
                 <p role="alert" class="m-0 text-[13px] text-loss" x-show="error && layout.input !== 'pieces'" x-text="error" data-test="board-error"></p>
 
-                <template x-if="state.status !== 'active'">
-                    <div class="flex flex-col gap-3 rounded-lg bg-card p-4" data-test="board-result">
-                        <span class="text-base font-bold" data-test="result" x-text="outcome"></span>
-                        @if ($teamUrl !== null)
-                            {{-- A team match board: no next search, the team match decides what comes next (as a chess board). --}}
-                            <x-button :href="$teamUrl" class="w-full" data-test="back-to-team-match">{{ __('Back to the team match') }}</x-button>
-                        @elseif ($boardGame->tournament_match_id === null)
-                            <x-button :href="route('board.lobby', $boardGame->game)" icon="bolt" data-test="next-opponent">{{ __('Find next opponent') }}</x-button>
-                        @else
-                            {{-- A tournament game: what comes next in the tournament (user, 2026-10-03), rendered now for a game already over. --}}
-                            <x-tournaments.game-end-slot :url="route('tournaments.show', $boardGame->tournamentMatch?->tournament_id ?? 0)" :panel="$boardGame->isActive() ? null : TournamentGameEnd::of($boardGame, auth()->user())" />
-                        @endif
-                    </div>
-                </template>
+                @if (! $stones)
+                    @include('pages.board.partials.result')
+                @endif
 
                 {{-- The moves, two columns per move number as on daily chess; browsing steps through them. --}}
                 <div class="flex min-h-0 flex-col gap-2 rounded-lg bg-card p-4 lg:grow min-[87.5rem]:shrink" data-test="moves-card">

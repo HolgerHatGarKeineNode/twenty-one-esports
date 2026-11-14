@@ -10,7 +10,7 @@ namespace App\Support\Board;
 final class GoLabels
 {
     /**
-     * @return array{stones: array<string, string>, count: array<string, string>}
+     * @return array{stones: array<string, string>, result: array<string, string>, count: array<string, string>}
      */
     public static function board(): array
     {
@@ -29,6 +29,12 @@ final class GoLabels
                 // Before a player's first pass of a game, with the count after it (boardGame.js passEndLine).
                 'firstPass' => __('Counted as it stands, dead stones too. If both pass:'),
             ],
+            // A game's result (pages/board/partials/result, boardGame.js resultHead, resultWhy).
+            'result' => [
+                'resignation' => __(':name resigned'),
+                'timeout' => __(':name ran out of time'),
+                'uncounted' => __('The game was not counted.'),
+            ],
             'count' => [
                 'line' => __('Count now: :first · :second → :lead'),
                 'final' => __('Final count: :first · :second → :lead'),
@@ -41,7 +47,7 @@ final class GoLabels
                 // The score beside the board (pages/board/partials/go-score, boardGame.js leadLine).
                 'leads' => __(':colour leads by :points.'),
                 'even' => __('Both are level.'),
-                'uncounted' => __('Not counted. At the end:'),
+                'uncounted' => __('Not counted.'),
                 'show' => __('Show area'),
                 'hide' => __('Hide area'),
             ],

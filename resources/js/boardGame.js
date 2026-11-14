@@ -491,6 +491,10 @@ registerAlpine(() => {
             // The action dock's tab on top of that bar (components/⚡match-dock, P7): nothing lies over the board.
             const dockTab = document.querySelector('[data-test=dock-bar-tab]');
             if (phone && shown(dockTab)) edge = Math.min(edge, dockTab.getBoundingClientRect().top);
+            // A go game that is over: its result with the next action follows the board on a phone and stays on the first screen
+            // (the board gives way; at 320 x 640 the button stood 150 px below it).
+            const result = phone && this.layout.input === 'stones' ? this.$root.querySelector('[data-first-screen]') : null;
+            if (shown(result)) edge -= result.getBoundingClientRect().height + 12;
             const drawn = board.getBoundingClientRect();
             // On a phone the game's actions under the board (abort, draw, resign) may follow below the first screen: the board keeps its size.
             const under = Math.max(drawn.bottom, ...[...column.children].filter((el) => shown(el) && !fixed(el) && !(phone && el.hasAttribute('data-fit-skip'))).map((el) => el.getBoundingClientRect().bottom)) - drawn.bottom;
@@ -1273,9 +1277,10 @@ registerAlpine(() => {
             if (!score) return '';
             const words = this.t.count;
             if (this.counted) return this.countResult(this.state.count);
-            const lead = score.lead ? words.leads.replace(':colour', this.colour(score.lead)).replace(':points', this.points(score.margin)) : words.even;
+            const fill = (text) => text.replace(':colour', this.colour(score.lead)).replace(':points', this.points(score.margin));
+            if (this.state.status === 'active') return score.lead ? fill(words.leads) : words.even;
 
-            return this.state.status === 'active' ? lead : words.uncounted + ' ' + lead;
+            return words.uncounted + ' ' + (score.lead ? fill(words.lead) : words.even);
         },
 
         /** "Black wins by 0.5.": the result a count gives. */
@@ -1696,6 +1701,38 @@ registerAlpine(() => {
             const winner = this.state.result === '1-0' ? 'w' : 'b';
 
             return this.t.outcome.wins.replace(':name', this.t.names[winner]) + ' · ' + reason;
+        },
+
+        /** Go's result: the side that won (both for a draw, none for an aborted game), for the stone before the line. */
+        get resultSides() {
+            if (this.state.status !== 'finished') return [];
+
+            return this.state.result === '1/2-1/2' ? ['w', 'b'] : [this.state.result === '1-0' ? 'w' : 'b'];
+        },
+
+        /** Go's result in a line: who won. */
+        get resultHead() {
+            if (this.state.status === 'active') return '';
+            if (this.state.status === 'aborted') return this.t.outcome.aborted;
+            if (this.state.result === '1/2-1/2') return this.t.outcome.draw;
+
+            return this.t.outcome.wins.replace(':name', this.t.names[this.state.result === '1-0' ? 'w' : 'b']);
+        },
+
+        /** "+4,5": by how much a counted go game was won. */
+        get resultMargin() {
+            return this.counted && this.state.count.lead ? '+' + this.points(Math.abs(this.state.count.margin)) : '';
+        },
+
+        /** Why a go game ended: the count, the loser's resignation or clock by name, the move limit (which was not counted). */
+        get resultWhy() {
+            if (this.state.status !== 'finished') return '';
+            const reason = this.state.reason;
+            const loser = this.state.result === '1/2-1/2' ? '' : this.t.names[this.state.result === '1-0' ? 'b' : 'w'];
+            if (loser && this.t.result[reason]) return this.t.result[reason].replace(':name', loser);
+            const line = this.t.reasons[reason] ?? reason ?? '';
+
+            return reason === 'move_limit' ? line + '. ' + this.t.result.uncounted : line;
         },
 
         get connectionLabel() {

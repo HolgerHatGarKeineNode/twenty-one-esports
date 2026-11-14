@@ -106,3 +106,17 @@ svg.go-board {
         transition: width 200ms ease-out;
     }
 }
+
+/* A game's result comes in once, where the turn card stood (R17: 240 ms, ease-out; not with reduced motion). */
+@media (prefers-reduced-motion: no-preference) {
+    .go-result {
+        animation: go-result 240ms ease-out;
+    }
+}
+
+@keyframes go-result {
+    from {
+        opacity: 0;
+        transform: translateY(6px);
+    }
+}

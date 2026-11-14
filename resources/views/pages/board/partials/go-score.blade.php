@@ -13,12 +13,15 @@
     <div class="flex min-w-0 items-center gap-3">
         {{-- On a phone the bar stands under the sentence, beside the switch: one row of 44 px; from lg it has its own row between the two scores. --}}
         <span class="flex min-w-0 grow flex-col gap-1.5 max-lg:pb-1">
-            <b class="text-[13px] leading-snug text-ink lg:text-[15px]" x-text="leadLine" data-test="count-lead"></b>
-            <span class="go-balance lg:hidden" aria-hidden="true">
-            <span data-part="black" :style="{ width: score.parts.black }"></span>
-            <span data-part="white" :style="{ width: score.parts.white }"></span>
-            <span data-part="komi" :style="{ width: score.parts.komi }"></span>
-        </span>
+            <b class="text-[13px] leading-5 text-ink lg:text-[15px]" x-text="leadLine" data-test="count-lead"></b>
+            {{-- The wrapper hides it from lg: .go-balance sets its own display (go/board.css) and would win over the utility. --}}
+            <span class="lg:hidden" aria-hidden="true">
+                <span class="go-balance">
+                    <span data-part="black" :style="{ width: score.parts.black }"></span>
+                    <span data-part="white" :style="{ width: score.parts.white }"></span>
+                    <span data-part="komi" :style="{ width: score.parts.komi }"></span>
+                </span>
+            </span>
         </span>
         <button type="button" class="inline-flex h-11 shrink-0 cursor-pointer items-center gap-2 rounded-md border px-3 text-[13px] whitespace-nowrap text-ink disabled:cursor-default"
                 :class="areaShown ? 'border-ink-2 bg-raised' : 'btn-w border-line bg-well'"
