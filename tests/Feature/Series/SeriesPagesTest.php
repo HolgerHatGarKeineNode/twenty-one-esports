@@ -215,6 +215,75 @@ test('the room renders at least once a minute, even when nothing it knows of cha
     expect($room->effects)->not->toHaveKey('html');
 });
 
+test('a game the captain has half entered keeps its first box through a sync of the room and counts once the second is filled', function () {
+    $match = SeriesMatch::factory()->accepted()->create();
+    $room = Livewire::actingAs(seriesCaptain($match))->test('pages::matches.room', ['match' => $match]);
+
+    $room->set('sheet.0.c', '3')->set('sheet.0.d', '1');
+    expect($match->refresh()->live_games)->toBe([['challenger' => 3, 'challenged' => 1, 'winner' => 'challenger']]);
+
+    // Game 2, box by box, and between the boxes the sync the page asks for on its own (resources/js/matchRoom.js
+    // roomSync: the push of the captain's own save of game 1, a clock edge, the fallback poll). It answers
+    // without a render, so the box in the page is whatever the component holds.
+    $room->set('sheet.1.c', '2')->call('sync')->assertOk();
+    expect($room->effects)->not->toHaveKey('html')
+        ->and($room->get('sheet')[1])->toMatchArray(['c' => '2', 'd' => null, 'winner' => null]);
+
+    $room->set('sheet.1.d', '0');
+    expect($match->refresh()->live_games[1] ?? null)->toBe(['challenger' => 2, 'challenged' => 0, 'winner' => 'challenger'])
+        ->and($room->html())->toContain('data-test="series-score">2 : 0<');
+});
+
+test('a half entered game stays in its box while the captain saves another game', function () {
+    $match = SeriesMatch::factory()->accepted()->create(['best_of' => 5]);
+    $room = Livewire::actingAs(seriesCaptain($match))->test('pages::matches.room', ['match' => $match]);
+
+    $room->set('sheet.0.c', '3')->set('sheet.0.d', '1')->set('sheet.1.c', '4');
+    // Back to game 1 for a correction, by its stepper: the save reads the sheet again.
+    $room->call('stepGoal', 0, 'd', 1)->assertOk();
+
+    expect($match->refresh()->live_games)->toBe([['challenger' => 3, 'challenged' => 2, 'winner' => 'challenger']])
+        ->and($room->get('sheet')[1])->toMatchArray(['c' => '4', 'd' => null])
+        ->and($room->get('sheet')[0])->toMatchArray(['c' => 3, 'd' => 2]);
+});
+
+test('a half entered game gives way to what is stored: the other captain\'s score for it, a decided series, a closed sheet', function () {
+    $series = app(SeriesService::class);
+    $half = function (int $index, int $bestOf = 3): array {
+        $match = SeriesMatch::factory()->accepted()->create(['best_of' => $bestOf]);
+        $room = Livewire::actingAs(seriesCaptain($match))->test('pages::matches.room', ['match' => $match]);
+        $room->set('sheet.0.c', '3')->set('sheet.0.d', '1')->set("sheet.{$index}.c", '2');
+        expect($room->get('sheet')[$index]['c'])->toBe('2');
+
+        return [$match->refresh(), $room, seriesCaptain($match, 'challenged')];
+    };
+
+    // The other captain enters that very game first: their stored score shows, not the half one.
+    [$match, $room, $other] = $half(1);
+    $series->saveLiveGame($match, $other, 1, 0, 4, null);
+    $room->call('sync')->assertOk();
+    expect($room->get('sheet')[1])->toMatchArray(['c' => 0, 'd' => 4, 'winner' => 'challenged']);
+
+    // The other captain's game 2 decides the series: game 3 is not needed, its row is empty again (and left out).
+    [$match, $room, $other] = $half(2);
+    $series->saveLiveGame($match, $other, 1, 5, 0, null);
+    $room->call('sync')->assertOk();
+    expect($room->get('sheet')[2])->toMatchArray(['c' => null, 'd' => null])
+        ->and($room->html())->not->toContain('data-test="goals-2-c"');
+
+    // The series ends without that game (a decision, a no-show): the sheet is closed, its boxes are locked and empty.
+    [$match, $room] = $half(1);
+    $match->update(['status' => SeriesStatus::Resolved]);
+    $room->call('sync')->assertOk();
+    expect($room->get('sheet')[1])->toMatchArray(['c' => null, 'd' => null])
+        ->and($room->get('sheet')[0])->toMatchArray(['c' => 3, 'd' => 1]);
+
+    // The captain switches the half game to "Winner only": its goals are dropped (toggleWinnerOnly).
+    [$match, $room] = $half(1);
+    $room->call('toggleWinnerOnly', 1)->assertOk();
+    expect($room->get('sheet')[1])->toMatchArray(['c' => null, 'd' => null]);
+});
+
 test('a captain can copy the opposing players\' npubs in the room and on the match page', function (string $state) {
     $match = seriesIn($state);
     $captain = seriesCaptain($match);

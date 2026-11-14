@@ -56,7 +56,10 @@ const P6_COLLECTOR = <<<'JS'
     window.addEventListener('error', (e) => push('error: ' + e.message));
     window.addEventListener('unhandledrejection', (e) => push('unhandledrejection: ' + String(e.reason)));
     const originalFetch = window.fetch;
-    window.fetch = (...args) => originalFetch(...args).then((r) => { if (r.status >= 400) push(r.status + ' ' + r.url); return r; });
+    // What Livewire asked and has the answer to by now: each updated property and each called method, in order.
+    window.__answered = [];
+    const answered = (body) => { try { for (const c of JSON.parse(body ?? 'null')?.components ?? []) window.__answered.push(...Object.keys(c.updates ?? {}), ...(c.calls ?? []).map((call) => call.method)); } catch (e) {} };
+    window.fetch = (...args) => originalFetch(...args).then((r) => { if (r.status >= 400) push(r.status + ' ' + r.url); answered(args[1]?.body); return r; });
     JS;
 
 function captainPage(User $user, string $to, int $width): Page
@@ -146,8 +149,24 @@ test('one captain challenges, the other accepts, then submits and accepts the fi
 
     enterGoals($pageA, 0, 3, 1);
     BrowserWait::until($pageA, '() => document.querySelector("[data-test=series-score]")?.innerText.trim() === "1 : 0"', 10_000);
-    enterGoals($pageA, 1, 2, 0);
+    // Game 2 box by box, with the room's own sync between the boxes. The page asks for it 250 ms after the push of
+    // the save of game 1 above (resources/js/matchRoom.js roomSync), so where it lands is the machine's choice: on a
+    // busy one between the boxes, where it emptied the first box and the game was never saved (2026-11-14: "2 : 0"
+    // did not come within 10 s in the full run). Asked for here, it always lands there. The waits count Livewire's
+    // answers, in order: the first box is stored in the component, then the sync is answered, then the second box.
+    $pageA->locator('[data-test=goals-1-c]')->fill('2');
+    $pageA->locator('[data-test=goals-1-c]')->press('Tab');
+    BrowserWait::until($pageA, '() => window.__answered.includes("sheet.1.c")', 10_000);
+    $pageA->evaluate('() => window.Alpine.$data(document.querySelector("[x-data^=roomSync]")).requestSync(0)');
+    BrowserWait::until($pageA, '() => window.__answered.lastIndexOf("sync") > window.__answered.indexOf("sheet.1.c")', 10_000);
+    $pageA->locator('[data-test=goals-1-d]')->fill('0');
+    $pageA->locator('[data-test=goals-1-d]')->press('Tab');
     BrowserWait::until($pageA, '() => document.querySelector("[data-test=series-score]")?.innerText.trim() === "2 : 0"', 10_000);
+    // The boxes still hold what the captain entered, and a sync was answered between the two of them.
+    $answered = $pageA->evaluate('() => window.__answered');
+    $first = array_search('sheet.1.c', $answered, true);
+    expect($pageA->evaluate('() => [document.querySelector("[data-test=goals-1-c]").value, document.querySelector("[data-test=goals-1-d]").value]'))->toBe(['2', '0'])
+        ->and(array_slice($answered, $first, array_search('sheet.1.d', $answered, true) - $first))->toContain('sync');
 
     $pageA->locator('[data-test=open-submit]')->click();
     BrowserWait::until($pageA, '() => document.querySelector("[data-test=submit-dialog]")?.offsetParent !== null', 5_000);

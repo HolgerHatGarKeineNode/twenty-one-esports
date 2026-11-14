@@ -148,23 +148,48 @@ new #[Title('Match room')] #[Layout('layouts::app', ['section' => 'matches', 'sc
         }
     }
 
-    /** Rebuild the sheet from the stored live games. */
+    /**
+     * Rebuild the sheet from the stored live games. A game this captain has
+     * half entered (one goals box filled, the other still empty, nothing
+     * stored for it yet) keeps what the captain entered: updatedSheet() saves
+     * a game only once both boxes hold a number, so until then the first box
+     * lives in this component alone. A sync() between the two boxes (the push
+     * of the captain's own last save, a clock edge, the fallback poll; the
+     * steppers never hold the focus that makes roomSync wait) or the save of
+     * another row emptied it, and the game was never saved. What is stored
+     * wins: the other captain's score for that game, a series decided without
+     * it, a sheet that is closed.
+     */
     private function readSheet(): void
     {
         $match = $this->fresh();
         $live = $match->live_games ?? [];
         // A game without goals (Age of Empires II) has only a winner per game: every row is a winner-only row.
         $winnersOnly = ! $match->hasGoals();
+        $entered = $this->sheet;
+        $open = ! $winnersOnly && in_array($match->status, [SeriesStatus::Accepted, SeriesStatus::Disputed], true);
+        $needed = intdiv($this->match->best_of, 2) + 1;
+        $blank = fn (mixed $goals): bool => ! is_scalar($goals) || $goals === '';
         $this->sheet = [];
 
         for ($i = 0; $i < $this->match->best_of; $i++) {
             $game = $live[$i] ?? null;
-            $this->sheet[] = [
+            $row = [
                 'c' => $game['challenger'] ?? null,
                 'd' => $game['challenged'] ?? null,
                 'unknown' => $winnersOnly || ($game !== null && ($game['winner'] ?? null) !== null && ($game['challenger'] ?? null) === null),
                 'winner' => $game['winner'] ?? null,
             ];
+            $mine = $entered[$i] ?? null;
+
+            if ($open && is_array($mine) && ! ($mine['unknown'] ?? false) && $blank($mine['c'] ?? null) !== $blank($mine['d'] ?? null)
+                && $row['winner'] === null && $row['c'] === null && $row['d'] === null
+                && max(SeriesMatch::seriesScore(array_slice($live, 0, $i))) < $needed) {
+                $row['c'] = $blank($mine['c'] ?? null) ? null : $mine['c'];
+                $row['d'] = $blank($mine['d'] ?? null) ? null : $mine['d'];
+            }
+
+            $this->sheet[] = $row;
         }
 
         unset($this->room);
