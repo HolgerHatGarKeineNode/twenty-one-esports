@@ -280,8 +280,10 @@ return [
     | components that the app itself sends together (a dispatch to the header's and
     | the page's listeners), and 11 where a test refreshes every component of the
     | fullest page at once (/games/{slug}: the page, the layout's four, cup banner,
-    | events, chat, casual play, follows, invite). 10 calls and 20 components leave
-    | that room five and two times over; a request beyond them is refused whole.
+    | events, chat, casual play, follows, invite). Counted from the views, not
+    | measured: a very active player's own profile can hold about 49 components (up
+    | to 40 share buttons). 10 calls leave that room five times over and 50
+    | components cover the fullest page; a request beyond them is refused whole.
     |
     */
 
@@ -289,6 +291,6 @@ return [
         'max_size' => 1024 * 1024,   // 1MB - maximum request payload size in bytes
         'max_nesting_depth' => 10,   // Maximum depth of dot-notation property paths
         'max_calls' => 10,           // Maximum method calls of one component per request (vendor default: 50)
-        'max_components' => 20,      // Maximum components per batch request (vendor default: 200)
+        'max_components' => 50,      // Maximum components per batch request (vendor default: 200)
     ],
 ];

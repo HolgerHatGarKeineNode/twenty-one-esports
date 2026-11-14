@@ -204,7 +204,7 @@ function goDearGame(): BoardGame
     return $game->refresh();
 }
 
-test('a guest batch of 50 clock checks on the dear position of 559 plies is refused whole, and one request carries 10 calls on 20 pages at the most (security N1)', function () {
+test('a guest batch of 50 clock checks on the dear position of 559 plies is refused whole, and one request carries 10 calls on 50 pages at the most (security N1)', function () {
     $game = goDearGame();
     $rules = new GoRules(19);
 
@@ -218,11 +218,11 @@ test('a guest batch of 50 clock checks on the dear position of 559 plies is refu
     expect($batch->isSuccessful())->toBeFalse()
         ->and(substr_count((string) $batch->getContent(), '"version"'))->toBe(0)
         ->and(config('livewire.payload.max_calls'))->toBe(10)
-        ->and(config('livewire.payload.max_components'))->toBe(20)
+        ->and(config('livewire.payload.max_components'))->toBe(50)
         ->and(boardBatch($game, array_fill(0, 11, ['fetchState', [$game->version]]))->isSuccessful())->toBeFalse()
-        ->and(boardBatch($game, [['fetchState', [$game->version]]], components: 21)->isSuccessful())->toBeFalse()
-        // What the pages send has room: 10 calls on each of 20 components.
-        ->and(boardBatch($game, array_fill(0, 10, ['fetchState', [$game->version]]), components: 20)->assertOk()->json('components'))->toHaveCount(20);
+        ->and(boardBatch($game, [['fetchState', [$game->version]]], components: 51)->isSuccessful())->toBeFalse()
+        // What the pages send has room: 10 calls on each of 50 components.
+        ->and(boardBatch($game, array_fill(0, 10, ['fetchState', [$game->version]]), components: 50)->assertOk()->json('components'))->toHaveCount(50);
 });
 
 test('the short answers have a ceiling a minute too: the clock check, the state without the record and a refused action (security N1)', function () {
