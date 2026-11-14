@@ -108,6 +108,16 @@ new #[Layout('layouts::app')] class extends Component {
             ->card(fn () => \App\Support\Cards\PageCard::page('board-daily.'.$this->slug));
     }
 
+    /** Another game of this game's group (Go: another board size): its page, with the opponent picked here. */
+    public function member(string $slug): void
+    {
+        if ($slug === $this->slug || ! in_array($slug, BoardChallenges::members($this->slug), true)) {
+            return;
+        }
+
+        $this->redirectRoute('board.correspondence', array_filter(['board' => $slug, 'to' => trim($this->to)]));
+    }
+
     public function pick(int $id): void
     {
         $this->to = (string) $id;
@@ -355,6 +365,7 @@ new #[Layout('layouts::app')] class extends Component {
     $rating = $me ? Ratings::forUser($me->id, $slug, BoardGame::CORRESPONDENCE, Rating::CASUAL) : null;
     $ratedRefusal = $this->ratedOffered ? $this->ratedRefusal : null;
     $ownRefusal = $ratedRefusal !== null && $ratedRefusal['reason'] === 'rated_unavailable';
+    $members = BoardChallenges::members($slug);
 @endphp
 
 <div class="flex grow flex-col gap-5 px-4 pb-8 lg:mx-auto lg:w-full lg:max-w-[1232px] lg:px-4 lg:pb-10" data-test="board-correspondence">
@@ -453,6 +464,19 @@ new #[Layout('layouts::app')] class extends Component {
             {{-- Challenge a player. --}}
             <section aria-labelledby="corr-new-h" class="flex flex-col gap-4 self-start rounded-lg bg-card px-4 py-5 lg:px-6" data-test="correspondence-challenge">
                 <h2 id="corr-new-h" class="m-0 text-[15px] font-bold">{{ __('Challenge a player') }}</h2>
+
+                {{-- A group's games with this mode (Go: the board sizes), as on the invite picker: one line, this page's marked. --}}
+                @if (count($members) > 1)
+                    <div class="flex flex-col gap-2">
+                        <span id="corr-member-h" class="text-xs text-ink-2">{{ GameNames::listed($slug) }}</span>
+                        <div role="radiogroup" aria-labelledby="corr-member-h" @class(['grid gap-2', 'grid-cols-3' => count($members) === 3, 'grid-cols-2' => count($members) !== 3]) data-test="correspondence-members">
+                            @foreach ($members as $member)
+                                <button type="button" role="radio" wire:click="member('{{ $member }}')" aria-checked="{{ $member === $slug ? 'true' : 'false' }}" data-test="correspondence-member-{{ $member }}"
+                                        @class(['h-11 cursor-pointer rounded-md border bg-ground px-2 text-[13px] whitespace-nowrap text-ink', 'border-btc' => $member === $slug, 'border-line' => $member !== $slug])>{{ app(GameRegistry::class)->find($member)->groupLabel() }}</button>
+                            @endforeach
+                        </div>
+                    </div>
+                @endif
 
                 <div class="flex flex-col gap-2">
                     <label for="corr-search" class="text-xs text-ink-2">{{ __('Opponent') }}</label>

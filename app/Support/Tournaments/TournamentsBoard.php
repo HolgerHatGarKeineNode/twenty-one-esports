@@ -97,7 +97,7 @@ final class TournamentsBoard
 
         foreach (array_keys($registry->listed()) as $slug) {
             $covered = $registry->covered($slug);
-            $chips[] = ['key' => $slug, 'label' => $registry->groupOf($slug) === null ? self::chipLabel($slug) : GameNames::listed($slug), 'count' => count(array_filter($rows, fn (array $row): bool => in_array($row['game'], $covered, true)))];
+            $chips[] = ['key' => $slug, 'label' => self::entryLabel($slug), 'count' => count(array_filter($rows, fn (array $row): bool => in_array($row['game'], $covered, true)))];
         }
 
         usort($chips, fn (array $a, array $b): int => [$b['count'], $order[$a['key']]] <=> [$a['count'], $order[$b['key']]]);
@@ -120,6 +120,12 @@ final class TournamentsBoard
         $short = (string) preg_replace('/^([A-Z]{2,})(\d{2})$/', '$1 $2', is_string($translated) ? $translated : $short);
 
         return preg_match('/\s(\d+)$/', $name, $edition) === 1 && ! str_ends_with($short, $edition[1]) ? $short.' '.$edition[1] : $short;
+    }
+
+    /** The chip label of a game's list entry (GameRegistry::listed()): its group's name ("Go"), else chipLabel(). */
+    public static function entryLabel(string $slug): string
+    {
+        return app(GameRegistry::class)->groupOf($slug) === null ? self::chipLabel($slug) : GameNames::listed($slug);
     }
 
     /**

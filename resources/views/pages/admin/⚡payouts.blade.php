@@ -392,13 +392,15 @@ new #[Title('Payouts')] #[Layout('layouts::app', ['section' => 'admin'])] class 
             usort($stateOrder, fn (string $a, string $b): int => [$counts[$b], array_search($a, PayoutOverview::STATES, true)] <=> [$counts[$a], array_search($b, PayoutOverview::STATES, true)]);
             $stateChips = array_map(fn (string $key): array => ['label' => PayoutOverview::label($key), 'count' => $counts[$key], 'href' => $overviewUrl(['state' => $key, 'page' => null]), 'active' => $filter === $key, 'key' => $key],
                 [PayoutOverview::FILTER_ALL, PayoutOverview::FILTER_WAITING, ...$stateOrder]);
+            // A size of a group is its group's chip (GameRegistry::entry()): "Go", whichever size the address names.
+            $gameEntry = $this->game === '' ? '' : app(\App\Games\GameRegistry::class)->entry($this->game);
             $gameChips = $gameCounts === [] ? [] : [
                 ['label' => __('All'), 'count' => array_sum($gameCounts), 'href' => $overviewUrl(['game' => null, 'page' => null]), 'active' => $this->game === '', 'key' => 'all'],
-                ...array_map(fn (string $slug): array => ['label' => \App\Support\Tournaments\TournamentsBoard::chipLabel($slug), 'count' => $gameCounts[$slug], 'href' => $overviewUrl(['game' => $slug, 'page' => null]), 'active' => $this->game === $slug, 'key' => $slug], array_keys($gameCounts)),
+                ...array_map(fn (string $slug): array => ['label' => \App\Support\Tournaments\TournamentsBoard::entryLabel($slug), 'count' => $gameCounts[$slug], 'href' => $overviewUrl(['game' => $slug, 'page' => null]), 'active' => $gameEntry === $slug, 'key' => $slug], array_keys($gameCounts)),
             ];
             // A game picked and then filtered away by the state still shows as the chosen chip, at zero.
-            if ($this->game !== '' && $gameChips !== [] && ! isset($gameCounts[$this->game])) {
-                $gameChips[] = ['label' => \App\Support\Tournaments\TournamentsBoard::chipLabel($this->game), 'count' => 0, 'href' => $overviewUrl(['page' => null]), 'active' => true, 'key' => $this->game];
+            if ($gameEntry !== '' && $gameChips !== [] && ! isset($gameCounts[$gameEntry])) {
+                $gameChips[] = ['label' => \App\Support\Tournaments\TournamentsBoard::entryLabel($gameEntry), 'count' => 0, 'href' => $overviewUrl(['page' => null]), 'active' => true, 'key' => $gameEntry];
             }
             $narrowed = trim($this->q) !== '' || $this->game !== '';
         @endphp

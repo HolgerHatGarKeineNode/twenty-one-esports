@@ -27,6 +27,7 @@ use App\Support\Cards\SharePosts;
 use App\Support\Cards\ShareRefused;
 use App\Support\Engagement\HomeBoard;
 use App\Support\GameNames;
+use App\Support\Payouts\PayoutOverview;
 use App\Support\Tournaments\CasualCups;
 use App\Support\Tournaments\CupBoard;
 use App\Support\Tournaments\TournamentGames;
@@ -39,6 +40,7 @@ use App\Support\TwentyOne\Stream\SceneSource;
 use Carbon\CarbonInterface;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Route;
+use Livewire\Livewire;
 use Tests\Support\FakeGame;
 use Tests\Support\FakeGroupedGame;
 use Tests\Support\FakeScoreGame;
@@ -622,6 +624,74 @@ test('the Go filter of the tournament archive is one chip that lists the tournam
     // Another game's filter, and no filter, are as they were.
     expect(substr_count($this->get(route('tournaments.archive', ['game' => 'chess']))->assertOk()->getContent(), 'data-test="archive-cancelled-row"'))->toBe(1)
         ->and(substr_count($this->get(route('tournaments.archive'))->assertOk()->getContent(), 'data-test="archive-cancelled-row"'))->toBe(4);
+});
+
+test('the game filter of the admin payouts is one "Go" chip that counts and lists the pots of every size, whichever size the address names', function () {
+    $pots = [];
+
+    foreach (['go-9', 'go-13', 'go-19', 'chess'] as $slug) {
+        $pots[$slug] = potTournamentIn(PayoutOverview::READY, ['game' => $slug, 'mode' => 'rapid', 'name' => "Pot {$slug}"])->id;
+    }
+
+    $admin = anAdmin();
+    $rowsOf = function (string $html): array {
+        preg_match_all('/data-test="payouts-row" data-tournament="(\d+)"/', $html, $rows);
+        $ids = array_map(intval(...), $rows[1]);
+        sort($ids);
+
+        return $ids;
+    };
+
+    foreach (['go-9', 'go-13'] as $filter) {
+        $html = $this->actingAs($admin)->get(route('admin.payouts', ['game' => $filter]))->assertOk()->getContent();
+        preg_match_all('#data-test="payouts-games-([a-z0-9-]+)"#', $html, $chips);
+
+        expect(array_values(array_diff($chips[1], ['all', 'more'])))->toBe(['go-9', 'chess'], "the chips under ?game={$filter}")
+            ->and($rowsOf($html))->toBe([$pots['go-9'], $pots['go-13'], $pots['go-19']], "the rows under ?game={$filter}")
+            ->and($html)->toMatch('#aria-current="page"[^>]*data-test="payouts-games-go-9"#')
+            ->and(preg_match_all('#aria-current="page"[^>]*data-test="payouts-games-#', $html))->toBe(1)
+            ->and(str($html)->after('data-test="payouts-games-go-9"')->before('</a>')->toString())->toMatch('#>\s*Go\s*<#')->toMatch('#>\s*3\s*<#');
+    }
+
+    // Another game's filter, and no filter, are as they were.
+    expect($rowsOf($this->actingAs($admin)->get(route('admin.payouts', ['game' => 'chess']))->assertOk()->getContent()))->toBe([$pots['chess']])
+        ->and($rowsOf($this->actingAs($admin)->get(route('admin.payouts'))->assertOk()->getContent()))->toHaveCount(4);
+
+    // Pots in Go alone are one game: no game filter, as for any single game.
+    Tournament::query()->whereKey($pots['chess'])->update(['game' => 'go-13']);
+    expect(PayoutOverview::gameCount())->toBe(1);
+});
+
+test('"Challenge a player" offers Go once, and the challenge form of a size switches to the others with the opponent kept', function () {
+    $me = User::factory()->create();
+    $rival = User::factory()->create(['name' => 'Rivalin']);
+
+    $html = $this->actingAs($me)->get(route('challenge', ['to' => $rival->npub]))->assertOk()->getContent();
+    preg_match_all('#data-test="challenge-option-([a-z0-9-]+)"#', $html, $options);
+    $option = str($html)->after('data-test="challenge-option-go-9"')->before('</a>')->toString();
+
+    expect(array_values(array_filter($options[1], fn (string $key): bool => str_starts_with($key, 'go-'))))->toBe(['go-9'])
+        ->and(gameSurfacesUnlisted($options[1])['doubled'])->toBe([])
+        ->and($html)->toContain('href="'.e(route('board.correspondence', ['board' => 'go-9', 'to' => $rival->npub])).'"')
+        ->and($option)->toMatch('#>\s*Go\s*<#')->not->toContain('9×9');
+
+    // The size is asked for after the game, as on the invite picker: the form of a size offers every size with the mode.
+    $form = Livewire::actingAs($me)->withQueryParams(['to' => $rival->npub])->test('pages::board.correspondence', ['board' => 'go-9']);
+    preg_match_all('#aria-checked="(true|false)" data-test="correspondence-member-([a-z0-9-]+)"#', $form->html(), $members);
+
+    expect(array_combine($members[2], $members[1]))->toBe(['go-9' => 'true', 'go-13' => 'false', 'go-19' => 'false']);
+    $form->call('member', 'go-19')->assertRedirect(route('board.correspondence', ['board' => 'go-19', 'to' => $rival->npub]));
+    // A game of another group, or none, is no size of this one.
+    Livewire::actingAs($me)->test('pages::board.correspondence', ['board' => 'go-9'])->call('member', Checkers::SLUG)->assertNoRedirect();
+    // A game on its own has no such choice.
+    Livewire::actingAs($me)->test('pages::board.correspondence', ['board' => Checkers::SLUG])->assertDontSeeHtml('data-test="correspondence-members"');
+
+    // With the smallest size off, the next one stands for Go.
+    config(['esports.board_games.games.go-9.enabled' => false]);
+    app()->forgetInstance(GameRegistry::class);
+    preg_match_all('#data-test="challenge-option-(go-[0-9]+)"#', $this->actingAs($me)->get(route('challenge'))->assertOk()->getContent(), $left);
+
+    expect($left[1])->toBe(['go-13']);
 });
 
 test('the surfaces left out are about one game by design and still exist', function (string $route, string $reason) {

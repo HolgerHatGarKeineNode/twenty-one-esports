@@ -53,6 +53,21 @@ final class BoardChallenges
     ) {}
 
     /**
+     * The games of this game's group a player can be challenged to by correspondence (Go: the board sizes with the
+     * mode), in registry order; the game alone when it has no group, none when it has no such mode. The first stands
+     * for the group where the games are listed ("Challenge a player"), the challenge form offers the others, as the
+     * invite picker does (InviteGames::members()).
+     *
+     * @return list<string>
+     */
+    public static function members(string $slug): array
+    {
+        $registry = app(GameRegistry::class);
+
+        return array_values(array_filter($registry->covered($slug), fn (string $member): bool => $registry->isBoard($member) && $registry->mode($member, BoardGame::CORRESPONDENCE) !== null));
+    }
+
+    /**
      * Whether a challenge between the two to this board game is open, sent by
      * either: a second one is refused, and the challenge form says so as
      * soon as the other player is picked.

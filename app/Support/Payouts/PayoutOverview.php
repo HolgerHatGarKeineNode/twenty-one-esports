@@ -4,6 +4,7 @@ namespace App\Support\Payouts;
 
 use App\Enums\PayoutStatus;
 use App\Enums\TournamentStatus;
+use App\Games\GameRegistry;
 use App\Models\Tournament;
 use App\Support\Prizes\PrizeChips;
 use Carbon\CarbonInterface;
@@ -184,24 +185,32 @@ final class PayoutOverview
     }
 
     /**
-     * How many tournaments each game has, under the search and the state filter, the most first.
+     * How many tournaments each game has, under the search and the state filter, the most first. A group of games
+     * is one entry under its home (GameRegistry::entry()), as on the tournaments page: "Go" counts all three sizes.
      *
      * @return array<string, int>
      */
     public function games(string $filter): array
     {
-        /** @var array<string, int> $games */
-        $games = self::whereState($this->searched(), $filter)->groupBy('tournaments.game')->selectRaw('tournaments.game as game, count(*) as total')
-            ->pluck('total', 'game')->map(fn (mixed $total): int => (int) $total)->all();
+        $registry = app(GameRegistry::class);
+        $games = [];
+
+        foreach (self::whereState($this->searched(), $filter)->groupBy('tournaments.game')->selectRaw('tournaments.game as game, count(*) as total')->pluck('total', 'game') as $game => $total) {
+            $entry = $registry->entry((string) $game);
+            $games[$entry] = ($games[$entry] ?? 0) + (int) $total;
+        }
+
         arsort($games);
 
         return $games;
     }
 
-    /** Every game a tournament with a pot is played in, whatever the page filters. */
+    /** Every game a tournament with a pot is played in, whatever the page filters; a group of games counts once. */
     public static function gameCount(): int
     {
-        return self::base()->distinct()->count('tournaments.game');
+        $registry = app(GameRegistry::class);
+
+        return self::base()->distinct()->pluck('tournaments.game')->map(fn (mixed $game): string => $registry->entry((string) $game))->unique()->count();
     }
 
     /**
@@ -318,6 +327,6 @@ final class PayoutOverview
      */
     private function narrowed(): Builder
     {
-        return $this->searched()->when($this->game !== '', fn (Builder $query) => $query->where('tournaments.game', $this->game));
+        return $this->searched()->when($this->game !== '', fn (Builder $query) => $query->whereIn('tournaments.game', app(GameRegistry::class)->covered($this->game)));
     }
 }

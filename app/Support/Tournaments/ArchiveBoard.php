@@ -120,8 +120,7 @@ final class ArchiveBoard
         $chips = [];
 
         foreach (array_keys($registry->listed()) as $slug) {
-            $label = $registry->groupOf($slug) === null ? TournamentsBoard::chipLabel($slug) : GameNames::listed($slug);
-            $chips[] = ['key' => $slug, 'label' => $label, 'count' => array_sum(array_intersect_key($counts, array_flip($registry->covered($slug))))];
+            $chips[] = ['key' => $slug, 'label' => TournamentsBoard::entryLabel($slug), 'count' => array_sum(array_intersect_key($counts, array_flip($registry->covered($slug))))];
         }
 
         usort($chips, fn (array $a, array $b): int => [$b['count'], $order[$a['key']]] <=> [$a['count'], $order[$b['key']]]);

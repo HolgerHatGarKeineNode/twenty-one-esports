@@ -4,6 +4,7 @@ use App\Games\BoardGame;
 use App\Models\BoardGame as BoardGameModel;
 use App\Games\GameRegistry;
 use App\Models\User;
+use App\Support\Board\BoardChallenges;
 use App\Support\GameNames;
 use App\Support\Nostr\NostrKeys;
 use App\Support\Series\CasualLobby;
@@ -23,7 +24,9 @@ use Livewire\Component;
  *  - daily chess (pages::chess.challenge),
  *  - each board game switched on with a correspondence mode
  *    (pages::board.correspondence; Blockli, Blockspace, nine men's morris,
- *    checkers),
+ *    checkers), a group of games once under its name (Go: its first size
+ *    with the mode; the challenge form there offers the other sizes, as the
+ *    invite picker asks for the size after the game),
  *  - a scheduled casual 1v1 in the games of `esports.casual.games`
  *    (pages::challenges.casual; Rocket League, EA FC).
  *
@@ -80,7 +83,12 @@ new #[Title('Challenge a player')] #[Layout('layouts::app')] class extends Compo
                 $options[] = ['key' => 'chess', 'game' => 'chess', 'title' => GameNames::game('chess'),
                     'line' => __('Correspondence, one move a day'), 'href' => route('chess.challenge', $to)];
             } elseif ($game instanceof BoardGame && $registry->mode($slug, BoardGameModel::CORRESPONDENCE) !== null && Route::has('board.correspondence')) {
-                $options[] = ['key' => $slug, 'game' => $slug, 'title' => GameNames::game($slug),
+                // A group of games is one option, the first of its games with the mode (GameRegistry::listed()).
+                if (BoardChallenges::members($slug)[0] !== $slug) {
+                    continue;
+                }
+
+                $options[] = ['key' => $slug, 'game' => $slug, 'title' => GameNames::listed($slug),
                     'line' => __('Correspondence, one move a day'), 'href' => route('board.correspondence', ['board' => $slug, ...$to])];
             }
         }
@@ -121,7 +129,7 @@ new #[Title('Challenge a player')] #[Layout('layouts::app')] class extends Compo
                 <a href="{{ $option['href'] }}" @navigate($option['href']) data-test="challenge-option-{{ $option['key'] }}"
                    class="flex min-h-[72px] grow items-center gap-3 rounded-lg bg-card p-3 text-ink shadow-ring transition-colors duration-150 ease-out hover:bg-row-hover hover:text-ink motion-reduce:transition-none sm:gap-4">
                     @if ($option['game'] !== null)
-                        <x-game-cover :game="$option['game']" size="thumb" class="w-16 rounded-md sm:w-24" />
+                        <x-game-cover :game="$option['game']" listed size="thumb" class="w-16 rounded-md sm:w-24" />
                     @else
                         <span class="flex aspect-video w-16 shrink-0 items-center justify-center rounded-md bg-well text-ink-2 sm:w-24" aria-hidden="true"><x-icon name="calendar" :size="24" /></span>
                     @endif
