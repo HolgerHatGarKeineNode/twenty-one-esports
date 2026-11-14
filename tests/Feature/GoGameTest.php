@@ -301,6 +301,27 @@ test('the card of a Go game draws the board of the game\'s page: its wood, the s
         expect($script)->toContain('<radialGradient id="go-stone-'.$kind.'" cx="'.($light['cx'] * 100).'%" cy="'.($light['cy'] * 100).'%" r="'.($light['r'] * 100).'%">'.$stops.'</radialGradient>');
     }
 
+    // The board's stylesheet names each of these colours once, as a custom property, and uses it by that name alone.
+    $css = (string) preg_replace('#/\*.*?\*/#s', '', file_get_contents(resource_path('js/go/board.css')));
+    preg_match_all('/^\s*(--go-[a-z-]+):\s*(#[0-9a-fA-F]{6});$/m', $css, $defined);
+    preg_match('/guide: \'(#[0-9A-F]{6})\'/', $script, $guide);
+    $colours = [
+        '--go-wood-from' => StoneBoardArt::WOOD[0],
+        '--go-wood-to' => StoneBoardArt::WOOD[1],
+        '--go-side' => StoneBoardArt::SIDE,
+        '--go-line' => StoneBoardArt::LINE,
+        '--go-guide' => $guide[1] ?? null,
+        '--go-black' => Canvas::GROUND,
+        '--go-white' => StoneBoardArt::STONE['white']['stops'][1][1],
+    ];
+
+    expect(array_map(strtoupper(...), array_combine($defined[1], $defined[2])))->toBe($colours);
+
+    foreach ($colours as $property => $hex) {
+        expect(substr_count(strtoupper($css), (string) $hex))->toBe(1, "{$hex} stands in board.css once, as {$property}")
+            ->and($css)->toContain("var({$property})");
+    }
+
     // A running game: the stone set last carries the ring, a pass sets none.
     $game = goPlay(goGame(), ['e5', 'c3']);
     $pixel = fn (string $png, int $x, int $y): string => sprintf('#%06X', imagecolorat(imagecreatefromstring($png), $x, $y) & 0xFFFFFF);

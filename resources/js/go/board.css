@@ -2,18 +2,32 @@
  * Go's board (resources/js/boardGame.js, renderStones()). The slab itself is drawn in the SVG; here are only its shadow
  * on the page and the three short motions of its stones (R17: 150-300 ms, ease-out; none with reduced motion).
  */
+/*
+ * The board's colours, each once: the values of the drawing (boardGame.js `GO`, STONE_GRADIENTS) and of the cards
+ * (StoneBoardArt). tests/Feature/GoGameTest.php holds every one of them to its constant there.
+ */
+:root {
+    --go-wood-from: #b07c3d;
+    --go-wood-to: #a47038;
+    --go-side: #553619;
+    --go-line: #2a1b0b;
+    --go-guide: #ffe8c2;
+    --go-black: #0a0a0b;
+    --go-white: #f4f1ea;
+}
+
 svg.go-board {
     background: transparent;
     /* The slab's lower face (the wood's dark side, boardGame.js GO.side), then its shadow on the page. */
     box-shadow:
-        0 4px 0 #553619,
+        0 4px 0 var(--go-side),
         0 16px 24px -8px rgb(0 0 0 / 70%);
 }
 
 @media (width >= 64rem) {
     svg.go-board {
         box-shadow:
-            0 6px 0 #553619,
+            0 6px 0 var(--go-side),
             0 20px 24px -8px rgb(0 0 0 / 70%);
     }
 }
@@ -87,16 +101,16 @@ svg.go-board {
 
 .go-balance > [data-part='black'] {
     border-radius: 2px 0 0 2px;
-    background: #0a0a0b;
+    background: var(--go-black);
 }
 
 .go-balance > [data-part='white'] {
-    background: #f4f1ea;
+    background: var(--go-white);
 }
 
 .go-balance > [data-part='komi'] {
     border-radius: 0 2px 2px 0;
-    background: repeating-linear-gradient(135deg, #f4f1ea 0 2px, #8b8b90 2px 4px);
+    background: repeating-linear-gradient(135deg, var(--go-white) 0 2px, #8b8b90 2px 4px);
 }
 
 .go-balance::after {
@@ -143,8 +157,8 @@ svg.go-board {
     margin: 0;
     padding: 0;
     border-radius: 4px;
-    background: linear-gradient(135deg, #b07c3d, #a47038);
-    box-shadow: 0 2px 0 #553619;
+    background: linear-gradient(135deg, var(--go-wood-from), var(--go-wood-to));
+    box-shadow: 0 2px 0 var(--go-side);
     list-style: none;
 }
 
@@ -154,7 +168,7 @@ svg.go-board {
     right: 0;
     left: 0;
     height: 1px;
-    background: #2a1b0b;
+    background: var(--go-line);
     content: '';
 }
 
@@ -168,7 +182,7 @@ svg.go-board {
     position: absolute;
     width: 1px;
     height: 10px;
-    background: #2a1b0b;
+    background: var(--go-line);
     content: '';
 }
 
@@ -176,7 +190,7 @@ svg.go-board {
     position: absolute;
     width: 18px;
     height: 18px;
-    border: 1.5px solid #ffe8c2;
+    border: 1.5px solid var(--go-guide);
     border-radius: 50%;
     content: '';
 }
