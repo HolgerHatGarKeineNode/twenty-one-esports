@@ -22,6 +22,7 @@ use App\Models\User;
 use App\Support\Badges\BadgeCopy;
 use App\Support\Board\AreaCount;
 use App\Support\Board\BlockspaceDrawing;
+use App\Support\Board\BoardRules;
 use App\Support\Board\StoneBoard;
 use App\Support\Chess\ChessModes;
 use App\Support\GameNames;
@@ -492,8 +493,12 @@ final class PageCard
         }
     }
 
-    /** The rules of this card's board game when its pieces are stones (Go), else null. */
-    private function stoneRules(): ?StoneBoard
+    /**
+     * The rules of this card's board game when its pieces are stones (Go), else null.
+     *
+     * @return (BoardRules<mixed>&StoneBoard)|null
+     */
+    private function stoneRules(): (BoardRules&StoneBoard)|null
     {
         $definition = app(GameRegistry::class)->find((string) ($this->facts['game'] ?? ''));
         $rules = $definition instanceof BoardGameDefinition ? $definition->rules() : null;

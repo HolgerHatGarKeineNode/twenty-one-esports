@@ -258,7 +258,7 @@ final class GameRegistry
     /** The name of a game's list entry: its group's name ("Go"), or its own. */
     public function listedName(string $slug): string
     {
-        return $this->groupOf($slug)?->name ?? $this->name($slug);
+        return $this->groupOf($slug)->name ?? $this->name($slug);
     }
 
     /**

@@ -56,7 +56,7 @@ final class BoardMoments
     /** The spoken name of a board game: its own, its group's, else its slug. */
     public function name(string $slug): string
     {
-        return self::NAMES[$slug] ?? self::NAMES[$this->games->groupOf($slug)?->slug ?? ''] ?? $slug;
+        return self::NAMES[$slug] ?? self::NAMES[$this->games->groupOf($slug)->slug ?? ''] ?? $slug;
     }
 
     /**

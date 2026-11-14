@@ -78,7 +78,9 @@ final class StoneBoardArt
             if ($t <= $stops[$i][0]) {
                 $from = self::rgb($stops[$i - 1][1]);
                 $to = self::rgb($stops[$i][1]);
-                $part = ($t - $stops[$i - 1][0]) / ($stops[$i][0] - $stops[$i - 1][0]);
+                // Two stops at the same place are a hard edge: the later colour from there on.
+                $span = $stops[$i][0] - $stops[$i - 1][0];
+                $part = $span > 0.0 ? ($t - $stops[$i - 1][0]) / $span : 1.0;
 
                 return [(int) round($from[0] + ($to[0] - $from[0]) * $part), (int) round($from[1] + ($to[1] - $from[1]) * $part), (int) round($from[2] + ($to[2] - $from[2]) * $part)];
             }
@@ -160,7 +162,8 @@ final class StoneBoardArt
         $ox = $x + ($size - $top) / 2;
         $xs = array_column($view['points'], 'x');
         $ys = array_column($view['points'], 'y');
-        [$near, $far, $high, $low] = [min($xs), max($xs), min($ys), max($ys)];
+        // A view without points has no lines to tell from the frame and no stones.
+        [$near, $far, $high, $low] = $xs === [] || $ys === [] ? [0, 0, 0, 0] : [min($xs), max($xs), min($ys), max($ys)];
         $unit = count($view['points']) > 1 ? ($far - $near) / (sqrt(count($view['points'])) - 1) * $scale : $top;
         // The page's lines are 1 px on a board of about 560 px, the frame 1.8 px.
         $thin = max(1.0, $size / 400);
@@ -205,7 +208,11 @@ final class StoneBoardArt
         imagecopy($this->c->image, $sprite, (int) round($cx * $s - $half), (int) round($cy * $s - $half), 0, 0, imagesx($sprite), imagesy($sprite));
     }
 
-    /** A stone beside a player's name on the card's dark ground: its light rim, then the stone without a shadow. */
+    /**
+     * A stone beside a player's name on the card's dark ground: its light rim, then the stone without a shadow.
+     *
+     * @param  'black'|'white'  $kind
+     */
     public function glyph(string $kind, int|float $cx, int|float $cy, int|float $radius): void
     {
         $this->disc($cx, $cy, $radius + 1.5, self::RIM[$kind]);
@@ -219,12 +226,16 @@ final class StoneBoardArt
         imagefilledellipse($this->c->image, (int) round($cx * $s), (int) round($cy * $s), $d, $d, $this->c->color($colour));
     }
 
-    /** One stone as its own picture with a clear ground, every pixel from the stone's light, edge, ring and shadow. */
+    /**
+     * One stone as its own picture with a clear ground, every pixel from the stone's light, edge, ring and shadow.
+     *
+     * @param  'black'|'white'  $kind
+     */
     private function sprite(string $kind, float $r, bool $ring, bool $shadow): GdImage
     {
         $unit = $r / self::RADIUS;
         $size = (int) ceil(2 * ($unit * 0.55 + $unit * 0.07) + 4);
-        $size += $size % 2;
+        $size = max(2, $size + $size % 2);
         $sprite = imagecreatetruecolor($size, $size);
         imagealphablending($sprite, false);
         imagesavealpha($sprite, true);
@@ -259,8 +270,8 @@ final class StoneBoardArt
 
                 // The stone over its shadow.
                 $alpha = $cover + $under * (1 - $cover);
-                $mixed = array_map(fn (int $i): int => (int) round(($colour[$i] * $cover + $dark[$i] * $under * (1 - $cover)) / $alpha), [0, 1, 2]);
-                imagesetpixel($sprite, $px, $py, (int) imagecolorallocatealpha($sprite, $mixed[0], $mixed[1], $mixed[2], (int) round(127 * (1 - $alpha))));
+                $mixed = array_map(fn (int $i): int => self::channel(($colour[$i] * $cover + $dark[$i] * $under * (1 - $cover)) / $alpha), [0, 1, 2]);
+                imagesetpixel($sprite, $px, $py, (int) imagecolorallocatealpha($sprite, $mixed[0], $mixed[1], $mixed[2], self::clear($alpha)));
             }
         }
 
@@ -271,16 +282,36 @@ final class StoneBoardArt
     {
         [$r, $g, $b] = self::rgb($hex);
 
-        return (int) imagecolorallocatealpha($this->c->image, $r, $g, $b, (int) round(127 * (1 - $opacity)));
+        return (int) imagecolorallocatealpha($this->c->image, $r, $g, $b, self::clear($opacity));
     }
 
     /**
-     * @return array{0: int, 1: int, 2: int}
+     * @return array{0: int<0, 255>, 1: int<0, 255>, 2: int<0, 255>}
      */
     private static function rgb(string $hex): array
     {
         [$r, $g, $b] = sscanf($hex, '#%02x%02x%02x') ?: [0, 0, 0];
 
-        return [(int) $r, (int) $g, (int) $b];
+        return [self::channel((int) $r), self::channel((int) $g), self::channel((int) $b)];
+    }
+
+    /**
+     * A colour's channel as GD takes it.
+     *
+     * @return int<0, 255>
+     */
+    private static function channel(int|float $value): int
+    {
+        return max(0, min(255, (int) round($value)));
+    }
+
+    /**
+     * An opacity from 0 to 1 as GD's alpha: 0 covers, 127 is clear.
+     *
+     * @return int<0, 127>
+     */
+    private static function clear(float $opacity): int
+    {
+        return max(0, min(127, (int) round(127 * (1 - $opacity))));
     }
 }

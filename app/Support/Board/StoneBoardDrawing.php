@@ -29,7 +29,11 @@ final class StoneBoardDrawing
     /** The stone of a side's card on the scene, by the letter the scene colours a side with (BoardScene::live() `colours`). */
     public const KIND = ['b' => 'black', 'w' => 'white'];
 
-    /** Whether a rules' view is a board of stones (GoRules::view()). */
+    /**
+     * Whether a rules' view is a board of stones (GoRules::view()).
+     *
+     * @param  array<string, mixed>  $view
+     */
     public static function draws(array $view): bool
     {
         return ($view['input'] ?? null) === 'stones';
@@ -54,7 +58,8 @@ final class StoneBoardDrawing
         $upper = $y + ($top - $view['height'] * $scale) / 2;
         $xs = array_column($view['points'], 'x');
         $ys = array_column($view['points'], 'y');
-        [$near, $far, $high, $low] = [min($xs), max($xs), min($ys), max($ys)];
+        // A view without points has no lines to tell from the frame and no stones.
+        [$near, $far, $high, $low] = $xs === [] || $ys === [] ? [0, 0, 0, 0] : [min($xs), max($xs), min($ys), max($ys)];
         $count = count($view['points']);
         $unit = $count > 1 ? ($far - $near) / (sqrt($count) - 1) * $scale : $top;
         // The page's lines are 1 px on a board of about 560 px, its frame 1.8 px.
