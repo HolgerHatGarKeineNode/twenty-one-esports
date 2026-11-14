@@ -41,6 +41,7 @@
  * as it stands beside the board.
  */
 
+import { followRecord } from './boardRecord.js';
 import { setFocus } from './focusMode.js';
 import { gameChat } from './gameChat.js';
 import { registerAlpine } from './registerAlpine.js';
@@ -1870,20 +1871,7 @@ registerAlpine(() => {
          * not follow on from what the page has: then the whole record is asked for.
          */
         follow(update) {
-            if (update.moves) return update;
-            const moves = this.state.moves;
-            const same = (ply) => ply === 0 || moves[ply - 1]?.move === update.lastMove?.move;
-            if (update.ply === moves.length + 1 && update.lastMove) {
-                // A push of a board with its own input carries the pieces once (BoardGameService::snapshot()).
-                // A push of stones names nothing taken (it carries the stones as they stand): what lay there before and is gone was taken.
-                const taken = this.layout.input === 'stones' && !update.lastMove.taken?.length && update.pieces ? Object.keys(this.state.pieces).filter((id) => !update.pieces[id]) : update.lastMove.taken;
-
-                return { ...update, moves: [...moves, { ...update.lastMove, ...(taken ? { taken } : {}), pieces: update.lastMove.pieces ?? update.pieces }] };
-            }
-            if (update.ply === moves.length && same(update.ply)) return { ...update, moves };
-            if (update.ply < moves.length && same(update.ply)) return { ...update, moves: moves.slice(0, update.ply) };
-
-            return null;
+            return followRecord(update, this.state, this.layout.input === 'stones');
         },
 
         receive(update) {
