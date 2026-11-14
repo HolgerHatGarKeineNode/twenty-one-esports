@@ -603,6 +603,68 @@ test('beside a finished Go game\'s board the move list shows at least three whol
     'desktop 1024' => [1024, 768],
 ]);
 
+test('a finished Go game in German cuts neither "Nächsten Gegner suchen" nor "Gebiet zeigen", and beside the board the button is alone in its row', function (int $width, int $height, bool $touch) {
+    [$anna, $bert] = User::factory()->count(2)->create();
+    $game = goLivePlayed($anna, $bert, ['e5', 'g5', 'c3', 'g3', 'pass', 'pass']);
+    $page = goLivePage($anna, route('board.show', ['boardGame' => $game, 'lang' => 'de'], false), $width, $height, $touch);
+    BrowserWait::until($page, '() => window.Alpine && document.querySelector("[data-test=next-opponent]")?.getClientRects().length > 0', 10_000);
+    goLiveSettle($page);
+
+    // Per control: its label, the px its content is wider than its box, the px it leaves its card to the right, and whether it shares its row.
+    $controls = $page->evaluate(<<<'JS'
+        () => Object.fromEntries(['next-opponent', 'toggle-area'].map((name) => {
+            const el = [...document.querySelectorAll('[data-test=' + name + ']')].find((e) => e.checkVisibility());
+            const card = el.closest('[data-test=board-result], [data-test=count]').getBoundingClientRect();
+            const r = el.getBoundingClientRect();
+            const beside = [...el.parentElement.children].filter((e) => e !== el && e.checkVisibility() && e.getBoundingClientRect().width > 1 && e.getBoundingClientRect().top < r.bottom && e.getBoundingClientRect().bottom > r.top).length;
+            return [name, [el.innerText.trim(), Math.max(0, el.scrollWidth - el.clientWidth), Math.max(0, Math.round(r.right - card.right)), beside]];
+        }))
+    JS);
+
+    // Before: at 1440 x 900 the two shared a row of 346 px, "suchen" was cut at the button's edge and the bolt sat on its left edge.
+    expect($controls['next-opponent'])->toBe(['Nächsten Gegner suchen', 0, 0, 0], "{$width} x {$height}: the way on")
+        ->and(array_slice($controls['toggle-area'], 0, 3))->toBe(['Gebiet zeigen', 0, 0], "{$width} x {$height}: the switch")
+        ->and($page->evaluate('() => window.__errors'))->toBe([])
+        ->and($page->evaluate(BrowserConsole::BAD_RESPONSES))->toBe([]);
+})->with([
+    'phone 390' => [390, 844, true],
+    'desktop 1440' => [1440, 900, false],
+]);
+
+test('beside the board both players, whose move it is and the answers to the pass that asks are on the first screen, and the move list shows the latest move', function (int $width, int $height, int $rows) {
+    [$anna, $bert] = User::factory()->count(2)->create();
+    $game = goLivePlayed($anna, $bert, ['e5', 'g5', 'c3', 'g3', 'c7', 'g7', 'e3', 'e7', 'c5', 'd6']);
+    $page = goLivePage($anna, route('board.show', ['boardGame' => $game, 'lang' => 'de'], false), $width, $height, false);
+    BrowserWait::until($page, GO_LIVE_READY, 10_000);
+    goLiveCanMove($page);
+    goLivePress($page, false, '[data-test=pass]');
+    BrowserWait::until($page, '() => document.querySelector("[data-test=keep-playing]")?.checkVisibility()', 3_000);
+    goLiveSettle($page);
+
+    $seen = $page->evaluate(<<<'JS'
+        () => {
+            const whole = (el) => { const r = el.getBoundingClientRect(); const at = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2); return r.top >= 0 && r.bottom <= innerHeight && !!at && (el.contains(at) || at.contains(el)); };
+            const below = ['side-card-top', 'turn-card', 'keep-playing', 'pass', 'toggle-area', 'side-card-bottom', 'resign']
+                .filter((name) => { const el = [...document.querySelectorAll('[data-test=' + name + ']')].find((e) => e.checkVisibility()); return !el || !whole(el); });
+            const list = document.querySelector('[data-test=moves]').getBoundingClientRect();
+            const shown = [...document.querySelectorAll('[data-test=move]')].filter((el) => { const r = el.getBoundingClientRect(); return r.top >= list.top - 0.5 && r.bottom <= list.bottom + 0.5; });
+            return { scrolled: Math.round(scrollY), below, rows: new Set(shown.map((el) => Math.round(el.getBoundingClientRect().top))).size, last: shown.at(-1)?.innerText.trim() ?? null };
+        }
+    JS);
+
+    // Before: at 1440 x 900 the player's row began at 864 px and ended at 908, under the fold; the list of a game at move 10 showed moves 1 to 3.
+    expect($seen['scrolled'])->toBe(0)
+        ->and($seen['below'])->toBe([], "{$width} x {$height}: not whole on the first screen")
+        ->and($seen['rows'])->toBe($rows, "{$width} x {$height}: whole rows of the move list")
+        ->and($seen['last'])->toBe('D6', "{$width} x {$height}: the latest move is in the list")
+        ->and($page->evaluate('() => window.__errors'))->toBe([])
+        ->and($page->evaluate(BrowserConsole::BAD_RESPONSES))->toBe([]);
+})->with([
+    'desktop 1440' => [1440, 900, 3],
+    'desktop 1280' => [1280, 720, 5],
+    'desktop 1024' => [1024, 768, 5],
+]);
+
 test('on a phone nothing to press on a finished Go game\'s page is cut by the bars at the bottom, and everything can be scrolled clear of them', function (int $width, int $height) {
     [$anna, $bert] = User::factory()->count(2)->create();
     $game = goLivePlayed($anna, $bert, ['e5', 'g5', 'c3', 'g3', 'pass', 'pass']);

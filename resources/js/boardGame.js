@@ -428,6 +428,10 @@ registerAlpine(() => {
                     this.phone = event.matches;
                     this.$nextTick(() => this.fitBoard());
                 });
+                // The move list keeps the move shown in sight: beside the board it has three rows, and at move 20 they were
+                // moves 1 to 3 (measured 2026-11-14).
+                this.$watch('shownPly', () => this.$nextTick(() => this.followMove()));
+                this.$nextTick(() => requestAnimationFrame(() => this.followMove()));
             }
 
             this.render();
@@ -569,6 +573,16 @@ registerAlpine(() => {
         /** The ply the board shows: the newest while following the game. */
         get shownPly() {
             return this.viewIndex ?? this.state.moves.length;
+        },
+
+        /** Scrolls the move list, never the page, so the row of the move shown is whole in it. */
+        followMove() {
+            const list = this.$root.querySelector('[data-test=moves]');
+            const row = list?.querySelector('[aria-current=step]')?.closest('li');
+            if (!row) return;
+            const [box, at] = [list.getBoundingClientRect(), row.getBoundingClientRect()];
+            if (at.top < box.top) list.scrollTop -= box.top - at.top;
+            else if (at.bottom > box.bottom) list.scrollTop += at.bottom - box.bottom;
         },
 
         /** The pieces after `index` plies; the newest are the live state's. */

@@ -513,9 +513,13 @@ new #[Layout('layouts::app', ['realtime' => true, 'scripts' => ['resources/js/bo
             </div>
 
             {{-- The middle column: opponent, who is to move, the game's input, moves, the player. --}}
-            {{-- Go's column is as tall as what it holds: its move list keeps three rows (five below 87.5rem) and takes what the board's
-                 height leaves beyond them (measured 2026-11-14 at 1440 x 900: half a row, in every state). --}}
-            <div @class(['flex min-w-0 flex-col gap-3', 'min-[87.5rem]:h-0 min-[87.5rem]:min-h-full' => $chat && ! $stones])>
+            {{-- Go's column is as tall as what it holds, 8 px between its parts: with the pass question open both players, the turn
+                 card, the question and the count end 17 px above the fold at 1440 x 900 (measured 2026-11-14; with 12 px the
+                 player's row was cut by it). The move list between them keeps three whole rows (six in a window of 1040 px and
+                 higher, five below 87.5rem) and takes what the board's height leaves beyond them. In a window lower than 900 px
+                 those rows have no room on the first screen: the list then follows the player's row, whole, instead of pushing
+                 it under the fold. --}}
+            <div @class(['flex min-w-0 flex-col gap-3', 'lg:gap-2' => $stones, 'min-[87.5rem]:h-0 min-[87.5rem]:min-h-full' => $chat && ! $stones])>
                 {{-- The opponent (from lg; on a phone the two cards above the board). --}}
                 <div class="flex min-w-0 items-center gap-3 max-lg:hidden" data-test="side-card-top">
                     {{-- The player's picture, never a letter (x-avatar); Go adds the side's stone, drawn as the board's stones are. --}}
@@ -640,7 +644,7 @@ new #[Layout('layouts::app', ['realtime' => true, 'scripts' => ['resources/js/bo
                 @endif
 
                 {{-- The moves, two columns per move number as on daily chess; browsing steps through them. --}}
-                <div @class(['flex flex-col gap-2 rounded-lg bg-card p-4', 'min-h-0 lg:grow min-[87.5rem]:shrink' => ! $stones, 'lg:min-h-80 lg:flex-[1_1_0px] min-[87.5rem]:min-h-56' => $stones]) data-test="moves-card">
+                <div @class(['flex flex-col gap-2 rounded-lg bg-card p-4', 'min-h-0 lg:grow min-[87.5rem]:shrink' => ! $stones, 'lg:flex-[1_1_0px] lg:[@media(max-height:899px)]:order-last' => $stones]) data-test="moves-card">
                     <div class="flex items-center justify-between gap-2">
                         <h2 class="m-0 text-[15px] font-bold">{{ __('Moves') }}</h2>
                         {{-- Browse the game (P8): start, back, forward, newest; the arrow keys do the same. --}}
@@ -655,7 +659,7 @@ new #[Layout('layouts::app', ['realtime' => true, 'scripts' => ['resources/js/bo
                         <span x-text="@js(__('Showing move :n of :total')).replace(':n', shownPly).replace(':total', state.moves.length)"></span>
                         <button type="button" class="cursor-pointer text-ink underline decoration-edge underline-offset-4" x-on:click="browse(state.moves.length)" data-test="history-back-to-game">{{ __('Back to the game') }}</button>
                     </p>
-                    <ol @class(['m-0 grid max-h-60 min-h-0 list-none grid-cols-2 content-start gap-x-2 overflow-y-auto p-0 text-[13px] tabular-nums lg:max-h-none', 'lg:grow' => ! $stones, 'lg:flex-[1_1_0px]' => $stones]) data-test="moves">
+                    <ol @class(['m-0 grid max-h-60 min-h-0 list-none grid-cols-2 content-start gap-x-2 overflow-y-auto p-0 text-[13px] tabular-nums lg:max-h-none', 'lg:grow' => ! $stones, 'lg:min-h-[calc(5*2.75rem+5px)] lg:flex-[1_1_0px] min-[87.5rem]:min-h-[calc(3*2.75rem+3px)] min-[87.5rem]:[@media(min-height:1040px)]:min-h-[calc(6*2.75rem+6px)]' => $stones]) data-test="moves">
                         <template x-for="m in state.moves" :key="m.ply">
                             @if ($stones)
                                 {{-- Go: a row of 44 px; a pass reads as a pass (plain, grey), not as a point; what a stone took stands behind it ("×2"). --}}

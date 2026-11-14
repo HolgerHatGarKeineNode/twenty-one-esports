@@ -18,7 +18,12 @@
                     <b class="shrink-0 font-display text-base leading-snug whitespace-nowrap tabular-nums lg:text-lg" x-show="resultMargin" x-text="resultMargin" aria-hidden="true" data-test="result-margin"></b>
                     <span class="sr-only" x-text="resultMargin ? countResult(state.count) : ''"></span>
                 </div>
-                <span class="text-xs leading-normal text-ink-2 lg:text-[13px]" x-text="resultWhy" data-test="result-why"></span>
+                {{-- Why it ended, and from lg the switch beside it, where it stands while the game runs too (beside the sentence of
+                     partials/go-score): the card's one button is then the way on, whole in German and English (R11). --}}
+                <div class="flex min-w-0 items-center gap-3">
+                    <span class="min-w-0 grow text-xs leading-normal text-ink-2 lg:text-[13px]" x-text="resultWhy" data-test="result-why"></span>
+                    <template x-if="score && !phone">@include('pages.board.partials.go-area-toggle')</template>
+                </div>
             </div>
             {{-- From lg the card holds the count too: both scores beside the bar, each side's stones, area and komi (on a phone
                  they follow the card, so its button keeps the first screen). The margin stands once, in the line above. --}}
@@ -31,11 +36,7 @@
             <x-button :href="$teamUrl" class="w-full" data-test="back-to-team-match">{{ __('Back to the team match') }}</x-button>
         @elseif ($boardGame->tournament_match_id === null)
             @if ($stones)
-                {{-- One row where both fit (English); in German the switch takes a row of its own rather than cutting a label (R11). --}}
-                <div class="flex min-w-0 flex-wrap gap-2">
-                    <x-button :href="route('board.lobby', $boardGame->game)" icon="bolt" class="grow whitespace-nowrap" data-test="next-opponent">{{ __('Find next opponent') }}</x-button>
-                    <template x-if="score && !phone">@include('pages.board.partials.go-area-toggle', ['toggleClass' => 'grow justify-center'])</template>
-                </div>
+                <x-button :href="route('board.lobby', $boardGame->game)" icon="bolt" class="w-full whitespace-nowrap" data-test="next-opponent">{{ __('Find next opponent') }}</x-button>
             @else
                 <x-button :href="route('board.lobby', $boardGame->game)" icon="bolt" data-test="next-opponent">{{ __('Find next opponent') }}</x-button>
             @endif
