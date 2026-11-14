@@ -862,3 +862,71 @@ test('the switch between Go\'s sizes is one control on the lobby and the ladder:
     'phone 320' => [320, 640, true],
     'desktop 1440' => [1440, 900, false],
 ]);
+
+/** The count strip under the board on a phone against the bar: [whole above it, wholly behind it or below], and what of "Show area" can be hit. */
+const GO_LIVE_STRIP = <<<'JS'
+    () => {
+        const strip = [...document.querySelectorAll('[data-test=count]')].find((el) => el.checkVisibility());
+        const bar = document.querySelector('[data-test=stone-input]').getBoundingClientRect();
+        if (!strip) return { half: 0, height: 0 };
+        const at = strip.getBoundingClientRect();
+        return { half: at.top < bar.top && at.bottom > bar.top ? Math.round(at.bottom - bar.top) : 0, height: Math.round(at.height) };
+    }
+    JS;
+
+test('on a phone the count under Go\'s board stands whole above the bar or not at all at rest, with the sentence in one line and in two, and with a stone shown', function (int $width, int $height, string $kind, string $lang) {
+    [$anna, $bert] = User::factory()->count(2)->create();
+    $game = app(BoardGameService::class)->start($kind, $anna, $bert, 'correspondence');
+    $page = goLivePage($anna, route('board.show', ['boardGame' => $game, 'lang' => $lang], false), $width, $height, true);
+    BrowserWait::until($page, '() => window.Alpine && '.GO_LIVE_BOARD.'?.canMove', 10_000);
+    goLiveSettle($page);
+    expect($page->evaluate(GO_LIVE_STRIP)['half'])->toBe(0, 'at rest');
+
+    // The sentence small and in one line, so the strip is a line lower: the board fits to that, then the sentence is itself again.
+    $page->evaluate('() => { document.querySelector("[data-test=count-lead]").style.cssText = "font-size: 8px; white-space: nowrap"; '.GO_LIVE_BOARD.'.fitBoard(); }');
+    $short = $page->evaluate(GO_LIVE_STRIP);
+    $page->evaluate('() => { document.querySelector("[data-test=count-lead]").style.cssText = ""; '.GO_LIVE_BOARD.'.fitBoard(); return new Promise((done) => requestAnimationFrame(() => requestAnimationFrame(() => requestAnimationFrame(done)))); }');
+    goLiveSettle($page);
+    $long = $page->evaluate(GO_LIVE_STRIP);
+    expect($short['half'])->toBe(0, 'one line')
+        ->and($long['half'])->toBe(0, 'two lines: the strip stands '.$long['half'].' px under the bar')
+        ->and($page->evaluate('() => window.__errors'))->toBe([])
+        ->and($page->evaluate(BrowserConsole::BAD_RESPONSES))->toBe([]);
+
+    // With a stone shown (the tab bar gives its room): the same.
+    goLiveTap($page, true, $kind === 'go-9' ? 'e5' : 'k10');
+    goLiveSettle($page);
+    expect($page->evaluate(GO_LIVE_STRIP)['half'])->toBe(0, 'with a stone shown');
+})->with([
+    '9 x 9 at 390 in German' => [390, 844, 'go-9', 'de'],
+    '19 x 19 at 390 in German' => [390, 844, 'go-19', 'de'],
+    '9 x 9 at 320 in German' => [320, 640, 'go-9', 'de'],
+    '9 x 9 at 390 in English' => [390, 844, 'go-9', 'en'],
+]);
+
+test('beside the board a correspondence game\'s deadline stands in two lines at most under the turn and its clock', function (int $width, int $height, string $lang) {
+    [$anna, $bert] = User::factory()->count(2)->create();
+    $game = app(BoardGameService::class)->start('go-9', $anna, $bert, 'correspondence');
+    $page = goLivePage($anna, route('board.show', ['boardGame' => $game, 'lang' => $lang], false), $width, $height, false);
+    BrowserWait::until($page, '() => window.Alpine && '.GO_LIVE_BOARD.'?.canMove', 10_000);
+    goLiveSettle($page);
+
+    $seen = $page->evaluate(<<<'JS'
+        () => {
+            const line = document.querySelector('[data-test=turn-card] [data-test=turn-deadline]');
+            const range = document.createRange();
+            range.selectNodeContents(line);
+            const card = document.querySelector('[data-test=turn-card]').getBoundingClientRect();
+            return { text: line.innerText, lines: new Set([...range.getClientRects()].map((r) => Math.round(r.top))).size, width: Math.round(line.getBoundingClientRect().width), card: Math.round(card.width), under: Math.round(card.bottom - innerHeight) };
+        }
+        JS);
+    expect($seen['text'])->not->toBe('')
+        ->and($seen['lines'])->toBeLessThanOrEqual(2, '"'.$seen['text'].'" stands in '.$seen['lines'].' lines of '.$seen['width'].' px')
+        ->and($seen['under'])->toBeLessThanOrEqual(0, 'the turn card lies under the first screen');
+})->with([
+    '1440 in German' => [1440, 900, 'de'],
+    '1024 in German' => [1024, 768, 'de'],
+    '1920 in German' => [1920, 1080, 'de'],
+    '1440 in English' => [1440, 900, 'en'],
+    '1024 in English' => [1024, 768, 'en'],
+]);

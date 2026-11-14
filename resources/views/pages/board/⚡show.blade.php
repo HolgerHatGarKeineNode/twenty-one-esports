@@ -542,6 +542,15 @@ new #[Layout('layouts::app', ['realtime' => true, 'scripts' => ['resources/js/bo
 
                 {{-- Who is to move, with the clock of that side (the chess turn card). --}}
                 <template x-if="state.status === 'active'">
+                    @if ($stones)
+                        {{-- Go: a correspondence game's deadline takes the card's whole width under the turn and the clock (beside
+                             the clock it had 200 px at 1440 and stood in three lines, measured 2026-11-14): two lines at most. --}}
+                        <div class="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-x-4 gap-y-2 rounded-[4px] border border-btc-ring bg-feature px-4 py-3 max-lg:hidden" role="status" data-test="turn-card">
+                            <b class="min-w-0 text-[15px]" x-text="color && color === state.turn ? t.yourMove : t.toMove.replace(':name', t.names[state.turn])"></b>
+                            <span role="timer" class="shrink-0 rounded-[4px] bg-btc px-3 py-2 font-display text-[26px] leading-none font-bold whitespace-nowrap text-on-btc tabular-nums" x-text="clock(state.turn)"></span>
+                            <span class="col-span-2 text-[13px] leading-normal text-ink-2" x-show="deadlineLine" x-text="deadlineLine" data-test="turn-deadline"></span>
+                        </div>
+                    @else
                     <div class="flex items-center gap-4 rounded-[4px] border border-btc-ring bg-feature px-4 py-3 max-lg:hidden" role="status" data-test="turn-card">
                         <span class="flex min-w-0 grow flex-col gap-1">
                             <b class="text-[15px]" x-text="color && color === state.turn ? t.yourMove : t.toMove.replace(':name', t.names[state.turn])"></b>
@@ -549,6 +558,7 @@ new #[Layout('layouts::app', ['realtime' => true, 'scripts' => ['resources/js/bo
                         </span>
                         <span role="timer" class="shrink-0 rounded-[4px] bg-btc px-3 py-2 font-display text-[26px] leading-none font-bold whitespace-nowrap text-on-btc tabular-nums" x-text="clock(state.turn)"></span>
                     </div>
+                    @endif
                 </template>
 
                 {{-- Go: the result takes the turn card's place, so on a phone it follows the board at once (the next action on the
