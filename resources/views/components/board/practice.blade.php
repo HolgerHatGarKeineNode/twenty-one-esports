@@ -162,7 +162,7 @@
                             <p class="m-0 text-xs text-ink-3">{{ $note }}</p>
                         </div>
 
-                        <div x-cloak x-show="stage !== 'pick'" class="flex flex-col gap-3" data-test="bot-game">
+                        <div x-cloak x-show="stage !== 'pick'" class="flex flex-col gap-3" @if ($stones) data-fit-after @endif data-test="bot-game">
                             @if ($stones)
                                 @include('pages.board.partials.go-practice-game')
                             @else
@@ -185,20 +185,23 @@
                             @endif
 
                             {{-- The tips: a line now and then by themselves, and the tip button for a nudge (never the move). --}}
-                            <div class="flex flex-col gap-2 rounded-lg bg-card p-4" data-test="tips">
+                            {{-- Go: only while the game runs (a game that is over has no tip to give, R11). On a phone the tip has its
+                                 place under the board and its button in the bar (partials/go-practice-tip): the card keeps the switch. --}}
+                            <div class="flex flex-col gap-2 rounded-lg bg-card p-4" @if ($stones) x-cloak x-show="stage === 'play'" @endif data-test="tips">
                                 <div class="flex items-center justify-between gap-2">
                                     <h2 class="m-0 text-[15px] font-bold">{{ __('Tips') }}</h2>
                                     {{-- R11: the board's checkbox, never the native one; 44 px tall. --}}
                                     <x-ui.check class="text-[13px] text-ink-2" x-bind:aria-checked="tipsOn.toString()" x-on:click="setTips(!tipsOn)" data-test="tips-on">{{ __('Show by themselves') }}</x-ui.check>
                                 </div>
-                                <p role="status" aria-live="polite" class="m-0 min-h-5 text-[13px] leading-normal" :class="tip ? 'text-ink' : 'text-ink-3'" x-text="tip ? tip.text : @js(__('Stuck? Ask for a tip: it tells you what kind of move fits, never the move itself.'))" data-test="tip"></p>
-                                <x-button variant="quiet" class="self-start" x-bind:disabled="!canAsk" x-on:click="askTip()" data-test="ask-tip"><span x-text="asked === 0 ? @js(__('Get a tip')) : @js(__('Another tip'))"></span></x-button>
+                                <p role="status" aria-live="polite" @class(['m-0 min-h-5 text-[13px] leading-normal', 'max-lg:hidden' => $stones]) :class="tip ? 'text-ink' : 'text-ink-3'" x-text="tip ? tip.text : @js(__('Stuck? Ask for a tip: it tells you what kind of move fits, never the move itself.'))" data-test="tip"></p>
+                                <x-button variant="quiet" @class(['self-start', 'max-lg:hidden' => $stones]) x-bind:disabled="!canAsk" x-on:click="askTip()" data-test="ask-tip"><span x-text="asked === 0 ? @js(__('Get a tip')) : @js(__('Another tip'))"></span></x-button>
                             </div>
 
                             {{ $standing ?? '' }}
                             <p role="alert" class="m-0 text-[13px] text-loss" x-cloak x-show="failed" x-text="failed"></p>
 
-                            <div class="flex flex-wrap items-center justify-end gap-2" x-cloak x-show="stage === 'play' || canUndo" data-test="practice-actions">
+                            {{-- Go: gone with the game's end, as the tips are (the result card has the ways on). --}}
+                            <div class="flex flex-wrap items-center justify-end gap-2" x-cloak x-show="{{ $stones ? "stage === 'play'" : "stage === 'play' || canUndo" }}" data-test="practice-actions">
                                 <x-button variant="quiet" x-bind:disabled="!canUndo" x-on:click="undo()" data-test="undo">{{ __('Take back') }}</x-button>
                                 <template x-if="state.status === 'active'">
                                     <x-button variant="secondary" x-on:click="resign()" class="text-loss! border-[#5A2A2E]!" data-test="resign">

@@ -113,11 +113,17 @@ new #[Layout('layouts::app', ['scripts' => ['resources/js/go/practice.js']])] cl
     }
 }; ?>
 
-<x-board.practice :slug="$slug" :config="$this->config()" data="goPractice" :title="__(':game · Practice', ['game' => 'Go'])"
+@php
+    $config = $this->config();
+@endphp
+
+<x-board.practice :slug="$slug" :config="$config" data="goPractice" :title="__(':game · Practice', ['game' => 'Go'])"
                   :first="__('Who plays Black and starts?')" :note="__('Practice games are not stored and count for nothing. Black moves first; White gets 7.5 points of komi for it.')">
-    {{-- Go's score as on a game's page (partials/go-score), in a bot game and in the lesson about the count. On a phone under
-         the board while it runs (boardGame.js fitBoard keeps it between the board and the bar while it fits). --}}
+    {{-- On a phone, under the board: a bot game's tip in its own place (partials/go-practice-tip), then Go's score as on a
+         game's page (partials/go-score), in a bot game and in the lesson about the count, while the game runs
+         (boardGame.js fitBoard keeps it between the board and the bar while it fits whole). --}}
     <x-slot:underBoard>
+        @include('pages.board.partials.go-practice-tip', ['config' => $config])
         <template x-if="score && phone && state.status === 'active' && (mode === 'learn' || stage !== 'pick')">
             <div class="min-w-0" data-fit-skip>@include('pages.board.partials.go-score')</div>
         </template>
@@ -128,6 +134,6 @@ new #[Layout('layouts::app', ['scripts' => ['resources/js/go/practice.js']])] cl
     <template x-if="score && (mode === 'learn' ? !phone || state.status !== 'active' : stage !== 'pick' && phone === (state.status !== 'active'))">@include('pages.board.partials.go-score')</template>
     {{-- Go's bar: Set stone and Pass, as on a game's page. A solved lesson has no move left: the bar gives the room back. --}}
     <div class="contents" x-show="mode !== 'learn' || lessonState !== 'done'">
-        @include('pages.board.partials.stone-input', ['bottom' => 'max-lg:bottom-0'])
+        @include('pages.board.partials.stone-input', ['bottom' => 'max-lg:bottom-0', 'extra' => 'pages.board.partials.go-practice-tip-button'])
     </div>
 </x-board.practice>

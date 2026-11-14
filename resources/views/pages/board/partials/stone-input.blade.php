@@ -12,12 +12,15 @@
     answer it, "Keep playing" first and focused, the pass beside it. Escape, a tap on the board or "Keep playing" keep
     the game going. Everything is boardGame.js's stone input.
 
+    `$extra` (Go's practice): a view with one more button of the page's own, first in the row (the tip's button there).
+
     `$quietIdle` (a game's page): from lg the line is gone while it only says whose move it is, which the turn card
     above it says already.
 --}}
 @php
     $bottom ??= 'max-lg:bottom-0';
     $quietIdle ??= false;
+    $extra ??= null;
     // The line's colour: the question in the league's orange, a refused stone in red; from lg gone while it only says whose move it is.
     $tone = "[passAsks ? 'font-bold text-btc-hi' : (stone && canMove && !stoneMoves.has(stone) ? 'text-loss' : 'text-ink-2'), ".($quietIdle ? "barLine === statusLine ? 'lg:hidden' : ''" : "''").']';
 @endphp
@@ -26,6 +29,9 @@
     <x-board.input-bar name="stone-input" status="stone-status" :bottom="$bottom" stacked x-on:keydown.escape.window="if (passAsks) keepPlaying()"
                        :tone="$tone">
         <div class="flex shrink-0 gap-2 lg:w-full" :role="passAsks ? 'group' : null" :aria-label="passAsks ? barLine : null">
+            @if ($extra)
+                @include($extra)
+            @endif
             <button type="button" class="inline-flex h-11 grow cursor-pointer items-center justify-center rounded-md bg-btc px-[18px] text-[13px] font-bold whitespace-nowrap text-on-btc btn-p hover:text-on-btc"
                     x-show="stone && canMove && stoneMoves.has(stone) && pointerType !== 'mouse'" x-cloak x-on:click="setStone()" data-test="place-stone">{{ __('Set stone') }}</button>
             {{-- The safe answer to the pass that asks: first, and focused (boardGame.js pass()). --}}

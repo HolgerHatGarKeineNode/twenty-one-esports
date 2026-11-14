@@ -513,7 +513,9 @@ registerAlpine(() => {
                 // the board fits again in the room it gives up (focus-mode calls this anew). Only on a focus page, once.
                 if (width < 200 && tabbar > 0 && document.documentElement.dataset.focus === 'shown') setFocus(true);
                 grid.style.gridTemplateColumns = '';
-                box.style.maxWidth = Math.max(200, width) + 'px';
+                // Go's board gives way down to 184 px: a guest's first visit at 320 x 640 (the steps strip under the header) left
+                // 185 px above the tip's place of a practice game, and at 200 px the tip reached 15 px under the bar (2026-11-14).
+                box.style.maxWidth = Math.max(this.layout.input === 'stones' ? 184 : 200, width) + 'px';
                 page.style.paddingBottom = (shown(sheet) ? 72 : 0) + (shown(dock) ? dock.offsetHeight : 0) + 24 + 'px';
                 // Go on a phone as wide as the board may be (320 x 640): the game's actions under it began above the bar and were
                 // cut by it (5 px of two buttons, measured 2026-11-14). They begin where the bar ends, a scroll away.
@@ -525,6 +527,15 @@ registerAlpine(() => {
                     const cut = shown(dock) ? skipped.find((el) => el.getBoundingClientRect().bottom > edge - 8) : null;
                     const gap = cut ? edge - cut.getBoundingClientRect().top : 0;
                     if (gap > 0) cut.style.marginTop = Math.ceil(gap) + 'px';
+                    // What follows the board's column while a game runs (Go's practice: the panel of a bot game, `data-fit-after`)
+                    // begins where the bar begins too: its first control ("Show by themselves") stood half under the bar's
+                    // edge at 390 x 844, measured 2026-11-14.
+                    const after = this.$root.querySelector('[data-fit-after]');
+                    if (after) {
+                        after.style.marginTop = '';
+                        const top = after.getBoundingClientRect().top;
+                        if (shown(after) && shown(dock) && this.state.status === 'active' && top > box.getBoundingClientRect().bottom && top < edge) after.style.marginTop = Math.ceil(edge - top) + 'px';
+                    }
                     // A game that is over: the score follows the result. Where it does not fit whole above the chat sheet it begins
                     // where the first screen ends, a scroll away ("Show area" stood half under the sheet at 390 x 844, not to be tapped).
                     const strip = this.state.status !== 'active' ? this.$root.querySelector('[data-test=count]') : null;
@@ -543,6 +554,7 @@ registerAlpine(() => {
             page.style.paddingBottom = '';
             column.querySelectorAll(':scope > [data-fit-skip]').forEach((el) => (el.style.marginTop = ''));
             this.$root.querySelectorAll('[data-test=count]').forEach((el) => (el.style.marginTop = ''));
+            this.$root.querySelectorAll('[data-fit-after]').forEach((el) => (el.style.marginTop = ''));
             // The board gives way to the actions and the lower card only down to DESKTOP_BOARD: below that they follow under the
             // first screen. A short window (a laptop at 150 %, about 1250 x 555: DerCaddy, 2026-10-14, the board had fallen to its
             // floor of 300 px) gets the board that fits below the sticky header (the root's scroll-padding-top) with 16 px of air:

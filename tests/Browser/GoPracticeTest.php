@@ -234,10 +234,11 @@ test('a guest learns Go on the league\'s board and plays the Hodler: capture, ko
     goLearnMyMove($page);
     goLearnPlace($page, $touch, 'e5');
     BrowserWait::until($page, '() => '.GO_LEARN_BOARD.'.state.ply === 2 && '.GO_LEARN_BOARD.'.canMove', 8_000);
-    // A phone asks in the row above the board, in view with it; a desktop in the tips card.
+    // A phone asks in the bar and reads the tip under the board, in view with it; a desktop in the tips card.
+    $shown = $touch ? '[data-test=tip-phone]' : '[data-test=tip]';
     goLearnPress($page, $touch, $touch ? '[data-test=ask-tip-phone]' : '[data-test=ask-tip]');
-    BrowserWait::until($page, '() => /take stones|atari|most is still open|Nothing is left/.test(document.querySelector("[data-test=tip]").textContent)', 15_000);
-    $tip = $page->locator('[data-test=tip]')->innerText();
+    BrowserWait::until($page, '() => /take stones|atari|most is still open|Nothing is left/.test(document.querySelector("'.$shown.'").textContent)', 15_000);
+    $tip = $page->locator($shown)->innerText();
     expect($tip)->not->toMatch('/\b[A-HJ][1-9]\b/')
         ->and($page->evaluate(GO_LEARN_LOW))->toBe([], 'game: buttons under 44 px');
     goLearnPress($page, $touch, '[data-test=undo]');
@@ -326,3 +327,88 @@ test('Go practice in German clips no label, and a game given up names the bot as
     'phone' => [390, 844, true],
     'desktop' => [1440, 900, false],
 ]);
+
+test('Go practice in German on a phone: a tip has its own place under the board and moves nothing, and a game that is over has no tip and no take back', function (int $width, int $height) {
+    $page = goLearnPage($width, $height, true, 'de');
+    goLearnMyMove($page);
+    goLearnPress($page, true, '[data-test=tab-bots]');
+    goLearnPress($page, true, '[data-test=bot-play]');
+    goLearnMyMove($page);
+    goLearnPlace($page, true, 'e5');
+    BrowserWait::until($page, '() => '.GO_LEARN_BOARD.'.state.ply === 2 && '.GO_LEARN_BOARD.'.canMove', 8_000);
+    $page->evaluate('() => { Alpine.$data(document.querySelector("[data-test=practice]")).tip = null; scrollTo({ top: 0, behavior: "instant" }); }');
+    goLearnSettle($page);
+
+    $board = '() => { const r = document.querySelector("[data-test=board]").getBoundingClientRect(); return [r.left, r.top, r.width, r.height].map((n) => Math.round(n * 10) / 10); }';
+    // The tip's place: as wide as the page's column, whole between the board and the bar.
+    $place = <<<'JS'
+        () => {
+            const tip = document.querySelector('[data-test=tip-phone]').getBoundingClientRect();
+            const board = document.querySelector('[data-test=board]').getBoundingClientRect();
+            const bar = document.querySelector('[data-test=stone-input]').getBoundingClientRect();
+            const range = document.createRange();
+            range.selectNodeContents(document.querySelector('[data-test=tip-phone]'));
+            const text = range.getBoundingClientRect();
+            return { width: Math.round(tip.width), column: innerWidth - 32, above: Math.round(tip.top - board.bottom), cut: Math.round(text.bottom - bar.top), spill: Math.round(text.bottom - tip.bottom) };
+        }
+        JS;
+    $before = $page->evaluate($board);
+
+    // The tip button, in the bar: the tip stands under the board, and the board is where it was.
+    goLearnPress($page, true, '[data-test=ask-tip-phone]');
+    BrowserWait::until($page, '() => /schlagen|Atari|offen|nichts mehr/.test(document.querySelector("[data-test=tip-phone]").textContent)', 15_000);
+    goLearnSettle($page);
+    expect($page->evaluate($board))->toBe($before, 'the board moved under an asked tip');
+
+    // The longest tip that comes by itself (the bot has passed), with the longest bot's name.
+    $page->evaluate('() => { const p = Alpine.$data(document.querySelector("[data-test=practice]")); p.tip = { key: "botPassed", auto: true, by: "bot", at: Date.now(), text: p.cfg.labels.tips.botPassed.replaceAll(":name", "Hodler") }; }');
+    goLearnSettle($page);
+    $at = $page->evaluate($place);
+    expect($page->evaluate($board))->toBe($before, 'the board moved under a tip that came by itself')
+        ->and($at['width'])->toBe($at['column'], 'the tip is not as wide as the column')
+        ->and($at['above'])->toBeGreaterThanOrEqual(0, 'the tip lies over the board')
+        ->and($at['cut'])->toBeLessThanOrEqual(0, 'the tip reaches under the bar')
+        ->and($at['spill'])->toBeLessThanOrEqual(0, 'the tip is taller than its place')
+        ->and($page->locator('[data-test=turn-phone]')->count())->toBe(0);
+
+    // "Von selbst zeigen" at rest: whole above the bar or wholly behind it, never half.
+    $half = $page->evaluate(<<<'JS'
+        () => {
+            const bar = document.querySelector('[data-test=stone-input]').getBoundingClientRect();
+            return [...document.querySelectorAll('[data-test=tips-on], [data-test=toggle-area], [data-test=undo]')].filter((el) => el.checkVisibility())
+                .map((el) => [el.dataset.test, el.getBoundingClientRect()]).filter(([, r]) => r.top < bar.top && r.bottom > bar.top).map(([name]) => name);
+        }
+        JS);
+    expect($half)->toBe([], 'half under the bar at rest');
+
+    // Given up: the tips card, the tip's place and button and "Zurücknehmen" are gone with the game.
+    $page->evaluate('() => { const g = '.GO_LEARN_BOARD.'; g.confirmResign = true; return g.resign(); }');
+    BrowserWait::until($page, '() => Alpine.$data(document.querySelector("[data-test=practice]")).stage === "over" && '.GO_LEARN_BOARD.'.state.status !== "active"', 8_000);
+    goLearnSettle($page);
+    $left = $page->evaluate('() => [...document.querySelectorAll("[data-test=tips], [data-test=tips-on], [data-test=tip-slot], [data-test=ask-tip], [data-test=ask-tip-phone], [data-test=undo]")].filter((el) => el.checkVisibility()).map((el) => el.dataset.test)');
+    expect($left)->toBe([], 'tip controls or take back after the end')
+        ->and($page->locator('[data-test=play-again]')->isVisible())->toBeTrue()
+        ->and($page->evaluate('() => window.__errors'))->toBe([])
+        ->and($page->evaluate(BrowserConsole::BAD_RESPONSES))->toBe([]);
+})->with([
+    '320 x 640' => [320, 640],
+    '390 x 844' => [390, 844],
+]);
+
+test('Go practice from lg: a game that is over has no tips card and no take back', function () {
+    $page = goLearnPage(1440, 900, false, 'de');
+    goLearnMyMove($page);
+    goLearnPress($page, false, '[data-test=tab-bots]');
+    goLearnPress($page, false, '[data-test=bot-play]');
+    goLearnMyMove($page);
+    goLearnPlace($page, false, 'e5');
+    BrowserWait::until($page, '() => '.GO_LEARN_BOARD.'.state.ply === 2 && '.GO_LEARN_BOARD.'.canMove', 8_000);
+    expect($page->locator('[data-test=tips]')->isVisible())->toBeTrue()
+        ->and($page->locator('[data-test=undo]')->isVisible())->toBeTrue();
+
+    $page->evaluate('() => { const g = '.GO_LEARN_BOARD.'; g.confirmResign = true; return g.resign(); }');
+    BrowserWait::until($page, '() => Alpine.$data(document.querySelector("[data-test=practice]")).stage === "over" && '.GO_LEARN_BOARD.'.state.status !== "active"', 8_000);
+    goLearnSettle($page);
+    $left = $page->evaluate('() => [...document.querySelectorAll("[data-test=tips], [data-test=tips-on], [data-test=ask-tip], [data-test=undo]")].filter((el) => el.checkVisibility()).map((el) => el.dataset.test)');
+    expect($left)->toBe([], 'tip controls or take back after the end');
+});
