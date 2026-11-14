@@ -49,7 +49,7 @@ new #[Title('Tournament archive')] #[Layout('layouts::app', ['section' => 'tourn
     $chips = array_map(fn (array $chip): array => [
         'key' => $chip['key'], 'label' => $chip['label'], 'count' => $chip['count'],
         'href' => route('tournaments.archive', $chip['key'] === 'all' ? [] : ['game' => $chip['key']]),
-        'active' => $chip['key'] === 'all' ? $game === null : $game === $chip['key'],
+        'active' => $chip['key'] === 'all' ? $game === null : $game !== null && app(\App\Games\GameRegistry::class)->entry($game) === $chip['key'],
     ], $board->gameChips());
     $sats = fn (int $value): string => ArchiveBoard::sats($value);
 @endphp

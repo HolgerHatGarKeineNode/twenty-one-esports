@@ -106,6 +106,7 @@ final class ArchiveBoard
 
     /**
      * Finished and called-off tournaments per game, before the game filter: "Alle" first, then by count.
+     * A group of games is one chip, as on the tournaments page: "Go" counts all three sizes.
      *
      * @return list<array{key: string, label: string, count: int}>
      */
@@ -118,8 +119,9 @@ final class ArchiveBoard
         $order = array_flip(array_keys($registry->all()));
         $chips = [];
 
-        foreach (array_keys($registry->all()) as $slug) {
-            $chips[] = ['key' => $slug, 'label' => TournamentsBoard::chipLabel($slug), 'count' => $counts[$slug] ?? 0];
+        foreach (array_keys($registry->listed()) as $slug) {
+            $label = $registry->groupOf($slug) === null ? TournamentsBoard::chipLabel($slug) : GameNames::listed($slug);
+            $chips[] = ['key' => $slug, 'label' => $label, 'count' => array_sum(array_intersect_key($counts, array_flip($registry->covered($slug))))];
         }
 
         usort($chips, fn (array $a, array $b): int => [$b['count'], $order[$a['key']]] <=> [$a['count'], $order[$b['key']]]);
@@ -133,7 +135,7 @@ final class ArchiveBoard
     private function base(): Builder
     {
         return Tournament::query()->whereNotNull('published_at')
-            ->when($this->game !== null, fn (Builder $query) => $query->where('game', $this->game));
+            ->when($this->game !== null, fn (Builder $query) => $query->whereIn('game', app(GameRegistry::class)->covered($this->game)));
     }
 
     /**

@@ -1,6 +1,7 @@
 <?php
 
 use App\Enums\BoardEndReason;
+use App\Enums\TournamentStatus;
 use App\Games\Blockfill;
 use App\Games\Blockli;
 use App\Games\Blockspace;
@@ -598,6 +599,29 @@ test('the Go filter on /tournaments is one chip that lists the tournaments of ev
     // Another game's filter, and no filter, are as they were.
     expect($rowsOf($this->get(route('tournaments.index', ['game' => 'chess']))->assertOk()->getContent()))->toBe(['chess'])
         ->and($rowsOf($this->get(route('tournaments.index'))->assertOk()->getContent()))->toHaveCount(4);
+});
+
+test('the Go filter of the tournament archive is one chip that lists the tournaments of every size, whichever size the address names', function () {
+    foreach (['go-9', 'go-13', 'go-19', 'chess'] as $slug) {
+        $tournament = Tournament::factory()->create(['game' => $slug, 'mode' => 'rapid', 'name' => "Called off {$slug}", 'status' => TournamentStatus::Cancelled]);
+        $tournament->forceFill(['published_at' => now()->subDays(3), 'slug' => "off-{$slug}"])->save();
+    }
+
+    foreach (['go-9', 'go-13'] as $filter) {
+        $html = $this->get(route('tournaments.archive', ['game' => $filter]))->assertOk()->getContent();
+        preg_match_all('#data-test="archive-game-([a-z0-9-]+)"#', $html, $chips);
+
+        expect(substr_count($html, 'data-test="archive-cancelled-row"'))->toBe(3, "the rows under ?game={$filter}")
+            ->and($html)->not->toContain('Called off chess')
+            ->and(gameSurfacesUnlisted(array_values(array_diff($chips[1], ['all', 'more']))))->toBe(['missing' => [], 'doubled' => []])
+            ->and($html)->toMatch('#aria-current="page"\s+class="rv-chip"\s+data-test="archive-game-go-9"#')
+            ->and(preg_match_all('#aria-current="page"[^>]*data-test="archive-game-#', $html))->toBe(1)
+            ->and(str($html)->after('data-test="archive-game-go-9"')->before('</a>')->toString())->toMatch('#>\s*Go\s*<#')->toMatch('#>\s*3\s*<#');
+    }
+
+    // Another game's filter, and no filter, are as they were.
+    expect(substr_count($this->get(route('tournaments.archive', ['game' => 'chess']))->assertOk()->getContent(), 'data-test="archive-cancelled-row"'))->toBe(1)
+        ->and(substr_count($this->get(route('tournaments.archive'))->assertOk()->getContent(), 'data-test="archive-cancelled-row"'))->toBe(4);
 });
 
 test('the surfaces left out are about one game by design and still exist', function (string $route, string $reason) {
