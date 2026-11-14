@@ -157,6 +157,17 @@ export function unpackStones(state, points) {
     return { ...state, pieces, legal, count };
 }
 
+/**
+ * A small stone of a side for the page around the board (a player's row, the score), filled as the board's stones are
+ * (STONE_GRADIENTS, in the board's own SVG). On the dark page a black stone gets a light rim: its own is black.
+ */
+export function stoneGlyph(side) {
+    const kind = stoneKind(side);
+    const rim = kind === 'black' ? '#8B8B90' : STONE_EDGE.white;
+
+    return '<svg viewBox="0 0 20 20" class="block size-full" aria-hidden="true" data-stone-glyph="' + kind + '"><circle cx="10" cy="10" r="9" fill="' + STONE_FILL[kind] + '" stroke="' + rim + '" stroke-width="1.2"/></svg>';
+}
+
 /** A side's stone as a piece of the board. */
 function stonePiece(side) {
     return { side, kind: stoneKind(side) };
@@ -320,6 +331,8 @@ registerAlpine(() => {
         confirmPass: false,
         showArea: false,
         pointerType: 'touch',
+        // A phone's layout (below lg): the score stands under the board there, beside it from lg.
+        phone: matchMedia('(width < 64rem)').matches,
         lastTap: null,
         pending: false,
         error: '',
@@ -411,6 +424,10 @@ registerAlpine(() => {
                 this.showArea = this.counted;
                 // The pass that asks makes the bar a line taller on a phone: the board gives way, nothing lies over it.
                 this.$watch('confirmPass', () => this.$nextTick(() => this.fitBoard()));
+                matchMedia('(width < 64rem)').addEventListener('change', (event) => {
+                    this.phone = event.matches;
+                    this.$nextTick(() => this.fitBoard());
+                });
             }
 
             this.render();
@@ -490,13 +507,14 @@ registerAlpine(() => {
                 page.style.paddingBottom = (shown(sheet) ? 72 : 0) + (shown(dock) ? dock.offsetHeight : 0) + 24 + 'px';
                 // Go on a phone as wide as the board may be (320 x 640): the game's actions under it began above the bar and were
                 // cut by it (5 px of two buttons, measured 2026-11-14). They begin where the bar ends, a scroll away.
+                // What fits whole between the board and the bar stays there (the score, on a tall phone the actions too: 147 px
+                // lay empty at 390 x 844); the first that does not fit begins where the bar ends.
                 if (this.layout.input === 'stones') {
-                    const skipped = [...column.children].find((el) => el.hasAttribute('data-fit-skip') && shown(el));
-                    if (skipped) {
-                        skipped.style.marginTop = '';
-                        const gap = edge - skipped.getBoundingClientRect().top;
-                        if (shown(dock) && gap > 0) skipped.style.marginTop = Math.ceil(gap) + 'px';
-                    }
+                    const skipped = [...column.children].filter((el) => el.hasAttribute('data-fit-skip') && shown(el));
+                    skipped.forEach((el) => (el.style.marginTop = ''));
+                    const cut = shown(dock) ? skipped.find((el) => el.getBoundingClientRect().bottom > edge - 8) : null;
+                    const gap = cut ? edge - cut.getBoundingClientRect().top : 0;
+                    if (gap > 0) cut.style.marginTop = Math.ceil(gap) + 'px';
                 }
                 // The warning over the board follows the board's new size.
                 if (this.layout.input === 'blocks') this.$nextTick(() => this.measureBand());
@@ -1216,6 +1234,48 @@ registerAlpine(() => {
             const line = this.state.status === 'active' || this.state.reason === 'move_limit' ? words.line : words.final;
 
             return fill(line, { first: side('w'), second: side('b'), lead });
+        },
+
+        /** A number of points as the page's language writes it (7,5). */
+        points(value) {
+            return value.toLocaleString(document.documentElement.lang || undefined, { maximumFractionDigits: 1 });
+        },
+
+        stoneGlyph(side) {
+            return stoneGlyph(side);
+        },
+
+        /**
+         * The count as the score shows it, from the server's count alone: each side's stones, area and komi, its score, and
+         * how the points of both divide (the bar: Black's part, White's, the komi in it). Null for a game without a count.
+         */
+        get score() {
+            const count = this.state.count;
+            if (!count || !this.t.count) return null;
+            const side = (key) => {
+                const points = count[key].stones + count[key].area;
+
+                return { stones: count[key].stones, area: count[key].area, komi: count[key].score - points, score: count[key].score };
+            };
+            const [w, b] = [side('w'), side('b')];
+            const total = w.score + b.score || 1;
+            const share = (value) => ((value / total) * 100).toFixed(2) + '%';
+
+            return { w, b, lead: count.lead, margin: Math.abs(count.margin), parts: { black: share(w.score), white: share(b.score - b.komi), komi: share(b.komi) } };
+        },
+
+        /**
+         * The score in one line: who leads by how much while the game runs, who won by how much once it was counted. A
+         * game that ended another way (a resignation, the clock, the move limit) was not counted: the line says so.
+         */
+        get leadLine() {
+            const score = this.score;
+            if (!score) return '';
+            const words = this.t.count;
+            if (this.counted) return this.countResult(this.state.count);
+            const lead = score.lead ? words.leads.replace(':colour', this.colour(score.lead)).replace(':points', this.points(score.margin)) : words.even;
+
+            return this.state.status === 'active' ? lead : words.uncounted + ' ' + lead;
         },
 
         /** "Black wins by 0.5.": the result a count gives. */

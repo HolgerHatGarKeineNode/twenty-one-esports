@@ -58,3 +58,51 @@ svg.go-board {
         opacity: 0;
     }
 }
+
+/*
+ * Around the board: the bar of the score (pages/board/partials/go-score). It divides the points of both sides: Black's
+ * part, White's, the komi in it hatched; the tick stands at the half, where the lead changes sides. The black part
+ * shows on the dark card by the bar's edge (#63636A on #121215, 3.1:1).
+ */
+.go-balance {
+    position: relative;
+    display: flex;
+    height: 8px;
+    border-radius: 2px;
+    box-shadow: 0 0 0 1px var(--color-edge);
+}
+
+.go-balance > [data-part] {
+    height: 100%;
+}
+
+.go-balance > [data-part='black'] {
+    border-radius: 2px 0 0 2px;
+    background: #0a0a0b;
+}
+
+.go-balance > [data-part='white'] {
+    background: #f4f1ea;
+}
+
+.go-balance > [data-part='komi'] {
+    border-radius: 0 2px 2px 0;
+    background: repeating-linear-gradient(135deg, #f4f1ea 0 2px, #8b8b90 2px 4px);
+}
+
+.go-balance::after {
+    position: absolute;
+    top: -4px;
+    bottom: -4px;
+    left: calc(50% - 1px);
+    width: 2px;
+    background: var(--color-ink);
+    box-shadow: 0 0 0 1px var(--color-card);
+    content: '';
+}
+
+@media (prefers-reduced-motion: no-preference) {
+    .go-balance > [data-part] {
+        transition: width 200ms ease-out;
+    }
+}

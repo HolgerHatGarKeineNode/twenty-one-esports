@@ -38,6 +38,10 @@ final class GoLabels
                 'level' => __('level'),
                 'result' => __(':colour wins by :points.'),
                 'tie' => __('A tie.'),
+                // The score beside the board (pages/board/partials/go-score, boardGame.js leadLine).
+                'leads' => __(':colour leads by :points.'),
+                'even' => __('Both are level.'),
+                'uncounted' => __('Not counted. At the end:'),
                 'show' => __('Show area'),
                 'hide' => __('Hide area'),
             ],

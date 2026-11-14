@@ -9249,5 +9249,10 @@
     "Pick the game. Nothing is sent yet: the next page shows the challenge before you send it.": "Wähl das Spiel. Noch wird nichts verschickt: Die nächste Seite zeigt die Herausforderung, bevor du sie abschickst.",
     "Blitz and rapid are played live: invite a friend who is online in the game's lobby.": "Blitz und Rapid werden live gespielt: Lade in der Lobby des Spiels einen Freund ein, der gerade online ist.",
     ":game and :count more": ":game und :count weitere",
-    "Board and sounds": "Brett und Töne"
+    "Board and sounds": "Brett und Töne",
+    ":colour leads by :points.": ":colour führt mit :points Punkten.",
+    "Not counted. At the end:": "Nicht gezählt. Stand am Ende:",
+    "Stones": "Steine",
+    "Area": "Gebiet",
+    "Komi": "Komi"
 }
