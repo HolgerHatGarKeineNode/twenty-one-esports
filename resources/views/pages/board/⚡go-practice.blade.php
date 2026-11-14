@@ -71,13 +71,16 @@ new #[Layout('layouts::app', ['scripts' => ['resources/js/go/practice.js']])] cl
                 'closingNote' => isset($lesson['closingNote']) ? __($lesson['closingNote']) : null,
             ],
             [
-                'hodler' => __('Never lets a stone go: takes whatever stands in atari and saves his own.'),
+                'hodler' => __('Never lets a stone go: takes every atari and saves his own.'),
                 'miner' => __('Digs: plays a few thousand games in his head before each move.'),
-                'whale' => __('Thinks long, up to forty thousand games a move. Few beat him on 9 x 9.'),
+                'whale' => __('Up to forty thousand games a move. Few beat him on 9 x 9.'),
             ],
             [
                 'stones' => [trans_choice(':count stone|:count stones', 1, ['count' => ':count']), trans_choice(':count stone|:count stones', 2, ['count' => ':count'])],
-                'result' => ['won' => __('You beat :name by :points points!'), 'lost' => __(':name wins this one by :points points.')],
+                'solvedOf' => __('Solved: :n of :total'),
+                // `won` and `lost` mark a bot beaten in the chooser's words; the result card says `beat`, `wins`, `tie`, `gaveUp`.
+                'result' => ['won' => __('You beat :name by :points points!'), 'lost' => __(':name wins this one by :points points.'),
+                    'beat' => __('You beat :name'), 'wins' => __(':name wins'), 'tie' => __('A tie.'), 'gaveUp' => __('You resigned.')],
                 // The tips that come up by themselves (resources/js/go/tips.js autoTip); :name is the bot.
                 'tips' => [
                     'captured' => __(':name took :stones of yours. A group with one liberty left is in atari: look out for it before it is too late.'),
@@ -112,7 +115,19 @@ new #[Layout('layouts::app', ['scripts' => ['resources/js/go/practice.js']])] cl
 
 <x-board.practice :slug="$slug" :config="$this->config()" data="goPractice" :title="__(':game · Practice', ['game' => 'Go'])"
                   :first="__('Who plays Black and starts?')" :note="__('Practice games are not stored and count for nothing. Black moves first; White gets 7.5 points of komi for it.')">
-    {{-- The count as it stands (in a bot game and in the lesson about it), and Go's bar: Place and Pass, as on a game's page. --}}
-    @include('pages.board.partials.area-count')
-    @include('pages.board.partials.stone-input', ['bottom' => 'max-lg:bottom-0'])
+    {{-- Go's score as on a game's page (partials/go-score), in a bot game and in the lesson about the count. On a phone under
+         the board while it runs (boardGame.js fitBoard keeps it between the board and the bar while it fits). --}}
+    <x-slot:underBoard>
+        <template x-if="score && phone && state.status === 'active' && (mode === 'learn' || stage !== 'pick')">
+            <div class="min-w-0" data-fit-skip>@include('pages.board.partials.go-score')</div>
+        </template>
+    </x-slot:underBoard>
+
+    {{-- From lg it is a card of the panel; a bot game that is over has it in its result card there (partials/result), and on
+         a phone it follows that card. A lesson has no result card: its count stays where it is. --}}
+    <template x-if="score && (mode === 'learn' ? !phone || state.status !== 'active' : stage !== 'pick' && phone === (state.status !== 'active'))">@include('pages.board.partials.go-score')</template>
+    {{-- Go's bar: Set stone and Pass, as on a game's page. A solved lesson has no move left: the bar gives the room back. --}}
+    <div class="contents" x-show="mode !== 'learn' || lessonState !== 'done'">
+        @include('pages.board.partials.stone-input', ['bottom' => 'max-lg:bottom-0'])
+    </div>
 </x-board.practice>

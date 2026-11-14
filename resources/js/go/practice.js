@@ -65,7 +65,32 @@ const GAME = {
 };
 
 export function goPractice(config) {
-    return boardPractice(config, GAME, {
+    const practice = boardPractice(config, GAME, {
+        /** The lessons solved, for the rail of the lesson's head: "3 of 8". */
+        get solvedCount() {
+            return this.cfg.lessons.filter((lesson) => this.done.includes(lesson.id)).length;
+        },
+
+        /** The side the bot plays (in a lesson: White, the second side). */
+        get botSide() {
+            return this.game?.color === 'b' ? 'w' : 'b';
+        },
+
+        /** A bot game's result as the result card says it (pages/board/partials/result): who won, by name. */
+        get practiceHead() {
+            const outcome = this.game?.outcome;
+            const words = this.cfg.labels.result;
+            if (!outcome) return '';
+            if (outcome.result === '1/2-1/2') return words.tie;
+
+            return fill(this.humanWon ? words.beat : words.wins, { name: this.botName });
+        },
+
+        /** Why it ended: the player's resignation in the page's words (the board would say "You resigned" by name), else the board's line. */
+        get practiceWhy() {
+            return this.game?.outcome?.reason === 'resignation' ? this.cfg.labels.result.gaveUp : (this.board?.resultWhy ?? '');
+        },
+
         boardExtras(game, status) {
             const learn = this.mode === 'learn';
             // A lesson about stones has no pass (two passes would end it): the board shows no Pass button there.
@@ -147,6 +172,26 @@ export function goPractice(config) {
             return { where: advice.area ? this.cfg.labels.advice.areas[advice.area] : '', stones: advice.count ? this.stones(advice.count) : '' };
         },
     });
+
+    // On a phone the lesson's head and a bot game's lines stand above the board and change their height (the verdict,
+    // a tip), and the result follows the board: the board fits anew (boardGame.js fitBoard), so it stays on the first
+    // screen. The observer answers once the new height is laid out; a watcher's next tick came before it (the board
+    // kept 276 px under a verdict of four lines at 320 x 640, measured 2026-11-14).
+    const init = practice.init;
+    practice.init = function () {
+        init.call(this);
+        // Not between a bot game's end here and on the board (its bar still stands, the result too: the board would
+        // find no room and send the tab bar away); the board fits by itself once it knows the end.
+        const refit = () => requestAnimationFrame(() => {
+            if (this.mode === 'bots' && this.stage === 'over' && this.board?.state.status === 'active') return;
+            this.board?.fitBoard();
+        });
+        this.$watch('lessonState', refit);
+        const heads = new ResizeObserver(refit);
+        this.$nextTick(() => this.$root.querySelectorAll('[data-test=lesson-phone], [data-test=game-phone]').forEach((el) => heads.observe(el)));
+    };
+
+    return practice;
 }
 
 registerAlpine((Alpine) => {

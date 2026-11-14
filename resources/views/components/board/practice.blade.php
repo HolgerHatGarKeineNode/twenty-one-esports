@@ -8,7 +8,11 @@
     (App\Livewire\Concerns\JudgesPractice), `data` its Alpine component, `title` the page's heading, `first` the question
     who starts and `note` the line under "Play".
     Slots: the game's input bar and what stands with it (the default slot), `credit` beside the heading, `standing` how
-    the game against a bot stands, under the tips.
+    the game against a bot stands, under the tips, `underBoard` what follows the board in its column.
+
+    A board of stones (Go, `$stones`) brings the parts of its game's page instead of the plain ones here (design pass
+    2026-11-14, pages/board/partials/go-practice-*, go-lesson-*): the lesson's head with its rail, the task and the
+    verdict; both sides, the turn card and the result card of a game against a bot. Every other game renders as before.
 --}}
 @props(['slug', 'config', 'data', 'title', 'first', 'note'])
 
@@ -31,7 +35,7 @@
                 @else
                     <h1 class="m-0 font-display text-[22px] font-bold lg:text-[28px]">{{ $title }}</h1>
                 @endisset
-                <a href="{{ route('board.lobby', $slug) }}" @navigate(route('board.lobby', $slug)) class="text-[13px] text-ink-2 underline decoration-edge underline-offset-4 hover:text-ink hover:decoration-btc" data-test="board-lobby-link">{{ __('Lobby') }}</a>
+                <a href="{{ route('board.lobby', $slug) }}" @navigate(route('board.lobby', $slug)) @class(['text-[13px] text-ink-2 underline decoration-edge underline-offset-4 hover:text-ink hover:decoration-btc', '-my-2 inline-flex min-h-11 min-w-11 items-center justify-center' => $stones]) data-test="board-lobby-link">{{ __('Lobby') }}</a>
                 <span class="grow"></span>
                 <div role="group" aria-label="{{ __('Practice') }}" class="flex gap-1 rounded-md bg-well p-1" data-test="practice-tabs">
                     <button type="button" class="h-11 cursor-pointer rounded-[4px] px-3 text-[13px]" :class="mode === 'learn' ? 'bg-btc-press font-bold text-btc-hi' : 'text-ink-2 hover:text-ink'"
@@ -44,6 +48,9 @@
             <div class="grid grid-cols-1 gap-3 lg:grid-cols-[minmax(0,560px)_minmax(0,1fr)] lg:gap-x-7 lg:gap-y-5">
                 {{-- The board: the rules describe it, the script draws it. On a phone the lesson's task stands above it, in view with the board. --}}
                 <div class="flex min-w-0 flex-col gap-2 lg:gap-3" data-test="board-column">
+                    @if ($stones)
+                        @include('pages.board.partials.go-practice-phone')
+                    @else
                     {{-- With the verdict, its next step beside it: on a phone the lesson card lies below the board. --}}
                     <div class="flex items-center gap-2 lg:hidden" x-cloak x-show="mode === 'learn'">
                         <p class="m-0 min-w-0 grow text-[13px] leading-snug font-bold" :class="lessonState === 'done' ? 'text-win' : lessonState === 'retry' ? 'text-loss' : 'text-btc-hi'"
@@ -61,6 +68,7 @@
                                 x-text="asked === 0 ? @js(__('Get a tip')) : @js(__('Another tip'))" data-test="ask-tip-phone">{{ __('Get a tip') }}</button>
                         <button type="button" class="rv-b2 shrink-0" x-cloak x-show="stage === 'over'" x-on:click="play()" data-test="play-again-phone">{{ __('Another game') }}</button>
                     </div>
+                    @endif
                     <div class="relative mx-auto w-full" data-board-box>
                         <svg x-ref="board" data-focus-board data-live-clear viewBox="0 0 {{ $config['layout']['width'] }} {{ $config['layout']['height'] }}"
                              x-on:click="pick($event)" x-on:keydown="pickKey($event)"
@@ -68,12 +76,16 @@
                              style="aspect-ratio: {{ $config['layout']['width'] }} / {{ $config['layout']['height'] }}"
                              @class(['block w-full touch-manipulation rounded-[4px] bg-well select-none', '[&:focus:not(:focus-visible)]:outline-none' => $stones]) data-test="board"></svg>
                     </div>
+                    {{ $underBoard ?? '' }}
                 </div>
 
                 {{-- The practice panel: the lesson, or the bots and the game against one. --}}
                 {{-- Below lg, while a bot is being chosen, the chooser comes first: the board only shows the start position then. --}}
                 <div class="flex min-w-0 flex-col gap-3" :class="mode === 'bots' && stage === 'pick' ? 'max-lg:order-first' : ''" data-test="practice-panel">
 
+                    @if ($stones)
+                        @include('pages.board.partials.go-practice-lesson')
+                    @else
                     {{-- A lesson: what it explains, the task, the verdict. --}}
                     <section x-cloak x-show="mode === 'learn'" aria-labelledby="lesson-h" class="flex flex-col gap-3 rounded-lg bg-card p-4" data-test="lesson">
                         <div class="flex flex-wrap items-center justify-between gap-2">
@@ -101,6 +113,7 @@
                             <x-button variant="secondary" x-cloak x-show="lessonState !== 'done'" x-on:click="nextLesson()" data-test="lesson-skip">{{ __('Skip') }}</x-button>
                         </div>
                     </section>
+                    @endif
 
                     {{-- The bots: pick one and who starts, then the game with its tips. --}}
                     <section x-cloak x-show="mode === 'bots'" aria-labelledby="bots-h" class="flex flex-col gap-3" data-test="bots">
@@ -109,20 +122,35 @@
                             <div role="radiogroup" aria-labelledby="bots-h" class="flex flex-col gap-2">
                                 <template x-for="(bot, id) in cfg.bots" :key="id">
                                     <button type="button" role="radio" :aria-checked="(botId === id).toString()" x-on:click="pickBot(id)" :data-test="'bot-' + id"
-                                            class="flex w-full cursor-pointer items-center gap-3 rounded-[4px] border px-3 py-2 text-left" :class="botId === id ? 'border-btc bg-btc-press' : 'border-line bg-well hover:bg-row-hover'">
+                                            @class(['flex w-full cursor-pointer items-center gap-3 rounded-[4px] border px-3 py-2 text-left', 'flex-wrap gap-y-2' => $stones]) :class="botId === id ? 'border-btc bg-btc-press' : 'border-line bg-well hover:bg-row-hover'">
+                                        @if ($stones)
+                                            {{-- Go: the bot's letter plain (orange is the player's action), with the stone it would play. --}}
+                                            <span class="relative shrink-0" aria-hidden="true">
+                                                <span class="grid size-10 place-items-center rounded-[4px] bg-raised font-display text-sm font-bold text-ink" x-text="bot.name.slice(0, 1)"></span>
+                                                <span class="absolute -right-1 -bottom-1 block size-4 rounded-full ring-2" :class="botId === id ? 'bg-btc-press ring-btc-press' : 'bg-well ring-well'" x-html="stoneGlyph(humanFirst ? 'b' : 'w')"></span>
+                                            </span>
+                                        @else
                                         <span class="grid size-10 shrink-0 place-items-center rounded-[4px] bg-btc-press font-display text-sm font-bold text-btc" aria-hidden="true" x-text="bot.name.slice(0, 1)"></span>
+                                        @endif
+                                        @if ($stones)
+                                            {{-- Go: what the bot is like takes the button's whole width under its name (beside the tile it had 178 px at 320). --}}
+                                            <b class="min-w-0 grow text-[15px]"><span x-text="bot.name"></span> <span class="text-xs font-normal text-ink-3" x-text="bot.level"></span></b>
+                                            <span class="shrink-0 text-xs font-bold text-win" x-cloak x-show="beaten.includes(id)">{{ __('beaten') }}</span>
+                                            <span class="basis-full text-[13px] leading-[18px] text-ink-2" x-text="bot.text"></span>
+                                        @else
                                         <span class="flex min-w-0 grow flex-col">
                                             <b class="text-[15px]"><span x-text="bot.name"></span> <span class="text-xs font-normal text-ink-3" x-text="bot.level"></span></b>
                                             <span class="text-[13px] leading-snug text-ink-2" x-text="bot.text"></span>
                                         </span>
                                         <span class="shrink-0 text-xs font-bold text-win" x-cloak x-show="beaten.includes(id)">{{ __('beaten') }}</span>
+                                        @endif
                                     </button>
                                 </template>
                             </div>
                             <div class="flex flex-wrap items-center gap-2">
                                 <span class="text-[13px] text-ink-2" id="first-h">{{ $first }}</span>
                                 <div role="group" aria-labelledby="first-h" class="flex gap-1 rounded-md bg-well p-1">
-                                    <button type="button" class="h-11 cursor-pointer rounded-[4px] px-3 text-[13px]" :class="humanFirst ? 'bg-btc-press font-bold text-btc-hi' : 'text-ink-2'" :aria-pressed="humanFirst.toString()" x-on:click="setFirst(true)" data-test="first-you">{{ __('You') }}</button>
+                                    <button type="button" @class(['h-11 cursor-pointer rounded-[4px] px-3 text-[13px]', 'min-w-11' => $stones]) :class="humanFirst ? 'bg-btc-press font-bold text-btc-hi' : 'text-ink-2'" :aria-pressed="humanFirst.toString()" x-on:click="setFirst(true)" data-test="first-you">{{ __('You') }}</button>
                                     <button type="button" class="h-11 cursor-pointer rounded-[4px] px-3 text-[13px]" :class="humanFirst ? 'text-ink-2' : 'bg-btc-press font-bold text-btc-hi'" :aria-pressed="(!humanFirst).toString()" x-on:click="setFirst(false)" x-text="cfg.bots[botId].name" data-test="first-bot"></button>
                                 </div>
                             </div>
@@ -135,6 +163,9 @@
                         </div>
 
                         <div x-cloak x-show="stage !== 'pick'" class="flex flex-col gap-3" data-test="bot-game">
+                            @if ($stones)
+                                @include('pages.board.partials.go-practice-game')
+                            @else
                             <div class="flex items-center gap-3 rounded-lg bg-card p-3" data-test="bot-card">
                                 <span class="grid size-11 shrink-0 place-items-center rounded-[4px] bg-btc-press font-display text-sm font-bold text-btc" aria-hidden="true" x-text="botName.slice(0, 1)"></span>
                                 <span class="flex min-w-0 grow flex-col">
@@ -144,13 +175,14 @@
                             </div>
 
                             <div x-cloak x-show="stage === 'over'" class="flex flex-col gap-3 rounded-lg bg-card p-4" data-test="practice-result">
-                                <b class="text-base" :class="won ? 'text-win' : 'text-ink'" x-text="resultLine" data-test="result"></b>
+                                <b class="text-base" :class="humanWon ? 'text-win' : 'text-ink'" x-text="resultLine" data-test="result"></b>
                                 <div class="flex flex-wrap gap-2">
                                     <x-button x-cloak x-show="nextBot" x-on:click="const next = nextBot; pickBot(next); play()" data-test="next-bot"><span x-text="nextBot ? @js(__('Play :name')).replace(':name', cfg.bots[nextBot].name) : ''"></span></x-button>
                                     <x-button variant="quiet" x-on:click="play()" data-test="play-again">{{ __('Another game') }}</x-button>
                                     <x-button variant="secondary" x-on:click="pickBot(botId)" data-test="choose-bot">{{ __('Choose a bot') }}</x-button>
                                 </div>
                             </div>
+                            @endif
 
                             {{-- The tips: a line now and then by themselves, and the tip button for a nudge (never the move). --}}
                             <div class="flex flex-col gap-2 rounded-lg bg-card p-4" data-test="tips">
@@ -203,6 +235,9 @@
                             </template>
                         </ol>
                     </div>
+                    @if ($stones)
+                        @include('pages.board.partials.go-practice-you')
+                    @endif
                 </div>
             </div>
         </div>

@@ -373,7 +373,7 @@ export function boardPractice(config, game, members) {
         afterReply() {},
 
         lessonOver() {
-            return this.won ? this.lessonDone() : this.lessonRetry(this.lesson.retry);
+            return this.humanWon ? this.lessonDone() : this.lessonRetry(this.lesson.retry);
         },
 
         lessonDone() {
@@ -433,13 +433,18 @@ export function boardPractice(config, game, members) {
         finish() {
             this.stage = 'over';
             this.thinking = false;
-            if (this.won && !this.beaten.includes(this.botId)) {
+            if (this.humanWon && !this.beaten.includes(this.botId)) {
                 this.beaten = [...this.beaten, this.botId];
                 this.save();
             }
         },
 
-        get won() {
+        /**
+         * Whether the player won the game held here. Not `won`: the board (boardGame.js) has a method of that name, and
+         * inside the board's scope the page's templates and these getters would read that one, which is always truthy
+         * (a lost and a resigned bot game said "You beat ..." in green, measured 2026-11-14).
+         */
+        get humanWon() {
             const held = this.game;
 
             return !!held?.outcome && held.outcome.result === (held.color === 'w' ? '1-0' : '0-1');
@@ -452,7 +457,7 @@ export function boardPractice(config, game, members) {
             if (!outcome) return '';
             if (outcome.result === '1/2-1/2') return words.draw;
             const values = { name: this.botName, ...this.resultValues?.() };
-            if (this.won) return fill(words.won, values);
+            if (this.humanWon) return fill(words.won, values);
 
             return fill(outcome.reason === 'resignation' ? words.resigned : words.lost, values);
         },
@@ -462,7 +467,7 @@ export function boardPractice(config, game, members) {
             const order = Object.keys(this.cfg.bots);
             const next = order[order.indexOf(this.botId) + 1];
 
-            return this.won && next ? next : null;
+            return this.humanWon && next ? next : null;
         },
 
         /** The board's resign (its source's `resign`): the game ends here and the bot wins it. */

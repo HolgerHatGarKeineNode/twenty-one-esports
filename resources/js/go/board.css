@@ -129,3 +129,75 @@ svg.go-board {
         transform: translateY(6px);
     }
 }
+
+/*
+ * The rail of Go's lessons (pages/board/partials/go-lesson-head): a strip of the board's wood with one point for
+ * every lesson, on the line that joins them. A black stone lies on each lesson solved; the lesson shown has a light
+ * ring, with the stone to come inside it; the stone of a lesson just solved settles as a stone on the board does
+ * (go-in, R17; not with reduced motion). The line and the ring on the wood: #2A1B0B and #FFE8C2 on #A47038, 6.1:1 and 3.4:1.
+ */
+.go-rail {
+    position: relative;
+    display: grid;
+    height: 20px;
+    margin: 0;
+    padding: 0;
+    border-radius: 4px;
+    background: linear-gradient(135deg, #b07c3d, #a47038);
+    box-shadow: 0 2px 0 #553619;
+    list-style: none;
+}
+
+.go-rail::before {
+    position: absolute;
+    top: calc(50% - 0.5px);
+    right: 0;
+    left: 0;
+    height: 1px;
+    background: #2a1b0b;
+    content: '';
+}
+
+.go-rail > li {
+    position: relative;
+    display: grid;
+    place-items: center;
+}
+
+.go-rail > li::before {
+    position: absolute;
+    width: 1px;
+    height: 10px;
+    background: #2a1b0b;
+    content: '';
+}
+
+.go-rail > li[data-current]::after {
+    position: absolute;
+    width: 18px;
+    height: 18px;
+    border: 1.5px solid #ffe8c2;
+    border-radius: 50%;
+    content: '';
+}
+
+.go-rail > li > span {
+    position: relative;
+    width: 14px;
+    height: 14px;
+}
+
+.go-rail > li > span.is-ghost {
+    opacity: 0.45;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+    .go-rail .go-rail-in {
+        animation: go-in 180ms ease-out;
+    }
+
+    /* The verdict on a lesson's stone comes in once, as a game's result does. */
+    .go-verdict {
+        animation: go-result 240ms ease-out;
+    }
+}

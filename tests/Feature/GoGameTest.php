@@ -318,7 +318,8 @@ test('every word of Go is there in German', function () {
     $german = json_decode((string) file_get_contents(lang_path('de.json')), true, flags: JSON_THROW_ON_ERROR);
     $keys = array_values((new GoRules)->reasons());
 
-    foreach ([app_path('Support/Board/GoLabels.php'), resource_path('views/pages/board/partials/stone-input.blade.php'), resource_path('views/pages/board/partials/area-count.blade.php'),
+    // Go's own partials: the score, the area switch, the player rows, and the parts of its practice page.
+    foreach ([app_path('Support/Board/GoLabels.php'), resource_path('views/pages/board/partials/stone-input.blade.php'), ...glob(resource_path('views/pages/board/partials/go-*.blade.php')),
         resource_path('views/pages/board/partials/lobby-play.blade.php')] as $file) {
         preg_match_all("/__\\(\\s*'((?:[^'\\\\]|\\\\.)*)'/", (string) file_get_contents($file), $found);
         array_push($keys, ...array_map(stripslashes(...), $found[1]));

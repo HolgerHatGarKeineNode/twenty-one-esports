@@ -23,6 +23,13 @@ pest()->group('browser');
 | (touch) at 390, desktop (mouse) at 1440; console, uncaught errors and answers
 | >= 400 stay empty, nothing runs off the side.
 |
+| The page's frame (design pass 2026-11-14), in German: at 320 x 640 the task
+| and the board, then the verdict with its next action, stand on the first
+| screen, the rail of the eight lessons is one row inside the page, every
+| target has 44 px both ways; at 390 and 1440 no label is clipped. A game the
+| player gave up names the bot as its winner and offers the same bot again
+| (it said "You beat" in green: the board's `won(side)` hid the page's `won`).
+|
 */
 
 /** The board's Alpine data, for a condition on it. */
@@ -46,18 +53,65 @@ const GO_LEARN_LOW = <<<'JS'
         .map((el) => (el.dataset.test ?? el.tagName) + ' ' + el.getBoundingClientRect().height.toFixed(1))
     JS;
 
+/** Targets under 44 px in either direction (R16): every button and link of the page's body, and Go's bar. */
+const GO_LEARN_SMALL = <<<'JS'
+    () => [...document.querySelectorAll('main button, main a[href], [data-test=stone-input] button')]
+        .filter((el) => el.checkVisibility() && (el.getBoundingClientRect().height < 44 || el.getBoundingClientRect().width < 44))
+        .map((el) => (el.dataset.test ?? el.tagName) + ' ' + Math.round(el.getBoundingClientRect().width) + 'x' + Math.round(el.getBoundingClientRect().height))
+    JS;
+
+/**
+ * How far the bottom of what `selector` shows lies under the first screen (0 or less: on it; null: not shown). The
+ * first screen ends at the tab bar, or at the window's edge once focus mode has slid it away, and at Go's bar.
+ */
+const GO_LEARN_UNDER = <<<'JS'
+    (selector) => {
+        const el = [...document.querySelectorAll(selector)].find((node) => node.checkVisibility() && node.getBoundingClientRect().height > 0);
+        if (!el) return null;
+        const tabbar = document.documentElement.classList.contains('is-focus') ? 0 : parseFloat(getComputedStyle(document.body).paddingBottom) || 0;
+        const bar = [...document.querySelectorAll('[data-test=stone-input], [data-page-bar]')].find((node) => node.checkVisibility() && getComputedStyle(node).position === 'fixed');
+        const fold = Math.min(innerHeight - tabbar, bar ? bar.getBoundingClientRect().top : Infinity);
+        return Math.round(el.getBoundingClientRect().bottom + scrollY - fold);
+    }
+    JS;
+
+/** The rail of the lessons: its points, the rows they stand in, and how far it runs over its own box and the page. */
+const GO_LEARN_RAIL = <<<'JS'
+    () => {
+        const rail = [...document.querySelectorAll('[data-test=lesson-progress-phone], [data-test=lesson-progress]')].find((el) => el.checkVisibility());
+        if (!rail) return null;
+        const points = [...rail.children].filter((el) => el.tagName === 'LI');
+        return {
+            points: points.length,
+            rows: new Set(points.map((el) => Math.round(el.getBoundingClientRect().top))).size,
+            over: Math.max(0, rail.scrollWidth - rail.clientWidth, Math.round(rail.getBoundingClientRect().right - document.documentElement.clientWidth)),
+        };
+    }
+    JS;
+
+/** Labels cut by their own box: an element with text of its own that is taller or wider than the box shows (an ellipsis is meant, and so is text only a screen reader gets, in a box of 1 px). */
+const GO_LEARN_CLIPPED = <<<'JS'
+    () => [...document.querySelectorAll('main *')]
+        .filter((el) => el.checkVisibility() && !el.closest('svg') && !el.closest('[data-test=moves]') && [...el.childNodes].some((n) => n.nodeType === 3 && n.textContent.trim() !== ''))
+        .filter((el) => {
+            const s = getComputedStyle(el);
+            return el.clientWidth > 1 && el.clientHeight > 1 && s.display !== 'inline' && s.textOverflow !== 'ellipsis' && !['auto', 'scroll'].includes(s.overflowY) && (el.scrollHeight > el.clientHeight + 1 || el.scrollWidth > el.clientWidth + 1);
+        })
+        .map((el) => (el.dataset.test ?? el.tagName) + ': ' + el.innerText.trim().slice(0, 40))
+    JS;
+
 beforeEach(function () {
     Http::fake(fn () => Http::response([]));
     GoOn::play();
 });
 
-function goLearnPage(int $width, int $height, bool $touch): Page
+function goLearnPage(int $width, int $height, bool $touch, ?string $lang = null): Page
 {
     $visit = visit('/');
     $page = ($touch ? $visit->on()->mobile() : $visit)->page();
     $page->context()->addInitScript(BrowserConsole::COLLECTOR);
     $page->setViewportSize($width, $height);
-    $page->goto(ComputeUrl::from(route('board.go-practice', absolute: false)));
+    $page->goto(ComputeUrl::from(route('board.go-practice', $lang === null ? [] : ['lang' => $lang], false)));
     BrowserWait::until($page, '() => window.Alpine && '.GO_LEARN_BOARD.'?.source !== null', 8_000);
 
     return $page;
@@ -115,6 +169,20 @@ function goLearnMyMove(Page $page): void
     BrowserWait::until($page, '() => '.GO_LEARN_BOARD.'.canMove', 8_000);
 }
 
+/** The lesson's head: above the board on a phone, in the lesson's card from lg. */
+function goLearnTitle(Page $page, bool $touch): string
+{
+    return $page->locator($touch ? '[data-test=lesson-title-phone]' : '[data-test=lesson-title]')->innerText();
+}
+
+/** A lesson picked from the list the head opens (`$index` from 0). */
+function goLearnLesson(Page $page, bool $touch, int $index): void
+{
+    $suffix = $touch ? '-phone' : '';
+    goLearnPress($page, $touch, '[data-test=lesson-menu'.$suffix.']');
+    goLearnPress($page, $touch, '[data-test=lesson-dot'.$suffix.'] >> nth='.$index);
+}
+
 function goLearnNote(Page $page, string $text): void
 {
     BrowserWait::until($page, '() => document.querySelector("[data-test=lesson-note]")?.textContent.includes('.json_encode($text).')', 5_000);
@@ -125,15 +193,15 @@ test('a guest learns Go on the league\'s board and plays the Hodler: capture, ko
 
     // Lesson 1: the white stone's last liberty is E4.
     goLearnMyMove($page);
-    expect($page->locator('[data-test=lesson-title]')->innerText())->toBe('Liberties and capturing');
+    expect(goLearnTitle($page, $touch))->toBe('Liberties and capturing');
     goLearnPlace($page, $touch, 'e4');
     goLearnNote($page, 'Captured!');
     expect($page->evaluate('() => document.querySelector("[data-test=board] [data-point=e5]").dataset.piece'))->toBe('');
 
     // Lesson 5, the ko: D5 would take back at once, so it shows red; after a stone elsewhere and White's answer it takes.
-    goLearnPress($page, $touch, '[data-test=lesson-dot] >> nth=4');
+    goLearnLesson($page, $touch, 4);
     goLearnMyMove($page);
-    expect($page->locator('[data-test=lesson-title]')->innerText())->toBe('Ko');
+    expect(goLearnTitle($page, $touch))->toBe('Ko');
     goLearnTap($page, $touch, 'd5');
     if ($touch) {
         goLearnSettle($page);
@@ -147,9 +215,9 @@ test('a guest learns Go on the league\'s board and plays the Hodler: capture, ko
     expect($page->evaluate(GO_LEARN_LOW))->toBe([], 'lesson: buttons under 44 px');
 
     // Lesson 8, the count: White has passed; take the white stone in your area, then pass, and pass again to end it.
-    goLearnPress($page, $touch, '[data-test=lesson-dot] >> nth=7');
+    goLearnLesson($page, $touch, 7);
     goLearnMyMove($page);
-    expect($page->locator('[data-test=lesson-title]')->innerText())->toBe('The end and the count')
+    expect(goLearnTitle($page, $touch))->toBe('The end and the count')
         ->and($page->locator('[data-test=count-line]')->isVisible())->toBeTrue();
     goLearnPlace($page, $touch, 'a8');
     BrowserWait::until($page, '() => '.GO_LEARN_BOARD.'.state.ply === 2 && '.GO_LEARN_BOARD.'.canMove', 8_000);
@@ -177,6 +245,81 @@ test('a guest learns Go on the league\'s board and plays the Hodler: capture, ko
 
     [$scrollWidth, $clientWidth] = $page->evaluate(BrowserConsole::WIDTHS);
     expect($scrollWidth)->toBeLessThanOrEqual($clientWidth)
+        ->and($page->evaluate('() => window.__errors'))->toBe([])
+        ->and($page->evaluate(BrowserConsole::BAD_RESPONSES))->toBe([]);
+})->with([
+    'phone' => [390, 844, true],
+    'desktop' => [1440, 900, false],
+]);
+
+test('Go practice in German at 320 x 640: the task and the board, then the verdict with its next action, are on the first screen; the rail is one row; every target has 44 px', function () {
+    $page = goLearnPage(320, 640, true, 'de');
+    goLearnMyMove($page);
+    goLearnSettle($page);
+
+    // The task: what to do, and the board to do it on.
+    expect($page->evaluate(GO_LEARN_UNDER, '[data-test=lesson-task-phone]'))->toBeLessThanOrEqual(0, 'the task lies under the first screen')
+        ->and($page->evaluate(GO_LEARN_UNDER, '[data-test=board]'))->toBeLessThanOrEqual(0, 'the board lies under the first screen')
+        ->and($page->evaluate(GO_LEARN_RAIL))->toBe(['points' => 8, 'rows' => 1, 'over' => 0])
+        ->and($page->evaluate(GO_LEARN_SMALL))->toBe([], 'task: targets under 44 px');
+
+    // A wrong stone: why, and "Von vorn" under it.
+    goLearnPlace($page, true, 'c3');
+    BrowserWait::until($page, '() => Alpine.$data(document.querySelector("[data-test=practice]")).lessonState === "retry"', 5_000);
+    goLearnSettle($page);
+    expect($page->locator('[data-test=lesson-note-phone]')->innerText())->toStartWith('Der weiße Stein hat noch eine Freiheit')
+        ->and($page->evaluate(GO_LEARN_UNDER, '[data-test=lesson-again-phone]'))->toBeLessThanOrEqual(0, '"Von vorn" lies under the first screen')
+        ->and($page->evaluate(GO_LEARN_SMALL))->toBe([], 'wrong stone: targets under 44 px');
+
+    // Solved: the verdict waits with "Nächste Lektion" (R17: the page does not move on), a stone lies on the rail.
+    goLearnPress($page, true, '[data-test=lesson-again-phone]');
+    goLearnMyMove($page);
+    goLearnPlace($page, true, 'e4');
+    goLearnNote($page, 'Gefangen!');
+    goLearnSettle($page);
+    expect($page->evaluate(GO_LEARN_UNDER, '[data-test=lesson-next-phone]'))->toBeLessThanOrEqual(0, '"Nächste Lektion" lies under the first screen')
+        ->and($page->evaluate(GO_LEARN_UNDER, '[data-test=board]'))->toBeLessThanOrEqual(0, 'solved: the board lies under the first screen')
+        ->and($page->evaluate('() => document.querySelectorAll("[data-test=lesson-progress-phone] > li[data-solved]").length'))->toBe(1)
+        ->and($page->evaluate(GO_LEARN_SMALL))->toBe([], 'solved: targets under 44 px')
+        ->and(goLearnTitle($page, true))->toBe('Freiheiten und Schlagen');
+
+    [$scrollWidth, $clientWidth] = $page->evaluate(BrowserConsole::WIDTHS);
+    expect($scrollWidth)->toBeLessThanOrEqual($clientWidth)
+        ->and($page->evaluate('() => window.__errors'))->toBe([])
+        ->and($page->evaluate(BrowserConsole::BAD_RESPONSES))->toBe([]);
+});
+
+test('Go practice in German clips no label, and a game given up names the bot as its winner with the same bot as the next game', function (int $width, int $height, bool $touch) {
+    $page = goLearnPage($width, $height, $touch, 'de');
+    goLearnMyMove($page);
+    goLearnSettle($page);
+    expect($page->evaluate(GO_LEARN_CLIPPED))->toBe([], 'lesson: clipped labels')
+        ->and($page->evaluate(GO_LEARN_SMALL))->toBe([], 'lesson: targets under 44 px');
+
+    goLearnPress($page, $touch, '[data-test=tab-bots]');
+    goLearnSettle($page);
+    expect($page->evaluate(GO_LEARN_CLIPPED))->toBe([], 'bots: clipped labels')
+        ->and($page->evaluate(GO_LEARN_SMALL))->toBe([], 'bots: targets under 44 px');
+
+    goLearnPress($page, $touch, '[data-test=bot-play]');
+    goLearnMyMove($page);
+    goLearnPlace($page, $touch, 'e5');
+    BrowserWait::until($page, '() => '.GO_LEARN_BOARD.'.state.ply === 2 && '.GO_LEARN_BOARD.'.canMove', 8_000);
+    goLearnSettle($page);
+    expect($page->evaluate(GO_LEARN_CLIPPED))->toBe([], 'game: clipped labels');
+
+    // Given up: the board's resign asks once, then ends the game.
+    $page->evaluate('() => { const g = '.GO_LEARN_BOARD.'; g.confirmResign = true; return g.resign(); }');
+    BrowserWait::until($page, '() => Alpine.$data(document.querySelector("[data-test=practice]")).stage === "over" && '.GO_LEARN_BOARD.'.state.status !== "active"', 8_000);
+    goLearnSettle($page);
+    expect($page->locator('[data-test=bots]')->innerText())->not->toContain('geschlagen')
+        ->and($page->locator('[data-test=result-head]')->innerText())->toBe('Hodler gewinnt')
+        ->and($page->locator('[data-test=result-why]')->innerText())->toBe('Du hast aufgegeben.')
+        ->and($page->locator('[data-test=play-again]')->isVisible())->toBeTrue()
+        ->and($page->locator('[data-test=next-bot]')->isVisible())->toBeFalse()
+        ->and($page->evaluate(GO_LEARN_UNDER, '[data-test=play-again]'))->toBeLessThanOrEqual(0, '"Nochmal" lies under the first screen')
+        ->and($page->evaluate(GO_LEARN_CLIPPED))->toBe([], 'result: clipped labels')
+        ->and($page->evaluate(GO_LEARN_SMALL))->toBe([], 'result: targets under 44 px')
         ->and($page->evaluate('() => window.__errors'))->toBe([])
         ->and($page->evaluate(BrowserConsole::BAD_RESPONSES))->toBe([]);
 })->with([
