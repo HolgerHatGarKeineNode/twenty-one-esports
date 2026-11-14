@@ -690,10 +690,37 @@ function goLiveAtRest(Page $page): void
         JS);
 }
 
-test('on a phone nothing to press on a finished Go game\'s page is under the bars at the bottom while its block shows, and everything can be scrolled clear of them', function (int $width, int $height) {
+test('on a phone nothing to press on a finished Go game\'s page is under the bars at the bottom while its block shows, and everything can be scrolled clear of them', function (int $width, int $height, ?string $ended = null, array $names = []) {
     [$anna, $bert] = User::factory()->count(2)->create();
-    $game = goLivePlayed($anna, $bert, ['e5', 'g5', 'c3', 'g3', 'pass', 'pass']);
-    $page = goLivePage($anna, route('board.show', ['boardGame' => $game, 'lang' => 'de'], false), $width, $height, true);
+
+    if ($ended === null) {
+        $game = goLivePlayed($anna, $bert, ['e5', 'g5', 'c3', 'g3', 'pass', 'pass']);
+        $page = goLivePage($anna, route('board.show', ['boardGame' => $game, 'lang' => 'de'], false), $width, $height, true);
+    } else {
+        // Ended on the page, from the game: a stone set (the tab bar tucks away, focusMode.js), the pass that asks, then the
+        // other side's pass. The names decide how many lines the result takes, and so whether the score fits above the sheet.
+        $anna->forceFill(['name' => $names[0]])->save();
+        $bert->forceFill(['name' => $names[1]])->save();
+        $games = app(BoardGameService::class);
+        $game = $games->start($ended, $anna, $bert, 'correspondence');
+        $page = goLivePage($anna, route('board.show', ['boardGame' => $game, 'lang' => 'de'], false), $width, $height, true);
+        BrowserWait::until($page, '() => window.Alpine && '.GO_LIVE_BOARD.'?.canMove', 10_000);
+        goLiveTap($page, true, 'e5');
+        goLiveTap($page, true, 'e5');
+        goLivePly([$page], 1);
+        $games->move($game->refresh(), $bert, 'g7');
+        goLivePly([$page], 2);
+        goLiveCanMove($page);
+        goLiveSettle($page);
+        expect($page->evaluate('() => document.documentElement.classList.contains("is-focus")'))->toBeTrue('the tab bar is tucked away before the game ends');
+        $page->locator('[data-test=pass]')->tap();
+        goLiveSettle($page);
+        $page->locator('[data-test=pass]')->tap();
+        goLivePly([$page], 3);
+        $games->move($game->refresh(), $bert, 'pass');
+        goLivePly([$page], 4);
+    }
+
     BrowserWait::until($page, '() => window.Alpine && document.querySelector("[data-test=next-opponent]")?.getClientRects().length > 0', 10_000);
     goLiveAtRest($page);
 
@@ -707,6 +734,9 @@ test('on a phone nothing to press on a finished Go game\'s page is under the bar
             // Where the bars fixed to the bottom begin (the chat sheet, the tab bar): the first screen ends there.
             const bars = [...document.querySelectorAll('body *')].filter((el) => getComputedStyle(el).position === 'fixed' && el.checkVisibility() && el.getBoundingClientRect().height > 0 && el.getBoundingClientRect().top > innerHeight / 2);
             const fold = Math.min(innerHeight, ...bars.map((el) => el.getBoundingClientRect().top));
+            // As the page stands, before anything is scrolled: where the score strip and the moves' card begin.
+            const from = (test) => { const el = [...document.querySelectorAll('[data-test=' + test + ']')].find((n) => n.checkVisibility()); return el ? Math.round(el.getBoundingClientRect().top) : null; };
+            const [strip, moves, scrolled] = [from('count'), from('moves-card'), Math.round(scrollY)];
             // Nine points of a control, the ones inside the window: which of them can be pressed.
             const seen = (el) => {
                 const r = el.getBoundingClientRect();
@@ -730,20 +760,25 @@ test('on a phone nothing to press on a finished Go game\'s page is under the bar
                 return !hit(el, r.left + r.width / 2, r.top + r.height / 2) || !hit(el, r.left + r.width / 2, r.bottom - 3);
             }).map(name);
             scrollTo({ top: 0, behavior: 'instant' });
-            return { controls: all.map(name), bars: bars.length, cut, buried, lost };
+            return { controls: all.map(name), bars: bars.length, cut, buried, lost, strip, moves, scrolled, fold: Math.round(fold) };
         }
     JS);
 
     // Before: at 390 x 844 the score strip began 6 px above the chat sheet and its "Show area" stood partly under it. A
     // strip that begins where the first screen ends is a scroll away as a whole (boardGame.js fitBoard()): not a fault.
+    $where = "the score from {$under['strip']}, the moves from {$under['moves']}, the bars from {$under['fold']}, scrolled {$under['scrolled']}";
     expect($under['controls'])->toContain('toggle-area')->toContain('next-opponent')
         ->and($under['bars'])->toBeGreaterThan(0, "{$width} x {$height}: no bar fixed to the bottom was found")
-        ->and($under['cut'])->toBe([], "{$width} x {$height}: partly under the bars")
-        ->and($under['buried'])->toBe([], "{$width} x {$height}: wholly under the bars while its block shows")
+        ->and($under['scrolled'])->toBe(0)
+        ->and($under['cut'])->toBe([], "{$width} x {$height}: partly under the bars ({$where})")
+        ->and($under['buried'])->toBe([], "{$width} x {$height}: wholly under the bars while its block shows ({$where})")
         ->and($under['lost'])->toBe([], "{$width} x {$height}: cannot be scrolled clear");
 })->with([
     'phone 320' => [320, 640],
     'phone 390' => [390, 844],
+    // Before: "Gebiet zeigen" stood at 760 to 804 and the chat sheet began at 772. The score was placed while the deadline's
+    // line, emptied by the game's end, still took its 12 px of gap above it; Alpine hides such a line a frame later.
+    '19 x 19 at 390, ended with the tab bar tucked away' => [390, 844, 'go-19', ['Anna-Magdalena Satoshi Nakamoto', 'Bertram Hal Finney von Lightning']],
 ]);
 
 test('everything to press on a Go game\'s page is at least 44 px wide and high, in the game and after it', function (int $width, int $height, bool $touch) {

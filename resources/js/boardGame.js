@@ -450,7 +450,13 @@ registerAlpine(() => {
             // Focus mode (focusMode.js): the tab bar slid away or came back, so the first screen changed height.
             this.onFocusMode = () => this.fitBoard();
             addEventListener('focus-mode', this.onFocusMode);
-            this.$watch('state.status', () => this.$nextTick(() => this.fitBoard()));
+            // Once more two frames on: a line the game's end empties (the deadline's) keeps its gap in the column until
+            // Alpine hides it in the next frame (x-show), and the score placed before that stood 12 px above the chat
+            // sheet, "Show area" half over it (19 x 19 at 390 x 844, measured 2026-11-14).
+            this.$watch('state.status', () => this.$nextTick(() => {
+                this.fitBoard();
+                requestAnimationFrame(() => requestAnimationFrame(() => this.fitBoard()));
+            }));
             this.$nextTick(() => this.fitBoard());
         },
 
