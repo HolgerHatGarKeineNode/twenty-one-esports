@@ -24,6 +24,9 @@
 
     <div class="gp flex flex-col gap-6">
         {{-- A group's other games (Go's sizes), on their ladder of the same `mode` where they have it. --}}
+        {{-- It stands with the page's head, 12 px over it (16 from lg): the two name the game whose ladder this is, and the
+             row of all ladders follows a step further down (24 px), a choice of another kind. --}}
+        <div class="flex flex-col gap-3 lg:gap-4" data-test="ladder-top">
         @if ($game !== null)
             <x-game.group-switch :game="$game" active="ladder" :mode="$mode" />
         @endif
@@ -58,6 +61,7 @@
                 @endisset
             </div>
         @endif
+        </div>
 
         @if ($chips !== [])
             <x-ui.chips :items="$chips" :label="$chipsLabel ?? __('Ladder')" :caption="__('Ladder game')" test="ladder-chips" size="lg" navigate />

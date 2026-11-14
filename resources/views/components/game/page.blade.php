@@ -42,10 +42,14 @@
     <x-game.subnav :game="$game" :active="$active" :mode="$mode" :phone-bar="$primaryOn">{{ $primary ?? '' }}</x-game.subnav>
 
     <div class="gp">
-        {{-- A group's other games (Go's sizes), on the same tab. --}}
-        <x-game.group-switch :game="$game" :active="$active" class="mb-4 lg:mb-6" />
+        {{-- A group's other games (Go's sizes), on the same tab: 12 px over the page's head (16 from lg), as on the ladder, so
+             the switch reads with the game it names. --}}
+        <x-game.group-switch :game="$game" :active="$active" class="mb-3 lg:mb-4" />
         @isset($top)
-            <div class="gp-top mb-4 flex flex-col gap-3 lg:mb-6">{{ $top }}</div>
+            {{-- Gone while nothing is in it, by the variant here: revamp-games.css `.gp-top:not(:has(*))` loses to the `flex`
+                 utility (a later layer), and the empty slot kept its margin, 24 px of air over every lobby's hero from lg
+                 (16 on a phone), measured 2026-11-14 under Go's switch (48 px to the hero at 1440). --}}
+            <div class="gp-top mb-4 flex flex-col gap-3 lg:mb-6 [&:not(:has(*))]:hidden">{{ $top }}</div>
         @endisset
         @if ($heroAbove)
             {{-- With an action instead of a number the hero spans both columns (HyperIndex.dc.html), so a long name keeps one line. --}}
