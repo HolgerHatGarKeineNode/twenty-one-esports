@@ -32,6 +32,8 @@ use App\Models\TournamentParticipant;
 use App\Models\TournamentPayout;
 use App\Models\User;
 use App\Support\Board\BoardGameService;
+use App\Support\Board\BoardRules;
+use App\Support\Board\StoneBoard;
 use App\Support\Chess\ChessTeamMatches;
 use App\Support\Clans\ClanLogos;
 use App\Support\GameNames;
@@ -532,10 +534,24 @@ final class PageCardFacts
             'position' => $rules === null ? '' : app(BoardGameService::class)->publicPosition($game, $rules),
             'turn' => $game->turn,
             'ply' => (int) $game->ply,
+            // A board of stones rings the stone set last (a pass sets none): the point of the newest move.
+            'last' => $rules instanceof StoneBoard && $game->ply > 0 ? self::lastStone($game, $rules) : null,
             'white' => $side($game->white),
             'black' => $side($game->black),
             'tournament' => $tournament !== null && $tournament->isVisibleTo(null) ? $tournament->name : null,
         ];
+    }
+
+    /**
+     * The point of the newest move of a game of stones, or null when it was a pass.
+     *
+     * @param  BoardRules<mixed>  $rules
+     */
+    private static function lastStone(BoardGame $game, BoardRules $rules): ?string
+    {
+        $move = $game->relationLoaded('moves') ? $game->moves->sortBy('ply')->last()?->move : $game->moves()->reorder()->orderByDesc('ply')->value('move');
+
+        return is_string($move) && in_array($move, array_column($rules->view($rules->deserialize($game->position))['points'], 'id'), true) ? $move : null;
     }
 
     /**

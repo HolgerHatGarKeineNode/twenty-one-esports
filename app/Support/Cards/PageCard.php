@@ -20,7 +20,9 @@ use App\Models\SeriesMatch;
 use App\Models\Tournament;
 use App\Models\User;
 use App\Support\Badges\BadgeCopy;
+use App\Support\Board\AreaCount;
 use App\Support\Board\BlockspaceDrawing;
+use App\Support\Board\StoneBoard;
 use App\Support\Chess\ChessModes;
 use App\Support\GameNames;
 use App\Support\Nostr\NostrKeys;
@@ -70,7 +72,7 @@ final class PageCard
     public const PAGES = ['home', 'login', 'clans', 'matches', 'games', 'chess', 'tournaments', 'play', 'rules', 'protocol', 'mining', 'live', 'strongest'];
 
     /** Bump when a layout changes: every card gets a new file and URL. */
-    private const LAYOUT = 2;
+    private const LAYOUT = 3;
 
     /** The text sizes of the cards; nothing is drawn smaller than MIN. */
     private const MIN = 28;
@@ -91,6 +93,8 @@ final class PageCard
     public const SEATS_GAP = 64;
 
     private Canvas $c;
+
+    private ?StoneBoardArt $stoneArt = null;
 
     /**
      * @param  array<string, mixed>  $facts
@@ -322,6 +326,7 @@ final class PageCard
     public function render(): string
     {
         $this->c = new Canvas(self::WIDTH, self::HEIGHT);
+        $this->stoneArt = null;
 
         match ($this->type) {
             'game' => $this->drawGame(),
@@ -456,8 +461,15 @@ final class PageCard
         $line = $y + $size / 2 + 38;
         // The colour the game gives this side: Go's first side is black, Blockspace shows the colours of its stones.
         $side = GameNames::boardSides((string) ($this->facts['game'] ?? ''))[$colour === 'white' ? 'w' : 'b'];
-        $this->c->rect($tx, $line - 22, 24, 24, $side->swatchEdge);
-        $this->c->rect($tx + 2, $line - 20, 20, 20, $side->swatch);
+        $count = $this->type === 'board' ? $this->stoneCount() : null;
+
+        if ($this->type === 'board' && $this->stoneRules() !== null) {
+            // A board of stones (Go): the side's stone as it lies on the board, not a flat square.
+            $this->stones()->glyph($side->stone, $tx + 12, $line - 10, 11);
+        } else {
+            $this->c->rect($tx, $line - 22, 24, 24, $side->swatchEdge);
+            $this->c->rect($tx + 2, $line - 20, 20, 20, $side->swatch);
+        }
         $delta = ($p['delta'] ?? null) !== null && $p['delta'] !== 0 ? ($p['delta'] > 0 ? '+' : '−').abs((int) $p['delta']) : null;
         // A board game has no rating on its card: the side's colour is named instead.
         $rating = ($p['rating'] ?? null) === null ? $this->sideLabel($colour) : __(':rating Elo', ['rating' => $p['rating']]);
@@ -473,6 +485,43 @@ final class PageCard
         if ($delta !== null) {
             $this->c->text($delta, 'mono-bold', self::MIN, $tx + 40 + $this->c->width($rating, 'mono', self::MIN) + 16, $line, $p['delta'] > 0 ? self::WIN : self::LOSS);
         }
+
+        // A counted game of stones: the side's points after its colour, as the score beside the board has them.
+        if ($count !== null) {
+            $this->c->text(StoneBoardArt::points($count[$colour === 'white' ? 'w' : 'b']['score']), 'mono-bold', self::MIN, $tx + 40 + $this->c->width($rating, 'mono', self::MIN) + 20, $line, $lost ? Canvas::INK_2 : Canvas::INK);
+        }
+    }
+
+    /** The rules of this card's board game when its pieces are stones (Go), else null. */
+    private function stoneRules(): ?StoneBoard
+    {
+        $definition = app(GameRegistry::class)->find((string) ($this->facts['game'] ?? ''));
+        $rules = $definition instanceof BoardGameDefinition ? $definition->rules() : null;
+
+        return $rules instanceof StoneBoard ? $rules : null;
+    }
+
+    /**
+     * The count of a game of stones that ended by its count (two passes): each side's points and the margin, as the
+     * game's page shows them (AreaCount). Null for a game still running or one that ended another way.
+     *
+     * @return array{w: array{score: float}, b: array{score: float}, margin: float, lead: 'w'|'b'|null}|null
+     */
+    private function stoneCount(): ?array
+    {
+        $rules = $this->stoneRules();
+
+        if (! $rules instanceof AreaCount || ($this->facts['status'] ?? null) !== 'finished' || ($this->facts['reason'] ?? null) !== 'score' || ($this->facts['position'] ?? '') === '') {
+            return null;
+        }
+
+        return $rules->areaCount($rules->deserialize((string) $this->facts['position']));
+    }
+
+    /** The board's material for this card's drawing (StoneBoardArt). */
+    private function stones(): StoneBoardArt
+    {
+        return $this->stoneArt ??= new StoneBoardArt($this->c);
     }
 
     /** The card's big line: the move of a live game, or who won it, the side by the name its game gives it. */
@@ -1157,14 +1206,31 @@ final class PageCard
                 default => '½–½',
             }, self::DARK],
         };
-        $this->c->block($x, $y + 8, $block, $face);
-        $labelSize = $this->c->fitSize($label, 'display', [40, 34, 30], $block - 16);
-        $this->c->text($label, 'display', $labelSize, $x + ($block - $this->c->width($label, 'display', $labelSize)) / 2, $y + 8 + $block / 2 + $labelSize * 0.36, $ink);
-
         $tx = $x + $block + 28;
         $headline = $this->gameHeadline();
-        $headSize = $this->c->fitSize($headline, 'display', [40, 34, 30, 28], self::RIGHT - $tx);
-        $this->c->text($this->c->fit($headline, 'display', $headSize, self::RIGHT - $tx), 'display', $headSize, $tx, $y + 50, $f['status'] === 'active' ? self::LIVE : Canvas::INK);
+        $room = self::RIGHT - $tx;
+
+        if ($winner !== null && $this->stoneRules() !== null) {
+            // A game of stones that one side won: the winner's stone on a piece of the board's wood, where "0–1" says
+            // nothing to a Go player; and the margin of a counted game after the headline, as on the game's page.
+            $this->stones()->slab($x, $y + 2, $block, $block, 6);
+            $this->stones()->stone(GameNames::boardSides((string) $f['game'])[$winner === 'white' ? 'w' : 'b']->stone, $x + $block / 2, $y + 2 + $block / 2, 32);
+            $count = $this->stoneCount();
+            $margin = $count === null ? null : '+'.StoneBoardArt::points($count['margin']);
+
+            if ($margin !== null && $this->c->width($headline, 'display', 28) + 24 + $this->c->width($margin, 'display', 28) <= $room) {
+                $marginSize = $this->c->fitSize($headline, 'display', [40, 34, 30, 28], $room - 24 - $this->c->width($margin, 'display', 40));
+                $this->c->textRight($margin, 'display', $marginSize, self::RIGHT, $y + 50, Canvas::INK);
+                $room -= 24 + $this->c->width($margin, 'display', $marginSize);
+            }
+        } else {
+            $this->c->block($x, $y + 8, $block, $face);
+            $labelSize = $this->c->fitSize($label, 'display', [40, 34, 30], $block - 16);
+            $this->c->text($label, 'display', $labelSize, $x + ($block - $this->c->width($label, 'display', $labelSize)) / 2, $y + 8 + $block / 2 + $labelSize * 0.36, $ink);
+        }
+
+        $headSize = $this->c->fitSize($headline, 'display', [40, 34, 30, 28], $room);
+        $this->c->text($this->c->fit($headline, 'display', $headSize, $room), 'display', $headSize, $tx, $y + 50, $f['status'] === 'active' ? self::LIVE : Canvas::INK);
         $this->c->text($this->c->fit(GameNames::credited((string) $f['game']), 'mono', self::MIN, self::RIGHT - $tx), 'mono', self::MIN, $tx, $y + 92, Canvas::INK_3);
 
         // The full width of the column: rated or casual, the mode and the state when that fits, else the state alone.
@@ -1267,16 +1333,23 @@ final class PageCard
     private function boardPosition(string $game, string $position, int $x, int $y, int $size): void
     {
         $definition = app(GameRegistry::class)->find($game);
+        $rules = $definition instanceof BoardGameDefinition ? $definition->rules() : null;
+        $view = $rules?->view($rules->deserialize($position));
+
+        if ($view !== null && $rules instanceof StoneBoard) {
+            // Go: the wooden board of the game's page with its stones, the one set last ringed.
+            $this->stones()->board($view, $x, $y, $size, is_string($this->facts['last'] ?? null) ? $this->facts['last'] : null);
+
+            return;
+        }
+
         $this->c->rect($x, $y, $size, $size, '#3A3A42');
         $border = 6;
         $inner = $size - 2 * $border;
 
-        if (! $definition instanceof BoardGameDefinition) {
+        if ($view === null) {
             return;
         }
-
-        $rules = $definition->rules();
-        $view = $rules->view($rules->deserialize($position));
 
         if ($game === Blockspace::SLUG) {
             $this->blockspacePosition($view, $x + $border, $y + $border, $inner);

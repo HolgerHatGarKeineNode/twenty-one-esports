@@ -15,7 +15,9 @@ use App\Support\Board\BoardGameService;
 use App\Support\Board\BoardRuleViolation;
 use App\Support\Board\GoLabels;
 use App\Support\Board\GoRules;
+use App\Support\Cards\Canvas;
 use App\Support\Cards\PageCard;
+use App\Support\Cards\StoneBoardArt;
 use App\Support\Engagement\HomeBoard;
 use App\Support\GameChat\GameChannels;
 use App\Support\GameNames;
@@ -272,14 +274,62 @@ test('the card of a finished Go game says who won by the stones, with each side\
     'White won' => ['0-1', 'White wins', 'Black wins'],
 ]);
 
-test('the drawn card of a finished Go game shows a black square beside Black and a white one beside White', function (string $result) {
+test('the drawn card of a finished Go game shows a black stone beside Black and a white one beside White, lit as on the board', function (string $result) {
     $game = goGame();
     $game->forceFill(['status' => BoardGameStatus::Finished, 'result' => $result])->save();
     $png = PageCard::boardGame($game->refresh())->render();
+    // The middle of each stone: the board's own light there (StoneBoardArt::shade()), not a flat square.
+    $near = fn (string $hex, string $kind): bool => max(array_map(fn (int $got, int $want): int => abs($got - $want), sscanf($hex, '#%02X%02X%02X'), StoneBoardArt::shade($kind, 0.5, 0.5))) <= 6;
 
-    expect(goCardSwatch($png, 'w', $result === '1-0'))->toBe('#0A0A0B')
-        ->and(goCardSwatch($png, 'b', $result === '0-1'))->toBe('#F4F4F5');
+    expect($near(goCardSwatch($png, 'w', $result === '1-0'), 'black'))->toBeTrue(goCardSwatch($png, 'w', $result === '1-0'))
+        ->and($near(goCardSwatch($png, 'b', $result === '0-1'), 'white'))->toBeTrue(goCardSwatch($png, 'b', $result === '0-1'));
 })->with(['Black won' => ['1-0'], 'White won' => ['0-1']]);
+
+test('the card of a Go game draws the board of the game\'s page: its wood, the stone set last ringed, and a counted game\'s points and margin', function () {
+    // One source of colours: the card's material is the page's, value for value.
+    $script = file_get_contents(resource_path('js/boardGame.js'));
+    expect($script)->toContain("wood: ['".StoneBoardArt::WOOD[0]."', '".StoneBoardArt::WOOD[1]."']")
+        ->toContain("side: '".StoneBoardArt::SIDE."'")
+        ->toContain("grain: '".StoneBoardArt::GRAIN."'")
+        ->toContain("sheen: '".StoneBoardArt::SHEEN."'")
+        ->toContain("line: '".StoneBoardArt::LINE."'")
+        ->toContain("ring: { black: '".StoneBoardArt::RING['black']."', white: '".StoneBoardArt::RING['white']."' }")
+        ->toContain("const STONE_EDGE = { black: '".StoneBoardArt::EDGE['black']."', white: '".StoneBoardArt::EDGE['white']."' }");
+
+    foreach (StoneBoardArt::STONE as $kind => $light) {
+        $stops = implode('', array_map(fn (array $stop): string => '<stop offset="'.$stop[0].'" stop-color="'.$stop[1].'"/>', $light['stops']));
+        expect($script)->toContain('<radialGradient id="go-stone-'.$kind.'" cx="'.($light['cx'] * 100).'%" cy="'.($light['cy'] * 100).'%" r="'.($light['r'] * 100).'%">'.$stops.'</radialGradient>');
+    }
+
+    // A running game: the stone set last carries the ring, a pass sets none.
+    $game = goPlay(goGame(), ['e5', 'c3']);
+    $pixel = fn (string $png, int $x, int $y): string => sprintf('#%06X', imagecolorat(imagecreatefromstring($png), $x, $y) & 0xFFFFFF);
+    expect(PageCard::boardGame($game)->facts['last'])->toBe('c3')
+        // The slab's upper left corner is the wood, not the grey frame of the other boards.
+        ->and(hexdec(substr($pixel(PageCard::boardGame($game)->render(), 66, 52), 1, 2)))->toBeGreaterThan(150);
+
+    $game = goPlay($game, ['pass', 'pass']);
+    $card = PageCard::boardGame($game);
+    Canvas::$drawn = [];
+    $card->render();
+    $drawn = Canvas::$drawn;
+    Canvas::$drawn = null;
+
+    // One stone each and no area on the open board: Black has 1 point, White 1 and the komi of 7.5, so White wins by 7.5.
+    expect($game->status)->toBe(BoardGameStatus::Finished)
+        ->and($card->facts['last'])->toBeNull()
+        ->and($card->gameHeadline())->toBe('White wins')
+        ->and($drawn)->toContain('White wins', '+7.5', '8.5', '1', 'Counted after both passed')
+        ->not->toContain('0–1');
+
+    app()->setLocale('de');
+    Canvas::$drawn = [];
+    PageCard::boardGame($game)->render();
+    $german = Canvas::$drawn;
+    Canvas::$drawn = null;
+
+    expect($german)->toContain('Weiß gewinnt', '+7,5', '8,5');
+});
 
 test('Go takes its place where every board game has one: the ladders\' names, the start page\'s order, one chat channel for all sizes', function () {
     config(['esports.game_chat.creator' => str_repeat('a', 64)]);

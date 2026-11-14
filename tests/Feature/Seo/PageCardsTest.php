@@ -493,5 +493,5 @@ test('every TMNF link preview shows the official cover art, in English and Germa
     $facts = PageCard::page('scores.tmnf')->facts;
     expect($cover)->toBe(hash_file('xxh3', public_path('images/games/tmnf-1280.jpg')))
         ->and(app(GameRegistry::class)->coverVersion('no-such-game'))->toBeNull()
-        ->and(PageCard::page('scores.tmnf')->fingerprint())->toBe(substr(hash('sha256', (string) json_encode([2, 'page', 'scores.tmnf', 'de', $facts, config('app.url'), $cover])), 0, 16));
+        ->and(PageCard::page('scores.tmnf')->fingerprint())->toBe(substr(hash('sha256', (string) json_encode([3, 'page', 'scores.tmnf', 'de', $facts, config('app.url'), $cover])), 0, 16));
 });
