@@ -150,10 +150,8 @@ final class GoRules implements AreaCount, BoardRules, StoneBoard
             throw new InvalidArgumentException("Not the text of a go position: {$position}");
         }
 
-        for ($point = 0; $point < $this->size * $this->size; $point++) {
-            if ($board[$point] !== '.' && $this->group($board, $point)[1] === []) {
-                throw new InvalidArgumentException("A group without a liberty: {$position}");
-            }
+        if (in_array(0, $this->groups($board)[1], true)) {
+            throw new InvalidArgumentException("A group without a liberty: {$position}");
         }
 
         return $parsed;
@@ -180,6 +178,7 @@ final class GoRules implements AreaCount, BoardRules, StoneBoard
 
         $board = $position['board'];
         $own = self::STONE[$position['turn']];
+        $groups = $this->groups($board);
         $moves = [];
 
         // From a1 on, rank by rank, as the points are read on the board.
@@ -187,7 +186,7 @@ final class GoRules implements AreaCount, BoardRules, StoneBoard
             for ($file = 0; $file < $this->size; $file++) {
                 $point = $row * $this->size + $file;
 
-                if ($board[$point] === '.' && $point !== $position['ko'] && $this->placeable($board, $point, $own)) {
+                if ($board[$point] === '.' && $point !== $position['ko'] && $this->placeable($board, $point, $own, $groups)) {
                     $moves[] = $this->id($point);
                 }
             }
@@ -434,8 +433,10 @@ final class GoRules implements AreaCount, BoardRules, StoneBoard
     /**
      * Whether a stone of this colour may go on this empty point: it has a liberty of its own, it joins a group of its
      * colour that keeps another one, or it takes the last liberty of a group of the other colour (which comes off).
+     *
+     * @param  array{0: array<int, int>, 1: list<int>}  $groups  the board's groups (groups())
      */
-    private function placeable(string $board, int $at, string $own): bool
+    private function placeable(string $board, int $at, string $own, array $groups): bool
     {
         $neighbours = self::neighbours($this->size)[$at];
 
@@ -446,7 +447,7 @@ final class GoRules implements AreaCount, BoardRules, StoneBoard
         }
 
         foreach ($neighbours as $neighbour) {
-            $liberties = count($this->group($board, $neighbour)[1]);
+            $liberties = $groups[1][$groups[0][$neighbour]];
 
             // The point itself is one of the group's liberties.
             if ($board[$neighbour] === $own ? $liberties > 1 : $liberties === 1) {
@@ -455,6 +456,47 @@ final class GoRules implements AreaCount, BoardRules, StoneBoard
         }
 
         return false;
+    }
+
+    /**
+     * Every group of the board in one pass: the group of each stone, and how many liberties each group has. A fill per
+     * stone, and per neighbour of every empty point, made a board with one group of 280 stones cost 32 ms to read and
+     * to judge (security N1, 2026-11-14); tests/Unit/Board/GoRulesGroupsTest.php holds this to what those fills said.
+     *
+     * @return array{0: array<int, int>, 1: list<int>}
+     */
+    private function groups(string $board): array
+    {
+        $neighbours = self::neighbours($this->size);
+        $groupOf = [];
+        $liberties = [];
+
+        for ($first = 0, $points = $this->size * $this->size; $first < $points; $first++) {
+            if ($board[$first] === '.' || isset($groupOf[$first])) {
+                continue;
+            }
+
+            $colour = $board[$first];
+            $group = count($liberties);
+            $empty = [];
+            $stack = [$first];
+            $groupOf[$first] = $group;
+
+            while ($stack !== []) {
+                foreach ($neighbours[array_pop($stack)] as $neighbour) {
+                    if ($board[$neighbour] === '.') {
+                        $empty[$neighbour] = true;
+                    } elseif ($board[$neighbour] === $colour && ! isset($groupOf[$neighbour])) {
+                        $groupOf[$neighbour] = $group;
+                        $stack[] = $neighbour;
+                    }
+                }
+            }
+
+            $liberties[] = count($empty);
+        }
+
+        return [$groupOf, $liberties];
     }
 
     /**

@@ -100,14 +100,19 @@ new #[Layout('layouts::app', ['realtime' => true, 'scripts' => ['resources/js/bo
     }
 
     /**
-     * Full state for a reconnect or a client that fell behind.
+     * Full state for a reconnect or a client that fell behind; null beyond what a board asks in a minute
+     * (BoardThrottle), which the board takes as no answer and asks again on its next turn (boardGame.js resync()).
      *
-     * @return array<string, mixed>
+     * @return array<string, mixed>|null
      */
     #[Json]
-    public function fetchState(?int $known = null): array
+    public function fetchState(?int $known = null): ?array
     {
         $this->markSeen();
+
+        if (! BoardThrottle::allows('state', BoardThrottle::STATES_PER_MINUTE)) {
+            return null;
+        }
 
         $game = $this->boardGame->refresh();
 
@@ -120,7 +125,7 @@ new #[Layout('layouts::app', ['realtime' => true, 'scripts' => ['resources/js/bo
     }
 
     /**
-     * @return array{ok: bool, error: string|null, state: array<string, mixed>}
+     * @return array{ok: bool, error: string|null, state: array<string, mixed>|null}
      */
     #[Json]
     public function move(string $move, int $ply): array
@@ -165,13 +170,18 @@ new #[Layout('layouts::app', ['realtime' => true, 'scripts' => ['resources/js/bo
     }
 
     /**
-     * A client whose clock shows zero asks; the server's clock decides.
+     * A client whose clock shows zero asks; the server's clock decides. Null beyond what a board asks in a minute
+     * (BoardThrottle): the board keeps what it shows and asks again two seconds on (boardGame.js tick(), call()).
      *
-     * @return array{ok: bool, error: string|null, state: array<string, mixed>}
+     * @return array{ok: bool, error: string|null, state: array<string, mixed>}|null
      */
     #[Json]
-    public function checkClock(): array
+    public function checkClock(): ?array
     {
+        if (! BoardThrottle::allows('clock', BoardThrottle::CLOCK_CHECKS_PER_MINUTE)) {
+            return null;
+        }
+
         $games = app(BoardGameService::class);
         $games->checkClock($this->boardGame);
 
@@ -256,7 +266,7 @@ new #[Layout('layouts::app', ['realtime' => true, 'scripts' => ['resources/js/bo
 
     /**
      * @param  Closure(BoardGameService, User): mixed  $action
-     * @return array{ok: bool, error: string|null, state: array<string, mixed>}
+     * @return array{ok: bool, error: string|null, state: array<string, mixed>|null}
      */
     private function act(Closure $action): array
     {
@@ -264,14 +274,21 @@ new #[Layout('layouts::app', ['realtime' => true, 'scripts' => ['resources/js/bo
         $user = auth()->user();
         $error = null;
 
-        try {
-            if (! $user instanceof User) {
-                throw new BoardRuleViolation('not_a_player');
-            }
+        // A guest has no action on the page: the refusal comes without the state, which costs reading the position.
+        if (! $user instanceof User) {
+            return ['ok' => false, 'error' => 'not_a_player', 'state' => null];
+        }
 
+        try {
             $action($games, $user);
         } catch (BoardRuleViolation $violation) {
             $error = $violation->reason;
+        }
+
+        // A refusal brings the state the board fell behind, a few times a minute; beyond that the reason alone
+        // (boardGame.js call() shows it, and the board's next fetchState() brings the state).
+        if ($error !== null && ! BoardThrottle::allows('refused', BoardThrottle::REFUSALS_PER_MINUTE)) {
+            return ['ok' => false, 'error' => $error, 'state' => null];
         }
 
         // Without the record: the board joins its own to the state (boardGame.js follow()) and asks for the whole one only

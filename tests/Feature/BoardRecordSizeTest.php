@@ -169,3 +169,93 @@ test('what the board script needs is not an action of the page: a guest batch of
     expect($response->isSuccessful())->toBeFalse()
         ->and(substr_count((string) $response->getContent(), '"moves"'))->toBe(0);
 });
+
+/**
+ * The dear position (security N1): a legal go game of 559 plies on 19 x 19. Black fills every point but those of an
+ * odd row and an odd file while White passes: one group of 280 stones around 81 empty points with no empty
+ * neighbour, where every fill per stone or per neighbour walked the whole group.
+ */
+function goDearGame(): BoardGame
+{
+    $game = app(BoardGameService::class)->start('go-19', User::factory()->create(), User::factory()->create(), 'correspondence');
+    $rules = new GoRules(19);
+    $position = $rules->start();
+    $rows = [];
+
+    for ($point = 0; $point < 361; $point++) {
+        if (intdiv($point, 19) % 2 === 1 && $point % 19 % 2 === 1) {
+            continue;
+        }
+
+        foreach ($rows === [] ? [$rules->id($point)] : [GoRules::PASS, $rules->id($point)] as $move) {
+            $notation = $rules->notation($position, $move);
+            $position = $rules->apply($position, $move);
+            $rows[] = ['board_game_id' => $game->id, 'ply' => count($rows) + 1, 'move' => $move, 'notation' => $notation, 'position' => $rules->serialize($position), 'spent_ms' => 1000, 'clock_ms' => 0, 'created_at' => now()];
+        }
+    }
+
+    foreach (array_chunk($rows, 100) as $chunk) {
+        BoardMove::query()->insert($chunk);
+    }
+
+    $game->forceFill(['position' => $rules->serialize($position), 'turn' => $rules->turn($position), 'ply' => count($rows), 'version' => count($rows) + 1])->save();
+
+    return $game->refresh();
+}
+
+test('a guest batch of 50 clock checks on the dear position of 559 plies is refused whole, and one request carries 10 calls on 20 pages at the most (security N1)', function () {
+    $game = goDearGame();
+    $rules = new GoRules(19);
+
+    // The position is the one measured: 280 stones in one group, and nothing left to the side to move but the pass.
+    expect($game->ply)->toBe(559)
+        ->and(substr_count($rules->stones($game->position), 'x'))->toBe(280)
+        ->and($rules->legalMoves($rules->deserialize($game->position)))->toBe([GoRules::PASS]);
+
+    $batch = boardBatch($game, array_fill(0, 50, ['checkClock']));
+
+    expect($batch->isSuccessful())->toBeFalse()
+        ->and(substr_count((string) $batch->getContent(), '"version"'))->toBe(0)
+        ->and(config('livewire.payload.max_calls'))->toBe(10)
+        ->and(config('livewire.payload.max_components'))->toBe(20)
+        ->and(boardBatch($game, array_fill(0, 11, ['fetchState', [$game->version]]))->isSuccessful())->toBeFalse()
+        ->and(boardBatch($game, [['fetchState', [$game->version]]], components: 21)->isSuccessful())->toBeFalse()
+        // What the pages send has room: 10 calls on each of 20 components.
+        ->and(boardBatch($game, array_fill(0, 10, ['fetchState', [$game->version]]), components: 20)->assertOk()->json('components'))->toHaveCount(20);
+});
+
+test('the short answers have a ceiling a minute too: the clock check, the state without the record and a refused action (security N1)', function () {
+    $game = goDearGame();
+    $guest = Livewire::test('pages::board.show', ['boardGame' => $game]);
+    $checked = 0;
+
+    for ($call = 0; $call < BoardThrottle::CLOCK_CHECKS_PER_MINUTE + 5; $call++) {
+        $checked += $guest->call('checkClock')->effects['returns'][0] === null ? 0 : 1;
+    }
+
+    $states = 0;
+
+    for ($call = 0; $call < BoardThrottle::STATES_PER_MINUTE + 5; $call++) {
+        $states += $guest->call('fetchState', $game->version)->effects['returns'][0] === null ? 0 : 1;
+    }
+
+    // A guest's action is refused without the state: nothing of the position is read for it.
+    expect($checked)->toBe(BoardThrottle::CLOCK_CHECKS_PER_MINUTE)
+        ->and($states)->toBe(BoardThrottle::STATES_PER_MINUTE)
+        ->and($guest->call('resign')->effects['returns'][0])->toBe(['ok' => false, 'error' => 'not_a_player', 'state' => null]);
+
+    // A player's refused move brings the state a few times a minute, then the reason alone.
+    $player = Livewire::actingAs($game->player($game->turn))->test('pages::board.show', ['boardGame' => $game]);
+    $withState = 0;
+
+    for ($call = 0; $call < BoardThrottle::REFUSALS_PER_MINUTE + 5; $call++) {
+        $refused = $player->call('move', 'a19', 560)->effects['returns'][0];
+        $withState += $refused['state'] === null ? 0 : 1;
+
+        expect($refused)->toMatchArray(['ok' => false, 'error' => 'illegal_move']);
+    }
+
+    expect($withState)->toBe(BoardThrottle::REFUSALS_PER_MINUTE)
+        // The pass, the one legal move, is answered as ever.
+        ->and($player->call('move', GoRules::PASS, 560)->effects['returns'][0])->toMatchArray(['ok' => true, 'error' => null]);
+});
