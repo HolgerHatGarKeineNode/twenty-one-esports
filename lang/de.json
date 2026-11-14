@@ -9256,5 +9256,6 @@
     "Komi": "Komi",
     ":name ran out of time": ":name hat die Zeit überschritten",
     "The game was not counted.": "Die Partie wurde nicht gezählt.",
-    "Not counted.": "Nicht gezählt."
+    "Not counted.": "Nicht gezählt.",
+    ":count captured": ":count geschlagen"
 }

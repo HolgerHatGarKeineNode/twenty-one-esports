@@ -371,6 +371,9 @@ new #[Layout('layouts::app', ['realtime' => true, 'scripts' => ['resources/js/bo
     $teamUrl = $boardGame->series_match_id !== null ? route('matches.show', (int) $boardGame->matchNumber()) : null;
     // Go (the stone input): a stone and the score in the players' cards, the score block, the result with the count.
     $stones = ($config['layout']['input'] ?? null) === 'stones';
+    // The players' pictures come from the server (x-avatar); the page's script puts the viewer's side at the bottom, a spectator sees the first side there.
+    $bottomSide = $boardGame->colorOf(auth()->user()) === 'b' ? 'b' : 'w';
+    $seats = ['topSide' => $boardGame->player($bottomSide === 'b' ? 'w' : 'b'), 'bottomSide' => $boardGame->player($bottomSide)];
 @endphp
 
 <div class="flex grow flex-col px-4 pb-8 lg:px-12 lg:pb-10" data-test="board-page" data-focus-page>
@@ -398,7 +401,7 @@ new #[Layout('layouts::app', ['realtime' => true, 'scripts' => ['resources/js/bo
                 <x-game-credit :game="$boardGame->game" />
             </div>
             {{-- The lobby of this board game (P5): the next opponent, the ladder. --}}
-            <a href="{{ route('board.lobby', $boardGame->game) }}" @class(['text-[13px] text-ink-2 underline decoration-edge underline-offset-4 hover:text-ink hover:decoration-btc', 'max-lg:hidden' => $banner]) data-test="board-lobby-link">{{ __('Lobby') }}</a>
+            <a href="{{ route('board.lobby', $boardGame->game) }}" @class(['-my-2 inline-flex min-h-11 min-w-11 items-center justify-center text-[13px] text-ink-2 underline decoration-edge underline-offset-4 hover:text-ink hover:decoration-btc', 'max-lg:hidden' => $banner]) data-test="board-lobby-link">{{ __('Lobby') }}</a>
             <x-tournaments.game-banner-row :banner="$banner" />
             {{-- No separate "Correspondence games" link: board games are correspondence only, the lobby is that page (2026-10-08; it pushed the board below the fold at 1440). --}}
             {{-- The match dock's button from lg, as on daily chess: the chat owns the bottom right here (its floating bar covered the send button, PR #5). --}}
@@ -515,12 +518,22 @@ new #[Layout('layouts::app', ['realtime' => true, 'scripts' => ['resources/js/bo
             <div @class(['flex min-w-0 flex-col gap-3', 'min-[87.5rem]:h-0 min-[87.5rem]:min-h-full' => $chat && ! $stones])>
                 {{-- The opponent (from lg; on a phone the two cards above the board). --}}
                 <div class="flex min-w-0 items-center gap-3 max-lg:hidden" data-test="side-card-top">
-                    <span class="grid size-11 shrink-0 place-items-center rounded-[4px] bg-btc-press font-display text-sm font-bold text-btc" aria-hidden="true" x-text="(t.names[topSide] || '?').slice(0, 1).toUpperCase()"></span>
+                    {{-- The player's picture, never a letter (x-avatar); Go adds the side's stone, drawn as the board's stones are. --}}
+                    <span class="relative shrink-0">
+                        @if ($seats['topSide'])
+                            <x-avatar :user="$seats['topSide']" :size="44" class="rounded-[4px]" />
+                        @else
+                            <span class="grid size-11 place-items-center rounded-[4px] bg-btc-press font-display text-sm font-bold text-btc" aria-hidden="true" x-text="(t.names[topSide] || '?').slice(0, 1).toUpperCase()"></span>
+                        @endif
+                        @if ($stones)
+                            <span class="absolute -right-1 -bottom-1 block size-4 rounded-full bg-ground ring-2 ring-ground" x-html="stoneGlyph(topSide)"></span>
+                        @endif
+                    </span>
                     <span class="flex min-w-0 grow flex-col">
                         <b class="truncate text-[15px]" x-text="t.names[topSide]"></b>
                         <span class="text-[13px] text-ink-2" x-text="topSide === 'w' ? t.white : t.black"></span>
                     </span>
-                    <span role="timer" class="shrink-0 font-display text-base font-bold whitespace-nowrap tabular-nums" :class="state.clock.running === topSide ? 'text-btc-hi' : 'text-ink-3'" x-text="clock(topSide)" @if ($stones) x-show="state.status === 'active'" @endif></span>
+                    <span role="timer" class="shrink-0 font-display text-base font-bold whitespace-nowrap tabular-nums" :class="state.clock.running === topSide ? 'text-btc-hi' : '{{ $stones ? 'text-ink' : 'text-ink-3' }}'" x-text="clock(topSide)" @if ($stones) x-show="state.status === 'active'" @endif></span>
                 </div>
 
                 {{-- Who is to move, with the clock of that side (the chess turn card). --}}
@@ -644,20 +657,36 @@ new #[Layout('layouts::app', ['realtime' => true, 'scripts' => ['resources/js/bo
                     </p>
                     <ol @class(['m-0 grid max-h-60 min-h-0 list-none grid-cols-2 content-start gap-x-2 overflow-y-auto p-0 text-[13px] tabular-nums lg:max-h-none', 'lg:grow' => ! $stones, 'lg:flex-[1_1_0px]' => $stones]) data-test="moves">
                         <template x-for="m in state.moves" :key="m.ply">
+                            @if ($stones)
+                                {{-- Go: a row of 44 px; a pass reads as a pass (plain, grey), not as a point; what a stone took stands behind it ("×2"). --}}
+                                <li class="min-w-0 border-b border-hairline"><button type="button" x-on:click="browse(m.ply)" :aria-current="shownPly === m.ply ? 'step' : null" data-test="move"
+                                            class="flex min-h-11 w-full cursor-pointer items-center gap-2 rounded-sm px-2 text-left text-ink" :class="shownPly === m.ply ? 'bg-btc-press font-bold text-btc-hi' : 'hover:bg-row-hover'"><span class="w-7 shrink-0 text-ink-3" x-text="m.ply % 2 ? Math.ceil(m.ply / 2) + '.' : ''"></span><b class="truncate" :class="m.path.length ? 'font-bold' : (shownPly === m.ply ? '' : 'font-normal text-ink-2')" x-text="m.notation"></b><template x-if="m.taken?.length"><span class="shrink-0" :class="shownPly === m.ply ? '' : 'font-normal text-ink-2'" data-test="move-taken"><span aria-hidden="true" x-text="'×' + m.taken.length"></span><span class="sr-only" x-text="t.stones.captured.replace(':count', m.taken.length)"></span></span></template></button></li>
+                            @else
                             <li class="min-w-0 border-b border-hairline"><button type="button" x-on:click="browse(m.ply)" :aria-current="shownPly === m.ply ? 'step' : null" data-test="move"
                                         class="flex min-h-10 w-full cursor-pointer items-center gap-2 rounded-sm px-2 text-left text-ink" :class="shownPly === m.ply ? 'bg-btc-press font-bold text-btc-hi' : 'hover:bg-row-hover'"><span class="w-7 shrink-0 text-ink-3" x-text="m.ply % 2 ? Math.ceil(m.ply / 2) + '.' : ''"></span><b class="truncate font-bold" x-text="m.notation"></b></button></li>
+                            @endif
                         </template>
                     </ol>
                 </div>
 
                 {{-- The player (from lg). --}}
                 <div class="flex min-w-0 items-center gap-3 max-lg:hidden" data-test="side-card-bottom">
-                    <span class="grid size-11 shrink-0 place-items-center rounded-[4px] bg-btc-press font-display text-sm font-bold text-btc" aria-hidden="true" x-text="(t.names[bottomSide] || '?').slice(0, 1).toUpperCase()"></span>
+                    {{-- The player's picture, never a letter (x-avatar); Go adds the side's stone, drawn as the board's stones are. --}}
+                    <span class="relative shrink-0">
+                        @if ($seats['bottomSide'])
+                            <x-avatar :user="$seats['bottomSide']" :size="44" class="rounded-[4px]" />
+                        @else
+                            <span class="grid size-11 place-items-center rounded-[4px] bg-btc-press font-display text-sm font-bold text-btc" aria-hidden="true" x-text="(t.names[bottomSide] || '?').slice(0, 1).toUpperCase()"></span>
+                        @endif
+                        @if ($stones)
+                            <span class="absolute -right-1 -bottom-1 block size-4 rounded-full bg-ground ring-2 ring-ground" x-html="stoneGlyph(bottomSide)"></span>
+                        @endif
+                    </span>
                     <span class="flex min-w-0 grow flex-col">
                         <b class="truncate text-[15px]"><span x-text="t.names[bottomSide]"></span> <span class="font-normal text-ink-2" x-show="color === bottomSide">({{ __('you') }})</span></b>
                         <span class="text-[13px] text-ink-2" x-text="bottomSide === 'w' ? t.white : t.black"></span>
                     </span>
-                    <span role="timer" class="shrink-0 font-display text-base font-bold whitespace-nowrap tabular-nums" :class="state.clock.running === bottomSide ? 'text-btc-hi' : 'text-ink-3'" x-text="clock(bottomSide)" @if ($stones) x-show="state.status === 'active'" @endif></span>
+                    <span role="timer" class="shrink-0 font-display text-base font-bold whitespace-nowrap tabular-nums" :class="state.clock.running === bottomSide ? 'text-btc-hi' : '{{ $stones ? 'text-ink' : 'text-ink-3' }}'" x-text="clock(bottomSide)" @if ($stones) x-show="state.status === 'active'" @endif></span>
                 </div>
             </div>
 

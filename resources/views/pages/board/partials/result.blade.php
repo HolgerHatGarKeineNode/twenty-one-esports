@@ -31,9 +31,10 @@
             <x-button :href="$teamUrl" class="w-full" data-test="back-to-team-match">{{ __('Back to the team match') }}</x-button>
         @elseif ($boardGame->tournament_match_id === null)
             @if ($stones)
-                <div class="flex min-w-0 gap-2">
-                    <x-button :href="route('board.lobby', $boardGame->game)" icon="bolt" class="min-w-0 grow whitespace-nowrap" data-test="next-opponent">{{ __('Find next opponent') }}</x-button>
-                    <template x-if="score && !phone">@include('pages.board.partials.go-area-toggle')</template>
+                {{-- One row where both fit (English); in German the switch takes a row of its own rather than cutting a label (R11). --}}
+                <div class="flex min-w-0 flex-wrap gap-2">
+                    <x-button :href="route('board.lobby', $boardGame->game)" icon="bolt" class="grow whitespace-nowrap" data-test="next-opponent">{{ __('Find next opponent') }}</x-button>
+                    <template x-if="score && !phone">@include('pages.board.partials.go-area-toggle', ['toggleClass' => 'grow justify-center'])</template>
                 </div>
             @else
                 <x-button :href="route('board.lobby', $boardGame->game)" icon="bolt" data-test="next-opponent">{{ __('Find next opponent') }}</x-button>

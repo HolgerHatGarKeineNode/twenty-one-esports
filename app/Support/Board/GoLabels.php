@@ -27,6 +27,8 @@ final class GoLabels
                 'passed' => __(':side passed. If you pass too, the game ends and is counted.'),
                 'endGame' => __('Pass again to end the game?'),
                 // Before a player's first pass of a game, with the count after it (boardGame.js passEndLine).
+                // A move that took stones, for a screen reader (the move list shows "×2").
+                'captured' => __(':count captured'),
                 'firstPass' => __('Counted as it stands, dead stones too. If both pass:'),
             ],
             // A game's result (pages/board/partials/result, boardGame.js resultHead, resultWhy).

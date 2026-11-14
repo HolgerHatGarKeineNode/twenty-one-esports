@@ -4,9 +4,18 @@
  */
 svg.go-board {
     background: transparent;
+    /* The slab's lower face (the wood's dark side, boardGame.js GO.side), then its shadow on the page. */
     box-shadow:
-        0 1px 0 rgb(255 255 255 / 6%),
-        0 12px 24px -8px rgb(0 0 0 / 70%);
+        0 4px 0 #553619,
+        0 16px 24px -8px rgb(0 0 0 / 70%);
+}
+
+@media (width >= 64rem) {
+    svg.go-board {
+        box-shadow:
+            0 6px 0 #553619,
+            0 20px 24px -8px rgb(0 0 0 / 70%);
+    }
 }
 
 .go-board .go-in,

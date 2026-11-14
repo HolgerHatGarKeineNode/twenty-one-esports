@@ -1511,16 +1511,16 @@ registerAlpine(() => {
             const xs = points.map((point) => point.x);
             const ys = points.map((point) => point.y);
             const [left, right, top, bottom] = [Math.min(...xs), Math.max(...xs), Math.min(...ys), Math.max(...ys)];
-            // The slab's lower face is an eighth of a line's distance on every size: under the edge line stand a stone's half, the
-            // file's letter and this face, and the letter needs the room (19 x 19 cut its letters with a taller face).
-            const [lip, corner] = [unit * 0.12, unit * 0.08];
-            const face = height - lip;
+            // The wood fills the whole square: under the edge line stand a stone's half and the file's letter, and the letter needs
+            // the room (with the slab's lower face drawn inside the square a letter had 2 to 5 px of air to the edge). The lower
+            // face is the board's shadow on the page instead (go/board.css), outside the square.
+            const corner = unit * 0.08;
+            const face = height;
             svg.replaceChildren();
             svg.classList.add('go-board');
             const defs = svgElement('defs', {});
             defs.innerHTML = STONE_GRADIENTS;
             const board = svgElement('g', { 'data-layer': 'board', 'pointer-events': 'none' });
-            board.append(svgElement('rect', { x: 0, y: face - corner * 2, width, height: lip + corner * 2, rx: corner, fill: GO.side }));
             board.append(svgElement('rect', { x: 0, y: 0, width, height: face, rx: corner, fill: 'url(#go-wood)' }));
             // Straight grain along the board, as the wood of a go board is cut: a few faint darker streaks, the same every time.
             for (let streak = 1; streak <= 28; streak++) {
