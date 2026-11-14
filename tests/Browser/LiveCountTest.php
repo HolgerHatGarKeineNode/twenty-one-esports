@@ -42,13 +42,21 @@ const COUNT_COLLECTOR = <<<'JS'
     }
     window.addEventListener('error', (e) => push('error: ' + (e.message || (e.target && (e.target.src || e.target.href)) || 'unknown')), true);
     window.addEventListener('unhandledrejection', (e) => push('unhandledrejection: ' + String(e.reason)));
+    // Every poll of the status endpoint by its number, and what each answer carried: "within one poll" is counted on these, not timed.
+    window.__polls = { asked: 0, answers: [] };
     const originalFetch = window.fetch;
-    window.fetch = (...args) => originalFetch(...args).then(async (r) => {
-        if (r.status >= 400) push(r.status + ' ' + r.url);
-        // Holds the status answer back by window.__holdStatus ms: a page hidden while a request is out.
-        if (String(args[0]).includes('/stream/status') && window.__holdStatus) await new Promise((resolve) => setTimeout(resolve, window.__holdStatus));
-        return r;
-    });
+    window.fetch = (...args) => {
+        const status = String(args[0]).includes('/stream/status');
+        const asked = status ? ++window.__polls.asked : 0;
+
+        return originalFetch(...args).then(async (r) => {
+            if (r.status >= 400) push(r.status + ' ' + r.url);
+            if (status && r.ok) r.clone().json().then((data) => window.__polls.answers.push({ asked, live: data.live === true, viewers: data.viewers ?? null }), () => {});
+            // Holds the status answer back by window.__holdStatus ms: a page hidden while a request is out.
+            if (status && window.__holdStatus) await new Promise((resolve) => setTimeout(resolve, window.__holdStatus));
+            return r;
+        });
+    };
     new PerformanceObserver((list) => list.getEntries().forEach((e) => { if (!e.hadRecentInput) window.__shifts.push({ value: e.value, at: e.startTime, nodes: e.sources.map((s) => s.node?.dataset?.test ?? s.node?.nodeName ?? '?') }); })).observe({ type: 'layout-shift', buffered: true });
     // A page the test can hide: document.visibilityState follows window.__hidden.
     Object.defineProperty(document, 'visibilityState', { configurable: true, get: () => (window.__hidden ? 'hidden' : 'visible') });
@@ -96,6 +104,12 @@ beforeEach(function () {
     File::ensureDirectoryExists($this->hls);
     config(['twentyone.stream.hls_dir' => $this->hls, 'twentyone.stream.public_url' => '/__test/live/stream.m3u8']);
     Cache::forever(LiveStreamFixture::START_KEY, microtime(true));
+
+    // The stream the mini player and /live load is there before a page asks for it: made inside that request, its ffmpeg
+    // ran in the one PHP process while a test waited for the next count.
+    if (LiveStreamFixture::available()) {
+        LiveStreamFixture::dir();
+    }
 });
 
 afterEach(function () {
@@ -154,6 +168,23 @@ function countProblems(Page $page): array
     return [...$page->evaluate('() => window.__errors'), ...$page->evaluate('() => performance.getEntries().filter((e) => typeof e.responseStatus === "number" && e.responseStatus >= 400).map((e) => e.responseStatus + " " + e.name)')];
 }
 
+/**
+ * The count changes on air and the page follows (`$shown`, a JS condition) within one poll, without a reload. That is
+ * counted, not timed: the first answer that carries the new count belongs to a poll the page had asked when the count
+ * changed (still on its way) or to the very next one. A budget in milliseconds measured the machine instead: whatever
+ * else the one PHP process served in between ran on the same clock (the stream fixture's ffmpeg: 0.8 s on an idle
+ * machine, and 2.8 s of it broke the 2.5 s there were). The 10 s only end the test on a page that never follows.
+ */
+function countFollows(Page $page, int $viewers, string $shown): void
+{
+    $asked = $page->evaluate('() => window.__polls.asked');
+    countAir(true, $viewers);
+    BrowserWait::until($page, "() => window.__polls.answers.some((a) => a.viewers === {$viewers}) && ({$shown})()", 10_000);
+    $carried = $page->evaluate("() => window.__polls.answers.find((a) => a.viewers === {$viewers}).asked");
+
+    expect($carried)->toBeLessThanOrEqual($asked + 1, "The count {$viewers} came with poll {$carried}, and {$asked} were asked when it changed.");
+}
+
 test('a new count reaches the badge, the tab, the mini player and /live within one poll, and no box moves', function (int $width) {
     countAir(true, 5);
     $page = countPage($width);
@@ -161,8 +192,7 @@ test('a new count reaches the badge, the tab, the mini player and /live within o
     // Shifts are taken from this moment on: the page's own load (fonts, x-cloak) is not the count's doing.
     $mark = $page->evaluate('() => performance.now()');
 
-    countAir(true, 128);
-    BrowserWait::until($page, '() => Alpine.store("live").viewers === 128', 2_500);
+    countFollows($page, 128, '() => Alpine.store("live").viewers === 128');
     Execution::instance()->wait(0.4);
     $after = $page->evaluate(COUNT_PROBE);
     countShot($page, "count-128-{$width}");
@@ -185,8 +215,7 @@ test('a new count reaches the badge, the tab, the mini player and /live within o
     // The mini player shows the count too, and follows it.
     $page->locator('[data-test=live-tab]')->click();
     BrowserWait::until($page, '() => document.querySelector("[data-test=live-mini]").checkVisibility()', 5_000);
-    countAir(true, 7);
-    BrowserWait::until($page, '() => Alpine.store("live").viewers === 7', 2_500);
+    countFollows($page, 7, '() => Alpine.store("live").viewers === 7');
     Execution::instance()->wait(0.4);
     $mini = $page->evaluate(COUNT_PROBE)['mini'];
     countShot($page, "count-mini-7-{$width}");
@@ -201,8 +230,7 @@ test('a new count reaches the badge, the tab, the mini player and /live within o
     $pageBefore = $page->evaluate(COUNT_PROBE)['page'];
     // Shifts are taken from this moment on: the page's own load (fonts, x-cloak) is not the count's doing.
     $mark = $page->evaluate('() => performance.now()');
-    countAir(true, 21);
-    BrowserWait::until($page, '() => document.querySelector("[data-test=live-viewers] b").textContent.trim() === "21"', 2_500);
+    countFollows($page, 21, '() => document.querySelector("[data-test=live-viewers] b").textContent.trim() === "21"');
     // Past the 0.24 s tick: a transform in flight is no shift, but it moves the measured box.
     Execution::instance()->wait(0.4);
     $pageAfter = $page->evaluate(COUNT_PROBE)['page'];

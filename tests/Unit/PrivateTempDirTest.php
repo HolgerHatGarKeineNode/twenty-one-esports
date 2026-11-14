@@ -1,5 +1,7 @@
 <?php
 
+use Tests\Support\LiveStreamFixture;
+
 // Every test process has a temp directory of its own (tests/Support/PrivateTempDir.php): a test that lists it, as
 // CasterFetchTest "leaves no file behind" does, never sees a neighbour's file.
 
@@ -26,4 +28,10 @@ it('sees a file made in the temp directory and nothing a neighbour does in /tmp'
         @unlink($neighbour);
         @unlink($own);
     }
+});
+
+// The one thing that has to outlive the process: the browser tests' stream (two minutes, made with ffmpeg). Inside the
+// process's own directory every pest process made it again, in the middle of the first request for a segment.
+it('keeps the live stream fixture beside its temp directory, where the next process finds it', function () {
+    expect(dirname(LiveStreamFixture::path()))->toBe(dirname(sys_get_temp_dir()));
 });

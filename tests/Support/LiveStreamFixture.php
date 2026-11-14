@@ -10,8 +10,8 @@ use RuntimeException;
  * A local HLS stream for the browser tests of the live player (P20), made
  * with ffmpeg the first time it is needed: two minutes of a test picture
  * with a tone, 256 x 144, in 2 s fMP4 segments (init.mp4 + seg-N.m4s, the
- * container the stream's supervisor writes), about 1.6 MB, in the system
- * temp directory and shared by every run and shard.
+ * container the stream's supervisor writes), about 1.6 MB, in the host's
+ * temp directory ({@see path()}) and shared by every run and shard.
  *
  * routes/testing.php serves it under /__test/live/: the segments as files,
  * the playlist as a live window of {@see WINDOW} segments that moves on
@@ -38,11 +38,23 @@ final class LiveStreamFixture
     }
 
     /**
+     * Where the set lies: beside the test process's own temp directory (tests/Support/PrivateTempDir.php), not in it.
+     * That one goes when the process ends, so every pest process made the two minutes again, inside the first request
+     * for a segment (measured: 0.5 to 0.8 s of ffmpeg on an idle machine, in the one PHP process that is also the test).
+     */
+    public static function path(): string
+    {
+        $own = $GLOBALS['__private_temp_dir'] ?? null;
+
+        return (is_string($own) ? dirname($own) : sys_get_temp_dir()).'/esports-live-fixture-v1';
+    }
+
+    /**
      * The directory with init.mp4 and the segments, made once.
      */
     public static function dir(): string
     {
-        $dir = sys_get_temp_dir().'/esports-live-fixture-v1';
+        $dir = self::path();
 
         if (is_file($dir.'/seg-'.(self::SEGMENTS - 1).'.m4s')) {
             return $dir;
