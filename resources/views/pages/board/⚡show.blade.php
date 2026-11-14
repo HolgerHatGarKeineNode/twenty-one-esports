@@ -422,12 +422,11 @@ new #[Layout('layouts::app', ['realtime' => true, 'scripts' => ['resources/js/bo
             <div class="grid min-w-0 grid-cols-2 gap-2 lg:flex lg:flex-col lg:gap-3">
                 <div class="flex min-w-0 flex-col items-start rounded-lg bg-card px-3 py-1 lg:hidden" data-test="player-top">
                     @if ($stones)
-                        {{-- Go: the side's stone before the name, its score behind it; the side that leads has its lead beside the clock. --}}
-                        <span class="flex w-full min-w-0 items-center gap-1.5 text-xs leading-4"><span class="size-3.5 shrink-0" x-html="stoneGlyph(topSide)"></span><span class="min-w-0 truncate" x-text="t.names[topSide]"></span><span class="ml-auto shrink-0 text-[13px] tabular-nums" :class="score && score.lead !== (topSide === 'w' ? 'b' : 'w') ? 'font-bold text-ink' : 'text-ink-2'" x-show="score" x-text="score ? points(score[topSide].score) : ''" data-test="score-top"></span></span>
+                        @include('pages.board.partials.go-player', ['at' => 'top'])
                     @else
                         <span class="max-w-full min-w-0 truncate text-xs leading-4"><span x-text="t.names[topSide]"></span></span>
+                    <span class="flex shrink-0 items-baseline gap-1.5"><span class="text-[11px] text-ink-3" x-text="topSide === 'w' ? t.white : t.black"></span><span role="timer" class="shrink-0 font-display text-lg font-bold whitespace-nowrap tabular-nums max-lg:leading-6" :class="state.clock.running === topSide ? 'text-btc-hi' : 'text-ink-2'" x-text="clock(topSide)" data-test="clock-top"></span></span>
                     @endif
-                    <span @class(['flex items-baseline gap-1.5', 'w-full' => $stones, 'shrink-0' => ! $stones])><span @class(['text-[11px] text-ink-3', 'sr-only' => $stones]) x-text="topSide === 'w' ? t.white : t.black"></span><span role="timer" class="shrink-0 font-display text-lg font-bold whitespace-nowrap tabular-nums max-lg:leading-6" :class="state.clock.running === topSide ? 'text-btc-hi' : 'text-ink-2'" x-text="clock(topSide)" data-test="clock-top"></span>@if ($stones)<b class="ml-auto shrink-0 text-[11px] tabular-nums text-ink max-[359px]:hidden" x-show="score && score.lead === topSide" x-text="score ? '+' + points(score.margin) : ''" data-test="lead-top"></b>@endif</span>
                 </div>
                 {{-- Black sees the board from its own side. --}}
                 {{-- Nothing of the block input stands over the board (a player on an iPhone SE, 2026-10-14: the hint and the buttons
@@ -460,12 +459,11 @@ new #[Layout('layouts::app', ['realtime' => true, 'scripts' => ['resources/js/bo
                 @endif
                 <div class="flex min-w-0 flex-col items-start rounded-lg bg-card px-3 py-1 max-lg:order-first max-lg:col-start-2 max-lg:row-start-1 lg:hidden" data-test="player-bottom">
                     @if ($stones)
-                        {{-- Go: the side's stone before the name, its score behind it; the side that leads has its lead beside the clock. --}}
-                        <span class="flex w-full min-w-0 items-center gap-1.5 text-xs leading-4"><span class="size-3.5 shrink-0" x-html="stoneGlyph(bottomSide)"></span><span class="min-w-0 truncate" x-text="t.names[bottomSide]"></span><span class="ml-auto shrink-0 text-[13px] tabular-nums" :class="score && score.lead !== (bottomSide === 'w' ? 'b' : 'w') ? 'font-bold text-ink' : 'text-ink-2'" x-show="score" x-text="score ? points(score[bottomSide].score) : ''" data-test="score-bottom"></span></span>
+                        @include('pages.board.partials.go-player', ['at' => 'bottom'])
                     @else
                         <span class="max-w-full min-w-0 truncate text-xs leading-4"><span x-text="t.names[bottomSide]"></span></span>
+                    <span class="flex shrink-0 items-baseline gap-1.5"><span class="text-[11px] text-ink-3" x-text="bottomSide === 'w' ? t.white : t.black"></span><span role="timer" class="shrink-0 font-display text-lg font-bold whitespace-nowrap tabular-nums max-lg:leading-6" :class="state.clock.running === bottomSide ? 'text-btc-hi' : 'text-ink-2'" x-text="clock(bottomSide)" data-test="clock-bottom"></span></span>
                     @endif
-                    <span @class(['flex items-baseline gap-1.5', 'w-full' => $stones, 'shrink-0' => ! $stones])><span @class(['text-[11px] text-ink-3', 'sr-only' => $stones]) x-text="bottomSide === 'w' ? t.white : t.black"></span><span role="timer" class="shrink-0 font-display text-lg font-bold whitespace-nowrap tabular-nums max-lg:leading-6" :class="state.clock.running === bottomSide ? 'text-btc-hi' : 'text-ink-2'" x-text="clock(bottomSide)" data-test="clock-bottom"></span>@if ($stones)<b class="ml-auto shrink-0 text-[11px] tabular-nums text-ink max-[359px]:hidden" x-show="score && score.lead === bottomSide" x-text="score ? '+' + points(score.margin) : ''" data-test="lead-bottom"></b>@endif</span>
                 </div>
 
                 @if ($stones)
@@ -512,7 +510,9 @@ new #[Layout('layouts::app', ['realtime' => true, 'scripts' => ['resources/js/bo
             </div>
 
             {{-- The middle column: opponent, who is to move, the game's input, moves, the player. --}}
-            <div @class(['flex min-w-0 flex-col gap-3', 'min-[87.5rem]:h-0 min-[87.5rem]:min-h-full' => $chat])>
+            {{-- Go's column is as tall as what it holds: its move list keeps three rows (five below 87.5rem) and takes what the board's
+                 height leaves beyond them (measured 2026-11-14 at 1440 x 900: half a row, in every state). --}}
+            <div @class(['flex min-w-0 flex-col gap-3', 'min-[87.5rem]:h-0 min-[87.5rem]:min-h-full' => $chat && ! $stones])>
                 {{-- The opponent (from lg; on a phone the two cards above the board). --}}
                 <div class="flex min-w-0 items-center gap-3 max-lg:hidden" data-test="side-card-top">
                     <span class="grid size-11 shrink-0 place-items-center rounded-[4px] bg-btc-press font-display text-sm font-bold text-btc" aria-hidden="true" x-text="(t.names[topSide] || '?').slice(0, 1).toUpperCase()"></span>
@@ -520,7 +520,7 @@ new #[Layout('layouts::app', ['realtime' => true, 'scripts' => ['resources/js/bo
                         <b class="truncate text-[15px]" x-text="t.names[topSide]"></b>
                         <span class="text-[13px] text-ink-2" x-text="topSide === 'w' ? t.white : t.black"></span>
                     </span>
-                    <span role="timer" class="shrink-0 font-display text-base font-bold whitespace-nowrap tabular-nums" :class="state.clock.running === topSide ? 'text-btc-hi' : 'text-ink-3'" x-text="clock(topSide)"></span>
+                    <span role="timer" class="shrink-0 font-display text-base font-bold whitespace-nowrap tabular-nums" :class="state.clock.running === topSide ? 'text-btc-hi' : 'text-ink-3'" x-text="clock(topSide)" @if ($stones) x-show="state.status === 'active'" @endif></span>
                 </div>
 
                 {{-- Who is to move, with the clock of that side (the chess turn card). --}}
@@ -603,9 +603,10 @@ new #[Layout('layouts::app', ['realtime' => true, 'scripts' => ['resources/js/bo
                 <p class="m-0 rounded-[4px] border border-btc-ring bg-feature py-2 pr-3 pl-4 text-[13px] font-bold text-btc-hi shadow-[inset_3px_0_0_var(--color-btc)]" x-show="repetitionWarning" x-text="repetitionWarning" data-test="repetition-note"></p>
                 {{-- Who would be ahead in the race (Blockli): steps to the goal and blocks left a side (DerCaddy, 2026-10-09). --}}
                 <p class="m-0 text-[13px] text-ink-2" x-show="standingLine" x-text="standingLine" data-test="standing"></p>
-                {{-- What each side would have if the game were counted now (Go), from lg; on a phone it stands under the board. --}}
+                {{-- What each side would have if the game were counted now (Go), from lg; on a phone it stands under the board. Once the
+                     game is over the result card holds it from lg (partials/result), and on a phone it follows that card. --}}
                 @if ($stones)
-                    <template x-if="score && (!phone || state.status !== 'active')">@include('pages.board.partials.go-score')</template>
+                    <template x-if="score && phone === (state.status !== 'active')">@include('pages.board.partials.go-score')</template>
                 @endif
                 @php
                     // The deciding game of a two-leg pairing in a tournament whose drawn decider goes to the race standing (user, 2026-10-11).
@@ -626,7 +627,7 @@ new #[Layout('layouts::app', ['realtime' => true, 'scripts' => ['resources/js/bo
                 @endif
 
                 {{-- The moves, two columns per move number as on daily chess; browsing steps through them. --}}
-                <div class="flex min-h-0 flex-col gap-2 rounded-lg bg-card p-4 lg:grow min-[87.5rem]:shrink" data-test="moves-card">
+                <div @class(['flex flex-col gap-2 rounded-lg bg-card p-4', 'min-h-0 lg:grow min-[87.5rem]:shrink' => ! $stones, 'lg:min-h-80 lg:flex-[1_1_0px] min-[87.5rem]:min-h-56' => $stones]) data-test="moves-card">
                     <div class="flex items-center justify-between gap-2">
                         <h2 class="m-0 text-[15px] font-bold">{{ __('Moves') }}</h2>
                         {{-- Browse the game (P8): start, back, forward, newest; the arrow keys do the same. --}}
@@ -641,7 +642,7 @@ new #[Layout('layouts::app', ['realtime' => true, 'scripts' => ['resources/js/bo
                         <span x-text="@js(__('Showing move :n of :total')).replace(':n', shownPly).replace(':total', state.moves.length)"></span>
                         <button type="button" class="cursor-pointer text-ink underline decoration-edge underline-offset-4" x-on:click="browse(state.moves.length)" data-test="history-back-to-game">{{ __('Back to the game') }}</button>
                     </p>
-                    <ol class="m-0 grid max-h-60 min-h-0 list-none grid-cols-2 content-start gap-x-2 overflow-y-auto p-0 text-[13px] tabular-nums lg:max-h-none lg:grow" data-test="moves">
+                    <ol @class(['m-0 grid max-h-60 min-h-0 list-none grid-cols-2 content-start gap-x-2 overflow-y-auto p-0 text-[13px] tabular-nums lg:max-h-none', 'lg:grow' => ! $stones, 'lg:flex-[1_1_0px]' => $stones]) data-test="moves">
                         <template x-for="m in state.moves" :key="m.ply">
                             <li class="min-w-0 border-b border-hairline"><button type="button" x-on:click="browse(m.ply)" :aria-current="shownPly === m.ply ? 'step' : null" data-test="move"
                                         class="flex min-h-10 w-full cursor-pointer items-center gap-2 rounded-sm px-2 text-left text-ink" :class="shownPly === m.ply ? 'bg-btc-press font-bold text-btc-hi' : 'hover:bg-row-hover'"><span class="w-7 shrink-0 text-ink-3" x-text="m.ply % 2 ? Math.ceil(m.ply / 2) + '.' : ''"></span><b class="truncate font-bold" x-text="m.notation"></b></button></li>
@@ -656,7 +657,7 @@ new #[Layout('layouts::app', ['realtime' => true, 'scripts' => ['resources/js/bo
                         <b class="truncate text-[15px]"><span x-text="t.names[bottomSide]"></span> <span class="font-normal text-ink-2" x-show="color === bottomSide">({{ __('you') }})</span></b>
                         <span class="text-[13px] text-ink-2" x-text="bottomSide === 'w' ? t.white : t.black"></span>
                     </span>
-                    <span role="timer" class="shrink-0 font-display text-base font-bold whitespace-nowrap tabular-nums" :class="state.clock.running === bottomSide ? 'text-btc-hi' : 'text-ink-3'" x-text="clock(bottomSide)"></span>
+                    <span role="timer" class="shrink-0 font-display text-base font-bold whitespace-nowrap tabular-nums" :class="state.clock.running === bottomSide ? 'text-btc-hi' : 'text-ink-3'" x-text="clock(bottomSide)" @if ($stones) x-show="state.status === 'active'" @endif></span>
                 </div>
             </div>
 

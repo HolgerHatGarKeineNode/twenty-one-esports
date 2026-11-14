@@ -494,6 +494,8 @@ registerAlpine(() => {
             // A go game that is over: its result with the next action follows the board on a phone and stays on the first screen
             // (the board gives way; at 320 x 640 the button stood 150 px below it).
             const result = phone && this.layout.input === 'stones' ? this.$root.querySelector('[data-first-screen]') : null;
+            // Where the first screen ends, before the result takes its part of it.
+            const fold = edge;
             if (shown(result)) edge -= result.getBoundingClientRect().height + 12;
             const drawn = board.getBoundingClientRect();
             // On a phone the game's actions under the board (abort, draw, resign) may follow below the first screen: the board keeps its size.
@@ -519,6 +521,14 @@ registerAlpine(() => {
                     const cut = shown(dock) ? skipped.find((el) => el.getBoundingClientRect().bottom > edge - 8) : null;
                     const gap = cut ? edge - cut.getBoundingClientRect().top : 0;
                     if (gap > 0) cut.style.marginTop = Math.ceil(gap) + 'px';
+                    // A game that is over: the score follows the result. Where it does not fit whole above the chat sheet it begins
+                    // where the first screen ends, a scroll away ("Show area" stood half under the sheet at 390 x 844, not to be tapped).
+                    const strip = this.state.status !== 'active' ? this.$root.querySelector('[data-test=count]') : null;
+                    if (strip) {
+                        strip.style.marginTop = '';
+                        const at = strip.getBoundingClientRect();
+                        if (at.top + scrollY < fold && at.bottom + scrollY > fold - 8) strip.style.marginTop = Math.ceil(fold - at.top - scrollY) + 'px';
+                    }
                 }
                 // The warning over the board follows the board's new size.
                 if (this.layout.input === 'blocks') this.$nextTick(() => this.measureBand());
@@ -528,6 +538,7 @@ registerAlpine(() => {
             box.style.maxWidth = '';
             page.style.paddingBottom = '';
             column.querySelectorAll(':scope > [data-fit-skip]').forEach((el) => (el.style.marginTop = ''));
+            this.$root.querySelectorAll('[data-test=count]').forEach((el) => (el.style.marginTop = ''));
             // The board gives way to the actions and the lower card only down to DESKTOP_BOARD: below that they follow under the
             // first screen. A short window (a laptop at 150 %, about 1250 x 555: DerCaddy, 2026-10-14, the board had fallen to its
             // floor of 300 px) gets the board that fits below the sticky header (the root's scroll-padding-top) with 16 px of air:
@@ -1281,6 +1292,19 @@ registerAlpine(() => {
             if (this.state.status === 'active') return score.lead ? fill(words.leads) : words.even;
 
             return words.uncounted + ' ' + (score.lead ? fill(words.lead) : words.even);
+        },
+
+        /**
+         * The line over the score. While the game runs: who leads. Once it is over the result card says who won by how much,
+         * so a counted game has no line here; a game that ended another way says that its score was not counted.
+         */
+        get scoreNote() {
+            return this.counted ? '' : this.leadLine;
+        },
+
+        /** The side that won a finished game (no side of a draw). */
+        won(side) {
+            return this.resultSides.length === 1 && this.resultSides[0] === side;
         },
 
         /** "Black wins by 0.5.": the result a count gives. */
