@@ -7,6 +7,7 @@ use App\Support\Board\BlockliRules;
 use App\Support\Board\BoardGameService;
 use App\Support\Board\BoardThrottle;
 use App\Support\Board\GoRules;
+use Illuminate\Testing\TestResponse;
 use Livewire\Livewire;
 use Tests\Support\BlockliOn;
 use Tests\Support\GoOn;
@@ -146,3 +147,25 @@ test('the practice pages\' judge has a ceiling a minute, for a guest too', funct
     'Go' => ['pages::board.go-practice', [], '9/9/9/9/9/9/9/9/9 x - 0'],
     'Blockli' => ['pages::board.practice', ['board' => 'blockli'], fn () => (new BlockliRules)->serialize((new BlockliRules)->start())],
 ]);
+
+/**
+ * One Livewire request of a guest (no session of its own) that replays a page's snapshot with `calls`, on as many
+ * copies of the page as `components` says: the batch a script sends.
+ *
+ * @param  list<array{0: string, 1?: list<mixed>}>  $calls
+ */
+function boardBatch(BoardGame $game, array $calls, int $components = 1): TestResponse
+{
+    $snapshot = json_encode(Livewire::test('pages::board.show', ['boardGame' => $game])->snapshot);
+    $component = ['snapshot' => $snapshot, 'updates' => [], 'calls' => array_map(fn (array $call): array => ['method' => $call[0], 'params' => $call[1] ?? [], 'metadata' => []], $calls)];
+
+    return test()->withHeaders(['X-Livewire' => '1', 'Sec-Fetch-Site' => 'same-origin'])
+        ->postJson(app('livewire')->getUpdateUri(), ['components' => array_fill(0, $components, $component)]);
+}
+
+test('what the board script needs is not an action of the page: a guest batch of 50 config() calls yields no record (security N2)', function () {
+    $response = boardBatch(goLongGame(20), array_fill(0, 50, ['config']));
+
+    expect($response->isSuccessful())->toBeFalse()
+        ->and(substr_count((string) $response->getContent(), '"moves"'))->toBe(0);
+});

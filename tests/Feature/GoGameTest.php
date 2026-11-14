@@ -27,6 +27,8 @@ use App\Support\Tournaments\GameProfile;
 use Livewire\Livewire;
 use Tests\Support\GoOn;
 
+use function Livewire\invade;
+
 /*
 |--------------------------------------------------------------------------
 | Go in the league (DerCaddy, 2026-10-27)
@@ -196,7 +198,8 @@ test('the board is a go board: stones by colour, star points, the same way round
         ->and($service->snapshot($game)['moves'])->each->not->toHaveKey('pieces')
         ->and($service->snapshot($game)['moves'][1])->toMatchArray(['move' => 'd4', 'path' => ['d4'], 'side' => 'b', 'taken' => []]);
 
-    $config = Livewire::actingAs($game->player('w'))->test('pages::board.show', ['boardGame' => $game])->instance()->config();
+    // The page's config is drawn into the page once; it is no endpoint the browser can call.
+    $config = invade(Livewire::actingAs($game->player('w'))->test('pages::board.show', ['boardGame' => $game])->instance())->config();
 
     expect($config['labels']['white'])->toBe('Black')
         ->and($config['labels']['black'])->toBe('White')

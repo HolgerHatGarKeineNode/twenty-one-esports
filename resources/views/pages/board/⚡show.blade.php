@@ -288,11 +288,12 @@ new #[Layout('layouts::app', ['realtime' => true, 'scripts' => ['resources/js/bo
     }
 
     /**
-     * Everything the board script needs, translated once here.
+     * Everything the board script needs, translated once here: drawn into the page, no action a browser can call (it
+     * carries the whole record, which fetchState() alone hands out, and that a few times a minute).
      *
      * @return array<string, mixed>
      */
-    public function config(): array
+    protected function config(): array
     {
         $games = app(BoardGameService::class);
         $rules = $games->rulesOf($this->boardGame);
