@@ -7,6 +7,7 @@ use App\Support\Board\BlockliRules;
 use App\Support\Board\BoardGameService;
 use App\Support\Board\BoardThrottle;
 use App\Support\Board\GoRules;
+use Illuminate\Support\Str;
 use Illuminate\Testing\TestResponse;
 use Livewire\Livewire;
 use Tests\Support\BlockliOn;
@@ -258,4 +259,40 @@ test('the short answers have a ceiling a minute too: the clock check, the state 
     expect($withState)->toBe(BoardThrottle::REFUSALS_PER_MINUTE)
         // The pass, the one legal move, is answered as ever.
         ->and($player->call('move', GoRules::PASS, 560)->effects['returns'][0])->toMatchArray(['ok' => true, 'error' => null]);
+});
+
+test('a script behind a shared address does not lock the players there out: a player is counted on his own, a refused call not on the address (security N3)', function () {
+    // A guest with a session of its own, as each browser behind the address has.
+    $guest = function (): void {
+        auth()->logout();
+        request()->setLaravelSession(session()->driver());
+        session()->setId(Str::random(40));
+    };
+    $allowed = function (string $what, int $calls): int {
+        $passed = 0;
+
+        for ($call = 0; $call < $calls; $call++) {
+            $passed += BoardThrottle::allows($what, 3) ? 1 : 0;
+        }
+
+        return $passed;
+    };
+
+    // One guest far over its own room: three calls pass, and the 40 refused ones take nothing of the address's room.
+    $guest();
+    expect($allowed('hammered', 43))->toBe(3);
+    $guest();
+    expect($allowed('hammered', 1))->toBe(1);
+
+    // Ten guests use up the address (ten times a visitor's room): the next guest there is refused, a signed-in player is not.
+    for ($visitor = 0; $visitor < 10; $visitor++) {
+        $guest();
+        expect($allowed('shared', 3))->toBe(3);
+    }
+
+    $guest();
+    expect($allowed('shared', 1))->toBe(0);
+
+    $this->actingAs(User::factory()->create());
+    expect($allowed('shared', 5))->toBe(3);
 });
