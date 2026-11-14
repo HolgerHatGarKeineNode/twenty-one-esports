@@ -7,6 +7,10 @@
     a streak, the wins of the week, new players. The caller sets size and
     colour; the icon inherits the colour. `chip`: false drops the other
     side's tag chip (the spotlight headline names the side in words).
+
+    `wrap-anywhere`, not `break-words`: the line sits in a table cell (/clans), and only `anywhere` lets the column
+    shrink below its longest word. A player's name of one long word (100 letters at the most, ProfileCache) made the
+    table scroll sideways on a phone: with 17 letters the German one, 358 px in 341.
 --}}
 @php
     $type = $moment['type'];
@@ -30,5 +34,5 @@
 
 <span {{ $attributes->class('flex min-w-0 items-start gap-2') }} data-test="clan-moment" data-moment="{{ $type }}">
     <x-icon :name="$icon" :size="16" class="mt-0.5 shrink-0" />
-    <span class="min-w-0 break-words">@if (in_array($type, ['series', 'hyper'], true) && $chip)<x-clan-tag :tag="$moment['opponent_tag']" size="sm" class="mr-1.5 align-[-3px]" />@endif{{ $text }}</span>
+    <span class="min-w-0 wrap-anywhere">@if (in_array($type, ['series', 'hyper'], true) && $chip)<x-clan-tag :tag="$moment['opponent_tag']" size="sm" class="mr-1.5 align-[-3px]" />@endif{{ $text }}</span>
 </span>

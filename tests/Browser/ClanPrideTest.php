@@ -1,5 +1,6 @@
 <?php
 
+use App\Enums\ClanRole;
 use App\Enums\SeriesStatus;
 use App\Models\ChessGame;
 use App\Models\Clan;
@@ -8,6 +9,7 @@ use App\Models\Lineup;
 use App\Models\SeriesMatch;
 use App\Models\User;
 use App\Support\Clans\ClanLogos;
+use App\Support\Nostr\ProfileCache;
 use Illuminate\Support\Facades\File;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Storage;
@@ -15,6 +17,7 @@ use Pest\Browser\Playwright\Page;
 use Pest\Browser\Support\ComputeUrl;
 use Tests\Support\BrowserConsole;
 use Tests\Support\BrowserWait;
+use Tests\Support\TestSigner;
 
 pest()->group('browser');
 
@@ -145,6 +148,7 @@ function clanPrideWorld(int $count, int $offset = 0): void
 test('the clan table with marks and proud moments at 0, 2 and 12 clans, 375 and 1440 px, English and German', function () {
     $viewer = User::factory()->create(['name' => 'Vera Viewer']);
     $controlled = false;
+    $streakName = '';
 
     foreach ([0, 2, 12] as $size) {
         if ($size === 2) {
@@ -162,9 +166,16 @@ test('the clan table with marks and proud moments at 0, 2 and 12 clans, 375 and 
             $loser = Clan::query()->where('name', 'Block 21')->sole()->lineups()->sole();
             SeriesMatch::factory()->create(['challenger_lineup_id' => $winner->id, 'challenged_lineup_id' => $loser->id, 'status' => SeriesStatus::Confirmed, 'winner' => 'challenger',
                 'result_games' => [['winner' => 'challenger', 'challenger' => 3, 'challenged' => 1], ['winner' => 'challenger', 'challenger' => 2, 'challenged' => 0]], 'finished_at' => now()->subDay()]);
-            $streaker = Clan::query()->where('name', 'Genesis Guild')->sole()->owner_id;
+            // The streak is a player's with the longest name the league keeps of a Nostr profile, in one word: 301 letters
+            // go in and ProfileCache cuts them. The factory's random name decided this test before: with 17 letters the
+            // German table scrolled sideways at 375 px (358 in 341 px), with 25 the English one too (384 in 341 px).
+            $signer = new TestSigner;
+            $streaker = User::factory()->withPubkey($signer->pubkey)->create(['name' => null, 'profile_event_at' => null]);
+            ProfileCache::apply($streaker, $signer->sign(0, content: (string) json_encode(['name' => str_repeat('Satoshi', 43)])));
+            $streakName = (string) $streaker->refresh()->name;
+            ClanMember::query()->create(['clan_id' => Clan::query()->where('name', 'Genesis Guild')->sole()->id, 'user_id' => $streaker->id, 'role' => ClanRole::Member, 'joined_at' => now()->subDays(60)]);
             foreach (range(1, 4) as $hours) {
-                ChessGame::factory()->finished('1-0')->create(['white_id' => $streaker, 'ended_at' => now()->subHours($hours)]);
+                ChessGame::factory()->finished('1-0')->create(['white_id' => $streaker->id, 'ended_at' => now()->subHours($hours)]);
             }
         }
 
@@ -205,8 +216,11 @@ test('the clan table with marks and proud moments at 0, 2 and 12 clans, 375 and 
             if ($size === 12) {
                 $moments = collect($m['cards'])->mapWithKeys(fn (array $card): array => [Clan::query()->where('slug', $card['clan'])->value('name') => $card['moment']]);
 
+                // The row really carries the long name: at least the 50 letters the league's own profile form takes, no space.
                 expect($moments['Mempool Maniacs'])->toContain('Block 21')->toContain('2:0')
-                    ->and($moments['Genesis Guild'])->toContain($locale === 'de' ? '4 Partien in Folge' : '4 games in a row');
+                    ->and(mb_strlen($streakName))->toBeGreaterThanOrEqual(50)
+                    ->and($streakName)->not->toContain(' ')
+                    ->and($moments['Genesis Guild'])->toContain($streakName)->toContain($locale === 'de' ? '4 Partien in Folge' : '4 games in a row');
 
                 // A search (filtered in the browser since performance plan P7): one row shown.
                 $page->locator('#clan-q')->fill('genesis');
