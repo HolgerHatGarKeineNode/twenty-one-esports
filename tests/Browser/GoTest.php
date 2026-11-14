@@ -665,12 +665,37 @@ test('beside the board both players, whose move it is and the answers to the pas
     'desktop 1024' => [1024, 768, 5],
 ]);
 
-test('on a phone nothing to press on a finished Go game\'s page is cut by the bars at the bottom, and everything can be scrolled clear of them', function (int $width, int $height) {
+/**
+ * Until the page stands still: the fonts are in, no animation runs (the result card comes in once), and the board, the
+ * result, the score strip and the bars fixed to the bottom have kept their places for twenty frames. goLiveSettle()
+ * watches the board alone; the strip under it is placed after the board (boardGame.js fitBoard()), and it is what the
+ * lock below measures. No sleeping, no second try: the frames decide.
+ */
+function goLiveAtRest(Page $page): void
+{
+    $page->evaluate(<<<'JS'
+        () => document.fonts.ready.then(() => new Promise((resolve) => {
+            let [last, same] = ['', 0];
+            const fixed = () => [...document.querySelectorAll('body *')].filter((el) => getComputedStyle(el).position === 'fixed' && el.checkVisibility());
+            const check = () => {
+                const parts = [...document.querySelectorAll('[data-test=board], [data-test=board-result], [data-test=count], [data-test=moves-card]'), ...fixed()];
+                const now = parts.map((el) => { const r = el.getBoundingClientRect(); return [r.x, r.y, r.width, r.height].map(Math.round).join(); }).join('|') + '|' + Math.round(scrollY) + '|' + document.documentElement.scrollHeight;
+                same = now === last ? same + 1 : 0;
+                last = now;
+                if (same >= 20 && document.getAnimations().every((a) => a.playState !== 'running')) resolve(true);
+                else requestAnimationFrame(check);
+            };
+            check();
+        }))
+        JS);
+}
+
+test('on a phone nothing to press on a finished Go game\'s page is under the bars at the bottom while its block shows, and everything can be scrolled clear of them', function (int $width, int $height) {
     [$anna, $bert] = User::factory()->count(2)->create();
     $game = goLivePlayed($anna, $bert, ['e5', 'g5', 'c3', 'g3', 'pass', 'pass']);
     $page = goLivePage($anna, route('board.show', ['boardGame' => $game, 'lang' => 'de'], false), $width, $height, true);
     BrowserWait::until($page, '() => window.Alpine && document.querySelector("[data-test=next-opponent]")?.getClientRects().length > 0', 10_000);
-    goLiveSettle($page);
+    goLiveAtRest($page);
 
     $under = $page->evaluate(<<<'JS'
         () => {
@@ -679,13 +704,25 @@ test('on a phone nothing to press on a finished Go game\'s page is cut by the ba
                 .filter((el) => el.checkVisibility() && el.getBoundingClientRect().width > 1 && !el.disabled && !el.closest('svg') && !el.closest('[data-test=moves]') && !fixed(el));
             const hit = (el, x, y) => { const at = document.elementFromPoint(x, y); return !!at && (el.contains(at) || at.contains(el)); };
             const name = (el) => el.dataset.test ?? el.innerText.trim().slice(0, 24);
-            // As the page stands: in the window, and partly under something else.
-            const cut = all.filter((el) => {
+            // Where the bars fixed to the bottom begin (the chat sheet, the tab bar): the first screen ends there.
+            const bars = [...document.querySelectorAll('body *')].filter((el) => getComputedStyle(el).position === 'fixed' && el.checkVisibility() && el.getBoundingClientRect().height > 0 && el.getBoundingClientRect().top > innerHeight / 2);
+            const fold = Math.min(innerHeight, ...bars.map((el) => el.getBoundingClientRect().top));
+            // Nine points of a control, the ones inside the window: which of them can be pressed.
+            const seen = (el) => {
                 const r = el.getBoundingClientRect();
-                if (r.bottom <= 0 || r.top >= innerHeight) return false;
-                const seen = [r.top + 2, r.top + r.height / 2, r.bottom - 2].filter((y) => y >= 0 && y < innerHeight).map((y) => hit(el, r.left + r.width / 2, y));
-                return seen.some(Boolean) && !seen.every(Boolean);
-            }).map(name);
+                const points = [0.2, 0.5, 0.8].flatMap((fx) => [r.top + 2, r.top + r.height / 2, r.bottom - 2].map((y) => [r.left + r.width * fx, y])).filter(([, y]) => y >= 0 && y < innerHeight);
+                return points.map(([x, y]) => hit(el, x, y));
+            };
+            const inWindow = all.filter((el) => { const r = el.getBoundingClientRect(); return r.bottom > 0 && r.top < innerHeight; });
+            // As the page stands: partly under the bars (some of it can be pressed, some not).
+            const cut = inWindow.filter((el) => { const s = seen(el); return s.some(Boolean) && !s.every(Boolean); }).map(name);
+            // As the page stands: wholly under the bars, while the block it belongs to begins above them: the player sees
+            // the block and not its control. A block that begins where the first screen ends is a scroll away as a whole.
+            const buried = inWindow.filter((el) => {
+                const s = seen(el);
+                const block = el.closest('[data-test=count], [data-test=board-result], [data-test=board-actions], [data-test=moves-card]') ?? el;
+                return s.length > 0 && !s.some(Boolean) && block.getBoundingClientRect().top < fold - 1;
+            }).map((el) => name(el) + ' in a block from ' + Math.round((el.closest('[data-test=count], [data-test=board-result], [data-test=board-actions], [data-test=moves-card]') ?? el).getBoundingClientRect().top) + ', bars from ' + Math.round(fold));
             // Scrolled to: its middle and its lower edge can be pressed.
             const lost = all.filter((el) => {
                 el.scrollIntoView({ block: 'center', behavior: 'instant' });
@@ -693,13 +730,16 @@ test('on a phone nothing to press on a finished Go game\'s page is cut by the ba
                 return !hit(el, r.left + r.width / 2, r.top + r.height / 2) || !hit(el, r.left + r.width / 2, r.bottom - 3);
             }).map(name);
             scrollTo({ top: 0, behavior: 'instant' });
-            return { controls: all.map(name), cut, lost };
+            return { controls: all.map(name), bars: bars.length, cut, buried, lost };
         }
     JS);
 
-    // Before: "Fläche zeigen" stood half under the chat sheet at 390 x 844.
+    // Before: at 390 x 844 the score strip began 6 px above the chat sheet and its "Show area" stood partly under it. A
+    // strip that begins where the first screen ends is a scroll away as a whole (boardGame.js fitBoard()): not a fault.
     expect($under['controls'])->toContain('toggle-area')->toContain('next-opponent')
-        ->and($under['cut'])->toBe([], "{$width} x {$height}: cut by the bars")
+        ->and($under['bars'])->toBeGreaterThan(0, "{$width} x {$height}: no bar fixed to the bottom was found")
+        ->and($under['cut'])->toBe([], "{$width} x {$height}: partly under the bars")
+        ->and($under['buried'])->toBe([], "{$width} x {$height}: wholly under the bars while its block shows")
         ->and($under['lost'])->toBe([], "{$width} x {$height}: cannot be scrolled clear");
 })->with([
     'phone 320' => [320, 640],
