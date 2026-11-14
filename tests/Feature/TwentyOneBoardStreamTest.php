@@ -23,6 +23,8 @@ use App\Models\Tournament;
 use App\Models\TournamentParticipant;
 use App\Models\User;
 use App\Support\Board\BoardGameService;
+use App\Support\Board\StoneBoardDrawing;
+use App\Support\Cards\StoneBoardArt;
 use App\Support\StreamBot\PrideNotes;
 use App\Support\StreamBot\StreamBotCopy;
 use App\Support\Tournaments\FormatOptions;
@@ -39,6 +41,7 @@ use Illuminate\Support\Facades\Queue;
 use Illuminate\Support\Facades\Schema;
 use Tests\Support\BlockliOn;
 use Tests\Support\CheckersGame;
+use Tests\Support\GoOn;
 use Tests\Support\NineMensMorrisOn;
 
 beforeEach(function () {
@@ -197,6 +200,59 @@ test('a running Blockli game shows its blocks as bars, the blocks each side has 
         ->and(collect($drawing['bars'])->firstWhere('kind', 'block-h')['w'])->toEqualWithDelta(180 * $scale, 0.02)
         ->and($drawing['cells'][0][0])->toBeGreaterThan(48.0)
         ->and($game->id)->toBeInt();
+});
+
+test('a running Go game is on its wooden board: shaded stones, the stone set last ringed, none after a pass, each player\'s stone on the card', function () {
+    GoOn::play([13]);
+    $service = app(BoardGameService::class);
+    $game = $service->start('go-13', User::factory()->create(['name' => 'Carl']), User::factory()->create(['name' => 'Dora']));
+
+    foreach (['d10', 'j4', 'j10'] as $move) {
+        $game = $service->move($game->refresh(), $game->player($game->turn), $move);
+    }
+
+    [$data, $svg] = boardScene();
+    $go = StoneBoardDrawing::layout($data['board']['view'], $data['board']['last'], 40, 112, 496);
+
+    expect($data['board']['last'])->toBe(['j10'])
+        // The slab in the frame's square instead of the other boards' frame and ground.
+        ->and($svg)->toContain('data-unit="wood" x="40" y="112" width="496"', 'fill="url(#go-wood)"', StoneBoardArt::gradients())
+        ->and($svg)->not->toContain('fill="#3A2C14"')->not->toContain('fill="#1C1C20"')
+        // The first side plays black: two black stones, one white, each lit and with its shadow.
+        ->and(substr_count($svg, 'data-piece="b" data-stone="black"'))->toBe(2)
+        ->and(substr_count($svg, 'data-piece="w" data-stone="white"'))->toBe(1)
+        ->and(substr_count($svg, 'fill="url(#go-stone-shadow)"'))->toBe(3)
+        // 13 lines each way, the five star points, and the ring on the black stone set last: orange, never a stone's colour.
+        ->and(substr_count($svg, '<line '))->toBe(26)
+        ->and($go['stars'])->toHaveCount(5)
+        ->and($svg)->toContain('data-last="black"', 'stroke="'.StoneBoardArt::RING['black'].'"')
+        ->and($go['ring'])->toMatchArray(['kind' => 'black'])
+        // A stone covers 0.94 of the distance between two lines.
+        ->and($go['radius'] * 2 / $go['unit'])->toEqualWithDelta(0.94, 0.01)
+        // The cards: the core's second side sets white, its first black.
+        ->and($svg)->toContain('data-unit="side-0" data-stone="white"', 'data-unit="side-1" data-stone="black"')
+        // The scene's gradients are the page's.
+        ->and(file_get_contents(resource_path('js/boardGame.js')))->toContain('<radialGradient id="go-stone-shadow"><stop offset="0.7" stop-color="'.StoneBoardArt::SHADOW.'" stop-opacity="0.5"/><stop offset="1" stop-color="'.StoneBoardArt::SHADOW.'" stop-opacity="0"/></radialGradient>');
+
+    // After a pass no stone was set last: no ring.
+    $service->move($game->refresh(), $game->player($game->turn), 'pass');
+    [$data, $svg] = boardScene();
+
+    expect($data['board']['last'])->toBe([])
+        ->and($svg)->not->toContain('data-last=')
+        ->and(substr_count($svg, 'data-piece="b" data-stone="black"'))->toBe(2);
+});
+
+test('the other board games keep their board: no wood and no stone gradients on their scene', function () {
+    NineMensMorrisOn::play();
+    $service = app(BoardGameService::class);
+    $game = $service->start(NineMensMorris::SLUG, $anna = User::factory()->create(), User::factory()->create());
+    $service->move($game, $anna, 'd7');
+
+    [, $svg] = boardScene();
+
+    expect($svg)->toContain('fill="#3A2C14"', 'fill="#1C1C20"', 'data-piece="w"')
+        ->and($svg)->not->toContain('go-wood')->not->toContain('go-stone')->not->toContain('data-stone=');
 });
 
 /* ---------- The rotation ------------------------------------------------------------------------------------ */

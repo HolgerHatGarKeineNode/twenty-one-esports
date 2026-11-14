@@ -4,6 +4,9 @@
     the side to move in a near-black block). Without one: the terminal ticker of d4, the board games switched on as
     their start positions on the right, the claim and three facts on the left. The board is the rules' own view
     (BoardRules::view()) scaled by BoardScene::drawing(), so the view knows no game.
+    A board of stones (Go) is the board of its page and its link preview instead (StoneBoardDrawing, StoneBoardArt): the
+    wooden slab in the place of the frame, shaded stones with their shadow, the stone set last ringed in orange (none
+    after a pass), and beside each player's picture the stone that player sets.
 
     Data contract (BoardScene::data()):
       $board     array{game: string, mode: string, e.g. "Checkers · Daily, casual", daily?: bool (correspondence:
@@ -18,6 +21,8 @@
 @use('App\Support\TwentyOne\Stream\RotationKit', 'K')
 @use('App\Support\TwentyOne\Stream\BoardScene', 'BS')
 @use('App\Support\Board\BlockspaceDrawing', 'BSD')
+@use('App\Support\Board\StoneBoardDrawing', 'SBD')
+@use('App\Support\Cards\StoneBoardArt', 'SBA')
 @php
     $live = is_array($board ?? null) ? $board : null;
     $drawings = [];
@@ -31,9 +36,13 @@
         // (the now-playing column covers x 1040..1280); the name across the card on top, face and clock below.
         // Blockspace draws its own way (BlockspaceDrawing): square stones in orange and blue, and the mempool ladder beside them.
         $liveBlockspace = ($live['slug'] ?? null) === 'blockspace';
+        // Go's slab takes the frame's square (x 40..536, y 112..608), so its stones are as large as the scene allows.
+        $liveStones = ! $liveBlockspace && SBD::draws($live['view']);
         $drawings[] = $liveBlockspace
             ? ['x' => 48, 'y' => 120, 'size' => 480, 'bs' => BSD::layout($live['view'], $live['last'] ?? [], 64, 136, 448)]
-            : BS::drawing($live['view'], $live['last'] ?? [], 48, 120, 480);
+            : ($liveStones
+                ? ['x' => 48, 'y' => 120, 'size' => 480, 'go' => SBD::layout($live['view'], $live['last'] ?? [], 40, 112, 496)]
+                : BS::drawing($live['view'], $live['last'] ?? [], 48, 120, 480));
         $sideFill = $liveBlockspace ? BSD::FILL : BS::PIECE_FILL;
         $y = 160;
         foreach ([['black', 'b', 'Black player'], ['white', 'w', 'White player']] as [$side, $colour, $fallback]) {
@@ -74,7 +83,9 @@
             $bx = count($shown) > 1 ? 568 + $i * 232 : 600;
             $drawings[] = ($entry['slug'] ?? null) === 'blockspace'
                 ? ['x' => $bx, 'y' => 150, 'size' => $boardSize, 'bs' => BSD::layout($entry['view'], [], $bx + 8, 158, $boardSize - 16)]
-                : BS::drawing($entry['view'], [], $bx, 150, $boardSize);
+                : (SBD::draws($entry['view'])
+                    ? ['x' => $bx, 'y' => 150, 'size' => $boardSize, 'go' => SBD::layout($entry['view'], [], $bx - 8, 142, $boardSize + 16)]
+                    : BS::drawing($entry['view'], [], $bx, 150, $boardSize));
             $labels[] = ['x' => $bx, 'w' => $boardSize, 'y' => 150 + $boardSize + 44, 'text' => K::fit($entry['name'] ?? '', K::MONO, 20, $boardSize)];
         }
         $names = [];
@@ -91,9 +102,13 @@
             ['Ladder', 'Climb its own ladder.'],
         ];
     }
+    $stoneDefs = false;
+    foreach ($drawings as $dr) {
+        $stoneDefs = $stoneDefs || isset($dr['go']);
+    }
 @endphp
 <svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="1280" height="720" viewBox="0 0 1280 720">
-@include('stream.rotation.partials.defs')
+@include('stream.rotation.partials.defs', ['stoneDefs' => $stoneDefs])
 <rect width="1280" height="720" fill="#0A0A0B"/>
 @include('stream.rotation.partials.backdrop', ['uri' => $backdrop ?? null, 'bdDim' => $live ? 0.7 : 0.78])
 @if ($live)
@@ -101,6 +116,9 @@
 @endif
 @foreach ($drawings as $i => $dr)
 <g data-unit="board-{{ $i }}">
+@if (isset($dr['go']))
+@include('stream.rotation.partials.stone-board', ['go' => $dr['go']])
+@else
 <rect x="{{ $dr['x'] - 8 }}" y="{{ $dr['y'] - 8 }}" width="{{ $dr['size'] + 16 }}" height="{{ $dr['size'] + 16 }}" fill="#3A2C14"/>
 @if (isset($dr['bs']))
 <rect x="{{ $dr['x'] }}" y="{{ $dr['y'] }}" width="{{ $dr['size'] }}" height="{{ $dr['size'] }}" fill="{{ BSD::GROUND }}"/>
@@ -133,6 +151,7 @@
 <rect data-bar="{{ $bar['side'] }}:{{ $bar['kind'] }}" x="{{ $bar['x'] }}" y="{{ $bar['y'] }}" width="{{ $bar['w'] }}" height="{{ $bar['h'] }}" rx="{{ $bar['r'] }}" fill="{{ BS::PIECE_FILL[$bar['side']] ?? '#F4F4F5' }}" stroke="{{ BS::PIECE_STROKE[$bar['side']] ?? '#A1A1AA' }}" stroke-width="{{ round(max(1, $bar['r'] * 0.24), 2) }}"/>
 @endforeach
 @endif
+@endif
 </g>
 @endforeach
 @if ($live)
@@ -142,7 +161,13 @@
 @if ($blk['active'])<rect x="{{ $cardX }}" y="{{ $blk['y'] }}" width="{{ $cardW }}" height="{{ $blk['h'] }}" fill="#17120A"/>@endif
 @include('stream.rotation.partials.face', ['face' => ['uri' => $blk['avatar'], 'tag' => null], 'x' => $blk['nx'], 'y' => $blk['faceY'], 'd' => $blk['d'], 'id' => 'p'.$i,
     'fUnit' => 'face-'.$i, 'fRing' => $blk['active'] ? '#F7931A' : '#17120A'])
+@if ($liveStones)
+{{-- The stone this player sets, as beside the name on the link preview (StoneBoardArt::glyph()): lit, with its light rim. --}}
+<circle cx="{{ $blk['nx'] + $blk['d'] - 12 }}" cy="{{ $blk['faceY'] + $blk['d'] - 12 }}" r="{{ $blk['active'] ? 19.5 : 15.5 }}" fill="#17120A"/>
+<circle data-unit="side-{{ $i }}" data-stone="{{ SBD::KIND[$blk['colour']] }}" cx="{{ $blk['nx'] + $blk['d'] - 12 }}" cy="{{ $blk['faceY'] + $blk['d'] - 12 }}" r="{{ $blk['active'] ? 16.5 : 12.5 }}" fill="url(#go-stone-{{ SBD::KIND[$blk['colour']] }})" stroke="{{ SBA::RIM[SBD::KIND[$blk['colour']]] }}" stroke-width="1.5"/>
+@else
 <circle data-unit="side-{{ $i }}" cx="{{ $blk['nx'] + $blk['d'] - 12 }}" cy="{{ $blk['faceY'] + $blk['d'] - 12 }}" r="{{ $blk['active'] ? 18 : 14 }}" fill="{{ $sideFill[$blk['colour']] }}" stroke="#17120A" stroke-width="3"/>
+@endif
 <text data-unit="name-{{ $i }}" data-box="{{ $blk['nx'] - 1 }} {{ $blk['y'] }} {{ K::CONTENT_RIGHT }} {{ $blk['faceY'] - 4 }}" x="{{ $blk['nx'] }}" y="{{ $blk['nameY'] }}" font-family="{{ $blk['name']['font'] }}" font-weight="800" font-size="{{ $blk['nameSize'] }}" fill="{{ $blk['active'] ? '#FFFFFF' : '#17120A' }}">{{ $blk['name']['text'] }}</text>
 @if ($blk['noClock'])
 <text data-unit="clock" x="{{ $blk['cx'] }}" y="{{ $blk['clockY'] }}" font-family="JetBrains Mono" font-weight="700" font-size="24" fill="#17120A">1 move a day</text>
