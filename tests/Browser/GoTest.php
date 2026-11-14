@@ -776,3 +776,49 @@ test('the pass that asks is one question with two answers: "Keep playing" has th
     'phone 320 (touch)' => [320, 640, true],
     'desktop 1440 (keys)' => [1440, 900, false],
 ]);
+
+test('the switch between Go\'s sizes is one control on the lobby and the ladder: three equal segments of 44 px in one line, this size marked without the orange of an action', function (int $width, int $height, bool $touch) {
+    $user = User::factory()->create();
+
+    foreach (['lobby' => route('board.lobby', ['board' => 'go-13', 'lang' => 'de'], false), 'ladder' => route('ladder.show', ['game' => 'go-13', 'mode' => 'correspondence', 'lang' => 'de'], false)] as $where => $path) {
+        $page = goLivePage($user, $path, $width, $height, $touch);
+        BrowserWait::until($page, '() => !!window.Alpine && !!document.querySelector("[data-test=group-switch]")', 10_000);
+        $page->evaluate('() => document.fonts.ready.then(() => true)');
+
+        $switch = $page->evaluate(<<<'JS'
+            () => {
+                const root = document.querySelector('[data-test=group-switch]');
+                const parts = [...root.querySelectorAll('a')].filter((a) => a.checkVisibility());
+                const box = (a) => a.getBoundingClientRect();
+                const at = (a) => { const hit = document.elementFromPoint(box(a).left + box(a).width / 2, box(a).top + box(a).height / 2); return !!hit && (a.contains(hit) || hit.contains(a)); };
+                return {
+                    labels: parts.map((a) => a.innerText.trim() + (a.getAttribute('aria-current') ? ' (current)' : '')),
+                    widths: [...new Set(parts.map((a) => Math.round(box(a).width)))],
+                    heights: [...new Set(parts.map((a) => Math.round(box(a).height)))],
+                    narrowest: Math.min(...parts.map((a) => box(a).width)),
+                    lines: new Set(parts.map((a) => Math.round(box(a).top))).size,
+                    cut: parts.filter((a) => a.scrollWidth > a.clientWidth || a.scrollHeight > a.clientHeight || !at(a)).map((a) => a.innerText.trim()),
+                    current: getComputedStyle(root.querySelector('[aria-current]')).backgroundColor,
+                    others: [...new Set(parts.filter((a) => !a.getAttribute('aria-current')).map((a) => getComputedStyle(a).backgroundColor))],
+                    overflow: document.documentElement.scrollWidth - document.documentElement.clientWidth,
+                };
+            }
+        JS);
+
+        // Before: three loose filter chips 51, 68 and 68 px wide, the size of the page filled with the orange of "Spielen".
+        expect($switch['labels'])->toBe(['9×9', '13×13 (current)', '19×19'], "{$where} {$width}: the sizes")
+            ->and($switch['widths'])->toHaveCount(1, "{$where} {$width}: segments of one width")
+            ->and($switch['heights'])->toBe([44], "{$where} {$width}: 44 px high")
+            ->and($switch['narrowest'])->toBeGreaterThanOrEqual(44, "{$where} {$width}: 44 px wide")
+            ->and($switch['lines'])->toBe(1, "{$where} {$width}: one line")
+            ->and($switch['cut'])->toBe([], "{$where} {$width}: a label is cut or covered")
+            ->and($switch['current'])->not->toBe('rgb(247, 147, 26)', "{$where} {$width}: the orange of an action")
+            ->and($switch['others'])->not->toContain($switch['current'], "{$where} {$width}: this size is marked")
+            ->and($switch['overflow'])->toBe(0, "{$where} {$width}: the page scrolls sideways")
+            ->and($page->evaluate('() => window.__errors'))->toBe([])
+            ->and($page->evaluate(BrowserConsole::BAD_RESPONSES))->toBe([]);
+    }
+})->with([
+    'phone 320' => [320, 640, true],
+    'desktop 1440' => [1440, 900, false],
+]);

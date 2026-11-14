@@ -509,7 +509,7 @@ test('each size of Go keeps its own pages, with a switch between the sizes that 
         // 9×9, 13×13 and 19×19 as chips, this size current, each leading to that size's lobby.
         expect(preg_match_all('#href="([^"]+)"[^>]*data-test="group-switch-(go-\d+)"#', $switch, $chips))->toBe(3)
             ->and(array_combine($chips[2], $chips[1]))->toBe(['go-9' => route('board.lobby', 'go-9'), 'go-13' => route('board.lobby', 'go-13'), 'go-19' => route('board.lobby', 'go-19')])
-            ->and($switch)->toMatch('#aria-current="page"\s+class="rv-chip"\s+data-test="group-switch-'.$slug.'"#')
+            ->and($switch)->toMatch('#aria-current="page"\s+class="gs-size"\s+data-test="group-switch-'.$slug.'"#')
             ->and(preg_match_all('#aria-current="page"#', $switch))->toBe(1)
             ->and($switch)->toContain('9×9', '13×13', '19×19');
 
