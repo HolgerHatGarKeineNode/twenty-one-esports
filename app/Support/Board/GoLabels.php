@@ -25,11 +25,14 @@ final class GoLabels
                 'at' => __('Stone at :point.'),
                 'enter' => __('Enter places it.'),
                 'passed' => __(':side passed. If you pass too, the game ends and is counted.'),
-                'endGame' => __('Pass again to end the game?'),
-                // Before a player's first pass of a game, with the count after it (boardGame.js passEndLine).
+                // The pass that asks (boardGame.js passEndLine): the one that ends the game, with its result behind the colon; a
+                // player's first pass of a game, with what both passing gives.
+                'endGame' => __('Your pass ends the game:'),
+                'bothPass' => __('If both pass, :colour wins by :points.'),
+                'bothPassTie' => __('If both pass, it is a tie.'),
                 // A move that took stones, for a screen reader (the move list shows "×2").
                 'captured' => __(':count captured'),
-                'firstPass' => __('Counted as it stands, dead stones too. If both pass:'),
+                'firstPass' => __('Counted as it stands, dead stones too.'),
             ],
             // A game's result (pages/board/partials/result, boardGame.js resultHead, resultWhy).
             'result' => [

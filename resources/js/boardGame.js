@@ -1218,15 +1218,31 @@ registerAlpine(() => {
         },
 
         /**
-         * What the pass that waits for its second click would mean: the pass that ends the game, or the player's first pass
+         * What the pass that waits for its answer would mean: the pass that ends the game, or the player's first pass
          * of the game (the board is counted exactly as it stands, stones that could still be captured too); with the count
          * both passing now would end in.
          */
         get passEndLine() {
             const count = this.state.count;
-            const line = this.opponentPassed ? this.t.stones.endGame : this.t.stones.firstPass;
+            const words = this.t.stones;
+            if (this.opponentPassed) return count ? words.endGame + ' ' + this.countResult(count) : words.endGame.replace(/:$/, '.');
+            if (!count) return words.firstPass;
 
-            return count ? line + ' ' + this.countResult(count) : line;
+            return words.firstPass + ' ' + (count.lead ? words.bothPass.replace(':colour', this.colour(count.lead)).replace(':points', this.points(Math.abs(count.margin))) : words.bothPassTie);
+        },
+
+        /** A pass waits for its answer: "Keep playing" or the pass itself. */
+        get passAsks() {
+            return this.confirmPass && this.canMove;
+        },
+
+        /** The safe answer to the pass that asks (also Escape): the game goes on, the focus returns to "Pass". */
+        keepPlaying() {
+            if (!this.confirmPass) return;
+            const asked = this.$root.querySelector('[data-test=keep-playing]')?.contains(document.activeElement);
+            this.confirmPass = false;
+            this.render();
+            if (asked) this.$nextTick(() => this.$root.querySelector('[data-test=pass]')?.focus({ preventScroll: true }));
         },
 
         /** "Black 41 · White 33 + 7.5 = 40.5 → Black +0.5": the count as it stands, from the server (stones and area, the komi for the second side). */
@@ -1390,6 +1406,8 @@ registerAlpine(() => {
                 this.confirmPass = true;
                 this.stone = null;
                 this.render();
+                // The safe choice has the focus (R18): Enter or Space keep the game going.
+                this.$nextTick(() => this.$root.querySelector('[data-test=keep-playing]')?.focus({ preventScroll: true }));
 
                 return;
             }

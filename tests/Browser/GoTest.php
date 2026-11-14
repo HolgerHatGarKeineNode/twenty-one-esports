@@ -1,6 +1,7 @@
 <?php
 
 use App\Enums\BoardGameStatus;
+use App\Models\BoardGame;
 use App\Models\User;
 use App\Support\Board\BoardGameService;
 use Illuminate\Support\Facades\Http;
@@ -241,7 +242,7 @@ test('two players play Go to the count with every way to set a stone: tap twice,
     expect($black->locator('[data-test=pass]')->innerText())->toBe('Pass');
     goLivePress($black, $touch, '[data-test=pass]');
     expect($black->locator('[data-test=pass]')->innerText())->toBe('Pass anyway')
-        ->and($black->locator('[data-test=stone-status]')->innerText())->toBe('Counted as it stands, dead stones too. If both pass: White wins by 6.5.')
+        ->and($black->locator('[data-test=stone-status]')->innerText())->toBe('Counted as it stands, dead stones too. If both pass, White wins by 6.5.')
         ->and($black->evaluate(GO_LIVE_BAR)['cut'])->toBeFalse('first pass: the line is cut')
         ->and($game->refresh()->ply)->toBe(2)
         ->and($black->evaluate(GO_LIVE_LOW))->toBe([], 'first pass: buttons under 44 px');
@@ -254,7 +255,7 @@ test('two players play Go to the count with every way to set a stone: tap twice,
     expect($white->locator('[data-test=stone-status]')->innerText())->toBe('Black passed. If you pass too, the game ends and is counted.');
     goLivePress($white, $touch, '[data-test=pass]');
     expect($white->locator('[data-test=pass]')->innerText())->toBe('Pass and end')
-        ->and($white->locator('[data-test=stone-status]')->innerText())->toBe('Pass again to end the game? White wins by 6.5.')
+        ->and($white->locator('[data-test=stone-status]')->innerText())->toBe('Your pass ends the game: White wins by 6.5.')
         ->and($game->refresh()->ply)->toBe(3)
         ->and($white->evaluate(GO_LIVE_LOW))->toBe([], 'pass: buttons under 44 px');
     shellShot($white, "go-{$width}-pass");
@@ -362,10 +363,10 @@ test('on a phone in German every line of Go\'s bar shows in full beside buttons 
         'hint' => 'Tippe den Stein nochmal an oder drücke „Setzen“.',
         'taken' => 'Hier liegt schon ein Stein.',
         'no liberty' => 'Hier darf kein Stein hin (keine Freiheit oder Ko).',
-        'first pass' => 'Auch tote Steine zählen. Passen beide: Weiß gewinnt mit 88,5 Punkten.',
+        'first pass' => 'Es zählt, was steht, auch tote Steine. Passen beide, gewinnt Weiß mit 88,5.',
         'take back' => 'Fernpartie · Zug 2 · Weiß am Zug',
         'passed' => 'Weiß hat gepasst. Passt du auch, endet die Partie und wird gezählt.',
-        'pass and end' => 'Nochmal passen und die Partie beenden? Weiß gewinnt mit 10,5 Punkten.',
+        'pass and end' => 'Dein Pass beendet die Partie: Weiß gewinnt mit 10,5 Punkten.',
     ])
         // The bar never grows or shrinks with its line, so the board keeps its size from one line to the next.
         ->and(array_values(array_unique(array_map(fn (array $m): int => $m['bar'][1], $bars))))->toHaveCount(1);
@@ -549,4 +550,167 @@ test('a counted Go game on a phone in German: the winner, the margin and the rea
 })->with([
     'phone 320' => [320, 640],
     'phone 390' => [390, 844],
+]);
+
+/*
+| The game's page around the board (design pass 2026-11-14, each measured red against the page before it).
+*/
+
+/** A go game of `$moves`, Black first. */
+function goLivePlayed(User $black, User $white, array $moves): BoardGame
+{
+    $games = app(BoardGameService::class);
+    $game = $games->start('go-9', $black, $white);
+
+    foreach ($moves as $index => $move) {
+        $game = $games->move($game->refresh(), $index % 2 === 0 ? $black : $white, $move);
+    }
+
+    return $game->refresh();
+}
+
+/** Everything to press in the game's part of the page (the title row, the board's column, the middle column, the chat), the board itself aside: name, width, height. */
+const GO_LIVE_CONTROLS = <<<'JS'
+    () => {
+        return [...document.querySelectorAll('[data-test=board-game] button, [data-test=board-game] a[href]')]
+            .filter((el) => el.checkVisibility() && el.getBoundingClientRect().width > 1 && !el.closest('svg'))
+            .map((el) => { const r = el.getBoundingClientRect(); return [el.dataset.test ?? el.innerText.trim().slice(0, 24), Math.round(r.width), Math.round(r.height)]; });
+    }
+    JS;
+
+test('beside a finished Go game\'s board the move list shows at least three whole rows', function (int $width, int $height) {
+    [$anna, $bert] = User::factory()->count(2)->create();
+    $game = goLivePlayed($anna, $bert, ['e5', 'g5', 'c3', 'g3', 'pass', 'pass']);
+    $page = goLivePage($anna, route('board.show', $game, false), $width, $height, false);
+    BrowserWait::until($page, '() => window.Alpine && document.querySelector("[data-test=next-opponent]")?.getClientRects().length > 0', 10_000);
+    goLiveSettle($page);
+
+    $rows = $page->evaluate(<<<'JS'
+        () => {
+            const list = document.querySelector('[data-test=moves]').getBoundingClientRect();
+            const whole = [...document.querySelectorAll('[data-test=move]')].map((el) => el.getBoundingClientRect()).filter((r) => r.top >= list.top - 0.5 && r.bottom <= list.bottom + 0.5);
+            return new Set(whole.map((r) => Math.round(r.top))).size;
+        }
+    JS);
+
+    // Before: half a row at 1440 x 900 (the list had 37 px between the result, the score and the player).
+    expect($rows)->toBeGreaterThanOrEqual(3, "{$width} x {$height}: whole rows of the move list")
+        ->and($page->evaluate('() => window.__errors'))->toBe([])
+        ->and($page->evaluate(BrowserConsole::BAD_RESPONSES))->toBe([]);
+})->with([
+    'desktop 1440' => [1440, 900],
+    'desktop 1280' => [1280, 720],
+    'desktop 1024' => [1024, 768],
+]);
+
+test('on a phone nothing to press on a finished Go game\'s page is cut by the bars at the bottom, and everything can be scrolled clear of them', function (int $width, int $height) {
+    [$anna, $bert] = User::factory()->count(2)->create();
+    $game = goLivePlayed($anna, $bert, ['e5', 'g5', 'c3', 'g3', 'pass', 'pass']);
+    $page = goLivePage($anna, route('board.show', ['boardGame' => $game, 'lang' => 'de'], false), $width, $height, true);
+    BrowserWait::until($page, '() => window.Alpine && document.querySelector("[data-test=next-opponent]")?.getClientRects().length > 0', 10_000);
+    goLiveSettle($page);
+
+    $under = $page->evaluate(<<<'JS'
+        () => {
+            const fixed = (el) => { for (let n = el; n && n !== document.body; n = n.parentElement) if (getComputedStyle(n).position === 'fixed') return true; return false; };
+            const all = [...document.querySelectorAll('[data-test=board-page] button, [data-test=board-page] a[href]')]
+                .filter((el) => el.checkVisibility() && el.getBoundingClientRect().width > 1 && !el.disabled && !el.closest('svg') && !el.closest('[data-test=moves]') && !fixed(el));
+            const hit = (el, x, y) => { const at = document.elementFromPoint(x, y); return !!at && (el.contains(at) || at.contains(el)); };
+            const name = (el) => el.dataset.test ?? el.innerText.trim().slice(0, 24);
+            // As the page stands: in the window, and partly under something else.
+            const cut = all.filter((el) => {
+                const r = el.getBoundingClientRect();
+                if (r.bottom <= 0 || r.top >= innerHeight) return false;
+                const seen = [r.top + 2, r.top + r.height / 2, r.bottom - 2].filter((y) => y >= 0 && y < innerHeight).map((y) => hit(el, r.left + r.width / 2, y));
+                return seen.some(Boolean) && !seen.every(Boolean);
+            }).map(name);
+            // Scrolled to: its middle and its lower edge can be pressed.
+            const lost = all.filter((el) => {
+                el.scrollIntoView({ block: 'center', behavior: 'instant' });
+                const r = el.getBoundingClientRect();
+                return !hit(el, r.left + r.width / 2, r.top + r.height / 2) || !hit(el, r.left + r.width / 2, r.bottom - 3);
+            }).map(name);
+            scrollTo({ top: 0, behavior: 'instant' });
+            return { controls: all.map(name), cut, lost };
+        }
+    JS);
+
+    // Before: "Fläche zeigen" stood half under the chat sheet at 390 x 844.
+    expect($under['controls'])->toContain('toggle-area')->toContain('next-opponent')
+        ->and($under['cut'])->toBe([], "{$width} x {$height}: cut by the bars")
+        ->and($under['lost'])->toBe([], "{$width} x {$height}: cannot be scrolled clear");
+})->with([
+    'phone 320' => [320, 640],
+    'phone 390' => [390, 844],
+]);
+
+test('everything to press on a Go game\'s page is at least 44 px wide and high, in the game and after it', function (int $width, int $height, bool $touch) {
+    [$anna, $bert] = User::factory()->count(2)->create();
+    $game = goLivePlayed($anna, $bert, ['e5', 'g5', 'c3', 'g3']);
+    $page = goLivePage($anna, route('board.show', $game, false), $width, $height, $touch);
+    BrowserWait::until($page, GO_LIVE_READY, 10_000);
+    goLiveCanMove($page);
+    goLiveSettle($page);
+    $small = fn (array $controls): array => array_values(array_filter($controls, fn (array $c): bool => $c[1] < 44 || $c[2] < 44));
+
+    // Before: the "Lobby" link 39 x 20, a move's row 40 px high.
+    $running = $page->evaluate(GO_LIVE_CONTROLS);
+    expect(array_column($running, 0))->toContain('board-lobby-link')->toContain('move')->toContain('pass')
+        ->and($small($running))->toBe([], "{$width} x {$height}, running: under 44 px");
+
+    app(BoardGameService::class)->move($game->refresh(), $anna, 'pass');
+    app(BoardGameService::class)->move($game->refresh(), $bert, 'pass');
+    BrowserWait::until($page, '() => document.querySelector("[data-test=next-opponent]")?.getClientRects().length > 0', 10_000);
+    goLiveSettle($page);
+    $over = $page->evaluate(GO_LIVE_CONTROLS);
+    expect(array_column($over, 0))->toContain('next-opponent')->toContain('toggle-area')
+        ->and($small($over))->toBe([], "{$width} x {$height}, over: under 44 px");
+})->with([
+    'phone 320' => [320, 640, true],
+    'phone 390' => [390, 844, true],
+    'desktop 1440' => [1440, 900, false],
+]);
+
+test('the pass that asks is one question with two answers: "Keep playing" has the focus, Escape and "Keep playing" keep the game going', function (int $width, int $height, bool $touch) {
+    [$anna, $bert] = User::factory()->count(2)->create();
+    $game = goLivePlayed($anna, $bert, ['e5', 'g5']);
+    $page = goLivePage($anna, route('board.show', $game, false), $width, $height, $touch);
+    BrowserWait::until($page, GO_LIVE_READY, 10_000);
+    goLiveCanMove($page);
+    $focus = '() => document.activeElement?.dataset?.test ?? document.activeElement?.tagName';
+    $answered = '() => !document.querySelector("[data-test=keep-playing]").checkVisibility()';
+    $shown = '() => [...document.querySelectorAll("[data-test=stone-input] button")].filter((el) => el.checkVisibility()).map((el) => el.dataset.test + ": " + el.innerText.trim())';
+
+    // Black's first pass of the game asks: two answers, the safe one first and focused (R18).
+    goLivePress($page, $touch, '[data-test=pass]');
+    goLiveSettle($page);
+    expect($page->evaluate($focus))->toBe('keep-playing')
+        ->and($page->evaluate($shown))->toBe(['keep-playing: Keep playing', 'pass: Pass anyway'])
+        ->and($page->locator('[data-test=stone-status]')->innerText())->toBe('Counted as it stands, dead stones too. If both pass, White wins by 7.5.')
+        ->and($page->evaluate(GO_LIVE_LOW))->toBe([], 'the question: buttons under 44 px')
+        ->and(array_filter($page->evaluate(GO_LIVE_BAR)['buttons'], fn (array $button): bool => $button[3]))->toBe([], 'the question: a label is cut');
+
+    // Escape keeps the game going: the question is gone, nothing was sent, the focus is back on "Pass".
+    $page->locator('[data-test=keep-playing]')->press('Escape');
+    BrowserWait::until($page, $answered, 3_000);
+    expect($page->evaluate($shown))->toBe(['pass: Pass'])
+        ->and($page->evaluate($focus))->toBe('pass')
+        ->and($game->refresh()->ply)->toBe(2);
+
+    // Asked again, "Keep playing" does the same; the pass itself still passes.
+    goLivePress($page, $touch, '[data-test=pass]');
+    goLivePress($page, $touch, '[data-test=keep-playing]');
+    BrowserWait::until($page, $answered, 3_000);
+    expect($page->evaluate($shown))->toBe(['pass: Pass'])
+        ->and($game->refresh()->ply)->toBe(2);
+    goLivePress($page, $touch, '[data-test=pass]');
+    goLivePress($page, $touch, '[data-test=pass]');
+    goLivePly([$page], 3);
+
+    expect($game->refresh()->moves()->pluck('notation')->all())->toBe(['E5', 'G5', 'Pass'])
+        ->and($page->evaluate('() => window.__errors'))->toBe([])
+        ->and($page->evaluate(BrowserConsole::BAD_RESPONSES))->toBe([]);
+})->with([
+    'phone 320 (touch)' => [320, 640, true],
+    'desktop 1440 (keys)' => [1440, 900, false],
 ]);

@@ -599,7 +599,7 @@ new #[Layout('layouts::app', ['realtime' => true, 'scripts' => ['resources/js/bo
                     </x-board.input-bar>
                 </template>
                 {{-- Go's bar (the stone input): Place, Pass, Take back, as Blockli's bar on a phone fixed above the chat sheet. --}}
-                @include('pages.board.partials.stone-input', ['bottom' => $chat ? 'max-lg:bottom-[72px]' : 'max-lg:bottom-0'])
+                @include('pages.board.partials.stone-input', ['bottom' => $chat ? 'max-lg:bottom-[72px]' : 'max-lg:bottom-0', 'quietIdle' => true])
                 @if ($boardGame->hasEnvelope())
                     {{-- A tournament game or a team match board ends at the first-move deadline by the league's decision: the countdown leads, the rule stays under it. --}}
                     <div class="flex flex-col gap-1 rounded-lg bg-btc-tint px-4 py-3 shadow-[inset_0_0_0_1px_var(--color-btc)]" role="status" x-show="firstMoveLine" data-test="first-move">

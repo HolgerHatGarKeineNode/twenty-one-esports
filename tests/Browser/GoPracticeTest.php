@@ -155,7 +155,7 @@ test('a guest learns Go on the league\'s board and plays the Hodler: capture, ko
     BrowserWait::until($page, '() => '.GO_LEARN_BOARD.'.state.ply === 2 && '.GO_LEARN_BOARD.'.canMove', 8_000);
     goLearnPress($page, $touch, '[data-test=pass]');
     expect($page->locator('[data-test=pass]')->innerText())->toBe('Pass and end')
-        ->and($page->locator('[data-test=stone-status]')->innerText())->toStartWith('Pass again to end the game? Black wins by');
+        ->and($page->locator('[data-test=stone-status]')->innerText())->toStartWith('Your pass ends the game: Black wins by');
     goLearnPress($page, $touch, '[data-test=pass]');
     goLearnNote($page, 'Won by 1.5 points');
     expect($page->evaluate('() => document.querySelectorAll("[data-test=board] [data-area]").length'))->toBeGreaterThan(0);

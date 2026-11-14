@@ -8870,8 +8870,6 @@
     "Stone at :point.": "Stein auf :point.",
     "Enter places it.": "Enter setzt ihn.",
     ":side passed. If you pass too, the game ends and is counted.": ":side hat gepasst. Passt du auch, endet die Partie und wird gezählt.",
-    "Pass again to end the game?": "Nochmal passen und die Partie beenden?",
-    "Counted as it stands, dead stones too. If both pass:": "Auch tote Steine zählen. Passen beide:",
     "Pass anyway": "Trotzdem passen",
     "Count now: :first · :second → :lead": "Zählung jetzt: :first · :second → :lead",
     "Final count: :first · :second → :lead": "Endstand: :first · :second → :lead",
@@ -9257,5 +9255,9 @@
     ":name ran out of time": ":name hat die Zeit überschritten",
     "The game was not counted.": "Die Partie wurde nicht gezählt.",
     "Not counted.": "Nicht gezählt.",
-    ":count captured": ":count geschlagen"
+    ":count captured": ":count geschlagen",
+    "Your pass ends the game:": "Dein Pass beendet die Partie:",
+    "Counted as it stands, dead stones too.": "Es zählt, was steht, auch tote Steine.",
+    "If both pass, :colour wins by :points.": "Passen beide, gewinnt :colour mit :points.",
+    "If both pass, it is a tie.": "Passen beide, steht es unentschieden."
 }
