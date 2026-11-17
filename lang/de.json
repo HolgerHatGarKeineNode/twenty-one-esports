@@ -9300,5 +9300,8 @@
     "outside the window": "außerhalb des Fensters",
     "review time running": "Prüfzeit läuft",
     "window already mined": "Fenster schon geschürft",
-    "window wins limit": "Limit Fenstersiege"
+    "window wins limit": "Limit Fenstersiege",
+    ":game does not mine in this draft. Proposal: weight :weight per mode, :share % share and :daily a day; the other shares shrink in proportion to make room: :others. Nothing changes until you save the draft.": ":game schürft in diesem Entwurf nicht. Vorschlag: Gewicht :weight je Modus, :share % Anteil und :daily pro Tag; die anderen Anteile schrumpfen anteilig, um Platz zu machen: :others. Nichts ändert sich, bis du den Entwurf speicherst.",
+    "A rated match mines one block, for its winner alone: a free-for-all or a 1v1 in which every seat is a trusted player. Team matches, tournament matches and matches with a bot do not mine.": "Ein gewertetes Match schürft einen Block, allein für den Sieger: ein Jeder-gegen-jeden oder ein 1v1, in dem jeder Platz ein Trusted-Spieler ist. Team-Matches, Turnier-Matches und Matches mit Bot schürfen nicht.",
+    ":game does not mine in this season. Draft proposal, not decided yet: weight :weight per mode, :share % share and :daily a day; the other shares shrink in proportion to make room: :others. Nothing changes until you save the change, and only matches that start after it can mine.": ":game schürft in dieser Season nicht. Entwurfsvorschlag, noch nicht entschieden: Gewicht :weight je Modus, :share % Anteil und :daily pro Tag; die anderen Anteile schrumpfen anteilig, um Platz zu machen: :others. Nichts ändert sich, bis du die Änderung speicherst, und nur Matches, die danach starten, können schürfen."
 }
