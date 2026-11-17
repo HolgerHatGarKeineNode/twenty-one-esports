@@ -187,10 +187,44 @@ get no team match (a `2150` with `boards` on their ladders is refused, rule 11).
 League, EA Sports FC or Age of Empires II rule, ladder or event changes.
 
 The rules marked "rev. 9.24" are a draft: they add Hyperbitcoinization, which no league runs yet (its switch is off). It
-has no ladder event and no block, so no existing ladder, attestation, block, consensus rule or season parameter
+has no ladder event and no block (a block only by rev. 9.26 and a season's `weight`), so no existing ladder,
+attestation, block, consensus rule or season parameter
 changes; a validator of the other games' `2154` skips a `2154` whose `game` is `hyperbitcoinization`. They apply to
 every Hyperbitcoinization match that starts after the league adopts revision 9.24, and to every tournament of it whose
 first `31923` version the league signs after that.
+
+The rules marked "rev. 9.26" are a draft: they let Hyperbitcoinization mine blocks of the season chain as **table
+blocks**. They apply to every chain season whose genesis or a parameter change carries a `weight` for
+`hyperbitcoinization/<mode>`, and to every match that starts while that weight is in force. Without such a weight
+nothing changes: revision 9.24 holds word for word, the result has no `block`, and no existing ladder, attestation,
+block, consensus rule or season parameter changes. A validator that does not know revision 9.26 MUST reject a chain
+with a `weight` for a game it has no rules for, rather than skip its blocks.
+
+### Changelog of revision 9.26 (2026-11-18, draft)
+
+Hyperbitcoinization mines (user, 2026-11-18: from Block 0 if it is solid, otherwise by a parameter change in the
+season). No new kind; one new tag (`listed`) and a `block` tag in the Hyperbitcoinization `2154`. Checked against the
+app's tests, not on a public relay, and without printed signed examples. Off by default: the chain defaults carry no
+weight for the game.
+
+- **One block per match, for the winner alone** ([Table blocks](#table-blocks-rev-926-draft)): a rated free-for-all
+  or 1v1 between players, begun and ended in the season, outside a tournament. No block per round, none for a bot,
+  none for a team match (rev. 9.26 does not define a team's winner for the chain), none for a match with a bot seat
+  at its start (it is not rated, rev. 9.24).
+- **Every seat is checked.** The winner mines only if they would have mined against every other seat one by one:
+  rules 1, 3, 4, 7 and 8 are read for each pair of the winner and a loser. Two players have the same pairing at a
+  table of two and at a table of six, so more seats never open a fresh pairing.
+- **Pinned at the start.** Every seat's trust rank and anchor, the pairs of seats that list each other as opponents,
+  and every seat's clan are pinned when the match starts, and only while the game has a weight then. A match without
+  that pin never mines. Rated Hyperbitcoinization itself has no trust gate (rev. 9.24) and gets none: a table that
+  fails a rule plays for its points or Elo and mines nothing.
+- **Forfeits.** A forfeiter never wins. A win is a `forfeit` for rule 2 when no other seat played to the end; a
+  table where at least one loser stayed mines for the winner, the forfeiters counted as losers.
+- **No ladder event.** The game still has no `32152`; its `weight`, `share` and `daily` are in the `2156` or a `2158`
+  as for every game, and the attestation names the season by its `season` tag.
+- **Defaults of the league's chain draft** (not a protocol rule): Rocket League and both EA Sports FC editions do not
+  mine at Block 0; chess has a share of 60 % and the board games 40 %. The league proposes weight `2` for both modes
+  of Hyperbitcoinization, a share of 10 % and 5 blocks a day; nothing of it is in force until the board saves it.
 
 ### Changelog of revision 9.25 (2026-11-06)
 
@@ -236,8 +270,8 @@ computed test vectors). Everything the league signs for it is off by default (it
 - **Season, outside the ladders**: a match is rated when every seat is a player at its start and a chain season is
   live. A free-for-all scores points by place, a 1v1 and a clan match move an Elo of their own (`duel`, `team`) with the
   season's rating values. Leaving or timing out is a forfeit: last place, 0 points, a loss. There is no `32152` for
-  Hyperbitcoinization, and its results mine nothing.
-- **The result**: a `2154` without a ladder and a block, with `format`, `place`, `forfeit`, `points` or `elo` rows.
+  Hyperbitcoinization, and its results mine nothing (rev. 9.26, draft: unless the season gives the game a `weight`).
+- **The result**: a `2154` without a ladder and a block (rev. 9.26, draft: with a `block` while the game mines), with `format`, `place`, `forfeit`, `points` or `elo` rows.
 - **Tournaments and cups**: free-for-all tables of 3 to 6 whose best move on, or a 1v1 knockout, each table one
   match on the league server; a weekly weekend cup is unrated and bots fill its short tables.
 
@@ -1136,7 +1170,7 @@ by this NIP.
 | `2151` | regular | Challenge Answer | the challenged side (`accepted`, `declined`) or the challenger side (`withdrawn`): an acting captain, or the player in a solo game |
 | `2152` | regular | Result Report | acting captain of either lineup |
 | `2153` | regular | Result Response | acting captain of the lineup that did **not** author the report (series only: a chess game has none, see [Game Record](#game-record-64-reused-from-nip-64)) |
-| `2154` | regular | League Attestation | league key; rev. 9.24 (draft): also a Hyperbitcoinization result, of its own shape |
+| `2154` | regular | League Attestation | league key; rev. 9.24 (draft): also a Hyperbitcoinization result, of its own shape; rev. 9.26 (draft): with a `block` while the game mines |
 | `2155` | regular | Tournament Draw (optional) | league key |
 | `64` | regular | Game Record, **reused from NIP-64** (chess) | league key (the record, rev. 9.4; before, a player); a player of the game (their own post of it, rev. 9.4) |
 | `12150` | replaceable | Clan Membership | the player |
@@ -1561,7 +1595,7 @@ action log, which stay off Nostr.
 | field | value |
 |---|---|
 | game, mode | `hyperbitcoinization`: `live` (90 seconds a turn), `correspondence` (24 hours a turn) |
-| ladder | none: no `32152`, no `rates`, no tier, no block; the season is the league's own table (below) |
+| ladder | none: no `32152`, no `rates`, no tier; the season is the league's own table (below). No block, unless the season gives the game a `weight` (rev. 9.26, draft: [Table blocks](#table-blocks-rev-926-draft)) |
 | result | one `2154` of its own shape (below), for a rated or tournament match only |
 | chat | a table chat per match (NIP-28), a team chat per team of a clan match (NIP-17) |
 
@@ -1618,9 +1652,23 @@ end. Tags, in this order: `["game", "hyperbitcoinization"]`, `["mode", "live" | 
 match's winning team shares place 1), one `["forfeit", "<pubkey>"]` per forfeited player, `["points", "<pubkey>",
 "<n>"]` per player of a rated free-for-all, `["elo", "<pubkey>", "<before>", "<after>"]` per player of a rated 1v1 or
 team match, the table chat's `["e", <channel id>, "", "root"]`, a tournament match's `["a", "31923:<league
-pubkey>:<d>", ""]`, and `alt`. The content states a forfeit's public reason, else it is empty. No ladder `a`, no
-`challenger`/`challenged`, no `block`: the result mines nothing, and the consensus rules do not read it. The season
-table of a client is the sum of these rows of one `season`.
+pubkey>:<d>", ""]`, and `alt`. The content states a forfeit's public reason, else it is empty. No ladder `a` and no
+`challenger`/`challenged`. While the season has no `weight` for the game, there is no `block` either: the result
+mines nothing, and the consensus rules do not read it. The season table of a client is the sum of these rows of one
+`season`.
+
+**The result while the game mines (rev. 9.26, draft).** While a `weight` for `hyperbitcoinization/<mode>` is in
+force, the one `2154` of a rated free-for-all or 1v1 outside a tournament is a block candidate
+([Table blocks](#table-blocks-rev-926-draft)). Its `created_at` is then the time of the attestation, as for every
+block candidate (never before the previous attestation of the season), not the end of the match. After the tags above
+and before `alt` it carries, in this order: `["trust", <trust key>, "<minimum>"]`; one `["gate", "<pubkey>",
+"<rank>", "<assertion id>", ""]` per seat that was pinned, the winner first, then the losers in seat order (the list
+id is empty: a table has no two gatekeepers); one `["listed", "<pubkey>", "<pubkey>", "<list id>", "<list id>"]` per
+loser the winner and they list each other as opponents, with the newest opponent list of each of the two at the
+start; one `["clan", "<pubkey>", "<clan address>"]` per seat that was in a clan at the start; and
+`["block", "<height>" | "", "<previous block's id>"]`. A match without a single winner (below) is attested without
+`trust`, `gate`, `listed`, `clan` and `block`. A team match, a tournament match and every match while the game has no
+weight keep the result of rev. 9.24 unchanged. The league signs one `2154` per match in either case, never both.
 
 **Tournaments.** A Hyperbitcoinization tournament is an ordinary `31923` and is played as free-for-all tables of 3 to 6
 whose best move on until one final table, or as a 1v1 knockout. Every table is one match the league starts on its
@@ -3050,6 +3098,51 @@ A reader recomputes every solo rule from the attestation alone: the `window` tag
 winner and the field, the genesis' `solo` and `subtree`, and the earlier blocks. What it cannot check is that the
 field's values were verified: those values stay league data (rev. 9.17), so rule 1 rests on the league's word
 that each `gate` row of the field belongs to an entrant with a verified value, as rule 2 rests on it for the winner.
+
+#### Table blocks (rev. 9.26, draft)
+
+A **table candidate** is the winner of a rated Hyperbitcoinization match of 2 to 6 seats
+([Hyperbitcoinization](#hyperbitcoinization-rev-924-draft)): one winning player, and every other seat a loser. One
+match is at most one block, and the block has one winner whatever the number of seats. The principle: **the winner
+mines only if they would have mined against every other seat one by one.**
+
+The candidate exists only for a free-for-all or a 1v1 that is rated (every seat a player at the start, begun in the
+live season), not part of a tournament, and has a single winner: the seat the rules named the winner holds place 1
+alone and did not forfeit. A team match is no candidate (rev. 9.26 defines no winner of a team for the chain). If the
+bot that played a forfeited seat on wins, nobody won: no candidate. A match that began before Block 0 is not rated; a
+match that ends after the season ended has no season to be attested in.
+
+**Pinned at the start.** While the game has a `weight`, the league pins when the match starts: for every seat the
+trust rank, the assertion and the anchor (a player barred under the fair-play rules is not pinned and so counts as not
+trusted), for every pair of seats whether each one's newest opponent list names the other, and every seat's clan.
+These are the `gate`, `listed` and `clan` rows of the attestation. A match that started while the game had no weight
+has no pin and fails rule 1. The pin refuses no match: rated play stays as open as in rev. 9.24.
+
+Rules 1 to 4, 7 and 8 read as follows; rules 0, 5, 6 and 9 hold as above, and the reason is again the first rule the
+candidate fails.
+
+1. **Trusted and connected, every seat.** The winner and every loser are at or above the trust minimum in their `gate`
+   rows (`not-trusted`), and the winner has a `listed` row with every loser (`not-connected`).
+2. **A real win.** At least one other seat played to the end. If every other seat forfeited, the win is a `forfeit`
+   and mines nothing. A forfeiter is placed last and is never the winner; a loser who forfeited while another loser
+   stayed is a loser like any other, with every rule read against them. There is no minimum length: `moves` counts
+   for chess and the board games only.
+3. **Not the same clan.** No loser shares the winner's clan of the start (`same-clan`).
+4. **Pairing limit per day.** For every loser, the pairing of the winner and that loser, per game and whoever of the
+   two won, has fewer blocks on the UTC day than `pairlimit` allows (`pairing-daily-limit`). A block of a table counts
+   once in the pairing of its winner with each of its losers. The pairing of two players is the same at a table of two
+   and at any larger table, so a third seat never resets it.
+7. **Not the winner's anchor subtree.** No loser shares the winner's `anchor` with both shares at least `subtree`
+   percent (`same-subtree`).
+8. **Pairing limit per season.** As rule 4, over the season (`pairing-season-limit`).
+
+Rule 5 counts the block for the winner alone, rule 9 for the share key `hyperbitcoinization`; the reward is the
+subsidy of the era times the `weight`, for one player.
+
+A reader recomputes every table rule from the attestation alone: its `place` and `forfeit` rows give the winner, the
+losers and whether the win is a forfeit; its `gate`, `listed` and `clan` rows give rules 1, 3 and 7; the earlier blocks
+give rules 4, 5, 8 and 9. What it cannot check is that the pin was taken at the start and not later: that rests on
+the league's word, as the pin of every other game does.
 
 Rules 4, 5, 8, 9 and the supply part of 0 depend on earlier blocks; that is why the tip is pinned.
 Blocks that the review voids later keep their place for all counters: a correction never changes a
