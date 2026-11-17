@@ -15,6 +15,7 @@ use App\Models\NostrEvent;
 use App\Models\Season;
 use App\Models\TrustRun;
 use App\Models\User;
+use App\Support\Engagement\HomeBoard;
 use App\Support\Nostr\NostrKeys;
 use App\Support\Nostr\RejectedEvent;
 use App\Support\Nostr\RelayReader;
@@ -198,3 +199,21 @@ test('a trust run that is refused or breaks right after Block 0 leaves the seaso
         fn () => Exceptions::assertReported(fn (RuntimeException $e): bool => $e->getMessage() === 'relay reader broke'),
     ],
 ]);
+
+test('the start page shows the live season right after the release, in German and in English, not the cached Pre-Season card', function () {
+    $cardIn = function (string $locale): array {
+        app()->setLocale($locale);
+
+        return HomeBoard::season();
+    };
+
+    // Both locales read the card before the release: it is cached for a minute.
+    expect($cardIn('de')['live'])->toBeFalse()
+        ->and($cardIn('en')['live'])->toBeFalse();
+
+    app()->setLocale('de');
+    $season = releaseAs($this->board, $this->boardSigner);
+
+    expect(array_intersect_key($cardIn('de'), ['state' => 0, 'slug' => 0]))->toBe(['state' => 'live', 'slug' => $season->slug])
+        ->and(array_intersect_key($cardIn('en'), ['state' => 0, 'slug' => 0]))->toBe(['state' => 'live', 'slug' => $season->slug]);
+});

@@ -10,6 +10,7 @@ use App\Models\NostrEvent;
 use App\Models\Season;
 use App\Models\User;
 use App\Support\Board;
+use App\Support\Engagement\HomeBoard;
 use App\Support\Formats;
 use App\Support\Nostr\RejectedEvent;
 use App\Support\Nostr\SignedEventGate;
@@ -211,7 +212,7 @@ final class SeasonRelease
         $name = self::seasonName();
 
         try {
-            return DB::transaction(function () use ($league, $admin, $message, $endsAt, $draftHash, $label, $draft, $rating, $plan, $name): Season {
+            $season = DB::transaction(function () use ($league, $admin, $message, $endsAt, $draftHash, $label, $draft, $rating, $plan, $name): Season {
                 // The draft may not change between the admin's check and the genesis: read it again, not from the request memo.
                 RatingSettings::forget();
 
@@ -304,6 +305,11 @@ final class SeasonRelease
         } catch (UniqueConstraintViolationException) {
             throw new SeasonReleaseRefused(__('This season has been released already. Only one chain runs at a time.'));
         }
+
+        // Committed: the start page caches its season card per locale for a minute and would still say Pre-Season.
+        HomeBoard::forgetSeasonCard();
+
+        return $season;
     }
 
     /**

@@ -79,6 +79,9 @@ final class HomeBoard
 
     public const WEEK = 5;
 
+    /** Cache key of the season card (season()), followed by the locale. */
+    public const SEASON_CARD = 'home:season-card:';
+
     /** @var array{finished: list<array<string, mixed>>, running: list<array<string, mixed>>, live: bool}|null */
     private ?array $strip = null;
 
@@ -408,7 +411,7 @@ final class HomeBoard
 
         try {
             /** @var array{state: string, slug: string|null, live: bool, height: int|null, eras: list<array{era: int, from: int, sats: int}>, payKey: string|null} $card */
-            $card = Cache::remember('home:season-card:'.app()->getLocale(), 60, $read);
+            $card = Cache::remember(self::SEASON_CARD.app()->getLocale(), 60, $read);
         } catch (Throwable $e) {
             report($e);
             $card = $read();
@@ -417,6 +420,22 @@ final class HomeBoard
         $card['eras'] = array_map(fn (array $era): array => [...$era, 'from' => CarbonImmutable::createFromTimestamp($era['from'])], $card['eras']);
 
         return $card;
+    }
+
+    /**
+     * Drop the cached season card of every supported locale: called when Block 0 is released (SeasonRelease),
+     * so the start page shows the live season at once and not the Pre-Season for up to a minute more.
+     */
+    public static function forgetSeasonCard(): void
+    {
+        try {
+            foreach ((array) config('app.supported_locales') as $locale) {
+                Cache::forget(self::SEASON_CARD.$locale);
+            }
+        } catch (Throwable $e) {
+            // The card expires within a minute anyway; a cache outage must not fail what called this.
+            report($e);
+        }
     }
 
     /**
