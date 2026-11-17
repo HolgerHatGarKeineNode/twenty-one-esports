@@ -198,9 +198,9 @@ final class ChainDraft
         // score games that are switched on: their windows mine one solo block each (plan "AoE2 und Trackmania", P7). A
         // row without a weight does not mine; the score games start that way and come in only through their proposal.
         foreach (app(GameRegistry::class)->all() as $game) {
-            // Hyperbitcoinization (plan "Hyperbitcoinization", P6) and Proof of Pong (plan "Proof of Pong", P4) mine no
-            // block (LadderEvents leaves them out): no row.
-            if ($game->kind() === GameKind::Strategy || $game->kind() === GameKind::Arcade) {
+            // Proof of Pong (plan "Proof of Pong", P4) mines no block: no row. Hyperbitcoinization has one while it is
+            // switched on (NIP rev. 9.26, draft): without a weight it does not mine, and it starts that way.
+            if ($game->kind() === GameKind::Arcade) {
                 continue;
             }
 
@@ -250,12 +250,18 @@ final class ChainDraft
      * config key of each proposal, keyed by the proposal's name on the admin
      * season page. Chess rapid and the board games are in the defaults since
      * 2026-10-11; their proposal is for a draft or season that lacks them.
-     * Age of Empires II mines only once the board takes up its proposal.
+     * Age of Empires II mines only once the board takes up its proposal, and
+     * so do Rocket League and EA Sports FC (both editions as one share
+     * group), which left the defaults on 2026-11-18, and Hyperbitcoinization
+     * (NIP rev. 9.26, draft), which has a row only while it is switched on.
      */
     public const PROPOSALS = [
         'board-games' => 'season.chain.board_games_proposal',
         'age-of-empires-2' => 'season.chain.age_of_empires_2_proposal',
         'chess-rapid' => 'season.chain.chess_rapid_proposal',
+        'rocket-league' => 'season.chain.rocket_league_proposal',
+        'ea-sports-fc' => 'season.chain.ea_sports_fc_proposal',
+        'hyperbitcoinization' => 'season.chain.hyperbitcoinization_proposal',
     ];
 
     /**
@@ -325,7 +331,13 @@ final class ChainDraft
             return self::modeProposal($proposal['weights'], $chain);
         }
 
-        $ofProposal = fn (string $game): bool => $which === 'board-games' ? $registry->isBoard($game) : $game === $which;
+        // A share group (the board games, both EA Sports FC editions) is proposed as one; else the game itself.
+        $group = (array) config('season.chain.groups.'.$which, []);
+        $ofProposal = fn (string $game): bool => match (true) {
+            $which === 'board-games' => $registry->isBoard($game),
+            $group !== [] => in_array($game, $group, true),
+            default => $game === $which,
+        };
         $keys = [];
 
         foreach (self::table($chain) as $shareKey => $weightKeys) {

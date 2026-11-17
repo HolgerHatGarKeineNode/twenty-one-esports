@@ -131,28 +131,44 @@ return [
     | off; `moves` counts for chess and the board games. The length is in
     | weeks, eras last `halving_days`.
     |
-    | Chess rapid and the board games mine from Block 0 (user decision
-    | 2026-10-11): rapid at 1.5x, as its game lasts about 1.5x a blitz game,
-    | correspondence at twice blitz, as chess daily; the board games' 10 %
-    | come out of the board's 35/40/25 of 2026-09-28 in proportion (32/36/22).
-    | A board game that is switched off is left out of the draft
+    | Chess and the board games mine from Block 0, and nothing else (user
+    | decision 2026-11-18): chess at 60 % and the board games at 40 % of every
+    | era. Rapid is at 1.5x, as its game lasts about 1.5x a blitz game,
+    | correspondence at twice blitz, as chess daily (user decision
+    | 2026-10-11). A board game that is switched off is left out of the draft
     | (ChainDraft::defaults()), and with all of them off so are their share
-    | and daily limit.
+    | and daily limit: the draft then holds chess at 60 % alone and warns
+    | that 40 % of every era cannot be mined.
     |
-    | board_games_proposal and chess_rapid_proposal: what the admin season page
-    | proposes for a draft or a live season whose chain lacks them (a draft
-    | saved, or a season released, before they mined): the same weights, and
-    | for the board games the share of their group and its daily limit, the
-    | other shares shrunk in proportion to make room. Both return nothing
-    | while they mine already. A late mode of a game that mines (chess rapid)
-    | has no share or daily limit of its own; it counts in chess's. In a live
-    | season a parameter change that takes rapid in also opens its ladder
-    | there (NIP rev. 9.22); until then rapid is casual in that season.
+    | Rocket League and both EA Sports FC editions do not mine at Block 0
+    | (user decision 2026-11-18). Their weights, shares and daily limits are
+    | proposals (rocket_league_proposal, ea_sports_fc_proposal): the weights
+    | they had, and the shares the board gave them on 2026-10-11 (36 and 22).
+    | The share group of the two EA Sports FC editions stays in `groups`, so
+    | a later proposal counts them as one.
     |
-    | age_of_empires_2_proposal: the same for Age of Empires II (plan "AoE2
-    | und Trackmania", P1): a weight per mode as the other series games, its
-    | own share and daily limit. These are DRAFT values nobody decided yet;
-    | AoE2 mines only once the board fills them in (or its own) and saves.
+    | Every *_proposal: what the admin season page proposes for a draft or a
+    | live season whose chain lacks the game (ChainDraft::PROPOSALS): its
+    | weights, the share of its share key and its daily limit, the other
+    | shares shrunk in proportion to make room. Each returns nothing while the
+    | game mines already; nothing changes until the board saves. A late mode
+    | of a game that mines (chess rapid) has no share or daily limit of its
+    | own; it counts in chess's. In a live season a parameter change that
+    | takes rapid in also opens its ladder there (NIP rev. 9.22); until then
+    | rapid is casual in that season.
+    |
+    | age_of_empires_2_proposal (plan "AoE2 und Trackmania", P1): DRAFT values
+    | nobody decided yet; AoE2 mines only once the board fills them in (or
+    | its own) and saves.
+    |
+    | hyperbitcoinization_proposal (NIP rev. 9.26, draft; user decision
+    | 2026-11-18): Hyperbitcoinization mines one block per rated match for
+    | its winner alone, a free-for-all or a 1v1 between trusted players, once
+    | the board takes this in for Block 0 or by a parameter change. Without
+    | it the game mines nothing. DRAFT values: a live match runs 14 (two
+    | seats) to 24 (six seats) rounds on average with up to 90 seconds a
+    | turn, several times a blitz game; the weight is capped at the chain's
+    | highest, 2x, as correspondence. The game has no ladder event.
     |
     */
 
@@ -162,13 +178,6 @@ return [
         'weights' => [
             'chess/blitz' => 1000,
             'chess/correspondence' => 2000,
-            'rocket-league/1v1' => 1000,
-            'rocket-league/2v2' => 1000,
-            'rocket-league/3v3' => 1000,
-            'ea-sports-fc-26/1v1' => 1000,
-            'ea-sports-fc-26/2v2' => 1000,
-            'ea-sports-fc-27/1v1' => 1000,
-            'ea-sports-fc-27/2v2' => 1000,
             // Chess rapid and the board games from Block 0 (user, 2026-10-11): rapid at about 1.5x the duration of
             // blitz, correspondence at twice blitz, as chess daily.
             'chess/rapid' => 1500,
@@ -182,18 +191,45 @@ return [
             'ea-sports-fc' => ['ea-sports-fc-26', 'ea-sports-fc-27'],
             'board-games' => ['blockli', 'nine-mens-morris', 'checkers'],
         ],
-        // The board's 35/40/25 of 2026-09-28, shrunk in proportion next to the board games' 10 (user, 2026-10-11).
+        // Chess and the board games alone from Block 0 (user, 2026-11-18).
         'shares' => [
-            'chess' => 32,
-            'rocket-league' => 36,
-            'ea-sports-fc' => 22,
-            'board-games' => 10,
+            'chess' => 60,
+            'board-games' => 40,
         ],
         'daily' => [
             'chess' => 5,
-            'rocket-league' => 5,
-            'ea-sports-fc' => 5,
             'board-games' => 5,
+        ],
+        // Rocket League and EA Sports FC do not mine at Block 0 (user, 2026-11-18): the weights they had, and the
+        // shares the board gave them on 2026-10-11, as proposals.
+        'rocket_league_proposal' => [
+            'weights' => [
+                'rocket-league/1v1' => 1000,
+                'rocket-league/2v2' => 1000,
+                'rocket-league/3v3' => 1000,
+            ],
+            'share' => 36,
+            'daily' => 5,
+        ],
+        'ea_sports_fc_proposal' => [
+            'weights' => [
+                'ea-sports-fc-26/1v1' => 1000,
+                'ea-sports-fc-26/2v2' => 1000,
+                'ea-sports-fc-27/1v1' => 1000,
+                'ea-sports-fc-27/2v2' => 1000,
+            ],
+            'share' => 22,
+            'daily' => 5,
+        ],
+        // DRAFT values (NIP rev. 9.26, draft; user, 2026-11-18): one block per rated match for its winner, at the
+        // chain's highest weight, a share and a daily limit as the board games had.
+        'hyperbitcoinization_proposal' => [
+            'weights' => [
+                'hyperbitcoinization/live' => 2000,
+                'hyperbitcoinization/correspondence' => 2000,
+            ],
+            'share' => 10,
+            'daily' => 5,
         ],
         'board_games_proposal' => [
             'weights' => [

@@ -32,10 +32,13 @@ use Livewire\Livewire;
 use Tests\Support\BlockliOn;
 use Tests\Support\CheckersGame;
 use Tests\Support\NineMensMorrisOn;
+use Tests\Support\SeriesChain;
 use Tests\Support\TestSigner;
 
 beforeEach(function () {
     Queue::fake();
+    // A draft in which the series games mine, as before 2026-11-18; the defaults of today are tested at the end.
+    SeriesChain::asDefaults();
     $this->league = new TestSigner;
     config(['esports.league.nsec' => $this->league->secret, 'esports.trust.nsec' => (new TestSigner)->secret]);
 

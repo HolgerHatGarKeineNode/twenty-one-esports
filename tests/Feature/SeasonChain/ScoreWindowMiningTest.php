@@ -40,6 +40,7 @@ use Illuminate\Support\Facades\Queue;
 use Livewire\Livewire;
 use Tests\Support\BlockliOn;
 use Tests\Support\ScoreDemoOn;
+use Tests\Support\SeriesChain;
 use Tests\Support\TestSigner;
 use Tests\Support\TrustedFacts;
 
@@ -298,6 +299,8 @@ describe('mining', function () {
 
 describe('chain draft', function () {
     beforeEach(function () {
+        // A draft in which the series games mine, as before 2026-11-18: four shares for the proposal to shrink.
+        SeriesChain::asDefaults();
         $this->board = User::factory()->withPubkey((new TestSigner)->pubkey)->create(['timezone' => 'UTC']);
         config(['esports.board' => [NostrKeys::hexToNpub($this->board->pubkey)], 'esports.league.nsec' => (new TestSigner)->secret, 'esports.trust.nsec' => (new TestSigner)->secret]);
     });

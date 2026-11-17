@@ -48,6 +48,7 @@ use Illuminate\Support\Facades\Storage;
 use Livewire\Livewire;
 use Tests\Support\BlockfillOn;
 use Tests\Support\FakeStackerVerifier;
+use Tests\Support\SeriesChain;
 use Tests\Support\TestSigner;
 use Tests\Support\TrustedFacts;
 
@@ -316,6 +317,8 @@ test('a week with fewer verified players than the minimum is attested without a 
 test('the chain draft proposes Blockfill: a weight for 40 blocks, its own share and one block a day, saved only by the board', function () {
     $board = User::factory()->withPubkey((new TestSigner)->pubkey)->create(['timezone' => 'UTC']);
     config(['esports.board' => [NostrKeys::hexToNpub($board->pubkey)]]);
+    // A draft in which the series games mine, as before 2026-11-18.
+    SeriesChain::asDefaults();
     $defaults = ChainDraft::defaults();
 
     expect(ChainDraft::proposalNames())->toContain(Blockfill::SLUG)

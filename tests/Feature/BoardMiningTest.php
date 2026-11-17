@@ -380,8 +380,8 @@ test('chess keeps its weights and shares: the config, the default draft and a se
         ->and($defaults['weights'])->toMatchArray(['chess/blitz' => 1000, 'chess/correspondence' => 2000])
         ->and($season->genesis->weightFor('chess/blitz'))->toBe(1000)
         ->and($season->genesis->weightFor('chess/correspondence'))->toBe(2000)
-        // The board's 35/40/25 shrunk in proportion next to the board games' 10 (user, 2026-10-11).
-        ->and($defaults['shares'])->toBe(['chess' => 32, 'rocket-league' => 36, 'ea-sports-fc' => 22, 'board-games' => 10])
+        // Chess and the board games alone mine from Block 0, at 60 and 40 % (user, 2026-11-18).
+        ->and($defaults['shares'])->toBe(['chess' => 60, 'board-games' => 40])
         // The board games are in the draft as a group with their weights: they mine from Block 0 (user, 2026-10-11).
         ->and($defaults['groups'])->toBe(['ea-sports-fc' => ['ea-sports-fc-26', 'ea-sports-fc-27'], 'board-games' => ['blockli', 'nine-mens-morris', 'checkers']])
         // Correspondence (P8) is a mode of each board game with its own weight row; Blockli is switched off here.
@@ -437,7 +437,7 @@ test('the board games\' proposal shrinks the other shares in proportion to exact
     expect(ChainDraft::boardGamesProposal(ChainDraft::defaults()))->toBeNull()
         ->and(ChainDraft::defaults()['groups'])->toBe(['ea-sports-fc' => ['ea-sports-fc-26', 'ea-sports-fc-27']])
         ->and(ChainDraft::defaults()['weights'])->not->toHaveKeys(['nine-mens-morris/correspondence', 'checkers/correspondence', 'blockli/blitz'])
-        ->and(ChainDraft::defaults()['shares'])->toBe(['chess' => 32, 'rocket-league' => 36, 'ea-sports-fc' => 22])
+        ->and(ChainDraft::defaults()['shares'])->toBe(['chess' => 60])
         ->and(ChainDraft::defaults()['daily'])->not->toHaveKey('board-games');
 });
 

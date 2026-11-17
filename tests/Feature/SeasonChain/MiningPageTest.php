@@ -22,6 +22,7 @@ use App\Support\SeasonChain\SeasonChains;
 use Carbon\CarbonImmutable;
 use Illuminate\Support\Facades\DB;
 use Livewire\Livewire;
+use Tests\Support\SeriesChain;
 
 test('before Block 0 /mining shows the rest state with the countdown and the Pre-Season draft', function () {
     $this->freezeTime();
@@ -93,6 +94,8 @@ test('while rated chess is off, /mining and AdminSeason show no chess reward as 
     config(['esports.board' => [NostrKeys::hexToNpub($board->pubkey)]]);
     // Casual chess wins of the last weeks must not forecast chess blocks while chess cannot mine.
     ChessGame::factory()->count(3)->finished('1-0')->create(['updated_at' => now()->subHour()]);
+    // A draft in which a game other than chess mines, as before 2026-11-18: its reward stays achievable.
+    SeriesChain::asDefaults();
 
     $this->get(route('mining'))
         ->assertOk()

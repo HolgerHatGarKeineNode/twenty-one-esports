@@ -120,17 +120,19 @@ test('config/season.php carries the Pre-Season defaults of the ledger, but the c
         ->and(Estimator::fromConfig()->windowDays)->toBe(seasonLedger()['estimator']['window_days']);
 
     // User decision 2026-09-28 (P43): subsidy 2 100 (about 500 rewarded wins in era 1), both EA Sports FC
-    // editions mine and share one share and one daily limit. User decision 2026-10-11: chess rapid mines
-    // from Block 0, and so do the board games while they are switched on (off here, so none of theirs is
-    // signed), their 10 % taken from the board's 35/40/25 in proportion (32/36/22). The ledger fixture is
-    // the oracle's frozen genesis and stays as it is: the engine tests below replay its own parameters.
+    // editions share one share group. User decision 2026-10-11: chess rapid mines from Block 0, and so do
+    // the board games while they are switched on (off here, so none of theirs is signed). User decision
+    // 2026-11-18: Rocket League and EA Sports FC do not mine at Block 0 (their old values are proposals),
+    // chess has 60 % and the board games 40 %. The ledger fixture is the oracle's frozen genesis and stays
+    // as it is: the engine tests below replay its own parameters.
     expect($season->subsidy)->toBe(2_100)
         ->and(intdiv($season->eraBudget(1), $season->rewardPerPlayer(1000, 1)))->toBe(500)
-        ->and($season->genesis->shares)->toBe(['chess' => 32, 'rocket-league' => 36, 'ea-sports-fc' => 22])
-        ->and($season->genesis->daily)->toBe(['chess' => 5, 'rocket-league' => 5, 'ea-sports-fc' => 5])
+        ->and($season->genesis->shares)->toBe(['chess' => 60])
+        ->and($season->genesis->daily)->toBe(['chess' => 5])
         ->and($season->genesis->groups)->toBe(['ea-sports-fc' => ['ea-sports-fc-26', 'ea-sports-fc-27']])
-        ->and(array_intersect_key($season->genesis->weights, $genesis['weights']))->toEqual($genesis['weights'])
-        ->and(array_diff_key($season->genesis->weights, $genesis['weights']))->toBe(['ea-sports-fc-26/1v1' => 1000, 'ea-sports-fc-26/2v2' => 1000, 'ea-sports-fc-27/1v1' => 1000, 'ea-sports-fc-27/2v2' => 1000, 'chess/rapid' => 1500]);
+        ->and($season->genesis->weights)->toBe(['chess/blitz' => 1000, 'chess/correspondence' => 2000, 'chess/rapid' => 1500])
+        // The ledger's chess weights are the defaults'; its Rocket League weights are the proposal's.
+        ->and(array_diff_key($genesis['weights'], $season->genesis->weights))->toEqual(config('season.chain.rocket_league_proposal.weights'));
 
     // With the board games switched on, their group, share, daily limit and every weight are signed too.
     BlockliOn::play();
@@ -138,9 +140,9 @@ test('config/season.php carries the Pre-Season defaults of the ledger, but the c
     CheckersGame::play();
     $withBoardGames = SeasonParameters::fromDraft(ChainDraft::defaults(), 'pre-season', CarbonImmutable::parse($genesis['genesis_at']))->genesis;
 
-    expect($withBoardGames->shares)->toBe(['chess' => 32, 'rocket-league' => 36, 'ea-sports-fc' => 22, 'board-games' => 10])
+    expect($withBoardGames->shares)->toBe(['chess' => 60, 'board-games' => 40])
         ->and(array_sum($withBoardGames->shares))->toBe(100)
-        ->and($withBoardGames->daily)->toBe(['chess' => 5, 'rocket-league' => 5, 'ea-sports-fc' => 5, 'board-games' => 5])
+        ->and($withBoardGames->daily)->toBe(['chess' => 5, 'board-games' => 5])
         ->and($withBoardGames->groups['board-games'])->toBe(['blockli', 'nine-mens-morris', 'checkers'])
         ->and(array_diff_key($withBoardGames->weights, $season->genesis->weights))->toBe(['blockli/blitz' => 1000, 'blockli/rapid' => 1500, 'blockli/correspondence' => 2000, 'nine-mens-morris/correspondence' => 2000, 'checkers/correspondence' => 2000]);
 });

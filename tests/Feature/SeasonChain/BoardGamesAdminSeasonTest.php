@@ -22,6 +22,7 @@ use Illuminate\Support\Facades\Queue;
 use Livewire\Livewire;
 use Tests\Support\CheckersGame;
 use Tests\Support\NineMensMorrisOn;
+use Tests\Support\SeriesChain;
 use Tests\Support\TestSigner;
 
 /**
@@ -62,6 +63,8 @@ function boardGamesUnminedGenesis(bool $withGroup): array
 
 beforeEach(function () {
     Queue::fake();
+    // A draft in which the series games mine next to the board games, as before 2026-11-18 (ChainDraftTest has today's defaults).
+    SeriesChain::asDefaults();
     NineMensMorrisOn::play();
     CheckersGame::play();
     $this->board = User::factory()->withPubkey((new TestSigner)->pubkey)->create(['timezone' => 'UTC']);
