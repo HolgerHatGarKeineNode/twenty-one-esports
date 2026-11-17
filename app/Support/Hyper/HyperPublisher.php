@@ -24,7 +24,9 @@ use Throwable;
  *   `format` (`ffa`, `duel`, `team`), the season of a rated match, one `place` row per seat (a bot's with an empty
  *   pubkey), a `forfeit` row per forfeited player, `points` (free-for-all) or `elo` (1v1, team) per rated player,
  *   the table chat's channel, and a tournament match's `31923` address. No ladder `a`, no `block`: a
- *   Hyperbitcoinization result is in no ladder event and mines nothing.
+ *   Hyperbitcoinization result is in no ladder event, and this one mines nothing. While the season gives the game
+ *   a weight, SeasonChains::attestHyperMatch() signs the result of a rated free-for-all or 1v1 first, with its
+ *   `block` (NIP rev. 9.26, draft); result() then finds `result_event_id` set and signs nothing.
  *
  * Each is signed once per match (`poll_event_id`, `result_event_id`, written under the match's lock). Fail open:
  * the match never waits for Nostr, a failure is reported and the event is simply missing.

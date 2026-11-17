@@ -333,7 +333,7 @@ test('a match that cannot mine is left to the result as before: a bot seat, a te
     $season = hyperMiningSeason();
     $before = HyperOn::finishTable($before, [0, 1]);
     $bots = HyperOn::finishTable(HyperOn::versus($anna, $bert, bots: 1), [0, 1, 2]);
-    $teams = HyperOn::teams(Clan::factory()->create(), Clan::factory()->create(), $anna, $bert, $carl, $dora);
+    $teams = HyperOn::finishTable(HyperOn::teams(Clan::factory()->create(), Clan::factory()->create(), $anna, $bert, $carl, $dora), [0, 1, 2, 3]);
     $late = HyperOn::ending(HyperOn::versus($carl, $dora), winner: 0, runnerUp: 1);
 
     // The season ended while the last match was still played (its turn clock set on, so the turn itself is in time).
@@ -343,6 +343,9 @@ test('a match that cannot mine is left to the result as before: a bot seat, a te
 
     expect([$before->rated, $bots->rated, $teams->gate_at_start, $late->rated])->toBe([false, false, null, true])
         ->and($late->gate_at_start)->not->toBeNull()
+        ->and(array_map(HyperMining::eligible(...), [$before, $bots, $teams, $late]))->toBe([false, false, false, false])
+        // Asked directly, without the guard around the call at the end of a match: no row and no error.
+        ->and(array_map(fn (HyperMatch $match): ?SeasonAttestation => app(SeasonChains::class)->attestHyperMatch($match->id), [$before, $bots, $teams, $late]))->toBe([null, null, null, null])
         ->and(SeasonAttestation::query()->count())->toBe(0)
         ->and(NostrEvent::query()->where('kind', SeasonChains::ATTESTATION)->get()->flatMap(fn (NostrEvent $event): array => array_column($event->payload()['tags'], 0))->all())->not->toContain('block');
 });

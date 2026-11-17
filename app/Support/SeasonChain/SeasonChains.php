@@ -858,6 +858,11 @@ final class SeasonChains
                 return null;
             }
 
+            // Dark until the game has a weight: without one the season row is not even locked.
+            if (HyperMining::weight($match->mode) === 0) {
+                return null;
+            }
+
             $season = Season::query()->whereKey($live->id)->lockForUpdate()->firstOrFail();
             $existing = $season->attestations()->where(['source' => SeasonAttestation::HYPER, 'source_id' => $match->id, 'board' => 1])->first();
 
