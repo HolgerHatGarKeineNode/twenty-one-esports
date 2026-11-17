@@ -22,8 +22,10 @@ use App\Models\SeriesMatch;
 use App\Models\SeriesQueueEntry;
 use App\Models\TournamentMatch;
 use App\Models\User;
+use App\Support\Formats;
 use App\Support\Notifications\ChessNotifications;
 use App\Support\Rating\RatingService;
+use App\Support\SeasonChain\ChainOverview;
 use App\Support\SeasonChain\GatePin;
 use App\Support\SeasonChain\SeasonChains;
 use App\Support\Series\CasualMatches;
@@ -816,7 +818,12 @@ final class ChessGameService
      * rule it failed (a draw is no candidate), or pending while the league
      * has not attested it. Null for a casual or unfinished game.
      *
-     * @return array{status: 'block'|'none'|'pending', text: string}|null
+     * `text` is the full row; `title` and `detail` are the short line of the
+     * result card: the block and its sats (paid out after the season review,
+     * never at once), or no block with the short reason
+     * (ChainOverview::reasonLabel()).
+     *
+     * @return array{status: 'block'|'none'|'pending', text: string, title: string, detail: string}|null
      */
     public function mining(ChessGame $game): ?array
     {
@@ -827,10 +834,15 @@ final class ChessGameService
         $attestation = SeasonAttestation::query()->where('source', SeasonAttestation::CHESS)->where('source_id', $game->id)->latest('id')->first();
 
         return match (true) {
-            $attestation === null => ['status' => 'pending', 'text' => __('pending: the league attests the result')],
-            $attestation->mines() => ['status' => 'block', 'text' => __('mined block :height, :sats sats per winner, pending season review', ['height' => $attestation->height, 'sats' => $attestation->reward_per_player])],
-            $attestation->consensusRule() !== null => ['status' => 'none', 'text' => __('no block: rule :rule, :reason', ['rule' => $attestation->rule, 'reason' => $attestation->consensusRule()->reason()])],
-            default => ['status' => 'none', 'text' => __('no block: a draw mines nothing')],
+            $attestation === null => ['status' => 'pending', 'text' => __('pending: the league attests the result'),
+                'title' => __('Block pending'), 'detail' => __('the league attests the result')],
+            $attestation->mines() => ['status' => 'block', 'text' => __('mined block :height, :sats sats per winner, pending season review', ['height' => $attestation->height, 'sats' => $attestation->reward_per_player]),
+                'title' => __('Block :height is mined', ['height' => Formats::number((int) $attestation->height)]),
+                'detail' => __(':sats sats for the winner, paid out after the season review', ['sats' => Formats::number((int) $attestation->reward_per_player)])],
+            $attestation->consensusRule() !== null => ['status' => 'none', 'text' => __('no block: rule :rule, :reason', ['rule' => $attestation->rule, 'reason' => $attestation->consensusRule()->reason()]),
+                'title' => __('No block'), 'detail' => $attestation->reason !== null ? ChainOverview::reasonLabel($attestation->reason) : $attestation->consensusRule()->reason()],
+            default => ['status' => 'none', 'text' => __('no block: a draw mines nothing'),
+                'title' => __('No block'), 'detail' => __('a draw mines nothing')],
         };
     }
 

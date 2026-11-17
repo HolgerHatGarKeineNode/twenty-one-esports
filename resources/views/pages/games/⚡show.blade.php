@@ -647,10 +647,21 @@ new #[Layout('layouts::app', ['section' => 'chess', 'realtime' => true, 'scripts
                                                 </span>
                                                 <span class="grow"></span><b class="font-display text-lg whitespace-nowrap" x-text="outcome.result"></b>
                                             </div>
+                                            {{-- The mining moment of a rated game (UX audit 2026-11-17, F4), where the winner looks: the block and its sats, or no block with the short reason. --}}
+                                            <template x-if="state.mining">
+                                                <div class="flex items-start gap-2.5 rounded-[4px] border px-3 py-2.5" data-test="game-over-block" x-bind:data-status="state.mining.status"
+                                                     :class="state.mining.status === 'block' ? 'border-btc-ring bg-btc-chip' : 'border-hairline bg-well'">
+                                                    <x-icon name="mining" :size="18" class="mt-0.5 shrink-0" x-bind:class="state.mining.status === 'block' ? 'text-btc' : 'text-ink-3'" />
+                                                    <span class="flex min-w-0 flex-col gap-0.5">
+                                                        <b class="text-base leading-tight" :class="state.mining.status === 'block' ? 'text-btc-hi' : 'text-ink'" x-text="state.mining.title"></b>
+                                                        <span class="text-[13px] leading-normal text-ink-2" x-text="state.mining.detail"></span>
+                                                    </span>
+                                                </div>
+                                            </template>
                                             <div class="flex flex-col border-t border-hairline">
-                                                {{-- A tournament game (user, 2026-10-03): the rating row only when a rating really moved, no casual "Hashrate" line unless it mined. --}}
+                                                {{-- A tournament game (user, 2026-10-03): the rating row only when a rating really moved, no casual block line unless it mined. --}}
                                                 <div class="grid h-[38px] grid-cols-[120px_minmax(0,1fr)] items-center border-b border-hairline text-[13px]" @if ($tournamentGame) x-show="color && state.rating?.[color] && state.rating[color].delta !== 0" data-test="game-over-rating-row" @endif><span class="text-ink-2">{{ __('Rating') }}</span><span data-test="game-over-rating" x-text="color && state.rating?.[color] ? (state.rating[color].pool === 'casual' ? @js(__('Casual')) : @js(__('Elo'))) + ' ' + Number(state.rating[color].after).toLocaleString(@js(str_replace('_', '-', app()->getLocale()))) + ' ' + (state.rating[color].delta > 0 ? '+' + state.rating[color].delta : (state.rating[color].delta < 0 ? '−' + Math.abs(state.rating[color].delta) : '±0')) : @js(__('casual, no Elo change'))">{{ __('casual, no Elo change') }}</span></div>
-                                                <div class="grid min-h-[38px] grid-cols-[120px_minmax(0,1fr)] items-center border-b border-hairline py-1.5 text-[13px]" @if ($tournamentGame) x-show="state.mining" data-test="game-over-mining-row" @endif><span class="text-ink-2">{{ __('Hashrate') }}</span><span data-test="game-over-mining" :class="state.mining?.status === 'block' ? 'text-win' : ''" x-text="state.mining ? state.mining.text : @js(__('casual games do not count'))">{{ __('casual games do not count') }}</span></div>
+                                                <div class="grid min-h-[38px] grid-cols-[120px_minmax(0,1fr)] items-center border-b border-hairline py-1.5 text-[13px]" @if ($tournamentGame) x-show="state.mining" data-test="game-over-mining-row" @endif><span class="text-ink-2">{{ __('Season block') }}</span><span data-test="game-over-mining" :class="state.mining?.status === 'block' ? 'text-win' : ''" x-text="state.mining ? state.mining.text : @js(__('casual games do not count'))">{{ __('casual games do not count') }}</span></div>
                                             </div>
                                             {{-- A tournament game: the panel below says what the result means; the badge would push it under the phone's chat bar. --}}
                                             @unless ($tournamentGame)
@@ -947,7 +958,7 @@ new #[Layout('layouts::app', ['section' => 'chess', 'realtime' => true, 'scripts
                     @endforeach
                 </div>
                 <div class="rounded-lg bg-card px-6 py-2">
-                    @foreach ([[__('Rating'), $game->rated ? __('rated Elo with rank') : __('casual Elo, no rank')], [__('Hashrate'), __('casual games do not count')], [__('Spectators'), __('anyone with the link, live')], [__('Game number'), $game->number()]] as [$key, $value])
+                    @foreach ([[__('Rating'), $game->rated ? __('rated Elo with rank') : __('casual Elo, no rank')], [__('Season block'), __('casual games do not count')], [__('Spectators'), __('anyone with the link, live')], [__('Game number'), $game->number()]] as [$key, $value])
                         <div class="grid h-11 grid-cols-[180px_minmax(0,1fr)] items-center border-b border-hairline text-sm last:border-0"><span class="text-ink-2">{{ $key }}</span><span>{{ $value }}</span></div>
                     @endforeach
                 </div>

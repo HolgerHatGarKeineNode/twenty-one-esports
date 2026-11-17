@@ -264,7 +264,10 @@ test('the end-of-game panel says what a rated game mined: a block, or no block w
     $long = playTwentyMoves($queue->join($b, 'blitz', rated: true));
     $service->resign($long->refresh(), $long->black);
 
-    expect($mining($long))->toBe(['status' => 'block', 'text' => 'mined block 1, '.SeasonAttestation::query()->sole()->reward_per_player.' sats per winner, pending season review']);
+    $reward = SeasonAttestation::query()->sole()->reward_per_player;
+    // The short line of the result card names the block and its sats, and that they are paid out after the season review.
+    expect($mining($long))->toBe(['status' => 'block', 'text' => 'mined block 1, '.$reward.' sats per winner, pending season review',
+        'title' => 'Block 1 is mined', 'detail' => number_format($reward).' sats for the winner, paid out after the season review']);
 
     // Resigned after one move: no block, rule 2.
     [$c, $d] = [clanPlayer(), clanPlayer()];
@@ -273,18 +276,19 @@ test('the end-of-game panel says what a rated game mined: a block, or no block w
     $service->move($short, $short->white, 'e2e4');
     $service->resign($short->refresh(), $short->black);
 
-    expect($mining($short))->toBe(['status' => 'none', 'text' => 'no block: rule 2, too short to count as a real game']);
+    expect($mining($short))->toBe(['status' => 'none', 'text' => 'no block: rule 2, too short to count as a real game', 'title' => 'No block', 'detail' => 'too few moves']);
 
     // Rated and finished, but no attestation yet: pending. A casual game has no mining line.
     $pending = ChessGame::factory()->rated()->finished()->create();
     $casual = ChessGame::factory()->finished()->create();
 
-    expect($mining($pending))->toBe(['status' => 'pending', 'text' => 'pending: the league attests the result'])
+    expect($mining($pending))->toBe(['status' => 'pending', 'text' => 'pending: the league attests the result', 'title' => 'Block pending', 'detail' => 'the league attests the result'])
         ->and($mining($casual))->toBeNull();
 
-    // The live page's end-of-game panel shows that line in the Hashrate row instead of the casual text.
+    // The live page's end-of-game panel shows the short line in the result card and the full one in the block row instead of the casual text.
     $live = ChessGame::factory()->rated()->create();
-    $this->actingAs($live->white)->get(route('games.show', $live))->assertOk()->assertSee('data-test="game-over-mining"', false)->assertSee('state.mining ? state.mining.text', false);
+    $this->actingAs($live->white)->get(route('games.show', $live))->assertOk()->assertSee('data-test="game-over-mining"', false)->assertSee('state.mining ? state.mining.text', false)
+        ->assertSee('data-test="game-over-block"', false)->assertDontSee('Hashrate');
 });
 
 test('P7e DoD gate: the finished game page, opened later, says what a rated game mined, not "casual games do not count"', function () {

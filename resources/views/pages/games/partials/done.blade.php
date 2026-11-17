@@ -2,9 +2,11 @@
     A finished or aborted game (ChessGameDone.dc.html): result, facts, replay
     with the move list as buttons, the game file (PGN) to copy or download,
     and the Proof with the league's NIP-64 record. Each player's rating shows
-    with this game's change (casual Elo before Block 0, P7b); Hashrate says
-    what a rated game mined (P7e, ChessGameService::mining()) and stays
-    "does not count" for casual games.
+    with this game's change (casual Elo before Block 0, P7b); the result
+    banner says in one line what a rated game mined (the block and its sats,
+    or no block with the short reason; P7e, ChessGameService::mining()), the
+    "Season block" row keeps the full sentence and stays "does not count"
+    for casual games.
 
     Daily games add ChessStates "Deadline missed" when time ran out; a record
     that is not on a relay yet shows ChessStates "Public record delayed" while
@@ -99,6 +101,16 @@
                     {{ $lastMove ? $moveCount.'. '.($game->ply % 2 === 0 ? '… ' : '').\App\Support\Chess\SanNotation::display($lastMove->san).' · ' : '' }}{{ $timeControl }} · {{ trans_choice(':count move|:count moves', $moveCount) }} · {{ __('time left :white vs :black', ['white' => $clock($game->white_ms), 'black' => $clock($game->black_ms)]) }}
                 @endif
             </span>
+            {{-- The mining moment (UX audit 2026-11-17, F4): the block and its sats, or no block with the short reason. --}}
+            @if ($mining !== null)
+                <span @class(['mt-1 flex items-start gap-2.5 self-start rounded-[4px] border px-3 py-2.5', 'border-btc-ring bg-btc-chip' => $mining['status'] === 'block', 'border-hairline bg-well' => $mining['status'] !== 'block']) data-test="done-block" data-status="{{ $mining['status'] }}">
+                    <x-icon name="mining" :size="18" class="mt-0.5 shrink-0 {{ $mining['status'] === 'block' ? 'text-btc' : 'text-ink-3' }}" />
+                    <span class="flex min-w-0 flex-col gap-0.5">
+                        <b @class(['text-base leading-tight', 'text-btc-hi' => $mining['status'] === 'block'])>{{ $mining['title'] }}</b>
+                        <span class="text-[13px] leading-normal text-ink-2">{{ $mining['detail'] }}</span>
+                    </span>
+                </span>
+            @endif
         </span>
         <div class="grid grid-cols-[minmax(0,1fr)_auto] gap-x-6 gap-y-1.5 text-[13px]">
             @foreach (['w', 'b'] as $pc)
@@ -158,7 +170,7 @@
             </span>
             <div class="flex flex-col">
                 <div class="grid h-10 grid-cols-[110px_minmax(0,1fr)] items-center border-b border-hairline text-[13px]"><span class="text-ink-2">{{ __('Daily Elo') }}</span><x-rating :rating="$players[$color]['rating']" :delta="$players[$color]['rating']['delta']" /></div>
-                <div class="grid min-h-10 grid-cols-[110px_minmax(0,1fr)] items-center border-b border-hairline py-1.5 text-[13px]"><span class="text-ink-2">{{ __('Hashrate') }}</span><span @class(['text-win' => ($mining['status'] ?? null) === 'block'])>{{ $mining['text'] ?? __('casual games do not count') }}</span></div>
+                <div class="grid min-h-10 grid-cols-[110px_minmax(0,1fr)] items-center border-b border-hairline py-1.5 text-[13px]"><span class="text-ink-2">{{ __('Season block') }}</span><span @class(['text-win' => ($mining['status'] ?? null) === 'block'])>{{ $mining['text'] ?? __('casual games do not count') }}</span></div>
             </div>
             @if ($lost)
                 <a href="{{ route('settings.notifications') }}" class="text-[13px] font-bold text-ink hover:text-btc-hi">{{ __('Turn on reminders before the deadline') }}</a>
@@ -179,7 +191,7 @@
             @endforeach
         </div>
         <div class="rounded-lg bg-card px-4 py-2 lg:px-6">
-            @foreach ([[__('Rating'), $game->rated ? __('rated Elo with rank') : __('casual Elo, no rank')], [__('Hashrate'), $mining['text'] ?? __('casual games do not count')], [__('Moves'), trans_choice(':count half-move|:count half-moves', $game->ply)], [__('Game number'), $game->number()]] as [$key, $value])
+            @foreach ([[__('Rating'), $game->rated ? __('rated Elo with rank') : __('casual Elo, no rank')], [__('Season block'), $mining['text'] ?? __('casual games do not count')], [__('Moves'), trans_choice(':count half-move|:count half-moves', $game->ply)], [__('Game number'), $game->number()]] as [$key, $value])
                 <div class="grid min-h-11 grid-cols-[120px_minmax(0,1fr)] items-center border-b border-hairline py-2 text-sm last:border-0 lg:grid-cols-[180px_minmax(0,1fr)]"><span class="text-ink-2">{{ $key }}</span><span>{{ $value }}</span></div>
             @endforeach
         </div>
