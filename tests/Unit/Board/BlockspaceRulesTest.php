@@ -138,7 +138,7 @@ test('the game ends with the ladder empty, and the higher fees win', function ()
 
     expect($rules->outcome(blockspaceWith([], ['pool' => '', 'queue' => '', 'score' => ['w' => 40, 'b' => 39]]), []))->toBe(['result' => '1-0', 'reason' => 'mempool_empty'])
         ->and($rules->outcome(blockspaceWith([], ['pool' => '', 'queue' => '', 'score' => ['w' => 39, 'b' => 40]]), []))->toBe(['result' => '0-1', 'reason' => 'mempool_empty'])
-        ->and($rules->outcome(blockspaceWith([], ['pool' => 'a', 'passes' => 14, 'score' => ['w' => 40, 'b' => 40]]), []))->toBe(['result' => '1/2-1/2', 'reason' => 'block_full'])
+        ->and($rules->outcome(blockspaceWith([], ['pool' => 'a', 'passes' => 14, 'score' => ['w' => 40, 'b' => 40]]), []))->toBe(['result' => '1/2-1/2', 'reason' => 'passes'])
         ->and($rules->legalMoves(blockspaceWith([], ['pool' => '', 'queue' => ''])))->toBe([]);
 });
 
@@ -150,8 +150,56 @@ test('the view hides what comes next and says the rest', function () {
     expect($view['input'])->toBe('pieces')
         ->and($view['points'])->toHaveCount(189)
         ->and($view['pieces'])->toHaveKeys(['tx0', 'tx4', 'state'])
-        ->and($view['pieces']['state']['kind'])->toBe('0:0:0:37:1:00:0')
+        ->and($view['pieces'])->not->toHaveKey('next')
+        ->and($view['pieces']['state']['kind'])->toBe('0:0:0:37:1:00:0:-')
         ->and(json_encode($view))->not->toContain($position['queue']);
+});
+
+test('a side with nothing to set sits out, nothing falls out, and the block closes once neither can set', function () {
+    $rules = new BlockspaceRules;
+    // Blue's only corners are taken: after Orange's move Blue has nothing to set, and both its turns are sat out.
+    $position = blockspaceWith(['a1' => 'w', 'e20' => 'b', 'd19' => 'w', 'f19' => 'w', 'd21' => 'w', 'f21' => 'w'], ['pool' => 'aaaaa', 'queue' => 'bbbbb', 'played' => ['w' => true, 'b' => true]]);
+    $move = '0:b2';
+    $after = $rules->apply($position, $move);
+
+    expect($rules->legalMoves($position))->toContain($move)
+        ->and($rules->notation($position, $move))->toBe('₿ I1 b2 +5 · ⚡ – · ⚡ –')
+        ->and($after['last'])->toBe('-')
+        ->and($after['ti'])->toBe(3)
+        ->and($rules->turn($after))->toBe('w')
+        ->and($rules->outcome($after, []))->toBeNull()
+        // Nothing falls out for the turns sat out: the ladder is whole, the queue as before, nothing counts as a pass.
+        ->and($after['pool'])->toBe('aaaab')
+        ->and($after['queue'])->toBe('bbbb')
+        ->and($after['passes'])->toBe(0)
+        // Orange moves on in the order; the next turn is Orange's own again, so nothing is noted.
+        ->and($rules->notation($after, '0:c3'))->toBe('₿ I1 c3 +5')
+        ->and($rules->serialize($rules->deserialize($rules->serialize($after))))->toBe($rules->serialize($after));
+
+    // Neither side has anything left: the block is closed at once, and the record names both.
+    $full = blockspaceWith([], ['pool' => 'aaaaa', 'queue' => 'bbbbb', 'played' => ['w' => true, 'b' => true], 'board' => str_repeat('b', 189)]);
+    $full['board'][(21 - 1) * 9] = 'w';
+    $full['board'][(21 - 2) * 9 + 1] = '.';
+    $closed = $rules->apply($full, $move);
+    expect($rules->notation($full, $move))->toBe('₿ I1 b2 +5 · ⚡ – · ₿ –')
+        ->and($closed['last'])->toBe('x')
+        ->and($rules->legalMoves($closed))->toBe([])
+        ->and($rules->outcome($closed, []))->toBe(['result' => '1-0', 'reason' => 'block_full']);
+
+    // A move after which the other side can set notes nothing.
+    $open = blockspaceWith(['a1' => 'w', 'e20' => 'b'], ['pool' => 'aaaaa', 'queue' => 'bbbbb', 'played' => ['w' => true, 'b' => true]]);
+    expect($rules->notation($open, $move))->toBe('₿ I1 b2 +5');
+});
+
+test('nobody knows what is to come, only how much', function () {
+    $rules = new BlockspaceRules;
+    $position = $rules->deal('rapid');
+    $public = $rules->withoutHidden($position);
+
+    expect(strlen($position['pool']))->toBe(5)
+        ->and($public['pool'])->toBe($position['pool'])
+        ->and($public['queue'])->toBe(str_repeat('a', 37))
+        ->and($public['deck'])->toBe(str_repeat('a', 42));
 });
 
 test('text that is no position or move is refused', function () {

@@ -14,7 +14,7 @@ namespace App\Support\Board;
 final class BlockspacePractice
 {
     /** The last lesson: 3 sats behind with six transactions left, from a game of the bots. */
-    private const ENDGAME = 'n 0 85 88 11 0 rofie p dmqnmbeanrkqlitgsgbjulctkhhpcufjsorofaidep .b.www.w..bbwbbbw..b.bwwb.w..bb.wbww..bb.wwbw.bwwb.bbw.b.wbb.wb.bw..bbwb.bwb...wb.bwb..wwbbwbbww..bbw.bwwwb.bwwwb..w.bb.bb.ww....b.bw...wwwwbw..w..bbwbbbwwbbwwbw.wbwbwbwww.ww.wb.w...ww.b...';
+    private const ENDGAME = 'n 0 85 88 11 0 - rofie p dmqnmbeanrkqlitgsgbjulctkhhpcufjsorofaidep .b.www.w..bbwbbbw..b.bwwb.w..bb.wbww..bb.wwbw.bwwb.bbw.b.wbb.wb.bw..bbwb.bwb...wb.bwb..wwbbwbbww..bbw.bwwwb.bwwwb..w.bb.bb.ww....b.bw...wwwwbw..w..bbwbbbwwbbwwbw.wbwbwbwww.ww.wb.w...ww.b...';
 
     /**
      * The lessons, in order. A lesson is a position with the player as Orange (the rules' White) to move, built from `stones`, `pool` and
@@ -76,7 +76,7 @@ final class BlockspacePractice
         [
             'id' => 'pass', 'stones' => ['w' => 'a1', 'b' => 'c2,b3,e16'], 'pool' => 'kaabb', 'queue' => 'gbhe', 'played' => '11', 'goal' => 'pass',
             'title' => 'Passing',
-            'text' => 'Instead of setting a stone you may pass: the oldest transaction falls out, a new one comes in and the turn goes on. A side with nothing to set is passed over by the game. Here you could set the single stone, but then Blue gets the long transaction on top for 9 sat.',
+            'text' => 'Instead of setting a stone you may pass: the oldest transaction falls out, a new one comes in and the turn goes on. Here you could set the single stone, but then Blue gets the long transaction on top for 9 sat.',
             'task' => 'Pass, press again to confirm, and the long one is gone.',
             'done' => 'A pass costs you a turn, but it can take a rich transaction away from the other side.',
             'retry' => 'Blue can still take the long one now. Pass instead.',
@@ -84,7 +84,7 @@ final class BlockspacePractice
         [
             'id' => 'fuse', 'stones' => ['w' => 'e5'], 'pool' => 'kccbb', 'queue' => 'gbhe', 'played' => '10', 'ti' => 3, 'fuse' => true, 'goal' => 'slot', 'slot' => 0,
             'title' => 'Blitz: the fuse',
-            'text' => 'In blitz games a fuse burns: at every second turn the oldest transaction falls out by itself. The marked one will be gone after this turn, and it brings 9 sat.',
+            'text' => 'In blitz games a fuse burns: at every second turn the oldest transaction falls out by itself. You see it coming: a glowing line burns along the bottom of the top transaction. It is gone after this turn unless you take it now. Here it brings 9 sat.',
             'task' => 'Take the oldest before it burns.',
             'done' => 'In blitz nothing waits for long. After this one the next oldest burns, so look at the top of the ladder on every turn.',
             'retry' => 'That one was not the oldest. It has burned now.',
@@ -92,7 +92,7 @@ final class BlockspacePractice
         [
             'id' => 'endgame', 'position' => self::ENDGAME, 'goal' => 'win',
             'title' => 'Close the block',
-            'text' => 'The end of a real game. The game is over when the ladder is empty or after 14 passes in a row, and the higher yield wins. You are 3 behind and six transactions are left.',
+            'text' => 'The end of a real game. It is over when the ladder is empty or when neither side can set any more; a side with nothing to set sits out until something fits again. The higher yield wins. You are 3 behind and six transactions are left.',
             'task' => 'Win the game against the Hodler.',
             'done' => 'That is Blockspace. Now try the bots, or find a real opponent in the lobby.',
             'retry' => 'The Hodler stayed ahead. Count the yield and start again.',
@@ -146,6 +146,8 @@ final class BlockspacePractice
             'queue' => __(':count to come'),
             'mouse' => __('Left click takes and sets, right click turns, a long right click mirrors. Keys: 1 to 5 take, R turns, F mirrors, the arrows move, Enter sets.'),
             'passed' => __('The last turn was passed: the oldest transaction fell out.'),
+            'out' => __(':side can set nothing and sits out. Nothing falls out.'),
+            'outBoth' => __('Neither side has anything left to set: the block is closed.'),
             'chat' => __('Chat'),
             'unfoldLadder' => __('Open the mempool'),
             'foldLadder' => __('Close the mempool'),
