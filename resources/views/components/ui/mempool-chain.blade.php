@@ -74,6 +74,9 @@
                                     @endif
                                 @elseif ($stamp !== null)
                                     <span class="rv-stamp is-none" title="{{ $stamp['title'] }}" data-test="strip-no-block">{{ $stamp['text'] }}<span class="sr-only">{{ ': '.$stamp['reason'] }}</span></span>
+                                    @if (($stamp['brief'] ?? null) !== null)
+                                        <span class="rv-m rv-stamp-why" aria-hidden="true" data-test="strip-no-block-why">{{ $stamp['brief'] }}</span>
+                                    @endif
                                 @endif
                             </div>
                         @endif

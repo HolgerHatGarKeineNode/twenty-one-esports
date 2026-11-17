@@ -80,7 +80,7 @@ final class ChainStamps
     }
 
     /**
-     * @return array{state: 'mined'|'void'|'none', height: int|null, href: string|null, text: string, note: string|null, reason: string|null, title: string, spoken: string}|null
+     * @return array{state: 'mined'|'void'|'none', height: int|null, href: string|null, text: string, note: string|null, reason: string|null, brief: string|null, title: string, spoken: string}|null
      */
     private static function stamp(SeasonAttestation $row, ?SeasonBlockVoid $void, ?Season $shown): ?array
     {
@@ -100,7 +100,7 @@ final class ChainStamps
             };
 
             return ['state' => $void === null ? 'mined' : 'void', 'height' => $row->height, 'href' => $here ? route('mining').'#block-'.$row->height : null,
-                'text' => $text, 'note' => $note, 'reason' => null, 'title' => $title, 'spoken' => $text.($note === null ? '' : ' '.$note)];
+                'text' => $text, 'note' => $note, 'reason' => null, 'brief' => null, 'title' => $title, 'spoken' => $text.($note === null ? '' : ' '.$note)];
         }
 
         // Attested without a candidate (a draw, a void result): nothing to mine, nothing to say.
@@ -110,8 +110,41 @@ final class ChainStamps
 
         $reason = ChainOverview::reasonLabel($row->reason);
 
-        return ['state' => 'none', 'height' => null, 'href' => null, 'text' => self::line('no block'), 'note' => null, 'reason' => $reason,
+        return ['state' => 'none', 'height' => null, 'href' => null, 'text' => self::line('no block'), 'note' => null, 'reason' => $reason, 'brief' => self::brief($row->reason),
             'title' => self::line('No block: :reason', ['reason' => $reason]), 'spoken' => self::line('No block: :reason', ['reason' => $reason])];
+    }
+
+    /**
+     * The reason in a few words, for the 108 px under a cube (two lines of
+     * about fifteen characters): the stamp's title and its spoken text keep
+     * the full reason (ChainOverview::reasonLabel()). Null for a code without
+     * a short form, which then shows "no block" alone.
+     */
+    public static function brief(string $reason): ?string
+    {
+        return match ($reason) {
+            'outside-season' => self::line('outside season'),
+            'game-does-not-mine' => self::line('mode mines nothing'),
+            'supply-exhausted' => self::line('supply mined out'),
+            'not-trusted' => self::line('not Trusted yet'),
+            'not-connected' => self::line('opponent not added'),
+            'forfeit' => self::line('forfeit'),
+            'too-few-moves' => self::line('too few moves'),
+            'same-clan' => self::line('same clan'),
+            'pairing-daily-limit' => self::line('pairing limit today'),
+            'player-daily-limit' => self::line('daily limit'),
+            'same-subtree' => self::line('same trust circle'),
+            'pairing-season-limit' => self::line('pairing limit, season'),
+            'share-cap' => self::line('era share used up'),
+            'window-outside-season' => self::line('window before Block 0'),
+            'too-few-entrants' => self::line('too few Trusted players'),
+            'unverified' => self::line('value not verified'),
+            'outside-window' => self::line('outside the window'),
+            'not-reviewed' => self::line('review time running'),
+            'window-block' => self::line('window already mined'),
+            'window-wins-limit' => self::line('window wins limit'),
+            default => null,
+        };
     }
 
     /**

@@ -22,6 +22,8 @@
 
     /* The season chain stamp under a mined cube: the block, a small orange square before it (R14). */
     .rv-stamp {
+        /* The stamp's screen-reader text is absolute: without this it hung on the page root, 528 px wide on a 390 px phone. */
+        position: relative;
         display: inline-flex;
         width: 108px;
         align-items: center;
@@ -48,6 +50,16 @@
 
     .rv-stamp.is-elsewhere > i {
         background: var(--color-ink-3);
+    }
+
+    /* Why a rated win mined no block, in two short lines at most under "kein Block"; the full reason is the stamp's title. */
+    .rv-stamp-why {
+        display: -webkit-box;
+        width: 108px;
+        overflow: hidden;
+        -webkit-box-orient: vertical;
+        -webkit-line-clamp: 2;
+        overflow-wrap: anywhere;
     }
 
     .rv-stamp.is-void {
