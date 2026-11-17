@@ -12,7 +12,7 @@
  */
 // board.css comes with boardGame.js: as a dependency of this lazily loaded module it kept the import pending (see there).
 import { setFocus } from '../focusMode.js';
-import { BONUS, C, N, NAMES, ORDER, ORI, R, SIZE, START, cellName, cellOf, flip, key, moveText, readPieces, refuse, rot } from './engine.js';
+import { BONUS, C, M, N, NAMES, ORDER, ORI, R, SIZE, START, cellName, cellOf, flip, key, moveText, readPieces, refuse, rot } from './engine.js';
 import { CELL, SIDES, element, form, joints, stone, stoneDefs } from './stones.js';
 
 /** A block's colour by what it pays, from a cheap green to a rich magenta, as a fee explorer shows the mempool. */
@@ -96,9 +96,16 @@ export function mountPieceBoard(c) {
     const starts = element('g');
     const jointLayer = element('g');
     const stoneLayer = element('g');
-    const lastLayer = element('g');
-    const ghost = element('g', { class: 'bs-ghost' });
-    svg.append(cells, coordinates, starts, jointLayer, stoneLayer, lastLayer, ghost);
+    // The other side's last turn: a tinted plate under its stones, its outline over them.
+    // The other side's last turn glows from behind its stones (drawLast).
+    const recent = element('g', { 'aria-hidden': 'true' });
+    const blurId = 'bsp-recent-blur-' + Math.random().toString(36).slice(2, 8);
+    const blur = element('filter', { id: blurId, x: '-50%', y: '-50%', width: '200%', height: '200%' });
+    blur.append(element('feGaussianBlur', { stdDeviation: 16 }));
+    const ghost = element('g', { class: 'bsp-ghost' });
+    const defs = element('defs');
+    defs.append(blur);
+    svg.append(defs, cells, coordinates, starts, recent, jointLayer, stoneLayer, ghost);
     const stoneAt = new Map();
 
     /** The names of the files and ranks on the edge cells, as the moves write them; the stones lie over them. */
@@ -121,10 +128,10 @@ export function mountPieceBoard(c) {
             const x = col * CELL;
             const y = r * CELL;
             const colour = SIDES[side].colour;
-            const group = element('g', { class: 'bs-start', 'data-start': side });
+            const group = element('g', { class: 'bsp-start', 'data-start': side });
             group.append(
                 element('rect', { x: x + 4, y: y + 4, width: CELL - 8, height: CELL - 8, rx: 8, fill: colour, 'fill-opacity': 0.16 }),
-                element('rect', { x: x + 38, y: y + 38, width: 24, height: 24, rx: 4, fill: colour, class: 'bs-start-mark' }),
+                element('rect', { x: x + 38, y: y + 38, width: 24, height: 24, rx: 4, fill: colour, class: 'bsp-start-mark' }),
             );
             starts.append(group);
         });
@@ -132,7 +139,6 @@ export function mountPieceBoard(c) {
 
     function drawStones(g) {
         const parts = { w: [], b: [] };
-        const fresh = [];
         const wanted = new Set();
         g.board.forEach((value, cell) => {
             if (!value) return;
@@ -145,7 +151,6 @@ export function mountPieceBoard(c) {
             const node = stone(side, r, col);
             stoneAt.set(id, node);
             stoneLayer.append(node);
-            fresh.push(node);
         });
         for (const [id, node] of stoneAt) {
             if (!wanted.has(id)) {
@@ -153,23 +158,32 @@ export function mountPieceBoard(c) {
                 stoneAt.delete(id);
             }
         }
+        // No landing animation (user, 2026-11-15): a stone you set stays where you set it, the other side's are marked.
         jointLayer.replaceChildren(...joints('w', parts.w), ...joints('b', parts.b));
-        // A move lands; a whole game loaded or stepped through does not.
-        if (!calm && fresh.length <= 5) {
-            fresh.forEach((node, index) => node.animate(
-                [{ opacity: 0, transform: 'scale(0.55)' }, { opacity: 1, transform: 'scale(1.08)', offset: 0.7 }, { opacity: 1, transform: 'scale(1)' }],
-                { duration: 280, delay: index * 45, easing: 'cubic-bezier(0.2, 0.8, 0.2, 1)', fill: 'backwards' },
-            ));
-        }
     }
 
+    /**
+     * What the other side set in its last turn, as a soft glow of its colour behind the forms and a light tint of
+     * their cells (user, 2026-11-17: no frame, no outline; a white frame, dots, a glow line and corner marks were
+     * tried). With Orange, Blue, Blue, Orange that is mostly two forms. The mark stays through your own moves and
+     * moves on with the other side's next turn; a spectator sees the last turn of the side that moved last.
+     */
     function drawLast() {
-        lastLayer.replaceChildren();
-        const path = (c.shownPly > 0 ? c.state.moves[c.shownPly - 1]?.path : null) ?? [];
-        for (const name of path) {
-            const [r, col] = partOf(cellOf(name));
-            lastLayer.append(element('rect', { x: col * CELL + 6, y: r * CELL + 6, width: CELL - 12, height: CELL - 12, rx: 13, fill: 'none', stroke: '#fff', 'stroke-opacity': 0.55, 'stroke-width': 3 }));
+        const moves = (c.state.moves ?? []).slice(0, c.shownPly);
+        const sideOf = (move) => (move?.notation?.startsWith('₿') ? 'w' : 'b');
+        const mover = c.color === 'w' || c.color === 'b' ? (c.color === 'w' ? 'b' : 'w') : sideOf(moves.at(-1));
+        const halo = element('g', { filter: `url(#${blurId})`, class: 'bsp-recent-halo is-' + mover });
+        const tint = element('g', { class: 'bsp-recent-tint is-' + mover });
+        let end = moves.length - 1;
+        while (end >= 0 && sideOf(moves[end]) !== mover) end--;
+        for (let i = end; i >= 0 && sideOf(moves[i]) === mover; i--) {
+            for (const name of moves[i].path ?? []) {
+                const [r, col] = partOf(cellOf(name));
+                halo.append(element('rect', { x: col * CELL - 4, y: r * CELL - 4, width: CELL + 8, height: CELL + 8, rx: 30 }));
+                tint.append(element('rect', { x: col * CELL + 3, y: r * CELL + 3, width: CELL - 6, height: CELL - 6, rx: 12 }));
+            }
         }
+        recent.replaceChildren(...(tint.children.length ? [halo, tint] : []));
     }
 
     /** Stones where they may lie; where they may not, a red outline that leaves the stones under it in view, and the reason. */
@@ -204,18 +218,18 @@ export function mountPieceBoard(c) {
     const help = stage.querySelector('[data-piece-help]');
 
     const feeOf = SIDE_KEYS.map((side) => {
-        const card = html('div', 'bs-fee is-' + side);
+        const card = html('div', 'bsp-fee is-' + side);
         card.dataset.test = 'fee-' + side;
         const value = html('b', '', '0');
         const name = html('span', '');
         const unit = html('small', '', 'sat');
-        const clock = html('time', 'bs-clock');
+        const clock = html('time', 'bsp-clock');
         card.append(name, value, unit, clock);
 
         return { card, value, name, side, clock };
     });
-    const order = html('div', 'bs-order');
-    const marks = html('div', 'bs-marks');
+    const order = html('div', 'bsp-order');
+    const marks = html('div', 'bsp-marks');
     marks.setAttribute('aria-hidden', 'true');
     const orderMarks = ORDER.map((side) => {
         const mark = html('i', 'is-' + SIDE_KEYS[side]);
@@ -229,17 +243,17 @@ export function mountPieceBoard(c) {
     head.replaceChildren(feeOf[0].card, order, feeOf[1].card);
     ladder.replaceChildren();
     // On a phone the ladder lies folded beside the block, a tap on this opens it in full size over the block.
-    const fold = html('button', 'bs-fold', '‹');
+    const fold = html('button', 'bsp-fold', '‹');
     fold.type = 'button';
     fold.dataset.test = 'ladder-fold';
     fold.hidden = true;
     fold.addEventListener('click', () => unfold(!ladder.classList.contains('is-open')));
     ladder.append(fold);
 
-    const note = html('p', 'bs-note');
+    const note = html('p', 'bsp-note');
     note.setAttribute('role', 'alert');
     note.dataset.test = 'piece-note';
-    const hint = html('p', 'bs-hint');
+    const hint = html('p', 'bsp-hint');
     hint.dataset.test = 'piece-hint';
     // What a screen reader hears of the block: the stones shown and the moves made.
     const speech = html('p', 'sr-only');
@@ -248,9 +262,9 @@ export function mountPieceBoard(c) {
     const say = (text) => {
         if (speech.textContent !== text) speech.textContent = text;
     };
-    const buttons = html('div', 'bs-buttons');
+    const buttons = html('div', 'bsp-buttons');
     const button = (label, test, run) => {
-        const node = html('button', 'bs-button', label);
+        const node = html('button', 'bsp-button', label);
         node.type = 'button';
         node.dataset.test = test;
         node.addEventListener('click', run);
@@ -274,15 +288,15 @@ export function mountPieceBoard(c) {
     help.textContent = matchMedia('(hover: none)').matches ? words.touch : words.mouse;
 
     function makeTile(f) {
-        const node = html('button', 'bs-rung');
+        const node = html('button', 'bsp-rung');
         node.type = 'button';
-        const front = html('span', 'bs-front');
+        const front = html('span', 'bsp-front');
         const picture = element('svg', { viewBox: `0 0 ${5 * CELL} ${3 * CELL}`, 'aria-hidden': 'true' });
-        const pay = html('span', 'bs-pay');
+        const pay = html('span', 'bsp-pay');
         const sats = html('b');
         const parts = html('small');
         pay.append(sats, parts);
-        front.append(pay, picture, html('span', 'bs-fuse'));
+        front.append(pay, picture, html('span', 'bsp-fuse'));
         node.append(front);
         const shape = ORI[f][flatOf(f)];
         const height = Math.max(...shape.map((part) => part[0])) + 1;
@@ -306,7 +320,7 @@ export function mountPieceBoard(c) {
                 from = found + 1;
             } else {
                 const tile = makeTile(tx.f);
-                tile.node.style.setProperty('--rung', 5);
+                tile.node.style.setProperty('--rung', M);
                 tile.node.style.opacity = '0';
                 keep.push(tile);
             }
@@ -364,8 +378,13 @@ export function mountPieceBoard(c) {
         const holding = !!hand && live();
         [rotateButton, mirrorButton, setButton].forEach((node) => node.setAttribute('aria-disabled', holding ? 'false' : 'true'));
         passButton.setAttribute('aria-disabled', live() ? 'false' : 'true');
-        const info = !c.error && active && shown.passes > 0;
-        const noteText = c.error || (info ? words.passed : '');
+        // The turns this move left sat out (` · ⚡ –` in the record): who, and that nothing fell out; both sides, the block is closed.
+        const record = c.shownPly > 0 ? c.state.moves?.[c.shownPly - 1]?.notation ?? '' : '';
+        const out = [...new Set(record.split(' · ').slice(1).map((note) => (note.startsWith('₿') ? 'w' : 'b')))];
+        const name = (side) => (side === 'w' ? c.t.white : c.t.black);
+        const outText = out.length > 1 ? words.outBoth : out.length ? words.out.replace(':side', name(out[0])) : '';
+        const info = !c.error && (outText !== '' || (active && shown.passes > 0));
+        const noteText = c.error || (outText || (info ? words.passed : ''));
         if (note.textContent !== noteText) note.textContent = noteText;
         note.classList.toggle('is-info', info);
         const last = c.state.moves?.[c.shownPly - 1]?.notation;
@@ -552,7 +571,7 @@ export function mountPieceBoard(c) {
     function lowerEdge() {
         const tabbar = document.documentElement.classList.contains('is-focus') ? 0 : parseFloat(getComputedStyle(document.body).paddingBottom) || 0;
         const sheet = document.querySelector('[data-test=chat-sheet-toggle]')?.closest('section');
-        const open = !document.documentElement.classList.contains('bs-playing') && matchMedia('(width < 64rem)').matches && sheet && getComputedStyle(sheet).position === 'fixed' && sheet.getBoundingClientRect().height > 0;
+        const open = !document.documentElement.classList.contains('bsp-playing') && matchMedia('(width < 64rem)').matches && sheet && getComputedStyle(sheet).position === 'fixed' && sheet.getBoundingClientRect().height > 0;
 
         let edge = open ? Math.min(innerHeight - tabbar, sheet.getBoundingClientRect().top) : innerHeight - tabbar;
         // The action dock's bar and tab (components/⚡match-dock) stand on top of that: nothing of the game lies under them.
@@ -611,7 +630,7 @@ export function mountPieceBoard(c) {
         const low = phone && innerHeight < 500;
         const compact = phone && !low;
         stage.classList.toggle('is-compact', compact);
-        document.documentElement.classList.toggle('bs-playing', compact && c.color !== null && c.state.status === 'active');
+        document.documentElement.classList.toggle('bsp-playing', compact && c.color !== null && c.state.status === 'active');
         help.textContent = low ? words.portrait : matchMedia('(hover: none)').matches ? words.touch : words.mouse;
         const edge = lowerEdge();
         if (compact) return fitPhone(edge);
@@ -657,7 +676,7 @@ export function mountPieceBoard(c) {
     const clocks = setInterval(() => {
         if (!svg.isConnected) {
             leaving.abort();
-            document.documentElement.classList.remove('bs-playing');
+            document.documentElement.classList.remove('bsp-playing');
 
             return clearInterval(clocks);
         }
@@ -681,7 +700,7 @@ export function mountPieceBoard(c) {
         key(event) {
             if (event.target.closest?.('input, textarea, select') || event.metaKey || event.ctrlKey || event.altKey || !live()) return false;
             const name = event.key.toLowerCase();
-            if (name >= '1' && name <= '5' && tiles[Number(name) - 1]) {
+            if (name >= '1' && name <= String(M) && tiles[Number(name) - 1]) {
                 choose(tiles[Number(name) - 1]);
 
                 return true;
@@ -689,7 +708,7 @@ export function mountPieceBoard(c) {
             if (!hand) return false;
             if (name === 'r') turn(rot);
             else if (name === 'f') turn(flip);
-            else if (name === 'enter' && !event.target.closest?.('a, .bs-button')) {
+            else if (name === 'enter' && !event.target.closest?.('a, .bsp-button')) {
                 // Also from the rung it came from: Enter sets the stones, it does not put them back.
                 event.preventDefault();
                 commit();

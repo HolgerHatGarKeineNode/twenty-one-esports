@@ -39,10 +39,10 @@ const FACETS = [
 /** The one drawing of each stone, for every <use> on the page. */
 export function stoneDefs() {
     const stone = (side, s) => `
-        <linearGradient id="bs-table-${side}" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="${s.table[0]}"/><stop offset="1" stop-color="${s.table[1]}"/></linearGradient>
-        <symbol id="bs-stone-${side}" viewBox="0 0 100 100">
+        <linearGradient id="bsp-table-${side}" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="${s.table[0]}"/><stop offset="1" stop-color="${s.table[1]}"/></linearGradient>
+        <symbol id="bsp-stone-${side}" viewBox="0 0 100 100">
             ${FACETS.map(([points, tone]) => `<polygon points="${points}" fill="${s.tones[tone]}"/>`).join('')}
-            <polygon points="38,28 62,28 72,38 72,62 62,72 38,72 28,62 28,38" fill="url(#bs-table-${side})"/>
+            <polygon points="38,28 62,28 72,38 72,62 62,72 38,72 28,62 28,38" fill="url(#bsp-table-${side})"/>
             <polygon points="38,28 62,28 28,62 28,38" fill="#fff" fill-opacity=".28"/>
         </symbol>`;
     const svg = element('svg', { width: 0, height: 0, 'aria-hidden': 'true' });
@@ -53,7 +53,7 @@ export function stoneDefs() {
 }
 
 export function stone(side, row, column) {
-    return element('use', { href: '#bs-stone-' + side, x: column * CELL, y: row * CELL, width: CELL, height: CELL, class: 'bs-stone' });
+    return element('use', { href: '#bsp-stone-' + side, x: column * CELL, y: row * CELL, width: CELL, height: CELL, class: 'bsp-stone' });
 }
 
 /** The joints of stones given as [row, column], each side once, under the stones. */
