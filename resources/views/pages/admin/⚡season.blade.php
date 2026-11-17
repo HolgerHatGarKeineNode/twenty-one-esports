@@ -7,6 +7,7 @@ use App\Models\SeasonPlan;
 use App\Models\SeasonSettingChange;
 use App\Models\User;
 use App\Support\Board;
+use App\Support\Hyper\HyperMining;
 use App\Support\Nostr\NostrKeys;
 use App\Support\Nostr\RejectedEvent;
 use App\Support\Nostr\SignerMessages;
@@ -249,6 +250,56 @@ new #[Title('Seasons')] #[Layout('layouts::app', ['section' => 'admin'])] class 
         }
 
         $this->notice = __('The proposal for :game is filled in. Check it and save the change.', ['game' => ChainOverview::keyLabel('chess/rapid')]);
+    }
+
+    /**
+     * Fill the proposal for Hyperbitcoinization (NIP rev. 9.26, draft; DRAFT
+     * values of config/season.php) into the change form of a live season:
+     * its weights, its share and daily limit, and the other shares shrunk in
+     * proportion to make room. Nothing is saved; only matches that start
+     * after a saved change can mine (their trust is pinned at the start).
+     */
+    public function fillHyperChange(): void
+    {
+        Gate::authorize('admin');
+
+        $proposal = $this->hyperChangeProposal();
+
+        if ($proposal === null) {
+            return;
+        }
+
+        foreach ($proposal['weights'] as $key => $milli) {
+            $this->weights[$key] = SeasonRelease::factor($milli);
+        }
+
+        foreach ($proposal['shares'] as $key => $share) {
+            $this->shares[$key] = (string) $share;
+        }
+
+        foreach ($proposal['daily'] as $key => $blocks) {
+            $this->daily[$key] = (string) $blocks;
+        }
+
+        $this->notice = __('The proposal for :game is filled in. Check it and save the change.', ['game' => ChainDraft::shareLabel(HyperMining::GAME)]);
+    }
+
+    /**
+     * What ChainDraft proposes for Hyperbitcoinization on top of the rules in
+     * force of the live season, or null while there is no live season, the
+     * game is switched off or it mines already.
+     *
+     * @return array{weights: array<string, int>, shares: array<string, int>, daily: array<string, int>}|null
+     */
+    public function hyperChangeProposal(): ?array
+    {
+        $current = $this->chain['in_force'];
+
+        if ($this->chain['season'] === null || ! $current instanceof ConsensusParameters) {
+            return null;
+        }
+
+        return ChainDraft::proposal(HyperMining::GAME, ['weights' => $current->weights, 'groups' => $current->groups, 'shares' => $current->shares, 'daily' => $current->daily] + ChainDraft::current());
     }
 
     /** Save the chain draft for Block 0 (board only, checked again in RatingSettings::saveDraft()), with its log row. */
@@ -971,6 +1022,35 @@ new #[Title('Seasons')] #[Layout('layouts::app', ['section' => 'admin'])] class 
                             <span><button type="button" wire:click="fillProposal('age-of-empires-2')" class="inline-flex min-h-11 cursor-pointer items-center rounded-md border border-line bg-well px-4 text-[13px] font-bold text-ink hover:border-btc" data-test="fill-age-of-empires-2-proposal">{{ __('Fill in the proposal') }}</button></span>
                         </div>
                     @endif
+                    {{-- Rocket League and EA Sports FC (user, 2026-11-18): not at Block 0 by default; the values they had, as a proposal. --}}
+                    @foreach (['rocket-league', 'ea-sports-fc'] as $seriesGame)
+                        @if (! $draftLocked && ($proposal = ChainDraft::proposal($seriesGame, $draftChain)) !== null)
+                            <div class="flex flex-col gap-2 rounded-md bg-ground p-3 shadow-ring" data-test="{{ $seriesGame }}-proposal" wire:key="series-proposal-{{ $seriesGame }}">
+                                <p class="m-0 text-xs text-ink-2">{{ __(':game does not mine in this draft. Proposal: weight :weight per mode, :share % share and :daily a day; the other shares shrink in proportion to make room: :others. Nothing changes until you save the draft.', [
+                                    'game' => ChainDraft::shareLabel($seriesGame),
+                                    'weight' => SeasonRelease::factor((int) collect($proposal['weights'])->first()),
+                                    'share' => (int) collect($proposal['shares'])->only(array_keys($proposal['daily']))->first(),
+                                    'daily' => (int) collect($proposal['daily'])->first(),
+                                    'others' => collect($proposal['shares'])->except(array_keys($proposal['daily']))->map(fn (int $share, string $key): string => ChainDraft::shareLabel($key).' '.$share.' %')->implode(', '),
+                                ]) }}</p>
+                                <span><button type="button" wire:click="fillProposal('{{ $seriesGame }}')" class="inline-flex min-h-11 cursor-pointer items-center rounded-md border border-line bg-well px-4 text-[13px] font-bold text-ink hover:border-btc" data-test="fill-{{ $seriesGame }}-proposal">{{ __('Fill in the proposal') }}</button></span>
+                            </div>
+                        @endif
+                    @endforeach
+                    {{-- Hyperbitcoinization (NIP rev. 9.26, draft; user, 2026-11-18): draft values, mined only once the board saves them. --}}
+                    @if (! $draftLocked && ($proposal = ChainDraft::proposal(HyperMining::GAME, $draftChain)) !== null)
+                        <div class="flex flex-col gap-2 rounded-md bg-ground p-3 shadow-ring" data-test="hyperbitcoinization-proposal">
+                            <p class="m-0 text-xs text-ink-2">{{ __(':game does not mine in this draft. Draft proposal, not decided yet: weight :weight per mode, :share % share and :daily a day; the other shares shrink in proportion to make room: :others. Nothing changes until you save the draft.', [
+                                'game' => ChainDraft::shareLabel(HyperMining::GAME),
+                                'weight' => SeasonRelease::factor((int) collect($proposal['weights'])->first()),
+                                'share' => (int) collect($proposal['shares'])->only(array_keys($proposal['daily']))->first(),
+                                'daily' => (int) collect($proposal['daily'])->first(),
+                                'others' => collect($proposal['shares'])->except(array_keys($proposal['daily']))->map(fn (int $share, string $key): string => ChainDraft::shareLabel($key).' '.$share.' %')->implode(', '),
+                            ]) }}</p>
+                            <p class="m-0 text-xs text-ink-3">{{ __('A rated match mines one block, for its winner alone: a free-for-all or a 1v1 in which every seat is a trusted player. Team matches, tournament matches and matches with a bot do not mine.') }}</p>
+                            <span><button type="button" wire:click="fillProposal('hyperbitcoinization')" class="inline-flex min-h-11 cursor-pointer items-center rounded-md border border-line bg-well px-4 text-[13px] font-bold text-ink hover:border-btc" data-test="fill-hyperbitcoinization-proposal">{{ __('Fill in the proposal') }}</button></span>
+                        </div>
+                    @endif
                     {{-- Chess rapid (plan "Schach Rapid und Clan", P1): the user's weight of 2026-10-05, filled in only by the board. --}}
                     @if (! $draftLocked && ($proposal = ChainDraft::proposal('chess-rapid', $draftChain)) !== null)
                         <div class="flex flex-col gap-2 rounded-md bg-ground p-3 shadow-ring" data-test="chess-rapid-proposal">
@@ -1220,6 +1300,20 @@ new #[Title('Seasons')] #[Layout('layouts::app', ['section' => 'admin'])] class 
                             'weight' => SeasonRelease::factor((int) config('season.chain.chess_rapid_proposal.weights.chess/rapid', 1500)),
                         ]) }}</p>
                         <span><button type="button" wire:click="fillRapidChange" class="inline-flex min-h-11 cursor-pointer items-center rounded-md border border-line bg-well px-4 text-[13px] font-bold text-ink hover:border-btc" data-test="fill-chess-rapid-change">{{ __('Fill in the proposal') }}</button></span>
+                    </div>
+                @endif
+                {{-- Hyperbitcoinization (NIP rev. 9.26, draft): joins a live season by a change; only matches that start after it can mine. --}}
+                @if ($this->isBoard && ($proposal = $this->hyperChangeProposal()) !== null)
+                    <div class="flex flex-col gap-2 rounded-md bg-ground p-3 shadow-ring" data-test="hyperbitcoinization-change-proposal">
+                        <p class="m-0 text-xs text-ink-2">{{ __(':game does not mine in this season. Draft proposal, not decided yet: weight :weight per mode, :share % share and :daily a day; the other shares shrink in proportion to make room: :others. Nothing changes until you save the change, and only matches that start after it can mine.', [
+                            'game' => ChainDraft::shareLabel(HyperMining::GAME),
+                            'weight' => SeasonRelease::factor((int) collect($proposal['weights'])->first()),
+                            'share' => (int) collect($proposal['shares'])->only(array_keys($proposal['daily']))->first(),
+                            'daily' => (int) collect($proposal['daily'])->first(),
+                            'others' => collect($proposal['shares'])->except(array_keys($proposal['daily']))->map(fn (int $share, string $key): string => ChainDraft::shareLabel($key).' '.$share.' %')->implode(', '),
+                        ]) }}</p>
+                        <p class="m-0 text-xs text-ink-3">{{ __('A rated match mines one block, for its winner alone: a free-for-all or a 1v1 in which every seat is a trusted player. Team matches, tournament matches and matches with a bot do not mine.') }}</p>
+                        <span><button type="button" wire:click="fillHyperChange" class="inline-flex min-h-11 cursor-pointer items-center rounded-md border border-line bg-well px-4 text-[13px] font-bold text-ink hover:border-btc" data-test="fill-hyperbitcoinization-change">{{ __('Fill in the proposal') }}</button></span>
                     </div>
                 @endif
                 <fieldset class="m-0 grid grid-cols-2 gap-3 border-0 p-0 lg:grid-cols-4" @disabled(! $this->isBoard)>
