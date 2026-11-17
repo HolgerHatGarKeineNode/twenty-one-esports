@@ -5,6 +5,7 @@ namespace App\Support\SeasonChain;
 use App\Games\GameRegistry;
 use App\Jobs\NotifyBlockZero;
 use App\Jobs\PublishNostrEvent;
+use App\Jobs\RunTrustJob;
 use App\Models\NostrEvent;
 use App\Models\Season;
 use App\Models\User;
@@ -28,6 +29,8 @@ use Illuminate\Support\Facades\DB;
  * `p` with role `release`, writes the season row and opens the ladders
  * (`32152`, LadderEvents). Everything goes to the league relays after the
  * commit, and every player who asked to be told hears it (NotifyBlockZero).
+ * One trust run starts after the commit too (RunTrustJob), so rated play does
+ * not wait for the schedule.
  *
  * The draft is the chain draft of the board (ChainDraft, P43: supply,
  * subsidy, weights, share groups, shares, daily limits, eras, claim window,
@@ -291,6 +294,10 @@ final class SeasonRelease
                 if ($previous === null) {
                     NotifyBlockZero::dispatch(NotifyBlockZero::RELEASED);
                 }
+
+                // Rated play opens with the first trust run inside the new season: start it after the commit
+                // instead of waiting for the schedule. It never fails the release (RunTrustJob).
+                RunTrustJob::dispatch();
 
                 return $season;
             });

@@ -7,13 +7,17 @@
  * league relays only (PublishNostrEvent, faked here).
  */
 
+use App\Jobs\NotifyBlockZero;
 use App\Jobs\PublishNostrEvent;
+use App\Jobs\RunTrustJob;
 use App\Models\Admin;
 use App\Models\NostrEvent;
 use App\Models\Season;
+use App\Models\TrustRun;
 use App\Models\User;
 use App\Support\Nostr\NostrKeys;
 use App\Support\Nostr\RejectedEvent;
+use App\Support\Nostr\RelayReader;
 use App\Support\Nostr\SignedEvent;
 use App\Support\SeasonChain\SeasonChains;
 use App\Support\SeasonChain\SeasonRelease;
@@ -21,6 +25,9 @@ use App\Support\SeasonChain\SeasonReleaseRefused;
 use App\Support\SeasonChain\Seasons;
 use App\Support\Series\Ladders;
 use Carbon\CarbonImmutable;
+use Illuminate\Support\Facades\Exceptions;
+use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Queue;
 use Tests\Support\TestSigner;
 
@@ -161,3 +168,33 @@ test('a stale release (the planned end drifted by more than an hour) is refused'
     expect(fn () => $this->release->release($this->board, '2100000', $endsAt, SeasonRelease::draftHash(), $this->boardSigner->signTemplates([$template])))
         ->toThrow(SeasonReleaseRefused::class, 'expired');
 });
+
+test('the release starts one trust run for the new season, without the admin doing anything', function () {
+    releaseAs($this->board, $this->boardSigner);
+
+    Queue::assertPushed(RunTrustJob::class, 1);
+});
+
+test('a trust run that is refused or breaks right after Block 0 leaves the season released', function (Closure $break, Closure $noticed) {
+    // Only the relay and notification jobs stay faked: the trust run goes through the sync queue, inside release().
+    Queue::fake([PublishNostrEvent::class, NotifyBlockZero::class]);
+    Http::preventStrayRequests();
+    Exceptions::fake();
+    Log::spy();
+    $break();
+
+    $season = releaseAs($this->board, $this->boardSigner);
+
+    expect(Seasons::live()?->id)->toBe($season->id)
+        ->and(TrustRun::query()->count())->toBe(0);
+    $noticed();
+})->with([
+    'refused: the member list cannot be read' => [
+        fn () => Http::fake(['*' => Http::response('down', 503)]),
+        fn () => Log::shouldHaveReceived('warning')->withArgs(fn (string $message): bool => str_contains($message, 'Trust run after Block 0 refused'))->once(),
+    ],
+    'broken: the relay reader throws' => [
+        fn () => app()->bind(RelayReader::class, fn () => throw new RuntimeException('relay reader broke')),
+        fn () => Exceptions::assertReported(fn (RuntimeException $e): bool => $e->getMessage() === 'relay reader broke'),
+    ],
+]);
