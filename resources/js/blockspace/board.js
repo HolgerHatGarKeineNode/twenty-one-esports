@@ -82,6 +82,8 @@ export function mountPieceBoard(c) {
     const onView = (cell) => (turned() ? N - 1 - cell : cell);
     const partOf = (cell) => [(onView(cell) / C) | 0, onView(cell) % C];
     const live = () => c.canMove;
+    /** A player in a game still on: the dock shows its buttons. A spectator and a finished game see only the note. */
+    const playing = () => c.color !== null && c.state.status !== 'finished' && c.state.status !== 'aborted';
     const sideKey = (g) => SIDE_KEYS[g.side];
 
     /* The drawing: the cells once, the layers above them on every change. */
@@ -383,16 +385,16 @@ export function mountPieceBoard(c) {
         const name = (side) => (side === 'w' ? c.t.white : c.t.black);
         // In blitz the fuse keeps burning on a turn sat out, so the note does not promise that nothing falls out.
         const outText = out.length > 1 ? words.outBoth : out.length ? (shown.fuse ? words.outFuse : words.out).replace(':side', name(out[0])) : '';
-        const info = !c.error && (outText !== '' || (active && shown.passes > 0));
+        // The note belongs to the move shown: a finished game and a move browsed back to read it as the turn did.
+        const info = !c.error && (outText !== '' || shown.passes > 0);
         const noteText = c.error || (outText || (info ? words.passed : ''));
         if (note.textContent !== noteText) note.textContent = noteText;
         note.classList.toggle('is-info', info);
         const last = c.state.moves?.[c.shownPly - 1]?.notation;
         if (last) say(last);
-        const playing = c.color !== null && c.state.status !== 'finished' && c.state.status !== 'aborted';
-        dock.classList.toggle('is-off', !playing);
-        dock.style.visibility = playing ? '' : 'hidden';
-        help.style.display = playing ? '' : 'none';
+        // Off: the buttons give way (board.css), the note stays readable and the dock keeps its height, so the block keeps its size.
+        dock.classList.toggle('is-off', !playing());
+        help.style.display = playing() ? '' : 'none';
         // With a stone in hand a finger on the block moves the stone, not the page.
         svg.style.touchAction = holding ? 'none' : 'pan-y';
         svg.style.cursor = holding ? 'none' : '';
@@ -603,7 +605,10 @@ export function mountPieceBoard(c) {
         const barHeight = bar && bar.offsetHeight > 0 ? bar.offsetHeight : 0;
         if (bar) bar.style.top = upperEdge() + 'px';
         const width = stage.parentElement.clientWidth + 2 * PHONE_BLEED;
-        const room = edge - upperEdge() - barHeight - head.offsetHeight - dock.offsetHeight - 16;
+        // The dock holds a slot for the note above its buttons, so a note never lies over the block. A spectator's dock
+        // is that slot alone, in the page under the block, after the stage's gap.
+        const docked = playing() ? dock.offsetHeight : dock.offsetHeight + 6;
+        const room = edge - upperEdge() - barHeight - head.offsetHeight - docked - 8;
         const size = Math.max(14, Math.floor(Math.min(room / R, (width - PHONE_GAP - MIN_STRIP) / C)));
         // A tablet has room for the whole ladder, a phone only for the strip that is left.
         const strip = Math.min(width - PHONE_GAP - size * C, size * 5.6);
@@ -613,8 +618,8 @@ export function mountPieceBoard(c) {
         const folds = strip / 5.6 < size - 0.01;
         fold.hidden = !folds;
         if (!folds) unfold(false);
-        dock.style.bottom = innerHeight - edge + 'px';
-        stage.style.paddingBottom = dock.offsetHeight + 8 + 'px';
+        dock.style.bottom = playing() ? innerHeight - edge + 'px' : '';
+        stage.style.paddingBottom = playing() ? docked + 8 + 'px' : '';
     }
 
     function unfold(open) {
@@ -684,6 +689,15 @@ export function mountPieceBoard(c) {
         placeDock();
     }, 400);
     addEventListener('resize', () => fit(), { signal: leaving.signal });
+    // A note longer than its slot (a long error) makes a phone's dock taller: the block gives it the room, the note never lies over it.
+    let dockHeight = 0;
+    const dockSize = new ResizeObserver(() => {
+        if (dock.offsetHeight === dockHeight) return;
+        dockHeight = dock.offsetHeight;
+        if (stage.classList.contains('is-compact')) fit();
+    });
+    dockSize.observe(dock);
+    leaving.signal.addEventListener('abort', () => dockSize.disconnect());
 
     return {
         render: draw,

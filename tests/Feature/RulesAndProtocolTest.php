@@ -21,6 +21,14 @@ test('the rules page has every section with an anchor, in English and German', f
     $this->get(route('rules', ['lang' => 'de']))->assertOk()->assertSee('Casual und gewertet')->assertSee('Preistöpfe und Auszahlungen');
 });
 
+test('the German rules call a ladder "Ladder", as the game tabs do; "Leiter" stays for tournament directors only', function () {
+    $text = strip_tags((string) $this->get(route('rules', ['lang' => 'de']))->assertOk()->getContent());
+    $directors = trans('In a tournament run by its directors, the directors enter every result; players report nothing.', [], 'de');
+
+    expect(preg_match_all('/[\p{L}-]*Leiter\b/u', str_replace($directors, '', $text), $found))->toBe(0, implode(', ', $found[0]))
+        ->and(str_contains($text, 'auf der Rapid-Ladder'))->toBeTrue('the team match rule names the rapid ladder');
+});
+
 test('the rules state the numbers the league applies, read from the config at render time', function () {
     config([
         'esports.casual.ready_seconds' => 45,

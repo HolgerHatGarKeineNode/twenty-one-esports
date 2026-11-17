@@ -60,8 +60,8 @@
 /* The other side's last turn: a soft glow of its colour behind its forms (the size of mockup A, the colour of B), a tint of their cells. Nothing moves. */
 .bsp-recent-halo.is-w { fill: var(--bs-w); }
 .bsp-recent-halo.is-b { fill: var(--bs-b); }
-.bsp-recent-tint.is-w { fill: color-mix(in srgb, var(--bs-w) 32%, transparent); }
-.bsp-recent-tint.is-b { fill: color-mix(in srgb, var(--bs-b) 32%, transparent); }
+.bsp-recent-tint.is-w { fill: color-mix(in srgb, var(--bs-w) 56%, transparent); }
+.bsp-recent-tint.is-b { fill: color-mix(in srgb, var(--bs-b) 56%, transparent); }
 
 .bsp-ghost {
     opacity: 0.88;
@@ -275,12 +275,23 @@
     to { transform: scaleX(0.35); opacity: 0.55; }
 }
 
-/* What the player does: the note, then four buttons in one line. */
+/* What the player does: one slot of two lines for the note or the reason, then four buttons in one line. The slot keeps
+   its height with and without a note, so neither the block nor the buttons move when one appears. */
 .bsp-dock {
-    display: flex;
-    flex-direction: column;
+    display: grid;
+    grid-template-rows: minmax(36px, auto) auto;
     gap: 6px;
 }
+
+.bsp-note,
+.bsp-hint { grid-area: 1 / 1; }
+.bsp-buttons { grid-area: 2 / 1; }
+
+/* The reason for a refused stone is what the hand needs now; the note waits under it. */
+.bsp-dock:has(.bsp-hint:not(:empty)) .bsp-note { visibility: hidden; }
+
+/* A spectator and a finished game: the note for the move shown, the buttons give way and keep their room. */
+.bsp-dock.is-off .bsp-buttons { visibility: hidden; }
 
 .bsp-note {
     margin: 0;
@@ -294,7 +305,6 @@
 .bsp-note.is-info { color: var(--color-ink-2); font-weight: 400; }
 
 .bsp-hint {
-    min-height: 36px;
     margin: 0;
     color: var(--bs-refused);
     font-size: 13px;
@@ -411,31 +421,34 @@
         background: var(--color-bar);
     }
 
-    .bsp-buttons {
+    /* The note's slot is part of the dock, above the buttons: it never lies over the block (fitPhone counts it). */
+    .bsp-dock { grid-template-rows: minmax(32px, auto) auto; gap: 4px; padding-top: 4px; }
+
+    .bsp-buttons,
+    .bsp-hint,
+    .bsp-note {
         width: 100%;
         max-width: 480px;
         margin-inline: auto;
     }
 
-    /* The reason lies over the block's edge: the dock keeps its height, so the block does not jump. */
     .bsp-hint,
     .bsp-note {
-        position: absolute;
-        inset: auto 0 100%;
-        min-height: 0;
-        padding: 4px 12px;
-        background: var(--color-bar);
+        align-self: center;
+        font-size: 12px;
+        line-height: 16px;
         text-align: center;
     }
 
-    .bsp-hint:empty { display: none; }
-    .bsp-dock.is-off { display: none; }
+    /* A spectator's dock stands in the page under the block: only the note, no bar. */
+    .bsp-dock.is-off { position: static; padding: 0; border: 0; background: none; }
+    .bsp-dock.is-off .bsp-buttons { display: none; }
 }
 
 /* A phone on its side: the block scrolls, the buttons stay in the page. */
 @media (width < 64rem) and (height < 500px) {
     .bsp-dock { position: static; padding: 0; border: 0; background: none; }
-    .bsp-hint, .bsp-note { position: static; background: none; text-align: left; }
+    .bsp-hint, .bsp-note { text-align: left; }
 }
 
 @media (width < 430px) {

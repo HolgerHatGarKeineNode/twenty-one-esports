@@ -58,16 +58,32 @@ function blockspaceAdmin(): User
     return $admin;
 }
 
-function blockspacePage(User $user, string $to, int $width): Page
+function blockspacePage(User $user, string $to, int $width, int $height = 900): Page
 {
     $page = visit(BrowserLogin::url($user))->page();
     $page->context()->addInitScript(BrowserConsole::COLLECTOR);
-    $page->setViewportSize($width, 900);
+    $page->setViewportSize($width, $height);
     $page->goto(ComputeUrl::from($to));
     BrowserWait::until($page, '() => document.readyState === "complete" && window.Alpine !== undefined', 15_000);
 
     return $page;
 }
+
+/**
+ * A live game whose newest move left Blue sitting out, as the record writes it (` · ⚡ –`, BlockspaceRules::notation):
+ * Orange is to move and the dock carries the note. Played as `$white` against Hal Finney, or between two others.
+ */
+function blockspaceSitOutGame(?User $white = null): BoardGame
+{
+    $game = blockspaceBrowserGame($white ?? User::factory()->create(['name' => 'Adam Back']));
+    $last = $game->moves()->where('ply', $game->ply)->firstOrFail();
+    $last->forceFill(['notation' => $last->notation.' · ⚡ –'])->save();
+
+    return $game->refresh();
+}
+
+/** The note, the block and the primary action as drawn: boxes, the note's text, the buttons on screen. */
+const BLOCKSPACE_DOCK = '() => { const box = (el) => { if (!el || !el.checkVisibility({ visibilityProperty: true })) return null; const r = el.getBoundingClientRect(); return { top: Math.round(r.top), bottom: Math.round(r.bottom), left: Math.round(r.left), right: Math.round(r.right), w: Math.round(r.width), h: Math.round(r.height) }; }; const note = document.querySelector("[data-test=piece-note]"); return { board: box(document.querySelector("[data-board-box]")), note: box(note), text: note?.textContent ?? "", set: box(document.querySelector("[data-test=piece-set]")), buttons: [...document.querySelectorAll(".bsp-button")].filter((b) => b.checkVisibility({ visibilityProperty: true })).length, screen: innerHeight }; }';
 
 /** The box of a selector when it is drawn, else null. */
 const BLOCKSPACE_BOX = '(sel) => { const el = document.querySelector(sel); if (!el || !el.checkVisibility()) return null; const r = el.getBoundingClientRect(); return { w: Math.round(r.width), h: Math.round(r.height), right: Math.round(r.right) }; }';
@@ -147,3 +163,53 @@ test('the one column of moves stays a list of its own on a desktop: the page doe
         ->and($page->evaluate('() => window.__errors'))->toBe([], "console at {$width}")
         ->and($page->evaluate(BrowserConsole::BAD_RESPONSES))->toBe([], "answers at {$width}");
 })->with([1280, 1920]);
+
+test('a spectator reads the note of a turn sat out, without the buttons, and the block keeps its size on a move without a note', function (int $width) {
+    // The note lived in the dock, and the dock was hidden for everyone but the players (measured 2026-11-17, PR #33).
+    $game = blockspaceSitOutGame();
+    $page = blockspacePage(blockspaceAdmin(), route('board.show', ['boardGame' => $game, 'lang' => 'de'], false), $width);
+    BrowserWait::until($page, '() => document.querySelector("[data-board-box] svg")?.childElementCount > 0 && document.querySelector("[data-test=piece-note]")?.textContent !== ""', 5_000);
+    $withNote = $page->evaluate(BLOCKSPACE_DOCK);
+
+    $page->evaluate('() => [...document.querySelectorAll("[data-test=moves] [data-test=move]")].at(-2).click()');
+    BrowserWait::until($page, '() => document.querySelector("[data-test=piece-note]").textContent === ""', 5_000);
+    $without = $page->evaluate(BLOCKSPACE_DOCK);
+
+    expect($withNote['note'])->not->toBeNull("note drawn for a spectator at {$width}")
+        ->and($withNote['text'])->toContain('Blau kann nichts setzen und setzt aus')
+        ->and($withNote['buttons'])->toBe(0, "no buttons for a spectator at {$width}")
+        ->and($without['board']['w'])->toBe($withNote['board']['w'], "block width with and without a note at {$width}")
+        ->and($without['board']['h'])->toBe($withNote['board']['h'], "block height with and without a note at {$width}")
+        ->and($page->evaluate('() => window.__errors'))->toBe([], "console at {$width}")
+        ->and($page->evaluate(BrowserConsole::BAD_RESPONSES))->toBe([], "answers at {$width}");
+})->with([390, 1280]);
+
+test('on a phone the note stands between the block and the buttons, never over the block', function () {
+    // It lay over the block's lowest row by 19 px at 390 x 844 (measured 2026-11-17, PR #33).
+    $admin = blockspaceAdmin();
+    $page = blockspacePage($admin, route('board.show', ['boardGame' => blockspaceSitOutGame($admin), 'lang' => 'de'], false), 390, 844);
+    BrowserWait::until($page, '() => document.querySelector("[data-board-box] svg")?.childElementCount > 0 && document.querySelector("[data-test=piece-note]")?.textContent !== ""', 5_000);
+    $dock = $page->evaluate(BLOCKSPACE_DOCK);
+
+    expect($dock['note'])->not->toBeNull('note drawn')
+        ->and($dock['note']['top'])->toBeGreaterThanOrEqual($dock['board']['bottom'], 'note under the block')
+        ->and($dock['set']['top'])->toBeGreaterThanOrEqual($dock['note']['bottom'], 'buttons under the note')
+        ->and($dock['set']['bottom'])->toBeLessThanOrEqual($dock['screen'], 'buttons on screen')
+        ->and($page->evaluate('() => window.__errors'))->toBe([], 'console')
+        ->and($page->evaluate(BrowserConsole::BAD_RESPONSES))->toBe([], 'answers');
+});
+
+test('at 1280 x 720 the primary action stays whole on the first screen with a note in the dock', function () {
+    // The note added its own line to the dock and pushed "Setzen" to 708-752 in a 720 px screen (measured 2026-11-17, PR #33).
+    $admin = blockspaceAdmin();
+    $page = blockspacePage($admin, route('board.show', ['boardGame' => blockspaceSitOutGame($admin), 'lang' => 'de'], false), 1280, 720);
+    BrowserWait::until($page, '() => document.querySelector("[data-board-box] svg")?.childElementCount > 0 && document.querySelector("[data-test=piece-note]")?.textContent !== ""', 5_000);
+    $dock = $page->evaluate(BLOCKSPACE_DOCK);
+
+    expect($dock['note'])->not->toBeNull('note drawn')
+        ->and($dock['set'])->not->toBeNull('primary action drawn')
+        ->and($dock['set']['top'])->toBeGreaterThanOrEqual(0, 'primary action below the top')
+        ->and($dock['set']['bottom'])->toBeLessThanOrEqual(720, 'primary action inside 720 px')
+        ->and($page->evaluate('() => window.__errors'))->toBe([], 'console')
+        ->and($page->evaluate(BrowserConsole::BAD_RESPONSES))->toBe([], 'answers');
+});
