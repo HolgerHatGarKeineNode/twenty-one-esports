@@ -21,6 +21,7 @@ use App\Support\Chess\RatedChess;
 use App\Support\PageMeta;
 use App\Support\Rating\Ratings;
 use App\Support\SeasonChain\Opponents;
+use App\Support\SeasonChain\RatedTrustGate;
 use App\Support\SeasonChain\Seasons;
 use App\Support\Series\CasualInvites;
 use App\Support\Series\Ladders;
@@ -199,21 +200,65 @@ new #[Layout('layouts::app', ['section' => 'chess', 'realtime' => true, 'scripts
     #[Computed]
     public function ratedRefusals(): array
     {
+        return array_map(fn (?array $reason): ?string => $reason['message'] ?? null, $this->ratedReasons);
+    }
+
+    /**
+     * The refusals with their class, for the quick-play panel: the word on
+     * the Rated option names the kind of reason (`badge`), the short line
+     * under the choice says what to do (`line`), with a link where a page
+     * helps (`href`, `cta`). `message` stays the full sentence a refused
+     * search answers with. The trust line names the minimum and how it
+     * rises, never a figure about this player.
+     *
+     * @return array<string, array{kind: string, badge: string, message: string, line: string, href: string|null, cta: string|null}|null>
+     */
+    #[Computed]
+    public function ratedReasons(): array
+    {
         $user = auth()->user();
-        $refusals = [];
+        $reasons = [];
 
         foreach (ChessModes::live() as $mode) {
             if (! $user instanceof User) {
-                $refusals[$mode] = Ladders::isOpen('chess', $mode) ? __('Log in to play rated games.') : Seasons::restMessage();
-
-                continue;
+                $reason = Ladders::isOpen('chess', $mode)
+                    ? ['kind' => 'login', 'message' => __('Log in to play rated games.')]
+                    : ['kind' => Seasons::live() !== null ? 'later' : 'season', 'message' => Seasons::restMessage()];
+            } else {
+                $reason = app(RatedChess::class)->reason($user, $mode)
+                    ?? ($this->mutualOpponents === 0 ? ['kind' => 'opponent', 'message' => __('Rated play needs a player you list each other with. Add opponents on their player pages; they add you back.')] : null);
             }
 
-            $refusals[$mode] = app(RatedChess::class)->refusal($user, $mode)
-                ?? ($this->mutualOpponents === 0 ? __('Rated play needs a player you list each other with. Add opponents on their player pages; they add you back.') : null);
+            $reasons[$mode] = $reason === null ? null : [
+                ...$reason,
+                'badge' => match ($reason['kind']) {
+                    'login' => __('log in first'),
+                    'season' => __('from Block 0'),
+                    'later' => __('opens later'),
+                    'barred' => __('barred'),
+                    'trust' => __('Trusted needed'),
+                    'opponent' => __('opponent missing'),
+                    default => __('not open yet'),
+                },
+                'line' => match ($reason['kind']) {
+                    'trust' => __('Rated from trust rank :minimum. It rises when members add you as an opponent.', ['minimum' => RatedTrustGate::minimum()]),
+                    'opponent' => __('Rated needs an opponent who adds you back.'),
+                    default => $reason['message'],
+                },
+                'href' => match ($reason['kind']) {
+                    'login' => route('login'),
+                    'trust', 'opponent' => route('settings.opponents'),
+                    default => null,
+                },
+                'cta' => match ($reason['kind']) {
+                    'login' => __('Log in'),
+                    'trust', 'opponent' => __('Your opponents'),
+                    default => null,
+                },
+            ];
         }
 
-        return $refusals;
+        return $reasons;
     }
 
     /** How many players this one lists each other with (the rated queue pairs only those). */

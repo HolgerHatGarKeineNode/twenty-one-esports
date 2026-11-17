@@ -14,14 +14,21 @@
 
     Casual/Rated (P7e) is the page's choice (Alpine `rated`) and travels with
     "Find opponent"; Rated is disabled while closed for this player in the
-    open mode, with a short badge on the option and the reason behind "?".
+    open mode. The panel opens on Rated where it is open for the player and
+    the mode (Alpine `chose` keeps a click on Casual), with one chip under the
+    choice once a season runs: what a rated win mines now, or that casual
+    mines nothing. While closed, the word on the option names the kind of
+    reason and one short line under the choice says what to do, with a link
+    where a page helps (the lobby's ratedReasons); the full sentence stays
+    behind "?".
 --}}
 @php
     use App\Support\Chess\ChessModes;
     use App\Support\Chess\ChessQueue;
+    use App\Support\Chess\RatedChess;
+    use App\Support\Formats;
     use App\Support\PreSeason;
     use App\Support\SeasonChain\Seasons;
-    use App\Support\Series\Ladders;
 
     $range = config('esports.chess.queue.range');
     $rating = (int) config('esports.chess.queue.start_rating');
@@ -33,7 +40,14 @@
     // The reason is rendered only where some mode is closed, the casual/rated words only where some mode is open.
     $anyRefused = array_filter($ratedRefusals) !== [];
     $allRefused = ! in_array(null, $ratedRefusals, true);
-    $badges = collect($liveModes)->mapWithKeys(fn (string $mode): array => [$mode => Ladders::isOpen('chess', $mode) ? __('not open yet') : (Seasons::live() !== null ? __('opens later') : __('from Block 0'))])->all();
+    $reasons = $this->ratedReasons;
+    $defaultReason = $reasons[ChessModes::DEFAULT] ?? null;
+    // One chip under the choice, only while a season runs: what a rated win mines now per mode, or that casual mines nothing.
+    $seasonLive = Seasons::live() !== null;
+    $chips = [];
+    foreach (RatedChess::rewardsNow() as $rewardMode => $rewardSats) {
+        $chips[$rewardMode] = __('A win mines :sats sats', ['sats' => Formats::number($rewardSats)]);
+    }
     $labels = collect($liveModes)->mapWithKeys(fn (string $mode): array => [$mode => ChessModes::label($mode)])->all();
     $yourMove = $this->yourMove;
     $next = $this->nextTournament;
@@ -47,10 +61,10 @@
 @endphp
 
 <section aria-labelledby="play-h" class="@container flex flex-col gap-3" data-test="play"
-         x-data="{ stage: @js($busy ? 'quick' : null), help: false, rated: false, either: false, refusals: @js($ratedRefusals) }"
+         x-data="{ stage: @js($busy ? 'quick' : null), help: false, rated: @js($defaultRefusal === null), chose: null, either: false, refusals: @js($ratedRefusals), reasons: @js($reasons), chips: @js((object) $chips) }"
          {{-- The search's own mode comes in here, never in the page's x-data: a changed root x-data restarts chessLobby and drops its notification question. --}}
          x-init="if (@js($entry?->mode) !== null) liveMode = @js($entry?->mode); if (stage === null && @js($liveModes).includes(location.hash.slice(1))) { liveMode = location.hash.slice(1); stage = 'quick' }; $watch('stage', (open) => open && $nextTick(() => requestAnimationFrame(() => document.getElementById(open === 'quick' ? 'lobby-quick' : 'lobby-invite')?.scrollIntoView({ block: 'nearest', behavior: 'instant' }))))"
-         x-effect="if (refusals[liveMode] !== null) rated = false">
+         x-effect="rated = refusals[liveMode] === null && chose !== false">
     {{-- "Spielarten" (template T1, GameLobby.dc.html): one row per way to play, rapid first (user, 2026-10-05). --}}
     <div class="gp-panel gp-modes">
         <h2 id="play-h" class="gp-h">{{ __('Ways to play') }}</h2>
@@ -201,16 +215,16 @@
             <div class="flex gap-2 lg:contents">
                 <div role="radiogroup" aria-label="{{ __('Game kind') }}" class="grid min-w-0 grow grid-cols-2 gap-1 rounded-md bg-ground p-1 shadow-ring lg:w-80 lg:grow-0" data-test="game-kind"
                      data-rated-open="{{ $defaultRefusal === null ? 'true' : 'false' }}" x-bind:data-rated-open="(refusals[liveMode] === null).toString()">
-                    <button type="button" role="radio" aria-checked="true" x-bind:aria-checked="rated ? 'false' : 'true'" x-on:click="rated = false" aria-describedby="kind-why" data-test="kind-casual"
+                    <button type="button" role="radio" aria-checked="{{ $defaultRefusal === null ? 'false' : 'true' }}" x-bind:aria-checked="rated ? 'false' : 'true'" x-on:click="chose = false" aria-describedby="kind-reason kind-why" data-test="kind-casual"
                             class="flex min-h-11 cursor-pointer items-center justify-center rounded-sm px-2 text-[13px] font-bold text-btc-hi shadow-[inset_0_-2px_0_var(--color-btc)] bg-raised"
                             x-bind:class="rated ? 'bg-transparent! shadow-none! text-ink!' : ''">{{ __('Casual') }}</button>
-                    <button type="button" role="radio" aria-checked="false" x-bind:aria-checked="rated ? 'true' : 'false'" x-on:click="rated = true" aria-describedby="kind-why" data-test="kind-rated"
+                    <button type="button" role="radio" aria-checked="{{ $defaultRefusal === null ? 'true' : 'false' }}" x-bind:aria-checked="rated ? 'true' : 'false'" x-on:click="chose = true" aria-describedby="kind-reason kind-why" data-test="kind-rated"
                             @disabled($defaultRefusal !== null) x-bind:disabled="refusals[liveMode] !== null"
                             class="flex min-h-11 cursor-pointer flex-wrap items-center justify-center gap-x-2 rounded-sm px-2 text-[13px] font-bold text-ink disabled:cursor-not-allowed disabled:text-ink-3"
                             x-bind:class="rated ? 'bg-raised text-btc-hi! shadow-[inset_0_-2px_0_var(--color-btc)]' : ''">
                         {{ __('Rated') }}
                         <span @class(['rounded-xs bg-raised px-1.5 py-0.5 text-[11px] font-normal text-ink-2', 'hidden' => $defaultRefusal === null]) x-bind:class="refusals[liveMode] === null && 'hidden'"
-                              x-text="@js($badges)[liveMode]" data-test="kind-rated-badge">{{ $badges[ChessModes::DEFAULT] }}</span>
+                              x-text="reasons[liveMode]?.badge" x-bind:data-kind="reasons[liveMode]?.kind" data-kind="{{ $defaultReason['kind'] ?? '' }}" data-test="kind-rated-badge">{{ $defaultReason['badge'] ?? '' }}</span>
                     </button>
                 </div>
                 <button type="button" x-on:click="help = ! help" x-bind:aria-expanded="help.toString()" aria-expanded="false" aria-controls="blitz-help" data-test="kind-help"
@@ -218,6 +232,26 @@
                     <span aria-hidden="true">?</span><span class="sr-only">{{ __('How live chess works') }}</span>
                 </button>
             </div>
+            {{-- Under the choice, always in view (UX audit 2026-11-17, F1 and F2): the chip of the chosen kind, and why Rated is closed. --}}
+            @if ($seasonLive || $anyRefused)
+            <div class="flex flex-col gap-1.5 px-1 lg:order-last lg:basis-full" data-test="kind-note">
+                @if ($seasonLive)
+                    <span class="flex flex-wrap items-center gap-x-2 gap-y-1" data-test="kind-chip" x-bind:data-kind="rated ? 'rated' : 'casual'" data-kind="{{ $defaultRefusal === null ? 'rated' : 'casual' }}">
+                        <span class="rv-tag is-btc" x-show="rated && chips[liveMode]" @if ($defaultRefusal !== null || ! isset($chips[ChessModes::DEFAULT])) x-cloak @endif><x-icon name="mining" :size="12" /><span x-text="chips[liveMode]">{{ $chips[ChessModes::DEFAULT] ?? '' }}</span></span>
+                        <span class="rv-m" x-show="rated && chips[liveMode]" @if ($defaultRefusal !== null || ! isset($chips[ChessModes::DEFAULT])) x-cloak @endif>{{ __('paid out after the season review') }}</span>
+                        <span class="rv-tag" x-show="! rated" @if ($defaultRefusal === null) x-cloak @endif>{{ __('Casual mines no block') }}</span>
+                    </span>
+                @endif
+                @if ($anyRefused)
+                    <p id="kind-reason" class="m-0 flex max-w-[68ch] flex-wrap items-center gap-x-2 text-[13px] leading-normal text-ink-2" data-test="kind-reason"
+                       x-show="reasons[liveMode] !== null" @if ($defaultReason === null) x-cloak @endif x-bind:data-kind="reasons[liveMode]?.kind" data-kind="{{ $defaultReason['kind'] ?? '' }}">
+                        <span x-text="reasons[liveMode]?.line">{{ $defaultReason['line'] ?? '' }}</span>
+                        <a class="rv-lk inline-flex min-h-6 items-center font-bold whitespace-nowrap" x-show="reasons[liveMode]?.href" x-bind:href="reasons[liveMode]?.href" x-text="reasons[liveMode]?.cta"
+                           @if (($defaultReason['href'] ?? null) === null) x-cloak @else href="{{ $defaultReason['href'] }}" @endif data-test="kind-reason-link">{{ $defaultReason['cta'] ?? '' }}</a>
+                    </p>
+                @endif
+            </div>
+            @endif
             {{--
                 "Either" (user, 2026-10-05): every live mode, the first fitting opponent wins. Below lg it takes the range
                 box's place beside "Find opponent" (the range is behind "?"): a row of its own pushed the button under

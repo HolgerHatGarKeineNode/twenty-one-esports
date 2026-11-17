@@ -16,11 +16,13 @@ use App\Models\TrustRank;
 use App\Models\TrustRun;
 use App\Models\User;
 use App\Support\Chess\ChessQueue;
+use App\Support\Chess\RatedChess;
 use App\Support\Nostr\SignedEvent;
 use App\Support\SeasonChain\AnchoredTrustFacts;
 use App\Support\SeasonChain\NoTrustFacts;
 use App\Support\SeasonChain\OpponentLists;
 use App\Support\SeasonChain\Opponents;
+use App\Support\SeasonChain\RatedTrustGate;
 use App\Support\SeasonChain\Seasons;
 use App\Support\SeasonChain\TrustFacts;
 use Illuminate\Support\Facades\Queue;
@@ -185,4 +187,91 @@ test('"Find next opponent" after a rated game searches rated again while rated i
         ->assertSet('notice', 'Rated is closed for you right now, so this search is casual. Rated play needs a player you list each other with. Add opponents on their player pages; they add you back.')
         ->assertSee('Blitz · casual');
     expect(ChessQueueEntry::query()->where('user_id', $anna->id)->value('rated'))->toBeFalse();
+});
+
+/**
+ * The quick-play panel as rendered for this viewer (null: a guest): which kind it opens on, the chip under the
+ * choice, the word on the Rated option with its reason class, and the line under the choice with its link.
+ *
+ * @return array{rated: string|null, checked: string|null, chip: string|null, chipText: string, kind: string|null, badge: string, line: string, href: string|null}
+ */
+function ratedPanel(?User $user): array
+{
+    if ($user === null) {
+        // An earlier actingAs() in the same test stays on the guard.
+        auth()->forgetUser();
+    }
+
+    $html = ($user === null ? Livewire::test('pages::chess.lobby') : Livewire::actingAs($user)->test('pages::chess.lobby'))->html();
+    $text = fn (string $pattern): string => preg_match($pattern, $html, $match) === 1 ? trim(preg_replace('/\s+/', ' ', html_entity_decode(strip_tags($match[1])))) : '';
+    $attribute = fn (string $pattern): ?string => preg_match($pattern, $html, $match) === 1 ? html_entity_decode($match[1]) : null;
+
+    return [
+        'rated' => $attribute('/rated: (true|false), chose: null/'),
+        'checked' => $attribute('/<button[^>]*aria-checked="(true|false)"[^>]*data-test="kind-rated"/'),
+        'chip' => $attribute('/data-test="kind-chip"[^>]*data-kind="([a-z]*)"/'),
+        'chipText' => $text('/data-test="kind-chip"[^>]*>(.*?)<\/span>\s*(?:<p|<\/div>)/s'),
+        'kind' => $attribute('/data-kind="([a-z]*)" data-test="kind-rated-badge"/'),
+        'badge' => $text('/data-test="kind-rated-badge">(.*?)<\/span>/s'),
+        'line' => $text('/data-test="kind-reason"[^>]*>\s*<span[^>]*>(.*?)<\/span>/s'),
+        'href' => $attribute('/<a[^>]*\shref="([^"]*)"[^>]*data-test="kind-reason-link"/'),
+    ];
+}
+
+test('the quick-play panel opens on Rated where rated is open for the player, with what a win mines now; closed, it opens on Casual', function () {
+    openSeason();
+    [$anna, $annaSigner] = lobbyPlayer('anna');
+    [$bert, $bertSigner] = lobbyPlayer('bert');
+    [$carl] = lobbyPlayer('carl');
+    trustRunWith([$anna->pubkey => 100, $bert->pubkey => 100, $carl->pubkey => 100]);
+    listOpponent($anna, $annaSigner, $bert);
+    listOpponent($bert, $bertSigner, $anna);
+
+    $reward = RatedChess::rewardsNow()['rapid'];
+    $open = ratedPanel($anna);
+
+    // Mutation: `rated: false` in the panel's x-data (the state before 2026-11-18) turns `rated` and `checked` red.
+    expect($reward)->toBeGreaterThan(0)
+        ->and($open['rated'])->toBe('true')
+        ->and($open['checked'])->toBe('true')
+        ->and($open['chip'])->toBe('rated')
+        ->and($open['chipText'])->toContain('A win mines '.number_format($reward).' sats')->toContain('paid out after the season review')->toContain('Casual mines no block')
+        ->and($open['kind'])->toBe('')
+        ->and($open['line'])->toBe('');
+
+    // carl is Trusted but lists nobody back: closed, so the panel opens on Casual.
+    $closed = ratedPanel($carl);
+
+    expect($closed['rated'])->toBe('false')
+        ->and($closed['checked'])->toBe('false')
+        ->and($closed['chip'])->toBe('casual');
+});
+
+test('closed, the word on Rated names the kind of reason and the line under the choice says what to do, with a link where a page helps', function () {
+    // Before Block 0: the season is the reason, and no chip promises anything.
+    $before = ratedPanel(lobbyPlayer('early')[0]);
+
+    expect([$before['kind'], $before['badge'], $before['href'], $before['chip']])->toBe(['season', 'from Block 0', null, null])
+        ->and($before['line'])->toContain('Casual until Block 0');
+
+    openSeason();
+    [$anna, $annaSigner] = lobbyPlayer('anna');
+    [$bert] = lobbyPlayer('bert');
+
+    // A guest: log in. Mutation: one badge for every kind ("not open yet", the state before 2026-11-18) turns each `badge` below red.
+    expect(ratedPanel(null))->toMatchArray(['kind' => 'login', 'badge' => 'log in first', 'line' => 'Log in to play rated games.', 'href' => route('login'), 'chip' => 'casual']);
+
+    // Rated chess switched off: the one case that really is "not open yet", and no page helps.
+    config(['esports.chess.rated_queue' => false]);
+    expect(ratedPanel($anna))->toMatchArray(['kind' => 'closed', 'badge' => 'not open yet', 'line' => 'Rated chess is not open yet. Rapid and blitz games are casual for now.', 'href' => null]);
+    config(['esports.chess.rated_queue' => true]);
+
+    // Below the trust minimum: the line names the minimum and how it rises, never a figure about the player.
+    trustRunWith([$anna->pubkey => 20, $bert->pubkey => 100]);
+    expect(ratedPanel($anna))->toMatchArray(['kind' => 'trust', 'badge' => 'Trusted needed', 'href' => route('settings.opponents'),
+        'line' => 'Rated from trust rank '.RatedTrustGate::minimum().'. It rises when members add you as an opponent.']);
+
+    // Trusted, but nobody listed back: the opponent is missing.
+    listOpponent($anna, $annaSigner, $bert);
+    expect(ratedPanel($bert))->toMatchArray(['kind' => 'opponent', 'badge' => 'opponent missing', 'line' => 'Rated needs an opponent who adds you back.', 'href' => route('settings.opponents')]);
 });

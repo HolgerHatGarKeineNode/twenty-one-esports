@@ -6,10 +6,13 @@ use App\Models\ClanMember;
 use App\Models\User;
 use App\Support\FairPlay\FairPlay;
 use App\Support\GameNames;
+use App\Support\SeasonChain\ChainOverview;
 use App\Support\SeasonChain\GatePin;
 use App\Support\SeasonChain\RatedTrustGate;
 use App\Support\SeasonChain\Seasons;
 use App\Support\Series\Ladders;
+use Illuminate\Support\Facades\Cache;
+use Throwable;
 
 /**
  * Rated chess through the same trust gate and season chain as a rated
@@ -34,31 +37,86 @@ final class RatedChess
      */
     public function refusal(User $user, string $mode): ?string
     {
+        return $this->reason($user, $mode)['message'] ?? null;
+    }
+
+    /**
+     * The refusal with its class, so a view can name the kind of reason in
+     * a word: `season` (no season live), `later` (a running season without
+     * this mode yet), `closed` (rated chess off, or trust ranks not computed
+     * yet), `barred` (fair play) or `trust` (below the trust minimum). Null
+     * while rated chess is open for this player in this mode.
+     *
+     * @return array{kind: 'season'|'later'|'closed'|'barred'|'trust', message: string}|null
+     */
+    public function reason(User $user, string $mode): ?array
+    {
         if (! Ladders::isOpen('chess', $mode)) {
             // A season live since before this mode joined (chess rapid, NIP rev. 9.22): its ladder opens with the board's next rule change.
             return Seasons::live() !== null
-                ? __('Rated :game starts when the board adds it to the running season.', ['game' => GameNames::full('chess', $mode)])
-                : Seasons::restMessage($user);
+                ? ['kind' => 'later', 'message' => __('Rated :game starts when the board adds it to the running season.', ['game' => GameNames::full('chess', $mode)])]
+                : ['kind' => 'season', 'message' => Seasons::restMessage($user)];
         }
 
         if (! self::offered()) {
-            return __('Rated chess is not open yet. Rapid and blitz games are casual for now.');
+            return ['kind' => 'closed', 'message' => __('Rated chess is not open yet. Rapid and blitz games are casual for now.')];
         }
 
         if (! $this->gate->isAvailable()) {
-            return RatedTrustGate::message(RatedTrustGate::NOT_COMPUTED);
+            return ['kind' => 'closed', 'message' => RatedTrustGate::message(RatedTrustGate::NOT_COMPUTED)];
         }
 
         // Fair play (P41): a linked second account or a lock after false reports; the message says until when.
         if (($barred = FairPlay::message($user->pubkey, $user)) !== null) {
-            return $barred;
+            return ['kind' => 'barred', 'message' => $barred];
         }
 
         if (! $this->gate->pin([$user->pubkey], [$user->pubkey, $user->pubkey])->isEligible($user->pubkey)) {
-            return __('Rated chess needs a Trusted account (trust rank :minimum or more). Casual games with members, and players who add you back, raise your trust.', ['minimum' => RatedTrustGate::minimum()]);
+            return ['kind' => 'trust', 'message' => __('Rated chess needs a Trusted account (trust rank :minimum or more). Casual games with members, and players who add you back, raise your trust.', ['minimum' => RatedTrustGate::minimum()])];
         }
 
         return null;
+    }
+
+    /**
+     * What a rated win mines right now per live mode (sats per winner), for
+     * the lobby's chip: the reward in force in the running era, the same
+     * figure /mining shows (ChainOverview::live()). Empty without a live
+     * season or while chess does not mine. Cached for a minute, scalars
+     * only (the cache unserializes no objects).
+     *
+     * @return array<string, int>
+     */
+    public static function rewardsNow(): array
+    {
+        $season = Seasons::live();
+
+        if ($season === null || ! self::offered()) {
+            return [];
+        }
+
+        $read = function () use ($season): array {
+            $now = app(ChainOverview::class)->live($season)['rewards_now'];
+            $rewards = [];
+
+            foreach (ChessModes::live() as $mode) {
+                if (Ladders::isOpen('chess', $mode) && ($sats = (int) ($now['chess/'.$mode] ?? 0)) > 0) {
+                    $rewards[$mode] = $sats;
+                }
+            }
+
+            return $rewards;
+        };
+
+        try {
+            /** @var array<string, int> $rewards */
+            $rewards = Cache::remember('chess:rewards-now:'.$season->id, 60, $read);
+        } catch (Throwable $e) {
+            report($e);
+            $rewards = $read();
+        }
+
+        return $rewards;
     }
 
     /**
