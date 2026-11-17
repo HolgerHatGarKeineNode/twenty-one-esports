@@ -372,9 +372,10 @@ final class HomeBoard
 
     /**
      * The season card: Pre-Season (countdown to Block 0 or "date coming soon") or the live season, and the
-     * first three eras with what a win pays. Cached for a minute (the forecast behind the draft reads wins).
+     * first three eras with what a win pays; `pays` is that reward right now (the running era of a live season,
+     * era 1 before Block 0). Cached for a minute (the forecast behind the draft reads wins).
      *
-     * @return array{state: string, slug: string|null, live: bool, height: int|null, eras: list<array{era: int, from: CarbonImmutable, sats: int}>, payKey: string|null}
+     * @return array{state: string, slug: string|null, live: bool, height: int|null, eras: list<array{era: int, from: CarbonImmutable, sats: int}>, payKey: string|null, pays: int}
      */
     public static function season(): array
     {
@@ -406,11 +407,12 @@ final class HomeBoard
                 'height' => $live !== null ? (int) (app(SeasonChains::class)->tip($live)['height'] ?? 0) : null,
                 'eras' => $eras,
                 'payKey' => $payKey,
+                'pays' => $payKey === null ? 0 : (int) ($chain['rewards_now'][$payKey] ?? 0),
             ];
         };
 
         try {
-            /** @var array{state: string, slug: string|null, live: bool, height: int|null, eras: list<array{era: int, from: int, sats: int}>, payKey: string|null} $card */
+            /** @var array{state: string, slug: string|null, live: bool, height: int|null, eras: list<array{era: int, from: int, sats: int}>, payKey: string|null, pays?: int} $card */
             $card = Cache::remember(self::SEASON_CARD.app()->getLocale(), 60, $read);
         } catch (Throwable $e) {
             report($e);
@@ -418,6 +420,8 @@ final class HomeBoard
         }
 
         $card['eras'] = array_map(fn (array $era): array => [...$era, 'from' => CarbonImmutable::createFromTimestamp($era['from'])], $card['eras']);
+        // A card cached before `pays` existed (at most a minute after a deploy): era 1, as that card said.
+        $card['pays'] ??= (int) ($card['eras'][0]['sats'] ?? 0);
 
         return $card;
     }
