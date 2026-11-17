@@ -44,8 +44,9 @@ use Illuminate\Support\Facades\DB;
  * and nobody can starve anybody else's events.
  *
  * Fail closed: without the trust key, the league key or a readable member
- * list for both years the job refuses ({@see TrustJobRefused}); the ranks of
- * the last run stay, and no run for a new season opens rated play.
+ * list for both years the job refuses ({@see TrustJobRefused}), and so it
+ * does when both lists come back empty after a run that had member anchors;
+ * the ranks of the last run stay, and no run for a new season opens rated play.
  */
 final class TrustJob
 {
@@ -80,7 +81,9 @@ final class TrustJob
             throw new TrustJobRefused('The trust key must not be the league key (NIP-85: a key per algorithm).');
         }
 
-        $anchors = $this->anchors() ?? throw new TrustJobRefused('The association\'s member list could not be read; the last ranks stay.');
+        $members = $this->members() ?? throw new TrustJobRefused('The association\'s member list could not be read; the last ranks stay.');
+        $this->refuseLostMembers($members);
+        $anchors = $this->withAdmins($members);
         $lists = new OpponentLists($league->pubkey());
 
         // Network first, outside the transaction; the archive keeps every version read.
@@ -190,8 +193,21 @@ final class TrustJob
      */
     public function anchors(): ?array
     {
+        $members = $this->members();
+
+        return $members === null ? null : $this->withAdmins($members);
+    }
+
+    /**
+     * The paid members of this and the previous year, as a set; null when a
+     * member list cannot be read.
+     *
+     * @return array<string, true>|null
+     */
+    private function members(): ?array
+    {
         $year = now()->year;
-        $anchors = [];
+        $members = [];
 
         foreach ([$year, $year - 1] as $paidIn) {
             $paid = $this->membership->paidPubkeys($paidIn);
@@ -200,8 +216,50 @@ final class TrustJob
                 return null;
             }
 
-            $anchors += $paid;
+            $members += $paid;
         }
+
+        return $members;
+    }
+
+    /**
+     * An empty member list is not a member list: the API answering `[]` for
+     * both years (a fault on its side, a wrong URL) reads like a list, and a
+     * run on it would leave only the board and the admins as anchors and drop
+     * most ranks to 0. So when no member is left but the anchor list of the
+     * last run named somebody who is not an admin now, the run is refused and
+     * the last ranks stay. A league that never had member anchors still runs.
+     *
+     * The last anchor list cannot tell a former member from a former admin:
+     * after an admin was removed in a league without any member, the run is
+     * refused too, until a member list is read.
+     *
+     * @param  array<string, true>  $members
+     *
+     * @throws TrustJobRefused
+     */
+    private function refuseLostMembers(array $members): void
+    {
+        if ($members !== []) {
+            return;
+        }
+
+        $list = NostrEvent::query()->whereKey(TrustRun::query()->latest('id')->value('anchor_list_nostr_event_id'))->first();
+
+        if ($list !== null && array_diff(OpponentLists::entries($list), $this->withAdmins([])) !== []) {
+            throw new TrustJobRefused('The association\'s member list came back empty, but the last run had member anchors; the last ranks stay.');
+        }
+    }
+
+    /**
+     * The anchors: these members, the board and the league admins, sorted.
+     *
+     * @param  array<string, true>  $members
+     * @return list<string>
+     */
+    private function withAdmins(array $members): array
+    {
+        $anchors = $members;
 
         foreach ([...Board::pubkeys(), ...Admin::query()->pluck('pubkey')->all()] as $admin) {
             if (NostrKeys::isHexPubkey($admin)) {

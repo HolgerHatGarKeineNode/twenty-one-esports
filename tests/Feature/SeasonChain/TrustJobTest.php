@@ -126,7 +126,7 @@ function runTwice(): TrustRun
 function payMembers(array $names): void
 {
     $pubkeys = array_map(fn (string $name): array => ['pubkey' => pk($name)], $names);
-    config(['test.members_down' => false]);
+    config(['test.members_down' => false, 'test.members_empty' => false]);
 
     // The member API is faked; NIP-11 documents come from the local test relay itself.
     Http::preventStrayRequests();
@@ -137,7 +137,7 @@ function payMembers(array $names): void
         }
 
         return ! config('test.members_down') && str_starts_with($request->url(), rtrim((string) config('esports.membership.api_url'), '/').'/')
-            ? Http::response(str_ends_with($request->url(), '/'.now()->year) ? $pubkeys : [])
+            ? Http::response(! config('test.members_empty') && str_ends_with($request->url(), '/'.now()->year) ? $pubkeys : [])
             : Http::response('down', 503);
     });
 }
@@ -770,6 +770,29 @@ test('the job refuses without the trust key, with the league key as trust key, o
     TrustRun::query()->update(['season_id' => null]);
 
     expect(app(AnchoredTrustFacts::class)->available())->toBeFalse();
+});
+
+test('an empty member list after a run with member anchors is refused, and the ranks stay', function () {
+    payMembers(['alice', 'carol']);
+    withRelay(seasonThreeEvents(now()->subMinute()->getTimestamp()), runTwice(...));
+
+    // The API answers 200 with `[]` for both years: readable, but not a member list.
+    config(['test.members_empty' => true]);
+    Cache::flush(); // the member lists are cached for an hour (Membership)
+
+    expect(fn () => app(TrustJob::class)->run())->toThrow(TrustJobRefused::class, 'came back empty')
+        ->and(TrustRun::query()->count())->toBe(2)
+        ->and(array_map(rankOf(...), ['alice', 'carol', 'dave', 'frank']))->toBe([100, 100, 100, 46]);
+});
+
+test('a league that never had member anchors runs on an empty member list, the first time and again', function () {
+    payMembers([]);
+    Admin::query()->create(['pubkey' => pk('carol')]);
+    $run = withRelay(seasonThreeEvents(now()->subMinute()->getTimestamp()), runTwice(...));
+
+    expect(TrustRun::query()->count())->toBe(2)
+        ->and($run->anchors)->toBe(1)
+        ->and(array_map(rankOf(...), ['carol', 'dave']))->toBe([100, 100]);
 });
 
 test('the league admins are anchors too', function () {
