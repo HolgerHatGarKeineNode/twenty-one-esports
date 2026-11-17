@@ -22,7 +22,15 @@ use Carbon\CarbonImmutable;
  * attestation (audit F2: leaving a clan after the window does not take a
  * player out of it for solo rules 3 and 7).
  *
+ * A **table** candidate (NIP rev. 9.26, draft) is the winner of a match of 2
+ * to 6 seats on the league server (Hyperbitcoinization): one winner, every
+ * other seat a loser. It mines only if the winner would have mined against
+ * each loser one by one, so rules 1, 3, 4, 7 and 8 read every pair of the
+ * winner and a loser ({@see pairingKeys()}). Its `table` facts name the
+ * losers the winner and they list each other, pinned at the match's start.
+ *
  * @phpstan-type Solo array{start: string, end: string, achieved_at: string, source: string, verified: bool, entrants: list<string>, clans?: array<string, list<string>>}
+ * @phpstan-type Table array{connected: list<string>}
  */
 final class Candidate
 {
@@ -42,6 +50,7 @@ final class Candidate
      * @param  array<string, ?string>  $clans  player => clan at the attestation
      * @param  array<string, array{0: string, 1: int}|null>  $anchors  player => [anchor, floor(100 * share)] from the pinned `30382`
      * @param  Solo|null  $solo  the facts of a score window (times in ISO 8601 UTC); null for a versus result
+     * @param  Table|null  $table  the facts of a table of 2 to 6 seats; null for every other result
      */
     public function __construct(
         public readonly string $label,
@@ -61,14 +70,16 @@ final class Candidate
         public readonly array $clans,
         public readonly array $anchors,
         public readonly ?array $solo = null,
+        public readonly ?array $table = null,
     ) {}
 
     /**
      * The stored form (season_attestations.candidate), keyed as the ledger
      * fixture (tests/Fixtures/SeasonChain/pre-season-ledger.json). `solo`
-     * only for a score window, so a versus candidate keeps the fixture's keys.
+     * only for a score window and `table` only for a table, so a versus
+     * candidate keeps the fixture's keys.
      *
-     * @return array{label: string, match: string, game: string, weight_key: string, attested_at: string, resolution: string, moves: ?int, winners: list<string>, losers: list<string>, winning_side: ?string, pairing: array{0: string, 1: string}, gatekeepers: array{0: string, 1: string}, gatekeepers_connected: bool, trust: array<string, int>, clans: array<string, ?string>, anchors: array<string, array{0: string, 1: int}|null>, solo?: Solo}
+     * @return array{label: string, match: string, game: string, weight_key: string, attested_at: string, resolution: string, moves: ?int, winners: list<string>, losers: list<string>, winning_side: ?string, pairing: array{0: string, 1: string}, gatekeepers: array{0: string, 1: string}, gatekeepers_connected: bool, trust: array<string, int>, clans: array<string, ?string>, anchors: array<string, array{0: string, 1: int}|null>, solo?: Solo, table?: Table}
      */
     public function toArray(): array
     {
@@ -91,7 +102,7 @@ final class Candidate
             'anchors' => $this->anchors,
         ];
 
-        return $this->solo === null ? $row : [...$row, 'solo' => $this->solo];
+        return [...$row, ...($this->solo === null ? [] : ['solo' => $this->solo]), ...($this->table === null ? [] : ['table' => $this->table])];
     }
 
     /**
@@ -99,7 +110,7 @@ final class Candidate
      */
     public static function fromArray(array $row): self
     {
-        /** @var array{label: string, match: string, game: string, weight_key: string, attested_at: string, resolution: string, moves: ?int, winners: list<string>, losers: list<string>, winning_side: ?string, pairing: array{0: string, 1: string}, gatekeepers: array{0: string, 1: string}, gatekeepers_connected: bool, trust: array<string, int>, clans: array<string, ?string>, anchors: array<string, array{0: string, 1: int}|null>, solo?: Solo|null} $row */
+        /** @var array{label: string, match: string, game: string, weight_key: string, attested_at: string, resolution: string, moves: ?int, winners: list<string>, losers: list<string>, winning_side: ?string, pairing: array{0: string, 1: string}, gatekeepers: array{0: string, 1: string}, gatekeepers_connected: bool, trust: array<string, int>, clans: array<string, ?string>, anchors: array<string, array{0: string, 1: int}|null>, solo?: Solo|null, table?: Table|null} $row */
         return new self(
             $row['label'], $row['match'], $row['game'], $row['weight_key'],
             CarbonImmutable::parse($row['attested_at']),
@@ -108,6 +119,7 @@ final class Candidate
             $row['pairing'], $row['gatekeepers'], $row['gatekeepers_connected'],
             $row['trust'], $row['clans'], $row['anchors'],
             $row['solo'] ?? null,
+            $row['table'] ?? null,
         );
     }
 
@@ -121,6 +133,37 @@ final class Candidate
     public function isSolo(): bool
     {
         return $this->solo !== null;
+    }
+
+    /** The winner of a table of 2 to 6 seats, every other seat a loser (NIP rev. 9.26). */
+    public function isTable(): bool
+    {
+        return $this->table !== null;
+    }
+
+    /**
+     * Every pairing rules 4 and 8 count this candidate in: its one pairing
+     * ({@see pairingKey()}), or for a table the winner with each loser, per
+     * game. A pair of players has the same key at a table of two and at a
+     * table of six, so more seats never open a fresh pairing for them.
+     *
+     * @return list<string>
+     */
+    public function pairingKeys(): array
+    {
+        if ($this->table === null) {
+            return [$this->pairingKey()];
+        }
+
+        $keys = [];
+
+        foreach ($this->losers as $loser) {
+            $pair = [$this->winners[0] ?? '', $loser];
+            sort($pair);
+            $keys[] = $this->game.'|'.implode('|', $pair);
+        }
+
+        return array_values(array_unique($keys));
     }
 
     /**

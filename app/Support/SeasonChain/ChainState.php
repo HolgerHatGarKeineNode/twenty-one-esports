@@ -7,8 +7,10 @@ namespace App\Support\SeasonChain;
  * mined so far, per share key (the game, or its share group) and era, per
  * pairing (day and season) and per winning player, share key and UTC day,
  * and the blocks of score windows per winning player and share key (solo
- * rule 8; a score window's pairing is the window, solo rule 4). Voided
- * blocks keep their place in every counter.
+ * rule 8; a score window's pairing is the window, solo rule 4). A table of 2
+ * to 6 seats counts in the pairing of its winner with each loser, and reads
+ * the fullest of them (Candidate::pairingKeys()). Voided blocks keep their
+ * place in every counter.
  */
 final class ChainState
 {
@@ -47,12 +49,12 @@ final class ChainState
 
     public function pairingBlocksOn(Candidate $candidate): int
     {
-        return $this->pairingDay[$candidate->pairingKey().'|'.$candidate->utcDay()] ?? 0;
+        return max([0, ...array_map(fn (string $pairing): int => $this->pairingDay[$pairing.'|'.$candidate->utcDay()] ?? 0, $candidate->pairingKeys())]);
     }
 
     public function pairingBlocks(Candidate $candidate): int
     {
-        return $this->pairingSeason[$candidate->pairingKey()] ?? 0;
+        return max([0, ...array_map(fn (string $pairing): int => $this->pairingSeason[$pairing] ?? 0, $candidate->pairingKeys())]);
     }
 
     public function playerBlocksOn(string $player, string $shareKey, string $utcDay): int
@@ -73,9 +75,11 @@ final class ChainState
         $this->minedByGameAndEra[$shareKey][$verdict->era] = $this->minedIn($shareKey, $verdict->era) + $verdict->reward;
 
         $day = $candidate->utcDay();
-        $pairing = $candidate->pairingKey();
-        $this->pairingDay[$pairing.'|'.$day] = ($this->pairingDay[$pairing.'|'.$day] ?? 0) + 1;
-        $this->pairingSeason[$pairing] = ($this->pairingSeason[$pairing] ?? 0) + 1;
+
+        foreach ($candidate->pairingKeys() as $pairing) {
+            $this->pairingDay[$pairing.'|'.$day] = ($this->pairingDay[$pairing.'|'.$day] ?? 0) + 1;
+            $this->pairingSeason[$pairing] = ($this->pairingSeason[$pairing] ?? 0) + 1;
+        }
 
         foreach ($candidate->winners as $player) {
             $key = $player.'|'.$shareKey.'|'.$day;

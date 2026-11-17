@@ -22,6 +22,14 @@ use Carbon\CarbonImmutable;
  * window: rule 1 counts the trusted ones, rule 3 those of them outside the
  * winner's clan, rule 7 those of them also outside the winner's anchor
  * subtree, and each needs `soloEntrants` with the winner.
+ *
+ * A table candidate (the winner of a match of 2 to 6 seats, NIP rev. 9.26)
+ * is checked as a versus candidate against every loser: it mines only if
+ * the winner would have mined against each of them one by one. Rule 1 needs
+ * every seat trusted and the winner and each loser listing each other, rule
+ * 3 no loser in the winner's clan, rules 4 and 8 every pairing of the winner
+ * and a loser below its limit (ChainState), rule 7 no loser in the winner's
+ * anchor subtree. One failing pair fails the table.
  */
 final class ConsensusRules
 {
@@ -224,7 +232,22 @@ final class ConsensusRules
             }
         }
 
-        return $candidate->gatekeepersConnected ? null : ['not-connected', implode(' – ', $candidate->gatekeepers)];
+        if (! $candidate->isTable()) {
+            return $candidate->gatekeepersConnected ? null : ['not-connected', implode(' – ', $candidate->gatekeepers)];
+        }
+
+        // A table: one winner, at least one loser, and the winner and every loser list each other.
+        if (count($candidate->winners) !== 1 || $candidate->losers === []) {
+            return ['not-connected', null];
+        }
+
+        foreach ($candidate->losers as $loser) {
+            if (! in_array($loser, (array) ($candidate->table['connected'] ?? []), true)) {
+                return ['not-connected', $candidate->winners[0].' – '.$loser];
+            }
+        }
+
+        return null;
     }
 
     /**
@@ -291,20 +314,26 @@ final class ConsensusRules
      * players of a solo game or board, the gatekeepers of a series), as in
      * rule 1 and the sample ledger; NIP rev. 6 words the rule the same way
      * (rev. 5 said every winning and losing player). A player without an
-     * anchor share has no subtree.
+     * anchor share has no subtree. A table compares the winner with every
+     * loser.
      *
      * @return array{0: string, 1: ?string}|null
      */
     private function sameSubtree(Candidate $candidate, int $subtree): ?array
     {
-        [$first, $second] = $candidate->gatekeepers;
-        $a = $candidate->anchors[$first] ?? null;
-        $b = $candidate->anchors[$second] ?? null;
+        $pairs = $candidate->isTable()
+            ? array_map(fn (string $loser): array => [$candidate->winners[0] ?? '', $loser], $candidate->losers)
+            : [$candidate->gatekeepers];
 
-        if ($a === null || $b === null || $a[0] !== $b[0]) {
-            return null;
+        foreach ($pairs as [$first, $second]) {
+            $a = $candidate->anchors[$first] ?? null;
+            $b = $candidate->anchors[$second] ?? null;
+
+            if ($a !== null && $b !== null && $a[0] === $b[0] && $a[1] >= $subtree && $b[1] >= $subtree) {
+                return ['same-subtree', $a[0]];
+            }
         }
 
-        return $a[1] >= $subtree && $b[1] >= $subtree ? ['same-subtree', $a[0]] : null;
+        return null;
     }
 }
