@@ -1667,7 +1667,8 @@ id is empty: a table has no two gatekeepers); one `["listed", "<pubkey>", "<pubk
 loser the winner and they list each other as opponents, with the newest opponent list of each of the two at the
 start; one `["clan", "<pubkey>", "<clan address>"]` per seat that was in a clan at the start; and
 `["block", "<height>" | "", "<previous block's id>"]`. A match without a single winner (below) is attested without
-`trust`, `gate`, `listed`, `clan` and `block`. A team match, a tournament match and every match while the game has no
+`trust`, `gate`, `listed`, `clan` and `block`; a match that was not pinned at its start has a `block` with an empty
+height and none of the four. A team match, a tournament match and every match while the game has no
 weight keep the result of rev. 9.24 unchanged. The league signs one `2154` per match in either case, never both.
 
 **Tournaments.** A Hyperbitcoinization tournament is an ordinary `31923` and is played as free-for-all tables of 3 to 6
@@ -3140,7 +3141,8 @@ Rule 5 counts the block for the winner alone, rule 9 for the share key `hyperbit
 subsidy of the era times the `weight`, for one player.
 
 A reader recomputes every table rule from the attestation alone: its `place` and `forfeit` rows give the winner, the
-losers and whether the win is a forfeit; its `gate`, `listed` and `clan` rows give rules 1, 3 and 7; the earlier blocks
+losers and whether the win is a forfeit; its `gate`, `listed` and `clan` rows give rules 1, 3 and 7 (the anchor of a seat is in the assertion its `gate`
+row names); the earlier blocks
 give rules 4, 5, 8 and 9. What it cannot check is that the pin was taken at the start and not later: that rests on
 the league's word, as the pin of every other game does.
 
