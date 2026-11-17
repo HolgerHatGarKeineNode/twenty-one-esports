@@ -20,8 +20,10 @@ use App\Models\TrustReportDismissal;
 use App\Models\User;
 use App\Support\Clans\ClanDraft;
 use App\Support\Clans\ClanService;
+use App\Support\Navigation\AdminNavigation;
 use App\Support\Nostr\NostrKeys;
 use App\Support\Nostr\SignedEvent;
+use App\Support\SeasonChain\Seasons;
 use App\Support\SeasonChain\TrustAdmin;
 use App\Support\SeasonChain\TrustAdminRefused;
 use App\Support\SeasonChain\TrustJob;
@@ -303,4 +305,69 @@ test('the exclusion field is the player picker: a picked key is excluded, nothin
         ->assertSet('key', null);
 
     expect(TrustExclusion::query()->sole()->pubkey)->toBe($this->reporter->pubkey);
+});
+
+/** The count the admin navigation shows beside "Trust", for the acting admin. */
+function trustNavCount(): int
+{
+    return collect(AdminNavigation::forCurrentUser()->groups())->flatMap(fn (array $group) => $group['items'])->firstWhere('key', 'trust')['count'];
+}
+
+/** A league report by a new reporter that counted in $seasonId. */
+function countedReport(int $seasonId, string $content): NostrEvent
+{
+    $reporter = new TestSigner;
+    $target = User::factory()->create()->pubkey;
+    $report = NostrEvent::fromSigned(SignedEvent::fromInput($reporter->sign(TrustJob::REPORT, [
+        ['p', $target, 'other'], ['L', TrustJob::LABEL_NAMESPACE], ['l', 'cheating', TrustJob::LABEL_NAMESPACE],
+    ], $content, now()->getTimestamp())));
+    TrustCountedReport::query()->create(['season_id' => $seasonId, 'event_id' => $report->event_id, 'author' => $reporter->pubkey, 'target' => $target, 'subtree' => $reporter->pubkey]);
+
+    return $report;
+}
+
+test('the admin navigation shows beside Trust how many reports the trust page marks as counting, and nothing when none does', function () {
+    $season = openSeason();
+    $this->actingAs($this->admin);
+
+    // The report of every test here was read, but did not count in a trust run yet.
+    expect(trustNavCount())->toBe(0);
+
+    countedReport($season->id, 'Counts.');
+    countedReport($season->id, 'Counts too.');
+    $dismissed = countedReport($season->id, 'Counted, then dismissed.');
+    TrustReportDismissal::query()->create(['event_id' => $dismissed->event_id, 'dismissed_by_id' => $this->admin->id, 'reason' => 'Same household.']);
+    $excluded = countedReport($season->id, 'Counted, then its author was excluded.');
+    TrustExclusion::query()->create(['pubkey' => $excluded->pubkey, 'excluded_by_id' => $this->admin->id, 'reason' => 'Mass reporting.']);
+    $ended = openSeason(['slug' => 'season-before', 'genesis_at' => now()->subWeeks(8), 'ends_at' => now()->subWeek()], ladders: false);
+    countedReport($ended->id, 'Counted in the season before.');
+
+    $marked = substr_count(Livewire::actingAs($this->admin)->test('pages::admin.trust')->html(), 'data-test="trust-counts"');
+
+    expect($marked)->toBe(2)
+        ->and(trustNavCount())->toBe(2);
+});
+
+test('the count beside Trust costs the admin navigation one query, however many reports count', function () {
+    $season = openSeason();
+    $this->actingAs($this->admin);
+
+    $queries = function (): array {
+        Seasons::forget();
+        DB::flushQueryLog();
+        DB::enableQueryLog();
+        AdminNavigation::forCurrentUser()->groups();
+        DB::disableQueryLog();
+
+        return array_column(DB::getQueryLog(), 'query');
+    };
+
+    $none = $queries();
+    array_map(fn (int $i): NostrEvent => countedReport($season->id, 'Report '.$i), range(1, 5));
+    $five = $queries();
+
+    expect(count($five))->toBe(count($none))
+        ->and(array_filter($five, fn (string $sql): bool => str_contains($sql, 'trust_counted_reports')))->toHaveCount(1)
+        // The live season is part of that one query, not a second one.
+        ->and(array_filter($five, fn (string $sql): bool => str_starts_with($sql, 'select * from "seasons"')))->toBe([]);
 });

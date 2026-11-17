@@ -5,11 +5,16 @@ namespace App\Support\Navigation;
 use App\Enums\StackerRunStatus;
 use App\Models\LeagueWeek;
 use App\Models\ScoreRun;
+use App\Models\Season;
 use App\Models\SeriesMatch;
 use App\Models\StackerRun;
+use App\Models\TrustCountedReport;
+use App\Models\TrustExclusion;
+use App\Models\TrustReportDismissal;
 use App\Models\User;
 use App\Support\Payouts\PayoutOverview;
 use App\Support\Scores\ScoreAccounts;
+use Carbon\CarbonImmutable;
 use Illuminate\Support\Facades\Route;
 
 /**
@@ -99,7 +104,8 @@ final class AdminNavigation
             ['key' => 'people', 'label' => self::groupLabel('people'), 'items' => [
                 self::item('admins', __('Admins'), route('admin.admins')),
                 self::item('organizers', __('Organizers'), route('admin.organizers')),
-                self::item('trust', __('Trust'), route('admin.trust')),
+                // A counted report halves its target at the next trust run: the admin sees how many count before deciding.
+                self::item('trust', __('Trust'), route('admin.trust'), self::countingReports()),
                 self::item('fair-play', __('Fair play'), route('admin.fair-play')),
                 self::item('nip05', __('Nostr addresses'), route('admin.nip05')),
             ]],
@@ -109,6 +115,23 @@ final class AdminNavigation
                 self::item('overlays', __('OBS overlays'), route('admin.overlays')),
             ]],
         ];
+    }
+
+    /**
+     * The league reports that count now, as the trust page marks them ("counts"): counted in the live
+     * season, not dismissed, their author not excluded. One query on every admin page: the live season
+     * (Seasons::live(): Block 0 passed, not ended; only one runs at a time) is a subquery, so the count
+     * never costs a second one, and it is 0 without a live season.
+     */
+    private static function countingReports(): int
+    {
+        $now = CarbonImmutable::now();
+
+        return TrustCountedReport::query()
+            ->whereIn('season_id', Season::query()->where('genesis_at', '<=', $now)->where('ends_at', '>', $now)->select('id'))
+            ->whereNotIn('author', TrustExclusion::query()->select('pubkey'))
+            ->whereNotIn('event_id', TrustReportDismissal::query()->select('event_id'))
+            ->count();
     }
 
     public static function groupLabel(string $group): string
