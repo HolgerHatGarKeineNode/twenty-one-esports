@@ -20,6 +20,7 @@ use App\Models\Tournament;
 use App\Models\User;
 use App\Support\Board\RatedBoard;
 use App\Support\Chess\RatedChess;
+use App\Support\Hyper\HyperMining;
 use App\Support\Scores\ScoreRuns;
 use App\Support\Scores\ScoreStanding;
 use App\Support\Scores\ScoreWindow;
@@ -63,7 +64,8 @@ final class ChainOverview
      * is switched on and its rated queue is offered (RatedBoard::offered(),
      * plan "Mühle und Dame", P6), a score game while it is switched on (plan
      * "AoE2 und Trackmania", P7: the windows the league opens itself mine one
-     * solo block each), every other game while it has rated play.
+     * solo block each), Hyperbitcoinization while it is switched on (NIP
+     * rev. 9.26, draft), every other game while it has rated play.
      */
     public static function mines(string $key): bool
     {
@@ -75,6 +77,10 @@ final class ChainOverview
 
         if (in_array($game, BoardGame::RESERVED_SLUGS, true) || app(GameRegistry::class)->isBoard($game)) {
             return app(GameRegistry::class)->isBoard($game) && RatedBoard::offered();
+        }
+
+        if ($game === HyperMining::GAME) {
+            return app(GameRegistry::class)->find($game) !== null;
         }
 
         return ! str_starts_with($key, 'chess/') || RatedChess::offered();

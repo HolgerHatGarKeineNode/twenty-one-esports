@@ -61,6 +61,13 @@ class SeasonAttestation extends Model
      */
     public const SCORE = 'score';
 
+    /**
+     * The winner of a rated Hyperbitcoinization match of 2 to 6 seats (NIP
+     * rev. 9.26, draft); `source_id` is the hyper_matches row,
+     * `ladder_address` `hyper:<ulid>` (the game has no ladder).
+     */
+    public const HYPER = 'hyper';
+
     protected function casts(): array
     {
         return [

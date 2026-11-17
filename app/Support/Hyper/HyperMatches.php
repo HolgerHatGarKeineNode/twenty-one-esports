@@ -16,6 +16,7 @@ use App\Support\Chess\Broadcasts;
 use App\Support\GameChat\GameChannels;
 use App\Support\Nostr\PlayerProfile;
 use App\Support\Notifications\HyperNotifications;
+use App\Support\SeasonChain\SeasonChains;
 use App\Support\StreamChat\StreamChat;
 use App\Support\Tournaments\TournamentRunner;
 use Closure;
@@ -124,7 +125,13 @@ final class HyperMatches
         // Only a match without bots counts in the season (user, 2026-10-08), and only inside one.
         $season = $rated !== false && ! array_any($specs, fn (array $spec): bool => $spec['bot']) ? HyperSeason::seasonFor() : null;
 
-        $match = DB::transaction(function () use ($seats, $specs, $step, $limit, $seed, $creator, $now, $mode, $teamClans, $season, $tournamentMatch): HyperMatch {
+        // What the season chain reads at the end, pinned now and only while the game mines (HyperMining). Before the
+        // transaction: a pin that fails is reported and leaves the match without one, never without a start.
+        $gate = $season !== null && $tournamentMatch === null && $teamClans === null
+            ? HyperMining::pinAtStart(array_values(array_filter(array_map(fn (array $seat): ?User => $seat['user'] ?? null, $seats))), $mode)
+            : null;
+
+        $match = DB::transaction(function () use ($seats, $specs, $step, $limit, $seed, $creator, $now, $mode, $teamClans, $season, $tournamentMatch, $gate): HyperMatch {
             $match = HyperMatch::query()->create([
                 'mode' => $mode,
                 'status' => HyperMatchStatus::Active,
@@ -140,6 +147,7 @@ final class HyperMatches
                 'turn_started_ms' => $now,
                 'deadline_ms' => $now + $this->turnMs($mode),
                 'created_by' => $creator?->id,
+                'gate_at_start' => $gate,
             ]);
 
             foreach ($specs as $index => $spec) {
@@ -733,8 +741,14 @@ final class HyperMatches
             });
         }
 
+        // While the game mines (HyperMining), the season chain signs the one result of a match that can mine, with its
+        // block; a failure there is reported and costs the block, never the match. Every other result, and one the
+        // chain did not sign, is signed as before.
         if ($match->rated || $match->tournament_match_id !== null) {
-            DB::afterCommit(fn () => app(HyperPublisher::class)->result($id));
+            DB::afterCommit(function () use ($id): void {
+                rescue(fn () => app(SeasonChains::class)->attestHyperMatch($id));
+                app(HyperPublisher::class)->result($id);
+            });
         }
     }
 

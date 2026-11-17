@@ -6,6 +6,7 @@ use App\Enums\BoardEndReason;
 use App\Enums\BoardGameStatus;
 use App\Enums\ChessEndReason;
 use App\Enums\ChessGameStatus;
+use App\Enums\HyperMatchStatus;
 use App\Enums\SeriesResolution;
 use App\Enums\TournamentFormat;
 use App\Enums\TournamentStatus;
@@ -15,6 +16,7 @@ use App\Models\ChessGame;
 use App\Models\Clan;
 use App\Models\ClanDeparture;
 use App\Models\ClanMember;
+use App\Models\HyperMatch;
 use App\Models\NostrEvent;
 use App\Models\RatingChange;
 use App\Models\ScoreRun;
@@ -27,6 +29,9 @@ use App\Models\Tournament;
 use App\Models\TournamentMatch;
 use App\Models\User;
 use App\Support\Board;
+use App\Support\Hyper\HyperMining;
+use App\Support\Hyper\HyperPublisher;
+use App\Support\Hyper\HyperSeason;
 use App\Support\Rating\RatingService;
 use App\Support\Scores\ScoreLeaderboards;
 use App\Support\Scores\ScoreRuns;
@@ -818,6 +823,220 @@ final class SeasonChains
         }
 
         $tags[] = ['alt', "Esports league attestation: match #{$game->number}, {$game->game} {$game->mode} {$game->result}"];
+
+        return $tags;
+    }
+
+    /**
+     * Attest a finished rated Hyperbitcoinization match while the game mines
+     * (NIP rev. 9.26, draft): the league's one `2154` of the match, with the
+     * tags of its result (HyperPublisher::resultTags()), the trust gate and
+     * clans pinned at its start and the `block` tag. One block at most, for
+     * the winner alone: a table candidate, checked against every other seat
+     * (ConsensusRules).
+     *
+     * Null, and nothing signed here, unless the match is a rated
+     * free-for-all or 1v1 of the live season outside a tournament
+     * (HyperMining::eligible()) and the game has a weight in force now: the
+     * result is then signed as before, by HyperPublisher, and mines nothing.
+     * Once per match: a second call returns the stored attestation, and a
+     * match whose result the league signed already is never attested again.
+     * Call after the transaction that ended the match committed.
+     */
+    public function attestHyperMatch(int $matchId): ?SeasonAttestation
+    {
+        $live = Seasons::live();
+
+        if ($live === null || LeagueKey::fromConfig() === null) {
+            return null;
+        }
+
+        return DB::transaction(function () use ($matchId, $live): ?SeasonAttestation {
+            $match = HyperMatch::query()->lockForUpdate()->find($matchId);
+
+            if ($match === null || $match->status !== HyperMatchStatus::Finished || ! HyperMining::eligible($match)) {
+                return null;
+            }
+
+            $season = Season::query()->whereKey($live->id)->lockForUpdate()->firstOrFail();
+            $existing = $season->attestations()->where(['source' => SeasonAttestation::HYPER, 'source_id' => $match->id, 'board' => 1])->first();
+
+            if ($existing !== null || $match->result_event_id !== null) {
+                return $existing;
+            }
+
+            $attestedAt = $this->nextAttestationTime($season);
+
+            if ($season->chainParameters()->inForceAt($attestedAt)->weightFor(HyperMining::GAME.'/'.$match->mode) === 0) {
+                return null;
+            }
+
+            $match->load('seats.user');
+            $candidate = $this->hyperCandidate($match, $attestedAt);
+            $row = [
+                'season_id' => $season->id,
+                'source' => SeasonAttestation::HYPER,
+                'source_id' => $match->id,
+                'board' => 1,
+                'match_number' => null,
+                'label' => 'Hyper '.$match->id,
+                'game' => HyperMining::GAME,
+                'mode' => $match->mode,
+                'ladder_address' => 'hyper:'.$match->ulid,
+                'attested_at' => $attestedAt,
+                'candidate' => $candidate?->toArray(),
+            ];
+            $block = null;
+
+            if ($candidate !== null) {
+                $verdict = $this->chain($season)->attest($candidate);
+                $tip = $this->tip($season);
+
+                $row += [
+                    'height' => $verdict->mines() ? ($tip['height'] ?? 0) + 1 : null,
+                    'rule' => $verdict->rule?->value,
+                    'reason' => $verdict->reason,
+                    'subject' => $verdict->subject === null ? null : mb_substr($verdict->subject, 0, 200),
+                    'era' => $verdict->era,
+                    'reward_per_player' => $verdict->rewardPerPlayer,
+                    'reward' => $verdict->mines() ? $verdict->reward : 0,
+                    'link_event_id' => $tip['id'],
+                ];
+                $block = ['block', $verdict->mines() ? (string) $row['height'] : '', $tip['id']];
+            }
+
+            $content = $match->seats->contains(HyperSeason::forfeited(...)) ? 'Forfeit: a player left the match or let their turns run out.' : '';
+            $event = LeagueKey::required()->publish(self::ATTESTATION, $this->hyperTags($match, $candidate, $block), $content, $attestedAt->getTimestamp());
+            $match->forceFill(['result_event_id' => $event->event_id])->save();
+
+            return SeasonAttestation::query()->create($row + ['event_id' => $event->event_id, 'nostr_event_id' => $event->id]);
+        });
+    }
+
+    /**
+     * The table candidate of a finished Hyperbitcoinization match: its one
+     * winner (HyperMining::winner()) against every other seat, or null when
+     * nobody won alone. Trust ranks, anchors, the pairs that list each other
+     * and the clans are those pinned at the match's start; a match without
+     * a pin has none, so rule 1 refuses it. `forfeit` when no other seat
+     * played to the end (HyperMining::wonByForfeit()). No move count: rule
+     * 2's minimum is calibrated for chess and the board games.
+     */
+    private function hyperCandidate(HyperMatch $match, CarbonImmutable $attestedAt): ?Candidate
+    {
+        $seat = HyperMining::winner($match);
+
+        if ($seat === null || $seat->user === null) {
+            return null;
+        }
+
+        $winner = $seat->user->pubkey;
+        $losers = [];
+
+        foreach ($match->seats as $other) {
+            // A seat without its player (a deleted account) has nobody to check: no candidate.
+            if ($other->seat !== $seat->seat && $other->user === null) {
+                return null;
+            }
+
+            if ($other->seat !== $seat->seat) {
+                $losers[] = $other->user->pubkey;
+            }
+        }
+
+        if ($losers === [] || in_array($winner, $losers, true)) {
+            return null;
+        }
+
+        $pin = $match->gate_at_start;
+        $players = [$winner, ...$losers];
+        $trust = [];
+        $anchors = [];
+        $connected = [];
+
+        foreach ($players as $pubkey) {
+            if (isset($pin['players'][$pubkey])) {
+                $trust[$pubkey] = (int) $pin['players'][$pubkey]['rank'];
+            }
+
+            $anchors[$pubkey] = $pin['players'][$pubkey]['anchor'] ?? null;
+        }
+
+        foreach ((array) ($pin['pairs'] ?? []) as $pair) {
+            if (in_array($winner, [$pair[0], $pair[1]], true)) {
+                $connected[] = $pair[0] === $winner ? $pair[1] : $pair[0];
+            }
+        }
+
+        $clans = $this->clans($players, $pin['clans'] ?? null);
+
+        return new Candidate(
+            'Hyper '.$match->id,
+            'hyper:'.$match->id,
+            HyperMining::GAME,
+            HyperMining::GAME.'/'.$match->mode,
+            $attestedAt,
+            HyperMining::wonByForfeit($match, $seat) ? Resolution::Forfeit : Resolution::Admin,
+            null,
+            [$winner],
+            $losers,
+            $clans[$winner],
+            [$winner, $losers[0]],
+            [$winner, $losers[0]],
+            false,
+            $trust,
+            $clans,
+            $anchors,
+            null,
+            ['connected' => array_values(array_intersect($losers, $connected))],
+        );
+    }
+
+    /**
+     * The `2154` of a Hyperbitcoinization match that can mine: the tags of
+     * its result, then the gate pinned at the start (`trust`, one `gate` row
+     * per seat without a list id, one `listed` row per loser the winner and
+     * they list each other, with the two list events), the pinned `clan`
+     * rows and the `block` tag.
+     *
+     * @param  list<string>|null  $block
+     * @return list<list<string>>
+     */
+    private function hyperTags(HyperMatch $match, ?Candidate $candidate, ?array $block): array
+    {
+        $tags = HyperPublisher::resultTags($match);
+        $alt = array_pop($tags);
+        $pin = $match->gate_at_start;
+
+        if ($pin !== null && $candidate !== null) {
+            if ($pin['trust_key'] !== '') {
+                $tags[] = ['trust', $pin['trust_key'], (string) $pin['minimum']];
+            }
+
+            foreach ($candidate->players() as $pubkey) {
+                if (isset($pin['players'][$pubkey])) {
+                    $tags[] = ['gate', $pubkey, (string) $pin['players'][$pubkey]['rank'], (string) $pin['players'][$pubkey]['assertion'], ''];
+                }
+            }
+
+            foreach ($pin['pairs'] as $pair) {
+                if (in_array($candidate->winners[0], [$pair[0], $pair[1]], true)) {
+                    $tags[] = ['listed', ...$pair];
+                }
+            }
+
+            foreach ($candidate->clans as $pubkey => $clan) {
+                if ($clan !== null) {
+                    $tags[] = ['clan', $pubkey, $clan];
+                }
+            }
+        }
+
+        if ($block !== null) {
+            $tags[] = $block;
+        }
+
+        $tags[] = $alt;
 
         return $tags;
     }

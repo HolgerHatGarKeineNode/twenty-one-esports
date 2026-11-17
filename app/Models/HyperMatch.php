@@ -40,6 +40,7 @@ use Illuminate\Support\Carbon;
  * @property HyperEndReason|null $end_reason
  * @property int|null $created_by
  * @property Carbon|null $ended_at
+ * @property array{trust_key: string, minimum: int, players: array<string, array{rank: int, assertion: ?string, anchor: array{0: string, 1: int}|null}>, pairs: list<array{0: string, 1: string, 2: string, 3: string}>, clans: array<string, string>}|null $gate_at_start the trust gate and clans pinned at the start, for the season chain (HyperMining); null = never mines
  * @property Carbon|null $created_at
  * @property Carbon|null $updated_at
  * @property-read Collection<int, HyperSeat> $seats
@@ -47,7 +48,7 @@ use Illuminate\Support\Carbon;
  * @property-read User|null $creator
  * @property-read TournamentMatch|null $tournamentMatch
  */
-#[Fillable(['mode', 'status', 'seed', 'round_limit', 'team_clans', 'rated', 'season', 'tournament_match_id', 'poll_event_id', 'result_event_id', 'state', 'ply', 'current_seat', 'turn_started_ms', 'deadline_ms', 'winner_seat', 'end_reason', 'created_by', 'ended_at'])]
+#[Fillable(['mode', 'status', 'seed', 'round_limit', 'team_clans', 'rated', 'season', 'tournament_match_id', 'poll_event_id', 'result_event_id', 'state', 'ply', 'current_seat', 'turn_started_ms', 'deadline_ms', 'winner_seat', 'end_reason', 'created_by', 'ended_at', 'gate_at_start'])]
 class HyperMatch extends Model
 {
     /** @use HasFactory<HyperMatchFactory> */
@@ -67,6 +68,7 @@ class HyperMatch extends Model
             'seed' => 'integer',
             'round_limit' => 'integer',
             'team_clans' => 'array',
+            'gate_at_start' => 'array',
             'tournament_match_id' => 'integer',
             'rated' => 'boolean',
             'state' => 'array',
