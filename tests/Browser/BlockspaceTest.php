@@ -33,15 +33,18 @@ beforeEach(function () {
     BlockspaceOn::play();
 });
 
-/** A live rapid game three moves in, the admin playing Orange. */
-function blockspaceBrowserGame(User $admin): BoardGame
+/** A live rapid game some moves in (three, unless told), the admin playing Orange. */
+function blockspaceBrowserGame(User $admin, int $plies = 3): BoardGame
 {
     $game = app(BoardGameService::class)->start('blockspace', $admin, User::factory()->create(['name' => 'Hal Finney']), 'rapid');
     $rules = new BlockspaceRules;
 
-    foreach (range(1, 3) as $ply) {
+    foreach (range(1, $plies) as $ply) {
         $game->refresh();
-        app(BoardGameService::class)->move($game, $game->player($game->turn), $rules->legalMoves($rules->deserialize($game->position))[0], $game->ply + 1);
+        $stones = array_values(array_filter($rules->legalMoves($rules->deserialize($game->position)), fn (string $move): bool => $move !== BlockspaceRules::PASS));
+        // A long game for the move list: two passes between the stones keep the block open, whatever the deal.
+        $move = $plies > 3 && ($ply % 3 !== 0 || $stones === []) ? BlockspaceRules::PASS : $stones[0];
+        app(BoardGameService::class)->move($game, $game->player($game->turn), $move, $game->ply + 1);
     }
 
     return $game->refresh();
@@ -122,3 +125,25 @@ test('a fresh load draws the block and the ladder within 2.5 s, from a phone to 
 
     expect($page->evaluate('() => document.querySelectorAll("[data-test=mempool] > *").length'))->toBeGreaterThanOrEqual(5);
 })->with([390, 1440]);
+
+test('the one column of moves stays a list of its own on a desktop: the page does not grow with the game and the newest move is on screen', function (int $width) {
+    // One column is twice as long as two: without a cap the list grew by a row per move, pushed the page past the
+    // screen and left the newest move below it (measured 2026-11-17, PR #33: 943 px of list at 22 moves).
+    $admin = blockspaceAdmin();
+    $game = blockspaceBrowserGame($admin, 24);
+    $page = blockspacePage($admin, route('board.show', ['boardGame' => $game, 'lang' => 'de'], false), $width);
+    BrowserWait::until($page, '() => document.querySelectorAll("[data-test=moves] [data-test=move]").length >= 24 && document.querySelector("[data-test=moves] [aria-current=step]") !== null', 5_000);
+    // The board loads lazily and opens the list on the newest move once it is in.
+    BrowserWait::until($page, '() => document.querySelector("[data-board-box] svg")?.childElementCount > 0 && document.querySelector("[data-test=moves]").scrollTop > 0', 5_000);
+
+    $list = $page->evaluate('() => { const list = document.querySelector("[data-test=moves]"); const box = list.getBoundingClientRect(); const row = list.querySelector("[aria-current=step]").closest("li").getBoundingClientRect(); const first = list.querySelector("li").getBoundingClientRect(); const second = list.querySelectorAll("li")[1].getBoundingClientRect(); return { h: Math.round(box.height), bottom: Math.round(box.bottom), rowTop: Math.round(row.top), rowBottom: Math.round(row.bottom), boxTop: Math.round(box.top), oneColumn: second.top >= first.bottom - 1, scrolls: list.scrollHeight > list.clientHeight, screen: window.innerHeight }; }');
+
+    expect($list['oneColumn'])->toBeTrue("one column at {$width}")
+        ->and($list['h'])->toBeLessThanOrEqual(492, "list height at {$width}")
+        ->and($list['scrolls'])->toBeTrue("the list scrolls, not the page, at {$width}")
+        ->and($list['rowTop'])->toBeGreaterThanOrEqual($list['boxTop'] - 1, "newest move inside the list at {$width}")
+        ->and($list['rowBottom'])->toBeLessThanOrEqual($list['bottom'] + 1, "newest move inside the list at {$width}")
+        ->and($list['rowBottom'])->toBeLessThanOrEqual($list['screen'], "newest move on screen at {$width}")
+        ->and($page->evaluate('() => window.__errors'))->toBe([], "console at {$width}")
+        ->and($page->evaluate(BrowserConsole::BAD_RESPONSES))->toBe([], "answers at {$width}");
+})->with([1280, 1920]);

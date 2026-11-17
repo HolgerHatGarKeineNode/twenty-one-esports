@@ -412,7 +412,11 @@ registerAlpine(() => {
                     this.render();
                     this.fitBoard();
                     this.$refs.board.pieceBoard.openOnBlock();
+                    // The board is in and the page laid out: the one column of moves opens on the newest move.
+                    this.$nextTick(() => requestAnimationFrame(() => this.followMove()));
                 });
+                // One column of moves is a list of its own beside the board: it keeps the move shown in sight, as Go's does.
+                this.$watch('shownPly', () => this.$nextTick(() => this.followMove()));
             }
 
             // The stone input (Go): a mouse shows the stone under it before the click sets it; a finger taps twice.

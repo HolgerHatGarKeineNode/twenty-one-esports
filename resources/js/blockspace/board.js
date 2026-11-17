@@ -96,7 +96,6 @@ export function mountPieceBoard(c) {
     const starts = element('g');
     const jointLayer = element('g');
     const stoneLayer = element('g');
-    // The other side's last turn: a tinted plate under its stones, its outline over them.
     // The other side's last turn glows from behind its stones (drawLast).
     const recent = element('g', { 'aria-hidden': 'true' });
     const blurId = 'bsp-recent-blur-' + Math.random().toString(36).slice(2, 8);
@@ -382,7 +381,8 @@ export function mountPieceBoard(c) {
         const record = c.shownPly > 0 ? c.state.moves?.[c.shownPly - 1]?.notation ?? '' : '';
         const out = [...new Set(record.split(' · ').slice(1).map((note) => (note.startsWith('₿') ? 'w' : 'b')))];
         const name = (side) => (side === 'w' ? c.t.white : c.t.black);
-        const outText = out.length > 1 ? words.outBoth : out.length ? words.out.replace(':side', name(out[0])) : '';
+        // In blitz the fuse keeps burning on a turn sat out, so the note does not promise that nothing falls out.
+        const outText = out.length > 1 ? words.outBoth : out.length ? (shown.fuse ? words.outFuse : words.out).replace(':side', name(out[0])) : '';
         const info = !c.error && (outText !== '' || (active && shown.passes > 0));
         const noteText = c.error || (outText || (info ? words.passed : ''));
         if (note.textContent !== noteText) note.textContent = noteText;

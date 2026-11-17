@@ -687,7 +687,7 @@ new #[Layout('layouts::app', ['realtime' => true, 'scripts' => ['resources/js/bo
                         <span x-text="@js(__('Showing move :n of :total')).replace(':n', shownPly).replace(':total', state.moves.length)"></span>
                         <button type="button" class="cursor-pointer text-ink underline decoration-edge underline-offset-4" x-on:click="browse(state.moves.length)" data-test="history-back-to-game">{{ __('Back to the game') }}</button>
                     </p>
-                    <ol @class(['m-0 grid max-h-60 min-h-0 list-none content-start gap-x-2 overflow-y-auto p-0 text-[13px] tabular-nums lg:max-h-none', 'lg:grow' => ! $stones, 'lg:min-h-[calc(5*2.75rem+5px)] lg:flex-[1_1_0px] min-[87.5rem]:min-h-[calc(3*2.75rem+3px)] min-[87.5rem]:[@media(min-height:1040px)]:min-h-[calc(6*2.75rem+6px)]' => $stones]) :class="layout.input === 'pieces' ? 'grid-cols-1' : 'grid-cols-2'" data-test="moves">
+                    <ol @class(['m-0 grid max-h-60 min-h-0 list-none content-start gap-x-2 overflow-y-auto p-0 text-[13px] tabular-nums', 'lg:grow' => ! $stones, 'lg:min-h-[calc(5*2.75rem+5px)] lg:flex-[1_1_0px] min-[87.5rem]:min-h-[calc(3*2.75rem+3px)] min-[87.5rem]:[@media(min-height:1040px)]:min-h-[calc(6*2.75rem+6px)]' => $stones]) :class="layout.input === 'pieces' ? 'grid-cols-1 lg:max-h-[min(30.75rem,calc(100dvh-16rem))]' : 'grid-cols-2 lg:max-h-none'" data-test="moves">
                         <template x-for="m in state.moves" :key="m.ply">
                             @if ($stones)
                                 {{-- Go: a row of 44 px; a pass reads as a pass (plain, grey), not as a point; what a stone took stands behind it ("×2"). --}}

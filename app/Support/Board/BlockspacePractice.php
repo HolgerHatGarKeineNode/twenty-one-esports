@@ -147,6 +147,7 @@ final class BlockspacePractice
             'mouse' => __('Left click takes and sets, right click turns, a long right click mirrors. Keys: 1 to 5 take, R turns, F mirrors, the arrows move, Enter sets.'),
             'passed' => __('The last turn was passed: the oldest transaction fell out.'),
             'out' => __(':side can set nothing and sits out. Nothing falls out.'),
+            'outFuse' => __(':side can set nothing and sits out.'),
             'outBoth' => __('Neither side has anything left to set: the block is closed.'),
             'chat' => __('Chat'),
             'unfoldLadder' => __('Open the mempool'),

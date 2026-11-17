@@ -58,10 +58,10 @@
 }
 
 /* The other side's last turn: a soft glow of its colour behind its forms (the size of mockup A, the colour of B), a tint of their cells. Nothing moves. */
-.bsp-recent-halo.is-w { fill: #f7931a; }
-.bsp-recent-halo.is-b { fill: #8db4ff; }
-.bsp-recent-tint.is-w { fill: rgb(247 147 26 / 32%); }
-.bsp-recent-tint.is-b { fill: rgb(141 180 255 / 32%); }
+.bsp-recent-halo.is-w { fill: var(--bs-w); }
+.bsp-recent-halo.is-b { fill: var(--bs-b); }
+.bsp-recent-tint.is-w { fill: color-mix(in srgb, var(--bs-w) 32%, transparent); }
+.bsp-recent-tint.is-b { fill: color-mix(in srgb, var(--bs-b) 32%, transparent); }
 
 .bsp-ghost {
     opacity: 0.88;

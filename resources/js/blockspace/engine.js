@@ -255,6 +255,8 @@ export function pass(g) {
     settle(g);
 }
 
+/** Why a finished game ended, in the server's words (BlockspaceRules::outcome). */
+export const reasonOf = (g) => (g.last === 'x' ? 'block_full' : g.pool.length ? 'passes' : 'mempool_empty');
 export const winner = (g) => (g.score[0] > g.score[1] ? 0 : g.score[1] > g.score[0] ? 1 : -1);
 export const clone = (g) => ({ ...g, board: g.board.slice(), pool: g.pool.slice(), queue: g.queue.slice(), score: g.score.slice(), played: g.played.slice(), log: [] });
 

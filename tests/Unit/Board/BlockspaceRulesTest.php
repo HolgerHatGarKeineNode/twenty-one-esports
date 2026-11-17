@@ -191,6 +191,42 @@ test('a side with nothing to set sits out, nothing falls out, and the block clos
     expect($rules->notation($open, $move))->toBe('₿ I1 b2 +5');
 });
 
+test('a position stored before the block could close still reads and plays on', function () {
+    // Games running at the deploy hold positions without the field after the passes: they read as an open block.
+    $rules = new BlockspaceRules;
+    $withoutLast = function (string $text): string {
+        $fields = explode(' ', $text);
+        array_splice($fields, 6, 1);
+
+        return implode(' ', $fields);
+    };
+
+    foreach ([$rules->deal('rapid'), $rules->deal('blitz'), blockspaceWith([], ['pool' => '', 'queue' => '', 'passes' => 14])] as $position) {
+        $text = $rules->serialize($position);
+        $old = $withoutLast($text);
+        $read = $rules->deserialize($old);
+
+        expect(explode(' ', $text))->toHaveCount(11)
+            ->and(explode(' ', $old))->toHaveCount(10)
+            ->and($read['last'])->toBe('-')
+            ->and($rules->serialize($read))->toBe($text);
+    }
+
+    $old = $rules->deserialize($withoutLast($rules->serialize($rules->deal('rapid'))));
+    expect($rules->serialize($rules->apply($old, BlockspaceRules::PASS)))->toMatch('/^n 1 0 0 00 1 - /');
+});
+
+test('a pass notes the turns sat out after it too', function () {
+    // Blue's only corners are taken: Orange passes, and Blue sits out both its turns.
+    $position = blockspaceWith(['a1' => 'w', 'e20' => 'b', 'd19' => 'w', 'f19' => 'w', 'd21' => 'w', 'f21' => 'w'], ['pool' => 'aaaaa', 'queue' => 'bbbbb', 'played' => ['w' => true, 'b' => true]]);
+
+    expect((new BlockspaceRules)->notation($position, BlockspaceRules::PASS))->toBe('₿ – · ⚡ – · ⚡ –');
+});
+
+test('every way a game ends has its words', function () {
+    expect(array_keys((new BlockspaceRules)->reasons()))->toBe(['mempool_empty', 'block_full', 'passes']);
+});
+
 test('nobody knows what is to come, only how much', function () {
     $rules = new BlockspaceRules;
     $position = $rules->deal('rapid');

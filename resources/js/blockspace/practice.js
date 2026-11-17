@@ -5,7 +5,7 @@
  */
 import { boardSources } from '../boardGame.js';
 import { registerAlpine } from '../registerAlpine.js';
-import { applyMove, moveText, newGame, notationOf, piecesOf, positionOf, rng, stateOf, think, winner } from './engine.js';
+import { applyMove, moveText, newGame, notationOf, piecesOf, positionOf, reasonOf, rng, stateOf, think, winner } from './engine.js';
 import { lessonVerdict } from './lessons.js';
 
 const SOURCE = 'blockspace-practice';
@@ -138,7 +138,7 @@ export function blockspacePractice(config) {
                 id: 0, game: 'blockspace', version: this.version,
                 status: idle ? 'idle' : over ? 'finished' : 'active',
                 result: over ? result : null,
-                reason: over ? (resigned ? 'resignation' : g.pool.length ? 'block_full' : 'mempool_empty') : null,
+                reason: over ? (resigned ? 'resignation' : reasonOf(g)) : null,
                 ply: played.length, turn: g.side === 0 ? 'w' : 'b', daily: false,
                 clock: { w: 0, b: 0, running: null, serverNow: Date.now() },
                 deadline: null, firstMoveDeadline: null, drawOffer: null, takeBackUntil: null, takeBackBy: null,
