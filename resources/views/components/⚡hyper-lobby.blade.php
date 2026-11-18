@@ -157,7 +157,8 @@ new class extends Component {
         try {
             $table = $change($me);
         } catch (HyperRuleViolation $refusal) {
-            $this->error = $this->message($refusal->reason);
+            // Fair play: the refusal carries the player's own message (why and until when).
+            $this->error = $refusal->reason === 'fair_play' ? $refusal->getMessage() : $this->message($refusal->reason);
 
             return;
         }

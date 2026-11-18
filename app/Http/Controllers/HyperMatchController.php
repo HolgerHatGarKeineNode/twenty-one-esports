@@ -400,7 +400,8 @@ class HyperMatchController extends Controller
 
             return response()->json([
                 'reason' => $violation->reason,
-                'message' => $this->message($violation->reason, $retry),
+                // Fair play: the refusal carries the player's own message (why and until when).
+                'message' => $violation->reason === 'fair_play' ? $violation->getMessage() : $this->message($violation->reason, $retry),
                 ...($retry !== null ? ['retry_after' => $retry] : []),
             ], $status);
         }

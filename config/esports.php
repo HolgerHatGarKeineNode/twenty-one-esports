@@ -914,12 +914,21 @@ return [
     | (App\Support\FairPlay\FairPlay::lockedUntil()). /rules states these
     | numbers, read at render time.
     |
+    | Forfeits: a seat of a rated Hyperbitcoinization match its player left
+    | or let run out (`hyper_seats.takeover` = forfeit). `forfeits` of them
+    | within `forfeit_window_days` days bar the player from rated play in
+    | every game for `forfeit_lock_days` days from the last one. Only
+    | forfeits since Block 0 of the live season count.
+    |
     */
 
     'fair_play' => [
         'false_reports' => (int) env('ESPORTS_FAIR_PLAY_FALSE_REPORTS', 2),
         'window_days' => (int) env('ESPORTS_FAIR_PLAY_WINDOW_DAYS', 30),
         'lock_days' => (int) env('ESPORTS_FAIR_PLAY_LOCK_DAYS', 7),
+        'forfeits' => (int) env('ESPORTS_FAIR_PLAY_FORFEITS', 2),
+        'forfeit_window_days' => (int) env('ESPORTS_FAIR_PLAY_FORFEIT_WINDOW_DAYS', 30),
+        'forfeit_lock_days' => (int) env('ESPORTS_FAIR_PLAY_FORFEIT_LOCK_DAYS', 7),
     ],
 
     /*

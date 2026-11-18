@@ -4,11 +4,15 @@ namespace App\Support\FairPlay;
 
 use App\Models\AccountLink;
 use App\Models\FalseReport;
+use App\Models\HyperSeat;
 use App\Models\SeriesMatch;
 use App\Models\User;
 use App\Support\LeagueTime;
+use App\Support\SeasonChain\Seasons;
 use App\Support\Settings\LeagueSettings;
 use Carbon\CarbonImmutable;
+use Illuminate\Support\Collection;
+use stdClass;
 
 /**
  * Who is barred from rated play by the fair-play rules (P41), read live
@@ -20,13 +24,18 @@ use Carbon\CarbonImmutable;
  * - a **locked** player: `fair_play.false_reports` confirmed false reports
  *   ({@see FalseReport}) within `fair_play.window_days` days of each other
  *   bar the player for `fair_play.lock_days` days from the last of them.
+ * - a player who **forfeits** rated Hyperbitcoinization matches (leaves, or
+ *   lets the turns run out: `HyperSeat::TAKEOVER_FORFEIT`): `fair_play.forfeits`
+ *   of them within `fair_play.forfeit_window_days` days bar the player from
+ *   rated play in every game for `fair_play.forfeit_lock_days` days from the
+ *   last one. Only forfeits since the live season's Block 0 count.
  *
  * Only new rated play is refused: a match accepted before keeps its pinned
  * gate ("Nothing after the accept undoes the gate"). Results between two
  * accounts of one person are voided by the link itself and rate nothing
  * afterwards ({@see samePerson()}, RatingService).
  *
- * @phpstan-type Bar array{kind: 'linked'|'locked', until: CarbonImmutable|null, main: string|null}
+ * @phpstan-type Bar array{kind: 'linked'|'locked'|'forfeits', until: CarbonImmutable|null, main: string|null}
  */
 final class FairPlay
 {
@@ -53,6 +62,10 @@ final class FairPlay
 
         foreach (self::locks(array_values(array_diff($pubkeys, array_keys($barred)))) as $pubkey => $until) {
             $barred[$pubkey] = ['kind' => 'locked', 'until' => $until, 'main' => null];
+        }
+
+        foreach (self::forfeitLocks(array_values(array_diff($pubkeys, array_keys($barred)))) as $pubkey => $until) {
+            $barred[$pubkey] = ['kind' => 'forfeits', 'until' => $until, 'main' => null];
         }
 
         return $barred;
@@ -104,6 +117,16 @@ final class FairPlay
         }
 
         $until = LeagueTime::stamp($bar['until'] ?? now());
+
+        if ($bar['kind'] === 'forfeits') {
+            return $own
+                ? __('You cannot play rated until :time: you left :count rated Hyperbitcoinization matches within :days days. Casual play stays open.', [
+                    'time' => $until,
+                    'count' => self::forfeitThreshold(),
+                    'days' => self::forfeitWindowDays(),
+                ])
+                : __(':name cannot play rated until :time after leaving rated matches.', ['name' => $name, 'time' => $until]);
+        }
 
         return $own
             ? __('You cannot play rated until :time: :count false result reports were confirmed within :days days. Casual play stays open.', [
@@ -194,6 +217,33 @@ final class FairPlay
         return max(1, (int) LeagueSettings::get('esports.fair_play.lock_days'));
     }
 
+    public static function forfeitThreshold(): int
+    {
+        return max(1, (int) LeagueSettings::get('esports.fair_play.forfeits'));
+    }
+
+    public static function forfeitWindowDays(): int
+    {
+        return max(1, (int) LeagueSettings::get('esports.fair_play.forfeit_window_days'));
+    }
+
+    public static function forfeitLockDays(): int
+    {
+        return max(1, (int) LeagueSettings::get('esports.fair_play.forfeit_lock_days'));
+    }
+
+    /**
+     * How many rated Hyperbitcoinization matches this player forfeited within
+     * the last `forfeitWindowDays()` days (since Block 0 of the live season):
+     * one more of them reaches `forfeitThreshold()` when this is one below it.
+     */
+    public static function forfeitsInWindow(User $user): int
+    {
+        $since = self::forfeitsSince(self::forfeitWindowDays());
+
+        return $since === null ? 0 : self::forfeits([$user->id], $since)->count();
+    }
+
     /**
      * The running locks of these players: the newest `threshold()` false
      * reports lie within `windowDays()` of each other and the newest is less
@@ -232,5 +282,89 @@ final class FairPlay
         }
 
         return $locks;
+    }
+
+    /**
+     * The running locks after forfeited rated Hyperbitcoinization matches,
+     * in the shape of {@see locks()}: the newest `forfeitThreshold()`
+     * forfeits lie within `forfeitWindowDays()` of each other and the newest
+     * is less than `forfeitLockDays()` old. A bounded number of queries for
+     * any number of players.
+     *
+     * @param  list<string>  $pubkeys
+     * @return array<string, CarbonImmutable>
+     */
+    private static function forfeitLocks(array $pubkeys): array
+    {
+        $since = $pubkeys === [] ? null : self::forfeitsSince(self::forfeitWindowDays() + self::forfeitLockDays());
+
+        if ($since === null) {
+            return [];
+        }
+
+        /** @var array<int, string> $users */
+        $users = User::query()->whereIn('pubkey', $pubkeys)->pluck('pubkey', 'id')->all();
+        $threshold = self::forfeitThreshold();
+        $locks = [];
+
+        foreach (self::forfeits(array_keys($users), $since)->groupBy('user_id') as $userId => $rows) {
+            $newest = $rows->take($threshold);
+
+            if ($newest->count() < $threshold) {
+                continue;
+            }
+
+            $last = CarbonImmutable::parse((string) $newest->first()?->left_at);
+            $first = CarbonImmutable::parse((string) $newest->last()?->left_at);
+            $until = $last->addDays(self::forfeitLockDays());
+
+            if ($first->greaterThanOrEqualTo($last->subDays(self::forfeitWindowDays())) && $until->isFuture()) {
+                $locks[$users[(int) $userId]] = $until;
+            }
+        }
+
+        return $locks;
+    }
+
+    /**
+     * From when forfeits count looking `$days` back: never before Block 0 of
+     * the live season (nothing before the release locks anyone); null
+     * outside a season, when no forfeit counts.
+     */
+    private static function forfeitsSince(int $days): ?CarbonImmutable
+    {
+        $genesis = Seasons::live()?->genesis_at;
+
+        if ($genesis === null) {
+            return null;
+        }
+
+        return CarbonImmutable::instance($genesis)->max(CarbonImmutable::now()->subDays($days));
+    }
+
+    /**
+     * The forfeited seats of these players in rated matches since `$since`,
+     * newest first. Read from the seat rows: `hyper_seats (user_id,
+     * hyper_match_id)` narrows it to the players' own seats, and the match
+     * is joined by its primary key. A voided match is no longer rated and
+     * so does not count.
+     *
+     * @param  list<int>  $userIds
+     * @return Collection<int, stdClass> rows of `user_id` and `left_at`
+     */
+    private static function forfeits(array $userIds, CarbonImmutable $since): Collection
+    {
+        if ($userIds === []) {
+            return collect();
+        }
+
+        return HyperSeat::query()->toBase()
+            ->join('hyper_matches', 'hyper_matches.id', '=', 'hyper_seats.hyper_match_id')
+            ->whereIn('hyper_seats.user_id', $userIds)
+            ->where('hyper_seats.takeover', HyperSeat::TAKEOVER_FORFEIT)
+            ->where('hyper_seats.left_at', '>=', $since)
+            ->where('hyper_matches.rated', true)
+            ->orderByDesc('hyper_seats.left_at')->orderByDesc('hyper_seats.id')
+            ->get(['hyper_seats.user_id', 'hyper_seats.left_at']);
     }
 }

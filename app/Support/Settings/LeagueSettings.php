@@ -135,6 +135,9 @@ final class LeagueSettings
             'esports.fair_play.false_reports' => self::int('fair_play', __('Confirmed false reports before a pause'), 1, 10, __('That many within the window bar a player from rated play. Applies at once, to reports already recorded too.'), boardOnly: true),
             'esports.fair_play.window_days' => self::int('fair_play', __('Window for false reports (days)'), 1, 365, __('Applies at once.'), boardOnly: true),
             'esports.fair_play.lock_days' => self::int('fair_play', __('Pause from rated play (days)'), 1, 90, __('Counted from the last false report. Applies at once, to running pauses too.'), boardOnly: true),
+            'esports.fair_play.forfeits' => self::int('fair_play', __('Left rated Hyperbitcoinization matches before a pause'), 1, 10, __('That many within the window bar a player from rated play in every game. Counts leaving and turns that ran out, since Block 0 of the live season. Applies at once.'), boardOnly: true),
+            'esports.fair_play.forfeit_window_days' => self::int('fair_play', __('Window for left rated matches (days)'), 1, 365, __('Applies at once.'), boardOnly: true),
+            'esports.fair_play.forfeit_lock_days' => self::int('fair_play', __('Pause from rated play after leaving (days)'), 1, 90, __('Counted from the last left match. Applies at once, to running pauses too.'), boardOnly: true),
 
             'esports.chess.pairing_limit_per_day.rated' => self::int('chess', __('Rated games per pairing and day'), 1, 20, __('The chess queue pairs the same two players for rated games at most this often per day (UTC). Applies at once.')),
 

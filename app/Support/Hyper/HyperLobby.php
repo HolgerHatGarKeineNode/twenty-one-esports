@@ -12,6 +12,7 @@ use App\Models\HyperTable;
 use App\Models\HyperTableSeat;
 use App\Models\User;
 use App\Support\Chess\Broadcasts;
+use App\Support\FairPlay\FairPlay;
 use App\Support\Settings\LeagueSettings;
 use Carbon\CarbonInterface;
 use Closure;
@@ -51,10 +52,32 @@ use Throwable;
  * `table_full`, `faction_taken`, `already_seated`, `seated_elsewhere`, `not_seated`, `not_creator`,
  * `no_rematch` (the match is not over, or the user did not play it), and at a clan table `no_clan` (the
  * player is in no clan), `not_your_clan` (both sides belong to other clans), `side_full`.
+ *
+ * Fair play: a player barred from rated play (App\Support\FairPlay\FairPlay: a linked account, a lock after false
+ * reports or after forfeited rated matches, a bar set by an admin) takes no seat at a table that may be rated (not
+ * friendly, in a live season) and asks for no rated rematch: `fair_play`, whose message says why and until when. A
+ * friendly table and a match against bots stay open. A match that started before keeps running.
  */
 final class HyperLobby
 {
     public function __construct(private HyperMatches $matches) {}
+
+    /**
+     * Refuses a player barred from rated play at a table that may be rated: the message is the player's own
+     * FairPlay::message(), with the reason and the end.
+     *
+     * @throws HyperRuleViolation `fair_play`
+     */
+    private function refuseBarred(User $user, bool $friendly): void
+    {
+        if ($friendly || HyperSeason::seasonFor() === null) {
+            return;
+        }
+
+        if (($message = FairPlay::message($user->pubkey, $user)) !== null) {
+            throw new HyperRuleViolation('fair_play', $message);
+        }
+    }
 
     /**
      * @throws HyperRuleViolation `seated_elsewhere`, `bad_table`, `faction_taken`
@@ -70,6 +93,7 @@ final class HyperLobby
         }
 
         $this->checkFaction($faction);
+        $this->refuseBarred($creator, $friendly);
         $clan = $clans ? (HyperTeams::clanOf($creator) ?? throw new HyperRuleViolation('no_clan', 'A clan table needs a clan.')) : null;
 
         $table = DB::transaction(function () use ($creator, $seats, $mode, $limit, $faction, $clan, $friendly, $bots): HyperTable {
@@ -121,6 +145,7 @@ final class HyperLobby
                 throw new HyperRuleViolation('already_seated', 'You sit at this table already.');
             }
 
+            $this->refuseBarred($user, $table->friendly);
             User::query()->whereKey($user->id)->lockForUpdate()->first();
             $this->refuseSeatedElsewhere($user);
 
@@ -252,6 +277,8 @@ final class HyperLobby
             if ($locked->status !== HyperMatchStatus::Finished || $mine === null) {
                 throw new HyperRuleViolation('no_rematch', 'Only a player of a finished match asks for a rematch.');
             }
+
+            $this->refuseBarred($user, ! $locked->rated);
 
             $table = HyperTable::query()->where('rematch_of', $locked->id)->lockForUpdate()->first();
 
