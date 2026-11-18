@@ -82,7 +82,7 @@ test('every slide carries the column at x 1040 to 1280: the music with a card, t
         ->toContain('1,234')->toContain('watching')->toContain('einundzwanzig.space')
         // Without a card the same column holds the league and the site's code, never an empty box.
         ->and($without)->toContain('data-unit="now-playing-column" data-box="1040 0 1280 720"')
-        ->toContain('data-unit="now-playing-league"')->toContain('Scan und spiel mit')->toContain('1,234')
+        ->toContain('data-unit="now-playing-league"')->toContain('Scan and play')->toContain('1,234')
         ->not->toContain('JETZT LÄUFT')
         ->and(substr_count($without, 'width="196" height="196" fill="#FFFFFF"'))->toBe(1)
         // No count, no viewer row.
