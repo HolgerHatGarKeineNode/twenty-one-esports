@@ -2675,8 +2675,9 @@ The association decided that paid membership is public; the site shows a member 
 therefore publishes the anchors as a NIP-51 follow set: `d` = `esports/<league key>/anchors`,
 `title`, `description`, one `p` per anchor, `alt`. It publishes a new version whenever the anchor set
 changes, before the trust run that uses it, and every assertion of that run references the version by
-`e`. With the anchor list, the players' opponent lists and the counted reports, anyone can recompute
-every rank (relay proof, round 4).
+`e`. With the anchor list and the players' opponent lists, anyone can recompute every rank that no
+admin decision touched (relay proof, round 4); which reports an admin confirmed and which keys are
+excluded stays on the league server in V1 (see [Reports](#reports-1984-reused-from-nip-56)).
 
 The list is addressable, so relays keep only its newest version, while older assertions still point at
 the version they were computed from. The league archives every version and serves it by id, like the
@@ -2741,7 +2742,8 @@ ranks can be recomputed too (see [Anchor list](#anchor-list-30000-rev-4)).
 
 Inputs: the **anchors** (the paid members of the association for the current or the previous year,
 from the association's API, and the league admins; published as the [anchor list](#anchor-list-30000-rev-4)),
-the newest opponent list of every pubkey, the counted reports and the admin exclusions (see
+the newest opponent list of every pubkey, the reports an admin confirmed that count, and the admin
+exclusions (see
 [Reports](#reports-1984-reused-from-nip-56)).
 
 1. Remove excluded pubkeys.
@@ -2794,16 +2796,20 @@ A player reports another with a NIP-56 report: `p` with the target and a NIP-56 
 `l` of `multi-account`, `result-fixing`, `cheating`, `abuse`. `content` is a public reason; evidence
 never goes into the event.
 
-A report **counts** for a run if it carries the league namespace, its author had rank at least 50 in
-the previous run, it is at most 365 days old and no admin has dismissed it; one report per author and
-target. Each counted report halves the target's raw trust, at most two before an admin decides. An
-admin either dismisses the report (it stops counting) or excludes the target (raw 0; the target is
-removed from the graph, so its own entries stop vouching for anyone). In V1 these decisions stay on
-the league server; their effect is public in the assertion.
+A report **counts** for a run only after a league admin **confirmed** it. Until then it is waiting:
+it is read and archived, admins see it, and it has no effect on anyone's rank. A confirmed report
+counts if it carries the league namespace, its author had rank at least 50 in the previous run and is
+not excluded, and it is at most 365 days old; one report per author and target. Each counted report
+halves the target's raw trust, and at most two count. An admin confirms a report, dismisses it (it
+does not count; withdrawing a confirmation is a dismissal, and the report stops counting from the
+next run) or excludes the target (raw 0; the target is removed from the graph, so its own entries
+stop vouching for anyone). In V1 these decisions stay on the league server; their effect is public in
+the assertion.
 
-The cap is deliberate: a player who lost must not be able to eject the winner with a report. Two
-independent trusted reports push an account near the minimum below it until an admin looks.
-Reports without the league namespace (general Nostr moderation) do not count.
+The confirmation is deliberate: a report on its own must not lower a rank, or two trusted accounts
+could push a player below the minimum by reporting. The cap stays: confirmed reports take a player at
+most two halvings down; removing a key from the graph is an exclusion. Reports without the league
+namespace (general Nostr moderation) do not count.
 
 ### New players
 
@@ -2829,8 +2835,8 @@ players; at 0 only the mutual listing remains.
   are not usable, because the league cannot read them. The app says so next to the button, since its
   users do not see that it runs on Nostr.
 - **Reports are public**, with the reporter's pubkey. A player who does not want to be seen reporting
-  uses the league's support channel; an admin handles such a report, and it is not counted
-  automatically.
+  uses the league's support channel; an admin handles such a report; it never enters the rank,
+  since only public league reports that an admin confirmed count.
 - **Ranks are public** for every player who ever had a rank above 0; newcomers nobody listed have no
   assertion.
 - **Membership is public** (decision of the association for this league). The anchor list names the
@@ -4892,7 +4898,7 @@ These stay on the league server, on purpose:
 | every earlier version of a membership (`12150`) | relays keep only the newest; a membership history needs the league's own archive |
 | earlier versions of opponent lists (`30000`) and trust assertions (`30382`) referenced by a `gate` | relays keep only the newest; the league archives them and serves them by id as gate evidence |
 | the ranks of all active lineup players at each accept | the eligibility snapshot behind condition 3 of the trust gate; only the rated players' rows go into the attestation |
-| report reviews (dismissed, excluded) and their reasons | admin decisions in V1; their effect is public in the assertion |
+| report reviews (confirmed, dismissed, excluded) and their reasons | admin decisions in V1; their effect is public in the assertion |
 | Nostr contact lists (kind `3`) | read and cached for suggestions and mutual contacts; never written |
 | Block Height, Global Rating | views computed from public ladders and attestations, like the clan rating |
 | rewards, eras, pending sums, mined and remaining supply, reserve balance (rev. 5) | derived from the genesis, the `block` tags, the labels and the receipts; a signed copy would be a second truth |
@@ -5783,6 +5789,9 @@ the association's API). Trust minimum 50.
   erin 1001, bob 979, carol 971.
 
 #### Trust key description (kind `0`, NIP-85 appendix 1)
+
+This example was signed before rev. 9.26. Since then the `about` text ends "a report counts only
+after a league admin confirmed it, each counted report halves, at most two count."
 
 ```json
 {
