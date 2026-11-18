@@ -210,3 +210,17 @@ test('the worked example of the NIP: 10 001 sats, chess 60 % and the board games
         // The rest: 1 001 sats no game had, 1 000 of chess, 1 000 of the board games.
         ->and($chain->remaining())->toBe(3_001);
 });
+
+test('a block that ends exactly on the pot mines, and one sat less in the pot refuses it', function () {
+    // Supply 200, chess 50 %: pot 100, one era (bound 50): a correspondence win pays 2 x 50 = 100 from nothing mined.
+    $exact = ahChain(supply: 200, subsidy: 50, shares: ['chess' => 50], eras: 1);
+    $verdict = ahWin($exact, 'chess/correspondence');
+
+    expect([$verdict->mines(), $verdict->reward, $exact->mined()])->toBe([true, 100, 100])
+        ->and(ahWin($exact)->reason)->toBe('key-closed');
+
+    $short = ahChain(supply: 198, subsidy: 50, shares: ['chess' => 50], eras: 1);
+    $refused = ahWin($short, 'chess/correspondence');
+
+    expect([$refused->mines(), $refused->reason, $short->mined()])->toBe([false, 'key-closed', 0]);
+});
