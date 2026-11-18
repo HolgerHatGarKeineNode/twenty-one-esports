@@ -77,3 +77,12 @@ test('a set relay key wins over the defaults, and ESPORTS_CHAT_RELAYS=off switch
         ->and($own['relays'])->toBe(PUBLIC_LEAGUE_RELAYS)
         ->and($off['chat']['relays'])->toBe([]);
 });
+
+test('rated chess is on when ESPORTS_RATED_CHESS is not set, so a deploy opens it without an .env edit; the key closes it', function (?string $value, bool $rated) {
+    // phpunit.xml pins the key to false for every other test, so only this reading guards the default.
+    expect(esportsConfigUnder(['ESPORTS_RATED_CHESS' => $value])['chess']['rated_queue'])->toBe($rated);
+})->with([
+    'not set' => [null, true],
+    'false' => ['false', false],
+    'true' => ['true', true],
+]);
