@@ -497,6 +497,8 @@ test('every person on a scene has an avatar, a clan its logo, every scene its ba
             'g1' => $brandBackdrop,
             // TMNF's slide set (TmnfSlides), switched off as well: the brand, not its screenshots.
             'g2' => $brandBackdrop, 'g3' => $brandBackdrop, 'g4' => $brandBackdrop,
+            // The season slides (SeasonSlides) without a season or a game that mines: the brand.
+            's1' => $brandBackdrop, 's2' => $brandBackdrop, 's3' => $brandBackdrop,
         ])
         ->and($spotlightBackdrop)->toStartWith('data:image/jpeg;base64,/9j/')->not->toBe($brandBackdrop)
         // The fallback scene (gallery or single game) too.

@@ -191,7 +191,15 @@ test('a game\'s era, halving distance and pay per mode are ChainOverview\'s own 
 
         expect([$game['era'], $game['eras'], $game['to_halving'], $game['closed']], $game['slug'])
             ->toBe([$keys[$key]['era'], $keys[$key]['eras'], $keys[$key]['to_halving'], $keys[$key]['closed']])
-            ->and(array_column($game['modes'], 'pays'))->each->toBeIn(array_column($keys[$key]['modes'], 'pays'));
+            ->and(array_column($game['modes'], 'pays'))->each->toBeIn(array_column($keys[$key]['modes'], 'pays'))
+            // The "about N wins" line: the wins left at this reward of the mode it names, as ChainOverview counts them.
+            ->and($game['wins'])->toBe(collect($keys[$key]['modes'])->first(fn (array $mode, string $modeKey): bool => ChainOverview::keyLabel($modeKey) === $game['winsLabel'])['wins'] ?? null);
+    }
+
+    // The share tiles: the cheapest and the dearest win of each group, over its games' modes.
+    foreach (SeasonSlides::sharePays(seasonState()) as $tile) {
+        $pays = collect(seasonState()['games'])->where('group', $tile['label'])->flatMap(fn (array $game): array => array_column($game['modes'], 'pays'));
+        expect([$tile['low'], $tile['high']], $tile['label'])->toBe($pays->isEmpty() ? [0, 0] : [$pays->min(), $pays->max()]);
     }
 });
 
