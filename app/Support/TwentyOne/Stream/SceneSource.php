@@ -195,6 +195,11 @@ class SceneSource
             return app(BlockfillSlides::class)->scene($nowMs, $stats);
         }
 
+        // The season (SeasonSlides): the countdown to Block 0, the launch, one game that mines (`$gameId`: its place in GameRegistry::listed()).
+        if (in_array($scene, SeasonSlides::SCENES, true)) {
+            return app(SeasonSlides::class)->scene($scene, $gameId, $nowMs, $stats);
+        }
+
         // The mempool of every game, and the season chain's blocks while a season runs (MempoolSlides).
         if ($scene === MempoolSlides::SCENE) {
             return ($this->mempool ??= app(MempoolSlides::class))->scene($stats);

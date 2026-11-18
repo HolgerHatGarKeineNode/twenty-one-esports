@@ -30,6 +30,7 @@ use App\Support\TwentyOne\Stream\PublishSchedule;
 use App\Support\TwentyOne\Stream\RotationPlanner;
 use App\Support\TwentyOne\Stream\SceneRenderer;
 use App\Support\TwentyOne\Stream\SceneSource;
+use App\Support\TwentyOne\Stream\SeasonSlides;
 use App\Support\TwentyOne\Stream\StreamCover;
 use App\Support\TwentyOne\Stream\StreamSession;
 use App\Support\TwentyOne\Stream\StreamStats;
@@ -306,6 +307,7 @@ class TwentyOneStreamCommand extends Command
         $hyperScene = app(HyperScene::class);
         $pongScene = app(PongScene::class);
         $programmeSlides = app(ProgrammeSlides::class);
+        $seasonSlides = app(SeasonSlides::class);
         // Games that ended within this window stay on show with their result.
         $hysteresis = (int) config('twentyone.stream.scene.hysteresis_seconds', 60);
         // The planner decides scene or loop; the machine only keeps a failed scene off.
@@ -350,6 +352,10 @@ class TwentyOneStreamCommand extends Command
         /** @var array{scenes: list<string>, soon: string|null, soonScene: string|null} $programme */
         $programme = ['scenes' => [], 'soon' => null, 'soonScene' => null];
         $programmePollFailing = false;
+        // The season slides (SeasonSlides::entries()); none while the read fails.
+        /** @var array{lead: string|null, games: list<int>, boost: bool} $season */
+        $season = ['lead' => null, 'games' => [], 'boost' => false];
+        $seasonPollFailing = false;
         // Blockfill's week (BlockfillSlides::state()): `off` while the read fails, so no slide of the set shows.
         $blockfillSlides = app(BlockfillSlides::class);
         $blockfill = ['week' => BlockfillSlides::OFF, 'moment' => null];
@@ -484,6 +490,23 @@ class TwentyOneStreamCommand extends Command
                     $programme = ['scenes' => [], 'soon' => null, 'soonScene' => null];
                 }
 
+                // The season on its own, like the programme: a failing read only drops its slides. Logged once per series.
+                try {
+                    $season = $pollFailures === 0 ? SeasonSlides::entries($seasonSlides->state(), (int) $now) : ['lead' => null, 'games' => [], 'boost' => false];
+
+                    if ($seasonPollFailing && $pollFailures === 0) {
+                        $this->log('season poll recovered');
+                        $seasonPollFailing = false;
+                    }
+                } catch (Throwable $e) {
+                    if (! $seasonPollFailing) {
+                        $this->log('season poll failed, showing no season slide: '.$this->describe($e));
+                        $seasonPollFailing = true;
+                    }
+
+                    $season = ['lead' => null, 'games' => [], 'boost' => false];
+                }
+
                 // Blockfill's week on its own, like the board games: a failing read only drops its slides. Logged once per series.
                 try {
                     $blockfill = $pollFailures === 0 ? $blockfillSlides->state() : ['week' => BlockfillSlides::OFF, 'moment' => null];
@@ -512,7 +535,7 @@ class TwentyOneStreamCommand extends Command
                     $this->advanceCover($cover, $source, $tournaments, $sceneGames, $sceneMore, $stats, $now);
                 }
 
-                $slot = $planner->at($now, array_map(fn (ChessGame $game): array => ['id' => $game->id, 'blitz' => ! $game->isCorrespondence()], $sceneGames), TournamentSlides::featured($tournaments), $boards, TournamentLiveSlides::entries($liveFrames, $tournaments, (int) ($now * 1000), (int) config('twentyone.stream.rotation.champion_moment_seconds', 120)), $blockfill['week'], $blockfill['moment'], $hyper, $pong, $programme);
+                $slot = $planner->at($now, array_map(fn (ChessGame $game): array => ['id' => $game->id, 'blitz' => ! $game->isCorrespondence()], $sceneGames), TournamentSlides::featured($tournaments), $boards, TournamentLiveSlides::entries($liveFrames, $tournaments, (int) ($now * 1000), (int) config('twentyone.stream.rotation.champion_moment_seconds', 120)), $blockfill['week'], $blockfill['moment'], $hyper, $pong, $programme, $season);
                 $modes->tick($slot['kind'] !== RotationPlanner::LOOP, (int) $now);
 
                 // The commentary: its clip for the slot, the hold until it is spoken. A failing director only loses the voice.

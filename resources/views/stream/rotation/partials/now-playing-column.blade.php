@@ -138,7 +138,7 @@
     <use href="#mark" xlink:href="#mark" x="{{ $cx - 40 }}" y="136" width="80" height="80"/>
     <text x="{{ $cx }}" y="258" font-family="Unbounded" font-weight="800" font-size="20" fill="#FFFFFF" text-anchor="middle">TWENTY ONE</text>
     <text x="{{ $cx }}" y="284" font-family="Unbounded" font-weight="800" font-size="20" fill="#FFFFFF" text-anchor="middle">ESPORTS</text>
-    <text x="{{ $cx }}" y="330" font-family="JetBrains Mono" font-weight="700" font-size="15" fill="#F7931A" text-anchor="middle">Scan und spiel mit</text>
+    <text x="{{ $cx }}" y="330" font-family="JetBrains Mono" font-weight="700" font-size="15" fill="#F7931A" text-anchor="middle">Scan and play</text>
     @include('stream.rotation.partials.qr', ['x' => $qrX, 'y' => $qrY, 'size' => $qrSize, 'qr' => $siteQr ?? ''])
 </g>
 @endif
