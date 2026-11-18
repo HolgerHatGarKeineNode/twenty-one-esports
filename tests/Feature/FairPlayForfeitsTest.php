@@ -236,3 +236,21 @@ test('barred() asks the database a fixed number of times, for one player or a wh
     expect($count($players->pluck('pubkey')->all()))->toBe($one)
         ->and($one)->toBeLessThanOrEqual(8);
 });
+
+test('the rules name agreed games and the lock after left rated matches, with the numbers in force, in English and German', function () {
+    $this->get(route('rules'))->assertOk()
+        ->assertSeeInOrder([
+            'id="fair-play"',
+            'Agreed or deliberately lost games cost their blocks at the season review and can lock rated play.',
+            'From match no. 2 you leave within 30 days, rated play is locked in every game for 7 days.',
+        ], false);
+
+    config(['esports.fair_play.forfeits' => 3, 'esports.fair_play.forfeit_window_days' => 14, 'esports.fair_play.forfeit_lock_days' => 5]);
+
+    $this->get(route('rules'))->assertOk()
+        ->assertSee('Leaving a rated Hyperbitcoinization match, or letting its turns run out, counts as a loss. From match no. 3 you leave within 14 days, rated play is locked in every game for 5 days.');
+
+    $this->get(route('rules', ['lang' => 'de']))->assertOk()
+        ->assertSee('Abgesprochene oder absichtlich verlorene Partien kosten bei der Season-Prüfung ihre Blöcke und können gewertetes Spielen sperren.')
+        ->assertSee('Ein gewertetes Hyperbitcoinization-Match zu verlassen oder seine Züge ablaufen zu lassen, zählt als Niederlage. Ab dem 3. verlassenen Match innerhalb von 14 Tagen ist gewertetes Spielen in allen Spielen 5 Tage gesperrt.');
+});

@@ -1039,6 +1039,11 @@ final class RulesPage
                 __('Admins decide disputes and can void or correct a result. Their decision is shown on the match.'),
                 __('If an admin rules a disputed result report false, the reporting side loses the match and the captain who reported gets a confirmed false report.'),
                 __(':count confirmed false reports within :days days mean no rated play for :lock days from the last one. Casual play stays open, and the page where rated play is refused says until when.', ['count' => FairPlay::threshold(), 'days' => FairPlay::windowDays(), 'lock' => FairPlay::lockDays()]),
+                __('Agreed or deliberately lost games cost their blocks at the season review and can lock rated play.'),
+                // Only while Hyperbitcoinization is switched on; the numbers are the settings in force (FairPlay).
+                ...(app(GameRegistry::class)->find(Hyperbitcoinization::SLUG) === null ? [] : [
+                    __('Leaving a rated Hyperbitcoinization match, or letting its turns run out, counts as a loss. From match no. :count you leave within :days days, rated play is locked in every game for :lock days.', ['count' => FairPlay::forfeitThreshold(), 'days' => FairPlay::forfeitWindowDays(), 'lock' => FairPlay::forfeitLockDays()]),
+                ]),
                 __('One player, one account in the league. An admin can link the accounts of one player: only the main account plays rated matches and wins prizes, and results between the accounts are void. Unlinking brings rated play and prizes back; voided results stay void.'),
             ],
             'links' => [[__('How results are verified'), route('protocol')]],

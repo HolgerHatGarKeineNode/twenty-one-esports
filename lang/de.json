@@ -9347,5 +9347,7 @@
     "Lift this bar? The player plays rated again at once.": "Diese Sperre aufheben? Der Spieler kann sofort wieder gewertet spielen.",
     "Lift the bar": "Sperre aufheben",
     "Nobody is barred by hand.": "Niemand ist von Hand gesperrt.",
-    "Linked accounts of one player, players barred by hand, and players locked after false result reports": "Verknüpfte Konten eines Spielers, von Hand gesperrte Spieler und Spieler, die nach Falschmeldungen gesperrt sind"
+    "Linked accounts of one player, players barred by hand, and players locked after false result reports": "Verknüpfte Konten eines Spielers, von Hand gesperrte Spieler und Spieler, die nach Falschmeldungen gesperrt sind",
+    "Agreed or deliberately lost games cost their blocks at the season review and can lock rated play.": "Abgesprochene oder absichtlich verlorene Partien kosten bei der Season-Prüfung ihre Blöcke und können gewertetes Spielen sperren.",
+    "Leaving a rated Hyperbitcoinization match, or letting its turns run out, counts as a loss. From match no. :count you leave within :days days, rated play is locked in every game for :lock days.": "Ein gewertetes Hyperbitcoinization-Match zu verlassen oder seine Züge ablaufen zu lassen, zählt als Niederlage. Ab dem :count. verlassenen Match innerhalb von :days Tagen ist gewertetes Spielen in allen Spielen :lock Tage gesperrt."
 }
