@@ -133,8 +133,9 @@ final class HyperMining
      * The match is a forfeit for the chain (consensus rule 2) when any seat
      * forfeited, by leaving or by letting its turns run out: only a match
      * every seat played to the end mines, at a table of two as at a table of
-     * six. The rating is not touched: the match stays rated, the forfeiter
-     * keeps the loss.
+     * six. A seat knocked out has played to its end: leaving it afterwards is
+     * no forfeit (HyperMatches::leave()). The rating is not touched: the match
+     * stays rated, the forfeiter keeps the loss.
      */
     public static function hadForfeit(HyperMatch $match): bool
     {

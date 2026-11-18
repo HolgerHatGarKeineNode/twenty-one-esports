@@ -219,6 +219,35 @@ final class ChainDraft
     }
 
     /**
+     * What mines under this chain, as Block 0 signs it, one row per share
+     * key: its share in percent (null when the chain has none for the key)
+     * and every game and mode that has a weight, by name. Read from the
+     * chain's own shares and weights, not from the registry, so a saved
+     * draft that lacks a game shows that it lacks it (the stage's arming
+     * step).
+     *
+     * @param  Chain  $chain
+     * @return list<array{key: string, label: string, share: int|null, games: list<string>}>
+     */
+    public static function mining(array $chain): array
+    {
+        $parameters = new ConsensusParameters([], groups: $chain['groups']);
+        $rows = [];
+
+        foreach ($chain['shares'] as $key => $share) {
+            $rows[$key] = ['key' => (string) $key, 'label' => self::shareLabel((string) $key), 'share' => (int) $share, 'games' => []];
+        }
+
+        foreach (array_keys($chain['weights']) as $weightKey) {
+            $key = $parameters->shareKey(explode('/', $weightKey, 2)[0]);
+            $rows[$key] ??= ['key' => $key, 'label' => self::shareLabel($key), 'share' => null, 'games' => []];
+            $rows[$key]['games'][] = ChainOverview::keyLabel($weightKey);
+        }
+
+        return array_values($rows);
+    }
+
+    /**
      * "Chess", "EA Sports FC" for the share group of both editions, "Board
      * games" for the share group of nine men's morris and checkers.
      */

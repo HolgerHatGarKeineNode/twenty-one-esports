@@ -17,6 +17,13 @@ use Throwable;
  * of the schedule. Dispatched after the commit, so the run sees the season
  * as live.
  *
+ * A trust run that holds the lock already (TrustJob: one run at a time) may
+ * have started before the release committed and so ranks outside the new
+ * season. This job then does not give up: it goes back onto the queue and
+ * tries again RETRY_SECONDS later, `$tries` times in all (about five
+ * minutes), until its own run happened inside the season. On a sync queue
+ * nothing is released; the schedule is the fallback there.
+ *
  * Never fails: a refused run is logged, anything else is reported, and the
  * schedule (every 15 minutes) stays the fallback. So neither a sync queue
  * nor a broken relay can turn a committed release into an error.
@@ -25,7 +32,11 @@ class RunTrustJob implements ShouldBeUniqueUntilProcessing, ShouldQueue
 {
     use Queueable;
 
-    public int $tries = 1;
+    /** How long the job waits before it asks for the lock again. */
+    public const RETRY_SECONDS = 20;
+
+    /** The first attempt and 15 more behind a running trust run. */
+    public int $tries = 16;
 
     public function __construct()
     {
@@ -44,8 +55,14 @@ class RunTrustJob implements ShouldBeUniqueUntilProcessing, ShouldQueue
             app(TrustJob::class)->run();
         } catch (TrustJobRefused $refused) {
             if ($refused->alreadyRunning()) {
-                // The schedule's run got there first: it runs inside the new season as well.
-                Log::info('Trust run after Block 0 skipped: a trust run is already running');
+                // That run may have begun before Block 0: wait for it, then run inside the new season.
+                if ($this->attempts() < $this->tries) {
+                    $this->release(self::RETRY_SECONDS);
+
+                    return;
+                }
+
+                Log::info('Trust run after Block 0 gave up: a trust run was running at every attempt; the schedule runs the next one');
 
                 return;
             }

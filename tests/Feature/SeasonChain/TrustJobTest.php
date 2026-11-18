@@ -1012,6 +1012,42 @@ test('while a trust run holds the lock, the command and the job of the release e
     Log::shouldNotHaveReceived('error');
 });
 
+test('the job of the release waits behind a running trust run instead of skipping its own: back onto the queue for 20 s, a run once the lock is free, and no failure when it never is', function () {
+    payMembers(['alice', 'carol']);
+    Log::spy();
+    $running = Cache::lock(TrustJob::LOCK, 60);
+    $running->get();
+
+    // A run that began before Block 0 holds the lock.
+    $job = (new RunTrustJob)->withFakeQueueInteractions();
+    $job->handle();
+
+    $job->assertReleased(delay: RunTrustJob::RETRY_SECONDS)->assertNotFailed();
+    expect(RunTrustJob::RETRY_SECONDS)->toBe(20)
+        ->and(TrustRun::query()->count())->toBe(0);
+
+    // The last attempt still finds it running: no release, no failure, the schedule stays the fallback.
+    $last = (new RunTrustJob)->withFakeQueueInteractions();
+    $last->job->attempts = $last->tries;
+    $last->handle();
+
+    $last->assertNotReleased()->assertNotFailed();
+    expect($last->tries)->toBe(16)
+        ->and(TrustRun::query()->count())->toBe(0);
+    Log::shouldHaveReceived('info')->once();
+
+    // That run ended: the next attempt runs inside the season.
+    $running->release();
+    $next = (new RunTrustJob)->withFakeQueueInteractions();
+    $next->job->attempts = 2;
+    withRelay(seasonThreeEvents(now()->subMinute()->getTimestamp()), fn () => $next->handle());
+
+    $next->assertNotReleased()->assertNotFailed();
+    expect(TrustRun::query()->count())->toBe(1);
+    Log::shouldNotHaveReceived('warning');
+    Log::shouldNotHaveReceived('error');
+});
+
 test('a league that never had member anchors runs on an empty member list, the first time and again', function () {
     payMembers([]);
     Admin::query()->create(['pubkey' => pk('carol')]);

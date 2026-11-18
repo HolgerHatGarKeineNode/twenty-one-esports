@@ -132,12 +132,14 @@ test('a board admin releases Block 0 after retyping the supply: label, admin lis
 });
 
 test('a release from the untouched defaults signs them; a rated chess blitz win then mines block 1 at 2 100 sats, which the readout and the settlement review count', function () {
-    // Production's switches: the board games and Hyperbitcoinization on. Nothing of the draft is edited but the
-    // genesis message, which a release cannot do without.
+    // Production's switches: the board games and Hyperbitcoinization on, and rated chess as config/esports.php has it
+    // when ESPORTS_RATED_CHESS is not set (phpunit.xml pins the key off; ChatRelaysConfigTest guards the default).
+    // Nothing of the draft is edited but the genesis message, which a release cannot do without.
     BlockliOn::play();
     NineMensMorrisOn::play();
     CheckersGame::play();
     HyperOn::play();
+    config(['esports.chess.rated_queue' => true]);
     saveChainDraft(['message' => RELEASE_MESSAGE]);
 
     expect(array_diff_key(ChainDraft::current(), ['message' => null]))->toBe(array_diff_key(ChainDraft::defaults(), ['message' => null]));
@@ -157,7 +159,6 @@ test('a release from the untouched defaults signs them; a rated chess blitz win 
         ->and($season->minimum_trust)->toBe(50);
 
     // Two trusted players who list each other meet in the rated blitz queue of the released season.
-    config(['esports.chess.rated_queue' => true]);
     app()->instance(TrustFacts::class, new class implements TrustFacts
     {
         public function available(): bool

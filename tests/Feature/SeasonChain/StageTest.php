@@ -12,11 +12,19 @@ use App\Models\NostrEvent;
 use App\Models\Season;
 use App\Models\User;
 use App\Support\Nostr\NostrKeys;
+use App\Support\SeasonChain\ChainDraft;
+use App\Support\SeasonChain\ChainOverview;
 use App\Support\SeasonChain\SeasonRelease;
+use Carbon\CarbonImmutable;
+use Illuminate\Support\Facades\Exceptions;
 use Illuminate\Support\Facades\Queue;
 use Livewire\Features\SupportLockedProperties\CannotUpdateLockedPropertyException;
 use Livewire\Features\SupportTesting\Testable;
 use Livewire\Livewire;
+use Tests\Support\BlockliOn;
+use Tests\Support\BlockspaceOn;
+use Tests\Support\GoOn;
+use Tests\Support\HyperOn;
 use Tests\Support\TestSigner;
 
 const STAGE_MESSAGE = '20/Nov/2026 TWENTY ONE Esports: every fair win is a block';
@@ -191,6 +199,115 @@ test('a rehearsal tells what the release would answer: a draft that changed is n
 
     $page->call('launch', $signed)->assertReturned(fn (array $data): bool => $data['ok'] === false && str_contains($data['reason'], 'The draft changed'));
     expect(Season::query()->count())->toBe(0);
+});
+
+/**
+ * A draft the board saved while the league's defaults were still chess 60 / board games 40 (config/season.php at
+ * 4382fc1f), before Hyperbitcoinization, Blockspace and Go joined them: a saved draft overrides the defaults wholesale.
+ */
+function saveDraftOfOldDefaults(): void
+{
+    saveChainDraft([
+        'message' => STAGE_MESSAGE,
+        'block0_at' => CarbonImmutable::parse('2026-11-20T19:00:00Z')->getTimestamp(),
+        'weights' => ['chess/blitz' => 1000, 'chess/correspondence' => 2000, 'chess/rapid' => 1500, 'blockli/blitz' => 1000, 'blockli/rapid' => 1500, 'blockli/correspondence' => 2000],
+        'shares' => ['chess' => 60, 'board-games' => 40],
+        'daily' => ['chess' => 5, 'board-games' => 5],
+    ]);
+}
+
+test('the arming step shows the shares and games Block 0 signs: a draft saved before the new defaults reads 60/40 without Hyperbitcoinization, and after a reset and a save 50/30/20 with every game', function () {
+    HyperOn::play();
+    BlockliOn::play();
+    BlockspaceOn::play();
+    GoOn::play();
+    saveDraftOfOldDefaults();
+
+    expect(ChainDraft::mining(ChainDraft::current()))->toBe([
+        ['key' => 'chess', 'label' => 'Chess', 'share' => 60, 'games' => ['Chess blitz', 'Chess daily', 'Chess rapid']],
+        ['key' => 'board-games', 'label' => 'Board games', 'share' => 40, 'games' => ['Blockli blitz', 'Blockli rapid', 'Blockli correspondence']],
+    ]);
+
+    stagePage($this->board)
+        ->assertSeeInOrder([
+            'data-test="stage-arm"',
+            'Shares and games that mine',
+            'data-test="stage-share-chess"', 'Chess', "60\u{00A0}%", 'Chess blitz, Chess daily, Chess rapid',
+            'data-test="stage-share-board-games"', 'Board games', "40\u{00A0}%", 'Blockli blitz, Blockli rapid, Blockli correspondence',
+            'data-test="stage-warning"', 'No weight, so these do not mine: Hyperbitcoinization live',
+            'data-test="stage-message"',
+            'data-test="stage-arm-button"',
+        ], false)
+        ->assertDontSee('data-test="stage-share-hyperbitcoinization"', false)
+        ->assertDontSee("50\u{00A0}%", false);
+
+    // The way back: the reset fills the form and saves nothing; the save button saves.
+    $season = Livewire::actingAs($this->board)->test('pages::admin.season')
+        ->assertSee('data-test="reset-draft"', false)
+        ->assertSet('draftShares.chess', '60')
+        ->call('resetDraft')
+        // The series games and Age of Empires II are in the table and stay empty: they do not mine by default.
+        ->assertSet('draftShares', ['chess' => '50', 'board-games' => '30', 'hyperbitcoinization' => '20', 'rocket-league' => '', 'ea-sports-fc' => '', 'age-of-empires-2' => ''])
+        ->assertSet('draftWeights.hyperbitcoinization/live', '1')
+        ->assertSet('draft.message', STAGE_MESSAGE)
+        ->assertSet('draft.block0_at', '2026-11-20T19:00');
+
+    expect(ChainDraft::stored()['shares'])->toBe(['chess' => 60, 'board-games' => 40]);
+
+    $season->call('saveDraft')->assertSet('draftError', '');
+    $defaults = ChainDraft::defaults();
+
+    // The form saves in the order of its table (the registry's), so the values are compared, not their order.
+    expect(ChainDraft::stored())->toEqual([...$defaults, 'block0_at' => CarbonImmutable::parse('2026-11-20T19:00:00Z')->getTimestamp(), 'message' => STAGE_MESSAGE])
+        ->and(array_column(ChainDraft::mining(ChainDraft::current()), 'share', 'key'))->toEqual(['chess' => 50, 'board-games' => 30, 'hyperbitcoinization' => 20]);
+
+    stagePage($this->board)
+        ->assertSeeInOrder([
+            'data-test="stage-share-hyperbitcoinization"', "20\u{00A0}%", 'Hyperbitcoinization live, Hyperbitcoinization correspondence',
+            'data-test="stage-share-chess"', "50\u{00A0}%",
+            'data-test="stage-share-board-games"', "30\u{00A0}%", 'Blockspace blitz', 'Go 9×9 blitz',
+            STAGE_MESSAGE,
+        ], false)
+        ->assertDontSee('No weight, so these do not mine: Hyperbitcoinization', false);
+});
+
+test('the shares on the stage and the reset on the season page read in German', function () {
+    HyperOn::play();
+
+    $this->actingAs($this->board)->get(route('admin.season.stage', ['lang' => 'de']))->assertOk()
+        ->assertSeeInOrder(['Anteile und Spiele, die schürfen', 'data-test="stage-share-chess"', 'Schach', "50\u{00A0}%", 'Schach Blitz, Fernschach, Schach Rapid'], false);
+
+    $this->actingAs($this->board)->get(route('admin.season', ['lang' => 'de']))->assertOk()
+        ->assertSee('Entwurf auf die Liga-Standards zurücksetzen')
+        ->assertSee('Das Zurücksetzen behält die Genesis-Botschaft und den geplanten Block 0 und füllt nur das Formular: Gespeichert wird erst, wenn du den Entwurf speicherst.');
+});
+
+test('a forecast that fails does not take the stage down: the shares stay, the failure is reported and said', function () {
+    Exceptions::fake();
+    app()->bind(ChainOverview::class, fn () => throw new RuntimeException('forecast down'));
+
+    $this->actingAs($this->board)->get(route('admin.season.stage'))->assertOk()
+        ->assertSee('data-test="stage-share-chess"', false)
+        ->assertSee('The forecast could not be computed, so its warnings are missing here. Check the season page before you arm.')
+        ->assertSee('data-test="stage-arm-button"', false);
+
+    Exceptions::assertReported(fn (RuntimeException $exception): bool => $exception->getMessage() === 'forecast down');
+});
+
+test('the reset of the draft is offered only before Block 0 and only to the board, and does nothing in a live season', function () {
+    $admin = User::factory()->create();
+    Admin::query()->create(['pubkey' => $admin->pubkey]);
+
+    Livewire::actingAs($admin)->test('pages::admin.season')->assertDontSee('data-test="reset-draft"', false);
+
+    Season::factory()->create();
+
+    Livewire::actingAs($this->board)->test('pages::admin.season')
+        ->assertDontSee('data-test="reset-draft"', false)
+        ->set('draft.supply', '1')
+        ->call('resetDraft')
+        ->assertSet('draft.supply', '1')
+        ->assertSet('notice', '');
 });
 
 test('with a season live the stage says so, offers the live page and never shows a button', function () {

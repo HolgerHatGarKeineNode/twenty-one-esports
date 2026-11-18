@@ -30,6 +30,7 @@ use App\Support\SeasonChain\TrustAdmin;
 use App\Support\SeasonChain\TrustAdminRefused;
 use App\Support\SeasonChain\TrustJob;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Exceptions;
 use Illuminate\Support\Facades\Queue;
 use Illuminate\Support\Facades\Schema;
 use Livewire\Livewire;
@@ -443,6 +444,32 @@ test('the admin navigation shows beside Trust how many reports of the live seaso
 
     expect($marked())->toBe(0)
         ->and(trustNavCount())->toBe(0);
+});
+
+test('a count beside Trust that fails never takes an admin page down: the page renders, the badge is 0 and the failure is reported once', function () {
+    openSeason();
+    Seasons::forget();
+    $this->actingAs($this->admin);
+
+    // Control: one report waits, and the navigation of the page shows it.
+    expect(trustNavCount())->toBe(1);
+    $this->get(route('admin.admins'))->assertOk()->assertSeeInOrder(['data-test="admin-nav-trust"', 'class="rv-n shrink-0">1<'], false);
+
+    // The count's own query fails, as a driver that does not know its SQL would make it.
+    DB::connection()->beforeExecuting(function (string $query): void {
+        if (str_contains($query, 'genesis_at') && str_contains($query, 'trust_report_dismissals')) {
+            throw new RuntimeException('The count of waiting reports is down.');
+        }
+    });
+    Exceptions::fake();
+
+    $this->get(route('admin.admins'))->assertOk()
+        ->assertSee('data-test="admin-nav-trust"', false)
+        ->assertDontSee('class="rv-n shrink-0">1<', false);
+
+    Exceptions::assertReportedCount(1);
+    Exceptions::assertReported(fn (RuntimeException $exception): bool => $exception->getMessage() === 'The count of waiting reports is down.');
+    expect(trustNavCount())->toBe(0);
 });
 
 test('the count beside Trust costs the admin navigation one query, however many reports wait', function () {

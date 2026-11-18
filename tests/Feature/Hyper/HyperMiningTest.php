@@ -4,10 +4,12 @@ use App\Enums\TournamentFormat;
 use App\Models\AccountLink;
 use App\Models\Clan;
 use App\Models\HyperMatch;
+use App\Models\HyperSeat;
 use App\Models\NostrEvent;
 use App\Models\Season;
 use App\Models\SeasonAttestation;
 use App\Models\User;
+use App\Support\FairPlay\FairPlay;
 use App\Support\Hyper\HyperMatches;
 use App\Support\Hyper\HyperMining;
 use App\Support\Hyper\HyperPublisher;
@@ -334,6 +336,35 @@ test('a forfeit at the table leaves the match without a block, in a 1v1 as in a 
 
     expect(HyperMining::winner($table)?->user?->id)->toBe($carl->id)
         ->and(HyperMining::winner($table->forceFill(['winner_seat' => 3])))->toBeNull();
+});
+
+test('a seat knocked out that leaves has played to its end: the winner still mines 2 100 sats and the leaver has no forfeit; a seat still in the game that leaves forfeits', function () {
+    hyperMiningSeason();
+    [$anna, $bert, $carl, $dora, $emil, $fritz] = User::factory()->count(6)->create();
+    $matches = app(HyperMatches::class);
+
+    // Carl is out with place 3 and closes the page; Anna and Bert play on.
+    $table = HyperOn::ending($matches->create([['user' => $anna], ['user' => $bert], ['user' => $carl]], seed: 7), winner: 0, runnerUp: 1, out: [2 => 3]);
+    $matches->leave($table, $carl);
+    $table = HyperOn::finish($table->refresh(), $anna);
+    $seat = $table->seats->firstWhere('user_id', $carl->id);
+
+    expect([$seat->takeover, $seat->place, $seat->bot])->toBe([HyperSeat::TAKEOVER_LEFT, 3, true])
+        ->and($seat->left_at)->not->toBeNull()
+        ->and(HyperMining::hadForfeit($table))->toBeFalse()
+        ->and([hyperAttestation($table)?->height, hyperAttestation($table)?->reason, hyperAttestation($table)?->reward])->toBe([1, null, 2100])
+        ->and(hyperAttestation($table)?->candidate['winners'])->toBe([$anna->pubkey])
+        ->and(FairPlay::forfeitsInWindow($carl))->toBe(0)
+        ->and(collect(hyperResultTags($table))->where(0, 'forfeit')->all())->toBe([]);
+
+    // Control: Fritz is still in the game when he leaves.
+    $control = $matches->create([['user' => $dora], ['user' => $emil], ['user' => $fritz]], seed: 7);
+    $matches->leave($control, $fritz);
+    $control = HyperOn::finishTable($control->refresh(), [0, 1, 2]);
+
+    expect($control->seats->firstWhere('user_id', $fritz->id)->takeover)->toBe(HyperSeat::TAKEOVER_FORFEIT)
+        ->and([hyperAttestation($control)?->height, hyperAttestation($control)?->reason])->toBe([null, 'forfeit'])
+        ->and(FairPlay::forfeitsInWindow($fritz))->toBe(1);
 });
 
 test('a duel in which both only end their turns until the round limit mines nothing for its winner; a duel won by a conquest mines', function () {

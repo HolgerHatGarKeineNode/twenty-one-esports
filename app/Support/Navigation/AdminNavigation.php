@@ -19,6 +19,7 @@ use App\Support\SeasonChain\TrustJob;
 use Carbon\CarbonImmutable;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Route;
+use Throwable;
 
 /**
  * The map of the admin area (P17): every admin page in one of four groups,
@@ -132,19 +133,28 @@ final class AdminNavigation
      *
      * `signed_at` is a Unix time and `genesis_at` a timestamp (UTC, config app.timezone), so Block 0 is
      * turned into seconds in SQL: PostgreSQL in production, SQLite locally and in the tests.
+     *
+     * The count is a hint on every admin page, the Block 0 stage included, and its SQL differs per
+     * driver: a count that fails is reported and shown as 0, it never takes the page down.
      */
     private static function waitingReports(): int
     {
-        $now = CarbonImmutable::now();
-        $epoch = DB::connection()->getDriverName() === 'sqlite' ? "cast(strftime('%s', genesis_at) as integer)" : 'extract(epoch from genesis_at)';
+        try {
+            $now = CarbonImmutable::now();
+            $epoch = DB::connection()->getDriverName() === 'sqlite' ? "cast(strftime('%s', genesis_at) as integer)" : 'extract(epoch from genesis_at)';
 
-        return NostrEvent::query()
-            ->where('kind', TrustJob::REPORT)
-            ->where('signed_at', '>=', Season::query()->where('genesis_at', '<=', $now)->where('ends_at', '>', $now)->latest('genesis_at')->limit(1)->selectRaw($epoch))
-            ->whereNotIn('pubkey', TrustExclusion::query()->select('pubkey'))
-            ->whereNotIn('event_id', TrustReportConfirmation::query()->select('event_id'))
-            ->whereNotIn('event_id', TrustReportDismissal::query()->select('event_id'))
-            ->count();
+            return NostrEvent::query()
+                ->where('kind', TrustJob::REPORT)
+                ->where('signed_at', '>=', Season::query()->where('genesis_at', '<=', $now)->where('ends_at', '>', $now)->latest('genesis_at')->limit(1)->selectRaw($epoch))
+                ->whereNotIn('pubkey', TrustExclusion::query()->select('pubkey'))
+                ->whereNotIn('event_id', TrustReportConfirmation::query()->select('event_id'))
+                ->whereNotIn('event_id', TrustReportDismissal::query()->select('event_id'))
+                ->count();
+        } catch (Throwable $exception) {
+            report($exception);
+
+            return 0;
+        }
     }
 
     public static function groupLabel(string $group): string

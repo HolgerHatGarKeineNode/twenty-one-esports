@@ -1,6 +1,7 @@
 <?php
 
 use App\Models\Admin;
+use App\Models\Clan;
 use App\Models\FairPlayBar;
 use App\Models\HyperMatch;
 use App\Models\User;
@@ -91,6 +92,34 @@ test('only admins bar and lift, never for their own account, and a bar needs a r
     Livewire::actingAs($admin->fresh())->test('pages::admin.fair-play')->assertForbidden();
 
     expect($bar->refresh()->lifted_at)->toBeNull();
+});
+
+test('an admin neither bars nor frees a member of their own clan, as with a trust report; a stranger they bar and free', function () {
+    $admin = fbAdmin();
+    $other = fbAdmin();
+    [$mate, $second, $stranger] = User::factory()->count(3)->create();
+    $clan = Clan::factory()->create();
+    array_map(fn (User $member): User => HyperOn::inClan($member, $clan), [$admin, $mate, $second]);
+    $bars = app(Bars::class);
+    $week = CarbonImmutable::now()->addWeek();
+    $refusal = 'You cannot decide about yourself or your own clan. Another admin has to.';
+
+    // Another admin barred the clan mate: the clan's own admin does not lift it, and bars no other member.
+    $bar = $bars->set($other, $mate->pubkey, BAR_REASON, $week);
+
+    expect(fn () => $bars->lift($admin, $bar))->toThrow(FairPlayRefused::class, $refusal)
+        ->and(fn () => $bars->set($admin, $second->pubkey, BAR_REASON, $week))->toThrow(FairPlayRefused::class, $refusal)
+        ->and($bar->refresh()->lifted_at)->toBeNull()
+        ->and(FairPlay::isBarred($mate->pubkey))->toBeTrue()
+        ->and(FairPlay::isBarred($second->pubkey))->toBeFalse();
+
+    $own = $bars->set($admin, $stranger->pubkey, BAR_REASON, $week);
+    $bars->lift($admin, $own);
+    $bars->lift($other, $bar);
+
+    expect($own->refresh()->lifted_by_id)->toBe($admin->id)
+        ->and(FairPlay::isBarred($stranger->pubkey))->toBeFalse()
+        ->and(FairPlay::isBarred($mate->pubkey))->toBeFalse();
 });
 
 test('a bar runs until its end to the second, and one without a date runs until the live season ends', function () {

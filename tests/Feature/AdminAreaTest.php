@@ -40,8 +40,9 @@ test('every admin page renders the admin nav with every group and the breadcrumb
     $match = SeriesMatch::factory()->create(['status' => SeriesStatus::Disputed]);
     $tournament = Tournament::factory()->create();
     $bindings = ['match' => $match->getRouteKey(), 'tournament' => $tournament->id];
-    // Files and actions, no pages.
-    $skip = ['admin.disputes.evidence'];
+    // Files and actions, no pages; and the Block 0 stage, a fullscreen page for board members only without
+    // the admin nav (StageTest covers who may open it).
+    $skip = ['admin.disputes.evidence', 'admin.season.stage'];
 
     $checked = [];
 

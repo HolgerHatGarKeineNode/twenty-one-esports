@@ -331,7 +331,8 @@ final class HyperMatches
 
     /**
      * The user leaves their seat: a bot plays it from now on (in a rated match it is marked as a forfeit).
-     * In the user's own turn the turn ends here.
+     * In the user's own turn the turn ends here. A seat that was knocked out already (it has its place) has played
+     * to its end: leaving it is a plain leave in a rated match too, no forfeit, and the table still mines.
      *
      * @throws HyperRuleViolation `not_seated`, `already_left`, `game_over`
      */
@@ -344,7 +345,7 @@ final class HyperMatches
                 throw new HyperRuleViolation('already_left', 'This seat was left already.');
             }
 
-            $seat->forceFill(['bot' => true, 'takeover' => $match->rated ? HyperSeat::TAKEOVER_FORFEIT : HyperSeat::TAKEOVER_LEFT, 'left_at' => now()])->save();
+            $seat->forceFill(['bot' => true, 'takeover' => $match->rated && $seat->place === null ? HyperSeat::TAKEOVER_FORFEIT : HyperSeat::TAKEOVER_LEFT, 'left_at' => now()])->save();
             $game = $this->game($match)->withBot($seat->seat);
 
             if ($match->current_seat === $seat->seat) {

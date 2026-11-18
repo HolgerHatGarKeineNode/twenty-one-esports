@@ -7,6 +7,7 @@ use App\Models\User;
 use App\Support\LeagueTime;
 use App\Support\Nostr\NostrKeys;
 use App\Support\SeasonChain\Seasons;
+use App\Support\SeasonChain\TrustAdmin;
 use Carbon\CarbonImmutable;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Gate;
@@ -47,9 +48,7 @@ final class Bars
         $pubkey = NostrKeys::toHex(trim($playerKey)) ?? throw new FairPlayRefused(__('Enter an npub or a 64-character hex public key.'));
         $player = User::query()->where('pubkey', $pubkey)->first() ?? throw new FairPlayRefused(__('This key has no account in the league.'));
 
-        if ($player->pubkey === $admin->pubkey) {
-            throw new FairPlayRefused(__('You cannot decide about your own accounts. Another admin has to.'));
-        }
+        $this->assertNotOwn($admin, $player->pubkey);
 
         if ($until === null) {
             $season = Seasons::live() ?? throw new FairPlayRefused(__('No season is live: give the bar an end.'));
@@ -89,9 +88,7 @@ final class Bars
     {
         $this->assertAdmin($admin);
 
-        if ($bar->pubkey === $admin->pubkey) {
-            throw new FairPlayRefused(__('You cannot decide about your own accounts. Another admin has to.'));
-        }
+        $this->assertNotOwn($admin, $bar->pubkey);
 
         $lifted = FairPlayBar::query()->running()->whereKey($bar->id)->update([
             'lifted_at' => now(),
@@ -101,6 +98,24 @@ final class Bars
 
         if ($lifted === 0) {
             throw new FairPlayRefused(__('This bar ended or was lifted already.'));
+        }
+    }
+
+    /**
+     * No admin bars or frees himself, and none a member of his own clan: the
+     * guard of the trust reports (TrustAdmin::isOwn(): his clans of the live
+     * season, members who left included).
+     *
+     * @throws FairPlayRefused
+     */
+    private function assertNotOwn(User $admin, string $pubkey): void
+    {
+        if ($pubkey === $admin->pubkey) {
+            throw new FairPlayRefused(__('You cannot decide about your own accounts. Another admin has to.'));
+        }
+
+        if (TrustAdmin::isOwn($admin, [$pubkey])) {
+            throw new FairPlayRefused(__('You cannot decide about yourself or your own clan. Another admin has to.'));
         }
     }
 
