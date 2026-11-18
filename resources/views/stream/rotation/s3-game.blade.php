@@ -61,7 +61,9 @@
         ])), K::MONO, 18, 360);
     }
     $blocks = (int) ($g['blocks'] ?? 0);
-    $blocksLine = K::fit(K::plural($blocks, 'block', 'blocks').' mined in '.$gameName.' this season', K::MONO, 18, 448);
+    // The game's name only while the line keeps it whole (the title above names the game anyway).
+    $blocksText = K::plural($blocks, 'block', 'blocks').' mined in '.$gameName.' this season';
+    $blocksLine = K::fit(K::width($blocksText, K::MONO, 18) <= 448 ? $blocksText : K::plural($blocks, 'block', 'blocks').' mined this season', K::MONO, 18, 448);
     $cd = $pre && ($s['clock'] ?? null) === 'countdown' ? K::countdownParts($s['countdown'] ?? null) : null;
     $cells = $cd ? K::digitCells(($cd['days'] > 0 ? $cd['days'].'d ' : '').$cd['hms'], 40, 44) : null;
 @endphp
@@ -92,7 +94,9 @@
 <text data-unit="blocks" data-box="39 524 489 548" x="40" y="542" font-family="JetBrains Mono" font-weight="700" font-size="18" fill="#FFFFFF">{{ $blocksLine }}</text>
 @else
 <text data-unit="none" data-box="38 392 489 434" x="40" y="426" font-family="Unbounded" font-weight="800" font-size="{{ K::headline('No block yet.', [30], 448, 1)['size'] }}" fill="#FFFFFF">No block yet.</text>
-<text data-unit="none-line" data-box="39 452 489 476" x="40" y="470" font-family="JetBrains Mono" font-weight="700" font-size="20" fill="#FFFFFF">{{ K::fit('The first '.$gameName.' block is up for grabs.', K::MONO, 20, 448) }}</text>
+@foreach (K::wrap('The first '.$gameName.' block is up for grabs.', K::MONO, 20, 448, 2) as $li => $line)
+<text data-unit="none-line-{{ $li }}" data-box="39 {{ 452 + $li * 28 }} 489 {{ 476 + $li * 28 }}" x="40" y="{{ 470 + $li * 28 }}" font-family="JetBrains Mono" font-weight="700" font-size="20" fill="#FFFFFF">{{ $line }}</text>
+@endforeach
 @endif
 
 <text data-unit="share" data-box="527 114 1016 140" x="528" y="134" font-family="JetBrains Mono" font-weight="700" font-size="20" fill="#A1A1A7">{{ $shareLine }}</text>

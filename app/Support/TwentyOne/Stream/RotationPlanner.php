@@ -143,6 +143,9 @@ final class RotationPlanner
     /** A radio programme slide (r1..r3, ProgrammeSlides). */
     public const PROGRAMME = 'programme';
 
+    /** A season slide (SeasonSlides): the countdown or the launch as the lead, one game that mines (`gameId`: its place in GameRegistry::listed()). */
+    public const SEASON = 'season';
+
     /** Without a live board game, the board teaser comes every this many rounds. */
     public const BOARD_IDLE_EVERY = 3;
 
@@ -357,6 +360,15 @@ final class RotationPlanner
     /** Until when the slot on show is held (App\Support\Caster\SceneDirector); 0: not held. */
     private float $holdUntil = 0.0;
 
+    /** @var array{lead: string|null, games: list<int>, boost: bool} the season slides that may show, as the last call to at() reported them */
+    private array $season = ['lead' => null, 'games' => [], 'boost' => false];
+
+    /** Season game slides planned (the games take turns by it). */
+    private int $seasonTurn = 0;
+
+    /** Rounds whose closing teaser gave way to the countdown (the teaser it replaces takes turns by it, the last first). */
+    private int $seasonLight = 0;
+
     /** The key of the last new #1 shown, and when. */
     private ?string $lastMoment = null;
 
@@ -382,6 +394,8 @@ final class RotationPlanner
         private float $programmeSeconds = 20,
         private float $spotlightSeconds = 15,
         private bool $runningExclusive = true,
+        private float $seasonSeconds = 15,
+        private int $seasonGamesPerRound = 3,
     ) {}
 
     public static function fromConfig(float $loopSeconds): self
@@ -406,6 +420,8 @@ final class RotationPlanner
             (float) config('twentyone.stream.rotation.programme_seconds', 20),
             (float) config('twentyone.stream.rotation.programme_spotlight_seconds', 15),
             (bool) config('twentyone.stream.rotation.running_tournament_exclusive', false),
+            (float) config('twentyone.stream.rotation.season_seconds', 15),
+            (int) config('twentyone.stream.rotation.season_games_per_round', 3),
         );
     }
 
@@ -447,10 +463,12 @@ final class RotationPlanner
      * @param  list<array{id: int, tense: bool}>  $hyper  the running Hyperbitcoinization matches (HyperScene::entries()), in turn order
      * @param  list<array{id: int}>  $pong  the recent won Proof of Pong matches (PongScene::entries()), in turn order
      * @param  array{scenes?: list<string>, soon?: string|null, soonScene?: string|null}  $programme  the radio programme slides that have something to show and a show starting within two minutes (ProgrammeSlides::entries())
-     * @return array{kind: string, scene: string|null, gameId: int|null, tournamentId: int|null, until: float} `gameId` is the Hyperbitcoinization match's id for HYPER, the Proof of Pong match's for PONG
+     * @param  array{lead?: string|null, games?: list<int>, boost?: bool}  $season  the season slides (SeasonSlides::entries())
+     * @return array{kind: string, scene: string|null, gameId: int|null, tournamentId: int|null, until: float} `gameId` is the Hyperbitcoinization match's id for HYPER, the Proof of Pong match's for PONG, the game's place in GameRegistry::listed() for SEASON
      */
-    public function at(float $now, array $games, array $tournaments = [], string $boards = BoardScene::OFF, array $live = [], string $blockfillWeek = BlockfillSlides::OFF, ?string $blockfillMoment = null, array $hyper = [], array $pong = [], array $programme = []): array
+    public function at(float $now, array $games, array $tournaments = [], string $boards = BoardScene::OFF, array $live = [], string $blockfillWeek = BlockfillSlides::OFF, ?string $blockfillMoment = null, array $hyper = [], array $pong = [], array $programme = [], array $season = []): array
     {
+        $this->season = ['lead' => $season['lead'] ?? null, 'games' => $season['games'] ?? [], 'boost' => (bool) ($season['boost'] ?? false)];
         $ids = array_column($games, 'id');
         $this->programme = ['scenes' => $programme['scenes'] ?? [], 'soon' => $programme['soon'] ?? null, 'soonScene' => $programme['soonScene'] ?? null];
         $this->boards = $boards;
@@ -688,11 +706,13 @@ final class RotationPlanner
             $this->roundWithGames = false;
 
             if ($this->idleRounds++ % max(1, $this->loopEvery) === 0) {
-                $this->queue = [['kind' => self::LOOP]];
+                // While the season leads with games that mine, the loop round carries its slides too (every round does). With
+                // the lead alone it would show twice in a row (the next round opens with it), so the loop stays alone then.
+                $this->queue = [['kind' => self::LOOP], ...($this->season['boost'] && $this->season['games'] !== [] ? $this->seasonRound() : [])];
             } elseif ($tournaments !== []) {
-                $this->queue = $this->withProgramme([...$this->board(), ...$this->hyperRound(), ...$this->pongRound(), ...$this->tournamentSlides($this->nextLook(), $tournaments), ...$this->everyRound(), ...$this->blockfillRound()], [['kind' => self::TEASER]]);
+                $this->queue = $this->withProgramme([...$this->board(), ...$this->hyperRound(), ...$this->pongRound(), ...$this->tournamentSlides($this->nextLook(), $tournaments), ...$this->seasonRound(), ...$this->everyRound(), ...$this->blockfillRound()], $this->seasonTail([['kind' => self::TEASER]]));
             } else {
-                $this->queue = $this->withProgramme([...$this->board(), ...$this->hyperRound(), ...$this->pongRound(), ...$this->everyRound(), ...$this->blockfillRound()], $teasers);
+                $this->queue = $this->withProgramme([...$this->board(), ...$this->hyperRound(), ...$this->pongRound(), ...$this->seasonRound(), ...$this->everyRound(), ...$this->blockfillRound()], $this->seasonTail($teasers));
             }
 
             return;
@@ -709,9 +729,56 @@ final class RotationPlanner
             ...$this->hyperRound(),
             ...$this->pongRound(),
             ...($tournaments === [] ? [] : $this->tournamentSlides($look, $tournaments)),
+            ...$this->seasonRound(),
             ...$this->everyRound(),
             ...$this->blockfillRound(),
-        ], $teasers);
+        ], $this->seasonTail($teasers));
+    }
+
+    /**
+     * This round's season slides while the season leads (`boost`: live, or Block 0 overdue or within
+     * `season_lead_days`): the lead (countdown or launch) when due, then up to `seasonGamesPerRound` games that mine,
+     * taking turns across rounds; none otherwise.
+     *
+     * @return list<array{kind: string, scene: string, gameId?: int}>
+     */
+    private function seasonRound(): array
+    {
+        if (! $this->season['boost']) {
+            return [];
+        }
+
+        $entries = $this->season['lead'] === null ? [] : [['kind' => self::SEASON, 'scene' => $this->season['lead']]];
+        $games = $this->season['games'];
+
+        for ($i = 0; $i < min(max(0, $this->seasonGamesPerRound), count($games)); $i++) {
+            $entries[] = ['kind' => self::SEASON, 'scene' => SeasonSlides::GAME, 'gameId' => $games[$this->seasonTurn++ % count($games)]];
+        }
+
+        return $entries;
+    }
+
+    /**
+     * The round's closing teasers with the season in mind: while the season leads with games that mine, its slides
+     * take their place (none left); before a far or undated Block 0 the countdown takes one teaser's place, a
+     * different one each round (the last first), so no teaser drops out for good; otherwise unchanged.
+     *
+     * @param  list<array{kind: string, look?: string, gameId?: int, tournamentId?: int, part?: int, scene?: string, key?: string, seconds?: float}>  $tail
+     * @return list<array{kind: string, look?: string, gameId?: int, tournamentId?: int, part?: int, scene?: string, key?: string, seconds?: float}>
+     */
+    private function seasonTail(array $tail): array
+    {
+        if ($this->season['boost'] && $this->season['games'] !== []) {
+            return [];
+        }
+
+        if ($this->season['boost'] || $this->season['lead'] === null || $tail === []) {
+            return $tail;
+        }
+
+        $tail[count($tail) - 1 - $this->seasonLight++ % count($tail)] = ['kind' => self::SEASON, 'scene' => $this->season['lead']];
+
+        return $tail;
     }
 
     /**
@@ -985,6 +1052,12 @@ final class RotationPlanner
                 // Nothing to show on it any more since the round was planned: skipped.
                 return in_array($scene, $this->programme['scenes'], true)
                     ? $this->slot(self::PROGRAMME, $scene, null, $start + max(1.0, $scene === ProgrammeSlides::RUNDOWN ? $this->programmeSeconds : $this->spotlightSeconds)) : null;
+            case self::SEASON:
+                $scene = (string) ($entry['scene'] ?? '');
+                $applies = $scene === SeasonSlides::GAME ? in_array($entry['gameId'] ?? null, $this->season['games'], true) : $scene === $this->season['lead'];
+
+                // The lead changed (Block 0 was released, the launch window closed) or the game stopped mining since the round was planned: skipped.
+                return $applies ? $this->slot(self::SEASON, $scene, $scene === SeasonSlides::GAME ? ($entry['gameId'] ?? null) : null, $start + max(3.0, $this->seasonSeconds)) : null;
             case self::BOARD:
                 // Switched off since the round was planned: skipped.
                 return $this->boards === BoardScene::OFF ? null

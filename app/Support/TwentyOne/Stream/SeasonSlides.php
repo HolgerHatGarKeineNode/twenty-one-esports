@@ -84,7 +84,7 @@ final class SeasonSlides
             $data = $this->read();
         }
 
-        return is_array($data) ? $data : $this->read();
+        return $data;
     }
 
     /**
@@ -199,7 +199,7 @@ final class SeasonSlides
                 }
             }
 
-            $rows[] = [...$share, 'low' => $pays === [] ? 0 : (int) min($pays), 'high' => $pays === [] ? 0 : (int) max($pays)];
+            $rows[] = ['label' => (string) $share['label'], 'share' => (int) $share['share'], 'pot' => (int) $share['pot'], 'low' => $pays === [] ? 0 : (int) min($pays), 'high' => $pays === [] ? 0 : (int) max($pays)];
         }
 
         return $rows;
@@ -271,7 +271,7 @@ final class SeasonSlides
         $keys = app(ChainOverview::class)->keys($parameters, $parameters->inForceAt($now), array_map(array_sum(...), $readout['mined_by_game_and_era']));
 
         return [
-            ...$this->header($parameters, BadgeCopy::season($season->slug), is_string($season->genesis_message) ? $season->genesis_message : null),
+            ...$this->header($parameters, BadgeCopy::season($season->slug), $season->genesis_message),
             'phase' => self::LIVE,
             'block0' => null,
             'genesis' => $season->genesis_at->getTimestamp(),
