@@ -145,7 +145,7 @@ test('config/season.php carries the Pre-Season defaults of the ledger, but the c
     expect($withBoardGames->shares)->toBe(['chess' => 50, 'board-games' => 30])
         ->and(array_sum($withBoardGames->shares))->toBe(80)
         ->and($withBoardGames->daily)->toBe(['chess' => 5, 'board-games' => 5])
-        ->and($withBoardGames->groups['board-games'])->toBe(['blockli', 'nine-mens-morris', 'checkers'])
+        ->and($withBoardGames->groups['board-games'])->toBe(['blockli', 'nine-mens-morris', 'checkers', 'blockspace', 'go-9', 'go-13', 'go-19'])
         ->and(array_diff_key($withBoardGames->weights, $season->genesis->weights))->toBe(['blockli/blitz' => 1000, 'blockli/rapid' => 1500, 'blockli/correspondence' => 2000, 'nine-mens-morris/correspondence' => 2000, 'checkers/correspondence' => 2000]);
 });
 

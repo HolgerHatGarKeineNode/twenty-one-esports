@@ -176,9 +176,11 @@ The rules marked "rev. 9.23" add one game channel, `blockli` (Blockli, a board g
 revision 9.3 and like the other board games only while the league runs it. Nothing else changes.
 
 The rules marked "rev. 9.26" add one game channel, `blockspace` (Blockspace, a board game by StackingJones), on the
-terms of revision 9.3 and like the other board games only while the league runs it. Nothing else changes: Blockspace
-has no season weight yet, so its ladders are not opened and its games are casual; no ladder, attestation or block
-carries it until a later revision does.
+terms of revision 9.3 and like the other board games only while the league runs it. Blockspace and Go on its three
+board sizes (`go-9`, `go-13`, `go-19`) are board games of revision 9.13 in every respect: their ladders, rated games,
+attestations and blocks are a board game's, in the share group `board-games`, and they mine while the season gives
+their game and mode a `weight`. One rule is their own (draft): for consensus rule 2 a Blockspace game counts every
+transaction a side set as one move, and a pass as none (see rule 2).
 
 The rules marked "rev. 9.25" give Blockli rapid the clan team matches of revision 9.22, on the same terms. They apply
 to every Blockli team match whose challenge the league signs after it adopts revision 9.25, and only while the league
@@ -224,9 +226,16 @@ for the game while the league has switched it on, and none otherwise.
   least one territory in the match (`no-conquest`): a match of passed turns that the round limit decides mines nothing.
 - **No ladder event.** The game still has no `32152`; its `weight`, `share` and `daily` are in the `2156` or a `2158`
   as for every game, and the attestation names the season by its `season` tag.
+- **Blockspace counts the transactions set** (league's decision, 2026-11-18; [consensus rule 2](#consensus-rules-season-chain-v1)):
+  its sides move in the order first, second, second, first, so it has no full moves, and a game sets 42 transactions
+  at most. For rule 2 the length of a Blockspace game is the number of transactions both sides set; a pass is not
+  counted, as passes alone could lengthen any game. Every other board game keeps its full moves. The league publishes
+  no game record of a board game, so this count is the league's own, as a board game's full moves are.
 - **Defaults of the league's chain draft** (not a protocol rule): Rocket League and both EA Sports FC editions do not
   mine at Block 0; chess has a share of 50 %, the board games 30 % and Hyperbitcoinization 20 %, each only while the
-  league has switched the game on. Hyperbitcoinization has weight `1` in both modes and 5 blocks a day. A draft or a
+  league has switched the game on. The board games' group is `blockli`, `nine-mens-morris`, `checkers`, `blockspace`,
+  `go-9`, `go-13` and `go-19`; each mode a board game offers has weight `1` (blitz), `1.5` (rapid) or `2`
+  (correspondence), and a board game that is switched off has no weight. Hyperbitcoinization has weight `1` in both modes and 5 blocks a day. A draft or a
   season that began without the game is offered the same values as a proposal; nothing of a proposal is in force
   until the board saves it.
 
@@ -2666,8 +2675,9 @@ The association decided that paid membership is public; the site shows a member 
 therefore publishes the anchors as a NIP-51 follow set: `d` = `esports/<league key>/anchors`,
 `title`, `description`, one `p` per anchor, `alt`. It publishes a new version whenever the anchor set
 changes, before the trust run that uses it, and every assertion of that run references the version by
-`e`. With the anchor list, the players' opponent lists and the counted reports, anyone can recompute
-every rank (relay proof, round 4).
+`e`. With the anchor list and the players' opponent lists, anyone can recompute every rank that no
+admin decision touched (relay proof, round 4); which reports an admin confirmed and which keys are
+excluded stays on the league server in V1 (see [Reports](#reports-1984-reused-from-nip-56)).
 
 The list is addressable, so relays keep only its newest version, while older assertions still point at
 the version they were computed from. The league archives every version and serves it by id, like the
@@ -2732,7 +2742,8 @@ ranks can be recomputed too (see [Anchor list](#anchor-list-30000-rev-4)).
 
 Inputs: the **anchors** (the paid members of the association for the current or the previous year,
 from the association's API, and the league admins; published as the [anchor list](#anchor-list-30000-rev-4)),
-the newest opponent list of every pubkey, the counted reports and the admin exclusions (see
+the newest opponent list of every pubkey, the reports an admin confirmed that count, and the admin
+exclusions (see
 [Reports](#reports-1984-reused-from-nip-56)).
 
 1. Remove excluded pubkeys.
@@ -2785,16 +2796,20 @@ A player reports another with a NIP-56 report: `p` with the target and a NIP-56 
 `l` of `multi-account`, `result-fixing`, `cheating`, `abuse`. `content` is a public reason; evidence
 never goes into the event.
 
-A report **counts** for a run if it carries the league namespace, its author had rank at least 50 in
-the previous run, it is at most 365 days old and no admin has dismissed it; one report per author and
-target. Each counted report halves the target's raw trust, at most two before an admin decides. An
-admin either dismisses the report (it stops counting) or excludes the target (raw 0; the target is
-removed from the graph, so its own entries stop vouching for anyone). In V1 these decisions stay on
-the league server; their effect is public in the assertion.
+A report **counts** for a run only after a league admin **confirmed** it. Until then it is waiting:
+it is read and archived, admins see it, and it has no effect on anyone's rank. A confirmed report
+counts if it carries the league namespace, its author had rank at least 50 in the previous run and is
+not excluded, and it is at most 365 days old; one report per author and target. Each counted report
+halves the target's raw trust, and at most two count. An admin confirms a report, dismisses it (it
+does not count; withdrawing a confirmation is a dismissal, and the report stops counting from the
+next run) or excludes the target (raw 0; the target is removed from the graph, so its own entries
+stop vouching for anyone). In V1 these decisions stay on the league server; their effect is public in
+the assertion.
 
-The cap is deliberate: a player who lost must not be able to eject the winner with a report. Two
-independent trusted reports push an account near the minimum below it until an admin looks.
-Reports without the league namespace (general Nostr moderation) do not count.
+The confirmation is deliberate: a report on its own must not lower a rank, or two trusted accounts
+could push a player below the minimum by reporting. The cap stays: confirmed reports take a player at
+most two halvings down; removing a key from the graph is an exclusion. Reports without the league
+namespace (general Nostr moderation) do not count.
 
 ### New players
 
@@ -2820,8 +2835,8 @@ players; at 0 only the mutual listing remains.
   are not usable, because the league cannot read them. The app says so next to the button, since its
   users do not see that it runs on Nostr.
 - **Reports are public**, with the reporter's pubkey. A player who does not want to be seen reporting
-  uses the league's support channel; an admin handles such a report, and it is not counted
-  automatically.
+  uses the league's support channel; an admin handles such a report; it never enters the rank,
+  since only public league reports that an admin confirmed count.
 - **Ranks are public** for every player who ever had a rank above 0; newcomers nobody listed have no
   assertion.
 - **Membership is public** (decision of the association for this league). The anchor list names the
@@ -3053,7 +3068,7 @@ the first rule it fails, in this order.
 2. **A real game.** `resolution` `confirmed` or `admin`; a forfeit never mines. Chess: the counted
    game record has at least `moves` full moves (default 20: the last move number is 20 or more), which
    also excludes a resignation before move 10. Board games (rev. 9.13): the game the league played has at
-   least `moves` full moves too, counted the same way (a player's move and the answer to it are one). Rocket League: a complete series, which the report rules guarantee.
+   least `moves` full moves too, counted the same way (a player's move and the answer to it are one); Blockspace (rev. 9.26, draft), whose sides do not move in turn, has at least `moves` transactions set by both sides together, passes not counted. Rocket League: a complete series, which the report rules guarantee.
 3. **Not the same clan**: no winning and losing player share a `clan` row value.
 4. **Blocks per pairing and day.** Fewer earlier blocks of the same pairing on the same UTC day of
    `created_at` than the first value of `pairlimit` (default 1). The pairing is the two rated entities: two players, or two lineups in a series.
@@ -4883,7 +4898,7 @@ These stay on the league server, on purpose:
 | every earlier version of a membership (`12150`) | relays keep only the newest; a membership history needs the league's own archive |
 | earlier versions of opponent lists (`30000`) and trust assertions (`30382`) referenced by a `gate` | relays keep only the newest; the league archives them and serves them by id as gate evidence |
 | the ranks of all active lineup players at each accept | the eligibility snapshot behind condition 3 of the trust gate; only the rated players' rows go into the attestation |
-| report reviews (dismissed, excluded) and their reasons | admin decisions in V1; their effect is public in the assertion |
+| report reviews (confirmed, dismissed, excluded) and their reasons | admin decisions in V1; their effect is public in the assertion |
 | Nostr contact lists (kind `3`) | read and cached for suggestions and mutual contacts; never written |
 | Block Height, Global Rating | views computed from public ladders and attestations, like the clan rating |
 | rewards, eras, pending sums, mined and remaining supply, reserve balance (rev. 5) | derived from the genesis, the `block` tags, the labels and the receipts; a signed copy would be a second truth |
@@ -5774,6 +5789,9 @@ the association's API). Trust minimum 50.
   erin 1001, bob 979, carol 971.
 
 #### Trust key description (kind `0`, NIP-85 appendix 1)
+
+This example was signed before rev. 9.26. Since then the `about` text ends "a report counts only
+after a league admin confirmed it, each counted report halves, at most two count."
 
 ```json
 {

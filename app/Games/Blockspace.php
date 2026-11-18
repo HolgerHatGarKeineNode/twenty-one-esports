@@ -42,6 +42,17 @@ final class Blockspace extends BoardGame
         ];
     }
 
+    /**
+     * Every transaction a side set is one move for consensus rule 2 (coordinator's decision, 2026-11-18): the sides
+     * move White, Black, Black, White, so there is no full move, and a game sets 42 transactions at most (measured
+     * on 2 000 played-out games: 16 to 34, never the 39 plies that 20 full moves are). A pass is no move here: 13
+     * passes in a row end no game, so passes alone could pad any game past the minimum.
+     */
+    public function minedMoves(array $moves): int
+    {
+        return count(array_filter($moves, fn (string $move): bool => $move !== BlockspaceRules::PASS));
+    }
+
     public function resultSchema(GameMode $mode): array
     {
         return ['result' => 'one of '.implode(', ', self::RESULTS)];

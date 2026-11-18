@@ -5,6 +5,7 @@
 @import './revamp-games.css';
 @import './revamp-league.css';
 @import './revamp-admin.css';
+@import './stage.css';
 
 @source '../views';
 @source '../../app/Support';

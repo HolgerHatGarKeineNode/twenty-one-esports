@@ -1272,6 +1272,8 @@ new #[Title('Seasons')] #[Layout('layouts::app', ['section' => 'admin'])] class 
             </ol>
             @if ($this->releaseRefusal)
                 <p class="m-0 text-[13px] text-ink-2" data-test="release-refusal">{{ $this->releaseRefusal }}</p>
+            @else
+                <a href="{{ route('admin.season.stage') }}" class="rv-lk self-start text-[13px]" data-test="release-stage-link">{{ __('Release it on stage: one big button for a projected screen') }}</a>
             @endif
             <p class="m-0 text-[13px] text-loss" role="alert" x-show="error" x-text="error"></p>
             @if ($releaseError)

@@ -433,7 +433,9 @@ return [
     ],
 
     'chess' => [
-        'rated_queue' => (bool) env('ESPORTS_RATED_CHESS', false),
+        // On by default since Season 1 (2026-11-20): a deploy opens the Rated choice without an .env edit.
+        // Before Block 0 nothing mines; ESPORTS_RATED_CHESS=false closes it again.
+        'rated_queue' => (bool) env('ESPORTS_RATED_CHESS', true),
         'first_move_seconds' => 30,
         'disconnect_claim_seconds' => (int) env('ESPORTS_DISCONNECT_CLAIM_SECONDS', 60),
         'challenge_hours' => 48,
@@ -963,7 +965,7 @@ return [
             'thin_trust_share' => 100,
             // New account: created at most this many days before its first block. A week covers "made for the season".
             'new_account_days' => 7,
-            // Undecided counting reports against the player: every single one is worth a look.
+            // Reports against the player that wait for an admin: every single one is worth a look.
             'reports' => 1,
             // The page lists at most this many players, the ones with the most chips first.
             'rows' => 100,

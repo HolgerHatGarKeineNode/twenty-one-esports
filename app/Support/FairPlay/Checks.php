@@ -4,12 +4,13 @@ namespace App\Support\FairPlay;
 
 use App\Models\BoardGame;
 use App\Models\ChessGame;
+use App\Models\NostrEvent;
 use App\Models\Season;
 use App\Models\SeasonAttestation;
 use App\Models\SeasonParameterChange;
-use App\Models\TrustCountedReport;
 use App\Models\TrustExclusion;
 use App\Models\TrustRank;
+use App\Models\TrustReportConfirmation;
 use App\Models\TrustReportDismissal;
 use App\Models\User;
 use App\Support\LeagueTime;
@@ -46,8 +47,8 @@ use Illuminate\Support\Str;
  *    below the season's minimum now although the player mined.
  * 7. `new-account`: the account (`users.created_at`) is only days older than
  *    its first block.
- * 8. `reports`: undecided counting reports against the player, counted as
- *    the admin nav counts them. Barred, locked and linked are states, not
+ * 8. `reports`: reports against the player that wait for an admin, counted
+ *    as the admin nav counts them. Barred, locked and linked are states, not
  *    signals: they never put a player on the list by themselves.
  *
  * Cost: a fixed number of queries for any number of players. The candidates
@@ -66,6 +67,9 @@ final class Checks
 
     /** How a handed-over board game ends: the loser resigns or lets the clock run out. */
     private const SHORT_ENDS = ['resignation', 'timeout'];
+
+    /** The kind of a league report (NIP-56), as the trust job stores it. */
+    private const REPORT_KIND = 1984;
 
     /** The season whose [Block 0, ends) contains now: the only one the view reads. */
     public static function season(): ?Season
@@ -172,7 +176,7 @@ final class Checks
         }
 
         $forfeits = FairPlay::forfeitCounts(array_keys($ids), CarbonImmutable::instance($season->genesis_at));
-        $reports = $this->openReports($season, $pubkeys);
+        $reports = $this->openReports($season, $pubkeys, $limits['read_limit']);
         $name = fn (string $pubkey): string => isset($users[$pubkey]) ? $users[$pubkey]->displayName() : (NostrKeys::isHexPubkey($pubkey) ? Str::limit(NostrKeys::hexToNpub($pubkey), 16, '…') : '–');
         $shortPly = 2 * $parameters['moves'] + $limits['short_win_margin_plies'];
         $list = [];
@@ -329,22 +333,39 @@ final class Checks
     }
 
     /**
-     * The reports against these players that count and no admin decided:
-     * counted in this season, not dismissed, their author not excluded (the
-     * count of the admin nav's Trust item, per player).
+     * The reports against these players that wait for an admin: signed since
+     * Block 0 of the season, neither confirmed nor dismissed, their author not
+     * excluded (the count of the admin nav's Trust item, per player). The
+     * target is the report's first `p` tag, which only its JSON holds: the
+     * waiting reports are read once, the newest `read_limit` of them.
      *
      * @param  list<string>  $pubkeys
      * @return array<string, int> pubkey => reports; players without one are absent
      */
-    private function openReports(Season $season, array $pubkeys): array
+    private function openReports(Season $season, array $pubkeys, int $limit): array
     {
+        $wanted = array_fill_keys($pubkeys, true);
         $reports = [];
-
-        foreach (TrustCountedReport::query()->toBase()->where('season_id', $season->id)->whereIn('target', $pubkeys)
-            ->whereNotIn('author', TrustExclusion::query()->select('pubkey'))
+        $waiting = NostrEvent::query()->toBase()->where('kind', self::REPORT_KIND)->where('signed_at', '>=', $season->genesis_at->getTimestamp())
+            ->whereNotIn('pubkey', TrustExclusion::query()->select('pubkey'))
+            ->whereNotIn('event_id', TrustReportConfirmation::query()->select('event_id'))
             ->whereNotIn('event_id', TrustReportDismissal::query()->select('event_id'))
-            ->groupBy('target')->selectRaw('target, count(*) as reports')->get() as $row) {
-            $reports[(string) $row->target] = (int) $row->reports;
+            ->orderByDesc('id')->limit($limit)->pluck('raw');
+
+        foreach ($waiting as $raw) {
+            $event = json_decode((string) $raw, true);
+
+            foreach (is_array($event) && is_array($event['tags'] ?? null) ? $event['tags'] : [] as $tag) {
+                if (is_array($tag) && ($tag[0] ?? null) === 'p') {
+                    $target = $tag[1] ?? null;
+
+                    if (is_string($target) && isset($wanted[$target])) {
+                        $reports[$target] = ($reports[$target] ?? 0) + 1;
+                    }
+
+                    break;
+                }
+            }
         }
 
         return $reports;

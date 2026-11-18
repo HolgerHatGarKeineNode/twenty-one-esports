@@ -9,6 +9,7 @@
  * switched on. Nothing of a proposal is in force until the board saves it.
  */
 
+use App\Games\GameRegistry;
 use App\Models\NostrEvent;
 use App\Models\SeasonParameterChange;
 use App\Models\User;
@@ -22,7 +23,9 @@ use Carbon\CarbonImmutable;
 use Illuminate\Support\Facades\Queue;
 use Livewire\Livewire;
 use Tests\Support\BlockliOn;
+use Tests\Support\BlockspaceOn;
 use Tests\Support\CheckersGame;
+use Tests\Support\GoOn;
 use Tests\Support\HyperOn;
 use Tests\Support\NineMensMorrisOn;
 use Tests\Support\TestSigner;
@@ -69,7 +72,7 @@ test('with the board games and Hyperbitcoinization switched on the defaults are 
                 'hyperbitcoinization/live' => 1000,
                 'hyperbitcoinization/correspondence' => 1000,
             ],
-            'groups' => ['ea-sports-fc' => ['ea-sports-fc-26', 'ea-sports-fc-27'], 'board-games' => ['blockli', 'nine-mens-morris', 'checkers']],
+            'groups' => ['ea-sports-fc' => ['ea-sports-fc-26', 'ea-sports-fc-27'], 'board-games' => ['blockli', 'nine-mens-morris', 'checkers', 'blockspace', 'go-9', 'go-13', 'go-19']],
             'shares' => ['chess' => 50, 'board-games' => 30, 'hyperbitcoinization' => 20],
             'daily' => ['chess' => 5, 'board-games' => 5, 'hyperbitcoinization' => 5],
             'pairlimit' => [1, 3],
@@ -130,6 +133,72 @@ test('a game that is switched off is left out of the defaults, and the draft war
     'board games off' => [false, true, ['chess' => 50, 'hyperbitcoinization' => 20], 'The shares add up to 70 %: 30 % of the supply belong to no game and cannot be mined.'],
     'both off' => [false, false, ['chess' => 50], 'The shares add up to 50 %: 50 % of the supply belong to no game and cannot be mined.'],
 ]);
+
+/** Production's switches of 2026-11-18: every board game and Hyperbitcoinization on. */
+function chainDefaultsProductionSwitches(): void
+{
+    BlockliOn::play();
+    NineMensMorrisOn::play();
+    CheckersGame::play();
+    BlockspaceOn::play();
+    GoOn::play();
+    HyperOn::play();
+}
+
+/** The `<game>/<mode>` and factor of every weight Block 0 would sign for these games, from the draft as it stands. */
+function chainDefaultsSignedWeights(string ...$games): array
+{
+    $signed = [];
+
+    foreach (SeasonRelease::parameterTags(SeasonRelease::draft(), 1_790_353_500) as $tag) {
+        if ($tag[0] === 'weight' && in_array(explode('/', $tag[1], 2)[0], $games, true)) {
+            $signed[$tag[1]] = $tag[2];
+        }
+    }
+
+    return $signed;
+}
+
+test('with every board game switched on, Blockspace and Go have the board games\' weights in the modes each offers, Block 0 signs them, and the draft warns about none of them', function () {
+    chainDefaultsProductionSwitches();
+    $defaults = ChainDraft::defaults();
+    $weights = [
+        'blockspace/blitz' => 1000, 'blockspace/rapid' => 1500, 'blockspace/correspondence' => 2000,
+        'go-9/blitz' => 1000, 'go-9/rapid' => 1500, 'go-9/correspondence' => 2000,
+        'go-13/rapid' => 1500, 'go-13/correspondence' => 2000,
+        'go-19/rapid' => 1500, 'go-19/correspondence' => 2000,
+    ];
+    $unweighted = array_values(array_filter(ChainDraft::warnings($defaults), fn (string $line): bool => str_starts_with($line, 'No weight')));
+
+    expect(array_intersect_key($defaults['weights'], array_flip(chainDefaultsKeysOf($defaults['weights'], 'blockspace', 'go-9', 'go-13', 'go-19'))))->toBe($weights)
+        ->and($defaults['shares'])->toBe(['chess' => 50, 'board-games' => 30, 'hyperbitcoinization' => 20])
+        ->and($defaults['daily'])->toBe(['chess' => 5, 'board-games' => 5, 'hyperbitcoinization' => 5])
+        ->and(chainDefaultsSignedWeights('blockspace', 'go-9', 'go-13', 'go-19'))->toBe(array_map(fn (int $milli): string => ['1000' => '1', '1500' => '1.5', '2000' => '2'][$milli], $weights))
+        // The line of 2026-11-18 named ten of their modes; what is left are the series games, which stay without a weight.
+        ->and($unweighted)->toBe(['No weight, so these do not mine: Rocket League 1v1, Rocket League 2v2, Rocket League 3v3, EA Sports FC 27 1v1, EA Sports FC 27 2v2, EA Sports FC 26 1v1, EA Sports FC 26 2v2, Age of Empires II: Definitive Edition 1v1, Age of Empires II: Definitive Edition 2v2, Age of Empires II: Definitive Edition 3v3.']);
+
+    // A weight for every mode a game offers, and for no other.
+    foreach (['blockspace', 'go-9', 'go-13', 'go-19'] as $game) {
+        expect(chainDefaultsKeysOf($defaults['weights'], $game))->toEqualCanonicalizing(array_map(fn (string $mode): string => $game.'/'.$mode, array_keys(app(GameRegistry::class)->get($game)->modes())));
+    }
+});
+
+test('Blockspace and each Go size follow their own switch: switched off, the game has no weight in the defaults and Block 0 signs none, the other board games keep theirs', function (string $off) {
+    chainDefaultsProductionSwitches();
+    $all = array_keys(chainDefaultsSignedWeights('blockli', 'nine-mens-morris', 'checkers', 'blockspace', 'go-9', 'go-13', 'go-19'));
+    config(['esports.board_games.games.'.$off.'.enabled' => false]);
+    app()->forgetInstance(GameRegistry::class);
+    $defaults = ChainDraft::defaults();
+
+    expect($all)->toHaveCount(15)
+        ->and(chainDefaultsKeysOf($defaults['weights'], $off))->toBe([])
+        ->and(array_keys(chainDefaultsSignedWeights('blockli', 'nine-mens-morris', 'checkers', 'blockspace', 'go-9', 'go-13', 'go-19')))
+        ->toBe(array_values(array_filter($all, fn (string $key): bool => ! str_starts_with($key, $off.'/'))))
+        // The share and the daily limit are the group's and stay while another board game is on.
+        ->and($defaults['shares']['board-games'])->toBe(30)
+        ->and($defaults['daily']['board-games'])->toBe(5)
+        ->and(ChainDraft::table($defaults)['board-games'])->not->toContain($off.'/rapid');
+})->with(['blockspace', 'go-9', 'go-13', 'go-19']);
 
 test('the draft offers Rocket League and EA Sports FC as proposals; a filled-in proposal saves within the limits', function (string $which, array $weights, int $share, array $others) {
     BlockliOn::play();
