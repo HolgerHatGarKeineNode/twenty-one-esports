@@ -56,7 +56,7 @@
         $at = $x($halving['at']);
         if ($at > 0 && $at < 100) {
             $game = \App\Support\SeasonChain\ChainOverview::gameLabel($halving['key']);
-            $halvings[] = ['x' => $at, 'label' => $halving['closed'] ? __(':game: mined out', ['game' => $game]) : __(':game: era :era', ['game' => $game, 'era' => $halving['era'] + 1])];
+            $halvings[] = ['x' => $at, 'label' => $halving['closed'] ? __(':game: mined out', ['game' => $game]) : __(':game: era :era', ['game' => $game, 'era' => $halving['entered']])];
         }
     }
     $summary = $forecast !== null

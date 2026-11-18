@@ -336,7 +336,7 @@ new #[Layout('layouts::app', ['section' => 'mining'])] class extends Component
                     @foreach ($chain['curve']['halvings'] as $halving)
                         <li>{{ $halving['closed']
                             ? __(':game mined its whole share on :when', ['game' => ChainOverview::gameLabel($halving['key']), 'when' => $date($halving['at'], 'D j M')])
-                            : __(':game halved on :when and entered era :era', ['game' => ChainOverview::gameLabel($halving['key']), 'when' => $date($halving['at'], 'D j M'), 'era' => $halving['era'] + 1]) }}</li>
+                            : __(':game halved on :when and entered era :era', ['game' => ChainOverview::gameLabel($halving['key']), 'when' => $date($halving['at'], 'D j M'), 'era' => $halving['entered']]) }}</li>
                     @endforeach
                 </ul>
             @endif

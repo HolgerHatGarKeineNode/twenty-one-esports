@@ -14,11 +14,15 @@
 use App\Models\Season;
 use App\Models\User;
 use App\Support\Chess\RatedChess;
+use App\Support\Engagement\HomeBoard;
 use App\Support\Nostr\NostrKeys;
+use App\Support\PreSeason;
 use App\Support\SeasonChain\ChainOverview;
 use App\Support\SeasonChain\SeasonChains;
 use App\Support\SeasonChain\Seasons;
 use Carbon\CarbonImmutable;
+use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\Exceptions;
 use Illuminate\Support\Facades\Queue;
 use Livewire\Livewire;
 use Tests\Support\BlockliOn;
@@ -133,6 +137,60 @@ test('the halving line of a game counts the sats and the wins to its next halvin
     'English' => ['en', ['chess' => 'next halving after 1,575 more sats (about 2 Chess blitz wins)', 'boards' => 'next halving after 1,050 more sats (about 1 :mode win)', 'closed' => 'mined out', 'next' => 'next halving', 'last' => 'mined out after 3,150 more sats']],
     'German' => ['de', ['chess' => 'nächstes Halving nach 1.575 weiteren Sats (etwa 2 Siege in Schach Blitz)', 'boards' => 'nächstes Halving nach 1.050 weiteren Sats (etwa 1 Sieg in :mode)', 'closed' => 'ausgeschürft', 'next' => 'nächstes Halving', 'last' => 'ausgeschürft nach 3.150 weiteren Sats']],
 ]);
+
+test('the halvings that happened are listed under the supply chart: a game that mined its whole share with its day, and a win that passes two halvings with the era the game entered', function (string $locale, array $lines) {
+    // One era: chess closes once it mined half its pot (5 250), with its third blitz win.
+    $closed = keySeason(['eras' => 1]);
+    keyWins($closed, ['chess/blitz', 'chess/blitz', 'chess/blitz', 'chess/blitz']);
+    $day = fn (Season $season, int $minutes): string => CarbonImmutable::instance($season->genesis_at)->addMinutes($minutes)->setTimezone(PreSeason::timezoneFor(null))->locale($locale)->translatedFormat('D j M');
+    $done = fn (): string => trim((string) preg_replace('/\s+/', ' ', strip_tags(str(html_entity_decode((string) $this->get(route('mining', ['lang' => $locale]))->assertOk()->getContent()))
+        ->after('data-test="mining-halvings-done">')->before('</ul>')->toString())));
+
+    expect(array_map(fn (array $halving): array => [$halving['key'], $halving['era'], $halving['entered'], $halving['closed']], app(ChainOverview::class)->live($closed)['curve']['halvings']))
+        ->toBe([['chess', 1, null, true]])
+        ->and($done())->toBe(str_replace(':when', $day($closed, 3), $lines['whole']));
+
+    // Three eras and a chess pot of 4 200 (bounds 2 100, 3 150 and 3 675): one rapid win of 3 150 takes chess from era 1 into era 3.
+    Season::query()->delete();
+    Seasons::forget();
+    cache()->flush();
+    $parameters = Season::factory()->make()->parameters;
+    $jump = keySeason(['eras' => 3, 'slug' => 'season-jump', 'parameters' => [...$parameters, 'weights' => ['chess/blitz' => 1000, 'chess/rapid' => 1500], 'shares' => ['chess' => 20], 'daily' => ['chess' => 5]]]);
+    keyWins($jump, ['chess/rapid']);
+    $chain = app(ChainOverview::class)->live($jump);
+
+    // Mutation: `'era' => $halving['era'] + 1` in the list names era 2, which chess never stood in.
+    expect($chain['keys']['chess']['era'])->toBe(3)
+        ->and(array_map(fn (array $halving): array => [$halving['key'], $halving['era'], $halving['entered'], $halving['closed']], $chain['curve']['halvings']))->toBe([['chess', 1, 3, false]])
+        ->and($done())->toBe(str_replace(':when', $day($jump, 1), $lines['entered']))
+        // The chart's hairline names the same era (the block moved a week on: a mark in the first minutes of the season is not drawn).
+        ->and(html_entity_decode((string) $this->blade('<x-supply-chart :curve="$curve" zone="UTC" />', ['curve' => [...$chain['curve'], 'halvings' => [[...$chain['curve']['halvings'][0], 'at' => $chain['curve']['from']->addWeek()]]]])))
+        ->toContain($lines['chart']);
+})->with([
+    'English' => ['en', ['whole' => 'Chess mined its whole share on :when', 'entered' => 'Chess halved on :when and entered era 3', 'chart' => 'Chess: era 3']],
+    'German' => ['de', ['whole' => 'Schach hat am :when seinen ganzen Anteil geschürft', 'entered' => 'Schach hatte am :when sein Halving und ist in Epoche 3', 'chart' => 'Schach: Epoche 3']],
+]);
+
+test('a season card cached before the games had their own eras is read again: the start page answers with the rows of the games and no error', function () {
+    $season = keySeason();
+    keyWins($season, ['chess/blitz', 'chess/blitz', 'chess/blitz', 'blockli/blitz']);
+    // The card as the calendar rule cached it (scalars only): `eras` of the season, no `keys`.
+    $stale = ['state' => 'live', 'slug' => $season->slug, 'live' => true, 'height' => 4, 'eras' => [['era' => 1, 'from' => $season->genesis_at->getTimestamp(), 'sats' => 2100]], 'payKey' => 'chess/blitz', 'pays' => 2100];
+    Cache::put(HomeBoard::SEASON_CARD.'en', $stale, 60);
+    Exceptions::fake();
+
+    $card = HomeBoard::season();
+
+    // Mutation: without the second read in HomeBoard::season() the card has no `keys` and the page throws on them.
+    expect(array_column($card['keys'], 'era', 'key'))->toBe(['chess' => 2, 'board-games' => 1])
+        ->and($card['pays'])->toBe(1050)
+        ->and(serialize($card))->not->toContain('O:');
+
+    $home = html_entity_decode((string) $this->get(route('home'))->assertOk()->getContent());
+
+    expect($home)->toContain('data-test="season-key" data-key="chess"')->toContain('data-test="season-key" data-key="board-games"');
+    Exceptions::assertNothingReported();
+});
 
 test('no page of the season names a date for a halving to come: the schedule has no start dates, the chart marks only halvings that happened', function () {
     $season = keySeason();

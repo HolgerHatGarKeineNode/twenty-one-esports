@@ -214,7 +214,7 @@ final class ChainOverview
      * key reached the bound of its era (`era` is the era it left, `closed`
      * when that was its last). A halving to come has no date.
      *
-     * @return array{from: CarbonImmutable, to: CarbonImmutable, now: CarbonImmutable, supply: int, halvings: list<array{key: string, era: int, closed: bool, at: CarbonImmutable}>, forecast: int|null, days: list<array{day: string, at: CarbonImmutable, blocks: int, sats: int, total: int}>}
+     * @return array{from: CarbonImmutable, to: CarbonImmutable, now: CarbonImmutable, supply: int, halvings: list<array{key: string, era: int, entered: int|null, closed: bool, at: CarbonImmutable}>, forecast: int|null, days: list<array{day: string, at: CarbonImmutable, blocks: int, sats: int, total: int}>}
      */
     public function supplyCurve(Season $season, BlockChain $chain, CarbonImmutable $now, ?int $forecast): array
     {
@@ -225,7 +225,7 @@ final class ChainOverview
      * {@see supplyCurve()} from the blocks as rows (BlockChain::blockRows(), SeasonChains::readout()).
      *
      * @param  list<array{at: CarbonImmutable, reward: int, weight_key: string, game: string, winners: int}>  $blocks
-     * @return array{from: CarbonImmutable, to: CarbonImmutable, now: CarbonImmutable, supply: int, halvings: list<array{key: string, era: int, closed: bool, at: CarbonImmutable}>, forecast: int|null, days: list<array{day: string, at: CarbonImmutable, blocks: int, sats: int, total: int}>}
+     * @return array{from: CarbonImmutable, to: CarbonImmutable, now: CarbonImmutable, supply: int, halvings: list<array{key: string, era: int, entered: int|null, closed: bool, at: CarbonImmutable}>, forecast: int|null, days: list<array{day: string, at: CarbonImmutable, blocks: int, sats: int, total: int}>}
      */
     private function curve(Season $season, SeasonParameters $parameters, array $blocks, CarbonImmutable $now, ?int $forecast): array
     {
@@ -245,9 +245,10 @@ final class ChainOverview
             $minedByKey[$shareKey] = ($minedByKey[$shareKey] ?? 0) + $block['reward'];
             $after = $parameters->eraOf($shareKey, $minedByKey[$shareKey]);
 
-            // The block that reached the bound of its key's era: that key's halving, or its closing.
+            // The block that reached the bound of its key's era: that key's halving, or its closing. `entered` is the
+            // era the key stands in after it, which is not always the next one: a large block can pass two bounds.
             if ($before !== null && $after !== $before) {
-                $halvings[] = ['key' => $shareKey, 'era' => $before, 'closed' => $after === null, 'at' => $at];
+                $halvings[] = ['key' => $shareKey, 'era' => $before, 'entered' => $after, 'closed' => $after === null, 'at' => $at];
             }
             $last = array_key_last($days);
 
