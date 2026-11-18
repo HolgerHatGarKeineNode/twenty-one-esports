@@ -111,6 +111,9 @@ test('an admin links two accounts of one player and unlinks them again, at 375 a
         $page->locator('[data-test=fair-play-reason]')->fill('Same Lightning address and device');
         $page->locator('[data-test=fair-play-link]')->click();
         BrowserWait::until($page, '() => document.querySelector("[data-test=fair-play-notice]")?.innerText.includes("Linked.") === true && document.querySelector("[data-test=fair-play-link-row]") !== null', 10_000);
+        // The server emptied both pickers; each drops its chip in a watcher after the morph (resources/js/playerPicker.js).
+        // Measured before that, the chips' 36 px clear buttons were still on the page (1 run in 4, 2026-11-18).
+        BrowserWait::until($page, '() => [...document.querySelectorAll("[data-test=admin-fair-play] [data-test=picker-chip]")].every((el) => ! el.checkVisibility())', 5_000);
         $linked = fairPlayGeometry($page);
         $notice = $page->evaluate('() => document.querySelector("[data-test=fair-play-notice]").innerText.trim()');
         fairPlayShot($page, "fair-play-linked-{$width}");
