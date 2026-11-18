@@ -185,7 +185,7 @@ test('no page of the season names a date for a halving to come: the schedule has
     keyWins($season, ['chess/blitz', 'chess/blitz', 'chess/blitz', 'blockli/blitz']);
     $chain = app(ChainOverview::class)->live($season);
 
-    expect($chain)->not->toHaveKeys(['era', 'next_halving'])
+    expect($chain)->not->toHaveKey('era')->not->toHaveKey('next_halving')->not->toHaveKey('key_eras')
         ->and(array_keys($chain['schedule'][0]))->toBe(['era', 'budget', 'caps', 'rewards', 'keys'])
         ->and(array_column($chain['schedule'], 'keys'))->toBe([['board-games'], ['chess'], [], [], [], []])
         // The one halving that happened: chess left era 1 with its third block.

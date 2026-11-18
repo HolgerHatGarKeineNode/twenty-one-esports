@@ -1260,7 +1260,7 @@ new #[Title('Seasons')] #[Layout('layouts::app', ['section' => 'admin'])] class 
                     @endforeach
                 </fieldset>
                 {{-- The shares are signed with Block 0 and never change in a season (`season-chain-v2`): shown, not offered. --}}
-                <p class="m-0 text-xs text-ink-2" data-test="shares-fixed">{{ __('Shares of the supply, fixed at Block 0: :shares. A game without a share can mine from the next season on.', ['shares' => collect($chain['in_force']->shares)->map(fn ($share, $game) => ChainOverview::gameLabel((string) $game).' '.$share.' %')->implode(', ')]) }}</p>
+                <p class="m-0 text-xs text-ink-2" data-test="shares-fixed">{{ __('Shares of the supply, fixed at Block 0: :shares. A game without a share can mine from the next season on.', ['shares' => ChainOverview::sharesLine($chain['in_force']->shares)]) }}</p>
                 <fieldset class="m-0 grid grid-cols-2 gap-3 border-0 p-0 lg:grid-cols-4" @disabled(! $this->isBoard)>
                     <legend class="mb-2 text-xs text-ink-2">{{ __('Consensus rules 4, 8, 7 and 2') }}</legend>
                     <label class="flex flex-col gap-1 text-xs text-ink-2">{{ __('Blocks per pairing a day') }}<input type="text" inputmode="numeric" wire:model="pairDay" class="{{ $input }}"></label>

@@ -97,6 +97,22 @@ final class ChainOverview
         return ChainDraft::shareLabel($game);
     }
 
+    /**
+     * The shares of a season in one line: "Chess 50 %, Board games 30 %".
+     *
+     * @param  array<string, int>  $shares
+     */
+    public static function sharesLine(array $shares): string
+    {
+        $parts = [];
+
+        foreach ($shares as $game => $share) {
+            $parts[] = self::gameLabel((string) $game).' '.$share.' %';
+        }
+
+        return implode(', ', $parts);
+    }
+
     /** Why a win did not mine, in plain words (the reason codes of ConsensusRules). */
     public static function reasonLabel(string $reason): string
     {
