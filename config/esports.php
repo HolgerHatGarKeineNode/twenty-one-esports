@@ -433,7 +433,9 @@ return [
     ],
 
     'chess' => [
-        'rated_queue' => (bool) env('ESPORTS_RATED_CHESS', false),
+        // On by default since Season 1 (2026-11-20): a deploy opens the Rated choice without an .env edit.
+        // Before Block 0 nothing mines; ESPORTS_RATED_CHESS=false closes it again.
+        'rated_queue' => (bool) env('ESPORTS_RATED_CHESS', true),
         'first_move_seconds' => 30,
         'disconnect_claim_seconds' => (int) env('ESPORTS_DISCONNECT_CLAIM_SECONDS', 60),
         'challenge_hours' => 48,
