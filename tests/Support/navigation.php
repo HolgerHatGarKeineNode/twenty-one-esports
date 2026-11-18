@@ -12,6 +12,7 @@ use App\Models\Rating;
 use App\Models\SeriesMatch;
 use App\Models\User;
 use App\Support\Chess\ChessModes;
+use App\Support\Nostr\NostrKeys;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\File;
 use Illuminate\Support\Facades\Route;
@@ -95,6 +96,9 @@ const NAV_PAGES = [
     'admin.disputes.show' => ['roles' => ['admin'], 'max' => 2],
     'admin.payouts' => ['roles' => ['admin'], 'max' => 2],
     'admin.season' => ['roles' => ['admin'], 'max' => 2],
+    // The Block 0 stage, for board members only (a plain admin gets 403): linked from the release box of the admin
+    // season page while Block 0 can be released, so the crawl's admin sits on the board (navWorld()).
+    'admin.season.stage' => ['roles' => ['admin'], 'max' => 3],
     'admin.events' => ['roles' => ['admin'], 'max' => 2],
     'admin.settings' => ['roles' => ['admin'], 'max' => 2],
     // The next Blockfill and TMNF week and its approval: a page of the admin strip, like the other admin pages.
@@ -253,7 +257,8 @@ function navWorld(): array
     SeriesMatch::factory()->accepted()->create(['challenger_lineup_id' => $captainLineup->id, 'challenged_lineup_id' => $rivalLineup->id]);
     SeriesMatch::factory()->accepted()->create(['status' => SeriesStatus::Disputed]);
 
-    config(['esports.league.nsec' => (new TestSigner)->secret]);
+    // The admin is a board member and both keys are set, so Block 0 can be released: the admin season page links the stage.
+    config(['esports.league.nsec' => (new TestSigner)->secret, 'esports.trust.nsec' => (new TestSigner)->secret, 'esports.board' => [NostrKeys::hexToNpub($admin->pubkey)]]);
     openTournament(['created_by_id' => $organizer->id], rocketLeague: true);
     // Drawn from a block, as a real running tournament is: its page links the draw.
     runningChess(TournamentFormat::SingleElimination, 4)->forceFill(['created_by_id' => $organizer->id, 'draw_height' => 915000, 'draw_hash' => str_repeat('ab', 32)])->save();
