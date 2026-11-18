@@ -180,7 +180,8 @@ new #[Title('Block 0 stage')] #[Layout('layouts::app', ['section' => 'admin'])] 
      * What the arming step shows of the draft beyond its supply: the share
      * of every game group with the games and modes that mine
      * (ChainDraft::mining()), and every warning of the draft
-     * (ChainDraft::warnings(), the estimator's included), none left out. A
+     * (ChainDraft::warnings(), the estimator's included), none left out, and
+     * first what Block 0 would refuse to sign (ChainDraft::eraRefusal()). A
      * saved draft overrides the league defaults wholesale, so this is where
      * the board sees a draft that lacks a game before it arms. A forecast
      * that fails is reported and said, never passed over.
@@ -200,7 +201,10 @@ new #[Title('Block 0 stage')] #[Layout('layouts::app', ['section' => 'admin'])] 
             $failed = [__('The forecast could not be computed, so its warnings are missing here. Check the season page before you arm.')];
         }
 
-        return ['rows' => ChainDraft::mining($chain), 'warnings' => [...ChainDraft::warnings($chain, $estimator), ...$failed]];
+        // What the release itself would refuse (SeasonRelease::check()): a draft can be older than the halving by amount.
+        $refused = ChainDraft::eraRefusal($chain['supply'], $chain['subsidy'], $chain['eras'], $chain['weights'], $chain['shares'], $chain['groups']);
+
+        return ['rows' => ChainDraft::mining($chain), 'warnings' => [...($refused === null ? [] : [$refused]), ...ChainDraft::warnings($chain, $estimator), ...$failed]];
     }
 
     /** The planned end in the board member's time zone. */

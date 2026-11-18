@@ -271,6 +271,22 @@ test('the arming step shows the shares and games Block 0 signs: a draft saved be
         ->assertDontSee('No weight, so these do not mine: Hyperbitcoinization', false);
 });
 
+test('the arming step says what Block 0 would refuse to sign: a draft older than the halving by amount whose weight pays nothing in the last era', function () {
+    saveChainDraft([
+        'message' => STAGE_MESSAGE,
+        'block0_at' => CarbonImmutable::parse('2026-11-20T19:00:00Z')->getTimestamp(),
+        'weights' => ['chess/blitz' => 1, 'chess/rapid' => 1500],
+        'shares' => ['chess' => 60],
+        'daily' => ['chess' => 5],
+    ]);
+    $refusal = 'Chess blitz would pay nothing in era 6. Raise its weight or the base subsidy, or set fewer eras.';
+    $page = stagePage($this->board);
+
+    // Mutation: without the refusal among signs() the board reads it only after it typed the supply.
+    $page->assertSeeInOrder(['data-test="stage-mining"', 'data-test="stage-warning"', $refusal], false);
+    $page->call('arm', '2 100 000', false)->assertReturned(fn (array $data): bool => $data['ok'] === false && $data['reason'] === $refusal);
+});
+
 test('the shares on the stage and the reset on the season page read in German', function () {
     HyperOn::play();
 
