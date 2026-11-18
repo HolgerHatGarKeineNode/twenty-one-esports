@@ -19,11 +19,12 @@
  */
 const FULL_KEY = /(^|\/)(npub1[02-9ac-hj-np-z]{58}|[0-9a-f]{64})([/?#]|$)/;
 
-export default function playerPicker({ url, submitOnPick = false, allowNpub = false, labels = {} }) {
+export default function playerPicker({ url, submitOnPick = false, allowNpub = false, preset = null, labels = {} }) {
     return {
         picked: null,
-        chosen: null,
-        query: '',
+        // `preset`: the page opens with this player picked (the bound property holds the value already).
+        chosen: preset,
+        query: preset?.name ?? '',
         results: [],
         active: -1,
         open: false,

@@ -5,6 +5,7 @@
     'placeholder' => null,
     'submitOnPick' => false,
     'allowNpub' => false,
+    'preset' => null,
     'labelClass' => 'text-xs text-ink-2',
     'inputClass' => 'h-11 w-full rounded-md border border-edge bg-ground px-3 text-[13px] text-ink',
 ])
@@ -19,8 +20,11 @@
     `allow-npub`: bind a nullable string instead; it holds the hex pubkey, and
     a fully valid npub or hex key without an account here can be picked too
     (for roles and invites granted to a key). Typed names still never count.
+    `preset`: a pick the page opens with, in the shape of a search row
+    (PlayerSearchController); it only shows the chip, the bound property
+    already holds the value.
 --}}
-<div x-data="playerPicker({ url: @js(route('players.search')), submitOnPick: @js((bool) $submitOnPick), allowNpub: @js((bool) $allowNpub), labels: @js([
+<div x-data="playerPicker({ url: @js(route('players.search')), submitOnPick: @js((bool) $submitOnPick), allowNpub: @js((bool) $allowNpub), preset: @js($preset), labels: @js([
         'none' => __('No player found.'),
         'found' => __('Suggestions: :count'),
         'failed' => __('The search did not work. Try again.'),

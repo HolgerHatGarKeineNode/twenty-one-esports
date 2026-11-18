@@ -10,6 +10,7 @@ use App\Support\FairPlay\FairPlay;
 use App\Support\FairPlay\FairPlayRefused;
 use App\Support\LeagueTime;
 use App\Support\Nostr\NostrKeys;
+use App\Support\Nostr\PlayerProfile;
 use App\Support\SeasonChain\Seasons;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Support\Facades\Gate;
@@ -30,7 +31,9 @@ use Livewire\Component;
  * Bar by hand (App\Support\FairPlay\Bars): an admin bars one player from
  * rated play with an internal reason and an end (a time, or the end of the
  * live season when the field is empty) and lifts a bar again. The form is
- * deferred: only its button writes.
+ * deferred: only its button writes. `?bar=<npub>` (the checking view's
+ * "Bar…", /admin/checks) opens the page with that player picked in the bar
+ * form; it picks and nothing else, the reason and the button stay the admin's.
  */
 new #[Title('Fair play')] #[Layout('layouts::app', ['section' => 'admin'])] class extends Component
 {
@@ -56,6 +59,32 @@ new #[Title('Fair play')] #[Layout('layouts::app', ['section' => 'admin'])] clas
     public function mount(): void
     {
         Gate::authorize('admin');
+
+        // Only an account of the league can be picked this way; anything else leaves the form empty.
+        $picked = NostrKeys::toHex(trim((string) request()->query('bar', '')));
+        $this->barPlayer = $picked !== null && User::query()->where('pubkey', $picked)->exists() ? $picked : null;
+    }
+
+    /**
+     * The player `?bar=` picked, as the picker shows a pick (its chip); null
+     * once the pick is gone.
+     *
+     * @return array{id: int, key: string, name: string, npub: string, avatar: string, fallback: string, unregistered: false}|null
+     */
+    #[Computed]
+    public function barPreset(): ?array
+    {
+        $player = $this->barPlayer === null ? null : User::query()->where('pubkey', $this->barPlayer)->first();
+
+        return $player === null ? null : [
+            'id' => $player->id,
+            'key' => $player->pubkey,
+            'name' => $player->displayName(),
+            'npub' => $player->shortNpub(),
+            'avatar' => $player->avatarUrl() ?? PlayerProfile::generatedAvatarUrl($player->pubkey),
+            'fallback' => PlayerProfile::generatedAvatarUrl($player->pubkey),
+            'unregistered' => false,
+        ];
     }
 
     /**
@@ -292,11 +321,11 @@ new #[Title('Fair play')] #[Layout('layouts::app', ['section' => 'admin'])] clas
         @endforelse
     </x-admin.panel>
 
-    <x-admin.panel :title="__('Bar a player from rated play')" :meta="__('by hand, with an end')" data-test="fair-play-bar-panel">
+    <x-admin.panel id="fair-play-bar" :title="__('Bar a player from rated play')" :meta="__('by hand, with an end')" data-test="fair-play-bar-panel">
         <p class="m-0 max-w-[80ch] text-[13px] leading-normal text-ink-2">{{ __('The player plays no new rated match in any game until the end you set. Running matches, mined blocks and prizes stay as they are. The player reads that the league locked rated play and until when, never your reason.') }}</p>
         <form wire:submit="bar" wire:confirm="{{ __('Bar this player from rated play?') }}" class="flex flex-col gap-3" data-test="fair-play-bar-form">
             <div class="grid grid-cols-1 gap-3 lg:grid-cols-2">
-                <x-player-picker id="fair-play-bar-player" wire:model="barPlayer" allow-npub :label="__('Player')" :exclude="[(int) auth()->id()]" />
+                <x-player-picker id="fair-play-bar-player" wire:model="barPlayer" allow-npub :preset="$this->barPreset" :label="__('Player')" :exclude="[(int) auth()->id()]" />
                 <label class="flex flex-col gap-1.5 text-xs text-ink-2">{{ __('Barred until (:zone)', ['zone' => LeagueTime::zoneName()]) }}
                     <input type="datetime-local" wire:model="barUntil" class="{{ $input }}" data-test="fair-play-bar-until">
                     <span class="text-xs text-ink-3" data-test="fair-play-bar-until-hint">{{ $seasonEnds ? __('Empty: until the end of the live season, :time.', ['time' => LeagueTime::stamp($seasonEnds)]) : __('No season is live: give the bar an end.') }}</span>
