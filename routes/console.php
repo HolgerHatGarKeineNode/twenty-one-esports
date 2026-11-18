@@ -661,6 +661,13 @@ Artisan::command('esports:trust-run', function (TrustJob $job) {
     try {
         $run = $job->run();
     } catch (TrustJobRefused $refused) {
+        // Another run holds the lock (the one a release dispatched): nothing failed, that run publishes the ranks.
+        if ($refused->alreadyRunning()) {
+            $this->info($refused->getMessage());
+
+            return 0;
+        }
+
         $this->warn($refused->getMessage());
 
         return 1;

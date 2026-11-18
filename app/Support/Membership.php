@@ -22,6 +22,9 @@ use Throwable;
  */
 final class Membership
 {
+    /** How long an empty member list is cached: long enough that a page of members does not ask the API per user. */
+    public const EMPTY_LIST_SECONDS = 60;
+
     public function __construct(private Http $http, private Cache $cache) {}
 
     /**
@@ -101,7 +104,8 @@ final class Membership
     /**
      * The hex pubkeys that paid in the given year, as a set, or null when the
      * list could not be read. Also the anchors of the trust job
-     * (App\Support\SeasonChain\TrustJob).
+     * (App\Support\SeasonChain\TrustJob). Cached for `list_cache_minutes`,
+     * an empty list for a minute.
      *
      * @return array<string, true>|null
      */
@@ -151,7 +155,9 @@ final class Membership
             }
         }
 
-        $this->cache->put($cacheKey, $paid, now()->addMinutes((int) config('esports.membership.list_cache_minutes')));
+        // An empty answer is kept for a minute only: the API answering `[]` by fault would otherwise stand for the
+        // whole cache window and keep the trust job refused (and rated play closed) long after the API recovered.
+        $this->cache->put($cacheKey, $paid, $paid === [] ? now()->addSeconds(self::EMPTY_LIST_SECONDS) : now()->addMinutes((int) config('esports.membership.list_cache_minutes')));
 
         return $paid;
     }

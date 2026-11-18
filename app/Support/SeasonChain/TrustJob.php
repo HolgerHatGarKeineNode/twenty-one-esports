@@ -15,6 +15,7 @@ use App\Support\Nostr\NostrKeys;
 use App\Support\Nostr\RelayReader;
 use App\Support\Nostr\SignedEvent;
 use Carbon\CarbonImmutable;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 
 /**
@@ -47,6 +48,12 @@ use Illuminate\Support\Facades\DB;
  * list for both years the job refuses ({@see TrustJobRefused}), and so it
  * does when both lists come back empty after a run that had member anchors;
  * the ranks of the last run stay, and no run for a new season opens rated play.
+ *
+ * One run at a time (security gate, 2026-11-18): the run of the schedule and
+ * the one a release dispatches (RunTrustJob) would read the same last ranks
+ * and publish the same assertions twice. A cache lock around the whole run
+ * refuses the second caller at once ({@see TrustJobRefused::RUNNING}); it is
+ * never queued behind the first.
  */
 final class TrustJob
 {
@@ -67,12 +74,35 @@ final class TrustJob
 
     public const REPORT_MAX_AGE_DAYS = 365;
 
+    public const LOCK = 'esports:trust-run';
+
+    /** The lock frees itself after this long, so a run that died without releasing it cannot close rated play for good. */
+    public const LOCK_SECONDS = 600;
+
     public function __construct(private RelayReader $reader, private Membership $membership) {}
 
     /**
      * @throws TrustJobRefused
      */
     public function run(): TrustRun
+    {
+        $lock = Cache::lock(self::LOCK, self::LOCK_SECONDS);
+
+        if (! $lock->get()) {
+            throw new TrustJobRefused(TrustJobRefused::RUNNING);
+        }
+
+        try {
+            return $this->runLocked();
+        } finally {
+            $lock->release();
+        }
+    }
+
+    /**
+     * @throws TrustJobRefused
+     */
+    private function runLocked(): TrustRun
     {
         $trust = LeagueKey::trust() ?? throw new TrustJobRefused('ESPORTS_TRUST_NSEC is not set or not a valid secret key.');
         $league = LeagueKey::fromConfig() ?? throw new TrustJobRefused('ESPORTS_LEAGUE_NSEC is not set or not a valid secret key.');

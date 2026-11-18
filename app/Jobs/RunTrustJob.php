@@ -43,6 +43,13 @@ class RunTrustJob implements ShouldBeUniqueUntilProcessing, ShouldQueue
             // Resolved here, not injected: a job that cannot even be built must not fail either.
             app(TrustJob::class)->run();
         } catch (TrustJobRefused $refused) {
+            if ($refused->alreadyRunning()) {
+                // The schedule's run got there first: it runs inside the new season as well.
+                Log::info('Trust run after Block 0 skipped: a trust run is already running');
+
+                return;
+            }
+
             Log::warning('Trust run after Block 0 refused; the schedule tries again', ['reason' => $refused->getMessage()]);
         } catch (Throwable $exception) {
             report($exception);

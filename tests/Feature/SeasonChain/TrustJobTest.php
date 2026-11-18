@@ -10,6 +10,7 @@
  * league-wide season 3".
  */
 
+use App\Jobs\RunTrustJob;
 use App\Models\Admin;
 use App\Models\NostrEvent;
 use App\Models\TrustCountedReport;
@@ -783,6 +784,78 @@ test('an empty member list after a run with member anchors is refused, and the r
     expect(fn () => app(TrustJob::class)->run())->toThrow(TrustJobRefused::class, 'came back empty')
         ->and(TrustRun::query()->count())->toBe(2)
         ->and(array_map(rankOf(...), ['alice', 'carol', 'dave', 'frank']))->toBe([100, 100, 100, 46]);
+});
+
+test('an empty member list is not kept for the hour: once the API answers with the members again, the next run proceeds', function () {
+    payMembers(['alice', 'carol']);
+
+    withRelay(seasonThreeEvents(now()->subMinute()->getTimestamp()), function (): void {
+        runTwice();
+
+        config(['test.members_empty' => true]);
+        Cache::flush(); // the full member lists are cached for an hour (Membership)
+        expect(fn () => app(TrustJob::class)->run())->toThrow(TrustJobRefused::class, 'came back empty');
+
+        // The API recovered; two minutes later the empty answer is forgotten, well inside the hour.
+        config(['test.members_empty' => false]);
+        $this->travel(2)->minutes();
+        $run = app(TrustJob::class)->run();
+
+        expect(TrustRun::query()->count())->toBe(3)
+            ->and($run->anchors)->toBe(2)
+            ->and(array_map(rankOf(...), ['alice', 'carol', 'dave', 'frank']))->toBe([100, 100, 100, 46]);
+    });
+});
+
+test('a second trust run that starts while one is running is refused at once, publishes nothing, and the first run finishes alone', function () {
+    $pubkeys = [['pubkey' => pk('alice')], ['pubkey' => pk('carol')]];
+    $second = null;
+
+    // The seam: the first run asks the member API while it holds the lock, and there the second run starts.
+    Http::preventStrayRequests();
+    Http::allowStrayRequests(['http://127.0.0.1:*']);
+    Http::fake(function (Request $request) use ($pubkeys, &$second) {
+        if (str_starts_with($request->url(), 'http://127.0.0.1:')) {
+            return null;
+        }
+
+        if ($second === null) {
+            $second = 'started';
+
+            try {
+                $second = app(TrustJob::class)->run();
+            } catch (TrustJobRefused $refused) {
+                $second = $refused;
+            }
+        }
+
+        return Http::response(str_ends_with($request->url(), '/'.now()->year) ? $pubkeys : []);
+    });
+
+    $first = withRelay(seasonThreeEvents(now()->subMinute()->getTimestamp()), fn (): TrustRun => app(TrustJob::class)->run());
+
+    expect($second)->toBeInstanceOf(TrustJobRefused::class)
+        ->and($second->getMessage())->toBe('A trust run is already running; the last ranks stay.')
+        ->and(TrustRun::query()->pluck('id')->all())->toBe([$first->id])
+        ->and($first->published)->toBe(5)
+        ->and(NostrEvent::query()->where('kind', TrustJob::ASSERTION)->count())->toBe(5)
+        ->and(NostrEvent::query()->where('kind', TrustJob::ANCHOR_LIST)->where('pubkey', $this->trustKey->pubkey)->count())->toBe(1)
+        // The lock is free again once the run ended.
+        ->and(Cache::lock(TrustJob::LOCK, 5)->get())->toBeTrue();
+});
+
+test('while a trust run holds the lock, the command and the job of the release end without an error and leave the ranks alone', function () {
+    payMembers(['alice', 'carol']);
+    Log::spy();
+    Cache::lock(TrustJob::LOCK, 60)->get();
+
+    $this->artisan('esports:trust-run')->expectsOutput('A trust run is already running; the last ranks stay.')->assertExitCode(0);
+    (new RunTrustJob)->handle();
+
+    expect(TrustRun::query()->count())->toBe(0)
+        ->and(NostrEvent::query()->where('kind', TrustJob::ASSERTION)->count())->toBe(0);
+    Log::shouldNotHaveReceived('warning');
+    Log::shouldNotHaveReceived('error');
 });
 
 test('a league that never had member anchors runs on an empty member list, the first time and again', function () {
