@@ -47,7 +47,7 @@ new #[Layout('layouts::app', ['section' => 'mining'])] class extends Component
     public function rendering(\Illuminate\View\View $view): void
     {
         $view->title(__('Season'));
-        app(PageMeta::class)->describe(__('Season'), __('Every fair rated win is a block, counted in the order the league saves results. Rewards halve every era and are paid once, after the season review.'));
+        app(PageMeta::class)->describe(__('Season'), __('Every fair rated win is a block, counted in the order the league saves results. The reward of a game halves as that game mines its share; the sats are paid once, after the season review.'));
         app(\App\Support\PageMeta::class)->card(fn () => \App\Support\Cards\PageCard::page('mining'));
     }
 
@@ -194,6 +194,13 @@ new #[Layout('layouts::app', ['section' => 'mining'])] class extends Component
     };
     $payKey = collect(array_keys($chain['rewards_now']))->first(fn (string $key): bool => ChainOverview::mines($key));
     $firstPay = $payKey === null ? 0 : (int) ($chain['schedule'][0]['rewards'][$payKey] ?? 0);
+    // Block 0 signs the shares; before it they are the draft's and can still change.
+    $shareTerm = $live || $ended ? __('Share of the supply, fixed at Block 0') : __('Share of the supply');
+    // The share key of every game and mode: a game stands in the era of its own key (`season-chain-v2`).
+    $shareOf = [];
+    foreach (array_keys($chain['rewards_now']) as $weightKey) {
+        $shareOf[$weightKey] = $inForce->shareKey(explode('/', (string) $weightKey, 2)[0]);
+    }
 @endphp
 
 {{--
@@ -273,11 +280,11 @@ new #[Layout('layouts::app', ['section' => 'mining'])] class extends Component
             $payLabel = $payKey ? __(':game pays', ['game' => $shortKey($payKey)]) : __('A win pays');
             $stats = match (true) {
                 $live => [
-                    [__('Era'), (string) $chain['era'], $chain['next_halving'] ? __('next halving :when', ['when' => $date($chain['next_halving'])]) : __('last era')],
+                    [__('Eras'), (string) $chain['season']->eras, __('each game halves by what it mined')],
                     [__('Mined'), $sats($chain['mined']), $minedOf],
                     [__('Left to mine'), $sats($chain['remaining']), __('mining stops at 0 or at the season end')],
                     [__('Blocks'), (string) $chain['blocks'], trans_choice(':count today|:count today', $chain['blocks_today'])],
-                    [$payLabel, $payKey ? $sats($chain['rewards_now'][$payKey]) : '0', __('sats per winner, era :era', ['era' => $chain['era'] ?? 1])],
+                    [$payLabel, $payKey ? $sats($chain['rewards_now'][$payKey]) : '0', __('sats per winner, now')],
                 ],
                 $ended => [
                     [__('Blocks'), (string) $chain['blocks'], __('at the season end')],
@@ -287,7 +294,7 @@ new #[Layout('layouts::app', ['section' => 'mining'])] class extends Component
                     [__('Season'), trans_choice(':count week|:count weeks', (int) round($chain['season']->genesis_at->diffInDays($chain['season']->ends_at) / 7)), __(':from to :to', ['from' => $date($chain['season']->genesis_at, 'j M'), 'to' => $date($chain['season']->ends_at, 'j M Y')])],
                 ],
                 default => [
-                    [__('Era'), '0', $chain['parameters']->eras().' '.__('Eras')],
+                    [__('Eras'), (string) $chain['parameters']->eras(), __('each game halves by what it mined')],
                     // The board's saved chain draft only, as home and /rules: no server default is announced.
                     PreSeason::potSats() === null
                         ? [__('Supply'), '–', __('not announced yet')]
@@ -307,10 +314,32 @@ new #[Layout('layouts::app', ['section' => 'mining'])] class extends Component
         @endforeach
     </section>
 
+    {{-- Every game in its own halving (`season-chain-v2`): no era of the season, no date. Before the board saved a
+         draft the pots would announce a server default, so the section waits for it (as the supply tile). --}}
+    @if ($live || $ended || PreSeason::potSats() !== null)
+    <section aria-labelledby="keys-h" class="rv-card flex flex-col p-4 lg:p-6" data-test="mining-keys">
+        <div class="flex flex-wrap items-baseline gap-x-3 gap-y-1">
+            <h2 id="keys-h" class="rv-h2">{{ __('Halving per game') }}</h2>
+            <span class="rv-m">{{ match (true) { $ended => __('where each game stood at the season end'), $live => __('a game halves once it mined half of what its share still holds'), default => __('a game halves once it mined half of what its share still holds; values from the Pre-Season draft') } }}</span>
+        </div>
+        <x-key-halvings :keys="$chain['keys']" :live="$live" :ended="$ended" />
+    </section>
+    @endif
+
     @if ($hasChain)
         <section aria-labelledby="supply-h" class="rv-card flex flex-col gap-3 p-4 lg:p-6" data-test="mining-supply">
             <h2 id="supply-h" class="rv-h2">{{ __('Supply: mined and left') }}</h2>
             <x-supply-chart :curve="$chain['curve']" :zone="$zone" :ended="$ended" />
+            @if ($chain['curve']['halvings'] !== [])
+                {{-- The halvings that happened, in words: the chart's hairlines carry no numbers on a phone. --}}
+                <ul class="m-0 flex list-none flex-col gap-1 p-0 text-xs text-ink-2" data-test="mining-halvings-done">
+                    @foreach ($chain['curve']['halvings'] as $halving)
+                        <li>{{ $halving['closed']
+                            ? __(':game mined its whole share on :when', ['game' => ChainOverview::gameLabel($halving['key']), 'when' => $date($halving['at'], 'D j M')])
+                            : __(':game halved on :when and entered era :era', ['game' => ChainOverview::gameLabel($halving['key']), 'when' => $date($halving['at'], 'D j M'), 'era' => $halving['era'] + 1]) }}</li>
+                    @endforeach
+                </ul>
+            @endif
             @if ($live)
                 <p class="m-0 text-xs text-ink-2">{{ __('At the rate of the last 4 weeks about :sats sats get mined by the season end (:percent %).', ['sats' => $sats($chain['estimate']['end_mined']), 'percent' => $chain['estimate']['end_mined_percent']]) }}</p>
             @endif
@@ -320,7 +349,7 @@ new #[Layout('layouts::app', ['section' => 'mining'])] class extends Component
     <section aria-labelledby="eras-h" class="rv-card flex min-w-0 flex-col p-0" data-test="mining-eras">
         <div class="flex flex-wrap items-baseline gap-x-3 gap-y-1 p-4">
             <h2 id="eras-h" class="rv-h2">{{ __('What a win pays') }}</h2>
-            <span class="rv-m">{{ $live || $ended ? __('sats per winner; halving each era') : __('sats per winner; halving each era, values from the Pre-Season draft') }}</span>
+            <span class="rv-m">{{ $live || $ended ? __('sats per winner in each era of a game') : __('sats per winner in each era of a game, values from the Pre-Season draft') }}</span>
         </div>
         {{-- The table scrolls inside its card, never the page (it ran 970 px wide at 390, 2430 px in a 1342 px card at
              1440): the edge fades say there is more on that side (the chain viewport's pattern), the region takes the
@@ -331,7 +360,6 @@ new #[Layout('layouts::app', ['section' => 'mining'])] class extends Component
                     <tr>
                         <th scope="col">{{ __('Era') }}</th>
                         <th scope="col"><span class="sr-only">{{ $payKey ? __(':game pays', ['game' => $shortKey($payKey)]) : '' }}</span></th>
-                        <th scope="col">{{ __('From') }}</th>
                         @foreach (array_keys($chain['rewards_now']) as $key)
                             <th scope="col" class="is-r" @unless (ChainOverview::mines($key)) data-test="reward-not-open" @endunless>{{ $shortKey($key) }}</th>
                         @endforeach
@@ -343,7 +371,7 @@ new #[Layout('layouts::app', ['section' => 'mining'])] class extends Component
                 <tbody>
                     @foreach ($chain['schedule'] as $row)
                         @php($pay = $payKey === null ? 0 : (int) ($row['rewards'][$payKey] ?? 0))
-                        <tr @class(['is-current' => $row['current']])>
+                        <tr>
                             <td class="text-btc">{{ $row['era'] }}</td>
                             <td>
                                 @if ($firstPay > 0)
@@ -353,14 +381,15 @@ new #[Layout('layouts::app', ['section' => 'mining'])] class extends Component
                                     </span>
                                 @endif
                             </td>
-                            <td class="text-btc tabular-nums">{{ $row['from'] === null ? '–' : $date($row['from'], 'D j.n.') }}</td>
                             @foreach ($row['rewards'] as $key => $reward)
-                                <td @class(['is-r tabular-nums', 'text-ink-3' => ! ChainOverview::mines((string) $key)])>{{ ChainOverview::mines((string) $key) ? $sats($reward) : '–' }}</td>
+                                {{-- A game's own era, marked per cell: chess may stand in era 2 while the board games are in era 1. --}}
+                                @php($payNow = $live && ChainOverview::mines((string) $key) && in_array($shareOf[$key] ?? '', $row['keys'], true))
+                                <td @class(['is-r tabular-nums', 'text-ink-3' => ! ChainOverview::mines((string) $key), 'font-bold text-btc-hi' => $payNow]) @if ($payNow) data-test="pays-now" data-key="{{ $key }}" @endif>{{ ChainOverview::mines((string) $key) ? $sats($reward) : '–' }}</td>
                             @endforeach
                             @foreach ($games as $game)
                                 @php($minedHere = (int) ($hasChain ? ($chain['mined_by_game_and_era'][$game][$row['era']] ?? 0) : 0))
                                 @php($capHere = (int) ($row['caps'][$game] ?? 0))
-                                <td class="is-r text-ink-2 tabular-nums">
+                                <td @class(['is-r tabular-nums', 'text-ink-2' => ! ($live && in_array($game, $row['keys'], true)), 'text-btc-hi' => $live && in_array($game, $row['keys'], true)])>
                                     {{ $sats($minedHere) }} / {{ $sats($capHere) }}
                                     @if ($minedHere > 0)
                                         {{-- How much of the game's era cap is mined, as a bar under the numbers (P53). --}}
@@ -382,7 +411,10 @@ new #[Layout('layouts::app', ['section' => 'mining'])] class extends Component
             @unless (collect(array_keys($chain['rewards_now']))->reject(fn (string $key): bool => str_starts_with($key, 'chess/'))->every(fn (string $key): bool => ChainOverview::mines($key)))
                 <span data-test="rated-board-not-open">{{ __('Board games count once their rated games open; until then –.') }}</span>
             @endunless
-            <span>{{ __('Mined / cap: no game takes more than its share of an era.') }}</span>
+            <span>{{ __('Mined / era size: a game enters its next era once it has mined this much; the block that crosses the line counts in full.') }}</span>
+            @if ($live)
+                <span>{{ __('Highlighted: the era each game stands in now.') }}</span>
+            @endif
         </div>
     </section>
 
@@ -457,7 +489,7 @@ new #[Layout('layouts::app', ['section' => 'mining'])] class extends Component
                         <tbody>
                             @foreach ([
                                 [__('Game weights, per winning player'), collect($inForce->weights)->map(fn ($milli, $key) => $shortKey((string) $key).' '.SeasonRelease::factor((int) $milli).'×')->implode(', ')],
-                                [__('Share cap per era'), collect($inForce->shares)->map(fn ($share, $game) => ChainOverview::gameLabel((string) $game).' '.$share.' %')->implode(', ')],
+                                [$shareTerm, collect($inForce->shares)->map(fn ($share, $game) => ChainOverview::gameLabel((string) $game).' '.$share.' %')->implode(', ')],
                                 [__('Blocks per player a day'), collect($inForce->daily)->map(fn ($daily, $game) => ChainOverview::gameLabel((string) $game).' '.$daily)->implode(', ')],
                                 [__('Blocks per pairing'), __(':day a day, :season in the season', ['day' => $inForce->pairLimitPerDay, 'season' => $inForce->pairLimitPerSeason])],
                                 [__('Same trust circle'), $inForce->subtree > 100 ? __('rule off') : __('no block from :percent %', ['percent' => $inForce->subtree])],
@@ -465,7 +497,7 @@ new #[Layout('layouts::app', ['section' => 'mining'])] class extends Component
                             ] as [$term, $value])
                                 <tr class="max-sm:flex max-sm:flex-col max-sm:border-b max-sm:border-hairline max-sm:py-2">
                                     <td class="whitespace-normal max-sm:h-auto max-sm:border-0 max-sm:p-0 max-sm:text-ink-2">{{ $term }}
-                                        @if ($term === __('Share cap per era') && array_sum($inForce->shares) > 0)
+                                        @if ($term === $shareTerm && array_sum($inForce->shares) > 0)
                                             {{-- The split as a bar in each game's colour (P53); the words carry the numbers, the colour never alone. --}}
                                             <span class="mt-1.5 flex h-2 max-w-80 gap-0.5 overflow-hidden rounded-[2px] bg-raised" aria-hidden="true" data-test="share-cap-bar">
                                                 @foreach ($inForce->shares as $shareGame => $share)

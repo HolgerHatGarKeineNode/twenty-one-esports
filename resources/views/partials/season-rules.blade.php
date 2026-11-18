@@ -52,7 +52,7 @@
                     ? __('Rule 7, the same trust circle, is off')
                     : __('The two players do not both get :percent % or more of their trust from the same person', ['percent' => $rules->subtree]),
                 8 => __('At most :count blocks per pairing until the season ends', ['count' => $rules->pairLimitPerSeason]),
-                9 => __('The game has not used up its share of the era'),
+                9 => __('The game has not mined its whole share of the season yet'),
             ] as $number => $rule)
                 <li class="grid grid-cols-[16px_minmax(0,1fr)] gap-2 text-xs leading-[1.5] text-ink-2 lg:grid-cols-[20px_minmax(0,1fr)]"><span class="text-ink-3">{{ $number }}</span><span>{{ $rule }}</span></li>
             @endforeach

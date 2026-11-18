@@ -187,7 +187,7 @@ final class RulesPage
 
         foreach ($rules->weights as $key => $milli) {
             [$game] = explode('/', $key, 2);
-            $rows[] = [ChainOverview::keyLabel($key), SeasonRelease::factor($milli), ($rules->shares[$rules->shareKey($game)] ?? 100).' %', (string) ($rules->daily[$rules->shareKey($game)] ?? '–')];
+            $rows[] = [ChainOverview::keyLabel($key), SeasonRelease::factor($milli), ($rules->shares[$rules->shareKey($game)] ?? 0).' %', (string) ($rules->daily[$rules->shareKey($game)] ?? '–')];
         }
 
         return [
@@ -197,9 +197,9 @@ final class RulesPage
                 ? __('Before Block 0 these are the values the board plans for the next season. Block 0 fixes them.')
                 : __('Every fair rated win of the live season mines a block. These are the values in force.'),
             'facts' => $facts,
-            'table' => ['head' => [__('Game and mode'), __('Weight'), __('Share of an era'), __('Blocks per player a day')], 'rows' => $rows],
+            'table' => ['head' => [__('Game and mode'), __('Weight'), __('Share of the supply'), __('Blocks per player a day')], 'rows' => $rows],
             'items' => [
-                __('Rewards halve every era. The sats are paid once, after the season review, to the Lightning address of each player.'),
+                __('The halving: the reward of a game halves each time that game has mined half of what its share still holds, by sats mined and never by a date. The sats are paid once, after the season review, to the Lightning address of each player.'),
                 // The board games' share group only while one of them is switched on (plan "Mühle und Dame", P6).
                 app(GameRegistry::class)->boards() === []
                     ? __('A game and mode without a weight does not mine. Both EA Sports FC editions share one share and one daily limit.')

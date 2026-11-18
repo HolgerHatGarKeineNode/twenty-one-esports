@@ -80,7 +80,8 @@ final class RatedChess
 
     /**
      * What a rated win mines right now per live mode (sats per winner), for
-     * the lobby's chip: the reward in force in the running era, the same
+     * the lobby's chip: the reward in the era chess itself stands in (it
+     * halves by what chess mined, whatever the other games did), the same
      * figure /mining shows (ChainOverview::live()). Empty without a live
      * season or while chess does not mine. Cached for a minute, scalars
      * only (the cache unserializes no objects).

@@ -101,9 +101,6 @@ new #[Title('Seasons')] #[Layout('layouts::app', ['section' => 'admin'])] class 
     public array $weights = [];
 
     /** @var array<string, string> */
-    public array $shares = [];
-
-    /** @var array<string, string> */
     public array $daily = [];
 
     public string $pairDay = '';
@@ -250,56 +247,6 @@ new #[Title('Seasons')] #[Layout('layouts::app', ['section' => 'admin'])] class 
         }
 
         $this->notice = __('The proposal for :game is filled in. Check it and save the change.', ['game' => ChainOverview::keyLabel('chess/rapid')]);
-    }
-
-    /**
-     * Fill the proposal for Hyperbitcoinization (NIP rev. 9.26, draft; DRAFT
-     * values of config/season.php) into the change form of a live season:
-     * its weights, its share and daily limit, and the other shares shrunk in
-     * proportion to make room. Nothing is saved; only matches that start
-     * after a saved change can mine (their trust is pinned at the start).
-     */
-    public function fillHyperChange(): void
-    {
-        Gate::authorize('admin');
-
-        $proposal = $this->hyperChangeProposal();
-
-        if ($proposal === null) {
-            return;
-        }
-
-        foreach ($proposal['weights'] as $key => $milli) {
-            $this->weights[$key] = SeasonRelease::factor($milli);
-        }
-
-        foreach ($proposal['shares'] as $key => $share) {
-            $this->shares[$key] = (string) $share;
-        }
-
-        foreach ($proposal['daily'] as $key => $blocks) {
-            $this->daily[$key] = (string) $blocks;
-        }
-
-        $this->notice = __('The proposal for :game is filled in. Check it and save the change.', ['game' => ChainDraft::shareLabel(HyperMining::GAME)]);
-    }
-
-    /**
-     * What ChainDraft proposes for Hyperbitcoinization on top of the rules in
-     * force of the live season, or null while there is no live season, the
-     * game is switched off or it mines already.
-     *
-     * @return array{weights: array<string, int>, shares: array<string, int>, daily: array<string, int>}|null
-     */
-    public function hyperChangeProposal(): ?array
-    {
-        $current = $this->chain['in_force'];
-
-        if ($this->chain['season'] === null || ! $current instanceof ConsensusParameters) {
-            return null;
-        }
-
-        return ChainDraft::proposal(HyperMining::GAME, ['weights' => $current->weights, 'groups' => $current->groups, 'shares' => $current->shares, 'daily' => $current->daily] + ChainDraft::current());
     }
 
     /** Save the chain draft for Block 0 (board only, checked again in RatingSettings::saveDraft()), with its log row. */
@@ -637,7 +584,7 @@ new #[Title('Seasons')] #[Layout('layouts::app', ['section' => 'admin'])] class 
      * Only what differs from the rules in force; a value that is not a
      * number is refused.
      *
-     * @return array{weights?: array<string, int>, shares?: array<string, int>, daily?: array<string, int>, pairlimit?: array{0: int, 1: int}, subtree?: int, moves?: int}
+     * @return array{weights?: array<string, int>, daily?: array<string, int>, pairlimit?: array{0: int, 1: int}, subtree?: int, moves?: int}
      *
      * @throws SeasonReleaseRefused
      */
@@ -671,18 +618,17 @@ new #[Title('Seasons')] #[Layout('layouts::app', ['section' => 'admin'])] class 
             }
         }
 
-        foreach (['shares' => $this->shares, 'daily' => $this->daily] as $name => $values) {
-            foreach ($values as $game => $value) {
-                $before = $name === 'shares' ? $current->shares[$game] ?? null : $current->daily[$game] ?? null;
+        // The shares are fixed at Block 0 (`season-chain-v2`): the form offers none.
+        foreach ($this->daily as $game => $value) {
+            $before = $current->daily[$game] ?? null;
 
-                // Empty where nothing is set: a game that does not mine needs neither.
-                if (trim($value) === '' && $before === null) {
-                    continue;
-                }
+            // Empty where nothing is set: a game that does not mine needs none.
+            if (trim($value) === '' && $before === null) {
+                continue;
+            }
 
-                if ($int($value) !== $before) {
-                    $changes[$name][$game] = $int($value);
-                }
+            if ($int($value) !== $before) {
+                $changes['daily'][$game] = $int($value);
             }
         }
 
@@ -802,7 +748,6 @@ new #[Title('Seasons')] #[Layout('layouts::app', ['section' => 'admin'])] class 
 
         // Every game and mode of the registry, so a change can add one that does not mine yet.
         $this->weights = [];
-        $this->shares = [];
         $this->daily = [];
 
         foreach (ChainDraft::table(['groups' => $current->groups]) as $shareKey => $keys) {
@@ -810,7 +755,6 @@ new #[Title('Seasons')] #[Layout('layouts::app', ['section' => 'admin'])] class 
                 $this->weights[$key] = isset($current->weights[$key]) ? SeasonRelease::factor($current->weights[$key]) : '';
             }
 
-            $this->shares[$shareKey] = isset($current->shares[$shareKey]) ? (string) $current->shares[$shareKey] : '';
             $this->daily[$shareKey] = isset($current->daily[$shareKey]) ? (string) $current->daily[$shareKey] : '';
         }
         $this->pairDay = (string) $current->pairLimitPerDay;
@@ -891,13 +835,13 @@ new #[Title('Seasons')] #[Layout('layouts::app', ['section' => 'admin'])] class 
                 [__('Tip'), $chain['tip']['height'] === null ? __('Block 0') : __('Block :height', ['height' => $chain['tip']['height']]), $chain['last_block_at'] ? __('last block :when', ['when' => $date($chain['last_block_at'], 'D H:i')]) : __('no block yet')],
                 [__('Supply issued'), $sats($chain['mined']), __('of :supply sats', ['supply' => $sats($chain['supply'])])],
                 [__('Left to mine'), $sats($chain['remaining']), __('sats')],
-                [__('Era'), (string) ($chain['era'] ?? '–'), $chain['next_halving'] ? __('next halving :when', ['when' => $date($chain['next_halving'], 'D j M, H:i')]) : __('last era')],
+                [__('Eras'), (string) $season->eras, __('each game halves by what it mined')],
                 [__('Wins that did not mine'), (string) array_sum($chain['rejected']), trans_choice(':count block|:count blocks', $chain['blocks'])],
             ] : [
                 [__('Tip'), __('none'), __('waiting for Block 0')],
                 [__('Supply'), $sats($chain['supply']), __('the most it pays out, after the season')],
                 [__('Base subsidy'), $sats($chain['parameters']->subsidy), __('per winning player at weight 1')],
-                [__('Eras'), (string) $chain['parameters']->eras(), ''],
+                [__('Eras'), (string) $chain['parameters']->eras(), __('each game halves by what it mined')],
                 [__('Planned Block 0'), $plannedBlock0 ? $date($plannedBlock0, 'D j M, H:i') : __('not set'), __('the countdown on the home page')],
             ] as [$label, $value, $sub])
                 <div @class(['flex min-w-0 flex-col gap-1 rounded-md bg-ground px-3.5 py-3 shadow-ring', 'col-span-2 lg:col-span-1' => $loop->last])>
@@ -947,7 +891,7 @@ new #[Title('Seasons')] #[Layout('layouts::app', ['section' => 'admin'])] class 
                     </label>
                     <label class="flex min-w-0 flex-col gap-1 text-xs text-ink-2">{{ __('Base subsidy in sats') }}
                         <input type="text" inputmode="numeric" wire:model="draft.subsidy" class="{{ $input }}" data-test="draft-subsidy">
-                        <span class="text-ink-3">{{ __(':range; per winning player at weight 1 in era 1, halved every era', ['range' => $range('subsidy')]) }}</span>
+                        <span class="text-ink-3">{{ __(':range; per winning player at weight 1 in era 1, halved with every halving of the game', ['range' => $range('subsidy')]) }}</span>
                     </label>
                     <label class="flex min-w-0 flex-col gap-1 text-xs text-ink-2">{{ __('Eras') }}
                         <input type="text" inputmode="numeric" wire:model="draft.eras" class="{{ $input }}" data-test="draft-eras">
@@ -968,7 +912,7 @@ new #[Title('Seasons')] #[Layout('layouts::app', ['section' => 'admin'])] class 
                 </label>
                 <fieldset class="m-0 flex min-w-0 flex-col gap-2 border-0 p-0" data-test="draft-fields-games" @disabled($draftLocked)>
                     <legend class="mb-2 text-xs font-bold text-ink">{{ __('Games and modes') }}</legend>
-                    <p class="m-0 text-xs text-ink-2">{{ __('Weight per winning player, :min to 10 with at most three decimals; empty = does not mine. Share: the part of each era budget the game can mine, 1 to 100 %, together at most 100 %. A day: blocks per player a day, 1 to 100. A game that mines needs both. Both EA Sports FC editions share one share and one daily limit, and so do the board games.', ['min' => '0.001']) }}</p>
+                    <p class="m-0 text-xs text-ink-2">{{ __('Weight per winning player, :min to 10 with at most three decimals; empty = does not mine. Share: the part of the supply the game can mine in the season, 1 to 100 %, together at most 100 %; Block 0 fixes it. A day: blocks per player a day, 1 to 100. A game that mines needs both. Both EA Sports FC editions share one share and one daily limit, and so do the board games.', ['min' => '0.001']) }}</p>
                     <div class="overflow-x-auto">
                         <table class="w-full min-w-[520px] border-collapse text-left text-xs" data-test="draft-table">
                             <thead class="text-ink-2">
@@ -1103,7 +1047,7 @@ new #[Title('Seasons')] #[Layout('layouts::app', ['section' => 'admin'])] class 
         {{-- What Block 0 signs (P43): the tags from the functions that sign them --}}
         @php($preview = $this->preview)
         <x-admin.panel :title="__('What Block 0 signs')" :meta="__('the saved draft, as the release signs it')" data-test="season-preview">
-            <h3 class="m-0 text-[13px] font-bold">{{ __('Rewarded wins per era') }} <span class="font-normal text-ink-3">{{ __('what the share cap of an era pays for each game and mode alone, over :weeks weeks; a team win pays every winner', ['weeks' => ChainDraft::weeks($draftChain)]) }}</span></h3>
+            <h3 class="m-0 text-[13px] font-bold">{{ __('Rewarded wins per era') }} <span class="font-normal text-ink-3">{{ __('how many wins each era of a game pays if that game and mode alone mined it; a team win pays every winner') }}</span></h3>
             <div class="overflow-x-auto">
                 <table class="w-full min-w-[480px] border-collapse text-left text-xs" data-test="preview-wins">
                     <thead class="text-ink-2">
@@ -1149,18 +1093,23 @@ new #[Title('Seasons')] #[Layout('layouts::app', ['section' => 'admin'])] class 
         </x-admin.panel>
     @endunless
 
+    {{-- Every game in its own halving (`season-chain-v2`): the era of its key, what a win mines now, how far the next halving is. --}}
+    <section aria-labelledby="keys-h" class="flex flex-col gap-1 rounded border border-hairline bg-card p-4 lg:p-6" data-test="season-keys">
+        <h2 id="keys-h" class="rv-h3">{{ __('Halving per game') }} <span class="font-normal text-ink-3">{{ __('a game halves once it mined half of what its share still holds') }}</span></h2>
+        <x-key-halvings :keys="$chain['keys']" :live="$live" />
+    </section>
+
     {{-- Halving schedule --}}
     <section aria-labelledby="schedule-h" class="flex flex-col gap-3 rounded border border-hairline bg-card p-4 lg:p-6" data-test="season-schedule">
-        <h2 id="schedule-h" class="rv-h3">{{ __('Halving schedule') }} <span class="font-normal text-ink-3">{{ __('rewards in sats per winning player') }}</span></h2>
+        <h2 id="schedule-h" class="rv-h3">{{ __('Halving schedule') }} <span class="font-normal text-ink-3">{{ __('rewards in sats per winning player; an era ends for a game once it mined that era') }}</span></h2>
         <div class="overflow-x-auto">
             <table class="w-full min-w-[640px] border-collapse text-left text-xs">
                 <thead class="text-ink-2">
                     <tr class="border-b border-hairline">
                         <th scope="col" class="py-2 pr-3 font-normal">{{ __('Era') }}</th>
-                        <th scope="col" class="py-2 pr-3 font-normal">{{ __('From') }}</th>
                         <th scope="col" class="py-2 pr-3 text-right font-normal">{{ __('Budget') }}</th>
                         @foreach ($games as $game)
-                            <th scope="col" class="py-2 pr-3 text-right font-normal">{{ __(':game cap', ['game' => ChainOverview::gameLabel($game)]) }}</th>
+                            <th scope="col" class="py-2 pr-3 text-right font-normal">{{ __(':game era size', ['game' => ChainOverview::gameLabel($game)]) }}</th>
                         @endforeach
                         @foreach (array_keys($chain['rewards_now']) as $key)
                             <th scope="col" class="py-2 pr-3 text-right font-normal" @unless (ChainOverview::mines($key)) data-test="reward-not-open" @endunless>{{ ChainOverview::keyLabel($key) }}@unless (ChainOverview::mines($key)) <span class="text-ink-3">· {{ __('not open') }}</span>@endunless</th>
@@ -1169,12 +1118,12 @@ new #[Title('Seasons')] #[Layout('layouts::app', ['section' => 'admin'])] class 
                 </thead>
                 <tbody>
                     @foreach ($chain['schedule'] as $row)
-                        <tr @class(['border-b border-hairline last:border-0', 'text-btc-hi' => $row['current']])>
+                        <tr class="border-b border-hairline last:border-0">
                             <td class="py-2 pr-3 font-bold">{{ $row['era'] }}</td>
-                            <td class="py-2 pr-3 whitespace-nowrap">{{ $row['from'] === null ? '–' : $date($row['from'], 'D j M') }}</td>
                             <td class="py-2 pr-3 text-right">{{ $sats($row['budget']) }}</td>
                             @foreach ($games as $game)
-                                <td class="py-2 pr-3 text-right">{{ $sats($row['caps'][$game] ?? 0) }}</td>
+                                {{-- A game's own era, marked per cell: no era holds for the whole season. --}}
+                                <td @class(['py-2 pr-3 text-right', 'font-bold text-btc-hi' => $live && in_array($game, $row['keys'], true)])>{{ $sats($row['caps'][$game] ?? 0) }}</td>
                             @endforeach
                             @foreach ($row['rewards'] as $key => $reward)
                                 <td class="py-2 pr-3 text-right">{{ ChainOverview::mines((string) $key) ? $sats($reward) : '–' }}</td>
@@ -1304,29 +1253,14 @@ new #[Title('Seasons')] #[Layout('layouts::app', ['section' => 'admin'])] class 
                         <span><button type="button" wire:click="fillRapidChange" class="inline-flex min-h-11 cursor-pointer items-center rounded-md border border-line bg-well px-4 text-[13px] font-bold text-ink hover:border-btc" data-test="fill-chess-rapid-change">{{ __('Fill in the proposal') }}</button></span>
                     </div>
                 @endif
-                {{-- Hyperbitcoinization (NIP rev. 9.26, draft): joins a live season by a change; only matches that start after it can mine. --}}
-                @if ($this->isBoard && ($proposal = $this->hyperChangeProposal()) !== null)
-                    <div class="flex flex-col gap-2 rounded-md bg-ground p-3 shadow-ring" data-test="hyperbitcoinization-change-proposal">
-                        <p class="m-0 text-xs text-ink-2">{{ __(':game does not mine in this season. Draft proposal, not decided yet: weight :weight per mode, :share % share and :daily a day; the other shares shrink in proportion to make room: :others. Nothing changes until you save the change, and only matches that start after it can mine.', [
-                            'game' => ChainDraft::shareLabel(HyperMining::GAME),
-                            'weight' => SeasonRelease::factor((int) collect($proposal['weights'])->first()),
-                            'share' => (int) collect($proposal['shares'])->only(array_keys($proposal['daily']))->first(),
-                            'daily' => (int) collect($proposal['daily'])->first(),
-                            'others' => collect($proposal['shares'])->except(array_keys($proposal['daily']))->map(fn (int $share, string $key): string => ChainDraft::shareLabel($key).' '.$share.' %')->implode(', '),
-                        ]) }}</p>
-                        <p class="m-0 text-xs text-ink-3">{{ __('A rated match mines one block, for its winner alone: a free-for-all or a 1v1 in which every seat is a trusted player, played to the end by every seat, and the winner conquered at least one territory. Team matches, tournament matches, matches with a bot and matches with a forfeit do not mine.') }}</p>
-                        <span><button type="button" wire:click="fillHyperChange" class="inline-flex min-h-11 cursor-pointer items-center rounded-md border border-line bg-well px-4 text-[13px] font-bold text-ink hover:border-btc" data-test="fill-hyperbitcoinization-change">{{ __('Fill in the proposal') }}</button></span>
-                    </div>
-                @endif
                 <fieldset class="m-0 grid grid-cols-2 gap-3 border-0 p-0 lg:grid-cols-4" @disabled(! $this->isBoard)>
-                    <legend class="mb-2 text-xs text-ink-2">{{ __('Share cap per era (1 to 100 %) and blocks per player a day (1 to 100)') }}</legend>
-                    @foreach ($shares as $game => $value)
-                        <label class="flex flex-col gap-1 text-xs text-ink-2">{{ __(':game share %', ['game' => ChainOverview::gameLabel($game)]) }}<input type="text" inputmode="numeric" wire:model="shares.{{ $game }}" class="{{ $input }}" data-test="change-share-{{ $game }}"></label>
-                    @endforeach
+                    <legend class="mb-2 text-xs text-ink-2">{{ __('Blocks per player a day (1 to 100)') }}</legend>
                     @foreach ($daily as $game => $value)
                         <label class="flex flex-col gap-1 text-xs text-ink-2">{{ __(':game a day', ['game' => ChainOverview::gameLabel($game)]) }}<input type="text" inputmode="numeric" wire:model="daily.{{ $game }}" class="{{ $input }}" data-test="change-daily-{{ $game }}"></label>
                     @endforeach
                 </fieldset>
+                {{-- The shares are signed with Block 0 and never change in a season (`season-chain-v2`): shown, not offered. --}}
+                <p class="m-0 text-xs text-ink-2" data-test="shares-fixed">{{ __('Shares of the supply, fixed at Block 0: :shares. A game without a share can mine from the next season on.', ['shares' => collect($chain['in_force']->shares)->map(fn ($share, $game) => ChainOverview::gameLabel((string) $game).' '.$share.' %')->implode(', ')]) }}</p>
                 <fieldset class="m-0 grid grid-cols-2 gap-3 border-0 p-0 lg:grid-cols-4" @disabled(! $this->isBoard)>
                     <legend class="mb-2 text-xs text-ink-2">{{ __('Consensus rules 4, 8, 7 and 2') }}</legend>
                     <label class="flex flex-col gap-1 text-xs text-ink-2">{{ __('Blocks per pairing a day') }}<input type="text" inputmode="numeric" wire:model="pairDay" class="{{ $input }}"></label>

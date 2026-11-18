@@ -6,7 +6,9 @@
      * left"): sats mined over time on one axis, from Block 0 to the season
      * end. A solid line for what was mined (one point per UTC day with
      * blocks), a dashed line to the estimator's total at the season end,
-     * a hairline per halving, the supply as the top line when the curve
+     * a hairline per halving that happened (the day a game reached the
+     * bound of its era; a halving to come has no date), the supply as the
+     * top line when the curve
      * comes near it. Hover or arrow keys: a crosshair and one readout;
      * the same numbers stay reachable in the table below.
      */
@@ -49,7 +51,14 @@
     if ($forecast !== null) {
         $readout[] = ['x' => 100.0, 'y' => $y($forecast), 'value' => '~'.$sats($forecast), 'label' => __('Season end, :day', ['day' => $day($to)]), 'detail' => __('forecast from the last 4 weeks'), 'forecast' => true];
     }
-    $halvings = collect($curve['halvings'] ?? [])->map(fn (array $era): array => ['x' => $x($era['from']), 'era' => $era['era']])->filter(fn (array $era): bool => $era['x'] > 0 && $era['x'] < 100)->values();
+    $halvings = [];
+    foreach ($curve['halvings'] ?? [] as $halving) {
+        $at = $x($halving['at']);
+        if ($at > 0 && $at < 100) {
+            $game = \App\Support\SeasonChain\ChainOverview::gameLabel($halving['key']);
+            $halvings[] = ['x' => $at, 'label' => $halving['closed'] ? __(':game: mined out', ['game' => $game]) : __(':game: era :era', ['game' => $game, 'era' => $halving['era'] + 1])];
+        }
+    }
     $summary = $forecast !== null
         ? __('Sats mined over time: :mined of :supply by today, forecast :forecast at the season end.', ['mined' => $sats($mined), 'supply' => $sats($curve['supply']), 'forecast' => $sats($forecast)])
         : __('Sats mined over time: :mined of :supply by the season end.', ['mined' => $sats($mined), 'supply' => $sats($curve['supply'])]);
@@ -61,7 +70,7 @@
         @if ($forecast !== null)
             <li class="flex items-center gap-2"><span class="w-4 border-t-2 border-dashed border-btc"></span>{{ __('Forecast from the last 4 weeks') }}</li>
         @endif
-        @if ($halvings->isNotEmpty())
+        @if ($halvings !== [])
             <li class="flex items-center gap-2"><span class="h-3 w-px bg-edge"></span>{{ __('Halving') }}</li>
         @endif
     </ul>
@@ -96,7 +105,7 @@
         @foreach ($halvings as $halving)
             <span class="absolute inset-y-0 w-px bg-dash" style="left: {{ $halving['x'] }}%" aria-hidden="true"></span>
             {{-- Near the right edge the label sits left of its line, so it never leaves the plot. --}}
-            <span @class(['absolute bottom-1 text-[11px] whitespace-nowrap text-ink-3 max-lg:hidden', 'ml-1.5' => $halving['x'] <= 90, '-ml-1.5 -translate-x-full' => $halving['x'] > 90]) style="left: {{ $halving['x'] }}%" aria-hidden="true">{{ __('Era :era', ['era' => $halving['era']]) }}</span>
+            <span @class(['absolute bottom-1 text-[11px] whitespace-nowrap text-ink-3 max-lg:hidden', 'ml-1.5' => $halving['x'] <= 90, '-ml-1.5 -translate-x-full' => $halving['x'] > 90]) style="left: {{ $halving['x'] }}%" aria-hidden="true" data-test="chart-halving">{{ $halving['label'] }}</span>
         @endforeach
 
         <svg class="absolute inset-0 size-full overflow-visible" viewBox="0 0 1000 1000" preserveAspectRatio="none" aria-hidden="true">

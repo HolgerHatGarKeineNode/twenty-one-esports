@@ -371,11 +371,12 @@ final class HomeBoard
     }
 
     /**
-     * The season card: Pre-Season (countdown to Block 0 or "date coming soon") or the live season, and the
-     * first three eras with what a win pays; `pays` is that reward right now (the running era of a live season,
-     * era 1 before Block 0). Cached for a minute (the forecast behind the draft reads wins).
+     * The season card: Pre-Season (countdown to Block 0 or "date coming soon") or the live season, and per
+     * game with a share (`keys`) the era that game stands in, what a win of its first open mode mines now and
+     * how far its next halving is (ChainOverview::keys(); a season has no era of its own, every game halves by
+     * what it mined). `pays` is the reward of the first game right now. Cached for a minute, scalars only.
      *
-     * @return array{state: string, slug: string|null, live: bool, height: int|null, eras: list<array{era: int, from: CarbonImmutable, sats: int}>, payKey: string|null, pays: int}
+     * @return array{state: string, slug: string|null, live: bool, height: int|null, keys: list<array{key: string, mode: string, era: int|null, closed: bool, sats: int, halving: string}>, payKey: string|null, pays: int}
      */
     public static function season(): array
     {
@@ -392,12 +393,24 @@ final class HomeBoard
                 }
             }
 
-            $eras = [];
+            $keys = [];
 
-            foreach (array_slice($chain['schedule'], 0, 3) as $row) {
-                // A timestamp, not a Carbon: the cache unserializes no objects (config cache.serializable_classes = false),
-                // a cached CarbonImmutable came back as __PHP_Incomplete_Class and took home down (500) from the second request on.
-                $eras[] = ['era' => (int) $row['era'], 'from' => $row['from'] === null ? null : CarbonImmutable::instance($row['from'])->getTimestamp(), 'sats' => (int) ($payKey === null ? 0 : ($row['rewards'][$payKey] ?? 0))];
+            // Scalars only: the cache unserializes no objects (config cache.serializable_classes = false), a cached
+            // CarbonImmutable came back as __PHP_Incomplete_Class and took home down (500) from the second request on.
+            foreach ($chain['keys'] as $key) {
+                // A game whose modes are not open yet promises no reward on the start page.
+                if ($key['wins_key'] === null || ! ChainOverview::mines($key['wins_key'])) {
+                    continue;
+                }
+
+                $keys[] = [
+                    'key' => (string) $key['key'],
+                    'mode' => (string) $key['wins_key'],
+                    'era' => $key['era'],
+                    'closed' => $key['closed'],
+                    'sats' => (int) $key['modes'][$key['wins_key']]['pays'],
+                    'halving' => ChainOverview::halvingLine($key),
+                ];
             }
 
             return [
@@ -405,23 +418,24 @@ final class HomeBoard
                 'slug' => $live?->slug,
                 'live' => $live !== null,
                 'height' => $live !== null ? (int) (app(SeasonChains::class)->tip($live)['height'] ?? 0) : null,
-                'eras' => $eras,
+                'keys' => $keys,
                 'payKey' => $payKey,
                 'pays' => $payKey === null ? 0 : (int) ($chain['rewards_now'][$payKey] ?? 0),
             ];
         };
 
         try {
-            /** @var array{state: string, slug: string|null, live: bool, height: int|null, eras: list<array{era: int, from: int, sats: int}>, payKey: string|null, pays?: int} $card */
+            /** @var array{state: string, slug: string|null, live: bool, height: int|null, keys?: list<array{key: string, mode: string, era: int|null, closed: bool, sats: int, halving: string}>, payKey: string|null, pays?: int} $card */
             $card = Cache::remember(self::SEASON_CARD.app()->getLocale(), 60, $read);
+
+            // A card cached before the games had their own eras (at most a minute after a deploy): read again.
+            if (! isset($card['keys'], $card['pays'])) {
+                $card = $read();
+            }
         } catch (Throwable $e) {
             report($e);
             $card = $read();
         }
-
-        $card['eras'] = array_map(fn (array $era): array => [...$era, 'from' => $era['from'] === null ? null : CarbonImmutable::createFromTimestamp($era['from'])], $card['eras']);
-        // A card cached before `pays` existed (at most a minute after a deploy): era 1, as that card said.
-        $card['pays'] ??= (int) ($card['eras'][0]['sats'] ?? 0);
 
         return $card;
     }

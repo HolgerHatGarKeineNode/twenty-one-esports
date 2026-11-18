@@ -234,6 +234,8 @@ new class extends Component {
             </div>
         @endforeach
     </div>
+    {{-- What no block mined (`season-chain-v2`: rounding, a game that closed, the season's end): shown, never paid out. --}}
+    <p class="m-0 text-[13px] text-ink-2" data-test="settlement-rest">{{ __('Rest of the supply that no block mined: :sats sats. It is paid to nobody and stays in the league reserve.', ['sats' => $sats($review['rest'])]) }}</p>
 
     @if (! $approved)
         <div class="relative overflow-x-auto">

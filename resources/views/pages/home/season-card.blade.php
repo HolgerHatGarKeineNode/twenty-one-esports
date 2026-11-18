@@ -1,7 +1,8 @@
 {{--
     The season, right column (Main.dc.html season card): before Block 0 the Pre-Season with the countdown to
     Block 0 ("--" while no date is set) and "Bei Block 0 benachrichtigen"; while a season runs its height. Under it
-    the first three eras with what a win pays (HomeBoard::season(), the same schedule as /mining).
+    every game with a share: the era that game stands in, what a win mines now and how far its next halving is
+    (HomeBoard::season(), the same figures as /mining; a season has no era of its own and a halving no date).
 
     Below lg the same season as one compact section for guests and players (HomePhone.dc.html drew two lines for
     players only; guests saw no season on a phone): before Block 0 its date, the countdown, the supply and the
@@ -18,7 +19,7 @@
     $block0At = $season['live'] ? null : PreSeason::block0At();
     $undated = ! $season['live'] && $block0At === null;
     $tag = $season['live'] ? __('Live now') : __('Pre-Season');
-    $first = $season['eras'][0] ?? null;
+    $first = $season['keys'][0] ?? null;
     $zone = PreSeason::timezoneFor($user);
     $supply = $season['live'] ? null : PreSeason::potSats();
 @endphp
@@ -43,17 +44,22 @@
         </div>
     @endif
 
-    @if ($season['eras'] !== [])
+    @if ($season['keys'] !== [])
         <table class="rv-tb" data-test="season-eras">
             <thead>
-                <tr><th>{{ __('Era') }}</th><th>{{ __('from') }}</th><th class="is-r">{{ __('Sats per win') }}</th></tr>
+                <tr><th>{{ __('Game and mode') }}</th><th>{{ __('Era') }}</th><th class="is-r">{{ __('Sats per win') }}</th></tr>
             </thead>
             <tbody>
-                @foreach ($season['eras'] as $era)
-                    <tr>
-                        <td>{{ $era['era'] }}</td>
-                        <td class="tabular-nums">{{ $era['from'] === null ? '–' : $era['from']->setTimezone($zone)->locale(app()->getLocale())->isoFormat(app()->getLocale() === 'de' ? 'dd D.M.' : 'ddd D MMM') }}</td>
-                        <td class="is-r tabular-nums">{{ HomeBoard::sats($era['sats']) }}</td>
+                @foreach ($season['keys'] as $key)
+                    <tr data-test="season-key" data-key="{{ $key['key'] }}">
+                        <td class="whitespace-normal">
+                            {{ ChainOverview::keyLabel($key['mode']) }}
+                            @if ($season['live'])
+                                <span class="block text-xs text-ink-3" data-test="season-key-halving">{{ $key['halving'] }}</span>
+                            @endif
+                        </td>
+                        <td class="tabular-nums">{{ $key['closed'] ? '–' : $key['era'] }}</td>
+                        <td class="is-r tabular-nums">{{ $key['closed'] ? '–' : HomeBoard::sats($key['sats']) }}</td>
                     </tr>
                 @endforeach
             </tbody>
@@ -93,6 +99,12 @@
                 <span class="rv-m">{{ ChainOverview::keyLabel($season['payKey']) }}, {{ __('paid out after the season review') }}</span>
             </span>
         @endif
+        {{-- Every other game in its own era: chess may have halved while the board games have not. --}}
+        @foreach ($season['keys'] as $key)
+            @if ($key['mode'] !== $season['payKey'] && ! $key['closed'])
+                <span class="rv-m" data-test="season-phone-key" data-key="{{ $key['key'] }}">{{ __(':key: a win mines :sats sats', ['key' => ChainOverview::keyLabel($key['mode']), 'sats' => HomeBoard::sats($key['sats'])]) }}</span>
+            @endif
+        @endforeach
     @else
         @if ($block0At !== null)
             <b class="text-[13px]" data-test="season-phone-date">{{ __('Block 0 on :when', ['when' => Formats::date($block0At, true, $zone)]) }}</b>
@@ -107,7 +119,7 @@
                     <span class="rv-tag" data-test="season-phone-supply">{{ __('Supply') }} {{ HomeBoard::sats($supply) }} Sats</span>
                 @endif
                 @if ($first !== null && $season['payKey'] !== null)
-                    <span class="rv-m">{{ __('Era :era pays :sats sats per win (:key)', ['era' => $first['era'], 'sats' => HomeBoard::sats($first['sats']), 'key' => ChainOverview::keyLabel($season['payKey'])]) }}, {{ __('paid out after the season review') }}</span>
+                    <span class="rv-m">{{ __('Era :era pays :sats sats per win (:key)', ['era' => $first['era'], 'sats' => HomeBoard::sats($first['sats']), 'key' => ChainOverview::keyLabel($first['mode'])]) }}, {{ __('paid out after the season review') }}</span>
                 @endif
             </span>
         @endif
