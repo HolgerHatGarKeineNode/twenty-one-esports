@@ -214,6 +214,8 @@ final class RotationPlanner
         'f2' => 'stream.rotation.f2-board', 'f3' => 'stream.rotation.f3-fresh', 'f4' => 'stream.rotation.f4-moment', 'f5' => 'stream.rotation.f5-play',
         'g1' => 'stream.rotation.g1-tmnf',
         'g2' => 'stream.rotation.g2-tmnf-race', 'g3' => 'stream.rotation.g3-tmnf-join', 'g4' => 'stream.rotation.g4-tmnf-leader',
+        // The season (SeasonSlides): the countdown to Block 0, the launch after it, one game that mines.
+        's1' => 'stream.rotation.s1-countdown', 's2' => 'stream.rotation.s2-launch', 's3' => 'stream.rotation.s3-game',
     ];
 
     /**

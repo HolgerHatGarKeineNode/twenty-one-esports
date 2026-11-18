@@ -355,6 +355,14 @@ return [
             'blockfill_moment_minutes' => 10,
             // A finished tournament keeps its champion, podium and final bracket on the stream this long after its last result (TournamentLiveSlides): five days (2026-10-03).
             'finished_tournament_hours' => (int) env('TWENTYONE_STREAM_FINISHED_TOURNAMENT_HOURS', 120),
+            // The season scenes (SeasonSlides: s1 countdown, s2 launch, s3 one game that mines). While a season is live, Block 0
+            // is overdue or due within `season_lead_days`, every round carries the lead scene (s1/s2) and up to
+            // `season_games_per_round` game scenes in turn, in place of the closing teasers; before a far or undated Block 0
+            // the countdown slide only takes one teaser's place. The launch scene runs `season_launch_hours` after Block 0.
+            'season_seconds' => 15,
+            'season_games_per_round' => 3,
+            'season_lead_days' => 7,
+            'season_launch_hours' => 12,
             // The series game on the spotlight teaser (d6, GameSpotlight); unknown or empty: the newest series game.
             'spotlight' => env('TWENTYONE_STREAM_SPOTLIGHT', 'age-of-empires-2'),
         ],
