@@ -16,6 +16,7 @@ use App\Models\NostrEvent;
 use App\Models\TrustCountedReport;
 use App\Models\TrustDecision;
 use App\Models\TrustRank;
+use App\Models\TrustReportConfirmation;
 use App\Models\TrustReportDismissal;
 use App\Models\TrustRun;
 use App\Models\User;
@@ -119,6 +120,25 @@ function withRelay(array $events, Closure $body, array $limits = []): mixed
 function runTwice(): TrustRun
 {
     app(TrustJob::class)->run();
+
+    return app(TrustJob::class)->run();
+}
+
+/** Every report read so far and not dismissed gets an admin's confirmation: only then can it count. */
+function confirmReports(): void
+{
+    $waiting = NostrEvent::query()->where('kind', TrustJob::REPORT)->whereNotIn('event_id', TrustReportDismissal::query()->select('event_id'))->pluck('event_id');
+
+    foreach ($waiting as $eventId) {
+        TrustReportConfirmation::query()->firstOrCreate(['event_id' => $eventId], ['reason' => 'Checked.']);
+    }
+}
+
+/** A run that reads the reports, their confirmation, and the run that applies it. */
+function runConfirming(): TrustRun
+{
+    app(TrustJob::class)->run();
+    confirmReports();
 
     return app(TrustJob::class)->run();
 }
@@ -257,7 +277,7 @@ test('trust run 2: after alice adds frank only the changed assertions are republ
         ->and(array_map(rankOf(...), ['alice', 'bob', 'frank']))->toBe([100, 100, 100]);
 });
 
-test('a counted report halves the target; a report by an unranked author does not count', function () {
+test('a confirmed report halves the target; a report by an unranked author does not count', function () {
     payMembers(['alice', 'carol']);
     $at = now()->subMinutes(2)->getTimestamp();
     $report = fn (string $author, string $target) => trustPeople()[$author]->sign(1984, [
@@ -266,7 +286,7 @@ test('a counted report halves the target; a report by an unranked author does no
 
     withRelay(seasonThreeEvents($at), fn () => app(TrustJob::class)->run());
     // carol (rank 100 in the previous run) reports bob; sybil1 (no rank) reports dave.
-    withRelay([...seasonThreeEvents($at), $report('carol', 'bob'), $report('sybil1', 'dave')], fn () => app(TrustJob::class)->run());
+    withRelay([...seasonThreeEvents($at), $report('carol', 'bob'), $report('sybil1', 'dave')], runConfirming(...));
 
     // bob: raw 1/6 halved to 1/12 -> round(100 + 25 * log2(2/3)) = 85.
     expect(rankOf('bob'))->toBe(85)
@@ -306,7 +326,7 @@ test('round 3: a relay that allows 5 filters per REQ (NIP-11) gets REQs of 5, an
     withRelay(seasonThreeEvents($at), runTwice(...));
 
     // Six ranked reporters, six filters: more than the relay takes in one REQ.
-    withRelay([...seasonThreeEvents($at), leagueReport('carol', pk('bob'), $at + 30)], fn () => app(TrustJob::class)->run(), ['max_filters' => 5]);
+    withRelay([...seasonThreeEvents($at), leagueReport('carol', pk('bob'), $at + 30)], runConfirming(...), ['max_filters' => 5]);
 
     expect(rankOf('bob'))->toBe(85);
 });
@@ -322,8 +342,10 @@ test('round 3: a relay that refuses with CLOSED is a failed read: logged with it
 
     Log::shouldHaveReceived('warning')->withArgs(fn (string $message, array $context): bool => $message === 'Relay refused a read' && str_contains($context['reason'], 'too many filters'));
 
+    // Reports only count once confirmed, so the proof of the failed read is that none was stored.
     expect(rankOf('bob'))->toBe(100)
-        ->and(rankOf('frank'))->toBe(46);
+        ->and(rankOf('frank'))->toBe(46)
+        ->and(NostrEvent::query()->where('kind', TrustJob::REPORT)->count())->toBe(0);
 });
 
 test('round 3: never more than 10 filters per REQ, even when a relay advertises more', function () {
@@ -433,6 +455,11 @@ test('round 3: a relay that ignores `limit` still gets at most the per-author ca
     config(['esports.trust.max_events' => 6, 'esports.trust.reports_limit_per_author' => 3]);
     withRelay([...seasonThreeEvents($at), leagueReport('carol', pk('bob'), $at + 30), ...$burst], fn () => app(TrustJob::class)->run(), ['ignore_limits' => true]);
 
+    // One read only (a second would take three more of the burst); the confirmation takes effect in a run without the relay.
+    confirmReports();
+    config(['esports.relays' => []]);
+    app(TrustJob::class)->run();
+
     expect(NostrEvent::query()->where('kind', 1984)->where('pubkey', pk('alice'))->count())->toBe(3)
         ->and(rankOf('bob'))->toBe(85);
 });
@@ -442,14 +469,17 @@ test('round 3: a relay that ignores `limit` still gets at most the per-author ca
  * for graphs too large to sign in a test.
  *
  * @param  list<list<string>>  $tags
+ * @return string the event id
  */
-function archivedEvent(string $pubkey, int $kind, array $tags, int $at): void
+function archivedEvent(string $pubkey, int $kind, array $tags, int $at): string
 {
     $id = bin2hex(random_bytes(32));
     $d = collect($tags)->firstWhere(0, 'd')[1] ?? null;
 
     NostrEvent::query()->create(['event_id' => $id, 'pubkey' => $pubkey, 'kind' => $kind, 'd' => $d, 'signed_at' => $at,
         'raw' => json_encode(['id' => $id, 'pubkey' => $pubkey, 'created_at' => $at, 'kind' => $kind, 'tags' => $tags, 'content' => '', 'sig' => str_repeat('a', 128)])]);
+
+    return $id;
 }
 
 test('round 3, N1 residual: the accounts one anchor vouches for count at most reports_per_anchor reports together', function () {
@@ -468,7 +498,7 @@ test('round 3, N1 residual: the accounts one anchor vouches for count at most re
     // Each of the 14 reports three players: 42 reports, every player hit five times or more.
     foreach ($socks as $i => $sock) {
         foreach (range(0, 2) as $j) {
-            archivedEvent($sock, TrustJob::REPORT, [['p', $players[($i * 3 + $j) % 8], 'other'], ['L', TrustJob::LABEL_NAMESPACE], ['l', 'cheating', TrustJob::LABEL_NAMESPACE]], $at + 60 + $i * 3 + $j);
+            archivedReport($sock, $players[($i * 3 + $j) % 8], $at + 60 + $i * 3 + $j);
         }
     }
     app(TrustJob::class)->run();
@@ -499,9 +529,16 @@ function reportSubtree(array $reporters, int $at): array
     return $players;
 }
 
-function archivedReport(string $author, string $target, int $at): void
+/** An archived league report; confirmed by an admin unless $confirmed is false (then it waits). */
+function archivedReport(string $author, string $target, int $at, bool $confirmed = true): string
 {
-    archivedEvent($author, TrustJob::REPORT, [['p', $target, 'other'], ['L', TrustJob::LABEL_NAMESPACE], ['l', 'cheating', TrustJob::LABEL_NAMESPACE]], $at);
+    $id = archivedEvent($author, TrustJob::REPORT, [['p', $target, 'other'], ['L', TrustJob::LABEL_NAMESPACE], ['l', 'cheating', TrustJob::LABEL_NAMESPACE]], $at);
+
+    if ($confirmed) {
+        TrustReportConfirmation::query()->create(['event_id' => $id, 'reason' => 'Checked.']);
+    }
+
+    return $id;
 }
 
 test('regression (security re-check round 4): backdated reports from the same subtree cannot push out a report that already counts', function () {
@@ -614,7 +651,7 @@ test('regression (P7d gate, Low B): dismissed reports, or reports of an excluded
         ->and(array_map(fn (string $p) => TrustRank::query()->where('pubkey', $p)->value('rank'), array_slice($players, 0, 5)))->toBe([75, 75, 75, 75, 75]);
 })->with(['dismissed', 'excluded']);
 
-test('P7e: restoring a dismissed report is refused while its subtree\'s budget is full, so a restore never pushes it over the cap', function () {
+test('P7e: confirming a dismissed report that counted is refused while its subtree\'s budget is full, so it never pushes the subtree over the cap', function () {
     payMembers(['alice', 'carol']);
     config(['esports.relays' => [], 'esports.trust.reports_per_anchor' => 1]);
     $at = now()->subMinutes(30)->getTimestamp();
@@ -634,14 +671,15 @@ test('P7e: restoring a dismissed report is refused while its subtree\'s budget i
 
     expect(TrustRank::query()->where('pubkey', $players[1])->value('rank'))->toBe(50);
 
-    // Restoring the burner's report now would count two reports in a subtree of one.
-    expect(fn () => $trust->restore($admin, $eventOf($burner), 'Second look.'))->toThrow(TrustAdminRefused::class, 'report budget')
+    // Confirming the burner's report again now would count two reports in a subtree of one.
+    expect(fn () => $trust->confirm($admin, $eventOf($burner), 'Second look.'))->toThrow(TrustAdminRefused::class, 'report budget')
         ->and(TrustReportDismissal::query()->where('event_id', $eventOf($burner))->exists())->toBeTrue()
-        ->and(TrustDecision::query()->where('action', 'restore')->count())->toBe(0);
+        ->and(TrustReportConfirmation::query()->where('event_id', $eventOf($burner))->exists())->toBeFalse()
+        ->and(TrustDecision::query()->where('action', 'confirm')->count())->toBe(0);
 
-    // Once the slot is free again, the restore goes through, and the subtree stays at its cap.
+    // Once the slot is free again, the confirmation goes through, and the subtree stays at its cap.
     $trust->dismiss($admin, $eventOf($genuine), 'Mixed up.');
-    $trust->restore($admin, $eventOf($burner), 'Second look.');
+    $trust->confirm($admin, $eventOf($burner), 'Second look.');
     app(TrustJob::class)->run();
 
     expect(array_map(fn (string $p) => TrustRank::query()->where('pubkey', $p)->value('rank'), array_slice($players, 0, 2)))->toBe([50, 75]);
@@ -679,8 +717,123 @@ test('P7e: lifting an exclusion gives the key its place in the graph back, not i
             ['dismiss', $burnerReport(), 'exclusion lifted'],
         ]);
 
-    // Restoring that report goes through the budget check: refused while the subtree is full.
-    expect(fn () => $trust->restore($admin, $burnerReport(), 'It was right.'))->toThrow(TrustAdminRefused::class, 'report budget');
+    // Confirming that report again goes through the budget check: refused while the subtree is full.
+    expect(fn () => $trust->confirm($admin, $burnerReport(), 'It was right.'))->toThrow(TrustAdminRefused::class, 'report budget')
+        ->and(TrustReportConfirmation::query()->where('event_id', $burnerReport())->exists())->toBeFalse();
+});
+
+/** The rank the trust key published for $pubkey: the `rank` tag of its newest assertion. */
+function publishedRank(string $pubkey): ?string
+{
+    $assertion = NostrEvent::query()->where('kind', TrustJob::ASSERTION)->where('d', $pubkey)->orderByDesc('signed_at')->first();
+
+    return collect($assertion?->payload()['tags'] ?? [])->firstWhere(0, 'rank')[1] ?? null;
+}
+
+test('two waiting reports against a player change nothing: the rank stays, nothing is published and rated play stays open', function () {
+    payMembers(['alice', 'carol']);
+    config(['esports.relays' => []]);
+    $at = now()->subMinutes(30)->getTimestamp();
+    $reporters = array_map(fn () => (new TestSigner)->pubkey, range(1, 2));
+    $players = reportSubtree($reporters, $at);
+    $d = 'esports/'.LeagueKey::fromConfig()->pubkey();
+    archivedEvent($players[0], 30000, [['d', $d], ['p', $players[1]]], $at);
+    archivedEvent($players[1], 30000, [['d', $d], ['p', $players[0]]], $at);
+    app(TrustJob::class)->run();
+
+    // Two trusted accounts report the same player (rank 75); no admin has decided.
+    archivedReport($reporters[0], $players[0], $at + 60, confirmed: false);
+    archivedReport($reporters[1], $players[0], $at + 61, confirmed: false);
+    $run = app(TrustJob::class)->run();
+
+    expect(TrustRank::query()->where('pubkey', $players[0])->value('rank'))->toBe(75)
+        ->and(publishedRank($players[0]))->toBe('75')
+        ->and($run->published)->toBe(0)
+        ->and(TrustCountedReport::query()->count())->toBe(0)
+        ->and(app(RatedTrustGate::class)->refusal([$players[0], $players[1]], [$players[0], $players[1]]))->toBeNull();
+});
+
+test('one confirmed report halves, two quarter, a third changes nothing; a withdrawn confirmation and an excluded author give the rank back', function () {
+    payMembers(['alice', 'carol']);
+    config(['esports.relays' => []]);
+    $at = now()->subMinutes(30)->getTimestamp();
+    $reporters = array_map(fn () => (new TestSigner)->pubkey, range(1, 3));
+    $players = reportSubtree($reporters, $at);
+    $d = 'esports/'.LeagueKey::fromConfig()->pubkey();
+    archivedEvent($players[0], 30000, [['d', $d], ['p', $players[1]]], $at);
+    archivedEvent($players[1], 30000, [['d', $d], ['p', $players[0]]], $at);
+    $admin = User::factory()->create();
+    config(['esports.board' => [NostrKeys::hexToNpub($admin->pubkey)]]);
+    $trust = app(TrustAdmin::class);
+    $reports = array_map(fn (int $i): string => archivedReport($reporters[$i], $players[0], $at + 60 + $i, confirmed: false), range(0, 2));
+    $rank = function () use ($players): array {
+        app(TrustJob::class)->run();
+
+        // What the gate reads and what the trust key published are the same number.
+        return [TrustRank::query()->where('pubkey', $players[0])->value('rank'), publishedRank($players[0])];
+    };
+
+    expect($rank())->toBe([75, '75']);
+
+    $trust->confirm($admin, $reports[0], 'Checked the games.');
+    expect($rank())->toBe([50, '50']);
+
+    $trust->confirm($admin, $reports[1], 'Checked the games.');
+    expect($rank())->toBe([25, '25'])
+        ->and(app(RatedTrustGate::class)->refusal([$players[0], $players[1]], [$players[0], $players[1]]))->toBe(RatedTrustGate::NOT_TRUSTED);
+
+    $trust->confirm($admin, $reports[2], 'Checked the games.');
+    expect($rank())->toBe([25, '25']);
+
+    // Withdrawing two of the three confirmations leaves one counted report.
+    $trust->dismiss($admin, $reports[2], 'On second thought.');
+    $trust->dismiss($admin, $reports[1], 'On second thought.');
+    expect($rank())->toBe([50, '50'])
+        ->and(TrustDecision::query()->where('action', 'withdraw')->pluck('target')->all())->toBe([$reports[2], $reports[1]])
+        ->and(TrustReportConfirmation::query()->pluck('event_id')->all())->toBe([$reports[0]]);
+
+    // The author of the last confirmed report is excluded: it no longer counts.
+    $trust->exclude($admin, $reporters[0], 'Mass reporting.');
+    expect($rank())->toBe([75, '75'])
+        ->and(app(RatedTrustGate::class)->refusal([$players[0], $players[1]], [$players[0], $players[1]]))->toBeNull();
+});
+
+test('a report that counted before reports needed a confirmation is waiting after the migration, and counts again only once confirmed', function () {
+    payMembers(['alice', 'carol']);
+    config(['esports.relays' => []]);
+    $at = now()->subMinutes(30)->getTimestamp();
+    $reporter = (new TestSigner)->pubkey;
+    $players = reportSubtree([$reporter], $at);
+    $migration = require database_path('migrations/2026_11_18_003747_create_trust_report_confirmations_table.php');
+    $migration->down();
+
+    // As the old rule left it: read, counted in the live season, no admin decision.
+    $report = archivedReport($reporter, $players[0], $at + 60, confirmed: false);
+    TrustCountedReport::query()->create(['season_id' => $this->season->id, 'event_id' => $report, 'author' => $reporter, 'target' => $players[0], 'subtree' => pk('alice')]);
+    $migration->up();
+    app(TrustJob::class)->run();
+
+    expect(TrustReportConfirmation::query()->count())->toBe(0)
+        ->and(TrustRank::query()->where('pubkey', $players[0])->value('rank'))->toBe(75);
+
+    $admin = User::factory()->create();
+    Admin::query()->create(['pubkey' => $admin->pubkey]);
+    app(TrustAdmin::class)->confirm($admin, $report, 'Checked the games.');
+    app(TrustJob::class)->run();
+
+    expect(TrustRank::query()->where('pubkey', $players[0])->value('rank'))->toBe(50)
+        ->and(TrustCountedReport::query()->count())->toBe(1);
+});
+
+test('the trust key\'s description says that a report counts only after an admin confirmed it', function () {
+    payMembers(['alice', 'carol']);
+    config(['esports.relays' => []]);
+    app(TrustJob::class)->run();
+
+    $about = json_decode((string) NostrEvent::query()->where('kind', TrustJob::DESCRIPTION)->where('pubkey', $this->trustKey->pubkey)->sole()->payload()['content'], true)['about'];
+
+    expect($about)->toContain('anchored-trust-v1', 'a report counts only after a league admin confirmed it, each counted report halves, at most two count')
+        ->not->toContain('before an admin decides');
 });
 
 /** A signed league report by a test-bed player against any pubkey. */
@@ -699,13 +852,13 @@ test('regression (security re-check, F1 reports): a report burst by one trusted 
     // carol's real report against bob, then 8 newer reports by alice against throwaway keys.
     $burst = array_map(fn (int $i) => leagueReport('alice', (new TestSigner)->pubkey, $at + 60 + $i), range(1, 8));
     config(['esports.trust.max_events' => 6, 'esports.trust.reports_limit_per_author' => 3]);
-    withRelay([...seasonThreeEvents($at), leagueReport('carol', pk('bob'), $at + 30), ...$burst], fn () => app(TrustJob::class)->run());
+    withRelay([...seasonThreeEvents($at), leagueReport('carol', pk('bob'), $at + 30), ...$burst], runConfirming(...));
 
     expect(rankOf('bob'))->toBe(85)
         ->and(NostrEvent::query()->where('kind', 1984)->where('pubkey', pk('alice'))->count())->toBeLessThanOrEqual(3);
 });
 
-test('mass reports (N1): at most reports_per_author reports of one author count per season, the earliest first', function () {
+test('mass reports (N1): at most reports_per_author confirmed reports of one author count per season, the first seen first', function () {
     payMembers(['alice', 'carol']);
     $at = now()->subMinutes(10)->getTimestamp();
     withRelay(seasonThreeEvents($at), fn () => app(TrustJob::class)->run());
@@ -715,10 +868,11 @@ test('mass reports (N1): at most reports_per_author reports of one author count 
         $reports[] = leagueReport('alice', pk($target), $at + 60 + $i);
     }
     config(['esports.trust.reports_per_author' => 3]);
-    withRelay([...seasonThreeEvents($at), ...$reports], fn () => app(TrustJob::class)->run());
+    withRelay([...seasonThreeEvents($at), ...$reports], runConfirming(...));
 
-    // bob and dave (raw 1/6) drop to 85; frank follows bob to 21 (raw 1/72), but the fourth report, against frank, does not count (else 0).
-    expect(array_map(rankOf(...), ['bob', 'dave', 'erin', 'frank']))->toBe([85, 85, 100, 21]);
+    // All four are confirmed; the relay sends the newest first, so the server saw frank's, erin's and dave's before bob's.
+    // dave (raw 1/6) drops to 85, erin (raw 1/3) stays at 100, frank (raw 1/36) drops to 21; the fourth, against bob, does not count.
+    expect(array_map(rankOf(...), ['bob', 'dave', 'erin', 'frank']))->toBe([100, 85, 100, 21]);
 });
 
 test('an admin dismissal stops a report counting, and an exclusion takes a pubkey out of the graph', function () {
@@ -726,7 +880,7 @@ test('an admin dismissal stops a report counting, and an exclusion takes a pubke
     $at = now()->subMinutes(10)->getTimestamp();
     $report = leagueReport('carol', pk('bob'), $at + 30);
     withRelay(seasonThreeEvents($at), fn () => app(TrustJob::class)->run());
-    withRelay([...seasonThreeEvents($at), $report], fn () => app(TrustJob::class)->run());
+    withRelay([...seasonThreeEvents($at), $report], runConfirming(...));
 
     expect(rankOf('bob'))->toBe(85);
 
@@ -895,7 +1049,7 @@ test('regression (parallel CPU load flake): a relay that answers CLOSED just pas
     );
 
     Log::shouldHaveReceived('warning')->withArgs(fn (string $message, array $context): bool => $message === 'Relay refused a read' && str_contains($context['reason'], 'too many filters'));
-    expect(rankOf('bob'))->toBe(100)->and(rankOf('frank'))->toBe(46);
+    expect(rankOf('bob'))->toBe(100)->and(rankOf('frank'))->toBe(46)->and(NostrEvent::query()->where('kind', TrustJob::REPORT)->count())->toBe(0);
 });
 
 test('a relay hung well past relay_timeout_seconds and its grace window still fails as a timeout, never as CLOSED', function () {
@@ -914,5 +1068,5 @@ test('a relay hung well past relay_timeout_seconds and its grace window still fa
     );
 
     Log::shouldHaveReceived('warning')->withArgs(fn (string $message, array $context): bool => str_contains($message, 'timed out') || str_contains($message, 'over its time budget'));
-    expect(rankOf('bob'))->toBe(100)->and(rankOf('frank'))->toBe(46);
+    expect(rankOf('bob'))->toBe(100)->and(rankOf('frank'))->toBe(46)->and(NostrEvent::query()->where('kind', TrustJob::REPORT)->count())->toBe(0);
 });

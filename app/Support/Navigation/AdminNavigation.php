@@ -4,17 +4,20 @@ namespace App\Support\Navigation;
 
 use App\Enums\StackerRunStatus;
 use App\Models\LeagueWeek;
+use App\Models\NostrEvent;
 use App\Models\ScoreRun;
 use App\Models\Season;
 use App\Models\SeriesMatch;
 use App\Models\StackerRun;
-use App\Models\TrustCountedReport;
 use App\Models\TrustExclusion;
+use App\Models\TrustReportConfirmation;
 use App\Models\TrustReportDismissal;
 use App\Models\User;
 use App\Support\Payouts\PayoutOverview;
 use App\Support\Scores\ScoreAccounts;
+use App\Support\SeasonChain\TrustJob;
 use Carbon\CarbonImmutable;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Route;
 
 /**
@@ -106,8 +109,8 @@ final class AdminNavigation
             ['key' => 'people', 'label' => self::groupLabel('people'), 'items' => [
                 self::item('admins', __('Admins'), route('admin.admins')),
                 self::item('organizers', __('Organizers'), route('admin.organizers')),
-                // A counted report halves its target at the next trust run: the admin sees how many count before deciding.
-                self::item('trust', __('Trust'), route('admin.trust'), self::countingReports()),
+                // A report has no effect until an admin confirms or dismisses it: the admin sees how many wait.
+                self::item('trust', __('Trust'), route('admin.trust'), self::waitingReports()),
                 self::item('fair-play', __('Fair play'), route('admin.fair-play')),
                 self::item('nip05', __('Nostr addresses'), route('admin.nip05')),
             ]],
@@ -121,18 +124,25 @@ final class AdminNavigation
     }
 
     /**
-     * The league reports that count now, as the trust page marks them ("counts"): counted in the live
-     * season, not dismissed, their author not excluded. One query on every admin page: the live season
-     * (Seasons::live(): Block 0 passed, not ended; only one runs at a time) is a subquery, so the count
-     * never costs a second one, and it is 0 without a live season.
+     * The league reports waiting for an admin, as the trust page marks them ("waiting"): signed since
+     * Block 0 of the live season (what the trust job reads), neither confirmed nor dismissed, their author
+     * not excluded (an excluded key's reports cannot count, so nothing waits on them). One query
+     * on every admin page: the live season (Seasons::live(): Block 0 passed, not ended; only one runs at
+     * a time) is a subquery, so the count never costs a second one, and it is 0 without a live season.
+     *
+     * `signed_at` is a Unix time and `genesis_at` a timestamp (UTC, config app.timezone), so Block 0 is
+     * turned into seconds in SQL: PostgreSQL in production, SQLite locally and in the tests.
      */
-    private static function countingReports(): int
+    private static function waitingReports(): int
     {
         $now = CarbonImmutable::now();
+        $epoch = DB::connection()->getDriverName() === 'sqlite' ? "cast(strftime('%s', genesis_at) as integer)" : 'extract(epoch from genesis_at)';
 
-        return TrustCountedReport::query()
-            ->whereIn('season_id', Season::query()->where('genesis_at', '<=', $now)->where('ends_at', '>', $now)->select('id'))
-            ->whereNotIn('author', TrustExclusion::query()->select('pubkey'))
+        return NostrEvent::query()
+            ->where('kind', TrustJob::REPORT)
+            ->where('signed_at', '>=', Season::query()->where('genesis_at', '<=', $now)->where('ends_at', '>', $now)->latest('genesis_at')->limit(1)->selectRaw($epoch))
+            ->whereNotIn('pubkey', TrustExclusion::query()->select('pubkey'))
+            ->whereNotIn('event_id', TrustReportConfirmation::query()->select('event_id'))
             ->whereNotIn('event_id', TrustReportDismissal::query()->select('event_id'))
             ->count();
     }

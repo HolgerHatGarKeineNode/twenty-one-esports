@@ -7,6 +7,7 @@ use App\Models\NostrEvent;
 use App\Models\TrustCountedReport;
 use App\Models\TrustExclusion;
 use App\Models\TrustRank;
+use App\Models\TrustReportConfirmation;
 use App\Models\TrustReportDismissal;
 use App\Models\TrustRun;
 use App\Support\Board;
@@ -35,7 +36,8 @@ use Illuminate\Support\Facades\DB;
  * newest opponent list of every pubkey and the league-labelled reports
  * (`1984`), read from the league relays and archived in nostr_events, so a
  * relay outage leaves the archived lists in place instead of emptying the
- * graph. Admin dismissals and exclusions have no storage yet: none apply.
+ * graph. A report counts only after an admin confirmed it ({@see TrustAdmin});
+ * until then it waits, without effect on anybody's rank.
  *
  * Cost (security re-check, note 5): every new list or report costs one
  * signature check (about 0.1 s); known ids skip it. The authors are a closed
@@ -69,7 +71,7 @@ final class TrustJob
 
     public const LABELS = ['multi-account', 'result-fixing', 'cheating', 'abuse'];
 
-    /** A report counts if its author had at least this rank in the previous run. */
+    /** A confirmed report counts if its author had at least this rank in the previous run. */
     public const REPORTER_MINIMUM = 50;
 
     public const REPORT_MAX_AGE_DAYS = 365;
@@ -310,7 +312,7 @@ final class TrustJob
             'name' => (string) config('esports.trust.name'),
             'about' => 'Trust ranks of '.config('app.name').', algorithm anchored-trust-v1: anchors are the paid members of EINUNDZWANZIG and the league admins; '
                 .'trust flows only through the players\' league opponent lists (kind 30000, d esports/<league key>), alpha 0.5, at most 3 hops, '
-                .'rank = 100 + 25 * log2(8 * raw), clamped to 0..100; each counted report halves (at most two before an admin decides). A new algorithm version gets a new key.',
+                .'rank = 100 + 25 * log2(8 * raw), clamped to 0..100; a report counts only after a league admin confirmed it, each counted report halves, at most two count. A new algorithm version gets a new key.',
             'website' => rtrim((string) config('app.url'), '/').'/protocol',
         ], JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
 
@@ -358,10 +360,11 @@ final class TrustJob
     }
 
     /**
-     * Reports that count this run (NIP "Reports"): the league namespace with
-     * one of its labels, an author with rank at least 50 in the previous run
-     * and not excluded, at most 365 days old, not dismissed by an admin, one
-     * per author and target. The algorithm caps them at two per target.
+     * Reports that count this run (NIP "Reports"): confirmed by an admin
+     * (decision of 2026-11-18: a report on its own lowers nobody's rank, it
+     * waits), the league namespace with one of its labels, an author with rank
+     * at least 50 in the previous run and not excluded, at most 365 days old,
+     * one per author and target. The algorithm caps them at two per target.
      *
      * Mass reports (N1): one author counts at most `reports_per_author`
      * reports per season (since Block 0 of the live season, else in the
@@ -373,11 +376,13 @@ final class TrustJob
      * first saw the reports (archive row), never by the author-chosen
      * `created_at`, and a report that counted once keeps its place for the
      * season (trust_counted_reports), so neither backdated reports nor older
-     * ones that become eligible later can push it out. A dismissal or an
-     * exclusion of its author stops it counting and frees its place in the
-     * author's and the subtree's budget (P7d gate, Low B); the stored rows
-     * still load first, so a report that counts cannot be evicted. A report
-     * against a key that was never ranked (no assertion yet) takes no place.
+     * ones that become eligible later can push it out. A dismissal (also a
+     * withdrawn confirmation) or an exclusion of its author stops it counting
+     * and frees its place in the author's and the subtree's budget (P7d gate,
+     * Low B); the stored rows still load first, so a report that counts cannot
+     * be evicted. A report against a key that was never ranked (no assertion
+     * yet) takes no place, and neither does a waiting one. A stored row from
+     * before the decision of 2026-11-18 without a confirmation does not count.
      *
      * @param  array<string, int>  $previousRanks
      * @param  array<string, ?string>  $previousAnchors  pubkey => anchor with the largest share
@@ -392,6 +397,8 @@ final class TrustJob
         $cap = max(0, (int) config('esports.trust.reports_per_author'));
         $anchorCap = max(0, (int) config('esports.trust.reports_per_anchor'));
         $dismissed = array_fill_keys(TrustReportDismissal::query()->pluck('event_id')->all(), true);
+        // Confirmed and not dismissed: should a report ever have both rows, the dismissal wins (no penalty).
+        $confirmed = array_diff_key(array_fill_keys(TrustReportConfirmation::query()->pluck('event_id')->all(), true), $dismissed);
         $excluded = array_fill_keys($excluded, true);
         $targets = [];
         $pairs = [];
@@ -405,9 +412,9 @@ final class TrustJob
             $seen[$counted->event_id] = true;
             $pairs[$counted->target][$counted->author] = true;
 
-            // A dismissed report, or one whose author is excluded, gives its slots back
-            // (P7d gate, Low B): else two accounts could burn a subtree's budget for the season.
-            if (isset($dismissed[$counted->event_id]) || isset($excluded[$counted->author])) {
+            // A report that is not confirmed (any more), or one whose author is excluded, gives its
+            // slots back (P7d gate, Low B): else two accounts could burn a subtree's budget for the season.
+            if (! isset($confirmed[$counted->event_id]) || isset($excluded[$counted->author])) {
                 continue;
             }
 
@@ -421,7 +428,7 @@ final class TrustJob
 
         foreach ($reports as $report) {
             if (isset($seen[$report->event_id]) || ($previousRanks[$report->pubkey] ?? 0) < self::REPORTER_MINIMUM
-                || isset($excluded[$report->pubkey]) || isset($dismissed[$report->event_id])) {
+                || isset($excluded[$report->pubkey]) || ! isset($confirmed[$report->event_id])) {
                 continue;
             }
 

@@ -8,6 +8,7 @@ use App\Models\NostrEvent;
 use App\Models\TrustCountedReport;
 use App\Models\TrustDecision;
 use App\Models\TrustExclusion;
+use App\Models\TrustReportConfirmation;
 use App\Models\TrustReportDismissal;
 use App\Models\User;
 use App\Support\Board;
@@ -16,9 +17,15 @@ use Illuminate\Support\Facades\DB;
 
 /**
  * The admin decisions of NIP "Reports", applied by the next trust run
- * ({@see TrustJob}): dismiss a report (it stops counting) or exclude a
- * pubkey from the graph (raw 0, its list vouches for nobody), and undo
- * either.
+ * ({@see TrustJob}): confirm a report (only then can it count), dismiss it
+ * (it never counts, or stops counting: withdrawing a confirmation is a
+ * dismissal), or exclude a pubkey from the graph (raw 0, its list vouches
+ * for nobody) and lift that.
+ *
+ * A report is in one of three states (decision of 2026-11-18): waiting (no
+ * row: no effect on anybody's rank), confirmed ({@see TrustReportConfirmation})
+ * or dismissed ({@see TrustReportDismissal}). Every decision replaces the
+ * other row in the same transaction.
  *
  * Security re-check round 3:
  * - Every decision and every undo takes a reason and goes into the
@@ -26,7 +33,7 @@ use Illuminate\Support\Facades\DB;
  * - Nobody decides about himself or his clan: a report whose author or
  *   target is the acting admin or in the admin's clan, or such a key, is
  *   refused (as SeriesService::assertCanDecide does for matches).
- * - Dismissing a single report is for every admin; excluding a key (and
+ * - Confirming or dismissing a single report is for every admin; excluding a key (and
  *   lifting an exclusion) takes a key out of the whole graph and is for the
  *   board ({@see Board}).
  */
@@ -37,7 +44,35 @@ final class TrustAdmin
     /** The reason of the dismissals a lifted exclusion writes for the key's counted reports. */
     public const LIFTED = 'exclusion lifted';
 
-    /** @throws TrustAdminRefused */
+    /**
+     * Confirm a report: from the next trust run on it can count against its
+     * target, within the caps. A report that counted this season before goes
+     * through the budget check, as its place may be taken.
+     *
+     * @throws TrustAdminRefused
+     */
+    public function confirm(User $admin, string $eventId, string $reason): TrustReportConfirmation
+    {
+        $this->assertAdmin($admin);
+        $reason = $this->reason($reason);
+        $this->assertNotOwn($admin, $this->reportParties($eventId));
+        $this->assertBudgetAllowsConfirm($eventId);
+
+        return DB::transaction(function () use ($admin, $eventId, $reason): TrustReportConfirmation {
+            $this->log($admin, 'confirm', $eventId, $reason);
+            TrustReportDismissal::query()->where('event_id', $eventId)->delete();
+
+            return TrustReportConfirmation::query()->updateOrCreate(['event_id' => $eventId], ['confirmed_by_id' => $admin->id, 'reason' => $reason]);
+        });
+    }
+
+    /**
+     * Dismiss a report: it does not count. On a confirmed report this
+     * withdraws the confirmation (logged as `withdraw`), and the target's
+     * rank comes back at the next trust run.
+     *
+     * @throws TrustAdminRefused
+     */
     public function dismiss(User $admin, string $eventId, string $reason): TrustReportDismissal
     {
         $this->assertAdmin($admin);
@@ -45,23 +80,10 @@ final class TrustAdmin
         $this->assertNotOwn($admin, $this->reportParties($eventId));
 
         return DB::transaction(function () use ($admin, $eventId, $reason): TrustReportDismissal {
-            $this->log($admin, 'dismiss', $eventId, $reason);
+            $withdrawn = TrustReportConfirmation::query()->where('event_id', $eventId)->delete() > 0;
+            $this->log($admin, $withdrawn ? 'withdraw' : 'dismiss', $eventId, $reason);
 
             return TrustReportDismissal::query()->updateOrCreate(['event_id' => $eventId], ['dismissed_by_id' => $admin->id, 'reason' => $reason]);
-        });
-    }
-
-    /** @throws TrustAdminRefused */
-    public function restore(User $admin, string $eventId, string $reason): void
-    {
-        $this->assertAdmin($admin);
-        $reason = $this->reason($reason);
-        $this->assertNotOwn($admin, $this->reportParties($eventId));
-        $this->assertBudgetAllowsRestore($eventId);
-
-        DB::transaction(function () use ($admin, $eventId, $reason): void {
-            $this->log($admin, 'restore', $eventId, $reason);
-            TrustReportDismissal::query()->where('event_id', $eventId)->delete();
         });
     }
 
@@ -85,7 +107,7 @@ final class TrustAdmin
      * reports (P7e). Its reports that counted this season gave their budget
      * places back when it was excluded (P7d gate, Low B), and later reports
      * may hold them now; they are dismissed here, logged, with the reason
-     * {@see self::LIFTED}. A single one can come back through restore(),
+     * {@see self::LIFTED}. A single one can come back through confirm(),
      * which checks the budget.
      *
      * @throws TrustAdminRefused
@@ -106,6 +128,7 @@ final class TrustAdmin
 
             foreach ($counted as $eventId) {
                 $this->log($admin, 'dismiss', $eventId, self::LIFTED);
+                TrustReportConfirmation::query()->where('event_id', $eventId)->delete();
                 TrustReportDismissal::query()->create(['event_id' => $eventId, 'dismissed_by_id' => $admin->id, 'reason' => self::LIFTED]);
             }
         });
@@ -117,7 +140,7 @@ final class TrustAdmin
         return $admin !== null && Board::contains($admin->pubkey);
     }
 
-    /** @param 'dismiss'|'restore'|'exclude'|'lift' $action */
+    /** @param 'confirm'|'withdraw'|'dismiss'|'exclude'|'lift' $action */
     private function log(User $admin, string $action, string $target, string $reason): void
     {
         TrustDecision::query()->create(['actor_id' => $admin->id, 'actor_pubkey' => $admin->pubkey, 'action' => $action, 'target' => $target, 'reason' => $reason]);
@@ -179,15 +202,16 @@ final class TrustAdmin
     }
 
     /**
-     * A dismissed report that counted this season gave its place in its
+     * A report that counted this season and is not confirmed now (dismissed,
+     * or from before reports needed a confirmation) gave its place in its
      * author's and its subtree's budget back (P7d gate, Low B), and a later
-     * report may have taken it. Restoring it would count it again on top, so
-     * the restore is refused while either budget is full (P7e); a report that
-     * never counted takes its chances with the caps in the next run.
+     * report may have taken it. Confirming it would count it again on top, so
+     * that is refused while either budget is full (P7e); a report that never
+     * counted takes its chances with the caps in the next run.
      *
      * @throws TrustAdminRefused
      */
-    private function assertBudgetAllowsRestore(string $eventId): void
+    private function assertBudgetAllowsConfirm(string $eventId): void
     {
         $season = Seasons::live();
         $counted = $season === null ? null : TrustCountedReport::query()->where('season_id', $season->id)->where('event_id', $eventId)->first();
@@ -197,6 +221,7 @@ final class TrustAdmin
         }
 
         $active = fn () => TrustCountedReport::query()->where('season_id', $counted->season_id)->where('event_id', '!=', $eventId)
+            ->whereIn('event_id', TrustReportConfirmation::query()->select('event_id'))
             ->whereNotIn('event_id', TrustReportDismissal::query()->select('event_id'))
             ->whereNotIn('author', TrustExclusion::query()->select('pubkey'));
         $authorFull = $active()->where('author', $counted->author)->count() >= max(0, (int) config('esports.trust.reports_per_author'));

@@ -15,6 +15,8 @@ namespace App\Support\SeasonChain;
  *    `raw(v) = penalty(v) * min(1, sum over u in layer(v)-1 listing v of
  *    0.5 * raw(u) / |L(u)|)`, |L(u)| the distinct pubkeys in u's list other
  *    than u. `penalty` is 1, halved per counted report (at most two count).
+ *    Which reports count is the caller's: only those an admin confirmed
+ *    ({@see TrustJob}); the function is the same for any counted set.
  * 4. Rank: 0 for raw 0, else clamp(round(100 + 25 * log2(8 * raw)), 0, 100),
  *    rounded half away from zero (PHP's round(), NIP "Rating").
  *
@@ -33,7 +35,7 @@ final class AnchoredTrust
 
     public const ALPHA = 0.5;
 
-    /** At most this many counted reports halve a player's trust before an admin decides. */
+    /** At most this many counted reports halve a player's trust; a report counts only once an admin confirmed it. */
     public const REPORTS_COUNTED = 2;
 
     /**

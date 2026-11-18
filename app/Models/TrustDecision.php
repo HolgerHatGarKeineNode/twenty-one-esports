@@ -15,8 +15,8 @@ use LogicException;
  * @property int $id
  * @property int|null $actor_id
  * @property string $actor_pubkey
- * @property 'dismiss'|'restore'|'exclude'|'lift' $action
- * @property string $target a report id (dismiss, restore) or a pubkey (exclude, lift)
+ * @property 'confirm'|'withdraw'|'dismiss'|'restore'|'exclude'|'lift' $action `restore` only in rows from before 2026-11-18
+ * @property string $target a report id (confirm, withdraw, dismiss, restore) or a pubkey (exclude, lift)
  * @property string $reason
  * @property Carbon|null $created_at
  */

@@ -1,9 +1,10 @@
 <?php
 
 /*
- * Admin trust page (P7d, NIP "Reports"): admins see the league reports and
- * dismiss them or exclude keys, each with a reason; the next trust run
- * applies it (tests/Feature/SeasonChain/TrustJobTest.php).
+ * Admin trust page (P7d, NIP "Reports"): admins see the league reports,
+ * which wait until an admin confirms or dismisses them, and exclude keys,
+ * each with a reason; the next trust run applies it
+ * (tests/Feature/SeasonChain/TrustJobTest.php).
  */
 
 use App\Enums\ClanRole;
@@ -16,6 +17,7 @@ use App\Models\NostrEvent;
 use App\Models\TrustCountedReport;
 use App\Models\TrustDecision;
 use App\Models\TrustExclusion;
+use App\Models\TrustReportConfirmation;
 use App\Models\TrustReportDismissal;
 use App\Models\User;
 use App\Support\Clans\ClanDraft;
@@ -56,7 +58,7 @@ test('the trust page is for admins only and lists the league reports', function 
         ->assertSee('Two accounts, one person.');
 });
 
-test('an admin dismisses a report and excludes its author, each only with a reason, and can undo both', function () {
+test('an admin dismisses a report and excludes its author, each only with a reason, and can confirm the report after all and lift the exclusion', function () {
     config(['esports.board' => [NostrKeys::hexToNpub($this->admin->pubkey)]]);
     $page = Livewire::actingAs($this->admin)->test('pages::admin.trust')
         ->call('dismiss', $this->report->event_id)
@@ -71,10 +73,11 @@ test('an admin dismisses a report and excludes its author, each only with a reas
     expect(TrustReportDismissal::query()->sole()->event_id)->toBe($this->report->event_id)
         ->and(TrustExclusion::query()->sole()->pubkey)->toBe($this->reporter->pubkey);
 
-    $page->set('reason', 'Checked again.')->call('restore', $this->report->event_id)
+    $page->set('reason', 'Checked again.')->call('confirm', $this->report->event_id)
         ->set('reason', 'Checked again.')->call('lift', $this->reporter->pubkey)->call('$refresh')->assertOk();
 
     expect(TrustReportDismissal::query()->count())->toBe(0)
+        ->and(TrustReportConfirmation::query()->sole()->event_id)->toBe($this->report->event_id)
         ->and(TrustExclusion::query()->count())->toBe(0);
 });
 
@@ -83,13 +86,15 @@ test('round 3: every decision and every undo goes into an append-only log, shown
     $trust = app(TrustAdmin::class);
 
     $trust->dismiss($this->admin, $this->report->event_id, 'Same household.');
-    $trust->restore($this->admin, $this->report->event_id, 'The household story was wrong.');
+    $trust->confirm($this->admin, $this->report->event_id, 'The household story was wrong.');
+    $trust->dismiss($this->admin, $this->report->event_id, 'Two people after all.');
     $trust->exclude($this->admin, $this->reporter->pubkey, 'Mass reporting.');
     $trust->lift($this->admin, $this->reporter->pubkey, 'Appeal granted.');
 
     expect(TrustDecision::query()->orderBy('id')->get()->map(fn (TrustDecision $d) => [$d->actor_pubkey, $d->action, $d->target, $d->reason])->all())->toBe([
         [$this->admin->pubkey, 'dismiss', $this->report->event_id, 'Same household.'],
-        [$this->admin->pubkey, 'restore', $this->report->event_id, 'The household story was wrong.'],
+        [$this->admin->pubkey, 'confirm', $this->report->event_id, 'The household story was wrong.'],
+        [$this->admin->pubkey, 'withdraw', $this->report->event_id, 'Two people after all.'],
         [$this->admin->pubkey, 'exclude', $this->reporter->pubkey, 'Mass reporting.'],
         [$this->admin->pubkey, 'lift', $this->reporter->pubkey, 'Appeal granted.'],
     ])
@@ -97,7 +102,7 @@ test('round 3: every decision and every undo goes into an append-only log, shown
         ->and(fn () => TrustDecision::query()->first()->delete())->toThrow(LogicException::class);
 
     $this->actingAs($this->admin)->get(route('admin.trust'))->assertOk()
-        ->assertSeeInOrder(['Appeal granted.', 'Mass reporting.', 'The household story was wrong.', 'Same household.']);
+        ->assertSeeInOrder(['Appeal granted.', 'Mass reporting.', 'withdrew confirmation of report', 'Two people after all.', 'confirmed report', 'The household story was wrong.', 'Same household.']);
 });
 
 test('round 3: an admin cannot decide on a report by or about himself or his clan', function () {
@@ -114,7 +119,10 @@ test('round 3: an admin cannot decide on a report by or about himself or his cla
     ], 'x', now()->getTimestamp())));
 
     expect(fn () => $trust->dismiss($this->admin, $own->event_id, 'Mine.'))->toThrow(TrustAdminRefused::class, 'your own clan')
-        ->and(TrustReportDismissal::query()->count())->toBe(0);
+        ->and(fn () => $trust->confirm($this->admin, $own->event_id, 'Mine.'))->toThrow(TrustAdminRefused::class, 'your own clan')
+        ->and(fn () => $trust->confirm($this->admin, $this->report->event_id, 'Him.'))->toThrow(TrustAdminRefused::class, 'your own clan')
+        ->and(TrustReportDismissal::query()->count())->toBe(0)
+        ->and(TrustReportConfirmation::query()->count())->toBe(0);
 });
 
 test('round 3: excluding a key is for the board; dismissing a single report stays with every admin', function () {
@@ -248,20 +256,104 @@ test('regression (P7e): a mate who deletes their account while still in the clan
         ->and(ClanDeparture::query()->where('clan_id', $clan->id)->sole()->only(['user_id', 'pubkey', 'reason']))->toBe(['user_id' => null, 'pubkey' => $mateSigner->pubkey, 'reason' => 'deleted']);
 });
 
-test('round 4: the page shows which reports count now, and a dismissal takes the mark away', function () {
+test('the page marks each report as waiting, confirmed or counting, and a withdrawn confirmation takes the counting mark away', function () {
     $season = openSeason();
     $other = NostrEvent::fromSigned(SignedEvent::fromInput($this->reporter->sign(TrustJob::REPORT, [
         ['p', User::factory()->create()->pubkey, 'other'], ['L', TrustJob::LABEL_NAMESPACE], ['l', 'cheating', TrustJob::LABEL_NAMESPACE],
     ], 'Second report.', now()->getTimestamp())));
+    // The first report is confirmed and counted in the last trust run; the second waits.
+    TrustReportConfirmation::query()->create(['event_id' => $this->report->event_id, 'confirmed_by_id' => $this->admin->id, 'reason' => 'Checked the games.']);
     TrustCountedReport::query()->create(['season_id' => $season->id, 'event_id' => $this->report->event_id, 'author' => $this->reporter->pubkey, 'target' => $this->target->pubkey, 'subtree' => $this->reporter->pubkey]);
 
     Livewire::actingAs($this->admin)->test('pages::admin.trust')
         ->assertSeeHtml('data-test="trust-counts"')
-        ->assertSeeInOrder(['does not count', 'Second report.', 'suspectus', 'counts', 'Two accounts, one person.'])
+        ->assertSeeInOrder(['waiting', 'Second report.', 'suspectus', 'confirmed, counts', 'Two accounts, one person.', 'Confirmed: Checked the games.'])
+        // Confirmed now, applied by the next run: not counted yet.
+        ->set('reason', 'Checked the replay.')
+        ->call('confirm', $other->event_id)
+        ->assertSeeHtml('data-test="trust-confirmed"')
+        ->assertDontSeeHtml('data-test="trust-waiting"')
         ->set('reason', 'Same household.')
         ->call('dismiss', $this->report->event_id)
-        ->assertDontSeeHtml('data-test="trust-counts"');
+        ->assertDontSeeHtml('data-test="trust-counts"')
+        ->assertSee('Dismissed: Same household.');
 });
+
+test('a report that counted before reports needed a confirmation shows as waiting and does not carry the counting mark', function () {
+    $season = openSeason();
+    $this->actingAs($this->admin);
+    TrustCountedReport::query()->create(['season_id' => $season->id, 'event_id' => $this->report->event_id, 'author' => $this->reporter->pubkey, 'target' => $this->target->pubkey, 'subtree' => $this->reporter->pubkey]);
+
+    Livewire::actingAs($this->admin)->test('pages::admin.trust')
+        ->assertSeeHtml('data-test="trust-waiting"')
+        ->assertDontSeeHtml('data-test="trust-counts"');
+
+    expect(trustNavCount())->toBe(1);
+});
+
+test('confirming a report takes the explicit button and a reason, the button asks first, and the confirmation can be withdrawn', function () {
+    openSeason();
+    $page = Livewire::actingAs($this->admin)->test('pages::admin.trust')
+        ->assertSeeHtml('data-test="trust-confirm"')
+        // R18: it lowers a player's rank, so the button asks before the request is sent.
+        ->assertSeeHtml('wire:confirm="Confirm this report? At the next trust run it halves the trust of suspectus;')
+        ->assertDontSeeHtml('data-test="trust-withdraw"')
+        // Typing the reason saves nothing on its own.
+        ->set('reason', 'Checked the games.');
+
+    expect(TrustReportConfirmation::query()->count())->toBe(0)
+        ->and(TrustDecision::query()->count())->toBe(0);
+
+    $page->set('reason', '')->call('confirm', $this->report->event_id)->assertHasErrors('reason');
+
+    expect(TrustReportConfirmation::query()->count())->toBe(0);
+
+    $page->set('reason', 'Checked the games.')->call('confirm', $this->report->event_id)->assertHasNoErrors()
+        ->assertSet('reason', '')
+        ->assertSee('Confirmed: Checked the games.')
+        ->assertSeeHtml('data-test="trust-withdraw"')
+        ->assertDontSeeHtml('data-test="trust-confirm"');
+
+    expect(TrustReportConfirmation::query()->sole()->only(['event_id', 'confirmed_by_id', 'reason']))
+        ->toBe(['event_id' => $this->report->event_id, 'confirmed_by_id' => $this->admin->id, 'reason' => 'Checked the games.'])
+        ->and(TrustReportConfirmation::query()->sole()->created_at)->not->toBeNull();
+
+    $page->set('reason', 'Wrong player.')->call('dismiss', $this->report->event_id)->assertHasNoErrors()
+        ->assertSee('Dismissed: Wrong player.')
+        ->assertSeeHtml('data-test="trust-confirm"');
+
+    expect(TrustReportConfirmation::query()->count())->toBe(0)
+        ->and(TrustReportDismissal::query()->sole()->only(['event_id', 'dismissed_by_id', 'reason']))
+        ->toBe(['event_id' => $this->report->event_id, 'dismissed_by_id' => $this->admin->id, 'reason' => 'Wrong player.']);
+});
+
+test('only admins confirm, withdraw and dismiss a report', function () {
+    $player = User::factory()->create();
+    $trust = app(TrustAdmin::class);
+
+    expect(fn () => $trust->confirm($player, $this->report->event_id, 'I say so.'))->toThrow(TrustAdminRefused::class, 'Only admins')
+        ->and(fn () => $trust->dismiss($player, $this->report->event_id, 'I say so.'))->toThrow(TrustAdminRefused::class, 'Only admins');
+
+    // Withdrawing is a dismissal of a confirmed report: the same gate.
+    $trust->confirm($this->admin, $this->report->event_id, 'Checked the games.');
+
+    expect(fn () => $trust->dismiss($player, $this->report->event_id, 'I say so.'))->toThrow(TrustAdminRefused::class, 'Only admins')
+        ->and(TrustReportConfirmation::query()->count())->toBe(1)
+        ->and(TrustReportDismissal::query()->count())->toBe(0)
+        ->and(TrustDecision::query()->pluck('action')->all())->toBe(['confirm']);
+
+    Livewire::actingAs($player)->test('pages::admin.trust')->assertForbidden();
+});
+
+test('an admin who lost the role while the page was open cannot confirm or dismiss from it', function (string $action) {
+    $page = Livewire::actingAs($this->admin)->test('pages::admin.trust')->set('reason', 'Checked the games.');
+    Admin::query()->where('pubkey', $this->admin->pubkey)->delete();
+
+    $page->call($action, $this->report->event_id)->assertForbidden();
+
+    expect(TrustReportConfirmation::query()->count())->toBe(0)
+        ->and(TrustReportDismissal::query()->count())->toBe(0);
+})->with(['confirm', 'dismiss']);
 
 test('round 4: rolling back the counted reports refuses while the live season has any, so the backdating attack stays closed', function () {
     $migration = require database_path('migrations/2026_09_26_060028_create_trust_counted_reports_table.php');
@@ -313,43 +405,48 @@ function trustNavCount(): int
     return collect(AdminNavigation::forCurrentUser()->groups())->flatMap(fn (array $group) => $group['items'])->firstWhere('key', 'trust')['count'];
 }
 
-/** A league report by a new reporter that counted in $seasonId. */
-function countedReport(int $seasonId, string $content): NostrEvent
+/** A league report by a new reporter that no admin decided on, signed at $at (now). */
+function undecidedReport(string $content, ?int $at = null): NostrEvent
 {
-    $reporter = new TestSigner;
-    $target = User::factory()->create()->pubkey;
-    $report = NostrEvent::fromSigned(SignedEvent::fromInput($reporter->sign(TrustJob::REPORT, [
-        ['p', $target, 'other'], ['L', TrustJob::LABEL_NAMESPACE], ['l', 'cheating', TrustJob::LABEL_NAMESPACE],
-    ], $content, now()->getTimestamp())));
-    TrustCountedReport::query()->create(['season_id' => $seasonId, 'event_id' => $report->event_id, 'author' => $reporter->pubkey, 'target' => $target, 'subtree' => $reporter->pubkey]);
-
-    return $report;
+    return NostrEvent::fromSigned(SignedEvent::fromInput((new TestSigner)->sign(TrustJob::REPORT, [
+        ['p', User::factory()->create()->pubkey, 'other'], ['L', TrustJob::LABEL_NAMESPACE], ['l', 'cheating', TrustJob::LABEL_NAMESPACE],
+    ], $content, $at ?? now()->getTimestamp())));
 }
 
-test('the admin navigation shows beside Trust how many reports the trust page marks as counting, and nothing when none does', function () {
-    $season = openSeason();
+test('the admin navigation shows beside Trust how many reports of the live season wait for an admin, as the trust page marks them', function () {
     $this->actingAs($this->admin);
 
-    // The report of every test here was read, but did not count in a trust run yet.
+    // Before Block 0 nothing is rated and nothing waits.
     expect(trustNavCount())->toBe(0);
 
-    countedReport($season->id, 'Counts.');
-    countedReport($season->id, 'Counts too.');
-    $dismissed = countedReport($season->id, 'Counted, then dismissed.');
-    TrustReportDismissal::query()->create(['event_id' => $dismissed->event_id, 'dismissed_by_id' => $this->admin->id, 'reason' => 'Same household.']);
-    $excluded = countedReport($season->id, 'Counted, then its author was excluded.');
-    TrustExclusion::query()->create(['pubkey' => $excluded->pubkey, 'excluded_by_id' => $this->admin->id, 'reason' => 'Mass reporting.']);
-    $ended = openSeason(['slug' => 'season-before', 'genesis_at' => now()->subWeeks(8), 'ends_at' => now()->subWeek()], ladders: false);
-    countedReport($ended->id, 'Counted in the season before.');
+    $season = openSeason(); // Block 0 an hour ago
+    Seasons::forget();
 
-    $marked = substr_count(Livewire::actingAs($this->admin)->test('pages::admin.trust')->html(), 'data-test="trust-counts"');
+    // The report of every test here was read and nobody decided.
+    expect(trustNavCount())->toBe(1);
 
-    expect($marked)->toBe(2)
-        ->and(trustNavCount())->toBe(2);
+    undecidedReport('Waits too.');
+    undecidedReport('Signed in the second of Block 0.', $season->genesis_at->getTimestamp());
+    undecidedReport('Signed a second before Block 0: the trust job does not read it.', $season->genesis_at->getTimestamp() - 1);
+    TrustReportConfirmation::query()->create(['event_id' => undecidedReport('Confirmed.')->event_id, 'confirmed_by_id' => $this->admin->id, 'reason' => 'Checked the games.']);
+    TrustReportDismissal::query()->create(['event_id' => undecidedReport('Dismissed.')->event_id, 'dismissed_by_id' => $this->admin->id, 'reason' => 'Same household.']);
+    TrustExclusion::query()->create(['pubkey' => undecidedReport('Its author was excluded.')->pubkey, 'excluded_by_id' => $this->admin->id, 'reason' => 'Mass reporting.']);
+
+    $marked = fn (): int => substr_count(Livewire::actingAs($this->admin)->test('pages::admin.trust')->html(), 'data-test="trust-waiting"');
+
+    expect($marked())->toBe(3)
+        ->and(trustNavCount())->toBe(3);
+
+    // The season ended: nothing waits between seasons.
+    $season->update(['ends_at' => now()->subMinute()]);
+    Seasons::forget();
+
+    expect($marked())->toBe(0)
+        ->and(trustNavCount())->toBe(0);
 });
 
-test('the count beside Trust costs the admin navigation one query, however many reports count', function () {
-    $season = openSeason();
+test('the count beside Trust costs the admin navigation one query, however many reports wait', function () {
+    openSeason();
     $this->actingAs($this->admin);
 
     $queries = function (): array {
@@ -363,11 +460,12 @@ test('the count beside Trust costs the admin navigation one query, however many 
     };
 
     $none = $queries();
-    array_map(fn (int $i): NostrEvent => countedReport($season->id, 'Report '.$i), range(1, 5));
+    array_map(fn (int $i): NostrEvent => undecidedReport('Report '.$i), range(1, 5));
     $five = $queries();
 
     expect(count($five))->toBe(count($none))
-        ->and(array_filter($five, fn (string $sql): bool => str_contains($sql, 'trust_counted_reports')))->toHaveCount(1)
+        ->and(trustNavCount())->toBe(6)
+        ->and(array_filter($five, fn (string $sql): bool => str_contains($sql, 'trust_report_confirmations')))->toHaveCount(1)
         // The live season is part of that one query, not a second one.
         ->and(array_filter($five, fn (string $sql): bool => str_starts_with($sql, 'select * from "seasons"')))->toBe([]);
 });
